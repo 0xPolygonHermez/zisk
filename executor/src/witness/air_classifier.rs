@@ -1,8 +1,8 @@
 //! AIR classification helpers.
 
 use zisk_pil::{
-    AIR_NAMES, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
-    ZISK_AIRGROUP_ID,
+    AIR_NAMES, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, MEM_HUGE_AIR_IDS, MEM_LARGE_AIR_IDS,
+    ROM_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 use crate::{PRECOMPILE_AIR_IDS, PRECOMPILE_RANK_ASSIGN};
@@ -36,7 +36,11 @@ impl AirClassifier {
     /// Checks if the AIR ID corresponds to a memory-related state machine.
     #[inline]
     pub fn is_memory_related(air_id: usize) -> bool {
-        air_id == MEM_AIR_IDS[0] || air_id == ROM_DATA_AIR_IDS[0] || air_id == INPUT_DATA_AIR_IDS[0]
+        air_id == MEM_AIR_IDS[0]
+            || air_id == MEM_LARGE_AIR_IDS[0]
+            || air_id == MEM_HUGE_AIR_IDS[0]
+            || air_id == ROM_DATA_AIR_IDS[0]
+            || air_id == INPUT_DATA_AIR_IDS[0]
     }
 
     /// Display name for a known `(airgroup_id, air_id)` pair. Returns

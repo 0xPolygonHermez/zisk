@@ -197,6 +197,16 @@ impl MemModuleSegmentCheckPoint {
         }
     }
 
+    /// Memory operations this segment holds, i.e. the slots (virtual rows) it fills.
+    ///
+    /// The planner accounts every consumed slot against the chunk that produced it, so summing
+    /// the per-chunk counts gives what the segment occupies out of its air's capacity. This is
+    /// what decides whether a segment can be proved on a narrower `Mem` air (see
+    /// `mem_air_for_slots`).
+    pub fn used_slots(&self) -> u32 {
+        self.chunks.values().map(|chunk| chunk.count).sum()
+    }
+
     /// Materialised offset value at qword slot `k` (k < `addr_range_slots`).
     #[inline]
     pub fn offset_at(&self, k: u32) -> u32 {

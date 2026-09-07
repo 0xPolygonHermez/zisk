@@ -18,7 +18,9 @@
 //! of its column arrays), so the Rust side always follows the PIL.
 
 use proofman_fields::Goldilocks;
-use zisk_pil::{InputDataTraceRow, MemTraceRow, RomDataTraceRow};
+use zisk_pil::{
+    InputDataTraceRow, MemHugeTraceRow, MemLargeTraceRow, MemTraceRow, RomDataTraceRow,
+};
 
 /// Maps virtual positions to `(row, lane)` pairs.
 ///
@@ -62,6 +64,16 @@ impl MemLanes {
 /// `lanes_x_row` of the `Mem` air, read from the generated trace row.
 pub fn mem_lanes_x_row() -> usize {
     MemTraceRow::<Goldilocks>::default().get_all_addr().len()
+}
+
+/// `lanes_x_row` of the `MemLarge` air, read from the generated trace row.
+pub fn mem_large_lanes_x_row() -> usize {
+    MemLargeTraceRow::<Goldilocks>::default().get_all_addr().len()
+}
+
+/// `lanes_x_row` of the `MemHuge` air, read from the generated trace row.
+pub fn mem_huge_lanes_x_row() -> usize {
+    MemHugeTraceRow::<Goldilocks>::default().get_all_addr().len()
 }
 
 /// `lanes_x_row` of the `InputData` air, read from the generated trace row.

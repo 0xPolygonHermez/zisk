@@ -109,6 +109,10 @@ impl<F: PrimeField64> MainInstance<F> {
         let mut main_trace = MainTrace::<R>::new_from_vec(trace_buffer)?;
 
         let (segment_id, is_last_segment) = Self::decode_plan(&self.ictx.plan)?;
+        println!(
+            "Decoded plan: segment_id = {}, is_last_segment = {}",
+            segment_id, is_last_segment
+        );
 
         // Determine the number of minimal traces per segment
         let num_within = MAIN_STEPS_PER_SEGMENT / chunk_size;
@@ -119,6 +123,15 @@ impl<F: PrimeField64> MainInstance<F> {
             num_within,
             is_last_segment,
         )?;
+
+        // The execution steps that ran before this segment, i.e. the main step its first row
+        // starts at. This is `segment_initial_step` in main.pil, and it is read off the segment's
+        // first chunk rather than derived from the segment id: the chunk is what actually knows
+        // where the segment starts, and the airval exists precisely so that segments need not all
+        // be the same size.
+        let first_min_trace =
+            segment_min_traces.first().ok_or(MainSmError::EmptyFillTraceOutput)?;
+        let segment_initial_step = first_min_trace.start_state.step;
 
         // Steps the minimal traces actually cover, and the rows they occupy. A row is filled
         // as soon as any of its lanes carries a real step: the lanes past the execution's end
@@ -135,9 +148,8 @@ impl<F: PrimeField64> MainInstance<F> {
             filled_steps as f64 / MAIN_STEPS_PER_SEGMENT as f64 * 100.0
         );
 
-        // Compute the segment's boundary mem-steps. `initial_step` is the mem-step at the
-        // end of the previous segment (0 for the first segment).
-        let (initial_step, _) = Self::mem_steps_for_segment(segment_id);
+        // The mem-step this segment chains from: the one of the last step before it.
+        let initial_step = Self::previous_mem_step(segment_initial_step);
 
         // Registers are reloaded (flushed) in windows of at most 2^22 main steps (mirrors
         // FLUSH_COUNT / FLUSH_SIZE in main.pil): each flush restarts the register range
@@ -152,9 +164,7 @@ impl<F: PrimeField64> MainInstance<F> {
         let flush_steps: Vec<u64> = (0..flush_count)
             .map(|flush_index| {
                 MemHelpers::main_step_to_special_mem_step(
-                    (segment_id.as_usize() * MAIN_STEPS_PER_SEGMENT
-                        + (flush_index + 1) * flush_size) as u64
-                        - 1,
+                    segment_initial_step + ((flush_index + 1) * flush_size) as u64 - 1,
                 )
             })
             .collect();
@@ -261,15 +271,15 @@ impl<F: PrimeField64> MainInstance<F> {
 
         air_values.main_segment = F::from_usize(segment_id.into());
         air_values.main_last_segment = F::from_bool(is_last_segment);
-        // Steps run before this segment. Segments are uniform today, so this is just the
-        // segment's offset; it travels on the continuation bus so segments of different
-        // sizes can chain later on.
-        air_values.segment_initial_step =
-            F::from_usize(segment_id.as_usize() * MAIN_STEPS_PER_SEGMENT);
+        println!(
+            "Processing segment_id: {}, is_last_segment: {}, segment_initial_step: {}",
+            segment_id, is_last_segment, segment_initial_step
+        );
+        air_values.segment_initial_step = F::from_u64(segment_initial_step);
         // From the ROM, not the trace: row 0's `pc` column is instruction-derived, so
         // `main_trace[0].get_pc(0)` is 0 on the compact indexed row.
         let segment_initial_pc =
-            zisk_rom.get_instruction(segment_min_traces[0].start_state.pc).paddr as u32;
+            zisk_rom.get_instruction(first_min_trace.start_state.pc).paddr as u32;
         air_values.segment_initial_pc = F::from_u32(segment_initial_pc);
         air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
@@ -469,6 +479,10 @@ impl<F: PrimeField64> MainInstance<F> {
         step_range_check: &mut [u32],
         large_range_checks: &mut Vec<u32>,
     ) {
+        println!(
+            "Closing flush window for flush_index: {}, flush_step: {}",
+            flush_index, flush_step
+        );
         let max_range = step_range_check.len() as u64;
         for ireg in 0..REGS_IN_MAIN {
             let reg_value = last_reg_values[ireg];
@@ -482,6 +496,9 @@ impl<F: PrimeField64> MainInstance<F> {
                 step_range_check[range] += 1;
             }
             reg_steps[ireg] = flush_step;
+            println!("last_reg_value[{flush_index}][{ireg}][0] = {}", values[0]);
+            println!("last_reg_value[{flush_index}][{ireg}][1] = {}", values[1]);
+            println!("last_reg_mem_step[{flush_index}][{ireg}] = {}", reg_steps[ireg]);
         }
     }
 
@@ -510,26 +527,14 @@ impl<F: PrimeField64> MainInstance<F> {
         Ok(())
     }
 
-    /// Computes the boundary mem-steps for a given segment of the main trace.
+    /// The mem-step a segment starting at main step `segment_initial_step` chains from: the one
+    /// of the last step before it.
     ///
-    /// Returns `(initial_step, final_step)`:
-    /// - `initial_step`: mem-step at the last step of segment `segment_id - 1`
-    ///   (or at step 0 for `segment_id == 0`, since there is no previous segment).
-    /// - `final_step`: mem-step at the last step of segment `segment_id`.
-    ///
-    /// Adjacent segments are contiguous in mem-step space:
-    /// `mem_steps_for_segment(s).1 == mem_steps_for_segment(s + 1).0`.
-    fn mem_steps_for_segment(segment_id: SegmentId) -> (u64, u64) {
-        let last_step_previous_segment = if segment_id == 0 {
-            0
-        } else {
-            (segment_id.as_usize() * MAIN_STEPS_PER_SEGMENT) as u64 - 1
-        };
-        let initial_step = MemHelpers::main_step_to_special_mem_step(last_step_previous_segment);
-        let final_step = MemHelpers::main_step_to_special_mem_step(
-            ((segment_id.as_usize() + 1) * MAIN_STEPS_PER_SEGMENT) as u64 - 1,
-        );
-        (initial_step, final_step)
+    /// The first segment has nothing before it, so it chains from step 0's own mem-step. Every
+    /// other segment picks up exactly where the previous one left off, which is what makes the
+    /// register range checks continuous across the boundary.
+    fn previous_mem_step(segment_initial_step: u64) -> u64 {
+        MemHelpers::main_step_to_special_mem_step(segment_initial_step.saturating_sub(1))
     }
 
     /// Rejects a non-final segment that was handed fewer minimal traces than it
@@ -664,46 +669,46 @@ mod tests {
     }
 
     #[test]
-    fn segment_zero_starts_at_step_zero() {
-        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(0));
-        assert_eq!(initial, MemHelpers::main_step_to_special_mem_step(0));
-        assert_eq!(
-            final_,
-            MemHelpers::main_step_to_special_mem_step(MAIN_STEPS_PER_SEGMENT as u64 - 1)
-        );
+    fn the_first_segment_chains_from_step_zero() {
+        // Nothing ran before it, so there is no earlier step to chain from and step 0's own
+        // mem-step is what the register chain starts at.
+        assert_eq!(MI::previous_mem_step(0), MemHelpers::main_step_to_special_mem_step(0));
     }
 
     #[test]
-    fn segment_one_starts_at_end_of_segment_zero() {
-        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(1));
+    fn a_later_segment_chains_from_the_step_before_it() {
+        let initial = 5 * MAIN_STEPS_PER_SEGMENT as u64;
         assert_eq!(
-            initial,
-            MemHelpers::main_step_to_special_mem_step(MAIN_STEPS_PER_SEGMENT as u64 - 1)
+            MI::previous_mem_step(initial),
+            MemHelpers::main_step_to_special_mem_step(initial - 1)
         );
-        assert_eq!(
-            final_,
-            MemHelpers::main_step_to_special_mem_step(2 * MAIN_STEPS_PER_SEGMENT as u64 - 1)
-        );
-    }
-
-    #[test]
-    fn arbitrary_segment_uses_correct_step_indices() {
-        let s = 5usize;
-        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(s));
-        let expected_last_step_prev = (s * MAIN_STEPS_PER_SEGMENT) as u64 - 1;
-        let expected_final_step = ((s + 1) * MAIN_STEPS_PER_SEGMENT) as u64 - 1;
-        assert_eq!(initial, MemHelpers::main_step_to_special_mem_step(expected_last_step_prev));
-        assert_eq!(final_, MemHelpers::main_step_to_special_mem_step(expected_final_step));
     }
 
     #[test]
     fn consecutive_segments_are_contiguous_in_mem_step_space() {
-        // The invariant the planner + witness pipeline rely on: segment `s`'s `final_step`
-        // is the same mem-step as segment `s + 1`'s `initial_step`.
-        for s in 0..4 {
-            let (_, final_s) = MI::mem_steps_for_segment(SegmentId(s));
-            let (initial_next, _) = MI::mem_steps_for_segment(SegmentId(s + 1));
-            assert_eq!(final_s, initial_next, "discontinuity between segment {s} and {}", s + 1);
+        // The invariant the register range checks rest on: a segment chains from the mem-step of
+        // the last step of the one before it, leaving no gap at the boundary.
+        let mut initial = 0u64;
+        for _ in 0..4 {
+            let next_initial = initial + MAIN_STEPS_PER_SEGMENT as u64;
+            assert_eq!(
+                MI::previous_mem_step(next_initial),
+                MemHelpers::main_step_to_special_mem_step(next_initial - 1),
+                "the next segment must chain from this segment's last step"
+            );
+            initial = next_initial;
+        }
+    }
+
+    /// Segments of different sizes are the reason `segment_initial_step` is an air value rather
+    /// than `segment_id * MAIN_STEPS_PER_SEGMENT`: the chain has to follow the real step counts.
+    #[test]
+    fn chaining_does_not_assume_uniform_segments() {
+        for &initial in &[1u64, 7, 1_000, MAIN_STEPS_PER_SEGMENT as u64 + 3] {
+            assert_eq!(
+                MI::previous_mem_step(initial),
+                MemHelpers::main_step_to_special_mem_step(initial - 1)
+            );
         }
     }
 

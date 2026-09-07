@@ -1,6 +1,10 @@
 use std::sync::Arc;
 use zisk_common::SegmentId;
-use zisk_pil::{MemAirValues, MemTrace, MemTraceRow, MemTraceRowOps, MemTraceRowPacked};
+use zisk_pil::{
+    MemHugeTrace, MemHugeTraceRow, MemHugeTraceRowPacked, MemLargeTrace, MemLargeTraceRow,
+    MemLargeTraceRowPacked, MemTrace, MemTraceRow, MemTraceRowPacked, MEM_AIR_IDS,
+    MEM_HUGE_AIR_IDS, MEM_LARGE_AIR_IDS,
+};
 
 #[cfg(feature = "debug_mem")]
 use std::{
@@ -12,9 +16,9 @@ use std::{
 #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
 use crate::mem_module::save_offsets_to_file;
 
-use crate::{MemInput, MemModule};
+use crate::{MemInput, MemModule, MemRow, MemSegmentValues};
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, ProofmanResult};
 use proofman_fields::PrimeField64;
 use zisk_core::{RAM_ADDR, RAM_SIZE};
 use zisk_sm_mem_common::{
@@ -38,11 +42,48 @@ pub struct MemPreviousSegment {
     pub value: u64,
 }
 
-/// Lane layout of the `Mem` trace, read from the generated row so it always
+/// Lane layout of the air `R` fills, taken from the row's own packing width so it always
 /// follows `lanes_x_row` in `state-machines/mem/pil/mem.pil`.
 #[inline]
-fn lanes_of<F: PrimeField64, R: MemTraceRowOps<F>>() -> MemLanes {
-    MemLanes::new(R::default().get_all_addr().len())
+fn lanes_of<F: PrimeField64, T, R: MemRow<F, T>>() -> MemLanes {
+    MemLanes::new(R::LANES_X_ROW)
+}
+
+/// Runs one of the fills on the row type of the air the plan named.
+///
+/// `Mem`, `MemLarge` and `MemHuge` prove the same segment at three widths, so which one a
+/// segment lands on is a planning decision (see `zisk_sm_mem_common::mem_airs`) and the only
+/// thing it changes here is the row type the shared fill is instantiated with. `packed` picks
+/// the bit-packed row of that same air.
+macro_rules! fill_on_planned_air {
+    ($self:ident, $air_id:expr, $packed:expr, $inner:ident, ($($arg:expr),* $(,)?)) => {{
+        let air_id = $air_id;
+        if air_id == MEM_AIR_IDS[0] {
+            if $packed {
+                $self.$inner::<MemTrace<MemTraceRowPacked<F>>, MemTraceRowPacked<F>>($($arg),*)
+            } else {
+                $self.$inner::<MemTrace<MemTraceRow<F>>, MemTraceRow<F>>($($arg),*)
+            }
+        } else if air_id == MEM_LARGE_AIR_IDS[0] {
+            if $packed {
+                $self.$inner::<MemLargeTrace<MemLargeTraceRowPacked<F>>, MemLargeTraceRowPacked<F>>(
+                    $($arg),*
+                )
+            } else {
+                $self.$inner::<MemLargeTrace<MemLargeTraceRow<F>>, MemLargeTraceRow<F>>($($arg),*)
+            }
+        } else if air_id == MEM_HUGE_AIR_IDS[0] {
+            if $packed {
+                $self.$inner::<MemHugeTrace<MemHugeTraceRowPacked<F>>, MemHugeTraceRowPacked<F>>(
+                    $($arg),*
+                )
+            } else {
+                $self.$inner::<MemHugeTrace<MemHugeTraceRow<F>>, MemHugeTraceRow<F>>($($arg),*)
+            }
+        } else {
+            panic!("MemSM: air_id {air_id} is not a Mem air")
+        }
+    }};
 }
 
 #[allow(unused, unused_variables)]
@@ -60,12 +101,12 @@ impl<F: PrimeField64> MemSM<F> {
         (RAM_ADDR + RAM_SIZE - 1) as u32
     }
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
+    pub fn save_to_file<T, R: MemRow<F, T>>(trace: &[R], file_name: &str) {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = MemTrace::<R>::NUM_ROWS;
-        let lanes = lanes_of::<F, R>();
+        let num_rows = trace.len();
+        let lanes = lanes_of::<F, T, R>();
 
         for i in 0..num_rows {
             for lane in 0..lanes.lanes() {
@@ -93,12 +134,12 @@ impl<F: PrimeField64> MemSM<F> {
     }
 
     #[cfg(feature = "debug_mem")]
-    pub fn dump_trace_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
+    pub fn dump_trace_to_file<T, R: MemRow<F, T>>(trace: &[R], file_name: &str) {
         println!("[MemDebug] dumping trace to {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = MemTrace::<R>::NUM_ROWS;
-        let lanes = lanes_of::<F, R>();
+        let num_rows = trace.len();
+        let lanes = lanes_of::<F, T, R>();
 
         writeln!(
             writer,
@@ -129,14 +170,14 @@ impl<F: PrimeField64> MemSM<F> {
     }
 
     #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
-    pub fn save_addr_offsets_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
+    pub fn save_addr_offsets_to_file<T, R: MemRow<F, T>>(trace: &[R], file_name: &str) {
         use std::io::Write;
 
         println!("[MemDebug] saving address offsets to {} .....", file_name);
         let file = std::fs::File::create(file_name).unwrap();
         let mut writer = std::io::BufWriter::new(file);
-        let num_rows = MemTrace::<R>::NUM_ROWS;
-        let lanes = lanes_of::<F, R>();
+        let num_rows = trace.len();
+        let lanes = lanes_of::<F, T, R>();
 
         let mut last_addr = u32::MAX;
         // `islot` is the virtual row: the offsets table is expressed in these units.
@@ -208,8 +249,8 @@ impl<F: PrimeField64> MemSM<F> {
     /// from_addr: first qword address in the trace for segment 0; previous_segment.addr for later
     ///            segments so the halo slot (index 0) is always present.
     #[cfg(feature = "debug_mem_bin_offsets")]
-    pub fn save_bin_offsets_to_file<R: MemTraceRowOps<F>>(
-        trace: &MemTrace<R>,
+    pub fn save_bin_offsets_to_file<T, R: MemRow<F, T>>(
+        trace: &[R],
         segment_id: SegmentId,
         previous_segment: &MemPreviousSegment,
         count: usize,
@@ -223,7 +264,7 @@ impl<F: PrimeField64> MemSM<F> {
         }
         println!("[MemDebug] saving binary offsets to {} .....", file_name);
 
-        let lanes = lanes_of::<F, R>();
+        let lanes = lanes_of::<F, T, R>();
         let (last_row, last_lane) = lanes.split(count - 1);
         let first_trace_addr = trace[0].get_addr(0);
         let last_trace_addr = trace[last_row].get_addr(last_lane);
@@ -277,6 +318,7 @@ impl<F: PrimeField64> MemSM<F> {
     /// Use this path when the GPU / planning stage is disabled
     /// (`legacy_mem_count_and_plan` feature flag) and the CPU planner provides
     /// pre-sorted inputs instead of offset tables.
+    #[allow(clippy::too_many_arguments)]
     fn legacy_compute_witness(
         &self,
         mem_ops: &[MemInput],
@@ -285,26 +327,17 @@ impl<F: PrimeField64> MemSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
         packed: bool,
+        air_id: usize,
     ) -> ProofmanResult<AirInstance<F>> {
-        if packed {
-            self.legacy_compute_witness_inner::<MemTraceRowPacked<F>>(
-                mem_ops,
-                segment_id,
-                is_last_segment,
-                previous_segment,
-                trace_buffer,
-            )
-        } else {
-            self.legacy_compute_witness_inner::<MemTraceRow<F>>(
-                mem_ops,
-                segment_id,
-                is_last_segment,
-                previous_segment,
-                trace_buffer,
-            )
-        }
+        fill_on_planned_air!(
+            self,
+            air_id,
+            packed,
+            legacy_compute_witness_inner,
+            (mem_ops, segment_id, is_last_segment, previous_segment, trace_buffer)
+        )
     }
-    fn legacy_compute_witness_inner<R: MemTraceRowOps<F>>(
+    fn legacy_compute_witness_inner<T, R: MemRow<F, T>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -312,10 +345,13 @@ impl<F: PrimeField64> MemSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = MemTrace::<R>::new_from_vec(trace_buffer)?;
+        let mut mem_trace = R::new_trace(trace_buffer)?;
 
-        let lanes = lanes_of::<F, R>();
-        let num_slots = lanes.slots(trace.num_rows());
+        let lanes = lanes_of::<F, T, R>();
+        let num_slots = lanes.slots(R::trace_num_rows(&mem_trace));
+        // The fill below addresses rows directly; `mem_trace` is only touched again to wrap the
+        // result, once this borrow is over.
+        let trace = R::trace_rows_mut(&mut mem_trace);
 
         let mut range_22bits: Vec<u32> = vec![0; 1 << 22];
         let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
@@ -496,29 +532,22 @@ impl<F: PrimeField64> MemSM<F> {
         // Add one in range_check_data_max because it's used by intermediate reads, and reads
         // add one to distance to allow same step on read operations.
 
-        let mut air_values = MemAirValues::<F>::new();
-        air_values.segment_id = F::from_usize(segment_id.into());
-        air_values.is_first_segment = F::from_bool(segment_id == 0);
-        air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_step = F::from_u64(previous_segment.step);
-        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
-        air_values.segment_last_addr = F::from_u32(last_addr);
-        air_values.segment_last_step = F::from_u64(last_step);
-
-        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
-
-        air_values.segment_last_value[0] = F::from_u32(last_value as u32);
-        air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);
-
         let distance_base = [distance_base as u16, (distance_base >> 16) as u16];
         let distance_end = [distance_end as u16, (distance_end >> 16) as u16];
 
-        air_values.distance_base[0] = F::from_u16(distance_base[0]);
-        air_values.distance_base[1] = F::from_u16(distance_base[1]);
-
-        air_values.distance_end[0] = F::from_u16(distance_end[0]);
-        air_values.distance_end[1] = F::from_u16(distance_end[1]);
+        let air_values = MemSegmentValues {
+            segment_id: segment_id.into(),
+            is_first_segment: segment_id == 0,
+            is_last_segment,
+            previous_segment_step: previous_segment.step,
+            previous_segment_addr: previous_segment.addr,
+            previous_segment_value: previous_segment.value,
+            segment_last_step: last_step,
+            segment_last_addr: last_addr,
+            segment_last_value: [last_value as u32, (last_value >> 32) as u32],
+            distance_base,
+            distance_end,
+        };
 
         range_16bits[distance_base[0] as usize] += 1;
         range_16bits[distance_base[1] as usize] += 1;
@@ -533,26 +562,26 @@ impl<F: PrimeField64> MemSM<F> {
             let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
             let filename = format!("{path}/mem_trace_{segment_id:04}.txt");
             println!("Saving {filename}");
-            Self::save_to_file(&trace, &filename);
+            Self::save_to_file::<T, R>(trace, &filename);
             println!("[Mem:{}] mem_ops:{} padding:{}", segment_id, mem_ops.len(), padding_size);
         }
 
         #[cfg(feature = "debug_mem_bin_offsets")]
-        Self::save_bin_offsets_to_file(
-            &trace,
+        Self::save_bin_offsets_to_file::<T, R>(
+            trace,
             segment_id,
             previous_segment,
             count,
             &format!("tmp/mem_trace_{segment_id:04}_bin_offsets.bin"),
         );
         #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
-        Self::save_addr_offsets_to_file(
-            &trace,
+        Self::save_addr_offsets_to_file::<T, R>(
+            trace,
             &format!("tmp/mem_trace_{segment_id:04}_offsets.txt"),
         );
         #[cfg(feature = "debug_mem")]
-        Self::dump_trace_to_file(&trace, &format!("tmp/mem_trace_{segment_id:04}_dump.txt"));
-        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
+        Self::dump_trace_to_file::<T, R>(trace, &format!("tmp/mem_trace_{segment_id:04}_dump.txt"));
+        Ok(R::into_air_instance(&mut mem_trace, &air_values))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -565,26 +594,15 @@ impl<F: PrimeField64> MemSM<F> {
         trace_buffer: Vec<F>,
         packed: bool,
         seg: &MemModuleSegmentCheckPoint,
+        air_id: usize,
     ) -> ProofmanResult<AirInstance<F>> {
-        if packed {
-            self.compute_witness_with_offsets_inner::<MemTraceRowPacked<F>>(
-                mem_ops,
-                segment_id,
-                is_last_segment,
-                previous_segment,
-                trace_buffer,
-                seg,
-            )
-        } else {
-            self.compute_witness_with_offsets_inner::<MemTraceRow<F>>(
-                mem_ops,
-                segment_id,
-                is_last_segment,
-                previous_segment,
-                trace_buffer,
-                seg,
-            )
-        }
+        fill_on_planned_air!(
+            self,
+            air_id,
+            packed,
+            compute_witness_with_offsets_inner,
+            (mem_ops, segment_id, is_last_segment, previous_segment, trace_buffer, seg)
+        )
     }
 
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
@@ -615,7 +633,7 @@ impl<F: PrimeField64> MemSM<F> {
     ///   `offsets[i] == offsets[i + 1]` (no increment between consecutive
     ///   slots).
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets_inner<R: MemTraceRowOps<F>>(
+    fn compute_witness_with_offsets_inner<T, R: MemRow<F, T>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -624,14 +642,24 @@ impl<F: PrimeField64> MemSM<F> {
         trace_buffer: Vec<F>,
         seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = MemTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
+        let mut mem_trace = R::new_trace_zeroes(trace_buffer)?;
         #[cfg(feature = "debug_mem")]
         Self::save_mem_inputs_to_file(mem_ops, segment_id);
         #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
         save_offsets_to_file(seg, &format!("tmp/mem_trace_gpu_{segment_id:04}_offsets.txt"));
 
-        let lanes = lanes_of::<F, R>();
-        let num_slots = lanes.slots(trace.num_rows());
+        let lanes = lanes_of::<F, T, R>();
+        let num_slots = lanes.slots(R::trace_num_rows(&mem_trace));
+        // The plan picked this air because the segment fits in it; a mismatch would silently
+        // truncate the fill at `num_slots`, so say so here instead.
+        assert!(
+            seg.used_slots() as usize <= num_slots,
+            "MemSM: segment needs {} slots but this air holds {num_slots}",
+            seg.used_slots()
+        );
+        // The fill below addresses rows directly; `mem_trace` is only touched again to wrap the
+        // result, once this borrow is over.
+        let trace = R::trace_rows_mut(&mut mem_trace);
         // `current_offsets` packs a virtual row plus two flag bits in a u32.
         debug_assert!(
             num_slots < OFFSET_USE_FLAG as usize,
@@ -735,8 +763,8 @@ impl<F: PrimeField64> MemSM<F> {
                     };
                     if step <= previous_step {
                         #[cfg(feature = "debug_mem")]
-                        Self::dump_trace_to_file(
-                            &trace,
+                        Self::dump_trace_to_file::<T, R>(
+                            trace,
                             &format!("tmp/mem_trace_gpu_{segment_id:04}_dump.txt"),
                         );
                         panic!("MemSM: Warning: step {step} is not greater than previous_step {previous_step} \
@@ -816,8 +844,8 @@ impl<F: PrimeField64> MemSM<F> {
                 #[cfg(feature = "debug_mem")]
                 {
                     if filled_slots[islot] {
-                        Self::dump_trace_to_file(
-                            &trace,
+                        Self::dump_trace_to_file::<T, R>(
+                            trace,
                             &format!("tmp/mem_trace_gpu_{segment_id:04}_dump.txt"),
                         );
                         break;
@@ -919,29 +947,22 @@ impl<F: PrimeField64> MemSM<F> {
         // Add one in range_check_data_max because it's used by intermediate reads, and reads
         // add one to distance to allow same step on read operations.
 
-        let mut air_values = MemAirValues::<F>::new();
-        air_values.segment_id = F::from_usize(segment_id.into());
-        air_values.is_first_segment = F::from_bool(segment_id == 0);
-        air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_step = F::from_u64(previous_segment.step);
-        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
-        air_values.segment_last_addr = F::from_u32(addr);
-        air_values.segment_last_step = F::from_u64(step);
-
-        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
-
-        air_values.segment_last_value[0] = F::from_u32(low_value);
-        air_values.segment_last_value[1] = F::from_u32(high_value);
-
         let distance_base = [distance_base as u16, (distance_base >> 16) as u16];
         let distance_end = [distance_end as u16, (distance_end >> 16) as u16];
 
-        air_values.distance_base[0] = F::from_u16(distance_base[0]);
-        air_values.distance_base[1] = F::from_u16(distance_base[1]);
-
-        air_values.distance_end[0] = F::from_u16(distance_end[0]);
-        air_values.distance_end[1] = F::from_u16(distance_end[1]);
+        let air_values = MemSegmentValues {
+            segment_id: segment_id.into(),
+            is_first_segment: segment_id == 0,
+            is_last_segment,
+            previous_segment_step: previous_segment.step,
+            previous_segment_addr: previous_segment.addr,
+            previous_segment_value: previous_segment.value,
+            segment_last_step: step,
+            segment_last_addr: addr,
+            segment_last_value: [low_value, high_value],
+            distance_base,
+            distance_end,
+        };
 
         range_16bits[distance_base[0] as usize] += 1;
         range_16bits[distance_base[1] as usize] += 1;
@@ -956,12 +977,15 @@ impl<F: PrimeField64> MemSM<F> {
             let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
             let filename = format!("{path}/mem_trace_{segment_id:04}.txt");
             println!("Saving {filename}");
-            Self::save_to_file(&trace, &filename);
+            Self::save_to_file::<T, R>(trace, &filename);
             println!("[Mem:{}] mem_ops:{} padding:{}", segment_id, mem_ops.len(), padding_size);
         }
         #[cfg(feature = "debug_mem")]
-        Self::dump_trace_to_file(&trace, &format!("tmp/mem_trace_gpu_{segment_id:04}_dump.txt"));
-        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
+        Self::dump_trace_to_file::<T, R>(
+            trace,
+            &format!("tmp/mem_trace_gpu_{segment_id:04}_dump.txt"),
+        );
+        Ok(R::into_air_instance(&mut mem_trace, &air_values))
     }
 }
 
@@ -997,6 +1021,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         trace_buffer: Vec<F>,
         packed: bool,
         seg: &MemModuleSegmentCheckPoint,
+        air_id: usize,
     ) -> ProofmanResult<AirInstance<F>> {
         #[cfg(not(feature = "legacy_mem_count_and_plan"))]
         {
@@ -1008,6 +1033,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                 trace_buffer,
                 packed,
                 seg,
+                air_id,
             )
         }
         #[cfg(feature = "legacy_mem_count_and_plan")]
@@ -1019,6 +1045,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                 previous_segment,
                 trace_buffer,
                 packed,
+                air_id,
             )
         }
     }

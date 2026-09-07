@@ -12,7 +12,7 @@ use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx,
 use zisk_pil::{
     InputDataTrace, MemAlignByteLargeTrace, MemAlignByteTrace, MemAlignLargeTrace,
     MemAlignReadByteLargeTrace, MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace,
-    MemTrace, RomDataTrace, ZiskProofValues,
+    MemHugeTrace, MemLargeTrace, MemTrace, RomDataTrace, ZiskProofValues,
 };
 use zisk_sm_mem_common::MemCounters;
 
@@ -73,7 +73,11 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
     /// A boxed implementation of a Memory Instance.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            MemTrace::<()>::AIR_ID => Box::new(MemModuleInstance::new(self.mem_sm.clone(), ictx)),
+            // The three `Mem` airs are the same air at three widths; the planner decides which
+            // one a segment lands on, and `MemSM` fills whichever the plan named.
+            MemTrace::<()>::AIR_ID | MemLargeTrace::<()>::AIR_ID | MemHugeTrace::<()>::AIR_ID => {
+                Box::new(MemModuleInstance::new(self.mem_sm.clone(), ictx))
+            }
             RomDataTrace::<()>::AIR_ID => {
                 Box::new(MemModuleInstance::new(self.rom_data_sm.clone(), ictx))
             }

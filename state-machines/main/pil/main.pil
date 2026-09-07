@@ -13,7 +13,7 @@ const int REG_BASE_ADDR = 0xA040_0000;
 
 airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, 
                  const int REGS_IN_MAIN_FROM = 1, const int REGS_IN_MAIN_TO = 31,
-                 const int lanes_x_row = 1) {
+                 const int lanes_x_row = 1, const int owns_continuation_cycle = 1) {
 
     assert(lanes_x_row > 0, "lanes_x_row must be greater than 0");
 
@@ -663,21 +663,30 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         zeros[index] = 0;
     }
 
-    // These constraints define the state at the beginning and end of a main continuation.
+    // These constraints define the state at the beginning and end of a main continuation, and the
+    // beginning of the register access cycle (whose initial value is zero).
+    //
+    // All of these are GLOBAL updates, and a global update is emitted ONCE PER AIR. Main spread
+    // over several airs of different widths (the same template instantiated with different
+    // `lanes_x_row`, so that a segment can be proved on whichever air fits it) would therefore
+    // open and close each cycle once per air while the segments only walk it once — an unbalanced
+    // bus, and one that shows up as a failing global constraint with no bus id to point at. So
+    // exactly ONE Main air may own the cycles: leave `owns_continuation_cycle` at 1 on the first
+    // declaration and set it to 0 on its siblings. Which one owns it is irrelevant, since these
+    // constraints are static and do not depend on the air having any instance.
 
-    if (stack_enabled) {
-        direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, 0, BOOT_ADDR, ...zeros, INITIAL_SP]);
-        direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, 0, END_PC_ADDR, ...zeros, END_SP]);
-    } else {
-        direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, 0, BOOT_ADDR, ...zeros]);
-        direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, 0, END_PC_ADDR, ...zeros]);
-    }
+    if (owns_continuation_cycle) {
+        if (stack_enabled) {
+            direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, 0, BOOT_ADDR, ...zeros, INITIAL_SP]);
+            direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, 0, END_PC_ADDR, ...zeros, END_SP]);
+        } else {
+            direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, 0, BOOT_ADDR, ...zeros]);
+            direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, 0, END_PC_ADDR, ...zeros]);
+        }
 
-    // The initialization of the main registers cycle, these constraints that defines the beginning
-    // of a cycle of register access. Their initial value is set to zero.
-
-    for (int ireg = 0; ireg < REGS_IN_MAIN; ++ireg) {
-        global_init_mem(sel: 1, addr: ireg + REGS_IN_MAIN_FROM, value: zeros);
+        for (int ireg = 0; ireg < REGS_IN_MAIN; ++ireg) {
+            global_init_mem(sel: 1, addr: ireg + REGS_IN_MAIN_FROM, value: zeros);
+        }
     }
 
 

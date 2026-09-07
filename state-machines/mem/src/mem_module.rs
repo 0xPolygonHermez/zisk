@@ -25,6 +25,10 @@ pub trait MemModule<F: Clone>: Send + Sync {
         trace_buffer: Vec<F>,
         packed: bool,
         seg: &MemModuleSegmentCheckPoint,
+        // `air_id` is the air the plan put this segment on. `Mem` has three airs of different
+        // widths and the planner may move a segment between them, so the module is told which
+        // one to fill; the single-air modules ignore it.
+        air_id: usize,
     ) -> ProofmanResult<AirInstance<F>>;
     fn get_addr_range(&self) -> (u32, u32);
     fn is_dual(&self) -> bool;

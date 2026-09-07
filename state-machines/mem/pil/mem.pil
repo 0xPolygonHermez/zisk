@@ -101,6 +101,10 @@ const int MAX_MEM_STEPS_PER_MAIN_STEP = 4;
 
 const int MAX_RANGE_CHECK_CHUNK = 2**16;
 
+// Distinct memory areas (`base_address` values) a proof may declare. Only used to size the
+// `proof.memory` container that tracks which areas have already opened their continuation cycle.
+const int MAX_BASE_ADDRESSES = 16;
+
 airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2, const int bytes = 8,
                 const int base_address = 0, const int size_mb = 128, int immutable = 0,
                 const int free_input_mem = 0, const expr enable_flag = 1, 
@@ -115,6 +119,8 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
     assert(size_mb <= 128 || large_mem);
     assert(lanes_x_row >= 1);
+    assert(bytes == 8);
+    
     // Witness generation maps virtual rows to (row, lane) with a shift and a mask
     // (see MemLanes in state-machines/mem-common/src/mem_lanes.rs), so the lane count
     // must be a power of two.
@@ -300,14 +306,49 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // must be a boolean value. The constraint on this boolean should be defined outside of memory
     // to prevent redundant constraints.This flag is used to handle cases where a memory area is not
     // used during a given execution.
+    //
+    // This update OPENS the continuation cycle of the memory area, and a global update is emitted
+    // once per air. One memory area may span several airs — the same `base_address` instantiated
+    // with different `lanes_x_row`, so a segment can be proved on whichever air fits it — and each
+    // of them would then open the cycle while the segments only ever walk it once. That leaves the
+    // global sum unable to balance, and reported without a bus id to point at, because a direct
+    // update contributes through air values instead of a column-based lookup.
+    //
+    // So the cycle is opened by the FIRST air of each `base_address` and by no other. The airs are
+    // built independently and cannot see one another, so they share a `proof` container, which
+    // lives for the whole proof: the first air of an area records its `base_address` there, and its
+    // siblings find it already recorded and stay quiet. Which one opens it does not matter — this
+    // constraint is static and does not depend on the air having any instance.
 
-    direct_global_update_proves(MEMORY_CONTINUATION_ID, [ base_address,             // base_addr
-                                                          0,                        // segment_id
-                                                          1,                        // is_first_segment
-                                                          internal_base_address,    // internal_base_addr
-                                                          0,                        // previous_segment_addr
-                                                          ...zeros]                 // value
-                                                          , sel: enable_flag);
+    container proof.memory {
+        int base_addresses_count = 0;
+        int base_addresses[MAX_BASE_ADDRESSES];
+        string base_addresses_labels[MAX_BASE_ADDRESSES];
+    }
+    use proof.memory;
+    int direct_global_defined = 0;
+    int base_addresses_index = 0;
+    for (base_addresses_index = 0; base_addresses_index < base_addresses_count; ++base_addresses_index) {
+        if (base_addresses[base_addresses_index] == base_address) {
+            direct_global_defined = 1;
+            break;
+        }
+    }   
+    if (!direct_global_defined) {
+        assert(base_addresses_count < MAX_BASE_ADDRESSES, "Exceeded maximum number of base addresses");
+        base_addresses[base_addresses_count] = base_address;
+        base_addresses_labels[base_addresses_count] = AIR_NAME;
+        base_addresses_count++;
+        direct_global_update_proves(MEMORY_CONTINUATION_ID, [ base_address,             // base_addr
+                                                              0,                        // segment_id
+                                                              1,                        // is_first_segment
+                                                              internal_base_address,    // internal_base_addr
+                                                              0,                        // previous_segment_addr
+                                                              ...zeros]                 // value
+                                                              , sel: enable_flag);
+    } else {
+        println(`Ignoring direct global for base_address, was defined at: ${base_addresses_labels[base_addresses_index]}`);
+    }
 
     // For security, ensure that the first address has the correct value to prevent adding a large
     // number of instances that could cause an "overflow" in the prime field.

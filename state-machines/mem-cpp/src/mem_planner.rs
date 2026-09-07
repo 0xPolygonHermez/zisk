@@ -7,14 +7,14 @@ use crate::*;
 use zisk_sm_mem_common::save_plans;
 use zisk_sm_mem_common::MEM_OFFSETS_PAGE_SIZE;
 use zisk_sm_mem_common::{
-    input_data_lanes_x_row, mem_lanes_x_row, rom_data_lanes_x_row, MemAlignCounters,
-    MemAlignPlanner, MemModuleCheckPoint, MemModuleSegmentCheckPoint,
+    input_data_lanes_x_row, mem_planning_air, mem_planning_slots, rom_data_lanes_x_row,
+    shrink_last_mem_plan, MemAlignCounters, MemAlignPlanner, MemModuleCheckPoint,
+    MemModuleSegmentCheckPoint,
 };
 
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 use zisk_pil::{
-    InputDataTrace, MemTrace, RomDataTrace, INPUT_DATA_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS,
-    ZISK_AIRGROUP_ID,
+    InputDataTrace, RomDataTrace, INPUT_DATA_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 pub struct MemPlanner {
@@ -55,16 +55,20 @@ impl MemPlanner {
     /// Creates and prepares the planner. Rows per instance come from the
     /// PIL trace sizes so the C++ side never hardcodes them.
     ///
-    /// The three airs pack `lanes_x_row` memory lanes on each row, and the
-    /// offsets table the planner emits is expressed in **virtual rows** (one per
-    /// lane), so every row budget is scaled by its lane count (see
+    /// The airs pack `lanes_x_row` memory lanes on each row, and the offsets
+    /// table the planner emits is expressed in **virtual rows** (one per lane),
+    /// so every row budget is scaled by its lane count (see
     /// [`zisk_sm_mem_common::MemLanes`]).
+    ///
+    /// RAM is budgeted with the widest of its three airs: the offsets that come
+    /// out are absolute slot positions, so they stay valid if a segment is later
+    /// moved down to a narrower air (see [`zisk_sm_mem_common::mem_airs`]).
     pub fn new() -> Self {
         let ptr = unsafe {
             bindings::create_mem_count_and_plan(
                 (RomDataTrace::<()>::NUM_ROWS * rom_data_lanes_x_row()) as u32,
                 (InputDataTrace::<()>::NUM_ROWS * input_data_lanes_x_row()) as u32,
-                (MemTrace::<()>::NUM_ROWS * mem_lanes_x_row()) as u32,
+                mem_planning_slots() as u32,
             )
         };
         assert!(!ptr.is_null(), "Failed to create MemCountAndPlan");
@@ -173,7 +177,9 @@ impl MemPlanner {
         let mut plans = std::mem::take(mem_align_plans);
         timer_start_info!(COLLECT_MEM_PLANS);
         for (mem_id, air_id) in
-            [ROM_DATA_AIR_IDS[0], INPUT_DATA_AIR_IDS[0], MEM_AIR_IDS[0]].iter().enumerate()
+            [ROM_DATA_AIR_IDS[0], INPUT_DATA_AIR_IDS[0], mem_planning_air().air_id]
+                .iter()
+                .enumerate()
         {
             let mem_segments_count: u32 =
                 unsafe { bindings::get_mem_segment_count(self.inner, mem_id as u32) };
@@ -242,6 +248,10 @@ impl MemPlanner {
                 ));
             }
         }
+
+        // The last RAM segment is the only one with room left, so it is the only one that can be
+        // proved on a narrower air than the one it was planned with.
+        shrink_last_mem_plan(&mut plans);
 
         #[cfg(feature = "save_mem_plans")]
         save_plans(&plans, "asm_plans.txt");
