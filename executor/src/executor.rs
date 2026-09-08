@@ -197,6 +197,18 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         Ok(())
     }
 
+    /// Selects where the FROPS multiplicity column comes from.
+    ///
+    /// With `true` it is taken from the column the ROM-histogram assembly builds, which a single
+    /// worker computes and hands over with the ROM histogram; the state-machine collectors must then
+    /// not accumulate it as well. With `false` (the default) the collectors own it, which is the only
+    /// option on an execution path without the ROM-histogram assembly. See `executor::sm::frops`.
+    pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
+        if let Some(witness) = self.witness.as_ref() {
+            witness.set_frops_multiplicity_from_asm(from_asm);
+        }
+    }
+
     /// Sets whether to use packed representation for witness computation.
     pub fn set_packed(&self, packed: bool) {
         if let Some(witness) = self.witness.as_ref() {
@@ -255,6 +267,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         global_ids: &RwLock<Vec<usize>>,
     ) -> ExecutorResult<()> {
         let start_total = Instant::now();
+
+        // Debug cross-check (`ZISK_FROPS_CROSS_CHECK`): by now the previous execution has collected
+        // every instance, so this is the first point at which rows the assembly counted and no
+        // collector claimed can be told apart from rows not yet reached. Nothing is armed unless the
+        // variable is set, so this is a no-op in a normal run.
+        if let Err(problem) = zisk_core::frops::frops_cross_check_report(true) {
+            tracing::error!("FROPS cross-check of the previous execution: {problem}");
+        }
+
         self.state.reset();
         if let Some(witness) = self.witness.as_ref() {
             witness.reset()?;
@@ -512,6 +533,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         })?;
 
         stats_end!(self.state.stats, &_witness_scope);
+
+        // Debug cross-check: a row claimed beyond what the assembly counted is a disagreement as
+        // soon as it happens, so report it here without waiting for the execution to finish. The
+        // other direction needs every instance collected; see `execute_inner`.
+        if let Err(problem) = zisk_core::frops::frops_cross_check_report(false) {
+            tracing::error!("FROPS cross-check: {problem}");
+        }
 
         Ok(())
     }

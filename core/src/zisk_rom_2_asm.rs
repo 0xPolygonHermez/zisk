@@ -1,14 +1,17 @@
 //! Zisk ROM to ASM
 //!
 //! Generates i86_64 assembly code that implements the Zisk ROM program
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ziskos::zisklib::FCALL_INPUT_READY_ID;
 
 use crate::{
-    zisk_ops::ZiskOp, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR,
-    INPUT_ADDR, M64, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR,
+    frops_asm::{self, FropsCallSite, FropsOperand, FropsSpec},
+    zisk_ops::ZiskOp,
+    ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, INPUT_ADDR, M64,
+    ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM,
+    STORE_NONE, STORE_REG, UART_ADDR,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -195,6 +198,12 @@ pub struct ZiskAsmContext {
     //assert_rsp_counter: u64,
     precompile_results: bool, // Set to true is we are consuming precompile results
     wait_for_prec_counter: u64, // Counter of wait_for_prec_avail calls, reset at every instruction
+
+    // FROPS (frequent operations) counting, only used in ROM histogram mode
+    frops_table_address: u64, // Absolute address of frops_mult[0]
+    // Counting thunks that have at least one call site, i.e. the ones to emit, grouped by opcode so
+    // that the number of specialisations of an opcode can be capped
+    frops_used: BTreeMap<u8, BTreeSet<FropsSpec>>,
 }
 
 impl ZiskAsmContext {
@@ -695,12 +704,28 @@ impl ZiskRom2Asm {
             *code += "\tret\n\n";
         }
 
+        // The FROPS multiplicity table follows the instruction histogram, which has one counter
+        // per ROM instruction, so its address is known at generation time
+        ctx.frops_table_address = Self::get_frops_trace_address(rom.insts.len() as u64);
+
         // Functions to let C know about ASM generation
 
         // get_rom_length() returns the length of the ROM
         *code += ".global get_rom_length\n";
         *code += "get_rom_length:\n";
         *code += &format!("\tmov rax, 0x{:08x}\n", rom.insts.len());
+        *code += "\tret\n\n";
+
+        // get_frops_length() returns the number of rows of the FROPS multiplicity table that
+        // follows the ROM histogram in the output trace, or 0 when this generation method does not
+        // count frequent operations
+        *code += ".global get_frops_length\n";
+        *code += "get_frops_length:\n";
+        if ctx.rom_histogram() {
+            *code += &format!("\tmov rax, 0x{:08x}\n", crate::frops::FROPS_TABLE_ROWS);
+        } else {
+            *code += "\tmov rax, 0\n";
+        }
         *code += "\tret\n\n";
 
         // get_gen_method() returns the generation method used to generate the assembly
@@ -994,6 +1019,21 @@ impl ZiskRom2Asm {
         /* UNUSUAL CODE */
         /****************/
         *code += unusual_code.as_str();
+
+        /***************/
+        /* FROPS CODE  */
+        /***************/
+
+        // One out-of-line counting thunk per opcode that has at least one call site: the membership
+        // test is too long to inline at every one of them (see crate::frops_asm)
+        if !ctx.frops_used.is_empty() {
+            *code += &format!("\n{}\n", ctx.comment_str("FROPS counting thunks"));
+            for (op, specs) in std::mem::take(&mut ctx.frops_used) {
+                for spec in &specs {
+                    frops_asm::emit_thunk(op, spec, ctx.frops_table_address, ctx.comments, code);
+                }
+            }
+        }
 
         /**********************/
         /* READ_ONLY ROM DATA */
@@ -1918,6 +1958,16 @@ impl ZiskRom2Asm {
                 "ZiskRom2Asm::save_to_asm() Invalid b_src={} pc={}",
                 instruction.b_src, ctx.pc
             ),
+        }
+
+        /*********/
+        /* FROPS */
+        /*********/
+
+        // Count this operation in the FROPS multiplicity table.  This must happen before the
+        // operation, which consumes a and b destructively.
+        if ctx.rom_histogram() {
+            Self::frops_to_asm(ctx, instruction, code);
         }
 
         /*************/
@@ -8673,8 +8723,63 @@ impl ZiskRom2Asm {
     ///     [8B] multiplicity[1]
     ///     …
     ///     [8B] multiplicity[S-1]
+    /// FROPS multiplicity: (get_frops_trace_address())
+    ///     [8B] frops_size = F = FROPS_TABLE_ROWS
+    ///     [8B] frops_mult[0]
+    ///     …
+    ///     [8B] frops_mult[F-1]
     fn get_rom_histogram_trace_address(index: u64) -> u64 {
         TRACE_ADDR_NUMBER + (1 + index) * 8
+    }
+
+    /// This function calculates the address of `frops_mult[0]`, the multiplicity table of the
+    /// frequent operations, which follows the instruction histogram of `rom_length` counters (see
+    /// the structure above).
+    fn get_frops_trace_address(rom_length: u64) -> u64 {
+        TRACE_ADDR_NUMBER + (2 + rom_length) * 8
+    }
+
+    /// Where an operand actually is at the point the FROPS check is emitted, i.e. after the a and b
+    /// source code has run and before the operation consumes them.
+    ///
+    /// `reg.string_value` cannot be used for this: it keeps naming the operand's own register even
+    /// when the value was loaded into `REG_C` because the operation needs it there (`store_*_in_c`).
+    fn frops_operand(
+        reg: &ZiskAsmRegister,
+        store_in_c: bool,
+        own_reg: &'static str,
+    ) -> FropsOperand<'static> {
+        if reg.is_constant {
+            FropsOperand::Const(reg.constant_value)
+        } else if store_in_c {
+            FropsOperand::Reg(REG_C)
+        } else {
+            FropsOperand::Reg(own_reg)
+        }
+    }
+
+    /// Emits the code that counts one executed operation in the FROPS multiplicity table, and
+    /// records the opcode so that its counting thunk gets emitted.
+    ///
+    /// Nothing is emitted when the operation can never be a frequent operation: either the opcode
+    /// has no FROPS at all, or the generator already knows an operand whose value falls outside
+    /// every box of that opcode.
+    fn frops_to_asm(ctx: &mut ZiskAsmContext, instruction: &ZiskInst, code: &mut String) {
+        let a = Self::frops_operand(&ctx.a, ctx.store_a_in_c, REG_A);
+        let b = Self::frops_operand(&ctx.b, ctx.store_b_in_c, REG_B);
+        let specialised = ctx.frops_used.get(&instruction.op).map_or(0, |s| s.len());
+        let site = frops_asm::emit_call(
+            instruction.op,
+            a,
+            b,
+            specialised,
+            ctx.frops_table_address,
+            |c| ctx.comment_str(c),
+            code,
+        );
+        if let FropsCallSite::Thunk(spec) = site {
+            ctx.frops_used.entry(instruction.op).or_default().insert(spec);
+        }
     }
 }
 

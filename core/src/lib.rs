@@ -52,6 +52,9 @@
 //! The zisk_core crate contains basic structures and functionality used by several other modules:
 //! opcodes, instructions and transpilation
 pub mod fcall;
+pub mod frops;
+pub mod frops_asm;
+pub mod frops_regions;
 pub mod helpers;
 pub mod inst_context;
 pub mod mem;
@@ -70,6 +73,7 @@ pub mod zisk_rom;
 pub mod zisk_rom_2_asm;
 
 pub use fcall::*;
+pub use frops::*;
 pub use helpers::*;
 pub use inst_context::*;
 pub use mem::*;

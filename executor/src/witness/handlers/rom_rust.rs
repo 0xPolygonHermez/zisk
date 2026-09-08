@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn pre_calculate_skips_and_marks_ready_when_skip_collector_true() {
         // ASM-execution RomInstance (rh_data is Some) → skip_collector() == true.
-        let rh_data = AsmRunnerRH::new(AsmRHData::new(0, Vec::new()));
+        let rh_data = AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()));
         let mut secn_instances: SecnInstanceMap<F> = HashMap::new();
         secn_instances.insert(GID, make_rom_instance(Some(rh_data)));
 

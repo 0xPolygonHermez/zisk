@@ -10,11 +10,11 @@
 //! over `b`. `OP_TABLE_OFFSETS[op - START]` is the cumulative row count of all lower opcodes, exactly
 //! what `generate_table_offsets()` recomputes — so the generated `test_table_offsets` passes.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use crate::ops::{classify, variant_ident, FropsTable, OpInfo};
+use crate::ops::{variant_ident, FropsTable, OpInfo};
 use crate::optimize::{Config, Proposal};
 
 /// One-line comment documenting the parameters a file was generated with.
@@ -84,413 +84,118 @@ pub fn generate(prop: &Proposal, workspace_root: &Path) -> std::io::Result<Vec<(
         written.push((m.rel_path.to_string(), backed));
     }
 
-    // Additionally emit the x86-64 multiplicity-count macros.
-    let asm_rel = "emulator-asm/src/frops/frops.s";
-    let asm_path = workspace_root.join(asm_rel);
-    if let Some(dir) = asm_path.parent() {
-        fs::create_dir_all(dir)?;
+    // Additionally emit the box data that `zisk-core` compiles in: the predicates above and the
+    // assembly that counts frequent operations are generated from the same selection.
+    let regions_path = workspace_root.join(REGIONS_REL_PATH);
+    // Same rule as for the sources above: keep the *first* original, never clobber it later.
+    let mut regions_backed = false;
+    let regions_bak = regions_path.with_extension("rs.bak");
+    if regions_path.exists() && !regions_bak.exists() {
+        fs::copy(&regions_path, &regions_bak)?;
+        regions_backed = true;
     }
-    fs::write(&asm_path, emit_asm(prop))?;
-    written.push((asm_rel.to_string(), false));
+    fs::write(&regions_path, emit_regions(prop))?;
+    written.push((REGIONS_REL_PATH.to_string(), regions_backed));
 
     Ok(written)
 }
 
 // ============================================================================================
-// x86-64 assembly generation: one macro per op that counts FROPS multiplicity.
+// Box data for `zisk-core`: the single source of truth shared by the generated state-machine
+// predicates above and the x86-64 counting code that `zisk_core::frops_asm` emits into the
+// ROM-histogram assembly.
 // ============================================================================================
 
-fn fam_labels(table: FropsTable) -> (&'static str, &'static str, &'static str) {
+/// Path of the generated box-data module, relative to the workspace root.
+const REGIONS_REL_PATH: &str = "core/src/frops_regions.rs";
+
+fn base_const(table: FropsTable) -> &'static str {
     match table {
-        FropsTable::Arith => {
-            ("frops_arith_mult", "frops_arith_overflow", "frops_arith_overflow_index")
-        }
-        FropsTable::BinaryBasic => (
-            "frops_binary_basic_mult",
-            "frops_binary_basic_overflow",
-            "frops_binary_basic_overflow_index",
-        ),
-        FropsTable::BinaryExt => (
-            "frops_binary_extension_mult",
-            "frops_binary_extension_overflow",
-            "frops_binary_extension_overflow_index",
-        ),
+        FropsTable::Arith => "FROPS_ARITH_BASE",
+        FropsTable::BinaryBasic => "FROPS_BINARY_BASIC_BASE",
+        FropsTable::BinaryExt => "FROPS_BINARY_EXT_BASE",
     }
 }
 
-fn fits_i32(v: u64) -> bool {
-    v <= i32::MAX as u64
+fn family_rows(blocks: &[OpBlock]) -> u64 {
+    blocks.iter().flat_map(|b| b.regions.iter()).map(|r| r.rows()).sum()
 }
 
-fn imm_str(v: u64) -> String {
-    if v < 65536 {
-        format!("{v}")
-    } else {
-        format!("{v:#X}")
-    }
-}
-
-/// Rough cycle weight of one instruction line (imul = 3, everything else = 1).
-fn instr_cyc(line: &str) -> u32 {
-    match line.split_whitespace().next().unwrap_or("") {
-        "imul" => 3,
-        _ => 1,
-    }
-}
-fn cyc(lines: &[String]) -> u32 {
-    lines.iter().map(|l| instr_cyc(l)).sum()
-}
-
-/// `cmp reg,imm ; jcc target`, via `tmp` for immediates that don't fit imm32. Pushed as lines.
-fn push_cmp(v: &mut Vec<String>, reg: &str, imm: u64, jcc: &str, target: &str, tmp: &str) {
-    if fits_i32(imm) {
-        v.push(format!("cmp     {reg}, {}", imm_str(imm)));
-    } else {
-        v.push(format!("mov     {tmp}, {}", imm_str(imm)));
-        v.push(format!("cmp     {reg}, {tmp}"));
-    }
-    v.push(format!("{jcc}     {target}"));
-}
-fn push_sub(v: &mut Vec<String>, reg: &str, imm: u64, tmp: &str) {
-    if imm == 0 {
-    } else if fits_i32(imm) {
-        v.push(format!("sub     {reg}, {}", imm_str(imm)));
-    } else {
-        v.push(format!("mov     {tmp}, {}", imm_str(imm)));
-        v.push(format!("sub     {reg}, {tmp}"));
-    }
-}
-
-/// b-axis compare (`t1` holds b, no free temp). Large immediates spill `rax`, popped before the `jcc`
-/// so the FLAGS from the `cmp` survive. Assumes the caller's `t0`/`t1` are not `rax`.
-fn push_cmp_b(v: &mut Vec<String>, imm: u64, jcc: &str, target: &str) {
-    if fits_i32(imm) {
-        v.push(format!("cmp     \\t1, {}", imm_str(imm)));
-    } else {
-        v.push("push    rax".into());
-        v.push(format!("mov     rax, {}", imm_str(imm)));
-        v.push("cmp     \\t1, rax".into());
-        v.push("pop     rax".into());
-    }
-    v.push(format!("{jcc}     {target}"));
-}
-fn push_sub_b(v: &mut Vec<String>, imm: u64) {
-    if imm == 0 {
-    } else if fits_i32(imm) {
-        v.push(format!("sub     \\t1, {}", imm_str(imm)));
-    } else {
-        v.push("push    rax".into());
-        v.push(format!("mov     rax, {}", imm_str(imm)));
-        v.push("sub     \\t1, rax".into());
-        v.push("pop     rax".into());
-    }
-}
-
-/// Emits one `.macro FROP_<OP> a, b, t0, t1 ... .endm`. `op_base` is `OP_TABLE_OFFSETS[op]` (the op's
-/// first row within its family table). Regions are pre-sorted (low/mid/high) as in the Rust codegen.
-/// The macro is annotated with rough cycle costs (imul=3, others=1): worst case to reject a non-FROP,
-/// and best/worst case to count a FROP (increment, assuming no overflow).
-fn emit_op_macro(name: &str, regions: &[Region], op_base: u64, table: FropsTable) -> String {
-    let up = name.to_uppercase();
-    let (mult, ovf, idx) = fam_labels(table);
-
-    // Per region: head = fail path (a-tests, offset_a, b-load, b-tests); tail = match-only finish.
-    let n = regions.len();
-    let mut heads: Vec<Vec<String>> = vec![Vec::new(); n];
-    let mut tails: Vec<Vec<String>> = vec![Vec::new(); n];
-    let mut region_base = 0u64;
-    let mut c_of = vec![0u64; n];
-    for (i, r) in regions.iter().enumerate() {
-        c_of[i] = op_base + region_base;
-        region_base += r.rows();
-    }
-    let emitted: Vec<usize> = (0..n).collect();
-    if emitted.is_empty() {
-        return format!(
-            ".macro FROP_{up} a, b, t0, t1\n    # no FROPS for this op: does nothing (0 cyc)\n.endm\n\n"
-        );
-    }
-    let label = |i: usize| format!(".Lfrop_{up}_n{i}_\\@");
-    let done = format!(".Lfrop_{up}_done_\\@");
-    let incr = format!(".Lfrop_{up}_incr_\\@");
-    // `next` target for the k-th emitted region: the following emitted region's label, else done.
-    let next_of = |k: usize| -> String {
-        emitted.get(k + 1).map(|&j| label(j)).unwrap_or_else(|| done.clone())
-    };
-
-    for (k, &i) in emitted.iter().enumerate() {
-        let r = &regions[i];
-        let nx = next_of(k);
-        let head = &mut heads[i];
-        // a axis (t1 is a free temp until b is loaded)
-        head.push("mov     \\t0, \\a".into());
-        if r.a_lo != 0 {
-            push_cmp(head, "\\t0", r.a_lo, "jb", &nx, "\\t1");
-        }
-        if !r.a_to_max() {
-            let a_hi = r.a_lo.wrapping_add(r.a_count.wrapping_mul(r.a_stride));
-            push_cmp(head, "\\t0", a_hi, "jae", &nx, "\\t1");
-        }
-        if r.a_stride > 1 {
-            let mask = r.a_stride - 1;
-            let rem = r.a_lo & mask;
-            head.push("mov     \\t1, \\t0".into());
-            head.push(format!("and     \\t1, {mask}"));
-            head.push(format!("cmp     \\t1, {rem}"));
-            head.push(format!("jne     {nx}"));
-        }
-        // offset_a = (a - a_lo) / stride * b_count
-        push_sub(head, "\\t0", r.a_lo, "\\t1");
-        if r.a_stride > 1 {
-            head.push(format!("shr     \\t0, {}", r.a_stride.trailing_zeros()));
-        }
-        if r.b_count != 1 {
-            head.push(format!("imul    \\t0, \\t0, {}", r.b_count));
-        }
-        // b axis (t1 holds b; large immediates spill rax inside the helpers)
-        head.push("mov     \\t1, \\b".into());
-        let tail = &mut tails[i];
-        if r.b_count == 1 {
-            push_cmp_b(head, r.b_lo, "jne", &nx);
-        } else {
-            if r.b_lo != 0 {
-                push_cmp_b(head, r.b_lo, "jb", &nx);
-            }
-            if !r.b_to_max() {
-                let b_hi = r.b_lo + r.b_count;
-                push_cmp_b(head, b_hi, "jae", &nx);
-            }
-            push_sub_b(tail, r.b_lo);
-            tail.push("add     \\t0, \\t1".into());
-        }
-        if c_of[i] != 0 {
-            tail.push(format!("add     \\t0, {}", c_of[i]));
-        }
-        tail.push(format!("jmp     {incr}"));
-    }
-
-    // Increment block (no-overflow path = lea + inc + jnz). Overflow append spills rax/rcx/rdx.
-    let incr_block_cyc = 3u32;
-
-    // Cost model.
-    let not_frop: u32 = emitted.iter().map(|&i| cyc(&heads[i])).sum();
-    let frop_best = cyc(&heads[emitted[0]]) + cyc(&tails[emitted[0]]) + incr_block_cyc;
-    let last = *emitted.last().unwrap();
-    let prior_fail: u32 = emitted[..emitted.len() - 1].iter().map(|&i| cyc(&heads[i])).sum();
-    let frop_worst = prior_fail + cyc(&heads[last]) + cyc(&tails[last]) + incr_block_cyc;
-
-    // Assemble.
-    let mut s = format!(".macro FROP_{up} a, b, t0, t1\n");
-    s.push_str(&format!(
-        "    # cost (cyc, imul=3 else=1): reject-non-FROP worst {not_frop} | FROP+incr best {frop_best} worst {frop_worst} (no overflow)\n"
-    ));
-    for (k, &i) in emitted.iter().enumerate() {
-        if k > 0 {
-            s.push_str(&format!("{}:\n", label(i)));
-        }
-        for ln in &heads[i] {
-            s.push_str(&format!("    {ln}\n"));
-        }
-        for ln in &tails[i] {
-            s.push_str(&format!("    {ln}\n"));
-        }
-    }
-    s.push_str(&format!("{incr}:\n"));
-    s.push_str(&format!("    lea     \\t1, [rip + {mult}]\n"));
-    s.push_str("    inc     dword ptr [\\t1 + \\t0*4]\n");
-    s.push_str(&format!("    jnz     {done}\n"));
-    s.push_str("    push    rax\n    push    rcx\n    push    rdx\n");
-    s.push_str("    mov     rdx, \\t0\n");
-    s.push_str(&format!("    lea     rax, [rip + {ovf}]\n"));
-    s.push_str(&format!("    mov     ecx, dword ptr [rip + {idx}]\n"));
-    s.push_str("    mov     dword ptr [rax + rcx*4], edx\n");
-    s.push_str(&format!("    inc     dword ptr [rip + {idx}]\n"));
-    s.push_str("    pop     rdx\n    pop     rcx\n    pop     rax\n");
-    s.push_str(&format!("{done}:\n"));
-    s.push_str(".endm\n\n");
-    s
-}
-
-fn asm_header(title: &str, params: &str) -> String {
+/// Emits `core/src/frops_regions.rs`: every selected box with the global table row it starts at.
+///
+/// The three family tables are concatenated in `FropsTable::all()` order, so a box's `base_row` is
+/// its family base plus the rows of the lower opcodes and of the earlier boxes of its own opcode —
+/// the same layout `OP_TABLE_OFFSETS` describes per family.
+fn emit_regions(prop: &Proposal) -> String {
     let mut s = String::new();
-    s.push_str(".intel_syntax noprefix\n.code64\n\n");
-    s.push_str(&format!("# @generated by frops-analyzer — {title} (x86-64).\n"));
-    if !params.is_empty() {
-        s.push_str(&format!("# {params}\n"));
-    }
-    s.push_str("# One macro per operation:  FROP_<OP>  a, b, t0, t1\n");
-    s.push_str("#   a, b  : operands (register or immediate, read-only).\n");
-    s.push_str("#   t0,t1 : the only two registers the macro clobbers freely (plus FLAGS).\n");
-    s.push_str("#           The overflow path additionally push/pops rax, rcx, rdx.\n");
+    s.push_str("// @generated by frops-analyzer — do not edit by hand.\n");
+    s.push_str(&format!("// {}\n", params_comment(&prop.config)));
+    s.push_str("//\n");
     s.push_str(
-        "# Behaviour: if (op,a,b) is a FROP, mult[row] += 1; on u32 wrap (counter hits 0) the\n",
+        "// Box data for the FROPS tables. See `crate::frops` for the shape and the row layout\n",
     );
-    s.push_str("# row offset is appended to the overflow vector. If not a FROP / op has no FROPS: nothing.\n\n");
-    for table in FropsTable::all() {
-        let (mult, ovf, idx) = fam_labels(table);
-        s.push_str(&format!(".extern {mult}\n.extern {ovf}\n.extern {idx}\n"));
+    s.push_str("// invariant, and `crate::frops_asm` for the assembly emitted from it.\n");
+    s.push_str("use crate::frops::FropsRegion;\n\n");
+
+    let families: Vec<(FropsTable, Vec<OpBlock>)> =
+        FropsTable::all().into_iter().map(|t| (t, op_blocks(prop, t))).collect();
+    let total: u64 = families.iter().map(|(_, b)| family_rows(b)).sum();
+
+    s.push_str(
+        "/// Total rows of the global FROPS table (the three family tables concatenated).\n",
+    );
+    s.push_str(&format!("pub const FROPS_TABLE_ROWS: u64 = {total};\n\n"));
+
+    let mut bases = Vec::new();
+    let mut base = 0u64;
+    for (table, blocks) in &families {
+        s.push_str(&format!(
+            "/// Base row of the {} family table within the global table.\n",
+            table.key().replace('_', " ")
+        ));
+        s.push_str(&format!("pub const {}: u64 = {base};\n", base_const(*table)));
+        bases.push(base);
+        base += family_rows(blocks);
     }
     s.push('\n');
-    s
-}
 
-fn emit_asm(prop: &Proposal) -> String {
-    let mut s = asm_header("FROPS multiplicity-count macros", &params_comment(&prop.config));
-    for table in FropsTable::all() {
-        let blocks = op_blocks(prop, table);
-        let (start, offsets) = table_offsets(&blocks);
-        let mut have: HashSet<u8> = HashSet::new();
-        s.push_str(&format!("# ---- {} ----\n", table.key()));
-        for b in &blocks {
-            let base =
-                if offsets.is_empty() { 0 } else { offsets[b.info.code as usize - start] as u64 };
-            s.push_str(&emit_op_macro(b.info.name, &b.regions, base, table));
-            have.insert(b.info.code);
-        }
-        // Empty macros for the remaining candidate opcodes of this family (no FROPS -> do nothing).
-        for code in 0u8..=255 {
-            if let Some(info) = classify(code) {
-                if info.table == table && !have.contains(&code) {
-                    s.push_str(&emit_op_macro(info.name, &[], 0, table));
-                }
+    let mut idents: BTreeMap<u8, String> = BTreeMap::new();
+    for ((_, blocks), base) in families.iter().zip(bases) {
+        let mut row = base;
+        for b in blocks {
+            let ident = format!("OP_{:02X}", b.info.code);
+            s.push_str(&format!("/// `{}` (0x{:02x})\n", b.info.name, b.info.code));
+            // One box per line is far more readable than what rustfmt would do with it.
+            s.push_str("#[rustfmt::skip]\n");
+            s.push_str(&format!("static {ident}: [FropsRegion; {}] = [\n", b.regions.len()));
+            for r in &b.regions {
+                s.push_str(&format!("    // {}: {}\n", r.kind.as_str(), r.predicate()));
+                s.push_str(&format!(
+                    "    FropsRegion {{ a_lo: {:#x}, a_count: {}, a_stride: {}, b_lo: {:#x}, \
+                     b_count: {}, base_row: {row} }},\n",
+                    r.a_lo, r.a_count, r.a_stride, r.b_lo, r.b_count
+                ));
+                row += r.rows();
             }
+            s.push_str("];\n\n");
+            idents.insert(b.info.code, ident);
         }
     }
+
+    s.push_str("/// Boxes per opcode, in test order. See [`crate::frops::frops_regions`].\n");
+    s.push_str("#[rustfmt::skip]\n");
+    s.push_str("pub static FROPS_REGIONS: [&[FropsRegion]; 256] = [\n");
+    for first in (0..256u32).step_by(8) {
+        let cells: Vec<String> = (first..first + 8)
+            .map(|c| match idents.get(&(c as u8)) {
+                Some(ident) => format!("&{ident},"),
+                None => "&[],".to_string(),
+            })
+            .collect();
+        s.push_str(&format!("    /* {first:#04x} */ {}\n", cells.join(" ")));
+    }
+    s.push_str("];\n");
     s
-}
-
-// ============================================================================================
-// Assembly for the ORIGINAL (hand-tuned) FROPS, for cycle comparison.
-//
-// The original predicates are modelled as box regions (a in [lo,hi) with optional stride, b in a
-// range). A few hand-tuned conditions are NOT boxes and are approximated (noted in the file header):
-//   * LT's coupled `a <= b && (b-a) distance` middle term is dropped (only low-rect + (a==0,b<0x10000)
-//     are kept).
-//   * AND / SUB_W b-side bit-masks (`(b&3)==0`, `b & MASK == addr`) are modelled as plain b ranges
-//     (the mask test is dropped, ~1 instruction less).
-// So the reject cost for LT / AND / SUB_W is a slight under-estimate; everything else is faithful.
-// ============================================================================================
-
-use crate::region::RegionKind;
-use zisk_core::zisk_ops::ZiskOp;
-
-const LOW: u64 = 386;
-
-fn rg(a_lo: u64, a_count: u64, a_stride: u64, b_lo: u64, b_count: u64) -> Region {
-    let kind = if a_lo == 0 && a_stride == 1 { RegionKind::LowRect } else { RegionKind::MidBox };
-    Region { a_lo, a_count, a_stride, b_lo, b_count, kind }
-}
-fn low() -> Region {
-    rg(0, LOW, 1, 0, LOW)
-}
-
-/// Box regions reproducing each original op's `is_frequent_op` predicate (see module note).
-fn original_regions(code: u8) -> Vec<Region> {
-    let op = match ZiskOp::try_from_code(code) {
-        Ok(o) => o,
-        Err(_) => return vec![],
-    };
-    const MINUS_ONE: u64 = u64::MAX;
-    match op {
-        // --- arith: all low rect ---
-        ZiskOp::Mulu
-        | ZiskOp::Muluh
-        | ZiskOp::Mulsuh
-        | ZiskOp::Mul
-        | ZiskOp::Mulh
-        | ZiskOp::MulW
-        | ZiskOp::Divu
-        | ZiskOp::Remu
-        | ZiskOp::Div
-        | ZiskOp::Rem
-        | ZiskOp::DivuW
-        | ZiskOp::RemuW
-        | ZiskOp::DivW
-        | ZiskOp::RemW => vec![low()],
-
-        // --- binary extension ---
-        ZiskOp::SignExtendB
-        | ZiskOp::SignExtendH
-        | ZiskOp::SignExtendW
-        | ZiskOp::Sll
-        | ZiskOp::SllW
-        | ZiskOp::Sra
-        | ZiskOp::SraW
-        | ZiskOp::SrlW => vec![low()],
-        ZiskOp::Srl => vec![
-            low(),
-            // a >= 0xFFFF_FFFF_FFFF_F000 && b <= 64
-            rg(0xFFFF_FFFF_FFFF_F000, 0x1000, 1, 0, 65),
-        ],
-
-        // --- binary basic: simple low rect ---
-        ZiskOp::AddW
-        | ZiskOp::EqW
-        | ZiskOp::LtuW
-        | ZiskOp::LtW
-        | ZiskOp::Leu
-        | ZiskOp::Le
-        | ZiskOp::LeuW
-        | ZiskOp::LeW => vec![low()],
-
-        // EQ: (b==0 && a<=0xFFFFF) || low
-        ZiskOp::Eq => vec![rg(0, 0x10_0000, 1, 0, 1), low()],
-        // LTU: low || (b==1 && a>=0xFFFF_FFFF_FFFF_FF80)
-        ZiskOp::Ltu => vec![low(), rg(0xFFFF_FFFF_FFFF_FF80, 0x80, 1, 1, 1)],
-        // OR: low || (a<0x1000 && b<=16)
-        ZiskOp::Or => vec![low(), rg(0, 0x1000, 1, 0, 17)],
-        // SUB: low || (a<4192 && b<=8)
-        ZiskOp::Sub => vec![low(), rg(0, 4192, 1, 0, 9)],
-        // XOR: low || (a<2 && b==MAX_U64)
-        ZiskOp::Xor => vec![low(), rg(0, 2, 1, MINUS_ONE, 1)],
-        // ADD: low || several b-specific address bands
-        ZiskOp::Add => vec![
-            low(),
-            rg(0xA010_0000, 0x10_0000 / 8, 8, 0, 1), // b==0, 8-aligned addr
-            rg(0xA010_0000, 0x10_0000, 1, 1, 1),     // b==1, addr range
-            rg(0xA010_0000, 0x10_0000 / 8, 8, 8, 1), // b==8, data addr 8-aligned
-            rg(0x8000_0000, 0x80_0000 / 8, 8, 8, 1), // b==8, code addr 8-aligned
-            rg(0, 24628, 1, MINUS_ONE, 1),           // b==-1, a<24628
-            rg(0, 1024, 1, MINUS_ONE - 8, 9),        // b in [-9,-1], a<1024
-        ],
-        // AND: low || a==MASK(b range) || (b==0xFF..F8 && a<1024) || (b==7 && addr 8-aligned)
-        ZiskOp::And => vec![
-            low(),
-            rg(0xFFFF_FFFF_FFFF_FFFC, 1, 1, 0x8000_0000, 0x90_0000), // a==MASK, b in [..) (b&3 dropped)
-            rg(0, 1024, 1, 0xFFFF_FFFF_FFFF_FFF8, 1),                // b==0xFF..F8
-            rg(0xA010_0000, 0x10_0000 / 8, 8, 7, 1),                 // b==7, 8-aligned addr
-        ],
-        // LT: low || (a==0 && b<0x10000)  [coupled distance term dropped]
-        ZiskOp::Lt => vec![low(), rg(0, 1, 1, 0, 0x1_0000)],
-        // SUB_W: low || (a==0 && b<386)   [b&MASK==addr term dropped]
-        ZiskOp::SubW => vec![low(), rg(0, 1, 1, 0, LOW)],
-
-        _ => vec![],
-    }
-}
-
-/// Generates the x86-64 macros for the ORIGINAL hand-tuned FROPS (cycle-comparison aid).
-pub fn generate_original_asm(out: &Path) -> std::io::Result<()> {
-    let mut s =
-        asm_header("ORIGINAL FROPS macros (cycle comparison; offsets not table-accurate)", "");
-    s.push_str(
-        "# NOTE: LT / AND / SUB_W contain non-box hand-tuned terms; see codegen.rs. Large b\n",
-    );
-    s.push_str("# immediates spill rax, so t0/t1 must not be rax here.\n\n");
-    for table in FropsTable::all() {
-        s.push_str(&format!("# ---- {} ----\n", table.key()));
-        for code in 0u8..=255 {
-            if let Some(info) = classify(code) {
-                if info.table == table {
-                    s.push_str(&emit_op_macro(info.name, &original_regions(code), 0, table));
-                }
-            }
-        }
-    }
-    if let Some(dir) = out.parent() {
-        fs::create_dir_all(dir)?;
-    }
-    fs::write(out, s)
 }
 
 fn op_blocks(prop: &Proposal, table: FropsTable) -> Vec<OpBlock> {

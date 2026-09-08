@@ -7,6 +7,7 @@
 //! `ComponentPlanBuilder<F>` impls) and does not touch the bundle.
 
 mod builtins;
+mod frops;
 mod precompiles;
 // `register_precompiles!` macro module; exported via `#[macro_export]`.
 mod register_precompiles;
@@ -81,6 +82,19 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         Self { sm, std }
     }
 
+    /// Selects where the FROPS multiplicity column comes from.
+    ///
+    /// With `true` the column published by the ROM-histogram assembly is used, which only one worker
+    /// computes; the collectors must then not accumulate it as well, or every multiplicity would be
+    /// counted twice. With `false` (the default) the collectors own it, which is the only option on
+    /// an execution path that has no ROM-histogram assembly.
+    ///
+    /// The choice is process state (`zisk_core::frops`) because every collector has to agree with
+    /// whoever publishes the column. Set it before witness computation starts.
+    pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
+        zisk_core::frops::set_frops_multiplicity_from_asm(from_asm);
+    }
+
     /// Sets the ROM for the `RomSM` in the bundle.
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
         for (_, sm) in self.sm.iter() {
@@ -91,8 +105,23 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         Ok(())
     }
 
-    /// Sets the RH data for the `RomSM` in the bundle.
+    /// Sets the RH data for the `RomSM` in the bundle, and publishes the FROPS multiplicity column
+    /// it carries when that is where the column comes from
+    /// (see [`Self::set_frops_multiplicity_from_asm`]).
     pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
+        let column = &rh_data.asm_rowh_output.frops_count;
+        if zisk_core::frops::frops_multiplicity_from_asm() {
+            frops::publish_frops_multiplicity(&self.std, column)?;
+        }
+        // Debug mode: arm the cross-check of the two producers of the column, before any collector
+        // is built (they read whether it is armed at construction). See `zisk_core::frops`.
+        if std::env::var_os(frops::CROSS_CHECK_ENV).is_some() {
+            zisk_core::frops::load_frops_cross_check(column).map_err(ExecutorError::Internal)?;
+            tracing::info!(
+                "FROPS cross-check armed from the assembly's column ({} rows)",
+                column.len()
+            );
+        }
         for (_, sm) in self.sm.iter() {
             if let StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) = sm {
                 rom_sm.set_rh_data(rh_data)?;

@@ -116,6 +116,12 @@ impl<F: PrimeField64> WitnessPhase<F> {
         self.collector.set_rh_data(rh_data)
     }
 
+    /// Selects where the FROPS multiplicity column comes from; see
+    /// `StaticSMBundle::set_frops_multiplicity_from_asm`.
+    pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
+        self.collector.set_frops_multiplicity_from_asm(from_asm)
+    }
+
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
         self.collector.set_rom(zisk_rom.clone())
     }

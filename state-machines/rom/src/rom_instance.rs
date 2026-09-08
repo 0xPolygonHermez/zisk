@@ -324,7 +324,7 @@ mod tests {
     }
 
     fn asm_runner_rh_empty() -> AsmRunnerRH {
-        AsmRunnerRH::new(AsmRHData::new(0, vec![]))
+        AsmRunnerRH::new(AsmRHData::new(0, vec![], vec![]))
     }
 
     /// Builds a ZiskRom with `n` instructions placed at `min_program_pc + 4*i`, each
@@ -419,7 +419,7 @@ mod tests {
         let rom = rom_with_exit(exit_trace_index);
         // The histogram's value at `exit_trace_index` must be exactly 1 — the assembly
         // runner is expected to record the exit instruction as executed once.
-        let asm_romh = AsmRHData::new(/* steps */ 50, vec![3, 0, 1]);
+        let asm_romh = AsmRHData::new(/* steps */ 50, vec![3, 0, 1], vec![]);
         let main_len = MainTrace::<()>::NUM_ROWS as u64;
         let expected_exit = 1 + main_len - 50 % main_len;
 
@@ -436,7 +436,7 @@ mod tests {
     fn from_asm_panics_when_histogram_lacks_exit_record() {
         let rom = rom_with_exit(/* exit_trace_index */ 2);
         // Histogram does NOT mark index 2 as executed → soundness assert must fire.
-        let asm_romh = AsmRHData::new(50, vec![3, 0, 0]);
+        let asm_romh = AsmRHData::new(50, vec![3, 0, 0], vec![]);
         let _ =
             RomInstance::compute_witness_from_asm::<F>(&rom, &asm_romh, vec![F::from_u64(0); 10]);
     }
@@ -459,7 +459,7 @@ mod tests {
         // In ASM mode, reset() is documented as a no-op (the histogram is source input,
         // not derived state). After reset the instance must still be in ASM mode so the
         // next compute_witness can consume the same rh_data.
-        let rh_data = AsmRunnerRH::new(AsmRHData::new(50, vec![3, 0, 1]));
+        let rh_data = AsmRunnerRH::new(AsmRHData::new(50, vec![3, 0, 1], vec![]));
         let inst = RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), rh_data);
 
         <RomInstance as Instance<F>>::reset(&inst);

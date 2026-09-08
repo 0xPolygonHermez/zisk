@@ -190,7 +190,7 @@ mod tests {
 
     /// Spawn a no-op RH runner that returns an empty `AsmRunnerRH`.
     fn spawn_canned_rh() -> JoinHandle<ExecutorResult<AsmRunnerRH>> {
-        std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new()))))
+        std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()))))
     }
 
     #[test]

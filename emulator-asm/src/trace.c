@@ -12,6 +12,7 @@
 #include <sys/file.h>
 #include <unistd.h>
 #include "trace.hpp"
+#include "server.hpp"
 #include "constants.hpp"
 #include "globals.hpp"
 #include "emu.hpp"
@@ -55,7 +56,16 @@ uint64_t trace_get_chunk_size (uint64_t chunk_id)
 {
     if (gen_method == RomHistogram) {
         assert(chunk_id == 0);
-        return TRACE_INITIAL_SIZE_RH;
+        // The whole output is a fixed size known before the emulation starts, and it is both the
+        // shared memory size and the area zeroed at every run (the multiplicity counters must start
+        // at zero), so allocate exactly what is needed instead of the upper bound
+        uint64_t size = ((histogram_size + TRACE_SIZE_GRANULARITY - 1) / TRACE_SIZE_GRANULARITY) * TRACE_SIZE_GRANULARITY;
+        if (size > TRACE_INITIAL_SIZE_RH)
+        {
+            asm_printf("ERROR: trace_get_chunk_size() ROM histogram size %lu is larger than the trace initial size RH %lu\n", size, TRACE_INITIAL_SIZE_RH);
+            exit(-1);
+        }
+        return size;
     }
 
     if (chunk_id == 0)
