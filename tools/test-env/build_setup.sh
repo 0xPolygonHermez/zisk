@@ -1,6 +1,7 @@
 #!/bin/bash
 #
-# Build (and optionally install) the ZisK setup (proving key).
+# Build (and optionally install) the ZisK setup (proving key). build/ is cleared
+# first, so a rebuild with a different HASH_MODE never mixes two setups.
 #
 # Env vars (loaded from .env / shell / Cargo.toml via load_env):
 #   USE_CACHE_SETUP              Reuse/populate a local provingKey cache under
@@ -16,7 +17,8 @@
 #   DYLIB_INPUT_FILES            After the build, copy the inputs needed to compile
 #                                the macOS dylib files into build/dylib_input.
 #   RECURSIVE_JOBS / SETUP_JOBS  Setup pipeline concurrency.
-#   HASH                         Hash function (default: Poseidon1).
+#   HASH_MODE                    Hash family the setup is generated with
+#                                (default: Poseidon1).
 #   PTAU_PATH                    Powers-of-tau file for the snark setup
 #                                (default: ../powersOfTau28_hez_final_24.ptau).
 
@@ -53,14 +55,14 @@ main() {
     # Load environment variables from .env file (only the ones used by this script)
     load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP FORCE_SETUP_BUILD \
         DISABLE_RECURSIVE_SETUP INSTALL_SETUP INCLUDE_SNARK DYLIB_INPUT_FILES \
-        HASH PTAU_PATH RECURSIVE_JOBS SETUP_JOBS || return 1
+        HASH_MODE PTAU_PATH RECURSIVE_JOBS SETUP_JOBS || return 1
 
-    # Default the hash function when neither the shell, .env, nor Cargo.toml set
+    # Default the hash family when neither the shell, .env, nor Cargo.toml set
     # it. Exported so the setup_build.sh child process inherits it.
-    export HASH="${HASH:-Poseidon1}"
+    export HASH_MODE="${HASH_MODE:-Poseidon1}"
 
     current_step=1
-    total_steps=2   # computing hash + building setup
+    total_steps=3   # clearing build/ + computing hash + building setup
     [[ "${INCLUDE_SNARK}" == "1" ]] && total_steps=$((total_steps + 1))
     [[ "${DYLIB_INPUT_FILES}" == "1" ]] && total_steps=$((total_steps + 1))
     [[ "${INSTALL_SETUP}" == "1" ]] && total_steps=$((total_steps + 1))
@@ -70,6 +72,12 @@ main() {
     # Export so child tooling resolves the repo root from this, not its own location.
     export ZISK_REPO_DIR="${ZISK_REPO}"
     ensure cd "${ZISK_REPO}" || return 1
+
+    # setup_build.sh only clears provingKey/, so the rest would survive from an
+    # earlier build and mix two hash families in the same tree.
+    step "Clearing previous setup output from ${build_dir}..."
+    ensure rm -rf "${build_dir}/provingKey" "${build_dir}/provingKeySnark" \
+        "${build_dir}/circom" "${build_dir}/build" "${build_dir}/pil" || return 1
 
     build_flags=(--build-dir build --gen-exps --exps-arch major)
     [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]] && build_flags+=(--no-aggregation)

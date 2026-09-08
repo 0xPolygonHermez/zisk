@@ -27,6 +27,16 @@ on:
         required: false
         type: boolean
         default: false
+      include_poseidon1:
+        description: "Poseidon1 setup"
+        required: false
+        type: boolean
+        default: true
+      include_blake3:
+        description: "Blake3 setup"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: upload-setup
@@ -45,7 +55,7 @@ jobs:
   build-setup:
     name: Build setup
     runs-on: gpu-hosted
-    timeout-minutes: 120
+    timeout-minutes: 300
     defaults:
       run:
         shell: bash
@@ -53,6 +63,10 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       include_dylib: ${{ steps.resolve.outputs.include_dylib }}
       include_snark: ${{ steps.resolve.outputs.include_snark }}
+      build_poseidon1: ${{ steps.resolve.outputs.build_poseidon1 }}
+      build_blake3: ${{ steps.resolve.outputs.build_blake3 }}
+      # JSON array of the selected hash families, for macos-dylibs' matrix.
+      modes: ${{ steps.resolve.outputs.modes }}
     steps:
       - name: Fix workspace permissions
         run: |
@@ -81,6 +95,27 @@ jobs:
       - name: Resolve setup version
         id: resolve
         run: |
+          # On workflow_dispatch these are the checkboxes; on a push, only the
+          # default family (input defaults don't apply to non-dispatch events).
+          BUILD_POSEIDON1="${{ (github.event_name != 'workflow_dispatch' || inputs.include_poseidon1) && '1' || '0' }}"
+          BUILD_BLAKE3="${{ (github.event_name == 'workflow_dispatch' && inputs.include_blake3) && '1' || '0' }}"
+          if [ "$BUILD_POSEIDON1" = "0" ] && [ "$BUILD_BLAKE3" = "0" ]; then
+            echo "nothing to build: tick include_poseidon1 and/or include_blake3" >&2
+            exit 1
+          fi
+          MODES=()
+          if [ "$BUILD_POSEIDON1" = "1" ]; then MODES+=('"poseidon1"'); fi
+          if [ "$BUILD_BLAKE3" = "1" ]; then MODES+=('"blake3"'); fi
+          MODES_JSON="[$(IFS=,; echo "${MODES[*]}")]"
+          {
+            echo "build_poseidon1=$BUILD_POSEIDON1"
+            echo "build_blake3=$BUILD_BLAKE3"
+            echo "modes=$MODES_JSON"
+          } >> "$GITHUB_OUTPUT"
+          echo "build_poseidon1: $BUILD_POSEIDON1"
+          echo "build_blake3: $BUILD_BLAKE3"
+          echo "modes: $MODES_JSON"
+
           VERSION="${{ inputs.version }}"
           if [ -z "$VERSION" ]; then
             # Take the workspace package version from Cargo.toml. Prefix it with
@@ -104,9 +139,24 @@ jobs:
           echo "include_dylib: $INCLUDE_DYLIB"
 
           # SNARK setup: always on a push to develop; honor the input otherwise.
+          # Only the Poseidon1 round builds it — blake3 has no SNARK support.
           INCLUDE_SNARK="${{ ((github.event_name == 'push' && github.ref_name == 'develop') || inputs.include_snark) && '1' || '0' }}"
           echo "include_snark=$INCLUDE_SNARK" >> "$GITHUB_OUTPUT"
           echo "include_snark: $INCLUDE_SNARK"
+
+      - name: Prepare staging root
+        run: |
+          # This workspace is shared with other workflows whose actions/checkout
+          # wipes build/, and upload-setup only runs hours later. So each round
+          # parks its setup at <stage>/<run_id>/<mode>/ until then.
+          STAGE="${SETUP_STAGE_ROOT}/${{ github.run_id }}"
+          sudo mkdir -p "${SETUP_STAGE_ROOT}"
+          # Backstop for runs that never reach upload-setup's cleanup step.
+          sudo find "${SETUP_STAGE_ROOT}" -mindepth 1 -maxdepth 1 -type d -mtime +1 \
+            -exec rm -rf {} + || true
+          sudo rm -rf "$STAGE"
+          sudo mkdir -p "$STAGE"
+          sudo chown 1000:1000 "${SETUP_STAGE_ROOT}" "$STAGE"   # container user
 
       - name: Start upload setup container
         run: .github/scripts/start_test_container.sh
@@ -120,52 +170,33 @@ jobs:
               ./build_zisk.sh
             '
 
-      - name: Build setup
+      - name: Build setup (Poseidon1)
+        if: ${{ steps.resolve.outputs.build_poseidon1 == '1' }}
         env:
-          # include_snark (resolved) -> INCLUDE_SNARK (also build the snark setup).
+          HASH_MODE: Poseidon1
           INCLUDE_SNARK: ${{ steps.resolve.outputs.include_snark }}
           # include_dylib (resolved) -> DYLIB_INPUT_FILES (stage the macOS dylib inputs).
           DYLIB_INPUT_FILES: ${{ steps.resolve.outputs.include_dylib }}
-          # Cache the (~18 GB) powers-of-tau in the persistent, writable output mount
           PTAU_PATH: /home/ziskuser/output/powersOfTau28_hez_final_24.ptau
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
+            -e HASH_MODE="$HASH_MODE" \
             -e INCLUDE_SNARK="$INCLUDE_SNARK" \
-            -e PTAU_PATH="$PTAU_PATH" \
             -e DYLIB_INPUT_FILES="$DYLIB_INPUT_FILES" \
+            -e PTAU_PATH="$PTAU_PATH" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_setup.sh
             '
 
-      - name: Upload dylib input files artifact
-        if: ${{ steps.resolve.outputs.include_dylib == '1' }}
-        uses: actions/upload-artifact@v4
-        with:
-          # build/dylib_input is produced by build_setup.sh (DYLIB_INPUT_FILES=1):
-          # it contains the input files needed to compile the macOS dylib files.
-          name: dylib-input-${{ steps.resolve.outputs.version }}
-          path: build/dylib_input/
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Stage setup outputs outside the workspace
+      - name: Stage setup outputs (Poseidon1)
+        if: ${{ steps.resolve.outputs.build_poseidon1 == '1' }}
         run: |
-          # This workspace is shared with other workflows on the zisk-gpu runner
-          # group (pr.yml's test-x86_64), whose actions/checkout wipes build/ with
-          # `git clean -ffdx` — and upload-setup only runs hours later, after
-          # macos-dylibs. So park this run's setup outside the workspace; upload-setup
-          # moves it back before packing.
-          STAGE="${SETUP_STAGE_ROOT}/${{ github.run_id }}"
-          sudo mkdir -p "${SETUP_STAGE_ROOT}"
-          # Backstop for runs that never reach upload-setup's cleanup step.
-          sudo find "${SETUP_STAGE_ROOT}" -mindepth 1 -maxdepth 1 -type d -mtime +1 \
-            -exec rm -rf {} + || true
-          sudo rm -rf "$STAGE"
+          STAGE="${SETUP_STAGE_ROOT}/${{ github.run_id }}/poseidon1"
           sudo mkdir -p "$STAGE"
-          sudo chown 1000:1000 "${SETUP_STAGE_ROOT}" "$STAGE"   # container user
+          sudo chown 1000:1000 "$STAGE"   # container user
           for d in provingKey provingKeySnark circom; do
             [ -d "$GITHUB_WORKSPACE/build/$d" ] || continue
             echo "staging build/$d -> $STAGE/$d"
@@ -173,12 +204,70 @@ jobs:
           done
           ls -la "$STAGE"
 
+      - name: Upload dylib input files artifact (Poseidon1)
+        if: ${{ steps.resolve.outputs.build_poseidon1 == '1' && steps.resolve.outputs.include_dylib == '1' }}
+        uses: actions/upload-artifact@v4
+        with:
+          # build/dylib_input holds what compiling the macOS dylibs needs. It is
+          # per-setup, so each hash family gets its own artifact.
+          name: dylib-input-${{ steps.resolve.outputs.version }}-poseidon1
+          path: build/dylib_input/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Build setup (Blake3)
+        if: ${{ steps.resolve.outputs.build_blake3 == '1' }}
+        env:
+          HASH_MODE: blake3
+          INCLUDE_SNARK: "0"
+          DYLIB_INPUT_FILES: ${{ steps.resolve.outputs.include_dylib }}
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e USE_CACHE_SETUP="1" \
+            -e HASH_MODE="$HASH_MODE" \
+            -e INCLUDE_SNARK="$INCLUDE_SNARK" \
+            -e DYLIB_INPUT_FILES="$DYLIB_INPUT_FILES" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_setup.sh
+            '
+
+      - name: Stage setup outputs (Blake3)
+        if: ${{ steps.resolve.outputs.build_blake3 == '1' }}
+        run: |
+          STAGE="${SETUP_STAGE_ROOT}/${{ github.run_id }}/blake3"
+          sudo mkdir -p "$STAGE"
+          sudo chown 1000:1000 "$STAGE"   # container user
+          for d in provingKey provingKeySnark circom; do
+            [ -d "$GITHUB_WORKSPACE/build/$d" ] || continue
+            echo "staging build/$d -> $STAGE/$d"
+            sudo mv "$GITHUB_WORKSPACE/build/$d" "$STAGE/$d"
+          done
+          ls -la "$STAGE"
+
+      - name: Upload dylib input files artifact (Blake3)
+        if: ${{ steps.resolve.outputs.build_blake3 == '1' && steps.resolve.outputs.include_dylib == '1' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dylib-input-${{ steps.resolve.outputs.version }}-blake3
+          path: build/dylib_input/
+          if-no-files-found: error
+          retention-days: 1
+
   macos-dylibs:
-    name: Build macOS dylibs
+    name: Build macOS dylibs (${{ matrix.mode }})
     needs: build-setup
     if: ${{ needs.build-setup.outputs.include_dylib == '1' }}
     runs-on: macos-14
     timeout-minutes: 240
+    strategy:
+      # The two setups are independent, so let both report. upload-setup still
+      # gates on the whole job succeeding, so a half-built pair is never published.
+      fail-fast: false
+      matrix:
+        # Only the families build-setup generated; the values are its staging dirs.
+        mode: ${{ fromJSON(needs.build-setup.outputs.modes) }}
     defaults:
       run:
         shell: bash
@@ -203,7 +292,7 @@ jobs:
       - name: Download dylib input files artifact
         uses: actions/download-artifact@v4
         with:
-          name: dylib-input-${{ needs.build-setup.outputs.version }}
+          name: dylib-input-${{ needs.build-setup.outputs.version }}-${{ matrix.mode }}
           path: build
 
       - name: Build dylib files
@@ -214,7 +303,7 @@ jobs:
       - name: Upload dylib files artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dylibs-${{ needs.build-setup.outputs.version }}
+          name: dylibs-${{ needs.build-setup.outputs.version }}-${{ matrix.mode }}
           path: build/dylib
           if-no-files-found: error
           retention-days: 1
@@ -222,7 +311,7 @@ jobs:
   upload-setup:
     name: Upload setup artifacts to bucket
     runs-on: gpu-hosted
-    timeout-minutes: 60
+    timeout-minutes: 120
     needs: [build-setup, macos-dylibs]
     # Run only if build-setup succeeded and macos-dylibs succeeded or was skipped
     # (it's skipped when include_dylib is false). always() is needed so a skipped
@@ -248,29 +337,24 @@ jobs:
           # tracked files, keeping build/ and target/.
           clean: false
 
-      - name: Restore staged setup into the workspace
+      - name: Clear stale dylib directories
         run: |
-          # Replaces whatever build/ holds now — another job on this runner may have
-          # left a provingKey built from a different commit.
-          STAGE="${SETUP_STAGE_ROOT}/${{ github.run_id }}"
-          [ -d "$STAGE/provingKey" ] || {
-            echo "staged provingKey not found at $STAGE" >&2; exit 1; }
-          sudo mkdir -p "$GITHUB_WORKSPACE/build"
-          for d in provingKey provingKeySnark circom; do
-            [ -d "$STAGE/$d" ] || continue
-            echo "restoring $STAGE/$d -> build/$d"
-            sudo rm -rf "$GITHUB_WORKSPACE/build/$d"
-            sudo mv "$STAGE/$d" "$GITHUB_WORKSPACE/build/$d"
-          done
-          # Leftover from an earlier run: the artifact download below merges into it.
-          sudo rm -rf "$GITHUB_WORKSPACE/build/dylib"
+          # The artifact downloads below merge into these paths, so clear them.
+          sudo rm -rf "$GITHUB_WORKSPACE"/build/dylib "$GITHUB_WORKSPACE"/build/dylib-*
 
-      - name: Download dylib artifact
-        if: ${{ needs.build-setup.outputs.include_dylib == '1' }}
+      - name: Download dylib artifact (Poseidon1)
+        if: ${{ needs.build-setup.outputs.build_poseidon1 == '1' && needs.build-setup.outputs.include_dylib == '1' }}
         uses: actions/download-artifact@v4
         with:
-          name: dylibs-${{ needs.build-setup.outputs.version }}
-          path: build/dylib
+          name: dylibs-${{ needs.build-setup.outputs.version }}-poseidon1
+          path: build/dylib-poseidon1
+
+      - name: Download dylib artifact (Blake3)
+        if: ${{ needs.build-setup.outputs.build_blake3 == '1' && needs.build-setup.outputs.include_dylib == '1' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: dylibs-${{ needs.build-setup.outputs.version }}-blake3
+          path: build/dylib-blake3
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -294,29 +378,106 @@ jobs:
             echo "credentials file '$GOOGLE_GHA_CREDS_PATH' is not under GITHUB_WORKSPACE" >&2; exit 1; }
           echo "CONTAINER_GCP_CREDS=/workspace/zisk/$rel" >> "$GITHUB_ENV"
 
-      - name: Upload setup
+      - name: Restore staged setup (Poseidon1)
+        if: ${{ needs.build-setup.outputs.build_poseidon1 == '1' }}
+        run: |
+          STAGE="${SETUP_STAGE_ROOT}/${{ github.run_id }}/poseidon1"
+          [ -d "$STAGE/provingKey" ] || {
+            echo "staged provingKey not found at $STAGE" >&2; exit 1; }
+          sudo mkdir -p "$GITHUB_WORKSPACE/build"
+          # upload_setup.sh writes the tarballs into build/ as ziskuser.
+          sudo chown 1000:1000 "$GITHUB_WORKSPACE/build"
+          for d in provingKey provingKeySnark circom; do
+            sudo rm -rf "$GITHUB_WORKSPACE/build/$d"
+            [ -d "$STAGE/$d" ] || continue
+            echo "restoring $STAGE/$d -> build/$d"
+            sudo mv "$STAGE/$d" "$GITHUB_WORKSPACE/build/$d"
+          done
+
+      - name: Upload setup (Poseidon1)
+        if: ${{ needs.build-setup.outputs.build_poseidon1 == '1' }}
         env:
+          # Empty: this variant owns the default artifact names.
+          SETUP_NAME_SUFFIX: ""
           # force_upload input -> FORCE_UPLOAD (upload even if the bucket .hash matches).
           FORCE_UPLOAD: ${{ inputs.force_upload && '1' || '0' }}
           # include_dylib (resolved) -> merge the macOS dylibs into provingKey on upload.
           INCLUDE_DYLIB: ${{ needs.build-setup.outputs.include_dylib }}
         run: |
-          # Only merge the macOS dylibs when include_dylib is set. SETUP_DYLIB_DIR is
-          # the container path (the workspace is bind-mounted at /workspace/zisk).
+          # SETUP_DYLIB_DIR is a container path (workspace is at /workspace/zisk),
+          # per variant: each key has its own witness libs.
           DYLIB_ARGS=()
           if [ "$INCLUDE_DYLIB" = "1" ]; then
-            DYLIB_ARGS=(-e SETUP_ADD_DYLIBS="1" -e SETUP_DYLIB_DIR="/workspace/zisk/build/dylib")
+            DYLIB_ARGS=(-e SETUP_ADD_DYLIBS="1" -e SETUP_DYLIB_DIR="/workspace/zisk/build/dylib-poseidon1")
           fi
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e SETUP_VERSION="${{ needs.build-setup.outputs.version }}" \
+            -e SETUP_NAME_SUFFIX="$SETUP_NAME_SUFFIX" \
             -e FORCE_UPLOAD="$FORCE_UPLOAD" \
+            -e SETUP_PRUNE_LOCAL="1" \
             "${DYLIB_ARGS[@]}" \
             -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$CONTAINER_GCP_CREDS" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./upload_setup.sh
             '
+
+      - name: Restore staged setup (Blake3)
+        if: ${{ needs.build-setup.outputs.build_blake3 == '1' }}
+        run: |
+          STAGE="${SETUP_STAGE_ROOT}/${{ github.run_id }}/blake3"
+          [ -d "$STAGE/provingKey" ] || {
+            echo "staged provingKey not found at $STAGE" >&2; exit 1; }
+          sudo mkdir -p "$GITHUB_WORKSPACE/build"
+          # upload_setup.sh writes the tarballs into build/ as ziskuser.
+          sudo chown 1000:1000 "$GITHUB_WORKSPACE/build"
+          for d in provingKey provingKeySnark circom; do
+            sudo rm -rf "$GITHUB_WORKSPACE/build/$d"
+            [ -d "$STAGE/$d" ] || continue
+            echo "restoring $STAGE/$d -> build/$d"
+            sudo mv "$STAGE/$d" "$GITHUB_WORKSPACE/build/$d"
+          done
+
+      - name: Upload setup (Blake3)
+        if: ${{ needs.build-setup.outputs.build_blake3 == '1' }}
+        env:
+          SETUP_NAME_SUFFIX: "-blake3"
+          FORCE_UPLOAD: ${{ inputs.force_upload && '1' || '0' }}
+          INCLUDE_DYLIB: ${{ needs.build-setup.outputs.include_dylib }}
+        run: |
+          # SETUP_DYLIB_DIR is a container path (workspace is at /workspace/zisk),
+          # per variant: each key has its own witness libs.
+          DYLIB_ARGS=()
+          if [ "$INCLUDE_DYLIB" = "1" ]; then
+            DYLIB_ARGS=(-e SETUP_ADD_DYLIBS="1" -e SETUP_DYLIB_DIR="/workspace/zisk/build/dylib-blake3")
+          fi
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e SETUP_VERSION="${{ needs.build-setup.outputs.version }}" \
+            -e SETUP_NAME_SUFFIX="$SETUP_NAME_SUFFIX" \
+            -e FORCE_UPLOAD="$FORCE_UPLOAD" \
+            -e SETUP_PRUNE_LOCAL="1" \
+            "${DYLIB_ARGS[@]}" \
+            -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$CONTAINER_GCP_CREDS" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./upload_setup.sh
+            '
+
+      - name: Cleanup build artifacts
+        run: |
+          sudo rm -rf \
+            "$GITHUB_WORKSPACE"/build/provingKey \
+            "$GITHUB_WORKSPACE"/build/provingKeySnark \
+            "$GITHUB_WORKSPACE"/build/circom \
+            "$GITHUB_WORKSPACE"/build/build \
+            "$GITHUB_WORKSPACE"/build/pil \
+            "$GITHUB_WORKSPACE"/build/dylib_input \
+            "$GITHUB_WORKSPACE"/build/dylib \
+            "$GITHUB_WORKSPACE"/build/dylib-* \
+            "$GITHUB_WORKSPACE"/tmp/fixed
+          df -h /home/gha "$GITHUB_WORKSPACE" || true
 
       - name: Stop upload setup container
         if: always()
