@@ -30,3 +30,5 @@ default = []
 # Enable the ZisK-library symbol redirect in elf2rom when transpiling the ELF
 # (see zisk-transpiler-common's `ziskasm` feature). OFF by default.
 ziskasm = ["zisk-transpiler-riscv/ziskasm"]
+# RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
+compressed = ["zisk-transpiler-riscv/compressed"]

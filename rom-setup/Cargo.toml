@@ -28,3 +28,5 @@ default = []
 # Enable the ZisK-library symbol redirect in elf2rom for ROM generation (see
 # zisk-transpiler-common's `ziskasm` feature). OFF by default.
 ziskasm = ["zisk-transpiler-riscv/ziskasm", "zisk-sm-rom/ziskasm"]
+# RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
+compressed = ["zisk-transpiler-riscv/compressed", "zisk-sm-rom/compressed"]

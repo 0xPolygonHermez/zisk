@@ -71,6 +71,9 @@ default = []
 # redirect (via zisk-transpiler-riscv) and the emulator's `-z` assemble path.
 # OFF by default, so a plain `cargo build -p ziskemu` behaves like mainline.
 ziskasm = ["dep:ziskasm", "zisk-transpiler-riscv/ziskasm"]
+# Enable RISC-V C (compressed) extension decoding in the transpiler (see
+# zisk-riscv's `compressed`). OFF by default, matching IALIGN = 32.
+compressed = ["zisk-transpiler-riscv/compressed"]
 debug_stats_trace = []
 minimal_trace_index_debug = []
 handle_stdout = []

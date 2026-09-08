@@ -324,17 +324,25 @@ impl<'a> Riscv2ZiskContext<'a> {
             //////////////////////////////////////
 
             // C.I.1. Integer Computational (Register-Register)
+            #[cfg(feature = "compressed")]
             RiscvInstName::CMv | RiscvInstName::CAdd => {
                 self.create_register_op(riscv_instruction, "add", 2)
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSub => self.create_register_op(riscv_instruction, "sub", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CXor => self.create_register_op(riscv_instruction, "xor", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::COr => self.create_register_op(riscv_instruction, "or", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAnd => self.create_register_op(riscv_instruction, "and", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAddw => self.create_register_op(riscv_instruction, "add_w", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSubw => self.create_register_op(riscv_instruction, "sub_w", 2),
 
             // C.I.2. Integer Computational (Register-Immediate)
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAddi => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
@@ -348,13 +356,19 @@ impl<'a> Riscv2ZiskContext<'a> {
                     self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
                 }
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAddi4spn | RiscvInstName::CLi | RiscvInstName::CAddi16sp => {
                 self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSlli => self.immediate_op(riscv_instruction, "sll", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSrli => self.immediate_op(riscv_instruction, "srl", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSrai => self.immediate_op(riscv_instruction, "sra", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAndi => self.immediate_op(riscv_instruction, "and", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAddiw => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
@@ -368,41 +382,53 @@ impl<'a> Riscv2ZiskContext<'a> {
             }
 
             // C.I.3. Control Transfer Instructions
+            #[cfg(feature = "compressed")]
             RiscvInstName::CJr | RiscvInstName::CJalr => self.jalr(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CJ => self.jal(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CBeqz => self.create_branch_op(riscv_instruction, "eq", false, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CBnez => self.create_branch_op(riscv_instruction, "eq", true, 2),
 
             // C.I.4. Load and Store Instructions
+            #[cfg(feature = "compressed")]
             RiscvInstName::CLw | RiscvInstName::CLwsp => {
                 self.load_op(riscv_instruction, "signextend_w", 4, 2)
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CLd | RiscvInstName::CLdsp => {
                 self.load_op(riscv_instruction, "copyb", 8, 2)
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CLui => self.lui(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSw | RiscvInstName::CSwsp => {
                 self.store_op(riscv_instruction, "copyb", 4, 2)
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSd | RiscvInstName::CSdsp => {
                 self.store_op(riscv_instruction, "copyb", 8, 2)
             }
 
             // C.I.6.Privileged & System Instructions
+            #[cfg(feature = "compressed")]
             RiscvInstName::CEbreak => self.nop(riscv_instruction, 2),
 
-            // C.D: Double-Precision Floating-Point:
-            #[cfg(feature = "float")]
+            // C.D: Double-Precision Floating-Point (needs both `float` and `compressed`):
+            #[cfg(all(feature = "float", feature = "compressed"))]
             RiscvInstName::CFld => self.load_op(riscv_instruction, "copyb", 8, 2),
-            #[cfg(feature = "float")]
+            #[cfg(all(feature = "float", feature = "compressed"))]
             RiscvInstName::CFsd => self.store_op(riscv_instruction, "copyb", 8, 2),
-            #[cfg(feature = "float")]
+            #[cfg(all(feature = "float", feature = "compressed"))]
             RiscvInstName::CFldsp => self.load_op(riscv_instruction, "copyb", 8, 2),
-            #[cfg(feature = "float")]
+            #[cfg(all(feature = "float", feature = "compressed"))]
             RiscvInstName::CFsdsp => self.store_op(riscv_instruction, "copyb", 8, 2),
 
             // C. Other
+            #[cfg(feature = "compressed")]
             RiscvInstName::CNop => self.nop(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CReserved => self.halt_with_error(riscv_instruction, 2),
 
             // F: Single-Precision Floating-Point
@@ -715,7 +741,8 @@ impl<'a> Riscv2ZiskContext<'a> {
                 any(feature = "zbkc", feature = "zbkc_native"),
                 any(feature = "zbkx", feature = "zbkx_native"),
                 feature = "float",
-                feature = "zicond_native"
+                feature = "zicond_native",
+                feature = "compressed"
             )))]
             _ => {
                 panic!(

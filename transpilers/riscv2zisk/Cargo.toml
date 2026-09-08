@@ -37,6 +37,8 @@ zbkc_native = ["zisk-transpiler-common/zbkc_native", "zisk-core/zbkc_native"]
 zbkx_native = ["zisk-transpiler-common/zbkx_native", "zisk-core/zbkx_native"]
 zicond_native = ["zisk-transpiler-common/zicond_native", "zisk-core/zicond_native"]
 float = ["zisk-transpiler-common/float"]
+# RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
+compressed = ["zisk-transpiler-common/compressed"]
 # Enable the ZisK-library assembly + symbol redirect in elf2rom (see
 # zisk-transpiler-common's `ziskasm` feature). OFF by default.
 ziskasm = ["zisk-transpiler-common/ziskasm"]

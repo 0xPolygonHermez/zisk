@@ -30,6 +30,8 @@ default = ["zba_native"]
 # loads the library nor redirects any symbol (mainline behavior is unchanged).
 ziskasm = ["dep:ziskasm"]
 float = ["dep:zisk-lib-float", "zisk-lib-float/float", "zisk-riscv/float", "zisk-core/float"]
+# RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
+compressed = ["zisk-riscv/compressed"]
 zba = ["zisk-riscv/zba", "zisk-core/zba"]
 zbc = ["zisk-riscv/zbc", "zisk-core/zbc"]
 zbkc = ["zisk-riscv/zbkc", "zisk-core/zbkc"]

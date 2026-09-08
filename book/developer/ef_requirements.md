@@ -178,10 +178,10 @@ conform but not yet audited against the spec.
 | 4 | [I/O interface](#4-io-interface) | **Conformant** | `read_input` / `write_output` implemented and redirected to the ZisK library. |
 | 5 | [Memory layout restrictions](#5-memory-layout-restrictions) | **Conformant** | Standard is non-prescriptive; ZisK ships a vendor linker script defining its map. |
 | 6 | [Memory safety guard regions](#6-memory-safety-guard-regions) | **Partial** | Null-pointer page and stack overflow trap (unmapped), but not via a named ≥4 kB stack-guard region. |
-| 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported and counted/priced by `ziskemu` stats; C-extension decision and offline-vs.-during-proving visibility to confirm with EF. |
+| 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported and counted/priced by `ziskemu` stats; `compressed` (`C`) feature implemented (off by default); offline-vs.-during-proving visibility to confirm with EF. |
 | 8 | [Standard termination semantics](#8-standard-termination-semantics) | **To verify** | `main` return maps to halt + host report; exact exit-code propagation to confirm. |
 | 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Partial** | `_start`, I/O, accelerators and a W^X linker script are provided; `_heap_start`/`_heap_end` export to confirm. |
-| 10 | [Instruction-address-misaligned semantics](#10-instruction-address-misaligned-exception-semantics) | **To verify** | Misaligned targets must abnormally terminate with no rounding — behavior to confirm in `ziskemu`. |
+| 10 | [Instruction-address-misaligned semantics](#10-instruction-address-misaligned-exception-semantics) | **Partial** | Production execution aborts on a jump to an invalid/misaligned address (no rounding); `compressed` (`C`) feature off by default keeps `IALIGN=32`; spec-wording review pending. |
 
 ---
 
@@ -496,11 +496,26 @@ accelerator routines that marshal the EF byte-array ABI already stage their
 operands in library-owned, aligned scratch buffers, so this holds for the
 standard `zkvm_*` entry points.)
 
+**Compressed instructions.** The misaligned-instruction semantics of §10 are
+defined for `IALIGN = 32` (no `C`), and the ZisK transpiler is able to decode
+2-byte (compressed) instructions. As agreed with the EF, this is now controlled by
+a dedicated **`compressed` cargo feature (off by default)** that gates RVC decoding
+in both the RISC-V decoder and the transpiler (`zisk-riscv`:
+`riscv_interpreter.rs` / `riscv2zisk_context.rs`), propagated up the build chain the
+same way `float` is (through `zisk-transpiler-common`/`-riscv`, `zisk-rom-setup`,
+`zisk-prover-backend`, and the `ziskemu`/`cargo-zisk` binaries):
+
+- **Without** the feature (the default), the `C` extension is disabled: a 2-byte
+  parcel is an illegal instruction and the run halts with error (`CHalt`), so ZisK
+  is `IALIGN = 32` and matches the standard's "MUST NOT support C".
+- **With** `--features compressed`, RVC instructions decode and execute normally,
+  which is the configuration that fully meets a guest built for `rv64imac`.
+
+This was validated end-to-end: an `rv64ima` (no-C) guest runs identically with and
+without the feature, an `rv64imac` (with-C) guest is **rejected** (halt-with-error)
+by a default `ziskemu` and **runs correctly** under `ziskemu --features compressed`.
+
 **Items to confirm.**
-- **Compressed instructions:** the standard says a conforming zkVM must *not*
-  support C (to keep `IALIGN = 32`). Parts of the transpiler can decode 2-byte
-  (compressed) instructions; whether that constitutes "supporting C" for the
-  purpose of this standard, and whether it should be disabled, needs a decision.
 - **Offline vs. during-proving visibility:** the unaligned counts above are
   produced by the **emulator** (the witness/execution side) and printed as an
   analysis artifact — i.e. *offline*. The standard's wording is "during proving".
@@ -509,9 +524,9 @@ standard `zkvm_*` entry points.)
   as part of proof generation.
 
 **Assessment: Partial** (base + M + little-endian + LP64 + unaligned support are
-met, and `ziskemu` already reports the unaligned-access count and cost; the open
-items are the C-extension decision and the EF clarification on offline-vs.-
-during-proving visibility).
+met, `ziskemu` already reports the unaligned-access count and cost, and the
+`compressed` feature is implemented; the one open item is the EF clarification on
+offline-vs.-during-proving visibility of the unaligned count).
 
 **TODO.**
 - Report the number of unaligned memory accesses in a well-known log **during
@@ -575,19 +590,50 @@ target down to an aligned address. Applies to RISC-V without the C extension
 **ZisK.** Entry points are validated as instruction-aligned at load time (§3).
 The remaining requirement is the *runtime* behavior of a computed jump to a
 misaligned address during execution: it must abort rather than round or continue.
-This path needs to be confirmed (and is coupled to the C-extension/`IALIGN`
-decision in §7).
+As agreed with the EF, ZisK now has a `compressed` cargo feature (off by default)
+that controls whether the `C` extension is decoded (§7); with it off, ZisK is
+`IALIGN = 32` and the misaligned-jump semantics below apply.
 
-**Assessment: To verify.**
+In the **x86-64 assembly emulator** (generated by `core/src/zisk_rom_2_asm.rs`)
+this case is already handled by the dynamic-jump map. Computed jumps are resolved
+through a jump table of `.quad` entries — `map_pc_<addr>` — indexed by
+`pc - ROM_ADDR`, where each valid instruction address holds the address of its
+target label (`pc_<addr>`). To keep the index stride constant, the slots that do
+**not** correspond to a valid instruction address — the gaps between valid
+addresses, and the padding before the first one — are filled with `.quad emu_end`
+instead of a real target. A dynamic jump to any such invalid (e.g. misaligned or
+out-of-program) address therefore lands on `emu_end`, the emulator's exit path,
+**without** the success flag being set: `end = 1` is written only by executing an
+instruction explicitly marked as the terminating instruction, so exiting via a map
+slot leaves `end = 0`. The program thus stops immediately — no rounding, no
+continuation — and does so as an *unsuccessful* termination, distinguishable from a
+normal `end = 1` exit.
+
+In the **Rust emulator** the same case fails by construction. Each step fetches the
+instruction for the current `pc` with `ZiskRom::get_instruction(pc)`
+(`core/src/zisk_rom.rs`), which resolves the address against the program's ROM
+ranges. If the `pc` falls outside those ranges, or maps to a slot with no
+instruction in the `ZiskRom`, the lookup **panics** — the emulation aborts
+immediately rather than rounding, continuing, or fabricating an instruction, and
+no successful (`end = 1`) termination is produced.
+
+In production, execution runs through the **x86-64 assembly emulator** (the Rust
+emulator is used only when the `-l` argument is given), so on both paths a jump to
+an invalid or misaligned address stops the run without a successful termination —
+the requirement is therefore already met for production execution.
+
+**Assessment: Partial** (production execution already aborts on a jump to an
+invalid/misaligned address, and the `compressed` feature — off by default — keeps
+ZisK at `IALIGN = 32`; the remaining check is a spec-conformance review of the
+exact behavior against the EF wording).
 
 ---
 
 ## Roadmap
 
 - Confirm the **Partial**/**To verify** items above (memory-op link precedence and
-  `memmove`; the explicit stack-guard region; the C-extension/`IALIGN` decision;
-  whether `ziskemu`'s offline unaligned-access count satisfies the EF "during
-  proving" wording; exit-code propagation; `_heap_*` symbols and the packaged
-  `.a`; misaligned-jump runtime behavior).
+  `memmove`; the explicit stack-guard region; whether `ziskemu`'s offline
+  unaligned-access count satisfies the EF "during proving" wording; exit-code
+  propagation; `_heap_*` symbols and the packaged `.a`).
 - Replace ziskethone with **evm-asm** as the conformance vehicle once it is ready,
   re-running the same real-block validation against the C ABI.
