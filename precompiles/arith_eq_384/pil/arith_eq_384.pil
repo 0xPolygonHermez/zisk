@@ -583,12 +583,12 @@ airtemplate ArithEq384(const int N) {
             value: mem_value[1]
     );
 
-    const expr bus_op = sel_arith384_mod * OP_ARITH_384_MOD +
-                        sel_bls12_381_curve_add * OP_EC_ADD_BLS12_381 +
-                        sel_bls12_381_curve_dbl * OP_EC_DBL_BLS12_381 +
-                        sel_bls12_381_complex_add * OP_COMPLEX_ADD_BLS12_381 +
-                        sel_bls12_381_complex_sub * OP_COMPLEX_SUB_BLS12_381 +
-                        sel_bls12_381_complex_mul * OP_COMPLEX_MUL_BLS12_381;
+    const expr bus_op = sel_arith384_mod * OP_ARITH384_MOD +
+                        sel_bls12_381_curve_add * OP_BLS12_381_CURVE_ADD +
+                        sel_bls12_381_curve_dbl * OP_BLS12_381_CURVE_DBL +
+                        sel_bls12_381_complex_add * OP_BLS12_381_COMPLEX_ADD +
+                        sel_bls12_381_complex_sub * OP_BLS12_381_COMPLEX_SUB +
+                        sel_bls12_381_complex_mul * OP_BLS12_381_COMPLEX_MUL;
 
     proves_operation(op: bus_op,  a:[0, 0],  b:[step_addr'(ADDR_OP), 0], c:[0, 0], flag:0, 
                      main_step: step_addr'(MAIN_STEP), mul: in_use_clk0);

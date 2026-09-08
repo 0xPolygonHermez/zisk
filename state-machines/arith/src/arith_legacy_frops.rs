@@ -9,21 +9,6 @@
 
 use zisk_core::zisk_ops::ZiskOp;
 
-const OP_MULU: u8 = ZiskOp::Mulu.code();
-const OP_MULUH: u8 = ZiskOp::Muluh.code();
-const OP_MULSUH: u8 = ZiskOp::Mulsuh.code();
-const OP_MUL: u8 = ZiskOp::Mul.code();
-const OP_MULH: u8 = ZiskOp::Mulh.code();
-const OP_MULW: u8 = ZiskOp::MulW.code();
-const OP_DIVU: u8 = ZiskOp::Divu.code();
-const OP_REMU: u8 = ZiskOp::Remu.code();
-const OP_DIV: u8 = ZiskOp::Div.code();
-const OP_REM: u8 = ZiskOp::Rem.code();
-const OP_DIVUW: u8 = ZiskOp::DivuW.code();
-const OP_REMUW: u8 = ZiskOp::RemuW.code();
-const OP_DIVW: u8 = ZiskOp::DivW.code();
-const OP_REMW: u8 = ZiskOp::RemW.code();
-
 const MAX_A_LOW_VALUE: u64 = 386;
 const MAX_B_LOW_VALUE: u64 = 386;
 
@@ -51,10 +36,20 @@ impl ArithLegacyFrops {
         // Use lookup table for faster branching instead of match on enum
         match op {
             // Low value operations - check bounds first (most common case)
-            OP_MULU | OP_MULUH | OP_MULSUH | OP_MUL | OP_MULH | OP_MULW | OP_DIVU | OP_REMU
-            | OP_DIV | OP_REM | OP_DIVUW | OP_REMUW | OP_DIVW | OP_REMW => {
-                a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE
-            }
+            ZiskOp::MULU
+            | ZiskOp::MULUH
+            | ZiskOp::MULSUH
+            | ZiskOp::MUL
+            | ZiskOp::MULH
+            | ZiskOp::MUL_W
+            | ZiskOp::DIVU
+            | ZiskOp::REMU
+            | ZiskOp::DIV
+            | ZiskOp::REM
+            | ZiskOp::DIVU_W
+            | ZiskOp::REMU_W
+            | ZiskOp::DIV_W
+            | ZiskOp::REM_W => a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE,
             _ => false,
         }
     }
@@ -63,8 +58,20 @@ impl ArithLegacyFrops {
     pub fn get_row(op: u8, a: u64, b: u64) -> usize {
         // ecall/system call functions are not candidates to be usual
         let relative_offset = match op {
-            OP_MULU | OP_MULUH | OP_MULSUH | OP_MUL | OP_MULH | OP_MULW | OP_DIVU | OP_REMU
-            | OP_DIV | OP_REM | OP_DIVUW | OP_REMUW | OP_DIVW | OP_REMW => {
+            ZiskOp::MULU
+            | ZiskOp::MULUH
+            | ZiskOp::MULSUH
+            | ZiskOp::MUL
+            | ZiskOp::MULH
+            | ZiskOp::MUL_W
+            | ZiskOp::DIVU
+            | ZiskOp::REMU
+            | ZiskOp::DIV
+            | ZiskOp::REM
+            | ZiskOp::DIVU_W
+            | ZiskOp::REMU_W
+            | ZiskOp::DIV_W
+            | ZiskOp::REM_W => {
                 if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
                     Self::get_low_values_offset(a, b)
                 } else {

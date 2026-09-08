@@ -60,11 +60,11 @@ impl<F: PrimeField64> BinaryAddHiCollector<F> {
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
-        if OperationBusData::get_op(&op_data) != ZiskOp::Add.code() {
+        if OperationBusData::get_op(&op_data) != ZiskOp::ADD {
             return true;
         }
 
-        let frops_row = BinaryBasicFrops::get_row(ZiskOp::Add.code(), data[A], data[B]);
+        let frops_row = BinaryBasicFrops::get_row(ZiskOp::ADD, data[A], data[B]);
         let kind = match add_shape(data[A], data[B]) {
             AddShape::Hi | AddShape::HiNeg => KIND_ADD_HI,
             AddShape::Full => KIND_ADD_FULL,

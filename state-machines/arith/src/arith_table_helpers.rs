@@ -577,7 +577,7 @@ mod padding_row_tests {
     /// The padding operation, which must stay in sync with `ArithFullSM::compute_witness`.
     fn padding_operation() -> ArithOperation {
         let mut pad = ArithOperation::new();
-        pad.calculate(ZiskOp::Mulu.code(), 0, 0);
+        pad.calculate(ZiskOp::MULU, 0, 0);
         pad
     }
 

@@ -6,10 +6,6 @@ use std::error::Error;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_sm_frequent_ops::FrequentOpsHelpers;
 
-const OP_MULUH: u8 = ZiskOp::Muluh.code();
-const OP_MUL: u8 = ZiskOp::Mul.code();
-const OP_DIVU: u8 = ZiskOp::Divu.code();
-
 const OP_TABLE_OFFSETS_START: usize = 177;
 const OP_TABLE_OFFSETS: [usize; 8] = [0, 0, 0, 288793, 0, 0, 0, 1246897];
 
@@ -61,7 +57,7 @@ impl ArithFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_MULUH, &mut ops, true);
+            self.table.add_ops(ZiskOp::MULUH, &mut ops, true);
         }
         // op mul
         {
@@ -90,7 +86,7 @@ impl ArithFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_MUL, &mut ops, true);
+            self.table.add_ops(ZiskOp::MUL, &mut ops, true);
         }
         // op divu
         {
@@ -101,26 +97,26 @@ impl ArithFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_DIVU, &mut ops, true);
+            self.table.add_ops(ZiskOp::DIVU, &mut ops, true);
         }
     }
 
     #[inline(always)]
     pub fn is_frequent_op(op: u8, a: u64, b: u64) -> bool {
         match op {
-            OP_MULUH => {
+            ZiskOp::MULUH => {
                 a < 517 && b < 517
                     || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
                     || a >= 0x11BC4E7A1FF93003 && a < 0x11BC4E7A1FF94003 && (a & 7) == 3 && b < 2
                     || a >= 0x3FD8EE048ED3F003 && a < 0x3FD8EE048ED40003 && (a & 7) == 3 && b < 2
             }
-            OP_MUL => {
+            ZiskOp::MUL => {
                 a < 2406 && b < 388
                     || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
                     || a >= 0x7FFFFFF001 && a < 0x8000001001 && (a & 7) == 1 && b == 2045
                     || a >= 0x3FE8000000000 && a < 0x3FE8000001000 && b == 2045
             }
-            OP_DIVU => a < 1601 && b < 513,
+            ZiskOp::DIVU => a < 1601 && b < 513,
             _ => false,
         }
     }
@@ -128,7 +124,7 @@ impl ArithFrops {
     #[inline(always)]
     pub fn get_row(op: u8, a: u64, b: u64) -> usize {
         let relative_offset = match op {
-            OP_MULUH => {
+            ZiskOp::MULUH => {
                 if a < 517 && b < 517 {
                     (a * 517 + b) as usize
                 } else if a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19 {
@@ -143,7 +139,7 @@ impl ArithFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_MUL => {
+            ZiskOp::MUL => {
                 if a < 2406 && b < 388 {
                     (a * 388 + b) as usize
                 } else if a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19 {
@@ -156,7 +152,7 @@ impl ArithFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_DIVU => {
+            ZiskOp::DIVU => {
                 if a < 1601 && b < 513 {
                     (a * 513 + b) as usize
                 } else {

@@ -6,25 +6,11 @@ use std::error::Error;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_sm_frequent_ops::FrequentOpsHelpers;
 
-const OP_MINU: u8 = ZiskOp::Minu.code();
-const OP_MAXU: u8 = ZiskOp::Maxu.code();
-const OP_LTU: u8 = ZiskOp::Ltu.code();
-const OP_LT: u8 = ZiskOp::Lt.code();
-const OP_EQ: u8 = ZiskOp::Eq.code();
-const OP_ADD: u8 = ZiskOp::Add.code();
-const OP_SUB: u8 = ZiskOp::Sub.code();
-const OP_AND: u8 = ZiskOp::And.code();
-const OP_OR: u8 = ZiskOp::Or.code();
-const OP_XOR: u8 = ZiskOp::Xor.code();
-const OP_ADDW: u8 = ZiskOp::AddW.code();
-const OP_SUBW: u8 = ZiskOp::SubW.code();
-const OP_ANDN: u8 = ZiskOp::Andn.code();
-const OP_ORN: u8 = ZiskOp::Orn.code();
-
 const OP_TABLE_OFFSETS_START: usize = 2;
-const OP_TABLE_OFFSETS: [usize; 51] = [
+const OP_TABLE_OFFSETS: [usize; 83] = [
     0, 0, 11454, 0, 13326, 1066002, 0, 1827332, 2377264, 12108082, 0, 0, 12511466, 12850410,
     18562081, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18628381, 18630684, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18663708, 18663747,
 ];
 
@@ -58,7 +44,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_MINU, &mut ops, true);
+            self.table.add_ops(ZiskOp::MINU, &mut ops, true);
         }
         // op maxu
         {
@@ -69,7 +55,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_MAXU, &mut ops, true);
+            self.table.add_ops(ZiskOp::MAXU, &mut ops, true);
         }
         // op ltu
         {
@@ -80,7 +66,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_LTU, &mut ops, true);
+            self.table.add_ops(ZiskOp::LTU, &mut ops, true);
         }
         // op lt
         {
@@ -109,7 +95,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_LT, &mut ops, true);
+            self.table.add_ops(ZiskOp::LT, &mut ops, true);
         }
         // op eq
         {
@@ -138,7 +124,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_EQ, &mut ops, true);
+            self.table.add_ops(ZiskOp::EQ, &mut ops, true);
         }
         // op add
         {
@@ -167,7 +153,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_ADD, &mut ops, true);
+            self.table.add_ops(ZiskOp::ADD, &mut ops, true);
         }
         // op sub
         {
@@ -196,7 +182,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_SUB, &mut ops, true);
+            self.table.add_ops(ZiskOp::SUB, &mut ops, true);
         }
         // op and
         {
@@ -219,7 +205,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_AND, &mut ops, true);
+            self.table.add_ops(ZiskOp::AND, &mut ops, true);
         }
         // op or
         {
@@ -248,7 +234,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_OR, &mut ops, true);
+            self.table.add_ops(ZiskOp::OR, &mut ops, true);
         }
         // op xor
         {
@@ -259,7 +245,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_XOR, &mut ops, true);
+            self.table.add_ops(ZiskOp::XOR, &mut ops, true);
         }
         // op add_w
         {
@@ -276,7 +262,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_ADDW, &mut ops, true);
+            self.table.add_ops(ZiskOp::ADD_W, &mut ops, true);
         }
         // op sub_w
         {
@@ -287,7 +273,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_SUBW, &mut ops, true);
+            self.table.add_ops(ZiskOp::SUB_W, &mut ops, true);
         }
         // op andn
         {
@@ -298,7 +284,7 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_ANDN, &mut ops, true);
+            self.table.add_ops(ZiskOp::ANDN, &mut ops, true);
         }
         // op orn
         {
@@ -315,56 +301,56 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_ORN, &mut ops, true);
+            self.table.add_ops(ZiskOp::ORN, &mut ops, true);
         }
     }
 
     #[inline(always)]
     pub fn is_frequent_op(op: u8, a: u64, b: u64) -> bool {
         match op {
-            OP_MINU => a < 166 && b < 69,
-            OP_MAXU => a < 104 && b < 18,
-            OP_LTU => a < 1026 && b < 1026,
-            OP_LT => {
+            ZiskOp::MINU => a < 166 && b < 69,
+            ZiskOp::MAXU => a < 104 && b < 18,
+            ZiskOp::LTU => a < 1026 && b < 1026,
+            ZiskOp::LT => {
                 a < 537 && b < 128
                     || a >= 0x7FFFFFFFFFFFF000 && a < 0x8000000000001000 && b == 0
                     || a >= 0x9400000000000000 && a < 0x9400000000001000 && (a & 7) == 0 && b == 0
                     || a >= 0xFFFFFFFFFFFAC847 && b < 2
             }
-            OP_EQ => {
+            ZiskOp::EQ => {
                 a < 534 && b < 1026
                     || a >= 0x43E1F593F0000001 && a < 0x43E1F593F0001001 && (a & 7) == 1 && b < 2
                     || a >= 0x8080808080808000 && a < 0x8080808080809000 && (a & 7) == 0 && b == 0
                     || a >= 0xFBF7FFFFF9B9F005 && a < 0xFBF7FFFFF9BA0005 && (a & 7) == 5 && b == 0
             }
-            OP_ADD => {
+            ZiskOp::ADD => {
                 a < 547 && b < 534
                     || a >= 0x100F000 && a < 0x1011000 && (a & 7) == 0 && b == 257
                     || a >= 0xA03F3000 && a < 0xA03FC000 && (a & 7) == 0 && b < 2048
                     || a >= 0xFFFFFFFF80808000 && a < 0xFFFFFFFF80809000 && (a & 7) == 0 && b == 128
             }
-            OP_SUB => {
+            ZiskOp::SUB => {
                 a < 534 && b < 532
                     || a >= 0xA03F5000 && a < 0xA03FC000 && (a & 7) == 0 && b < 33
                     || a >= 0xAF89EFC2C1EA000 && a < 0xAF89EFC2C1EB000 && (a & 7) == 0 && b == 0
                     || a >= 0x2725DD1D243AB006 && a < 0x2725DD1D243AC006 && (a & 7) == 6 && b == 0
             }
-            OP_AND => {
+            ZiskOp::AND => {
                 a < 1190 && b < 256
                     || a >= 0x1FFFFFFF007 && a < 0x20000000007 && (a & 7) == 7 && b < 3
                     || a >= 0x7FFFFFFFFFFFF000 && a < 0x8000000000001000 && b < 4
             }
-            OP_OR => {
+            ZiskOp::OR => {
                 a < 1541 && b < 267
                     || a >= 4096 && a < 0x10000 && (a & 7) == 0 && b < 690
                     || a >= 0x4C440000 && a < 0x4C441000 && (a & 7) == 0 && b == 1024
                     || a >= 0xA0110000 && a < 0xA0111000 && (a & 7) == 0 && b == 761
             }
-            OP_XOR => a < 255 && b < 260,
-            OP_ADDW => a < 256 && b < 8 || a >= 0xFFFFFFFFFFFFFF01 && b == 0,
-            OP_SUBW => a < 129 && b < 256,
-            OP_ANDN => a < 3 && b < 13,
-            OP_ORN => a < 63 && b == 0 || a == 0xFFFFFFFFFFFFFFFF && b == 0,
+            ZiskOp::XOR => a < 255 && b < 260,
+            ZiskOp::ADD_W => a < 256 && b < 8 || a >= 0xFFFFFFFFFFFFFF01 && b == 0,
+            ZiskOp::SUB_W => a < 129 && b < 256,
+            ZiskOp::ANDN => a < 3 && b < 13,
+            ZiskOp::ORN => a < 63 && b == 0 || a == 0xFFFFFFFFFFFFFFFF && b == 0,
             _ => false,
         }
     }
@@ -372,28 +358,28 @@ impl BinaryBasicFrops {
     #[inline(always)]
     pub fn get_row(op: u8, a: u64, b: u64) -> usize {
         let relative_offset = match op {
-            OP_MINU => {
+            ZiskOp::MINU => {
                 if a < 166 && b < 69 {
                     (a * 69 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_MAXU => {
+            ZiskOp::MAXU => {
                 if a < 104 && b < 18 {
                     (a * 18 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_LTU => {
+            ZiskOp::LTU => {
                 if a < 1026 && b < 1026 {
                     (a * 1026 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_LT => {
+            ZiskOp::LT => {
                 if a < 537 && b < 128 {
                     (a * 128 + b) as usize
                 } else if a >= 0x7FFFFFFFFFFFF000 && a < 0x8000000000001000 && b == 0 {
@@ -410,7 +396,7 @@ impl BinaryBasicFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_EQ => {
+            ZiskOp::EQ => {
                 if a < 534 && b < 1026 {
                     (a * 1026 + b) as usize
                 } else if a >= 0x43E1F593F0000001 && a < 0x43E1F593F0001001 && (a & 7) == 1 && b < 2
@@ -432,7 +418,7 @@ impl BinaryBasicFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_ADD => {
+            ZiskOp::ADD => {
                 if a < 547 && b < 534 {
                     (a * 534 + b) as usize
                 } else if a >= 0x100F000 && a < 0x1011000 && (a & 7) == 0 && b == 257 {
@@ -449,7 +435,7 @@ impl BinaryBasicFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_SUB => {
+            ZiskOp::SUB => {
                 if a < 534 && b < 532 {
                     (a * 532 + b) as usize
                 } else if a >= 0xA03F5000 && a < 0xA03FC000 && (a & 7) == 0 && b < 33 {
@@ -467,7 +453,7 @@ impl BinaryBasicFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_AND => {
+            ZiskOp::AND => {
                 if a < 1190 && b < 256 {
                     (a * 256 + b) as usize
                 } else if a >= 0x1FFFFFFF007 && a < 0x20000000007 && (a & 7) == 7 && b < 3 {
@@ -478,7 +464,7 @@ impl BinaryBasicFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_OR => {
+            ZiskOp::OR => {
                 if a < 1541 && b < 267 {
                     (a * 267 + b) as usize
                 } else if a >= 4096 && a < 0x10000 && (a & 7) == 0 && b < 690 {
@@ -491,14 +477,14 @@ impl BinaryBasicFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_XOR => {
+            ZiskOp::XOR => {
                 if a < 255 && b < 260 {
                     (a * 260 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_ADDW => {
+            ZiskOp::ADD_W => {
                 if a < 256 && b < 8 {
                     (a * 8 + b) as usize
                 } else if a >= 0xFFFFFFFFFFFFFF01 && b == 0 {
@@ -507,21 +493,21 @@ impl BinaryBasicFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_SUBW => {
+            ZiskOp::SUB_W => {
                 if a < 129 && b < 256 {
                     (a * 256 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_ANDN => {
+            ZiskOp::ANDN => {
                 if a < 3 && b < 13 {
                     (a * 13 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_ORN => {
+            ZiskOp::ORN => {
                 if a < 63 && b == 0 {
                     a as usize
                 } else if a == 0xFFFFFFFFFFFFFFFF && b == 0 {

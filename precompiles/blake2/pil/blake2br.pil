@@ -495,7 +495,7 @@ airtemplate Blake2br(const int N = 2**20) {
     col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Blake2br operation, 0 otherwise
     in_use_clk_0 <== CLK_0 * in_use;
 
-    proves_operation(op: OP_BLAKE2BR, b: [step_addr'(ADDR_OP), 0], main_step: step_addr'(STEP_MAIN), 
+    proves_operation(op: OP_BLAKE2, b: [step_addr'(ADDR_OP), 0], main_step: step_addr'(STEP_MAIN), 
                      mul: in_use_clk_0);
 
     function pack(const expr a[], const int s): expr {
