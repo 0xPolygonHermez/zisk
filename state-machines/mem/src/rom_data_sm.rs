@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{mem_sm::MemPreviousSegment, MemInput, MemModule};
+use crate::{mem_sm::MemPreviousSegment, MemModule, MemOps};
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
@@ -74,7 +74,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     /// pre-sorted inputs instead of offset tables.
     fn legacy_compute_witness(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
@@ -101,7 +101,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     }
     fn legacy_compute_witness_inner<R: RomDataTraceRowOps<F>>(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
@@ -199,7 +199,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     #[allow(clippy::too_many_arguments)]
     fn compute_witness_with_offsets(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
@@ -257,7 +257,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     #[allow(clippy::too_many_arguments)]
     fn compute_witness_with_offsets_inner<R: RomDataTraceRowOps<F>>(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
@@ -502,7 +502,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
     #[inline(always)]
     fn compute_witness(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,

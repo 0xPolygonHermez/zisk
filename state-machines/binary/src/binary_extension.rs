@@ -723,7 +723,9 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // Slots are filled in order across the whole instance, so a chunk's operations can straddle
         // a row boundary. Rows are the unit of parallelism, so the walk is by row: each takes the
         // slice of the flattened inputs that belongs to it.
-        let flat_inputs: Vec<&BinaryInput> = inputs.iter().flatten().collect();
+        let mut flat_inputs: Vec<&BinaryInput> =
+            Vec::with_capacity(inputs.iter().map(|v| v.len()).sum());
+        flat_inputs.extend(inputs.iter().flatten());
         let rows_used = lanes.rows_for(total_inputs);
         let lanes_x_row = R::LANES_X_ROW;
 

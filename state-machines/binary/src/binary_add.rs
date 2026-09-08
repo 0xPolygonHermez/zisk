@@ -265,7 +265,9 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             total_inputs as f64 / num_slots as f64 * 100.0
         );
 
-        let flat_inputs: Vec<_> = inputs.iter().flatten().collect();
+        let mut flat_inputs: Vec<&BinaryInput> =
+            Vec::with_capacity(inputs.iter().map(|v| v.len()).sum());
+        flat_inputs.extend(inputs.iter().flatten());
 
         // Rows are filled LANES_X_ROW operations at a time, and each operation's chunks are tallied
         // as its slot is written rather than kept to be counted afterwards — see [`fill_and_tally`].

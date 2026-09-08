@@ -9,7 +9,7 @@ use std::{
 #[cfg(feature = "debug_mem")]
 use zisk_sm_mem_common::MemHelpers;
 
-use crate::{MemInput, MemModule, MemPreviousSegment};
+use crate::{MemModule, MemOps, MemPreviousSegment};
 use zisk_sm_mem_common::{
     MemLanes, MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_DISTANCE,
     SEGMENT_ADDR_MAX_RANGE,
@@ -156,7 +156,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     /// pre-sorted inputs instead of offset tables.
     fn legacy_compute_witness(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
@@ -183,7 +183,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     }
     fn legacy_compute_witness_inner<R: InputDataTraceRowOps<F>>(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
@@ -390,7 +390,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     #[allow(clippy::too_many_arguments)]
     fn compute_witness_with_offsets(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
@@ -448,7 +448,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     #[allow(clippy::too_many_arguments)]
     fn compute_witness_with_offsets_inner<R: InputDataTraceRowOps<F>>(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
@@ -665,7 +665,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
     #[inline(always)]
     fn compute_witness(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
