@@ -178,7 +178,7 @@ conform but not yet audited against the spec.
 | 4 | [I/O interface](#4-io-interface) | **Conformant** | `read_input` / `write_output` implemented and redirected to the ZisK library. |
 | 5 | [Memory layout restrictions](#5-memory-layout-restrictions) | **Conformant** | Standard is non-prescriptive; ZisK ships a vendor linker script defining its map. |
 | 6 | [Memory safety guard regions](#6-memory-safety-guard-regions) | **Partial** | Null-pointer page and stack overflow trap (unmapped), but not via a named ≥4 kB stack-guard region. |
-| 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported; C-extension decoding and the unaligned-access counter to confirm. |
+| 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported and counted/priced by `ziskemu` stats; C-extension decision and offline-vs.-during-proving visibility to confirm with EF. |
 | 8 | [Standard termination semantics](#8-standard-termination-semantics) | **To verify** | `main` return maps to halt + host report; exact exit-code propagation to confirm. |
 | 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Partial** | `_start`, I/O, accelerators and a W^X linker script are provided; `_heap_start`/`_heap_end` export to confirm. |
 | 10 | [Instruction-address-misaligned semantics](#10-instruction-address-misaligned-exception-semantics) | **To verify** | Misaligned targets must abnormally terminate with no rounding — behavior to confirm in `ziskemu`. |
@@ -397,17 +397,128 @@ no-MMU memory model, and loads statically linked ELFs in machine mode. Guests ar
 compiled `-march=rv64ima` (no F/D). Unaligned loads/stores are supported (the
 library and guests rely on them, e.g. unaligned 64-bit absorbs in keccak).
 
+**Unaligned-access visibility.** `Zicclsm` requires the zkVM to expose how many
+unaligned accesses a run performed. `ziskemu` already does — it counts and prices
+*every* memory access, classifying it by shape, in
+`emulator/src/stats/mem_operations_stats.rs` (`MemoryOperationsStats`). Because
+RISC-V registers are memory-mapped in ZisK, this covers register accesses too.
+
+Each access to a known region (RAM-stack, RAM-non-stack, ROM, INPUT) is tagged as
+`aligned 8B` or one of the unaligned shapes, and both a **count** and a **cost**
+are accumulated per shape and per region:
+
+| shape | meaning |
+|-------|---------|
+| `aligned 8B` | 8-byte access on an 8-byte boundary — the only aligned case |
+| `unaligned 1B` | single-byte access (writes split **clean**/**dirty**) |
+| `unaligned 2B single` / `2B double` | 2-byte access within one / straddling two 8-byte rows |
+| `unaligned 4B single` (32-align vs not) / `4B double` | 4-byte access, within one row / straddling two |
+| `unaligned 8B double` | 8-byte access straddling two rows |
+
+("double" = the access crosses an 8-byte boundary and so touches two memory rows;
+it is the case that costs an extra memory row in the proof, which is why the split
+matters. The two widest double cases also set a `MEM_ACCESS_MONITOR` flag so the
+emulator can log them with full execution context.)
+
+The totals are read back through accessors such as `get_unaligned_count()` /
+`get_unaligned_cost()` (grand totals) and their per-region variants
+(`get_ram_unaligned_count`, `get_rom_unaligned_count`, `get_input_unaligned_count`,
+`get_ram_stack_…`, `get_ram_no_stack_…`), each with an `_aligned_` counterpart.
+They surface in the **statistics report**:
+
+| flag | what it adds |
+|------|--------------|
+| `-X` / `--stats` | full statistics report (opcodes + memory usage) — carries the memory data |
+| `--mem-stats` | the **MEM COST BY TYPE** section |
+| `--mem-full-stats` | the **DETAILED MEM COST** section: per-region/per-shape `count`+`cost` rows (e.g. `RAM STACK unaligned 8B double read`) plus `TOTAL unaligned 1B/2B/4B/8B` rollups (requires `-X`) |
+| `--save-stats` / `--ref-stats` | snapshot the numbers to a file and diff two runs |
+
+(`-x` / `--legacy-stats` is the older step/usage report and does *not* carry this
+breakdown; `-m` / `--log-metrics` is performance metrics.)
+
+Running a guest with those flags produces (excerpt — the `MEM COST BY TYPE` and
+`DETAILED MEM COST` sections, from a ZisK guest that does heavy byte↔limb
+marshalling):
+
+```text
+$ ziskemu -e guest.elf -i input.bin -o out.bin -X --mem-stats --mem-full-stats
+...
+MEM COST BY TYPE                   COUNT       %            COST       %
+------------------------------------------------------------------------
+RAM STACK ALIGNED                    194   0.92%           3,298   0.69%
+RAM NO STACK ALIGNED               1,644   7.77%          28,006   5.84%
+RAM INIT                          13,960  65.98%         251,280  52.38%
+ROM ALIGNED                          366   1.73%           5,124   1.07%
+ROM INIT                           2,956  13.97%          41,384   8.63%
+INPUT ALIGNED                         47   0.22%           1,363   0.28%
+RAM NO STACK UNALIGNED             1,990   9.41%         149,220  31.11%
+ROM UNALIGNED                          1   0.00%              39   0.01%
+                         -----------------------------------------------
+TOTAL ALIGNED                     19,167  90.59%         330,455  68.89%
+TOTAL UNALIGNED                    1,991   9.41%         149,259  31.11%
+
+DETAILED MEM COST                                        COUNT       %            COST       %
+---------------------------------------------------------------------------------------------
+RAM NO STACK unaligned 1B read                           1,443   6.82%          59,163  12.33%
+RAM NO STACK unaligned 4B single 32-align read              45   0.21%           5,490   1.14%
+RAM NO STACK unaligned 1B clean write                       97   0.46%           6,402   1.33%
+RAM NO STACK unaligned 4B single 32-align clean write      304   1.44%          58,672  12.23%
+RAM NO STACK unaligned 4B single 32-align dirty write      101   0.48%          19,493   4.06%
+ROM unaligned 1B read                                        1   0.00%              39   0.01%
+                                              -----------------------------------------------
+TOTAL unaligned 1B                                       1,541   7.28%          65,604  13.68%
+TOTAL unaligned 4B                                          450   2.13%          83,655  17.44%
+...
+
+DETAILED OFFSET BYTE MEMORY OPERATIONS
+--------------------------------------
+offset          0      1      2      3      4      5      6      7    total
+reads         180    180    180    181    180    181    182    180    1,444
+clean writes   12     12     12     12     12     11      9     17       97
+dirty writes    0      0      0      0      0      0      0      0        0
+```
+
+`TOTAL UNALIGNED` (both `COUNT` and `COST`) is the headline figure; the
+`DETAILED MEM COST` rows attribute it by region and access shape, and the final
+`DETAILED OFFSET BYTE MEMORY OPERATIONS` table shows the distribution across the
+eight byte offsets within an 8-byte word. (`RAM INIT` / `ROM INIT` are the
+one-time zero-initialization accounting, not run-time accesses.)
+
+**Precompile operand alignment.** The memory-based precompiles (keccak, sha256,
+the arithmetic/EC precompiles, …) require their operand buffers to be **aligned**
+— they read and write the state as aligned words, not through the byte-granular
+unaligned path. It is therefore the **caller's** responsibility to pass aligned
+pointers: when a guest's argument is not aligned, the calling code must copy it
+into a temporary aligned buffer, invoke the precompile on that buffer, and copy
+the result back. This keeps the precompiles on the fast aligned path and means an
+unaligned guest argument never reaches a precompile directly. (The `.zisk`
+accelerator routines that marshal the EF byte-array ABI already stage their
+operands in library-owned, aligned scratch buffers, so this holds for the
+standard `zkvm_*` entry points.)
+
 **Items to confirm.**
 - **Compressed instructions:** the standard says a conforming zkVM must *not*
   support C (to keep `IALIGN = 32`). Parts of the transpiler can decode 2-byte
   (compressed) instructions; whether that constitutes "supporting C" for the
   purpose of this standard, and whether it should be disabled, needs a decision.
-- **Unaligned-access visibility:** the standard requires a reported count of
-  unaligned accesses. `ziskemu`'s statistics (`-x`/`-X`) should be checked for
-  (or extended with) this counter.
+- **Offline vs. during-proving visibility:** the unaligned counts above are
+  produced by the **emulator** (the witness/execution side) and printed as an
+  analysis artifact — i.e. *offline*. The standard's wording is "during proving".
+  We need to confirm with the EF whether an offline, emulator-reported count
+  satisfies the requirement, or whether the count must be surfaced by the prover
+  as part of proof generation.
 
 **Assessment: Partial** (base + M + little-endian + LP64 + unaligned support are
-met; the C-extension and unaligned-counter items are open).
+met, and `ziskemu` already reports the unaligned-access count and cost; the open
+items are the C-extension decision and the EF clarification on offline-vs.-
+during-proving visibility).
+
+**TODO.**
+- Report the number of unaligned memory accesses in a well-known log **during
+  production** (not only in the offline `-X` statistics report), and document that
+  log's format in this document.
+- Modify the precompile calls to copy input data into local aligned buffers when
+  the input data is not aligned.
 
 ---
 
@@ -474,8 +585,9 @@ decision in §7).
 ## Roadmap
 
 - Confirm the **Partial**/**To verify** items above (memory-op link precedence and
-  `memmove`; the explicit stack-guard region; the C-extension/`IALIGN` decision
-  and the unaligned-access counter; exit-code propagation; `_heap_*` symbols and
-  the packaged `.a`; misaligned-jump runtime behavior).
+  `memmove`; the explicit stack-guard region; the C-extension/`IALIGN` decision;
+  whether `ziskemu`'s offline unaligned-access count satisfies the EF "during
+  proving" wording; exit-code propagation; `_heap_*` symbols and the packaged
+  `.a`; misaligned-jump runtime behavior).
 - Replace ziskethone with **evm-asm** as the conformance vehicle once it is ready,
   re-running the same real-block validation against the C ABI.
