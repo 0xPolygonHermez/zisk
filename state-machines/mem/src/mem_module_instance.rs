@@ -1,4 +1,4 @@
-use crate::{mem_module_collector::MemModuleCollector, MemModule, MemPreviousSegment};
+use crate::{mem_module_collector::MemModuleCollector, MemModule, MemOps, MemPreviousSegment};
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::sync::Arc;
@@ -98,6 +98,11 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         // we take this `prev_last_value`, which represents the last value of the previous segment.
 
         // let mut last_value = MemLastValue::new(SegmentId(0), 0, 0);
+        // Timed apart: flattening the per-chunk input vectors into one is a full copy of every
+        // operation, and `Iterator::flatten` gives `collect` no usable size hint, so the
+        // destination is grown and recopied as it goes.
+        let t_gather = std::time::Instant::now();
+        let n_collectors = collectors.len();
         let mut prev_segment: Option<MemPreviousSegment> = None;
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -112,22 +117,27 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
                 mem_module_collector.inputs
             })
             .collect();
+        // No flatten on the offsets path: the fill only ever walks the operations in order, so the
+        // per-chunk vectors are handed over as they are and `MemOps` chains them lazily. Copying
+        // them into one contiguous vector was the largest single cost of the witness computation.
+        // The legacy path still needs them sorted, and sorting needs one contiguous run, so there
+        // it is flattened into a single chunk.
         #[cfg(feature = "legacy_mem_count_and_plan")]
-        let mut inputs = inputs.into_iter().flatten().collect::<Vec<_>>();
-        #[cfg(not(feature = "legacy_mem_count_and_plan"))]
-        let inputs = inputs.into_iter().flatten().collect::<Vec<_>>();
+        let inputs = {
+            let mut flat = inputs.into_iter().flatten().collect::<Vec<_>>();
+            let parallelize = self.ictx.plan.air_id == MemTrace::<F>::AIR_ID
+                && self.ictx.plan.airgroup_id == MemTrace::<F>::AIRGROUP_ID;
+            self.prepare_inputs(&mut flat, parallelize);
+            vec![flat]
+        };
+        let mem_ops = MemOps::new(&inputs);
 
-        if inputs.is_empty() {
+        let d_gather = t_gather.elapsed();
+
+        if mem_ops.is_empty() {
             return Ok(None);
         }
 
-        // This method sorts all inputs
-        #[cfg(feature = "legacy_mem_count_and_plan")]
-        {
-            let parallelize = self.ictx.plan.air_id == MemTrace::<F>::AIR_ID
-                && self.ictx.plan.airgroup_id == MemTrace::<F>::AIRGROUP_ID;
-            self.prepare_inputs(&mut inputs, parallelize);
-        }
         // This method calculates intermediate accesses without adding inputs and trims
         // the inputs while considering skipped rows for this instance.
         // Additionally, it computes the necessary information for memory continuations.
@@ -138,8 +148,16 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         let segment_id = self.ictx.plan.segment_id.unwrap();
 
         let is_last_segment = self.check_point.is_last_segment;
+        tracing::info!(
+            "{}[{}] gather: {} ops from {} chunks in {:.0}ms",
+            self.module.get_mem_name(),
+            usize::from(segment_id),
+            mem_ops.len(),
+            n_collectors,
+            d_gather.as_secs_f64() * 1e3
+        );
         Ok(Some(self.module.compute_witness(
-            &inputs,
+            mem_ops,
             segment_id,
             is_last_segment,
             &prev_segment,

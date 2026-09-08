@@ -247,7 +247,16 @@ impl<F: PrimeField64> BinaryAddHiSM<F> {
         let num_rows = R::trace_num_rows(&add_trace);
 
         // Flatten the per-chunk lists; operation i goes to slot i % lanes_x_row of row i / lanes_x_row.
-        let flat_inputs: Vec<&BinaryInput> = inputs.iter().flatten().collect();
+        let __t = std::time::Instant::now();
+        let mut flat_inputs: Vec<&BinaryInput> =
+            Vec::with_capacity(inputs.iter().map(|v| v.len()).sum());
+        flat_inputs.extend(inputs.iter().flatten());
+        let _report = crate::FlattenReport {
+            name: "BinaryAddHi",
+            inputs: flat_inputs.len(),
+            flatten: __t.elapsed(),
+            started: std::time::Instant::now(),
+        };
         let total_inputs = flat_inputs.len();
 
         let rows_used = rows_needed(total_inputs as u64, lanes_x_row) as usize;
