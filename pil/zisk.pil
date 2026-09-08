@@ -135,8 +135,8 @@ airgroup Zisk {
     Poseidon(N: 2**17);
 
     Blake2br(N: 2**18);
-    Blake2s(N: 2**20);
     Blake3f(N: 2**20, LANES: 2);
+    Blake2s(N: 2**20);
     virtual BlakeTable(BLAKE_TABLE_SIZE);
 
     Dma();
