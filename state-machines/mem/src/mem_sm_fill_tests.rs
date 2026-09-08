@@ -25,6 +25,13 @@ fn lanes_x_row() -> usize {
     Row::default().get_all_addr().len()
 }
 
+/// Rows a segment of `n_addrs * slots_per_addr` slots needs, plus one so there is always padding to
+/// fill. Derived from the lane count because `zisk.pil` changes it: a hardcoded row count silently
+/// gives a trace too small for the operations, and the fill then stops at its slot limit.
+fn rows_for(n_addrs: u32, slots_per_addr: u32) -> usize {
+    ((n_addrs * slots_per_addr) as usize).div_ceil(lanes_x_row()) + 1
+}
+
 /// A segment whose addresses take `slots_per_addr` slots each, and the ops that fill them.
 ///
 /// The ops are one read followed by `slots_per_addr - 1` writes per address, with strictly
@@ -193,7 +200,7 @@ fn assert_same_as_one_range_with(
 /// shared-row merge.
 #[test]
 fn many_ranges_fill_exactly_what_one_range_fills() {
-    assert_same_as_one_range(12, 3, 5);
+    assert_same_as_one_range(12, 3, rows_for(12, 3));
 }
 
 /// An odd number of slots per address, so the cuts land on different lanes of the shared rows than
@@ -202,9 +209,7 @@ fn many_ranges_fill_exactly_what_one_range_fills() {
 fn cuts_landing_on_any_lane_still_match() {
     for slots_per_addr in 1..=5 {
         let n_addrs = 16;
-        let slots = (n_addrs * slots_per_addr) as usize;
-        let n_rows = slots.div_ceil(lanes_x_row()) + 1; // +1 so there is padding to fill too
-        assert_same_as_one_range(n_addrs, slots_per_addr, n_rows);
+        assert_same_as_one_range(n_addrs, slots_per_addr, rows_for(n_addrs, slots_per_addr));
     }
 }
 
@@ -212,14 +217,16 @@ fn cuts_landing_on_any_lane_still_match() {
 /// and the merge copies whole rows. The uniform path through the same code.
 #[test]
 fn row_aligned_cuts_still_match() {
-    assert_same_as_one_range(16, lanes_x_row() as u32, 16 + 1);
+    let per_addr = lanes_x_row() as u32;
+    assert_same_as_one_range(16, per_addr, rows_for(16, per_addr));
 }
 
 /// A trace with far more rows than operations: the fill is a sliver and the rest is padding, which
 /// is the case the parallel padding fill has to get right.
 #[test]
 fn mostly_padding_still_matches() {
-    assert_same_as_one_range(8, 2, 32);
+    // Far more rows than the operations need, so most of the trace is padding.
+    assert_same_as_one_range(8, 2, rows_for(8, 2) * 8);
 }
 
 /// Fewer addresses than ranges: the split hands back fewer ranges and the fill must still agree.
@@ -227,7 +234,7 @@ fn mostly_padding_still_matches() {
 fn fewer_addresses_than_ranges_still_matches() {
     let (seg, sorted_ops, _) = segment_and_ops(3, 2);
     let mixed = shuffled(&sorted_ops);
-    let n_rows = 4;
+    let n_rows = rows_for(3, 2);
     for ops in [&sorted_ops, &mixed] {
         let (want_rows, want) = run(n_rows, &seg, ops, 1);
         for k in [4usize, 8, 16] {
@@ -244,7 +251,7 @@ fn fewer_addresses_than_ranges_still_matches() {
 #[test]
 fn many_chunks_fill_the_same_as_one() {
     let (seg, ops, _) = segment_and_ops(24, 3);
-    let n_rows = 10;
+    let n_rows = rows_for(24, 3);
     let (want_rows, want) = run(n_rows, &seg, &ops, 1);
     for n_chunks in [2usize, 3, 7, 24] {
         let chunks = in_chunks(&ops, n_chunks);
@@ -271,7 +278,7 @@ fn unsorted_operations_fill_the_same_as_sorted_ones() {
         sorted_ops.iter().map(|o| o.addr).collect::<Vec<_>>(),
         "the shuffle must actually reorder the addresses"
     );
-    let n_rows = 10;
+    let n_rows = rows_for(24, 3);
     let (sorted_rows, sorted_out) = run(n_rows, &seg, &sorted_ops, 1);
     for k in [1usize, 2, 4, 8] {
         let (rows, out) = run(n_rows, &seg, &mixed, k);
@@ -290,7 +297,7 @@ fn the_fill_writes_one_slot_per_operation() {
     let (n_addrs, slots_per_addr) = (12u32, 3u32);
     let (seg, ops, base) = segment_and_ops(n_addrs, slots_per_addr);
     let lanes = lanes_x_row();
-    let n_rows = 5;
+    let n_rows = rows_for(n_addrs, slots_per_addr);
     let mut rows = vec![Row::default(); n_rows];
     let prev = MemPreviousSegment { addr: RAM_W_ADDR_INIT, step: 0, value: 0 };
     let chunks = in_chunks(&ops, 3);

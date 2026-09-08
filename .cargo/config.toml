@@ -11,4 +11,6 @@
 # Linux-only: macOS uses a different export model and the affected `.so`
 # files are Linux-targeted anyway.
 [target.'cfg(target_os = "linux")']
-rustflags = ["-C", "link-arg=-Wl,--export-dynamic"]
+# `target-cpu=native` unlocks adx/bmi2 (this host has both), which is what gates ark-ff's
+# hand-written 256-bit Montgomery assembly -- the `asm` feature alone is inert without them.
+rustflags = ["-C", "link-arg=-Wl,--export-dynamic", "-C", "target-cpu=native"]

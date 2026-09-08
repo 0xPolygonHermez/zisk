@@ -6,11 +6,11 @@
 //! criterion: fewest instances first, least memory to break a tie.
 //!
 //! A config comes in two or three heights: a plain air, a `Large` sibling, and for `Arith256X` and
-//! `ArithSecp256K1` a `Huge` on top — each committing exactly the same columns over more rows. The
+//! `ArithBn254` a `Huge` on top — each committing exactly the same columns over more rows. The
 //! taller ones keep the instance count down; the shorter ones keep the memory down once the count is
-//! settled. Note the ladders are no longer aligned: `Arith256XHuge` and `ArithSecp256K1Huge` are
-//! taller than the universal `ArithEqLarge`, so a bulk of an operation they cover no longer lands in
-//! the universal air.
+//! settled. Note the ladders are no longer aligned: `Arith256XHuge` and `ArithBn254Huge` are taller
+//! than the universal `ArithEqLarge`, so a bulk of an operation they cover no longer lands in the
+//! universal air.
 //!
 //! This table is the planner's static input; it is derived from the `equations` bitmask each alias
 //! was instantiated with. `num_rows` is read from the trace types and the cost from
@@ -80,13 +80,13 @@ pub fn air_metas() -> Vec<ArithEqAirMeta> {
         &[Secp256k1Add, Secp256k1Dbl],
         ArithSecp256K1Trace: ARITH_SECP_256_K_1_INSTANCE_COST,
         ArithSecp256K1LargeTrace: ARITH_SECP_256_K_1_LARGE_INSTANCE_COST,
-        ArithSecp256K1HugeTrace: ARITH_SECP_256_K_1_HUGE_INSTANCE_COST,
     ));
     // bn254 EC add/dbl and complex add/sub/mul.
     metas.extend(config!(
         &[Bn254CurveAdd, Bn254CurveDbl, Bn254ComplexAdd, Bn254ComplexSub, Bn254ComplexMul],
         ArithBn254Trace: ARITH_BN_254_INSTANCE_COST,
         ArithBn254LargeTrace: ARITH_BN_254_LARGE_INSTANCE_COST,
+        ArithBn254HugeTrace: ARITH_BN_254_HUGE_INSTANCE_COST,
     ));
     // The full airs, which cover every operation and are the only home of the secp256r1 ones.
     metas.extend(config!(
@@ -135,10 +135,9 @@ impl<F: PrimeField64> ArithEqSM<F> {
             ArithSecp256K1Trace: ArithSecp256K1TraceRow / ArithSecp256K1TraceRowPacked,
             ArithSecp256K1LargeTrace:
                 ArithSecp256K1LargeTraceRow / ArithSecp256K1LargeTraceRowPacked,
-            ArithSecp256K1HugeTrace:
-                ArithSecp256K1HugeTraceRow / ArithSecp256K1HugeTraceRowPacked,
             ArithBn254Trace: ArithBn254TraceRow / ArithBn254TraceRowPacked,
             ArithBn254LargeTrace: ArithBn254LargeTraceRow / ArithBn254LargeTraceRowPacked,
+            ArithBn254HugeTrace: ArithBn254HugeTraceRow / ArithBn254HugeTraceRowPacked,
         )
     }
 }

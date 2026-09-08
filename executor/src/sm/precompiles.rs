@@ -19,13 +19,16 @@ use zisk_core::{
     SHA256_OP_TYPE_ID,
 };
 use zisk_pil::{
-    ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_384_LARGE_AIR_IDS, BABY_JUB_JUB_AIR_IDS,
-    BLAKE_2_BR_AIR_IDS, BLAKE_3_F_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS,
+    ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_384_HUGE_AIR_IDS, ARITH_EQ_384_LARGE_AIR_IDS,
+    BABY_JUB_JUB_AIR_IDS, BLAKE_2_BR_AIR_IDS, BLAKE_3_F_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_AIR_IDS,
+    SHA_256_F_AIR_IDS,
 };
 
-/// Both heights of the `ArithEq384` air, which the planner sizes as one ladder.
+/// Every height of the `ArithEq384` air, which the planner sizes as one ladder. Keep in step with
+/// the `traces` ladder in `zisk_precomp_arith_eq_384`: an alias missing here has no state machine to
+/// build its instances, and the executor fails with `StateMachineNotFound` on the air id.
 const ARITH_EQ_384_CONFIG_AIR_IDS: &[usize] =
-    &[ARITH_EQ_384_AIR_IDS[0], ARITH_EQ_384_LARGE_AIR_IDS[0]];
+    &[ARITH_EQ_384_AIR_IDS[0], ARITH_EQ_384_LARGE_AIR_IDS[0], ARITH_EQ_384_HUGE_AIR_IDS[0]];
 use zisk_precomp_arith_eq::{
     ArithEqCollector, ArithEqCounterInputGen, ArithEqInstance, ArithEqManager,
     ARITH_EQ_CONFIG_AIR_IDS,
@@ -95,4 +98,41 @@ crate::register_precompiles! {
         air: BABY_JUB_JUB_AIR_IDS,
         rank_assign: false,
     ] => BabyJubJubManager<F>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zisk_pil::AIR_NAMES;
+
+    /// Air ids of the pilout airs whose name `keep` accepts.
+    fn family(keep: impl Fn(&str) -> bool) -> Vec<usize> {
+        AIR_NAMES.iter().filter(|(_, _, name)| keep(name)).map(|&(_, air_id, _)| air_id).collect()
+    }
+
+    /// A ladder registered here short of one of its heights compiles fine — the list is a plain
+    /// `&[usize]` — and only fails at run time, when the executor finds no state machine for the
+    /// missing air and aborts the whole proof with `StateMachineNotFound`. So pin each ladder to
+    /// the pilout: adding an alias in `zisk.pil` without registering it fails here instead.
+    ///
+    /// The `ArithEq` family is every `Arith*` air except the standalone `Arith` state machine (a
+    /// builtin, not a precompile) and the `ArithEq384` ones, which are their own precompile: its
+    /// aliases are named after the equations they cover (`Arith256X`, `ArithSecp256K1`,
+    /// `ArithBn254`), not after the config air.
+    #[test]
+    fn every_arith_eq_air_in_the_pilout_has_a_state_machine() {
+        let mut registered = ARITH_EQ_CONFIG_AIR_IDS.to_vec();
+        registered.sort_unstable();
+        assert_eq!(
+            registered,
+            family(|n| n.starts_with("Arith") && n != "Arith" && !n.starts_with("ArithEq384"))
+        );
+    }
+
+    #[test]
+    fn every_arith_eq_384_air_in_the_pilout_has_a_state_machine() {
+        let mut registered = ARITH_EQ_384_CONFIG_AIR_IDS.to_vec();
+        registered.sort_unstable();
+        assert_eq!(registered, family(|n| n.starts_with("ArithEq384")));
+    }
 }

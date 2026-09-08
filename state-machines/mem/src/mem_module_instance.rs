@@ -3,6 +3,10 @@ use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::sync::Arc;
 use zisk_common::StatsType;
+// `phase_ms` is only ever read inside a `phase_log!`, which vanishes without the
+// `witness_timers` feature -- and takes the only use of the import with it.
+#[allow(unused_imports)]
+use zisk_common::{phase_end, phase_log, phase_ms, phase_start};
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
@@ -101,7 +105,8 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         // Timed apart: flattening the per-chunk input vectors into one is a full copy of every
         // operation, and `Iterator::flatten` gives `collect` no usable size hint, so the
         // destination is grown and recopied as it goes.
-        let t_gather = std::time::Instant::now();
+        phase_start!(t_gather);
+        #[cfg(feature = "witness_timers")]
         let n_collectors = collectors.len();
         let mut prev_segment: Option<MemPreviousSegment> = None;
         let inputs: Vec<_> = collectors
@@ -132,7 +137,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         };
         let mem_ops = MemOps::new(&inputs);
 
-        let d_gather = t_gather.elapsed();
+        phase_end!(d_gather, t_gather);
 
         if mem_ops.is_empty() {
             return Ok(None);
@@ -148,13 +153,13 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         let segment_id = self.ictx.plan.segment_id.unwrap();
 
         let is_last_segment = self.check_point.is_last_segment;
-        tracing::info!(
+        phase_log!(
             "{}[{}] gather: {} ops from {} chunks in {:.0}ms",
             self.module.get_mem_name(),
             usize::from(segment_id),
             mem_ops.len(),
             n_collectors,
-            d_gather.as_secs_f64() * 1e3
+            phase_ms!(d_gather)
         );
         Ok(Some(self.module.compute_witness(
             mem_ops,

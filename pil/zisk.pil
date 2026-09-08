@@ -89,9 +89,7 @@ airgroup Zisk {
     Rom(N: 2**22);
 
     // Memory
-    // Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1, lanes_x_row: 1);
-    // Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1, lanes_x_row: 4) alias MemLarge;
-    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1, lanes_x_row: 8);
+    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1, lanes_x_row: 4);
     Mem(N: 2**22, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
     RomData(N: 2**22, base_address: 0x8000_0000, size_mb: 128, enable_flag: enable_rom_data, lanes_x_row: 2);
 
@@ -140,18 +138,21 @@ airgroup Zisk {
     BigIntAdd(N: 2**20, bits: 256, operation_code: OP_ADD256) alias Add256;
 
     ArithEq(N: 2**20);
-    ArithEq(N: 2**22) alias ArithEqLarge;
+    ArithEq(N: 2**21) alias ArithEqLarge;
     // ArithEq(N: 2**20, equations: EQ_ARITH256) alias Arith256;
     ArithEq(N: 2**20, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256X;
-    ArithEq(N: 2**22, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256XLarge;
-    ArithEq(N: 2**23, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256XHuge;
+    ArithEq(N: 2**21, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256XLarge;
+    ArithEq(N: 2**22, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256XHuge;
     ArithEq(N: 2**20, equations: EQ_SECP256K1) alias ArithSecp256K1;
-    ArithEq(N: 2**22, equations: EQ_SECP256K1) alias ArithSecp256K1Large;
-    ArithEq(N: 2**23, equations: EQ_SECP256K1) alias ArithSecp256K1Huge;
+    ArithEq(N: 2**21, equations: EQ_SECP256K1) alias ArithSecp256K1Large;
+    // ArithEq(N: 2**22, equations: EQ_SECP256K1) alias ArithSecp256K1Huge;
     ArithEq(N: 2**20, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254; 
-    ArithEq(N: 2**22, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Large; 
+    ArithEq(N: 2**21, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Large; 
+    ArithEq(N: 2**22, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Huge;
     ArithEq384(N: 2**20);
     ArithEq384(N: 2**22) alias ArithEq384Large;
+    ArithEq384(N: 2**23) alias ArithEq384Huge;
+
     BabyJubJub(N: 2**18);
     virtual ArithEqLtTable(ARITH_EQ_LT_TABLE_SIZE);
 

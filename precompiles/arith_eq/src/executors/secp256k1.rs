@@ -66,20 +66,20 @@ impl Secp256k1 {
 
         let q0 = if is_dbl {
             let _q0: BigInt = 2 * &s * &y1 - 3 * &x1 * &x1;
-            assert!((&_q0 % &*SECP256K1_PRIME).is_zero());
+            debug_assert!((&_q0 % &*SECP256K1_PRIME).is_zero());
             &*SECP256K1_DBL_Q0_OFFSET - (&_q0 / &*SECP256K1_PRIME)
         } else {
             let _q0: BigInt = &s * (&x2 - &x1) - &y2 + &y1;
-            assert!((&_q0 % &*SECP256K1_PRIME).is_zero());
+            debug_assert!((&_q0 % &*SECP256K1_PRIME).is_zero());
             (&_q0 / &*SECP256K1_PRIME) + &*SECP256K1_ADD_Q0_OFFSET
         };
 
         let _q1 = &s * &s - &x1 - &x2 - &x3;
-        assert!((&_q1 % &*SECP256K1_PRIME).is_zero());
+        debug_assert!((&_q1 % &*SECP256K1_PRIME).is_zero());
         let q1 = (&_q1 / &*SECP256K1_PRIME) + &*SECP256K1_Q1_OFFSET;
 
         let _q2 = &s * &x1 - &s * &x3 - &y1 - &y3;
-        assert!((&_q2 % &*SECP256K1_PRIME).is_zero());
+        debug_assert!((&_q2 % &*SECP256K1_PRIME).is_zero());
         let q2 = &*SECP256K1_Q2_OFFSET - (&_q2 / &*SECP256K1_PRIME);
 
         if let Some(p3) = p3 {

@@ -6,6 +6,8 @@
 
 /// Global allocator selection.
 pub mod allocator;
+#[macro_use]
+pub mod witness_timers;
 mod bus;
 mod component;
 mod emu_minimal_trace;

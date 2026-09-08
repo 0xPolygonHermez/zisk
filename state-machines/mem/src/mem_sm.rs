@@ -16,7 +16,11 @@ use crate::{MemInput, MemModule, MemOps};
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
+// `phase_ms` is only ever read inside a `phase_log!`, which vanishes without the
+// `witness_timers` feature -- and takes the only use of the import with it.
 use rayon::prelude::*;
+#[allow(unused_imports)]
+use zisk_common::{phase_end, phase_log, phase_ms, phase_start};
 use zisk_core::{RAM_ADDR, RAM_SIZE};
 
 use crate::mem_witness_split::{split_mem_slots, MemFillRange};
@@ -632,9 +636,9 @@ impl<F: PrimeField64> MemSM<F> {
     ) -> ProofmanResult<AirInstance<F>> {
         // Timed because it is not small: the trace is `NUM_ROWS * lanes_x_row` slots wide, so
         // zeroing it moves gigabytes before a single operation has been placed.
-        let t_zero = std::time::Instant::now();
+        phase_start!(t_zero);
         let mut trace = MemTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
-        let d_zero = t_zero.elapsed();
+        phase_end!(d_zero, t_zero);
         #[cfg(feature = "debug_mem")]
         Self::save_mem_inputs_to_file(mem_ops, segment_id);
         #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
@@ -679,21 +683,22 @@ impl<F: PrimeField64> MemSM<F> {
         // Timed apart from the fill because it is not free: `range_check_ranged` widens the whole
         // 2^22-entry histogram into a fresh `Vec<u64>` (32 MiB) before `assign_values_ranged` walks
         // every bucket, so it costs the same whether the instance was full or nearly empty.
-        let t_rc = std::time::Instant::now();
+        phase_start!(t_rc);
         self.std.range_check_ranged(self.range_22bits_id, None, &out.range_22bits);
         self.std.range_check_ranged(self.range_16bits_id, None, &out.range_16bits);
-        let d_rc = t_rc.elapsed();
+        phase_end!(d_rc, t_rc);
 
-        let t_air = std::time::Instant::now();
+        phase_start!(t_air);
         let air_instance = AirInstance::new_from_trace(
             FromTrace::new(&mut trace).with_air_values(&mut air_values),
         );
-        tracing::info!(
+        phase_end!(d_air, t_air);
+        phase_log!(
             "Mem[{}] witness: zero trace {:.0}ms range checks {:.0}ms air instance {:.0}ms",
             usize::from(segment_id),
-            d_zero.as_secs_f64() * 1e3,
-            d_rc.as_secs_f64() * 1e3,
-            t_air.elapsed().as_secs_f64() * 1e3
+            phase_ms!(d_zero),
+            phase_ms!(d_rc),
+            phase_ms!(d_air)
         );
 
         #[cfg(feature = "debug_mem")]
@@ -808,8 +813,10 @@ struct RangeFill<R> {
     range_16bits: Vec<u32>,
     /// Operations this range actually filled. The ranges are balanced by *slots*, so comparing
     /// these across ranges is what says whether slots are a good proxy for the work.
+    #[cfg(feature = "witness_timers")]
     ops_filled: usize,
     /// Wall time this range took. The spread across ranges is the parallel speedup's ceiling.
+    #[cfg(feature = "witness_timers")]
     elapsed: std::time::Duration,
 }
 
@@ -902,15 +909,15 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
     // executor wraps the whole dispatch in `lease_pool(n_cores).install(...)`, so
     // `current_num_threads` is exactly the `n_cores` proofman handed over, and there is no
     // second knob to keep in step with it.
-    let t_split = std::time::Instant::now();
+    phase_start!(t_split);
     let ranges = split_mem_slots(seg, num_slots, n_ranges);
-    let d_split = t_split.elapsed();
+    phase_end!(d_split, t_split);
 
     // Each range fills its own slots into the rows it owns outright, plus a scratch stand-in
     // for the row it shares with the previous range (see `RowView`). Nothing else is shared:
     // the offsets table fixes every address's slots before the fill starts, and a range owns
     // whole addresses, so each backward read the fill makes lands on a slot it wrote itself.
-    let t_fill = std::time::Instant::now();
+    phase_start!(t_fill);
     let fills: Vec<RangeFill<R>> = {
         // Rows `first_row + 1 ..= last_row` of each range, carved in one forward pass.
         // `split_mem_ops` guarantees range `i`'s `last_row` is at most range `i+1`'s
@@ -949,9 +956,9 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
             .collect()
     };
 
-    let d_fill = t_fill.elapsed();
+    phase_start!(t_merge);
+    phase_end!(d_fill, t_fill);
 
-    let t_merge = std::time::Instant::now();
     // The shared leading rows, merged lane by lane: only the lanes the range actually filled,
     // so the lanes of that row belonging to its neighbours -- written straight into the trace
     // as their own rows -- are left alone. This is the only point where two ranges meet.
@@ -964,19 +971,21 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
         }
     }
 
-    let d_merge = t_merge.elapsed();
+    phase_end!(d_merge, t_merge);
 
     let last_slot_idx = fills.iter().filter_map(|f| f.last_slot).max().unwrap_or(0);
 
     // Per-range cost, gathered before the histograms are consumed by the reduction below.
+    #[cfg(feature = "witness_timers")]
     let n_threads = rayon::current_num_threads();
+    #[cfg(feature = "witness_timers")]
     let range_report: Vec<(usize, usize, u128)> = fills
         .iter()
         .zip(ranges.iter())
         .map(|(f, r)| (r.slots_len_any(), f.ops_filled, f.elapsed.as_micros()))
         .collect();
 
-    let t_reduce = std::time::Instant::now();
+    phase_start!(t_reduce);
 
     // Multiplicities summed across ranges: one parallel pass per bucket, the shape `main_sm`
     // uses for its per-chunk range checks. With a single range its histograms already are the
@@ -1000,9 +1009,9 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
         }
     };
 
-    let d_reduce = t_reduce.elapsed();
+    phase_start!(t_pad);
+    phase_end!(d_reduce, t_reduce);
 
-    let t_pad = std::time::Instant::now();
     // STEP3. Add dummy lanes to the output vector to fill the remaining virtual rows
     // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd
     // = 1, wr = 0
@@ -1037,7 +1046,7 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
         }
     }
 
-    let d_pad = t_pad.elapsed();
+    phase_end!(d_pad, t_pad);
 
     if padding_size > 0 {
         // Store the padding range checks
@@ -1048,38 +1057,40 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
     // One line per instance. `ops` is what each range actually filled out of the whole list every
     // range has to walk (`mem_ops` is unsorted, so a range cannot skip ahead); the gap between the
     // slowest and the fastest range is what caps the speedup.
-    let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
-    let slowest = range_report.iter().map(|r| r.2).max().unwrap_or(0) as f64 / 1e3;
-    let fastest = range_report.iter().map(|r| r.2).min().unwrap_or(0) as f64 / 1e3;
-    let ops_filled: usize = range_report.iter().map(|r| r.1).sum();
-    tracing::info!(
-        "Mem[{}] fill: {} pool threads -> {} ranges | {} of {} ops | \
-         split {:.2}ms fill {:.0}ms (slowest range {:.0}ms, fastest {:.0}ms) \
-         merge {:.2}ms reduce {:.0}ms pad {:.0}ms | padding {} of {} slots",
-        usize::from(segment_id),
-        n_threads,
-        range_report.len(),
-        ops_filled,
-        mem_ops.len(),
-        ms(d_split),
-        ms(d_fill),
-        slowest,
-        fastest,
-        ms(d_merge),
-        ms(d_reduce),
-        ms(d_pad),
-        padding_size,
-        num_slots,
-    );
-    tracing::debug!(
-        "Mem[{}] ranges (slots, ops, ms): {}",
-        usize::from(segment_id),
-        range_report
-            .iter()
-            .map(|(s, o, us)| format!("({}, {}, {:.0})", s, o, *us as f64 / 1e3))
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
+    #[cfg(feature = "witness_timers")]
+    {
+        let slowest = range_report.iter().map(|r| r.2).max().unwrap_or(0) as f64 / 1e3;
+        let fastest = range_report.iter().map(|r| r.2).min().unwrap_or(0) as f64 / 1e3;
+        let ops_filled: usize = range_report.iter().map(|r| r.1).sum();
+        phase_log!(
+            "Mem[{}] fill: {} pool threads -> {} ranges | {} of {} ops | \
+             split {:.2}ms fill {:.0}ms (slowest range {:.0}ms, fastest {:.0}ms) \
+             merge {:.2}ms reduce {:.0}ms pad {:.0}ms | padding {} of {} slots",
+            usize::from(segment_id),
+            n_threads,
+            range_report.len(),
+            ops_filled,
+            mem_ops.len(),
+            phase_ms!(d_split),
+            phase_ms!(d_fill),
+            slowest,
+            fastest,
+            phase_ms!(d_merge),
+            phase_ms!(d_reduce),
+            phase_ms!(d_pad),
+            padding_size,
+            num_slots,
+        );
+        phase_log!(
+            "Mem[{}] ranges (slots, ops, ms): {}",
+            usize::from(segment_id),
+            range_report
+                .iter()
+                .map(|(s, o, us)| format!("({}, {}, {:.0})", s, o, *us as f64 / 1e3))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+    }
 
     // no add extra +1 because index = value - 1
     // RAM_W_ADDR_END - last_addr + 1 - 1 = RAM_W_ADDR_END - last_addr
@@ -1121,7 +1132,8 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
     previous_segment_addr: u32,
     is_last_segment: bool,
 ) -> RangeFill<R> {
-    let started = std::time::Instant::now();
+    phase_start!(started);
+    #[cfg(feature = "witness_timers")]
     let mut ops_filled = 0usize;
     let lanes_x_row = lanes.lanes();
     let first_row = range.slot_from / lanes_x_row;
@@ -1164,7 +1176,10 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
         if addr_index < addr_base || addr_index >= addr_limit {
             continue;
         }
-        ops_filled += 1;
+        #[cfg(feature = "witness_timers")]
+        {
+            ops_filled += 1;
+        }
         // The most significant bit of current_offsets is used to indicate whether the dual slot is available for this address
         let mut dual_available = current_offsets[addr_index - addr_base] & OFFSET_DUAL_FLAG != 0;
         let addr_changes = current_offsets[addr_index - addr_base] == 0;
@@ -1373,7 +1388,9 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
         last_slot: last_slot_idx,
         range_22bits,
         range_16bits,
+        #[cfg(feature = "witness_timers")]
         ops_filled,
+        #[cfg(feature = "witness_timers")]
         elapsed: started.elapsed(),
     }
 }

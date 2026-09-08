@@ -4,7 +4,7 @@
 //! directly from the generated column layout in `zisk_pil` (`pil/src/pil_helpers/traces.rs`). Adding
 //! a new alias in `zisk.pil` = one block here. See [`crate::arith_eq_row`] for the design.
 //!
-//! A config comes in two or three heights (`Arith256X` and `ArithSecp256K1` also have a `Huge`).
+//! A config comes in two or three heights (`Arith256X` and `ArithBn254` also have a `Huge`).
 //! The taller siblings commit exactly the same columns, but the generated row types are distinct, so
 //! each height gets its own block; only the trace alias and the row type names differ between them.
 
@@ -133,21 +133,6 @@ impl_arith_eq_row!(
     ]
 );
 
-// secp256k1 curve add/dbl, tallest.
-impl_arith_eq_row!(
-    unpacked: ArithSecp256K1HugeTraceRow,
-    packed: ArithSecp256K1HugeTraceRowPacked,
-    trace: ArithSecp256K1HugeTrace,
-    qs: 3,
-    use_s: true,
-    ceqs: 3,
-    opt: [q0, q1, q2, s, x3_lt, y3_lt, x_are_different, x_delta_chunk_inv],
-    sels: [
-        Secp256k1Add => set_sel_secp256k1_add, set_secp256k1_add_clk0,
-        Secp256k1Dbl => set_sel_secp256k1_dbl, set_secp256k1_dbl_clk0,
-    ]
-);
-
 // bn254: EC curve add/dbl together with complex add/sub/mul (Fp2).
 impl_arith_eq_row!(
     unpacked: ArithBn254TraceRow,
@@ -171,6 +156,24 @@ impl_arith_eq_row!(
     unpacked: ArithBn254LargeTraceRow,
     packed: ArithBn254LargeTraceRowPacked,
     trace: ArithBn254LargeTrace,
+    qs: 3,
+    use_s: true,
+    ceqs: 3,
+    opt: [q0, q1, q2, s, x3_lt, y3_lt, x_are_different, x_delta_chunk_inv],
+    sels: [
+        Bn254CurveAdd   => set_sel_bn254_curve_add,   set_bn254_curve_add_clk0,
+        Bn254CurveDbl   => set_sel_bn254_curve_dbl,   set_bn254_curve_dbl_clk0,
+        Bn254ComplexAdd => set_sel_bn254_complex_add, set_bn254_complex_add_clk0,
+        Bn254ComplexSub => set_sel_bn254_complex_sub, set_bn254_complex_sub_clk0,
+        Bn254ComplexMul => set_sel_bn254_complex_mul, set_bn254_complex_mul_clk0,
+    ]
+);
+
+// bn254, tallest.
+impl_arith_eq_row!(
+    unpacked: ArithBn254HugeTraceRow,
+    packed: ArithBn254HugeTraceRowPacked,
+    trace: ArithBn254HugeTrace,
     qs: 3,
     use_s: true,
     ceqs: 3,

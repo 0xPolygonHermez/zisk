@@ -51,7 +51,9 @@ pub(crate) struct MemFillRange {
 }
 
 impl MemFillRange {
-    /// Slots this range may write. What the balancing equalises.
+    /// Slots this range may write. What the balancing equalises. Read by the `witness_timers`
+    /// report and by the tests that assert the tiling.
+    #[cfg(any(feature = "witness_timers", test))]
     pub fn slots_len_any(&self) -> usize {
         self.slot_to - self.slot_from
     }

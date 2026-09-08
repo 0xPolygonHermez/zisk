@@ -11,7 +11,7 @@
 //! comes in two or three heights — a taller air holds more operations per instance at the same
 //! width, a shorter one wastes less memory on a partial fill — and a specialized config is narrower
 //! than the universal one, so it is the cheaper home for a *full* instance of its operations. The
-//! ladders are not aligned: `Arith256XHuge` and `ArithSecp256K1Huge` are taller than the universal
+//! ladders are not aligned: `Arith256XHuge` and `ArithBn254Huge` are taller than the universal
 //! `ArithEqLarge`, so for the operations they cover the bulk goes to the specialized air.
 //!
 //! Strategy, per operation (not per PIL equation group: an air may cover only part of a group):
@@ -44,13 +44,13 @@ use zisk_common::Cost;
 /// placement is a bin-packing problem.
 ///
 /// An operation's candidates are its config's heights plus the two universal airs: five for the
-/// arith256 and secp256k1 operations (three heights each), four for the bn254 ones (two heights),
+/// arith256 and bn254 operations (three heights each), four for the secp256k1 ones (two heights),
 /// and two for the secp256r1 pair no specialised config covers. With the current table that is
-/// `5^4 · 4^5 · 2^2 = 2_560_000` — see `the_sweep_stays_within_its_ceiling`,
+/// `5^2 · 4^2 · 5^5 · 2^2 = 5_000_000` — see `the_sweep_stays_within_its_ceiling`,
 /// which pins it so the headroom left here stays visible. Each combination is a handful of
-/// arithmetic over `metas.len()` airs and allocates nothing, so `2^22` is still milliseconds; what
+/// arithmetic over `metas.len()` airs and allocates nothing, so `2^23` is still milliseconds; what
 /// the bound really guards against is a table that grows the exponent.
-const MAX_TAIL_COMBINATIONS: u64 = 1 << 22;
+const MAX_TAIL_COMBINATIONS: u64 = 1 << 23;
 
 /// One planned air: how many of each operation it proves. Ops with a non-zero count feed this air;
 /// the same op may also appear (with the complementary count) in another air when split.

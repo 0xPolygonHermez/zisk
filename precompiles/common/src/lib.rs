@@ -1,8 +1,10 @@
 //! Common utilities and helpers for Zisk precompiles.
 
 mod goldilocks_constants;
+mod range_check_cache;
 
 pub use goldilocks_constants::{get_ks, GOLDILOCKS_GEN, GOLDILOCKS_K};
+pub use range_check_cache::{MultiplicityCache, CACHE_BYTES};
 
 use zisk_common::MEM_BUS_ID;
 use zisk_core::InstContext;

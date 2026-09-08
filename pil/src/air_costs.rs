@@ -43,8 +43,8 @@ pub const MAIN_INSTANCE_COST: usize = 19282;
 /// `Rom`: 5.39 GB.
 pub const ROM_INSTANCE_COST: usize = 5519;
 
-/// `Mem`: 13.58 GB.
-pub const MEM_INSTANCE_COST: usize = 13906;
+/// `Mem`: 8.45 GB.
+pub const MEM_INSTANCE_COST: usize = 8653;
 
 /// `InputData`: 4.58 GB.
 pub const INPUT_DATA_INSTANCE_COST: usize = 4690;
@@ -115,38 +115,41 @@ pub const ADD_256_INSTANCE_COST: usize = 2376;
 /// `ArithEq`: 2.12 GB.
 pub const ARITH_EQ_INSTANCE_COST: usize = 2171;
 
-/// `ArithEqLarge`: 8.48 GB.
-pub const ARITH_EQ_LARGE_INSTANCE_COST: usize = 8684;
+/// `ArithEqLarge`: 4.24 GB.
+pub const ARITH_EQ_LARGE_INSTANCE_COST: usize = 4342;
 
 /// `Arith256X`: 1.56 GB.
 pub const ARITH_256_X_INSTANCE_COST: usize = 1597;
 
-/// `Arith256XLarge`: 6.23 GB.
-pub const ARITH_256_X_LARGE_INSTANCE_COST: usize = 6380;
+/// `Arith256XLarge`: 3.12 GB.
+pub const ARITH_256_X_LARGE_INSTANCE_COST: usize = 3190;
 
-/// `Arith256XHuge`: 12.47 GB.
-pub const ARITH_256_X_HUGE_INSTANCE_COST: usize = 12769;
+/// `Arith256XHuge`: 6.23 GB.
+pub const ARITH_256_X_HUGE_INSTANCE_COST: usize = 6380;
 
 /// `ArithSecp256K1`: 1.84 GB.
 pub const ARITH_SECP_256_K_1_INSTANCE_COST: usize = 1884;
 
-/// `ArithSecp256K1Large`: 7.36 GB.
-pub const ARITH_SECP_256_K_1_LARGE_INSTANCE_COST: usize = 7537;
-
-/// `ArithSecp256K1Huge`: 14.72 GB.
-pub const ARITH_SECP_256_K_1_HUGE_INSTANCE_COST: usize = 15073;
+/// `ArithSecp256K1Large`: 3.68 GB.
+pub const ARITH_SECP_256_K_1_LARGE_INSTANCE_COST: usize = 3769;
 
 /// `ArithBn254`: 1.93 GB.
 pub const ARITH_BN_254_INSTANCE_COST: usize = 1976;
 
-/// `ArithBn254Large`: 7.73 GB.
-pub const ARITH_BN_254_LARGE_INSTANCE_COST: usize = 7916;
+/// `ArithBn254Large`: 3.87 GB.
+pub const ARITH_BN_254_LARGE_INSTANCE_COST: usize = 3958;
+
+/// `ArithBn254Huge`: 7.73 GB.
+pub const ARITH_BN_254_HUGE_INSTANCE_COST: usize = 7916;
 
 /// `ArithEq384`: 1.96 GB.
 pub const ARITH_EQ_384_INSTANCE_COST: usize = 2007;
 
 /// `ArithEq384Large`: 7.86 GB.
 pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 8049;
+
+/// `ArithEq384Huge`: 15.72 GB.
+pub const ARITH_EQ_384_HUGE_INSTANCE_COST: usize = 16098;
 
 /// `BabyJubJub`: 0.60 GB.
 pub const BABY_JUB_JUB_INSTANCE_COST: usize = 614;
@@ -284,11 +287,12 @@ mod tests {
                     Arith256XHugeTrace: Arith256XHugeTraceRow: ARITH_256_X_HUGE_INSTANCE_COST,
                     ArithSecp256K1Trace: ArithSecp256K1TraceRow: ARITH_SECP_256_K_1_INSTANCE_COST,
                     ArithSecp256K1LargeTrace: ArithSecp256K1LargeTraceRow: ARITH_SECP_256_K_1_LARGE_INSTANCE_COST,
-                    ArithSecp256K1HugeTrace: ArithSecp256K1HugeTraceRow: ARITH_SECP_256_K_1_HUGE_INSTANCE_COST,
                     ArithBn254Trace: ArithBn254TraceRow: ARITH_BN_254_INSTANCE_COST,
                     ArithBn254LargeTrace: ArithBn254LargeTraceRow: ARITH_BN_254_LARGE_INSTANCE_COST,
+                    ArithBn254HugeTrace: ArithBn254HugeTraceRow: ARITH_BN_254_HUGE_INSTANCE_COST,
                     ArithEq384Trace: ArithEq384TraceRow: ARITH_EQ_384_INSTANCE_COST,
                     ArithEq384LargeTrace: ArithEq384LargeTraceRow: ARITH_EQ_384_LARGE_INSTANCE_COST,
+                    ArithEq384HugeTrace: ArithEq384HugeTraceRow: ARITH_EQ_384_HUGE_INSTANCE_COST,
                     BabyJubJubTrace: BabyJubJubTraceRow: BABY_JUB_JUB_INSTANCE_COST,
                     KeccakfTrace: KeccakfTraceRow: KECCAKF_INSTANCE_COST,
                     Sha256fTrace: Sha256fTraceRow: SHA_256_F_INSTANCE_COST,

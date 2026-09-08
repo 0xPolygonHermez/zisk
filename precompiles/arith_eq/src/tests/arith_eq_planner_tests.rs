@@ -4,9 +4,9 @@
 
 use super::*;
 use zisk_pil::{
-    Arith256XHugeTrace, Arith256XLargeTrace, Arith256XTrace, ArithBn254LargeTrace, ArithBn254Trace,
-    ArithEqLargeTrace, ArithEqTrace, ArithSecp256K1HugeTrace, ArithSecp256K1LargeTrace,
-    ArithSecp256K1Trace,
+    Arith256XHugeTrace, Arith256XLargeTrace, Arith256XTrace, ArithBn254HugeTrace,
+    ArithBn254LargeTrace, ArithBn254Trace, ArithEqLargeTrace, ArithEqTrace,
+    ArithSecp256K1LargeTrace, ArithSecp256K1Trace,
 };
 
 fn counts(pairs: &[(ArithEqOp, u64)]) -> [u64; ARITH_EQ_OP_NUM] {
@@ -41,9 +41,9 @@ fn all_air_ids() -> Vec<usize> {
         Arith256XHugeTrace::<()>::AIR_ID,
         ArithSecp256K1Trace::<()>::AIR_ID,
         ArithSecp256K1LargeTrace::<()>::AIR_ID,
-        ArithSecp256K1HugeTrace::<()>::AIR_ID,
         ArithBn254Trace::<()>::AIR_ID,
         ArithBn254LargeTrace::<()>::AIR_ID,
+        ArithBn254HugeTrace::<()>::AIR_ID,
     ]
 }
 
@@ -70,12 +70,12 @@ fn every_config_is_a_size_ladder() {
             Arith256XLargeTrace::<()>::AIR_ID,
             Arith256XHugeTrace::<()>::AIR_ID,
         ][..],
+        &[ArithSecp256K1Trace::<()>::AIR_ID, ArithSecp256K1LargeTrace::<()>::AIR_ID][..],
         &[
-            ArithSecp256K1Trace::<()>::AIR_ID,
-            ArithSecp256K1LargeTrace::<()>::AIR_ID,
-            ArithSecp256K1HugeTrace::<()>::AIR_ID,
+            ArithBn254Trace::<()>::AIR_ID,
+            ArithBn254LargeTrace::<()>::AIR_ID,
+            ArithBn254HugeTrace::<()>::AIR_ID,
         ][..],
-        &[ArithBn254Trace::<()>::AIR_ID, ArithBn254LargeTrace::<()>::AIR_ID][..],
     ] {
         for step in ladder.windows(2) {
             let (short, tall) = (meta_of(step[0]), meta_of(step[1]));
@@ -100,9 +100,9 @@ fn the_sweep_stays_within_its_ceiling() {
         .product();
 
     // An operation's candidates are its config's heights plus the two universal airs: five for the
-    // four arith256/secp256k1 operations (three heights each), four for the five bn254 ones (two
-    // heights), two for the secp256r1 pair that only the universal airs prove.
-    assert_eq!(combinations, 5u64.pow(4) * 4u64.pow(5) * 2u64.pow(2));
+    // two arith256 and the five bn254 operations (three heights each), four for the two secp256k1
+    // ones (two heights), two for the secp256r1 pair that only the universal airs prove.
+    assert_eq!(combinations, 5u64.pow(2) * 4u64.pow(2) * 5u64.pow(5) * 2u64.pow(2));
     assert!(
         combinations <= MAX_TAIL_COMBINATIONS,
         "{combinations} placements exceed the {MAX_TAIL_COMBINATIONS} the sweep is sized for",

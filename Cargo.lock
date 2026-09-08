@@ -7785,7 +7785,9 @@ dependencies = [
 name = "zisk-precomp-common"
 version = "1.3.0-alpha"
 dependencies = [
+ "pil2-std-lib",
  "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-merge)",
+ "rayon",
  "zisk-common",
  "zisk-core",
  "zisk-sm-mem",

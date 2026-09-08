@@ -47,4 +47,5 @@ zisk-test-artifacts = { workspace = true }
 default = []
 cpu-only = ["zisk-prover-backend/cpu-only"]
 stats = ["zisk-prover-backend/stats"]
+witness_timers = ["zisk-prover-backend/witness_timers"]
 diagnostic = ["zisk-prover-backend/diagnostic"]

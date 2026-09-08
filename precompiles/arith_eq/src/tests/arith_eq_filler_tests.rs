@@ -26,7 +26,7 @@ fn cap_of(air_id: usize) -> u64 {
 /// The filler tests need "the air that holds whole instances of this op" and not a particular alias:
 /// what they check is that the collect windows tile, not which air the strategy picked. Deriving it
 /// keeps them meaningful when `zisk.pil` reorders the ladders, as it did by giving `Arith256X` and
-/// `ArithSecp256K1` a `Huge` sibling taller than the universal airs.
+/// `ArithBn254` a `Huge` sibling taller than the universal airs.
 fn bulk_air_of(op: ArithEqOp) -> usize {
     air_metas()
         .into_iter()

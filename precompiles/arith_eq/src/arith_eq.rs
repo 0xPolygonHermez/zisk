@@ -13,7 +13,16 @@ use crate::{
     SECP256K1_PRIME_CHUNKS, SECP256R1_PRIME_CHUNKS, SEL_OP_ARITH256, SEL_OP_ARITH256_MOD,
     SEL_OP_SECP256K1_ADD, SEL_OP_SECP256K1_DBL, SEL_OP_SECP256R1_ADD, SEL_OP_SECP256R1_DBL,
 };
+// `phase_ms` / `phase_max_ms` are only read inside a `phase_log!`, which vanishes without the
+// `witness_timers` feature -- and takes the only use of those imports with it.
 use rayon::prelude::*;
+#[allow(unused_imports)]
+use zisk_common::{
+    phase_end, phase_log, phase_max_ms, phase_max_record, phase_max_start, phase_ms, phase_start,
+};
+// `CACHE_BYTES` is only reported by the `witness_timers` line.
+#[allow(unused_imports)]
+use zisk_precomp_common::{MultiplicityCache, CACHE_BYTES};
 
 /// The `ArithEqSM` struct encapsulates the logic of the ArithEq State Machine.
 ///
@@ -102,9 +111,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
         input: &Arith256Input,
         trace: &mut [R],
         previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Arith256::execute(&input.a, &input.b, &input.c);
-        self.expand_data_on_trace(&data, trace, SEL_OP_ARITH256, previous_lt_flags);
+        self.expand_data_on_trace(&data, trace, SEL_OP_ARITH256, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
@@ -126,9 +136,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
         input: &Arith256ModInput,
         trace: &mut [R],
         previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Arith256Mod::execute(&input.a, &input.b, &input.c, &input.module);
-        self.expand_data_on_trace(&data, trace, SEL_OP_ARITH256_MOD, previous_lt_flags);
+        self.expand_data_on_trace(&data, trace, SEL_OP_ARITH256_MOD, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
@@ -155,9 +166,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
         input: &Secp256k1AddInput,
         trace: &mut [R],
         previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Secp256k1::execute_add(&input.p1, &input.p2);
-        self.expand_data_on_trace(&data, trace, SEL_OP_SECP256K1_ADD, previous_lt_flags);
+        self.expand_data_on_trace(&data, trace, SEL_OP_SECP256K1_ADD, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
@@ -178,9 +190,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
         input: &Secp256k1DblInput,
         trace: &mut [R],
         previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Secp256k1::execute_dbl(&input.p1);
-        self.expand_data_on_trace(&data, trace, SEL_OP_SECP256K1_DBL, previous_lt_flags);
+        self.expand_data_on_trace(&data, trace, SEL_OP_SECP256K1_DBL, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
@@ -202,9 +215,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
         input: &Bn254CurveAddInput,
         trace: &mut [R],
         previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Bn254Curve::execute_add(&input.p1, &input.p2);
-        self.expand_data_on_trace(&data, trace, SEL_OP_BN254_CURVE_ADD, previous_lt_flags);
+        self.expand_data_on_trace(&data, trace, SEL_OP_BN254_CURVE_ADD, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
@@ -226,9 +240,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
         input: &Bn254CurveDblInput,
         trace: &mut [R],
         previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Bn254Curve::execute_dbl(&input.p1);
-        self.expand_data_on_trace(&data, trace, SEL_OP_BN254_CURVE_DBL, previous_lt_flags);
+        self.expand_data_on_trace(&data, trace, SEL_OP_BN254_CURVE_DBL, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
@@ -250,9 +265,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
         input: &Bn254ComplexAddInput,
         trace: &mut [R],
         previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Bn254Complex::execute_add(&input.f1, &input.f2);
-        self.expand_data_on_trace(&data, trace, SEL_OP_BN254_COMPLEX_ADD, previous_lt_flags);
+        self.expand_data_on_trace(&data, trace, SEL_OP_BN254_COMPLEX_ADD, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
@@ -274,9 +290,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
         input: &Bn254ComplexSubInput,
         trace: &mut [R],
         previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Bn254Complex::execute_sub(&input.f1, &input.f2);
-        self.expand_data_on_trace(&data, trace, SEL_OP_BN254_COMPLEX_SUB, previous_lt_flags);
+        self.expand_data_on_trace(&data, trace, SEL_OP_BN254_COMPLEX_SUB, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
@@ -298,9 +315,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
         input: &Bn254ComplexMulInput,
         trace: &mut [R],
         previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Bn254Complex::execute_mul(&input.f1, &input.f2);
-        self.expand_data_on_trace(&data, trace, SEL_OP_BN254_COMPLEX_MUL, previous_lt_flags);
+        self.expand_data_on_trace(&data, trace, SEL_OP_BN254_COMPLEX_MUL, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
@@ -322,9 +340,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
         input: &Secp256r1AddInput,
         trace: &mut [R],
         previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Secp256r1::execute_add(&input.p1, &input.p2);
-        self.expand_data_on_trace(&data, trace, SEL_OP_SECP256R1_ADD, previous_lt_flags);
+        self.expand_data_on_trace(&data, trace, SEL_OP_SECP256R1_ADD, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
@@ -346,9 +365,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
         input: &Secp256r1DblInput,
         trace: &mut [R],
         previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Secp256r1::execute_dbl(&input.p1);
-        self.expand_data_on_trace(&data, trace, SEL_OP_SECP256R1_DBL, previous_lt_flags);
+        self.expand_data_on_trace(&data, trace, SEL_OP_SECP256R1_DBL, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
@@ -365,16 +385,6 @@ impl<F: PrimeField64> ArithEqSM<F> {
         );
     }
 
-    #[inline(always)]
-    fn to_ranged_field(&self, value: i64, range_id: usize) -> u64 {
-        self.std.range_check_one(range_id, value);
-        if value >= 0 {
-            value as u64
-        } else {
-            (F::ORDER_U64 as i64 + value) as u64
-        }
-    }
-
     const FIRST_CLOCK: u8 = 0;
     const LAST_CLOCK: u8 = ARITH_EQ_ROWS_BY_OP as u8 - 1;
     fn expand_data_on_trace<R: ArithEqRow<F>>(
@@ -383,6 +393,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
         trace: &mut [R],
         sel_op: usize,
         previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
     ) {
         let mut x1_x2_different = false;
 
@@ -400,35 +411,31 @@ impl<F: PrimeField64> ArithEqSM<F> {
             for j in 0..R::CEQS {
                 // first position without carry
                 let carry_0 = if i == 0 { 0 } else { data.cout[i * 2 - 1][j] };
-                carry_values[j][0] = self.to_ranged_field(carry_0, self.carry_range_id);
-                carry_values[j][1] = self.to_ranged_field(data.cout[i * 2][j], self.carry_range_id);
+                carry_values[j][0] = to_field::<F>(cache.carry(carry_0));
+                carry_values[j][1] = to_field::<F>(cache.carry(data.cout[i * 2][j]));
             }
             trace[i].set_carry(&carry_values);
 
-            let q_range_id = if i == ARITH_EQ_ROWS_BY_OP - 1 {
-                self.q_hsc_range_id
-            } else {
-                self.chunk_range_id
-            };
-            trace[i].set_x1(self.to_ranged_field(data.x1[i], self.chunk_range_id) as u16);
-            trace[i].set_y1(self.to_ranged_field(data.y1[i], self.chunk_range_id) as u16);
-            trace[i].set_x2(self.to_ranged_field(data.x2[i], self.chunk_range_id) as u16);
-            trace[i].set_y2(self.to_ranged_field(data.y2[i], self.chunk_range_id) as u16);
-            trace[i].set_x3(self.to_ranged_field(data.x3[i], self.chunk_range_id) as u16);
-            trace[i].set_y3(self.to_ranged_field(data.y3[i], self.chunk_range_id) as u16);
+            let q_last_clock = i == ARITH_EQ_ROWS_BY_OP - 1;
+            trace[i].set_x1(to_field::<F>(cache.chunk(data.x1[i])) as u16);
+            trace[i].set_y1(to_field::<F>(cache.chunk(data.y1[i])) as u16);
+            trace[i].set_x2(to_field::<F>(cache.chunk(data.x2[i])) as u16);
+            trace[i].set_y2(to_field::<F>(cache.chunk(data.y2[i])) as u16);
+            trace[i].set_x3(to_field::<F>(cache.chunk(data.x3[i])) as u16);
+            trace[i].set_y3(to_field::<F>(cache.chunk(data.y3[i])) as u16);
             // Quotients / lambda: range-check + fill only the columns this config has, so the shared
             // witness registers exactly the std range-checks the config's PIL looks up.
             if R::QS >= 1 {
-                trace[i].set_q0(self.to_ranged_field(data.q0[i], q_range_id) as u32);
+                trace[i].set_q0(to_field::<F>(cache.q_column(data.q0[i], q_last_clock)) as u32);
             }
             if R::QS >= 2 {
-                trace[i].set_q1(self.to_ranged_field(data.q1[i], q_range_id) as u32);
+                trace[i].set_q1(to_field::<F>(cache.q_column(data.q1[i], q_last_clock)) as u32);
             }
             if R::QS >= 3 {
-                trace[i].set_q2(self.to_ranged_field(data.q2[i], q_range_id) as u32);
+                trace[i].set_q2(to_field::<F>(cache.q_column(data.q2[i], q_last_clock)) as u32);
             }
             if R::USE_S {
-                trace[i].set_s(self.to_ranged_field(data.s[i], self.chunk_range_id) as u32);
+                trace[i].set_s(to_field::<F>(cache.chunk(data.s[i])) as u32);
             }
 
             // Set the one-hot operation selector (and its clk0 twin on the first clock). Iterating
@@ -455,7 +462,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
                         data.x3[i] - data.y2[i],
                         iclock,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    cache.lt_row(row);
                     prev_x3_lt = x3_lt;
 
                     trace[i].set_y3_lt(false);
@@ -470,7 +477,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
                         data.x3[i] - SECP256K1_PRIME_CHUNKS[i],
                         iclock,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    cache.lt_row(row);
                     prev_x3_lt = x3_lt;
 
                     let y3_lt = data.y3[i] < SECP256K1_PRIME_CHUNKS[i]
@@ -482,7 +489,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
                         data.y3[i] - SECP256K1_PRIME_CHUNKS[i],
                         iclock,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    cache.lt_row(row);
                     prev_y3_lt = y3_lt;
                 }
                 SEL_OP_BN254_CURVE_ADD
@@ -499,7 +506,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
                         data.x3[i] - BN254_PRIME_CHUNKS[i],
                         iclock,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    cache.lt_row(row);
                     prev_x3_lt = x3_lt;
 
                     let y3_lt = data.y3[i] < BN254_PRIME_CHUNKS[i]
@@ -511,7 +518,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
                         data.y3[i] - BN254_PRIME_CHUNKS[i],
                         iclock,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    cache.lt_row(row);
                     prev_y3_lt = y3_lt;
                 }
                 SEL_OP_SECP256R1_ADD | SEL_OP_SECP256R1_DBL => {
@@ -524,7 +531,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
                         data.x3[i] - SECP256R1_PRIME_CHUNKS[i],
                         iclock,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    cache.lt_row(row);
                     prev_x3_lt = x3_lt;
 
                     let y3_lt = data.y3[i] < SECP256R1_PRIME_CHUNKS[i]
@@ -536,7 +543,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
                         data.y3[i] - SECP256R1_PRIME_CHUNKS[i],
                         iclock,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    cache.lt_row(row);
                     prev_y3_lt = y3_lt;
                 }
                 _ => {
@@ -564,6 +571,52 @@ impl<F: PrimeField64> ArithEqSM<F> {
             } else {
                 trace[i].set_x_are_different(false);
                 trace[i].set_x_delta_chunk_inv(0);
+            }
+        }
+    }
+
+    /// Writes one operation's rows. Split out of the fill so the batched walk and the dispatch
+    /// stay separate concerns; the body is the match the per-operation closure used to hold.
+    fn process_input<R: ArithEqRow<F>>(
+        &self,
+        input: &ArithEqInput,
+        trace: &mut [R],
+        previous_lt_flags: u8,
+        cache: &mut MultiplicityCache,
+    ) {
+        match input {
+            ArithEqInput::Arith256(idata) => {
+                self.process_arith256(idata, trace, previous_lt_flags, cache)
+            }
+            ArithEqInput::Arith256Mod(idata) => {
+                self.process_arith256_mod(idata, trace, previous_lt_flags, cache)
+            }
+            ArithEqInput::Secp256k1Add(idata) => {
+                self.process_secp256k1_add(idata, trace, previous_lt_flags, cache)
+            }
+            ArithEqInput::Secp256k1Dbl(idata) => {
+                self.process_secp256k1_dbl(idata, trace, previous_lt_flags, cache)
+            }
+            ArithEqInput::Bn254CurveAdd(idata) => {
+                self.process_bn254_curve_add(idata, trace, previous_lt_flags, cache)
+            }
+            ArithEqInput::Bn254CurveDbl(idata) => {
+                self.process_bn254_curve_dbl(idata, trace, previous_lt_flags, cache)
+            }
+            ArithEqInput::Bn254ComplexAdd(idata) => {
+                self.process_bn254_complex_add(idata, trace, previous_lt_flags, cache);
+            }
+            ArithEqInput::Bn254ComplexSub(idata) => {
+                self.process_bn254_complex_sub(idata, trace, previous_lt_flags, cache);
+            }
+            ArithEqInput::Bn254ComplexMul(idata) => {
+                self.process_bn254_complex_mul(idata, trace, previous_lt_flags, cache);
+            }
+            ArithEqInput::Secp256r1Add(idata) => {
+                self.process_secp256r1_add(idata, trace, previous_lt_flags, cache)
+            }
+            ArithEqInput::Secp256r1Dbl(idata) => {
+                self.process_secp256r1_dbl(idata, trace, previous_lt_flags, cache)
             }
         }
     }
@@ -599,61 +652,94 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
         timer_start_trace!(ARITH_EQ_TRACE);
 
-        let mut trace_rows = R::trace_rows(&mut trace);
-        let mut par_traces = Vec::with_capacity(total_inputs);
-        let mut previous_lt_flags = 0;
-        for (i, inputs) in inputs.iter().enumerate() {
-            for (j, input) in inputs.iter().enumerate() {
-                let (head, tail) = trace_rows.split_at_mut(ARITH_EQ_ROWS_BY_OP);
-                par_traces.push((head, i, j, previous_lt_flags));
-                previous_lt_flags = Self::get_lt_flags(input);
-                trace_rows = tail;
-            }
-        }
-        // if instance is full, the previous_lt_flag of first row it's lt_flag of last row.
-        if full {
-            par_traces[0].3 = previous_lt_flags;
-        }
-        let index = par_traces.len();
+        phase_start!(t_prep);
+        // One batch per thread of the pool this witness computation already runs in, rather than one
+        // rayon task per operation. The operations are laid out in order, `ARITH_EQ_ROWS_BY_OP` rows
+        // each, so a batch is a contiguous run of rows whose operations are a contiguous run of the
+        // input sequence -- no per-operation bookkeeping vector, and no sequential pass to build it.
+        //
+        // What used to force that pass is `previous_lt_flags`, which chains from each operation to
+        // the next. It is a pure function of the preceding operation, so a batch works out its own
+        // starting value in O(1) rather than inheriting it from a walk over everything before it.
+        let n_batches = rayon::current_num_threads().max(1);
+        let ops_per_batch = total_inputs.div_ceil(n_batches).max(1);
 
-        par_traces.into_par_iter().for_each(|(trace, i, j, previous_lt_flags)| {
-            let input = &inputs[i][j];
-            match input {
-                ArithEqInput::Arith256(idata) => {
-                    self.process_arith256(idata, trace, previous_lt_flags)
+        // Cumulative operation count per input chunk: lets a batch find its first operation by
+        // binary search instead of walking the ones before it, and keeps the chunks unconcatenated.
+        let mut chunk_start: Vec<usize> = Vec::with_capacity(inputs.len() + 1);
+        chunk_start.push(0);
+        for chunk in inputs {
+            chunk_start.push(chunk_start[chunk_start.len() - 1] + chunk.len());
+        }
+
+        // A full instance wraps around: the first operation's predecessor is the last one.
+        let last_flags =
+            inputs.iter().rev().find_map(|c| c.last()).map(Self::get_lt_flags).unwrap_or(0);
+
+        let index = total_inputs;
+        phase_end!(d_prep, t_prep);
+        phase_max_start!(init_max);
+        phase_start!(t_fill);
+
+        // Each batch counts its range checks into its own cache instead of atomically into the
+        // shared table, and returns it. `init` is timed apart because a cache is 48 MiB: `vec![0; _]`
+        // gets zeroed pages from the kernel, so the cost is the batch faulting in the pages it
+        // actually touches rather than a memset up front.
+        let caches: Vec<MultiplicityCache> = R::trace_rows(&mut trace)[..num_rows_needed]
+            .par_chunks_mut(ops_per_batch * ARITH_EQ_ROWS_BY_OP)
+            .enumerate()
+            .map(|(batch, batch_rows)| {
+                phase_start!(t_init);
+                let mut cache = MultiplicityCache::new();
+                phase_max_record!(init_max, t_init);
+
+                let first_op = batch * ops_per_batch;
+                let mut previous_lt_flags = if first_op == 0 {
+                    if full {
+                        last_flags
+                    } else {
+                        0
+                    }
+                } else {
+                    Self::get_lt_flags(op_at(inputs, &chunk_start, first_op - 1))
+                };
+                for (input, rows) in ops_from(inputs, &chunk_start, first_op)
+                    .zip(batch_rows.chunks_mut(ARITH_EQ_ROWS_BY_OP))
+                {
+                    self.process_input(input, rows, previous_lt_flags, &mut cache);
+                    previous_lt_flags = Self::get_lt_flags(input);
                 }
-                ArithEqInput::Arith256Mod(idata) => {
-                    self.process_arith256_mod(idata, trace, previous_lt_flags)
-                }
-                ArithEqInput::Secp256k1Add(idata) => {
-                    self.process_secp256k1_add(idata, trace, previous_lt_flags)
-                }
-                ArithEqInput::Secp256k1Dbl(idata) => {
-                    self.process_secp256k1_dbl(idata, trace, previous_lt_flags)
-                }
-                ArithEqInput::Bn254CurveAdd(idata) => {
-                    self.process_bn254_curve_add(idata, trace, previous_lt_flags)
-                }
-                ArithEqInput::Bn254CurveDbl(idata) => {
-                    self.process_bn254_curve_dbl(idata, trace, previous_lt_flags)
-                }
-                ArithEqInput::Bn254ComplexAdd(idata) => {
-                    self.process_bn254_complex_add(idata, trace, previous_lt_flags);
-                }
-                ArithEqInput::Bn254ComplexSub(idata) => {
-                    self.process_bn254_complex_sub(idata, trace, previous_lt_flags);
-                }
-                ArithEqInput::Bn254ComplexMul(idata) => {
-                    self.process_bn254_complex_mul(idata, trace, previous_lt_flags);
-                }
-                ArithEqInput::Secp256r1Add(idata) => {
-                    self.process_secp256r1_add(idata, trace, previous_lt_flags)
-                }
-                ArithEqInput::Secp256r1Dbl(idata) => {
-                    self.process_secp256r1_dbl(idata, trace, previous_lt_flags)
-                }
+                cache
+            })
+            .collect();
+
+        phase_end!(d_fill, t_fill);
+
+        phase_start!(t_merge);
+        let mut caches = caches.into_iter();
+        let merged = caches.next().map(|mut first| {
+            for other in caches {
+                first.add(&other);
             }
+            first
         });
+
+        phase_end!(d_merge, t_merge);
+
+        phase_start!(t_flush);
+        if let Some(merged) = &merged {
+            merged.flush(
+                &self.std,
+                self.q_hsc_range_id,
+                self.chunk_range_id,
+                self.carry_range_id,
+                self.table_id,
+            );
+        }
+
+        phase_end!(d_flush, t_flush);
+
+        phase_start!(t_pad);
 
         // Padding range-checks per unused op-slot, derived from this config's column set so they
         // match the PIL exactly (full air: QS=3, USE_S=true, CEQS=3 → 3 / 157 / 96):
@@ -676,8 +762,53 @@ impl<F: PrimeField64> ArithEqSM<F> {
             .par_iter_mut()
             .for_each(|slot| *slot = padding_row);
 
+        phase_end!(d_pad, t_pad);
+        phase_log!(
+            "{} witness: {} ops, {} threads, {} caches x {:.1}MiB | prep {:.1}ms \
+             cache init {:.1}ms (slowest batch) fill {:.0}ms merge {:.0}ms flush {:.0}ms pad {:.0}ms",
+            R::AIR_NAME,
+            total_inputs,
+            rayon::current_num_threads(),
+            n_batches,
+            CACHE_BYTES as f64 / (1024.0 * 1024.0),
+            phase_ms!(d_prep),
+            phase_max_ms!(init_max),
+            phase_ms!(d_fill),
+            phase_ms!(d_merge),
+            phase_ms!(d_flush),
+            phase_ms!(d_pad)
+        );
         timer_stop_and_log_trace!(ARITH_EQ_TRACE);
 
         Ok(R::into_air_instance(&mut trace))
+    }
+}
+
+/// The operation at flat index `g`, located through the per-chunk cumulative offsets.
+fn op_at<'a>(inputs: &'a [Vec<ArithEqInput>], chunk_start: &[usize], g: usize) -> &'a ArithEqInput {
+    let chunk = chunk_start.partition_point(|&start| start <= g) - 1;
+    &inputs[chunk][g - chunk_start[chunk]]
+}
+
+/// The operations from flat index `g` onwards, in order, chaining the chunks lazily rather than
+/// concatenating them.
+fn ops_from<'a>(
+    inputs: &'a [Vec<ArithEqInput>],
+    chunk_start: &[usize],
+    g: usize,
+) -> impl Iterator<Item = &'a ArithEqInput> {
+    let chunk = chunk_start.partition_point(|&start| start <= g) - 1;
+    let offset = g - chunk_start[chunk];
+    inputs[chunk][offset..].iter().chain(inputs[chunk + 1..].iter().flat_map(|c| c.iter()))
+}
+
+/// A chunk value as a field element. Split out of the old `to_ranged_field`, whose other half (the
+/// range-check bookkeeping) now goes to the batch's [`MultiplicityCache`].
+#[inline(always)]
+fn to_field<F: PrimeField64>(value: i64) -> u64 {
+    if value >= 0 {
+        value as u64
+    } else {
+        (F::ORDER_U64 as i64 + value) as u64
     }
 }
