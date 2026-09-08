@@ -3503,12 +3503,12 @@ impl Stats {
             ZiskOp::Sha256 => {
                 &[Indirect { param: 0, words: 4 }, Indirect { param: 1, words: 8 }][..]
             }
-            ZiskOp::Blake2 => &[
+            ZiskOp::Blake2b => &[
                 Literal { param: 0 },
                 Indirect { param: 1, words: 16 },
                 Indirect { param: 2, words: 16 },
             ][..],
-            ZiskOp::Blake3 => {
+            ZiskOp::Blake3 | ZiskOp::Blake2s => {
                 &[Indirect { param: 0, words: 8 }, Indirect { param: 1, words: 8 }][..]
             }
             ZiskOp::Add256 => &[

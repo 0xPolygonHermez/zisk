@@ -259,9 +259,10 @@ impl ZiskAsmContext {
                 | ZiskOp::Add256
                 | ZiskOp::Secp256r1Add
                 | ZiskOp::Secp256r1Dbl
-                | ZiskOp::Blake2
+                | ZiskOp::Blake2b
                 | ZiskOp::BabyJubJubAdd
                 | ZiskOp::Blake3
+                | ZiskOp::Blake2s
         )
     }
 
@@ -334,11 +335,15 @@ impl ZiskAsmContext {
     pub fn precompile_results_add256(&self) -> bool {
         self.precompile_results()
     }
-    pub fn precompile_results_blake2(&self) -> bool {
+    pub fn precompile_results_blake2b(&self) -> bool {
         //self.precompile_results()
         false
     }
     pub fn precompile_results_blake3(&self) -> bool {
+        //self.precompile_results()
+        false
+    }
+    pub fn precompile_results_blake2s(&self) -> bool {
         //self.precompile_results()
         false
     }
@@ -654,8 +659,9 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_bls12_381_complex_sub\n";
         *code += ".extern opcode_bls12_381_complex_mul\n";
         *code += ".extern opcode_add256\n";
-        *code += ".extern opcode_blake2\n";
+        *code += ".extern opcode_blake2b\n";
         *code += ".extern opcode_blake3\n";
+        *code += ".extern opcode_blake2s\n";
         *code += ".extern chunk_done\n";
         *code += ".extern print_fcall_ctx\n";
         *code += ".extern print_pc\n";
@@ -5086,9 +5092,9 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Blake2 => {
+            ZiskOp::Blake2b => {
                 // Use the memory address as the first and unique parameter
-                *code += &ctx.full_line_comment("Blake2: rdi = b".to_string());
+                *code += &ctx.full_line_comment("Blake2b: rdi = b".to_string());
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -5108,21 +5114,21 @@ impl ZiskRom2Asm {
                 }
 
                 // Get result from precompile results data
-                if ctx.precompile_results_blake2() {
+                if ctx.precompile_results_blake2b() {
                     *code += "\tmov rdi, [rdi+8]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 16);
                 } else {
-                    // Call the Blake2 function
+                    // Call the Blake2b function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_blake2\n";
+                    *code += "\tcall _opcode_blake2b\n";
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
                 // Set result
                 *code +=
-                    &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake2: c = 0"));
+                    &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake2b: c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -5163,6 +5169,46 @@ impl ZiskRom2Asm {
                 // Set result
                 *code +=
                     &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake3: c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Blake2s => {
+                // Use the memory address as the first and unique parameter
+                *code += &ctx.full_line_comment("Blake2s: rdi = b".to_string());
+
+                // Use the memory address as the first and unique parameter
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = address")
+                );
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() {
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                }
+
+                // Get result from precompile results data
+                if ctx.precompile_results_blake2s() {
+                    *code += "\tmov rdi, [rdi]\n";
+                    Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                } else {
+                    // Call the Blake2s function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_blake2s\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Set result
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake2s: c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }

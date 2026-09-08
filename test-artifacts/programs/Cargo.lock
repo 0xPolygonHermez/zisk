@@ -915,7 +915,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "blake2"
+name = "blake2b"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.8",
+ "zisk-precomp-helpers",
+ "zisk-sdk",
+ "ziskos",
+]
+
+[[package]]
+name = "blake2s"
 version = "0.1.0"
 dependencies = [
  "rand 0.8.8",

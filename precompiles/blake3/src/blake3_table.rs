@@ -8,13 +8,13 @@
 pub struct Blake3fTableSM;
 
 impl Blake3fTableSM {
-    /// Must match `BLAKE3F_TABLE_ID` in `pil/opids.pil`.
-    pub const TABLE_ID: usize = 131;
+    /// Must match `BLAKE_TABLE_ID` in `pil/opids.pil`.
+    pub const TABLE_ID: usize = 129;
 
     /// Calculates the table row for the tuple (a, b, rot).
     ///
     /// The table iterates A fastest, then B, then the rotation (0 first, 12 second),
-    /// mirroring the fixed columns of `blake3f_table.pil`.
+    /// mirroring the fixed columns of `blake_table.pil`.
     ///
     /// # Arguments
     /// * `a` - The first input byte.
