@@ -4657,7 +4657,7 @@ mod tests {
             // reg32 = rs1 & 0xFFFFFFFF (the zero extension)
             let zext = &rom.insts[&ROM_ADDR].i;
             let want = expected_zero_extension(inst.rs1, SCRATCH_REG).i;
-            assert_eq!(zext.op, ZiskOp::And.code());
+            assert_eq!(zext.op, ZiskOp::AND);
             assert_eq!((zext.a_src, zext.a_offset_imm0), (want.a_src, want.a_offset_imm0));
             assert_eq!((zext.b_src, zext.b_offset_imm0), (want.b_src, want.b_offset_imm0));
             assert_eq!((zext.store, zext.store_offset), (want.store, want.store_offset));

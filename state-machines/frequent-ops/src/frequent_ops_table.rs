@@ -1,88 +1,47 @@
 use static_assertions::const_assert;
 use zisk_core::zisk_ops::ZiskOp;
 
-const OP_SIGNEXTENDB: u8 = ZiskOp::SignExtendB.code();
-const OP_SIGNEXTENDH: u8 = ZiskOp::SignExtendH.code();
-const OP_SIGNEXTENDW: u8 = ZiskOp::SignExtendW.code();
-const OP_ADD: u8 = ZiskOp::Add.code();
-const OP_ADDW: u8 = ZiskOp::AddW.code();
-const OP_SUB: u8 = ZiskOp::Sub.code();
-const OP_SUBW: u8 = ZiskOp::SubW.code();
-const OP_SLL: u8 = ZiskOp::Sll.code();
-const OP_SLLW: u8 = ZiskOp::SllW.code();
-const OP_SRA: u8 = ZiskOp::Sra.code();
-const OP_SRL: u8 = ZiskOp::Srl.code();
-const OP_SRAW: u8 = ZiskOp::SraW.code();
-const OP_SRLW: u8 = ZiskOp::SrlW.code();
-const OP_EQ: u8 = ZiskOp::Eq.code();
-const OP_EQW: u8 = ZiskOp::EqW.code();
-const OP_LTU: u8 = ZiskOp::Ltu.code();
-const OP_LT: u8 = ZiskOp::Lt.code();
-const OP_LTUW: u8 = ZiskOp::LtuW.code();
-const OP_LTW: u8 = ZiskOp::LtW.code();
-const OP_LEU: u8 = ZiskOp::Leu.code();
-const OP_LE: u8 = ZiskOp::Le.code();
-const OP_LEUW: u8 = ZiskOp::LeuW.code();
-const OP_LEW: u8 = ZiskOp::LeW.code();
-const OP_AND: u8 = ZiskOp::And.code();
-const OP_OR: u8 = ZiskOp::Or.code();
-const OP_XOR: u8 = ZiskOp::Xor.code();
-const OP_MULU: u8 = ZiskOp::Mulu.code();
-const OP_MULUH: u8 = ZiskOp::Muluh.code();
-const OP_MULSUH: u8 = ZiskOp::Mulsuh.code();
-const OP_MUL: u8 = ZiskOp::Mul.code();
-const OP_MULH: u8 = ZiskOp::Mulh.code();
-const OP_MULW: u8 = ZiskOp::MulW.code();
-const OP_DIVU: u8 = ZiskOp::Divu.code();
-const OP_REMU: u8 = ZiskOp::Remu.code();
-const OP_DIV: u8 = ZiskOp::Div.code();
-const OP_REM: u8 = ZiskOp::Rem.code();
-const OP_DIVUW: u8 = ZiskOp::DivuW.code();
-const OP_REMUW: u8 = ZiskOp::RemuW.code();
-const OP_DIVW: u8 = ZiskOp::DivW.code();
-const OP_REMW: u8 = ZiskOp::RemW.code();
-
 const LOW_VALUES_OPCODES: [u8; 40] = [
-    OP_SIGNEXTENDB,
-    OP_SIGNEXTENDH,
-    OP_SIGNEXTENDW,
-    OP_ADD,
-    OP_ADDW,
-    OP_SUB,
-    OP_SUBW,
-    OP_SLL,
-    OP_SLLW,
-    OP_SRA,
-    OP_SRL,
-    OP_SRAW,
-    OP_SRLW,
-    OP_EQ,
-    OP_EQW,
-    OP_LTU,
-    OP_LT,
-    OP_LTUW,
-    OP_LTW,
-    OP_LEU,
-    OP_LE,
-    OP_LEUW,
-    OP_LEW,
-    OP_AND,
-    OP_OR,
-    OP_XOR,
-    OP_MULU,
-    OP_MULUH,
-    OP_MULSUH,
-    OP_MUL,
-    OP_MULH,
-    OP_MULW,
-    OP_DIVU,
-    OP_REMU,
-    OP_DIV,
-    OP_REM,
-    OP_DIVUW,
-    OP_REMUW,
-    OP_DIVW,
-    OP_REMW,
+    ZiskOp::SIGNEXTEND_B,
+    ZiskOp::SIGNEXTEND_H,
+    ZiskOp::SIGNEXTEND_W,
+    ZiskOp::ADD,
+    ZiskOp::ADD_W,
+    ZiskOp::SUB,
+    ZiskOp::SUB_W,
+    ZiskOp::SLL,
+    ZiskOp::SLL_W,
+    ZiskOp::SRA,
+    ZiskOp::SRL,
+    ZiskOp::SRA_W,
+    ZiskOp::SRL_W,
+    ZiskOp::EQ,
+    ZiskOp::EQ_W,
+    ZiskOp::LTU,
+    ZiskOp::LT,
+    ZiskOp::LTU_W,
+    ZiskOp::LT_W,
+    ZiskOp::LEU,
+    ZiskOp::LE,
+    ZiskOp::LEU_W,
+    ZiskOp::LE_W,
+    ZiskOp::AND,
+    ZiskOp::OR,
+    ZiskOp::XOR,
+    ZiskOp::MULU,
+    ZiskOp::MULUH,
+    ZiskOp::MULSUH,
+    ZiskOp::MUL,
+    ZiskOp::MULH,
+    ZiskOp::MUL_W,
+    ZiskOp::DIVU,
+    ZiskOp::REMU,
+    ZiskOp::DIV,
+    ZiskOp::REM,
+    ZiskOp::DIVU_W,
+    ZiskOp::REMU_W,
+    ZiskOp::DIV_W,
+    ZiskOp::REM_W,
 ];
 
 const MAX_A_LOW_VALUE: u64 = 386;
@@ -244,7 +203,7 @@ impl FrequentOpsTable {
         for i in 0..=EQ_OP_B_ZERO_A_LIMIT {
             ops.push([i, 0]);
         }
-        self.add_ops(OP_EQ, &mut ops, true);
+        self.add_ops(ZiskOp::EQ, &mut ops, true);
     }
     #[inline(always)]
     fn get_eq_offset(a: u64, b: u64) -> Option<usize> {
@@ -262,7 +221,7 @@ impl FrequentOpsTable {
         for i in LTU_OP_B_LT_ONE_FROM..=MAX_U64 {
             ops.push([i, 1]);
         }
-        self.add_ops(OP_LTU, &mut ops, true);
+        self.add_ops(ZiskOp::LTU, &mut ops, true);
     }
 
     #[inline(always)]
@@ -297,7 +256,7 @@ impl FrequentOpsTable {
         for i in MAX_B_LOW_VALUE..LT_ZERO_TO_B {
             ops.push([0, i]);
         }
-        self.add_ops(OP_LT, &mut ops, true);
+        self.add_ops(ZiskOp::LT, &mut ops, true);
     }
     #[inline(always)]
     fn is_frequent_lt(a: u64, b: u64) -> bool {
@@ -391,7 +350,7 @@ impl FrequentOpsTable {
         }
         assert_eq!((ADD_ZERO_ADDR_OFFSET + ADD_ZERO_ADDR_SIZE), LOW_VALUE_SIZE + ops.len());
 
-        self.add_ops(OP_ADD, &mut ops, true);
+        self.add_ops(ZiskOp::ADD, &mut ops, true);
     }
 
     #[inline(always)]
@@ -478,7 +437,7 @@ impl FrequentOpsTable {
             (AND_GET_LAST_THREE_BITS_OFFSET + AND_GET_LAST_THREE_BITS_SIZE),
             LOW_VALUE_SIZE + ops.len()
         );
-        self.add_ops(OP_AND, &mut ops, true);
+        self.add_ops(ZiskOp::AND, &mut ops, true);
     }
 
     #[inline(always)]
@@ -511,7 +470,7 @@ impl FrequentOpsTable {
                 ops.push([i, j]);
             }
         }
-        self.add_ops(OP_OR, &mut ops, true);
+        self.add_ops(ZiskOp::OR, &mut ops, true);
     }
     #[inline(always)]
     fn is_frequent_or(a: u64, b: u64) -> bool {
@@ -535,7 +494,7 @@ impl FrequentOpsTable {
                 ops.push([i, j]);
             }
         }
-        self.add_ops(OP_SRL, &mut ops, true);
+        self.add_ops(ZiskOp::SRL, &mut ops, true);
     }
     #[inline(always)]
     fn is_frequent_srl(a: u64, b: u64) -> bool {
@@ -556,7 +515,7 @@ impl FrequentOpsTable {
         for i in (SUB_W_ADDR_FROM..SUB_W_ADDR_TO).step_by(SUB_W_ADDR_STEP as usize) {
             ops.push([0, i]);
         }
-        self.add_ops(OP_SUBW, &mut ops, true);
+        self.add_ops(ZiskOp::SUB_W, &mut ops, true);
     }
     #[inline(always)]
     fn is_frequent_sub_w(a: u64, b: u64) -> bool {
@@ -583,7 +542,7 @@ impl FrequentOpsTable {
         let mut ops: Vec<[u64; 2]> = Vec::new();
         ops.push([0, MAX_U64]);
         ops.push([1, MAX_U64]);
-        self.add_ops(OP_XOR, &mut ops, true);
+        self.add_ops(ZiskOp::XOR, &mut ops, true);
     }
     #[inline(always)]
     fn is_frequent_xor(a: u64, b: u64) -> bool {
@@ -610,7 +569,7 @@ impl FrequentOpsTable {
                 ops.push([i, j]);
             }
         }
-        self.add_ops(OP_SUB, &mut ops, true);
+        self.add_ops(ZiskOp::SUB, &mut ops, true);
     }
     #[inline(always)]
     fn is_frequent_sub(a: u64, b: u64) -> bool {
@@ -649,22 +608,46 @@ impl FrequentOpsTable {
         // Use lookup table for faster branching instead of match on enum
         match op {
             // Low value operations - check bounds first (most common case)
-            OP_SIGNEXTENDB | OP_SIGNEXTENDH | OP_SIGNEXTENDW | OP_ADDW | OP_SLL | OP_SLLW
-            | OP_SRA | OP_SRAW | OP_SRLW | OP_EQW | OP_LTUW | OP_LTW | OP_LEU | OP_LE | OP_LEUW
-            | OP_LEW | OP_MULU | OP_MULUH | OP_MULSUH | OP_MUL | OP_MULH | OP_MULW | OP_DIVU
-            | OP_REMU | OP_DIV | OP_REM | OP_DIVUW | OP_REMUW | OP_DIVW | OP_REMW => {
-                a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE
-            }
+            ZiskOp::SIGNEXTEND_B
+            | ZiskOp::SIGNEXTEND_H
+            | ZiskOp::SIGNEXTEND_W
+            | ZiskOp::ADD_W
+            | ZiskOp::SLL
+            | ZiskOp::SLL_W
+            | ZiskOp::SRA
+            | ZiskOp::SRA_W
+            | ZiskOp::SRL_W
+            | ZiskOp::EQ_W
+            | ZiskOp::LTU_W
+            | ZiskOp::LT_W
+            | ZiskOp::LEU
+            | ZiskOp::LE
+            | ZiskOp::LEU_W
+            | ZiskOp::LE_W
+            | ZiskOp::MULU
+            | ZiskOp::MULUH
+            | ZiskOp::MULSUH
+            | ZiskOp::MUL
+            | ZiskOp::MULH
+            | ZiskOp::MUL_W
+            | ZiskOp::DIVU
+            | ZiskOp::REMU
+            | ZiskOp::DIV
+            | ZiskOp::REM
+            | ZiskOp::DIVU_W
+            | ZiskOp::REMU_W
+            | ZiskOp::DIV_W
+            | ZiskOp::REM_W => a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE,
             // Special cases - inline the logic to avoid function calls
-            OP_EQ => {
+            ZiskOp::EQ => {
                 (b == 0 && a <= EQ_OP_B_ZERO_A_LIMIT)
                     || (b < MAX_B_LOW_VALUE && a < MAX_A_LOW_VALUE)
             }
-            OP_LTU => {
+            ZiskOp::LTU => {
                 (b == 1 && !(MAX_A_LOW_VALUE..LTU_OP_B_LT_ONE_FROM).contains(&a))
                     || (b < MAX_B_LOW_VALUE && a < MAX_A_LOW_VALUE)
             }
-            OP_ADD => {
+            ZiskOp::ADD => {
                 // Inline is_frequent_add logic
                 if b < MAX_B_LOW_VALUE {
                     if a < MAX_A_LOW_VALUE {
@@ -689,7 +672,7 @@ impl FrequentOpsTable {
                     b >= ADD_MINUS_A_B_FROM_B && a < MAX_ADD_MINUS_A
                 }
             }
-            OP_AND => {
+            ZiskOp::AND => {
                 // Inline is_frequent_and logic
                 (a == AND_CODE_ADDR_MASK
                     && (b & 0x03) == 0
@@ -701,12 +684,12 @@ impl FrequentOpsTable {
                     || (a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE)
             }
             // Other special cases - call functions for less common operations
-            OP_LT => Self::is_frequent_lt(a, b),
-            OP_SUBW => Self::is_frequent_sub_w(a, b),
-            OP_SUB => Self::is_frequent_sub(a, b),
-            OP_OR => Self::is_frequent_or(a, b),
-            OP_SRL => Self::is_frequent_srl(a, b),
-            OP_XOR => Self::is_frequent_xor(a, b),
+            ZiskOp::LT => Self::is_frequent_lt(a, b),
+            ZiskOp::SUB_W => Self::is_frequent_sub_w(a, b),
+            ZiskOp::SUB => Self::is_frequent_sub(a, b),
+            ZiskOp::OR => Self::is_frequent_or(a, b),
+            ZiskOp::SRL => Self::is_frequent_srl(a, b),
+            ZiskOp::XOR => Self::is_frequent_xor(a, b),
             _ => false,
         }
     }
@@ -715,26 +698,52 @@ impl FrequentOpsTable {
     pub fn get_row(op: u8, a: u64, b: u64) -> Option<usize> {
         // ecall/system call functions are not candidates to be usual
         let relative_offset = match op {
-            OP_SIGNEXTENDB | OP_SIGNEXTENDH | OP_SIGNEXTENDW | OP_ADDW | OP_SLL | OP_SLLW
-            | OP_SRA | OP_SRAW | OP_SRLW | OP_EQW | OP_LTUW | OP_LTW | OP_LEU | OP_LE | OP_LEUW
-            | OP_LEW | OP_MULU | OP_MULUH | OP_MULSUH | OP_MUL | OP_MULH | OP_MULW | OP_DIVU
-            | OP_REMU | OP_DIV | OP_REM | OP_DIVUW | OP_REMUW | OP_DIVW | OP_REMW => {
+            ZiskOp::SIGNEXTEND_B
+            | ZiskOp::SIGNEXTEND_H
+            | ZiskOp::SIGNEXTEND_W
+            | ZiskOp::ADD_W
+            | ZiskOp::SLL
+            | ZiskOp::SLL_W
+            | ZiskOp::SRA
+            | ZiskOp::SRA_W
+            | ZiskOp::SRL_W
+            | ZiskOp::EQ_W
+            | ZiskOp::LTU_W
+            | ZiskOp::LT_W
+            | ZiskOp::LEU
+            | ZiskOp::LE
+            | ZiskOp::LEU_W
+            | ZiskOp::LE_W
+            | ZiskOp::MULU
+            | ZiskOp::MULUH
+            | ZiskOp::MULSUH
+            | ZiskOp::MUL
+            | ZiskOp::MULH
+            | ZiskOp::MUL_W
+            | ZiskOp::DIVU
+            | ZiskOp::REMU
+            | ZiskOp::DIV
+            | ZiskOp::REM
+            | ZiskOp::DIVU_W
+            | ZiskOp::REMU_W
+            | ZiskOp::DIV_W
+            | ZiskOp::REM_W => {
                 if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
                     Some(Self::get_low_values_offset(a, b))
                 } else {
                     None
                 }
             }
-            OP_EQ => Self::get_eq_offset(a, b),
-            OP_LTU => Self::get_ltu_offset(a, b),
-            OP_LT => Self::get_lt_offset(a, b),
-            OP_SUBW => Self::get_sub_w_offset(a, b),
-            OP_SUB => Self::get_sub_offset(a, b),
-            OP_OR => Self::get_or_offset(a, b),
-            OP_SRL => Self::get_srl_offset(a, b),
-            OP_XOR => Self::get_xor_offset(a, b),
-            OP_AND => Self::get_and_offset(a, b),
-            OP_ADD => Self::get_add_offset(a, b),
+            ZiskOp::EQ => Self::get_eq_offset(a, b),
+            ZiskOp::LTU => Self::get_ltu_offset(a, b),
+            ZiskOp::LT => Self::get_lt_offset(a, b),
+            ZiskOp::SUB_W => Self::get_sub_w_offset(a, b),
+            ZiskOp::SUB => Self::get_sub_offset(a, b),
+            ZiskOp::OR => Self::get_or_offset(a, b),
+            ZiskOp::SRL => Self::get_srl_offset(a, b),
+            ZiskOp::XOR => Self::get_xor_offset(a, b),
+            ZiskOp::AND => Self::get_and_offset(a, b),
+            ZiskOp::ADD => Self::get_add_offset(a, b),
             _ => None,
         };
         relative_offset.map(|offset| OP_TABLE_OFFSETS[op as usize] + offset)
@@ -825,13 +834,13 @@ fn test_frequent_ops() {
     let table = fops.generate_full_table();
 
     let tests = [
-        (OP_ADD, 100, 100, true),
-        (OP_ADD, 100, -1i64 as u64, true),
-        (OP_ADD, 100000, 100000, false),
-        (OP_ADD, 100, -200000i64 as u64, false),
-        (OP_ADD, 100, -2i64 as u64, true),
-        (OP_ADD, 0xFFFF_FFFF_FFFF_FFFC, 0x8000_1000, false),
-        (OP_ADD, 0xFFFF_FFFF_FFFF_FFFC, 0xA010_1000, false),
+        (ZiskOp::ADD, 100, 100, true),
+        (ZiskOp::ADD, 100, -1i64 as u64, true),
+        (ZiskOp::ADD, 100000, 100000, false),
+        (ZiskOp::ADD, 100, -200000i64 as u64, false),
+        (ZiskOp::ADD, 100, -2i64 as u64, true),
+        (ZiskOp::ADD, 0xFFFF_FFFF_FFFF_FFFC, 0x8000_1000, false),
+        (ZiskOp::ADD, 0xFFFF_FFFF_FFFF_FFFC, 0xA010_1000, false),
     ];
     check_tests(&table, &tests);
 }

@@ -91,8 +91,8 @@ airtemplate BinaryExtensionTable(int N = 0) {
     // Operation opcode
     col fixed OP = [ OP_SLL:P2_17,    OP_SRL:P2_17,    OP_SRA:P2_17,      // SLL, SRL, SRA
                      OP_SLL_W:P2_17,  OP_SRL_W:P2_17,  OP_SRA_W:P2_17,    // SLL_W, SRL_W, SRA_W
-                     OP_SEXT_B:P2_11, OP_SEXT_H:P2_11, OP_SEXT_W:P2_11,   // SEXT_B, SEXT_H, SEXT_W
-                     OP_REV8:P2_11,   OP_ORCB:P2_11,                      // REV8, ORCB
+                     OP_SIGNEXTEND_B:P2_11, OP_SIGNEXTEND_H:P2_11, OP_SIGNEXTEND_W:P2_11,   // SEXT_B, SEXT_H, SEXT_W
+                     OP_REV8:P2_11,   OP_ORC_B:P2_11,                      // REV8, ORCB
                      OP_ROL:P2_17,    OP_ROL_W:P2_17,                     // ROL, ROL_W
                      OP_ROR:P2_17,    OP_ROR_W:P2_17,                     // ROR, ROR_W
                      OP_CPOP:P2_11,   OP_CPOP_W:P2_11,                    // CPOP, CPOP_W
@@ -101,7 +101,7 @@ airtemplate BinaryExtensionTable(int N = 0) {
                      OP_PACK:P2_11,   OP_PACK_H:P2_11, OP_PACK_W:P2_11,   // PACK, PACK_H, PACK_W
                      OP_BCLR:P2_17,   OP_BEXT:P2_17,                      // BCLR, BEXT
                      OP_BINV:P2_17,   OP_BSET:P2_17,                      // BINV, BSET
-                     OP_SLL_UW:P2_17]...;                                 // SLL_UW
+                     OP_SLL_U_W:P2_17]...;                                 // SLL_UW
 
 
     col fixed C0; // Output C0  (32 bits)
@@ -212,7 +212,7 @@ airtemplate BinaryExtensionTable(int N = 0) {
 
                 op_is_shift = 1;
 
-            case OP_SEXT_B: // SEXT_B: Sign Extend Byte (8-bit to 64-bit)
+            case OP_SIGNEXTEND_B: // SEXT_B: Sign Extend Byte (8-bit to 64-bit)
                 // Sign extends an 8-bit value to 64-bit
                 // Example: SEXT_B(0x7F, offset=0) = 0x7F (positive byte)
                 // Example: SEXT_B(0x80, offset=0) = 0xFFFFFFFFFFFFFF80 (negative byte)
@@ -225,7 +225,7 @@ airtemplate BinaryExtensionTable(int N = 0) {
                     out = 0;
                 }
 
-            case OP_SEXT_H: // SEXT_H: Sign Extend Halfword (16-bit to 64-bit)
+            case OP_SIGNEXTEND_H: // SEXT_H: Sign Extend Halfword (16-bit to 64-bit)
                 // Sign extends a 16-bit value to 64-bit
                 // Example: SEXT_H with offset=0,A=0x34 and offset=1,A=0x12 = 0x1234 (positive)
                 // Example: SEXT_H with offset=0,A=0x34 and offset=1,A=0x80 = 0xFFFFFFFFFFFF8034 (negative)
@@ -240,7 +240,7 @@ airtemplate BinaryExtensionTable(int N = 0) {
                     out = 0;
                 }
 
-            case OP_SEXT_W: // SEXT_W: Sign Extend Word (32-bit to 64-bit)
+            case OP_SIGNEXTEND_W: // SEXT_W: Sign Extend Word (32-bit to 64-bit)
                 // Sign extends a 32-bit value to 64-bit
                 // Example: SEXT_W with bytes forming 0x12345678 = 0x12345678 (positive)
                 // Example: SEXT_W with bytes forming 0x80000000 = 0xFFFFFFFF80000000 (negative)
@@ -260,7 +260,7 @@ airtemplate BinaryExtensionTable(int N = 0) {
                 out = a << (8 * (7 - offset));
                 // op_is_shift stays 0 (single input, like SEXT)
 
-            case OP_ORCB: // ORC.B: OR-combine bits within each byte, in place
+            case OP_ORC_B: // ORC.B: OR-combine bits within each byte, in place
                 // Output byte is 0xFF if the input byte has any bit set, else 0x00.
                 out = ((a != 0) ? 0xFF : 0x00) << (8 * offset);
                 // op_is_shift stays 0 (single input, per-byte, like SEXT)
@@ -452,7 +452,7 @@ airtemplate BinaryExtensionTable(int N = 0) {
                 out = a_pos | ((offset == (bset_pos >> 3)) ? (1 << bset_pos) : 0);
                 op_is_shift = 1;
 
-            case OP_SLL_UW: // SLL_UW: rd = zext32(a) << (b & 63)  (slli.uw)
+            case OP_SLL_U_W: // SLL_UW: rd = zext32(a) << (b & 63)  (slli.uw)
                 // Like SLL but only the low 4 bytes of A take part, which is the zero extension of
                 // the 32-bit operand. The result is a full 64-bit value (no truncation, no sign
                 // extension), so it differs from SLL_W in both the input width and the output.

@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn extension_shift_requires_full_only_when_amount_is_dirty() {
-        let sll = ZiskOp::Sll.code();
+        let sll = ZiskOp::SLL;
         assert!(!extension_requires_full(sll, 0x1234, 63));
         assert!(extension_requires_full(sll, 0x1234, 64));
         assert!(extension_requires_full(sll, 0x1234, 1 << 32));
@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn extension_combine_requires_full_only_when_a_high_limb_is_dirty() {
-        let pack = ZiskOp::Pack.code();
+        let pack = ZiskOp::PACK;
         assert!(!extension_requires_full(pack, 0xFFFF_FFFF, 0xFFFF_FFFF));
         assert!(extension_requires_full(pack, 1 << 32, 0));
         assert!(extension_requires_full(pack, 0, 1 << 32));
@@ -250,7 +250,7 @@ mod tests {
 
     #[test]
     fn extension_single_source_requires_full_only_when_bus_a_is_set() {
-        let rev8 = ZiskOp::Rev8.code();
+        let rev8 = ZiskOp::REV8;
         assert!(!extension_requires_full(rev8, 0, u64::MAX));
         assert!(extension_requires_full(rev8, 1, u64::MAX));
     }

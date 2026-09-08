@@ -87,19 +87,11 @@ pub fn classify(code: u8) -> Option<OpInfo> {
     let (table, sm) = match op.op_type() {
         OpType::Arith | OpType::ArithA32 | OpType::ArithAm32 => (FropsTable::Arith, Sm::Arith),
         OpType::Binary => {
-            let sm = if code == ZiskOp::Add.code() { Sm::BinaryAdd } else { Sm::Binary };
+            let sm = if code == ZiskOp::ADD { Sm::BinaryAdd } else { Sm::Binary };
             (FropsTable::BinaryBasic, sm)
         }
         OpType::BinaryE => (FropsTable::BinaryExt, Sm::BinaryExt),
         _ => return None,
     };
     Some(OpInfo { code, name: op.name(), cost: op.cost(), table, sm })
-}
-
-/// `ZiskOp` enum-variant identifier (e.g. `Mulu`, `Add`) for a code, used to emit
-/// `ZiskOp::<Variant>.code()` in generated source. Returns the debug name of the enum variant.
-pub fn variant_ident(code: u8) -> Option<String> {
-    let op = ZiskOp::try_from_code(code).ok()?;
-    // `Debug` for the enum prints the variant identifier exactly (e.g. "Mulu", "SignExtendB").
-    Some(format!("{op:?}"))
 }

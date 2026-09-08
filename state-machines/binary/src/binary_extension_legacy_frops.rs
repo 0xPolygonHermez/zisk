@@ -10,16 +10,6 @@
 
 use zisk_core::zisk_ops::ZiskOp;
 
-const OP_SIGNEXTENDB: u8 = ZiskOp::SignExtendB.code();
-const OP_SIGNEXTENDH: u8 = ZiskOp::SignExtendH.code();
-const OP_SIGNEXTENDW: u8 = ZiskOp::SignExtendW.code();
-const OP_SLL: u8 = ZiskOp::Sll.code();
-const OP_SLLW: u8 = ZiskOp::SllW.code();
-const OP_SRA: u8 = ZiskOp::Sra.code();
-const OP_SRL: u8 = ZiskOp::Srl.code();
-const OP_SRAW: u8 = ZiskOp::SraW.code();
-const OP_SRLW: u8 = ZiskOp::SrlW.code();
-
 const MAX_A_LOW_VALUE: u64 = 386;
 const MAX_B_LOW_VALUE: u64 = 386;
 const LOW_VALUE_SIZE: usize = MAX_A_LOW_VALUE as usize * MAX_B_LOW_VALUE as usize;
@@ -65,10 +55,16 @@ impl BinaryExtensionLegacyFrops {
         // Use lookup table for faster branching instead of match on enum
         match op {
             // Low value operations - check bounds first (most common case)
-            OP_SIGNEXTENDB | OP_SIGNEXTENDH | OP_SIGNEXTENDW | OP_SLL | OP_SLLW | OP_SRA
-            | OP_SRAW | OP_SRLW => a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE,
+            ZiskOp::SIGNEXTEND_B
+            | ZiskOp::SIGNEXTEND_H
+            | ZiskOp::SIGNEXTEND_W
+            | ZiskOp::SLL
+            | ZiskOp::SLL_W
+            | ZiskOp::SRA
+            | ZiskOp::SRA_W
+            | ZiskOp::SRL_W => a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE,
             // Special cases - inline the logic to avoid function calls
-            OP_SRL => Self::is_frequent_srl(a, b),
+            ZiskOp::SRL => Self::is_frequent_srl(a, b),
             _ => false,
         }
     }
@@ -77,15 +73,21 @@ impl BinaryExtensionLegacyFrops {
     pub fn get_row(op: u8, a: u64, b: u64) -> usize {
         // ecall/system call functions are not candidates to be usual
         let relative_offset = match op {
-            OP_SIGNEXTENDB | OP_SIGNEXTENDH | OP_SIGNEXTENDW | OP_SLL | OP_SLLW | OP_SRA
-            | OP_SRAW | OP_SRLW => {
+            ZiskOp::SIGNEXTEND_B
+            | ZiskOp::SIGNEXTEND_H
+            | ZiskOp::SIGNEXTEND_W
+            | ZiskOp::SLL
+            | ZiskOp::SLL_W
+            | ZiskOp::SRA
+            | ZiskOp::SRA_W
+            | ZiskOp::SRL_W => {
                 if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
                     Self::get_low_values_offset(a, b)
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_SRL => Self::get_srl_offset(a, b),
+            ZiskOp::SRL => Self::get_srl_offset(a, b),
             _ => Self::NO_FROPS,
         };
         if relative_offset == Self::NO_FROPS {

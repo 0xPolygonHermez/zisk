@@ -108,10 +108,10 @@ impl OpsCosts {
             // (total_count()) stay consistent with the per-opcode count_and_cost table below and
             // they remain visible in the report: PubOut and the free-input calls (fcall*).
             let counted = cost > 0
-                || op_code == ZiskOp::PubOut.code()
-                || op_code == ZiskOp::Fcall.code()
-                || op_code == ZiskOp::FcallGet.code()
-                || op_code == ZiskOp::FcallParam.code();
+                || op_code == ZiskOp::PUBOUT
+                || op_code == ZiskOp::FCALL
+                || op_code == ZiskOp::FCALL_GET
+                || op_code == ZiskOp::FCALL_PARAM;
             if counted && !self.is_compact() {
                 self.count_and_cost[index].0 += 1;
                 self.count_and_cost[index].1 += cost;

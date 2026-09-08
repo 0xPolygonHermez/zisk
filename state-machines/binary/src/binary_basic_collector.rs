@@ -71,7 +71,7 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
         }
 
         // Additions are split by operand shape, since the planner places each shape independently.
-        let kind = if OperationBusData::get_op(&op_data) == ZiskOp::Add.code() {
+        let kind = if OperationBusData::get_op(&op_data) == ZiskOp::ADD {
             match add_shape(data[A], data[B]) {
                 AddShape::Hi | AddShape::HiNeg => KIND_ADD_HI,
                 AddShape::Full => KIND_ADD_FULL,

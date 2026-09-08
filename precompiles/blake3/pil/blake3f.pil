@@ -466,7 +466,7 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
         // MAIN PROCESSOR INTEGRATION
         // ───────────────────────────────────────────────────────────────────────
 
-        proves_operation(op: OP_BLAKE3F, b: [step_addr[l]'(ADDR_OP), 0], main_step: step_addr[l]'(STEP_MAIN),
+        proves_operation(op: OP_BLAKE3, b: [step_addr[l]'(ADDR_OP), 0], main_step: step_addr[l]'(STEP_MAIN),
                          mul: in_use_clk_0[l]);
     }
 

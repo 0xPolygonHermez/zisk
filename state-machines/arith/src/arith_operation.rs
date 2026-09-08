@@ -164,19 +164,19 @@ impl ArithOperation {
         self.input_a = input_a;
         self.input_b = input_b;
         self.div_by_zero = input_b == 0
-            && (op == ZiskOp::Div.code()
-                || op == ZiskOp::Rem.code()
-                || op == ZiskOp::DivW.code()
-                || op == ZiskOp::RemW.code()
-                || op == ZiskOp::Divu.code()
-                || op == ZiskOp::Remu.code()
-                || op == ZiskOp::DivuW.code()
-                || op == ZiskOp::RemuW.code());
+            && (op == ZiskOp::DIV
+                || op == ZiskOp::REM
+                || op == ZiskOp::DIV_W
+                || op == ZiskOp::REM_W
+                || op == ZiskOp::DIVU
+                || op == ZiskOp::REMU
+                || op == ZiskOp::DIVU_W
+                || op == ZiskOp::REMU_W);
 
-        self.div_overflow = ((op == ZiskOp::Div.code() || op == ZiskOp::Rem.code())
+        self.div_overflow = ((op == ZiskOp::DIV || op == ZiskOp::REM)
             && input_a == 0x8000_0000_0000_0000
             && input_b == 0xFFFF_FFFF_FFFF_FFFF)
-            || ((op == ZiskOp::DivW.code() || op == ZiskOp::RemW.code())
+            || ((op == ZiskOp::DIV_W || op == ZiskOp::REM_W)
                 && input_a == 0x8000_0000
                 && input_b == 0xFFFF_FFFF);
 

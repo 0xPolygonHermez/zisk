@@ -116,14 +116,13 @@ const RETURN_REGS: [u8; 2] = [REG_RA_IDX, REG_T0_IDX];
 //   add_hi0 : hi32(a)=hi32(c)=0 and hi32(b)=0            (both operands fit in 32 bits)
 //   add_hif : hi32(a)=hi32(c)=0 and hi32(b)=0xFFFF_FFFF  (a subtraction encoded as an addition)
 // ------------------------------------------------------------------------------------------------
-const ADD_CODE: u8 = ZiskOp::Add.code();
 const HI32_MASK: u64 = 0xFFFF_FFFF_0000_0000;
 const CHEAP_ADD_HI0: usize = 0;
 const CHEAP_ADD_HIF: usize = 1;
 const CHEAP_VARIANT_COUNT: usize = 2;
 /// (base opcode, label, reduced cost) for each cheap variant, indexed by `CHEAP_*`.
 const CHEAP_VARIANTS: [(u8, &str, u64); CHEAP_VARIANT_COUNT] =
-    [(ADD_CODE, "add_hi0", BINARY_ADD_HI_COST), (ADD_CODE, "add_hif", BINARY_ADD_HI_COST)];
+    [(ZiskOp::ADD, "add_hi0", BINARY_ADD_HI_COST), (ZiskOp::ADD, "add_hif", BINARY_ADD_HI_COST)];
 
 // ------------------------------------------------------------------------------------------------
 // Precompile duplicate analysis: detect precompile calls that repeat the same computation (same
@@ -3474,7 +3473,7 @@ impl Stats {
     /// hi32(a)=hi32(c)=0 with hi32(b)=0 (add_hi0) or hi32(b)=0xFFFF_FFFF (add_hif).
     #[inline(always)]
     fn cheap_variant(op: u8, a: u64, b: u64, c: u64) -> Option<usize> {
-        if op == ADD_CODE && a & HI32_MASK == 0 && c & HI32_MASK == 0 {
+        if op == ZiskOp::ADD && a & HI32_MASK == 0 && c & HI32_MASK == 0 {
             if b & HI32_MASK == 0 {
                 return Some(CHEAP_ADD_HI0);
             } else if b & HI32_MASK == HI32_MASK {

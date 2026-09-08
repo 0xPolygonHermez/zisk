@@ -406,6 +406,13 @@ macro_rules! define_ops {
 define_ops! {
     (Flag, "flag", Internal, INTERNAL_COST, 0x00, 0, 0, opc_flag, op_flag, ops_none),
     (CopyB, "copyb", Internal, INTERNAL_COST, 0x01, 0, 0, opc_copyb, op_copyb, ops_none),
+
+    // Binary
+    //
+    // Binary proves an opcode and its m32 variant at opcode+0x10 with the same air: `mode32` is a
+    // free witness, so from `b_op` it can always also prove `b_op + 0x10`. Every opcode assigned
+    // to Binary therefore reserves opcode+0x10 as well, even when no m32 variant exists: giving
+    // that slot to a different operation would let Binary satisfy it with the wrong semantics.
     (Minu, "minu", Binary, BINARY_COST, 0x02, 0, 0, opc_minu, op_minu, ops_none),
     (Min, "min", Binary, BINARY_COST, 0x03, 0, 0, opc_min, op_min, ops_none),
     (Maxu, "maxu", Binary, BINARY_COST, 0x04, 0, 0, opc_maxu, op_maxu, ops_none),
@@ -435,6 +442,8 @@ define_ops! {
     (LeuW, "leu_w", Binary, BINARY_COST, 0x1c, 0, 0, opc_leu_w, op_leu_w, ops_none),
     (LeW, "le_w", Binary, BINARY_COST, 0x1d, 0, 0, opc_le_w, op_le_w, ops_none),
     // Opcodes 0x1e,0x1f,0x20 are reserved for binary
+
+    // Binary Extension
     (Sll, "sll", BinaryE, BINARY_E_COST, 0x21, 0, 0, opc_sll, op_sll, ops_none),
     (Srl, "srl", BinaryE, BINARY_E_COST, 0x22, 0, 0, opc_srl, op_srl, ops_none),
     (Sra, "sra", BinaryE, BINARY_E_COST, 0x23, 0, 0, opc_sra, op_sra, ops_none),
@@ -444,49 +453,71 @@ define_ops! {
     (SignExtendB, "signextend_b", BinaryE, BINARY_E_COST, 0x27, 0, 0, opc_signextend_b, op_signextend_b, ops_none),
     (SignExtendH, "signextend_h", BinaryE, BINARY_E_COST, 0x28, 0, 0, opc_signextend_h, op_signextend_h, ops_none),
     (SignExtendW, "signextend_w", BinaryE, BINARY_E_COST, 0x29, 0, 0, opc_signextend_w, op_signextend_w, ops_none),
-    (PubOut, "pubout", PubOut, 0, 0x30, 0, 0, opc_pubout, op_pubout, ops_none),
 
-    // Bit manipulation extensions (Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx)
-    (Rev8, "rev8", BinaryE, BINARY_E_COST, 0x31, 0, 0, opc_rev8, op_rev8, ops_none),
-    (Brev8, "brev8", Binary, BINARY_COST, 0x32, 0, 0, opc_brev8, op_brev8, ops_none),
-    (Andn, "andn", Binary, BINARY_COST, 0x33, 0, 0, opc_andn, op_andn, ops_none),
-    (Orn, "orn", Binary, BINARY_COST, 0x34, 0, 0, opc_orn, op_orn, ops_none),
-    (Xnor, "xnor", Binary, BINARY_COST, 0x35, 0, 0, opc_xnor, op_xnor, ops_none),
-    (Pack, "pack", BinaryE, BINARY_E_COST, 0x36, 0, 0, opc_pack, op_pack, ops_none),
-    (PackH, "pack_h", BinaryE, BINARY_E_COST, 0x37, 0, 0, opc_pack_h, op_pack_h, ops_none),
-    (PackW, "pack_w", BinaryE, BINARY_E_COST, 0x38, 0, 0, opc_pack_w, op_pack_w, ops_none),
-    (Rol, "rol", BinaryE, BINARY_E_COST, 0x39, 0, 0, opc_rol, op_rol, ops_none),
-    (RolW, "rol_w", BinaryE, BINARY_E_COST, 0x3a, 0, 0, opc_rol_w, op_rol_w, ops_none),
-    (Ror, "ror", BinaryE, BINARY_E_COST, 0x3b, 0, 0, opc_ror, op_ror, ops_none),
-    (RorW, "ror_w", BinaryE, BINARY_E_COST, 0x3c, 0, 0, opc_ror_w, op_ror_w, ops_none),
-    (Clz, "clz", BinaryE, BINARY_E_COST, 0x3d, 0, 0, opc_clz, op_clz, ops_none),
-    (ClzW, "clz_w", BinaryE, BINARY_E_COST, 0x3e, 0, 0, opc_clz_w, op_clz_w, ops_none),
-    (Ctz, "ctz", BinaryE, BINARY_E_COST, 0x3f, 0, 0, opc_ctz, op_ctz, ops_none),
-    (CtzW, "ctz_w", BinaryE, BINARY_E_COST, 0x40, 0, 0, opc_ctz_w, op_ctz_w, ops_none),
-    (Cpop, "cpop", BinaryE, BINARY_E_COST, 0x41, 0, 0, opc_cpop, op_cpop, ops_none),
-    (CpopW, "cpop_w", BinaryE, BINARY_E_COST, 0x42, 0, 0, opc_cpop_w, op_cpop_w, ops_none),
-    (OrcB, "orc_b", BinaryE, BINARY_E_COST, 0x43, 0, 0, opc_orc_b, op_orc_b, ops_none),
-    (Bclr, "bclr", BinaryE, BINARY_E_COST, 0x44, 0, 0, opc_bclr, op_bclr, ops_none),
-    (Bext, "bext", BinaryE, BINARY_E_COST, 0x45, 0, 0, opc_bext, op_bext, ops_none),
-    (Binv, "binv", BinaryE, BINARY_E_COST, 0x46, 0, 0, opc_binv, op_binv, ops_none),
-    (Bset, "bset", BinaryE, BINARY_E_COST, 0x47, 0, 0, opc_bset, op_bset, ops_none),
-    (AddUW, "add_u_w", BinaryE, ADD_U_W_COST, 0x48, 0, 0, opc_add_u_w, op_add_u_w, ops_none),
-    (Sh1add, "sh1add", Binary, BINARY_COST, 0x49, 0, 0, opc_sh1add, op_sh1add, ops_none),
-    (Sh1addUW, "sh1add_u_w", BinaryE, SH_ADD_U_W_COST, 0x4a, 0, 0, opc_sh1add_u_w, op_sh1add_u_w, ops_none),
-    (Sh2add, "sh2add", Binary, BINARY_COST, 0x4b, 0, 0, opc_sh2add, op_sh2add, ops_none),
-    (Sh2addUW, "sh2add_u_w", BinaryE, SH_ADD_U_W_COST, 0x4c, 0, 0, opc_sh2add_u_w, op_sh2add_u_w, ops_none),
-    (Sh3add, "sh3add", Binary, BINARY_COST, 0x4d, 0, 0, opc_sh3add, op_sh3add, ops_none),
-    (Sh3addUW, "sh3add_u_w", BinaryE, SH_ADD_U_W_COST, 0x4e, 0, 0, opc_sh3add_u_w, op_sh3add_u_w, ops_none),
-    (SllUW, "sll_u_w", BinaryE, SLL_U_W_COST, 0x4f, 0, 0, opc_sll_u_w, op_sll_u_w, ops_none),
-    (Clmul, "clmul", BinaryE, BINARY_E_COST, 0x52, 0, 0, opc_clmul, op_clmul, ops_none),
-    (ClmulH, "clmul_h", BinaryE, BINARY_E_COST, 0x53, 0, 0, opc_clmul_h, op_clmul_h, ops_none),
-    (ClmulR, "clmul_r", BinaryE, BINARY_E_COST, 0x54, 0, 0, opc_clmul_r, op_clmul_r, ops_none),
-    (Xperm4, "xperm4", BinaryE, BINARY_E_COST, 0x55, 0, 0, opc_xperm4, op_xperm4, ops_none),
-    (Xperm8, "xperm8", BinaryE, BINARY_E_COST, 0x56, 0, 0, opc_xperm8, op_xperm8, ops_none),
-    (CzeroEqz, "czero_eqz", BinaryE, BINARY_E_COST, 0x57, 0, 0, opc_czero_eqz, op_czero_eqz, ops_none),
-    (CzeroNez, "czero_nez", BinaryE, BINARY_E_COST, 0x58, 0, 0, opc_czero_nez, op_czero_nez, ops_none),
+    // Bit manipulation extensions (Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx) - proved by BinaryExtension
+    (Rev8, "rev8", BinaryE, BINARY_E_COST, 0x30, 0, 0, opc_rev8, op_rev8, ops_none),
+    (Pack, "pack", BinaryE, BINARY_E_COST, 0x31, 0, 0, opc_pack, op_pack, ops_none),
+    (PackH, "pack_h", BinaryE, BINARY_E_COST, 0x32, 0, 0, opc_pack_h, op_pack_h, ops_none),
+    (PackW, "pack_w", BinaryE, BINARY_E_COST, 0x33, 0, 0, opc_pack_w, op_pack_w, ops_none),
+    (Rol, "rol", BinaryE, BINARY_E_COST, 0x34, 0, 0, opc_rol, op_rol, ops_none),
+    (RolW, "rol_w", BinaryE, BINARY_E_COST, 0x35, 0, 0, opc_rol_w, op_rol_w, ops_none),
+    (Ror, "ror", BinaryE, BINARY_E_COST, 0x36, 0, 0, opc_ror, op_ror, ops_none),
+    (RorW, "ror_w", BinaryE, BINARY_E_COST, 0x37, 0, 0, opc_ror_w, op_ror_w, ops_none),
+    (Clz, "clz", BinaryE, BINARY_E_COST, 0x38, 0, 0, opc_clz, op_clz, ops_none),
+    (ClzW, "clz_w", BinaryE, BINARY_E_COST, 0x39, 0, 0, opc_clz_w, op_clz_w, ops_none),
+    (Ctz, "ctz", BinaryE, BINARY_E_COST, 0x3a, 0, 0, opc_ctz, op_ctz, ops_none),
+    (CtzW, "ctz_w", BinaryE, BINARY_E_COST, 0x3b, 0, 0, opc_ctz_w, op_ctz_w, ops_none),
+    (Cpop, "cpop", BinaryE, BINARY_E_COST, 0x3c, 0, 0, opc_cpop, op_cpop, ops_none),
+    (CpopW, "cpop_w", BinaryE, BINARY_E_COST, 0x3d, 0, 0, opc_cpop_w, op_cpop_w, ops_none),
+    (OrcB, "orc_b", BinaryE, BINARY_E_COST, 0x3e, 0, 0, opc_orc_b, op_orc_b, ops_none),
+    (Bclr, "bclr", BinaryE, BINARY_E_COST, 0x3f, 0, 0, opc_bclr, op_bclr, ops_none),
+    (Bext, "bext", BinaryE, BINARY_E_COST, 0x40, 0, 0, opc_bext, op_bext, ops_none),
+    (Binv, "binv", BinaryE, BINARY_E_COST, 0x41, 0, 0, opc_binv, op_binv, ops_none),
+    (Bset, "bset", BinaryE, BINARY_E_COST, 0x42, 0, 0, opc_bset, op_bset, ops_none),
+    (SllUW, "sll_u_w", BinaryE, SLL_U_W_COST, 0x43, 0, 0, opc_sll_u_w, op_sll_u_w, ops_none),
 
-    // Opcodes 0x50,0x51,0x60,0x61 are reserved for binary
+    // Bit manipulation extensions (Zbb, Zba, Zbs, Zbkb) - proved by Binary
+    //
+    // These have no m32 variant, so their opcode+0x10 shadow (0x62-0x68) must stay empty; see the
+    // note on the base binary block above. Opcodes 0x50,0x51 are LT_ABS_NP,LT_ABS_PN: internal
+    // comparisons that Arith assumes and Binary proves, so they are not ZisK opcodes, but they
+    // take up this space (and reserve their own shadows 0x60,0x61) all the same.
+    (Brev8, "brev8", Binary, BINARY_COST, 0x52, 0, 0, opc_brev8, op_brev8, ops_none),
+    (Andn, "andn", Binary, BINARY_COST, 0x53, 0, 0, opc_andn, op_andn, ops_none),
+    (Orn, "orn", Binary, BINARY_COST, 0x54, 0, 0, opc_orn, op_orn, ops_none),
+    (Xnor, "xnor", Binary, BINARY_COST, 0x55, 0, 0, opc_xnor, op_xnor, ops_none),
+    (Sh1add, "sh1add", Binary, BINARY_COST, 0x56, 0, 0, opc_sh1add, op_sh1add, ops_none),
+    (Sh2add, "sh2add", Binary, BINARY_COST, 0x57, 0, 0, opc_sh2add, op_sh2add, ops_none),
+    (Sh3add, "sh3add", Binary, BINARY_COST, 0x58, 0, 0, opc_sh3add, op_sh3add, ops_none),
+    // Opcodes 0x59-0x5f are reserved for binary
+    // Opcodes 0x60-0x68 are the m32 shadows of 0x50-0x58 and must stay empty. Only 0x62-0x68 come
+    // from ops with no m32 variant: shxadd_w does not exist in RISC-V, and brev8_w / andn_w /
+    // orn_w / xnor_w are not opcodes either
+    // Opcodes 0x69-0x6f are the shadows of the reserved 0x59-0x5f
+
+    // "Software" opcodes (0x90 - 0x9F): these are not proved by any air. They are either never
+    // emitted as a single instruction (the transpiler decomposes them, and the opcode only exists
+    // to carry the cost of the resulting sequence) or only reachable through an experimental
+    // `*_native` transpiler feature, which has no table rows behind it yet
+
+    (AddUW, "add_u_w", BinaryE, ADD_U_W_COST, 0x90, 0, 0, opc_add_u_w, op_add_u_w, ops_none),
+    (Sh1addUW, "sh1add_u_w", BinaryE, SH_ADD_U_W_COST, 0x91, 0, 0, opc_sh1add_u_w, op_sh1add_u_w, ops_none),
+    (Sh2addUW, "sh2add_u_w", BinaryE, SH_ADD_U_W_COST, 0x92, 0, 0, opc_sh2add_u_w, op_sh2add_u_w, ops_none),
+    (Sh3addUW, "sh3add_u_w", BinaryE, SH_ADD_U_W_COST, 0x93, 0, 0, opc_sh3add_u_w, op_sh3add_u_w, ops_none),
+    // Opcode 0x94 is available: sll_u_w lives at 0x43 because, unlike the ops above, it is proved
+    // natively by BinaryExtension
+    (Clmul, "clmul", BinaryE, BINARY_E_COST, 0x95, 0, 0, opc_clmul, op_clmul, ops_none),
+    (ClmulH, "clmul_h", BinaryE, BINARY_E_COST, 0x96, 0, 0, opc_clmul_h, op_clmul_h, ops_none),
+    (ClmulR, "clmul_r", BinaryE, BINARY_E_COST, 0x97, 0, 0, opc_clmul_r, op_clmul_r, ops_none),
+    (Xperm4, "xperm4", BinaryE, BINARY_E_COST, 0x98, 0, 0, opc_xperm4, op_xperm4, ops_none),
+    (Xperm8, "xperm8", BinaryE, BINARY_E_COST, 0x99, 0, 0, opc_xperm8, op_xperm8, ops_none),
+    (CzeroEqz, "czero_eqz", BinaryE, BINARY_E_COST, 0x9a, 0, 0, opc_czero_eqz, op_czero_eqz, ops_none),
+    (CzeroNez, "czero_nez", BinaryE, BINARY_E_COST, 0x9b, 0, 0, opc_czero_nez, op_czero_nez, ops_none),
+
+    // Opcodes 0x9c-0x9f are reserved for "software" opcodes
+
+    (PubOut, "pubout", PubOut, 0, 0xa0, 0, 0, opc_pubout, op_pubout, ops_none),
+
     (Mulu, "mulu", ArithAm32, ARITHAM32_COST, 0xb0, 0, 0, opc_mulu, op_mulu, ops_none),
     (Muluh, "muluh", ArithAm32, ARITHAM32_COST, 0xb1, 0, 0, opc_muluh, op_muluh, ops_none),
     (Mulsuh, "mulsuh", ArithAm32, ARITHAM32_COST, 0xb3, 0, 0, opc_mulsuh, op_mulsuh, ops_none),

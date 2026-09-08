@@ -26,15 +26,15 @@ require "binary_table.pil"
     │ AND           │   0x0e   │   0x0e   │                │       │                    │    X    │
     │ OR            │   0x0f   │   0x0f   │                │       │                    │    X    │
     │ XOR           │   0x10   │   0x10   │                │       │                    │    X    │
-    │ BREV8         │   0x32   │   0x32   │                │       │                    │    X    │
-    │ ANDN          │   0x33   │   0x33   │                │       │                    │    X    │
-    │ ORN           │   0x34   │   0x34   │                │       │                    │    X    │
-    │ XNOR          │   0x35   │   0x35   │                │       │                    │    X    │
-    │ SH1ADD        │   0x49   │   0x49   │                │   X   │                    │    X    │
-    │ SH2ADD        │   0x4b   │   0x4b   │                │   X   │                    │    X    │
-    │ SH3ADD        │   0x4d   │   0x4d   │                │   X   │                    │    X    │
     │ LT_ABS_NP (*) │   0x50   │   0x50   │        X       │   X   │       X            │         │
     │ LT_ABS_PN (*) │   0x51   │   0x51   │        X       │   X   │       X            │         │
+    │ BREV8         │   0x52   │   0x52   │                │       │                    │    X    │
+    │ ANDN          │   0x53   │   0x53   │                │       │                    │    X    │
+    │ ORN           │   0x54   │   0x54   │                │       │                    │    X    │
+    │ XNOR          │   0x55   │   0x55   │                │       │                    │    X    │
+    │ SH1ADD        │   0x56   │   0x56   │                │   X   │                    │    X    │
+    │ SH2ADD        │   0x57   │   0x57   │                │   X   │                    │    X    │
+    │ SH3ADD        │   0x58   │   0x58   │                │   X   │                    │    X    │
     ┼───────────────┼──────────┼──────────┼────────────────┼───────┼────────────────────┼─────────┼
     (*) This operation is used by the Arith component
 
@@ -56,6 +56,12 @@ require "binary_table.pil"
     │ LE_W      │   0x1d   │   0x0d   │   X   │       X            │    X    │
     │───────────┼──────────┼──────────┼───────┼────────────────────┼─────────│
     Note: op = b_op + 0x10*mode32
+
+    mode32 is a free witness, so from any b_op this air can also prove b_op + 0x10. Every opcode
+    in the first table therefore reserves opcode+0x10 as well, and the ops with no 32-bit variant
+    (LT_ABS_*, BREV8, ANDN, ORN, XNOR, SHxADD) leave their shadows 0x60-0x68 permanently empty:
+    handing one of those slots to a different operation would let this air satisfy it with the
+    wrong semantics
 */
 
 airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64) {

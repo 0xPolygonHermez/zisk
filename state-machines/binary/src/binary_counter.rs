@@ -84,7 +84,7 @@ impl Metrics for BinaryCounter {
         // Precomputed constants to avoid casting each time
         const BINARY: u64 = ZiskOperationType::Binary as u64;
         const BINARY_E: u64 = ZiskOperationType::BinaryE as u64;
-        const ADD_CODE: u64 = ZiskOp::Add.code() as u64;
+        const ADD_CODE: u64 = ZiskOp::ADD as u64;
 
         let op_type = data[OP_TYPE];
         if op_type == BINARY {
