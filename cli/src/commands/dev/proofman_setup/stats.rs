@@ -52,6 +52,7 @@ impl ZiskProofmanSetupStats {
             airgroups: self.airgroups.clone(),
             airs: self.airs.clone(),
             im_pols_stages: self.impols,
+            blake3_lanes: 4,
         };
 
         // Expression trees in large AIRs (e.g. ZisK) can be thousands of levels deep,
