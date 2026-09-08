@@ -1,0 +1,195 @@
+; ============================================================================
+; bn254/pairing.zisk - optimal-ate pairing check (EIP-197 ecPairing). Mirrors
+; pairing_check_safe_bn254. Uses the identity ∏ᵢ ML(Pᵢ,Qᵢ) = batch-ML, so it
+; multiplies single-pair Miller loops instead of a dedicated batch loop, then one
+; final exponentiation, and returns whether the product is 1.
+;   status: 0 = pairing holds (accept), 1 = does not hold (reject),
+;           2 = G1 not canonical, 3 = G1 not on curve,
+;           4 = G2 not canonical, 5 = G2 not on curve, 6 = G2 not in subgroup.
+; Loop index lives in RAM (PC_I) because miller/mul_fp12/final_exp clobber all
+; caller-saved registers. Prefix pc_.
+; ============================================================================
+
+const u64 BN_ONE12[48] = 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+u64 PC_G1[1] = 0
+u64 PC_G2[1] = 0
+u64 PC_N[1]  = 0
+u64 PC_I[1]  = 0
+u64 PC_CONTRIB[1] = 0
+u64 PC_PI[1] = 0
+u64 PC_QI[1] = 0
+u64 PC_F[48]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 PC_MI[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 PC_RES[48]= 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+; u64 zisklib_pairing_check_bn254(const u64* g1, const u64* g2, u64 n)
+;   [r10=g1 (8·n u64), r11=g2 (16·n u64), r12=n] -> r10 = status code.
+zisklib_pairing_check_bn254:
+	push r1
+	copyb(0, PC_G1) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, PC_G2) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, PC_N) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; f = 1
+	copyb(0, PC_F) -> r5
+	copyb(r5, 1) -> 8[a + 0]
+	copyb(0, 1) -> r6
+pc_finit:
+	eq(r6, 48), j(pc_finit_done)
+	sll(r6, 3) -> r7
+	add(r5, r7) -> r7
+	copyb(r7, 0) -> 8[a + 0]
+	add(r6, 1) -> r6
+	jump(pc_finit)
+pc_finit_done:
+	copyb(0, PC_CONTRIB) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+	copyb(0, PC_I) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+pc_loop:
+	; i < n ?
+	copyb(0, PC_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	copyb(0, PC_N) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	ltu(r13, r14), j(pc_body)
+	jump(pc_finish)
+pc_body:
+	; p_i = g1 + i*64 ; q_i = g2 + i*128
+	copyb(0, PC_G1) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	sll(r13, 6) -> r6
+	add(r5, r6) -> r5
+	copyb(0, PC_PI) -> r6
+	copyb(r6, r5) -> 8[a + 0]
+	copyb(0, PC_G2) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	sll(r13, 7) -> r6
+	add(r5, r6) -> r5
+	copyb(0, PC_QI) -> r6
+	copyb(r6, r5) -> 8[a + 0]
+	; --- canonical G1: x<P and y<P ---
+	copyb(0, PC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BN_P) -> r11
+	copyb(0, 4) -> r12
+	call bn254_ltn
+	eq(r10, 0), j(pc_err_g1canon)
+	copyb(0, PC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, BN_P) -> r11
+	copyb(0, 4) -> r12
+	call bn254_ltn
+	eq(r10, 0), j(pc_err_g1canon)
+	; --- canonical G2: 4 coords < P ---
+	copyb(0, 0) -> r13
+pc_g2canon:
+	eq(r13, 4), j(pc_g2canon_ok)
+	copyb(0, PC_QI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	sll(r13, 5) -> r6
+	add(r10, r6) -> r10
+	copyb(0, BN_P) -> r11
+	copyb(0, 4) -> r12
+	call bn254_ltn
+	eq(r10, 0), j(pc_err_g2canon)
+	; reload r13 (bn254_ltn preserves r13? it uses r5,r6,r7,r14,r15 -> r13 safe)
+	add(r13, 1) -> r13
+	jump(pc_g2canon)
+pc_g2canon_ok:
+	; --- identity? skip pair (contributes 1) ---
+	copyb(0, PC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BN_G1_IDENTITY) -> r11
+	copyb(0, 8) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(pc_next)
+	copyb(0, PC_QI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BN_G2_IDENTITY) -> r11
+	copyb(0, 16) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(pc_next)
+	; --- on-curve G1 ---
+	copyb(0, PC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_is_on_curve_bn254
+	eq(r10, 0), j(pc_err_g1curve)
+	; --- on-curve twist G2 ---
+	copyb(0, PC_QI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_is_on_curve_twist_bn254
+	eq(r10, 0), j(pc_err_g2curve)
+	; --- subgroup G2 ---
+	copyb(0, PC_QI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_is_on_subgroup_twist_bn254
+	eq(r10, 0), j(pc_err_g2sub)
+	; --- mi = miller(p_i, q_i) ; f = f · mi ---
+	copyb(0, PC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, PC_QI) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, PC_MI) -> r12
+	call zisklib_miller_loop_bn254
+	copyb(0, PC_F) -> r10
+	copyb(0, PC_MI) -> r11
+	copyb(0, PC_F) -> r12
+	call zisklib_mul_fp12_bn254
+	; contrib++
+	copyb(0, PC_CONTRIB) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 1) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+pc_next:
+	copyb(0, PC_I) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 1) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	jump(pc_loop)
+pc_finish:
+	; if contrib == 0 -> product is 1 -> accept
+	copyb(0, PC_CONTRIB) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	eq(r6, 0), j(pc_accept)
+	; res = final_exp(f)
+	copyb(0, PC_F) -> r10
+	copyb(0, PC_RES) -> r11
+	call zisklib_final_exp_bn254
+	; is_one(res) ?
+	copyb(0, PC_RES) -> r10
+	copyb(0, BN_ONE12) -> r11
+	copyb(0, 48) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(pc_accept)
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+pc_accept:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+pc_err_g1canon:
+	copyb(0, 2) -> r10
+	pop r1
+	ret
+pc_err_g1curve:
+	copyb(0, 3) -> r10
+	pop r1
+	ret
+pc_err_g2canon:
+	copyb(0, 4) -> r10
+	pop r1
+	ret
+pc_err_g2curve:
+	copyb(0, 5) -> r10
+	pop r1
+	ret
+pc_err_g2sub:
+	copyb(0, 6) -> r10
+	pop r1
+	ret

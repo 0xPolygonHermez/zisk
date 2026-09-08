@@ -1,0 +1,284 @@
+; ============================================================================
+; zkvm/modexp.zisk - modular exponentiation (EIP-198) for the EF zkVM
+; accelerator C ABI. Entry `ziskasm_zkvm_modexp`, redirect target of `zkvm_modexp`.
+;
+;   zkvm_status zkvm_modexp(const uint8_t* base, size_t base_len,   (BE bytes, any length)
+;                           const uint8_t* exp,  size_t exp_len,    (BE bytes)
+;                           const uint8_t* mod,  size_t mod_len,    (BE bytes)
+;                           uint8_t* output)                        (mod_len BE bytes)
+;     [r10=base, r11=base_len, r12=exp, r13=exp_len, r14=mod, r15=mod_len,
+;      r16=output] -> a0 = ZKVM_EOK (0).
+;
+; The EF ABI passes arbitrary-length big-endian byte arrays; ZisK's modexp core
+; works on little-endian u64 limbs. So this routine (a) marshals each byte array
+; to LE limbs (zkvm_be_bytes_to_limbs, partial top limb handled), then (b) runs
+; the modexp dispatcher LIFTED verbatim from zisklib_modexp_u64_c (bigint/modexp.zisk):
+; U256 padding, the m==1 / exp==0 / base==1 edge cases, and short/long selection,
+; reusing the shared primitives zisklib_modexp_short/_long, zisklib_bi_iszero,
+; bn254_eqn and bn254_memcpy. Then (c) marshals the result limbs back to mod_len
+; big-endian output bytes. NOTHING here calls zisklib_modexp_u64_c itself.
+; Labels `zme_`, data `ZKVM_ME_*` (own scratch; BI_ZERO/BI_ONE are shared consts).
+; ============================================================================
+
+; entry arg spills
+u64 ZKVM_ME_BASEP[1] = 0
+u64 ZKVM_ME_BASEB[1] = 0
+u64 ZKVM_ME_EXPP2[1] = 0
+u64 ZKVM_ME_EXPB[1]  = 0
+u64 ZKVM_ME_MODP[1]  = 0
+u64 ZKVM_ME_MODB[1]  = 0
+u64 ZKVM_ME_OUTP[1]  = 0
+u64 ZKVM_ME_BU[1]    = 0
+u64 ZKVM_ME_EU[1]    = 0
+u64 ZKVM_ME_MU[1]    = 0
+
+; marshalled limb inputs / result (max ~1056-byte operands = 132 u64)
+u64 ZKVM_ME_BASE_LIMBS[132] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_ME_EXP_LIMBS[132]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_ME_MOD_LIMBS[132]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_ME_RES_LIMBS[132]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+; dispatcher scratch (lifted from bigint/modexp.zisk BI_* -> ZKVM_ME_*)
+u64 ZKVM_ME_APTR[1]    = 0
+u64 ZKVM_ME_LEN[1]     = 0
+u64 ZKVM_ME_DP_EXP[1]  = 0
+u64 ZKVM_ME_DP_ELEN[1] = 0
+u64 ZKVM_ME_BPTR[1]    = 0
+u64 ZKVM_ME_LENB[1]    = 0
+u64 ZKVM_ME_DP_RES[1]  = 0
+u64 ZKVM_ME_DP_BLEN[1] = 0
+u64 ZKVM_ME_DP_MLEN[1] = 0
+u64 ZKVM_ME_BASEPAD[132] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_ME_MODPAD[132]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+ziskasm_zkvm_modexp:
+	push r1
+	; --- spill the seven EF arguments ---
+	copyb(0, ZKVM_ME_BASEP) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ZKVM_ME_BASEB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ZKVM_ME_EXPP2) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, ZKVM_ME_EXPB) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, ZKVM_ME_MODP) -> r5
+	copyb(r5, r14) -> 8[a + 0]
+	copyb(0, ZKVM_ME_MODB) -> r5
+	copyb(r5, r15) -> 8[a + 0]
+	copyb(0, ZKVM_ME_OUTP) -> r5
+	copyb(r5, r16) -> 8[a + 0]
+
+	; --- base bytes -> LE limbs ; BU = nlimbs ---
+	copyb(0, ZKVM_ME_BASEP) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZKVM_ME_BASEB) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_BASE_LIMBS) -> r12
+	call zkvm_be_bytes_to_limbs
+	copyb(0, ZKVM_ME_BU) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	; --- exp bytes -> LE limbs ; EU = nlimbs ---
+	copyb(0, ZKVM_ME_EXPP2) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZKVM_ME_EXPB) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_EXP_LIMBS) -> r12
+	call zkvm_be_bytes_to_limbs
+	copyb(0, ZKVM_ME_EU) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	; --- mod bytes -> LE limbs ; MU = nlimbs ---
+	copyb(0, ZKVM_ME_MODP) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZKVM_ME_MODB) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_MOD_LIMBS) -> r12
+	call zkvm_be_bytes_to_limbs
+	copyb(0, ZKVM_ME_MU) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+
+	; --- zero the result limb buffer (bytes above the result read as 0) ---
+	copyb(0, ZKVM_ME_RES_LIMBS) -> r6
+	copyb(0, 132) -> r7
+zme_rz:
+	eq(r7, 0), j(zme_rzd)
+	copyb(r6, 0) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(zme_rz)
+zme_rzd:
+	; --- dispatcher args: base_limbs, BU, exp_limbs, EU, mod_limbs, MU, res_limbs ---
+	copyb(0, ZKVM_ME_BASE_LIMBS) -> r10
+	copyb(0, ZKVM_ME_BU) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_EXP_LIMBS) -> r12
+	copyb(0, ZKVM_ME_EU) -> r13
+	copyb(r13, 8[a + 0]) -> r13
+	copyb(0, ZKVM_ME_MOD_LIMBS) -> r14
+	copyb(0, ZKVM_ME_MU) -> r15
+	copyb(r15, 8[a + 0]) -> r15
+	copyb(0, ZKVM_ME_RES_LIMBS) -> r16
+	call zme_dispatch
+
+	; --- result LE limbs -> mod_len big-endian output bytes ---
+	copyb(0, ZKVM_ME_RES_LIMBS) -> r10
+	copyb(0, ZKVM_ME_OUTP) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_MODB) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zkvm_limbs_to_be_bytes
+
+	copyb(0, 0) -> r10                  ; return ZKVM_EOK
+	pop r1
+	ret
+
+; ---------------------------------------------------------------------------
+; zme_dispatch: verbatim lift of zisklib_modexp_u64_c's dispatcher body.
+;   [r10=base, r11=blen_u64, r12=exp, r13=elen_u64, r14=mod, r15=mlen_u64,
+;    r16=result] -> r10 = result_len (u64 count; unused by the caller).
+; ---------------------------------------------------------------------------
+zme_dispatch:
+	push r1
+	copyb(0, ZKVM_ME_APTR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ZKVM_ME_LEN) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ZKVM_ME_DP_EXP) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, ZKVM_ME_DP_ELEN) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, ZKVM_ME_BPTR) -> r5
+	copyb(r5, r14) -> 8[a + 0]
+	copyb(0, ZKVM_ME_LENB) -> r5
+	copyb(r5, r15) -> 8[a + 0]
+	copyb(0, ZKVM_ME_DP_RES) -> r5
+	copyb(r5, r16) -> 8[a + 0]
+	copyb(0, ZKVM_ME_LEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 3) -> r6
+	srl(r6, 2) -> r6
+	copyb(0, ZKVM_ME_DP_BLEN) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, ZKVM_ME_LENB) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 3) -> r6
+	srl(r6, 2) -> r6
+	copyb(0, ZKVM_ME_DP_MLEN) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, ZKVM_ME_DP_BLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	sll(r6, 5) -> r6
+	copyb(0, ZKVM_ME_BASEPAD) -> r7
+	dma_xmemset(r7, r6) -> r5, j(0, 4)
+	copyb(0, ZKVM_ME_APTR) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZKVM_ME_BASEPAD) -> r11
+	copyb(0, ZKVM_ME_LEN) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call bn254_memcpy
+	copyb(0, ZKVM_ME_DP_MLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	sll(r6, 5) -> r6
+	copyb(0, ZKVM_ME_MODPAD) -> r7
+	dma_xmemset(r7, r6) -> r5, j(0, 4)
+	copyb(0, ZKVM_ME_BPTR) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZKVM_ME_MODPAD) -> r11
+	copyb(0, ZKVM_ME_LENB) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call bn254_memcpy
+	copyb(0, ZKVM_ME_DP_MLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, 1) -> r7
+	eq(r6, r7), j(zme_dp_m1)
+	jump(zme_dp_expchk)
+zme_dp_m1:
+	copyb(0, ZKVM_ME_MODPAD) -> r10
+	copyb(0, BI_ZERO) -> r11
+	copyb(0, 4) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(zme_dp_ret0)
+	copyb(0, ZKVM_ME_MODPAD) -> r10
+	copyb(0, BI_ONE) -> r11
+	copyb(0, 4) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(zme_dp_ret0)
+zme_dp_expchk:
+	copyb(0, ZKVM_ME_DP_EXP) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZKVM_ME_DP_ELEN) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	call zisklib_bi_iszero
+	ltu(0, r10), j(zme_dp_ret1)
+	copyb(0, ZKVM_ME_DP_BLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, 1) -> r7
+	eq(r6, r7), j(zme_dp_b1)
+	jump(zme_dp_dispatch)
+zme_dp_b1:
+	copyb(0, ZKVM_ME_BASEPAD) -> r10
+	copyb(0, BI_ZERO) -> r11
+	copyb(0, 4) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(zme_dp_ret0)
+	copyb(0, ZKVM_ME_BASEPAD) -> r10
+	copyb(0, BI_ONE) -> r11
+	copyb(0, 4) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(zme_dp_ret1)
+zme_dp_dispatch:
+	copyb(0, ZKVM_ME_DP_MLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, 1) -> r7
+	eq(r6, r7), j(zme_dp_short)
+	copyb(0, ZKVM_ME_BASEPAD) -> r10
+	copyb(0, ZKVM_ME_DP_BLEN) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_DP_EXP) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	copyb(0, ZKVM_ME_DP_ELEN) -> r13
+	copyb(r13, 8[a + 0]) -> r13
+	copyb(0, ZKVM_ME_MODPAD) -> r14
+	copyb(0, ZKVM_ME_DP_MLEN) -> r15
+	copyb(r15, 8[a + 0]) -> r15
+	copyb(0, ZKVM_ME_DP_RES) -> r16
+	copyb(r16, 8[a + 0]) -> r16
+	call zisklib_modexp_long
+	sll(r10, 2) -> r10
+	pop r1
+	ret
+zme_dp_short:
+	copyb(0, ZKVM_ME_BASEPAD) -> r10
+	copyb(0, ZKVM_ME_DP_BLEN) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_DP_EXP) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	copyb(0, ZKVM_ME_DP_ELEN) -> r13
+	copyb(r13, 8[a + 0]) -> r13
+	copyb(0, ZKVM_ME_MODPAD) -> r14
+	copyb(0, ZKVM_ME_DP_RES) -> r15
+	copyb(r15, 8[a + 0]) -> r15
+	call zisklib_modexp_short
+	copyb(0, 4) -> r10
+	pop r1
+	ret
+zme_dp_ret0:
+	copyb(0, ZKVM_ME_DP_RES) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(r11, 0) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(0, 4) -> r10
+	pop r1
+	ret
+zme_dp_ret1:
+	copyb(0, ZKVM_ME_DP_RES) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(r11, 1) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(0, 4) -> r10
+	pop r1
+	ret

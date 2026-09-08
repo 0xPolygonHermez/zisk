@@ -1,0 +1,58 @@
+; ============================================================================
+; poseidon2.zisk - diagnostic for the ZisK poseidon2 precompile.
+;
+; The `poseidon2` op reads 16 u64 (Goldilocks field elements) from the address in
+; its `b` operand, applies the Poseidon2 permutation, and writes the 16 results
+; back in place (like keccak; c = 0).
+;
+; Reference note: unlike keccak/sha256 there is no public test vector for
+; Poseidon2 over Goldilocks (width 16), so P2_EXPECT is a golden vector produced
+; by calling the same library function (fields::poseidon2_hash::<Goldilocks,
+; Poseidon2_16, 16>) directly - outside the emulator. This checks the .zisk
+; encoding, the in-place memory ABI, and the emulator's dispatch/writeback; the
+; permutation math itself is covered by that library's own tests.
+; Input state = element[i] = i (i = 0..15).
+;
+; Returns r10 = 0 on success, or 0x2201 on the first mismatching word.
+; ============================================================================
+
+define WORDS 16
+
+; Poseidon2 input state (RAM, permuted in place): element[i] = i
+u64 P2_STATE[16] =
+	0x0000000000000000, 0x0000000000000001, 0x0000000000000002, 0x0000000000000003,
+	0x0000000000000004, 0x0000000000000005, 0x0000000000000006, 0x0000000000000007,
+	0x0000000000000008, 0x0000000000000009, 0x000000000000000a, 0x000000000000000b,
+	0x000000000000000c, 0x000000000000000d, 0x000000000000000e, 0x000000000000000f
+
+; Expected Poseidon2 permutation output (golden vector, see header)
+const u64 P2_EXPECT[16] =
+	0x85c54702470d9756, 0xaa53c7a7d52d9898, 0x285128096efb0dd7, 0xf3fde5edd3050ac8,
+	0xc7b65efd040df908, 0x4be3f6c467f57ae9, 0x274e9a67b41754fb, 0x0f7d39cd5de94dac,
+	0xd0224b9794d0b78c, 0x372f6139570042e1, 0xce6e8a93dc4ec26c, 0xace65e30a4daf7af,
+	0x016f2824cc1ba3db, 0x2e8f3af37c434dec, 0xc80831bb6e09da01, 0x3a7d670bf1a86ee8
+
+poseidon2:
+	copyb(0, P2_STATE) -> r8          ; r8 = &state
+	poseidon2(0, r8) -> r13           ; permute the 16-element state in place
+
+	copyb(0, P2_STATE) -> r7          ; result pointer
+	copyb(0, P2_EXPECT) -> r5         ; expected pointer
+	copyb(0, WORDS) -> r6
+
+p2_loop:
+	eq(r6, 0), j(p2_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(p2_next)
+	copyb(0, 0x2201) -> r10
+	ret
+p2_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(p2_loop)
+
+p2_ok:
+	copyb(0, 0) -> r10
+	ret

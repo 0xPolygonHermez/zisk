@@ -1,0 +1,473 @@
+; ============================================================================
+; bls12_381/curve.zisk - G1 point arithmetic on E/Fp: y² = x³ + 4. Mirrors
+; ziskos/.../bls12_381/curve.rs. Uses bls12_381_curve_add (header [&p1,&p2] each
+; 12 u64, p1+=p2 in place) and bls12_381_curve_dbl (b=&point, in place). G1 point
+; = 12 u64 (x[6]‖y[6]). Identity = all-zero. Prefixes lcv_/loc_/lsm_/lj2a_.
+; ============================================================================
+
+u64 BLS_OC_P[1]     = 0
+u64 BLS_OC_LHS[6]   = 0, 0, 0, 0, 0, 0
+u64 BLS_OC_X2[6]    = 0, 0, 0, 0, 0, 0
+u64 BLS_OC_X3[6]    = 0, 0, 0, 0, 0, 0
+u64 BLS_OC_RHS[6]   = 0, 0, 0, 0, 0, 0
+
+u64 BLS_ADD_HDR[2]  = 0, 0
+u64 BLS_ADD_P1[1]   = 0
+u64 BLS_ADD_P2[1]   = 0
+u64 BLS_ADD_RES[1]  = 0
+
+u64 BLS_SM_PPTR[1]  = 0
+u64 BLS_SM_RESPTR[1]= 0
+u64 BLS_SM_K[4]     = 0, 0, 0, 0
+u64 BLS_SM_Q[12]    = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_SM_HDR[2]   = 0, 0
+
+u64 BLS_J2A_P[1]    = 0
+u64 BLS_J2A_R[1]    = 0
+u64 BLS_J2A_ZINV[6] = 0, 0, 0, 0, 0, 0
+u64 BLS_J2A_ZSQ[6]  = 0, 0, 0, 0, 0, 0
+u64 BLS_J2A_T[6]    = 0, 0, 0, 0, 0, 0
+
+u64 BLS_SIG_P[1]    = 0
+
+; u64 zisklib_is_on_curve_bls12_381(const u64* p)  [r10=&p] -> r10 (1 if on curve)
+zisklib_is_on_curve_bls12_381:
+	push r1
+	copyb(0, BLS_OC_P) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	; lhs = y²   (y = p + 48)
+	add(r10, 48) -> r10
+	copyb(0, BLS_OC_LHS) -> r11
+	call zisklib_square_fp_bls12_381
+	; x2 = x²
+	copyb(0, BLS_OC_P) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BLS_OC_X2) -> r11
+	call zisklib_square_fp_bls12_381
+	; x3 = x2 · x
+	copyb(0, BLS_OC_X2) -> r10
+	copyb(0, BLS_OC_P) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, BLS_OC_X3) -> r12
+	call zisklib_mul_fp_bls12_381
+	; rhs = x3 + 4
+	copyb(0, BLS_OC_X3) -> r10
+	copyb(0, BLS_E_B) -> r11
+	copyb(0, BLS_OC_RHS) -> r12
+	call zisklib_add_fp_bls12_381
+	; lhs == rhs ?
+	copyb(0, BLS_OC_LHS) -> r10
+	copyb(0, BLS_OC_RHS) -> r11
+	copyb(0, 6) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(loc_true)
+	; else: p == identity ?
+	copyb(0, BLS_OC_P) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BLS_G1_IDENTITY) -> r11
+	copyb(0, 12) -> r12
+	call bn254_eqn
+	pop r1
+	ret
+loc_true:
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+
+; void zisklib_dbl_bls12_381(const u64* p, u64* result)  [r10=p, r11=result]  (p non-identity)
+zisklib_dbl_bls12_381:
+	push r1
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	bls12_381_curve_dbl(0, r11) -> r14
+	pop r1
+	ret
+
+; void zisklib_dbl_complete_bls12_381(const u64* p, u64* result)  [r10=p, r11=result]
+zisklib_dbl_complete_bls12_381:
+	push r1
+	copyb(0, BLS_ADD_P1) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_ADD_RES) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_G1_IDENTITY) -> r11
+	copyb(0, 12) -> r12
+	call bn254_eqn
+	eq(r10, 0), j(lcv_dc_go)
+	; identity -> result = identity
+	copyb(0, BLS_ADD_RES) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(r11, 0) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(r11, 0) -> 8[a + 32]
+	copyb(r11, 0) -> 8[a + 40]
+	copyb(r11, 0) -> 8[a + 48]
+	copyb(r11, 0) -> 8[a + 56]
+	copyb(r11, 0) -> 8[a + 64]
+	copyb(r11, 0) -> 8[a + 72]
+	copyb(r11, 0) -> 8[a + 80]
+	copyb(r11, 0) -> 8[a + 88]
+	pop r1
+	ret
+lcv_dc_go:
+	copyb(0, BLS_ADD_P1) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_ADD_RES) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	call zisklib_dbl_bls12_381
+	pop r1
+	ret
+
+; void zisklib_neg_bls12_381(const u64* p, u64* result)  [r10=p, r11=result]  (x, -y)
+zisklib_neg_bls12_381:
+	push r1
+	copyb(0, BLS_ADD_P1) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_ADD_RES) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	; result[0..6] = x
+	copyb(0, 6) -> r12
+	call bn254_memcpy
+	; result[6..12] = neg_fp(p[6..12])
+	copyb(0, BLS_ADD_P1) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 48) -> r10
+	copyb(0, BLS_ADD_RES) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 48) -> r11
+	call zisklib_neg_fp_bls12_381
+	pop r1
+	ret
+
+; void zisklib_add_bls12_381(const u64* p1, const u64* p2, u64* result)  (both non-identity)
+zisklib_add_bls12_381:
+	push r1
+	copyb(0, BLS_ADD_P1) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_ADD_P2) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_ADD_RES) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; x1 == x2 ?
+	copyb(0, 6) -> r12
+	call bn254_eqn
+	eq(r10, 0), j(lcv_add_generic)
+	; x1 == x2: y1 == y2 ?
+	copyb(0, BLS_ADD_P1) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 48) -> r10
+	copyb(0, BLS_ADD_P2) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 48) -> r11
+	copyb(0, 6) -> r12
+	call bn254_eqn
+	eq(r10, 0), j(lcv_add_inf)
+	copyb(0, BLS_ADD_P1) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BLS_ADD_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	call zisklib_dbl_bls12_381
+	pop r1
+	ret
+lcv_add_inf:
+	copyb(0, BLS_ADD_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(r11, 0) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(r11, 0) -> 8[a + 32]
+	copyb(r11, 0) -> 8[a + 40]
+	copyb(r11, 0) -> 8[a + 48]
+	copyb(r11, 0) -> 8[a + 56]
+	copyb(r11, 0) -> 8[a + 64]
+	copyb(r11, 0) -> 8[a + 72]
+	copyb(r11, 0) -> 8[a + 80]
+	copyb(r11, 0) -> 8[a + 88]
+	pop r1
+	ret
+lcv_add_generic:
+	copyb(0, BLS_ADD_P1) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BLS_ADD_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_ADD_HDR) -> r5
+	copyb(0, BLS_ADD_RES) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_ADD_P2) -> r7
+	copyb(r7, 8[a + 0]) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	bls12_381_curve_add(0, r5) -> r14
+	pop r1
+	ret
+
+; void zisklib_add_complete_bls12_381(const u64* p1, const u64* p2, u64* result)
+zisklib_add_complete_bls12_381:
+	push r1
+	copyb(0, BLS_SM_PPTR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_SM_RESPTR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; NOTE: reuse SM_PPTR/SM_RESPTR to stash p1/result (add uses ADD_* only);
+	; also stash p2 in SM_K[0..1]
+	copyb(0, BLS_SM_K) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	; p1 == identity ? -> result = p2
+	copyb(0, BLS_SM_PPTR) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_G1_IDENTITY) -> r11
+	copyb(0, 12) -> r12
+	call bn254_eqn
+	eq(r10, 0), j(lcv_ac_chk2)
+	copyb(0, BLS_SM_K) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_SM_RESPTR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+lcv_ac_chk2:
+	; p2 == identity ? -> result = p1
+	copyb(0, BLS_SM_K) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_G1_IDENTITY) -> r11
+	copyb(0, 12) -> r12
+	call bn254_eqn
+	eq(r10, 0), j(lcv_ac_add)
+	copyb(0, BLS_SM_PPTR) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_SM_RESPTR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+lcv_ac_add:
+	copyb(0, BLS_SM_PPTR) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_SM_K) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, BLS_SM_RESPTR) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zisklib_add_bls12_381
+	pop r1
+	ret
+
+; u64 zisklib_scalar_mul_bls12_381(const u64* p, const u64* k, u64* result)
+;   [r10=p, r11=k, r12=result] -> r10 = 1 if result is identity, else 0.
+;   result = k·p; k reduced mod R first. Reads k bits directly (trusted).
+zisklib_scalar_mul_bls12_381:
+	push r1
+	copyb(0, BLS_SM_PPTR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_SM_RESPTR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, r11) -> r10
+	copyb(0, BLS_SM_K) -> r11
+	call zisklib_reduce_fr_bls12_381
+	copyb(0, BLS_SM_K) -> r5
+	copyb(r5, 8[a + 8]) -> r6
+	copyb(r5, 8[a + 16]) -> r7
+	or(r6, r7) -> r6
+	copyb(r5, 8[a + 24]) -> r7
+	or(r6, r7) -> r6
+	ltu(0, r6), j(lsm_general)
+	copyb(r5, 8[a + 0]) -> r7
+	eq(r7, 0), j(lsm_zero)
+	eq(r7, 1), j(lsm_one)
+	eq(r7, 2), j(lsm_two)
+lsm_general:
+	copyb(0, BLS_SM_PPTR) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BLS_SM_Q) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, 255) -> r13
+lsm_msb:
+	srl(r13, 6) -> r5
+	and(r13, 63) -> r6
+	sll(r5, 3) -> r5
+	copyb(0, BLS_SM_K) -> r7
+	add(r7, r5) -> r7
+	copyb(r7, 8[a + 0]) -> r7
+	srl(r7, r6) -> r7
+	and(r7, 1) -> r7
+	ltu(0, r7), j(lsm_loopstart)
+	sub(r13, 1) -> r13
+	jump(lsm_msb)
+lsm_loopstart:
+	eq(r13, 0), j(lsm_done)
+	sub(r13, 1) -> r13
+lsm_loop:
+	copyb(0, BLS_SM_Q) -> r5
+	bls12_381_curve_dbl(0, r5) -> r14
+	srl(r13, 6) -> r5
+	and(r13, 63) -> r6
+	sll(r5, 3) -> r5
+	copyb(0, BLS_SM_K) -> r7
+	add(r7, r5) -> r7
+	copyb(r7, 8[a + 0]) -> r7
+	srl(r7, r6) -> r7
+	and(r7, 1) -> r7
+	eq(r7, 0), j(lsm_noadd)
+	copyb(0, BLS_SM_HDR) -> r5
+	copyb(0, BLS_SM_Q) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_SM_PPTR) -> r7
+	copyb(r7, 8[a + 0]) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	bls12_381_curve_add(0, r5) -> r14
+lsm_noadd:
+	eq(r13, 0), j(lsm_done)
+	sub(r13, 1) -> r13
+	jump(lsm_loop)
+lsm_done:
+	copyb(0, BLS_SM_Q) -> r10
+	copyb(0, BLS_SM_RESPTR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+lsm_zero:
+	copyb(0, BLS_SM_RESPTR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(r11, 0) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(r11, 0) -> 8[a + 32]
+	copyb(r11, 0) -> 8[a + 40]
+	copyb(r11, 0) -> 8[a + 48]
+	copyb(r11, 0) -> 8[a + 56]
+	copyb(r11, 0) -> 8[a + 64]
+	copyb(r11, 0) -> 8[a + 72]
+	copyb(r11, 0) -> 8[a + 80]
+	copyb(r11, 0) -> 8[a + 88]
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+lsm_one:
+	copyb(0, BLS_SM_PPTR) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_SM_RESPTR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+lsm_two:
+	copyb(0, BLS_SM_PPTR) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_SM_RESPTR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	call zisklib_dbl_bls12_381
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; void zisklib_sigma_endomorphism_bls12_381(const u64* p, u64* result)  [12,12]
+;   result = (ɣ·x, y).
+zisklib_sigma_endomorphism_bls12_381:
+	push r1
+	copyb(0, BLS_SIG_P) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_J2A_R) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	; result.x = x · GAMMA
+	copyb(0, BLS_GAMMA) -> r11
+	copyb(0, BLS_J2A_R) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zisklib_mul_fp_bls12_381
+	; result.y = y
+	copyb(0, BLS_SIG_P) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 48) -> r10
+	copyb(0, BLS_J2A_R) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 48) -> r11
+	copyb(0, 6) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+
+; void zisklib_jacobian_to_affine_bls12_381(const u64* p, u64* result)  [18,12]
+;   p = x‖y‖z (each 6). z==0 -> identity; else affine = (x/z², y/z³).
+zisklib_jacobian_to_affine_bls12_381:
+	push r1
+	copyb(0, BLS_J2A_P) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_J2A_R) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	; z == 0 ? (p[12..18], byte offset 96)
+	copyb(0, r10) -> r5
+	add(r5, 96) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(r5, 8[a + 8]) -> r7
+	or(r6, r7) -> r6
+	copyb(r5, 8[a + 16]) -> r7
+	or(r6, r7) -> r6
+	copyb(r5, 8[a + 24]) -> r7
+	or(r6, r7) -> r6
+	copyb(r5, 8[a + 32]) -> r7
+	or(r6, r7) -> r6
+	copyb(r5, 8[a + 40]) -> r7
+	or(r6, r7) -> r6
+	ltu(0, r6), j(lj2a_nz)
+	copyb(0, BLS_J2A_R) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(r11, 0) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(r11, 0) -> 8[a + 32]
+	copyb(r11, 0) -> 8[a + 40]
+	copyb(r11, 0) -> 8[a + 48]
+	copyb(r11, 0) -> 8[a + 56]
+	copyb(r11, 0) -> 8[a + 64]
+	copyb(r11, 0) -> 8[a + 72]
+	copyb(r11, 0) -> 8[a + 80]
+	copyb(r11, 0) -> 8[a + 88]
+	pop r1
+	ret
+lj2a_nz:
+	; zinv = inv_fp(z)
+	copyb(0, BLS_J2A_P) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_J2A_ZINV) -> r11
+	call zisklib_inv_fp_bls12_381
+	copyb(0, BLS_J2A_ZINV) -> r10
+	copyb(0, BLS_J2A_ZSQ) -> r11
+	call zisklib_square_fp_bls12_381
+	; result.x = x · zsq
+	copyb(0, BLS_J2A_P) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_J2A_ZSQ) -> r11
+	copyb(0, BLS_J2A_R) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zisklib_mul_fp_bls12_381
+	; t = y · zsq
+	copyb(0, BLS_J2A_P) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 48) -> r10
+	copyb(0, BLS_J2A_ZSQ) -> r11
+	copyb(0, BLS_J2A_T) -> r12
+	call zisklib_mul_fp_bls12_381
+	; result.y = t · zinv
+	copyb(0, BLS_J2A_T) -> r10
+	copyb(0, BLS_J2A_ZINV) -> r11
+	copyb(0, BLS_J2A_R) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	add(r12, 48) -> r12
+	call zisklib_mul_fp_bls12_381
+	pop r1
+	ret

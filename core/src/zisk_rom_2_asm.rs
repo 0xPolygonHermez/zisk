@@ -1209,10 +1209,28 @@ impl ZiskRom2Asm {
             );
         }
 
-        // Instruction label
+        // Instruction label. Two alignments improve readability:
+        // * `verbose` is left-padded to VERBOSE_ALIGN_WIDTH so `ZisK:` starts at the
+        //   same column on most lines;
+        // * the whole comment is then right-padded so the closing `*/` lands at
+        //   CLOSE_COMMENT_COLUMN on the lines that fit within it.
+        // Longer lines (big immediates, BIOS/float/precompile setup) overflow either
+        // width and are left misaligned. The `*/` pad is computed from the actual
+        // `pc_<addr>:` label length so it aligns regardless of the address width.
+        const VERBOSE_ALIGN_WIDTH: usize = 40;
+        const CLOSE_COMMENT_COLUMN: usize = 120;
         *code += "\n";
-        let instruction_comment = instruction.to_text();
-        *code += &format!("pc_{:x}: {}\n", ctx.pc, ctx.comment(instruction_comment));
+        let label = format!("pc_{:x}: ", ctx.pc);
+        let content = format!(
+            "verbose: {:<vw$} ZisK: {}",
+            instruction.verbose,
+            instruction.to_zisk_asm(),
+            vw = VERBOSE_ALIGN_WIDTH,
+        );
+        // `+ 5` accounts for the `/* ` opener (3) and the ` *` before the aligned `/`.
+        let content_width = CLOSE_COMMENT_COLUMN.saturating_sub(label.len() + 5);
+        let padded = format!("{:<cw$}", content, cw = content_width);
+        *code += &format!("{}{}\n", label, ctx.comment(padded));
 
         // Self::push_internal_registers(ctx, code, false);
         // *code += &format!("\tmov rdi, {}\n", ctx.pc);

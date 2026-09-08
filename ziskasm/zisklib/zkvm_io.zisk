@@ -1,0 +1,145 @@
+; ============================================================================
+; zkvm_io.zisk - standard zkVM I/O (mirrors ziskos zkvm_io.rs read_input /
+; write_output). Redirect targets for the guest's `read_input` / `write_output`.
+;
+; --- I/O memory contract (see examples/doubler + core/src/mem.rs) ---
+;   Input at INPUT_ADDR (0x40000000):
+;     [0x40000000 .. 0x40000008)  reserved 8-byte header
+;     [0x40000008 .. 0x40000010)  u64 len = byte length of the standard input
+;     [0x40000010 .. )            len input bytes
+;   Output at OUTPUT_ADDR (0xa0410000): the first 64 u32 words are the program
+;   output; write_output packs bytes little-endian into consecutive u32 slots.
+;
+; Prefix io_. FCALL_INPUT_READY is a `pub define` in fcall.zisk.
+; ============================================================================
+
+define IO_INPUT_LEN   0x40000008    ; address of the input byte-length
+define IO_INPUT_DATA  0x40000010    ; address of input byte 0
+define IO_OUTPUT_ADDR 0xa0410000    ; address of output word 0
+
+; Persistent output state (across write_output calls).
+u64 IO_SLOT[1] = 0      ; next output u32 slot index
+u64 IO_PEND[1] = 0      ; up to 4 buffered bytes (little-endian), zero-padded
+u64 IO_PENDLEN[1] = 0   ; number of valid bytes in IO_PEND (0..3)
+
+; void read_input(const u8** buf_ptr, u64* buf_size)
+;   [r10 = buf_ptr (out: input data pointer), r11 = buf_size (out: byte length)]
+;   Reports the standard input record: *buf_ptr = &input[0] (or 0 if empty),
+;   *buf_size = len. Signals input availability via FCALL_INPUT_READY.
+zisklib_read_input:
+	; fcall_input_ready(IO_INPUT_LEN + 7): the length word must be readable
+	; (fcall_param with words==1 appends the operand value directly)
+	copyb(0, IO_INPUT_LEN) -> r6
+	add(r6, 7) -> r6
+	fcall_param(1, r6) -> r14
+	fcall(FCALL_INPUT_READY, 0) -> r14
+	; len = [IO_INPUT_LEN]
+	copyb(0, IO_INPUT_LEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	; *buf_size = len
+	copyb(r11, r6) -> 8[a + 0]
+	eq(r6, 0), j(io_ri_empty)
+	; fcall_input_ready(IO_INPUT_DATA + len - 1): the last data byte must be readable
+	copyb(0, IO_INPUT_DATA) -> r7
+	add(r7, r6) -> r7
+	sub(r7, 1) -> r7
+	fcall_param(1, r7) -> r14
+	fcall(FCALL_INPUT_READY, 0) -> r14
+	; *buf_ptr = IO_INPUT_DATA
+	copyb(0, IO_INPUT_DATA) -> r6
+	copyb(r10, r6) -> 8[a + 0]
+	ret
+io_ri_empty:
+	copyb(r10, 0) -> 8[a + 0]      ; *buf_ptr = null
+	ret
+
+; void write_output(const u8* output, u64 size)
+;   [r10 = output, r11 = size]. Appends `size` bytes to the output word stream,
+;   packing little-endian into u32 slots at IO_OUTPUT_ADDR. Carries a partial
+;   word across calls in IO_PEND/IO_PENDLEN; the trailing partial word is written
+;   zero-padded each call (without advancing the slot) so mid-stream output is
+;   valid. r10 = ptr, r11 = remaining held stable; r5-r7,r14,r15 scratch.
+zisklib_write_output:
+	eq(r11, 0), j(io_wo_ret)
+io_wo_drain:
+	; while pendlen != 0 && remaining != 0: PEND[pendlen] = *ptr; pendlen++; ...
+	copyb(0, IO_PENDLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6            ; pendlen
+	eq(r6, 0), j(io_wo_full)
+	eq(r11, 0), j(io_wo_trail)
+	copyb(r10, 1[a + 0]) -> r7           ; byte = *ptr
+	copyb(0, IO_PEND) -> r5
+	add(r5, r6) -> r5
+	copyb(r5, r7) -> 1[a + 0]            ; PEND[pendlen] = byte
+	add(r6, 1) -> r6
+	copyb(0, IO_PENDLEN) -> r5
+	copyb(r5, r6) -> 8[a + 0]            ; pendlen++
+	add(r10, 1) -> r10
+	sub(r11, 1) -> r11
+	eq(r6, 4), j(io_wo_flushpend)
+	jump(io_wo_drain)
+io_wo_flushpend:
+	; set_output(slot, PEND) ; slot++ ; pendlen = 0 ; PEND = 0
+	copyb(0, IO_PEND) -> r5
+	copyb(r5, 4[a + 0]) -> r7            ; PEND as u32
+	copyb(0, IO_SLOT) -> r5
+	copyb(r5, 8[a + 0]) -> r6            ; slot
+	sll(r6, 2) -> r15
+	copyb(0, IO_OUTPUT_ADDR) -> r14
+	add(r14, r15) -> r14
+	copyb(r14, r7) -> 4[a + 0]           ; OUTPUT[slot] = PEND
+	add(r6, 1) -> r6
+	copyb(0, IO_SLOT) -> r5
+	copyb(r5, r6) -> 8[a + 0]            ; slot++
+	copyb(0, IO_PEND) -> r5
+	copyb(r5, 0) -> 8[a + 0]             ; PEND = 0
+	copyb(0, IO_PENDLEN) -> r5
+	copyb(r5, 0) -> 8[a + 0]             ; pendlen = 0
+	jump(io_wo_drain)
+io_wo_full:
+	; while remaining >= 4: set_output(slot, u32 at ptr); slot++; ptr+=4; remaining-=4
+	ltu(r11, 4), j(io_wo_trail)
+	copyb(r10, 4[a + 0]) -> r7           ; u32 = *(u32*)ptr
+	copyb(0, IO_SLOT) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	sll(r6, 2) -> r15
+	copyb(0, IO_OUTPUT_ADDR) -> r14
+	add(r14, r15) -> r14
+	copyb(r14, r7) -> 4[a + 0]
+	add(r6, 1) -> r6
+	copyb(0, IO_SLOT) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	add(r10, 4) -> r10
+	sub(r11, 4) -> r11
+	jump(io_wo_full)
+io_wo_trail:
+	; if remaining != 0: copy remaining bytes into PEND (which is 0 here), pendlen = remaining
+	eq(r11, 0), j(io_wo_finalpad)
+	copyb(0, 0) -> r6                    ; i = 0
+io_wo_tcopy:
+	eq(r6, r11), j(io_wo_tset)
+	copyb(r10, 1[a + 0]) -> r7
+	copyb(0, IO_PEND) -> r5
+	add(r5, r6) -> r5
+	copyb(r5, r7) -> 1[a + 0]
+	add(r10, 1) -> r10
+	add(r6, 1) -> r6
+	jump(io_wo_tcopy)
+io_wo_tset:
+	copyb(0, IO_PENDLEN) -> r5
+	copyb(r5, r11) -> 8[a + 0]           ; pendlen = remaining
+io_wo_finalpad:
+	; if pendlen != 0: write zero-padded PEND to OUTPUT[slot] WITHOUT advancing slot
+	copyb(0, IO_PENDLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	eq(r6, 0), j(io_wo_ret)
+	copyb(0, IO_PEND) -> r5
+	copyb(r5, 4[a + 0]) -> r7            ; PEND u32 (upper bytes are zero)
+	copyb(0, IO_SLOT) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	sll(r6, 2) -> r15
+	copyb(0, IO_OUTPUT_ADDR) -> r14
+	add(r14, r15) -> r14
+	copyb(r14, r7) -> 4[a + 0]
+io_wo_ret:
+	ret

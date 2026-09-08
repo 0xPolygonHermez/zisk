@@ -1,0 +1,85 @@
+; ============================================================================
+; bitcount.zisk - diagnostic for the ZisK bit-count instructions (Zbb).
+;
+;   clz   ctz   cpop         (64-bit)
+;   clz_w ctz_w cpop_w        (32-bit, on the low 32 bits)
+;
+; These operate on b only (a is ignored); the table's `a` column is a fixed
+; poison value (0x5555...) so a bug that read `a` would be caught. Corner cases:
+; zero (clz/ctz = 64 or 32), all-ones, single bits, low-32 vs high-32.
+; Pure-constant style; expected values generated from core/src/ops_core.rs.
+;
+; BITCNT_TABLE columns: a b clz ctz cpop clz_w ctz_w cpop_w
+; First mismatch returns 0x07CC (01=clz 02=ctz 03=cpop 04=clz_w 05=ctz_w 06=cpop_w).
+;
+; Registers: r5 row ptr  r6 row index  r7 a(poison)  r8 b(operand)  r12 exp  r13 res.
+; ============================================================================
+
+define ROWS      9
+define ROW_BYTES 64      ; 8 u64 columns * 8 bytes
+
+; a, b, clz, ctz, cpop, clz_w, ctz_w, cpop_w
+const u64 BITCNT_TABLE =
+	0x5555555555555555, 0x0000000000000000, 0x0000000000000040, 0x0000000000000040, 0x0000000000000000, 0x0000000000000020, 0x0000000000000020, 0x0000000000000000,
+	0x5555555555555555, 0x0000000000000001, 0x000000000000003f, 0x0000000000000000, 0x0000000000000001, 0x000000000000001f, 0x0000000000000000, 0x0000000000000001,
+	0x5555555555555555, 0x8000000000000000, 0x0000000000000000, 0x000000000000003f, 0x0000000000000001, 0x0000000000000020, 0x0000000000000020, 0x0000000000000000,
+	0x5555555555555555, 0xffffffffffffffff, 0x0000000000000000, 0x0000000000000000, 0x0000000000000040, 0x0000000000000000, 0x0000000000000000, 0x0000000000000020,
+	0x5555555555555555, 0x00000000ffffffff, 0x0000000000000020, 0x0000000000000000, 0x0000000000000020, 0x0000000000000000, 0x0000000000000000, 0x0000000000000020,
+	0x5555555555555555, 0xffffffff00000000, 0x0000000000000000, 0x0000000000000020, 0x0000000000000020, 0x0000000000000020, 0x0000000000000020, 0x0000000000000000,
+	0x5555555555555555, 0x0000000000010000, 0x000000000000002f, 0x0000000000000010, 0x0000000000000001, 0x000000000000000f, 0x0000000000000010, 0x0000000000000001,
+	0x5555555555555555, 0xaaaaaaaaaaaaaaaa, 0x0000000000000000, 0x0000000000000001, 0x0000000000000020, 0x0000000000000000, 0x0000000000000001, 0x0000000000000010,
+	0x5555555555555555, 0x0000000080000000, 0x0000000000000020, 0x000000000000001f, 0x0000000000000001, 0x0000000000000000, 0x000000000000001f, 0x0000000000000001
+
+bitcount:
+	copyb(0, BITCNT_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+bc_loop:
+	eq(r6, ROWS), j(bc_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	clz(r7, r8) -> r13
+	eq(r13, r12), j(bc_c1)
+	copyb(0, 0x0701) -> r10
+	ret
+bc_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	ctz(r7, r8) -> r13
+	eq(r13, r12), j(bc_c2)
+	copyb(0, 0x0702) -> r10
+	ret
+bc_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	cpop(r7, r8) -> r13
+	eq(r13, r12), j(bc_c3)
+	copyb(0, 0x0703) -> r10
+	ret
+bc_c3:
+	copyb(r5, 8[a + 40]) -> r12
+	clz_w(r7, r8) -> r13
+	eq(r13, r12), j(bc_c4)
+	copyb(0, 0x0704) -> r10
+	ret
+bc_c4:
+	copyb(r5, 8[a + 48]) -> r12
+	ctz_w(r7, r8) -> r13
+	eq(r13, r12), j(bc_c5)
+	copyb(0, 0x0705) -> r10
+	ret
+bc_c5:
+	copyb(r5, 8[a + 56]) -> r12
+	cpop_w(r7, r8) -> r13
+	eq(r13, r12), j(bc_next)
+	copyb(0, 0x0706) -> r10
+	ret
+
+bc_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(bc_loop)
+
+bc_ok:
+	copyb(0, 0) -> r10
+	ret

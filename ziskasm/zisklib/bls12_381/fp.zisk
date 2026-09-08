@@ -1,0 +1,321 @@
+; ============================================================================
+; bls12_381/fp.zisk - base-field (Fp, 384-bit / 6 u64) arithmetic. Mirrors
+; ziskos/.../bls12_381/fp.rs: add/dbl/sub/neg/mul/square via arith384_mod
+; (header [&a,&b,&c,&P,&d], 6-u64 operands), inv (FCALL_BLS12_381_FP_INV + verify)
+; and sqrt (FCALL_BLS12_381_FP_SQRT + verify). Leaves. Prefixes lfp_.
+; ============================================================================
+
+u64 BLS_FP_HDR[5]  = 0, 0, 0, 0, 0
+u64 BLS_FP_INV[6]  = 0, 0, 0, 0, 0, 0
+u64 BLS_FP_DL[6]   = 0, 0, 0, 0, 0, 0
+u64 BLS_FP_SQRT[6] = 0, 0, 0, 0, 0, 0
+u64 BLS_FP_SQ[6]   = 0, 0, 0, 0, 0, 0
+u64 BLS_FP_XNQR[6] = 0, 0, 0, 0, 0, 0
+u64 BLS_FP_ISQR[1] = 0
+
+; void zisklib_add_fp_bls12_381(const u64* x, const u64* y, u64* result)  [x*1+y]
+zisklib_add_fp_bls12_381:
+	copyb(0, BLS_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(r5, r11) -> 8[a + 16]
+	copyb(0, BLS_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]
+	arith384_mod(0, r5) -> r14
+	ret
+
+; void zisklib_dbl_fp_bls12_381(const u64* x, u64* result)  [x*1+x = 2x]
+zisklib_dbl_fp_bls12_381:
+	copyb(0, BLS_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(r5, r10) -> 8[a + 16]
+	copyb(0, BLS_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r11) -> 8[a + 32]
+	arith384_mod(0, r5) -> r14
+	ret
+
+; void zisklib_sub_fp_bls12_381(const u64* x, const u64* y, u64* result)  [y*(P-1)+x]
+zisklib_sub_fp_bls12_381:
+	copyb(0, BLS_FP_HDR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_P_MINUS_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(r5, r10) -> 8[a + 16]
+	copyb(0, BLS_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]
+	arith384_mod(0, r5) -> r14
+	ret
+
+; void zisklib_neg_fp_bls12_381(const u64* x, u64* result)  [x*(P-1)+0]
+zisklib_neg_fp_bls12_381:
+	copyb(0, BLS_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_P_MINUS_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, BLS_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, BLS_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r11) -> 8[a + 32]
+	arith384_mod(0, r5) -> r14
+	ret
+
+; void zisklib_mul_fp_bls12_381(const u64* x, const u64* y, u64* result)  [x*y+0]
+zisklib_mul_fp_bls12_381:
+	copyb(0, BLS_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r5, r11) -> 8[a + 8]
+	copyb(0, BLS_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, BLS_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]
+	arith384_mod(0, r5) -> r14
+	ret
+
+; void zisklib_square_fp_bls12_381(const u64* x, u64* result)  [x*x+0]
+zisklib_square_fp_bls12_381:
+	copyb(0, BLS_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	copyb(0, BLS_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, BLS_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r11) -> 8[a + 32]
+	arith384_mod(0, r5) -> r14
+	ret
+
+; u64 zisklib_sgn0_fp_bls12_381(const u64* x)  [r10=x] -> r10 = x[0] & 1
+zisklib_sgn0_fp_bls12_381:
+	copyb(r10, 8[a + 0]) -> r10
+	and(r10, 1) -> r10
+	ret
+
+; void zisklib_inv_fp_bls12_381(const u64* x, u64* result)  [r10=x, r11=result]
+;   result = x^(-1) mod P (0 if x==0). Hint FCALL_BLS12_381_FP_INV + verify
+;   inv<P and x*inv==1; halt on bad hint.
+zisklib_inv_fp_bls12_381:
+	copyb(0, r10) -> r5
+	copyb(0, 6) -> r6
+lfp_inv_zchk:
+	eq(r6, 0), j(lfp_inv_zero)
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(lfp_inv_hint)
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(lfp_inv_zchk)
+lfp_inv_zero:
+	copyb(0, r11) -> r5
+	copyb(0, 6) -> r6
+lfp_inv_zl:
+	eq(r6, 0), j(lfp_inv_done)
+	copyb(r5, 0) -> 8[a + 0]
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(lfp_inv_zl)
+lfp_inv_done:
+	ret
+lfp_inv_hint:
+	fcall_param(6, r10) -> r14
+	fcall(FCALL_BLS12_381_FP_INV, 0) -> r14
+	copyb(0, BLS_FP_INV) -> r6
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	copyb(0, 5) -> r15
+lfp_inv_rd:
+	eq(r15, 0), j(lfp_inv_lt)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r15, 1) -> r15
+	jump(lfp_inv_rd)
+lfp_inv_lt:
+	; canonical: inv < P (MSW-first over 6 limbs; MSW at +40)
+	copyb(0, BLS_FP_INV) -> r5
+	add(r5, 40) -> r5
+	copyb(0, BLS_P) -> r6
+	add(r6, 40) -> r6
+	copyb(0, 6) -> r7
+lfp_inv_ltl:
+	eq(r7, 0), j(lfp_inv_panic)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(lfp_inv_vfy)
+	ltu(r15, r14), j(lfp_inv_panic)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(lfp_inv_ltl)
+lfp_inv_vfy:
+	; verify x*inv == 1 mod P
+	copyb(0, BLS_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_FP_INV) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, BLS_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, BLS_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(0, BLS_FP_DL) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	arith384_mod(0, r5) -> r14
+	copyb(0, BLS_FP_DL) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 1), j(lfp_inv_hi)
+	jump(lfp_inv_panic)
+lfp_inv_hi:
+	copyb(0, 5) -> r7
+	add(r5, 8) -> r5
+lfp_inv_hil:
+	eq(r7, 0), j(lfp_inv_wr)
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 0), j(lfp_inv_hin)
+	jump(lfp_inv_panic)
+lfp_inv_hin:
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(lfp_inv_hil)
+lfp_inv_wr:
+	copyb(0, BLS_FP_INV) -> r5
+	copyb(0, 6) -> r7
+lfp_inv_wrl:
+	eq(r7, 0), j(lfp_inv_ret)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r11, 8) -> r11
+	sub(r7, 1) -> r7
+	jump(lfp_inv_wrl)
+lfp_inv_ret:
+	ret
+lfp_inv_panic:
+	copyb(0, 0) -> r10, end
+
+; u64 zisklib_sqrt_fp_bls12_381(const u64* x, u64* result)  [r10=x, r11=result]
+;   -> r10 = 1 if x is a QR (result = sqrt), else 0 (result = sqrt of x·NQR).
+;   Hint FCALL_BLS12_381_FP_SQRT -> [is_qr, sqrt[6]]; verify sqrt<P and
+;   sqrt²==x (qr) or sqrt²==x·NQR (non-qr); halt on bad hint.
+zisklib_sqrt_fp_bls12_381:
+	push r1
+	copyb(0, BLS_FP_INV) -> r5           ; reuse BLS_FP_INV to stash x ptr? no — save result ptr
+	; save x ptr in BLS_FP_DL[0], result ptr in BLS_FP_DL[1]
+	copyb(0, BLS_FP_DL) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r5, r11) -> 8[a + 8]
+	fcall_param(6, r10) -> r14
+	fcall(FCALL_BLS12_381_FP_SQRT, 0) -> r14
+	; is_qr = first word
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(0, BLS_FP_ISQR) -> r6
+	copyb(r6, r7) -> 8[a + 0]
+	; sqrt[0..6]
+	copyb(0, BLS_FP_SQRT) -> r6
+	copyb(0, 6) -> r15
+lfp_sq_rd:
+	eq(r15, 0), j(lfp_sq_lt)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r15, 1) -> r15
+	jump(lfp_sq_rd)
+lfp_sq_lt:
+	; canonical: sqrt < P
+	copyb(0, BLS_FP_SQRT) -> r5
+	add(r5, 40) -> r5
+	copyb(0, BLS_P) -> r6
+	add(r6, 40) -> r6
+	copyb(0, 6) -> r7
+lfp_sq_ltl:
+	eq(r7, 0), j(lfp_sq_panic)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(lfp_sq_sq)
+	ltu(r15, r14), j(lfp_sq_panic)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(lfp_sq_ltl)
+lfp_sq_sq:
+	; BLS_FP_SQ = sqrt * sqrt mod P
+	copyb(0, BLS_FP_HDR) -> r5
+	copyb(0, BLS_FP_SQRT) -> r7
+	copyb(r5, r7) -> 8[a + 0]
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, BLS_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, BLS_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(0, BLS_FP_SQ) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	arith384_mod(0, r5) -> r14
+	; is_qr ?
+	copyb(0, BLS_FP_ISQR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	eq(r5, 1), j(lfp_sq_qr)
+	; non-qr: BLS_FP_XNQR = x * NQR mod P
+	copyb(0, BLS_FP_HDR) -> r5
+	copyb(0, BLS_FP_DL) -> r6
+	copyb(r6, 8[a + 0]) -> r6          ; x ptr
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_NQR_FP) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, BLS_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, BLS_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(0, BLS_FP_XNQR) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	arith384_mod(0, r5) -> r14
+	; check SQ == XNQR
+	copyb(0, BLS_FP_SQ) -> r5
+	copyb(0, BLS_FP_XNQR) -> r6
+	copyb(0, 6) -> r7
+	jump(lfp_sq_cmp)
+lfp_sq_qr:
+	; check SQ == x
+	copyb(0, BLS_FP_SQ) -> r5
+	copyb(0, BLS_FP_DL) -> r6
+	copyb(r6, 8[a + 0]) -> r6          ; x ptr
+	copyb(0, 6) -> r7
+lfp_sq_cmp:
+	eq(r7, 0), j(lfp_sq_wr)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(lfp_sq_cmpn)
+	jump(lfp_sq_panic)
+lfp_sq_cmpn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(lfp_sq_cmp)
+lfp_sq_wr:
+	; result = sqrt
+	copyb(0, BLS_FP_SQRT) -> r5
+	copyb(0, BLS_FP_DL) -> r11
+	copyb(r11, 8[a + 8]) -> r11        ; result ptr
+	copyb(0, 6) -> r7
+lfp_sq_wrl:
+	eq(r7, 0), j(lfp_sq_ret)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r11, 8) -> r11
+	sub(r7, 1) -> r7
+	jump(lfp_sq_wrl)
+lfp_sq_ret:
+	copyb(0, BLS_FP_ISQR) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	pop r1
+	ret
+lfp_sq_panic:
+	copyb(0, 0) -> r10, end

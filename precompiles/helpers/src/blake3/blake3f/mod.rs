@@ -1,7 +1,7 @@
 mod round;
 use round::blake3_round;
 
-/// BLAKE3 simplified compresssion function
+/// BLAKE3 simplified compression function
 pub fn blake3_f(v: &mut [u32; 16], m: &[u32; 16]) {
     blake3_round(v, m, 0);
     blake3_round(v, m, 1);

@@ -1,0 +1,262 @@
+;
+; bls12_381.zisk - diagnostic for the ZisK bls12_381 precompiles (384-bit).
+;   bls12_381_curve_add/dbl, bls12_381_complex_add/sub/mul, arith384_mod
+; Points/complex numbers are 12 u64 (2x384-bit); arith384 values are 6 u64.
+; add/complex: b -> [&P1,&P2], result overwrites P1. dbl: b -> P1 (flat).
+; arith384_mod: b -> [&a,&b,&c,&module,&d]. Vectors from arith_eq_384 test data.
+; First mismatch returns 0x27CC.
+;
+
+u64 LCA_P1 =
+	0xc5936131174bca1e, 0x73f20eea8088352a, 0xd6ac3c07644ff62e, 0x56c80fdb37035620,
+	0xa804b184b59613e5, 0x11c5ffa0d7214e37, 0x198fe78360f35ccd, 0x156a150a5940ffa4,
+	0x57648f68e8fd9e4b, 0x903951e3c252b494, 0xfa6efec28cb93505, 0x0ffecd96cdde086c
+
+const u64 LCA_P2 =
+	0x27195d2f8adaf722, 0xc8f25c7ded4a5aab, 0x78f65e73fe52a3a9, 0x0a5da8ddee3fa34c,
+	0x61b8663eac81bafe, 0x18dca99bfc20cd21, 0x64390d4b8b90f987, 0xc3e2b10f48dc938a,
+	0xb87205c3757b6efe, 0x49f488572a6b449c, 0xd341df69810e7773, 0x13d1214763353f6f
+
+u64 LCA_HDR =
+	0x0000000000000000, 0x0000000000000000
+
+const u64 LCA_EXP =
+	0x2275d364d196ffee, 0x7c76a00abd8bab57, 0xb2b62d0993cccfe5, 0xd53aa3207a32db36,
+	0xadd33fb97412f966, 0x038169c1081deedc, 0x7b4a9db651ad839f, 0x8368d504271d6806,
+	0x7243cedad0261251, 0x6d9e9ecfd3693109, 0x51ef109036b3c3b6, 0x06d5865b6758facb
+
+u64 LCD_BUF =
+	0xee1858fdf696f9f3, 0x092ca288abe1cabf, 0x868766bc4417613f, 0x40d87be2bc9e60ad,
+	0xbbb2e2be2e08cbad, 0x09dbc57d9bdc3d39, 0xc881bd45705f8f9c, 0x1bb747e22c5c988a,
+	0xc7988b14cad180dc, 0x1898a9df44a3e85f, 0x1ac20a6d198773bd, 0x012914b4b44f0c27
+
+const u64 LCD_EXP =
+	0x899be53bf0fa79dc, 0x9b6f2ee8d7ee7eec, 0x2dd8df47ac1016f3, 0x9aac9e2098ae34ad,
+	0x9df60d13663deb80, 0x17be102e49084a4f, 0x1fc7357ef23a5e94, 0x2a96c3b070e5fa09,
+	0xa983c0be59fcabb3, 0xc447a74080dc9de4, 0x03c9c2de479352e3, 0x0a14a3738de0e24f
+
+u64 LXA_P1 =
+	0x71b73430b36191cf, 0xd0eb1a3e49e6605e, 0x01af756d104a10e4, 0x859a6d01199ba56e,
+	0xe74daaf97f736293, 0x11b63449be0461c9, 0x0ee94230dcea7778, 0xe95ee6e59d143c20,
+	0x273f1f7f421d9ed1, 0x4ecaafd61a0be579, 0xe3942278034d5418, 0x05bdcdb658a357a1
+
+const u64 LXA_P2 =
+	0xe7aefd48d88093bf, 0xa925adae19f9eb68, 0xd6c333fafa13f017, 0xf8405b4c16ab0464,
+	0xaf0ba0d27f196d6b, 0x09fa590f23d8c505, 0xb52686c7e15549ad, 0x7215c062bf54cbce,
+	0xe90f8248b031e26f, 0x359973046fc996a7, 0xc118dbfd7b6160e5, 0x145200378344ced5
+
+u64 LXA_HDR =
+	0x0000000000000000, 0x0000000000000000
+
+const u64 LXA_EXP =
+	0x9f6731798be27ae3, 0x5b64c7edb28c4bc7, 0x7141d6c713ad0ad8, 0x19637cc83cc19713,
+	0x4b3da415bb412328, 0x01af7b6ea85d4035, 0x0a10c8f8be40167a, 0x3cc8a749ab1507ef,
+	0xa91dcf26fb9e8b1d, 0x1fecd75596506961, 0x599156bf3b630826, 0x000ebc03a2683fdd
+
+u64 LXS_P1 =
+	0x8cf5e5d190f6e454, 0x9d859fdfdf0d3ed2, 0x7f26d03a91d8bd4f, 0x5b99fce7a256f875,
+	0xbb7d79cca288170b, 0x0365e3871fdc8881, 0xdfaf9dd26b194e15, 0x1c73b19145bd1065,
+	0xaf824353ddc12373, 0x76c694ca0e8b3b68, 0x90455440d36d1061, 0x06ee70d0fcbaa439
+
+const u64 LXS_P2 =
+	0x971ef8129df33c63, 0x0bc942be03098411, 0xec12a6b9cf8f06b2, 0xbf461b21f278be74,
+	0xb1aa4c52db262e34, 0x08b2fa702546ea36, 0x12b5903056959203, 0xcee4103bf194421c,
+	0x7143d70a10a72560, 0x6ebca5dbfd5ec928, 0x89c19d211bf2ce87, 0x0925a28950231be2
+
+u64 LXS_HDR =
+	0x0000000000000000, 0x0000000000000000
+
+const u64 LXS_EXP =
+	0xafd5edbef303529c, 0xb0685d208d57bac0, 0xfa44fc21b8faacc1, 0x00cb2d4aa3634cbf,
+	0x54eed5300aad95ae, 0x14b3fb01341584e5, 0x86f90da2148366bd, 0x6c3ba154057cce49,
+	0xa56f3eeac3caf436, 0x6c813a7304b184ff, 0x519f5ed5fac5eeb1, 0x17c9e031e6176ef1
+
+u64 LXM_P1 =
+	0x300027d90a2388a4, 0x3653f19fbcb3a9ff, 0x8a8bce2c1c2bd0f8, 0x8988420324aa308e,
+	0x4e09d7530f6646d6, 0x13367023885b22cc, 0x3ba30c4ce2281142, 0x6be8588b74ffcf3c,
+	0x7365549e878e3007, 0x043fdaee56ff761b, 0x81c8e9bab751fb50, 0x04c5c936ac4e7886
+
+const u64 LXM_P2 =
+	0x570a5890449cfe97, 0x02d5453d817aa15a, 0xdd19e0f30d6f08d0, 0x0221265c4ea88789,
+	0xdaab98119aa10259, 0x130badf19beae098, 0x6c2b195e5c7f84d8, 0x7415010b41515b52,
+	0xfb15df8f0adfdd97, 0xe8c4a46b5c572475, 0x7f9ac2a0c9cf654e, 0x18b220fea3af9f47
+
+u64 LXM_HDR =
+	0x0000000000000000, 0x0000000000000000
+
+const u64 LXM_EXP =
+	0x55030ae9914b586f, 0x76996657be113a34, 0x03f210e740dde436, 0xd8c5e9ec1b8c369f,
+	0xe6dde80774af473e, 0x073d09ce88548414, 0x477e6307b0830755, 0xdec98369a70f4b13,
+	0x0b7cfbea4acb1978, 0x59ab7bed628ebdcb, 0x0ed26102b139a8e3, 0x0e4086a4aa45865e
+
+const u64 A384_A =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000000, 0x0000000000000000
+
+const u64 A384_B =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000000, 0x0000000000000000
+
+const u64 A384_C =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000000, 0x0000000000000000
+
+const u64 A384_MOD =
+	0x0000000000000001, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000000, 0x0000000000000000
+
+u64 A384_D =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000000, 0x0000000000000000
+
+u64 A384_HDR =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000000
+
+const u64 A384_EXP =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000000, 0x0000000000000000
+
+bls12_381:
+	; bls12_381_curve_add
+	copyb(0, LCA_HDR) -> r8
+	copyb(0, LCA_P1) -> r7
+	copyb(r8, r7) -> 8[a + 0]
+	copyb(0, LCA_P2) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+	bls12_381_curve_add(0, r8) -> r13
+	copyb(0, LCA_P1) -> r7
+	copyb(0, LCA_EXP) -> r5
+	copyb(0, 12) -> r6
+LCA_loop:
+	eq(r6, 0), j(LCA_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(LCA_next)
+	copyb(0, 0x2701) -> r10
+	ret
+LCA_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(LCA_loop)
+LCA_ok:
+	; bls12_381_curve_dbl
+	copyb(0, LCD_BUF) -> r8
+	bls12_381_curve_dbl(0, r8) -> r13
+	copyb(0, LCD_BUF) -> r7
+	copyb(0, LCD_EXP) -> r5
+	copyb(0, 12) -> r6
+LCD_loop:
+	eq(r6, 0), j(LCD_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(LCD_next)
+	copyb(0, 0x2702) -> r10
+	ret
+LCD_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(LCD_loop)
+LCD_ok:
+	; bls12_381_complex_add
+	copyb(0, LXA_HDR) -> r8
+	copyb(0, LXA_P1) -> r7
+	copyb(r8, r7) -> 8[a + 0]
+	copyb(0, LXA_P2) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+	bls12_381_complex_add(0, r8) -> r13
+	copyb(0, LXA_P1) -> r7
+	copyb(0, LXA_EXP) -> r5
+	copyb(0, 12) -> r6
+LXA_loop:
+	eq(r6, 0), j(LXA_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(LXA_next)
+	copyb(0, 0x2703) -> r10
+	ret
+LXA_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(LXA_loop)
+LXA_ok:
+	; bls12_381_complex_sub
+	copyb(0, LXS_HDR) -> r8
+	copyb(0, LXS_P1) -> r7
+	copyb(r8, r7) -> 8[a + 0]
+	copyb(0, LXS_P2) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+	bls12_381_complex_sub(0, r8) -> r13
+	copyb(0, LXS_P1) -> r7
+	copyb(0, LXS_EXP) -> r5
+	copyb(0, 12) -> r6
+LXS_loop:
+	eq(r6, 0), j(LXS_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(LXS_next)
+	copyb(0, 0x2704) -> r10
+	ret
+LXS_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(LXS_loop)
+LXS_ok:
+	; bls12_381_complex_mul
+	copyb(0, LXM_HDR) -> r8
+	copyb(0, LXM_P1) -> r7
+	copyb(r8, r7) -> 8[a + 0]
+	copyb(0, LXM_P2) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+	bls12_381_complex_mul(0, r8) -> r13
+	copyb(0, LXM_P1) -> r7
+	copyb(0, LXM_EXP) -> r5
+	copyb(0, 12) -> r6
+LXM_loop:
+	eq(r6, 0), j(LXM_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(LXM_next)
+	copyb(0, 0x2705) -> r10
+	ret
+LXM_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(LXM_loop)
+LXM_ok:
+	; arith384_mod ((a*b+c) mod m -> d)
+	copyb(0, A384_HDR) -> r8
+	copyb(0, A384_A) -> r7
+	copyb(r8, r7) -> 8[a + 0]
+	copyb(0, A384_B) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+	copyb(0, A384_C) -> r7
+	copyb(r8, r7) -> 8[a + 16]
+	copyb(0, A384_MOD) -> r7
+	copyb(r8, r7) -> 8[a + 24]
+	copyb(0, A384_D) -> r7
+	copyb(r8, r7) -> 8[a + 32]
+	arith384_mod(0, r8) -> r13
+	copyb(0, A384_D) -> r7
+	copyb(0, A384_EXP) -> r5
+	copyb(0, 6) -> r6
+A384_loop:
+	eq(r6, 0), j(A384_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(A384_next)
+	copyb(0, 0x2706) -> r10
+	ret
+A384_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(A384_loop)
+A384_ok:
+	copyb(0, 0) -> r10
+	ret

@@ -1,0 +1,209 @@
+; ============================================================================
+; bls12_381/pairing.zisk - optimal-ate pairing check (EIP-2537). Mirrors
+; pairing_check_safe_bls12_381. Uses ∏ᵢ ML(Pᵢ,Qᵢ) = batch-ML, so it multiplies
+; single-pair Miller loops, then one final exponentiation, returns whether the
+; product is 1. Unlike bn254, BLS validates BOTH G1 and G2 subgroup membership.
+;   status: 0 = pairing holds (accept), 1 = does not hold (reject),
+;           2 = G1 not canonical, 3 = G1 not on curve, 4 = G1 not in subgroup,
+;           5 = G2 not canonical, 6 = G2 not on curve, 7 = G2 not in subgroup.
+; A pair is skipped from the product (contributes 1) when either point is the
+; identity; matching bn254/pairing.zisk, validation runs only when both points
+; are non-identity. Loop index lives in RAM (LPC_I). Prefix lpc_.
+; ============================================================================
+
+const u64 BLS_ONE72[72] = 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+u64 LPC_G1[1] = 0
+u64 LPC_G2[1] = 0
+u64 LPC_N[1]  = 0
+u64 LPC_I[1]  = 0
+u64 LPC_CONTRIB[1] = 0
+u64 LPC_PI[1] = 0
+u64 LPC_QI[1] = 0
+u64 LPC_F[72]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 LPC_MI[72] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 LPC_RES[72]= 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+; u64 zisklib_pairing_check_bls12_381(const u64* g1, const u64* g2, u64 n)
+;   [r10=g1 (12·n u64), r11=g2 (24·n u64), r12=n] -> r10 = status code.
+zisklib_pairing_check_bls12_381:
+	push r1
+	copyb(0, LPC_G1) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, LPC_G2) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, LPC_N) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; f = 1
+	copyb(0, LPC_F) -> r5
+	copyb(r5, 1) -> 8[a + 0]
+	copyb(0, 1) -> r6
+lpc_finit:
+	eq(r6, 72), j(lpc_finit_done)
+	sll(r6, 3) -> r7
+	add(r5, r7) -> r7
+	copyb(r7, 0) -> 8[a + 0]
+	add(r6, 1) -> r6
+	jump(lpc_finit)
+lpc_finit_done:
+	copyb(0, LPC_CONTRIB) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+	copyb(0, LPC_I) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+lpc_loop:
+	copyb(0, LPC_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	copyb(0, LPC_N) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	ltu(r13, r14), j(lpc_body)
+	jump(lpc_finish)
+lpc_body:
+	; p_i = g1 + i*96 ; q_i = g2 + i*192
+	copyb(0, LPC_G1) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	sll(r13, 6) -> r6
+	sll(r13, 5) -> r7
+	add(r6, r7) -> r6
+	add(r5, r6) -> r5
+	copyb(0, LPC_PI) -> r6
+	copyb(r6, r5) -> 8[a + 0]
+	copyb(0, LPC_G2) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	sll(r13, 7) -> r6
+	sll(r13, 6) -> r7
+	add(r6, r7) -> r6
+	add(r5, r6) -> r5
+	copyb(0, LPC_QI) -> r6
+	copyb(r6, r5) -> 8[a + 0]
+	; --- identity? skip pair (contributes 1) ---
+	copyb(0, LPC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_G1_IDENTITY) -> r11
+	copyb(0, 12) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(lpc_next)
+	copyb(0, LPC_QI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_G2_IDENTITY) -> r11
+	copyb(0, 24) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(lpc_next)
+	; --- canonical G1: x<P and y<P (6 limbs each) ---
+	copyb(0, LPC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_P) -> r11
+	copyb(0, 6) -> r12
+	call bn254_ltn
+	eq(r10, 0), j(lpc_err_g1canon)
+	copyb(0, LPC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 48) -> r10
+	copyb(0, BLS_P) -> r11
+	copyb(0, 6) -> r12
+	call bn254_ltn
+	eq(r10, 0), j(lpc_err_g1canon)
+	; --- canonical G2: 4 coords < P ---
+	copyb(0, 0) -> r13
+lpc_g2canon:
+	eq(r13, 4), j(lpc_g2canon_ok)
+	copyb(0, LPC_QI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	sll(r13, 5) -> r6
+	sll(r13, 4) -> r7
+	add(r6, r7) -> r6
+	add(r10, r6) -> r10
+	copyb(0, BLS_P) -> r11
+	copyb(0, 6) -> r12
+	call bn254_ltn
+	eq(r10, 0), j(lpc_err_g2canon)
+	add(r13, 1) -> r13
+	jump(lpc_g2canon)
+lpc_g2canon_ok:
+	; --- on-curve G1 ---
+	copyb(0, LPC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_is_on_curve_bls12_381
+	eq(r10, 0), j(lpc_err_g1curve)
+	; --- subgroup G1 ---
+	copyb(0, LPC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_is_on_subgroup_bls12_381
+	eq(r10, 0), j(lpc_err_g1sub)
+	; --- on-curve twist G2 ---
+	copyb(0, LPC_QI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_is_on_curve_twist_bls12_381
+	eq(r10, 0), j(lpc_err_g2curve)
+	; --- subgroup G2 ---
+	copyb(0, LPC_QI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_is_on_subgroup_twist_bls12_381
+	eq(r10, 0), j(lpc_err_g2sub)
+	; --- mi = miller(p_i, q_i) ; f = f · mi ---
+	copyb(0, LPC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, LPC_QI) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, LPC_MI) -> r12
+	call zisklib_miller_loop_bls12_381
+	copyb(0, LPC_F) -> r10
+	copyb(0, LPC_MI) -> r11
+	copyb(0, LPC_F) -> r12
+	call zisklib_mul_fp12_bls12_381
+	; contrib++
+	copyb(0, LPC_CONTRIB) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 1) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+lpc_next:
+	copyb(0, LPC_I) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 1) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	jump(lpc_loop)
+lpc_finish:
+	; if contrib == 0 -> product is 1 -> accept
+	copyb(0, LPC_CONTRIB) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	eq(r6, 0), j(lpc_accept)
+	; res = final_exp(f)
+	copyb(0, LPC_F) -> r10
+	copyb(0, LPC_RES) -> r11
+	call zisklib_final_exp_bls12_381
+	; is_one(res) ?
+	copyb(0, LPC_RES) -> r10
+	copyb(0, BLS_ONE72) -> r11
+	copyb(0, 72) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(lpc_accept)
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+lpc_accept:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+lpc_err_g1canon:
+	copyb(0, 2) -> r10
+	pop r1
+	ret
+lpc_err_g1curve:
+	copyb(0, 3) -> r10
+	pop r1
+	ret
+lpc_err_g1sub:
+	copyb(0, 4) -> r10
+	pop r1
+	ret
+lpc_err_g2canon:
+	copyb(0, 5) -> r10
+	pop r1
+	ret
+lpc_err_g2curve:
+	copyb(0, 6) -> r10
+	pop r1
+	ret
+lpc_err_g2sub:
+	copyb(0, 7) -> r10
+	pop r1
+	ret

@@ -1,0 +1,76 @@
+; ============================================================================
+; blake2.zisk - diagnostic for the ZisK blake2 precompile (one Blake2b round).
+;
+; The `blake2` op takes, in its `b` operand, the address of a 3-word header:
+;   b -> [ index (a value in [0,10)), &state(16 u64), &input(16 u64) ]
+; It runs one Blake2b compression round (precompiles_helpers::blake2b_round),
+; updating the 16-word state in place and writing it back to &state.
+;
+; Reference note: `blake2br` is a ZisK-specific single-round function with no
+; public test vector, so B2_EXPECT is a golden vector produced by calling the
+; same library function directly - outside the emulator (checks the .zisk
+; encoding, the index+indirection ABI, and dispatch/writeback; the round math is
+; covered by that library's tests). index = 0, state[i] = i, input[i] = 0x100 + i.
+;
+; Returns r10 = 0 on success, or 0x2301 on the first mismatching state word.
+;
+; The header's 2 pointers are filled at run time (data initializers can't yet be
+; symbol addresses).
+; ============================================================================
+
+define WORDS 16
+
+; Blake2b state (RAM, updated in place): state[i] = i
+u64 B2_STATE[16] =
+	0x0000000000000000, 0x0000000000000001, 0x0000000000000002, 0x0000000000000003,
+	0x0000000000000004, 0x0000000000000005, 0x0000000000000006, 0x0000000000000007,
+	0x0000000000000008, 0x0000000000000009, 0x000000000000000a, 0x000000000000000b,
+	0x000000000000000c, 0x000000000000000d, 0x000000000000000e, 0x000000000000000f
+
+; Blake2b message input (ROM): input[i] = 0x100 + i
+const u64 B2_INPUT[16] =
+	0x0000000000000100, 0x0000000000000101, 0x0000000000000102, 0x0000000000000103,
+	0x0000000000000104, 0x0000000000000105, 0x0000000000000106, 0x0000000000000107,
+	0x0000000000000108, 0x0000000000000109, 0x000000000000010a, 0x000000000000010b,
+	0x000000000000010c, 0x000000000000010d, 0x000000000000010e, 0x000000000000010f
+
+; header (RAM): [ index, &B2_STATE, &B2_INPUT ]; index = 0, pointers filled at run time
+u64 B2_HDR[3] = 0, 0, 0
+
+; expected state after one round (golden vector, see header)
+const u64 B2_EXPECT[16] =
+	0x1942271f4b153e50, 0x48442c341e1e5a4b, 0x534685a12d9b468a, 0x46402e1a303c5e4d,
+	0x489f190c5ecada8d, 0x715a4ac6be9d441e, 0xe8aed54856e61eb9, 0x21d3afb017391a9b,
+	0x81f188bb18c28f05, 0x9679848c394c4641, 0x338124766e428a29, 0xb4756c942f644249,
+	0x7c4f5f4b201e1c39, 0x60b4447ec69568be, 0x785d51511c2c2027, 0x185a0e54323f6414
+
+blake2:
+	; header: [index=0, &B2_STATE, &B2_INPUT]  (B2_HDR[0] stays 0)
+	copyb(0, B2_HDR) -> r8
+	copyb(0, B2_STATE) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+	copyb(0, B2_INPUT) -> r7
+	copyb(r8, r7) -> 8[a + 16]
+
+	blake2(0, r8) -> r13              ; b = &B2_HDR ; one round, writes state back
+
+	copyb(0, B2_STATE) -> r7          ; result pointer
+	copyb(0, B2_EXPECT) -> r5         ; expected pointer
+	copyb(0, WORDS) -> r6
+
+b2_loop:
+	eq(r6, 0), j(b2_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(b2_next)
+	copyb(0, 0x2301) -> r10
+	ret
+b2_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(b2_loop)
+
+b2_ok:
+	copyb(0, 0) -> r10
+	ret

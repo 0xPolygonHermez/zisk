@@ -1,0 +1,56 @@
+; ============================================================================
+; doubler.zisk
+;
+; Reads an array of u64 values from the program input, doubles each value, and
+; writes the doubled results to the program output. Entry point: `_zisk_main`.
+;
+; This is the program body only; the boot/launcher code lives in ziskos.zisk
+; (the ziskasm equivalent of ziskos::_start), which sets up gp/sp, jumps here,
+; and exits after `_zisk_main` returns. The two files are assembled together.
+;
+; --- I/O memory contract (see core/src/mem.rs and emulator/src/emu_context.rs) ---
+;
+;   Input, laid out by the emulator at INPUT_ADDR (0x40000000):
+;     [0x40000000 .. 0x40000008)  reserved 8-byte header (always zero)
+;     [0x40000008 .. 0x40000010)  u64  N = number of input values
+;     [0x40000010 .. )            N little-endian u64 values
+;
+;   Output, read back by the emulator from OUTPUT_ADDR (0xa0410000):
+;     The emulator exposes the first ZISK_PUBLICS (64) u32 words at OUTPUT_ADDR
+;     as the program output; we write the N doubled u64 results starting there
+;     (each u64 occupies two consecutive u32 output words).
+;
+; Doubling is a 64-bit wrapping add (add is modulo 2^64), matching u64 overflow.
+; ============================================================================
+
+
+; ---- Definitions ----
+
+define INPUT_COUNT   0x40000008       ; address of N (the value count)
+define INPUT_VALUES  0x40000010       ; address of value[0]
+define OUTPUT_ADDR   0xa0410000       ; address of result[0]
+
+
+_zisk_main:
+	; ---- Setup ----
+	copyb(0, [INPUT_COUNT]) -> r6         ; r6 = N          (8-byte load from a fixed address)
+	copyb(0, INPUT_VALUES) -> r10         ; r10 = input pointer  -> value[0]
+	copyb(0, OUTPUT_ADDR) -> r11          ; r11 = output pointer -> result[0]
+	copyb(0, 0) -> r5                     ; r5 = i = 0
+
+	; Nothing to do when the array is empty.
+	eq(r6, 0), j(_return)                 ; if N == 0 goto _return, else fall through to loop
+
+loop:
+	copyb(r10, 8[a + 0]) -> r7            ; r7 = value = mem[r10]      (8-byte indirect load)
+	add(r7, r7) -> r8                     ; r8 = value + value         (double, wrapping)
+	copyb(r11, r8) -> 8[a + 0]           ; mem[r11] = r8              (8-byte indirect store)
+	add(r10, 8) -> r10                    ; input pointer  += 8
+	add(r11, 8) -> r11                    ; output pointer += 8
+	add(r5, 1) -> r5                      ; i += 1
+	ltu(r5, r6), j(loop)                  ; if i < N goto loop, else fall through to _return
+
+_return:
+	; Return to the caller (the launcher in ziskos.zisk). `ret` jumps to the
+	; return address the caller left in r1.
+	ret

@@ -1,0 +1,67 @@
+; ============================================================================
+; signext.zisk - diagnostic for the ZisK sign-extend instructions (Zbb).
+;
+;   signextend_b  (sign-extend low 8 bits)
+;   signextend_h  (sign-extend low 16 bits)
+;   signextend_w  (sign-extend low 32 bits)
+;
+; These operate on b only (a is ignored); the `a` column is a poison value so a
+; bug reading `a` would be caught. Corner cases hit each width's sign bit set /
+; clear. Pure-constant style; expected values generated from core/src/ops_core.rs.
+;
+; SEXT_TABLE columns: a b signextend_b signextend_h signextend_w
+; First mismatch returns 0x0aCC (01=..._b 02=..._h 03=..._w).
+;
+; Registers: r5 row ptr  r6 row index  r7 a(poison)  r8 b(operand)  r12 exp  r13 res.
+; ============================================================================
+
+define ROWS      9
+define ROW_BYTES 40      ; 5 u64 columns * 8 bytes
+
+; a, b, signextend_b, signextend_h, signextend_w
+const u64 SEXT_TABLE =
+	0x5555555555555555, 0x000000000000007f, 0x000000000000007f, 0x000000000000007f, 0x000000000000007f,
+	0x5555555555555555, 0x0000000000000080, 0xffffffffffffff80, 0x0000000000000080, 0x0000000000000080,
+	0x5555555555555555, 0x00000000000000ff, 0xffffffffffffffff, 0x00000000000000ff, 0x00000000000000ff,
+	0x5555555555555555, 0x0000000000007fff, 0xffffffffffffffff, 0x0000000000007fff, 0x0000000000007fff,
+	0x5555555555555555, 0x0000000000008000, 0x0000000000000000, 0xffffffffffff8000, 0x0000000000008000,
+	0x5555555555555555, 0x000000000000ffff, 0xffffffffffffffff, 0xffffffffffffffff, 0x000000000000ffff,
+	0x5555555555555555, 0x000000007fffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0x000000007fffffff,
+	0x5555555555555555, 0x0000000080000000, 0x0000000000000000, 0x0000000000000000, 0xffffffff80000000,
+	0x5555555555555555, 0x123456789abcdef0, 0xfffffffffffffff0, 0xffffffffffffdef0, 0xffffffff9abcdef0
+
+signext:
+	copyb(0, SEXT_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+se_loop:
+	eq(r6, ROWS), j(se_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	signextend_b(r7, r8) -> r13
+	eq(r13, r12), j(se_c1)
+	copyb(0, 0x0a01) -> r10
+	ret
+se_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	signextend_h(r7, r8) -> r13
+	eq(r13, r12), j(se_c2)
+	copyb(0, 0x0a02) -> r10
+	ret
+se_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	signextend_w(r7, r8) -> r13
+	eq(r13, r12), j(se_next)
+	copyb(0, 0x0a03) -> r10
+	ret
+
+se_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(se_loop)
+
+se_ok:
+	copyb(0, 0) -> r10
+	ret

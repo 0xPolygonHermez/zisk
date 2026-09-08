@@ -1,0 +1,189 @@
+;
+; bn254.zisk - diagnostic for the ZisK bn254 precompiles.
+;   bn254_curve_add bn254_curve_dbl bn254_complex_add bn254_complex_sub bn254_complex_mul
+; add/complex: b -> [&P1,&P2], result overwrites P1. dbl: b -> P1 (flat), in place.
+; Vectors from the arith_eq test data (index 0). First mismatch returns 0x25CC.
+;
+
+u64 BCA_P1 =
+	0x01e4aa5d71d92681, 0xa0b7d80a7bd4f522, 0xd0cd23ca1b99aff4, 0x1a8248189299d0f4,
+	0x1cb9b198b288c3e8, 0x32a6c8de203f56c3, 0x95e6ad3ade19f1e0, 0x2058b9c74fdd2040
+
+const u64 BCA_P2 =
+	0x1d9bcbe21ce01516, 0xcc7815061a484148, 0xd6aaab22a4076b7a, 0x1d76765321373a53,
+	0xd0dbc25dfe72d5fd, 0x7a0e631e979bbb7b, 0xb28a55c849fe53c4, 0x1533a9189589de91
+
+u64 BCA_HDR =
+	0x0000000000000000, 0x0000000000000000
+
+const u64 BCA_EXP =
+	0xae0abd6da7c27dd3, 0xe3c28bbc5495c4d8, 0x5650948565d3fb7b, 0x26f64f2fd6fc2655,
+	0x38410d00d9e0f202, 0x0b56d3885a3c7a35, 0x661febef9f288626, 0x2d2af10608b33f79
+
+u64 BCD_BUF =
+	0x29431e806494821c, 0x7c4f497757508338, 0x5b9b016ca2dd68d5, 0x2f201527a54d27cc,
+	0x3cf4564b5fde32bf, 0xdc93368d75b7f0e6, 0xf37bdee1d9e64b02, 0x1b6a34c980a6db2b
+
+const u64 BCD_EXP =
+	0xbc72e02317bedfac, 0x7493379deed05eca, 0xe5022b992424c66f, 0x0728837618328ca7,
+	0xd82de1be514438d7, 0xbdf1fb6f48b9d17f, 0xa555ea30c27dc135, 0x263d696bcfd63489
+
+u64 BXA_P1 =
+	0x8845b9542b31c38b, 0x9b1a687c87e6cace, 0x0f6e65265b769424, 0x06a17014782392fb,
+	0xb6f6c39f38baf174, 0x8aca972d3013dc95, 0x75c7a9ce33936079, 0x2168ff1b3423d564
+
+const u64 BXA_P2 =
+	0x40120fccb7825bce, 0x9be56a690221ca6d, 0xd635d44b149f6ce5, 0x03926b8207ed1e9e,
+	0xe6a435edec136b89, 0x96f366e85ff5baae, 0x94e468cf89b5a460, 0x0302667e88a9dd2a
+
+u64 BXA_HDR =
+	0x0000000000000000, 0x0000000000000000
+
+const u64 BXA_EXP =
+	0xc857c920e2b41f59, 0x36ffd2e58a08953b, 0xe5a439717016010a, 0x0a33db968010b199,
+	0x9d9af98d24ce5cfd, 0x21bdfe1590099744, 0x0aac129dbd4904da, 0x246b6599bccdb28f
+
+u64 BXS_P1 =
+	0x8845b9542b31c38b, 0x9b1a687c87e6cace, 0x0f6e65265b769424, 0x06a17014782392fb,
+	0xb6f6c39f38baf174, 0x8aca972d3013dc95, 0x75c7a9ce33936079, 0x2168ff1b3423d564
+
+const u64 BXS_P2 =
+	0x40120fccb7825bce, 0x9be56a690221ca6d, 0xd635d44b149f6ce5, 0x03926b8207ed1e9e,
+	0xe6a435edec136b89, 0x96f366e85ff5baae, 0x94e468cf89b5a460, 0x0302667e88a9dd2a
+
+u64 BXS_HDR =
+	0x0000000000000000, 0x0000000000000000
+
+const u64 BXS_EXP =
+	0x4833a98773af67bd, 0xff34fe1385c50061, 0x393890db46d7273e, 0x030f04927036745c,
+	0xd0528db14ca785eb, 0xf3d73044d01e21e6, 0xe0e340fea9ddbc18, 0x1e66989cab79f839
+
+u64 BXM_P1 =
+	0x8845b9542b31c38b, 0x9b1a687c87e6cace, 0x0f6e65265b769424, 0x06a17014782392fb,
+	0xb6f6c39f38baf174, 0x8aca972d3013dc95, 0x75c7a9ce33936079, 0x2168ff1b3423d564
+
+const u64 BXM_P2 =
+	0x40120fccb7825bce, 0x9be56a690221ca6d, 0xd635d44b149f6ce5, 0x03926b8207ed1e9e,
+	0xe6a435edec136b89, 0x96f366e85ff5baae, 0x94e468cf89b5a460, 0x0302667e88a9dd2a
+
+u64 BXM_HDR =
+	0x0000000000000000, 0x0000000000000000
+
+const u64 BXM_EXP =
+	0xad8d68812202ae35, 0x2ce0243ddc56f167, 0xbded7ca47b5dc864, 0x20a795cf7b79cb53,
+	0x54218a8a58e7a9d2, 0x028a6acbadde782b, 0xe5161b372ad9f6ea, 0x0c713da2a7288593
+
+bn254:
+	; bn254_curve_add
+	copyb(0, BCA_HDR) -> r8
+	copyb(0, BCA_P1) -> r7
+	copyb(r8, r7) -> 8[a + 0]
+	copyb(0, BCA_P2) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+	bn254_curve_add(0, r8) -> r13
+	copyb(0, BCA_P1) -> r7
+	copyb(0, BCA_EXP) -> r5
+	copyb(0, 8) -> r6
+BCA_loop:
+	eq(r6, 0), j(BCA_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(BCA_next)
+	copyb(0, 0x2501) -> r10
+	ret
+BCA_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(BCA_loop)
+BCA_ok:
+	; bn254_curve_dbl
+	copyb(0, BCD_BUF) -> r8
+	bn254_curve_dbl(0, r8) -> r13
+	copyb(0, BCD_BUF) -> r7
+	copyb(0, BCD_EXP) -> r5
+	copyb(0, 8) -> r6
+BCD_loop:
+	eq(r6, 0), j(BCD_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(BCD_next)
+	copyb(0, 0x2502) -> r10
+	ret
+BCD_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(BCD_loop)
+BCD_ok:
+	; bn254_complex_add
+	copyb(0, BXA_HDR) -> r8
+	copyb(0, BXA_P1) -> r7
+	copyb(r8, r7) -> 8[a + 0]
+	copyb(0, BXA_P2) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+	bn254_complex_add(0, r8) -> r13
+	copyb(0, BXA_P1) -> r7
+	copyb(0, BXA_EXP) -> r5
+	copyb(0, 8) -> r6
+BXA_loop:
+	eq(r6, 0), j(BXA_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(BXA_next)
+	copyb(0, 0x2503) -> r10
+	ret
+BXA_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(BXA_loop)
+BXA_ok:
+	; bn254_complex_sub
+	copyb(0, BXS_HDR) -> r8
+	copyb(0, BXS_P1) -> r7
+	copyb(r8, r7) -> 8[a + 0]
+	copyb(0, BXS_P2) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+	bn254_complex_sub(0, r8) -> r13
+	copyb(0, BXS_P1) -> r7
+	copyb(0, BXS_EXP) -> r5
+	copyb(0, 8) -> r6
+BXS_loop:
+	eq(r6, 0), j(BXS_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(BXS_next)
+	copyb(0, 0x2504) -> r10
+	ret
+BXS_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(BXS_loop)
+BXS_ok:
+	; bn254_complex_mul
+	copyb(0, BXM_HDR) -> r8
+	copyb(0, BXM_P1) -> r7
+	copyb(r8, r7) -> 8[a + 0]
+	copyb(0, BXM_P2) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+	bn254_complex_mul(0, r8) -> r13
+	copyb(0, BXM_P1) -> r7
+	copyb(0, BXM_EXP) -> r5
+	copyb(0, 8) -> r6
+BXM_loop:
+	eq(r6, 0), j(BXM_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(BXM_next)
+	copyb(0, 0x2505) -> r10
+	ret
+BXM_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(BXM_loop)
+BXM_ok:
+	copyb(0, 0) -> r10
+	ret

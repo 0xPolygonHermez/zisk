@@ -1,0 +1,455 @@
+; ============================================================================
+; bls12_381/map_g2.zisk - map_to_curve for G2 (EIP-2537 MAP_FP2_TO_G2). GENERATED
+; (scratchpad/gen_bls_map_g2.py). Fp2 SSWU -> 3-isogeny -> clear_cofactor_twist.
+; Prefix lm2_.
+; ============================================================================
+
+const u64 BLS_ISO_A_G2[12] = 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x00000000000000f0, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000
+const u64 BLS_ISO_B_G2[12] = 0x00000000000003f4, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x00000000000003f4, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000
+const u64 BLS_SWU_Z_G2[12] = 0xb9feffffffffaaa9, 0x1eabfffeb153ffff, 0x6730d2a0f6b0f624, 0x64774b84f38512bf, 0x4b1ba7b6434bacd7, 0x1a0111ea397fe69a, 0xb9feffffffffaaaa, 0x1eabfffeb153ffff, 0x6730d2a0f6b0f624, 0x64774b84f38512bf, 0x4b1ba7b6434bacd7, 0x1a0111ea397fe69a
+const u64 BLS_ISO_X_NUM_G2[48] = 0x6238aaaaaaaa97d6, 0x5c2638e343d9c71c, 0x88b58423c50ae15d, 0x32c52d39fd3a042a, 0xbb5b7a9a47d7ed85, 0x05c759507e8e333e, 0x6238aaaaaaaa97d6, 0x5c2638e343d9c71c, 0x88b58423c50ae15d, 0x32c52d39fd3a042a, 0xbb5b7a9a47d7ed85, 0x05c759507e8e333e, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x26a9ffffffffc71a, 0x1472aaa9cb8d5555, 0x9a208c6b4f20a418, 0x984f87adf7ae0c7f, 0x32126fced787c88f, 0x11560bf17baa99bc, 0x26a9ffffffffc71e, 0x1472aaa9cb8d5555, 0x9a208c6b4f20a418, 0x984f87adf7ae0c7f, 0x32126fced787c88f, 0x11560bf17baa99bc, 0x9354ffffffffe38d, 0x0a395554e5c6aaaa, 0xcd104635a790520c, 0xcc27c3d6fbd7063f, 0x190937e76bc3e447, 0x08ab05f8bdd54cde, 0x88e2aaaaaaaa5ed1, 0x7098e38d0f671c71, 0x22d6108f142b8575, 0xcb14b4e7f4e810aa, 0xed6dea691f5fb614, 0x171d6541fa38ccfa, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000
+const u64 BLS_ISO_X_DEN_G2[36] = 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0xb9feffffffffaa63, 0x1eabfffeb153ffff, 0x6730d2a0f6b0f624, 0x64774b84f38512bf, 0x4b1ba7b6434bacd7, 0x1a0111ea397fe69a, 0x000000000000000c, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0xb9feffffffffaa9f, 0x1eabfffeb153ffff, 0x6730d2a0f6b0f624, 0x64774b84f38512bf, 0x4b1ba7b6434bacd7, 0x1a0111ea397fe69a, 0x0000000000000001, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000
+const u64 BLS_ISO_Y_NUM_G2[48] = 0x12cfc71c71c6d706, 0xfc8c25ebf8c92f68, 0xf54439d87d27e500, 0x0f7da5d4a07f649b, 0x59a4c18b076d1193, 0x1530477c7ab4113b, 0x12cfc71c71c6d706, 0xfc8c25ebf8c92f68, 0xf54439d87d27e500, 0x0f7da5d4a07f649b, 0x59a4c18b076d1193, 0x1530477c7ab4113b, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x6238aaaaaaaa97be, 0x5c2638e343d9c71c, 0x88b58423c50ae15d, 0x32c52d39fd3a042a, 0xbb5b7a9a47d7ed85, 0x05c759507e8e333e, 0x26a9ffffffffc71c, 0x1472aaa9cb8d5555, 0x9a208c6b4f20a418, 0x984f87adf7ae0c7f, 0x32126fced787c88f, 0x11560bf17baa99bc, 0x9354ffffffffe38f, 0x0a395554e5c6aaaa, 0xcd104635a790520c, 0xcc27c3d6fbd7063f, 0x190937e76bc3e447, 0x08ab05f8bdd54cde, 0xe1b371c71c718b10, 0x4e79097a56dc4bd9, 0xb0e977c69aa27452, 0x761b0f37a1e26286, 0xfbf7043de3811ad0, 0x124c9ad43b6cf79b, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000
+const u64 BLS_ISO_Y_DEN_G2[48] = 0xb9feffffffffa8fb, 0x1eabfffeb153ffff, 0x6730d2a0f6b0f624, 0x64774b84f38512bf, 0x4b1ba7b6434bacd7, 0x1a0111ea397fe69a, 0xb9feffffffffa8fb, 0x1eabfffeb153ffff, 0x6730d2a0f6b0f624, 0x64774b84f38512bf, 0x4b1ba7b6434bacd7, 0x1a0111ea397fe69a, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0xb9feffffffffa9d3, 0x1eabfffeb153ffff, 0x6730d2a0f6b0f624, 0x64774b84f38512bf, 0x4b1ba7b6434bacd7, 0x1a0111ea397fe69a, 0x0000000000000012, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0xb9feffffffffaa99, 0x1eabfffeb153ffff, 0x6730d2a0f6b0f624, 0x64774b84f38512bf, 0x4b1ba7b6434bacd7, 0x1a0111ea397fe69a, 0x0000000000000001, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000
+const u64 BLS_F2_ONE12[12] = 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+u64 BLS_M2_U[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_X1[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_GX[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_Y[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_X2[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_ZU2[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_T[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_T2[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_Z2[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_POLYR[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_XNUM[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_XDEN[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_YNUM[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_YDEN[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_PX[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_PY[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_NBA[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_PP[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_ISOP[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_A[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_B[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_C[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_D[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_E[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_F[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_TMP[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_M2_CO[1] = 0
+u64 BLS_M2_XP[1] = 0
+u64 BLS_M2_N[1] = 0
+u64 BLS_M2_I[1] = 0
+u64 BLS_M2_SGNU[1] = 0
+u64 BLS_M2_RESP[1] = 0
+u64 BLS_M2_P[1] = 0
+u64 BLS_M2_S0[1] = 0
+u64 BLS_M2_S1[1] = 0
+
+; u64 zisklib_sgn0_fp2_bls12_381(const u64* x)  [r10=x] -> sign_0 | (zero_0 & sign_1)
+zisklib_sgn0_fp2_bls12_381:
+	push r1
+	copyb(0, BLS_M2_CO) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r10, 8[a + 0]) -> r6
+	and(r6, 1) -> r6
+	copyb(0, BLS_M2_S0) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_M2_CO) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	add(r5, 48) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	and(r6, 1) -> r6
+	copyb(0, BLS_M2_S1) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_M2_CO) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_ZERO) -> r11
+	copyb(0, 6) -> r12
+	call bn254_eqn
+	copyb(0, BLS_M2_S1) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	and(r10, r6) -> r10
+	copyb(0, BLS_M2_S0) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r10, r6) -> r10
+	pop r1
+	ret
+
+; Horner Fp2 poly. r10=coeffs, r11=n, r12=x -> BLS_M2_POLYR
+zisklib_eval_poly_fp2_bls12_381:
+	push r1
+	copyb(0, BLS_M2_CO) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_M2_N) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_M2_XP) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	sub(r11, 1) -> r6
+	sll(r6, 6) -> r7
+	sll(r6, 5) -> r5
+	add(r7, r5) -> r7
+	add(r10, r7) -> r10
+	copyb(0, BLS_M2_POLYR) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_M2_N) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	sub(r5, 2) -> r6
+	copyb(0, BLS_M2_I) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+lm2_ep_loop:
+	copyb(0, BLS_M2_XP) -> r10
+	copyb(r10, 8[a + 0]) -> r11
+	copyb(0, BLS_M2_POLYR) -> r10
+	copyb(0, BLS_M2_POLYR) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_M2_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	copyb(0, BLS_M2_CO) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	sll(r13, 6) -> r7
+	sll(r13, 5) -> r5
+	add(r7, r5) -> r7
+	add(r10, r7) -> r11
+	copyb(0, BLS_M2_POLYR) -> r10
+	copyb(0, BLS_M2_POLYR) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_M2_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	eq(r13, 0), j(lm2_ep_done)
+	sub(r13, 1) -> r13
+	copyb(0, BLS_M2_I) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	jump(lm2_ep_loop)
+lm2_ep_done:
+	pop r1
+	ret
+
+; y2 = x^3 + A'x + B' (Fp2). r10=x -> BLS_M2_GX
+zisklib_compute_y2_iso_g2_bls12_381:
+	push r1
+	copyb(0, BLS_M2_XP) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_M2_XP) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_M2_T) -> r11
+	call zisklib_square_fp2_bls12_381
+	copyb(0, BLS_M2_T) -> r10
+	copyb(0, BLS_M2_XP) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, BLS_M2_T) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_ISO_A_G2) -> r10
+	copyb(0, BLS_M2_XP) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, BLS_M2_T2) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_M2_T) -> r10
+	copyb(0, BLS_M2_T2) -> r11
+	copyb(0, BLS_M2_T) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_M2_T) -> r10
+	copyb(0, BLS_ISO_B_G2) -> r11
+	copyb(0, BLS_M2_GX) -> r12
+	call zisklib_add_fp2_bls12_381
+	pop r1
+	ret
+
+; 3-isogeny E'->E (Fp2). r10=p(24) -> BLS_M2_ISOP(24)
+zisklib_isogeny_map_g2_bls12_381:
+	push r1
+	copyb(0, BLS_M2_XP) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_M2_XP) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_M2_PX) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_M2_XP) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_M2_PY) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_ISO_X_NUM_G2) -> r10
+	copyb(0, 4) -> r11
+	copyb(0, BLS_M2_PX) -> r12
+	call zisklib_eval_poly_fp2_bls12_381
+	copyb(0, BLS_M2_POLYR) -> r10
+	copyb(0, BLS_M2_XNUM) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_ISO_X_DEN_G2) -> r10
+	copyb(0, 3) -> r11
+	copyb(0, BLS_M2_PX) -> r12
+	call zisklib_eval_poly_fp2_bls12_381
+	copyb(0, BLS_M2_POLYR) -> r10
+	copyb(0, BLS_M2_XDEN) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_ISO_Y_NUM_G2) -> r10
+	copyb(0, 4) -> r11
+	copyb(0, BLS_M2_PX) -> r12
+	call zisklib_eval_poly_fp2_bls12_381
+	copyb(0, BLS_M2_POLYR) -> r10
+	copyb(0, BLS_M2_YNUM) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_ISO_Y_DEN_G2) -> r10
+	copyb(0, 4) -> r11
+	copyb(0, BLS_M2_PX) -> r12
+	call zisklib_eval_poly_fp2_bls12_381
+	copyb(0, BLS_M2_POLYR) -> r10
+	copyb(0, BLS_M2_YDEN) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_M2_XDEN) -> r10
+	copyb(0, BLS_M2_T) -> r11
+	call zisklib_inv_fp2_bls12_381
+	copyb(0, BLS_M2_T) -> r10
+	copyb(0, BLS_M2_XNUM) -> r11
+	copyb(0, BLS_M2_T) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_M2_T) -> r10
+	copyb(0, BLS_M2_ISOP) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_M2_YDEN) -> r10
+	copyb(0, BLS_M2_T) -> r11
+	call zisklib_inv_fp2_bls12_381
+	copyb(0, BLS_M2_T) -> r10
+	copyb(0, BLS_M2_YNUM) -> r11
+	copyb(0, BLS_M2_T) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_M2_T) -> r10
+	copyb(0, BLS_M2_PY) -> r11
+	copyb(0, BLS_M2_T) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_M2_T) -> r10
+	copyb(0, BLS_M2_ISOP) -> r11
+	add(r11, 96) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+
+; SSWU G2: u(12) in BLS_M2_U -> point on E' (BLS_M2_PP[24])
+zisklib_simple_swu_g2_bls12_381:
+	push r1
+	copyb(0, BLS_M2_U) -> r10
+	copyb(0, BLS_M2_T) -> r11
+	call zisklib_square_fp2_bls12_381
+	copyb(0, BLS_SWU_Z_G2) -> r10
+	copyb(0, BLS_M2_T) -> r11
+	copyb(0, BLS_M2_ZU2) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_M2_T) -> r10
+	copyb(0, BLS_M2_T2) -> r11
+	call zisklib_square_fp2_bls12_381
+	copyb(0, BLS_SWU_Z_G2) -> r10
+	copyb(0, BLS_M2_Z2) -> r11
+	call zisklib_square_fp2_bls12_381
+	copyb(0, BLS_M2_T2) -> r10
+	copyb(0, BLS_M2_Z2) -> r11
+	copyb(0, BLS_M2_T2) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_M2_T2) -> r10
+	copyb(0, BLS_M2_ZU2) -> r11
+	copyb(0, BLS_M2_T) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_M2_T) -> r10
+	copyb(0, BLS_ZERO) -> r11
+	copyb(0, 12) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(lm2_swu_tv0)
+	copyb(0, BLS_M2_T) -> r10
+	copyb(0, BLS_M2_T) -> r11
+	call zisklib_inv_fp2_bls12_381
+	copyb(0, BLS_ISO_B_G2) -> r10
+	copyb(0, BLS_M2_T2) -> r11
+	call zisklib_neg_fp2_bls12_381
+	copyb(0, BLS_ISO_A_G2) -> r10
+	copyb(0, BLS_M2_Y) -> r11
+	call zisklib_inv_fp2_bls12_381
+	copyb(0, BLS_M2_T2) -> r10
+	copyb(0, BLS_M2_Y) -> r11
+	copyb(0, BLS_M2_NBA) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F2_ONE12) -> r10
+	copyb(0, BLS_M2_T) -> r11
+	copyb(0, BLS_M2_Y) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_M2_NBA) -> r10
+	copyb(0, BLS_M2_Y) -> r11
+	copyb(0, BLS_M2_X1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	jump(lm2_swu_havex1)
+lm2_swu_tv0:
+	copyb(0, BLS_SWU_Z_G2) -> r10
+	copyb(0, BLS_ISO_A_G2) -> r11
+	copyb(0, BLS_M2_T) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_M2_T) -> r10
+	copyb(0, BLS_M2_T) -> r11
+	call zisklib_inv_fp2_bls12_381
+	copyb(0, BLS_ISO_B_G2) -> r10
+	copyb(0, BLS_M2_T) -> r11
+	copyb(0, BLS_M2_X1) -> r12
+	call zisklib_mul_fp2_bls12_381
+lm2_swu_havex1:
+	copyb(0, BLS_M2_X1) -> r10
+	call zisklib_compute_y2_iso_g2_bls12_381
+	copyb(0, BLS_M2_GX) -> r10
+	copyb(0, BLS_M2_Y) -> r11
+	call zisklib_sqrt_fp2_bls12_381
+	eq(r10, 0), j(lm2_swu_nqr)
+	copyb(0, BLS_M2_X1) -> r10
+	copyb(0, BLS_M2_PX) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	jump(lm2_swu_sgn)
+lm2_swu_nqr:
+	copyb(0, BLS_M2_ZU2) -> r10
+	copyb(0, BLS_M2_X1) -> r11
+	copyb(0, BLS_M2_X2) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_M2_X2) -> r10
+	call zisklib_compute_y2_iso_g2_bls12_381
+	copyb(0, BLS_M2_GX) -> r10
+	copyb(0, BLS_M2_Y) -> r11
+	call zisklib_sqrt_fp2_bls12_381
+	copyb(0, BLS_M2_X2) -> r10
+	copyb(0, BLS_M2_PX) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+lm2_swu_sgn:
+	copyb(0, BLS_M2_U) -> r10
+	call zisklib_sgn0_fp2_bls12_381
+	copyb(0, BLS_M2_SGNU) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_M2_Y) -> r10
+	call zisklib_sgn0_fp2_bls12_381
+	copyb(0, BLS_M2_SGNU) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	eq(r10, r6), j(lm2_swu_noflip)
+	copyb(0, BLS_M2_Y) -> r10
+	copyb(0, BLS_M2_Y) -> r11
+	call zisklib_neg_fp2_bls12_381
+lm2_swu_noflip:
+	copyb(0, BLS_M2_PX) -> r10
+	copyb(0, BLS_M2_PP) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_M2_Y) -> r10
+	copyb(0, BLS_M2_PP) -> r11
+	add(r11, 96) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+
+; clear_cofactor_twist(p r24) -> BLS_M2_A. psi=utf, psi2=utf∘utf.
+zisklib_clear_cofactor_twist_bls12_381:
+	push r1
+	copyb(0, BLS_M2_P) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_M2_P) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_M2_A) -> r11
+	call zisklib_scalar_mul_by_abs_x_complete_twist_bls12_381
+	copyb(0, BLS_M2_A) -> r10
+	copyb(0, BLS_M2_B) -> r11
+	call zisklib_neg_twist_bls12_381
+	copyb(0, BLS_M2_P) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_M2_C) -> r11
+	call zisklib_utf_endomorphism_twist_bls12_381
+	copyb(0, BLS_M2_P) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_M2_D) -> r11
+	call zisklib_dbl_complete_twist_bls12_381
+	copyb(0, BLS_M2_D) -> r10
+	copyb(0, BLS_M2_E) -> r11
+	call zisklib_utf_endomorphism_twist_bls12_381
+	copyb(0, BLS_M2_E) -> r10
+	copyb(0, BLS_M2_D) -> r11
+	call zisklib_utf_endomorphism_twist_bls12_381
+	copyb(0, BLS_M2_D) -> r10
+	copyb(0, BLS_M2_C) -> r11
+	copyb(0, BLS_M2_E) -> r12
+	call zisklib_sub_complete_twist_bls12_381
+	copyb(0, BLS_M2_B) -> r10
+	copyb(0, BLS_M2_C) -> r11
+	copyb(0, BLS_M2_F) -> r12
+	call zisklib_add_complete_twist_bls12_381
+	copyb(0, BLS_M2_F) -> r10
+	copyb(0, BLS_M2_A) -> r11
+	call zisklib_scalar_mul_by_abs_x_complete_twist_bls12_381
+	copyb(0, BLS_M2_A) -> r10
+	copyb(0, BLS_M2_C) -> r11
+	call zisklib_neg_twist_bls12_381
+	copyb(0, BLS_M2_E) -> r10
+	copyb(0, BLS_M2_C) -> r11
+	copyb(0, BLS_M2_D) -> r12
+	call zisklib_add_complete_twist_bls12_381
+	copyb(0, BLS_M2_D) -> r10
+	copyb(0, BLS_M2_B) -> r11
+	copyb(0, BLS_M2_A) -> r12
+	call zisklib_sub_complete_twist_bls12_381
+	copyb(0, BLS_M2_A) -> r10
+	copyb(0, BLS_M2_P) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, BLS_M2_TMP) -> r12
+	call zisklib_sub_complete_twist_bls12_381
+	copyb(0, BLS_M2_TMP) -> r10
+	copyb(0, BLS_M2_A) -> r11
+	copyb(0, 24) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+
+; u64 zisklib_map_to_curve_g2_bls12_381(const u64* u, u64* result)  [r10=u(12), r11=result(24)] -> r10 status
+zisklib_map_to_curve_g2_bls12_381:
+	push r1
+	copyb(0, BLS_M2_RESP) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_M2_CO) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_P) -> r11
+	copyb(0, 6) -> r12
+	call bn254_ltn
+	eq(r10, 0), j(lm2_mtc_err)
+	copyb(0, BLS_M2_CO) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 48) -> r10
+	copyb(0, BLS_P) -> r11
+	copyb(0, 6) -> r12
+	call bn254_ltn
+	eq(r10, 0), j(lm2_mtc_err)
+	copyb(0, BLS_M2_CO) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_M2_U) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	call zisklib_simple_swu_g2_bls12_381
+	copyb(0, BLS_M2_PP) -> r10
+	call zisklib_isogeny_map_g2_bls12_381
+	copyb(0, BLS_M2_ISOP) -> r10
+	call zisklib_clear_cofactor_twist_bls12_381
+	copyb(0, BLS_M2_A) -> r10
+	copyb(0, BLS_M2_RESP) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 24) -> r12
+	call bn254_memcpy
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+lm2_mtc_err:
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+

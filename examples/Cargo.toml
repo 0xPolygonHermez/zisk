@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "zisklib-demo/guest",
   "sha-hasher/host",
   "multiple-programs/host",
   "aggregation/host",

@@ -1,0 +1,135 @@
+; ============================================================================
+; secp256r1/ecdsa.zisk - ECDSA verification for NIST P-256. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/secp256r1/ecdsa.rs (ecdsa_verify). Same shape
+; as the secp256k1 verifier but with r1 constants and no GLV. Reuses the generic
+; 256-bit compare helpers ecu_is_zero / ecu_gt / ecu_eq from secp256k1/ecdsa.zisk
+; (curve-agnostic). Internal labels: `rev_`.
+; ============================================================================
+
+u64 R1_ECV_PK[1]   = 0
+u64 R1_ECV_Z[1]    = 0
+u64 R1_ECV_R[1]    = 0
+u64 R1_ECV_S[1]    = 0
+u64 R1_ECV_SINV[4] = 0, 0, 0, 0
+u64 R1_ECV_U1[4]   = 0, 0, 0, 0
+u64 R1_ECV_U2[4]   = 0, 0, 0, 0
+u64 R1_ECV_PT[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+u64 R1_ECV_XR[4]   = 0, 0, 0, 0
+
+; u64 zisklib_ecdsa_verify_secp256r1(const u64* pk, const u64* z, const u64* r,
+;                                    const u64* s)
+;   [r10=pk, r11=z, r12=r, r13=s] -> r10 = 1 if the signature (r,s) over hash z
+;   verifies under public key pk (8 u64 = x‖y), else 0.
+zisklib_ecdsa_verify_secp256r1:
+	push r1
+	copyb(0, R1_ECV_PK) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, R1_ECV_Z) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, R1_ECV_R) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, R1_ECV_S) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+
+	; --- r in [1, n-1] ---
+	copyb(0, R1_ECV_R) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(rev_false)
+	copyb(0, R1_ECV_R) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, R1_N_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(rev_false)
+
+	; --- s in [1, n-1] ---
+	copyb(0, R1_ECV_S) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(rev_false)
+	copyb(0, R1_ECV_S) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, R1_N_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(rev_false)
+
+	; --- pk != identity ---
+	copyb(0, R1_ECV_PK) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	call ecu_is_zero
+	eq(r10, 0), j(rev_pkxok)
+	copyb(0, R1_ECV_PK) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(rev_false)
+rev_pkxok:
+	; --- pk_x, pk_y in [0, p-1] ---
+	copyb(0, R1_ECV_PK) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, R1_P_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(rev_false)
+	copyb(0, R1_ECV_PK) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, R1_P_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(rev_false)
+
+	; --- pk on curve ---
+	copyb(0, R1_ECV_PK) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	call zisklib_is_on_curve_secp256r1
+	eq(r10, 0), j(rev_false)
+
+	; --- s_inv = s^-1 (mod n) ---
+	copyb(0, R1_ECV_S) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, R1_ECV_SINV) -> r11
+	call zisklib_inv_fn_secp256r1
+
+	; --- u1 = z * s_inv ; u2 = r * s_inv (mod n) ---
+	copyb(0, R1_ECV_Z) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, R1_ECV_SINV) -> r11
+	copyb(0, R1_ECV_U1) -> r12
+	call zisklib_mul_fn_secp256r1
+	copyb(0, R1_ECV_R) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, R1_ECV_SINV) -> r11
+	copyb(0, R1_ECV_U2) -> r12
+	call zisklib_mul_fn_secp256r1
+
+	; --- (x,y) = u1*G + u2*pk ---
+	copyb(0, R1_ECV_U1) -> r10
+	copyb(0, R1_ECV_U2) -> r11
+	copyb(0, R1_ECV_PK) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	copyb(0, R1_ECV_PT) -> r13
+	call zisklib_double_scalar_mul_with_g_secp256r1
+	ltu(0, r10), j(rev_false)
+
+	; --- accept iff x == r (mod n) ---
+	copyb(0, R1_ECV_PT) -> r10
+	copyb(0, R1_ECV_R) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	call ecu_eq
+	ltu(0, r10), j(rev_true)
+	copyb(0, R1_ECV_PT) -> r10
+	copyb(0, R1_ECV_XR) -> r11
+	call zisklib_reduce_fn_secp256r1
+	copyb(0, R1_ECV_XR) -> r10
+	copyb(0, R1_ECV_R) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	call ecu_eq
+	ltu(0, r10), j(rev_true)
+
+rev_false:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+rev_true:
+	copyb(0, 1) -> r10
+	pop r1
+	ret

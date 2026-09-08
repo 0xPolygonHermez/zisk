@@ -324,17 +324,25 @@ impl<'a> Riscv2ZiskContext<'a> {
             //////////////////////////////////////
 
             // C.I.1. Integer Computational (Register-Register)
+            #[cfg(feature = "compressed")]
             RiscvInstName::CMv | RiscvInstName::CAdd => {
                 self.create_register_op(riscv_instruction, "add", 2)
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSub => self.create_register_op(riscv_instruction, "sub", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CXor => self.create_register_op(riscv_instruction, "xor", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::COr => self.create_register_op(riscv_instruction, "or", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAnd => self.create_register_op(riscv_instruction, "and", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAddw => self.create_register_op(riscv_instruction, "add_w", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSubw => self.create_register_op(riscv_instruction, "sub_w", 2),
 
             // C.I.2. Integer Computational (Register-Immediate)
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAddi => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
@@ -348,13 +356,19 @@ impl<'a> Riscv2ZiskContext<'a> {
                     self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
                 }
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAddi4spn | RiscvInstName::CLi | RiscvInstName::CAddi16sp => {
                 self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSlli => self.immediate_op(riscv_instruction, "sll", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSrli => self.immediate_op(riscv_instruction, "srl", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSrai => self.immediate_op(riscv_instruction, "sra", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAndi => self.immediate_op(riscv_instruction, "and", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAddiw => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
@@ -368,41 +382,53 @@ impl<'a> Riscv2ZiskContext<'a> {
             }
 
             // C.I.3. Control Transfer Instructions
+            #[cfg(feature = "compressed")]
             RiscvInstName::CJr | RiscvInstName::CJalr => self.jalr(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CJ => self.jal(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CBeqz => self.create_branch_op(riscv_instruction, "eq", false, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CBnez => self.create_branch_op(riscv_instruction, "eq", true, 2),
 
             // C.I.4. Load and Store Instructions
+            #[cfg(feature = "compressed")]
             RiscvInstName::CLw | RiscvInstName::CLwsp => {
                 self.load_op(riscv_instruction, "signextend_w", 4, 2)
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CLd | RiscvInstName::CLdsp => {
                 self.load_op(riscv_instruction, "copyb", 8, 2)
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CLui => self.lui(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSw | RiscvInstName::CSwsp => {
                 self.store_op(riscv_instruction, "copyb", 4, 2)
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSd | RiscvInstName::CSdsp => {
                 self.store_op(riscv_instruction, "copyb", 8, 2)
             }
 
             // C.I.6.Privileged & System Instructions
+            #[cfg(feature = "compressed")]
             RiscvInstName::CEbreak => self.nop(riscv_instruction, 2),
 
-            // C.D: Double-Precision Floating-Point:
-            #[cfg(feature = "float")]
+            // C.D: Double-Precision Floating-Point (needs both `float` and `compressed`):
+            #[cfg(all(feature = "float", feature = "compressed"))]
             RiscvInstName::CFld => self.load_op(riscv_instruction, "copyb", 8, 2),
-            #[cfg(feature = "float")]
+            #[cfg(all(feature = "float", feature = "compressed"))]
             RiscvInstName::CFsd => self.store_op(riscv_instruction, "copyb", 8, 2),
-            #[cfg(feature = "float")]
+            #[cfg(all(feature = "float", feature = "compressed"))]
             RiscvInstName::CFldsp => self.load_op(riscv_instruction, "copyb", 8, 2),
-            #[cfg(feature = "float")]
+            #[cfg(all(feature = "float", feature = "compressed"))]
             RiscvInstName::CFsdsp => self.store_op(riscv_instruction, "copyb", 8, 2),
 
             // C. Other
+            #[cfg(feature = "compressed")]
             RiscvInstName::CNop => self.nop(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CReserved => self.halt_with_error(riscv_instruction, 2),
 
             // F: Single-Precision Floating-Point
@@ -715,7 +741,8 @@ impl<'a> Riscv2ZiskContext<'a> {
                 any(feature = "zbkc", feature = "zbkc_native"),
                 any(feature = "zbkx", feature = "zbkx_native"),
                 feature = "float",
-                feature = "zicond_native"
+                feature = "zicond_native",
+                feature = "compressed"
             )))]
             _ => {
                 panic!(
@@ -1540,6 +1567,21 @@ impl<'a> Riscv2ZiskContext<'a> {
     //    jal rd, label
     //          flag(0,0), j(pc + imm) -> [rd]
     /// Implements the RISC-V jump-and-link inconditional jump instruction
+    /// Emits a tail-jump from an intercepted guest function's entry to a ziskasm
+    /// library entry. A *static* jump to a constant address (`copyb` imm + `set_pc`),
+    /// so `ra`/`r1` is untouched and the library's `ret` returns to the guest caller —
+    /// the same shape as ziskasm's `jump()`. Compiles to a direct `jmp` on x86.
+    pub fn emit_symbol_redirect(&mut self, at_addr: u64, lib_addr: u64) {
+        let mut zib = ZiskInstBuilder::new_from_riscv(at_addr, "zisklib_redirect".to_string());
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", lib_addr, false);
+        zib.op("copyb").unwrap();
+        zib.set_pc();
+        zib.j(0, 4);
+        zib.verbose(&format!("zisklib redirect -> 0x{lib_addr:x}"));
+        zib.build(self.rom);
+    }
+
     pub fn jal(&mut self, i: &RiscvInst, inst_size: u64) {
         assert!(inst_size == 4 || inst_size == 2);
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
@@ -2715,9 +2757,20 @@ impl<'a> Riscv2ZiskContext<'a> {
 /// Converts a buffer with RISC-V data into a vector of Zisk instructions, using the
 /// Riscv2ZiskContext to perform the instruction transpilation
 /// dma_addrs: (memcpy, memcmp, memset, memmove) addresses, 0 if not present
-pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8], _dma_addrs: (u64, u64, u64, u64)) {
-    //print!("add_zisk_code() addr={}\n", addr);
-
+/// Transpiles a RISC-V code section into ZisK instructions.
+///
+/// `redirects` maps an intercepted guest-function entry address to
+/// `(library_entry_address, function_byte_size)`. When transpilation reaches such
+/// an entry, it emits a single tail-jump into the ZisK library (via
+/// [`Riscv2ZiskContext::emit_symbol_redirect`]) and skips the function body, so
+/// the hand-written `.zisk` implementation runs in the guest function's place. An
+/// empty map transpiles the section verbatim.
+pub fn add_zisk_code(
+    rom: &mut ZiskRom,
+    addr: u64,
+    data: &[u8],
+    redirects: &std::collections::HashMap<u64, (u64, u64)>,
+) {
     // Convert input data to a u32 vector
     let code_vector: Vec<u16> = convert_vector(data);
 
@@ -2728,16 +2781,28 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8], _dma_addrs: (u64
     let mut ctx = Riscv2ZiskContext::new(rom);
 
     // For all RISCV instructions
+    let mut skip_until: u64 = 0;
     for (i, riscv_instruction) in riscv_instructions.iter().enumerate() {
-        //print!("add_zisk_code() converting RISCV instruction={}\n",
-        // riscv_instruction.to_string());
+        let inst_addr = riscv_instruction.rom_address;
+
+        // Inside the body of an intercepted function: skip (it was redirected).
+        if inst_addr < skip_until {
+            continue;
+        }
+
+        // At an intercepted function's entry: emit a tail-jump to the library and
+        // skip the rest of the original body.
+        if let Some(&(lib_addr, size)) = redirects.get(&inst_addr) {
+            ctx.emit_symbol_redirect(inst_addr, lib_addr);
+            skip_until = inst_addr + size;
+            continue;
+        }
 
         // Get slice of remaining instructions after current one
         let next_instructions = &riscv_instructions[(i + 1)..];
 
-        // Convert RICV instruction to ZisK instruction and store it in rom.insts
+        // Convert RISC-V instruction to ZisK instruction and store it in rom.insts
         ctx.convert(riscv_instruction, next_instructions);
-        //print!("   to: {}", ctx.insts.iter().last().)
     }
 }
 

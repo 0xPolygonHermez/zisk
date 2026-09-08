@@ -1,0 +1,584 @@
+; ============================================================================
+; secp256r1/curve.zisk - NIST P-256 curve point operations. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/secp256r1/curve.rs. A point is 8 u64:
+; x[0..4] ‖ y[0..4]. Uses the secp256r1_add / secp256r1_dbl precompiles (same
+; ABI as the k1 ones). No GLV (P-256 has no efficient endomorphism), so
+; double_scalar_mul_with_g composes two plain scalar_muls.
+; Internal labels: `rpa_` (point_add), `roc_` (is_on_curve), `rsm_` (scalar_mul),
+; `rdsm_` (double_scalar_mul).
+; ============================================================================
+
+u64 R1_PT_R[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+u64 R1_PT_HDR[2] = 0, 0
+u64 R1_OC_HDR[5] = 0, 0, 0, 0, 0
+u64 R1_OC_LHS[4] = 0, 0, 0, 0
+u64 R1_OC_X3[4]  = 0, 0, 0, 0
+u64 R1_OC_AX[4]  = 0, 0, 0, 0
+u64 R1_OC_RHS[4] = 0, 0, 0, 0
+
+; u64 zisklib_point_add_secp256r1(const u64* p1, const u64* p2, u64* result)
+;   [r10=p1, r11=p2, r12=result] -> r10 = 1 if p1 + p2 is infinity, else 0.
+;   Both inputs on-curve, non-identity, canonical. x1!=x2 -> add; else y1==y2 ->
+;   double; else infinity.
+zisklib_point_add_secp256r1:
+	copyb(0, r10) -> r5
+	copyb(0, R1_PT_R) -> r6
+	copyb(0, 8) -> r7
+rpa_cp:
+	eq(r7, 0), j(rpa_xcmp)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(rpa_cp)
+rpa_xcmp:
+	copyb(0, R1_PT_R) -> r5
+	copyb(0, r11) -> r6
+	copyb(0, 4) -> r7
+rpa_xl:
+	eq(r7, 0), j(rpa_ycmp)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(rpa_xn)
+	jump(rpa_doadd)
+rpa_xn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(rpa_xl)
+rpa_ycmp:
+	copyb(0, R1_PT_R) -> r5
+	add(r5, 32) -> r5
+	copyb(0, r11) -> r6
+	add(r6, 32) -> r6
+	copyb(0, 4) -> r7
+rpa_yl:
+	eq(r7, 0), j(rpa_dodbl)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(rpa_yn)
+	jump(rpa_inf)
+rpa_yn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(rpa_yl)
+rpa_doadd:
+	copyb(0, R1_PT_HDR) -> r5
+	copyb(0, R1_PT_R) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(r5, r11) -> 8[a + 8]
+	secp256r1_add(0, r5)
+	jump(rpa_store)
+rpa_dodbl:
+	copyb(0, R1_PT_R) -> r5
+	secp256r1_dbl(0, r5)
+rpa_store:
+	copyb(0, R1_PT_R) -> r5
+	copyb(0, 8) -> r7
+rpa_sl:
+	eq(r7, 0), j(rpa_ret0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r12, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r12, 8) -> r12
+	sub(r7, 1) -> r7
+	jump(rpa_sl)
+rpa_ret0:
+	copyb(0, 0) -> r10
+	ret
+rpa_inf:
+	copyb(0, 1) -> r10
+	ret
+
+; u64 zisklib_is_on_curve_secp256r1(const u64* p)  [r10=p] -> r10 = 1 if on curve.
+;   y^2 == x^3 + a*x + b (mod P), or p == identity. Leaf (inline arith256_mod).
+zisklib_is_on_curve_secp256r1:
+	; lhs = y*y mod P  (y = p+32)
+	copyb(0, R1_OC_HDR) -> r5
+	copyb(0, r10) -> r7
+	add(r7, 32) -> r7
+	copyb(r5, r7) -> 8[a + 0]
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, R1_ZERO) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, R1_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, R1_OC_LHS) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; x3 = x*x mod P
+	copyb(0, R1_OC_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	copyb(0, R1_ZERO) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, R1_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, R1_OC_X3) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; x3 = x3*x mod P   (= x^3)
+	copyb(0, R1_OC_HDR) -> r5
+	copyb(0, R1_OC_X3) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	copyb(0, R1_ZERO) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, R1_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, R1_OC_X3) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; ax = x*a mod P
+	copyb(0, R1_OC_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, R1_E_A) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	copyb(0, R1_ZERO) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, R1_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, R1_OC_AX) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; rhs = x3 + ax mod P   (x3*1 + ax)
+	copyb(0, R1_OC_HDR) -> r5
+	copyb(0, R1_OC_X3) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, R1_ONE) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	copyb(0, R1_OC_AX) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, R1_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, R1_OC_RHS) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; rhs = rhs + E_B mod P   (rhs*1 + E_B)
+	copyb(0, R1_OC_HDR) -> r5
+	copyb(0, R1_OC_RHS) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, R1_ONE) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	copyb(0, R1_E_B) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, R1_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, R1_OC_RHS) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; lhs == rhs ?
+	copyb(0, R1_OC_LHS) -> r5
+	copyb(0, R1_OC_RHS) -> r6
+	copyb(0, 4) -> r7
+roc_eq:
+	eq(r7, 0), j(roc_yes)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(roc_eqn)
+	jump(roc_ident)
+roc_eqn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(roc_eq)
+roc_ident:
+	copyb(0, r10) -> r5
+	copyb(0, 8) -> r7
+roc_idl:
+	eq(r7, 0), j(roc_yes)
+	copyb(r5, 8[a + 0]) -> r14
+	ltu(0, r14), j(roc_no)
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(roc_idl)
+roc_yes:
+	copyb(0, 1) -> r10
+	ret
+roc_no:
+	copyb(0, 0) -> r10
+	ret
+
+u64 R1_SM_K[4]     = 0, 0, 0, 0
+u64 R1_SM_BASE[8]  = 0, 0, 0, 0, 0, 0, 0, 0
+u64 R1_SM_RES[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+u64 R1_SM_HDR[2]   = 0, 0
+u64 R1_SM_RESPTR[1] = 0
+
+; u64 zisklib_scalar_mul_secp256r1(const u64* k, const u64* p, u64* result)
+;   [r10=k, r11=p, r12=result] -> r10 = 1 if k*p is infinity, else 0. Left-to-right
+;   double-and-add reading k's bits directly; reduces k mod N first. Labels `rsm_`.
+zisklib_scalar_mul_secp256r1:
+	push r1
+	copyb(0, R1_SM_RESPTR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, r11) -> r5
+	copyb(0, R1_SM_BASE) -> r6
+	copyb(0, 8) -> r7
+rsm_cpbase:
+	eq(r7, 0), j(rsm_reduce)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(rsm_cpbase)
+rsm_reduce:
+	copyb(0, R1_SM_K) -> r11
+	call zisklib_reduce_fn_secp256r1
+	; k == 0 -> infinity
+	copyb(0, R1_SM_K) -> r5
+	copyb(0, 4) -> r6
+rsm_zchk:
+	eq(r6, 0), j(rsm_inf)
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(rsm_not0)
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(rsm_zchk)
+rsm_not0:
+	; k == 1 ? -> result = base
+	copyb(0, R1_SM_K) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 1), j(rsm_k1_hi)
+	jump(rsm_msb)
+rsm_k1_hi:
+	copyb(r5, 8[a + 8]) -> r14
+	ltu(0, r14), j(rsm_msb)
+	copyb(r5, 8[a + 16]) -> r14
+	ltu(0, r14), j(rsm_msb)
+	copyb(r5, 8[a + 24]) -> r14
+	ltu(0, r14), j(rsm_msb)
+	copyb(0, R1_SM_BASE) -> r5
+	jump(rsm_store_from)
+rsm_msb:
+	copyb(0, R1_SM_K) -> r5
+	add(r5, 24) -> r5
+	copyb(0, 3) -> r6
+rsm_findw:
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(rsm_foundw)
+	sub(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(rsm_findw)
+rsm_foundw:
+	sll(r6, 6) -> r6
+rsm_hb:
+	srl(r7, 1) -> r14
+	eq(r14, 0), j(rsm_loop_init)
+	copyb(0, r14) -> r7
+	add(r6, 1) -> r6
+	jump(rsm_hb)
+rsm_loop_init:
+	sub(r6, 1) -> r15
+	copyb(0, R1_SM_BASE) -> r5
+	copyb(0, R1_SM_RES) -> r6
+	copyb(0, 8) -> r7
+rsm_cpres:
+	eq(r7, 0), j(rsm_loop)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(rsm_cpres)
+rsm_loop:
+	copyb(0, 0) -> r13
+rsm_iter:
+	eq(r13, 0), j(rsm_dbl)
+	jump(rsm_bit)
+rsm_dbl:
+	copyb(0, R1_SM_RES) -> r5
+	secp256r1_dbl(0, r5)
+rsm_bit:
+	srl(r15, 6) -> r6
+	sll(r6, 3) -> r6
+	copyb(0, R1_SM_K) -> r5
+	add(r5, r6) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	and(r15, 63) -> r7
+	srl(r5, r7) -> r5
+	and(r5, 1) -> r5
+	eq(r5, 0), j(rsm_next)
+	eq(r13, 0), j(rsm_addni)
+	; res infinity -> res = base
+	copyb(0, R1_SM_BASE) -> r5
+	copyb(0, R1_SM_RES) -> r6
+	copyb(0, 8) -> r7
+rsm_setbase:
+	eq(r7, 0), j(rsm_setinf0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(rsm_setbase)
+rsm_setinf0:
+	copyb(0, 0) -> r13
+	jump(rsm_next)
+rsm_addni:
+	copyb(0, R1_SM_RES) -> r5
+	copyb(0, R1_SM_BASE) -> r6
+	copyb(0, 4) -> r7
+rsm_xl:
+	eq(r7, 0), j(rsm_ycmp)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r28
+	eq(r14, r28), j(rsm_xn)
+	jump(rsm_doadd)
+rsm_xn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(rsm_xl)
+rsm_ycmp:
+	copyb(0, R1_SM_RES) -> r5
+	add(r5, 32) -> r5
+	copyb(0, R1_SM_BASE) -> r6
+	add(r6, 32) -> r6
+	copyb(0, 4) -> r7
+rsm_yl:
+	eq(r7, 0), j(rsm_dodbl2)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r28
+	eq(r14, r28), j(rsm_yn)
+	copyb(0, 1) -> r13
+	jump(rsm_next)
+rsm_yn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(rsm_yl)
+rsm_doadd:
+	copyb(0, R1_SM_HDR) -> r5
+	copyb(0, R1_SM_RES) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, R1_SM_BASE) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	secp256r1_add(0, r5)
+	jump(rsm_next)
+rsm_dodbl2:
+	copyb(0, R1_SM_RES) -> r5
+	secp256r1_dbl(0, r5)
+rsm_next:
+	eq(r15, 0), j(rsm_finish)
+	sub(r15, 1) -> r15
+	jump(rsm_iter)
+rsm_finish:
+	eq(r13, 0), j(rsm_store_res)
+	jump(rsm_inf)
+rsm_store_res:
+	copyb(0, R1_SM_RES) -> r5
+rsm_store_from:
+	copyb(0, R1_SM_RESPTR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(0, 8) -> r7
+rsm_st:
+	eq(r7, 0), j(rsm_ret0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(rsm_st)
+rsm_ret0:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+rsm_inf:
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+
+; ---------------------------------------------------------------------------
+; Shamir double-scalar multiplication: k1*G + k2*p with ONE shared 256-bit
+; doubling ladder (~256 dbl) instead of two separate scalar_mul ladders (~512).
+; No endomorphism (P-256 has no GLV); precompute T = G + p and interleave the
+; per-bit adds of G / p / T. Leading zero bits are skipped naturally (doubling
+; is bypassed while res is infinity). Labels `d2_` / `ra_` (r1_addpt).
+; ---------------------------------------------------------------------------
+u64 R1_D2_K1[4]    = 0
+u64 R1_D2_K2[4]    = 0
+u64 R1_D2_Q[8]     = 0
+u64 R1_D2_T[8]     = 0
+u64 R1_D2_TINF[1]  = 0
+u64 R1_D2_RES[8]   = 0
+u64 R1_D2_RESPTR[1] = 0
+u64 R1_D2_PTPTR[1] = 0
+u64 R1_D2_HDR[2]   = 0
+u64 R1_D2_SAVE[2]  = 0
+
+; r1_addpt [leaf]: res(R1_D2_RES) += *(R1_D2_PTPTR); r13 = res_inf in/out.
+r1_addpt:
+	eq(r13, 0), j(ra_addni)
+	copyb(0, R1_D2_PTPTR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(0, R1_D2_RES) -> r6
+	copyb(0, 8) -> r7
+ra_set:
+	eq(r7, 0), j(ra_set0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(ra_set)
+ra_set0:
+	copyb(0, 0) -> r13
+	ret
+ra_addni:
+	copyb(0, R1_D2_RES) -> r5
+	copyb(0, R1_D2_PTPTR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(0, 4) -> r7
+ra_xl:
+	eq(r7, 0), j(ra_ycmp)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r28
+	eq(r14, r28), j(ra_xn)
+	jump(ra_doadd)
+ra_xn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(ra_xl)
+ra_ycmp:
+	copyb(0, R1_D2_RES) -> r5
+	add(r5, 32) -> r5
+	copyb(0, R1_D2_PTPTR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	add(r6, 32) -> r6
+	copyb(0, 4) -> r7
+ra_yl:
+	eq(r7, 0), j(ra_dodbl)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r28
+	eq(r14, r28), j(ra_yn)
+	copyb(0, 1) -> r13
+	ret
+ra_yn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(ra_yl)
+ra_doadd:
+	copyb(0, R1_D2_HDR) -> r5
+	copyb(0, R1_D2_RES) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, R1_D2_PTPTR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	secp256r1_add(0, r5)
+	ret
+ra_dodbl:
+	copyb(0, R1_D2_RES) -> r5
+	secp256r1_dbl(0, r5)
+	ret
+
+; u64 zisklib_double_scalar_mul_with_g_secp256r1(k1, k2, p, result)
+;   [r10=k1, r11=k2, r12=p, r13=result] -> r10 = 1 if k1*G + k2*p is infinity.
+;   Shamir: ONE shared 256-bit doubling ladder over bases G and p.
+zisklib_double_scalar_mul_with_g_secp256r1:
+	push r1
+	copyb(0, R1_D2_RESPTR) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, R1_D2_SAVE) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(r5, r12) -> 8[a + 8]
+	; K1 = reduce(k1)  [reduce_fn(r10=k1, r11=&K1)]
+	copyb(0, R1_D2_K1) -> r11
+	call zisklib_reduce_fn_secp256r1
+	; K2 = reduce(k2)
+	copyb(0, R1_D2_SAVE) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, R1_D2_K2) -> r11
+	call zisklib_reduce_fn_secp256r1
+	; Q = p  (copy 8 words)
+	copyb(0, R1_D2_SAVE) -> r5
+	copyb(r5, 8[a + 8]) -> r5
+	copyb(0, R1_D2_Q) -> r6
+	copyb(0, 8) -> r7
+d2_cpq:
+	eq(r7, 0), j(d2_tbuild)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(d2_cpq)
+d2_tbuild:
+	; T = G + Q  (point_add handles double/inf), Tinf -> R1_D2_TINF
+	copyb(0, R1_G_X) -> r10
+	copyb(0, R1_D2_Q) -> r11
+	copyb(0, R1_D2_T) -> r12
+	call zisklib_point_add_secp256r1
+	copyb(0, R1_D2_TINF) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	; ladder: bit 255..0 in r15, res_inf in r13
+	copyb(0, 255) -> r15
+	copyb(0, 1) -> r13
+d2_iter:
+	eq(r13, 0), j(d2_dbl)
+	jump(d2_sel)
+d2_dbl:
+	copyb(0, R1_D2_RES) -> r5
+	secp256r1_dbl(0, r5)
+d2_sel:
+	srl(r15, 6) -> r7
+	sll(r7, 3) -> r7
+	and(r15, 63) -> r14
+	copyb(0, R1_D2_K1) -> r5
+	add(r5, r7) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	srl(r5, r14) -> r5
+	and(r5, 1) -> r5
+	copyb(0, R1_D2_K2) -> r6
+	add(r6, r7) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	srl(r6, r14) -> r6
+	and(r6, 1) -> r6
+	eq(r5, 0), j(d2_b1z)
+	eq(r6, 0), j(d2_useG)
+	copyb(0, R1_D2_TINF) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	ltu(0, r5), j(d2_next)
+	copyb(0, R1_D2_T) -> r6
+	jump(d2_add)
+d2_useG:
+	copyb(0, R1_G_X) -> r6
+	jump(d2_add)
+d2_b1z:
+	eq(r6, 0), j(d2_next)
+	copyb(0, R1_D2_Q) -> r6
+d2_add:
+	copyb(0, R1_D2_PTPTR) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	call r1_addpt
+d2_next:
+	eq(r15, 0), j(d2_fin)
+	sub(r15, 1) -> r15
+	jump(d2_iter)
+d2_fin:
+	eq(r13, 0), j(d2_store)
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+d2_store:
+	copyb(0, R1_D2_RES) -> r5
+	copyb(0, R1_D2_RESPTR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(0, 8) -> r7
+d2_st:
+	eq(r7, 0), j(d2_r0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(d2_st)
+d2_r0:
+	copyb(0, 0) -> r10
+	pop r1
+	ret

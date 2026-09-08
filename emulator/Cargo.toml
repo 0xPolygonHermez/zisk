@@ -28,6 +28,7 @@ zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
 zisk-riscv = { workspace = true }
 zisk-transpiler-riscv = { workspace = true }
+ziskasm = { workspace = true, optional = true }
 rayon = { workspace = true }
 zisk-sm-mem-common = { workspace = true }
 zisk-sm-arith = { workspace = true }
@@ -66,6 +67,13 @@ harness = false
 
 [features]
 default = []
+# Enable the ZisK-assembly integration: the `elf2rom` library-assemble + symbol
+# redirect (via zisk-transpiler-riscv) and the emulator's `-z` assemble path.
+# OFF by default, so a plain `cargo build -p ziskemu` behaves like mainline.
+ziskasm = ["dep:ziskasm", "zisk-transpiler-riscv/ziskasm"]
+# Enable RISC-V C (compressed) extension decoding in the transpiler (see
+# zisk-riscv's `compressed`). OFF by default, matching IALIGN = 32.
+compressed = ["zisk-transpiler-riscv/compressed"]
 debug_stats_trace = []
 minimal_trace_index_debug = []
 handle_stdout = []

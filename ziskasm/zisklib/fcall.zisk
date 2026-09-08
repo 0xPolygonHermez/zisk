@@ -1,0 +1,37 @@
+; ============================================================================
+; fcall.zisk - fcall IDs shared across every ZisK library precompile
+; family. Holds only `pub define`s (visible library-wide via the multi-file
+; pre-pass); no routines or data. Mirrors ziskos keeping the FCALL_*_ID constants
+; in a shared `fcalls/mod.rs` rather than per operation.
+; ============================================================================
+
+pub define FCALL_UINT256_DIV     19 ; hints quotient + remainder
+pub define FCALL_UINT256_INV     20 ; hints inverse mod 2^256
+pub define FCALL_UINT256_INV_MOD 21 ; hints modular inverse / gcd witness
+
+; secp256k1 hints.
+pub define FCALL_SECP256K1_FP_INV        1  ; hints 1/x in Fp
+pub define FCALL_SECP256K1_FN_INV        2  ; hints 1/x in Fn
+pub define FCALL_SECP256K1_FP_SQRT       3  ; hints sqrt in Fp (is_qr + sqrt)
+pub define FCALL_SECP256K1_GLV_DECOMPOSE 4  ; hints GLV scalar decomposition
+pub define FCALL_SECP256R1_FN_INV        5  ; hints 1/x in the secp256r1 scalar field
+
+; bn254 (alt_bn128) hints.
+pub define FCALL_BN254_FP_INV               6 ; hints 1/x in Fp
+pub define FCALL_BN254_FP2_INV              7 ; hints 1/a in Fp2
+pub define FCALL_BN254_TWIST_ADD_LINE_COEFFS 8 ; hints (λ,μ) of the G2 add line
+pub define FCALL_BN254_TWIST_DBL_LINE_COEFFS 9 ; hints (λ,μ) of the G2 double line
+
+; bls12_381 hints.
+pub define FCALL_BLS12_381_FP_INV                10 ; hints 1/x in Fp (384-bit)
+pub define FCALL_BLS12_381_FP_SQRT              11 ; hints sqrt in Fp (is_qr + sqrt)
+pub define FCALL_BLS12_381_FP2_INV             12 ; hints 1/a in Fp2
+pub define FCALL_BLS12_381_FP2_SQRT            13 ; hints sqrt in Fp2 (is_qr + sqrt)
+pub define FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS 14 ; hints (λ,μ) of the G2 add line
+pub define FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS 15 ; hints (λ,μ) of the G2 double line
+
+pub define FCALL_BIN_DECOMP              16 ; hints the MSB-first bit decomposition of a bigint
+pub define FCALL_MSB_POS_256             17 ; hints most-significant set-bit position
+pub define FCALL_BIGINT_DIV             22 ; hints quotient + remainder of an arbitrary-precision division
+
+pub define FCALL_INPUT_READY             23 ; asserts standard input is available at a given address

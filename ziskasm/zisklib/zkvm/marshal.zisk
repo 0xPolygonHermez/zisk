@@ -1,0 +1,119 @@
+; ============================================================================
+; zkvm/marshal.zisk - byte<->limb marshalling for the EF zkVM accelerator ABI.
+;
+; The EF field elements are big-endian byte arrays; the ZisK precompiles take
+; little-endian u64 limbs (limb 0 = least significant). Converting between them is
+; a full byte-reversal of the field element: reverse each 8-byte word with `rev8`
+; (ZiskOp: c = b.swap_bytes(), so `rev8(0, x) -> x`) AND flip the word order, since
+; the limb array is little-endian-ordered:
+;
+;   limb[i] = rev8( load8( be + (nlimbs-1-i)*8 ) )
+;
+; i.e. load descending from the byte array, store ascending into the limb buffer
+; (and the mirror on the way out). One parameterized helper covers every size
+; (32/48/64/96... byte elements = 4/6/8/12... words). Leaf routines (`zbl_`/`zlb_`).
+; ============================================================================
+
+; void zkvm_be_to_limbs(const u8* be, u64* limbs, u64 nlimbs)  [r10=be, r11=limbs, r12=nlimbs]
+;   limbs[0..nlimbs] = little-endian limbs of the big-endian nlimbs*8-byte value `be`.
+zkvm_be_to_limbs:
+	copyb(0, r10) -> r5                 ; be
+	copyb(0, r11) -> r6                 ; limbs
+	copyb(0, r12) -> r7                 ; nlimbs
+	sub(r7, 1) -> r14
+	sll(r14, 3) -> r14
+	add(r5, r14) -> r5                  ; r5 = be + (nlimbs-1)*8 (last BE word)
+zbl_loop:
+	eq(r7, 0), j(zbl_done)
+	copyb(r5, 8[a + 0]) -> r14          ; load 8 bytes (LE read = byte-reversed value)
+	rev8(0, r14) -> r14                 ; swap_bytes -> the big-endian value = LE limb
+	copyb(r6, r14) -> 8[a + 0]
+	sub(r5, 8) -> r5                    ; source descends (BE)
+	add(r6, 8) -> r6                    ; dest ascends (LE limbs)
+	sub(r7, 1) -> r7
+	jump(zbl_loop)
+zbl_done:
+	ret
+
+; void zkvm_limbs_to_be(const u64* limbs, u8* be, u64 nlimbs)  [r10=limbs, r11=be, r12=nlimbs]
+;   be[0..nlimbs*8] = big-endian byte encoding of the little-endian limbs. Inverse
+;   of zkvm_be_to_limbs (used for byte-array outputs, e.g. ecrecover pubkey).
+zkvm_limbs_to_be:
+	copyb(0, r10) -> r5                 ; limbs
+	copyb(0, r11) -> r6                 ; be
+	copyb(0, r12) -> r7                 ; nlimbs
+	sub(r7, 1) -> r14
+	sll(r14, 3) -> r14
+	add(r6, r14) -> r6                  ; r6 = be + (nlimbs-1)*8 (last BE word)
+zlb_loop:
+	eq(r7, 0), j(zlb_done)
+	copyb(r5, 8[a + 0]) -> r14          ; load LE limb
+	rev8(0, r14) -> r14                 ; swap_bytes -> big-endian bytes
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5                    ; limbs ascend (LE)
+	sub(r6, 8) -> r6                    ; dest descends (BE)
+	sub(r7, 1) -> r7
+	jump(zlb_loop)
+zlb_done:
+	ret
+
+; ----------------------------------------------------------------------------
+; Arbitrary BYTE-length variants (for modexp: base/exp/mod are big-endian byte
+; arrays of any length, not whole 8-byte words). A partial top limb is handled
+; automatically by zeroing the limb buffer and copying byte-by-byte, LSB-first:
+; the limb buffer is little-endian in memory, so writing bytes from the array's
+; least-significant end into ascending limb-buffer bytes yields the LE limbs.
+; ----------------------------------------------------------------------------
+
+; u64 zkvm_be_bytes_to_limbs(const u8* be, u64 nbytes, u64* limbs) -> r10 = nlimbs
+;   limbs[0..ceil(nbytes/8)] = LE limbs of the big-endian nbytes-byte value `be`.
+zkvm_be_bytes_to_limbs:
+	copyb(0, r10) -> r5                 ; be
+	copyb(0, r11) -> r7                 ; nbytes
+	copyb(0, r12) -> r6                 ; limbs
+	add(r7, 7) -> r14
+	srl(r14, 3) -> r14                  ; nlimbs = ceil(nbytes/8)
+	copyb(0, r6) -> r15                 ; zero limbs[0..nlimbs]
+	copyb(0, r14) -> r16
+zbb_zero:
+	eq(r16, 0), j(zbb_fill)
+	copyb(r15, 0) -> 8[a + 0]
+	add(r15, 8) -> r15
+	sub(r16, 1) -> r16
+	jump(zbb_zero)
+zbb_fill:
+	add(r5, r7) -> r15
+	sub(r15, 1) -> r15                  ; src = be + nbytes - 1 (LSB byte)
+	copyb(0, r6) -> r16                 ; dst = limbs (byte 0 = LSB)
+	copyb(0, r7) -> r5                  ; cnt = nbytes
+zbb_loop:
+	eq(r5, 0), j(zbb_done)
+	copyb(r15, 1[a + 0]) -> r17         ; load 1 byte (zero-extended)
+	copyb(r16, r17) -> 1[a + 0]         ; store 1 byte
+	sub(r15, 1) -> r15                  ; src descends (toward MSB)
+	add(r16, 1) -> r16                  ; dst ascends (toward higher limb bytes)
+	sub(r5, 1) -> r5
+	jump(zbb_loop)
+zbb_done:
+	copyb(0, r14) -> r10                ; return nlimbs
+	ret
+
+; void zkvm_limbs_to_be_bytes(const u64* limbs, u8* be, u64 nbytes)
+;   be[0..nbytes] = big-endian nbytes-byte encoding of the LE `limbs` (left
+;   zero-padded). limbs must be zeroed to at least ceil(nbytes/8) words.
+zkvm_limbs_to_be_bytes:
+	copyb(0, r10) -> r5                 ; src = limbs (byte 0 = LSB)
+	copyb(0, r11) -> r6
+	add(r6, r12) -> r6
+	sub(r6, 1) -> r6                    ; dst = be + nbytes - 1 (LSB position)
+	copyb(0, r12) -> r7                 ; cnt = nbytes
+zlbb_loop:
+	eq(r7, 0), j(zlbb_done)
+	copyb(r5, 1[a + 0]) -> r14
+	copyb(r6, r14) -> 1[a + 0]
+	add(r5, 1) -> r5                    ; src ascends (LSB -> MSB)
+	sub(r6, 1) -> r6                    ; dst descends (LSB pos -> MSB pos)
+	sub(r7, 1) -> r7
+	jump(zlbb_loop)
+zlbb_done:
+	ret

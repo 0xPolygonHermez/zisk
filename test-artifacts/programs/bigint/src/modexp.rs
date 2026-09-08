@@ -1,4 +1,27 @@
-use ziskos::zisklib::{modexp, U256};
+use ziskos::zisklib::U256;
+
+// ---- backend selection --------------------------------------------------
+// Default: the Rust zisklib `modexp`, compiled into the guest and run as RISC-V.
+#[cfg(not(feature = "ziskasm"))]
+use ziskos::zisklib::modexp;
+
+// `ziskasm`: call the flat `zisklib::modexp_u64` binding, whose `ziskos_*` stub
+// is redirected to the hand-written `.zisk` routine during transpilation. This
+// glue adapts the flat (ptr,len) ABI to the rich `&[U256] -> Vec<U256>`
+// signature so every test body below is identical for both backends.
+#[cfg(feature = "ziskasm")]
+fn modexp(base: &[U256], exp: &[u64], modulus: &[U256]) -> Vec<U256> {
+    // Result fits in `modulus.len()` U256 limbs; give the callee that much room.
+    let mut out = vec![0u64; modulus.len() * 4];
+    let n = zisklib::modexp_u64(
+        U256::slice_to_flat(base),
+        exp,
+        U256::slice_to_flat(modulus),
+        &mut out,
+    );
+    U256::flat_to_slice(&out[..n]).to_vec()
+}
+// -------------------------------------------------------------------------
 
 pub fn modexp_tests() {
     println!("Starting Modexp tests...");
