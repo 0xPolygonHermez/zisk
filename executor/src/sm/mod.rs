@@ -7,6 +7,7 @@
 //! `ComponentPlanBuilder<F>` impls) and does not touch the bundle.
 
 mod builtins;
+mod frops;
 mod precompiles;
 // `register_precompiles!` macro module; exported via `#[macro_export]`.
 mod register_precompiles;
@@ -83,6 +84,19 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         Self { sm, std }
     }
 
+    /// Selects where the FROPS multiplicity column comes from.
+    ///
+    /// With `true` the column published by the ROM-histogram assembly is used, which only one worker
+    /// computes; the collectors must then not accumulate it as well, or every multiplicity would be
+    /// counted twice. With `false` (the default) the collectors own it, which is the only option on
+    /// an execution path that has no ROM-histogram assembly.
+    ///
+    /// The choice is process state (`zisk_core::frops`) because every collector has to agree with
+    /// whoever publishes the column. Set it before witness computation starts.
+    pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
+        zisk_core::frops::set_frops_multiplicity_from_asm(from_asm);
+    }
+
     /// Sets the ROM for the `RomSM` in the bundle.
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
         match self.rom_sm() {
@@ -107,6 +121,52 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             self.rom_sm().ok_or(ExecutorError::BundleComponentMissing { kind: "RomSM" })?;
         rom_sm.rh().park(handle);
         Ok(())
+    }
+
+    /// Publishes what this execution's ROM histogram carries for FROPS: the multiplicity
+    /// column, when the assembly is where that column comes from, and the debug
+    /// cross-check when it is armed.
+    ///
+    /// Called at the end of execution, from the executor's own thread. That is the first
+    /// point the histogram is worth waiting for and the last one before its readers, all
+    /// of which run after `execute` returns: the virtual tables that consume the column,
+    /// and the collectors that read the cross-check flag in their constructors. Reading
+    /// it here also caches it, so the ROM witness does not wait later.
+    ///
+    /// A no-op when neither output is wanted, so a run that uses neither never joins the
+    /// runner on this thread.
+    pub(crate) fn publish_frops_from_asm(&self) -> ExecutorResult<()> {
+        let publish = zisk_core::frops::frops_multiplicity_from_asm();
+        let cross_check = std::env::var_os(frops::CROSS_CHECK_ENV).is_some();
+        if !publish && !cross_check {
+            return Ok(());
+        }
+
+        // Nothing parked: the Rust emulator, or a rank that does not run the histogram.
+        // Neither has a column to publish, and neither is an error.
+        let Some(cell) = self.rom_sm().map(|rom_sm| rom_sm.rh()) else {
+            return Ok(());
+        };
+        if !cell.is_armed() {
+            return Ok(());
+        }
+
+        cell.with(|runner| {
+            let column = &runner.asm_rowh_output.frops_count;
+            if publish {
+                frops::publish_frops_multiplicity(&self.std, column)?;
+            }
+            if cross_check {
+                zisk_core::frops::load_frops_cross_check(column)
+                    .map_err(ExecutorError::Internal)?;
+                tracing::info!(
+                    "FROPS cross-check armed from the assembly's column ({} rows)",
+                    column.len()
+                );
+            }
+            Ok(())
+        })
+        .map_err(|e| ExecutorError::Internal(format!("ROM histogram unavailable: {e}")))?
     }
 
     /// Retires a runner a previous execution left unconsumed, and releases its

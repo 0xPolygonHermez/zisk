@@ -9,6 +9,10 @@ use crate::{
 use zisk_common::{
     BusDevice, BusId, ExtOperationData, OperationBusData, A, B, OP, OPERATION_BUS_ID,
 };
+use zisk_core::frops::{
+    frops_cross_check_enabled, frops_cross_check_row, frops_multiplicity_from_asm,
+    FROPS_BINARY_BASIC_BASE,
+};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 use pil2_std_lib::Std;
@@ -25,6 +29,16 @@ pub struct BinaryBasicCollector<F: PrimeField64> {
 
     /// The table ID for the Binary FROPS
     frops_table_id: usize,
+
+    /// Whether this collector publishes the FROPS multiplicity column. False when the column comes
+    /// from the ROM-histogram assembly instead, in which case publishing here as well would count
+    /// every multiplicity twice. Read once, at construction: it is process state for the whole
+    /// execution.
+    publish_frops: bool,
+
+    /// Whether to cross-check the assembly's column against the rows this collector would have
+    /// published (`zisk_core::frops`). Debug only.
+    cross_check_frops: bool,
 
     /// Standard library instance, providing common functionalities.
     std: Arc<Std<F>>,
@@ -45,7 +59,19 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
             .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
             .expect("Failed to get FROPS table ID");
 
-        Self { inputs: Vec::new(), cursor: BinaryCollectCursor::new(collect), frops_table_id, std }
+        // Where the FROPS multiplicity column comes from is fixed for the whole execution, so it is
+        // resolved once here rather than per operation.
+        let publish_frops = !frops_multiplicity_from_asm();
+        let cross_check_frops = frops_cross_check_enabled();
+
+        Self {
+            inputs: Vec::new(),
+            cursor: BinaryCollectCursor::new(collect),
+            frops_table_id,
+            publish_frops,
+            cross_check_frops,
+            std,
+        }
     }
 
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
@@ -80,13 +106,29 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
             KIND_BASIC
         };
 
-        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
+        // The table row is only needed to publish the multiplicity or to cross-check the
+        // assembly's column. Otherwise all the cursor needs is whether the operation is a frequent
+        // one, which is the same test without the row arithmetic.
+        let (is_frop, frops_row) = if self.publish_frops || self.cross_check_frops {
+            let row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
+            (row != BinaryBasicFrops::NO_FROPS, row)
+        } else {
+            (
+                BinaryBasicFrops::is_frequent_op(data[OP] as u8, data[A], data[B]),
+                BinaryBasicFrops::NO_FROPS,
+            )
+        };
 
-        match self.cursor.next(kind, frops_row != BinaryBasicFrops::NO_FROPS) {
+        match self.cursor.next(kind, is_frop) {
             CollectAction::Stop => false,
             CollectAction::Pass => true,
             CollectAction::CountFrop => {
-                self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
+                if self.publish_frops {
+                    self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
+                }
+                if self.cross_check_frops {
+                    frops_cross_check_row(FROPS_BINARY_BASIC_BASE + frops_row as u64);
+                }
                 true
             }
             CollectAction::Collect => {

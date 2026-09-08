@@ -167,7 +167,8 @@ mod tests {
 
     #[test]
     fn asm_take_rh_handle_hands_over_without_joining() {
-        let rh_handle = std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new()))));
+        let rh_handle =
+            std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()))));
         let mut backend = BackendArtifacts::Asm { mo: None, rh: Some(rh_handle) };
         // `mo` is None to assert that take_rh_handle doesn't touch the mo slot.
         let handle = backend.take_rh_handle().expect("handle handed over");
@@ -184,7 +185,8 @@ mod tests {
 
     #[test]
     fn asm_take_rh_handle_twice_yields_none() {
-        let rh_handle = std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new()))));
+        let rh_handle =
+            std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()))));
         let mut backend = BackendArtifacts::Asm { mo: None, rh: Some(rh_handle) };
         assert!(backend.take_rh_handle().is_some(), "first call hands it over");
         assert!(backend.take_rh_handle().is_none(), "second call has nothing left");

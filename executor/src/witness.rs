@@ -123,9 +123,21 @@ impl<F: PrimeField64> WitnessPhase<F> {
         self.sm_bundle.park_rh_handle(handle)
     }
 
+    /// Publishes the FROPS outputs this execution's ROM histogram carries.
+    /// See [`StaticSMBundle::publish_frops_from_asm`].
+    pub fn publish_frops_from_asm(&self) -> ExecutorResult<()> {
+        self.sm_bundle.publish_frops_from_asm()
+    }
+
     /// Retires a ROM-histogram runner a previous execution left unconsumed.
     pub fn drain_rh(&self) {
         self.sm_bundle.drain_rh();
+    }
+
+    /// Selects where the FROPS multiplicity column comes from; see
+    /// `StaticSMBundle::set_frops_multiplicity_from_asm`.
+    pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
+        self.collector.set_frops_multiplicity_from_asm(from_asm)
     }
 
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
@@ -484,7 +496,7 @@ mod tests {
 
     /// An ASM-backend ROM instance, i.e. one built while a histogram runner was parked.
     fn asm_rom_instance() -> Box<dyn Instance<F>> {
-        make_rom_instance(Some(AsmRunnerRH::new(AsmRHData::new(0, Vec::new()))))
+        make_rom_instance(Some(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()))))
     }
 
     #[test]

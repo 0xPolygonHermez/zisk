@@ -19,13 +19,15 @@ const OP_XOR: u8 = ZiskOp::Xor.code();
 const OP_ADDW: u8 = ZiskOp::AddW.code();
 const OP_SUBW: u8 = ZiskOp::SubW.code();
 const OP_ANDN: u8 = ZiskOp::Andn.code();
-const OP_ORN: u8 = ZiskOp::Orn.code();
+const OP_SH1ADD: u8 = ZiskOp::Sh1add.code();
+const OP_SH3ADD: u8 = ZiskOp::Sh3add.code();
 
 const OP_TABLE_OFFSETS_START: usize = 2;
-const OP_TABLE_OFFSETS: [usize; 51] = [
-    0, 0, 11454, 0, 13326, 1066002, 0, 1827332, 2377264, 12108082, 0, 0, 12511466, 12850410,
-    18562081, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18628381, 18630684, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18663708, 18663747,
+const OP_TABLE_OFFSETS: [usize; 76] = [
+    0, 0, 23999, 0, 27093, 652439, 0, 726941, 2227369, 17832010, 0, 0, 18067242, 18504902,
+    18574030, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18576279, 18596695, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18613079, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 18613954, 0, 0, 0, 18643195,
 ];
 
 #[derive(Debug, Clone)]
@@ -52,9 +54,9 @@ impl BinaryBasicFrops {
         // op minu
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 166 && b < 69
-            for a in 0..166 {
-                for b in 0..69 {
+            // low_rect: a < 103 && b < 233
+            for a in 0..103 {
+                for b in 0..233 {
                     ops.push([a, b]);
                 }
             }
@@ -63,9 +65,9 @@ impl BinaryBasicFrops {
         // op maxu
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 104 && b < 18
-            for a in 0..104 {
-                for b in 0..18 {
+            // low_rect: a < 34 && b < 91
+            for a in 0..34 {
+                for b in 0..91 {
                     ops.push([a, b]);
                 }
             }
@@ -74,9 +76,15 @@ impl BinaryBasicFrops {
         // op ltu
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 1026 && b < 1026
+            // low_rect: a < 1026 && b < 609
             for a in 0..1026 {
-                for b in 0..1026 {
+                for b in 0..609 {
+                    ops.push([a, b]);
+                }
+            }
+            // mid_box: a >= 0xFC87D25316270000 && a < 0xFC87D25316271000 && (a & 7) == 0 && b == 0
+            for a in (0xFC87D25316270000..0xFC87D25316271000).step_by(8) {
+                for b in 0..1 {
                     ops.push([a, b]);
                 }
             }
@@ -85,27 +93,15 @@ impl BinaryBasicFrops {
         // op lt
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 537 && b < 128
-            for a in 0..537 {
-                for b in 0..128 {
+            // low_rect: a < 35 && b < 2114
+            for a in 0..35 {
+                for b in 0..2114 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0x7FFFFFFFFFFFF000 && a < 0x8000000000001000 && b == 0
-            for a in 0x7FFFFFFFFFFFF000..0x8000000000001000 {
+            // mid_box: a >= 0x100000000000000 && a < 0x100000000001000 && (a & 7) == 0 && b == 0
+            for a in (0x100000000000000..0x100000000001000).step_by(8) {
                 for b in 0..1 {
-                    ops.push([a, b]);
-                }
-            }
-            // mid_box: a >= 0x9400000000000000 && a < 0x9400000000001000 && (a & 7) == 0 && b == 0
-            for a in (0x9400000000000000..0x9400000000001000).step_by(8) {
-                for b in 0..1 {
-                    ops.push([a, b]);
-                }
-            }
-            // high_box: a >= 0xFFFFFFFFFFFAC847 && b < 2
-            for a in 0xFFFFFFFFFFFAC847..=u64::MAX {
-                for b in 0..2 {
                     ops.push([a, b]);
                 }
             }
@@ -114,26 +110,26 @@ impl BinaryBasicFrops {
         // op eq
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 534 && b < 1026
-            for a in 0..534 {
-                for b in 0..1026 {
+            // low_rect: a < 2051 && b < 260
+            for a in 0..2051 {
+                for b in 0..260 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0x43E1F593F0000001 && a < 0x43E1F593F0001001 && (a & 7) == 1 && b < 2
-            for a in (0x43E1F593F0000001..0x43E1F593F0001001).step_by(8) {
-                for b in 0..2 {
-                    ops.push([a, b]);
-                }
-            }
-            // mid_box: a >= 0x8080808080808000 && a < 0x8080808080809000 && (a & 7) == 0 && b == 0
-            for a in (0x8080808080808000..0x8080808080809000).step_by(8) {
+            // mid_box: a >= 0xA03FF000 && a < 0xA0400000 && (a & 7) == 0 && b == 0
+            for a in (0xA03FF000..0xA0400000).step_by(8) {
                 for b in 0..1 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xFBF7FFFFF9B9F005 && a < 0xFBF7FFFFF9BA0005 && (a & 7) == 5 && b == 0
-            for a in (0xFBF7FFFFF9B9F005..0xFBF7FFFFF9BA0005).step_by(8) {
+            // mid_box: a >= 0xA6847000 && a < 0xA6A5D000 && (a & 7) == 0 && b == 0
+            for a in (0xA6847000..0xA6A5D000).step_by(8) {
+                for b in 0..1 {
+                    ops.push([a, b]);
+                }
+            }
+            // mid_box: a >= 0xA841F000 && a < 0xA8969000 && (a & 7) == 0 && b == 0
+            for a in (0xA841F000..0xA8969000).step_by(8) {
                 for b in 0..1 {
                     ops.push([a, b]);
                 }
@@ -143,27 +139,27 @@ impl BinaryBasicFrops {
         // op add
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 547 && b < 534
-            for a in 0..547 {
-                for b in 0..534 {
+            // low_rect: a < 4013 && b < 69
+            for a in 0..4013 {
+                for b in 0..69 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0x100F000 && a < 0x1011000 && (a & 7) == 0 && b == 257
-            for a in (0x100F000..0x1011000).step_by(8) {
-                for b in 0x101..0x102 {
+            // mid_box: a >= 0xA03F1000 && a < 0xA03FF000 && (a & 7) == 0 && b < 2113
+            for a in (0xA03F1000..0xA03FF000).step_by(8) {
+                for b in 0..2113 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xA03F3000 && a < 0xA03FC000 && (a & 7) == 0 && b < 2048
-            for a in (0xA03F3000..0xA03FC000).step_by(8) {
-                for b in 0..2048 {
+            // mid_box: a >= 0xA042F000 && a < 0xA0431000 && (a & 7) == 0 && b >= 40 && b < 217
+            for a in (0xA042F000..0xA0431000).step_by(8) {
+                for b in 0x28..0xD9 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xFFFFFFFF80808000 && a < 0xFFFFFFFF80809000 && (a & 7) == 0 && b == 128
-            for a in (0xFFFFFFFF80808000..0xFFFFFFFF80809000).step_by(8) {
-                for b in 0x80..0x81 {
+            // mid_box: a >= 0xBFFEF000 && a < 0xBFFF0000 && (a & 7) == 0 && b == 8
+            for a in (0xBFFEF000..0xBFFF0000).step_by(8) {
+                for b in 0x8..0x9 {
                     ops.push([a, b]);
                 }
             }
@@ -172,27 +168,27 @@ impl BinaryBasicFrops {
         // op sub
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 534 && b < 532
-            for a in 0..534 {
-                for b in 0..532 {
+            // low_rect: a < 328 && b < 316
+            for a in 0..328 {
+                for b in 0..316 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xA03F5000 && a < 0xA03FC000 && (a & 7) == 0 && b < 33
-            for a in (0xA03F5000..0xA03FC000).step_by(8) {
-                for b in 0..33 {
+            // mid_box: a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 127
+            for a in (0xFFFFF000..0x100001000).step_by(8) {
+                for b in 0..127 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xAF89EFC2C1EA000 && a < 0xAF89EFC2C1EB000 && (a & 7) == 0 && b == 0
-            for a in (0xAF89EFC2C1EA000..0xAF89EFC2C1EB000).step_by(8) {
-                for b in 0..1 {
+            // mid_box: a >= 0x100000000000000 && a < 0x100000000001000 && (a & 7) == 0 && b < 2
+            for a in (0x100000000000000..0x100000000001000).step_by(8) {
+                for b in 0..2 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0x2725DD1D243AB006 && a < 0x2725DD1D243AC006 && (a & 7) == 6 && b == 0
-            for a in (0x2725DD1D243AB006..0x2725DD1D243AC006).step_by(8) {
-                for b in 0..1 {
+            // mid_box: a >= 0x2725DD1D243AB007 && a < 0x2725DD1D243AC007 && (a & 7) == 7 && b == 1
+            for a in (0x2725DD1D243AB007..0x2725DD1D243AC007).step_by(8) {
+                for b in 0x1..0x2 {
                     ops.push([a, b]);
                 }
             }
@@ -201,21 +197,27 @@ impl BinaryBasicFrops {
         // op and
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 1190 && b < 256
-            for a in 0..1190 {
-                for b in 0..256 {
+            // low_rect: a < 1436 && b < 257
+            for a in 0..1436 {
+                for b in 0..257 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0x1FFFFFFF007 && a < 0x20000000007 && (a & 7) == 7 && b < 3
-            for a in (0x1FFFFFFF007..0x20000000007).step_by(8) {
-                for b in 0..3 {
+            // mid_box: a >= 0x554C005 && a < 0x5557005 && (a & 7) == 5 && b >= 2 && b < 9
+            for a in (0x554C005..0x5557005).step_by(8) {
+                for b in 0x2..0x9 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0x7FFFFFFFFFFFF000 && a < 0x8000000000001000 && b < 4
-            for a in 0x7FFFFFFFFFFFF000..0x8000000000001000 {
-                for b in 0..4 {
+            // mid_box: a >= 0x15554005 && a < 0x15557005 && (a & 7) == 5 && b >= 2 && b < 9
+            for a in (0x15554005..0x15557005).step_by(8) {
+                for b in 0x2..0x9 {
+                    ops.push([a, b]);
+                }
+            }
+            // mid_box: a >= 0x7FFFFFFFFFFFF000 && a < 0x8000000000001000 && (a & 7) == 0 && b < 18
+            for a in (0x7FFFFFFFFFFFF000..0x8000000000001000).step_by(8) {
+                for b in 0..18 {
                     ops.push([a, b]);
                 }
             }
@@ -224,27 +226,27 @@ impl BinaryBasicFrops {
         // op or
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 1541 && b < 267
-            for a in 0..1541 {
-                for b in 0..267 {
+            // low_rect: a < 260 && b < 258
+            for a in 0..260 {
+                for b in 0..258 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 4096 && a < 0x10000 && (a & 7) == 0 && b < 690
-            for a in (0x1000..0x10000).step_by(8) {
-                for b in 0..690 {
+            // mid_box: a >= 0x3CDD0002 && a < 0x3CDD1002 && (a & 7) == 2 && b == 0
+            for a in (0x3CDD0002..0x3CDD1002).step_by(8) {
+                for b in 0..1 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0x4C440000 && a < 0x4C441000 && (a & 7) == 0 && b == 1024
-            for a in (0x4C440000..0x4C441000).step_by(8) {
-                for b in 0x400..0x401 {
+            // mid_box: a >= 0xD99A8CEC7E20000 && a < 0xD99A8CEC7E21000 && (a & 7) == 0 && b == 0
+            for a in (0xD99A8CEC7E20000..0xD99A8CEC7E21000).step_by(8) {
+                for b in 0..1 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xA0110000 && a < 0xA0111000 && (a & 7) == 0 && b == 761
-            for a in (0xA0110000..0xA0111000).step_by(8) {
-                for b in 0x2F9..0x2FA {
+            // mid_box: a >= 0xDE0B6B3A763F000 && a < 0xDE0B6B3A7641000 && (a & 7) == 0 && b == 0
+            for a in (0xDE0B6B3A763F000..0xDE0B6B3A7641000).step_by(8) {
+                for b in 0..1 {
                     ops.push([a, b]);
                 }
             }
@@ -253,9 +255,21 @@ impl BinaryBasicFrops {
         // op xor
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 255 && b < 260
-            for a in 0..255 {
-                for b in 0..260 {
+            // low_rect: a < 35 && b < 35
+            for a in 0..35 {
+                for b in 0..35 {
+                    ops.push([a, b]);
+                }
+            }
+            // mid_box: a >= 0xC71E833DC1974001 && a < 0xC71E833DC1975001 && (a & 7) == 1 && b == 0
+            for a in (0xC71E833DC1974001..0xC71E833DC1975001).step_by(8) {
+                for b in 0..1 {
+                    ops.push([a, b]);
+                }
+            }
+            // mid_box: a >= 0xF5A6623999945006 && a < 0xF5A6623999946006 && (a & 7) == 6 && b == 0
+            for a in (0xF5A6623999945006..0xF5A6623999946006).step_by(8) {
+                for b in 0..1 {
                     ops.push([a, b]);
                 }
             }
@@ -270,9 +284,15 @@ impl BinaryBasicFrops {
                     ops.push([a, b]);
                 }
             }
-            // high_box: a >= 0xFFFFFFFFFFFFFF01 && b == 0
-            for a in 0xFFFFFFFFFFFFFF01..=u64::MAX {
+            // mid_box: a >= 4096 && a < 20480 && (a & 7) == 0 && b == 0
+            for a in (0x1000..0x5000).step_by(8) {
                 for b in 0..1 {
+                    ops.push([a, b]);
+                }
+            }
+            // high_box: a >= 0xFFFFFFFFFFFFFF01 && b < 64
+            for a in 0xFFFFFFFFFFFFFF01..=u64::MAX {
+                for b in 0..64 {
                     ops.push([a, b]);
                 }
             }
@@ -281,9 +301,9 @@ impl BinaryBasicFrops {
         // op sub_w
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 129 && b < 256
-            for a in 0..129 {
-                for b in 0..256 {
+            // low_rect: a < 128 && b < 128
+            for a in 0..128 {
+                for b in 0..128 {
                     ops.push([a, b]);
                 }
             }
@@ -292,79 +312,95 @@ impl BinaryBasicFrops {
         // op andn
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 3 && b < 13
-            for a in 0..3 {
-                for b in 0..13 {
+            // low_rect: a < 25 && b < 35
+            for a in 0..25 {
+                for b in 0..35 {
                     ops.push([a, b]);
                 }
             }
             self.table.add_ops(OP_ANDN, &mut ops, true);
         }
-        // op orn
+        // op sh1add
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 63 && b == 0
-            for a in 0..63 {
-                for b in 0..1 {
+            // low_rect: a < 171 && b < 171
+            for a in 0..171 {
+                for b in 0..171 {
                     ops.push([a, b]);
                 }
             }
-            // high_box: a == 0xFFFFFFFFFFFFFFFF && b == 0
-            for a in 0xFFFFFFFFFFFFFFFF..=u64::MAX {
-                for b in 0..1 {
+            self.table.add_ops(OP_SH1ADD, &mut ops, true);
+        }
+        // op sh3add
+        {
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 15 && b < 41
+            for a in 0..15 {
+                for b in 0..41 {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_ORN, &mut ops, true);
+            self.table.add_ops(OP_SH3ADD, &mut ops, true);
         }
     }
 
     #[inline(always)]
     pub fn is_frequent_op(op: u8, a: u64, b: u64) -> bool {
         match op {
-            OP_MINU => a < 166 && b < 69,
-            OP_MAXU => a < 104 && b < 18,
-            OP_LTU => a < 1026 && b < 1026,
+            OP_MINU => a < 103 && b < 233,
+            OP_MAXU => a < 34 && b < 91,
+            OP_LTU => {
+                a < 1026 && b < 609
+                    || a >= 0xFC87D25316270000 && a < 0xFC87D25316271000 && (a & 7) == 0 && b == 0
+            }
             OP_LT => {
-                a < 537 && b < 128
-                    || a >= 0x7FFFFFFFFFFFF000 && a < 0x8000000000001000 && b == 0
-                    || a >= 0x9400000000000000 && a < 0x9400000000001000 && (a & 7) == 0 && b == 0
-                    || a >= 0xFFFFFFFFFFFAC847 && b < 2
+                a < 35 && b < 2114
+                    || a >= 0x100000000000000 && a < 0x100000000001000 && (a & 7) == 0 && b == 0
             }
             OP_EQ => {
-                a < 534 && b < 1026
-                    || a >= 0x43E1F593F0000001 && a < 0x43E1F593F0001001 && (a & 7) == 1 && b < 2
-                    || a >= 0x8080808080808000 && a < 0x8080808080809000 && (a & 7) == 0 && b == 0
-                    || a >= 0xFBF7FFFFF9B9F005 && a < 0xFBF7FFFFF9BA0005 && (a & 7) == 5 && b == 0
+                a < 2051 && b < 260
+                    || a >= 0xA03FF000 && a < 0xA0400000 && (a & 7) == 0 && b == 0
+                    || a >= 0xA6847000 && a < 0xA6A5D000 && (a & 7) == 0 && b == 0
+                    || a >= 0xA841F000 && a < 0xA8969000 && (a & 7) == 0 && b == 0
             }
             OP_ADD => {
-                a < 547 && b < 534
-                    || a >= 0x100F000 && a < 0x1011000 && (a & 7) == 0 && b == 257
-                    || a >= 0xA03F3000 && a < 0xA03FC000 && (a & 7) == 0 && b < 2048
-                    || a >= 0xFFFFFFFF80808000 && a < 0xFFFFFFFF80809000 && (a & 7) == 0 && b == 128
+                a < 4013 && b < 69
+                    || a >= 0xA03F1000 && a < 0xA03FF000 && (a & 7) == 0 && b < 2113
+                    || a >= 0xA042F000 && a < 0xA0431000 && (a & 7) == 0 && b >= 40 && b < 217
+                    || a >= 0xBFFEF000 && a < 0xBFFF0000 && (a & 7) == 0 && b == 8
             }
             OP_SUB => {
-                a < 534 && b < 532
-                    || a >= 0xA03F5000 && a < 0xA03FC000 && (a & 7) == 0 && b < 33
-                    || a >= 0xAF89EFC2C1EA000 && a < 0xAF89EFC2C1EB000 && (a & 7) == 0 && b == 0
-                    || a >= 0x2725DD1D243AB006 && a < 0x2725DD1D243AC006 && (a & 7) == 6 && b == 0
+                a < 328 && b < 316
+                    || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 127
+                    || a >= 0x100000000000000 && a < 0x100000000001000 && (a & 7) == 0 && b < 2
+                    || a >= 0x2725DD1D243AB007 && a < 0x2725DD1D243AC007 && (a & 7) == 7 && b == 1
             }
             OP_AND => {
-                a < 1190 && b < 256
-                    || a >= 0x1FFFFFFF007 && a < 0x20000000007 && (a & 7) == 7 && b < 3
-                    || a >= 0x7FFFFFFFFFFFF000 && a < 0x8000000000001000 && b < 4
+                a < 1436 && b < 257
+                    || a >= 0x554C005 && a < 0x5557005 && (a & 7) == 5 && b >= 2 && b < 9
+                    || a >= 0x15554005 && a < 0x15557005 && (a & 7) == 5 && b >= 2 && b < 9
+                    || a >= 0x7FFFFFFFFFFFF000 && a < 0x8000000000001000 && (a & 7) == 0 && b < 18
             }
             OP_OR => {
-                a < 1541 && b < 267
-                    || a >= 4096 && a < 0x10000 && (a & 7) == 0 && b < 690
-                    || a >= 0x4C440000 && a < 0x4C441000 && (a & 7) == 0 && b == 1024
-                    || a >= 0xA0110000 && a < 0xA0111000 && (a & 7) == 0 && b == 761
+                a < 260 && b < 258
+                    || a >= 0x3CDD0002 && a < 0x3CDD1002 && (a & 7) == 2 && b == 0
+                    || a >= 0xD99A8CEC7E20000 && a < 0xD99A8CEC7E21000 && (a & 7) == 0 && b == 0
+                    || a >= 0xDE0B6B3A763F000 && a < 0xDE0B6B3A7641000 && (a & 7) == 0 && b == 0
             }
-            OP_XOR => a < 255 && b < 260,
-            OP_ADDW => a < 256 && b < 8 || a >= 0xFFFFFFFFFFFFFF01 && b == 0,
-            OP_SUBW => a < 129 && b < 256,
-            OP_ANDN => a < 3 && b < 13,
-            OP_ORN => a < 63 && b == 0 || a == 0xFFFFFFFFFFFFFFFF && b == 0,
+            OP_XOR => {
+                a < 35 && b < 35
+                    || a >= 0xC71E833DC1974001 && a < 0xC71E833DC1975001 && (a & 7) == 1 && b == 0
+                    || a >= 0xF5A6623999945006 && a < 0xF5A6623999946006 && (a & 7) == 6 && b == 0
+            }
+            OP_ADDW => {
+                a < 256 && b < 8
+                    || a >= 4096 && a < 20480 && (a & 7) == 0 && b == 0
+                    || a >= 0xFFFFFFFFFFFFFF01 && b < 64
+            }
+            OP_SUBW => a < 128 && b < 128,
+            OP_ANDN => a < 25 && b < 35,
+            OP_SH1ADD => a < 171 && b < 171,
+            OP_SH3ADD => a < 15 && b < 41,
             _ => false,
         }
     }
@@ -373,127 +409,132 @@ impl BinaryBasicFrops {
     pub fn get_row(op: u8, a: u64, b: u64) -> usize {
         let relative_offset = match op {
             OP_MINU => {
-                if a < 166 && b < 69 {
-                    (a * 69 + b) as usize
+                if a < 103 && b < 233 {
+                    (a * 233 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
             OP_MAXU => {
-                if a < 104 && b < 18 {
-                    (a * 18 + b) as usize
+                if a < 34 && b < 91 {
+                    (a * 91 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
             OP_LTU => {
-                if a < 1026 && b < 1026 {
-                    (a * 1026 + b) as usize
+                if a < 1026 && b < 609 {
+                    (a * 609 + b) as usize
+                } else if a >= 0xFC87D25316270000
+                    && a < 0xFC87D25316271000
+                    && (a & 7) == 0
+                    && b == 0
+                {
+                    ((a - 0xFC87D25316270000) / 8) as usize + 624834
                 } else {
                     Self::NO_FROPS
                 }
             }
             OP_LT => {
-                if a < 537 && b < 128 {
-                    (a * 128 + b) as usize
-                } else if a >= 0x7FFFFFFFFFFFF000 && a < 0x8000000000001000 && b == 0 {
-                    (a - 0x7FFFFFFFFFFFF000) as usize + 68736
-                } else if a >= 0x9400000000000000
-                    && a < 0x9400000000001000
-                    && (a & 7) == 0
-                    && b == 0
+                if a < 35 && b < 2114 {
+                    (a * 2114 + b) as usize
+                } else if a >= 0x100000000000000 && a < 0x100000000001000 && (a & 7) == 0 && b == 0
                 {
-                    ((a - 0x9400000000000000) / 8) as usize + 76928
-                } else if a >= 0xFFFFFFFFFFFAC847 && b < 2 {
-                    ((a - 0xFFFFFFFFFFFAC847) * 2 + b) as usize + 77440
+                    ((a - 0x100000000000000) / 8) as usize + 73990
                 } else {
                     Self::NO_FROPS
                 }
             }
             OP_EQ => {
-                if a < 534 && b < 1026 {
-                    (a * 1026 + b) as usize
-                } else if a >= 0x43E1F593F0000001 && a < 0x43E1F593F0001001 && (a & 7) == 1 && b < 2
-                {
-                    (((a - 0x43E1F593F0000001) / 8) * 2 + b) as usize + 547884
-                } else if a >= 0x8080808080808000
-                    && a < 0x8080808080809000
-                    && (a & 7) == 0
-                    && b == 0
-                {
-                    ((a - 0x8080808080808000) / 8) as usize + 548908
-                } else if a >= 0xFBF7FFFFF9B9F005
-                    && a < 0xFBF7FFFFF9BA0005
-                    && (a & 7) == 5
-                    && b == 0
-                {
-                    ((a - 0xFBF7FFFFF9B9F005) / 8) as usize + 549420
+                if a < 2051 && b < 260 {
+                    (a * 260 + b) as usize
+                } else if a >= 0xA03FF000 && a < 0xA0400000 && (a & 7) == 0 && b == 0 {
+                    ((a - 0xA03FF000) / 8) as usize + 533260
+                } else if a >= 0xA6847000 && a < 0xA6A5D000 && (a & 7) == 0 && b == 0 {
+                    ((a - 0xA6847000) / 8) as usize + 533772
+                } else if a >= 0xA841F000 && a < 0xA8969000 && (a & 7) == 0 && b == 0 {
+                    ((a - 0xA841F000) / 8) as usize + 807180
                 } else {
                     Self::NO_FROPS
                 }
             }
             OP_ADD => {
-                if a < 547 && b < 534 {
-                    (a * 534 + b) as usize
-                } else if a >= 0x100F000 && a < 0x1011000 && (a & 7) == 0 && b == 257 {
-                    ((a - 0x100F000) / 8) as usize + 292098
-                } else if a >= 0xA03F3000 && a < 0xA03FC000 && (a & 7) == 0 && b < 2048 {
-                    (((a - 0xA03F3000) / 8) * 2048 + b) as usize + 293122
-                } else if a >= 0xFFFFFFFF80808000
-                    && a < 0xFFFFFFFF80809000
-                    && (a & 7) == 0
-                    && b == 128
-                {
-                    ((a - 0xFFFFFFFF80808000) / 8) as usize + 9730306
+                if a < 4013 && b < 69 {
+                    (a * 69 + b) as usize
+                } else if a >= 0xA03F1000 && a < 0xA03FF000 && (a & 7) == 0 && b < 2113 {
+                    (((a - 0xA03F1000) / 8) * 2113 + b) as usize + 276897
+                } else if a >= 0xA042F000 && a < 0xA0431000 && (a & 7) == 0 && b >= 40 && b < 217 {
+                    (((a - 0xA042F000) / 8) * 177 + (b - 0x28)) as usize + 15422881
+                } else if a >= 0xBFFEF000 && a < 0xBFFF0000 && (a & 7) == 0 && b == 8 {
+                    ((a - 0xBFFEF000) / 8) as usize + 15604129
                 } else {
                     Self::NO_FROPS
                 }
             }
             OP_SUB => {
-                if a < 534 && b < 532 {
-                    (a * 532 + b) as usize
-                } else if a >= 0xA03F5000 && a < 0xA03FC000 && (a & 7) == 0 && b < 33 {
-                    (((a - 0xA03F5000) / 8) * 33 + b) as usize + 284088
-                } else if a >= 0xAF89EFC2C1EA000 && a < 0xAF89EFC2C1EB000 && (a & 7) == 0 && b == 0
+                if a < 328 && b < 316 {
+                    (a * 316 + b) as usize
+                } else if a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 127 {
+                    (((a - 0xFFFFF000) / 8) * 127 + b) as usize + 103648
+                } else if a >= 0x100000000000000 && a < 0x100000000001000 && (a & 7) == 0 && b < 2 {
+                    (((a - 0x100000000000000) / 8) * 2 + b) as usize + 233696
+                } else if a >= 0x2725DD1D243AB007
+                    && a < 0x2725DD1D243AC007
+                    && (a & 7) == 7
+                    && b == 1
                 {
-                    ((a - 0xAF89EFC2C1EA000) / 8) as usize + 402360
-                } else if a >= 0x2725DD1D243AB006
-                    && a < 0x2725DD1D243AC006
-                    && (a & 7) == 6
-                    && b == 0
-                {
-                    ((a - 0x2725DD1D243AB006) / 8) as usize + 402872
+                    ((a - 0x2725DD1D243AB007) / 8) as usize + 234720
                 } else {
                     Self::NO_FROPS
                 }
             }
             OP_AND => {
-                if a < 1190 && b < 256 {
-                    (a * 256 + b) as usize
-                } else if a >= 0x1FFFFFFF007 && a < 0x20000000007 && (a & 7) == 7 && b < 3 {
-                    (((a - 0x1FFFFFFF007) / 8) * 3 + b) as usize + 304640
-                } else if a >= 0x7FFFFFFFFFFFF000 && a < 0x8000000000001000 && b < 4 {
-                    ((a - 0x7FFFFFFFFFFFF000) * 4 + b) as usize + 306176
+                if a < 1436 && b < 257 {
+                    (a * 257 + b) as usize
+                } else if a >= 0x554C005 && a < 0x5557005 && (a & 7) == 5 && b >= 2 && b < 9 {
+                    (((a - 0x554C005) / 8) * 7 + (b - 0x2)) as usize + 369052
+                } else if a >= 0x15554005 && a < 0x15557005 && (a & 7) == 5 && b >= 2 && b < 9 {
+                    (((a - 0x15554005) / 8) * 7 + (b - 0x2)) as usize + 408476
+                } else if a >= 0x7FFFFFFFFFFFF000
+                    && a < 0x8000000000001000
+                    && (a & 7) == 0
+                    && b < 18
+                {
+                    (((a - 0x7FFFFFFFFFFFF000) / 8) * 18 + b) as usize + 419228
                 } else {
                     Self::NO_FROPS
                 }
             }
             OP_OR => {
-                if a < 1541 && b < 267 {
-                    (a * 267 + b) as usize
-                } else if a >= 4096 && a < 0x10000 && (a & 7) == 0 && b < 690 {
-                    (((a - 0x1000) / 8) * 690 + b) as usize + 411447
-                } else if a >= 0x4C440000 && a < 0x4C441000 && (a & 7) == 0 && b == 1024 {
-                    ((a - 0x4C440000) / 8) as usize + 5710647
-                } else if a >= 0xA0110000 && a < 0xA0111000 && (a & 7) == 0 && b == 761 {
-                    ((a - 0xA0110000) / 8) as usize + 5711159
+                if a < 260 && b < 258 {
+                    (a * 258 + b) as usize
+                } else if a >= 0x3CDD0002 && a < 0x3CDD1002 && (a & 7) == 2 && b == 0 {
+                    ((a - 0x3CDD0002) / 8) as usize + 67080
+                } else if a >= 0xD99A8CEC7E20000 && a < 0xD99A8CEC7E21000 && (a & 7) == 0 && b == 0
+                {
+                    ((a - 0xD99A8CEC7E20000) / 8) as usize + 67592
+                } else if a >= 0xDE0B6B3A763F000 && a < 0xDE0B6B3A7641000 && (a & 7) == 0 && b == 0
+                {
+                    ((a - 0xDE0B6B3A763F000) / 8) as usize + 68104
                 } else {
                     Self::NO_FROPS
                 }
             }
             OP_XOR => {
-                if a < 255 && b < 260 {
-                    (a * 260 + b) as usize
+                if a < 35 && b < 35 {
+                    (a * 35 + b) as usize
+                } else if a >= 0xC71E833DC1974001
+                    && a < 0xC71E833DC1975001
+                    && (a & 7) == 1
+                    && b == 0
+                {
+                    ((a - 0xC71E833DC1974001) / 8) as usize + 1225
+                } else if a >= 0xF5A6623999945006
+                    && a < 0xF5A6623999946006
+                    && (a & 7) == 6
+                    && b == 0
+                {
+                    ((a - 0xF5A6623999945006) / 8) as usize + 1737
                 } else {
                     Self::NO_FROPS
                 }
@@ -501,31 +542,38 @@ impl BinaryBasicFrops {
             OP_ADDW => {
                 if a < 256 && b < 8 {
                     (a * 8 + b) as usize
-                } else if a >= 0xFFFFFFFFFFFFFF01 && b == 0 {
-                    (a - 0xFFFFFFFFFFFFFF01) as usize + 2048
+                } else if a >= 4096 && a < 20480 && (a & 7) == 0 && b == 0 {
+                    ((a - 0x1000) / 8) as usize + 2048
+                } else if a >= 0xFFFFFFFFFFFFFF01 && b < 64 {
+                    ((a - 0xFFFFFFFFFFFFFF01) * 64 + b) as usize + 4096
                 } else {
                     Self::NO_FROPS
                 }
             }
             OP_SUBW => {
-                if a < 129 && b < 256 {
-                    (a * 256 + b) as usize
+                if a < 128 && b < 128 {
+                    (a * 128 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
             OP_ANDN => {
-                if a < 3 && b < 13 {
-                    (a * 13 + b) as usize
+                if a < 25 && b < 35 {
+                    (a * 35 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_ORN => {
-                if a < 63 && b == 0 {
-                    a as usize
-                } else if a == 0xFFFFFFFFFFFFFFFF && b == 0 {
-                    (a - 0xFFFFFFFFFFFFFFFF) as usize + 63
+            OP_SH1ADD => {
+                if a < 171 && b < 171 {
+                    (a * 171 + b) as usize
+                } else {
+                    Self::NO_FROPS
+                }
+            }
+            OP_SH3ADD => {
+                if a < 15 && b < 41 {
+                    (a * 41 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }

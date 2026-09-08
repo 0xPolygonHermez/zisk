@@ -1,0 +1,30 @@
+[package]
+name = "fixed-analysis"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[lib]
+name = "fixed_analysis"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fixed-classify"
+path = "src/bin/classify.rs"
+
+[[bin]]
+name = "fixed-segments"
+path = "src/bin/segments.rs"
+
+[[bin]]
+name = "fixed-relations"
+path = "src/bin/relations.rs"
+
+[[bin]]
+name = "fixed-coverage"
+path = "src/bin/coverage.rs"
+
+[dependencies]
