@@ -4,6 +4,7 @@ use proofman_verifier::verifier;
 use proofman_verifier::VadcopFinalProof;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -583,6 +584,51 @@ pub fn snark_publics_hash(publics_full: &[u64], rootc: &[u64]) -> Vec<u8> {
     out
 }
 
+/// Build the flag-free Plonk public statement that the verifier must bind to.
+///
+/// Without overrides, borrow the proof's full-width publics verbatim. With an
+/// override, replace only the requested section so a program-VK-only override
+/// does not truncate an embedded recurser public through the u32 `PublicValues`
+/// view (and vice versa).
+fn plonk_publics_for_verification<'a>(
+    publics_full: &'a [u64],
+    override_publics: Option<&PublicValues>,
+    override_program_vk: Option<&ProgramVK>,
+) -> Result<Cow<'a, [u64]>> {
+    if override_publics.is_none() && override_program_vk.is_none() {
+        return Ok(Cow::Borrowed(publics_full));
+    }
+
+    let stored_publics = program_publics(publics_full);
+    let expected_len = PROGRAM_VK_LEN + ZISK_PUBLICS;
+    if stored_publics.len() != expected_len {
+        return Err(CommonError::InvalidProof(format!(
+            "Plonk publics must have exactly {expected_len} u64 elements, got {}",
+            stored_publics.len()
+        )));
+    }
+
+    let effective_program_vk = override_program_vk
+        .map(|program_vk| program_vk.vk.as_slice())
+        .unwrap_or(&stored_publics[..PROGRAM_VK_LEN]);
+    if effective_program_vk.len() != PROGRAM_VK_LEN {
+        return Err(CommonError::InvalidProof(format!(
+            "program verification key must have exactly {PROGRAM_VK_LEN} u64 elements, got {}",
+            effective_program_vk.len()
+        )));
+    }
+
+    let mut effective_publics = Vec::with_capacity(expected_len);
+    effective_publics.extend_from_slice(effective_program_vk);
+    if let Some(publics) = override_publics {
+        effective_publics.extend(publics.public_u64());
+    } else {
+        effective_publics.extend_from_slice(&stored_publics[PROGRAM_VK_LEN..]);
+    }
+
+    Ok(Cow::Owned(effective_publics))
+}
+
 /// Kind-tagged proof payload. The Plonk vkey blob is boxed so the enum doesn't
 /// carry ~880 bytes of inline vkey on the (common, most-cloned) Vadcop variant.
 ///
@@ -716,7 +762,12 @@ impl<'a> ZiskVerifyBuilder<'a> {
             ProofBody::Plonk { proof_bytes, plonk_vk, publics_full, rootc, .. } => {
                 // snarkjs checks `public_snark_bytes` = the circuit's publicsHash.
                 // `public_bytes` is the on-chain Solidity layout, unused by snarkjs.
-                let public_snark_bytes = snark_publics_hash(publics_full, rootc);
+                let verification_publics = plonk_publics_for_verification(
+                    publics_full,
+                    self.override_publics,
+                    self.override_program_vk,
+                )?;
+                let public_snark_bytes = snark_publics_hash(&verification_publics, rootc);
                 let public_bytes = publics.bytes_solidity(program_vk, &plonk_vk.vadcop_vk);
 
                 let snark_proof = SnarkProof {
@@ -1153,6 +1204,51 @@ impl Proof {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plonk_public_override_changes_the_verified_statement() {
+        let mut stored = vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS];
+        stored[..PROGRAM_VK_LEN].copy_from_slice(&[11, 12, 13, 14]);
+        stored[PROGRAM_VK_LEN] = 21;
+
+        let mut override_source = stored.clone();
+        override_source[PROGRAM_VK_LEN] = 22;
+        let override_publics = PublicValues::new_from_u64(&override_source);
+        let effective =
+            plonk_publics_for_verification(&stored, Some(&override_publics), None).unwrap();
+
+        assert_eq!(&effective[..PROGRAM_VK_LEN], &stored[..PROGRAM_VK_LEN]);
+        assert_eq!(effective[PROGRAM_VK_LEN], 22);
+        assert_ne!(
+            snark_publics_hash(&stored, &[31, 32, 33, 34]),
+            snark_publics_hash(&effective, &[31, 32, 33, 34])
+        );
+    }
+
+    #[test]
+    fn plonk_program_vk_override_preserves_full_width_publics() {
+        let mut stored = vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS];
+        stored[..PROGRAM_VK_LEN].copy_from_slice(&[11, 12, 13, 14]);
+        stored[PROGRAM_VK_LEN] = u64::from(u32::MAX) + 42;
+        let override_program_vk =
+            ProgramVK { vk: vec![41, 42, 43, 44], hash_mode: HashMode::default() };
+
+        let effective =
+            plonk_publics_for_verification(&stored, None, Some(&override_program_vk)).unwrap();
+
+        assert_eq!(&effective[..PROGRAM_VK_LEN], override_program_vk.vk);
+        assert_eq!(effective[PROGRAM_VK_LEN], stored[PROGRAM_VK_LEN]);
+    }
+
+    #[test]
+    fn plonk_override_rejects_malformed_program_vk() {
+        let stored = vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS];
+        let override_program_vk = ProgramVK { vk: vec![1, 2, 3], hash_mode: HashMode::default() };
+
+        let error =
+            plonk_publics_for_verification(&stored, None, Some(&override_program_vk)).unwrap_err();
+        assert!(matches!(error, CommonError::InvalidProof(_)));
+    }
 
     #[test]
     fn verify_returns_err_for_malformed_vadcop_final_minimal() {
