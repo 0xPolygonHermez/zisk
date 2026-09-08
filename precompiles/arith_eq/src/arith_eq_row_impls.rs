@@ -4,9 +4,9 @@
 //! directly from the generated column layout in `zisk_pil` (`pil/src/pil_helpers/traces.rs`). Adding
 //! a new alias in `zisk.pil` = one block here. See [`crate::arith_eq_row`] for the design.
 //!
-//! A config comes in two or three heights (`Arith256X` and `ArithSecp256K1` also have a `Huge`).
-//! The taller siblings commit exactly the same columns, but the generated row types are distinct, so
-//! each height gets its own block; only the trace alias and the row type names differ between them.
+//! Every config comes in two heights. The `Large` sibling commits exactly the same columns, but the
+//! generated row types are distinct, so each height gets its own block; only the trace alias and the
+//! row type names differ between the two.
 
 use crate::impl_arith_eq_row;
 
@@ -88,21 +88,6 @@ impl_arith_eq_row!(
     ]
 );
 
-// arith256 + arith256_mod combined, tallest.
-impl_arith_eq_row!(
-    unpacked: Arith256XHugeTraceRow,
-    packed: Arith256XHugeTraceRowPacked,
-    trace: Arith256XHugeTrace,
-    qs: 2,
-    use_s: false,
-    ceqs: 1,
-    opt: [q0, q1, x3_lt, y3_lt],
-    sels: [
-        Arith256    => set_sel_arith256,     set_arith256_clk0,
-        Arith256Mod => set_sel_arith256_mod, set_arith256_mod_clk0,
-    ]
-);
-
 // secp256k1 curve add/dbl.
 impl_arith_eq_row!(
     unpacked: ArithSecp256K1TraceRow,
@@ -123,21 +108,6 @@ impl_arith_eq_row!(
     unpacked: ArithSecp256K1LargeTraceRow,
     packed: ArithSecp256K1LargeTraceRowPacked,
     trace: ArithSecp256K1LargeTrace,
-    qs: 3,
-    use_s: true,
-    ceqs: 3,
-    opt: [q0, q1, q2, s, x3_lt, y3_lt, x_are_different, x_delta_chunk_inv],
-    sels: [
-        Secp256k1Add => set_sel_secp256k1_add, set_secp256k1_add_clk0,
-        Secp256k1Dbl => set_sel_secp256k1_dbl, set_secp256k1_dbl_clk0,
-    ]
-);
-
-// secp256k1 curve add/dbl, tallest.
-impl_arith_eq_row!(
-    unpacked: ArithSecp256K1HugeTraceRow,
-    packed: ArithSecp256K1HugeTraceRowPacked,
-    trace: ArithSecp256K1HugeTrace,
     qs: 3,
     use_s: true,
     ceqs: 3,

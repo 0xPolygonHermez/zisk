@@ -5,12 +5,11 @@
 //! over only the airs actually present in the pilout — assigns each operation under the shared
 //! criterion: fewest instances first, least memory to break a tie.
 //!
-//! A config comes in two or three heights: a plain air, a `Large` sibling, and for `Arith256X` and
-//! `ArithSecp256K1` a `Huge` on top — each committing exactly the same columns over more rows. The
-//! taller ones keep the instance count down; the shorter ones keep the memory down once the count is
-//! settled. Note the ladders are no longer aligned: `Arith256XHuge` and `ArithSecp256K1Huge` are
-//! taller than the universal `ArithEqLarge`, so a bulk of an operation they cover no longer lands in
-//! the universal air.
+//! Every config comes in two heights: a plain air and a `Large` sibling that commits exactly the same
+//! columns over more rows. The tall one is what keeps the instance count down; the short one is what
+//! keeps the memory down once the count is settled. All four `Large` airs are currently the same
+//! height, so for an operation a specialised config covers the universal air ties with it on
+//! capacity and the memory tie-break sends the bulk to the specialised one.
 //!
 //! This table is the planner's static input; it is derived from the `equations` bitmask each alias
 //! was instantiated with. `num_rows` is read from the trace types and the cost from
@@ -67,20 +66,18 @@ pub fn air_metas() -> Vec<ArithEqAirMeta> {
         };
     }
 
-    let mut metas = Vec::with_capacity(10);
+    let mut metas = Vec::with_capacity(8);
     // arith256 + arith256_mod.
     metas.extend(config!(
         &[Arith256, Arith256Mod],
         Arith256XTrace: ARITH_256_X_INSTANCE_COST,
         Arith256XLargeTrace: ARITH_256_X_LARGE_INSTANCE_COST,
-        Arith256XHugeTrace: ARITH_256_X_HUGE_INSTANCE_COST,
     ));
     // secp256k1 add/dbl.
     metas.extend(config!(
         &[Secp256k1Add, Secp256k1Dbl],
         ArithSecp256K1Trace: ARITH_SECP_256_K_1_INSTANCE_COST,
         ArithSecp256K1LargeTrace: ARITH_SECP_256_K_1_LARGE_INSTANCE_COST,
-        ArithSecp256K1HugeTrace: ARITH_SECP_256_K_1_HUGE_INSTANCE_COST,
     ));
     // bn254 EC add/dbl and complex add/sub/mul.
     metas.extend(config!(
@@ -131,12 +128,9 @@ impl<F: PrimeField64> ArithEqSM<F> {
             ArithEqLargeTrace: ArithEqLargeTraceRow / ArithEqLargeTraceRowPacked,
             Arith256XTrace: Arith256XTraceRow / Arith256XTraceRowPacked,
             Arith256XLargeTrace: Arith256XLargeTraceRow / Arith256XLargeTraceRowPacked,
-            Arith256XHugeTrace: Arith256XHugeTraceRow / Arith256XHugeTraceRowPacked,
             ArithSecp256K1Trace: ArithSecp256K1TraceRow / ArithSecp256K1TraceRowPacked,
             ArithSecp256K1LargeTrace:
                 ArithSecp256K1LargeTraceRow / ArithSecp256K1LargeTraceRowPacked,
-            ArithSecp256K1HugeTrace:
-                ArithSecp256K1HugeTraceRow / ArithSecp256K1HugeTraceRowPacked,
             ArithBn254Trace: ArithBn254TraceRow / ArithBn254TraceRowPacked,
             ArithBn254LargeTrace: ArithBn254LargeTraceRow / ArithBn254LargeTraceRowPacked,
         )
