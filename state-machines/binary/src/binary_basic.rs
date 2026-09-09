@@ -5,7 +5,8 @@
 use std::sync::Arc;
 
 use crate::{
-    binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput, BinaryLanes,
+    binary_constants::*, fill_slots_and_tally, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput,
+    BinaryLanes, SparseTally,
 };
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
@@ -271,19 +272,22 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         }
     }
 
-    /// Processes a slice of operation data, generating a trace row and updating multiplicities.
+    /// Fills one slot of a row from one operation, counting the table rows it looks up.
     ///
     /// # Arguments
-    /// * `operation` - The operation data to process.
-    /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
-    ///
-    /// Fills one slot of a row from one operation, updating the table multiplicities it touches.
+    /// * `row` - The trace row the slot belongs to.
+    /// * `lane` - The slot within that row.
+    /// * `input` - The operation to prove there.
+    /// * `tally` - The histogram of the task this runs on, counting one lookup per byte. It is a
+    ///   plain local array rather than `std`'s shared multiplicities on purpose — see
+    ///   [`crate::binary_tally`].
     #[inline(always)]
     pub fn process_slice<T, R: BinaryBasicRow<F, T>>(
         &self,
         row: &mut R,
         lane: usize,
         input: &BinaryInput,
+        tally: &mut SparseTally,
     ) {
         // Execute the opcode
         let opcode = input.op;
@@ -390,7 +394,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -457,7 +461,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -515,7 +519,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         if i == 0 { 2 * pfirst[i] } else { plast[i] },
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -567,7 +571,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         if i == 0 { 2 * pfirst[i] } else { plast[i] },
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -631,7 +635,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -684,7 +688,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -733,7 +737,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -779,7 +783,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -824,7 +828,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -886,7 +890,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -919,7 +923,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
             }
             OR_OP => {
@@ -951,7 +955,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
             }
             XOR_OP => {
@@ -983,7 +987,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
             }
             ANDN_OP | ORN_OP | XNOR_OP | BREV8_OP => {
@@ -1014,7 +1018,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
             }
             SH1ADD_OP | SH2ADD_OP | SH3ADD_OP => {
@@ -1058,7 +1062,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row_one(self.table_id, row);
+                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -1098,36 +1102,32 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         );
 
         // Slots are filled in order across the whole instance, so a chunk's operations can straddle
-        // a row boundary. Rows are the unit of parallelism, so the walk is by row: each takes the
-        // slice of the flattened inputs that belongs to it.
-        let __t = std::time::Instant::now();
-        let mut flat_inputs: Vec<&BinaryInput> =
-            Vec::with_capacity(inputs.iter().map(|v| v.len()).sum());
-        flat_inputs.extend(inputs.iter().flatten());
-        let _report = crate::FlattenReport {
+        // a row boundary. Rows are the unit of parallelism, and each task walks the chunks from
+        // where its own run of rows starts, so the operations are read in place.
+        //
+        // The table multiplicities are tallied into one histogram per task and handed to `std`
+        // afterwards: one lookup per byte is far too many to take the shared atomic path.
+        let _report = crate::FillReport {
             name: "BinaryBasic",
-            inputs: flat_inputs.len(),
-            flatten: __t.elapsed(),
+            inputs: total_inputs,
             started: std::time::Instant::now(),
         };
         let rows_used = lanes.rows_for(total_inputs);
-        let lanes_x_row = R::LANES_X_ROW;
-
-        R::trace_buffer_mut(&mut trace)[..rows_used].par_iter_mut().enumerate().for_each(
-            |(row_index, row)| {
-                let base = row_index * lanes_x_row;
-                let filled = lanes_x_row.min(total_inputs - base);
-                for lane in 0..filled {
-                    self.process_slice::<T, R>(row, lane, flat_inputs[base + lane]);
-                }
-                // Only the last row can be short. Its leftover lanes are not covered by the padding
-                // rows written afterwards, and the trace buffer comes from a pool and is not zeroed,
-                // so they get ADD(0,0), the padding operation, here.
-                for lane in filled..lanes_x_row {
-                    Self::set_padding_slot(row, lane);
-                }
-            },
+        let tally = fill_slots_and_tally(
+            &mut R::trace_buffer_mut(&mut trace)[..rows_used],
+            inputs,
+            total_inputs,
+            R::LANES_X_ROW,
+            BinaryBasicTableSM::TABLE_ROWS,
+            // One table row per byte of the operation.
+            8,
+            |row, lane, input, tally| self.process_slice::<T, R>(row, lane, input, tally),
+            // Only the last row can be short. Its leftover lanes are not covered by the padding
+            // rows written afterwards, and the trace buffer comes from a pool and is not zeroed,
+            // so they get ADD(0,0), the padding operation, here.
+            |row, lane| Self::set_padding_slot(row, lane),
         );
+        tally.flush(&self.std, self.table_id);
 
         // Every padded slot is one ADD(0,0) on the bus, whatever row it sits on: the leftover lanes
         // of the last filled row and every lane of the rows after it.
@@ -1148,7 +1148,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         }
 
         let mut padding_row = R::default();
-        for lane in 0..lanes_x_row {
+        for lane in 0..R::LANES_X_ROW {
             Self::set_padding_slot(&mut padding_row, lane);
         }
 

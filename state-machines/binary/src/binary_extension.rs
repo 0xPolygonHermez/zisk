@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use crate::{
-    opcode_is_chain, opcode_is_chain_rev, opcode_is_combine, opcode_is_shift, opcode_is_shift_word,
-    BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput,
+    fill_slots_and_tally, opcode_is_chain, opcode_is_chain_rev, opcode_is_combine, opcode_is_shift,
+    opcode_is_shift_word, BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput, SparseTally,
 };
 
 use pil2_std_lib::Std;
@@ -209,12 +209,35 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         Arc::new(Self { std, range_id, table_id })
     }
 
-    /// Fills one slot of a row from one operation, updating the table multiplicities it touches.
+    /// Writes SEXT_B(0) into one slot: the operation the air's `padding_size` cancels on the bus.
+    #[inline(always)]
+    fn set_padding_slot<T, R: BinaryExtensionRow<F, T>>(row: &mut R, lane: usize) {
+        row.set_fields(
+            lane,
+            ZiskOp::SignExtendB.code(),
+            &[0; 8],
+            0,
+            &[[0; 2]; 8],
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            &[0; 2],
+        );
+    }
+
+    /// Fills one slot of a row from one operation, counting the table rows it looks up.
+    ///
+    /// `tally` is the histogram of the task this runs on, taking one lookup per byte. It is a plain
+    /// local array rather than `std`'s shared multiplicities on purpose — see [`crate::binary_tally`].
     pub fn process_slice<T, R: BinaryExtensionRow<F, T>>(
         &self,
         row: &mut R,
         lane: usize,
         input: &BinaryInput,
+        tally: &mut SparseTally,
     ) {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
@@ -670,7 +693,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 *a_byte as u64,
                 table_b,
             );
-            self.std.inc_virtual_row_one(self.table_id, table_row);
+            tally.inc(table_row);
         }
 
         row.set_fields(
@@ -720,69 +743,43 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             total_inputs as f64 / num_slots as f64 * 100.0
         );
 
-        // Slots are filled in order across the whole instance, so a chunk's operations can straddle
-        // a row boundary. Rows are the unit of parallelism, so the walk is by row: each takes the
-        // slice of the flattened inputs that belongs to it.
-        let __t = std::time::Instant::now();
-        let mut flat_inputs: Vec<&BinaryInput> =
-            Vec::with_capacity(inputs.iter().map(|v| v.len()).sum());
-        flat_inputs.extend(inputs.iter().flatten());
-        let _report = crate::FlattenReport {
-            name: "BinaryExt",
-            inputs: flat_inputs.len(),
-            flatten: __t.elapsed(),
-            started: std::time::Instant::now(),
-        };
         let rows_used = lanes.rows_for(total_inputs);
         let lanes_x_row = R::LANES_X_ROW;
 
         // Every lane of a padding row is SEXT_B(0), the operation the air's padding cancels.
         let mut padding_slot: R = Default::default();
         for lane in 0..lanes_x_row {
-            padding_slot.set_fields(
-                lane,
-                ZiskOp::SignExtendB.code(),
-                &[0; 8],
-                0,
-                &[[0; 2]; 8],
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                &[0; 2],
-            );
+            Self::set_padding_slot(&mut padding_slot, lane);
         }
 
-        R::trace_buffer_mut(&mut binary_e_trace)[..rows_used].par_iter_mut().enumerate().for_each(
-            |(row, trace_row)| {
-                let base = row * lanes_x_row;
-                let filled = lanes_x_row.min(total_inputs - base);
-                for lane in 0..filled {
-                    self.process_slice::<T, R>(trace_row, lane, flat_inputs[base + lane]);
-                }
-                // Only the last row can be short. Its leftover lanes are not covered by the padding
-                // rows written afterwards, and the trace buffer comes from a pool and is not zeroed,
-                // so they get the padding operation here.
-                for lane in filled..lanes_x_row {
-                    trace_row.set_fields(
-                        lane,
-                        ZiskOp::SignExtendB.code(),
-                        &[0; 8],
-                        0,
-                        &[[0; 2]; 8],
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        &[0; 2],
-                    );
-                }
+        // Slots are filled in order across the whole instance, so a chunk's operations can straddle
+        // a row boundary. Rows are the unit of parallelism, and each task walks the chunks from
+        // where its own run of rows starts, so the operations are read in place.
+        //
+        // The table multiplicities are tallied into one histogram per task and handed to `std`
+        // afterwards: one lookup per byte is far too many to take the shared atomic path.
+        let _report = crate::FillReport {
+            name: "BinaryExt",
+            inputs: total_inputs,
+            started: std::time::Instant::now(),
+        };
+        let tally = fill_slots_and_tally(
+            &mut R::trace_buffer_mut(&mut binary_e_trace)[..rows_used],
+            inputs,
+            total_inputs,
+            lanes_x_row,
+            BinaryExtensionTableSM::TABLE_ROWS,
+            // One table row per byte of the operation.
+            8,
+            |trace_row, lane, input, tally| {
+                self.process_slice::<T, R>(trace_row, lane, input, tally)
             },
+            // Only the last row can be short. Its leftover lanes are not covered by the padding
+            // rows written afterwards, and the trace buffer comes from a pool and is not zeroed,
+            // so they get the padding operation here.
+            |trace_row, lane| Self::set_padding_slot(trace_row, lane),
         );
+        tally.flush(&self.std, self.table_id);
 
         // Range-check the high part of the shift amount carried in b[0].
         for row in inputs.iter() {

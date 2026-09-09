@@ -60,6 +60,13 @@ pub struct BinaryBasicTableSM;
 impl BinaryBasicTableSM {
     pub const TABLE_ID: usize = 125;
 
+    /// Rows the table has, i.e. `BINARY_TABLE_SIZE` in `binary_table.pil`.
+    ///
+    /// The witness needs it to size the histogram it tallies the multiplicities into, so it cannot
+    /// live in the tests alone. `tests::table_regions_tile_the_whole_table` is what keeps it in step
+    /// with the PIL: the per-opcode regions must add up to exactly this.
+    pub const TABLE_ROWS: u64 = 8_781_824;
+
     /// Calculates the table row offset based on the provided parameters.
     ///
     /// # Arguments
@@ -278,7 +285,7 @@ mod tests {
     ];
 
     /// MUST match `BINARY_TABLE_SIZE` in `binary_table.pil`.
-    const BINARY_TABLE_SIZE: u64 = 8_781_824;
+    const BINARY_TABLE_SIZE: u64 = BinaryBasicTableSM::TABLE_ROWS;
 
     const SH_ADD_OPS: [(BinaryBasicTableOp, u32); 3] = [
         (BinaryBasicTableOp::Sh1add, 1),
