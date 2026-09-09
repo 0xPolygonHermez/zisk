@@ -29,7 +29,9 @@
 #                            fetched (default ~/.zisk/pil2-proofman)
 
 : "${SKIP_COMPILE_PIL:=0}"
-: "${HASH:=Poseidon1}"
+# Must track the defaults in setup_build.sh and build_setup.sh: HASH feeds
+# compute_input_hash, so a stale default here hands back another family's key.
+: "${HASH:=blake3}"
 
 # Path to the starkstructs settings for the family in $HASH.
 #
