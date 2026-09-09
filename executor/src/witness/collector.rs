@@ -30,7 +30,6 @@ use ziskemu::ZiskEmulator;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::{state::ChunkCollector, ExecutionState, StaticDataBusCollect, StaticSMBundle};
-use zisk_asm_runner::AsmRunnerRH;
 
 /// Per-instance chunk-collector slot map. Same shape as
 /// [`crate::ChunkCollectorStore::inner`].
@@ -91,10 +90,6 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
 
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
         self.sm_bundle.set_rom(zisk_rom)
-    }
-
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
-        self.sm_bundle.set_rh_data(rh_data)
     }
 
     /// Selects where the FROPS multiplicity column comes from; see

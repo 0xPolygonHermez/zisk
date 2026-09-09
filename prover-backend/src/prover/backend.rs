@@ -149,11 +149,15 @@ impl ProverBackend {
         Ok(())
     }
 
+    /// Per-job reset, for callers that own a job boundary (the distributed worker's
+    /// `prepare_for_new_job`). A successful execution already retires its own shared
+    /// memory at the end of `execute`; this covers the case where one did not get that
+    /// far, so a failed or cancelled job cannot leak state into the next one.
+    ///
+    /// Goes through the executor rather than straight to the ASM emulator so the previous
+    /// job's ROM-histogram runner is drained first — see `ZiskExecutor::reset_for_new_job`.
     pub(crate) fn reset(&self) -> Result<()> {
-        if let Some(asm) = self.asm_emulator() {
-            asm.reset()?;
-        }
-        Ok(())
+        self.executor.reset_for_new_job().map_err(Into::into)
     }
 
     pub(crate) fn cancel(&self) {

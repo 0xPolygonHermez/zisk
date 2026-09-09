@@ -21,9 +21,8 @@ pub(crate) fn pre_calculate<'a, F: PrimeField64>(
     let gid = GlobalId(global_id);
     let secn_instance =
         secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
-    let rom_instance = secn_instance.as_any().downcast_ref::<RomInstance>().ok_or(
-        ExecutorError::InstanceTypeMismatch { global_id, air_id, expected: "RomInstance" },
-    )?;
+    let rom_instance =
+        crate::sm::downcast::<F, RomInstance>(&**secn_instance, air_id, global_id, "RomInstance")?;
 
     if rom_instance.skip_collector() {
         state.register_empty_collector(global_id, airgroup_id, air_id)?;
@@ -41,7 +40,7 @@ mod tests {
     use proofman_fields::Goldilocks;
     use std::collections::HashMap;
     use std::sync::{atomic::AtomicU64, Arc};
-    use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
+    use zisk_asm_runner::{AsmRHData, AsmRunnerRH, RhCell};
     use zisk_common::{CheckPoint, Instance, InstanceCtx, InstanceType, Plan};
     use zisk_core::ZiskRom;
 
@@ -56,7 +55,11 @@ mod tests {
             Plan::new(AIRGROUP_ID, AIR_ID, None, InstanceType::Instance, CheckPoint::None, None);
         let ictx = InstanceCtx::new(GID, plan);
         if let Some(rh_data) = rh_data {
-            Box::new(RomInstance::new_asm(Arc::new(ZiskRom::default()), ictx, rh_data))
+            // ASM mode is selected by an armed cell, as the executor arms it: by parking
+            // a runner handle, here one whose thread has already returned.
+            let cell = Arc::new(RhCell::new());
+            cell.park(std::thread::spawn(move || Ok(rh_data)));
+            Box::new(RomInstance::new_asm(Arc::new(ZiskRom::default()), ictx, cell))
         } else {
             Box::new(RomInstance::new_rust(
                 Arc::new(ZiskRom::default()),

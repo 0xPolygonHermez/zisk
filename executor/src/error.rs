@@ -108,6 +108,11 @@ pub enum ExecutorError {
     #[error(transparent)]
     Rom(#[from] zisk_sm_rom::RomError),
 
+    /// The ASM ROM-histogram could not be served: its runner failed, panicked, or was
+    /// never parked for this execution.
+    #[error("ROM histogram unavailable: {0}")]
+    RhUnavailable(#[from] zisk_asm_runner::RhCellError),
+
     /// Forwarded error from `ziskemu` (Rust emulator).
     #[error(transparent)]
     Emulator(#[from] ziskemu::ZiskEmulatorErr),

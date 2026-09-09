@@ -21,11 +21,12 @@ use std::sync::{Arc, Mutex};
 
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
-use zisk_asm_runner::AsmRunnerRH;
+use zisk_asm_runner::RhJoinHandle;
 use zisk_common::{CheckPoint, InstanceCtx, InstanceType, Plan, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 use zisk_sm_main::MainInstance;
+use zisk_sm_rom::RomInstance;
 
 use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
 use crate::ports::{Dctx, GlobalId, ProofRegistry};
@@ -112,8 +113,22 @@ impl<F: PrimeField64> WitnessPhase<F> {
         Self { sm_bundle, collector, witness_generator, trace_buffer_rom }
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
-        self.collector.set_rh_data(rh_data)
+    /// Parks this execution's ASM ROM-histogram runner. The ROM instance joins it when
+    /// it computes its witness, so the runner's tail overlaps everything in between.
+    pub(crate) fn park_rh_handle(&self, handle: RhJoinHandle) {
+        self.sm_bundle.park_rh_handle(handle);
+    }
+
+    /// Runs everything that reads this execution's ROM histogram; see
+    /// `StaticSMBundle::finish_rh`.
+    pub(crate) fn finish_rh(&self) -> ExecutorResult<()> {
+        self.sm_bundle.finish_rh()
+    }
+
+    /// Releases whatever the previous execution's runner left behind. Called at the top
+    /// of `execute`, before the ASM shared memory is reset.
+    pub(crate) fn drain_rh(&self) {
+        self.sm_bundle.drain_rh();
     }
 
     /// Selects where the FROPS multiplicity column comes from; see
@@ -316,6 +331,22 @@ impl<F: PrimeField64> WitnessPhase<F> {
             .contains_key(&global_id);
 
         let instance = &**secn_instance;
+
+        // An ASM execution whose ROM instance came out in Rust mode would compute an
+        // all-zero trace (see `RhCell::is_armed`). That can only happen if the histogram
+        // runner was not parked before the instance was built, so fail loudly instead.
+        if ctx.is_asm_emulator {
+            let rom_instance =
+                crate::sm::downcast::<F, RomInstance>(instance, air_id, global_id, "RomInstance")?;
+            if !rom_instance.skip_collector() {
+                return Err(ExecutorError::InstanceTypeMismatch {
+                    global_id,
+                    air_id,
+                    expected: "ASM-mode RomInstance (no ROM histogram runner was parked)",
+                });
+            }
+        }
+
         if needs_collection {
             if ctx.is_asm_emulator {
                 // ASM ROM: the RH service supplies the data — pin an

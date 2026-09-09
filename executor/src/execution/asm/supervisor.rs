@@ -34,7 +34,7 @@ use std::thread::JoinHandle;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::Arc;
 
-use zisk_asm_runner::{AsmRunnerMO, AsmRunnerRH};
+use zisk_asm_runner::{AsmRunnerMO, AsmRunnerRH, RhJoinHandle};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::ExecutorStatsHandle;
 
@@ -49,7 +49,10 @@ use crate::{AsmResources, MAX_NUM_STEPS};
 /// of an ASM execution. See module-level docs.
 pub struct AsmRunnerSupervisor {
     handle_mo: JoinHandle<ExecutorResult<AsmRunnerMO>>,
-    handle_rh: Option<JoinHandle<ExecutorResult<AsmRunnerRH>>>,
+    /// RH payload stays in the runner's own error type: the handle is parked on the ROM
+    /// SM and joined there, so wrapping it in [`ExecutorError`] here would only force
+    /// `sm-rom` to depend on the executor's errors.
+    handle_rh: Option<RhJoinHandle>,
 }
 
 impl AsmRunnerSupervisor {
@@ -59,7 +62,7 @@ impl AsmRunnerSupervisor {
     #[cfg(test)]
     pub fn new(
         handle_mo: JoinHandle<ExecutorResult<AsmRunnerMO>>,
-        handle_rh: Option<JoinHandle<ExecutorResult<AsmRunnerRH>>>,
+        handle_rh: Option<RhJoinHandle>,
     ) -> Self {
         Self { handle_mo, handle_rh }
     }
@@ -109,7 +112,7 @@ impl AsmRunnerSupervisor {
             let asm_services = resources.asm_services().clone();
             let unlock_mapped_memory = resources.config().unlock_mapped_memory;
             let stats_rh = stats.clone();
-            std::thread::spawn(move || -> ExecutorResult<AsmRunnerRH> {
+            std::thread::spawn(move || -> anyhow::Result<AsmRunnerRH> {
                 let mut guard = asm_shmem_rh.lock_or_poison("rh_shmem")?;
 
                 AsmRunnerRH::run(
@@ -119,7 +122,6 @@ impl AsmRunnerSupervisor {
                     unlock_mapped_memory,
                     stats_rh,
                 )
-                .map_err(ExecutorError::asm_backend)
             })
         });
 
@@ -129,10 +131,7 @@ impl AsmRunnerSupervisor {
     /// Hand the supervisor's handles back to the caller. Used on the
     /// MT-success path: caller wraps them in
     /// [`crate::BackendArtifacts::Asm`] for [`crate::ExecutionOutput`].
-    pub fn into_handles(
-        self,
-    ) -> (JoinHandle<ExecutorResult<AsmRunnerMO>>, Option<JoinHandle<ExecutorResult<AsmRunnerRH>>>)
-    {
+    pub fn into_handles(self) -> (JoinHandle<ExecutorResult<AsmRunnerMO>>, Option<RhJoinHandle>) {
         (self.handle_mo, self.handle_rh)
     }
 
@@ -163,7 +162,10 @@ impl AsmRunnerSupervisor {
 /// any thread panic or runner error so observability isn't silently
 /// lost. The caller has already issued `signal_cancellation`, so a
 /// healthy runner will observe the reset flag and exit `Ok(_)`.
-fn join_runner_during_cleanup<T>(label: &str, handle: JoinHandle<ExecutorResult<T>>) {
+fn join_runner_during_cleanup<T, E: std::fmt::Display>(
+    label: &str,
+    handle: JoinHandle<Result<T, E>>,
+) {
     match handle.join() {
         Ok(Ok(_)) => {}
         Ok(Err(err)) => {
@@ -189,7 +191,7 @@ mod tests {
     }
 
     /// Spawn a no-op RH runner that returns an empty `AsmRunnerRH`.
-    fn spawn_canned_rh() -> JoinHandle<ExecutorResult<AsmRunnerRH>> {
+    fn spawn_canned_rh() -> RhJoinHandle {
         std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()))))
     }
 

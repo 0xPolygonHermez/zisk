@@ -48,6 +48,7 @@ mod inputs_shmem_stub;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod multi_shmem;
 mod naming;
+mod rh_cell;
 mod shmem_reader;
 mod shmem_sys;
 mod shmem_utils;
@@ -75,6 +76,7 @@ pub use asm_rh_runner_stub::*;
 pub use asm_runner::*;
 pub use asm_services::*;
 pub use control_shmem::*;
+pub use rh_cell::{RhCell, RhCellError, RhJoinHandle};
 // `HintsFile` is a public file-based StreamSink alternative to HintsShmem.
 pub use hints_file::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

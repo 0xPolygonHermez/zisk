@@ -239,6 +239,30 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         Ok(())
     }
 
+    /// Retires whatever a previous job left behind: drains a ROM-histogram runner nobody
+    /// consumed, then clears the hints stream and the input shmem.
+    ///
+    /// A completed execution already does this for itself at the end of `execute`, so this
+    /// is the recovery path for the cases that did not get there — a cancelled or failed
+    /// job — and it is idempotent for the ones that did.
+    ///
+    /// Call it at the job boundary: after the previous computation is idle and **before**
+    /// the next job's inputs or hints are written, since the reset rewinds the input shmem
+    /// and marks the hints stream uninitialised. Drain first — see [`zisk_asm_runner::RhCell`]
+    /// for why that order is load-bearing.
+    pub fn reset_for_new_job(&self) -> ExecutorResult<()> {
+        self.drain_rh();
+        self.execution.reset()
+    }
+
+    /// Joins a ROM-histogram runner left unconsumed by a previous execution and releases
+    /// its histogram. Idempotent, and a no-op when nothing is parked.
+    fn drain_rh(&self) {
+        if let Some(witness) = self.witness.as_ref() {
+            witness.drain_rh();
+        }
+    }
+
     /// Returns a reference to the ASM emulator if ASM execution is active.
     pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
         self.execution.asm_emulator()
@@ -275,6 +299,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         if let Err(problem) = zisk_core::frops::frops_cross_check_report(true) {
             tracing::error!("FROPS cross-check of the previous execution: {problem}");
         }
+
+        // Retire a runner a previous execution left behind: one that ended early never
+        // reached the join at the end of this method, so nothing else would ever join it.
+        // Draining touches no shared memory, so unlike the reset it is safe here whatever
+        // the caller has already streamed in for this job.
+        self.drain_rh();
 
         self.state.reset();
         if let Some(witness) = self.witness.as_ref() {
@@ -341,10 +371,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let zisk_rom = self.state.get_rom()?;
         let stdin = self.state.get_stdin();
+        // The ROM histogram exists to feed the ROM witness, so the runner is spawned only
+        // where one is computed: the standalone path has no `RomSM` and would pay for a
+        // full extra sequential pass whose output nobody reads. `NoopProofRegistry`
+        // reports rank 0 unconditionally, so rank alone is not the question being asked.
+        let computes_rom_witness = self.witness.is_some() && registry.is_first_process();
         let output = self.execution.run::<F>(
             &zisk_rom,
             &stdin,
-            registry.is_first_process(),
+            computes_rom_witness,
             self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
             &self.state.stats,
             &_exec_scope,
@@ -361,6 +396,19 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let crate::ExecutionOutput { min_traces, mut counters, pub_outs, mut backend, .. } = output;
         let num_chunks = min_traces.len();
+
+        // Hand the ROM-histogram runner to the ROM SM without joining it: the runner
+        // outlives the minimal-trace run, and the instance it feeds does not compute its
+        // witness until much later, so the join belongs there. Parking also selects that
+        // instance's ASM mode, so it must precede `populate_secn_instances` below.
+        //
+        // Parked here rather than after the planning phases so that an error in between
+        // still leaves the handle where the next execution's `drain_rh` can find it —
+        // otherwise its child could still be consuming input shmem when that execution
+        // resets it.
+        if let (Some(handle), Some(witness)) = (backend.take_rh_handle(), self.witness.as_ref()) {
+            witness.park_rh_handle(handle);
+        }
 
         // The hook published every chunk it saw, so on the ASM path the store is
         // already complete and a read lock is enough (an exclusive lock here would
@@ -413,14 +461,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             }
         }
 
-        timer_start_info!(WAIT_ASM_RH);
-        if let Some(rh_data) = backend.await_rom_histogram()? {
-            if let Some(witness) = self.witness.as_ref() {
-                witness.set_rh_data(rh_data)?;
-            }
-        }
-        timer_stop_and_log_info!(WAIT_ASM_RH);
-
         stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
 
         if let (Some(witness), Some(extras)) = (self.witness.as_ref(), proofman_extras) {
@@ -447,10 +487,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         stats_end!(self.state.stats, &_config_scope);
 
-        // Reset hints stream and input shmem after the ASM
-        // backend-specific await calls have drained the runners.
-        self.execution.reset()?;
-
         // ────────────────────────────────────────────────────────────
         // Phase 1.4: Cost accumulation (witness only — needs sctx)
         // ────────────────────────────────────────────────────────────
@@ -458,6 +494,30 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             Some(extras) => extras.compute_costs(&self.state, main_instances_count)?,
             None => Default::default(),
         };
+
+        // Everything that reads the ROM histogram happens here, at the end of the execution
+        // phase and on this thread. Joining it here rather than at the ROM witness keeps the
+        // residual off a proofman witness thread, which holds core permits out of a bounded
+        // pool for as long as it blocks; by now the runner has had the whole planning,
+        // configure and cost-accumulation stretch to finish in, and this thread holds no
+        // permits. Inside the stats scope, so the wait is attributed to the phase that pays
+        // it rather than to the gap after it.
+        //
+        // Both readers then hit the cached histogram: the FROPS column (once per execution,
+        // well ahead of the virtual tables that consume it, which are computed after every
+        // non-table instance) and the debug cross-check (which only has to precede the first
+        // collector, all of which are built after `execute` returns).
+        if let Some(witness) = self.witness.as_ref() {
+            witness.finish_rh()?;
+        }
+
+        // Retire this execution's ASM shared memory. Safe here, and only here: every
+        // consumer of it is finished — MO was joined in `run_secondary`, RH by `finish_rh`
+        // just above — while this job's inputs have been read and the next job's cannot
+        // have arrived yet. Earlier is wrong in both directions: before the join it strands
+        // the RH child (see `zisk_asm_runner::RhCell`), and before the run it rewinds input
+        // and hints a streaming caller has already pushed for this job.
+        self.execution.reset()?;
 
         stats_end!(self.state.stats, &_exec_scope);
 

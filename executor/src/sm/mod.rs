@@ -2,7 +2,7 @@
 //!
 //! The bundle holds every constructed state machine the executor needs at
 //! **witness time** (`build_instance`, `configure_instances`, `set_rom`,
-//! `set_rh_data`). Plan-time counter/planner construction lives in this
+//! `park_rh_handle`). Plan-time counter/planner construction lives in this
 //! module too but goes through static dispatch ([`plan_sec`], the
 //! `ComponentPlanBuilder<F>` impls) and does not touch the bundle.
 
@@ -25,7 +25,8 @@ use proofman_fields::PrimeField64;
 use zisk_common::{Instance, InstanceCtx, Plan};
 use zisk_pil::ZISK_AIRGROUP_ID;
 
-use zisk_asm_runner::AsmRunnerRH;
+use zisk_asm_runner::{RhCell, RhJoinHandle};
+use zisk_sm_rom::RomSM;
 
 use zisk_core::ZiskRom;
 
@@ -95,40 +96,117 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         zisk_core::frops::set_frops_multiplicity_from_asm(from_asm);
     }
 
-    /// Sets the ROM for the `RomSM` in the bundle.
-    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
-        for (_, sm) in self.sm.iter() {
-            if let StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) = sm {
-                rom_sm.set_rom(zisk_rom.clone())?;
-            }
-        }
-        Ok(())
+    /// The bundle's ROM state machine. `BuiltinSMs::all` builds exactly one, so every
+    /// ROM-specific method routes through here rather than re-walking `sm`.
+    fn rom_sm(&self) -> Option<&Arc<RomSM>> {
+        self.sm.iter().find_map(|(_, sm)| match sm {
+            StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) => Some(rom_sm),
+            _ => None,
+        })
     }
 
-    /// Sets the RH data for the `RomSM` in the bundle, and publishes the FROPS multiplicity column
-    /// it carries when that is where the column comes from
-    /// (see [`Self::set_frops_multiplicity_from_asm`]).
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
-        let column = &rh_data.asm_rowh_output.frops_count;
-        if zisk_core::frops::frops_multiplicity_from_asm() {
-            frops::publish_frops_multiplicity(&self.std, column)?;
+    /// The ROM-histogram handoff cell, when this bundle has a ROM state machine.
+    fn rom_rh_cell(&self) -> Option<Arc<RhCell>> {
+        self.rom_sm().map(|rom_sm| rom_sm.rh_cell())
+    }
+
+    /// The cell, only when this execution actually parked a runner on it. Readers that
+    /// treat "no ASM histogram" as normal — the Rust emulator, a rank that does not run
+    /// RH — go through here so `NotArmed` stays an error for genuine handoff failures.
+    fn armed_rh_cell(&self) -> Option<Arc<RhCell>> {
+        self.rom_rh_cell().filter(|cell| cell.is_armed())
+    }
+
+    /// Sets the ROM for the `RomSM` in the bundle.
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
+        match self.rom_sm() {
+            Some(rom_sm) => Ok(rom_sm.set_rom(zisk_rom)?),
+            None => Ok(()),
         }
-        // Debug mode: arm the cross-check of the two producers of the column, before any collector
-        // is built (they read whether it is armed at construction). See `zisk_core::frops`.
-        if std::env::var_os(frops::CROSS_CHECK_ENV).is_some() {
-            zisk_core::frops::load_frops_cross_check(column).map_err(ExecutorError::Internal)?;
+    }
+
+    /// Parks this execution's ASM ROM-histogram runner on the `RomSM` in the bundle.
+    ///
+    /// The runner is *not* joined here. Everything that needs the histogram's contents
+    /// reads it through the cell later, at the end of the execution — see
+    /// [`Self::finish_rh`].
+    pub(crate) fn park_rh_handle(&self, handle: RhJoinHandle) {
+        if let Some(cell) = self.rom_rh_cell() {
+            cell.park(handle);
+        }
+    }
+
+    /// Runs everything that reads this execution's ROM histogram, in the one order that
+    /// works: join it first, then serve the readers from the cached value.
+    ///
+    /// Called at the end of execution, from the executor's own thread, because the join is
+    /// the part that can block and the readers that come afterwards run on proofman
+    /// witness threads, which hold core permits out of a bounded pool while they wait.
+    pub(crate) fn finish_rh(&self) -> ExecutorResult<()> {
+        self.resolve_rh()?;
+        self.publish_frops_from_asm()?;
+        self.arm_frops_cross_check()
+    }
+
+    /// Joins this execution's ROM-histogram runner and caches the result, so the ROM
+    /// witness does not have to wait for it later. A no-op when nothing is parked.
+    fn resolve_rh(&self) -> ExecutorResult<()> {
+        match self.armed_rh_cell() {
+            Some(cell) => Ok(cell.resolve()?),
+            None => Ok(()),
+        }
+    }
+
+    /// Publishes the FROPS multiplicity column that the ROM-histogram assembly built, when
+    /// that is where the column comes from (see [`Self::set_frops_multiplicity_from_asm`]);
+    /// a no-op otherwise.
+    ///
+    /// Called once per execution, at the end of execution — the same phase the column used
+    /// to be published from, and well before the virtual tables that consume it, which are
+    /// computed after every non-table instance.
+    fn publish_frops_from_asm(&self) -> ExecutorResult<()> {
+        if !zisk_core::frops::frops_multiplicity_from_asm() {
+            return Ok(());
+        }
+        // The column comes from the assembly, so a bundle without the state machine that
+        // holds it cannot produce one.
+        let cell =
+            self.rom_rh_cell().ok_or(ExecutorError::BundleComponentMissing { kind: "RomSM" })?;
+        cell.with_histogram(|rh| frops::publish_frops_multiplicity(&self.std, &rh.frops_count))?
+    }
+
+    /// Arms the debug cross-check of the two producers of the FROPS column, when
+    /// `ZISK_FROPS_CROSS_CHECK` is set; a no-op otherwise.
+    ///
+    /// Must run before the first collector is built — they read whether the check is armed
+    /// in their constructors — which the end of execution still is: collectors are built
+    /// from `pre_calculate` / `collect_single`, both after `execute` returns.
+    fn arm_frops_cross_check(&self) -> ExecutorResult<()> {
+        if std::env::var_os(frops::CROSS_CHECK_ENV).is_none() {
+            return Ok(());
+        }
+        // No assembly histogram this run (Rust emulator, or a rank that does not run RH):
+        // there is no column to cross-check against.
+        let Some(cell) = self.armed_rh_cell() else {
+            return Ok(());
+        };
+        cell.with_histogram(|rh| {
+            zisk_core::frops::load_frops_cross_check(&rh.frops_count)
+                .map_err(ExecutorError::Internal)?;
             tracing::info!(
                 "FROPS cross-check armed from the assembly's column ({} rows)",
-                column.len()
+                rh.frops_count.len()
             );
+            Ok(())
+        })?
+    }
+
+    /// Drains a runner the previous execution left unconsumed, and releases its
+    /// histogram. Must run before the next execution touches the ASM shared memory.
+    pub(crate) fn drain_rh(&self) {
+        if let Some(cell) = self.rom_rh_cell() {
+            cell.drain();
         }
-        for (_, sm) in self.sm.iter() {
-            if let StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) = sm {
-                rom_sm.set_rh_data(rh_data)?;
-                break;
-            }
-        }
-        Ok(())
     }
 
     /// Getter for the shared `Std` instance in the bundle, used by built-in SMs and precompiles.

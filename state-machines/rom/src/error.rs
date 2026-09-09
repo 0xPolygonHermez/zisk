@@ -1,6 +1,7 @@
 //! Crate-local error type for the ROM state machine.
 
 use thiserror::Error;
+use zisk_asm_runner::RhCellError;
 
 /// Errors produced by this crate.
 #[derive(Debug, Error)]
@@ -27,10 +28,10 @@ pub enum RomError {
     #[error("RomSM zisk_rom mutex poisoned")]
     ZiskRomPoisoned,
 
-    /// The internal mutex protecting the assembly-runner histogram is poisoned (another
-    /// thread panicked while holding it).
-    #[error("RomSM rh_data mutex poisoned")]
-    RhDataPoisoned,
+    /// The assembly-runner histogram could not be served: its runner failed, panicked,
+    /// or was never parked for this execution.
+    #[error("ROM histogram unavailable: {0}")]
+    RhUnavailable(#[from] RhCellError),
 
     /// A collector dispatched to the ROM AIR was not a `RomCollector` as expected —
     /// a framework-side invariant violation.
