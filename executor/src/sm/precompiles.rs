@@ -19,16 +19,15 @@ use zisk_core::{
     SHA256_OP_TYPE_ID,
 };
 use zisk_pil::{
-    ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_384_HUGE_AIR_IDS, ARITH_EQ_384_LARGE_AIR_IDS,
-    BABY_JUB_JUB_AIR_IDS, BLAKE_2_BR_AIR_IDS, BLAKE_3_F_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_AIR_IDS,
-    SHA_256_F_AIR_IDS,
+    ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_384_LARGE_AIR_IDS, BABY_JUB_JUB_AIR_IDS,
+    BLAKE_2_BR_AIR_IDS, BLAKE_3_F_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS,
 };
 
 /// Every height of the `ArithEq384` air, which the planner sizes as one ladder. Keep in step with
 /// the `traces` ladder in `zisk_precomp_arith_eq_384`: an alias missing here has no state machine to
 /// build its instances, and the executor fails with `StateMachineNotFound` on the air id.
 const ARITH_EQ_384_CONFIG_AIR_IDS: &[usize] =
-    &[ARITH_EQ_384_AIR_IDS[0], ARITH_EQ_384_LARGE_AIR_IDS[0], ARITH_EQ_384_HUGE_AIR_IDS[0]];
+    &[ARITH_EQ_384_AIR_IDS[0], ARITH_EQ_384_LARGE_AIR_IDS[0]];
 use zisk_precomp_arith_eq::{
     ArithEqCollector, ArithEqCounterInputGen, ArithEqInstance, ArithEqManager,
     ARITH_EQ_CONFIG_AIR_IDS,

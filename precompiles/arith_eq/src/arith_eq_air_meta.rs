@@ -5,12 +5,12 @@
 //! over only the airs actually present in the pilout — assigns each operation under the shared
 //! criterion: fewest instances first, least memory to break a tie.
 //!
-//! A config comes in two or three heights: a plain air, a `Large` sibling, and for `Arith256X` and
-//! `ArithBn254` a `Huge` on top — each committing exactly the same columns over more rows. The
-//! taller ones keep the instance count down; the shorter ones keep the memory down once the count is
-//! settled. Note the ladders are no longer aligned: `Arith256XHuge` and `ArithBn254Huge` are taller
-//! than the universal `ArithEqLarge`, so a bulk of an operation they cover no longer lands in the
-//! universal air.
+//! A config comes in as many heights as `zisk.pil` gives it aliases — currently two: a plain air and
+//! a `Large` sibling, each committing exactly the same columns over more rows. The taller one keeps
+//! the instance count down; the shorter one keeps the memory down once the count is settled. Every
+//! `Large` sits at the same height as the universal `ArithEqLarge`, so a bulk of an operation a
+//! specialized config covers ties on instance count with the universal air and is sent to the
+//! narrower specialized one by the memory tie-break.
 //!
 //! This table is the planner's static input; it is derived from the `equations` bitmask each alias
 //! was instantiated with. `num_rows` is read from the trace types and the cost from
@@ -67,13 +67,12 @@ pub fn air_metas() -> Vec<ArithEqAirMeta> {
         };
     }
 
-    let mut metas = Vec::with_capacity(10);
+    let mut metas = Vec::with_capacity(8);
     // arith256 + arith256_mod.
     metas.extend(config!(
         &[Arith256, Arith256Mod],
         Arith256XTrace: ARITH_256_X_INSTANCE_COST,
         Arith256XLargeTrace: ARITH_256_X_LARGE_INSTANCE_COST,
-        Arith256XHugeTrace: ARITH_256_X_HUGE_INSTANCE_COST,
     ));
     // secp256k1 add/dbl.
     metas.extend(config!(
@@ -86,7 +85,6 @@ pub fn air_metas() -> Vec<ArithEqAirMeta> {
         &[Bn254CurveAdd, Bn254CurveDbl, Bn254ComplexAdd, Bn254ComplexSub, Bn254ComplexMul],
         ArithBn254Trace: ARITH_BN_254_INSTANCE_COST,
         ArithBn254LargeTrace: ARITH_BN_254_LARGE_INSTANCE_COST,
-        ArithBn254HugeTrace: ARITH_BN_254_HUGE_INSTANCE_COST,
     ));
     // The full airs, which cover every operation and are the only home of the secp256r1 ones.
     metas.extend(config!(
@@ -131,13 +129,11 @@ impl<F: PrimeField64> ArithEqSM<F> {
             ArithEqLargeTrace: ArithEqLargeTraceRow / ArithEqLargeTraceRowPacked,
             Arith256XTrace: Arith256XTraceRow / Arith256XTraceRowPacked,
             Arith256XLargeTrace: Arith256XLargeTraceRow / Arith256XLargeTraceRowPacked,
-            Arith256XHugeTrace: Arith256XHugeTraceRow / Arith256XHugeTraceRowPacked,
             ArithSecp256K1Trace: ArithSecp256K1TraceRow / ArithSecp256K1TraceRowPacked,
             ArithSecp256K1LargeTrace:
                 ArithSecp256K1LargeTraceRow / ArithSecp256K1LargeTraceRowPacked,
             ArithBn254Trace: ArithBn254TraceRow / ArithBn254TraceRowPacked,
             ArithBn254LargeTrace: ArithBn254LargeTraceRow / ArithBn254LargeTraceRowPacked,
-            ArithBn254HugeTrace: ArithBn254HugeTraceRow / ArithBn254HugeTraceRowPacked,
         )
     }
 }

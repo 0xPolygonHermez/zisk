@@ -26,8 +26,7 @@ use crate::{
 /// The `ArithEq384SM` struct encapsulates the logic of the ArithEq384 State Machine.
 ///
 /// Nothing here depends on the height of the air: the same state machine serves `ArithEq384` and its
-/// taller `ArithEq384Large` and `ArithEq384Huge` siblings, and the capacity is taken from the trace
-/// each call builds.
+/// taller `ArithEq384Large` sibling, and the capacity is taken from the trace each call builds.
 pub struct ArithEq384SM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,

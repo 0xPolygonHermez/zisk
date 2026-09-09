@@ -124,9 +124,6 @@ pub const ARITH_256_X_INSTANCE_COST: usize = 1597;
 /// `Arith256XLarge`: 3.12 GB.
 pub const ARITH_256_X_LARGE_INSTANCE_COST: usize = 3190;
 
-/// `Arith256XHuge`: 6.23 GB.
-pub const ARITH_256_X_HUGE_INSTANCE_COST: usize = 6380;
-
 /// `ArithSecp256K1`: 1.84 GB.
 pub const ARITH_SECP_256_K_1_INSTANCE_COST: usize = 1884;
 
@@ -139,17 +136,12 @@ pub const ARITH_BN_254_INSTANCE_COST: usize = 1976;
 /// `ArithBn254Large`: 3.87 GB.
 pub const ARITH_BN_254_LARGE_INSTANCE_COST: usize = 3958;
 
-/// `ArithBn254Huge`: 7.73 GB.
-pub const ARITH_BN_254_HUGE_INSTANCE_COST: usize = 7916;
-
 /// `ArithEq384`: 1.96 GB.
 pub const ARITH_EQ_384_INSTANCE_COST: usize = 2007;
 
-/// `ArithEq384Large`: 7.86 GB.
-pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 8049;
-
-/// `ArithEq384Huge`: 15.72 GB.
-pub const ARITH_EQ_384_HUGE_INSTANCE_COST: usize = 16098;
+/// `ArithEq384Large`: 3.93 GB. Halved from the 7.86 GB measured at `2**22`, the height the alias
+/// had before `zisk.pil` moved it to `2**21`; re-read it from `build/setup.log` on the next setup.
+pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 4025;
 
 /// `BabyJubJub`: 0.60 GB.
 pub const BABY_JUB_JUB_INSTANCE_COST: usize = 614;
@@ -284,15 +276,12 @@ mod tests {
                     ArithEqLargeTrace: ArithEqLargeTraceRow: ARITH_EQ_LARGE_INSTANCE_COST,
                     Arith256XTrace: Arith256XTraceRow: ARITH_256_X_INSTANCE_COST,
                     Arith256XLargeTrace: Arith256XLargeTraceRow: ARITH_256_X_LARGE_INSTANCE_COST,
-                    Arith256XHugeTrace: Arith256XHugeTraceRow: ARITH_256_X_HUGE_INSTANCE_COST,
                     ArithSecp256K1Trace: ArithSecp256K1TraceRow: ARITH_SECP_256_K_1_INSTANCE_COST,
                     ArithSecp256K1LargeTrace: ArithSecp256K1LargeTraceRow: ARITH_SECP_256_K_1_LARGE_INSTANCE_COST,
                     ArithBn254Trace: ArithBn254TraceRow: ARITH_BN_254_INSTANCE_COST,
                     ArithBn254LargeTrace: ArithBn254LargeTraceRow: ARITH_BN_254_LARGE_INSTANCE_COST,
-                    ArithBn254HugeTrace: ArithBn254HugeTraceRow: ARITH_BN_254_HUGE_INSTANCE_COST,
                     ArithEq384Trace: ArithEq384TraceRow: ARITH_EQ_384_INSTANCE_COST,
                     ArithEq384LargeTrace: ArithEq384LargeTraceRow: ARITH_EQ_384_LARGE_INSTANCE_COST,
-                    ArithEq384HugeTrace: ArithEq384HugeTraceRow: ARITH_EQ_384_HUGE_INSTANCE_COST,
                     BabyJubJubTrace: BabyJubJubTraceRow: BABY_JUB_JUB_INSTANCE_COST,
                     KeccakfTrace: KeccakfTraceRow: KECCAKF_INSTANCE_COST,
                     Sha256fTrace: Sha256fTraceRow: SHA_256_F_INSTANCE_COST,

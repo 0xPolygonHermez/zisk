@@ -88,21 +88,6 @@ impl_arith_eq_row!(
     ]
 );
 
-// arith256 + arith256_mod combined, tallest.
-impl_arith_eq_row!(
-    unpacked: Arith256XHugeTraceRow,
-    packed: Arith256XHugeTraceRowPacked,
-    trace: Arith256XHugeTrace,
-    qs: 2,
-    use_s: false,
-    ceqs: 1,
-    opt: [q0, q1, x3_lt, y3_lt],
-    sels: [
-        Arith256    => set_sel_arith256,     set_arith256_clk0,
-        Arith256Mod => set_sel_arith256_mod, set_arith256_mod_clk0,
-    ]
-);
-
 // secp256k1 curve add/dbl.
 impl_arith_eq_row!(
     unpacked: ArithSecp256K1TraceRow,
@@ -156,24 +141,6 @@ impl_arith_eq_row!(
     unpacked: ArithBn254LargeTraceRow,
     packed: ArithBn254LargeTraceRowPacked,
     trace: ArithBn254LargeTrace,
-    qs: 3,
-    use_s: true,
-    ceqs: 3,
-    opt: [q0, q1, q2, s, x3_lt, y3_lt, x_are_different, x_delta_chunk_inv],
-    sels: [
-        Bn254CurveAdd   => set_sel_bn254_curve_add,   set_bn254_curve_add_clk0,
-        Bn254CurveDbl   => set_sel_bn254_curve_dbl,   set_bn254_curve_dbl_clk0,
-        Bn254ComplexAdd => set_sel_bn254_complex_add, set_bn254_complex_add_clk0,
-        Bn254ComplexSub => set_sel_bn254_complex_sub, set_bn254_complex_sub_clk0,
-        Bn254ComplexMul => set_sel_bn254_complex_mul, set_bn254_complex_mul_clk0,
-    ]
-);
-
-// bn254, tallest.
-impl_arith_eq_row!(
-    unpacked: ArithBn254HugeTraceRow,
-    packed: ArithBn254HugeTraceRowPacked,
-    trace: ArithBn254HugeTrace,
     qs: 3,
     use_s: true,
     ceqs: 3,

@@ -66,7 +66,7 @@ enable_dma_64_aligned_inputcpy * (1 - enable_dma_64_aligned_inputcpy) === 0;
 enable_dma_64_aligned_mem * (1 - enable_dma_64_aligned_mem) === 0;
 enable_dma_64_aligned_mem_large * (1 - enable_dma_64_aligned_mem_large) === 0;
 enable_dma_64_aligned_memcpy * (1 - enable_dma_64_aligned_memcpy) === 0;
-enable_dma_64_aligned_memset * (1 - enable_dma_64_aligned_memset) === 0; 
+enable_dma_64_aligned_memset * (1 - enable_dma_64_aligned_memset) === 0;
 enable_dma_unaligned * (1 - enable_dma_unaligned) === 0;
 enable_jump_dest * (1 - enable_jump_dest) === 0;
 
@@ -103,12 +103,12 @@ airgroup Zisk {
     MemAlignByte(N: 2**23, read: 1, write: 1) alias MemAlignByteLarge;
     MemAlignByte(N: 2**23, read: 1, write: 0) alias MemAlignReadByteLarge;
     virtual MemAlignRom();
-    
+
     // Standard operations
     Arith(N: 2**21);
     virtual ArithTable();
     virtual ArithRangeTable();
-    virtual FrequentOps(table_id: ARITH_FROPS_TABLE_ID, 
+    virtual FrequentOps(table_id: ARITH_FROPS_TABLE_ID,
                         bin_file: "state-machines/arith/src/arith_frops_fixed.bin") alias ArithFrops;
 
     Binary(N: 2**22);
@@ -129,9 +129,9 @@ airgroup Zisk {
     virtual BinaryTable();
     virtual BinaryExtensionTable();
 
-    virtual FrequentOps(table_id: BINARY_FROPS_TABLE_ID, 
+    virtual FrequentOps(table_id: BINARY_FROPS_TABLE_ID,
                         bin_file: "state-machines/binary/src/binary_basic_frops_fixed.bin") alias BinaryBasicFrops;
-    virtual FrequentOps(table_id: BINARY_EXTENSION_FROPS_TABLE_ID, 
+    virtual FrequentOps(table_id: BINARY_EXTENSION_FROPS_TABLE_ID,
                         bin_file: "state-machines/binary/src/binary_extension_frops_fixed.bin") alias BinaryExtensionFrops;
 
     // Precompiles
@@ -142,16 +142,16 @@ airgroup Zisk {
     // ArithEq(N: 2**20, equations: EQ_ARITH256) alias Arith256;
     ArithEq(N: 2**20, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256X;
     ArithEq(N: 2**21, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256XLarge;
-    ArithEq(N: 2**22, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256XHuge;
+    // ArithEq(N: 2**22, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256XHuge;
     ArithEq(N: 2**20, equations: EQ_SECP256K1) alias ArithSecp256K1;
     ArithEq(N: 2**21, equations: EQ_SECP256K1) alias ArithSecp256K1Large;
     // ArithEq(N: 2**22, equations: EQ_SECP256K1) alias ArithSecp256K1Huge;
-    ArithEq(N: 2**20, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254; 
-    ArithEq(N: 2**21, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Large; 
-    ArithEq(N: 2**22, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Huge;
+    ArithEq(N: 2**20, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254;
+    ArithEq(N: 2**21, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Large;
+    // ArithEq(N: 2**22, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Huge;
     ArithEq384(N: 2**20);
-    ArithEq384(N: 2**22) alias ArithEq384Large;
-    ArithEq384(N: 2**23) alias ArithEq384Huge;
+    ArithEq384(N: 2**21) alias ArithEq384Large;
+    // ArithEq384(N: 2**23) alias ArithEq384Huge;
 
     BabyJubJub(N: 2**18);
     virtual ArithEqLtTable(ARITH_EQ_LT_TABLE_SIZE);

@@ -4,9 +4,8 @@
 
 use super::*;
 use zisk_pil::{
-    Arith256XHugeTrace, Arith256XLargeTrace, Arith256XTrace, ArithBn254HugeTrace,
-    ArithBn254LargeTrace, ArithBn254Trace, ArithEqLargeTrace, ArithEqTrace,
-    ArithSecp256K1LargeTrace, ArithSecp256K1Trace,
+    Arith256XLargeTrace, Arith256XTrace, ArithBn254LargeTrace, ArithBn254Trace, ArithEqLargeTrace,
+    ArithEqTrace, ArithSecp256K1LargeTrace, ArithSecp256K1Trace,
 };
 
 fn counts(pairs: &[(ArithEqOp, u64)]) -> [u64; ARITH_EQ_OP_NUM] {
@@ -38,12 +37,10 @@ fn all_air_ids() -> Vec<usize> {
         ArithEqLargeTrace::<()>::AIR_ID,
         Arith256XTrace::<()>::AIR_ID,
         Arith256XLargeTrace::<()>::AIR_ID,
-        Arith256XHugeTrace::<()>::AIR_ID,
         ArithSecp256K1Trace::<()>::AIR_ID,
         ArithSecp256K1LargeTrace::<()>::AIR_ID,
         ArithBn254Trace::<()>::AIR_ID,
         ArithBn254LargeTrace::<()>::AIR_ID,
-        ArithBn254HugeTrace::<()>::AIR_ID,
     ]
 }
 
@@ -59,23 +56,15 @@ fn assert_conserves(plan: &[ArithEqAirPlan], totals: &[u64; ARITH_EQ_OP_NUM]) {
 
 /// Every config must be a size ladder: each step strictly taller than the one below, exactly as
 /// wide, and covering the same operations. That is what the strategy relies on to trade memory for a
-/// lower instance count. Configs have two or three steps, so the ladders are walked pairwise rather
-/// than assumed to be pairs.
+/// lower instance count. The ladders are walked pairwise rather than assumed to be pairs, so a
+/// config that gains a third height in `zisk.pil` is still checked step by step.
 #[test]
 fn every_config_is_a_size_ladder() {
     for ladder in [
         &[ArithEqTrace::<()>::AIR_ID, ArithEqLargeTrace::<()>::AIR_ID][..],
-        &[
-            Arith256XTrace::<()>::AIR_ID,
-            Arith256XLargeTrace::<()>::AIR_ID,
-            Arith256XHugeTrace::<()>::AIR_ID,
-        ][..],
+        &[Arith256XTrace::<()>::AIR_ID, Arith256XLargeTrace::<()>::AIR_ID][..],
         &[ArithSecp256K1Trace::<()>::AIR_ID, ArithSecp256K1LargeTrace::<()>::AIR_ID][..],
-        &[
-            ArithBn254Trace::<()>::AIR_ID,
-            ArithBn254LargeTrace::<()>::AIR_ID,
-            ArithBn254HugeTrace::<()>::AIR_ID,
-        ][..],
+        &[ArithBn254Trace::<()>::AIR_ID, ArithBn254LargeTrace::<()>::AIR_ID][..],
     ] {
         for step in ladder.windows(2) {
             let (short, tall) = (meta_of(step[0]), meta_of(step[1]));
@@ -99,10 +88,10 @@ fn the_sweep_stays_within_its_ceiling() {
         .map(|&op| metas.iter().filter(|m| airs.contains(&m.air_id) && m.covers(op)).count() as u64)
         .product();
 
-    // An operation's candidates are its config's heights plus the two universal airs: five for the
-    // two arith256 and the five bn254 operations (three heights each), four for the two secp256k1
-    // ones (two heights), two for the secp256r1 pair that only the universal airs prove.
-    assert_eq!(combinations, 5u64.pow(2) * 4u64.pow(2) * 5u64.pow(5) * 2u64.pow(2));
+    // An operation's candidates are its config's heights plus the two universal airs: four for the
+    // two arith256, the two secp256k1 and the five bn254 operations (two heights each), two for the
+    // secp256r1 pair that only the universal airs prove.
+    assert_eq!(combinations, 4u64.pow(2) * 4u64.pow(2) * 4u64.pow(5) * 2u64.pow(2));
     assert!(
         combinations <= MAX_TAIL_COMBINATIONS,
         "{combinations} placements exceed the {MAX_TAIL_COMBINATIONS} the sweep is sized for",
@@ -143,42 +132,42 @@ fn small_leftovers_consolidate_into_one_instance() {
     assert_eq!(plan[0].air_id, ArithEqTrace::<()>::AIR_ID, "and it is the short universal air");
 }
 
-/// Work that fills whole instances goes to the air that needs the fewest of them. Since `zisk.pil`
-/// gave `Arith256X` a `Huge` sibling taller than the universal `ArithEqLarge`, that air is now the
-/// specialized one rather than the universal one.
+/// Work that fills whole instances goes to the air that needs the fewest of them, ties broken by the
+/// least memory. `Arith256XLarge` and the universal `ArithEqLarge` are the same height, so they tie
+/// on instance count and the narrower specialized air wins on memory.
 #[test]
 fn a_bulk_goes_where_the_fewest_instances_are_needed() {
-    let tallest = meta_of(Arith256XHugeTrace::<()>::AIR_ID);
+    let tallest = meta_of(Arith256XLargeTrace::<()>::AIR_ID);
     let cap_tall = cap(&tallest);
     let totals = counts(&[(ArithEqOp::Arith256, 3 * cap_tall)]);
     let plan = plan_air_strategy(&all_air_ids(), &totals);
     assert_conserves(&plan, &totals);
     assert_eq!(plan.len(), 1);
-    assert_eq!(plan[0].air_id, Arith256XHugeTrace::<()>::AIR_ID);
+    assert_eq!(plan[0].air_id, Arith256XLargeTrace::<()>::AIR_ID);
     assert_eq!(plan[0].instances, 3);
 
-    // The universal tall air covers the same work at half the height, so it would need twice the
-    // instances — which the criterion rules out before memory is ever compared.
-    let universal = meta_of(ArithEqLargeTrace::<()>::AIR_ID);
-    assert!((3 * cap_tall).div_ceil(cap(&universal)) > 3);
+    // The step below in its own ladder is half the height, so it would need twice the instances —
+    // which the criterion rules out before memory is ever compared.
+    let below = meta_of(Arith256XTrace::<()>::AIR_ID);
+    assert!((3 * cap_tall).div_ceil(cap(&below)) > 3);
 
-    // And the step below in its own ladder holds the same work in no more memory — a shade less,
-    // in fact, the two costs being measured rather than exact multiples. So what picks the taller
-    // air here is purely the instance count, with memory arguing the other way.
-    let below = meta_of(Arith256XLargeTrace::<()>::AIR_ID);
-    assert!(memory(&below, 3 * cap_tall) <= plan_area(&plan));
+    // The universal tall air is the same height and so ties on instance count; being wider it holds
+    // the same work in more memory, which is what sends the bulk to the specialized air.
+    let universal = meta_of(ArithEqLargeTrace::<()>::AIR_ID);
+    assert_eq!(cap(&universal), cap_tall);
+    assert!(memory(&universal, 3 * cap_tall) > plan_area(&plan));
 }
 
 /// A bulk's tail can land away from the bulk, splitting one operation across two airs — here into
 /// the instance another family needs anyway, which costs no extra instance at all.
 #[test]
 fn a_tail_rides_in_an_instance_another_family_needs() {
-    let cap_tall = cap(&meta_of(Arith256XHugeTrace::<()>::AIR_ID));
+    let cap_tall = cap(&meta_of(Arith256XLargeTrace::<()>::AIR_ID));
     let totals = counts(&[(ArithEqOp::Arith256, 3 * cap_tall + 10), (ArithEqOp::Secp256r1Add, 1)]);
     let plan = plan_air_strategy(&all_air_ids(), &totals);
     assert_conserves(&plan, &totals);
 
-    let bulk = plan.iter().find(|p| p.air_id == Arith256XHugeTrace::<()>::AIR_ID).unwrap();
+    let bulk = plan.iter().find(|p| p.air_id == Arith256XLargeTrace::<()>::AIR_ID).unwrap();
     assert_eq!(bulk.op_counts[ArithEqOp::Arith256.index()], 3 * cap_tall);
     assert_eq!(bulk.instances, 3);
 

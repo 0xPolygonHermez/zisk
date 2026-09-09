@@ -8,11 +8,12 @@
 //!
 //! Cost model: every instance is a full `num_rows` trace regardless of how full it is, so its memory is
 //! `instances · num_rows · row_size`, where `row_size` is the width the setup commits. Each config
-//! comes in two or three heights — a taller air holds more operations per instance at the same
-//! width, a shorter one wastes less memory on a partial fill — and a specialized config is narrower
-//! than the universal one, so it is the cheaper home for a *full* instance of its operations. The
-//! ladders are not aligned: `Arith256XHuge` and `ArithBn254Huge` are taller than the universal
-//! `ArithEqLarge`, so for the operations they cover the bulk goes to the specialized air.
+//! comes in two heights — a taller air holds more operations per instance at the same width, a
+//! shorter one wastes less memory on a partial fill — and a specialized config is narrower than the
+//! universal one, so it is the cheaper home for a *full* instance of its operations. The ladders are
+//! aligned: every `Large` sits at the same height as the universal `ArithEqLarge`, so for the
+//! operations a specialized config covers the bulk ties on instance count and the memory tie-break
+//! sends it to the specialized air.
 //!
 //! Strategy, per operation (not per PIL equation group: an air may cover only part of a group):
 //!   * Its `bulk = ⌊count/cap⌋·cap` — the part that fills whole instances — **always goes to the
@@ -43,10 +44,10 @@ use zisk_common::Cost;
 /// that adding heavily overlapping airs fails loudly instead of silently hanging, since optimal tail
 /// placement is a bin-packing problem.
 ///
-/// An operation's candidates are its config's heights plus the two universal airs: five for the
-/// arith256 and bn254 operations (three heights each), four for the secp256k1 ones (two heights),
-/// and two for the secp256r1 pair no specialised config covers. With the current table that is
-/// `5^2 · 4^2 · 5^5 · 2^2 = 5_000_000` — see `the_sweep_stays_within_its_ceiling`,
+/// An operation's candidates are its config's heights plus the two universal airs: four for the
+/// arith256, secp256k1 and bn254 operations (two heights each), and two for the secp256r1 pair no
+/// specialised config covers. With the current table that is
+/// `4^2 · 4^2 · 4^5 · 2^2 = 1_048_576` — see `the_sweep_stays_within_its_ceiling`,
 /// which pins it so the headroom left here stays visible. Each combination is a handful of
 /// arithmetic over `metas.len()` airs and allocates nothing, so `2^23` is still milliseconds; what
 /// the bound really guards against is a table that grows the exponent.

@@ -17,8 +17,8 @@ zisk_precompile! {
     name = ArithEq384,
     op_type = ArithEq384,
     row = ArithEq384Trace,
-    // The same air at three heights. They prove the same operations and commit the same columns, so
-    // the planner sizes them together: the tall ones keep the instance count down, the short ones
+    // The same air at two heights. They prove the same operations and commit the same columns, so
+    // the planner sizes them together: the tall one keeps the instance count down, the short one
     // the memory once the count is settled.
     traces = [
         (
@@ -30,11 +30,6 @@ zisk_precompile! {
             ArithEq384LargeTrace,
             arith_eq_384_ops_per_instance(::zisk_pil::ArithEq384LargeTrace::<()>::NUM_ROWS),
             ::zisk_pil::ARITH_EQ_384_LARGE_INSTANCE_COST
-        ),
-        (
-            ArithEq384HugeTrace,
-            arith_eq_384_ops_per_instance(::zisk_pil::ArithEq384HugeTrace::<()>::NUM_ROWS),
-            ::zisk_pil::ARITH_EQ_384_HUGE_INSTANCE_COST
         ),
     ],
     ops = [
