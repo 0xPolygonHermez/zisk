@@ -90,7 +90,7 @@ airgroup Zisk {
 
     // Memory
     Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1, lanes_x_row: 4);
-    Mem(N: 2**22, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
+    Mem(N: 2**22, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data, lanes_x_row: 4) alias InputData;
     RomData(N: 2**22, base_address: 0x8000_0000, size_mb: 128, enable_flag: enable_rom_data, lanes_x_row: 2);
 
     MemAlign(N: 2**21);
@@ -138,20 +138,19 @@ airgroup Zisk {
     BigIntAdd(N: 2**20, bits: 256, operation_code: OP_ADD256) alias Add256;
 
     ArithEq(N: 2**20);
-    ArithEq(N: 2**21) alias ArithEqLarge;
+    ArithEq(N: 2**23) alias ArithEqLarge;
     // ArithEq(N: 2**20, equations: EQ_ARITH256) alias Arith256;
     ArithEq(N: 2**20, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256X;
-    ArithEq(N: 2**21, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256XLarge;
+    ArithEq(N: 2**23, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256XLarge;
     // ArithEq(N: 2**22, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256XHuge;
     ArithEq(N: 2**20, equations: EQ_SECP256K1) alias ArithSecp256K1;
-    ArithEq(N: 2**21, equations: EQ_SECP256K1) alias ArithSecp256K1Large;
+    ArithEq(N: 2**23, equations: EQ_SECP256K1) alias ArithSecp256K1Large;
     // ArithEq(N: 2**22, equations: EQ_SECP256K1) alias ArithSecp256K1Huge;
     ArithEq(N: 2**20, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254;
-    ArithEq(N: 2**21, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Large;
+    ArithEq(N: 2**23, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Large;
     // ArithEq(N: 2**22, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Huge;
     ArithEq384(N: 2**20);
-    ArithEq384(N: 2**21) alias ArithEq384Large;
-    // ArithEq384(N: 2**23) alias ArithEq384Huge;
+    ArithEq384(N: 2**23) alias ArithEq384Large;
 
     BabyJubJub(N: 2**18);
     virtual ArithEqLtTable(ARITH_EQ_LT_TABLE_SIZE);
@@ -175,15 +174,15 @@ airgroup Zisk {
     // Dma(enable: E_DMA_INPUTCPY) alias DmaInputCpy;
 
     Dma64Aligned(N: 2**21, enable_flag: enable_dma_64_aligned);
-    Dma64Aligned(N: 2**23, enable_flag: enable_dma_64_aligned_large) alias Dma64AlignedLarge;
+    Dma64Aligned(N: 2**23, enable_flag: enable_dma_64_aligned_large, lanes_x_row: 4) alias Dma64AlignedLarge;
 
     // Dma64Aligned(enable: E_DMA_INPUTCPY, enable_flag: enable_dma_64_aligned_inputcpy) alias Dma64AlignedInputCpy;
-    Dma64Aligned(N: 2**21, enable: E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_memset, op_x_row: 8) alias Dma64AlignedMemSet;
-    Dma64Aligned(N: 2**21, enable: E_DMA_MEMCPY|E_DMA_MEMCMP|E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_mem) alias Dma64AlignedMem;
-    Dma64Aligned(N: 2**22, enable: E_DMA_MEMCPY|E_DMA_MEMCMP|E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_mem_large) alias Dma64AlignedMemLarge;
-    Dma64Aligned(N: 2**21, enable: E_DMA_MEMCPY, enable_flag: enable_dma_64_aligned_memcpy, op_x_row: 8) alias Dma64AlignedMemCpy;
+    Dma64Aligned(N: 2**21, enable: E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_memset, lanes_x_row: 4) alias Dma64AlignedMemSet;
+    Dma64Aligned(N: 2**21, enable: E_DMA_MEMCPY|E_DMA_MEMCMP|E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_mem, lanes_x_row: 4) alias Dma64AlignedMem;
+    Dma64Aligned(N: 2**22, enable: E_DMA_MEMCPY|E_DMA_MEMCMP|E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_mem_large, lanes_x_row: 4) alias Dma64AlignedMemLarge;
+    Dma64Aligned(N: 2**21, enable: E_DMA_MEMCPY, enable_flag: enable_dma_64_aligned_memcpy, lanes_x_row: 4) alias Dma64AlignedMemCpy;
 
-    DmaUnaligned(N: 2**21, enable_flag: enable_dma_unaligned);
+    DmaUnaligned(N: 2**16, enable_flag: enable_dma_unaligned, op_x_row: 4);
 
     DmaPrePost();
     // DmaPrePost(enable: E_DMA_MEMCPY) alias DmaPrePostMemCpy;

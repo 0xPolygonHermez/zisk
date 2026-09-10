@@ -2,6 +2,7 @@
 //!
 //! This module handles the computation of witnesses for main and secondary state machine instances.
 
+use crate::AirClassifier;
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,6 +27,41 @@ pub struct WitnessGenerator {
     /// Packed trace layout. For Main this means the bit-packed row
     /// ([`MainTraceRowPacked`]).
     packed: AtomicBool,
+}
+
+/// Reports one instance's witness computation: how long it took, how full the instance is, and
+/// where in this proof's timeline it ran.
+///
+/// It is called from the two `compute_*` functions rather than from the dispatcher because the
+/// dispatcher also collects, drains the collectors and waits for a trace buffer — timing there
+/// would report all of that as witness time.
+///
+/// The occupancy comes from the plan (see [`zisk_common::Occupancy`]): the planner is the only
+/// place that knows it, so one report can cover every air without each state machine reporting
+/// its own. Instances whose planner does not report it say so rather than claiming zero.
+fn report_witness<F: PrimeField64>(
+    state: &ExecutionState<F>,
+    global_id: usize,
+    airgroup_id: usize,
+    air_id: usize,
+    started: Instant,
+) {
+    let took = started.elapsed().as_secs_f64() * 1e3;
+    let fill = match state.get_occupancy(global_id) {
+        Some(occupancy) => {
+            format!("fill {}/{} ({:.1}%)", occupancy.used, occupancy.capacity, occupancy.percent())
+        }
+        None => "fill n/a".to_string(),
+    };
+    // Durations alone cannot tell a slow phase from a queued one, so say when it ran too.
+    let window = match state.since_epoch_ms() {
+        Some(ended) => format!("{:.0}ms -> {ended:.0}ms", ended - took),
+        None => "n/a".to_string(),
+    };
+    tracing::info!(
+        "··· Witness {} #{global_id} | {fill} | {took:.0}ms | at {window}",
+        AirClassifier::name(airgroup_id, air_id),
+    );
 }
 
 impl WitnessGenerator {
@@ -106,6 +142,14 @@ impl WitnessGenerator {
 
         state.stats.insert_witness_stats(main_instance.ictx.global_id, stats);
 
+        report_witness(
+            state,
+            main_instance.ictx.global_id,
+            airgroup_id,
+            air_id,
+            witness_start_time,
+        );
+
         Ok(())
     }
 
@@ -165,6 +209,8 @@ impl WitnessGenerator {
         stats_end!(state.stats, &_stats_scope);
 
         state.stats.set_witness_duration(global_id, witness_start_time.elapsed().as_millis());
+
+        report_witness(state, global_id, _airgroup_id, _air_id, witness_start_time);
 
         Ok(())
     }

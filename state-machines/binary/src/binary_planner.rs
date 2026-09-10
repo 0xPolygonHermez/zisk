@@ -335,6 +335,13 @@ impl<F: PrimeField64> BinaryPlanner<F> {
             .map(|instance| {
                 let air = &airs[instance.air];
                 let chunks: Vec<ChunkId> = instance.chunks.keys().cloned().collect();
+                // What the hand-out gave this instance, of what the air holds. Frops take no row,
+                // so only the per-kind counts are occupancy.
+                let used: u64 = instance
+                    .chunks
+                    .values()
+                    .map(|collect| collect.kinds.iter().map(|kind| kind.count).sum::<u64>())
+                    .sum();
                 let meta: Box<dyn Any + Send + Sync> = Box::new(instance.chunks);
                 Plan::new(
                     air.airgroup_id,
@@ -344,6 +351,7 @@ impl<F: PrimeField64> BinaryPlanner<F> {
                     CheckPoint::Multiple(chunks),
                     Some(meta),
                 )
+                .with_occupancy(used, air.ops_per_instance)
             })
             .collect()
     }

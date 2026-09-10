@@ -243,14 +243,19 @@ impl MemPlanCalculator for MemModulePlanner {
         let segments = std::mem::take(&mut self.segments);
         for (segment_id, segment) in segments.into_iter().enumerate() {
             let keys = segment.chunks.keys().cloned().collect::<Vec<_>>();
-            plans.push(Plan::new(
-                self.config.airgroup_id,
-                self.config.air_id,
-                Some(SegmentId(segment_id)),
-                InstanceType::Instance,
-                CheckPoint::Multiple(keys),
-                Some(Box::new(segment)),
-            ));
+            // Rows this segment was given, of what the air holds.
+            let used: u64 = segment.chunks.values().map(|chunk| chunk.count as u64).sum();
+            plans.push(
+                Plan::new(
+                    self.config.airgroup_id,
+                    self.config.air_id,
+                    Some(SegmentId(segment_id)),
+                    InstanceType::Instance,
+                    CheckPoint::Multiple(keys),
+                    Some(Box::new(segment)),
+                )
+                .with_occupancy(used, self.config.rows as u64),
+            );
         }
         plans
     }

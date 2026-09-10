@@ -372,7 +372,13 @@ impl<F: PrimeField64> Planner for ArithEqPlanner<F> {
                     let mut take_total = air_budget[idx].min(available);
                     while take_total > 0 {
                         if cur_fill == cap {
-                            Self::close_instance(&mut plans, air_id, &mut segment, &mut cur_cps);
+                            Self::close_instance(
+                                &mut plans,
+                                air_id,
+                                &mut segment,
+                                &mut cur_cps,
+                                cap,
+                            );
                             cur_fill = 0;
                         }
                         let take = take_total.min(cap - cur_fill);
@@ -392,7 +398,7 @@ impl<F: PrimeField64> Planner for ArithEqPlanner<F> {
                     }
                 }
             }
-            Self::close_instance(&mut plans, air_id, &mut segment, &mut cur_cps);
+            Self::close_instance(&mut plans, air_id, &mut segment, &mut cur_cps, cap);
 
             // The strategy promised these operations to this air and the chunks do contain them, so
             // the budget must be spent. A leftover means the plan and the counters disagree, and
@@ -419,12 +425,15 @@ impl<F: PrimeField64> ArithEqPlanner<F> {
         air_id: usize,
         segment: &mut usize,
         cur_cps: &mut Vec<ArithEqCheckPoint>,
+        cap: u64,
     ) {
         if cur_cps.is_empty() {
             return;
         }
         // `new` sorts by chunk, which is also the order the `CheckPoint` list must agree with.
         let checkpoints = ArithEqCheckPoints::new(std::mem::take(cur_cps));
+        // Operations this instance was given, of what the air holds.
+        let used: u64 = checkpoints.iter().map(|cp| cp.count() as u64).sum();
         let plan = Plan::new(
             ZISK_AIRGROUP_ID,
             air_id,
@@ -432,7 +441,8 @@ impl<F: PrimeField64> ArithEqPlanner<F> {
             InstanceType::Instance,
             CheckPoint::Multiple(checkpoints.chunk_ids()),
             Some(Box::new(checkpoints)),
-        );
+        )
+        .with_occupancy(used, cap);
         *segment += 1;
         plans.push(plan);
     }

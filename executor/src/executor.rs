@@ -255,6 +255,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ) -> ExecutorResult<()> {
         let start_total = Instant::now();
         self.state.reset();
+        // Zero of the per-instance witness report's timeline, so its figures say when each
+        // instance's witness ran within this proof, not only how long it took.
+        self.state.start_epoch();
         if let Some(witness) = self.witness.as_ref() {
             witness.reset()?;
         }
@@ -417,6 +420,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             .collect::<ExecutorResult<Vec<_>>>()?;
 
         registry.write_pub_outs(&pub_outs.0);
+
+        // Snapshot what the planner expects each instance to hold before the plans are consumed
+        // into instances. This is the only point where both the global id and the plan are in hand.
+        self.state.set_occupancy(
+            secn_plans.iter().filter_map(|plan| Some((plan.global_id?, plan.occupancy?))),
+        );
 
         if let Some(witness) = self.witness.as_ref() {
             witness.populate_secn_instances(&self.state, secn_plans)?;

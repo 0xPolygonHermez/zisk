@@ -1,3 +1,4 @@
+use crate::DMA_UNALIGNED_OPS_BY_ROW;
 use zisk_common::{A, B, DMA_ENCODED, OP, STEP};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_precomp_helpers::DmaInfo;
@@ -17,7 +18,9 @@ pub struct DmaUnalignedInput {
 }
 
 impl DmaUnalignedInput {
-    pub fn get_count(data: &[u64]) -> usize {
+    /// Slots the operation takes: one read per word, plus the extra read the last write borrows
+    /// its leftover bytes from.
+    pub fn get_slots(data: &[u64]) -> usize {
         let encoded = data[DMA_ENCODED];
         if DmaInfo::get_dst_offset(encoded) == DmaInfo::get_src_offset(encoded) {
             0
@@ -30,13 +33,31 @@ impl DmaUnalignedInput {
             }
         }
     }
+
+    /// Rows the operation takes.
+    ///
+    /// The planner and the collectors budget in ROWS, not slots, because a sequence never shares a
+    /// row with another: its slots are rounded up on their own. Budgeting in slots would let an
+    /// instance be handed more sequences than it has rows for.
+    pub fn get_count(data: &[u64]) -> usize {
+        Self::get_slots(data).div_ceil(DMA_UNALIGNED_OPS_BY_ROW)
+    }
+
+    /// Slots this input covers: whole rows, except the last one of the operation, which stops at
+    /// the slot the sequence ends on.
+    pub fn get_input_slots(&self) -> usize {
+        let pending = DmaInfo::get_loop_count(self.encoded) + 1
+            - self.skip as usize * DMA_UNALIGNED_OPS_BY_ROW;
+        pending.min(self.count as usize * DMA_UNALIGNED_OPS_BY_ROW)
+    }
+
     pub fn get_last_count(&self) -> usize {
         let rows = self.count as usize;
         let initial_count = self.get_initial_count();
-        initial_count - rows + 1
+        initial_count - (rows - 1) * DMA_UNALIGNED_OPS_BY_ROW
     }
     pub fn get_initial_count(&self) -> usize {
-        DmaInfo::get_count(self.encoded) - self.skip as usize
+        DmaInfo::get_count(self.encoded) - self.skip as usize * DMA_UNALIGNED_OPS_BY_ROW
     }
     pub fn from(
         data: &[u64],
@@ -55,15 +76,21 @@ impl DmaUnalignedInput {
             "Unexpected operation on DmaUnalignedInput 0x{op:02X}",
         );
         let pre_count = DmaInfo::get_pre_count(encoded) as u32;
-        let data_offset = DmaInfo::get_loop_data_offset(encoded) + skip;
+        // `skip` and `max_count` are in ROWS; the source values are indexed by slot.
+        let skip_slots = skip * DMA_UNALIGNED_OPS_BY_ROW;
+        let data_offset = DmaInfo::get_loop_data_offset(encoded) + skip_slots;
 
-        // unaligned need an extra row to read part of next bytes
-        let pending_count = DmaInfo::get_loop_count(encoded) + 1 - skip;
+        // unaligned need an extra slot to read part of next bytes
+        let pending_slots = DmaInfo::get_loop_count(encoded) + 1 - skip_slots;
+        let pending_count = pending_slots.div_ceil(DMA_UNALIGNED_OPS_BY_ROW);
         let count: usize = std::cmp::min(pending_count, max_count);
 
-        // if count not enough to finish unaligned memcpy, add extra source because one row
-        // use next source value
-        let src_values_count = if count < pending_count { count + 1 } else { count };
+        // Slots the granted rows cover, stopping at the end of the sequence on its last row.
+        let slots = pending_slots.min(count * DMA_UNALIGNED_OPS_BY_ROW);
+
+        // if the rows are not enough to finish the unaligned memcpy, add an extra source because
+        // the last write of the last row borrows from the slot after it
+        let src_values_count = if slots < pending_slots { slots + 1 } else { slots };
         let op = data[OP] as u8;
         assert!(DmaInfo::get_loop_count(encoded) > 0);
         Self {

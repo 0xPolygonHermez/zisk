@@ -328,6 +328,10 @@ macro_rules! zisk_precompile_explicit {
                     .into_iter()
                     .map(|(instance, check_point, collect_info)| {
                         let air = ladder[instance_air[instance]];
+                        // What this instance was given, of what it holds: the ladder hands out
+                        // operations chunk by chunk, so its share is the sum over its chunks.
+                        let used: u64 =
+                            collect_info.values().map(|(count, _)| *count).sum();
                         $crate::Plan::new(
                             air.airgroup_id,
                             air.air_id,
@@ -336,6 +340,7 @@ macro_rules! zisk_precompile_explicit {
                             check_point,
                             Some(::std::boxed::Box::new(collect_info)),
                         )
+                        .with_occupancy(used, air.rows)
                     })
                     .collect();
 

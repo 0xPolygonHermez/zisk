@@ -47,15 +47,28 @@ impl<F: PrimeField64> Planner for DmaPlanner<F> {
         let _plans = dma_strategy.calculate(counters);
         let mut plans: Vec<Plan> = Vec::new();
         for (air_id, segments) in _plans.into_iter() {
+            // Rows one instance of this air holds; the planner budgets in rows, so the occupancy
+            // is measured in them too.
+            let capacity = DmaStrategy::<F>::rows_by_air_id(air_id);
             for (segment_id, (check_point, collect_info)) in segments.into_iter().enumerate() {
-                plans.push(Plan::new(
+                // Rows this segment was budgeted, over every chunk and operation.
+                let used: u64 = collect_info
+                    .chunks
+                    .values()
+                    .map(|(_, counters)| counters.total_collect_count())
+                    .sum();
+                let plan = Plan::new(
                     ZISK_AIRGROUP_ID,
                     air_id,
                     Some(SegmentId(segment_id)),
                     InstanceType::Instance,
                     check_point.clone(),
                     Some(Box::new(collect_info)),
-                ));
+                );
+                plans.push(match capacity {
+                    Some(capacity) => plan.with_occupancy(used, capacity as u64),
+                    None => plan,
+                });
             }
         }
         plans
