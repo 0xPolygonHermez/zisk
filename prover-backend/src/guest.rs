@@ -148,11 +148,39 @@ impl GuestProgram {
     }
     /// Verkey from the ELF, under the local proving key's [`HashMode`].
     ///
-    /// A verkey is only valid relative to a mode. Use
+    /// A verkey is only valid relative to a mode. With no local proving key -- a client
+    /// that has only ever run a remote setup -- the mode is recovered from the cached
+    /// verkey artifact, whose filename encodes it. Use
     /// [`vk_with_mode`](Self::vk_with_mode) when the proofs come from a key of
     /// another family.
     pub fn vk(&self) -> Result<ProgramVK> {
-        self.vk_with_mode(HashMode::local()?)
+        match HashMode::local() {
+            Ok(hash_mode) => self.vk_with_mode(hash_mode),
+            Err(no_key) => self
+                .vk_from_cache()
+                .map_err(|e| anyhow::anyhow!("no local proving key ({no_key}); {e}")),
+        }
+    }
+
+    /// Verkey from whichever cached artifact exists, when no local proving key names the
+    /// mode. Remote setup writes one file per mode, tagged with it, so a single match is
+    /// unambiguous and several are not.
+    fn vk_from_cache(&self) -> Result<ProgramVK> {
+        let mut found: Vec<ProgramVK> =
+            HashMode::ALL.iter().filter_map(|&mode| self.vk_with_mode(mode).ok()).collect();
+        match found.len() {
+            1 => Ok(found.remove(0)),
+            0 => Err(anyhow::anyhow!(
+                "no cached verkey for program {}; run setup for it first",
+                self.name()
+            )),
+            _ => Err(anyhow::anyhow!(
+                "cached verkeys for program {} under several hash families ({}); call \
+                 vk_with_mode to name the one the proofs came from",
+                self.name(),
+                found.iter().map(|v| v.hash_mode.as_str()).collect::<Vec<_>>().join(", "),
+            )),
+        }
     }
 
     /// Verkey from the ELF, under the proving key's [`HashMode`].

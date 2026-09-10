@@ -24,6 +24,10 @@ pub enum HashMode {
 }
 
 impl HashMode {
+    /// Every mode, for callers that enumerate or probe them. Pinned to proofman's family
+    /// list by `the_modes_match_proofmans_family_list`.
+    pub const ALL: [HashMode; 3] = [HashMode::Poseidon1, HashMode::Poseidon2, HashMode::Blake3];
+
     /// Merkle-tree arity for this mode. Currently equal across modes, but kept
     /// per-mode so they can diverge without touching call sites.
     pub fn merkle_tree_arity(&self) -> u64 {
@@ -191,10 +195,7 @@ mod tests {
     /// Every mode this enum knows must be a family proofman knows, and vice versa.
     #[test]
     fn the_modes_match_proofmans_family_list() {
-        let mut mine: Vec<&str> = [HashMode::Poseidon1, HashMode::Poseidon2, HashMode::Blake3]
-            .iter()
-            .map(|m| m.as_str())
-            .collect();
+        let mut mine: Vec<&str> = HashMode::ALL.iter().map(|m| m.as_str()).collect();
         let mut theirs: Vec<&str> = proofman_common::hash_family::FAMILIES.to_vec();
         mine.sort_unstable();
         theirs.sort_unstable();
@@ -203,7 +204,7 @@ mod tests {
 
     #[test]
     fn hash_mode_as_str_roundtrips_through_from_str() {
-        for m in [HashMode::Poseidon1, HashMode::Poseidon2, HashMode::Blake3] {
+        for m in HashMode::ALL {
             assert_eq!(HashMode::from_str(m.as_str()).unwrap(), m);
         }
     }

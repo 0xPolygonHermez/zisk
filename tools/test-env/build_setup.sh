@@ -91,7 +91,7 @@ main() {
     rm -f "$setup_log"
 
     if [[ "${INCLUDE_SNARK}" == "1" ]]; then
-        if [[ "${HASH,,}" == "blake3" ]]; then
+        if [[ "$(printf '%s' "$HASH" | tr '[:upper:]' '[:lower:]')" == "blake3" ]]; then
             err "INCLUDE_SNARK=1 needs a poseidon HASH; the BN128 wrap has no blake3 path (HASH=${HASH})"
             return 1
         fi
