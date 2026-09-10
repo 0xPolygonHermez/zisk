@@ -28,6 +28,7 @@ members = [
   "transpilers/riscv",
   "transpilers/riscv2zisk",
   "transpilers/common",
+  "transpilers/wasm",
   "rom-setup",
   "state-machines/arith",
   "state-machines/binary",
@@ -113,6 +114,7 @@ zisk-precomp-evm = { path = "precompiles/evm", version = "1.2.0-alpha" }
 zisk-riscv = { path = "transpilers/riscv", version = "1.2.0-alpha" }
 zisk-transpiler-common = { path = "transpilers/common", version = "1.2.0-alpha" }
 zisk-transpiler-riscv = { path = "transpilers/riscv2zisk", version = "1.2.0-alpha" }
+zisk-transpiler-wasm = { path = "transpilers/wasm", version = "1.2.0-alpha" }
 zisk-rom-setup = { path = "rom-setup", version = "1.2.0-alpha" }
 zisk-sm-arith = { path = "state-machines/arith", version = "1.2.0-alpha" }
 zisk-sm-binary = { path = "state-machines/binary", version = "1.2.0-alpha" }
@@ -191,6 +193,8 @@ proofman-starks-lib-c = "1.2.0-alpha"
 # External dependencies
 arc-swap = "1"
 rayon = "1.10"
+wasmparser = "0.244"
+wat = "1"
 num-bigint = "0.4"
 num-traits = "0.2"
 num-integer = "0.1"
