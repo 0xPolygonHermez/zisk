@@ -89,7 +89,7 @@ airgroup Zisk {
     Rom(N: 2**22);
 
     // Memory
-    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1, lanes_x_row: 4);
+    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1, lanes_x_row: 8);
     Mem(N: 2**22, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data, lanes_x_row: 4) alias InputData;
     RomData(N: 2**22, base_address: 0x8000_0000, size_mb: 128, enable_flag: enable_rom_data, lanes_x_row: 2);
 
@@ -173,16 +173,16 @@ airgroup Zisk {
     // Dma(enable: E_DMA_MEMCPY) alias DmaMemCpy;
     // Dma(enable: E_DMA_INPUTCPY) alias DmaInputCpy;
 
-    Dma64Aligned(N: 2**21, enable_flag: enable_dma_64_aligned);
+    Dma64Aligned(N: 2**22, enable_flag: enable_dma_64_aligned);
     Dma64Aligned(N: 2**23, enable_flag: enable_dma_64_aligned_large, lanes_x_row: 4) alias Dma64AlignedLarge;
 
     // Dma64Aligned(enable: E_DMA_INPUTCPY, enable_flag: enable_dma_64_aligned_inputcpy) alias Dma64AlignedInputCpy;
-    Dma64Aligned(N: 2**21, enable: E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_memset, lanes_x_row: 4) alias Dma64AlignedMemSet;
-    Dma64Aligned(N: 2**21, enable: E_DMA_MEMCPY|E_DMA_MEMCMP|E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_mem, lanes_x_row: 4) alias Dma64AlignedMem;
-    Dma64Aligned(N: 2**22, enable: E_DMA_MEMCPY|E_DMA_MEMCMP|E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_mem_large, lanes_x_row: 4) alias Dma64AlignedMemLarge;
-    Dma64Aligned(N: 2**21, enable: E_DMA_MEMCPY, enable_flag: enable_dma_64_aligned_memcpy, lanes_x_row: 4) alias Dma64AlignedMemCpy;
+    Dma64Aligned(N: 2**23, enable: E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_memset, lanes_x_row: 4) alias Dma64AlignedMemSet;
+    Dma64Aligned(N: 2**23, enable: E_DMA_MEMCPY|E_DMA_MEMCMP|E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_mem, lanes_x_row: 4) alias Dma64AlignedMem;
+    Dma64Aligned(N: 2**23, enable: E_DMA_MEMCPY|E_DMA_MEMCMP|E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_mem_large, lanes_x_row: 4) alias Dma64AlignedMemLarge;
+    Dma64Aligned(N: 2**23, enable: E_DMA_MEMCPY, enable_flag: enable_dma_64_aligned_memcpy, lanes_x_row: 4) alias Dma64AlignedMemCpy;
 
-    DmaUnaligned(N: 2**16, enable_flag: enable_dma_unaligned, op_x_row: 4);
+    DmaUnaligned(N: 2**22, enable_flag: enable_dma_unaligned, op_x_row: 4);
 
     DmaPrePost();
     // DmaPrePost(enable: E_DMA_MEMCPY) alias DmaPrePostMemCpy;
