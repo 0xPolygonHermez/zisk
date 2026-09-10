@@ -29,7 +29,7 @@ pub(crate) struct ZiskProofmanSetupRecursiveTest {
     #[arg(long, default_value = proofman_common::hash_family::DEFAULT_HASH_ID, value_parser = clap::builder::PossibleValuesParser::new(proofman_common::hash_family::FAMILIES))]
     pub hash: String,
 
-    /// Parallel BLAKE3 permutations per 56-row block (1..8). blake3 family only; defaults to 4.
+    /// Parallel BLAKE3 permutations per 56-row block (1..=8). blake3 family only; defaults to 4.
     #[arg(long)]
     blake3_lanes: Option<usize>,
 
@@ -48,7 +48,7 @@ impl ZiskProofmanSetupRecursiveTest {
             }
             if !(1..=8).contains(&l) {
                 anyhow::bail!(
-                    "--blake3-lanes must be in 1..8 (the air's boundary depth caps it), got {l}"
+                    "--blake3-lanes must be in 1..=8 (the air's boundary depth caps it), got {l}"
                 );
             }
         }

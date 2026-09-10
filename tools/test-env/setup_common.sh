@@ -51,6 +51,24 @@ starkstructs_path() {
   esac
 }
 
+# Hash family the proving key under $1 was built with, from its pilout.globalInfo.json,
+# or empty when there is no such key yet.
+#
+# $HASH is what the NEXT build would use; this is what an EXISTING key already is. The two
+# diverge whenever a key was built with a non-default --hash, because that flag is a plain
+# shell variable and nothing records it outside the key itself. Any check about a key that
+# is already on disk has to ask the key. Never guessed: a key that records no family is an
+# error, matching HashMode::from_proving_key.
+proving_key_hash_family() {
+  local gi="$1/pilout.globalInfo.json"
+  [ -f "$gi" ] || return 1
+  command -v jq >/dev/null 2>&1 || { echo "jq not on PATH (needed to read $gi)" >&2; return 2; }
+  local family
+  family="$(jq -r '.hash // empty' "$gi")" || { echo "failed to parse $gi" >&2; return 2; }
+  [ -n "$family" ] || { echo "no 'hash' field in $gi — rebuild the setup so it records its hash family" >&2; return 2; }
+  printf '%s' "$family"
+}
+
 # Portable shims for utilities that ship as GNU-only on Linux but use different
 # names on BSD userlands (macOS). Defined once so callers don't have to care.
 

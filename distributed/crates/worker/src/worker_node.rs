@@ -20,7 +20,7 @@ use zisk_cluster_common::{
     StreamDataDto, WorkerState,
 };
 use zisk_cluster_common::{DataId, JobId};
-use zisk_common::{ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{HashMode, ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
 use zisk_prover_backend::{Asm, Emu, GuestProgram, ZiskBackend, ZiskProver};
 
 use crate::config::WorkerServiceConfig;
@@ -1653,6 +1653,25 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // branch above, where no setup ran to return it.
         let hash_mode =
             prover.hash().map_err(|e| anyhow!("failed to read prover hash family: {e}"))?;
+
+        // `setup_dir` above is the global home, so `vk` was built against
+        // `~/.zisk/provingKey` while `hash_mode` describes whatever key this prover
+        // loaded. An explicit `--proving-key` can make those two different keys, and the
+        // pair would then tell the client to verify a global-key verkey under the other
+        // key's family. A verkey is only valid relative to its mode, so refuse the
+        // configuration rather than ship a mismatched pair.
+        let setup_hash_mode = HashMode::from_proving_key(&ZiskPaths::global().proving_key)
+            .map_err(|e| anyhow!("failed to read the recurser setup's hash family: {e}"))?;
+        if setup_hash_mode.as_str() != hash_mode {
+            return Err(anyhow!(
+                "hash family mismatch: the recurser setup was built against {} ({}) but this \
+                 worker's prover loaded a {} key; point --proving-key at the same key the \
+                 recurser setup uses, or drop it to use the global one",
+                ZiskPaths::global().proving_key.display(),
+                setup_hash_mode.as_str(),
+                hash_mode,
+            ));
+        }
 
         info!(
             "[Recurser] job_id {} Completed recurser setup for recurser_id {}",

@@ -56,7 +56,7 @@ impl ZiskProofmanSetupStats {
             }
             if !(1..=8).contains(&l) {
                 anyhow::bail!(
-                    "--blake3-lanes must be in 1..8 (the air's boundary depth caps it), got {l}"
+                    "--blake3-lanes must be in 1..=8 (the air's boundary depth caps it), got {l}"
                 );
             }
         }

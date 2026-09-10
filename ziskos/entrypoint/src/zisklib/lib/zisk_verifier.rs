@@ -49,6 +49,8 @@ pub unsafe extern "C" fn verify_zisk_proof_c(zisk_proof: *const u8, zisk_proof_l
 ///   the function returns `false` otherwise.
 /// - `hash` must point to at least `hash_len` valid, initialized bytes (no NUL needed);
 ///   non-UTF-8 returns `false`.
+/// - A null pointer returns `false` instead of being dereferenced; `from_raw_parts`
+///   forbids a null base even at length 0, so both are checked before either slice.
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_verify_zisk_proof_with_hash_c")]
 pub unsafe extern "C" fn verify_zisk_proof_with_hash_c(
@@ -57,6 +59,9 @@ pub unsafe extern "C" fn verify_zisk_proof_with_hash_c(
     hash: *const u8,
     hash_len: usize,
 ) -> bool {
+    if zisk_proof.is_null() || hash.is_null() {
+        return false;
+    }
     let zisk_proof_bytes = core::slice::from_raw_parts(zisk_proof, zisk_proof_len);
     let (prefix, words, suffix) = zisk_proof_bytes.align_to::<u64>();
     if !prefix.is_empty() || !suffix.is_empty() {
