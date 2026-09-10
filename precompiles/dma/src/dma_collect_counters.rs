@@ -12,6 +12,17 @@ pub struct DmaCollectCounters {
 }
 
 impl DmaCollectCounters {
+    /// Rows this instance is budgeted in this chunk, over every operation.
+    ///
+    /// The DMA planner budgets in rows, so this is what an instance was given of what its air
+    /// holds — the occupancy the witness report shows.
+    pub fn total_collect_count(&self) -> u64 {
+        self.memcpy.collect_count as u64
+            + self.inputcpy.collect_count as u64
+            + self.memset.collect_count as u64
+            + self.memcmp.collect_count as u64
+    }
+
     pub fn debug_assert_is_final_skip(&self) {
         debug_assert!(
             self.is_final_skip(),

@@ -164,6 +164,9 @@ impl Planner for RegularPlanner {
             let plan: Vec<_> = plan(&count[idx], instance.num_ops as u64)
                 .into_iter()
                 .map(|(check_point, collect_info)| {
+                    // What this instance was given, of what it holds: the plan hands out operations
+                    // chunk by chunk, so its own share is the sum over the chunks it collects from.
+                    let used: u64 = collect_info.values().map(|(count, _)| *count).sum();
                     let converted = Box::new(collect_info);
                     Plan::new(
                         instance.airgroup_id,
@@ -173,6 +176,7 @@ impl Planner for RegularPlanner {
                         check_point,
                         Some(converted),
                     )
+                    .with_occupancy(used, instance.num_ops as u64)
                 })
                 .collect();
 

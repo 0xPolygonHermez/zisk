@@ -231,6 +231,10 @@ impl<F: PrimeField64> WitnessPhase<F> {
     ///      * `Instance` + `is_rom(air_id)` → `self.rom_handler`
     ///        (the strategy baked at construction)
     ///      * `Instance` (non-ROM) → [`SecondaryWitnessHandler`]
+    ///
+    /// The per-instance witness report is NOT emitted here: this also collects, drains the
+    /// collectors and waits for a trace buffer. It lives where the witness is actually computed,
+    /// in [`crate::WitnessGenerator`].
     pub fn dispatch(&self, ctx: &WitnessContext<'_, F>, global_id: usize) -> ExecutorResult<()> {
         let (airgroup_id, air_id) = ctx.get_instance_info(global_id)?;
         let stats_scope_id = ctx.stats_scope.id();

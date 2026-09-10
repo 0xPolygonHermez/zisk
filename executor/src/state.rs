@@ -8,12 +8,14 @@ pub use instance_set::*;
 
 use arc_swap::ArcSwap;
 use proofman_fields::PrimeField64;
+use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex, PoisonError, RwLock,
 };
+use std::time::Instant;
 use zisk_common::{
-    io::ZiskStdin, BusDevice, EmuTrace, ExecutorStatsHandle, InstanceType, Stats,
+    io::ZiskStdin, BusDevice, EmuTrace, ExecutorStatsHandle, InstanceType, Occupancy, Stats,
     ZiskExecutorSummary,
 };
 use zisk_core::ZiskRom;
@@ -61,6 +63,18 @@ pub struct ExecutionState<F: PrimeField64> {
 
     /// Flag to indicate whether to use hints during execution
     pub use_hints: AtomicBool,
+
+    /// When this proof's execution started, the zero of the witness report's timeline.
+    ///
+    /// Set once per execution so the per-instance report can say *when* an instance's witness ran,
+    /// not just how long it took — which is what shows whether the phase is a pipeline or a queue.
+    pub epoch: RwLock<Option<Instant>>,
+
+    /// What the planner expects each instance to hold, by global instance id.
+    ///
+    /// Snapshotted from the plans before they are consumed into instances, so the witness phase can
+    /// report an instance's occupancy from one place instead of every state machine reporting its own.
+    pub occupancy: RwLock<HashMap<usize, Occupancy>>,
 }
 
 impl<F: PrimeField64> ExecutionState<F> {
@@ -75,7 +89,33 @@ impl<F: PrimeField64> ExecutionState<F> {
             execution_result: Mutex::new(ZiskExecutorSummary::default()),
             stats: ExecutorStatsHandle::new(),
             use_hints: AtomicBool::new(false),
+            epoch: RwLock::new(None),
+            occupancy: RwLock::new(HashMap::new()),
         }
+    }
+
+    /// Starts this execution's timeline. Everything the witness report times is relative to it.
+    pub fn start_epoch(&self) {
+        *self.epoch.write().unwrap() = Some(Instant::now());
+    }
+
+    /// Milliseconds since [`Self::start_epoch`], or `None` if no execution has started.
+    pub fn since_epoch_ms(&self) -> Option<f64> {
+        self.epoch
+            .read()
+            .ok()
+            .and_then(|epoch| epoch.map(|start| start.elapsed().as_secs_f64() * 1e3))
+    }
+
+    /// Records what the planner expects each instance to hold, by global instance id.
+    pub fn set_occupancy(&self, entries: impl IntoIterator<Item = (usize, Occupancy)>) {
+        let mut occupancy = self.occupancy.write().unwrap();
+        occupancy.extend(entries);
+    }
+
+    /// What the planner expected this instance to hold, if it said.
+    pub fn get_occupancy(&self, global_id: usize) -> Option<Occupancy> {
+        self.occupancy.read().ok().and_then(|o| o.get(&global_id).copied())
     }
 
     /// Sets the ZisK ROM for execution.

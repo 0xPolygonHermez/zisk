@@ -12,7 +12,7 @@ use zisk_core::ZiskOperationType;
 use zisk_precomp_common::MemProcessor;
 use zisk_precomp_helpers::DmaInfo;
 
-use crate::{generate_dma_mem_inputs, skip_dma_mem_inputs};
+use crate::{generate_dma_mem_inputs, skip_dma_mem_inputs, DMA_UNALIGNED_OPS_BY_ROW};
 
 // The `DmaOpMultiCounter` struct represents a counter that monitors and measures
 // dma specific operation on the data bus.
@@ -168,7 +168,10 @@ impl DmaCounterInputGen {
                     self.counters[DMA_64_ALIGNED_OFFSET + operation + 4] += rows;
                 }
             } else {
-                self.counters[DMA_UNALIGNED_OFFSET + operation] += loop_count + 1;
+                // Budget in ROWS, as the aligned family does: a sequence never shares a row,
+                // so its slots (one per word plus the extra read) round up on their own.
+                self.counters[DMA_UNALIGNED_OFFSET + operation] +=
+                    (loop_count + 1).div_ceil(DMA_UNALIGNED_OPS_BY_ROW);
                 self.counters[DMA_UNALIGNED_INPUTS_OFFSET + operation] += 1;
             }
         }

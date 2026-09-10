@@ -89,6 +89,9 @@ impl Planner for ArithPlanner {
             let plan: Vec<_> = plan_with_frops(&count[idx], instance.num_ops as u64)
                 .into_iter()
                 .map(|(check_point, collect_info)| {
+                    // What this instance was given, of what it holds. Frequent operations take no
+                    // row, so only the counts are occupancy.
+                    let used: u64 = collect_info.values().map(|(count, _, _)| *count).sum();
                     let converted = Box::new(collect_info);
                     Plan::new(
                         instance.airgroup_id,
@@ -98,6 +101,7 @@ impl Planner for ArithPlanner {
                         check_point,
                         Some(converted),
                     )
+                    .with_occupancy(used, instance.num_ops as u64)
                 })
                 .collect();
 

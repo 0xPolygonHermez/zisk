@@ -177,6 +177,34 @@ impl<F: PrimeField64> DmaStrategy<F> {
     const DMA_64_ALIGNED_MEMCPY_ROWS: usize = Dma64AlignedMemCpyTrace::<()>::NUM_ROWS;
     const DMA_64_ALIGNED_MEMSET_ROWS: usize = Dma64AlignedMemSetTrace::<()>::NUM_ROWS;
 
+    /// Rows one instance of a DMA air holds.
+    ///
+    /// The planner budgets in rows, so this is the capacity an instance's occupancy is measured
+    /// against. Returns `None` for an air this strategy does not plan.
+    pub fn rows_by_air_id(air_id: usize) -> Option<usize> {
+        if air_id == DmaTrace::<F>::AIR_ID {
+            Some(Self::DMA_ROWS)
+        } else if air_id == DmaPrePostTrace::<F>::AIR_ID {
+            Some(Self::DMA_PRE_POST_ROWS)
+        } else if air_id == DmaUnalignedTrace::<F>::AIR_ID {
+            Some(Self::DMA_UNALIGNED_ROWS)
+        } else if air_id == Dma64AlignedTrace::<F>::AIR_ID {
+            Some(Self::DMA_64_ALIGNED_ROWS)
+        } else if air_id == Dma64AlignedLargeTrace::<F>::AIR_ID {
+            Some(Self::DMA_64_ALIGNED_LARGE_ROWS)
+        } else if air_id == Dma64AlignedMemTrace::<F>::AIR_ID {
+            Some(Self::DMA_64_ALIGNED_MEM_ROWS)
+        } else if air_id == Dma64AlignedMemLargeTrace::<F>::AIR_ID {
+            Some(Self::DMA_64_ALIGNED_MEM_LARGE_ROWS)
+        } else if air_id == Dma64AlignedMemCpyTrace::<F>::AIR_ID {
+            Some(Self::DMA_64_ALIGNED_MEMCPY_ROWS)
+        } else if air_id == Dma64AlignedMemSetTrace::<F>::AIR_ID {
+            Some(Self::DMA_64_ALIGNED_MEMSET_ROWS)
+        } else {
+            None
+        }
+    }
+
     /// The airs of the 64-bit-aligned group, in [`air`] order.
     fn dma_64_aligned_airs() -> [AirChoice; air::COUNT] {
         [
