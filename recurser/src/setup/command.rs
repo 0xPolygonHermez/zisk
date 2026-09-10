@@ -13,9 +13,14 @@ use crate::manifest::{write_manifest_and_templates, RecurserManifest, RecurserMa
 use crate::CircomTemplates;
 
 pub struct SetupRecurserAggregatorOptions {
-    /// ZisK setup directory containing `provingKey/<name>/vadcop_final/`.
-    pub setup_dir: String,
-    /// Where to write the generated artifacts. Must differ from `setup_dir`.
+    /// The proving key directory itself, containing `<name>/vadcop_final/`.
+    ///
+    /// The key, not the home holding it: the recurser is bound to one specific
+    /// proving key, and a caller proving under an explicit key must be able to say
+    /// so. Deriving it from a home instead silently pinned every recurser to the
+    /// default key regardless of which one the prover had loaded.
+    pub proving_key: String,
+    /// Where to write the generated artifacts. Must differ from `proving_key`.
     pub output_dir: String,
     /// Circom bodies: the required `AggregatePublics`. All registered programs
     /// must emit the same publics layout (folded through raw).
@@ -23,15 +28,14 @@ pub struct SetupRecurserAggregatorOptions {
 }
 
 pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> Result<()> {
-    let setup_dir = &opts.setup_dir;
+    let proving_key = &opts.proving_key;
     let output_dir = &opts.output_dir;
 
-    if setup_dir == output_dir {
-        bail!("setup_dir and output_dir must differ (got {:?})", setup_dir);
+    if proving_key == output_dir {
+        bail!("proving_key and output_dir must differ (got {:?})", proving_key);
     }
 
-    let global_info_path =
-        PathBuf::from(setup_dir).join("provingKey").join("pilout.globalInfo.json");
+    let global_info_path = PathBuf::from(proving_key).join("pilout.globalInfo.json");
     if !global_info_path.exists() {
         bail!("Global info file not found: {:?}. Run `setup --recursive` first.", global_info_path);
     }
@@ -39,8 +43,7 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
     let name = global_info.get("name").and_then(|v| v.as_str()).unwrap_or("pilout").to_string();
     let hash = hash_from_global_info(&global_info, &global_info_path)?;
 
-    let vadcop_final_dir =
-        PathBuf::from(setup_dir).join("provingKey").join(&name).join("vadcop_final");
+    let vadcop_final_dir = PathBuf::from(proving_key).join(&name).join("vadcop_final");
     let verkey_path = vadcop_final_dir.join("vadcop_final.verkey.json");
     let starkinfo_path = vadcop_final_dir.join("vadcop_final.starkinfo.json");
     let verifier_info_path = vadcop_final_dir.join("vadcop_final.verifierinfo.json");
@@ -145,9 +148,8 @@ fn hash_from_global_info(global_info: &Value, path: &std::path::Path) -> Result<
 /// Read the local proving key's vadcop_final verkey as 4 decimal-string limbs.
 /// Shared by every layer that derives a `recurser_id` (SDK builder, setup
 /// command, worker claimed-id check) — the verkey is part of the id digest.
-pub fn read_vadcop_final_verkey(setup_dir: &str) -> Result<[String; 4]> {
-    let global_info_path =
-        PathBuf::from(setup_dir).join("provingKey").join("pilout.globalInfo.json");
+pub fn read_vadcop_final_verkey(proving_key: &str) -> Result<[String; 4]> {
+    let global_info_path = PathBuf::from(proving_key).join("pilout.globalInfo.json");
     let global_info: Value =
         serde_json::from_str(&fs::read_to_string(&global_info_path).with_context(|| {
             format!("Failed to read global info at {}", global_info_path.display())
@@ -155,11 +157,8 @@ pub fn read_vadcop_final_verkey(setup_dir: &str) -> Result<[String; 4]> {
         .with_context(|| format!("Failed to parse {}", global_info_path.display()))?;
     let name = global_info.get("name").and_then(|v| v.as_str()).unwrap_or("pilout");
 
-    let verkey_path = PathBuf::from(setup_dir)
-        .join("provingKey")
-        .join(name)
-        .join("vadcop_final")
-        .join("vadcop_final.verkey.json");
+    let verkey_path =
+        PathBuf::from(proving_key).join(name).join("vadcop_final").join("vadcop_final.verkey.json");
     parse_verkey(&verkey_path).context("Failed to parse vadcop_final.verkey.json")
 }
 

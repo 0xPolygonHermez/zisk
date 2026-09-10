@@ -111,7 +111,7 @@ fn run_setup_aggregation_program_blocking(
     }
 
     let opts = SetupRecurserAggregatorOptions {
-        setup_dir: agg.setup_dir.clone(),
+        proving_key: agg.proving_key.clone(),
         output_dir: agg.output_dir.clone(),
         templates: agg.templates.clone(),
     };

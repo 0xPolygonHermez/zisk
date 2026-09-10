@@ -20,7 +20,7 @@ use zisk_cluster_common::{
     StreamDataDto, WorkerState,
 };
 use zisk_cluster_common::{DataId, JobId};
-use zisk_common::{HashMode, ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
 use zisk_prover_backend::{Asm, Emu, GuestProgram, ZiskBackend, ZiskProver};
 
 use crate::config::WorkerServiceConfig;
@@ -1397,10 +1397,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
                 self.worker.set_state(WorkerState::SettingUp);
                 let prover = self.worker.prover_arc();
+                let proving_key = self.worker.proving_key().to_path_buf();
 
                 let handle = tokio::task::spawn_blocking(move || {
                     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        Self::handle_setup_aggregation_program(&prover, setup)
+                        Self::handle_setup_aggregation_program(&prover, &proving_key, setup)
                     }));
                     let (success, error_message, vk, hash_mode) = match outcome {
                         Ok(Ok((vk, hash_mode))) => (true, String::new(), vk, hash_mode),
@@ -1541,6 +1542,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// returns the existing verkey if setup has already run for this `recurser_id`.
     fn handle_setup_aggregation_program(
         prover: &ZiskProver<T>,
+        proving_key: &std::path::Path,
         setup: SetupAggregationProgram,
     ) -> Result<(Vec<u8>, String)> {
         use zisk_recurser::setup::{run_setup_recurser_aggregator, SetupRecurserAggregatorOptions};
@@ -1552,10 +1554,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let spec = setup.spec.ok_or_else(|| anyhow!("SetupAggregationProgram.spec must be set"))?;
 
-        let setup_dir = ZiskPaths::global()
-            .home
+        // The key this worker's prover actually loaded, which an explicit `--proving-key`
+        // can move off the global default. Everything below -- the vadcop_final verkey the
+        // recurser id is derived from, and the setup built from it -- has to come from that
+        // one key: a recurser built against a different key produces a verkey that cannot
+        // verify the proofs this prover goes on to make.
+        let setup_key = proving_key
             .to_str()
-            .ok_or_else(|| anyhow!("~/.zisk path is not valid UTF-8"))?
+            .ok_or_else(|| anyhow!("proving key path is not valid UTF-8"))?
             .to_string();
         let output_dir = ZiskPaths::global()
             .home
@@ -1582,7 +1588,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // The artifact dir is keyed by the *claimed* id; recompute the id from
         // the spec so a mismatched claim can't be served another definition's
         // completed setup (or silently register under the wrong name).
-        let zisk_vk = zisk_recurser::setup::read_vadcop_final_verkey(&setup_dir)
+        let zisk_vk = zisk_recurser::setup::read_vadcop_final_verkey(&setup_key)
             .map_err(|e| anyhow!("failed to read local vadcop_final verkey: {e:#}"))?;
         let expected_inputs = zisk_recurser::RecurserManifestInputs::new(
             zisk_vk,
@@ -1608,7 +1614,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         if !artifacts.is_active() {
             let opts = SetupRecurserAggregatorOptions {
-                setup_dir,
+                proving_key: setup_key,
                 output_dir: output_dir.clone(),
                 templates: zisk_recurser::CircomTemplates {
                     normalize,
@@ -1653,25 +1659,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // branch above, where no setup ran to return it.
         let hash_mode =
             prover.hash().map_err(|e| anyhow!("failed to read prover hash family: {e}"))?;
-
-        // `setup_dir` above is the global home, so `vk` was built against
-        // `~/.zisk/provingKey` while `hash_mode` describes whatever key this prover
-        // loaded. An explicit `--proving-key` can make those two different keys, and the
-        // pair would then tell the client to verify a global-key verkey under the other
-        // key's family. A verkey is only valid relative to its mode, so refuse the
-        // configuration rather than ship a mismatched pair.
-        let setup_hash_mode = HashMode::from_proving_key(&ZiskPaths::global().proving_key)
-            .map_err(|e| anyhow!("failed to read the recurser setup's hash family: {e}"))?;
-        if setup_hash_mode.as_str() != hash_mode {
-            return Err(anyhow!(
-                "hash family mismatch: the recurser setup was built against {} ({}) but this \
-                 worker's prover loaded a {} key; point --proving-key at the same key the \
-                 recurser setup uses, or drop it to use the global one",
-                ZiskPaths::global().proving_key.display(),
-                setup_hash_mode.as_str(),
-                hash_mode,
-            ));
-        }
 
         info!(
             "[Recurser] job_id {} Completed recurser setup for recurser_id {}",
