@@ -43,6 +43,9 @@ impl ZiskProofmanSetupRecursiveTest {
         setup_logger(self.verbose.into());
 
         if let Some(l) = self.blake3_lanes {
+            if self.hash != "blake3" {
+                anyhow::bail!("--blake3-lanes only applies to --hash blake3, got {:?}", self.hash);
+            }
             if !(1..=8).contains(&l) {
                 anyhow::bail!(
                     "--blake3-lanes must be in 1..8 (the air's boundary depth caps it), got {l}"

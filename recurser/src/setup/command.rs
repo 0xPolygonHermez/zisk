@@ -37,7 +37,7 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
     }
     let global_info: Value = serde_json::from_str(&fs::read_to_string(&global_info_path)?)?;
     let name = global_info.get("name").and_then(|v| v.as_str()).unwrap_or("pilout").to_string();
-    let hash = hash_from_global_info(&global_info);
+    let hash = hash_from_global_info(&global_info, &global_info_path)?;
 
     let vadcop_final_dir =
         PathBuf::from(setup_dir).join("provingKey").join(&name).join("vadcop_final");
@@ -124,12 +124,22 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
     Ok(())
 }
 
-fn hash_from_global_info(global_info: &Value) -> String {
-    global_info
+/// Hash family the proving key was built with. Never guesses a default: the recurser
+/// verifier is family-specific, so a wrong family verifies nothing.
+fn hash_from_global_info(global_info: &Value, path: &std::path::Path) -> Result<String> {
+    let hash = global_info
         .get("hash")
         .and_then(|v| v.as_str())
-        .unwrap_or(proofman_common::hash_family::DEFAULT_HASH_ID)
-        .to_string()
+        .with_context(|| format!("No 'hash' field in {}", path.display()))?;
+    if !proofman_common::hash_family::is_known_family(hash) {
+        bail!(
+            "Unrecognized hash family {:?} in {}; expected one of {:?}",
+            hash,
+            path.display(),
+            proofman_common::hash_family::FAMILIES,
+        );
+    }
+    Ok(hash.to_string())
 }
 
 /// Read the local proving key's vadcop_final verkey as 4 decimal-string limbs.

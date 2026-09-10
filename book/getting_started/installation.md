@@ -231,6 +231,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
         --build-dir $HOME/.zisk \
         --fixed-dir tmp/fixed \
         --stark-structs setup/starkstructs.poseidon.json \
+        --hash blake3 \
         --recursive
     ```
 
