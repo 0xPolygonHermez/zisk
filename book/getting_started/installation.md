@@ -230,7 +230,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
         --airout pil/zisk.pilout \
         --build-dir $HOME/.zisk \
         --fixed-dir tmp/fixed \
-        --stark-structs setup/starkstructs.poseidon.json \
+        --stark-structs setup/starkstructs.blake3.json \
         --hash blake3 \
         --recursive
     ```
@@ -238,6 +238,10 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
     This command generates the `$HOME/.zisk/provingKey` directory.
 
     Additionally, to generate the snark wrapper:
+
+    The BN128 wrap is Poseidon-only, so `setup-snark` refuses a Blake3 key. Rerun the
+    command above with `--stark-structs setup/starkstructs.poseidon.json --hash Poseidon1`
+    first.
 
     First, download the powers-of-tau file into the parent folder of `zisk`:
     ```bash
