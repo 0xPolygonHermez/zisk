@@ -99,7 +99,9 @@ impl EmbeddedClient {
 /// `AggregationProgram` binds to the global key at build time; `EmbeddedClientBuilder::proving_key`
 /// can put the prover on another. The `recurser_id` is content-addressed on the build-time key's
 /// vadcop_final verkey, so the key cannot be swapped here -- only refused. Compares verkeys, not
-/// paths (two can name one key) or hash families (two keys can share one).
+/// paths (one key can have several) and not hash families, which is strictly weaker: the verkey is
+/// the const-tree root under the family's own Merkle hash, so it already differs whenever the
+/// family does.
 fn ensure_recurser_matches_client_key(client_proving_key: &Path, agg: &Recurser) -> Result<()> {
     let client_key = client_proving_key
         .to_str()
