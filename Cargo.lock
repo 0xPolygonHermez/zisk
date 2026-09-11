@@ -46,9 +46,9 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "alloy-json-abi"
-version = "1.7.2"
+version = "1.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dba4e59c3581a39e03e0b0b4a46ee9c41315b5d843b1e903271952b32bedb7c"
+checksum = "858acd7fdad1e4a7057fd9c1b39c1f2cd6bcd57ebf3c56e2853c02ead049e816"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-type-parser",
@@ -58,9 +58,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-primitives"
-version = "1.7.2"
+version = "1.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce7b00f0cb42c66ec353076ded1dff1fbf818f6e0e26c40c8a8456c04483fca4"
+checksum = "d5e9dbd49258ac3ab893a481d46be29b58be7f734dcac46cd80b6b13ee36566c"
 dependencies = [
  "alloy-rlp",
  "bytes",
@@ -97,9 +97,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-macro"
-version = "1.7.2"
+version = "1.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c64558980fb038cd34b4285ec2b36a2a8bd8d4ddd13b3f6e42d97cb5ee29938e"
+checksum = "60dd79f578c3912f1fc2a150dbeb8110b8cfb976c60f98ebf6de9d5da5965a2b"
 dependencies = [
  "alloy-sol-macro-expander",
  "alloy-sol-macro-input",
@@ -111,9 +111,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-macro-expander"
-version = "1.7.2"
+version = "1.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ffb0e793abdbaea9d01259493c8272c3af295d03389e70a2acdf53b57ad1edf"
+checksum = "9edb8520f2f94275e1caa73c85207dcc78ec402a9a4c429240f9a0783a8f16c0"
 dependencies = [
  "alloy-sol-macro-input",
  "const-hex",
@@ -129,9 +129,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-macro-input"
-version = "1.7.2"
+version = "1.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32c2c0ec8425d9663dac939ba75750f17d2933d2f020814b4f8fde4a60da6d26"
+checksum = "66af2d9344882172993be5f5cbfd349fdfa52cb548f7af8715b446fb35ef6001"
 dependencies = [
  "const-hex",
  "dunce",
@@ -145,9 +145,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-type-parser"
-version = "1.7.2"
+version = "1.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96b37db6a7ad8170596345f864522f789cc7af093f516d6cdf34bbdcfba8adab"
+checksum = "77c2a8abc3334044013b23d5e438cc5dc802e5544cc42b713d0840d5185967cc"
 dependencies = [
  "serde",
  "winnow 1.0.4",
@@ -155,9 +155,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-types"
-version = "1.7.2"
+version = "1.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f40e33a0f588dde548c3b6767a71e61b593421a8c1b253b9cf1441dc7cf7ab5"
+checksum = "3e6f87cf007caa54e95455875fbd25879b008d0d9c7c340a2c258b3a3400a28c"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -839,7 +839,7 @@ version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
  "cexpr",
  "clang-sys",
  "itertools 0.13.0",
@@ -906,9 +906,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.13.1"
+version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
+checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 dependencies = [
  "serde_core",
 ]
@@ -1066,7 +1066,7 @@ checksum = "855d1b74d8faf6c56e02ddbb8a60f6eae479bba5ee6ee29cddee73fe9484f261"
 dependencies = [
  "serde",
  "serde_derive",
- "toml 1.1.5+spec-1.1.0",
+ "toml 1.1.6+spec-1.1.0",
 ]
 
 [[package]]
@@ -1345,7 +1345,7 @@ dependencies = [
  "serde-untagged",
  "serde_core",
  "serde_json",
- "toml 1.1.5+spec-1.1.0",
+ "toml 1.1.6+spec-1.1.0",
  "winnow 1.0.4",
  "yaml-rust2",
 ]
@@ -2436,7 +2436,7 @@ version = "0.20.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b88256088d75a56f8ecfa070513a775dd9107f6530ef14919dac831af9cfe2b"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
  "libc",
  "libgit2-sys",
  "log",
@@ -2468,7 +2468,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bf760ebf69878d9fd8f110c89703d90ce35095324d1f1edcb595c63945ee757"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
  "ignore",
  "walkdir",
 ]
@@ -3518,7 +3518,7 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbeff6bd154a309b2ada5639b2661ca6ae4599b34e8487dc276d2cd637da2d76"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
  "itoa",
 ]
 
@@ -3720,7 +3720,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
 ]
 
 [[package]]
@@ -4001,7 +4001,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4012,7 +4012,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -4028,7 +4028,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "anyhow",
  "clap",
@@ -4054,7 +4054,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "colored",
  "proofman-common",
@@ -4235,7 +4235,7 @@ version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
 dependencies = [
- "toml_edit 0.25.13+spec-1.1.0",
+ "toml_edit 0.25.14+spec-1.1.0",
 ]
 
 [[package]]
@@ -4272,7 +4272,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "bincode",
  "blake3",
@@ -4304,7 +4304,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "borsh",
  "colored",
@@ -4333,7 +4333,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
 ]
@@ -4341,7 +4341,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "anyhow",
  "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
@@ -4355,7 +4355,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -4368,7 +4368,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#deb9aa4f89b7ffa34cf2adc3ee6c6a098004c54e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -4381,7 +4381,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -4393,7 +4393,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4403,7 +4403,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
@@ -4412,7 +4412,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#deb9aa4f89b7ffa34cf2adc3ee6c6a098004c54e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
@@ -4421,17 +4421,17 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 
 [[package]]
 name = "proofman-starks-src"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#deb9aa4f89b7ffa34cf2adc3ee6c6a098004c54e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
 
 [[package]]
 name = "proofman-util"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4440,7 +4440,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4453,7 +4453,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#deb9aa4f89b7ffa34cf2adc3ee6c6a098004c54e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4465,7 +4465,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#b37232c47818bea37f37c32113d54195a5f70231"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#e16f7d21f7c845d06cf4ce6cf9d4b76e223bf15b"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -4478,7 +4478,7 @@ version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b45fcc2344c680f5025fe57779faef368840d0bd1f42f216291f0dc4ace4744"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
  "num-traits",
  "rand 0.9.5",
  "rand_chacha 0.9.0",
@@ -4598,7 +4598,7 @@ version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
  "memchr",
  "unicase",
 ]
@@ -4832,7 +4832,7 @@ version = "11.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "498cd0dc59d73224351ee52a95fee0f1a617a2eae0e7d9d720cc622c73a54186"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
 ]
 
 [[package]]
@@ -4875,7 +4875,7 @@ version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
 ]
 
 [[package]]
@@ -5040,7 +5040,7 @@ version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81116b9531d61eabc41aeb228e4b6b2435bcca3233b98cf3b3077d4e6e9debb3"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
  "once_cell",
  "serde",
  "serde_derive",
@@ -5157,7 +5157,7 @@ version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
@@ -5170,7 +5170,7 @@ version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
@@ -5369,7 +5369,7 @@ version = "3.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7f4bc775c73d9a02cde8bf7b2ec4c9d12743edf609006c7facc23998404cd1d"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
  "core-foundation",
  "core-foundation-sys",
  "libc",
@@ -5826,9 +5826,9 @@ dependencies = [
 
 [[package]]
 name = "syn-solidity"
-version = "1.7.2"
+version = "1.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c6415502cd1e9ed58b3ceb415164b812d5572757b1a6f0e280ae806723c1fab"
+checksum = "eb6a2e3c7f7a3e4e83d1752cec5d1e357ced0cf96e85419b6a07f227db3def3a"
 dependencies = [
  "paste",
  "proc-macro2",
@@ -6179,9 +6179,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "1.1.5+spec-1.1.0"
+version = "1.1.6+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12c0ba9680044b4ce98d391a62094047eada0d64860b80166c39f4a6b5640785"
+checksum = "920602543f0911ab71da12c50d59701da54c196d1a2bf5cb4b75667f137a406a"
 dependencies = [
  "serde_core",
  "serde_spanned 1.1.1",
@@ -6224,9 +6224,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.25.13+spec-1.1.0"
+version = "0.25.14+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6975367e4d2ef766d86af01ffad14b622fecc8d4357a998fbc4deb6e9bacaf9b"
+checksum = "d2195eec204e2764644a4ea619704f9fbe5e0673038eded55ad9956f24fca0cc"
 dependencies = [
  "indexmap 2.14.2",
  "toml_datetime 1.1.1+spec-1.1.0",
@@ -6368,7 +6368,7 @@ version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cfcf7e2740e6fc6d4d688b4ef00650406bb94adf4731e43c096c3a19fe40840"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.13.2",
  "bytes",
  "futures-util",
  "http",
@@ -6596,9 +6596,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.26.0"
+version = "1.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5772d71c9be8a8a6ac2117d949c5b224c1b72241bb611d9a3012edcf8af7812"
+checksum = "2ef6dac1e96601b4fb3acccccff2139741fcb757cb9a36089bf5be91cfb285ce"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
