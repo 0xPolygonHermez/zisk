@@ -83,8 +83,21 @@ impl HashMode {
     /// or one with no `hash`, is an error.
     pub fn from_proving_key(proving_key: &Path) -> Result<Self> {
         let path = proving_key.join("pilout.globalInfo.json");
-        let text = std::fs::read_to_string(&path)
-            .map_err(|e| CommonError::Io(format!("failed to read {}: {e}", path.display())))?;
+        Self::from_proving_key_opt(proving_key)?
+            .ok_or_else(|| CommonError::Io(format!("failed to read {}: not found", path.display())))
+    }
+
+    /// [`Self::from_proving_key`], but `Ok(None)` when the key is absent. Present-but-unusable
+    /// stays an error: callers fall back on absence, so the two must not merge.
+    pub fn from_proving_key_opt(proving_key: &Path) -> Result<Option<Self>> {
+        let path = proving_key.join("pilout.globalInfo.json");
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => {
+                return Err(CommonError::Io(format!("failed to read {}: {e}", path.display())))
+            }
+        };
         let global_info: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
             CommonError::Deserialization(format!("failed to parse {}: {e}", path.display()))
         })?;
@@ -93,11 +106,17 @@ impl HashMode {
             .and_then(|v| v.as_str())
             .ok_or_else(|| CommonError::Invalid(format!("no 'hash' in {}", path.display())))?
             .parse()
+            .map(Some)
     }
 
     /// [`Self::from_proving_key`] for the key `ZiskPaths::global()` resolves to.
     pub fn local() -> Result<Self> {
         Self::from_proving_key(&ZiskPaths::global().proving_key)
+    }
+
+    /// [`Self::from_proving_key_opt`] for the key `ZiskPaths::global()` resolves to.
+    pub fn local_opt() -> Result<Option<Self>> {
+        Self::from_proving_key_opt(&ZiskPaths::global().proving_key)
     }
 }
 
@@ -153,6 +172,23 @@ mod tests {
         let out = f(&dir);
         let _ = std::fs::remove_dir_all(&dir);
         out
+    }
+
+    /// Absence is `Ok(None)`; present-but-unusable is an error, never absence.
+    #[test]
+    fn from_proving_key_opt_separates_absent_from_unusable() {
+        with_proving_key(None, |d| assert_eq!(HashMode::from_proving_key_opt(d).unwrap(), None));
+        with_proving_key(Some(r#"{"hash":"blake3"}"#), |d| {
+            assert_eq!(HashMode::from_proving_key_opt(d).unwrap(), Some(HashMode::Blake3))
+        });
+        for unusable in [r#"{"name":"zisk"}"#, r#"{"hash":"poseidon3"}"#, "not json"] {
+            with_proving_key(Some(unusable), |d| {
+                assert!(
+                    HashMode::from_proving_key_opt(d).is_err(),
+                    "{unusable:?} must not read as an absent key"
+                )
+            });
+        }
     }
 
     #[test]

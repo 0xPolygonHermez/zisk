@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ProgramVK;
-use zisk_rom_setup::{rom_merkle_setup_verkey, HashMode};
+use zisk_rom_setup::{rom_merkle_setup_verkey, rom_merkle_setup_verkey_opt, HashMode};
 use zisk_transpiler_riscv::Riscv2zisk;
 use ziskemu::ZiskEmulator;
 pub use ziskemu::{EmuOptions, ProfilingMode};
@@ -154,11 +154,10 @@ impl GuestProgram {
     /// [`vk_with_mode`](Self::vk_with_mode) when the proofs come from a key of
     /// another family.
     pub fn vk(&self) -> Result<ProgramVK> {
-        match HashMode::local() {
-            Ok(hash_mode) => self.vk_with_mode(hash_mode),
-            Err(no_key) => self
-                .vk_from_cache()
-                .map_err(|e| anyhow::anyhow!("no local proving key ({no_key}); {e}")),
+        // Absent key falls back; present-but-unusable propagates as the integrity failure it is.
+        match HashMode::local_opt()? {
+            Some(hash_mode) => self.vk_with_mode(hash_mode),
+            None => self.vk_from_cache().map_err(|e| anyhow::anyhow!("no local proving key; {e}")),
         }
     }
 
@@ -166,8 +165,11 @@ impl GuestProgram {
     /// mode. Remote setup writes one file per mode, tagged with it, so a single match is
     /// unambiguous and several are not.
     fn vk_from_cache(&self) -> Result<ProgramVK> {
-        let mut found: Vec<ProgramVK> =
-            HashMode::ALL.iter().filter_map(|&mode| self.vk_with_mode(mode).ok()).collect();
+        // `?`, not `.ok()`: corruption must not pass as absence and fake a single match.
+        let mut found: Vec<ProgramVK> = HashMode::ALL
+            .iter()
+            .filter_map(|&mode| rom_merkle_setup_verkey_opt(self.elf(), &None, mode).transpose())
+            .collect::<Result<_>>()?;
         match found.len() {
             1 => Ok(found.remove(0)),
             0 => Err(anyhow::anyhow!(
