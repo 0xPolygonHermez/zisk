@@ -131,8 +131,8 @@ impl DmaCounterInputGen {
         4, // MEMSET_4
         4, // MEMCMP
         4, // INPUTCPY
-        8, // MEMCPY_8
-        8, // MEMSET_8
+        4, // MEMCPY_8
+        4, // MEMSET_8
     ];
     const IS_DOUBLE: [usize; 6] = [
         1, // MEMCPY_4
