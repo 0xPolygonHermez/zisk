@@ -1,4 +1,5 @@
 use anyhow::Result;
+use pil2_stark_recurser::plonk2pil::setups::blake3::DEFAULT_LANES;
 use pil2_stark_setup::commands::stats::{run_stats, StatsOptions};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
@@ -32,8 +33,13 @@ pub(crate) struct ZiskProofmanSetupStats {
     impols: bool,
 
     /// Hash family (tree/transcript geometry), as in proofman-setup
-    #[arg(long, default_value = "Poseidon1", value_parser = ["Poseidon1", "Poseidon2", "blake3"])]
+    #[arg(long, default_value = proofman_common::hash_family::DEFAULT_HASH_ID, value_parser = clap::builder::PossibleValuesParser::new(proofman_common::hash_family::FAMILIES))]
     hash: String,
+
+    /// Parallel BLAKE3 permutations per 56-row block the recursion is built at; only affects
+    /// needsCompressor. blake3 family only; defaults to the recurser's own default.
+    #[arg(long)]
+    blake3_lanes: Option<usize>,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
@@ -44,6 +50,17 @@ impl ZiskProofmanSetupStats {
     pub(crate) fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 
+        if let Some(l) = self.blake3_lanes {
+            if self.hash != "blake3" {
+                anyhow::bail!("--blake3-lanes only applies to --hash blake3, got {:?}", self.hash);
+            }
+            if !(1..=8).contains(&l) {
+                anyhow::bail!(
+                    "--blake3-lanes must be in 1..=8 (the air's boundary depth caps it), got {l}"
+                );
+            }
+        }
+
         let opts = StatsOptions {
             airout_path: self.airout.clone(),
             hash: self.hash.clone(),
@@ -52,6 +69,7 @@ impl ZiskProofmanSetupStats {
             airgroups: self.airgroups.clone(),
             airs: self.airs.clone(),
             im_pols_stages: self.impols,
+            blake3_lanes: self.blake3_lanes.unwrap_or(DEFAULT_LANES),
         };
 
         // Expression trees in large AIRs (e.g. ZisK) can be thousands of levels deep,

@@ -34,7 +34,7 @@
 # An input-side sha256 over:
 #   - every *.pil under  pil/ state-machines/ precompiles/
 #   - every *.pil under  ${PROOFMAN_DIR}/pil2-components/lib/std/pil
-#   - state-machines/starkstructs.json
+#   - setup/starkstructs.<family>.json (picked by $HASH)
 #   - the *_fixed.bin files written by the fixed-data generators
 #   - pil2-compiler ref: the branch override if set, else the dep ref from
 #     ${PROOFMAN_DIR}/package.json
@@ -142,7 +142,7 @@ GEN_EXPS_ON_HIT=0
 # Env defaults; the --recursive-jobs / --setup-jobs CLI flags override these below.
 RECURSIVE_JOBS_ARG="${RECURSIVE_JOBS:-}"
 SETUP_JOBS_ARG="${SETUP_JOBS:-}"
-HASH="${HASH:-Poseidon1}"
+HASH="${HASH:-blake3}"
 SKIP_COMPILE_PIL=0
 VERBOSE_COUNT=0
 # Opt-in: generate + compile per-AIR Q-expression CUDA kernels (.exps.so) during
@@ -332,7 +332,8 @@ case "$MODE" in
     echo "==> proofman-setup stats"
     cargo run --release --bin cargo-zisk-dev -- proofman-setup stats \
       --airout pil/zisk.pilout \
-      --starkstructs state-machines/starkstructs.json \
+      --starkstructs "$(starkstructs_path)" \
+      --hash "$HASH" \
       -o tmp/stats.txt \
       ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
     echo "stats written to tmp/stats.txt"
@@ -349,6 +350,20 @@ case "$MODE" in
 
     PUBLICS_INFO="state-machines/publics.json"
     [ -f "$PUBLICS_INFO" ] || { echo "missing $PUBLICS_INFO — final.circom needs publics layout (nPublics, chunks, hasProgramVK)" >&2; exit 1; }
+
+    # The BN128 wrap is poseidon-only. Ask the key on disk, not $HASH: this mode wraps an
+    # existing provingKey and never builds one, so $HASH here is the default for a build
+    # that is not happening — under it a valid poseidon key gets rejected whenever HASH is
+    # unset. Checked before the ptau probe so an unsupported key reports itself instead of
+    # an 18 GB download, and before setup-snark so it fails in seconds.
+    SNARK_FAMILY="$(proving_key_hash_family "$BUILD_DIR/provingKey")" || exit 1
+    if [ "$(printf '%s' "$SNARK_FAMILY" | tr '[:upper:]' '[:lower:]')" = "blake3" ]; then
+      echo "setup-snark is not supported for the $SNARK_FAMILY key in $BUILD_DIR/provingKey:" >&2
+      echo "the BN128 wrap is only built for the poseidon families. Rebuild the proving key" >&2
+      echo "with --hash Poseidon1 or Poseidon2." >&2
+      exit 1
+    fi
+    echo "wrapping a $SNARK_FAMILY proving key"
 
     PTAU_PATH="${PTAU_PATH:-../powersOfTau28_hez_final_24.ptau}"
     if [ ! -f "$PTAU_PATH" ]; then
@@ -471,7 +486,7 @@ if [ "$CACHE_HIT" -eq 0 ]; then
     --airout pil/zisk.pilout \
     --build-dir "$BUILD_DIR" \
     --fixed-dir tmp/fixed \
-    --stark-structs state-machines/starkstructs.json \
+    --stark-structs "$(starkstructs_path)" \
     --hash "$HASH" \
     ${setup_recursive_flag[@]+"${setup_recursive_flag[@]}"} \
     ${setup_jobs_flags[@]+"${setup_jobs_flags[@]}"}

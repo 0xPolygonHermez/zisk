@@ -3,8 +3,6 @@ use pil2_stark_setup::commands::setup::{run_setup, SetupOptions};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 
-const DEFAULT_HASH: &str = "Poseidon1";
-
 /// Parse a job-count flag, rejecting 0 (a 0-sized rayon/nvcc pool is invalid).
 fn parse_jobs(s: &str) -> std::result::Result<usize, String> {
     let n: usize = s.parse().map_err(|_| format!("`{s}` is not a valid number"))?;
@@ -54,10 +52,24 @@ pub(crate) struct ZiskProofmanSetupSetup {
     #[arg(short = 'o', long)]
     output: Option<String>,
 
-    /// Hash function to use: Poseidon1 or Poseidon2
     /// Hash function to use: Poseidon1, Poseidon2 or blake3
-    #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2", "blake3"])]
+    #[arg(long, default_value = proofman_common::hash_family::DEFAULT_HASH_ID, value_parser = clap::builder::PossibleValuesParser::new(proofman_common::hash_family::FAMILIES))]
     pub hash: String,
+
+    /// Proofs each recursive2 circuit aggregates. Must be 2 or 3. Defaults per hash family --
+    /// 2 for blake3, 3 for poseidon.
+    #[arg(long)]
+    agg_arity: Option<usize>,
+
+    /// Pin every recursive air to 2^N rows instead of letting each size itself to its own gate
+    /// count. Setup fails, naming the air and both sizes, if any air needs more than N.
+    #[arg(long, env = "RECURSIVE_N_BITS")]
+    recursive_n_bits: Option<usize>,
+
+    /// Build the `vadcop_final_compressed` stage. Defaults per hash family: on for poseidon,
+    /// off for blake3. A key built without it can gain it later with `setup-compressed-final`.
+    #[arg(long)]
+    compressed_final: Option<bool>,
 
     /// Generate + compile per-AIR Q-expression CUDA kernels (.exps.so) at the end
     /// of setup. No-op if nvcc is not on PATH.
@@ -89,6 +101,20 @@ impl ZiskProofmanSetupSetup {
     pub(crate) fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 
+        let agg_arity = self
+            .agg_arity
+            .unwrap_or_else(|| proofman_common::hash_family::default_aggregation_arity(&self.hash));
+        if !proofman_common::global_info::is_valid_aggregation_arity(agg_arity) {
+            anyhow::bail!(
+                "unsupported --agg-arity {}; valid values: {:?}",
+                agg_arity,
+                proofman_common::global_info::VALID_AGGREGATION_ARITIES
+            );
+        }
+        let compressed_final = self.compressed_final.unwrap_or_else(|| {
+            proofman_common::hash_family::compressed_final_by_default(&self.hash)
+        });
+
         let opts = SetupOptions {
             hash: self.hash.clone(),
             airout_path: self.airout.clone(),
@@ -99,6 +125,9 @@ impl ZiskProofmanSetupSetup {
             recursive_jobs: self.recursive_jobs,
             setup_jobs: self.setup_jobs,
             stats_output_path: self.output.clone(),
+            agg_arity,
+            recursive_n_bits: self.recursive_n_bits,
+            compressed_final,
             gen_exps: self.gen_exps,
             exps_arch: self.exps_arch.clone(),
             exps_cap: self.exps_cap,
