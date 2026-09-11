@@ -5,7 +5,8 @@ use num_traits::Zero;
 use zisk_precomp_helpers::{bigint2_to_8_u64, bigint_from_field, bigint_to_16_chunks};
 
 use crate::equations;
-use ark_bn254::Fq as Bn254Field;
+pub use ark_bn254::Fq as Bn254Field;
+use ark_ff::Field;
 
 const COLS: u8 = 32;
 
@@ -41,20 +42,63 @@ impl Bn254Curve {
         )
     }
 
+    /// The denominator of the slope `s` -- the one value this executor has to invert.
+    ///
+    /// Exposed so a caller holding many operations can invert them all with Montgomery's trick
+    /// (one inversion per batch plus three multiplications each) instead of a full modular
+    /// inversion per operation. An inversion here costs ~340 field multiplications and is two
+    /// thirds of `execute_add`, which is what makes the two passes it forces worth their cost.
+    ///
+    /// Loads only the coordinates it needs -- `x1` and `x2` for an add, `y1` for a double --
+    /// because every `BigInt` -> field conversion is itself a Montgomery multiplication.
+    #[inline(always)]
+    pub fn slope_denominator(is_dbl: bool, p1: &[u64; 8], p2: &[u64; 8]) -> Bn254Field {
+        if is_dbl {
+            let y1 = Bn254Field::from(ark_ff::BigInt::<4>(p1[4..8].try_into().unwrap()));
+            y1 + y1
+        } else {
+            Bn254Field::from(ark_ff::BigInt::<4>(p2[0..4].try_into().unwrap()))
+                - Bn254Field::from(ark_ff::BigInt::<4>(p1[0..4].try_into().unwrap()))
+        }
+    }
+
+    /// Inverts the denominator itself, then defers to [`Self::prepare_with_inv`]. The
+    /// one-operation path: `calculate_*` and any caller with a single operation in hand.
     fn prepare(
         is_dbl: bool,
         p1: &[u64; 8],
         p2: &[u64; 8],
         p3: Option<&mut [u64; 8]>,
     ) -> Option<ArithEqData> {
+        Self::prepare_with_inv(is_dbl, p1, p2, Self::slope_inv(is_dbl, p1, p2), p3)
+    }
+
+    /// The inverse `prepare_with_inv` wants, for a lone operation.
+    ///
+    /// Panics on a zero denominator, exactly as the `/` it replaces did (`Fp::div_assign` is
+    /// `mul_assign(&other.inverse().unwrap())`). Worth keeping explicit, because
+    /// `ark_ff::batch_inversion` instead *skips* zeros and leaves them zero, which would turn a
+    /// panic into a silently wrong witness -- so the batch path checks for them as well.
+    #[inline(always)]
+    fn slope_inv(is_dbl: bool, p1: &[u64; 8], p2: &[u64; 8]) -> Bn254Field {
+        Self::slope_denominator(is_dbl, p1, p2)
+            .inverse()
+            .expect("Bn254Curve: slope denominator is zero")
+    }
+
+    /// `prepare` for an operation whose denominator is already inverted.
+    fn prepare_with_inv(
+        is_dbl: bool,
+        p1: &[u64; 8],
+        p2: &[u64; 8],
+        den_inv: Bn254Field,
+        p3: Option<&mut [u64; 8]>,
+    ) -> Option<ArithEqData> {
         let (x1, y1) = Self::point_from_8x64(p1);
         let (x2, y2) = if is_dbl { (x1, y1) } else { Self::point_from_8x64(p2) };
 
-        let s = if is_dbl {
-            (Bn254Field::from(3u64) * x1 * x1) / (y1 + y1)
-        } else {
-            (y2 - y1) / (x2 - x1)
-        };
+        let s =
+            if is_dbl { (Bn254Field::from(3u64) * x1 * x1) * den_inv } else { (y2 - y1) * den_inv };
         let x3 = s * s - (x1 + x2);
         let y3 = s * (x1 - x3) - y1;
 
@@ -116,7 +160,19 @@ impl Bn254Curve {
     }
 
     pub fn execute_add_dbl(is_dbl: bool, p1: &[u64; 8], p2: &[u64; 8]) -> ArithEqData {
-        let mut data = Self::prepare(is_dbl, p1, p2, None).unwrap();
+        Self::execute_add_dbl_with_inv(is_dbl, p1, p2, Self::slope_inv(is_dbl, p1, p2))
+    }
+
+    /// `execute_add_dbl` with the slope denominator's inverse supplied from a batch inversion.
+    /// The witness fill's entry point; `den_inv` must be the inverse of
+    /// [`Self::slope_denominator`] for the same `(is_dbl, p1, p2)`.
+    pub fn execute_add_dbl_with_inv(
+        is_dbl: bool,
+        p1: &[u64; 8],
+        p2: &[u64; 8],
+        den_inv: Bn254Field,
+    ) -> ArithEqData {
+        let mut data = Self::prepare_with_inv(is_dbl, p1, p2, den_inv, None).unwrap();
         for icol in 0..COLS {
             let index = icol as usize;
             data.eq[index] = [

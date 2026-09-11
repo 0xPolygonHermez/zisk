@@ -24,6 +24,8 @@ use zisk_common::{
 #[allow(unused_imports)]
 use zisk_precomp_common::{MultiplicityCache, CACHE_BYTES};
 
+use crate::slope_inverses::{SlopeInverses, INV_RUN_OPS};
+
 /// The `ArithEqSM` struct encapsulates the logic of the ArithEq State Machine.
 ///
 /// Nothing here depends on the height of the air: one state machine serves every config at every
@@ -161,14 +163,18 @@ impl<F: PrimeField64> ArithEqSM<F> {
             trace,
         );
     }
+    /// `den_inv` is this operation's slope denominator already inverted, taken from the run's
+    /// batch inversion -- see [`crate::slope_inverses::SlopeInverses`].
     fn process_secp256k1_add<R: ArithEqRow<F>>(
         &self,
         input: &Secp256k1AddInput,
+        den_inv: executors::Secp256k1Field,
         trace: &mut [R],
         previous_lt_flags: u8,
         cache: &mut MultiplicityCache,
     ) {
-        let data = executors::Secp256k1::execute_add(&input.p1, &input.p2);
+        let data =
+            executors::Secp256k1::execute_add_dbl_with_inv(false, &input.p1, &input.p2, den_inv);
         self.expand_data_on_trace(&data, trace, SEL_OP_SECP256K1_ADD, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
@@ -185,14 +191,18 @@ impl<F: PrimeField64> ArithEqSM<F> {
             trace,
         );
     }
+    /// `den_inv` is this operation's slope denominator already inverted, taken from the run's
+    /// batch inversion -- see [`crate::slope_inverses::SlopeInverses`].
     fn process_secp256k1_dbl<R: ArithEqRow<F>>(
         &self,
         input: &Secp256k1DblInput,
+        den_inv: executors::Secp256k1Field,
         trace: &mut [R],
         previous_lt_flags: u8,
         cache: &mut MultiplicityCache,
     ) {
-        let data = executors::Secp256k1::execute_dbl(&input.p1);
+        let data =
+            executors::Secp256k1::execute_add_dbl_with_inv(true, &input.p1, &input.p1, den_inv);
         self.expand_data_on_trace(&data, trace, SEL_OP_SECP256K1_DBL, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
@@ -210,14 +220,18 @@ impl<F: PrimeField64> ArithEqSM<F> {
         );
     }
 
+    /// `den_inv` is this operation's slope denominator already inverted, taken from the run's
+    /// batch inversion -- see [`crate::slope_inverses::SlopeInverses`].
     fn process_bn254_curve_add<R: ArithEqRow<F>>(
         &self,
         input: &Bn254CurveAddInput,
+        den_inv: executors::Bn254Field,
         trace: &mut [R],
         previous_lt_flags: u8,
         cache: &mut MultiplicityCache,
     ) {
-        let data = executors::Bn254Curve::execute_add(&input.p1, &input.p2);
+        let data =
+            executors::Bn254Curve::execute_add_dbl_with_inv(false, &input.p1, &input.p2, den_inv);
         self.expand_data_on_trace(&data, trace, SEL_OP_BN254_CURVE_ADD, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
@@ -235,14 +249,18 @@ impl<F: PrimeField64> ArithEqSM<F> {
         );
     }
 
+    /// `den_inv` is this operation's slope denominator already inverted, taken from the run's
+    /// batch inversion -- see [`crate::slope_inverses::SlopeInverses`].
     fn process_bn254_curve_dbl<R: ArithEqRow<F>>(
         &self,
         input: &Bn254CurveDblInput,
+        den_inv: executors::Bn254Field,
         trace: &mut [R],
         previous_lt_flags: u8,
         cache: &mut MultiplicityCache,
     ) {
-        let data = executors::Bn254Curve::execute_dbl(&input.p1);
+        let data =
+            executors::Bn254Curve::execute_add_dbl_with_inv(true, &input.p1, &input.p1, den_inv);
         self.expand_data_on_trace(&data, trace, SEL_OP_BN254_CURVE_DBL, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
@@ -335,14 +353,18 @@ impl<F: PrimeField64> ArithEqSM<F> {
         );
     }
 
+    /// `den_inv` is this operation's slope denominator already inverted, taken from the run's
+    /// batch inversion -- see [`crate::slope_inverses::SlopeInverses`].
     fn process_secp256r1_add<R: ArithEqRow<F>>(
         &self,
         input: &Secp256r1AddInput,
+        den_inv: executors::Secp256r1Field,
         trace: &mut [R],
         previous_lt_flags: u8,
         cache: &mut MultiplicityCache,
     ) {
-        let data = executors::Secp256r1::execute_add(&input.p1, &input.p2);
+        let data =
+            executors::Secp256r1::execute_add_dbl_with_inv(false, &input.p1, &input.p2, den_inv);
         self.expand_data_on_trace(&data, trace, SEL_OP_SECP256R1_ADD, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
@@ -360,14 +382,18 @@ impl<F: PrimeField64> ArithEqSM<F> {
         );
     }
 
+    /// `den_inv` is this operation's slope denominator already inverted, taken from the run's
+    /// batch inversion -- see [`crate::slope_inverses::SlopeInverses`].
     fn process_secp256r1_dbl<R: ArithEqRow<F>>(
         &self,
         input: &Secp256r1DblInput,
+        den_inv: executors::Secp256r1Field,
         trace: &mut [R],
         previous_lt_flags: u8,
         cache: &mut MultiplicityCache,
     ) {
-        let data = executors::Secp256r1::execute_dbl(&input.p1);
+        let data =
+            executors::Secp256r1::execute_add_dbl_with_inv(true, &input.p1, &input.p1, den_inv);
         self.expand_data_on_trace(&data, trace, SEL_OP_SECP256R1_DBL, previous_lt_flags, cache);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
@@ -583,6 +609,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
         trace: &mut [R],
         previous_lt_flags: u8,
         cache: &mut MultiplicityCache,
+        inverses: &mut SlopeInverses,
     ) {
         match input {
             ArithEqInput::Arith256(idata) => {
@@ -592,16 +619,20 @@ impl<F: PrimeField64> ArithEqSM<F> {
                 self.process_arith256_mod(idata, trace, previous_lt_flags, cache)
             }
             ArithEqInput::Secp256k1Add(idata) => {
-                self.process_secp256k1_add(idata, trace, previous_lt_flags, cache)
+                let den_inv = inverses.next_secp256k1();
+                self.process_secp256k1_add(idata, den_inv, trace, previous_lt_flags, cache)
             }
             ArithEqInput::Secp256k1Dbl(idata) => {
-                self.process_secp256k1_dbl(idata, trace, previous_lt_flags, cache)
+                let den_inv = inverses.next_secp256k1();
+                self.process_secp256k1_dbl(idata, den_inv, trace, previous_lt_flags, cache)
             }
             ArithEqInput::Bn254CurveAdd(idata) => {
-                self.process_bn254_curve_add(idata, trace, previous_lt_flags, cache)
+                let den_inv = inverses.next_bn254();
+                self.process_bn254_curve_add(idata, den_inv, trace, previous_lt_flags, cache)
             }
             ArithEqInput::Bn254CurveDbl(idata) => {
-                self.process_bn254_curve_dbl(idata, trace, previous_lt_flags, cache)
+                let den_inv = inverses.next_bn254();
+                self.process_bn254_curve_dbl(idata, den_inv, trace, previous_lt_flags, cache)
             }
             ArithEqInput::Bn254ComplexAdd(idata) => {
                 self.process_bn254_complex_add(idata, trace, previous_lt_flags, cache);
@@ -613,10 +644,12 @@ impl<F: PrimeField64> ArithEqSM<F> {
                 self.process_bn254_complex_mul(idata, trace, previous_lt_flags, cache);
             }
             ArithEqInput::Secp256r1Add(idata) => {
-                self.process_secp256r1_add(idata, trace, previous_lt_flags, cache)
+                let den_inv = inverses.next_secp256r1();
+                self.process_secp256r1_add(idata, den_inv, trace, previous_lt_flags, cache)
             }
             ArithEqInput::Secp256r1Dbl(idata) => {
-                self.process_secp256r1_dbl(idata, trace, previous_lt_flags, cache)
+                let den_inv = inverses.next_secp256r1();
+                self.process_secp256r1_dbl(idata, den_inv, trace, previous_lt_flags, cache)
             }
         }
     }
@@ -703,11 +736,28 @@ impl<F: PrimeField64> ArithEqSM<F> {
                 } else {
                     Self::get_lt_flags(op_at(inputs, &chunk_start, first_op - 1))
                 };
-                for (input, rows) in ops_from(inputs, &chunk_start, first_op)
-                    .zip(batch_rows.chunks_mut(ARITH_EQ_ROWS_BY_OP))
-                {
-                    self.process_input(input, rows, previous_lt_flags, &mut cache);
-                    previous_lt_flags = Self::get_lt_flags(input);
+                // The batch is filled a run at a time, each run seeing its operations twice:
+                // once to collect their slope denominators, which are inverted together, and once
+                // to write their rows. `INV_RUN_OPS` keeps the two passes close enough that the
+                // second re-reads inputs the first has just touched -- see
+                // [`crate::slope_inverses`] for what the batching buys.
+                let mut ops = ops_from(inputs, &chunk_start, first_op);
+                let mut inverses = SlopeInverses::default();
+                for run_rows in batch_rows.chunks_mut(INV_RUN_OPS * ARITH_EQ_ROWS_BY_OP) {
+                    inverses.reload(ops.clone().take(run_rows.len() / ARITH_EQ_ROWS_BY_OP));
+                    for rows in run_rows.chunks_mut(ARITH_EQ_ROWS_BY_OP) {
+                        // The two passes must agree operation for operation: this is the same
+                        // sequence `reload` just walked, taken one at a time.
+                        let input = ops.next().unwrap();
+                        self.process_input(
+                            input,
+                            rows,
+                            previous_lt_flags,
+                            &mut cache,
+                            &mut inverses,
+                        );
+                        previous_lt_flags = Self::get_lt_flags(input);
+                    }
                 }
                 cache
             })
@@ -796,7 +846,7 @@ fn ops_from<'a>(
     inputs: &'a [Vec<ArithEqInput>],
     chunk_start: &[usize],
     g: usize,
-) -> impl Iterator<Item = &'a ArithEqInput> {
+) -> impl Iterator<Item = &'a ArithEqInput> + Clone {
     let chunk = chunk_start.partition_point(|&start| start <= g) - 1;
     let offset = g - chunk_start[chunk];
     inputs[chunk][offset..].iter().chain(inputs[chunk + 1..].iter().flat_map(|c| c.iter()))

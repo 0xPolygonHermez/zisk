@@ -5,6 +5,7 @@ mod arith_eq_384_mem_inputs;
 mod equations;
 mod executors;
 mod mem_inputs;
+mod slope_inverses;
 pub mod test_data;
 
 pub use arith_eq_384::*;

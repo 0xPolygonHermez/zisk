@@ -17,6 +17,8 @@ use zisk_precomp_arith_eq::ArithEqLtTableSM;
 #[allow(unused_imports)]
 use zisk_precomp_common::{MultiplicityCache, CACHE_BYTES};
 
+use crate::slope_inverses::{SlopeInverses, INV_RUN_OPS};
+
 use crate::{
     arith_eq_384_constants::*, executors, Arith384ModInput, ArithEq384Input,
     Bls12_381ComplexAddInput, Bls12_381ComplexMulInput, Bls12_381ComplexSubInput,
@@ -82,16 +84,19 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         trace: &mut [R],
         previous_lt_flags: u8,
         cache: &mut MultiplicityCache,
+        inverses: &mut SlopeInverses,
     ) {
         match input {
             ArithEq384Input::Arith384Mod(idata) => {
                 self.process_arith384_mod(idata, trace, previous_lt_flags, cache)
             }
             ArithEq384Input::Bls12_381CurveAdd(idata) => {
-                self.process_bls12_381_curve_add(idata, trace, previous_lt_flags, cache)
+                let den_inv = inverses.next_inverse();
+                self.process_bls12_381_curve_add(idata, den_inv, trace, previous_lt_flags, cache)
             }
             ArithEq384Input::Bls12_381CurveDbl(idata) => {
-                self.process_bls12_381_curve_dbl(idata, trace, previous_lt_flags, cache)
+                let den_inv = inverses.next_inverse();
+                self.process_bls12_381_curve_dbl(idata, den_inv, trace, previous_lt_flags, cache)
             }
             ArithEq384Input::Bls12_381ComplexAdd(idata) => {
                 self.process_bls12_381_complex_add(idata, trace, previous_lt_flags, cache);
@@ -169,14 +174,19 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
+    /// `den_inv` is this operation's slope denominator already inverted, taken from the run's
+    /// batch inversion -- see [`crate::slope_inverses`].
     fn process_bls12_381_curve_add<R: ArithEq384TraceRowOps<F>>(
         &self,
         input: &Bls12_381CurveAddInput,
+        den_inv: executors::Bls12_381Field,
         trace: &mut [R],
         previous_lt_flags: u8,
         cache: &mut MultiplicityCache,
     ) {
-        let data = executors::Bls12_381Curve::execute_add(&input.p1, &input.p2);
+        let data = executors::Bls12_381Curve::execute_add_dbl_with_inv(
+            false, &input.p1, &input.p2, den_inv,
+        );
         self.expand_data_on_trace(
             &data,
             trace,
@@ -200,14 +210,19 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
+    /// `den_inv` is this operation's slope denominator already inverted, taken from the run's
+    /// batch inversion -- see [`crate::slope_inverses`].
     fn process_bls12_381_curve_dbl<R: ArithEq384TraceRowOps<F>>(
         &self,
         input: &Bls12_381CurveDblInput,
+        den_inv: executors::Bls12_381Field,
         trace: &mut [R],
         previous_lt_flags: u8,
         cache: &mut MultiplicityCache,
     ) {
-        let data = executors::Bls12_381Curve::execute_dbl(&input.p1);
+        let data = executors::Bls12_381Curve::execute_add_dbl_with_inv(
+            true, &input.p1, &input.p1, den_inv,
+        );
         self.expand_data_on_trace(
             &data,
             trace,
@@ -537,11 +552,26 @@ impl<F: PrimeField64> ArithEq384SM<F> {
                 } else {
                     Self::get_lt_flags(op_at(inputs, &chunk_start, first_op - 1))
                 };
-                for (input, rows) in ops_from(inputs, &chunk_start, first_op)
-                    .zip(batch_rows.chunks_mut(ARITH_EQ_384_ROWS_BY_OP))
-                {
-                    self.process_input(input, rows, previous_lt_flags, &mut cache);
-                    previous_lt_flags = Self::get_lt_flags(input);
+                // The batch is filled a run at a time, each run seeing its operations twice:
+                // once to collect their slope denominators, which are inverted together, and once
+                // to write their rows. See [`crate::slope_inverses`] for what that buys.
+                let mut ops = ops_from(inputs, &chunk_start, first_op);
+                let mut inverses = SlopeInverses::default();
+                for run_rows in batch_rows.chunks_mut(INV_RUN_OPS * ARITH_EQ_384_ROWS_BY_OP) {
+                    inverses.reload(ops.clone().take(run_rows.len() / ARITH_EQ_384_ROWS_BY_OP));
+                    for rows in run_rows.chunks_mut(ARITH_EQ_384_ROWS_BY_OP) {
+                        // The two passes must agree operation for operation: this is the same
+                        // sequence `reload` just walked, taken one at a time.
+                        let input = ops.next().unwrap();
+                        self.process_input(
+                            input,
+                            rows,
+                            previous_lt_flags,
+                            &mut cache,
+                            &mut inverses,
+                        );
+                        previous_lt_flags = Self::get_lt_flags(input);
+                    }
                 }
                 cache
             })
@@ -622,7 +652,7 @@ fn ops_from<'a>(
     inputs: &'a [Vec<ArithEq384Input>],
     chunk_start: &[usize],
     g: usize,
-) -> impl Iterator<Item = &'a ArithEq384Input> {
+) -> impl Iterator<Item = &'a ArithEq384Input> + Clone {
     let chunk = chunk_start.partition_point(|&start| start <= g) - 1;
     let offset = g - chunk_start[chunk];
     inputs[chunk][offset..].iter().chain(inputs[chunk + 1..].iter().flat_map(|c| c.iter()))

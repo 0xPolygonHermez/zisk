@@ -13,6 +13,7 @@ mod equations;
 mod executors;
 pub mod generator;
 mod mem_inputs;
+mod slope_inverses;
 
 pub use arith_eq::*;
 pub use arith_eq_air_ids::*;

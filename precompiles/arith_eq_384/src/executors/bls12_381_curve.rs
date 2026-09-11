@@ -1,4 +1,5 @@
-use ark_bls12_381::Fq as Bls12_381Field;
+pub use ark_bls12_381::Fq as Bls12_381Field;
+use ark_ff::Field;
 use lazy_static::lazy_static;
 use num_bigint::BigInt;
 use num_traits::Zero;
@@ -52,19 +53,73 @@ impl Bls12_381Curve {
         )
     }
 
+    /// The denominator of the slope `s` -- the one value this executor has to invert.
+    ///
+    /// Exposed so a caller holding many operations can invert them all with Montgomery's trick
+    /// (one inversion per batch plus three multiplications each) instead of a full modular
+    /// inversion per operation. An inversion here costs ~340 field multiplications and is two
+    /// thirds of `execute_add`, which is what makes the two passes it forces worth their cost.
+    ///
+    /// Loads only the coordinates it needs -- `x1` and `x2` for an add, `y1` for a double --
+    /// because every `BigInt` -> field conversion is itself a Montgomery multiplication.
+    #[inline(always)]
+    pub fn slope_denominator(
+        is_dbl: bool,
+        p1: &[u64; ARITH_EQ_384_U64S_DOUBLE],
+        p2: &[u64; ARITH_EQ_384_U64S_DOUBLE],
+    ) -> Bls12_381Field {
+        if is_dbl {
+            let y1 = Bls12_381Field::from(ark_ff::BigInt::<6>(p1[6..12].try_into().unwrap()));
+            y1 + y1
+        } else {
+            Bls12_381Field::from(ark_ff::BigInt::<6>(p2[0..6].try_into().unwrap()))
+                - Bls12_381Field::from(ark_ff::BigInt::<6>(p1[0..6].try_into().unwrap()))
+        }
+    }
+
+    /// Inverts the denominator itself, then defers to [`Self::prepare_with_inv`]. The
+    /// one-operation path: `calculate_*` and any caller with a single operation in hand.
     fn prepare(
         is_dbl: bool,
         p1: &[u64; ARITH_EQ_384_U64S_DOUBLE],
         p2: &[u64; ARITH_EQ_384_U64S_DOUBLE],
         p3: Option<&mut [u64; ARITH_EQ_384_U64S_DOUBLE]>,
     ) -> Option<ArithEq384Data> {
+        Self::prepare_with_inv(is_dbl, p1, p2, Self::slope_inv(is_dbl, p1, p2), p3)
+    }
+
+    /// The inverse `prepare_with_inv` wants, for a lone operation.
+    ///
+    /// Panics on a zero denominator, exactly as the `/` it replaces did (`Fp::div_assign` is
+    /// `mul_assign(&other.inverse().unwrap())`). Worth keeping explicit, because
+    /// `ark_ff::batch_inversion` instead *skips* zeros and leaves them zero, which would turn a
+    /// panic into a silently wrong witness -- so the batch path checks for them as well.
+    #[inline(always)]
+    fn slope_inv(
+        is_dbl: bool,
+        p1: &[u64; ARITH_EQ_384_U64S_DOUBLE],
+        p2: &[u64; ARITH_EQ_384_U64S_DOUBLE],
+    ) -> Bls12_381Field {
+        Self::slope_denominator(is_dbl, p1, p2)
+            .inverse()
+            .expect("Bls12_381Curve: slope denominator is zero")
+    }
+
+    /// `prepare` for an operation whose denominator is already inverted.
+    fn prepare_with_inv(
+        is_dbl: bool,
+        p1: &[u64; ARITH_EQ_384_U64S_DOUBLE],
+        p2: &[u64; ARITH_EQ_384_U64S_DOUBLE],
+        den_inv: Bls12_381Field,
+        p3: Option<&mut [u64; ARITH_EQ_384_U64S_DOUBLE]>,
+    ) -> Option<ArithEq384Data> {
         let (x1, y1) = Self::point_from_u64s(p1);
         let (x2, y2) = if is_dbl { (x1, y1) } else { Self::point_from_u64s(p2) };
 
         let s = if is_dbl {
-            (Bls12_381Field::from(3u64) * x1 * x1) / (y1 + y1)
+            (Bls12_381Field::from(3u64) * x1 * x1) * den_inv
         } else {
-            (y2 - y1) / (x2 - x1)
+            (y2 - y1) * den_inv
         };
         let x3 = s * s - (x1 + x2);
         let y3 = s * (x1 - x3) - y1;
@@ -134,7 +189,19 @@ impl Bls12_381Curve {
         p1: &[u64; ARITH_EQ_384_U64S_DOUBLE],
         p2: &[u64; ARITH_EQ_384_U64S_DOUBLE],
     ) -> ArithEq384Data {
-        let mut data = Self::prepare(is_dbl, p1, p2, None).unwrap();
+        Self::execute_add_dbl_with_inv(is_dbl, p1, p2, Self::slope_inv(is_dbl, p1, p2))
+    }
+
+    /// `execute_add_dbl` with the slope denominator's inverse supplied from a batch inversion.
+    /// The witness fill's entry point; `den_inv` must be the inverse of
+    /// [`Self::slope_denominator`] for the same `(is_dbl, p1, p2)`.
+    pub fn execute_add_dbl_with_inv(
+        is_dbl: bool,
+        p1: &[u64; ARITH_EQ_384_U64S_DOUBLE],
+        p2: &[u64; ARITH_EQ_384_U64S_DOUBLE],
+        den_inv: Bls12_381Field,
+    ) -> ArithEq384Data {
+        let mut data = Self::prepare_with_inv(is_dbl, p1, p2, den_inv, None).unwrap();
         for icol in 0..COLS {
             let index = icol as usize;
             data.eq[index] = [
