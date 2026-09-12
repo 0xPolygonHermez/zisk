@@ -106,8 +106,10 @@ fn a_big_memcmp_goes_to_the_tall_air() {
     assert!(caps[air::FULL_LARGE] > caps[air::FULL]);
 }
 
-/// Once one instance is enough either way, the memory tie-break sends the work to the narrowest,
-/// shortest air that can prove it.
+/// Once one instance is enough either way, the memory tie-break sends the work to the cheapest air
+/// that can prove it — which is a question of measured instance cost, not of column count. The
+/// general air is wider than the mem one but half as tall, and the height wins: `Dma64Aligned`
+/// costs 7.58 GB against `Dma64AlignedMem`'s 11.78 GB (see `air_costs.rs`).
 #[test]
 fn area_breaks_the_tie_for_a_small_workload() {
     let rows = rows_of(0, 0, 1000, 0);
@@ -115,11 +117,22 @@ fn area_breaks_the_tie_for_a_small_workload() {
     assert_fits(&rows, &info);
 
     assert_eq!(total_instances(&info), 1);
-    assert_eq!(
-        info.assignment[kind::MEMCMP],
-        air::MEM,
-        "the narrow mem air is the cheapest home for a memcmp"
-    );
+
+    let caps = caps();
+    let airs = Strategy::dma_64_aligned_airs();
+    let chosen = info.assignment[kind::MEMCMP];
+    assert_eq!(chosen, air::FULL, "the short general air is the cheapest home for a memcmp");
+
+    // Pin the reason rather than the outcome: no air that could also prove this memcmp in a single
+    // instance is cheaper than the one picked.
+    for candidate in [air::FULL_LARGE, air::FULL, air::MEM_LARGE, air::MEM] {
+        if caps[candidate] >= 1000 {
+            assert!(
+                airs[candidate].memory >= airs[chosen].memory,
+                "air {candidate} is cheaper than the chosen air {chosen}"
+            );
+        }
+    }
 }
 
 /// Kinds that fit together share an instance rather than taking one each — which is the packing that

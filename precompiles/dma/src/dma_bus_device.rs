@@ -12,7 +12,10 @@ use zisk_core::ZiskOperationType;
 use zisk_precomp_common::MemProcessor;
 use zisk_precomp_helpers::DmaInfo;
 
-use crate::{generate_dma_mem_inputs, skip_dma_mem_inputs, DMA_UNALIGNED_OPS_BY_ROW};
+use crate::{
+    generate_dma_mem_inputs, skip_dma_mem_inputs, DMA_UNALIGNED_OPS_BY_ROW, DMA_WPP_CLASS_DOUBLE,
+    DMA_WPP_CLASS_SINGLE,
+};
 
 // The `DmaOpMultiCounter` struct represents a counter that monitors and measures
 // dma specific operation on the data bus.
@@ -53,7 +56,12 @@ pub const DMA_UNALIGNED_OFFSET: usize = 8;
 pub const DMA_UNALIGNED_INPUTS_OFFSET: usize = 12;
 pub const DMA_64_ALIGNED_OFFSET: usize = 16;
 pub const DMA_64_ALIGNED_INPUTS_OFFSET: usize = 22;
-pub const DMA_INPUT_GEN_COUNTERS: usize = 26;
+/// Operations the fused `DmaWithPrePost` air would prove, counted per row-cost class
+/// (`DMA_WPP_CLASS_SINGLE` / `DMA_WPP_CLASS_DOUBLE`) rather than per opcode: the air is not
+/// parameterizable, so every opcode goes to it, and what the planner needs to know is how many
+/// operations take one row and how many take two.
+pub const DMA_WITH_PRE_POST_OFFSET: usize = 26;
+pub const DMA_INPUT_GEN_COUNTERS: usize = 28;
 
 pub const DMA_COUNTER_MEMCPY: usize = 0;
 pub const DMA_COUNTER_MEMSET: usize = 1;
@@ -84,7 +92,10 @@ impl fmt::Display for DmaCounterInputGen {
              INPUTS\n                   \
                               memcpy4  memcpy8   memcmp inputcpy  memset4  memset8\n  \
              dma_64_aligned  {:>8}          {:>8} {:>8} {:>8}         \n  \
-             dma_unaligned   {:>8}          {:>8} {:>8} {:>8}         \n\n",
+             dma_unaligned   {:>8}          {:>8} {:>8} {:>8}         \n\n  \
+             OPS (dma_with_pre_post)\n                   \
+                              1 row    2 rows\n  \
+             operations      {:>8} {:>8}\n\n",
             self.counters[DMA_OFFSET + DMA_COUNTER_MEMCPY],
             self.counters[DMA_OFFSET + DMA_COUNTER_MEMCMP],
             self.counters[DMA_OFFSET + DMA_COUNTER_INPUTCPY],
@@ -111,6 +122,8 @@ impl fmt::Display for DmaCounterInputGen {
             self.counters[DMA_UNALIGNED_INPUTS_OFFSET + DMA_COUNTER_MEMCMP],
             self.counters[DMA_UNALIGNED_INPUTS_OFFSET + DMA_COUNTER_INPUTCPY],
             self.counters[DMA_UNALIGNED_INPUTS_OFFSET + DMA_COUNTER_MEMSET],
+            self.counters[DMA_WITH_PRE_POST_OFFSET + DMA_WPP_CLASS_SINGLE],
+            self.counters[DMA_WITH_PRE_POST_OFFSET + DMA_WPP_CLASS_DOUBLE],
         )
     }
 }
@@ -145,13 +158,21 @@ impl DmaCounterInputGen {
 
     fn incr_counters(&mut self, encoded: u64, operation: usize, _step: u64) {
         if !DmaInfo::is_direct(encoded) {
-            if DmaInfo::get_pre_count(encoded) > 0 {
+            let use_pre = DmaInfo::get_pre_count(encoded) > 0;
+            let use_post = DmaInfo::get_post_count(encoded) > 0;
+            if use_pre {
                 self.counters[DMA_PRE_POST_OFFSET + operation] += 1;
             }
-            if DmaInfo::get_post_count(encoded) > 0 {
+            if use_post {
                 self.counters[DMA_PRE_POST_OFFSET + operation] += 1;
             }
             self.counters[DMA_OFFSET + operation] += 1;
+
+            // The fused air takes the whole operation in one row, or in two when it needs both a
+            // PRE and a POST.
+            let class =
+                if use_pre && use_post { DMA_WPP_CLASS_DOUBLE } else { DMA_WPP_CLASS_SINGLE };
+            self.counters[DMA_WITH_PRE_POST_OFFSET + class] += 1;
         }
         let loop_count = DmaInfo::get_loop_count(encoded);
         // it's effective loop count

@@ -1,0 +1,842 @@
+// DmaWithPrePost
+//
+// This machine is the fusion of the `Dma` controller and the `DmaPrePost` helper into a single
+// air. The motivation is that the relation between a DMA operation and its PRE/POST sub-operations
+// is a *local* relation: instead of publishing it on DMA_BUS_ID (one permutation_proves + two
+// permutation_assumes) it can be established directly inside the air with plain constraints.
+//
+// Unlike `Dma` and `DmaPrePost`, this air is NOT parameterizable: it always supports the four
+// operations (memcpy, memcmp, inputcpy, memset) and the extended variants. Partial instances would
+// only duplicate the conditional plumbing of the two machines it replaces without any of the
+// clarity that the fusion buys.
+//
+// What this machine can prove
+// ───────────────────────────
+//
+//   case                      row i                  row i+1
+//   ──────────────────────────────────────────────────────────────
+//   (1) no pre, no post       DMA                    ─
+//   (2) only pre              DMA + PRE              ─
+//   (3) only post             DMA + POST             ─
+//   (4) pre and post          DMA + POST             PRE
+//
+// So an operation uses ONE row, except when it needs both a PRE and a POST, in which case it
+// uses TWO consecutive rows.
+//
+// Why the POST (and not the PRE) stays in the DMA row
+// ───────────────────────────────────────────────────
+//
+// The memcmp result (@[memcmp_result_nz], @[l_memcmp_result]) has to be published by the DMA row
+// on the main operation bus. The DMA ROM guarantees that, when the comparison is not equal
+// (@[result_nz] = 1), the first different byte always falls in the POST block whenever a POST
+// block exists; the PRE block can only carry the result when there is no POST at all (see
+// `dma_rom.pil`, the `neq && post_count == 0 && loop_count > 0` adjustment).
+//
+//   result comes from POST  ⇒  use_post = 1  ⇒  POST must be reachable by the DMA row
+//   result comes from PRE   ⇒  use_post = 0  ⇒  single row, the PRE already is in the DMA row
+//
+// Keeping the POST in the DMA row therefore makes the published result ALWAYS local to the DMA
+// row, avoiding a shifted (degree 2) expression inside the main bus lookup. The extra row of
+// case (4) is a pure PRE row: it has no DMA operation at all (@[sel_dma] = 0), it does not touch
+// the main bus nor the loop bus, and it takes all its parameters from the previous row.
+//
+//     ROW      i                                i+1
+//           ┌────────────────────────────┐   ┌────────────────────────────┐
+//   DMA     │ dst,src,count,flags,...    │   │ (unused, all zero)         │
+//   part    │ main bus + loop bus + ROM  │   │                            │
+//           ├────────────────────────────┤   ├────────────────────────────┤
+//   PRE/    │ POST(dst64+pre+loop, ...)  │   │ PRE(dst64, dst_offset, ..) │
+//   POST    │ mem reads + mem write      │   │ mem reads + mem write      │
+//   part    │ @[pp_is_post] = 1          │   │ @[pp_is_post] = 0          │
+//           └────────────────────────────┘   └────────────────────────────┘
+//              @[has_pre_row] = 1               @[is_pre_row] = 1
+//
+// Row/operation flags
+// ───────────────────
+//
+//   @[sel_op]       row belongs to an operation (DMA row or PRE row)
+//   @[is_pre_row]   this row is the extra PRE row of the operation of the PREVIOUS row
+//   @[has_pre_row]  = use_pre * use_post, this operation delegates its PRE to the NEXT row
+//   @[sel_dma]      = sel_op - is_pre_row, this row drives the DMA controller
+//   @[pp_sel]       this row executes a PRE or a POST sub-operation
+//   @[pp_is_post]   = use_post, the sub-operation executed by this row is a POST
+//
+// NOTE (cyclic boundary): `@[is_pre_row] === 'has_pre_row` is evaluated cyclically, so an
+// operation placed in the last row would get its PRE row at row 0. That is perfectly consistent
+// (every constraint below is cyclic too, and buses do not care about the row order), but the
+// witness builder is expected not to rely on it.
+
+airtemplate DmaWithPrePost(int N = 2**21) {
+
+    const int RC = 2;   // number of 32-bit chunks of a native 64-bit value
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // ROW CONTROL
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    // @[is_pre_row] marks a row that only executes the PRE of the operation of the previous row.
+    col witness bits(1) is_pre_row;
+    is_pre_row * (1 - is_pre_row) === 0;
+
+    // @[has_pre_row] marks an operation whose PRE has been delegated to the next row, it's set
+    // when the operation needs a PRE *and* a POST (the POST stays in this row). It's binary
+    // because it's defined as the product of two binary columns, see @[has_pre_row_def].
+    col witness bits(1) has_pre_row;
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // OPERATION SELECTORS (shared by the DMA part and by the PRE/POST part)
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    col witness bits(1) sel_memcpy;
+    col witness bits(1) sel_memcmp;
+    col witness bits(1) sel_memset;
+    col witness bits(1) sel_inputcpy;
+    col witness bits(1) sel_extended;
+
+    sel_memcpy * (1 - sel_memcpy) === 0;
+    sel_memcmp * (1 - sel_memcmp) === 0;
+    sel_memset * (1 - sel_memset) === 0;
+    sel_inputcpy * (1 - sel_inputcpy) === 0;
+    sel_extended * (1 - sel_extended) === 0;
+
+    // fill_byte is sent from main in extended_arg, this argument is static, known at compilation
+    // time, for this reason we don't need to validate its range check. It's shared with the
+    // PRE/POST part, which uses it as the byte to be written.
+    col witness bits(8) fill_byte;
+
+    // @[fill_byte] is only meaningful for memset; forcing it to zero otherwise is an optimization
+    // for the extended_arg sent to the main bus.
+    (1 - sel_memset) * fill_byte === 0;
+
+    // OPCODES
+    // ---------------------------------------------
+    // OP_DMA_MEMCPY     0xD0    OP_DMA_XMEMCPY 0xD6
+    // OP_DMA_MEMCMP     0xD1    OP_DMA_XMEMCMP 0xD7
+    // OP_DMA_INPUTCPY   0xD2
+    //                           OP_DMA_XMEMSET 0xD9
+    //                           OP_DMA_XMEMEQ  0xDA
+
+    const expr bus_op = sel_memcpy * OP_DMA_MEMCPY +
+                        sel_memcmp * OP_DMA_MEMCMP +
+                        sel_memset * __OP_DMA_MEMSET__ +
+                        sel_inputcpy * OP_DMA_INPUTCPY +
+                        sel_extended * OP_DMA_X_OFFSET;
+
+    const expr loop_op = sel_memcpy * OP_DMA_XMEMCPY +
+                         sel_memcmp * OP_DMA_XMEMEQ +
+                         sel_memset * OP_DMA_XMEMSET +
+                         sel_inputcpy * OP_DMA_INPUTCPY;
+
+    // for OP_DMA_MEMCPY, OP_DMA_MEMCMP and OP_DMA_MEMSET the count comes from memory, inputcpy
+    // carries it in the b operand.
+    const expr sel_load_count_from_mem = sel_memcpy + sel_memcmp + sel_memset;
+
+    const expr use_src = sel_memcpy + sel_memcmp;
+
+    // @[sel_op] the row belongs to an operation, either because it drives the DMA controller or
+    // because it's the extra PRE row of the operation of the previous row (in that case the
+    // selectors are latched, see @[latch]).
+    const expr sel_op = sel_memcpy + sel_memcmp + sel_memset + sel_inputcpy;
+    sel_op * (1 - sel_op) === 0;
+
+    // A PRE row always belongs to an operation. This is already implied by the latch constraints
+    // (@[latch]) but stating it here makes @[sel_dma] locally sound.
+    is_pre_row * (1 - sel_op) === 0;
+
+    // @[sel_dma] the row drives the DMA controller: it's the row that talks to the main bus, to the
+    // loop machine (Dma64Aligned/DmaUnaligned) and to the DMA ROM. Degree 1 and binary because
+    // is_pre_row = 1 ⟹ sel_op = 1.
+    const expr sel_dma = sel_op - is_pre_row;
+
+    // @[sel_extended] belongs to the DMA controller only, force it to zero on PRE rows to keep the
+    // trace canonical.
+    is_pre_row * sel_extended === 0;
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // DMA CONTROLLER
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    // DMA: MEMCPY
+    //
+    // Unlike a CPU memcpy, the DMA memcpy is instantaneous from a temporal point of view: all reads
+    // occur in the same step and all writes in the next step. In the case of reads there are no
+    // problems in performing the same read several times in the same step because the result is
+    // always the same at this moment. In the case of writes, this is not the case, because it would
+    // create an ambiguity to know the written value. Therefore, we must guarantee that each 64-bit
+    // value is written only once.
+    //
+    // The strategy that DMA follows in the case of memcpy is to divide the operation into 3 phases:
+    //
+    // 1. Pre-copy: initial bytes are copied to achieve at least destination alignment, to avoid
+    //    double writes.
+    //
+    // 2. Fully or partially aligned copy. It's a loop where 64-bit values are copied. There are
+    //    two variants:
+    //    a) Aligned 64-bit copy: both source and destination addresses are aligned to 8 bytes.
+    //    b) Unaligned 64-bit copy: the source address is not aligned to 8 bytes, but it's read in
+    //       bytes and 64-bit values are reassembled.
+    //
+    // 3. Post-copy: final bytes that don't complete a 64-bit word are copied.
+    //
+    // Not all phases are necessary, they depend on the copy parameters.
+    //
+    // Example of fully aligned memcpy operation:
+    //
+    //                PRE                 MEMCPY                 POST
+    //           ┌──────────┐ ┌──────────────────────────────┐ ┌──────────┐
+    //
+    //               ┌──────┐ ┌────────┬────────┐   ┌────────┐ ┌────┐
+    //    src        │  0   │ │    1   │    2   │...│    n   │ │ n+1│
+    //               └──────┘ └────────┴────────┘   └────────┘ └────┘
+    //                  ↓          ↓        ↓            ↓        ↓
+    //           ┌───┬──────┐ ┌────────┬────────┐   ┌────────┐ ┌────┬─────┐
+    //    dst    │      0   │ │    1   │    2   │...│    n   │ │ n+1      │
+    //           └───┴──────┘ └────────┴────────┘   └────────┘ └────┴─────┘
+    //           ^dst64       ^dst64+1 ^dst64+2     ^dst64+n   ^dst64+n+1   <-- each dst64 address is
+    //                                                                          written only once
+    //
+    // Example of partially aligned memcpy operation:
+    //
+    //                PRE                 MEMCPY                            POST
+    //           ┌──────────┐ ┌────────────────────────────────────────┐ ┌──────────┐
+    //               ┌────┐┌─ ┌────────┬────────┐   ┌────────┐┌─┬──────┐ ┌─┬───┐
+    //    src        │  0 ││1 │    1   │    2   │...│    n   ││   n+1  │ │  n+1│
+    //               └────┘└─ └────────┴────────┘   └────────┘└─┴──────┘ └─┴───┘
+    //                  ↓   ↓      ↓   ↙   ↓    ↙        ↓    ↙              ↙
+    //           ┌───┬──────┐ ┌────────┬────────┐   ┌────────┐           ┌────┬─────┐
+    //    dst    │      0   │ │    1   │    2   │...│    n   │     ↑     │ n+1      │
+    //           └───┴──────┘ └────────┴────────┘   └────────┘     │     └────┴─────┘
+    //           ^dst64       ^dst64+1 ^dst64+2     ^dst64+n       │      ^dst64+n+1
+    //                                                          without
+    //                                                           write
+
+    // assuming max memory of 4GB (32 bits)
+    // count: 24 bits RC + 8 bits T
+    col witness bits(24) h_count;
+
+    // What is count_lt_256 used for?
+    //
+    // If count were split in the traditional way into h_count|l_count there would be a problem
+    // because the DMA ROM has to check whether the count is small.
+    //
+    // But what would happen if the bits of l_count were 0 while h_count was not?
+    // The DMA ROM could not distinguish whether count is 0 or, for example, 1024 = 4|0
+    //
+    // To avoid this, it was defined that in such a case one is subtracted from h_count and 256 is
+    // added to l_count so that the overall count value remains the same and so that for any k up
+    // to 511, if l_count > k ==> count > k.
+    //
+    // To ensure this condition a flag count_lt_256 must be enforced to verify that h_count is
+    // actually 0 when l_count < 256, and the ROM verifies the consistency between count_lt_256 and
+    // l_count.
+
+    col witness bits(1) count_lt_256;
+    col witness bits(9) l_count;        // 0..255 + 256 = 9 bits
+    const expr count = h_count * 256 + l_count;
+
+    count_lt_256 * (1 - count_lt_256) === 0;
+
+    // constraint (1)
+    count_lt_256 * h_count === 0;
+
+    // count  count            count  cons             Range        h_count * 256
+    // 31..8  7..0   h_count  lt_256  (1)    l_count  Check   Rom  + l_count
+    // -----  -----  -------  ------  ----   -------  -----  ----  -------------
+    //     0      x        0       1    OK         x     OK    OK       0 | x OK
+    //     0      x        0       0    OK         x     OK  FAIL       0 | x OK <== DETECTED
+    //     1      x        0       0    OK   256 + x     OK    OK       1 | x OK
+    //     1      x        0       1    OK   256 + x     OK  FAIL       1 | x OK <== DETECTED
+    //     1      x        1       1  FAIL         x     OK    OK       1 | x OK <== DETECTED
+    // y > 1      x    y - 1       0    OK   256 + x     OK             y | x OK
+    //   MAX      x  MAX - 1       0    OK   256 + x     OK           MAX | x OK
+    //     0      x       -1       0    OK   256 + x   FAIL             0 | x OK <== DETECTED
+    //   MAX      x      MAX       0    OK   256 + x   FAIL         MAX+1 | x FAIL <== DETECTED
+    //     -      -        -       -     -     x < 0     -   FAIL       - | - -  <== DETECTED
+    //     -      -        -       -     -   x >=512     -   FAIL       - | - -  <== DETECTED
+
+    range_check(expression: h_count, min: 0, max: 2**24-1, sel: sel_dma);
+
+    // count_bus (well formed)
+    // count (chunks divided)
+    // count_bus - count === count_diff (chunks divided)
+
+    col witness bits(16) count_diff_chunks[2];
+    const expr count_diff = count_diff_chunks[0] + count_diff_chunks[1] * P2_16;
+    const expr count_bus = count + count_diff;
+
+    // On a PRE row @[sel_memcmp] is latched to 1, so these range checks stay active there even
+    // though the DMA part is idle. That's on purpose: gating them with (1 - is_pre_row) would make
+    // the selector degree 2, and on a PRE row @[result_nz] = 0 already forces count_diff = 0,
+    // which together with the range checks pins both chunks to exactly 0. The only cost is two
+    // extra hits on the range table per PRE row of a memcmp.
+    range_check(expression: count_diff_chunks[0], min: 0, max: 0xFFFF, sel: sel_memcmp);
+    range_check(expression: count_diff_chunks[1], min: 0, max: 0xFFFF, sel: sel_memcmp);
+
+    (sel_memcpy + sel_inputcpy + sel_memset) * count_diff === 0;
+
+    col witness bits(MAIN_STEP_BITS) main_step;
+
+    // 32 bit dst address
+    // 22 bits RC + 7 bits RC + 3 bits T
+    col witness bits(22) h_dst64;
+    col witness bits(7) l_dst64;
+    col witness bits(3) dst_offset;
+    const expr dst = h_dst64 * 2**10 + l_dst64 * 2**3 + dst_offset;
+    const expr dst64 = h_dst64 * 2**10 + l_dst64 * 2**3;
+    // dst_offset range verified with dma_rom table
+
+    range_check(expression: h_dst64, min: 0, max: 2**22-1, sel: sel_dma);
+
+    // 32 bit src address
+    // 22 bits RC + 7 bits RC + 3 bits T
+    col witness bits(22) h_src64;
+    col witness bits(7) l_src64;
+    col witness bits(3) src_offset;
+    col witness bits(3) src_offset_after_pre;
+
+    col witness bits(1) src64_inc_by_pre;   // src64 increment after applying the pre operation
+    src64_inc_by_pre * (1 - src64_inc_by_pre) === 0;
+
+    const expr src = h_src64 * 2**10 + l_src64 * 2**3 + src_offset;
+    const expr src64 = h_src64 * 2**10 + l_src64 * 2**3;
+    // src_offset range verified with dma_rom table
+
+    // inputcpy and memset don't have a source; they don't use it.
+    (sel_memset + sel_inputcpy) * src_offset_after_pre === 0;
+
+    range_check(expression: h_src64, min: 0, max: 2**22-1, sel: sel_dma);
+    lookup_assumes(DUAL_RANGE_7_BITS_ID, expressions: [l_src64, l_dst64], sel: sel_dma, sel_is_binary: 1);
+
+    col witness bits(1) use_pre;            // use pre operation
+    col witness bits(1) use_loop;           // use loop (aligned, unaligned) operation
+    col witness bits(1) use_post;           // use post operation
+
+    use_pre * (1 - use_pre) === 0;
+    use_loop * (1 - use_loop) === 0;
+    use_post * (1 - use_post) === 0;
+
+    col witness bits(3) pre_count;  // number of bytes of the pre operation
+    col witness bits(9) l_count64;  // number of 64-bit words in l_count after subtracting pre_count
+                                    // and post_count
+
+    const expr post_count = count - pre_count - h_count * 256 - l_count64 * 8;
+
+    // if the row doesn't drive the DMA controller (padding row or extra PRE row) the phase
+    // selectors must be zero. @[use_post] = 0 on a PRE row is what makes @[pp_is_post] = use_post
+    // valid for every row.
+    (1 - sel_dma) * use_pre === 0;
+    (1 - sel_dma) * use_loop === 0;
+    (1 - sel_dma) * use_post === 0;
+
+    // @[has_pre_row_def] an operation delegates its PRE to the next row when it needs both phases.
+    has_pre_row <== use_pre * use_post;
+
+    // ...and the next row must indeed be that PRE row. Both directions are covered by a single
+    // constraint, so no PRE row can appear without an operation asking for it, and no operation
+    // asking for it can be left without its PRE row.
+    is_pre_row === 'has_pre_row;
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // @[latch] values shared between the DMA row and its extra PRE row
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    //
+    // The PRE row needs to know which operation it belongs to (selectors), at which step the
+    // memory accesses happen (main_step) and, for memset, the byte to write (fill_byte). These
+    // columns are shared with the DMA part, so they're simply latched from the previous row.
+
+    is_pre_row * (main_step - 'main_step) === 0;
+    is_pre_row * (fill_byte - 'fill_byte) === 0;
+    is_pre_row * (sel_memcpy - 'sel_memcpy) === 0;
+    is_pre_row * (sel_memcmp - 'sel_memcmp) === 0;
+    is_pre_row * (sel_memset - 'sel_memset) === 0;
+    is_pre_row * (sel_inputcpy - 'sel_inputcpy) === 0;
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // PRE/POST SUB-OPERATION PARAMETERS
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // @[pp_is_post] selects which sub-operation this row executes. On a DMA row it's @[use_post],
+    // because the POST always stays in the DMA row; on a PRE row @[use_post] is forced to 0.
+    const expr pp_is_post = use_post;
+
+    // @[pp_sel] the row executes a PRE or a POST. It's binary:
+    //   PRE row  : 1 + 0 + 0 - 0                              = 1
+    //   DMA row  : 0 + use_pre + use_post - use_pre * use_post ∈ {0, 1}
+    //   padding  : 0
+    const expr pp_sel = is_pre_row + use_pre + use_post - has_pre_row;
+
+    // Addresses of the PRE and of the POST 64-bit word, as seen from a DMA row.
+    //
+    //   pre : dst64                                    src64
+    //   post: dst64 + use_pre * 8      + loop_bytes    src64 + src64_inc_by_pre * 8 + loop_bytes
+    //
+    // Both `use_pre * 8` and `src64_inc_by_pre * 8` would raise the degree, but they can be
+    // rewritten linearly (only valid when use_post = 1, which is the only case they're used in):
+    //
+    //   use_pre = 1 & use_post = 1 ⟹ pre_count = 8 - dst_offset ⟹ dst + pre_count = dst64 + 8
+    //   use_pre = 0                ⟹ dst_offset = 0, pre_count = 0 ⟹ dst + pre_count = dst64
+    //
+    //   src_offset + pre_count = src64_inc_by_pre * 8 + src_offset_after_pre  (ROM invariant)
+    //   ⟹ src + pre_count - src_offset_after_pre = src64 + src64_inc_by_pre * 8
+
+    const expr loop_bytes = h_count * 256 + l_count64 * 8;
+    const expr post_dst_addr = dst + pre_count + loop_bytes;
+    const expr post_src_addr = src + pre_count - src_offset_after_pre + loop_bytes;
+
+    // Every parameter of the sub-operation follows the same pattern:
+    //
+    //   pp_X = X_pre + pp_is_post * (X_post - X_pre) + is_pre_row * ('X_pre - X_pre)
+    //
+    // On a DMA row (is_pre_row = 0) it picks the local PRE or POST value; on a PRE row
+    // (pp_is_post = use_post = 0) the second term vanishes and it picks the PRE value of the
+    // previous row. All of them are degree 2.
+
+    col witness bits(ADDR_BITS) pp_dst_addr;    // 64-bit aligned byte address written by this row
+    col witness bits(ADDR_BITS) pp_src_addr;    // 64-bit aligned byte address read by this row
+    col witness bits(3) pp_dst_offset;
+    col witness bits(3) pp_src_offset;
+    col witness bits(4) pp_count;               // 1..8 (8 only for the memcmp POST edge case)
+
+    pp_dst_addr <== dst64 + pp_is_post * (post_dst_addr - dst64) + is_pre_row * ('dst64 - dst64);
+    pp_src_addr <== src64 + pp_is_post * (post_src_addr - src64) + is_pre_row * ('src64 - src64);
+    pp_dst_offset <== dst_offset - pp_is_post * dst_offset + is_pre_row * ('dst_offset - dst_offset);
+    pp_src_offset <== src_offset + pp_is_post * (src_offset_after_pre - src_offset) +
+                      is_pre_row * ('src_offset - src_offset);
+    pp_count <== pre_count + pp_is_post * (post_count - pre_count) + is_pre_row * ('pre_count - pre_count);
+
+    // Gated selectors of the PRE/POST part. A DMA row may have no sub-operation at all
+    // (@[pp_sel] = 0), so the operation selectors must be combined with @[pp_sel]. They're
+    // materialized as columns to keep the degree of the PRE/POST constraints unchanged with
+    // respect to the standalone `DmaPrePost`.
+    //
+    //                            bytes
+    //           has  sel    ┌──────────────┐
+    //           src  read    rb    rb2   pb
+    // ──────────────────────────────────────
+    // memcpy     ✓     ✓     ✓     ✓     ✓
+    // memcmp     ✓     ✓     ✓     ✓     ✓
+    // inputcpy   x     x     ✓     x     ✓
+    // memset     x     x     x     x     ✓
+
+    col witness bits(1) pp_load_src;        // reads the src 64-bit word(s)
+    col witness bits(1) pp_sel_write;       // writes the dst 64-bit word
+    col witness bits(1) pp_sel_byte_rc;     // range checks the read bytes
+    col witness bits(1) pp_sel_memcmp;
+    col witness bits(1) pp_sel_memset;
+
+    pp_load_src <== (sel_memcpy + sel_memcmp) * pp_sel;
+
+    // @[pp_sel_write] is not active for memcmp because it reads the same value that was preloaded
+    // before the read, it only needs to verify that the value to be written and the pre-read value
+    // are the same.
+    pp_sel_write <== (sel_memcpy + sel_inputcpy + sel_memset) * pp_sel;
+    pp_sel_byte_rc <== (sel_memcpy + sel_memcmp + sel_inputcpy) * pp_sel;
+    pp_sel_memcmp <== sel_memcmp * pp_sel;
+    pp_sel_memset <== sel_memset * pp_sel;
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // PRE/POST SUB-OPERATION
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // This part needs to read one or two 64-bit words from src to be able to write or compare the
+    // destination.
+    //
+    // Another feature it has is to resolve the last different byte of a memcmp. In reality
+    // mem_cmp(src, dst, count) = mem_eq(src, dst, count_eq) + cmp_byte(src + count_eq, dst + count_eq)
+    // where count_eq <= count.
+
+    // Prepare the source rotation and the flags that select the "row" of the DmaPrePost table.
+
+    col witness bits(1) selr[7];
+
+    const expr sr[8];
+    expr _sr_0to6 = 0;
+    expr _sr_value = 0;
+    for (int i = 0; i < 7; ++i) {
+        selr[i] * (1 - selr[i]) === 0;
+        sr[i] = selr[i];
+        _sr_0to6 = _sr_0to6 + selr[i];
+        if (i > 0) {
+            _sr_value = _sr_value + i * sr[i];
+        }
+    }
+    const expr sr_0to6 = _sr_0to6;
+    _sr_value = _sr_value + 7 * sr[7];
+    const expr sr_value = _sr_value;
+
+    sr_0to6 * (1 - sr_0to6) === 0;
+    sr[7] = (1 - sr_0to6);
+
+    col witness bits(1) dst_offset_gt_src_offset;
+    dst_offset_gt_src_offset * (1 - dst_offset_gt_src_offset) === 0;
+
+    col witness bits(1) enabled_second_read;
+    enabled_second_read * (1 - enabled_second_read) === 0;
+
+    // to force the use of the table when enabled_second_read is 1. If pp_sel is 1, the table
+    // verifies the correct value of enabled_second_read using the offset and the count.
+    enabled_second_read * (1 - pp_sel) === 0;
+
+    // sr_value is an expression of bits, for this reason the range check of sr_value is restricted
+    // to the range [0, 7].
+    //
+    //                                                   @[selectors_mask] (8 bits)
+    // DMA_PRE_POST_ENABLED_SECOND_READ_F  = P2_8        @[enabled_second_read] (1 bit)
+    // DMA_PRE_POST_DST_OFFSET_GT_SRC_F    = P2_9        @[dst_offset_gt_src_offset] (1 bit)
+    // DMA_PRE_POST_SR_VALUE_F             = P2_10       @[sr_value] (0-7) (3 bits)
+    // DMA_PRE_POST_MEMCMP_RESULT_IS_NEG_F = P2_13       @[memcmp_result_is_negative] (1 bit)
+    // DMA_PRE_POST_MEMCMP_RESULT_NZ_F     = P2_14       @[memcmp_result_nz] (1 bit)
+    // DMA_PRE_POST_IS_POST                = P2_15       @[pp_is_post] (1 bit)
+    // DMA_PRE_POST_LOAD_SRC               = P2_16       @[pp_load_src] (1 bit)
+
+    expr rom_flags = DMA_PRE_POST_DST_OFFSET_GT_SRC_F * dst_offset_gt_src_offset +
+                     DMA_PRE_POST_ENABLED_SECOND_READ_F * enabled_second_read +
+                     DMA_PRE_POST_SR_VALUE_F * sr_value +
+                     DMA_PRE_POST_IS_POST * pp_is_post +
+                     DMA_PRE_POST_LOAD_SRC * pp_load_src;
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // read bytes (src) and pre-write bytes (dst)
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    const int RB = RC * 4 * 2;      // read bytes, two 64-bit words
+    const int RV = RB / 4;
+
+    col witness bits(8) rb[RB];
+    const expr r_values[RV];
+
+    for (int i = 0; i < RB; i+=2) {
+        range_dual_byte(rb[i+1], rb[i], pp_sel_byte_rc);
+        // memset has no source, so all the "read" bytes must be the fill byte (sr must be 0)
+        pp_sel_memset * (rb[i] - fill_byte) === 0;
+        pp_sel_memset * (rb[i+1] - fill_byte) === 0;
+    }
+
+    for (int i = 0; i < RV; ++i) {
+        r_values[i] = rb[i*4] + P2_8 * rb[i*4+1]  + P2_16 * rb[i*4+2]  + P2_24 * rb[i*4+3];
+    }
+
+    const int PRB = RC * 4;        // pre-write bytes
+    col witness bits(8) pb[PRB];
+
+    const expr p_values[RC];
+
+    for (int i = 0; i < PRB; i+=2) {
+        range_dual_byte(pb[i+1], pb[i], pp_sel);
+    }
+    for (int i = 0; i < RC; ++i) {
+        p_values[i] = pb[i*4] + P2_8 * pb[i*4+1]  + P2_16 * pb[i*4+2]  + P2_24 * pb[i*4+3];
+    }
+
+    col witness bits(1) sb[8];
+    for (int i = 0; i < 8; ++i) {
+        sb[i] * (1 - sb[i]) === 0;
+        rom_flags += sb[i] * (1 << (7-i));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // memcmp result
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    //
+    // The count used by the DMA controller includes the different byte, the idea is to generate a
+    // value that "compensates" this difference.
+    //
+    // To detect it, we detect the byte previous to a falling edge of the selector of read bytes.
+    // See @[last_dst_byte]
+    //
+    // Using the PrePost Rom we verify the factors associated to this position; we also send to the
+    // Rom whether the difference is negative @[memcmp_result_is_negative], because if it's negative
+    // the factor is also negative.
+    //
+    // We need another table to verify @[last_dst_byte] with @[abs_diff_dst_src] and
+    // @[memcmp_result_is_negative]. This table doesn't include the zero for abs_diff_dst_src.
+    // The lookup to this table is only active when @[memcmp_result_nz]
+    //
+    // For the byte that's the first different byte
+    //   write_byte == dst_byte
+    //   write_byte ≠ src_byte
+    //   dst_minus_src = dst_byte - src_byte
+    //   write_byte == dst_minus_src + src_byte
+
+    col witness bits(1) memcmp_result_nz;
+    memcmp_result_nz * (1 - memcmp_result_nz) === 0;
+
+    // memcmp_result_nz could only be 1 if it's a memcmp operation...
+    memcmp_result_nz * (1 - sel_memcmp) === 0;
+
+    // ...if the row really executes a PRE or a POST...
+    memcmp_result_nz * (1 - pp_sel) === 0;
+
+    // ...and never on the extra PRE row: when a POST exists the DMA ROM guarantees that the first
+    // different byte is the last byte of the POST block, so the PRE always compares equal. This is
+    // what makes the result local to the DMA row.
+    is_pre_row * memcmp_result_nz === 0;
+
+    col witness bits(8) last_dst_byte;
+    col witness bits(8) abs_diff_dst_src;
+    col witness bits(1) memcmp_result_is_negative;
+    col witness bits(64, signed) diff_factor[2];
+    col witness bits(32) l_memcmp_result;
+    const expr diff_dst_src[2];
+
+    memcmp_result_is_negative * (1 - memcmp_result_is_negative) === 0;
+
+    // if memcmp_result_nz is 0 the result must be 0. The DmaPrePost table has no entry with
+    // (nz = 0, negative = 1), but the table lookup is gated by @[pp_sel], so the sign has to be
+    // pinned here too (otherwise a row without sub-operation could publish 0xFFFF_FFFF in the high
+    // chunk of the result).
+    (1 - memcmp_result_nz) * l_memcmp_result === 0;
+    (1 - memcmp_result_nz) * memcmp_result_is_negative === 0;
+
+    last_dst_byte <== sb[0] * (1 - sb[1]) * (pb[0] - pb[7]) +
+                      sb[1] * (1 - sb[2]) * (pb[1] - pb[7]) +
+                      sb[2] * (1 - sb[3]) * (pb[2] - pb[7]) +
+                      sb[3] * (1 - sb[4]) * (pb[3] - pb[7]) +
+                      sb[4] * (1 - sb[5]) * (pb[4] - pb[7]) +
+                      sb[5] * (1 - sb[6]) * (pb[5] - pb[7]) +
+                      sb[6] * (1 - sb[7]) * (pb[6] - pb[7]) +
+                      pb[7];
+
+    diff_dst_src[0] = diff_factor[0] * abs_diff_dst_src * memcmp_result_nz;
+    diff_dst_src[1] = diff_factor[1] * abs_diff_dst_src * memcmp_result_nz;
+
+    l_memcmp_result <== 0x1_0000_0000 * memcmp_result_is_negative +
+                        (1 - 2 * memcmp_result_is_negative) * abs_diff_dst_src;
+
+    rom_flags += DMA_PRE_POST_MEMCMP_RESULT_IS_NEG_F * memcmp_result_is_negative +
+                 DMA_PRE_POST_MEMCMP_RESULT_NZ_F * memcmp_result_nz;
+
+    lookup_assumes(DMA_BYTE_CMP_TABLE_ID, [last_dst_byte,
+                                           memcmp_result_is_negative,
+                                           abs_diff_dst_src
+                                           ], sel: memcmp_result_nz, sel_is_binary: 1);
+
+    // The result published by the DMA row is directly the result of its own sub-operation, there's
+    // no bus in between (in `dma.pil` this was bus_pre_result + bus_post_result). For any operation
+    // other than memcmp the returned value is the dst address.
+    const expr result_nz = memcmp_result_nz;
+    const expr bus_result[2];
+    bus_result[0] = l_memcmp_result + dst * (1 - sel_memcmp);
+    bus_result[1] = 0xFFFF_FFFF * memcmp_result_is_negative;
+
+    // if the memcmp result is zero, count and count_eq are equal
+    (1 - result_nz) * count_diff === 0;
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // value to be written / compared
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    col witness bits(32) bus_write_value[2];
+    col witness bits(32) write_value[4];
+
+    // byte_0, byte_1, byte_2, byte_3, byte_4, byte_5, byte_6, byte_7, byte_0', byte_1' ...
+
+    //          	 │ src_offset:
+    //    selr_value │ 0  1  2  3  4  5  6  7
+    // ──────────────┼───────────────────────
+    // dst_offset: 0 │ 0  1  2  3  4  5  6  7
+    //         	   1 │ 1  0  1  2  3  4  5  6
+    //         	   2 │ 2  1  0  1  2  3  4  5
+    //         	   3 │ 3  2  1  0  1  2  3  4
+    //         	   4 │ 4  3  2  1  0  1  2  3
+    //         	   5 │ 5  4  3  2  1  0  1  2
+    //         	   6 │ 6  5  4  3  2  1  0  1
+    //         	   7 │ 7  6  5  4  3  2  1  0
+    //
+    // NOTE: selr_value = ABS(src_offset - dst_offset)
+
+    //       R0..R3,R4..R7 = current row read bytes
+    //       R8..R11,R12..R15 = R0'..R3',R4'..R7' bytes of next row
+    //
+    //       ┌────── src_offset - dst_offset
+    //       │
+    //       │      0   1   2   3     4   5   6   7
+    //          ┌─────────────────┬─────────────────┐
+    //       0  │  R0  R1  R2  R3 │  R4  R5  R6  R7 │
+    //       1  │  R1  R2  R3  R4 │  R5  R6  R7  R8 │
+    //       2  │  R2  R3  R4  R5 │  R6  R7  R8  R9 │
+    //       3  │  R3  R4  R5  R6 │  R7  R8  R9 R10 │
+    //       4  │  R4  R5  R6  R7 │  R8  R9 R10 R11 │
+    //       5  │  R5  R6  R7  R8 │  R9 R10 R11 R12 │
+    //       6  │  R6  R7  R8  R9 │ R10 R11 R12 R13 │
+    //       7  │  R7  R8  R9 R10 │ R11 R12 R13 R14 │
+    //          └─────────────────┴─────────────────┘
+
+    // dst_offset <= src_offset
+
+    expr _wr_0 = 0;
+    expr _wr_1 = 0;
+    for (int j = 0; j < 8; ++j) {
+        expr _sr_wr_0 = 0;
+        expr _sr_wr_1 = 0;
+        for (int i = 0; i < 4; ++i) {
+            const int factor = 1 << (i * 8);
+            _sr_wr_0 += factor * sb[i] * rb[i+j];
+            _sr_wr_1 += factor * sb[i+4] * rb[i+4+j];
+        }
+        _wr_0 += sr[j] * _sr_wr_0;
+        _wr_1 += sr[j] * _sr_wr_1;
+    }
+    for (int i = 0; i < 4; ++i) {
+        const int factor = 1 << (i * 8);
+        _wr_0 += factor * (1 - sb[i]) * pb[i];
+        _wr_1 += factor * (1 - sb[i+4]) * pb[i+4];
+    }
+    write_value[0] <== _wr_0;
+    write_value[1] <== _wr_1;
+
+    // dst_offset > src_offset
+    //       ┌────── src_offset - dst_offset
+    //       │   ┌── abs(src_offset - dst_offset)
+    //       │	 │
+    //       │	 │      0   1   2   3     4   5   6   7
+    //              ┌─────────────────┬─────────────────┐
+    //      -7   7  │                 │              R0 │
+    //      -6   6  │                 │          R0  R1 │
+    //      -5   5  │                 │      R0  R1  R2 │
+    //      -4   4  │                 │  R0  R1  R2  R3 │
+    //      -3   3  │              R0 │  R1  R2  R3  R4 │
+    //      -2   2  │          R0  R1 │  R2  R3  R4  R5 │
+    //      -1   1  │      R0  R1  R2 │  R3  R4  R5  R6 │
+    //              └─────────────────┴─────────────────┘
+
+    write_value[2] <== sr[3] * (                                                               sb[3] * P2_24 * rb[0]) +
+                       sr[2] * (                                       sb[2] * P2_16 * rb[0] + sb[3] * P2_24 * rb[1]) +
+                       sr[1] * (                sb[1] * P2_8 * rb[0] + sb[2] * P2_16 * rb[1] + sb[3] * P2_24 * rb[2]) +
+                       (1 - sb[0]) * pb[0] + (1 - sb[1]) * P2_8 * pb[1] + (1 - sb[2]) * P2_16 * pb[2] + (1 - sb[3]) * P2_24 * pb[3];
+
+    write_value[3] <== sr[7] * (                                                             + sb[7] * P2_24 * rb[0]) +
+                       sr[6] * (                                     + sb[6] * P2_16 * rb[0] + sb[7] * P2_24 * rb[1]) +
+                       sr[5] * (              + sb[5] * P2_8 * rb[0] + sb[6] * P2_16 * rb[1] + sb[7] * P2_24 * rb[2]) +
+                       sr[4] * (sb[4] * rb[0] + sb[5] * P2_8 * rb[1] + sb[6] * P2_16 * rb[2] + sb[7] * P2_24 * rb[3]) +
+                       sr[3] * (sb[4] * rb[1] + sb[5] * P2_8 * rb[2] + sb[6] * P2_16 * rb[3] + sb[7] * P2_24 * rb[4]) +
+                       sr[2] * (sb[4] * rb[2] + sb[5] * P2_8 * rb[3] + sb[6] * P2_16 * rb[4] + sb[7] * P2_24 * rb[5]) +
+                       sr[1] * (sb[4] * rb[3] + sb[5] * P2_8 * rb[4] + sb[6] * P2_16 * rb[5] + sb[7] * P2_24 * rb[6]) +
+                       (1 - sb[4]) * pb[4] + (1 - sb[5]) * P2_8 * pb[5] + (1 - sb[6]) * P2_16 * pb[6] + (1 - sb[7]) * P2_24 * pb[7];
+
+    bus_write_value[0] <== dst_offset_gt_src_offset * (write_value[2] - write_value[0]) + write_value[0];
+    bus_write_value[1] <== dst_offset_gt_src_offset * (write_value[3] - write_value[1]) + write_value[1];
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // PRE/POST memory access
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    //
+    // Read first 64 bits of src
+    // Read next 64 bits of src (optional, only if enabled_second_read)
+    // Read previous value of dst before write
+    // Write final value of dst
+
+    precompiled_mem_load(sel: pp_load_src, main_step:, addr: pp_src_addr, value: [r_values[0], r_values[1]]);
+    precompiled_mem_load(sel: enabled_second_read, main_step:, addr: pp_src_addr + 8, value: [r_values[2], r_values[3]]);
+
+    // this load is always used to read the previous value that was partially modified or verified
+    precompiled_mem_load(sel: pp_sel, main_step:, addr: pp_dst_addr, value: p_values);
+
+    // when it's a memcmp it reads, it doesn't write
+    precompiled_mem_store(sel: pp_sel_write, main_step:, addr: pp_dst_addr, value: bus_write_value);
+
+    // for memcmp we need to verify that the value read from memory is the same as the value
+    // generated to write, because this value is the one that "compensates" the difference between
+    // src and dst; if this value is different from the value read from memory, the memcmp result
+    // will be different from the expected one.
+    pp_sel_memcmp * (p_values[0] - bus_write_value[0] - diff_dst_src[0]) === 0;
+    pp_sel_memcmp * (p_values[1] - bus_write_value[1] - diff_dst_src[1]) === 0;
+
+    lookup_assumes(DMA_PRE_POST_TABLE_ID, [rom_flags,
+                                           pp_dst_offset,
+                                           pp_src_offset,
+                                           pp_count,
+                                           ...diff_factor], sel: pp_sel, sel_is_binary: 1);
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // DMA CONTROLLER: ROM AND BUSES
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    const expr flags = use_pre * DMA_ROM_USE_PRE_F +
+                       use_loop * DMA_ROM_LOOP_F +
+                       use_post * DMA_ROM_USE_POST_F +
+                       src64_inc_by_pre * DMA_ROM_SRC64_INC_BY_PRE_F +
+                       count_lt_256 * DMA_ROM_COUNT_LT_256_F +
+                       result_nz * DMA_ROM_NEQ_F +
+                       use_src * DMA_ROM_USE_SRC_F;
+
+    lookup_assumes(DMA_ROM_ID, expressions: [dst_offset, src_offset, l_count, flags, pre_count,
+                                             src_offset_after_pre, l_count64],
+                   sel: sel_dma, sel_is_binary: 1);
+
+    // OP_DMA_MEMSET isn't implemented because memset is usually used with a static value known at
+    // compilation time, and for this case we could use OP_DMA_XMEMSET. For an OP_DMA_MEMSET we
+    // would need two extra columns for the garbage in the value sent to the bus, value bits 8-31
+    // and bits 32-63, and two additional range checks (8 bits, 24 bits): too expensive for a few
+    // values.
+
+    // BUS: DMA ===> DMA_64_ALIGNED (Definitions)
+    // BUS: DMA ===> DMA_UNALIGNED (Definitions)
+
+    const expr loop_count = h_count * 256 + l_count64 * 8;
+    const expr loop_dst = dst64 + use_pre * 8;
+    const expr loop_src = src64 + src64_inc_by_pre * 8;
+
+    col witness bits(32) loop_b0;
+    loop_b0 <== loop_src * (sel_memcpy + sel_memcmp) + loop_count * (sel_inputcpy + sel_memset);
+
+    col witness bits(32) loop_extended_arg;
+    loop_extended_arg <== loop_count * (sel_memcpy + sel_memcmp) + fill_byte * sel_memset;
+
+    // DMA ===> DMA_64_ALIGNED
+    // DMA ===> DMA_UNALIGNED
+    // --------------------------------------------------------------------------------
+    // OP_DMA_XMEMCPY            (dst, 0,   src, 0, 0, 0, 0, main_step, count, src_offset_after_pre)
+    // OP_DMA_INPUTCPY           (dst, 0, count, 0, 0, 0, 0, main_step, 0    , src_offset_after_pre)
+    // OP_DMA_XMEMEQ             (dst, 0,   src, 0, 0, 0, 0, main_step, count, src_offset_after_pre)
+    // OP_DMA_XMEMSET            (dst, 0, count, 0, 0, 0, 0, main_step, value, src_offset_after_pre)
+
+    assumes_operation(op: loop_op, a: [loop_dst, 0],
+                                   b: [loop_b0, 0],
+                                   c: [loop_dst, 0],
+                                   main_step:,
+                                   extended_arg: loop_extended_arg,
+                                   extra_args: [src_offset_after_pre],
+                                   sel: use_loop);
+
+    // BUS: DMA ===> MAIN (Definitions)
+
+    col witness bits(32) static_count;
+    static_count <== count_bus * sel_extended;
+
+    // BUS: DMA ===> MAIN
+    // --------------------------------------------------------------------------------
+    // OP_DMA_MEMCPY   (dst, 0, src,   0, 0,  0,  0, main_step) + MEM(count)
+    // OP_DMA_XMEMCPY  (dst, 0, src,   0, 0,  0,  0, main_step, count)
+    // OP_DMA_INPUTCPY (dst, 0, count, 0, 0,  0,  0, main_step)
+    // OP_DMA_MEMCMP   (dst, 0, src,   0, 0, R0, R1, main_step) + MEM(count)
+    // OP_DMA_XMEMCMP  (dst, 0, src,   0, 0, R0, R1, main_step, count)
+    // OP_DMA_XMEMSET  (dst, 0, count, 0, 0,  0,  0, main_step, value)
+
+    proves_operation(op: bus_op,
+                     a: [dst, 0],
+                     b: [src * (sel_memcpy + sel_memcmp) + count * (sel_inputcpy + sel_memset), 0],
+                     c: bus_result,
+                     flag: 0,
+                     main_step:,
+                     extended_arg: static_count * (sel_memcpy + sel_memcmp) + fill_byte * sel_memset,
+                     mul: sel_dma);
+
+    // BUS: DMA ===> MEM
+    //
+    // For OP_DMA_MEMCPY, OP_DMA_MEMCMP and OP_DMA_MEMSET we need to read the third parameter
+    // (count), to do it we read a specific position on RAM, EXTRA_PARAMS_ADDR. The extra PRE row
+    // has the selectors latched, so this load must be restricted to DMA rows.
+    //
+    // @[sel_count_from_mem] is materialized as a column on purpose: `precompiled_mem_load` doesn't
+    // expose `sel_is_binary`, so the std adds `sel * (sel - 1) === 0`. With the degree-2 expression
+    // inlined that constraint would be degree 4; with the column it stays degree 2.
+
+    col witness bits(1) sel_count_from_mem;
+    sel_count_from_mem <== (sel_load_count_from_mem - sel_extended) * (1 - is_pre_row);
+
+    precompiled_mem_load(sel: sel_count_from_mem,
+                         main_step:,
+                         addr: EXTRA_PARAMS_ADDR,
+                         value: [count_bus, 0]);
+}

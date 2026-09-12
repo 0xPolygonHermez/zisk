@@ -8,7 +8,7 @@ use crate::DmaStrategy;
 
 use proofman_fields::PrimeField64;
 use zisk_common::{BusDeviceMetrics, ChunkId, InstanceType, Plan, Planner, SegmentId};
-use zisk_pil::ZISK_AIRGROUP_ID;
+use zisk_pil::{DmaWithPrePostTrace, ZISK_AIRGROUP_ID};
 
 /// The `DmaPlanner` struct organizes execution plans for arithmetic instances and tables.
 ///
@@ -70,6 +70,20 @@ impl<F: PrimeField64> Planner for DmaPlanner<F> {
                     None => plan,
                 });
             }
+        }
+        // The fused air carries its own checkpoint type, so it comes back apart from the rest.
+        // It is empty unless `DmaStrategy::USE_DMA_WITH_PRE_POST` is set.
+        for (segment_id, (check_point, collect_info)) in
+            std::mem::take(&mut dma_strategy.dma_with_pre_post_plan).into_iter().enumerate()
+        {
+            plans.push(Plan::new(
+                ZISK_AIRGROUP_ID,
+                DmaWithPrePostTrace::<F>::AIR_ID,
+                Some(SegmentId(segment_id)),
+                InstanceType::Instance,
+                check_point,
+                Some(Box::new(collect_info)),
+            ));
         }
         plans
     }

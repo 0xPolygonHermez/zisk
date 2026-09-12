@@ -29,6 +29,7 @@ require "sha256f/pil/sha256f.pil"
 require "dma/pil/dma.pil"
 require "dma/pil/dma_rom.pil"
 require "dma/pil/dma_pre_post.pil"
+require "dma/pil/dma_with_pre_post.pil"
 require "dma/pil/dma_pre_post_table.pil"
 require "dma/pil/dma_byte_cmp_table.pil"
 require "dma/pil/dma_64_aligned.pil"
@@ -189,6 +190,11 @@ airgroup Zisk {
     DmaPrePost();
     // DmaPrePost(enable: E_DMA_MEMCPY) alias DmaPrePostMemCpy;
     // DmaPrePost(enable: E_DMA_INPUTCPY) alias DmaPrePostInputCpy;
+
+    // Dma + DmaPrePost fused in a single air (no DMA_BUS_ID between them). Full only, not
+    // parameterizable. It replaces Dma() + DmaPrePost() for the operations the strategy routes
+    // to it; while DmaStrategy::USE_DMA_WITH_PRE_POST is false it just gets no instance.
+    DmaWithPrePost();
 
     virtual DmaByteCmpTable();
     virtual DmaRom();

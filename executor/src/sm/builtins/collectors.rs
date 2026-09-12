@@ -12,13 +12,15 @@ use zisk_pil::{
     BINARY_LARGE_AIR_IDS, DMA_64_ALIGNED_AIR_IDS, DMA_64_ALIGNED_LARGE_AIR_IDS,
     DMA_64_ALIGNED_MEM_AIR_IDS, DMA_64_ALIGNED_MEM_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_LARGE_AIR_IDS,
     DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS, DMA_PRE_POST_AIR_IDS, DMA_UNALIGNED_AIR_IDS,
-    INPUT_DATA_AIR_IDS, JUMP_DEST_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS,
-    MEM_ALIGN_BYTE_LARGE_AIR_IDS, MEM_ALIGN_LARGE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS,
-    MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
+    DMA_WITH_PRE_POST_AIR_IDS, INPUT_DATA_AIR_IDS, JUMP_DEST_AIR_IDS, MEM_AIR_IDS,
+    MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_BYTE_LARGE_AIR_IDS,
+    MEM_ALIGN_LARGE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS,
+    MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
 };
 use zisk_precomp_dma::{
     Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCounterInputGen, DmaInstance,
     DmaPrePostCollector, DmaPrePostInstance, DmaUnalignedCollector, DmaUnalignedInstance,
+    DmaWithPrePostCollector, DmaWithPrePostInstance,
 };
 use zisk_precomp_evm::{JumpDestCollector, JumpDestCounterInputGen, JumpDestInstance};
 use zisk_sm_arith::{ArithCounterInputGen, ArithFullInstance, ArithInstanceCollector};
@@ -61,6 +63,8 @@ pub struct BuiltinCollectors<F: PrimeField64> {
     pub dma: Vec<(usize, DmaCollector)>,
     /// DMA pre/post operation collectors.
     pub dma_pre_post: Vec<(usize, DmaPrePostCollector)>,
+    /// Collectors of the fused `DmaWithPrePost` air.
+    pub dma_with_pre_post: Vec<(usize, DmaWithPrePostCollector)>,
     /// DMA 64-bit aligned operation collectors.
     pub dma_64_aligned: Vec<(usize, Dma64AlignedCollector)>,
     /// DMA unaligned operation collectors.
@@ -89,6 +93,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             arith_inputs_generator: ArithCounterInputGen::new(BusDeviceMode::InputGenerator),
             dma: Vec::new(),
             dma_pre_post: Vec::new(),
+            dma_with_pre_post: Vec::new(),
             dma_64_aligned: Vec::new(),
             dma_unaligned: Vec::new(),
             dma_inputs_generator: DmaCounterInputGen::new(BusDeviceMode::InputGenerator),
@@ -319,6 +324,16 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 let inst =
                     downcast::<F, DmaPrePostInstance<F>>(secn, air_id, gid, "DmaPrePostInstance")?;
                 self.dma_pre_post.push((gid, inst.build_dma_collector(chunk)));
+                Ok(true)
+            }
+            id if id == DMA_WITH_PRE_POST_AIR_IDS[0] => {
+                let inst = downcast::<F, DmaWithPrePostInstance<F>>(
+                    secn,
+                    air_id,
+                    gid,
+                    "DmaWithPrePostInstance",
+                )?;
+                self.dma_with_pre_post.push((gid, inst.build_dma_collector(chunk)));
                 Ok(true)
             }
             id if id == DMA_64_ALIGNED_AIR_IDS[0]

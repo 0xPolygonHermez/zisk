@@ -43,11 +43,11 @@ pub const MAIN_INSTANCE_COST: usize = 19282;
 /// `Rom`: 5.39 GB.
 pub const ROM_INSTANCE_COST: usize = 5519;
 
-/// `Mem`: 8.45 GB.
-pub const MEM_INSTANCE_COST: usize = 8653;
+/// `Mem`: 13.58 GB.
+pub const MEM_INSTANCE_COST: usize = 13906;
 
-/// `InputData`: 4.58 GB.
-pub const INPUT_DATA_INSTANCE_COST: usize = 4690;
+/// `InputData`: 7.95 GB.
+pub const INPUT_DATA_INSTANCE_COST: usize = 8141;
 
 /// `RomData`: 4.14 GB.
 pub const ROM_DATA_INSTANCE_COST: usize = 4239;
@@ -128,28 +128,26 @@ pub const ARITH_EQ_HUGE_INSTANCE_COST: usize = 17377;
 /// `Arith256X`: 1.56 GB.
 pub const ARITH_256_X_INSTANCE_COST: usize = 1597;
 
-/// `Arith256XLarge`: 3.12 GB.
-pub const ARITH_256_X_LARGE_INSTANCE_COST: usize = 3190;
+/// `Arith256XLarge`: 12.47 GB.
+pub const ARITH_256_X_LARGE_INSTANCE_COST: usize = 12769;
 
 /// `ArithSecp256K1`: 1.84 GB.
 pub const ARITH_SECP_256_K_1_INSTANCE_COST: usize = 1884;
 
-/// `ArithSecp256K1Large`: 3.68 GB.
-pub const ARITH_SECP_256_K_1_LARGE_INSTANCE_COST: usize = 3769;
+/// `ArithSecp256K1Large`: 14.72 GB.
+pub const ARITH_SECP_256_K_1_LARGE_INSTANCE_COST: usize = 15073;
 
 /// `ArithBn254`: 1.93 GB.
 pub const ARITH_BN_254_INSTANCE_COST: usize = 1976;
 
-/// `ArithBn254Large`: 3.87 GB.
-pub const ARITH_BN_254_LARGE_INSTANCE_COST: usize = 3958;
+/// `ArithBn254Large`: 15.47 GB.
+pub const ARITH_BN_254_LARGE_INSTANCE_COST: usize = 15841;
 
 /// `ArithEq384`: 1.96 GB at `2**20`.
 pub const ARITH_EQ_384_INSTANCE_COST: usize = 2007;
 
-/// `ArithEq384Large`: 7.84 GB at `2**22`. Scaled from the 1.96 GB the base air measures at `2**20`,
-/// the ladder being linear in the rows (`ArithEq384Large` measured 15.72 GB at `2**23`, 8.02x the
-/// base). Re-read it from `build/setup.log` on the next setup.
-pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 8028;
+/// `ArithEq384Large`: 7.86 GB.
+pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 8049;
 
 /// `ArithEq384Huge`: 15.72 GB at `2**23`, measured — this is the height `ArithEq384Large` had
 /// before `zisk.pil` split the ladder into `Large` at `2**22` and `Huge` at `2**23`.
@@ -176,29 +174,32 @@ pub const BLAKE_3_F_INSTANCE_COST: usize = 4219;
 /// `Dma`: 3.29 GB.
 pub const DMA_INSTANCE_COST: usize = 3369;
 
-/// `Dma64Aligned`: 3.79 GB.
-pub const DMA_64_ALIGNED_INSTANCE_COST: usize = 3881;
+/// `Dma64Aligned`: 7.58 GB.
+pub const DMA_64_ALIGNED_INSTANCE_COST: usize = 7762;
 
 /// `Dma64AlignedLarge`: 15.15 GB.
 pub const DMA_64_ALIGNED_LARGE_INSTANCE_COST: usize = 15514;
 
-/// `Dma64AlignedMemSet`: 2.48 GB.
-pub const DMA_64_ALIGNED_MEM_SET_INSTANCE_COST: usize = 2540;
+/// `Dma64AlignedMemSet`: 8.65 GB.
+pub const DMA_64_ALIGNED_MEM_SET_INSTANCE_COST: usize = 8858;
 
-/// `Dma64AlignedMem`: 2.94 GB.
-pub const DMA_64_ALIGNED_MEM_INSTANCE_COST: usize = 3011;
+/// `Dma64AlignedMem`: 11.78 GB.
+pub const DMA_64_ALIGNED_MEM_INSTANCE_COST: usize = 12063;
 
-/// `Dma64AlignedMemLarge`: 5.89 GB.
-pub const DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST: usize = 6031;
+/// `Dma64AlignedMemLarge`: 11.78 GB.
+pub const DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST: usize = 12063;
 
-/// `Dma64AlignedMemCpy`: 3.48 GB.
-pub const DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST: usize = 3564;
+/// `Dma64AlignedMemCpy`: 10.90 GB.
+pub const DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST: usize = 11162;
 
-/// `DmaUnaligned`: 2.69 GB.
-pub const DMA_UNALIGNED_INSTANCE_COST: usize = 2755;
+/// `DmaUnaligned`: 9.14 GB.
+pub const DMA_UNALIGNED_INSTANCE_COST: usize = 9359;
 
 /// `DmaPrePost`: 4.63 GB.
 pub const DMA_PRE_POST_INSTANCE_COST: usize = 4741;
+
+/// `DmaWithPrePost`: 6.07 GB.
+pub const DMA_WITH_PRE_POST_INSTANCE_COST: usize = 6216;
 
 /// `JumpDest`: 3.40 GB.
 pub const JUMP_DEST_INSTANCE_COST: usize = 3482;
@@ -311,6 +312,7 @@ mod tests {
                     Dma64AlignedMemCpyTrace: Dma64AlignedMemCpyTraceRow: DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST,
                     DmaUnalignedTrace: DmaUnalignedTraceRow: DMA_UNALIGNED_INSTANCE_COST,
                     DmaPrePostTrace: DmaPrePostTraceRow: DMA_PRE_POST_INSTANCE_COST,
+                    DmaWithPrePostTrace: DmaWithPrePostTraceRow: DMA_WITH_PRE_POST_INSTANCE_COST,
                     JumpDestTrace: JumpDestTraceRow: JUMP_DEST_INSTANCE_COST,
                 );
     }

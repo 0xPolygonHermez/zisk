@@ -18,6 +18,7 @@ mod dma_planner;
 mod dma_pre_post;
 mod dma_strategy;
 mod dma_unaligned;
+mod dma_with_pre_post;
 
 pub use dma::*;
 pub use dma_64_aligned::*;
@@ -39,3 +40,4 @@ pub use dma_planner::*;
 pub use dma_pre_post::*;
 pub use dma_strategy::*;
 pub use dma_unaligned::*;
+pub use dma_with_pre_post::*;

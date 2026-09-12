@@ -30,11 +30,12 @@ use core::panic;
 use std::fmt;
 
 use crate::{
-    DmaCheckPoint, DmaCounterInputGen, DmaInstancesBuilder, DMA_64_ALIGNED_INPUTS_OFFSET,
-    DMA_64_ALIGNED_OFFSET, DMA_COUNTER_INPUTCPY, DMA_COUNTER_MEMCMP, DMA_COUNTER_MEMCPY,
-    DMA_COUNTER_MEMCPY_8, DMA_COUNTER_MEMSET, DMA_COUNTER_MEMSET_8, DMA_COUNTER_OPS,
-    DMA_COUNTER_OPS_EXT, DMA_INPUT_GEN_COUNTERS, DMA_OFFSET, DMA_PRE_POST_OFFSET,
-    DMA_UNALIGNED_INPUTS_OFFSET, DMA_UNALIGNED_OFFSET,
+    DmaCheckPoint, DmaCounterInputGen, DmaInstancesBuilder, DmaWithPrePostCheckPoint,
+    DmaWithPrePostInstancesBuilder, DMA_64_ALIGNED_INPUTS_OFFSET, DMA_64_ALIGNED_OFFSET,
+    DMA_COUNTER_INPUTCPY, DMA_COUNTER_MEMCMP, DMA_COUNTER_MEMCPY, DMA_COUNTER_MEMCPY_8,
+    DMA_COUNTER_MEMSET, DMA_COUNTER_MEMSET_8, DMA_COUNTER_OPS, DMA_COUNTER_OPS_EXT,
+    DMA_INPUT_GEN_COUNTERS, DMA_OFFSET, DMA_PRE_POST_OFFSET, DMA_UNALIGNED_INPUTS_OFFSET,
+    DMA_UNALIGNED_OFFSET, DMA_WITH_PRE_POST_OFFSET, DMA_WPP_CLASSES, DMA_WPP_CLASS_ROWS,
 };
 
 #[cfg(feature = "save_dma_plans")]
@@ -46,9 +47,10 @@ use zisk_common::{select_airs, AirChoice, BusDeviceMetrics, BusDeviceMode, Check
 use zisk_pil::{
     Dma64AlignedLargeTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemLargeTrace,
     Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace, DmaPrePostTrace, DmaTrace,
-    DmaUnalignedTrace, DMA_64_ALIGNED_INSTANCE_COST, DMA_64_ALIGNED_LARGE_INSTANCE_COST,
-    DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST, DMA_64_ALIGNED_MEM_INSTANCE_COST,
-    DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST, DMA_64_ALIGNED_MEM_SET_INSTANCE_COST,
+    DmaUnalignedTrace, DmaWithPrePostTrace, DMA_64_ALIGNED_INSTANCE_COST,
+    DMA_64_ALIGNED_LARGE_INSTANCE_COST, DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST,
+    DMA_64_ALIGNED_MEM_INSTANCE_COST, DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST,
+    DMA_64_ALIGNED_MEM_SET_INSTANCE_COST,
 };
 
 /// Airs of the 64-bit-aligned group, in the order the strategy and the hand-out both use.
@@ -123,6 +125,11 @@ pub struct DmaStrategy<F> {
     pub dma: usize,
     /// Instances of the single-air `DmaPrePost` group.
     pub dma_pre_post: usize,
+    /// Instances of the fused `DmaWithPrePost` air, which replaces the two groups above when
+    /// [`DmaStrategy::USE_DMA_WITH_PRE_POST`] is set.
+    pub dma_with_pre_post: usize,
+    /// Plan of the fused air, filled by [`DmaStrategy::calculate`] and taken by the planner.
+    pub dma_with_pre_post_plan: Vec<(CheckPoint, DmaWithPrePostCheckPoint)>,
     /// The 64-bit-aligned group's assignment.
     pub dma_64_aligned: Dma64AlignedInstances,
     /// Instances of the single-air `DmaUnaligned` group.
@@ -138,11 +145,17 @@ impl<F> fmt::Display for DmaStrategy<F> {
              full      {:>3}\n\
              ───────────────────────────────── DMA_PRE_POST\n  \
              full      {:>3}\n\
+             ────────────────────────────── DMA_WITH_PRE_POST\n  \
+             full      {:>3}\n\
              ─────────────────────────────── DMA_64_ALIGNED\n\
              {}\
              ──────────────────────────────── DMA_UNALIGNED\n  \
              full      {:>3}\n\n",
-            self.dma, self.dma_pre_post, self.dma_64_aligned, self.dma_unaligned,
+            self.dma,
+            self.dma_pre_post,
+            self.dma_with_pre_post,
+            self.dma_64_aligned,
+            self.dma_unaligned,
         )
     }
 }
@@ -167,8 +180,19 @@ impl<F: PrimeField64> DmaStrategy<F> {
         totals
     }
 
+    /// Whether the fused [`DmaWithPrePostTrace`] air proves the DMA controller together with its
+    /// PRE/POST sub-operations.
+    ///
+    /// While this is `false` the two separate airs keep the work and the fused one gets no
+    /// instance, exactly as before. Flipping it moves every non-direct DMA operation to the fused
+    /// air: one row per operation instead of one `Dma` row plus one or two `DmaPrePost` rows, one
+    /// air instead of two, and no DMA_BUS_ID between them — at the price of a wider row, and of
+    /// one row per operation that has neither a PRE nor a POST being as wide as the rest.
+    pub const USE_DMA_WITH_PRE_POST: bool = false;
+
     const DMA_ROWS: usize = DmaTrace::<()>::NUM_ROWS;
     const DMA_PRE_POST_ROWS: usize = DmaPrePostTrace::<()>::NUM_ROWS;
+    const DMA_WITH_PRE_POST_ROWS: usize = DmaWithPrePostTrace::<()>::NUM_ROWS;
     const DMA_UNALIGNED_ROWS: usize = DmaUnalignedTrace::<()>::NUM_ROWS;
     const DMA_64_ALIGNED_ROWS: usize = Dma64AlignedTrace::<()>::NUM_ROWS;
     const DMA_64_ALIGNED_LARGE_ROWS: usize = Dma64AlignedLargeTrace::<()>::NUM_ROWS;
@@ -320,14 +344,34 @@ impl<F: PrimeField64> DmaStrategy<F> {
             + rows[DMA_COUNTER_MEMCMP]
     }
 
+    /// Rows the fused air needs for the operations of one chunk (or of the whole execution): one
+    /// per operation, two for the ones that need both a PRE and a POST.
+    fn dma_with_pre_post_rows(counters: &[usize]) -> usize {
+        (0..DMA_WPP_CLASSES)
+            .map(|class| counters[DMA_WITH_PRE_POST_OFFSET + class] * DMA_WPP_CLASS_ROWS[class])
+            .sum()
+    }
+
     fn calculate_strategy(&mut self, totals: &DmaCounterInputGen) {
-        self.dma =
-            Self::single_air_rows(&totals.counters[DMA_OFFSET..DMA_OFFSET + DMA_COUNTER_OPS])
-                .div_ceil(Self::DMA_ROWS);
-        self.dma_pre_post = Self::single_air_rows(
-            &totals.counters[DMA_PRE_POST_OFFSET..DMA_PRE_POST_OFFSET + DMA_COUNTER_OPS],
-        )
-        .div_ceil(Self::DMA_PRE_POST_ROWS);
+        if Self::USE_DMA_WITH_PRE_POST {
+            // The fused air proves the DMA controller together with its PRE/POST sub-operations,
+            // so the two separate airs get nothing.
+            self.dma = 0;
+            self.dma_pre_post = 0;
+            self.dma_with_pre_post = DmaWithPrePostInstancesBuilder::instances_needed(
+                Self::dma_with_pre_post_rows(&totals.counters),
+                Self::DMA_WITH_PRE_POST_ROWS,
+            );
+        } else {
+            self.dma =
+                Self::single_air_rows(&totals.counters[DMA_OFFSET..DMA_OFFSET + DMA_COUNTER_OPS])
+                    .div_ceil(Self::DMA_ROWS);
+            self.dma_pre_post = Self::single_air_rows(
+                &totals.counters[DMA_PRE_POST_OFFSET..DMA_PRE_POST_OFFSET + DMA_COUNTER_OPS],
+            )
+            .div_ceil(Self::DMA_PRE_POST_ROWS);
+            self.dma_with_pre_post = 0;
+        }
         Self::calculate_dma_64_alignment_strategy(
             &totals.counters[DMA_64_ALIGNED_OFFSET..DMA_64_ALIGNED_OFFSET + DMA_COUNTER_OPS_EXT],
             &mut self.dma_64_aligned,
@@ -353,6 +397,11 @@ impl<F: PrimeField64> DmaStrategy<F> {
             "dma_pre_post_full",
             self.dma_pre_post,
             Self::DMA_PRE_POST_ROWS,
+        );
+        let mut dma_with_pre_post = DmaWithPrePostInstancesBuilder::new(
+            "dma_with_pre_post",
+            self.dma_with_pre_post,
+            Self::DMA_WITH_PRE_POST_ROWS,
         );
         let mut dma_unaligned =
             DmaInstancesBuilder::new("dma_unaligned", self.dma_unaligned, Self::DMA_UNALIGNED_ROWS);
@@ -384,14 +433,23 @@ impl<F: PrimeField64> DmaStrategy<F> {
             let counters =
                 (**dyn_counter).as_any().downcast_ref::<DmaCounterInputGen>().unwrap().counters;
 
-            // DMA and DMA_PRE_POST: one air each, so every operation goes to it.
-            for (offset, builder) in
-                [(DMA_OFFSET, &mut dma_full), (DMA_PRE_POST_OFFSET, &mut dma_pre_post_full)]
-            {
-                for op in 0..DMA_COUNTER_OPS {
-                    let rows = counters[offset + op];
-                    if rows > 0 {
-                        builder.add_op_rows(*current_chunk, 0, rows, rows, op);
+            if Self::USE_DMA_WITH_PRE_POST {
+                // DMA_WITH_PRE_POST: operations, not rows — an operation cannot be split between
+                // two instances, its PRE row has to stay next to its DMA row.
+                for class in 0..DMA_WPP_CLASSES {
+                    let ops = counters[DMA_WITH_PRE_POST_OFFSET + class];
+                    dma_with_pre_post.add_ops(*current_chunk, class, ops);
+                }
+            } else {
+                // DMA and DMA_PRE_POST: one air each, so every operation goes to it.
+                for (offset, builder) in
+                    [(DMA_OFFSET, &mut dma_full), (DMA_PRE_POST_OFFSET, &mut dma_pre_post_full)]
+                {
+                    for op in 0..DMA_COUNTER_OPS {
+                        let rows = counters[offset + op];
+                        if rows > 0 {
+                            builder.add_op_rows(*current_chunk, 0, rows, rows, op);
+                        }
                     }
                 }
             }
@@ -448,6 +506,8 @@ impl<F: PrimeField64> DmaStrategy<F> {
             Dma64AlignedMemCpyTrace::<F>::AIR_ID,
             Dma64AlignedMemSetTrace::<F>::AIR_ID,
         ];
+        self.dma_with_pre_post_plan = dma_with_pre_post.get_plan();
+
         let mut plans = vec![
             (DmaTrace::<F>::AIR_ID, dma_full.get_plan()),
             (DmaPrePostTrace::<F>::AIR_ID, dma_pre_post_full.get_plan()),
@@ -484,6 +544,19 @@ impl<F: PrimeField64> DmaStrategy<F> {
                 .enumerate()
                 .map(|(segment_id, (_checkpoint, dma_checkpoint))| {
                     dma_checkpoint.get_debug_info(title, segment_id as u64)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            debug_info += "\n";
+        }
+        if !self.dma_with_pre_post_plan.is_empty() {
+            let title = &get_dma_air_name::<F>(DmaWithPrePostTrace::<F>::AIR_ID).to_string();
+            debug_info += &self
+                .dma_with_pre_post_plan
+                .iter()
+                .enumerate()
+                .map(|(segment_id, (_checkpoint, checkpoint))| {
+                    checkpoint.get_debug_info(title, segment_id as u64)
                 })
                 .collect::<Vec<_>>()
                 .join("\n");

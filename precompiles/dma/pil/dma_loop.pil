@@ -1,0 +1,635 @@
+// DmaLoop
+//
+// `Dma64Aligned` and `DmaUnaligned` fused into one air: the loop phase of a DMA operation, aligned
+// or not.
+//
+// The two are not connected by any bus — the DMA controller publishes ONE `assumes_operation` on
+// OPERATION_BUS_ID and either of them proves it, the witness decides which. So this air is not a
+// fusion in the sense `DmaWithPrePost` is (it removes no bus leg): it's a **third alternative on
+// the same bus**. Which is why the controller does not change at all to accommodate it — the only
+// edit `dma.pil` needs is the continuation id below it.
+//
+// What it buys, and what it costs
+// ───────────────────────────────
+//
+// `DmaUnaligned` is already `Dma64Aligned` with `op_x_row = 1` plus a byte rotation — the header of
+// `dma_unaligned.pil` says as much:
+//
+//     CONSIDERATION: support offset_0 to prove also aligned memcpy.
+//
+// This air is that consideration carried out, plus memset and inputcpy. The price is that the
+// aligned path inherits the unaligned geometry: **one 64-bit word per row**, because the write of
+// row i consumes bytes read by row i+1, and the specialised aligned airs pack up to 8 words in a
+// row. So this is NOT a replacement for them — it is a generalist to hand to `select_airs`, which
+// minimises instance count first: it earns its place on a workload that has both aligned and
+// unaligned work but not enough of either to justify two instances.
+//
+// The two sequence shapes
+// ───────────────────────
+//
+// An operation of N 64-bit words takes:
+//
+//   offset > 0 (unaligned):  N + 1 rows. Row i reads src64+i; rows 0..N-1 write dst64+i. The extra
+//                            row N only reads: bytes src+offset .. src+offset+8N-1 span N+1 words,
+//                            and row N-1 needs the head bytes of word N.
+//   offset = 0 (aligned):    N rows. Row i reads src64+i and writes dst64+i. There is no tail read
+//                            — and it must not happen, src64+N is outside the source.
+//
+// @[count] counts down to 0 in the first shape and to 1 in the second, so the row that closes the
+// sequence is the one where `count == offset_0`:
+//
+//     ROW          i         ┊  i+1 ... i+count-1 ┊       i+count
+//                            ┊                    ┊
+//   bytes        0..7        ┊        8..15       ┊
+//          ┌──────────────┐  ┊  ┌──────────────┐  ┊
+//                            ┊                    ┊
+//    READ ┌─┬─┬─┬─┐┌─┬─┬─┬─┐ ┊ ┌─┬─┬─┬─┐┌─┬─┬─┬─┐ ┊ ┌─┬─┬─┬─┐┌─┬─┬─┬─┐
+//         └─┴─┴─┴─┘└─┴─┴─┴─┘ ┊ └─┴─┴─┴─┘└─┴─┴─┴─┘ ┊ └─┴─┴─┴─┘└─┴─┴─┴─┘
+//          ┌───┘ │  │ │ │ │  ┊  │ │ │        ┌────┊──┘ │
+//          │ ┌───┘  │ │ │ │  ┊  │ │ │        │ ┌──┊────┘
+//          │ │ ┌────┘ │ │ │  ┊  │ │ │        │ │  ┊
+//          │ │ │ ┌────┘ │ │  ┊  │ │ │ ...... │ │  ┊
+//          │ │ │ │  ┌───┘ │  ┊  │ │ │        │ │  ┊
+//          │ │ │ │  │ ┌───┘  ┊  │ │ │        │ │  ┊
+//          │ │ │ │  │ │ ┌────┊──┘ │ │ ...... │ │  ┊
+//          │ │ │ │  │ │ │ ┌──┊────┘ │        │ │  ┊
+//          │ │ │ │  │ │ │ │  ┊  ┌───┘        │ │  ┊
+//   WRITE ┌─┬─┬─┬─┐┌─┬─┬─┬─┐ ┊ ┌─┬─┬─┬─┐┌─┬─┬─┬─┐ ┊ only when offset = 0
+//         └─┴─┴─┴─┘└─┴─┴─┴─┘ ┊ └─┴─┴─┴─┘└─┴─┴─┴─┘ ┊
+//                            ┊                    ┊
+//          └──────────────┘  ┊                    ┊
+//   bytes      16..23        ┊                    ┊
+//
+// Words per row
+// ─────────────
+//
+// @[op_x_row] packs several consecutive words of the SAME operation in one row — they share
+// @[dst64], @[src64], @[count] and @[main_step], only the `8*i` displacement differs. It is the
+// same knob `Dma64Aligned` has, and it does not let two operations share a row: @[seq_end] is a
+// property of the row. What it does buy is dividing the fixed part of a row (offsets, selectors,
+// step, addresses ≈ 23 columns) among `op_x_row` words.
+//
+// The rotation reads the row as one byte stream, `read_bytes[0 .. 8*op_x_row-1]` continued by the
+// first eight bytes of the next row, and word `i` takes the eight bytes at `8*i + offset`. The
+// furthest byte any word needs is `8*(op_x_row-1) + 7 + 7 = 8*op_x_row + 6`, which is why seven
+// bytes of the next row are enough.
+//
+// The four operations on one rotation
+// ───────────────────────────────────
+//
+// Only memcpy and memcmp have a source, so only they can be unaligned. memset and inputcpy always
+// run with `offset = 0`, and both fall out of the same rotation expression without a special case:
+//
+//   memcpy / memeq   @[read_bytes] come from memory at src64*8
+//   inputcpy         @[read_bytes] are the free-input word, no memory read — they are already
+//                    byte-range-checked here, so no extra chunk columns are needed for them
+//   memset           @[read_bytes] are all @[fill_byte], so the rotation yields the fill word
+//
+// NOTE: Data from several programs has been analyzed to see if a special version for 32-bit
+// displacements would make sense because then it wouldn't be necessary to decompose into bytes
+// since the chunks would be taken directly. It has been seen that these operations are not the
+// most frequent.
+
+// Continuation id of this air's chain. It lives here rather than next to DMA_64_ALIGNED_CONT_ID /
+// DMA_UNALIGNED_CONT_ID in `dma.pil` so that requiring this file is the only thing that pulls it
+// in — `dma.pil` is on the live path of `zisk.pil` and this air is not instantiated yet.
+const int DMA_LOOP_CONT_ID = 8202;
+
+airtemplate DmaLoop(int N = 2**21,                // Rows of instance
+                    const expr enable_flag = 1,   // Expression to active the beggining of
+                                                  // continuations, used for executions that
+                                                  // not generates instances.
+                    const int op_x_row = 1,       // 64-bit words of the same operation per row
+                    int cont_subid = 0) {         // Force subid used in continuations
+
+    const int RC = 2;   // number of 32-bit chunks of a native 64-bit value
+
+    assert(op_x_row >= 1);
+
+    // Bytes of the row's own stream, plus the eight of the next row the last word can reach into.
+    const int ROW_BYTES = 8 * op_x_row;
+    const int STREAM_BYTES = ROW_BYTES + 8;
+
+    // continuation control, used to create a new continuation subid to avoid collision between
+    // DmaLoop continuations. If you instance diferent airs with same template need diferenciate
+    // them. If parameter cont_subid = 0 means that the subid is auto-generated
+
+    container proof.dma_loop {
+        int cont_subids_count = 0;
+        int cont_subids[64];
+    }
+    use proof.dma_loop;
+
+    if (cont_subid == 0) {
+        cont_subid = cont_subids_count + 1;
+        for (int i = 0; i < cont_subids_count; ++i) {
+            if (cont_subids[i] >= cont_subid) {
+                cont_subid = cont_subids[i] + 1;
+            }
+        }
+    } else {
+        for (int i = 0; i < cont_subids_count; ++i) {
+            assert(cont_subids[i] != cont_subid, `duplicated cont_subid ${cont_subid}`);
+        }
+    }
+    cont_subids[cont_subids_count] = cont_subid;
+    cont_subids_count += 1;
+
+    const expr L1 = get_L1();
+    const expr LAST = L1';
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // SEGMENT VALUES
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    airval segment_id;                 // Id of current segment
+    airval segment_previous_seq_end;   // Last value of @[seq_end] in previous segment.
+    airval segment_previous_src64;     // Last value of @[src64] in previous segment.
+    airval segment_previous_dst64;     // Last value of @[dst64] in previous segment.
+    airval segment_previous_main_step; // Last value of @[main_step] in previous segment.
+    airval segment_previous_count;     // Last value of @[count] in previous segment.
+    airval segment_previous_flags;     // Last value of @[flags] in previous segment.
+    airval segment_previous_fill_byte; // Last value of @[fill_byte] in previous segment.
+
+    airval segment_first_bytes[8];     // bytes of next block
+
+    airval segment_last_seq_end;       // Last value of @[seq_end] in current segment.
+    airval segment_last_src64;         // Last value of @[src64] in current segment.
+    airval segment_last_dst64;         // Last value of @[dst64] in current segment.
+    airval segment_last_main_step;     // Last value of @[main_step] in current segment.
+    airval segment_last_count;         // Last value of @[count] in current segment.
+    airval segment_last_flags;         // Last value of @[flags] in current segment.
+    airval segment_last_fill_byte;     // Last value of @[fill_byte] in current segment.
+
+    airval segment_next_bytes[8];      // bytes of next block
+
+    airval is_last_segment;            // 1 if this is the last segment, 0 otherwise.
+
+    segment_previous_seq_end * (1 - segment_previous_seq_end) === 0;
+    segment_last_seq_end * (1 - segment_last_seq_end) === 0;
+    is_last_segment * (1 - is_last_segment) === 0;
+
+    // if it's last segment must be the end of sequence or padding that use end of sequence
+    is_last_segment * (1 - segment_last_seq_end) === 0;
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // ROW
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    col witness bits(MAIN_STEP_BITS) main_step;
+    col witness bits(ADDR_W_BITS) src64;
+    col witness bits(ADDR_W_BITS) dst64;
+    col witness bits(32) count; // number of 64-bit words pending
+
+    col witness bits(1) seq_end;
+    seq_end * (1 - seq_end) === 0;
+
+    col witness bits(1) previous_seq_end;
+    previous_seq_end <== L1 * (segment_previous_seq_end - 'seq_end) + 'seq_end;
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // operation selectors
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    col witness bits(1) sel_memcpy;
+    col witness bits(1) sel_memeq;
+    col witness bits(1) sel_memset;
+    col witness bits(1) sel_inputcpy;
+
+    sel_memcpy * (1 - sel_memcpy) === 0;
+    sel_memeq * (1 - sel_memeq) === 0;
+    sel_memset * (1 - sel_memset) === 0;
+    sel_inputcpy * (1 - sel_inputcpy) === 0;
+
+    const expr sel = sel_memcpy + sel_memeq + sel_memset + sel_inputcpy;
+    sel * (1 - sel) === 0;
+
+    // @[sel_memcpy_count_load] marks a memcpy proved without the DMA controller, reading its count
+    // from memory. It "updates" the operation from XMEMCPY to the regular MEMCPY.
+    col witness bits(1) sel_memcpy_count_load;
+    sel_memcpy_count_load * (1 - sel_memcpy_count_load) === 0;
+    sel_memcpy_count_load * (1 - sel_memcpy) === 0;
+    // this selector only could be active the first clock of operation, after that must be 0.
+    sel_memcpy_count_load * (1 - previous_seq_end) === 0;
+
+    // We have @[sel] to indicate when a row is used, and if it is used at least word 0 is active,
+    // so the extra selectors only run from 1 to op_x_row-1. They are monotone decreasing, which is
+    // what lets @[sel_op_last] below pick the last active word with a degree-1 expression.
+
+    const expr sel_op[op_x_row + 1];
+    sel_op[0] = sel;
+    sel_op[op_x_row] = 0;
+
+    if (op_x_row > 1) {
+        col witness bits(1) air.sel_op_from_1[op_x_row - 1];
+        for (int i = 1; i < op_x_row; ++i) {
+            sel_op_from_1[i-1] * (1 - sel_op_from_1[i-1]) === 0;
+            sel_op[i] = sel_op_from_1[i-1];
+            // if previous sel_op it's zero, the rest must be zero.
+            (1 - sel_op[i-1]) * sel_op[i] === 0;
+        }
+    }
+
+    expr _ops_selected = 0;
+    for (int i = 0; i < op_x_row; ++i) {
+        _ops_selected += sel_op[i];
+    }
+    const expr ops_selected = _ops_selected;
+
+    // @[sel_op_last] marks the last active word of the row. The selectors being monotone makes it
+    // a difference of two of them instead of a product.
+    const expr sel_op_last[op_x_row];
+    for (int i = 0; i < op_x_row; ++i) {
+        sel_op_last[i] = sel_op[i] - sel_op[i+1];
+    }
+
+    // fill_byte is send from main in extended_arg, this argument is static, known in compilation
+    // time, for this reason we don't need to validate its range check.
+    col witness bits(8) fill_byte;
+
+    // if sel_memset is disabled fill_byte must be zero, it's an optimization for extended_arg
+    (1 - sel_memset) * fill_byte === 0;
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // byte offset between src and dst
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    //
+    // Unlike `DmaUnaligned`, offset 0 is a valid value here — that is the whole point. It is
+    // @[offset_0] that is derived from the rest, so a row with every offset column at zero (memset,
+    // inputcpy, and padding) is an aligned row.
+
+    col witness bits(1) offset_1;
+    col witness bits(1) offset_2;
+    col witness bits(1) offset_3;
+    col witness bits(1) offset_4;
+    col witness bits(1) offset_5;
+    col witness bits(1) offset_6;
+    col witness bits(1) offset_7;
+
+    offset_1 * (1 - offset_1) === 0;
+    offset_2 * (1 - offset_2) === 0;
+    offset_3 * (1 - offset_3) === 0;
+    offset_4 * (1 - offset_4) === 0;
+    offset_5 * (1 - offset_5) === 0;
+    offset_6 * (1 - offset_6) === 0;
+    offset_7 * (1 - offset_7) === 0;
+
+    const expr offset_1to7 = offset_1 + offset_2 + offset_3 + offset_4 + offset_5 + offset_6 +
+                             offset_7;
+    offset_1to7 * (offset_1to7 - 1) === 0;
+
+    const expr offset_0 = (1 - offset_1to7);
+    const expr offset = offset_1 + offset_2 * 2 + offset_3 * 3 + offset_4 * 4 + offset_5 * 5 +
+                        offset_6 * 6 + offset_7 * 7;
+
+    // Only memcpy and memcmp read a source, so only they can be unaligned.
+    (sel_memset + sel_inputcpy) * offset_1to7 === 0;
+
+    // @[flags] packs everything that is constant along a sequence, so one latch covers all of it
+    // and the continuation payload carries one field instead of six.
+    const int F_SEL_MEMCPY = 1;
+    const int F_SEL_MEMCMP = 2;
+    const int F_SEL_INPUTCPY = 4;
+    const int F_SEL_MEMSET = 8;
+    const int F_OFFSET = 16;
+
+    const expr flags = F_SEL_MEMCPY * sel_memcpy + F_SEL_MEMCMP * sel_memeq +
+                       F_SEL_INPUTCPY * sel_inputcpy + F_SEL_MEMSET * sel_memset +
+                       F_OFFSET * offset;
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // bytes read and value written
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    col witness bits(8) read_bytes[ROW_BYTES];
+
+    const expr read_value[op_x_row][RC];
+    for (int i = 0; i < op_x_row; ++i) {
+        const int base = 8 * i;
+        for (int c = 0; c < RC; ++c) {
+            const int cbase = base + 4 * c;
+            range_dual_byte(read_bytes[cbase+1], read_bytes[cbase], sel_op[i]);
+            range_dual_byte(read_bytes[cbase+3], read_bytes[cbase+2], sel_op[i]);
+            read_value[i][c] = read_bytes[cbase] + P2_8 * read_bytes[cbase+1] +
+                               P2_16 * read_bytes[cbase+2] + P2_24 * read_bytes[cbase+3];
+        }
+    }
+
+    // A memset has no source: the bytes it "reads" are the fill byte, which is what makes the
+    // rotation below produce the fill word without a special case. This covers the whole row, the
+    // inactive words included, so the value they produce is well defined too.
+    for (int i = 0; i < ROW_BYTES; ++i) {
+        sel_memset * (read_bytes[i] - fill_byte) === 0;
+    }
+
+    // byte_0, byte_1, byte_2, byte_3, byte_4, byte_5, byte_6, byte_7, byte_0', byte_1' ...
+
+    const expr next_bytes[8];
+
+    // when an instance last row has seq_end = 1, means that next_bytes don't need to match
+    // with first read_bytes, because it's new dma operation, in this situation set value
+    // of segment_next_bytes to 0.
+
+    col witness bits(1) no_last_no_seq_end;
+    no_last_no_seq_end <== (1 - LAST) * (1 - seq_end);
+
+    for (int i = 0; i < 8; ++i) {
+        // if LAST next_bytes are bytes sent to bus, if no LAST but is a seq_end, no sense
+        // use bytes of the next input, in this case next_bytes = 0, otherwise next_bytes are
+        // the next read (src64 + 1) * 8
+        next_bytes[i] = LAST * segment_next_bytes[i] + no_last_no_seq_end * read_bytes[i]';
+
+        // if last row of previous instance aren't the the last row of an input, segment_first_bytes
+        // must match with bytes "received" from bus. Otherwise, zeros was sent to bus and them not
+        // need to match with read_bytes because are bytes of other input.
+        (1 - segment_previous_seq_end) * L1 * (segment_first_bytes[i] - read_bytes[i]) === 0;
+
+        // force segment_next_bytes to zero, when it's finish of input
+        segment_last_seq_end * segment_next_bytes[i] === 0;
+
+        // to force the "received" values from the bus are 0 when the last row of the previous
+        // segment is final of input (seq_end).
+        segment_previous_seq_end * L1 * segment_first_bytes[i] === 0;
+    }
+
+    col witness bits(32) write_value[op_x_row][RC];
+
+    // The row reads as one byte stream: its own bytes followed by the first eight of the next row.
+    const expr stream_byte[STREAM_BYTES];
+    for (int j = 0; j < ROW_BYTES; ++j) {
+        stream_byte[j] = read_bytes[j];
+    }
+    for (int j = 0; j < 8; ++j) {
+        stream_byte[ROW_BYTES + j] = next_bytes[j];
+    }
+
+    // @[offset_sel] indexed by the offset value, so the rotation is one loop instead of a table.
+    // The offset_0 entry is what `DmaUnaligned` does not have: with no rotation the write is the
+    // read, which is the aligned copy, the input copy and (with read_bytes = fill_byte) the memset.
+    const expr offset_sel[8] = [offset_0, offset_1, offset_2, offset_3,
+                                offset_4, offset_5, offset_6, offset_7];
+
+    // Word i takes the eight bytes of the stream at 8*i + offset.
+    for (int i = 0; i < op_x_row; ++i) {
+        for (int c = 0; c < RC; ++c) {
+            expr _wr = 0;
+            for (int f = 0; f < 8; ++f) {
+                expr _chunk = 0;
+                for (int b = 0; b < 4; ++b) {
+                    _chunk += (1 << (8 * b)) * stream_byte[8 * i + f + 4 * c + b];
+                }
+                _wr += offset_sel[f] * _chunk;
+            }
+            write_value[i][c] <== _wr;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // memory access
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    //
+    // @[sel_read] a memset writes a constant and an input copy takes its word from the free input,
+    // neither of them reads memory.
+    //
+    // @[sel_write] the last active word of a sequence does not write when the copy is unaligned:
+    // it is there only to read the bytes its predecessor needs. Everywhere else a word writes iff
+    // it is active, and @[sel_op_last] being a difference of two monotone selectors keeps the
+    // whole thing at degree 2 — so the binary constraint the std adds on a bus selector stays at
+    // degree 2 as well, which is why both are materialized as columns.
+
+    const expr sel_load_src = sel_memcpy + sel_memeq;
+
+    col witness bits(1) tail_no_write;
+    tail_no_write <== seq_end * offset_1to7;
+
+    col witness bits(1) sel_read[op_x_row];
+    col witness bits(1) sel_write[op_x_row];
+
+    for (int i = 0; i < op_x_row; ++i) {
+        sel_read[i] <== sel_op[i] * sel_load_src;
+        sel_write[i] <== sel_op[i] - tail_no_write * sel_op_last[i];
+
+        precompiled_mem_load(
+            sel: sel_read[i],
+            main_step:,
+            addr: src64 * 8 + 8 * i,
+            value: read_value[i]
+        );
+
+        // for a memcmp the access is a read with the same value, which is what proves src and dst
+        // match
+        precompiled_mem_op(
+            is_write: sel_memcpy + sel_memset + sel_inputcpy,
+            sel: sel_write[i],
+            main_step:,
+            addr: dst64 * 8 + 8 * i,
+            value: write_value[i]
+        );
+    }
+
+    // For a memcpy proved without the DMA controller the count comes from a specific position on
+    // RAM, EXTRA_PARAMS_ADDR.
+    precompiled_mem_load(
+        sel: sel_memcpy_count_load,
+        main_step:,
+        addr: EXTRA_PARAMS_ADDR,
+        value: [count * 8, 0]
+    );
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // operation bus
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    //
+    // DMA_LOOP ==> DMA
+    // DMA_LOOP ==> MAIN
+    // --------------------------------------------------------------------------------
+    // OP_DMA_MEMCPY   (dst, 0, src,   0, 0, 0, 0, main_step, 0)     + MEM(count)
+    // OP_DMA_XMEMCPY  (dst, 0, src,   0, 0, 0, 0, main_step, count) + offset
+    // OP_DMA_XMEMEQ   (dst, 0, src,   0, 0, 0, 0, main_step, count) + offset
+    // OP_DMA_INPUTCPY (dst, 0, count, 0, 0, 0, 0, main_step, 0)
+    // OP_DMA_XMEMSET  (dst, 0, count, 0, 0, 0, 0, main_step, value)
+
+    const expr op = OP_DMA_XMEMCPY * sel_memcpy + OP_DMA_XMEMEQ * sel_memeq +
+                    OP_DMA_XMEMSET * sel_memset + OP_DMA_INPUTCPY * sel_inputcpy +
+                    (OP_DMA_MEMCPY - OP_DMA_XMEMCPY) * sel_memcpy_count_load;
+
+    col witness bits(32) b0;
+    b0 <== src64 * 8 * (sel_memcpy + sel_memeq) + count * 8 * (sel_inputcpy + sel_memset);
+
+    //  ┌─ sel_memcpy
+    //  │  ┌─── sel_memcpy_count_load
+    //  │  │  ┌─── sel_memcpy - sel_memcpy_count_load
+    //
+    //  0  0  0 disable, only active if it's memeq
+    //  0  1 -1 not allowed by constraints
+    //  1  0  1 means a xmemcpy, the count must be on extended_arg
+    //  1  1  1 means memcpy, the count value must be read from memory
+    //
+    // fill_byte is added unconditionally because it is forced to zero for every other operation.
+
+    col witness bits(32) extended_arg;
+    extended_arg <== count * 8 * (sel_memcpy - sel_memcpy_count_load + sel_memeq) + fill_byte;
+
+    proves_operation(op:,
+                     a: [dst64 * 8, 0],
+                     b: [b0, 0],
+                     c: [dst64 * 8, 0],
+                     flag: 0,
+                     main_step:,
+                     extended_arg:,
+                     extra_args: [offset],
+                     mul: previous_seq_end);
+
+    // @[padding]
+    //
+    // A padding row is every column at zero but @[seq_end], which has to stay at 1 so the row is
+    // not read as the continuation of a sequence. It proves the tuple (op 0, dst 0, src 0,
+    // count 0, main_step 0, offset 0) once — @[previous_seq_end] is 1 all along the padding — and
+    // this cancels them. Unlike `DmaUnaligned`, padding needs no offset of its own: @[sel] keeps
+    // it out of @[sel_dst_access] and of @[seq_end_position].
+
+    airval padding_size;
+    assumes_padding_operation(op: 0, padding_size:);
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // SEQUENCE
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    LAST * (seq_end - segment_last_seq_end) === 0;
+    LAST * (1 - seq_end) * (src64 - segment_last_src64) === 0;
+    LAST * (1 - seq_end) * (dst64 - segment_last_dst64) === 0;
+    LAST * (1 - seq_end) * (main_step - segment_last_main_step) === 0;
+    LAST * (1 - seq_end) * (count - segment_last_count) === 0;
+    LAST * (1 - seq_end) * (flags - segment_last_flags) === 0;
+    LAST * (1 - seq_end) * (fill_byte - segment_last_fill_byte) === 0;
+
+    // when segment_last_seq_end = 1, means that the next segment starts with new input, no need to
+    // compare with previous, to simplify WC of continuations, zeros are sent to bus
+    // these constraints aren't strictly necessary, because these values are used only when
+    // seq_end = 0
+
+    segment_last_src64 * segment_last_seq_end === 0;
+    segment_last_dst64 * segment_last_seq_end === 0;
+    segment_last_main_step * segment_last_seq_end === 0;
+    segment_last_count * segment_last_seq_end === 0;
+    segment_last_flags * segment_last_seq_end === 0;
+    segment_last_fill_byte * segment_last_seq_end === 0;
+
+    segment_previous_src64 * segment_previous_seq_end === 0;
+    segment_previous_dst64 * segment_previous_seq_end === 0;
+    segment_previous_main_step * segment_previous_seq_end === 0;
+    segment_previous_count * segment_previous_seq_end === 0;
+    segment_previous_flags * segment_previous_seq_end === 0;
+    segment_previous_fill_byte * segment_previous_seq_end === 0;
+
+    const expr continue_seq_on_l1 = L1 * (1 - segment_previous_seq_end);
+    const expr continue_seq_on_no_l1 = (1 - L1) * (1 - 'seq_end);
+
+    // TRANSITIONS:
+    //
+    // After first element of sequence
+    //   count = 'count - 1
+    //   src64 = 'src64 + 1
+    //   dst64 = 'dst64 + 1
+    //
+    // NOTE: memset and inputcpy have no source, @[src64] just runs along unused for them.
+
+    continue_seq_on_l1 * (count - (segment_previous_count - op_x_row)) === 0;
+    continue_seq_on_no_l1 * (count - ('count - op_x_row)) === 0;
+
+    continue_seq_on_l1 * (src64 - (segment_previous_src64 + op_x_row)) === 0;
+    continue_seq_on_no_l1 * (src64 - ('src64 + op_x_row)) === 0;
+
+    continue_seq_on_l1 * (dst64 - (segment_previous_dst64 + op_x_row)) === 0;
+    continue_seq_on_no_l1 * (dst64 - ('dst64 + op_x_row)) === 0;
+
+    // LATCHS:
+    //
+    //   flags = 'flags       (selectors and offset)
+    //   fill_byte = 'fill_byte
+    //   main_step = 'main_step
+
+    continue_seq_on_l1 * (flags - segment_previous_flags) === 0;
+    continue_seq_on_no_l1 * (flags - 'flags) === 0;
+
+    continue_seq_on_l1 * (fill_byte - segment_previous_fill_byte) === 0;
+    continue_seq_on_no_l1 * (fill_byte - 'fill_byte) === 0;
+
+    continue_seq_on_l1 * (main_step - segment_previous_main_step) === 0;
+    continue_seq_on_no_l1 * (main_step - 'main_step) === 0;
+
+    // @[seq_end_position] Word `i` of a row whose pending count is `c` sits at pending count
+    // `c - i`, it reads while `c - i >= offset_0` and it writes while `c - i >= 1`. So the row that
+    // closes the sequence is the one holding `count + 1 - offset_0` active words:
+    //
+    //   aligned   (offset_0 = 1)  ops_selected = count      — the last word still writes
+    //   unaligned (offset_0 = 0)  ops_selected = count + 1  — the last word only reads
+    //
+    // An all-zero padding row satisfies it as it stands (count 0, offset_0 1, ops_selected 0), and
+    // for op_x_row = 1 aligned it is `Dma64Aligned`'s own `seq_end * (count - ops_selected) === 0`.
+    seq_end * (count + 1 - offset_0 - ops_selected) === 0;
+
+    // a row that does not close the sequence is a full row
+    (1 - seq_end) * (ops_selected - op_x_row) === 0;
+
+    // SECURITY: control count no negative
+    //
+    // if the seq_end it isn't active when count = 0, in each rows continues decreasing 8 units,
+    // means in 2^22 rows * 2^3 = 2^25. It's secure, because if any row lies, at end of instance
+    // this constraint fails.
+
+    airval last_count_chunk[2];
+    range_check(expression: last_count_chunk[0], min: 0, max: 2**16-1);
+    range_check(expression: last_count_chunk[1], min: 0, max: 2**16-1);
+    last_count_chunk[0] + last_count_chunk[1] * P2_16 === segment_last_count;
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // CONTINUATIONS
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // The payload is the union of the two airs this one replaces: what `Dma64Aligned` carries
+    // (fill_byte, flags) plus what `DmaUnaligned` carries (the eight stitching bytes). @[offset]
+    // travels inside @[flags].
+
+    direct_global_update_proves(DMA_LOOP_CONT_ID,
+                                    [0,                // initial segment_id
+                                     0,                // security flag no_final, indicates not final
+                                     cont_subid,       // continuation subid
+                                     1,                // initial @[seq_end]
+                                     0,                // initial @[src64]
+                                     0,                // initial @[dst64]
+                                     0,                // initial @[count]
+                                     0,                // initial @[main_step]
+                                     0,                // initial @[flags]
+                                     0,                // initial @[fill_byte]
+                                     0,0,0,0,0,0,0,0], // first bytes
+                                     sel: enable_flag);
+
+    direct_update_assumes(DMA_LOOP_CONT_ID,
+                                [segment_id,                 // current segment_id
+                                 0,                          // security flag, indicates not final
+                                 cont_subid,                 // continuation subid @[cont_subid]
+                                 segment_previous_seq_end,   // previous @[seq_end]
+                                 segment_previous_src64,     // previous @[src64]
+                                 segment_previous_dst64,     // previous @[dst64]
+                                 segment_previous_count,     // previous @[count]
+                                 segment_previous_main_step, // previous @[main_step]
+                                 segment_previous_flags,     // previous @[flags]
+                                 segment_previous_fill_byte, // previous @[fill_byte]
+                                 ...segment_first_bytes      // first bytes read from memory
+                                ]);
+
+    direct_update_proves(DMA_LOOP_CONT_ID,
+                               [segment_id + 1,              // next segment_id
+                                is_last_segment,             // security flag, indicates not final
+                                cont_subid,                  // continuation subid @[cont_subid]
+                                segment_last_seq_end,        // last @[seq_end]
+                                segment_last_src64,          // last @[src64]
+                                segment_last_dst64,          // last @[dst64]
+                                segment_last_count,          // last @[count]
+                                segment_last_main_step,      // last @[main_step]
+                                segment_last_flags,          // last @[flags]
+                                segment_last_fill_byte,      // last @[fill_byte]
+                                ...segment_next_bytes        // next bytes read from memory
+                               ], sel: 1 - is_last_segment);
+}
