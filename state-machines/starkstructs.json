@@ -24,6 +24,9 @@
   "Poseidon": {
     "hasCompressor": true
   },
+  "KoalaPoseidon2": {
+    "hasCompressor": true
+  },
   "Blake2br": {
     "hasCompressor": true
   },

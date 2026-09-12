@@ -1,0 +1,17 @@
+[package]
+name = "proofman-starks-lib-c"
+version = "1.2.0-alpha"
+edition = "2021"
+publish = false
+build = "build.rs"
+
+[features]
+default = []
+cpu-only = []
+
+[dependencies]
+crossbeam-channel = "0.5.15"
+
+[build-dependencies]
+sha2 = "0.10"
+serde_json = "1"

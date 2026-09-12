@@ -52,6 +52,7 @@ members = [
   "precompiles/dma",
   "precompiles/evm",
   "precompiles/poseidon",
+  "precompiles/koala_poseidon2_vm",
   "lib-c",
   "lib-float",
   "emulator-asm/asm-runner",
@@ -76,7 +77,7 @@ members = [
   "recurser",
 ]
 resolver = "2"
-exclude = ["test-artifacts"]
+exclude = ["test-artifacts", "precompiles/koala_poseidon2"]
 
 [profile.release]
 opt-level = 3
@@ -107,6 +108,8 @@ zisk-precomp-keccakf = { path = "precompiles/keccakf", version = "1.2.0-alpha" }
 zisk-precomp-sha256f = { path = "precompiles/sha256f", version = "1.2.0-alpha" }
 zisk-precomp-blake2 = { path = "precompiles/blake2", version = "1.2.0-alpha" }
 zisk-precomp-poseidon = { path = "precompiles/poseidon", version = "1.2.0-alpha" }
+zisk-precomp-koala-poseidon2 = { path = "precompiles/koala_poseidon2_vm", version = "1.2.0-alpha" }
+zisk-koala-poseidon2-foundation = { path = "precompiles/koala_poseidon2", version = "0.1.0" }
 zisk-precomp-big-int = { path = "precompiles/big_int", version = "1.2.0-alpha" }
 zisk-precomp-dma = { path = "precompiles/dma", version = "1.2.0-alpha" }
 zisk-precomp-evm = { path = "precompiles/evm", version = "1.2.0-alpha" }

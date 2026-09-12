@@ -1,0 +1,20 @@
+[package]
+name = "zisk-precomp-koala-poseidon2"
+description = "KoalaBear Poseidon2 precompile for ZisK"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+publish = false
+
+[dependencies]
+zisk-common = { workspace = true }
+zisk-core = { workspace = true }
+zisk-definitions = { workspace = true }
+zisk-pil = { workspace = true }
+zisk-precomp-common = { workspace = true }
+zisk-koala-poseidon2-foundation = { path = "../koala_poseidon2" }
+proofman-common = { workspace = true }
+proofman-fields = { workspace = true }
+pil2-std-lib = { workspace = true }
+rayon = { workspace = true }
+tracing = { workspace = true }

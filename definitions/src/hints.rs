@@ -69,3 +69,4 @@ pub const HINT_BLAKE2B_COMPRESS: u32 = 0x0800;
 
 // RIPEMD-160 hint codes
 pub const HINT_RIPEMD160: u32 = 0x0900;
+pub const HINT_KOALA_POSEIDON2: u32 = 0x0A00;

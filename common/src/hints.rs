@@ -177,6 +177,8 @@ pub enum BuiltInHint {
     // RIPEMD-160 hint types.
     /// RIPEMD-160 hash (pure software implementation, no ZK circuit witness).
     Ripemd160 = HINT_RIPEMD160,
+    /// Canonical KoalaBear Poseidon2 permutation of sixteen lanes.
+    KoalaPoseidon2 = HINT_KOALA_POSEIDON2,
 }
 
 impl Display for BuiltInHint {
@@ -219,6 +221,7 @@ impl Display for BuiltInHint {
             BuiltInHint::Blake2bCompress => "BLAKE2B_COMPRESS",
             // RIPEMD-160 Hint
             BuiltInHint::Ripemd160 => "RIPEMD160",
+            BuiltInHint::KoalaPoseidon2 => "KOALA_POSEIDON2",
         };
 
         write!(f, "{} ({:#x})", name, *self as u32)
@@ -267,6 +270,7 @@ impl TryFrom<u32> for BuiltInHint {
             HINT_BLAKE2B_COMPRESS => Ok(Self::Blake2bCompress),
             // RIPEMD-160 Hint
             HINT_RIPEMD160 => Ok(Self::Ripemd160),
+            HINT_KOALA_POSEIDON2 => Ok(Self::KoalaPoseidon2),
             _ => Err(CommonError::InvalidHint(format!("Invalid built-in hint code: {:#x}", value))),
         }
     }
@@ -361,6 +365,7 @@ impl HintCode {
             HintCode::BuiltIn(BuiltInHint::Blake2bCompress) => HINT_BLAKE2B_COMPRESS,
             // RIPEMD-160 Hint
             HintCode::BuiltIn(BuiltInHint::Ripemd160) => HINT_RIPEMD160,
+            HintCode::BuiltIn(BuiltInHint::KoalaPoseidon2) => HINT_KOALA_POSEIDON2,
 
             // Custom Hints
             HintCode::Custom(code) => code,
@@ -557,5 +562,55 @@ impl PrecompileHint {
             }),
             consumed,
         ))
+    }
+}
+
+#[cfg(test)]
+mod koala_poseidon2_tests {
+    use super::*;
+
+    #[test]
+    fn built_in_hint_round_trip_and_stream_parse() {
+        let code = HintCode::BuiltIn(BuiltInHint::KoalaPoseidon2);
+        assert_eq!(code.to_u32(), HINT_KOALA_POSEIDON2);
+        assert_eq!(HintCode::try_from(code.to_u32()).unwrap(), code);
+        let mut words = vec![(u64::from(code.to_u32()) << 32) | 64];
+        words.extend(0..8);
+        let (parsed, consumed) = PrecompileHint::from_u64_slice(&words, 0, false, None).unwrap();
+        assert_eq!(consumed, 9);
+        match parsed {
+            PrecompileHintParseResult::Complete(hint) => {
+                assert_eq!(hint.hint_code, code);
+                assert_eq!(hint.data_len_bytes, 64);
+                assert_eq!(hint.data, words[1..]);
+                assert!(!hint.is_passthrough);
+            }
+            _ => panic!("complete KoalaBear hint was not parsed"),
+        }
+    }
+
+    #[test]
+    fn builtin_hint_survives_every_stream_split() {
+        let code = HintCode::BuiltIn(BuiltInHint::KoalaPoseidon2);
+        let mut words = vec![(u64::from(code.to_u32()) << 32) | 64];
+        words.extend((0..8).map(|i| i | ((i + 8) << 32)));
+        for split in 1..words.len() {
+            let (parsed, consumed) =
+                PrecompileHint::from_u64_slice(&words[..split], 0, false, None).unwrap();
+            assert_eq!(consumed, split);
+            let PrecompileHintParseResult::Partial(partial) = parsed else {
+                panic!("truncated hint reported complete");
+            };
+            let (parsed, consumed) =
+                PrecompileHint::from_u64_slice(&words[split..], 0, false, Some(partial)).unwrap();
+            assert_eq!(consumed, words.len() - split);
+            let PrecompileHintParseResult::Complete(hint) = parsed else {
+                panic!("complete hint remained partial");
+            };
+            assert_eq!(hint.hint_code, code);
+            assert_eq!(hint.data_len_bytes, 64);
+            assert_eq!(hint.data, words[1..]);
+            assert!(!hint.is_passthrough);
+        }
     }
 }

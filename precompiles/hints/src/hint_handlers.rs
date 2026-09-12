@@ -12,6 +12,7 @@ use ziskos_hints::handlers::bn254::{
     bn254_g1_add_hint, bn254_g1_mul_hint, bn254_pairing_check_hint,
 };
 use ziskos_hints::handlers::keccak256::keccak256_hint;
+use ziskos_hints::handlers::koala_poseidon2::koala_poseidon2_hint;
 use ziskos_hints::handlers::kzg::verify_kzg_proof_hint;
 use ziskos_hints::handlers::ripemd160::ripemd160_hint;
 use ziskos_hints::handlers::secp256k1::{secp256k1_ecdsa_verify_hint, secp256k1_ecrecover_hint};
@@ -121,11 +122,38 @@ impl HintHandlers {
 
             // RIPEMD-160 Hint Codes
             BuiltInHint::Ripemd160 => ripemd160_hint(&data, data_len_bytes),
+            BuiltInHint::KoalaPoseidon2 => koala_poseidon2_hint(&data, data_len_bytes),
 
             // Input Hint Codes
             BuiltInHint::Input => unreachable!(
                 "Input hints should be handled separately and not dispatched to workers"
             ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod koala_poseidon2_tests {
+    use super::*;
+
+    #[test]
+    fn dispatches_canonical_words_and_rejects_malformed_hints() {
+        let hint = |data, data_len_bytes| PrecompileHint {
+            hint_code: HintCode::BuiltIn(BuiltInHint::KoalaPoseidon2),
+            is_passthrough: false,
+            data,
+            data_len_bytes,
+        };
+        let handlers = HintHandlers::default();
+        let expected = koala_poseidon2_hint(&[0; 8], 64).unwrap();
+        assert_eq!(handlers.dispatch(hint(vec![0; 8], 64)).unwrap(), expected);
+        assert!(handlers.dispatch(hint(vec![0; 8], 63)).is_err());
+        assert!(handlers.dispatch(hint(vec![0; 7], 64)).is_err());
+        assert!(handlers.dispatch(hint(vec![u64::MAX; 8], 64)).is_err());
+        for lane in 0..16 {
+            let mut data = vec![0_u64; 8];
+            data[lane / 2] = 0x7f00_0001_u64 << (32 * (lane % 2));
+            assert!(handlers.dispatch(hint(data, 64)).is_err());
         }
     }
 }

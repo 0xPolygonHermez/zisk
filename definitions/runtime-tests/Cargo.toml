@@ -1,0 +1,15 @@
+[package]
+name = "koala-runtime-differential-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+zisk-koala-poseidon2-foundation = { path = "../../precompiles/koala_poseidon2" }
+zisk-definitions = { path = ".." }
+anyhow = "1"
+
+[build-dependencies]
+cc = "1"

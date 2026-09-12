@@ -17,9 +17,9 @@ use zisk_sm_mem_common::MemHelpers;
 use zisk_common::{DataBusTrait, EmuTrace, EmuTraceStart};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
-    EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
-    FREG_RA, FREG_X0, OUTPUT_ADDR, RAM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
-    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, SYS_ADDR,
+    EmulationMode, InstContext, Mem, ZiskInst, ZiskRom, FREG_F0, FREG_INST, FREG_RA, FREG_X0,
+    OUTPUT_ADDR, RAM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
+    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, SYS_ADDR,
 };
 
 const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
@@ -2495,9 +2495,7 @@ impl<'a> Emu<'a> {
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
         // Get operation bus data
-        if instruction.op_type > ZiskOperationType::Internal
-            && instruction.op_type < ZiskOperationType::FcallParam
-        {
+        if instruction.op_type.uses_operation_bus() {
             let operation_payload: &[u64] = OperationBusData::write_instruction_payload(
                 instruction,
                 &self.ctx.inst_ctx,
@@ -2573,9 +2571,7 @@ impl<'a> Emu<'a> {
         self.store_c_mem_reads_consume_no_mem_ops(instruction, mem_reads, mem_reads_index);
 
         // Get operation bus data
-        if instruction.op_type > ZiskOperationType::Internal
-            && instruction.op_type < ZiskOperationType::FcallParam
-        {
+        if instruction.op_type.uses_operation_bus() {
             let operation_payload: &[u64] = OperationBusData::write_instruction_payload(
                 instruction,
                 &self.ctx.inst_ctx,
@@ -2708,9 +2704,7 @@ impl<'a> Emu<'a> {
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
         // Get operation bus data
-        if instruction.op_type > ZiskOperationType::Internal
-            && instruction.op_type < ZiskOperationType::FcallParam
-        {
+        if instruction.op_type.uses_operation_bus() {
             let operation_payload: &[u64] = OperationBusData::write_instruction_payload(
                 instruction,
                 &self.ctx.inst_ctx,

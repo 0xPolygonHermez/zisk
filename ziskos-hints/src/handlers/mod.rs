@@ -8,6 +8,7 @@ pub mod bls381;
 pub mod bn254;
 /// Hint handler for the Keccak-256 precompile.
 pub mod keccak256;
+pub mod koala_poseidon2;
 /// Hint handlers for the KZG point-evaluation precompile.
 pub mod kzg;
 /// Hint handler for the RIPEMD-160 precompile.

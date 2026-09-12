@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod koala_poseidon2;
+
 mod syscall;
 pub use syscall::*;
 

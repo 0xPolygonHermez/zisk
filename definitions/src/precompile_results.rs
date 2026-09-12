@@ -19,3 +19,6 @@ pub const KECCAK_RESULTS: bool = false;
 
 /// `sha256f` — the SHA-256 compression function.
 pub const SHA256_RESULTS: bool = false;
+
+/// The ASM recomputes the permutation instead of consuming a hinted result.
+pub const KOALA_POSEIDON2_RESULTS: bool = false;

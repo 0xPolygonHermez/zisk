@@ -241,6 +241,7 @@ impl ZiskAsmContext {
                 | ZiskOp::Sha256
                 | ZiskOp::Poseidon2
                 | ZiskOp::Poseidon1
+                | ZiskOp::KoalaPoseidon2
                 | ZiskOp::Arith256
                 | ZiskOp::Arith256Mod
                 | ZiskOp::Secp256k1Add
@@ -625,6 +626,7 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_sha256\n";
         *code += ".extern opcode_poseidon2\n";
         *code += ".extern opcode_poseidon1\n";
+        *code += ".extern opcode_koala_poseidon2\n";
         *code += ".extern opcode_arith256\n";
         *code += ".extern opcode_arith256_mod\n";
         *code += ".extern opcode_secp256k1_add\n";
@@ -5047,9 +5049,13 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Poseidon2 | ZiskOp::Poseidon1 => {
-                let pname =
-                    if matches!(zisk_op, ZiskOp::Poseidon1) { "poseidon1" } else { "poseidon2" };
+            ZiskOp::Poseidon2 | ZiskOp::Poseidon1 | ZiskOp::KoalaPoseidon2 => {
+                let pname = match zisk_op {
+                    ZiskOp::Poseidon1 => "poseidon1",
+                    ZiskOp::KoalaPoseidon2 => "koala_poseidon2",
+                    _ => "poseidon2",
+                };
+                let words = if matches!(zisk_op, ZiskOp::KoalaPoseidon2) { 8 } else { 16 };
                 *code += &ctx.full_line_comment(format!("{pname}: rdi = A0"));
 
                 // Generate mem reads
@@ -5064,7 +5070,7 @@ impl ZiskRom2Asm {
                 // Copy read data into mem_reads_address and advance it
                 if ctx.minimal_trace() {
                     *code += &format!("\tmov {REG_ADDRESS}, rdi\n");
-                    for k in 0..16 {
+                    for k in 0..words {
                         *code += &format!(
                             "\tmov {}, [{} + {}] {}\n",
                             REG_VALUE,
@@ -5082,27 +5088,23 @@ impl ZiskRom2Asm {
                         );
                     }
 
-                    // Increment chunk.steps.mem_reads_size in 16 units
                     *code += &format!(
-                        "\tadd {}, 16 {}\n",
+                        "\tadd {}, {words} {}\n",
                         REG_MEM_READS_SIZE,
-                        ctx.comment_str("mem_reads_size += 16")
+                        ctx.comment(format!("mem_reads_size += {words}"))
                     );
                 }
 
-                // Trace 16 memory read operations
                 if ctx.mem_op() {
                     *code += &format!("\tmov {REG_ADDRESS}, rdi\n");
-                    Self::mem_op_array(ctx, code, REG_ADDRESS, false, 16);
-                    Self::mem_op_array(ctx, code, REG_ADDRESS, true, 16);
+                    Self::mem_op_array(ctx, code, REG_ADDRESS, false, words);
+                    Self::mem_op_array(ctx, code, REG_ADDRESS, true, words);
                 }
 
-                // Call the poseidon function for the selected family
+                // KoalaPoseidon2 never consumes hint results: the C handler recomputes.
                 Self::push_internal_registers(ctx, code, false);
-                //Self::assert_rsp_is_aligned(ctx, code);
                 *code += &format!("\tcall _opcode_{pname}\n");
                 Self::pop_internal_registers(ctx, code, false);
-                //Self::assert_rsp_is_aligned(ctx, code);
 
                 // Set result
                 *code += &format!(

@@ -1,0 +1,18 @@
+[package]
+name = "koala-poseidon2-smoke"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[workspace]
+
+[dependencies]
+ziskos = { path = "../../../ziskos/entrypoint" }
+zisk-definitions = { path = "../../../definitions" }
+
+[build-dependencies]
+zisk-koala-poseidon2-foundation = { path = "../../../precompiles/koala_poseidon2" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"

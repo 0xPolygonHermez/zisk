@@ -1,0 +1,22 @@
+[package]
+name = "koala-asm-output-checker"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+anyhow = "1"
+sha2 = "0.10"
+serde_json = "1"
+proofman-common = "=1.2.0-alpha"
+zisk-common = { path = "../../../../common" }
+zisk-definitions = { path = "../../../../definitions" }
+zisk-pil = { path = "../../../../pil" }
+zisk-precomp-koala-poseidon2 = { path = "../../../../precompiles/koala_poseidon2_vm" }
+zisk-prover-backend = { path = "../../../../prover-backend" }
+zisk-sdk = { path = "../../../../sdk" }
+
+[patch.crates-io]
+proofman-starks-lib-c = { path = "../../../../tools/koala_poseidon2/native-link" }
