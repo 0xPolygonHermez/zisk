@@ -40,6 +40,8 @@ const COMPLEX_OVER_384_BITS_SIZE: usize = 2 * DATA_384_BITS_SIZE;
 pub const OPERATION_BUS_KECCAKF_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 25;
 /// Poseidon2 operation data size.
 pub const OPERATION_BUS_POSEIDON_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 16;
+/// KoalaBear Poseidon2 operation data size, including eight packed input words.
+pub const OPERATION_BUS_KOALA_POSEIDON2_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 8;
 /// SHA256F operation data size.
 pub const OPERATION_BUS_SHA256F_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 3 * DATA_256_BITS_SIZE;
@@ -148,6 +150,8 @@ pub type OperationKeccakData<D> = [D; OPERATION_BUS_KECCAKF_DATA_SIZE];
 pub type OperationSha256Data<D> = [D; OPERATION_BUS_SHA256F_DATA_SIZE];
 /// Poseidon2 operation data type alias.
 pub type OperationPoseidonData<D> = [D; OPERATION_BUS_POSEIDON_DATA_SIZE];
+/// KoalaBear Poseidon2 operation data type alias.
+pub type OperationKoalaPoseidon2Data<D> = [D; OPERATION_BUS_KOALA_POSEIDON2_DATA_SIZE];
 /// 256-bit arithmetic operation data type alias.
 pub type OperationArith256Data<D> = [D; OPERATION_BUS_ARITH_256_DATA_SIZE];
 /// 256-bit modular arithmetic operation data type alias.
@@ -209,6 +213,8 @@ pub enum ExtOperationData<D> {
     OperationSha256Data(OperationSha256Data<D>),
     /// Poseidon2 operation data.
     OperationPoseidonData(OperationPoseidonData<D>),
+    /// KoalaBear Poseidon2 operation data.
+    OperationKoalaPoseidon2Data(OperationKoalaPoseidon2Data<D>),
     /// 256-bit arithmetic operation data.
     OperationArith256Data(OperationArith256Data<D>),
     /// 256-bit modular arithmetic operation data.
@@ -285,6 +291,16 @@ impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
                 let array: OperationPoseidonData<D> =
                     data.try_into().map_err(|_| "Invalid OperationPoseidonData size")?;
                 Ok(ExtOperationData::OperationPoseidonData(array))
+            }
+            ZiskOp::KOALA_POSEIDON2 => {
+                if op != u64::from(ZiskOp::KOALA_POSEIDON2)
+                    || data[OP_TYPE].into() != ZiskOperationType::KoalaPoseidon2 as u64
+                {
+                    return Err("Invalid KoalaPoseidon2 operation header");
+                }
+                let array: OperationKoalaPoseidon2Data<D> =
+                    data.try_into().map_err(|_| "Invalid OperationKoalaPoseidon2Data size")?;
+                Ok(ExtOperationData::OperationKoalaPoseidon2Data(array))
             }
             ZiskOp::BLAKE2 => {
                 let array: OperationBlake2Data<D> =
@@ -491,6 +507,15 @@ impl OperationBusData<u64> {
                 data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
                     .copy_from_slice(&ctx.precompiled.input_data);
                 ExtOperationData::OperationPoseidonData(data)
+            }
+
+            ZiskOperationType::KoalaPoseidon2 => {
+                let mut data = [0u64; OPERATION_BUS_KOALA_POSEIDON2_DATA_SIZE];
+                data[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
+                    .copy_from_slice(&[op, op_type, a, b, step]);
+                data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
+                    .copy_from_slice(&ctx.precompiled.input_data);
+                ExtOperationData::OperationKoalaPoseidon2Data(data)
             }
 
             ZiskOperationType::Blake2 => {
@@ -755,6 +780,16 @@ impl OperationBusData<u64> {
                 &buffer[..OPERATION_BUS_POSEIDON_DATA_SIZE]
             }
 
+            ZiskOperationType::KoalaPoseidon2 => {
+                debug_assert_eq!(ctx.precompiled.input_data.len(), 8);
+                buffer[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
+                    .copy_from_slice(&[op, op_type, a, b, step]);
+                buffer
+                    [OPERATION_PRECOMPILED_BUS_DATA_SIZE..OPERATION_BUS_KOALA_POSEIDON2_DATA_SIZE]
+                    .copy_from_slice(&ctx.precompiled.input_data);
+                &buffer[..OPERATION_BUS_KOALA_POSEIDON2_DATA_SIZE]
+            }
+
             ZiskOperationType::Blake2 => {
                 debug_assert_eq!(ctx.precompiled.input_data.len(), 35);
                 buffer[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
@@ -1007,6 +1042,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationKeccakData(d) => d[OP] as u8,
             ExtOperationData::OperationSha256Data(d) => d[OP] as u8,
             ExtOperationData::OperationPoseidonData(d) => d[OP] as u8,
+            ExtOperationData::OperationKoalaPoseidon2Data(d) => d[OP] as u8,
             ExtOperationData::OperationArith256Data(d) => d[OP] as u8,
             ExtOperationData::OperationArith256ModData(d) => d[OP] as u8,
             ExtOperationData::OperationSecp256k1AddData(d) => d[OP] as u8,
@@ -1049,6 +1085,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationKeccakData(d) => d[OP_TYPE],
             ExtOperationData::OperationSha256Data(d) => d[OP_TYPE],
             ExtOperationData::OperationPoseidonData(d) => d[OP_TYPE],
+            ExtOperationData::OperationKoalaPoseidon2Data(d) => d[OP_TYPE],
             ExtOperationData::OperationArith256Data(d) => d[OP_TYPE],
             ExtOperationData::OperationArith256ModData(d) => d[OP_TYPE],
             ExtOperationData::OperationSecp256k1AddData(d) => d[OP_TYPE],
@@ -1091,6 +1128,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationKeccakData(d) => d[A],
             ExtOperationData::OperationSha256Data(d) => d[A],
             ExtOperationData::OperationPoseidonData(d) => d[A],
+            ExtOperationData::OperationKoalaPoseidon2Data(d) => d[A],
             ExtOperationData::OperationArith256Data(d) => d[A],
             ExtOperationData::OperationArith256ModData(d) => d[A],
             ExtOperationData::OperationSecp256k1AddData(d) => d[A],
@@ -1133,6 +1171,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationKeccakData(d) => d[B],
             ExtOperationData::OperationSha256Data(d) => d[B],
             ExtOperationData::OperationPoseidonData(d) => d[B],
+            ExtOperationData::OperationKoalaPoseidon2Data(d) => d[B],
             ExtOperationData::OperationArith256Data(d) => d[B],
             ExtOperationData::OperationArith256ModData(d) => d[B],
             ExtOperationData::OperationSecp256k1AddData(d) => d[B],
@@ -1159,5 +1198,89 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationSecp256r1DblData(d) => d[B],
             ExtOperationData::OperationBlake2Data(d) => d[B],
         }
+    }
+}
+
+#[cfg(test)]
+mod koala_poseidon2_tests {
+    use super::*;
+
+    #[test]
+    fn instruction_payload_round_trip() {
+        let inst = ZiskInst {
+            op: ZiskOp::KOALA_POSEIDON2,
+            op_type: ZiskOperationType::KoalaPoseidon2,
+            ..ZiskInst::default()
+        };
+        let mut ctx = InstContext { b: 0xa000_1000, step: 17, ..InstContext::default() };
+        ctx.precompiled.input_data = (0..8).map(|i| i | ((i + 8) << 32)).collect();
+        let mut buffer = [0_u64; MAX_OPERATION_DATA_SIZE];
+        let payload = OperationBusData::write_instruction_payload(&inst, &ctx, &mut buffer);
+        assert_eq!(payload.len(), 13);
+        assert_eq!(&payload[..5], &[u64::from(inst.op), inst.op_type as u64, 0, ctx.b, ctx.step]);
+        assert_eq!(&payload[5..], ctx.precompiled.input_data.as_slice());
+        let decoded = ExtOperationData::try_from(payload).unwrap();
+        assert_eq!(OperationBusData::get_op(&decoded), inst.op);
+        assert_eq!(OperationBusData::get_op_type(&decoded), inst.op_type as u64);
+        assert_eq!(OperationBusData::get_a(&decoded), 0);
+        assert_eq!(OperationBusData::get_b(&decoded), ctx.b);
+        match (decoded, OperationBusData::from_instruction(&inst, &ctx)) {
+            (
+                ExtOperationData::OperationKoalaPoseidon2Data(a),
+                ExtOperationData::OperationKoalaPoseidon2Data(b),
+            ) => assert_eq!(a, b),
+            _ => panic!("incorrect KoalaBear payload variant"),
+        }
+    }
+
+    #[test]
+    fn rejects_wrong_payload_length_and_header() {
+        for length in 0..=MAX_OPERATION_DATA_SIZE {
+            if length == OPERATION_BUS_KOALA_POSEIDON2_DATA_SIZE {
+                continue;
+            }
+            let mut payload = vec![0_u64; length];
+            if let Some(op) = payload.get_mut(OP) {
+                *op = u64::from(ZiskOp::KOALA_POSEIDON2);
+            }
+            if let Some(op_type) = payload.get_mut(OP_TYPE) {
+                *op_type = ZiskOperationType::KoalaPoseidon2 as u64;
+            }
+            assert!(ExtOperationData::try_from(payload.as_slice()).is_err());
+        }
+        let mut payload = [0_u64; OPERATION_BUS_KOALA_POSEIDON2_DATA_SIZE];
+        payload[OP] = u64::from(ZiskOp::KOALA_POSEIDON2);
+        payload[OP_TYPE] = ZiskOperationType::Poseidon as u64;
+        assert!(ExtOperationData::try_from(payload.as_slice()).is_err());
+        payload[OP_TYPE] = ZiskOperationType::KoalaPoseidon2 as u64;
+        payload[OP] += 256;
+        assert!(ExtOperationData::try_from(payload.as_slice()).is_err());
+    }
+
+    #[test]
+    fn successive_calls_do_not_reuse_previous_payload_words() {
+        let inst = ZiskInst {
+            op: ZiskOp::KOALA_POSEIDON2,
+            op_type: ZiskOperationType::KoalaPoseidon2,
+            ..ZiskInst::default()
+        };
+        let mut ctx = InstContext { b: 0xa000_1000, step: 17, ..InstContext::default() };
+        let mut buffer = [u64::MAX; MAX_OPERATION_DATA_SIZE];
+        for offset in [0_u64, 16, 32] {
+            ctx.step += 1;
+            ctx.precompiled.input_data =
+                (0..8).map(|i| (i + offset) | ((i + offset + 8) << 32)).collect();
+            let payload = OperationBusData::write_instruction_payload(&inst, &ctx, &mut buffer);
+            assert_eq!(payload[STEP], ctx.step);
+            assert_eq!(payload[B], ctx.b);
+            assert_eq!(&payload[5..], ctx.precompiled.input_data.as_slice());
+            assert!(matches!(
+                ExtOperationData::try_from(payload),
+                Ok(ExtOperationData::OperationKoalaPoseidon2Data(_))
+            ));
+        }
+        assert!(buffer[OPERATION_BUS_KOALA_POSEIDON2_DATA_SIZE..]
+            .iter()
+            .all(|word| *word == u64::MAX));
     }
 }

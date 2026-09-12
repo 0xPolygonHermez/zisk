@@ -8,6 +8,8 @@ pub const ARITHAM32_COST: u64 = 97;
 pub const KECCAK_COST: u64 = 2652 * 29 / 2;
 pub const SHA256_COST: u64 = 72 * 122;
 pub const POSEIDON_COST: u64 = 14 * 392;
+// Stage-one area proxy only; excludes lookup tables, quotient columns and recursion.
+pub const KOALA_POSEIDON2_COST: u64 = 128 * (16 * 7 + 3);
 pub const ARITH_EQ_COST: u64 = 90 * 16;
 pub const FCALL_COST: u64 = INTERNAL_COST;
 pub const ARITH_EQ_384_COST: u64 = 80 * 24;

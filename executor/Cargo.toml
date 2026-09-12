@@ -39,6 +39,7 @@ zisk-precomp-common = { workspace = true }
 zisk-precomp-keccakf = { workspace = true }
 zisk-precomp-sha256f = { workspace = true }
 zisk-precomp-poseidon = { workspace = true }
+zisk-precomp-koala-poseidon2 = { workspace = true }
 zisk-precomp-blake2 = { workspace = true }
 zisk-precomp-arith-eq = { workspace = true }
 zisk-precomp-arith-eq-384 = { workspace = true }

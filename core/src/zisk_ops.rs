@@ -39,6 +39,7 @@ use ziskos::zisklib::{
 
 use crate::ops_core::*;
 use crate::ops_core_context::*;
+use crate::KOALA_POSEIDON2_COST;
 use crate::{FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE};
 
 /// Determines the type of a [`ZiskOp`].
@@ -66,6 +67,7 @@ pub enum OpType {
     Dma,
     Blake2,
     Profile,
+    KoalaPoseidon2,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -87,6 +89,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::Dma => ZiskOperationType::Dma,
             OpType::Blake2 => ZiskOperationType::Blake2,
             OpType::Profile => ZiskOperationType::Profile,
+            OpType::KoalaPoseidon2 => ZiskOperationType::KoalaPoseidon2,
         }
     }
 }
@@ -112,6 +115,7 @@ impl Display for OpType {
             Self::Dma => write!(f, "Dma"),
             Self::Blake2 => write!(f, "Blake2"),
             Self::Profile => write!(f, "Profile"),
+            Self::KoalaPoseidon2 => write!(f, "KoalaPoseidon2"),
         }
     }
 }
@@ -138,6 +142,7 @@ impl FromStr for OpType {
             "dma" => Ok(Self::Dma),
             "bl" => Ok(Self::Blake2),
             "profile" => Ok(Self::Profile),
+            "koala_poseidon2" => Ok(Self::KoalaPoseidon2),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -510,6 +515,7 @@ define_ops! {
     (Profile, "profile", Profile, 0, 0xe0, 0, 0, opc_profile, op_profile, ops_profile),
     (Poseidon2, "poseidon2", Poseidon, POSEIDON_COST, 0xeb, 128, 128, opc_poseidon2, op_poseidon2, ops_poseidon2),
     (Poseidon1, "poseidon1", Poseidon, POSEIDON_COST, 0xec, 128, 128, opc_poseidon1, op_poseidon1, ops_poseidon1),
+    (KoalaPoseidon2, "koala_poseidon2", KoalaPoseidon2, KOALA_POSEIDON2_COST, 0xed, 64, 64, opc_koala_poseidon2, op_koala_poseidon2, ops_koala_poseidon2),
     (Arith384Mod, "arith384_mod", ArithEq384, ARITH_EQ_384_COST, 0xe2, 232, 48, opc_arith384_mod, op_arith384_mod, ops_arith384_mod),
     (Bls12_381CurveAdd, "bls12_381_curve_add", ArithEq384, ARITH_EQ_384_COST, 0xe3, 208, 96, opc_bls12_381_curve_add, op_bls12_381_curve_add, ops_bls12_381_curve_add),
     (Bls12_381CurveDbl, "bls12_381_curve_dbl", ArithEq384, ARITH_EQ_384_COST, 0xe4, 96, 96, opc_bls12_381_curve_dbl, op_bls12_381_curve_dbl, ops_bls12_381_curve_dbl),
@@ -757,6 +763,52 @@ pub fn opc_poseidon2(ctx: &mut InstContext) {
 
     ctx.c = 0;
     ctx.flag = false;
+}
+
+/// Permutes the sixteen canonical KoalaBear lanes stored at `b` (eight aligned words) in
+/// place. `Mem` and `GenerateMemReads` read, permute and write; `ConsumeMemReads` only
+/// validates the recorded input words.
+#[inline(always)]
+pub fn opc_koala_poseidon2(ctx: &mut InstContext) {
+    let address = ctx.b;
+    assert_eq!(address & 7, 0, "KoalaBear state must be 8-byte aligned");
+    address.checked_add(63).expect("KoalaBear state address overflow");
+    let mut words = [0_u64; 8];
+    if ctx.emulation_mode == EmulationMode::ConsumeMemReads {
+        assert_eq!(ctx.precompiled.input_data.len(), 8, "invalid KoalaBear input word count");
+        words.copy_from_slice(&ctx.precompiled.input_data);
+        zisk_definitions::koala_poseidon2::validate_packed(&words)
+            .expect("noncanonical KoalaBear precompile input");
+    } else {
+        for (i, word) in words.iter_mut().enumerate() {
+            *word = ctx.mem.read(address + 8 * i as u64, 8);
+        }
+        let input = words;
+        zisk_definitions::koala_poseidon2::permute_packed(&mut words)
+            .expect("noncanonical KoalaBear precompile input");
+        for (i, word) in words.iter().enumerate() {
+            ctx.mem.write(address + 8 * i as u64, *word, 8);
+        }
+        if ctx.emulation_mode == EmulationMode::GenerateMemReads {
+            ctx.precompiled.input_data.clear();
+            ctx.precompiled.input_data.extend_from_slice(&input);
+            ctx.precompiled.output_data.clear();
+            ctx.precompiled.output_data.extend_from_slice(&words);
+        }
+    }
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented: the operation needs the memory context of `opc_koala_poseidon2`.
+#[inline(always)]
+pub fn op_koala_poseidon2(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("KoalaBear Poseidon2 requires its memory syscall context")
+}
+
+#[inline(always)]
+pub fn ops_koala_poseidon2(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_direct_data(ctx, stats, 8, 8);
 }
 
 /// Unimplemented.  Poseidon2 can only be called from the system call context via InstContext.

@@ -20,6 +20,7 @@
 #include "../../lib-c/c/src/bls12_381/bls12_381.hpp"
 #include "../../lib-c/c/src/poseidon2/poseidon2_goldilocks.hpp"
 #include "../../lib-c/c/src/poseidon1/poseidon1_goldilocks.hpp"
+#include "koala_poseidon2.hpp"
 #include "../../lib-c/c/src/blake2/blake2.hpp"
 #include "../../lib-c/c/src/chfast/zisk_keccak.h"
 
@@ -744,6 +745,30 @@ extern int _opcode_poseidon1(uint64_t address)
     asm_call_metrics.poseidon1_counter++;
     gettimeofday(&asm_call_stop, NULL);
     asm_call_metrics.poseidon1_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+// KoalaBear Poseidon2: permute the eight words at `address` in place.
+extern int _opcode_koala_poseidon2(uint64_t address)
+{
+    if ((address & 7) != 0 || address > UINT64_MAX - 63) abort();
+    uint64_t *state = (uint64_t *)address;
+    for (unsigned i = 0; i < 8; i++) {
+        if ((uint32_t)state[i] >= 2130706433 || (state[i] >> 32) >= 2130706433) abort();
+    }
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_loading) {
+        precompile_cache_load((uint8_t *)address, 64);
+        for (unsigned i = 0; i < 8; i++) {
+            if ((uint32_t)state[i] >= 2130706433 || (state[i] >> 32) >= 2130706433) abort();
+        }
+        return 0;
+    }
+#endif
+    if (!koala_poseidon2_packed(state)) abort();
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing) precompile_cache_store((uint8_t *)address, 64);
 #endif
     return 0;
 }

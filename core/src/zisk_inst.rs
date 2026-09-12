@@ -91,6 +91,59 @@ pub enum ZiskOperationType {
     Fcall,
     FcallGet,
     Profile,
+    KoalaPoseidon2,
+}
+
+impl ZiskOperationType {
+    pub const fn uses_operation_bus(self) -> bool {
+        match self {
+            Self::Arith
+            | Self::Binary
+            | Self::BinaryE
+            | Self::Keccak
+            | Self::Sha256
+            | Self::Poseidon
+            | Self::Blake2
+            | Self::PubOut
+            | Self::ArithEq
+            | Self::ArithEq384
+            | Self::BigInt
+            | Self::Evm
+            | Self::Dma
+            | Self::KoalaPoseidon2 => true,
+            Self::None
+            | Self::Internal
+            | Self::FcallParam
+            | Self::Fcall
+            | Self::FcallGet
+            | Self::Profile => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod operation_type_tests {
+    use super::ZiskOperationType;
+
+    #[test]
+    fn appended_precompile_uses_operation_bus_without_changing_existing_ids() {
+        assert_eq!(ZiskOperationType::FcallParam as u32, 15);
+        assert_eq!(ZiskOperationType::Profile as u32, 18);
+        assert_eq!(ZiskOperationType::KoalaPoseidon2 as u32, 19);
+        assert!(ZiskOperationType::KoalaPoseidon2.uses_operation_bus());
+        assert!(ZiskOperationType::Poseidon.uses_operation_bus());
+        assert!(ZiskOperationType::Dma.uses_operation_bus());
+        for operation in [
+            ZiskOperationType::None,
+            ZiskOperationType::Internal,
+            ZiskOperationType::FcallParam,
+            ZiskOperationType::Fcall,
+            ZiskOperationType::FcallGet,
+            ZiskOperationType::Profile,
+        ] {
+            assert!(!operation.uses_operation_bus());
+        }
+    }
 }
 
 pub const NONE_OP_TYPE_ID: u32 = ZiskOperationType::None as u32;
@@ -101,6 +154,7 @@ pub const BINARY_E_OP_TYPE_ID: u32 = ZiskOperationType::BinaryE as u32;
 pub const KECCAK_OP_TYPE_ID: u32 = ZiskOperationType::Keccak as u32;
 pub const SHA256_OP_TYPE_ID: u32 = ZiskOperationType::Sha256 as u32;
 pub const POSEIDON_OP_TYPE_ID: u32 = ZiskOperationType::Poseidon as u32;
+pub const KOALA_POSEIDON2_OP_TYPE_ID: u32 = ZiskOperationType::KoalaPoseidon2 as u32;
 pub const PUB_OUT_OP_TYPE_ID: u32 = ZiskOperationType::PubOut as u32;
 pub const ARITH_EQ_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq as u32;
 pub const ARITH_EQ_384_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq384 as u32;

@@ -1,0 +1,73 @@
+// Generated from pinned KoalaBear Poseidon2 parameters by export_vm.
+require "std_range_check.pil"
+require "operations.pil"
+require "mem/pil/mem.pil"
+
+airtemplate KoalaPoseidon2(const int N = 2**17) {
+    const int P = @P@;
+    const int R = @R@;
+    const int B = @BIAS@;
+    const int CLOCKS = @ROWS@;
+    if (N < CLOCKS || N % CLOCKS != 0) {
+        error("KoalaPoseidon2 trace must contain complete permutation blocks");
+    }
+    const int BLOCKS = N / CLOCKS;
+@FIXED@
+    col witness bits(16) limbs[16][2];
+    col witness bits(16) gap[16][2];
+    col witness bits(16) quotient[16][2];
+    col witness bits(32) base[16];
+    col witness bits(1) in_use;
+    col witness bits(32) addr;
+    col witness bits(40) main_step;
+
+    in_use * (in_use - 1) === 0;
+    (1 - last) * (in_use' - in_use) === 0;
+    (1 - last) * (addr' - addr) === 0;
+    (1 - last) * (main_step' - main_step) === 0;
+
+    const expr state[16];
+    const expr next_state[16];
+    const expr ext[16];
+    const int diag[16];
+    const expr rc[16];
+    expr lane_sum = 0;
+    for (int i = 0; i < 16; i++) {
+        state[i] = limbs[i][0] + 65536 * limbs[i][1];
+        next_state[i] = limbs[i][0]' + 65536 * limbs[i][1]';
+        lane_sum = lane_sum + state[i];
+    }
+@LINEAR@
+    for (int i = 0; i < 16; i++) {
+        for (int j = 0; j < 2; j++) {
+            range_check(expression: limbs[i][j], min: 0, max: 65535);
+            range_check(expression: gap[i][j], min: 0, max: 65535);
+            range_check(expression: quotient[i][j], min: 0, max: 65535);
+        }
+        state[i] + gap[i][0] + 65536 * gap[i][1] === P - 1;
+        expr q = quotient[i][0] + 65536 * quotient[i][1];
+        expr lane = i == 0 ? 1 : wide;
+        expr active = external + internal + lane * (op_add + square + cube);
+
+        external * (ext[i] - next_state[i] - P * q) === 0;
+        internal * (R * next_state[i] + B * P - lane_sum - diag[i] * state[i] - P * q) === 0;
+        lane * op_add * (state[i] + rc[i] - next_state[i] - P * q) === 0;
+        lane * square * (state[i] * state[i] - next_state[i] - P * q) === 0;
+        lane * cube * (state[i] * base[i] - next_state[i] - P * q) === 0;
+        square * (base[i]' - state[i]) === 0;
+        (1 - cube) * base[i] === 0;
+        (1 - last) * (1 - active) * (next_state[i] - state[i]) === 0;
+        (1 - active) * q === 0;
+    }
+
+    proves_operation(op: OP_KOALA_POSEIDON2, b: [addr, 0], main_step: main_step,
+                     mul: first * in_use);
+    for (int i = 0; i < 8; i++) {
+        precompiled_mem_op(addr: addr + 8*i, main_step: main_step,
+                           value: [state[2*i], state[2*i+1]], sel: first * in_use,
+                           is_write: 0);
+        precompiled_mem_op(addr: addr + 8*i, main_step: main_step,
+                           value: [state[2*i], state[2*i+1]], sel: last * in_use,
+                           is_write: 1);
+    }
+}

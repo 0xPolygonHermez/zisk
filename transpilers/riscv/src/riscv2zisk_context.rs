@@ -10,8 +10,8 @@ use zisk_definitions::{
     SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID, SYSCALL_BN254_COMPLEX_MUL_ID,
     SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID, SYSCALL_BN254_CURVE_DBL_ID,
     SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID,
-    SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID,
-    SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID,
+    SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_KOALA_POSEIDON2_ID, SYSCALL_POSEIDON1_ID,
+    SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID,
     SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID,
 };
 
@@ -28,7 +28,7 @@ use zisk_core::{FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, F
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 28] = [
+const CSR_PRECOMPILED: [&str; 30] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -57,6 +57,8 @@ const CSR_PRECOMPILED: [&str; 28] = [
     "blake2",
     "profile",
     "poseidon1",
+    "jump_dest",
+    "koala_poseidon2",
 ];
 const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
 const CSR_FCALL_ADDR_START: u16 = 0x8C0;
@@ -1822,6 +1824,7 @@ impl<'a> Riscv2ZiskContext<'a> {
                 | SYSCALL_BLS12_381_COMPLEX_MUL_ID
                 | SYSCALL_POSEIDON2_ID
                 | SYSCALL_POSEIDON1_ID
+                | SYSCALL_KOALA_POSEIDON2_ID
                 | SYSCALL_SECP256R1_ADD_ID
                 | SYSCALL_SECP256R1_DBL_ID
                 | SYSCALL_BLAKE2B_ROUND_ID => {

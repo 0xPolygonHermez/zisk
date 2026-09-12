@@ -3372,6 +3372,7 @@ impl Stats {
             // In-place operands read directly from `ctx.b`.
             ZiskOp::Keccak => &[Direct { words: 25 }][..],
             ZiskOp::Poseidon1 | ZiskOp::Poseidon2 => &[Direct { words: 16 }][..],
+            ZiskOp::KoalaPoseidon2 => &[Direct { words: 8 }][..],
             ZiskOp::Secp256k1Dbl | ZiskOp::Secp256r1Dbl | ZiskOp::Bn254CurveDbl => {
                 &[Direct { words: 8 }][..]
             }
