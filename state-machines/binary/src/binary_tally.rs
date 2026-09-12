@@ -24,14 +24,14 @@
 //!
 //! The two shapes here both keep the hot loop free of atomics and touch `std` once at the end:
 //!
-//! * [`fill_and_tally`] — one dense [`RANGE_16_BITS`] histogram per task, for the add airs, whose
-//!   lookups are a 16-bit range.
+//! * [`fill_and_tally_chunked`] — one dense [`RANGE_16_BITS`] histogram per task, for the add airs,
+//!   whose lookups are a 16-bit range.
 //! * [`SparseTally`] with [`fill_slots_and_tally`] — a histogram split into [`REGION_ROWS`]-row
 //!   regions allocated on demand, for the airs whose lookups index a table far larger than the part
 //!   of it any one instance touches (8.8M rows for `BinaryBasic`, 2.5M for `BinaryExtension`).
 //!
-//! [`fill_slots_and_tally`] also walks the chunked inputs with a cursor rather than flattening them,
-//! so no `Vec<&BinaryInput>` the size of the instance is built to be read once.
+//! Both walk the chunked inputs with a cursor rather than flattening them, so no
+//! `Vec<&BinaryInput>` the size of the instance is built to be read once.
 
 use crate::BinaryInput;
 use pil2_std_lib::Std;
@@ -41,51 +41,80 @@ use rayon::prelude::*;
 /// Values a 16-bit range check can take, i.e. the width of one histogram.
 pub const RANGE_16_BITS: usize = 0xFFFF + 1;
 
-/// Fills `rows` in parallel, giving each row its slice of `inputs`, and returns the multiplicities
-/// the fill tallied.
+/// Fills `rows` in parallel from the chunked `inputs`, giving each row the operations that belong
+/// to it, and returns the multiplicities the fill tallied.
 ///
-/// `fill` receives one row, the `inputs_per_row` inputs that belong to it, and the histogram of the
-/// task it is running on — which it increments directly, one per range-checked chunk it produces.
-/// The last row may get a shorter slice when `inputs` does not divide evenly.
+/// `fill` receives one row, its `inputs_per_row` operations — fewer on the last row, when
+/// `total_inputs` does not divide evenly — and the histogram of the task it is running on, which it
+/// increments directly, one per range-checked chunk it produces.
 ///
 /// The rows are split into no more chunks than there are rayon threads, so the number of histograms
 /// is bounded by the thread count rather than by the finer split rayon would choose on its own.
 ///
+/// # Why a cursor and not a flattened list
+///
+/// The fill is parallel over rows and a row's operations can straddle a chunk boundary, which is
+/// what a flattened `Vec<&BinaryInput>` was there to hide. Materializing it costs one pointer per
+/// operation for the whole instance — 102 MB on a full `BinaryAddHiHuge`, which measured as 93% of
+/// that air's witness time over a 4381-block run, the fill itself being the other 7%. A task
+/// instead seeks a cursor to the first operation of its row range and walks forward from there
+/// ([`InputCursor`], the same one [`fill_slots_and_tally`] uses), collecting one row's operations
+/// at a time into a buffer of `inputs_per_row` pointers allocated once per task and reused.
+///
 /// # Panics
-/// Panics if `rows` does not hold exactly one row per `inputs_per_row` inputs. The two sides are
-/// zipped, so a mismatch would silently drop rows (leaving the trace underfilled) or inputs (losing
-/// operations), neither of which surfaces until the bus fails to balance. The check is a couple of
-/// comparisons per call, not per row, so it is worth keeping in release builds too.
-pub fn fill_and_tally<R, T, Fill>(
+/// Panics if `rows` does not hold exactly one row per `inputs_per_row` operations, or if the chunks
+/// hold a different number of operations than `total_inputs` announces. A mismatch would silently
+/// drop rows (leaving the trace underfilled) or operations (losing them), neither of which surfaces
+/// until the bus fails to balance. The checks are a couple of comparisons per call, not per row, so
+/// they are worth keeping in release builds too.
+pub fn fill_and_tally_chunked<R, Fill>(
     rows: &mut [R],
-    inputs: &[T],
+    inputs: &[Vec<BinaryInput>],
+    total_inputs: usize,
     inputs_per_row: usize,
     fill: Fill,
 ) -> Vec<u32>
 where
     R: Send,
-    T: Sync,
-    Fill: Fn(&mut R, &[T], &mut [u32]) + Sync + Send,
+    Fill: Fn(&mut R, &[&BinaryInput], &mut [u32]) + Sync + Send,
 {
     assert!(inputs_per_row > 0, "a row must take at least one input");
     assert_eq!(
         rows.len(),
-        inputs.len().div_ceil(inputs_per_row),
-        "the rows must hold exactly the {} inputs, {inputs_per_row} to a row",
-        inputs.len(),
+        total_inputs.div_ceil(inputs_per_row),
+        "the rows must hold exactly the {total_inputs} inputs, {inputs_per_row} to a row",
+    );
+
+    let starts = chunk_starts(inputs);
+    assert_eq!(
+        starts[inputs.len()],
+        total_inputs,
+        "the chunks hold {} operations, not the {total_inputs} announced",
+        starts[inputs.len()],
     );
 
     let tasks = rayon::current_num_threads().max(1);
     let rows_per_task = rows.len().div_ceil(tasks).max(1);
 
-    // `ceil(ceil(n / inputs_per_row) / rows_per_task) == ceil(n / (inputs_per_row * rows_per_task))`,
-    // so the two sides of the zip split into the same number of chunks and stay aligned.
     rows.par_chunks_mut(rows_per_task)
-        .zip(inputs.par_chunks(rows_per_task * inputs_per_row))
-        .map(|(row_chunk, input_chunk)| {
+        .enumerate()
+        .map(|(task, row_chunk)| {
             let mut multiplicities = vec![0u32; RANGE_16_BITS];
-            for (row, row_inputs) in row_chunk.iter_mut().zip(input_chunk.chunks(inputs_per_row)) {
-                fill(row, row_inputs, &mut multiplicities);
+            // `rows_per_task` rows of `inputs_per_row` operations each, so the task's first
+            // operation is at this global index — the same split the zipped slices used to make.
+            let mut done = task * rows_per_task * inputs_per_row;
+            let mut cursor = InputCursor::new(inputs, &starts, done);
+            let mut row_inputs: Vec<&BinaryInput> = Vec::with_capacity(inputs_per_row);
+
+            for row in row_chunk.iter_mut() {
+                let filled = inputs_per_row.min(total_inputs - done);
+                row_inputs.clear();
+                for _ in 0..filled {
+                    row_inputs
+                        .push(cursor.next().expect("the cursor holds one input per filled slot"));
+                }
+                fill(row, &row_inputs, &mut multiplicities);
+                done += filled;
             }
             multiplicities
         })
@@ -602,31 +631,73 @@ mod tests {
         }
     }
 
-    /// The tally must match a plain serial histogram of the same chunks, whatever the split.
+    /// The tally must match a plain serial histogram of the same chunks, whatever the split, and the
+    /// rows must see the operations in global order — which is what the cursor replaced the
+    /// flattened list to preserve. `chunked` puts each operation's global index in `a`, so the fill
+    /// can assert the order rather than only the count.
     #[test]
     fn the_tally_matches_a_serial_count() {
         for inputs_per_row in [1usize, 3, 5] {
-            for count in [0usize, 1, 7, 1000] {
-                let inputs: Vec<u64> = (0..count as u64).map(|i| (i * 7) % 300).collect();
-                let rows = count.div_ceil(inputs_per_row);
-                let mut filled = vec![0u64; rows];
+            for lengths in CHUNKINGS {
+                let inputs = chunked(lengths);
+                let total: usize = lengths.iter().sum();
+                let mut filled = vec![0u64; total.div_ceil(inputs_per_row)];
 
-                let multiplicities =
-                    fill_and_tally(&mut filled, &inputs, inputs_per_row, |row, row_inputs, m| {
+                let multiplicities = fill_and_tally_chunked(
+                    &mut filled,
+                    &inputs,
+                    total,
+                    inputs_per_row,
+                    |row, row_inputs, m| {
                         *row = row_inputs.len() as u64;
-                        for &input in row_inputs {
-                            m[input as usize] += 1;
+                        for input in row_inputs {
+                            m[(input.a % 300) as usize] += 1;
                         }
-                    });
+                    },
+                );
 
                 let mut expected = vec![0u32; RANGE_16_BITS];
-                for &input in &inputs {
-                    expected[input as usize] += 1;
+                for i in 0..total as u64 {
+                    expected[(i % 300) as usize] += 1;
                 }
-                assert_eq!(multiplicities, expected, "{count} inputs, {inputs_per_row} per row");
+                assert_eq!(multiplicities, expected, "{lengths:?}, {inputs_per_row} per row");
 
-                // And every row was visited, with the inputs that belong to it.
-                assert_eq!(filled.iter().sum::<u64>(), count as u64);
+                // And every row was visited, with the operations that belong to it.
+                assert_eq!(filled.iter().sum::<u64>(), total as u64, "{lengths:?}");
+            }
+        }
+    }
+
+    /// Every row must get exactly the operations at its own offsets, in order. A cursor that
+    /// mis-seeks when a task's first row starts mid-chunk would still tally the right totals, so the
+    /// histogram test above cannot catch it on its own.
+    #[test]
+    fn every_row_gets_its_own_operations_in_order() {
+        for inputs_per_row in [1usize, 2, 3, 8] {
+            for lengths in CHUNKINGS {
+                let inputs = chunked(lengths);
+                let total: usize = lengths.iter().sum();
+                let mut seen = vec![Vec::new(); total.div_ceil(inputs_per_row)];
+
+                fill_and_tally_chunked(
+                    &mut seen,
+                    &inputs,
+                    total,
+                    inputs_per_row,
+                    |row, row_inputs, _| *row = row_inputs.iter().map(|i| i.a).collect::<Vec<_>>(),
+                );
+
+                let flat: Vec<u64> = seen.concat();
+                assert_eq!(
+                    flat,
+                    (0..total as u64).collect::<Vec<_>>(),
+                    "{lengths:?}, {inputs_per_row} per row: the rows did not see every operation \
+                     exactly once, in order",
+                );
+                for (r, row) in seen.iter().enumerate() {
+                    let want = inputs_per_row.min(total - r * inputs_per_row);
+                    assert_eq!(row.len(), want, "{lengths:?}, {inputs_per_row} per row: row {r}");
+                }
             }
         }
     }
@@ -652,14 +723,23 @@ mod tests {
     #[test]
     #[should_panic(expected = "the rows must hold exactly")]
     fn mismatched_rows_and_inputs_are_an_error() {
-        // Ten inputs three to a row need four rows, not three.
-        fill_and_tally(&mut [0u64; 3], &[0u64; 10], 3, |_, _, _| {});
+        // Ten operations three to a row need four rows, not three.
+        fill_and_tally_chunked(&mut [0u64; 3], &chunked(&[4, 6]), 10, 3, |_, _, _| {});
+    }
+
+    /// The announced total and the chunks must agree, or the cursor and the row count would be
+    /// walking different lists.
+    #[test]
+    #[should_panic(expected = "the chunks hold")]
+    fn a_wrong_total_is_an_error() {
+        fill_and_tally_chunked(&mut [0u64; 4], &chunked(&[4, 6]), 11, 3, |_, _, _| {});
     }
 
     /// No work means an all-zero tally rather than a panic on the empty reduction.
     #[test]
     fn nothing_to_fill_tallies_nothing() {
-        let multiplicities = fill_and_tally(&mut [0u64; 0], &[0u64; 0], 4, |_, _, m| m[1] += 1);
+        let multiplicities =
+            fill_and_tally_chunked(&mut [0u64; 0], &chunked(&[0, 0]), 0, 4, |_, _, m| m[1] += 1);
         assert_eq!(multiplicities.len(), RANGE_16_BITS);
         assert!(multiplicities.iter().all(|&m| m == 0));
     }

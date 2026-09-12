@@ -5,12 +5,15 @@
 //! over only the airs actually present in the pilout — assigns each operation under the shared
 //! criterion: fewest instances first, least memory to break a tie.
 //!
-//! A config comes in as many heights as `zisk.pil` gives it aliases — currently two: a plain air and
-//! a `Large` sibling, each committing exactly the same columns over more rows. The taller one keeps
-//! the instance count down; the shorter one keeps the memory down once the count is settled. Every
-//! `Large` sits at the same height as the universal `ArithEqLarge`, so a bulk of an operation a
-//! specialized config covers ties on instance count with the universal air and is sent to the
-//! narrower specialized one by the memory tie-break.
+//! A config comes in as many heights as `zisk.pil` gives it aliases, each committing exactly the
+//! same columns over more rows: a plain air at `2**20` and a `Large` at `2**23` for the specialized
+//! configs, and a third rung on the universal one, whose ladder is `2**20` / `2**22` / `2**23`. The
+//! taller ones keep the instance count down; the shorter ones keep the memory down once the count is
+//! settled. The ladders meet at the top: every specialized `Large` sits at the same height as the
+//! universal `ArithEqHuge`, so a bulk of an operation a specialized config covers ties on instance
+//! count with the universal air and is sent to the narrower specialized one by the memory
+//! tie-break. The universal `2**22` rung exists for the leftovers that would waste three quarters of
+//! a `Huge`.
 //!
 //! This table is the planner's static input; it is derived from the `equations` bitmask each alias
 //! was instantiated with. `num_rows` is read from the trace types and the cost from
@@ -67,7 +70,7 @@ pub fn air_metas() -> Vec<ArithEqAirMeta> {
         };
     }
 
-    let mut metas = Vec::with_capacity(8);
+    let mut metas = Vec::with_capacity(9);
     // arith256 + arith256_mod.
     metas.extend(config!(
         &[Arith256, Arith256Mod],
@@ -91,6 +94,7 @@ pub fn air_metas() -> Vec<ArithEqAirMeta> {
         &ArithEqOp::ALL,
         ArithEqTrace: ARITH_EQ_INSTANCE_COST,
         ArithEqLargeTrace: ARITH_EQ_LARGE_INSTANCE_COST,
+        ArithEqHugeTrace: ARITH_EQ_HUGE_INSTANCE_COST,
     ));
     metas
 }
@@ -127,6 +131,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
         dispatch!(
             ArithEqTrace: ArithEqTraceRow / ArithEqTraceRowPacked,
             ArithEqLargeTrace: ArithEqLargeTraceRow / ArithEqLargeTraceRowPacked,
+            ArithEqHugeTrace: ArithEqHugeTraceRow / ArithEqHugeTraceRowPacked,
             Arith256XTrace: Arith256XTraceRow / Arith256XTraceRowPacked,
             Arith256XLargeTrace: Arith256XLargeTraceRow / Arith256XLargeTraceRowPacked,
             ArithSecp256K1Trace: ArithSecp256K1TraceRow / ArithSecp256K1TraceRowPacked,

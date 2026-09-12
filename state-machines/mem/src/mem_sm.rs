@@ -634,10 +634,23 @@ impl<F: PrimeField64> MemSM<F> {
         trace_buffer: Vec<F>,
         seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
-        // Timed because it is not small: the trace is `NUM_ROWS * lanes_x_row` slots wide, so
-        // zeroing it moves gigabytes before a single operation has been placed.
+        // Taken as-is, NOT zeroed: the buffer comes from the recycled basic-trace pool and the
+        // trace is `NUM_ROWS * lanes_x_row` slots wide, so zeroing it moved gigabytes before a
+        // single operation had been placed -- and then the padding wrote most of them again.
+        //
+        // Safe because every lane of every slot is written exactly once: `fill_mem_range` writes
+        // slots `0..=last_slot` (the offsets table is dense, so it leaves no hole -- a hole would
+        // break the `l_increment + 2**22 * h_increment + 1 === ...` constraint whatever the buffer
+        // held, zeroed or not), and the padding below writes every slot after it, up to
+        // `num_slots`. The three writers -- `fill_mem_range`'s `init_row`, `copy_mem_lane` and
+        // `set_mem_padding_lane` -- each set the same 11 columns, which is every column of the row
+        // except `previous_step` and `read_same_addr`. Those two are the air's `witness_calc`
+        // hints: the prover evaluates them into cm1 before it commits (`calculateWitnessExpr` in
+        // STARK_STEP_1, and again on the contribution path in `commit_witness` / the GPU
+        // `commit_witness_gpu`), so whatever this buffer holds for them is overwritten before it
+        // is ever read. `mem_sm_fill_tests` pins both halves of that.
         phase_start!(t_zero);
-        let mut trace = MemTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = MemTrace::<R>::new_from_vec(trace_buffer)?;
         phase_end!(d_zero, t_zero);
         #[cfg(feature = "debug_mem")]
         Self::save_mem_inputs_to_file(mem_ops, segment_id);
@@ -694,7 +707,7 @@ impl<F: PrimeField64> MemSM<F> {
         );
         phase_end!(d_air, t_air);
         phase_log!(
-            "Mem[{}] witness: zero trace {:.0}ms range checks {:.0}ms air instance {:.0}ms",
+            "Mem[{}] witness: take trace {:.0}ms range checks {:.0}ms air instance {:.0}ms",
             usize::from(segment_id),
             phase_ms!(d_zero),
             phase_ms!(d_rc),
@@ -973,7 +986,7 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
 
     phase_end!(d_merge, t_merge);
 
-    let last_slot_idx = fills.iter().filter_map(|f| f.last_slot).max().unwrap_or(0);
+    let last_slot = fills.iter().filter_map(|f| f.last_slot).max();
 
     // Per-range cost, gathered before the histograms are consumed by the reduction below.
     #[cfg(feature = "witness_timers")]
@@ -1015,22 +1028,40 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
     // STEP3. Add dummy lanes to the output vector to fill the remaining virtual rows
     // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd
     // = 1, wr = 0
-    let (last_row, last_lane) = lanes.split(last_slot_idx);
-    let addr = rows[last_row].get_addr(last_lane);
-    let step = if !rows[last_row].get_sel_dual(last_lane) {
-        rows[last_row].get_step(last_lane)
-    } else {
-        rows[last_row].get_step_dual(last_lane)
+    //
+    // The padding repeats the last slot the fill wrote. When no range wrote one -- a segment with
+    // no operation at all, which the planner does not produce -- it repeats the hand-over from the
+    // previous segment instead, and pads from slot 0. Reading slot 0 there would read a slot
+    // nobody wrote, which on the recycled (non-zeroed) buffer is the previous instance's data.
+    let (addr, step, low_value, high_value, first_pad_slot) = match last_slot {
+        Some(last_slot_idx) => {
+            let (last_row, last_lane) = lanes.split(last_slot_idx);
+            let step = if !rows[last_row].get_sel_dual(last_lane) {
+                rows[last_row].get_step(last_lane)
+            } else {
+                rows[last_row].get_step_dual(last_lane)
+            };
+            (
+                rows[last_row].get_addr(last_lane),
+                step,
+                rows[last_row].get_value(last_lane, 0),
+                rows[last_row].get_value(last_lane, 1),
+                last_slot_idx + 1,
+            )
+        }
+        None => (
+            previous_segment.addr,
+            previous_segment.step,
+            previous_segment.value as u32,
+            (previous_segment.value >> 32) as u32,
+            0,
+        ),
     };
-
-    let low_value = rows[last_row].get_value(last_lane, 0);
-    let high_value = rows[last_row].get_value(last_lane, 1);
-    let padding_size = num_slots - last_slot_idx - 1;
+    let padding_size = num_slots - first_pad_slot;
     if padding_size > 0 {
         // Every padding slot repeats the same values, so the row holding them is built once and
         // the whole rows are overwritten in parallel; only the row the last operation shares
         // with the padding has its lanes set one at a time.
-        let first_pad_slot = last_slot_idx + 1;
         let partial_end = first_pad_slot.next_multiple_of(lanes_x_row).min(num_slots);
         for islot in first_pad_slot..partial_end {
             let (row, lane) = lanes.split(islot);

@@ -8,12 +8,13 @@
 //!
 //! Cost model: every instance is a full `num_rows` trace regardless of how full it is, so its memory is
 //! `instances · num_rows · row_size`, where `row_size` is the width the setup commits. Each config
-//! comes in two heights — a taller air holds more operations per instance at the same width, a
-//! shorter one wastes less memory on a partial fill — and a specialized config is narrower than the
-//! universal one, so it is the cheaper home for a *full* instance of its operations. The ladders are
-//! aligned: every `Large` sits at the same height as the universal `ArithEqLarge`, so for the
-//! operations a specialized config covers the bulk ties on instance count and the memory tie-break
-//! sends it to the specialized air.
+//! comes as a ladder of heights — a taller air holds more operations per instance at the same width,
+//! a shorter one wastes less memory on a partial fill — and a specialized config is narrower than
+//! the universal one, so it is the cheaper home for a *full* instance of its operations. The ladders
+//! meet at the top: every specialized `Large` sits at the same height as the universal `ArithEqHuge`
+//! (`2**23`), so for the operations a specialized config covers the bulk ties on instance count and
+//! the memory tie-break sends it to the specialized air. The universal ladder has a third rung at
+//! `2**22` for the leftovers that would otherwise waste three quarters of a `Huge`.
 //!
 //! Strategy, per operation (not per PIL equation group: an air may cover only part of a group):
 //!   * Its `bulk = ⌊count/cap⌋·cap` — the part that fills whole instances — **always goes to the
@@ -40,18 +41,22 @@
 use crate::{air_metas, ArithEqAirMeta, ArithEqOp, ARITH_EQ_OP_NUM, ARITH_EQ_ROWS_BY_OP};
 use zisk_common::Cost;
 
-/// Upper bound on the tail placements this exhaustive search will enumerate. The bound is here so
-/// that adding heavily overlapping airs fails loudly instead of silently hanging, since optimal tail
+/// Upper bound on the size of the placement space this search covers. The bound is here so that
+/// adding heavily overlapping airs fails loudly instead of silently hanging, since optimal tail
 /// placement is a bin-packing problem.
 ///
-/// An operation's candidates are its config's heights plus the two universal airs: four for the
-/// arith256, secp256k1 and bn254 operations (two heights each), and two for the secp256r1 pair no
-/// specialised config covers. With the current table that is
-/// `4^2 · 4^2 · 4^5 · 2^2 = 1_048_576` — see `the_sweep_stays_within_its_ceiling`,
-/// which pins it so the headroom left here stays visible. Each combination is a handful of
-/// arithmetic over `metas.len()` airs and allocates nothing, so `2^23` is still milliseconds; what
-/// the bound really guards against is a table that grows the exponent.
-const MAX_TAIL_COMBINATIONS: u64 = 1 << 23;
+/// An operation's candidates are its config's heights plus the universal ones: five for the
+/// arith256, secp256k1 and bn254 operations (two heights of their own plus the universal ladder's
+/// three), and three for the secp256r1 pair no specialised config covers. With the current table
+/// that is `5^2 · 5^2 · 5^5 · 3^2 = 17_578_125` — see `the_sweep_stays_within_its_ceiling`, which
+/// pins it so the headroom left here stays visible.
+///
+/// This is the space, not the work: the sweep is depth-first and cuts any subtree whose partial
+/// cost already matches the incumbent, which brings the all-operations worst case down from the
+/// 323 ms it measured unpruned to tens of microseconds (`the_worst_case_sweep_stays_fast`). What
+/// the bound really guards against is a table that grows the exponent past what the pruning can
+/// absorb.
+const MAX_TAIL_COMBINATIONS: u64 = 1 << 25;
 
 /// One planned air: how many of each operation it proves. Ops with a non-zero count feed this air;
 /// the same op may also appear (with the complementary count) in another air when split.
@@ -151,18 +156,25 @@ pub fn plan_air_strategy(
     let caps: Vec<u64> = metas.iter().map(cap).collect();
     let instance_areas: Vec<u64> = metas.iter().map(|m| m.cost as u64).collect();
 
-    // Mixed-radix sweep over the tail placements: choice[i] indexes tails[i].candidates.
+    // Depth-first sweep over the tail placements, one level per tail, candidates in order — the
+    // same order the old flat mixed-radix loop visited, so the tie-break ("first placement that is
+    // strictly better wins") is unchanged.
+    //
+    // What the DFS buys over the flat loop is the bound: placing a tail never lowers any air's
+    // `ceil(rows / cap)`, so the cost of a partial placement is a lower bound on every completion
+    // of it. A subtree whose partial cost is already `>= best` therefore cannot contain a strictly
+    // better placement and is cut whole. That is what keeps the sweep affordable now that the
+    // universal config has three heights: the placements grew 17x (see `MAX_TAIL_COMBINATIONS`),
+    // and without the bound the worst case measured 323 ms in release — per block, on the witness
+    // critical path.
     let mut choice = vec![0usize; tails.len()];
     let mut best_choice = choice.clone();
     let mut best = Cost { instances: u64::MAX, memory: u64::MAX };
-    let mut rows = vec![0u64; metas.len()];
-    loop {
-        rows.copy_from_slice(&bulk_rows);
-        for (t, &c) in tails.iter().zip(choice.iter()) {
-            rows[t.candidates[c]] += t.rows;
-        }
-        // Folded rather than collected: this runs once per combination, so an allocation here
-        // would be one per placement considered.
+    let mut rows = bulk_rows.clone();
+
+    /// Cost of the airs as they stand. Monotone in every `rows[j]`, which is what makes it a valid
+    /// bound on any completion.
+    fn cost_of(rows: &[u64], caps: &[u64], instance_areas: &[u64]) -> Cost {
         let mut total = Cost::default();
         for (j, &r) in rows.iter().enumerate() {
             if r != 0 {
@@ -171,27 +183,42 @@ pub fn plan_air_strategy(
                 total.memory += instances * instance_areas[j];
             }
         }
-        if total < best {
-            best = total;
-            best_choice.copy_from_slice(&choice);
-        }
-
-        // Advance from the rightmost digit; a carry out of the leftmost means we are back to the
-        // all-zeros placement and every combination has been seen. With no tails at all this exits
-        // after the single evaluation above.
-        let mut carry = true;
-        for (pos, digit) in choice.iter_mut().enumerate().rev() {
-            *digit += 1;
-            if *digit < tails[pos].candidates.len() {
-                carry = false;
-                break;
-            }
-            *digit = 0;
-        }
-        if carry {
-            break;
-        }
+        total
     }
+
+    #[allow(clippy::too_many_arguments)]
+    fn descend(
+        depth: usize,
+        tails: &[Tail],
+        rows: &mut [u64],
+        caps: &[u64],
+        instance_areas: &[u64],
+        choice: &mut [usize],
+        best_choice: &mut [usize],
+        best: &mut Cost,
+    ) {
+        // A partial placement already at or above the incumbent cannot be completed into a
+        // strictly better one: every remaining tail only adds rows. At the root `best` is still
+        // the sentinel, which no finite cost reaches, so the first leaf is always evaluated.
+        let here = cost_of(rows, caps, instance_areas);
+        if here >= *best {
+            return;
+        }
+        let Some(tail) = tails.get(depth) else {
+            *best = here;
+            best_choice.copy_from_slice(choice);
+            return;
+        };
+        for (c, &air) in tail.candidates.iter().enumerate() {
+            choice[depth] = c;
+            rows[air] += tail.rows;
+            descend(depth + 1, tails, rows, caps, instance_areas, choice, best_choice, best);
+            rows[air] -= tail.rows;
+        }
+        choice[depth] = 0;
+    }
+
+    descend(0, &tails, &mut rows, &caps, &instance_areas, &mut choice, &mut best_choice, &mut best);
 
     for (t, &c) in tails.iter().zip(best_choice.iter()) {
         air_counts[t.candidates[c]][t.op_idx] += t.rows;

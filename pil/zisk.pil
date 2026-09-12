@@ -138,7 +138,8 @@ airgroup Zisk {
     BigIntAdd(N: 2**20, bits: 256, operation_code: OP_ADD256) alias Add256;
 
     ArithEq(N: 2**20);
-    ArithEq(N: 2**23) alias ArithEqLarge;
+    ArithEq(N: 2**22) alias ArithEqLarge;
+    ArithEq(N: 2**23) alias ArithEqHuge;
     // ArithEq(N: 2**20, equations: EQ_ARITH256) alias Arith256;
     ArithEq(N: 2**20, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256X;
     ArithEq(N: 2**23, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256XLarge;
@@ -150,7 +151,8 @@ airgroup Zisk {
     ArithEq(N: 2**23, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Large;
     // ArithEq(N: 2**22, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Huge;
     ArithEq384(N: 2**20);
-    ArithEq384(N: 2**23) alias ArithEq384Large;
+    ArithEq384(N: 2**22) alias ArithEq384Large;
+    ArithEq384(N: 2**23) alias ArithEq384Huge;
 
     BabyJubJub(N: 2**18);
     virtual ArithEqLtTable(ARITH_EQ_LT_TABLE_SIZE);

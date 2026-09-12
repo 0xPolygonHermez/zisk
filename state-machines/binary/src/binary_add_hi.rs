@@ -10,7 +10,7 @@
 //! [`BinaryAddHiRow::LANES_X_ROW`], the row type's own. On top of the additions, every slot also
 //! proves the SH3ADD operations of the same shape, selected by its own `sel_sh3add`.
 
-use crate::{fill_and_tally, lanes_x_row::MAX_ADD_HI, BinaryInput};
+use crate::{fill_and_tally_chunked, lanes_x_row::MAX_ADD_HI, BinaryInput};
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
@@ -246,18 +246,10 @@ impl<F: PrimeField64> BinaryAddHiSM<F> {
         let mut add_trace = R::new_trace(trace_buffer)?;
         let num_rows = R::trace_num_rows(&add_trace);
 
-        // Flatten the per-chunk lists; operation i goes to slot i % lanes_x_row of row i / lanes_x_row.
-        let __t = std::time::Instant::now();
-        let mut flat_inputs: Vec<&BinaryInput> =
-            Vec::with_capacity(inputs.iter().map(|v| v.len()).sum());
-        flat_inputs.extend(inputs.iter().flatten());
-        let _report = crate::FlattenReport {
-            name: "BinaryAddHi",
-            inputs: flat_inputs.len(),
-            flatten: __t.elapsed(),
-            started: std::time::Instant::now(),
-        };
-        let total_inputs = flat_inputs.len();
+        // Operation i goes to slot i % lanes_x_row of row i / lanes_x_row. The per-chunk lists are
+        // walked with a cursor rather than flattened into one `Vec<&BinaryInput>`: see
+        // [`fill_and_tally_chunked`].
+        let total_inputs: usize = inputs.iter().map(|v| v.len()).sum();
 
         let rows_used = rows_needed(total_inputs as u64, lanes_x_row) as usize;
         debug_assert!(rows_used <= num_rows, "{} <= {}", rows_used, num_rows);
@@ -270,13 +262,20 @@ impl<F: PrimeField64> BinaryAddHiSM<F> {
             rows_used as f64 / num_rows as f64 * 100.0
         );
 
-        // The chunks of every slot are tallied as the row is filled — see [`fill_and_tally`]. An
-        // empty slot in the last row proves the 0 + 0 = 0 addition, whose chunks are zero, so the
-        // slots this row does not fill are counted with the padding below rather than here.
+        // The chunks of every slot are tallied as the row is filled — see
+        // [`fill_and_tally_chunked`]. An empty slot in the last row proves the 0 + 0 = 0 addition,
+        // whose chunks are zero, so the slots this row does not fill are counted with the padding
+        // below rather than here.
         let chunks_x_row = CHUNKS_X_ADD * lanes_x_row;
-        let mut multiplicities = fill_and_tally(
+        let _report = crate::FillReport {
+            name: "BinaryAddHi",
+            inputs: total_inputs,
+            started: std::time::Instant::now(),
+        };
+        let mut multiplicities = fill_and_tally_chunked(
             &mut R::trace_buffer_mut(&mut add_trace)[..rows_used],
-            &flat_inputs,
+            inputs,
+            total_inputs,
             lanes_x_row,
             |trace_row, row_inputs, multiplicities| {
                 let mut a_values = [0u32; MAX_ADD_HI];

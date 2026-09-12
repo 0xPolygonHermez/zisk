@@ -112,11 +112,18 @@ pub const BINARY_EXTENSION_LARGE_INSTANCE_COST: usize = 9871;
 /// `Add256`: 2.32 GB.
 pub const ADD_256_INSTANCE_COST: usize = 2376;
 
-/// `ArithEq`: 2.12 GB.
+/// `ArithEq`: 2.12 GB at `2**20`.
 pub const ARITH_EQ_INSTANCE_COST: usize = 2171;
 
-/// `ArithEqLarge`: 4.24 GB.
-pub const ARITH_EQ_LARGE_INSTANCE_COST: usize = 4342;
+/// `ArithEqLarge`: 8.48 GB at `2**22`. Scaled from the 2.12 GB `ArithEq` measures at `2**20`: the
+/// heights of one ladder commit the same columns, so the prover's peak is linear in the rows
+/// (`ArithEqLarge` measured 16.97 GB at `2**23`, 8.00x the base). Re-read it from
+/// `build/setup.log` on the next setup.
+pub const ARITH_EQ_LARGE_INSTANCE_COST: usize = 8684;
+
+/// `ArithEqHuge`: 16.97 GB at `2**23`, measured — this is the height `ArithEqLarge` had before
+/// `zisk.pil` split the ladder into `Large` at `2**22` and `Huge` at `2**23`.
+pub const ARITH_EQ_HUGE_INSTANCE_COST: usize = 17377;
 
 /// `Arith256X`: 1.56 GB.
 pub const ARITH_256_X_INSTANCE_COST: usize = 1597;
@@ -136,12 +143,17 @@ pub const ARITH_BN_254_INSTANCE_COST: usize = 1976;
 /// `ArithBn254Large`: 3.87 GB.
 pub const ARITH_BN_254_LARGE_INSTANCE_COST: usize = 3958;
 
-/// `ArithEq384`: 1.96 GB.
+/// `ArithEq384`: 1.96 GB at `2**20`.
 pub const ARITH_EQ_384_INSTANCE_COST: usize = 2007;
 
-/// `ArithEq384Large`: 3.93 GB. Halved from the 7.86 GB measured at `2**22`, the height the alias
-/// had before `zisk.pil` moved it to `2**21`; re-read it from `build/setup.log` on the next setup.
-pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 4025;
+/// `ArithEq384Large`: 7.84 GB at `2**22`. Scaled from the 1.96 GB the base air measures at `2**20`,
+/// the ladder being linear in the rows (`ArithEq384Large` measured 15.72 GB at `2**23`, 8.02x the
+/// base). Re-read it from `build/setup.log` on the next setup.
+pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 8028;
+
+/// `ArithEq384Huge`: 15.72 GB at `2**23`, measured — this is the height `ArithEq384Large` had
+/// before `zisk.pil` split the ladder into `Large` at `2**22` and `Huge` at `2**23`.
+pub const ARITH_EQ_384_HUGE_INSTANCE_COST: usize = 16097;
 
 /// `BabyJubJub`: 0.60 GB.
 pub const BABY_JUB_JUB_INSTANCE_COST: usize = 614;
@@ -274,6 +286,7 @@ mod tests {
                     Add256Trace: Add256TraceRow: ADD_256_INSTANCE_COST,
                     ArithEqTrace: ArithEqTraceRow: ARITH_EQ_INSTANCE_COST,
                     ArithEqLargeTrace: ArithEqLargeTraceRow: ARITH_EQ_LARGE_INSTANCE_COST,
+                    ArithEqHugeTrace: ArithEqHugeTraceRow: ARITH_EQ_HUGE_INSTANCE_COST,
                     Arith256XTrace: Arith256XTraceRow: ARITH_256_X_INSTANCE_COST,
                     Arith256XLargeTrace: Arith256XLargeTraceRow: ARITH_256_X_LARGE_INSTANCE_COST,
                     ArithSecp256K1Trace: ArithSecp256K1TraceRow: ARITH_SECP_256_K_1_INSTANCE_COST,
@@ -282,6 +295,7 @@ mod tests {
                     ArithBn254LargeTrace: ArithBn254LargeTraceRow: ARITH_BN_254_LARGE_INSTANCE_COST,
                     ArithEq384Trace: ArithEq384TraceRow: ARITH_EQ_384_INSTANCE_COST,
                     ArithEq384LargeTrace: ArithEq384LargeTraceRow: ARITH_EQ_384_LARGE_INSTANCE_COST,
+                    ArithEq384HugeTrace: ArithEq384HugeTraceRow: ARITH_EQ_384_HUGE_INSTANCE_COST,
                     BabyJubJubTrace: BabyJubJubTraceRow: BABY_JUB_JUB_INSTANCE_COST,
                     KeccakfTrace: KeccakfTraceRow: KECCAKF_INSTANCE_COST,
                     Sha256fTrace: Sha256fTraceRow: SHA_256_F_INSTANCE_COST,

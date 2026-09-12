@@ -7,7 +7,7 @@
 //! `binary_add.pil` — so the packing width is not a constant here: it comes from the row type's own
 //! [`BinaryAddRow::LANES_X_ROW`], read from the generated trace row itself.
 
-use crate::{fill_and_tally, BinaryInput, BinaryLanes};
+use crate::{fill_and_tally_chunked, BinaryInput, BinaryLanes};
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
@@ -265,23 +265,20 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             total_inputs as f64 / num_slots as f64 * 100.0
         );
 
-        let __t = std::time::Instant::now();
-        let mut flat_inputs: Vec<&BinaryInput> =
-            Vec::with_capacity(inputs.iter().map(|v| v.len()).sum());
-        flat_inputs.extend(inputs.iter().flatten());
-        let _report = crate::FlattenReport {
+        // Rows are filled LANES_X_ROW operations at a time, and each operation's chunks are tallied
+        // as its slot is written rather than kept to be counted afterwards — see
+        // [`fill_and_tally_chunked`], which walks the per-chunk lists with a cursor rather than
+        // flattening them into one `Vec<&BinaryInput>` first.
+        let rows_used = lanes.rows_for(total_inputs);
+        let _report = crate::FillReport {
             name: "BinaryAdd",
-            inputs: flat_inputs.len(),
-            flatten: __t.elapsed(),
+            inputs: total_inputs,
             started: std::time::Instant::now(),
         };
-
-        // Rows are filled LANES_X_ROW operations at a time, and each operation's chunks are tallied
-        // as its slot is written rather than kept to be counted afterwards — see [`fill_and_tally`].
-        let rows_used = lanes.rows_for(total_inputs);
-        let mut multiplicities = fill_and_tally(
+        let mut multiplicities = fill_and_tally_chunked(
             &mut R::trace_buffer_mut(&mut add_trace)[..rows_used],
-            &flat_inputs,
+            inputs,
+            total_inputs,
             R::LANES_X_ROW,
             |trace_row, row_inputs, multiplicities| {
                 for (lane, input) in row_inputs.iter().enumerate() {
