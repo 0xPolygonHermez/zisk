@@ -94,35 +94,28 @@ impl EmbeddedClient {
     }
 }
 
-/// Reject a recurser built against a different proving key than this client proves with.
+/// Reject a recurser built against a different proving key than the one in use.
 ///
-/// `AggregationProgram` binds to the global key at build time; `EmbeddedClientBuilder::proving_key`
-/// can put the prover on another. The `recurser_id` is content-addressed on the build-time key's
-/// vadcop_final verkey, so the key cannot be swapped here -- only refused. Compares verkeys, not
-/// paths (one key can have several) and not hash families, which is strictly weaker: the verkey is
-/// the const-tree root under the family's own Merkle hash, so it already differs whenever the
-/// family does.
+/// Compares current verkeys against the build-time one, never paths: a key can sit at several
+/// paths, and a path can hold a key regenerated since the build.
 fn ensure_recurser_matches_client_key(client_proving_key: &Path, agg: &Recurser) -> Result<()> {
     let client_key = client_proving_key
         .to_str()
         .ok_or_else(|| SdkError::Recurser("client proving key path is not valid UTF-8".into()))?;
-    if client_key == agg.proving_key {
-        return Ok(());
-    }
 
-    let read = |key: &str| {
-        read_vadcop_final_verkey(key).map_err(|e| {
+    // The client proves with `client_key`; setup builds the circuit from `agg.proving_key`.
+    for key in [client_key, &agg.proving_key] {
+        let current = read_vadcop_final_verkey(key).map_err(|e| {
             SdkError::Recurser(format!("failed to read the vadcop_final verkey at {key} ({e})"))
-        })
-    };
-    if read(client_key)? != read(&agg.proving_key)? {
-        return Err(SdkError::Recurser(format!(
-            "recurser '{}' was built against the proving key at {}, but this client proves with \
-             the key at {}. Their vadcop_final verkeys differ, so proofs from this client cannot \
-             verify under the recurser's. Build the aggregation program on the same key the \
-             client uses, or drop the custom proving key.",
-            agg.recurser_id, agg.proving_key, client_key,
-        )));
+        })?;
+        if current != agg.zisk_vk {
+            return Err(SdkError::Recurser(format!(
+                "recurser '{}' was built against the proving key at {}; the key at {} no longer \
+                 has that vadcop_final verkey, so its proofs cannot verify under the recurser's. \
+                 Rebuild the aggregation program against the key in use.",
+                agg.recurser_id, agg.proving_key, key,
+            )));
+        }
     }
     Ok(())
 }
@@ -206,4 +199,86 @@ fn run_aggregate_proofs_blocking(
         Duration::from_secs(0),
         StatsCostPerType::default(),
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, OnceLock};
+
+    /// Temp proving key whose vadcop_final verkey is `vk`. Clears the dir first, so reusing a
+    /// tag rewrites the key in place and tests need no teardown.
+    fn key_dir(tag: &str, vk: [u64; 4]) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("zisk-recurser-{tag}-{}", std::process::id()));
+        let final_dir = dir.join("pilout").join("vadcop_final");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&final_dir).unwrap();
+        std::fs::write(dir.join("pilout.globalInfo.json"), r#"{"name":"pilout","hash":"blake3"}"#)
+            .unwrap();
+        std::fs::write(
+            final_dir.join("vadcop_final.verkey.json"),
+            serde_json::to_string(&vk).unwrap(),
+        )
+        .unwrap();
+        dir
+    }
+
+    /// A recurser built against `built`, pinned to the verkey it held then.
+    fn agg_for(built: &Path, zisk_vk: [u64; 4]) -> Recurser {
+        Recurser {
+            recurser_id: "rid".into(),
+            templates: zisk_recurser::CircomTemplates {
+                normalize: None,
+                aggregate_publics: "// body".into(),
+                n_free: 0,
+                n_publics_agg: 6,
+                program_vks: vec![],
+            },
+            proving_key: built.to_str().unwrap().to_string(),
+            zisk_vk: zisk_vk.map(|w| w.to_string()),
+            hash_mode: zisk_common::HashMode::default(),
+            output_dir: "/tmp/zisk-test-output".into(),
+            vk_cache: Arc::new(OnceLock::new()),
+        }
+    }
+
+    #[test]
+    fn unchanged_key_is_accepted() {
+        let dir = key_dir("unchanged", [1, 2, 3, 4]);
+        ensure_recurser_matches_client_key(&dir, &agg_for(&dir, [1, 2, 3, 4])).unwrap();
+    }
+
+    /// What path comparison misses: same path, key regenerated since the build.
+    #[test]
+    fn key_regenerated_in_place_is_rejected() {
+        let dir = key_dir("regenerated", [1, 2, 3, 4]);
+        let agg = agg_for(&dir, [1, 2, 3, 4]);
+        key_dir("regenerated", [9, 9, 9, 9]);
+        ensure_recurser_matches_client_key(&dir, &agg).unwrap_err();
+    }
+
+    #[test]
+    fn another_path_holding_the_same_key_is_accepted() {
+        let built = key_dir("same-built", [1, 2, 3, 4]);
+        let client = key_dir("same-client", [1, 2, 3, 4]);
+        ensure_recurser_matches_client_key(&client, &agg_for(&built, [1, 2, 3, 4])).unwrap();
+    }
+
+    #[test]
+    fn a_client_key_with_another_verkey_is_rejected() {
+        let built = key_dir("other-built", [1, 2, 3, 4]);
+        let client = key_dir("other-client", [5, 6, 7, 8]);
+        ensure_recurser_matches_client_key(&client, &agg_for(&built, [1, 2, 3, 4])).unwrap_err();
+    }
+
+    /// Setup builds the circuit from `agg.proving_key`, so it is checked too.
+    #[test]
+    fn a_regenerated_setup_key_is_rejected_even_when_the_client_key_is_good() {
+        let client = key_dir("setup-client", [1, 2, 3, 4]);
+        let built = key_dir("setup-built", [1, 2, 3, 4]);
+        let agg = agg_for(&built, [1, 2, 3, 4]);
+        key_dir("setup-built", [9, 9, 9, 9]);
+        let err = ensure_recurser_matches_client_key(&client, &agg).unwrap_err();
+        assert!(err.to_string().contains(built.to_str().unwrap()), "{err}");
+    }
 }

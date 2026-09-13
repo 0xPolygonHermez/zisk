@@ -20,6 +20,9 @@ pub struct Recurser {
     pub(crate) templates: zisk_recurser::CircomTemplates,
     // SDK-managed paths — not exposed to the user.
     pub(crate) proving_key: String,
+    /// `proving_key`'s vadcop_final verkey at build time, so later checks compare key
+    /// contents rather than paths.
+    pub(crate) zisk_vk: [String; 4],
     /// The proving key's hash family, captured at build time from the same
     /// globalInfo.json the `recurser_id` was derived against.
     pub(crate) hash_mode: HashMode,
@@ -247,7 +250,7 @@ impl<'a> AggregationProgramBuilder<'a> {
             })?;
 
         let inputs = zisk_recurser::RecurserManifestInputs::new(
-            zisk_vk,
+            zisk_vk.clone(),
             program_vks,
             normalize.as_ref(),
             &templates.aggregate_publics,
@@ -260,6 +263,7 @@ impl<'a> AggregationProgramBuilder<'a> {
             recurser_id,
             templates,
             proving_key,
+            zisk_vk,
             hash_mode,
             output_dir,
             vk_cache: Arc::new(OnceLock::new()),
@@ -358,6 +362,7 @@ mod tests {
                 program_vks: vec![],
             },
             proving_key: "/tmp/zisk-test-setup/provingKey".into(),
+            zisk_vk: ["1".into(), "2".into(), "3".into(), "4".into()],
             hash_mode: HashMode::default(),
             output_dir: "/tmp/zisk-test-output".into(),
             vk_cache: Arc::new(OnceLock::new()),
