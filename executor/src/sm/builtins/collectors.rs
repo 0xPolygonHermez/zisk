@@ -9,13 +9,13 @@ use zisk_pil::{
     ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_ADD_HI_AIR_IDS, BINARY_ADD_HI_HUGE_AIR_IDS,
     BINARY_ADD_HI_LARGE_AIR_IDS, BINARY_ADD_HUGE_AIR_IDS, BINARY_ADD_LARGE_AIR_IDS, BINARY_AIR_IDS,
     BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_LARGE_AIR_IDS, BINARY_HUGE_AIR_IDS,
-    BINARY_LARGE_AIR_IDS, DMA_64_ALIGNED_AIR_IDS, DMA_64_ALIGNED_LARGE_AIR_IDS,
-    DMA_64_ALIGNED_MEM_AIR_IDS, DMA_64_ALIGNED_MEM_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_LARGE_AIR_IDS,
-    DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS, DMA_PRE_POST_AIR_IDS, DMA_UNALIGNED_AIR_IDS,
-    DMA_WITH_PRE_POST_AIR_IDS, INPUT_DATA_AIR_IDS, JUMP_DEST_AIR_IDS, MEM_AIR_IDS,
-    MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_BYTE_LARGE_AIR_IDS,
-    MEM_ALIGN_LARGE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS,
-    MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
+    BINARY_LARGE_AIR_IDS, COMPACT_MEM_AIR_IDS, DMA_64_ALIGNED_AIR_IDS,
+    DMA_64_ALIGNED_LARGE_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS, DMA_64_ALIGNED_MEM_CPY_AIR_IDS,
+    DMA_64_ALIGNED_MEM_LARGE_AIR_IDS, DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS,
+    DMA_PRE_POST_AIR_IDS, DMA_UNALIGNED_AIR_IDS, DMA_WITH_PRE_POST_AIR_IDS, INPUT_DATA_AIR_IDS,
+    JUMP_DEST_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS,
+    MEM_ALIGN_BYTE_LARGE_AIR_IDS, MEM_ALIGN_LARGE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS,
+    MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
 };
 use zisk_precomp_dma::{
     Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCounterInputGen, DmaInstance,
@@ -29,8 +29,9 @@ use zisk_sm_binary::{
     BinaryBasicCollector, BinaryBasicInstance, BinaryExtensionCollector, BinaryExtensionInstance,
 };
 use zisk_sm_mem::{
-    MemAlignByteInstance, MemAlignCollector, MemAlignInstance, MemAlignReadByteInstance,
-    MemAlignWriteByteInstance, MemModuleCollector, MemModuleInstance,
+    CompactMemCollector, CompactMemInstance, MemAlignByteInstance, MemAlignCollector,
+    MemAlignInstance, MemAlignReadByteInstance, MemAlignWriteByteInstance, MemModuleCollector,
+    MemModuleInstance,
 };
 use zisk_sm_rom::{RomCollector, RomInstance};
 
@@ -41,6 +42,9 @@ pub struct BuiltinCollectors<F: PrimeField64> {
 
     /// Memory-related collectors.
     pub mem: Vec<(usize, MemModuleCollector)>,
+    /// Collectors of the fused `CompactMem` air, each carrying the three memory areas of one
+    /// instance (see [`CompactMemCollector`]).
+    pub compact_mem: Vec<(usize, CompactMemCollector)>,
     /// Memory alignment-related collectors.
     pub mem_align: Vec<(usize, MemAlignCollector)>,
 
@@ -84,6 +88,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
         Self {
             rom: Vec::new(),
             mem: Vec::new(),
+            compact_mem: Vec::new(),
             mem_align: Vec::new(),
             binary_basic: Vec::new(),
             binary_add: Vec::new(),
@@ -172,6 +177,12 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 let inst =
                     downcast::<F, MemModuleInstance<F>>(secn, air_id, gid, "MemModuleInstance")?;
                 self.mem.push((gid, inst.build_mem_collector(chunk, mem_sections)));
+                Ok(true)
+            }
+            id if id == COMPACT_MEM_AIR_IDS[0] => {
+                let inst =
+                    downcast::<F, CompactMemInstance<F>>(secn, air_id, gid, "CompactMemInstance")?;
+                self.compact_mem.push((gid, inst.build_mem_collector(chunk, mem_sections)));
                 Ok(true)
             }
             id if id == MEM_ALIGN_AIR_IDS[0] || id == MEM_ALIGN_LARGE_AIR_IDS[0] => {

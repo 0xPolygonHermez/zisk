@@ -7,8 +7,8 @@ use crate::*;
 use zisk_sm_mem_common::save_plans;
 use zisk_sm_mem_common::MEM_OFFSETS_PAGE_SIZE;
 use zisk_sm_mem_common::{
-    input_data_lanes_x_row, mem_lanes_x_row, rom_data_lanes_x_row, MemAlignCounters,
-    MemAlignPlanner, MemModuleCheckPoint, MemModuleSegmentCheckPoint,
+    fuse_first_segments, input_data_lanes_x_row, mem_lanes_x_row, rom_data_lanes_x_row,
+    MemAlignCounters, MemAlignPlanner, MemModuleCheckPoint, MemModuleSegmentCheckPoint,
 };
 
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
@@ -172,6 +172,18 @@ impl MemPlanner {
     pub fn collect_plans(&self, mem_align_plans: &mut Vec<Plan>) -> Vec<Plan> {
         let mut plans = std::mem::take(mem_align_plans);
         timer_start_info!(COLLECT_MEM_PLANS);
+        // One list per area, kept apart so that segment 0 of the three can be fused into a single
+        // `CompactMem` plan below. The C++ side does not know about that air: the blocks of
+        // `CompactMem` are sized like the airs they take the segment from, so it segments exactly
+        // as it did before.
+        let mut by_area: [Vec<Plan>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+        // What a segment of each area could hold, in virtual rows -- the same budgets handed to
+        // the C++ planner in `new()`. Only used to report how full an instance came out.
+        let rows_by_area = [
+            (RomDataTrace::<()>::NUM_ROWS * rom_data_lanes_x_row()) as u64,
+            (InputDataTrace::<()>::NUM_ROWS * input_data_lanes_x_row()) as u64,
+            (MemTrace::<()>::NUM_ROWS * mem_lanes_x_row()) as u64,
+        ];
         for (mem_id, air_id) in
             [ROM_DATA_AIR_IDS[0], INPUT_DATA_AIR_IDS[0], MEM_AIR_IDS[0]].iter().enumerate()
         {
@@ -232,16 +244,27 @@ impl MemPlanner {
                         unsafe { std::slice::from_raw_parts(off.pages_dense, dense_len) }.to_vec()
                     };
                 }
-                plans.push(Plan::new(
-                    ZISK_AIRGROUP_ID,
-                    *air_id,
-                    Some(SegmentId(segment_id as usize)),
-                    InstanceType::Instance,
-                    CheckPoint::Multiple(chunks),
-                    Some(Box::new(segment)),
-                ));
+                // Virtual rows this segment was given, of what the air holds. Reported so an
+                // instance's occupancy shows up in the witness logs -- and, for the fused
+                // `CompactMem`, so the three blocks' fills can be read side by side.
+                let used: u64 = segment.chunks.values().map(|chunk| chunk.count as u64).sum();
+                by_area[mem_id].push(
+                    Plan::new(
+                        ZISK_AIRGROUP_ID,
+                        *air_id,
+                        Some(SegmentId(segment_id as usize)),
+                        InstanceType::Instance,
+                        CheckPoint::Multiple(chunks),
+                        Some(Box::new(segment)),
+                    )
+                    .with_occupancy(used, rows_by_area[mem_id]),
+                );
             }
         }
+
+        // `by_area` is indexed by the loop above: 0 rom-data, 1 free-input, 2 RAM.
+        let [rom_data, input_data, mem] = by_area;
+        plans.extend(fuse_first_segments(mem, input_data, rom_data));
 
         #[cfg(feature = "save_mem_plans")]
         save_plans(&plans, "asm_plans.txt");

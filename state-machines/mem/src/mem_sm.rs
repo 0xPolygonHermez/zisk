@@ -25,7 +25,7 @@ use zisk_core::{RAM_ADDR, RAM_SIZE};
 
 use crate::mem_witness_split::{split_mem_slots, MemFillRange};
 use zisk_sm_mem_common::{
-    MemHelpers, MemLanes, MemModuleSegmentCheckPoint, RAM_W_ADDR_END, RAM_W_ADDR_INIT,
+    MemHelpers, MemLaneRow, MemLanes, MemModuleSegmentCheckPoint, RAM_W_ADDR_END, RAM_W_ADDR_INIT,
 };
 
 const OFFSET_DUAL_FLAG: u32 = 0x8000_0000;
@@ -50,6 +50,13 @@ pub struct MemPreviousSegment {
 #[inline]
 fn lanes_of<F: PrimeField64, R: MemTraceRowOps<F>>() -> MemLanes {
     MemLanes::new(R::default().get_all_addr().len())
+}
+
+/// Same, for a row seen through [`MemLaneRow`]: the `Mem` row answers its own `lanes_x_row`, the
+/// fused `CompactMem` row answers the one of its `mem_` block.
+#[inline]
+pub(crate) fn mem_lanes_of<F: PrimeField64, R: MemLaneRow<F>>() -> MemLanes {
+    MemLanes::new(R::mem_lanes_x_row())
 }
 
 #[allow(unused, unused_variables)]
@@ -625,7 +632,7 @@ impl<F: PrimeField64> MemSM<F> {
     ///   `offsets[i] == offsets[i + 1]` (no increment between consecutive
     ///   slots).
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets_inner<R: MemTraceRowOps<F>>(
+    fn compute_witness_with_offsets_inner<R: MemTraceRowOps<F> + MemLaneRow<F>>(
         &self,
         mem_ops: MemOps<'_>,
         segment_id: SegmentId,
@@ -662,8 +669,60 @@ impl<F: PrimeField64> MemSM<F> {
         // `current_num_threads` is exactly the `n_cores` proofman handed over, and there is no
         // second knob to keep in step with it.
         let n_ranges = rayon::current_num_threads();
-        let out = fill_mem_trace::<F, R>(
+        let out = self.fill_trace::<R>(
             &mut trace.buffer,
+            mem_ops,
+            previous_segment,
+            segment_id,
+            is_last_segment,
+            seg,
+            n_ranges,
+        );
+
+        let mut air_values = MemAirValues::<F>::new();
+        Self::set_air_values(&mut air_values, segment_id, is_last_segment, previous_segment, &out);
+
+        phase_start!(t_air);
+        let air_instance = AirInstance::new_from_trace(
+            FromTrace::new(&mut trace).with_air_values(&mut air_values),
+        );
+        phase_end!(d_air, t_air);
+        phase_log!(
+            "Mem[{}] witness: take trace {:.0}ms air instance {:.0}ms",
+            usize::from(segment_id),
+            phase_ms!(d_zero),
+            phase_ms!(d_air)
+        );
+
+        #[cfg(feature = "debug_mem")]
+        {
+            let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
+            let filename = format!("{path}/mem_trace_{segment_id:04}.txt");
+            println!("Saving {filename}");
+            Self::save_to_file(&trace, &filename);
+        }
+        #[cfg(feature = "debug_mem")]
+        Self::dump_trace_to_file(&trace, &format!("tmp/mem_trace_gpu_{segment_id:04}_dump.txt"));
+        Ok(air_instance)
+    }
+    /// Fills a `Mem` segment's rows and raises its range checks, whichever air is holding them.
+    ///
+    /// Takes `rows` rather than a `MemTrace` for two reasons: the fused `CompactMem` air carries
+    /// this block inside a wider row (see [`MemLaneRow`]), and the generated `MemTrace` fixes 2^22
+    /// rows, which at 104 columns is 3.25 GB and unusable from a test.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn fill_trace<R: MemLaneRow<F>>(
+        &self,
+        rows: &mut [R],
+        mem_ops: MemOps<'_>,
+        previous_segment: &MemPreviousSegment,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        seg: &MemModuleSegmentCheckPoint,
+        n_ranges: usize,
+    ) -> MemFillOutput {
+        let out = fill_mem_trace::<F, R>(
+            rows,
             mem_ops,
             seg,
             previous_segment,
@@ -672,7 +731,27 @@ impl<F: PrimeField64> MemSM<F> {
             n_ranges,
         );
 
-        let mut air_values = MemAirValues::<F>::new();
+        // Timed apart from the fill because it is not free: `range_check_ranged` widens the whole
+        // 2^22-entry histogram into a fresh `Vec<u64>` (32 MiB) before `assign_values_ranged` walks
+        // every bucket, so it costs the same whether the instance was full or nearly empty.
+        phase_start!(t_rc);
+        self.std.range_check_ranged(self.range_22bits_id, None, &out.range_22bits);
+        self.std.range_check_ranged(self.range_16bits_id, None, &out.range_16bits);
+        phase_end!(d_rc, t_rc);
+        phase_log!("Mem[{}] range checks {:.0}ms", usize::from(segment_id), phase_ms!(d_rc));
+
+        out
+    }
+
+    /// The air values of a `Mem` segment. Shared with the fused `CompactMem` air, whose own air
+    /// values carry the same fields under their `mem_` names.
+    pub(crate) fn set_air_values(
+        air_values: &mut MemAirValues<F>,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        out: &MemFillOutput,
+    ) {
         air_values.segment_id = F::from_usize(segment_id.into());
         air_values.is_first_segment = F::from_bool(segment_id == 0);
         air_values.is_last_segment = F::from_bool(is_last_segment);
@@ -692,38 +771,6 @@ impl<F: PrimeField64> MemSM<F> {
 
         air_values.distance_end[0] = F::from_u16(out.distance_end[0]);
         air_values.distance_end[1] = F::from_u16(out.distance_end[1]);
-
-        // Timed apart from the fill because it is not free: `range_check_ranged` widens the whole
-        // 2^22-entry histogram into a fresh `Vec<u64>` (32 MiB) before `assign_values_ranged` walks
-        // every bucket, so it costs the same whether the instance was full or nearly empty.
-        phase_start!(t_rc);
-        self.std.range_check_ranged(self.range_22bits_id, None, &out.range_22bits);
-        self.std.range_check_ranged(self.range_16bits_id, None, &out.range_16bits);
-        phase_end!(d_rc, t_rc);
-
-        phase_start!(t_air);
-        let air_instance = AirInstance::new_from_trace(
-            FromTrace::new(&mut trace).with_air_values(&mut air_values),
-        );
-        phase_end!(d_air, t_air);
-        phase_log!(
-            "Mem[{}] witness: take trace {:.0}ms range checks {:.0}ms air instance {:.0}ms",
-            usize::from(segment_id),
-            phase_ms!(d_zero),
-            phase_ms!(d_rc),
-            phase_ms!(d_air)
-        );
-
-        #[cfg(feature = "debug_mem")]
-        {
-            let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
-            let filename = format!("{path}/mem_trace_{segment_id:04}.txt");
-            println!("Saving {filename}");
-            Self::save_to_file(&trace, &filename);
-        }
-        #[cfg(feature = "debug_mem")]
-        Self::dump_trace_to_file(&trace, &format!("tmp/mem_trace_gpu_{segment_id:04}_dump.txt"));
-        Ok(air_instance)
     }
 }
 
@@ -795,7 +842,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 /// caller merges them back once every range has finished. That is a complete view for the range:
 /// it only ever reads slots it wrote itself, because every backward read the fill makes stays
 /// within one address, and an address belongs to a single range.
-struct RowView<'a, R> {
+pub(crate) struct RowView<'a, R> {
     /// Stand-in for row `first_row`, merged into the trace by the caller.
     head: R,
     /// Rows `first_row + 1 ..` of the trace, this range's alone.
@@ -818,7 +865,7 @@ impl<R> RowView<'_, R> {
 }
 
 /// What one range hands back: its shared leading row, how far it got, and its multiplicities.
-struct RangeFill<R> {
+pub(crate) struct RangeFill<R> {
     head: R,
     /// Highest slot this range wrote, or `None` when its addresses carried no operation.
     last_slot: Option<usize>,
@@ -837,7 +884,7 @@ struct RangeFill<R> {
 /// out on purpose: they are `<==` columns in `mem.pil`, so the prover derives them and the witness
 /// never sets them.
 #[inline]
-fn copy_mem_lane<F: PrimeField64, R: MemTraceRowOps<F>>(dst: &mut R, src: &R, lane: usize) {
+pub(crate) fn copy_mem_lane<F: PrimeField64, R: MemLaneRow<F>>(dst: &mut R, src: &R, lane: usize) {
     dst.set_addr(lane, src.get_addr(lane));
     dst.set_step(lane, src.get_step(lane));
     dst.set_sel(lane, src.get_sel(lane));
@@ -854,7 +901,7 @@ fn copy_mem_lane<F: PrimeField64, R: MemTraceRowOps<F>>(dst: &mut R, src: &R, la
 /// One padding lane: same address, same step, same value, not selected. Kept in one place so the
 /// partial row and the whole rows cannot drift apart.
 #[inline]
-fn set_mem_padding_lane<F: PrimeField64, R: MemTraceRowOps<F>>(
+pub(crate) fn set_mem_padding_lane<F: PrimeField64, R: MemLaneRow<F>>(
     row: &mut R,
     lane: usize,
     addr: u32,
@@ -878,7 +925,7 @@ fn set_mem_padding_lane<F: PrimeField64, R: MemTraceRowOps<F>>(
 /// What the fill produces besides the rows themselves: the multiplicities, and the scalars the air
 /// values are built from. Deliberately not `MemAirValues` -- that type carries a lifetime and a
 /// self-referential buffer, and building it is the caller's business anyway.
-struct MemFillOutput {
+pub(crate) struct MemFillOutput {
     range_22bits: Vec<u32>,
     range_16bits: Vec<u32>,
     /// Address, step and value of the last filled slot: what the padding repeats and what the
@@ -896,7 +943,7 @@ struct MemFillOutput {
 /// Takes `rows` rather than a `MemTrace` so the equivalence test can run it over a handful of rows:
 /// the generated `MemTrace` fixes 2^22 rows, which at 104 columns is 3.25 GB and unusable from a
 /// test. `rows.len()` is the segment's row count, exactly as `trace.num_rows()` was.
-fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
+pub(crate) fn fill_mem_trace<F: PrimeField64, R: MemLaneRow<F>>(
     rows: &mut [R],
     mem_ops: MemOps<'_>,
     seg: &MemModuleSegmentCheckPoint,
@@ -905,7 +952,7 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
     is_last_segment: bool,
     n_ranges: usize,
 ) -> MemFillOutput {
-    let lanes = lanes_of::<F, R>();
+    let lanes = mem_lanes_of::<F, R>();
     let num_slots = lanes.slots(rows.len());
     let lanes_x_row = lanes.lanes();
     // `current_offsets` packs a virtual row plus two flag bits in a u32.
@@ -1073,7 +1120,7 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
             for lane in 0..lanes_x_row {
                 set_mem_padding_lane::<F, R>(&mut pad_row, lane, addr, step, low_value, high_value);
             }
-            rows[from_row..].par_iter_mut().for_each(|row| *row = pad_row);
+            rows[from_row..].par_iter_mut().for_each(|row| row.copy_mem_block_from(&pad_row));
         }
     }
 
@@ -1152,7 +1199,7 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
 /// Fills one range's slots. Pure by design -- no `&self`, no `MemSM` state -- which is what lets
 /// the equivalence test run the same fill with one range and with many and compare the traces.
 #[allow(clippy::too_many_arguments)]
-fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
+pub(crate) fn fill_mem_range<F: PrimeField64, R: MemLaneRow<F>>(
     range: &MemFillRange,
     owned: &mut [R],
     mem_ops: MemOps<'_>,

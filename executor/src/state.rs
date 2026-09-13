@@ -108,8 +108,15 @@ impl<F: PrimeField64> ExecutionState<F> {
     }
 
     /// Records what the planner expects each instance to hold, by global instance id.
+    ///
+    /// Replaces the previous execution's entries rather than merging into them. Global ids are
+    /// handed out per execution, so an id that named one air in the last execution can name another
+    /// in this one: a leftover entry would then be reported as that other air's occupancy. An
+    /// instance whose planner does not report an occupancy has to stay unknown, and it only does if
+    /// nothing is left behind under its id.
     pub fn set_occupancy(&self, entries: impl IntoIterator<Item = (usize, Occupancy)>) {
         let mut occupancy = self.occupancy.write().unwrap();
+        occupancy.clear();
         occupancy.extend(entries);
     }
 

@@ -52,6 +52,11 @@ pub const INPUT_DATA_INSTANCE_COST: usize = 8141;
 /// `RomData`: 4.14 GB.
 pub const ROM_DATA_INSTANCE_COST: usize = 4239;
 
+/// `CompactMem`: 19.08 GB. The three airs above fused into one, so one instance of it costs about
+/// what `Mem` + `InputData` + `RomData` cost apart (13.58 + 7.95 + 4.14 = 25.67 GB) minus what they
+/// stop paying three times over.
+pub const COMPACT_MEM_INSTANCE_COST: usize = 19538;
+
 /// `MemAlign`: 2.94 GB.
 pub const MEM_ALIGN_INSTANCE_COST: usize = 3011;
 

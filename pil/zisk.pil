@@ -12,6 +12,7 @@ require "mem/pil/mem.pil"
 require "mem/pil/mem_align.pil"
 require "mem/pil/mem_align_byte.pil"
 require "mem/pil/rom_data.pil"
+require "mem/pil/compact_mem.pil"
 require "rom/pil/rom.pil"
 require "main/pil/main.pil"
 require "frequent-ops/pil/frequent_ops.pil"
@@ -93,6 +94,21 @@ airgroup Zisk {
     Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1, lanes_x_row: 8);
     Mem(N: 2**22, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data, lanes_x_row: 4) alias InputData;
     RomData(N: 2**22, base_address: 0x8000_0000, size_mb: 128, enable_flag: enable_rom_data, lanes_x_row: 2);
+
+    // The three memory areas above, fused into one air: every row carries a slice of the three
+    // sequences at once. It proves segment 0 of each area, so an execution that needs one segment
+    // of each -- which is every execution -- spends one instance instead of three.
+    //
+    // Each block is sized exactly like the air it takes the segment from (same rows, same lanes),
+    // so the planners keep segmenting as they do today. It MUST come after Mem, InputData and
+    // RomData: whichever air is declared first is the one that opens each continuation cycle, and
+    // only the standalone airs know that area's enable_flag.
+    CompactMem(N: 2**22,
+               mem_base_address: 0xA000_0000, mem_size_mb: 512, mem_large_mem: 1, mem_dual_mem: 1,
+               mem_lanes_x_row: 8,
+               input_base_address: 0x4000_0000, input_size_mb: 1024, input_large_mem: 1,
+               input_lanes_x_row: 4,
+               rom_lanes_x_row: 2);
 
     MemAlign(N: 2**21);
     MemAlign(N: 2**23) alias MemAlignLarge;

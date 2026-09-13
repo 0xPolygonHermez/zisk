@@ -333,6 +333,10 @@ macro_rules! register_precompiles {
                         ::std::primitive::usize,
                         ::zisk_sm_mem::MemModuleCollector,
                     )>,
+                    compact_mem_collector: &mut ::std::vec::Vec<(
+                        ::std::primitive::usize,
+                        ::zisk_sm_mem::CompactMemCollector,
+                    )>,
                     mem_align_collector: &mut ::std::vec::Vec<(
                         ::std::primitive::usize,
                         ::zisk_sm_mem::MemAlignCollector,
@@ -352,6 +356,7 @@ macro_rules! register_precompiles {
                                     data,
                                     &mut ::zisk_precomp_common::MemCollectorProcessor::new(
                                         mem_collector,
+                                        compact_mem_collector,
                                         mem_align_collector,
                                     ),
                                 );

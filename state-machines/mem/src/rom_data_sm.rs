@@ -14,7 +14,8 @@ use zisk_pil::{
     RomDataAirValues, RomDataTrace, RomDataTraceRow, RomDataTraceRowOps, RomDataTraceRowPacked,
 };
 use zisk_sm_mem_common::{
-    MemHelpers, MemLanes, MemModuleSegmentCheckPoint, MEMORY_INIT_STEP, MEM_BYTES_BITS,
+    MemHelpers, MemLanes, MemModuleSegmentCheckPoint, RomDataLaneRow, MEMORY_INIT_STEP,
+    MEM_BYTES_BITS,
 };
 
 pub const ROM_DATA_W_ADDR_INIT: u32 = ROM_ADDR as u32 >> MEM_BYTES_BITS;
@@ -33,6 +34,23 @@ const _: () = {
 #[inline]
 fn lanes_of<F: PrimeField64, R: RomDataTraceRowOps<F>>() -> MemLanes {
     MemLanes::new(R::default().get_all_addr().len())
+}
+
+/// Same, for a row seen through [`RomDataLaneRow`]: the `RomData` row answers its own
+/// `lanes_x_row`, the fused `CompactMem` row answers the one of its `rom_` block.
+#[inline]
+pub(crate) fn rom_data_lanes_of<F: PrimeField64, R: RomDataLaneRow<F>>() -> MemLanes {
+    MemLanes::new(R::rom_data_lanes_x_row())
+}
+
+/// What the `RomData` fill produces besides the rows: the scalars its air values are built from.
+pub(crate) struct RomDataFillOutput {
+    /// Address and value of the last filled slot: what the padding repeats and what the segment
+    /// hands to the next one.
+    pub last_addr: u32,
+    pub last_value: [u32; 2],
+    /// Lanes the padding took, which is what the padding lookup subtracts from the bus.
+    pub padding_size: usize,
 }
 
 pub struct RomDataSM<F: PrimeField64> {
@@ -227,7 +245,10 @@ impl<F: PrimeField64> RomDataSM<F> {
             )
         }
     }
-    /// Fills the witness trace using a precomputed **offset table** (GPU path).
+    /// Fills a `RomData` segment's rows using a precomputed **offset table** (GPU path).
+    ///
+    /// Takes `rows` rather than a `RomDataTrace` because the fused `CompactMem` air carries this
+    /// block inside a wider row (see [`RomDataLaneRow`]).
     ///
     /// `mem_ops` does not need to be sorted. Each operation is placed directly
     /// into the virtual row indicated by the `offsets` table, enabling
@@ -254,19 +275,16 @@ impl<F: PrimeField64> RomDataSM<F> {
     ///   index order, the first absent address is the one where
     ///   `offsets[i] == offsets[i + 1]` (no increment between consecutive
     ///   slots).
-    #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets_inner<R: RomDataTraceRowOps<F>>(
+    pub(crate) fn fill_trace<R: RomDataLaneRow<F>>(
         &self,
+        rows: &mut [R],
         mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
-        previous_segment: &MemPreviousSegment,
-        trace_buffer: Vec<F>,
         seg: &MemModuleSegmentCheckPoint,
-    ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = RomDataTrace::<R>::new_from_vec(trace_buffer)?;
-        let lanes = lanes_of::<F, R>();
-        let num_slots = lanes.slots(RomDataTrace::<R>::NUM_ROWS);
+    ) -> RomDataFillOutput {
+        let lanes = rom_data_lanes_of::<F, R>();
+        let num_slots = lanes.slots(rows.len());
         assert!(
             !mem_ops.is_empty() && mem_ops.len() <= num_slots,
             "RomDataSM: mem_ops.len()={} out of range {}",
@@ -282,7 +300,6 @@ impl<F: PrimeField64> RomDataSM<F> {
         //     seg,
         //     &format!("tmp/rom_data_trace_gpu_{segment_id:04}_offsets.txt"),
         // );
-        let previous_segment_addr: u32 = if segment_id == 0 { 0 } else { previous_segment.addr };
         let mut current_offsets = vec![0u32; seg.addr_range_slots as usize];
 
         #[cfg(debug_assertions)]
@@ -313,25 +330,25 @@ impl<F: PrimeField64> RomDataSM<F> {
             #[cfg(debug_assertions)]
             {
                 assert!(!filled_slots[islot],"RomDataSM: overwriting non empty slot {islot} for mem_op with addr 0x{:X} => 0x{:X} step:{} => {}",
-                    trace[row].get_addr(lane) * 8, mem_op.addr * 8, trace[row].get_step(lane), mem_op.step);
+                    rows[row].get_addr(lane) * 8, mem_op.addr * 8, rows[row].get_step(lane), mem_op.step);
                 filled_slots[islot] = true;
             }
 
-            trace[row].set_addr(lane, mem_op.addr);
-            trace[row].set_step(lane, mem_op.step);
+            rows[row].set_addr(lane, mem_op.addr);
+            rows[row].set_step(lane, mem_op.step);
 
             let (low_val, high_val) = self.get_u32_values(mem_op.value);
-            trace[row].set_value(lane, 0, low_val);
-            trace[row].set_value(lane, 1, high_val);
+            rows[row].set_value(lane, 0, low_val);
+            rows[row].set_value(lane, 1, high_val);
 
-            trace[row].set_addr_change(lane, addr_changes || (islot == 0 && segment_id == 0));
+            rows[row].set_addr_change(lane, addr_changes || (islot == 0 && segment_id == 0));
         }
 
         let count = mem_ops.len();
         let (last_row, last_lane) = lanes.split(count - 1);
-        let last_addr = trace[last_row].get_addr(last_lane);
+        let last_addr = rows[last_row].get_addr(last_lane);
         let last_value =
-            [trace[last_row].get_value(last_lane, 0), trace[last_row].get_value(last_lane, 1)];
+            [rows[last_row].get_value(last_lane, 0), rows[last_row].get_value(last_lane, 1)];
 
         #[cfg(debug_assertions)]
         {
@@ -357,11 +374,11 @@ impl<F: PrimeField64> RomDataSM<F> {
         // cancel out on the bus.
         for islot in count..num_slots {
             let (row, lane) = lanes.split(islot);
-            trace[row].set_addr(lane, last_addr);
-            trace[row].set_step(lane, MEMORY_INIT_STEP);
-            trace[row].set_value(lane, 0, last_value[0]);
-            trace[row].set_value(lane, 1, last_value[1]);
-            trace[row].set_addr_change(lane, false);
+            rows[row].set_addr(lane, last_addr);
+            rows[row].set_step(lane, MEMORY_INIT_STEP);
+            rows[row].set_value(lane, 0, last_value[0]);
+            rows[row].set_value(lane, 1, last_value[1]);
+            rows[row].set_addr_change(lane, false);
         }
 
         assert!(
@@ -369,38 +386,68 @@ impl<F: PrimeField64> RomDataSM<F> {
             "All intermediate segments must fill all lanes"
         );
 
-        let mut air_values = RomDataAirValues::<F>::new();
         let padding_size = num_slots - count;
-        air_values.padding_size = F::from_u32(padding_size as u32);
-        air_values.segment_id = F::from_usize(segment_id.into());
-        air_values.is_first_segment = F::from_bool(segment_id == 0);
-        air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_addr = F::from_u32(previous_segment_addr);
-        air_values.segment_last_addr = F::from_u32(last_addr);
-
-        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
-
-        air_values.segment_last_value[0] = F::from_u32(last_value[0]);
-        air_values.segment_last_value[1] = F::from_u32(last_value[1]);
-
         if is_last_segment {
             self.std.range_check_one(self.range_24bits_id, padding_size as u64);
         }
+
+        RomDataFillOutput { last_addr, last_value, padding_size }
+    }
+
+    fn compute_witness_with_offsets_inner<R: RomDataTraceRowOps<F> + RomDataLaneRow<F>>(
+        &self,
+        mem_ops: MemOps<'_>,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
+        seg: &MemModuleSegmentCheckPoint,
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = RomDataTrace::<R>::new_from_vec(trace_buffer)?;
+
+        let out = self.fill_trace(&mut trace.buffer, mem_ops, segment_id, is_last_segment, seg);
+
+        let mut air_values = RomDataAirValues::<F>::new();
+        Self::set_air_values(&mut air_values, segment_id, is_last_segment, previous_segment, &out);
 
         #[cfg(feature = "debug_mem")]
         {
             let path = std::env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
             let filename = format!("{path}/rom_trace_{segment_id:04}.txt");
             Self::save_to_file(&trace, &filename);
+            Self::dump_trace_to_file(
+                &trace,
+                &format!("tmp/rom_data_trace_gpu_{segment_id:04}_dump.txt"),
+            );
         }
 
-        #[cfg(feature = "debug_mem")]
-        Self::dump_trace_to_file(
-            &trace,
-            &format!("tmp/rom_data_trace_gpu_{segment_id:04}_dump.txt"),
-        );
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
+    }
+
+    /// The air values of a `RomData` segment. Shared with the fused `CompactMem` air, whose own
+    /// air values carry the same fields under their `rom_` names.
+    pub(crate) fn set_air_values(
+        air_values: &mut RomDataAirValues<F>,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        out: &RomDataFillOutput,
+    ) {
+        // Force previous_segment_addr = 0 for first instance
+        let previous_segment_addr: u32 = if segment_id == 0 { 0 } else { previous_segment.addr };
+
+        air_values.padding_size = F::from_u32(out.padding_size as u32);
+        air_values.segment_id = F::from_usize(segment_id.into());
+        air_values.is_first_segment = F::from_bool(segment_id == 0);
+        air_values.is_last_segment = F::from_bool(is_last_segment);
+        air_values.previous_segment_addr = F::from_u32(previous_segment_addr);
+        air_values.segment_last_addr = F::from_u32(out.last_addr);
+
+        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
+        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
+
+        air_values.segment_last_value[0] = F::from_u32(out.last_value[0]);
+        air_values.segment_last_value[1] = F::from_u32(out.last_value[1]);
     }
 
     pub fn dump_trace_to_file<R: RomDataTraceRowOps<F>>(trace: &RomDataTrace<R>, file_name: &str) {

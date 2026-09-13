@@ -334,7 +334,11 @@ impl ProveCmd {
                 builder = builder.wrap_proof(ProofKind::VadcopFinalMinimal);
             }
             let result = builder.run()?;
-            info!("REPEAT {} Proof Time: {:.3} seconds", it, result.get_proving_time() as f64 / 1000.0);
+            info!(
+                "REPEAT {} Proof Time: {:.3} seconds",
+                it,
+                result.get_proving_time() as f64 / 1000.0
+            );
             last = Some(result);
         }
         let result = last.expect("repeat >= 1");

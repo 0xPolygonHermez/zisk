@@ -22,7 +22,7 @@ use zisk_sm_arith::ArithInstanceCollector;
 use zisk_sm_binary::{
     BinaryAddCollector, BinaryAddHiCollector, BinaryBasicCollector, BinaryExtensionCollector,
 };
-use zisk_sm_mem::{MemAlignCollector, MemModuleCollector};
+use zisk_sm_mem::{CompactMemCollector, MemAlignCollector, MemModuleCollector};
 use zisk_sm_rom::RomCollector;
 
 use crate::error::{ExecutorError, ExecutorResult};
@@ -46,6 +46,9 @@ pub struct StaticDataBusCollect<D, F: PrimeField64> {
 
     /// Memory-related collectors.
     mem_collector: Vec<(usize, MemModuleCollector)>,
+    /// Collectors of the fused `CompactMem` air: one device per instance, carrying the three
+    /// memory areas that air proves at once.
+    compact_mem_collector: Vec<(usize, CompactMemCollector)>,
     /// Memory alignment collectors.
     mem_align_collector: Vec<(usize, MemAlignCollector)>,
 
@@ -138,6 +141,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         Ok(Self {
             rom_collector: builtins.rom,
             mem_collector: builtins.mem,
+            compact_mem_collector: builtins.compact_mem,
             mem_align_collector: builtins.mem_align,
             arith_collector: builtins.arith,
             arith_inputs_generator: builtins.arith_inputs_generator,
@@ -172,12 +176,16 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
     fn route_data(&mut self, bus_id: BusId, data: &[PayloadType], data_ext: &[PayloadType]) {
         match bus_id {
             MEM_BUS_ID => {
-                MemCollectorProcessor::new(&mut self.mem_collector, &mut self.mem_align_collector)
-                    .process_mem_data(
-                        &data
-                            .try_into()
-                            .expect("MEM_BUS_ID payload must have the correct array length"),
-                    );
+                MemCollectorProcessor::new(
+                    &mut self.mem_collector,
+                    &mut self.compact_mem_collector,
+                    &mut self.mem_align_collector,
+                )
+                .process_mem_data(
+                    &data
+                        .try_into()
+                        .expect("MEM_BUS_ID payload must have the correct array length"),
+                );
             }
             OPERATION_BUS_ID => match data[OP_TYPE] {
                 BINARY_TYPE => {
@@ -232,6 +240,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                         data_ext,
                         &mut MemCollectorProcessor::new(
                             &mut self.mem_collector,
+                            &mut self.compact_mem_collector,
                             &mut self.mem_align_collector,
                         ),
                     );
@@ -247,6 +256,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                         data_ext,
                         &mut MemCollectorProcessor::new(
                             &mut self.mem_collector,
+                            &mut self.compact_mem_collector,
                             &mut self.mem_align_collector,
                         ),
                     );
@@ -257,6 +267,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                         &bus_id,
                         data,
                         &mut self.mem_collector,
+                        &mut self.compact_mem_collector,
                         &mut self.mem_align_collector,
                     );
                 }
@@ -303,6 +314,10 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
 
         // Add all collectors to the result
         for (id, collector) in self.mem_collector {
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
+        }
+
+        for (id, collector) in self.compact_mem_collector {
             result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 

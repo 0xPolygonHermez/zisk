@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
 use crate::{
-    DummyMemPlanner, InputDataSM, MemAlignByteInstance, MemAlignByteSM, MemAlignInstance,
-    MemAlignReadByteInstance, MemAlignSM, MemAlignWriteByteInstance, MemModuleInstance, MemPlanner,
-    MemSM, RomDataSM,
+    CompactMemInstance, CompactMemSM, DummyMemPlanner, InputDataSM, MemAlignByteInstance,
+    MemAlignByteSM, MemAlignInstance, MemAlignReadByteInstance, MemAlignSM,
+    MemAlignWriteByteInstance, MemModuleInstance, MemPlanner, MemSM, RomDataSM,
 };
 use pil2_std_lib::Std;
 use proofman_common::ProofCtx;
 use proofman_fields::PrimeField64;
 use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner};
 use zisk_pil::{
-    InputDataTrace, MemAlignByteLargeTrace, MemAlignByteTrace, MemAlignLargeTrace,
+    CompactMemTrace, InputDataTrace, MemAlignByteLargeTrace, MemAlignByteTrace, MemAlignLargeTrace,
     MemAlignReadByteLargeTrace, MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace,
     MemTrace, RomDataTrace, ZiskProofValues,
 };
@@ -23,6 +23,9 @@ pub struct Mem<F: PrimeField64> {
     mem_align_byte_sm: Arc<MemAlignByteSM<F>>,
     input_data_sm: Arc<InputDataSM<F>>,
     rom_data_sm: Arc<RomDataSM<F>>,
+    /// The fused air, which proves segment 0 of the three memory areas at once. It shares the
+    /// three state machines above rather than building its own: they hold the range-check ids.
+    compact_mem_sm: Arc<CompactMemSM<F>>,
 }
 
 impl<F: PrimeField64> Mem<F> {
@@ -32,8 +35,21 @@ impl<F: PrimeField64> Mem<F> {
         let input_data_sm = InputDataSM::new(std.clone());
         let rom_data_sm = RomDataSM::new(std.clone());
         let mem_align_byte_sm = MemAlignByteSM::new(std.clone());
+        let compact_mem_sm = CompactMemSM::new(
+            std.clone(),
+            mem_sm.clone(),
+            input_data_sm.clone(),
+            rom_data_sm.clone(),
+        );
 
-        Arc::new(Self { mem_align_sm, mem_sm, input_data_sm, rom_data_sm, mem_align_byte_sm })
+        Arc::new(Self {
+            mem_align_sm,
+            mem_sm,
+            input_data_sm,
+            rom_data_sm,
+            mem_align_byte_sm,
+            compact_mem_sm,
+        })
     }
 }
 
@@ -57,8 +73,14 @@ impl<F: PrimeField64> ComponentPlanBuilder<F> for Mem<F> {
 
 impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
     fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Plan]) {
-        let enable_input_data = plannings.iter().any(|p| p.air_id == InputDataTrace::<()>::AIR_ID);
-        let enable_rom_data = plannings.iter().any(|p| p.air_id == RomDataTrace::<()>::AIR_ID);
+        // These proofvals gate the global update that OPENS each area's continuation cycle, so
+        // they have to be on whenever the area is proved at all -- by its own air, by the fused
+        // `CompactMem`, or by both. A `CompactMem` instance always carries the three areas.
+        let compact_mem = plannings.iter().any(|p| p.air_id == CompactMemTrace::<()>::AIR_ID);
+        let enable_input_data =
+            compact_mem || plannings.iter().any(|p| p.air_id == InputDataTrace::<()>::AIR_ID);
+        let enable_rom_data =
+            compact_mem || plannings.iter().any(|p| p.air_id == RomDataTrace::<()>::AIR_ID);
         let mut proof_values = ZiskProofValues::from_vec_guard(pctx.get_proof_values());
         proof_values.enable_input_data = F::from_bool(enable_input_data);
         proof_values.enable_rom_data = F::from_bool(enable_rom_data);
@@ -80,6 +102,13 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
             InputDataTrace::<()>::AIR_ID => {
                 Box::new(MemModuleInstance::new(self.input_data_sm.clone(), ictx))
             }
+            CompactMemTrace::<()>::AIR_ID => Box::new(CompactMemInstance::new(
+                self.compact_mem_sm.clone(),
+                self.mem_sm.clone(),
+                self.input_data_sm.clone(),
+                self.rom_data_sm.clone(),
+                ictx,
+            )),
             // Each air and its `Large` sibling share one instance type, which picks the trace —
             // and with it the height and air id — from `ictx.plan.air_id`.
             MemAlignTrace::<()>::AIR_ID | MemAlignLargeTrace::<()>::AIR_ID => {

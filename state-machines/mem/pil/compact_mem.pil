@@ -1,0 +1,719 @@
+require "std_permutation.pil"
+require "std_range_check.pil"
+require "opids.pil"
+require "mem/pil/mem.pil"
+require "mem/pil/rom_data.pil"
+
+/*
+    Compact Memory (CompactMem)
+    ===========================
+
+    This machine is the fusion of THREE memory airs into a single one:
+
+      · the mutable RAM area          -- `Mem`      (state-machines/mem/pil/mem.pil)
+      · the free-input area           -- `InputData` (`Mem` with free_input_mem: 1)
+      · the read-only program data    -- `RomData`  (state-machines/mem/pil/rom_data.pil)
+
+    Unlike the three airs it fuses, this is NOT a machine that proves one area or another: EVERY
+    row carries the three of them at once. Each area keeps its own lanes, its own air values and
+    its own continuation chain; the blocks share nothing but the row index, and no constraint
+    crosses from one block to another. Read this file as three independent airs stacked
+    side by side.
+
+        ROW i   ┌──────────────────────────────────────────────────────────────────┐
+                │ mem_*    : mem_lanes_x_row   lanes of the mutable RAM sequence   │
+                │ input_*  : input_lanes_x_row lanes of the free-input sequence    │
+                │ rom_*    : rom_lanes_x_row   lanes of the rom-data sequence      │
+                └──────────────────────────────────────────────────────────────────┘
+
+    Why
+    ───
+
+    The three areas are always proved together and each one always opens with a segment that is
+    far from full -- `RomData` and `InputData` need exactly one instance per execution, and the
+    first `Mem` segment comes with them. Three instances are therefore paid for what fits, row
+    budget aside, in one. What costs is not the basic proof but the recursion over the number of
+    instances, so merging the FIRST segment of each area into a single instance removes two
+    instances from every execution.
+
+    Every block here is sized exactly like the air it replaces (same rows, same lanes per row), so
+    the first segment planned for `Mem`, `InputData` and `RomData` fits this air unchanged: the
+    planners keep segmenting exactly as they do today, and only the assembly of the plans changes.
+    The remaining segments (segment 1 onwards) are proved by the standalone airs.
+
+    Is this really the same air, three times?
+    ─────────────────────────────────────────
+
+    It is meant to be, and it can be checked. Compile a PIL that instantiates `Mem`, `InputData`,
+    `RomData` and `CompactMem` side by side with `-O output-constraints -O raw-constraints-format`,
+    strip the block prefixes, and compare the constraint sets. Every constraint of the `Mem` and
+    `RomData` airs appears verbatim in the `mem_` and `rom_` blocks, and the range checks match one
+    for one. The only difference is in the free-input block, on purpose:
+
+      · `mem.pil` emits `(1 - addr_changes) * (addr - previous_addr) === 0` TWICE on the immutable
+        path -- once inside the immutable branch and once in the loop that follows the if/else --
+        so `InputData` carries `lanes_x_row` redundant copies of it. The `input_` block emits it
+        once. Same constraint, one copy instead of two.
+
+    The bus interactions differ in shape but not in content: the three blocks share one gsum
+    accumulator, so the standard library packs their terms into different clusters than it does
+    when each air accumulates on its own.
+
+    Continuations
+    ─────────────
+
+    Each block takes over segment 0 of its area's chain, and the standalone air continues from
+    segment 1. The chains are the same ones (`MEMORY_CONTINUATION_ID` keyed by `base_address` for
+    the two memory blocks, `ROM_DATA_CONTINUATION_ID` for the rom-data block), so an area's cycle
+    is opened once, walked across the two airs and closed once.
+
+    The global update that OPENS a cycle is emitted statically, once per air and regardless of how
+    many instances the air gets, so it must NOT be emitted here: the standalone airs already do it.
+    Both `mem.pil` and `rom_data.pil` guard it with a `proof` container that records which air
+    opened which cycle, and the blocks below consult those same containers -- they find the cycle
+    already opened by `Mem`, `InputData` and `RomData` and stay quiet. This is why `CompactMem` has
+    to be instantiated AFTER them in `pil/zisk.pil`: whichever air comes first is the one that
+    seeds, and the seed has to be gated by that area's `enable_flag`, which the standalone air is
+    the one that knows.
+*/
+
+airtemplate CompactMem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
+                       const int bytes = 8,
+
+                       // Mutable RAM block -- mirrors `Mem(...)`
+                       const int mem_base_address = 0, const int mem_size_mb = 128,
+                       const int mem_large_mem = 0, const int mem_dual_mem = 0,
+                       const int mem_lanes_x_row = 1,
+
+                       // Free-input block -- mirrors `Mem(..., free_input_mem: 1)`
+                       const int input_base_address = 0, const int input_size_mb = 128,
+                       const int input_large_mem = 0, const int input_continuous_addresses = 0,
+                       const int input_lanes_x_row = 1,
+
+                       // Read-only program data block -- mirrors `RomData(...)`. It takes no
+                       // base_address / size_mb: `RomData` declares them but never uses them, the
+                       // address range is enforced by the INIT-comes-from-the-ROM mechanism.
+                       const int rom_lanes_x_row = 1) {
+
+    // The `enable_flag` of the three areas is deliberately absent: it gates only the global update
+    // that OPENS a continuation cycle, and this air opens none of the three (see the header).
+
+    assert(bytes == 8);
+
+    // The three blocks share the first/last row selectors: they are a property of the air, not of
+    // the block. `get_L1()` declares `__L1__` once per air, so the three blocks get the same one.
+    const expr SEGMENT_L1 = get_L1();
+    const expr SEGMENT_LAST = SEGMENT_L1';
+
+    // Witness generation maps virtual rows to (row, lane) with a shift and a mask
+    // (see MemLanes in state-machines/mem-common/src/mem_lanes.rs), so every lane count must be a
+    // power of two.
+    assert((mem_lanes_x_row & (mem_lanes_x_row - 1)) == 0,
+           `mem_lanes_x_row must be a power of two but it's ${mem_lanes_x_row}`);
+    assert((input_lanes_x_row & (input_lanes_x_row - 1)) == 0,
+           `input_lanes_x_row must be a power of two but it's ${input_lanes_x_row}`);
+    assert((rom_lanes_x_row & (rom_lanes_x_row - 1)) == 0,
+           `rom_lanes_x_row must be a power of two but it's ${rom_lanes_x_row}`);
+
+    // index of the last lane of a row, the lane used by the continuation values of the segment.
+    const int MEM_LAST_LANE = mem_lanes_x_row - 1;
+    const int INPUT_LAST_LANE = input_lanes_x_row - 1;
+    const int ROM_LAST_LANE = rom_lanes_x_row - 1;
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // BLOCK 1 of 3 -- MUTABLE RAM
+    //
+    // Transcription of `Mem` (state-machines/mem/pil/mem.pil) specialized to a mutable, non
+    // free-input memory (immutable = 0, free_input_mem = 0), with every name prefixed `mem_`.
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    assert(mem_size_mb <= 128 || mem_large_mem);
+    assert(mem_lanes_x_row >= 1);
+
+    const expr mem_internal_base_address = mem_base_address / bytes;
+    const expr mem_internal_end_address = (mem_base_address + mem_size_mb * 1024 * 1024 - 1) / bytes;
+
+    airval mem_segment_id;
+    airval mem_is_first_segment;
+    airval mem_is_last_segment;
+
+    mem_is_first_segment * (1 - mem_is_first_segment) === 0;
+    mem_is_last_segment * (1 - mem_is_last_segment) === 0;
+
+    // If is_first_segment means that segment must be 0
+    mem_is_first_segment * mem_segment_id === 0;
+
+    col witness bits(29) mem_addr[mem_lanes_x_row];
+    col witness bits(MEM_STEP_BITS) mem_step[mem_lanes_x_row];
+    col witness bits(1) mem_sel[mem_lanes_x_row];
+    col witness bits(1) mem_addr_changes[mem_lanes_x_row];
+    col witness bits(32) mem_value[mem_lanes_x_row][RC];
+    col witness bits(1) mem_wr[mem_lanes_x_row];
+
+    const expr mem_rd[mem_lanes_x_row];
+
+    if (mem_dual_mem) {
+        // Two columns by lane, one for step (timestamp) of second operation, and other
+        // to enable dual operation in the lane.
+        col witness bits(MEM_STEP_BITS) air.mem_step_dual[mem_lanes_x_row];
+        col witness bits(1) air.mem_sel_dual[mem_lanes_x_row];
+
+        for (int lane = 0; lane < mem_lanes_x_row; ++lane) {
+            mem_sel_dual[lane] * (1 - mem_sel_dual[lane]) === 0;
+            (1 - mem_sel[lane]) * mem_sel_dual[lane] === 0;
+        }
+    }
+
+    for (int lane = 0; lane < mem_lanes_x_row; ++lane) {
+        mem_sel[lane] * (1 - mem_sel[lane]) === 0;
+        mem_addr_changes[lane] * (1 - mem_addr_changes[lane]) === 0;
+
+        mem_rd[lane] = 1 - mem_wr[lane];
+
+        // boolean constraint over wr;
+        mem_wr[lane] * (1 - mem_wr[lane]) === 0;
+
+        // all writes must be "launched" to the bus, not allowed silent writes
+        mem_wr[lane] * (1 - mem_sel[lane]) === 0;
+    }
+
+    // CONTINUATIONS
+
+    airval mem_previous_segment_value[RC];
+    airval mem_previous_segment_step, mem_previous_segment_addr;
+
+    // this constraint "assumes" that previous values of this segment
+    direct_update_assumes(MEMORY_CONTINUATION_ID,
+                  [
+                    mem_base_address,               // identify area of memory
+                    mem_segment_id,                 // current segment_id
+                    mem_is_first_segment,           // to verify that first segment has the flag
+                                                    // is_first_segment = 1 to match with direct global update
+                    mem_previous_segment_addr,
+                    mem_previous_segment_step,
+                    ...mem_previous_segment_value
+                  ]);
+
+    airval mem_segment_last_value[RC];
+    airval mem_segment_last_step, mem_segment_last_addr;
+
+    for (int i = 0; i < RC; i++) {
+        // The `segment_last_value[i]` air_value must match the `value[LAST_LANE][i]` from the last
+        // row. In this case, it doesn't matter if it's dual or not, because the value is unique for
+        // the last lane.
+        SEGMENT_LAST * (mem_value[MEM_LAST_LANE][i] - mem_segment_last_value[i]) === 0;
+    }
+
+    // The `segment_last_addr` air_value must match the `addr[LAST_LANE]` from the last row.
+    SEGMENT_LAST * (mem_addr[MEM_LAST_LANE] - mem_segment_last_addr) === 0;
+
+    if (mem_dual_mem) {
+        // The `segment_last_step` air_value must match the step from the last lane of the last row.
+        // - If the last lane was in dual mode, it must match its `step_dual`.
+        // - Otherwise, it must match its `step`.
+        SEGMENT_LAST * (mem_sel_dual[MEM_LAST_LANE] * (mem_step_dual[MEM_LAST_LANE] - mem_step[MEM_LAST_LANE]) + mem_step[MEM_LAST_LANE] - mem_segment_last_step) === 0;
+    } else {
+        // The `segment_last_step` air_value must match the `step[LAST_LANE]` from the last row.
+        SEGMENT_LAST * (mem_step[MEM_LAST_LANE] - mem_segment_last_step) === 0;
+    }
+
+    direct_update_proves(MEMORY_CONTINUATION_ID,
+                  [
+                    mem_base_address,               // identify area of memory
+                    mem_segment_id + 1,             // next segment_id, for last segment
+                    0,                              // is_first_segment must be 0 always on next segments
+                    mem_segment_last_addr,          // last addr of segment
+                    mem_segment_last_step,          // last step of segment
+                    ...mem_segment_last_value
+                  ],
+                  sel: (1 - mem_is_last_segment));
+
+    // The cycle of this memory area was already opened by the `Mem` air (see the file header): the
+    // `proof.memory` container of mem.pil records which air did it, and this block only checks that
+    // it is already recorded. It is an error to find it unopened -- this air proves a segment of a
+    // cycle that nobody would open.
+    compact_mem_check_area_seeded(mem_base_address);
+
+    // For security, ensure that the first address has the correct value to prevent adding a large
+    // number of instances that could cause an "overflow" in the prime field.
+
+    if (mem_large_mem) {
+        // Distance between the internal base address of memory area and previous_segment_address
+        // could be greater than 2^24, so we divide this distance in two chunks of 16 bits, to verify
+        // that this distance is "positive"
+
+        airval air.mem_distance_base[2];
+
+        mem_previous_segment_addr - mem_internal_base_address === mem_distance_base[0] + 0x10000 * mem_distance_base[1];
+
+        range_check(expression: mem_distance_base[0], min: 0, max: 0xFFFF);
+        range_check(expression: mem_distance_base[1], min: 0, max: 0xFFFF);
+    } else {
+        range_check(expression: mem_previous_segment_addr - mem_internal_base_address, min: 0, max: 2**24 - 1);
+    }
+
+    // Final memory control: the last address must be within the memory area.
+
+    if (mem_large_mem) {
+        airval air.mem_distance_end[2];
+
+        mem_internal_end_address - mem_segment_last_addr === mem_distance_end[0] + 0x10000 * mem_distance_end[1];
+
+        range_check(expression: mem_distance_end[0], min: 0, max: 0xFFFF);
+        range_check(expression: mem_distance_end[1], min: 0, max: 0xFFFF);
+        assert(mem_size_mb <= 4096);
+    } else {
+        range_check(expression: mem_internal_end_address - mem_segment_last_addr, min: 0, max: 2**24 - 1);
+        assert(mem_size_mb <= 128);
+    }
+
+    // Check the order of operations inside segment
+    //
+    // `mem_previous_addr[lane]` / `mem_previous_step[lane]` are the values of the lane that precedes
+    // lane `l`: lane `l - 1` of the same row when l > 0, and the last lane (MEM_LAST_LANE) of the
+    // previous row when l == 0. On the first row (SEGMENT_L1) lane 0 takes the values of the
+    // previous segment.
+
+    const expr mem_previous_addr[mem_lanes_x_row];
+
+    // The first lane must be "different" to force `address_change`. For this reason, we subtract
+    // one from `previous_segment_addr` which in the first segment is equal to the first address
+    // of the memory area.
+
+    mem_previous_addr[0] = SEGMENT_L1 * (mem_previous_segment_addr - mem_is_first_segment - 'mem_addr[MEM_LAST_LANE]) + 'mem_addr[MEM_LAST_LANE];
+    for (int lane = 1; lane < mem_lanes_x_row; ++lane) {
+        mem_previous_addr[lane] = mem_addr[lane-1];
+    }
+
+    const expr mem_delta_addr[mem_lanes_x_row];
+    for (int lane = 0; lane < mem_lanes_x_row; ++lane) {
+        mem_delta_addr[lane] = mem_addr[lane] - mem_previous_addr[lane];
+    }
+
+    // on first lane of first row of first segment could be the same and address_change = 1 because
+    // it's as a new addr
+    // SEGMENT_L1 * (x + is_first_segment * SEGMENT_L1) === SEGMENT_L1 * (x + is_first_segment)
+
+    if (mem_dual_mem) {
+        // The `previous_step` column must match with the `step` from the previous lane.
+        // - If the previous lane was in dual mode, it must match its `step_dual`.
+        // - Otherwise, it must match its `step`.
+        // An intermediate witness column is used to keep the degree of the increment constraint
+        // at 2, because the "previous step" is a degree 2 expression.
+
+        col witness bits(40) air.mem_previous_step[mem_lanes_x_row];
+
+        const expr mem_previous_lane_step = 'mem_sel_dual[MEM_LAST_LANE] * ('mem_step_dual[MEM_LAST_LANE] - 'mem_step[MEM_LAST_LANE]) + 'mem_step[MEM_LAST_LANE];
+        mem_previous_step[0] <== SEGMENT_L1 * (mem_previous_segment_step - mem_previous_lane_step) + mem_previous_lane_step;
+
+        for (int lane = 1; lane < mem_lanes_x_row; ++lane) {
+            mem_previous_step[lane] <== mem_sel_dual[lane-1] * (mem_step_dual[lane-1] - mem_step[lane-1]) + mem_step[lane-1];
+        }
+    } else {
+        const expr air.mem_previous_step[mem_lanes_x_row];
+
+        mem_previous_step[0] = SEGMENT_L1 * (mem_previous_segment_step - 'mem_step[MEM_LAST_LANE]) + 'mem_step[MEM_LAST_LANE];
+        for (int lane = 1; lane < mem_lanes_x_row; ++lane) {
+            mem_previous_step[lane] = mem_step[lane-1];
+        }
+    }
+
+    col witness bits(22) mem_l_increment[mem_lanes_x_row];
+    col witness bits(16) mem_h_increment[mem_lanes_x_row];
+
+    // to avoid intermediate column
+    col witness bits(1) mem_read_same_addr[mem_lanes_x_row];
+
+    const expr mem_delta_step[mem_lanes_x_row];
+
+    for (int lane = 0; lane < mem_lanes_x_row; ++lane) {
+        mem_delta_step[lane] = mem_step[lane] - mem_previous_step[lane] + (1 - mem_wr[lane]);
+
+        mem_l_increment[lane] + 2**22 * mem_h_increment[lane] + 1 === mem_addr_changes[lane] * (mem_delta_addr[lane] - mem_delta_step[lane]) + mem_delta_step[lane];
+
+        // addr_change == 1 => 22 + 16 = 38 bits + 3 => 41 bits => 2 TB (limit address 32 bits)
+        // addr_change == 0 => 22 + 16 = 38 bits => 4 slots => 2^36 => 32 GB steps (16K main instances)
+        // 38 bits x 2^22 = 2^60 + 2^32 address = 2^61 secure.
+        // using control in the middle of instance, reduce to 2^60
+
+        range_check(expression: mem_l_increment[lane], min: 0, max: 2**22 - 1);
+        range_check(expression: mem_h_increment[lane], min: 0, max: 2**16 - 1);
+
+        mem_read_same_addr[lane] <== (1 - mem_addr_changes[lane]) * (1 - mem_wr[lane]);
+
+        if (mem_dual_mem) {
+            // Range check to validate that `step_dual` > `step` if the lane is dual. In case of
+            // operations RR, `step_dual` could be equal to `step`, but in operation WR, `step_dual`
+            // must be strictly greater than `step`. How dual operation must be in same chunk, with
+            // range_check of 2^22 is enough if chunk_size <= 2^18.
+            range_check(expression: mem_step_dual[lane] - mem_step[lane] - mem_wr[lane], min: 0, max: 2**22 - 1, sel: mem_sel_dual[lane]);
+        }
+    }
+
+    mem_is_first_segment * SEGMENT_L1 * (1 - mem_addr_changes[0]) === 0;
+
+    // if addr_changes is 0, check that previous address match with current addr.
+
+    for (int lane = 0; lane < mem_lanes_x_row; ++lane) {
+        (1 - mem_addr_changes[lane]) * (mem_addr[lane] - mem_previous_addr[lane]) === 0;
+    }
+
+    // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd = 1,
+    //          wr = 0, setting is_last_segment = 1
+
+    const expr mem_previous_value[mem_lanes_x_row][RC];
+    for (int index = 0; index < RC; index++) {
+        mem_previous_value[0][index] = SEGMENT_L1 * (mem_previous_segment_value[index] - 'mem_value[MEM_LAST_LANE][index]) + 'mem_value[MEM_LAST_LANE][index];
+        for (int lane = 1; lane < mem_lanes_x_row; ++lane) {
+            mem_previous_value[lane][index] = mem_value[lane-1][index];
+        }
+    }
+
+    for (int lane = 0; lane < mem_lanes_x_row; ++lane) {
+        for (int index = 0; index < RC; index++) {
+            // if address not change and it isn't write, value must be equal to previous value
+            mem_read_same_addr[lane] * (mem_value[lane][index] - mem_previous_value[lane][index]) === 0;
+
+            // if address changes, and it isn't a write, value must be 0.
+            mem_addr_changes[lane] * (1 - mem_wr[lane]) * mem_value[lane][index] === 0;
+        }
+    }
+
+    // The Memory component is only able to prove aligned memory access, since we force the bus
+    // address to be a multiple of bytes and the width to be exactly bytes.
+
+    const expr mem_op[mem_lanes_x_row];
+    for (int lane = 0; lane < mem_lanes_x_row; ++lane) {
+        mem_op[lane] = mem_wr[lane] * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
+        permutation_proves(id, expressions: [mem_op[lane], mem_addr[lane] * bytes, mem_step[lane], bytes, ...mem_value[lane]], sel: mem_sel[lane], sel_is_binary: 1);
+
+        if (mem_dual_mem) {
+            // dual mem memory, send to bus always a READ operation, with same address, and value,
+            // only change de step.
+            permutation_proves(id, expressions: [MEMORY_LOAD_OP, mem_addr[lane] * bytes, mem_step_dual[lane], bytes, ...mem_value[lane]], sel: mem_sel_dual[lane], sel_is_binary: 1);
+        }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // BLOCK 2 of 3 -- FREE-INPUT MEMORY
+    //
+    // Transcription of `Mem` (state-machines/mem/pil/mem.pil) specialized to free_input_mem = 1
+    // (which forces immutable = 1 and forbids dual_mem), with every name prefixed `input_`.
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    assert(input_size_mb <= 128 || input_large_mem);
+    assert(input_lanes_x_row >= 1);
+
+    const expr input_internal_base_address = input_base_address / bytes;
+    const expr input_internal_end_address = (input_base_address + input_size_mb * 1024 * 1024 - 1) / bytes;
+
+    airval input_segment_id;
+    airval input_is_first_segment;
+    airval input_is_last_segment;
+
+    input_is_first_segment * (1 - input_is_first_segment) === 0;
+    input_is_last_segment * (1 - input_is_last_segment) === 0;
+
+    input_is_first_segment * input_segment_id === 0;
+
+    col witness bits(29) input_addr[input_lanes_x_row];
+    col witness bits(MEM_STEP_BITS) input_step[input_lanes_x_row];
+    col witness bits(1) input_sel[input_lanes_x_row];
+    col witness bits(1) input_addr_changes[input_lanes_x_row];
+    col witness bits(16) input_value_word[input_lanes_x_row][RC*2];
+
+    // free read for free input, means an specific address (offset = 0) that could be read
+    // many times with different well formed 64-bit values. Used for fcalls and other free-inputs
+    col witness bits(1) input_is_free_read[input_lanes_x_row];
+
+    const expr input_value[input_lanes_x_row][RC];
+
+    // free input memory must be read-only
+    const expr input_wr[input_lanes_x_row];
+
+    for (int lane = 0; lane < input_lanes_x_row; ++lane) {
+        input_sel[lane] * (1 - input_sel[lane]) === 0;
+        input_addr_changes[lane] * (1 - input_addr_changes[lane]) === 0;
+
+        input_wr[lane] = 0;
+
+        input_is_free_read[lane] * (1 - input_is_free_read[lane]) === 0;
+        input_is_free_read[lane] * (input_internal_base_address - input_addr[lane]) === 0;
+
+        for (int index = 0; index < RC; ++index) {
+            input_value[lane][index] = input_value_word[lane][index*2] + MAX_RANGE_CHECK_CHUNK * input_value_word[lane][index*2 + 1];
+
+            // how value is a free-input, must be checked that it's 32-bit well formed value
+            range_check(input_value_word[lane][index*2], 0, MAX_RANGE_CHECK_CHUNK - 1);
+            range_check(input_value_word[lane][index*2+1], 0, MAX_RANGE_CHECK_CHUNK - 1);
+        }
+    }
+
+    // CONTINUATIONS
+
+    airval input_previous_segment_value[RC];
+    airval input_previous_segment_step, input_previous_segment_addr;
+
+    direct_update_assumes(MEMORY_CONTINUATION_ID,
+                  [
+                    input_base_address,
+                    input_segment_id,
+                    input_is_first_segment,
+                    input_previous_segment_addr,
+                    input_previous_segment_step,
+                    ...input_previous_segment_value
+                  ]);
+
+    airval input_segment_last_value[RC];
+    airval input_segment_last_step, input_segment_last_addr;
+
+    for (int i = 0; i < RC; i++) {
+        SEGMENT_LAST * (input_value[INPUT_LAST_LANE][i] - input_segment_last_value[i]) === 0;
+    }
+
+    SEGMENT_LAST * (input_addr[INPUT_LAST_LANE] - input_segment_last_addr) === 0;
+    SEGMENT_LAST * (input_step[INPUT_LAST_LANE] - input_segment_last_step) === 0;
+
+    direct_update_proves(MEMORY_CONTINUATION_ID,
+                  [
+                    input_base_address,
+                    input_segment_id + 1,
+                    0,
+                    input_segment_last_addr,
+                    input_segment_last_step,
+                    ...input_segment_last_value
+                  ],
+                  sel: (1 - input_is_last_segment));
+
+    // Opened by the `InputData` air, see the header of this file and the `mem_` block above.
+    compact_mem_check_area_seeded(input_base_address);
+
+    if (input_large_mem) {
+        airval air.input_distance_base[2];
+
+        input_previous_segment_addr - input_internal_base_address === input_distance_base[0] + 0x10000 * input_distance_base[1];
+
+        range_check(expression: input_distance_base[0], min: 0, max: 0xFFFF);
+        range_check(expression: input_distance_base[1], min: 0, max: 0xFFFF);
+    } else {
+        range_check(expression: input_previous_segment_addr - input_internal_base_address, min: 0, max: 2**24 - 1);
+    }
+
+    if (input_large_mem) {
+        airval air.input_distance_end[2];
+
+        input_internal_end_address - input_segment_last_addr === input_distance_end[0] + 0x10000 * input_distance_end[1];
+
+        range_check(expression: input_distance_end[0], min: 0, max: 0xFFFF);
+        range_check(expression: input_distance_end[1], min: 0, max: 0xFFFF);
+        assert(input_size_mb <= 4096);
+    } else {
+        range_check(expression: input_internal_end_address - input_segment_last_addr, min: 0, max: 2**24 - 1);
+        assert(input_size_mb <= 128);
+    }
+
+    // Immutable means that all operations must produces the same value. In the case of free-input
+    // memory, no write operations exist. The first read value for a given address determines all
+    // subsequent values for that same address.
+    //
+    // In this type of memory, addresses need to be ordered. However, execution typically accesses a
+    // full range of addresses. To avoid wasting a range check, we assume that addresses are
+    // consecutive (note that addresses are `bytes` addresses). If the executor detects that an
+    // address has not been accessed, it must be added but not sent to the bus.
+    //
+    // In the case of free-input memory, in first segment, if the first lane is equal to previous
+    // addr, means that is_free_read is active, value is free. In case of the first lane is
+    // different, the `address_change` is active, and value could change. With this consideration,
+    // the first value of first lane is always free, and we could use 0 as previous value on global
+    // constraint of first segment.
+
+    const expr input_previous_addr[input_lanes_x_row];
+
+    input_previous_addr[0] = SEGMENT_L1 * (input_previous_segment_addr - 'input_addr[INPUT_LAST_LANE]) + 'input_addr[INPUT_LAST_LANE];
+    for (int lane = 1; lane < input_lanes_x_row; ++lane) {
+        input_previous_addr[lane] = input_addr[lane-1];
+    }
+
+    // read_same_addr = (1 - addr_changes) * (1 - wr), and wr = 0 on free-input memory.
+    const expr input_read_same_addr[input_lanes_x_row];
+    const expr input_delta_addr[input_lanes_x_row];
+
+    for (int lane = 0; lane < input_lanes_x_row; ++lane) {
+        input_delta_addr[lane] = input_addr[lane] - input_previous_addr[lane];
+        input_read_same_addr[lane] = (1 - input_addr_changes[lane]);
+
+        if (input_continuous_addresses) {
+            // If the address changes, the difference must be one
+            input_addr_changes[lane] * (input_delta_addr[lane] - 1) === 0;
+        } else {
+            range_check(expression: input_delta_addr[lane] - 1, min: 0, max: 2**24 - 1, sel: input_addr_changes[lane]);
+        }
+
+        // If the address does not change, the current address and previous must be the same.
+        // `mem.pil` states this one twice on the immutable path (here and again in the loop that
+        // follows its if/else); once is enough. See the header of this file.
+        (1 - input_addr_changes[lane]) * (input_addr[lane] - input_previous_addr[lane]) === 0;
+    }
+
+    const expr input_previous_value[input_lanes_x_row][RC];
+    for (int index = 0; index < RC; index++) {
+        input_previous_value[0][index] = SEGMENT_L1 * (input_previous_segment_value[index] - 'input_value[INPUT_LAST_LANE][index]) + 'input_value[INPUT_LAST_LANE][index];
+        for (int lane = 1; lane < input_lanes_x_row; ++lane) {
+            input_previous_value[lane][index] = input_value[lane-1][index];
+        }
+    }
+
+    for (int lane = 0; lane < input_lanes_x_row; ++lane) {
+        for (int index = 0; index < RC; index++) {
+            // if address not change value must be equal to previous value, when is_free_read
+            // is active the value not change, so value must be equal to previous value
+            (1 - input_addr_changes[lane]) * (1 - input_is_free_read[lane]) * (input_value[lane][index] - input_previous_value[lane][index]) === 0;
+        }
+    }
+
+    const expr input_op[input_lanes_x_row];
+    for (int lane = 0; lane < input_lanes_x_row; ++lane) {
+        input_op[lane] = input_wr[lane] * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
+        permutation_proves(id, expressions: [input_op[lane], input_addr[lane] * bytes, input_step[lane], bytes, ...input_value[lane]], sel: input_sel[lane], sel_is_binary: 1);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // BLOCK 3 of 3 -- READ-ONLY PROGRAM DATA
+    //
+    // Transcription of `RomData` (state-machines/mem/pil/rom_data.pil), with every name prefixed
+    // `rom_`.
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    assert(rom_lanes_x_row >= 1);
+
+    col witness bits(1) rom_addr_change[rom_lanes_x_row];
+    col witness bits(29) rom_addr[rom_lanes_x_row];
+    col witness bits(40) rom_step[rom_lanes_x_row];
+    col witness bits(32) rom_value[rom_lanes_x_row][RC];
+
+    // CONTINUATIONS
+
+    airval rom_previous_segment_value[RC];
+    airval rom_previous_segment_addr;
+
+    airval rom_segment_last_value[RC];
+    airval rom_segment_last_addr;
+
+    airval rom_segment_id;
+    airval rom_is_first_segment;
+    airval rom_is_last_segment;
+
+    rom_is_first_segment * (1 - rom_is_first_segment) === 0;
+    rom_is_last_segment * (1 - rom_is_last_segment) === 0;
+
+    rom_is_first_segment * rom_segment_id === 0;
+
+    // Force in first segment the first lane of the first row must be addr_change to force a INIT
+    // operation
+    rom_is_first_segment * SEGMENT_L1 * (rom_addr_change[0] - 1) === 0;
+
+    // ADDRESS GROUPING CONSTRAINTS
+    //
+    // addr_change = 1 forces step = MEMORY_INIT_STEP, linking the lane to an INIT operation.
+    // When addr_change = 0, addr and value must equal the previous lane's values, ensuring
+    // all accesses to the same address remain consecutive.
+
+    for (int lane = 0; lane < rom_lanes_x_row; ++lane) {
+        rom_addr_change[lane] * (1 - rom_addr_change[lane]) === 0;
+        rom_addr_change[lane] * (rom_step[lane] - MEMORY_INIT_STEP) === 0;
+    }
+
+    const expr rom_previous_value[rom_lanes_x_row][RC];
+    const expr rom_previous_addr[rom_lanes_x_row];
+
+    for (int i = 0; i < RC; i++) {
+        rom_previous_value[0][i] = SEGMENT_L1 * (rom_previous_segment_value[i] - 'rom_value[ROM_LAST_LANE][i]) + 'rom_value[ROM_LAST_LANE][i];
+        for (int lane = 1; lane < rom_lanes_x_row; ++lane) {
+            rom_previous_value[lane][i] = rom_value[lane-1][i];
+        }
+        SEGMENT_LAST * (rom_segment_last_value[i] - rom_value[ROM_LAST_LANE][i]) === 0;
+    }
+
+    rom_previous_addr[0] = SEGMENT_L1 * (rom_previous_segment_addr - 'rom_addr[ROM_LAST_LANE]) + 'rom_addr[ROM_LAST_LANE];
+    for (int lane = 1; lane < rom_lanes_x_row; ++lane) {
+        rom_previous_addr[lane] = rom_addr[lane-1];
+    }
+
+    SEGMENT_LAST * (rom_segment_last_addr - rom_addr[ROM_LAST_LANE]) === 0;
+
+    // BUS INTERACTION
+    //
+    // Every lane is sent to the memory bus as either a MEMORY_ROM_INIT_OP (when addr_change = 1,
+    // i.e. the address is new) or a MEMORY_LOAD_OP (when addr_change = 0, i.e. the address
+    // continues from the previous lane). Since the ROM is the sole source of INIT claims, only
+    // addresses explicitly present in the ROM data can be proven valid.
+
+    for (int lane = 0; lane < rom_lanes_x_row; ++lane) {
+        for (int i = 0; i < RC; i++) {
+            (1 - rom_addr_change[lane]) * (rom_value[lane][i] - rom_previous_value[lane][i]) === 0;
+        }
+        (1 - rom_addr_change[lane]) * (rom_addr[lane] - rom_previous_addr[lane]) === 0;
+
+        permutation_proves(id, expressions: [rom_addr_change[lane] * (MEMORY_ROM_INIT_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, rom_addr[lane] * bytes, rom_step[lane], 8, ...rom_value[lane]]);
+    }
+
+    direct_update_assumes(ROM_DATA_CONTINUATION_ID, [ rom_segment_id, rom_is_first_segment, rom_previous_segment_addr, ...rom_previous_segment_value]);
+
+    direct_update_proves(ROM_DATA_CONTINUATION_ID, [ rom_segment_id+1, 0, rom_segment_last_addr, ...rom_segment_last_value], sel: (1 - rom_is_last_segment));
+
+    // Opened by the `RomData` air, see the header of this file.
+    compact_mem_check_rom_data_seeded();
+
+    // PADDING
+    //
+    // The padding, number of assumes, is limited only to the last segment (is_last_segment = 1) and
+    // must be a positive number less than 2**24. It counts lanes, not rows.
+    //
+    // Security limitations:
+    // • The memory operation is fixed (MEMORY_LOAD_OP): does not allow to start a new cycle
+    // • The step value is fixed to MEMORY_INIT_STEP
+    // • The addr and value must match the last values of the last lane (segment_last_addr and
+    //   segment_last_value), assuming that the lanes are correct, these values are correct.
+
+    airval rom_padding_size;
+    lookup(id, expressions: [MEMORY_LOAD_OP, rom_segment_last_addr * 8, MEMORY_INIT_STEP, bytes, ...rom_segment_last_value], mul: -rom_padding_size);
+
+    (1 - rom_is_last_segment) * rom_padding_size === 0;
+
+    assert(N * rom_lanes_x_row <= 2**24);
+    range_check(expression: rom_padding_size, min: 0, max: 2**24 - 1, sel: rom_is_last_segment);
+}
+
+// Checks that the continuation cycle of `base_address` has already been opened by another air --
+// the `Mem`/`InputData` air of that area. `CompactMem` proves segment 0 of the cycle but must not
+// open it: the global update that does is emitted once per air, statically, and a second one would
+// leave the global sum unable to balance (see the comment on `proof.memory` in mem.pil).
+private function compact_mem_check_area_seeded(const int base_address) {
+    container proof.memory {
+        int base_addresses_count = 0;
+        int base_addresses[MAX_BASE_ADDRESSES];
+        string base_addresses_labels[MAX_BASE_ADDRESSES];
+    }
+    use proof.memory;
+    for (int index = 0; index < base_addresses_count; ++index) {
+        if (base_addresses[index] == base_address) {
+            println(`${AIR_NAME}: memory cycle of ${base_address} opened by ${base_addresses_labels[index]}`);
+            return;
+        }
+    }
+    error(`${AIR_NAME} proves a segment of the memory area ${base_address}, but no air opened its continuation cycle. Instantiate CompactMem after the Mem air of that area in pil/zisk.pil.`);
+}
+
+// Same as `compact_mem_check_area_seeded`, for the single cycle of `ROM_DATA_CONTINUATION_ID`,
+// which is keyed by nothing (there is only one rom-data area).
+private function compact_mem_check_rom_data_seeded() {
+    container proof.rom_data {
+        int seeded = 0;
+        string seeded_by = "";
+    }
+    use proof.rom_data;
+    if (!seeded) {
+        error(`${AIR_NAME} proves a segment of the rom-data cycle, but no air opened it. Instantiate CompactMem after the RomData air in pil/zisk.pil.`);
+    }
+    println(`${AIR_NAME}: rom-data cycle opened by ${seeded_by}`);
+}
