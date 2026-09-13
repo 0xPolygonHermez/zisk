@@ -2,18 +2,20 @@
 //!
 //! # The airs
 //!
-//! Four independent groups prove the DMA operations, and each op — `memcpy`, `memset`, `memcmp`,
+//! Three independent groups prove the DMA operations, and each op — `memcpy`, `memset`, `memcmp`,
 //! `inputcpy` — is proved once in every group it applies to. Within the 64-bit-aligned group the
 //! specialised airs pack more operations per row than the general one, so the same work takes fewer
 //! rows there; and two of the airs come in a taller `Large` sibling that commits the same columns
 //! over twice as many rows:
 //!
-//! | group          | airs                                                                        |
-//! |----------------|-----------------------------------------------------------------------------|
-//! | `Dma`          | `Dma`                                                                       |
-//! | `DmaPrePost`   | `DmaPrePost`                                                                |
-//! | `Dma64Aligned` | `Dma64Aligned` / `…Large`, `Dma64AlignedMem` / `…Large`, `…MemCpy`, `…MemSet` |
-//! | `DmaUnaligned` | `DmaUnaligned`                                                              |
+//! | group            | airs                                                                        |
+//! |------------------|-----------------------------------------------------------------------------|
+//! | `DmaWithPrePost` | `DmaWithPrePost`                                                            |
+//! | `Dma64Aligned`   | `Dma64Aligned` / `…Large`, `Dma64AlignedMem` / `…Large`, `…MemCpy`, `…MemSet` |
+//! | `DmaUnaligned`   | `DmaUnaligned`                                                              |
+//!
+//! The first group used to be two — a `Dma` air for the controller and a `DmaPrePost` air for its
+//! sub-operations — and is two again whenever [`DmaStrategy::USE_DMA_WITH_PRE_POST`] is turned off.
 //!
 //! # The criterion
 //!
@@ -183,12 +185,13 @@ impl<F: PrimeField64> DmaStrategy<F> {
     /// Whether the fused [`DmaWithPrePostTrace`] air proves the DMA controller together with its
     /// PRE/POST sub-operations.
     ///
-    /// While this is `false` the two separate airs keep the work and the fused one gets no
-    /// instance, exactly as before. Flipping it moves every non-direct DMA operation to the fused
-    /// air: one row per operation instead of one `Dma` row plus one or two `DmaPrePost` rows, one
-    /// air instead of two, and no DMA_BUS_ID between them — at the price of a wider row, and of
-    /// one row per operation that has neither a PRE nor a POST being as wide as the rest.
-    pub const USE_DMA_WITH_PRE_POST: bool = false;
+    /// While this is `true` every non-direct DMA operation goes to the fused air: one row per
+    /// operation instead of one `Dma` row plus one or two `DmaPrePost` rows, one air instead of
+    /// two, and no DMA_BUS_ID between them — at the price of a wider row, and of one row per
+    /// operation that has neither a PRE nor a POST being as wide as the rest. Turning it back to
+    /// `false` returns the work to the two separate airs and leaves the fused one with no
+    /// instance.
+    pub const USE_DMA_WITH_PRE_POST: bool = true;
 
     const DMA_ROWS: usize = DmaTrace::<()>::NUM_ROWS;
     const DMA_PRE_POST_ROWS: usize = DmaPrePostTrace::<()>::NUM_ROWS;

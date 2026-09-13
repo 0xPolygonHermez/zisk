@@ -110,7 +110,13 @@ fn the_skip_of_the_second_instance_continues_the_first() {
 fn instances_needed_covers_the_wasted_rows() {
     // The worst case: every instance loses its last row to a double that does not fit. With a
     // height of 8 that is 7 useful rows per instance, which is what the bound has to allow for.
-    const CHUNKS: usize = 4;
+    //
+    // It takes a run of chunks to get there. One chunk of a single followed by three doubles ends
+    // an instance on row 7 and leaves the next chunk's single to close it; from the chunk after
+    // that on, every instance opens with a single, takes three doubles and has to drop its last
+    // row — so the waste is only steady once enough chunks have gone by, and a short run would
+    // let a tighter (and wrong) bound through.
+    const CHUNKS: usize = 16;
     let rows = 8;
     for singles in 0..4 {
         for doubles in 0..8 {
