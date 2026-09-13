@@ -150,7 +150,6 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
     /// hint and the prover derives them from their expression.
     #[inline(always)]
     fn process_op<R: DmaWithPrePostTraceRowOps<F>>(
-        &self,
         input: &DmaWithPrePostInput,
         rows: &mut [R],
         mults: &mut Mults,
@@ -161,22 +160,21 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
         let use_post = DmaInfo::get_post_count(input.encoded) > 0;
 
         // The DMA row carries the POST when there is one, otherwise the PRE (if any).
-        self.fill_dma_row(input, &mut rows[0], mults);
+        Self::fill_dma_row(input, &mut rows[0], mults);
         if use_post || use_pre {
-            self.fill_sub_op(input, &mut rows[0], use_post, mults);
+            Self::fill_sub_op(input, &mut rows[0], use_post, mults);
         }
 
         // ...and when both are needed, the PRE goes to the extra row right after it.
         if rows.len() == DmaWithPrePostInput::DOUBLE_ROW {
             debug_assert!(use_pre && use_post);
-            self.fill_pre_row(input, &mut rows[1], mults);
-            self.fill_sub_op(input, &mut rows[1], false, mults);
+            Self::fill_pre_row(input, &mut rows[1], mults);
+            Self::fill_sub_op(input, &mut rows[1], false, mults);
         }
     }
 
     /// Fills the DMA controller columns of the row that drives the operation.
     fn fill_dma_row<R: DmaWithPrePostTraceRowOps<F>>(
-        &self,
         input: &DmaWithPrePostInput,
         row: &mut R,
         mults: &mut Mults,
@@ -280,7 +278,6 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
     /// Fills the extra PRE row: no DMA operation at all, only the columns it shares with the DMA
     /// row of the operation (@[latch] in the PIL) plus the PRE/POST part filled by `fill_sub_op`.
     fn fill_pre_row<R: DmaWithPrePostTraceRowOps<F>>(
-        &self,
         input: &DmaWithPrePostInput,
         row: &mut R,
         mults: &mut Mults,
@@ -307,7 +304,6 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
     /// Fills the PRE/POST part of a row: the byte selectors and rotation, the bytes read and
     /// pre-written, and the memcmp result of the sub-operation.
     fn fill_sub_op<R: DmaWithPrePostTraceRowOps<F>>(
-        &self,
         input: &DmaWithPrePostInput,
         row: &mut R,
         is_post: bool,
@@ -328,7 +324,12 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
         let (dst_offset, src_offset, count, src_values, dst_pre_value) = if is_post {
             (
                 0usize,
-                (dma_src_offset + pre_count) & 0x07,
+                // @[pp_src_offset] of a POST is @[src_offset_after_pre], and the PRE only walks
+                // the source when there is one: `fill_dma_row` leaves that column at 0 for an
+                // inputcpy or a memset, and the DMA ROM row of a no-src operation carries 0 there
+                // too. Adding `pre_count` regardless would make the byte rotation this function
+                // derives disagree with the offset the air looks the table up with.
+                if load_src { (dma_src_offset + pre_count) & 0x07 } else { 0 },
                 post_count,
                 input.post_src_values,
                 input.post_dst_value,
@@ -505,7 +506,7 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
                 let mut cursor = 0usize;
                 for input in group_inputs {
                     let rows = input.rows();
-                    self.process_op(input, &mut group_rows[cursor..cursor + rows], &mut mults);
+                    Self::process_op(input, &mut group_rows[cursor..cursor + rows], &mut mults);
                     cursor += rows;
                 }
                 mults
@@ -552,3 +553,7 @@ impl<F: PrimeField64> DmaWithPrePostModule<F> for DmaWithPrePostSM<F> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/dma_with_pre_post_witness_tests.rs"]
+mod tests;
