@@ -29,6 +29,10 @@
 //! execute-only client has no ROM state machine, so no histogram runner is ever spawned
 //! and there is nothing to retire.
 //!
+//! The proving machinery needs far more stack than a test binary gives it by default —
+//! every binary that drives proofman raises it at startup, and a `cargo test` binary
+//! raises nothing. See `PROVING_STACK` for which threads have to be told.
+//!
 //! Linux-only — the asm executor depends on mmap/jit support not available on
 //! macOS/Windows. Ignored by default: witness mode needs a generated proving key on
 //! disk and starting the ASM microservices takes several seconds. Run it with:
@@ -43,6 +47,15 @@ use zisk_sdk::{
     EmbeddedClient, EmbeddedClientBuilder, ExecutorKind, VerifyConstraintsExtension, ZiskStdin,
 };
 use zisk_test_artifacts::ELF_FIB_MOD;
+
+/// Stack size for the two pools that run the proof: rayon's workers, which do the
+/// witness computation, and tokio's blocking pool, where the SDK runs an embedded job.
+/// Both default to 2 MiB and both overflow on it.
+///
+/// 64 MiB is what every binary that drives this machinery already gives it —
+/// `proofman_setup.rs`, `worker_node.rs`, `recurser.rs` here, and pil2-proofman's own
+/// CLI. A test binary is the one caller that has to say so itself.
+const PROVING_STACK: usize = 64 * 1024 * 1024;
 
 /// The two inputs must differ, or a stale-shmem reuse would look like a pass.
 const FIRST_N: u32 = 1_000;
@@ -71,9 +84,22 @@ async fn run_once(client: &EmbeddedClient, n: u32) -> (u64, Vec<u64>) {
     (result.get_execution_steps(), result.get_publics().public_u64())
 }
 
-#[tokio::test]
+#[test]
 #[ignore = "requires a generated proving key and the ASM microservices; run with --ignored"]
-async fn two_asm_executions_in_one_process() {
+fn two_asm_executions_in_one_process() {
+    // Before anything touches the pools. `ok()` because a global pool can only be built
+    // once and another test in this binary may have got there first.
+    rayon::ThreadPoolBuilder::new().stack_size(PROVING_STACK).build_global().ok();
+
+    tokio::runtime::Builder::new_current_thread()
+        .thread_stack_size(PROVING_STACK)
+        .enable_all()
+        .build()
+        .expect("failed to build the tokio runtime")
+        .block_on(two_jobs_one_process());
+}
+
+async fn two_jobs_one_process() {
     let mut builder = EmbeddedClientBuilder::default().assembly();
 
     if let Some(pk) = std::env::var_os("ZISK_TEST_PROVING_KEY").map(PathBuf::from) {
