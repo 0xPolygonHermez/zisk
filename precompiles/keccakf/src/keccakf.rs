@@ -6,9 +6,9 @@ use proofman_fields::PrimeField64;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
+use super::{keccakf_constants::*, KeccakfChiTableSM, KeccakfXor5TableSM};
 use zisk_common::OperationKeccakData;
 use zisk_pil::{KeccakfTrace, KeccakfTraceRow, KeccakfTraceRowOps, KeccakfTraceRowPacked};
-use super::{keccakf_constants::*, KeccakfChiTableSM, KeccakfXor5TableSM};
 
 use rayon::prelude::*;
 
@@ -45,7 +45,12 @@ pub struct KeccakfSM<F: PrimeField64> {
 
 /// Per-instance round data derived from a clean (bit-valued) state:
 /// column sums (values in [0,5]) and their parities.
-type LaneState = [u64; 25];
+pub type LaneState = [u64; 25];
+
+/// The witness path writes a whole state into a single trace row, so every
+/// state group is one row wide. Fail the build, not a release run, if the
+/// layout constants ever stop agreeing with that.
+const _: () = assert!(ROWS_PER_STATE == 1);
 
 /// Spread sixteen bits into the low bit of sixteen consecutive nibbles.
 ///
@@ -79,7 +84,8 @@ fn pack_sliced_lanes<const LANES: usize>(a: &[u64; LANES], b: &[u64; LANES], out
 /// directly.  The offsets below are derived from the generated row declaration:
 /// four flag bits, 1600 four-bit state cells, 320 four-bit parity cells, then
 /// the 40-bit step/address field.
-trait KeccakfTraceWriter<F: PrimeField64>: KeccakfTraceRowOps<F> {
+#[doc(hidden)]
+pub trait KeccakfTraceWriter<F: PrimeField64>: KeccakfTraceRowOps<F> {
     fn set_state_lanes(&mut self, a: &LaneState, b: &LaneState);
     fn set_c_parities(&mut self, a: &[u64; 5], b: &[u64; 5]);
 }
@@ -102,8 +108,7 @@ impl<F: PrimeField64> KeccakfTraceWriter<F> for KeccakfTraceRow<F> {
         let mut cells = [0u8; 320];
         for x in 0..5 {
             for z in 0..LANE_BITS {
-                cells[x * LANE_BITS + z] =
-                    ((a[x] >> z) & 1) as u8 + SLOT * ((b[x] >> z) & 1) as u8;
+                cells[x * LANE_BITS + z] = ((a[x] >> z) & 1) as u8 + SLOT * ((b[x] >> z) & 1) as u8;
             }
         }
         self.set_all_c(&cells);
@@ -155,8 +160,8 @@ impl ThetaColumns {
         for x in 0..5 {
             let lanes = [state[x], state[x + 5], state[x + 10], state[x + 15], state[x + 20]];
             parities[x] = lanes.into_iter().reduce(|a, b| a ^ b).unwrap();
-            for z in 0..64 {
-                sums[x][z] = lanes.iter().map(|lane| ((lane >> z) & 1) as u8).sum();
+            for (z, sum) in sums[x].iter_mut().enumerate() {
+                *sum = lanes.iter().map(|lane| ((lane >> z) & 1) as u8).sum();
             }
         }
         Self { sums, parities }
@@ -269,7 +274,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
         for r in 0..=ROUNDS {
             // Sliced state-group of round r
             let group = GROUP_ROUND_0 + r * ROWS_PER_STATE;
-            debug_assert_eq!(ROWS_PER_STATE, 1);
             trace[group].set_state_lanes(&state_a, &state_b);
 
             if r == ROUNDS {
@@ -311,9 +315,11 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     for x in 0..5 {
                         let index = x + 5 * y;
                         ta[x] = (((theta_lo_a[index] >> z) & 1)
-                            | (((theta_hi_a[index] >> z) & 1) << 1)) as u8;
+                            | (((theta_hi_a[index] >> z) & 1) << 1))
+                            as u8;
                         tb[x] = (((theta_lo_b[index] >> z) & 1)
-                            | (((theta_hi_b[index] >> z) & 1) << 1)) as u8;
+                            | (((theta_hi_b[index] >> z) & 1) << 1))
+                            as u8;
                     }
                     let rc = y == 0 && ((RC[r] >> z) & 1) == 1;
                     let chi_row = KeccakfChiTableSM::calculate_table_row(&ta, &tb, rc);
@@ -350,7 +356,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
         first_row: usize,
         state: &LaneState,
     ) {
-        debug_assert_eq!(ROWS_PER_STATE, 1);
         trace[first_row].set_state_lanes(state, &[0u64; LANES]);
     }
 
@@ -488,7 +493,8 @@ mod tests {
                                 + ((columns.parities[(sx + 4) % 5] >> sz) & 1) as u8
                                 + ((columns.parities[(sx + 1) % 5] >> ((sz + 63) % 64)) & 1) as u8;
                             let index = x + 5 * y;
-                            let actual = (((lo[index] >> z) & 1) | (((hi[index] >> z) & 1) << 1)) as u8;
+                            let actual =
+                                (((lo[index] >> z) & 1) | (((hi[index] >> z) & 1) << 1)) as u8;
                             assert_eq!(actual, expected);
                         }
                     }
