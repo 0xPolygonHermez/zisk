@@ -20,13 +20,54 @@
 # Functions this defines:
 #   generate_fixed_data  cargo-run the fixed-column generators (honors SKIP_COMPILE_PIL)
 #   compute_input_hash   print sha256 of the cache-key inputs to stdout
+#   starkstructs_path    print the starkstructs settings file for $HASH
 #
 # Variables this reads (defaulted if unset):
+#   HASH                     hash family (Poseidon1 | Poseidon2 | blake3)
 #   SKIP_COMPILE_PIL         0|1 — when 1, generate_fixed_data is a no-op
 #   ZISK_PROOFMAN_CACHE_DIR  where crates.io-mode pil2-proofman checkouts are
 #                            fetched (default ~/.zisk/pil2-proofman)
 
 : "${SKIP_COMPILE_PIL:=0}"
+# Must track the defaults in setup_build.sh and build_setup.sh: HASH feeds
+# compute_input_hash, so a stale default here hands back another family's key.
+: "${HASH:=blake3}"
+
+# Path to the starkstructs settings for the family in $HASH.
+#
+# Poseidon1 and Poseidon2 share one file: their grinding bits (16), recursion
+# threshold (17) and aggregation arity (3) are identical, so settings tuned for
+# one hold for the other. blake3 gets its own, because none of those three
+# numbers match (24 / 19 / 2) and every setting in the file is read against
+# them — a powBits tuned for poseidon would silently LOWER blake3's grinding,
+# and a hasCompressor detected under poseidon's 17-bit threshold would force a
+# compressor blake3's 19-bit one does not need. Recursive setup writes
+# auto-detected hasCompressor flags back into this file, so each family
+# accumulates its own.
+starkstructs_path() {
+  case "$HASH" in
+    blake3) echo "setup/starkstructs.blake3.json" ;;
+    *)      echo "setup/starkstructs.poseidon.json" ;;
+  esac
+}
+
+# Hash family the proving key under $1 was built with, from its pilout.globalInfo.json,
+# or empty when there is no such key yet.
+#
+# $HASH is what the NEXT build would use; this is what an EXISTING key already is. The two
+# diverge whenever a key was built with a non-default --hash, because that flag is a plain
+# shell variable and nothing records it outside the key itself. Any check about a key that
+# is already on disk has to ask the key. Never guessed: a key that records no family is an
+# error, matching HashMode::from_proving_key.
+proving_key_hash_family() {
+  local gi="$1/pilout.globalInfo.json"
+  [ -f "$gi" ] || return 1
+  command -v jq >/dev/null 2>&1 || { echo "jq not on PATH (needed to read $gi)" >&2; return 2; }
+  local family
+  family="$(jq -r '.hash // empty' "$gi")" || { echo "failed to parse $gi" >&2; return 2; }
+  [ -n "$family" ] || { echo "no 'hash' field in $gi — rebuild the setup so it records its hash family" >&2; return 2; }
+  printf '%s' "$family"
+}
 
 # Portable shims for utilities that ship as GNU-only on Linux but use different
 # names on BSD userlands (macOS). Defined once so callers don't have to care.
@@ -323,11 +364,16 @@ compute_input_hash() (
   fi
   echo "pil2-stark-setup key: $pil2_stark_setup_source" >&2
 
-  echo "hashing $(wc -l < "$pil_list") .pil files + starkstructs.json + ${#fixed_bins[@]} *_fixed.bin + tool refs" >&2
+  echo "hashing $(wc -l < "$pil_list") .pil files + $(starkstructs_path) + ${#fixed_bins[@]} *_fixed.bin + tool refs" >&2
   {
     xargs cat < "$pil_list"
-    cat state-machines/starkstructs.json
+    cat "$(starkstructs_path)"
     cat "${fixed_bins[@]}"
+    # The family is a build input, not just a flag: it picks the starkstructs
+    # file, the FRI schedule, the grinding bits and the aggregation arity. Left
+    # out, a blake3 build and a poseidon one share a cache key and --cache-dir
+    # hands back the wrong provingKey.
+    printf 'hash-family:%s\n' "$HASH"
     printf 'pil2-compiler:%s\n' "$pil2_compiler_version"
     printf 'pil2-stark-setup:%s\n' "$pil2_stark_setup_source"
   } | sha256_hex

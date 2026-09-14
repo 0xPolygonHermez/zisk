@@ -35,6 +35,7 @@ proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-starks-lib-c = { workspace = true }
 pil2-stark-setup = { workspace = true }
+pil2-stark-recurser = { workspace = true }
 sysinfo = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
