@@ -37,6 +37,7 @@ use std::sync::Arc;
 use zisk_asm_runner::{AsmRunnerMO, AsmRunnerRH};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::ExecutorStatsHandle;
+use zisk_common::{LateJoinHandle, LateValueError};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crate::error::{ExecutorError, MutexExt};
@@ -49,7 +50,9 @@ use crate::{AsmResources, MAX_NUM_STEPS};
 /// of an ASM execution. See module-level docs.
 pub struct AsmRunnerSupervisor {
     handle_mo: JoinHandle<ExecutorResult<AsmRunnerMO>>,
-    handle_rh: Option<JoinHandle<ExecutorResult<AsmRunnerRH>>>,
+    /// The RH handle is typed for [`zisk_common::LateValue`]: it is not joined here
+    /// but parked for the ROM state machine, which cannot see the executor's errors.
+    handle_rh: Option<LateJoinHandle<AsmRunnerRH>>,
 }
 
 impl AsmRunnerSupervisor {
@@ -59,7 +62,7 @@ impl AsmRunnerSupervisor {
     #[cfg(test)]
     pub fn new(
         handle_mo: JoinHandle<ExecutorResult<AsmRunnerMO>>,
-        handle_rh: Option<JoinHandle<ExecutorResult<AsmRunnerRH>>>,
+        handle_rh: Option<LateJoinHandle<AsmRunnerRH>>,
     ) -> Self {
         Self { handle_mo, handle_rh }
     }
@@ -109,8 +112,12 @@ impl AsmRunnerSupervisor {
             let asm_services = resources.asm_services().clone();
             let unlock_mapped_memory = resources.config().unlock_mapped_memory;
             let stats_rh = stats.clone();
-            std::thread::spawn(move || -> ExecutorResult<AsmRunnerRH> {
-                let mut guard = asm_shmem_rh.lock_or_poison("rh_shmem")?;
+            // Failures are mapped here, at the spawn site, so the cell this handle is
+            // parked in stays free of the executor's error type — and so does the ROM
+            // state machine that reads through it.
+            std::thread::spawn(move || -> Result<AsmRunnerRH, LateValueError> {
+                let mut guard =
+                    asm_shmem_rh.lock_or_poison("rh_shmem").map_err(LateValueError::failed)?;
 
                 AsmRunnerRH::run(
                     &mut guard,
@@ -119,7 +126,7 @@ impl AsmRunnerSupervisor {
                     unlock_mapped_memory,
                     stats_rh,
                 )
-                .map_err(ExecutorError::asm_backend)
+                .map_err(LateValueError::failed)
             })
         });
 
@@ -131,8 +138,7 @@ impl AsmRunnerSupervisor {
     /// [`crate::BackendArtifacts::Asm`] for [`crate::ExecutionOutput`].
     pub fn into_handles(
         self,
-    ) -> (JoinHandle<ExecutorResult<AsmRunnerMO>>, Option<JoinHandle<ExecutorResult<AsmRunnerRH>>>)
-    {
+    ) -> (JoinHandle<ExecutorResult<AsmRunnerMO>>, Option<LateJoinHandle<AsmRunnerRH>>) {
         (self.handle_mo, self.handle_rh)
     }
 
@@ -163,7 +169,10 @@ impl AsmRunnerSupervisor {
 /// any thread panic or runner error so observability isn't silently
 /// lost. The caller has already issued `signal_cancellation`, so a
 /// healthy runner will observe the reset flag and exit `Ok(_)`.
-fn join_runner_during_cleanup<T>(label: &str, handle: JoinHandle<ExecutorResult<T>>) {
+fn join_runner_during_cleanup<T, E: std::fmt::Display>(
+    label: &str,
+    handle: JoinHandle<Result<T, E>>,
+) {
     match handle.join() {
         Ok(Ok(_)) => {}
         Ok(Err(err)) => {
@@ -189,7 +198,7 @@ mod tests {
     }
 
     /// Spawn a no-op RH runner that returns an empty `AsmRunnerRH`.
-    fn spawn_canned_rh() -> JoinHandle<ExecutorResult<AsmRunnerRH>> {
+    fn spawn_canned_rh() -> LateJoinHandle<AsmRunnerRH> {
         std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new()))))
     }
 

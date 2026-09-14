@@ -22,7 +22,9 @@ use std::sync::{Arc, Mutex};
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use zisk_asm_runner::AsmRunnerRH;
-use zisk_common::{CheckPoint, Instance, InstanceCtx, InstanceType, Plan, StatsScope};
+use zisk_common::{
+    CheckPoint, Instance, InstanceCtx, InstanceType, LateJoinHandle, Plan, StatsScope,
+};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 use zisk_sm_main::MainInstance;
@@ -113,8 +115,17 @@ impl<F: PrimeField64> WitnessPhase<F> {
         Self { sm_bundle, collector, witness_generator, trace_buffer_rom }
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
-        self.collector.set_rh_data(rh_data)
+    /// Parks this execution's ASM ROM-histogram runner on the ROM state machine.
+    ///
+    /// Straight to the bundle: the collector has no part in a handle that is read at
+    /// witness time. See [`StaticSMBundle::park_rh_handle`].
+    pub fn park_rh_handle(&self, handle: LateJoinHandle<AsmRunnerRH>) -> ExecutorResult<()> {
+        self.sm_bundle.park_rh_handle(handle)
+    }
+
+    /// Retires a ROM-histogram runner a previous execution left unconsumed.
+    pub fn drain_rh(&self) {
+        self.sm_bundle.drain_rh();
     }
 
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
@@ -469,6 +480,7 @@ mod tests {
     use proofman_fields::Goldilocks;
     use std::sync::atomic::AtomicU64;
     use zisk_asm_runner::AsmRHData;
+    use zisk_common::LateValue;
 
     type F = Goldilocks;
 
@@ -483,8 +495,9 @@ mod tests {
         let ictx = InstanceCtx::new(GID, plan);
         let zisk_rom = Arc::new(ZiskRom::default());
         if asm {
-            let rh_data = AsmRunnerRH::new(AsmRHData::new(0, Vec::new()));
-            Box::new(RomInstance::new_asm(zisk_rom, ictx, rh_data))
+            let rh = AsmRunnerRH::new(AsmRHData::new(0, Vec::new()));
+            let cell = Arc::new(LateValue::ready("ROM histogram", rh));
+            Box::new(RomInstance::new_asm(zisk_rom, ictx, cell))
         } else {
             Box::new(RomInstance::new_rust(zisk_rom, ictx, Arc::new(Vec::<AtomicU64>::new())))
         }

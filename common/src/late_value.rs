@@ -103,21 +103,13 @@ enum State<T> {
     Failed(LateValueError),
 }
 
-// Hand-written rather than derived: `Empty` carries no `T`, so the cell must not
-// inherit a `T: Default` bound it has no use for.
-impl<T> Default for State<T> {
-    fn default() -> Self {
-        Self::Empty
-    }
-}
-
 impl<T> State<T> {
     /// Joins any parked producer and drops everything this round left behind.
     /// Joining a thread that has already returned does not block.
     fn clear(&mut self) {
         // The value is discarded: a handle still parked here belongs to a round
         // nobody consumed.
-        if let Self::Parked(handle) = std::mem::take(self) {
+        if let Self::Parked(handle) = std::mem::replace(self, Self::Empty) {
             let _ = handle.join();
         }
     }
@@ -127,7 +119,7 @@ impl<T> State<T> {
     /// The returned reference is what makes the join-once rule checkable: only
     /// the `Ready` arm can produce one.
     fn resolve(&mut self, label: &'static str) -> Result<&T, LateValueError> {
-        *self = match std::mem::take(self) {
+        *self = match std::mem::replace(self, Self::Empty) {
             Self::Parked(handle) => {
                 join_producer(label, handle).map_or_else(Self::Failed, Self::Ready)
             }
