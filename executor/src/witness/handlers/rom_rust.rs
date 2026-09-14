@@ -42,6 +42,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::{atomic::AtomicU64, Arc};
     use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
+    use zisk_common::LateValue;
     use zisk_common::{CheckPoint, Instance, InstanceCtx, InstanceType, Plan};
     use zisk_core::ZiskRom;
 
@@ -56,7 +57,8 @@ mod tests {
             Plan::new(AIRGROUP_ID, AIR_ID, None, InstanceType::Instance, CheckPoint::None, None);
         let ictx = InstanceCtx::new(GID, plan);
         if let Some(rh_data) = rh_data {
-            Box::new(RomInstance::new_asm(Arc::new(ZiskRom::default()), ictx, rh_data))
+            let cell = Arc::new(LateValue::ready("ROM histogram", rh_data));
+            Box::new(RomInstance::new_asm(Arc::new(ZiskRom::default()), ictx, cell))
         } else {
             Box::new(RomInstance::new_rust(
                 Arc::new(ZiskRom::default()),

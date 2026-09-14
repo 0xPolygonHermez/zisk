@@ -11,7 +11,7 @@ use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
 use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx, InstanceType,
-    Metrics, PayloadType, ROM_BUS_ID,
+    LateValue, Metrics, PayloadType, ROM_BUS_ID,
 };
 use zisk_core::{ZiskRom, ROM_EXIT};
 use zisk_pil::{MainTrace, RomTrace};
@@ -29,10 +29,11 @@ struct RustState {
     inst_count: Arc<Vec<AtomicU64>>,
 }
 
-/// State for the ASM-emulator path: histogram delivered by the assembly runner,
-/// consumed directly when computing the witness.
+/// State for the ASM-emulator path: the histogram is produced by a runner thread the
+/// executor parks in this cell, and read here when the witness is computed — which is
+/// the last point it is needed, and so the latest the runner has to have finished.
 struct AsmState {
-    rh_data: AsmRunnerRH,
+    rh: Arc<LateValue<AsmRunnerRH>>,
 }
 
 impl RustState {
@@ -66,14 +67,18 @@ impl RustState {
 }
 
 impl AsmState {
-    fn new(rh_data: AsmRunnerRH) -> Self {
-        Self { rh_data }
+    fn new(rh: Arc<LateValue<AsmRunnerRH>>) -> Self {
+        Self { rh }
     }
 
-    /// Borrowed view of the assembly histogram. Keeps the wrapping `AsmRunnerRH`'s
-    /// shape private to this module.
-    fn histogram(&self) -> &AsmRHData {
-        &self.rh_data.asm_rowh_output
+    /// Lends the assembly histogram to `f`, joining the runner first if it has not
+    /// finished yet.
+    ///
+    /// Borrowed rather than handed over: it aliases a shared-memory mapping the cell
+    /// owns, and the witness may be recomputed later in the same proof. Keeps the
+    /// wrapping `AsmRunnerRH`'s shape private to this module.
+    fn with_histogram<T>(&self, f: impl FnOnce(&AsmRHData) -> T) -> RomResult<T> {
+        Ok(self.rh.with(|runner| f(&runner.asm_rowh_output))?)
     }
 }
 
@@ -101,8 +106,16 @@ impl RomInstance {
     }
 
     /// Creates a `RomInstance` for the ASM emulator path.
-    pub fn new_asm(zisk_rom: Arc<ZiskRom>, ictx: InstanceCtx, rh_data: AsmRunnerRH) -> Self {
-        Self { zisk_rom, ictx, mode: RomInstanceMode::Asm(AsmState::new(rh_data)) }
+    ///
+    /// `rh` is the cell the executor parked this execution's histogram runner in; it is
+    /// shared with [`crate::RomSM`], which outlives this instance and retires the runner
+    /// at the next job boundary.
+    pub fn new_asm(
+        zisk_rom: Arc<ZiskRom>,
+        ictx: InstanceCtx,
+        rh: Arc<LateValue<AsmRunnerRH>>,
+    ) -> Self {
+        Self { zisk_rom, ictx, mode: RomInstanceMode::Asm(AsmState::new(rh)) }
     }
 
     /// Returns true when this instance produces its witness without collecting bus data
@@ -233,25 +246,26 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
+        // The ASM arm is where this execution's histogram runner is finally joined, if
+        // it has not finished already: this is the last point the histogram is needed.
         let air = match &self.mode {
-            RomInstanceMode::Asm(a) => {
-                Self::compute_witness_from_asm(&self.zisk_rom, a.histogram(), trace_buffer)
-            }
-            RomInstanceMode::Rust(r) => {
-                let stats = r
-                    .aggregate_stats(collectors)
-                    .map_err(|e| ProofmanError::InvalidParameters(e.to_string()))?;
-                Self::compute_witness_from_rust(&self.zisk_rom, &stats, trace_buffer)
-            }
-        };
+            RomInstanceMode::Asm(a) => a.with_histogram(|histogram| {
+                Self::compute_witness_from_asm(&self.zisk_rom, histogram, trace_buffer)
+            }),
+            RomInstanceMode::Rust(r) => r
+                .aggregate_stats(collectors)
+                .map(|stats| Self::compute_witness_from_rust(&self.zisk_rom, &stats, trace_buffer)),
+        }
+        .map_err(|e| ProofmanError::InvalidParameters(e.to_string()))?;
         Ok(Some(air))
     }
 
     fn reset(&self) {
         match &self.mode {
-            // ASM mode: rh_data is source input from the assembly runner, not derived state.
-            // `registry.rs` calls `reset()` before `compute_witness`, so clearing rh_data here
-            // would drop the histogram we need.
+            // ASM mode: the histogram is source input from the assembly runner, not derived
+            // state. `registry.rs` calls `reset()` before `compute_witness`, so releasing the
+            // cell here would drop the histogram we are about to read — and it is shared with
+            // the state machine, which owns its lifetime across jobs.
             RomInstanceMode::Asm(_) => {}
             RomInstanceMode::Rust(r) => r.reset(),
         }
@@ -311,10 +325,11 @@ impl BusDevice<u64> for RomCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rom::RH_LABEL;
     use proofman_fields::Goldilocks;
     use std::sync::atomic::{AtomicU64, Ordering};
     use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
-    use zisk_common::Plan;
+    use zisk_common::{LateValueError, Plan};
     use zisk_core::{ZiskInst, ZiskInstBuilder};
 
     type F = Goldilocks;
@@ -323,8 +338,15 @@ mod tests {
         InstanceCtx::new(0, Plan::new(0, 0, None, InstanceType::Instance, CheckPoint::None, None))
     }
 
-    fn asm_runner_rh_empty() -> AsmRunnerRH {
-        AsmRunnerRH::new(AsmRHData::new(0, vec![]))
+    /// A cell already holding `histogram`, as a parked runner that has finished leaves it.
+    fn armed_cell(histogram: AsmRunnerRH) -> Arc<LateValue<AsmRunnerRH>> {
+        Arc::new(LateValue::ready(RH_LABEL, histogram))
+    }
+
+    /// An armed cell holding an empty histogram. `AsmRunnerRH`'s `Drop` `mem::forget`s
+    /// its payload, so an empty `Vec` keeps the test leak-free.
+    fn armed_rh_cell() -> Arc<LateValue<AsmRunnerRH>> {
+        armed_cell(AsmRunnerRH::new(AsmRHData::new(0, vec![])))
     }
 
     /// Builds a ZiskRom with `n` instructions placed at `min_program_pc + 4*i`, each
@@ -459,8 +481,8 @@ mod tests {
         // In ASM mode, reset() is documented as a no-op (the histogram is source input,
         // not derived state). After reset the instance must still be in ASM mode so the
         // next compute_witness can consume the same rh_data.
-        let rh_data = AsmRunnerRH::new(AsmRHData::new(50, vec![3, 0, 1]));
-        let inst = RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), rh_data);
+        let cell = armed_cell(AsmRunnerRH::new(AsmRHData::new(50, vec![3, 0, 1])));
+        let inst = RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), cell);
 
         <RomInstance as Instance<F>>::reset(&inst);
 
@@ -470,7 +492,7 @@ mod tests {
     #[test]
     fn build_inputs_collector_returns_none_for_asm_mode() {
         let inst =
-            RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), asm_runner_rh_empty());
+            RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), armed_rh_cell());
 
         let collector = <RomInstance as Instance<F>>::build_inputs_collector(&inst, ChunkId(0));
         assert!(collector.is_none());
@@ -502,9 +524,22 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_runner_surfaces_as_an_error_not_a_histogram() {
+        let cell = Arc::new(LateValue::new(RH_LABEL));
+        cell.park(std::thread::spawn(|| Err(LateValueError::failed("runner died"))));
+
+        // The path `compute_witness` takes in ASM mode. A failure has to arrive here as
+        // an error: the alternative is a witness computed from a histogram that does
+        // not exist.
+        let err = AsmState::new(cell)
+            .with_histogram(|_| ())
+            .expect_err("a failed runner delivers no histogram");
+        assert!(matches!(err, RomError::RhUnavailable(_)), "got {err:?}");
+    }
+
+    #[test]
     fn build_rom_collector_reflects_mode() {
-        let asm =
-            RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), asm_runner_rh_empty());
+        let asm = RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), armed_rh_cell());
         assert!(asm.build_rom_collector(ChunkId(0)).is_none(), "ASM mode returns no collector");
 
         let rust =
