@@ -1,7 +1,8 @@
 mod arith256;
 mod arith384;
 mod babyjubjub;
-mod blake2;
+mod blake2b;
+mod blake2s;
 mod blake3;
 mod bls12_381;
 mod bn254;
@@ -16,7 +17,8 @@ pub fn diagnostic_syscalls() {
     arith256::diagnostic_arith256();
     arith384::diagnostic_arith384();
     babyjubjub::diagnostic_babyjubjub();
-    blake2::diagnostic_blake2();
+    blake2b::diagnostic_blake2b();
+    blake2s::diagnostic_blake2s();
     bls12_381::diagnostic_bls12_381();
     bn254::diagnostic_bn254();
     keccakf::diagnostic_keccakf();

@@ -6,7 +6,7 @@ require "std_range_check.pil"
 require "operations.pil"
 require "opids.pil"
 
-require "blake2br_table.pil"
+require "blake3/pil/blake_table.pil"
 
 // Precompile in charge of performing the BLAKE2b round function.
 // For reference: https://www.rfc-editor.org/rfc/rfc7693.html or https://www.blake2.net/
@@ -71,28 +71,15 @@ airtemplate Blake2br(const int N = 2**20) {
 
     // Calculate usable capacity
     const int NUM_NON_USABLE_ROWS = N % CLOCKS;
-    const int NUM_OPS;
-    if (NUM_NON_USABLE_ROWS == 0) {
-        // N is perfectly divisible by CLOCKS
-        if (N < CLOCKS) {
-            error(`N must be at least ${CLOCKS} to fit the Blake2br arithmetization, but received N=${N}`);
-        }
-
-        NUM_OPS = N / CLOCKS;
-    } else {
-        // N is not divisible by CLOCKS
-        if (N < 2*CLOCKS) {
-            error(`N must be at least ${2*CLOCKS} to fit the Blake2br arithmetization, but received N=${N}`);
-        }
-
-        // Subtract 1 because we can't fit a complete cycle in the remaining rows
-        NUM_OPS = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1;
+    const int NUM_OPS = (N - NUM_NON_USABLE_ROWS) / CLOCKS;
+    if (NUM_OPS < 1) {
+        error(`N must be at least ${CLOCKS} to fit the Blake2br arithmetization, but received N=${N}`);
     }
 
     const int NUM_BLAKE2BR = NUM_OPS;
-    println(`The total number of Blake2br's with N = ${N} is ${NUM_BLAKE2BR}`);
+    println(`The total number of Blake2b rounds with N = 2^${log2(N)} is ${NUM_BLAKE2BR}`);
 
-    /// Message word permutation schedule
+    // Message word permutation schedule
     const int SIGMA[10][16];
     SIGMA[0] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
     SIGMA[1] = [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3];
@@ -256,7 +243,7 @@ airtemplate Blake2br(const int N = 2**20) {
     // vd' === (vd ^ va') >>> 32 (Note that ROTR 32 is a byte-aligned rotation)
     col witness bits(8) vd_prime[8];
     for (int i = 0; i < 8; i++) {
-        blake2br_table_check(a: vd[i], b: va_prime[i], c: vd_prime[(i + 4) % 8]);
+        xor_rotr_check(a: vd[i], b: va_prime[i], rot: 0, c0: vd_prime[(i + 4) % 8], c1: 0);
     }
 
     // vc' === (vc + vd') mod 2⁶⁴
@@ -268,7 +255,7 @@ airtemplate Blake2br(const int N = 2**20) {
     // vb' === (vb ^ vc') >>> 24 (Note that ROTR 24 is a byte-aligned rotation)
     col witness bits(8) vb_prime[8];
     for (int i = 0; i < 8; i++) {
-        blake2br_table_check(a: vb[i], b: vc_prime[i], c: vb_prime[(i + 5) % 8]);
+        xor_rotr_check(a: vb[i], b: vc_prime[i], rot: 0, c0: vb_prime[(i + 5) % 8], c1: 0);
     }
 
     // va'' === (va' + vb' + y) mod 2⁶⁴
@@ -280,7 +267,7 @@ airtemplate Blake2br(const int N = 2**20) {
     // vd'' === (vd' ^ va'') >>> 16 (Note that ROTR 16 is a byte-aligned rotation)
     col witness bits(8) vd_prime_prime[8];
     for (int i = 0; i < 8; i++) {
-        blake2br_table_check(a: vd_prime[i], b: va_prime_prime[i], c: vd_prime_prime[(i + 6) % 8]);
+        xor_rotr_check(a: vd_prime[i], b: va_prime_prime[i], rot: 0, c0: vd_prime_prime[(i + 6) % 8], c1: 0);
     }
 
     // vc'' === (vc' + vd'') mod 2⁶⁴
@@ -293,7 +280,7 @@ airtemplate Blake2br(const int N = 2**20) {
     col witness bits(8) vb_pp_xor[8];   // z = vb' ^ vc''
     col witness bits(1) vb_pp_t[2];     // top bits of z_lo, z_hi
     for (int i = 0; i < 8; i++) {
-        blake2br_table_check(a: vb_prime[i], b: vc_prime_prime[i], c: vb_pp_xor[i]);
+        xor_rotr_check(a: vb_prime[i], b: vc_prime_prime[i], rot: 0, c0: vb_pp_xor[i], c1: 0);
     }
     vb_pp_t[0] * (1 - vb_pp_t[0]) === 0;
     vb_pp_t[1] * (1 - vb_pp_t[1]) === 0;

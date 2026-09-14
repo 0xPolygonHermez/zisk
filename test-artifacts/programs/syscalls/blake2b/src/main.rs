@@ -10,28 +10,28 @@ const ACTIVATE_CONSISTENCY_TEST: bool = false;
 
 fn main() {
     // Get the input from ziskos
-    let num_blake2s: u64 = ziskos::io::read();
+    let num_blake2b_rounds: u64 = ziskos::io::read();
 
     let mut rng = rand::thread_rng();
 
     if ACTIVATE_CONSISTENCY_TEST {
-        println!("Running BLAKE2 consistency test for {} times", num_blake2s);
+        println!("Running BLAKE2b consistency test for {} times", num_blake2b_rounds);
     } else {
-        println!("Running BLAKE2 random tests for {} times", num_blake2s);
+        println!("Running BLAKE2b random tests for {} times", num_blake2b_rounds);
     }
 
-    for _ in 0..num_blake2s {
+    for _ in 0..num_blake2b_rounds {
         if ACTIVATE_CONSISTENCY_TEST {
             run_consistency_test();
         } else {
-            blake2_apply(&mut rng);
+            blake2b_apply(&mut rng);
         }
     }
 }
 
-// Take any number and apply the blake2 function
+// Take any number and apply one blake2b round
 #[allow(deprecated)]
-fn blake2_apply(rng: &mut rand::rngs::ThreadRng) {
+fn blake2b_apply(rng: &mut rand::rngs::ThreadRng) {
     let index: u64 = rng.gen_range(0..10);
 
     let mut state = [0u64; 16];
@@ -49,12 +49,12 @@ fn blake2_apply(rng: &mut rand::rngs::ThreadRng) {
     let mut params = SyscallBlake2bRoundParams { index, state: &mut state, input: &input };
     syscall_blake2b_round(&mut params);
 
-    // Compare against a tested blake2 implementation
+    // Compare against a tested blake2b implementation
     blake2b_round(&mut state_copy, &input, index as u32);
 
     assert!(
         state == state_copy,
-        "BLAKE2 state mismatch: \n  expected: {:x?}\n     found: {:x?}",
+        "BLAKE2b state mismatch: \n  expected: {:x?}\n     found: {:x?}",
         state_copy,
         state
     );
@@ -105,7 +105,7 @@ fn run_consistency_test() {
     ];
     assert!(
         state == EXPECTED_RESULT,
-        "BLAKE2 state mismatch: \n  expected: {:x?}\n     found: {:x?}",
+        "BLAKE2b state mismatch: \n  expected: {:x?}\n     found: {:x?}",
         EXPECTED_RESULT,
         state
     );

@@ -13,13 +13,14 @@ use zisk_precomp_helpers::DmaInfo;
 use ziskos::zisklib::fcall_proxy;
 
 use crate::{
-    blake2br, blake3f, operations::*, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType,
-    ZiskRequiredOperation, ADD256_COST, ADD_U_W_COST, ARITHA32_COST, ARITHAM32_COST,
-    ARITH_EQ_384_COST, ARITH_EQ_COST, BABYJUBJUB_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST,
-    BLAKE2_COST, BLAKE3_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST,
-    DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR,
-    FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE,
-    POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
+    blake2br, blake2sf, blake3f, operations::*, sha256f, EmulationMode, InstContext, Mem,
+    ZiskOperationType, ZiskRequiredOperation, ADD256_COST, ADD_U_W_COST, ARITHA32_COST,
+    ARITHAM32_COST, ARITH_EQ_384_COST, ARITH_EQ_COST, BABYJUBJUB_COST, BINARY_ADD_COST,
+    BINARY_COST, BINARY_E_COST, BLAKE2B_COST, BLAKE2S_COST, BLAKE3_COST, DMA_64_ALIGNED_COST,
+    DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST, DMA_MEMSET_COST,
+    DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR,
+    INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST, REG_A0,
+    SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
 };
 use paste::paste;
 use proofman_fields::{
@@ -64,10 +65,11 @@ pub enum OpType {
     BigInt,
     Evm,
     Dma,
-    Blake2,
+    Blake2b,
     Profile,
     BabyJubJub,
     Blake3,
+    Blake2s,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -87,10 +89,11 @@ impl From<OpType> for ZiskOperationType {
             OpType::BigInt => ZiskOperationType::BigInt,
             OpType::Evm => ZiskOperationType::Evm,
             OpType::Dma => ZiskOperationType::Dma,
-            OpType::Blake2 => ZiskOperationType::Blake2,
+            OpType::Blake2b => ZiskOperationType::Blake2b,
             OpType::Profile => ZiskOperationType::Profile,
             OpType::BabyJubJub => ZiskOperationType::BabyJubJub,
             OpType::Blake3 => ZiskOperationType::Blake3,
+            OpType::Blake2s => ZiskOperationType::Blake2s,
         }
     }
 }
@@ -114,10 +117,11 @@ impl Display for OpType {
             Self::BigInt => write!(f, "BigInt"),
             Self::Evm => write!(f, "Evm"),
             Self::Dma => write!(f, "Dma"),
-            Self::Blake2 => write!(f, "Blake2"),
+            Self::Blake2b => write!(f, "Blake2b"),
             Self::Profile => write!(f, "Profile"),
             Self::BabyJubJub => write!(f, "BabyJubJub"),
             Self::Blake3 => write!(f, "Blake3"),
+            Self::Blake2s => write!(f, "Blake2s"),
         }
     }
 }
@@ -142,10 +146,11 @@ impl FromStr for OpType {
             "bint" => Ok(Self::BigInt),
             "evm" => Ok(Self::Evm),
             "dma" => Ok(Self::Dma),
-            "bl" => Ok(Self::Blake2),
+            "b2b" => Ok(Self::Blake2b),
             "profile" => Ok(Self::Profile),
             "babyjubjub" => Ok(Self::BabyJubJub),
             "b3" => Ok(Self::Blake3),
+            "b2s" => Ok(Self::Blake2s),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -533,8 +538,9 @@ define_ops! {
     (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, 64, opc_secp256k1_dbl, op_secp256k1_dbl, ops_secp256k1_dbl),
     (Secp256r1Add, "secp256r1_add", ArithEq, ARITH_EQ_COST, 0xe8, 144, 64, opc_secp256r1_add, op_secp256r1_add, ops_secp256r1_add),
     (Secp256r1Dbl, "secp256r1_dbl", ArithEq, ARITH_EQ_COST, 0xe9, 64, 64, opc_secp256r1_dbl, op_secp256r1_dbl, ops_secp256r1_dbl),
-    (Blake2, "blake2", Blake2, BLAKE2_COST, 0xea, 280 , 128, opc_blake2, op_blake2, ops_blake2),
+    (Blake2b, "blake2b", Blake2b, BLAKE2B_COST, 0xea, 280, 128, opc_blake2b, op_blake2b, ops_blake2b),
     (Blake3, "blake3", Blake3, BLAKE3_COST, 0xee, 144, 64, opc_blake3, op_blake3, ops_blake3),
+    (Blake2s, "blake2s", Blake2s, BLAKE2S_COST, 0xef, 144, 64, opc_blake2s, op_blake2s, ops_blake2s),
     (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, 0, opc_fcall_param, op_fcall_param, ops_none),
     (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, 0, opc_fcall, op_fcall, ops_none),
     (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, 0, opc_fcall_get, op_fcall_get, ops_none),
@@ -874,11 +880,11 @@ pub fn ops_poseidon1(ctx: &InstContext, stats: &mut dyn OpStats) {
 }
 
 #[inline(always)]
-pub fn opc_blake2(ctx: &mut InstContext) {
+pub fn opc_blake2b(ctx: &mut InstContext) {
     const WORDS: usize = 3 + 2 * 16; // index,addr_state,addr_input,state[16],input[16]
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 3, 2, 16, 0, Some(0), &mut data, "blake2");
+    precompiled_load_data(ctx, 3, 2, 16, 0, Some(0), &mut data, "blake2b");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // Get the state and input slices
@@ -904,11 +910,11 @@ pub fn opc_blake2(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Blake2 can only be called from the system call context via InstContext.
+/// Unimplemented.  Blake2b can only be called from the system call context via InstContext.
 /// This is provided just for completeness.
 #[inline(always)]
-pub fn op_blake2(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_blake2() is not implemented");
+pub fn op_blake2b(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_blake2b() is not implemented");
 }
 
 /// Performs the Blake3 permutation (7 rounds of G-mixing, no feed-forward) over a 16-u32 state,
@@ -958,9 +964,56 @@ pub fn ops_blake3(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
 }
 
+/// Performs the Blake2s permutation (the 10 rounds of G-mixing, no feed-forward) over a 16-u32 state,
+/// reading the state and input block through the two pointers stored at the address in register B,
+/// and writing the permuted state back through the first pointer.
 #[inline(always)]
-pub fn ops_blake2(ctx: &InstContext, stats: &mut dyn OpStats) {
-    // Mirrors opc_blake2's precompiled_load_data(ctx, 3, 2, 16, 0, Some(0)): the 3 params live
+pub fn opc_blake2s(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 8; // addr_state,addr_input,state[8],input[8]
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "blake2s");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // Get the state and input slices
+        // 0 - addr_state
+        // 1 - addr_input
+        let (params, rest) = data.split_at_mut(2);
+        let (state_slice, input_slice) = rest.split_at_mut(8);
+        let state: &mut [u64; 8] = state_slice.try_into().unwrap();
+        let input: &[u64; 8] = input_slice[..8].try_into().unwrap();
+
+        // Compute the blake2sf output
+        blake2sf(state, input);
+
+        let state_addr = params[0];
+        for (i, d) in state.iter().enumerate() {
+            ctx.mem.write(state_addr + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Blake2s can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_blake2s(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_blake2s() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_blake2s(ctx: &InstContext, stats: &mut dyn OpStats) {
+    // Mirrors opc_blake2s's precompiled_load_data(ctx, 2, 2, 8, 0, None): the 2 params at ctx.b are
+    // both pointers ([state_addr, input_addr]). State is read and written back (8 words), input is
+    // read only (8 words).
+    precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
+}
+
+#[inline(always)]
+pub fn ops_blake2b(ctx: &InstContext, stats: &mut dyn OpStats) {
+    // Mirrors opc_blake2b's precompiled_load_data(ctx, 3, 2, 16, 0, Some(0)): the 3 params live
     // directly at ctx.b ([index, state_addr, input_addr]); param[0] (index) is a direct value, not a
     // pointer. State is read and written back (16 words), input is read only (16 words).
     let param_addr = ctx.b;

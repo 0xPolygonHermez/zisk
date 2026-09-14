@@ -30,6 +30,9 @@
   "Blake3f": {
     "hasCompressor": true
   },
+  "Blake2s": {
+    "hasCompressor": true
+  },
   "Arith256": {
     "hasCompressor": true
   },
