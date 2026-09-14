@@ -19,7 +19,10 @@ pub struct Recurser {
     pub(crate) recurser_id: String,
     pub(crate) templates: zisk_recurser::CircomTemplates,
     // SDK-managed paths — not exposed to the user.
-    pub(crate) setup_dir: String,
+    pub(crate) proving_key: String,
+    /// `proving_key`'s vadcop_final verkey at build time, so later checks compare key
+    /// contents rather than paths.
+    pub(crate) zisk_vk: [String; 4],
     /// The proving key's hash family, captured at build time from the same
     /// globalInfo.json the `recurser_id` was derived against.
     pub(crate) hash_mode: HashMode,
@@ -210,10 +213,12 @@ impl<'a> AggregationProgramBuilder<'a> {
             .as_ref()
             .map(|c| zisk_recurser::NormalizeCircuit { body: c.source().to_string() });
 
-        let setup_dir = ZiskPaths::global()
-            .home
+        let proving_key = ZiskPaths::global()
+            .proving_key
             .to_str()
-            .ok_or_else(|| SdkError::Recurser("default ~/.zisk path is not valid UTF-8".into()))?
+            .ok_or_else(|| {
+                SdkError::Recurser("default ~/.zisk/provingKey path is not valid UTF-8".into())
+            })?
             .to_string();
 
         // Derive the optional leaf allow-list VKs. Only touches ELFs when a
@@ -235,16 +240,17 @@ impl<'a> AggregationProgramBuilder<'a> {
             .ok_or_else(|| SdkError::Recurser("~/.zisk/recurser path is not valid UTF-8".into()))?
             .to_string();
 
-        let zisk_vk = zisk_recurser::setup::read_vadcop_final_verkey(&setup_dir).map_err(|e| {
-            SdkError::Recurser(format!(
-                "failed to locate local vadcop_final verkey ({e}). \
+        let zisk_vk =
+            zisk_recurser::setup::read_vadcop_final_verkey(&proving_key).map_err(|e| {
+                SdkError::Recurser(format!(
+                    "failed to locate local vadcop_final verkey ({e}). \
                  Run `cargo-zisk setup --recursive` on this machine \
                  (required even when using a remote coordinator)."
-            ))
-        })?;
+                ))
+            })?;
 
         let inputs = zisk_recurser::RecurserManifestInputs::new(
-            zisk_vk,
+            zisk_vk.clone(),
             program_vks,
             normalize.as_ref(),
             &templates.aggregate_publics,
@@ -256,7 +262,8 @@ impl<'a> AggregationProgramBuilder<'a> {
         Ok(Recurser {
             recurser_id,
             templates,
-            setup_dir,
+            proving_key,
+            zisk_vk,
             hash_mode,
             output_dir,
             vk_cache: Arc::new(OnceLock::new()),
@@ -354,7 +361,8 @@ mod tests {
                 n_publics_agg: 6,
                 program_vks: vec![],
             },
-            setup_dir: "/tmp/zisk-test-setup".into(),
+            proving_key: "/tmp/zisk-test-setup/provingKey".into(),
+            zisk_vk: ["1".into(), "2".into(), "3".into(), "4".into()],
             hash_mode: HashMode::default(),
             output_dir: "/tmp/zisk-test-output".into(),
             vk_cache: Arc::new(OnceLock::new()),

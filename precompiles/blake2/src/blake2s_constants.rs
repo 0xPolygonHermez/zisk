@@ -1,25 +1,21 @@
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 
 // Memory layout
-pub const PARAMS: usize = 3;
+pub const PARAMS: usize = 2;
 pub const READ_PARAMS: usize = 2;
-pub const DIRECT_READ_PARAMS: usize = 1;
-pub const DIRECT_READ_PARAM_POS: usize = 0;
 pub const WRITE_PARAMS: usize = 1;
 pub const RESULT_PARAMS: usize = 0;
-pub const PARAM_CHUNKS: usize = 16;
+pub const PARAM_CHUNKS: usize = 8;
 pub const START_READ_PARAMS: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + PARAMS;
 
 // Generic Parameters
 pub const CLOCKS_PER_G: usize = 1;
 pub const NUM_G_PER_ROUND: usize = 8;
-pub const CLOCKS: usize = CLOCKS_PER_G * NUM_G_PER_ROUND;
-
-// Blake2br XOR table
-pub const BLAKE2BR_TABLE_SIZE: usize = 1 << 16;
+pub const NUM_ROUNDS: usize = 10;
+pub const CLOCKS: usize = CLOCKS_PER_G * NUM_G_PER_ROUND * NUM_ROUNDS;
 
 /// Message word permutation schedule
-pub const SIGMA: [[usize; 16]; 10] = [
+pub const SIGMA: [[usize; 16]; NUM_ROUNDS] = [
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
     [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
@@ -33,7 +29,7 @@ pub const SIGMA: [[usize; 16]; 10] = [
 ];
 
 /// Rotation constants for G function
-pub const R1_G: u32 = 32;
-pub const R2_G: u32 = 24;
-pub const R3_G: u32 = 16;
-pub const R4_G: u32 = 63;
+pub const R1_G: u32 = 16;
+pub const R2_G: u32 = 12;
+pub const R3_G: u32 = 8;
+pub const R4_G: u32 = 7;

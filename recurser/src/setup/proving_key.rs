@@ -20,7 +20,7 @@ use crate::templates::StarkInputBlocks;
 use crate::{gen_recurser, CircomTemplates};
 
 pub struct RecurserConfig<'a> {
-    /// Where artifacts land (must differ from setup_dir).
+    /// Where artifacts land (must differ from the proving key dir).
     pub output_dir: &'a str,
     /// Content-addressed setup id. Artifacts land under
     /// `<output_dir>/provingKey/recurser/<recurser_id>/`.

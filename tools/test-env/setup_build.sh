@@ -351,6 +351,20 @@ case "$MODE" in
     PUBLICS_INFO="state-machines/publics.json"
     [ -f "$PUBLICS_INFO" ] || { echo "missing $PUBLICS_INFO — final.circom needs publics layout (nPublics, chunks, hasProgramVK)" >&2; exit 1; }
 
+    # The BN128 wrap is poseidon-only. Ask the key on disk, not $HASH: this mode wraps an
+    # existing provingKey and never builds one, so $HASH here is the default for a build
+    # that is not happening — under it a valid poseidon key gets rejected whenever HASH is
+    # unset. Checked before the ptau probe so an unsupported key reports itself instead of
+    # an 18 GB download, and before setup-snark so it fails in seconds.
+    SNARK_FAMILY="$(proving_key_hash_family "$BUILD_DIR/provingKey")" || exit 1
+    if [ "$(printf '%s' "$SNARK_FAMILY" | tr '[:upper:]' '[:lower:]')" = "blake3" ]; then
+      echo "setup-snark is not supported for the $SNARK_FAMILY key in $BUILD_DIR/provingKey:" >&2
+      echo "the BN128 wrap is only built for the poseidon families. Rebuild the proving key" >&2
+      echo "with --hash Poseidon1 or Poseidon2." >&2
+      exit 1
+    fi
+    echo "wrapping a $SNARK_FAMILY proving key"
+
     PTAU_PATH="${PTAU_PATH:-../powersOfTau28_hez_final_24.ptau}"
     if [ ! -f "$PTAU_PATH" ]; then
       echo "missing powers-of-tau file: $PTAU_PATH" >&2

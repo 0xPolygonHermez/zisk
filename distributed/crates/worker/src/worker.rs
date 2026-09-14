@@ -384,6 +384,13 @@ pub struct Worker<T: ZiskBackend + 'static> {
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
+    /// The proving key this worker's prover was built on -- the explicit
+    /// `--proving-key` when one was configured, else the global default. Anything
+    /// bound to the key the prover actually loaded must resolve it through here.
+    pub fn proving_key(&self) -> &std::path::Path {
+        &self.prover_config.proving_key
+    }
+
     /// Build an emulator-backed worker from the resolved prover config.
     pub fn new_emu(prover_config: ProverConfig) -> Result<Worker<Emu>> {
         let mut prover_options = BackendProverOpts::default()

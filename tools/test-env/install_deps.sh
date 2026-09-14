@@ -63,6 +63,8 @@ install_dependencies_linux() {
         libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common \
         sudo ca-certificates gnupg lsb-release wget libclang-dev clang gcc-riscv64-unknown-elf llvm || return 1
 
+    ensure_sudo apt-get install -y cmake || return 1
+
     step "Installing Node.js 20.x..."
     curl -fsSL https://deb.nodesource.com/setup_20.x | ( [[ "$(id -u)" -ne 0 ]] && sudo -E bash || bash )
     ensure_sudo apt-get install -y nodejs || return 1
@@ -99,6 +101,8 @@ install_dependencies_darwin() {
 
     step "Installing package dependencies for macOS..."
     ensure brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium || return 1
+    # cmake is for the ziskethone C++ guest cross-compile (REBUILD_ZISKETHONE_GUEST=1).
+    ensure brew reinstall cmake || return 1
 }
 
 main() {

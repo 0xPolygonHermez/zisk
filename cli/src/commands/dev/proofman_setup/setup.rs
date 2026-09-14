@@ -52,7 +52,6 @@ pub(crate) struct ZiskProofmanSetupSetup {
     #[arg(short = 'o', long)]
     output: Option<String>,
 
-    /// Hash function to use: Poseidon1 or Poseidon2
     /// Hash function to use: Poseidon1, Poseidon2 or blake3
     #[arg(long, default_value = proofman_common::hash_family::DEFAULT_HASH_ID, value_parser = clap::builder::PossibleValuesParser::new(proofman_common::hash_family::FAMILIES))]
     pub hash: String,

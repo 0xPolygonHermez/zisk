@@ -226,8 +226,10 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
                 // On narrow layouts the packed χ-inputs of χ-row group y are
                 // committed at its anchor row, the group-row holding lane 5y.
-                // NOTE: chi_acc only exists for lanes_per_row < 25; comment out
-                //       when instantiating the wide layout.
+                // chi_acc is declared only in keccakf.pil's ROWS_PER_STATE > 1
+                // branch; the wide layout (LANES_PER_ROW = 25) feeds the χ
+                // lookups from θ-expressions directly and has no such column,
+                // so switching to it drops this write and chi_accs with it.
                 trace[group + (5 * y) / LANES_PER_ROW].set_all_chi_acc(&chi_accs);
             }
 

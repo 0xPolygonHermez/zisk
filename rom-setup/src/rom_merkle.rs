@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use proofman_common::ProofCtx;
 use proofman_fields::{Goldilocks, PrimeField64};
 use std::path::{Path, PathBuf};
@@ -119,6 +119,17 @@ pub fn rom_merkle_setup_verkey(
     output_dir: &Option<PathBuf>,
     hash_mode: HashMode,
 ) -> Result<ProgramVK, anyhow::Error> {
+    rom_merkle_setup_verkey_opt(elf, output_dir, hash_mode)?
+        .ok_or_else(|| anyhow::anyhow!("ROM merkle setup has not been performed yet"))
+}
+
+/// [`rom_merkle_setup_verkey`], but `Ok(None)` when this mode has no cached artifact. One that
+/// exists and will not read stays an error, so callers probing modes cannot read it as absence.
+pub fn rom_merkle_setup_verkey_opt(
+    elf: &[u8],
+    output_dir: &Option<PathBuf>,
+    hash_mode: HashMode,
+) -> Result<Option<ProgramVK>, anyhow::Error> {
     let output_path = get_output_path(output_dir)?;
 
     let elf_hash = get_elf_data_hash(elf);
@@ -126,12 +137,13 @@ pub fn rom_merkle_setup_verkey(
     let elf_verkey_bin_path =
         get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path, hash_mode)?;
 
-    if elf_verkey_bin_path.exists() {
-        let vk = get_elf_vk(elf_verkey_bin_path.as_path())?
-            .ok_or_else(|| anyhow::anyhow!("Failed to read existing verkey file"))?;
-
-        Ok(ProgramVK { vk, hash_mode })
-    } else {
-        Err(anyhow::anyhow!("ROM merkle setup has not been performed yet"))
+    if !elf_verkey_bin_path.exists() {
+        return Ok(None);
     }
+
+    let vk = get_elf_vk(elf_verkey_bin_path.as_path())
+        .with_context(|| format!("Failed to read verkey at {}", elf_verkey_bin_path.display()))?
+        .ok_or_else(|| anyhow::anyhow!("Empty verkey file at {}", elf_verkey_bin_path.display()))?;
+
+    Ok(Some(ProgramVK { vk, hash_mode }))
 }
