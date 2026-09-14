@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "0afbde1489680344c172d7c2da8c005896549b4ca3ed85c698c91445249011d7";
+pub const PILOUT_HASH: &str = "f66cd227953da8cdfee7aa3b44105d30a6eadee9e49f942a023a068b541176d5";
 
 //AIRGROUP CONSTANTS
 
@@ -50,93 +50,97 @@ pub const MEM_ALIGN_BYTE_LARGE_AIR_IDS: &[usize] = &[11];
 
 pub const MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS: &[usize] = &[12];
 
-pub const ARITH_AIR_IDS: &[usize] = &[13];
+pub const COMPACT_MEM_ALIGN_AIR_IDS: &[usize] = &[13];
 
-pub const BINARY_AIR_IDS: &[usize] = &[14];
+pub const COMPACT_MEM_ALIGN_LARGE_AIR_IDS: &[usize] = &[14];
 
-pub const BINARY_LARGE_AIR_IDS: &[usize] = &[15];
+pub const ARITH_AIR_IDS: &[usize] = &[15];
 
-pub const BINARY_HUGE_AIR_IDS: &[usize] = &[16];
+pub const BINARY_AIR_IDS: &[usize] = &[16];
 
-pub const BINARY_ADD_AIR_IDS: &[usize] = &[17];
+pub const BINARY_LARGE_AIR_IDS: &[usize] = &[17];
 
-pub const BINARY_ADD_LARGE_AIR_IDS: &[usize] = &[18];
+pub const BINARY_HUGE_AIR_IDS: &[usize] = &[18];
 
-pub const BINARY_ADD_HUGE_AIR_IDS: &[usize] = &[19];
+pub const BINARY_ADD_AIR_IDS: &[usize] = &[19];
 
-pub const BINARY_ADD_HI_AIR_IDS: &[usize] = &[20];
+pub const BINARY_ADD_LARGE_AIR_IDS: &[usize] = &[20];
 
-pub const BINARY_ADD_HI_LARGE_AIR_IDS: &[usize] = &[21];
+pub const BINARY_ADD_HUGE_AIR_IDS: &[usize] = &[21];
 
-pub const BINARY_ADD_HI_HUGE_AIR_IDS: &[usize] = &[22];
+pub const BINARY_ADD_HI_AIR_IDS: &[usize] = &[22];
 
-pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[23];
+pub const BINARY_ADD_HI_LARGE_AIR_IDS: &[usize] = &[23];
 
-pub const BINARY_EXTENSION_LARGE_AIR_IDS: &[usize] = &[24];
+pub const BINARY_ADD_HI_HUGE_AIR_IDS: &[usize] = &[24];
 
-pub const ADD_256_AIR_IDS: &[usize] = &[25];
+pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[25];
 
-pub const ARITH_EQ_AIR_IDS: &[usize] = &[26];
+pub const BINARY_EXTENSION_LARGE_AIR_IDS: &[usize] = &[26];
 
-pub const ARITH_EQ_LARGE_AIR_IDS: &[usize] = &[27];
+pub const ADD_256_AIR_IDS: &[usize] = &[27];
 
-pub const ARITH_EQ_HUGE_AIR_IDS: &[usize] = &[28];
+pub const ARITH_EQ_AIR_IDS: &[usize] = &[28];
 
-pub const ARITH_256_X_AIR_IDS: &[usize] = &[29];
+pub const ARITH_EQ_LARGE_AIR_IDS: &[usize] = &[29];
 
-pub const ARITH_256_X_LARGE_AIR_IDS: &[usize] = &[30];
+pub const ARITH_EQ_HUGE_AIR_IDS: &[usize] = &[30];
 
-pub const ARITH_SECP_256_K_1_AIR_IDS: &[usize] = &[31];
+pub const ARITH_256_X_AIR_IDS: &[usize] = &[31];
 
-pub const ARITH_SECP_256_K_1_LARGE_AIR_IDS: &[usize] = &[32];
+pub const ARITH_256_X_LARGE_AIR_IDS: &[usize] = &[32];
 
-pub const ARITH_BN_254_AIR_IDS: &[usize] = &[33];
+pub const ARITH_SECP_256_K_1_AIR_IDS: &[usize] = &[33];
 
-pub const ARITH_BN_254_LARGE_AIR_IDS: &[usize] = &[34];
+pub const ARITH_SECP_256_K_1_LARGE_AIR_IDS: &[usize] = &[34];
 
-pub const ARITH_EQ_384_AIR_IDS: &[usize] = &[35];
+pub const ARITH_BN_254_AIR_IDS: &[usize] = &[35];
 
-pub const ARITH_EQ_384_LARGE_AIR_IDS: &[usize] = &[36];
+pub const ARITH_BN_254_LARGE_AIR_IDS: &[usize] = &[36];
 
-pub const ARITH_EQ_384_HUGE_AIR_IDS: &[usize] = &[37];
+pub const ARITH_EQ_384_AIR_IDS: &[usize] = &[37];
 
-pub const BABY_JUB_JUB_AIR_IDS: &[usize] = &[38];
+pub const ARITH_EQ_384_LARGE_AIR_IDS: &[usize] = &[38];
 
-pub const KECCAKF_AIR_IDS: &[usize] = &[39];
+pub const ARITH_EQ_384_HUGE_AIR_IDS: &[usize] = &[39];
 
-pub const SHA_256_F_AIR_IDS: &[usize] = &[40];
+pub const BABY_JUB_JUB_AIR_IDS: &[usize] = &[40];
 
-pub const POSEIDON_AIR_IDS: &[usize] = &[41];
+pub const KECCAKF_AIR_IDS: &[usize] = &[41];
 
-pub const BLAKE_2_BR_AIR_IDS: &[usize] = &[42];
+pub const SHA_256_F_AIR_IDS: &[usize] = &[42];
 
-pub const BLAKE_3_F_AIR_IDS: &[usize] = &[43];
+pub const POSEIDON_AIR_IDS: &[usize] = &[43];
 
-pub const DMA_AIR_IDS: &[usize] = &[44];
+pub const BLAKE_2_BR_AIR_IDS: &[usize] = &[44];
 
-pub const DMA_64_ALIGNED_AIR_IDS: &[usize] = &[45];
+pub const BLAKE_3_F_AIR_IDS: &[usize] = &[45];
 
-pub const DMA_64_ALIGNED_LARGE_AIR_IDS: &[usize] = &[46];
+pub const DMA_AIR_IDS: &[usize] = &[46];
 
-pub const DMA_64_ALIGNED_MEM_SET_AIR_IDS: &[usize] = &[47];
+pub const DMA_64_ALIGNED_AIR_IDS: &[usize] = &[47];
 
-pub const DMA_64_ALIGNED_MEM_AIR_IDS: &[usize] = &[48];
+pub const DMA_64_ALIGNED_LARGE_AIR_IDS: &[usize] = &[48];
 
-pub const DMA_64_ALIGNED_MEM_LARGE_AIR_IDS: &[usize] = &[49];
+pub const DMA_64_ALIGNED_MEM_SET_AIR_IDS: &[usize] = &[49];
 
-pub const DMA_64_ALIGNED_MEM_CPY_AIR_IDS: &[usize] = &[50];
+pub const DMA_64_ALIGNED_MEM_AIR_IDS: &[usize] = &[50];
 
-pub const DMA_UNALIGNED_AIR_IDS: &[usize] = &[51];
+pub const DMA_64_ALIGNED_MEM_LARGE_AIR_IDS: &[usize] = &[51];
 
-pub const DMA_PRE_POST_AIR_IDS: &[usize] = &[52];
+pub const DMA_64_ALIGNED_MEM_CPY_AIR_IDS: &[usize] = &[52];
 
-pub const DMA_WITH_PRE_POST_AIR_IDS: &[usize] = &[53];
+pub const DMA_UNALIGNED_AIR_IDS: &[usize] = &[53];
 
-pub const JUMP_DEST_AIR_IDS: &[usize] = &[54];
+pub const DMA_PRE_POST_AIR_IDS: &[usize] = &[54];
 
-pub const VIRTUAL_TABLE_ZISK_0_AIR_IDS: &[usize] = &[55];
+pub const DMA_WITH_PRE_POST_AIR_IDS: &[usize] = &[55];
 
-pub const VIRTUAL_TABLE_ZISK_1_AIR_IDS: &[usize] = &[56];
+pub const JUMP_DEST_AIR_IDS: &[usize] = &[56];
+
+pub const VIRTUAL_TABLE_ZISK_0_AIR_IDS: &[usize] = &[57];
+
+pub const VIRTUAL_TABLE_ZISK_1_AIR_IDS: &[usize] = &[58];
 
 
 //PUBLICS
@@ -323,489 +327,511 @@ trace_row!(MemAlignReadByteLargeTraceRow<F> {
 
 pub type MemAlignReadByteLargeTrace<R> = GenericTrace<R, 8388608, 0, 12>;
 
+trace_row!(CompactMemAlignFixedRow<F> {
+ __L1__: F,
+});
+pub type CompactMemAlignFixed<F> = GenericTrace<CompactMemAlignFixedRow<F>, 2097152, 0, 13>;
+
+trace_row!(CompactMemAlignTraceRow<F> {
+ full_addr:[ubit(29); 1], full_offset:[ubit(3); 1], full_width:[ubit(4); 1], full_wr:[bit; 1], full_pc:[u8; 1], full_reset:[bit; 1], full_sel_up_to_down:[bit; 1], full_sel_down_to_up:[bit; 1], full_is_non_aligned_op:[bit; 1], full_sel_w_lt8:[bit; 1], full_sel_w_lt4:[bit; 1], full_sel_w_lt2:[bit; 1], full_reg:[[u8; 8]; 1], full_sel:[[bit; 8]; 1], full_step:[ubit(40); 1], full_delta_addr:[u64; 1], full_value:[[u32; 2]; 1], bytes_sel_high_4b:[bit; 2], bytes_sel_high_2b:[bit; 2], bytes_sel_high_b:[bit; 2], bytes_direct_value:[u32; 2], bytes_composed_value:[u32; 2], bytes_written_composed_value:[u32; 2], bytes_written_byte_value:[u8; 2], bytes_value_16b:[u16; 2], bytes_value_8b:[u8; 2], bytes_byte_value:[u8; 2], bytes_addr_w:[ubit(29); 2], bytes_step:[ubit(40); 2], bytes_is_write:[bit; 2], bytes_mem_write_values:[[u32; 2]; 2], bytes_bus_byte:[u8; 2],
+});
+
+pub type CompactMemAlignTrace<R> = GenericTrace<R, 2097152, 0, 13>;
+
+trace_row!(CompactMemAlignLargeFixedRow<F> {
+ __L1__: F,
+});
+pub type CompactMemAlignLargeFixed<F> = GenericTrace<CompactMemAlignLargeFixedRow<F>, 4194304, 0, 14>;
+
+trace_row!(CompactMemAlignLargeTraceRow<F> {
+ full_addr:[ubit(29); 2], full_offset:[ubit(3); 2], full_width:[ubit(4); 2], full_wr:[bit; 2], full_pc:[u8; 2], full_reset:[bit; 2], full_sel_up_to_down:[bit; 2], full_sel_down_to_up:[bit; 2], full_is_non_aligned_op:[bit; 2], full_sel_w_lt8:[bit; 2], full_sel_w_lt4:[bit; 2], full_sel_w_lt2:[bit; 2], full_reg:[[u8; 8]; 2], full_sel:[[bit; 8]; 2], full_step:[ubit(40); 2], full_delta_addr:[u64; 2], full_value:[[u32; 2]; 2], bytes_sel_high_4b:[bit; 4], bytes_sel_high_2b:[bit; 4], bytes_sel_high_b:[bit; 4], bytes_direct_value:[u32; 4], bytes_composed_value:[u32; 4], bytes_written_composed_value:[u32; 4], bytes_written_byte_value:[u8; 4], bytes_value_16b:[u16; 4], bytes_value_8b:[u8; 4], bytes_byte_value:[u8; 4], bytes_addr_w:[ubit(29); 4], bytes_step:[ubit(40); 4], bytes_is_write:[bit; 4], bytes_mem_write_values:[[u32; 2]; 4], bytes_bus_byte:[u8; 4],
+});
+
+pub type CompactMemAlignLargeTrace<R> = GenericTrace<R, 4194304, 0, 14>;
+
 trace_row!(ArithFixedRow<F> {
  __L1__: F,
 });
-pub type ArithFixed<F> = GenericTrace<ArithFixedRow<F>, 2097152, 0, 13>;
+pub type ArithFixed<F> = GenericTrace<ArithFixedRow<F>, 2097152, 0, 15>;
 
 trace_row!(ArithTraceRow<F> {
  carry:[u64; 7], a:[u16; 4], b:[u16; 4], c:[u16; 4], d:[u16; 4], na:bit, nb:bit, nr:bit, np:bit, sext:bit, m32:bit, div:bit, fab:u64, na_fb:u64, nb_fa:u64, main_div:bit, main_mul:bit, signed:bit, div_by_zero:bit, div_overflow:bit, result_is_zero:bit, remainder_is_zero:bit, inv_sum_all_bs:u64, op:u8, bus_res1:u32, range_ab:ubit(7), range_cd:ubit(7),
 });
 
-pub type ArithTrace<R> = GenericTrace<R, 2097152, 0, 13>;
+pub type ArithTrace<R> = GenericTrace<R, 2097152, 0, 15>;
 
 trace_row!(BinaryFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryFixed<F> = GenericTrace<BinaryFixedRow<F>, 4194304, 0, 14>;
+pub type BinaryFixed<F> = GenericTrace<BinaryFixedRow<F>, 4194304, 0, 16>;
 
 trace_row!(BinaryTraceRow<F> {
  b_op:[ubit(7); 1], free_in_a:[[u8; 8]; 1], free_in_b:[[u8; 8]; 1], free_in_c:[[u8; 8]; 1], carry:[[ubit(4); 8]; 1], mode32:[bit; 1], result_is_a:[bit; 1], use_first_byte:[bit; 1], c_is_signed:[bit; 1], b_op_or_sext:[ubit(10); 1], mode32_and_c_is_signed:[bit; 1],
 });
 
-pub type BinaryTrace<R> = GenericTrace<R, 4194304, 0, 14>;
+pub type BinaryTrace<R> = GenericTrace<R, 4194304, 0, 16>;
 
 trace_row!(BinaryLargeFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryLargeFixed<F> = GenericTrace<BinaryLargeFixedRow<F>, 4194304, 0, 15>;
+pub type BinaryLargeFixed<F> = GenericTrace<BinaryLargeFixedRow<F>, 4194304, 0, 17>;
 
 trace_row!(BinaryLargeTraceRow<F> {
  b_op:[ubit(7); 2], free_in_a:[[u8; 8]; 2], free_in_b:[[u8; 8]; 2], free_in_c:[[u8; 8]; 2], carry:[[ubit(4); 8]; 2], mode32:[bit; 2], result_is_a:[bit; 2], use_first_byte:[bit; 2], c_is_signed:[bit; 2], b_op_or_sext:[ubit(10); 2], mode32_and_c_is_signed:[bit; 2],
 });
 
-pub type BinaryLargeTrace<R> = GenericTrace<R, 4194304, 0, 15>;
+pub type BinaryLargeTrace<R> = GenericTrace<R, 4194304, 0, 17>;
 
 trace_row!(BinaryHugeFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryHugeFixed<F> = GenericTrace<BinaryHugeFixedRow<F>, 4194304, 0, 16>;
+pub type BinaryHugeFixed<F> = GenericTrace<BinaryHugeFixedRow<F>, 4194304, 0, 18>;
 
 trace_row!(BinaryHugeTraceRow<F> {
  b_op:[ubit(7); 4], free_in_a:[[u8; 8]; 4], free_in_b:[[u8; 8]; 4], free_in_c:[[u8; 8]; 4], carry:[[ubit(4); 8]; 4], mode32:[bit; 4], result_is_a:[bit; 4], use_first_byte:[bit; 4], c_is_signed:[bit; 4], b_op_or_sext:[ubit(10); 4], mode32_and_c_is_signed:[bit; 4],
 });
 
-pub type BinaryHugeTrace<R> = GenericTrace<R, 4194304, 0, 16>;
+pub type BinaryHugeTrace<R> = GenericTrace<R, 4194304, 0, 18>;
 
 trace_row!(BinaryAddFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryAddFixed<F> = GenericTrace<BinaryAddFixedRow<F>, 4194304, 0, 17>;
+pub type BinaryAddFixed<F> = GenericTrace<BinaryAddFixedRow<F>, 4194304, 0, 19>;
 
 trace_row!(BinaryAddTraceRow<F> {
  a:[[u32; 2]; 1], b:[[u32; 2]; 1], c_chunks:[[u16; 4]; 1], cout:[[bit; 2]; 1], sel_sh3add:[bit; 1],
 });
 
-pub type BinaryAddTrace<R> = GenericTrace<R, 4194304, 0, 17>;
+pub type BinaryAddTrace<R> = GenericTrace<R, 4194304, 0, 19>;
 
 trace_row!(BinaryAddLargeFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryAddLargeFixed<F> = GenericTrace<BinaryAddLargeFixedRow<F>, 4194304, 0, 18>;
+pub type BinaryAddLargeFixed<F> = GenericTrace<BinaryAddLargeFixedRow<F>, 4194304, 0, 20>;
 
 trace_row!(BinaryAddLargeTraceRow<F> {
  a:[[u32; 2]; 2], b:[[u32; 2]; 2], c_chunks:[[u16; 4]; 2], cout:[[bit; 2]; 2], sel_sh3add:[bit; 2],
 });
 
-pub type BinaryAddLargeTrace<R> = GenericTrace<R, 4194304, 0, 18>;
+pub type BinaryAddLargeTrace<R> = GenericTrace<R, 4194304, 0, 20>;
 
 trace_row!(BinaryAddHugeFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryAddHugeFixed<F> = GenericTrace<BinaryAddHugeFixedRow<F>, 4194304, 0, 19>;
+pub type BinaryAddHugeFixed<F> = GenericTrace<BinaryAddHugeFixedRow<F>, 4194304, 0, 21>;
 
 trace_row!(BinaryAddHugeTraceRow<F> {
  a:[[u32; 2]; 4], b:[[u32; 2]; 4], c_chunks:[[u16; 4]; 4], cout:[[bit; 2]; 4], sel_sh3add:[bit; 4],
 });
 
-pub type BinaryAddHugeTrace<R> = GenericTrace<R, 4194304, 0, 19>;
+pub type BinaryAddHugeTrace<R> = GenericTrace<R, 4194304, 0, 21>;
 
 trace_row!(BinaryAddHiFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryAddHiFixed<F> = GenericTrace<BinaryAddHiFixedRow<F>, 4194304, 0, 20>;
+pub type BinaryAddHiFixed<F> = GenericTrace<BinaryAddHiFixedRow<F>, 4194304, 0, 22>;
 
 trace_row!(BinaryAddHiTraceRow<F> {
  a:[u32; 2], b:[u32; 2], c_chunks:[[u16; 2]; 2], sel_b_hi_is_ff:[bit; 2], sel_sh3add:[bit; 2],
 });
 
-pub type BinaryAddHiTrace<R> = GenericTrace<R, 4194304, 0, 20>;
+pub type BinaryAddHiTrace<R> = GenericTrace<R, 4194304, 0, 22>;
 
 trace_row!(BinaryAddHiLargeFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryAddHiLargeFixed<F> = GenericTrace<BinaryAddHiLargeFixedRow<F>, 4194304, 0, 21>;
+pub type BinaryAddHiLargeFixed<F> = GenericTrace<BinaryAddHiLargeFixedRow<F>, 4194304, 0, 23>;
 
 trace_row!(BinaryAddHiLargeTraceRow<F> {
  a:[u32; 4], b:[u32; 4], c_chunks:[[u16; 2]; 4], sel_b_hi_is_ff:[bit; 4], sel_sh3add:[bit; 4],
 });
 
-pub type BinaryAddHiLargeTrace<R> = GenericTrace<R, 4194304, 0, 21>;
+pub type BinaryAddHiLargeTrace<R> = GenericTrace<R, 4194304, 0, 23>;
 
 trace_row!(BinaryAddHiHugeFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryAddHiHugeFixed<F> = GenericTrace<BinaryAddHiHugeFixedRow<F>, 4194304, 0, 22>;
+pub type BinaryAddHiHugeFixed<F> = GenericTrace<BinaryAddHiHugeFixedRow<F>, 4194304, 0, 24>;
 
 trace_row!(BinaryAddHiHugeTraceRow<F> {
  a:[u32; 8], b:[u32; 8], c_chunks:[[u16; 2]; 8], sel_b_hi_is_ff:[bit; 8], sel_sh3add:[bit; 8],
 });
 
-pub type BinaryAddHiHugeTrace<R> = GenericTrace<R, 4194304, 0, 22>;
+pub type BinaryAddHiHugeTrace<R> = GenericTrace<R, 4194304, 0, 24>;
 
 trace_row!(BinaryExtensionFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryExtensionFixed<F> = GenericTrace<BinaryExtensionFixedRow<F>, 4194304, 0, 23>;
+pub type BinaryExtensionFixed<F> = GenericTrace<BinaryExtensionFixedRow<F>, 4194304, 0, 25>;
 
 trace_row!(BinaryExtensionTraceRow<F> {
  op:[ubit(7); 1], free_in_a:[[u8; 8]; 1], free_in_b:[ubit(6); 1], free_in_c:[[[u32; 2]; 8]; 1], op_is_shift:[bit; 1], op_is_combine:[bit; 1], free_in_b_bit6:[bit; 1], free_in_b_bit7:[bit; 1], op_is_chain:[bit; 1], op_is_chain_rev:[bit; 1], b:[[u32; 2]; 1],
 });
 
-pub type BinaryExtensionTrace<R> = GenericTrace<R, 4194304, 0, 23>;
+pub type BinaryExtensionTrace<R> = GenericTrace<R, 4194304, 0, 25>;
 
 trace_row!(BinaryExtensionLargeFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryExtensionLargeFixed<F> = GenericTrace<BinaryExtensionLargeFixedRow<F>, 4194304, 0, 24>;
+pub type BinaryExtensionLargeFixed<F> = GenericTrace<BinaryExtensionLargeFixedRow<F>, 4194304, 0, 26>;
 
 trace_row!(BinaryExtensionLargeTraceRow<F> {
  op:[ubit(7); 2], free_in_a:[[u8; 8]; 2], free_in_b:[ubit(6); 2], free_in_c:[[[u32; 2]; 8]; 2], op_is_shift:[bit; 2], op_is_combine:[bit; 2], free_in_b_bit6:[bit; 2], free_in_b_bit7:[bit; 2], op_is_chain:[bit; 2], op_is_chain_rev:[bit; 2], b:[[u32; 2]; 2],
 });
 
-pub type BinaryExtensionLargeTrace<R> = GenericTrace<R, 4194304, 0, 24>;
+pub type BinaryExtensionLargeTrace<R> = GenericTrace<R, 4194304, 0, 26>;
 
 trace_row!(Add256FixedRow<F> {
  __L1__: F,
 });
-pub type Add256Fixed<F> = GenericTrace<Add256FixedRow<F>, 1048576, 0, 25>;
+pub type Add256Fixed<F> = GenericTrace<Add256FixedRow<F>, 1048576, 0, 27>;
 
 trace_row!(Add256TraceRow<F> {
  a:[[u32; 2]; 4], b:[[u32; 2]; 4], c_chunks:[[u16; 4]; 4], cout:[[bit; 2]; 4], addr_params:u32, addr_a:u32, addr_b:u32, addr_c:u32, step:ubit(40), cin:bit, sel:bit,
 });
 
-pub type Add256Trace<R> = GenericTrace<R, 1048576, 0, 25>;
+pub type Add256Trace<R> = GenericTrace<R, 1048576, 0, 27>;
 
 trace_row!(ArithEqFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type ArithEqFixed<F> = GenericTrace<ArithEqFixedRow<F>, 1048576, 0, 26>;
+pub type ArithEqFixed<F> = GenericTrace<ArithEqFixedRow<F>, 1048576, 0, 28>;
 
 trace_row!(ArithEqTraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_arith256:bit, arith256_clk0:bit, sel_arith256_mod:bit, arith256_mod_clk0:bit, sel_secp256k1_add:bit, secp256k1_add_clk0:bit, sel_secp256k1_dbl:bit, secp256k1_dbl_clk0:bit, sel_bn254_curve_add:bit, bn254_curve_add_clk0:bit, sel_bn254_curve_dbl:bit, bn254_curve_dbl_clk0:bit, sel_bn254_complex_add:bit, bn254_complex_add_clk0:bit, sel_bn254_complex_sub:bit, bn254_complex_sub_clk0:bit, sel_bn254_complex_mul:bit, bn254_complex_mul_clk0:bit, sel_secp256r1_add:bit, secp256r1_add_clk0:bit, sel_secp256r1_dbl:bit, secp256r1_dbl_clk0:bit, x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 
-pub type ArithEqTrace<R> = GenericTrace<R, 1048576, 0, 26>;
+pub type ArithEqTrace<R> = GenericTrace<R, 1048576, 0, 28>;
 
 trace_row!(ArithEqLargeFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type ArithEqLargeFixed<F> = GenericTrace<ArithEqLargeFixedRow<F>, 4194304, 0, 27>;
+pub type ArithEqLargeFixed<F> = GenericTrace<ArithEqLargeFixedRow<F>, 4194304, 0, 29>;
 
 trace_row!(ArithEqLargeTraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_arith256:bit, arith256_clk0:bit, sel_arith256_mod:bit, arith256_mod_clk0:bit, sel_secp256k1_add:bit, secp256k1_add_clk0:bit, sel_secp256k1_dbl:bit, secp256k1_dbl_clk0:bit, sel_bn254_curve_add:bit, bn254_curve_add_clk0:bit, sel_bn254_curve_dbl:bit, bn254_curve_dbl_clk0:bit, sel_bn254_complex_add:bit, bn254_complex_add_clk0:bit, sel_bn254_complex_sub:bit, bn254_complex_sub_clk0:bit, sel_bn254_complex_mul:bit, bn254_complex_mul_clk0:bit, sel_secp256r1_add:bit, secp256r1_add_clk0:bit, sel_secp256r1_dbl:bit, secp256r1_dbl_clk0:bit, x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 
-pub type ArithEqLargeTrace<R> = GenericTrace<R, 4194304, 0, 27>;
+pub type ArithEqLargeTrace<R> = GenericTrace<R, 4194304, 0, 29>;
 
 trace_row!(ArithEqHugeFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type ArithEqHugeFixed<F> = GenericTrace<ArithEqHugeFixedRow<F>, 8388608, 0, 28>;
+pub type ArithEqHugeFixed<F> = GenericTrace<ArithEqHugeFixedRow<F>, 8388608, 0, 30>;
 
 trace_row!(ArithEqHugeTraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_arith256:bit, arith256_clk0:bit, sel_arith256_mod:bit, arith256_mod_clk0:bit, sel_secp256k1_add:bit, secp256k1_add_clk0:bit, sel_secp256k1_dbl:bit, secp256k1_dbl_clk0:bit, sel_bn254_curve_add:bit, bn254_curve_add_clk0:bit, sel_bn254_curve_dbl:bit, bn254_curve_dbl_clk0:bit, sel_bn254_complex_add:bit, bn254_complex_add_clk0:bit, sel_bn254_complex_sub:bit, bn254_complex_sub_clk0:bit, sel_bn254_complex_mul:bit, bn254_complex_mul_clk0:bit, sel_secp256r1_add:bit, secp256r1_add_clk0:bit, sel_secp256r1_dbl:bit, secp256r1_dbl_clk0:bit, x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 
-pub type ArithEqHugeTrace<R> = GenericTrace<R, 8388608, 0, 28>;
+pub type ArithEqHugeTrace<R> = GenericTrace<R, 8388608, 0, 30>;
 
 trace_row!(Arith256XFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type Arith256XFixed<F> = GenericTrace<Arith256XFixedRow<F>, 1048576, 0, 29>;
+pub type Arith256XFixed<F> = GenericTrace<Arith256XFixedRow<F>, 1048576, 0, 31>;
 
 trace_row!(Arith256XTraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), sel_arith256:bit, arith256_clk0:bit, sel_arith256_mod:bit, arith256_mod_clk0:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 1], step_addr:ubit(40),
 });
 
-pub type Arith256XTrace<R> = GenericTrace<R, 1048576, 0, 29>;
+pub type Arith256XTrace<R> = GenericTrace<R, 1048576, 0, 31>;
 
 trace_row!(Arith256XLargeFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type Arith256XLargeFixed<F> = GenericTrace<Arith256XLargeFixedRow<F>, 8388608, 0, 30>;
+pub type Arith256XLargeFixed<F> = GenericTrace<Arith256XLargeFixedRow<F>, 8388608, 0, 32>;
 
 trace_row!(Arith256XLargeTraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), sel_arith256:bit, arith256_clk0:bit, sel_arith256_mod:bit, arith256_mod_clk0:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 1], step_addr:ubit(40),
 });
 
-pub type Arith256XLargeTrace<R> = GenericTrace<R, 8388608, 0, 30>;
+pub type Arith256XLargeTrace<R> = GenericTrace<R, 8388608, 0, 32>;
 
 trace_row!(ArithSecp256K1FixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type ArithSecp256K1Fixed<F> = GenericTrace<ArithSecp256K1FixedRow<F>, 1048576, 0, 31>;
+pub type ArithSecp256K1Fixed<F> = GenericTrace<ArithSecp256K1FixedRow<F>, 1048576, 0, 33>;
 
 trace_row!(ArithSecp256K1TraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_secp256k1_add:bit, secp256k1_add_clk0:bit, sel_secp256k1_dbl:bit, secp256k1_dbl_clk0:bit, x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 
-pub type ArithSecp256K1Trace<R> = GenericTrace<R, 1048576, 0, 31>;
+pub type ArithSecp256K1Trace<R> = GenericTrace<R, 1048576, 0, 33>;
 
 trace_row!(ArithSecp256K1LargeFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type ArithSecp256K1LargeFixed<F> = GenericTrace<ArithSecp256K1LargeFixedRow<F>, 8388608, 0, 32>;
+pub type ArithSecp256K1LargeFixed<F> = GenericTrace<ArithSecp256K1LargeFixedRow<F>, 8388608, 0, 34>;
 
 trace_row!(ArithSecp256K1LargeTraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_secp256k1_add:bit, secp256k1_add_clk0:bit, sel_secp256k1_dbl:bit, secp256k1_dbl_clk0:bit, x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 
-pub type ArithSecp256K1LargeTrace<R> = GenericTrace<R, 8388608, 0, 32>;
+pub type ArithSecp256K1LargeTrace<R> = GenericTrace<R, 8388608, 0, 34>;
 
 trace_row!(ArithBn254FixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type ArithBn254Fixed<F> = GenericTrace<ArithBn254FixedRow<F>, 1048576, 0, 33>;
+pub type ArithBn254Fixed<F> = GenericTrace<ArithBn254FixedRow<F>, 1048576, 0, 35>;
 
 trace_row!(ArithBn254TraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_bn254_curve_add:bit, bn254_curve_add_clk0:bit, sel_bn254_curve_dbl:bit, bn254_curve_dbl_clk0:bit, sel_bn254_complex_add:bit, bn254_complex_add_clk0:bit, sel_bn254_complex_sub:bit, bn254_complex_sub_clk0:bit, sel_bn254_complex_mul:bit, bn254_complex_mul_clk0:bit, x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 
-pub type ArithBn254Trace<R> = GenericTrace<R, 1048576, 0, 33>;
+pub type ArithBn254Trace<R> = GenericTrace<R, 1048576, 0, 35>;
 
 trace_row!(ArithBn254LargeFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type ArithBn254LargeFixed<F> = GenericTrace<ArithBn254LargeFixedRow<F>, 8388608, 0, 34>;
+pub type ArithBn254LargeFixed<F> = GenericTrace<ArithBn254LargeFixedRow<F>, 8388608, 0, 36>;
 
 trace_row!(ArithBn254LargeTraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_bn254_curve_add:bit, bn254_curve_add_clk0:bit, sel_bn254_curve_dbl:bit, bn254_curve_dbl_clk0:bit, sel_bn254_complex_add:bit, bn254_complex_add_clk0:bit, sel_bn254_complex_sub:bit, bn254_complex_sub_clk0:bit, sel_bn254_complex_mul:bit, bn254_complex_mul_clk0:bit, x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 
-pub type ArithBn254LargeTrace<R> = GenericTrace<R, 8388608, 0, 34>;
+pub type ArithBn254LargeTrace<R> = GenericTrace<R, 8388608, 0, 36>;
 
 trace_row!(ArithEq384FixedRow<F> {
  FIRST_CLK: F, __L1__: F,
 });
-pub type ArithEq384Fixed<F> = GenericTrace<ArithEq384FixedRow<F>, 1048576, 0, 35>;
+pub type ArithEq384Fixed<F> = GenericTrace<ArithEq384FixedRow<F>, 1048576, 0, 37>;
 
 trace_row!(ArithEq384TraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 6], sel_op_clk0:[bit; 6], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 
-pub type ArithEq384Trace<R> = GenericTrace<R, 1048576, 0, 35>;
+pub type ArithEq384Trace<R> = GenericTrace<R, 1048576, 0, 37>;
 
 trace_row!(ArithEq384LargeFixedRow<F> {
  FIRST_CLK: F, __L1__: F,
 });
-pub type ArithEq384LargeFixed<F> = GenericTrace<ArithEq384LargeFixedRow<F>, 4194304, 0, 36>;
+pub type ArithEq384LargeFixed<F> = GenericTrace<ArithEq384LargeFixedRow<F>, 4194304, 0, 38>;
 
 trace_row!(ArithEq384LargeTraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 6], sel_op_clk0:[bit; 6], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 
-pub type ArithEq384LargeTrace<R> = GenericTrace<R, 4194304, 0, 36>;
+pub type ArithEq384LargeTrace<R> = GenericTrace<R, 4194304, 0, 38>;
 
 trace_row!(ArithEq384HugeFixedRow<F> {
  FIRST_CLK: F, __L1__: F,
 });
-pub type ArithEq384HugeFixed<F> = GenericTrace<ArithEq384HugeFixedRow<F>, 8388608, 0, 37>;
+pub type ArithEq384HugeFixed<F> = GenericTrace<ArithEq384HugeFixedRow<F>, 8388608, 0, 39>;
 
 trace_row!(ArithEq384HugeTraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 6], sel_op_clk0:[bit; 6], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 
-pub type ArithEq384HugeTrace<R> = GenericTrace<R, 8388608, 0, 37>;
+pub type ArithEq384HugeTrace<R> = GenericTrace<R, 8388608, 0, 39>;
 
 trace_row!(BabyJubJubFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type BabyJubJubFixed<F> = GenericTrace<BabyJubJubFixedRow<F>, 262144, 0, 38>;
+pub type BabyJubJubFixed<F> = GenericTrace<BabyJubJubFixedRow<F>, 262144, 0, 40>;
 
 trace_row!(BabyJubJubTraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, A:u16, B:u16, Nx:u16, T:u16, DT:u16, qa:ubit(22), qb:ubit(22), qn:ubit(22), qt:ubit(22), qdt:ubit(22), qx:ubit(22), qy:ubit(22), sel_op:[bit; 1], sel_op_clk0:[bit; 1], x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 7], step_addr:ubit(40),
 });
 
-pub type BabyJubJubTrace<R> = GenericTrace<R, 262144, 0, 38>;
+pub type BabyJubJubTrace<R> = GenericTrace<R, 262144, 0, 40>;
 
 trace_row!(KeccakfFixedRow<F> {
  CLK_0: F, ROUND_CLK_0: F, __L1__: F,
 });
-pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 1048576, 0, 39>;
+pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 1048576, 0, 41>;
 
 trace_row!(KeccakfTraceRow<F> {
  in_use_a:bit, in_use_b:bit, in_use_a_clk_0:bit, in_use_b_clk_0:bit, state:[ubit(4); 320], c:[ubit(4); 64], chi_acc:[ubit(26); 64], step_addr:ubit(40),
 });
 
-pub type KeccakfTrace<R> = GenericTrace<R, 1048576, 0, 39>;
+pub type KeccakfTrace<R> = GenericTrace<R, 1048576, 0, 41>;
 
 trace_row!(Sha256fFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type Sha256fFixed<F> = GenericTrace<Sha256fFixedRow<F>, 262144, 0, 40>;
+pub type Sha256fFixed<F> = GenericTrace<Sha256fFixedRow<F>, 262144, 0, 42>;
 
 trace_row!(Sha256fTraceRow<F> {
  a:[bit; 32], e:[bit; 32], w:[bit; 32], new_a_carry_bits:u8, new_e_carry_bits:u8, new_w_carry_bits:ubit(4), step_addr:ubit(40), in_use:bit, in_use_clk_0:bit,
 });
 
-pub type Sha256fTrace<R> = GenericTrace<R, 262144, 0, 40>;
+pub type Sha256fTrace<R> = GenericTrace<R, 262144, 0, 42>;
 
 trace_row!(PoseidonFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type PoseidonFixed<F> = GenericTrace<PoseidonFixedRow<F>, 131072, 0, 41>;
+pub type PoseidonFixed<F> = GenericTrace<PoseidonFixedRow<F>, 131072, 0, 43>;
 
 trace_row!(PoseidonTraceRow<F> {
  in_use:bit, in_use_clk_0:bit, sel_poseidon1:bit, chunks:[[u16; 4]; 16], step_addr:ubit(40), t_inv:[u64; 16],
 });
 
-pub type PoseidonTrace<R> = GenericTrace<R, 131072, 0, 41>;
+pub type PoseidonTrace<R> = GenericTrace<R, 131072, 0, 43>;
 
 trace_row!(Blake2brFixedRow<F> {
  CLK_0: F, MSG_IDX: F, __L1__: F,
 });
-pub type Blake2brFixed<F> = GenericTrace<Blake2brFixedRow<F>, 262144, 0, 42>;
+pub type Blake2brFixed<F> = GenericTrace<Blake2brFixedRow<F>, 262144, 0, 44>;
 
 trace_row!(Blake2brTraceRow<F> {
  in_use:bit, round_idx:ubit(4), round_idx_sel:[bit; 10], sigma_idx:[ubit(4); 2], x:[u16; 4], y:[u16; 4], xs:[u32; 2], ys:[u32; 2], step_addr:ubit(40), op_step:ubit(40), va:[u16; 4], vb:[u8; 8], vc:[u16; 4], vd:[u8; 8], va_prime:[u8; 8], vd_prime:[u8; 8], vc_prime:[u8; 8], vb_prime:[u8; 8], va_prime_prime:[u8; 8], vd_prime_prime:[u8; 8], vc_prime_prime:[u8; 8], vb_pp_xor:[u8; 8], vb_pp_t:[bit; 2], in_use_clk_0:bit,
 });
 
-pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 42>;
+pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 44>;
 
 trace_row!(Blake3fFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type Blake3fFixed<F> = GenericTrace<Blake3fFixedRow<F>, 1048576, 0, 43>;
+pub type Blake3fFixed<F> = GenericTrace<Blake3fFixedRow<F>, 1048576, 0, 45>;
 
 trace_row!(Blake3fTraceRow<F> {
  in_use:[bit; 2], in_use_clk_0:[bit; 2], step_addr:[ubit(40); 2], op_step:[ubit(40); 2], va:[[u16; 2]; 2], vb:[[u8; 4]; 2], vc:[[u16; 2]; 2], vd:[[u8; 4]; 2], x:[[u16; 2]; 2], y:[[u16; 2]; 2], va_prime:[[u8; 4]; 2], vd_prime:[[u8; 4]; 2], vc_prime:[[u8; 4]; 2], vb_prime_s:[[[u8; 2]; 4]; 2], va_prime_prime:[[u8; 4]; 2], vd_prime_prime:[[u8; 4]; 2], vc_prime_prime:[[u8; 4]; 2], vb_pp_xor:[[u8; 4]; 2], vb_pp_t:[bit; 2],
 });
 
-pub type Blake3fTrace<R> = GenericTrace<R, 1048576, 0, 43>;
+pub type Blake3fTrace<R> = GenericTrace<R, 1048576, 0, 45>;
 
 trace_row!(DmaFixedRow<F> {
  __L1__: F,
 });
-pub type DmaFixed<F> = GenericTrace<DmaFixedRow<F>, 2097152, 0, 44>;
+pub type DmaFixed<F> = GenericTrace<DmaFixedRow<F>, 2097152, 0, 46>;
 
 trace_row!(DmaTraceRow<F> {
  sel_memcpy:bit, sel_memcmp:bit, sel_memset:bit, fill_byte:u8, sel_extended:bit, sel_inputcpy:bit, h_count:ubit(24), count_lt_256:bit, l_count:ubit(9), count_diff_chunks:[u16; 2], h_dst64:ubit(22), l_dst64:ubit(7), dst_offset:ubit(3), main_step:ubit(36), h_src64:ubit(22), l_src64:ubit(7), src_offset:ubit(3), src_offset_after_pre:ubit(3), src64_inc_by_pre:bit, use_pre:bit, use_loop:bit, use_post:bit, pre_count:ubit(3), l_count64:ubit(9), pre_result_nz:bit, post_result_nz:bit, bus_pre_result:[u32; 2], bus_post_result:[u32; 2], loop_b0:u32, loop_extended_arg:u32, static_count:u32,
 });
 
-pub type DmaTrace<R> = GenericTrace<R, 2097152, 0, 44>;
+pub type DmaTrace<R> = GenericTrace<R, 2097152, 0, 46>;
 
 trace_row!(Dma64AlignedFixedRow<F> {
  __L1__: F,
 });
-pub type Dma64AlignedFixed<F> = GenericTrace<Dma64AlignedFixedRow<F>, 4194304, 0, 45>;
+pub type Dma64AlignedFixed<F> = GenericTrace<Dma64AlignedFixedRow<F>, 4194304, 0, 47>;
 
 trace_row!(Dma64AlignedTraceRow<F> {
  src64:ubit(29), seq_end:bit, previous_seq_end:bit, sel_memcpy:bit, sel_memeq:bit, sel_memset:bit, fill_byte:u8, sel_memcpy_count_load:bit, sel_inputcpy:bit, main_step:ubit(36), dst64:ubit(29), count64:u32, sel_op_from_1:[bit; 3], l_value_chunks:[[u8; 2]; 4], h_value_chunks:[[ubit(24); 2]; 4], sel_op_mem_load:[bit; 4],
 });
 
-pub type Dma64AlignedTrace<R> = GenericTrace<R, 4194304, 0, 45>;
+pub type Dma64AlignedTrace<R> = GenericTrace<R, 4194304, 0, 47>;
 
 trace_row!(Dma64AlignedLargeFixedRow<F> {
  __L1__: F,
 });
-pub type Dma64AlignedLargeFixed<F> = GenericTrace<Dma64AlignedLargeFixedRow<F>, 8388608, 0, 46>;
+pub type Dma64AlignedLargeFixed<F> = GenericTrace<Dma64AlignedLargeFixedRow<F>, 8388608, 0, 48>;
 
 trace_row!(Dma64AlignedLargeTraceRow<F> {
  src64:ubit(29), seq_end:bit, previous_seq_end:bit, sel_memcpy:bit, sel_memeq:bit, sel_memset:bit, fill_byte:u8, sel_memcpy_count_load:bit, sel_inputcpy:bit, main_step:ubit(36), dst64:ubit(29), count64:u32, sel_op_from_1:[bit; 3], l_value_chunks:[[u8; 2]; 4], h_value_chunks:[[ubit(24); 2]; 4], sel_op_mem_load:[bit; 4],
 });
 
-pub type Dma64AlignedLargeTrace<R> = GenericTrace<R, 8388608, 0, 46>;
+pub type Dma64AlignedLargeTrace<R> = GenericTrace<R, 8388608, 0, 48>;
 
 trace_row!(Dma64AlignedMemSetFixedRow<F> {
  __L1__: F,
 });
-pub type Dma64AlignedMemSetFixed<F> = GenericTrace<Dma64AlignedMemSetFixedRow<F>, 8388608, 0, 47>;
+pub type Dma64AlignedMemSetFixed<F> = GenericTrace<Dma64AlignedMemSetFixedRow<F>, 8388608, 0, 49>;
 
 trace_row!(Dma64AlignedMemSetTraceRow<F> {
  seq_end:bit, previous_seq_end:bit, sel_memset:bit, fill_byte:u8, main_step:ubit(36), dst64:ubit(29), count64:u32, sel_op_from_1:[bit; 3],
 });
 
-pub type Dma64AlignedMemSetTrace<R> = GenericTrace<R, 8388608, 0, 47>;
+pub type Dma64AlignedMemSetTrace<R> = GenericTrace<R, 8388608, 0, 49>;
 
 trace_row!(Dma64AlignedMemFixedRow<F> {
  __L1__: F,
 });
-pub type Dma64AlignedMemFixed<F> = GenericTrace<Dma64AlignedMemFixedRow<F>, 8388608, 0, 48>;
+pub type Dma64AlignedMemFixed<F> = GenericTrace<Dma64AlignedMemFixedRow<F>, 8388608, 0, 50>;
 
 trace_row!(Dma64AlignedMemTraceRow<F> {
  src64:ubit(29), seq_end:bit, previous_seq_end:bit, sel_memcpy:bit, sel_memeq:bit, sel_memset:bit, fill_byte:u8, sel_memcpy_count_load:bit, main_step:ubit(36), dst64:ubit(29), count64:u32, sel_op_from_1:[bit; 3], value:[[u32; 2]; 4], sel_op_mem_load:[bit; 4],
 });
 
-pub type Dma64AlignedMemTrace<R> = GenericTrace<R, 8388608, 0, 48>;
+pub type Dma64AlignedMemTrace<R> = GenericTrace<R, 8388608, 0, 50>;
 
 trace_row!(Dma64AlignedMemLargeFixedRow<F> {
  __L1__: F,
 });
-pub type Dma64AlignedMemLargeFixed<F> = GenericTrace<Dma64AlignedMemLargeFixedRow<F>, 8388608, 0, 49>;
+pub type Dma64AlignedMemLargeFixed<F> = GenericTrace<Dma64AlignedMemLargeFixedRow<F>, 8388608, 0, 51>;
 
 trace_row!(Dma64AlignedMemLargeTraceRow<F> {
  src64:ubit(29), seq_end:bit, previous_seq_end:bit, sel_memcpy:bit, sel_memeq:bit, sel_memset:bit, fill_byte:u8, sel_memcpy_count_load:bit, main_step:ubit(36), dst64:ubit(29), count64:u32, sel_op_from_1:[bit; 3], value:[[u32; 2]; 4], sel_op_mem_load:[bit; 4],
 });
 
-pub type Dma64AlignedMemLargeTrace<R> = GenericTrace<R, 8388608, 0, 49>;
+pub type Dma64AlignedMemLargeTrace<R> = GenericTrace<R, 8388608, 0, 51>;
 
 trace_row!(Dma64AlignedMemCpyFixedRow<F> {
  __L1__: F,
 });
-pub type Dma64AlignedMemCpyFixed<F> = GenericTrace<Dma64AlignedMemCpyFixedRow<F>, 8388608, 0, 50>;
+pub type Dma64AlignedMemCpyFixed<F> = GenericTrace<Dma64AlignedMemCpyFixedRow<F>, 8388608, 0, 52>;
 
 trace_row!(Dma64AlignedMemCpyTraceRow<F> {
  src64:ubit(29), seq_end:bit, previous_seq_end:bit, sel_memcpy:bit, sel_memcpy_count_load:bit, main_step:ubit(36), dst64:ubit(29), count64:u32, sel_op_from_1:[bit; 3], value:[[u32; 2]; 4],
 });
 
-pub type Dma64AlignedMemCpyTrace<R> = GenericTrace<R, 8388608, 0, 50>;
+pub type Dma64AlignedMemCpyTrace<R> = GenericTrace<R, 8388608, 0, 52>;
 
 trace_row!(DmaUnalignedFixedRow<F> {
  __L1__: F,
 });
-pub type DmaUnalignedFixed<F> = GenericTrace<DmaUnalignedFixedRow<F>, 4194304, 0, 51>;
+pub type DmaUnalignedFixed<F> = GenericTrace<DmaUnalignedFixedRow<F>, 4194304, 0, 53>;
 
 trace_row!(DmaUnalignedTraceRow<F> {
  main_step:ubit(36), src64:ubit(29), dst64:ubit(29), count:u32, seq_end:bit, sel_op_from_1:[bit; 3], previous_seq_end:bit, is_memeq:bit, offset_7:bit, offset_6:bit, offset_5:bit, offset_4:bit, offset_3:bit, offset_2:bit, read_bytes:[[u8; 8]; 4], no_last_no_seq_end:bit, write_value:[[u32; 2]; 4],
 });
 
-pub type DmaUnalignedTrace<R> = GenericTrace<R, 4194304, 0, 51>;
+pub type DmaUnalignedTrace<R> = GenericTrace<R, 4194304, 0, 53>;
 
 trace_row!(DmaPrePostFixedRow<F> {
  __L1__: F,
 });
-pub type DmaPrePostFixed<F> = GenericTrace<DmaPrePostFixedRow<F>, 2097152, 0, 52>;
+pub type DmaPrePostFixed<F> = GenericTrace<DmaPrePostFixedRow<F>, 2097152, 0, 54>;
 
 trace_row!(DmaPrePostTraceRow<F> {
  main_step:ubit(36), dst64:ubit(29), dst_offset:ubit(3), count:ubit(4), is_post:bit, sel_memcpy:bit, sel_memcmp:bit, memcmp_result_nz:bit, l_memcmp_result:u32, sel_inputcpy:bit, sel_memset:bit, selr:[bit; 7], dst_offset_gt_src_offset:bit, src64:ubit(29), src_offset:ubit(3), enabled_second_read:bit, fill_byte:u8, rb:[u8; 16], pb:[u8; 8], sb:[bit; 8], last_dst_byte:u8, abs_diff_dst_src:u8, memcmp_result_is_negative:bit, diff_factor:[u64; 2], bus_write_value:[u32; 2], write_value:[u32; 4],
 });
 
-pub type DmaPrePostTrace<R> = GenericTrace<R, 2097152, 0, 52>;
+pub type DmaPrePostTrace<R> = GenericTrace<R, 2097152, 0, 54>;
 
 trace_row!(DmaWithPrePostFixedRow<F> {
  __L1__: F,
 });
-pub type DmaWithPrePostFixed<F> = GenericTrace<DmaWithPrePostFixedRow<F>, 2097152, 0, 53>;
+pub type DmaWithPrePostFixed<F> = GenericTrace<DmaWithPrePostFixedRow<F>, 2097152, 0, 55>;
 
 trace_row!(DmaWithPrePostTraceRow<F> {
  is_pre_row:bit, has_pre_row:bit, sel_memcpy:bit, sel_memcmp:bit, sel_memset:bit, sel_inputcpy:bit, sel_extended:bit, fill_byte:u8, h_count:ubit(24), count_lt_256:bit, l_count:ubit(9), count_diff_chunks:[u16; 2], main_step:ubit(36), h_dst64:ubit(22), l_dst64:ubit(7), dst_offset:ubit(3), h_src64:ubit(22), l_src64:ubit(7), src_offset:ubit(3), src_offset_after_pre:ubit(3), src64_inc_by_pre:bit, use_pre:bit, use_loop:bit, use_post:bit, pre_count:ubit(3), l_count64:ubit(9), pp_dst_addr:u32, pp_src_addr:u32, pp_dst_offset:ubit(3), pp_src_offset:ubit(3), pp_count:ubit(4), pp_load_src:bit, pp_sel_write:bit, pp_sel_byte_rc:bit, pp_sel_memcmp:bit, pp_sel_memset:bit, selr:[bit; 7], dst_offset_gt_src_offset:bit, enabled_second_read:bit, rb:[u8; 16], pb:[u8; 8], sb:[bit; 8], memcmp_result_nz:bit, last_dst_byte:u8, abs_diff_dst_src:u8, memcmp_result_is_negative:bit, diff_factor:[u64; 2], l_memcmp_result:u32, bus_write_value:[u32; 2], write_value:[u32; 4], loop_b0:u32, loop_extended_arg:u32, static_count:u32, sel_count_from_mem:bit,
 });
 
-pub type DmaWithPrePostTrace<R> = GenericTrace<R, 2097152, 0, 53>;
+pub type DmaWithPrePostTrace<R> = GenericTrace<R, 2097152, 0, 55>;
 
 trace_row!(JumpDestFixedRow<F> {
  CLOCK: F, __L1__: F,
 });
-pub type JumpDestFixed<F> = GenericTrace<JumpDestFixedRow<F>, 2097152, 0, 54>;
+pub type JumpDestFixed<F> = GenericTrace<JumpDestFixedRow<F>, 2097152, 0, 56>;
 
 trace_row!(JumpDestTraceRow<F> {
  seq_end:bit, sel:bit, seq_start:bit, data:[[u16; 2]; 4], cdata:[[u8; 2]; 4], sel_mem_load:[bit; 2], bitmap_byte:[u8; 2], state:[ubit(6); 3], bytes_used:[ubit(4); 2], src64:ubit(29), dst64:ubit(29), main_step:ubit(36), count:u32,
 });
 
-pub type JumpDestTrace<R> = GenericTrace<R, 2097152, 0, 54>;
+pub type JumpDestTrace<R> = GenericTrace<R, 2097152, 0, 56>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
  COL_0_0_0: F, COL_0_0_1: F, COL_0_0_2: F, COL_0_0_3: F, COL_0_0_5: F, COL_0_0_7: F, COL_1_8_0: F, COL_1_8_1: F, COL_1_8_2: F, COL_1_8_3: F, COL_1_8_5: F, COL_1_8_7: F, COL_2_16_1: F, COL_2_16_3: F, COL_2_16_5: F, COL_5_40_0: F, COL_5_40_1: F, COL_5_40_2: F, COL_5_40_3: F, COL_5_40_5: F, COL_5_40_6: F, COL_6_48_0: F, COL_6_48_1: F, COL_6_48_2: F, COL_6_48_3: F, COL_6_48_5: F, COL_7_56_1: F, COL_7_56_3: F, COL_7_56_5: F, COL_8_64_0: F, COL_8_64_1: F, COL_8_64_2: F, COL_8_64_3: F, COL_8_64_5: F, COL_8_64_6: F, COL_9_72_1: F, COL_9_72_3: F, COL_9_72_5: F, COL_9_72_6: F, COL_10_80_0: F, COL_10_80_1: F, COL_10_80_2: F, COL_10_80_3: F, COL_10_80_5: F, COL_10_80_6: F, COL_11_88_0: F, COL_11_88_1: F, COL_11_88_2: F, COL_11_88_3: F, COL_11_88_5: F, COL_11_88_6: F, COL_11_88_7: F, UID_11: F, __L1__: F,
 });
-pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 55>;
+pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 57>;
 
 trace_row!(VirtualTableZisk0TraceRow<F> {
  multiplicity:[F; 12],
 });
 
-pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 55>;
+pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 57>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
  __ROW_INDEX__: F, COL_9_9_0: F, COL_14_14_0: F, COL_14_14_1: F, UID_14: F, COL_15_16_0: F, COL_15_16_1: F, COL_15_16_2: F, COL_15_16_3: F, COL_15_16_4: F, COL_15_16_5: F, UID_15: F, COL_16_22_0: F, COL_16_22_1: F, COL_16_22_2: F, COL_16_22_3: F, COL_16_22_4: F, COL_16_22_5: F, UID_16: F, COL_17_28_0: F, COL_17_28_1: F, COL_17_28_2: F, COL_17_28_3: F, COL_17_28_4: F, COL_17_28_5: F, COL_17_28_6: F, UID_17: F, COL_18_35_0: F, COL_18_35_1: F, COL_18_35_2: F, COL_18_35_3: F, COL_18_35_4: F, COL_18_35_5: F, COL_18_35_6: F, COL_19_42_0: F, COL_19_42_1: F, COL_19_42_4: F, COL_19_42_5: F, COL_19_42_6: F, COL_20_49_0: F, COL_20_49_1: F, COL_20_49_4: F, COL_20_49_5: F, COL_20_49_6: F, COL_21_56_0: F, COL_21_56_1: F, COL_21_56_2: F, COL_21_56_3: F, COL_21_56_4: F, COL_21_56_5: F, COL_21_56_6: F, UID_21: F, __L1__: F,
 });
-pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 56>;
+pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 58>;
 
 trace_row!(VirtualTableZisk1TraceRow<F> {
  multiplicity:[F; 22],
 });
 
-pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 56>;
+pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 58>;
 
 trace_row!(RomRomTraceRow<F> {
  is_data: F, line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -851,6 +877,14 @@ values!(MemAlignByteLargeAirValues<F> {
 
 values!(MemAlignReadByteLargeAirValues<F> {
  padding_size: F, im_direct: [FieldExtension<F>; 2],
+});
+
+values!(CompactMemAlignAirValues<F> {
+ bytes_padding_size: F, im_direct: [FieldExtension<F>; 2],
+});
+
+values!(CompactMemAlignLargeAirValues<F> {
+ bytes_padding_size: F, im_direct: [FieldExtension<F>; 2],
 });
 
 values!(ArithAirValues<F> {
@@ -982,6 +1016,14 @@ values!(MemAlignByteLargeAirGroupValues<F> {
 });
 
 values!(MemAlignReadByteLargeAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(CompactMemAlignAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(CompactMemAlignLargeAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
@@ -1224,78 +1266,78 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 13, PackedInfoConst {
         is_packed: true,
+        num_packed_words: 14,
+        unpack_info: &[29, 3, 4, 1, 8, 1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 40, 64, 32, 32, 1, 1, 1, 1, 1, 1, 32, 32, 32, 32, 32, 32, 8, 8, 16, 16, 8, 8, 8, 8, 29, 29, 40, 40, 1, 1, 32, 32, 32, 32, 8, 8],
+    }),
+    (0, 14, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 27,
+        unpack_info: &[29, 29, 3, 3, 4, 4, 1, 1, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 40, 40, 64, 64, 32, 32, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 8, 8, 8, 8, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 29, 29, 29, 29, 40, 40, 40, 40, 1, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 8, 8, 8, 8],
+    }),
+    (0, 15, PackedInfoConst {
+        is_packed: true,
         num_packed_words: 17,
         unpack_info: &[64, 64, 64, 64, 64, 64, 64, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 64, 64, 64, 1, 1, 1, 1, 1, 1, 1, 64, 8, 32, 7, 7],
     }),
-    (0, 14, PackedInfoConst {
+    (0, 16, PackedInfoConst {
         is_packed: true,
         num_packed_words: 4,
         unpack_info: &[7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 10, 1],
     }),
-    (0, 15, PackedInfoConst {
+    (0, 17, PackedInfoConst {
         is_packed: true,
         num_packed_words: 8,
         unpack_info: &[7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 1, 1, 1, 1, 10, 10, 1, 1],
     }),
-    (0, 16, PackedInfoConst {
+    (0, 18, PackedInfoConst {
         is_packed: true,
         num_packed_words: 16,
         unpack_info: &[7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 10, 10, 10, 10, 1, 1, 1, 1],
     }),
-    (0, 17, PackedInfoConst {
+    (0, 19, PackedInfoConst {
         is_packed: true,
         num_packed_words: 4,
         unpack_info: &[32, 32, 32, 32, 16, 16, 16, 16, 1, 1, 1],
     }),
-    (0, 18, PackedInfoConst {
+    (0, 20, PackedInfoConst {
         is_packed: true,
         num_packed_words: 7,
         unpack_info: &[32, 32, 32, 32, 32, 32, 32, 32, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1],
     }),
-    (0, 19, PackedInfoConst {
+    (0, 21, PackedInfoConst {
         is_packed: true,
         num_packed_words: 13,
         unpack_info: &[32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     }),
-    (0, 20, PackedInfoConst {
+    (0, 22, PackedInfoConst {
         is_packed: true,
         num_packed_words: 4,
         unpack_info: &[32, 32, 32, 32, 16, 16, 16, 16, 1, 1, 1, 1],
     }),
-    (0, 21, PackedInfoConst {
+    (0, 23, PackedInfoConst {
         is_packed: true,
         num_packed_words: 7,
         unpack_info: &[32, 32, 32, 32, 32, 32, 32, 32, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1],
     }),
-    (0, 22, PackedInfoConst {
+    (0, 24, PackedInfoConst {
         is_packed: true,
         num_packed_words: 13,
         unpack_info: &[32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     }),
-    (0, 23, PackedInfoConst {
+    (0, 25, PackedInfoConst {
         is_packed: true,
         num_packed_words: 11,
         unpack_info: &[7, 8, 8, 8, 8, 8, 8, 8, 8, 6, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1, 1, 1, 32, 32],
     }),
-    (0, 24, PackedInfoConst {
+    (0, 26, PackedInfoConst {
         is_packed: true,
         num_packed_words: 21,
         unpack_info: &[7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 6, 6, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 32, 32, 32, 32],
     }),
-    (0, 25, PackedInfoConst {
+    (0, 27, PackedInfoConst {
         is_packed: true,
         num_packed_words: 15,
         unpack_info: &[32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1, 32, 32, 32, 32, 40, 1, 1],
-    }),
-    (0, 26, PackedInfoConst {
-        is_packed: true,
-        num_packed_words: 13,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
-    }),
-    (0, 27, PackedInfoConst {
-        is_packed: true,
-        num_packed_words: 13,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
     }),
     (0, 28, PackedInfoConst {
         is_packed: true,
@@ -1304,43 +1346,43 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 29, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 7,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 1, 1, 1, 1, 1, 1, 64, 64, 64, 64, 40],
+        num_packed_words: 13,
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
     }),
     (0, 30, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 7,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 1, 1, 1, 1, 1, 1, 64, 64, 64, 64, 40],
+        num_packed_words: 13,
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
     }),
     (0, 31, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 13,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
+        num_packed_words: 7,
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 1, 1, 1, 1, 1, 1, 64, 64, 64, 64, 40],
     }),
     (0, 32, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 13,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
+        num_packed_words: 7,
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 1, 1, 1, 1, 1, 1, 64, 64, 64, 64, 40],
     }),
     (0, 33, PackedInfoConst {
         is_packed: true,
         num_packed_words: 13,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
     }),
     (0, 34, PackedInfoConst {
         is_packed: true,
         num_packed_words: 13,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
     }),
     (0, 35, PackedInfoConst {
         is_packed: true,
         num_packed_words: 13,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
     }),
     (0, 36, PackedInfoConst {
         is_packed: true,
         num_packed_words: 13,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
     }),
     (0, 37, PackedInfoConst {
         is_packed: true,
@@ -1349,85 +1391,95 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 38, PackedInfoConst {
         is_packed: true,
+        num_packed_words: 13,
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
+    }),
+    (0, 39, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 13,
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
+    }),
+    (0, 40, PackedInfoConst {
+        is_packed: true,
         num_packed_words: 22,
         unpack_info: &[16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 22, 22, 22, 1, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 40],
     }),
-    (0, 39, PackedInfoConst {
+    (0, 41, PackedInfoConst {
         is_packed: true,
         num_packed_words: 51,
         unpack_info: &[1, 1, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 40],
     }),
-    (0, 40, PackedInfoConst {
+    (0, 42, PackedInfoConst {
         is_packed: true,
         num_packed_words: 3,
         unpack_info: &[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 4, 40, 1, 1],
     }),
-    (0, 41, PackedInfoConst {
+    (0, 43, PackedInfoConst {
         is_packed: true,
         num_packed_words: 33,
         unpack_info: &[1, 1, 1, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 40, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64],
     }),
-    (0, 42, PackedInfoConst {
+    (0, 44, PackedInfoConst {
         is_packed: true,
         num_packed_words: 18,
         unpack_info: &[1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 16, 16, 16, 16, 16, 16, 16, 16, 32, 32, 32, 32, 40, 40, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1],
     }),
-    (0, 43, PackedInfoConst {
+    (0, 45, PackedInfoConst {
         is_packed: true,
         num_packed_words: 18,
         unpack_info: &[1, 1, 1, 1, 40, 40, 40, 40, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 16, 16, 16, 16, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1],
     }),
-    (0, 44, PackedInfoConst {
+    (0, 46, PackedInfoConst {
         is_packed: true,
         num_packed_words: 7,
         unpack_info: &[1, 1, 1, 8, 1, 1, 24, 1, 9, 16, 16, 22, 7, 3, 36, 22, 7, 3, 3, 1, 1, 1, 1, 3, 9, 1, 1, 32, 32, 32, 32, 32, 32, 32],
     }),
-    (0, 45, PackedInfoConst {
-        is_packed: true,
-        num_packed_words: 7,
-        unpack_info: &[29, 1, 1, 1, 1, 1, 8, 1, 1, 36, 29, 32, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 24, 24, 24, 24, 24, 24, 24, 24, 1, 1, 1, 1],
-    }),
-    (0, 46, PackedInfoConst {
-        is_packed: true,
-        num_packed_words: 7,
-        unpack_info: &[29, 1, 1, 1, 1, 1, 8, 1, 1, 36, 29, 32, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 24, 24, 24, 24, 24, 24, 24, 24, 1, 1, 1, 1],
-    }),
     (0, 47, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 2,
-        unpack_info: &[1, 1, 1, 8, 36, 29, 32, 1, 1, 1],
+        num_packed_words: 7,
+        unpack_info: &[29, 1, 1, 1, 1, 1, 8, 1, 1, 36, 29, 32, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 24, 24, 24, 24, 24, 24, 24, 24, 1, 1, 1, 1],
     }),
     (0, 48, PackedInfoConst {
         is_packed: true,
         num_packed_words: 7,
-        unpack_info: &[29, 1, 1, 1, 1, 1, 8, 1, 36, 29, 32, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1],
+        unpack_info: &[29, 1, 1, 1, 1, 1, 8, 1, 1, 36, 29, 32, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 24, 24, 24, 24, 24, 24, 24, 24, 1, 1, 1, 1],
     }),
     (0, 49, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 7,
-        unpack_info: &[29, 1, 1, 1, 1, 1, 8, 1, 36, 29, 32, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1],
+        num_packed_words: 2,
+        unpack_info: &[1, 1, 1, 8, 36, 29, 32, 1, 1, 1],
     }),
     (0, 50, PackedInfoConst {
         is_packed: true,
         num_packed_words: 7,
-        unpack_info: &[29, 1, 1, 1, 1, 36, 29, 32, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32],
+        unpack_info: &[29, 1, 1, 1, 1, 1, 8, 1, 36, 29, 32, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1],
     }),
     (0, 51, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 7,
+        unpack_info: &[29, 1, 1, 1, 1, 1, 8, 1, 36, 29, 32, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1],
+    }),
+    (0, 52, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 7,
+        unpack_info: &[29, 1, 1, 1, 1, 36, 29, 32, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32],
+    }),
+    (0, 53, PackedInfoConst {
         is_packed: true,
         num_packed_words: 11,
         unpack_info: &[36, 29, 29, 32, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 32, 32, 32, 32, 32, 32, 32, 32],
     }),
-    (0, 52, PackedInfoConst {
+    (0, 54, PackedInfoConst {
         is_packed: true,
         num_packed_words: 11,
         unpack_info: &[36, 29, 3, 4, 1, 1, 1, 1, 32, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 29, 3, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 1, 64, 64, 32, 32, 32, 32, 32, 32],
     }),
-    (0, 53, PackedInfoConst {
+    (0, 55, PackedInfoConst {
         is_packed: true,
         num_packed_words: 15,
         unpack_info: &[1, 1, 1, 1, 1, 1, 1, 8, 24, 1, 9, 16, 16, 36, 22, 7, 3, 22, 7, 3, 3, 1, 1, 1, 1, 3, 9, 32, 32, 3, 3, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 1, 64, 64, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1],
     }),
-    (0, 54, PackedInfoConst {
+    (0, 56, PackedInfoConst {
         is_packed: true,
         num_packed_words: 6,
         unpack_info: &[1, 1, 1, 16, 16, 16, 16, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 8, 8, 6, 6, 6, 4, 4, 29, 29, 36, 32],
@@ -1450,48 +1502,50 @@ pub const AIR_NAMES: &[(usize, usize, &str)] = &[
     (0, 10, "MemAlignWriteByte"),
     (0, 11, "MemAlignByteLarge"),
     (0, 12, "MemAlignReadByteLarge"),
-    (0, 13, "Arith"),
-    (0, 14, "Binary"),
-    (0, 15, "BinaryLarge"),
-    (0, 16, "BinaryHuge"),
-    (0, 17, "BinaryAdd"),
-    (0, 18, "BinaryAddLarge"),
-    (0, 19, "BinaryAddHuge"),
-    (0, 20, "BinaryAddHi"),
-    (0, 21, "BinaryAddHiLarge"),
-    (0, 22, "BinaryAddHiHuge"),
-    (0, 23, "BinaryExtension"),
-    (0, 24, "BinaryExtensionLarge"),
-    (0, 25, "Add256"),
-    (0, 26, "ArithEq"),
-    (0, 27, "ArithEqLarge"),
-    (0, 28, "ArithEqHuge"),
-    (0, 29, "Arith256X"),
-    (0, 30, "Arith256XLarge"),
-    (0, 31, "ArithSecp256K1"),
-    (0, 32, "ArithSecp256K1Large"),
-    (0, 33, "ArithBn254"),
-    (0, 34, "ArithBn254Large"),
-    (0, 35, "ArithEq384"),
-    (0, 36, "ArithEq384Large"),
-    (0, 37, "ArithEq384Huge"),
-    (0, 38, "BabyJubJub"),
-    (0, 39, "Keccakf"),
-    (0, 40, "Sha256f"),
-    (0, 41, "Poseidon"),
-    (0, 42, "Blake2br"),
-    (0, 43, "Blake3f"),
-    (0, 44, "Dma"),
-    (0, 45, "Dma64Aligned"),
-    (0, 46, "Dma64AlignedLarge"),
-    (0, 47, "Dma64AlignedMemSet"),
-    (0, 48, "Dma64AlignedMem"),
-    (0, 49, "Dma64AlignedMemLarge"),
-    (0, 50, "Dma64AlignedMemCpy"),
-    (0, 51, "DmaUnaligned"),
-    (0, 52, "DmaPrePost"),
-    (0, 53, "DmaWithPrePost"),
-    (0, 54, "JumpDest"),
-    (0, 55, "VirtualTableZisk0"),
-    (0, 56, "VirtualTableZisk1"),
+    (0, 13, "CompactMemAlign"),
+    (0, 14, "CompactMemAlignLarge"),
+    (0, 15, "Arith"),
+    (0, 16, "Binary"),
+    (0, 17, "BinaryLarge"),
+    (0, 18, "BinaryHuge"),
+    (0, 19, "BinaryAdd"),
+    (0, 20, "BinaryAddLarge"),
+    (0, 21, "BinaryAddHuge"),
+    (0, 22, "BinaryAddHi"),
+    (0, 23, "BinaryAddHiLarge"),
+    (0, 24, "BinaryAddHiHuge"),
+    (0, 25, "BinaryExtension"),
+    (0, 26, "BinaryExtensionLarge"),
+    (0, 27, "Add256"),
+    (0, 28, "ArithEq"),
+    (0, 29, "ArithEqLarge"),
+    (0, 30, "ArithEqHuge"),
+    (0, 31, "Arith256X"),
+    (0, 32, "Arith256XLarge"),
+    (0, 33, "ArithSecp256K1"),
+    (0, 34, "ArithSecp256K1Large"),
+    (0, 35, "ArithBn254"),
+    (0, 36, "ArithBn254Large"),
+    (0, 37, "ArithEq384"),
+    (0, 38, "ArithEq384Large"),
+    (0, 39, "ArithEq384Huge"),
+    (0, 40, "BabyJubJub"),
+    (0, 41, "Keccakf"),
+    (0, 42, "Sha256f"),
+    (0, 43, "Poseidon"),
+    (0, 44, "Blake2br"),
+    (0, 45, "Blake3f"),
+    (0, 46, "Dma"),
+    (0, 47, "Dma64Aligned"),
+    (0, 48, "Dma64AlignedLarge"),
+    (0, 49, "Dma64AlignedMemSet"),
+    (0, 50, "Dma64AlignedMem"),
+    (0, 51, "Dma64AlignedMemLarge"),
+    (0, 52, "Dma64AlignedMemCpy"),
+    (0, 53, "DmaUnaligned"),
+    (0, 54, "DmaPrePost"),
+    (0, 55, "DmaWithPrePost"),
+    (0, 56, "JumpDest"),
+    (0, 57, "VirtualTableZisk0"),
+    (0, 58, "VirtualTableZisk1"),
 ];

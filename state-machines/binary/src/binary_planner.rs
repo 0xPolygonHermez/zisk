@@ -199,6 +199,7 @@ impl<F: PrimeField64> BinaryPlanner<F> {
             air_id,
             rows: caps[slot],
             memory: memories[slot],
+            block_group: None,
         };
         let binary_ladder = [
             choice(

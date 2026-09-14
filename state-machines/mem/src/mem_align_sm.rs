@@ -873,15 +873,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let mut total_index = 0;
         for (i, inner_memp_ops) in mem_ops.iter().enumerate() {
             for (j, input) in inner_memp_ops.iter().enumerate() {
-                let addr = input.addr;
-                let width = input.width as usize;
-                let offset = (addr & OFFSET_MASK) as usize;
-                let n_rows = match (input.is_write, offset + width > CHUNK_NUM) {
-                    (false, false) => 2,
-                    (true, false) => 3,
-                    (false, true) => 3,
-                    (true, true) => 5,
-                };
+                let n_rows = Self::op_rows(input);
                 total_index += n_rows;
                 let (head, tail) = trace_rows.split_at_mut(n_rows);
                 par_traces.push(head);
@@ -922,5 +914,32 @@ impl<F: PrimeField64> MemAlignSM<F> {
         self.std.inc_virtual_rows_ranged(self.table_dual_byte_id, None, &dual_mults);
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
+    }
+
+    /// Rows one operation takes in a `MemAlign` air: the sub-program its width and offset pick.
+    #[inline(always)]
+    pub fn op_rows(input: &MemAlignInput) -> usize {
+        let offset = (input.addr & OFFSET_MASK) as usize;
+        match (input.is_write, offset + input.width as usize > CHUNK_NUM) {
+            (false, false) => 2,
+            (true, false) => 3,
+            (false, true) => 3,
+            (true, true) => 5,
+        }
+    }
+
+    /// Raises the multiplicity of the program row every padding lane assumes.
+    ///
+    /// The `CompactMemAlign` fill pads its `full_` block with the same row this air pads with, and
+    /// the program lookup is what that row still takes part in.
+    pub fn add_padding_rom_mults(&self, padding_size: u64) {
+        self.std.inc_virtual_row(self.table_id, MemAlignRomSM::PADDING_ROW, padding_size);
+    }
+
+    /// Raises the dual-byte range multiplicities of a whole block of rows at once.
+    ///
+    /// Indexed as the lookup pairs the registers: `(reg[i] << 8) | reg[i + 1]`.
+    pub fn add_dual_byte_mults(&self, mults: &[u64]) {
+        self.std.inc_virtual_rows_ranged(self.table_dual_byte_id, None, mults);
     }
 }

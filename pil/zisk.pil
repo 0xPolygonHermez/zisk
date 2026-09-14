@@ -13,6 +13,7 @@ require "mem/pil/mem_align.pil"
 require "mem/pil/mem_align_byte.pil"
 require "mem/pil/rom_data.pil"
 require "mem/pil/compact_mem.pil"
+require "mem/pil/compact_mem_align.pil"
 require "rom/pil/rom.pil"
 require "main/pil/main.pil"
 require "frequent-ops/pil/frequent_ops.pil"
@@ -119,6 +120,18 @@ airgroup Zisk {
 
     MemAlignByte(N: 2**23, read: 1, write: 1) alias MemAlignByteLarge;
     MemAlignByte(N: 2**23, read: 1, write: 0) alias MemAlignReadByteLarge;
+
+    // `MemAlign` and `MemAlignByte` fused into one air: every row carries a slice of the two
+    // sequences at once, so an execution that has both kinds of unaligned access -- which is every
+    // execution that touches a byte and a half-word across a word boundary -- spends one instance
+    // instead of two.
+    //
+    // The blocks are sized in the same 1:2 proportion the two airs are instantiated in above: the
+    // `full_` block of the small air holds the rows of `MemAlign` (2**21) and its `bytes_` block
+    // those of `MemAlignByte` (2**22 virtual rows, 2 lanes per row).
+    CompactMemAlign(N: 2**21, full_lanes_x_row: 1, bytes_lanes_x_row: 2);
+    CompactMemAlign(N: 2**22, full_lanes_x_row: 2, bytes_lanes_x_row: 4) alias CompactMemAlignLarge;
+
     virtual MemAlignRom();
 
     // Standard operations

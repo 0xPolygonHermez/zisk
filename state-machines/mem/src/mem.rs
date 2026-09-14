@@ -1,18 +1,19 @@
 use std::sync::Arc;
 
 use crate::{
-    CompactMemInstance, CompactMemSM, DummyMemPlanner, InputDataSM, MemAlignByteInstance,
-    MemAlignByteSM, MemAlignInstance, MemAlignReadByteInstance, MemAlignSM,
-    MemAlignWriteByteInstance, MemModuleInstance, MemPlanner, MemSM, RomDataSM,
+    CompactMemAlignInstance, CompactMemAlignSM, CompactMemInstance, CompactMemSM, DummyMemPlanner,
+    InputDataSM, MemAlignByteInstance, MemAlignByteSM, MemAlignInstance, MemAlignReadByteInstance,
+    MemAlignSM, MemAlignWriteByteInstance, MemModuleInstance, MemPlanner, MemSM, RomDataSM,
 };
 use pil2_std_lib::Std;
 use proofman_common::ProofCtx;
 use proofman_fields::PrimeField64;
 use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner};
 use zisk_pil::{
-    CompactMemTrace, InputDataTrace, MemAlignByteLargeTrace, MemAlignByteTrace, MemAlignLargeTrace,
-    MemAlignReadByteLargeTrace, MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace,
-    MemTrace, RomDataTrace, ZiskProofValues,
+    CompactMemAlignLargeTrace, CompactMemAlignTrace, CompactMemTrace, InputDataTrace,
+    MemAlignByteLargeTrace, MemAlignByteTrace, MemAlignLargeTrace, MemAlignReadByteLargeTrace,
+    MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace, MemTrace, RomDataTrace,
+    ZiskProofValues,
 };
 use zisk_sm_mem_common::MemCounters;
 
@@ -26,6 +27,9 @@ pub struct Mem<F: PrimeField64> {
     /// The fused air, which proves segment 0 of the three memory areas at once. It shares the
     /// three state machines above rather than building its own: they hold the range-check ids.
     compact_mem_sm: Arc<CompactMemSM<F>>,
+    /// The fused mem-align air, which proves the general and the byte unaligned accesses at once.
+    /// It shares the two state machines above for the same reason.
+    compact_mem_align_sm: Arc<CompactMemAlignSM<F>>,
 }
 
 impl<F: PrimeField64> Mem<F> {
@@ -42,6 +46,9 @@ impl<F: PrimeField64> Mem<F> {
             rom_data_sm.clone(),
         );
 
+        let compact_mem_align_sm =
+            CompactMemAlignSM::new(mem_align_sm.clone(), mem_align_byte_sm.clone());
+
         Arc::new(Self {
             mem_align_sm,
             mem_sm,
@@ -49,6 +56,7 @@ impl<F: PrimeField64> Mem<F> {
             rom_data_sm,
             mem_align_byte_sm,
             compact_mem_sm,
+            compact_mem_align_sm,
         })
     }
 }
@@ -122,6 +130,9 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
             }
             MemAlignWriteByteTrace::<()>::AIR_ID => {
                 Box::new(MemAlignWriteByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
+            }
+            CompactMemAlignTrace::<()>::AIR_ID | CompactMemAlignLargeTrace::<()>::AIR_ID => {
+                Box::new(CompactMemAlignInstance::new(self.compact_mem_align_sm.clone(), ictx))
             }
             _ => panic!("Memory::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }

@@ -18,7 +18,10 @@
 //! of its column arrays), so the Rust side always follows the PIL.
 
 use proofman_fields::Goldilocks;
-use zisk_pil::{InputDataTraceRow, MemTraceRow, RomDataTraceRow};
+use zisk_pil::{
+    CompactMemAlignLargeTraceRow, CompactMemAlignTraceRow, InputDataTraceRow, MemTraceRow,
+    RomDataTraceRow,
+};
 
 /// Maps virtual positions to `(row, lane)` pairs.
 ///
@@ -72,6 +75,29 @@ pub fn input_data_lanes_x_row() -> usize {
 /// `lanes_x_row` of the `RomData` air, read from the generated trace row.
 pub fn rom_data_lanes_x_row() -> usize {
     RomDataTraceRow::<Goldilocks>::default().get_all_addr().len()
+}
+
+/// `full_lanes_x_row` of the `CompactMemAlign` air, read from the generated row.
+///
+/// The small and the tall air are instantiated with lane counts of their own, so each has a row
+/// type -- and an accessor here -- of its own.
+pub fn compact_mem_align_full_lanes_x_row() -> usize {
+    CompactMemAlignTraceRow::<Goldilocks>::default().get_all_full_addr().len()
+}
+
+/// `bytes_lanes_x_row` of the `CompactMemAlign` air, read from the generated row.
+pub fn compact_mem_align_bytes_lanes_x_row() -> usize {
+    CompactMemAlignTraceRow::<Goldilocks>::default().get_all_bytes_addr_w().len()
+}
+
+/// `full_lanes_x_row` of the `CompactMemAlignLarge` air, read from the generated row.
+pub fn compact_mem_align_large_full_lanes_x_row() -> usize {
+    CompactMemAlignLargeTraceRow::<Goldilocks>::default().get_all_full_addr().len()
+}
+
+/// `bytes_lanes_x_row` of the `CompactMemAlignLarge` air, read from the generated row.
+pub fn compact_mem_align_large_bytes_lanes_x_row() -> usize {
+    CompactMemAlignLargeTraceRow::<Goldilocks>::default().get_all_bytes_addr_w().len()
 }
 
 #[cfg(test)]

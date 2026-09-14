@@ -98,7 +98,12 @@ fn stamp_input_block(rows: &mut [Fused], tag: u16) {
             InputDataLaneRow::<Goldilocks>::set_addr_changes(row, l, l == 0);
             InputDataLaneRow::<Goldilocks>::set_is_free_read(row, l, l == 1);
             for i in 0..4 {
-                InputDataLaneRow::<Goldilocks>::set_value_word(row, l, i, tag + i as u16);
+                InputDataLaneRow::<Goldilocks>::set_value_word(
+                    row,
+                    l,
+                    i,
+                    tag.wrapping_add(i as u16),
+                );
             }
         }
     }
@@ -130,7 +135,7 @@ fn stamp_rom_block(rows: &mut [Fused], tag: u32) {
             RomDataLaneRow::<Goldilocks>::set_addr(row, l, 0x8000_0000 + r as u32);
             RomDataLaneRow::<Goldilocks>::set_step(row, l, (r * lanes + l) as u64 + 3);
             RomDataLaneRow::<Goldilocks>::set_addr_change(row, l, l == 0);
-            RomDataLaneRow::<Goldilocks>::set_value(row, l, 0, tag + r as u32);
+            RomDataLaneRow::<Goldilocks>::set_value(row, l, 0, tag.wrapping_add(r as u32));
             RomDataLaneRow::<Goldilocks>::set_value(row, l, 1, tag ^ l as u32);
         }
     }

@@ -3,6 +3,18 @@ use zisk_sm_mem_common::{MemAlignCheckPoint, MemHelpers};
 
 use zisk_common::{BusDevice, BusId, ChunkId, CollectCounter, MemBusData, MEM_BUS_ID};
 
+/// Whether an operation is one the byte airs prove, which is what tells the two blocks of a
+/// `CompactMemAlign` instance apart: what this answers `true` to was counted as `read_byte` /
+/// `write_byte` and belongs to the `bytes_` block, and everything else is a `full_*` operation.
+///
+/// It mirrors [`MemAlignCollector::process_data`] and has to keep mirroring it: a one-byte write
+/// whose value does not fit in a byte is NOT a byte operation there -- it falls through to the
+/// general path and is counted as `full_3` -- so it must not be one here either.
+#[inline(always)]
+pub fn is_byte_align_op(input: &MemAlignInput) -> bool {
+    input.width == 1 && (!input.is_write || (input.value & 0xFFFF_FFFF_FFFF_FF00) == 0)
+}
+
 pub struct MemAlignCollector {
     /// Collected inputs
     pub inputs: Vec<MemAlignInput>,

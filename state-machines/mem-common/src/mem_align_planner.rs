@@ -11,10 +11,24 @@
 //! | `MemAlignByte` / `MemAlignByteLarge`   | read_byte, write_byte | 1                       |
 //! | `MemAlignReadByte` / `…ReadByteLarge`  | read_byte             | 1                       |
 //! | `MemAlignWriteByte`                    | write_byte            | 1                       |
+//! | `CompactMemAlign` / `…Large`           | everything            | 5 / 3 / 2 in one block, 1 in the other |
 //!
 //! The byte airs are the cheap home for a byte operation — one row instead of two or three — but the
 //! `MemAlign` airs prove it too, which is what lets a handful of byte operations ride in the room the
 //! full ones already paid for instead of opening an instance of their own.
+//!
+//! # The fused airs
+//!
+//! `CompactMemAlign` carries the two airs side by side on every row (see
+//! `state-machines/mem/pil/compact_mem_align.pil`), so it is not one more air of the ladder: it is a
+//! pair of BLOCKS, each with a row budget of its own — `lanes_x_row` virtual rows per physical row —
+//! that are instantiated together. It enters the sizing as one entry per block, tied by
+//! [`AirChoice::block_of`], and what it opens is what its fullest block needs; the emptier block
+//! rides along and is padded. That is where the saving is: an execution with both kinds of unaligned
+//! access pays one instance instead of two, and about half the memory.
+//!
+//! Each block is then planned as if it were an air of its own — one plan per instance and block —
+//! and [`fuse_block_plans`] zips the two back into the single plan the instance really is.
 //!
 //! # The strategy
 //!
@@ -37,16 +51,23 @@ use std::{
     sync::Arc,
 };
 
+use crate::{
+    compact_mem_align_bytes_lanes_x_row, compact_mem_align_full_lanes_x_row,
+    compact_mem_align_large_bytes_lanes_x_row, compact_mem_align_large_full_lanes_x_row,
+};
 use crate::{MemAlignCheckPoint, MemAlignCounters};
 use crate::{MemAlignInstanceCounter, MemCounters};
 use proofman_fields::Goldilocks;
-use zisk_common::{select_airs, AirChoice, ChunkId, Plan};
+use zisk_common::{
+    select_airs, AirChoice, CheckPoint, ChunkId, CollectCounter, InstanceType, Plan, SegmentId,
+};
 use zisk_pil::{
-    MemAlignByteLargeTrace, MemAlignByteTrace, MemAlignLargeTrace, MemAlignReadByteLargeTrace,
-    MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace, MEM_ALIGN_BYTE_INSTANCE_COST,
-    MEM_ALIGN_BYTE_LARGE_INSTANCE_COST, MEM_ALIGN_INSTANCE_COST, MEM_ALIGN_LARGE_INSTANCE_COST,
-    MEM_ALIGN_READ_BYTE_INSTANCE_COST, MEM_ALIGN_READ_BYTE_LARGE_INSTANCE_COST,
-    MEM_ALIGN_WRITE_BYTE_INSTANCE_COST,
+    CompactMemAlignLargeTrace, CompactMemAlignTrace, MemAlignByteLargeTrace, MemAlignByteTrace,
+    MemAlignLargeTrace, MemAlignReadByteLargeTrace, MemAlignReadByteTrace, MemAlignTrace,
+    MemAlignWriteByteTrace, COMPACT_MEM_ALIGN_INSTANCE_COST, COMPACT_MEM_ALIGN_LARGE_INSTANCE_COST,
+    MEM_ALIGN_BYTE_INSTANCE_COST, MEM_ALIGN_BYTE_LARGE_INSTANCE_COST, MEM_ALIGN_INSTANCE_COST,
+    MEM_ALIGN_LARGE_INSTANCE_COST, MEM_ALIGN_READ_BYTE_INSTANCE_COST,
+    MEM_ALIGN_READ_BYTE_LARGE_INSTANCE_COST, MEM_ALIGN_WRITE_BYTE_INSTANCE_COST, ZISK_AIRGROUP_ID,
 };
 
 const ROWS_WRITE_BYTE: u32 = 3;
@@ -89,8 +110,24 @@ mod air {
     pub const FULL_LARGE: usize = 5;
     /// `MemAlign`.
     pub const FULL: usize = 6;
+    /// The `full_` block of `CompactMemAlign`.
+    pub const COMPACT_FULL: usize = 7;
+    /// The `bytes_` block of `CompactMemAlign`.
+    pub const COMPACT_BYTES: usize = 8;
+    /// The `full_` block of `CompactMemAlignLarge`.
+    pub const COMPACT_LARGE_FULL: usize = 9;
+    /// The `bytes_` block of `CompactMemAlignLarge`.
+    pub const COMPACT_LARGE_BYTES: usize = 10;
     /// Number of airs.
-    pub const COUNT: usize = 7;
+    pub const COUNT: usize = 11;
+}
+
+/// The two fused airs, as the groups [`AirChoice::block_of`] ties their blocks together with.
+mod fused {
+    /// `CompactMemAlign`.
+    pub const COMPACT: usize = 0;
+    /// `CompactMemAlignLarge`.
+    pub const COMPACT_LARGE: usize = 1;
 }
 
 /// Rows one operation of each kind takes in each air, or `0` where the air cannot prove the kind.
@@ -105,6 +142,15 @@ const ROW_COST: [[u32; kind::COUNT]; air::COUNT] = [
     [0, 0, 0, 1, 1],                            // MemAlignByte
     [5, 3, 2, ROWS_READ_BYTE, ROWS_WRITE_BYTE], // MemAlignLarge
     [5, 3, 2, ROWS_READ_BYTE, ROWS_WRITE_BYTE], // MemAlign
+    // The blocks of the fused airs. A byte operation is NOT offered to a `full_` block even though
+    // the block could prove it: the air it would ride in carries a `bytes_` block already, where it
+    // takes one row instead of two or three, and routing it to the wrong block of the same instance
+    // would only waste rows. It is also what keeps the two blocks' checkpoints mergeable, which is
+    // what lets one collector feed the instance.
+    [5, 3, 2, 0, 0], // CompactMemAlign, full_ block
+    [0, 0, 0, 1, 1], // CompactMemAlign, bytes_ block
+    [5, 3, 2, 0, 0], // CompactMemAlignLarge, full_ block
+    [0, 0, 0, 1, 1], // CompactMemAlignLarge, bytes_ block
 ];
 
 /// The airs the strategy chooses between, in [`air`] order.
@@ -160,6 +206,46 @@ fn air_choices() -> [AirChoice; air::COUNT] {
             MemAlignTrace::<()>::NUM_ROWS,
             MEM_ALIGN_INSTANCE_COST,
         ),
+        // The blocks of the fused airs. Each carries the whole air's cost and its own budget --
+        // `lanes_x_row` virtual rows per physical row -- and the two of a group are instantiated
+        // together, so what the air opens is what its fullest block needs.
+        AirChoice {
+            rows: (CompactMemAlignTrace::<()>::NUM_ROWS * compact_mem_align_full_lanes_x_row()
+                - WORSE_FRAGMENTATION as usize) as u64,
+            ..AirChoice::block_of(
+                CompactMemAlignTrace::<()>::AIRGROUP_ID,
+                CompactMemAlignTrace::<()>::AIR_ID,
+                0,
+                COMPACT_MEM_ALIGN_INSTANCE_COST,
+                fused::COMPACT,
+            )
+        },
+        AirChoice::block_of(
+            CompactMemAlignTrace::<()>::AIRGROUP_ID,
+            CompactMemAlignTrace::<()>::AIR_ID,
+            CompactMemAlignTrace::<()>::NUM_ROWS * compact_mem_align_bytes_lanes_x_row(),
+            COMPACT_MEM_ALIGN_INSTANCE_COST,
+            fused::COMPACT,
+        ),
+        AirChoice {
+            rows: (CompactMemAlignLargeTrace::<()>::NUM_ROWS
+                * compact_mem_align_large_full_lanes_x_row()
+                - WORSE_FRAGMENTATION as usize) as u64,
+            ..AirChoice::block_of(
+                CompactMemAlignLargeTrace::<()>::AIRGROUP_ID,
+                CompactMemAlignLargeTrace::<()>::AIR_ID,
+                0,
+                COMPACT_MEM_ALIGN_LARGE_INSTANCE_COST,
+                fused::COMPACT_LARGE,
+            )
+        },
+        AirChoice::block_of(
+            CompactMemAlignLargeTrace::<()>::AIRGROUP_ID,
+            CompactMemAlignLargeTrace::<()>::AIR_ID,
+            CompactMemAlignLargeTrace::<()>::NUM_ROWS * compact_mem_align_large_bytes_lanes_x_row(),
+            COMPACT_MEM_ALIGN_LARGE_INSTANCE_COST,
+            fused::COMPACT_LARGE,
+        ),
     ]
 }
 
@@ -192,6 +278,14 @@ impl<'a> MemAlignPlanner<'a> {
             MemAlignByteTrace::<Goldilocks>::NUM_ROWS as u32,
             MemAlignLargeTrace::<Goldilocks>::NUM_ROWS as u32,
             MemAlignTrace::<Goldilocks>::NUM_ROWS as u32,
+            (CompactMemAlignTrace::<Goldilocks>::NUM_ROWS * compact_mem_align_full_lanes_x_row())
+                as u32,
+            (CompactMemAlignTrace::<Goldilocks>::NUM_ROWS * compact_mem_align_bytes_lanes_x_row())
+                as u32,
+            (CompactMemAlignLargeTrace::<Goldilocks>::NUM_ROWS
+                * compact_mem_align_large_full_lanes_x_row()) as u32,
+            (CompactMemAlignLargeTrace::<Goldilocks>::NUM_ROWS
+                * compact_mem_align_large_bytes_lanes_x_row()) as u32,
         ];
 
         // The counters start with no kind enabled; `set_strategy` turns on exactly the ones the
@@ -345,11 +439,27 @@ impl<'a> MemAlignPlanner<'a> {
     }
 
     fn drain_all_plans(&mut self) {
+        // The blocks of a fused air were planned as if they were airs of their own -- that is how
+        // the strategy sizes them -- so instance `i` of the air is plan `i` of each of its blocks.
+        // Zip them back into the one plan the instance really is before the plans are handed out.
+        let compact = fuse_block_plans(
+            std::mem::take(&mut self.counters_by_air[air::COMPACT_FULL].plans),
+            std::mem::take(&mut self.counters_by_air[air::COMPACT_BYTES].plans),
+            CompactMemAlignTrace::<()>::AIR_ID,
+        );
+        let compact_large = fuse_block_plans(
+            std::mem::take(&mut self.counters_by_air[air::COMPACT_LARGE_FULL].plans),
+            std::mem::take(&mut self.counters_by_air[air::COMPACT_LARGE_BYTES].plans),
+            CompactMemAlignLargeTrace::<()>::AIR_ID,
+        );
+
         let total_capacity: usize = self.counters_by_air.iter().map(|c| c.plans.len()).sum();
-        self.plans = Vec::with_capacity(total_capacity);
+        self.plans = Vec::with_capacity(total_capacity + compact.len() + compact_large.len());
         for counter in self.counters_by_air.iter_mut() {
             self.plans.append(&mut counter.plans);
         }
+        self.plans.extend(compact);
+        self.plans.extend(compact_large);
     }
 
     fn calculate_totals(&mut self) -> (u32, u32, u32) {
@@ -424,9 +534,10 @@ impl<'a> MemAlignPlanner<'a> {
             counter.update_order(&order);
         }
 
+        // The two blocks of a fused air report the same count: it is one instance of the air.
         tracing::debug!(
             "··· MemAlign instances: read_byte_large={} read_byte={} write_byte={} byte_large={} \
-             byte={} full_large={} full={}",
+             byte={} full_large={} full={} compact={} compact_large={}",
             selection.instances[air::READ_BYTE_LARGE],
             selection.instances[air::READ_BYTE],
             selection.instances[air::WRITE_BYTE],
@@ -434,6 +545,8 @@ impl<'a> MemAlignPlanner<'a> {
             selection.instances[air::BYTE],
             selection.instances[air::FULL_LARGE],
             selection.instances[air::FULL],
+            selection.instances[air::COMPACT_FULL],
+            selection.instances[air::COMPACT_LARGE_FULL],
         );
     }
 
@@ -448,5 +561,77 @@ impl<'a> MemAlignPlanner<'a> {
 
     pub fn collect_plans(&mut self) -> Vec<Plan> {
         std::mem::take(&mut self.plans)
+    }
+}
+
+/// One plan per instance of a fused air, from the plans its two blocks were given.
+///
+/// The blocks keep budgets of their own, so they may not run out at the same time: when one has
+/// fewer plans than the other, its half of the last instances is empty and the fill pads it.
+///
+/// The checkpoints are merged rather than kept apart -- the `full_*` counters of one block and the
+/// byte ones of the other, per chunk -- which is what lets the plain `MemAlignCollector` feed a
+/// fused instance: no operation is counted by both blocks, because a `full_` block is never offered
+/// a byte operation (see `ROW_COST`).
+fn fuse_block_plans(full: Vec<Plan>, bytes: Vec<Plan>, air_id: usize) -> Vec<Plan> {
+    let instances = full.len().max(bytes.len());
+    let mut full = full.into_iter();
+    let mut bytes = bytes.into_iter();
+
+    (0..instances)
+        .map(|segment| {
+            let mut checkpoints: HashMap<ChunkId, MemAlignCheckPoint> = HashMap::new();
+
+            for (chunk_id, checkpoint) in full.next().map(take_checkpoints).unwrap_or_default() {
+                let entry = checkpoints
+                    .entry(chunk_id)
+                    .or_insert_with(|| empty_check_point(air_id, chunk_id));
+                entry.full_5 = checkpoint.full_5;
+                entry.full_3 = checkpoint.full_3;
+                entry.full_2 = checkpoint.full_2;
+            }
+            for (chunk_id, checkpoint) in bytes.next().map(take_checkpoints).unwrap_or_default() {
+                let entry = checkpoints
+                    .entry(chunk_id)
+                    .or_insert_with(|| empty_check_point(air_id, chunk_id));
+                entry.read_byte = checkpoint.read_byte;
+                entry.write_byte = checkpoint.write_byte;
+            }
+
+            // Sorted: the collect phase indexes an instance's collectors by the position of the
+            // chunk in this list.
+            let mut chunks: Vec<ChunkId> = checkpoints.keys().copied().collect();
+            chunks.sort_unstable();
+
+            Plan::new(
+                ZISK_AIRGROUP_ID,
+                air_id,
+                Some(SegmentId(segment)),
+                InstanceType::Instance,
+                CheckPoint::Multiple(chunks),
+                Some(Box::new(checkpoints)),
+            )
+        })
+        .collect()
+}
+
+fn take_checkpoints(plan: Plan) -> HashMap<ChunkId, MemAlignCheckPoint> {
+    *plan
+        .meta
+        .expect("a mem-align plan always carries its checkpoints")
+        .downcast::<HashMap<ChunkId, MemAlignCheckPoint>>()
+        .expect("a mem-align plan's meta is a map of checkpoints")
+}
+
+/// A checkpoint that collects nothing: a zero `collect_count` skips every operation of its kind.
+fn empty_check_point(air_id: usize, chunk_id: ChunkId) -> MemAlignCheckPoint {
+    MemAlignCheckPoint {
+        air_id,
+        chunk_id,
+        full_5: CollectCounter::new(0, 0),
+        full_3: CollectCounter::new(0, 0),
+        full_2: CollectCounter::new(0, 0),
+        read_byte: CollectCounter::new(0, 0),
+        write_byte: CollectCounter::new(0, 0),
     }
 }

@@ -78,6 +78,21 @@ pub const MEM_ALIGN_BYTE_LARGE_INSTANCE_COST: usize = 10015;
 /// `MemAlignReadByteLarge`: 8.65 GB.
 pub const MEM_ALIGN_READ_BYTE_LARGE_INSTANCE_COST: usize = 8858;
 
+/// `CompactMemAlign`: 3.93 GB, ESTIMATED — refresh from `build/setup.log` once the air has been
+/// set up. `MemAlign` and `MemAlignByte` fused into one, so one instance of it replaces one of each
+/// (2.94 + 4.89 = 7.83 GB) for about half the memory: the byte work rides on half the rows it takes
+/// in its own air, and the per-instance cost is paid once instead of twice.
+///
+/// The figure comes from the model the seven airs above fit to within 0.2%:
+/// `cost_MB = 1.98 * committed_trace_MB + 1996 * rows / 2**21`.
+pub const COMPACT_MEM_ALIGN_INSTANCE_COST: usize = 4024;
+
+/// `CompactMemAlignLarge`: 11.82 GB, ESTIMATED by the same model as `CompactMemAlign`. It holds
+/// four times the work -- 2**23 virtual rows in the `full_` block and 2**24 in the `bytes_` one,
+/// the capacity of `MemAlignLarge` plus two `MemAlignByteLarge` -- on twice the rows, twice as
+/// wide: four times the trace term and twice the row term.
+pub const COMPACT_MEM_ALIGN_LARGE_INSTANCE_COST: usize = 12102;
+
 /// `Arith`: 4.41 GB.
 pub const ARITH_INSTANCE_COST: usize = 4516;
 
@@ -277,6 +292,8 @@ mod tests {
                     MemAlignWriteByteTrace: MemAlignWriteByteTraceRow: MEM_ALIGN_WRITE_BYTE_INSTANCE_COST,
                     MemAlignByteLargeTrace: MemAlignByteLargeTraceRow: MEM_ALIGN_BYTE_LARGE_INSTANCE_COST,
                     MemAlignReadByteLargeTrace: MemAlignReadByteLargeTraceRow: MEM_ALIGN_READ_BYTE_LARGE_INSTANCE_COST,
+                    CompactMemAlignTrace: CompactMemAlignTraceRow: COMPACT_MEM_ALIGN_INSTANCE_COST,
+                    CompactMemAlignLargeTrace: CompactMemAlignLargeTraceRow: COMPACT_MEM_ALIGN_LARGE_INSTANCE_COST,
                     ArithTrace: ArithTraceRow: ARITH_INSTANCE_COST,
                     BinaryTrace: BinaryTraceRow: BINARY_INSTANCE_COST,
                     BinaryLargeTrace: BinaryLargeTraceRow: BINARY_LARGE_INSTANCE_COST,

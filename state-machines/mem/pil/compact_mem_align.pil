@@ -1,0 +1,452 @@
+require "std_permutation.pil"
+require "std_lookup.pil"
+require "std_range_check.pil"
+require "opids.pil"
+require "mem_align_rom.pil"
+
+/*
+    Compact Memory Align (CompactMemAlign)
+    ======================================
+
+    This machine is the fusion of TWO unaligned-access airs into a single one:
+
+      · the general unaligned access -- `MemAlign`     (state-machines/mem/pil/mem_align.pil)
+      · the byte-sized access        -- `MemAlignByte` (state-machines/mem/pil/mem_align_byte.pil)
+
+    Unlike the two airs it fuses, this is NOT a machine that proves one kind of access or the other:
+    EVERY row carries the two of them at once. Each block keeps its own lanes, its own columns and
+    its own air values; the blocks share nothing but the row index, and no constraint crosses from
+    one block to another. Read this file as two independent airs stacked side by side.
+
+        ROW i   ┌──────────────────────────────────────────────────────────────────┐
+                │ full_*  : full_lanes_x_row  lanes of the `MemAlign` sequence      │
+                │ bytes_* : bytes_lanes_x_row lanes of the `MemAlignByte` sequence  │
+                └──────────────────────────────────────────────────────────────────┘
+
+    Why
+    ───
+
+    Both airs are always proved together -- a program that reads a byte across a word boundary feeds
+    the byte air, one that reads a half-word or a word across it feeds the general air -- and each
+    one opens a segment that is far from full. Two instances are therefore paid for what fits in
+    one. What costs is not the basic proof but the recursion over the number of instances, so
+    merging the two removes one instance from every execution that has both kinds of access.
+
+    Unlike `CompactMem`, neither air keeps a continuation chain: their rows are self-contained (a
+    `MemAlign` sub-program never spans two segments, a `MemAlignByte` row never depends on another),
+    so this air is not tied to "the first segment" of anything. It proves whatever the planner hands
+    it, and the standalone airs prove what is left over.
+
+    LANES
+    ─────
+
+    A "lane" is the full set of columns that used to belong to ONE row of the air it comes from.
+    With `lanes_x_row` > 1 each row packs that many CONSECUTIVE rows of that air, ordered
+    0 .. lanes_x_row - 1, so the row before lane `l` > 0 is lane `l - 1` of the same row, and the
+    row before lane 0 is the last lane (LAST_LANE) of the previous row. This is the same lane
+    convention as `Mem` and `Main`: planning counts VIRTUAL rows, and the virtual row `p` lives on
+    the physical row `p / lanes_x_row`, at the lane `p % lanes_x_row`.
+
+    For the `bytes_` block the convention costs nothing -- `MemAlignByte` rows are independent of
+    each other, so a lane is just a copy of the air with no chaining at all.
+
+    For the `full_` block it is what makes the fusion size-able: `MemAlign` is a small processor
+    whose sub-programs span 2 to 5 CONSECUTIVE rows, and every constraint that looked at the next or
+    the previous row now looks at the next or the previous LANE. A sub-program therefore runs across
+    lanes and rolls over to the next row exactly as it used to roll over to the next row before, and
+    a segment holds N * full_lanes_x_row of them instead of N.
+
+    Is this really the same air, twice?
+    ───────────────────────────────────
+
+    It is meant to be, and it can be checked. Compile a PIL that instantiates `MemAlign`,
+    `MemAlignByte` and `CompactMemAlign(full_lanes_x_row: 1, bytes_lanes_x_row: 1)` side by side
+    with `-O output-constraints -O raw-constraints-format`, strip the block prefixes, and compare the
+    constraint sets: they match one for one, and so do the range checks.
+
+    The bus interactions differ in shape but not in content: the two blocks share one gsum
+    accumulator, so the standard library packs their terms into different clusters than it does when
+    each air accumulates on its own.
+*/
+
+airtemplate CompactMemAlign(const int N = 2**21, const int RC = 2, const int CHUNK_NUM = 8,
+                            const int CHUNK_BITS = 8,
+
+                            // General unaligned-access block -- mirrors `MemAlign(...)`
+                            const int full_lanes_x_row = 1,
+
+                            // Byte-access block -- mirrors `MemAlignByte(..., read: ..., write: ...)`
+                            const int bytes_lanes_x_row = 1,
+                            const int bytes_read = 1, const int bytes_write = 1) {
+
+    // Witness generation maps virtual rows to (row, lane) with a shift and a mask
+    // (see MemLanes in state-machines/mem-common/src/mem_lanes.rs), so every lane count must be a
+    // power of two.
+    assert(full_lanes_x_row >= 1 && (full_lanes_x_row & (full_lanes_x_row - 1)) == 0,
+           `full_lanes_x_row must be a power of two but it's ${full_lanes_x_row}`);
+    assert(bytes_lanes_x_row >= 1 && (bytes_lanes_x_row & (bytes_lanes_x_row - 1)) == 0,
+           `bytes_lanes_x_row must be a power of two but it's ${bytes_lanes_x_row}`);
+    assert(bytes_read == 1 || bytes_write == 1, "the bytes block must do reads, writes or both");
+
+    // index of the last lane of a row, the lane that the first lane of the next row chains from.
+    const int FULL_LAST_LANE = full_lanes_x_row - 1;
+
+    // The two blocks share the first-row selector: it is a property of the air, not of the block.
+    // `get_L1()` declares `__L1__` once per air, so both blocks get the same one.
+    const expr SEGMENT_L1 = get_L1();
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // BLOCK 1 of 2 -- GENERAL UNALIGNED ACCESS
+    //
+    // Transcription of `MemAlign` (state-machines/mem/pil/mem_align.pil) with every name prefixed
+    // `full_` and every row of the original turned into a lane. See that file for the four
+    // sub-programs (RV, RWV, RVR, RWVWR) this block proves.
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    const int CHUNKS_BY_RC = CHUNK_NUM / RC;
+
+    col witness bits(29) full_addr[full_lanes_x_row];
+    col witness bits(3) full_offset[full_lanes_x_row];
+    col witness bits(4) full_width[full_lanes_x_row];
+    col witness bits(1) full_wr[full_lanes_x_row];
+    col witness bits(8) full_pc[full_lanes_x_row];
+    col witness bits(1) full_reset[full_lanes_x_row];
+    col witness bits(1) full_sel_up_to_down[full_lanes_x_row];
+    col witness bits(1) full_sel_down_to_up[full_lanes_x_row];
+    col witness bits(1) full_is_non_aligned_op[full_lanes_x_row];
+    col witness bits(1) full_sel_w_lt8[full_lanes_x_row];
+    col witness bits(1) full_sel_w_lt4[full_lanes_x_row];
+    col witness bits(1) full_sel_w_lt2[full_lanes_x_row];
+    col witness bits(8) full_reg[full_lanes_x_row][CHUNK_NUM];
+    col witness bits(1) full_sel[full_lanes_x_row][CHUNK_NUM];
+    col witness bits(40) full_step[full_lanes_x_row];
+
+    // The lanes that PRECEDE and FOLLOW lane `lane`: the neighbouring lane of the same row, except
+    // on the edges of the row, where the chain steps to the previous / next row. These are the only
+    // places where the lane packing shows up -- everything else is lane-local.
+
+    const expr full_next_reg[full_lanes_x_row][CHUNK_NUM];
+    const expr full_previous_reg[full_lanes_x_row][CHUNK_NUM];
+    const expr full_next_pc[full_lanes_x_row];
+    const expr full_previous_addr[full_lanes_x_row];
+    const expr full_previous_step[full_lanes_x_row];
+    const expr full_previous_aligned_wr[full_lanes_x_row];
+
+    // 1] Ensure the MemAlign follows the program
+
+    // Range-check the 8 register bytes
+    for (int lane = 0; lane < full_lanes_x_row; ++lane) {
+        for (int i = 0; i < CHUNK_NUM; i += 2) {
+            range_dual_byte(full_reg[lane][i], full_reg[lane][i+1]);
+        }
+    }
+
+    // Registers should be bytes and be such that:
+    //  - next_reg == reg     in transitions R -> V, R -> W, W -> V,
+    //  - previous_reg == reg in transitions V <- R, W <- R, V <- W,
+    // in any case, sel_up_to_down and sel_down_to_up must be 0 in [V] rows.
+    for (int lane = 0; lane < full_lanes_x_row; ++lane) {
+        for (int i = 0; i < CHUNK_NUM; ++i) {
+            if (lane == FULL_LAST_LANE) {
+                full_next_reg[lane][i] = full_reg[0][i]';
+            } else {
+                full_next_reg[lane][i] = full_reg[lane + 1][i];
+            }
+            if (lane == 0) {
+                full_previous_reg[lane][i] = 'full_reg[FULL_LAST_LANE][i];
+            } else {
+                full_previous_reg[lane][i] = full_reg[lane - 1][i];
+            }
+
+            (full_next_reg[lane][i] - full_reg[lane][i]) * full_sel[lane][i] * full_sel_up_to_down[lane] === 0;
+            (full_previous_reg[lane][i] - full_reg[lane][i]) * full_sel[lane][i] * full_sel_down_to_up[lane] === 0;
+        }
+    }
+
+    // The step is constant within a sub-program except on the two,
+    // aligned-write rows which sit one step above it:
+    //  - step == previous_step     in transitions R -> V, V <- R,
+    //  - step == previous_step + 1 in transitions R -> W, V <- W,
+    //  - step == previous_step - 1 in transitions W -> V, W <- R,
+    //
+    //  | Program | Row | reset | wr | U2D | D2U |         constraint         |
+    //  |---------|-----|-------|----|-----|-----|----------------------------|
+    //  |  RV     |  R  |   1   |  0 | 1   | 0   |    0 == 0                  |
+    //  |  RV     |  V  |   0   |  0 | 0   | 0   | step == previous_step      |
+    //  |  RWV    |  R  |   1   |  0 | 1   | 0   |    0 == 0                  |
+    //  |  RWV    |  W  |   0   |  1 | 1   | 0   | step == previous_step + 1  |
+    //  |  RWV    |  V  |   0   |  1 | 0   | 0   | step == previous_step - 1  |
+    //  |  RVR    |  R  |   1   |  0 | 1   | 0   |    0 == 0                  |
+    //  |  RVR    |  V  |   0   |  0 | 0   | 0   | step == previous_step      |
+    //  |  RVR    |  R  |   0   |  0 | 0   | 1   | step == previous_step      |
+    //  |  RWVWR  |  R  |   1   |  0 | 1   | 0   |    0 == 0                  |
+    //  |  RWVWR  |  W  |   0   |  1 | 1   | 0   | step == previous_step + 1  |
+    //  |  RWVWR  |  V  |   0   |  1 | 0   | 0   | step == previous_step - 1  |
+    //  |  RWVWR  |  W  |   0   |  1 | 0   | 1   | step == previous_step + 1  |
+    //  |  RWVWR  |  R  |   0   |  0 | 0   | 1   | step == previous_step - 1  |
+    const expr full_aligned_wr[full_lanes_x_row];
+    for (int lane = 0; lane < full_lanes_x_row; ++lane) {
+        full_aligned_wr[lane] = full_wr[lane] * (full_sel_up_to_down[lane] + full_sel_down_to_up[lane]);
+    }
+
+    for (int lane = 0; lane < full_lanes_x_row; ++lane) {
+        if (lane == 0) {
+            full_previous_step[lane] = 'full_step[FULL_LAST_LANE];
+            full_previous_aligned_wr[lane] = 'full_wr[FULL_LAST_LANE] * ('full_sel_up_to_down[FULL_LAST_LANE] + 'full_sel_down_to_up[FULL_LAST_LANE]);
+        } else {
+            full_previous_step[lane] = full_step[lane - 1];
+            full_previous_aligned_wr[lane] = full_aligned_wr[lane - 1];
+        }
+
+        (1 - full_reset[lane]) * ((full_step[lane] - full_aligned_wr[lane]) - (full_previous_step[lane] - full_previous_aligned_wr[lane])) === 0;
+    }
+
+    // The program should start at the first line. The first virtual row of the segment is lane 0 of
+    // the first row; every other lane continues a program instead of starting the segment.
+    SEGMENT_L1 * full_pc[0] === 0;
+
+    // We compress selectors, so we should ensure they are binary
+    for (int lane = 0; lane < full_lanes_x_row; ++lane) {
+        for (int i = 0; i < CHUNK_NUM; ++i) {
+            full_sel[lane][i] * (1 - full_sel[lane][i]) === 0;
+        }
+        full_wr[lane] * (1 - full_wr[lane]) === 0;
+        full_reset[lane] * (1 - full_reset[lane]) === 0;
+        full_sel_up_to_down[lane] * (1 - full_sel_up_to_down[lane]) === 0;
+        full_sel_down_to_up[lane] * (1 - full_sel_down_to_up[lane]) === 0;
+        full_is_non_aligned_op[lane] * (1 - full_is_non_aligned_op[lane]) === 0;
+        full_sel_w_lt8[lane] * (1 - full_sel_w_lt8[lane]) === 0;
+        full_sel_w_lt4[lane] * (1 - full_sel_w_lt4[lane]) === 0;
+        full_sel_w_lt2[lane] * (1 - full_sel_w_lt2[lane]) === 0;
+    }
+
+    col witness bits(64, signed) full_delta_addr[full_lanes_x_row];
+
+    for (int lane = 0; lane < full_lanes_x_row; ++lane) {
+        expr flags = 0;
+        for (int i = 0; i < CHUNK_NUM; ++i) {
+            flags += full_sel[lane][i] * 2**i;
+        }
+        flags += full_wr[lane] * 2**CHUNK_NUM + full_reset[lane] * 2**(CHUNK_NUM + 1) +
+                 full_sel_up_to_down[lane] * 2**(CHUNK_NUM + 2) + full_sel_down_to_up[lane] * 2**(CHUNK_NUM + 3) +
+                 full_is_non_aligned_op[lane] * 2**(CHUNK_NUM + 4) + full_sel_w_lt8[lane] * 2**(CHUNK_NUM + 5) +
+                 full_sel_w_lt4[lane] * 2**(CHUNK_NUM + 6) + full_sel_w_lt2[lane] * 2**(CHUNK_NUM + 7);
+
+        if (lane == FULL_LAST_LANE) {
+            full_next_pc[lane] = full_pc[0]';
+        } else {
+            full_next_pc[lane] = full_pc[lane + 1];
+        }
+        if (lane == 0) {
+            full_previous_addr[lane] = 'full_addr[FULL_LAST_LANE];
+        } else {
+            full_previous_addr[lane] = full_addr[lane - 1];
+        }
+
+        // Perform the lookup against the program
+        const expr delta_pc = full_next_pc[lane] - full_pc[lane];
+        full_delta_addr[lane] <== (full_addr[lane] - full_previous_addr[lane]) * (1 - full_reset[lane]);
+        lookup_assumes(MEMORY_ALIGN_ROM_ID, [full_pc[lane], delta_pc, full_delta_addr[lane], full_offset[lane], full_width[lane], flags]);
+    }
+
+    // 2] Assume aligned memory accesses against the Memory component
+
+    col witness bits(32) full_value[full_lanes_x_row][RC];
+
+    for (int lane = 0; lane < full_lanes_x_row; ++lane) {
+        const expr is_aligned_op = full_sel_up_to_down[lane] + full_sel_down_to_up[lane];
+
+        // Offset should be 0 in aligned memory accesses, but this is ensured by the rom
+        // Width should be 8 in aligned memory accesses, but this is ensured by the rom
+
+        // On assume rows, we reconstruct the value from the registers directly
+        expr aligned_val[RC];
+        for (int rc_index = 0; rc_index < RC; rc_index++) {
+            aligned_val[rc_index] = 0;
+            int base = 1;
+            for (int _offset = 0; _offset < CHUNKS_BY_RC; _offset++) {
+                aligned_val[rc_index] += full_reg[lane][_offset + rc_index * CHUNKS_BY_RC] * base;
+                base *= 256;
+            }
+        }
+
+        // 3] Prove unaligned memory accesses against the Main component
+
+        // On prove rows, we reconstruct the value in the correct manner chosen by the selectors
+        expr non_aligned_val[RC];
+        for (int rc_index = 0; rc_index < RC; rc_index++) {
+            non_aligned_val[rc_index] = 0;
+        }
+        for (int _offset = 0; _offset < CHUNK_NUM; _offset++) {
+            for (int rc_index = 0; rc_index < RC; rc_index++) {
+                expr _tmp = 0;
+                int base = 1;
+                for (int ichunk = 0; ichunk < CHUNKS_BY_RC; ichunk++) {
+                    _tmp += full_reg[lane][(_offset + rc_index * CHUNKS_BY_RC + ichunk) % CHUNK_NUM] * base;
+                    base *= 256;
+                }
+                non_aligned_val[rc_index] += full_sel[lane][_offset] * _tmp;
+            }
+        }
+
+        // We prove and assume with the same permutation check but with disjoint and different sign selectors
+        for (int i = 0; i < RC; i++) {
+            full_value[lane][i] === full_is_non_aligned_op[lane] * non_aligned_val[i] + is_aligned_op * aligned_val[i];
+        }
+
+        // Zero every value byte at position >= width on LOAD prove rows.
+        expr vbyte[CHUNKS_BY_RC];
+        for (int k = 0; k < CHUNKS_BY_RC; k++) {
+            vbyte[k] = 0;
+            for (int _offset = 0; _offset < CHUNK_NUM; _offset++) {
+                vbyte[k] += full_sel[lane][_offset] * full_reg[lane][(_offset + k) % CHUNK_NUM];
+            }
+        }
+        full_sel_w_lt8[lane] * full_value[lane][RC-1] === 0; // width < 8 => bytes 4..7 should be zero
+        full_sel_w_lt4[lane] * vbyte[3]              === 0; // width < 4 => byte 3 should be zero
+        full_sel_w_lt4[lane] * vbyte[2]              === 0; // width < 4 => byte 2 should be zero
+        full_sel_w_lt2[lane] * vbyte[1]              === 0; // width < 2 => byte 1 should be zero
+
+        permutation(MEMORY_ID,
+                    expressions: [full_wr[lane] * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP,
+                                  full_addr[lane] * CHUNK_NUM + full_offset[lane],
+                                  full_step[lane], full_width[lane], ...full_value[lane]],
+                    sel: full_is_non_aligned_op[lane] - is_aligned_op, sel_is_ternary: 1);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // BLOCK 2 of 2 -- BYTE ACCESS
+    //
+    // Transcription of `MemAlignByte` (state-machines/mem/pil/mem_align_byte.pil) with every name
+    // prefixed `bytes_` and every row of the original turned into a lane. Rows of that air are
+    // independent of each other, so a lane here is a plain copy: no constraint of this block ever
+    // looks at another lane or at another row.
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    const int p2_16 = 2**16;
+    const int p2_8 = 2**8;
+    const int p2_24 = 2**24;
+
+    col witness bits(1) bytes_sel_high_4b[bytes_lanes_x_row];
+    col witness bits(1) bytes_sel_high_2b[bytes_lanes_x_row];
+    col witness bits(1) bytes_sel_high_b[bytes_lanes_x_row];
+
+    col witness bits(32) bytes_direct_value[bytes_lanes_x_row];
+    col witness bits(32) bytes_composed_value[bytes_lanes_x_row];
+
+    if (bytes_write == 1) {
+        col witness bits(32) air.bytes_written_composed_value[bytes_lanes_x_row];
+        col witness bits(8) air.bytes_written_byte_value[bytes_lanes_x_row];
+
+        for (int lane = 0; lane < bytes_lanes_x_row; ++lane) {
+            range_check(min: 0, max: 0xFF, expression: air.bytes_written_byte_value[lane]);
+        }
+    }
+
+    col witness bits(16) bytes_value_16b[bytes_lanes_x_row];
+    col witness bits(8) bytes_value_8b[bytes_lanes_x_row];
+    col witness bits(8) bytes_byte_value[bytes_lanes_x_row];
+
+    col witness bits(29) bytes_addr_w[bytes_lanes_x_row];
+    col witness bits(40) bytes_step[bytes_lanes_x_row];
+
+    if (bytes_read == 1 && bytes_write == 1) {
+        col witness bits(1) air.bytes_is_write[bytes_lanes_x_row];
+        for (int lane = 0; lane < bytes_lanes_x_row; ++lane) {
+            bytes_is_write[lane] * (1 - bytes_is_write[lane]) === 0;
+        }
+    }
+
+    if (bytes_write == 1) {
+        col witness bits(32) air.bytes_mem_write_values[bytes_lanes_x_row][2];
+    }
+
+    if (bytes_read == 1 && bytes_write == 1) {
+        col witness bits(8) air.bytes_bus_byte[bytes_lanes_x_row];
+    }
+
+    for (int lane = 0; lane < bytes_lanes_x_row; ++lane) {
+        bytes_sel_high_4b[lane] * (1 - bytes_sel_high_4b[lane]) === 0;
+        bytes_sel_high_2b[lane] * (1 - bytes_sel_high_2b[lane]) === 0;
+        bytes_sel_high_b[lane] * (1 - bytes_sel_high_b[lane]) === 0;
+
+        const expr offset = bytes_sel_high_4b[lane] * 4 + bytes_sel_high_2b[lane] * 2 + bytes_sel_high_b[lane];
+        const expr main_addr = bytes_addr_w[lane] * 8 + offset;
+        const expr mem_addr = bytes_addr_w[lane] * 8;
+
+        const expr byte_value_factor = p2_24 * bytes_sel_high_2b[lane] * bytes_sel_high_b[lane] +
+                                       p2_16 * bytes_sel_high_2b[lane] * (1 - bytes_sel_high_b[lane]) +
+                                       p2_8 * (1 - bytes_sel_high_2b[lane]) * bytes_sel_high_b[lane] +
+                                       (1 - bytes_sel_high_2b[lane]) * (1 - bytes_sel_high_b[lane]);
+
+        const expr value_8b_factor = p2_24 * bytes_sel_high_2b[lane] * (1 - bytes_sel_high_b[lane]) +
+                                     p2_16 * bytes_sel_high_2b[lane] * bytes_sel_high_b[lane] +
+                                     p2_8 * (1 - bytes_sel_high_2b[lane]) * (1 - bytes_sel_high_b[lane]) +
+                                     (1 - bytes_sel_high_2b[lane]) * bytes_sel_high_b[lane];
+
+        const expr value_16b_factor = p2_16 * (1 - bytes_sel_high_2b[lane]) + bytes_sel_high_2b[lane];
+
+        bytes_composed_value[lane] === bytes_byte_value[lane] * byte_value_factor +
+                                       bytes_value_8b[lane] * value_8b_factor +
+                                       bytes_value_16b[lane] * value_16b_factor;
+
+        const expr mem_read_values[2];
+
+        mem_read_values[0] = bytes_sel_high_4b[lane] * (bytes_direct_value[lane] - bytes_composed_value[lane]) + bytes_composed_value[lane];
+        mem_read_values[1] = bytes_sel_high_4b[lane] * (bytes_composed_value[lane] - bytes_direct_value[lane]) + bytes_direct_value[lane];
+
+        permutation_assumes(MEMORY_ID, [MEMORY_LOAD_OP, mem_addr, bytes_step[lane], 8, ...mem_read_values]);
+
+        const expr is_write;
+        if (bytes_read == 1 && bytes_write == 1) {
+            is_write = bytes_is_write[lane];
+        } else if (bytes_read == 1) {
+            is_write = 0;
+        } else {
+            is_write = 1;
+        }
+
+        const expr mem_op = MEMORY_LOAD_OP + is_write * (MEMORY_STORE_OP - MEMORY_LOAD_OP);
+
+        if (bytes_write == 1) {
+            bytes_written_composed_value[lane] === bytes_written_byte_value[lane] * byte_value_factor +
+                                                   bytes_value_8b[lane] * value_8b_factor +
+                                                   bytes_value_16b[lane] * value_16b_factor;
+
+            bytes_mem_write_values[lane][0] === bytes_sel_high_4b[lane] * (bytes_direct_value[lane] - bytes_written_composed_value[lane]) + bytes_written_composed_value[lane];
+            bytes_mem_write_values[lane][1] === bytes_sel_high_4b[lane] * (bytes_written_composed_value[lane] - bytes_direct_value[lane]) + bytes_direct_value[lane];
+
+            permutation_assumes(MEMORY_ID, [MEMORY_STORE_OP, mem_addr, bytes_step[lane] + 1, 8, ...bytes_mem_write_values[lane]], sel: is_write, sel_is_binary: 1);
+        }
+
+        if (bytes_read == 1 && bytes_write == 1) {
+            bytes_bus_byte[lane] === is_write * (bytes_written_byte_value[lane] - bytes_byte_value[lane]) + bytes_byte_value[lane];
+            permutation_proves(MEMORY_ID, [mem_op, main_addr, bytes_step[lane], 1, bytes_bus_byte[lane], 0]);
+        } else if (bytes_read == 1) {
+            permutation_proves(MEMORY_ID, [MEMORY_LOAD_OP, main_addr, bytes_step[lane], 1, bytes_byte_value[lane], 0]);
+        } else {
+            permutation_proves(MEMORY_ID, [MEMORY_STORE_OP, main_addr, bytes_step[lane], 1, bytes_written_byte_value[lane], 0]);
+        }
+
+        range_check(min: 0, max: 0xFFFF, expression: bytes_value_16b[lane]);
+        range_dual_byte(bytes_byte_value[lane], bytes_value_8b[lane]);
+    }
+
+    // The byte block sends its memory operations to the bus unconditionally, so the padding lanes
+    // send theirs too: one aligned LOAD of the zero word and one byte access of the zero address.
+    // `padding_size` counts them -- in VIRTUAL rows, the padding of every lane of every unused row
+    // -- and the direct updates below cancel them out, exactly as in `MemAlignByte`.
+    airval bytes_padding_size;
+    direct_update_proves(MEMORY_ID, [MEMORY_LOAD_OP, 0, 0, 8, 0, 0], sel: bytes_padding_size);
+
+    // read + write => padding is_write = 0 => no extra WRITE padding
+    // read => padding with LOAD
+    // write => extra padding with WRITE
+
+    if (bytes_read == 0 && bytes_write == 1) {
+        direct_update_assumes(MEMORY_ID, [MEMORY_STORE_OP, 0, 0, 1, 0, 0], sel: bytes_padding_size);
+        direct_update_proves(MEMORY_ID, [MEMORY_STORE_OP, 0, 1, 8, 0, 0], sel: bytes_padding_size);
+    } else {
+        direct_update_assumes(MEMORY_ID, [MEMORY_LOAD_OP, 0, 0, 1, 0, 0], sel: bytes_padding_size);
+    }
+}

@@ -1,3 +1,6 @@
+mod compact_mem_align_instance;
+mod compact_mem_align_rows;
+mod compact_mem_align_sm;
 mod compact_mem_collector;
 mod compact_mem_instance;
 mod compact_mem_sm;
@@ -23,6 +26,9 @@ mod mem_test;
 mod mem_witness_split;
 mod rom_data_sm;
 
+pub use compact_mem_align_instance::*;
+use compact_mem_align_rows::*;
+pub use compact_mem_align_sm::*;
 pub use compact_mem_collector::*;
 pub use compact_mem_instance::*;
 pub use compact_mem_sm::*;

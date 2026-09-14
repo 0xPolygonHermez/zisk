@@ -36,6 +36,15 @@ pub struct AirChoice {
 
     /// Area of one instance: its rows times the columns the setup commits for it.
     pub memory: u64,
+
+    /// Set when this entry is one BLOCK of a fused air.
+    ///
+    /// A fused air -- `CompactMemAlign` and its like -- carries several sequences side by side on
+    /// every row, each with a row budget of its own, so it is offered to the strategy as one entry
+    /// per block. Entries sharing a group are instantiated together: the family opens as many
+    /// instances of the air as its fullest block needs, not the sum of what each block needs, and
+    /// pays the air's memory once. Every member must therefore carry the air's whole `memory`.
+    pub block_group: Option<usize>,
 }
 
 impl AirChoice {
@@ -45,7 +54,24 @@ impl AirChoice {
     /// looked up by `air_id` on purpose: air ids are positional, so a lookup would follow the PIL's
     /// numbering instead of the air the caller meant.
     pub fn new(airgroup_id: usize, air_id: usize, rows: usize, cost: usize) -> Self {
-        Self { airgroup_id, air_id, rows: rows as u64, memory: cost as u64 }
+        Self { airgroup_id, air_id, rows: rows as u64, memory: cost as u64, block_group: None }
+    }
+
+    /// Builds a choice for one block of a fused air. `cost` is the whole air's, on every block.
+    pub fn block_of(
+        airgroup_id: usize,
+        air_id: usize,
+        rows: usize,
+        cost: usize,
+        group: usize,
+    ) -> Self {
+        Self {
+            airgroup_id,
+            air_id,
+            rows: rows as u64,
+            memory: cost as u64,
+            block_group: Some(group),
+        }
     }
 }
 
@@ -101,6 +127,30 @@ pub fn select_airs(kinds: &[Vec<(usize, u64)>], airs: &[AirChoice]) -> Selection
 
     let mut best: Option<(Cost, Vec<u64>, Vec<usize>)> = None;
 
+    // The blocks of each fused air, and which entry of a group pays for it. A group's instances are
+    // what its fullest block needs, counted and paid for once.
+    let mut blocks: Vec<Vec<usize>> = Vec::new();
+    let mut pays: Vec<bool> = vec![true; airs.len()];
+    for (index, air) in airs.iter().enumerate() {
+        let Some(group) = air.block_group else { continue };
+        match blocks
+            .iter()
+            .position(|members: &Vec<usize>| airs[members[0]].block_group == Some(group))
+        {
+            Some(existing) => {
+                assert_eq!(
+                    air.memory, airs[blocks[existing][0]].memory,
+                    "air {} is a block of the same fused air as air {}, so it must carry the same \
+                     memory: a block pays for the whole air",
+                    air.air_id, airs[blocks[existing][0]].air_id,
+                );
+                blocks[existing].push(index);
+                pays[index] = false;
+            }
+            None => blocks.push(vec![index]),
+        }
+    }
+
     // Mixed-radix counter over the option lists: combo[i] indexes into kinds[i].
     let mut combo = vec![0usize; kinds.len()];
     loop {
@@ -113,11 +163,27 @@ pub fn select_airs(kinds: &[Vec<(usize, u64)>], airs: &[AirChoice]) -> Selection
             }
         }
 
-        let instances: Vec<u64> =
+        let mut instances: Vec<u64> =
             rows.iter().zip(airs).map(|(&r, air)| r.div_ceil(air.rows)).collect();
+
+        // One instance of a fused air is one of each of its blocks, so the air opens as many as its
+        // fullest block needs and every block reports that count.
+        for members in &blocks {
+            let opened = members.iter().map(|&m| instances[m]).max().expect("a group has members");
+            for &member in members {
+                instances[member] = opened;
+            }
+        }
+
         let cost = Cost {
-            instances: instances.iter().sum(),
-            memory: instances.iter().zip(airs).map(|(&n, air)| n * air.memory).sum(),
+            instances: instances.iter().zip(&pays).filter(|(_, &pays)| pays).map(|(&n, _)| n).sum(),
+            memory: instances
+                .iter()
+                .zip(airs)
+                .zip(&pays)
+                .filter(|(_, &pays)| pays)
+                .map(|((&n, air), _)| n * air.memory)
+                .sum(),
         };
 
         if best.as_ref().map_or(true, |(b, _, _)| cost < *b) {
@@ -207,8 +273,8 @@ mod tests {
     /// A size ladder: same width, the taller air twice the rows and twice the memory.
     fn ladder() -> [AirChoice; 2] {
         [
-            AirChoice { airgroup_id: 0, air_id: 0, rows: 100, memory: 100 },
-            AirChoice { airgroup_id: 0, air_id: 1, rows: 200, memory: 200 },
+            AirChoice { airgroup_id: 0, air_id: 0, rows: 100, memory: 100, block_group: None },
+            AirChoice { airgroup_id: 0, air_id: 1, rows: 200, memory: 200, block_group: None },
         ]
     }
 
@@ -255,8 +321,8 @@ mod tests {
     fn kinds_share_an_air_rather_than_open_two() {
         // Kind 0 can go to the specialised air 0 or the general air 1; kind 1 only to air 1.
         let airs = [
-            AirChoice { airgroup_id: 0, air_id: 0, rows: 100, memory: 50 },
-            AirChoice { airgroup_id: 0, air_id: 1, rows: 100, memory: 100 },
+            AirChoice { airgroup_id: 0, air_id: 0, rows: 100, memory: 50, block_group: None },
+            AirChoice { airgroup_id: 0, air_id: 1, rows: 100, memory: 100, block_group: None },
         ];
         let kinds = vec![vec![(0, 40), (1, 40)], vec![(1, 40)]];
 
@@ -270,8 +336,8 @@ mod tests {
     #[test]
     fn the_cheaper_air_takes_what_it_can_on_a_tie() {
         let airs = [
-            AirChoice { airgroup_id: 0, air_id: 0, rows: 100, memory: 50 },
-            AirChoice { airgroup_id: 0, air_id: 1, rows: 100, memory: 100 },
+            AirChoice { airgroup_id: 0, air_id: 0, rows: 100, memory: 50, block_group: None },
+            AirChoice { airgroup_id: 0, air_id: 1, rows: 100, memory: 100, block_group: None },
         ];
         let kinds = vec![vec![(0, 80), (1, 80)], vec![(1, 80)]];
 
@@ -279,6 +345,41 @@ mod tests {
         assert_eq!(selection.instances, vec![1, 1]);
         assert_eq!(selection.assignment[0], 0, "the specialised air is the cheaper home");
         assert_eq!(selection.cost, Cost { instances: 2, memory: 150 });
+    }
+
+    /// The blocks of a fused air are instantiated together: it opens one instance for both kinds and
+    /// pays its memory once, which is what makes fusing worth it.
+    #[test]
+    fn a_fused_air_is_one_instance_for_all_its_blocks() {
+        let airs = [
+            AirChoice::new(0, 0, 100, 60),          // the air kind 0 has of its own
+            AirChoice::new(0, 1, 100, 60),          // the air kind 1 has of its own
+            AirChoice::block_of(0, 2, 100, 100, 0), // the fused air, block of kind 0
+            AirChoice::block_of(0, 3, 100, 100, 0), // the fused air, block of kind 1
+        ];
+        let kinds = vec![vec![(0, 80), (2, 80)], vec![(1, 80), (3, 80)]];
+
+        let selection = select_airs(&kinds, &airs);
+        assert_eq!(selection.instances, vec![0, 0, 1, 1], "one fused instance holds both kinds");
+        assert_eq!(selection.cost, Cost { instances: 1, memory: 100 });
+    }
+
+    /// What a fused air opens is what its FULLEST block needs: the blocks have budgets of their own,
+    /// so the one that overflows is the one that decides, and the emptier block rides along.
+    #[test]
+    fn a_fused_air_opens_what_its_fullest_block_needs() {
+        let airs = [
+            AirChoice::new(0, 0, 100, 60),
+            AirChoice::new(0, 1, 100, 60),
+            AirChoice::block_of(0, 2, 100, 100, 0),
+            AirChoice::block_of(0, 3, 100, 100, 0),
+        ];
+        // Kind 0 needs three instances of its block, kind 1 only one.
+        let kinds = vec![vec![(0, 250), (2, 250)], vec![(1, 80), (3, 80)]];
+
+        let selection = select_airs(&kinds, &airs);
+        assert_eq!(selection.instances, vec![0, 0, 3, 3]);
+        assert_eq!(selection.cost, Cost { instances: 3, memory: 300 });
     }
 
     /// A kind with no option contributes nothing rather than panicking, so a family may list a kind

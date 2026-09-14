@@ -302,6 +302,7 @@ macro_rules! zisk_precompile_explicit {
                             air_id: info.air_id,
                             rows: info.num_ops as u64,
                             memory: cost as u64,
+                            block_group: None,
                         })
                         .collect();
 
