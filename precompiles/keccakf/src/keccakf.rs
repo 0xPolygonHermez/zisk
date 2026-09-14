@@ -8,9 +8,6 @@ use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
 use zisk_common::OperationKeccakData;
 use zisk_pil::{KeccakfTraceRowOps, ZISK_AIRGROUP_ID};
-use zisk_precomp_helpers::{
-    keccak_f_round, keccakf_bit_pos, keccakf_state_from_linear, KeccakState,
-};
 
 use super::{keccakf_constants::*, KeccakfChiTableSM, KeccakfXor5TableSM};
 
@@ -48,42 +45,78 @@ pub struct KeccakfSM<F: PrimeField64> {
     xor5_table_id: usize,
 }
 
-/// Per-instance round data derived from a clean (bit-valued) state:
-/// column sums (values in [0,5]) and their parities.
+/// A clean Keccak state in its native lane form: lane `x + 5y`, bit `z`.
+type LaneState = [u64; LANES];
+
+/// Per-instance round data derived from a clean state: the column sums (values
+/// in [0,5]) as three bit-planes, and their parities.
 struct ThetaColumns {
-    sums: [[u8; 64]; 5],
-    parities: [[u8; 64]; 5],
+    /// sum(x, z) = bit z of `sum_planes[0..3][x]`, weighted 1, 2, 4.
+    sum_planes: [[u64; 5]; 3],
+    parities: [u64; 5],
 }
 
 impl ThetaColumns {
-    fn from_state(state: &KeccakState) -> Self {
-        let mut sums = [[0u8; 64]; 5];
-        let mut parities = [[0u8; 64]; 5];
+    #[inline(always)]
+    fn from_state(state: &LaneState) -> Self {
+        let mut sum_planes = [[0u64; 5]; 3];
+        let mut parities = [0u64; 5];
         for x in 0..5 {
-            for z in 0..64 {
-                let sum = state[x][0][z]
-                    + state[x][1][z]
-                    + state[x][2][z]
-                    + state[x][3][z]
-                    + state[x][4][z];
-                sums[x][z] = sum;
-                parities[x][z] = sum % 2;
-            }
+            let (a, b, c, d, e) =
+                (state[x], state[x + 5], state[x + 10], state[x + 15], state[x + 20]);
+            // Two full adders over the five bit-planes, then the carries.
+            let s1 = a ^ b ^ c;
+            let c1 = (a & b) | (a & c) | (b & c);
+            let s0 = s1 ^ d ^ e;
+            let c2 = (s1 & d) | (s1 & e) | (d & e);
+            sum_planes[0][x] = s0;
+            sum_planes[1][x] = c1 ^ c2;
+            sum_planes[2][x] = c1 & c2;
+            parities[x] = s0;
         }
-        Self { sums, parities }
+        Self { sum_planes, parities }
     }
 
-    /// θ-output at the ρπ-source of χ-position (x, y, z): a clean state bit plus
-    /// two clean parities, value in [0,3]. Mirrors b = π(ρ(θ(state))).
     #[inline(always)]
-    fn theta_out_at_source(&self, state: &KeccakState, x: usize, y: usize, z: usize) -> u8 {
-        let sx = (x + 3 * y) % 5;
-        let sy = x;
-        let sz = (z + 64 - RHO_OFFSETS[sx][sy]) % 64;
-        state[sx][sy][sz]
-            + self.parities[(sx + 4) % 5][sz]
-            + self.parities[(sx + 1) % 5][(sz + 63) % 64]
+    fn sum_at(&self, x: usize, z: usize) -> u8 {
+        (((self.sum_planes[0][x] >> z) & 1)
+            + 2 * ((self.sum_planes[1][x] >> z) & 1)
+            + 4 * ((self.sum_planes[2][x] >> z) & 1)) as u8
     }
+}
+
+/// θ then ρπ, as two bit-planes of the per-position value in [0,3]: `lo + 2·hi`.
+/// `lo` is also the clean mod-2 state that χ consumes.
+#[inline(always)]
+fn theta_rho_pi(state: &LaneState, parities: &[u64; 5]) -> (LaneState, LaneState) {
+    let mut lo = [0u64; LANES];
+    let mut hi = [0u64; LANES];
+    for y in 0..5 {
+        for x in 0..5 {
+            // χ-position (x,y) reads ρπ from source (x+3y, x).
+            let (sx, sy) = ((x + 3 * y) % 5, x);
+            let a = state[sx + 5 * sy];
+            let b = parities[(sx + 4) % 5];
+            let c = parities[(sx + 1) % 5].rotate_left(1);
+            let rotation = RHO_OFFSETS[sx][sy] as u32;
+            lo[x + 5 * y] = (a ^ b ^ c).rotate_left(rotation);
+            hi[x + 5 * y] = ((a & b) | (a & c) | (b & c)).rotate_left(rotation);
+        }
+    }
+    (lo, hi)
+}
+
+/// Lane-wise χ and ι over the clean low θ plane.
+#[inline(always)]
+fn chi_iota(b: &LaneState, round: usize) -> LaneState {
+    let mut next = [0u64; LANES];
+    for y in 0..5 {
+        for x in 0..5 {
+            next[x + 5 * y] = b[x + 5 * y] ^ ((!b[(x + 1) % 5 + 5 * y]) & b[(x + 2) % 5 + 5 * y]);
+        }
+    }
+    next[0] ^= RC[round];
+    next
 }
 
 impl<F: PrimeField64> KeccakfSM<F> {
@@ -140,40 +173,32 @@ impl<F: PrimeField64> KeccakfSM<F> {
             trace[i].set_in_use_b(input_b.is_some());
         }
 
-        // Convert input states to 5x5x64 representation
-        let zero_state = [0u64; 25];
-        let mut state_a = keccakf_state_from_linear(&input_a.state);
-        let mut state_b = keccakf_state_from_linear(input_b.map_or(&zero_state, |b| &b.state));
+        // The two clean states stay in their native 25-lane form throughout.
+        let mut state_a = input_a.state;
+        let mut state_b = input_b.map_or([0u64; LANES], |b| b.state);
 
         // Boundary input groups: plain bits
-        Self::set_bits_group(trace, GROUP_IN_A, &state_a);
-        Self::set_bits_group(trace, GROUP_IN_B, &state_b);
+        Self::set_state_group(trace, GROUP_IN_A, &state_a, &[0u64; LANES]);
+        Self::set_state_group(trace, GROUP_IN_B, &state_b, &[0u64; LANES]);
 
         // Round groups
-        let mut cells = [0u8; WIDTH];
         let mut ta = [0u8; 5];
         let mut tb = [0u8; 5];
         let mut chi_accs = [0u32; LANE_BITS];
         for r in 0..=ROUNDS {
             // Sliced state-group of round r
             let group = GROUP_ROUND_0 + r * ROWS_PER_STATE;
-            for x in 0..5 {
-                for y in 0..5 {
-                    for z in 0..64 {
-                        cells[keccakf_bit_pos(x, y, z)] =
-                            state_a[x][y][z] + SLOT * state_b[x][y][z];
-                    }
-                }
-            }
-            Self::set_group(trace, group, &cells);
+            Self::set_state_group(trace, group, &state_a, &state_b);
 
             if r == ROUNDS {
                 break;
             }
 
-            // θ columns of both instances
+            // θ columns of both instances, then θρπ as two bit-planes
             let cols_a = ThetaColumns::from_state(&state_a);
             let cols_b = ThetaColumns::from_state(&state_b);
+            let (lo_a, hi_a) = theta_rho_pi(&state_a, &cols_a.parities);
+            let (lo_b, hi_b) = theta_rho_pi(&state_b, &cols_b.parities);
 
             // Committed sliced parities: position p = x·64+z lives at group-row
             // p / C_PER_ROW, column p % C_PER_ROW
@@ -183,7 +208,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     let pos = row * C_PER_ROW + j;
                     if pos < 320 {
                         let (x, z) = (pos / 64, pos % 64);
-                        *c_cell = cols_a.parities[x][z] + SLOT * cols_b.parities[x][z];
+                        *c_cell = (((cols_a.parities[x] >> z) & 1)
+                            + SLOT as u64 * ((cols_b.parities[x] >> z) & 1))
+                            as u8;
                     }
                 }
                 trace[group + row].set_all_c(&c_cells);
@@ -201,7 +228,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
                         let pos = row * C_PER_ROW + j;
                         if j < C_PER_ROW && pos < 320 {
                             let (x, z) = (pos / 64, pos % 64);
-                            sums[k] = (cols_a.sums[x][z], cols_b.sums[x][z]);
+                            sums[k] = (cols_a.sum_at(x, z), cols_b.sum_at(x, z));
                         }
                     }
                     xor5_hist[KeccakfXor5TableSM::calculate_table_row(&sums) as usize] += 1;
@@ -212,8 +239,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
             for y in 0..5 {
                 for z in 0..64 {
                     for x in 0..5 {
-                        ta[x] = cols_a.theta_out_at_source(&state_a, x, y, z);
-                        tb[x] = cols_b.theta_out_at_source(&state_b, x, y, z);
+                        let lane = x + 5 * y;
+                        ta[x] = (((lo_a[lane] >> z) & 1) + 2 * ((hi_a[lane] >> z) & 1)) as u8;
+                        tb[x] = (((lo_b[lane] >> z) & 1) + 2 * ((hi_b[lane] >> z) & 1)) as u8;
                     }
                     let rc = y == 0 && ((RC[r] >> z) & 1) == 1;
                     let chi_row = KeccakfChiTableSM::calculate_table_row(&ta, &tb, rc);
@@ -232,49 +260,35 @@ impl<F: PrimeField64> KeccakfSM<F> {
             }
 
             // Advance both instances one round
-            keccak_f_round(&mut state_a, r);
-            keccak_f_round(&mut state_b, r);
-            Self::reduce_mod2(&mut state_a);
-            Self::reduce_mod2(&mut state_b);
+            state_a = chi_iota(&lo_a, r);
+            state_b = chi_iota(&lo_b, r);
         }
 
         // Boundary output groups: plain bits of the final states
-        Self::set_bits_group(trace, GROUP_OUT_A, &state_a);
-        Self::set_bits_group(trace, GROUP_OUT_B, &state_b);
+        Self::set_state_group(trace, GROUP_OUT_A, &state_a, &[0u64; LANES]);
+        Self::set_state_group(trace, GROUP_OUT_B, &state_b, &[0u64; LANES]);
     }
 
-    /// Writes 1600 lane-major cells into the ROWS_PER_STATE rows of a state-group:
-    /// group-row k holds the lanes [k·LANES_PER_ROW, (k+1)·LANES_PER_ROW).
+    /// Writes a sliced state a + SLOT·b into the ROWS_PER_STATE rows of a group:
+    /// group-row y holds plane y, with lane x at columns [64x, 64x+64).
     #[inline(always)]
-    fn set_group<R: KeccakfTraceRowOps<F>>(trace: &mut [R], first_row: usize, cells: &[u8; WIDTH]) {
-        for k in 0..ROWS_PER_STATE {
-            let row_cells: &[u8; BITS_PER_ROW] =
-                cells[k * BITS_PER_ROW..(k + 1) * BITS_PER_ROW].try_into().unwrap();
-            trace[first_row + k].set_all_state(row_cells);
-        }
-    }
-
-    /// Writes a clean (bit-valued) state into one boundary group.
-    #[inline(always)]
-    fn set_bits_group<R: KeccakfTraceRowOps<F>>(
+    fn set_state_group<R: KeccakfTraceRowOps<F>>(
         trace: &mut [R],
         first_row: usize,
-        state: &KeccakState,
+        a: &LaneState,
+        b: &LaneState,
     ) {
-        let mut cells = [0u8; WIDTH];
-        for x in 0..5 {
-            for y in 0..5 {
-                for z in 0..64 {
-                    cells[keccakf_bit_pos(x, y, z)] = state[x][y][z];
+        for k in 0..ROWS_PER_STATE {
+            let mut cells = [0u8; BITS_PER_ROW];
+            for lane in 0..LANES_PER_ROW {
+                let (la, lb) = (a[k * LANES_PER_ROW + lane], b[k * LANES_PER_ROW + lane]);
+                for z in 0..LANE_BITS {
+                    cells[lane * LANE_BITS + z] =
+                        (((la >> z) & 1) + SLOT as u64 * ((lb >> z) & 1)) as u8;
                 }
             }
+            trace[first_row + k].set_all_state(&cells);
         }
-        Self::set_group(trace, first_row, &cells);
-    }
-
-    #[inline(always)]
-    fn reduce_mod2(state: &mut KeccakState) {
-        state.iter_mut().flatten().flatten().for_each(|bit| *bit %= 2);
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -372,5 +386,126 @@ impl<F: PrimeField64> KeccakfSM<F> {
         timer_stop_and_log_trace!(KECCAKF_TRACE);
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
+    }
+}
+
+#[cfg(test)]
+mod lane_native_tests {
+    use super::*;
+    use zisk_precomp_helpers::{keccak_f, keccakf_bit_pos, keccakf_state_from_linear};
+
+    fn sample(seed: u64) -> LaneState {
+        let mut s = [0u64; LANES];
+        let mut x = seed | 1;
+        for lane in s.iter_mut() {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            *lane = x;
+        }
+        s
+    }
+
+    fn to_linear(state: &[[[u8; 64]; 5]; 5]) -> LaneState {
+        let mut out = [0u64; LANES];
+        for x in 0..5 {
+            for y in 0..5 {
+                for z in 0..64 {
+                    out[x + 5 * y] |= (state[x][y][z] as u64) << z;
+                }
+            }
+        }
+        out
+    }
+
+    /// The lane-native round chain must reproduce the reference permutation.
+    #[test]
+    fn round_chain_matches_reference() {
+        for seed in 1..20u64 {
+            let start = sample(seed);
+            let mut reference = keccakf_state_from_linear(&start);
+            keccak_f(&mut reference);
+
+            let mut state = start;
+            for r in 0..ROUNDS {
+                let cols = ThetaColumns::from_state(&state);
+                let (lo, _) = theta_rho_pi(&state, &cols.parities);
+                state = chi_iota(&lo, r);
+            }
+            assert_eq!(state, to_linear(&reference), "seed {seed}");
+        }
+    }
+
+    /// The two θ bit-planes must reproduce the old per-position formula
+    /// `state + parity(x-1) + parity(x+1, z-1)` at the ρπ source.
+    #[test]
+    fn theta_planes_match_positionwise() {
+        for seed in 1..10u64 {
+            let state = sample(seed);
+            let bits = keccakf_state_from_linear(&state);
+            let cols = ThetaColumns::from_state(&state);
+            let (lo, hi) = theta_rho_pi(&state, &cols.parities);
+            let parity = |x: usize, z: usize| ((cols.parities[x] >> z) & 1) as u8;
+
+            for y in 0..5 {
+                for x in 0..5 {
+                    for z in 0..64 {
+                        let (sx, sy) = ((x + 3 * y) % 5, x);
+                        let sz = (z + 64 - RHO_OFFSETS[sx][sy]) % 64;
+                        let expected = bits[sx][sy][sz]
+                            + parity((sx + 4) % 5, sz)
+                            + parity((sx + 1) % 5, (sz + 63) % 64);
+                        let lane = x + 5 * y;
+                        let got = (((lo[lane] >> z) & 1) + 2 * ((hi[lane] >> z) & 1)) as u8;
+                        assert_eq!(got, expected, "seed {seed} ({x},{y},{z})");
+                    }
+                }
+            }
+        }
+    }
+
+    /// Column sums must match the naive five-bit count, and parity its low bit.
+    #[test]
+    fn column_sums_match_naive() {
+        for seed in 1..10u64 {
+            let state = sample(seed);
+            let cols = ThetaColumns::from_state(&state);
+            for x in 0..5 {
+                for z in 0..64 {
+                    let expected: u8 =
+                        (0..5).map(|y| ((state[x + 5 * y] >> z) & 1) as u8).sum();
+                    assert_eq!(cols.sum_at(x, z), expected, "({x},{z})");
+                    assert_eq!(((cols.parities[x] >> z) & 1) as u8, expected % 2);
+                }
+            }
+        }
+    }
+
+    /// The row-major cell layout must match `keccakf_bit_pos` on the old path.
+    #[test]
+    fn state_group_layout_matches_bit_pos() {
+        let (a, b) = (sample(7), sample(11));
+        let mut expected = [0u8; WIDTH];
+        for x in 0..5 {
+            for y in 0..5 {
+                for z in 0..64 {
+                    let lane = x + 5 * y;
+                    expected[keccakf_bit_pos(x, y, z)] = (((a[lane] >> z) & 1)
+                        + SLOT as u64 * ((b[lane] >> z) & 1))
+                        as u8;
+                }
+            }
+        }
+        for k in 0..ROWS_PER_STATE {
+            let mut cells = [0u8; BITS_PER_ROW];
+            for lane in 0..LANES_PER_ROW {
+                let (la, lb) = (a[k * LANES_PER_ROW + lane], b[k * LANES_PER_ROW + lane]);
+                for z in 0..LANE_BITS {
+                    cells[lane * LANE_BITS + z] =
+                        (((la >> z) & 1) + SLOT as u64 * ((lb >> z) & 1)) as u8;
+                }
+            }
+            assert_eq!(cells[..], expected[k * BITS_PER_ROW..(k + 1) * BITS_PER_ROW]);
+        }
     }
 }
