@@ -15,7 +15,14 @@ use std::sync::Arc;
 use zisk_common::ChunkId;
 use zisk_common::StatsType;
 use zisk_common::{BusDevice, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType};
-use zisk_pil::{DmaUnalignedTrace, DmaUnalignedTraceRow, DmaUnalignedTraceRowPacked};
+use zisk_pil::{
+    DmaUnalignedLargeTrace, DmaUnalignedTrace, DmaUnalignedTraceRow, DmaUnalignedTraceRowPacked,
+};
+
+/// Whether `air_id` is one of the two heights of `DmaUnaligned`.
+fn is_dma_unaligned_air(air_id: usize) -> bool {
+    air_id == DmaUnalignedTrace::<()>::AIR_ID || air_id == DmaUnalignedLargeTrace::<()>::AIR_ID
+}
 
 /// The `DmaUnalignedInstance` struct represents an instance for the Dma State Machine.
 ///
@@ -53,9 +60,8 @@ impl<F: PrimeField64> DmaUnalignedInstance<F> {
     }
 
     pub fn build_dma_collector(&self, chunk_id: ChunkId) -> DmaUnalignedCollector {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            DmaUnalignedTrace::<()>::AIR_ID,
+        assert!(
+            is_dma_unaligned_air(self.ictx.plan.air_id),
             "DmaUnalignedInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
@@ -155,9 +161,8 @@ impl<F: PrimeField64> Instance<F> for DmaUnalignedInstance<F> {
     }
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            DmaUnalignedTrace::<()>::AIR_ID,
+        assert!(
+            is_dma_unaligned_air(self.ictx.plan.air_id),
             "DmaUnalignedInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

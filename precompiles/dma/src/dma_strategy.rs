@@ -44,16 +44,30 @@ use crate::{
 use crate::get_dma_air_name;
 
 use proofman_fields::PrimeField64;
-use zisk_common::{select_airs, AirChoice, BusDeviceMetrics, BusDeviceMode, CheckPoint, ChunkId};
+use zisk_common::{
+    select_airs, select_sizes, AirChoice, BusDeviceMetrics, BusDeviceMode, CheckPoint, ChunkId,
+};
 
 use zisk_pil::{
     Dma64AlignedLargeTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemLargeTrace,
     Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace, DmaPrePostTrace, DmaTrace,
-    DmaUnalignedTrace, DmaWithPrePostTrace, DMA_64_ALIGNED_INSTANCE_COST,
+    DmaUnalignedLargeTrace, DmaUnalignedTrace, DmaWithPrePostTrace, DMA_64_ALIGNED_INSTANCE_COST,
     DMA_64_ALIGNED_LARGE_INSTANCE_COST, DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST,
     DMA_64_ALIGNED_MEM_INSTANCE_COST, DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST,
-    DMA_64_ALIGNED_MEM_SET_INSTANCE_COST,
+    DMA_64_ALIGNED_MEM_SET_INSTANCE_COST, DMA_UNALIGNED_INSTANCE_COST,
+    DMA_UNALIGNED_LARGE_INSTANCE_COST,
 };
+
+/// Airs of the unaligned group, in the order [`DmaStrategy::dma_unaligned_airs`] lists them: the
+/// same air at two heights, so [`select_sizes`] picks how many of each an execution opens.
+mod unaligned {
+    /// `DmaUnaligned`: `2**20` rows, what every block seen so far fits in.
+    pub const SMALL: usize = 0;
+    /// `DmaUnalignedLarge`: `2**22` rows, for the block whose unaligned traffic does not fit the
+    /// small air -- one instance of it instead of up to four small ones.
+    pub const LARGE: usize = 1;
+    pub const COUNT: usize = 2;
+}
 
 /// Airs of the 64-bit-aligned group, in the order the strategy and the hand-out both use.
 mod air {
@@ -134,8 +148,11 @@ pub struct DmaStrategy<F> {
     pub dma_with_pre_post_plan: Vec<(CheckPoint, DmaWithPrePostCheckPoint)>,
     /// The 64-bit-aligned group's assignment.
     pub dma_64_aligned: Dma64AlignedInstances,
-    /// Instances of the single-air `DmaUnaligned` group.
+    /// Instances of `DmaUnaligned`, the small height of the unaligned group.
     pub dma_unaligned: usize,
+    /// Instances of `DmaUnalignedLarge`. Filled to the row before the small instances take the
+    /// rest, so it is 0 unless the traffic outgrows the small air.
+    pub dma_unaligned_large: usize,
     _marker: std::marker::PhantomData<F>,
 }
 
@@ -152,12 +169,13 @@ impl<F> fmt::Display for DmaStrategy<F> {
              ─────────────────────────────── DMA_64_ALIGNED\n\
              {}\
              ──────────────────────────────── DMA_UNALIGNED\n  \
-             full      {:>3}\n\n",
+             full      {:>3}   large      {:>3}\n\n",
             self.dma,
             self.dma_pre_post,
             self.dma_with_pre_post,
             self.dma_64_aligned,
             self.dma_unaligned,
+            self.dma_unaligned_large,
         )
     }
 }
@@ -197,6 +215,7 @@ impl<F: PrimeField64> DmaStrategy<F> {
     const DMA_PRE_POST_ROWS: usize = DmaPrePostTrace::<()>::NUM_ROWS;
     const DMA_WITH_PRE_POST_ROWS: usize = DmaWithPrePostTrace::<()>::NUM_ROWS;
     const DMA_UNALIGNED_ROWS: usize = DmaUnalignedTrace::<()>::NUM_ROWS;
+    const DMA_UNALIGNED_LARGE_ROWS: usize = DmaUnalignedLargeTrace::<()>::NUM_ROWS;
     const DMA_64_ALIGNED_ROWS: usize = Dma64AlignedTrace::<()>::NUM_ROWS;
     const DMA_64_ALIGNED_LARGE_ROWS: usize = Dma64AlignedLargeTrace::<()>::NUM_ROWS;
     const DMA_64_ALIGNED_MEM_ROWS: usize = Dma64AlignedMemTrace::<()>::NUM_ROWS;
@@ -215,6 +234,8 @@ impl<F: PrimeField64> DmaStrategy<F> {
             Some(Self::DMA_PRE_POST_ROWS)
         } else if air_id == DmaUnalignedTrace::<F>::AIR_ID {
             Some(Self::DMA_UNALIGNED_ROWS)
+        } else if air_id == DmaUnalignedLargeTrace::<F>::AIR_ID {
+            Some(Self::DMA_UNALIGNED_LARGE_ROWS)
         } else if air_id == Dma64AlignedTrace::<F>::AIR_ID {
             Some(Self::DMA_64_ALIGNED_ROWS)
         } else if air_id == Dma64AlignedLargeTrace::<F>::AIR_ID {
@@ -230,6 +251,24 @@ impl<F: PrimeField64> DmaStrategy<F> {
         } else {
             None
         }
+    }
+
+    /// The airs of the unaligned group, in [`unaligned`] order.
+    fn dma_unaligned_airs() -> [AirChoice; unaligned::COUNT] {
+        [
+            AirChoice::new(
+                DmaUnalignedTrace::<()>::AIRGROUP_ID,
+                DmaUnalignedTrace::<()>::AIR_ID,
+                Self::DMA_UNALIGNED_ROWS,
+                DMA_UNALIGNED_INSTANCE_COST,
+            ),
+            AirChoice::new(
+                DmaUnalignedLargeTrace::<()>::AIRGROUP_ID,
+                DmaUnalignedLargeTrace::<()>::AIR_ID,
+                Self::DMA_UNALIGNED_LARGE_ROWS,
+                DMA_UNALIGNED_LARGE_INSTANCE_COST,
+            ),
+        ]
     }
 
     /// The airs of the 64-bit-aligned group, in [`air`] order.
@@ -379,10 +418,14 @@ impl<F: PrimeField64> DmaStrategy<F> {
             &totals.counters[DMA_64_ALIGNED_OFFSET..DMA_64_ALIGNED_OFFSET + DMA_COUNTER_OPS_EXT],
             &mut self.dma_64_aligned,
         );
-        self.dma_unaligned = Self::single_air_rows(
+        // One kind of work at two heights: the fewest instances that hold it, the small air
+        // whenever it is enough (over 6000 mainnet blocks it always was).
+        let unaligned_rows = Self::single_air_rows(
             &totals.counters[DMA_UNALIGNED_OFFSET..DMA_UNALIGNED_OFFSET + DMA_COUNTER_OPS],
-        )
-        .div_ceil(Self::DMA_UNALIGNED_ROWS);
+        );
+        let counts = select_sizes(unaligned_rows as u64, &Self::dma_unaligned_airs());
+        self.dma_unaligned = counts[unaligned::SMALL] as usize;
+        self.dma_unaligned_large = counts[unaligned::LARGE] as usize;
     }
 
     pub fn calculate(
@@ -408,6 +451,14 @@ impl<F: PrimeField64> DmaStrategy<F> {
         );
         let mut dma_unaligned =
             DmaInstancesBuilder::new("dma_unaligned", self.dma_unaligned, Self::DMA_UNALIGNED_ROWS);
+        let mut dma_unaligned_large = DmaInstancesBuilder::new(
+            "dma_unaligned_large",
+            self.dma_unaligned_large,
+            Self::DMA_UNALIGNED_LARGE_ROWS,
+        );
+        // Rows the large instances still take. They are filled first and to the row; the small
+        // instances get what is left, which `select_sizes` sized them for.
+        let mut unaligned_large_room = self.dma_unaligned_large * Self::DMA_UNALIGNED_LARGE_ROWS;
 
         // One builder per air of the 64-bit-aligned group, in `air` order.
         let names = [
@@ -495,8 +546,25 @@ impl<F: PrimeField64> DmaStrategy<F> {
             for op in 0..DMA_COUNTER_OPS {
                 let rows = counters[DMA_UNALIGNED_OFFSET + op];
                 let inputs = counters[DMA_UNALIGNED_INPUTS_OFFSET + op];
-                if rows > 0 {
-                    dma_unaligned.add_op_rows(*current_chunk, 0, rows, inputs, op);
+                if rows == 0 {
+                    continue;
+                }
+                // A chunk's rows of one kind may straddle the two heights: the large air takes
+                // the first `to_large`, and the small air is told to skip exactly those, the way
+                // one builder tells its own instances about rows that another of them collects.
+                let to_large = rows.min(unaligned_large_room);
+                if to_large > 0 {
+                    dma_unaligned_large.add_op_rows(*current_chunk, 0, to_large, inputs, op);
+                    unaligned_large_room -= to_large;
+                }
+                if rows > to_large {
+                    dma_unaligned.add_op_rows(
+                        *current_chunk,
+                        to_large,
+                        rows - to_large,
+                        inputs,
+                        op,
+                    );
                 }
             }
         }
@@ -515,6 +583,7 @@ impl<F: PrimeField64> DmaStrategy<F> {
             (DmaTrace::<F>::AIR_ID, dma_full.get_plan()),
             (DmaPrePostTrace::<F>::AIR_ID, dma_pre_post_full.get_plan()),
             (DmaUnalignedTrace::<F>::AIR_ID, dma_unaligned.get_plan()),
+            (DmaUnalignedLargeTrace::<F>::AIR_ID, dma_unaligned_large.get_plan()),
         ];
         plans.extend(
             aligned.iter_mut().enumerate().map(|(a, builder)| (air_ids[a], builder.get_plan())),

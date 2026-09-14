@@ -468,10 +468,16 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         }
 
         // Advance counters; on the last chunk for an instance, flip its
-        // witness-ready flag and record completion stats.
+        // witness-ready flag and record completion stats. The heavy witnesses go on the priority
+        // channel so they are admitted before the light ones that became ready with them.
         for (global_id, global_id_idx) in affected_globals {
             if ctx.n_chunks_left[global_id_idx].fetch_sub(1, Ordering::SeqCst) == 1 {
-                ctx.pctx.set_witness_ready(global_id, true);
+                let priority = ctx
+                    .pctx
+                    .dctx_get_instance_info(global_id)
+                    .map(|(airgroup_id, air_id)| zisk_pil::is_heavy_witness(airgroup_id, air_id))
+                    .unwrap_or(true);
+                ctx.pctx.set_witness_ready(global_id, priority);
                 Self::record_completion_stats(global_id, global_id_idx, ctx);
             }
         }

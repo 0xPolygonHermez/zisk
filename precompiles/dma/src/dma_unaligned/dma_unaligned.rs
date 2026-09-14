@@ -2,15 +2,23 @@ use std::sync::Arc;
 
 use proofman_fields::PrimeField64;
 
-use crate::{dma_trace, DmaUnalignedInput, DMA_UNALIGNED_OPS_BY_ROW};
+use crate::{dma_trace, get_dma_air_name, DmaUnalignedInput, DMA_UNALIGNED_OPS_BY_ROW};
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::SegmentId;
 use zisk_pil::{
-    DmaUnalignedAirValues, DmaUnalignedTrace, DmaUnalignedTraceRowOps, DUAL_RANGE_BYTE_ID,
+    DmaUnalignedAirValues, DmaUnalignedLargeTrace, DmaUnalignedTrace, DmaUnalignedTraceRowOps,
+    DUAL_RANGE_BYTE_ID, ZISK_AIRGROUP_ID,
 };
 use zisk_precomp_helpers::DmaInfo;
+
+/// Height and air id of each `DmaUnaligned` air, as const-generic arguments for the witness
+/// computation. The two commit the same columns and differ only in height.
+const ROWS: usize = DmaUnalignedTrace::<()>::NUM_ROWS;
+const AIR_ID: usize = DmaUnalignedTrace::<()>::AIR_ID;
+const LARGE_ROWS: usize = DmaUnalignedLargeTrace::<()>::NUM_ROWS;
+const LARGE_AIR_ID: usize = DmaUnalignedLargeTrace::<()>::AIR_ID;
 
 pub struct DmaUnalignedPrevSegment {
     pub seq_end: bool,
@@ -23,9 +31,14 @@ pub struct DmaUnalignedPrevSegment {
 }
 
 /// The `DmaUnalignedSM` struct encapsulates the logic of the DmaUnaligned State Machine.
+///
+/// One instance of it serves one air: `air_id` says which of the two heights this one builds.
 pub struct DmaUnalignedSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
+
+    /// The air this state machine builds traces for: [`AIR_ID`] or [`LARGE_AIR_ID`].
+    air_id: usize,
 
     /// Range checks ID's
     range_16_bits_id: usize,
@@ -33,13 +46,18 @@ pub struct DmaUnalignedSM<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> DmaUnalignedSM<F> {
-    /// Creates a new Dma State Machine instance.
+    /// Creates a new Dma State Machine instance for the air `air_id`, one of the two heights.
     ///
     /// # Returns
     /// A new `DmaUnalignedSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<Std<F>>, air_id: usize) -> Arc<Self> {
+        assert!(
+            air_id == AIR_ID || air_id == LARGE_AIR_ID,
+            "DmaUnalignedSM: air {air_id} is not a height of DmaUnaligned"
+        );
         Arc::new(Self {
             std: std.clone(),
+            air_id,
             dual_range_byte_id: std
                 .get_virtual_table_id(DUAL_RANGE_BYTE_ID)
                 .expect("Failed to get tabl eDUAL_RANGE_BYTE ID ID"),
@@ -200,7 +218,8 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
     /// * `inputs` - A slice of operations to process.
     ///
     /// # Returns
-    /// An `AirInstance` containing the computed witness data.
+    /// An `AirInstance` containing the computed witness data, of the height this state machine
+    /// was built for.
     pub fn compute_witness<R: DmaUnalignedTraceRowOps<F>>(
         &self,
         inputs: &[Vec<DmaUnalignedInput>],
@@ -208,7 +227,38 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         is_last_segment: bool,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = DmaUnalignedTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
+        if self.air_id == LARGE_AIR_ID {
+            self.compute_witness_inner::<R, LARGE_ROWS, LARGE_AIR_ID>(
+                inputs,
+                segment_id,
+                is_last_segment,
+                trace_buffer,
+            )
+        } else {
+            self.compute_witness_inner::<R, ROWS, AIR_ID>(
+                inputs,
+                segment_id,
+                is_last_segment,
+                trace_buffer,
+            )
+        }
+    }
+
+    fn compute_witness_inner<
+        R: DmaUnalignedTraceRowOps<F>,
+        const NUM_ROWS: usize,
+        const TRACE_AIR_ID: usize,
+    >(
+        &self,
+        inputs: &[Vec<DmaUnalignedInput>],
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace =
+            GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, TRACE_AIR_ID>::new_from_vec_zeroes(
+                trace_buffer,
+            )?;
         let num_rows = trace.num_rows();
 
         // `input.count` is already in rows: a sequence never shares a row with another, so the
@@ -221,7 +271,7 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         assert!(total_rows <= num_rows, "total_rows({total_rows}) > num_rows({num_rows})");
         assert!(total_rows > 0);
 
-        dma_trace("DmaUnaligned", total_rows, num_rows);
+        dma_trace(get_dma_air_name::<F>(TRACE_AIR_ID), total_rows, num_rows);
 
         timer_start_trace!(DMA_UNALIGNED_TRACE);
 

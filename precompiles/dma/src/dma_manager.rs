@@ -9,7 +9,7 @@ use zisk_common::{
 use zisk_pil::{
     Dma64AlignedLargeTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemLargeTrace,
     Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace, DmaPrePostTrace, DmaTrace,
-    DmaUnalignedTrace, DmaWithPrePostTrace, ZiskProofValues,
+    DmaUnalignedLargeTrace, DmaUnalignedTrace, DmaWithPrePostTrace, ZiskProofValues,
 };
 
 use crate::{
@@ -35,7 +35,9 @@ pub struct DmaManager<F: PrimeField64> {
     dma_64_aligned_mem_large_sm: Arc<Dma64AlignedMemSM<F>>,
     dma_64_aligned_memcpy_sm: Arc<Dma64AlignedMemCpySM<F>>,
     dma_64_aligned_memset_sm: Arc<Dma64AlignedMemSetSM<F>>,
+    /// One state machine per height of the `DmaUnaligned` air.
     dma_unaligned_sm: Arc<DmaUnalignedSM<F>>,
+    dma_unaligned_large_sm: Arc<DmaUnalignedSM<F>>,
 }
 
 impl<F: PrimeField64> DmaManager<F> {
@@ -56,7 +58,8 @@ impl<F: PrimeField64> DmaManager<F> {
             Dma64AlignedMemSM::new(std.clone(), Dma64AlignedMemLargeTrace::<()>::AIR_ID);
         let dma_64_aligned_memcpy_sm = Dma64AlignedMemCpySM::new(std.clone());
         let dma_64_aligned_memset_sm = Dma64AlignedMemSetSM::new(std.clone());
-        let dma_unaligned_sm = DmaUnalignedSM::new(std);
+        let dma_unaligned_sm = DmaUnalignedSM::new(std.clone(), DmaUnalignedTrace::<()>::AIR_ID);
+        let dma_unaligned_large_sm = DmaUnalignedSM::new(std, DmaUnalignedLargeTrace::<()>::AIR_ID);
 
         Arc::new(Self {
             dma_sm,
@@ -69,6 +72,7 @@ impl<F: PrimeField64> DmaManager<F> {
             dma_64_aligned_memcpy_sm,
             dma_64_aligned_memset_sm,
             dma_unaligned_sm,
+            dma_unaligned_large_sm,
         })
     }
 }
@@ -133,6 +137,9 @@ impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
             DmaUnalignedTrace::<()>::AIR_ID => {
                 Box::new(DmaUnalignedInstance::new(self.dma_unaligned_sm.clone(), ictx))
             }
+            DmaUnalignedLargeTrace::<()>::AIR_ID => {
+                Box::new(DmaUnalignedInstance::new(self.dma_unaligned_large_sm.clone(), ictx))
+            }
             _ => {
                 panic!("DmaBuilder::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id)
             }
@@ -159,6 +166,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
         proof_values.enable_dma_64_aligned_memset =
             F::from_bool(planned(Dma64AlignedMemSetTrace::<()>::AIR_ID));
         proof_values.enable_dma_unaligned = F::from_bool(planned(DmaUnalignedTrace::<()>::AIR_ID));
+        proof_values.enable_dma_unaligned_large =
+            F::from_bool(planned(DmaUnalignedLargeTrace::<()>::AIR_ID));
         // No air is instantiated for the dedicated inputcpy variant any more.
         proof_values.enable_dma_64_aligned_inputcpy = F::ZERO;
     }

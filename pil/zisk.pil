@@ -58,6 +58,7 @@ proofval enable_dma_64_aligned_mem_large;
 proofval enable_dma_64_aligned_memcpy;
 proofval enable_dma_64_aligned_memset;
 proofval enable_dma_unaligned;
+proofval enable_dma_unaligned_large;
 proofval enable_jump_dest;
 
 // Binary constraints to continuations enable proofvals
@@ -71,6 +72,7 @@ enable_dma_64_aligned_mem_large * (1 - enable_dma_64_aligned_mem_large) === 0;
 enable_dma_64_aligned_memcpy * (1 - enable_dma_64_aligned_memcpy) === 0;
 enable_dma_64_aligned_memset * (1 - enable_dma_64_aligned_memset) === 0;
 enable_dma_unaligned * (1 - enable_dma_unaligned) === 0;
+enable_dma_unaligned_large * (1 - enable_dma_unaligned_large) === 0;
 enable_jump_dest * (1 - enable_jump_dest) === 0;
 
 const int PUBLIC_INPUTS_64_BITS = 32;  // 32 x 64 bits = 2048 bits
@@ -92,8 +94,8 @@ airgroup Zisk {
     Rom(N: 2**22);
 
     // Memory
-    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1, lanes_x_row: 8);
-    Mem(N: 2**22, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data, lanes_x_row: 4) alias InputData;
+    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1, lanes_x_row: 4);
+    Mem(N: 2**22, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data, lanes_x_row: 2) alias InputData;
     RomData(N: 2**22, base_address: 0x8000_0000, size_mb: 128, enable_flag: enable_rom_data, lanes_x_row: 2);
 
     // The three memory areas above, fused into one air: every row carries a slice of the three
@@ -106,9 +108,9 @@ airgroup Zisk {
     // only the standalone airs know that area's enable_flag.
     CompactMem(N: 2**22,
                mem_base_address: 0xA000_0000, mem_size_mb: 512, mem_large_mem: 1, mem_dual_mem: 1,
-               mem_lanes_x_row: 8,
+               mem_lanes_x_row: 4,
                input_base_address: 0x4000_0000, input_size_mb: 1024, input_large_mem: 1,
-               input_lanes_x_row: 4,
+               input_lanes_x_row: 2,
                rom_lanes_x_row: 2);
 
     MemAlign(N: 2**21);
@@ -214,7 +216,12 @@ airgroup Zisk {
     Dma64Aligned(N: 2**23, enable: E_DMA_MEMCPY|E_DMA_MEMCMP|E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_mem_large, lanes_x_row: 4) alias Dma64AlignedMemLarge;
     Dma64Aligned(N: 2**23, enable: E_DMA_MEMCPY, enable_flag: enable_dma_64_aligned_memcpy, lanes_x_row: 4) alias Dma64AlignedMemCpy;
 
+    // Two heights of the same air, chosen per execution by the DMA strategy on cost: the small one
+    // holds every block seen so far (over 6000 mainnet blocks none used more than 77% of it), the
+    // large one is there for the block that needs more, so it spends one instance instead of
+    // several small ones. Each keeps a continuation chain of its own, hence the flag per alias.
     DmaUnaligned(N: 2**20, enable_flag: enable_dma_unaligned, op_x_row: 4);
+    DmaUnaligned(N: 2**22, enable_flag: enable_dma_unaligned_large, op_x_row: 4) alias DmaUnalignedLarge;
 
     DmaPrePost();
     // DmaPrePost(enable: E_DMA_MEMCPY) alias DmaPrePostMemCpy;

@@ -2,7 +2,7 @@ use proofman_fields::PrimeField64;
 use zisk_pil::{
     Dma64AlignedLargeTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemLargeTrace,
     Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace, DmaPrePostTrace, DmaTrace,
-    DmaUnalignedTrace, DmaWithPrePostTrace,
+    DmaUnalignedLargeTrace, DmaUnalignedTrace, DmaWithPrePostTrace,
 };
 
 pub fn get_dma_air_name<F: PrimeField64>(air_id: usize) -> &'static str {
@@ -17,6 +17,7 @@ pub fn get_dma_air_name<F: PrimeField64>(air_id: usize) -> &'static str {
         Dma64AlignedMemTrace::<()>::AIR_ID => "Dma64AlignedMem",
         Dma64AlignedMemLargeTrace::<()>::AIR_ID => "Dma64AlignedMemLarge",
         DmaUnalignedTrace::<()>::AIR_ID => "DmaUnaligned",
+        DmaUnalignedLargeTrace::<()>::AIR_ID => "DmaUnalignedLarge",
         _ => "Unknown",
     }
 }

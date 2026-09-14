@@ -278,6 +278,10 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // ────────────────────────────────────────────────────────────
         // Phase 1.1: Emulate (+ incremental Main advancement)
         // ────────────────────────────────────────────────────────────
+        // What each air's witness costs, before the first instance is placed: the distribution
+        // spreads that load among the workers its proof cost cannot tell apart.
+        registry.set_witness_costs(&zisk_pil::witness_costs_ms(), zisk_pil::WITNESS_BALANCE_SLACK);
+
         // ROM instance is assigned BEFORE the run so the global-id sequence
         // (ROM, Main segments in order, secondary) is identical to the old
         // batch path while Main segments are now assigned mid-emulation.

@@ -466,3 +466,105 @@ fn the_counter_and_the_collector_agree_on_the_row_cost() {
         assert_eq!(counted, if is_double { (0, 1) } else { (1, 0) }, "{case}: counter");
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The unaligned group: one air at two heights
+// ---------------------------------------------------------------------------------------------
+
+/// Rows one instance of each unaligned air holds, in [`unaligned`] order.
+fn unaligned_caps() -> [usize; unaligned::COUNT] {
+    Strategy::dma_unaligned_airs().map(|choice| choice.rows as usize)
+}
+
+/// A chunk with `rows` rows of unaligned memcpy, and as many inputs as rows (an upper bound is all
+/// the builder wants of it).
+fn unaligned_chunk(rows: usize) -> Box<dyn BusDeviceMetrics> {
+    let mut counter = DmaCounterInputGen::new(BusDeviceMode::Counter);
+    counter.counters[DMA_UNALIGNED_OFFSET + DMA_COUNTER_MEMCPY] = rows;
+    counter.counters[DMA_UNALIGNED_INPUTS_OFFSET + DMA_COUNTER_MEMCPY] = rows;
+    Box::new(counter)
+}
+
+/// The plan of one air: its instances' checkpoints.
+type AirPlan = Vec<(CheckPoint, DmaCheckPoint)>;
+
+/// Runs the whole strategy over chunks of `rows` unaligned rows each, and hands back the strategy
+/// and the plans of the two unaligned airs, `(small, large)`.
+fn run_unaligned(rows_per_chunk: &[usize]) -> (Strategy, AirPlan, AirPlan) {
+    let mut strategy = Strategy::default();
+    let counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)> = rows_per_chunk
+        .iter()
+        .enumerate()
+        .map(|(chunk, &rows)| (ChunkId(chunk), unaligned_chunk(rows)))
+        .collect();
+    let mut plans = strategy.calculate(counters);
+    let mut take = |air_id: usize| {
+        let pos = plans.iter().position(|(id, _)| *id == air_id).expect("the air has a plan");
+        plans.swap_remove(pos).1
+    };
+    let small = take(DmaUnalignedTrace::<Goldilocks>::AIR_ID);
+    let large = take(DmaUnalignedLargeTrace::<Goldilocks>::AIR_ID);
+    (strategy, small, large)
+}
+
+/// Rows the instances of a plan were handed, over every chunk.
+fn rows_planned(plan: &AirPlan) -> usize {
+    plan.iter()
+        .map(|(_, cp)| {
+            cp.chunks.values().map(|(_, c)| c.total_collect_count() as usize).sum::<usize>()
+        })
+        .sum()
+}
+
+/// What every block seen so far needs: the small air, one instance, and nothing of the large one.
+#[test]
+fn unaligned_traffic_that_fits_the_small_air_opens_only_it() {
+    let [small_rows, _] = unaligned_caps();
+    let (strategy, small, large) = run_unaligned(&[small_rows / 3, small_rows / 3, small_rows / 4]);
+    assert_eq!((strategy.dma_unaligned, strategy.dma_unaligned_large), (1, 0));
+    assert_eq!(small.len(), 1);
+    assert!(large.is_empty());
+    assert_eq!(rows_planned(&small), small_rows / 3 * 2 + small_rows / 4);
+}
+
+/// Past the small air one large instance replaces what would be several small ones: fewer
+/// instances is the criterion, whatever the memory.
+#[test]
+fn unaligned_traffic_past_the_small_air_opens_one_large_instance() {
+    let [small_rows, large_rows] = unaligned_caps();
+    let rows = small_rows + 1_000;
+    let (strategy, small, large) = run_unaligned(&[rows / 2, rows - rows / 2]);
+    assert_eq!((strategy.dma_unaligned, strategy.dma_unaligned_large), (0, 1));
+    assert!(small.is_empty());
+    assert_eq!(large.len(), 1);
+    assert_eq!(rows_planned(&large), rows);
+    assert!(rows <= large_rows);
+}
+
+/// Beyond one large instance the remainder goes to a small one, and a chunk straddling the two is
+/// split to the row: the large air collects the first part, the small air skips exactly that many
+/// and collects the rest, so nothing is lost and nothing is proved twice.
+#[test]
+fn unaligned_traffic_beyond_the_large_air_spills_into_a_small_one() {
+    let [_, large_rows] = unaligned_caps();
+    // Three chunks; the large air fills up in the middle of the second one.
+    let chunks = [large_rows / 2, large_rows / 2 + 700, 300];
+    let total: usize = chunks.iter().sum();
+    let (strategy, small, large) = run_unaligned(&chunks);
+    assert_eq!((strategy.dma_unaligned, strategy.dma_unaligned_large), (1, 1));
+    assert_eq!(large.len(), 1);
+    assert_eq!(small.len(), 1);
+    assert_eq!(rows_planned(&large), large_rows, "the large instance is filled to the row");
+    assert_eq!(rows_planned(&small), total - large_rows);
+
+    // The straddled chunk: the small instance skips what the large one collected of it.
+    let straddled = ChunkId(1);
+    let (_, in_large) = &large[0].1.chunks[&straddled];
+    let (_, in_small) = &small[0].1.chunks[&straddled];
+    assert_eq!(in_large.memcpy.collect_count as usize, large_rows / 2);
+    assert_eq!(in_small.memcpy.initial_skip as usize, large_rows / 2);
+    assert_eq!(in_small.memcpy.collect_count as usize, 700);
+    // The last chunk belongs to the small instance alone.
+    assert!(!large[0].1.chunks.contains_key(&ChunkId(2)));
+    assert_eq!(small[0].1.chunks[&ChunkId(2)].1.memcpy.collect_count, 300);
+}

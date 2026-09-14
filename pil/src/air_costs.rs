@@ -43,19 +43,19 @@ pub const MAIN_INSTANCE_COST: usize = 19282;
 /// `Rom`: 5.39 GB.
 pub const ROM_INSTANCE_COST: usize = 5519;
 
-/// `Mem`: 13.58 GB.
-pub const MEM_INSTANCE_COST: usize = 13906;
+/// `Mem`: 8.45 GB at 4 lanes per row.
+pub const MEM_INSTANCE_COST: usize = 8653;
 
-/// `InputData`: 7.95 GB.
-pub const INPUT_DATA_INSTANCE_COST: usize = 8141;
+/// `InputData`: 5.70 GB at 2 lanes per row.
+pub const INPUT_DATA_INSTANCE_COST: usize = 5837;
 
 /// `RomData`: 4.14 GB.
 pub const ROM_DATA_INSTANCE_COST: usize = 4239;
 
-/// `CompactMem`: 19.08 GB. The three airs above fused into one, so one instance of it costs about
-/// what `Mem` + `InputData` + `RomData` cost apart (13.58 + 7.95 + 4.14 = 25.67 GB) minus what they
-/// stop paying three times over.
-pub const COMPACT_MEM_INSTANCE_COST: usize = 19538;
+/// `CompactMem`: 11.64 GB. The three airs above fused into one, sized like them (4 + 2 + 2 lanes), so
+/// one instance of it costs about what `Mem` + `InputData` + `RomData` cost apart (8.45 + 5.70 + 4.14 =
+/// 18.29 GB) minus what they stop paying three times over.
+pub const COMPACT_MEM_INSTANCE_COST: usize = 11919;
 
 /// `MemAlign`: 2.94 GB.
 pub const MEM_ALIGN_INSTANCE_COST: usize = 3011;
@@ -78,20 +78,15 @@ pub const MEM_ALIGN_BYTE_LARGE_INSTANCE_COST: usize = 10015;
 /// `MemAlignReadByteLarge`: 8.65 GB.
 pub const MEM_ALIGN_READ_BYTE_LARGE_INSTANCE_COST: usize = 8858;
 
-/// `CompactMemAlign`: 3.93 GB, ESTIMATED — refresh from `build/setup.log` once the air has been
-/// set up. `MemAlign` and `MemAlignByte` fused into one, so one instance of it replaces one of each
-/// (2.94 + 4.89 = 7.83 GB) for about half the memory: the byte work rides on half the rows it takes
-/// in its own air, and the per-instance cost is paid once instead of twice.
-///
-/// The figure comes from the model the seven airs above fit to within 0.2%:
-/// `cost_MB = 1.98 * committed_trace_MB + 1996 * rows / 2**21`.
-pub const COMPACT_MEM_ALIGN_INSTANCE_COST: usize = 4024;
+/// `CompactMemAlign`: 4.60 GB. `MemAlign` and `MemAlignByte` fused into one, so one instance of it
+/// replaces one of each (2.94 + 4.89 = 7.83 GB): the byte work rides on half the rows it takes in its
+/// own air, and the per-instance cost is paid once instead of twice.
+pub const COMPACT_MEM_ALIGN_INSTANCE_COST: usize = 4710;
 
-/// `CompactMemAlignLarge`: 11.82 GB, ESTIMATED by the same model as `CompactMemAlign`. It holds
-/// four times the work -- 2**23 virtual rows in the `full_` block and 2**24 in the `bytes_` one,
-/// the capacity of `MemAlignLarge` plus two `MemAlignByteLarge` -- on twice the rows, twice as
-/// wide: four times the trace term and twice the row term.
-pub const COMPACT_MEM_ALIGN_LARGE_INSTANCE_COST: usize = 12102;
+/// `CompactMemAlignLarge`: 15.73 GB. Four times the work of `CompactMemAlign` -- 2**23 virtual rows in
+/// the `full_` block and 2**24 in the `bytes_` one, the capacity of `MemAlignLarge` plus two
+/// `MemAlignByteLarge` (11.78 + 2 * 9.78 = 31.34 GB) -- on twice the rows, twice as wide.
+pub const COMPACT_MEM_ALIGN_LARGE_INSTANCE_COST: usize = 16108;
 
 /// `Arith`: 4.41 GB.
 pub const ARITH_INSTANCE_COST: usize = 4516;
@@ -212,8 +207,15 @@ pub const DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST: usize = 12063;
 /// `Dma64AlignedMemCpy`: 10.90 GB.
 pub const DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST: usize = 11162;
 
-/// `DmaUnaligned`: 2.28 GB.
-pub const DMA_UNALIGNED_INSTANCE_COST: usize = 2334;
+/// `DmaUnaligned`: 2.28 GB at `2**20`. Shrunk from `2**22` because over 6000 mainnet blocks its fill
+/// never went past 19% of that height; at `2**20` the same traffic tops out near 77%, and
+/// `DmaUnalignedLarge` below takes the block that needs more.
+pub const DMA_UNALIGNED_INSTANCE_COST: usize = 2335;
+
+/// `DmaUnalignedLarge`: 9.14 GB at `2**22`, measured -- the height `DmaUnaligned` had before it
+/// was shrunk to `2**20`. The strategy opens it only for a block whose unaligned traffic does not
+/// fit the small air, where it replaces several small instances with one.
+pub const DMA_UNALIGNED_LARGE_INSTANCE_COST: usize = 9359;
 
 /// `DmaPrePost`: 4.63 GB.
 pub const DMA_PRE_POST_INSTANCE_COST: usize = 4741;
@@ -333,6 +335,7 @@ mod tests {
                     Dma64AlignedMemLargeTrace: Dma64AlignedMemLargeTraceRow: DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST,
                     Dma64AlignedMemCpyTrace: Dma64AlignedMemCpyTraceRow: DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST,
                     DmaUnalignedTrace: DmaUnalignedTraceRow: DMA_UNALIGNED_INSTANCE_COST,
+                    DmaUnalignedLargeTrace: DmaUnalignedLargeTraceRow: DMA_UNALIGNED_LARGE_INSTANCE_COST,
                     DmaPrePostTrace: DmaPrePostTraceRow: DMA_PRE_POST_INSTANCE_COST,
                     DmaWithPrePostTrace: DmaWithPrePostTraceRow: DMA_WITH_PRE_POST_INSTANCE_COST,
                     JumpDestTrace: JumpDestTraceRow: JUMP_DEST_INSTANCE_COST,

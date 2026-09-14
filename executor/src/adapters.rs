@@ -120,8 +120,8 @@ impl<F: PrimeField64> Dctx for ProofmanAdapter<'_, F> {
         Ok(self.pctx.dctx_is_my_process_instance(gid.0)?)
     }
 
-    fn set_witness_ready(&self, gid: GlobalId, ready: bool) {
-        self.pctx.set_witness_ready(gid.0, ready);
+    fn set_witness_ready(&self, gid: GlobalId, priority: bool) {
+        self.pctx.set_witness_ready(gid.0, priority);
     }
 
     fn is_first_process(&self) -> bool {
@@ -143,6 +143,11 @@ impl<F: PrimeField64> ProofRegistry for ProofmanAdapter<'_, F> {
     fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         self.track(&info);
         Ok(GlobalId(self.pctx.add_table(info.airgroup_id, info.air_id)?))
+    }
+
+    fn set_witness_costs(&self, costs: &[((usize, usize), u64)], slack: f64) {
+        self.pctx.set_witness_costs(costs.iter().copied());
+        self.pctx.dctx_set_witness_slack(slack);
     }
 
     fn instance_counts(&self) -> std::collections::HashMap<(usize, usize), usize> {
@@ -207,7 +212,7 @@ impl Dctx for NoopProofRegistry {
     fn is_my_process_instance(&self, _gid: GlobalId) -> ExecutorResult<bool> {
         Ok(true)
     }
-    fn set_witness_ready(&self, _gid: GlobalId, _ready: bool) {}
+    fn set_witness_ready(&self, _gid: GlobalId, _priority: bool) {}
     fn is_first_process(&self) -> bool {
         true
     }

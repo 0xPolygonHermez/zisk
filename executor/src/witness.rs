@@ -422,7 +422,10 @@ impl<F: PrimeField64> WitnessPhase<F> {
         {
             instances_to_collect.insert(global_id, &**secn_instance);
         } else {
-            registry.set_witness_ready(GlobalId(global_id), true);
+            // Ready already: with priority when its witness is one of the long ones.
+            let info = registry.instance_info(GlobalId(global_id))?;
+            let priority = zisk_pil::is_heavy_witness(info.airgroup_id, info.air_id);
+            registry.set_witness_ready(GlobalId(global_id), priority);
         }
 
         Ok(())

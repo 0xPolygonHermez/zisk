@@ -89,9 +89,11 @@ pub trait Dctx {
     /// Returns `true` if the local rank owns the instance `gid`.
     fn is_my_process_instance(&self, gid: GlobalId) -> ExecutorResult<bool>;
 
-    /// Marks the witness for `gid` as ready (`true`) or not-ready
-    /// (`false`).
-    fn set_witness_ready(&self, gid: GlobalId, ready: bool);
+    /// Reports that instance `gid`'s witness can be computed. `priority` puts it on the
+    /// proof manager's priority channel, which its witness scheduler drains first: heavy
+    /// witnesses go there (see `zisk_pil::is_heavy_witness`) so they start before the light ones
+    /// when more are ready than the worker computes at once.
+    fn set_witness_ready(&self, gid: GlobalId, priority: bool);
 
     /// Returns `true` if the local rank is the first process in the
     /// distribution group. Drives ASM ROM-histogram ownership.
@@ -113,6 +115,13 @@ pub trait ProofRegistry: Dctx {
 
     /// Registers a table instance. Returns the assigned global id.
     fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
+
+    /// Hands the distribution what each air's witness costs and how much proof cost it may give
+    /// up (`slack`, a fraction of the least loaded worker's) to spread that load. Called once per
+    /// execution before any instance is registered. Registries with no distribution ignore it.
+    fn set_witness_costs(&self, costs: &[((usize, usize), u64)], slack: f64) {
+        let _ = (costs, slack);
+    }
 
     /// Looks up the previously-assigned global id for an AIR. Used by
     /// the planner to attach the ROM instance to its existing
@@ -230,8 +239,8 @@ pub(crate) mod fakes {
             Ok(self.ownership.borrow().get(&gid).copied().unwrap_or(true))
         }
 
-        fn set_witness_ready(&self, gid: GlobalId, ready: bool) {
-            self.witness_ready.borrow_mut().insert(gid, ready);
+        fn set_witness_ready(&self, gid: GlobalId, priority: bool) {
+            self.witness_ready.borrow_mut().insert(gid, priority);
         }
 
         fn is_first_process(&self) -> bool {

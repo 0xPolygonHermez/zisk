@@ -1095,8 +1095,8 @@ dependencies = [
  "predicates",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rand 0.8.8",
  "rayon",
  "reqwest",
@@ -4002,7 +4002,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4013,13 +4013,13 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "anyhow",
  "num-bigint",
  "num-traits",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "serde",
  "serde_json",
  "tera",
@@ -4029,7 +4029,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "anyhow",
  "clap",
@@ -4039,8 +4039,8 @@ dependencies = [
  "pil2-stark-recurser",
  "proofman-common",
  "proofman-exps-codegen",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "prost 0.13.5",
  "rayon",
@@ -4055,11 +4055,11 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "colored",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-hints",
  "proofman-util",
  "proofman-witness",
@@ -4273,7 +4273,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "bincode",
  "blake3",
@@ -4288,12 +4288,12 @@ dependencies = [
  "pil2-std-lib",
  "proofman-common",
  "proofman-curves",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-hints",
  "proofman-macros",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-witness",
  "rayon",
  "serde",
@@ -4305,7 +4305,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "borsh",
  "colored",
@@ -4317,9 +4317,9 @@ dependencies = [
  "libloading",
  "mpi",
  "num_cpus",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-macros",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "serde",
@@ -4334,18 +4334,18 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
 ]
 
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "anyhow",
- "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rayon",
  "regex",
  "serde",
@@ -4356,13 +4356,13 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "blake3",
  "cfg-if",
  "num-bigint",
  "paste",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "serde",
 ]
 
@@ -4382,19 +4382,19 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "itoa",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "tracing",
 ]
 
 [[package]]
 name = "proofman-macros"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4404,10 +4404,10 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "crossbeam-channel",
- "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
 ]
 
 [[package]]
@@ -4422,7 +4422,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 
 [[package]]
 name = "proofman-starks-src"
@@ -4432,7 +4432,7 @@ source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-de
 [[package]]
 name = "proofman-util"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4441,11 +4441,11 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "bincode",
  "num-traits",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rayon",
  "serde",
  "tracing",
@@ -4466,11 +4466,11 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes#a68156b51421e9b8e5db4936d319661cc4e2fbfe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution#cc49302383619b997494c653e2caa61020628c3a"
 dependencies = [
  "libloading",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
 ]
 
 [[package]]
@@ -4630,9 +4630,9 @@ dependencies = [
 
 [[package]]
 name = "quinn"
-version = "0.11.11"
+version = "0.11.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c1a41e437b6bbd489372cd4971de128e85c855f56c57f283d20ff016cf7c0a8"
+checksum = "4051e23e9185c255a7e33ef59cdbca87a22d359052eecd22fc6b901fb37d9d11"
 dependencies = [
  "bytes",
  "cfg_aliases",
@@ -4650,9 +4650,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.17"
+version = "0.11.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04759210543be93709136e28212294a659ef5001836ff4eab4d663e4529bba83"
+checksum = "a9746dbde176634f4f2f1faf2404e30a31b2bc1e9cafb5329c95d8177a18c9fc"
 dependencies = [
  "bytes",
  "fastbloom",
@@ -7352,7 +7352,7 @@ dependencies = [
  "anyhow",
  "libc",
  "named-sem",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "thiserror 2.0.20",
@@ -7426,8 +7426,8 @@ dependencies = [
  "paste",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "serde",
  "serde_json",
  "sha2",
@@ -7542,7 +7542,7 @@ name = "zisk-core"
 version = "1.3.0-alpha"
 dependencies = [
  "paste",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rayon",
  "sha2",
  "tiny-keccak",
@@ -7568,7 +7568,7 @@ dependencies = [
  "pil2-std-lib",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "proofman-witness",
  "rayon",
@@ -7626,7 +7626,7 @@ name = "zisk-pil"
 version = "1.3.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-macros",
  "serde",
  "serde_arrays",
@@ -7647,7 +7647,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "regex",
@@ -7675,7 +7675,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "rustfmt-wrapper",
@@ -7703,7 +7703,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7721,7 +7721,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7739,7 +7739,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7756,7 +7756,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7772,7 +7772,7 @@ name = "zisk-precomp-common"
 version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rayon",
  "zisk-common",
  "zisk-core",
@@ -7786,7 +7786,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7804,7 +7804,7 @@ dependencies = [
  "clap",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -7850,7 +7850,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "tiny-keccak",
@@ -7869,7 +7869,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7886,7 +7886,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7933,9 +7933,9 @@ dependencies = [
  "colored",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "serde",
  "tracing",
  "zisk-asm-runner",
@@ -7963,8 +7963,8 @@ dependencies = [
  "pil2-stark-setup",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "serde",
  "serde_json",
  "tera",
@@ -7989,7 +7989,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -8005,8 +8005,8 @@ dependencies = [
  "bincode",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rayon",
  "serde",
  "serde_json",
@@ -8030,7 +8030,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -8046,7 +8046,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rayon",
  "static_assertions",
  "tracing",
@@ -8062,7 +8062,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "clap",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "static_assertions",
  "zisk-core",
 ]
@@ -8073,7 +8073,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -8091,7 +8091,7 @@ dependencies = [
  "env",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -8108,7 +8108,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "clap",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rayon",
  "static_assertions",
  "tracing",
@@ -8133,7 +8133,7 @@ name = "zisk-sm-rom"
 version = "1.3.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -8205,7 +8205,7 @@ dependencies = [
  "config",
  "proofman",
  "proofman-common",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rayon",
  "serde",
  "time",
@@ -8248,7 +8248,7 @@ dependencies = [
  "memmap2",
  "num-format",
  "object",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rayon",
  "regex",
  "serde_json",
@@ -8294,7 +8294,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "paste",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rand 0.8.8",
  "ripemd",
  "secp256k1",
@@ -8325,7 +8325,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "paste",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fwitness-aware-distribution)",
  "rand 0.8.8",
  "ripemd",
  "serde",
