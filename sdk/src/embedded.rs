@@ -444,6 +444,24 @@ enum EmbeddedProver {
 }
 
 impl EmbeddedProver {
+    /// Retires the previous job's ASM state before this one writes anything.
+    ///
+    /// This client and the distributed worker are the two places that run several
+    /// jobs in one process, so each needs a job boundary; this is the client's. It
+    /// rewinds the input shared memory and retires a ROM-histogram runner the
+    /// previous job never consumed, before any of this job's hints or input are
+    /// pushed. Doing it later — once a hints stream is registered — would mark that
+    /// stream uninitialised and leave the assembly children waiting for hints that
+    /// never arrive.
+    ///
+    /// A no-op on the emulator prover, which has no shared memory to retire.
+    fn begin_asm_job(&self) -> Result<()> {
+        match self {
+            EmbeddedProver::Emu(_) => Ok(()),
+            EmbeddedProver::Asm(p) => p.reset().map_err(SdkError::backend),
+        }
+    }
+
     fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
         match self {
             EmbeddedProver::Emu(p) => p.register_recurser(output_dir, recurser_id),
