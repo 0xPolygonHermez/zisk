@@ -214,7 +214,7 @@ airgroup Zisk {
     Dma64Aligned(N: 2**23, enable: E_DMA_MEMCPY|E_DMA_MEMCMP|E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_mem_large, lanes_x_row: 4) alias Dma64AlignedMemLarge;
     Dma64Aligned(N: 2**23, enable: E_DMA_MEMCPY, enable_flag: enable_dma_64_aligned_memcpy, lanes_x_row: 4) alias Dma64AlignedMemCpy;
 
-    DmaUnaligned(N: 2**22, enable_flag: enable_dma_unaligned, op_x_row: 4);
+    DmaUnaligned(N: 2**20, enable_flag: enable_dma_unaligned, op_x_row: 4);
 
     DmaPrePost();
     // DmaPrePost(enable: E_DMA_MEMCPY) alias DmaPrePostMemCpy;

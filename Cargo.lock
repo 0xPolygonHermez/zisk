@@ -8103,6 +8103,7 @@ dependencies = [
  "proofman-util",
  "rayon",
  "tracing",
+ "tracing-subscriber",
  "zisk-common",
  "zisk-core",
  "zisk-pil",

@@ -10,8 +10,9 @@
 //!
 //! What is ordered is the offsets table: `offset_at` is a monotone running pointer over address
 //! index, so cutting *it* into `k` parts of roughly equal slot count gives each range a contiguous
-//! band of addresses and, with it, a contiguous band of slots. Each range then walks the whole
-//! operation list and fills only the operations whose address falls in its band.
+//! band of addresses and, with it, a contiguous band of slots. The operations are then bucketed by
+//! band in one parallel pass (`bucket_ops_by_range` in `mem_sm.rs`), and each range fills only its
+//! own, in the order they arrived.
 //!
 //! # Why the granularity is a whole address
 //!

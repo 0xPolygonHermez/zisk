@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "f66cd227953da8cdfee7aa3b44105d30a6eadee9e49f942a023a068b541176d5";
+pub const PILOUT_HASH: &str = "2592e333a38b3535cc4803c449cc814f3a7f57494f7568904499ab5184afef1e";
 
 //AIRGROUP CONSTANTS
 
@@ -770,13 +770,13 @@ pub type Dma64AlignedMemCpyTrace<R> = GenericTrace<R, 8388608, 0, 52>;
 trace_row!(DmaUnalignedFixedRow<F> {
  __L1__: F,
 });
-pub type DmaUnalignedFixed<F> = GenericTrace<DmaUnalignedFixedRow<F>, 4194304, 0, 53>;
+pub type DmaUnalignedFixed<F> = GenericTrace<DmaUnalignedFixedRow<F>, 1048576, 0, 53>;
 
 trace_row!(DmaUnalignedTraceRow<F> {
  main_step:ubit(36), src64:ubit(29), dst64:ubit(29), count:u32, seq_end:bit, sel_op_from_1:[bit; 3], previous_seq_end:bit, is_memeq:bit, offset_7:bit, offset_6:bit, offset_5:bit, offset_4:bit, offset_3:bit, offset_2:bit, read_bytes:[[u8; 8]; 4], no_last_no_seq_end:bit, write_value:[[u32; 2]; 4],
 });
 
-pub type DmaUnalignedTrace<R> = GenericTrace<R, 4194304, 0, 53>;
+pub type DmaUnalignedTrace<R> = GenericTrace<R, 1048576, 0, 53>;
 
 trace_row!(DmaPrePostFixedRow<F> {
  __L1__: F,

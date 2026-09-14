@@ -49,6 +49,14 @@ impl<'a> MemOps<'a> {
         self.chunks.iter().flat_map(|c| c.iter())
     }
 
+    /// The per-chunk vectors themselves, in chunk order. For the passes that want to go over the
+    /// operations in parallel: a chunk is a natural unit of work, and walking the chunks in order
+    /// is walking the operations in the order they were collected.
+    #[inline]
+    pub fn chunks(&self) -> &'a [Vec<MemInput>] {
+        self.chunks
+    }
+
     /// One contiguous copy, for the paths that need random access. Only the legacy fill does --
     /// it reads `mem_ops[index - 1]` -- and it also sorts, so it needs ownership anyway. The
     /// offsets path never calls this, which is the whole point.

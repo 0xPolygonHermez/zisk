@@ -212,8 +212,12 @@ pub const DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST: usize = 12063;
 /// `Dma64AlignedMemCpy`: 10.90 GB.
 pub const DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST: usize = 11162;
 
-/// `DmaUnaligned`: 9.14 GB.
-pub const DMA_UNALIGNED_INSTANCE_COST: usize = 9359;
+/// `DmaUnaligned`: 2.29 GB at `2**20`, ESTIMATED -- refresh from `build/setup.log` on the next
+/// setup. Scaled from the 9.14 GB it measured at `2**22`: the prover's peak is linear in the rows
+/// (see `ArithEqLarge`). The air was shrunk because over 779 mainnet blocks its fill never went
+/// past 19% of `2**22` rows, so at `2**20` the same traffic tops out near 77% and still fits in
+/// one instance.
+pub const DMA_UNALIGNED_INSTANCE_COST: usize = 2340;
 
 /// `DmaPrePost`: 4.63 GB.
 pub const DMA_PRE_POST_INSTANCE_COST: usize = 4741;

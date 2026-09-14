@@ -579,3 +579,245 @@ fn an_empty_segment_pads_from_the_previous_segment() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The two-pass fill against the one-pass reference
+// ---------------------------------------------------------------------------------------------
+//
+// `fill_mem_range_reference` is the fill as it was: one pass, every operation written into its
+// slot as it arrives. `fill_mem_range` places first and writes in slot order. Both must produce
+// the same rows, multiplicities and hand-over on the shapes the tests above do not have: dual
+// reads, reads a chunk apart, writes right after a dual, and the halo address of a later segment.
+
+use zisk_core::CHUNK_SIZE_BITS;
+use zisk_sm_mem_common::{MEM_STEPS_BY_MAIN_STEP_BITS, MEM_STEP_BASE};
+
+/// A step that lands in the next chunk whatever the current one is.
+const CHUNK_JUMP: u64 = 1 << (CHUNK_SIZE_BITS as u64 + MEM_STEPS_BY_MAIN_STEP_BITS);
+
+struct Lcg(u64);
+
+impl Lcg {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 >> 33
+    }
+    fn below(&mut self, n: u64) -> u64 {
+        self.next() % n
+    }
+}
+
+/// Slots an address's `(is_write, step)` operations take, by the rules the planner and both fills
+/// share: an operation opens a slot; a read that follows an open slot's primary within its chunk
+/// rides in it as a dual and closes it; anything else opens a new one.
+fn slots_taken(ops: &[(bool, u64)]) -> u32 {
+    let mut slots = 0u32;
+    // The open slot's primary step, and whether it can still take a dual.
+    let mut open: Option<(u64, bool)> = None;
+    for &(is_write, step) in ops {
+        match open {
+            Some((primary, true))
+                if !is_write && MemHelpers::mem_steps_belongs_to_same_chunk(primary, step) =>
+            {
+                open = Some((primary, false));
+            }
+            _ => {
+                slots += 1;
+                open = Some((step, true));
+            }
+        }
+    }
+    slots
+}
+
+/// A segment of `n_addrs` addresses with mixed read/write sequences: its operations in time order
+/// (the addresses interleaved, each address's operations in increasing step, some pairs back to
+/// back so reads become duals, some a chunk apart so they do not), the hand-over from the previous
+/// segment, the segment id and the row count. With `halo`, the first address belongs to the
+/// previous segment -- offset 0 -- and this segment continues it.
+fn mixed_segment(
+    seed: u64,
+    n_addrs: u32,
+    halo: bool,
+) -> (MemModuleSegmentCheckPoint, Vec<MemInput>, MemPreviousSegment, SegmentId, usize) {
+    let mut rng = Lcg(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+    let mut addrs = Vec::with_capacity(n_addrs as usize);
+    let mut addr = RAM_W_ADDR_INIT + 16;
+    for _ in 0..n_addrs {
+        addrs.push(addr);
+        addr += 1 + rng.below(4) as u32;
+    }
+    let lengths: Vec<usize> = (0..n_addrs).map(|_| 1 + rng.below(5) as usize).collect();
+
+    // Time order: pick an address with operations left, emit one; half the time emit its next one
+    // right away (a read pair then shares a chunk); now and then jump a chunk.
+    let mut next_op = vec![0usize; n_addrs as usize];
+    let mut per_addr: Vec<Vec<(bool, u64)>> = vec![Vec::new(); n_addrs as usize];
+    let mut ops = Vec::new();
+    let mut step = MEM_STEP_BASE + 8;
+    let mut pending: Vec<usize> = (0..n_addrs as usize).collect();
+    while !pending.is_empty() {
+        let pick = rng.below(pending.len() as u64) as usize;
+        let a = pending[pick];
+        let burst = 1 + rng.below(2) as usize;
+        for _ in 0..burst {
+            if next_op[a] == lengths[a] {
+                break;
+            }
+            let is_write = rng.below(3) == 0;
+            let value = rng.next() | (rng.next() << 31);
+            ops.push(MemInput::new(addrs[a], is_write, step, value));
+            per_addr[a].push((is_write, step));
+            next_op[a] += 1;
+            step += 1;
+        }
+        if next_op[a] == lengths[a] {
+            pending.swap_remove(pick);
+        }
+        step += rng.below(3);
+        if rng.below(12) == 0 {
+            step += CHUNK_JUMP;
+        }
+    }
+
+    let mut seg = MemModuleSegmentCheckPoint::default();
+    let mut running = 0u32;
+    for a in 0..n_addrs as usize {
+        if halo && a == 0 {
+            seg.add_addr_offset(addrs[a], 0);
+        } else {
+            seg.add_addr_offset(addrs[a], running + 1);
+        }
+        running += slots_taken(&per_addr[a]);
+    }
+    let (prev, segment_id) = if halo {
+        (MemPreviousSegment { addr: addrs[0], step: MEM_STEP_BASE + 2, value: 0xABCD }, SegmentId(1))
+    } else {
+        (MemPreviousSegment { addr: RAM_W_ADDR_INIT, step: 0, value: 0 }, SegmentId(0))
+    };
+    let n_rows = (running as usize).div_ceil(lanes_x_row()) + 1;
+    (seg, ops, prev, segment_id, n_rows)
+}
+
+/// What one fill of a whole segment as a single range produces: the rows it wrote (shared leading
+/// row merged back), and the range's own output.
+struct SingleRangeFill {
+    rows: Vec<u64>,
+    last_slot: Option<usize>,
+    range_22bits: Vec<u32>,
+    range_16bits: Vec<u32>,
+    duals: usize,
+}
+
+/// Runs `fill_mem_range` (or the reference, with `reference`) over the whole segment as one range,
+/// carving the rows the way `fill_mem_trace` does.
+fn fill_single_range(
+    reference: bool,
+    seg: &MemModuleSegmentCheckPoint,
+    ops: &[MemInput],
+    prev: &MemPreviousSegment,
+    segment_id: SegmentId,
+    n_rows: usize,
+) -> SingleRangeFill {
+    let lanes = lanes_x_row();
+    let num_slots = n_rows * lanes;
+    let ranges = split_mem_slots(seg, num_slots, 1);
+    assert_eq!(ranges.len(), 1);
+    let range = &ranges[0];
+    let mut rows = vec![Row::default(); n_rows];
+    let last_row = (range.slot_to - 1) / lanes;
+    let (first, rest) = rows.split_at_mut(1);
+    let owned = &mut rest[..last_row];
+    let previous_segment_addr = prev.addr - (segment_id == SegmentId(0)) as u32;
+    let fill = if reference {
+        fill_mem_range_reference::<Goldilocks, Row>(
+            range,
+            owned,
+            ops.iter(),
+            seg,
+            MemLanes::new(lanes),
+            num_slots,
+            prev,
+            previous_segment_addr,
+            true,
+        )
+    } else {
+        fill_mem_range::<Goldilocks, Row>(
+            range,
+            owned,
+            ops.iter(),
+            seg,
+            MemLanes::new(lanes),
+            num_slots,
+            prev,
+            previous_segment_addr,
+            true,
+        )
+    };
+    for lane in 0..lanes.min(range.slot_to) {
+        copy_mem_lane::<Goldilocks, Row>(&mut first[0], &fill.head, lane);
+    }
+    let duals = rows.iter().map(|r| (0..lanes).filter(|&l| r.get_sel_dual(l)).count()).sum();
+    SingleRangeFill {
+        rows: snapshot(&rows),
+        last_slot: fill.last_slot,
+        range_22bits: fill.range_22bits,
+        range_16bits: fill.range_16bits,
+        duals,
+    }
+}
+
+#[test]
+fn the_two_pass_fill_matches_the_reference_fill() {
+    for (seed, halo) in [(1u64, false), (2, false), (3, true), (4, true), (5, false), (6, true)] {
+        for n_addrs in [1u32, 5, 40, 300] {
+            let (seg, ops, prev, segment_id, n_rows) = mixed_segment(seed, n_addrs, halo);
+            let want = fill_single_range(true, &seg, &ops, &prev, segment_id, n_rows);
+            let got = fill_single_range(false, &seg, &ops, &prev, segment_id, n_rows);
+            let case = format!("seed {seed}, halo {halo}, {n_addrs} addresses, {} ops", ops.len());
+            assert_eq!(got.rows, want.rows, "{case}: the rows differ");
+            assert_eq!(got.last_slot, want.last_slot, "{case}: last slot");
+            assert_eq!(got.range_22bits, want.range_22bits, "{case}: 22-bit multiplicities");
+            assert_eq!(got.range_16bits, want.range_16bits, "{case}: 16-bit multiplicities");
+            // The shapes this test exists for must actually occur, or it proves nothing.
+            if n_addrs >= 40 {
+                assert!(want.duals > 0, "{case}: no dual read was produced");
+                assert!(
+                    ops.iter().any(|o| o.step >= MEM_STEP_BASE + CHUNK_JUMP),
+                    "{case}: no operation crossed a chunk"
+                );
+            }
+        }
+    }
+}
+
+/// The full pipeline on the mixed shapes too: the bucketing, the shared-row merge and the padding
+/// around the two-pass fill, with many ranges against one.
+#[test]
+fn mixed_shapes_fill_the_same_with_many_ranges() {
+    for (seed, halo) in [(7u64, false), (8, true)] {
+        let (seg, ops, prev, segment_id, n_rows) = mixed_segment(seed, 200, halo);
+        let chunks = in_chunks(&ops, 5);
+        let run = |k: usize| {
+            let mut rows = vec![Row::default(); n_rows];
+            let out = fill_mem_trace::<Goldilocks, Row>(
+                &mut rows,
+                MemOps::new(&chunks),
+                &seg,
+                &prev,
+                segment_id,
+                true,
+                k,
+            );
+            (snapshot(&rows), out)
+        };
+        let (want_rows, want) = run(1);
+        for k in [2usize, 4, 8, 16] {
+            let (rows, out) = run(k);
+            assert_eq!(rows, want_rows, "seed {seed}, k={k}: the trace differs");
+            assert_eq!(out.range_22bits, want.range_22bits, "seed {seed}, k={k}");
+            assert_eq!(out.range_16bits, want.range_16bits, "seed {seed}, k={k}");
+            assert_eq!((out.last_addr, out.last_step, out.last_value), (want.last_addr, want.last_step, want.last_value), "seed {seed}, k={k}");
+        }
+    }
+}

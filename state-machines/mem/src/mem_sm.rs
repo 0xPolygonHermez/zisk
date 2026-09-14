@@ -973,6 +973,16 @@ pub(crate) fn fill_mem_trace<F: PrimeField64, R: MemLaneRow<F>>(
     let ranges = split_mem_slots(seg, num_slots, n_ranges);
     phase_end!(d_split, t_split);
 
+    // Each range gets its own operations up front. `mem_ops` is unsorted, so a range cannot take a
+    // slice of it; until here every range walked the whole list and skipped the others' operations,
+    // which is `n_ranges` passes over up to 1.5 GB -- at 32 ranges a full instance spent 1.3 s in
+    // that walk, bound by memory bandwidth, and a 30% one 0.4 s. One parallel pass over the chunks
+    // sorts references by range instead, and the fill reads each operation once.
+    let offset_base_addr_w = seg.offsets_base_addr >> 3;
+    phase_start!(t_bucket);
+    let buckets = bucket_ops_by_range(mem_ops, &ranges, offset_base_addr_w);
+    phase_end!(d_bucket, t_bucket);
+
     // Each range fills its own slots into the rows it owns outright, plus a scratch stand-in
     // for the row it shares with the previous range (see `RowView`). Nothing else is shared:
     // the offsets table fixes every address's slots before the fill starts, and a range owns
@@ -1000,11 +1010,14 @@ pub(crate) fn fill_mem_trace<F: PrimeField64, R: MemLaneRow<F>>(
         ranges
             .par_iter()
             .zip(owned_rows.into_par_iter())
-            .map(|(range, owned)| {
+            .enumerate()
+            .map(|(r, (range, owned))| {
+                // This range's operations, piece after piece: arrival order, as the fill needs.
+                let ops = buckets.iter().flat_map(move |piece| piece[r].iter().copied());
                 fill_mem_range::<F, R>(
                     range,
                     owned,
-                    mem_ops,
+                    ops,
                     seg,
                     lanes,
                     num_slots,
@@ -1132,9 +1145,9 @@ pub(crate) fn fill_mem_trace<F: PrimeField64, R: MemLaneRow<F>>(
         range_22bits[0] += padding_size as u32;
     }
 
-    // One line per instance. `ops` is what each range actually filled out of the whole list every
-    // range has to walk (`mem_ops` is unsorted, so a range cannot skip ahead); the gap between the
-    // slowest and the fastest range is what caps the speedup.
+    // One line per instance. `ops` is what the ranges filled out of what the collectors handed
+    // over (the two differ only by operations the offsets table does not cover); the gap between
+    // the slowest and the fastest range is what caps the speedup.
     #[cfg(feature = "witness_timers")]
     {
         let slowest = range_report.iter().map(|r| r.2).max().unwrap_or(0) as f64 / 1e3;
@@ -1142,7 +1155,7 @@ pub(crate) fn fill_mem_trace<F: PrimeField64, R: MemLaneRow<F>>(
         let ops_filled: usize = range_report.iter().map(|r| r.1).sum();
         phase_log!(
             "Mem[{}] fill: {} pool threads -> {} ranges | {} of {} ops | \
-             split {:.2}ms fill {:.0}ms (slowest range {:.0}ms, fastest {:.0}ms) \
+             split {:.2}ms bucket {:.0}ms fill {:.0}ms (slowest range {:.0}ms, fastest {:.0}ms) \
              merge {:.2}ms reduce {:.0}ms pad {:.0}ms | padding {} of {} slots",
             usize::from(segment_id),
             n_threads,
@@ -1150,6 +1163,7 @@ pub(crate) fn fill_mem_trace<F: PrimeField64, R: MemLaneRow<F>>(
             ops_filled,
             mem_ops.len(),
             phase_ms!(d_split),
+            phase_ms!(d_bucket),
             phase_ms!(d_fill),
             slowest,
             fastest,
@@ -1196,13 +1210,309 @@ pub(crate) fn fill_mem_trace<F: PrimeField64, R: MemLaneRow<F>>(
     }
 }
 
-/// Fills one range's slots. Pure by design -- no `&self`, no `MemSM` state -- which is what lets
+/// Operations a bucketing task takes at once. Chunks are cut into pieces this long so that a few
+/// big chunks -- one, on the legacy path and in the tests -- still spread over the pool.
+const BUCKET_PIECE_OPS: usize = 1 << 18;
+
+/// Every range's operations, as references into the collectors' chunks: `buckets[p][r]` are the
+/// operations of piece `p` whose address falls in `ranges[r]`, in the order they arrived.
+///
+/// A range owns the operations whose address index falls in `[addr_from, addr_to)`, and the ranges
+/// tile the offsets table, so each operation has exactly one range and finding it is a binary
+/// search over the range starts. The pieces are the chunks in order, each cut into at most
+/// [`BUCKET_PIECE_OPS`] operations, and are bucketed in parallel; a range then walks
+/// `buckets[0][r], buckets[1][r], ...` and sees its operations exactly as the one-range fill did.
+///
+/// Operations the offsets table does not cover -- below its base or past its end -- are left out,
+/// as every range skipped them before.
+fn bucket_ops_by_range<'a>(
+    mem_ops: MemOps<'a>,
+    ranges: &[MemFillRange],
+    offset_base_addr_w: u32,
+) -> Vec<Vec<Vec<&'a MemInput>>> {
+    let starts: Vec<u32> = ranges.iter().map(|r| r.addr_from).collect();
+    let limit = ranges.last().map_or(0, |r| r.addr_to);
+    let pieces: Vec<&'a [MemInput]> =
+        mem_ops.chunks().iter().flat_map(|c| c.chunks(BUCKET_PIECE_OPS)).collect();
+    pieces
+        .par_iter()
+        .map(|piece| {
+            let mut per_range: Vec<Vec<&'a MemInput>> = (0..ranges.len())
+                .map(|_| Vec::with_capacity(piece.len() / ranges.len().max(1) + 1))
+                .collect();
+            for op in piece.iter() {
+                let Some(addr_index) = op.addr.checked_sub(offset_base_addr_w) else { continue };
+                if addr_index >= limit {
+                    continue;
+                }
+                // The last range starting at or before this address. The first range starts at
+                // 0, so at least one start is `<= addr_index` and the count is never 0.
+                let r = starts.partition_point(|&s| s <= addr_index) - 1;
+                per_range[r].push(op);
+            }
+            per_range
+        })
+        .collect()
+}
+
+/// Where an address's next primary operation goes, for the placement pass of [`fill_mem_range`].
+///
+/// `slot` is packed as `current_offsets` always was: the slot in [`OFFSET_VALUE_MASK`],
+/// [`OFFSET_DUAL_FLAG`] when the slot that is open can still take a dual read, [`OFFSET_USE_FLAG`]
+/// for the halo address, which this fill continues rather than opens; 0 is an address not seen
+/// yet. `primary_step` is the step of the open slot's primary operation: a dual read has to fall
+/// in its chunk.
+#[derive(Clone, Copy, Default)]
+struct AddrPlacement {
+    slot: u32,
+    primary_step: u64,
+}
+
+/// A slot's primary operation in the placement arrays: its index plus one, so 0 reads as "no
+/// operation", with [`PLACED_ADDR_CHANGES`] set when the operation opens its address.
+const PLACED_ADDR_CHANGES: u32 = 0x8000_0000;
+const PLACED_INDEX_MASK: u32 = 0x7FFF_FFFF;
+
+/// Fills one range's slots with its own operations, `ops`, in arrival order (see
+/// [`bucket_ops_by_range`]). Pure by design -- no `&self`, no `MemSM` state -- which is what lets
 /// the equivalence test run the same fill with one range and with many and compare the traces.
+///
+/// # Two passes, so the rows are written in slot order
+///
+/// The operations arrive in time order and their slots follow address order, so writing each one
+/// into its slot as it arrives scatters the writes over the whole range: a lane's eleven columns
+/// sit in eleven different cache lines of an 832-byte row, and on a full instance that came to a
+/// microsecond per operation, all of it memory stalls -- the same fill with the operations handed
+/// over in address order ran seven times faster.
+///
+/// So the fill is split. The first pass only *places*: it runs the per-address state machine that
+/// decides the slot of every operation and whether a read rides as the dual of the slot before it,
+/// touching two small arrays and no row. The second pass walks the slots in order and writes each
+/// row from the operation placed there, so consecutive slots fill consecutive lanes and whole rows
+/// stream out. The step a same-address operation is measured against is then the one the pass
+/// just wrote, one slot back.
+///
+/// [`fill_mem_range_reference`] is the one-pass fill this replaced, kept as the oracle of the
+/// differential test in `mem_sm_fill_tests`.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn fill_mem_range<F: PrimeField64, R: MemLaneRow<F>>(
+pub(crate) fn fill_mem_range<'a, F: PrimeField64, R: MemLaneRow<F>>(
     range: &MemFillRange,
     owned: &mut [R],
-    mem_ops: MemOps<'_>,
+    ops: impl Iterator<Item = &'a MemInput>,
+    seg: &MemModuleSegmentCheckPoint,
+    lanes: MemLanes,
+    num_slots: usize,
+    previous_segment: &MemPreviousSegment,
+    previous_segment_addr: u32,
+    is_last_segment: bool,
+) -> RangeFill<R> {
+    phase_start!(started);
+    let _ = (num_slots, is_last_segment);
+    let lanes_x_row = lanes.lanes();
+    let first_row = range.slot_from / lanes_x_row;
+    let mut rows = RowView { head: R::default(), owned, first_row };
+
+    let mut range_22bits: Vec<u32> = vec![0; 1 << 22];
+    let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
+
+    let addr_base = range.addr_from as usize;
+    let addr_limit = range.addr_to as usize;
+    let slot_from = range.slot_from;
+    let slot_limit = range.slot_to;
+    let offset_base_addr_w = seg.offsets_base_addr >> 3;
+
+    // Indexable: the placement pass walks them in arrival order, the writing pass in slot order.
+    let ops: Vec<&MemInput> = ops.collect();
+    assert!(
+        ops.len() < PLACED_INDEX_MASK as usize,
+        "MemSM: {} operations in one range do not fit the placement index",
+        ops.len()
+    );
+
+    // ---- Pass 1: placement. Which slot each operation takes, and whether it is a dual read.
+    //
+    // `primary[s]` / `dual[s]` are the operations of slot `slot_from + s`. The arrays are dense and
+    // as long as the range's slots, so a range's share of them is at most 8 bytes per slot.
+    let mut placement = vec![AddrPlacement::default(); addr_limit - addr_base];
+    let mut primary: Vec<u32> = vec![0; slot_limit - slot_from];
+    let mut dual: Vec<u32> = vec![0; slot_limit - slot_from];
+
+    // The address with offset 0 is the halo address, but point of view of continuations halo doesn't
+    // implies a addr_changes, for this reason init current_offsets[0] with OFFSET_USE_FLAG
+    if addr_base == 0 && seg.offset_at(0) == 0 {
+        placement[0].slot = OFFSET_USE_FLAG;
+    }
+
+    // `None` until this range places an operation: a range whose addresses carry no operation must
+    // not raise the segment's last slot.
+    let mut last_slot_idx: Option<usize> = None;
+    for (index, op) in ops.iter().enumerate() {
+        let addr_index = (op.addr - offset_base_addr_w) as usize;
+        // `bucket_ops_by_range` hands this range its own operations and no other's.
+        debug_assert!(
+            (addr_base..addr_limit).contains(&addr_index),
+            "MemSM: operation at 0x{:X} does not belong to range [{addr_base}, {addr_limit})",
+            op.addr * 8
+        );
+        let state = &mut placement[addr_index - addr_base];
+        let dual_available = state.slot & OFFSET_DUAL_FLAG != 0;
+        let addr_changes = state.slot == 0;
+        // `islot` is a virtual row: the offsets table is expressed in these units.
+        let mut islot = if addr_changes {
+            let off_val = seg.offset_at(addr_index as u32);
+            debug_assert!(off_val > 0, "MemSM: Address 0x{:X} at index {index} is out of offsets range, offset_base_addr_w: 0x{:X}",
+                    op.addr * 8, offset_base_addr_w * 8);
+            off_val as usize - 1
+        } else {
+            (state.slot & OFFSET_VALUE_MASK) as usize
+        };
+        let placed = (index as u32 + 1) | if addr_changes { PLACED_ADDR_CHANGES } else { 0 };
+
+        if !op.is_write && dual_available {
+            // A read after an open slot's primary: its dual, if the two fall in the same chunk --
+            // and that closes the slot. Otherwise it opens the next slot like anything else.
+            if MemHelpers::mem_steps_belongs_to_same_chunk(state.primary_step, op.step) {
+                debug_assert!(islot >= slot_from && islot < slot_limit);
+                dual[islot - slot_from] = index as u32 + 1;
+                state.slot = islot as u32 + 1;
+            } else {
+                islot += 1;
+                if islot >= slot_limit {
+                    break;
+                }
+                primary[islot - slot_from] = placed;
+                *state =
+                    AddrPlacement { slot: islot as u32 | OFFSET_DUAL_FLAG, primary_step: op.step };
+            }
+        } else {
+            // A write goes to a new slot: when the open slot already holds a primary that is the
+            // one after it. A read that cannot be a dual (first of its address, or after a dual)
+            // takes the slot the state names.
+            if op.is_write && dual_available {
+                debug_assert!(
+                    !addr_changes,
+                    "MemSM: dual_available && addr_changes (addr: 0x{:X} index: {index})",
+                    op.addr * 8
+                );
+                islot += 1;
+            }
+            if islot >= slot_limit {
+                break;
+            }
+            debug_assert!(islot >= slot_from);
+            primary[islot - slot_from] = placed;
+            *state = AddrPlacement { slot: islot as u32 | OFFSET_DUAL_FLAG, primary_step: op.step };
+        }
+        if last_slot_idx.map_or(true, |last| islot > last) {
+            last_slot_idx = Some(islot);
+        }
+    }
+
+    // ---- Pass 2: the rows, slot after slot.
+    if let Some(last_slot) = last_slot_idx {
+        // Final step of the slot written just before: `step_dual` when it took a dual, `step`
+        // otherwise. Only read for a same-address operation, whose previous slot is always this
+        // range's (a range owns whole addresses) and, but for slot 0, was written the iteration
+        // before. Slot 0 measures against the hand-over instead.
+        let mut prev_final_step = previous_segment.step;
+        for islot in slot_from..=last_slot {
+            let entry = primary[islot - slot_from];
+            debug_assert!(entry != 0, "MemSM: slot {islot} was left without an operation");
+            if entry == 0 {
+                continue;
+            }
+            let op = ops[(entry & PLACED_INDEX_MASK) as usize - 1];
+            let addr_changes = entry & PLACED_ADDR_CHANGES != 0;
+            let step = op.step;
+
+            let increment: u64 = if addr_changes {
+                // First access to this address: measured against the previous distinct address,
+                // from the sparse change-point table of the offsets.
+                let addr_index = (op.addr - offset_base_addr_w) as u32;
+                let previous_addr = seg
+                    .previous_change_addr_w(addr_index)
+                    .unwrap_or(previous_segment_addr as u64);
+                debug_assert!(
+                    previous_addr < op.addr as u64,
+                    "MemSM: Warning: address goes back \
+                          or no change (on addr_changes path) from 0x{:X} to 0x{:X} \
+                          at slot {islot} (offset_base_addr_w: 0x{:X})",
+                    op.addr * 8,
+                    previous_addr * 8,
+                    offset_base_addr_w * 8
+                );
+                op.addr as u64 - previous_addr - 1
+            } else {
+                let previous_step = if islot == 0 { previous_segment.step } else { prev_final_step };
+                let wr = op.is_write as u64;
+                if step < previous_step + wr {
+                    panic!("MemSM: Warning: step {step} is not greater than previous_step {previous_step} \
+                            for {} operation at slot {islot} with addr 0x{:X} \
+                            (previous_segment.addr: 0x{:X} offset_base_addr_w: 0x{:X})",
+                        if op.is_write { "write" } else { "read" },
+                        op.addr * 8, previous_segment_addr * 8, offset_base_addr_w * 8);
+                }
+                step - previous_step - wr
+            };
+
+            let (row, lane) = lanes.split(islot);
+            let r = rows.at(row);
+            // always set dual to false because we don't know if there will dual reads, maybe
+            // this is the last access to this address in this segment.
+            r.set_sel_dual(lane, false);
+            r.set_step_dual(lane, 0);
+            r.set_addr(lane, op.addr);
+            r.set_step(lane, step);
+            r.set_sel(lane, true);
+            r.set_addr_changes(lane, addr_changes);
+            r.set_wr(lane, op.is_write);
+            let (low_val, high_val) = (op.value as u32, (op.value >> 32) as u32);
+            r.set_value(lane, 0, low_val);
+            r.set_value(lane, 1, high_val);
+            // range check between lanes
+            let increment = increment as usize;
+            let l_increment = increment & ((1 << 22) - 1);
+            let h_increment = increment >> 22;
+            r.set_l_increment(lane, l_increment as u32);
+            r.set_h_increment(lane, h_increment as u16);
+            range_22bits[l_increment] += 1;
+            range_16bits[h_increment] += 1;
+
+            let mut final_step = step;
+            let d = dual[islot - slot_from];
+            if d != 0 {
+                let dual_op = ops[d as usize - 1];
+                r.set_sel_dual(lane, true);
+                r.set_step_dual(lane, dual_op.step);
+                // range check dual
+                range_22bits[(dual_op.step - step - op.is_write as u64) as usize] += 1;
+                final_step = dual_op.step;
+            }
+            prev_final_step = final_step;
+        }
+    }
+
+    RangeFill {
+        head: rows.head,
+        last_slot: last_slot_idx,
+        range_22bits,
+        range_16bits,
+        #[cfg(feature = "witness_timers")]
+        ops_filled: ops.len(),
+        #[cfg(feature = "witness_timers")]
+        elapsed: started.elapsed(),
+    }
+}
+
+/// The one-pass fill [`fill_mem_range`] replaced: each operation written into its slot as it
+/// arrives. Kept as the oracle of the differential test in `mem_sm_fill_tests`, so the two-pass
+/// fill is checked against what the prover accepted for months rather than against itself.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn fill_mem_range_reference<'a, F: PrimeField64, R: MemLaneRow<F>>(
+    range: &MemFillRange,
+    owned: &mut [R],
+    ops: impl Iterator<Item = &'a MemInput>,
     seg: &MemModuleSegmentCheckPoint,
     lanes: MemLanes,
     num_slots: usize,
@@ -1244,16 +1554,16 @@ pub(crate) fn fill_mem_range<F: PrimeField64, R: MemLaneRow<F>>(
     if addr_base == 0 && seg.offset_at(0) == 0 {
         current_offsets[0] = OFFSET_USE_FLAG;
     }
-    for (index, mem_op) in mem_ops.iter().enumerate() {
+    for (index, mem_op) in ops.enumerate() {
         let step = mem_op.step;
 
         let addr_index = (mem_op.addr - offset_base_addr_w) as usize;
-        // Operations outside this range's addresses belong to another range. Every range walks the
-        // whole list because `mem_ops` is NOT sorted: the offsets table is what lets the fill place
-        // an operation straight into its slot, in any order.
-        if addr_index < addr_base || addr_index >= addr_limit {
-            continue;
-        }
+        // `bucket_ops_by_range` hands this range its own operations and no other's.
+        debug_assert!(
+            (addr_base..addr_limit).contains(&addr_index),
+            "MemSM: operation at 0x{:X} does not belong to range [{addr_base}, {addr_limit})",
+            mem_op.addr * 8
+        );
         #[cfg(feature = "witness_timers")]
         {
             ops_filled += 1;
@@ -1476,3 +1786,7 @@ pub(crate) fn fill_mem_range<F: PrimeField64, R: MemLaneRow<F>>(
 #[cfg(test)]
 #[path = "mem_sm_fill_tests.rs"]
 mod fill_tests;
+
+#[cfg(test)]
+#[path = "mem_sm_bench.rs"]
+mod bench;
