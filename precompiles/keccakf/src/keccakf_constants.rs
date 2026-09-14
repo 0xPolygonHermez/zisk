@@ -1,11 +1,11 @@
 pub(crate) const LANES: usize = 25;
 pub(crate) const LANE_BITS: usize = 64;
-pub(crate) const WIDTH: usize = LANES * LANE_BITS;
 pub(crate) const ROUNDS: usize = 24;
 
 /// Number of state lanes held by each trace row.
 pub(crate) const LANES_PER_ROW: usize = 5;
 pub(crate) const ROWS_PER_STATE: usize = LANES / LANES_PER_ROW;
+pub(crate) const BITS_PER_ROW: usize = LANES_PER_ROW * LANE_BITS;
 
 /// Sliced parities per row: the 320 (x,z) positions of a round, spread across
 /// its ROWS_PER_STATE rows; position p lives at group-row p / C_PER_ROW,

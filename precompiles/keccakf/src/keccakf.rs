@@ -47,10 +47,20 @@ pub struct KeccakfSM<F: PrimeField64> {
 /// column sums (values in [0,5]) and their parities.
 pub type LaneState = [u64; 25];
 
-/// The witness path writes a whole state into a single trace row, so every
-/// state group is one row wide. Fail the build, not a release run, if the
-/// layout constants ever stop agreeing with that.
-const _: () = assert!(ROWS_PER_STATE == 1);
+/// Packed-row bit layout, mirroring the generated `KeccakfTraceRow`
+/// declaration: four activation flags, then the group-row's four-bit state
+/// cells, then its four-bit parity cells. Everything else is derived from the
+/// PIL's `lanes_per_row`, so changing it moves these offsets with it.
+const FLAG_BITS: usize = 4;
+const CELL_BITS: usize = 4;
+const CELLS_PER_WORD: usize = LANE_BITS / CELL_BITS;
+const WORDS_PER_LANE: usize = LANE_BITS / CELLS_PER_WORD;
+const STATE_WORDS: usize = LANES_PER_ROW * WORDS_PER_LANE;
+const STATE_BIT_OFFSET: usize = FLAG_BITS;
+const STATE_BIT_LEN: usize = BITS_PER_ROW * CELL_BITS;
+const C_WORDS: usize = C_PER_ROW.div_ceil(CELLS_PER_WORD);
+const C_BIT_OFFSET: usize = STATE_BIT_OFFSET + STATE_BIT_LEN;
+const C_BIT_LEN: usize = C_PER_ROW * CELL_BITS;
 
 /// Spread sixteen bits into the low bit of sixteen consecutive nibbles.
 ///
@@ -67,83 +77,116 @@ fn spread_16_to_nibbles(mut value: u64) -> u64 {
 }
 
 #[inline(always)]
-fn pack_sliced_lanes<const LANES: usize>(a: &[u64; LANES], b: &[u64; LANES], out: &mut [u64]) {
-    debug_assert_eq!(out.len(), LANES * 4);
-    for lane in 0..LANES {
-        for chunk in 0..4 {
+fn pack_sliced_lanes(a: &[u64], b: &[u64], out: &mut [u64]) {
+    debug_assert_eq!(a.len(), b.len());
+    debug_assert_eq!(out.len(), a.len() * WORDS_PER_LANE);
+    for lane in 0..a.len() {
+        for chunk in 0..WORDS_PER_LANE {
             let shift = chunk * 16;
             let a_bits = spread_16_to_nibbles(a[lane] >> shift);
             let b_bits = spread_16_to_nibbles(b[lane] >> shift);
-            out[lane * 4 + chunk] = a_bits | (b_bits << 3);
+            out[lane * WORDS_PER_LANE + chunk] = a_bits | (b_bits << 3);
         }
     }
 }
 
-/// Keccak-specific bulk writer.  The fallback retains the generic unpacked
-/// representation, while the reached GPU path writes the generated packed row
-/// directly.  The offsets below are derived from the generated row declaration:
-/// four flag bits, 1600 four-bit state cells, 320 four-bit parity cells, then
-/// the 40-bit step/address field.
+/// Sliced parity cells of group-row `row`: grid position p = x·64 + z lives at
+/// group-row p / C_PER_ROW, column p % C_PER_ROW. Columns past position 320
+/// (only reachable when ROWS_PER_STATE does not divide 320) stay zero.
+#[inline(always)]
+fn c_cells(row: usize, a: &[u64; 5], b: &[u64; 5]) -> [u8; C_PER_ROW] {
+    let mut cells = [0u8; C_PER_ROW];
+    for (j, cell) in cells.iter_mut().enumerate() {
+        let pos = row * C_PER_ROW + j;
+        if pos < 320 {
+            let (x, z) = (pos / LANE_BITS, pos % LANE_BITS);
+            *cell = ((a[x] >> z) & 1) as u8 + SLOT * ((b[x] >> z) & 1) as u8;
+        }
+    }
+    cells
+}
+
+/// OR `nbits` bits of `src` (little-endian, 64 per word) into `packed` starting
+/// at absolute bit `bit_offset`, leaving every bit outside that range untouched.
+#[inline(always)]
+fn blit_bits(packed: &mut [u64], bit_offset: usize, src: &[u64], nbits: usize) {
+    debug_assert!(nbits <= src.len() * LANE_BITS);
+    let mut done = 0;
+    while done < nbits {
+        let take = (nbits - done).min(LANE_BITS);
+        let mask = if take == LANE_BITS { u64::MAX } else { (1u64 << take) - 1 };
+        let value = src[done / LANE_BITS] & mask;
+        let at = bit_offset + done;
+        let (word, shift) = (at / LANE_BITS, at % LANE_BITS);
+        packed[word] = (packed[word] & !(mask << shift)) | (value << shift);
+        if shift + take > LANE_BITS {
+            let spill = shift + take - LANE_BITS;
+            let spill_mask = (1u64 << spill) - 1;
+            packed[word + 1] = (packed[word + 1] & !spill_mask) | (value >> (take - spill));
+        }
+        done += take;
+    }
+}
+
+/// Keccak-specific bulk writer. A state group spans ROWS_PER_STATE rows, with
+/// group-row k holding lanes [k·LANES_PER_ROW, (k+1)·LANES_PER_ROW) and parity
+/// positions [k·C_PER_ROW, (k+1)·C_PER_ROW); both methods write one such row.
+/// The fallback keeps the generic unpacked representation, while the GPU path
+/// writes the generated packed row directly, at offsets derived from the row
+/// declaration: four flag bits, the row's state cells, then its parity cells.
 #[doc(hidden)]
 pub trait KeccakfTraceWriter<F: PrimeField64>: KeccakfTraceRowOps<F> {
-    fn set_state_lanes(&mut self, a: &LaneState, b: &LaneState);
-    fn set_c_parities(&mut self, a: &[u64; 5], b: &[u64; 5]);
+    fn set_state_lanes(&mut self, row: usize, a: &LaneState, b: &LaneState);
+    fn set_c_parities(&mut self, row: usize, a: &[u64; 5], b: &[u64; 5]);
 }
 
 impl<F: PrimeField64> KeccakfTraceWriter<F> for KeccakfTraceRow<F> {
     #[inline(always)]
-    fn set_state_lanes(&mut self, a: &LaneState, b: &LaneState) {
-        let mut cells = [0u8; WIDTH];
-        for lane in 0..LANES {
+    fn set_state_lanes(&mut self, row: usize, a: &LaneState, b: &LaneState) {
+        let mut cells = [0u8; BITS_PER_ROW];
+        let first = row * LANES_PER_ROW;
+        for lane in 0..LANES_PER_ROW {
             for z in 0..LANE_BITS {
                 cells[lane * LANE_BITS + z] =
-                    ((a[lane] >> z) & 1) as u8 + SLOT * ((b[lane] >> z) & 1) as u8;
+                    ((a[first + lane] >> z) & 1) as u8 + SLOT * ((b[first + lane] >> z) & 1) as u8;
             }
         }
         self.set_all_state(&cells);
     }
 
     #[inline(always)]
-    fn set_c_parities(&mut self, a: &[u64; 5], b: &[u64; 5]) {
-        let mut cells = [0u8; 320];
-        for x in 0..5 {
-            for z in 0..LANE_BITS {
-                cells[x * LANE_BITS + z] = ((a[x] >> z) & 1) as u8 + SLOT * ((b[x] >> z) & 1) as u8;
-            }
-        }
-        self.set_all_c(&cells);
+    fn set_c_parities(&mut self, row: usize, a: &[u64; 5], b: &[u64; 5]) {
+        self.set_all_c(&c_cells(row, a, b));
     }
 }
 
 impl<F: PrimeField64> KeccakfTraceWriter<F> for KeccakfTraceRowPacked<F> {
     #[inline(always)]
-    fn set_state_lanes(&mut self, a: &LaneState, b: &LaneState) {
-        debug_assert_eq!(self.packed.len(), 121);
-        let mut words = [0u64; 100];
-        pack_sliced_lanes(a, b, &mut words);
-
-        // State starts at bit four. Preserve the activation flags below it and
-        // the parity field above the four-bit spill in word 100.
-        self.packed[0] = (self.packed[0] & 0xf) | (words[0] << 4);
-        for i in 1..100 {
-            self.packed[i] = (words[i - 1] >> 60) | (words[i] << 4);
-        }
-        self.packed[100] = (self.packed[100] & !0xf) | (words[99] >> 60);
+    fn set_state_lanes(&mut self, row: usize, a: &LaneState, b: &LaneState) {
+        debug_assert!(self.packed.len() * LANE_BITS >= C_BIT_OFFSET + C_BIT_LEN);
+        let mut words = [0u64; STATE_WORDS];
+        let first = row * LANES_PER_ROW;
+        let lanes = first..first + LANES_PER_ROW;
+        pack_sliced_lanes(&a[lanes.clone()], &b[lanes], &mut words);
+        blit_bits(&mut self.packed, STATE_BIT_OFFSET, &words, STATE_BIT_LEN);
     }
 
     #[inline(always)]
-    fn set_c_parities(&mut self, a: &[u64; 5], b: &[u64; 5]) {
-        debug_assert_eq!(self.packed.len(), 121);
-        let mut words = [0u64; 20];
-        pack_sliced_lanes(a, b, &mut words);
-
-        // Parities start at word 100, bit four. Preserve the state spill below
-        // them and the step/address field above their spill in word 120.
-        self.packed[100] = (self.packed[100] & 0xf) | (words[0] << 4);
-        for i in 1..20 {
-            self.packed[100 + i] = (words[i - 1] >> 60) | (words[i] << 4);
+    fn set_c_parities(&mut self, row: usize, a: &[u64; 5], b: &[u64; 5]) {
+        let mut words = [0u64; C_WORDS];
+        if C_PER_ROW % LANE_BITS == 0 {
+            // Each group-row covers whole parity lanes, so the same nibble
+            // spreader that packs the state packs the parities too.
+            let lanes_per_row = C_PER_ROW / LANE_BITS;
+            let first = row * lanes_per_row;
+            let lanes = first..first + lanes_per_row;
+            pack_sliced_lanes(&a[lanes.clone()], &b[lanes], &mut words);
+        } else {
+            for (j, cell) in c_cells(row, a, b).iter().enumerate() {
+                words[j / CELLS_PER_WORD] |= (*cell as u64) << (CELL_BITS * (j % CELLS_PER_WORD));
+            }
         }
-        self.packed[120] = (self.packed[120] & !0xf) | (words[19] >> 60);
+        blit_bits(&mut self.packed, C_BIT_OFFSET, &words, C_BIT_LEN);
     }
 }
 
@@ -274,7 +317,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
         for r in 0..=ROUNDS {
             // Sliced state-group of round r
             let group = GROUP_ROUND_0 + r * ROWS_PER_STATE;
-            trace[group].set_state_lanes(&state_a, &state_b);
+            for row in 0..ROWS_PER_STATE {
+                trace[group + row].set_state_lanes(row, &state_a, &state_b);
+            }
 
             if r == ROUNDS {
                 break;
@@ -288,7 +333,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
             // Committed sliced parities: position p = x·64+z lives at group-row
             // p / C_PER_ROW, column p % C_PER_ROW
-            trace[group].set_c_parities(&cols_a.parities, &cols_b.parities);
+            for row in 0..ROWS_PER_STATE {
+                trace[group + row].set_c_parities(row, &cols_a.parities, &cols_b.parities);
+            }
 
             // xor5 lookups: MUST mirror the AIR's batching — at each round row,
             // three c-column slots per lookup, where slot j of group-row `row`
@@ -356,7 +403,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
         first_row: usize,
         state: &LaneState,
     ) {
-        trace[first_row].set_state_lanes(state, &[0u64; LANES]);
+        for row in 0..ROWS_PER_STATE {
+            trace[first_row + row].set_state_lanes(row, state, &[0u64; LANES]);
+        }
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -531,26 +580,22 @@ mod tests {
                 row.set_step_addr(0x00ab_cdef_1234);
             }
 
-            let mut state_cells = [0u8; WIDTH];
-            for lane in 0..LANES {
-                for z in 0..LANE_BITS {
-                    state_cells[lane * LANE_BITS + z] =
-                        ((a[lane] >> z) & 1) as u8 + SLOT * ((b[lane] >> z) & 1) as u8;
+            for row in 0..ROWS_PER_STATE {
+                let mut state_cells = [0u8; BITS_PER_ROW];
+                let first = row * LANES_PER_ROW;
+                for lane in 0..LANES_PER_ROW {
+                    for z in 0..LANE_BITS {
+                        state_cells[lane * LANE_BITS + z] = ((a[first + lane] >> z) & 1) as u8
+                            + SLOT * ((b[first + lane] >> z) & 1) as u8;
+                    }
                 }
-            }
-            let mut c_cells = [0u8; 320];
-            for x in 0..5 {
-                for z in 0..LANE_BITS {
-                    c_cells[x * LANE_BITS + z] =
-                        ((parity_a[x] >> z) & 1) as u8 + SLOT * ((parity_b[x] >> z) & 1) as u8;
-                }
-            }
-            expected.set_all_state(&state_cells);
-            expected.set_all_c(&c_cells);
-            actual.set_state_lanes(&a, &b);
-            actual.set_c_parities(&parity_a, &parity_b);
+                expected.set_all_state(&state_cells);
+                expected.set_all_c(&c_cells(row, &parity_a, &parity_b));
+                actual.set_state_lanes(row, &a, &b);
+                actual.set_c_parities(row, &parity_a, &parity_b);
 
-            assert_eq!(actual.packed, expected.packed);
+                assert_eq!(actual.packed, expected.packed, "group-row {row}");
+            }
         }
     }
 }
