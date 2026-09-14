@@ -460,8 +460,8 @@ mod tests {
         let mut lanes = [0u64; 25];
         for y in 0..5 {
             for x in 0..5 {
-                for z in 0..64 {
-                    lanes[x + 5 * y] |= (state[x][y][z] as u64) << z;
+                for (z, bit) in state[x][y].iter().enumerate() {
+                    lanes[x + 5 * y] |= (*bit as u64) << z;
                 }
             }
         }
