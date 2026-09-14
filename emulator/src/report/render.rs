@@ -5,6 +5,19 @@ use std::collections::HashMap;
 
 const CSS: &str = r#"
 :root {
+  color-scheme: dark;
+  --color-primary-dark: #16302b;
+  --color-accent-text: #A3E635;
+  --color-chart-grid: #1E3D38;
+  --color-surface: #1a3630;
+  --color-hover: #234742;
+  --color-text: #e6f2ec;
+  --color-text-muted: #8fb3a5;
+  --color-bar: #A3E635;
+  --color-up: #f87171;
+  --donut-0: #4d7c0f; --donut-1: #65a30d; --donut-2: #84cc16; --donut-3: #a3e635; --donut-4: #d9f99d;
+}
+:root:has(#theme-light:checked) {
   color-scheme: light;
   --color-primary-dark: #f5f8f1;
   --color-accent-text: #17a601;
@@ -15,6 +28,7 @@ const CSS: &str = r#"
   --color-text-muted: #61756a;
   --color-bar: #84cc16;
   --color-up: #dc2626;
+  --donut-0: #365314; --donut-1: #4d7c0f; --donut-2: #65a30d; --donut-3: #84cc16; --donut-4: #bef264;
 }
 * { box-sizing: border-box; }
 body {
@@ -26,6 +40,24 @@ body {
   line-height: 1.5;
 }
 .wrap { max-width: 1680px; margin: 0 auto; }
+.toc { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; max-width: 1100px; margin: 0 auto 1.8rem; }
+.toc a { font-size: .68rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--color-text-muted); text-decoration: none; padding: .3rem .7rem; border: 1px solid var(--color-chart-grid); border-radius: 999px; background: var(--color-surface); transition: background .12s ease, color .12s ease, border-color .12s ease; }
+.toc a:hover { background: var(--color-hover); color: var(--color-text); border-color: var(--color-bar); }
+.anchor { display: block; height: 0; scroll-margin-top: 3.4rem; }
+.theme-toggle { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.controls { position: fixed; top: .9rem; right: .9rem; z-index: 10; display: flex; align-items: center; gap: .45rem; }
+.theme-switch { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--color-surface); border: 1px solid var(--color-chart-grid); cursor: pointer; user-select: none; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.toc .reset-view { display: inline-flex; align-items: center; }
+.toc .reset-view svg { width: 12px; height: 12px; display: block; }
+.theme-switch .opt { display: flex; align-items: center; justify-content: center; padding: .32rem .5rem; border-radius: 999px; color: var(--color-text-muted); transition: background .12s ease, color .12s ease; }
+.theme-switch .opt svg { width: 14px; height: 14px; display: block; }
+.theme-switch .opt-zisk { background: var(--color-bar); color: #16320a; }
+:root:has(#theme-light:checked) .theme-switch .opt-zisk { background: transparent; color: var(--color-text-muted); }
+:root:has(#theme-light:checked) .theme-switch .opt-light { background: var(--color-bar); color: #16320a; }
+.theme-toggle:focus-visible + .theme-switch { outline: 2px solid var(--color-bar); outline-offset: 2px; }
+.d0 { --c: var(--donut-0); } .d1 { --c: var(--donut-1); } .d2 { --c: var(--donut-2); } .d3 { --c: var(--donut-3); } .d4 { --c: var(--donut-4); }
+.donut circle { stroke: var(--c); }
+.donut-legend .sw { background: var(--c); }
 h1 {
   font-size: 1.65rem; font-weight: 700; letter-spacing: -.01em;
   color: var(--color-text); margin: 0 0 1.75rem;
@@ -65,7 +97,7 @@ h1 svg { height: 1.9em; width: auto; display: block; }
 .donut-legend .v { color: var(--color-text-muted); font-variant-numeric: tabular-nums; min-width: 8.5em; text-align: right; }
 details {
   background: var(--color-surface); border: 1px solid var(--color-chart-grid);
-  border-radius: 12px; margin-bottom: .7rem; padding: 0 1.35rem;
+  border-radius: 12px; margin-bottom: 1rem; padding: 0 1.35rem;
   box-shadow: 0 1px 2px rgba(0,0,0,.05);
 }
 summary {
@@ -178,11 +210,9 @@ pub fn single(r: &Report) -> String {
         &mem_top_ratio_table(&r.mem_top_ratio),
     ));
     h.push_str(&foot());
-    h
+    with_toc(h)
 }
 
-/// `MEM_TOP_COST`: functions ranked by the memory cost they spend, bar on the share of the
-/// program's memory cost.
 fn mem_top_cost_table(rows: &[MemFnCostRow]) -> String {
     if rows.is_empty() {
         return String::new();
@@ -208,8 +238,6 @@ fn mem_top_cost_table(rows: &[MemFnCostRow]) -> String {
     h
 }
 
-/// `MEM_TOP_UNALIGNED`: the same ranking restricted to the unaligned cost, with the aligned cost
-/// alongside; the bar tracks how much of the function's memory cost is unaligned.
 fn mem_top_unaligned_table(rows: &[MemFnAlignRow]) -> String {
     if rows.is_empty() {
         return String::new();
@@ -235,8 +263,6 @@ fn mem_top_unaligned_table(rows: &[MemFnAlignRow]) -> String {
     h
 }
 
-/// `MEM_TOP_RATIO`: functions whose unaligned cost per step is furthest above the program average.
-/// The bar is the ratio itself, capped at 5x so the leaders stay distinguishable.
 fn mem_top_ratio_table(rows: &[MemFnRatioRow]) -> String {
     if rows.is_empty() {
         return String::new();
@@ -269,7 +295,22 @@ fn head() -> String {
     h.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
     h.push_str("<title>ZisK stats report</title>\n<style>");
     h.push_str(CSS);
-    h.push_str("</style>\n</head>\n<body>\n<div class=\"wrap\">\n<h1>");
+    h.push_str("</style>\n</head>\n<body>\n");
+    h.push_str(
+        "<div class=\"controls\">\n\
+         <input type=\"checkbox\" id=\"theme-light\" class=\"theme-toggle\" autocomplete=\"off\">\n\
+         <label for=\"theme-light\" class=\"theme-switch\" title=\"Switch colour theme\" aria-label=\"Switch colour theme\">\
+         <span class=\"opt opt-zisk\" title=\"ZisK (dark)\">\
+         <svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">\
+         <path d=\"M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z\"/></svg></span>\
+         <span class=\"opt opt-light\" title=\"Light\">\
+         <svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">\
+         <circle cx=\"12\" cy=\"12\" r=\"4\"/>\
+         <path d=\"M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4\"/></svg></span>\
+         </label>\n\
+         </div>\n",
+    );
+    h.push_str("<div class=\"wrap\">\n<h1>");
     h.push_str(LOGO);
     h.push_str("stats report</h1>\n");
     h
@@ -280,11 +321,61 @@ fn section(title: &str, open: bool, inner: &str) -> String {
         return String::new();
     }
     format!(
-        "<details{}>\n<summary>{}</summary>\n{}</details>\n",
+        "<details{}>\n<summary>{}</summary>\n<span id=\"s-{}\" class=\"anchor\"></span>\n{}</details>\n",
         if open { " open" } else { "" },
         esc(title),
+        section_id(title),
         inner,
     )
+}
+
+fn section_id(title: &str) -> String {
+    let mut s = String::new();
+    let mut dash = false;
+    for c in title.chars() {
+        if c.is_ascii_alphanumeric() {
+            s.push(c.to_ascii_lowercase());
+            dash = false;
+        } else if !dash {
+            s.push('-');
+            dash = true;
+        }
+    }
+    s.trim_matches('-').to_string()
+}
+
+fn with_toc(h: String) -> String {
+    let mut links = String::new();
+    let mut pos = 0;
+    while let Some(rel) = h[pos..].find("<summary>") {
+        let ts = pos + rel + "<summary>".len();
+        let te = match h[ts..].find("</summary>") {
+            Some(e) => ts + e,
+            None => break,
+        };
+        let title = &h[ts..te];
+        let id = h[te..].find("id=\"s-").and_then(|ip| {
+            let is = te + ip + 4;
+            h[is..].find('"').map(|q| &h[is..is + q])
+        });
+        if let (Some(id), false) = (id, title.is_empty()) {
+            links.push_str(&format!("<a href=\"#{}\">{}</a>", id, title));
+        }
+        pos = te;
+    }
+    if links.is_empty() {
+        return h;
+    }
+    links.push_str(
+        "<a href=\"\" class=\"reset-view\" title=\"Reset view: collapse sections, back to top\" aria-label=\"Reset view\">\
+         <svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">\
+         <polyline points=\"1 4 1 10 7 10\"/><path d=\"M3.51 15a9 9 0 1 0 2.13-9.36L1 10\"/></svg></a>",
+    );
+    let nav = format!("<nav class=\"toc\">{}</nav>\n", links);
+    match h.find("<details") {
+        Some(p) => format!("{}{}{}", &h[..p], nav, &h[p..]),
+        None => h,
+    }
 }
 
 fn foot() -> String {
@@ -304,7 +395,7 @@ pub fn compare(a: &Report, b: &Report, name_a: &str, name_b: &str) -> String {
     let mut h = String::new();
     h.push_str(&head());
     h.push_str(&format!(
-        "<p class=\"legend\">A = {} (baseline) · B = {} · Change = B - A · \
+        "<p class=\"legend\">A = {} (baseline) · B = {} · Δ = B - A · \
          <span class=\"down\">green = lower cost</span> / <span class=\"up\">red = higher</span></p>\n",
         esc(name_a),
         esc(name_b),
@@ -385,13 +476,10 @@ pub fn compare(a: &Report, b: &Report, name_a: &str, name_b: &str) -> String {
             name_b,
         ),
     ));
-    // The per-function rankings are matched by function name; COUNT is the call count, COST the
-    // memory cost (total, then unaligned only).
     h.push_str(&section(
         "TOP MEMORY COST FUNCTIONS",
         false,
         &cmp_table(
-            // `false`: keep the ranking order the snapshot already carries (by memory cost).
             &align(mem_cost_sort(&a.mem_top_cost), mem_cost_sort(&b.mem_top_cost), false),
             true,
             name_a,
@@ -413,7 +501,7 @@ pub fn compare(a: &Report, b: &Report, name_a: &str, name_b: &str) -> String {
         ),
     ));
     h.push_str(&foot());
-    h
+    with_toc(h)
 }
 
 struct SortRow {
@@ -558,13 +646,13 @@ fn cmp_table(rows: &[Cmp], show_count: bool, name_a: &str, name_b: &str) -> Stri
             "<tr><th></th><th class=\"grp\" colspan=\"3\">COUNT</th><th class=\"grp\" colspan=\"4\">COST</th></tr>\n<tr><th></th>",
         );
         h.push_str(&ab_headers(name_a, name_b));
-        h.push_str("<th class=\"num\">Change</th>");
+        h.push_str("<th class=\"num\">Δ</th>");
         h.push_str(&ab_headers(name_a, name_b));
-        h.push_str("<th class=\"num\">Change</th><th class=\"num\">%</th></tr>\n");
+        h.push_str("<th class=\"num\">Δ</th><th class=\"num\">%</th></tr>\n");
     } else {
         h.push_str("<tr><th></th>");
         h.push_str(&ab_headers(name_a, name_b));
-        h.push_str("<th class=\"num\">Change</th><th class=\"num\">%</th></tr>\n");
+        h.push_str("<th class=\"num\">Δ</th><th class=\"num\">%</th></tr>\n");
     }
     h.push_str("</thead>\n<tbody>\n");
     for r in rows {
@@ -614,7 +702,7 @@ fn cost_distribution_cmp(a: &[CostRow], b: &[CostRow], name_a: &str, name_b: &st
     let mut h = String::from("<table>\n");
     h.push_str("<thead><tr><th></th>");
     h.push_str(&ab_headers(name_a, name_b));
-    h.push_str("<th class=\"num\">Change</th><th class=\"num\">%</th></tr></thead>\n<tbody>\n");
+    h.push_str("<th class=\"num\">Δ</th><th class=\"num\">%</th></tr></thead>\n<tbody>\n");
     for ca in a {
         let bv = b.iter().find(|c| c.label == ca.label).map(|c| c.cost);
         let b_str = bv.map(fmt_num).unwrap_or_else(|| "—".to_string());
@@ -737,7 +825,6 @@ fn cost_row_class(label: &str) -> &'static str {
 
 fn cost_donut(cost: &[CostRow]) -> String {
     const PARTS: [&str; 5] = ["MAIN", "OPCODES", "PRECOMPILES", "MEMORY", "BASE"];
-    const COLORS: [&str; 5] = ["#365314", "#4d7c0f", "#65a30d", "#84cc16", "#bef264"];
     const C: f64 = 251.327;
 
     let get = |name: &str| cost.iter().find(|c| c.label == name).map(|c| c.cost).unwrap_or(0);
@@ -756,9 +843,8 @@ fn cost_donut(cost: &[CostRow]) -> String {
         let seg = C * (cst as f64 / total as f64);
         let draw = (seg - 1.2).max(0.4);
         arcs.push_str(&format!(
-            "<circle cx=\"50\" cy=\"50\" r=\"40\" fill=\"none\" stroke=\"{color}\" stroke-width=\"15\" \
+            "<circle class=\"d{i}\" cx=\"50\" cy=\"50\" r=\"40\" fill=\"none\" stroke-width=\"15\" \
              stroke-dasharray=\"{draw:.2} {C:.2}\" stroke-dashoffset=\"{off:.2}\" transform=\"rotate(-90 50 50)\"/>",
-            color = COLORS[i],
             draw = draw,
             C = C,
             off = -cum,
@@ -771,9 +857,8 @@ fn cost_donut(cost: &[CostRow]) -> String {
         let cst = get(p);
         let pctv = cst as f64 / total as f64 * 100.0;
         legend.push_str(&format!(
-            "<li><span class=\"sw\" style=\"background:{color}\"></span>\
+            "<li><span class=\"sw d{i}\"></span>\
              <span class=\"nm\">{name}</span><b>{pctv:.2}%</b><span class=\"v\">{val}</span></li>",
-            color = COLORS[i],
             name = esc(p),
             pctv = pctv,
             val = fmt_num(cst),
@@ -822,8 +907,8 @@ fn cost_distribution(cost: &[CostRow]) -> String {
 fn sortable(id: &str, by_count: &str, by_cost: &str) -> String {
     format!(
         "<div class=\"sortable\">\
-         <input type=\"radio\" name=\"{id}\" id=\"{id}-count\" class=\"srt count\" checked>\
-         <input type=\"radio\" name=\"{id}\" id=\"{id}-cost\" class=\"srt cost\">\
+         <input type=\"radio\" name=\"{id}\" id=\"{id}-count\" class=\"srt count\" autocomplete=\"off\" checked>\
+         <input type=\"radio\" name=\"{id}\" id=\"{id}-cost\" class=\"srt cost\" autocomplete=\"off\">\
          <div class=\"by-count\">{by_count}</div>\
          <div class=\"by-cost\">{by_cost}</div>\
          </div>\n",

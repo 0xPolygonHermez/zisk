@@ -106,6 +106,21 @@ jobs:
               npm ls -g --depth=0 snarkjs
             '
 
+      - name: Install CUDA toolkit
+        if: inputs.variant == 'gpu'
+        run: |
+          .github/scripts/docker_exec.sh \
+            -- bash -c '
+              set -eo pipefail
+              distro="$(. /etc/os-release && echo "${ID}${VERSION_ID//./}")"
+              curl -fsSLO "https://developer.download.nvidia.com/compute/cuda/repos/${distro}/x86_64/cuda-keyring_1.1-1_all.deb"
+              dpkg -i cuda-keyring_1.1-1_all.deb
+              rm -f cuda-keyring_1.1-1_all.deb
+              apt-get update
+              apt-get install -y cuda-toolkit-12-9
+              ldconfig -p | grep -q libcudart || { echo "❌ libcudart not on the loader path"; exit 1; }
+            '
+
       - name: Install and run ziskup
         # The variant is requested explicitly (--cpu/--gpu) instead of relying on
         # GH_RUNNER=1, which forces the CPU bundle and would leave the GPU job

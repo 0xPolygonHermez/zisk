@@ -13,7 +13,7 @@ while true; do
     echo " 2) Build ZisK from source"
     echo " 3) Build setup from source"
     echo " 4) Build dylib files (macOS)"
-    echo " 5) Build zec-reth ELF"
+    echo " 5) Build zec guest ELF (ZEC_GUEST)"
     echo " 6) Upload setup"
     echo " 7) Install ZisK from binaries"
     echo " 8) Test sha_hasher"
@@ -46,7 +46,7 @@ while true; do
             run_timed "./build_dylib.sh"
             ;;
         5)
-            run_timed "./build_zec_reth.sh"
+            run_timed "./build_zec_guest.sh"
             ;;
         6)
             run_timed "./upload_setup.sh"

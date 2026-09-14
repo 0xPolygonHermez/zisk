@@ -320,6 +320,90 @@ ensure_submodules() {
     ensure git -C "${repo_dir}" submodule update --init --recursive || return 1
 }
 
+# ZEC_GUEST selects the zisk-eth-client guest to build and prove: ziskethone
+# (default) or reth.
+ZEC_GUEST_DEFAULT="ziskethone"
+
+# resolve_zec_guest: validate ZEC_GUEST and export ZEC_GUEST_DIR, ZEC_ELF and
+# ZEC_INPUTS for it. Call it after load_env.
+#
+# ziskethone's ELF is committed in zisk-eth-client instead of being built here,
+# and its client emits no hints (`emits_hints() == false`), so ENABLE_HINTS is
+# pinned to 0 for it.
+resolve_zec_guest() {
+    ZEC_GUEST="$(tolower "${ZEC_GUEST:-${ZEC_GUEST_DEFAULT}}")"
+
+    local repo_dir="${WORKSPACE_DIR}/zisk-eth-client"
+
+    case "${ZEC_GUEST}" in
+        ziskethone)
+            ZEC_GUEST_DIR="${repo_dir}/bin/guests/stateless-validator-ziskethone"
+            ZEC_ELF="${ZEC_GUEST_DIR}/elf/zec-ziskethone.elf"
+            ;;
+        reth)
+            ZEC_GUEST_DIR="${repo_dir}/bin/guests/stateless-validator-reth"
+            ZEC_ELF="${ZEC_GUEST_DIR}/target/elf/riscv64ima-zisk-zkvm-elf/release/zec-reth"
+            ;;
+        *)
+            err "Unsupported ZEC_GUEST '${ZEC_GUEST}' (expected 'ziskethone' or 'reth')"
+            return 1
+            ;;
+    esac
+    ZEC_INPUTS="${ZEC_GUEST_DIR}/inputs"
+
+    export ZEC_GUEST ZEC_GUEST_DIR ZEC_ELF ZEC_INPUTS
+
+    if [[ "${ZEC_GUEST}" == "ziskethone" ]]; then
+        if [[ "${ENABLE_HINTS:-}" == "1" ]]; then
+            warn "ziskethone emits no hints; forcing ENABLE_HINTS=0"
+        fi
+        export ENABLE_HINTS=0
+    fi
+
+    info "zisk-eth-client guest: ${ZEC_GUEST} (ELF: ${ZEC_ELF})"
+}
+
+# zec_guest_inputs: retarget a comma-separated BLOCK_INPUTS_* variable, in place,
+# at the active guest. Every client's inputs come from the same blocks and differ
+# only in the suffix (mainnet_<block>_<txs>_<mgas>_zec_<client>.bin), so one
+# BLOCK_INPUTS_* value serves any ZEC_GUEST. A block with no input committed for
+# the chosen guest is reported later by verify_files_exist.
+# Usage: zec_guest_inputs BLOCK_INPUTS_SINGLE
+zec_guest_inputs() {
+    local __varname="$1"
+
+    local -a __items=()
+    get_var_list_to_array __items "${__varname}"
+    if (( ${#__items[@]} == 0 )); then
+        return 0
+    fi
+
+    local out="" item retargeted
+    for item in "${__items[@]}"; do
+        retargeted=$(printf '%s' "${item}" \
+            | sed -E "s/_zec_[A-Za-z0-9]+\.bin$/_zec_${ZEC_GUEST}.bin/")
+        if [[ "${retargeted}" != "${item}" ]]; then
+            info "Retargeting input '${item}' -> '${retargeted}' (ZEC_GUEST=${ZEC_GUEST})"
+        fi
+        out+="${out:+,}${retargeted}"
+    done
+
+    export "${__varname}=${out}"
+}
+
+# file_sha256: print a file's SHA-256 (sha256sum on Linux, shasum on macOS).
+# Usage: file_sha256 <path>
+file_sha256() {
+    local f="$1"
+
+    [[ -f "$f" ]] || return 1
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$f" | cut -d' ' -f1
+    else
+        shasum -a 256 "$f" | cut -d' ' -f1
+    fi
+}
+
 # Set to 1 by patch_cargo_dep as soon as it rewrites a manifest. Repointing a
 # git dependency to a local path changes that package's source, which the
 # committed Cargo.lock cannot describe, so cargo *must* re-resolve and `--locked`

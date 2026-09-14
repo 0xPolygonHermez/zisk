@@ -116,6 +116,14 @@ jobs:
       - name: Start test container
         run: .github/scripts/start_test_container.sh
 
+      # HTTP/2 negotiation against github.com fails on this runner ("expected
+      # flush after ref listing"), breaking the clones the test scripts do.
+      # --system, not --global: the clones run as ziskuser, this step as root.
+      - name: Force git over HTTP/1.1 in the container
+        run: |
+          .github/scripts/docker_exec.sh \
+            -- git config --system http.version HTTP/1.1
+
       - name: Check resources
         run: |
           .github/scripts/docker_exec.sh \
