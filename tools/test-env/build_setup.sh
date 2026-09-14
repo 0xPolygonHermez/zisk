@@ -59,7 +59,18 @@ main() {
 
     # Default the hash family when neither the shell, .env, nor Cargo.toml set
     # it. Exported so the setup_build.sh child process inherits it.
-    export HASH_MODE="${HASH_MODE:-Poseidon1}"
+    export HASH_MODE="${HASH_MODE:-blake3}"
+
+    # The BN128 wrap is poseidon-only, and HASH is what the STARK setup below will build
+    # the key with — so this pairing is already decided here, before any work. Checked at
+    # the top rather than beside the snark step so the run does not spend a full STARK
+    # setup to arrive at a conflict that was knowable in the first second.
+    if [[ "${INCLUDE_SNARK}" == "1" ]]; then
+        if [[ "$(printf '%s' "$HASH" | tr '[:upper:]' '[:lower:]')" == "blake3" ]]; then
+            err "INCLUDE_SNARK=1 needs a poseidon HASH; the BN128 wrap has no blake3 path (HASH=${HASH})"
+            return 1
+        fi
+    fi
 
     current_step=1
     total_steps=3   # clearing build/ + computing hash + building setup
@@ -99,6 +110,7 @@ main() {
     rm -f "$setup_log"
 
     if [[ "${INCLUDE_SNARK}" == "1" ]]; then
+        # The HASH/blake3 conflict was already rejected above, before the STARK setup ran.
         step "Building snark setup..."
         build_flags=(--build-dir build --snark)
         ensure "${SCRIPT_DIR}/setup_build.sh" "${build_flags[@]}" || return 1
