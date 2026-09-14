@@ -674,11 +674,19 @@ pub struct ZiskVerifyBuilder<'a> {
     proof_with_values: &'a Proof,
     override_publics: Option<&'a PublicValues>,
     override_program_vk: Option<&'a ProgramVK>,
+    trusted_plonk_vk: Option<&'a PlonkVkey>,
+    trusted_setup_vk: Option<&'a [u64]>,
 }
 
 impl<'a> ZiskVerifyBuilder<'a> {
     fn new(proof_with_values: &'a Proof) -> Self {
-        Self { proof_with_values, override_publics: None, override_program_vk: None }
+        Self {
+            proof_with_values,
+            override_publics: None,
+            override_program_vk: None,
+            trusted_plonk_vk: None,
+            trusted_setup_vk: None,
+        }
     }
 
     /// Override the publics used for verification.
@@ -690,6 +698,20 @@ impl<'a> ZiskVerifyBuilder<'a> {
     /// Override the program verification key used for verification.
     pub fn with_program_vk(mut self, program_vk: &'a ProgramVK) -> Self {
         self.override_program_vk = Some(program_vk);
+        self
+    }
+
+    /// Optional trusted PLONK circuit key; if unset, the proof's embedded key is used.
+    pub fn with_plonk_vk(mut self, plonk_vkey: &'a PlonkVkey) -> Self {
+        self.trusted_plonk_vk = Some(plonk_vkey);
+        self
+    }
+
+    /// Optional trusted recursion setup key (4 u64 limbs: `vadcop_final` verkey for
+    /// a plain proof, recurser verkey for an aggregated one); if unset, the proof's
+    /// embedded value is used.
+    pub fn with_setup_vk(mut self, setup_vk: &'a [u64]) -> Self {
+        self.trusted_setup_vk = Some(setup_vk);
         self
     }
 
@@ -714,14 +736,22 @@ impl<'a> ZiskVerifyBuilder<'a> {
 
         match &self.proof_with_values.body {
             ProofBody::Plonk { proof_bytes, plonk_vk, publics_full, rootc, .. } => {
-                // snarkjs checks `public_snark_bytes` = the circuit's publicsHash.
-                // `public_bytes` is the on-chain Solidity layout, unused by snarkjs.
+                // Caller-provided keys if given, else the proof's own.
+                let plonk_vkey = self.trusted_plonk_vk.unwrap_or(&plonk_vk.plonk_vkey);
+                let rootc = self.trusted_setup_vk.unwrap_or(rootc.as_slice());
+                if rootc.len() != PROGRAM_VK_LEN {
+                    return Err(CommonError::InvalidProof(format!(
+                        "setup vk (`rootc`) must have exactly {PROGRAM_VK_LEN} u64 limbs, got {}",
+                        rootc.len()
+                    )));
+                }
+
+                // snarkjs uses only `public_snark_bytes`; `public_bytes` is unused.
                 let public_snark_bytes = snark_publics_hash(publics_full, rootc);
-                let public_bytes = publics.bytes_solidity(program_vk, &plonk_vk.vadcop_vk);
 
                 let snark_proof = SnarkProof {
                     proof_bytes: proof_bytes.clone(),
-                    public_bytes,
+                    public_bytes: Vec::new(),
                     public_snark_bytes,
                     protocol_id: SnarkProtocol::Plonk.protocol_id(),
                 };
@@ -738,7 +768,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 );
                 let temp_file = temp_dir.join(format!("plonk_vkey_{}.json", unique_id));
 
-                let plonk_vkey_json = serde_json::to_vec(&plonk_vk.plonk_vkey)
+                let plonk_vkey_json = serde_json::to_vec(plonk_vkey)
                     .map_err(|e| CommonError::Serialization(format!("PlonkVkey to JSON: {e}")))?;
                 std::fs::write(&temp_file, &plonk_vkey_json).map_err(|e| {
                     CommonError::Io(format!(
@@ -770,6 +800,15 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     return Err(CommonError::InvalidProof(format!(
                         "verkey hash mode {} does not match proof hash family {hash:?}",
                         program_vk.hash_mode.as_str()
+                    )));
+                }
+
+                // `root_c` for the STARK verifier: caller's key if given, else the proof's.
+                let setup_vk = self.trusted_setup_vk.unwrap_or(zisk_vk.as_slice());
+                if setup_vk.len() != PROGRAM_VK_LEN {
+                    return Err(CommonError::InvalidProof(format!(
+                        "setup vk must have exactly {PROGRAM_VK_LEN} u64 limbs, got {}",
+                        setup_vk.len()
                     )));
                 }
 
@@ -815,9 +854,9 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     VadcopFinalProof::new(proof.clone(), pubs_u64, kind.is_minimal(), hash.clone());
 
                 let is_valid = if kind.is_minimal() {
-                    v.verify_vadcop_final_compressed(&vadcop_final_proof, zisk_vk)
+                    v.verify_vadcop_final_compressed(&vadcop_final_proof, setup_vk)
                 } else {
-                    v.verify_vadcop_final(&vadcop_final_proof, zisk_vk)
+                    v.verify_vadcop_final(&vadcop_final_proof, setup_vk)
                 };
 
                 if !is_valid {
@@ -1121,6 +1160,11 @@ impl Proof {
         ZiskVerifyBuilder::new(self).verify()
     }
 
+    /// Start a custom verification with no overrides applied yet.
+    pub fn verify_builder(&self) -> ZiskVerifyBuilder<'_> {
+        ZiskVerifyBuilder::new(self)
+    }
+
     /// Start building a custom verification by overriding the public values.
     ///
     /// Returns a builder that allows chaining additional overrides before calling `verify()`.
@@ -1147,6 +1191,18 @@ impl Proof {
     /// ```
     pub fn with_program_vk<'a>(&'a self, program_vk: &'a ProgramVK) -> ZiskVerifyBuilder<'a> {
         ZiskVerifyBuilder::new(self).with_program_vk(program_vk)
+    }
+
+    /// Start a custom verification with the trusted PLONK circuit key. See
+    /// [`ZiskVerifyBuilder::with_plonk_vk`].
+    pub fn with_plonk_vk<'a>(&'a self, plonk_vkey: &'a PlonkVkey) -> ZiskVerifyBuilder<'a> {
+        ZiskVerifyBuilder::new(self).with_plonk_vk(plonk_vkey)
+    }
+
+    /// Start a custom verification with the trusted recursion setup key. See
+    /// [`ZiskVerifyBuilder::with_setup_vk`].
+    pub fn with_setup_vk<'a>(&'a self, setup_vk: &'a [u64]) -> ZiskVerifyBuilder<'a> {
+        ZiskVerifyBuilder::new(self).with_setup_vk(setup_vk)
     }
 }
 
@@ -1186,6 +1242,57 @@ mod tests {
         .verify();
 
         assert!(result.is_err(), "expected Err for malformed proof, got {:?}", result);
+    }
+
+    /// A wrong-length `setup_vk` must return an error, not panic in
+    /// `snark_publics_hash` (which slices on `PROGRAM_VK_LEN`).
+    #[test]
+    fn plonk_verify_rejects_wrong_len_setup_vk() {
+        let g1 = || ["0".to_string(), "0".to_string(), "1".to_string()];
+        let g2 = || {
+            [
+                ["0".to_string(), "0".to_string()],
+                ["0".to_string(), "0".to_string()],
+                ["1".to_string(), "0".to_string()],
+            ]
+        };
+        let vkey = PlonkVkey {
+            protocol: "plonk".to_string(),
+            curve: "bn128".to_string(),
+            n_public: 1,
+            power: 1,
+            k1: "2".to_string(),
+            k2: "3".to_string(),
+            qm: g1(),
+            ql: g1(),
+            qr: g1(),
+            qo: g1(),
+            qc: g1(),
+            s1: g1(),
+            s2: g1(),
+            s3: g1(),
+            x_2: g2(),
+            w: "1".to_string(),
+        };
+        let proof = Proof::new(
+            ProofBody::Plonk {
+                proof_bytes: vec![],
+                plonk_vk: Box::new(PlonkVkBlob {
+                    vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
+                    plonk_vkey: vkey,
+                }),
+                publics: PublicValues::new_empty(),
+                publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
+                rootc: vec![0u64; PROGRAM_VK_LEN],
+            },
+            ProgramVK::new_empty(),
+        );
+        // 3 limbs instead of PROGRAM_VK_LEN (4).
+        let err = proof.with_setup_vk(&[1u64, 2, 3]).verify().unwrap_err();
+        assert!(
+            matches!(err, CommonError::InvalidProof(_)),
+            "expected InvalidProof for wrong-length setup vk, got {err:?}"
+        );
     }
 
     #[test]

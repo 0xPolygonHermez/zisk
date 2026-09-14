@@ -52,7 +52,7 @@ blake2:
 	copyb(0, B2_INPUT) -> r7
 	copyb(r8, r7) -> 8[a + 16]
 
-	blake2(0, r8) -> r13              ; b = &B2_HDR ; one round, writes state back
+	blake2b(0, r8) -> r13             ; b = &B2_HDR ; one round, writes state back
 
 	copyb(0, B2_STATE) -> r7          ; result pointer
 	copyb(0, B2_EXPECT) -> r5         ; expected pointer

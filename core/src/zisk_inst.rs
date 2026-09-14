@@ -79,13 +79,14 @@ pub enum ZiskOperationType {
     Keccak,
     Sha256,
     Poseidon,
-    Blake2,
+    Blake2b,
     PubOut,
     ArithEq,
     ArithEq384,
     BigInt,
     BabyJubJub,
-    Blake3, // Note: Add new core operations here
+    Blake3,
+    Blake2s, // Note: Add new core operations here
     Evm,
     Dma, // Note: To add extra params to precompiles calls
     // ZisK Free Input Operations
@@ -111,9 +112,10 @@ pub const EVM_OP_TYPE_ID: u32 = ZiskOperationType::Evm as u32;
 pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
 pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
 pub const DMA_OP_TYPE_ID: u32 = ZiskOperationType::Dma as u32;
-pub const BLAKE2_OP_TYPE_ID: u32 = ZiskOperationType::Blake2 as u32;
+pub const BLAKE2B_OP_TYPE_ID: u32 = ZiskOperationType::Blake2b as u32;
 pub const BABYJUBJUB_OP_TYPE_ID: u32 = ZiskOperationType::BabyJubJub as u32;
 pub const BLAKE3_OP_TYPE_ID: u32 = ZiskOperationType::Blake3 as u32;
+pub const BLAKE2S_OP_TYPE_ID: u32 = ZiskOperationType::Blake2s as u32;
 
 /// ZisK instruction definition
 ///

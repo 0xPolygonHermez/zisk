@@ -85,7 +85,7 @@ zb2_v14:
 	add(r6, 120) -> r6
 	copyb(r6, r5) -> 8[a + 0]
 
-	; --- round loop: blake2(index = r % 10, v, m) ---
+	; --- round loop: blake2b(index = r % 10, v, m) ---
 	copyb(0, ZKVM_BLK_HDR) -> r5
 	copyb(0, ZKVM_BLK_V) -> r6
 	copyb(r5, r6) -> 8[a + 8]
@@ -94,7 +94,7 @@ zb2_v14:
 zb2_round:
 	eq(r10, 0), j(zb2_finalize)
 	copyb(r5, r13) -> 8[a + 0]
-	blake2(0, r5)
+	blake2b(0, r5)
 	add(r13, 1) -> r13
 	ltu(r13, 10), j(zb2_dec)
 	copyb(0, 0) -> r13

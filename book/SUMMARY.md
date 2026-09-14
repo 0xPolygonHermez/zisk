@@ -12,6 +12,8 @@
 - [Hints Stream](./getting_started/hints_stream.md)
 
 # Developer Guide
+- [Architecture](./developer/intro.md)
+- [Limits](./developer/limits.md)
 - [Ziskof](./developer/ziskof.md)
 - [Profiling Programs](./developer/profiling.md)
 - [EF zkEVM Standards Conformance](./developer/ef_requirements.md)

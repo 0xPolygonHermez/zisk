@@ -1,8 +1,8 @@
 use ziskos::syscalls::*;
 
-pub fn diagnostic_blake2() {
+pub fn diagnostic_blake2b() {
     //////////////
-    // Blake2 Tests
+    // Blake2b Tests
     //////////////
 
     let index: u64 = 0;
@@ -10,7 +10,7 @@ pub fn diagnostic_blake2() {
     let input: [u64; 16] = [0; 16];
     let mut params = SyscallBlake2bRoundParams { index, state: &mut state, input: &input };
 
-    // Test #0: blake2
+    // Test #0: blake2b
     let index: u64 = 0;
     let mut state: [u64; 16] = [
         7640891576939301192,
