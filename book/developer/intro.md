@@ -338,8 +338,7 @@ RAM address map:
 |Address|Usage|
 |---|---|
 |0xA0000000|RAM_ADDR, also STACK_ADDR.  Program stack (4 MB).|
-|0xA0400000|SYS_ADDR.  ziskos system RAM, which holds the 32 RISC-V general registers (32 KB).|
-|0xA0408000|Float registers (32 KB).|
+|0xA0400000|SYS_ADDR.  ziskos system RAM (64 KB).  It holds the 32 memory-mapped RISC-V general registers at +0x0, the UART at +0x200, the float registers at +0x1000, and the CSRs at +0x8000.|
 |0xA0410000|OUTPUT_ADDR.  Program output RAM data (128 KB).|
 |0xA0430000|Program RAM: .data, .bss and heap.|
 |0xBFFF0000|Float soft library RAM (64 KB).|
