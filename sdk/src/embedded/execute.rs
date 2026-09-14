@@ -74,7 +74,7 @@ impl EmbeddedClient {
             was_setup_with_hints,
         )?;
 
-        prover.begin_asm_job()?;
+        prover.begin_job()?;
 
         // Inputs are validated above; the dispatch only routes valid requests.
         let output = match (prover.as_ref(), executor) {
