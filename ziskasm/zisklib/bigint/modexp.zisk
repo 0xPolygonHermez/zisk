@@ -8,6 +8,9 @@
 ;   hints the bit decomposition, then recomposes and asserts it equals exp.
 zisklib_bin_decomp:
 	push r1
+	; Length guard: BI_BITS / BI_RECEXP hold 132 u64 words. Reject an exponent
+	; longer than that (len_e = r11 > 132) rather than overrunning them.
+	ltu(132, r11), j(bi_bc_bad)
 	copyb(0, BI_EXPP) -> r5
 	copyb(r5, r10) -> 8[a + 0]
 	copyb(0, BI_LENB) -> r5
@@ -15,7 +18,7 @@ zisklib_bin_decomp:
 	copyb(0, BI_BITS) -> r6
 	copyb(0, 0) -> r7
 bi_bc_zbits:
-	eq(r7, 128), j(bi_bc_zbitsd)
+	eq(r7, 132), j(bi_bc_zbitsd)
 	copyb(r6, 0) -> 8[a + 0]
 	add(r6, 8) -> r6
 	add(r7, 1) -> r7
@@ -380,6 +383,12 @@ bi_mel_done:
 ;   base/mod lengths in u64; padded to U256. result written LE u64; returns count.
 zisklib_modexp_u64_c:
 	push r1
+	; Length guards: base(r11)/exp(r13)/mod(r15) u64 lengths must each fit the
+	; 132-u64 static scratch (BI_BASEPAD / BI_MODPAD / BI_BITS / BI_RECEXP); halt
+	; on an over-long operand instead of overrunning the buffers.
+	ltu(132, r11), j(bi_bc_bad)
+	ltu(132, r13), j(bi_bc_bad)
+	ltu(132, r15), j(bi_bc_bad)
 	copyb(0, BI_APTR) -> r5
 	copyb(r5, r10) -> 8[a + 0]
 	copyb(0, BI_LEN) -> r5

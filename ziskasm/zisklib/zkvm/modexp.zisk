@@ -53,6 +53,12 @@ u64 ZKVM_ME_MODPAD[132]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 
 ziskasm_zkvm_modexp:
 	push r1
+	; Length guards: base(r11)/exp(r13)/mod(r15) byte lengths must fit the 132-u64
+	; (1056-byte) limb buffers (ZKVM_ME_*_LIMBS / *PAD, and BI_BITS/BI_RECEXP via
+	; the exponent); halt on an over-long operand instead of overrunning them.
+	ltu(1056, r11), j(bi_bc_bad)
+	ltu(1056, r13), j(bi_bc_bad)
+	ltu(1056, r15), j(bi_bc_bad)
 	; --- spill the seven EF arguments ---
 	copyb(0, ZKVM_ME_BASEP) -> r5
 	copyb(r5, r10) -> 8[a + 0]
