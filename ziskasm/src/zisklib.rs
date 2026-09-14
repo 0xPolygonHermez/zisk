@@ -1,6 +1,9 @@
 //! Canonical production ZisK library manifest and assembly entry point.
 
-use zisk_core::{ZISKLIB_RAM_ADDR, ZISKLIB_ROM_ADDR};
+use zisk_core::{
+    FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR, ZISKLIB_RAM_ADDR, ZISKLIB_RAM_SIZE, ZISKLIB_ROM_ADDR,
+    ZISKLIB_ROM_SIZE,
+};
 
 use crate::{assemble_library_sources, ZiskLibrary};
 
@@ -83,8 +86,32 @@ pub const ZISK_LIBRARY: &[(&str, &str)] = &[
 ];
 
 /// Assemble the exact library artifact merged by `elf2rom`.
+///
+/// Fails if the assembled library does not fit in its reserved ROM/RAM windows
+/// (`ZISKLIB_ROM_SIZE` / `ZISKLIB_RAM_SIZE`); otherwise it would silently overrun
+/// into the adjacent float-library region at merge time.
 pub fn assemble_zisk_library() -> Result<ZiskLibrary, String> {
-    assemble_library_sources(ZISK_LIBRARY, ZISKLIB_ROM_ADDR, ZISKLIB_RAM_ADDR)
+    let library = assemble_library_sources(ZISK_LIBRARY, ZISKLIB_ROM_ADDR, ZISKLIB_RAM_ADDR)?;
+
+    let (rom_used, ram_used) = library.footprint();
+    if rom_used > ZISKLIB_ROM_SIZE {
+        return Err(format!(
+            "ZisK library ROM footprint {rom_used} bytes exceeds the reserved ZISKLIB_ROM region \
+             ({ZISKLIB_ROM_SIZE} bytes at 0x{ZISKLIB_ROM_ADDR:x}); it would overrun into the \
+             float-library region at 0x{FLOAT_LIB_ROM_ADDR:x}. Shrink the library or grow \
+             ZISKLIB_ROM_SIZE."
+        ));
+    }
+    if ram_used > ZISKLIB_RAM_SIZE {
+        return Err(format!(
+            "ZisK library RAM footprint {ram_used} bytes exceeds the reserved ZISKLIB_RAM region \
+             ({ZISKLIB_RAM_SIZE} bytes at 0x{ZISKLIB_RAM_ADDR:x}); it would overrun into the \
+             float-library region at 0x{FLOAT_LIB_RAM_ADDR:x}. Shrink the library or grow \
+             ZISKLIB_RAM_SIZE."
+        ));
+    }
+
+    Ok(library)
 }
 
 #[cfg(test)]

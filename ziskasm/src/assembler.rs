@@ -136,6 +136,33 @@ pub struct ZiskLibrary {
     pub symbols: HashMap<String, u64>,
 }
 
+impl ZiskLibrary {
+    /// Footprint in bytes: `(rom_bytes, ram_bytes)`, measured from each region's
+    /// base (the lowest address used). ROM covers the code and the `const`/ro data
+    /// that follows it; RAM covers the non-`const` data. Callers compare these
+    /// against the reserved `ZISKLIB_ROM_SIZE` / `ZISKLIB_RAM_SIZE` budgets.
+    pub fn footprint(&self) -> (u64, u64) {
+        // ROM: from the first instruction to the end of the code and ro data.
+        let rom_start = self.insts.keys().next().copied().unwrap_or(0);
+        let mut rom_end =
+            self.insts.keys().next_back().map(|&addr| addr + INST_SIZE as u64).unwrap_or(rom_start);
+        for section in &self.ro_data {
+            rom_end = rom_end.max(section.addr + (section.data.len() as u64) * 8);
+        }
+        let rom_bytes = rom_end.saturating_sub(rom_start);
+
+        // RAM: from the first to the last rw-data byte (0 when there is no rw data).
+        let ram_start = self.rw_data.iter().map(|s| s.addr).min().unwrap_or(0);
+        let mut ram_end = ram_start;
+        for section in &self.rw_data {
+            ram_end = ram_end.max(section.addr + (section.data.len() as u64) * 8);
+        }
+        let ram_bytes = ram_end.saturating_sub(ram_start);
+
+        (rom_bytes, ram_bytes)
+    }
+}
+
 /// Reads and assembles `.zisk` source files as a [`ZiskLibrary`] (library mode:
 /// no launcher, code at `rom_base`, non-`const` data at `ram_base`).
 pub fn assemble_library_files<P: AsRef<Path>>(

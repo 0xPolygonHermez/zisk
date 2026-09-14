@@ -154,6 +154,21 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     let library =
         ziskasm::assemble_zisk_library().map_err(|e| format!("assembling ZisK library: {e}"))?;
 
+    // Report how much of the reserved ZISKLIB ROM/RAM windows the library occupies
+    // (it is fit-checked inside assemble_zisk_library, so this only ever prints a
+    // value within budget).
+    #[cfg(feature = "ziskasm")]
+    {
+        let (rom_used, ram_used) = library.footprint();
+        let rom_pct = rom_used as f64 * 100.0 / zisk_core::ZISKLIB_ROM_SIZE as f64;
+        let ram_pct = ram_used as f64 * 100.0 / zisk_core::ZISKLIB_RAM_SIZE as f64;
+        println!(
+            "ZisK library footprint: ROM {rom_used}/{} bytes ({rom_pct:.1}%), RAM {ram_used}/{} bytes ({ram_pct:.1}%)",
+            zisk_core::ZISKLIB_ROM_SIZE,
+            zisk_core::ZISKLIB_RAM_SIZE
+        );
+    }
+
     #[cfg(feature = "ziskasm")]
     {
         let guest_names: Vec<&str> = REDIRECTS.iter().map(|(g, _)| *g).collect();

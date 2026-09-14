@@ -28,6 +28,8 @@ _general_registers_data_size = 0x8000;    /* 32 kB */
 _float_registers_data_size   = 0x8000;    /* 32 kB */
 _output_data_size            = 0x20000;   /* 128 KB reserved */
 _float_ram_data_size         = 0x10000;   /* 64 KB reserved */
+_zisklib_ram_data_size       = 0x30000;   /* 192 KB reserved (ZisK library scratch);
+                                             keep in sync with ZISKLIB_RAM_SIZE in core/src/mem.rs */
 
 /*
 
@@ -64,8 +66,11 @@ _float_ram_data_size         = 0x10000;   /* 64 KB reserved */
              │                    │
              │                    │
              │                    │
-0xBFFF_0000  ├────────────────────┤ ← _heap_top
-             │ float ram          │
+0xBFC0_0000  ├────────────────────┤ ← _heap_top
+             │ zisklib ram        │  192 KB reserved (ZisK library scratch)
+             │  0x30000 bytes     │  = ZISKLIB_RAM (core/src/mem.rs)
+0xBFFF_0000  ├────────────────────┤
+             │ float ram          │  64 KB reserved
 0xC000_0000  └────────────────────┘
 
 */
@@ -143,7 +148,7 @@ SECTIONS
   } >ram AT>ram :bss
 
   PROVIDE(_heap_bottom = .);
-  PROVIDE(_heap_top = ORIGIN(ram) + LENGTH(ram) - _float_ram_data_size);
+  PROVIDE(_heap_top = ORIGIN(ram) + LENGTH(ram) - _float_ram_data_size - _zisklib_ram_data_size);
   PROVIDE(_heap_size = _heap_top - _heap_bottom);
 
   _end = .;
