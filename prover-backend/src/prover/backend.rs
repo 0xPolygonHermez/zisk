@@ -149,11 +149,17 @@ impl ProverBackend {
         Ok(())
     }
 
+    /// Retires the previous job's ASM state: a ROM-histogram runner nobody consumed,
+    /// then the hints stream and the input shmem.
+    ///
+    /// Goes through the executor rather than straight to the ASM emulator so the runner
+    /// is drained *before* the shared memory it reads is rewound — see
+    /// [`ZiskExecutor::reset_for_new_job`]. Two orderings are load-bearing at the call
+    /// site, both already honoured by the worker: this must follow cancellation on a job
+    /// that failed or was cancelled (it blocks on the runner thread), and it must precede
+    /// the next job's hints registration and input push (it rewinds both).
     pub(crate) fn reset(&self) -> Result<()> {
-        if let Some(asm) = self.asm_emulator() {
-            asm.reset()?;
-        }
-        Ok(())
+        self.executor.reset_for_new_job().map_err(Into::into)
     }
 
     pub(crate) fn cancel(&self) {
