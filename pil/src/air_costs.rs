@@ -212,8 +212,8 @@ pub const DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST: usize = 12063;
 /// `Dma64AlignedMemCpy`: 10.90 GB.
 pub const DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST: usize = 11162;
 
-/// `DmaUnaligned`: 9.14 GB.
-pub const DMA_UNALIGNED_INSTANCE_COST: usize = 9359;
+/// `DmaUnaligned`: 2.28 GB.
+pub const DMA_UNALIGNED_INSTANCE_COST: usize = 2334;
 
 /// `DmaPrePost`: 4.63 GB.
 pub const DMA_PRE_POST_INSTANCE_COST: usize = 4741;
