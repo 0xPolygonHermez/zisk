@@ -22,10 +22,11 @@ use std::sync::{Arc, Mutex};
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use zisk_asm_runner::AsmRunnerRH;
-use zisk_common::{CheckPoint, InstanceCtx, InstanceType, Plan, StatsScope};
+use zisk_common::{CheckPoint, Instance, InstanceCtx, InstanceType, Plan, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 use zisk_sm_main::MainInstance;
+use zisk_sm_rom::RomInstance;
 
 use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
 use crate::ports::{Dctx, GlobalId, ProofRegistry};
@@ -310,6 +311,13 @@ impl<F: PrimeField64> WitnessPhase<F> {
             .contains_key(&global_id);
 
         let instance = &**secn_instance;
+
+        // The ROM backend is picked when the instance is built; this is where an
+        // ASM execution finds out it got the wrong one. See `require_asm_rom_mode`.
+        if ctx.is_asm_emulator {
+            require_asm_rom_mode(instance, global_id, air_id)?;
+        }
+
         if needs_collection {
             if ctx.is_asm_emulator {
                 // ASM ROM: the RH service supplies the data — pin an
@@ -422,5 +430,81 @@ impl<F: PrimeField64> WitnessPhase<F> {
         }
 
         Ok(())
+    }
+}
+
+/// Fails an ASM execution whose ROM instance was built for the Rust backend.
+///
+/// On the ASM path the ROM witness comes from the assembly histogram, and
+/// [`WitnessPhase::rom_dispatch`] registers an empty collector because nothing is
+/// meant to fill one. A Rust-backend instance reaching that path therefore
+/// aggregates no collectors at all and computes an **all-zero ROM trace**, which
+/// then gets proved without complaint. The backend is chosen when the instance is
+/// built, from whether the histogram is available by then, so this can only mean
+/// the histogram was missing at build time — a lifecycle bug, not a valid mode.
+///
+/// A free function so it can be exercised on a bare [`RomInstance`], with no proof
+/// or witness context to construct.
+fn require_asm_rom_mode<F: PrimeField64>(
+    instance: &dyn Instance<F>,
+    global_id: usize,
+    air_id: usize,
+) -> ExecutorResult<()> {
+    let rom_instance = instance.as_any().downcast_ref::<RomInstance>().ok_or(
+        ExecutorError::InstanceTypeMismatch { global_id, air_id, expected: "RomInstance" },
+    )?;
+
+    // `skip_collector` is the instance's own name for "my witness comes from the
+    // assembly histogram" — the ASM backend, and the only correct one here.
+    if rom_instance.skip_collector() {
+        Ok(())
+    } else {
+        Err(ExecutorError::RomBackendDowngrade { global_id })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proofman_fields::Goldilocks;
+    use std::sync::atomic::AtomicU64;
+    use zisk_asm_runner::AsmRHData;
+
+    type F = Goldilocks;
+
+    const GID: usize = 42;
+    const AIRGROUP_ID: usize = 7;
+    const AIR_ID: usize = 13;
+
+    /// A ROM instance in either backend, built the way `RomSM::build_instance` builds it.
+    fn rom_instance(asm: bool) -> Box<dyn Instance<F>> {
+        let plan =
+            Plan::new(AIRGROUP_ID, AIR_ID, None, InstanceType::Instance, CheckPoint::None, None);
+        let ictx = InstanceCtx::new(GID, plan);
+        let zisk_rom = Arc::new(ZiskRom::default());
+        if asm {
+            let rh_data = AsmRunnerRH::new(AsmRHData::new(0, Vec::new()));
+            Box::new(RomInstance::new_asm(zisk_rom, ictx, rh_data))
+        } else {
+            Box::new(RomInstance::new_rust(zisk_rom, ictx, Arc::new(Vec::<AtomicU64>::new())))
+        }
+    }
+
+    #[test]
+    fn asm_backend_rom_instance_passes() {
+        let instance = rom_instance(true);
+        require_asm_rom_mode::<F>(&*instance, GID, AIR_ID)
+            .expect("the ASM backend is what an ASM execution must find");
+    }
+
+    #[test]
+    fn rust_backend_rom_instance_is_rejected() {
+        let instance = rom_instance(false);
+        let err = require_asm_rom_mode::<F>(&*instance, GID, AIR_ID)
+            .expect_err("a Rust-backend instance here would prove an all-zero ROM trace");
+        assert!(
+            matches!(err, ExecutorError::RomBackendDowngrade { global_id: GID }),
+            "got {err:?}"
+        );
     }
 }
