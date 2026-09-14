@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use zisk_sdk::{EmbeddedOpts, ProfilingMode, ProverClient, ZiskStdin};
+use zisk_sdk::{EmbeddedOpts, HashMode, ProfilingMode, ProverClient, ZiskStdin};
 use zisk_test_artifacts::{ELF_AGG_VERIFY, ELF_FIB_MOD};
 
 #[derive(Serialize, Deserialize)]
@@ -71,6 +71,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let stdin_aggregation = ZiskStdin::new();
     stdin_aggregation.write_slice(&vadcop_result1.get_proof_bytes()?);
     stdin_aggregation.write_slice(&vadcop_result2.get_proof_bytes()?);
+    // The guest has no way to discover the family the proofs were produced under, so pass
+    // the local proving key's -- the same key that produced them.
+    stdin_aggregation.write_slice(HashMode::local()?.as_str().as_bytes());
 
     println!("Running ZisK Emulator on aggregation program for profiling...");
     zisk_sdk::run(&ELF_AGG_VERIFY, stdin_aggregation.clone(), Some(ProfilingMode::Complete))?;

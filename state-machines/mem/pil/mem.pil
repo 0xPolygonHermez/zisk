@@ -510,12 +510,6 @@ function reg_pre_load(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr va
     mem_proves(id, MEMORY_REG_OP, addr, prev_mem_step, value, sel, name: name);
 }
 
-function precompiled_reg_load(int id = MEMORY_ID, expr reg, expr prev_mem_step, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
-    mem_proves(id, MEMORY_REG_OP, reg, prev_mem_step, value, sel, name: name);
-    range_check(expression: main_step_to_precompiled_mem_step(main_step) - prev_mem_step, min: 0, max: MAX_RANGE);    
-    mem_assumes(id, MEMORY_REG_OP, reg, main_step_to_precompiled_mem_step(main_step), 8, value, sel, name: name);
-}
-
 function reg_pre_store(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     mem_proves(id, MEMORY_REG_OP, addr, prev_mem_step, value, sel, name);
 }
