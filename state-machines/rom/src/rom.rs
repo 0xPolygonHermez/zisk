@@ -13,7 +13,7 @@ use zisk_pil::RomTrace;
 
 /// Names the ROM histogram in [`LateValue`]'s wait log — the only place the
 /// runner's residual is visible once it is no longer joined inside `execute`.
-pub(crate) const RH_LABEL: &str = "ROM histogram";
+pub const RH_LABEL: &str = "ROM histogram";
 
 /// The `RomSM` struct represents the ROM State Machine
 pub struct RomSM {

@@ -5,21 +5,13 @@
 //! — rewinding drains the semaphores the histogram child is waiting on. Retiring it is
 //! the job boundary's work instead, and each client that runs more than one job in a
 //! process owns one. This is the only test that runs two jobs back to back in a single
-//! process, which is the only way to observe that retirement: the pieces live in four
-//! crates and the shared memory is real.
+//! process, which is the only way to observe that retirement: no one crate holds enough
+//! of it to test alone, and the shared memory is real.
 //!
-//! What it asserts, and what it does not:
-//!
-//! * **asserts** that the second execution reads its *own* input. `fib_mod` loops `n`
-//!   times and commits `(n, module, fib(n) mod module)`, so two values of `n` give both
-//!   a different step count and different public outputs; a second execution that ran
-//!   the first one's input would match it on both. This is why the inputs cannot be the
-//!   same — the same input twice is indistinguishable from stale shared memory.
-//! * **does not assert** the ordering between the histogram runner and the reset.
-//!   Rewinding before the runner has been retired strands the assembly child on a
-//!   semaphore nobody will post, which surfaces as a hang, not a failed assertion. That
-//!   ordering is unit-tested where it lives, in `zisk_common::LateValue` and
-//!   `zisk_sm_rom`; what only this test covers is the composite.
+//! It asserts that the second execution reads its *own* input, and cannot assert the
+//! opposite fault: retiring the shared memory before the histogram runner strands the
+//! assembly child on a semaphore nobody will post, which surfaces as a hang rather than
+//! a failed assertion. Watch for that in the run, not in the result.
 //!
 //! Nothing here resets anything explicitly, deliberately: the client is supposed to do
 //! that at its own job boundary, and this test fails if it does not.
@@ -28,10 +20,6 @@
 //! instance and computes its witness, which is where the histogram is read. An
 //! execute-only client has no ROM state machine, so no histogram runner is ever spawned
 //! and there is nothing to retire.
-//!
-//! The proving machinery needs far more stack than a test binary gives it by default —
-//! every binary that drives proofman raises it at startup, and a `cargo test` binary
-//! raises nothing. See `PROVING_STACK` for which threads have to be told.
 //!
 //! Linux-only — the asm executor depends on mmap/jit support not available on
 //! macOS/Windows. Ignored by default: witness mode needs a generated proving key on
@@ -48,16 +36,17 @@ use zisk_sdk::{
 };
 use zisk_test_artifacts::ELF_FIB_MOD;
 
-/// Stack size for the two pools that run the proof: rayon's workers, which do the
-/// witness computation, and tokio's blocking pool, where the SDK runs an embedded job.
-/// Both default to 2 MiB and both overflow on it.
+/// Stack size for rayon's workers, which run the witness computation and overflow on
+/// the 2 MiB default. The overflow reports an unnamed thread, which is what rayon's
+/// are — tokio names its own, so a `<unknown>` in that crash points here.
 ///
 /// 64 MiB is what every binary that drives this machinery already gives it —
 /// `proofman_setup.rs`, `worker_node.rs`, `recurser.rs` here, and pil2-proofman's own
 /// CLI. A test binary is the one caller that has to say so itself.
 const PROVING_STACK: usize = 64 * 1024 * 1024;
 
-/// The two inputs must differ, or a stale-shmem reuse would look like a pass.
+/// The two inputs must differ: the same input twice is indistinguishable from a
+/// second execution that replayed the first one's, which is the fault under test.
 const FIRST_N: u32 = 1_000;
 const SECOND_N: u32 = 5_000;
 const MODULE: u32 = 233;
@@ -84,22 +73,13 @@ async fn run_once(client: &EmbeddedClient, n: u32) -> (u64, Vec<u64>) {
     (result.get_execution_steps(), result.get_publics().public_u64())
 }
 
-#[test]
+#[tokio::test]
 #[ignore = "requires a generated proving key and the ASM microservices; run with --ignored"]
-fn two_asm_executions_in_one_process() {
-    // Before anything touches the pools. `ok()` because a global pool can only be built
-    // once and another test in this binary may have got there first.
+async fn two_asm_executions_in_one_process() {
+    // Before anything reaches the pool, which rayon builds on first use. `ok()` because
+    // a global pool can only be built once.
     rayon::ThreadPoolBuilder::new().stack_size(PROVING_STACK).build_global().ok();
 
-    tokio::runtime::Builder::new_current_thread()
-        .thread_stack_size(PROVING_STACK)
-        .enable_all()
-        .build()
-        .expect("failed to build the tokio runtime")
-        .block_on(two_jobs_one_process());
-}
-
-async fn two_jobs_one_process() {
     let mut builder = EmbeddedClientBuilder::default().assembly();
 
     if let Some(pk) = std::env::var_os("ZISK_TEST_PROVING_KEY").map(PathBuf::from) {
