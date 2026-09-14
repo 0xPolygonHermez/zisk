@@ -461,9 +461,8 @@ fn require_asm_rom_mode<F: PrimeField64>(
     global_id: usize,
     air_id: usize,
 ) -> ExecutorResult<()> {
-    let rom_instance = instance.as_any().downcast_ref::<RomInstance>().ok_or(
-        ExecutorError::InstanceTypeMismatch { global_id, air_id, expected: "RomInstance" },
-    )?;
+    let rom_instance =
+        crate::sm::downcast::<F, RomInstance>(instance, air_id, global_id, "RomInstance")?;
 
     // `skip_collector` is the instance's own name for "my witness comes from the
     // assembly histogram" — the ASM backend, and the only correct one here.
@@ -477,42 +476,27 @@ fn require_asm_rom_mode<F: PrimeField64>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::witness::handlers::rom_rust::tests::{make_rom_instance, AIR_ID, GID};
     use proofman_fields::Goldilocks;
-    use std::sync::atomic::AtomicU64;
-    use zisk_asm_runner::AsmRHData;
-    use zisk_common::LateValue;
+    use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
 
     type F = Goldilocks;
 
-    const GID: usize = 42;
-    const AIRGROUP_ID: usize = 7;
-    const AIR_ID: usize = 13;
-
-    /// A ROM instance in either backend, built the way `RomSM::build_instance` builds it.
-    fn rom_instance(asm: bool) -> Box<dyn Instance<F>> {
-        let plan =
-            Plan::new(AIRGROUP_ID, AIR_ID, None, InstanceType::Instance, CheckPoint::None, None);
-        let ictx = InstanceCtx::new(GID, plan);
-        let zisk_rom = Arc::new(ZiskRom::default());
-        if asm {
-            let rh = AsmRunnerRH::new(AsmRHData::new(0, Vec::new()));
-            let cell = Arc::new(LateValue::ready("ROM histogram", rh));
-            Box::new(RomInstance::new_asm(zisk_rom, ictx, cell))
-        } else {
-            Box::new(RomInstance::new_rust(zisk_rom, ictx, Arc::new(Vec::<AtomicU64>::new())))
-        }
+    /// An ASM-backend ROM instance, i.e. one built while a histogram runner was parked.
+    fn asm_rom_instance() -> Box<dyn Instance<F>> {
+        make_rom_instance(Some(AsmRunnerRH::new(AsmRHData::new(0, Vec::new()))))
     }
 
     #[test]
     fn asm_backend_rom_instance_passes() {
-        let instance = rom_instance(true);
+        let instance = asm_rom_instance();
         require_asm_rom_mode::<F>(&*instance, GID, AIR_ID)
             .expect("the ASM backend is what an ASM execution must find");
     }
 
     #[test]
     fn rust_backend_rom_instance_is_rejected() {
-        let instance = rom_instance(false);
+        let instance = make_rom_instance(None);
         let err = require_asm_rom_mode::<F>(&*instance, GID, AIR_ID)
             .expect_err("a Rust-backend instance here would prove an all-zero ROM trace");
         assert!(

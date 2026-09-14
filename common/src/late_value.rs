@@ -11,9 +11,8 @@
 //! value reads it through [`with`](LateValue::with), which joins the producer
 //! first if it is still running. Both hold the same `LateValue` (behind an
 //! `Arc`), because they are usually different components with different
-//! lifetimes — the motivating case is the ASM ROM-histogram runner, parked by
-//! the executor and read by the ROM state machine's instance, which is rebuilt
-//! on every job while the state machine is not.
+//! lifetimes: the reader is typically rebuilt every round, while the party that
+//! parks the producer — and has to retire it if nobody read it — outlives them.
 //!
 //! # Why the `JoinHandle` is the whole mechanism
 //!
@@ -33,11 +32,8 @@
 //! # Lifecycle
 //!
 //! [`park`](LateValue::park) → [`is_armed`](LateValue::is_armed) →
-//! [`resolve`](LateValue::resolve) → [`with`](LateValue::with) →
-//! [`drain`](LateValue::drain).
+//! [`with`](LateValue::with) → [`drain`](LateValue::drain).
 //!
-//! `resolve` is an optimisation, not a precondition: skipping it leaves the join
-//! to the first reader, which is correct but blocks whichever thread that is.
 //! Whether `drain` is optional depends on the producer — one that owns an
 //! external resource has to be retired before that resource is reused.
 
@@ -213,16 +209,6 @@ impl<T> LateValue<T> {
         Ok(f(self.lock().resolve(self.label)?))
     }
 
-    /// Joins the producer now and caches its value, so a later [`with`](Self::with)
-    /// cannot block.
-    ///
-    /// Call it once the work the producer was overlapping is done, from a thread
-    /// that can afford to wait — the readers that come afterwards may not be.
-    /// Errors as [`with`](Self::with) does.
-    pub fn resolve(&self) -> Result<(), LateValueError> {
-        self.with(|_| ())
-    }
-
     /// Joins a still-parked producer and drops this round's value.
     ///
     /// Call it before whatever the producer's result borrows is reused, and
@@ -311,19 +297,11 @@ mod tests {
     }
 
     #[test]
-    fn resolve_caches_the_value_for_later_readers() {
+    fn a_slow_producer_is_joined_once_and_then_cached() {
         let cell = LateValue::new(LABEL);
         parked_slow(&cell);
-        cell.resolve().expect("producer succeeded");
-        assert_eq!(cell.with(|v| *v).expect("read after resolve"), 7);
-    }
-
-    #[test]
-    fn resolve_is_idempotent() {
-        let cell = LateValue::new(LABEL);
-        parked(&cell, Ok(3));
-        cell.resolve().expect("first resolve");
-        cell.resolve().expect("second resolve must not try to join again");
+        assert_eq!(cell.with(|v| *v).expect("first read joins"), 7);
+        assert_eq!(cell.with(|v| *v).expect("second read must not join again"), 7);
     }
 
     #[test]

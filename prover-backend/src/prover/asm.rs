@@ -832,12 +832,8 @@ impl ExecuteClient for ZiskProver<Asm> {
         stdin: ZiskStdin,
         hints: Option<StreamSource>,
     ) -> Result<ExecuteOutput> {
-        // This client sets a program up once and executes it many times, so every call
-        // is a job boundary: retire the previous execution's shared memory here, before
-        // this job's hints are registered or its input is pushed. Later would be wrong —
-        // the reset marks the hints stream uninitialised, so a stream registered before
-        // it would never be started and the assembly children would wait for hints that
-        // never arrive.
+        // Every call is a job boundary for this client, which executes many times after
+        // one setup. Before the hints below — see `ZiskExecutor::reset_for_new_job`.
         ZiskProver::<Asm>::reset(self)?;
         if let Some(stream) = hints {
             ZiskProver::<Asm>::register_hints_stream(self, stream)?;

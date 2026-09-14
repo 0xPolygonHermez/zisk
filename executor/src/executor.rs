@@ -346,7 +346,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let output = self.execution.run::<F>(
             &zisk_rom,
             &stdin,
-            registry.is_first_process(),
+            // The ROM-histogram runner is what asks the assembly child for a histogram,
+            // so not spawning it leaves that child idle. Skipped without a witness:
+            // there is no ROM state machine to read one, and the standalone path would
+            // pay for a full histogram pass only to drop the result.
+            self.witness.is_some() && registry.is_first_process(),
             self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
             &self.state.stats,
             &_exec_scope,
@@ -372,22 +376,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // Parked here rather than after the planning phases so that an error in between
         // still leaves the handle where the next job's drain can find it — otherwise its
         // child could still be consuming input shmem when that job resets it.
-        match (backend.take_rh_handle(), self.witness.as_ref()) {
-            (Some(handle), Some(witness)) => witness.park_rh_handle(handle)?,
-            // Standalone: there is no ROM state machine to read this histogram and no job
-            // boundary to drain it, so join it here — dropping the handle would detach the
-            // runner and leave it outliving the execution. Failures are reported exactly as
-            // they were when `execute` joined every runner itself.
-            (Some(handle), None) => {
-                handle
-                    .join()
-                    .map_err(|_| ExecutorError::RunnerThreadPanicked { name: "RH" })?
-                    .map_err(|e| ExecutorError::RunnerFailed {
-                        name: "RH",
-                        message: e.to_string(),
-                    })?;
-            }
-            (None, _) => {}
+        if let (Some(handle), Some(witness)) = (backend.take_rh_handle(), self.witness.as_ref()) {
+            witness.park_rh_handle(handle)?;
         }
 
         // The hook published every chunk it saw, so on the ASM path the store is
