@@ -17,7 +17,7 @@
 # Env vars:
 #   SETUP_VERSION       version tag <VER> in the tarball names.
 #   SETUP_NAME_SUFFIX   suffix after <VER> in every artifact name, .hash sidecar
-#                       included, so a setup built with a non-default hash family
+#                       included, so a setup built with a non-default hash mode
 #                       publishes next to the default one (e.g. "-blake3").
 #   FORCE_UPLOAD        upload even if the bucket .hash already matches (no gate).
 #   SETUP_ADD_DYLIBS    merge macOS *.dylib into build/provingKey before packing
@@ -80,26 +80,26 @@ write_md5() {
     fi
 }
 
-# Hash family the proving key in $1 was built with, from its pilout.globalInfo.json.
+# Hash mode the proving key in $1 was built with, from its pilout.globalInfo.json.
 #
-# The family is part of the setup's input hash (setup_common.sh's compute_input_hash
-# emits `hash-family:$HASH`), but $HASH is a shell variable in setup_build.sh, not an
+# The mode is part of the setup's input hash (setup_common.sh's compute_input_hash
+# emits `hash-mode:$HASH_MODE`), but $HASH_MODE is a shell variable in setup_build.sh, not an
 # exported one — so a `setup_build.sh --hash Poseidon1` build leaves nothing for this
 # script's fresh `--print-hash` process to inherit, and it would fall back to the
-# default family and publish the wrong gate hash. Read it off the built key instead,
+# default mode and publish the wrong gate hash. Read it off the built key instead,
 # which is the only record of what was actually built. Never guessed: a key with no
 # `hash` is an error, matching HashMode::from_proving_key.
 #
 # Deliberately duplicated from setup_common.sh's identically-named helper, which
 # serves setup_build.sh. Sourcing that file here would run its cargo-metadata
 # PROOFMAN_DIR resolution, which packaging has no use for.
-proving_key_hash_family() {
+proving_key_hash_mode() {
     local gi="$1/pilout.globalInfo.json"
-    [[ -f "${gi}" ]] || { err "${gi} not found — cannot tell which hash family the setup was built with"; return 1; }
-    local family
-    family="$(jq -r '.hash // empty' "${gi}")" || { err "failed to parse ${gi}"; return 1; }
-    [[ -n "${family}" ]] || { err "no 'hash' field in ${gi} — rebuild the setup so it records its hash family"; return 1; }
-    printf '%s' "${family}"
+    [[ -f "${gi}" ]] || { err "${gi} not found — cannot tell which hash mode the setup was built with"; return 1; }
+    local mode
+    mode="$(jq -r '.hash // empty' "${gi}")" || { err "failed to parse ${gi}"; return 1; }
+    [[ -n "${mode}" ]] || { err "no 'hash' field in ${gi} — rebuild the setup so it records its hash mode"; return 1; }
+    printf '%s' "${mode}"
 }
 
 pack_dir() {
@@ -125,7 +125,7 @@ main() {
     info "▶️  Running $(basename "$0") script..."
 
     command -v gcloud >/dev/null || { err "gcloud not found in PATH (needed to read/upload the setup)"; return 1; }
-    command -v jq >/dev/null || { err "jq not found in PATH (needed to read the setup's hash family)"; return 1; }
+    command -v jq >/dev/null || { err "jq not found in PATH (needed to read the setup's hash mode)"; return 1; }
 
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
@@ -144,9 +144,9 @@ main() {
     # compute_input_hash only (no compile-pil / setup) and prints the 64-hex hash
     # as its sole stdout line, so the same hasher that keyed the build is reused.
     info "Computing setup hash..."
-    SETUP_FAMILY="$(proving_key_hash_family build/provingKey)" || return 1
-    info "Setup hash family: ${SETUP_FAMILY}"
-    SETUP_HASH="$("${SCRIPT_DIR}/setup_build.sh" --print-hash --build-dir build --hash "${SETUP_FAMILY}")" || return 1
+    SETUP_MODE="$(proving_key_hash_mode build/provingKey)" || return 1
+    info "Setup hash mode: ${SETUP_MODE}"
+    SETUP_HASH="$("${SCRIPT_DIR}/setup_build.sh" --print-hash --build-dir build --hash "${SETUP_MODE}")" || return 1
     [[ -n "${SETUP_HASH}" ]] || { err "failed to compute setup hash"; return 1; }
     info "Setup hash: ${SETUP_HASH}"
 

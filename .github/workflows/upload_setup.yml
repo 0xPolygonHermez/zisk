@@ -65,7 +65,7 @@ jobs:
       include_snark: ${{ steps.resolve.outputs.include_snark }}
       build_poseidon1: ${{ steps.resolve.outputs.build_poseidon1 }}
       build_blake3: ${{ steps.resolve.outputs.build_blake3 }}
-      # JSON array of the selected hash families, for macos-dylibs' matrix.
+      # JSON array of the selected hash modes, for macos-dylibs' matrix.
       modes: ${{ steps.resolve.outputs.modes }}
     steps:
       - name: Fix workspace permissions
@@ -96,7 +96,7 @@ jobs:
         id: resolve
         run: |
           # On workflow_dispatch these are the checkboxes; on a push, only the
-          # default family (input defaults don't apply to non-dispatch events).
+          # default mode (input defaults don't apply to non-dispatch events).
           BUILD_POSEIDON1="${{ (github.event_name != 'workflow_dispatch' || inputs.include_poseidon1) && '1' || '0' }}"
           BUILD_BLAKE3="${{ (github.event_name == 'workflow_dispatch' && inputs.include_blake3) && '1' || '0' }}"
           if [ "$BUILD_POSEIDON1" = "0" ] && [ "$BUILD_BLAKE3" = "0" ]; then
@@ -209,7 +209,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           # build/dylib_input holds what compiling the macOS dylibs needs. It is
-          # per-setup, so each hash family gets its own artifact.
+          # per-setup, so each hash mode gets its own artifact.
           name: dylib-input-${{ steps.resolve.outputs.version }}-poseidon1
           path: build/dylib_input/
           if-no-files-found: error
@@ -266,7 +266,7 @@ jobs:
       # gates on the whole job succeeding, so a half-built pair is never published.
       fail-fast: false
       matrix:
-        # Only the families build-setup generated; the values are its staging dirs.
+        # Only the modes build-setup generated; the values are its staging dirs.
         mode: ${{ fromJSON(needs.build-setup.outputs.modes) }}
     defaults:
       run:

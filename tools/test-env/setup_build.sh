@@ -34,7 +34,7 @@
 # An input-side sha256 over:
 #   - every *.pil under  pil/ state-machines/ precompiles/
 #   - every *.pil under  ${PROOFMAN_DIR}/pil2-components/lib/std/pil
-#   - setup/starkstructs.<family>.json (picked by $HASH)
+#   - setup/starkstructs.<mode>.json (picked by $HASH_MODE)
 #   - the *_fixed.bin files written by the fixed-data generators
 #   - pil2-compiler ref: the branch override if set, else the dep ref from
 #     ${PROOFMAN_DIR}/package.json
@@ -100,7 +100,7 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          provingKey/ before it is cached, so a later cache hit
                          reuses them instead of rebuilding — pass --exps-arch
                          major (portable across GPUs) when populating the cache.
-  --hash-mode MODE       Hash family the setup is generated with (Poseidon1,
+  --hash-mode MODE       Hash mode the setup is generated with (Poseidon1,
                          Poseidon2, blake3). Default: Poseidon1. Part of the
                          --cache-dir key. Also settable via HASH_MODE env var.
   --exps-arch SPEC       CUDA arch forwarded to gen-exps (both --gen-exps and
@@ -337,7 +337,7 @@ case "$MODE" in
     cargo run --release --bin cargo-zisk-dev -- proofman-setup stats \
       --airout pil/zisk.pilout \
       --starkstructs "$(starkstructs_path)" \
-      --hash "$HASH" \
+      --hash "$HASH_MODE" \
       -o tmp/stats.txt \
       ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
     echo "stats written to tmp/stats.txt"
@@ -355,19 +355,19 @@ case "$MODE" in
     PUBLICS_INFO="state-machines/publics.json"
     [ -f "$PUBLICS_INFO" ] || { echo "missing $PUBLICS_INFO — final.circom needs publics layout (nPublics, chunks, hasProgramVK)" >&2; exit 1; }
 
-    # The BN128 wrap is poseidon-only. Ask the key on disk, not $HASH: this mode wraps an
-    # existing provingKey and never builds one, so $HASH here is the default for a build
-    # that is not happening — under it a valid poseidon key gets rejected whenever HASH is
-    # unset. Checked before the ptau probe so an unsupported key reports itself instead of
+    # The BN128 wrap is poseidon-only. Ask the key on disk, not $HASH_MODE: this mode wraps
+    # an existing provingKey and never builds one, so $HASH_MODE here is the default for a
+    # build that is not happening — under it a valid poseidon key gets rejected whenever
+    # HASH_MODE is unset. Checked before the ptau probe so an unsupported key reports itself instead of
     # an 18 GB download, and before setup-snark so it fails in seconds.
-    SNARK_FAMILY="$(proving_key_hash_family "$BUILD_DIR/provingKey")" || exit 1
-    if [ "$(printf '%s' "$SNARK_FAMILY" | tr '[:upper:]' '[:lower:]')" = "blake3" ]; then
-      echo "setup-snark is not supported for the $SNARK_FAMILY key in $BUILD_DIR/provingKey:" >&2
+    SNARK_MODE="$(proving_key_hash_mode "$BUILD_DIR/provingKey")" || exit 1
+    if [ "$(printf '%s' "$SNARK_MODE" | tr '[:upper:]' '[:lower:]')" = "blake3" ]; then
+      echo "setup-snark is not supported for the $SNARK_MODE key in $BUILD_DIR/provingKey:" >&2
       echo "the BN128 wrap is only built for the poseidon families. Rebuild the proving key" >&2
       echo "with --hash Poseidon1 or Poseidon2." >&2
       exit 1
     fi
-    echo "wrapping a $SNARK_FAMILY proving key"
+    echo "wrapping a $SNARK_MODE proving key"
 
     PTAU_PATH="${PTAU_PATH:-../powersOfTau28_hez_final_24.ptau}"
     if [ ! -f "$PTAU_PATH" ]; then
