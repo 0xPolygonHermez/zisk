@@ -2758,7 +2758,6 @@ impl<'a> Riscv2ZiskContext<'a> {
 
 /// Converts a buffer with RISC-V data into a vector of Zisk instructions, using the
 /// Riscv2ZiskContext to perform the instruction transpilation
-/// dma_addrs: (memcpy, memcmp, memset, memmove) addresses, 0 if not present
 /// Transpiles a RISC-V code section into ZisK instructions.
 ///
 /// `redirects` maps an intercepted guest-function entry address to
