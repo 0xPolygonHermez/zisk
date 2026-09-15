@@ -800,6 +800,20 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     pv.vk.len()
                 )));
             }
+            // The field verifier reads x and x+p as one element, so a non-canonical limb
+            // would match a key it does not equal. Pinning a key means pinning its bytes.
+            if !zisk_verifier::publics_are_canonical(&pv.vk) {
+                return Err(CommonError::InvalidProof(
+                    "program vk override has a non-canonical Goldilocks limb".to_string(),
+                ));
+            }
+        }
+        if let Some(vk) = self.trusted_setup_vk {
+            if !zisk_verifier::publics_are_canonical(vk) {
+                return Err(CommonError::InvalidProof(
+                    "setup vk override has a non-canonical Goldilocks limb".to_string(),
+                ));
+            }
         }
         if let Some(pv) = self.override_publics {
             if pv.data.len() != ZISK_PUBLICS * 4 {
@@ -1258,6 +1272,9 @@ impl Proof {
         let hash_mode = hash.parse::<HashMode>().map_err(|e| {
             CommonError::Invalid(format!("unrecognized proof hash family {hash:?}: {e}"))
         })?;
+        // Store the canonical spelling: `from_str` is case-insensitive, but the wire tag
+        // and proofman's `verifier()` both match exact strings.
+        let hash = hash_mode.as_str().to_string();
 
         let vadcop_proof =
             VadcopFinalProof::new_from_proof(proof, minimal, hash.clone()).map_err(|e| {
@@ -1510,6 +1527,27 @@ mod tests {
     }
 
     /// Must error before the splice, not panic in `copy_from_slice`.
+    /// The field verifier reads x and x+p as one element, so a non-canonical override
+    /// would pin a key by value it does not equal byte-for-byte.
+    #[test]
+    fn verify_rejects_non_canonical_program_vk_override() {
+        let proof = relabeled_vadcop_proof([11, 12, 13, 14], [11, 12, 13, 14]);
+        let shifted = ProgramVK {
+            vk: vec![11 + GOLDILOCKS_ORDER, 12, 13, 14],
+            hash_mode: HashMode::default(),
+        };
+        let err = proof.with_program_vk(&shifted).verify().unwrap_err();
+        assert!(err.to_string().contains("non-canonical"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn verify_rejects_non_canonical_setup_vk_override() {
+        let proof = relabeled_vadcop_proof([11, 12, 13, 14], [11, 12, 13, 14]);
+        let shifted = [1 + GOLDILOCKS_ORDER, 2, 3, 4];
+        let err = proof.verify_builder().with_setup_vk(&shifted).verify().unwrap_err();
+        assert!(err.to_string().contains("non-canonical"), "unexpected error: {err}");
+    }
+
     #[test]
     fn verify_rejects_wrong_len_program_vk_override() {
         let proof = Proof::new(

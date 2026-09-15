@@ -873,53 +873,61 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         let flat_proof: Vec<u64> = final_proof.into_iter().flatten().collect();
                         let minimal = proof_type == ProofKind::VadcopFinalMinimal;
                         // Compression strips the flag that marks this a fold, taking the
-                        // recursion-domain check in `Proof::verify` with it.
+                        // recursion-domain check in `Proof::verify` with it. Reported as
+                        // an empty proof like any other build failure, so the response
+                        // and the job cleanup below still run.
                         if minimal {
-                            return Err(anyhow!(
-                                "cannot return an aggregated proof as VadcopFinalMinimal: \
-                                 compression drops the recursion-domain marker"
-                            ));
-                        }
-                        // A missing verkey or hash family yields an unusable proof
-                        // (new_from_vadcop_proof rejects an unrecognized/empty hash).
-                        // Treat it as a hard failure rather than emitting a "success"
-                        // response carrying empty proof_data.
-                        let verkey = self
-                            .worker
-                            .get_vadcop_vk(minimal)
-                            .context("Failed to get vadcop verification key")?;
-                        let hash =
-                            self.worker.hash().context("Failed to get proving-key hash family")?;
-                        match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey, hash) {
-                            Ok(zisk_proof) => {
-                                let final_proof: Proof = if is_plonk {
-                                    match self
-                                        .worker
-                                        .prover_arc()
-                                        .wrap_proof(&zisk_proof, ProofKind::Plonk)
-                                        .run()
-                                    {
-                                        Ok(wrapped) => wrapped.get_proof().clone(),
-                                        Err(e) => {
-                                            error!(
-                                                "Failed to wrap Plonk proof for {}: {}",
-                                                job_id, e
-                                            );
-                                            zisk_proof
+                            error!(
+                                "Refusing to return the aggregated proof for {} as \
+                                 VadcopFinalMinimal: compression drops the \
+                                 recursion-domain marker",
+                                job_id
+                            );
+                            vec![]
+                        } else {
+                            // A missing verkey or hash family yields an unusable proof
+                            // (new_from_vadcop_proof rejects an unrecognized/empty hash).
+                            // Treat it as a hard failure rather than emitting a "success"
+                            // response carrying empty proof_data.
+                            let verkey = self
+                                .worker
+                                .get_vadcop_vk(minimal)
+                                .context("Failed to get vadcop verification key")?;
+                            let hash = self
+                                .worker
+                                .hash()
+                                .context("Failed to get proving-key hash family")?;
+                            match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey, hash) {
+                                Ok(zisk_proof) => {
+                                    let final_proof: Proof = if is_plonk {
+                                        match self
+                                            .worker
+                                            .prover_arc()
+                                            .wrap_proof(&zisk_proof, ProofKind::Plonk)
+                                            .run()
+                                        {
+                                            Ok(wrapped) => wrapped.get_proof().clone(),
+                                            Err(e) => {
+                                                error!(
+                                                    "Failed to wrap Plonk proof for {}: {}",
+                                                    job_id, e
+                                                );
+                                                zisk_proof
+                                            }
                                         }
-                                    }
-                                } else {
-                                    zisk_proof
-                                };
-                                bincode::serde::encode_to_vec(
-                                    &final_proof,
-                                    bincode::config::standard(),
-                                )
-                                .unwrap_or_default()
-                            }
-                            Err(e) => {
-                                error!("Failed to build Proof: {}", e);
-                                vec![]
+                                    } else {
+                                        zisk_proof
+                                    };
+                                    bincode::serde::encode_to_vec(
+                                        &final_proof,
+                                        bincode::config::standard(),
+                                    )
+                                    .unwrap_or_default()
+                                }
+                                Err(e) => {
+                                    error!("Failed to build Proof: {}", e);
+                                    vec![]
+                                }
                             }
                         }
                     } else {
