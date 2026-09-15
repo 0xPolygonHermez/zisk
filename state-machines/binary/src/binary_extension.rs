@@ -6,8 +6,9 @@
 use std::sync::Arc;
 
 use crate::{
-    fill_slots_and_tally, opcode_is_chain, opcode_is_chain_rev, opcode_is_combine, opcode_is_shift,
-    opcode_is_shift_word, BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput, SparseTally,
+    fill_slots_and_tally, for_each_operation_in, opcode_is_chain, opcode_is_chain_rev,
+    opcode_is_combine, opcode_is_shift, opcode_is_shift_word, BinaryExtensionTableOp,
+    BinaryExtensionTableSM, BinaryInput, FillTally,
 };
 
 use pil2_std_lib::Std;
@@ -237,7 +238,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         row: &mut R,
         lane: usize,
         input: &BinaryInput,
-        tally: &mut SparseTally,
+        tally: &mut FillTally,
     ) {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
@@ -292,6 +293,14 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         } else {
             ((b_val & 0xFFFFFFFF) as u32, ((b_val >> 32) & 0xFFFFFFFF) as u32)
         };
+
+        // Nothing constrains those high bits of a shift amount but their width, so they are range
+        // checked, one lookup per shift. The amount is applied modulo 64, so they are zero on every
+        // shift a compiler emits and non-zero only on a dirty operand: the tally counts the zeros
+        // and keeps just the exceptions, which is why this is not a `std` increment per operation.
+        if op_is_shift {
+            tally.inc_range(lane, in2_0 as u64);
+        }
 
         // Calculate the trace output
         let mut t_out: [[u32; 2]; 8] = [[0; 2]; 8];
@@ -779,18 +788,19 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             // so they get the padding operation here.
             |trace_row, lane| Self::set_padding_slot(trace_row, lane),
         );
-        tally.flush(&self.std, self.table_id);
+        tally.table.flush(&self.std, self.table_id);
 
-        // Range-check the high part of the shift amount carried in b[0].
-        for row in inputs.iter() {
-            for input in row.iter() {
-                let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
-                if opcode_is_shift(opcode) {
-                    let row = (input.b >> 8) & 0xFFFFFF;
-                    self.std.range_check_one(self.range_id, row);
-                }
+        // Range-check the high part of the shift amount carried in b[0]. The fill already counted
+        // it, so on any real workload this is one call for however many zeros the instance holds
+        // plus a handful of exceptions, and `unfinished` is empty. Only a task that ran past the
+        // dirty shift amounts it remembers leaves slots behind, and only those are looked up here.
+        let unfinished = tally.range.flush(&self.std, self.range_id);
+        for_each_operation_in(inputs, &unfinished, |input| {
+            let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
+            if opcode_is_shift(opcode) {
+                self.std.range_check_one(self.range_id, (input.b >> 8) & 0xFFFFFF);
             }
-        }
+        });
 
         // One padded slot is one SEXT_B(0) operation on the bus, and each takes eight table rows.
         let padding_size = num_slots - total_inputs;

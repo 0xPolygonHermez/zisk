@@ -30,6 +30,12 @@
 //!   regions allocated on demand, for the airs whose lookups index a table far larger than the part
 //!   of it any one instance touches (8.8M rows for `BinaryBasic`, 2.5M for `BinaryExtension`).
 //!
+//! [`SkewedTally`] rides along with the second one, in the same [`FillTally`], for a range check
+//! whose value is almost always zero: it counts the zeros and remembers only the values that were
+//! not, so a whole instance's worth of them reaches `std` as one call. A task that meets more of
+//! them than it keeps stops there and hands back the slots it did not reach, which is the only work
+//! that goes back to the caller.
+//!
 //! [`fill_slots_and_tally`] also walks the chunked inputs with a cursor rather than flattening them,
 //! so no `Vec<&BinaryInput>` the size of the instance is built to be read once.
 
@@ -37,6 +43,7 @@ use crate::BinaryInput;
 use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
+use std::ops::Range;
 
 /// Values a 16-bit range check can take, i.e. the width of one histogram.
 pub const RANGE_16_BITS: usize = 0xFFFF + 1;
@@ -258,6 +265,182 @@ impl SparseTally {
     }
 }
 
+/// Values other than zero a [`SkewedTally`] remembers, per task, before it stops counting and hands
+/// the rest of its slots back to the caller.
+///
+/// Sized to be free: one cache line's worth of them per task, so a tally that never reaches the
+/// bound costs a counter and a `Vec` that stays within its first allocation. The bound is what makes
+/// the buffer safe to keep — an adversarial input cannot make the fill hold one entry per operation,
+/// it only makes the caller walk the slots past the bound itself.
+pub const SKEWED_OTHERS: usize = 64;
+
+/// A tally for a range check whose value is almost always zero.
+///
+/// The extension air range-checks the high bits of the shift amount, `(b >> 8) & 0xFFFFFF`. A shift
+/// amount is taken modulo 64, so anything a compiler emits has those bits at zero; a non-zero one is
+/// a dirty operand, legal but rare. Counting one lookup per shift operation into `std` is therefore
+/// millions of contended atomic increments to say "zero" a few million times.
+///
+/// This counts the zeros instead, and remembers the values that were not — up to [`SKEWED_OTHERS`]
+/// of them per task, which is all a real workload ever produces. A task that reaches the bound does
+/// not throw away what it counted: it stops at the slot it was on and reports that slot, so
+/// [`Self::flush`] hands `std` everything counted before it and the caller looks up only the slots
+/// from there to the end of that task's run — its own share of the instance, not the whole of it.
+///
+/// A slot may be range-checked at most once. The resume point is an operation boundary, so the
+/// caller redoes every lookup of every operation it covers; a second lookup on the same operation
+/// would be counted twice. Debug builds check it.
+#[derive(Default)]
+pub struct SkewedTally {
+    /// Lookups of zero, up to the slot this task stopped at.
+    zeros: u64,
+
+    /// The values that were not zero, one entry per lookup, up to the slot this task stopped at.
+    others: Vec<u64>,
+
+    /// First slot of the row the fill is on, so a lookup can name the slot it came from.
+    row_slot: usize,
+
+    /// The slot this task stopped counting at, once it reached [`SKEWED_OTHERS`]. Taken by
+    /// [`Self::finish`], which is what turns it into a range.
+    stopped_at: Option<usize>,
+
+    /// Slot ranges nobody counted, one per task that reached the bound.
+    ///
+    /// Bounded by the thread count, and disjoint: a task only ever names slots inside its own run,
+    /// and stops counting at the first one it names.
+    unfinished: Vec<Range<usize>>,
+
+    /// The slot of the last lookup counted, so a second lookup on the same slot — which the resume
+    /// point cannot express — is caught rather than silently double-counted.
+    #[cfg(debug_assertions)]
+    last_slot: Option<usize>,
+}
+
+impl SkewedTally {
+    /// Points the tally at the row starting at global slot `first_slot`.
+    ///
+    /// Called once per row by the fill, which is the only place that knows where a row sits in the
+    /// instance; [`Self::inc`] then names its slot with the lane it was given.
+    #[inline(always)]
+    pub fn at_row(&mut self, first_slot: usize) {
+        self.row_slot = first_slot;
+    }
+
+    /// Counts one range check of `value`, looked up by the operation in `lane` of the current row.
+    #[inline(always)]
+    pub fn inc(&mut self, lane: usize, value: u64) {
+        #[cfg(debug_assertions)]
+        {
+            let slot = self.row_slot + lane;
+            debug_assert!(
+                self.last_slot != Some(slot),
+                "slot {slot} was range checked twice; the resume point cannot express that",
+            );
+            self.last_slot = Some(slot);
+        }
+        if self.stopped_at.is_some() {
+            return;
+        }
+        if value == 0 {
+            self.zeros += 1;
+            return;
+        }
+        if self.others.len() == SKEWED_OTHERS {
+            // This lookup is not counted, so the slot it came from is where the caller resumes.
+            self.stopped_at = Some(self.row_slot + lane);
+            return;
+        }
+        self.others.push(value);
+    }
+
+    /// Closes this task's run, which ends at global slot `end`.
+    ///
+    /// A task that stopped counting hands back the slots from where it stopped to `end`; one that
+    /// counted its whole run hands back nothing.
+    fn finish(&mut self, end: usize) {
+        if let Some(start) = self.stopped_at.take() {
+            self.unfinished.push(start..end);
+        }
+    }
+
+    /// Adds `other` into this tally.
+    ///
+    /// The [`SKEWED_OTHERS`] bound is per task, so merging tasks can carry more than it — at most
+    /// one buffer per task, which is the same few kilobytes the tasks already held.
+    fn merge(mut self, other: Self) -> Self {
+        debug_assert!(
+            self.stopped_at.is_none() && other.stopped_at.is_none(),
+            "a task was merged before `finish` turned where it stopped into a range",
+        );
+        self.zeros += other.zeros;
+        self.others.extend(other.others);
+        self.unfinished.extend(other.unfinished);
+        self
+    }
+
+    /// The zero count, the values it kept and the slots it left — what [`Self::flush`] would hand to
+    /// `std` and give back. Test-only: the fill never reads the counts back.
+    #[cfg(test)]
+    fn counted(&self) -> (u64, Vec<u64>, Vec<Range<usize>>) {
+        (self.zeros, self.others.clone(), self.unfinished.clone())
+    }
+
+    /// Hands the counted range checks to `std` and gives back the slots nobody counted.
+    ///
+    /// The returned ranges are disjoint and hold no counts: the caller has to look up every range
+    /// check of every operation they cover, which [`for_each_operation_in`] walks. They are empty on
+    /// any workload that stays under [`SKEWED_OTHERS`] dirty values per task.
+    #[must_use]
+    pub fn flush<F: PrimeField64>(self, std: &Std<F>, range_id: usize) -> Vec<Range<usize>> {
+        if self.zeros > 0 {
+            std.range_check(range_id, 0u64, self.zeros);
+        }
+        if !self.others.is_empty() {
+            std.range_check_batch_one(range_id, &self.others);
+        }
+        self.unfinished
+    }
+}
+
+/// The counters one task of a fill writes into: the table rows it looks up, and the values it range
+/// checks.
+///
+/// Both are per task and merged at the end, which is what keeps the fill free of atomics; see the
+/// module documentation. An air that range-checks nothing simply never touches [`Self::range`],
+/// which then costs it a `u64` and an unallocated `Vec` per task.
+pub struct FillTally {
+    /// Multiplicities of the table rows the fill looked up.
+    pub table: SparseTally,
+
+    /// The values the fill range-checked, one lookup per operation.
+    pub range: SkewedTally,
+}
+
+impl FillTally {
+    /// An empty tally for a table of `table_rows` rows, expecting about `lookups` of them.
+    fn new(table_rows: u64, lookups: usize) -> Self {
+        Self { table: SparseTally::new(table_rows, lookups), range: SkewedTally::default() }
+    }
+
+    /// Counts one lookup of table row `row`. See [`SparseTally::inc`].
+    #[inline(always)]
+    pub fn inc(&mut self, row: u64) {
+        self.table.inc(row);
+    }
+
+    /// Counts one range check of `value`, by the operation in `lane`. See [`SkewedTally::inc`].
+    #[inline(always)]
+    pub fn inc_range(&mut self, lane: usize, value: u64) {
+        self.range.inc(lane, value);
+    }
+
+    /// Adds `other` into this tally, counter by counter.
+    fn merge(self, other: Self) -> Self {
+        Self { table: self.table.merge(other.table), range: self.range.merge(other.range) }
+    }
+}
+
 /// Walks a chunked input list from an arbitrary global offset, without flattening it.
 ///
 /// The fill is parallel over rows and a row's operations can straddle a chunk boundary, which is
@@ -298,6 +481,35 @@ impl<'a> InputCursor<'a> {
     }
 }
 
+/// Calls `visit` on every operation the slot ranges in `slots` cover, in order.
+///
+/// `slots` is what [`SkewedTally::flush`] gave back: the runs of operations no task counted, which
+/// the caller has to look up itself. They are walked with the same cursor the fill uses, so this
+/// reads the chunks in place and touches nothing outside the ranges.
+///
+/// # Panics
+/// Panics if a range reaches past the operations `inputs` holds.
+pub fn for_each_operation_in<Visit>(
+    inputs: &[Vec<BinaryInput>],
+    slots: &[Range<usize>],
+    mut visit: Visit,
+) where
+    Visit: FnMut(&BinaryInput),
+{
+    if slots.is_empty() {
+        return;
+    }
+    let starts = chunk_starts(inputs);
+    for range in slots {
+        let mut cursor = InputCursor::new(inputs, &starts, range.start);
+        for slot in range.clone() {
+            let input =
+                cursor.next().unwrap_or_else(|| panic!("slot {slot} is past the operations"));
+            visit(input);
+        }
+    }
+}
+
 /// Prefix sum of the chunk lengths, one entry longer than `chunks`.
 fn chunk_starts(chunks: &[Vec<BinaryInput>]) -> Vec<usize> {
     let mut starts = Vec::with_capacity(chunks.len() + 1);
@@ -310,7 +522,8 @@ fn chunk_starts(chunks: &[Vec<BinaryInput>]) -> Vec<usize> {
     starts
 }
 
-/// Fills `rows` in parallel from the chunked `inputs`, tallying the table rows the fill looks up.
+/// Fills `rows` in parallel from the chunked `inputs`, tallying the table rows the fill looks up and
+/// the values it range checks.
 ///
 /// Slots are numbered consecutively across the whole instance, `lanes_x_row` to a row, so row `r`
 /// takes operations `r * lanes_x_row ..`. `slot` fills one of them and counts what it looks up;
@@ -322,7 +535,7 @@ fn chunk_starts(chunks: &[Vec<BinaryInput>]) -> Vec<usize> {
 /// approximation is fine.
 ///
 /// The rows are split into no more chunks than there are rayon threads, so the number of live
-/// [`SparseTally`] histograms is bounded by the thread count.
+/// [`FillTally`] histograms is bounded by the thread count.
 ///
 /// # Panics
 /// Panics if `rows` does not hold exactly the `total_inputs` operations at `lanes_x_row` to a row.
@@ -336,10 +549,10 @@ pub fn fill_slots_and_tally<R, Slot, Pad>(
     lookups_x_slot: usize,
     slot: Slot,
     pad: Pad,
-) -> SparseTally
+) -> FillTally
 where
     R: Send,
-    Slot: Fn(&mut R, usize, &BinaryInput, &mut SparseTally) + Sync + Send,
+    Slot: Fn(&mut R, usize, &BinaryInput, &mut FillTally) + Sync + Send,
     Pad: Fn(&mut R, usize) + Sync + Send,
 {
     assert!(lanes_x_row > 0, "a row must take at least one operation");
@@ -364,12 +577,13 @@ where
     rows.par_chunks_mut(rows_per_task)
         .enumerate()
         .map(|(task, row_chunk)| {
-            let mut tally = SparseTally::new(table_rows, lookups_x_task);
+            let mut tally = FillTally::new(table_rows, lookups_x_task);
             let mut done = task * rows_per_task * lanes_x_row;
             let mut cursor = InputCursor::new(inputs, &starts, done);
 
             for row in row_chunk.iter_mut() {
                 let filled = lanes_x_row.min(total_inputs - done);
+                tally.range.at_row(done);
                 for lane in 0..filled {
                     let input = cursor.next().expect("the cursor holds one input per filled slot");
                     slot(row, lane, input, &mut tally);
@@ -379,10 +593,12 @@ where
                 }
                 done += filled;
             }
+            // `done` is now the end of this task's run, which is what closes the slots it left.
+            tally.range.finish(done);
             tally
         })
-        .reduce_with(SparseTally::merge)
-        .unwrap_or_else(|| SparseTally::new(table_rows, lookups_x_task))
+        .reduce_with(FillTally::merge)
+        .unwrap_or_else(|| FillTally::new(table_rows, lookups_x_task))
 }
 
 #[cfg(test)]
@@ -573,7 +789,7 @@ mod tests {
                 // The tally survived the merge across tasks: one count per operation, and the
                 // fill counted operation `i` into row `i` (the chunkings stay under one region).
                 assert_eq!(
-                    tally.counts(),
+                    tally.table.counts(),
                     (0..total as u64).map(|index| (index, 1)).collect(),
                     "{lengths:?} at {lanes_x_row} lanes"
                 );
@@ -662,5 +878,181 @@ mod tests {
         let multiplicities = fill_and_tally(&mut [0u64; 0], &[0u64; 0], 4, |_, _, m| m[1] += 1);
         assert_eq!(multiplicities.len(), RANGE_16_BITS);
         assert!(multiplicities.iter().all(|&m| m == 0));
+    }
+
+    /// Counts `values` into a tally as one task's run of one-lane rows, ending at slot `end`.
+    fn skewed(values: &[u64], end: usize) -> SkewedTally {
+        let mut tally = SkewedTally::default();
+        for (slot, &value) in values.iter().enumerate() {
+            tally.at_row(slot);
+            tally.inc(0, value);
+        }
+        tally.finish(end);
+        tally
+    }
+
+    /// The case the skewed tally exists for: a run of lookups that are all zero costs `std` one
+    /// call, the few that are not are kept as they came, and nothing is left for the caller.
+    #[test]
+    fn the_skewed_tally_separates_the_zeros_from_the_rest() {
+        assert_eq!(skewed(&[], 0).counted(), (0, vec![], vec![]), "an untouched tally is empty");
+
+        let tally = skewed(&[0, 0, 7, 0, 0x123456, 0, 0], 7);
+        assert_eq!(tally.counted(), (5, vec![7, 0x123456], vec![]));
+    }
+
+    /// Tasks tally independently and are merged, so what the merge produces has to be what one task
+    /// would have counted on its own.
+    #[test]
+    fn merging_skewed_tallies_adds_both_sides() {
+        let merged = skewed(&[0, 0, 9], 3).merge(skewed(&[0, 4, 0, 0], 4));
+        assert_eq!(merged.counted(), (5, vec![9, 4], vec![]));
+
+        // The per-task bound is not a bound on the merge: two full tasks merge into one tally that
+        // holds both their buffers, which is still only a buffer per task.
+        let full = vec![1u64; SKEWED_OTHERS];
+        let merged = skewed(&full, full.len()).merge(skewed(&full, full.len()));
+        assert_eq!(merged.counted(), (0, vec![1; 2 * SKEWED_OTHERS], vec![]));
+    }
+
+    /// Past the bound the tally stops counting rather than growing with the instance, but it keeps
+    /// what it counted: only the slots from where it stopped to the end of its run go back to the
+    /// caller, and they survive a merge with a task that counted its whole run.
+    // A one-element `Vec`/array of `Range` is what a single task that stopped produces; the
+    // lint's suggestion to `collect` the range is the opposite of what these assert.
+    #[allow(clippy::single_range_in_vec_init)]
+    #[test]
+    fn a_skewed_tally_that_stops_hands_back_only_what_is_left() {
+        // The bound is reached on the slot after the last value it keeps, and the run is longer.
+        let mut values = vec![3u64; SKEWED_OTHERS + 1];
+        values.extend([0, 0, 5]);
+        let tally = skewed(&values, 1000);
+
+        assert_eq!(
+            tally.counted(),
+            (0, vec![3; SKEWED_OTHERS], vec![SKEWED_OTHERS..1000]),
+            "the kept values stand and the rest of the run goes back",
+        );
+
+        // A task that stopped and one that did not merge into the counts of both plus the one range.
+        let merged = skewed(&[0, 0, 8], 3).merge(tally);
+        let kept = [vec![8u64], vec![3; SKEWED_OTHERS]].concat();
+        assert_eq!(merged.counted(), (2, kept, vec![SKEWED_OTHERS..1000]));
+    }
+
+    /// A slot the tally counted must not also come back in a range, or its lookup is counted twice.
+    #[test]
+    fn the_slots_handed_back_start_where_the_counting_stopped() {
+        let values = vec![7u64; SKEWED_OTHERS + 20];
+        let tally = skewed(&values, values.len());
+        let (_, kept, unfinished) = tally.counted();
+
+        assert_eq!(unfinished, vec![SKEWED_OTHERS..values.len()]);
+        assert_eq!(
+            kept.len() + unfinished.iter().map(|range| range.len()).sum::<usize>(),
+            values.len(),
+            "every slot is either counted or handed back, and none is both",
+        );
+    }
+
+    /// The fill hands the closure one tally holding both counters, and both have to come back
+    /// merged across however many tasks rayon used.
+    #[test]
+    fn the_fill_tallies_the_range_checks_too() {
+        for lengths in CHUNKINGS {
+            let inputs = chunked(lengths);
+            let total: usize = lengths.iter().sum();
+            let mut rows = vec![0u64; total];
+
+            // One operation in 101 range checks its own index and the rest check zero, sparse enough
+            // that the largest chunking stays under the per-task bound however few threads run it.
+            let tally = fill_slots_and_tally(
+                &mut rows,
+                &inputs,
+                total,
+                1,
+                REGION_ROWS as u64,
+                1,
+                |row, lane, input, tally| {
+                    *row = input.a;
+                    tally.inc(input.a % REGION_ROWS as u64);
+                    tally.inc_range(lane, if input.a % 101 == 100 { input.a } else { 0 });
+                },
+                |_, _| unreachable!("one operation to a row leaves nothing to pad"),
+            );
+
+            let expected: Vec<u64> = (0..total as u64).filter(|index| index % 101 == 100).collect();
+            let (zeros, mut kept, unfinished) = tally.range.counted();
+            kept.sort_unstable();
+            assert_eq!((zeros, kept), ((total - expected.len()) as u64, expected), "{lengths:?}");
+            assert!(unfinished.is_empty(), "{lengths:?}: far too few to reach the bound");
+        }
+    }
+
+    /// The slots a task hands back have to name the operations it did not count, so walking them
+    /// with [`for_each_operation_in`] finds exactly those — whatever the chunking and the split.
+    #[test]
+    fn the_fill_hands_back_the_slots_it_did_not_count() {
+        for lengths in CHUNKINGS {
+            let inputs = chunked(lengths);
+            let total: usize = lengths.iter().sum();
+            let mut rows = vec![0u64; total];
+
+            // Every value is non-zero, so every task stops after the first SKEWED_OTHERS of its run.
+            let tally = fill_slots_and_tally(
+                &mut rows,
+                &inputs,
+                total,
+                1,
+                REGION_ROWS as u64,
+                1,
+                |row, lane, input, tally| {
+                    *row = input.a;
+                    tally.inc(input.a % REGION_ROWS as u64);
+                    tally.inc_range(lane, input.a + 1);
+                },
+                |_, _| unreachable!("one operation to a row leaves nothing to pad"),
+            );
+
+            let (zeros, kept, unfinished) = tally.range.counted();
+            assert_eq!(zeros, 0, "{lengths:?}");
+
+            // Whatever the split, each operation was either kept or handed back, never both.
+            let mut walked = Vec::new();
+            for_each_operation_in(&inputs, &unfinished, |input| walked.push(input.a + 1));
+            let mut seen = [kept, walked].concat();
+            seen.sort_unstable();
+            assert_eq!(seen, (1..=total as u64).collect::<Vec<_>>(), "{lengths:?}");
+        }
+    }
+
+    /// The ranges are walked in place from an arbitrary slot, which is the whole point of reusing
+    /// the cursor: an empty list walks nothing, and disjoint ranges walk their own operations.
+    // A one-element `Vec`/array of `Range` is what a single task that stopped produces; the
+    // lint's suggestion to `collect` the range is the opposite of what these assert.
+    #[allow(clippy::single_range_in_vec_init)]
+    #[test]
+    fn walking_slot_ranges_visits_exactly_them() {
+        for lengths in CHUNKINGS {
+            let inputs = chunked(lengths);
+            let total: usize = lengths.iter().sum();
+
+            let mut walked = Vec::new();
+            for_each_operation_in(&inputs, &[], |input| walked.push(input.a));
+            assert!(walked.is_empty(), "{lengths:?}: no ranges, no operations");
+
+            for_each_operation_in(&inputs, &[0..total], |input| walked.push(input.a));
+            assert_eq!(walked, (0..total as u64).collect::<Vec<_>>(), "{lengths:?}: the whole run");
+
+            // Two disjoint ranges, the second starting past the first, as a merge produces them.
+            if total >= 4 {
+                let (first, second) = (1..total / 2, total / 2 + 1..total);
+                let mut walked = Vec::new();
+                for_each_operation_in(&inputs, &[first.clone(), second.clone()], |input| {
+                    walked.push(input.a as usize)
+                });
+                assert_eq!(walked, first.chain(second).collect::<Vec<_>>(), "{lengths:?}");
+            }
+        }
     }
 }

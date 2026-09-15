@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::{
     binary_constants::*, fill_slots_and_tally, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput,
-    BinaryLanes, SparseTally,
+    BinaryLanes, FillTally,
 };
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
@@ -287,7 +287,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         row: &mut R,
         lane: usize,
         input: &BinaryInput,
-        tally: &mut SparseTally,
+        tally: &mut FillTally,
     ) {
         // Execute the opcode
         let opcode = input.op;
@@ -1127,7 +1127,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             // so they get ADD(0,0), the padding operation, here.
             |row, lane| Self::set_padding_slot(row, lane),
         );
-        tally.flush(&self.std, self.table_id);
+        tally.table.flush(&self.std, self.table_id);
 
         // Every padded slot is one ADD(0,0) on the bus, whatever row it sits on: the leftover lanes
         // of the last filled row and every lane of the rows after it.

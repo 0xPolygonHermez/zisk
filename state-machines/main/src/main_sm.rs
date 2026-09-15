@@ -228,6 +228,7 @@ impl<F: PrimeField64> MainInstance<F> {
             &mut step_range_check,
             &mut reg_steps,
             chunks_per_flush,
+            segment_initial_step as usize,
             &flush_steps,
             &mut air_values,
         )?;
@@ -377,6 +378,7 @@ impl<F: PrimeField64> MainInstance<F> {
         step_range_check: &mut [u32],
         reg_steps: &mut [u64; REGS_IN_MAIN],
         chunks_per_flush: usize,
+        segment_initial_step: usize,
         flush_steps: &[u64],
         air_values: &mut MainAirValues<'_, F>,
     ) -> Result<Vec<u32>, MainSmError> {
@@ -411,8 +413,7 @@ impl<F: PrimeField64> MainInstance<F> {
                     let slot = MemHelpers::mem_step_to_slot(mem_step);
                     // `mem_step_to_row` yields the main step; the segment's steps are laid
                     // out `MAIN_LANES` per row, in lane order.
-                    let segment_step =
-                        MemHelpers::mem_step_to_row(mem_step) % MAIN_STEPS_PER_SEGMENT;
+                    let segment_step = MemHelpers::mem_step_to_row(mem_step) - segment_initial_step;
                     let row = segment_step / MAIN_LANES;
                     let lane = segment_step % MAIN_LANES;
                     let range = mem_step - reg_prev_mem_step - 1;
