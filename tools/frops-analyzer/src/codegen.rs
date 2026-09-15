@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-use crate::ops::{classify, variant_ident, FropsTable, OpInfo};
+use crate::ops::{classify, FropsTable, OpInfo};
 use crate::optimize::{Config, Proposal};
 
 /// One-line comment documenting the parameters a file was generated with.
@@ -59,8 +59,10 @@ fn meta(table: FropsTable) -> TableMeta {
 /// One opcode's selected regions, in deterministic order, with the op metadata.
 struct OpBlock {
     info: OpInfo,
+    /// Path of the `ZiskOp` associated constant for this opcode, e.g. `ZiskOp::SIGNEXTEND_B`.
+    /// `define_ops!` derives it from the op's string name, so the generated source references
+    /// the opcode directly instead of redefining it.
     const_name: String,
-    variant: String,
     regions: Vec<Region>,
 }
 
@@ -507,9 +509,8 @@ fn op_blocks(prop: &Proposal, table: FropsTable) -> Vec<OpBlock> {
             // Deterministic region order: low_rect, mid_box, high_box.
             regions.sort_by_key(region_order);
             let info = prop.op_info[&code];
-            let variant = variant_ident(code).unwrap_or_else(|| format!("Op{code:#04x}"));
-            let const_name = format!("OP_{}", variant.to_uppercase());
-            OpBlock { info, const_name, variant, regions }
+            let const_name = format!("ZiskOp::{}", info.name.to_uppercase());
+            OpBlock { info, const_name, regions }
         })
         .collect()
 }
@@ -606,12 +607,6 @@ fn emit_file(m: &TableMeta, blocks: &[OpBlock], cfg: &Config) -> String {
     s.push_str("use zisk_sm_frequent_ops::FrequentOpsHelpers;\n");
     s.push_str("use std::error::Error;\n");
     s.push_str("use zisk_core::zisk_ops::ZiskOp;\n\n");
-
-    // Opcode constants.
-    for b in blocks {
-        s.push_str(&format!("const {}: u8 = ZiskOp::{}.code();\n", b.const_name, b.variant));
-    }
-    s.push('\n');
 
     // OP_TABLE_OFFSETS.
     let (start, offsets) = table_offsets(blocks);

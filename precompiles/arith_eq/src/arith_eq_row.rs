@@ -54,17 +54,17 @@ impl ArithEqOp {
     pub fn from_opcode(op: u8) -> Option<ArithEqOp> {
         use zisk_core::zisk_ops::ZiskOp;
         Some(match op {
-            x if x == ZiskOp::Arith256.code() => ArithEqOp::Arith256,
-            x if x == ZiskOp::Arith256Mod.code() => ArithEqOp::Arith256Mod,
-            x if x == ZiskOp::Secp256k1Add.code() => ArithEqOp::Secp256k1Add,
-            x if x == ZiskOp::Secp256k1Dbl.code() => ArithEqOp::Secp256k1Dbl,
-            x if x == ZiskOp::Bn254CurveAdd.code() => ArithEqOp::Bn254CurveAdd,
-            x if x == ZiskOp::Bn254CurveDbl.code() => ArithEqOp::Bn254CurveDbl,
-            x if x == ZiskOp::Bn254ComplexAdd.code() => ArithEqOp::Bn254ComplexAdd,
-            x if x == ZiskOp::Bn254ComplexSub.code() => ArithEqOp::Bn254ComplexSub,
-            x if x == ZiskOp::Bn254ComplexMul.code() => ArithEqOp::Bn254ComplexMul,
-            x if x == ZiskOp::Secp256r1Add.code() => ArithEqOp::Secp256r1Add,
-            x if x == ZiskOp::Secp256r1Dbl.code() => ArithEqOp::Secp256r1Dbl,
+            ZiskOp::ARITH256 => ArithEqOp::Arith256,
+            ZiskOp::ARITH256_MOD => ArithEqOp::Arith256Mod,
+            ZiskOp::SECP256K1_ADD => ArithEqOp::Secp256k1Add,
+            ZiskOp::SECP256K1_DBL => ArithEqOp::Secp256k1Dbl,
+            ZiskOp::BN254_CURVE_ADD => ArithEqOp::Bn254CurveAdd,
+            ZiskOp::BN254_CURVE_DBL => ArithEqOp::Bn254CurveDbl,
+            ZiskOp::BN254_COMPLEX_ADD => ArithEqOp::Bn254ComplexAdd,
+            ZiskOp::BN254_COMPLEX_SUB => ArithEqOp::Bn254ComplexSub,
+            ZiskOp::BN254_COMPLEX_MUL => ArithEqOp::Bn254ComplexMul,
+            ZiskOp::SECP256R1_ADD => ArithEqOp::Secp256r1Add,
+            ZiskOp::SECP256R1_DBL => ArithEqOp::Secp256r1Dbl,
             _ => return None,
         })
     }

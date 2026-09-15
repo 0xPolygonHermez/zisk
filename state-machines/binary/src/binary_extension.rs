@@ -796,14 +796,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
         // Set SEXT_B(0) as the padding row
         let mut padding_row: R = Default::default();
-        padding_row.set_shared_fields(
-            ZiskOp::SignExtendB.code(),
-            &[0; 8],
-            0,
-            &[[0; 2]; 8],
-            false,
-            false,
-        );
+        padding_row.set_shared_fields(ZiskOp::SIGNEXTEND_B, &[0; 8], 0, &[[0; 2]; 8], false, false);
 
         let padding_size = num_rows - total_inputs;
         for i in 0..8 {
