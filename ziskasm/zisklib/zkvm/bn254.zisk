@@ -1,0 +1,379 @@
+; ============================================================================
+; zkvm/bn254.zisk - BN254 (alt_bn128) G1 add/mul + optimal-ate pairing check for
+; the EF zkVM accelerator C ABI. Entrypoints ziskasm_zkvm_bn254_{g1_add,g1_mul,
+; pairing}, redirect targets of zkvm_bn254_*.
+;
+; EF encodings (all big-endian bytes):
+;   G1 point (64B)  = x(32B) ‖ y(32B)                    -> 8 LE u64 (x‖y)
+;   scalar   (32B)                                        -> 4 LE u64
+;   G2 point (128B) = x_i(32B) ‖ x_r(32B) ‖ y_i ‖ y_r     -> 16 LE u64
+;                     but internal order is (x_r, x_i, y_r, y_i): the two Fp2
+;                     halves SWAP (imag-first bytes -> real-first limbs).
+;   pairing input   = num_pairs × {G1(64B) ‖ G2(128B)} = 192B/pair.
+; Each 32-byte chunk is a full byte-reversal (zkvm_be_to_limbs, nlimbs=4).
+;
+; Validation mirrors {add,scalar_mul}_complete_safe_bn254 / pairing_check_safe:
+; identity handled first, else require canonical (x,y < P) + on-curve, EFAIL
+; otherwise. NOTHING here calls the EF-equivalent *_safe_bn254_c; the heavy work
+; reuses the shared limb primitives zisklib_add_bn254 / zisklib_scalar_mul_bn254 /
+; zisklib_pairing_check_bn254 (+ bn254_ltn/eqn, zisklib_is_on_curve_bn254).
+; Labels `zbn_`, data `ZBN_*`. MAX_PAIRS=32 (buffers bounded; larger -> EFAIL).
+; ============================================================================
+
+u64 ZBN_TP0[1]  = 0
+u64 ZBN_TP1[1]  = 0
+u64 ZBN_VP[1]   = 0
+u64 ZBN_AP1[1]  = 0
+u64 ZBN_AP2[1]  = 0
+u64 ZBN_RESP[1] = 0
+u64 ZBN_F1[1]   = 0
+u64 ZBN_P1[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZBN_P2[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZBN_RES[8]  = 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZBN_K[4]    = 0, 0, 0, 0
+u64 ZBN_PAIRSP[1] = 0
+u64 ZBN_N[1]      = 0
+u64 ZBN_VERP[1]   = 0
+u64 ZBN_PI[1]     = 0
+u64 ZBN_PG1[256]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZBN_PG2[512]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+; --- zbn_g1_in(be=r10, limbs=r11): 64B BE G1 -> 8 LE u64 (x‖y) ---
+zbn_g1_in:
+	push r1
+	copyb(0, ZBN_TP0) -> r5
+	copyb(r5, r10) -> 8[a + 0]          ; be
+	copyb(0, ZBN_TP1) -> r5
+	copyb(r5, r11) -> 8[a + 0]          ; limbs
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs               ; x: be -> limbs
+	copyb(0, ZBN_TP0) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, ZBN_TP1) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 32) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs               ; y: be+32 -> limbs+4
+	pop r1
+	ret
+
+; --- zbn_g1_out(limbs=r10, be=r11): 8 LE u64 (x‖y) -> 64B BE G1 ---
+zbn_g1_out:
+	push r1
+	copyb(0, ZBN_TP0) -> r5
+	copyb(r5, r10) -> 8[a + 0]          ; limbs
+	copyb(0, ZBN_TP1) -> r5
+	copyb(r5, r11) -> 8[a + 0]          ; be
+	copyb(0, 4) -> r12
+	call zkvm_limbs_to_be               ; x
+	copyb(0, ZBN_TP0) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, ZBN_TP1) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 32) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_limbs_to_be               ; y
+	pop r1
+	ret
+
+; --- zbn_g2_in(be=r10, limbs=r11): 128B BE G2 -> 16 LE u64 ---
+;   limbs[0..4]=x_r=rev(be+32) ; [4..8]=x_i=rev(be+0)
+;   limbs[8..12]=y_r=rev(be+96) ; [12..16]=y_i=rev(be+64)
+zbn_g2_in:
+	push r1
+	copyb(0, ZBN_TP0) -> r5
+	copyb(r5, r10) -> 8[a + 0]          ; be
+	copyb(0, ZBN_TP1) -> r5
+	copyb(r5, r11) -> 8[a + 0]          ; limbs
+	copyb(0, ZBN_TP0) -> r5             ; x_r: be+32 -> limbs+0
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, ZBN_TP1) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+	copyb(0, ZBN_TP0) -> r5             ; x_i: be+0 -> limbs+4
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, ZBN_TP1) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 32) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+	copyb(0, ZBN_TP0) -> r5             ; y_r: be+96 -> limbs+8
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, ZBN_TP1) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 64) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+	copyb(0, ZBN_TP0) -> r5             ; y_i: be+64 -> limbs+12
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 64) -> r10
+	copyb(0, ZBN_TP1) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 96) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+	pop r1
+	ret
+
+; --- zbn_validate(p=r10) -> r10 = 1 if x<P, y<P and on-curve, else 0 ---
+zbn_validate:
+	push r1
+	copyb(0, ZBN_VP) -> r5
+	copyb(r5, r10) -> 8[a + 0]          ; save p (r10 already = p = x)
+	copyb(0, BN_P) -> r11
+	copyb(0, 4) -> r12
+	call bn254_ltn                      ; x < P ?
+	eq(r10, 0), j(zbn_val_bad)
+	copyb(0, ZBN_VP) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, BN_P) -> r11
+	copyb(0, 4) -> r12
+	call bn254_ltn                      ; y < P ?
+	eq(r10, 0), j(zbn_val_bad)
+	copyb(0, ZBN_VP) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	call zisklib_is_on_curve_bn254      ; on curve ?
+	eq(r10, 0), j(zbn_val_bad)
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+zbn_val_bad:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; --- shared EFAIL exit (each entry pushed r1 once) ---
+zbn_fail:
+	copyb(0, 0xffffffffffffffff) -> r10
+	pop r1
+	ret
+
+; ============================================================================
+; zkvm_status zkvm_bn254_g1_add(const g1* p1, const g1* p2, g1* result)
+;   [r10=p1(64B BE), r11=p2(64B BE), r12=result(64B BE)] -> a0 = EOK / EFAIL.
+;   Mirrors add_complete_safe_bn254: identity handled first, else both operands
+;   validated (canonical + on-curve) then zisklib_add_bn254.
+; ============================================================================
+ziskasm_zkvm_bn254_g1_add:
+	push r1
+	copyb(0, ZBN_AP1) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ZBN_AP2) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ZBN_RESP) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; marshal p1 -> ZBN_P1, p2 -> ZBN_P2
+	copyb(0, ZBN_AP1) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZBN_P1) -> r11
+	call zbn_g1_in
+	copyb(0, ZBN_AP2) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZBN_P2) -> r11
+	call zbn_g1_in
+	; p1_inf ?
+	copyb(0, ZBN_P1) -> r10
+	copyb(0, BN_G1_IDENTITY) -> r11
+	copyb(0, 8) -> r12
+	call bn254_eqn
+	copyb(0, ZBN_F1) -> r5
+	copyb(r5, r10) -> 8[a + 0]          ; save p1_inf
+	; p2_inf ?
+	copyb(0, ZBN_P2) -> r10
+	copyb(0, BN_G1_IDENTITY) -> r11
+	copyb(0, 8) -> r12
+	call bn254_eqn                      ; r10 = p2_inf
+	copyb(0, ZBN_F1) -> r5
+	copyb(r5, 8[a + 0]) -> r6           ; r6 = p1_inf
+	ltu(0, r6), j(zbn_add_p1inf)
+	; p1 not inf
+	ltu(0, r10), j(zbn_add_p2inf)
+	; both non-inf: validate both, add
+	copyb(0, ZBN_P1) -> r10
+	call zbn_validate
+	eq(r10, 0), j(zbn_fail)
+	copyb(0, ZBN_P2) -> r10
+	call zbn_validate
+	eq(r10, 0), j(zbn_fail)
+	copyb(0, ZBN_P1) -> r10
+	copyb(0, ZBN_P2) -> r11
+	copyb(0, ZBN_RES) -> r12
+	call zisklib_add_bn254
+	jump(zbn_g1_encode)
+zbn_add_p2inf:
+	; p1 non-inf, p2 inf: validate p1, res = p1
+	copyb(0, ZBN_P1) -> r10
+	call zbn_validate
+	eq(r10, 0), j(zbn_fail)
+	copyb(0, ZBN_P1) -> r10
+	copyb(0, ZBN_RES) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	jump(zbn_g1_encode)
+zbn_add_p1inf:
+	; p1 inf
+	ltu(0, r10), j(zbn_add_bothinf)
+	; p2 non-inf: validate p2, res = p2
+	copyb(0, ZBN_P2) -> r10
+	call zbn_validate
+	eq(r10, 0), j(zbn_fail)
+	copyb(0, ZBN_P2) -> r10
+	copyb(0, ZBN_RES) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	jump(zbn_g1_encode)
+zbn_add_bothinf:
+	; res = identity
+	copyb(0, ZBN_RES) -> r11
+	copyb(r11, 0) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(r11, 0) -> 8[a + 32]
+	copyb(r11, 0) -> 8[a + 40]
+	copyb(r11, 0) -> 8[a + 48]
+	copyb(r11, 0) -> 8[a + 56]
+	jump(zbn_g1_encode)
+
+; --- shared G1 result encode: ZBN_RES -> *ZBN_RESP, return EOK ---
+zbn_g1_encode:
+	copyb(0, ZBN_RES) -> r10
+	copyb(0, ZBN_RESP) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	call zbn_g1_out
+	copyb(0, 0) -> r10                  ; ZKVM_EOK
+	pop r1
+	ret
+
+; ============================================================================
+; zkvm_status zkvm_bn254_g1_mul(const g1* point, const scalar* k, g1* result)
+;   [r10=point(64B BE), r11=scalar(32B BE), r12=result(64B BE)] -> EOK / EFAIL.
+;   Mirrors scalar_mul_complete_safe_bn254: identity -> identity; else validate
+;   point (canonical + on-curve) then zisklib_scalar_mul_bn254 (reduces k mod R).
+; ============================================================================
+ziskasm_zkvm_bn254_g1_mul:
+	push r1
+	copyb(0, ZBN_AP1) -> r5
+	copyb(r5, r10) -> 8[a + 0]          ; point ptr
+	copyb(0, ZBN_AP2) -> r5
+	copyb(r5, r11) -> 8[a + 0]          ; scalar ptr
+	copyb(0, ZBN_RESP) -> r5
+	copyb(r5, r12) -> 8[a + 0]          ; result ptr
+	; marshal point -> ZBN_P1
+	copyb(0, ZBN_AP1) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZBN_P1) -> r11
+	call zbn_g1_in
+	; marshal scalar -> ZBN_K
+	copyb(0, ZBN_AP2) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZBN_K) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+	; point == identity ?
+	copyb(0, ZBN_P1) -> r10
+	copyb(0, BN_G1_IDENTITY) -> r11
+	copyb(0, 8) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(zbn_add_bothinf)     ; identity -> res = identity, encode
+	; validate point
+	copyb(0, ZBN_P1) -> r10
+	call zbn_validate
+	eq(r10, 0), j(zbn_fail)
+	; res = k · point
+	copyb(0, ZBN_P1) -> r10
+	copyb(0, ZBN_K) -> r11
+	copyb(0, ZBN_RES) -> r12
+	call zisklib_scalar_mul_bn254
+	jump(zbn_g1_encode)
+
+; ============================================================================
+; zkvm_status zkvm_bn254_pairing(const pairing_pair* pairs, size_t n, bool* ok)
+;   [r10=pairs(192·n BE), r11=n, r12=ok] -> EOK (with *ok set) / EFAIL.
+;   Each pair = G1(64B) ‖ G2(128B). De-interleave into contiguous limb arrays
+;   ZBN_PG1 (n·8) / ZBN_PG2 (n·16), then zisklib_pairing_check_bn254 (validates
+;   canonical/on-curve/subgroup internally): status 0=accept, 1=reject, >=2=EFAIL.
+; ============================================================================
+ziskasm_zkvm_bn254_pairing:
+	push r1
+	copyb(0, ZBN_PAIRSP) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ZBN_N) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ZBN_VERP) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; guard n > 32 (buffer cap) -> EFAIL
+	copyb(0, 32) -> r7
+	ltu(r7, r11), j(zbn_fail)
+	; de-interleave loop i = 0..n
+	copyb(0, ZBN_PI) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+zbn_pair_loop:
+	copyb(0, ZBN_PI) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	copyb(0, ZBN_N) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	ltu(r13, r14), j(zbn_pair_body)
+	jump(zbn_pair_done)
+zbn_pair_body:
+	; G1: g1_in(pairs + i*192, ZBN_PG1 + i*64)
+	copyb(0, ZBN_PAIRSP) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	sll(r13, 7) -> r6
+	sll(r13, 6) -> r7
+	add(r6, r7) -> r6
+	add(r10, r6) -> r10                 ; src = pairs + i*192
+	sll(r13, 6) -> r6
+	copyb(0, ZBN_PG1) -> r11
+	add(r11, r6) -> r11                 ; dst = PG1 + i*64
+	call zbn_g1_in
+	; G2: g2_in(pairs + i*192 + 64, ZBN_PG2 + i*128)
+	copyb(0, ZBN_PI) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	copyb(0, ZBN_PAIRSP) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	sll(r13, 7) -> r6
+	sll(r13, 6) -> r7
+	add(r6, r7) -> r6
+	add(r10, r6) -> r10
+	add(r10, 64) -> r10                 ; src = pairs + i*192 + 64
+	sll(r13, 7) -> r6
+	copyb(0, ZBN_PG2) -> r11
+	add(r11, r6) -> r11                 ; dst = PG2 + i*128
+	call zbn_g2_in
+	; i++
+	copyb(0, ZBN_PI) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 1) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	jump(zbn_pair_loop)
+zbn_pair_done:
+	copyb(0, ZBN_PG1) -> r10
+	copyb(0, ZBN_PG2) -> r11
+	copyb(0, ZBN_N) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zisklib_pairing_check_bn254    ; r10 = status
+	eq(r10, 0), j(zbn_pair_accept)
+	copyb(0, 1) -> r6
+	eq(r10, r6), j(zbn_pair_reject)
+	jump(zbn_fail)                      ; status >= 2 -> validation error -> EFAIL
+zbn_pair_accept:
+	copyb(0, ZBN_VERP) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(r5, 1) -> 1[a + 0]            ; *verified = true
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zbn_pair_reject:
+	copyb(0, ZBN_VERP) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(r5, 0) -> 1[a + 0]            ; *verified = false
+	copyb(0, 0) -> r10
+	pop r1
+	ret

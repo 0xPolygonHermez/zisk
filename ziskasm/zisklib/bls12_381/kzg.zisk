@@ -1,0 +1,207 @@
+; ============================================================================
+; bls12_381/kzg.zisk - verify_kzg_proof (EIP-4844 point evaluation). GENERATED
+; (scratchpad/gen_bls_kzg.py). e(C-[y]G1,-G2)·e(proof,[tau-z]G2)==1. lk_.
+; ============================================================================
+
+u64 BLS_K_Z[4] = 0, 0, 0, 0
+u64 BLS_K_Y[4] = 0, 0, 0, 0
+u64 BLS_K_COMM[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_K_PROOF[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_K_YG1[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_K_CMY[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_K_ZG2[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_K_TMZ[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_K_NEGG2[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_K_M1[72] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_K_M2[72] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_K_F[72] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_K_RES[72] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+const u64 BLS_ONE72K[72] = 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_K_IN[1] = 0
+u64 BLS_K_DEST[1] = 0
+u64 BLS_K_I[1] = 0
+u64 BLS_K_CMYINF[1] = 0
+u64 BLS_K_PFINF[1] = 0
+u64 BLS_K_TMZINF[1] = 0
+
+; u64 zisklib_scalar_be32_canonical(const u8* bytes32, u64* dest4) -> r10 (0 ok, 1 >=R)
+zisklib_scalar_be32_canonical_bls12_381:
+	push r1
+	copyb(0, BLS_K_IN) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_K_DEST) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_K_I) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+lk_sc_loop:
+	copyb(0, BLS_K_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	eq(r13, 4), j(lk_sc_done)
+	copyb(0, BLS_K_IN) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	sll(r13, 3) -> r6
+	add(r10, r6) -> r10
+	call zisklib_be64
+	copyb(0, BLS_K_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	copyb(0, 3) -> r6
+	sub(r6, r13) -> r6
+	sll(r6, 3) -> r6
+	copyb(0, BLS_K_DEST) -> r5
+	copyb(r5, 8[a + 0]) -> r7
+	add(r7, r6) -> r7
+	copyb(r7, r10) -> 8[a + 0]
+	add(r13, 1) -> r13
+	copyb(0, BLS_K_I) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	jump(lk_sc_loop)
+lk_sc_done:
+	copyb(0, BLS_K_DEST) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_R) -> r11
+	copyb(0, 4) -> r12
+	call bn254_ltn
+	eq(r10, 0), j(lk_sc_err)
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+lk_sc_err:
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+
+; u64 zisklib_verify_kzg_proof(z32,y32,commitment48,proof48) -> r10 (1 valid/0 invalid)
+zisklib_verify_kzg_proof_bls12_381:
+	push r1
+	copyb(0, BLS_K_Z) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_K_Y) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_K_M1) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BLS_K_M2) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, BLS_K_M1) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_decompress_g1_bls12_381
+	ltu(0, r10), j(lk_bad)
+	copyb(0, BLS_V_PK) -> r10
+	copyb(0, BLS_K_COMM) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_V_G1INF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(lk_comm_ok)
+	copyb(0, BLS_K_COMM) -> r10
+	call zisklib_is_on_subgroup_bls12_381
+	eq(r10, 0), j(lk_bad)
+lk_comm_ok:
+	copyb(0, BLS_K_M2) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_decompress_g1_bls12_381
+	ltu(0, r10), j(lk_bad)
+	copyb(0, BLS_V_PK) -> r10
+	copyb(0, BLS_K_PROOF) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_V_G1INF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(lk_proof_ok)
+	copyb(0, BLS_K_PROOF) -> r10
+	call zisklib_is_on_subgroup_bls12_381
+	eq(r10, 0), j(lk_bad)
+lk_proof_ok:
+	copyb(0, BLS_K_Z) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_K_Z) -> r11
+	call zisklib_scalar_be32_canonical_bls12_381
+	ltu(0, r10), j(lk_bad)
+	copyb(0, BLS_K_Y) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_K_Y) -> r11
+	call zisklib_scalar_be32_canonical_bls12_381
+	ltu(0, r10), j(lk_bad)
+	copyb(0, BLS_G1_GENERATOR) -> r10
+	copyb(0, BLS_K_Y) -> r11
+	copyb(0, BLS_K_YG1) -> r12
+	call zisklib_scalar_mul_bls12_381
+	copyb(0, BLS_K_COMM) -> r10
+	copyb(0, BLS_K_YG1) -> r11
+	copyb(0, BLS_K_CMY) -> r12
+	call zisklib_sub_complete_bls12_381
+	copyb(0, BLS_G2_GENERATOR) -> r10
+	copyb(0, BLS_K_Z) -> r11
+	copyb(0, BLS_K_ZG2) -> r12
+	call zisklib_scalar_mul_twist_bls12_381
+	copyb(0, BLS_TRUSTED_SETUP_TAU_G2) -> r10
+	copyb(0, BLS_K_ZG2) -> r11
+	copyb(0, BLS_K_TMZ) -> r12
+	call zisklib_sub_complete_twist_bls12_381
+	copyb(0, BLS_K_CMY) -> r10
+	copyb(0, BLS_G1_IDENTITY) -> r11
+	copyb(0, 12) -> r12
+	call bn254_eqn
+	copyb(0, BLS_K_CMYINF) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_K_PROOF) -> r10
+	copyb(0, BLS_G1_IDENTITY) -> r11
+	copyb(0, 12) -> r12
+	call bn254_eqn
+	copyb(0, BLS_K_PFINF) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_K_TMZ) -> r10
+	copyb(0, BLS_G2_IDENTITY) -> r11
+	copyb(0, 24) -> r12
+	call bn254_eqn
+	copyb(0, BLS_K_TMZINF) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_K_CMYINF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	eq(r6, 0), j(lk_cmy_nz)
+	copyb(0, BLS_K_PFINF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(lk_accept)
+	copyb(0, BLS_K_TMZINF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(lk_accept)
+	jump(lk_bad)
+lk_cmy_nz:
+	copyb(0, BLS_K_PFINF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(lk_bad)
+	copyb(0, BLS_K_TMZINF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(lk_bad)
+	copyb(0, BLS_G2_GENERATOR) -> r10
+	copyb(0, BLS_K_NEGG2) -> r11
+	call zisklib_neg_twist_bls12_381
+	copyb(0, BLS_K_CMY) -> r10
+	copyb(0, BLS_K_NEGG2) -> r11
+	copyb(0, BLS_K_M1) -> r12
+	call zisklib_miller_loop_bls12_381
+	copyb(0, BLS_K_PROOF) -> r10
+	copyb(0, BLS_K_TMZ) -> r11
+	copyb(0, BLS_K_M2) -> r12
+	call zisklib_miller_loop_bls12_381
+	copyb(0, BLS_K_M1) -> r10
+	copyb(0, BLS_K_M2) -> r11
+	copyb(0, BLS_K_F) -> r12
+	call zisklib_mul_fp12_bls12_381
+	copyb(0, BLS_K_F) -> r10
+	copyb(0, BLS_K_RES) -> r11
+	call zisklib_final_exp_bls12_381
+	copyb(0, BLS_K_RES) -> r10
+	copyb(0, BLS_ONE72K) -> r11
+	copyb(0, 72) -> r12
+	call bn254_eqn
+	pop r1
+	ret
+lk_accept:
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+lk_bad:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+

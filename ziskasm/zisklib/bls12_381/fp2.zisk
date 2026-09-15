@@ -1,0 +1,441 @@
+; ============================================================================
+; bls12_381/fp2.zisk - degree-2 extension Fp2 = Fp[u]/(u²+1). Mirrors
+; ziskos/.../bls12_381/fp2.rs. Arithmetic runs on the bls12_381 complex
+; precompiles (2-ptr header [&f1,&f2], each 12 u64 = real‖imag, f1 in place).
+; inv/sqrt use FCALL_BLS12_381_FP2_INV / _FP2_SQRT + verify. Non-leaf (copy inputs
+; via bn254_memcpy). Alias rule: OUTPUT must not alias operand b. Prefix lf2_.
+; Fp2 element = 12 u64: real (0..5) ‖ imag (6..11).
+; ============================================================================
+
+u64 BLS_F2_HDR[2]   = 0, 0
+u64 BLS_F2_PA[1]    = 0
+u64 BLS_F2_PB[1]    = 0
+u64 BLS_F2_PR[1]    = 0
+u64 BLS_F2_WB[12]   = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F2_INV[12]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F2_PROD[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F2_ISQR[1]  = 0
+u64 BLS_LF2_A[1]    = 0
+u64 BLS_LF2_R[1]    = 0
+
+; f2 = (P-1)‖0: multiplying an Fp2 element by it negates it.
+const u64 BLS_F2_NEGMUL[12] =
+	0xB9FEFFFFFFFFAAAA, 0x1EABFFFEB153FFFF, 0x6730D2A0F6B0F624,
+	0x64774B84F38512BF, 0x4B1BA7B6434BACD7, 0x1A0111EA397FE69A,
+	0, 0, 0, 0, 0, 0
+
+; --- binary op template: result = a <op> b  (result must not alias b) ---
+; void zisklib_add_fp2_bls12_381(const u64* a, const u64* b, u64* result)  [12,12,12]
+zisklib_add_fp2_bls12_381:
+	push r1
+	copyb(0, BLS_F2_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F2_HDR) -> r5
+	copyb(0, BLS_F2_PR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PB) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	bls12_381_complex_add(0, r5) -> r14
+	pop r1
+	ret
+
+; void zisklib_sub_fp2_bls12_381(const u64* a, const u64* b, u64* result)  [12,12,12]
+zisklib_sub_fp2_bls12_381:
+	push r1
+	copyb(0, BLS_F2_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F2_HDR) -> r5
+	copyb(0, BLS_F2_PR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PB) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	bls12_381_complex_sub(0, r5) -> r14
+	pop r1
+	ret
+
+; void zisklib_mul_fp2_bls12_381(const u64* a, const u64* b, u64* result)  [12,12,12]
+zisklib_mul_fp2_bls12_381:
+	push r1
+	copyb(0, BLS_F2_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F2_HDR) -> r5
+	copyb(0, BLS_F2_PR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PB) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	bls12_381_complex_mul(0, r5) -> r14
+	pop r1
+	ret
+
+; void zisklib_dbl_fp2_bls12_381(const u64* a, u64* result)  [12,12]
+zisklib_dbl_fp2_bls12_381:
+	push r1
+	copyb(0, BLS_F2_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F2_HDR) -> r5
+	copyb(0, BLS_F2_PR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PA) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	bls12_381_complex_add(0, r5) -> r14
+	pop r1
+	ret
+
+; void zisklib_square_fp2_bls12_381(const u64* a, u64* result)  [12,12]
+zisklib_square_fp2_bls12_381:
+	push r1
+	copyb(0, BLS_F2_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F2_HDR) -> r5
+	copyb(0, BLS_F2_PR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PA) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	bls12_381_complex_mul(0, r5) -> r14
+	pop r1
+	ret
+
+; void zisklib_neg_fp2_bls12_381(const u64* a, u64* result)  [12,12]  (a*(P-1))
+zisklib_neg_fp2_bls12_381:
+	push r1
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F2_HDR) -> r5
+	copyb(0, BLS_F2_PR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_NEGMUL) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	bls12_381_complex_mul(0, r5) -> r14
+	pop r1
+	ret
+
+; void zisklib_scalar_mul_fp2_bls12_381(const u64* a, const u64* b, u64* result)
+;   result = a * (b + 0·u), b is an Fp scalar (6 u64).  [r10=a, r11=b(6), r12=result]
+zisklib_scalar_mul_fp2_bls12_381:
+	push r1
+	copyb(0, BLS_F2_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; BLS_F2_WB = b ‖ 0  (b is in r11 at entry)
+	copyb(0, r11) -> r10
+	copyb(0, BLS_F2_WB) -> r11
+	copyb(0, 6) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F2_WB) -> r5
+	copyb(r5, 0) -> 8[a + 48]
+	copyb(r5, 0) -> 8[a + 56]
+	copyb(r5, 0) -> 8[a + 64]
+	copyb(r5, 0) -> 8[a + 72]
+	copyb(r5, 0) -> 8[a + 80]
+	copyb(r5, 0) -> 8[a + 88]
+	; memcpy a -> result
+	copyb(0, BLS_F2_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_F2_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F2_HDR) -> r5
+	copyb(0, BLS_F2_PR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_WB) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	bls12_381_complex_mul(0, r5) -> r14
+	pop r1
+	ret
+
+; void zisklib_conjugate_fp2_bls12_381(const u64* a, u64* result)  [12,12]
+;   result = (a_real, -a_imag) via complex_sub((a_real,0),(0,a_imag)).
+zisklib_conjugate_fp2_bls12_381:
+	push r1
+	copyb(0, BLS_F2_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	; result = a_real ‖ 0  (copy a[0..6] -> result[0..6], zero result[6..12])
+	copyb(0, BLS_F2_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 6) -> r12
+	call bn254_memcpy               ; a_real -> result[0..6]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(r5, 0) -> 8[a + 48]
+	copyb(r5, 0) -> 8[a + 56]
+	copyb(r5, 0) -> 8[a + 64]
+	copyb(r5, 0) -> 8[a + 72]
+	copyb(r5, 0) -> 8[a + 80]
+	copyb(r5, 0) -> 8[a + 88]
+	; BLS_F2_WB = 0 ‖ a_imag
+	copyb(0, BLS_F2_WB) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+	copyb(r5, 0) -> 8[a + 8]
+	copyb(r5, 0) -> 8[a + 16]
+	copyb(r5, 0) -> 8[a + 24]
+	copyb(r5, 0) -> 8[a + 32]
+	copyb(r5, 0) -> 8[a + 40]
+	copyb(0, BLS_F2_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 48) -> r10             ; &a_imag
+	copyb(0, BLS_F2_WB) -> r11
+	add(r11, 48) -> r11             ; &WB[6]
+	copyb(0, 6) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F2_HDR) -> r5
+	copyb(0, BLS_F2_PR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_WB) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	bls12_381_complex_sub(0, r5) -> r14
+	pop r1
+	ret
+
+; void zisklib_inv_fp2_bls12_381(const u64* a, u64* result)  [r10=a, r11=result]
+;   result = a^(-1) in Fp2 (a unchanged if a==0). Hint FCALL_BLS12_381_FP2_INV,
+;   verify both halves < P and a*inv == 1; halt on bad hint.
+zisklib_inv_fp2_bls12_381:
+	push r1
+	copyb(0, BLS_LF2_A) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_LF2_R) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	; a == 0 ? (12 limbs)
+	copyb(0, r10) -> r5
+	copyb(0, 12) -> r6
+lf2_inv_zchk:
+	eq(r6, 0), j(lf2_inv_zero)
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(lf2_inv_hint)
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(lf2_inv_zchk)
+lf2_inv_zero:
+	copyb(0, BLS_LF2_A) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_LF2_R) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+lf2_inv_hint:
+	copyb(0, BLS_LF2_A) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	fcall_param(12, r10) -> r14
+	fcall(FCALL_BLS12_381_FP2_INV, 0) -> r14
+	copyb(0, BLS_F2_INV) -> r6
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	copyb(0, 11) -> r15
+lf2_inv_rd:
+	eq(r15, 0), j(lf2_inv_ck)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r15, 1) -> r15
+	jump(lf2_inv_rd)
+lf2_inv_ck:
+	; both halves canonical (< P): real INV[0..6], imag INV[6..12]
+	copyb(0, BLS_F2_INV) -> r10
+	copyb(0, 2) -> r16
+lf2_inv_ckhalf:
+	eq(r16, 0), j(lf2_inv_vfy)
+	copyb(0, r10) -> r5
+	add(r5, 40) -> r5
+	copyb(0, BLS_P) -> r6
+	add(r6, 40) -> r6
+	copyb(0, 6) -> r7
+lf2_inv_ckl:
+	eq(r7, 0), j(lf2_inv_panic)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(lf2_inv_cknext)
+	ltu(r15, r14), j(lf2_inv_panic)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(lf2_inv_ckl)
+lf2_inv_cknext:
+	add(r10, 48) -> r10
+	sub(r16, 1) -> r16
+	jump(lf2_inv_ckhalf)
+lf2_inv_vfy:
+	; PROD = a * inv ; check == 1
+	copyb(0, BLS_LF2_A) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_F2_INV) -> r11
+	copyb(0, BLS_F2_PROD) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F2_PROD) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 1), j(lf2_inv_hi)
+	jump(lf2_inv_panic)
+lf2_inv_hi:
+	copyb(0, 11) -> r7
+	add(r5, 8) -> r5
+lf2_inv_hil:
+	eq(r7, 0), j(lf2_inv_wr)
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 0), j(lf2_inv_hin)
+	jump(lf2_inv_panic)
+lf2_inv_hin:
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(lf2_inv_hil)
+lf2_inv_wr:
+	copyb(0, BLS_F2_INV) -> r10
+	copyb(0, BLS_LF2_R) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+lf2_inv_panic:
+	copyb(0, 0) -> r10, end
+
+; u64 zisklib_sqrt_fp2_bls12_381(const u64* x, u64* result)  [r10=x, r11=result]
+;   -> r10 = 1 if x is a QR (result = sqrt), else 0. Hint FCALL_BLS12_381_FP2_SQRT
+;   -> [is_qr, sqrt[12]]; verify both halves < P and sqrt²==x (qr) / ==x·NQR.
+zisklib_sqrt_fp2_bls12_381:
+	push r1
+	copyb(0, BLS_LF2_A) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_LF2_R) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	fcall_param(12, r10) -> r14
+	fcall(FCALL_BLS12_381_FP2_SQRT, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(0, BLS_F2_ISQR) -> r6
+	copyb(r6, r7) -> 8[a + 0]
+	copyb(0, BLS_F2_INV) -> r6          ; reuse INV for sqrt[12]
+	copyb(0, 12) -> r15
+lf2_sq_rd:
+	eq(r15, 0), j(lf2_sq_ck)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r15, 1) -> r15
+	jump(lf2_sq_rd)
+lf2_sq_ck:
+	; both halves of sqrt (BLS_F2_INV) canonical < P
+	copyb(0, BLS_F2_INV) -> r10
+	copyb(0, 2) -> r16
+lf2_sq_ckhalf:
+	eq(r16, 0), j(lf2_sq_prod)
+	copyb(0, r10) -> r5
+	add(r5, 40) -> r5
+	copyb(0, BLS_P) -> r6
+	add(r6, 40) -> r6
+	copyb(0, 6) -> r7
+lf2_sq_ckl:
+	eq(r7, 0), j(lf2_sq_panic)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(lf2_sq_cknext)
+	ltu(r15, r14), j(lf2_sq_panic)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(lf2_sq_ckl)
+lf2_sq_cknext:
+	add(r10, 48) -> r10
+	sub(r16, 1) -> r16
+	jump(lf2_sq_ckhalf)
+lf2_sq_prod:
+	; PROD = sqrt * sqrt
+	copyb(0, BLS_F2_INV) -> r10
+	copyb(0, BLS_F2_INV) -> r11
+	copyb(0, BLS_F2_PROD) -> r12
+	call zisklib_mul_fp2_bls12_381
+	; is_qr ?
+	copyb(0, BLS_F2_ISQR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	eq(r5, 1), j(lf2_sq_qr)
+	; non-qr: WB = x * NQR_FP2  (WB free now; is_qr already consumed)
+	copyb(0, BLS_LF2_A) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_NQR_FP2) -> r11
+	copyb(0, BLS_F2_WB) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F2_PROD) -> r5
+	copyb(0, BLS_F2_WB) -> r6
+	jump(lf2_sq_cmp)
+lf2_sq_qr:
+	copyb(0, BLS_F2_PROD) -> r5
+	copyb(0, BLS_LF2_A) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+lf2_sq_cmp:
+	copyb(0, 12) -> r7
+lf2_sq_cmpl:
+	eq(r7, 0), j(lf2_sq_wr)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(lf2_sq_cmpn)
+	jump(lf2_sq_panic)
+lf2_sq_cmpn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(lf2_sq_cmpl)
+lf2_sq_wr:
+	copyb(0, BLS_F2_INV) -> r10
+	copyb(0, BLS_LF2_R) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F2_ISQR) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	pop r1
+	ret
+lf2_sq_panic:
+	copyb(0, 0) -> r10, end

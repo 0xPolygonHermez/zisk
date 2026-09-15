@@ -1,4 +1,20 @@
-use ziskos::zisklib::{exp_fp12_bn254, neg_bn254, pairing_bn254, pairing_check_safe_bn254};
+// `neg_bn254` has no redirected binding, so it always runs the Rust zisklib
+// (only `pairing_check` is redirected in the ziskasm build).
+use ziskos::zisklib::neg_bn254;
+#[cfg(not(feature = "ziskasm"))]
+use ziskos::zisklib::{exp_fp12_bn254, pairing_bn254, pairing_check_safe_bn254};
+
+// ziskasm glue: the flat binding returns a status u64 (0 = accept / product == 1,
+// 1 = reject / product != 1, >=2 = input-validation error code) that we map back
+// to the rich `Result<bool, u8>` the tests expect.
+#[cfg(feature = "ziskasm")]
+fn pairing_check_safe_bn254(g1: &[[u64; 8]], g2: &[[u64; 16]]) -> Result<bool, u8> {
+    match zisklib::bn254_pairing_check(g1, g2) {
+        0 => Ok(true),
+        1 => Ok(false),
+        e => Err(e as u8),
+    }
+}
 
 use crate::constants::{IDENTITY_G1, IDENTITY_G2, P};
 
@@ -285,6 +301,9 @@ pub fn pairing_check_tests() {
     assert!(result, "e(P,Q) * e(0,Q) * e(-P,Q) = 1");
 }
 
+// Exercises the raw `pairing_bn254` / `exp_fp12_bn254` entry points, which have
+// no redirected ziskasm binding — Rust backend only.
+#[cfg(not(feature = "ziskasm"))]
 pub fn pairing_tests() {
     let mut one = [0; 48];
     one[0] = 1;

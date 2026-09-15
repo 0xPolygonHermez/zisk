@@ -7315,6 +7315,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-asm"
+version = "1.3.0-alpha"
+dependencies = [
+ "zisk-common",
+ "zisk-core",
+ "zisk-riscv",
+ "ziskemu",
+]
+
+[[package]]
 name = "zisk-asm-runner"
 version = "1.3.0-alpha"
 dependencies = [
@@ -7509,6 +7519,7 @@ dependencies = [
 name = "zisk-core"
 version = "1.3.0-alpha"
 dependencies = [
+ "elf",
  "paste",
  "proofman-fields",
  "rayon",
@@ -8133,6 +8144,7 @@ name = "zisk-transpiler-common"
 version = "1.3.0-alpha"
 dependencies = [
  "elf",
+ "zisk-asm",
  "zisk-core",
  "zisk-lib-float",
  "zisk-riscv",
@@ -8219,6 +8231,7 @@ dependencies = [
  "sysinfo 0.38.4",
  "time",
  "vergen-git2",
+ "zisk-asm",
  "zisk-common",
  "zisk-core",
  "zisk-definitions",
@@ -8230,6 +8243,10 @@ dependencies = [
  "zisk-transpiler-common",
  "zisk-transpiler-riscv",
 ]
+
+[[package]]
+name = "zisklib"
+version = "0.1.0"
 
 [[package]]
 name = "ziskos"

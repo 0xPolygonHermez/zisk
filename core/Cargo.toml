@@ -24,6 +24,7 @@ paste = { workspace = true }
 zisk-definitions = { workspace = true }
 
 tiny-keccak = { workspace = true, features = ["keccak"] }
+elf = "0.7.4"
 
 [build-dependencies]
 zisk-lib-float = { workspace = true, optional = true }

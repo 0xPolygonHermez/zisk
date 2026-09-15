@@ -1,0 +1,79 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "ZisK Assembly",
+  "scopeName": "source.ziskasm",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#directive" },
+    { "include": "#label" },
+    { "include": "#datatype" },
+    { "include": "#pseudo" },
+    { "include": "#operation" },
+    { "include": "#control" },
+    { "include": "#modifier" },
+    { "include": "#store" },
+    { "include": "#register" },
+    { "include": "#number" },
+    { "include": "#operand" }
+  ],
+  "repository": {
+    "comment": {
+      "match": ";.*$",
+      "name": "comment.line.semicolon.ziskasm"
+    },
+    "directive": {
+      "match": "^\\s*(pub\\s+define|define|ifdef|ifndef|else|endif)\\b",
+      "name": "keyword.control.directive.ziskasm"
+    },
+    "label": {
+      "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*:",
+      "captures": {
+        "1": { "name": "entity.name.function.label.ziskasm" }
+      }
+    },
+    "datatype": {
+      "match": "\\b(const|u8|u16|u32|u64)\\b",
+      "name": "storage.type.ziskasm"
+    },
+    "pseudo": {
+      "match": "\\b(call|ret_to_bios|ret|jump|push|pop)\\b",
+      "name": "keyword.control.pseudo.ziskasm"
+    },
+    "operation": {
+      "match": "\\b(bls12_381_complex_sub|bls12_381_complex_mul|bls12_381_complex_add|bls12_381_curve_dbl|bls12_381_curve_add|bn254_complex_sub|bn254_complex_mul|bn254_complex_add|bn254_curve_dbl|bn254_curve_add|secp256r1_dbl|secp256r1_add|secp256k1_dbl|secp256k1_add|signextend_w|signextend_h|signextend_b|dma_inputcpy|arith384_mod|arith256_mod|fcall_param|dma_xmemset|dma_xmemcpy|dma_xmemcmp|sh3add_u_w|sh2add_u_w|sh1add_u_w|dma_memcpy|dma_memcmp|poseidon2|poseidon1|fcall_get|czero_nez|czero_eqz|arith256|sll_u_w|profile|clmul_r|clmul_h|add_u_w|xperm8|xperm4|sha256|sh3add|sh2add|sh1add|remu_w|pubout|pack_w|pack_h|mulsuh|minu_w|maxu_w|keccak|divu_w|cpop_w|blake2|add256|sub_w|srl_w|sra_w|sll_w|ror_w|rol_w|rem_w|orc_b|mul_w|muluh|min_w|max_w|ltu_w|leu_w|fcall|div_w|ctz_w|copyb|clz_w|clmul|brev8|add_w|xnor|rev8|remu|pack|mulu|mulh|minu|maxu|lt_w|le_w|halt|flag|eq_w|divu|cpop|bset|binv|bext|bclr|andn|xor|sub|srl|sra|sll|ror|rol|rem|orn|mul|min|max|ltu|leu|div|ctz|clz|and|add|or|lt|le|eq)\\b",
+      "name": "support.function.mnemonic.ziskasm"
+    },
+    "control": {
+      "match": "\\b(j|setpc)\\b",
+      "name": "keyword.control.flow.ziskasm"
+    },
+    "modifier": {
+      "match": "\\b(end|sp)\\b",
+      "name": "keyword.other.modifier.ziskasm"
+    },
+    "store": {
+      "match": "->",
+      "name": "keyword.operator.assignment.ziskasm"
+    },
+    "register": {
+      "match": "\\br(6[0-3]|[1-5][0-9]|[0-9])\\b",
+      "name": "variable.language.register.ziskasm"
+    },
+    "number": {
+      "patterns": [
+        {
+          "match": "\\b0[xX][0-9a-fA-F_]+\\b",
+          "name": "constant.numeric.hex.ziskasm"
+        },
+        {
+          "match": "\\b[0-9][0-9_]*\\b",
+          "name": "constant.numeric.decimal.ziskasm"
+        }
+      ]
+    },
+    "operand": {
+      "match": "\\b(step|a|c)\\b",
+      "name": "variable.language.operand.ziskasm"
+    }
+  }
+}

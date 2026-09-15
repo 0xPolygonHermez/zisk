@@ -1,0 +1,383 @@
+; ============================================================================
+; bn254/fp2.zisk - degree-2 extension field Fp2 = Fp[u]/(u²+1) for BN254.
+; Mirrors ziskos/entrypoint/src/zisklib/lib/bn254/fp2.rs. All arithmetic runs on
+; the bn254 complex precompiles (bn254_complex_add/sub/mul), which take a 2-ptr
+; header [&f1,&f2] (each 8 u64 = real‖imag) and update f1 in place. inv uses the
+; FCALL_BN254_FP2_INV hint + verify. All leaves. Prefix `bf2_`.
+; Fp2 element = 8 u64 LE limbs: real (limbs 0..3) ‖ imag (limbs 4..7).
+; ============================================================================
+
+u64 BN_F2_HDR[2]  = 0, 0
+u64 BN_F2_WB[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+u64 BN_F2_INV[8]  = 0, 0, 0, 0, 0, 0, 0, 0
+u64 BN_F2_PROD[8] = 0, 0, 0, 0, 0, 0, 0, 0
+
+; f2 = (P-1)‖0: multiplying by it negates an Fp2 element (used by neg).
+const u64 BN_F2_NEGMUL[8] =
+	0x3C208C16D87CFD46, 0x97816A916871CA8D, 0xB85045B68181585D, 0x30644E72E131A029,
+	0, 0, 0, 0
+
+; void zisklib_add_fp2_bn254(const u64* a, const u64* b, u64* result)
+;   result = a + b.  [r10=a, r11=b, r12=result]  (result must not alias b)
+zisklib_add_fp2_bn254:
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r12, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r12, r14) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r12, r14) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r12, r14) -> 8[a + 24]
+	copyb(r10, 8[a + 32]) -> r14
+	copyb(r12, r14) -> 8[a + 32]
+	copyb(r10, 8[a + 40]) -> r14
+	copyb(r12, r14) -> 8[a + 40]
+	copyb(r10, 8[a + 48]) -> r14
+	copyb(r12, r14) -> 8[a + 48]
+	copyb(r10, 8[a + 56]) -> r14
+	copyb(r12, r14) -> 8[a + 56]
+	copyb(0, BN_F2_HDR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(r5, r11) -> 8[a + 8]
+	bn254_complex_add(0, r5) -> r14
+	ret
+
+; void zisklib_sub_fp2_bn254(const u64* a, const u64* b, u64* result)  [r10,r11,r12]
+zisklib_sub_fp2_bn254:
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r12, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r12, r14) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r12, r14) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r12, r14) -> 8[a + 24]
+	copyb(r10, 8[a + 32]) -> r14
+	copyb(r12, r14) -> 8[a + 32]
+	copyb(r10, 8[a + 40]) -> r14
+	copyb(r12, r14) -> 8[a + 40]
+	copyb(r10, 8[a + 48]) -> r14
+	copyb(r12, r14) -> 8[a + 48]
+	copyb(r10, 8[a + 56]) -> r14
+	copyb(r12, r14) -> 8[a + 56]
+	copyb(0, BN_F2_HDR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(r5, r11) -> 8[a + 8]
+	bn254_complex_sub(0, r5) -> r14
+	ret
+
+; void zisklib_mul_fp2_bn254(const u64* a, const u64* b, u64* result)  [r10,r11,r12]
+zisklib_mul_fp2_bn254:
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r12, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r12, r14) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r12, r14) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r12, r14) -> 8[a + 24]
+	copyb(r10, 8[a + 32]) -> r14
+	copyb(r12, r14) -> 8[a + 32]
+	copyb(r10, 8[a + 40]) -> r14
+	copyb(r12, r14) -> 8[a + 40]
+	copyb(r10, 8[a + 48]) -> r14
+	copyb(r12, r14) -> 8[a + 48]
+	copyb(r10, 8[a + 56]) -> r14
+	copyb(r12, r14) -> 8[a + 56]
+	copyb(0, BN_F2_HDR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(r5, r11) -> 8[a + 8]
+	bn254_complex_mul(0, r5) -> r14
+	ret
+
+; void zisklib_dbl_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
+zisklib_dbl_fp2_bn254:
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r11, r14) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r11, r14) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r11, r14) -> 8[a + 24]
+	copyb(r10, 8[a + 32]) -> r14
+	copyb(r11, r14) -> 8[a + 32]
+	copyb(r10, 8[a + 40]) -> r14
+	copyb(r11, r14) -> 8[a + 40]
+	copyb(r10, 8[a + 48]) -> r14
+	copyb(r11, r14) -> 8[a + 48]
+	copyb(r10, 8[a + 56]) -> r14
+	copyb(r11, r14) -> 8[a + 56]
+	copyb(0, BN_F2_HDR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	bn254_complex_add(0, r5) -> r14
+	ret
+
+; void zisklib_square_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
+;   result = a * a.
+zisklib_square_fp2_bn254:
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r11, r14) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r11, r14) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r11, r14) -> 8[a + 24]
+	copyb(r10, 8[a + 32]) -> r14
+	copyb(r11, r14) -> 8[a + 32]
+	copyb(r10, 8[a + 40]) -> r14
+	copyb(r11, r14) -> 8[a + 40]
+	copyb(r10, 8[a + 48]) -> r14
+	copyb(r11, r14) -> 8[a + 48]
+	copyb(r10, 8[a + 56]) -> r14
+	copyb(r11, r14) -> 8[a + 56]
+	copyb(0, BN_F2_HDR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	bn254_complex_mul(0, r5) -> r14
+	ret
+
+; void zisklib_neg_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
+;   result = -a = a * (P-1).
+zisklib_neg_fp2_bn254:
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r11, r14) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r11, r14) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r11, r14) -> 8[a + 24]
+	copyb(r10, 8[a + 32]) -> r14
+	copyb(r11, r14) -> 8[a + 32]
+	copyb(r10, 8[a + 40]) -> r14
+	copyb(r11, r14) -> 8[a + 40]
+	copyb(r10, 8[a + 48]) -> r14
+	copyb(r11, r14) -> 8[a + 48]
+	copyb(r10, 8[a + 56]) -> r14
+	copyb(r11, r14) -> 8[a + 56]
+	copyb(0, BN_F2_HDR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BN_F2_NEGMUL) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	bn254_complex_mul(0, r5) -> r14
+	ret
+
+; void zisklib_scalar_mul_fp2_bn254(const u64* a, const u64* b, u64* result)
+;   result = a * (b + 0·u), b is an Fp scalar (4 u64).  [r10=a, r11=b, r12=result]
+zisklib_scalar_mul_fp2_bn254:
+	; build BN_F2_WB = b ‖ 0
+	copyb(r11, 8[a + 0]) -> r14
+	copyb(0, BN_F2_WB) -> r6
+	copyb(r6, r14) -> 8[a + 0]
+	copyb(r11, 8[a + 8]) -> r14
+	copyb(r6, r14) -> 8[a + 8]
+	copyb(r11, 8[a + 16]) -> r14
+	copyb(r6, r14) -> 8[a + 16]
+	copyb(r11, 8[a + 24]) -> r14
+	copyb(r6, r14) -> 8[a + 24]
+	copyb(r6, 0) -> 8[a + 32]
+	copyb(r6, 0) -> 8[a + 40]
+	copyb(r6, 0) -> 8[a + 48]
+	copyb(r6, 0) -> 8[a + 56]
+	; copy a -> result
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r12, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r12, r14) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r12, r14) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r12, r14) -> 8[a + 24]
+	copyb(r10, 8[a + 32]) -> r14
+	copyb(r12, r14) -> 8[a + 32]
+	copyb(r10, 8[a + 40]) -> r14
+	copyb(r12, r14) -> 8[a + 40]
+	copyb(r10, 8[a + 48]) -> r14
+	copyb(r12, r14) -> 8[a + 48]
+	copyb(r10, 8[a + 56]) -> r14
+	copyb(r12, r14) -> 8[a + 56]
+	copyb(0, BN_F2_HDR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BN_F2_WB) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	bn254_complex_mul(0, r5) -> r14
+	ret
+
+; void zisklib_conjugate_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
+;   result = (a_real, -a_imag), via complex_sub((a_real,0), (0,a_imag)).
+zisklib_conjugate_fp2_bn254:
+	; result = a_real ‖ 0
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r11, r14) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r11, r14) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r11, r14) -> 8[a + 24]
+	copyb(r11, 0) -> 8[a + 32]
+	copyb(r11, 0) -> 8[a + 40]
+	copyb(r11, 0) -> 8[a + 48]
+	copyb(r11, 0) -> 8[a + 56]
+	; BN_F2_WB = 0 ‖ a_imag
+	copyb(0, BN_F2_WB) -> r6
+	copyb(r6, 0) -> 8[a + 0]
+	copyb(r6, 0) -> 8[a + 8]
+	copyb(r6, 0) -> 8[a + 16]
+	copyb(r6, 0) -> 8[a + 24]
+	copyb(r10, 8[a + 32]) -> r14
+	copyb(r6, r14) -> 8[a + 32]
+	copyb(r10, 8[a + 40]) -> r14
+	copyb(r6, r14) -> 8[a + 40]
+	copyb(r10, 8[a + 48]) -> r14
+	copyb(r6, r14) -> 8[a + 48]
+	copyb(r10, 8[a + 56]) -> r14
+	copyb(r6, r14) -> 8[a + 56]
+	copyb(0, BN_F2_HDR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BN_F2_WB) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	bn254_complex_sub(0, r5) -> r14
+	ret
+
+; void zisklib_inv_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
+;   result = a^(-1) in Fp2 (returns a unchanged if a == 0). Hint FCALL_BN254_FP2_INV,
+;   verify inverse canonical (both halves < P) and a*inv == 1; halt on bad hint.
+zisklib_inv_fp2_bn254:
+	; a == 0 ? (all 8 limbs zero) -> result = a
+	copyb(0, r10) -> r5
+	copyb(0, 8) -> r6
+bf2_inv_zchk:
+	eq(r6, 0), j(bf2_inv_zero)
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(bf2_inv_hint)
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(bf2_inv_zchk)
+bf2_inv_zero:
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r11, r14) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r11, r14) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r11, r14) -> 8[a + 24]
+	copyb(r10, 8[a + 32]) -> r14
+	copyb(r11, r14) -> 8[a + 32]
+	copyb(r10, 8[a + 40]) -> r14
+	copyb(r11, r14) -> 8[a + 40]
+	copyb(r10, 8[a + 48]) -> r14
+	copyb(r11, r14) -> 8[a + 48]
+	copyb(r10, 8[a + 56]) -> r14
+	copyb(r11, r14) -> 8[a + 56]
+	ret
+bf2_inv_hint:
+	fcall_param(8, r10) -> r14
+	fcall(FCALL_BN254_FP2_INV, 0) -> r14
+	copyb(0, BN_F2_INV) -> r6
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	copyb(0, 7) -> r15
+bf2_inv_rd:
+	eq(r15, 0), j(bf2_inv_ck)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r15, 1) -> r15
+	jump(bf2_inv_rd)
+bf2_inv_ck:
+	; canonical check: real half (inv[0..4]) < P
+	copyb(0, BN_F2_INV) -> r5
+	add(r5, 24) -> r5
+	copyb(0, BN_P) -> r6
+	add(r6, 24) -> r6
+	copyb(0, 4) -> r7
+bf2_inv_ck0:
+	eq(r7, 0), j(bf2_inv_panic)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(bf2_inv_ck1)
+	ltu(r15, r14), j(bf2_inv_panic)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(bf2_inv_ck0)
+bf2_inv_ck1:
+	; canonical check: imag half (inv[4..8]) < P
+	copyb(0, BN_F2_INV) -> r5
+	add(r5, 56) -> r5
+	copyb(0, BN_P) -> r6
+	add(r6, 24) -> r6
+	copyb(0, 4) -> r7
+bf2_inv_ck1l:
+	eq(r7, 0), j(bf2_inv_panic)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(bf2_inv_vfy)
+	ltu(r15, r14), j(bf2_inv_panic)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(bf2_inv_ck1l)
+bf2_inv_vfy:
+	; PROD = a * inv (Fp2), check == 1
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(0, BN_F2_PROD) -> r6
+	copyb(r6, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r6, r14) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r6, r14) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r6, r14) -> 8[a + 24]
+	copyb(r10, 8[a + 32]) -> r14
+	copyb(r6, r14) -> 8[a + 32]
+	copyb(r10, 8[a + 40]) -> r14
+	copyb(r6, r14) -> 8[a + 40]
+	copyb(r10, 8[a + 48]) -> r14
+	copyb(r6, r14) -> 8[a + 48]
+	copyb(r10, 8[a + 56]) -> r14
+	copyb(r6, r14) -> 8[a + 56]
+	copyb(0, BN_F2_HDR) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BN_F2_INV) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	bn254_complex_mul(0, r5) -> r14
+	; is_one(PROD): PROD[0]==1 and PROD[1..8]==0
+	copyb(0, BN_F2_PROD) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 1), j(bf2_inv_hi)
+	jump(bf2_inv_panic)
+bf2_inv_hi:
+	copyb(0, 7) -> r7
+	add(r5, 8) -> r5
+bf2_inv_hil:
+	eq(r7, 0), j(bf2_inv_wr)
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 0), j(bf2_inv_hin)
+	jump(bf2_inv_panic)
+bf2_inv_hin:
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(bf2_inv_hil)
+bf2_inv_wr:
+	copyb(0, BN_F2_INV) -> r5
+	copyb(0, 8) -> r7
+bf2_inv_wrl:
+	eq(r7, 0), j(bf2_inv_ret)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r11, 8) -> r11
+	sub(r7, 1) -> r7
+	jump(bf2_inv_wrl)
+bf2_inv_ret:
+	ret
+bf2_inv_panic:
+	copyb(0, 0) -> r10, end

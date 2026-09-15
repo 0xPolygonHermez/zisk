@@ -1,0 +1,54 @@
+; ============================================================================
+; ziskos.zisk
+;
+; The ZisK program launcher, i.e. the ziskasm equivalent of ziskos::_start
+; (ziskos/entrypoint/src/lib.rs). It performs the minimal boot sequence and then
+; runs the program entry point `_zisk_main` (defined in doubler.zisk).
+;
+; ziskos::_start does, in order:
+;   1. set the global pointer  (gp / r3 = _global_pointer)
+;   2. set the stack pointer   (sp / r2 = _init_stack_top)
+;   3. call _zisk_main
+;   4. return to the BIOS, which reads the output and ends
+;
+; This file is the entry point of the program: when the two files are assembled
+; together, `_start` is the first instruction (at ROM_ADDR).
+;
+; Termination returns control to the ZisK BIOS, which reads the program output
+; from OUTPUT_ADDR and ends. The BIOS entered `_start` with the address of that
+; output-finalization code in r1 (its "CALL to entry"), so a faithful RISC-V
+; launcher would `ret` (jalr r0, r1) to it. We cannot: r1 holds a *low* address
+; (< ROM_ADDR), and the x86 assembly generator's dynamic-jump fast path assumes
+; jump targets are high addresses. Instead we jump there *statically* by loading
+; the fixed BIOS finalization address as a constant and using `setpc` — a static
+; jump to a constant compiles to a direct `jmp` and works for any address.
+;
+; `call` still follows the RISC-V convention (return address in r1); see
+; ziskasm.md, "Call and return".
+; ============================================================================
+
+
+; ---- Definitions ----
+
+define INIT_STACK_TOP  0xa0400000     ; _init_stack_top = ORIGIN(ram) + stack_size
+define GLOBAL_POINTER  0x00000000     ; _global_pointer: unused here (the linker
+                                      ; fills it in a real program); set only to
+                                      ; mirror the launcher faithfully
+
+
+_start:
+	; ---- Boot sequence (mirrors ziskos::_start) ----
+	copyb(0, GLOBAL_POINTER) -> r3        ; gp (r3) = _global_pointer
+	copyb(0, INIT_STACK_TOP) -> r2        ; sp (r2) = _init_stack_top
+
+	; Call the program entry point (in doubler.zisk). `call` sets r1 to the
+	; return address; `_zisk_main` returns here via `ret`, a dynamic jump to r1,
+	; which is a high (>= ROM_ADDR) address and so is supported.
+	call _zisk_main
+
+	; Return to the BIOS, which reads the output from OUTPUT_ADDR and ends the
+	; program. `ret_to_bios` is a *static* jump to the BIOS finalization address
+	; (which the assembler derives), not a `ret`: a `ret` would jump dynamically
+	; through r1 to a low (< ROM_ADDR) address, which the x86 asm generator does
+	; not support.
+	ret_to_bios
