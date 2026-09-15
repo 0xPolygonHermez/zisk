@@ -3580,7 +3580,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -3591,13 +3591,13 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
 dependencies = [
  "anyhow",
  "num-bigint",
  "num-traits",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "serde",
  "serde_json",
  "tera",
@@ -3607,7 +3607,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
 dependencies = [
  "anyhow",
  "clap",
@@ -3617,9 +3617,9 @@ dependencies = [
  "pil2-stark-recurser",
  "proofman-common",
  "proofman-exps-codegen",
- "proofman-fields",
- "proofman-starks-lib-c",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "prost 0.13.5",
  "rayon",
  "serde",
@@ -3633,13 +3633,13 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
 dependencies = [
  "colored",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "proofman-hints",
- "proofman-util",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "proofman-witness",
  "rayon",
  "rustc-hash",
@@ -3819,7 +3819,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
 dependencies = [
  "bincode",
  "blake3",
@@ -3834,12 +3834,12 @@ dependencies = [
  "pil2-std-lib",
  "proofman-common",
  "proofman-curves",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "proofman-hints",
  "proofman-macros",
- "proofman-starks-lib-c",
- "proofman-util",
- "proofman-verifier",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "proofman-witness",
  "rayon",
  "serde",
@@ -3851,7 +3851,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
 dependencies = [
  "borsh",
  "colored",
@@ -3863,10 +3863,10 @@ dependencies = [
  "libloading",
  "mpi",
  "num_cpus",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "proofman-macros",
- "proofman-starks-lib-c",
- "proofman-util",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "serde",
  "serde_json",
@@ -3880,23 +3880,36 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
 dependencies = [
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
 ]
 
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
 dependencies = [
  "anyhow",
- "proofman-starks-src",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "regex",
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "proofman-fields"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
+dependencies = [
+ "blake3",
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "serde",
 ]
 
 [[package]]
@@ -3908,26 +3921,26 @@ dependencies = [
  "cfg-if",
  "num-bigint",
  "paste",
- "proofman-starks-lib-c",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
  "serde",
 ]
 
 [[package]]
 name = "proofman-hints"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
 dependencies = [
  "itoa",
  "proofman-common",
- "proofman-fields",
- "proofman-starks-lib-c",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "tracing",
 ]
 
 [[package]]
 name = "proofman-macros"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3937,16 +3950,39 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
+dependencies = [
+ "crossbeam-channel",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+]
+
+[[package]]
+name = "proofman-starks-lib-c"
+version = "1.3.0-alpha"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
 dependencies = [
  "crossbeam-channel",
- "proofman-starks-src",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
 ]
 
 [[package]]
 name = "proofman-starks-src"
 version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
+
+[[package]]
+name = "proofman-starks-src"
+version = "1.3.0-alpha"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
+
+[[package]]
+name = "proofman-util"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
+dependencies = [
+ "colored",
+ "sysinfo 0.35.2",
+]
 
 [[package]]
 name = "proofman-util"
@@ -3960,24 +3996,34 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
 dependencies = [
  "bincode",
  "num-traits",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "serde",
  "tracing",
 ]
 
 [[package]]
-name = "proofman-witness"
+name = "proofman-verifier"
 version = "1.3.0-alpha"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#d2f43760c3b89e264fdf5d0e3bd9419d5b564a3c"
 dependencies = [
+ "num-traits",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
+ "serde",
+]
+
+[[package]]
+name = "proofman-witness"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge#c8bf3600851af10ac33fb7dd729efcbb73042c48"
+dependencies = [
  "libloading",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
 ]
 
 [[package]]
@@ -4377,14 +4423,14 @@ dependencies = [
 name = "recurser-hash-common"
 version = "0.1.0"
 dependencies = [
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
 ]
 
 [[package]]
 name = "recurser-hash-host"
 version = "0.1.0"
 dependencies = [
- "proofman-util",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
  "recurser-hash-common",
  "tokio",
  "tracing",
@@ -4403,7 +4449,7 @@ name = "recurser-l2-host"
 version = "0.1.0"
 dependencies = [
  "alloy-sol-types",
- "proofman-util",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
  "recurser-l2-common",
  "tokio",
  "tracing",
@@ -6658,8 +6704,8 @@ dependencies = [
  "anyhow",
  "libc",
  "named-sem",
- "proofman-starks-lib-c",
- "proofman-util",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -6720,8 +6766,8 @@ dependencies = [
  "paste",
  "proofman",
  "proofman-common",
- "proofman-fields",
- "proofman-verifier",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -6730,6 +6776,7 @@ dependencies = [
  "tracing",
  "zisk-core",
  "zisk-definitions",
+ "zisk-pil",
  "zisk-stream",
  "zisk-verifier",
 ]
@@ -6769,7 +6816,7 @@ name = "zisk-core"
 version = "1.3.0-alpha"
 dependencies = [
  "paste",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "sha2 0.10.9",
  "tiny-keccak",
@@ -6794,8 +6841,8 @@ dependencies = [
  "pil2-std-lib",
  "proofman",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "proofman-witness",
  "rayon",
  "thiserror 2.0.20",
@@ -6835,7 +6882,7 @@ name = "zisk-pil"
 version = "1.3.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "proofman-macros",
  "serde",
  "serde_arrays",
@@ -6856,8 +6903,8 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "regex",
  "rustfmt-wrapper",
@@ -6882,8 +6929,8 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "rustfmt-wrapper",
  "tracing",
@@ -6908,8 +6955,8 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -6926,8 +6973,8 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -6943,8 +6990,8 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -6959,8 +7006,8 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -6973,7 +7020,9 @@ dependencies = [
 name = "zisk-precomp-common"
 version = "1.3.0-alpha"
 dependencies = [
- "proofman-fields",
+ "pil2-std-lib",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "rayon",
  "zisk-common",
  "zisk-core",
  "zisk-sm-mem",
@@ -6986,8 +7035,8 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -7004,7 +7053,7 @@ dependencies = [
  "clap",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -7049,8 +7098,8 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "tiny-keccak",
  "tracing",
@@ -7067,8 +7116,8 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -7083,8 +7132,8 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -7115,9 +7164,9 @@ dependencies = [
  "colored",
  "proofman",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
- "proofman-verifier",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "serde",
  "tracing",
  "zisk-asm-runner",
@@ -7145,8 +7194,8 @@ dependencies = [
  "pil2-stark-setup",
  "proofman",
  "proofman-common",
- "proofman-fields",
- "proofman-verifier",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "serde",
  "serde_json",
  "tera",
@@ -7170,7 +7219,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -7186,8 +7235,8 @@ dependencies = [
  "bincode",
  "proofman",
  "proofman-common",
- "proofman-fields",
- "proofman-verifier",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "serde",
  "serde_json",
@@ -7210,7 +7259,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -7226,7 +7275,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "static_assertions",
  "tracing",
@@ -7242,7 +7291,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "clap",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "static_assertions",
  "zisk-core",
 ]
@@ -7253,7 +7302,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -7271,8 +7320,8 @@ dependencies = [
  "env",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
- "proofman-util",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -7286,9 +7335,10 @@ name = "zisk-sm-mem-common"
 version = "1.3.0-alpha"
 dependencies = [
  "clap",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "static_assertions",
+ "tracing",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -7298,7 +7348,7 @@ dependencies = [
 name = "zisk-sm-mem-planner"
 version = "1.3.0-alpha"
 dependencies = [
- "proofman-util",
+ "proofman-util 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "tracing",
  "zisk-common",
  "zisk-pil",
@@ -7310,7 +7360,7 @@ name = "zisk-sm-rom"
 version = "1.3.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -7363,7 +7413,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.3.0-alpha"
 dependencies = [
- "proofman-verifier",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
 ]
 
 [[package]]
@@ -7382,7 +7432,7 @@ dependencies = [
  "memmap2",
  "num-format",
  "object",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rayon",
  "regex",
  "serde_json",
@@ -7424,7 +7474,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "paste",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rand 0.8.8",
  "ripemd",
  "secp256k1",
@@ -7453,7 +7503,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "paste",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes-merge)",
  "rand 0.8.8",
  "ripemd",
  "serde",

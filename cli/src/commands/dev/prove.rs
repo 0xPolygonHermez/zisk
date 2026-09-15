@@ -321,7 +321,6 @@ impl ProveCmd {
         if self.minimal {
             builder = builder.wrap_proof(ProofKind::VadcopFinalMinimal);
         }
-
         let result = builder.run()?;
         let executor_time = prover.get_executor_time()?;
 

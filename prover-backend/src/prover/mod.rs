@@ -182,8 +182,7 @@ impl BackendProverOpts {
         }
 
         // Packed traces need packed_info, with Main in compact (indexed) form. `options.packed`
-        // is the single source of truth — gpu() force-enables it and the executor's row-type gate
-        // reads the same flag — so the two sides can't diverge.
+        // is the single source of truth, read by the executor's row-type gate too.
         if options.packed {
             options.packed_info(get_packed_info());
         }

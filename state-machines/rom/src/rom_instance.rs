@@ -14,7 +14,7 @@ use zisk_common::{
     Metrics, PayloadType, ROM_BUS_ID,
 };
 use zisk_core::{ZiskRom, ROM_EXIT};
-use zisk_pil::{MainTrace, RomTrace};
+use zisk_pil::{RomTrace, MAIN_STEPS_PER_SEGMENT};
 
 /// Per-emulator state held by a `RomInstance`. Each variant owns exactly the data
 /// its execution path needs and implements its own behaviour.
@@ -126,7 +126,7 @@ impl RomInstance {
         counter_stats: &CounterStats,
         mut trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
+        let main_trace_len = MAIN_STEPS_PER_SEGMENT as u64;
 
         // For every instruction in the rom, fill its corresponding ROM trace
         for zib in zisk_rom.insts.values() {
@@ -202,7 +202,7 @@ impl RomInstance {
 
         // Increment as if executed the number of times needed to reach the end of the main trace
         // instance, i.e. repeat the last instruction until the end of the instance.
-        let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
+        let main_trace_len = MAIN_STEPS_PER_SEGMENT as u64;
         trace_buffer[index] = F::from_u64(1 + main_trace_len - asm_romh.steps % main_trace_len);
 
         Self::build_air_instance(trace_buffer)
@@ -375,7 +375,7 @@ mod tests {
         let rom = rom_with_indexed_insts(0x8000_0000, 3);
         let end_pc = 0x8000_0008; // paddr of inst with index=2
         let stats = CounterStats { inst_count: atomics_from(&[1, 1, 1]), end_pc, steps: 100 };
-        let main_len = MainTrace::<()>::NUM_ROWS as u64;
+        let main_len = MAIN_STEPS_PER_SEGMENT as u64;
         let expected_bump = main_len - 100 % main_len;
 
         let air =
@@ -420,7 +420,7 @@ mod tests {
         // The histogram's value at `exit_trace_index` must be exactly 1 — the assembly
         // runner is expected to record the exit instruction as executed once.
         let asm_romh = AsmRHData::new(/* steps */ 50, vec![3, 0, 1]);
-        let main_len = MainTrace::<()>::NUM_ROWS as u64;
+        let main_len = MAIN_STEPS_PER_SEGMENT as u64;
         let expected_exit = 1 + main_len - 50 % main_len;
 
         let air =

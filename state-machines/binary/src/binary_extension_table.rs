@@ -46,6 +46,13 @@ pub struct BinaryExtensionTableSM;
 impl BinaryExtensionTableSM {
     pub const TABLE_ID: usize = 124;
 
+    /// Rows the table has, i.e. `BINARY_EXTENSION_TABLE_SIZE` in `binary_extension_table.pil`.
+    ///
+    /// The witness needs it to size the histogram it tallies the multiplicities into, so it cannot
+    /// live in the tests alone. `tests::table_regions_tile_the_whole_table` is what keeps it in step
+    /// with the PIL: the per-opcode regions must add up to exactly this.
+    pub const TABLE_ROWS: u64 = 2_510_848;
+
     /// Calculates the row index in the Binary Extension Table based on the operation and its
     /// inputs.
     ///
@@ -167,7 +174,7 @@ mod tests {
     ];
 
     /// MUST match `BINARY_EXTENSION_TABLE_SIZE` in `binary_extension_table.pil`.
-    const BINARY_EXTENSION_TABLE_SIZE: u64 = 2_510_848;
+    const BINARY_EXTENSION_TABLE_SIZE: u64 = BinaryExtensionTableSM::TABLE_ROWS;
 
     #[test]
     fn table_regions_tile_the_whole_table() {
