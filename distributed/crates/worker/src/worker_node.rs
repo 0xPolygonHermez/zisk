@@ -875,32 +875,33 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     let proof_data = if !final_proof.is_empty() {
                         let is_plonk = proof_type == ProofKind::Plonk;
                         let flat_proof: Vec<u64> = final_proof.into_iter().flatten().collect();
-                        let minimal = proof_type == ProofKind::VadcopFinalMinimal;
                         // Compression strips the flag that marks this a fold, taking the
                         // recursion-domain check in `Proof::verify` with it.
-                        if minimal {
-                            error_message = format!(
-                                "refusing to return the aggregated proof for {job_id} as \
-                                 VadcopFinalMinimal: compression drops the recursion-domain \
-                                 marker"
-                            );
-                            error!("{error_message}");
-                            success = false;
-                            vec![]
+                        if !fold_allows_kind(proof_type) {
+                            fail_aggregation(
+                                &mut success,
+                                &mut error_message,
+                                format!(
+                                    "refusing to return the aggregated proof for {job_id} as \
+                                     {proof_type:?}: compression drops the recursion-domain \
+                                     marker"
+                                ),
+                            )
                         } else {
                             // A missing verkey or hash family yields an unusable proof
                             // (new_from_vadcop_proof rejects an unrecognized/empty hash).
                             // Treat it as a hard failure rather than emitting a "success"
                             // response carrying empty proof_data.
+                            // `fold_allows_kind` above leaves only uncompressed kinds here.
                             let verkey = self
                                 .worker
-                                .get_vadcop_vk(minimal)
+                                .get_vadcop_vk(false)
                                 .context("Failed to get vadcop verification key")?;
                             let hash = self
                                 .worker
                                 .hash()
                                 .context("Failed to get proving-key hash family")?;
-                            match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey, hash) {
+                            match Proof::new_from_vadcop_proof(&flat_proof, false, verkey, hash) {
                                 Ok(zisk_proof) => {
                                     // On wrap failure, emit nothing: returning the
                                     // unwrapped Vadcop proof would answer a PLONK request
@@ -914,11 +915,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                         {
                                             Ok(wrapped) => Some(wrapped.get_proof().clone()),
                                             Err(e) => {
-                                                error_message = format!(
-                                                    "Failed to wrap Plonk proof for {job_id}: {e}"
+                                                fail_aggregation(
+                                                    &mut success,
+                                                    &mut error_message,
+                                                    format!(
+                                                        "Failed to wrap Plonk proof for \
+                                                         {job_id}: {e}"
+                                                    ),
                                                 );
-                                                error!("{error_message}");
-                                                success = false;
                                                 None
                                             }
                                         }
@@ -934,12 +938,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                         None => vec![],
                                     }
                                 }
-                                Err(e) => {
-                                    error_message = format!("Failed to build Proof: {e}");
-                                    error!("{error_message}");
-                                    success = false;
-                                    vec![]
-                                }
+                                Err(e) => fail_aggregation(
+                                    &mut success,
+                                    &mut error_message,
+                                    format!("Failed to build Proof: {e}"),
+                                ),
                             }
                         }
                     } else {
@@ -2302,6 +2305,52 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         message_sender.send(message)?;
         Ok(())
+    }
+}
+
+/// Whether a fold may be returned in `proof_type`.
+///
+/// `FinalCompressed` strips the `is_vadcop_final_proof` flag, and `Proof::verify` keys the
+/// recursion-domain check on it -- so a compressed fold verifies weaker than the one that
+/// was produced.
+fn fold_allows_kind(proof_type: ProofKind) -> bool {
+    proof_type != ProofKind::VadcopFinalMinimal
+}
+
+/// Record an aggregation failure and return the (empty) `proof_data` the response carries.
+///
+/// The diagnostic, the log line and the `success` flag move together: an empty
+/// `proof_data` left paired with `success` reads to the coordinator as an intermediate
+/// acknowledgement, which it rejects outright on the final task.
+fn fail_aggregation(success: &mut bool, error_message: &mut String, diagnostic: String) -> Vec<u8> {
+    error!("{diagnostic}");
+    *error_message = diagnostic;
+    *success = false;
+    Vec::new()
+}
+
+#[cfg(test)]
+mod aggregate_response_tests {
+    use super::*;
+
+    #[test]
+    fn a_fold_may_not_be_returned_compressed() {
+        assert!(!fold_allows_kind(ProofKind::VadcopFinalMinimal));
+        assert!(fold_allows_kind(ProofKind::VadcopFinal));
+        assert!(fold_allows_kind(ProofKind::Plonk));
+    }
+
+    /// The pairing the coordinator depends on: a failure never looks like an ack.
+    #[test]
+    fn a_failure_clears_success_and_carries_a_diagnostic() {
+        let mut success = true;
+        let mut error_message = String::new();
+
+        let proof_data = fail_aggregation(&mut success, &mut error_message, "boom".to_string());
+
+        assert!(!success, "an empty proof with success set reads as an intermediate ack");
+        assert_eq!(error_message, "boom");
+        assert!(proof_data.is_empty());
     }
 }
 
