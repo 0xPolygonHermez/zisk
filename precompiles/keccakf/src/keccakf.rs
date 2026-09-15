@@ -43,8 +43,7 @@ pub struct KeccakfSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
 
-    /// The virtual table IDs for the χ-row S-box and xor5 tables
-    chi_table_id: usize,
+    /// The virtual table ID for the xor5 table
     xor5_table_id: usize,
 }
 
@@ -98,14 +97,11 @@ impl<F: PrimeField64> KeccakfSM<F> {
         // Compute some useful values
 
         // Get the table IDs
-        let chi_table_id = std
-            .get_virtual_table_id(KeccakfChiTableSM::TABLE_ID)
-            .expect("Failed to get Keccakf χ table ID");
         let xor5_table_id = std
             .get_virtual_table_id(KeccakfXor5TableSM::TABLE_ID)
             .expect("Failed to get Keccakf xor5 table ID");
 
-        Arc::new(Self { std, chi_table_id, xor5_table_id })
+        Arc::new(Self { std, xor5_table_id })
     }
 
     /// Processes one slot: fills its CLOCKS-row block of the trace with the two
@@ -123,7 +119,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
         trace: &mut [R],
         input_a: &KeccakfInput,
         input_b: Option<&KeccakfInput>,
-        chi_hist: &mut [u32],
         xor5_hist: &mut [u32],
     ) {
         // Fill step and addr of both ops
@@ -216,9 +211,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
                         tb[x] = cols_b.theta_out_at_source(&state_b, x, y, z);
                     }
                     let rc = y == 0 && ((RC[r] >> z) & 1) == 1;
-                    let chi_row = KeccakfChiTableSM::calculate_table_row(&ta, &tb, rc);
-                    chi_hist[chi_row as usize] += 1;
-
                     // The committed accumulator holds the packed lookup INPUT
                     // (base 28), NOT the compact table-row index (base 16)
                     chi_accs[z] = KeccakfChiTableSM::calculate_table_input(&ta, &tb, rc);
@@ -342,30 +334,23 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let mut slots: Vec<_> = par_traces.into_iter().zip(slot_inputs).collect();
         let chunk_size = num_slots_needed.div_ceil(rayon::current_num_threads()).max(1);
 
-        let new_hists =
-            || (vec![0u32; CHI_TABLE_SIZE as usize], vec![0u32; XOR5_TABLE_SIZE as usize]);
-        let (chi_hist, xor5_hist): (Vec<u32>, Vec<u32>) = slots
+        let new_hists = || vec![0u32; XOR5_TABLE_SIZE as usize];
+        let xor5_hist: Vec<u32> = slots
             .par_chunks_mut(chunk_size)
             .map(|chunk| {
-                let (mut chi, mut xor5) = new_hists();
+                let mut xor5 = new_hists();
                 for (trace, (input_a, input_b)) in chunk.iter_mut() {
-                    self.process_slot::<R>(trace, input_a, *input_b, &mut chi, &mut xor5);
+                    self.process_slot::<R>(trace, input_a, *input_b, &mut xor5);
                 }
-                (chi, xor5)
+                xor5
             })
-            .reduce_with(|(mut chi_a, mut xor5_a), (chi_b, xor5_b)| {
-                chi_a.iter_mut().zip(chi_b.iter()).for_each(|(a, b)| *a += b);
+            .reduce_with(|mut xor5_a, xor5_b| {
                 xor5_a.iter_mut().zip(xor5_b.iter()).for_each(|(a, b)| *a += b);
-                (chi_a, xor5_a)
+                xor5_a
             })
             .unwrap_or_else(new_hists);
 
         // Update the lookup table multiplicities
-        chi_hist.into_par_iter().enumerate().for_each(|(row, value)| {
-            if value > 0 {
-                self.std.inc_virtual_row(self.chi_table_id, row as u32, value);
-            }
-        });
         xor5_hist.into_par_iter().enumerate().for_each(|(row, value)| {
             if value > 0 {
                 self.std.inc_virtual_row(self.xor5_table_id, row as u32, value);

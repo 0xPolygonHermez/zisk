@@ -12,7 +12,7 @@ use rayon::{
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
     DmaPrePostTrace, DmaPrePostTraceRow, DmaPrePostTraceRowOps, DmaPrePostTraceRowPacked,
-    DMA_BYTE_CMP_TABLE_ID, DMA_PRE_POST_TABLE_ID, DMA_PRE_POST_TABLE_SIZE, DUAL_RANGE_BYTE_ID,
+    DMA_BYTE_CMP_TABLE_ID, DMA_PRE_POST_TABLE_ID, DMA_PRE_POST_TABLE_SIZE,
 };
 
 use crate::{dma_trace, DmaPrePostInput, DmaPrePostModule, DmaPrePostRom};
@@ -21,7 +21,7 @@ use zisk_precomp_helpers::DmaInfo;
 // Type aliases to simplify complex types
 type MultTable = Vec<Vec<u64>>;
 type PrePostAndByteCmpTables = (MultTable, MultTable);
-type GlobalMultiplicities = (PrePostAndByteCmpTables, MultTable);
+type GlobalMultiplicities = PrePostAndByteCmpTables;
 
 /// The `DmaPrePostSM` struct encapsulates the logic of the DmaPrePost State Machine.
 pub struct DmaPrePostSM<F: PrimeField64> {
@@ -34,8 +34,6 @@ pub struct DmaPrePostSM<F: PrimeField64> {
     /// Table to verify byte comparison
     byte_cmp_table_id: usize,
 
-    /// Dual Byte Range checks
-    dual_range_byte_id: usize,
 }
 
 impl<F: PrimeField64> DmaPrePostSM<F> {
@@ -46,9 +44,6 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         Arc::new(Self {
             std: std.clone(),
-            dual_range_byte_id: std
-                .get_virtual_table_id(DUAL_RANGE_BYTE_ID)
-                .expect("Failed to get table DUAL_RANGE_BYTE indentifer"),
             byte_cmp_table_id: std
                 .get_virtual_table_id(DMA_BYTE_CMP_TABLE_ID)
                 .expect("Failed to get table DMA_BYTE_CMP_TABLE indentifier"),
@@ -70,7 +65,6 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
         trace: &mut R,
         pre_post_table_mul: &mut [u64],
         byte_cmp_table_mul: &mut [u64],
-        local_dual_range_byte_mul: &mut [u64],
     ) {
         let is_memcmp = input.op == ZiskOp::DMA_MEMCMP || input.op == ZiskOp::DMA_XMEMCMP;
         let is_memcpy = input.op == ZiskOp::DMA_MEMCPY || input.op == ZiskOp::DMA_XMEMCPY;
@@ -132,11 +126,6 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
             rb[6] = (value >> 48) as u8;
             rb[7] = (value >> 56) as u8;
 
-            local_dual_range_byte_mul[(value & 0xFFFF) as usize] += 1;
-            local_dual_range_byte_mul[((value >> 16) & 0xFFFF) as usize] += 1;
-            local_dual_range_byte_mul[((value >> 32) & 0xFFFF) as usize] += 1;
-            local_dual_range_byte_mul[((value >> 48) & 0xFFFF) as usize] += 1;
-
             if second_read {
                 value = input.src_values[1];
                 rb[8] = value as u8;
@@ -147,12 +136,6 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
                 rb[13] = (value >> 40) as u8;
                 rb[14] = (value >> 48) as u8;
                 rb[15] = (value >> 56) as u8;
-                local_dual_range_byte_mul[(value & 0xFFFF) as usize] += 1;
-                local_dual_range_byte_mul[((value >> 16) & 0xFFFF) as usize] += 1;
-                local_dual_range_byte_mul[((value >> 32) & 0xFFFF) as usize] += 1;
-                local_dual_range_byte_mul[((value >> 48) & 0xFFFF) as usize] += 1;
-            } else {
-                local_dual_range_byte_mul[0] += 4;
             }
         }
 
@@ -166,10 +149,6 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
         pb[6] = (value >> 48) as u8;
         pb[7] = (value >> 56) as u8;
 
-        local_dual_range_byte_mul[(value & 0xFFFF) as usize] += 1;
-        local_dual_range_byte_mul[((value >> 16) & 0xFFFF) as usize] += 1;
-        local_dual_range_byte_mul[((value >> 32) & 0xFFFF) as usize] += 1;
-        local_dual_range_byte_mul[((value >> 48) & 0xFFFF) as usize] += 1;
 
         let selr_value = if dst_offset > src_offset {
             trace.set_dst_offset_gt_src_offset(true);
@@ -321,14 +300,12 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
         let chunk_size = std::cmp::max(1, flat_inputs.len() / num_threads);
 
         // Process in chunks to allow per-chunk local multiplicities arrays
-        let ((global_pre_post_table_mul, global_byte_cmp_table_mul), global_dual_range_byte_mul): GlobalMultiplicities =
-            flat_inputs
+        let (global_pre_post_table_mul, global_byte_cmp_table_mul): GlobalMultiplicities = flat_inputs
             .par_chunks(chunk_size)
             .zip(trace_rows.par_chunks_mut(chunk_size))
             .map(|(input_chunk, trace_chunk)| {
                 // Local array shared by this chunk
                 let mut local_pre_post_table_mul = vec![0u64; DMA_PRE_POST_TABLE_SIZE];
-                let mut local_dual_range_byte_mul = vec![0u64; 1 << 16];
                 let mut local_byte_cmp_table_mul = vec![0u64; 256 * 255];
 
                 // Sum all local arrays into a global one
@@ -338,12 +315,11 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
                         trace_row,
                         &mut local_pre_post_table_mul,
                         &mut local_byte_cmp_table_mul,
-                        &mut local_dual_range_byte_mul,
                     )
                 }
 
                 // Return nested tuple for unzip
-                ((local_pre_post_table_mul, local_byte_cmp_table_mul), local_dual_range_byte_mul)
+                (local_pre_post_table_mul, local_byte_cmp_table_mul)
             })
             .unzip();
         for pre_post_table_mul in global_pre_post_table_mul.iter() {
@@ -356,9 +332,6 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
             self.std.inc_virtual_rows_ranged(self.byte_cmp_table_id, None, byte_cmp_table_mul);
         }
 
-        for dual_range_byte_mul in global_dual_range_byte_mul.iter() {
-            self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, None, dual_range_byte_mul);
-        }
         // for i in [
         //     4538, 4541, 4542, 4544, 4545, 4546, 4549, 4550, 4551, 4739, 147059, 147215, 147258,
         //     147261, 162643, 171955, 172130, 172133, 172136, 172137, 70114, 104010, 104123, 104124,

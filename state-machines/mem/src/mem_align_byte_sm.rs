@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
@@ -11,7 +10,6 @@ use zisk_pil::{
     MemAlignByteTraceRowOps, MemAlignReadByteAirValues, MemAlignReadByteLargeAirValues,
     MemAlignReadByteLargeTrace, MemAlignReadByteTrace, MemAlignReadByteTraceRowOps,
     MemAlignWriteByteAirValues, MemAlignWriteByteTrace, MemAlignWriteByteTraceRowOps,
-    DUAL_RANGE_BYTE_ID,
 };
 
 pub trait MemAlignByteRow<F: PrimeField64, T> {
@@ -253,23 +251,12 @@ const OFFSET_MASK: u32 = 0x07;
 const OFFSET_BITS: u32 = 3;
 
 pub struct MemAlignByteSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
-
-    /// The table ID for the Mem Align ROM State Machine
-    table_dual_byte_id: usize,
-
+    _phantom: std::marker::PhantomData<F>,
 }
 
 impl<F: PrimeField64> MemAlignByteSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Get the table ID
-        Arc::new(Self {
-            std: std.clone(),
-            table_dual_byte_id: std
-                .get_virtual_table_id(DUAL_RANGE_BYTE_ID)
-                .expect("Failed to get dual byte table ID"),
-        })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: std::marker::PhantomData })
     }
 
     pub fn compute_witness<T, R: MemAlignByteRow<F, T>>(
@@ -289,8 +276,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
             used_rows as f64 / num_rows as f64 * 100.0
         );
 
-        let mut dual_mults = vec![0u64; 65536];
-
         let mut irow = 0;
         for inner_memp_ops in mem_ops.iter() {
             for input in inner_memp_ops.iter() {
@@ -299,7 +284,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
                     input,
                     irow,
                     R::get_row_mut(&mut trace, irow),
-                    &mut dual_mults,
                 );
                 irow += 1;
             }
@@ -318,12 +302,8 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
                 },
                 irow,
                 padding_row,
-                &mut dual_mults,
             );
-            dual_mults[0] += padding_size - 1;
         }
-
-        self.std.inc_virtual_rows_ranged(self.table_dual_byte_id, None, &dual_mults);
 
         Ok(R::create_instance_from_trace(&mut trace, irow))
     }
@@ -335,7 +315,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         input: &MemAlignInput,
         irow: usize,
         row: &mut R,
-        dual_mults: &mut [u64],
     ) {
         let addr = input.addr;
 
@@ -450,7 +429,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
             addr_w,
             step,
         );
-        dual_mults[(value_8b as u16 + ((byte_value as u16) << 8)) as usize] += 1;
 
         let written_byte_value = input.value as u8;
         let written_composed_value = match offset {

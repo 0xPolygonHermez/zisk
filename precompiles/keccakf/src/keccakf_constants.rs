@@ -29,9 +29,6 @@ pub(crate) const GROUP_ROUND_0: usize = 2 * ROWS_PER_STATE;
 pub(crate) const GROUP_OUT_A: usize = (3 + ROUNDS) * ROWS_PER_STATE;
 pub(crate) const GROUP_OUT_B: usize = (4 + ROUNDS) * ROWS_PER_STATE;
 
-/// χ-row S-box table: row = rc·16⁵ + Σ_x (tA_x + 4·tB_x)·16ˣ with tA,tB ∈ [0,3]
-pub(crate) const CHI_TABLE_SIZE: u32 = 2 * 16u32.pow(5); // 2_097_152 = 2^21
-
 /// The packed χ-row lookup input: rc·28⁵ + Σ_x (tA_x + 8·tB_x)·28ˣ
 /// (base 28 since a sliced θ-output digit reaches 3 + 8·3 = 27)
 pub(crate) const CHI_BASE: u32 = 28;

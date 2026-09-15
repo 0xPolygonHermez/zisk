@@ -31,7 +31,7 @@ impl<F: PrimeField64> Mem<F> {
         let mem_sm = MemSM::new();
         let input_data_sm = InputDataSM::new();
         let rom_data_sm = RomDataSM::new();
-        let mem_align_byte_sm = MemAlignByteSM::new(std.clone());
+        let mem_align_byte_sm = MemAlignByteSM::new();
 
         Arc::new(Self { mem_align_sm, mem_sm, input_data_sm, rom_data_sm, mem_align_byte_sm })
     }

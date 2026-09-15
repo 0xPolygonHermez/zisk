@@ -9,7 +9,7 @@ use proofman_fields::PrimeField64;
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult};
 use rayon::prelude::*;
-use zisk_pil::{MemAlignTraceRowOps, DUAL_RANGE_BYTE_ID, ZISK_AIRGROUP_ID};
+use zisk_pil::{MemAlignTraceRowOps, ZISK_AIRGROUP_ID};
 
 const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
@@ -46,8 +46,6 @@ pub struct MemAlignSM<F: PrimeField64> {
     /// The table ID for the Mem Align ROM State Machine
     table_id: usize,
 
-    /// The virtual table ID for the dual-byte range check
-    table_dual_byte_id: usize,
 }
 
 macro_rules! debug_info {
@@ -64,15 +62,12 @@ impl<F: PrimeField64> MemAlignSM<F> {
         // Get the table ID
         let table_id =
             std.get_virtual_table_id(MemAlignRomSM::TABLE_ID).expect("Failed to get table ID");
-        let table_dual_byte_id =
-            std.get_virtual_table_id(DUAL_RANGE_BYTE_ID).expect("Failed to get dual byte table ID");
 
         Arc::new(Self {
             std: std.clone(),
             #[cfg(feature = "debug_mem_align")]
             num_computed_rows: Mutex::new(0),
             table_id,
-            table_dual_byte_id,
         })
     }
 
@@ -856,7 +851,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace =
             GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec(trace_buffer)?;
-        let mut dual_mults = vec![0u64; 1 << (2 * CHUNK_BITS)];
 
         let num_rows = trace.num_rows();
 
@@ -897,16 +891,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
             self.prove_mem_align_op(input, trace);
         });
 
-        // Iterate over all traces to set range checks
-        trace.buffer[0..total_index].iter_mut().for_each(|row| {
-            let reg_values = row.get_all_reg();
-            // Range-check registers in dual-byte pairs: (reg[0],reg[1]), (reg[2],reg[3]), ...
-            for i in (0..CHUNK_NUM).step_by(2) {
-                let idx = ((reg_values[i] as usize) << CHUNK_BITS) | reg_values[i + 1] as usize;
-                dual_mults[idx] += 1;
-            }
-        });
-
         let padding_size = num_rows - total_index;
         let mut padding_row: R = Default::default();
         padding_row.set_reset(true);
@@ -916,10 +900,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
         // Compute the program multiplicity
         self.std.inc_virtual_row(self.table_id, MemAlignRomSM::PADDING_ROW, padding_size as u64);
-
-        // Padding rows have all registers zero -> (CHUNK_NUM / 2) dual (0, 0) pairs each.
-        dual_mults[0] += (CHUNK_NUM / 2) as u64 * padding_size as u64;
-        self.std.inc_virtual_rows_ranged(self.table_dual_byte_id, None, &dual_mults);
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }

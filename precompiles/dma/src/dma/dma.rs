@@ -8,7 +8,7 @@ use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
-    DmaTrace, DmaTraceRow, DmaTraceRowOps, DmaTraceRowPacked, DMA_ROM_ID, DUAL_RANGE_7_BITS_ID,
+    DmaTrace, DmaTraceRow, DmaTraceRowOps, DmaTraceRowPacked, DMA_ROM_ID,
 };
 
 use crate::{dma::dma_rom::DmaRom, dma_trace, DmaInput, DmaModule, DMA_ROM_WITH_MEMCMP_SIZE};
@@ -20,7 +20,6 @@ pub struct DmaSM<F: PrimeField64> {
     pub std: Arc<Std<F>>,
 
     pub rom_table_id: usize,
-    pub dual_range_7_bits_id: usize,
 }
 
 impl<F: PrimeField64> DmaSM<F> {
@@ -32,9 +31,6 @@ impl<F: PrimeField64> DmaSM<F> {
         Arc::new(Self {
             std: std.clone(),
             rom_table_id: std.get_virtual_table_id(DMA_ROM_ID).expect("Failed to get dma rom ID"),
-            dual_range_7_bits_id: std
-                .get_virtual_table_id(DUAL_RANGE_7_BITS_ID)
-                .expect("Failed to get dual 7-bits table ID"),
         })
     }
 
@@ -50,7 +46,6 @@ impl<F: PrimeField64> DmaSM<F> {
         input: &DmaInput,
         // row_offset: usize,
         trace: &mut R,
-        local_dual_7_bits_multiplicities: &mut [u64],
         local_rom_multiplicities: &mut [u64],
     ) {
         let count = DmaInfo::get_count(input.encoded);
@@ -75,9 +70,6 @@ impl<F: PrimeField64> DmaSM<F> {
         trace.set_h_dst64(h_dst64);
         trace.set_l_dst64(l_dst64);
         trace.set_dst_offset(input.dst as u8 & 0x07);
-
-        let dual_7_bits_row = ((l_src64 as usize) << 7) | l_dst64 as usize;
-        local_dual_7_bits_multiplicities[dual_7_bits_row] += 1;
 
         trace.set_main_step(input.step);
 
@@ -191,14 +183,13 @@ impl<F: PrimeField64> DmaSM<F> {
 
         // TODO: add new interface with u32 to std to be used with global_rom_multiplicities
         // Split the add256_trace.buffer into slices matching each inner vector’s length.
-        let (global_dual_7_bits_multiplicities, global_rom_multiplicities) = flat_inputs
+        let global_rom_multiplicities = flat_inputs
             .par_chunks(chunk_size)
             .zip(trace_rows.par_chunks_mut(chunk_size))
             // .enumerate()
             // .map(|(chunk_idx, (input_chunk, trace_chunk))| {
             .map(|(input_chunk, trace_chunk)| {
                 // Local array shared by this chunk
-                let mut local_dual_7_bits_multiplicities = vec![0u64; 1 << 14];
                 let mut local_rom_multiplicities = vec![0u64; DMA_ROM_WITH_MEMCMP_SIZE];
 
                 // let chunk_offset = chunk_idx * chunk_size;
@@ -211,22 +202,18 @@ impl<F: PrimeField64> DmaSM<F> {
                         input,
                         //row_offset,
                         trace_row,
-                        &mut local_dual_7_bits_multiplicities,
                         &mut local_rom_multiplicities,
                     );
                 }
-                (local_dual_7_bits_multiplicities, local_rom_multiplicities)
+                local_rom_multiplicities
             })
             .reduce(
                 // Identity: create empty accumulators
-                || (vec![0u64; 1 << 14], vec![0u64; DMA_ROM_WITH_MEMCMP_SIZE]),
+                || vec![0u64; DMA_ROM_WITH_MEMCMP_SIZE],
                 // Combine two results
                 |mut acc, local| {
-                    for (i, &val) in local.0.iter().enumerate() {
-                        acc.0[i] += val;
-                    }
-                    for (i, &val) in local.1.iter().enumerate() {
-                        acc.1[i] += val;
+                    for (i, &val) in local.iter().enumerate() {
+                        acc[i] += val;
                     }
                     acc
                 },
@@ -238,11 +225,6 @@ impl<F: PrimeField64> DmaSM<F> {
         // ] {
         //     println!("TRACE[{i}]={:?}", trace_rows[i]);
         // }
-        self.std.inc_virtual_rows_ranged(
-            self.dual_range_7_bits_id,
-            None,
-            &global_dual_7_bits_multiplicities,
-        );
         self.std.inc_virtual_rows_ranged(self.rom_table_id, None, &global_rom_multiplicities);
         if total_inputs < num_rows {
             self.process_empty_slice(&mut trace_rows[total_inputs]);
