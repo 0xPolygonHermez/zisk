@@ -8,7 +8,7 @@ use ziskos::zisklib::FCALL_INPUT_READY_ID;
 use crate::{
     zisk_ops::ZiskOp, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR,
     INPUT_ADDR, M64, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR,
+    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR, ZISKLIB_ROM_ADDR,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -1057,75 +1057,7 @@ impl ZiskRom2Asm {
         /* BRANCH TABLES */
         /*****************/
 
-        // For all program addresses in the vector, create an assembly set of instructions with a
-        // map label
-        *code += "\n";
-        *code += ".section .rodata\n";
-        *code += ".align 64\n";
-
-        // Safety check: Ensure the minimum program address label exists
-        //
-        // This is defensive programming for rare cases where min_program_pc has no valid
-        // instruction (non-NOP padding, data in text section).
-        // In practice with NOP padding, this check never triggers and the entrypoint
-        // is the min_program_pc
-        if rom.min_program_pc >= ROM_ADDR && !rom.sorted_pc_list.contains(&rom.min_program_pc) {
-            *code +=
-                &format!("map_pc_{:x}: \t.quad pc_{:x}\n", rom.min_program_pc, rom.min_program_pc);
-        }
-
-        // Init previous key to the first ROM entry
-        let mut previous_key: u64 = ROM_ENTRY;
-        for key in &rom.sorted_pc_list {
-            // When in chunk player mode, we need to resume the chunk at any address,
-            // including internal, odd addresses not aligned to 2B.  We need to fill all the
-            // gaps between alligned addresses to make the distance between addresses constant
-            // and allow jumping to the proper branch using pc - ROM_ADDR as an increment
-            //
-            // 4N
-            //   4N + 1   <--  We want to be able to dynamically start a chunk at this pc
-            //   4N + 2
-            //   4N + 3
-            // 4(N+1)
-
-            // If not in chunk player mode, we can skip all odd, internal addresses, since you
-            // cannot jump to them.  In chunk player mode, you might have to jump to them at the
-            // beginning of a chunk
-            if key & 0x1 != 0 {
-                continue;
-            }
-
-            // Add the missing `map_pc_{ROM_ADDR}` label and padding to the first key, so the jump
-            // table resolves when .text starts above ROM_ADDR, e.g. Go ELFs.
-            if previous_key < ROM_ADDR
-                && (*key > ROM_ADDR)
-                && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
-            {
-                *code += &format!("map_pc_{ROM_ADDR:x}: \t.quad emu_end\n");
-                for _ in ROM_ADDR + 1..*key {
-                    *code += "\t.quad emu_end\n";
-                }
-            }
-
-            // Fill the gaps between consecutive, valid keys with dummy labels, in order to keep
-            // the distance between labels constant and allow jumping to the proper branch using
-            // pc - ROM_ADDR as an increment
-            if (previous_key >= ROM_ADDR)
-                && (*key > ROM_ADDR)
-                && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
-            {
-                for _ in previous_key + 1..*key {
-                    *code += "\t.quad emu_end\n";
-                }
-            }
-
-            // Use labels always
-            *code += &format!("map_pc_{key:x}: \t.quad pc_{key:x}\n");
-
-            // Update previous key
-            previous_key = *key;
-        }
-        *code += "\n";
+        Self::append_branch_table(rom, code);
 
         #[cfg(debug_assertions)]
         {
@@ -1174,6 +1106,96 @@ impl ZiskRom2Asm {
                 ctx.float()
             );
         }
+    }
+
+    /// Emit the `map_pc_*` dynamic-jump branch table: one `.quad pc_<addr>` per mapped ROM
+    /// address, with the gaps between consecutive addresses padded by `.quad emu_end` so an
+    /// indirect jump can index the table by `pc - base`.
+    ///
+    /// Reads only `rom.min_program_pc` and `rom.sorted_pc_list`; kept as a standalone function
+    /// so its address-window handling (float and ZisK-library exclusions) can be unit-tested
+    /// without building a full ROM.
+    fn append_branch_table(rom: &ZiskRom, code: &mut String) {
+        // For all program addresses in the vector, create an assembly set of instructions with a
+        // map label
+        *code += "\n";
+        *code += ".section .rodata\n";
+        *code += ".align 64\n";
+
+        // Safety check: Ensure the minimum program address label exists
+        //
+        // This is defensive programming for rare cases where min_program_pc has no valid
+        // instruction (non-NOP padding, data in text section).
+        // In practice with NOP padding, this check never triggers and the entrypoint
+        // is the min_program_pc
+        if rom.min_program_pc >= ROM_ADDR && !rom.sorted_pc_list.contains(&rom.min_program_pc) {
+            *code +=
+                &format!("map_pc_{:x}: \t.quad pc_{:x}\n", rom.min_program_pc, rom.min_program_pc);
+        }
+
+        // Init previous key to the first ROM entry
+        let mut previous_key: u64 = ROM_ENTRY;
+        for key in &rom.sorted_pc_list {
+            // When in chunk player mode, we need to resume the chunk at any address,
+            // including internal, odd addresses not aligned to 2B.  We need to fill all the
+            // gaps between alligned addresses to make the distance between addresses constant
+            // and allow jumping to the proper branch using pc - ROM_ADDR as an increment
+            //
+            // 4N
+            //   4N + 1   <--  We want to be able to dynamically start a chunk at this pc
+            //   4N + 2
+            //   4N + 3
+            // 4(N+1)
+
+            // If not in chunk player mode, we can skip all odd, internal addresses, since you
+            // cannot jump to them.  In chunk player mode, you might have to jump to them at the
+            // beginning of a chunk
+            if key & 0x1 != 0 {
+                continue;
+            }
+
+            // The ZisK library is entered only by *static* jumps, never dynamically, so its
+            // instructions are never a dynamic-jump target and need no map_pc entry. Skipping
+            // the reserved library window [ZISKLIB_ROM_ADDR, FLOAT_LIB_ROM_ADDR) also avoids
+            // filling the large ROM gap between the guest program and the library with one
+            // `.quad emu_end` per address (tens of millions of entries). The library's own
+            // `ret` back into guest code IS dynamic, but it targets guest addresses, which are
+            // resolved through the unaffected map_pc_{ROM_ADDR} entries.
+            if (ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(key) {
+                continue;
+            }
+
+            // Add the missing `map_pc_{ROM_ADDR}` label and padding to the first key, so the jump
+            // table resolves when .text starts above ROM_ADDR, e.g. Go ELFs.
+            if previous_key < ROM_ADDR
+                && (*key > ROM_ADDR)
+                && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
+            {
+                *code += &format!("map_pc_{ROM_ADDR:x}: \t.quad emu_end\n");
+                for _ in ROM_ADDR + 1..*key {
+                    *code += "\t.quad emu_end\n";
+                }
+            }
+
+            // Fill the gaps between consecutive, valid keys with dummy labels, in order to keep
+            // the distance between labels constant and allow jumping to the proper branch using
+            // pc - ROM_ADDR as an increment
+            if (previous_key >= ROM_ADDR)
+                && (*key > ROM_ADDR)
+                && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
+            {
+                for _ in previous_key + 1..*key {
+                    *code += "\t.quad emu_end\n";
+                }
+            }
+
+            // Use labels always
+            *code += &format!("map_pc_{key:x}: \t.quad pc_{key:x}\n");
+
+            // Update previous key
+            previous_key = *key;
+        }
+        *code += "\n";
     }
 
     /// Generate assembly code for an instruction
@@ -8805,6 +8827,48 @@ mod tests {
         assert_eq!(
             code,
             format!("\tmov {REG_C_W}, {REG_C_W}\n\tmov rcx, {REG_B}\n\tshl {REG_C}, cl\n")
+        );
+    }
+
+    /// The `map_pc_*` branch table must not map the reserved ZisK-library window
+    /// [ZISKLIB_ROM_ADDR, FLOAT_LIB_ROM_ADDR): the library is entered only by static jumps,
+    /// so its instructions are never dynamic-jump targets, and mapping them would pad the
+    /// ~126 MB gap between the guest program and the library with one `.quad emu_end` per
+    /// address (tens of millions of lines). Regression guard for that skip.
+    #[test]
+    fn branch_table_excludes_zisk_library_window() {
+        let guest0 = ROM_ADDR;
+        let guest1 = ROM_ADDR + 4;
+        let lib0 = ZISKLIB_ROM_ADDR;
+        let lib1 = ZISKLIB_ROM_ADDR + 4;
+        let float0 = FLOAT_LIB_ROM_ADDR;
+
+        let rom = ZiskRom {
+            min_program_pc: guest0,
+            sorted_pc_list: vec![guest0, guest1, lib0, lib1, float0],
+            ..Default::default()
+        };
+
+        let mut code = String::new();
+        ZiskRom2Asm::append_branch_table(&rom, &mut code);
+
+        // Guest and float-library addresses are mapped...
+        assert!(code.contains(&format!("map_pc_{guest0:x}:")), "guest0 should be mapped");
+        assert!(code.contains(&format!("map_pc_{guest1:x}:")), "guest1 should be mapped");
+        assert!(code.contains(&format!("map_pc_{float0:x}:")), "float base should be mapped");
+
+        // ...but the ZisK-library window is not.
+        assert!(!code.contains(&format!("map_pc_{lib0:x}:")), "library pc must not be mapped");
+        assert!(!code.contains(&format!("map_pc_{lib1:x}:")), "library pc must not be mapped");
+
+        // The only padding is the 3 addresses strictly between the two adjacent guest
+        // instructions (guest0+1..guest1). The huge guest->library and library->float gaps
+        // are left unmapped; a regression that maps the library window would emit tens of
+        // millions of `.quad emu_end` lines instead of exactly 3.
+        assert_eq!(
+            code.matches(".quad emu_end").count(),
+            3,
+            "unexpected padding; the ZisK-library window may be getting mapped"
         );
     }
 }
