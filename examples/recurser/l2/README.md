@@ -153,9 +153,9 @@ ways at the end:
 > the recurser's verkey **and** declare that same verkey as its recursion domain.
 > `Proof::verify` enforces the second half for `VadcopKind::Recurser`, so pinning
 > `with_setup_vk(V_R)` is enough to make the allow-list reach every leaf in the
-> tree. On-chain, `verifySnarkProof(programVK, rootCVadcopFinal, ...)` forces the
-> same pairing: for an aggregate both must be `V_R`, and both must be contract
-> constants.
+> tree. On-chain, `verifySnarkProof(programVK, ...)` forces the same pairing: for an
+> aggregate `programVK` must be `V_R`, and it must be a constant of the calling
+> contract. The recursion root is not passed in -- the verifier holds its own.
 
 ---
 
