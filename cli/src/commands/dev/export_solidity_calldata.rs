@@ -12,6 +12,10 @@ use crate::ux::{print_banner, print_banner_command};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Export the four ABI fields of a wrapped PLONK proof as JSON for the Solidity verifier.
+///
+/// Test fixture only: `programVK` and `rootCVadcopFinal` are read out of the proof
+/// itself. A production integration must hold both as contract constants, or
+/// verification is self-keyed.
 pub(crate) struct ExportSolidityCalldataCmd {
     /// Path to the wrapped PLONK proof file (output of `cargo-zisk wrap-proof --plonk`)
     #[arg(short = 'p', long)]

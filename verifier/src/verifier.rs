@@ -24,6 +24,19 @@ pub const VADCOP_FINAL_FLAG_LEN: usize = 1;
 /// recurser reads this at public index 0 to classify leaf (1) vs aggregated (0).
 pub const IS_VADCOP_FINAL_PROOF: u64 = 1;
 
+/// The Goldilocks prime `p = 2^64 - 2^32 + 1`. A field element has exactly one
+/// canonical encoding, `[0, p)`.
+pub const GOLDILOCKS_ORDER: u64 = 0xFFFF_FFFF_0000_0001;
+
+/// Whether every word is a canonical Goldilocks element (`< p`).
+///
+/// `x` and `x + p` are one field element to the STARK verifier but two different
+/// application outputs (low 32 bits). Canonical encodings are what keep the
+/// verified statement and the reported outputs the same thing.
+pub fn publics_are_canonical(publics: &[u64]) -> bool {
+    publics.iter().all(|&w| w < GOLDILOCKS_ORDER)
+}
+
 /// Expected `n_publics` header value for a NON-minimal vadcop_final proof:
 /// `is_vadcop_final_proof(1) | program VK(4) | publics(64)` = 69.
 const EXPECTED_N_PUBLICS_FINAL: u64 = (VADCOP_FINAL_FLAG_LEN + PROGRAM_N_PUBLICS) as u64;
@@ -31,6 +44,31 @@ const EXPECTED_N_PUBLICS_FINAL: u64 = (VADCOP_FINAL_FLAG_LEN + PROGRAM_N_PUBLICS
 /// Expected `n_publics` header value for a minimal (compressed) proof: the
 /// `final_compressed` circuit strips the flag, so it is flag-free = 68.
 const EXPECTED_N_PUBLICS_COMPRESSED: u64 = PROGRAM_N_PUBLICS as u64;
+
+/// The program VK limbs a serialized proof commits to, or `None` if malformed.
+/// Input is the `[minimal(1)][n_publics(1)][publics(n_publics)][proof]` layout
+/// taken by [`verify_vadcop_final_proof`].
+///
+/// This is the identity the proof claims (ROM root for a leaf, recursion domain
+/// for an aggregate), orthogonal to the `vadcop_final_vk` the STARK is checked
+/// against — verifying without also pinning it authenticates the proof system,
+/// not the program.
+pub fn committed_program_vk(zisk_proof: &[u64]) -> Option<&[u64]> {
+    if zisk_proof.len() < 2 {
+        return None;
+    }
+    let minimal = zisk_proof[0] == 1;
+    let expected_n_publics =
+        if minimal { EXPECTED_N_PUBLICS_COMPRESSED } else { EXPECTED_N_PUBLICS_FINAL };
+    if zisk_proof[1] != expected_n_publics {
+        return None;
+    }
+    let n = expected_n_publics as usize;
+    if zisk_proof.len() < 2 + n {
+        return None;
+    }
+    Some(&program_publics(&zisk_proof[2..2 + n])[..PROGRAM_VK_LEN])
+}
 
 pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64], hash: &str) -> bool {
     // Format: [minimal(1)][n_publics(1)][publics(n_publics)][proof]
@@ -54,6 +92,10 @@ pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64], ha
         return false;
     }
     if vadcop_proof[0] != expected_n_publics {
+        return false;
+    }
+
+    if !publics_are_canonical(&vadcop_proof[1..1 + expected_n_publics as usize]) {
         return false;
     }
 

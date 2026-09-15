@@ -488,12 +488,31 @@ impl ProverBackend {
         }
     }
 
-    pub(crate) fn minimal(&self, proof: &[u64], publics_full: &[u64]) -> Result<ProveOutput> {
+    /// Compress a vadcop_final proof into its minimal form. The flag is re-added
+    /// from `source_kind`: `FinalCompressed` verifies all 69 words before
+    /// stripping index 0.
+    pub(crate) fn minimal(
+        &self,
+        proof: &[u64],
+        publics_full: &[u64],
+        source_kind: VadcopKind,
+    ) -> Result<ProveOutput> {
+        if source_kind.is_minimal() {
+            return Err(anyhow::anyhow!(
+                "Cannot compress an already-minimal proof: it carries no \
+                 is_vadcop_final_proof flag and the compression circuit cannot verify it"
+            ));
+        }
+
         let start = std::time::Instant::now();
 
         let hash = self.hash()?;
-        let vadcop_final_proof =
-            VadcopFinalProof::new(proof.to_vec(), publics_full.to_vec(), false, hash.clone());
+        let vadcop_final_proof = VadcopFinalProof::new(
+            proof.to_vec(),
+            source_kind.stark_publics(publics_full),
+            false,
+            hash.clone(),
+        );
 
         let minimal_proof = self
             .proofman
@@ -519,26 +538,52 @@ impl ProverBackend {
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
     }
 
-    pub(crate) fn plonk(&self, proof: &[u64], publics_full: &[u64]) -> Result<ProveOutput> {
+    /// SNARK-wrap a vadcop_final proof. `source_kind` supplies the flag `RecursiveF`
+    /// expects, and selects the verification root (see below).
+    pub(crate) fn plonk(
+        &self,
+        proof: &[u64],
+        publics_full: &[u64],
+        source_kind: VadcopKind,
+    ) -> Result<ProveOutput> {
         if self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
             ));
         }
 
+        if source_kind.is_minimal() {
+            return Err(anyhow::anyhow!(
+                "Cannot SNARK-wrap a minimal proof: RecursiveF consumes the uncompressed \
+                 vadcop_final proof, not its compressed form"
+            ));
+        }
+
         let start = std::time::Instant::now();
 
-        let vadcop_final_proof =
-            VadcopFinalProof::new(proof.to_vec(), publics_full.to_vec(), false, self.hash()?);
+        let vadcop_final_proof = VadcopFinalProof::new(
+            proof.to_vec(),
+            source_kind.stark_publics(publics_full),
+            false,
+            self.hash()?,
+        );
 
-        // Read the program VK from the flag-free view (a full vadcop_final
-        // publics vector carries the `is_vadcop_final_proof` flag at index 0).
-        let proof_verkey = &program_publics(publics_full)[..PROGRAM_VK_LEN];
+        // The verkey RecursiveF verifies under, and the `rootCVadcopFinal` hashed
+        // into the SNARK's publics. One key, chosen by kind: a leaf uses the
+        // default vadcop_final setup verkey (as the fresh prove+wrap path stamps),
+        // an aggregate the recurser verkey the aggregator writes into its output VK
+        // slots. Reading those slots for a leaf would pick up its ROM root instead.
+        let rootc: Vec<u64> = match source_kind {
+            VadcopKind::Recurser => program_publics(publics_full)[..PROGRAM_VK_LEN].to_vec(),
+            _ => self.get_vadcop_vk(false)?,
+        };
+        let verkey_override = matches!(source_kind, VadcopKind::Recurser).then(|| rootc.as_slice());
+
         let snark_proof = self
             .snark_wrapper
             .as_ref()
             .unwrap()
-            .generate_final_snark_proof(&vadcop_final_proof, Some(proof_verkey))?;
+            .generate_final_snark_proof(&vadcop_final_proof, verkey_override)?;
 
         let time = start.elapsed();
 
@@ -556,18 +601,13 @@ impl ProverBackend {
         let proof = Proof {
             body: ProofBody::Plonk {
                 proof_bytes: snark_proof.proof_bytes.clone(),
-                plonk_vk: Box::new(PlonkVkBlob {
-                    vadcop_vk: self.get_vadcop_vk(false)?,
-                    plonk_vkey,
-                }),
+                plonk_vk: Box::new(PlonkVkBlob { vadcop_vk: rootc.clone(), plonk_vkey }),
                 publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
-                // Store the canonical flag-free view (the input vadcop_final
-                // publics carry the is_vadcop_final_proof flag at index 0).
+                // Store the canonical flag-free view.
                 publics_full: program_publics(&vadcop_final_proof.public_values).to_vec(),
-                // This wrap path stamps the proof's own program VK as rootC, read
-                // from the same flag-free view.
-                rootc: program_publics(&vadcop_final_proof.public_values)[..PROGRAM_VK_LEN]
-                    .to_vec(),
+                // The key RecursiveF verified under, so `Proof::verify` reproduces
+                // the circuit's `publicsHash` preimage.
+                rootc,
             },
             program_vk: ProgramVK::new_from_publics_with_mode(
                 &vadcop_final_proof.public_values,

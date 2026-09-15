@@ -68,9 +68,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("Generating second proof for fib_mod...");
     let vadcop_result2 = client.prove(&ELF_FIB_MOD, stdin2).run_sync()?;
 
+    let proof1_bytes = vadcop_result1.get_proof_bytes()?;
+    let proof2_bytes = vadcop_result2.get_proof_bytes()?;
+
+    // Fed in only because this is a demo — a real guest hardcodes both. The setup
+    // vk is the proof's appended 4-u64 tail; the program vk is fib_mod's ROM root.
+    let expected_setup_vk = proof1_bytes[proof1_bytes.len() - 4 * 8..].to_vec();
+    let expected_program_vk: Vec<u8> = vadcop_result1
+        .get_program_vk()
+        .vk
+        .iter()
+        .flat_map(|limb| limb.to_le_bytes())
+        .collect();
+
     let stdin_aggregation = ZiskStdin::new();
-    stdin_aggregation.write_slice(&vadcop_result1.get_proof_bytes()?);
-    stdin_aggregation.write_slice(&vadcop_result2.get_proof_bytes()?);
+    // Written in the guest's read order.
+    stdin_aggregation.write_slice(&expected_setup_vk);
+    stdin_aggregation.write_slice(&expected_program_vk);
+    stdin_aggregation.write_slice(&proof1_bytes);
+    stdin_aggregation.write_slice(&proof2_bytes);
     // The guest has no way to discover the family the proofs were produced under, so pass
     // the local proving key's -- the same key that produced them.
     stdin_aggregation.write_slice(HashMode::local()?.as_str().as_bytes());
