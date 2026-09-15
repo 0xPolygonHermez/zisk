@@ -1,5 +1,3 @@
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use libc::shm_unlink;
 use libc::{close, munmap, PROT_READ};
 use std::{fmt::Debug, io, os::raw::c_void, ptr};
 
@@ -37,10 +35,9 @@ pub(crate) trait AsmShmemHeader: Debug {
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl<H: AsmShmemHeader> Drop for AsmShmem<H> {
+    /// Unmaps and closes, without `shm_unlink` — the segment is shared by every
+    /// program on this worker. See `AsmMultiShmem`'s `Drop` for the full reason.
     fn drop(&mut self) {
-        if let Ok(c_name) = std::ffi::CString::new(self.shmem_name.clone()) {
-            unsafe { shm_unlink(c_name.as_ptr()) };
-        }
         self.unmap().unwrap_or_else(|err| {
             tracing::error!("Failed to unmap shared memory '{}': {}", self.shmem_name, err)
         });
@@ -207,7 +204,8 @@ mod tests {
         assert_eq!(shm.map_header().allocated_size(), 4096);
         assert_eq!(shm.mapped_size(), 4096);
         assert!(shm.is_mapped());
-        // `AsmShmem`'s Drop shm_unlinks the segment, so no manual cleanup here.
+        drop(shm);
+        unlink_segment(&name); // Drop no longer unlinks — the segment is shared.
     }
 
     #[test]

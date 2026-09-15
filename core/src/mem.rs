@@ -106,7 +106,7 @@ use core::fmt;
 /// Fist input data memory address
 pub const INPUT_ADDR: u64 = 0x4000_0000;
 /// Maximum size of the input data
-pub const MAX_INPUT_SIZE: u64 = 0x4000_0000; // 128M,
+pub const MAX_INPUT_SIZE: u64 = 0x4000_0000; // 1GB
 /// Free input data memory address = first input address
 pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
 /// First global RW memory address

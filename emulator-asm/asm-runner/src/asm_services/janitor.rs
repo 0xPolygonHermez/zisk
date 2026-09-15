@@ -81,21 +81,46 @@ pub(super) fn cleanup_stale() {
 /// the parent has to do it. Call after `stop_asm_services` so the
 /// children are already detached from the segments.
 pub(super) fn cleanup_prefix(shm_prefix: &str, sem_prefix: &str) {
-    let dev_shm = std::path::Path::new("/dev/shm");
-    let entries = match std::fs::read_dir(dev_shm) {
+    cleanup_shm_prefix(shm_prefix);
+    cleanup_sem_prefix(sem_prefix);
+}
+
+/// Unlink every `/dev/shm/{shm_prefix}*` shmem segment.
+///
+/// Split from the semaphore sweep because the two have different owners: the
+/// segments are keyed by pid+rank+hints mode and shared by every program on the
+/// worker, so only the *last* live `AsmServices` on a prefix may unlink them
+/// (see `PrefixLease`). The semaphores carry the program hash and belong to one
+/// program, so that program unlinks its own on the way out.
+pub(super) fn cleanup_shm_prefix(shm_prefix: &str) {
+    for_each_dev_shm_entry(|name| {
+        if name.starts_with(shm_prefix) {
+            let _ = unlink_shmem(name);
+        }
+    });
+}
+
+/// Unlink every `/dev/shm/sem.{sem_prefix}*` semaphore.
+pub(super) fn cleanup_sem_prefix(sem_prefix: &str) {
+    let sem_marker = format!("sem.{sem_prefix}");
+    for_each_dev_shm_entry(|name| {
+        if name.starts_with(&sem_marker) {
+            unlink_sem_file(name);
+        }
+    });
+}
+
+fn for_each_dev_shm_entry(mut f: impl FnMut(&str)) {
+    let entries = match std::fs::read_dir(std::path::Path::new("/dev/shm")) {
         Ok(e) => e,
         Err(e) => {
             tracing::warn!("Cannot scan /dev/shm for cleanup: {e}");
             return;
         }
     };
-    let sem_marker = format!("sem.{}", sem_prefix);
     for entry in entries.flatten() {
-        let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
-        if name.starts_with(shm_prefix) {
-            let _ = unlink_shmem(&name);
-        } else if name.starts_with(&sem_marker) {
-            unlink_sem_file(&name);
+        if let Some(name) = entry.file_name().to_str() {
+            f(name);
         }
     }
 }
@@ -125,6 +150,19 @@ mod tests {
                 false
             }
         }
+    }
+
+    /// `cleanup_prefix` unlinks by `starts_with`, so the hints and non-hints
+    /// prefixes must be prefix-free or a rollback in one mode would destroy the
+    /// other mode's live segments. `AsmServices::new` builds them with `_h1`/`_h0`
+    /// for exactly this reason; this pins the property at the janitor, which is
+    /// what depends on it.
+    #[test]
+    fn hints_and_non_hints_prefixes_are_prefix_free() {
+        let hints = format!("ZISK_1_0{}", "_h1");
+        let plain = format!("ZISK_1_0{}", "_h0");
+        assert!(!hints.starts_with(&plain), "{plain} must not match {hints}");
+        assert!(!plain.starts_with(&hints), "{hints} must not match {plain}");
     }
 
     #[test]
