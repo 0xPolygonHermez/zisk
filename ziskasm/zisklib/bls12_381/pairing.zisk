@@ -20,6 +20,8 @@ u64 LPC_I[1]  = 0
 u64 LPC_CONTRIB[1] = 0
 u64 LPC_PI[1] = 0
 u64 LPC_QI[1] = 0
+u64 LPC_G1INF[1] = 0
+u64 LPC_G2INF[1] = 0
 u64 LPC_F[72]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 LPC_MI[72] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 LPC_RES[72]= 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -75,20 +77,28 @@ lpc_body:
 	add(r5, r6) -> r5
 	copyb(0, LPC_QI) -> r6
 	copyb(r6, r5) -> 8[a + 0]
-	; --- identity? skip pair (contributes 1) ---
+	; --- identity flags: g1inf = (P_i == G1_IDENTITY), g2inf = (Q_i == G2_IDENTITY) ---
 	copyb(0, LPC_PI) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	copyb(0, BLS_G1_IDENTITY) -> r11
 	copyb(0, 12) -> r12
 	call bn254_eqn
-	ltu(0, r10), j(lpc_next)
+	copyb(0, LPC_G1INF) -> r5
+	copyb(r5, r10) -> 8[a + 0]
 	copyb(0, LPC_QI) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	copyb(0, BLS_G2_IDENTITY) -> r11
 	copyb(0, 24) -> r12
 	call bn254_eqn
-	ltu(0, r10), j(lpc_next)
-	; --- canonical G1: x<P and y<P (6 limbs each) ---
+	copyb(0, LPC_G2INF) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	; --- validate G1 (canonical, on-curve, subgroup) UNLESS P_i is the identity. The
+	;     reference validates the non-identity point even when the other is identity,
+	;     so e.g. a malformed G2 paired with G1=identity must still be rejected. ---
+	copyb(0, LPC_G1INF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(lpc_after_g1)
+	; canonical G1: x<P and y<P (6 limbs each)
 	copyb(0, LPC_PI) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	copyb(0, BLS_P) -> r11
@@ -102,7 +112,22 @@ lpc_body:
 	copyb(0, 6) -> r12
 	call bn254_ltn
 	eq(r10, 0), j(lpc_err_g1canon)
-	; --- canonical G2: 4 coords < P ---
+	; on-curve G1
+	copyb(0, LPC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_is_on_curve_bls12_381
+	eq(r10, 0), j(lpc_err_g1curve)
+	; subgroup G1
+	copyb(0, LPC_PI) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_is_on_subgroup_bls12_381
+	eq(r10, 0), j(lpc_err_g1sub)
+lpc_after_g1:
+	; --- validate G2 (canonical, on-curve twist, subgroup) UNLESS Q_i is the identity ---
+	copyb(0, LPC_G2INF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(lpc_after_g2)
+	; canonical G2: 4 coords < P
 	copyb(0, 0) -> r13
 lpc_g2canon:
 	eq(r13, 4), j(lpc_g2canon_ok)
@@ -119,27 +144,26 @@ lpc_g2canon:
 	add(r13, 1) -> r13
 	jump(lpc_g2canon)
 lpc_g2canon_ok:
-	; --- on-curve G1 ---
-	copyb(0, LPC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	call zisklib_is_on_curve_bls12_381
-	eq(r10, 0), j(lpc_err_g1curve)
-	; --- subgroup G1 ---
-	copyb(0, LPC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	call zisklib_is_on_subgroup_bls12_381
-	eq(r10, 0), j(lpc_err_g1sub)
-	; --- on-curve twist G2 ---
+	; on-curve twist G2
 	copyb(0, LPC_QI) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	call zisklib_is_on_curve_twist_bls12_381
 	eq(r10, 0), j(lpc_err_g2curve)
-	; --- subgroup G2 ---
+	; subgroup G2
 	copyb(0, LPC_QI) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	call zisklib_is_on_subgroup_twist_bls12_381
 	eq(r10, 0), j(lpc_err_g2sub)
-	; --- mi = miller(p_i, q_i) ; f = f · mi ---
+lpc_after_g2:
+	; --- Miller loop only when BOTH points are non-identity (else the pair
+	;     contributes 1 and is skipped) ---
+	copyb(0, LPC_G1INF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(lpc_next)
+	copyb(0, LPC_G2INF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(lpc_next)
+	; mi = miller(p_i, q_i) ; f = f * mi
 	copyb(0, LPC_PI) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	copyb(0, LPC_QI) -> r11

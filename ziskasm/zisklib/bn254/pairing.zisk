@@ -19,6 +19,8 @@ u64 PC_I[1]  = 0
 u64 PC_CONTRIB[1] = 0
 u64 PC_PI[1] = 0
 u64 PC_QI[1] = 0
+u64 PC_G1INF[1] = 0
+u64 PC_G2INF[1] = 0
 u64 PC_F[48]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 PC_MI[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 PC_RES[48]= 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -101,35 +103,54 @@ pc_g2canon:
 	add(r13, 1) -> r13
 	jump(pc_g2canon)
 pc_g2canon_ok:
-	; --- identity? skip pair (contributes 1) ---
+	; --- identity flags: g1inf = (P_i == G1_IDENTITY), g2inf = (Q_i == G2_IDENTITY).
+	;     Canonical checks above run unconditionally (as in the reference); the
+	;     non-identity point's curve/subgroup checks must still run when the other
+	;     point is the identity, so guard each point's checks by its OWN flag. ---
 	copyb(0, PC_PI) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	copyb(0, BN_G1_IDENTITY) -> r11
 	copyb(0, 8) -> r12
 	call bn254_eqn
-	ltu(0, r10), j(pc_next)
+	copyb(0, PC_G1INF) -> r5
+	copyb(r5, r10) -> 8[a + 0]
 	copyb(0, PC_QI) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	copyb(0, BN_G2_IDENTITY) -> r11
 	copyb(0, 16) -> r12
 	call bn254_eqn
-	ltu(0, r10), j(pc_next)
-	; --- on-curve G1 ---
+	copyb(0, PC_G2INF) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	; --- on-curve G1 unless P_i is the identity ---
+	copyb(0, PC_G1INF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(pc_after_g1)
 	copyb(0, PC_PI) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	call zisklib_is_on_curve_bn254
 	eq(r10, 0), j(pc_err_g1curve)
-	; --- on-curve twist G2 ---
+pc_after_g1:
+	; --- on-curve twist G2 + subgroup G2 unless Q_i is the identity ---
+	copyb(0, PC_G2INF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(pc_after_g2)
 	copyb(0, PC_QI) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	call zisklib_is_on_curve_twist_bn254
 	eq(r10, 0), j(pc_err_g2curve)
-	; --- subgroup G2 ---
 	copyb(0, PC_QI) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	call zisklib_is_on_subgroup_twist_bn254
 	eq(r10, 0), j(pc_err_g2sub)
-	; --- mi = miller(p_i, q_i) ; f = f · mi ---
+pc_after_g2:
+	; --- Miller loop only when BOTH points are non-identity ---
+	copyb(0, PC_G1INF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(pc_next)
+	copyb(0, PC_G2INF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(0, r6), j(pc_next)
+	; mi = miller(p_i, q_i) ; f = f * mi
 	copyb(0, PC_PI) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	copyb(0, PC_QI) -> r11
