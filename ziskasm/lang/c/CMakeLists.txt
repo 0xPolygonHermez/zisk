@@ -1,9 +1,11 @@
 # zisklib C bindings for the ZisK assembly library (ziskasm/zisklib/).
 #
-# Produces a small static library `zisklib_c` of redirectable `ziskos_*` stubs
-# plus its public include dir. A guest (e.g. ziskethone's cpp-guest) links it and
-# calls the `ziskos_*` functions from <zisklib.h>; elf2rom redirects those symbols
-# to the hand-written .zisk routines at transpile time.
+# Produces a small static library `zisklib_c` of redirectable stubs plus its
+# public include dir: the `ziskos_*` flat-ABI stubs (`zisklib_stubs.c`, from
+# <zisklib.h>) AND the Ethereum-Foundation `zkvm_*` accelerator stubs
+# (`zkvm_stubs.c`, from <zkvm_accelerators.h> / <zkvm_u256.h>). A guest (e.g.
+# ziskethone's cpp-guest) links it and calls either set; elf2rom redirects those
+# symbols to the hand-written .zisk routines at transpile time.
 #
 # Usage from a parent CMake project:
 #   add_subdirectory(/path/to/zisk/ziskasm/lang/c zisklib_c)
@@ -16,7 +18,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(zisklib_c C)
 
-add_library(zisklib_c STATIC src/zisklib_stubs.c)
+add_library(zisklib_c STATIC src/zisklib_stubs.c src/zkvm_stubs.c)
 target_include_directories(zisklib_c PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set_target_properties(zisklib_c PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
 # Keep every stub as its own section so unused ones can be GC'd, while the

@@ -66,7 +66,7 @@ _zisklib_ram_data_size       = 0x30000;   /* 192 KB reserved (ZisK library scrat
              │                    │
              │                    │
              │                    │
-0xBFC0_0000  ├────────────────────┤ ← _heap_top
+0xBFFC_0000  ├────────────────────┤ ← _heap_top
              │ zisklib ram        │  192 KB reserved (ZisK library scratch)
              │  0x30000 bytes     │  = ZISKLIB_RAM (core/src/mem.rs)
 0xBFFF_0000  ├────────────────────┤
