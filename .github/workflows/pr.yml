@@ -8,10 +8,12 @@ on:
       - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
     paths-ignore:
       - 'book/**'
+  schedule:
+    - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
       use_blake3_setup:
-        description: "Use the blake3 setup"
+        description: "Blake3 setup"
         required: false
         type: boolean
         default: false
@@ -22,6 +24,9 @@ concurrency:
 
 permissions:
   contents: read
+
+env:
+  TEST_REF: ${{ github.event_name == 'schedule' && vars.TEST_BLAKE3_BRANCH || '' }}
 
 jobs:
   cargo-tests:
@@ -35,6 +40,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       - name: Install dependencies
         run: |
@@ -75,6 +82,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       - name: Install system dependencies
         run: |
@@ -115,6 +124,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       - name: Install Rust nightly with rust-src
         # riscv64im-unknown-none-elf is a Tier 3 target — no pre-built std is available.
@@ -144,6 +155,7 @@ jobs:
       TEST_CONTAINER: zisk-gha-test
       # zisk-eth-client guest under test: ziskethone or reth.
       ZEC_GUEST: ziskethone
+      HASH_MODE: ${{ (github.event_name == 'schedule' || inputs.use_blake3_setup) && 'blake3' || 'Poseidon1' }}
 
     steps:
       - name: Fix workspace permissions
@@ -153,6 +165,8 @@ jobs:
 
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       - name: Give workspace ownership to container user
         run: |
@@ -196,9 +210,7 @@ jobs:
               /home/ziskuser/build-libziskos-isolated.sh
             '
 
-      - name: Build setup
-        env:
-          HASH_MODE: ${{ inputs.use_blake3_setup && 'blake3' || 'Poseidon1' }}
+      - name: Build setup (${{ env.HASH_MODE }})
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
@@ -314,6 +326,8 @@ jobs:
 
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       # See the same step in test-x86_64.
       - name: Force git over HTTP/1.1
@@ -352,6 +366,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -398,6 +414,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       - name: Check ZisK crates to publish
         run: tools/crates.io/check_crates_to_publish.sh --zisk-repo-path "$GITHUB_WORKSPACE"
