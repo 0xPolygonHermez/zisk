@@ -1128,7 +1128,7 @@ impl Proof {
     /// has an unexpected length, or if the proof is not a Vadcop proof.
     pub fn get_proof_u64(&self) -> Result<Vec<u64>> {
         match &self.body {
-            ProofBody::Vadcop { proof, zisk_vk, kind, publics_full, .. } => {
+            ProofBody::Vadcop { proof, zisk_vk, kind, hash, publics_full } => {
                 if self.program_vk.vk.len() != PROGRAM_VK_LEN {
                     return Err(CommonError::InvalidProof(format!(
                         "Invalid program_vk length: expected {}, got {}",
@@ -1152,13 +1152,23 @@ impl Proof {
                 let stark_publics = kind.stark_publics(publics_full);
                 let n_publics = stark_publics.len();
 
-                // Format: [minimal(1)][n_publics(1)][flag?|vk|inputs][proof][zisk_vk]
-                let mut words = Vec::with_capacity(2 + n_publics + proof.len() + zisk_vk.len());
+                // The family travels with the proof so a reader needs no side channel to
+                // learn which verifier to run. It is routing metadata, not authority: a
+                // wrong tag fails against the reader's expected verification key, whose
+                // const-tree root is built under the real family's own hash.
+                let tag = zisk_verifier::hash_tag(hash).ok_or_else(|| {
+                    CommonError::InvalidProof(format!("unrecognized proof hash family {hash:?}"))
+                })?;
+
+                // Format: [minimal(1)][n_publics(1)][flag?|vk|inputs][proof][zisk_vk(4)][tag(1)]
+                let mut words =
+                    Vec::with_capacity(2 + n_publics + proof.len() + zisk_vk.len() + 1);
                 words.push(kind.is_minimal() as u64);
                 words.push(n_publics as u64);
                 words.extend_from_slice(&stark_publics);
                 words.extend_from_slice(proof);
                 words.extend_from_slice(zisk_vk);
+                words.push(tag);
 
                 Ok(words)
             }
@@ -1550,6 +1560,45 @@ mod tests {
             },
             ProgramVK::new_from_publics(&stored_vk),
         )
+    }
+
+    /// The family travels in the buffer, so a reader needs no side channel. The tag is the
+    /// last word, after the 4-word verkey; anything reading the tail must account for it.
+    #[test]
+    fn serialized_proof_carries_its_hash_family_as_the_last_word() {
+        for family in ["Poseidon1", "Poseidon2", "blake3"] {
+            let mut proof = relabeled_vadcop_proof([11, 12, 13, 14], [11, 12, 13, 14]);
+            if let ProofBody::Vadcop { hash, zisk_vk, .. } = &mut proof.body {
+                *hash = family.to_string();
+                *zisk_vk = vec![21, 22, 23, 24];
+            }
+            let words = proof.get_proof_u64().expect("serializes");
+
+            let tag = *words.last().expect("tag word");
+            assert_eq!(
+                zisk_verifier::hash_id_from_tag(tag),
+                Some(family),
+                "{family} did not round-trip through the tag"
+            );
+            let vk_end = words.len() - zisk_verifier::HASH_TAG_LEN_WORDS;
+            assert_eq!(
+                &words[vk_end - PROGRAM_VK_LEN..vk_end],
+                &[21, 22, 23, 24],
+                "the verkey must sit immediately before the tag"
+            );
+        }
+    }
+
+    /// A family with no wire encoding must fail serialization rather than emit a proof no
+    /// reader can route.
+    #[test]
+    fn serializing_an_unknown_hash_family_errors() {
+        let mut proof = relabeled_vadcop_proof([11, 12, 13, 14], [11, 12, 13, 14]);
+        if let ProofBody::Vadcop { hash, .. } = &mut proof.body {
+            *hash = "poseidon3".to_string();
+        }
+        let err = proof.get_proof_u64().unwrap_err();
+        assert!(err.to_string().contains("hash family"), "unexpected error: {err}");
     }
 
     #[test]

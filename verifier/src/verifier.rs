@@ -3,6 +3,28 @@ use proofman_verifier::verifier;
 /// Length, in u64 words, of the Vadcop final verification key appended to a serialized proof.
 pub const VADCOP_VK_LEN_WORDS: usize = 4;
 
+/// Length, in u64 words, of the hash-family tag appended after the verification key.
+pub const HASH_TAG_LEN_WORDS: usize = 1;
+
+/// Hash families, indexed by the tag written into a serialized proof. Position is the
+/// wire value, so entries are append-only: renumbering reinterprets existing proofs.
+const HASH_TAGS: [&str; 3] = ["Poseidon1", "Poseidon2", "blake3"];
+
+/// Tag for a hash family id, or `None` if the family has no wire encoding.
+pub fn hash_tag(hash_id: &str) -> Option<u64> {
+    HASH_TAGS.iter().position(|&f| f == hash_id).map(|i| i as u64)
+}
+
+/// Hash family id for a tag read off a serialized proof, or `None` if unrecognized.
+///
+/// The tag is untrusted routing metadata: it selects which verifier runs, and a wrong
+/// choice simply fails against the caller's expected verification key, whose const-tree
+/// root is computed under the real family's own hash. Returning `None` keeps an unknown
+/// value from reaching `verifier()`, which panics on one.
+pub fn hash_id_from_tag(tag: u64) -> Option<&'static str> {
+    HASH_TAGS.get(tag as usize).copied()
+}
+
 /// Number of public values in a Zisk proof.
 pub const ZISK_PUBLICS: usize = 64;
 

@@ -1,13 +1,10 @@
-/// Hash families a proof can be produced under. One outside this list is rejected here
-/// rather than dispatched, because the verifier panics on it and a guest panic aborts the run.
-const HASH_FAMILIES: [&str; 3] = ["Poseidon1", "Poseidon2", "blake3"];
-
-/// Family assumed when the caller names none. A proof carries no family tag, so proofs
-/// from a Poseidon proving key must go through [verify_zisk_proof_with_hash].
-const DEFAULT_HASH: &str = "blake3";
-
-/// Verify a ZisK proof against a caller-supplied expected program and setup key, under
-/// [DEFAULT_HASH]. The vk appended to `zisk_proof` is ignored.
+/// Verify a ZisK proof against a caller-supplied expected program and setup key.
+/// The vk appended to `zisk_proof` is ignored.
+///
+/// The hash family is read from the proof's trailing tag, so a guest needs no build-time
+/// configuration to verify a proof from any family. The tag is untrusted, but it is not
+/// authority either: it only selects which verifier runs, and a wrong choice fails against
+/// `expected_setup_vk`, whose const-tree root is built under the real family's own hash.
 ///
 /// Both keys MUST be guest compile-time constants, never read from program input,
 /// or verification is self-keyed and authenticates nothing. Both are needed:
@@ -23,25 +20,16 @@ pub fn verify_zisk_proof(
     expected_setup_vk: &[u64],
     expected_program_vk: &[u64],
 ) -> bool {
-    verify_zisk_proof_with_hash(zisk_proof, expected_setup_vk, expected_program_vk, DEFAULT_HASH)
-}
-
-/// [verify_zisk_proof] under `hash`, the family of the proving key the recursion was
-/// generated against. Returns `false` for an unrecognized family.
-pub fn verify_zisk_proof_with_hash(
-    zisk_proof: &[u64],
-    expected_setup_vk: &[u64],
-    expected_program_vk: &[u64],
-    hash: &str,
-) -> bool {
-    if !HASH_FAMILIES.contains(&hash) {
+    const TAIL: usize = zisk_verifier::VADCOP_VK_LEN_WORDS + zisk_verifier::HASH_TAG_LEN_WORDS;
+    if zisk_proof.len() < TAIL {
         return false;
     }
-    if zisk_proof.len() < zisk_verifier::VADCOP_VK_LEN_WORDS {
+    // Tail layout: [zisk_vk(4)][hash tag(1)].
+    let (proof, tail) = zisk_proof.split_at(zisk_proof.len() - TAIL);
+    let Some(hash) = zisk_verifier::hash_id_from_tag(tail[zisk_verifier::VADCOP_VK_LEN_WORDS])
+    else {
         return false;
-    }
-    let (proof, _embedded_vk) =
-        zisk_proof.split_at(zisk_proof.len() - zisk_verifier::VADCOP_VK_LEN_WORDS);
+    };
 
     match zisk_verifier::committed_program_vk(proof) {
         Some(vk) if vk == expected_program_vk => {}
@@ -56,7 +44,8 @@ pub fn verify_zisk_proof_with_hash(
 /// # Safety
 /// - Every pointer must reference `*_len` initialized, 8-byte-aligned bytes with
 ///   `*_len` a multiple of 8; returns `false` otherwise.
-/// - A null pointer returns `false` instead of being dereferenced.
+/// - A null pointer returns `false` instead of being dereferenced; `from_raw_parts`
+///   forbids a null base even at length 0, so all three are checked before any slice.
 /// - Both keys must be guest compile-time constants (see [verify_zisk_proof]).
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_verify_zisk_proof_c")]
@@ -68,44 +57,7 @@ pub unsafe extern "C" fn verify_zisk_proof_c(
     expected_program_vk: *const u8,
     expected_program_vk_len: usize,
 ) -> bool {
-    verify_zisk_proof_with_hash_c(
-        zisk_proof,
-        zisk_proof_len,
-        expected_setup_vk,
-        expected_setup_vk_len,
-        expected_program_vk,
-        expected_program_vk_len,
-        DEFAULT_HASH.as_ptr(),
-        DEFAULT_HASH.len(),
-    )
-}
-
-/// C-ABI wrapper around [verify_zisk_proof_with_hash].
-///
-/// # Safety
-/// - Every pointer must reference `*_len` initialized, 8-byte-aligned bytes with
-///   `*_len` a multiple of 8; returns `false` otherwise. `hash` is plain bytes
-///   (no NUL needed); non-UTF-8 returns `false`.
-/// - A null pointer returns `false` instead of being dereferenced; `from_raw_parts`
-///   forbids a null base even at length 0, so all four are checked before any slice.
-/// - Both keys must be guest compile-time constants (see [verify_zisk_proof]).
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_verify_zisk_proof_with_hash_c")]
-pub unsafe extern "C" fn verify_zisk_proof_with_hash_c(
-    zisk_proof: *const u8,
-    zisk_proof_len: usize,
-    expected_setup_vk: *const u8,
-    expected_setup_vk_len: usize,
-    expected_program_vk: *const u8,
-    expected_program_vk_len: usize,
-    hash: *const u8,
-    hash_len: usize,
-) -> bool {
-    if zisk_proof.is_null()
-        || expected_setup_vk.is_null()
-        || expected_program_vk.is_null()
-        || hash.is_null()
-    {
+    if zisk_proof.is_null() || expected_setup_vk.is_null() || expected_program_vk.is_null() {
         return false;
     }
     let proof_bytes = core::slice::from_raw_parts(zisk_proof, zisk_proof_len);
@@ -124,8 +76,5 @@ pub unsafe extern "C" fn verify_zisk_proof_with_hash_c(
     {
         return false;
     }
-    let Ok(hash) = core::str::from_utf8(core::slice::from_raw_parts(hash, hash_len)) else {
-        return false;
-    };
-    verify_zisk_proof_with_hash(proof_words, setup_words, program_words, hash)
+    verify_zisk_proof(proof_words, setup_words, program_words)
 }
