@@ -1589,7 +1589,7 @@ impl ZiskRom2Asm {
                 if instruction.op == ZiskOp::COPYB
                     || instruction.op == ZiskOp::SIGNEXTEND_B
                     || instruction.op == ZiskOp::SIGNEXTEND_H
-                    || instruction.op == ZiskOp::SIGNEXTEND_H
+                    || instruction.op == ZiskOp::SIGNEXTEND_W
                 {
                 } else {
                     *code += &format!(
@@ -2720,7 +2720,7 @@ impl ZiskRom2Asm {
                     "\tmovsx {}, {} {}\n",
                     REG_C,
                     REG_B_B,
-                    ctx.comment_str("SignExtendW: sign extend b(8b) to c(64b)")
+                    ctx.comment_str("SignExtendB: sign extend b(8b) to c(64b)")
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2731,7 +2731,7 @@ impl ZiskRom2Asm {
                     "\tmovsx {}, {} {}\n",
                     REG_C,
                     REG_B_H,
-                    ctx.comment_str("SignExtendW: sign extend b(16b) to c(64b)")
+                    ctx.comment_str("SignExtendH: sign extend b(16b) to c(64b)")
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
