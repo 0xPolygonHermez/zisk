@@ -3,7 +3,7 @@
 use crate::error::{ExecutorResult, RwLockExt};
 use std::sync::RwLock;
 use zisk_common::{InstanceType, Plan};
-use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{ROM_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::ports::{GlobalId, InstanceInfo, ProofRegistry};
 use crate::AirClassifier;
@@ -24,7 +24,13 @@ impl InstanceAssigner {
     /// # Errors
     /// Returns an error if the registry rejects the assignment.
     pub fn assign_rom_instance(registry: &dyn ProofRegistry) -> ExecutorResult<GlobalId> {
-        registry.add_instance_assign(InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]))
+        let rom_gid =
+            registry.add_instance_assign(InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]))?;
+        registry.assign_table_to(
+            InstanceInfo::new(ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_0_AIR_IDS[0]),
+            rom_gid,
+        )?;
+        Ok(rom_gid)
     }
 
     /// Assigns main instances to the proof context.
@@ -108,11 +114,19 @@ mod tests {
 
         let gid = InstanceAssigner::assign_rom_instance(&registry).expect("ok");
 
+        // Two registrations: the ROM instance itself, then the virtual table
+        // pinned to the same gid so the table rides along with the ROM rank.
         let calls = registry.additions.borrow();
-        assert_eq!(calls.len(), 1);
+        assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].kind, AddKind::InstanceAssign);
         assert_eq!(calls[0].info, InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]));
         assert_eq!(calls[0].gid, gid);
+        assert_eq!(calls[1].kind, AddKind::Table);
+        assert_eq!(
+            calls[1].info,
+            InstanceInfo::new(ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_0_AIR_IDS[0])
+        );
+        assert_eq!(calls[1].gid, gid);
     }
 
     #[test]
