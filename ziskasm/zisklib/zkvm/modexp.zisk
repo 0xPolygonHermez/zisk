@@ -56,9 +56,9 @@ ziskasm_zkvm_modexp:
 	; Length guards: base(r11)/exp(r13)/mod(r15) byte lengths must fit the 132-u64
 	; (1056-byte) limb buffers (ZKVM_ME_*_LIMBS / *PAD, and BI_BITS/BI_RECEXP via
 	; the exponent); halt on an over-long operand instead of overrunning them.
-	ltu(1056, r11), j(bi_bc_bad)
-	ltu(1056, r13), j(bi_bc_bad)
-	ltu(1056, r15), j(bi_bc_bad)
+	ltu(1056, r11), j(zme_toolong)
+	ltu(1056, r13), j(zme_toolong)
+	ltu(1056, r15), j(zme_toolong)
 	; --- spill the seven EF arguments ---
 	copyb(0, ZKVM_ME_BASEP) -> r5
 	copyb(r5, r10) -> 8[a + 0]
@@ -135,6 +135,13 @@ zme_rzd:
 	call zkvm_limbs_to_be_bytes
 
 	copyb(0, 0) -> r10                  ; return ZKVM_EOK
+	pop r1
+	ret
+
+; Operand longer than the 132-limb (1056-byte) capacity: the EF ABI has a status
+; return, so surface it as ZKVM_EFAIL rather than halting the guest.
+zme_toolong:
+	copyb(0, 0xffffffffffffffff) -> r10 ; ZKVM_EFAIL
 	pop r1
 	ret
 
