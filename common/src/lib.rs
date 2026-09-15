@@ -16,6 +16,7 @@ mod hints;
 mod instance_context;
 /// I/O utilities and types.
 pub mod io;
+mod late_value;
 /// Path-related utilities and types.
 pub mod paths;
 mod planner_helpers;
@@ -38,6 +39,7 @@ pub use executor_stats::*;
 pub use hash_mode::*;
 pub use hints::*;
 pub use instance_context::*;
+pub use late_value::*;
 pub use paths::*;
 pub use planner_helpers::*;
 pub use profiling::*;

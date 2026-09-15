@@ -829,6 +829,9 @@ impl ExecuteClient for ZiskProver<Asm> {
         stdin: ZiskStdin,
         hints: Option<StreamSource>,
     ) -> Result<ExecuteOutput> {
+        // Every call is a job boundary for this client, which executes many times after
+        // one setup. Before the hints below — see `ZiskExecutor::reset_for_new_job`.
+        ZiskProver::<Asm>::reset(self)?;
         if let Some(stream) = hints {
             ZiskProver::<Asm>::register_hints_stream(self, stream)?;
         }

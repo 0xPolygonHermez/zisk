@@ -348,7 +348,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
 /// Downcasts `secn` to `T`, mapping a failed downcast to an
 /// `InstanceTypeMismatch` error tagged with the expected type name.
 #[inline]
-fn downcast<'a, F: PrimeField64, T: 'static>(
+pub(crate) fn downcast<'a, F: PrimeField64, T: 'static>(
     secn: &'a dyn Instance<F>,
     air_id: usize,
     global_id: usize,

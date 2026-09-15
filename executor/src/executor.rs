@@ -227,6 +227,30 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         Ok(())
     }
 
+    /// Retires whatever the previous job left behind: drains a ROM-histogram runner
+    /// nobody consumed, then clears the hints stream and the input shmem.
+    ///
+    /// This is the job boundary. Call it after the previous computation is idle and
+    /// **before** the next job's inputs or hints are written, since the reset rewinds
+    /// the input shmem and marks the hints stream uninitialised. Drain first: the reset
+    /// drains the semaphores the RH child is waiting on, so rewinding while that child
+    /// is still reading strands it, and the next job's runner then hangs behind it.
+    ///
+    /// Blocks if the runner is still going, which is why it must not run before
+    /// cancellation has been signalled on a job that failed or was cancelled.
+    pub fn reset_for_new_job(&self) -> ExecutorResult<()> {
+        self.drain_rh();
+        self.execution.reset()
+    }
+
+    /// Joins a ROM-histogram runner left unconsumed by a previous execution and releases
+    /// its histogram. Idempotent, and a no-op when nothing is parked.
+    fn drain_rh(&self) {
+        if let Some(witness) = self.witness.as_ref() {
+            witness.drain_rh();
+        }
+    }
+
     /// Returns a reference to the ASM emulator if ASM execution is active.
     pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
         self.execution.asm_emulator()
@@ -323,7 +347,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let output = self.execution.run::<F>(
             &zisk_rom,
             &stdin,
-            registry.is_first_process(),
+            // The ROM-histogram runner is what asks the assembly child for a histogram,
+            // so not spawning it leaves that child idle. Skipped without a witness:
+            // there is no ROM state machine to read one, and the standalone path would
+            // pay for a full histogram pass only to drop the result.
+            self.witness.is_some() && registry.is_first_process(),
             self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
             &self.state.stats,
             &_exec_scope,
@@ -340,6 +368,18 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let crate::ExecutionOutput { min_traces, mut counters, pub_outs, mut backend, .. } = output;
         let num_chunks = min_traces.len();
+
+        // Hand the ROM-histogram runner over without joining it: the runner outlives the
+        // minimal-trace run, and the instance it feeds does not compute its witness until
+        // much later, so the join belongs there. Parking also selects that instance's ASM
+        // backend, so it must precede `populate_secn_instances` below.
+        //
+        // Parked here rather than after the planning phases so that an error in between
+        // still leaves the handle where the next job's drain can find it — otherwise its
+        // child could still be consuming input shmem when that job resets it.
+        if let (Some(handle), Some(witness)) = (backend.take_rh_handle(), self.witness.as_ref()) {
+            witness.park_rh_handle(handle)?;
+        }
 
         // The hook published every chunk it saw, so on the ASM path the store is
         // already complete and a read lock is enough (an exclusive lock here would
@@ -392,14 +432,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             }
         }
 
-        timer_start_info!(WAIT_ASM_RH);
-        if let Some(rh_data) = backend.await_rom_histogram()? {
-            if let Some(witness) = self.witness.as_ref() {
-                witness.set_rh_data(rh_data)?;
-            }
-        }
-        timer_stop_and_log_info!(WAIT_ASM_RH);
-
         stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
 
         if let (Some(witness), Some(extras)) = (self.witness.as_ref(), proofman_extras) {
@@ -425,10 +457,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         }
 
         stats_end!(self.state.stats, &_config_scope);
-
-        // Reset hints stream and input shmem after the ASM
-        // backend-specific await calls have drained the runners.
-        self.execution.reset()?;
 
         // ────────────────────────────────────────────────────────────
         // Phase 1.4: Cost accumulation (witness only — needs sctx)

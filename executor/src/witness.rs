@@ -22,10 +22,13 @@ use std::sync::{Arc, Mutex};
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use zisk_asm_runner::AsmRunnerRH;
-use zisk_common::{CheckPoint, InstanceCtx, InstanceType, Plan, StatsScope};
+use zisk_common::{
+    CheckPoint, Instance, InstanceCtx, InstanceType, LateJoinHandle, Plan, StatsScope,
+};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 use zisk_sm_main::MainInstance;
+use zisk_sm_rom::RomInstance;
 
 use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
 use crate::ports::{Dctx, GlobalId, ProofRegistry};
@@ -112,8 +115,17 @@ impl<F: PrimeField64> WitnessPhase<F> {
         Self { sm_bundle, collector, witness_generator, trace_buffer_rom }
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
-        self.collector.set_rh_data(rh_data)
+    /// Parks this execution's ASM ROM-histogram runner on the ROM state machine.
+    ///
+    /// Straight to the bundle: the collector has no part in a handle that is read at
+    /// witness time. See [`StaticSMBundle::park_rh_handle`].
+    pub fn park_rh_handle(&self, handle: LateJoinHandle<AsmRunnerRH>) -> ExecutorResult<()> {
+        self.sm_bundle.park_rh_handle(handle)
+    }
+
+    /// Retires a ROM-histogram runner a previous execution left unconsumed.
+    pub fn drain_rh(&self) {
+        self.sm_bundle.drain_rh();
     }
 
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
@@ -310,6 +322,13 @@ impl<F: PrimeField64> WitnessPhase<F> {
             .contains_key(&global_id);
 
         let instance = &**secn_instance;
+
+        // The ROM backend is picked when the instance is built; this is where an
+        // ASM execution finds out it got the wrong one. See `require_asm_rom_mode`.
+        if ctx.is_asm_emulator {
+            require_asm_rom_mode(instance, global_id, air_id)?;
+        }
+
         if needs_collection {
             if ctx.is_asm_emulator {
                 // ASM ROM: the RH service supplies the data — pin an
@@ -422,5 +441,67 @@ impl<F: PrimeField64> WitnessPhase<F> {
         }
 
         Ok(())
+    }
+}
+
+/// Fails an ASM execution whose ROM instance was built for the Rust backend.
+///
+/// On the ASM path the ROM witness comes from the assembly histogram, and
+/// [`WitnessPhase::rom_dispatch`] registers an empty collector because nothing is
+/// meant to fill one. A Rust-backend instance reaching that path therefore
+/// aggregates no collectors at all and computes an **all-zero ROM trace**, which
+/// then gets proved without complaint. The backend is chosen when the instance is
+/// built, from whether the histogram is available by then, so this can only mean
+/// the histogram was missing at build time — a lifecycle bug, not a valid mode.
+///
+/// A free function so it can be exercised on a bare [`RomInstance`], with no proof
+/// or witness context to construct.
+fn require_asm_rom_mode<F: PrimeField64>(
+    instance: &dyn Instance<F>,
+    global_id: usize,
+    air_id: usize,
+) -> ExecutorResult<()> {
+    let rom_instance =
+        crate::sm::downcast::<F, RomInstance>(instance, air_id, global_id, "RomInstance")?;
+
+    // `skip_collector` is the instance's own name for "my witness comes from the
+    // assembly histogram" — the ASM backend, and the only correct one here.
+    if rom_instance.skip_collector() {
+        Ok(())
+    } else {
+        Err(ExecutorError::RomBackendDowngrade { global_id })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::witness::handlers::rom_rust::tests::{make_rom_instance, AIR_ID, GID};
+    use proofman_fields::Goldilocks;
+    use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
+
+    type F = Goldilocks;
+
+    /// An ASM-backend ROM instance, i.e. one built while a histogram runner was parked.
+    fn asm_rom_instance() -> Box<dyn Instance<F>> {
+        make_rom_instance(Some(AsmRunnerRH::new(AsmRHData::new(0, Vec::new()))))
+    }
+
+    #[test]
+    fn asm_backend_rom_instance_passes() {
+        let instance = asm_rom_instance();
+        require_asm_rom_mode::<F>(&*instance, GID, AIR_ID)
+            .expect("the ASM backend is what an ASM execution must find");
+    }
+
+    #[test]
+    fn rust_backend_rom_instance_is_rejected() {
+        let instance = make_rom_instance(None);
+        let err = require_asm_rom_mode::<F>(&*instance, GID, AIR_ID)
+            .expect_err("a Rust-backend instance here would prove an all-zero ROM trace");
+        assert!(
+            matches!(err, ExecutorError::RomBackendDowngrade { global_id: GID }),
+            "got {err:?}"
+        );
     }
 }

@@ -21,9 +21,8 @@ pub(crate) fn pre_calculate<'a, F: PrimeField64>(
     let gid = GlobalId(global_id);
     let secn_instance =
         secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
-    let rom_instance = secn_instance.as_any().downcast_ref::<RomInstance>().ok_or(
-        ExecutorError::InstanceTypeMismatch { global_id, air_id, expected: "RomInstance" },
-    )?;
+    let rom_instance =
+        crate::sm::downcast::<F, RomInstance>(&**secn_instance, air_id, global_id, "RomInstance")?;
 
     if rom_instance.skip_collector() {
         state.register_empty_collector(global_id, airgroup_id, air_id)?;
@@ -35,28 +34,32 @@ pub(crate) fn pre_calculate<'a, F: PrimeField64>(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::ports::fakes::FakeProofRegistry;
     use proofman_fields::Goldilocks;
     use std::collections::HashMap;
     use std::sync::{atomic::AtomicU64, Arc};
     use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
+    use zisk_common::LateValue;
     use zisk_common::{CheckPoint, Instance, InstanceCtx, InstanceType, Plan};
     use zisk_core::ZiskRom;
 
     type F = Goldilocks;
 
-    const GID: usize = 42;
+    pub(crate) const GID: usize = 42;
     const AIRGROUP_ID: usize = 7;
-    const AIR_ID: usize = 13;
+    pub(crate) const AIR_ID: usize = 13;
 
-    fn make_rom_instance(rh_data: Option<AsmRunnerRH>) -> Box<dyn Instance<F>> {
+    /// A ROM instance in either backend, built the way `RomSM::build_instance` builds
+    /// it. Shared with the parent module's tests — the only other place that needs one.
+    pub(crate) fn make_rom_instance(rh_data: Option<AsmRunnerRH>) -> Box<dyn Instance<F>> {
         let plan =
             Plan::new(AIRGROUP_ID, AIR_ID, None, InstanceType::Instance, CheckPoint::None, None);
         let ictx = InstanceCtx::new(GID, plan);
         if let Some(rh_data) = rh_data {
-            Box::new(RomInstance::new_asm(Arc::new(ZiskRom::default()), ictx, rh_data))
+            let cell = Arc::new(LateValue::ready(zisk_sm_rom::RH_LABEL, rh_data));
+            Box::new(RomInstance::new_asm(Arc::new(ZiskRom::default()), ictx, cell))
         } else {
             Box::new(RomInstance::new_rust(
                 Arc::new(ZiskRom::default()),
