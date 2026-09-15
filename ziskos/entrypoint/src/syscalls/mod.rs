@@ -14,6 +14,7 @@
 //!
 //! ### Hashing
 //! - [`syscall_blake2b_round`] — BLAKE2b round function
+//! - [`syscall_blake2sf`] — BLAKE2s permutation (10 rounds, no feed-forward)
 //! - [`syscall_blake3f`] — BLAKE3f round function
 //! - [`syscall_keccak_f`] — Keccak-f\[1600\] permutation
 //! - [`syscall_poseidon1`] — Poseidon1 hash function
@@ -42,6 +43,7 @@ mod arith256_mod;
 mod arith384_mod;
 mod babyjubjub_add;
 mod blake2br;
+mod blake2sf;
 mod blake3f;
 mod bls12_381_complex_add;
 mod bls12_381_complex_mul;
@@ -70,6 +72,7 @@ pub use arith256_mod::*;
 pub use arith384_mod::*;
 pub use babyjubjub_add::*;
 pub use blake2br::*;
+pub use blake2sf::*;
 pub use blake3f::*;
 pub use bls12_381_complex_add::*;
 pub use bls12_381_complex_mul::*;

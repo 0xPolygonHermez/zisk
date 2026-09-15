@@ -5,8 +5,14 @@ multilingual = false
 src = "book"
 title = "ZisK Documentation"
 
+[output.html]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+
 [output.html.playground]
 runnable = false
 
 [build]
 build-dir = "target/book"
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"

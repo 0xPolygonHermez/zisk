@@ -11,7 +11,7 @@ mod keccak;
 pub use arith_eq::*;
 pub use arith_eq_384::*;
 pub use big_int::*;
-pub use blake2::{blake2b_compress, blake2b_round};
+pub use blake2::{blake2b_compress, blake2b_round, blake2s_compress, blake2s_f};
 pub use blake3::blake3_f;
 pub use common::*;
 pub use dma::*;

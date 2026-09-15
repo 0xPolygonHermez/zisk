@@ -35,6 +35,7 @@ require "dma/pil/dma_64_aligned.pil"
 require "dma/pil/dma_unaligned.pil"
 require "poseidon/pil/poseidon.pil"
 require "blake2/pil/blake2br.pil"
+require "blake2/pil/blake2s.pil"
 require "blake3/pil/blake3f.pil"
 
 enable_range_stats();
@@ -76,11 +77,11 @@ airgroup Zisk {
     set_group_virtual_tables([ARITH_FROPS_TABLE_ID, BINARY_FROPS_TABLE_ID, BINARY_EXTENSION_FROPS_TABLE_ID]);
 
     // Main Program
-    Main(N: 2**22);
+    Main(N: 2**23);
     Rom(N: 2**22);
 
     // Memory
-    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
+    Mem(N: 2**23, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
     Mem(N: 2**21, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
     RomData(N: 2**21, base_address: 0x8000_0000, size_mb: 128, enable_flag: enable_rom_data);
 
@@ -125,7 +126,7 @@ airgroup Zisk {
     BabyJubJub(N: 2**18);
     virtual ArithEqLtTable(ARITH_EQ_LT_TABLE_SIZE);
 
-    Keccakf(N: 2**18, lanes_per_row: 25);
+    Keccakf(N: 2**20, lanes_per_row: 5);
     virtual KeccakfChiTable(KECCAKF_CHI_TABLE_SIZE);
     virtual KeccakfXor5Table(KECCAKF_XOR5_TABLE_SIZE);
 
@@ -134,10 +135,9 @@ airgroup Zisk {
     Poseidon(N: 2**17);
 
     Blake2br(N: 2**18);
-    virtual Blake2brTable(BLAKE2BR_TABLE_SIZE);
-
-    Blake3f(N: 2**20, LANES:2);
-    virtual Blake3fTable(BLAKE3F_TABLE_SIZE);
+    Blake3f(N: 2**20, LANES: 2);
+    Blake2s(N: 2**20);
+    virtual BlakeTable(BLAKE_TABLE_SIZE);
 
     Dma();
     Dma(enable: E_DMA_MEMCPY) alias DmaMemCpy;

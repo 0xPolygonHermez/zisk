@@ -4,7 +4,7 @@
 //!
 //! ## Why this exists
 //!
-//! ZisK's uniform precompiles (`blake2`, `blake3`, `keccakf`, `sha256f`,
+//! ZisK's uniform precompiles (`blake2b`, `blake2s`, `blake3`, `keccakf`, `sha256f`,
 //! `poseidon2`, `add256`, `arith_eq`, `arith_eq_384`, `babyjubjub`) share
 //! byte-isomorphic shell code. This module generates that boilerplate from
 //! a small declarative invocation.
@@ -27,13 +27,13 @@
 //! ## Mono-op vs multi-op
 //!
 //! A *mono-op* precompile owns exactly one ZiskOp under its `op_type`
-//! (e.g. `blake2`). A *multi-op* precompile (e.g. `arith_eq`) owns several
+//! (e.g. `blake2b`). A *multi-op* precompile (e.g. `arith_eq`) owns several
 //! ZiskOps that share an AIR. The macro treats mono-op as the degenerate
 //! 1-element case of multi-op. Each entry in the `ops = [...]` list is a
 //! tuple of the form
 //! `(ExtVariant, [EnumVariant =>] SubInputType)`:
 //!
-//! * mono-op (no enum wrapping): `(OperationBlake2Data, Blake2Input)`
+//! * mono-op (no enum wrapping): `(OperationBlake2bData, Blake2bInput)`
 //! * multi-op (enum-wrapped):    `(OperationArith256Data => Arith256, Arith256Input)`
 //!
 //! When the optional `=> EnumVariant` is present, the per-op input gets

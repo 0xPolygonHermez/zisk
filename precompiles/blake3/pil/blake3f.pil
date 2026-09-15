@@ -5,7 +5,7 @@ require "std_range_check.pil"
 require "operations.pil"
 require "opids.pil"
 
-require "blake3f_table.pil"
+require "blake3/pil/blake_table.pil"
 
 // Precompile in charge of performing the BLAKE3 permutation
 // For reference: https://www.ietf.org/archive/id/draft-aumasson-blake3-00.html or https://github.com/BLAKE3-team/BLAKE3
@@ -75,7 +75,6 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
         |  54  |  v[2]    |  v[7]    |  v[8]    |  v[13]   |   m[12]  |   m[13]  |    7    |  G3 - DIA MIX  | <-- V OUT
         |  55  |  v[3]    |  v[4]    |  v[9]    |  v[14]   |   m[14]  |   m[15]  |    7    |  G4 - DIA MIX  | <-- V OUT
         |------|----------|----------|----------|----------|----------|----------|---------|----------------|
-
     */
 
     const int CLOCKS_PER_G = 1;
@@ -128,7 +127,7 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // IN-USE SELECTORS AND OPERATION DATA (one per lane)
+    // IN-USE SELECTORS AND OPERATION DATA
     // ═══════════════════════════════════════════════════════════════════════════
 
     // Indicates whether each lane is currently in use within the cycle
@@ -220,10 +219,10 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
     // ═══════════════════════════════════════════════════════════════════════════
 
     // Column-to-diagonal clock selectors
-    const expr ctd1_clocks = clock_set(start: 4, end: 11, step: 1, skip: 7);
-    const expr ctd2_clocks = clock_set(start: 5, end: 12, step: 1, skip: 7);
-    const expr ctd3_clocks = clock_set(start: 6, end: 13, step: 1, skip: 7);
-    const expr ctd4_clocks = clock_set(start: 7, end: 14, step: 1, skip: 7);
+    const expr ctd1_clocks = clock_set(start: 4, end: 4 + NUM_ROUNDS, step: 1, skip: CLOCKS_PER_ROUND - 1);
+    const expr ctd2_clocks = clock_set(start: 5, end: 5 + NUM_ROUNDS, step: 1, skip: CLOCKS_PER_ROUND - 1);
+    const expr ctd3_clocks = clock_set(start: 6, end: 6 + NUM_ROUNDS, step: 1, skip: CLOCKS_PER_ROUND - 1);
+    const expr ctd4_clocks = clock_set(start: 7, end: 7 + NUM_ROUNDS, step: 1, skip: CLOCKS_PER_ROUND - 1);
     const expr ctd12_clocks = ctd1_clocks + ctd2_clocks;
     const expr ctd34_clocks = ctd3_clocks + ctd4_clocks;
     const expr ctd123_clocks = ctd12_clocks + ctd3_clocks;
@@ -231,10 +230,10 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
     const expr ctd_clocks = ctd12_clocks + ctd34_clocks;
 
     // Round-by-round clock selectors
-    const expr rbr1_clocks = clock_set(start: 8, end: 8 + NUM_ROUNDS - 1, step: 1, skip: 7);
-    const expr rbr2_clocks = clock_set(start: 9, end: 9 + NUM_ROUNDS - 1, step: 1, skip: 7);
-    const expr rbr3_clocks = clock_set(start: 10, end: 10 + NUM_ROUNDS - 1, step: 1, skip: 7);
-    const expr rbr4_clocks = clock_set(start: 11, end: 11 + NUM_ROUNDS - 1, step: 1, skip: 7);
+    const expr rbr1_clocks = clock_set(start: 8, end: 8 + NUM_ROUNDS - 1, step: 1, skip: CLOCKS_PER_ROUND - 1);
+    const expr rbr2_clocks = clock_set(start: 9, end: 9 + NUM_ROUNDS - 1, step: 1, skip: CLOCKS_PER_ROUND - 1);
+    const expr rbr3_clocks = clock_set(start: 10, end: 10 + NUM_ROUNDS - 1, step: 1, skip: CLOCKS_PER_ROUND - 1);
+    const expr rbr4_clocks = clock_set(start: 11, end: 11 + NUM_ROUNDS - 1, step: 1, skip: CLOCKS_PER_ROUND - 1);
     const expr rbr12_clocks = rbr1_clocks + rbr2_clocks;
     const expr rbr34_clocks = rbr3_clocks + rbr4_clocks;
     const expr rbr123_clocks = rbr12_clocks + rbr3_clocks;
@@ -251,9 +250,9 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
         msg_idx_y += CLK[p] * SIGMA[r][2 * g + 1];
     }
 
-    // Selectors for round 0 and rounds 1..6
+    // Selectors for round 0 and rounds 1..NUM_ROUNDS-1
     const expr round0_sel   = clock_set(start: 0, end: CLOCKS_PER_ROUND);
-    const expr rounds16_sel = clock_set(start: CLOCKS_PER_ROUND, end: CLOCKS);
+    const expr rounds_rest_sel = clock_set(start: CLOCKS_PER_ROUND, end: CLOCKS);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // MEMORY CLOCK SELECTORS (shared by every lane)
@@ -395,11 +394,11 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
         const expr key_x = msg_idx_x + 16 * (LANES * op_step[l] + l);
         const expr key_y = msg_idx_y + 16 * (LANES * op_step[l] + l);
 
-        // Round 0 writes the message; rounds 1..6 read it
+        // Round 0 writes the message; rounds 1..NUM_ROUNDS-1 read it
         lookup_proves(BLAKE3F_MSG_ID, [key_x, x_packed], mul: (NUM_ROUNDS - 1) * round0_sel * in_use[l]);
         lookup_proves(BLAKE3F_MSG_ID, [key_y, y_packed], mul: (NUM_ROUNDS - 1) * round0_sel * in_use[l]);
-        lookup_assumes(BLAKE3F_MSG_ID, [key_x, x_packed], sel: rounds16_sel * in_use[l], sel_is_binary: 1);
-        lookup_assumes(BLAKE3F_MSG_ID, [key_y, y_packed], sel: rounds16_sel * in_use[l], sel_is_binary: 1);
+        lookup_assumes(BLAKE3F_MSG_ID, [key_x, x_packed], sel: rounds_rest_sel * in_use[l], sel_is_binary: 1);
+        lookup_assumes(BLAKE3F_MSG_ID, [key_y, y_packed], sel: rounds_rest_sel * in_use[l], sel_is_binary: 1);
 
         // ───────────────────────────────────────────────────────────────────────
         // MEMORY INTERFACE
@@ -437,10 +436,10 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
             CLK[14] * (14)'vd_packed + CLK[15] * (13)'vd_packed +
             clock_shift(step_addr[l], ADDR_IND_0, READ_PARAMS_START) +
             clock_shift(step_addr[l], ADDR_IND_1, READ_PARAMS_START + 1) +
-            CLK[48] * va_pp_packed'(4) + CLK[49] * va_pp_packed'(5) +
-            CLK[50] * vb_pp_packed'(5) + CLK[51] * vb_pp_packed'(2) +
-            CLK[52] * vc_pp_packed'(2) + CLK[53] * (1)'vc_pp_packed +
-            CLK[54] * (1)'vd_pp_packed + CLK[55] * vd_pp_packed;
+            CLK[WRITE_STATE_START + 0] * va_pp_packed'(4) + CLK[WRITE_STATE_START + 1] * va_pp_packed'(5) +
+            CLK[WRITE_STATE_START + 2] * vb_pp_packed'(5) + CLK[WRITE_STATE_START + 3] * vb_pp_packed'(2) +
+            CLK[WRITE_STATE_START + 4] * vc_pp_packed'(2) + CLK[WRITE_STATE_START + 5] * (1)'vc_pp_packed +
+            CLK[WRITE_STATE_START + 6] * (1)'vd_pp_packed + CLK[WRITE_STATE_START + 7] * vd_pp_packed;
 
         mem_value[1] =
             clks_read_input * y_packed +
@@ -448,10 +447,10 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
             CLK[10] * (9)'vb_packed + CLK[11] * (8)'vb_packed +
             CLK[12] * (11)'vc_packed + CLK[13] * (10)'vc_packed +
             CLK[14] * (13)'vd_packed + CLK[15] * (12)'vd_packed +
-            CLK[48] * va_pp_packed'(5) + CLK[49] * va_pp_packed'(6) +
-            CLK[50] * vb_pp_packed'(2) + CLK[51] * vb_pp_packed'(3) +
-            CLK[52] * vc_pp_packed'(3) + CLK[53] * vc_pp_packed +
-            CLK[54] * vd_pp_packed + CLK[55] * (3)'vd_pp_packed;
+            CLK[WRITE_STATE_START + 0] * va_pp_packed'(5) + CLK[WRITE_STATE_START + 1] * va_pp_packed'(6) +
+            CLK[WRITE_STATE_START + 2] * vb_pp_packed'(2) + CLK[WRITE_STATE_START + 3] * vb_pp_packed'(3) +
+            CLK[WRITE_STATE_START + 4] * vc_pp_packed'(3) + CLK[WRITE_STATE_START + 5] * vc_pp_packed +
+            CLK[WRITE_STATE_START + 6] * vd_pp_packed + CLK[WRITE_STATE_START + 7] * (3)'vd_pp_packed;
             // addresses are 32-bit values, so the high half of the param reads is 0
 
         precompiled_mem_op(

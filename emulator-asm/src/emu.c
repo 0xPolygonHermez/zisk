@@ -43,10 +43,12 @@ void reset_asm_call_metrics (void)
     asm_call_metrics.keccak_duration = 0;
     asm_call_metrics.sha256_counter = 0;
     asm_call_metrics.sha256_duration = 0;
-    asm_call_metrics.blake2_counter = 0;
-    asm_call_metrics.blake2_duration = 0;
+    asm_call_metrics.blake2b_counter = 0;
+    asm_call_metrics.blake2b_duration = 0;
     asm_call_metrics.blake3_counter = 0;
     asm_call_metrics.blake3_duration = 0;
+    asm_call_metrics.blake2s_counter = 0;
+    asm_call_metrics.blake2s_duration = 0;
     asm_call_metrics.poseidon2_counter = 0;
     asm_call_metrics.poseidon2_duration = 0;
     asm_call_metrics.poseidon1_counter = 0;
@@ -123,13 +125,13 @@ void print_asm_call_metrics (uint64_t total_duration)
         duration,
         percentage);
 
-    // Print blake2 metrics
-    percentage = total_duration == 0 ? 0 : (asm_call_metrics.blake2_duration * 1000) / total_duration;
-    duration = asm_call_metrics.blake2_counter == 0 ? 0 : (asm_call_metrics.blake2_duration * 1000) / asm_call_metrics.blake2_counter;
-    asm_call_total_duration += asm_call_metrics.blake2_duration;
-    asm_printf("Blake2: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
-        asm_call_metrics.blake2_counter,
-        asm_call_metrics.blake2_duration,
+    // Print blake2b metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.blake2b_duration * 1000) / total_duration;
+    duration = asm_call_metrics.blake2b_counter == 0 ? 0 : (asm_call_metrics.blake2b_duration * 1000) / asm_call_metrics.blake2b_counter;
+    asm_call_total_duration += asm_call_metrics.blake2b_duration;
+    asm_printf("Blake2b: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.blake2b_counter,
+        asm_call_metrics.blake2b_duration,
         duration,
         percentage);
 
@@ -140,6 +142,16 @@ void print_asm_call_metrics (uint64_t total_duration)
     asm_printf("Blake3: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.blake3_counter,
         asm_call_metrics.blake3_duration,
+        duration,
+        percentage);
+
+    // Print blake2s metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.blake2s_duration * 1000) / total_duration;
+    duration = asm_call_metrics.blake2s_counter == 0 ? 0 : (asm_call_metrics.blake2s_duration * 1000) / asm_call_metrics.blake2s_counter;
+    asm_call_total_duration += asm_call_metrics.blake2s_duration;
+    asm_printf("Blake2s: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.blake2s_counter,
+        asm_call_metrics.blake2s_duration,
         duration,
         percentage);
 
@@ -648,16 +660,16 @@ extern int _opcode_sha256(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_blake2(uint64_t * address)
+extern int _opcode_blake2b(uint64_t * address)
 {
 #ifdef ASM_CALL_METRICS
     gettimeofday(&asm_call_start, NULL);
 #endif
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) asm_printf("opcode_blake2() calling blake2b() counter=%lu address=%p\n", asm_call_metrics.blake2_counter, address);
+    if (emu_verbose) asm_printf("opcode_blake2b() calling blake2b() counter=%lu address=%p\n", asm_call_metrics.blake2b_counter, address);
 #else
-    if (emu_verbose) asm_printf("opcode_blake2() calling blake2b() address=%p\n", address);
+    if (emu_verbose) asm_printf("opcode_blake2b() calling blake2b() address=%p\n", address);
 #endif
 #endif
 
@@ -680,12 +692,12 @@ extern int _opcode_blake2(uint64_t * address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) asm_printf("opcode_blake2() called blake2b()\n");
+    if (emu_verbose) asm_printf("opcode_blake2b() called blake2b()\n");
 #endif
 #ifdef ASM_CALL_METRICS
-    asm_call_metrics.blake2_counter++;
+    asm_call_metrics.blake2b_counter++;
     gettimeofday(&asm_call_stop, NULL);
-    asm_call_metrics.blake2_duration += TimeDiff(asm_call_start, asm_call_stop);
+    asm_call_metrics.blake2b_duration += TimeDiff(asm_call_start, asm_call_stop);
 #endif
     return 0;
 }
@@ -728,6 +740,48 @@ extern int _opcode_blake3(uint64_t * address)
     asm_call_metrics.blake3_counter++;
     gettimeofday(&asm_call_stop, NULL);
     asm_call_metrics.blake3_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+extern int _opcode_blake2s(uint64_t * address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+#ifdef DEBUG
+#ifdef ASM_CALL_METRICS
+    if (emu_verbose) asm_printf("opcode_blake2s() calling blake2s_f() counter=%lu address=%p\n", asm_call_metrics.blake2s_counter, address);
+#else
+    if (emu_verbose) asm_printf("opcode_blake2s() calling blake2s_f() address=%p\n", address);
+#endif
+#endif
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        // Call blake2s permutation function (address[0] = state ptr, address[1] = input ptr)
+        blake2s_f((uint32_t *)address[0], (const uint32_t *)address[1]);
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)address[0], 8*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)address[0], 8*8);
+    }
+#endif
+
+#ifdef DEBUG
+    if (emu_verbose) asm_printf("opcode_blake2s() called blake2s_f()\n");
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.blake2s_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.blake2s_duration += TimeDiff(asm_call_start, asm_call_stop);
 #endif
     return 0;
 }
