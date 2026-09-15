@@ -3,10 +3,12 @@
 //! Load order (later entries override earlier):
 //! 1. Built-in defaults
 //! 2. TOML file (path from `--config` or `ZISK_COORDINATOR_CONFIG`)
-//! 3. CLI flags / env vars: --api-port, --cluster-port, --metrics-port, --log-level
+//! 3. CLI flags / env vars: --api-port, --cluster-port, --metrics-port,
+//!    --log-level, --save-proofs, --proofs-dir
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use zisk_cluster_common::{Environment, LoggingConfig};
 
 /// Top-level coordinator-server configuration.
@@ -83,19 +85,51 @@ pub struct CoordinatorConfig {
     pub config_file: Option<String>,
     /// Port on which the embedded coordinator listens for worker connections.
     pub port: u16,
+    /// Forces proof persistence on/off; `None` defers to `config_file`
+    /// (whose own default is "do not save").
+    pub save_proofs: Option<bool>,
+    /// Directory for saved proofs; `None` defers to `config_file`
+    /// (default: `./proofs`).
+    pub proofs_dir: Option<PathBuf>,
+}
+
+/// CLI flag / env-var overrides applied on top of the config files.
+///
+/// Every field is optional: `None` leaves the value coming from the config file
+/// (or the built-in default) untouched.
+#[derive(Debug, Default, Clone)]
+pub struct CliOverrides {
+    /// Explicit config file path, overriding the well-known locations.
+    pub config_file: Option<String>,
+    /// Client-facing gRPC API port.
+    pub api_port: Option<u16>,
+    /// Worker-facing cluster port.
+    pub cluster_port: Option<u16>,
+    /// Prometheus metrics port.
+    pub metrics_port: Option<u16>,
+    /// Log level filter.
+    pub log_level: Option<String>,
+    /// Whether the embedded coordinator persists completed proofs.
+    pub save_proofs: Option<bool>,
+    /// Directory the embedded coordinator writes proofs to.
+    pub proofs_dir: Option<PathBuf>,
 }
 
 impl Config {
     /// Load the configuration, applying (in increasing priority) built-in
     /// defaults, well-known and explicit TOML files, then the given CLI/env
     /// overrides.
-    pub fn load(
-        config_file: Option<String>,
-        api_port: Option<u16>,
-        cluster_port: Option<u16>,
-        metrics_port: Option<u16>,
-        log_level: Option<String>,
-    ) -> Result<Self> {
+    pub fn load(overrides: CliOverrides) -> Result<Self> {
+        let CliOverrides {
+            config_file,
+            api_port,
+            cluster_port,
+            metrics_port,
+            log_level,
+            save_proofs,
+            proofs_dir,
+        } = overrides;
+
         let mut builder = config::Config::builder()
             // service
             .set_default("service.name", "ZisK Coordinator")?
@@ -143,6 +177,13 @@ impl Config {
         if let Some(level) = log_level {
             builder = builder.set_override("logging.level", level)?;
         }
+        if let Some(save_proofs) = save_proofs {
+            builder = builder.set_override("coordinator.save_proofs", save_proofs)?;
+        }
+        if let Some(dir) = proofs_dir {
+            builder = builder
+                .set_override("coordinator.proofs_dir", dir.to_string_lossy().to_string())?;
+        }
 
         Ok(builder.build()?.try_deserialize()?)
     }
@@ -186,36 +227,54 @@ mod tests {
 
     #[test]
     fn defaults_load_without_file() {
-        let cfg = Config::load(None, None, None, None, None).unwrap();
+        let cfg = Config::load(CliOverrides::default()).unwrap();
         assert_eq!(cfg.server.host, "0.0.0.0");
         assert_eq!(cfg.server.port, 7000);
         assert_eq!(cfg.coordinator.port, 50051);
         assert_eq!(cfg.metrics.port, 9090);
         assert_eq!(cfg.backend.mode, BackendMode::Coordinator);
         assert_eq!(cfg.service.version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(cfg.coordinator.save_proofs, None);
+        assert_eq!(cfg.coordinator.proofs_dir, None);
     }
 
     #[test]
     fn cli_api_port_override() {
-        let cfg = Config::load(None, Some(8080), None, None, None).unwrap();
+        let cfg =
+            Config::load(CliOverrides { api_port: Some(8080), ..Default::default() }).unwrap();
         assert_eq!(cfg.server.port, 8080);
     }
 
     #[test]
     fn cli_cluster_port_override() {
-        let cfg = Config::load(None, None, Some(50100), None, None).unwrap();
+        let cfg =
+            Config::load(CliOverrides { cluster_port: Some(50100), ..Default::default() }).unwrap();
         assert_eq!(cfg.coordinator.port, 50100);
     }
 
     #[test]
     fn cli_metrics_port_override() {
-        let cfg = Config::load(None, None, None, Some(9999), None).unwrap();
+        let cfg =
+            Config::load(CliOverrides { metrics_port: Some(9999), ..Default::default() }).unwrap();
         assert_eq!(cfg.metrics.port, 9999);
     }
 
     #[test]
+    fn cli_save_proofs_override() {
+        let cfg = Config::load(CliOverrides {
+            save_proofs: Some(true),
+            proofs_dir: Some("/var/proofs".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(cfg.coordinator.save_proofs, Some(true));
+        assert_eq!(cfg.coordinator.proofs_dir, Some(PathBuf::from("/var/proofs")));
+    }
+
+    #[test]
     fn grpc_addr_format() {
-        let cfg = Config::load(None, Some(9000), None, None, None).unwrap();
+        let cfg =
+            Config::load(CliOverrides { api_port: Some(9000), ..Default::default() }).unwrap();
         assert_eq!(cfg.grpc_addr(), "0.0.0.0:9000");
     }
 }

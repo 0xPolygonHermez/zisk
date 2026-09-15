@@ -117,6 +117,8 @@ The coordinator is configured via a TOML file. The search order (later entries o
 | `logging.format` | — | `pretty` | `pretty` \| `json` \| `compact` |
 | `coordinator.port` | `--cluster-port` / `ZISK_COORDINATOR_CLUSTER_PORT` | `50051` | Worker-facing cluster port |
 | `coordinator.config_file` | — | — | Optional path to a coordinator TOML config |
+| `coordinator.save_proofs` | `--save-proofs` / `ZISK_COORDINATOR_SAVE_PROOFS` | `false` | Persist each completed job's proof to disk |
+| `coordinator.proofs_dir` | `--proofs-dir` / `ZISK_COORDINATOR_PROOFS_DIR` | `./proofs` | Directory saved proofs are written to |
 
 #### Example: development config
 
