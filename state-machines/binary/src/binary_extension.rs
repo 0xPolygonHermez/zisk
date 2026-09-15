@@ -183,7 +183,6 @@ pub struct BinaryExtensionSM<F: PrimeField64> {
     std: Arc<Std<F>>,
 
     /// The range check ID
-    range_id: usize,
 
     /// The table ID for the Binary Basic State Machine
     table_id: usize,
@@ -199,14 +198,13 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     /// An `Arc`-wrapped instance of `BinaryExtensionSM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Get the range check ID
-        let range_id = std.get_range_id(0, 0xFFFFFF, None).expect("Failed to get range ID");
 
         // Get the table ID
         let table_id = std
             .get_virtual_table_id(BinaryExtensionTableSM::TABLE_ID)
             .expect("Failed to get table ID");
 
-        Arc::new(Self { std, range_id, table_id })
+        Arc::new(Self { std, table_id })
     }
 
     /// Writes SEXT_B(0) into one slot: the operation the air's `padding_size` cancels on the bus.
@@ -780,17 +778,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             |trace_row, lane| Self::set_padding_slot(trace_row, lane),
         );
         tally.flush(&self.std, self.table_id);
-
-        // Range-check the high part of the shift amount carried in b[0].
-        for row in inputs.iter() {
-            for input in row.iter() {
-                let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
-                if opcode_is_shift(opcode) {
-                    let row = (input.b >> 8) & 0xFFFFFF;
-                    self.std.range_check_one(self.range_id, row);
-                }
-            }
-        }
 
         // One padded slot is one SEXT_B(0) operation on the bus, and each takes eight table rows.
         let padding_size = num_slots - total_inputs;

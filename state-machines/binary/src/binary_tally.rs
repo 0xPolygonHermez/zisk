@@ -24,7 +24,7 @@
 //!
 //! The two shapes here both keep the hot loop free of atomics and touch `std` once at the end:
 //!
-//! * [`fill_and_tally`] — one dense [`RANGE_16_BITS`] histogram per task, for the add airs, whose
+//! * [`fill_rows`] — a plain parallel fill for the add airs, whose
 //!   lookups are a 16-bit range.
 //! * [`SparseTally`] with [`fill_slots_and_tally`] — a histogram split into [`REGION_ROWS`]-row
 //!   regions allocated on demand, for the airs whose lookups index a table far larger than the part
@@ -38,34 +38,23 @@ use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
-/// Values a 16-bit range check can take, i.e. the width of one histogram.
-pub const RANGE_16_BITS: usize = 0xFFFF + 1;
-
-/// Fills `rows` in parallel, giving each row its slice of `inputs`, and returns the multiplicities
-/// the fill tallied.
+/// Fills `rows` in parallel, giving each row its slice of `inputs`.
 ///
-/// `fill` receives one row, the `inputs_per_row` inputs that belong to it, and the histogram of the
-/// task it is running on — which it increments directly, one per range-checked chunk it produces.
-/// The last row may get a shorter slice when `inputs` does not divide evenly.
+/// `fill` receives one row and the `inputs_per_row` inputs that belong to it. The last row may get
+/// a shorter slice when `inputs` does not divide evenly.
 ///
-/// The rows are split into no more chunks than there are rayon threads, so the number of histograms
-/// is bounded by the thread count rather than by the finer split rayon would choose on its own.
+/// The rows are split into no more chunks than there are rayon threads.
 ///
 /// # Panics
 /// Panics if `rows` does not hold exactly one row per `inputs_per_row` inputs. The two sides are
 /// zipped, so a mismatch would silently drop rows (leaving the trace underfilled) or inputs (losing
 /// operations), neither of which surfaces until the bus fails to balance. The check is a couple of
 /// comparisons per call, not per row, so it is worth keeping in release builds too.
-pub fn fill_and_tally<R, T, Fill>(
-    rows: &mut [R],
-    inputs: &[T],
-    inputs_per_row: usize,
-    fill: Fill,
-) -> Vec<u32>
+pub fn fill_rows<R, T, Fill>(rows: &mut [R], inputs: &[T], inputs_per_row: usize, fill: Fill)
 where
     R: Send,
     T: Sync,
-    Fill: Fn(&mut R, &[T], &mut [u32]) + Sync + Send,
+    Fill: Fn(&mut R, &[T]) + Sync + Send,
 {
     assert!(inputs_per_row > 0, "a row must take at least one input");
     assert_eq!(
@@ -82,20 +71,11 @@ where
     // so the two sides of the zip split into the same number of chunks and stay aligned.
     rows.par_chunks_mut(rows_per_task)
         .zip(inputs.par_chunks(rows_per_task * inputs_per_row))
-        .map(|(row_chunk, input_chunk)| {
-            let mut multiplicities = vec![0u32; RANGE_16_BITS];
+        .for_each(|(row_chunk, input_chunk)| {
             for (row, row_inputs) in row_chunk.iter_mut().zip(input_chunk.chunks(inputs_per_row)) {
-                fill(row, row_inputs, &mut multiplicities);
+                fill(row, row_inputs);
             }
-            multiplicities
-        })
-        .reduce_with(|mut acc, task| {
-            for (total, count) in acc.iter_mut().zip(&task) {
-                *total += count;
-            }
-            acc
-        })
-        .unwrap_or_else(|| vec![0u32; RANGE_16_BITS])
+        });
 }
 
 /// Bits of a table row that address a slot inside one region of a [`SparseTally`].
@@ -602,38 +582,31 @@ mod tests {
         }
     }
 
-    /// The tally must match a plain serial histogram of the same chunks, whatever the split.
+    /// Every row must be visited exactly once, with the inputs that belong to it, whatever the
+    /// split: a row the fill skips is an underfilled trace that only surfaces as a bus imbalance.
     #[test]
-    fn the_tally_matches_a_serial_count() {
+    fn every_row_is_filled_once() {
         for inputs_per_row in [1usize, 3, 5] {
             for count in [0usize, 1, 7, 1000] {
                 let inputs: Vec<u64> = (0..count as u64).map(|i| (i * 7) % 300).collect();
                 let rows = count.div_ceil(inputs_per_row);
                 let mut filled = vec![0u64; rows];
 
-                let multiplicities =
-                    fill_and_tally(&mut filled, &inputs, inputs_per_row, |row, row_inputs, m| {
-                        *row = row_inputs.len() as u64;
-                        for &input in row_inputs {
-                            m[input as usize] += 1;
-                        }
-                    });
+                fill_rows(&mut filled, &inputs, inputs_per_row, |row, row_inputs| {
+                    *row = row_inputs.len() as u64;
+                });
 
-                let mut expected = vec![0u32; RANGE_16_BITS];
-                for &input in &inputs {
-                    expected[input as usize] += 1;
-                }
-                assert_eq!(multiplicities, expected, "{count} inputs, {inputs_per_row} per row");
-
-                // And every row was visited, with the inputs that belong to it.
-                assert_eq!(filled.iter().sum::<u64>(), count as u64);
+                assert_eq!(
+                    filled.iter().sum::<u64>(),
+                    count as u64,
+                    "{count} inputs, {inputs_per_row} per row"
+                );
             }
         }
     }
 
-    /// The split never asks for more chunks than there are threads, which is what bounds how many
-    /// histograms are alive at once. It can be fewer — there is no work to give every thread when
-    /// the rows are few.
+    /// The split never asks for more chunks than there are threads. It can be fewer — there is no
+    /// work to give every thread when the rows are few.
     #[test]
     fn the_split_never_exceeds_the_thread_count() {
         let threads = rayon::current_num_threads().max(1);
@@ -653,14 +626,12 @@ mod tests {
     #[should_panic(expected = "the rows must hold exactly")]
     fn mismatched_rows_and_inputs_are_an_error() {
         // Ten inputs three to a row need four rows, not three.
-        fill_and_tally(&mut [0u64; 3], &[0u64; 10], 3, |_, _, _| {});
+        fill_rows(&mut [0u64; 3], &[0u64; 10], 3, |_, _| {});
     }
 
-    /// No work means an all-zero tally rather than a panic on the empty reduction.
+    /// No work is not an error: the empty split must simply do nothing.
     #[test]
-    fn nothing_to_fill_tallies_nothing() {
-        let multiplicities = fill_and_tally(&mut [0u64; 0], &[0u64; 0], 4, |_, _, m| m[1] += 1);
-        assert_eq!(multiplicities.len(), RANGE_16_BITS);
-        assert!(multiplicities.iter().all(|&m| m == 0));
+    fn nothing_to_fill_is_not_an_error() {
+        fill_rows(&mut [0u64; 0], &[0u64; 0], 4, |_, _| unreachable!("no rows to fill"));
     }
 }

@@ -34,10 +34,6 @@ pub struct ArithEqSM<F: PrimeField64> {
 
     /// The table ID for the Keccakf Table State Machine
     table_id: usize,
-
-    pub q_hsc_range_id: usize,
-    pub chunk_range_id: usize,
-    pub carry_range_id: usize,
 }
 #[derive(Debug, Default)]
 struct ArithEqStepAddr {
@@ -57,19 +53,12 @@ impl<F: PrimeField64> ArithEqSM<F> {
     ///
     /// # Returns
     /// A new `ArithEqSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Compute some useful values
-        let p2_22 = 1 << 22;
-        let q_hsc_range_id = std.get_range_id(0, p2_22 - 1, None).expect("Failed to get range ID");
-        let chunk_range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
-        let carry_range_id =
-            std.get_range_id(-(p2_22 - 1), p2_22, None).expect("Failed to get range ID");
-
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> { 
         // Get the table ID
         let table_id =
             std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
 
-        Arc::new(Self { std, q_hsc_range_id, chunk_range_id, carry_range_id, table_id })
+        Arc::new(Self { std, table_id })
     }
     fn get_lt_flags(input: &ArithEqInput) -> u8 {
         const X3_LT_FLAG: u8 = 1;
@@ -411,31 +400,30 @@ impl<F: PrimeField64> ArithEqSM<F> {
             for j in 0..R::CEQS {
                 // first position without carry
                 let carry_0 = if i == 0 { 0 } else { data.cout[i * 2 - 1][j] };
-                carry_values[j][0] = to_field::<F>(cache.carry(carry_0));
-                carry_values[j][1] = to_field::<F>(cache.carry(data.cout[i * 2][j]));
+                carry_values[j][0] = to_field::<F>(carry_0);
+                carry_values[j][1] = to_field::<F>(data.cout[i * 2][j]);
             }
             trace[i].set_carry(&carry_values);
 
-            let q_last_clock = i == ARITH_EQ_ROWS_BY_OP - 1;
-            trace[i].set_x1(to_field::<F>(cache.chunk(data.x1[i])) as u16);
-            trace[i].set_y1(to_field::<F>(cache.chunk(data.y1[i])) as u16);
-            trace[i].set_x2(to_field::<F>(cache.chunk(data.x2[i])) as u16);
-            trace[i].set_y2(to_field::<F>(cache.chunk(data.y2[i])) as u16);
-            trace[i].set_x3(to_field::<F>(cache.chunk(data.x3[i])) as u16);
-            trace[i].set_y3(to_field::<F>(cache.chunk(data.y3[i])) as u16);
+            trace[i].set_x1(to_field::<F>(data.x1[i]) as u16);
+            trace[i].set_y1(to_field::<F>(data.y1[i]) as u16);
+            trace[i].set_x2(to_field::<F>(data.x2[i]) as u16);
+            trace[i].set_y2(to_field::<F>(data.y2[i]) as u16);
+            trace[i].set_x3(to_field::<F>(data.x3[i]) as u16);
+            trace[i].set_y3(to_field::<F>(data.y3[i]) as u16);
             // Quotients / lambda: range-check + fill only the columns this config has, so the shared
             // witness registers exactly the std range-checks the config's PIL looks up.
             if R::QS >= 1 {
-                trace[i].set_q0(to_field::<F>(cache.q_column(data.q0[i], q_last_clock)) as u32);
+                trace[i].set_q0(to_field::<F>(data.q0[i]) as u32);
             }
             if R::QS >= 2 {
-                trace[i].set_q1(to_field::<F>(cache.q_column(data.q1[i], q_last_clock)) as u32);
+                trace[i].set_q1(to_field::<F>(data.q1[i]) as u32);
             }
             if R::QS >= 3 {
-                trace[i].set_q2(to_field::<F>(cache.q_column(data.q2[i], q_last_clock)) as u32);
+                trace[i].set_q2(to_field::<F>(data.q2[i]) as u32);
             }
             if R::USE_S {
-                trace[i].set_s(to_field::<F>(cache.chunk(data.s[i])) as u32);
+                trace[i].set_s(to_field::<F>(data.s[i]) as u32);
             }
 
             // Set the one-hot operation selector (and its clk0 twin on the first clock). Iterating
@@ -676,7 +664,6 @@ impl<F: PrimeField64> ArithEqSM<F> {
         let last_flags =
             inputs.iter().rev().find_map(|c| c.last()).map(Self::get_lt_flags).unwrap_or(0);
 
-        let index = total_inputs;
         phase_end!(d_prep, t_prep);
         phase_max_start!(init_max);
         phase_start!(t_fill);
@@ -728,13 +715,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
         phase_start!(t_flush);
         if let Some(merged) = &merged {
-            merged.flush(
-                &self.std,
-                self.q_hsc_range_id,
-                self.chunk_range_id,
-                self.carry_range_id,
-                self.table_id,
-            );
+            merged.flush(&self.std, self.table_id);
         }
 
         phase_end!(d_flush, t_flush);
@@ -743,19 +724,6 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
         // Padding range-checks per unused op-slot, derived from this config's column set so they
         // match the PIL exactly (full air: QS=3, USE_S=true, CEQS=3 → 3 / 157 / 96):
-        //   q_hsc: QS q-columns range-checked on the last clock only            → QS
-        //   chunk: x1..y3 (6·16=96) + q on the 15 non-last clocks (QS·15) + s (USE_S·16)
-        //   carry: MAX_CEQS · CBC(2) · 16 rows                                   → CEQS·32
-        // Capacity of *this* config's air, taken from the trace: the configs come in two heights
-        // and hold a different number of operations each.
-        let padding_ops = (num_rows / ARITH_EQ_ROWS_BY_OP - index) as u64;
-        let q_hsc_per_op = R::QS as u64;
-        let chunk_per_op = 96 + R::QS as u64 * 15 + if R::USE_S { 16 } else { 0 };
-        let carry_per_op = R::CEQS as u64 * 32;
-        self.std.range_check(self.q_hsc_range_id, 0, q_hsc_per_op * padding_ops);
-        self.std.range_check(self.chunk_range_id, 0, chunk_per_op * padding_ops);
-        self.std.range_check(self.carry_range_id, 0, carry_per_op * padding_ops);
-
         let padding_row = R::default();
 
         R::trace_rows(&mut trace)[num_rows_needed..num_rows]

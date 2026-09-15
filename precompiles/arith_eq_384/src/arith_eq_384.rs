@@ -34,9 +34,6 @@ pub struct ArithEq384SM<F: PrimeField64> {
     /// The table ID for the Keccakf Table State Machine
     table_id: usize,
 
-    pub q_hsc_range_id: usize,
-    pub chunk_range_id: usize,
-    pub carry_range_id: usize,
 }
 #[derive(Debug, Default)]
 struct ArithEq384StepAddr {
@@ -57,21 +54,11 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     /// # Returns
     /// A new `ArithEq384SM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Compute some useful values
-        let q_hsc_range_id =
-            std.get_range_id(0, ARITH_EQ_384_Q_HSC_MAX, None).expect("Failed to get range ID");
-        let chunk_range_id = std
-            .get_range_id(0, ARITH_EQ_384_CHUNK_MAX as i64, None)
-            .expect("Failed to get range ID");
-        let carry_range_id = std
-            .get_range_id(ARITH_EQ_384_CARRY_MIN, ARITH_EQ_384_CARRY_MAX, None)
-            .expect("Failed to get range ID");
-
         // Get the table ID
         let table_id =
             std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
 
-        Arc::new(Self { std, q_hsc_range_id, chunk_range_id, carry_range_id, table_id })
+        Arc::new(Self { std, table_id })
     }
     // Returns the LT flags for x3 and y3. The flags are determined solely by the operation type.
     /// Writes one operation's rows. Split out of the fill so the batched walk and the dispatch stay
@@ -347,21 +334,20 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             for j in 0..3 {
                 // first position without carry
                 let carry_0 = if i == 0 { 0 } else { data.cout[i * 2 - 1][j] };
-                carry_values[j][0] = to_field::<F>(cache.carry(carry_0));
-                carry_values[j][1] = to_field::<F>(cache.carry(data.cout[i * 2][j]));
+                carry_values[j][0] = to_field::<F>(carry_0);
+                carry_values[j][1] = to_field::<F>(data.cout[i * 2][j]);
             }
             trace[i].set_all_carry(&carry_values);
-            let q_last_clock = i == ARITH_EQ_384_ROWS_BY_OP - 1;
-            trace[i].set_x1(to_field::<F>(cache.chunk(data.x1[i])) as u16);
-            trace[i].set_y1(to_field::<F>(cache.chunk(data.y1[i])) as u16);
-            trace[i].set_x2(to_field::<F>(cache.chunk(data.x2[i])) as u16);
-            trace[i].set_y2(to_field::<F>(cache.chunk(data.y2[i])) as u16);
-            trace[i].set_x3(to_field::<F>(cache.chunk(data.x3[i])) as u16);
-            trace[i].set_y3(to_field::<F>(cache.chunk(data.y3[i])) as u16);
-            trace[i].set_q0(to_field::<F>(cache.q_column(data.q0[i], q_last_clock)) as u32);
-            trace[i].set_q1(to_field::<F>(cache.q_column(data.q1[i], q_last_clock)) as u32);
-            trace[i].set_q2(to_field::<F>(cache.q_column(data.q2[i], q_last_clock)) as u32);
-            trace[i].set_s(to_field::<F>(cache.chunk(data.s[i])) as u32);
+            trace[i].set_x1(to_field::<F>(data.x1[i]) as u16);
+            trace[i].set_y1(to_field::<F>(data.y1[i]) as u16);
+            trace[i].set_x2(to_field::<F>(data.x2[i]) as u16);
+            trace[i].set_y2(to_field::<F>(data.y2[i]) as u16);
+            trace[i].set_x3(to_field::<F>(data.x3[i]) as u16);
+            trace[i].set_y3(to_field::<F>(data.y3[i]) as u16);
+            trace[i].set_q0(to_field::<F>(data.q0[i]) as u32);
+            trace[i].set_q1(to_field::<F>(data.q1[i]) as u32);
+            trace[i].set_q2(to_field::<F>(data.q2[i]) as u32);
+            trace[i].set_s(to_field::<F>(data.s[i]) as u32);
 
             // TODO Range check
             // Compute sel_op arrays
@@ -471,7 +457,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         // of operations, and a `Large` instance priced against the short air's capacity would reject
         // the very inputs the planner routed to it.
         let num_available_ops = arith_eq_384_ops_per_instance(num_rows);
-        let num_non_usable_rows = (num_rows % ARITH_EQ_384_ROWS_BY_OP) as u64;
 
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
         let all_ops_used = total_inputs == num_available_ops;
@@ -514,7 +499,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         // the sequential fill this replaces started the first operation at 0 unconditionally, and
         // its constraints are written for that.
 
-        let index = total_inputs;
         phase_max_start!(init_max);
         phase_start!(t_fill);
 
@@ -564,9 +548,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         if let Some(merged) = &merged {
             merged.flush(
                 &self.std,
-                self.q_hsc_range_id,
-                self.chunk_range_id,
-                self.carry_range_id,
                 self.table_id,
             );
         }
@@ -586,19 +567,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
 
         // Padding
 
-        // All-zero padding rows satisfy every constraint, so we must only handle the range_checks.
-
-        let padding_ops = (num_available_ops - index) as u64;
-        let q_hsc_range_mult = 3 * padding_ops;
-        let chunk_range_mult = (7 * ARITH_EQ_384_ROWS_BY_OP as u64
-            + 3 * (ARITH_EQ_384_ROWS_BY_OP - 1) as u64)
-            * padding_ops
-            + 10 * num_non_usable_rows; // 7 chunk_cols + 3 q_cols on every tail row
-        let carry_range_mult =
-            (6 * ARITH_EQ_384_ROWS_BY_OP as u64) * padding_ops + 6 * num_non_usable_rows; // 6 carry_cols
-        self.std.range_check(self.q_hsc_range_id, 0, q_hsc_range_mult);
-        self.std.range_check(self.chunk_range_id, 0, chunk_range_mult);
-        self.std.range_check(self.carry_range_id, 0, carry_range_mult);
+        // All-zero padding rows satisfy every constraint.
 
         timer_stop_and_log_trace!(ARITH_EQ_384_TRACE);
 

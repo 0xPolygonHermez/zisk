@@ -28,9 +28,9 @@ pub struct Mem<F: PrimeField64> {
 impl<F: PrimeField64> Mem<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         let mem_align_sm = MemAlignSM::new(std.clone());
-        let mem_sm = MemSM::new(std.clone());
-        let input_data_sm = InputDataSM::new(std.clone());
-        let rom_data_sm = RomDataSM::new(std.clone());
+        let mem_sm = MemSM::new();
+        let input_data_sm = InputDataSM::new();
+        let rom_data_sm = RomDataSM::new();
         let mem_align_byte_sm = MemAlignByteSM::new(std.clone());
 
         Arc::new(Self { mem_align_sm, mem_sm, input_data_sm, rom_data_sm, mem_align_byte_sm })

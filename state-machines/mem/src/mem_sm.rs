@@ -13,7 +13,6 @@ use std::{
 use crate::mem_module::save_offsets_to_file;
 
 use crate::{MemInput, MemModule, MemOps};
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 // `phase_ms` is only ever read inside a `phase_log!`, which vanishes without the
@@ -32,11 +31,7 @@ const OFFSET_DUAL_FLAG: u32 = 0x8000_0000;
 const OFFSET_USE_FLAG: u32 = 0x4000_0000;
 const OFFSET_VALUE_MASK: u32 = 0x3FFF_FFFF;
 pub struct MemSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
-
-    range_22bits_id: usize,
-    range_16bits_id: usize,
+    _phantom: std::marker::PhantomData<F>,
 }
 #[derive(Debug, Default)]
 pub struct MemPreviousSegment {
@@ -54,13 +49,10 @@ fn lanes_of<F: PrimeField64, R: MemTraceRowOps<F>>() -> MemLanes {
 
 #[allow(unused, unused_variables)]
 impl<F: PrimeField64> MemSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_22bits_id =
-            std.get_range_id(0, (1 << 22) - 1, None).expect("Failed to get 22 bits range ID");
-        let range_16bits_id =
-            std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get 16 bits range ID");
-
-        Arc::new(Self { range_22bits_id, range_16bits_id, std: std.clone() })
+    /// Takes no `Std`: the only thing MemSM used it for was range checks, which the prover now
+    /// computes from the trace.
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: std::marker::PhantomData })
     }
 
     pub fn get_to_addr() -> u32 {
@@ -327,8 +319,6 @@ impl<F: PrimeField64> MemSM<F> {
         let lanes = lanes_of::<F, R>();
         let num_slots = lanes.slots(trace.num_rows());
 
-        let mut range_22bits: Vec<u32> = vec![0; 1 << 22];
-        let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
 
         // use special counter for internal reads
         let distance_base = previous_segment.addr - RAM_W_ADDR_INIT;
@@ -375,7 +365,6 @@ impl<F: PrimeField64> MemSM<F> {
                             - trace[row].get_wr(lane) as u64),
                         increment_step
                     );
-                    range_22bits[increment_step as usize] += 1;
 
                     i += 1;
                     continue;
@@ -439,8 +428,6 @@ impl<F: PrimeField64> MemSM<F> {
                 panic!("MemSM: h_increment out of range: {h_increment} increment:{increment} slot:{i} addr_changes:{addr_changes} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{}",
                      mem_op.addr, last_addr, mem_op.step, last_step);
             }
-            range_22bits[l_increment] += 1;
-            range_16bits[h_increment] += 1;
 
             last_addr = mem_op.addr;
             last_value = mem_op.value;
@@ -495,8 +482,6 @@ impl<F: PrimeField64> MemSM<F> {
 
         if padding_size > 0 {
             // Store the padding range checks
-            range_16bits[0] += padding_size as u32;
-            range_22bits[0] += padding_size as u32;
         }
 
         // no add extra +1 because index = value - 1
@@ -530,13 +515,7 @@ impl<F: PrimeField64> MemSM<F> {
         air_values.distance_end[0] = F::from_u16(distance_end[0]);
         air_values.distance_end[1] = F::from_u16(distance_end[1]);
 
-        range_16bits[distance_base[0] as usize] += 1;
-        range_16bits[distance_base[1] as usize] += 1;
-        range_16bits[distance_end[0] as usize] += 1;
-        range_16bits[distance_end[1] as usize] += 1;
 
-        self.std.range_check_ranged(self.range_22bits_id, None, &range_22bits);
-        self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
 
         #[cfg(feature = "debug_mem")]
         {
@@ -680,14 +659,6 @@ impl<F: PrimeField64> MemSM<F> {
         air_values.distance_end[0] = F::from_u16(out.distance_end[0]);
         air_values.distance_end[1] = F::from_u16(out.distance_end[1]);
 
-        // Timed apart from the fill because it is not free: `range_check_ranged` widens the whole
-        // 2^22-entry histogram into a fresh `Vec<u64>` (32 MiB) before `assign_values_ranged` walks
-        // every bucket, so it costs the same whether the instance was full or nearly empty.
-        phase_start!(t_rc);
-        self.std.range_check_ranged(self.range_22bits_id, None, &out.range_22bits);
-        self.std.range_check_ranged(self.range_16bits_id, None, &out.range_16bits);
-        phase_end!(d_rc, t_rc);
-
         phase_start!(t_air);
         let air_instance = AirInstance::new_from_trace(
             FromTrace::new(&mut trace).with_air_values(&mut air_values),
@@ -809,8 +780,6 @@ struct RangeFill<R> {
     head: R,
     /// Highest slot this range wrote, or `None` when its addresses carried no operation.
     last_slot: Option<usize>,
-    range_22bits: Vec<u32>,
-    range_16bits: Vec<u32>,
     /// Operations this range actually filled. The ranges are balanced by *slots*, so comparing
     /// these across ranges is what says whether slots are a good proxy for the work.
     #[cfg(feature = "witness_timers")]
@@ -862,12 +831,10 @@ fn set_mem_padding_lane<F: PrimeField64, R: MemTraceRowOps<F>>(
     row.set_step_dual(lane, 0);
 }
 
-/// What the fill produces besides the rows themselves: the multiplicities, and the scalars the air
-/// values are built from. Deliberately not `MemAirValues` -- that type carries a lifetime and a
-/// self-referential buffer, and building it is the caller's business anyway.
+/// What the fill produces besides the rows themselves: the scalars the air values are built from.
+/// Deliberately not `MemAirValues` -- that type carries a lifetime and a self-referential buffer,
+/// and building it is the caller's business anyway.
 struct MemFillOutput {
-    range_22bits: Vec<u32>,
-    range_16bits: Vec<u32>,
     /// Address, step and value of the last filled slot: what the padding repeats and what the
     /// segment hands to the next one.
     last_addr: u32,
@@ -987,28 +954,6 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
 
     phase_start!(t_reduce);
 
-    // Multiplicities summed across ranges: one parallel pass per bucket, the shape `main_sm`
-    // uses for its per-chunk range checks. With a single range its histograms already are the
-    // answer and are moved out rather than summed.
-    let (mut range_22bits, mut range_16bits) = match fills.len() {
-        0 => (vec![0u32; 1 << 22], vec![0u32; 1 << 16]),
-        1 => {
-            let f = fills.into_iter().next().unwrap();
-            (f.range_22bits, f.range_16bits)
-        }
-        _ => {
-            let h22: Vec<u32> = (0..1usize << 22)
-                .into_par_iter()
-                .map(|i| fills.iter().map(|f| f.range_22bits[i]).sum())
-                .collect();
-            let h16: Vec<u32> = (0..1usize << 16)
-                .into_par_iter()
-                .map(|i| fills.iter().map(|f| f.range_16bits[i]).sum())
-                .collect();
-            (h22, h16)
-        }
-    };
-
     phase_start!(t_pad);
     phase_end!(d_reduce, t_reduce);
 
@@ -1050,8 +995,6 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
 
     if padding_size > 0 {
         // Store the padding range checks
-        range_16bits[0] += padding_size as u32;
-        range_22bits[0] += padding_size as u32;
     }
 
     // One line per instance. `ops` is what each range actually filled out of the whole list every
@@ -1102,14 +1045,8 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
     let distance_base = [distance_base as u16, (distance_base >> 16) as u16];
     let distance_end = [distance_end as u16, (distance_end >> 16) as u16];
 
-    range_16bits[distance_base[0] as usize] += 1;
-    range_16bits[distance_base[1] as usize] += 1;
-    range_16bits[distance_end[0] as usize] += 1;
-    range_16bits[distance_end[1] as usize] += 1;
 
     MemFillOutput {
-        range_22bits,
-        range_16bits,
         last_addr: addr,
         last_step: step,
         last_value: [low_value, high_value],
@@ -1139,8 +1076,6 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
     let first_row = range.slot_from / lanes_x_row;
     let mut rows = RowView { head: R::default(), owned, first_row };
 
-    let mut range_22bits: Vec<u32> = vec![0; 1 << 22];
-    let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
 
     // Address cursors, this range's addresses only: `current_offsets[addr_index - addr_base]`.
     let addr_base = range.addr_from as usize;
@@ -1352,13 +1287,10 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
             rows.at(row).set_l_increment(lane, l_increment as u32);
             rows.at(row).set_h_increment(lane, h_increment as u16);
 
-            range_22bits[l_increment] += 1;
-            range_16bits[h_increment] += 1;
         }
         // rows.at(row).set_previous_step(lane, ...)
         if dual_available {
             // range check dual
-            range_22bits[increment as usize] += 1;
         }
         if last_slot_idx.map_or(true, |last| islot > last) {
             last_slot_idx = Some(islot);
@@ -1386,8 +1318,6 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
     RangeFill {
         head: rows.head,
         last_slot: last_slot_idx,
-        range_22bits,
-        range_16bits,
         #[cfg(feature = "witness_timers")]
         ops_filled,
         #[cfg(feature = "witness_timers")]

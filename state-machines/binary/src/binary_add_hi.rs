@@ -10,8 +10,7 @@
 //! [`BinaryAddHiRow::LANES_X_ROW`], the row type's own. On top of the additions, every slot also
 //! proves the SH3ADD operations of the same shape, selected by its own `sel_sh3add`.
 
-use crate::{fill_and_tally, lanes_x_row::MAX_ADD_HI, BinaryInput};
-use pil2_std_lib::Std;
+use crate::{fill_rows, lanes_x_row::MAX_ADD_HI, BinaryInput};
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
@@ -157,23 +156,13 @@ pub fn ops_per_instance(num_rows: u64, lanes_x_row: usize) -> u64 {
 
 /// The `BinaryAddHiSM` struct encapsulates the logic of the Binary Add Hi State Machine.
 pub struct BinaryAddHiSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
-    range_id: usize,
+    _phantom: std::marker::PhantomData<F>,
 }
 
 impl<F: PrimeField64> BinaryAddHiSM<F> {
-    /// Creates a new BinaryAddHi State Machine instance.
-    ///
-    /// # Arguments
-    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
-    ///
-    /// # Returns
-    /// A new `BinaryAddHiSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
-
-        Arc::new(Self { std, range_id })
+    /// Takes no `Std`: the chunks this air range-checks are counted by the prover from the trace.
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: std::marker::PhantomData })
     }
 
     /// Fills one slot of a row and returns the two 16-bit chunks of the result.
@@ -191,7 +180,7 @@ impl<F: PrimeField64> BinaryAddHiSM<F> {
         sel_values: &mut [bool; MAX_ADD_HI],
         sh3add_values: &mut [bool; MAX_ADD_HI],
         slot: usize,
-    ) -> [u64; CHUNKS_X_ADD] {
+    ) {
         let sh3add = input.op == ZiskOp::Sh3add.code();
 
         // SH3ADD is c = b + (a << 3). The shift is folded into the addition rather than
@@ -224,8 +213,6 @@ impl<F: PrimeField64> BinaryAddHiSM<F> {
         c_chunks_values[slot][1] = (c >> 16) as u16;
         sel_values[slot] = carry != 0;
         sh3add_values[slot] = sh3add;
-
-        [c_chunks_values[slot][0] as u64, c_chunks_values[slot][1] as u64]
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -270,15 +257,11 @@ impl<F: PrimeField64> BinaryAddHiSM<F> {
             rows_used as f64 / num_rows as f64 * 100.0
         );
 
-        // The chunks of every slot are tallied as the row is filled — see [`fill_and_tally`]. An
-        // empty slot in the last row proves the 0 + 0 = 0 addition, whose chunks are zero, so the
-        // slots this row does not fill are counted with the padding below rather than here.
-        let chunks_x_row = CHUNKS_X_ADD * lanes_x_row;
-        let mut multiplicities = fill_and_tally(
+        fill_rows(
             &mut R::trace_buffer_mut(&mut add_trace)[..rows_used],
             &flat_inputs,
             lanes_x_row,
-            |trace_row, row_inputs, multiplicities| {
+            |trace_row, row_inputs| {
                 let mut a_values = [0u32; MAX_ADD_HI];
                 let mut b_values = [0u32; MAX_ADD_HI];
                 let mut c_chunks_values = [[0u16; CHUNKS_X_ADD]; MAX_ADD_HI];
@@ -286,7 +269,7 @@ impl<F: PrimeField64> BinaryAddHiSM<F> {
                 let mut sh3add_values = [false; MAX_ADD_HI];
 
                 for (slot, input) in row_inputs.iter().enumerate() {
-                    let chunks = Self::process_slot(
+                    Self::process_slot(
                         input,
                         &mut a_values,
                         &mut b_values,
@@ -295,8 +278,6 @@ impl<F: PrimeField64> BinaryAddHiSM<F> {
                         &mut sh3add_values,
                         slot,
                     );
-                    multiplicities[chunks[0] as usize] += 1;
-                    multiplicities[chunks[1] as usize] += 1;
                 }
 
                 trace_row.set_slots(
@@ -308,18 +289,6 @@ impl<F: PrimeField64> BinaryAddHiSM<F> {
                 );
             },
         );
-
-        // Every row range-checks all its slots' chunks unconditionally, and every chunk the fill did
-        // not tally is a zero: the empty slots of the last packed row, and every slot of the rows
-        // past it.
-        multiplicities[0] += (chunks_x_row * num_rows - CHUNKS_X_ADD * total_inputs) as u32;
-        debug_assert_eq!(
-            multiplicities.iter().map(|&m| m as u64).sum::<u64>(),
-            (chunks_x_row * num_rows) as u64,
-            "the multiplicities must account for one chunk of every slot of every row",
-        );
-
-        self.std.range_check_ranged(self.range_id, None, &multiplicities);
 
         // The bus sees one operation per slot, so what has to be cancelled is the number of empty
         // slots, not the number of empty rows.

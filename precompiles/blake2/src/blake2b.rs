@@ -66,7 +66,6 @@ pub struct Blake2bSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
 
-    range_id: usize,
 
     table_id: usize,
 }
@@ -79,12 +78,10 @@ impl<F: PrimeField64> Blake2bSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
 
-        let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
-
         let table_id =
             std.get_virtual_table_id(BlakeTableSM::TABLE_ID).expect("Failed to get Blake table ID");
 
-        Arc::new(Self { std, range_id, table_id })
+        Arc::new(Self { std, table_id })
     }
 
     /// Processes one operation, filling its CLOCKS-row chunk of the trace and
@@ -313,8 +310,6 @@ impl<F: PrimeField64> Blake2bSM<F> {
         range_checks[0] += RANGE_CHECKED_LIMBS_PER_ROW as u32 * num_padding_rows;
 
         timer_stop_and_log_trace!(BLAKE2B_TRACE);
-
-        self.std.range_check_ranged(self.range_id, None, &range_checks);
 
         let zero_row = BlakeTableSM::calculate_table_row(0, 0, 0) as usize;
         xor_checks.into_par_iter().enumerate().for_each(|(row, mut value)| {

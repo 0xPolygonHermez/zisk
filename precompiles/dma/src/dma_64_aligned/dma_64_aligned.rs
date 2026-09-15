@@ -33,8 +33,6 @@ pub struct Dma64AlignedSM<F: PrimeField64> {
     pub std: Arc<Std<F>>,
 
     /// Range checks ID's
-    range_16_bits_id: usize,
-    range_24_bits_id: usize,
     dual_range_byte_id: usize,
 
     op_x_rows: usize,
@@ -56,12 +54,6 @@ impl<F: PrimeField64> Dma64AlignedSM<F> {
         Arc::new(Self {
             air_id,
             std: std.clone(),
-            range_16_bits_id: std
-                .get_range_id(0, 0xFFFF, None)
-                .expect("Failed to get 16b table ID"),
-            range_24_bits_id: std
-                .get_range_id(0, (1 << 24) - 1, None)
-                .expect("Failed to get 24b table ID"),
             dual_range_byte_id: std
                 .get_virtual_table_id(DUAL_RANGE_BYTE_ID)
                 .expect("Failed to get tabl eDUAL_RANGE_BYTE ID ID"),
@@ -296,20 +288,9 @@ impl<F: PrimeField64> Dma64AlignedSM<F> {
             air_values.segment_last_fill_byte = F::ZERO;
         }
 
-        // add range check of count to check that it's a positive 32-bits number
-        let last_count = air_values.segment_last_count64.as_canonical_u64();
-        self.std.range_check_one(self.range_16_bits_id, last_count & 0xFFFF);
-        self.std.range_check_one(self.range_16_bits_id, (last_count >> 16) & 0xFFFF);
-
-        // range check of 24 must be multiplied by 2 because there are two values, but dual range check
-        // it's dual, no need to multiply by 2.
         self.std.inc_virtual_row(self.dual_range_byte_id, 0, range_check_non_used_ops);
-        self.std.range_check(self.range_24_bits_id, 0, range_check_non_used_ops * 2);
         for value in dual_byte_range_check_values {
             self.std.inc_virtual_row_one(self.dual_range_byte_id, value);
-        }
-        for value in range_check_24b_values {
-            self.std.range_check_one(self.range_24_bits_id, value);
         }
 
         let segment_id = segment_id.into();

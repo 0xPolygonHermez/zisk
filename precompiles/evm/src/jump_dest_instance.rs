@@ -107,10 +107,6 @@ pub struct JumpDestSM<F: PrimeField64> {
     bitmap_table_id: usize,
     /// Which row of the bitmap table proves a given op.
     bitmap_index: JumpDestBitmapTableIndex,
-    /// The 16-bit range the two halves of `segment_last_count` are checked
-    /// against. Its multiplicity is ours to raise too — a range check on an
-    /// airvalue is a bus emission like any other.
-    range_16_bits_id: usize,
 }
 
 impl<F: PrimeField64> JumpDestSM<F> {
@@ -122,15 +118,12 @@ impl<F: PrimeField64> JumpDestSM<F> {
             .get_virtual_table_id(JUMP_DEST_BITMAP_TABLE_ID)
             .expect("Failed to get JUMP_DEST_BITMAP_TABLE identifier");
 
-        let range_16_bits_id =
-            std.get_range_id(0, 0xFFFF, None).expect("Failed to get the 16-bit range id");
 
         Arc::new(Self {
             std,
             compressor_table_id,
             bitmap_table_id,
             bitmap_index: JumpDestBitmapTableIndex::new(),
-            range_16_bits_id,
         })
     }
 
@@ -379,10 +372,6 @@ impl<F: PrimeField64> JumpDestSM<F> {
         let chunks = [last_count & 0xFFFF, last_count >> 16];
         air_values.last_count_chunk[0] = F::from_u64(chunks[0]);
         air_values.last_count_chunk[1] = F::from_u64(chunks[1]);
-        for chunk in chunks {
-            self.std.range_check(self.range_16_bits_id, chunk, 1u64);
-        }
-
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 

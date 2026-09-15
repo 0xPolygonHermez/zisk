@@ -54,9 +54,9 @@ impl<F: PrimeField64> BinarySM<F> {
 
         let binary_extension_sm = BinaryExtensionSM::new(std.clone());
 
-        let binary_add_sm = BinaryAddSM::new(std.clone());
+        let binary_add_sm = BinaryAddSM::new();
 
-        let binary_add_hi_sm = BinaryAddHiSM::new(std.clone());
+        let binary_add_hi_sm = BinaryAddHiSM::new();
 
         Arc::new(Self {
             binary_basic_sm,

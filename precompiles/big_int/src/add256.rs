@@ -49,9 +49,6 @@ pub struct Add256SM<F: PrimeField64> {
 
     /// Number of available add256s in the trace.
     pub num_availables: usize,
-
-    /// Range checks ID's
-    range_id: usize,
 }
 
 impl<F: PrimeField64> Add256SM<F> {
@@ -63,9 +60,7 @@ impl<F: PrimeField64> Add256SM<F> {
         // Compute some useful values
         let num_availables = Add256Trace::<()>::NUM_ROWS;
 
-        let range_id = std.get_range_id(0, (1 << 16) - 1, None).unwrap();
-
-        Arc::new(Self { std, num_availables, range_id })
+        Arc::new(Self { std, num_availables })
     }
 
     /// Processes a slice of operation data, updating the trace.
@@ -203,9 +198,6 @@ impl<F: PrimeField64> Add256SM<F> {
                 global_multiplicities[i] += count;
             }
         }
-
-        // Send final result to std
-        self.std.range_check_ranged(self.range_id, None, &global_multiplicities);
 
         timer_stop_and_log_trace!(ADD256_TRACE);
 

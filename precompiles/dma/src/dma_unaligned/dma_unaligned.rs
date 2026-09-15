@@ -28,7 +28,6 @@ pub struct DmaUnalignedSM<F: PrimeField64> {
     pub std: Arc<Std<F>>,
 
     /// Range checks ID's
-    range_16_bits_id: usize,
     dual_range_byte_id: usize,
 }
 
@@ -43,9 +42,6 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
             dual_range_byte_id: std
                 .get_virtual_table_id(DUAL_RANGE_BYTE_ID)
                 .expect("Failed to get tabl eDUAL_RANGE_BYTE ID ID"),
-            range_16_bits_id: std
-                .get_range_id(0, 0xFFFF, None)
-                .expect("Failed to get 16b table ID"),
         })
     }
 
@@ -231,13 +227,11 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         }
 
         let padding_size = num_rows - row_offset;
-        let last_count = if padding_size == 0 && !trace_rows[num_rows - 1].get_seq_end() {
+        let _last_count = if padding_size == 0 && !trace_rows[num_rows - 1].get_seq_end() {
             trace_rows[num_rows - 1].get_count()
         } else {
             0
         };
-        self.std.range_check_one(self.range_16_bits_id, last_count & 0xFFFF);
-        self.std.range_check_one(self.range_16_bits_id, (last_count >> 16) & 0xFFFF);
 
         local_dual_byte_table[0] += (padding_size * 4) as u64;
         self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, None, &local_dual_byte_table);

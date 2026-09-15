@@ -34,7 +34,6 @@ pub struct Dma64AlignedMemSM<F: PrimeField64> {
     pub std: Arc<Std<F>>,
 
     /// Range checks ID's
-    range_16_bits_id: usize,
     op_x_rows: usize,
 
     /// The air this state machine builds traces for: [`AIR_ID`] or [`LARGE_AIR_ID`].
@@ -54,9 +53,6 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         Arc::new(Self {
             air_id,
             std: std.clone(),
-            range_16_bits_id: std
-                .get_range_id(0, 0xFFFF, None)
-                .expect("Failed to get 16b table ID"),
             op_x_rows: DMA_64_ALIGNED_MEM_OPS_BY_ROW,
         })
     }
@@ -71,7 +67,6 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         &self,
         input: &Dma64AlignedInput,
         trace: &mut [R],
-        _local_16_bits_table: &mut [u32],
         air_values: &mut Dma64AlignedMemAirValues<F>,
     ) -> usize {
         let rows = input.rows as usize;
@@ -232,7 +227,6 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         let flat_inputs = crate::flatten_and_reorder_inputs(inputs);
         let trace_rows = trace.buffer.as_mut_slice();
 
-        let mut local_16_bits_table = vec![0u32; 1 << 16];
         let mut air_values = Dma64AlignedMemAirValues::<F>::new();
 
         // TODO: inputs between instances
@@ -241,7 +235,6 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
             let rows_used = self.process_input(
                 input,
                 &mut trace_rows[row_offset..],
-                &mut local_16_bits_table,
                 &mut air_values,
             );
             row_offset += rows_used;
@@ -268,11 +261,7 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         }
 
         // add range check of count to check that it's a positive 32-bits number
-        let last_count = air_values.segment_last_count64.as_canonical_u64();
-        local_16_bits_table[(last_count & 0xFFFF) as usize] += 1;
-        local_16_bits_table[((last_count >> 16) & 0xFFFF) as usize] += 1;
 
-        self.std.range_check_ranged(self.range_16_bits_id, None, &local_16_bits_table);
 
         let segment_id = segment_id.into();
         air_values.segment_id = F::from_usize(segment_id);

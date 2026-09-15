@@ -259,8 +259,6 @@ pub struct MemAlignByteSM<F: PrimeField64> {
     /// The table ID for the Mem Align ROM State Machine
     table_dual_byte_id: usize,
 
-    table_16b_id: usize,
-    table_8b_id: usize,
 }
 
 impl<F: PrimeField64> MemAlignByteSM<F> {
@@ -271,8 +269,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
             table_dual_byte_id: std
                 .get_virtual_table_id(DUAL_RANGE_BYTE_ID)
                 .expect("Failed to get dual byte table ID"),
-            table_16b_id: std.get_range_id(0, 0xFFFF, None).expect("Failed to get 16b table ID"),
-            table_8b_id: std.get_range_id(0, 0xFF, None).expect("Failed to get 8b table ID"),
         })
     }
 
@@ -294,8 +290,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         );
 
         let mut dual_mults = vec![0u64; 65536];
-        let mut mults_16b = vec![0u32; 65536];
-        let mut mults_8b = vec![0u32; 256];
 
         let mut irow = 0;
         for inner_memp_ops in mem_ops.iter() {
@@ -306,8 +300,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
                     irow,
                     R::get_row_mut(&mut trace, irow),
                     &mut dual_mults,
-                    &mut mults_16b,
-                    &mut mults_8b,
                 );
                 irow += 1;
             }
@@ -327,21 +319,11 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
                 irow,
                 padding_row,
                 &mut dual_mults,
-                &mut mults_16b,
-                &mut mults_8b,
             );
             dual_mults[0] += padding_size - 1;
-            mults_16b[0] += (padding_size - 1) as u32;
-            if R::valid_for_write() {
-                mults_8b[0] += (padding_size - 1) as u32;
-            }
         }
 
         self.std.inc_virtual_rows_ranged(self.table_dual_byte_id, None, &dual_mults);
-        self.std.range_check_ranged(self.table_16b_id, None, &mults_16b);
-        if R::valid_for_write() {
-            self.std.range_check_ranged(self.table_8b_id, None, &mults_8b);
-        }
 
         Ok(R::create_instance_from_trace(&mut trace, irow))
     }
@@ -354,8 +336,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         irow: usize,
         row: &mut R,
         dual_mults: &mut [u64],
-        mults_16b: &mut [u32],
-        mults_8b: &mut [u32],
     ) {
         let addr = input.addr;
 
@@ -471,7 +451,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
             step,
         );
         dual_mults[(value_8b as u16 + ((byte_value as u16) << 8)) as usize] += 1;
-        mults_16b[value_16b as usize] += 1;
 
         let written_byte_value = input.value as u8;
         let written_composed_value = match offset {
@@ -492,7 +471,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         };
 
         if R::valid_for_write() {
-            mults_8b[written_byte_value as usize] += 1;
         }
         row.set_write_fields(
             input.is_write,

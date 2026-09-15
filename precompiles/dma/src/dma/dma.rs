@@ -21,9 +21,6 @@ pub struct DmaSM<F: PrimeField64> {
 
     pub rom_table_id: usize,
     pub dual_range_7_bits_id: usize,
-    pub range_22_bits_id: usize,
-    pub range_24_bits_id: usize,
-    pub range_16_bits_id: usize,
 }
 
 impl<F: PrimeField64> DmaSM<F> {
@@ -38,15 +35,6 @@ impl<F: PrimeField64> DmaSM<F> {
             dual_range_7_bits_id: std
                 .get_virtual_table_id(DUAL_RANGE_7_BITS_ID)
                 .expect("Failed to get dual 7-bits table ID"),
-            range_22_bits_id: std
-                .get_range_id(0, 0x3F_FFFF, None)
-                .expect("Failed to get 22b table ID"),
-            range_24_bits_id: std
-                .get_range_id(0, 0xFF_FFFF, None)
-                .expect("Failed to get 24b table ID"),
-            range_16_bits_id: std
-                .get_range_id(0, 0xFFFF, None)
-                .expect("Failed to get 16b table ID"),
         })
     }
 
@@ -63,10 +51,6 @@ impl<F: PrimeField64> DmaSM<F> {
         // row_offset: usize,
         trace: &mut R,
         local_dual_7_bits_multiplicities: &mut [u64],
-        local_22_bits_values: &mut Vec<u32>,
-        local_24_bits_values: &mut Vec<u32>,
-        local_24_bits_low_values: &mut [u32],
-        local_16_bits_multiplicities: &mut [u32],
         local_rom_multiplicities: &mut [u64],
     ) {
         let count = DmaInfo::get_count(input.encoded);
@@ -77,13 +61,6 @@ impl<F: PrimeField64> DmaSM<F> {
         trace.set_h_count(h_count);
         let l_count = (count & 0xFF) as u16 + 256 * count_ge_256 as u16;
         trace.set_l_count(l_count);
-
-        // to increase performance because the 99.99% of count is < 64K => h_count < 256
-        if h_count < 256 {
-            local_24_bits_low_values[h_count as usize] += 1;
-        } else {
-            local_24_bits_values.push(h_count);
-        }
 
         let h_src64 = input.src >> 10;
         let h_dst64 = input.dst >> 10;
@@ -99,8 +76,6 @@ impl<F: PrimeField64> DmaSM<F> {
         trace.set_l_dst64(l_dst64);
         trace.set_dst_offset(input.dst as u8 & 0x07);
 
-        local_22_bits_values.push(h_src64);
-        local_22_bits_values.push(h_dst64);
         let dual_7_bits_row = ((l_src64 as usize) << 7) | l_dst64 as usize;
         local_dual_7_bits_multiplicities[dual_7_bits_row] += 1;
 
@@ -151,8 +126,6 @@ impl<F: PrimeField64> DmaSM<F> {
 
                 let count_diff_chunks = [count_diff as u16, (count_diff >> 16) as u16];
                 trace.set_all_count_diff_chunks(&count_diff_chunks);
-                local_16_bits_multiplicities[count_diff_chunks[0] as usize] += 1;
-                local_16_bits_multiplicities[count_diff_chunks[1] as usize] += 1;
 
                 if pre_result_nz {
                     let result = DmaInfo::get_memcmp_res_as_u64(input.encoded);
@@ -218,14 +191,7 @@ impl<F: PrimeField64> DmaSM<F> {
 
         // TODO: add new interface with u32 to std to be used with global_rom_multiplicities
         // Split the add256_trace.buffer into slices matching each inner vector’s length.
-        let (
-            global_dual_7_bits_multiplicities,
-            global_22_bits_values,
-            global_24_bits_values,
-            global_24_bits_low_values,
-            global_16_bits_multiplicities,
-            global_rom_multiplicities,
-        ) = flat_inputs
+        let (global_dual_7_bits_multiplicities, global_rom_multiplicities) = flat_inputs
             .par_chunks(chunk_size)
             .zip(trace_rows.par_chunks_mut(chunk_size))
             // .enumerate()
@@ -233,10 +199,6 @@ impl<F: PrimeField64> DmaSM<F> {
             .map(|(input_chunk, trace_chunk)| {
                 // Local array shared by this chunk
                 let mut local_dual_7_bits_multiplicities = vec![0u64; 1 << 14];
-                let mut local_22_bits_values = Vec::<u32>::with_capacity(inputs.len() * 2);
-                let mut local_24_bits_values = Vec::<u32>::new();
-                let mut local_24_bits_low_values = vec![0u32; 256];
-                let mut local_16_bits_multiplicities = vec![0u32; 1 << 16];
                 let mut local_rom_multiplicities = vec![0u64; DMA_ROM_WITH_MEMCMP_SIZE];
 
                 // let chunk_offset = chunk_idx * chunk_size;
@@ -250,52 +212,21 @@ impl<F: PrimeField64> DmaSM<F> {
                         //row_offset,
                         trace_row,
                         &mut local_dual_7_bits_multiplicities,
-                        &mut local_22_bits_values,
-                        &mut local_24_bits_values,
-                        &mut local_24_bits_low_values,
-                        &mut local_16_bits_multiplicities,
                         &mut local_rom_multiplicities,
                     );
                 }
-                (
-                    local_dual_7_bits_multiplicities,
-                    local_22_bits_values,
-                    local_24_bits_values,
-                    local_24_bits_low_values,
-                    local_16_bits_multiplicities,
-                    local_rom_multiplicities,
-                )
+                (local_dual_7_bits_multiplicities, local_rom_multiplicities)
             })
             .reduce(
                 // Identity: create empty accumulators
-                || {
-                    (
-                        vec![0u64; 1 << 14],
-                        Vec::new(),
-                        Vec::new(),
-                        vec![0u32; 256],
-                        vec![0u32; 1 << 16],
-                        vec![0u64; DMA_ROM_WITH_MEMCMP_SIZE],
-                    )
-                },
+                || (vec![0u64; 1 << 14], vec![0u64; DMA_ROM_WITH_MEMCMP_SIZE]),
                 // Combine two results
                 |mut acc, local| {
-                    // Merge multiplicities (element-wise addition)
                     for (i, &val) in local.0.iter().enumerate() {
                         acc.0[i] += val;
                     }
-                    // Concatenate value vectors
-                    acc.1.extend(local.1);
-                    acc.2.extend(local.2);
-                    // Merge low values (element-wise addition)
-                    for (i, &val) in local.3.iter().enumerate() {
-                        acc.3[i] += val;
-                    }
-                    for (i, &val) in local.4.iter().enumerate() {
-                        acc.4[i] += val;
-                    }
-                    for (i, &val) in local.5.iter().enumerate() {
-                        acc.5[i] += val;
+                    for (i, &val) in local.1.iter().enumerate() {
+                        acc.1[i] += val;
                     }
                     acc
                 },
@@ -312,17 +243,7 @@ impl<F: PrimeField64> DmaSM<F> {
             None,
             &global_dual_7_bits_multiplicities,
         );
-        self.std.range_check_ranged(self.range_24_bits_id, None, &global_24_bits_low_values);
         self.std.inc_virtual_rows_ranged(self.rom_table_id, None, &global_rom_multiplicities);
-        self.std.range_check_ranged(self.range_16_bits_id, None, &global_16_bits_multiplicities);
-
-        for value in global_22_bits_values {
-            self.std.range_check_one(self.range_22_bits_id, value);
-        }
-        for value in global_24_bits_values {
-            self.std.range_check_one(self.range_24_bits_id, value);
-        }
-
         if total_inputs < num_rows {
             self.process_empty_slice(&mut trace_rows[total_inputs]);
             let empty_row = trace_rows[total_inputs];

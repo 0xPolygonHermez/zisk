@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use crate::{mem_sm::MemPreviousSegment, MemModule, MemOps};
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use std::{
@@ -36,10 +35,7 @@ fn lanes_of<F: PrimeField64, R: RomDataTraceRowOps<F>>() -> MemLanes {
 }
 
 pub struct RomDataSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
-
-    range_24bits_id: usize,
+    _phantom: std::marker::PhantomData<F>,
 }
 
 const OFFSET_USE_FLAG: u32 = 0x8000_0000;
@@ -47,10 +43,10 @@ const OFFSET_VALUE_MASK: u32 = 0x7FFF_FFFF;
 
 #[allow(unused, unused_variables)]
 impl<F: PrimeField64> RomDataSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_24bits_id =
-            std.get_range_id(0, (1 << 24) - 1, None).expect("Failed to get 24 bits range ID");
-        Arc::new(Self { range_24bits_id, std: std.clone() })
+    /// Takes no `Std`: the only thing this machine used it for was range checks, which the prover
+    /// now computes from the committed trace.
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: std::marker::PhantomData })
     }
     pub fn get_from_addr() -> u32 {
         ROM_DATA_W_ADDR_INIT
@@ -181,10 +177,6 @@ impl<F: PrimeField64> RomDataSM<F> {
 
         air_values.segment_last_value[0] = F::from_u32(pad_value[0]);
         air_values.segment_last_value[1] = F::from_u32(pad_value[1]);
-
-        if is_last_segment {
-            self.std.range_check_one(self.range_24bits_id, padding_size as u64);
-        }
 
         #[cfg(feature = "debug_mem")]
         {
@@ -383,10 +375,6 @@ impl<F: PrimeField64> RomDataSM<F> {
 
         air_values.segment_last_value[0] = F::from_u32(last_value[0]);
         air_values.segment_last_value[1] = F::from_u32(last_value[1]);
-
-        if is_last_segment {
-            self.std.range_check_one(self.range_24bits_id, padding_size as u64);
-        }
 
         #[cfg(feature = "debug_mem")]
         {
