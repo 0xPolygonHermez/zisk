@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::env;
 use std::path::PathBuf;
 use zisk_cluster_common::Environment;
 use zisk_cluster_common::LoggingConfig;
@@ -29,8 +28,8 @@ pub struct ServerConfig {
     pub port: u16,
     /// Directory where generated proofs are written.
     pub proofs_dir: PathBuf,
-    /// If true, proofs are not persisted to disk.
-    pub no_save_proofs: bool,
+    /// If true, proofs of completed jobs are persisted to [`Self::proofs_dir`].
+    pub save_proofs: bool,
     /// Grace period, in seconds, for in-flight work on shutdown.
     pub shutdown_timeout_seconds: u64,
 }
@@ -134,23 +133,20 @@ impl Config {
     const DEFAULT_PROOFS_DIR: &'static str = "proofs";
 
     /// Load the configuration from built-in defaults, an optional TOML file,
-    /// and the given argument overrides (creating `proofs_dir` if needed).
+    /// and the given argument overrides.
+    ///
+    /// Every override is optional: `None` leaves the value coming from the
+    /// config file (or the built-in default) untouched.
+    ///
+    /// When proof saving is enabled, `proofs_dir` is created (and validated) up
+    /// front so a bad path fails at startup rather than after a job completes.
     pub fn load(
         config_file: Option<String>,
         port: Option<u16>,
         proofs_dir: Option<PathBuf>,
-        no_save_proofs: bool,
+        save_proofs: Option<bool>,
         webhook_url: Option<String>,
     ) -> Result<Self> {
-        // Create proofs directory if it doesn't exist
-        if let Some(ref path) = proofs_dir {
-            if !path.exists() {
-                std::fs::create_dir_all(path)?;
-            } else if !path.is_dir() {
-                anyhow::bail!("Proofs path exists but is not a directory: {}", path.display());
-            }
-        }
-
         let mut builder = config::Config::builder()
             .set_default("service.name", "ZisK Distributed Coordinator")?
             .set_default("service.version", env!("CARGO_PKG_VERSION"))?
@@ -158,7 +154,7 @@ impl Config {
             .set_default("server.host", Self::DEFAULT_BIND_HOST)?
             .set_default("server.port", Self::DEFAULT_PORT)?
             .set_default("server.proofs_dir", Self::DEFAULT_PROOFS_DIR)?
-            .set_default("server.no_save_proofs", false)?
+            .set_default("server.save_proofs", false)?
             .set_default("server.shutdown_timeout_seconds", 30)?
             .set_default("logging.level", "info")?
             .set_default("logging.format", "pretty")?
@@ -196,20 +192,70 @@ impl Config {
                 .set_override("server.proofs_dir", proofs_dir.to_string_lossy().to_string())?;
         }
 
-        builder = builder.set_override("server.no_save_proofs", no_save_proofs)?;
+        // Override save_proofs if provided via function argument
+        if let Some(save_proofs) = save_proofs {
+            builder = builder.set_override("server.save_proofs", save_proofs)?;
+        }
 
         // Override webhook_url if provided via function argument
         if let Some(url) = webhook_url {
             builder = builder.set_override("coordinator.webhook_url", url)?;
         }
 
-        let config = builder.build()?;
+        let config: Self = builder.build()?.try_deserialize()?;
 
-        Ok(config.try_deserialize()?)
+        // Validate against the resolved value, so the check covers the default,
+        // the config file and the argument alike — not just the argument.
+        if config.server.save_proofs {
+            let dir = &config.server.proofs_dir;
+            if !dir.exists() {
+                std::fs::create_dir_all(dir)?;
+            } else if !dir.is_dir() {
+                anyhow::bail!("Proofs path exists but is not a directory: {}", dir.display());
+            }
+        }
+
+        Ok(config)
     }
 
     /// The default coordinator URL (`http://127.0.0.1:50051`).
     pub fn default_url() -> String {
         format!("http://{}:{}", Self::DEFAULT_HOST, Self::DEFAULT_PORT)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// Writes a throwaway `coordinator.toml`, returning the directory that owns
+    /// it (deleted on drop) and the path to pass to [`Config::load`].
+    fn write_temp_config(contents: &str) -> (TempDir, String) {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let path = dir.path().join("coordinator.toml");
+        std::fs::write(&path, contents).expect("failed to write temp config");
+        (dir, path.to_string_lossy().to_string())
+    }
+
+    #[test]
+    fn save_proofs_defaults_to_false() {
+        let config = Config::load(None, None, None, None, None).unwrap();
+        assert!(!config.server.save_proofs);
+    }
+
+    #[test]
+    fn config_file_save_proofs_yields_only_to_an_explicit_override() {
+        let (dir, path) = write_temp_config("[server]\nsave_proofs = true\n");
+        let proofs_dir = dir.path().join("proofs");
+
+        let from_file =
+            Config::load(Some(path.clone()), None, Some(proofs_dir.clone()), None, None).unwrap();
+        let overridden =
+            Config::load(Some(path), None, Some(proofs_dir.clone()), Some(false), None).unwrap();
+
+        assert!(from_file.server.save_proofs, "config file value must not be clobbered");
+        assert!(!overridden.server.save_proofs);
+        assert!(proofs_dir.is_dir(), "enabling save_proofs must create the proofs directory");
     }
 }

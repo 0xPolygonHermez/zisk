@@ -1162,7 +1162,7 @@ impl Coordinator {
         let mut job = job_entry.write().await;
 
         // Save proof to disk
-        if state == JobState::Completed && !self.config.server.no_save_proofs {
+        if state == JobState::Completed && self.config.server.save_proofs {
             // Clone the proof so the (potentially large) blocking disk write can
             // run off the async runtime without holding a borrow into the job;
             // the in-memory proof stays intact for later retrieval.
@@ -1171,10 +1171,10 @@ impl Coordinator {
                     "Proof is missing during post-launch processing".to_string(),
                 )
             })?;
-            let folder = self.config.server.proofs_dir.clone();
-            let raw_path = folder.join(format!("proof_{}.bin", job_id.as_str()));
+            // `proofs_dir` is created and validated when the config is loaded.
+            let raw_path =
+                self.config.server.proofs_dir.join(format!("proof_{}.bin", job_id.as_str()));
             tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-                std::fs::create_dir_all(&folder)?;
                 zisk_proof.save(&raw_path)?;
                 Ok(())
             })
@@ -1906,7 +1906,7 @@ mod tests {
     };
 
     fn test_config_with(overrides: impl FnOnce(&mut Config)) -> Config {
-        let mut config = Config::load(None, None, None, true, None)
+        let mut config = Config::load(None, None, None, None, None)
             .expect("Failed to create default test config");
         overrides(&mut config);
         config

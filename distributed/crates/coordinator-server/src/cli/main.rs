@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use clap::Parser;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
@@ -14,7 +15,7 @@ use zisk_coordinator::{Config as CoordinatorConfig, Coordinator, CoordinatorGrpc
 
 use zisk_coordinator_server::{
     backend::{coordinator::CoordinatorBackend, mock::MockBackend, BackendService},
-    config::{BackendMode, Config},
+    config::{BackendMode, CliOverrides, Config},
     metrics, CoordinatorServer,
 };
 
@@ -63,19 +64,41 @@ struct Args {
         help = "Log level: trace | debug | info | warn | error"
     )]
     log_level: Option<String>,
+
+    /// Persist the proof of every completed job to disk.
+    #[arg(
+        long,
+        env = "ZISK_COORDINATOR_SAVE_PROOFS",
+        value_name = "BOOL",
+        num_args = 0..=1,
+        default_missing_value = "true",
+        help = "Write completed proofs to the proofs directory (default: false)"
+    )]
+    save_proofs: Option<bool>,
+
+    /// Override the directory completed proofs are written to.
+    #[arg(
+        long,
+        env = "ZISK_COORDINATOR_PROOFS_DIR",
+        value_name = "DIR",
+        help = "Directory for saved proofs (default: ./proofs)"
+    )]
+    proofs_dir: Option<PathBuf>,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let cfg = Config::load(
-        args.config,
-        args.api_port,
-        args.cluster_port,
-        args.metrics_port,
-        args.log_level,
-    )?;
+    let cfg = Config::load(CliOverrides {
+        config_file: args.config,
+        api_port: args.api_port,
+        cluster_port: args.cluster_port,
+        metrics_port: args.metrics_port,
+        log_level: args.log_level,
+        save_proofs: args.save_proofs,
+        proofs_dir: args.proofs_dir,
+    })?;
 
     // Init logging (keep the guard alive for the process lifetime)
     let _log_guard = init_logging(Some(&cfg.logging), None)?;
@@ -94,8 +117,8 @@ async fn main() -> Result<()> {
             let coord_config = CoordinatorConfig::load(
                 cfg.coordinator.config_file.clone(),
                 Some(cfg.coordinator.port),
-                None,
-                false,
+                cfg.coordinator.proofs_dir.clone(),
+                cfg.coordinator.save_proofs,
                 None,
             )?;
             let coordinator = Arc::new(Coordinator::new(coord_config));
