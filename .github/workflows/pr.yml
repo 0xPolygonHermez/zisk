@@ -9,6 +9,12 @@ on:
     paths-ignore:
       - 'book/**'
   workflow_dispatch:
+    inputs:
+      use_blake3_setup:
+        description: "Use the blake3 setup"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
@@ -191,11 +197,14 @@ jobs:
             '
 
       - name: Build setup
+        env:
+          HASH_MODE: ${{ inputs.use_blake3_setup && 'blake3' || 'Poseidon1' }}
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
             -e INSTALL_SETUP="1" \
+            -e HASH_MODE="$HASH_MODE" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_setup.sh
