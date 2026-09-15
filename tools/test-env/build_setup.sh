@@ -18,7 +18,7 @@
 #                                the macOS dylib files into build/dylib_input.
 #   RECURSIVE_JOBS / SETUP_JOBS  Setup pipeline concurrency.
 #   HASH_MODE                    Hash mode the setup is generated with
-#                                (default: Poseidon1).
+#                                (default: blake3).
 #   PTAU_PATH                    Powers-of-tau file for the snark setup
 #                                (default: ../powersOfTau28_hez_final_24.ptau).
 
@@ -59,7 +59,7 @@ main() {
 
     # Default the hash mode when neither the shell, .env, nor Cargo.toml set
     # it. Exported so the setup_build.sh child process inherits it.
-    export HASH_MODE="${HASH_MODE:-Poseidon1}"
+    export HASH_MODE="${HASH_MODE:-blake3}"
 
     # The BN128 wrap is poseidon-only, and HASH_MODE is what the STARK setup below will
     # build the key with — so this pairing is already decided here, before any work. Checked

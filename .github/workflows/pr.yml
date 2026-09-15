@@ -12,8 +12,8 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
-      use_blake3_setup:
-        description: "Blake3 setup"
+      use_poseidon1_setup:
+        description: "Poseidon1 setup"
         required: false
         type: boolean
         default: false
@@ -26,7 +26,7 @@ permissions:
   contents: read
 
 env:
-  TEST_REF: ${{ github.event_name == 'schedule' && vars.TEST_BLAKE3_BRANCH || '' }}
+  TEST_REF: ${{ github.event_name == 'schedule' && vars.TEST_POSEIDON1_BRANCH || '' }}
 
 jobs:
   cargo-tests:
@@ -155,7 +155,9 @@ jobs:
       TEST_CONTAINER: zisk-gha-test
       # zisk-eth-client guest under test: ziskethone or reth.
       ZEC_GUEST: ziskethone
-      HASH_MODE: ${{ (github.event_name == 'schedule' || inputs.use_blake3_setup) && 'blake3' || 'Poseidon1' }}
+      # blake3 is the default everywhere; the nightly run is the one that keeps
+      # covering Poseidon1.
+      HASH_MODE: ${{ (github.event_name == 'schedule' || inputs.use_poseidon1_setup) && 'Poseidon1' || 'blake3' }}
 
     steps:
       - name: Fix workspace permissions

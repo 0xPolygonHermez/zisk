@@ -31,12 +31,12 @@ on:
         description: "Poseidon1 setup"
         required: false
         type: boolean
-        default: true
+        default: false
       include_blake3:
         description: "Blake3 setup"
         required: false
         type: boolean
-        default: false
+        default: true
 
 concurrency:
   group: upload-setup
@@ -95,10 +95,11 @@ jobs:
       - name: Resolve setup version
         id: resolve
         run: |
-          # On workflow_dispatch these are the checkboxes; on a push, only the
-          # default mode (input defaults don't apply to non-dispatch events).
-          BUILD_POSEIDON1="${{ (github.event_name != 'workflow_dispatch' || inputs.include_poseidon1) && '1' || '0' }}"
-          BUILD_BLAKE3="${{ (github.event_name == 'workflow_dispatch' && inputs.include_blake3) && '1' || '0' }}"
+          # blake3 is what the tests run on, so it is the one published by default.
+          # A push to develop publishes both — that run is also the one that adds the
+          # macOS dylibs and the SNARK setup, both of which only apply to Poseidon1.
+          BUILD_POSEIDON1="${{ ((github.event_name == 'push' && github.ref_name == 'develop') || inputs.include_poseidon1) && '1' || '0' }}"
+          BUILD_BLAKE3="${{ (github.event_name != 'workflow_dispatch' || inputs.include_blake3) && '1' || '0' }}"
           if [ "$BUILD_POSEIDON1" = "0" ] && [ "$BUILD_BLAKE3" = "0" ]; then
             echo "nothing to build: tick include_poseidon1 and/or include_blake3" >&2
             exit 1

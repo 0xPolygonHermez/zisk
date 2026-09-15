@@ -31,7 +31,7 @@
 : "${SKIP_COMPILE_PIL:=0}"
 # Must track the defaults in setup_build.sh and build_setup.sh: HASH_MODE feeds
 # compute_input_hash, so a stale default here hands back another mode's key.
-: "${HASH_MODE:=Poseidon1}"
+: "${HASH_MODE:=blake3}"
 
 # Path to the starkstructs settings for the mode in $HASH_MODE.
 #

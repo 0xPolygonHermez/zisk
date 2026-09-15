@@ -101,7 +101,7 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          reuses them instead of rebuilding — pass --exps-arch
                          major (portable across GPUs) when populating the cache.
   --hash-mode MODE       Hash mode the setup is generated with (Poseidon1,
-                         Poseidon2, blake3). Default: Poseidon1. Part of the
+                         Poseidon2, blake3). Default: blake3. Part of the
                          --cache-dir key. Also settable via HASH_MODE env var.
   --exps-arch SPEC       CUDA arch forwarded to gen-exps (both --gen-exps and
                          --gen-exps-only). Default: auto (detects the host GPU).
@@ -146,7 +146,7 @@ GEN_EXPS_ON_HIT=0
 # Env defaults; the --recursive-jobs / --setup-jobs CLI flags override these below.
 RECURSIVE_JOBS_ARG="${RECURSIVE_JOBS:-}"
 SETUP_JOBS_ARG="${SETUP_JOBS:-}"
-HASH_MODE="${HASH_MODE:-Poseidon1}"
+HASH_MODE="${HASH_MODE:-blake3}"
 SKIP_COMPILE_PIL=0
 VERBOSE_COUNT=0
 # Opt-in: generate + compile per-AIR Q-expression CUDA kernels (.exps.so) during
