@@ -174,12 +174,12 @@ impl<F: PrimeField64> MemSM<F> {
     }
 
     #[cfg(feature = "debug_mem")]
-    pub fn save_mem_inputs_to_file(mem_ops: &[MemInput], segment_id: SegmentId) {
+    pub fn save_mem_inputs_to_file(mem_ops: MemOps<'_>, segment_id: SegmentId) {
         let file_name = format!("tmp/mem_inputs_{segment_id}.txt");
         println!("[MemDebug] saving mem_inputs to {} .....", file_name);
         let file = File::create(&file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        for op in mem_ops {
+        for op in mem_ops.iter() {
             let is_write = if op.is_write { 1u8 } else { 0u8 };
             let chunk = if op.step == 0 { 0 } else { MemHelpers::mem_step_to_chunk(op.step).0 };
             writeln!(
