@@ -26,7 +26,7 @@ use zisk_asm_runner::HintsShmem;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind,
-    StatsCostPerType, ZiskExecutorTime,
+    StatsCostPerType, VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 use zisk_precomp_hints::HintsProcessor;
@@ -462,13 +462,20 @@ pub trait ProverEngine {
     ) -> Result<ProveOutput>;
 
     /// Wrap a vadcop_final proof to `proof_kind` (Plonk or minimal).
-    /// `publics_full` is the full-width `[program_vk(4)][user(ZISK_PUBLICS)]`
-    /// blob, used verbatim — a recurser proof's publics exceed 32 bits, so the
-    /// truncated u32 view must not be used here.
+    ///
+    /// `publics_full` is the canonical flag-free, full-width
+    /// `[program_vk(4)][user(ZISK_PUBLICS)]` blob — a recurser proof's publics
+    /// exceed 32 bits, so the truncated u32 view must not be used here.
+    ///
+    /// `source_kind` is the wrapped proof's own [`VadcopKind`], and is part of the
+    /// contract rather than a hint: it carries the `is_vadcop_final_proof` flag
+    /// the recursion layer commits to, and selects the verkey the SNARK wrapper
+    /// verifies under. Callers pass the stored kind and the backend does both.
     fn wrap_proof(
         &self,
         proof: &[u64],
         publics_full: &[u64],
+        source_kind: VadcopKind,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput>;
 
@@ -1061,12 +1068,16 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
 
     /// Execute the proof wrapping with the configured options.
     pub fn run(self) -> Result<ProveOutput> {
-        let (proof, publics_full) = match &self.proof.body {
-            ProofBody::Vadcop { proof, publics_full, .. } => (proof.as_slice(), publics_full),
+        // `kind` must travel with the publics — dropping it leaves the recursion
+        // layer a flag short and shifts the whole public window.
+        let (proof, source_kind, publics_full) = match &self.proof.body {
+            ProofBody::Vadcop { proof, kind, publics_full, .. } => {
+                (proof.as_slice(), *kind, publics_full)
+            }
             ProofBody::Plonk { .. } => {
                 return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
             }
         };
-        self.prover.wrap_proof(proof, publics_full, self.proof_kind)
+        self.prover.wrap_proof(proof, publics_full, source_kind, self.proof_kind)
     }
 }

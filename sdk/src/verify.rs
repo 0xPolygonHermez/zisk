@@ -25,7 +25,8 @@ impl<'a> VerifyBuilder<'a> {
         self
     }
 
-    /// Optional trusted PLONK circuit key; if unset, the proof's embedded key is used.
+    /// Optional trusted PLONK circuit key; if unset, the proof's embedded key is
+    /// used. Verification rejects it if the proof is not a PLONK proof.
     #[must_use]
     pub fn with_plonk_vk(mut self, vkey: &'a PlonkVkey) -> Self {
         self.plonk_vk = Some(vkey);
