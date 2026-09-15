@@ -858,6 +858,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let mut error_message = String::new();
         let mut reset_current_job = false;
+        // Shadowed so a failure while building the response can flip it. An empty
+        // `proof_data` with `success` still true reads to the coordinator as an
+        // intermediate ack, which it rejects outright on the final task.
+        let mut success = success;
 
         let result_data = match result {
             Ok(data) => {
@@ -873,16 +877,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         let flat_proof: Vec<u64> = final_proof.into_iter().flatten().collect();
                         let minimal = proof_type == ProofKind::VadcopFinalMinimal;
                         // Compression strips the flag that marks this a fold, taking the
-                        // recursion-domain check in `Proof::verify` with it. Reported as
-                        // an empty proof like any other build failure, so the response
-                        // and the job cleanup below still run.
+                        // recursion-domain check in `Proof::verify` with it.
                         if minimal {
-                            error!(
-                                "Refusing to return the aggregated proof for {} as \
-                                 VadcopFinalMinimal: compression drops the \
-                                 recursion-domain marker",
-                                job_id
+                            error_message = format!(
+                                "refusing to return the aggregated proof for {job_id} as \
+                                 VadcopFinalMinimal: compression drops the recursion-domain \
+                                 marker"
                             );
+                            error!("{error_message}");
+                            success = false;
                             vec![]
                         } else {
                             // A missing verkey or hash family yields an unusable proof
@@ -925,7 +928,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                     .unwrap_or_default()
                                 }
                                 Err(e) => {
-                                    error!("Failed to build Proof: {}", e);
+                                    error_message = format!("Failed to build Proof: {e}");
+                                    error!("{error_message}");
+                                    success = false;
                                     vec![]
                                 }
                             }
