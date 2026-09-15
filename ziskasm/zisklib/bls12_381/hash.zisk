@@ -121,6 +121,14 @@ zisklib_os2ip_be_mod_p_bls12_381:
 ; void zisklib_expand_message_xmd(msg,msglen,dst,dstlen) -> BLS_H_UNIF[256B] (len=256,ell=8)
 zisklib_expand_message_xmd_bls12_381:
 	push r1
+	; Bound check: msg_prime = 64 || msg || 3 || dst_prime(dstlen+1) must fit BLS_H_MSGP (1280B).
+	; Bytes needed = 68 + msglen + dstlen <= 1280  ->  msglen + dstlen <= 1212. dst_prime must also
+	; fit BLS_H_DSTP (320B); the reference asserts dst.len() <= 255. An over-long msg/dst would
+	; overflow the fixed buffers, so halt (matches the reference assert! panic on out-of-spec input).
+	ltu(255, r13), j(lh_em_toolong)
+	ltu(1212, r11), j(lh_em_toolong)
+	add(r11, r13) -> r6
+	ltu(1212, r6), j(lh_em_toolong)
 	copyb(0, BLS_H_MSG) -> r5
 	copyb(r5, r10) -> 8[a + 0]
 	copyb(0, BLS_H_MSGLEN) -> r5
@@ -267,6 +275,8 @@ lh_em_xd:
 lh_em_done:
 	pop r1
 	ret
+lh_em_toolong:
+	copyb(0, 0) -> r10, end
 
 ; void zisklib_hash_to_field_g2(msg,msglen,dst,dstlen) -> BLS_H_U[24] (2 Fp2)
 zisklib_hash_to_field_g2_bls12_381:

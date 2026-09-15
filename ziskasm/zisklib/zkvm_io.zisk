@@ -84,6 +84,7 @@ io_wo_flushpend:
 	copyb(r5, 4[a + 0]) -> r7            ; PEND as u32
 	copyb(0, IO_SLOT) -> r5
 	copyb(r5, 8[a + 0]) -> r6            ; slot
+	ltu(63, r6), j(io_wo_toobig)         ; enforce slot < 64 (set_output asserts id < 64)
 	sll(r6, 2) -> r15
 	copyb(0, IO_OUTPUT_ADDR) -> r14
 	add(r14, r15) -> r14
@@ -102,6 +103,7 @@ io_wo_full:
 	copyb(r10, 4[a + 0]) -> r7           ; u32 = *(u32*)ptr
 	copyb(0, IO_SLOT) -> r5
 	copyb(r5, 8[a + 0]) -> r6
+	ltu(63, r6), j(io_wo_toobig)         ; enforce slot < 64 (set_output asserts id < 64)
 	sll(r6, 2) -> r15
 	copyb(0, IO_OUTPUT_ADDR) -> r14
 	add(r14, r15) -> r14
@@ -137,9 +139,14 @@ io_wo_finalpad:
 	copyb(r5, 4[a + 0]) -> r7            ; PEND u32 (upper bytes are zero)
 	copyb(0, IO_SLOT) -> r5
 	copyb(r5, 8[a + 0]) -> r6
+	ltu(63, r6), j(io_wo_toobig)         ; enforce slot < 64 (set_output asserts id < 64)
 	sll(r6, 2) -> r15
 	copyb(0, IO_OUTPUT_ADDR) -> r14
 	add(r14, r15) -> r14
 	copyb(r14, r7) -> 4[a + 0]
 io_wo_ret:
 	ret
+io_wo_toobig:
+	; slot index reached the 64-word public-output limit; set_output() panics on
+	; id >= 64, so halt rather than writing past the public output set.
+	copyb(0, 0) -> r10, end
