@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 /// Resolves a `.zisk` input argument into the list of files to assemble.
 ///
 /// If `path` is a single file it must have the `.zisk` extension. If it is a
-/// directory, every `.zisk` file directly inside it is collected, sorted by name
+/// directory, every `.zisk` file under it (recursively) is collected, sorted by path
 /// for a deterministic assembly order (labels are resolved globally, so the order
 /// only affects instruction addresses, not correctness).
 ///
