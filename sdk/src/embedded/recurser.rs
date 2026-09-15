@@ -181,10 +181,8 @@ fn run_aggregate_proofs_blocking(
         .prove_recurser(&agg.recurser_id, &proof_a, &proof_b, free_a, free_b, root_c_override)
         .map_err(|e| SdkError::Recurser(format!("proof generation failed: {e}")))?;
 
-    // A compressed fold would land as `VadcopKind::Minimal`, losing the flag
-    // `Proof::verify` classifies on to apply the recursion-domain check.
-    // Aggregated and compressed do not coexist today; fail loudly rather than
-    // silently drop the check if that ever changes.
+    // Compression strips the flag that marks this a fold, taking the recursion-domain
+    // check in `Proof::verify` with it.
     if vfp.compressed {
         return Err(SdkError::Recurser(
             "recurser produced a compressed proof; the recursion-domain check in \

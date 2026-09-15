@@ -75,6 +75,21 @@ const EXPECTED_N_PUBLICS_COMPRESSED: u64 = PROGRAM_N_PUBLICS as u64;
 /// for an aggregate), orthogonal to the `vadcop_final_vk` the STARK is checked
 /// against — verifying without also pinning it authenticates the proof system,
 /// not the program.
+/// Whether a serialized proof is an aggregated fold rather than a leaf, from the
+/// `is_vadcop_final_proof` public. A compressed proof no longer carries it: `None`.
+pub fn committed_is_aggregate(zisk_proof: &[u64]) -> Option<bool> {
+    if zisk_proof.len() < 2 || zisk_proof[0] == 1 {
+        return None;
+    }
+    if zisk_proof[1] != EXPECTED_N_PUBLICS_FINAL {
+        return None;
+    }
+    if zisk_proof.len() < 2 + EXPECTED_N_PUBLICS_FINAL as usize {
+        return None;
+    }
+    Some(zisk_proof[2] != IS_VADCOP_FINAL_PROOF)
+}
+
 pub fn committed_program_vk(zisk_proof: &[u64]) -> Option<&[u64]> {
     if zisk_proof.len() < 2 {
         return None;
@@ -142,5 +157,54 @@ pub fn program_publics(publics_full: &[u64]) -> &[u64] {
         &publics_full[VADCOP_FINAL_FLAG_LEN..]
     } else {
         publics_full
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const HDR: usize = 2;
+    const LEAF_LEN: usize = HDR + EXPECTED_N_PUBLICS_FINAL as usize;
+
+    /// `[minimal][n_publics][flag | vk(4) | inputs]`, the prefix the classifiers read.
+    fn leaf(flag: u64, vk: [u64; PROGRAM_VK_LEN]) -> [u64; LEAF_LEN] {
+        let mut v = [7u64; LEAF_LEN];
+        v[0] = 0;
+        v[1] = EXPECTED_N_PUBLICS_FINAL;
+        v[2] = flag;
+        v[3..3 + PROGRAM_VK_LEN].copy_from_slice(&vk);
+        v
+    }
+
+    #[test]
+    fn a_leaf_is_not_an_aggregate() {
+        let p = leaf(IS_VADCOP_FINAL_PROOF, [1, 2, 3, 4]);
+        assert_eq!(committed_is_aggregate(&p), Some(false));
+        assert_eq!(committed_program_vk(&p), Some(&[1u64, 2, 3, 4][..]));
+    }
+
+    #[test]
+    fn a_flag_zero_proof_is_an_aggregate() {
+        let p = leaf(0, [9, 9, 9, 9]);
+        assert_eq!(committed_is_aggregate(&p), Some(true));
+        assert_eq!(committed_program_vk(&p), Some(&[9u64, 9, 9, 9][..]));
+    }
+
+    /// Compression strips the flag, which is why an aggregate is refused compression.
+    #[test]
+    fn a_minimal_proof_cannot_be_classified() {
+        let mut p = leaf(0, [1, 2, 3, 4]);
+        p[0] = 1;
+        p[1] = EXPECTED_N_PUBLICS_COMPRESSED;
+        assert_eq!(committed_is_aggregate(&p), None);
+    }
+
+    #[test]
+    fn a_truncated_proof_classifies_as_nothing() {
+        assert_eq!(committed_is_aggregate(&[]), None);
+        assert_eq!(committed_is_aggregate(&[0]), None);
+        assert_eq!(committed_is_aggregate(&[0, EXPECTED_N_PUBLICS_FINAL]), None);
+        assert_eq!(committed_is_aggregate(&[0, 12, 0, 1, 2, 3, 4]), None);
     }
 }

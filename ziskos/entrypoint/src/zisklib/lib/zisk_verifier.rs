@@ -36,6 +36,15 @@ pub fn verify_zisk_proof(
         _ => return false,
     }
 
+    // An aggregate's declared domain must be the key it verifies under, or a subtree from
+    // another recurser rides through. Mirrors `Proof::verify`: both keys are the
+    // recurser's own verkey.
+    if zisk_verifier::committed_is_aggregate(proof) == Some(true)
+        && expected_program_vk != expected_setup_vk
+    {
+        return false;
+    }
+
     zisk_verifier::verify_vadcop_final_proof(proof, expected_setup_vk, hash)
 }
 

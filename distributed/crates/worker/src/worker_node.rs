@@ -872,6 +872,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         let is_plonk = proof_type == ProofKind::Plonk;
                         let flat_proof: Vec<u64> = final_proof.into_iter().flatten().collect();
                         let minimal = proof_type == ProofKind::VadcopFinalMinimal;
+                        // Compression strips the flag that marks this a fold, taking the
+                        // recursion-domain check in `Proof::verify` with it.
+                        if minimal {
+                            return Err(anyhow!(
+                                "cannot return an aggregated proof as VadcopFinalMinimal: \
+                                 compression drops the recursion-domain marker"
+                            ));
+                        }
                         // A missing verkey or hash family yields an unusable proof
                         // (new_from_vadcop_proof rejects an unrecognized/empty hash).
                         // Treat it as a hard failure rather than emitting a "success"
@@ -1749,10 +1757,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             zisk_vk.push(u64::from_le_bytes(chunk));
         }
 
-        // Same guard as the embedded path: a compressed fold would land as
-        // `VadcopKind::Minimal`, losing the flag `Proof::verify` classifies on to apply
-        // the recursion-domain check. Aggregated and compressed do not coexist today;
-        // fail loudly rather than silently drop the check if that ever changes.
+        // Same guard as the embedded path: compression strips the flag that marks this a
+        // fold, taking the recursion-domain check in `Proof::verify` with it.
         if vfp.compressed {
             return Err(anyhow!(
                 "recurser produced a compressed proof; the recursion-domain check in \
