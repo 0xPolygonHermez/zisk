@@ -1567,7 +1567,7 @@ impl<'a> Riscv2ZiskContext<'a> {
 
     //    jal rd, label
     //          flag(0,0), j(pc + imm) -> [rd]
-    /// Implements the RISC-V jump-and-link inconditional jump instruction
+    /// Implements the RISC-V jump-and-link unconditional jump instruction
     /// Emits a tail-jump from an intercepted guest function's entry to a ziskasm
     /// library entry. A *static* jump to a constant address (`copyb` imm + `set_pc`),
     /// so `ra`/`r1` is untouched and the library's `ret` returns to the guest caller —
