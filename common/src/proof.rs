@@ -64,7 +64,9 @@ fn splice_program_vk(publics_full: &[u64], vk: &[u64]) -> Result<Vec<u64>> {
             publics_full.len()
         )));
     }
-    let mut out = publics_full.to_vec();
+    // Normalize first: a raw vadcop_final vector carries the flag at index 0, and
+    // splicing over it would shift the rest of the statement by one.
+    let mut out = program_publics(publics_full).to_vec();
     out[..PROGRAM_VK_LEN].copy_from_slice(vk);
     Ok(out)
 }
@@ -1468,6 +1470,37 @@ mod tests {
         let mut lossy = vec![9u64; PROGRAM_VK_LEN];
         lossy.extend(PublicValues::new_from_u64(&publics_full).public_u64());
         assert_ne!(lossy, spliced, "the u32 reconstruction truncates — that was the bug");
+    }
+
+    /// The fresh-prove PLONK path used to store the raw 69-word vector, flag at index 0.
+    /// Splicing over it without normalizing overwrote `[flag, vk0, vk1, vk2]` and shifted
+    /// the whole statement by one.
+    #[test]
+    fn splice_program_vk_normalizes_a_flagged_publics_vector() {
+        let mut flagged = vec![0u64; VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS];
+        flagged[0] = IS_VADCOP_FINAL_PROOF;
+        flagged[VADCOP_FINAL_FLAG_LEN..VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN]
+            .copy_from_slice(&[11, 12, 13, 14]);
+        flagged[VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN] = 77;
+
+        let spliced = splice_program_vk(&flagged, &[91, 92, 93, 94]).unwrap();
+
+        assert_eq!(spliced.len(), PROGRAM_VK_LEN + ZISK_PUBLICS, "flag must be stripped");
+        assert_eq!(&spliced[..PROGRAM_VK_LEN], &[91, 92, 93, 94], "vk must be replaced");
+        assert_eq!(spliced[PROGRAM_VK_LEN], 77, "inputs must not shift");
+    }
+
+    /// A flag-free vector is already canonical and must pass through unshifted.
+    #[test]
+    fn splice_program_vk_leaves_a_flag_free_vector_aligned() {
+        let mut publics_full = vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS];
+        publics_full[..PROGRAM_VK_LEN].copy_from_slice(&[11, 12, 13, 14]);
+        publics_full[PROGRAM_VK_LEN] = 77;
+
+        let spliced = splice_program_vk(&publics_full, &[91, 92, 93, 94]).unwrap();
+
+        assert_eq!(&spliced[..PROGRAM_VK_LEN], &[91, 92, 93, 94]);
+        assert_eq!(spliced[PROGRAM_VK_LEN], 77);
     }
 
     #[test]

@@ -1749,6 +1749,17 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             zisk_vk.push(u64::from_le_bytes(chunk));
         }
 
+        // Same guard as the embedded path: a compressed fold would land as
+        // `VadcopKind::Minimal`, losing the flag `Proof::verify` classifies on to apply
+        // the recursion-domain check. Aggregated and compressed do not coexist today;
+        // fail loudly rather than silently drop the check if that ever changes.
+        if vfp.compressed {
+            return Err(anyhow!(
+                "recurser produced a compressed proof; the recursion-domain check in \
+                 Proof::verify cannot classify it"
+            ));
+        }
+
         // The proof's hash family travels on the VadcopFinalProof (stamped by
         // proofman from the recurser's proving key); carry it onto the Proof.
         let proof = Proof::new_from_vadcop_proof(

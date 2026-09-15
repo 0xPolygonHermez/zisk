@@ -28,18 +28,24 @@ describe("ZiskVerifier", function () {
     await verifier.waitForDeployment();
 
     // Catch the most common failure mode early: a proof wrapped against a different
-    // PLONK proving key than the one PlonkVerifier.sol was generated for. The contract
-    // uses its own hardcoded vadcop-final root, so a proof carrying a different one can
-    // only fail as a confusing InvalidProof -- say so here instead.
+    // PLONK proving key than the one PlonkVerifier.sol was generated for. The fixture is
+    // a leaf, so its root must be the contract's; a mismatch would otherwise surface only
+    // as a confusing InvalidProof.
     const onchainRootC = await verifier.getRootCVadcopFinal();
     expect(onchainRootC.toLowerCase()).to.equal(
       f.rootCVadcopFinal.toLowerCase(),
       "rootCVadcopFinal in the fixture does not match the value hardcoded in ZiskVerifier.sol"
     );
 
-    // The root is not an argument: the verifier supplies its own.
+    // A real integration passes a constant of its own contract here, not a value read
+    // off the proof -- the leaf root above, or its recurser's verkey for an aggregate.
     await expect(
-      verifier.verifySnarkProof(f.programVK, f.publicValues, f.proofBytes)
+      verifier.verifySnarkProof(
+        f.programVK,
+        onchainRootC,
+        f.publicValues,
+        f.proofBytes
+      )
     ).to.not.be.reverted;
   });
 });

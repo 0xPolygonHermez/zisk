@@ -448,7 +448,10 @@ impl ProverBackend {
                                     plonk_vkey,
                                 }),
                                 publics,
-                                publics_full: vadcop_proof.public_values.clone(),
+                                // Canonical flag-free view, matching every other
+                                // `ProofBody::Plonk` producer. Storing the raw 69-word
+                                // vector here left consumers to strip the flag themselves.
+                                publics_full: program_publics(&vadcop_proof.public_values).to_vec(),
                                 rootc: vadcop_vk_u64,
                             },
                             program_vk,
@@ -491,17 +494,32 @@ impl ProverBackend {
     /// Compress a vadcop_final proof into its minimal form. The flag is re-added
     /// from `source_kind`: `FinalCompressed` verifies all 69 words before
     /// stripping index 0.
+    ///
+    /// Leaves only. A minimal proof has no flag to re-add, and the result is labelled
+    /// `VadcopKind::Minimal` -- which for an aggregate would erase the marker
+    /// `Proof::verify` keys the recursion-domain check on, letting a foreign subtree
+    /// through. Both are refused rather than silently losing the distinction.
     pub(crate) fn minimal(
         &self,
         proof: &[u64],
         publics_full: &[u64],
         source_kind: VadcopKind,
     ) -> Result<ProveOutput> {
-        if source_kind.is_minimal() {
-            return Err(anyhow::anyhow!(
-                "Cannot compress an already-minimal proof: it carries no \
-                 is_vadcop_final_proof flag and the compression circuit cannot verify it"
-            ));
+        match source_kind {
+            VadcopKind::Minimal => {
+                return Err(anyhow::anyhow!(
+                    "Cannot compress an already-minimal proof: it carries no \
+                     is_vadcop_final_proof flag and the compression circuit cannot verify it"
+                ))
+            }
+            VadcopKind::Recurser => {
+                return Err(anyhow::anyhow!(
+                    "Cannot compress an aggregated proof: the compressed form is labelled \
+                     Minimal, which would drop the recursion-domain check that binds its \
+                     subtree to this recurser"
+                ))
+            }
+            VadcopKind::Final => {}
         }
 
         let start = std::time::Instant::now();
