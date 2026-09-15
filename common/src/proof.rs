@@ -35,6 +35,29 @@ fn canonical(word: u64) -> u64 {
 ///
 /// Encoding: see [`zisk_verifier::publics_are_canonical`] — without it a proof
 /// holder could rewrite a stored public and have the proof report a new output.
+/// Canonicality plus the exact shape a *stored* body must have.
+///
+/// `Vadcop` storage is flag-free by construction -- `stark_publics` re-adds the flag at
+/// verify time, so a 69-word body would reach the STARK verifier with 70 publics. `Plonk`
+/// bodies from older builds may still carry the flag, and every consumer normalizes, so
+/// that one shape stays accepted.
+fn ensure_stored_publics(body: &ProofBody) -> Result<()> {
+    let flag_free = PROGRAM_VK_LEN + ZISK_PUBLICS;
+    let (publics_full, flagged_ok) = match body {
+        ProofBody::Vadcop { publics_full, .. } => (publics_full.as_slice(), false),
+        ProofBody::Plonk { publics_full, .. } => (publics_full.as_slice(), true),
+    };
+    let ok = publics_full.len() == flag_free
+        || (flagged_ok && publics_full.len() == VADCOP_FINAL_FLAG_LEN + flag_free);
+    if !ok {
+        return Err(CommonError::InvalidProof(format!(
+            "stored publics have {} field elements, expected {flag_free}",
+            publics_full.len()
+        )));
+    }
+    ensure_canonical_publics(publics_full)
+}
+
 fn ensure_canonical_publics(publics_full: &[u64]) -> Result<()> {
     let normalized = program_publics(publics_full);
     if normalized.len() != PROGRAM_VK_LEN + ZISK_PUBLICS {
@@ -784,7 +807,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
     pub fn verify(self) -> Result<()> {
         // A successful verify() is the signal callers trust before reading
         // `publics()`, and `Proof::new` builds bodies the ingest checks never see.
-        ensure_canonical_publics(self.proof_with_values.committed_publics())?;
+        ensure_stored_publics(&self.proof_with_values.body)?;
 
         let derived_publics = self.proof_with_values.publics();
         let publics = self.override_publics.unwrap_or(&derived_publics);
@@ -1097,7 +1120,7 @@ impl Proof {
             bincode::serde::decode_from_std_read(&mut file, bincode::config::standard())
                 .map_err(|e| CommonError::Io(format!("Failed to load proof: {}", e)))?;
         // bincode will happily decode a non-canonical `publics_full` word.
-        ensure_canonical_publics(proof.committed_publics())?;
+        ensure_stored_publics(&proof.body)?;
         Ok(proof)
     }
 
@@ -1618,6 +1641,46 @@ mod tests {
 
     /// A `publics_full` committing a given program identity, with a relabeled
     /// (lying) stored outer `program_vk`.
+    /// A `ProofBody::Plonk` with the given committed publics; the keys are placeholders,
+    /// only the publics shape matters here.
+    fn plonk_body(publics_full: Vec<u64>) -> ProofBody {
+        let g1 = || ["0".to_string(), "0".to_string(), "1".to_string()];
+        let g2 = || {
+            [
+                ["0".to_string(), "0".to_string()],
+                ["0".to_string(), "0".to_string()],
+                ["1".to_string(), "0".to_string()],
+            ]
+        };
+        ProofBody::Plonk {
+            proof_bytes: vec![],
+            plonk_vk: Box::new(PlonkVkBlob {
+                vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
+                plonk_vkey: PlonkVkey {
+                    protocol: "plonk".to_string(),
+                    curve: "bn128".to_string(),
+                    n_public: 1,
+                    power: 1,
+                    k1: "2".to_string(),
+                    k2: "3".to_string(),
+                    qm: g1(),
+                    ql: g1(),
+                    qr: g1(),
+                    qo: g1(),
+                    qc: g1(),
+                    s1: g1(),
+                    s2: g1(),
+                    s3: g1(),
+                    x_2: g2(),
+                    w: "1".to_string(),
+                },
+            }),
+            publics: PublicValues::default(),
+            publics_full,
+            rootc: vec![0u64; PROGRAM_VK_LEN],
+        }
+    }
+
     fn relabeled_vadcop_proof(committed_vk: [u64; 4], stored_vk: [u64; 4]) -> Proof {
         let mut publics_full = vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS];
         publics_full[..PROGRAM_VK_LEN].copy_from_slice(&committed_vk);
@@ -1738,6 +1801,35 @@ mod tests {
 
     /// A committed publics vector of the wrong length must be rejected up front,
     /// not panic the fixed-offset slicing in `snark_publics_hash` / `stark_publics`.
+    /// A Vadcop body stores the flag-free view; `stark_publics` re-adds the flag, so a
+    /// 69-word body would reach the STARK verifier with 70 publics.
+    #[test]
+    fn verify_rejects_a_flagged_vadcop_body() {
+        let proof = Proof::new(
+            ProofBody::Vadcop {
+                proof: vec![],
+                zisk_vk: vec![0u64; PROGRAM_VK_LEN],
+                kind: VadcopKind::Final,
+                hash: "Poseidon2".to_string(),
+                publics_full: vec![0u64; VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS],
+            },
+            ProgramVK::new_empty(),
+        );
+        let err = proof.verify().unwrap_err();
+        assert!(err.to_string().contains("stored publics"), "unexpected error: {err}");
+    }
+
+    /// A Plonk body from an older build may still carry the flag; consumers normalize.
+    #[test]
+    fn stored_publics_tolerates_a_flagged_plonk_body() {
+        let flagged = vec![0u64; VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS];
+        assert!(ensure_stored_publics(&plonk_body(flagged)).is_ok());
+        let flag_free = vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS];
+        assert!(ensure_stored_publics(&plonk_body(flag_free)).is_ok());
+        // Neither shape: still refused.
+        assert!(ensure_stored_publics(&plonk_body(vec![0u64; 10])).is_err());
+    }
+
     #[test]
     fn verify_rejects_wrong_len_committed_publics() {
         let proof = Proof::new(

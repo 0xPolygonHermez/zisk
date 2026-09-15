@@ -902,30 +902,37 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                 .context("Failed to get proving-key hash family")?;
                             match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey, hash) {
                                 Ok(zisk_proof) => {
-                                    let final_proof: Proof = if is_plonk {
+                                    // On wrap failure, emit nothing: returning the
+                                    // unwrapped Vadcop proof would answer a PLONK request
+                                    // with a different proof kind.
+                                    let final_proof: Option<Proof> = if is_plonk {
                                         match self
                                             .worker
                                             .prover_arc()
                                             .wrap_proof(&zisk_proof, ProofKind::Plonk)
                                             .run()
                                         {
-                                            Ok(wrapped) => wrapped.get_proof().clone(),
+                                            Ok(wrapped) => Some(wrapped.get_proof().clone()),
                                             Err(e) => {
-                                                error!(
-                                                    "Failed to wrap Plonk proof for {}: {}",
-                                                    job_id, e
+                                                error_message = format!(
+                                                    "Failed to wrap Plonk proof for {job_id}: {e}"
                                                 );
-                                                zisk_proof
+                                                error!("{error_message}");
+                                                success = false;
+                                                None
                                             }
                                         }
                                     } else {
-                                        zisk_proof
+                                        Some(zisk_proof)
                                     };
-                                    bincode::serde::encode_to_vec(
-                                        &final_proof,
-                                        bincode::config::standard(),
-                                    )
-                                    .unwrap_or_default()
+                                    match final_proof {
+                                        Some(p) => bincode::serde::encode_to_vec(
+                                            &p,
+                                            bincode::config::standard(),
+                                        )
+                                        .unwrap_or_default(),
+                                        None => vec![],
+                                    }
                                 }
                                 Err(e) => {
                                     error_message = format!("Failed to build Proof: {e}");

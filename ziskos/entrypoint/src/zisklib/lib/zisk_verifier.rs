@@ -39,6 +39,13 @@ pub fn verify_zisk_proof(
     // An aggregate's declared domain must be the key it verifies under, or a subtree from
     // another recurser rides through. Mirrors `Proof::verify`: both keys are the
     // recurser's own verkey.
+    //
+    // A compressed proof cannot be classified -- `FinalCompressed` strips the flag -- so
+    // this cannot fire for one. It does not need to: a fold verifies only under its own
+    // recurser's key, so against a leaf's `expected_setup_vk` it fails outright. The gap
+    // is a caller that pins a recurser key while expecting a different program VK, which
+    // is why both keys must be the recurser's own for folds. Producers refuse to compress
+    // an aggregate for the same reason.
     if zisk_verifier::committed_is_aggregate(proof) == Some(true)
         && expected_program_vk != expected_setup_vk
     {
