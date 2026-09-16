@@ -19,8 +19,7 @@
 ; bls12_381 / zisklib_pairing_check_bls12_381 / zisklib_map_to_curve_g{1,2}_
 ; bls12_381 / zisklib_verify_kzg_proof_bls12_381 (+ bn254_ltn/eqn/memcpy,
 ; is_on_curve/subgroup). Labels `zbl_`, data `ZBL_*`, shared EFAIL exit zbl_fail.
-; MAX_PAIRS=32 for pairing buffers (n>32 -> EFAIL; n==0 accepts. MSM needs no big
-; buffer but does reject n==0, which EIP-2537 treats as invalid input there).
+; MAX_PAIRS=32 for pairing buffers (n>32 or n==0 -> EFAIL; MSM needs no big buffer).
 ; ============================================================================
 
 u64 ZBL_TP0[1]    = 0
@@ -627,9 +626,7 @@ zbl_msm2_done:
 ; zkvm_status zkvm_bls12_pairing(const pairing_pair* pairs, size_t n, bool* ok)
 ;   pair = G1(96B) ‖ G2(192B) = 288B. De-interleave into ZBL_PG1(12n)/ZBL_PG2(24n),
 ;   then zisklib_pairing_check_bls12_381 (validates canonical/on-curve/subgroup).
-;   n>32 -> EFAIL; status 0=accept,1=reject,>=2=EFAIL. n==0 is valid and accepts
-;   (empty product = identity): EIP-2537 rejects empty input for the MSMs but not
-;   for the pairing, and the reference pairing_check_safe_bls12_381 returns true.
+;   n==0 or n>32 -> EFAIL; status 0=accept,1=reject,>=2=EFAIL.
 ; ============================================================================
 ziskasm_zkvm_bls12_pairing:
 	push r1
@@ -639,6 +636,7 @@ ziskasm_zkvm_bls12_pairing:
 	copyb(r5, r11) -> 8[a + 0]
 	copyb(0, ZBL_VERP) -> r5
 	copyb(r5, r12) -> 8[a + 0]
+	eq(r11, 0), j(zbl_fail)             ; n==0 -> EFAIL
 	copyb(0, 32) -> r7
 	ltu(r7, r11), j(zbl_fail)           ; n>32 -> EFAIL
 	copyb(0, ZBL_PI) -> r5
