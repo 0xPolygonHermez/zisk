@@ -37,6 +37,10 @@ beq_eq:
 
 ; u64 bn254_ltn(const u64* a, const u64* b, u64 nwords)  [r10=a, r11=b, r12=n]
 ;   -> r10 = 1 if a < b (unsigned, MSW-first), else 0.
+;   nwords = 0 returns 0 without touching memory: the MSW offset below underflows to
+;   -8, but both loops are guarded (n&3 == 0 skips `bltn_rem`, n == 0 sends
+;   `bltn_main` straight to `bltn_ge`), so the wrapped pointers are never loaded from.
+;   The guards are already on the hot path, so no extra zero-check is needed here.
 bn254_ltn:
 	copyb(0, r10) -> r5
 	copyb(0, r11) -> r6
