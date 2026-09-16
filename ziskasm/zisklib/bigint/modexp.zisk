@@ -47,6 +47,12 @@ bi_bc_ap:
 bi_bc_apd:
 	fcall(FCALL_BIN_DECOMP, 0) -> r14
 	copyb(0, [FREE_INPUT]) -> r6
+	; NBITS is prover-supplied: bound it before it indexes BI_BITS/BI_RECEXP, which
+	; hold 132 u64 = 8448 bits. The len_e guard at entry bounds the *input* limbs, not
+	; this. A legitimate hint satisfies NBITS <= len_e*64 <= 8448, so the buffer bound
+	; never rejects a well-formed decomposition; an over-long one would write past
+	; BI_BITS into BI_RECEXP and the rest of the library RAM that follows it.
+	ltu(8448, r6), j(bi_bc_bad)
 	copyb(0, BI_NBITS) -> r5
 	copyb(r5, r6) -> 8[a + 0]
 	copyb(0, BI_J) -> r5
