@@ -379,6 +379,10 @@ pub struct Worker<T: ZiskBackend + 'static> {
     stream_actor: Option<StreamOrderingActor>,
     /// All set-up programs, keyed by hash_id. Supports multiple concurrent programs.
     guest_programs: HashMap<String, Arc<GuestProgram>>,
+    /// `(hash_id, with_hints)` of the program the prover currently has registered, so
+    /// `prepare_for_new_job` can skip `register_program` when the next job runs the
+    /// same program. Cleared whenever a setup runs (see [`Self::forget_registered_program`]).
+    last_registered_program: Option<(String, bool)>,
     /// Two setups for the same program (one with hints, one without) coexist independently.
     program_vks: HashMap<SetupKey, ProgramVK>,
 }
@@ -441,6 +445,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             current_computation: None,
             current_mpi_task: None,
             guest_programs: HashMap::new(),
+            last_registered_program: None,
             program_vks: HashMap::new(),
             prover,
             prover_config,
@@ -512,6 +517,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             prover_config,
             stream_actor: None,
             guest_programs: HashMap::new(),
+            last_registered_program: None,
             program_vks: HashMap::new(),
         })
     }
@@ -584,6 +590,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) {
         self.guest_programs.insert(hash_id.to_string(), program);
         self.program_vks.insert(SetupKey::new(hash_id, with_hints, emulator_only), vk);
+        self.forget_registered_program();
+    }
+
+    /// Invalidate the registered-program cache. Must run after every setup attempt,
+    /// successful or not: `setup_internal` installs the new program's ASM resources
+    /// before the cross-rank success check, so a failed setup can still have replaced
+    /// the resources `register_program` last installed.
+    pub fn forget_registered_program(&mut self) {
+        self.last_registered_program = None;
     }
 
     /// Blocking setup compute: broadcasts the ELF to secondary MPI ranks and runs
@@ -736,7 +751,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// Register the program, reset backend state, and (re)activate services in
     /// preparation for a new job on this worker.
     pub fn prepare_for_new_job(
-        &self,
+        &mut self,
         hash_id: &str,
         with_hints: bool,
         is_first_process: bool,
@@ -766,7 +781,22 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             );
         }
 
-        self.prover.register_program(&program_id, with_hints)?;
+        // register_program only depends on (program, with_hints): skip it when the
+        // previous job registered the same program and no setup has run since.
+        let same = self
+            .last_registered_program
+            .as_ref()
+            .is_some_and(|(p, h)| p == hash_id && *h == with_hints);
+        if !same {
+            // Clear first so a half-failed register_program is never trusted.
+            self.last_registered_program = None;
+            self.prover.register_program(&program_id, with_hints)?;
+            self.last_registered_program = Some((hash_id.to_string(), with_hints));
+        } else {
+            tracing::info!(
+                "[prep] program {hash_id} already registered, skipping register_program"
+            );
+        }
         self.prover.reset()?;
         self.prover.set_active_services(is_first_process)?;
         Ok(())
@@ -1637,11 +1667,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 let gp_clone = guest_program.clone();
                 let with_hints = message.with_hints;
                 let emulator_only = message.emulator_only;
-                tokio::task::spawn_blocking(move || {
+                let setup_result = tokio::task::spawn_blocking(move || {
                     prover.prover.setup_internal(&gp_clone, with_hints, emulator_only)
                 })
                 .await
-                .map_err(|e| anyhow::anyhow!("Setup spawn_blocking panicked: {}", e))??;
+                .map_err(|e| anyhow::anyhow!("Setup spawn_blocking panicked: {}", e));
+                // Setup may have replaced the prover's ASM resources even on failure.
+                self.forget_registered_program();
+                setup_result??;
 
                 self.guest_programs.insert(message.hash_id.clone(), guest_program);
             }
