@@ -181,6 +181,16 @@ fn run_aggregate_proofs_blocking(
         .prove_recurser(&agg.recurser_id, &proof_a, &proof_b, free_a, free_b, root_c_override)
         .map_err(|e| SdkError::Recurser(format!("proof generation failed: {e}")))?;
 
+    // Compression strips the flag that marks this a fold, taking the recursion-domain
+    // check in `Proof::verify` with it.
+    if vfp.compressed {
+        return Err(SdkError::Recurser(
+            "recurser produced a compressed proof; the recursion-domain check in \
+             Proof::verify cannot classify it"
+                .to_string(),
+        ));
+    }
+
     // Recurser's own verkey → output Proof's zisk_vk.
     let zisk_vk = agg.vk()?.vk;
     // The proof's hash family travels on the VadcopFinalProof (stamped by

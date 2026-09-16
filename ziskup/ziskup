@@ -22,6 +22,8 @@ ASSUME_YES=false
 FORCE=false
 WITH_SNARK=false
 UNINSTALL=false
+HASH_MODE="Poseidon1"
+HASH_SUFFIX=""
 
 # Bundle metadata file written into ${ZISK_DIR}. Single file, key=value
 # format, bash-parseable (no jq/yq dependency). Public contract for sibling
@@ -32,6 +34,9 @@ UNINSTALL=false
 #                   match unless --force.
 #   variant       — "gpu" or "cpu". Which build of cargo-zisk/zisk-worker is
 #                   installed in ${ZISK_BIN_DIR}. Read by sibling installers.
+#   hash_mode     — hash mode of the installed key ("Poseidon1" or "blake3").
+#                   Written when a key lands. Missing means Poseidon1: every
+#                   bundle predating blake3 is one.
 #   manifest      — space-separated list of subdirs ziskup created (bin, zisk,
 #                   provingKey, provingKeySnark, toolchains, ...). --uninstall
 #                   only removes what's listed, so operator-supplied files in
@@ -53,7 +58,7 @@ main() {
 
   # Check if this is a setup_snark command
   if [[ "${1:-}" == "setup_snark" ]]; then
-    setup_snark_command
+    setup_snark_command "$@"
     exit 0
   fi
 
@@ -118,6 +123,10 @@ main() {
     --with-snark)
       WITH_SNARK=true
       ;;
+    --blake3)
+      HASH_MODE="blake3"
+      HASH_SUFFIX="-blake3"
+      ;;
     --uninstall)
       UNINSTALL=true
       ;;
@@ -163,6 +172,13 @@ main() {
   # SNARK key inside the shared bundle). User-mode installs use `ziskup setup_snark`.
   if $WITH_SNARK && ! $SYSTEM_MODE; then
     err "--with-snark requires --system (use 'ziskup setup_snark' for user-mode SNARK key)"
+    exit 1
+  fi
+  # No SNARK/PLONK setup is published for blake3: the BN128 wrap has no blake3
+  # path, so the bucket only ever holds a Poseidon1 plonk key — which would not
+  # match the blake3 proving key installed next to it.
+  if $WITH_SNARK && [[ "$HASH_MODE" == "blake3" ]]; then
+    err "--with-snark is not available with --blake3 (no SNARK setup is published for blake3)"
     exit 1
   fi
   if [[ -n "$PREFIX" ]]; then
@@ -247,8 +263,15 @@ main() {
         verify)                          required_key_dir="${ZISK_DIR}/verifyKey" ;;
         none)                            ;;
       esac
+      # Missing from bundles predating blake3, which are all Poseidon1.
+      installed_hash="$(bundle_get hash_mode)"
+      installed_hash="${installed_hash:-Poseidon1}"
       if [[ -n "$required_key_dir" && ! -d "$required_key_dir" ]]; then
         step "Bundle present at ${installed}, but $(basename "$required_key_dir") missing — installing key only."
+        BUNDLE_PRESENT=true
+        ZISK_VERSION="${installed}"
+      elif [[ -n "$required_key_dir" && "$installed_hash" != "$HASH_MODE" ]]; then
+        step "Bundle present at ${installed} with the ${installed_hash} key — installing the ${HASH_MODE} key instead."
         BUNDLE_PRESENT=true
         ZISK_VERSION="${installed}"
       else
@@ -607,6 +630,9 @@ OPTIONS:
                    install on the same host).
     --with-snark   Only works with --system. Download and install the SNARK proving key.
                    Skipped if already present unless --force is also given.
+    --blake3       Install the blake3 proving/verify key instead of the default
+                   Poseidon1 one. Not compatible with --with-snark / setup_snark:
+                   no SNARK setup is published for blake3.
     --uninstall    Remove the ZisK bundle. Only the subdirs ziskup tracked at install
                    time are deleted (operator-supplied files in the prefix survive).
                    Combine with --system for the system bundle. With --system also
@@ -862,9 +888,14 @@ resolve_latest_tag() {
 install_setup() {
     local KEY_TYPE=$1  # proving or verify
     local CONST_TREE=$2
-    local KEY_FILE="zisk-${KEY_TYPE}key-${SETUP_VERSION}.tar.gz"
+    local KEY_FILE="zisk-${KEY_TYPE}key-${SETUP_VERSION}${HASH_SUFFIX}.tar.gz"
 
-    step "Downloading ${KEY_TYPE} key version ${SETUP_VERSION}..."
+    if [[ "${HASH_MODE}" == "blake3" ]]; then
+      step "Downloading ${KEY_TYPE} key (${HASH_MODE}) version ${SETUP_VERSION}..."
+    else
+      step "Downloading ${KEY_TYPE} key version ${SETUP_VERSION}..."
+    fi
+    
     ensure download "${BUCKET_URL}/${KEY_FILE}" "${KEY_FILE}"
     ensure download "${BUCKET_URL}/${KEY_FILE}.md5" "${KEY_FILE}.md5"
 
@@ -877,7 +908,7 @@ install_setup() {
     rm -rf "${ZISK_DIR}/cache"
 
     # Extract the key. --no-same-owner: see binary-tarball comment in main().
-    step "Installing ${KEY_TYPE} key version ${SETUP_VERSION}..."
+    step "Installing ${HASH_MODE} ${KEY_TYPE} key version ${SETUP_VERSION}..."
     if [ "${PLATFORM}" = "linux" ]; then
       ensure tar --no-same-owner --overwrite -xf "${KEY_FILE}" -C "${ZISK_DIR}"
     else
@@ -886,7 +917,10 @@ install_setup() {
 
     rm -f "${KEY_FILE}"
     rm -f "${KEY_FILE}.md5"
-    say "Installed ${KEY_TYPE} key version ${SETUP_VERSION}"
+    # Stamped here, where a key actually lands, so it always describes what is
+    # on disk (a --nokey run leaves the previous value alone, still true).
+    bundle_set hash_mode "${HASH_MODE}"
+    say "Installed ${HASH_MODE} ${KEY_TYPE} key version ${SETUP_VERSION}"
 
     # Generate constant tree files for proving key. Pass --proving-key
     # explicitly so we don't rely on cargo-zisk's ZiskPaths default ($HOME/.zisk,
@@ -1072,6 +1106,15 @@ uninstall_command() {
 setup_snark_command() {
   # Print banner
   banner
+
+  # Args are not parsed on this path; reject the one flag that would silently
+  # install a key of the wrong mode (see the --with-snark guard in main).
+  for arg in "$@"; do
+    if [[ "$arg" == "--blake3" ]]; then
+      err "setup_snark has no blake3 variant (no SNARK setup is published for blake3)"
+      exit 1
+    fi
+  done
 
   # Resolve install root (setup_snark uses the user-mode default).
   ZISK_DIR="$DEFAULT_USER_ZISK_DIR"

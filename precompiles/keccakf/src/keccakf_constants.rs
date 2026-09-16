@@ -1,6 +1,5 @@
 pub(crate) const LANES: usize = 25;
 pub(crate) const LANE_BITS: usize = 64;
-pub(crate) const WIDTH: usize = LANES * LANE_BITS;
 pub(crate) const ROUNDS: usize = 24;
 
 /// Number of state lanes held by each trace row.
