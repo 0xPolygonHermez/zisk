@@ -1192,6 +1192,12 @@ impl Proof {
     pub fn get_vadcop_final_proof(&self) -> Result<VadcopFinalProof> {
         match &self.body {
             ProofBody::Vadcop { proof, kind, hash, publics_full, .. } => {
+                // `stark_publics` re-adds the flag, so a stored vector that already
+                // carries one would come back 70 wide. Vadcop storage is flag-free by
+                // construction, but `Proof::new` and raw deserialization never check
+                // that, and this conversion feeds proofman directly.
+                ensure_stored_publics(&self.body)?;
+
                 // The STARK layer commits to the full-width publics INCLUDING the
                 // is_vadcop_final_proof flag; `kind.stark_publics` re-adds it to
                 // the canonical flag-free `publics_full` (full u64 width — the
@@ -1695,6 +1701,28 @@ mod tests {
         let err = proof.verify().unwrap_err();
         assert!(matches!(err, CommonError::InvalidProof(_)), "got: {err:?}");
         assert!(err.to_string().contains("no "), "got: {err}");
+    }
+
+    /// `stark_publics` re-adds the flag, so a stored vector that already carries one
+    /// would reach proofman 70 wide. `Proof::new` bypasses the ingest checks.
+    #[test]
+    fn get_vadcop_final_proof_rejects_an_already_flagged_body() {
+        let mut flagged = vec![0u64; VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS];
+        flagged[0] = IS_VADCOP_FINAL_PROOF;
+        let proof = vadcop_proof(VadcopKind::Final, flagged);
+
+        let err = proof.get_vadcop_final_proof().unwrap_err();
+        assert!(matches!(err, CommonError::InvalidProof(_)), "got: {err:?}");
+
+        // A short vector must not reach proofman either.
+        let short = vadcop_proof(VadcopKind::Final, vec![0u64; 3]);
+        assert!(short.get_vadcop_final_proof().is_err());
+
+        // The well-formed flag-free body still converts, and gains the flag exactly once.
+        let ok = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        let vfp = ok.get_vadcop_final_proof().unwrap();
+        assert_eq!(vfp.public_values.len(), VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS);
+        assert_eq!(vfp.public_values[0], IS_VADCOP_FINAL_PROOF);
     }
 
     /// A structurally valid (not cryptographically meaningful) PLONK vkey.

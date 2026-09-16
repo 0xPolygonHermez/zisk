@@ -159,6 +159,15 @@ pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64], ha
         return false;
     }
 
+    // Pin the trailing STARK payload too, so this path stands on its own rather than on
+    // the downstream verifier's own length check: `[n_publics(1)][publics][proof]`.
+    let Some(expected_bytes) = expected_proof_bytes(hash, minimal) else {
+        return false;
+    };
+    if vadcop_proof.len() != 1 + expected_n_publics + expected_bytes / 8 {
+        return false;
+    }
+
     verify_by_family(hash, minimal, vadcop_proof, vadcop_final_vk)
 }
 
@@ -219,7 +228,9 @@ pub fn verify_vadcop_final(proof: &VadcopFinalProof, vk: &[u64]) -> bool {
     if !publics_are_canonical(&proof.public_values) {
         return false;
     }
-    stage_verifier(&proof.hash, proof.compressed).is_some_and(|s| (s.verify)(proof, vk))
+    stage_verifier(&proof.hash, proof.compressed).is_some_and(|s| {
+        proof.proof.len() * 8 == (s.expected_proof_bytes)() && (s.verify)(proof, vk)
+    })
 }
 
 /// Serialized length in bytes a proof of this family and stage must have, or `None` if
@@ -345,6 +356,52 @@ mod tests {
         assert!(!verify_vadcop_final_proof(&p, &[1, 2, 3, 4], "Poseidon2"));
         assert_eq!(committed_program_vk(&p), None);
         assert_eq!(committed_is_aggregate(&p), None);
+    }
+
+    /// The `/8` word conversion in the length gate assumes a byte count that is a whole
+    /// number of u64 words; pin that for every stage the keys actually build.
+    #[test]
+    fn every_built_stage_has_a_whole_word_proof_size() {
+        for (hash, minimal) in [
+            ("blake3", false),
+            ("Poseidon1", false),
+            ("Poseidon1", true),
+            ("Poseidon2", false),
+            ("Poseidon2", true),
+        ] {
+            let bytes = expected_proof_bytes(hash, minimal)
+                .unwrap_or_else(|| panic!("{hash} minimal={minimal} should have a stage"));
+            assert_eq!(bytes % 8, 0, "{hash} minimal={minimal}");
+            assert!(bytes > 0, "{hash} minimal={minimal}");
+        }
+        // blake3 builds no compressed stage.
+        assert_eq!(expected_proof_bytes("blake3", true), None);
+        assert_eq!(expected_proof_bytes("poseidon3", false), None);
+    }
+
+    /// A body whose publics prefix is right but whose STARK payload is the wrong length
+    /// must be refused here, not handed to fixed-layout generated code.
+    #[test]
+    fn a_wrong_length_stark_payload_is_refused() {
+        let words = 1
+            + EXPECTED_N_PUBLICS_FINAL as usize
+            + expected_proof_bytes("Poseidon2", false).unwrap() / 8;
+
+        let mut exact = vec![0u64; 1 + words];
+        exact[0] = 0;
+        exact[1] = EXPECTED_N_PUBLICS_FINAL;
+        exact[2] = IS_VADCOP_FINAL_PROOF;
+
+        let mut short = exact.clone();
+        short.pop();
+        let mut long = exact.clone();
+        long.push(0);
+
+        // All three fail (the payload is zeros), but the two mis-sized ones must be
+        // rejected by the length gate rather than reaching the verifier at all.
+        assert!(!verify_vadcop_final_proof(&short, &[1, 2, 3, 4], "Poseidon2"));
+        assert!(!verify_vadcop_final_proof(&long, &[1, 2, 3, 4], "Poseidon2"));
+        assert!(!verify_vadcop_final_proof(&exact, &[1, 2, 3, 4], "Poseidon2"));
     }
 
     /// A non-canonical public must be refused before it reaches the STARK verifier.
