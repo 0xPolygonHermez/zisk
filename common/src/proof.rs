@@ -1173,6 +1173,31 @@ impl Proof {
         }
     }
 
+    /// The `VadcopFinalProof` to fold into a recursion step.
+    ///
+    /// Refuses a compressed proof. `FinalCompressed` strips the `is_vadcop_final_proof`
+    /// flag, so the recurser — which reads slot 0 as that flag and expects the 69-word
+    /// layout — would take the first program-VK limb for the flag and shift the whole
+    /// statement by one. A limb of 0 or 1 makes that misread silent. Compression is a
+    /// terminal step, not a foldable one.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::InvalidProof`] if the proof is compressed, or is not a
+    /// Vadcop final proof.
+    pub fn get_vadcop_final_proof_to_aggregate(&self) -> Result<VadcopFinalProof> {
+        if let ProofBody::Vadcop { kind, .. } = &self.body {
+            if kind.is_minimal() {
+                return Err(CommonError::InvalidProof(
+                    "a compressed (minimal) proof cannot be aggregated: the \
+                     is_vadcop_final_proof flag it needs was stripped when it was compressed"
+                        .to_string(),
+                ));
+            }
+        }
+        self.get_vadcop_final_proof()
+    }
+
     /// Get the proof data as a vector of u64 values.
     ///
     /// # Errors
@@ -1595,6 +1620,25 @@ mod tests {
             ProgramVK::new_empty(),
         );
         assert_eq!(proof.publics().data.len(), ZISK_PUBLICS * 4);
+    }
+
+    /// Compression strips the flag the recurser reads at slot 0, so folding a compressed
+    /// proof would take the first VK limb for the flag and shift the statement by one.
+    #[test]
+    fn a_compressed_proof_cannot_be_aggregated() {
+        let minimal = vadcop_proof(VadcopKind::Minimal, flag_free_publics([1, 2, 3, 4]));
+        let err = minimal.get_vadcop_final_proof_to_aggregate().unwrap_err();
+        assert!(err.to_string().contains("cannot be aggregated"), "got: {err}");
+
+        // The uncompressed flavors still fold, carrying the 69-word layout.
+        for kind in [VadcopKind::Final, VadcopKind::Recurser] {
+            let p = vadcop_proof(kind, flag_free_publics([1, 2, 3, 4]));
+            let vfp = p.get_vadcop_final_proof_to_aggregate().unwrap();
+            assert_eq!(
+                vfp.public_values.len(),
+                VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS
+            );
+        }
     }
 
     /// A structurally valid (not cryptographically meaningful) PLONK vkey.

@@ -79,10 +79,22 @@ pub const fn expected_n_publics(minimal: bool) -> usize {
     }
 }
 
+/// The `minimal` marker a serialized proof carries, or `None` if it is not a boolean.
+///
+/// The marker sits outside the STARK payload, so nothing downstream would catch a
+/// garbage value: without this, a valid 69-public proof passes carrying marker `2`.
+fn minimal_marker(zisk_proof: &[u64]) -> Option<bool> {
+    match *zisk_proof.first()? {
+        0 => Some(false),
+        1 => Some(true),
+        _ => None,
+    }
+}
+
 /// Whether a serialized proof is an aggregated fold rather than a leaf, from the
 /// `is_vadcop_final_proof` public. A compressed proof no longer carries it: `None`.
 pub fn committed_is_aggregate(zisk_proof: &[u64]) -> Option<bool> {
-    if zisk_proof.len() < 2 || zisk_proof[0] == 1 {
+    if zisk_proof.len() < 2 || minimal_marker(zisk_proof)? {
         return None;
     }
     if zisk_proof[1] != EXPECTED_N_PUBLICS_FINAL {
@@ -102,7 +114,7 @@ pub fn committed_program_vk(zisk_proof: &[u64]) -> Option<&[u64]> {
     if zisk_proof.len() < 2 {
         return None;
     }
-    let minimal = zisk_proof[0] == 1;
+    let minimal = minimal_marker(zisk_proof)?;
     let expected_n_publics =
         if minimal { EXPECTED_N_PUBLICS_COMPRESSED } else { EXPECTED_N_PUBLICS_FINAL };
     if zisk_proof[1] != expected_n_publics {
@@ -128,7 +140,11 @@ pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64], ha
         return false;
     }
 
-    let minimal = zisk_proof[0] == 1;
+    // Strictly boolean: the marker is outside the STARK payload, so a garbage value
+    // would otherwise select the full-proof path and verify.
+    let Some(minimal) = minimal_marker(zisk_proof) else {
+        return false;
+    };
     let vadcop_proof = &zisk_proof[1..];
 
     let expected_n_publics = expected_n_publics(minimal);
@@ -317,6 +333,17 @@ mod tests {
         let mut publics = vec![0u64; EXPECTED_N_PUBLICS_FINAL as usize];
         publics[VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN] = GOLDILOCKS_ORDER;
         assert!(!verify_vadcop_final(&final_proof(publics, false), &[1, 2, 3, 4]));
+    }
+
+    /// The marker sits outside the STARK payload, so a garbage value must be refused
+    /// here or an otherwise valid full proof verifies while declaring nonsense.
+    #[test]
+    fn a_non_boolean_minimal_marker_is_refused() {
+        let mut p = leaf(IS_VADCOP_FINAL_PROOF, [1, 2, 3, 4]).to_vec();
+        p[0] = 2;
+        assert!(!verify_vadcop_final_proof(&p, &[1, 2, 3, 4], "Poseidon2"));
+        assert_eq!(committed_program_vk(&p), None);
+        assert_eq!(committed_is_aggregate(&p), None);
     }
 
     /// A non-canonical public must be refused before it reaches the STARK verifier.
