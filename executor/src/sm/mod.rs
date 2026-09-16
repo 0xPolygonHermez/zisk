@@ -54,9 +54,6 @@ impl<F: PrimeField64> StateMachines<F> {
 pub struct StaticSMBundle<F: PrimeField64> {
     /// Every built-in and precompile SM registered in this bundle.
     sm: Vec<SMType<F>>,
-
-    /// The standard library instance to be shared across built-in SMs and precompiles.
-    std: Arc<Std<F>>,
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
@@ -78,7 +75,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             }))
             .collect();
 
-        Self { sm, std }
+        Self { sm }
     }
 
     /// Sets the ROM for the `RomSM` in the bundle.
@@ -100,11 +97,6 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             }
         }
         Ok(())
-    }
-
-    /// Getter for the shared `Std` instance in the bundle, used by built-in SMs and precompiles.
-    pub fn get_std(&self) -> Arc<Std<F>> {
-        self.std.clone()
     }
 
     /// Configure the instances of the SMs in the bundle for the given plans.

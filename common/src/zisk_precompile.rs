@@ -153,8 +153,8 @@ macro_rules! zisk_precompile_explicit {
             }
 
             impl<F: ::proofman_fields::PrimeField64> [<$name Manager>]<F> {
-                pub fn new(std: ::std::sync::Arc<::pil2_std_lib::Std<F>>) -> ::std::sync::Arc<Self> {
-                    let [<$name:snake _sm>] = <$sm<F>>::new(std);
+                pub fn new() -> ::std::sync::Arc<Self> {
+                    let [<$name:snake _sm>] = <$sm<F>>::new();
                     ::std::sync::Arc::new(Self { [<$name:snake _sm>] })
                 }
             }

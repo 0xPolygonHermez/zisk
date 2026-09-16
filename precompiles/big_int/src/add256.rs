@@ -1,9 +1,9 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
@@ -44,14 +44,10 @@ impl Add256Input {
 
 /// The `Add256SM` struct encapsulates the logic of the Add256 State Machine.
 pub struct Add256SM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
-
     /// Number of available add256s in the trace.
     pub num_availables: usize,
 
-    /// Range checks ID's
-    range_id: usize,
+    _phantom: PhantomData<F>,
 }
 
 impl<F: PrimeField64> Add256SM<F> {
@@ -59,13 +55,10 @@ impl<F: PrimeField64> Add256SM<F> {
     ///
     /// # Returns
     /// A new `Add256SM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Compute some useful values
+    pub fn new() -> Arc<Self> {
         let num_availables = Add256Trace::<()>::NUM_ROWS;
 
-        let range_id = std.get_range_id(0, (1 << 16) - 1, None).unwrap();
-
-        Arc::new(Self { std, num_availables, range_id })
+        Arc::new(Self { num_availables, _phantom: PhantomData })
     }
 
     /// Processes a slice of operation data, updating the trace.
@@ -203,9 +196,6 @@ impl<F: PrimeField64> Add256SM<F> {
                 global_multiplicities[i] += count;
             }
         }
-
-        // Send final result to std
-        self.std.range_check_ranged(self.range_id, None, &global_multiplicities);
 
         timer_stop_and_log_trace!(ADD256_TRACE);
 

@@ -1,14 +1,14 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use proofman_fields::PrimeField64;
 
 use crate::{dma_trace, DmaUnalignedInput};
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::SegmentId;
 use zisk_pil::{
-    DmaUnalignedAirValues, DmaUnalignedTrace, DmaUnalignedTraceRowOps, DUAL_RANGE_BYTE_ID,
+    DmaUnalignedAirValues, DmaUnalignedTrace, DmaUnalignedTraceRowOps,
 };
 use zisk_precomp_helpers::DmaInfo;
 
@@ -24,12 +24,7 @@ pub struct DmaUnalignedPrevSegment {
 
 /// The `DmaUnalignedSM` struct encapsulates the logic of the DmaUnaligned State Machine.
 pub struct DmaUnalignedSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
-
-    /// Range checks ID's
-    range_16_bits_id: usize,
-    dual_range_byte_id: usize,
+    _phantom: PhantomData<F>,
 }
 
 impl<F: PrimeField64> DmaUnalignedSM<F> {
@@ -37,16 +32,8 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
     ///
     /// # Returns
     /// A new `DmaUnalignedSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        Arc::new(Self {
-            std: std.clone(),
-            dual_range_byte_id: std
-                .get_virtual_table_id(DUAL_RANGE_BYTE_ID)
-                .expect("Failed to get tabl eDUAL_RANGE_BYTE ID ID"),
-            range_16_bits_id: std
-                .get_range_id(0, 0xFFFF, None)
-                .expect("Failed to get 16b table ID"),
-        })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: PhantomData })
     }
 
     /// Processes a slice of operation data, updating the trace.
@@ -59,7 +46,6 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         &self,
         input: &DmaUnalignedInput,
         trace: &mut [R],
-        local_dual_byte_table: &mut [u64],
         air_values: &mut DmaUnalignedAirValues<F>,
     ) -> usize {
         let rows = input.count as usize;
@@ -131,11 +117,6 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
             // row.set_write_value(0, write_value as u32);
             // row.set_write_value(1, (write_value >> 32) as u32);
 
-            let value = value as usize;
-            local_dual_byte_table[value & 0xFFFF] += 1;
-            local_dual_byte_table[(value >> 16) & 0xFFFF] += 1;
-            local_dual_byte_table[(value >> 32) & 0xFFFF] += 1;
-            local_dual_byte_table[(value >> 48) & 0xFFFF] += 1;
         }
 
         if is_last_instance_input {
@@ -216,31 +197,23 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         // Split the dma_trace.buffer into slices matching each inner vector’s length.
         let trace_rows = trace.buffer.as_mut_slice();
 
-        // TODO: add std method to used short table, no sense with instances around 2^22 use 64 bits, need more space.
-        let mut local_dual_byte_table = vec![0u64; 1 << 16];
         let mut air_values = DmaUnalignedAirValues::<F>::new();
         let mut row_offset = 0;
         for input in flat_inputs.iter() {
             let rows_used = self.process_input(
                 input,
                 &mut trace_rows[row_offset..],
-                &mut local_dual_byte_table,
                 &mut air_values,
             );
             row_offset += rows_used;
         }
 
         let padding_size = num_rows - row_offset;
-        let last_count = if padding_size == 0 && !trace_rows[num_rows - 1].get_seq_end() {
+        let _last_count = if padding_size == 0 && !trace_rows[num_rows - 1].get_seq_end() {
             trace_rows[num_rows - 1].get_count()
         } else {
             0
         };
-        self.std.range_check_one(self.range_16_bits_id, last_count & 0xFFFF);
-        self.std.range_check_one(self.range_16_bits_id, (last_count >> 16) & 0xFFFF);
-
-        local_dual_byte_table[0] += (padding_size * 4) as u64;
-        self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, None, &local_dual_byte_table);
 
         air_values.segment_id = F::from_usize(segment_id.into());
         air_values.is_last_segment = F::from_bool(is_last_segment);

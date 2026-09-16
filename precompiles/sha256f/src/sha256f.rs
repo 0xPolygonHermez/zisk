@@ -1,10 +1,10 @@
 use core::panic;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::OperationSha256Data;
@@ -40,14 +40,7 @@ impl Sha256fInput {
 /// Nothing here depends on the height of the air: the capacity is taken from the trace each call
 /// builds, so a taller sibling would need no change.
 pub struct Sha256fSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
-
-    /// Number of available sha256fs in the trace.
-
-    /// Range checks ID's
-    a_range_id: usize,
-    e_range_id: usize,
+    _phantom: PhantomData<F>,
 }
 
 impl<F: PrimeField64> Sha256fSM<F> {
@@ -55,13 +48,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
     ///
     /// # Returns
     /// A new `Sha256fSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Compute some useful values
-
-        let a_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
-        let e_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
-
-        Arc::new(Self { std, a_range_id, e_range_id })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: PhantomData })
     }
 
     /// Processes a slice of operation data, updating the trace and multiplicities.
@@ -502,8 +490,6 @@ impl<F: PrimeField64> Sha256fSM<F> {
         a_range_checks[0] += count_zeros as u32;
         e_range_checks[0] += count_zeros as u32;
 
-        self.std.range_check_ranged(self.a_range_id, None, &a_range_checks);
-        self.std.range_check_ranged(self.e_range_id, None, &e_range_checks);
 
         timer_stop_and_log_trace!(SHA256F_PADDING);
 

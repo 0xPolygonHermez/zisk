@@ -114,7 +114,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let std = pil2_std_lib::Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
         proofman::register_std(wcm, &std);
 
-        let precompiles = crate::Precompiles::all(std.clone());
+        let precompiles = crate::Precompiles::all();
         let sm_bundle = Arc::new(StaticSMBundle::new(std, precompiles));
 
         let executor = Arc::new(Self {
