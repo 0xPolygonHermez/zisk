@@ -102,9 +102,24 @@ jobs:
       - name: Build cargo-zisk-dev
         run: cargo build --release -p cargo-zisk --bin cargo-zisk-dev
 
+      # TEMPORARY DIAGNOSTIC (revert once the SIGILL is identified): this step dies with
+      # exit 132 on the runner and cannot be reproduced on a CPU without AVX-512, so run
+      # it under gdb to capture the faulting instruction and the CPU that executed it.
       - name: Generate Solidity calldata fixture
         working-directory: zisk-contracts
-        run: ../target/release/cargo-zisk-dev export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq gdb
+          echo "=== CPU ==="
+          lscpu | grep -iE "^model name|^flags" | sed 's/ /\n/g' | grep -iE "avx512|sha_ni|vaes|model" | sort -u | tr '\n' ' '
+          echo
+          lscpu | grep -i "^model name"
+          echo "=== RUN UNDER GDB ==="
+          gdb -batch -q \
+            -ex run \
+            -ex "printf \"\\n=== BACKTRACE ===\\n\"" -ex "bt 40" \
+            -ex "printf \"\\n=== FAULTING INSTRUCTION ===\\n\"" -ex "x/6i \$pc" \
+            -ex "info registers rip" \
+            --args ../target/release/cargo-zisk-dev export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
 
       - name: Install JS dependencies
         working-directory: zisk-contracts

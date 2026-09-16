@@ -82,6 +82,8 @@ exclude = ["test-artifacts"]
 
 [profile.release]
 opt-level = 3
+# TEMPORARY: symbols for the CI SIGILL diagnostic; revert with the pr.yml gdb step.
+debug = 1
 
 [profile.bench]
 opt-level = 3
