@@ -415,7 +415,13 @@ pub fn decode_rom(blob: &[u8]) -> Result<ZiskRom, String> {
     let mut prev = 0u64;
     let mut insts = BTreeMap::new();
     for _ in 0..inst_count {
-        let addr = prev + r.uvarint()?;
+        // Addresses are unique and ascending, so every delta is >= 1 (see ziskbin.md
+        // §3.2). A zero delta would silently overwrite the previous instruction.
+        let delta = r.uvarint()?;
+        if delta == 0 {
+            return Err("ziskbin: zero instruction address delta".to_string());
+        }
+        let addr = prev.checked_add(delta).ok_or("ziskbin: instruction address overflow")?;
         prev = addr;
         let inst = decode_inst(&mut r, addr)?;
         insts.insert(addr, ZiskInstBuilder { i: inst });
