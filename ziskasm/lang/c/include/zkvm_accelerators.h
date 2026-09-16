@@ -133,9 +133,8 @@ zkvm_status zkvm_bls12_g2_add(const zkvm_bls12_381_g2_point* p1, const zkvm_bls1
                               zkvm_bls12_381_g2_point* result);
 zkvm_status zkvm_bls12_g2_msm(const zkvm_bls12_381_g2_msm_pair* pairs, size_t num_pairs,
                               zkvm_bls12_381_g2_point* result);
-/* BLS12-381 pairing check. num_pairs must be in 1..=32: the .zisk
- * implementation stages the points in fixed-size buffers and returns ZKVM_EFAIL
- * for 0 or a larger count. */
+/* BLS12-381 pairing check. num_pairs must be <= 32: the .zisk implementation stages
+ * the points in fixed-size buffers and returns ZKVM_EFAIL for a larger count. */
 zkvm_status zkvm_bls12_pairing(const zkvm_bls12_381_pairing_pair* pairs, size_t num_pairs, bool* verified);
 zkvm_status zkvm_bls12_map_fp_to_g1(const zkvm_bls12_381_fp* field_element,
                                     zkvm_bls12_381_g1_point* result);
