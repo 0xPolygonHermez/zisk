@@ -102,33 +102,9 @@ jobs:
       - name: Build cargo-zisk-dev
         run: cargo build --release -p cargo-zisk --bin cargo-zisk-dev
 
-      # TEMPORARY DIAGNOSTIC (revert once the SIGILL is identified). Under gdb the run
-      # succeeds, so establish whether the crash is intermittent and whether it depends
-      # on ASLR (which gdb disables by default). Never fails the step -- we want the log.
       - name: Generate Solidity calldata fixture
         working-directory: zisk-contracts
-        run: |
-          set +e
-          sudo apt-get update -qq && sudo apt-get install -y -qq gdb
-          CMD="../target/release/cargo-zisk-dev export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json"
-          lscpu | grep -i "^model name"
-          echo "=== 10 PLAIN RUNS ==="
-          fails=0
-          for i in $(seq 1 10); do
-            $CMD >/dev/null 2>&1
-            rc=$?
-            echo "run $i -> exit $rc"
-            if [ $rc -ne 0 ]; then fails=$((fails+1)); fi
-          done
-          echo "PLAIN FAILURES: $fails/10"
-          echo "=== GDB, ASLR DISABLED (gdb default) ==="
-          gdb -batch -q -ex run -ex "bt 40" -ex "x/6i \$pc" --args $CMD 2>&1 | tail -30
-          echo "=== GDB, ASLR ENABLED ==="
-          gdb -batch -q -ex "set disable-randomization off" -ex run -ex "bt 40" -ex "x/6i \$pc" --args $CMD 2>&1 | tail -30
-          echo "=== ensure the fixture exists for the later steps ==="
-          $CMD; echo "final exit=$?"
-          ls -l fixtures/
-          exit 0
+        run: ../target/release/cargo-zisk-dev export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
 
       - name: Install JS dependencies
         working-directory: zisk-contracts
