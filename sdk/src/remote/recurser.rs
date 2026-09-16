@@ -73,8 +73,8 @@ impl RemoteClient {
         subs: SubscriberList,
     ) -> Result<JobHandle<ProveResult>> {
         // Bincode each proof for the wire.
-        let vfp_a = proof_a.get_vadcop_final_proof().map_err(SdkError::backend)?;
-        let vfp_b = proof_b.get_vadcop_final_proof().map_err(SdkError::backend)?;
+        let vfp_a = proof_a.get_vadcop_final_proof_to_aggregate().map_err(SdkError::backend)?;
+        let vfp_b = proof_b.get_vadcop_final_proof_to_aggregate().map_err(SdkError::backend)?;
         let bytes_a = bincode::serde::encode_to_vec(&vfp_a, bincode::config::standard())
             .map_err(|e| SdkError::Serialization(format!("proof_a: {e}")))?;
         let bytes_b = bincode::serde::encode_to_vec(&vfp_b, bincode::config::standard())
