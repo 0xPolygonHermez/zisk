@@ -52,8 +52,10 @@ um_noovf:
 ;   otherwise (a even). Halts (like the reference `assert!`) if the hinted inverse
 ;   fails verification — unreachable given a correct hint.
 ;
-;   Args: r10 = a, r11 = result. Caller-saved regs only (r5-r7, r12-r15 scratch;
-;   r10/r11 persist), so it is ABI-safe as a callee.
+;   Args: r10 = a, r11 = result. Leaf: touches only caller-saved registers (r5-r7,
+;   r12-r15 scratch) and needs no stack frame. Neither argument register survives:
+;   r10 carries the return flag and the copy-out advances r11 to result+32. Both are
+;   RISC-V argument registers (a0/a1), which the caller must assume are clobbered.
 ; ----------------------------------------------------------------------------
 zisklib_inv256:
 	; --- hint the inverse: fcall(a) -> free_input = flag, then 4 inverse words ---
