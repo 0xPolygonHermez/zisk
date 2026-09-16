@@ -305,6 +305,11 @@ zkvm_status zkvm_bn254_g1_mul(const zkvm_bn254_g1_point* point,
  *
  * Checks if the pairing equation holds for the given points.
  *
+ * ZisK limit: num_pairs must be <= 32; a larger count returns ZKVM_EFAIL, because
+ * the ziskasm zisklib stages the points in fixed-size buffers. The portable software
+ * implementation has no such cap, so this applies only when the ziskasm redirect is
+ * enabled.
+ *
  * @param pairs Array of G1-G2 point pairs
  * @param num_pairs Number of point pairs
  * @param[out] verified Pointer to bool indicating if pairing check passes
@@ -427,6 +432,11 @@ zkvm_status zkvm_bls12_g2_msm(const zkvm_bls12_381_g2_msm_pair* pairs,
  *
  * Precompile: 0x0f
  * EIP-2537
+ *
+ * ZisK limit: num_pairs must be in 1..=32; 0 or a larger count returns ZKVM_EFAIL,
+ * because the ziskasm zisklib stages the points in fixed-size buffers. The portable
+ * software implementation has no such cap, so this applies only when the ziskasm
+ * redirect is enabled.
  *
  * @param pairs Array of G1-G2 point pairs
  * @param num_pairs Number of point pairs
