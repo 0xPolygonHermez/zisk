@@ -81,8 +81,8 @@ pub struct Emu<'a> {
 /// ZiskExecutor::calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>, global_ids: &[usize], n_cores: usize, buffer_pool: &dyn BufferPool<F>,)
 ///     ZiskExecutor::witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance, trace_buffer: Vec<F>,)
 ///         MainSM::compute_witness<F: PrimeField64>(zisk_rom: &ZiskRom, min_traces: &[EmuTrace], chunk_size: u64, main_instance: &MainInstance, std: Arc<Std<F>>, trace_buffer: Vec<F>,) -> AirInstance<F>
-///             MainSM::fill_partial_trace<F: PrimeField64>(zisk_rom: &ZiskRom, main_trace: &mut [MainTraceRow<F>], min_trace: &EmuTrace, reg_trace: &mut EmuRegTrace, step_range_check: &mut [u32], last_reg_values: bool, with_pad_row: bool,) -> (u64, Vec<u64>, Option<MainTraceRow<F>>)
-///                 Emu::step_slice_full_trace<R: MainTraceRowOps<F>, F: PrimeField64>(&mut self, trace: &mut R, lane: usize, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace, step_range_check: Option<&mut [u32]>,)
+///             MainSM::fill_partial_trace<F: PrimeField64>(zisk_rom: &ZiskRom, main_trace: &mut [MainTraceRow<F>], min_trace: &EmuTrace, reg_trace: &mut EmuRegTrace, last_reg_values: bool, with_pad_row: bool,) -> (u64, Vec<u64>, Option<MainTraceRow<F>>)
+///                 Emu::step_slice_full_trace<R: MainTraceRowOps<F>, F: PrimeField64>(&mut self, trace: &mut R, lane: usize, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace,)
 ///                     Emu::source_a_mem_reads_consume(&mut self, instruction: &ZiskInst, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace,)
 ///
 /// 2.- When called from ZiskEmu to simply emulate a RISC-V ELF file with an input file:
@@ -2769,7 +2769,6 @@ impl<'a> Emu<'a> {
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
         reg_trace: &mut EmuRegTrace,
-        step_range_check: Option<&mut [u32]>,
     ) where
         R: MainTraceRowOps<F> + IndexedFill,
     {
@@ -2784,7 +2783,7 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.step, mem_reads_index, self.ctx.inst_ctx.pc
         );
 
-        reg_trace.clear_reg_step_ranges();
+        reg_trace.clear_reg_prev_steps();
 
         self.source_a_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
         self.source_b_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
@@ -2807,10 +2806,6 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.data_ext_len = 0;
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
-
-        if let Some(step_range_check) = step_range_check {
-            reg_trace.update_step_range_check(step_range_check);
-        }
 
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);

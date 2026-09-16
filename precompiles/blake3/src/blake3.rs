@@ -4,16 +4,15 @@ use std::sync::Arc;
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
-use pil2_std_lib::Std;
+use std::marker::PhantomData;
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::OperationBlake3Data;
 use zisk_pil::{Blake3fTraceRowOps, ZISK_AIRGROUP_ID};
 
 use super::blake3_constants::{
-    BLAKE3F_TABLE_SIZE, CLOCKS, LANES, NUM_G_PER_ROUND, R1_G, R2_G, R3_G, R4_G, SIGMA,
+    CLOCKS, LANES, NUM_G_PER_ROUND, R1_G, R2_G, R3_G, R4_G, SIGMA,
 };
-use super::blake3_table::Blake3fTableSM;
 
 /// State indices (a, b, c, d) mixed by the G function at each clock of a round:
 /// clocks 0-3 perform the column mixing, clocks 4-7 the diagonal mixing.
@@ -51,15 +50,6 @@ fn u32_to_limbs16(value: u32) -> [u16; 2] {
     [value as u16, (value >> 16) as u16]
 }
 
-/// Number of 16-bit range-checked limbs per row (per lane): va[2], vc[2], x[2], y[2].
-const RANGE_CHECKED_LIMBS_PER_ROW: usize = 8;
-
-/// Number of unconditional rot-0 XOR table lookups per row (per lane):
-/// vd', vd'' and vb''-xor, 4 bytes each.
-const XOR_ROT0_CHECKS_PER_ROW: usize = 12;
-
-/// Number of unconditional rot-12 XOR table lookups per row (per lane): vb', 4 bytes.
-const XOR_ROT12_CHECKS_PER_ROW: usize = 4;
 
 /// Per-operation input record assembled from the bus payload.
 #[derive(Debug)]
@@ -87,13 +77,7 @@ impl Blake3Input {
 
 /// The `Blake3SM` struct encapsulates the logic of the Blake3 State Machine.
 pub struct Blake3SM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
-
-    /// Number of available blake3s in the trace.
-    range_id: usize,
-
-    table_id: usize,
+   _phantom: PhantomData<F>,
 }
 
 impl<F: PrimeField64> Blake3SM<F> {
@@ -101,35 +85,24 @@ impl<F: PrimeField64> Blake3SM<F> {
     ///
     /// # Returns
     /// A new `Blake3SM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Compute some useful values
-
-        let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
-
-        let table_id = std
-            .get_virtual_table_id(Blake3fTableSM::TABLE_ID)
-            .expect("Failed to get Blake3f table ID");
-
-        Arc::new(Self { std, range_id, table_id })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            _phantom: PhantomData,
+        })
     }
 
-    /// Processes one operation, filling one lane of its CLOCKS-row cycle and
-    /// updating the range-check and XOR-table multiplicities.
+    /// Processes one operation, filling one lane of its CLOCKS-row cycle.
     ///
     /// # Arguments
     /// * `input` - The operation data to process.
     /// * `lane` - The lane of the cycle this operation is placed in.
     /// * `trace` - The CLOCKS-row cycle shared by the LANES operations packed side by side.
-    /// * `range_checks` - Multiplicities of the 16-bit range checks.
-    /// * `xor_checks` - Multiplicities of the Blake3f XOR⊕ROTR table rows.
     #[inline(always)]
     pub fn process_input<R: Blake3fTraceRowOps<F>>(
         &self,
         input: &Blake3Input,
         lane: usize,
         trace: &mut [R],
-        range_checks: &mut [u32],
-        xor_checks: &mut [u32],
     ) {
         // Fill the step_addr
         trace[0].set_step_addr(lane, input.step_main); // STEP_MAIN
@@ -160,11 +133,9 @@ impl<F: PrimeField64> Blake3SM<F> {
             let y = m[s[2 * g + 1]];
             for (i, limb) in u32_to_limbs16(x).into_iter().enumerate() {
                 row.set_x(lane, i, limb);
-                range_checks[limb as usize] += 1;
             }
             for (i, limb) in u32_to_limbs16(y).into_iter().enumerate() {
                 row.set_y(lane, i, limb);
-                range_checks[limb as usize] += 1;
             }
 
             // Compute the G function
@@ -185,11 +156,9 @@ impl<F: PrimeField64> Blake3SM<F> {
             // Inputs: va/vc as 16-bit limbs (range checked), vb/vd as bytes
             for (i, limb) in u32_to_limbs16(va).into_iter().enumerate() {
                 row.set_va(lane, i, limb);
-                range_checks[limb as usize] += 1;
             }
             for (i, limb) in u32_to_limbs16(vc).into_iter().enumerate() {
                 row.set_vc(lane, i, limb);
-                range_checks[limb as usize] += 1;
             }
 
             let vb_bytes = vb.to_le_bytes();
@@ -201,7 +170,6 @@ impl<F: PrimeField64> Blake3SM<F> {
             let va_p_bytes = va_p.to_le_bytes();
             let vd_p_bytes = vd_p.to_le_bytes();
             let vc_p_bytes = vc_p.to_le_bytes();
-            let vb_p_bytes = vb_p.to_le_bytes();
             let va_pp_bytes = va_pp.to_le_bytes();
             let vd_pp_bytes = vd_pp.to_le_bytes();
             let vc_pp_bytes = vc_pp.to_le_bytes();
@@ -224,20 +192,6 @@ impl<F: PrimeField64> Blake3SM<F> {
 
             // Top bit of rotr8(z), i.e. bit 7 of z's byte 0 (the rotl-by-1 carry)
             row.set_vb_pp_t(lane, (z >> 7) & 1 == 1);
-
-            // XOR table lookups: (vd, va', rot 0), (vb, vc', rot 12), (vd', va'', rot 0)
-            // and (vb', vc'', rot 0), per byte
-            for i in 0..4 {
-                let rows = [
-                    Blake3fTableSM::calculate_table_row(vd_bytes[i], va_p_bytes[i], 0),
-                    Blake3fTableSM::calculate_table_row(vb_bytes[i], vc_p_bytes[i], 12),
-                    Blake3fTableSM::calculate_table_row(vd_p_bytes[i], va_pp_bytes[i], 0),
-                    Blake3fTableSM::calculate_table_row(vb_p_bytes[i], vc_pp_bytes[i], 0),
-                ];
-                for table_row in rows {
-                    xor_checks[table_row as usize] += 1;
-                }
-            }
 
             // Write the outputs back for the following rows
             v[ia] = va_pp;
@@ -303,70 +257,31 @@ impl<F: PrimeField64> Blake3SM<F> {
             trace_rows = tail;
         }
 
-        // Fill the trace, collecting the range-check and XOR-table multiplicities
-        let (mut range_checks, xor_checks) = par_traces
+        // Fill the trace. The XOR-table lookups and 16-bit range checks the lanes used to tally
+        // here are computed by the prover from the committed trace.
+        par_traces
             .into_par_iter()
             .enumerate()
-            .fold(
-                || (vec![0u32; 1 << 16], vec![0u32; BLAKE3F_TABLE_SIZE]),
-                |(mut range_checks, mut xor_checks), (cycle, trace)| {
+            .for_each(
+                |(cycle, trace)| {
                     // Lanes must be filled in order: the last cycle may leave the
                     // trailing lanes empty
                     let inputs = &flat_inputs[cycle * LANES..];
                     for (lane, input) in inputs.iter().take(LANES).enumerate() {
-                        self.process_input::<R>(
-                            input,
-                            lane,
-                            trace,
-                            &mut range_checks,
-                            &mut xor_checks,
-                        );
+                        self.process_input::<R>(input, lane, trace);
                     }
-                    (range_checks, xor_checks)
-                },
-            )
-            .reduce(
-                || (vec![0u32; 1 << 16], vec![0u32; BLAKE3F_TABLE_SIZE]),
-                |(mut range_acc, mut xor_acc), (range, xor)| {
-                    for (acc, val) in range_acc.iter_mut().zip(range) {
-                        *acc += val;
-                    }
-                    for (acc, val) in xor_acc.iter_mut().zip(xor) {
-                        *acc += val;
-                    }
-                    (range_acc, xor_acc)
+                    
                 },
             );
 
-        // Padding rows are all-zero: in_use is off, so the only bus contributions
-        // are the unconditional range checks and XOR table lookups over zeros
+        // Padding rows are all-zero: in_use is off, so the only bus contributions are the
+        // unconditional XOR table lookups over zeros
         trace.buffer[num_rows_filled..num_rows]
             .par_iter_mut()
             .for_each(|slot| *slot = R::default());
 
-        // The range checks and XOR lookups are per lane and unconditional, so every
-        // lane-row left empty (a padding row, or a trailing lane of the last cycle)
-        // contributes them over zeros
-        let num_empty_lane_rows = (num_rows * LANES - num_inputs * CLOCKS) as u32;
-        range_checks[0] += RANGE_CHECKED_LIMBS_PER_ROW as u32 * num_empty_lane_rows;
-
         timer_stop_and_log_trace!(BLAKE3_TRACE);
 
-        self.std.range_check_ranged(self.range_id, None, &range_checks);
-
-        let zero_rot0_row = Blake3fTableSM::calculate_table_row(0, 0, 0) as usize;
-        let zero_rot12_row = Blake3fTableSM::calculate_table_row(0, 0, 12) as usize;
-        xor_checks.into_par_iter().enumerate().for_each(|(row, mut value)| {
-            if row == zero_rot0_row {
-                value += XOR_ROT0_CHECKS_PER_ROW as u32 * num_empty_lane_rows;
-            }
-            if row == zero_rot12_row {
-                value += XOR_ROT12_CHECKS_PER_ROW as u32 * num_empty_lane_rows;
-            }
-            if value > 0 {
-                self.std.inc_virtual_row(self.table_id, row as u32, value);
-            }
-        });
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }

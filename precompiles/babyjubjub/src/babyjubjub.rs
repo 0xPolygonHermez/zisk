@@ -1,11 +1,10 @@
 use proofman_fields::PrimeField64;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{BabyJubJubTraceRowOps, ZISK_AIRGROUP_ID};
-use zisk_precomp_arith_eq::ArithEqLtTableSM;
 
 use crate::{
     executors, BabyJubJubAddInput, BabyJubJubInput, BABYJUBJUB_OP_NUM, BABYJUBJUB_PRIME_CHUNKS,
@@ -18,15 +17,7 @@ use rayon::prelude::*;
 /// Nothing here depends on the height of the air: the capacity is taken from the trace each call
 /// builds, so a taller sibling would need no change.
 pub struct BabyJubJubSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
-
-    /// The table ID for the BabyJubJub Lt Table State Machine.
-    table_id: usize,
-
-    pub q_hsc_range_id: usize,
-    pub chunk_range_id: usize,
-    pub carry_range_id: usize,
+    _phantom: PhantomData<F>,
 }
 
 #[derive(Debug, Default)]
@@ -44,17 +35,8 @@ struct BabyJubJubStepAddr {
 
 impl<F: PrimeField64> BabyJubJubSM<F> {
     /// Creates a new BabyJubJub State Machine instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let p2_22 = 1 << 22;
-        let q_hsc_range_id = std.get_range_id(0, p2_22 - 1, None).expect("Failed to get range ID");
-        let chunk_range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
-        let carry_range_id =
-            std.get_range_id(-(p2_22 - 1), p2_22, None).expect("Failed to get range ID");
-
-        let table_id =
-            std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
-
-        Arc::new(Self { std, q_hsc_range_id, chunk_range_id, carry_range_id, table_id })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: PhantomData })
     }
 
     fn expand_addr_step_on_trace<R: BabyJubJubTraceRowOps<F>>(
@@ -103,8 +85,7 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
     }
 
     #[inline(always)]
-    fn to_ranged_field(&self, value: i64, range_id: usize) -> u64 {
-        self.std.range_check_one(range_id, value);
+    fn to_ranged_field(&self, value: i64) -> u64 {
         if value >= 0 {
             value as u64
         } else {
@@ -112,8 +93,6 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
         }
     }
 
-    const FIRST_CLOCK: u8 = 0;
-    const LAST_CLOCK: u8 = BABYJUBJUB_ROWS_BY_OP as u8 - 1;
 
     fn expand_data_on_trace<R: BabyJubJubTraceRowOps<F>>(
         &self,
@@ -131,36 +110,31 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
         for i in 0..BABYJUBJUB_ROWS_BY_OP {
             for j in 0..7 {
                 let carry_0 = if i == 0 { 0 } else { data.cout[i * 2 - 1][j] };
-                trace[i].set_carry(j, 0, self.to_ranged_field(carry_0, self.carry_range_id));
+                trace[i].set_carry(j, 0, self.to_ranged_field(carry_0));
                 trace[i].set_carry(
                     j,
                     1,
-                    self.to_ranged_field(data.cout[i * 2][j], self.carry_range_id),
+                    self.to_ranged_field(data.cout[i * 2][j]),
                 );
             }
-            let q_range_id = if i == BABYJUBJUB_ROWS_BY_OP - 1 {
-                self.q_hsc_range_id
-            } else {
-                self.chunk_range_id
-            };
-            trace[i].set_x1(self.to_ranged_field(data.x1[i], self.chunk_range_id) as u16);
-            trace[i].set_y1(self.to_ranged_field(data.y1[i], self.chunk_range_id) as u16);
-            trace[i].set_x2(self.to_ranged_field(data.x2[i], self.chunk_range_id) as u16);
-            trace[i].set_y2(self.to_ranged_field(data.y2[i], self.chunk_range_id) as u16);
-            trace[i].set_x3(self.to_ranged_field(data.x3[i], self.chunk_range_id) as u16);
-            trace[i].set_y3(self.to_ranged_field(data.y3[i], self.chunk_range_id) as u16);
-            trace[i].set_A(self.to_ranged_field(data.a[i], self.chunk_range_id) as u16);
-            trace[i].set_B(self.to_ranged_field(data.b[i], self.chunk_range_id) as u16);
-            trace[i].set_Nx(self.to_ranged_field(data.n[i], self.chunk_range_id) as u16);
-            trace[i].set_T(self.to_ranged_field(data.t[i], self.chunk_range_id) as u16);
-            trace[i].set_DT(self.to_ranged_field(data.dt[i], self.chunk_range_id) as u16);
-            trace[i].set_qa(self.to_ranged_field(data.qa[i], q_range_id) as u32);
-            trace[i].set_qb(self.to_ranged_field(data.qb[i], q_range_id) as u32);
-            trace[i].set_qn(self.to_ranged_field(data.qn[i], q_range_id) as u32);
-            trace[i].set_qt(self.to_ranged_field(data.qt[i], q_range_id) as u32);
-            trace[i].set_qdt(self.to_ranged_field(data.qdt[i], q_range_id) as u32);
-            trace[i].set_qx(self.to_ranged_field(data.qx[i], q_range_id) as u32);
-            trace[i].set_qy(self.to_ranged_field(data.qy[i], q_range_id) as u32);
+            trace[i].set_x1(self.to_ranged_field(data.x1[i]) as u16);
+            trace[i].set_y1(self.to_ranged_field(data.y1[i]) as u16);
+            trace[i].set_x2(self.to_ranged_field(data.x2[i]) as u16);
+            trace[i].set_y2(self.to_ranged_field(data.y2[i]) as u16);
+            trace[i].set_x3(self.to_ranged_field(data.x3[i]) as u16);
+            trace[i].set_y3(self.to_ranged_field(data.y3[i]) as u16);
+            trace[i].set_A(self.to_ranged_field(data.a[i]) as u16);
+            trace[i].set_B(self.to_ranged_field(data.b[i]) as u16);
+            trace[i].set_Nx(self.to_ranged_field(data.n[i]) as u16);
+            trace[i].set_T(self.to_ranged_field(data.t[i]) as u16);
+            trace[i].set_DT(self.to_ranged_field(data.dt[i]) as u16);
+            trace[i].set_qa(self.to_ranged_field(data.qa[i]) as u32);
+            trace[i].set_qb(self.to_ranged_field(data.qb[i]) as u32);
+            trace[i].set_qn(self.to_ranged_field(data.qn[i]) as u32);
+            trace[i].set_qt(self.to_ranged_field(data.qt[i]) as u32);
+            trace[i].set_qdt(self.to_ranged_field(data.qdt[i]) as u32);
+            trace[i].set_qx(self.to_ranged_field(data.qx[i]) as u32);
+            trace[i].set_qy(self.to_ranged_field(data.qy[i]) as u32);
 
             for j in 0..BABYJUBJUB_OP_NUM {
                 let selected = j == sel_op;
@@ -172,35 +146,16 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
                 }
             }
 
-            let iclock = match i as u8 {
-                Self::FIRST_CLOCK => 1,
-                Self::LAST_CLOCK => 2,
-                _ => 0,
-            };
 
             // Complete addition: both result coordinates are reduced (< p) and range-checked.
             let x3_lt = data.x3[i] < BABYJUBJUB_PRIME_CHUNKS[i]
                 || (i > 0 && data.x3[i] == BABYJUBJUB_PRIME_CHUNKS[i] && prev_x3_lt);
             trace[i].set_x3_lt(x3_lt);
-            let row = ArithEqLtTableSM::calculate_table_row(
-                prev_x3_lt,
-                x3_lt,
-                data.x3[i] - BABYJUBJUB_PRIME_CHUNKS[i],
-                iclock,
-            );
-            self.std.inc_virtual_row_one(self.table_id, row);
             prev_x3_lt = x3_lt;
 
             let y3_lt = data.y3[i] < BABYJUBJUB_PRIME_CHUNKS[i]
                 || (i > 0 && data.y3[i] == BABYJUBJUB_PRIME_CHUNKS[i] && prev_y3_lt);
             trace[i].set_y3_lt(y3_lt);
-            let row = ArithEqLtTableSM::calculate_table_row(
-                prev_y3_lt,
-                y3_lt,
-                data.y3[i] - BABYJUBJUB_PRIME_CHUNKS[i],
-                iclock,
-            );
-            self.std.inc_virtual_row_one(self.table_id, row);
             prev_y3_lt = y3_lt;
         }
     }
@@ -251,7 +206,6 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
         if full {
             par_traces[0].3 = previous_lt_flags;
         }
-        let index = par_traces.len();
 
         par_traces.into_par_iter().for_each(|(trace, i, j, previous_lt_flags)| {
             let input = &inputs[i][j];
@@ -261,12 +215,6 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
                 }
             }
         });
-
-        // Capacity of the air this call builds, so a taller sibling would need no change here.
-        let padding_ops = (num_rows / BABYJUBJUB_ROWS_BY_OP - index) as u64;
-        self.std.range_check(self.q_hsc_range_id, 0, 7 * padding_ops);
-        self.std.range_check(self.chunk_range_id, 0, 281 * padding_ops);
-        self.std.range_check(self.carry_range_id, 0, 224 * padding_ops);
 
         let padding_row = R::default();
 

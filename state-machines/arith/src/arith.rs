@@ -35,7 +35,7 @@ impl<F: PrimeField64> ArithSM<F> {
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithSM` containing initialized sub-state machines.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let arith_full_sm = ArithFullSM::new(std.clone());
+        let arith_full_sm = ArithFullSM::new();
 
         Arc::new(Self { arith_full_sm, std })
     }

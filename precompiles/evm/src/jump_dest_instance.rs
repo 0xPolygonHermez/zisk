@@ -26,9 +26,9 @@
 //! transitions running (`src64`, `dst64` and `state` carry on, `count` stays at
 //! zero) with `sel` cleared, so they drive no bus at all.
 
+use std::marker::PhantomData;
 use std::sync::Arc;
 
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
 use zisk_common::{
@@ -37,49 +37,16 @@ use zisk_common::{
 };
 use zisk_pil::{
     JumpDestAirValues, JumpDestTrace, JumpDestTraceRow, JumpDestTraceRowOps,
-    JumpDestTraceRowPacked, JUMP_DEST_BITMAP_TABLE_ID, JUMP_DEST_COMPRESSOR_TABLE_ID,
+    JumpDestTraceRowPacked,
 };
 use zisk_precomp_helpers::{
-    expand_jump_dest_ops, jd_compressor_row, JumpDestBitmapTableIndex, JumpDestOp,
-    JUMP_DEST_BITMAP_TABLE_ROWS, JUMP_DEST_COMPRESSOR_TABLE_ROWS,
+    expand_jump_dest_ops, JumpDestOp,
 };
 
 use crate::{
     JumpDestCheckPoint, JumpDestCollector, JumpDestInput, JUMP_DEST_OPS_X_ROW,
     JUMP_DEST_ROWS_X_BLOCK,
 };
-
-/// Multiplicities the trace owes the two tables, one slot per table row.
-///
-/// Every op performs five lookups, so a whole instance runs into the millions.
-/// Going through `Std` for each one costs a call, an id unwrap and the
-/// contention behind it; bumping an array instead makes it an add, and the
-/// totals are handed over once at the end.
-struct LookupMuls {
-    compressor: Vec<u64>,
-    bitmap: Vec<u64>,
-}
-
-impl LookupMuls {
-    fn new() -> Self {
-        Self {
-            compressor: vec![0; JUMP_DEST_COMPRESSOR_TABLE_ROWS],
-            bitmap: vec![0; JUMP_DEST_BITMAP_TABLE_ROWS],
-        }
-    }
-
-    /// Counts the five lookups of one op: one per 16-bit chunk against the
-    /// compressor, and one against the bitmap table.
-    #[inline(always)]
-    fn count(&mut self, op: &JumpDestOp, index: &JumpDestBitmapTableIndex) {
-        let mut cdata4 = 0u64;
-        for chunk in 0..4 {
-            self.compressor[jd_compressor_row(op.data[chunk], op.ignore[chunk]) as usize] += 1;
-            cdata4 |= (op.cdata[chunk] as u64) << (8 * chunk);
-        }
-        self.bitmap[index.row(op.state_in, cdata4, op.bytes_used, op.state_out) as usize] += 1;
-    }
-}
 
 /// Where the walk stands at a row boundary. Both ends of a segment are one of
 /// these: what the previous segment left, which becomes the `segment_previous_*`
@@ -99,51 +66,20 @@ struct Cursor {
 
 /// Fills the `JumpDest` trace.
 pub struct JumpDestSM<F: PrimeField64> {
-    std: Arc<Std<F>>,
-    /// Virtual-table handles for the two tables the machine looks up. Their
-    /// multiplicities are ours to raise: the lookups only balance if the proving
-    /// side counts every row the trace assumes.
-    compressor_table_id: usize,
-    bitmap_table_id: usize,
-    /// Which row of the bitmap table proves a given op.
-    bitmap_index: JumpDestBitmapTableIndex,
-    /// The 16-bit range the two halves of `segment_last_count` are checked
-    /// against. Its multiplicity is ours to raise too — a range check on an
-    /// airvalue is a bus emission like any other.
-    range_16_bits_id: usize,
+    _phantom: PhantomData<F>,
 }
 
 impl<F: PrimeField64> JumpDestSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let compressor_table_id = std
-            .get_virtual_table_id(JUMP_DEST_COMPRESSOR_TABLE_ID)
-            .expect("Failed to get JUMP_DEST_COMPRESSOR_TABLE identifier");
-        let bitmap_table_id = std
-            .get_virtual_table_id(JUMP_DEST_BITMAP_TABLE_ID)
-            .expect("Failed to get JUMP_DEST_BITMAP_TABLE identifier");
-
-        let range_16_bits_id =
-            std.get_range_id(0, 0xFFFF, None).expect("Failed to get the 16-bit range id");
-
-        Arc::new(Self {
-            std,
-            compressor_table_id,
-            bitmap_table_id,
-            bitmap_index: JumpDestBitmapTableIndex::new(),
-            range_16_bits_id,
-        })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: PhantomData })
     }
 
     /// Writes the rows of one operation, starting `skip_rows` into it. Returns
     /// how many rows were written and where the walk stands afterwards.
-    /// `on_op` is handed every op of an active row, which is where the lookup
-    /// multiplicities are raised. It is a parameter so the row logic can be
-    /// exercised without a `Std`.
     fn process_input<R: JumpDestTraceRowOps<F>>(
         input: &JumpDestInput,
         skip_rows: usize,
         trace: &mut [R],
-        mut on_op: impl FnMut(&JumpDestOp),
     ) -> (usize, Cursor) {
         let ops = expand_jump_dest_ops(input.count as usize, &input.words);
         let total_rows = ops.len() / JUMP_DEST_OPS_X_ROW;
@@ -185,8 +121,6 @@ impl<F: PrimeField64> JumpDestSM<F> {
             row.set_seq_end(seq_end);
             Self::set_cursor(row, &cursor);
             Self::set_ops(row, slice);
-            // Only selected rows drive the lookups, so only these are counted.
-            slice.iter().for_each(&mut on_op);
         }
 
         (rows, cursor)
@@ -326,15 +260,11 @@ impl<F: PrimeField64> JumpDestSM<F> {
         let mut offset = 0usize;
         let mut skip = skip_rows;
         let mut last = previous;
-        let mut muls = LookupMuls::new();
-
         for input in inputs.iter().flatten() {
             if offset >= num_rows {
                 break;
             }
-            let (written, cursor) = Self::process_input(input, skip, &mut rows[offset..], |op| {
-                muls.count(op, &self.bitmap_index)
-            });
+            let (written, cursor) = Self::process_input(input, skip, &mut rows[offset..]);
             offset += written;
             skip = 0;
             last = cursor;
@@ -370,8 +300,6 @@ impl<F: PrimeField64> JumpDestSM<F> {
 
         Self::fill_seq_start(rows, previous.seq_end);
 
-        self.std.inc_virtual_rows_ranged(self.compressor_table_id, None, &muls.compressor);
-        self.std.inc_virtual_rows_ranged(self.bitmap_table_id, None, &muls.bitmap);
 
         // `count` is proved non-negative by splitting the segment's last value
         // into two 16-bit chunks.
@@ -379,10 +307,6 @@ impl<F: PrimeField64> JumpDestSM<F> {
         let chunks = [last_count & 0xFFFF, last_count >> 16];
         air_values.last_count_chunk[0] = F::from_u64(chunks[0]);
         air_values.last_count_chunk[1] = F::from_u64(chunks[1]);
-        for chunk in chunks {
-            self.std.range_check(self.range_16_bits_id, chunk, 1u64);
-        }
-
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 
@@ -661,7 +585,7 @@ mod tests {
         let bytecode = vec![0x5bu8; 200];
         let inp = input(&bytecode, 0xA000_0000, 0xB000_0000);
         let mut rows = blank(inp.rows() as usize);
-        let (written, cursor) = JumpDestSM::<F>::process_input(&inp, 0, &mut rows, |_| {});
+        let (written, cursor) = JumpDestSM::<F>::process_input(&inp, 0, &mut rows);
 
         assert_eq!(written, bitmap_words(200) * JUMP_DEST_ROWS_X_BLOCK);
         JumpDestSM::<F>::fill_seq_start(&mut rows, true);
@@ -681,7 +605,7 @@ mod tests {
         let bytecode = vec![0x00u8; 200];
         let inp = input(&bytecode, 0xA000_0000, 0xB000_0000);
         let mut rows = blank(inp.rows() as usize);
-        JumpDestSM::<F>::process_input(&inp, 0, &mut rows, |_| {});
+        JumpDestSM::<F>::process_input(&inp, 0, &mut rows);
 
         let base = (0xA000_0000u64 / 8) as u32;
         for block in 0..bitmap_words(200) {
@@ -704,11 +628,11 @@ mod tests {
         let total = inp.rows() as usize;
 
         let mut whole = blank(total);
-        JumpDestSM::<F>::process_input(&inp, 0, &mut whole, |_| {});
+        JumpDestSM::<F>::process_input(&inp, 0, &mut whole);
 
         let cut = JUMP_DEST_ROWS_X_BLOCK * 3;
         let mut tail = blank(total - cut);
-        JumpDestSM::<F>::process_input(&inp, cut, &mut tail, |_| {});
+        JumpDestSM::<F>::process_input(&inp, cut, &mut tail);
 
         for (index, (t, w)) in tail.iter().zip(&whole[cut..]).enumerate() {
             assert_eq!(t.get_src64(), w.get_src64(), "row {index}: src64");
@@ -761,7 +685,7 @@ mod tests {
                 }
                 let inp = input(&bytecode, 0xA000_0000, 0xB000_0000);
                 let mut rows = blank(inp.rows() as usize);
-                JumpDestSM::<F>::process_input(&inp, 0, &mut rows, |_| {});
+                JumpDestSM::<F>::process_input(&inp, 0, &mut rows);
 
                 check_transitions(&rows, &Cursor { seq_end: true, ..Cursor::default() });
 
@@ -787,7 +711,7 @@ mod tests {
         let used = inp.rows() as usize;
         let mut rows = blank(used + 3 * JUMP_DEST_ROWS_X_BLOCK);
 
-        let (written, cursor) = JumpDestSM::<F>::process_input(&inp, 0, &mut rows[..used], |_| {});
+        let (written, cursor) = JumpDestSM::<F>::process_input(&inp, 0, &mut rows[..used]);
         JumpDestSM::<F>::fill_inactive(written, &cursor, &mut rows[written..]);
 
         for row in &rows[written..] {

@@ -13,11 +13,6 @@ const TWO_WORD_COMBINATIONS: u64 = 11; // (1..4,[8]), (5,6,[4,8]), (7,[2,4,8]) -
 pub struct MemAlignRomSM;
 
 impl MemAlignRomSM {
-    pub const TABLE_ID: usize = 133;
-
-    pub const TABLE_SIZE: usize = 256; // 2**8
-
-    pub const PADDING_ROW: u64 = 0;
 
     pub fn calculate_next_pc_and_op_size(opcode: MemOp, offset: usize, width: usize) -> (u64, u64) {
         // Get the table offset
@@ -44,21 +39,6 @@ impl MemAlignRomSM {
         let op_size = OP_SIZES[opcode_idx];
 
         (first_row_idx, op_size)
-    }
-
-    /// Counts the `op_size` ROM rows the program at `pc` executes into `rom`.
-    ///
-    /// `rom` is the calling task's own histogram, not `std`: this runs inside the parallel fill,
-    /// two to five times per operation, and the table is 256 rows — 32 cache lines that every
-    /// thread would otherwise contend for. See `MemAlignTally`.
-    pub fn count_rows(rom: &mut [u64; Self::TABLE_SIZE], pc: u64, op_size: u64) {
-        // Check whether the row index is within the bounds
-        debug_assert!(pc + op_size <= Self::TABLE_SIZE as u64);
-
-        // Get the rows for the given program counter and operation size
-        for i in 0..op_size {
-            rom[(pc + i) as usize] += 1;
-        }
     }
 
     fn get_first_row_idx(

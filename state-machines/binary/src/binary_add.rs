@@ -7,8 +7,7 @@
 //! `binary_add.pil` — so the packing width is not a constant here: it comes from the row type's own
 //! [`BinaryAddRow::LANES_X_ROW`], read from the generated trace row itself.
 
-use crate::{fill_and_tally, BinaryInput, BinaryLanes};
-use pil2_std_lib::Std;
+use crate::{fill_rows, BinaryInput, BinaryLanes};
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
@@ -149,20 +148,16 @@ impl_binary_add_row!(
 
 /// The `BinaryAddSM` struct encapsulates the logic of the Binary Add State Machine.
 pub struct BinaryAddSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
-    range_id: usize,
+    _phantom: std::marker::PhantomData<F>,
 }
 
 impl<F: PrimeField64> BinaryAddSM<F> {
-    /// Creates a new BinaryAdd State Machine instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
-
-        Arc::new(Self { std, range_id })
+    /// Takes no `Std`: the chunks this air range-checks are counted by the prover from the trace.
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: std::marker::PhantomData })
     }
 
-    /// Fills one slot of a row from one operation, and returns the chunks it range-checks.
+    /// Fills one slot of a row from one operation.
     ///
     /// The shifted operand of an SH3ADD is folded into the addition rather than materialized: the
     /// bits `a << 3` carries out of a limb and the addition carry land on the same place, so the
@@ -175,7 +170,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         row: &mut R,
         lane: usize,
         input: &BinaryInput,
-    ) -> [u64; CHUNKS_X_FULL_ADD] {
+    ) {
         let sh3add = input.op == ZiskOp::Sh3add.code();
 
         // SH3ADD is c = b + (a << 3), so the multiplier rides on the operand that gets shifted.
@@ -190,7 +185,6 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         let mut b_values = [0u32; LIMBS_X_ADD];
         let mut c_chunks_values = [0u16; CHUNKS_X_FULL_ADD];
         let mut cout_values = [false; LIMBS_X_ADD];
-        let mut range_checks = [0u64; CHUNKS_X_FULL_ADD];
 
         for i in 0..LIMBS_X_ADD {
             // Extract the appropriate 32-bit chunk for this iteration
@@ -228,13 +222,9 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             );
             cout_values[i] = cin != 0;
 
-            range_checks[i * 2] = c_chunks_values[i * 2] as u64;
-            range_checks[i * 2 + 1] = c_chunks_values[i * 2 + 1] as u64;
         }
 
         row.set_slot(lane, &a_values, &b_values, &c_chunks_values, &cout_values, sh3add);
-
-        range_checks
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -276,18 +266,15 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             started: std::time::Instant::now(),
         };
 
-        // Rows are filled LANES_X_ROW operations at a time, and each operation's chunks are tallied
-        // as its slot is written rather than kept to be counted afterwards — see [`fill_and_tally`].
+        // Rows are filled LANES_X_ROW operations at a time.
         let rows_used = lanes.rows_for(total_inputs);
-        let mut multiplicities = fill_and_tally(
+        fill_rows(
             &mut R::trace_buffer_mut(&mut add_trace)[..rows_used],
             &flat_inputs,
             R::LANES_X_ROW,
-            |trace_row, row_inputs, multiplicities| {
+            |trace_row, row_inputs| {
                 for (lane, input) in row_inputs.iter().enumerate() {
-                    for chunk in self.process_slice::<T, R>(trace_row, lane, input) {
-                        multiplicities[chunk as usize] += 1;
-                    }
+                    self.process_slice::<T, R>(trace_row, lane, input);
                 }
                 // Only the last row can be short. Its leftover lanes are not covered by the padding
                 // rows written afterwards, so they are zeroed here: 0 + 0 = 0, the padding operation.
@@ -306,17 +293,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             },
         );
 
-        // Every slot range-checks CHUNKS_X_FULL_ADD chunks, and an empty one is 0 + 0 = 0, so its chunks
-        // are all zero: the slots left over on the last filled row included.
         let padding_size = num_slots - total_inputs;
-        multiplicities[0] += (CHUNKS_X_FULL_ADD * padding_size) as u32;
-        debug_assert_eq!(
-            multiplicities.iter().map(|&m| m as u64).sum::<u64>(),
-            CHUNKS_X_FULL_ADD as u64 * num_slots as u64,
-            "the multiplicities must account for the chunks of every slot",
-        );
-
-        self.std.range_check_ranged(self.range_id, None, &multiplicities);
 
         Ok(R::into_air_instance(&mut add_trace, rows_used, padding_size))
     }

@@ -7,17 +7,14 @@
 //!   segment.
 //! - Methods for computing the witness and setting up trace rows.
 
-use std::sync::Arc;
-
 use crate::{MainPlanner, MainSmError};
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use zisk_common::{EmuTrace, InstanceCtx, Plan, SegmentId};
-use zisk_core::{ZiskRom, DEFAULT_MAX_STEPS, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
+use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::{MainAirValues, MAIN_LANES, MAIN_STEPS_PER_SEGMENT};
-use zisk_sm_mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
+use zisk_sm_mem_common::MemHelpers;
 use ziskemu::{Emu, EmuRegTrace};
 
 use zisk_pil::{IndexedFill, MainTrace, MainTraceRowOps};
@@ -30,8 +27,6 @@ struct ChunkFill<R> {
     reg_values: Vec<u64>,
     /// Per-register mem-step bookkeeping, folded into the segment's chain.
     reg_trace: EmuRegTrace,
-    /// This chunk's contribution to the mem-step range checks.
-    step_range_check: Vec<u32>,
     /// A row of end-instruction steps to pad the segment's tail with. Only the last chunk
     /// of a short segment produces one.
     pad_row: Option<R>,
@@ -42,17 +37,10 @@ struct ChunkFill<R> {
 pub struct MainInstance<F: PrimeField64> {
     /// Instance Context
     pub ictx: InstanceCtx,
-
-    /// Standard library for the main instance, used for range checks operations.
-    pub std: Arc<Std<F>>,
+    _marker: std::marker::PhantomData<F>,
 }
 
 impl<F: PrimeField64> MainInstance<F> {
-    /// Maximum segment ID allowed, derived from `DEFAULT_MAX_STEPS` and the steps a
-    /// segment covers.
-    const MAX_SEGMENT_ID: usize =
-        (((DEFAULT_MAX_STEPS + 1) / MAIN_STEPS_PER_SEGMENT as u64) - 1) as usize;
-
     /// Size in main steps of a register flush window (mirrors FLUSH_SIZE in main.pil):
     /// registers are reloaded every `min(MAIN_STEPS_PER_SEGMENT, FLUSH_WINDOW_STEPS)` steps.
     const FLUSH_WINDOW_STEPS: usize = 1 << 22;
@@ -64,8 +52,8 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Returns
     /// A new `MainInstance`.
-    pub fn new(ictx: InstanceCtx, std: Arc<Std<F>>) -> Self {
-        Self { ictx, std }
+    pub fn new(ictx: InstanceCtx) -> Self {
+        Self { ictx, _marker: std::marker::PhantomData }
     }
 
     /// Computes the main witness trace for a given segment based on the provided proof context,
@@ -165,11 +153,6 @@ impl<F: PrimeField64> MainInstance<F> {
             })
             .collect();
 
-        // To reduce memory used, only take memory for the maximum range of mem_step inside the
-        // minimal trace. `chunk_size <= MAIN_STEPS_PER_SEGMENT` and `MEM_STEPS_BY_MAIN_STEP` is a
-        // small constant, so `chunk_size * MEM_STEPS_BY_MAIN_STEP` fits in usize by construction.
-        let max_range = chunk_size * MEM_STEPS_BY_MAIN_STEP as usize;
-
         // We know each register's previous step, but only by instance. We don't have this
         // information by chunk, so we need to store in the EmuRegTrace the location of the
         // first mem_step register is used in the chunk and information about the last step
@@ -181,7 +164,6 @@ impl<F: PrimeField64> MainInstance<F> {
             .enumerate()
             .take(segment_min_traces.len())
             .map(|(chunk_id, chunk)| {
-                let mut step_range_check = vec![0; max_range];
                 let init_chunk_step = if chunk_id == 0 { initial_step } else { 0 };
                 let mut reg_trace = EmuRegTrace::from_init_step(init_chunk_step, chunk_id == 0);
                 // register values are needed at the end of every flush window (to close it)
@@ -199,33 +181,24 @@ impl<F: PrimeField64> MainInstance<F> {
                     chunk,
                     &segment_min_traces[chunk_id],
                     &mut reg_trace,
-                    &mut step_range_check,
                     last_reg_values,
                     with_pad_row,
                 );
-                ChunkFill { next_pc, reg_values, reg_trace, step_range_check, pad_row }
+                ChunkFill { next_pc, reg_values, reg_trace, pad_row }
             })
             .collect::<Vec<ChunkFill<R>>>();
         let last_result = fill_trace_outputs.last().ok_or(MainSmError::EmptyFillTraceOutput)?;
         let next_pc = last_result.next_pc;
         let pad_row = last_result.pad_row;
 
-        let mut step_range_check: Vec<u32> = (0..max_range)
-            .into_par_iter()
-            .map(|i| fill_trace_outputs.iter().map(|fill| fill.step_range_check[i]).sum())
-            .collect();
-
-        // In the range checks are values too large to store in steps_range_check, but there
-        // are only a few values that exceed this limit, for this reason, are stored in a vector
 
         // Prepare main AIR values (filled below and by the flush-window closings)
         let mut air_values = MainAirValues::<F>::new();
 
         let mut reg_steps = [initial_step; REGS_IN_MAIN];
-        let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk::<R>(
+        Self::complete_trace_with_initial_reg_steps_per_chunk::<R>(
             &fill_trace_outputs,
             &mut main_trace,
-            &mut step_range_check,
             &mut reg_steps,
             chunks_per_flush,
             segment_initial_step as usize,
@@ -246,8 +219,6 @@ impl<F: PrimeField64> MainInstance<F> {
                 flush_step,
                 &last_result.reg_values,
                 &mut reg_steps,
-                &mut step_range_check,
-                &mut large_range_checks,
             );
         }
 
@@ -281,7 +252,6 @@ impl<F: PrimeField64> MainInstance<F> {
         air_values.segment_last_c[0] = F::from_u32(last_row.get_c(MAIN_LANES - 1, 0));
         air_values.segment_last_c[1] = F::from_u32(last_row.get_c(MAIN_LANES - 1, 1));
 
-        self.update_std_range_checks(segment_id, step_range_check, &large_range_checks)?;
         // Generate and add the AIR instance
         let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
         Ok(AirInstance::new_from_trace(from_trace))
@@ -305,7 +275,6 @@ impl<F: PrimeField64> MainInstance<F> {
         main_trace: &mut [R],
         min_trace: &EmuTrace,
         reg_trace: &mut EmuRegTrace,
-        step_range_check: &mut [u32],
         last_reg_values: bool,
         with_pad_row: bool,
     ) -> (u64, Vec<u64>, Option<R>) {
@@ -323,14 +292,13 @@ impl<F: PrimeField64> MainInstance<F> {
                     &min_trace.mem_reads,
                     &mut mem_reads_index,
                     reg_trace,
-                    Some(step_range_check),
                 );
             }
         }
 
         // The padding row is asked for only past the end of the execution, where the emulator
         // is looping on the end instruction: it reads no minimal-trace data and touches no
-        // register, so these steps neither consume `mem_reads` nor contribute range checks.
+        // register, so these steps consume no `mem_reads`.
         // Building it from the emulator rather than copying a filled row is what keeps the
         // pc chain intact: a row that mixes real steps with end-instruction lanes cannot be
         // repeated, since its lane 0 would no longer follow the previous row's last lane.
@@ -343,7 +311,6 @@ impl<F: PrimeField64> MainInstance<F> {
                     &min_trace.mem_reads,
                     &mut mem_reads_index,
                     reg_trace,
-                    None,
                 );
             }
             pad_row
@@ -361,12 +328,11 @@ impl<F: PrimeField64> MainInstance<F> {
     }
 
     /// Propagates per-register previous mem-step state across consecutive chunks of
-    /// the segment, mutating `main_trace` and `step_range_check` in place. Whenever a
+    /// the segment, mutating `main_trace` in place. Whenever a
     /// chunk boundary is also a flush-window boundary, the corresponding flush is
     /// closed: its airvalues record the last access of the window and `reg_steps`
     /// restarts at the flush mem-step (the reload becomes the previous access of the
-    /// next window). Returns the vector of out-of-range values (`large_range_checks`)
-    /// for the caller to fold into the std range-check pipeline.
+    /// next window).
     ///
     /// # Errors
     /// Returns [`MainSmError::InvalidSlot`] if `MemHelpers::mem_step_to_slot`
@@ -375,15 +341,12 @@ impl<F: PrimeField64> MainInstance<F> {
     fn complete_trace_with_initial_reg_steps_per_chunk<R: MainTraceRowOps<F> + IndexedFill>(
         fill_trace_outputs: &[ChunkFill<R>],
         main_trace: &mut MainTrace<R>,
-        step_range_check: &mut [u32],
         reg_steps: &mut [u64; REGS_IN_MAIN],
         chunks_per_flush: usize,
         segment_initial_step: usize,
         flush_steps: &[u64],
         air_values: &mut MainAirValues<'_, F>,
-    ) -> Result<Vec<u32>, MainSmError> {
-        let mut large_range_checks: Vec<u32> = vec![];
-        let max_range = step_range_check.len() as u64;
+    ) -> Result<(), MainSmError> {
         for (index, fill) in fill_trace_outputs.iter().enumerate().skip(1) {
             let reg_trace = &fill.reg_trace;
             // fold the previous chunk's last register steps into the carried steps
@@ -401,8 +364,6 @@ impl<F: PrimeField64> MainInstance<F> {
                     flush_steps[flush_index],
                     &fill_trace_outputs[index - 1].reg_values,
                     reg_steps,
-                    step_range_check,
-                    &mut large_range_checks,
                 );
             }
 
@@ -416,12 +377,6 @@ impl<F: PrimeField64> MainInstance<F> {
                     let segment_step = MemHelpers::mem_step_to_row(mem_step) - segment_initial_step;
                     let row = segment_step / MAIN_LANES;
                     let lane = segment_step % MAIN_LANES;
-                    let range = mem_step - reg_prev_mem_step - 1;
-                    if range >= max_range {
-                        large_range_checks.push(range as u32);
-                    } else {
-                        step_range_check[range as usize] += 1;
-                    }
                     match slot {
                         0 => {
                             main_trace.buffer[row].set_a_reg_prev_mem_step(lane, reg_prev_mem_step);
@@ -435,11 +390,10 @@ impl<F: PrimeField64> MainInstance<F> {
                         }
                         _ => return Err(MainSmError::InvalidSlot { slot }),
                     }
-                    // TODO: range_check mem_step - reg_prev_mem_step
                 }
             }
         }
-        Ok(large_range_checks)
+        Ok(())
     }
 
     /// Updates `reg_steps` with the last chunk's register steps, which are the initial
@@ -469,48 +423,14 @@ impl<F: PrimeField64> MainInstance<F> {
         flush_step: u64,
         last_reg_values: &[u64],
         reg_steps: &mut [u64; REGS_IN_MAIN],
-        step_range_check: &mut [u32],
-        large_range_checks: &mut Vec<u32>,
     ) {
-        let max_range = step_range_check.len() as u64;
         for ireg in 0..REGS_IN_MAIN {
             let reg_value = last_reg_values[ireg];
             let values = [F::from_u32(reg_value as u32), F::from_u32((reg_value >> 32) as u32)];
             air_values.last_reg_value[flush_index][ireg] = values;
             air_values.last_reg_mem_step[flush_index][ireg] = F::from_u64(reg_steps[ireg]);
-            let range = (flush_step - reg_steps[ireg] - 1) as usize;
-            if range >= max_range as usize {
-                large_range_checks.push(range as u32);
-            } else {
-                step_range_check[range] += 1;
-            }
             reg_steps[ireg] = flush_step;
         }
-    }
-
-    /// Updates the standard library range checks for the main instance
-    /// based on the provided segment ID, step range checks, and large range checks.
-    ///
-    /// # Errors
-    /// Returns [`MainSmError::Proofman`] if `pil2_std_lib::Std::get_range_id` fails
-    /// to resolve the range IDs for the `mem_step` or `segment_id` range checks.
-    /// This indicates a setup-time misconfiguration of the standard library.
-    fn update_std_range_checks(
-        &self,
-        segment_id: SegmentId,
-        step_range_check: Vec<u32>,
-        large_range_checks: &[u32],
-    ) -> Result<(), MainSmError> {
-        let range_id = self.std.get_range_id(0, MEM_REGS_MAX_DIFF as i64, None)?;
-        self.std.range_check_ranged(range_id, None, &step_range_check);
-
-        for range in large_range_checks {
-            self.std.range_check_one(range_id, *range);
-        }
-
-        let range_id = self.std.get_range_id(0, Self::MAX_SEGMENT_ID as i64, None)?;
-        self.std.range_check_one(range_id, segment_id.as_usize());
-        Ok(())
     }
 
     /// The mem-step a segment starting at main step `segment_initial_step` chains from: the one
