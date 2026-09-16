@@ -17,6 +17,8 @@ u64 SECP_SCH_S[1]    = 0
 u64 SECP_SCH_MSG[1]  = 0
 u64 SECP_SCH_MLEN[1] = 0
 u64 SECP_SCH_PP[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+; Challenge buffer: a 128-byte prefix (tag||tag||BE(r)||BE(pk_x)) followed by the
+; message, so it admits msg_len <= 48*8 - 128 = 256 bytes (the `sv_toolong` bound).
 u64 SECP_SCH_BUF[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 SECP_SCH_EHASH[4] = 0, 0, 0, 0
 u64 SECP_SCH_ETMP[4]  = 0, 0, 0, 0
@@ -51,8 +53,16 @@ er32_done:
 ;   schnorr_verify: range-check pk_x,r < P and s < N; P = lift_x(pk_x, even);
 ;   e = int(SHA(tag||tag||r||pk_x||msg)) mod n; R = s*G + (-e)*P; accept iff R has
 ;   even y and R.x == r. Non-leaf: args saved to RAM, ra via push/pop.
+;   msg_len is capped at 256 bytes: the challenge is assembled in a fixed buffer, so
+;   a longer message is halted rather than written past it.
 zisklib_schnorr_verify_secp256k1:
 	push r1
+	; Bound check: the challenge buffer holds a 128-byte prefix (tag||tag||r||pk_x)
+	; followed by msg, so msg_len must fit SECP_SCH_BUF. BIP-340 admits messages of
+	; any length (the reference builds the buffer on the heap), so an over-long one
+	; cannot be answered here -- halt instead of overflowing into the statics that
+	; follow BUF.
+	ltu(256, r14), j(sv_toolong)
 	copyb(0, SECP_SCH_PKX) -> r5
 	copyb(r5, r10) -> 8[a + 0]
 	copyb(0, SECP_SCH_R) -> r5
@@ -185,3 +195,6 @@ sv_true:
 	copyb(0, 1) -> r10
 	pop r1
 	ret
+sv_toolong:
+	; msg_len > 256: the challenge prefix||msg does not fit SECP_SCH_BUF.
+	copyb(0, 0) -> r10, end
