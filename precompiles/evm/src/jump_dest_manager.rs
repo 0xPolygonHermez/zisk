@@ -6,7 +6,6 @@
 
 use std::sync::Arc;
 
-use pil2_std_lib::Std;
 use proofman_common::ProofCtx;
 use proofman_fields::PrimeField64;
 use zisk_common::{
@@ -21,8 +20,8 @@ pub struct JumpDestManager<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> JumpDestManager<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        Arc::new(Self { jump_dest_sm: JumpDestSM::new(std) })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { jump_dest_sm: JumpDestSM::new() })
     }
 }
 

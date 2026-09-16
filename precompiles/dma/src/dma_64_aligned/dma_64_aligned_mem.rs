@@ -1,8 +1,8 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use proofman_fields::PrimeField64;
 
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::SegmentId;
@@ -30,12 +30,9 @@ const LARGE_AIR_ID: usize = Dma64AlignedMemLargeTrace::<()>::AIR_ID;
 ///
 /// One instance of it serves one air: `air_id` says which of the two heights this one builds.
 pub struct Dma64AlignedMemSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
-
-    /// Range checks ID's
-    range_16_bits_id: usize,
     op_x_rows: usize,
+
+    _phantom: PhantomData<F>,
 
     /// The air this state machine builds traces for: [`AIR_ID`] or [`LARGE_AIR_ID`].
     air_id: usize,
@@ -46,18 +43,16 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
     ///
     /// # Returns
     /// A new `Dma64AlignedMemSM` instance.
-    pub fn new(std: Arc<Std<F>>, air_id: usize) -> Arc<Self> {
+    pub fn new(air_id: usize) -> Arc<Self> {
         assert!(
             air_id == AIR_ID || air_id == LARGE_AIR_ID,
             "Dma64AlignedMemSM: unsupported air_id {air_id}"
         );
         Arc::new(Self {
             air_id,
-            std: std.clone(),
-            range_16_bits_id: std
-                .get_range_id(0, 0xFFFF, None)
-                .expect("Failed to get 16b table ID"),
             op_x_rows: DMA_64_ALIGNED_MEM_OPS_BY_ROW,
+            _phantom: PhantomData,
+
         })
     }
 
@@ -71,7 +66,6 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         &self,
         input: &Dma64AlignedInput,
         trace: &mut [R],
-        _local_16_bits_table: &mut [u32],
         air_values: &mut Dma64AlignedMemAirValues<F>,
     ) -> usize {
         let rows = input.rows as usize;
@@ -232,7 +226,6 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         let flat_inputs = crate::flatten_and_reorder_inputs(inputs);
         let trace_rows = trace.buffer.as_mut_slice();
 
-        let mut local_16_bits_table = vec![0u32; 1 << 16];
         let mut air_values = Dma64AlignedMemAirValues::<F>::new();
 
         // TODO: inputs between instances
@@ -241,7 +234,6 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
             let rows_used = self.process_input(
                 input,
                 &mut trace_rows[row_offset..],
-                &mut local_16_bits_table,
                 &mut air_values,
             );
             row_offset += rows_used;
@@ -268,11 +260,7 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         }
 
         // add range check of count to check that it's a positive 32-bits number
-        let last_count = air_values.segment_last_count64.as_canonical_u64();
-        local_16_bits_table[(last_count & 0xFFFF) as usize] += 1;
-        local_16_bits_table[((last_count >> 16) & 0xFFFF) as usize] += 1;
 
-        self.std.range_check_ranged(self.range_16_bits_id, None, &local_16_bits_table);
 
         let segment_id = segment_id.into();
         air_values.segment_id = F::from_usize(segment_id);

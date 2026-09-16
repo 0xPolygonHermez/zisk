@@ -57,9 +57,6 @@ impl<F: PrimeField64> StateMachines<F> {
 pub struct StaticSMBundle<F: PrimeField64> {
     /// Every built-in and precompile SM registered in this bundle.
     sm: Vec<SMType<F>>,
-
-    /// The standard library instance to be shared across built-in SMs and precompiles.
-    std: Arc<Std<F>>,
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
@@ -81,7 +78,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             }))
             .collect();
 
-        Self { sm, std }
+        Self { sm }
     }
 
     /// Selects where the FROPS multiplicity column comes from.

@@ -1,15 +1,15 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use proofman_fields::PrimeField64;
 
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::SegmentId;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
     Dma64AlignedAirValues, Dma64AlignedLargeTrace, Dma64AlignedTrace, Dma64AlignedTraceRow,
-    Dma64AlignedTraceRowOps, Dma64AlignedTraceRowPacked, DUAL_RANGE_BYTE_ID, ZISK_AIRGROUP_ID,
+    Dma64AlignedTraceRowOps, Dma64AlignedTraceRowPacked, ZISK_AIRGROUP_ID,
 };
 
 use crate::{
@@ -29,15 +29,9 @@ const LARGE_AIR_ID: usize = Dma64AlignedLargeTrace::<()>::AIR_ID;
 ///
 /// One instance of it serves one air: `air_id` says which of the two heights this one builds.
 pub struct Dma64AlignedSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
-
-    /// Range checks ID's
-    range_16_bits_id: usize,
-    range_24_bits_id: usize,
-    dual_range_byte_id: usize,
-
     op_x_rows: usize,
+
+    _phantom: PhantomData<F>,
 
     /// The air this state machine builds traces for: [`AIR_ID`] or [`LARGE_AIR_ID`].
     air_id: usize,
@@ -48,24 +42,16 @@ impl<F: PrimeField64> Dma64AlignedSM<F> {
     ///
     /// # Returns
     /// A new `Dma64AlignedSM` instance.
-    pub fn new(std: Arc<Std<F>>, air_id: usize) -> Arc<Self> {
+    pub fn new(air_id: usize) -> Arc<Self> {
         assert!(
             air_id == AIR_ID || air_id == LARGE_AIR_ID,
             "Dma64AlignedSM: unsupported air_id {air_id}"
         );
         Arc::new(Self {
             air_id,
-            std: std.clone(),
-            range_16_bits_id: std
-                .get_range_id(0, 0xFFFF, None)
-                .expect("Failed to get 16b table ID"),
-            range_24_bits_id: std
-                .get_range_id(0, (1 << 24) - 1, None)
-                .expect("Failed to get 24b table ID"),
-            dual_range_byte_id: std
-                .get_virtual_table_id(DUAL_RANGE_BYTE_ID)
-                .expect("Failed to get tabl eDUAL_RANGE_BYTE ID ID"),
             op_x_rows: DMA_64_ALIGNED_OPS_BY_ROW,
+            _phantom: PhantomData,
+
         })
     }
 
@@ -79,9 +65,6 @@ impl<F: PrimeField64> Dma64AlignedSM<F> {
         &self,
         input: &Dma64AlignedInput,
         trace: &mut [R],
-        dual_byte_range_check_values: &mut Vec<u16>,
-        range_check_24b_values: &mut Vec<u32>,
-        range_check_non_used_ops: &mut u64,
         air_values: &mut Dma64AlignedAirValues<F>,
     ) -> usize {
         let rows = input.rows as usize;
@@ -151,14 +134,6 @@ impl<F: PrimeField64> Dma64AlignedSM<F> {
                     let l1 = (value >> 32) as u8;
                     h_value_chunks[index] = [h0, h1];
                     l_value_chunks[index] = [l0, l1];
-                    if is_inputcpy {
-                        dual_byte_range_check_values.push(l0 as u16 + ((l1 as u16) << 8));
-                        range_check_24b_values.push(h0);
-                        range_check_24b_values.push(h1);
-                    }
-                }
-                if is_inputcpy && use_count < self.op_x_rows {
-                    *range_check_non_used_ops += (self.op_x_rows - use_count) as u64;
                 }
             } else {
                 let fill_bytes = fill_byte as u32 * 0x010101;
@@ -260,18 +235,12 @@ impl<F: PrimeField64> Dma64AlignedSM<F> {
         let trace_rows = trace.buffer.as_mut_slice();
 
         let mut air_values = Dma64AlignedAirValues::<F>::new();
-        let mut dual_byte_range_check_values = Vec::new();
-        let mut range_check_24b_values = Vec::new();
-        let mut range_check_non_used_ops = 0u64;
         // TODO: inputs between instances
         let mut row_offset = 0;
         for input in flat_inputs.iter() {
             let rows_used = self.process_input(
                 input,
                 &mut trace_rows[row_offset..],
-                &mut dual_byte_range_check_values,
-                &mut range_check_24b_values,
-                &mut range_check_non_used_ops,
                 &mut air_values,
             );
             row_offset += rows_used;
@@ -294,22 +263,6 @@ impl<F: PrimeField64> Dma64AlignedSM<F> {
             air_values.last_count_chunk[1] = F::ZERO;
             air_values.segment_last_flags = F::ZERO;
             air_values.segment_last_fill_byte = F::ZERO;
-        }
-
-        // add range check of count to check that it's a positive 32-bits number
-        let last_count = air_values.segment_last_count64.as_canonical_u64();
-        self.std.range_check_one(self.range_16_bits_id, last_count & 0xFFFF);
-        self.std.range_check_one(self.range_16_bits_id, (last_count >> 16) & 0xFFFF);
-
-        // range check of 24 must be multiplied by 2 because there are two values, but dual range check
-        // it's dual, no need to multiply by 2.
-        self.std.inc_virtual_row(self.dual_range_byte_id, 0, range_check_non_used_ops);
-        self.std.range_check(self.range_24_bits_id, 0, range_check_non_used_ops * 2);
-        for value in dual_byte_range_check_values {
-            self.std.inc_virtual_row_one(self.dual_range_byte_id, value);
-        }
-        for value in range_check_24b_values {
-            self.std.range_check_one(self.range_24_bits_id, value);
         }
 
         let segment_id = segment_id.into();
