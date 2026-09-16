@@ -354,11 +354,11 @@ fn encode_section(s: &DataSection64, out: &mut Vec<u8>) {
 fn decode_section(r: &mut Reader) -> Result<DataSection64, String> {
     let addr = r.uvarint()?;
     let n = r.uvarint()? as usize;
-    let mut data = Vec::with_capacity(n);
-    for _ in 0..n {
-        let bytes = r.take(8)?;
-        data.push(u64::from_le_bytes(bytes.try_into().unwrap()));
-    }
+    // Take the whole payload first: `n` comes from the blob, so reserving on it before
+    // checking what is actually there would let a few bytes request a huge allocation.
+    let len = n.checked_mul(8).ok_or("ziskbin: section length overflow")?;
+    let data =
+        r.take(len)?.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect();
     Ok(DataSection64 { addr, data })
 }
 
@@ -643,6 +643,51 @@ mod tests {
         let first = encode_rom(&rom);
         let second = encode_rom(&decode_rom(&first).unwrap());
         assert_eq!(first, second, "re-encoding a decoded ROM must be byte-identical");
+    }
+
+    /// Header for a hand-built blob with the given section/instruction counts.
+    fn blob_header(inst_count: u64, ro_count: u64, rw_count: u64) -> Vec<u8> {
+        let mut blob = Vec::new();
+        blob.extend_from_slice(MAGIC);
+        blob.push(VERSION);
+        blob.push(0); // profile
+        put_uvarint(&mut blob, inst_count);
+        put_uvarint(&mut blob, ro_count);
+        put_uvarint(&mut blob, rw_count);
+        blob
+    }
+
+    #[test]
+    fn rejects_zero_address_delta() {
+        // Two records for the same address: the second must be rejected rather than
+        // silently replacing the first in the BTreeMap.
+        let rom = sample_rom();
+        let (addr, zib) = rom.insts.iter().next().unwrap();
+        let mut blob = blob_header(2, 0, 0);
+        put_uvarint(&mut blob, *addr);
+        encode_inst(&zib.i, &mut blob);
+        put_uvarint(&mut blob, 0);
+        encode_inst(&zib.i, &mut blob);
+
+        let err = decode_rom(&blob).unwrap_err();
+        assert!(err.contains("zero instruction address delta"), "{err}");
+    }
+
+    #[test]
+    fn rejects_oversized_section_length() {
+        // A word count with no payload behind it must error out, not reserve on it.
+        let mut blob = blob_header(0, 1, 0);
+        put_uvarint(&mut blob, 0x9000_0000); // section addr
+        put_uvarint(&mut blob, 1 << 40); // 8 TiB of words, payload absent
+        let err = decode_rom(&blob).unwrap_err();
+        assert!(err.contains("unexpected end of data"), "{err}");
+
+        // A count whose byte length overflows usize is caught before the read.
+        let mut blob = blob_header(0, 1, 0);
+        put_uvarint(&mut blob, 0x9000_0000);
+        put_uvarint(&mut blob, u64::MAX);
+        let err = decode_rom(&blob).unwrap_err();
+        assert!(err.contains("section length overflow"), "{err}");
     }
 
     #[test]
