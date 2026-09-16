@@ -343,7 +343,8 @@ lf2_inv_panic:
 	copyb(0, 0) -> r10, end
 
 ; u64 zisklib_sqrt_fp2_bls12_381(const u64* x, u64* result)  [r10=x, r11=result]
-;   -> r10 = 1 if x is a QR (result = sqrt), else 0. Hint FCALL_BLS12_381_FP2_SQRT
+;   -> r10 = 1 if x is a QR (result = sqrt), else 0 (normalized, never the raw hint
+;   word -- see lf2_sq_wr). Hint FCALL_BLS12_381_FP2_SQRT
 ;   -> [is_qr, sqrt[12]]; verify both halves < P and sqrt²==x (qr) / ==x·NQR.
 zisklib_sqrt_fp2_bls12_381:
 	push r1
@@ -433,8 +434,19 @@ lf2_sq_wr:
 	copyb(r11, 8[a + 0]) -> r11
 	copyb(0, 12) -> r12
 	call bn254_memcpy
+	; Normalize to exactly 0/1: the verification above takes the QR branch only for a
+	; flag of exactly 1 and the non-QR branch (sqrt^2 == x*NQR) otherwise, so returning
+	; the raw hint word would let a prover-supplied 2 pass the non-QR check and still
+	; read as nonzero. Callers test `eq(r10, 0)` (verify.zisk, map_g2.zisk). Mirrors
+	; the Fp fix in fp.zisk; the Rust reference returns a bool.
 	copyb(0, BLS_F2_ISQR) -> r5
-	copyb(r5, 8[a + 0]) -> r10
+	copyb(r5, 8[a + 0]) -> r5
+	eq(r5, 1), j(lf2_sq_ret1)
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+lf2_sq_ret1:
+	copyb(0, 1) -> r10
 	pop r1
 	ret
 lf2_sq_panic:
