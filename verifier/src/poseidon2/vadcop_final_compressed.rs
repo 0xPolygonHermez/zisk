@@ -1,8 +1,10 @@
-use alloc::vec;
 use alloc::string::ToString;
-use proofman_fields::{Goldilocks, CubicExtensionField, Field, Poseidon2_8, Transcript, Poseidon2_16};
-use proofman_verifier::{stark_verify, Boundary, FriEvalGroup, FriEvalRef, VerifierInfo};
+use alloc::vec;
+use proofman_fields::{
+    CubicExtensionField, Field, Goldilocks, Poseidon2_16, Poseidon2_8, Transcript,
+};
 use proofman_verifier::VadcopFinalProof;
+use proofman_verifier::{stark_verify, Boundary, FriEvalGroup, FriEvalRef, VerifierInfo};
 
 #[inline(never)]
 #[rustfmt::skip]
@@ -3726,7 +3728,6 @@ fn q_verify(challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicExtens
     return tmp_3[0];
 }
 
-
 #[rustfmt::skip]
 fn verifier_info() -> VerifierInfo {
     VerifierInfo {
@@ -3760,11 +3761,21 @@ fn verifier_info() -> VerifierInfo {
 }
 
 pub fn verify(proof: &VadcopFinalProof, vk: &[u64]) -> bool {
-    stark_verify::<Poseidon2_8, Poseidon2_8, Transcript<Goldilocks, Poseidon2_16>, Poseidon2_8>(&proof.proof_with_publics(), vk, &verifier_info(), q_verify)
+    stark_verify::<Poseidon2_8, Poseidon2_8, Transcript<Goldilocks, Poseidon2_16>, Poseidon2_8>(
+        &proof.proof_with_publics(),
+        vk,
+        &verifier_info(),
+        q_verify,
+    )
 }
 
 pub fn verify_u64(proof: &[u64], vk: &[u64]) -> bool {
-    stark_verify::<Poseidon2_8, Poseidon2_8, Transcript<Goldilocks, Poseidon2_16>, Poseidon2_8>(proof, vk, &verifier_info(), q_verify)
+    stark_verify::<Poseidon2_8, Poseidon2_8, Transcript<Goldilocks, Poseidon2_16>, Poseidon2_8>(
+        proof,
+        vk,
+        &verifier_info(),
+        q_verify,
+    )
 }
 
 pub fn expected_proof_bytes() -> usize {
