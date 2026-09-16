@@ -72,9 +72,9 @@ port = 50051
 # If omitted, the embedded coordinator uses its own built-in defaults.
 # config_file = "/etc/zisk/coordinator-core.toml"
 
-# Persist the proof of every completed job to disk as
-# <proofs_dir>/proof_<job_id>.bin. Clients can always fetch proofs over the API,
-# so this is off by default and only needed for archiving or debugging.
+# Persist the proof of every completed job (prove, wrap and aggregate) to disk
+# as <proofs_dir>/proof_<job_id>.bin. Clients can always fetch proofs over the
+# API, so this is off by default and only needed for archiving or debugging.
 # save_proofs = false
 
 # Directory for saved proofs. Relative paths resolve against the process working

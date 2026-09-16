@@ -140,7 +140,17 @@ impl Coordinator {
 
         tracing::info!("[Wrap] Job {} completed successfully", job_id);
 
+        // Same persistence as the prove path; wrap does not go through
+        // post_launch_proof (no webhook / cleanup for wrap jobs).
+        let persisted = self.persist_proof(job_id, job.proof.as_ref()).await;
+
         drop(job);
+
+        if let Err(e) = persisted {
+            // The client still receives the proof on the event below; a failed
+            // archive write must not turn a completed wrap into a failure.
+            tracing::warn!("[Wrap] Failed to persist proof for job {}: {}", job_id, e);
+        }
 
         self.fire_job_event(
             job_id,
