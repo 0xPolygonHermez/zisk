@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "dd1f6ecc4eccf35664dc374f53e37f55b63ffc94743868e96ec839c3a74e75a5";
+pub const PILOUT_HASH: &str = "06e7c25d923d3b95b68d0f9e1d6be95eb82e94327cdb678e05867ae9cd9b12c2";
 
 //AIRGROUP CONSTANTS
 
@@ -492,7 +492,7 @@ trace_row!(DmaFixedRow<F> {
 pub type DmaFixed<F> = GenericTrace<DmaFixedRow<F>, 2097152, 0, 30>;
 
 trace_row!(DmaTraceRow<F> {
- sel_memcpy:bit, sel_memcmp:bit, sel_memset:bit, fill_byte:u8, sel_extended:bit, sel_inputcpy:bit, h_count:ubit(24), count_lt_256:bit, l_count:ubit(9), count_diff_chunks:[u16; 2], h_dst64:ubit(22), l_dst64:ubit(7), dst_offset:ubit(3), main_step:ubit(36), h_src64:ubit(22), l_src64:ubit(7), src_offset:ubit(3), src_offset_after_pre:ubit(3), src64_inc_by_pre:bit, use_pre:bit, use_loop:bit, use_post:bit, pre_count:ubit(3), l_count64:ubit(9), pre_result_nz:bit, post_result_nz:bit, bus_pre_result:[u32; 2], bus_post_result:[u32; 2], loop_b0:u32, loop_extended_arg:u32, static_count:u32,
+ sel_memcpy:bit, sel_memcmp:bit, sel_memset:bit, fill_byte:u8, sel_extended:bit, sel_inputcpy:bit, h_count:ubit(24), count_lt_256:bit, l_count:ubit(9), count_diff_chunks:[u16; 2], h_dst64:ubit(22), l_dst64:ubit(7), dst_offset:ubit(3), main_step:ubit(36), h_src64:ubit(22), l_src64:ubit(7), src_offset:ubit(3), src_offset_after_pre:ubit(3), src64_inc_by_pre:bit, use_pre:bit, use_loop:bit, use_post:bit, pre_count:ubit(3), l_count64:ubit(9), pre_result_nz:bit, post_result_nz:bit, bus_pre_result:[u32; 2], bus_post_result:[u32; 2], loop_b0:u32, loop_extended_arg:u32, static_count:u32, dst_hi:u32, src_hi:u32,
 });
 
 pub type DmaTrace<R> = GenericTrace<R, 2097152, 0, 30>;
@@ -503,7 +503,7 @@ trace_row!(DmaMemCpyFixedRow<F> {
 pub type DmaMemCpyFixed<F> = GenericTrace<DmaMemCpyFixedRow<F>, 2097152, 0, 31>;
 
 trace_row!(DmaMemCpyTraceRow<F> {
- sel_memcpy:bit, sel_extended:bit, h_count:ubit(24), count_lt_256:bit, l_count:ubit(9), h_dst64:ubit(22), l_dst64:ubit(7), dst_offset:ubit(3), main_step:ubit(36), h_src64:ubit(22), l_src64:ubit(7), src_offset:ubit(3), src_offset_after_pre:ubit(3), src64_inc_by_pre:bit, use_pre:bit, use_loop:bit, use_post:bit, pre_count:ubit(3), l_count64:ubit(9), loop_b0:u32, loop_extended_arg:u32, static_count:u32,
+ sel_memcpy:bit, sel_extended:bit, h_count:ubit(24), count_lt_256:bit, l_count:ubit(9), h_dst64:ubit(22), l_dst64:ubit(7), dst_offset:ubit(3), main_step:ubit(36), h_src64:ubit(22), l_src64:ubit(7), src_offset:ubit(3), src_offset_after_pre:ubit(3), src64_inc_by_pre:bit, use_pre:bit, use_loop:bit, use_post:bit, pre_count:ubit(3), l_count64:ubit(9), loop_b0:u32, loop_extended_arg:u32, static_count:u32, dst_hi:u32, src_hi:u32,
 });
 
 pub type DmaMemCpyTrace<R> = GenericTrace<R, 2097152, 0, 31>;
@@ -514,7 +514,7 @@ trace_row!(DmaInputCpyFixedRow<F> {
 pub type DmaInputCpyFixed<F> = GenericTrace<DmaInputCpyFixedRow<F>, 2097152, 0, 32>;
 
 trace_row!(DmaInputCpyTraceRow<F> {
- sel_extended:bit, sel_inputcpy:bit, h_count:ubit(24), count_lt_256:bit, l_count:ubit(9), h_dst64:ubit(22), l_dst64:ubit(7), dst_offset:ubit(3), main_step:ubit(36), use_pre:bit, use_loop:bit, use_post:bit, pre_count:ubit(3), l_count64:ubit(9), loop_b0:u32, static_count:u32,
+ sel_extended:bit, sel_inputcpy:bit, h_count:ubit(24), count_lt_256:bit, l_count:ubit(9), h_dst64:ubit(22), l_dst64:ubit(7), dst_offset:ubit(3), main_step:ubit(36), use_pre:bit, use_loop:bit, use_post:bit, pre_count:ubit(3), l_count64:ubit(9), loop_b0:u32, static_count:u32, dst_hi:u32, src_hi:u32,
 });
 
 pub type DmaInputCpyTrace<R> = GenericTrace<R, 2097152, 0, 32>;
@@ -630,7 +630,7 @@ trace_row!(JumpDestTraceRow<F> {
 pub type JumpDestTrace<R> = GenericTrace<R, 2097152, 0, 42>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- UID: [F; 12], column: [F; 96], __L1__: F,
+ COL_0_0_0: F, COL_0_0_1: F, COL_0_0_2: F, COL_0_0_3: F, COL_0_0_5: F, COL_0_0_7: F, COL_1_8_0: F, COL_1_8_1: F, COL_1_8_2: F, COL_1_8_3: F, COL_1_8_5: F, COL_1_8_7: F, COL_2_16_1: F, COL_2_16_3: F, COL_2_16_5: F, COL_5_40_0: F, COL_5_40_1: F, COL_5_40_2: F, COL_5_40_3: F, COL_5_40_5: F, COL_5_40_6: F, COL_6_48_0: F, COL_6_48_1: F, COL_6_48_2: F, COL_6_48_3: F, COL_6_48_5: F, COL_7_56_1: F, COL_7_56_3: F, COL_7_56_5: F, COL_8_64_0: F, COL_8_64_1: F, COL_8_64_2: F, COL_8_64_3: F, COL_8_64_5: F, COL_8_64_6: F, COL_9_72_1: F, COL_9_72_3: F, COL_9_72_5: F, COL_9_72_6: F, COL_10_80_0: F, COL_10_80_1: F, COL_10_80_2: F, COL_10_80_3: F, COL_10_80_5: F, COL_10_80_6: F, COL_11_88_0: F, COL_11_88_1: F, COL_11_88_2: F, COL_11_88_3: F, COL_11_88_5: F, COL_11_88_6: F, COL_11_88_7: F, UID_11: F, __L1__: F,
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 43>;
 
@@ -641,7 +641,7 @@ trace_row!(VirtualTableZisk0TraceRow<F> {
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 43>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
- UID: [F; 22], column: [F; 63], __L1__: F,
+ __ROW_INDEX__: F, COL_9_9_0: F, COL_14_14_0: F, COL_14_14_1: F, UID_14: F, COL_15_16_0: F, COL_15_16_1: F, COL_15_16_2: F, COL_15_16_3: F, COL_15_16_4: F, COL_15_16_5: F, UID_15: F, COL_16_22_0: F, COL_16_22_1: F, COL_16_22_2: F, COL_16_22_3: F, COL_16_22_4: F, COL_16_22_5: F, UID_16: F, COL_17_28_0: F, COL_17_28_1: F, COL_17_28_2: F, COL_17_28_3: F, COL_17_28_4: F, COL_17_28_5: F, COL_17_28_6: F, UID_17: F, COL_18_35_0: F, COL_18_35_1: F, COL_18_35_2: F, COL_18_35_3: F, COL_18_35_4: F, COL_18_35_5: F, COL_18_35_6: F, COL_19_42_0: F, COL_19_42_1: F, COL_19_42_4: F, COL_19_42_5: F, COL_19_42_6: F, COL_20_49_0: F, COL_20_49_1: F, COL_20_49_4: F, COL_20_49_5: F, COL_20_49_6: F, COL_21_56_0: F, COL_21_56_1: F, COL_21_56_2: F, COL_21_56_3: F, COL_21_56_4: F, COL_21_56_5: F, COL_21_56_6: F, UID_21: F, __L1__: F,
 });
 pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 44>;
 
@@ -1065,18 +1065,18 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 30, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 7,
-        unpack_info: &[1, 1, 1, 8, 1, 1, 24, 1, 9, 16, 16, 22, 7, 3, 36, 22, 7, 3, 3, 1, 1, 1, 1, 3, 9, 1, 1, 32, 32, 32, 32, 32, 32, 32],
+        num_packed_words: 8,
+        unpack_info: &[1, 1, 1, 8, 1, 1, 24, 1, 9, 16, 16, 22, 7, 3, 36, 22, 7, 3, 3, 1, 1, 1, 1, 3, 9, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32],
     }),
     (0, 31, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 4,
-        unpack_info: &[1, 1, 24, 1, 9, 22, 7, 3, 36, 22, 7, 3, 3, 1, 1, 1, 1, 3, 9, 32, 32, 32],
+        num_packed_words: 5,
+        unpack_info: &[1, 1, 24, 1, 9, 22, 7, 3, 36, 22, 7, 3, 3, 1, 1, 1, 1, 3, 9, 32, 32, 32, 32, 32],
     }),
     (0, 32, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 3,
-        unpack_info: &[1, 1, 24, 1, 9, 22, 7, 3, 36, 1, 1, 1, 3, 9, 32, 32],
+        num_packed_words: 4,
+        unpack_info: &[1, 1, 24, 1, 9, 22, 7, 3, 36, 1, 1, 1, 3, 9, 32, 32, 32, 32],
     }),
     (0, 33, PackedInfoConst {
         is_packed: true,

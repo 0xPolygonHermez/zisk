@@ -532,15 +532,23 @@ airtemplate Dma(int N = 2**21,
     // OP_DMA_XMEMCMP  (dst, 0, src,   0, 0, R0, R1, main_step, count)
     // OP_DMA_XMEMSET  (dst, 0, count, 0, 0,  0,  0, main_step, value)
 
+    // this is used to store the high 32 bits of the destination address when proving the operation
+    col witness bits(32) dst_hi;
+    col witness bits(32) src_hi;
+
     proves_operation(op: bus_op, 
-                     a: [dst, 0], 
-                     b: [src * (sel_memcpy + sel_memcmp) + count * (sel_inputcpy + sel_memset), 0], 
+                     a: [dst, dst_hi], 
+                     b: [src * (sel_memcpy + sel_memcmp) + count * (sel_inputcpy + sel_memset), src_hi], 
                      c: bus_result,
                      flag: 0, 
                      main_step:, 
                      extended_arg: static_count * (sel_memcpy + sel_memcmp) + fill_byte * sel_memset,
                      mul: sel);
-
+                     
+    dst_hi * count * sel === 0;
+    src_hi * count * sel === 0;
+    (sel_inputcpy + sel_memset) * src_hi === 0;
+    
     // BUS: DMA ===> MEM
     //                     
     // For OP_DMA_MEMCPY and OP_DMA_MEMCMP we need read the third parameter (count), to do it 
