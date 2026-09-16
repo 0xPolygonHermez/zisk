@@ -26,8 +26,7 @@ impl MessageSender for MockMessageSender {
 
 /// Create a test Config with optional overrides.
 pub fn test_config(overrides: impl FnOnce(&mut Config)) -> Config {
-    let mut config =
-        Config::load(None, None, None, true, None).expect("Failed to create default test config");
+    let mut config = Config::load(None, None, None).expect("Failed to create default test config");
     overrides(&mut config);
     config
 }
