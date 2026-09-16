@@ -202,6 +202,7 @@ lfp_inv_panic:
 
 ; u64 zisklib_sqrt_fp_bls12_381(const u64* x, u64* result)  [r10=x, r11=result]
 ;   -> r10 = 1 if x is a QR (result = sqrt), else 0 (result = sqrt of x·NQR).
+;   The return is normalized to 0/1, never the raw hint word (see lfp_sq_ret).
 ;   Hint FCALL_BLS12_381_FP_SQRT -> [is_qr, sqrt[6]]; verify sqrt<P and
 ;   sqrt²==x (qr) or sqrt²==x·NQR (non-qr); halt on bad hint.
 zisklib_sqrt_fp_bls12_381:
@@ -313,8 +314,20 @@ lfp_sq_wrl:
 	sub(r7, 1) -> r7
 	jump(lfp_sq_wrl)
 lfp_sq_ret:
+	; Normalize to exactly 0/1. The verification above takes the QR branch only for
+	; a flag of exactly 1 and the non-QR branch (sqrt^2 == x*NQR) for anything else,
+	; so returning the raw hint word would let a prover-supplied flag of, say, 2 pass
+	; the non-QR check and still read as nonzero. Callers test `eq(r10, 0)` and treat
+	; any nonzero as "x is a QR" (verify.zisk, map.zisk), which would accept a root of
+	; x*NQR as a root of x. The Rust reference returns a bool, which cannot do this.
 	copyb(0, BLS_FP_ISQR) -> r5
-	copyb(r5, 8[a + 0]) -> r10
+	copyb(r5, 8[a + 0]) -> r5
+	eq(r5, 1), j(lfp_sq_ret1)
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+lfp_sq_ret1:
+	copyb(0, 1) -> r10
 	pop r1
 	ret
 lfp_sq_panic:
