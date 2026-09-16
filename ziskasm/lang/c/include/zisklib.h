@@ -99,8 +99,10 @@ uint64_t ziskos_overflowing_pow256(const uint64_t *base, const uint64_t *exp, ui
 uint64_t ziskos_ecdsa_verify_secp256k1(const uint64_t *pk, const uint64_t *z,
                                        const uint64_t *r, const uint64_t *s);
 
-/* ECDSA public-key recovery. r/s/z = u64[4], recid in {0,1,2,3}. On success
- * writes the recovered point (x||y, u64[8]) to `result` and returns 0; nonzero
+/* ECDSA public-key recovery. r/s/z = u64[4], recid in {0,1} (the x = r + n branch
+ * that ids 2/3 select is not supported; they return error 3, matching the ziskos
+ * reference ecdsa_recover_secp256k1).
+ * On success writes the recovered point (x||y, u64[8]) to `result` and returns 0; nonzero
  * is an error code. */
 uint64_t ziskos_ecdsa_recover_secp256k1(const uint64_t *r, const uint64_t *s,
                                         const uint64_t *z, uint64_t recid,
