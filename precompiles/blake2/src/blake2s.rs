@@ -252,7 +252,13 @@ impl<F: PrimeField64> Blake2sSM<F> {
         // Capacity of the air this call builds, taken from `NUM_ROWS`: deriving it from a
         // fixed trace alias instead is what breaks the moment the air gains a taller
         // sibling, since the instance would be measured against the short air's capacity.
-        let num_available_blake2s = NUM_ROWS / CLOCKS - (NUM_ROWS % CLOCKS != 0) as usize;
+        //
+        // Plain floor division, which is what the PIL commits to (`NUM_OPS = (N - N % CLOCKS) /
+        // CLOCKS` in blake2s.pil) and what the planner advertises through `num_available` in
+        // `lib.rs`. Subtracting one more for a non-zero remainder would reject the last operation
+        // the planner is allowed to send: NUM_ROWS / CLOCKS is 1048576 / 80 = 13107 with 16 rows
+        // over, and those leftover rows are already covered by the padding below.
+        let num_available_blake2s = NUM_ROWS / CLOCKS;
 
         // Check that we can fit all the blake2s permutations in the trace
         let num_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();

@@ -374,14 +374,6 @@ case "$MODE" in
       exit 1
     fi
 
-    # The BN128 wrap is poseidon-only, so catch it here rather than after the ptau check and a
-    # long setup run.
-    if [ "$(printf '%s' "$HASH" | tr '[:upper:]' '[:lower:]')" = "blake3" ]; then
-      echo "setup-snark is not supported for HASH=$HASH: the BN128 wrap is only built for the" >&2
-      echo "poseidon families. Rebuild the proving key with --hash Poseidon1 or Poseidon2." >&2
-      exit 1
-    fi
-
     echo "==> proofman-setup setup-snark"
     cargo run --release --bin cargo-zisk-dev -- proofman-setup setup-snark \
       --build-dir "$BUILD_DIR" \

@@ -1,9 +1,12 @@
 //! Active `ArithEq` config airs for the current build.
 //!
-//! This stands in for the generated `zisk_pil::ARITH_EQ_AIR_IDS` while that constant still lists only
-//! the full air (`&[22]`). It is the single list of air ids the planner/manager/registry consider
-//! "present in the pilout" — kept in sync with the aliases in `pil/zisk.pil` and with
-//! [`crate::air_metas`].
+//! This stands in for the generated `zisk_pil::ARITH_EQ_AIR_IDS` while that constant still lists
+//! only the plain `ArithEq` air (`ArithEqTrace::AIR_ID`). It is the single list of air ids the
+//! planner/manager/registry consider "present in the pilout" — kept in sync with the aliases in
+//! `pil/zisk.pil` and with [`crate::air_metas`].
+//!
+//! The air id itself is deliberately not written here: it is positional in the pilout and moves
+//! whenever an air is added before this one.
 //!
 //! Once the pilout exposes every alias in `ARITH_EQ_AIR_IDS`, replace uses of
 //! [`ARITH_EQ_CONFIG_AIR_IDS`] with that generated constant and delete this module.
