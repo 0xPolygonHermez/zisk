@@ -3,7 +3,7 @@
 ;
 ;   dma_memcpy(dst, src)      copy N bytes src->dst; N read from EXTRA_PARAMS_ADDR
 ;   dma_xmemcpy(dst, src)     same, N carried in the extended arg
-;   dma_memcmp(dst, src)      compare N bytes (N via EXTRA_PARAMS); c = 0 if equal,
+;   dma_memcmp(dst, src)      compare N bytes (N via EXTRA_PARAMS_ADDR); c = 0 if equal,
 ;                             else sign-extended (a-b) at the first differing byte
 ;   dma_xmemcmp(dst, src)     same, N in the extended arg
 ;   dma_xmemset(dst, N)       fill N bytes at dst with the extended-arg byte
@@ -28,7 +28,7 @@
 ;   2f04  dma_xmemcmp     2f05  dma_xmemset    2f06  dma_inputcpy
 ; ============================================================================
 
-define EXTRA_PARAMS 0xa0400f00
+define EXTRA_PARAMS_ADDR 0xa0400f00
 
 const u64 DMA_SRC[4] =
 	0x1122334455667788, 0xaabbccddeeff0011, 0x0123456789abcdef, 0xfedcba9876543210
@@ -46,7 +46,7 @@ u64 IC_DST[2] = 0, 0
 
 dma:
 	; --- 2f01 dma_memcpy (count via EXTRA_PARAMS_ADDR) ---
-	copyb(0, 32) -> [EXTRA_PARAMS]         ; count = 32 bytes
+	copyb(0, 32) -> [EXTRA_PARAMS_ADDR]         ; count = 32 bytes
 	dma_memcpy(MC_DST, DMA_SRC) -> r5      ; MC_DST <- DMA_SRC (4 words)
 	copyb(0, MC_DST) -> r6
 	copyb(0, DMA_SRC) -> r7
@@ -85,13 +85,13 @@ d2_n:
 
 d3:
 	; --- 2f03 dma_memcmp: equal -> 0, differing -> nonzero ---
-	copyb(0, 32) -> [EXTRA_PARAMS]
+	copyb(0, 32) -> [EXTRA_PARAMS_ADDR]
 	dma_memcmp(DMA_SRC, DMA_SRC_EQ) -> r5
 	eq(r5, 0), j(d3b)
 	copyb(0, 0x2f03) -> r10
 	ret
 d3b:
-	copyb(0, 32) -> [EXTRA_PARAMS]
+	copyb(0, 32) -> [EXTRA_PARAMS_ADDR]
 	dma_memcmp(DMA_SRC, DMA_DIFF) -> r5    ; last byte differs -> result must be nonzero
 	eq(r5, 0), j(d3_fail)                  ; a zero here means the diff went undetected
 	jump(d4)
