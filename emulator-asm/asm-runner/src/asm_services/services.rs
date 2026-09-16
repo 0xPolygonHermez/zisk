@@ -204,13 +204,18 @@ impl AsmServices {
     /// Array of all services, used for iteration in setup and cleanup.
     pub const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
-    /// Returns the shared memory prefix `ZISK_{pid}_{rank}` (plus `_h` with hints).
-    /// Shared by every program set up on this worker — see [`CREATED_SHMEM_PREFIXES`].
+    /// Returns the shared memory prefix `ZISK_{pid}_{rank}_h{0,1}`, where the
+    /// trailing marker is the hints mode.
+    ///
+    /// Shared by every program set up on this worker in that mode; the segments
+    /// behind it live as long as one `PrefixLease` on it is held.
     pub fn shm_prefix(&self) -> &str {
         &self.inner.shm_prefix
     }
 
-    /// Returns the semaphore prefix `ZISK_{pid}_{hash}_{rank}` (plus `_h` with hints).
+    /// Returns the semaphore prefix `ZISK_{pid}_{hash}_{rank}_h{0,1}`, where
+    /// `hash` is the first 32 characters of the program hash.
+    ///
     /// Per-program, unlike the shmem prefix.
     pub fn sem_prefix(&self) -> &str {
         &self.inner.sem_prefix
@@ -236,7 +241,7 @@ impl AsmServices {
         options: AsmRunnerOptions,
     ) -> Result<AsmServices> {
         let pid = std::process::id();
-        let hash8 = &hash_id[..hash_id.len().min(8)];
+        let hash = &hash_id[..hash_id.len().min(32)];
 
         // The hints mode belongs on both prefixes: `get_precompile_results()` comes
         // from the generated assembly, so the hints binary variant creates a
@@ -250,7 +255,7 @@ impl AsmServices {
         // segments. Keep any future marker prefix-free for the same reason.
         let hints = if with_hints { "_h1" } else { "_h0" };
         let shm_prefix = format!("{NAMESPACE}_{pid}_{local_rank}{hints}");
-        let sem_prefix = format!("{NAMESPACE}_{pid}_{hash8}_{local_rank}{hints}");
+        let sem_prefix = format!("{NAMESPACE}_{pid}_{hash}_{local_rank}{hints}");
 
         // Strip it to get the base path.
         // `ziskemuasm_path` expected format: "<base>-??.bin".
