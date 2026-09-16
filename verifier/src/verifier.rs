@@ -65,6 +65,20 @@ const EXPECTED_N_PUBLICS_FINAL: u64 = (VADCOP_FINAL_FLAG_LEN + PROGRAM_N_PUBLICS
 /// `final_compressed` circuit strips the flag, so it is flag-free = 68.
 const EXPECTED_N_PUBLICS_COMPRESSED: u64 = PROGRAM_N_PUBLICS as u64;
 
+/// The exact public count a proof of this stage must carry.
+///
+/// The generated `q_verify` indexes fixed public slots — through 68 for the flagged
+/// stage, 67 for the compressed one — so anything shorter panics rather than failing.
+/// `stark_verify`'s own length check is self-consistent with the count the proof
+/// declares, so it does not catch this; only pinning the count does.
+pub const fn expected_n_publics(minimal: bool) -> usize {
+    if minimal {
+        EXPECTED_N_PUBLICS_COMPRESSED as usize
+    } else {
+        EXPECTED_N_PUBLICS_FINAL as usize
+    }
+}
+
 /// Whether a serialized proof is an aggregated fold rather than a leaf, from the
 /// `is_vadcop_final_proof` public. A compressed proof no longer carries it: `None`.
 pub fn committed_is_aggregate(zisk_proof: &[u64]) -> Option<bool> {
@@ -117,16 +131,15 @@ pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64], ha
     let minimal = zisk_proof[0] == 1;
     let vadcop_proof = &zisk_proof[1..];
 
-    let expected_n_publics =
-        if minimal { EXPECTED_N_PUBLICS_COMPRESSED } else { EXPECTED_N_PUBLICS_FINAL };
-    if zisk_proof.len() < 2 + expected_n_publics as usize {
+    let expected_n_publics = expected_n_publics(minimal);
+    if zisk_proof.len() < 2 + expected_n_publics {
         return false;
     }
-    if vadcop_proof[0] != expected_n_publics {
+    if vadcop_proof[0] != expected_n_publics as u64 {
         return false;
     }
 
-    if !publics_are_canonical(&vadcop_proof[1..1 + expected_n_publics as usize]) {
+    if !publics_are_canonical(&vadcop_proof[1..1 + expected_n_publics]) {
         return false;
     }
 
@@ -155,6 +168,14 @@ fn verify_by_family(hash: &str, minimal: bool, vadcop_proof: &[u64], vk: &[u64])
 /// Host-side counterpart to [`verify_vadcop_final_proof`], dispatching on the
 /// family and stage the proof declares.
 pub fn verify_vadcop_final(proof: &VadcopFinalProof, vk: &[u64]) -> bool {
+    // `stark_verify` reads exactly `vk[0..4]`, so a longer key would be silently
+    // truncated to one the caller never pinned. Exact, not `>=`.
+    if vk.len() != PROGRAM_VK_LEN {
+        return false;
+    }
+    if proof.public_values.len() != expected_n_publics(proof.compressed) {
+        return false;
+    }
     if !publics_are_canonical(&proof.public_values) {
         return false;
     }
@@ -208,6 +229,9 @@ pub fn program_publics(publics_full: &[u64]) -> &[u64] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
+    use alloc::vec;
+    use alloc::vec::Vec;
 
     const HDR: usize = 2;
     const LEAF_LEN: usize = HDR + EXPECTED_N_PUBLICS_FINAL as usize;
@@ -262,6 +286,37 @@ mod tests {
         }
         assert_eq!(hash_id_from_tag(HASH_TAGS.len() as u64), None);
         assert_eq!(hash_tag("poseidon3"), None);
+    }
+
+    fn final_proof(publics: Vec<u64>, compressed: bool) -> VadcopFinalProof {
+        VadcopFinalProof::new(vec![0u64; 8], publics, compressed, "Poseidon2".to_string())
+    }
+
+    /// `q_verify` indexes fixed public slots, so a short vector would panic rather than
+    /// fail. `stark_verify` cannot catch it: its length check follows the declared count.
+    #[test]
+    fn a_short_publics_vector_is_refused_before_dispatch() {
+        let short = final_proof(vec![0; 10], false);
+        assert!(!verify_vadcop_final(&short, &[1, 2, 3, 4]));
+
+        // The compressed stage is one narrower, so the flagged width is wrong for it too.
+        let flagged = final_proof(vec![0; EXPECTED_N_PUBLICS_FINAL as usize], true);
+        assert!(!verify_vadcop_final(&flagged, &[1, 2, 3, 4]));
+    }
+
+    /// `stark_verify` reads exactly `vk[0..4]`; a longer key must be refused, not truncated.
+    #[test]
+    fn a_wrong_length_setup_key_is_refused() {
+        let publics = vec![0; EXPECTED_N_PUBLICS_FINAL as usize];
+        assert!(!verify_vadcop_final(&final_proof(publics.clone(), false), &[1, 2, 3]));
+        assert!(!verify_vadcop_final(&final_proof(publics, false), &[1, 2, 3, 4, 5]));
+    }
+
+    #[test]
+    fn a_non_canonical_public_is_refused_on_the_host_path() {
+        let mut publics = vec![0u64; EXPECTED_N_PUBLICS_FINAL as usize];
+        publics[VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN] = GOLDILOCKS_ORDER;
+        assert!(!verify_vadcop_final(&final_proof(publics, false), &[1, 2, 3, 4]));
     }
 
     /// A non-canonical public must be refused before it reaches the STARK verifier.
