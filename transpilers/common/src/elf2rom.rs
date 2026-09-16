@@ -150,41 +150,45 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("ziskos_modexp_u64_c", "zisklib_modexp_u64_c"),
     ];
 
+    // Scan the guest symbol table first: it is far cheaper than assembling the library,
+    // and a guest with no stub symbol redirects nothing, so the library would never be
+    // merged into the ROM (see the merge below). `None` = nothing to link.
     #[cfg(feature = "ziskasm")]
-    let library =
-        ziskasm::assemble_zisk_library().map_err(|e| format!("assembling ZisK library: {e}"))?;
-
-    // Report how much of the reserved ZISKLIB ROM/RAM windows the library occupies
-    // (it is fit-checked inside assemble_zisk_library, so this only ever prints a
-    // value within budget).
-    #[cfg(feature = "ziskasm")]
-    {
-        let (rom_used, ram_used) = library.footprint();
-        let rom_pct = rom_used as f64 * 100.0 / zisk_core::ZISKLIB_ROM_SIZE as f64;
-        let ram_pct = ram_used as f64 * 100.0 / zisk_core::ZISKLIB_RAM_SIZE as f64;
-        println!(
-            "ZisK library footprint: ROM {rom_used}/{} bytes ({rom_pct:.1}%), RAM {ram_used}/{} bytes ({ram_pct:.1}%)",
-            zisk_core::ZISKLIB_ROM_SIZE,
-            zisk_core::ZISKLIB_RAM_SIZE
-        );
-    }
-
-    #[cfg(feature = "ziskasm")]
-    {
+    let library = {
         let guest_names: Vec<&str> = REDIRECTS.iter().map(|(g, _)| *g).collect();
         let guest_syms =
             crate::elf_extraction::get_symbol_addresses_and_sizes_from_bytes(elf, &guest_names)?;
-        for (guest_name, lib_name) in REDIRECTS {
-            if let Some(&(guest_addr, size)) = guest_syms.get(*guest_name) {
-                let lib_addr = *library.symbols.get(*lib_name).ok_or_else(|| {
-                    format!(
-                        "ZisK library has no function `{lib_name}` (redirect of `{guest_name}`)"
-                    )
-                })?;
-                redirects.insert(guest_addr, (lib_addr, size));
+        if guest_syms.is_empty() {
+            None
+        } else {
+            let library = ziskasm::assemble_zisk_library()
+                .map_err(|e| format!("assembling ZisK library: {e}"))?;
+
+            // Report how much of the reserved ZISKLIB ROM/RAM windows the library
+            // occupies (it is fit-checked inside assemble_zisk_library, so this only
+            // ever prints a value within budget).
+            let (rom_used, ram_used) = library.footprint();
+            let rom_pct = rom_used as f64 * 100.0 / zisk_core::ZISKLIB_ROM_SIZE as f64;
+            let ram_pct = ram_used as f64 * 100.0 / zisk_core::ZISKLIB_RAM_SIZE as f64;
+            println!(
+                "ZisK library footprint: ROM {rom_used}/{} bytes ({rom_pct:.1}%), RAM {ram_used}/{} bytes ({ram_pct:.1}%)",
+                zisk_core::ZISKLIB_ROM_SIZE,
+                zisk_core::ZISKLIB_RAM_SIZE
+            );
+
+            for (guest_name, lib_name) in REDIRECTS {
+                if let Some(&(guest_addr, size)) = guest_syms.get(*guest_name) {
+                    let lib_addr = *library.symbols.get(*lib_name).ok_or_else(|| {
+                        format!(
+                            "ZisK library has no function `{lib_name}` (redirect of `{guest_name}`)"
+                        )
+                    })?;
+                    redirects.insert(guest_addr, (lib_addr, size));
+                }
             }
+            Some(library)
         }
-    }
+    };
 
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
@@ -343,11 +347,11 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         })
         .collect();
 
-    // Merge the ZisK library (only when something redirects into it): its
+    // Merge the ZisK library (only assembled when something redirects into it): its
     // instructions and data live in the reserved region, disjoint from the guest.
-    // Only reachable with the `ziskasm` feature (redirects is empty otherwise).
+    // Only reachable with the `ziskasm` feature (`library` is None otherwise).
     #[cfg(feature = "ziskasm")]
-    if !redirects.is_empty() {
+    if let Some(library) = library {
         rom.insts.extend(library.insts);
         rom.ro_data_64.extend(library.ro_data);
         rom.rw_data_64.extend(library.rw_data);
