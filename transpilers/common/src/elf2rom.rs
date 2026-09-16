@@ -352,6 +352,35 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Only reachable with the `ziskasm` feature (`library` is None otherwise).
     #[cfg(feature = "ziskasm")]
     if let Some(library) = library {
+        // The guest linker script reserves ZISKLIB_RAM but not ZISKLIB_ROM, and unlike
+        // the float-library region above nothing has fenced these off yet. `extend`
+        // would silently overwrite a colliding guest instruction (BTreeMap) or leave
+        // overlapping data sections, so reject the collision instead.
+        use zisk_core::{
+            ZISKLIB_RAM_ADDR, ZISKLIB_RAM_ADDR_MAX, ZISKLIB_ROM_ADDR, ZISKLIB_ROM_ADDR_MAX,
+        };
+        if let Some((&addr, _)) = rom.insts.range(ZISKLIB_ROM_ADDR..=ZISKLIB_ROM_ADDR_MAX).next() {
+            return Err(format!(
+                "guest instruction at 0x{addr:x} overlaps the reserved ZisK library ROM region (0x{ZISKLIB_ROM_ADDR:x}..0x{ZISKLIB_ROM_ADDR_MAX:x})"
+            )
+            .into());
+        }
+        for (what, sections, lo, hi) in [
+            ("ROM", &rom.ro_data_64, ZISKLIB_ROM_ADDR, ZISKLIB_ROM_ADDR_MAX),
+            ("RAM", &rom.rw_data_64, ZISKLIB_RAM_ADDR, ZISKLIB_RAM_ADDR_MAX),
+        ] {
+            for s in sections {
+                let end = s.addr + (s.data.len() * 8) as u64;
+                if s.addr <= hi && end > lo {
+                    return Err(format!(
+                        "guest data section at 0x{:x} (size {}) overlaps the reserved ZisK library {what} region (0x{lo:x}..0x{hi:x})",
+                        s.addr,
+                        s.data.len() * 8
+                    )
+                    .into());
+                }
+            }
+        }
         rom.insts.extend(library.insts);
         rom.ro_data_64.extend(library.ro_data);
         rom.rw_data_64.extend(library.rw_data);
