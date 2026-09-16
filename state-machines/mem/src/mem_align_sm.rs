@@ -1,15 +1,15 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 #[cfg(feature = "debug_mem_align")]
 use std::sync::Mutex;
 
-use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult};
 use rayon::prelude::*;
-use zisk_pil::{MemAlignTraceRowOps, DUAL_RANGE_BYTE_ID, ZISK_AIRGROUP_ID};
+use zisk_pil::{MemAlignTraceRowOps, ZISK_AIRGROUP_ID};
 
 const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
@@ -37,79 +37,10 @@ const DEFAULT_OFFSET: u8 = 0;
 const DEFAULT_WIDTH: u8 = 8;
 
 pub struct MemAlignSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
-
     #[cfg(feature = "debug_mem_align")]
     num_computed_rows: Mutex<usize>,
 
-    /// The table ID for the Mem Align ROM State Machine
-    table_id: usize,
-
-    /// The virtual table ID for the dual-byte range check
-    table_dual_byte_id: usize,
-}
-
-/// Values the dual-byte range check enumerates: one per `(reg[i], reg[i+1])` pair.
-const DUAL_BYTE_VALUES: usize = 1 << (2 * CHUNK_BITS);
-
-/// The multiplicities one task of the fill counts, kept off `std` until the fill is over.
-///
-/// The fill is parallel over operations, and each one looks up two to five ROM rows plus
-/// `CHUNK_NUM / 2` byte pairs. Handing those to `std` as they are produced is an atomic
-/// read-modify-write per lookup on an array every thread shares — and the ROM is 256 rows, 32 cache
-/// lines, with a `pc` that depends only on `(opcode, offset, width)`, so a handful of counters carry
-/// nearly all of the traffic and nearly all of the contention.
-///
-/// One histogram per task instead: 2 KB for the ROM and 512 KB for the byte pairs, merged at the end
-/// and flushed as two ranged calls. The count is what the dual-byte pass used to do sequentially
-/// over every filled row after the fill; counting it here folds that pass into the fill, where the
-/// rows are still in cache.
-pub struct MemAlignTally {
-    /// One counter per row of the MemAlign ROM.
-    rom: [u64; MemAlignRomSM::TABLE_SIZE],
-
-    /// One counter per byte pair, indexed `(reg[i] << CHUNK_BITS) | reg[i + 1]`.
-    dual: Vec<u64>,
-}
-
-impl MemAlignTally {
-    fn new() -> Self {
-        Self { rom: [0; MemAlignRomSM::TABLE_SIZE], dual: vec![0; DUAL_BYTE_VALUES] }
-    }
-
-    /// Counts the byte pairs of the rows one operation produced.
-    #[inline]
-    fn count_dual_bytes<F: PrimeField64, R: MemAlignTraceRowOps<F>>(&mut self, rows: &[R]) {
-        for row in rows {
-            let reg_values = row.get_all_reg();
-            // Range-check registers in dual-byte pairs: (reg[0],reg[1]), (reg[2],reg[3]), ...
-            for i in (0..CHUNK_NUM).step_by(2) {
-                let idx = ((reg_values[i] as usize) << CHUNK_BITS) | reg_values[i + 1] as usize;
-                self.dual[idx] += 1;
-            }
-        }
-    }
-
-    /// Adds `other` into this tally, counter by counter.
-    fn merge(mut self, other: Self) -> Self {
-        for (total, count) in self.rom.iter_mut().zip(&other.rom) {
-            *total += count;
-        }
-        for (total, count) in self.dual.iter_mut().zip(&other.dual) {
-            *total += count;
-        }
-        self
-    }
-
-    /// Hands both histograms to `std`, one ranged call each.
-    ///
-    /// This is where the atomics the fill avoided are paid: once per row of each table, from a
-    /// single thread, instead of once per lookup from every thread.
-    fn flush<F: PrimeField64>(&self, std: &Std<F>, rom_id: usize, dual_byte_id: usize) {
-        std.inc_virtual_rows_ranged(rom_id, None, &self.rom);
-        std.inc_virtual_rows_ranged(dual_byte_id, None, &self.dual);
-    }
+    _phantom: PhantomData<F>,
 }
 
 macro_rules! debug_info {
@@ -122,19 +53,11 @@ macro_rules! debug_info {
 }
 
 impl<F: PrimeField64> MemAlignSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Get the table ID
-        let table_id =
-            std.get_virtual_table_id(MemAlignRomSM::TABLE_ID).expect("Failed to get table ID");
-        let table_dual_byte_id =
-            std.get_virtual_table_id(DUAL_RANGE_BYTE_ID).expect("Failed to get dual byte table ID");
-
+    pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            std: std.clone(),
             #[cfg(feature = "debug_mem_align")]
             num_computed_rows: Mutex::new(0),
-            table_id,
-            table_dual_byte_id,
+            _phantom: PhantomData,
         })
     }
 
@@ -142,7 +65,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
         &self,
         input: &MemAlignInput,
         trace: &mut [R],
-        tally: &mut MemAlignTally,
     ) -> usize {
         let addr = input.addr;
         let width = input.width;
@@ -187,11 +109,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_read = input.mem_values[0];
 
                 // Get the next pc and op size
-                let (next_pc, op_size) =
+                let (next_pc, _op_size) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneRead, offset, width);
 
-                // Update the row multiplicity of the operation
-                MemAlignRomSM::count_rows(&mut tally.rom, next_pc, op_size);
 
                 let mut read_row: R = Default::default();
                 read_row.set_step(step);
@@ -309,11 +229,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_read = input.mem_values[0];
 
                 // Get the next pc
-                let (next_pc, op_size) =
+                let (next_pc, _op_size) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneWrite, offset, width);
 
-                // Update the row multiplicity of the operation
-                MemAlignRomSM::count_rows(&mut tally.rom, next_pc, op_size);
 
                 // Compute the write value
                 let value_write = {
@@ -488,11 +406,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_second_read = input.mem_values[1];
 
                 // Get the next pc
-                let (next_pc, op_size) =
+                let (next_pc, _op_size) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoReads, offset, width);
 
-                // Update the row multiplicity of the operation
-                MemAlignRomSM::count_rows(&mut tally.rom, next_pc, op_size);
 
                 let mut first_read_row: R = Default::default();
                 first_read_row.set_step(step);
@@ -690,11 +606,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 };
 
                 // Get the next pc
-                let (next_pc, op_size) =
+                let (next_pc, _op_size) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoWrites, offset, width);
 
-                // Update the row multiplicity of the operation
-                MemAlignRomSM::count_rows(&mut tally.rom, next_pc, op_size);
 
                 // RWVWR
                 let mut first_read_row: R = Default::default();
@@ -952,43 +866,18 @@ impl<F: PrimeField64> MemAlignSM<F> {
             }
         }
 
-        // Prove the memory operations in parallel, each task counting its own multiplicities.
-        //
-        // The operations are split into no more chunks than there are rayon threads, so the number
-        // of live histograms is bounded by the thread count rather than by the finer split rayon
-        // would choose on its own. Each task counts the byte pairs of the rows it just wrote, while
-        // they are still in cache, which is what removes the sequential pass this used to end with.
-        let tasks = rayon::current_num_threads().max(1);
-        let ops_per_task = par_traces.len().div_ceil(tasks).max(1);
+        // Prove the memory operations in parallel
+        par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
+            let input_index = inputs_indexes[index];
+            let input = &mem_ops[input_index.0][input_index.1];
+            self.prove_mem_align_op(input, trace);
+        });
 
-        let mut tally = par_traces
-            .par_chunks_mut(ops_per_task)
-            .enumerate()
-            .map(|(task, op_traces)| {
-                let mut tally = MemAlignTally::new();
-                for (i, op_trace) in op_traces.iter_mut().enumerate() {
-                    let (chunk, index) = inputs_indexes[task * ops_per_task + i];
-                    let input = &mem_ops[chunk][index];
-                    self.prove_mem_align_op(input, op_trace, &mut tally);
-                    tally.count_dual_bytes::<F, R>(op_trace);
-                }
-                tally
-            })
-            .reduce(MemAlignTally::new, MemAlignTally::merge);
-
-        let padding_size = num_rows - total_index;
         let mut padding_row: R = Default::default();
         padding_row.set_reset(true);
 
         // Store the padding rows
         trace.buffer[total_index..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
-
-        // Every padding row runs the ROM's padding program once, and has all registers zero, so it
-        // contributes (CHUNK_NUM / 2) dual (0, 0) pairs. Both go into the tally rather than to
-        // `std`, so the whole instance leaves as the two ranged calls in `flush`.
-        tally.rom[MemAlignRomSM::PADDING_ROW as usize] += padding_size as u64;
-        tally.dual[0] += (CHUNK_NUM / 2) as u64 * padding_size as u64;
-        tally.flush(&self.std, self.table_id, self.table_dual_byte_id);
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }

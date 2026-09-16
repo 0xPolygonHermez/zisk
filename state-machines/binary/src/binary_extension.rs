@@ -3,15 +3,14 @@
 //! This state machine handles binary extension-related operations, computes traces, and manages
 //! range checks and multiplicities for table rows based on the operations provided.
 
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::{
-    fill_slots_and_tally, for_each_operation_in, opcode_is_chain, opcode_is_chain_rev,
-    opcode_is_combine, opcode_is_shift, opcode_is_shift_word, BinaryExtensionTableOp,
-    BinaryExtensionTableSM, BinaryInput, FillTally,
+    fill_slots, opcode_is_chain, opcode_is_chain_rev, opcode_is_combine, opcode_is_shift,
+    opcode_is_shift_word, BinaryInput,
 };
 
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
@@ -180,34 +179,16 @@ impl_binary_extension_row!(
 /// It processes binary extension-related operations and generates necessary traces and multiplicity
 /// tables for the operations. It also manages range checks through the PIL2 standard library.
 pub struct BinaryExtensionSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
-
-    /// The range check ID
-    range_id: usize,
-
-    /// The table ID for the Binary Basic State Machine
-    table_id: usize,
+    _phantom: PhantomData<F>,
 }
 
 impl<F: PrimeField64> BinaryExtensionSM<F> {
     /// Creates a new instance of the `BinaryExtensionSM`.
     ///
-    /// # Arguments
-    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
-    ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryExtensionSM`.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Get the range check ID
-        let range_id = std.get_range_id(0, 0xFFFFFF, None).expect("Failed to get range ID");
-
-        // Get the table ID
-        let table_id = std
-            .get_virtual_table_id(BinaryExtensionTableSM::TABLE_ID)
-            .expect("Failed to get table ID");
-
-        Arc::new(Self { std, range_id, table_id })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: PhantomData })
     }
 
     /// Writes SEXT_B(0) into one slot: the operation the air's `padding_size` cancels on the bus.
@@ -229,16 +210,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         );
     }
 
-    /// Fills one slot of a row from one operation, counting the table rows it looks up.
-    ///
-    /// `tally` is the histogram of the task this runs on, taking one lookup per byte. It is a plain
-    /// local array rather than `std`'s shared multiplicities on purpose — see [`crate::binary_tally`].
+    /// Fills one slot of a row from one operation.
     pub fn process_slice<T, R: BinaryExtensionRow<F, T>>(
         &self,
         row: &mut R,
         lane: usize,
         input: &BinaryInput,
-        tally: &mut FillTally,
     ) {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
@@ -294,22 +271,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             ((b_val & 0xFFFFFFFF) as u32, ((b_val >> 32) & 0xFFFFFFFF) as u32)
         };
 
-        // Nothing constrains those high bits of a shift amount but their width, so they are range
-        // checked, one lookup per shift. The amount is applied modulo 64, so they are zero on every
-        // shift a compiler emits and non-zero only on a dirty operand: the tally counts the zeros
-        // and keeps just the exceptions, which is why this is not a `std` increment per operation.
-        if op_is_shift {
-            tally.inc_range(lane, in2_0 as u64);
-        }
-
         // Calculate the trace output
         let mut t_out: [[u32; 2]; 8] = [[0; 2]; 8];
 
         // Calculate output based on opcode
-        let binary_extension_table_op: BinaryExtensionTableOp;
         match opcode {
             ZiskOp::Sll => {
-                binary_extension_table_op = BinaryExtensionTableOp::Sll;
                 for j in 0..8 {
                     let bits_to_shift = b_low + 8 * j as u64;
                     let out =
@@ -319,7 +286,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::Srl => {
-                binary_extension_table_op = BinaryExtensionTableOp::Srl;
                 for j in 0..8 {
                     let out = ((a_bytes[j] as u64) << (8 * j as u64)) >> b_low;
                     t_out[j][0] = (out & 0xffffffff) as u32;
@@ -327,7 +293,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::Sra => {
-                binary_extension_table_op = BinaryExtensionTableOp::Sra;
                 for j in 0..8 {
                     let mut out = ((a_bytes[j] as u64) << (8 * j as u64)) >> b_low;
                     if j == 7 {
@@ -342,7 +307,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SllW => {
-                binary_extension_table_op = BinaryExtensionTableOp::SllW;
                 for j in 0..8 {
                     let mut out: u64;
                     if j >= 4 {
@@ -364,7 +328,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 //
                 // The instruction sets m32, so the bus already zeroed the high half of a and those
                 // bytes are zero; skipping them makes the zero extension explicit.
-                binary_extension_table_op = BinaryExtensionTableOp::SllUw;
                 for j in 0..4 {
                     let bits_to_shift = b_low + 8 * j as u64;
                     let out =
@@ -374,7 +337,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SrlW => {
-                binary_extension_table_op = BinaryExtensionTableOp::SrlW;
                 for j in 0..8 {
                     let mut out: u64;
                     if j >= 4 {
@@ -390,7 +352,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SraW => {
-                binary_extension_table_op = BinaryExtensionTableOp::SraW;
                 for j in 0..8 {
                     let mut out: u64;
                     if j >= 4 {
@@ -406,7 +367,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SignExtendB => {
-                binary_extension_table_op = BinaryExtensionTableOp::SextB;
                 for j in 0..8 {
                     let out: u64;
                     if j == 0 {
@@ -423,7 +383,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SignExtendH => {
-                binary_extension_table_op = BinaryExtensionTableOp::SextH;
                 for j in 0..8 {
                     let out: u64;
                     if j == 0 {
@@ -442,7 +401,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SignExtendW => {
-                binary_extension_table_op = BinaryExtensionTableOp::SextW;
                 for j in 0..4 {
                     let mut out = (a_bytes[j] as u64) << (8 * j as u64);
                     if j == 3 && ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
@@ -456,7 +414,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             ZiskOp::Rev8 => {
                 // Byte-reverse the 64-bit input: byte j moves to position 7 - j.
                 // Single input (op_is_shift = 0), so `a_bytes` holds the operand.
-                binary_extension_table_op = BinaryExtensionTableOp::Rev8;
                 for j in 0..8 {
                     let out = (a_bytes[j] as u64) << (8 * (7 - j) as u64);
                     t_out[j][0] = (out & 0xffffffff) as u32;
@@ -466,7 +423,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             ZiskOp::OrcB => {
                 // OR-combine bits within each byte, in place: output byte j is 0xFF
                 // if input byte j has any bit set, else 0x00. Single input.
-                binary_extension_table_op = BinaryExtensionTableOp::OrcB;
                 for j in 0..8 {
                     let out = if a_bytes[j] != 0 { 0xFFu64 << (8 * j as u64) } else { 0 };
                     t_out[j][0] = (out & 0xffffffff) as u32;
@@ -475,7 +431,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             }
             ZiskOp::Rol => {
                 // Rotate left the full 64-bit value by `b_low` (mod 64), per byte.
-                binary_extension_table_op = BinaryExtensionTableOp::Rol;
                 for j in 0..8 {
                     let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
                     let out = a_pos.rotate_left(b_low as u32);
@@ -485,7 +440,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             }
             ZiskOp::Ror => {
                 // Rotate right the full 64-bit value by `b_low` (mod 64), per byte.
-                binary_extension_table_op = BinaryExtensionTableOp::Ror;
                 for j in 0..8 {
                     let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
                     let out = a_pos.rotate_right(b_low as u32);
@@ -495,7 +449,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             }
             ZiskOp::RolW => {
                 // Rotate left the low 32 bits by `b_low` (mod 32), sign-extended.
-                binary_extension_table_op = BinaryExtensionTableOp::RolW;
                 for j in 0..8 {
                     let out = if j >= 4 {
                         0u64
@@ -514,7 +467,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             }
             ZiskOp::RorW => {
                 // Rotate right the low 32 bits by `b_low` (mod 32), sign-extended.
-                binary_extension_table_op = BinaryExtensionTableOp::RorW;
                 for j in 0..8 {
                     let out = if j >= 4 {
                         0u64
@@ -534,14 +486,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             ZiskOp::Cpop => {
                 // Population count: each byte contributes its own set-bit count (0..8),
                 // position-independent; the 8 contributions sum to the 64-bit popcount.
-                binary_extension_table_op = BinaryExtensionTableOp::Cpop;
                 for j in 0..8 {
                     t_out[j][0] = a_bytes[j].count_ones();
                 }
             }
             ZiskOp::CpopW => {
                 // Population count of the low 32 bits: only the low 4 bytes contribute.
-                binary_extension_table_op = BinaryExtensionTableOp::CpopW;
                 for j in 0..4 {
                     t_out[j][0] = a_bytes[j].count_ones();
                 }
@@ -551,7 +501,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 // (summed = ctz), `free_in_c[j][1]` = acc_in entering byte j. A byte is still in
                 // the trailing-zero run iff acc_in == 8*j, in which case it adds its own trailing
                 // zeros (8 for a zero byte, else 0..7); otherwise it adds 0.
-                binary_extension_table_op = BinaryExtensionTableOp::Ctz;
                 let mut acc: u64 = 0;
                 for j in 0..8 {
                     let acc_in = acc;
@@ -565,7 +514,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             ZiskOp::CtzW => {
                 // Count trailing zeros of the low 32 bits. Same chain as Ctz but only the low 4
                 // bytes participate; bytes at offset >= 4 add nothing.
-                binary_extension_table_op = BinaryExtensionTableOp::CtzW;
                 let mut acc: u64 = 0;
                 for j in 0..8 {
                     let acc_in = acc;
@@ -583,7 +531,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 // Count leading zeros, reverse byte-chain (scan MSB -> LSB). Mirror of Ctz: a
                 // byte is still in the leading-zero run iff acc_in == 8*(7-j); it then adds its
                 // own leading zeros (8 for a zero byte, else 0..7). Increments telescope to clz.
-                binary_extension_table_op = BinaryExtensionTableOp::Clz;
                 let mut acc: u64 = 0;
                 for j in (0..8).rev() {
                     let acc_in = acc;
@@ -600,7 +547,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             ZiskOp::ClzW => {
                 // Count leading zeros of the low 32 bits. Same reverse chain as Clz but only the
                 // low 4 bytes participate; the top of the word is byte 3.
-                binary_extension_table_op = BinaryExtensionTableOp::ClzW;
                 let mut acc: u64 = 0;
                 for j in (0..4).rev() {
                     let acc_in = acc;
@@ -619,7 +565,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             ZiskOp::Pack => {
                 // rd = rs1[31:0] | (rs2[31:0] << 32). free_in_a already holds rs1[31:0] in its
                 // low 4 bytes and rs2[31:0] in its high 4 bytes, so each byte lands in place.
-                binary_extension_table_op = BinaryExtensionTableOp::Pack;
                 for j in 0..8 {
                     let out = (a_bytes[j] as u64) << (8 * j as u64);
                     t_out[j][0] = (out & 0xffffffff) as u32;
@@ -628,14 +573,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             }
             ZiskOp::PackH => {
                 // rd = rs1[7:0] | (rs2[7:0] << 8): byte 0 -> result byte 0, byte 4 -> result byte 1.
-                binary_extension_table_op = BinaryExtensionTableOp::PackH;
                 t_out[0][0] = a_bytes[0] as u32;
                 t_out[4][0] = (a_bytes[4] as u32) << 8;
             }
             ZiskOp::PackW => {
                 // rd = sext32(rs1[15:0] | (rs2[15:0] << 16)): bytes 0,1 -> result bytes 0,1;
                 // bytes 4,5 -> result bytes 2,3; sign-extend from bit 7 of byte 5 (bit 31).
-                binary_extension_table_op = BinaryExtensionTableOp::PackW;
                 t_out[0][0] = a_bytes[0] as u32;
                 t_out[1][0] = (a_bytes[1] as u32) << 8;
                 t_out[4][0] = (a_bytes[4] as u32) << 16;
@@ -647,7 +590,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             ZiskOp::Bclr => {
                 // rd = a & ~(1 << pos). Only the byte holding `pos` is affected; the mask is a
                 // no-op on the others, so it can be applied uniformly (branch-free).
-                binary_extension_table_op = BinaryExtensionTableOp::Bclr;
                 for j in 0..8 {
                     let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
                     let out = a_pos & !(1u64 << b_low);
@@ -657,14 +599,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             }
             ZiskOp::Bext => {
                 // rd = (a >> pos) & 1: the extracted bit lands at result bit 0.
-                binary_extension_table_op = BinaryExtensionTableOp::Bext;
                 let target = (b_low >> 3) as usize;
                 let bit = b_low & 0x07;
                 t_out[target][0] = (((a_bytes[target] as u64) >> bit) & 1) as u32;
             }
             ZiskOp::Binv => {
                 // rd = a ^ (1 << pos): only the byte holding `pos` flips it.
-                binary_extension_table_op = BinaryExtensionTableOp::Binv;
                 let target = (b_low >> 3) as usize;
                 for j in 0..8 {
                     let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
@@ -675,7 +615,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             }
             ZiskOp::Bset => {
                 // rd = a | (1 << pos): only the byte holding `pos` sets it.
-                binary_extension_table_op = BinaryExtensionTableOp::Bset;
                 let target = (b_low >> 3) as usize;
                 for j in 0..8 {
                     let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
@@ -687,23 +626,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", input.op),
         }
 
-        for (i, a_byte) in a_bytes.iter().enumerate() {
-            // For chain ops (forward or reverse) the fourth argument is acc_in (carried in
-            // free_in_c[j][1]), which selects the row within the block; for the rest it is the
-            // shared B value, restricted to its low 6 bits (the only part the table enumerates).
-            let table_b = if op_is_chain || op_is_chain_rev {
-                t_out[i][1] as u64
-            } else {
-                in2_low & LS_6_BITS
-            };
-            let table_row = BinaryExtensionTableSM::calculate_table_row(
-                binary_extension_table_op,
-                i as u64,
-                *a_byte as u64,
-                table_b,
-            );
-            tally.inc(table_row);
-        }
 
         row.set_fields(
             lane,
@@ -765,45 +687,20 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // a row boundary. Rows are the unit of parallelism, and each task walks the chunks from
         // where its own run of rows starts, so the operations are read in place.
         //
-        // The table multiplicities are tallied into one histogram per task and handed to `std`
-        // afterwards: one lookup per byte is far too many to take the shared atomic path.
-        let tally = fill_slots_and_tally(
+        fill_slots(
             &mut R::trace_buffer_mut(&mut binary_e_trace)[..rows_used],
             inputs,
             total_inputs,
             lanes_x_row,
-            BinaryExtensionTableSM::TABLE_ROWS,
-            // One table row per byte of the operation.
-            8,
-            |trace_row, lane, input, tally| {
-                self.process_slice::<T, R>(trace_row, lane, input, tally)
-            },
+            |trace_row, lane, input| self.process_slice::<T, R>(trace_row, lane, input),
             // Only the last row can be short. Its leftover lanes are not covered by the padding
             // rows written afterwards, and the trace buffer comes from a pool and is not zeroed,
             // so they get the padding operation here.
             |trace_row, lane| Self::set_padding_slot(trace_row, lane),
         );
-        tally.table.flush(&self.std, self.table_id);
-
-        // Range-check the high part of the shift amount carried in b[0]. The fill already counted
-        // it, so on any real workload this is one call for however many zeros the instance holds
-        // plus a handful of exceptions, and `unfinished` is empty. Only a task that ran past the
-        // dirty shift amounts it remembers leaves slots behind, and only those are looked up here.
-        let unfinished = tally.range.flush(&self.std, self.range_id);
-        for_each_operation_in(inputs, &unfinished, |input| {
-            let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
-            if opcode_is_shift(opcode) {
-                self.std.range_check_one(self.range_id, (input.b >> 8) & 0xFFFFFF);
-            }
-        });
 
         // One padded slot is one SEXT_B(0) operation on the bus, and each takes eight table rows.
         let padding_size = num_slots - total_inputs;
-        for i in 0..8 {
-            let row =
-                BinaryExtensionTableSM::calculate_table_row(BinaryExtensionTableOp::SextB, i, 0, 0);
-            self.std.inc_virtual_row(self.table_id, row, padding_size as u64);
-        }
 
         Ok(R::into_air_instance(&mut binary_e_trace, padding_slot, rows_used, padding_size))
     }

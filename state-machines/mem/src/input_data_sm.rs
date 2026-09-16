@@ -12,10 +12,8 @@ use zisk_sm_mem_common::MemHelpers;
 use crate::{MemModule, MemOps, MemPreviousSegment};
 use zisk_sm_mem_common::{
     MemLanes, MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_DISTANCE,
-    SEGMENT_ADDR_MAX_RANGE,
 };
 
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
@@ -31,7 +29,6 @@ pub const INPUT_DATA_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 
 
 const OFFSET_USE_FLAG: u32 = 0x8000_0000;
 const OFFSET_VALUE_MASK: u32 = 0x7FFF_FFFF;
-const MAX_RANGE_CHECK_CACHE: usize = 2048;
 
 #[allow(clippy::assertions_on_constants)]
 const _: () = {
@@ -77,26 +74,15 @@ fn set_input_data_padding_lane<F: PrimeField64, R: InputDataTraceRowOps<F>>(
 }
 
 pub struct InputDataSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
-
-    /// Range check ID
-    range_id: usize,
-
-    /// Range check ID for the 16-bit chunks of the input values
-    range_16bits_id: usize,
+    _phantom: std::marker::PhantomData<F>,
 }
 
 #[allow(unused, unused_variables)]
 impl<F: PrimeField64> InputDataSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_id = std
-            .get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None)
-            .expect("Failed to get range ID");
-        let range_16bits_id =
-            std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
-
-        Arc::new(Self { range_16bits_id, std: std.clone(), range_id })
+    /// Takes no `Std`: the only thing this machine used it for was range checks, which the prover
+    /// now computes from the committed trace.
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: std::marker::PhantomData })
     }
     fn get_u16_values(&self, value: u64) -> [u16; 4] {
         [value as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
@@ -225,9 +211,7 @@ impl<F: PrimeField64> InputDataSM<F> {
             num_slots
         );
 
-        let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
 
-        let mut max_range_distance_count = 0;
 
         let distance_base = previous_segment.addr - INPUT_DATA_W_ADDR_INIT;
         let mut last_addr: u32 = previous_segment.addr;
@@ -254,7 +238,6 @@ impl<F: PrimeField64> InputDataSM<F> {
                 let (row, lane) = lanes.split(i);
                 trace[row].set_addr_changes(lane, true);
                 last_addr += SEGMENT_ADDR_MAX_DISTANCE as u32;
-                max_range_distance_count += 1;
                 trace[row].set_addr(lane, last_addr);
 
                 // the step, value of internal reads isn't relevant
@@ -274,8 +257,7 @@ impl<F: PrimeField64> InputDataSM<F> {
                     // same lane content as the previous internal read, only the address moves on
                     let (row, lane) = lanes.split(i);
                     last_addr += SEGMENT_ADDR_MAX_DISTANCE as u32;
-                    max_range_distance_count += 1;
-                    trace[row].set_addr(lane, last_addr);
+                        trace[row].set_addr(lane, last_addr);
                     trace[row].set_addr_changes(lane, true);
                     trace[row].set_step(lane, 0);
                     trace[row].set_sel(lane, false);
@@ -286,7 +268,6 @@ impl<F: PrimeField64> InputDataSM<F> {
 
                     i += 1;
                 }
-                range_16bits[0] += 4 * internal_reads;
                 if incomplete {
                     break;
                 }
@@ -301,14 +282,12 @@ impl<F: PrimeField64> InputDataSM<F> {
             let value = mem_op.value;
             let value_words = self.get_u16_values(value);
             for j in 0..4 {
-                range_16bits[value_words[j] as usize] += 1;
                 trace[row].set_value_word(lane, j, value_words[j]);
             }
 
             let addr_changes = last_addr != mem_op.addr;
             if addr_changes {
                 trace[row].set_addr_changes(lane, true);
-                self.std.range_check_one(self.range_id, mem_op.addr - last_addr - 1);
             } else {
                 trace[row].set_addr_changes(lane, false);
             }
@@ -352,15 +331,8 @@ impl<F: PrimeField64> InputDataSM<F> {
 
         let distance_end = INPUT_DATA_W_ADDR_END - last_addr;
 
-        self.std.range_check(
-            self.range_id,
-            SEGMENT_ADDR_MAX_RANGE,
-            max_range_distance_count as u32,
-        );
-
         // range of chunks
         for j in 0..4 {
-            range_16bits[last_value_word[j] as usize] += padding_size as u32;
         }
 
         let mut air_values = InputDataAirValues::<F>::new();
@@ -387,12 +359,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         air_values.distance_end[0] = F::from_u16(distance_end[0]);
         air_values.distance_end[1] = F::from_u16(distance_end[1]);
 
-        range_16bits[distance_base[0] as usize] += 1;
-        range_16bits[distance_base[1] as usize] += 1;
-        range_16bits[distance_end[0] as usize] += 1;
-        range_16bits[distance_end[1] as usize] += 1;
 
-        self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
 
         #[cfg(feature = "debug_mem")]
         {
@@ -498,8 +465,6 @@ impl<F: PrimeField64> InputDataSM<F> {
         );
 
         let mut current_offsets = vec![0u32; seg.addr_range_slots as usize];
-        let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
-        let mut range_check_cache = vec![0u32; MAX_RANGE_CHECK_CACHE];
 
         #[cfg(feature = "debug_mem")]
         let mut filled_slots = vec![false; num_slots];
@@ -542,10 +507,6 @@ impl<F: PrimeField64> InputDataSM<F> {
 
             let value_words = self.get_u16_values(mem_op.value);
 
-            range_16bits[value_words[0] as usize] += 1;
-            range_16bits[value_words[1] as usize] += 1;
-            range_16bits[value_words[2] as usize] += 1;
-            range_16bits[value_words[3] as usize] += 1;
             trace[row].set_value_word(lane, 0, value_words[0]);
             trace[row].set_value_word(lane, 1, value_words[1]);
             trace[row].set_value_word(lane, 2, value_words[2]);
@@ -557,11 +518,6 @@ impl<F: PrimeField64> InputDataSM<F> {
                     .previous_change_addr_w(addr_index as u32)
                     .unwrap_or(previous_segment.addr as u64);
                 let distance = mem_op.addr as i64 - previous_addr as i64 - 1;
-                if distance < MAX_RANGE_CHECK_CACHE as i64 {
-                    range_check_cache[distance as usize] += 1;
-                } else {
-                    self.std.range_check_one(self.range_id, distance);
-                }
             } else {
                 trace[row].set_addr_changes(lane, false);
             }
@@ -633,12 +589,7 @@ impl<F: PrimeField64> InputDataSM<F> {
             }
         }
 
-        range_16bits[value_0 as usize] += padding_size as u32;
-        range_16bits[value_1 as usize] += padding_size as u32;
-        range_16bits[value_2 as usize] += padding_size as u32;
-        range_16bits[value_3 as usize] += padding_size as u32;
 
-        self.std.range_check_ranged(self.range_id, None, &range_check_cache);
 
         let mut air_values = InputDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());
@@ -667,11 +618,6 @@ impl<F: PrimeField64> InputDataSM<F> {
         air_values.distance_end[0] = F::from_u16(distance_end_chunks[0]);
         air_values.distance_end[1] = F::from_u16(distance_end_chunks[1]);
 
-        range_16bits[distance_base_chunks[0] as usize] += 1;
-        range_16bits[distance_base_chunks[1] as usize] += 1;
-        range_16bits[distance_end_chunks[0] as usize] += 1;
-        range_16bits[distance_end_chunks[1] as usize] += 1;
-        self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
 
         #[cfg(feature = "debug_mem")]
         {

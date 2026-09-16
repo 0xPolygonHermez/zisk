@@ -2,20 +2,16 @@ use proofman_fields::PrimeField64;
 // `phase_ms` / `phase_max_ms` are only read inside a `phase_log!`, which vanishes without the
 // `witness_timers` feature -- and takes the only use of those imports with it.
 use rayon::prelude::*;
+use std::marker::PhantomData;
 use std::sync::Arc;
 #[allow(unused_imports)]
 use zisk_common::{
     phase_end, phase_log, phase_max_ms, phase_max_record, phase_max_start, phase_ms, phase_start,
 };
 
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{ArithEq384TraceRowOps, ZISK_AIRGROUP_ID};
-use zisk_precomp_arith_eq::ArithEqLtTableSM;
-// `CACHE_BYTES` is only reported by the `witness_timers` line.
-#[allow(unused_imports)]
-use zisk_precomp_common::{MultiplicityCache, CACHE_BYTES};
 
 use crate::{
     arith_eq_384_constants::*, executors, Arith384ModInput, ArithEq384Input,
@@ -28,15 +24,7 @@ use crate::{
 /// Nothing here depends on the height of the air: the same state machine serves `ArithEq384` and its
 /// taller `ArithEq384Large` sibling, and the capacity is taken from the trace each call builds.
 pub struct ArithEq384SM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
-
-    /// The table ID for the Keccakf Table State Machine
-    table_id: usize,
-
-    pub q_hsc_range_id: usize,
-    pub chunk_range_id: usize,
-    pub carry_range_id: usize,
+    _phantom: PhantomData<F>,
 }
 #[derive(Debug, Default)]
 struct ArithEq384StepAddr {
@@ -56,22 +44,8 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     ///
     /// # Returns
     /// A new `ArithEq384SM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Compute some useful values
-        let q_hsc_range_id =
-            std.get_range_id(0, ARITH_EQ_384_Q_HSC_MAX, None).expect("Failed to get range ID");
-        let chunk_range_id = std
-            .get_range_id(0, ARITH_EQ_384_CHUNK_MAX as i64, None)
-            .expect("Failed to get range ID");
-        let carry_range_id = std
-            .get_range_id(ARITH_EQ_384_CARRY_MIN, ARITH_EQ_384_CARRY_MAX, None)
-            .expect("Failed to get range ID");
-
-        // Get the table ID
-        let table_id =
-            std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
-
-        Arc::new(Self { std, q_hsc_range_id, chunk_range_id, carry_range_id, table_id })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: PhantomData })
     }
     // Returns the LT flags for x3 and y3. The flags are determined solely by the operation type.
     /// Writes one operation's rows. Split out of the fill so the batched walk and the dispatch stay
@@ -81,26 +55,25 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         input: &ArithEq384Input,
         trace: &mut [R],
         previous_lt_flags: u8,
-        cache: &mut MultiplicityCache,
     ) {
         match input {
             ArithEq384Input::Arith384Mod(idata) => {
-                self.process_arith384_mod(idata, trace, previous_lt_flags, cache)
+                self.process_arith384_mod(idata, trace, previous_lt_flags)
             }
             ArithEq384Input::Bls12_381CurveAdd(idata) => {
-                self.process_bls12_381_curve_add(idata, trace, previous_lt_flags, cache)
+                self.process_bls12_381_curve_add(idata, trace, previous_lt_flags)
             }
             ArithEq384Input::Bls12_381CurveDbl(idata) => {
-                self.process_bls12_381_curve_dbl(idata, trace, previous_lt_flags, cache)
+                self.process_bls12_381_curve_dbl(idata, trace, previous_lt_flags)
             }
             ArithEq384Input::Bls12_381ComplexAdd(idata) => {
-                self.process_bls12_381_complex_add(idata, trace, previous_lt_flags, cache);
+                self.process_bls12_381_complex_add(idata, trace, previous_lt_flags);
             }
             ArithEq384Input::Bls12_381ComplexSub(idata) => {
-                self.process_bls12_381_complex_sub(idata, trace, previous_lt_flags, cache);
+                self.process_bls12_381_complex_sub(idata, trace, previous_lt_flags);
             }
             ArithEq384Input::Bls12_381ComplexMul(idata) => {
-                self.process_bls12_381_complex_mul(idata, trace, previous_lt_flags, cache);
+                self.process_bls12_381_complex_mul(idata, trace, previous_lt_flags);
             }
         }
     }
@@ -143,10 +116,9 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         input: &Arith384ModInput,
         trace: &mut [R],
         previous_lt_flags: u8,
-        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Arith384Mod::execute(&input.a, &input.b, &input.c, &input.module);
-        self.expand_data_on_trace(&data, trace, SEL_OP_ARITH384_MOD, previous_lt_flags, cache);
+        self.expand_data_on_trace(&data, trace, SEL_OP_ARITH384_MOD, previous_lt_flags);
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
                 main_step: input.step,
@@ -174,7 +146,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         input: &Bls12_381CurveAddInput,
         trace: &mut [R],
         previous_lt_flags: u8,
-        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Bls12_381Curve::execute_add(&input.p1, &input.p2);
         self.expand_data_on_trace(
@@ -182,7 +153,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             trace,
             SEL_OP_BLS12_381_CURVE_ADD,
             previous_lt_flags,
-            cache,
         );
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
@@ -205,7 +175,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         input: &Bls12_381CurveDblInput,
         trace: &mut [R],
         previous_lt_flags: u8,
-        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Bls12_381Curve::execute_dbl(&input.p1);
         self.expand_data_on_trace(
@@ -213,7 +182,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             trace,
             SEL_OP_BLS12_381_CURVE_DBL,
             previous_lt_flags,
-            cache,
         );
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
@@ -236,7 +204,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         input: &Bls12_381ComplexAddInput,
         trace: &mut [R],
         previous_lt_flags: u8,
-        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Bls12_381Complex::execute_add(&input.f1, &input.f2);
         self.expand_data_on_trace(
@@ -244,7 +211,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             trace,
             SEL_OP_BLS12_381_COMPLEX_ADD,
             previous_lt_flags,
-            cache,
         );
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
@@ -267,7 +233,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         input: &Bls12_381ComplexSubInput,
         trace: &mut [R],
         previous_lt_flags: u8,
-        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Bls12_381Complex::execute_sub(&input.f1, &input.f2);
         self.expand_data_on_trace(
@@ -275,7 +240,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             trace,
             SEL_OP_BLS12_381_COMPLEX_SUB,
             previous_lt_flags,
-            cache,
         );
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
@@ -298,7 +262,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         input: &Bls12_381ComplexMulInput,
         trace: &mut [R],
         previous_lt_flags: u8,
-        cache: &mut MultiplicityCache,
     ) {
         let data = executors::Bls12_381Complex::execute_mul(&input.f1, &input.f2);
         self.expand_data_on_trace(
@@ -306,7 +269,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             trace,
             SEL_OP_BLS12_381_COMPLEX_MUL,
             previous_lt_flags,
-            cache,
         );
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
@@ -324,8 +286,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
-    const FIRST_CLOCK: u8 = 0;
-    const LAST_CLOCK: u8 = ARITH_EQ_384_ROWS_BY_OP as u8 - 1;
 
     fn expand_data_on_trace<R: ArithEq384TraceRowOps<F>>(
         &self,
@@ -333,7 +293,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         trace: &mut [R],
         sel_op: usize,
         previous_lt_flags: u8,
-        cache: &mut MultiplicityCache,
     ) {
         let mut x1_x2_different = false;
         // To calculate the multiplicity, use the prev_x3_lt and prev_y3_lt flags. However, when
@@ -347,44 +306,31 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             for j in 0..3 {
                 // first position without carry
                 let carry_0 = if i == 0 { 0 } else { data.cout[i * 2 - 1][j] };
-                carry_values[j][0] = to_field::<F>(cache.carry(carry_0));
-                carry_values[j][1] = to_field::<F>(cache.carry(data.cout[i * 2][j]));
+                carry_values[j][0] = to_field::<F>(carry_0);
+                carry_values[j][1] = to_field::<F>(data.cout[i * 2][j]);
             }
             trace[i].set_all_carry(&carry_values);
-            let q_last_clock = i == ARITH_EQ_384_ROWS_BY_OP - 1;
-            trace[i].set_x1(to_field::<F>(cache.chunk(data.x1[i])) as u16);
-            trace[i].set_y1(to_field::<F>(cache.chunk(data.y1[i])) as u16);
-            trace[i].set_x2(to_field::<F>(cache.chunk(data.x2[i])) as u16);
-            trace[i].set_y2(to_field::<F>(cache.chunk(data.y2[i])) as u16);
-            trace[i].set_x3(to_field::<F>(cache.chunk(data.x3[i])) as u16);
-            trace[i].set_y3(to_field::<F>(cache.chunk(data.y3[i])) as u16);
-            trace[i].set_q0(to_field::<F>(cache.q_column(data.q0[i], q_last_clock)) as u32);
-            trace[i].set_q1(to_field::<F>(cache.q_column(data.q1[i], q_last_clock)) as u32);
-            trace[i].set_q2(to_field::<F>(cache.q_column(data.q2[i], q_last_clock)) as u32);
-            trace[i].set_s(to_field::<F>(cache.chunk(data.s[i])) as u32);
+            trace[i].set_x1(to_field::<F>(data.x1[i]) as u16);
+            trace[i].set_y1(to_field::<F>(data.y1[i]) as u16);
+            trace[i].set_x2(to_field::<F>(data.x2[i]) as u16);
+            trace[i].set_y2(to_field::<F>(data.y2[i]) as u16);
+            trace[i].set_x3(to_field::<F>(data.x3[i]) as u16);
+            trace[i].set_y3(to_field::<F>(data.y3[i]) as u16);
+            trace[i].set_q0(to_field::<F>(data.q0[i]) as u32);
+            trace[i].set_q1(to_field::<F>(data.q1[i]) as u32);
+            trace[i].set_q2(to_field::<F>(data.q2[i]) as u32);
+            trace[i].set_s(to_field::<F>(data.s[i]) as u32);
 
             // TODO Range check
             // Compute sel_op arrays
             let mut sel_op_values = [false; ARITH_EQ_384_OP_NUM];
             sel_op_values[sel_op] = true;
             trace[i].set_all_sel_op(&sel_op_values);
-            let iclock = match i as u8 {
-                Self::FIRST_CLOCK => 1,
-                Self::LAST_CLOCK => 2,
-                _ => 0,
-            };
             match sel_op {
                 SEL_OP_ARITH384_MOD => {
                     let x3_lt = data.x3[i] < data.y2[i]
                         || (i > 0 && data.x3[i] == data.y2[i] && prev_x3_lt);
                     trace[i].set_x3_lt(x3_lt);
-                    let row = ArithEqLtTableSM::calculate_table_row(
-                        prev_x3_lt,
-                        x3_lt,
-                        data.x3[i] - data.y2[i],
-                        iclock,
-                    );
-                    cache.lt_row(row);
                     prev_x3_lt = x3_lt;
 
                     trace[i].set_y3_lt(false);
@@ -397,25 +343,11 @@ impl<F: PrimeField64> ArithEq384SM<F> {
                     let x3_lt = data.x3[i] < BLS12_381_PRIME_CHUNKS[i]
                         || (i > 0 && data.x3[i] == BLS12_381_PRIME_CHUNKS[i] && prev_x3_lt);
                     trace[i].set_x3_lt(x3_lt);
-                    let row = ArithEqLtTableSM::calculate_table_row(
-                        prev_x3_lt,
-                        x3_lt,
-                        data.x3[i] - BLS12_381_PRIME_CHUNKS[i],
-                        iclock,
-                    );
-                    cache.lt_row(row);
                     prev_x3_lt = x3_lt;
 
                     let y3_lt = data.y3[i] < BLS12_381_PRIME_CHUNKS[i]
                         || (i > 0 && data.y3[i] == BLS12_381_PRIME_CHUNKS[i] && prev_y3_lt);
                     trace[i].set_y3_lt(y3_lt);
-                    let row = ArithEqLtTableSM::calculate_table_row(
-                        prev_y3_lt,
-                        y3_lt,
-                        data.y3[i] - BLS12_381_PRIME_CHUNKS[i],
-                        iclock,
-                    );
-                    cache.lt_row(row);
                     prev_y3_lt = y3_lt;
                 }
                 _ => {
@@ -471,7 +403,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         // of operations, and a `Large` instance priced against the short air's capacity would reject
         // the very inputs the planner routed to it.
         let num_available_ops = arith_eq_384_ops_per_instance(num_rows);
-        let num_non_usable_rows = (num_rows % ARITH_EQ_384_ROWS_BY_OP) as u64;
 
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
         let all_ops_used = total_inputs == num_available_ops;
@@ -514,8 +445,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         // the sequential fill this replaces started the first operation at 0 unconditionally, and
         // its constraints are written for that.
 
-        let index = total_inputs;
-        phase_max_start!(init_max);
         phase_start!(t_fill);
 
         // Only the rows the operations occupy, NOT `num_rows_needed`: when the instance is exactly
@@ -523,14 +452,10 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         // `ARITH_EQ_384_ROWS_BY_OP` (2^20 leaves 16 rows over). Those trailing rows are padding, and
         // slicing them in here would open one batch past the last operation.
         let fill_rows = total_inputs * ARITH_EQ_384_ROWS_BY_OP;
-        let caches: Vec<MultiplicityCache> = trace.buffer[..fill_rows]
+        trace.buffer[..fill_rows]
             .par_chunks_mut(ops_per_batch * ARITH_EQ_384_ROWS_BY_OP)
             .enumerate()
-            .map(|(batch, batch_rows)| {
-                phase_start!(t_init);
-                let mut cache = MultiplicityCache::new();
-                phase_max_record!(init_max, t_init);
-
+            .for_each(|(batch, batch_rows)| {
                 let first_op = batch * ops_per_batch;
                 let mut previous_lt_flags = if first_op == 0 {
                     0
@@ -540,65 +465,23 @@ impl<F: PrimeField64> ArithEq384SM<F> {
                 for (input, rows) in ops_from(inputs, &chunk_start, first_op)
                     .zip(batch_rows.chunks_mut(ARITH_EQ_384_ROWS_BY_OP))
                 {
-                    self.process_input(input, rows, previous_lt_flags, &mut cache);
+                    self.process_input(input, rows, previous_lt_flags);
                     previous_lt_flags = Self::get_lt_flags(input);
                 }
-                cache
-            })
-            .collect();
+            });
 
         phase_end!(d_fill, t_fill);
-
-        phase_start!(t_merge);
-        let mut caches = caches.into_iter();
-        let merged = caches.next().map(|mut first| {
-            for other in caches {
-                first.add(&other);
-            }
-            first
-        });
-
-        phase_end!(d_merge, t_merge);
-
-        phase_start!(t_flush);
-        if let Some(merged) = &merged {
-            merged.flush(
-                &self.std,
-                self.q_hsc_range_id,
-                self.chunk_range_id,
-                self.carry_range_id,
-                self.table_id,
-            );
-        }
-        phase_end!(d_flush, t_flush);
         phase_log!(
-            "ArithEq384 witness: {} ops, {} threads, {} caches x {:.1}MiB | cache init {:.1}ms \
-             (slowest batch) fill {:.0}ms merge {:.0}ms flush {:.0}ms",
+            "ArithEq384 witness: {} ops, {} threads, {} batches | fill {:.0}ms",
             total_inputs,
             rayon::current_num_threads(),
             n_batches,
-            CACHE_BYTES as f64 / (1024.0 * 1024.0),
-            init_max.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e3,
-            phase_ms!(d_fill),
-            phase_ms!(d_merge),
-            phase_ms!(d_flush)
+            phase_ms!(d_fill)
         );
 
         // Padding
 
-        // All-zero padding rows satisfy every constraint, so we must only handle the range_checks.
-
-        let padding_ops = (num_available_ops - index) as u64;
-        let q_hsc_range_mult = 3 * padding_ops;
-        let chunk_range_mult = (7 * ARITH_EQ_384_ROWS_BY_OP as u64
-            + 3 * (ARITH_EQ_384_ROWS_BY_OP - 1) as u64)
-            * padding_ops
-            + 10 * num_non_usable_rows; // 7 chunk_cols + 3 q_cols on every tail row
-        let carry_range_mult =
-            (6 * ARITH_EQ_384_ROWS_BY_OP as u64) * padding_ops + 6 * num_non_usable_rows; // 6 carry_cols
-        self.std.range_check(self.q_hsc_range_id, 0, q_hsc_range_mult);
-        self.std.range_check(self.chunk_range_id, 0, chunk_range_mult);
-        self.std.range_check(self.carry_range_id, 0, carry_range_mult);
+        // All-zero padding rows satisfy every constraint.
 
         timer_stop_and_log_trace!(ARITH_EQ_384_TRACE);
 
@@ -629,7 +512,7 @@ fn ops_from<'a>(
 }
 
 /// A chunk value as a field element. The other half of the old `to_ranged_field` (the range-check
-/// bookkeeping) now goes to the batch's [`MultiplicityCache`].
+/// bookkeeping) is now handled by the prover directly from the committed trace.
 #[inline(always)]
 fn to_field<F: PrimeField64>(value: i64) -> u64 {
     if value >= 0 {

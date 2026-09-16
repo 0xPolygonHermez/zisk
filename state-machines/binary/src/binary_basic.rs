@@ -2,13 +2,12 @@
 //!
 //! This state machine processes binary-related operations.
 
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::{
-    binary_constants::*, fill_slots_and_tally, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput,
-    BinaryLanes, FillTally,
+    binary_constants::*, fill_slots, BinaryBasicTableOp, BinaryInput, BinaryLanes,
 };
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
@@ -160,11 +159,7 @@ impl_binary_basic_row!(
 
 /// The `BinaryBasicSM` struct encapsulates the logic of the Binary Basic State Machine.
 pub struct BinaryBasicSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
-
-    /// The table ID for the Binary Basic State Machine
-    table_id: usize,
+    _phantom: PhantomData<F>,
 }
 
 impl<F: PrimeField64> BinaryBasicSM<F> {
@@ -175,12 +170,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryBasicSM`.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Get the table ID
-        let table_id =
-            std.get_virtual_table_id(BinaryBasicTableSM::TABLE_ID).expect("Failed to get range ID");
-
-        Arc::new(Self { std, table_id })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: PhantomData })
     }
 
     /// Determines if an opcode corresponds to a 32-bit operation.
@@ -281,22 +272,18 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         }
     }
 
-    /// Fills one slot of a row from one operation, counting the table rows it looks up.
+    /// Fills one slot of a row from one operation.
     ///
     /// # Arguments
     /// * `row` - The trace row the slot belongs to.
     /// * `lane` - The slot within that row.
     /// * `input` - The operation to prove there.
-    /// * `tally` - The histogram of the task this runs on, counting one lookup per byte. It is a
-    ///   plain local array rather than `std`'s shared multiplicities on purpose — see
-    ///   [`crate::binary_tally`].
     #[inline(always)]
     pub fn process_slice<T, R: BinaryBasicRow<F, T>>(
         &self,
         row: &mut R,
         lane: usize,
         input: &BinaryInput,
-        tally: &mut FillTally,
     ) {
         // Execute the opcode
         let opcode = input.op;
@@ -380,30 +367,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     }
 
                     carry[i] = cout as u8;
-                    let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = cout + 16 * result_is_a + 64 * plast[i] * c_is_signed;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            if c_is_signed == 1 {
-                                BinaryBasicTableOp::SextFF
-                            } else {
-                                BinaryBasicTableOp::Sext00
-                            }
-                        } else {
-                            binary_basic_table_op
-                        },
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -447,30 +412,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
                     carry[i] = cout as u8;
 
-                    let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = cout + 16 * result_is_a + 64 * plast[i] * c_is_signed;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            if c_is_signed == 1 {
-                                BinaryBasicTableOp::SextFF
-                            } else {
-                                BinaryBasicTableOp::Sext00
-                            }
-                        } else {
-                            binary_basic_table_op
-                        },
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -513,22 +456,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     cout += 2 * (_a >> 8);
                     carry[i] = cout as u8;
 
-                    let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = cout + 32;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        if i == 0 { 2 * pfirst[i] } else { plast[i] },
-                        flags,
-                    );
-                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -565,22 +494,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     }
                     carry[i] = cout as u8;
 
-                    let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = cout + 32;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        if i == 0 { 2 * pfirst[i] } else { plast[i] },
-                        flags,
-                    );
-                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -625,26 +540,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     }
                     carry[i] = cout as u8;
 
-                    let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = cin;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            BinaryBasicTableOp::Sext00
-                        } else {
-                            binary_basic_table_op
-                        },
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -682,22 +579,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     }
                     carry[i] = cout as u8;
 
-                    let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = cout;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -727,26 +610,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     }
                     carry[i] = cout as u8;
 
-                    let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = cout;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            BinaryBasicTableOp::Sext00
-                        } else {
-                            binary_basic_table_op
-                        },
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -766,33 +631,11 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 let mut carry = [0u8; 8];
                 for i in 0..8 {
                     // Calculate carry
-                    let previous_cin = cin;
                     let result = cin + a_bytes[i] as u64 + b_bytes[i] as u64;
                     cout = result >> 8;
                     cin = if i == carry_byte { 0 } else { cout };
                     carry[i] = cin as u8;
 
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = cin + 64 * plast[i] * c_is_signed;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            if c_is_signed == 1 {
-                                BinaryBasicTableOp::SextFF
-                            } else {
-                                BinaryBasicTableOp::Sext00
-                            }
-                        } else {
-                            binary_basic_table_op
-                        },
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -812,32 +655,10 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 let mut carry = [0u8; 8];
                 for i in 0..8 {
                     // Calculate carry
-                    let previous_cin = cin;
                     cout = if a_bytes[i] as u64 >= (b_bytes[i] as u64 + cin) { 0 } else { 1 };
                     cin = if i == carry_byte { 0 } else { cout };
                     carry[i] = cin as u8;
 
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = cin + 64 * plast[i] * c_is_signed;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            if c_is_signed == 1 {
-                                BinaryBasicTableOp::SextFF
-                            } else {
-                                BinaryBasicTableOp::Sext00
-                            }
-                        } else {
-                            binary_basic_table_op
-                        },
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -862,7 +683,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 let mut carry = [0u8; 8];
                 for i in 0..8 {
                     // Calculate carry
-                    let previous_cin = cin;
 
                     if a_bytes[i] < b_bytes[i] {
                         cout = 0;
@@ -883,23 +703,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     cin = cout;
                     carry[i] = cin as u8;
 
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = cin;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            BinaryBasicTableOp::Sext00
-                        } else {
-                            binary_basic_table_op
-                        },
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -919,21 +722,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // No carry
                 row.set_all_carry(lane, &[0u8; 8]);
 
-                for i in 0..8 {
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = 0;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        0,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
-                }
             }
             ZiskOp::OR => {
                 // Set first byte
@@ -951,21 +739,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // No carry
                 row.set_all_carry(lane, &[0u8; 8]);
 
-                for i in 0..8 {
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = 0;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        0,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
-                }
             }
             ZiskOp::XOR => {
                 // Set first byte
@@ -983,21 +756,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // No carry
                 row.set_all_carry(lane, &[0u8; 8]);
 
-                for i in 0..8 {
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = 0;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        0,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
-                }
             }
             ZiskOp::ANDN | ZiskOp::ORN | ZiskOp::XNOR | ZiskOp::BREV8 => {
                 // Bitwise ops with no carry, one table row per byte (like AND/OR/XOR).
@@ -1017,18 +775,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // No carry
                 row.set_all_carry(lane, &[0u8; 8]);
 
-                for i in 0..8 {
-                    let flags = 0;
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        0,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
-                }
             }
             ZiskOp::SH1ADD | ZiskOp::SH2ADD | ZiskOp::SH3ADD => {
                 // Zba shift-and-add: c = b + (a << shift), computed as an addition of the shifted
@@ -1049,7 +795,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 let mut carry = [0u8; 8];
                 for i in 0..8 {
                     // Calculate carry
-                    let previous_cin = cin;
                     let a_byte = a_bytes[i] as u64;
                     let result = ((a_byte << shift) & 0xFF) + b_bytes[i] as u64 + cin;
 
@@ -1059,19 +804,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     cin = if i == carry_byte { 0 } else { cout };
                     carry[i] = cin as u8;
 
-                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
-                    let flags = cin;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_byte,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    tally.inc(row);
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -1114,42 +846,22 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         // a row boundary. Rows are the unit of parallelism, and each task walks the chunks from
         // where its own run of rows starts, so the operations are read in place.
         //
-        // The table multiplicities are tallied into one histogram per task and handed to `std`
-        // afterwards: one lookup per byte is far too many to take the shared atomic path.
         let rows_used = lanes.rows_for(total_inputs);
-        let tally = fill_slots_and_tally(
+        fill_slots(
             &mut R::trace_buffer_mut(&mut trace)[..rows_used],
             inputs,
             total_inputs,
             R::LANES_X_ROW,
-            BinaryBasicTableSM::TABLE_ROWS,
-            // One table row per byte of the operation.
-            8,
-            |row, lane, input, tally| self.process_slice::<T, R>(row, lane, input, tally),
+            |row, lane, input| self.process_slice::<T, R>(row, lane, input),
             // Only the last row can be short. Its leftover lanes are not covered by the padding
             // rows written afterwards, and the trace buffer comes from a pool and is not zeroed,
             // so they get ADD(0,0), the padding operation, here.
             |row, lane| Self::set_padding_slot(row, lane),
         );
-        tally.table.flush(&self.std, self.table_id);
 
         // Every padded slot is one ADD(0,0) on the bus, whatever row it sits on: the leftover lanes
         // of the last filled row and every lane of the rows after it.
         let padding_size = num_slots - total_inputs;
-        if padding_size > 0 {
-            for last in 0..2 {
-                let multiplicity = (7 - 6 * last) * padding_size as u64;
-                let row = BinaryBasicTableSM::calculate_table_row(
-                    BinaryBasicTableOp::Add,
-                    0,
-                    0,
-                    0,
-                    last,
-                    0,
-                );
-                self.std.inc_virtual_row(self.table_id, row, multiplicity);
-            }
-        }
 
         let mut padding_row = R::default();
         for lane in 0..R::LANES_X_ROW {

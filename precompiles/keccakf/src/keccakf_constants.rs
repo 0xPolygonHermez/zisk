@@ -28,9 +28,6 @@ pub(crate) const GROUP_ROUND_0: usize = 2 * ROWS_PER_STATE;
 pub(crate) const GROUP_OUT_A: usize = (3 + ROUNDS) * ROWS_PER_STATE;
 pub(crate) const GROUP_OUT_B: usize = (4 + ROUNDS) * ROWS_PER_STATE;
 
-/// χ-row S-box table: row = rc·16⁵ + Σ_x (tA_x + 4·tB_x)·16ˣ with tA,tB ∈ [0,3]
-pub(crate) const CHI_TABLE_SIZE: u32 = 2 * 16u32.pow(5); // 2_097_152 = 2^21
-
 /// The packed χ-row lookup input: rc·28⁵ + Σ_x (tA_x + 8·tB_x)·28ˣ
 /// (base 28 since a sliced θ-output digit reaches 3 + 8·3 = 27)
 pub(crate) const CHI_BASE: u32 = 28;
@@ -38,8 +35,6 @@ pub(crate) const CHI_SPAN: u32 = CHI_BASE.pow(5); // 17_210_368
 
 /// xor5 table: row = Σ_k (sA_k + 6·sB_k)·36ᵏ with sA,sB ∈ [0,5], 3 positions per lookup
 pub(crate) const XOR5_BATCH: usize = 3;
-pub(crate) const XOR5_VALUES: u32 = 36;
-pub(crate) const XOR5_TABLE_SIZE: u32 = XOR5_VALUES.pow(XOR5_BATCH as u32); // 46_656
 /// xor5 lookups per trace row: batches of three c-column slots (mirrors the AIR)
 pub(crate) const XOR5_GROUPS: usize = C_PER_ROW.div_ceil(XOR5_BATCH);
 
