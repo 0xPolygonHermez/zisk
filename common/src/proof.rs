@@ -1725,6 +1725,37 @@ mod tests {
         assert_eq!(vfp.public_values[0], IS_VADCOP_FINAL_PROOF);
     }
 
+    /// `ensure_stored_publics` still accepts the legacy flagged 69-word Plonk body, so
+    /// pin that both accessors strip the flag rather than shifting the view by a word.
+    /// `new_from_u64` normalizes internally; this guards anyone "simplifying" that away.
+    #[test]
+    fn a_flagged_plonk_body_is_not_shifted_by_a_word() {
+        let mut flagged = vec![0u64; VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS];
+        flagged[0] = IS_VADCOP_FINAL_PROOF;
+        flagged[VADCOP_FINAL_FLAG_LEN..VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN]
+            .copy_from_slice(&[11, 12, 13, 14]);
+        flagged[VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN] = 0xAABB;
+
+        let proof = Proof::new(
+            ProofBody::Plonk {
+                proof_bytes: vec![],
+                plonk_vk: Box::new(PlonkVkBlob {
+                    vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
+                    plonk_vkey: dummy_plonk_vkey(),
+                }),
+                publics: PublicValues::new_empty(),
+                publics_full: flagged,
+                rootc: vec![0u64; PROGRAM_VK_LEN],
+            },
+            ProgramVK::new_empty(),
+        );
+
+        // The first user input, not the last VK limb and not the flag.
+        assert_eq!(&proof.publics().data[0..4], &0xAABBu32.to_le_bytes());
+        assert_eq!(&proof.try_publics().unwrap().data[0..4], &0xAABBu32.to_le_bytes());
+        assert_eq!(proof.get_program_vk().vk, vec![11, 12, 13, 14]);
+    }
+
     /// A structurally valid (not cryptographically meaningful) PLONK vkey.
     fn dummy_plonk_vkey() -> PlonkVkey {
         let g1 = || ["0".to_string(), "0".to_string(), "1".to_string()];
