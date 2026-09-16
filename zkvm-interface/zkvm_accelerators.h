@@ -96,7 +96,7 @@ typedef struct {
 /* Hash types */
 typedef zkvm_bytes_32 zkvm_keccak256_hash;
 typedef zkvm_bytes_32 zkvm_sha256_hash;
-typedef zkvm_bytes_32 zkvm_ripemd160_hash;  /* 20-byte hash padded to 32 bytes, last 12 bytes are zero */
+typedef zkvm_bytes_32 zkvm_ripemd160_hash;  /* 20-byte hash right-aligned in 32 bytes: first 12 bytes are zero, digest in [12..32] (precompile 0x03 left-pads) */
 
 /* secp256k1 types */
 typedef zkvm_bytes_32 zkvm_secp256k1_hash;
@@ -228,7 +228,8 @@ zkvm_status zkvm_sha256(const uint8_t* data, size_t len, zkvm_sha256_hash* outpu
  *
  * @param data Pointer to input data
  * @param len Length of input data in bytes
- * @param[out] output Pointer to output hash (20 bytes of hash, last 12 bytes zero-padded)
+ * @param[out] output Pointer to output hash (first 12 bytes zero, 20-byte digest in
+ *             bytes [12..32] -- right-aligned, as precompile 0x03 returns it)
  * @return ZKVM_EOK on success, ZKVM_EFAIL on failure
  */
 zkvm_status zkvm_ripemd160(const uint8_t* data, size_t len, zkvm_ripemd160_hash* output);
