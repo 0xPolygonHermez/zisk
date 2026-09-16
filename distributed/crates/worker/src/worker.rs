@@ -555,13 +555,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             return Ok(vk);
         }
 
-        let vk = Self::setup_compute(
+        let setup_result = Self::setup_compute(
             self.prover.as_ref(),
             hash_id,
             with_hints,
             emulator_only,
             &new_guest_program,
-        )?;
+        );
+        // Setup may have replaced the prover's ASM resources even on failure.
+        self.forget_registered_program();
+        let vk = setup_result?;
         self.register_setup(hash_id, with_hints, emulator_only, new_guest_program, vk.clone());
         Ok(vk)
     }
