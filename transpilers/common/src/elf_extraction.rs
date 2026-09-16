@@ -402,6 +402,12 @@ pub fn get_symbol_addresses_and_sizes_from_bytes(
 
     if let Some((symtab, strtab)) = elf.symbol_table()? {
         for sym in symtab {
+            // Skip undefined (imported) entries: they carry st_value = 0, so a redirect
+            // built from one would target address 0, and a later UND entry would
+            // otherwise overwrite the defined symbol this lookup is after.
+            if sym.is_undefined() {
+                continue;
+            }
             if let Ok(name) = strtab.get(sym.st_name as usize) {
                 if names_set.contains(name) {
                     result.insert(name.to_string(), (sym.st_value, sym.st_size));
