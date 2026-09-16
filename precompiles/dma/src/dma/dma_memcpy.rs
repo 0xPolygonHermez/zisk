@@ -84,9 +84,10 @@ impl<F: PrimeField64> DmaMemCpySM<F> {
         let src = input.src as u32;
         let h_src64 = src >> 10;
         let h_dst64 = dst >> 10;
-        let l_src64 = src as u8 & 0x7F;
-        let l_dst64 = dst as u8 & 0x7F;
+        let l_src64 = (src >> 3) as u8 & 0x7F;
+        let l_dst64 = (dst >> 3) as u8 & 0x7F;
 
+        trace.set_src_hi((input.src >> 32) as u32);
         trace.set_h_src64(h_src64);
         trace.set_l_src64(l_src64);
         let src_offset = input.src as u8 & 0x07;
@@ -94,6 +95,7 @@ impl<F: PrimeField64> DmaMemCpySM<F> {
 
         trace.set_h_dst64(h_dst64);
         trace.set_l_dst64(l_dst64);
+        trace.set_dst_hi((input.dst >> 32) as u32);
         trace.set_dst_offset(input.dst as u8 & 0x07);
 
         local_22_bits_values.push(h_src64);
