@@ -73,6 +73,11 @@ pub fn commit_slice(buf: &[u8]) {
 }
 
 /// Reset the output cursor to slot 0.
+///
+/// NOTE: this has no effect when `write_output` has been redirected to the ziskasm
+/// zisklib (the transpiler's `ziskasm` feature). That path keeps its cursor in its
+/// own statics and this function is not itself a redirectable `extern "C"` symbol,
+/// so the next write continues where the previous one stopped.
 pub fn write_output_reset() {
     crate::zisklib::zkvm_io::reset_output();
 }

@@ -18,6 +18,15 @@ define IO_INPUT_DATA  0x40000010    ; address of input byte 0
 define IO_OUTPUT_ADDR 0xa0410000    ; address of output word 0
 
 ; Persistent output state (across write_output calls).
+;
+; NOTE: ziskos `write_output_reset()` resets only the Rust-side OUTPUT_WORD_SLOT /
+; OUTPUT_PENDING / OUTPUT_PENDING_LEN statics, which the redirect leaves unused, so
+; it does NOT clear the three below: under the redirect a reset is a silent no-op and
+; the next write continues at the old slot with any pending bytes intact. Harmless
+; today (nothing calls write_output_reset), but a reset entrypoint here cannot be
+; wired up until ziskos exports its reset as a `no_mangle extern "C"` symbol -- the
+; redirect resolves by name, and `write_output_reset`/`reset_output` are ordinary
+; mangled Rust fns, unlike `read_input`/`write_output`.
 u64 IO_SLOT[1] = 0      ; next output u32 slot index
 u64 IO_PEND[1] = 0      ; up to 4 buffered bytes (little-endian), zero-padded
 u64 IO_PENDLEN[1] = 0   ; number of valid bytes in IO_PEND (0..3)
