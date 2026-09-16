@@ -103,7 +103,19 @@ pub fn committed_is_aggregate(zisk_proof: &[u64]) -> Option<bool> {
     if zisk_proof.len() < 2 + EXPECTED_N_PUBLICS_FINAL as usize {
         return None;
     }
-    Some(zisk_proof[2] != IS_VADCOP_FINAL_PROOF)
+    // Strictly 0 or 1. `!= IS_VADCOP_FINAL_PROOF` would report a malformed flag such as
+    // 2 as a fold, which is a classification the circuit never produces.
+    is_aggregate_flag(zisk_proof[2])
+}
+
+/// The flagged stage's slot-0 value as a classification: 1 = leaf, 0 = fold. The circuit
+/// emits only those two, so anything else is malformed rather than a third kind.
+fn is_aggregate_flag(flag: u64) -> Option<bool> {
+    match flag {
+        IS_VADCOP_FINAL_PROOF => Some(false),
+        0 => Some(true),
+        _ => None,
+    }
 }
 
 /// The program VK limbs a serialized proof commits to, or `None` if malformed.
@@ -156,6 +168,11 @@ pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64], ha
     }
 
     if !publics_are_canonical(&vadcop_proof[1..1 + expected_n_publics]) {
+        return false;
+    }
+
+    // The flagged stage commits slot 0 as the leaf/fold flag; only 0 and 1 exist.
+    if !minimal && is_aggregate_flag(vadcop_proof[1]).is_none() {
         return false;
     }
 
@@ -226,6 +243,11 @@ pub fn verify_vadcop_final(proof: &VadcopFinalProof, vk: &[u64]) -> bool {
         return false;
     }
     if !publics_are_canonical(&proof.public_values) {
+        return false;
+    }
+    // `VadcopFinalProof` is public, so a caller can hand us a flagged proof that never
+    // went through `new_from_vadcop_proof`'s strict flag check.
+    if !proof.compressed && is_aggregate_flag(proof.public_values[0]).is_none() {
         return false;
     }
     stage_verifier(&proof.hash, proof.compressed).is_some_and(|s| {
@@ -402,6 +424,25 @@ mod tests {
         assert!(!verify_vadcop_final_proof(&short, &[1, 2, 3, 4], "Poseidon2"));
         assert!(!verify_vadcop_final_proof(&long, &[1, 2, 3, 4], "Poseidon2"));
         assert!(!verify_vadcop_final_proof(&exact, &[1, 2, 3, 4], "Poseidon2"));
+    }
+
+    /// The circuit emits slot 0 as 1 (leaf) or 0 (fold) and nothing else, so a third
+    /// value is malformed, not a third classification.
+    #[test]
+    fn an_out_of_range_leaf_flag_is_refused_everywhere() {
+        let mut p = leaf(2, [1, 2, 3, 4]).to_vec();
+        assert_eq!(committed_is_aggregate(&p), None, "flag 2 is not a fold");
+        assert!(!verify_vadcop_final_proof(&p, &[1, 2, 3, 4], "Poseidon2"));
+
+        let mut publics = vec![0u64; EXPECTED_N_PUBLICS_FINAL as usize];
+        publics[0] = 2;
+        assert!(!verify_vadcop_final(&final_proof(publics, false), &[1, 2, 3, 4]));
+
+        // 0 and 1 still classify, and in the right direction.
+        p[2] = IS_VADCOP_FINAL_PROOF;
+        assert_eq!(committed_is_aggregate(&p), Some(false));
+        p[2] = 0;
+        assert_eq!(committed_is_aggregate(&p), Some(true));
     }
 
     /// A non-canonical public must be refused before it reaches the STARK verifier.

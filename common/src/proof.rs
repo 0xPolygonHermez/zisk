@@ -1231,8 +1231,11 @@ impl Proof {
         if let ProofBody::Vadcop { kind, .. } = &self.body {
             if kind.is_minimal() {
                 return Err(CommonError::InvalidProof(
-                    "a compressed (minimal) proof cannot be aggregated: the \
-                     is_vadcop_final_proof flag it needs was stripped when it was compressed"
+                    "a compressed (minimal) proof cannot be aggregated: compression strips \
+                     the is_vadcop_final_proof flag the aggregator reads at public slot 0, \
+                     and it cannot be recovered. Produce the leaf uncompressed \
+                     (ProofKind::VadcopFinal) if you intend to fold it — note the embedded \
+                     client defaults to ProofKind::VadcopFinalMinimal"
                         .to_string(),
                 ));
             }
