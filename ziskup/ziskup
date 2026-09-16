@@ -890,7 +890,12 @@ install_setup() {
     local CONST_TREE=$2
     local KEY_FILE="zisk-${KEY_TYPE}key-${SETUP_VERSION}${HASH_SUFFIX}.tar.gz"
 
-    step "Downloading ${HASH_MODE} ${KEY_TYPE} key version ${SETUP_VERSION}..."
+    if [[ "${HASH_MODE}" == "blake3" ]]; then
+      step "Downloading ${KEY_TYPE} key (${HASH_MODE}) version ${SETUP_VERSION}..."
+    else
+      step "Downloading ${KEY_TYPE} key version ${SETUP_VERSION}..."
+    fi
+    
     ensure download "${BUCKET_URL}/${KEY_FILE}" "${KEY_FILE}"
     ensure download "${BUCKET_URL}/${KEY_FILE}.md5" "${KEY_FILE}.md5"
 
