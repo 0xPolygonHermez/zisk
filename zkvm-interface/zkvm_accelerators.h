@@ -248,6 +248,11 @@ zkvm_status zkvm_ripemd160(const uint8_t* data, size_t len, zkvm_ripemd160_hash*
  *
  * Computes (base^exp) % modulus for arbitrary precision integers.
  *
+ * ZisK limit: base_len, exp_len and mod_len must each be <= 1056 bytes. A longer
+ * operand returns ZKVM_EFAIL, because the ziskasm zisklib assembles operands in
+ * fixed-size limb buffers. The portable software implementation has no such cap,
+ * so this bound applies only when the ziskasm redirect is enabled.
+ *
  * @param base Pointer to base value bytes
  * @param base_len Length of base in bytes
  * @param exp Pointer to exponent bytes

@@ -103,6 +103,9 @@ zkvm_status zkvm_secp256r1_verify(const zkvm_secp256r1_hash* msg,
                                   const zkvm_secp256r1_signature* sig,
                                   const zkvm_secp256r1_pubkey* pubkey, bool* verified);
 
+/* Modular exponentiation (precompile 0x05). base_len, exp_len and mod_len must each
+ * be <= 1056 bytes: the .zisk implementation assembles operands in fixed-size limb
+ * buffers and returns ZKVM_EFAIL for a longer one. */
 zkvm_status zkvm_modexp(const uint8_t* base, size_t base_len,
                         const uint8_t* exp, size_t exp_len,
                         const uint8_t* modulus, size_t mod_len, uint8_t* output);
