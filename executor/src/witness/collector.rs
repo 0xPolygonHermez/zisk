@@ -230,6 +230,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         state: &ExecutionState<F>,
         secn_instances: HashMap<usize, &dyn Instance<F>>,
     ) -> ExecutorResult<()> {
+        let phase_start = Instant::now();
         let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
         let min_traces = min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?;
 
@@ -332,6 +333,8 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 scope.spawn(move |_| Self::worker_loop(ctx));
             }
         });
+
+        state.stats.add_collect_phase_wall_ms(phase_start.elapsed().as_millis() as u64);
 
         // Collect any errors from parallel execution.
         // Use unwrap_or_else to handle poisoned mutex (e.g., if a worker thread panicked).

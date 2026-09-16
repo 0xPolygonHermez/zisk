@@ -91,7 +91,7 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
 pub struct WitnessPhase<F: PrimeField64> {
     /// Constructed SM bundle. Held directly so the populator-style
     /// methods can dispatch `build_instance` / `configure_instances`
-    /// / `get_std` without going through `collector`.
+    /// without going through `collector`.
     sm_bundle: Arc<StaticSMBundle<F>>,
 
     /// Chunk data collector for secondary instances.
@@ -148,7 +148,6 @@ impl<F: PrimeField64> WitnessPhase<F> {
             main_instances.entry(global_id).or_insert_with(|| {
                 std::sync::Arc::new(MainInstance::new(
                     InstanceCtx::new(global_id, plan),
-                    self.sm_bundle.get_std(),
                 ))
             });
 
