@@ -16,7 +16,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
                  const int lanes_x_row = 1, const int owns_continuation_cycle = 1) {
 
     assert(lanes_x_row > 0, "lanes_x_row must be greater than 0");
-
+    assert((lanes_x_row & (lanes_x_row-1)) == 0, "lanes_x_row must be a power of 2");
     const int REGS_IN_MAIN = REGS_IN_MAIN_TO - REGS_IN_MAIN_FROM + 1;
 
     // LANES
@@ -322,6 +322,17 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     const expr b_mem_step[lanes_x_row];
     const expr store_mem_step[lanes_x_row];
 
+    // Everything below is one expression per lane, so it is declared here, once, and indexed by
+    // `lane` inside the loop. 
+    const expr store_value[lanes_x_row][2];
+    const expr a_src_c[lanes_x_row];
+    const expr b_src_c[lanes_x_row];
+    const expr a_imm[lanes_x_row][2];
+    const expr b_imm[lanes_x_row][2];
+    const expr previous_c[lanes_x_row][RC];
+    const expr expected_current_pc[lanes_x_row];
+    const expr expected_current_sp[lanes_x_row];
+
     for (int lane = 0; lane < lanes_x_row; ++lane) {
         // Calculate the memory step from the main step
 
@@ -363,8 +374,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
 
         // Calculate the value to store in memory
 
-        const expr store_value[lanes_x_row][2];
-
         store_value[lane][0] = store_pc[lane]*(pc[lane] + jmp_offset2[lane] - c[lane][0]) + c[lane][0];
         // BUG(rv64-auipc): when store_pc=1 (AUIPC), store_value[1] is forced to 0, dropping the
         // carry out of bit 31 of (pc + jmp_offset2).  For pc + jmp_offset2 >= 2^32 - valid in RV64I,
@@ -396,19 +405,13 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         range_check(expression: b_mem_step[lane] - b_reg_prev_mem_step[lane] - 1, min: 0, max: MAX_RANGE, sel: b_src_reg[lane]);
         range_check(expression: store_mem_step[lane] - store_reg_prev_mem_step[lane] - 1 , min: 0, max: MAX_RANGE, sel: store_reg[lane]);
 
-        const expr a_src_c[lanes_x_row];
-        const expr b_src_c[lanes_x_row];
-
-        const expr a_imm[lanes_x_row][2];
-        const expr b_imm[lanes_x_row][2];
-
         a_imm[lane][0] = a_offset_imm0[lane];
         b_imm[lane][0] = b_offset_imm0[lane];
 
         // Optimization to avoid use extra columns when c is source for a or b.
 
         if (stack_enabled) {
-            a_src_c[lane] = 1 - a_src_mem[lane] - a_src_imm[lane] - a_src_sp[lane];
+            a_src_c[lane] = 1 - a_src_mem[lane] - a_src_imm[lane] - a_src_reg[lane] - a_src_sp[lane];
             b_src_c[lane] = 1 - b_src_mem[lane] - b_src_imm[lane] - b_src_ind[lane] - b_src_reg[lane];
             a_imm[lane][1] = a_use_sp_imm1[lane];
             b_imm[lane][1] = b_use_sp_imm1[lane];
@@ -438,21 +441,20 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         for (int index = 0; index < RC; ++index) {
             // The step before this one: lane l - 1 of the same row, or the last lane of the previous
             // row for lane 0 — which on the first row is what the previous segment handed over.
-            const expr previous_c;
             if (lane == 0) {
-                previous_c = SEGMENT_L1 * (segment_previous_c[index] - 'c[LAST_LANE][index]) + 'c[LAST_LANE][index];
+                previous_c[lane][index] = SEGMENT_L1 * (segment_previous_c[index] - 'c[LAST_LANE][index]) + 'c[LAST_LANE][index];
             } else {
-                previous_c = c[lane - 1][index];
+                previous_c[lane][index] = c[lane - 1][index];
             }
 
             if (stack_enabled) {
                 // a_src_sp ===> set a = sp (only less significant index, rest must be 0)
-                a_src_sp[lane] * (a[lane][index] - (index == 0 ? sp: 0 )) === 0;
+                a_src_sp[lane] * (a[lane][index] - (index == 0 ? sp[lane]: 0 )) === 0;
             }
 
             // If source is c, value must be same as previous_c
-            a_src_c[lane] * (a[lane][index] - previous_c) === 0;
-            b_src_c[lane] * (b[lane][index] - previous_c) === 0;
+            a_src_c[lane] * (a[lane][index] - previous_c[lane][index]) === 0;
+            b_src_c[lane] * (b[lane][index] - previous_c[lane][index]) === 0;
 
             // If source is immediate, value must immediate value
             a_src_imm[lane] * (a[lane][index] - a_imm[lane][index]) === 0;
@@ -489,38 +491,39 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         // The pc that follows the previous step. For lane 0 that step is on the previous row, so the
         // constraint is skipped on the first row — the segment hands the pc over instead. For any other
         // lane the previous step is on this same row, so there is no boundary to skip.
-        const expr expected_current_pc;
         if (lane == 0) {
-            expected_current_pc = 'set_pc[LAST_LANE] * ('c[LAST_LANE][0] + 'jmp_offset1[LAST_LANE])
+            expected_current_pc[lane] = 'set_pc[LAST_LANE] * ('c[LAST_LANE][0] + 'jmp_offset1[LAST_LANE])
                                   + (1 - 'set_pc[LAST_LANE]) * ('pc[LAST_LANE] + 'jmp_offset2[LAST_LANE])
                                   + 'flag[LAST_LANE] * ('jmp_offset1[LAST_LANE] - 'jmp_offset2[LAST_LANE]);
-            (1 - SEGMENT_L1) * (pc[0] - expected_current_pc) === 0;
+            (1 - SEGMENT_L1) * (pc[0] - expected_current_pc[lane]) === 0;
         } else {
-            expected_current_pc = set_pc[lane - 1] * (c[lane - 1][0] + jmp_offset1[lane - 1])
+            expected_current_pc[lane] = set_pc[lane - 1] * (c[lane - 1][0] + jmp_offset1[lane - 1])
                                   + (1 - set_pc[lane - 1]) * (pc[lane - 1] + jmp_offset2[lane - 1])
                                   + flag[lane - 1] * (jmp_offset1[lane - 1] - jmp_offset2[lane - 1]);
-            pc[lane] - expected_current_pc === 0;
+            pc[lane] - expected_current_pc[lane] === 0;
         }
 
 
         if (stack_enabled) {
-            const expr expected_current_sp;
             if (lane == 0) {
-                expected_current_sp = 'set_sp[LAST_LANE] * ('c[LAST_LANE][0] - 'sp[LAST_LANE]) + 'sp[LAST_LANE] + 'inc_sp[LAST_LANE];
+                expected_current_sp[lane] = 'set_sp[LAST_LANE] * ('c[LAST_LANE][0] - 'sp[LAST_LANE]) + 'sp[LAST_LANE] + 'inc_sp[LAST_LANE];
                 SEGMENT_L1 * (sp[0] - segment_initial_sp) === 0;
-                (1 - SEGMENT_L1) * (sp[0] - expected_current_sp) === 0;
-                // What follows the last lane of the last row is what lane 0 of the next row takes.
-                SEGMENT_LAST * (expected_current_sp' - segment_next_sp) === 0;
+                (1 - SEGMENT_L1) * (sp[0] - expected_current_sp[lane]) === 0;
+                // The sp of lane 0 one row on is the sp that follows the last lane of this row, so
+                // on the last row it is the sp the next segment starts from.
+                SEGMENT_LAST * (expected_current_sp[0]' - segment_next_sp) === 0;
             } else {
-                expected_current_sp = set_sp[lane - 1] * (c[lane - 1][0] - sp[lane - 1]) + sp[lane - 1] + inc_sp[lane - 1];
-                sp[lane] - expected_current_sp === 0;
+                expected_current_sp[lane] = set_sp[lane - 1] * (c[lane - 1][0] - sp[lane - 1]) + sp[lane - 1] + inc_sp[lane - 1];
+                sp[lane] - expected_current_sp[lane] === 0;
             }
         }
 
-        // Only lane 0 carries the hand-over: its expression one row on is the pc that follows the last
-        // step of the segment.
+        // The hand-over rides on lane 0's expression, which reads the LAST_LANE of the row before it:
+        // shifted one row on it reads the LAST_LANE of THIS row, so on the last row it is the pc that
+        // follows the segment's last step. Written as [0] rather than [lane] because it is lane 0's
+        // expression that is being shifted, not this iteration's.
         if (lane == 0) {
-            SEGMENT_LAST * (segment_next_pc - expected_current_pc') === 0;
+            SEGMENT_LAST * (segment_next_pc - expected_current_pc[0]') === 0;
         }
 
         // The segment hands over the c of its LAST step, which is the last lane of the last row.
@@ -531,6 +534,9 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         }
 
     }
+
+    // One packed flags word per lane, for that lane's ROM lookup. 
+    const expr rom_flags[lanes_x_row];
 
     for (int lane = 0; lane < lanes_x_row; ++lane) {
         // flag must be boolean
@@ -572,16 +578,16 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
             _flags = _flags + 2**20 * a_src_sp[lane] + 2**21 * store_use_sp[lane] + 2**22 * set_sp[lane];
         }
 
-        const expr rom_flags = _flags;
+        rom_flags[lane] = _flags;
 
         // Lookup in ROM to ensure that only program instructions are executed.
 
         if (stack_enabled) {
             lookup_assumes(ROM_BUS_ID, [pc[lane], a_offset_imm0[lane], a_use_sp_imm1[lane], b_offset_imm0[lane], b_use_sp_imm1[lane], ind_width[lane],
-                                        op[lane], store_offset[lane], jmp_offset1[lane], jmp_offset2[lane], inc_sp[lane], rom_flags]);
+                                        op[lane], store_offset[lane], jmp_offset1[lane], jmp_offset2[lane], inc_sp[lane], rom_flags[lane]]);
         } else {
             lookup_assumes(ROM_BUS_ID, [pc[lane], a_offset_imm0[lane], a_imm1[lane], b_offset_imm0[lane], b_imm1[lane], ind_width[lane],
-                                        op[lane], store_offset[lane], jmp_offset1[lane], jmp_offset2[lane], rom_flags]);
+                                        op[lane], store_offset[lane], jmp_offset1[lane], jmp_offset2[lane], rom_flags[lane]]);
         }
     }
 
@@ -607,6 +613,9 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     airval last_reg_value[FLUSH_COUNT][REGS_IN_MAIN][RC]; // last value of the flush window for each register.
     airval last_reg_mem_step[FLUSH_COUNT][REGS_IN_MAIN];  // last access mem_step of the flush window for each register.
 
+    // The special mem_step that closes each flush window, one per window.
+    const expr flush_reg_mem_step[FLUSH_COUNT];
+
     for (int flush_index = 0; flush_index < FLUSH_COUNT; ++flush_index) {
 
         // Special mem_step at the end of the window. If the last rows have stored a value in a
@@ -614,11 +623,11 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         // The `mem_offset` is only used by precompiled or unaligned memory writes, which exclude
         // a register write.
 
-        const expr flush_reg_mem_step = main_step_to_special_mem_step(segment_initial_step + (flush_index + 1) * FLUSH_SIZE - 1);
+        flush_reg_mem_step[flush_index] = main_step_to_special_mem_step(segment_initial_step + (flush_index + 1) * FLUSH_SIZE - 1);
 
         for (int ireg = 0; ireg < REGS_IN_MAIN; ++ireg) {
             // Range check to verify that the previous access was strictly before the flush.
-            range_check(expression: flush_reg_mem_step - last_reg_mem_step[flush_index][ireg] - 1, min: 0, max: MAX_RANGE);
+            range_check(expression: flush_reg_mem_step[flush_index] - last_reg_mem_step[flush_index][ireg] - 1, min: 0, max: MAX_RANGE);
 
             // Proves the last access of the window.
             reg_pre_load(prev_mem_step: last_reg_mem_step[flush_index][ireg], addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[flush_index][ireg]);
@@ -628,9 +637,9 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
             // consumed inside this same segment); the last one is not sent in the last segment,
             // closing the cycle.
             if (flush_index == FLUSH_COUNT - 1) {
-                mem_op(op: MEMORY_REG_OP, mem_step: flush_reg_mem_step, addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[flush_index][ireg], sel: (1 - main_last_segment));
+                mem_op(op: MEMORY_REG_OP, mem_step: flush_reg_mem_step[flush_index], addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[flush_index][ireg], sel: (1 - main_last_segment));
             } else {
-                mem_op(op: MEMORY_REG_OP, mem_step: flush_reg_mem_step, addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[flush_index][ireg]);
+                mem_op(op: MEMORY_REG_OP, mem_step: flush_reg_mem_step[flush_index], addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[flush_index][ireg]);
             }
         }
     }

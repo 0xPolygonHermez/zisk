@@ -4,6 +4,7 @@ use crate::{mem_sm::MemPreviousSegment, MemModule, MemOps};
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
+use rayon::prelude::*;
 use std::{
     fs::File,
     io::{BufWriter, Write},
@@ -33,6 +34,25 @@ const _: () = {
 #[inline]
 fn lanes_of<F: PrimeField64, R: RomDataTraceRowOps<F>>() -> MemLanes {
     MemLanes::new(R::default().get_all_addr().len())
+}
+
+/// One padding lane: the last lane repeated with `addr_change` cleared. Kept in one place so the
+/// partial row and the whole rows cannot drift apart.
+///
+/// Every column of the row is written here, which is what lets the whole rows be filled by copying
+/// one built row rather than by setting each column of each lane.
+#[inline]
+fn set_rom_data_padding_lane<F: PrimeField64, R: RomDataTraceRowOps<F>>(
+    row: &mut R,
+    lane: usize,
+    addr: u32,
+    value: &[u32; 2],
+) {
+    row.set_addr(lane, addr);
+    row.set_step(lane, MEMORY_INIT_STEP);
+    row.set_value(lane, 0, value[0]);
+    row.set_value(lane, 1, value[1]);
+    row.set_addr_change(lane, false);
 }
 
 pub struct RomDataSM<F: PrimeField64> {
@@ -355,13 +375,25 @@ impl<F: PrimeField64> RomDataSM<F> {
         // this address. The step is pinned to MEMORY_INIT_STEP because that is the step the
         // padding lookup subtracts (`mul: -padding_size` in rom_data.pil), so these extra proves
         // cancel out on the bus.
-        for islot in count..num_slots {
-            let (row, lane) = lanes.split(islot);
-            trace[row].set_addr(lane, last_addr);
-            trace[row].set_step(lane, MEMORY_INIT_STEP);
-            trace[row].set_value(lane, 0, last_value[0]);
-            trace[row].set_value(lane, 1, last_value[1]);
-            trace[row].set_addr_change(lane, false);
+        //
+        // Every padding lane holds the same values, so only the row the last operation shares with
+        // the padding is written lane by lane; the whole rows after it are one built row copied
+        // over them in parallel, which is a row-sized move instead of a setter per column.
+        if count < num_slots {
+            let lanes_x_row = lanes.lanes();
+            let partial_end = count.next_multiple_of(lanes_x_row).min(num_slots);
+            for islot in count..partial_end {
+                let (row, lane) = lanes.split(islot);
+                set_rom_data_padding_lane::<F, R>(&mut trace[row], lane, last_addr, &last_value);
+            }
+            let from_row = partial_end / lanes_x_row;
+            if from_row < RomDataTrace::<R>::NUM_ROWS {
+                let mut pad_row = R::default();
+                for lane in 0..lanes_x_row {
+                    set_rom_data_padding_lane::<F, R>(&mut pad_row, lane, last_addr, &last_value);
+                }
+                trace.buffer[from_row..].par_iter_mut().for_each(|row| *row = pad_row);
+            }
         }
 
         assert!(

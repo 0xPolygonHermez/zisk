@@ -120,6 +120,24 @@ impl RomInstance {
         }
     }
 
+    /// Extra proves the end instruction needs beyond the times it was really executed.
+    ///
+    /// Main pads its last segment by repeating the end instruction on every leftover row, and
+    /// sends one unconditional ROM lookup per lane of every row, so the ROM has to prove the end
+    /// instruction once more for each of those padding rows.
+    ///
+    /// The subtlety this exists for: when `steps` is an exact multiple of `main_trace_len` the
+    /// last segment is full and there are NO padding rows, so the answer is 0, not a whole
+    /// `main_trace_len`. Getting that wrong proves a segment Main never assumes and the ROM bus
+    /// fails to balance -- an error that surfaces at proving time naming no row and no bus id.
+    /// Both witness paths need it, which is why it lives here rather than inline in each.
+    fn end_pc_padding(steps: u64, main_trace_len: u64) -> u64 {
+        match steps % main_trace_len {
+            0 => 0,
+            executed_in_last_segment => main_trace_len - executed_in_last_segment,
+        }
+    }
+
     /// Builds the ROM air instance from aggregated Rust-emulator counters.
     fn compute_witness_from_rust<F: PrimeField64>(
         zisk_rom: &ZiskRom,
@@ -141,7 +159,7 @@ impl RomInstance {
                 continue;
             }
             if inst.paddr == counter_stats.end_pc {
-                multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
+                multiplicity += Self::end_pc_padding(counter_stats.steps, main_trace_len);
             }
 
             let index = inst.index as usize;
@@ -201,9 +219,10 @@ impl RomInstance {
         );
 
         // Increment as if executed the number of times needed to reach the end of the main trace
-        // instance, i.e. repeat the last instruction until the end of the instance.
+        // instance, i.e. repeat the last instruction until the end of the instance. The assert above
+        // pins the executed count at exactly one.
         let main_trace_len = MAIN_STEPS_PER_SEGMENT as u64;
-        trace_buffer[index] = F::from_u64(1 + main_trace_len - asm_romh.steps % main_trace_len);
+        trace_buffer[index] = F::from_u64(1 + Self::end_pc_padding(asm_romh.steps, main_trace_len));
 
         Self::build_air_instance(trace_buffer)
     }
@@ -344,6 +363,37 @@ mod tests {
         Arc::new(counts.iter().map(|&c| AtomicU64::new(c)).collect())
     }
 
+    /// The padding arithmetic itself, at the boundaries the two witness paths cannot reach with
+    /// light fixtures. The exact-multiple case is the one that used to be wrong.
+    #[test]
+    fn end_pc_padding_is_zero_exactly_on_a_segment_boundary() {
+        let len = 1024;
+
+        assert_eq!(RomInstance::end_pc_padding(0, len), 0, "no steps, nothing to pad");
+        for segments in [1u64, 2, 7, 1000] {
+            assert_eq!(
+                RomInstance::end_pc_padding(segments * len, len),
+                0,
+                "{segments} full segments leave no padding row"
+            );
+        }
+
+        // One step into a segment leaves len-1 padding rows; one step short leaves exactly one.
+        assert_eq!(RomInstance::end_pc_padding(1, len), len - 1);
+        assert_eq!(RomInstance::end_pc_padding(3 * len + 1, len), len - 1);
+        assert_eq!(RomInstance::end_pc_padding(len - 1, len), 1);
+        assert_eq!(RomInstance::end_pc_padding(4 * len - 1, len), 1);
+
+        // Whatever the remainder, executed + padding is a whole number of segments.
+        for steps in [1u64, 5, 511, 512, 513, 1023, 1025, 4097] {
+            assert_eq!(
+                (steps + RomInstance::end_pc_padding(steps, len)) % len,
+                0,
+                "steps={steps} must round up to a segment boundary"
+            );
+        }
+    }
+
     #[test]
     fn build_air_instance_sets_rom_air_metadata() {
         let air = RomInstance::build_air_instance::<F>(vec![F::from_u64(0); 10]);
@@ -384,6 +434,30 @@ mod tests {
         assert_eq!(air.trace[0], F::from_u64(1));
         assert_eq!(air.trace[1], F::from_u64(1));
         assert_eq!(air.trace[2], F::from_u64(1 + expected_bump));
+    }
+
+    /// The end instruction is padded once per padding row of the last Main segment. An execution
+    /// that ends exactly on a segment boundary leaves no padding rows, so nothing may be added:
+    /// a whole `main_trace_len` there proves a segment Main never assumes, and the ROM bus fails
+    /// to balance with no row or bus id to point at.
+    #[test]
+    fn from_rust_adds_no_padding_when_steps_fill_the_last_segment() {
+        let rom = rom_with_indexed_insts(0x8000_0000, 3);
+        let end_pc = 0x8000_0008; // paddr of inst with index=2
+        let main_len = MAIN_STEPS_PER_SEGMENT as u64;
+
+        for segments in [1u64, 2, 7] {
+            let stats = CounterStats {
+                inst_count: atomics_from(&[1, 1, 1]),
+                end_pc,
+                steps: segments * main_len,
+            };
+
+            let air =
+                RomInstance::compute_witness_from_rust::<F>(&rom, &stats, vec![F::from_u64(0); 10]);
+
+            assert_eq!(air.trace[2], F::from_u64(1), "{segments} full segments");
+        }
     }
 
     #[test]
@@ -429,6 +503,25 @@ mod tests {
         assert_eq!(air.trace[0], F::from_u64(3));
         assert_eq!(air.trace[1], F::from_u64(0)); // zero-multiplicity entries are skipped
         assert_eq!(air.trace[2], F::from_u64(expected_exit));
+    }
+
+    /// The same edge on the ASM path, which is the production one for large runs.
+    #[test]
+    fn from_asm_adds_no_padding_when_steps_fill_the_last_segment() {
+        let rom = rom_with_exit(/* exit_trace_index */ 2);
+        let main_len = MAIN_STEPS_PER_SEGMENT as u64;
+
+        for segments in [1u64, 2, 7] {
+            let asm_romh = AsmRHData::new(segments * main_len, vec![3, 0, 1]);
+
+            let air = RomInstance::compute_witness_from_asm::<F>(
+                &rom,
+                &asm_romh,
+                vec![F::from_u64(0); 10],
+            );
+
+            assert_eq!(air.trace[2], F::from_u64(1), "{segments} full segments");
+        }
     }
 
     #[test]

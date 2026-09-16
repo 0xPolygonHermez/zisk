@@ -18,6 +18,7 @@ use zisk_sm_mem_common::{
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
+use rayon::prelude::*;
 use zisk_common::SegmentId;
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::{
@@ -49,6 +50,30 @@ const _: () = {
 #[inline]
 fn lanes_of<F: PrimeField64, R: InputDataTraceRowOps<F>>() -> MemLanes {
     MemLanes::new(R::default().get_all_addr().len())
+}
+
+/// One padding lane: the last lane repeated, not selected and with no address change. Kept in one
+/// place so the partial row and the whole rows cannot drift apart.
+///
+/// Every column of the row is written here, which is what lets the whole rows be filled by copying
+/// one built row rather than by setting each column of each lane.
+#[inline]
+fn set_input_data_padding_lane<F: PrimeField64, R: InputDataTraceRowOps<F>>(
+    row: &mut R,
+    lane: usize,
+    addr: u32,
+    step: u64,
+    is_free_read: bool,
+    value_words: &[u16; 4],
+) {
+    row.set_addr(lane, addr);
+    row.set_step(lane, step);
+    row.set_sel(lane, false);
+    row.set_is_free_read(lane, is_free_read);
+    row.set_addr_changes(lane, false);
+    for (index, &word) in value_words.iter().enumerate() {
+        row.set_value_word(lane, index, word);
+    }
 }
 
 pub struct InputDataSM<F: PrimeField64> {
@@ -572,18 +597,40 @@ impl<F: PrimeField64> InputDataSM<F> {
         let value_3 = trace[last_row].get_value_word(last_lane, 3);
 
         let padding_size = num_slots - count;
-        for islot in count..num_slots {
-            let (row, lane) = lanes.split(islot);
-            trace[row].set_addr(lane, last_addr);
-            trace[row].set_step(lane, last_step);
-            trace[row].set_sel(lane, false);
-            trace[row].set_is_free_read(lane, is_free_read);
-            trace[row].set_addr_changes(lane, false);
-            trace[row].set_value_word(lane, 0, value_0);
-            trace[row].set_value_word(lane, 1, value_1);
-            trace[row].set_value_word(lane, 2, value_2);
-            trace[row].set_value_word(lane, 3, value_3);
-            // address doesn't change in padding lanes, no range check is required
+        // Every padding lane holds the same values (the address does not change in them, so no
+        // range check is required either), so only the row the last operation shares with the
+        // padding is written lane by lane; the whole rows after it are one built row copied over
+        // them in parallel, which is a row-sized move instead of a setter per column.
+        if count < num_slots {
+            let value_words = [value_0, value_1, value_2, value_3];
+            let lanes_x_row = lanes.lanes();
+            let partial_end = count.next_multiple_of(lanes_x_row).min(num_slots);
+            for islot in count..partial_end {
+                let (row, lane) = lanes.split(islot);
+                set_input_data_padding_lane::<F, R>(
+                    &mut trace[row],
+                    lane,
+                    last_addr,
+                    last_step,
+                    is_free_read,
+                    &value_words,
+                );
+            }
+            let from_row = partial_end / lanes_x_row;
+            if from_row < InputDataTrace::<R>::NUM_ROWS {
+                let mut pad_row = R::default();
+                for lane in 0..lanes_x_row {
+                    set_input_data_padding_lane::<F, R>(
+                        &mut pad_row,
+                        lane,
+                        last_addr,
+                        last_step,
+                        is_free_read,
+                        &value_words,
+                    );
+                }
+                trace.buffer[from_row..].par_iter_mut().for_each(|row| *row = pad_row);
+            }
         }
 
         range_16bits[value_0 as usize] += padding_size as u32;
