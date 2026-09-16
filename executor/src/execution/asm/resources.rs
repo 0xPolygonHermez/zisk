@@ -393,16 +393,3 @@ impl AsmResources {
         &self.shared.readers
     }
 }
-
-// No `Drop` impl, deliberately.
-//
-// An earlier version unbound the semaphores here. That was safe only while each
-// program had its own `AsmSharedResources`: now that one is shared across
-// programs, the binding in it belongs to whichever program is *active*, so
-// unbinding from a non-active program's `Drop` would silently disarm the active
-// one. `bind_semaphores` replaces rather than accumulates, so successive
-// `activate` calls hold at most one set of handles, and the last of them is
-// released when the shared resources themselves drop.
-//
-// Shutting down the ASM microservices remains the `asm_services` field's own
-// `Drop` (see `Drop for AsmServicesInner`).
