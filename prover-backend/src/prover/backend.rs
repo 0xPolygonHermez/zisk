@@ -43,6 +43,11 @@ pub(crate) struct ProverBackend {
     /// A recurser must be registered (via [`register_recurser`]) before it can
     /// prove — the same register-then-prove lifecycle as a regular program.
     registered_recursers: std::sync::Mutex<HashMap<String, RegisteredRecurser>>,
+    /// Arguments of the last successful [`Self::register_program`]. What it installs
+    /// (executor ROM, device instruction table, custom commits) persists until the next
+    /// call, and a re-setup builds a new `Arc<ZiskRom>`, so pointer identity is a safe key.
+    /// Holds the `Arc` so its address cannot be reused by a later ROM.
+    registered_program: std::sync::Mutex<Option<(Arc<zisk_core::ZiskRom>, PathBuf, bool)>>,
 }
 
 impl ProverBackend {
@@ -60,6 +65,7 @@ impl ProverBackend {
             proving_key_path,
             proving_key_snark_path,
             registered_recursers: std::sync::Mutex::new(HashMap::new()),
+            registered_program: std::sync::Mutex::new(None),
         }
     }
 
@@ -195,6 +201,16 @@ impl ProverBackend {
         rom_bin_path: &std::path::Path,
         with_hints: bool,
     ) -> Result<()> {
+        let mut registered = self.registered_program.lock().unwrap();
+        if registered.as_ref().is_some_and(|(rom, path, hints)| {
+            Arc::ptr_eq(rom, &zisk_rom) && path == rom_bin_path && *hints == with_hints
+        }) {
+            tracing::info!("Program already registered, skipping register_program");
+            return Ok(());
+        }
+        // Clear first so a half-failed registration is never trusted.
+        *registered = None;
+
         // Indexed Main: build + register this program's instruction table (before `set_rom`
         // moves the Arc). Same gate the executor uses to pick the compact row.
         if self.executor.is_packed() {
@@ -218,12 +234,15 @@ impl ProverBackend {
                 .map_err(|e| anyhow::anyhow!(e.to_string()))?;
         }
 
-        self.executor.set_rom(zisk_rom, with_hints)?;
+        self.executor.set_rom(zisk_rom.clone(), with_hints)?;
 
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path.to_path_buf())]);
         self.proofman
             .register_custom_commits(custom_commits_map)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+
+        *registered = Some((zisk_rom, rom_bin_path.to_path_buf(), with_hints));
+        Ok(())
     }
 
     pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {

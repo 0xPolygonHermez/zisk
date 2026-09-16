@@ -483,8 +483,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         )
                     }
                     Err(e) => {
-                        // A failed setup may still have replaced the prover's ASM resources.
-                        self.worker.forget_registered_program();
                         error!(
                             "[Setup] job_id {} Failed setup for hash_id {}: {}",
                             job_id, hash_id, e
