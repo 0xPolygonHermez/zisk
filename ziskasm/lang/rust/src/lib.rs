@@ -1008,7 +1008,10 @@ pub fn bls12_381_verify_kzg_proof(
 ///
 /// # Safety
 /// `base`/`exp`/`modulus` point to their respective `*_len` readable u64s; `result`
-/// must be writable for at least `modulus_len.next_multiple_of(4)` u64s.
+/// must be writable for at least `modulus_len.next_multiple_of(4).max(4)` u64s. The
+/// `.max(4)` matters: the edge-case paths (zero/one modulus, zero exponent, zero/one
+/// base) write a full four-limb U256 regardless of `modulus_len`, so a zero-length
+/// modulus still needs four writable limbs.
 #[allow(clippy::too_many_arguments)]
 #[no_mangle]
 #[inline(never)]
@@ -1029,8 +1032,22 @@ pub unsafe extern "C" fn ziskos_modexp_u64_c(
 /// where all operands are little-endian u64 limb slices. Writes the result limbs
 /// to `result` and returns the number of limbs written (edge cases and single-U256
 /// moduli return 4; larger moduli return `ceil(modulus_len/4) * 4`).
+///
+/// # Panics
+/// If `result` is too small for the maximum the callee can write
+/// (`modulus.len().next_multiple_of(4).max(4)` limbs). Without this check a short
+/// `result` would be written past its end by the edge-case paths, which return four
+/// limbs whatever `modulus` is.
 pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64], result: &mut [u64]) -> usize {
-    // SAFETY: all slices are valid for their lengths; `result` holds the output.
+    let needed = modulus.len().next_multiple_of(4).max(4);
+    assert!(
+        result.len() >= needed,
+        "modexp_u64: result needs {needed} limbs for a {}-limb modulus, got {}",
+        modulus.len(),
+        result.len()
+    );
+    // SAFETY: all slices are valid for their lengths; `result` is checked above to
+    // hold every limb the callee can write.
     unsafe {
         ziskos_modexp_u64_c(
             base.as_ptr(),
