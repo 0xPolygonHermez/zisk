@@ -4,15 +4,15 @@
 //! 1. Built-in defaults
 //! 2. TOML file (path from `--config` or `ZISK_COORDINATOR_CONFIG`)
 //! 3. CLI flags / env vars: --api-port, --cluster-port, --metrics-port,
-//!    --log-level, --save-proofs, --proofs-dir
+//!    --log-level
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use zisk_cluster_common::{Environment, LoggingConfig};
 
 /// Top-level coordinator-server configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     /// Service identity (name, version, environment).
     pub service: ServiceConfig,
@@ -30,6 +30,7 @@ pub struct Config {
 
 /// Service identity metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServiceConfig {
     /// Human-readable service name.
     pub name: String,
@@ -41,6 +42,7 @@ pub struct ServiceConfig {
 
 /// gRPC API server settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServerConfig {
     /// Bind host for the API server.
     pub host: String,
@@ -52,6 +54,7 @@ pub struct ServerConfig {
 
 /// Prometheus metrics endpoint settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MetricsConfig {
     /// Whether the metrics endpoint is served.
     pub enabled: bool,
@@ -63,6 +66,7 @@ pub struct MetricsConfig {
 
 /// Selects which backend the server runs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BackendConfig {
     /// The backend mode.
     pub mode: BackendMode,
@@ -80,17 +84,12 @@ pub enum BackendMode {
 
 /// Config section for the coordinator core that runs in-process.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CoordinatorConfig {
     /// Path to a coordinator TOML config file. `None` uses coordinator defaults.
     pub config_file: Option<String>,
     /// Port on which the embedded coordinator listens for worker connections.
     pub port: u16,
-    /// Forces proof persistence on/off; `None` defers to `config_file`
-    /// (whose own default is "do not save").
-    pub save_proofs: Option<bool>,
-    /// Directory for saved proofs; `None` defers to `config_file`
-    /// (default: `./proofs`).
-    pub proofs_dir: Option<PathBuf>,
 }
 
 /// CLI flag / env-var overrides applied on top of the config files.
@@ -109,10 +108,6 @@ pub struct CliOverrides {
     pub metrics_port: Option<u16>,
     /// Log level filter.
     pub log_level: Option<String>,
-    /// Whether the embedded coordinator persists completed proofs.
-    pub save_proofs: Option<bool>,
-    /// Directory the embedded coordinator writes proofs to.
-    pub proofs_dir: Option<PathBuf>,
 }
 
 impl Config {
@@ -120,15 +115,8 @@ impl Config {
     /// defaults, well-known and explicit TOML files, then the given CLI/env
     /// overrides.
     pub fn load(overrides: CliOverrides) -> Result<Self> {
-        let CliOverrides {
-            config_file,
-            api_port,
-            cluster_port,
-            metrics_port,
-            log_level,
-            save_proofs,
-            proofs_dir,
-        } = overrides;
+        let CliOverrides { config_file, api_port, cluster_port, metrics_port, log_level } =
+            overrides;
 
         let mut builder = config::Config::builder()
             // service
@@ -177,14 +165,6 @@ impl Config {
         if let Some(level) = log_level {
             builder = builder.set_override("logging.level", level)?;
         }
-        if let Some(save_proofs) = save_proofs {
-            builder = builder.set_override("coordinator.save_proofs", save_proofs)?;
-        }
-        if let Some(dir) = proofs_dir {
-            builder = builder
-                .set_override("coordinator.proofs_dir", dir.to_string_lossy().to_string())?;
-        }
-
         Ok(builder.build()?.try_deserialize()?)
     }
 
@@ -234,8 +214,6 @@ mod tests {
         assert_eq!(cfg.metrics.port, 9090);
         assert_eq!(cfg.backend.mode, BackendMode::Coordinator);
         assert_eq!(cfg.service.version, env!("CARGO_PKG_VERSION"));
-        assert_eq!(cfg.coordinator.save_proofs, None);
-        assert_eq!(cfg.coordinator.proofs_dir, None);
     }
 
     #[test]
@@ -257,18 +235,6 @@ mod tests {
         let cfg =
             Config::load(CliOverrides { metrics_port: Some(9999), ..Default::default() }).unwrap();
         assert_eq!(cfg.metrics.port, 9999);
-    }
-
-    #[test]
-    fn cli_save_proofs_override() {
-        let cfg = Config::load(CliOverrides {
-            save_proofs: Some(true),
-            proofs_dir: Some("/var/proofs".into()),
-            ..Default::default()
-        })
-        .unwrap();
-        assert_eq!(cfg.coordinator.save_proofs, Some(true));
-        assert_eq!(cfg.coordinator.proofs_dir, Some(PathBuf::from("/var/proofs")));
     }
 
     #[test]

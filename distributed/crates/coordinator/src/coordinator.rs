@@ -60,7 +60,7 @@ use zisk_cluster_common::{
     LaunchProofRequestDto, LaunchProofResponseDto, PhaseTimings, ProofKind,
     SetupAggregationProgramDto, SetupProgramDto, StatsCostPerType, WorkerId, WorkerState,
 };
-use zisk_common::{AirInstanceCount, Proof, SetupKey, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{AirInstanceCount, SetupKey, ZiskExecutorTime, ZiskPaths};
 
 struct SetupPendingState {
     pending: HashSet<WorkerId>,
@@ -1157,53 +1157,13 @@ impl Coordinator {
             self.send_webhook(webhook_url.clone(), &job);
         }
 
-        let state = job.state.clone();
         drop(job);
         let mut job = job_entry.write().await;
-
-        // Save proof to disk
-        if state == JobState::Completed {
-            self.persist_proof(job_id, job.proof.as_ref()).await?;
-        }
 
         // Clean up process data for the job
         job.cleanup();
 
         Ok(())
-    }
-
-    /// Persists a completed job's proof to `server.proofs_dir` as
-    /// `proof_<job_id>.bin`.
-    ///
-    /// A no-op unless `server.save_proofs` is enabled. Every completion path
-    /// (prove, wrap and recurser-aggregate) funnels through here, so enabling
-    /// the flag persists all of them rather than prove jobs alone.
-    pub(crate) async fn persist_proof(
-        &self,
-        job_id: &JobId,
-        proof: Option<&Proof>,
-    ) -> CoordinatorResult<()> {
-        if !self.config.server.save_proofs {
-            return Ok(());
-        }
-
-        // Clone the proof so the (potentially large) blocking disk write can
-        // run off the async runtime without holding a borrow into the job;
-        // the in-memory proof stays intact for later retrieval.
-        let zisk_proof = proof
-            .ok_or_else(|| {
-                CoordinatorError::Internal(format!("Proof is missing for completed job {}", job_id))
-            })?
-            .clone();
-        // `proofs_dir` is created and validated when the config is loaded.
-        let raw_path = self.config.server.proofs_dir.join(format!("proof_{}.bin", job_id.as_str()));
-        tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-            zisk_proof.save(&raw_path)?;
-            Ok(())
-        })
-        .await
-        .map_err(|e| CoordinatorError::Internal(format!("proof save task panicked: {}", e)))?
-        .map_err(|e| CoordinatorError::Internal(format!("Failed to save proof: {}", e)))
     }
 
     /// Sends webhook notifications for job completion or failure.
@@ -1436,17 +1396,10 @@ impl Coordinator {
         );
         error!("Failed job {} (reason: {})", job_id, reason);
 
-        // post_launch_proof may fail (e.g. proof serialization, webhook).
-        // Ensure cleanup always runs even if it does.
+        // Only fails when the job is already gone from `self.jobs`, in which
+        // case there is nothing left to clean up.
         if let Err(e) = self.post_launch_proof(job_id).await {
-            warn!("post_launch_proof failed for job {}: {} — forcing cleanup", job_id, e);
-            let cleanup_entry = {
-                let jobs_map = self.jobs.read().await;
-                jobs_map.get(job_id).cloned()
-            };
-            if let Some(job_entry) = cleanup_entry {
-                job_entry.write().await.cleanup();
-            }
+            warn!("post_launch_proof failed for job {}: {}", job_id, e);
         }
 
         Ok(())
@@ -1921,10 +1874,11 @@ mod tests {
         ComputeCapacity, HintsModeDto, InputsModeDto, Job, JobExecutionMode, JobPhase, JobState,
         PhaseTimings, WorkerState,
     };
+    use zisk_common::Proof;
 
     fn test_config_with(overrides: impl FnOnce(&mut Config)) -> Config {
-        let mut config = Config::load(None, None, None, None, None)
-            .expect("Failed to create default test config");
+        let mut config =
+            Config::load(None, None, None).expect("Failed to create default test config");
         overrides(&mut config);
         config
     }
@@ -3395,52 +3349,14 @@ mod tests {
         );
     }
 
-    /// `save_proofs` must cover the wrap completion path, which does not go
-    /// through `post_launch_proof`.
+    /// The recurser-aggregate ack path decodes the proof onto the job. The
+    /// client gets its copy from the completion event rather than from here,
+    /// so this pins the decode itself — `job.proof` is what `send_webhook`
+    /// serializes on the paths that reach `post_launch_proof`.
     #[tokio::test]
-    async fn test_wrap_completion_persists_proof_when_save_proofs_enabled() {
-        use zisk_cluster_common::{
-            ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, WrapResultDto,
-        };
-
-        let proofs_dir = tempfile::tempdir().unwrap();
+    async fn test_aggregate_ack_stores_the_decoded_proof() {
         let (coordinator, workers, job_id) =
-            setup_coordinator_with_job(1, JobPhase::Recurse, |config| {
-                config.server.save_proofs = true;
-                config.server.proofs_dir = proofs_dir.path().to_path_buf();
-            })
-            .await;
-        let w0_id = workers[0].0.clone();
-
-        let proof_data =
-            bincode::serde::encode_to_vec(Proof::default(), bincode::config::standard()).unwrap();
-        let response = ExecuteTaskResponseDto {
-            job_id: job_id.clone(),
-            worker_id: w0_id.clone(),
-            success: true,
-            error_message: None,
-            result_data: Some(ExecuteTaskResponseResultDataDto::WrapResult(WrapResultDto {
-                proof_data,
-            })),
-            worker_in_recovery: false,
-        };
-        coordinator.handle_wrap_completion(response).await.unwrap();
-
-        let expected = proofs_dir.path().join(format!("proof_{}.bin", job_id.as_str()));
-        assert!(expected.is_file(), "wrap completion must persist the proof at {:?}", expected);
-    }
-
-    /// `save_proofs` must cover the recurser-aggregate ack path, which neither
-    /// goes through `post_launch_proof` nor previously stored `job.proof`.
-    #[tokio::test]
-    async fn test_aggregate_ack_persists_proof_when_save_proofs_enabled() {
-        let proofs_dir = tempfile::tempdir().unwrap();
-        let (coordinator, workers, job_id) =
-            setup_coordinator_with_job(1, JobPhase::Recurse, |config| {
-                config.server.save_proofs = true;
-                config.server.proofs_dir = proofs_dir.path().to_path_buf();
-            })
-            .await;
+            setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
         let w0 = workers[0].0.clone();
 
         let ack = RunAggregateProofsAckDto {
@@ -3453,8 +3369,6 @@ mod tests {
         };
         coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
 
-        let expected = proofs_dir.path().join(format!("proof_{}.bin", job_id.as_str()));
-        assert!(expected.is_file(), "aggregate ack must persist the proof at {:?}", expected);
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert!(entry.read().await.proof.is_some(), "aggregate ack must store the decoded proof");
     }

@@ -29,7 +29,3 @@ mode = "coordinator"
 # Workers must connect to this port on the coordinator host/container.
 port = 50052
 # config_file = "/etc/zisk/coordinator.toml"  # optional: tune coordinator core internals
-# Persist completed proofs to disk (default: false). Mount a volume at proofs_dir
-# if you enable this, otherwise proofs are lost with the container.
-# save_proofs = true
-# proofs_dir = "/var/lib/zisk/proofs"

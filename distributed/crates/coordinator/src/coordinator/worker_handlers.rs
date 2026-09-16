@@ -392,14 +392,6 @@ impl Coordinator {
                     job_id, e
                 ),
             }
-
-            // Recurser-aggregate does not go through post_launch_proof (no
-            // webhook / cleanup for these jobs), so persist here.
-            if let Err(e) = self.persist_proof(&job_id, job.proof.as_ref()).await {
-                // The client still receives the proof on the event below; a
-                // failed archive write must not fail a completed job.
-                warn!("[Recurser] Failed to persist proof for job {}: {}", job_id, e);
-            }
         }
         self.fire_job_event(
             &job_id,

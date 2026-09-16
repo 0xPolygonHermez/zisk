@@ -7,8 +7,7 @@
 #   1. Defaults built into the binary
 #   2. This file
 #   3. Environment variables (see env column in README)
-#   4. CLI flags (--api-port, --cluster-port, --metrics-port, --log-level,
-#      --save-proofs, --proofs-dir)
+#   4. CLI flags (--api-port, --cluster-port, --metrics-port, --log-level)
 
 # ── Service identity ──────────────────────────────────────────────────────────────
 
@@ -71,12 +70,3 @@ port = 50051
 # Optional: path to a coordinator core config file.
 # If omitted, the embedded coordinator uses its own built-in defaults.
 # config_file = "/etc/zisk/coordinator-core.toml"
-
-# Persist the proof of every completed job (prove, wrap and aggregate) to disk
-# as <proofs_dir>/proof_<job_id>.bin. Clients can always fetch proofs over the
-# API, so this is off by default and only needed for archiving or debugging.
-# save_proofs = false
-
-# Directory for saved proofs. Relative paths resolve against the process working
-# directory; prefer an absolute path when running under systemd or Docker.
-# proofs_dir = "/var/lib/zisk/proofs"
