@@ -162,23 +162,47 @@ pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64], ha
     verify_by_family(hash, minimal, vadcop_proof, vadcop_final_vk)
 }
 
-/// Dispatch to the verifier for `hash`. See [`crate::blake3`] for why ZisK
-/// commits its own rather than using proofman's.
-fn verify_by_family(hash: &str, minimal: bool, vadcop_proof: &[u64], vk: &[u64]) -> bool {
-    match hash {
-        // blake3 builds no compressed stage, so no minimal proof is from a blake3 key.
-        "blake3" if minimal => false,
-        "blake3" => crate::blake3::vadcop_final::verify_u64(vadcop_proof, vk),
-        "Poseidon1" if minimal => {
-            crate::poseidon1::vadcop_final_compressed::verify_u64(vadcop_proof, vk)
-        }
-        "Poseidon1" => crate::poseidon1::vadcop_final::verify_u64(vadcop_proof, vk),
-        "Poseidon2" if minimal => {
-            crate::poseidon2::vadcop_final_compressed::verify_u64(vadcop_proof, vk)
-        }
-        "Poseidon2" => crate::poseidon2::vadcop_final::verify_u64(vadcop_proof, vk),
-        _ => false,
+/// The generated entry points for one (family, stage) pair.
+///
+/// Function pointers rather than a trait: each stage is its own generated module, so
+/// there is no shared type to implement one on.
+struct StageVerifier {
+    verify_u64: fn(&[u64], &[u64]) -> bool,
+    verify: fn(&VadcopFinalProof, &[u64]) -> bool,
+    expected_proof_bytes: fn() -> usize,
+}
+
+/// The single routing table. Every dispatch below goes through it, so adding a family
+/// or a stage is one edit rather than three that can drift apart.
+///
+/// `None` means that pair has no verifier: an unknown family, or blake3 compressed —
+/// blake3 proving keys are built without the `vadcop_final_compressed` stage, so no
+/// minimal proof can come from one. See [`crate::blake3`] for why ZisK commits its own
+/// verifiers rather than using proofman's.
+fn stage_verifier(hash: &str, minimal: bool) -> Option<StageVerifier> {
+    macro_rules! stage {
+        ($module:path) => {{
+            use $module as m;
+            StageVerifier {
+                verify_u64: m::verify_u64,
+                verify: m::verify,
+                expected_proof_bytes: m::expected_proof_bytes,
+            }
+        }};
     }
+
+    Some(match (hash, minimal) {
+        ("blake3", false) => stage!(crate::blake3::vadcop_final),
+        ("Poseidon1", false) => stage!(crate::poseidon1::vadcop_final),
+        ("Poseidon1", true) => stage!(crate::poseidon1::vadcop_final_compressed),
+        ("Poseidon2", false) => stage!(crate::poseidon2::vadcop_final),
+        ("Poseidon2", true) => stage!(crate::poseidon2::vadcop_final_compressed),
+        _ => return None,
+    })
+}
+
+fn verify_by_family(hash: &str, minimal: bool, vadcop_proof: &[u64], vk: &[u64]) -> bool {
+    stage_verifier(hash, minimal).is_some_and(|s| (s.verify_u64)(vadcop_proof, vk))
 }
 
 /// Host-side counterpart to [`verify_vadcop_final_proof`], dispatching on the
@@ -195,36 +219,13 @@ pub fn verify_vadcop_final(proof: &VadcopFinalProof, vk: &[u64]) -> bool {
     if !publics_are_canonical(&proof.public_values) {
         return false;
     }
-    match proof.hash.as_str() {
-        "blake3" if proof.compressed => false,
-        "blake3" => crate::blake3::vadcop_final::verify(proof, vk),
-        "Poseidon1" if proof.compressed => {
-            crate::poseidon1::vadcop_final_compressed::verify(proof, vk)
-        }
-        "Poseidon1" => crate::poseidon1::vadcop_final::verify(proof, vk),
-        "Poseidon2" if proof.compressed => {
-            crate::poseidon2::vadcop_final_compressed::verify(proof, vk)
-        }
-        "Poseidon2" => crate::poseidon2::vadcop_final::verify(proof, vk),
-        _ => false,
-    }
+    stage_verifier(&proof.hash, proof.compressed).is_some_and(|s| (s.verify)(proof, vk))
 }
 
-/// Serialized length in bytes a proof of this family and stage must have.
+/// Serialized length in bytes a proof of this family and stage must have, or `None` if
+/// no such stage exists — see [`stage_verifier`].
 pub fn expected_proof_bytes(hash: &str, minimal: bool) -> Option<usize> {
-    match hash {
-        "blake3" if minimal => None,
-        "blake3" => Some(crate::blake3::vadcop_final::expected_proof_bytes()),
-        "Poseidon1" if minimal => {
-            Some(crate::poseidon1::vadcop_final_compressed::expected_proof_bytes())
-        }
-        "Poseidon1" => Some(crate::poseidon1::vadcop_final::expected_proof_bytes()),
-        "Poseidon2" if minimal => {
-            Some(crate::poseidon2::vadcop_final_compressed::expected_proof_bytes())
-        }
-        "Poseidon2" => Some(crate::poseidon2::vadcop_final::expected_proof_bytes()),
-        _ => None,
-    }
+    stage_verifier(hash, minimal).map(|s| (s.expected_proof_bytes)())
 }
 
 /// Return the program-level publics `[program VK | inputs]` from a vadcop_final

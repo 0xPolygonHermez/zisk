@@ -421,6 +421,12 @@ impl PublicValues {
     /// Build from the full proof publics u64 blob: `[program_vk(4)][publics(ZISK_PUBLICS)]`.
     /// Each public u64 is truncated to its low 32 bits (matching `public_u64()`).
     ///
+    /// Truncation is only sound because non-canonical encodings are rejected at ingest
+    /// (`ensure_canonical_publics`, and the verifier's own check): `x` and `x + p` are
+    /// one field element but differ in their low 32 bits, so without that rejection the
+    /// reported outputs would not be pinned by the verified statement. Callers must not
+    /// treat truncation alone as a security boundary.
+    ///
     /// # Panics
     ///
     /// Panics if `publics` does not contain exactly `ZISK_PUBLICS + PROGRAM_VK_LEN` elements.
@@ -974,17 +980,25 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     }
                 }
 
-                if let Some(expected_len) =
+                // `None` means no such (family, stage) exists — an unknown family, or a
+                // compressed blake3 proof, whose proving keys never build that stage.
+                // That is a malformed shape, not an unverifiable statement, so it must
+                // not fall through to the verifier and come back as `NotVerified`.
+                let Some(expected_len) =
                     zisk_verifier::expected_proof_bytes(hash, kind.is_minimal())
-                {
-                    if proof.len() * 8 != expected_len {
-                        return Err(CommonError::InvalidProof(format!(
-                            "Malformed proof: expected {} bytes for {:?}, got {}",
-                            expected_len,
-                            self.proof_with_values.kind(),
-                            proof.len() * 8
-                        )));
-                    }
+                else {
+                    return Err(CommonError::InvalidProof(format!(
+                        "no {:?} stage exists for hash family {hash:?}",
+                        self.proof_with_values.kind()
+                    )));
+                };
+                if proof.len() * 8 != expected_len {
+                    return Err(CommonError::InvalidProof(format!(
+                        "Malformed proof: expected {} bytes for {:?}, got {}",
+                        expected_len,
+                        self.proof_with_values.kind(),
+                        proof.len() * 8
+                    )));
                 }
 
                 // The STARK verifier's Fiat-Shamir transcript is over the full
@@ -1046,19 +1060,41 @@ impl Proof {
     /// Derived from `publics_full` for both flavors. The stored `Plonk.publics` copy is
     /// deserialized independently of the statement `verify()` actually hashes, so
     /// returning it would let a modified proof verify while reporting other outputs.
+    ///
+    /// **Only meaningful on a proof that passed [`Proof::load`] or [`Proof::verify`].**
+    /// A misshapen body has no committed statement to report, and what comes back is
+    /// zero-filled — indistinguishable from a proof whose outputs really are zero. It is
+    /// not evidence of anything. Reach for [`Proof::try_publics`] whenever the proof's
+    /// provenance is unknown; it rejects such a body instead of answering.
+    ///
+    /// The buffer stays full width rather than empty so that `public_u64`, `read` and
+    /// `read_slice` keep their fixed-offset reads in bounds.
     pub fn publics(&self) -> PublicValues {
         let committed = program_publics(self.committed_publics());
         if committed.len() == PROGRAM_VK_LEN + ZISK_PUBLICS {
             return PublicValues::new_from_u64(committed);
         }
-        // Reachable on a body that never passed `load`/`verify` — the raw bincode decode
-        // paths build one directly. Zero-fill the missing slots rather than panic; such a
-        // body fails `ensure_stored_publics` the moment anyone verifies it.
         let mut data = [0u8; ZISK_PUBLICS * 4];
         for (i, &val) in committed.iter().skip(PROGRAM_VK_LEN).take(ZISK_PUBLICS).enumerate() {
             data[i * 4..(i + 1) * 4].copy_from_slice(&(canonical(val) as u32).to_le_bytes());
         }
         PublicValues { data: data.to_vec(), ptr: AtomicUsize::new(0) }
+    }
+
+    /// [`Proof::publics`], but rejects a body whose committed publics are not a
+    /// well-formed, canonical `[program_vk(4) | inputs(ZISK_PUBLICS)]` vector.
+    ///
+    /// `Proof::new` and the raw bincode decode paths build bodies the ingest checks never
+    /// see, so this is the accessor to reach for when the proof's provenance is unknown.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::InvalidProof`] if the committed publics are the wrong
+    /// length or hold a non-canonical Goldilocks element.
+    pub fn try_publics(&self) -> Result<PublicValues> {
+        let committed = self.committed_publics();
+        ensure_canonical_publics(committed)?;
+        Ok(PublicValues::new_from_u64(committed))
     }
 
     /// The full-width (u64) publics `[program_vk(4)][user(ZISK_PUBLICS)]` for a
@@ -1602,26 +1638,6 @@ mod tests {
         assert!(err.to_string().contains("recursion domain"), "got: {err}");
     }
 
-    /// `publics()` is reachable on a body built by a raw bincode decode, which never runs
-    /// `ensure_stored_publics`; a misshapen vector must not panic there.
-    #[test]
-    fn publics_does_not_panic_on_a_misshapen_body() {
-        let proof = Proof::new(
-            ProofBody::Plonk {
-                proof_bytes: vec![],
-                plonk_vk: Box::new(PlonkVkBlob {
-                    vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
-                    plonk_vkey: dummy_plonk_vkey(),
-                }),
-                publics: PublicValues::new_empty(),
-                publics_full: vec![1, 2],
-                rootc: vec![0u64; PROGRAM_VK_LEN],
-            },
-            ProgramVK::new_empty(),
-        );
-        assert_eq!(proof.publics().data.len(), ZISK_PUBLICS * 4);
-    }
-
     /// Compression strips the flag the recurser reads at slot 0, so folding a compressed
     /// proof would take the first VK limb for the flag and shift the statement by one.
     #[test]
@@ -1639,6 +1655,46 @@ mod tests {
                 VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS
             );
         }
+    }
+
+    /// `publics()` must stay in bounds for a body that never passed load/verify, and
+    /// `try_publics()` must refuse to answer for it at all.
+    #[test]
+    fn try_publics_rejects_what_publics_can_only_guess() {
+        let misshapen = Proof::new(
+            ProofBody::Plonk {
+                proof_bytes: vec![],
+                plonk_vk: Box::new(PlonkVkBlob {
+                    vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
+                    plonk_vkey: dummy_plonk_vkey(),
+                }),
+                publics: PublicValues::new_empty(),
+                publics_full: vec![1, 2],
+                rootc: vec![0u64; PROGRAM_VK_LEN],
+            },
+            ProgramVK::new_empty(),
+        );
+        assert!(misshapen.try_publics().is_err());
+        // Still safe to call, and its fixed-offset reads stay in bounds.
+        assert_eq!(misshapen.publics().public_u64().len(), ZISK_PUBLICS);
+
+        let ok = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        assert_eq!(ok.try_publics().unwrap().data, ok.publics().data);
+    }
+
+    /// A stage the proving key never builds is a malformed shape, not a failed
+    /// statement, so it must not come back as `NotVerified`.
+    #[test]
+    fn verify_reports_a_nonexistent_stage_as_malformed() {
+        let mut proof = vadcop_proof(VadcopKind::Minimal, flag_free_publics([1, 2, 3, 4]));
+        if let ProofBody::Vadcop { hash, .. } = &mut proof.body {
+            *hash = "blake3".to_string();
+        }
+        proof.program_vk.hash_mode = HashMode::Blake3;
+
+        let err = proof.verify().unwrap_err();
+        assert!(matches!(err, CommonError::InvalidProof(_)), "got: {err:?}");
+        assert!(err.to_string().contains("no "), "got: {err}");
     }
 
     /// A structurally valid (not cryptographically meaningful) PLONK vkey.
