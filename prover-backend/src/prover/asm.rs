@@ -217,12 +217,13 @@ impl AsmProver {
             return Ok(());
         }
 
-        // The program hash is carried in the sem_prefix (so the semaphores are
-        // per-program), while the shmem segments are keyed by pid+local_rank+hints
-        // and are genuinely shared across program hashes: `AsmServices::new`
-        // creates them only the first time a prefix is seen, and the mapping side
-        // is the single `AsmSharedResources` looked up below. Each program owns
-        // only its three server processes and its semaphores.
+        // The sem_prefix carries the program hash (so the semaphores are
+        // per-program), while the shmem segments are keyed by
+        // pid+local_rank+hints and are genuinely shared across program hashes:
+        // `AsmServices::new` creates them only the first time a prefix is seen,
+        // and the mapping side is the single `AsmSharedResources` looked up
+        // below. Each program owns only its three server processes and its
+        // semaphores.
         let asm_services = AsmServices::new(
             world_rank,
             local_rank,
@@ -256,9 +257,11 @@ impl AsmProver {
         )?;
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
-        let resources = Arc::new(AsmResources::new(shared, asm_services)?);
+        let resources = Arc::new(AsmResources::new(shared.clone(), asm_services)?);
         self.make_active(&setup_key, &resources)?;
         self.core_prover.backend.set_asm_resources(resources.clone())?;
+
+        self.shared_resources.write().unwrap().insert(with_hints, shared);
         self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
         self.program_cache.write().unwrap().insert(
             setup_key,
@@ -268,7 +271,11 @@ impl AsmProver {
         Ok(())
     }
 
-    /// The worker's shmem mappings for `with_hints`, creating them on first use.
+    /// The worker's shmem mappings for `with_hints`, building them on first use.
+    ///
+    /// Building, not caching: publishing them is the caller's to do once its
+    /// setup has succeeded, since until then the lease that keeps the segments
+    /// alive can still be dropped.
     ///
     /// One `AsmSharedResources` per hints mode for the whole worker, not one per
     /// program: the segments it maps are named per pid+rank+mode, so a second
@@ -287,15 +294,11 @@ impl AsmProver {
         shm_prefix: &str,
         gpu_buffer_source: GpuBufferSource,
     ) -> Result<Arc<AsmSharedResources>> {
-        // One lock, no read-then-write double check: this runs once per program
-        // setup, never on a hot path, and holding the write lock across the
-        // mapping is what stops two concurrent setups from both creating a set.
-        let mut guard = self.shared_resources.write().unwrap();
-        if let Some(shared) = guard.get(&with_hints) {
+        if let Some(shared) = self.shared_resources.read().unwrap().get(&with_hints) {
             return Ok(shared.clone());
         }
 
-        let shared = Arc::new(AsmSharedResources::new(
+        Ok(Arc::new(AsmSharedResources::new(
             local_rank,
             unlock_mapped_memory,
             verbose_mode,
@@ -304,9 +307,7 @@ impl AsmProver {
             with_hints,
             shm_prefix,
             gpu_buffer_source,
-        )?);
-        guard.insert(with_hints, shared.clone());
-        Ok(shared)
+        )?))
     }
 
     /// Hand the shared segments over to `setup_key`'s program, if it does not
