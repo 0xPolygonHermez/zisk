@@ -50,5 +50,8 @@
   },
   "BabyJubJub": {
     "hasCompressor": true
+  },
+  "Main": {
+    "hasCompressor": true
   }
 }
