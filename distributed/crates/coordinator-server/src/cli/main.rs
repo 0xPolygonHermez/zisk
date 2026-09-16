@@ -14,68 +14,13 @@ use zisk_coordinator::{Config as CoordinatorConfig, Coordinator, CoordinatorGrpc
 
 use zisk_coordinator_server::{
     backend::{coordinator::CoordinatorBackend, mock::MockBackend, BackendService},
-    config::{BackendMode, CliOverrides, Config},
+    config::{BackendMode, CliArgs, Config},
     metrics, CoordinatorServer,
 };
 
-#[derive(Parser, Debug)]
-#[command(name = "zisk-coordinator", about = "ZisK coordinator server", version)]
-struct Args {
-    /// Path to coordinator.toml configuration file.
-    #[arg(
-        long,
-        env = "ZISK_COORDINATOR_CONFIG",
-        help = "Path to coordinator.toml (overrides ZISK_COORDINATOR_CONFIG env var)"
-    )]
-    config: Option<String>,
-
-    /// Override the external (client-facing) gRPC API port.
-    #[arg(
-        long,
-        short,
-        env = "ZISK_COORDINATOR_API_PORT",
-        help = "External gRPC API port (client-facing)"
-    )]
-    api_port: Option<u16>,
-
-    /// Override the internal cluster gRPC port (worker-facing).
-    #[arg(
-        long,
-        env = "ZISK_COORDINATOR_CLUSTER_PORT",
-        help = "Internal cluster gRPC port (worker-facing)"
-    )]
-    cluster_port: Option<u16>,
-
-    /// Override the metrics port.
-    #[arg(
-        long,
-        env = "ZISK_COORDINATOR_METRICS_PORT",
-        value_name = "PORT",
-        help = "Prometheus metrics port (default: 9090)"
-    )]
-    metrics_port: Option<u16>,
-
-    /// Override the log level.
-    #[arg(
-        long,
-        env = "RUST_LOG",
-        value_name = "LEVEL",
-        help = "Log level: trace | debug | info | warn | error"
-    )]
-    log_level: Option<String>,
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
-    let args = Args::parse();
-
-    let cfg = Config::load(CliOverrides {
-        config_file: args.config,
-        api_port: args.api_port,
-        cluster_port: args.cluster_port,
-        metrics_port: args.metrics_port,
-        log_level: args.log_level,
-    })?;
+    let cfg = Config::load(CliArgs::parse())?;
 
     // Init logging (keep the guard alive for the process lifetime)
     let _log_guard = init_logging(Some(&cfg.logging), None)?;

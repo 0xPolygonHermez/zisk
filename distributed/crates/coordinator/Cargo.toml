@@ -41,4 +41,3 @@ humantime = "2.3"
 futures-util = { workspace = true }
 async-stream = { workspace = true }
 metrics = { workspace = true }
-
