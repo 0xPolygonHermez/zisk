@@ -31,6 +31,8 @@ env:
 jobs:
   cargo-tests:
     name: Cargo tests
+    # fork-PR code must not reach the self-hosted runners.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: rocket
     container:
       image: ubuntu:22.04
@@ -140,6 +142,8 @@ jobs:
 
   test-x86_64:
     name: Test on Ubuntu x86_64
+    # fork-PR code must not reach the self-hosted runners.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       group: zisk-gpu
     timeout-minutes: 180
