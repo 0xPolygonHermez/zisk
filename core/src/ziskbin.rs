@@ -116,8 +116,16 @@ impl<'a> Reader<'a> {
 // Instruction codec
 // ---------------------------------------------------------------------------
 
+/// Flag-bitmap width in bytes. The format defines f0..f27 (ziskbin.md §5.4) at
+/// 7 flags per byte, so the bitmap is at most 4 bytes; there is no fifth flag byte.
+const FLAG_BYTES: u32 = 4;
+/// Flags the format assigns a meaning: f0..f22. f23..f27 are reserved (ziskbin.md
+/// §5.4) and, being unassigned, carry no payload -- see `read_flags`.
+const FLAG_DEFINED_MASK: u32 = (1 << 23) - 1;
+
 /// Writes the 7-bits-per-byte flag bitmap (bit 7 = continuation).
 fn put_flags(out: &mut Vec<u8>, flags: u32) {
+    debug_assert_eq!(flags & !FLAG_DEFINED_MASK, 0, "encoding an undefined flag bit");
     let mut k = 0;
     loop {
         let byte = ((flags >> (7 * k)) & 0x7f) as u8;
@@ -130,19 +138,32 @@ fn put_flags(out: &mut Vec<u8>, flags: u32) {
     }
 }
 
+/// Reads the flag bitmap, rejecting anything the format does not define.
+///
+/// Both checks matter because the payload stream is positional: payloads follow in
+/// ascending flag order, so a flag the decoder does not consume a payload for
+/// desynchronizes every later field *and* every later instruction. Silently
+/// ignoring an unknown flag is therefore worse than refusing the blob -- new fields
+/// arrive with a `VERSION` bump, not by squatting on a reserved bit.
 fn read_flags(r: &mut Reader) -> Result<u32, String> {
     let mut flags: u32 = 0;
-    let mut k = 0u32;
-    loop {
+    let mut terminated = false;
+    for k in 0..FLAG_BYTES {
         let b = r.u8()?;
-        if k >= 5 {
-            return Err("ziskbin: flag bitmap too long".to_string());
-        }
+        // Max shift is 7*3 = 21, so the 7 payload bits land in 21..27 and nothing is
+        // truncated away -- unlike a 5th byte, whose bits 32..34 a `u32` would drop.
         flags |= ((b & 0x7f) as u32) << (7 * k);
         if b & 0x80 == 0 {
+            terminated = true;
             break;
         }
-        k += 1;
+    }
+    if !terminated {
+        return Err(format!("ziskbin: flag bitmap longer than {FLAG_BYTES} bytes (f0..f27)"));
+    }
+    let undefined = flags & !FLAG_DEFINED_MASK;
+    if undefined != 0 {
+        return Err(format!("ziskbin: reserved flag bits set (0x{undefined:08x}); f23..f27 are reserved"));
     }
     Ok(flags)
 }
@@ -688,6 +709,46 @@ mod tests {
         put_uvarint(&mut blob, u64::MAX);
         let err = decode_rom(&blob).unwrap_err();
         assert!(err.contains("section length overflow"), "{err}");
+    }
+
+    #[test]
+    fn rejects_overlong_flag_bitmap() {
+        // The bitmap is 4 bytes (f0..f27); a 5th byte is not part of the format. Its
+        // low bits would land at 28..31 and its top three at 32..34, which a u32 drops
+        // silently -- so it must be refused rather than truncated.
+        let mut blob = blob_header(1, 0, 0);
+        put_uvarint(&mut blob, 0x1000); // address
+        blob.push(0); // opcode
+        blob.extend_from_slice(&[0x80, 0x80, 0x80, 0x80, 0x7f]); // 5 flag bytes
+
+        let err = decode_rom(&blob).unwrap_err();
+        assert!(err.contains("flag bitmap longer than"), "{err}");
+    }
+
+    #[test]
+    fn rejects_reserved_flag_bits() {
+        // f23..f27 are reserved and carry no payload, so a decoder that ignored them
+        // would read the next instruction's bytes as this one's fields. f23 is bit 2
+        // of flag byte 3.
+        let mut blob = blob_header(1, 0, 0);
+        put_uvarint(&mut blob, 0x1000);
+        blob.push(0);
+        blob.extend_from_slice(&[0x80, 0x80, 0x80, 0x04]); // f23 set, terminated
+
+        let err = decode_rom(&blob).unwrap_err();
+        assert!(err.contains("reserved flag bits set"), "{err}");
+    }
+
+    #[test]
+    fn accepts_the_full_defined_flag_range() {
+        // f22 is the highest assigned flag and sits in the 4th byte, so a legitimate
+        // 4-byte bitmap must still decode.
+        let mut rom = sample_rom();
+        let (_, zib) = rom.insts.iter_mut().next().unwrap();
+        zib.i.meta_rd = Some(7); // f22
+        let decoded = decode_rom(&encode_rom(&rom)).unwrap();
+        let (addr, zib) = rom.insts.iter().next().unwrap();
+        assert_eq!(decoded.insts[addr].i.meta_rd, zib.i.meta_rd);
     }
 
     #[test]

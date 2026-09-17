@@ -272,6 +272,13 @@ bytes 0–1, so most instructions need only 1–2 flag bytes; bytes 2–3 (debug
 callstack metadata) are absent for a stripped, container-addressed ROM. `paddr`
 is class **C** (§3.2), so no flag bit is needed for it in a ROM.
 
+The bitmap is therefore **at most 4 bytes** — there is no fifth flag byte. A decoder
+must reject both a continuation out of byte 3 and any reserved bit (f23–f27) being
+set. Payloads are positional (§5.5), so a flag whose payload the decoder does not
+consume desynchronizes every later field *and* every later instruction; refusing the
+blob is the only safe response. New fields arrive with a `VERSION` bump (§3.1), never
+by squatting on a reserved bit.
+
 ### 5.5 Encode / decode
 
 ```text
