@@ -114,6 +114,10 @@ pub trait ProofRegistry: Dctx {
     /// Registers a table instance. Returns the assigned global id.
     fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
 
+    /// Asks for `gid`'s witness to be computed after this rank's other
+    /// instances, leaving its global id and its owning rank alone.
+    fn set_instance_deferred(&self, gid: GlobalId);
+
     /// Looks up the previously-assigned global id for an AIR. Used by
     /// the planner to attach the ROM instance to its existing
     /// rank-assignment.
@@ -182,6 +186,8 @@ pub(crate) mod fakes {
         pub witness_ready: RefCell<HashMap<GlobalId, bool>>,
         /// Sequence of `set_chunks` calls, in order.
         pub set_chunks_calls: RefCell<Vec<(GlobalId, Vec<usize>, bool)>>,
+        /// Instances asked to compute late, in order.
+        pub deferred: RefCell<Vec<GlobalId>>,
         /// Cumulative public outputs written.
         pub pub_outs: RefCell<Vec<(u64, u32)>>,
         /// Per-gid ownership override. Missing key = owned (`true`).
@@ -195,6 +201,7 @@ pub(crate) mod fakes {
                 additions: RefCell::default(),
                 witness_ready: RefCell::default(),
                 set_chunks_calls: RefCell::default(),
+                deferred: RefCell::default(),
                 pub_outs: RefCell::default(),
                 ownership: RefCell::default(),
             }
@@ -248,6 +255,10 @@ pub(crate) mod fakes {
         }
         fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
             Ok(self.next_gid(AddKind::Table, info))
+        }
+
+        fn set_instance_deferred(&self, gid: GlobalId) {
+            self.deferred.borrow_mut().push(gid);
         }
         fn find_instance_id(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
             self.additions

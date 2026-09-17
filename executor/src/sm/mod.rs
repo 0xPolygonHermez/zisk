@@ -2,7 +2,7 @@
 //!
 //! The bundle holds every constructed state machine the executor needs at
 //! **witness time** (`build_instance`, `configure_instances`, `set_rom`,
-//! `set_rh_data`). Plan-time counter/planner construction lives in this
+//! `park_rh_handle`). Plan-time counter/planner construction lives in this
 //! module too but goes through static dispatch ([`plan_sec`], the
 //! `ComponentPlanBuilder<F>` impls) and does not touch the bundle.
 
@@ -25,8 +25,10 @@ use zisk_common::{Instance, InstanceCtx, Plan};
 use zisk_pil::ZISK_AIRGROUP_ID;
 
 use zisk_asm_runner::AsmRunnerRH;
+use zisk_common::LateJoinHandle;
 
 use zisk_core::ZiskRom;
+use zisk_sm_rom::RomSM;
 
 pub type SMType<F> = (SMAirType, StateMachines<F>);
 
@@ -83,23 +85,45 @@ impl<F: PrimeField64> StaticSMBundle<F> {
 
     /// Sets the ROM for the `RomSM` in the bundle.
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
-        for (_, sm) in self.sm.iter() {
-            if let StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) = sm {
-                rom_sm.set_rom(zisk_rom.clone())?;
-            }
+        match self.rom_sm() {
+            Some(rom_sm) => rom_sm.set_rom(zisk_rom)?,
+            None => return Err(ExecutorError::BundleComponentMissing { kind: "RomSM" }),
         }
         Ok(())
     }
 
-    /// Sets the RH data for the `RomSM` in the bundle.
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
-        for (_, sm) in self.sm.iter() {
-            if let StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) = sm {
-                rom_sm.set_rh_data(rh_data)?;
-                break;
-            }
-        }
+    /// Parks this execution's ASM ROM-histogram runner on the `RomSM` in the bundle.
+    ///
+    /// The runner is *not* joined here: it is read at the point of use, when the ROM
+    /// instance computes its witness. Parking is what selects that instance's ASM
+    /// backend, so it has to happen before the instance is built.
+    ///
+    /// # Errors
+    /// [`ExecutorError::BundleComponentMissing`] if the bundle has no `RomSM`. Dropping
+    /// the handle instead would *detach* the runner thread, leaving it reading shared
+    /// memory that the next job is entitled to rewind.
+    pub(crate) fn park_rh_handle(&self, handle: LateJoinHandle<AsmRunnerRH>) -> ExecutorResult<()> {
+        let rom_sm =
+            self.rom_sm().ok_or(ExecutorError::BundleComponentMissing { kind: "RomSM" })?;
+        rom_sm.rh().park(handle);
         Ok(())
+    }
+
+    /// Retires a runner a previous execution left unconsumed, and releases its
+    /// histogram. Must run before the next execution touches the ASM shared memory.
+    pub(crate) fn drain_rh(&self) {
+        if let Some(rom_sm) = self.rom_sm() {
+            rom_sm.rh().drain();
+        }
+    }
+
+    /// The bundle's `RomSM`, or `None` if it has none. The one place that knows where
+    /// in the bundle it lives.
+    fn rom_sm(&self) -> Option<&Arc<RomSM>> {
+        self.sm.iter().find_map(|(_, sm)| match sm {
+            StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) => Some(rom_sm),
+            _ => None,
+        })
     }
 
     /// Getter for the shared `Std` instance in the bundle, used by built-in SMs and precompiles.

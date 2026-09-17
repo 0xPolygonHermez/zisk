@@ -86,6 +86,8 @@ impl EmbeddedClient {
                         .map_err(SdkError::backend);
                 }
 
+                prover.begin_job()?;
+
                 match hints {
                     Some(hints) => {
                         if !p.was_setup_with_hints() {
