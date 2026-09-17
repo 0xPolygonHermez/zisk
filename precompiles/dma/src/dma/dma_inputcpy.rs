@@ -79,17 +79,26 @@ impl<F: PrimeField64> DmaInputCpySM<F> {
             local_24_bits_values.push(h_count);
         }
 
-        let h_dst64 = input.dst >> 10;
+        let h_dst64 = (input.dst as u32) >> 10;
         let l_dst64 = (input.dst >> 3) as u8 & 0x7F;
 
         trace.set_h_dst64(h_dst64);
         trace.set_l_dst64(l_dst64);
+        // No src_hi here: the air declares it only when it has a source address, and for
+        // inputcpy input.src carries the count, not an address.
+        trace.set_dst_hi((input.dst >> 32) as u32);
         trace.set_dst_offset(input.dst as u8 & 0x07);
 
         local_22_bits_values.push(h_dst64);
         local_7_bits_multiplicities[l_dst64 as usize] += 1;
 
-        let rom_index = DmaRom::get_row(input.dst & 0x07, input.src & 0x07, count, false, false);
+        let rom_index = DmaRom::get_row(
+            (input.dst as u32) & 0x07,
+            (input.src as u32) & 0x07,
+            count,
+            false,
+            false,
+        );
 
         local_rom_multiplicities[rom_index] += 1;
 

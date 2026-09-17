@@ -1,6 +1,5 @@
 use crate::error::{CommonError, Result};
 use proofman::{verify_snark_proof, SnarkProof, SnarkProtocol};
-use proofman_verifier::verifier;
 use proofman_verifier::VadcopFinalProof;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -9,10 +8,85 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub use zisk_verifier::{
-    program_publics, IS_VADCOP_FINAL_PROOF, PROGRAM_VK_LEN, VADCOP_FINAL_FLAG_LEN, ZISK_PUBLICS,
+    program_publics, GOLDILOCKS_ORDER, IS_VADCOP_FINAL_PROOF, PROGRAM_VK_LEN,
+    VADCOP_FINAL_FLAG_LEN, ZISK_PUBLICS,
 };
 
 use crate::HashMode;
+
+/// The canonical representative of a Goldilocks element: the unique value in
+/// `[0, p)` congruent to `word`. One subtraction suffices — `p > 2^63`, so every
+/// u64 is below `2p`.
+#[inline]
+fn canonical(word: u64) -> u64 {
+    if word >= GOLDILOCKS_ORDER {
+        word - GOLDILOCKS_ORDER
+    } else {
+        word
+    }
+}
+
+/// Canonicality plus the exact shape a *stored* body must have.
+///
+/// Length: a short vector would panic the fixed-offset slicing in `snark_publics_hash` /
+/// `snark_inputs_bytes`, turning an untrusted proof into a crash rather than an `Err`.
+/// `Vadcop` storage is flag-free by construction — `stark_publics` re-adds the flag at
+/// verify time, so a 69-word body would reach the STARK verifier with 70 publics. `Plonk`
+/// bodies from older builds may still carry the flag, so that shape stays accepted.
+fn ensure_stored_publics(body: &ProofBody) -> Result<()> {
+    let flag_free = PROGRAM_VK_LEN + ZISK_PUBLICS;
+    let (publics_full, flagged_ok) = match body {
+        ProofBody::Vadcop { publics_full, .. } => (publics_full.as_slice(), false),
+        ProofBody::Plonk { publics_full, .. } => (publics_full.as_slice(), true),
+    };
+    let ok = publics_full.len() == flag_free
+        || (flagged_ok && publics_full.len() == VADCOP_FINAL_FLAG_LEN + flag_free);
+    if !ok {
+        return Err(CommonError::InvalidProof(format!(
+            "stored publics have {} field elements, expected {flag_free}",
+            publics_full.len()
+        )));
+    }
+    ensure_canonical_publics(publics_full)
+}
+
+/// Without this a proof holder could rewrite a stored public — `x` and `x + p` are one
+/// field element to the STARK verifier but two different reported outputs.
+fn ensure_canonical_publics(publics_full: &[u64]) -> Result<()> {
+    let normalized = program_publics(publics_full);
+    if normalized.len() != PROGRAM_VK_LEN + ZISK_PUBLICS {
+        return Err(CommonError::InvalidProof(format!(
+            "committed publics have {} field elements (after flag strip), expected {}",
+            normalized.len(),
+            PROGRAM_VK_LEN + ZISK_PUBLICS
+        )));
+    }
+    if let Some(i) = publics_full.iter().position(|&w| w >= GOLDILOCKS_ORDER) {
+        return Err(CommonError::InvalidProof(format!(
+            "public {i} is not a canonical Goldilocks element: {} >= {GOLDILOCKS_ORDER}",
+            publics_full[i]
+        )));
+    }
+    Ok(())
+}
+
+/// The committed publics with the program-VK limbs replaced by `vk`.
+///
+/// Splicing keeps every other slot at full u64 width; rebuilding from the u32
+/// [`PublicValues`] view would truncate a recurser proof's inputs.
+fn splice_program_vk(publics_full: &[u64], vk: &[u64]) -> Result<Vec<u64>> {
+    if publics_full.len() < PROGRAM_VK_LEN {
+        return Err(CommonError::InvalidProof(format!(
+            "committed publics too short to hold a program VK: {} < {PROGRAM_VK_LEN}",
+            publics_full.len()
+        )));
+    }
+    // Normalize first: a raw vadcop_final vector carries the flag at index 0, and
+    // splicing over it would shift the rest of the statement by one.
+    let mut out = program_publics(publics_full).to_vec();
+    out[..PROGRAM_VK_LEN].copy_from_slice(vk);
+    Ok(out)
+}
 
 /// Cache key for a built setup (per program + build flavor).
 ///
@@ -127,6 +201,8 @@ impl VadcopKind {
     /// Falls back to `Final` for unexpected lengths (callers assert elsewhere).
     /// Used at ingest to capture the flag before it is stripped from
     /// `publics_full`.
+    /// Best-effort classification by shape. Every non-zero flag reads as `Final`, so
+    /// untrusted input must pin the flag itself rather than rely on this.
     pub fn from_publics_full(publics_full: &[u64]) -> Self {
         if publics_full.len() == VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS {
             if publics_full[0] == 0 {
@@ -345,6 +421,12 @@ impl PublicValues {
     /// Build from the full proof publics u64 blob: `[program_vk(4)][publics(ZISK_PUBLICS)]`.
     /// Each public u64 is truncated to its low 32 bits (matching `public_u64()`).
     ///
+    /// Truncation is only sound because non-canonical encodings are rejected at ingest
+    /// (`ensure_canonical_publics`, and the verifier's own check): `x` and `x + p` are
+    /// one field element but differ in their low 32 bits, so without that rejection the
+    /// reported outputs would not be pinned by the verified statement. Callers must not
+    /// treat truncation alone as a security boundary.
+    ///
     /// # Panics
     ///
     /// Panics if `publics` does not contain exactly `ZISK_PUBLICS + PROGRAM_VK_LEN` elements.
@@ -361,7 +443,7 @@ impl PublicValues {
 
         let mut data = [0u8; ZISK_PUBLICS * 4];
         for (i, &val) in publics[PROGRAM_VK_LEN..].iter().enumerate() {
-            data[i * 4..(i + 1) * 4].copy_from_slice(&(val as u32).to_le_bytes());
+            data[i * 4..(i + 1) * 4].copy_from_slice(&(canonical(val) as u32).to_le_bytes());
         }
 
         Self { data: data.to_vec(), ptr: AtomicUsize::new(0) }
@@ -662,13 +744,13 @@ pub struct Proof {
 /// proof.verify()?;
 ///
 /// // Override publics only
-/// proof.publics(&custom_publics).verify()?;
+/// proof.with_publics(&custom_publics).verify()?;
 ///
 /// // Override program VK only
-/// proof.program_vk(&custom_program_vk).verify()?;
+/// proof.with_program_vk(&custom_program_vk).verify()?;
 ///
 /// // Override both
-/// proof.publics(&custom_publics).program_vk(&custom_program_vk).verify()?;
+/// proof.with_publics(&custom_publics).with_program_vk(&custom_program_vk).verify()?;
 /// ```
 pub struct ZiskVerifyBuilder<'a> {
     proof_with_values: &'a Proof,
@@ -729,10 +811,47 @@ impl<'a> ZiskVerifyBuilder<'a> {
     /// - [`CommonError::Serialization`] / [`CommonError::Io`] if writing the temporary
     ///   PlonkVkey file fails (Plonk).
     pub fn verify(self) -> Result<()> {
+        // A successful verify() is the signal callers trust before reading
+        // `publics()`, and `Proof::new` builds bodies the ingest checks never see.
+        ensure_stored_publics(&self.proof_with_values.body)?;
+
         let derived_publics = self.proof_with_values.publics();
-        let has_override = self.override_publics.is_some() || self.override_program_vk.is_some();
         let publics = self.override_publics.unwrap_or(&derived_publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_values.program_vk);
+
+        // Spliced into the committed publics below, so a short one would shear the rest of
+        // the statement out of place (or panic `public_u64`'s fixed-offset reads).
+        if let Some(pv) = self.override_program_vk {
+            if pv.vk.len() != PROGRAM_VK_LEN {
+                return Err(CommonError::InvalidProof(format!(
+                    "program vk override must have exactly {PROGRAM_VK_LEN} u64 limbs, got {}",
+                    pv.vk.len()
+                )));
+            }
+            // The field verifier reads x and x+p as one element, so a non-canonical limb
+            // would match a key it does not equal. Pinning a key means pinning its bytes.
+            if !zisk_verifier::publics_are_canonical(&pv.vk) {
+                return Err(CommonError::InvalidProof(
+                    "program vk override has a non-canonical Goldilocks limb".to_string(),
+                ));
+            }
+        }
+        if let Some(vk) = self.trusted_setup_vk {
+            if !zisk_verifier::publics_are_canonical(vk) {
+                return Err(CommonError::InvalidProof(
+                    "setup vk override has a non-canonical Goldilocks limb".to_string(),
+                ));
+            }
+        }
+        if let Some(pv) = self.override_publics {
+            if pv.data.len() != ZISK_PUBLICS * 4 {
+                return Err(CommonError::InvalidProof(format!(
+                    "publics override must be {} bytes ({ZISK_PUBLICS} u32 values), got {}",
+                    ZISK_PUBLICS * 4,
+                    pv.data.len()
+                )));
+            }
+        }
 
         match &self.proof_with_values.body {
             ProofBody::Plonk { proof_bytes, plonk_vk, publics_full, rootc, .. } => {
@@ -746,8 +865,26 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     )));
                 }
 
-                // snarkjs uses only `public_snark_bytes`; `public_bytes` is unused.
-                let public_snark_bytes = snark_publics_hash(publics_full, rootc);
+                // Statement to verify: the committed publics with any override applied.
+                // Only an explicit publics override takes the u32-lossy `[vk | inputs]`
+                // rebuild. snarkjs uses only these bytes; `public_bytes` is unused.
+                let public_snark_bytes = match (self.override_publics, self.override_program_vk) {
+                    (None, None) => snark_publics_hash(publics_full, rootc),
+                    (None, Some(pv)) => {
+                        snark_publics_hash(&splice_program_vk(publics_full, &pv.vk)?, rootc)
+                    }
+                    (Some(_), _) => {
+                        // Committed vk unless overridden — never the stored copy.
+                        let committed = program_publics(publics_full);
+                        let vk_limbs: &[u64] = match self.override_program_vk {
+                            Some(pv) => &pv.vk,
+                            None => &committed[..PROGRAM_VK_LEN],
+                        };
+                        let mut pf = vk_limbs.to_vec();
+                        pf.extend(publics.public_u64());
+                        snark_publics_hash(&pf, rootc)
+                    }
+                };
 
                 let snark_proof = SnarkProof {
                     proof_bytes: proof_bytes.clone(),
@@ -796,6 +933,15 @@ impl<'a> ZiskVerifyBuilder<'a> {
             ProofBody::Vadcop { proof, zisk_vk, kind, hash, publics_full } => {
                 let kind = *kind;
 
+                // A pinned PLONK key can't gate a non-PLONK proof; the Vadcop path would
+                // ignore it, so reject rather than silently verify as if it were pinned.
+                if self.trusted_plonk_vk.is_some() {
+                    return Err(CommonError::InvalidProof(
+                        "a PLONK verification key was pinned (with_plonk_vk) for a non-PLONK proof"
+                            .to_string(),
+                    ));
+                }
+
                 if program_vk.hash_mode.as_str() != hash {
                     return Err(CommonError::InvalidProof(format!(
                         "verkey hash mode {} does not match proof hash family {hash:?}",
@@ -812,11 +958,39 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     )));
                 }
 
-                let v = verifier(hash);
-                let expected_len = if kind.is_minimal() {
-                    v.expected_vadcop_final_compressed_proof_bytes()
-                } else {
-                    v.expected_vadcop_final_proof_bytes()
+                // A fold skips the leaf allow-list for an aggregated child and verifies it
+                // under the root that child declares, so a genuine recurser output can
+                // carry a subtree from another recurser. Requiring the declared domain to
+                // equal the key the STARK is checked under makes the allow-list transitive
+                // over the fold tree; honest folds already satisfy it. `Recurser` only — a
+                // leaf declares its ROM root against the shared vadcop_final key.
+                if kind == VadcopKind::Recurser {
+                    // The domain the *verified statement* declares, not the committed one:
+                    // an override is spliced into the publics below, so checking the stored
+                    // limbs would guard a statement that is never verified.
+                    let declared: &[u64] = match self.override_program_vk {
+                        Some(pv) => &pv.vk,
+                        None => &program_publics(publics_full)[..PROGRAM_VK_LEN],
+                    };
+                    if declared != setup_vk {
+                        return Err(CommonError::InvalidProof(format!(
+                            "recurser proof declares recursion domain {declared:?} but verifies \
+                             under {setup_vk:?}; its subtree was not produced by this recurser"
+                        )));
+                    }
+                }
+
+                // `None` means no such (family, stage) exists — an unknown family, or a
+                // compressed blake3 proof, whose proving keys never build that stage.
+                // That is a malformed shape, not an unverifiable statement, so it must
+                // not fall through to the verifier and come back as `NotVerified`.
+                let Some(expected_len) =
+                    zisk_verifier::expected_proof_bytes(hash, kind.is_minimal())
+                else {
+                    return Err(CommonError::InvalidProof(format!(
+                        "no {:?} stage exists for hash family {hash:?}",
+                        self.proof_with_values.kind()
+                    )));
                 };
                 if proof.len() * 8 != expected_len {
                     return Err(CommonError::InvalidProof(format!(
@@ -828,36 +1002,40 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 }
 
                 // The STARK verifier's Fiat-Shamir transcript is over the full
-                // `[flag? | program_vk | inputs]` at FULL u64 width. With no
-                // override, `kind.stark_publics(publics_full)` re-adds the flag to
-                // the canonical flag-free publics without truncation — the correct
-                // committed vector, including a recurser proof's >2^32 publics.
-                // With an override, reconstruct from the (u32) `PublicValues` view
-                // + overridden VK; that path is inherently u32-lossy and is meant
-                // for standard proofs whose publics fit in 32 bits.
-                let pubs_u64 = if has_override {
-                    let mut v = Vec::with_capacity(
-                        kind.flag().map_or(0, |_| VADCOP_FINAL_FLAG_LEN)
-                            + program_vk.vk.len()
-                            + ZISK_PUBLICS,
-                    );
-                    if let Some(flag) = kind.flag() {
-                        v.push(flag);
+                // `[flag? | program_vk | inputs]` at FULL u64 width. Splicing keeps that
+                // width; only an explicit publics override falls back to the u32-lossy
+                // `PublicValues` view, which is meant for proofs whose publics fit in 32
+                // bits. A program-VK-only override must NOT truncate a recurser proof's
+                // publics, so it splices instead.
+                let pubs_u64 = match (self.override_publics, self.override_program_vk) {
+                    (None, None) => kind.stark_publics(publics_full),
+                    (None, Some(pv)) => {
+                        kind.stark_publics(&splice_program_vk(publics_full, &pv.vk)?)
                     }
-                    v.extend_from_slice(&program_vk.vk);
-                    v.extend(publics.public_u64());
-                    v
-                } else {
-                    kind.stark_publics(publics_full)
+                    (Some(_), _) => {
+                        // Committed vk unless overridden — never the stored copy.
+                        let committed = program_publics(publics_full);
+                        let vk_limbs: &[u64] = match self.override_program_vk {
+                            Some(pv) => &pv.vk,
+                            None => &committed[..PROGRAM_VK_LEN],
+                        };
+                        let mut v = Vec::with_capacity(
+                            kind.flag().map_or(0, |_| VADCOP_FINAL_FLAG_LEN)
+                                + PROGRAM_VK_LEN
+                                + ZISK_PUBLICS,
+                        );
+                        if let Some(flag) = kind.flag() {
+                            v.push(flag);
+                        }
+                        v.extend_from_slice(vk_limbs);
+                        v.extend(publics.public_u64());
+                        v
+                    }
                 };
                 let vadcop_final_proof =
                     VadcopFinalProof::new(proof.clone(), pubs_u64, kind.is_minimal(), hash.clone());
 
-                let is_valid = if kind.is_minimal() {
-                    v.verify_vadcop_final_compressed(&vadcop_final_proof, setup_vk)
-                } else {
-                    v.verify_vadcop_final(&vadcop_final_proof, setup_vk)
-                };
+                let is_valid = zisk_verifier::verify_vadcop_final(&vadcop_final_proof, setup_vk);
 
                 if !is_valid {
                     Err(CommonError::NotVerified)
@@ -877,15 +1055,46 @@ impl Proof {
 
     /// The u32 `PublicValues` view, derived from the body's native publics.
     ///
-    /// For `Vadcop`, this truncates each full-width public to its low 32 bits
-    /// (the guest/Solidity ABI). For `Plonk`, the stored u32 publics are
-    /// returned as-is. This is the single derivation point, so the u32 view can
-    /// never disagree with the underlying source of truth.
+    /// Truncates each full-width public to its low 32 bits (the guest/Solidity ABI).
+    ///
+    /// Derived from `publics_full` for both flavors. The stored `Plonk.publics` copy is
+    /// deserialized independently of the statement `verify()` actually hashes, so
+    /// returning it would let a modified proof verify while reporting other outputs.
+    ///
+    /// **Only meaningful on a proof that passed [`Proof::load`] or [`Proof::verify`].**
+    /// A misshapen body has no committed statement to report, and what comes back is
+    /// zero-filled — indistinguishable from a proof whose outputs really are zero. It is
+    /// not evidence of anything. Reach for [`Proof::try_publics`] whenever the proof's
+    /// provenance is unknown; it rejects such a body instead of answering.
+    ///
+    /// The buffer stays full width rather than empty so that `public_u64`, `read` and
+    /// `read_slice` keep their fixed-offset reads in bounds.
     pub fn publics(&self) -> PublicValues {
-        match &self.body {
-            ProofBody::Vadcop { publics_full, .. } => PublicValues::new_from_u64(publics_full),
-            ProofBody::Plonk { publics, .. } => publics.clone(),
+        let committed = program_publics(self.committed_publics());
+        if committed.len() == PROGRAM_VK_LEN + ZISK_PUBLICS {
+            return PublicValues::new_from_u64(committed);
         }
+        let mut data = [0u8; ZISK_PUBLICS * 4];
+        for (i, &val) in committed.iter().skip(PROGRAM_VK_LEN).take(ZISK_PUBLICS).enumerate() {
+            data[i * 4..(i + 1) * 4].copy_from_slice(&(canonical(val) as u32).to_le_bytes());
+        }
+        PublicValues { data: data.to_vec(), ptr: AtomicUsize::new(0) }
+    }
+
+    /// [`Proof::publics`], but rejects a body whose committed publics are not a
+    /// well-formed, canonical `[program_vk(4) | inputs(ZISK_PUBLICS)]` vector.
+    ///
+    /// `Proof::new` and the raw bincode decode paths build bodies the ingest checks never
+    /// see, so this is the accessor to reach for when the proof's provenance is unknown.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::InvalidProof`] if the committed publics are the wrong
+    /// length or hold a non-canonical Goldilocks element.
+    pub fn try_publics(&self) -> Result<PublicValues> {
+        let committed = self.committed_publics();
+        ensure_canonical_publics(committed)?;
+        Ok(PublicValues::new_from_u64(committed))
     }
 
     /// The full-width (u64) publics `[program_vk(4)][user(ZISK_PUBLICS)]` for a
@@ -960,7 +1169,19 @@ impl Proof {
         let proof: Proof =
             bincode::serde::decode_from_std_read(&mut file, bincode::config::standard())
                 .map_err(|e| CommonError::Io(format!("Failed to load proof: {}", e)))?;
+        // bincode will happily decode a non-canonical or misshapen `publics_full`.
+        ensure_stored_publics(&proof.body)?;
         Ok(proof)
+    }
+
+    /// The committed `publics_full` (`[program_vk | inputs]`) for either flavor —
+    /// the single source of truth the getters and verification derive from.
+    fn committed_publics(&self) -> &[u64] {
+        match &self.body {
+            ProofBody::Vadcop { publics_full, .. } | ProofBody::Plonk { publics_full, .. } => {
+                publics_full
+            }
+        }
     }
 
     /// Extract a `VadcopFinalProof` from the proof body.
@@ -971,6 +1192,12 @@ impl Proof {
     pub fn get_vadcop_final_proof(&self) -> Result<VadcopFinalProof> {
         match &self.body {
             ProofBody::Vadcop { proof, kind, hash, publics_full, .. } => {
+                // `stark_publics` re-adds the flag, so a stored vector that already
+                // carries one would come back 70 wide. Vadcop storage is flag-free by
+                // construction, but `Proof::new` and raw deserialization never check
+                // that, and this conversion feeds proofman directly.
+                ensure_stored_publics(&self.body)?;
+
                 // The STARK layer commits to the full-width publics INCLUDING the
                 // is_vadcop_final_proof flag; `kind.stark_publics` re-adds it to
                 // the canonical flag-free `publics_full` (full u64 width — the
@@ -988,6 +1215,34 @@ impl Proof {
         }
     }
 
+    /// The `VadcopFinalProof` to fold into a recursion step.
+    ///
+    /// Refuses a compressed proof. `FinalCompressed` strips the `is_vadcop_final_proof`
+    /// flag, so the recurser — which reads slot 0 as that flag and expects the 69-word
+    /// layout — would take the first program-VK limb for the flag and shift the whole
+    /// statement by one. A limb of 0 or 1 makes that misread silent. Compression is a
+    /// terminal step, not a foldable one.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::InvalidProof`] if the proof is compressed, or is not a
+    /// Vadcop final proof.
+    pub fn get_vadcop_final_proof_to_aggregate(&self) -> Result<VadcopFinalProof> {
+        if let ProofBody::Vadcop { kind, .. } = &self.body {
+            if kind.is_minimal() {
+                return Err(CommonError::InvalidProof(
+                    "a compressed (minimal) proof cannot be aggregated: compression strips \
+                     the is_vadcop_final_proof flag the aggregator reads at public slot 0, \
+                     and it cannot be recovered. Produce the leaf uncompressed \
+                     (ProofKind::VadcopFinal) if you intend to fold it — note the embedded \
+                     client defaults to ProofKind::VadcopFinalMinimal"
+                        .to_string(),
+                ));
+            }
+        }
+        self.get_vadcop_final_proof()
+    }
+
     /// Get the proof data as a vector of u64 values.
     ///
     /// # Errors
@@ -996,7 +1251,7 @@ impl Proof {
     /// has an unexpected length, or if the proof is not a Vadcop proof.
     pub fn get_proof_u64(&self) -> Result<Vec<u64>> {
         match &self.body {
-            ProofBody::Vadcop { proof, zisk_vk, kind, publics_full, .. } => {
+            ProofBody::Vadcop { proof, zisk_vk, kind, hash, publics_full } => {
                 if self.program_vk.vk.len() != PROGRAM_VK_LEN {
                     return Err(CommonError::InvalidProof(format!(
                         "Invalid program_vk length: expected {}, got {}",
@@ -1020,13 +1275,22 @@ impl Proof {
                 let stark_publics = kind.stark_publics(publics_full);
                 let n_publics = stark_publics.len();
 
-                // Format: [minimal(1)][n_publics(1)][flag?|vk|inputs][proof][zisk_vk]
-                let mut words = Vec::with_capacity(2 + n_publics + proof.len() + zisk_vk.len());
+                // The family travels with the proof so a reader needs no side channel to
+                // learn which verifier to run. Routing metadata, not authority: a wrong
+                // tag fails against the reader's expected verification key.
+                let tag = zisk_verifier::hash_tag(hash).ok_or_else(|| {
+                    CommonError::InvalidProof(format!("unrecognized proof hash family {hash:?}"))
+                })?;
+
+                // Format: [minimal(1)][n_publics(1)][flag?|vk|inputs][proof][zisk_vk(4)][tag(1)]
+                let mut words =
+                    Vec::with_capacity(2 + n_publics + proof.len() + zisk_vk.len() + 1);
                 words.push(kind.is_minimal() as u64);
                 words.push(n_publics as u64);
                 words.extend_from_slice(&stark_publics);
                 words.extend_from_slice(proof);
                 words.extend_from_slice(zisk_vk);
+                words.push(tag);
 
                 Ok(words)
             }
@@ -1056,9 +1320,23 @@ impl Proof {
         self.publics()
     }
 
-    /// Get a reference to the program verification key associated with this proof.
-    pub fn get_program_vk(&self) -> &ProgramVK {
-        &self.program_vk
+    /// The program verification key committed by this proof.
+    ///
+    /// Derived from the committed `publics_full` (the ROM-root limbs, reduced to canonical
+    /// representatives) rather than the stored `program_vk` copy, which is untrusted
+    /// metadata. `hash_mode` is carried through unchanged.
+    pub fn get_program_vk(&self) -> ProgramVK {
+        // `take` rather than `[..PROGRAM_VK_LEN]`: this getter is reachable on an
+        // unverified proof (verify()/load() enforce the length, but a hand-built `Proof`
+        // bypasses them), so a short committed vector must not panic.
+        ProgramVK {
+            vk: program_publics(self.committed_publics())
+                .iter()
+                .take(PROGRAM_VK_LEN)
+                .map(|&w| canonical(w))
+                .collect(),
+            hash_mode: self.program_vk.hash_mode,
+        }
     }
 
     /// Create Proof directly from a Vadcop proof u64 array.
@@ -1096,14 +1374,37 @@ impl Proof {
             )));
         }
 
+        // `from_str` is case-insensitive; downstream comparison and dispatch are exact
+        // string matches, so keep the canonical spelling rather than the caller's.
         let hash_mode = hash.parse::<HashMode>().map_err(|e| {
             CommonError::Invalid(format!("unrecognized proof hash family {hash:?}: {e}"))
         })?;
+        let hash = hash_mode.as_str().to_string();
+
+        // `new_from_proof` accepts any count that fits the slice, and a short one then
+        // trips `ProgramVK::new_from_publics_with_mode`'s assert. Pin the stage's exact
+        // width first so malformed input is an `InvalidProof`, not a panic.
+        let expected_n_publics = zisk_verifier::expected_n_publics(minimal);
+        match proof.first() {
+            Some(&n) if n == expected_n_publics as u64 => {}
+            Some(&n) => {
+                return Err(CommonError::InvalidProof(format!(
+                    "proof declares {n} publics, expected {expected_n_publics} for this stage"
+                )))
+            }
+            None => {
+                return Err(CommonError::InvalidProof(
+                    "Vadcop proof is empty, cannot read its public count".to_string(),
+                ))
+            }
+        }
 
         let vadcop_proof =
             VadcopFinalProof::new_from_proof(proof, minimal, hash.clone()).map_err(|e| {
                 CommonError::InvalidProof(format!("Failed to parse Vadcop proof: {}", e))
             })?;
+
+        ensure_canonical_publics(&vadcop_proof.public_values)?;
 
         let program_vk =
             ProgramVK::new_from_publics_with_mode(&vadcop_proof.public_values, hash_mode);
@@ -1115,7 +1416,17 @@ impl Proof {
         let kind = if minimal {
             VadcopKind::Minimal
         } else {
-            VadcopKind::from_publics_full(&vadcop_proof.public_values)
+            // Not `from_publics_full`: it maps every non-zero flag to `Final`, so a flag
+            // of 2 would be accepted and silently change the committed statement.
+            match vadcop_proof.public_values[0] {
+                0 => VadcopKind::Recurser,
+                IS_VADCOP_FINAL_PROOF => VadcopKind::Final,
+                other => {
+                    return Err(CommonError::InvalidProof(format!(
+                        "is_vadcop_final_proof must be 0 or {IS_VADCOP_FINAL_PROOF}, got {other}"
+                    )))
+                }
+            }
         };
         let publics_full = program_publics(&vadcop_proof.public_values).to_vec();
 
@@ -1137,8 +1448,8 @@ impl Proof {
     /// Verify the proof using the default values stored in this instance.
     ///
     /// For custom verification with overridden values, use the builder methods:
-    /// - `publics()` to override public values
-    /// - `program_vk()` to override program verification key
+    /// - `with_publics()` to override public values
+    /// - `with_program_vk()` to override program verification key
     ///
     /// # Examples
     ///
@@ -1147,10 +1458,10 @@ impl Proof {
     /// proof.verify()?;
     ///
     /// // Custom verification with overridden publics
-    /// proof.publics(&custom_publics).verify()?;
+    /// proof.with_publics(&custom_publics).verify()?;
     ///
     /// // Custom verification with multiple overrides
-    /// proof.publics(&custom_publics).program_vk(&custom_program_vk).verify()?;
+    /// proof.with_publics(&custom_publics).with_program_vk(&custom_program_vk).verify()?;
     /// ```
     ///
     /// # Errors
@@ -1172,8 +1483,8 @@ impl Proof {
     /// # Example
     ///
     /// ```ignore
-    /// proof.publics(&custom_publics).verify()?;
-    /// proof.publics(&custom_publics).program_vk(&custom_program_vk).verify()?;
+    /// proof.with_publics(&custom_publics).verify()?;
+    /// proof.with_publics(&custom_publics).with_program_vk(&custom_program_vk).verify()?;
     /// ```
     pub fn with_publics<'a>(&'a self, publics: &'a PublicValues) -> ZiskVerifyBuilder<'a> {
         ZiskVerifyBuilder::new(self).with_publics(publics)
@@ -1186,8 +1497,8 @@ impl Proof {
     /// # Example
     ///
     /// ```ignore
-    /// proof.program_vk(&custom_program_vk).verify()?;
-    /// proof.program_vk(&custom_program_vk).publics(&custom_publics).verify()?;
+    /// proof.with_program_vk(&custom_program_vk).verify()?;
+    /// proof.with_program_vk(&custom_program_vk).with_publics(&custom_publics).verify()?;
     /// ```
     pub fn with_program_vk<'a>(&'a self, program_vk: &'a ProgramVK) -> ZiskVerifyBuilder<'a> {
         ZiskVerifyBuilder::new(self).with_program_vk(program_vk)
@@ -1244,10 +1555,212 @@ mod tests {
         assert!(result.is_err(), "expected Err for malformed proof, got {:?}", result);
     }
 
-    /// A wrong-length `setup_vk` must return an error, not panic in
-    /// `snark_publics_hash` (which slices on `PROGRAM_VK_LEN`).
+    /// `[n_publics][publics][proof]`, the layout `new_from_vadcop_proof` ingests.
+    fn serialized_vadcop(publics: &[u64]) -> Vec<u64> {
+        let mut v = vec![publics.len() as u64];
+        v.extend_from_slice(publics);
+        v.extend_from_slice(&[0u64; 8]);
+        v
+    }
+
+    /// A short count would otherwise reach `ProgramVK::new_from_publics_with_mode`,
+    /// whose assert panics instead of returning the documented `InvalidProof`.
     #[test]
-    fn plonk_verify_rejects_wrong_len_setup_vk() {
+    fn new_from_vadcop_proof_rejects_a_wrong_public_count() {
+        let err = Proof::new_from_vadcop_proof(
+            &serialized_vadcop(&[1, 2]),
+            false,
+            vec![1, 2, 3, 4],
+            "Poseidon2".to_string(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("declares 2 publics"), "got: {err}");
+    }
+
+    /// `from_publics_full` maps every non-zero flag to `Final`; an out-of-range flag must
+    /// be refused rather than silently reinterpreted.
+    #[test]
+    fn new_from_vadcop_proof_rejects_an_out_of_range_flag() {
+        let mut publics = vec![0u64; VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS];
+        publics[0] = 2;
+        let err = Proof::new_from_vadcop_proof(
+            &serialized_vadcop(&publics),
+            false,
+            vec![1, 2, 3, 4],
+            "Poseidon2".to_string(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("is_vadcop_final_proof"), "got: {err}");
+    }
+
+    #[test]
+    fn new_from_vadcop_proof_rejects_a_non_canonical_public() {
+        let mut publics = vec![0u64; VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS];
+        publics[0] = IS_VADCOP_FINAL_PROOF;
+        publics[VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN] = GOLDILOCKS_ORDER;
+        let err = Proof::new_from_vadcop_proof(
+            &serialized_vadcop(&publics),
+            false,
+            vec![1, 2, 3, 4],
+            "Poseidon2".to_string(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("canonical"), "got: {err}");
+    }
+
+    /// `verify()` hashes `publics_full`, so the reported view must come from there and
+    /// not from the independently deserialized `Plonk.publics` copy.
+    #[test]
+    fn plonk_publics_come_from_the_committed_vector() {
+        let mut publics_full = vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS];
+        publics_full[PROGRAM_VK_LEN] = 0xAABB;
+
+        // A stored copy that disagrees with the committed statement.
+        let mut lying = PublicValues::new_empty();
+        lying.data[0..4].copy_from_slice(&0xDEADu32.to_le_bytes());
+
+        let proof = Proof::new(
+            ProofBody::Plonk {
+                proof_bytes: vec![],
+                plonk_vk: Box::new(PlonkVkBlob {
+                    vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
+                    plonk_vkey: dummy_plonk_vkey(),
+                }),
+                publics: lying,
+                publics_full,
+                rootc: vec![0u64; PROGRAM_VK_LEN],
+            },
+            ProgramVK::new_empty(),
+        );
+
+        assert_eq!(&proof.publics().data[0..4], &0xAABBu32.to_le_bytes());
+    }
+
+    /// An override is spliced into the verified statement, so the domain guard must read
+    /// the overridden VK — otherwise it guards limbs nothing is verified against.
+    #[test]
+    fn recurser_domain_check_follows_the_program_vk_override() {
+        let proof = vadcop_proof(VadcopKind::Recurser, flag_free_publics([1, 2, 3, 4]));
+        let foreign = ProgramVK { vk: vec![9, 9, 9, 9], hash_mode: HashMode::Poseidon2 };
+        let err =
+            proof.with_program_vk(&foreign).with_setup_vk(&[1, 2, 3, 4]).verify().unwrap_err();
+        assert!(err.to_string().contains("recursion domain"), "got: {err}");
+    }
+
+    /// Compression strips the flag the recurser reads at slot 0, so folding a compressed
+    /// proof would take the first VK limb for the flag and shift the statement by one.
+    #[test]
+    fn a_compressed_proof_cannot_be_aggregated() {
+        let minimal = vadcop_proof(VadcopKind::Minimal, flag_free_publics([1, 2, 3, 4]));
+        let err = minimal.get_vadcop_final_proof_to_aggregate().unwrap_err();
+        assert!(err.to_string().contains("cannot be aggregated"), "got: {err}");
+
+        // The uncompressed flavors still fold, carrying the 69-word layout.
+        for kind in [VadcopKind::Final, VadcopKind::Recurser] {
+            let p = vadcop_proof(kind, flag_free_publics([1, 2, 3, 4]));
+            let vfp = p.get_vadcop_final_proof_to_aggregate().unwrap();
+            assert_eq!(
+                vfp.public_values.len(),
+                VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS
+            );
+        }
+    }
+
+    /// `publics()` must stay in bounds for a body that never passed load/verify, and
+    /// `try_publics()` must refuse to answer for it at all.
+    #[test]
+    fn try_publics_rejects_what_publics_can_only_guess() {
+        let misshapen = Proof::new(
+            ProofBody::Plonk {
+                proof_bytes: vec![],
+                plonk_vk: Box::new(PlonkVkBlob {
+                    vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
+                    plonk_vkey: dummy_plonk_vkey(),
+                }),
+                publics: PublicValues::new_empty(),
+                publics_full: vec![1, 2],
+                rootc: vec![0u64; PROGRAM_VK_LEN],
+            },
+            ProgramVK::new_empty(),
+        );
+        assert!(misshapen.try_publics().is_err());
+        // Still safe to call, and its fixed-offset reads stay in bounds.
+        assert_eq!(misshapen.publics().public_u64().len(), ZISK_PUBLICS);
+
+        let ok = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        assert_eq!(ok.try_publics().unwrap().data, ok.publics().data);
+    }
+
+    /// A stage the proving key never builds is a malformed shape, not a failed
+    /// statement, so it must not come back as `NotVerified`.
+    #[test]
+    fn verify_reports_a_nonexistent_stage_as_malformed() {
+        let mut proof = vadcop_proof(VadcopKind::Minimal, flag_free_publics([1, 2, 3, 4]));
+        if let ProofBody::Vadcop { hash, .. } = &mut proof.body {
+            *hash = "blake3".to_string();
+        }
+        proof.program_vk.hash_mode = HashMode::Blake3;
+
+        let err = proof.verify().unwrap_err();
+        assert!(matches!(err, CommonError::InvalidProof(_)), "got: {err:?}");
+        assert!(err.to_string().contains("no "), "got: {err}");
+    }
+
+    /// `stark_publics` re-adds the flag, so a stored vector that already carries one
+    /// would reach proofman 70 wide. `Proof::new` bypasses the ingest checks.
+    #[test]
+    fn get_vadcop_final_proof_rejects_an_already_flagged_body() {
+        let mut flagged = vec![0u64; VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS];
+        flagged[0] = IS_VADCOP_FINAL_PROOF;
+        let proof = vadcop_proof(VadcopKind::Final, flagged);
+
+        let err = proof.get_vadcop_final_proof().unwrap_err();
+        assert!(matches!(err, CommonError::InvalidProof(_)), "got: {err:?}");
+
+        // A short vector must not reach proofman either.
+        let short = vadcop_proof(VadcopKind::Final, vec![0u64; 3]);
+        assert!(short.get_vadcop_final_proof().is_err());
+
+        // The well-formed flag-free body still converts, and gains the flag exactly once.
+        let ok = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        let vfp = ok.get_vadcop_final_proof().unwrap();
+        assert_eq!(vfp.public_values.len(), VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS);
+        assert_eq!(vfp.public_values[0], IS_VADCOP_FINAL_PROOF);
+    }
+
+    /// `ensure_stored_publics` still accepts the legacy flagged 69-word Plonk body, so
+    /// pin that both accessors strip the flag rather than shifting the view by a word.
+    /// `new_from_u64` normalizes internally; this guards anyone "simplifying" that away.
+    #[test]
+    fn a_flagged_plonk_body_is_not_shifted_by_a_word() {
+        let mut flagged = vec![0u64; VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS];
+        flagged[0] = IS_VADCOP_FINAL_PROOF;
+        flagged[VADCOP_FINAL_FLAG_LEN..VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN]
+            .copy_from_slice(&[11, 12, 13, 14]);
+        flagged[VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN] = 0xAABB;
+
+        let proof = Proof::new(
+            ProofBody::Plonk {
+                proof_bytes: vec![],
+                plonk_vk: Box::new(PlonkVkBlob {
+                    vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
+                    plonk_vkey: dummy_plonk_vkey(),
+                }),
+                publics: PublicValues::new_empty(),
+                publics_full: flagged,
+                rootc: vec![0u64; PROGRAM_VK_LEN],
+            },
+            ProgramVK::new_empty(),
+        );
+
+        // The first user input, not the last VK limb and not the flag.
+        assert_eq!(&proof.publics().data[0..4], &0xAABBu32.to_le_bytes());
+        assert_eq!(&proof.try_publics().unwrap().data[0..4], &0xAABBu32.to_le_bytes());
+        assert_eq!(proof.get_program_vk().vk, vec![11, 12, 13, 14]);
+    }
+
+    /// A structurally valid (not cryptographically meaningful) PLONK vkey.
+    fn dummy_plonk_vkey() -> PlonkVkey {
         let g1 = || ["0".to_string(), "0".to_string(), "1".to_string()];
         let g2 = || {
             [
@@ -1256,7 +1769,7 @@ mod tests {
                 ["1".to_string(), "0".to_string()],
             ]
         };
-        let vkey = PlonkVkey {
+        PlonkVkey {
             protocol: "plonk".to_string(),
             curve: "bn128".to_string(),
             n_public: 1,
@@ -1273,7 +1786,122 @@ mod tests {
             s3: g1(),
             x_2: g2(),
             w: "1".to_string(),
-        };
+        }
+    }
+
+    /// A flag-free Vadcop proof whose publics are well-shaped, for the guard tests.
+    fn vadcop_proof(kind: VadcopKind, publics_full: Vec<u64>) -> Proof {
+        Proof::new(
+            ProofBody::Vadcop {
+                proof: vec![0u64; 8],
+                zisk_vk: vec![1, 2, 3, 4],
+                kind,
+                hash: "Poseidon2".to_string(),
+                publics_full,
+            },
+            ProgramVK::new_from_publics_with_mode(&[1, 2, 3, 4], HashMode::Poseidon2),
+        )
+    }
+
+    fn flag_free_publics(vk: [u64; PROGRAM_VK_LEN]) -> Vec<u64> {
+        let mut p = vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS];
+        p[..PROGRAM_VK_LEN].copy_from_slice(&vk);
+        p
+    }
+
+    /// The Vadcop path ignores a PLONK key, so pinning one must be refused rather than
+    /// silently verified as if the pin had applied.
+    #[test]
+    fn verify_rejects_a_plonk_key_pinned_on_a_vadcop_proof() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        let vkey = dummy_plonk_vkey();
+        let err = proof.with_plonk_vk(&vkey).verify().unwrap_err();
+        assert!(err.to_string().contains("PLONK verification key was pinned"), "got: {err}");
+    }
+
+    /// The field verifier reads x and x+p as one element, so a non-canonical override
+    /// would pin a key by value it does not equal byte-for-byte.
+    #[test]
+    fn verify_rejects_non_canonical_program_vk_override() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        let shifted =
+            ProgramVK { vk: vec![1 + GOLDILOCKS_ORDER, 2, 3, 4], hash_mode: HashMode::Poseidon2 };
+        let err = proof.with_program_vk(&shifted).verify().unwrap_err();
+        assert!(err.to_string().contains("non-canonical"), "got: {err}");
+    }
+
+    #[test]
+    fn verify_rejects_non_canonical_setup_vk_override() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        let err = proof.with_setup_vk(&[1 + GOLDILOCKS_ORDER, 2, 3, 4]).verify().unwrap_err();
+        assert!(err.to_string().contains("non-canonical"), "got: {err}");
+    }
+
+    /// A fold must verify under the domain it declares, or a subtree from another
+    /// recurser rides through.
+    #[test]
+    fn verify_rejects_a_recurser_proof_verifying_outside_its_domain() {
+        let proof = vadcop_proof(VadcopKind::Recurser, flag_free_publics([9, 9, 9, 9]));
+        let err = proof.with_setup_vk(&[1, 2, 3, 4]).verify().unwrap_err();
+        assert!(err.to_string().contains("recursion domain"), "got: {err}");
+    }
+
+    /// bincode decodes a non-canonical word happily; `load` must not.
+    #[test]
+    fn load_rejects_a_non_canonical_stored_public() {
+        let tmp = std::env::temp_dir().join(format!("proof_noncanon_{}.bin", std::process::id()));
+        let mut publics = flag_free_publics([1, 2, 3, 4]);
+        publics[PROGRAM_VK_LEN] = GOLDILOCKS_ORDER;
+        vadcop_proof(VadcopKind::Final, publics).save(&tmp).unwrap();
+
+        let err = Proof::load(&tmp).unwrap_err();
+        std::fs::remove_file(&tmp).ok();
+        assert!(err.to_string().contains("canonical"), "got: {err}");
+    }
+
+    /// The guest reads the family off the tail, so the tag must be the last word.
+    #[test]
+    fn serialized_proof_carries_the_hash_tag_last() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        let words = proof.get_proof_u64().unwrap();
+        assert_eq!(words.last().copied(), zisk_verifier::hash_tag("Poseidon2"));
+    }
+
+    /// Splicing a VK must keep every other slot at full u64 width — rebuilding from the
+    /// u32 `PublicValues` view would truncate a recurser proof's inputs.
+    #[test]
+    fn splice_program_vk_preserves_wide_publics() {
+        let mut publics = flag_free_publics([1, 2, 3, 4]);
+        publics[PROGRAM_VK_LEN] = 1 << 40;
+
+        let spliced = splice_program_vk(&publics, &[9, 9, 9, 9]).unwrap();
+
+        assert_eq!(&spliced[..PROGRAM_VK_LEN], &[9, 9, 9, 9]);
+        assert_eq!(spliced[PROGRAM_VK_LEN], 1 << 40, "wide public must not be truncated");
+    }
+
+    /// A raw vadcop_final vector carries the flag at index 0; splicing over it would
+    /// shift the whole statement by one.
+    #[test]
+    fn splice_program_vk_normalizes_a_flagged_publics_vector() {
+        let mut flagged = vec![0u64; VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS];
+        flagged[0] = IS_VADCOP_FINAL_PROOF;
+        flagged[VADCOP_FINAL_FLAG_LEN..VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN]
+            .copy_from_slice(&[11, 12, 13, 14]);
+        flagged[VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN] = 77;
+
+        let spliced = splice_program_vk(&flagged, &[91, 92, 93, 94]).unwrap();
+
+        assert_eq!(spliced.len(), PROGRAM_VK_LEN + ZISK_PUBLICS, "flag must be stripped");
+        assert_eq!(&spliced[..PROGRAM_VK_LEN], &[91, 92, 93, 94], "vk must be replaced");
+        assert_eq!(spliced[PROGRAM_VK_LEN], 77, "inputs must not shift");
+    }
+
+    /// A wrong-length `setup_vk` must return an error, not panic in
+    /// `snark_publics_hash` (which slices on `PROGRAM_VK_LEN`).
+    #[test]
+    fn plonk_verify_rejects_wrong_len_setup_vk() {
+        let vkey = dummy_plonk_vkey();
         let proof = Proof::new(
             ProofBody::Plonk {
                 proof_bytes: vec![],

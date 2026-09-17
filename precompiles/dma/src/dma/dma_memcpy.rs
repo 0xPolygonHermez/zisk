@@ -80,11 +80,14 @@ impl<F: PrimeField64> DmaMemCpySM<F> {
             local_24_bits_values.push(h_count);
         }
 
-        let h_src64 = input.src >> 10;
-        let h_dst64 = input.dst >> 10;
-        let l_src64 = (input.src >> 3) as u8 & 0x7F;
-        let l_dst64 = (input.dst >> 3) as u8 & 0x7F;
+        let dst = input.dst as u32;
+        let src = input.src as u32;
+        let h_src64 = src >> 10;
+        let h_dst64 = dst >> 10;
+        let l_src64 = (src >> 3) as u8 & 0x7F;
+        let l_dst64 = (dst >> 3) as u8 & 0x7F;
 
+        trace.set_src_hi((input.src >> 32) as u32);
         trace.set_h_src64(h_src64);
         trace.set_l_src64(l_src64);
         let src_offset = input.src as u8 & 0x07;
@@ -92,6 +95,7 @@ impl<F: PrimeField64> DmaMemCpySM<F> {
 
         trace.set_h_dst64(h_dst64);
         trace.set_l_dst64(l_dst64);
+        trace.set_dst_hi((input.dst >> 32) as u32);
         trace.set_dst_offset(input.dst as u8 & 0x07);
 
         local_22_bits_values.push(h_src64);
@@ -103,12 +107,12 @@ impl<F: PrimeField64> DmaMemCpySM<F> {
         //     local_dual_7_bits_multiplicities[dual_7_bits_row]
         // );
 
-        let rom_index = DmaRom::get_row(input.dst & 0x07, input.src & 0x07, count, false, true);
+        let rom_index = DmaRom::get_row(dst & 0x07, src & 0x07, count, false, true);
         // println!(
         //     "\x1B[1;35m[DmaMemCpy] ROM index: {rom_index} [dst_offset:{}, src_offset:{} count:{count}] E:0x{:016X} => {rom_index} \
         //      OP:0x{:02X} S:{}\x1B[0m",
-        //     input.dst & 0x07,
-        //     input.src & 0x07,
+        //     dst & 0x07,
+        //     src & 0x07,
         //     input.encoded,
         //     input.op,
         //     input.step

@@ -85,19 +85,23 @@ impl<F: PrimeField64> DmaSM<F> {
             local_24_bits_values.push(h_count);
         }
 
-        let h_src64 = input.src >> 10;
-        let h_dst64 = input.dst >> 10;
-        let l_src64 = (input.src >> 3) as u8 & 0x7F;
-        let l_dst64 = (input.dst >> 3) as u8 & 0x7F;
+        let src = input.src as u32;
+        let dst = input.dst as u32;
+        let h_src64 = src >> 10;
+        let h_dst64 = dst >> 10;
+        let l_src64 = (src >> 3) as u8 & 0x7F;
+        let l_dst64 = (dst >> 3) as u8 & 0x7F;
 
+        trace.set_src_hi((input.src >> 32) as u32);
         trace.set_h_src64(h_src64);
         trace.set_l_src64(l_src64);
-        let src_offset = input.src as u8 & 0x07;
+        let src_offset = src as u8 & 0x07;
         trace.set_src_offset(src_offset);
 
         trace.set_h_dst64(h_dst64);
         trace.set_l_dst64(l_dst64);
-        trace.set_dst_offset(input.dst as u8 & 0x07);
+        trace.set_dst_hi((input.dst >> 32) as u32);
+        trace.set_dst_offset(dst as u8 & 0x07);
 
         local_22_bits_values.push(h_src64);
         local_22_bits_values.push(h_dst64);
@@ -177,8 +181,7 @@ impl<F: PrimeField64> DmaSM<F> {
             _ => panic!("Invalid DMA operation {}", input.op),
         }
 
-        let rom_index =
-            DmaRom::get_row(input.dst & 0x07, input.src & 0x07, count, result_nz, use_src);
+        let rom_index = DmaRom::get_row(dst & 0x07, src & 0x07, count, result_nz, use_src);
         local_rom_multiplicities[rom_index] += 1;
     }
 

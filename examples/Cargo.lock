@@ -7365,6 +7365,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.3.0-alpha"
 dependencies = [
+ "proofman-fields",
  "proofman-verifier",
 ]
 
