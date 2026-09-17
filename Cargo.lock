@@ -2367,9 +2367,9 @@ dependencies = [
 
 [[package]]
 name = "generator"
-version = "0.8.9"
+version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3b854b0e584ead1a33f18b2fcad7cf7be18b3875c78816b753639aa501513ae"
+checksum = "54ade96dc9003043bce7c035c85a9df5a858bfb2039c5a2e6fdf00f324f6c551"
 dependencies = [
  "cc",
  "cfg-if",
@@ -4002,7 +4002,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4013,7 +4013,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -4029,7 +4029,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "anyhow",
  "clap",
@@ -4055,7 +4055,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "colored",
  "proofman-common",
@@ -4273,7 +4273,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "bincode",
  "blake3",
@@ -4305,7 +4305,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "borsh",
  "colored",
@@ -4333,7 +4333,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "proofman-fields",
 ]
@@ -4341,7 +4341,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "anyhow",
  "proofman-starks-src",
@@ -4355,7 +4355,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -4368,7 +4368,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -4380,7 +4380,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4390,7 +4390,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -4399,12 +4399,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 
 [[package]]
 name = "proofman-util"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4413,7 +4413,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4426,7 +4426,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#20f09bff71e5454d8314feae8316fdaf0be84014"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#7454f0474b1826e346ecdb32c8f2ac8c7f0cfa47"
 dependencies = [
  "libloading",
  "proofman-common",
