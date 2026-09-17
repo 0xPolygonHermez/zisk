@@ -79,11 +79,11 @@ impl CustomRom {
             trace[index].ind_width = F::from_u64(inst.ind_width);
             // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
             // of the copyb, use to get free-input information
-            trace[index].op = if inst.op == ZiskOp::Fcall.code()
-                || inst.op == ZiskOp::FcallGet.code()
-                || inst.op == ZiskOp::FcallParam.code()
+            trace[index].op = if inst.op == ZiskOp::FCALL
+                || inst.op == ZiskOp::FCALL_GET
+                || inst.op == ZiskOp::FCALL_PARAM
             {
-                F::from_u8(ZiskOp::CopyB.code())
+                F::from_u8(ZiskOp::COPYB)
             } else {
                 F::from_u8(inst.op)
             };
@@ -213,7 +213,7 @@ mod tests {
         zib0.i.paddr = 0x8000_0000;
         zib0.i.jmp_offset1 = 8;
         zib0.i.store_offset = -16; // negative — exercises signed_to_field branch
-        zib0.i.op = ZiskOp::CopyB.code();
+        zib0.i.op = ZiskOp::COPYB;
         rom.insts.insert(0x8000_0000, zib0);
 
         // Instruction 1: SRC_IMM on the `a` source so a_imm1 gets a_use_sp_imm1.
@@ -228,7 +228,7 @@ mod tests {
         let mut zib2 = ZiskInstBuilder::new(0x8000_0008);
         zib2.i.index = 2;
         zib2.i.paddr = 0x8000_0008;
-        zib2.i.op = ZiskOp::Fcall.code();
+        zib2.i.op = ZiskOp::FCALL;
         rom.insts.insert(0x8000_0008, zib2);
         rom
     }
@@ -249,7 +249,7 @@ mod tests {
         assert_eq!(trace[1].b_imm1, F::from_u64(0), "b is not SRC_IMM, so b_imm1 stays zero");
 
         // Instruction 2: Fcall opcode → remapped to CopyB in the trace.
-        assert_eq!(trace[2].op, F::from_u8(ZiskOp::CopyB.code()));
+        assert_eq!(trace[2].op, F::from_u8(ZiskOp::COPYB));
     }
 
     #[test]
@@ -267,7 +267,7 @@ mod tests {
 
         let trace = CustomRom::build_trace::<F>(&rom).expect("build_trace");
 
-        let copyb = F::from_u8(ZiskOp::CopyB.code());
+        let copyb = F::from_u8(ZiskOp::COPYB);
         assert_eq!(trace[0].op, copyb, "Fcall must remap to CopyB");
         assert_eq!(trace[1].op, copyb, "FcallGet must remap to CopyB");
         assert_eq!(trace[2].op, copyb, "FcallParam must remap to CopyB");

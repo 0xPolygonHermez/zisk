@@ -9,14 +9,16 @@ use std::{
 #[cfg(feature = "debug_mem")]
 use zisk_sm_mem_common::MemHelpers;
 
-use crate::{MemInput, MemModule, MemPreviousSegment};
+use crate::{MemModule, MemOps, MemPreviousSegment};
 use zisk_sm_mem_common::{
-    MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_DISTANCE, SEGMENT_ADDR_MAX_RANGE,
+    MemLanes, MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_DISTANCE,
+    SEGMENT_ADDR_MAX_RANGE,
 };
 
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
+use rayon::prelude::*;
 use zisk_common::SegmentId;
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::{
@@ -42,6 +44,37 @@ const _: () = {
         "INPUT_DATA is too large. Input size must be <= 1024MB"
     );
 };
+
+/// Lane layout of the `InputData` trace, read from the generated row so it always
+/// follows `lanes_x_row` in `state-machines/mem/pil/mem.pil`.
+#[inline]
+fn lanes_of<F: PrimeField64, R: InputDataTraceRowOps<F>>() -> MemLanes {
+    MemLanes::new(R::default().get_all_addr().len())
+}
+
+/// One padding lane: the last lane repeated, not selected and with no address change. Kept in one
+/// place so the partial row and the whole rows cannot drift apart.
+///
+/// Every column of the row is written here, which is what lets the whole rows be filled by copying
+/// one built row rather than by setting each column of each lane.
+#[inline]
+fn set_input_data_padding_lane<F: PrimeField64, R: InputDataTraceRowOps<F>>(
+    row: &mut R,
+    lane: usize,
+    addr: u32,
+    step: u64,
+    is_free_read: bool,
+    value_words: &[u16; 4],
+) {
+    row.set_addr(lane, addr);
+    row.set_step(lane, step);
+    row.set_sel(lane, false);
+    row.set_is_free_read(lane, is_free_read);
+    row.set_addr_changes(lane, false);
+    for (index, &word) in value_words.iter().enumerate() {
+        row.set_value_word(lane, index, word);
+    }
+}
 
 pub struct InputDataSM<F: PrimeField64> {
     /// PIL2 standard library
@@ -81,24 +114,32 @@ impl<F: PrimeField64> InputDataSM<F> {
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
         let num_rows = InputDataTrace::<R>::NUM_ROWS;
+        let lanes = lanes_of::<F, R>();
 
         for i in 0..num_rows {
-            let addr = trace[i].get_addr() as u64 * 8;
-            let step = trace[i].get_step();
-            let main_step = MemHelpers::mem_step_to_main_step(step);
-            let values = trace[i].get_all_value_word();
-            let value = values[0] as u64
-                | ((values[1] as u64) << 16)
-                | ((values[2] as u64) << 32)
-                | ((values[3] as u64) << 48);
-            let addr_changes = trace[i].get_addr_changes();
-            let is_free_read = trace[i].get_is_free_read();
-            let sel = trace[i].get_sel();
-            writeln!(
-                writer,
-                "{i:<8} {addr:#010X} {step:>13} {main_step:>12} {values:?} 0x{value:016X} AC:{addr_changes} S:{sel} FR:{is_free_read}"
-            )
-            .unwrap();
+            for lane in 0..lanes.lanes() {
+                let addr = trace[i].get_addr(lane) as u64 * 8;
+                let step = trace[i].get_step(lane);
+                let main_step = MemHelpers::mem_step_to_main_step(step);
+                let values = [
+                    trace[i].get_value_word(lane, 0),
+                    trace[i].get_value_word(lane, 1),
+                    trace[i].get_value_word(lane, 2),
+                    trace[i].get_value_word(lane, 3),
+                ];
+                let value = values[0] as u64
+                    | ((values[1] as u64) << 16)
+                    | ((values[2] as u64) << 32)
+                    | ((values[3] as u64) << 48);
+                let addr_changes = trace[i].get_addr_changes(lane);
+                let is_free_read = trace[i].get_is_free_read(lane);
+                let sel = trace[i].get_sel(lane);
+                writeln!(
+                    writer,
+                    "{i:<8}.{lane} {addr:#010X} {step:>13} {main_step:>12} {values:?} 0x{value:016X} AC:{addr_changes} S:{sel} FR:{is_free_read}"
+                )
+                .unwrap();
+            }
         }
         println!("[MemDebug] done");
     }
@@ -112,12 +153,15 @@ impl<F: PrimeField64> InputDataSM<F> {
         let file = std::fs::File::create(file_name).unwrap();
         let mut writer = std::io::BufWriter::new(file);
         let num_rows = InputDataTrace::<R>::NUM_ROWS;
+        let lanes = lanes_of::<F, R>();
 
         let mut last_addr = u32::MAX;
-        for i in 0..num_rows {
-            let addr = trace[i].get_addr();
+        // `islot` is the virtual row: the offsets table is expressed in these units.
+        for islot in 0..lanes.slots(num_rows) {
+            let (row, lane) = lanes.split(islot);
+            let addr = trace[row].get_addr(lane);
             if addr != last_addr {
-                writeln!(writer, "0x{:08X} {i}", addr * 8).unwrap();
+                writeln!(writer, "0x{:08X} {islot}", addr * 8).unwrap();
                 last_addr = addr;
             }
         }
@@ -127,16 +171,17 @@ impl<F: PrimeField64> InputDataSM<F> {
     /// Fills the witness trace from a **sorted** input slice (legacy path).
     ///
     /// `mem_ops` must be sorted by `(addr, step)` before this method is called.
-    /// Rows are written sequentially: each operation is assigned the next
-    /// available row in declaration order, so the trace is filled from top to
-    /// bottom with no random-access indexing.
+    /// Virtual rows are written sequentially: each operation is assigned the next
+    /// available lane in declaration order, so the trace is filled from top to
+    /// bottom (lane 0 .. lanes_x_row - 1 of each row) with no random-access
+    /// indexing.
     ///
     /// Use this path when the GPU / planning stage is disabled
     /// (`legacy_mem_count_and_plan` feature flag) and the CPU planner provides
     /// pre-sorted inputs instead of offset tables.
     fn legacy_compute_witness(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
@@ -163,7 +208,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     }
     fn legacy_compute_witness_inner<R: InputDataTraceRowOps<F>>(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
@@ -171,12 +216,13 @@ impl<F: PrimeField64> InputDataSM<F> {
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace = InputDataTrace::<R>::new_from_vec(trace_buffer)?;
 
-        let num_rows = InputDataTrace::<R>::NUM_ROWS;
+        let lanes = lanes_of::<F, R>();
+        let num_slots = lanes.slots(InputDataTrace::<R>::NUM_ROWS);
         debug_assert!(
-            !mem_ops.is_empty() && mem_ops.len() <= num_rows,
+            !mem_ops.is_empty() && mem_ops.len() <= num_slots,
             "InputDataSM: mem_ops.len()={} out of range {}",
             mem_ops.len(),
-            num_rows
+            num_slots
         );
 
         let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
@@ -187,44 +233,56 @@ impl<F: PrimeField64> InputDataSM<F> {
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
+        // `i` is a virtual row: `lanes.split(i)` gives the physical row and the lane inside it.
         let mut i = 0;
 
         for mem_op in mem_ops.iter() {
             let distance = mem_op.addr - last_addr;
 
-            if i >= num_rows {
+            if i >= num_slots {
                 break;
             }
 
             if distance > SEGMENT_ADDR_MAX_DISTANCE as u32 {
                 let mut internal_reads = (distance - 1) / SEGMENT_ADDR_MAX_DISTANCE as u32;
 
-                let incomplete = (i + internal_reads as usize) >= num_rows;
+                let incomplete = (i + internal_reads as usize) >= num_slots;
                 if incomplete {
-                    internal_reads = (num_rows - i) as u32;
+                    internal_reads = (num_slots - i) as u32;
                 }
 
-                trace[i].set_addr_changes(true);
+                let (row, lane) = lanes.split(i);
+                trace[row].set_addr_changes(lane, true);
                 last_addr += SEGMENT_ADDR_MAX_DISTANCE as u32;
                 max_range_distance_count += 1;
-                trace[i].set_addr(last_addr);
+                trace[row].set_addr(lane, last_addr);
 
                 // the step, value of internal reads isn't relevant
                 last_step = 0;
-                trace[i].set_step(0);
-                trace[i].set_sel(false);
-                trace[i].set_is_free_read(false);
+                trace[row].set_step(lane, 0);
+                trace[row].set_sel(lane, false);
+                trace[row].set_is_free_read(lane, false);
 
                 // setting value to zero, is not relevant for internal reads
                 last_value = 0;
-                trace[i].set_all_value_word(&[0; 4]);
+                for j in 0..4 {
+                    trace[row].set_value_word(lane, j, 0);
+                }
                 i += 1;
 
                 for _j in 1..internal_reads {
-                    trace[i] = trace[i - 1];
+                    // same lane content as the previous internal read, only the address moves on
+                    let (row, lane) = lanes.split(i);
                     last_addr += SEGMENT_ADDR_MAX_DISTANCE as u32;
                     max_range_distance_count += 1;
-                    trace[i].set_addr(last_addr);
+                    trace[row].set_addr(lane, last_addr);
+                    trace[row].set_addr_changes(lane, true);
+                    trace[row].set_step(lane, 0);
+                    trace[row].set_sel(lane, false);
+                    trace[row].set_is_free_read(lane, false);
+                    for j in 0..4 {
+                        trace[row].set_value_word(lane, j, 0);
+                    }
 
                     i += 1;
                 }
@@ -234,24 +292,25 @@ impl<F: PrimeField64> InputDataSM<F> {
                 }
             }
 
-            trace[i].set_addr(mem_op.addr);
-            trace[i].set_step(mem_op.step);
-            trace[i].set_sel(true);
-            trace[i].set_is_free_read(mem_op.addr == INPUT_DATA_W_ADDR_INIT);
+            let (row, lane) = lanes.split(i);
+            trace[row].set_addr(lane, mem_op.addr);
+            trace[row].set_step(lane, mem_op.step);
+            trace[row].set_sel(lane, true);
+            trace[row].set_is_free_read(lane, mem_op.addr == INPUT_DATA_W_ADDR_INIT);
 
             let value = mem_op.value;
             let value_words = self.get_u16_values(value);
             for j in 0..4 {
                 range_16bits[value_words[j] as usize] += 1;
+                trace[row].set_value_word(lane, j, value_words[j]);
             }
-            trace[i].set_all_value_word(&value_words);
 
             let addr_changes = last_addr != mem_op.addr;
             if addr_changes {
-                trace[i].set_addr_changes(true);
+                trace[row].set_addr_changes(lane, true);
                 self.std.range_check_one(self.range_id, mem_op.addr - last_addr - 1);
             } else {
-                trace[i].set_addr_changes(false);
+                trace[row].set_addr_changes(lane, false);
             }
 
             last_addr = mem_op.addr;
@@ -261,26 +320,34 @@ impl<F: PrimeField64> InputDataSM<F> {
         }
         let count = i;
 
-        // STEP3. Add dummy rows to the output vector to fill the remaining rows
+        // STEP3. Add dummy lanes to the output vector to fill the remaining virtual rows
         //PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0
-        let last_row_idx = count - 1;
-        let addr = trace[last_row_idx].get_addr();
+        let (last_row, last_lane) = lanes.split(count - 1);
+        let addr = trace[last_row].get_addr(last_lane);
         let is_free_read = last_addr == INPUT_DATA_W_ADDR_INIT;
 
-        let padding_size = num_rows - count;
-        let last_value_word = trace[last_row_idx].get_all_value_word();
-        for i in count..num_rows {
+        let padding_size = num_slots - count;
+        let last_value_word = [
+            trace[last_row].get_value_word(last_lane, 0),
+            trace[last_row].get_value_word(last_lane, 1),
+            trace[last_row].get_value_word(last_lane, 2),
+            trace[last_row].get_value_word(last_lane, 3),
+        ];
+        for islot in count..num_slots {
             last_step += 1;
 
-            trace[i].set_addr(addr);
-            trace[i].set_step(last_step);
-            trace[i].set_sel(false);
-            trace[i].set_all_value_word(&last_value_word);
-            trace[i].set_is_free_read(is_free_read);
+            let (row, lane) = lanes.split(islot);
+            trace[row].set_addr(lane, addr);
+            trace[row].set_step(lane, last_step);
+            trace[row].set_sel(lane, false);
+            for (j, &word) in last_value_word.iter().enumerate() {
+                trace[row].set_value_word(lane, j, word);
+            }
+            trace[row].set_is_free_read(lane, is_free_read);
 
-            trace[i].set_addr_changes(false);
+            trace[row].set_addr_changes(lane, false);
 
-            // address doesn't change in padding rows, no range check is required
+            // address doesn't change in padding lanes, no range check is required
         }
 
         let distance_end = INPUT_DATA_W_ADDR_END - last_addr;
@@ -348,7 +415,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     #[allow(clippy::too_many_arguments)]
     fn compute_witness_with_offsets(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
@@ -379,10 +446,14 @@ impl<F: PrimeField64> InputDataSM<F> {
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
     ///
     /// `mem_ops` does not need to be sorted. Each operation is placed directly
-    /// into the trace row indicated by the `offsets` table, enabling
+    /// into the virtual row indicated by the `offsets` table, enabling
     /// random-access filling in a single pass.
     ///
     /// # Offset table layout
+    ///
+    /// The table is expressed in **virtual rows**: with `lanes_x_row` lanes per
+    /// physical row, the virtual row `v` is the lane `v % lanes_x_row` of the
+    /// physical row `v / lanes_x_row` (see [`MemLanes`]).
     ///
     /// `offset_base_addr` is the byte address of the first qword slot
     /// (i.e. the byte address of `offsets[0]`).  For every qword address
@@ -391,7 +462,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     /// * `offsets[i] = 0` — **halo slot**: address `A` belongs to the
     ///   previous segment (`previous_segment`).  Only slot 0 of a non-first
     ///   segment can be 0.
-    /// * `offsets[i] = r + 1` — address `A` first appears at trace row `r`
+    /// * `offsets[i] = v + 1` — address `A` first appears at virtual row `v`
     ///   (1-based so that 0 is unambiguously the halo).
     /// * Addresses **absent** from this instance are forward-filled: the slot
     ///   for a missing address inherits the value of the *next* present
@@ -402,7 +473,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     #[allow(clippy::too_many_arguments)]
     fn compute_witness_with_offsets_inner<R: InputDataTraceRowOps<F>>(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
@@ -411,12 +482,19 @@ impl<F: PrimeField64> InputDataSM<F> {
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace = InputDataTrace::<R>::new_from_vec(trace_buffer)?;
 
-        let num_rows = InputDataTrace::<R>::NUM_ROWS;
+        let lanes = lanes_of::<F, R>();
+        let num_slots = lanes.slots(InputDataTrace::<R>::NUM_ROWS);
         debug_assert!(
-            !mem_ops.is_empty() && mem_ops.len() <= num_rows,
+            !mem_ops.is_empty() && mem_ops.len() <= num_slots,
             "InputDataSM: mem_ops.len()={} out of range {}",
             mem_ops.len(),
-            num_rows
+            num_slots
+        );
+
+        // `current_offsets` packs a 1-based virtual row plus a flag bit in a u32.
+        debug_assert!(
+            num_slots < OFFSET_USE_FLAG as usize,
+            "InputDataSM: {num_slots} virtual rows do not fit in OFFSET_VALUE_MASK"
         );
 
         let mut current_offsets = vec![0u32; seg.addr_range_slots as usize];
@@ -424,7 +502,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         let mut range_check_cache = vec![0u32; MAX_RANGE_CHECK_CACHE];
 
         #[cfg(feature = "debug_mem")]
-        let mut filled_rows = vec![false; trace.num_rows()];
+        let mut filled_slots = vec![false; num_slots];
         let offset_base_addr_w = seg.offsets_base_addr >> 3;
 
         // first address == halo
@@ -438,7 +516,9 @@ impl<F: PrimeField64> InputDataSM<F> {
             let addr_index = (mem_op.addr - offset_base_addr_w) as usize;
             let addr_changes = current_offsets[addr_index] == 0;
 
-            let irow = if addr_changes {
+            // `islot` is a virtual row: the offsets table is expressed in these units, so the
+            // physical row and the lane inside it come from `lanes.split(islot)`.
+            let islot = if addr_changes {
                 let offset = seg.offset_at(addr_index as u32);
                 current_offsets[addr_index] = offset | OFFSET_USE_FLAG;
                 offset as usize - 1
@@ -447,17 +527,18 @@ impl<F: PrimeField64> InputDataSM<F> {
                 current_offsets[addr_index] = offset + 1;
                 (offset & OFFSET_VALUE_MASK) as usize
             };
+            let (row, lane) = lanes.split(islot);
             #[cfg(feature = "debug_mem")]
             {
-                assert!(!filled_rows[irow],"InputDataSM: overwiting non empty row {irow} at index {index} for mem_op with addr 0x{:X} => 0x{:X} step:{} => {}",
-                    trace[irow].get_addr() * 8, mem_op.addr * 8, trace[irow].get_step(), mem_op.step);
-                filled_rows[irow] = true;
+                assert!(!filled_slots[islot],"InputDataSM: overwriting non empty slot {islot} at index {index} for mem_op with addr 0x{:X} => 0x{:X} step:{} => {}",
+                    trace[row].get_addr(lane) * 8, mem_op.addr * 8, trace[row].get_step(lane), mem_op.step);
+                filled_slots[islot] = true;
             }
 
-            trace[irow].set_addr(mem_op.addr);
-            trace[irow].set_step(mem_op.step);
-            trace[irow].set_sel(true);
-            trace[irow].set_is_free_read(mem_op.addr == INPUT_DATA_W_ADDR_INIT);
+            trace[row].set_addr(lane, mem_op.addr);
+            trace[row].set_step(lane, mem_op.step);
+            trace[row].set_sel(lane, true);
+            trace[row].set_is_free_read(lane, mem_op.addr == INPUT_DATA_W_ADDR_INIT);
 
             let value_words = self.get_u16_values(mem_op.value);
 
@@ -465,13 +546,13 @@ impl<F: PrimeField64> InputDataSM<F> {
             range_16bits[value_words[1] as usize] += 1;
             range_16bits[value_words[2] as usize] += 1;
             range_16bits[value_words[3] as usize] += 1;
-            trace[irow].set_value_word(0, value_words[0]);
-            trace[irow].set_value_word(1, value_words[1]);
-            trace[irow].set_value_word(2, value_words[2]);
-            trace[irow].set_value_word(3, value_words[3]);
+            trace[row].set_value_word(lane, 0, value_words[0]);
+            trace[row].set_value_word(lane, 1, value_words[1]);
+            trace[row].set_value_word(lane, 2, value_words[2]);
+            trace[row].set_value_word(lane, 3, value_words[3]);
 
             if addr_changes {
-                trace[irow].set_addr_changes(true);
+                trace[row].set_addr_changes(lane, true);
                 let previous_addr = seg
                     .previous_change_addr_w(addr_index as u32)
                     .unwrap_or(previous_segment.addr as u64);
@@ -482,50 +563,75 @@ impl<F: PrimeField64> InputDataSM<F> {
                     self.std.range_check_one(self.range_id, distance);
                 }
             } else {
-                trace[irow].set_addr_changes(false);
+                trace[row].set_addr_changes(lane, false);
             }
         }
 
-        // STEP3. Add dummy rows to the output vector to fill the remaining rows
+        // STEP3. Add dummy lanes to the output vector to fill the remaining virtual rows
         //PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0
         let count = mem_ops.len();
-        let last_row = trace[count - 1];
+        let (last_row, last_lane) = lanes.split(count - 1);
 
         #[cfg(feature = "debug_mem")]
         {
-            let mut prev_filled_row = filled_rows[0];
-            let mut from_row = 0;
-            let _count = if is_last_segment { count } else { trace.num_rows() };
-            for (i, &filled_row) in filled_rows.iter().enumerate().take(_count) {
+            let mut prev_filled_slot = filled_slots[0];
+            let mut from_slot = 0;
+            let _count = if is_last_segment { count } else { num_slots };
+            for (i, &filled_slot) in filled_slots.iter().enumerate().take(_count) {
                 debug_assert!(
-                    filled_row == prev_filled_row,
+                    filled_slot == prev_filled_slot,
                     "InputDataSM: not complete instance found [{}..{}] = {}",
-                    from_row,
+                    from_slot,
                     i - 1,
-                    prev_filled_row
+                    prev_filled_slot
                 );
             }
         }
-        let last_addr = last_row.get_addr();
+        let last_addr = trace[last_row].get_addr(last_lane);
+        let last_step = trace[last_row].get_step(last_lane);
         let is_free_read = last_addr == INPUT_DATA_W_ADDR_INIT;
 
-        let padding_size = num_rows - count;
-        if padding_size > 0 {
-            trace[count] = last_row;
-            trace[count].set_sel(false);
-            trace[count].set_is_free_read(is_free_read);
-            trace[count].set_addr_changes(false);
+        let value_0 = trace[last_row].get_value_word(last_lane, 0);
+        let value_1 = trace[last_row].get_value_word(last_lane, 1);
+        let value_2 = trace[last_row].get_value_word(last_lane, 2);
+        let value_3 = trace[last_row].get_value_word(last_lane, 3);
 
-            for i in count + 1..num_rows {
-                trace[i] = trace[i - 1];
+        let padding_size = num_slots - count;
+        // Every padding lane holds the same values (the address does not change in them, so no
+        // range check is required either), so only the row the last operation shares with the
+        // padding is written lane by lane; the whole rows after it are one built row copied over
+        // them in parallel, which is a row-sized move instead of a setter per column.
+        if count < num_slots {
+            let value_words = [value_0, value_1, value_2, value_3];
+            let lanes_x_row = lanes.lanes();
+            let partial_end = count.next_multiple_of(lanes_x_row).min(num_slots);
+            for islot in count..partial_end {
+                let (row, lane) = lanes.split(islot);
+                set_input_data_padding_lane::<F, R>(
+                    &mut trace[row],
+                    lane,
+                    last_addr,
+                    last_step,
+                    is_free_read,
+                    &value_words,
+                );
             }
-            // address doesn't change in padding rows, no range check is required
+            let from_row = partial_end / lanes_x_row;
+            if from_row < InputDataTrace::<R>::NUM_ROWS {
+                let mut pad_row = R::default();
+                for lane in 0..lanes_x_row {
+                    set_input_data_padding_lane::<F, R>(
+                        &mut pad_row,
+                        lane,
+                        last_addr,
+                        last_step,
+                        is_free_read,
+                        &value_words,
+                    );
+                }
+                trace.buffer[from_row..].par_iter_mut().for_each(|row| *row = pad_row);
+            }
         }
-
-        let value_0 = last_row.get_value_word(0);
-        let value_1 = last_row.get_value_word(1);
-        let value_2 = last_row.get_value_word(2);
-        let value_3 = last_row.get_value_word(3);
 
         range_16bits[value_0 as usize] += padding_size as u32;
         range_16bits[value_1 as usize] += padding_size as u32;
@@ -540,8 +646,8 @@ impl<F: PrimeField64> InputDataSM<F> {
         air_values.is_last_segment = F::from_bool(is_last_segment);
         air_values.previous_segment_step = F::from_u64(previous_segment.step);
         air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
-        air_values.segment_last_addr = F::from_u32(last_row.get_addr());
-        air_values.segment_last_step = F::from_u64(last_row.get_step());
+        air_values.segment_last_addr = F::from_u32(last_addr);
+        air_values.segment_last_step = F::from_u64(last_step);
 
         air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
         air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
@@ -606,7 +712,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
     #[inline(always)]
     fn compute_witness(
         &self,
-        mem_ops: &[MemInput],
+        mem_ops: MemOps<'_>,
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,

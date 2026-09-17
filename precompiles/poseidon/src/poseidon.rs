@@ -7,11 +7,11 @@ use proofman_fields::{
 use rayon::prelude::*;
 
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::{OperationPoseidonData, OP};
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::{PoseidonTrace, PoseidonTraceRow, PoseidonTraceRowOps};
+use zisk_pil::{PoseidonTraceRowOps, ZISK_AIRGROUP_ID};
 
 /// Per-operation input record assembled from the bus payload.
 ///
@@ -41,13 +41,13 @@ impl PoseidonInput {
 
 /// The `PoseidonSM` struct encapsulates the logic of the Poseidon State Machine,
 /// serving both the Poseidon1 and Poseidon2 hash families.
+/// Nothing here depends on the height of the air: the capacity is taken from the trace each call
+/// builds, so a taller sibling would need no change.
 pub struct PoseidonSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
 
     /// Number of available poseidon permutations in the trace.
-    pub num_available_poseidons: usize,
-
     range_id: usize,
 }
 
@@ -57,11 +57,10 @@ impl<F: PrimeField64> PoseidonSM<F> {
     /// Creates a new Poseidon State Machine instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_poseidons = PoseidonTrace::<PoseidonTraceRow<F>>::NUM_ROWS / CLOCKS - 1;
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
 
-        Arc::new(Self { std, num_available_poseidons, range_id })
+        Arc::new(Self { std, range_id })
     }
 
     /// Processes a slice of operation data, updating the trace and multiplicities.
@@ -312,15 +311,27 @@ impl<F: PrimeField64> PoseidonSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: PoseidonTraceRowOps<F>>(
+    /// The air is selected by the `NUM_ROWS` / `AIR_ID` consts of the trace this builds, so one
+    /// body serves every height the air is instantiated at.
+    pub fn compute_witness<
+        R: PoseidonTraceRowOps<F>,
+        const NUM_ROWS: usize,
+        const AIR_ID: usize,
+    >(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<PoseidonInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut poseidon2_trace = PoseidonTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
+        let mut poseidon2_trace =
+            GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec_zeroes(
+                trace_buffer,
+            )?;
         let num_rows = poseidon2_trace.num_rows();
-        let num_available_poseidons = self.num_available_poseidons;
+        // Capacity of the air this call builds, taken from `NUM_ROWS`: deriving it from a
+        // fixed trace alias instead is what breaks the moment the air gains a taller
+        // sibling, since the instance would be measured against the short air's capacity.
+        let num_available_poseidons = NUM_ROWS / CLOCKS - 1;
 
         // Check that we can fit all the poseidons in the trace
         let num_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
@@ -331,7 +342,7 @@ impl<F: PrimeField64> PoseidonSM<F> {
         } else {
             panic!(
                 "Exceeded available Poseidon inputs: requested {}, but only {} are available.",
-                num_inputs, self.num_available_poseidons
+                num_inputs, num_available_poseidons
             );
         };
 

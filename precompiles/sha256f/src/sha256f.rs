@@ -5,10 +5,10 @@ use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::OperationSha256Data;
-use zisk_pil::{Sha256fTrace, Sha256fTraceRow, Sha256fTraceRowOps};
+use zisk_pil::{Sha256fTraceRowOps, ZISK_AIRGROUP_ID};
 
 use super::sha256f_constants::*;
 
@@ -37,14 +37,13 @@ impl Sha256fInput {
 }
 
 /// The `Sha256fSM` struct encapsulates the logic of the Sha256f State Machine.
+/// Nothing here depends on the height of the air: the capacity is taken from the trace each call
+/// builds, so a taller sibling would need no change.
 pub struct Sha256fSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
 
     /// Number of available sha256fs in the trace.
-    pub num_available_sha256fs: usize,
-
-    num_non_usable_rows: usize,
 
     /// Range checks ID's
     a_range_id: usize,
@@ -58,13 +57,11 @@ impl<F: PrimeField64> Sha256fSM<F> {
     /// A new `Sha256fSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_sha256fs = Sha256fTrace::<Sha256fTraceRow<F>>::NUM_ROWS / CLOCKS - 1;
-        let num_non_usable_rows = Sha256fTrace::<Sha256fTraceRow<F>>::NUM_ROWS % CLOCKS;
 
         let a_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
         let e_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
 
-        Arc::new(Self { std, num_available_sha256fs, num_non_usable_rows, a_range_id, e_range_id })
+        Arc::new(Self { std, a_range_id, e_range_id })
     }
 
     /// Processes a slice of operation data, updating the trace and multiplicities.
@@ -362,15 +359,24 @@ impl<F: PrimeField64> Sha256fSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: Sha256fTraceRowOps<F>>(
+    /// The air is selected by the `NUM_ROWS` / `AIR_ID` consts of the trace this builds, so one
+    /// body serves every height the air is instantiated at.
+    pub fn compute_witness<R: Sha256fTraceRowOps<F>, const NUM_ROWS: usize, const AIR_ID: usize>(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<Sha256fInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut sha256f_trace = Sha256fTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
+        let mut sha256f_trace =
+            GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec_zeroes(
+                trace_buffer,
+            )?;
         let num_rows = sha256f_trace.num_rows();
-        let num_available_sha256fs = self.num_available_sha256fs;
+        // Capacity of the air this call builds, taken from `NUM_ROWS`: deriving it from a
+        // fixed trace alias instead is what breaks the moment the air gains a taller
+        // sibling, since the instance would be measured against the short air's capacity.
+        let num_available_sha256fs = NUM_ROWS / CLOCKS - 1;
+        let num_non_usable_rows = NUM_ROWS % CLOCKS;
 
         let mut a_range_checks = vec![0; 1 << 3];
         let mut e_range_checks = vec![0; 1 << 3];
@@ -385,7 +391,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         } else {
             panic!(
                 "Exceeded available Sha256fs inputs: requested {}, but only {} are available.",
-                num_inputs, self.num_available_sha256fs
+                num_inputs, num_available_sha256fs
             );
         };
 
@@ -474,7 +480,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         const CLOCKS_OP: usize = CLOCKS_LOAD_STATE + CLOCKS_LOAD_INPUT + CLOCKS_MIXING;
         // The last (CLOCKS + NUM_NON_USABLE_ROWS) have CLK_0 desactivated, so
         // a trace full of zeroes passes the constraints
-        sha256f_trace.buffer[num_rows_filled..(num_rows - self.num_non_usable_rows - CLOCKS)]
+        sha256f_trace.buffer[num_rows_filled..(num_rows - num_non_usable_rows - CLOCKS)]
             .par_iter_mut()
             .enumerate()
             .for_each(|(elem, row)| {
@@ -492,7 +498,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         let count_zeros = (num_available_sha256fs - num_inputs)
             * (CLOCKS_LOAD_STATE + CLOCKS_WRITE_STATE)
             + CLOCKS
-            + self.num_non_usable_rows;
+            + num_non_usable_rows;
         a_range_checks[0] += count_zeros as u32;
         e_range_checks[0] += count_zeros as u32;
 

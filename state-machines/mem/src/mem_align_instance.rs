@@ -8,7 +8,13 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{MemAlignTraceRow, MemAlignTraceRowPacked};
+use zisk_pil::{MemAlignLargeTrace, MemAlignTrace, MemAlignTraceRow, MemAlignTraceRowPacked};
+
+/// Height and air id of each `MemAlign` air, as const-generic arguments for the witness computation.
+const ROWS: usize = MemAlignTrace::<()>::NUM_ROWS;
+const AIR_ID: usize = MemAlignTrace::<()>::AIR_ID;
+const LARGE_ROWS: usize = MemAlignLargeTrace::<()>::NUM_ROWS;
+const LARGE_AIR_ID: usize = MemAlignLargeTrace::<()>::AIR_ID;
 
 pub struct MemAlignInstance<F: PrimeField64> {
     /// Instance context
@@ -29,6 +35,12 @@ impl<F: PrimeField64> MemAlignInstance<F> {
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { ictx, checkpoint, mem_align_sm }
+    }
+
+    /// `true` when this instance is the tall air. The two commit the same columns, so this only
+    /// picks the height and air id the trace is built with.
+    fn is_large(&self) -> bool {
+        self.ictx.plan.air_id == LARGE_AIR_ID
     }
 
     pub fn build_mem_align_collector(&self, chunk_id: ChunkId) -> MemAlignCollector {
@@ -56,19 +68,31 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
                 collector.inputs
             })
             .collect();
-        if packed {
-            Ok(Some(self.mem_align_sm.compute_witness::<MemAlignTraceRowPacked<F>>(
+        let sm = &self.mem_align_sm;
+        let used_rows = total_rows as usize;
+        Ok(Some(match (self.is_large(), packed) {
+            (false, true) => sm.compute_witness::<MemAlignTraceRowPacked<F>, ROWS, AIR_ID>(
                 &inputs,
-                total_rows as usize,
+                used_rows,
                 trace_buffer,
-            )?))
-        } else {
-            Ok(Some(self.mem_align_sm.compute_witness::<MemAlignTraceRow<F>>(
+            )?,
+            (false, false) => sm.compute_witness::<MemAlignTraceRow<F>, ROWS, AIR_ID>(
                 &inputs,
-                total_rows as usize,
+                used_rows,
                 trace_buffer,
-            )?))
-        }
+            )?,
+            (true, true) => sm
+                .compute_witness::<MemAlignTraceRowPacked<F>, LARGE_ROWS, LARGE_AIR_ID>(
+                    &inputs,
+                    used_rows,
+                    trace_buffer,
+                )?,
+            (true, false) => sm.compute_witness::<MemAlignTraceRow<F>, LARGE_ROWS, LARGE_AIR_ID>(
+                &inputs,
+                used_rows,
+                trace_buffer,
+            )?,
+        }))
     }
 
     fn check_point(&self) -> &CheckPoint {
