@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Start the ZisK test container with systemd support and wait for the
-# in-container Docker daemon to be ready.
+# Start the ZisK test container with systemd support.
+#
+# The container runs unprivileged: systemd only needs CAP_SYS_ADMIN, a private
+# cgroup namespace (cgroup v2) and relaxed seccomp/AppArmor profiles.
 #
 # The container name is read from the TEST_CONTAINER environment variable.
 # The image can be overridden with the IMAGE environment variable.
@@ -31,17 +33,28 @@ fi
 
 docker rm -f "${TEST_CONTAINER}" || true
 
+# systemd as PID 1 requires cgroup v2 on the host.
+if [[ "$(stat -fc %T /sys/fs/cgroup 2>/dev/null)" != "cgroup2fs" ]]; then
+    echo "ERROR: host is not running cgroup v2; systemd cannot run in an unprivileged container" >&2
+    exit 1
+fi
+
 docker run -d \
     --name "${TEST_CONTAINER}" \
     --pull=always \
-    --privileged \
-    --cgroupns=host \
+    --cgroupns=private \
+    --cap-add SYS_ADMIN \
+    --security-opt seccomp=unconfined \
+    --security-opt apparmor=unconfined \
+    --tmpfs /run \
+    --tmpfs /run/lock \
+    --tmpfs /tmp \
     "${GPU_ARGS[@]}" \
     --shm-size=48g \
-    -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
     -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \
     -v /home/gha/cache-setup:/home/ziskuser/output:rw \
     -e ZISK_GHA=1 \
+    -e ZISK_CI_NO_DOCKER_REBUILD=1 \
     -e ZISK_REPO_DIR=/workspace/zisk \
     -e WORKSPACE_DIR=/workspace \
     -e PROVE_FLAGS=-y \
@@ -65,25 +78,30 @@ fi
 # so the build scripts can clone/build the sibling repos (zisk-ethproofs, zisk-eth-client) there.
 docker exec "${TEST_CONTAINER}" chown ziskuser:ziskuser /workspace
 
+# The in-container Docker daemon is unused and cannot start unprivileged; mask it.
+docker exec "${TEST_CONTAINER}" bash -lc '
+    systemctl mask --now docker.service docker.socket containerd.service 2>/dev/null || true
+'
+
 docker exec "${TEST_CONTAINER}" bash -lc '
     echo "PID 1:"
     ps -p 1 -o pid,comm,args
     systemctl is-system-running || true
 '
 
-# Wait for the in-container Docker daemon (started by systemd) to be ready.
-# lib-float/build.rs invokes `docker` early in the build, so it must be up
-# before the "Build ZisK" step runs.
-echo "Waiting for in-container Docker daemon..."
+# Fail fast if systemd did not come up.
+echo "Waiting for systemd to settle..."
 for i in $(seq 1 30); do
-    if docker exec -u ziskuser "${TEST_CONTAINER}" docker info >/dev/null 2>&1; then
-        echo "Docker daemon is ready."
+    state=$(docker exec "${TEST_CONTAINER}" systemctl is-system-running 2>/dev/null || true)
+    # "degraded" (some unit failed) still leaves systemd fully operational.
+    if [[ "$state" == "running" || "$state" == "degraded" ]]; then
+        echo "systemd is ready (state: $state)."
         break
     fi
     if [ "$i" -eq 30 ]; then
-        echo "Docker daemon did not become ready in time"
-        docker exec "${TEST_CONTAINER}" systemctl status docker.service --no-pager || true
-        docker exec "${TEST_CONTAINER}" journalctl -u docker.service --no-pager -n 50 || true
+        echo "systemd did not become ready in time (state: ${state:-unknown})"
+        docker exec "${TEST_CONTAINER}" systemctl --failed --no-pager || true
+        docker exec "${TEST_CONTAINER}" journalctl --no-pager -n 50 || true
         exit 1
     fi
     sleep 2
