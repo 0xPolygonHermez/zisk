@@ -6,6 +6,7 @@ pub const ARITH_EQ_384_BITS: usize = 384;
 pub const ARITH_EQ_384_U64S: usize = ARITH_EQ_384_BITS / 64;
 pub const ARITH_EQ_384_U64S_DOUBLE: usize = ARITH_EQ_384_U64S * 2;
 pub const ARITH_EQ_384_ROWS_BY_OP: usize = 24;
+
 pub const ARITH_EQ_384_CHUNKS: usize = ARITH_EQ_384_ROWS_BY_OP;
 pub const ARITH_EQ_384_CHUNKS_DOUBLE: usize = ARITH_EQ_384_CHUNKS * 2;
 pub const ARITH_EQ_384_CHUNK_BITS: usize = ARITH_EQ_384_BITS / ARITH_EQ_384_CHUNKS;
@@ -14,6 +15,17 @@ pub const ARITH_EQ_384_CHUNK_MAX: usize = ARITH_EQ_384_CHUNK_SIZE - 1;
 pub const ARITH_EQ_384_Q_HSC_MAX: i64 = (1 << 22) - 1;
 pub const ARITH_EQ_384_CARRY_MIN: i64 = -((1 << 22) - 1);
 pub const ARITH_EQ_384_CARRY_MAX: i64 = 1 << 22;
+
+/// Operations one instance of an air `num_rows` tall holds.
+///
+/// The air comes in two heights, so this is the one definition both sides must agree on: the planner
+/// sizes the instances with it and the witness computation checks its inputs against it. Deriving
+/// either from a fixed height instead is what lets a tall instance be handed more operations than it
+/// believes it can hold.
+pub const fn arith_eq_384_ops_per_instance(num_rows: usize) -> usize {
+    num_rows / ARITH_EQ_384_ROWS_BY_OP
+}
+
 pub const ARITH_EQ_384_OP_NUM: usize = 6;
 pub const ARITH_EQ_384_MAX_CEQS: usize = 3;
 

@@ -30,6 +30,9 @@ rayon = { workspace = true }
 env = { workspace = true }
 
 [features]
+# Per-phase timings inside the witness computation, at `info`. Off by default: see
+# `zisk_common::witness_timers`.
+witness_timers = []
 default = []
 debug_mem = ["zisk-sm-mem-common/debug_mem"]
 debug_mem_align = []
