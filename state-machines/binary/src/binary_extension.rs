@@ -767,11 +767,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         //
         // The table multiplicities are tallied into one histogram per task and handed to `std`
         // afterwards: one lookup per byte is far too many to take the shared atomic path.
-        let _report = crate::FillReport {
-            name: "BinaryExt",
-            inputs: total_inputs,
-            started: std::time::Instant::now(),
-        };
         let tally = fill_slots_and_tally(
             &mut R::trace_buffer_mut(&mut binary_e_trace)[..rows_used],
             inputs,

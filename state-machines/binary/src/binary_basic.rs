@@ -1116,11 +1116,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         //
         // The table multiplicities are tallied into one histogram per task and handed to `std`
         // afterwards: one lookup per byte is far too many to take the shared atomic path.
-        let _report = crate::FillReport {
-            name: "BinaryBasic",
-            inputs: total_inputs,
-            started: std::time::Instant::now(),
-        };
         let rows_used = lanes.rows_for(total_inputs);
         let tally = fill_slots_and_tally(
             &mut R::trace_buffer_mut(&mut trace)[..rows_used],
