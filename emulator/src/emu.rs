@@ -2916,11 +2916,11 @@ impl<'a> Emu<'a> {
             // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
             // of the copyb, use to get free-input information
             trace.set_op(
-                if inst.op == ZiskOp::Fcall.code()
-                    || inst.op == ZiskOp::FcallGet.code()
-                    || inst.op == ZiskOp::FcallParam.code()
+                if inst.op == ZiskOp::FCALL
+                    || inst.op == ZiskOp::FCALL_GET
+                    || inst.op == ZiskOp::FCALL_PARAM
                 {
-                    ZiskOp::CopyB.code()
+                    ZiskOp::COPYB
                 } else {
                     inst.op
                 },
@@ -2982,11 +2982,11 @@ impl<'a> Emu<'a> {
             } else {
                 F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
             };
-            let op = if inst.op == ZiskOp::Fcall.code()
-                || inst.op == ZiskOp::FcallGet.code()
-                || inst.op == ZiskOp::FcallParam.code()
+            let op = if inst.op == ZiskOp::FCALL
+                || inst.op == ZiskOp::FCALL_GET
+                || inst.op == ZiskOp::FCALL_PARAM
             {
-                ZiskOp::CopyB.code()
+                ZiskOp::COPYB
             } else {
                 inst.op
             };

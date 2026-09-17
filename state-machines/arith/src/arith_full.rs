@@ -18,7 +18,7 @@ use rayon::prelude::*;
 use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::{ArithAirValues, ArithTrace, ArithTraceRowOps};
-use zisk_sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
+use zisk_sm_binary::{GT_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 
 const CHUNK_SIZE: u64 = 0x10000;
 const EXTENSION: u64 = 0xFFFFFFFF;
@@ -136,7 +136,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
             // also has to match a table entry. Derive it from a real ArithOperation rather than
             // hand-writing the columns: an all-zero row only worked while the all-FULL range id
             // happened to be 0, and hardcoded flags would have to be kept in sync with the table.
-            let padding_opcode = ZiskOp::Mulu.code();
+            let padding_opcode = ZiskOp::MULU;
             let mut pad = ArithOperation::new();
             pad.calculate(padding_opcode, 0, 0);
 
@@ -229,7 +229,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         // to check that the remainer is lower than the divisor
         if aop.div && !aop.div_by_zero {
             let opcode = match (aop.nr, aop.nb) {
-                (false, false) => LTU_OP,
+                (false, false) => ZiskOp::LTU,
                 (false, true) => LT_ABS_PN_OP,
                 (true, false) => LT_ABS_NP_OP,
                 (true, true) => GT_OP,
