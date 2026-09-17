@@ -63,7 +63,7 @@ docker run -d -t \
     -e PROVE_FLAGS=-y \
     -e TERM=xterm \
     "${IMAGE}" \
-    /bin/bash -c 'if [ ! -w /sys/fs/cgroup ]; then mount -t cgroup2 cgroup2 /sys/fs/cgroup; fi; exec /sbin/init'
+    /bin/bash -c 'if [ ! -w /sys/fs/cgroup ]; then mount -o remount,bind,rw /sys/fs/cgroup || mount -o remount,rw /sys/fs/cgroup; fi; exec /sbin/init'
 
 sleep 3
 
