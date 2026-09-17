@@ -13,7 +13,17 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{BinaryAddHiTrace, BinaryAddHiTraceRow, BinaryAddHiTraceRowPacked};
+use zisk_pil::{
+    BinaryAddHiHugeTrace, BinaryAddHiHugeTraceRow, BinaryAddHiHugeTraceRowPacked,
+    BinaryAddHiLargeTrace, BinaryAddHiLargeTraceRow, BinaryAddHiLargeTraceRowPacked,
+    BinaryAddHiTrace, BinaryAddHiTraceRow, BinaryAddHiTraceRowPacked,
+};
+
+/// Air id of each `BinaryAddHi` air. Each packs a different number of operations per row, so each
+/// has its own row type.
+const AIR_ID: usize = BinaryAddHiTrace::<()>::AIR_ID;
+const LARGE_AIR_ID: usize = BinaryAddHiLargeTrace::<()>::AIR_ID;
+const HUGE_AIR_ID: usize = BinaryAddHiHugeTrace::<()>::AIR_ID;
 
 /// The `BinaryAddHiInstance` struct represents an instance for packed add witness computations.
 ///
@@ -25,7 +35,7 @@ pub struct BinaryAddHiInstance<F: PrimeField64> {
 
     /// What this instance takes from each chunk: a `(count, skip)` per kind of operation, plus the
     /// frequent operations it accounts for. The counts are in operations, not rows, since one row
-    /// holds ADDS_X_ROW of them.
+    /// holds LANES_X_ROW of them.
     collect_info: HashMap<ChunkId, ChunkCollect<ADD_KINDS>>,
 
     /// Instance context.
@@ -49,9 +59,8 @@ impl<F: PrimeField64> BinaryAddHiInstance<F> {
         mut ictx: InstanceCtx,
         std: Arc<Std<F>>,
     ) -> Self {
-        assert_eq!(
-            ictx.plan.air_id,
-            BinaryAddHiTrace::<()>::AIR_ID,
+        assert!(
+            matches!(ictx.plan.air_id, AIR_ID | LARGE_AIR_ID | HUGE_AIR_ID),
             "BinaryAddHiInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -63,6 +72,12 @@ impl<F: PrimeField64> BinaryAddHiInstance<F> {
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { binary_add_hi_sm, collect_info, ictx, std }
+    }
+
+    /// Which of the three `BinaryAddHi` airs this instance is. They pack a different number of
+    /// operations per row, so this picks the row type the trace is built with.
+    fn air_id(&self) -> usize {
+        self.ictx.plan.air_id
     }
 
     pub fn build_binary_add_hi_collector(&self, chunk_id: ChunkId) -> BinaryAddHiCollector<F> {
@@ -99,16 +114,38 @@ impl<F: PrimeField64> Instance<F> for BinaryAddHiInstance<F> {
             })
             .collect();
 
-        if packed {
-            Ok(Some(
+        // The two airs pack a different number of additions per row, so they have distinct row
+        // types; the trace type selects both the row layout and the air the instance belongs to.
+        match (self.air_id(), packed) {
+            (AIR_ID, true) => Ok(Some(
                 self.binary_add_hi_sm
-                    .compute_witness::<BinaryAddHiTraceRowPacked<F>>(&inputs, trace_buffer)?,
-            ))
-        } else {
-            Ok(Some(
+                    .compute_witness::<_, BinaryAddHiTraceRowPacked<F>>(&inputs, trace_buffer)?,
+            )),
+            (AIR_ID, false) => Ok(Some(
                 self.binary_add_hi_sm
-                    .compute_witness::<BinaryAddHiTraceRow<F>>(&inputs, trace_buffer)?,
-            ))
+                    .compute_witness::<_, BinaryAddHiTraceRow<F>>(&inputs, trace_buffer)?,
+            )),
+            (LARGE_AIR_ID, true) => Ok(Some(
+                self.binary_add_hi_sm.compute_witness::<_, BinaryAddHiLargeTraceRowPacked<F>>(
+                    &inputs,
+                    trace_buffer,
+                )?,
+            )),
+            (LARGE_AIR_ID, false) => Ok(Some(
+                self.binary_add_hi_sm
+                    .compute_witness::<_, BinaryAddHiLargeTraceRow<F>>(&inputs, trace_buffer)?,
+            )),
+            (HUGE_AIR_ID, true) => Ok(Some(
+                self.binary_add_hi_sm.compute_witness::<_, BinaryAddHiHugeTraceRowPacked<F>>(
+                    &inputs,
+                    trace_buffer,
+                )?,
+            )),
+            (HUGE_AIR_ID, false) => Ok(Some(
+                self.binary_add_hi_sm
+                    .compute_witness::<_, BinaryAddHiHugeTraceRow<F>>(&inputs, trace_buffer)?,
+            )),
+            (air_id, _) => panic!("BinaryAddHiInstance: Unsupported air_id: {air_id:?}"),
         }
     }
 

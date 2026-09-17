@@ -10,32 +10,32 @@ use crate::binary_constants::*;
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[repr(u16)]
 pub enum BinaryBasicTableOp {
-    Minu = MINU_OP as u16,
-    Min = MIN_OP as u16,
-    Maxu = MAXU_OP as u16,
-    Max = MAX_OP as u16,
+    Minu = ZiskOp::MINU as u16,
+    Min = ZiskOp::MIN as u16,
+    Maxu = ZiskOp::MAXU as u16,
+    Max = ZiskOp::MAX as u16,
     LtAbsNP = LT_ABS_NP_OP as u16,
     LtAbsPN = LT_ABS_PN_OP as u16,
-    Ltu = LTU_OP as u16,
-    Lt = LT_OP as u16,
+    Ltu = ZiskOp::LTU as u16,
+    Lt = ZiskOp::LT as u16,
     Gt = GT_OP as u16,
-    Eq = EQ_OP as u16,
-    Add = ADD_OP as u16,
-    Sub = SUB_OP as u16,
-    Leu = LEU_OP as u16,
-    Le = LE_OP as u16,
-    And = AND_OP as u16,
-    Or = OR_OP as u16,
-    Xor = XOR_OP as u16,
+    Eq = ZiskOp::EQ as u16,
+    Add = ZiskOp::ADD as u16,
+    Sub = ZiskOp::SUB as u16,
+    Leu = ZiskOp::LEU as u16,
+    Le = ZiskOp::LE as u16,
+    And = ZiskOp::AND as u16,
+    Or = ZiskOp::OR as u16,
+    Xor = ZiskOp::XOR as u16,
     Sext00 = 0x200,
     SextFF = 0x201,
-    Andn = ZiskOp::Andn.code() as u16,
-    Orn = ZiskOp::Orn.code() as u16,
-    Xnor = ZiskOp::Xnor.code() as u16,
-    Brev8 = ZiskOp::Brev8.code() as u16,
-    Sh1add = SH1ADD_OP as u16,
-    Sh2add = SH2ADD_OP as u16,
-    Sh3add = SH3ADD_OP as u16,
+    Andn = ZiskOp::ANDN as u16,
+    Orn = ZiskOp::ORN as u16,
+    Xnor = ZiskOp::XNOR as u16,
+    Brev8 = ZiskOp::BREV8 as u16,
+    Sh1add = ZiskOp::SH1ADD as u16,
+    Sh2add = ZiskOp::SH2ADD as u16,
+    Sh3add = ZiskOp::SH3ADD as u16,
 }
 
 impl BinaryBasicTableOp {
@@ -59,6 +59,13 @@ pub struct BinaryBasicTableSM;
 
 impl BinaryBasicTableSM {
     pub const TABLE_ID: usize = 125;
+
+    /// Rows the table has, i.e. `BINARY_TABLE_SIZE` in `binary_table.pil`.
+    ///
+    /// The witness needs it to size the histogram it tallies the multiplicities into, so it cannot
+    /// live in the tests alone. `tests::table_regions_tile_the_whole_table` is what keeps it in step
+    /// with the PIL: the per-opcode regions must add up to exactly this.
+    pub const TABLE_ROWS: u64 = 8_781_824;
 
     /// Calculates the table row offset based on the provided parameters.
     ///
@@ -278,7 +285,7 @@ mod tests {
     ];
 
     /// MUST match `BINARY_TABLE_SIZE` in `binary_table.pil`.
-    const BINARY_TABLE_SIZE: u64 = 8_781_824;
+    const BINARY_TABLE_SIZE: u64 = BinaryBasicTableSM::TABLE_ROWS;
 
     const SH_ADD_OPS: [(BinaryBasicTableOp, u32); 3] = [
         (BinaryBasicTableOp::Sh1add, 1),

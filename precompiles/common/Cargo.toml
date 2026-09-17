@@ -17,3 +17,5 @@ zisk-sm-mem = { workspace = true }
 zisk-sm-mem-common = { workspace = true }
 
 proofman-fields = { workspace = true }
+pil2-std-lib = { workspace = true }
+rayon = { workspace = true }

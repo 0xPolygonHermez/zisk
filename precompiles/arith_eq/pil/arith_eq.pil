@@ -756,17 +756,17 @@ airtemplate ArithEq (const int N = 2**18, const int equations = EQ_ALL_256) {
             value: mem_value[1]
     );
 
-    const expr bus_op = sel_arith256 * OP_ARITH_256 +
-                        sel_arith256_mod * OP_ARITH_256_MOD +
-                        sel_secp256k1_add * OP_EC_ADD_SECP256K1 +
-                        sel_secp256k1_dbl * OP_EC_DBL_SECP256K1 +
-                        sel_bn254_curve_add * OP_EC_ADD_BN254 +
-                        sel_bn254_curve_dbl * OP_EC_DBL_BN254 +
-                        sel_bn254_complex_add * OP_COMPLEX_ADD_BN254 +
-                        sel_bn254_complex_sub * OP_COMPLEX_SUB_BN254 +
-                        sel_bn254_complex_mul * OP_COMPLEX_MUL_BN254 +
-                        sel_secp256r1_add * OP_EC_ADD_SECP256R1 +
-                        sel_secp256r1_dbl * OP_EC_DBL_SECP256R1;
+    const expr bus_op = sel_arith256 * OP_ARITH256 +
+                        sel_arith256_mod * OP_ARITH256_MOD +
+                        sel_secp256k1_add * OP_SECP256K1_ADD +
+                        sel_secp256k1_dbl * OP_SECP256K1_DBL +
+                        sel_bn254_curve_add * OP_BN254_CURVE_ADD +
+                        sel_bn254_curve_dbl * OP_BN254_CURVE_DBL +
+                        sel_bn254_complex_add * OP_BN254_COMPLEX_ADD +
+                        sel_bn254_complex_sub * OP_BN254_COMPLEX_SUB +
+                        sel_bn254_complex_mul * OP_BN254_COMPLEX_MUL +
+                        sel_secp256r1_add * OP_SECP256R1_ADD +
+                        sel_secp256r1_dbl * OP_SECP256R1_DBL;
 
     proves_operation(op: bus_op, a:[0, 0], b:[step_addr'(ADDR_OP), 0], c:[0, 0], flag:0, 
                      main_step: step_addr'(MAIN_STEP), mul: in_use_clk0);
