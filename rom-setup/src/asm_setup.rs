@@ -184,14 +184,15 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
 
 /// Base filename for a program's ASM artifacts.
 ///
-/// Content-addressed by the ELF hash only — the same ELF always maps to the same
+/// Content-addressed by the ELF hash: the same ELF always maps to the same
 /// artifacts regardless of the program name, so a given hash is generated once.
-fn asm_file_base(hash: &str, hints: bool) -> String {
-    if hints {
-        format!("{hash}-hints")
-    } else {
-        hash.to_string()
-    }
+///
+/// The single definition of this name. `prover-backend` resolves cached artifacts
+/// through [`get_assembly_file_paths_from_id`] rather than rebuilding the name,
+/// so the generator and the resolver cannot disagree about it.
+pub fn asm_file_base(hash: &str, hints: bool) -> String {
+    let hints = if hints { "-hints" } else { "" };
+    format!("{hash}{hints}")
 }
 
 /// Get the paths to all assembly binary files for a given ELF and output path

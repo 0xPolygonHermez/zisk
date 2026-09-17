@@ -10,7 +10,10 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tracing::{debug, error};
 
 use super::services::AsmServices;
-use super::{AsmService, FromResponsePayload, PingRequest, PingResponse, ToRequestPayload};
+use super::{
+    AsmService, FromResponsePayload, PingRequest, PingResponse, ResetRequest, ResetResponse,
+    ToRequestPayload,
+};
 use crate::{
     AsmRunnerOptions, MemoryOperationsRequest, MemoryOperationsResponse, MinimalTraceRequest,
     MinimalTraceResponse, RomHistogramRequest, RomHistogramResponse,
@@ -153,6 +156,10 @@ impl StdioService {
 
     pub(super) fn send_status_request(&self, service: &AsmService) -> Result<PingResponse> {
         self.send_request(service, &PingRequest {})
+    }
+
+    pub(super) fn send_reset_request(&self, service: &AsmService) -> Result<ResetResponse> {
+        self.send_request(service, &ResetRequest {})
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

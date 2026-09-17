@@ -41,8 +41,21 @@ impl InputsShmemWriter {
 
     /// Open the per-service input-availability semaphores for a given program.
     /// Replaces any previously bound semaphores.
+    ///
+    /// Binding also sweeps each semaphore to zero, and the two are one operation
+    /// on purpose: `sem_open` ignores the initial value for a name that already
+    /// exists, so fresh handles alone would inherit whatever count was left on
+    /// the name. Taking ownership of this program's notification channel means
+    /// both, and splitting them leaves a caller able to do half of it.
+    ///
+    /// A leftover count is normal, not a fault. `write_input` posts once per
+    /// service, but the C side only waits when it needs more input bytes, so a
+    /// run whose input was written up front never consumes its post — and it
+    /// purges the semaphore before waiting anyway (`wait_for_input_avail` in
+    /// `c_provided.c`), so it treats the post as a poke rather than a count.
+    /// Sweeping here just keeps the names tidy across program switches.
     pub fn bind_semaphores(&self, sem_prefix: &str) -> Result<()> {
-        let sems = AsmServices::SERVICES
+        let mut sems = AsmServices::SERVICES
             .iter()
             .map(|service| {
                 let name = sem_input_avail_name(sem_prefix, *service);
@@ -50,6 +63,13 @@ impl InputsShmemWriter {
                     .map_err(|e| anyhow::anyhow!("Failed to create semaphore '{}': {}", name, e))
             })
             .collect::<Result<Vec<_>>>()?;
+
+        let swept: u64 = sems.iter_mut().map(crate::drain_semaphore).sum();
+        if swept != 0 {
+            // Expected on a program switch: see this method's docs. Not a warning.
+            tracing::debug!("Swept {swept} unconsumed input_avail post(s) on '{sem_prefix}'");
+        }
+
         *self.sem_avails.lock().unwrap() = Some(sems);
         Ok(())
     }
@@ -111,7 +131,7 @@ impl InputsShmemWriter {
         }
         if let Some(sems) = self.sem_avails.lock().unwrap().as_mut() {
             for sem in sems.iter_mut() {
-                while sem.try_wait().is_ok() {}
+                crate::drain_semaphore(sem);
             }
         }
     }
@@ -164,6 +184,48 @@ mod tests {
     fn unlink_segment(name: &str) {
         let c = CString::new(name).unwrap();
         unsafe { libc::shm_unlink(c.as_ptr()) };
+    }
+
+    /// Binding must not inherit an earlier run's unconsumed `input_avail` post.
+    ///
+    /// The per-job `reset()` drains whatever is bound at the time, which on a
+    /// program switch is the *outgoing* program's set — so without the sweep in
+    /// `bind_semaphores` the incoming program's stale count survives and its
+    /// servers wake on an input nobody wrote.
+    #[test]
+    fn bind_semaphores_sweeps_a_stale_post_from_a_previous_run() {
+        let prefix = format!("ZISK_unittest_stale_{}", std::process::id());
+        let input_seg = shmem_input_name(&prefix);
+        let control_seg = shmem_control_input_name(&prefix);
+        create_segment(&input_seg, MAX_INPUT_SIZE as usize);
+        create_segment(&control_seg, ControlShmem::CONTROL_WRITER_SIZE as usize);
+
+        let control = std::sync::Arc::new(ControlShmem::new(&prefix, true).unwrap());
+        let writer = InputsShmemWriter::new(&prefix, true, control).unwrap();
+
+        let sem_prefix = format!("{prefix}_sems");
+        writer.bind_semaphores(&sem_prefix).unwrap();
+
+        // Stand in for a run aborted between posting an input and its wait.
+        writer.write_input(&[9u8; 8]).unwrap();
+
+        // Re-activation of the same program re-binds the same names.
+        writer.bind_semaphores(&sem_prefix).unwrap();
+
+        // Every service's semaphore must now be at zero.
+        for service in AsmServices::SERVICES.iter() {
+            let name = sem_input_avail_name(&sem_prefix, *service);
+            let mut sem = NamedSemaphore::create(&name, 0).unwrap();
+            assert!(
+                sem.try_wait().is_err(),
+                "{service}: bind_semaphores left a stale input_avail post behind"
+            );
+            let c = CString::new(name).unwrap();
+            unsafe { libc::sem_unlink(c.as_ptr()) };
+        }
+
+        unlink_segment(&input_seg);
+        unlink_segment(&control_seg);
     }
 
     #[test]
