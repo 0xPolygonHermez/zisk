@@ -163,7 +163,9 @@ fn read_flags(r: &mut Reader) -> Result<u32, String> {
     }
     let undefined = flags & !FLAG_DEFINED_MASK;
     if undefined != 0 {
-        return Err(format!("ziskbin: reserved flag bits set (0x{undefined:08x}); f23..f27 are reserved"));
+        return Err(format!(
+            "ziskbin: reserved flag bits set (0x{undefined:08x}); f23..f27 are reserved"
+        ));
     }
     Ok(flags)
 }
