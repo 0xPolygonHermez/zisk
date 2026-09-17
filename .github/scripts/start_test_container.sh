@@ -39,6 +39,8 @@ if [[ "$(stat -fc %T /sys/fs/cgroup 2>/dev/null)" != "cgroup2fs" ]]; then
     exit 1
 fi
 
+# The bash wrapper remounts the container's private cgroup2 subtree rw when
+# Docker mounted it read-only: systemd needs it writable.
 docker run -d -t \
     --name "${TEST_CONTAINER}" \
     --pull=always \
@@ -61,7 +63,7 @@ docker run -d -t \
     -e PROVE_FLAGS=-y \
     -e TERM=xterm \
     "${IMAGE}" \
-    /sbin/init
+    /bin/bash -c 'if [ ! -w /sys/fs/cgroup ]; then mount -t cgroup2 cgroup2 /sys/fs/cgroup; fi; exec /sbin/init'
 
 sleep 3
 
