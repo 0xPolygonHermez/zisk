@@ -22,26 +22,26 @@ full-doubleword ops, 32 for word/sub-word ops (the *_W variants and the sign-ext
     │ SEXT_B │   plain   │  32  │ 0x27 │
     │ SEXT_H │   plain   │  32  │ 0x28 │
     │ SEXT_W │   plain   │  32  │ 0x29 │
-    │  REV8  │   plain   │  64  │ 0x31 │
-    │  PACK  │  combine  │  64  │ 0x36 │
-    │ PACK_H │  combine  │  32  │ 0x37 │
-    │ PACK_W │  combine  │  32  │ 0x38 │
-    │  ROL   │   shift   │  64  │ 0x39 │
-    │ ROL_W  │   shift   │  32  │ 0x3a │
-    │  ROR   │   shift   │  64  │ 0x3b │
-    │ ROR_W  │   shift   │  32  │ 0x3c │
-    │  CLZ   │ chain_rev │  64  │ 0x3d │
-    │ CLZ_W  │ chain_rev │  32  │ 0x3e │
-    │  CTZ   │   chain   │  64  │ 0x3f │
-    │ CTZ_W  │   chain   │  32  │ 0x40 │
-    │  CPOP  │   plain   │  64  │ 0x41 │
-    │ CPOP_W │   plain   │  32  │ 0x42 │
-    │  ORCB  │   plain   │  64  │ 0x43 │
-    │  BCLR  │   shift   │  64  │ 0x44 │
-    │  BEXT  │   shift   │  64  │ 0x45 │
-    │  BINV  │   shift   │  64  │ 0x46 │
-    │  BSET  │   shift   │  64  │ 0x47 │
-    │ SLL_UW │   shift   │  32  │ 0x4f │
+    │  REV8  │   plain   │  64  │ 0x30 │
+    │  PACK  │  combine  │  64  │ 0x31 │
+    │ PACK_H │  combine  │  32  │ 0x32 │
+    │ PACK_W │  combine  │  32  │ 0x33 │
+    │  ROL   │   shift   │  64  │ 0x34 │
+    │ ROL_W  │   shift   │  32  │ 0x35 │
+    │  ROR   │   shift   │  64  │ 0x36 │
+    │ ROR_W  │   shift   │  32  │ 0x37 │
+    │  CLZ   │ chain_rev │  64  │ 0x38 │
+    │ CLZ_W  │ chain_rev │  32  │ 0x39 │
+    │  CTZ   │   chain   │  64  │ 0x3a │
+    │ CTZ_W  │   chain   │  32  │ 0x3b │
+    │  CPOP  │   plain   │  64  │ 0x3c │
+    │ CPOP_W │   plain   │  32  │ 0x3d │
+    │  ORCB  │   plain   │  64  │ 0x3e │
+    │  BCLR  │   shift   │  64  │ 0x3f │
+    │  BEXT  │   shift   │  64  │ 0x40 │
+    │  BINV  │   shift   │  64  │ 0x41 │
+    │  BSET  │   shift   │  64  │ 0x42 │
+    │ SLL_UW │   shift   │  32  │ 0x43 │
     └────────┴───────────┴──────┴──────┘
 
 SLL_UW (slli.uw) is the only op whose operand is 32 bits but whose result is a full 64-bit value:
@@ -299,5 +299,5 @@ airtemplate BinaryExtension(const int N = 2**18, const int bits = 64,
     }
 
     airval padding_size;
-    assumes_padding_operation(op: OP_SEXT_B, padding_size:);
+    assumes_padding_operation(op: OP_SIGNEXTEND_B, padding_size:);
 }

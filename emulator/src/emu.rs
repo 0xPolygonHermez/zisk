@@ -2946,7 +2946,7 @@ impl<'a> Emu<'a> {
                 || inst.op == ZiskOp::FcallGet.code()
                 || inst.op == ZiskOp::FcallParam.code()
             {
-                ZiskOp::CopyB.code()
+                ZiskOp::COPYB
             } else {
                 inst.op
             },

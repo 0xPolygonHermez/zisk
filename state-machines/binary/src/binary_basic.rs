@@ -192,8 +192,17 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
     /// `true` if the opcode is 32-bit; `false` otherwise.
     fn opcode_is_32_bits(opcode: u8) -> bool {
         const OPCODES_32_BITS: [u8; 11] = [
-            MINUW_OP, MINW_OP, MAXUW_OP, MAXW_OP, LTUW_OP, LTW_OP, EQW_OP, ADDW_OP, SUBW_OP,
-            LEUW_OP, LEW_OP,
+            ZiskOp::MINU_W,
+            ZiskOp::MIN_W,
+            ZiskOp::MAXU_W,
+            ZiskOp::MAX_W,
+            ZiskOp::LTU_W,
+            ZiskOp::LT_W,
+            ZiskOp::EQ_W,
+            ZiskOp::ADD_W,
+            ZiskOp::SUB_W,
+            ZiskOp::LEU_W,
+            ZiskOp::LE_W,
         ];
 
         OPCODES_32_BITS.contains(&opcode)
@@ -204,17 +213,17 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             opcode,
             LT_ABS_NP_OP
                 | LT_ABS_PN_OP
-                | LTU_OP
-                | LTUW_OP
-                | LT_OP
-                | LTW_OP
+                | ZiskOp::LTU
+                | ZiskOp::LTU_W
+                | ZiskOp::LT
+                | ZiskOp::LT_W
                 | GT_OP
-                | EQ_OP
-                | EQW_OP
-                | LEU_OP
-                | LEUW_OP
-                | LE_OP
-                | LEW_OP
+                | ZiskOp::EQ
+                | ZiskOp::EQ_W
+                | ZiskOp::LEU
+                | ZiskOp::LEU_W
+                | ZiskOp::LE
+                | ZiskOp::LE_W
         )
     }
 
@@ -332,7 +341,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
         let binary_basic_table_op: BinaryBasicTableOp;
         match opcode {
-            MINU_OP | MINUW_OP | MIN_OP | MINW_OP => {
+            ZiskOp::MINU | ZiskOp::MINU_W | ZiskOp::MIN | ZiskOp::MIN_W => {
                 // Set first byte
                 row.set_use_first_byte(lane, false);
 
@@ -344,7 +353,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 row.set_c_is_signed(lane, c_is_signed != 0);
 
                 // Set the binary basic table opcode
-                binary_basic_table_op = if (opcode == MINU_OP) || (opcode == MINUW_OP) {
+                binary_basic_table_op = if (opcode == ZiskOp::MINU) || (opcode == ZiskOp::MINU_W) {
                     BinaryBasicTableOp::Minu
                 } else {
                     BinaryBasicTableOp::Min
@@ -398,7 +407,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 }
                 row.set_all_carry(lane, &carry);
             }
-            MAXU_OP | MAXUW_OP | MAX_OP | MAXW_OP => {
+            ZiskOp::MAXU | ZiskOp::MAXU_W | ZiskOp::MAX | ZiskOp::MAX_W => {
                 // Set first byte
                 row.set_use_first_byte(lane, false);
 
@@ -410,7 +419,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 row.set_c_is_signed(lane, c_is_signed != 0);
 
                 // Set the binary basic table opcode
-                binary_basic_table_op = if (opcode == MAXU_OP) || (opcode == MAXUW_OP) {
+                binary_basic_table_op = if (opcode == ZiskOp::MAXU) || (opcode == ZiskOp::MAXU_W) {
                     BinaryBasicTableOp::Maxu
                 } else {
                     BinaryBasicTableOp::Max
@@ -575,7 +584,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 }
                 row.set_all_carry(lane, &carry);
             }
-            LTU_OP | LTUW_OP | LT_OP | LTW_OP => {
+            ZiskOp::LTU | ZiskOp::LTU_W | ZiskOp::LT | ZiskOp::LT_W => {
                 // Set first byte
                 row.set_use_first_byte(lane, false);
 
@@ -586,7 +595,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 row.set_c_is_signed(lane, false);
 
                 // Set the binary basic table opcode
-                binary_basic_table_op = if (opcode == LTU_OP) || (opcode == LTUW_OP) {
+                binary_basic_table_op = if (opcode == ZiskOp::LTU) || (opcode == ZiskOp::LTU_W) {
                     BinaryBasicTableOp::Ltu
                 } else {
                     BinaryBasicTableOp::Lt
@@ -692,7 +701,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 }
                 row.set_all_carry(lane, &carry);
             }
-            EQ_OP | EQW_OP => {
+            ZiskOp::EQ | ZiskOp::EQ_W => {
                 // Set first byte
                 row.set_use_first_byte(lane, false);
 
@@ -741,7 +750,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 }
                 row.set_all_carry(lane, &carry);
             }
-            ADD_OP | ADDW_OP => {
+            ZiskOp::ADD | ZiskOp::ADD_W => {
                 // Set first byte
                 row.set_use_first_byte(lane, false);
 
@@ -787,7 +796,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 }
                 row.set_all_carry(lane, &carry);
             }
-            SUB_OP | SUBW_OP => {
+            ZiskOp::SUB | ZiskOp::SUB_W => {
                 // Set first byte
                 row.set_use_first_byte(lane, false);
 
@@ -832,7 +841,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 }
                 row.set_all_carry(lane, &carry);
             }
-            LEU_OP | LEUW_OP | LE_OP | LEW_OP => {
+            ZiskOp::LEU | ZiskOp::LEU_W | ZiskOp::LE | ZiskOp::LE_W => {
                 // Set first byte
                 row.set_use_first_byte(lane, false);
 
@@ -843,7 +852,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 row.set_c_is_signed(lane, false);
 
                 // Set the binary basic table opcode
-                binary_basic_table_op = if (opcode == LEU_OP) || (opcode == LEUW_OP) {
+                binary_basic_table_op = if (opcode == ZiskOp::LEU) || (opcode == ZiskOp::LEU_W) {
                     BinaryBasicTableOp::Leu
                 } else {
                     BinaryBasicTableOp::Le
@@ -894,7 +903,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 }
                 row.set_all_carry(lane, &carry);
             }
-            AND_OP => {
+            ZiskOp::AND => {
                 // Set first byte
                 row.set_use_first_byte(lane, false);
 
@@ -926,7 +935,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     tally.inc(row);
                 }
             }
-            OR_OP => {
+            ZiskOp::OR => {
                 // Set first byte
                 row.set_use_first_byte(lane, false);
 
@@ -958,7 +967,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     tally.inc(row);
                 }
             }
-            XOR_OP => {
+            ZiskOp::XOR => {
                 // Set first byte
                 row.set_use_first_byte(lane, false);
 
@@ -990,7 +999,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     tally.inc(row);
                 }
             }
-            ANDN_OP | ORN_OP | XNOR_OP | BREV8_OP => {
+            ZiskOp::ANDN | ZiskOp::ORN | ZiskOp::XNOR | ZiskOp::BREV8 => {
                 // Bitwise ops with no carry, one table row per byte (like AND/OR/XOR).
                 // ANDN/ORN/XNOR use both operands; BREV8 is unary (operand in b, output
                 // depends only on b), which the table encodes independently of a.
@@ -999,9 +1008,9 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 row.set_c_is_signed(lane, false);
 
                 binary_basic_table_op = match opcode {
-                    ANDN_OP => BinaryBasicTableOp::Andn,
-                    ORN_OP => BinaryBasicTableOp::Orn,
-                    XNOR_OP => BinaryBasicTableOp::Xnor,
+                    ZiskOp::ANDN => BinaryBasicTableOp::Andn,
+                    ZiskOp::ORN => BinaryBasicTableOp::Orn,
+                    ZiskOp::XNOR => BinaryBasicTableOp::Xnor,
                     _ => BinaryBasicTableOp::Brev8,
                 };
 
@@ -1021,7 +1030,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     tally.inc(row);
                 }
             }
-            SH1ADD_OP | SH2ADD_OP | SH3ADD_OP => {
+            ZiskOp::SH1ADD | ZiskOp::SH2ADD | ZiskOp::SH3ADD => {
                 // Zba shift-and-add: c = b + (a << shift), computed as an addition of the shifted
                 // operand. The `shift` low bits of the shifted byte are always zero, so the bits
                 // shifted out of the previous byte are simply added to it, together with the
@@ -1031,8 +1040,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 row.set_c_is_signed(lane, false);
 
                 binary_basic_table_op = match opcode {
-                    SH1ADD_OP => BinaryBasicTableOp::Sh1add,
-                    SH2ADD_OP => BinaryBasicTableOp::Sh2add,
+                    ZiskOp::SH1ADD => BinaryBasicTableOp::Sh1add,
+                    ZiskOp::SH2ADD => BinaryBasicTableOp::Sh2add,
                     _ => BinaryBasicTableOp::Sh3add,
                 };
                 let shift = binary_basic_table_op.shift();
@@ -1158,7 +1167,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
     /// Writes ADD(0, 0) into one slot: the operation the air's `padding_size` cancels on the bus.
     #[inline(always)]
     fn set_padding_slot<T, R: BinaryBasicRow<F, T>>(row: &mut R, lane: usize) {
-        row.set_b_op(lane, ADD_OP);
+        row.set_b_op(lane, ZiskOp::ADD);
         row.set_mode32(lane, false);
         row.set_result_is_a(lane, false);
         row.set_use_first_byte(lane, false);

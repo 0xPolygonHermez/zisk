@@ -20,7 +20,7 @@ use zisk_cluster_common::LoggingConfig;
 use zisk_common::io::StreamSource;
 use zisk_common::{
     io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, StatsCostPerType,
-    ZiskExecutorTime,
+    VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
@@ -241,11 +241,14 @@ impl ProverEngine for EmuProver {
         &self,
         proof: &[u64],
         publics_full: &[u64],
+        source_kind: VadcopKind,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics_full),
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full),
+            ProofKind::VadcopFinalMinimal => {
+                self.core_prover.backend.minimal(proof, publics_full, source_kind)
+            }
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full, source_kind),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }

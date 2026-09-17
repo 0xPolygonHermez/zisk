@@ -497,7 +497,7 @@ impl ZiskAsmContext {
 //             self.c_write_value_offset = offset;
 //             offset += 8;
 //         }
-//         if instruction.op == ZiskOp::Keccak.code() || instruction.op == ZiskOp::Sha256.code() {
+//         if instruction.op == ZiskOp::KECCAK || instruction.op == ZiskOp::SHA256 {
 //             self.header_mask |= TRACE_CONTEXT_HEADER_WRITE_PREC_CONT;
 //             self.prec_cont_count_offset = offset;
 //             offset += 4;
@@ -1592,10 +1592,10 @@ impl ZiskRom2Asm {
                 // we can overwirte it to build the address to read from the b value,
                 // or REG_ADDRESS otherwise to preserve the value of a
                 let mut reg_address: &str = REG_A;
-                if instruction.op == ZiskOp::CopyB.code()
-                    || instruction.op == ZiskOp::SignExtendB.code()
-                    || instruction.op == ZiskOp::SignExtendH.code()
-                    || instruction.op == ZiskOp::SignExtendH.code()
+                if instruction.op == ZiskOp::COPYB
+                    || instruction.op == ZiskOp::SIGNEXTEND_B
+                    || instruction.op == ZiskOp::SIGNEXTEND_H
+                    || instruction.op == ZiskOp::SIGNEXTEND_W
                 {
                 } else {
                     *code += &format!(
@@ -2726,7 +2726,7 @@ impl ZiskRom2Asm {
                     "\tmovsx {}, {} {}\n",
                     REG_C,
                     REG_B_B,
-                    ctx.comment_str("SignExtendW: sign extend b(8b) to c(64b)")
+                    ctx.comment_str("SignExtendB: sign extend b(8b) to c(64b)")
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2737,7 +2737,7 @@ impl ZiskRom2Asm {
                     "\tmovsx {}, {} {}\n",
                     REG_C,
                     REG_B_H,
-                    ctx.comment_str("SignExtendW: sign extend b(16b) to c(64b)")
+                    ctx.comment_str("SignExtendH: sign extend b(16b) to c(64b)")
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
