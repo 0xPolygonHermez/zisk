@@ -68,8 +68,8 @@ impl EmbeddedClient {
         subs: SubscriberList,
     ) -> Result<JobHandle<ProveResult>> {
         let agg = agg.clone();
-        let vfp_a = proof_a.get_vadcop_final_proof().map_err(SdkError::backend)?;
-        let vfp_b = proof_b.get_vadcop_final_proof().map_err(SdkError::backend)?;
+        let vfp_a = proof_a.get_vadcop_final_proof_to_aggregate().map_err(SdkError::backend)?;
+        let vfp_b = proof_b.get_vadcop_final_proof_to_aggregate().map_err(SdkError::backend)?;
         let free_a = free_a.to_vec();
         let free_b = free_b.to_vec();
         let subs_cloned = Arc::clone(&subs);
