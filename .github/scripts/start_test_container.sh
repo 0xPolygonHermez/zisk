@@ -39,11 +39,12 @@ if [[ "$(stat -fc %T /sys/fs/cgroup 2>/dev/null)" != "cgroup2fs" ]]; then
     exit 1
 fi
 
-docker run -d \
+docker run -d -t \
     --name "${TEST_CONTAINER}" \
     --pull=always \
     --cgroupns=private \
     --cap-add SYS_ADMIN \
+    -e container=docker \
     --security-opt seccomp=unconfined \
     --security-opt apparmor=unconfined \
     --tmpfs /run \
