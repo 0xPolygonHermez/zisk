@@ -21,6 +21,13 @@ static const uint8_t v4_e[1] = {0x05};  /* len=1 */
 static const uint8_t v4_m[40] = {0x83,0xd9,0xfc,0xa7,0x16,0xc4,0x0a,0x33,0xac,0xd5,0x1e,0x66,0x99,0xf9,0x82,0x3c,0x11,0x8d,0xc1,0x0e,0x77,0x45,0x20,0xd7,0xe9,0x8d,0x7c,0x35,0x8a,0x84,0xc1,0x5c,0xaa,0xd1,0x42,0x68,0x10,0x87,0x27,0x57};  /* len=40 */
 static uint8_t v4_o[40];
 
+/* v5: mod_len == 0. EIP-198 gives an empty modulus an empty output, so the call must
+   return ZKVM_EOK and leave `output` alone -- it need not even be valid. v5_o carries a
+   0xBA sentinel that must survive, so the 9 bytes appended below read 00 BA BA BA BA BA
+   BA BA BA. (Any other status, or a disturbed sentinel, means the mod_len==0 guard in
+   zkvm/modexp.zisk is gone.) */
+static uint8_t v5_o[8] = {0xBA,0xBA,0xBA,0xBA,0xBA,0xBA,0xBA,0xBA};
+
 static uint8_t g_bss[32];
 static volatile uint32_t g_data = 0x600df00d;  /* .data non-empty */
 int main(void){
@@ -29,11 +36,14 @@ int main(void){
   zkvm_modexp(v2_b,32,v2_e,32,v2_m,32,v2_o);
   zkvm_modexp(v3_b,37,v3_e,19,v3_m,48,v3_o);
   zkvm_modexp(v4_b,50,v4_e,1,v4_m,40,v4_o);
+  zkvm_status s5 = zkvm_modexp(v1_b,1,v1_e,1,v1_m,0,v5_o);
   volatile uint8_t *O = (volatile uint8_t *)(0xA0410000ULL);
   unsigned k=0;
   for(unsigned i=0;i<1;i++) O[k++]=v1_o[i];
   for(unsigned i=0;i<32;i++) O[k++]=v2_o[i];
   for(unsigned i=0;i<48;i++) O[k++]=v3_o[i];
   for(unsigned i=0;i<40;i++) O[k++]=v4_o[i];
+  O[k++]=(uint8_t)(s5 & 0xff);
+  for(unsigned i=0;i<8;i++) O[k++]=v5_o[i];
   return 0;
 }

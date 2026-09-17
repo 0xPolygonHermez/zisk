@@ -59,6 +59,11 @@ ziskasm_zkvm_modexp:
 	ltu(1056, r11), j(zme_toolong)
 	ltu(1056, r13), j(zme_toolong)
 	ltu(1056, r15), j(zme_toolong)
+	; An empty modulus has an empty output (EIP-198), so `output` need not be valid.
+	; Mirrors zkvm_modexp's `mod_len == 0` early return. Bail out HERE, before the
+	; spills and marshalling, not merely before the dispatcher: the position is what
+	; keeps the two backends' hint streams aligned if modexp ever grows an fcall.
+	eq(r15, 0), j(zme_emptymod)         ; mod_len == 0 -> EOK, nothing written
 	; --- spill the seven EF arguments ---
 	copyb(0, ZKVM_ME_BASEP) -> r5
 	copyb(r5, r10) -> 8[a + 0]
@@ -142,6 +147,16 @@ zme_rzd:
 ; return, so surface it as ZKVM_EFAIL rather than halting the guest.
 zme_toolong:
 	copyb(0, 0xffffffffffffffff) -> r10 ; ZKVM_EFAIL
+	pop r1
+	ret
+
+; mod_len == 0: nothing to compute and nothing to write. Without this the routine
+; still happens to behave correctly -- zkvm_be_bytes_to_limbs synthesizes one zeroed
+; limb, so the dispatcher takes its m==0 branch and returns zero, and marshalling
+; back writes 0 bytes -- but that agreement is emergent from three unrelated
+; behaviours. Make it explicit instead of relying on all three holding.
+zme_emptymod:
+	copyb(0, 0) -> r10                  ; ZKVM_EOK
 	pop r1
 	ret
 
