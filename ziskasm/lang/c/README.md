@@ -72,12 +72,30 @@ extern "C" union ethash_hash256 ethash_keccak256(const uint8_t* d, size_t n) noe
 
 ## Coverage
 
-Every entry in the `elf2rom` `REDIRECTS` table has a prototype here: `add`
-(demo), `keccak`, `sha256`, `blake2b_compress`, the `*256` integer/modular ops,
-secp256k1 (ecdsa verify/recover, schnorr), secp256r1 (ecdsa verify), bn254
-pairing check, bls12_381 (pairing check, map/hash-to-curve, BLS verify, KZG
-proof), and `modexp_u64_c`. Adding a new routine = add a `REDIRECTS` row + a
-prototype/stub pair here (and in the Rust binding).
+`REDIRECTS` holds **77** entries across three independent symbol families, and
+this header covers only the first. The families are siblings, not layers: where
+they overlap they target the *same* routine rather than calling through one
+another — `ziskos_keccak` and `zkvm_keccak256` both resolve to
+`ziskasm_zkvm_keccak256`, likewise `sha256` and `blake2b_compress`/`blake2f`.
+
+| Family | Count | Declared in | Stubs in |
+|--------|-------|-------------|----------|
+| `ziskos_*` — ZisK flat ABI | 27 | [`zisklib.h`](include/zisklib.h) | [`src/zisklib_stubs.c`](src/zisklib_stubs.c) |
+| `zkvm_*` — EF accelerators | 20 | [`zkvm_accelerators.h`](include/zkvm_accelerators.h) | [`src/zkvm_stubs.c`](src/zkvm_stubs.c) |
+| `zkvm_u256_*` — EF U256 | 27 | [`zkvm_u256.h`](include/zkvm_u256.h) | [`src/zkvm_stubs.c`](src/zkvm_stubs.c) |
+
+Plus 3 entries with no C prototype: `read_input` / `write_output` (the ziskos
+Rust I/O symbols, redirected to `zkvm_io.zisk`) and `modexp_u64_c` (declared in
+`zisklib.h`).
+
+The `ziskos_*` set is: `add` (demo), `keccak`, `sha256`, `blake2b_compress`, the
+`*256` integer/modular ops, secp256k1 (ecdsa verify/recover, schnorr), secp256r1
+(ecdsa verify), bn254 pairing check, and bls12_381 (pairing check,
+map/hash-to-curve, BLS verify, KZG proof).
+
+Adding a new routine = a `REDIRECTS` row + a prototype/stub pair **in the header
+for that family** (and, for `ziskos_*`, in the Rust binding). A new EF entry does
+not belong in `zisklib.h`.
 
 ## Status
 
