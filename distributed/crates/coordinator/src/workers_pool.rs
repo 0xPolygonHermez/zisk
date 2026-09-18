@@ -185,6 +185,21 @@ impl WorkersPool {
         released
     }
 
+    /// Returns a worker to `Ready`, but ONLY if it is still `Computing` for that job.
+    /// Same guard as [`Self::release_settingup_to_idle`]: a disconnected or
+    /// recovery-parked worker must not be resurrected by an unconditional write.
+    pub async fn release_computing_to_ready(&self, worker_id: &WorkerId, job_id: &JobId) -> bool {
+        let mut workers = self.workers.write().await;
+        let Some(info) = workers.get_mut(worker_id) else {
+            return false;
+        };
+        if matches!(&info.state, WorkerState::Computing((j, _)) if j == job_id) {
+            info.state = WorkerState::Ready;
+            return true;
+        }
+        false
+    }
+
     /// Returns the number of workers currently running setup (not yet eligible for jobs).
     pub async fn setting_up_workers(&self) -> usize {
         self.workers.read().await.values().filter(|p| p.state == WorkerState::SettingUp).count()
@@ -595,7 +610,7 @@ impl WorkersPool {
 
     /// Transitions workers currently `Computing((job_id, _))` to `SettingUp`
     /// and returns the IDs that were transitioned. Workers that have already
-    /// been freed (e.g. via `resolve_recurser_assignment` after Phase 2 and
+    /// been freed (e.g. as an aggregation donor after Phase 2 and
     /// then reassigned to a different job) are NOT touched — clobbering a
     /// `Computing(other_job, _)` state here would (a) park a worker that
     /// doesn't owe a `WorkerRecoveryComplete` for `job_id` (the worker side

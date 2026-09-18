@@ -662,6 +662,14 @@ impl ProverBackend {
         Ok((witness_info, execution_result.executor_time))
     }
 
+    pub(crate) fn aggregation_arity(&self) -> usize {
+        self.proofman.aggregation_arity()
+    }
+
+    pub(crate) fn reset_aggregation_state(&self) {
+        self.proofman.reset_aggregation_state()
+    }
+
     pub(crate) fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
         self.proofman
             .register_aggregated_proofs(agg_proofs)
@@ -673,11 +681,12 @@ impl ProverBackend {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
         let result = self
             .proofman
-            .receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
+            .receive_aggregated_proofs(agg_proofs, last_proof, final_proof, keep_resident, options)
             .map_err(|e| anyhow::anyhow!("Error aggregating proofs: {}", e))?;
 
         Ok(result.map(|agg| ZiskAggPhaseResult { agg_proofs: agg }))

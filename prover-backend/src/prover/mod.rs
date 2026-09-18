@@ -493,8 +493,16 @@ pub trait ProverEngine {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>>;
+
+    /// Drop this worker's outer-aggregation state so it can re-fold a lost node's
+    /// subtree. Keeps the contributions needed to verify incoming proofs.
+    fn reset_aggregation_state(&self);
+
+    /// Aggregation arity of the loaded proving key.
+    fn aggregation_arity(&self) -> usize;
 
     /// The Vadcop verification key (`minimal` selects the minimal variant).
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>>;
@@ -791,9 +799,20 @@ impl<C: ZiskBackend> ZiskProver<C> {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.prover.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
+        self.prover.join_worker_proofs(agg_proofs, last_proof, final_proof, keep_resident, options)
+    }
+
+    /// Drop this worker's outer-aggregation state (recovery path).
+    pub fn reset_aggregation_state(&self) {
+        self.prover.reset_aggregation_state()
+    }
+
+    /// Aggregation arity of the loaded proving key.
+    pub fn aggregation_arity(&self) -> usize {
+        self.prover.aggregation_arity()
     }
 
     /// Broadcast data to all MPI processes.

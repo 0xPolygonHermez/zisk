@@ -111,6 +111,9 @@ pub struct WorkerRegisterRequestDto {
     pub worker_id: WorkerId,
     /// The worker's advertised compute capacity.
     pub compute_capacity: ComputeCapacity,
+    /// Aggregation arity of the worker's proving key; the coordinator sizes fold
+    /// groups with it and rejects a job whose workers disagree.
+    pub aggregation_arity: u32,
 }
 
 /// Request from a worker to reconnect after a disconnect.
@@ -121,6 +124,8 @@ pub struct WorkerReconnectRequestDto {
     pub compute_capacity: ComputeCapacity,
     /// The job the worker believes it was running, if any.
     pub last_known_job_id: Option<JobId>,
+    /// Aggregation arity of the worker's proving key.
+    pub aggregation_arity: u32,
 }
 
 /// Reconciliation directive sent by the coordinator in the registration response.
@@ -612,12 +617,18 @@ pub struct AggParamsDto {
     pub final_proof: bool,
     /// The kind of proof being produced.
     pub proof_type: ProofKind,
+    /// Keep the folded proof resident so this node can absorb again at a further
+    /// level of the tree. Ignored when `final_proof` is set.
+    pub keep_resident: bool,
+    /// Drop any resident aggregation state first. Recovery only.
+    pub reset_state: bool,
 }
 
 /// A worker's partial STARK proof for an airgroup.
 pub struct ProofStarkDto {
-    /// Index of the producing worker.
-    pub worker_idx: u32,
+    /// Leaf workers this proof covers: one for a worker's own phase-2 proof,
+    /// several once a node has folded peers into it.
+    pub worker_indexes: Vec<u32>,
     /// The airgroup this proof belongs to.
     pub airgroup_id: u64,
     /// The proof field-element values.
@@ -675,6 +686,8 @@ pub enum ExecuteTaskResponseResultDataDto {
     FinalProof(FinalProofDto),
     /// A wrapped proof.
     WrapResult(WrapResultDto),
+    /// A node's folded subtree, not yet the final proof.
+    PartialAggProofs(Vec<ProofStarkDto>),
 }
 
 /// Result payload of a wrap task.
