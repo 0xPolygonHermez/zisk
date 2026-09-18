@@ -1,0 +1,71 @@
+; ============================================================================
+; singlebit.zisk - diagnostic for the ZisK single-bit instructions (Zbs).
+;
+;   bclr(a & ~(1<<i))  bset(a | (1<<i))  binv(a ^ (1<<i))  bext((a>>i)&1)
+;   where i = b & 0x3f  (bit index, masked to 6 bits)
+;
+; Pure-constant style (see minmax.zisk). Index masking is exercised (index 64
+; == 0, 65 == 1). Expected values generated from core/src/ops_core.rs.
+;
+; SBIT_TABLE columns: a b bclr bset binv bext
+; First mismatch returns 0x08CC (01=bclr 02=bset 03=binv 04=bext).
+;
+; Registers: r5 row ptr  r6 row index  r7 a(value)  r8 b(bit index)  r12 exp  r13 res.
+; ============================================================================
+
+define ROWS      9
+define ROW_BYTES 48      ; 6 u64 columns * 8 bytes
+
+; a, b, bclr, bset, binv, bext
+const u64 SBIT_TABLE =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000001, 0x0000000000000001, 0x0000000000000000,
+	0xffffffffffffffff, 0x0000000000000000, 0xfffffffffffffffe, 0xffffffffffffffff, 0xfffffffffffffffe, 0x0000000000000001,
+	0x0000000000000000, 0x000000000000003f, 0x0000000000000000, 0x8000000000000000, 0x8000000000000000, 0x0000000000000000,
+	0xffffffffffffffff, 0x000000000000003f, 0x7fffffffffffffff, 0xffffffffffffffff, 0x7fffffffffffffff, 0x0000000000000001,
+	0x0000000000000000, 0x0000000000000040, 0x0000000000000000, 0x0000000000000001, 0x0000000000000001, 0x0000000000000000,
+	0x8000000000000000, 0x0000000000000041, 0x8000000000000000, 0x8000000000000002, 0x8000000000000002, 0x0000000000000000,
+	0x123456789abcdef0, 0x0000000000000004, 0x123456789abcdee0, 0x123456789abcdef0, 0x123456789abcdee0, 0x0000000000000001,
+	0xffffffffffffffff, 0x0000000000000020, 0xfffffffeffffffff, 0xffffffffffffffff, 0xfffffffeffffffff, 0x0000000000000001,
+	0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000003, 0x0000000000000003, 0x0000000000000000
+
+singlebit:
+	copyb(0, SBIT_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+sb_loop:
+	eq(r6, ROWS), j(sb_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	bclr(r7, r8) -> r13
+	eq(r13, r12), j(sb_c1)
+	copyb(0, 0x0801) -> r10
+	ret
+sb_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	bset(r7, r8) -> r13
+	eq(r13, r12), j(sb_c2)
+	copyb(0, 0x0802) -> r10
+	ret
+sb_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	binv(r7, r8) -> r13
+	eq(r13, r12), j(sb_c3)
+	copyb(0, 0x0803) -> r10
+	ret
+sb_c3:
+	copyb(r5, 8[a + 40]) -> r12
+	bext(r7, r8) -> r13
+	eq(r13, r12), j(sb_next)
+	copyb(0, 0x0804) -> r10
+	ret
+
+sb_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(sb_loop)
+
+sb_ok:
+	copyb(0, 0) -> r10
+	ret

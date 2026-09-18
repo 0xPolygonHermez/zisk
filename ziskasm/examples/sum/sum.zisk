@@ -1,0 +1,48 @@
+; ============================================================================
+; sum.zisk
+;
+; Demonstrates data declarations: a `const` array in ROM and RAM variables.
+; Sums a constant table of u64 values into a RAM accumulator and writes the
+; result to the program output. Uses the automatic launcher (only a `main:`).
+;
+; Data declarations (column 0, resolved globally like labels):
+;   const TYPE NAME[SIZE] [= v0, v1, ...]   -> ROM (read-only), after the code
+;   TYPE NAME[SIZE]        [= v0, v1, ...]   -> RAM at GENERAL_RAM_ADDR
+;   TYPE ∈ u8|u16|u32|u64  (range-checks the values; every element is one 8-byte slot)
+;
+; Symbols:
+;   NAME     -> the ADDRESS of the data (a pointer), like a label
+;   [NAME]   -> the VALUE at NAME (slot 0)
+;   array elements -> a register pointer + indirect W[a + N]
+;
+; Run it:
+;   ziskemu -z ziskasm/examples/sum -c            (no input needed)
+; ============================================================================
+
+
+const u64 TABLE = 10, 20, 30, 40      ; ROM array, sum = 100
+u64 count = 4                         ; RAM scalar
+u64 acc = 0                           ; RAM accumulator
+
+define OUTPUT_ADDR 0xa0410000
+
+
+main:
+	copyb(0, TABLE) -> r10                ; r10 = ADDRESS of TABLE (pointer to TABLE[0])
+	copyb(0, [count]) -> r6               ; r6 = count value (4)
+	copyb(0, 0) -> r5                     ; r5 = i = 0
+	copyb(0, [acc]) -> r7                 ; r7 = acc = 0
+
+loop:
+	eq(r5, r6), j(done)                   ; if i == count goto done
+	copyb(r10, 8[a + 0]) -> r8            ; r8 = TABLE[i]   (8-byte indirect load via pointer)
+	add(r7, r8) -> r7                     ; acc += TABLE[i]
+	add(r10, 8) -> r10                    ; pointer += 8
+	add(r5, 1) -> r5                      ; i += 1
+	jump(loop)                            ; unconditional back-edge
+
+done:
+	copyb(0, r7) -> [acc]                 ; acc = r7            (store to RAM, symbolic)
+	copyb(0, OUTPUT_ADDR) -> r11          ; r11 = output pointer
+	copyb(r11, [acc]) -> 8[a + 0]         ; output[0] = acc    (symbolic memory read)
+	ret
