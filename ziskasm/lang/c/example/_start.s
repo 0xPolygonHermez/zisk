@@ -28,9 +28,20 @@ _start:
     li   t1, 0xFFFEEEE
     beq  t0, t1, 1f
 
-    /* Emulator (ziskemu / QEMU): write magic to the magic exit address. */
+    /* Emulator (ziskemu / QEMU): sifive_test device @ 0x100000. Encode main's
+       return value, which is still in a0: 0 => 0x5555 (pass), nonzero =>
+       (a0 << 16) | 0x3333. This mirrors ziskos/entrypoint/src/lib.rs. Writing
+       0x5555 unconditionally would report a FAILING guest as a pass, while the
+       hardware path below already forwards a0 via ecall -- so the two exit paths
+       have to agree. */
     li   t0, 0x100000     /* QEMU_EXIT_ADDR */
-    li   t1, 0x5555       /* QEMU_EXIT_CODE */
+    beqz a0, 3f
+    slli t1, a0, 16
+    li   t2, 0x3333
+    or   t1, t1, t2
+    sw   t1, 0(t0)
+    j    2f
+3:  li   t1, 0x5555       /* QEMU_EXIT_CODE (pass) */
     sw   t1, 0(t0)
     j    2f
 
