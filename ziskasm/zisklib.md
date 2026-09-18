@@ -204,8 +204,13 @@ A raw stub (the ABI boundary) plus, if useful, an ergonomic wrapper:
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_foo(input: *const u8, len: usize, output: *mut u8) {
     // Placeholder body. MUST touch every argument via `black_box` (see below).
-    let (_input, _len, output) = core::hint::black_box((input, len, output));
-    for i in 0..OUTPUT_LEN { output.add(i).write(0xBA); }   // obvious sentinel
+    let _ = black_box((input, len, output));
+    // Reached only if the redirect did NOT fire: print a diagnostic naming the
+    // symbol, then fault. Never return a plausible-but-wrong value -- that turns a
+    // build/config mistake into a silently wrong result. The `&str` also gives the
+    // body a per-stub constant, which is what stops identical-code folding merging
+    // it with another stub (see below).
+    stub_fail("ziskos_foo")
 }
 
 /// Ergonomic wrapper.
@@ -232,11 +237,20 @@ Rebuild the guest and it can call `zisklib::foo(...)`.
 - **Give each stub a distinct body.** Two stubs with byte-identical bodies (same
   signature, same placeholder) are merged by identical-code folding into a single
   symbol at one address, so their separate `REDIRECTS` entries collide and both
-  route to whichever was registered last. Use a per-stub sentinel constant to keep
-  the machine code distinct. (Symptom: `readelf -s` shows two `ziskos_*` at the same
-  address.)
+  route to whichever was registered last. Keep the machine code distinct with a
+  per-stub constant — passing the function's own name to `stub_fail` does this for
+  free. (Symptom: `readelf -s` shows two `ziskos_*` at the same address.)
 - **Respect the callee-saved contract.** A routine that clobbers `s0..s11`,
   `sp`, `gp`, or `tp` will corrupt the guest after it returns.
+- **An unredirected stub must fail hard, not return a sentinel.** Both bindings
+  (`lang/rust/src/lib.rs` `stub_fail`, `lang/c/src/zisklib_stubs.c`
+  `zisklib_stub_fail`) write `ERROR: … stub reached without redirect: <fn>()` to the
+  ZisK stdout UART and then store to address 0, aborting the run. So a missing
+  redirect shows up as an abort naming the unresolved symbol — not as wrong output
+  to be spotted later. Note the C helper is deliberately **not** `noreturn`: the
+  redirected routine returns normally, so an inferred-`noreturn` stub would let a
+  caller that can see the body (LTO, or same translation unit) delete its own code
+  after the call.
 - **Placeholder ≠ native implementation.** The stub body only runs off-target (it
   never runs under ZisK, where it is redirected). If you also want the program to
   run natively, give the wrapper a real fallback behind `#[cfg(not(zisk_guest))]`.
