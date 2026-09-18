@@ -1028,16 +1028,32 @@ pub unsafe extern "C" fn ziskos_modexp_u64_c(
     stub_fail("ziskos_modexp_u64_c")
 }
 
+/// Largest operand `zisklib_modexp_u64_c` accepts, in u64 limbs (= 1056 bytes).
+///
+/// The `.zisk` routine stages operands in statically sized scratch buffers
+/// (`BI_BASEPAD` / `BI_MODPAD` / `BI_BITS` / `BI_RECEXP`, all `u64[132]`). It does
+/// guard the bound, but its failure path is `end` — it **halts the VM** rather than
+/// returning — so [`modexp_u64`] checks it first and panics with a message instead.
+pub const MODEXP_MAX_LIMBS: usize = 132;
+
 /// Ergonomic API over [`ziskos_modexp_u64_c`]: computes `base^exp mod modulus`
 /// where all operands are little-endian u64 limb slices. Writes the result limbs
 /// to `result` and returns the number of limbs written (edge cases and single-U256
 /// moduli return 4; larger moduli return `ceil(modulus_len/4) * 4`).
 ///
+/// Each operand must be non-empty and at most [`MODEXP_MAX_LIMBS`] limbs.
+///
 /// # Panics
-/// If `result` is too small for the maximum the callee can write
-/// (`modulus.len().next_multiple_of(4).max(4)` limbs). Without this check a short
-/// `result` would be written past its end by the edge-case paths, which return four
-/// limbs whatever `modulus` is.
+/// - If `result` is too small for the maximum the callee can write
+///   (`modulus.len().next_multiple_of(4).max(4)` limbs). Without this check a short
+///   `result` would be written past its end by the edge-case paths, which return four
+///   limbs whatever `modulus` is.
+/// - If any operand is empty. The routine assumes at least one limb each (the same
+///   precondition the ziskos reference `modexp` documents and debug-asserts); an
+///   empty slice would be staged as zero digits and read back as garbage.
+/// - If any operand exceeds [`MODEXP_MAX_LIMBS`]. The callee guards this too, but by
+///   halting the VM, which gives the caller no diagnosis — panicking here names the
+///   offending operand and length.
 pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64], result: &mut [u64]) -> usize {
     let needed = modulus.len().next_multiple_of(4).max(4);
     assert!(
@@ -1045,6 +1061,24 @@ pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64], result: &mut [u64]
         "modexp_u64: result needs {needed} limbs for a {}-limb modulus, got {}",
         modulus.len(),
         result.len()
+    );
+    assert!(
+        !base.is_empty() && !exp.is_empty() && !modulus.is_empty(),
+        "modexp_u64: base/exp/modulus must each have at least one limb (got {}/{}/{})",
+        base.len(),
+        exp.len(),
+        modulus.len()
+    );
+    assert!(
+        base.len() <= MODEXP_MAX_LIMBS
+            && exp.len() <= MODEXP_MAX_LIMBS
+            && modulus.len() <= MODEXP_MAX_LIMBS,
+        "modexp_u64: operands are limited to {MODEXP_MAX_LIMBS} limbs ({} bytes); \
+         got base={} exp={} modulus={}",
+        MODEXP_MAX_LIMBS * 8,
+        base.len(),
+        exp.len(),
+        modulus.len()
     );
     // SAFETY: all slices are valid for their lengths; `result` is checked above to
     // hold every limb the callee can write.
