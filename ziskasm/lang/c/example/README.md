@@ -62,6 +62,33 @@ Expected output: **56 zero bytes, then `0100`.** Those last two are a negative c
 (`ne(&A,&B)` then `ne(&A,&A)`) — without them an all-zero result would be
 indistinguishable from a harness that never compared anything.
 
+## U256 signed semantics
+
+[`u256_semantics_guest.c`](u256_semantics_guest.c) covers the sign-sensitive half of
+the U256 ABI that the aliasing guest does not touch: `slt`, `sgt`, `sdiv`, `smod`,
+`sar` and `signextend`. These are where EVM semantics are easiest to get subtly wrong
+— truncate-toward-zero rather than floor division, the modulo taking the sign of the
+*dividend*, the `-2^255 / -1` overflow that wraps to itself, arithmetic vs logical
+right shift, and shift counts ≥ 256 saturating to `0` or `-1`.
+
+```bash
+riscv64-unknown-elf-gcc -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib \
+    -ffreestanding -O2 -I. -I../include -T zisk_guest.ld -o /tmp/u256sem.elf \
+    _start.s u256_semantics_guest.c ../src/zkvm_stubs.c
+: > /tmp/empty.bin
+../../../../target/release/ziskemu -e /tmp/u256sem.elf -i /tmp/empty.bin -o /tmp/sem.bin
+xxd -p -l 43 -c 43 /tmp/sem.bin
+```
+
+41 cases, self-checking as above: `00` = pass, `01` = wrong value **or** a non-`EOK`
+status. Expected output: **41 zero bytes, then `0100`** (the same negative control).
+
+The expected values are golden vectors from an *independent* Python model of the EVM
+semantics — deliberately not transcribed from this backend, so the test cannot agree
+with a bug by construction (see the warning about hand-transcribed vectors in
+[`zisklib.md`](../../../zisklib.md)). To extend it, add the case to that model and
+regenerate rather than hand-writing a 32-byte constant.
+
 ## Level 2 — a real block through ziskethone's cpp-guest
 
 Same mechanism, applied to the block prover. In `../../../../../ziskethone`:
