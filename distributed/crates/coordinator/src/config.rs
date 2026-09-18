@@ -92,6 +92,10 @@ pub struct CoordinatorConfig {
     pub phase2_timeout_seconds: u64,
     /// Timeout for Phase 3: Aggregate (proof aggregation). Default: 100s.
     pub phase3_timeout_seconds: u64,
+    /// Spread the phase-3 fold tree across the job's workers. When false every
+    /// fold stays on the first worker to finish phase 2, which is the
+    /// single-aggregator behaviour this replaced. Default: false.
+    pub distributed_aggregation: bool,
     /// Expected interval between worker heartbeats. Default: 30s.
     pub heartbeat_interval_seconds: u64,
     /// Number of missed heartbeats before a computing worker is considered dead.
@@ -155,6 +159,7 @@ impl Config {
             .set_default("coordinator.phase1_timeout_seconds", 300)?
             .set_default("coordinator.phase2_timeout_seconds", 600)?
             .set_default("coordinator.phase3_timeout_seconds", 100)?
+            .set_default("coordinator.distributed_aggregation", false)?
             .set_default("coordinator.heartbeat_interval_seconds", 30)?
             .set_default("coordinator.heartbeat_max_missed", 3)?
             .set_default("coordinator.job_monitor_interval_seconds", 10)?

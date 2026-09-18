@@ -470,6 +470,10 @@ impl Coordinator {
     ) -> (bool, String, Option<SetupProgramDto>) {
         self.registrations.fetch_add(1, Ordering::Relaxed);
 
+        if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
+            return (false, e.to_string(), None);
+        }
+
         let max_connections = self.config.coordinator.max_total_workers as usize;
         if self.workers_pool.num_workers().await >= max_connections {
             return (
@@ -553,6 +557,10 @@ impl Coordinator {
     ) -> (bool, String, Option<ReconnectionDirectiveDto>, Option<SetupProgramDto>) {
         self.reconnections.fetch_add(1, Ordering::Relaxed);
 
+        if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
+            return (false, e.to_string(), None, None);
+        }
+
         // Check max connections — but allow if the worker already exists (reconnection)
         let max_connections = self.config.coordinator.max_total_workers as usize;
         if self.workers_pool.num_workers().await >= max_connections
@@ -590,7 +598,14 @@ impl Coordinator {
             if first_setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
         let initial_state = if matches!(directive, Some(ReconnectionDirectiveDto::KeepComputing)) {
-            self.workers_pool.worker_state(&worker_id).await.unwrap_or(default_state)
+            // `do_disconnect` overwrites the state, so the stored one is
+            // `Disconnected` unless something (a job failure) has since replaced it.
+            // Carrying that back in registers the worker as disconnected and it is
+            // never eligible again. Only a real Computing state is worth preserving.
+            match self.workers_pool.worker_state(&worker_id).await {
+                Some(state @ WorkerState::Computing(_)) => state,
+                _ => default_state,
+            }
         } else {
             default_state
         };
@@ -699,6 +714,23 @@ impl Coordinator {
         reason: &str,
     ) -> CoordinatorResult<()> {
         if let Some(WorkerState::Computing((job_id, phase))) = worker_state {
+            // A phase-3 worker that has already handed its set over holds nothing the
+            // coordinator cannot replace, so the job carries on without it. Donors
+            // linger `Computing` until released, which is why this case is common.
+            if phase == JobPhase::Recurse
+                && self.agg_worker_is_dispensable(&job_id, worker_id).await
+            {
+                // Release it from the job as well: left `Computing` it would be
+                // re-reported by every staleness sweep and never freed.
+                self.workers_pool.release_computing_to_ready(worker_id, &job_id).await;
+                warn!(
+                    "Worker {} {} during aggregation for job {} but was folding nothing; the \
+                     job is unaffected",
+                    worker_id, reason, job_id
+                );
+                return Ok(());
+            }
+
             error!(
                 "Worker {} {} while computing for job {} in phase {:?}",
                 worker_id, reason, job_id, phase
@@ -940,7 +972,8 @@ impl Coordinator {
             ExecuteTaskResponseResultDataDto::Proofs(_) => {
                 self.handle_proofs_completion(message).await
             }
-            ExecuteTaskResponseResultDataDto::FinalProof(_) => {
+            ExecuteTaskResponseResultDataDto::FinalProof(_)
+            | ExecuteTaskResponseResultDataDto::PartialAggProofs(_) => {
                 self.handle_recurser_completion(message).await
             }
             ExecuteTaskResponseResultDataDto::WrapResult(_) => {
@@ -1036,7 +1069,7 @@ impl Coordinator {
     /// Two deliberate asymmetries in the mapping:
     ///
     /// * `Proofs` is accepted in `Recurse` as well as `Prove`.
-    ///   `resolve_recurser_assignment` flips the job to `Recurse` as soon as the
+    ///   the aggregation scheduler flips the job to `Recurse` as soon as the
     ///   *first* worker finishes Phase 2, so the remaining workers legitimately
     ///   report in while the job is already recursing.
     /// * Execution-only jobs run in `Running(Contributions)` — `JobPhase::Execution`
@@ -1075,6 +1108,9 @@ impl Coordinator {
                 ("Proofs", matches!(phase, JobPhase::Prove | JobPhase::Recurse), "Prove or Recurse")
             }
             Payload::FinalProof(_) => ("FinalProof", *phase == JobPhase::Recurse, "Recurse"),
+            Payload::PartialAggProofs(_) => {
+                ("PartialAggProofs", *phase == JobPhase::Recurse, "Recurse")
+            }
             Payload::WrapResult(_) => ("WrapResult", *phase == JobPhase::Recurse, "Recurse"),
         };
 

@@ -140,14 +140,19 @@ pub enum ComputationResult {
         job_id: JobId,
         /// Whether the task succeeded.
         success: bool,
-        /// The aggregated proof words on success (`None` for a non-final step).
-        result: Result<Option<Vec<Vec<u64>>>>,
+        /// The folded proofs on success: one per airgroup for a partial drain,
+        /// a single vadcop-final proof for the final one, `None` when the node
+        /// only absorbed and has not drained.
+        result: Result<Option<Vec<AggProofs>>>,
         /// Steps executed for the job (carried through for reporting).
         executed_steps: u64,
         /// The kind of proof produced.
         proof_type: ProofKind,
         /// Number of AIR instances (carried through for reporting).
         instances: u64,
+        /// Whether this drain produced the job's final proof, as opposed to a
+        /// node's folded subtree.
+        final_proof: bool,
     },
     /// Recurser setup or prove result. The blocking handler builds
     /// the full ack (`SetupAggregationProgramAck` / `RunAggregateProofsAck`)
@@ -702,6 +707,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
     pub fn hash(&self) -> Result<String> {
         self.prover.hash()
+    }
+
+    /// Aggregation arity of the loaded proving key, reported at registration so the
+    /// coordinator can size fold groups.
+    pub fn aggregation_arity(&self) -> usize {
+        self.prover.aggregation_arity()
     }
 
     /// A shared handle to the underlying prover.
@@ -1509,7 +1520,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .iter()
             .map(|v| AggProofsRegister {
                 airgroup_id: v.airgroup_id,
-                worker_indexes: vec![v.worker_idx as usize],
+                worker_indexes: v.worker_indexes.iter().map(|&i| i as usize).collect(),
             })
             .collect();
 
@@ -1518,6 +1529,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 let guard = job.blocking_lock();
                 (guard.job_id.clone(), guard.executed_steps, guard.instances)
             };
+
+            // Recovery: drop whatever this worker holds (including the leaf phase 2
+            // registered for itself) before taking over a lost node's inputs.
+            if agg_params.reset_state {
+                prover.reset_aggregation_state();
+            }
 
             // Register peer proofs on the blocking thread: it can fail, and the
             // error path reads job context via `blocking_lock`, which panics when
@@ -1532,6 +1549,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         executed_steps,
                         proof_type: agg_params.proof_type,
                         instances,
+                        final_proof: agg_params.final_proof,
                     })
                     .is_err()
                 {
@@ -1548,7 +1566,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .map(|v| AggProofs {
                     airgroup_id: v.airgroup_id,
                     proof: v.values.clone(),
-                    worker_indexes: vec![v.worker_idx as usize],
+                    worker_indexes: v.worker_indexes.iter().map(|&i| i as usize).collect(),
                 })
                 .collect();
 
@@ -1556,23 +1574,21 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 agg_proofs,
                 agg_params.last_proof,
                 agg_params.final_proof,
+                agg_params.keep_resident,
                 &options,
             );
 
             match result {
                 Ok(data) => {
-                    let proof: Vec<Vec<u64>> = data
-                        .map(|proof| proof.agg_proofs.into_iter().map(|p| p.proof).collect())
-                        .unwrap_or_default();
-
                     if tx
                         .send_computation(ComputationResult::AggProof {
                             job_id,
                             success: true,
-                            result: Ok(Some(proof)),
+                            result: Ok(data.map(|d| d.agg_proofs)),
                             executed_steps,
                             proof_type: agg_params.proof_type,
                             instances,
+                            final_proof: agg_params.final_proof,
                         })
                         .is_err()
                     {
@@ -1589,6 +1605,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                             executed_steps,
                             proof_type: agg_params.proof_type,
                             instances,
+                            final_proof: agg_params.final_proof,
                         })
                         .is_err()
                     {

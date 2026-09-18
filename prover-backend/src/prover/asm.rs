@@ -617,9 +617,24 @@ impl ProverEngine for AsmProver {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.core_prover.backend.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
+        self.core_prover.backend.join_worker_proofs(
+            agg_proofs,
+            last_proof,
+            final_proof,
+            keep_resident,
+            options,
+        )
+    }
+
+    fn reset_aggregation_state(&self) {
+        self.core_prover.backend.reset_aggregation_state()
+    }
+
+    fn aggregation_arity(&self) -> usize {
+        self.core_prover.backend.aggregation_arity()
     }
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {

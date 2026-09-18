@@ -14,7 +14,8 @@
     "files.associations": {
         "*.ejs": "html",
         "new": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "/home/rogertb/Escriptori/Zisk/zisk/ziskasm/lang/c"
     //"rust-analyzer.showUnlinkedFileNotification": false,
     // "rust-analyzer.showUnlinkedFileNotification": false,
     // "rust-analyzer.check.workspace": false,

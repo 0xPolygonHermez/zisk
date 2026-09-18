@@ -1,15 +1,16 @@
 use crate::coordinator_errors::{CoordinatorError, CoordinatorResult};
+use crate::job_events::CoordinatorJobEvent;
 use chrono::Utc;
 use std::time::Duration;
 use tracing::{error, info, warn};
 use zisk_cluster_common::{
-    AggProofData, ChallengesDto, CoordinatorMessageDto, ExecuteTaskRequestDto,
+    AggProofData, AggScheduler, ChallengesDto, CoordinatorMessageDto, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, Job,
-    JobId, JobPhase, JobResult, JobResultData, JobState, PendingAggTask, PhaseTimings,
-    ProveParamsDto, WorkerId, WorkerState,
+    JobId, JobPhase, JobResult, JobResultData, JobState, PhaseTimings, ProveParamsDto, WorkerId,
+    WorkerState,
 };
 
-use crate::Coordinator;
+use crate::{coordinator::Phase2Outcome, Coordinator};
 
 impl Coordinator {
     /// Initiates Phase 2 (Prove) execution across all selected workers.
@@ -98,50 +99,62 @@ impl Coordinator {
         // Store Proof response
         self.store_proof_response(&mut job, execute_task_response).await?;
 
-        // Assign aggregator worker if not already assigned
-        let agg_worker_id = self.resolve_recurser_assignment(&mut job, &worker_id).await?;
+        // Everything fallible first: a rejected payload after the transition and the
+        // state change would leave the job a leaf short with nothing to fail it.
+        let set = Self::worker_agg_set(&mut job, &worker_id)?;
 
-        let all_done = self.check_phase2_completion(&job, &worker_id).await?;
+        // Its phase-2 leaf stays resident here, so it is the only worker that can fold
+        // it. Held Computing until the scheduler seeds a node on it or ships its set.
+        self.workers_pool
+            .try_transition_computing_phase(&worker_id, &job_id, JobPhase::Prove, JobPhase::Recurse)
+            .await?;
 
-        if all_done {
-            job.phase_timings
-                .insert(JobPhase::Recurse, PhaseTimings { start_time: Utc::now(), end_time: None });
+        let starting = job.agg.is_none();
+        if starting {
+            // Before the state change: failing after it would leave the job in
+            // Recurse with no scheduler and nothing to fail it.
+            let arity = self.agg_arity().await?;
+            job.change_state(JobState::Running(JobPhase::Recurse));
+            job.agg = Some(AggScheduler::new(
+                arity,
+                job.workers.len(),
+                self.config.coordinator.distributed_aggregation,
+            ));
+            info!("[Phase3] Aggregation started for {job_id} (arity {arity})");
         }
 
-        let proofs = self.collect_worker_proofs(&job, &agg_worker_id, &worker_id)?;
-        let task = PendingAggTask { proofs, all_done, proof_type: job.proof_type };
+        // Still timed from the last phase-2 completion, to stay comparable.
+        match self.check_phase2_completion(&job, &worker_id).await? {
+            Phase2Outcome::AllDone => {
+                job.phase_timings.insert(
+                    JobPhase::Recurse,
+                    PhaseTimings { start_time: Utc::now(), end_time: None },
+                );
+            }
+            Phase2Outcome::Waiting => {}
+            Phase2Outcome::Failed(reason) => {
+                // `fail_job` re-takes this job's write lock.
+                drop(job);
+                self.fail_job(&job_id, &reason).await?;
+                return Err(CoordinatorError::Internal(reason));
+            }
+        }
 
-        if job.agg_task_inflight.is_none() {
-            // Claim the in-flight slot WHILE STILL HOLDING the job write lock,
-            // then send. Claiming after the send opened a TOCTOU: two workers'
-            // Prove completions racing through this handler both saw the slot
-            // empty and both dispatched an Aggregate to the recurser — the
-            // duplicate ran a second concurrent proofman task over the same GPU
-            // streams, corrupting in-flight proofs. It also let the recurser reply
-            // before this task could reacquire the lock, which
-            // `handle_recurser_completion` rejects as a final proof with no task
-            // in flight.
-            //
-            // The slot is deliberately left set if the send fails: the queue's
-            // only drain (`dispatch_next_agg_task`, which likewise keeps the slot
-            // on failure) runs off an aggregator ack, so clearing it would orphan
-            // anything that queued during the send window. Keeping it lets
-            // `replay_inflight_agg_task_if_recurser` re-send on reconnect; if the
-            // recurser never returns, the disconnect handler or the phase-3
-            // timeout fails the job.
-            job.agg_task_inflight = Some(task.clone());
-            drop(job);
-            self.send_recurser_task(
-                &job_id,
-                &agg_worker_id,
-                task.proofs,
-                task.all_done,
-                task.proof_type,
-            )
-            .await?;
-        } else {
-            // Task in-flight — queue this one; it will be sent after the ack.
-            job.agg_task_queue.push_back(task);
+        let scheduler = job.agg.as_mut().expect("just created");
+        let dispatch = scheduler.on_set_ready(set);
+        // Drained here too: if this step yields the final dispatch there is no later
+        // scheduling point, and the donor would stay Computing after a successful job.
+        let freed = scheduler.take_released();
+        drop(job);
+
+        self.release_donors(&job_id, &freed).await;
+
+        if starting {
+            self.fire_job_event(&job_id, CoordinatorJobEvent::Progress(JobPhase::Recurse)).await;
+        }
+
+        if let Some(dispatch) = dispatch {
+            self.dispatch_agg(&job_id, dispatch).await?;
         }
 
         Ok(())
@@ -179,7 +192,7 @@ impl Coordinator {
                     .map(|proof| AggProofData {
                         airgroup_id: proof.airgroup_id,
                         values: proof.values,
-                        worker_idx: proof.worker_idx,
+                        worker_indexes: proof.worker_indexes,
                     })
                     .collect();
                 JobResultData::AggProofs(agg_proofs)

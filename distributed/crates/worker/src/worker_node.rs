@@ -154,6 +154,15 @@ pub struct WorkerNodeGrpc<T: ZiskBackend + 'static> {
     worker: Worker<T>,
 }
 
+/// What a drain carries through for reporting, plus whether it was the job's final
+/// one rather than an intermediate node's folded subtree.
+struct AggOutcome {
+    executed_steps: u64,
+    proof_type: ProofKind,
+    instances: u64,
+    is_final: bool,
+}
+
 impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// Wrap a worker as the rank-0 gRPC node with the given config.
     pub async fn new(worker_config: WorkerServiceConfig, worker: Worker<T>) -> Result<Self> {
@@ -231,6 +240,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     worker_id: self.worker_config.worker.worker_id.as_string(),
                     compute_capacity: Some(self.worker_config.worker.compute_capacity.into()),
                     last_known_job_id: Some(job.lock().await.job_id.as_string()),
+                    aggregation_arity: self.worker.aggregation_arity() as u32,
                 })),
             }
         } else {
@@ -238,6 +248,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 payload: Some(worker_message::Payload::Register(WorkerRegisterRequest {
                     worker_id: self.worker_config.worker.worker_id.as_string(),
                     compute_capacity: Some(self.worker_config.worker.compute_capacity.into()),
+                    aggregation_arity: self.worker.aggregation_arity() as u32,
                 })),
             }
         };
@@ -432,15 +443,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 executed_steps,
                 proof_type,
                 instances,
+                final_proof,
             } => {
                 self.send_recurser(
                     job_id,
                     success,
                     result,
                     message_sender,
-                    executed_steps,
-                    proof_type,
-                    instances,
+                    AggOutcome { executed_steps, proof_type, instances, is_final: final_proof },
                 )
                 .await
             }
@@ -798,10 +808,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         .map(|v| ProofStark {
                             airgroup_id: v.airgroup_id,
                             values: v.proof,
-                            // NOTE: in this context we take always the first worker index
-                            // because at this time at each send_proof call we are processing
-                            // proofs for a single worker
-                            worker_idx: v.worker_indexes[0] as u32,
+                            worker_indexes: v.worker_indexes.iter().map(|&i| i as u32).collect(),
                         })
                         .collect(),
                     String::new(),
@@ -843,17 +850,49 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
+    /// Return a node's folded subtree. It stays resident here, so the coordinator
+    /// only ships it on if the next fold lands on another worker.
+    async fn send_partial_agg(
+        &mut self,
+        job_id: JobId,
+        folded: Vec<AggProofs>,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+    ) -> Result<()> {
+        let proofs = folded
+            .into_iter()
+            .map(|p| ProofStark {
+                airgroup_id: p.airgroup_id,
+                values: p.proof,
+                worker_indexes: p.worker_indexes.iter().map(|&i| i as u32).collect(),
+            })
+            .collect();
+
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                worker_id: self.worker_config.worker.worker_id.as_string(),
+                job_id: job_id.as_string(),
+                task_type: TaskType::Aggregate as i32,
+                success: true,
+                result_data: Some(ResultData::PartialAggProofs(ProofList { proofs })),
+                error_message: String::new(),
+                worker_in_recovery: false,
+            })),
+        };
+        message_sender.send(message)?;
+
+        info!("Folded subtree returned for {job_id}");
+        Ok(())
+    }
+
     async fn send_recurser(
         &mut self,
         job_id: JobId,
         success: bool,
-        result: Result<Option<Vec<Vec<u64>>>>,
+        result: Result<Option<Vec<AggProofs>>>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
-        executed_steps: u64,
-        proof_type: ProofKind,
-        instances: u64,
+        outcome: AggOutcome,
     ) -> Result<()> {
+        let AggOutcome { executed_steps, proof_type, instances, is_final } = outcome;
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
         }
@@ -871,7 +910,17 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     return Err(anyhow!("Aggregation returned Ok result but reported failure"));
                 }
 
+                // An intermediate node's folded subtree goes back as-is; only the
+                // root's drain is turned into a job proof.
+                if !is_final {
+                    if let Some(folded) = data {
+                        return self.send_partial_agg(job_id, folded, message_sender).await;
+                    }
+                }
+
                 if let Some(final_proof) = data {
+                    let final_proof: Vec<Vec<u64>> =
+                        final_proof.into_iter().map(|p| p.proof).collect();
                     reset_current_job = !final_proof.is_empty();
 
                     let proof_data = if !final_proof.is_empty() {
@@ -2130,7 +2179,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // must NOT spawn a second concurrent proofman task over the same GPU
         // streams (set_current_computation overwrites the handle and a dropped
         // JoinHandle DETACHES the running task). If this fires, the coordinator
-        // double-dispatched (agg_task_inflight race or reconnect replay).
+        // double-dispatched (a scheduler gating bug, or a reconnect replay).
         if self.worker.has_live_computation() {
             error!(
                 "[DUPLICATE-DISPATCH] Aggregate for {} received while a computation is still running — ignoring",
@@ -2160,7 +2209,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let agg_proofs: Vec<_> = agg_proofs
             .into_iter()
             .map(|p| AggProofData {
-                worker_idx: p.worker_idx,
+                worker_indexes: p.worker_indexes,
                 airgroup_id: p.airgroup_id,
                 values: p.values,
             })
@@ -2171,6 +2220,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             last_proof: agg_params.last_proof,
             final_proof: agg_params.final_proof,
             proof_type: ProofKind::from(agg_params.proof_type),
+            keep_resident: agg_params.keep_resident,
+            reset_state: agg_params.reset_state,
         };
         self.worker.set_current_computation(self.worker.handle_aggregate_proofs(
             job,
