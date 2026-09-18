@@ -3,8 +3,8 @@
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
 use crate::{
-    extension_requires_full, BinaryCollectCursor, BinaryExtensionFrops, BinaryInput, ChunkCollect,
-    CollectAction, EXT_KINDS, KIND_EXT_CLEAN, KIND_EXT_DIRTY,
+    BinaryCollectCursor, BinaryExtensionFrops, BinaryInput, ChunkCollect, CollectAction, EXT_KINDS,
+    KIND_EXT,
 };
 use zisk_common::{
     BusDevice, BusId, ExtOperationData, OperationBusData, A, B, OP, OPERATION_BUS_ID,
@@ -95,13 +95,6 @@ impl<F: PrimeField64> BinaryExtensionCollector<F> {
             return true;
         }
 
-        // Operations whose unused operand parts are dirty can only be proven by the full air.
-        let kind = if extension_requires_full(data[OP] as u8, data[A], data[B]) {
-            KIND_EXT_DIRTY
-        } else {
-            KIND_EXT_CLEAN
-        };
-
         // The table row is only needed to publish the multiplicity or to cross-check the
         // assembly's column. Otherwise all the cursor needs is whether the operation is a frequent
         // one, which is the same test without the row arithmetic.
@@ -115,7 +108,7 @@ impl<F: PrimeField64> BinaryExtensionCollector<F> {
             )
         };
 
-        match self.cursor.next(kind, is_frop) {
+        match self.cursor.next(KIND_EXT, is_frop) {
             CollectAction::Stop => false,
             CollectAction::Pass => true,
             CollectAction::CountFrop => {

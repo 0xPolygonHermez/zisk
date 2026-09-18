@@ -1,15 +1,14 @@
 //! The `BinaryAddCollector` struct represents an input collector for binary add operations.
 
 use crate::{
-    add_shape, AddShape, BinaryBasicFrops, BinaryCollectCursor, ChunkCollect, CollectAction,
-    ADD_KINDS, KIND_ADD_FULL, KIND_ADD_HI,
+    add_family_kind, BinaryBasicFrops, BinaryCollectCursor, BinaryInput, ChunkCollect,
+    CollectAction, ADD_KINDS, KIND_BASIC,
 };
 use zisk_common::{BusDevice, BusId, ExtOperationData, OperationBusData, A, B, OPERATION_BUS_ID};
 use zisk_core::frops::{
     frops_cross_check_enabled, frops_cross_check_row, frops_multiplicity_from_asm,
     FROPS_BINARY_BASIC_BASE,
 };
-use zisk_core::zisk_ops::ZiskOp;
 
 use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
@@ -18,7 +17,7 @@ use std::sync::Arc;
 /// The `BinaryAddCollector` struct represents an input collector for binary add operations.
 pub struct BinaryAddCollector<F: PrimeField64> {
     /// Collected inputs for witness computation.
-    pub inputs: Vec<[u64; 2]>,
+    pub inputs: Vec<BinaryInput>,
 
     /// Decides, operation by operation, what belongs to this instance.
     cursor: BinaryCollectCursor<ADD_KINDS>,
@@ -86,7 +85,12 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
-        if OperationBusData::get_op(&op_data) != ZiskOp::Add.code() {
+        // One classifier for the whole family, shared with the counter, so this air never collects
+        // an operation the plan counted somewhere else. A basic kind is not this air's: only the
+        // `Binary` airs prove those, and they are the ones that account for their frops too.
+        let op = OperationBusData::get_op(&op_data);
+        let kind = add_family_kind(op, data[A], data[B]);
+        if kind == KIND_BASIC {
             return true;
         }
 
@@ -94,17 +98,10 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
         // assembly's column. Otherwise all the cursor needs is whether the operation is a frequent
         // one, which is the same test without the row arithmetic.
         let (is_frop, frops_row) = if self.publish_frops || self.cross_check_frops {
-            let row = BinaryBasicFrops::get_row(ZiskOp::Add.code(), data[A], data[B]);
+            let row = BinaryBasicFrops::get_row(op, data[A], data[B]);
             (row != BinaryBasicFrops::NO_FROPS, row)
         } else {
-            (
-                BinaryBasicFrops::is_frequent_op(ZiskOp::Add.code(), data[A], data[B]),
-                BinaryBasicFrops::NO_FROPS,
-            )
-        };
-        let kind = match add_shape(data[A], data[B]) {
-            AddShape::Hi | AddShape::HiNeg => KIND_ADD_HI,
-            AddShape::Full => KIND_ADD_FULL,
+            (BinaryBasicFrops::is_frequent_op(op, data[A], data[B]), BinaryBasicFrops::NO_FROPS)
         };
 
         match self.cursor.next(kind, is_frop) {
@@ -120,8 +117,7 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
                 true
             }
             CollectAction::Collect => {
-                self.inputs
-                    .push([OperationBusData::get_a(&op_data), OperationBusData::get_b(&op_data)]);
+                self.inputs.push(BinaryInput::from(&op_data));
                 !self.cursor.is_done()
             }
         }

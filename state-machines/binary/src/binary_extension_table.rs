@@ -9,35 +9,35 @@ use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_17, P2_8};
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[repr(u8)]
 pub enum BinaryExtensionTableOp {
-    Sll = ZiskOp::Sll.code(),
-    Srl = ZiskOp::Srl.code(),
-    Sra = ZiskOp::Sra.code(),
-    SllW = ZiskOp::SllW.code(),
-    SrlW = ZiskOp::SrlW.code(),
-    SraW = ZiskOp::SraW.code(),
-    SextB = ZiskOp::SignExtendB.code(),
-    SextH = ZiskOp::SignExtendH.code(),
-    SextW = ZiskOp::SignExtendW.code(),
-    Rev8 = ZiskOp::Rev8.code(),
-    OrcB = ZiskOp::OrcB.code(),
-    Rol = ZiskOp::Rol.code(),
-    RolW = ZiskOp::RolW.code(),
-    Ror = ZiskOp::Ror.code(),
-    RorW = ZiskOp::RorW.code(),
-    Cpop = ZiskOp::Cpop.code(),
-    CpopW = ZiskOp::CpopW.code(),
-    Ctz = ZiskOp::Ctz.code(),
-    CtzW = ZiskOp::CtzW.code(),
-    Clz = ZiskOp::Clz.code(),
-    ClzW = ZiskOp::ClzW.code(),
-    Pack = ZiskOp::Pack.code(),
-    PackH = ZiskOp::PackH.code(),
-    PackW = ZiskOp::PackW.code(),
-    Bclr = ZiskOp::Bclr.code(),
-    Bext = ZiskOp::Bext.code(),
-    Binv = ZiskOp::Binv.code(),
-    Bset = ZiskOp::Bset.code(),
-    SllUw = ZiskOp::SllUW.code(),
+    Sll = ZiskOp::SLL,
+    Srl = ZiskOp::SRL,
+    Sra = ZiskOp::SRA,
+    SllW = ZiskOp::SLL_W,
+    SrlW = ZiskOp::SRL_W,
+    SraW = ZiskOp::SRA_W,
+    SextB = ZiskOp::SIGNEXTEND_B,
+    SextH = ZiskOp::SIGNEXTEND_H,
+    SextW = ZiskOp::SIGNEXTEND_W,
+    Rev8 = ZiskOp::REV8,
+    OrcB = ZiskOp::ORC_B,
+    Rol = ZiskOp::ROL,
+    RolW = ZiskOp::ROL_W,
+    Ror = ZiskOp::ROR,
+    RorW = ZiskOp::ROR_W,
+    Cpop = ZiskOp::CPOP,
+    CpopW = ZiskOp::CPOP_W,
+    Ctz = ZiskOp::CTZ,
+    CtzW = ZiskOp::CTZ_W,
+    Clz = ZiskOp::CLZ,
+    ClzW = ZiskOp::CLZ_W,
+    Pack = ZiskOp::PACK,
+    PackH = ZiskOp::PACK_H,
+    PackW = ZiskOp::PACK_W,
+    Bclr = ZiskOp::BCLR,
+    Bext = ZiskOp::BEXT,
+    Binv = ZiskOp::BINV,
+    Bset = ZiskOp::BSET,
+    SllUw = ZiskOp::SLL_U_W,
 }
 
 /// The `BinaryExtensionTableSM` struct encapsulates the Binary Extension Table's logic.
@@ -45,6 +45,13 @@ pub struct BinaryExtensionTableSM;
 
 impl BinaryExtensionTableSM {
     pub const TABLE_ID: usize = 124;
+
+    /// Rows the table has, i.e. `BINARY_EXTENSION_TABLE_SIZE` in `binary_extension_table.pil`.
+    ///
+    /// The witness needs it to size the histogram it tallies the multiplicities into, so it cannot
+    /// live in the tests alone. `tests::table_regions_tile_the_whole_table` is what keeps it in step
+    /// with the PIL: the per-opcode regions must add up to exactly this.
+    pub const TABLE_ROWS: u64 = 2_510_848;
 
     /// Calculates the row index in the Binary Extension Table based on the operation and its
     /// inputs.
@@ -167,7 +174,7 @@ mod tests {
     ];
 
     /// MUST match `BINARY_EXTENSION_TABLE_SIZE` in `binary_extension_table.pil`.
-    const BINARY_EXTENSION_TABLE_SIZE: u64 = 2_510_848;
+    const BINARY_EXTENSION_TABLE_SIZE: u64 = BinaryExtensionTableSM::TABLE_ROWS;
 
     #[test]
     fn table_regions_tile_the_whole_table() {
@@ -208,7 +215,7 @@ mod tests {
         }
     }
 
-    /// Mirror of the `OP_SLL_UW` case of `binary_extension_table.pil`, for a single byte.
+    /// Mirror of the `OP_SLL_U_W` case of `binary_extension_table.pil`, for a single byte.
     fn sll_uw_table_row(offset: u32, a: u64, b: u64) -> u64 {
         if offset >= 4 {
             return 0;
@@ -240,7 +247,7 @@ mod tests {
                 // The instruction sets m32, so the bus (and hence the witness) only ever carries
                 // the low half of a: that masking is the zero extension the operation needs.
                 let bus_a = a & 0xFFFF_FFFF;
-                let (expected, flag) = ZiskOp::execute(ZiskOp::SllUW.code(), bus_a, b);
+                let (expected, flag) = ZiskOp::execute(ZiskOp::SLL_U_W, bus_a, b);
                 assert!(!flag);
 
                 let a_bytes = bus_a.to_le_bytes();

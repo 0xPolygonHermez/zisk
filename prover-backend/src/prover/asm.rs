@@ -26,7 +26,7 @@ use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, SetupKey, StatsCostPerType,
-    ZiskExecutorTime, ZiskPaths,
+    VadcopKind, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
@@ -578,11 +578,14 @@ impl ProverEngine for AsmProver {
         &self,
         proof: &[u64],
         publics_full: &[u64],
+        source_kind: VadcopKind,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics_full),
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full),
+            ProofKind::VadcopFinalMinimal => {
+                self.core_prover.backend.minimal(proof, publics_full, source_kind)
+            }
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full, source_kind),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }

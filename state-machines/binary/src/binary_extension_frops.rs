@@ -6,30 +6,11 @@ use std::error::Error;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_sm_frequent_ops::FrequentOpsHelpers;
 
-const OP_SLL: u8 = ZiskOp::Sll.code();
-const OP_SRL: u8 = ZiskOp::Srl.code();
-const OP_SRA: u8 = ZiskOp::Sra.code();
-const OP_SLLW: u8 = ZiskOp::SllW.code();
-const OP_SRLW: u8 = ZiskOp::SrlW.code();
-const OP_SRAW: u8 = ZiskOp::SraW.code();
-const OP_SIGNEXTENDB: u8 = ZiskOp::SignExtendB.code();
-const OP_SIGNEXTENDH: u8 = ZiskOp::SignExtendH.code();
-const OP_SIGNEXTENDW: u8 = ZiskOp::SignExtendW.code();
-const OP_REV8: u8 = ZiskOp::Rev8.code();
-const OP_CLZ: u8 = ZiskOp::Clz.code();
-const OP_CLZW: u8 = ZiskOp::ClzW.code();
-const OP_CPOP: u8 = ZiskOp::Cpop.code();
-const OP_ORCB: u8 = ZiskOp::OrcB.code();
-const OP_BEXT: u8 = ZiskOp::Bext.code();
-const OP_BINV: u8 = ZiskOp::Binv.code();
-const OP_BSET: u8 = ZiskOp::Bset.code();
-const OP_SLLUW: u8 = ZiskOp::SllUW.code();
-
 const OP_TABLE_OFFSETS_START: usize = 33;
-const OP_TABLE_OFFSETS: [usize; 47] = [
-    0, 540160, 2300416, 2456793, 2481345, 2481409, 2483187, 2870516, 2877001, 0, 0, 0, 0, 0, 0, 0,
-    2916425, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2920521, 2924617, 0, 0, 2924686, 0, 2924942, 0,
-    2928856, 2930221, 2930349, 0, 0, 0, 0, 0, 0, 0, 2934445,
+const OP_TABLE_OFFSETS: [usize; 35] = [
+    0, 540160, 2300416, 2456793, 2481345, 2481409, 2483187, 2870516, 2877001, 0, 0, 0, 0, 0, 0,
+    2916425, 0, 0, 0, 0, 0, 0, 0, 2920521, 2924617, 0, 0, 2924686, 0, 2924942, 0, 2928856, 2930221,
+    2930349, 2934445,
 ];
 
 #[derive(Debug, Clone)]
@@ -80,7 +61,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_SLL, &mut ops, true);
+            self.table.add_ops(ZiskOp::SLL, &mut ops, true);
         }
         // op srl
         {
@@ -109,7 +90,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_SRL, &mut ops, true);
+            self.table.add_ops(ZiskOp::SRL, &mut ops, true);
         }
         // op sra
         {
@@ -138,7 +119,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_SRA, &mut ops, true);
+            self.table.add_ops(ZiskOp::SRA, &mut ops, true);
         }
         // op sll_w
         {
@@ -149,7 +130,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_SLLW, &mut ops, true);
+            self.table.add_ops(ZiskOp::SLL_W, &mut ops, true);
         }
         // op srl_w
         {
@@ -160,7 +141,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_SRLW, &mut ops, true);
+            self.table.add_ops(ZiskOp::SRL_W, &mut ops, true);
         }
         // op sra_w
         {
@@ -171,7 +152,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_SRAW, &mut ops, true);
+            self.table.add_ops(ZiskOp::SRA_W, &mut ops, true);
         }
         // op signextend_b
         {
@@ -188,7 +169,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_SIGNEXTENDB, &mut ops, true);
+            self.table.add_ops(ZiskOp::SIGNEXTEND_B, &mut ops, true);
         }
         // op signextend_h
         {
@@ -211,7 +192,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_SIGNEXTENDH, &mut ops, true);
+            self.table.add_ops(ZiskOp::SIGNEXTEND_H, &mut ops, true);
         }
         // op signextend_w
         {
@@ -240,7 +221,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_SIGNEXTENDW, &mut ops, true);
+            self.table.add_ops(ZiskOp::SIGNEXTEND_W, &mut ops, true);
         }
         // op rev8
         {
@@ -251,7 +232,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_REV8, &mut ops, true);
+            self.table.add_ops(ZiskOp::REV8, &mut ops, true);
         }
         // op clz
         {
@@ -262,7 +243,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_CLZ, &mut ops, true);
+            self.table.add_ops(ZiskOp::CLZ, &mut ops, true);
         }
         // op clz_w
         {
@@ -273,7 +254,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_CLZW, &mut ops, true);
+            self.table.add_ops(ZiskOp::CLZ_W, &mut ops, true);
         }
         // op cpop
         {
@@ -284,7 +265,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_CPOP, &mut ops, true);
+            self.table.add_ops(ZiskOp::CPOP, &mut ops, true);
         }
         // op orc_b
         {
@@ -295,7 +276,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_ORCB, &mut ops, true);
+            self.table.add_ops(ZiskOp::ORC_B, &mut ops, true);
         }
         // op bext
         {
@@ -306,7 +287,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_BEXT, &mut ops, true);
+            self.table.add_ops(ZiskOp::BEXT, &mut ops, true);
         }
         // op binv
         {
@@ -317,7 +298,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_BINV, &mut ops, true);
+            self.table.add_ops(ZiskOp::BINV, &mut ops, true);
         }
         // op bset
         {
@@ -328,7 +309,7 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_BSET, &mut ops, true);
+            self.table.add_ops(ZiskOp::BSET, &mut ops, true);
         }
         // op sll_u_w
         {
@@ -339,20 +320,20 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(OP_SLLUW, &mut ops, true);
+            self.table.add_ops(ZiskOp::SLL_U_W, &mut ops, true);
         }
     }
 
     #[inline(always)]
     pub fn is_frequent_op(op: u8, a: u64, b: u64) -> bool {
         match op {
-            OP_SLL => {
+            ZiskOp::SLL => {
                 a < 4096 && b < 64
                     || a >= 4096 && a < 8192 && b < 64
                     || a >= 0x3C23F006 && a < 0x3C240006 && (a & 7) == 6 && b == 32
                     || a >= 0x4EC4E007 && a < 0x4EC4F007 && (a & 7) == 7 && b >= 3 && b < 33
             }
-            OP_SRL => {
+            ZiskOp::SRL => {
                 a < 4096 && b < 64
                     || a >= 4096 && a < 24576 && b < 64
                     || a >= 0x7FFFFFFFFFFFD000 && a < 0x8000000000001000 && (a & 7) == 0 && b < 64
@@ -362,38 +343,38 @@ impl BinaryExtensionFrops {
                         && b >= 1
                         && b < 56
             }
-            OP_SRA => {
+            ZiskOp::SRA => {
                 a < 4041 && b < 17
                     || a >= 4096 && a < 28672 && (a & 3) == 0 && b >= 3 && b < 17
                     || a >= 0x12C00004 && a < 0x12C01004 && (a & 7) == 4 && b == 16
                     || a >= 0xFFFFFFFFFFFFFF80 && b < 9
             }
-            OP_SLLW => a < 2046 && b < 12,
-            OP_SRLW => a < 16 && b < 4,
-            OP_SRAW => a < 254 && b < 7,
-            OP_SIGNEXTENDB => {
+            ZiskOp::SLL_W => a < 2046 && b < 12,
+            ZiskOp::SRL_W => a < 16 && b < 4,
+            ZiskOp::SRA_W => a < 254 && b < 7,
+            ZiskOp::SIGNEXTEND_B => {
                 a == 0 && b < 257 || a >= 0xA03FC000 && a < 0xA03FF000 && (a & 7) == 0 && b < 252
             }
-            OP_SIGNEXTENDH => {
+            ZiskOp::SIGNEXTEND_H => {
                 a == 0 && b < 2901
                     || a >= 0x800D5000 && a < 0x800D6000 && (a & 7) == 0 && b < 6
                     || a >= 0x800D5000 && a < 0x800D6000 && (a & 7) == 0 && b == 100
             }
-            OP_SIGNEXTENDW => {
+            ZiskOp::SIGNEXTEND_W => {
                 a >= 0x800D5000 && a < 0x800D6000 && (a & 3) == 0 && b == 100
                     || a >= 0xAABC9000 && a < 0xAABCA000 && (a & 7) == 0 && b < 15
                     || a >= 0xAAC0C000 && a < 0xAAC0E000 && (a & 7) == 0 && b < 15
                     || a >= 0xAACAE000 && a < 0xAACB0000 && (a & 7) == 0 && b < 15
             }
-            OP_REV8 => a == 0 && b < 4096,
-            OP_CLZ => a == 0 && b < 4096,
-            OP_CLZW => a == 0 && b < 69,
-            OP_CPOP => a == 0 && b < 256,
-            OP_ORCB => a == 0 && b < 3914,
-            OP_BEXT => a < 273 && b < 5,
-            OP_BINV => a < 2 && b < 64,
-            OP_BSET => a == 0 && b < 4096,
-            OP_SLLUW => a < 1109 && b < 10,
+            ZiskOp::REV8 => a == 0 && b < 4096,
+            ZiskOp::CLZ => a == 0 && b < 4096,
+            ZiskOp::CLZ_W => a == 0 && b < 69,
+            ZiskOp::CPOP => a == 0 && b < 256,
+            ZiskOp::ORC_B => a == 0 && b < 3914,
+            ZiskOp::BEXT => a < 273 && b < 5,
+            ZiskOp::BINV => a < 2 && b < 64,
+            ZiskOp::BSET => a == 0 && b < 4096,
+            ZiskOp::SLL_U_W => a < 1109 && b < 10,
             _ => false,
         }
     }
@@ -401,7 +382,7 @@ impl BinaryExtensionFrops {
     #[inline(always)]
     pub fn get_row(op: u8, a: u64, b: u64) -> usize {
         let relative_offset = match op {
-            OP_SLL => {
+            ZiskOp::SLL => {
                 if a < 4096 && b < 64 {
                     (a * 64 + b) as usize
                 } else if a >= 4096 && a < 8192 && b < 64 {
@@ -414,7 +395,7 @@ impl BinaryExtensionFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_SRL => {
+            ZiskOp::SRL => {
                 if a < 4096 && b < 64 {
                     (a * 64 + b) as usize
                 } else if a >= 4096 && a < 24576 && b < 64 {
@@ -436,7 +417,7 @@ impl BinaryExtensionFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_SRA => {
+            ZiskOp::SRA => {
                 if a < 4041 && b < 17 {
                     (a * 17 + b) as usize
                 } else if a >= 4096 && a < 28672 && (a & 3) == 0 && b >= 3 && b < 17 {
@@ -449,28 +430,28 @@ impl BinaryExtensionFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_SLLW => {
+            ZiskOp::SLL_W => {
                 if a < 2046 && b < 12 {
                     (a * 12 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_SRLW => {
+            ZiskOp::SRL_W => {
                 if a < 16 && b < 4 {
                     (a * 4 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_SRAW => {
+            ZiskOp::SRA_W => {
                 if a < 254 && b < 7 {
                     (a * 7 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_SIGNEXTENDB => {
+            ZiskOp::SIGNEXTEND_B => {
                 if a == 0 && b < 257 {
                     (a * 257 + b) as usize
                 } else if a >= 0xA03FC000 && a < 0xA03FF000 && (a & 7) == 0 && b < 252 {
@@ -479,7 +460,7 @@ impl BinaryExtensionFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_SIGNEXTENDH => {
+            ZiskOp::SIGNEXTEND_H => {
                 if a == 0 && b < 2901 {
                     (a * 2901 + b) as usize
                 } else if a >= 0x800D5000 && a < 0x800D6000 && (a & 7) == 0 && b < 6 {
@@ -490,7 +471,7 @@ impl BinaryExtensionFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_SIGNEXTENDW => {
+            ZiskOp::SIGNEXTEND_W => {
                 if a >= 0x800D5000 && a < 0x800D6000 && (a & 3) == 0 && b == 100 {
                     ((a - 0x800D5000) / 4) as usize
                 } else if a >= 0xAABC9000 && a < 0xAABCA000 && (a & 7) == 0 && b < 15 {
@@ -503,63 +484,63 @@ impl BinaryExtensionFrops {
                     Self::NO_FROPS
                 }
             }
-            OP_REV8 => {
+            ZiskOp::REV8 => {
                 if a == 0 && b < 4096 {
                     (a * 4096 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_CLZ => {
+            ZiskOp::CLZ => {
                 if a == 0 && b < 4096 {
                     (a * 4096 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_CLZW => {
+            ZiskOp::CLZ_W => {
                 if a == 0 && b < 69 {
                     (a * 69 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_CPOP => {
+            ZiskOp::CPOP => {
                 if a == 0 && b < 256 {
                     (a * 256 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_ORCB => {
+            ZiskOp::ORC_B => {
                 if a == 0 && b < 3914 {
                     (a * 3914 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_BEXT => {
+            ZiskOp::BEXT => {
                 if a < 273 && b < 5 {
                     (a * 5 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_BINV => {
+            ZiskOp::BINV => {
                 if a < 2 && b < 64 {
                     (a * 64 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_BSET => {
+            ZiskOp::BSET => {
                 if a == 0 && b < 4096 {
                     (a * 4096 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_SLLUW => {
+            ZiskOp::SLL_U_W => {
                 if a < 1109 && b < 10 {
                     (a * 10 + b) as usize
                 } else {

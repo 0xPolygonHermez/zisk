@@ -3,8 +3,8 @@
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
 use crate::{
-    add_shape, AddShape, BinaryBasicFrops, BinaryCollectCursor, BinaryInput, ChunkCollect,
-    CollectAction, ADD_KINDS, KIND_ADD_FULL, KIND_ADD_HI, KIND_BASIC,
+    add_family_kind, BinaryBasicFrops, BinaryCollectCursor, BinaryInput, ChunkCollect,
+    CollectAction, ADD_KINDS,
 };
 use zisk_common::{
     BusDevice, BusId, ExtOperationData, OperationBusData, A, B, OP, OPERATION_BUS_ID,
@@ -13,7 +13,7 @@ use zisk_core::frops::{
     frops_cross_check_enabled, frops_cross_check_row, frops_multiplicity_from_asm,
     FROPS_BINARY_BASIC_BASE,
 };
-use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
+use zisk_core::ZiskOperationType;
 
 use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
@@ -96,15 +96,9 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
             return true;
         }
 
-        // Additions are split by operand shape, since the planner places each shape independently.
-        let kind = if OperationBusData::get_op(&op_data) == ZiskOp::Add.code() {
-            match add_shape(data[A], data[B]) {
-                AddShape::Hi | AddShape::HiNeg => KIND_ADD_HI,
-                AddShape::Full => KIND_ADD_FULL,
-            }
-        } else {
-            KIND_BASIC
-        };
+        // One classifier for the whole family, shared with the counter, so this air never collects
+        // an operation the plan counted somewhere else.
+        let kind = add_family_kind(OperationBusData::get_op(&op_data), data[A], data[B]);
 
         // The table row is only needed to publish the multiplicity or to cross-check the
         // assembly's column. Otherwise all the cursor needs is whether the operation is a frequent

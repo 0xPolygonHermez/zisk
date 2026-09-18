@@ -1157,31 +1157,8 @@ impl Coordinator {
             self.send_webhook(webhook_url.clone(), &job);
         }
 
-        let state = job.state.clone();
         drop(job);
         let mut job = job_entry.write().await;
-
-        // Save proof to disk
-        if state == JobState::Completed && !self.config.server.no_save_proofs {
-            // Clone the proof so the (potentially large) blocking disk write can
-            // run off the async runtime without holding a borrow into the job;
-            // the in-memory proof stays intact for later retrieval.
-            let zisk_proof = job.proof.clone().ok_or_else(|| {
-                CoordinatorError::Internal(
-                    "Proof is missing during post-launch processing".to_string(),
-                )
-            })?;
-            let folder = self.config.server.proofs_dir.clone();
-            let raw_path = folder.join(format!("proof_{}.bin", job_id.as_str()));
-            tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-                std::fs::create_dir_all(&folder)?;
-                zisk_proof.save(&raw_path)?;
-                Ok(())
-            })
-            .await
-            .map_err(|e| CoordinatorError::Internal(format!("proof save task panicked: {}", e)))?
-            .map_err(|e| CoordinatorError::Internal(format!("Failed to save proof: {}", e)))?;
-        }
 
         // Clean up process data for the job
         job.cleanup();
@@ -1419,17 +1396,10 @@ impl Coordinator {
         );
         error!("Failed job {} (reason: {})", job_id, reason);
 
-        // post_launch_proof may fail (e.g. proof serialization, webhook).
-        // Ensure cleanup always runs even if it does.
+        // Only fails when the job is already gone from `self.jobs`, in which
+        // case there is nothing left to clean up.
         if let Err(e) = self.post_launch_proof(job_id).await {
-            warn!("post_launch_proof failed for job {}: {} — forcing cleanup", job_id, e);
-            let cleanup_entry = {
-                let jobs_map = self.jobs.read().await;
-                jobs_map.get(job_id).cloned()
-            };
-            if let Some(job_entry) = cleanup_entry {
-                job_entry.write().await.cleanup();
-            }
+            warn!("post_launch_proof failed for job {}: {}", job_id, e);
         }
 
         Ok(())
@@ -1904,10 +1874,11 @@ mod tests {
         ComputeCapacity, HintsModeDto, InputsModeDto, Job, JobExecutionMode, JobPhase, JobState,
         PhaseTimings, WorkerState,
     };
+    use zisk_common::Proof;
 
     fn test_config_with(overrides: impl FnOnce(&mut Config)) -> Config {
-        let mut config = Config::load(None, None, None, true, None)
-            .expect("Failed to create default test config");
+        let mut config =
+            Config::load(None, None, None).expect("Failed to create default test config");
         overrides(&mut config);
         config
     }
@@ -3376,6 +3347,30 @@ mod tests {
             coordinator.pending_recovery.read().await.contains_key(&w0_id),
             "pending_recovery entry must survive a racing completion"
         );
+    }
+
+    /// The recurser-aggregate ack path decodes the proof onto the job. The
+    /// client gets its copy from the completion event rather than from here,
+    /// so this pins the decode itself — `job.proof` is what `send_webhook`
+    /// serializes on the paths that reach `post_launch_proof`.
+    #[tokio::test]
+    async fn test_aggregate_ack_stores_the_decoded_proof() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
+        let w0 = workers[0].0.clone();
+
+        let ack = RunAggregateProofsAckDto {
+            job_id: job_id.as_string(),
+            worker_id: w0.clone(),
+            success: true,
+            error_message: None,
+            proof: bincode::serde::encode_to_vec(Proof::default(), bincode::config::standard())
+                .unwrap(),
+        };
+        coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert!(entry.read().await.proof.is_some(), "aggregate ack must store the decoded proof");
     }
 
     /// Regression: `handle_wrap_completion` must not flip the worker

@@ -17,6 +17,7 @@ mod mem_module_planner;
 mod mem_planner;
 mod mem_sm;
 mod mem_test;
+mod mem_witness_split;
 mod rom_data_sm;
 
 use input_data_sm::*;

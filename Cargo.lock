@@ -638,7 +638,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
- "synstructure",
+ "synstructure 0.13.2",
 ]
 
 [[package]]
@@ -697,7 +697,7 @@ checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -708,9 +708,9 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "aurora-engine-modexp"
-version = "1.2.0"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "518bc5745a6264b5fd7b09dffb9667e400ee9e2bbe18555fac75e1fe9afa0df9"
+checksum = "5188e264926edbd2e90d61bf8b33aa3471db8acdf427fa37946f9c82898fe502"
 dependencies = [
  "hex",
  "num",
@@ -989,7 +989,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -1095,8 +1095,8 @@ dependencies = [
  "predicates",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
+ "proofman-starks-lib-c",
  "rand 0.8.8",
  "rayon",
  "reqwest",
@@ -1161,9 +1161,9 @@ dependencies = [
 
 [[package]]
 name = "cfg-if"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "cfg_aliases"
@@ -1287,7 +1287,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -1371,9 +1371,9 @@ checksum = "0b396d1f76d455557e1218ec8066ae14bba60b4b36ecd55577ba979f5db7ecaa"
 
 [[package]]
 name = "const-hex"
-version = "1.19.1"
+version = "1.19.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33e2a781ebdf4467d1428dc4593067825fb646f6871475098d8577421af73558"
+checksum = "0e59eef12462b0f9b0a3620219be5d639afd79fe39dff0a42c3997061f9298b4"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.2.17",
@@ -1942,7 +1942,7 @@ checksum = "c6232dd377dcc64799954cbd3a9bb882e9cdc1308ccd87b1c098f1fb2eaf82a8"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -2084,7 +2084,7 @@ checksum = "a65863d15a4ce2888bd2f0f543cc963d3879c3a022c8ee43f6141d479a3ac815"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -2333,7 +2333,7 @@ checksum = "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -3548,7 +3548,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustversion",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -4003,7 +4003,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4014,13 +4014,13 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "anyhow",
  "num-bigint",
  "num-traits",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "serde",
  "serde_json",
  "tera",
@@ -4030,7 +4030,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4040,8 +4040,8 @@ dependencies = [
  "pil2-stark-recurser",
  "proofman-common",
  "proofman-exps-codegen",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
+ "proofman-starks-lib-c",
  "proofman-util",
  "prost 0.13.5",
  "rayon",
@@ -4056,11 +4056,11 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "colored",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-hints",
  "proofman-util",
  "proofman-witness",
@@ -4274,7 +4274,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "bincode",
  "blake3",
@@ -4289,12 +4289,12 @@ dependencies = [
  "pil2-std-lib",
  "proofman-common",
  "proofman-curves",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-hints",
  "proofman-macros",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-starks-lib-c",
  "proofman-util",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-verifier",
  "proofman-witness",
  "rayon",
  "serde",
@@ -4306,7 +4306,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "borsh",
  "colored",
@@ -4317,9 +4317,9 @@ dependencies = [
  "libloading",
  "mpi",
  "num_cpus",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-macros",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-starks-lib-c",
  "proofman-util",
  "rayon",
  "serde",
@@ -4334,18 +4334,18 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
 ]
 
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "anyhow",
- "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-starks-src",
  "rayon",
  "regex",
  "serde",
@@ -4356,45 +4356,32 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "blake3",
  "cfg-if",
  "num-bigint",
  "paste",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
- "serde",
-]
-
-[[package]]
-name = "proofman-fields"
-version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#17c6dd99f62487b362b229a03e51658c1046603b"
-dependencies = [
- "blake3",
- "cfg-if",
- "num-bigint",
- "paste",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
+ "proofman-starks-lib-c",
  "serde",
 ]
 
 [[package]]
 name = "proofman-hints"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "itoa",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
+ "proofman-starks-lib-c",
  "tracing",
 ]
 
 [[package]]
 name = "proofman-macros"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4404,35 +4391,21 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "crossbeam-channel",
- "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
-]
-
-[[package]]
-name = "proofman-starks-lib-c"
-version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#17c6dd99f62487b362b229a03e51658c1046603b"
-dependencies = [
- "crossbeam-channel",
- "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
+ "proofman-starks-src",
 ]
 
 [[package]]
 name = "proofman-starks-src"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
-
-[[package]]
-name = "proofman-starks-src"
-version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#17c6dd99f62487b362b229a03e51658c1046603b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 
 [[package]]
 name = "proofman-util"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4441,24 +4414,12 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "bincode",
  "num-traits",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "rayon",
- "serde",
- "tracing",
-]
-
-[[package]]
-name = "proofman-verifier"
-version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#17c6dd99f62487b362b229a03e51658c1046603b"
-dependencies = [
- "bincode",
- "num-traits",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
  "serde",
  "tracing",
 ]
@@ -4466,11 +4427,11 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#be2350bdb7f6eb7201e2c6c312bcd2997129eafb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join#d05314e931f0b4adf3d251e1ec91f24c2b86cab0"
 dependencies = [
  "libloading",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
 ]
 
 [[package]]
@@ -4881,11 +4842,10 @@ dependencies = [
 
 [[package]]
 name = "redox_users"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
+checksum = "60dc65c0ff1a7ae1294b0c67b9f14baf70b644404010370171787bfac1038fc0"
 dependencies = [
- "getrandom 0.2.17",
  "libredox",
  "thiserror 2.0.20",
 ]
@@ -4907,7 +4867,7 @@ checksum = "92ecd8964f8453721699a1ed72037b0db49ce2f5a5138486ee89bed6f67cdf3a"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -5051,9 +5011,9 @@ dependencies = [
 
 [[package]]
 name = "ruint"
-version = "1.20.0"
+version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5e99bff0393163bb25029a6af25d3d8d202ba5b5438a74d1bd8789f5c822970"
+checksum = "2973657b5127d510e230f5c63d2d106af9c8f79393d8b9f4647323e8196bdde5"
 dependencies = [
  "alloy-rlp",
  "ark-ff 0.3.0",
@@ -5167,9 +5127,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.1.4"
+version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
+checksum = "891efababe418670775f199f0d233d84843c227a0949a883ce15b37c78d6629d"
 dependencies = [
  "bitflags 2.13.2",
  "errno",
@@ -5463,7 +5423,7 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -5816,9 +5776,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "3.0.5"
+version = "3.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12df2e0110f65b775f769bb17ef989067a1d931b2eb822bd4346631eeada89f9"
+checksum = "8593e8e72159ed2257d083c7a454a85cbf854f37a0966d8d483aff8c8a3ebcee"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5855,6 +5815,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "synstructure"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "901704edd0dfe137f1987838ee4f259e4e063c31371bdb423f7ae38ec6f77f02"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -5915,7 +5886,7 @@ dependencies = [
  "fastrand",
  "getrandom 0.4.3",
  "once_cell",
- "rustix 1.1.4",
+ "rustix 1.1.5",
  "windows-sys 0.61.2",
 ]
 
@@ -5984,7 +5955,7 @@ checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -6118,7 +6089,7 @@ checksum = "78773a2a397f451582ce068015985c33193cf6dea8b74d2a639fe457b2f07b0e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -6528,9 +6499,9 @@ checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.24"
+version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
 
 [[package]]
 name = "unicode-segmentation"
@@ -6741,7 +6712,7 @@ dependencies = [
  "bumpalo",
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
  "wasm-bindgen-shared",
 ]
 
@@ -7241,14 +7212,14 @@ dependencies = [
 
 [[package]]
 name = "yoke-derive"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de844c262c8848816172cef550288e7dc6c7b7814b4ee56b3e1553f275f1858e"
+checksum = "33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.119",
- "synstructure",
+ "syn 3.0.6",
+ "synstructure 0.14.0",
 ]
 
 [[package]]
@@ -7282,14 +7253,14 @@ dependencies = [
 
 [[package]]
 name = "zerofrom-derive"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11532158c46691caf0f2593ea8358fed6bbf68a0315e80aae9bd41fbade684a1"
+checksum = "f75b4683f6c7f45248d4d64056a24298c6281e0993356d7d1b4a1a962ef10d4a"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.119",
- "synstructure",
+ "syn 3.0.6",
+ "synstructure 0.14.0",
 ]
 
 [[package]]
@@ -7342,7 +7313,7 @@ checksum = "34df6fc39dbd26ddc9c10e6a2984476e13acce22e64e4487636ef494369225da"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -7352,7 +7323,7 @@ dependencies = [
  "anyhow",
  "libc",
  "named-sem",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-starks-lib-c",
  "proofman-util",
  "rayon",
  "thiserror 2.0.20",
@@ -7426,8 +7397,8 @@ dependencies = [
  "paste",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
+ "proofman-verifier",
  "serde",
  "serde_json",
  "sha2",
@@ -7436,6 +7407,7 @@ dependencies = [
  "tracing",
  "zisk-core",
  "zisk-definitions",
+ "zisk-pil",
  "zisk-stream",
  "zisk-verifier",
 ]
@@ -7541,7 +7513,7 @@ name = "zisk-core"
 version = "1.3.0-alpha"
 dependencies = [
  "paste",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "rayon",
  "sha2",
  "tiny-keccak",
@@ -7567,7 +7539,7 @@ dependencies = [
  "pil2-std-lib",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
  "proofman-witness",
  "rayon",
@@ -7625,7 +7597,7 @@ name = "zisk-pil"
 version = "1.3.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-macros",
  "serde",
  "serde_arrays",
@@ -7646,7 +7618,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "regex",
@@ -7674,7 +7646,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "rustfmt-wrapper",
@@ -7702,7 +7674,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7720,7 +7692,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7738,7 +7710,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7755,7 +7727,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7770,7 +7742,9 @@ dependencies = [
 name = "zisk-precomp-common"
 version = "1.3.0-alpha"
 dependencies = [
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "pil2-std-lib",
+ "proofman-fields",
+ "rayon",
  "zisk-common",
  "zisk-core",
  "zisk-sm-mem",
@@ -7783,7 +7757,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7801,7 +7775,7 @@ dependencies = [
  "clap",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -7847,7 +7821,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tiny-keccak",
@@ -7866,7 +7840,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7883,7 +7857,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7930,9 +7904,9 @@ dependencies = [
  "colored",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-verifier",
  "serde",
  "tracing",
  "zisk-asm-runner",
@@ -7960,8 +7934,8 @@ dependencies = [
  "pil2-stark-setup",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
+ "proofman-verifier",
  "serde",
  "serde_json",
  "tera",
@@ -7986,7 +7960,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -8002,8 +7976,8 @@ dependencies = [
  "bincode",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
+ "proofman-verifier",
  "rayon",
  "serde",
  "serde_json",
@@ -8027,7 +8001,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "rayon",
  "tracing",
  "zisk-common",
@@ -8043,7 +8017,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "rayon",
  "static_assertions",
  "tracing",
@@ -8059,7 +8033,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "clap",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "static_assertions",
  "zisk-core",
 ]
@@ -8070,7 +8044,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -8088,7 +8062,7 @@ dependencies = [
  "env",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -8103,9 +8077,10 @@ name = "zisk-sm-mem-common"
 version = "1.3.0-alpha"
 dependencies = [
  "clap",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "rayon",
  "static_assertions",
+ "tracing",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -8127,7 +8102,7 @@ name = "zisk-sm-rom"
 version = "1.3.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -8182,7 +8157,8 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.3.0-alpha"
 dependencies = [
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
+ "proofman-fields",
+ "proofman-verifier",
 ]
 
 [[package]]
@@ -8199,7 +8175,7 @@ dependencies = [
  "config",
  "proofman",
  "proofman-common",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-verifier",
  "rayon",
  "serde",
  "time",
@@ -8242,7 +8218,7 @@ dependencies = [
  "memmap2",
  "num-format",
  "object",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "rayon",
  "regex",
  "serde_json",
@@ -8288,7 +8264,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "paste",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "rand 0.8.8",
  "ripemd",
  "secp256k1",
@@ -8319,7 +8295,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "paste",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frh-late-join)",
+ "proofman-fields",
  "rand 0.8.8",
  "ripemd",
  "serde",
@@ -8342,9 +8318,9 @@ dependencies = [
 
 [[package]]
 name = "zlib-rs"
-version = "0.6.7"
+version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34b31d188d9d685a4f9c7b46d6e36631b07058d2cfe190267adce54dc230bf12"
+checksum = "b268e58e7c693d7c271f93ffc4ba3b380412554231c85bf61ca7af91042a4112"
 
 [[package]]
 name = "zmij"

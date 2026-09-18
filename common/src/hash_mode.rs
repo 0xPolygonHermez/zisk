@@ -228,6 +228,17 @@ mod tests {
         assert_eq!(HashMode::default().as_str(), proofman_common::hash_family::DEFAULT_HASH_ID);
     }
 
+    /// Every mode must have a wire tag and round-trip through it. Without this a family
+    /// added to the enum would serialize as "unrecognized" only at runtime.
+    #[test]
+    fn every_mode_round_trips_through_its_wire_tag() {
+        for m in HashMode::ALL {
+            let tag = zisk_verifier::hash_tag(m.as_str())
+                .unwrap_or_else(|| panic!("{} has no wire tag", m.as_str()));
+            assert_eq!(zisk_verifier::hash_id_from_tag(tag), Some(m.as_str()));
+        }
+    }
+
     /// Every mode this enum knows must be a family proofman knows, and vice versa.
     #[test]
     fn the_modes_match_proofmans_family_list() {

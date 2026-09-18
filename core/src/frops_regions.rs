@@ -190,23 +190,23 @@ static OP_1B: [FropsRegion; 1] = [
     FropsRegion { a_lo: 0x0, a_count: 128, a_stride: 1, b_lo: 0x0, b_count: 128, base_row: 20360428 },
 ];
 
-/// `andn` (0x33)
+/// `andn` (0x53)
 #[rustfmt::skip]
-static OP_33: [FropsRegion; 1] = [
+static OP_53: [FropsRegion; 1] = [
     // low_rect: a < 25 && b < 35
     FropsRegion { a_lo: 0x0, a_count: 25, a_stride: 1, b_lo: 0x0, b_count: 35, base_row: 20376812 },
 ];
 
-/// `sh1add` (0x49)
+/// `sh1add` (0x56)
 #[rustfmt::skip]
-static OP_49: [FropsRegion; 1] = [
+static OP_56: [FropsRegion; 1] = [
     // low_rect: a < 171 && b < 171
     FropsRegion { a_lo: 0x0, a_count: 171, a_stride: 1, b_lo: 0x0, b_count: 171, base_row: 20377687 },
 ];
 
-/// `sh3add` (0x4d)
+/// `sh3add` (0x58)
 #[rustfmt::skip]
-static OP_4D: [FropsRegion; 1] = [
+static OP_58: [FropsRegion; 1] = [
     // low_rect: a < 15 && b < 41
     FropsRegion { a_lo: 0x0, a_count: 15, a_stride: 1, b_lo: 0x0, b_count: 41, base_row: 20406928 },
 ];
@@ -304,65 +304,65 @@ static OP_29: [FropsRegion; 4] = [
     FropsRegion { a_lo: 0xaacae000, a_count: 1024, a_stride: 8, b_lo: 0x0, b_count: 15, base_row: 23308608 },
 ];
 
-/// `rev8` (0x31)
+/// `rev8` (0x30)
 #[rustfmt::skip]
-static OP_31: [FropsRegion; 1] = [
+static OP_30: [FropsRegion; 1] = [
     // low_rect: a == 0 && b < 4096
     FropsRegion { a_lo: 0x0, a_count: 1, a_stride: 1, b_lo: 0x0, b_count: 4096, base_row: 23323968 },
 ];
 
-/// `clz` (0x3d)
+/// `clz` (0x38)
 #[rustfmt::skip]
-static OP_3D: [FropsRegion; 1] = [
+static OP_38: [FropsRegion; 1] = [
     // low_rect: a == 0 && b < 4096
     FropsRegion { a_lo: 0x0, a_count: 1, a_stride: 1, b_lo: 0x0, b_count: 4096, base_row: 23328064 },
 ];
 
-/// `clz_w` (0x3e)
+/// `clz_w` (0x39)
 #[rustfmt::skip]
-static OP_3E: [FropsRegion; 1] = [
+static OP_39: [FropsRegion; 1] = [
     // low_rect: a == 0 && b < 69
     FropsRegion { a_lo: 0x0, a_count: 1, a_stride: 1, b_lo: 0x0, b_count: 69, base_row: 23332160 },
 ];
 
-/// `cpop` (0x41)
+/// `cpop` (0x3c)
 #[rustfmt::skip]
-static OP_41: [FropsRegion; 1] = [
+static OP_3C: [FropsRegion; 1] = [
     // low_rect: a == 0 && b < 256
     FropsRegion { a_lo: 0x0, a_count: 1, a_stride: 1, b_lo: 0x0, b_count: 256, base_row: 23332229 },
 ];
 
-/// `orc_b` (0x43)
+/// `orc_b` (0x3e)
 #[rustfmt::skip]
-static OP_43: [FropsRegion; 1] = [
+static OP_3E: [FropsRegion; 1] = [
     // low_rect: a == 0 && b < 3914
     FropsRegion { a_lo: 0x0, a_count: 1, a_stride: 1, b_lo: 0x0, b_count: 3914, base_row: 23332485 },
 ];
 
-/// `bext` (0x45)
+/// `bext` (0x40)
 #[rustfmt::skip]
-static OP_45: [FropsRegion; 1] = [
+static OP_40: [FropsRegion; 1] = [
     // low_rect: a < 273 && b < 5
     FropsRegion { a_lo: 0x0, a_count: 273, a_stride: 1, b_lo: 0x0, b_count: 5, base_row: 23336399 },
 ];
 
-/// `binv` (0x46)
+/// `binv` (0x41)
 #[rustfmt::skip]
-static OP_46: [FropsRegion; 1] = [
+static OP_41: [FropsRegion; 1] = [
     // low_rect: a < 2 && b < 64
     FropsRegion { a_lo: 0x0, a_count: 2, a_stride: 1, b_lo: 0x0, b_count: 64, base_row: 23337764 },
 ];
 
-/// `bset` (0x47)
+/// `bset` (0x42)
 #[rustfmt::skip]
-static OP_47: [FropsRegion; 1] = [
+static OP_42: [FropsRegion; 1] = [
     // low_rect: a == 0 && b < 4096
     FropsRegion { a_lo: 0x0, a_count: 1, a_stride: 1, b_lo: 0x0, b_count: 4096, base_row: 23337892 },
 ];
 
-/// `sll_u_w` (0x4f)
+/// `sll_u_w` (0x43)
 #[rustfmt::skip]
-static OP_4F: [FropsRegion; 1] = [
+static OP_43: [FropsRegion; 1] = [
     // low_rect: a < 1109 && b < 10
     FropsRegion { a_lo: 0x0, a_count: 1109, a_stride: 1, b_lo: 0x0, b_count: 10, base_row: 23341988 },
 ];
@@ -376,12 +376,12 @@ pub static FROPS_REGIONS: [&[FropsRegion]; 256] = [
     /* 0x18 */ &[], &[], &OP_1A, &OP_1B, &[], &[], &[], &[],
     /* 0x20 */ &[], &OP_21, &OP_22, &OP_23, &OP_24, &OP_25, &OP_26, &OP_27,
     /* 0x28 */ &OP_28, &OP_29, &[], &[], &[], &[], &[], &[],
-    /* 0x30 */ &[], &OP_31, &[], &OP_33, &[], &[], &[], &[],
-    /* 0x38 */ &[], &[], &[], &[], &[], &OP_3D, &OP_3E, &[],
-    /* 0x40 */ &[], &OP_41, &[], &OP_43, &[], &OP_45, &OP_46, &OP_47,
-    /* 0x48 */ &[], &OP_49, &[], &[], &[], &OP_4D, &[], &OP_4F,
-    /* 0x50 */ &[], &[], &[], &[], &[], &[], &[], &[],
-    /* 0x58 */ &[], &[], &[], &[], &[], &[], &[], &[],
+    /* 0x30 */ &OP_30, &[], &[], &[], &[], &[], &[], &[],
+    /* 0x38 */ &OP_38, &OP_39, &[], &[], &OP_3C, &[], &OP_3E, &[],
+    /* 0x40 */ &OP_40, &OP_41, &OP_42, &OP_43, &[], &[], &[], &[],
+    /* 0x48 */ &[], &[], &[], &[], &[], &[], &[], &[],
+    /* 0x50 */ &[], &[], &[], &OP_53, &[], &[], &OP_56, &[],
+    /* 0x58 */ &OP_58, &[], &[], &[], &[], &[], &[], &[],
     /* 0x60 */ &[], &[], &[], &[], &[], &[], &[], &[],
     /* 0x68 */ &[], &[], &[], &[], &[], &[], &[], &[],
     /* 0x70 */ &[], &[], &[], &[], &[], &[], &[], &[],

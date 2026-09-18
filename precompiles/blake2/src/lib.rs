@@ -18,6 +18,7 @@ zisk_common::zisk_precompile! {
         let n = ::zisk_pil::Blake2brTrace::<::zisk_pil::Blake2brTraceRow<F>>::NUM_ROWS;
         n / crate::blake2b_constants::CLOCKS
     },
+    cost = ::zisk_pil::BLAKE_2_BR_INSTANCE_COST,
     ops = [
         (OperationBlake2bData, Blake2bInput),
     ],
@@ -31,6 +32,7 @@ zisk_common::zisk_precompile! {
         let n = ::zisk_pil::Blake2sTrace::<::zisk_pil::Blake2sTraceRow<F>>::NUM_ROWS;
         n / crate::blake2s_constants::CLOCKS
     },
+    cost = ::zisk_pil::BLAKE_2_S_INSTANCE_COST,
     ops = [
         (OperationBlake2sData, Blake2sInput),
     ],
