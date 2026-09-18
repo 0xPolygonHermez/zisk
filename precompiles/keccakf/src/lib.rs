@@ -1,6 +1,8 @@
 mod keccakf;
 mod keccakf_chi_table;
 mod keccakf_constants;
+#[cfg(gpu)]
+pub mod keccakf_gpu;
 mod keccakf_mem_inputs;
 mod keccakf_xor5_table;
 

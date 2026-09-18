@@ -32,3 +32,4 @@ reth-inputs/
 /benchmark
 dist/
 package-lock.json
+/precompiles/keccakf/cu/CudaArch.mk

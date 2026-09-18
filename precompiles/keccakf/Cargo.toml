@@ -9,6 +9,7 @@ homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
+build = "build.rs"
 
 [dependencies]
 zisk-core = { workspace = true }
@@ -29,5 +30,13 @@ rayon = { workspace = true }
 
 tiny-keccak = { workspace = true, features = ["keccak"] }
 
+[features]
+default = []
+cpu-only = []
+
 [dev-dependencies]
 zisk-test-artifacts = { workspace = true }
+
+[lints.rust]
+# `gpu` is set by build.rs only when CUDA is detected.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gpu)'] }
