@@ -60,6 +60,10 @@ fn put_str(out: &mut Vec<u8>, s: &str) {
 }
 
 /// Cursor over a byte slice used by the decoder.
+/// LEB128 bytes needed to hold a `u64`: `ceil(64 / 7)` = 10. The final byte contributes
+/// only bit 63, so its payload is limited to 0 or 1 (see `Reader::uvarint`).
+const UVARINT_MAX_BYTES: usize = 10;
+
 struct Reader<'a> {
     buf: &'a [u8],
     pos: usize,
@@ -76,21 +80,28 @@ impl<'a> Reader<'a> {
         Ok(b)
     }
 
+    /// Reads an LEB128 unsigned varint (ziskbin.md §5.2), rejecting anything that does
+    /// not fit a `u64`.
+    ///
+    /// A `u64` needs at most `UVARINT_MAX_BYTES` bytes, and the last of those carries
+    /// only bit 63 — so its payload must be 0 or 1. A larger payload there would shift
+    /// straight out of the `u64` and be discarded, silently decoding a malformed stream
+    /// to a *different, plausible* value. Since this data comes from an ELF the decoder
+    /// did not produce, that has to be an error rather than a truncation.
     fn uvarint(&mut self) -> Result<u64, String> {
         let mut result: u64 = 0;
-        let mut shift = 0u32;
-        loop {
+        for k in 0..UVARINT_MAX_BYTES {
             let b = self.u8()?;
-            if shift >= 64 {
-                return Err("ziskbin: uvarint overflow".to_string());
+            let payload = (b & 0x7f) as u64;
+            if k == UVARINT_MAX_BYTES - 1 && payload > 1 {
+                return Err("ziskbin: uvarint does not fit in u64".to_string());
             }
-            result |= ((b & 0x7f) as u64) << shift;
+            result |= payload << (7 * k);
             if b & 0x80 == 0 {
-                break;
+                return Ok(result);
             }
-            shift += 7;
         }
-        Ok(result)
+        Err(format!("ziskbin: uvarint longer than {UVARINT_MAX_BYTES} bytes"))
     }
 
     fn svarint(&mut self) -> Result<i64, String> {
@@ -751,6 +762,39 @@ mod tests {
         let decoded = decode_rom(&encode_rom(&rom)).unwrap();
         let (addr, zib) = rom.insts.iter().next().unwrap();
         assert_eq!(decoded.insts[addr].i.meta_rd, zib.i.meta_rd);
+    }
+
+    #[test]
+    fn uvarint_round_trips_u64_max() {
+        // 10 bytes with a final payload of exactly 1 is the largest legal encoding.
+        let mut buf = Vec::new();
+        put_uvarint(&mut buf, u64::MAX);
+        assert_eq!(buf.len(), UVARINT_MAX_BYTES);
+        assert_eq!(Reader::new(&buf).uvarint().unwrap(), u64::MAX);
+    }
+
+    #[test]
+    fn rejects_uvarint_exceeding_u64() {
+        // Same 10 bytes, but the final payload is 2: bit 64. Shifting it into a u64
+        // discards it, so the blob would decode to a *different* value than it encodes
+        // (here: 0 in the top bit instead of overflow). It must be refused.
+        let mut buf = vec![0xffu8; UVARINT_MAX_BYTES - 1];
+        buf.push(0x02);
+        let err = Reader::new(&buf).uvarint().unwrap_err();
+        assert!(err.contains("does not fit in u64"), "{err}");
+
+        // A full 7-bit payload in the last byte is the same bug, one step louder.
+        let mut buf = vec![0xffu8; UVARINT_MAX_BYTES - 1];
+        buf.push(0x7f);
+        assert!(Reader::new(&buf).uvarint().unwrap_err().contains("does not fit in u64"));
+    }
+
+    #[test]
+    fn rejects_uvarint_longer_than_u64() {
+        // Continuation set on every byte: an 11th byte would be needed.
+        let buf = vec![0x80u8; UVARINT_MAX_BYTES];
+        let err = Reader::new(&buf).uvarint().unwrap_err();
+        assert!(err.contains("longer than"), "{err}");
     }
 
     #[test]
