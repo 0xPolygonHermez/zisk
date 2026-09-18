@@ -38,6 +38,8 @@ jobs:
       image: ubuntu:22.04
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      # Use the committed ziskfloat artifacts (no Docker daemon in this container).
+      ZISK_CI_NO_DOCKER_REBUILD: "1"
 
     steps:
       - name: Checkout sources
