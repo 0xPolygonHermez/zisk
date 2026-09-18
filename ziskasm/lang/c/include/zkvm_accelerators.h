@@ -3,11 +3,21 @@
  * interface. Mirrors the standard at:
  *   github.com/eth-act/zkevm-standards/standards/c-interface-accelerators/zkvm_accelerators.h
  *
- * This is the STANDARD, vendor-neutral surface. The ZisK implementation lives in
- * src/zkvm_accelerators.c, which marshals the EF byte-array ABI to the ziskasm
- * flat bindings (zisklib.h -> ziskos_* stubs, redirected to the hand-written
- * .zisk routines by elf2rom). A guest that follows the EF standard links this
- * header + that .c and transparently runs the ziskasm crypto.
+ * This is the STANDARD, vendor-neutral surface. ZisK implements it with NO C
+ * marshalling layer: src/zkvm_stubs.c carries one exported placeholder body per
+ * symbol, and at transpile time elf2rom redirects each `zkvm_*` symbol DIRECTLY to
+ * the matching hand-written `ziskasm_zkvm_*` routine in ziskasm/zisklib/zkvm/, which
+ * consumes the EF byte-array ABI as-is. A guest that follows the EF standard compiles
+ * against this header and links src/zkvm_stubs.c (see CMakeLists.txt, which builds it
+ * into `zisklib_c`) and transparently runs the ziskasm crypto.
+ *
+ * The flat `ziskos_*` bindings in zisklib.h are a SEPARATE entry point onto the same
+ * routines, not a layer this header goes through: elf2rom's REDIRECTS table maps both
+ * `ziskos_keccak` and `zkvm_keccak256` to the same `ziskasm_zkvm_keccak256` label.
+ *
+ * If a placeholder body ever executes, the redirect did not fire (stripped ELF, or
+ * ziskemu/cargo-zisk built without the `ziskasm` feature); it then prints a
+ * diagnostic naming the symbol and faults rather than returning a wrong value.
  */
 #ifndef ZKVM_ACCELERATORS_H
 #define ZKVM_ACCELERATORS_H
