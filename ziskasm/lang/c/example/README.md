@@ -18,8 +18,16 @@ c5d2460186f7233c…d85a470`.
 
 - **PASS** (the real hash) ⇒ the redirect fired and the `.zisk` routine produced
   the correct result.
-- If the redirect had *not* fired, the C stub in `src/zisklib_stubs.c` fills the
-  output with `0xBA`, so a wrong `bababa…` hash would show — the negative control.
+- If the redirect does *not* fire, the placeholder body in `src/zisklib_stubs.c`
+  runs and **fails hard** rather than returning a plausible-but-wrong value: it
+  writes `ERROR: ziskasm library stub reached without redirect: ziskos_keccak()…`
+  to the ZisK stdout UART, then stores to address 0, which aborts ziskemu
+  (`Mem::write_silent() invalid addr=0`) before any output is written. So the
+  negative control is an abort naming the unresolved symbol, not a wrong hash —
+  the script prints ziskemu's output in that case.
+
+  You can see it deliberately by stripping the guest ELF (`elf2rom` resolves the
+  stubs by name in `.symtab`, so a stripped ELF cannot be redirected).
 
 This confirms the mechanism is real: any ELF (C, C++, Rust) that exports and calls
 a `ziskos_*` symbol from the `REDIRECTS` table gets the shared `.zisk` routine.

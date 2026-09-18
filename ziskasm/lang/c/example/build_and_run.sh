@@ -20,12 +20,12 @@ OUT="${OUT:-/tmp/zisk_c_e2e}"; mkdir -p "$OUT"
 
 # The elf2rom symbol redirect lives behind ziskemu's `ziskasm` feature, which is
 # OFF by default (emulator/Cargo.toml), so a plain `cargo build --release -p
-# ziskemu` yields an emulator that never applies it: the C stub would run, the
-# guest would emit the 0xBA..BA sentinel, and the hash check at the end would
-# report "redirect did NOT fire" -- blaming the redirect for a build-time gap.
-# Probe for the feature instead. `-z` is declared unconditionally in the CLI and
-# only its handling is gated, so --help cannot tell the two builds apart; the
-# runtime rejection can.
+# ziskemu` yields an emulator that never applies it: the C stub in
+# src/zisklib_stubs.c runs, prints "stub reached without redirect", and faults on
+# the null guard page, aborting the run before any output is written. That is a
+# clear failure, but it blames nothing -- probe for the feature up front instead.
+# `-z` is declared unconditionally in the CLI and only its handling is gated, so
+# --help cannot tell the two builds apart; the runtime rejection can.
 has_ziskasm() {
     [ -x "$1" ] || return 1
     ! "$1" -z /nonexistent.zisk 2>&1 | grep -q "requires building ziskemu with"
@@ -52,7 +52,18 @@ $CC -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib -ffreestanding -O2 \
     -o "$OUT/keccak_e2e.elf" "$HERE/_start.s" "$HERE/main.c" "$STUBS"
 
 echo "### running through ziskemu (elf2rom redirects ziskos_keccak -> zisklib_keccak) ..."
-"$ZISKEMU" -e "$OUT/keccak_e2e.elf" -i "$OUT/empty.bin" -o "$OUT/out.bin" >/dev/null 2>&1
+# Keep ziskemu's output. If the redirect does not fire, the stub prints a diagnostic
+# naming the unresolved symbol and then faults on the null guard page, so ziskemu
+# aborts without writing any output. Discarding that (and letting `set -e` end the
+# script) would hide the one line that says what actually went wrong.
+if ! "$ZISKEMU" -e "$OUT/keccak_e2e.elf" -i "$OUT/empty.bin" -o "$OUT/out.bin" \
+        >"$OUT/emu.log" 2>&1; then
+    echo "FAIL - ziskemu aborted. Its output:" >&2
+    sed 's/^/    /' "$OUT/emu.log" >&2
+    echo "A 'stub reached without redirect' line above means elf2rom did not resolve" >&2
+    echo "the symbol: the guest ELF was stripped, or ziskemu lacks 'ziskasm'." >&2
+    exit 1
+fi
 
 GOT=$(xxd -p -c32 "$OUT/out.bin" | head -1)
 EXP="c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
@@ -61,6 +72,9 @@ echo "  guest emitted           = $GOT"
 if [ "$GOT" = "$EXP" ]; then
     echo "PASS — redirect fired and the .zisk keccak produced the correct hash."
 else
-    echo "FAIL — got $GOT (0xBA..BA means the C stub ran = redirect did NOT fire)."
+    echo "FAIL — got $GOT"
+    echo "  The run completed, so the redirect DID fire (an unredirected stub aborts"
+    echo "  ziskemu before this point). A wrong hash here means the .zisk keccak"
+    echo "  routine itself is producing an incorrect result."
     exit 1
 fi
