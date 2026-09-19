@@ -597,6 +597,11 @@ impl Coordinator {
             }
             let released = scheduler.on_ack(worker_id);
 
+            info!(
+                "[Phase3] {job_id} {worker_id} returned a subtree covering {:?}",
+                per_airgroup.values().flatten().copied().collect::<BTreeSet<_>>()
+            );
+
             let set = AggSet {
                 covers: per_airgroup.values().flatten().copied().collect(),
                 proofs: folded,
@@ -653,6 +658,18 @@ impl Coordinator {
         job_id: &JobId,
         dispatch: AggDispatch,
     ) -> CoordinatorResult<()> {
+        let step = match (dispatch.last_proof, dispatch.final_proof) {
+            (false, _) => "absorb",
+            (true, false) => "fold",
+            (true, true) => "fold+final",
+        };
+        info!(
+            "[Phase3] {job_id} {} {step}: {} proof(s) in, now covers {:?}",
+            dispatch.worker,
+            dispatch.proofs.len(),
+            dispatch.covers
+        );
+
         self.send_agg_task(job_id, &dispatch).await
     }
 

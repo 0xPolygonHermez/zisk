@@ -114,13 +114,13 @@ impl Coordinator {
             // Before the state change: failing after it would leave the job in
             // Recurse with no scheduler and nothing to fail it.
             let arity = self.agg_arity().await?;
+            let distributed = self.config.coordinator.distributed_aggregation;
             job.change_state(JobState::Running(JobPhase::Recurse));
-            job.agg = Some(AggScheduler::new(
-                arity,
-                job.workers.len(),
-                self.config.coordinator.distributed_aggregation,
-            ));
-            info!("[Phase3] Aggregation started for {job_id} (arity {arity})");
+            job.agg = Some(AggScheduler::new(arity, job.workers.len(), distributed));
+            info!(
+                "[Phase3] Aggregation started for {job_id} (arity {arity}, distributed \
+                 {distributed})"
+            );
         }
 
         // Still timed from the last phase-2 completion, to stay comparable.

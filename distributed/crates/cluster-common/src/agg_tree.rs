@@ -67,6 +67,8 @@ pub struct AggDispatch {
     pub keep_resident: bool,
     /// Drop resident state before absorbing (recovery).
     pub reset_state: bool,
+    /// Leaf workers the node covers once it has taken this input. For logging.
+    pub covers: BTreeSet<u32>,
 }
 
 /// Greedy reduction over the sets a job produces.
@@ -158,6 +160,7 @@ impl AggScheduler {
             // proof. The single-worker job, where one leaf is the whole tree.
             if set.covers.len() >= self.n_leaves {
                 let worker = set.location.clone();
+                let covers = set.covers.clone();
                 self.live.insert(
                     worker.clone(),
                     AggNode {
@@ -174,6 +177,7 @@ impl AggScheduler {
                     final_proof: true,
                     keep_resident: false,
                     reset_state: false,
+                    covers,
                 });
             }
 
@@ -200,6 +204,7 @@ impl AggScheduler {
         let last = is_final || node.inputs.len() >= self.group_cap();
         node.is_final = is_final;
 
+        let covers = node.covers.clone();
         let worker = node.worker.clone();
         if last {
             self.live.insert(worker.clone(), node);
@@ -214,6 +219,7 @@ impl AggScheduler {
             final_proof: is_final,
             keep_resident: last && !is_final,
             reset_state: false,
+            covers,
         })
     }
 
@@ -254,6 +260,7 @@ impl AggScheduler {
             final_proof: drained && node.is_final,
             keep_resident: drained && !node.is_final,
             reset_state: true,
+            covers: node.covers.clone(),
         };
 
         self.inflight.insert(worker.clone(), kind_of(&dispatch));
