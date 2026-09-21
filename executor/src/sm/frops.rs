@@ -34,10 +34,19 @@ use crate::error::{ExecutorError, ExecutorResult};
 /// whole table.
 const CHUNK_ROWS: usize = 1 << 20;
 
-/// Environment variable that arms the debug cross-check of the two producers of the column
-/// (`zisk_core::frops`). Off by default: it makes the collectors compute the table row even when
-/// they no longer publish it.
-pub const CROSS_CHECK_ENV: &str = "ZISK_FROPS_CROSS_CHECK";
+/// Environment variable that overrides where the multiplicity column comes from on the ASM path,
+/// where the assembly owns it by default. Set it to `0` / `false` / `no` to hand the column back to
+/// the state-machine collectors, which is what every non-ASM path does anyway.
+pub const FROM_ASM_ENV: &str = "ZISK_FROPS_FROM_ASM";
+
+/// Whether the ASM path should take the column from the assembly. `true` unless [`FROM_ASM_ENV`]
+/// explicitly turns it off.
+pub fn from_asm_requested() -> bool {
+    match std::env::var(FROM_ASM_ENV) {
+        Ok(v) => !matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "false" | "no" | "off"),
+        Err(_) => true,
+    }
+}
 
 /// The three family tables of the global column: table id, and the half-open range of global rows it
 /// owns.

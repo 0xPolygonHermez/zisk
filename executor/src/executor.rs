@@ -291,11 +291,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ) -> ExecutorResult<()> {
         let start_total = Instant::now();
 
-        // Debug cross-check (`ZISK_FROPS_CROSS_CHECK`): by now the previous execution has collected
+        // Debug cross-check (`debug_frops` feature): by now the previous execution has collected
         // every instance, so this is the first point at which rows the assembly counted and no
         // collector claimed can be told apart from rows not yet reached. Nothing is armed unless the
         // variable is set, so this is a no-op in a normal run.
-        if let Err(problem) = zisk_core::frops::frops_cross_check_report(true) {
+        if let Err(problem) = zisk_core::frops::frops_check_report(true) {
             tracing::error!("FROPS cross-check of the previous execution: {problem}");
         }
 
@@ -573,7 +573,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // Debug cross-check: a row claimed beyond what the assembly counted is a disagreement as
         // soon as it happens, so report it here without waiting for the execution to finish. The
         // other direction needs every instance collected; see `execute_inner`.
-        if let Err(problem) = zisk_core::frops::frops_cross_check_report(false) {
+        if let Err(problem) = zisk_core::frops::frops_check_report(false) {
             tracing::error!("FROPS cross-check: {problem}");
         }
 

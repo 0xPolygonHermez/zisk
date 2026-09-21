@@ -7,7 +7,7 @@
 //! `ComponentPlanBuilder<F>` impls) and does not touch the bundle.
 
 mod builtins;
-mod frops;
+pub(crate) mod frops;
 mod precompiles;
 // `register_precompiles!` macro module; exported via `#[macro_export]`.
 mod register_precompiles;
@@ -137,7 +137,9 @@ impl<F: PrimeField64> StaticSMBundle<F> {
     /// runner on this thread.
     pub(crate) fn publish_frops_from_asm(&self) -> ExecutorResult<()> {
         let publish = zisk_core::frops::frops_multiplicity_from_asm();
-        let cross_check = std::env::var_os(frops::CROSS_CHECK_ENV).is_some();
+        // Compile-time: the `debug_frops` feature is the whole switch, so a build without
+        // it folds this away along with everything the cross-check would have done.
+        let cross_check = cfg!(feature = "debug_frops");
         if !publish && !cross_check {
             return Ok(());
         }
@@ -155,9 +157,14 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             let column = &runner.asm_rowh_output.frops_count;
             if publish {
                 frops::publish_frops_multiplicity(&self.std, column)?;
+                tracing::info!(
+                    "FROPS multiplicity published from the assembly ({} rows, {} counted); the collectors do not accumulate it",
+                    column.len(),
+                    column.iter().sum::<u64>(),
+                );
             }
             if cross_check {
-                zisk_core::frops::load_frops_cross_check(column)
+                zisk_core::frops::load_frops_reference(column)
                     .map_err(ExecutorError::Internal)?;
                 tracing::info!(
                     "FROPS cross-check armed from the assembly's column ({} rows)",

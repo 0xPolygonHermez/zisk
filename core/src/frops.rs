@@ -179,7 +179,10 @@ impl FropsMultiplicity {
 // Where the multiplicity column comes from, and the debug cross-check between its two producers
 // =================================================================================================
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+#[cfg(feature = "debug_frops")]
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "debug_frops")]
 use std::sync::OnceLock;
 
 /// Whether the FROPS multiplicity column comes from the ROM-histogram assembly.
@@ -205,81 +208,72 @@ pub fn frops_multiplicity_from_asm() -> bool {
     MULTIPLICITY_FROM_ASM.load(Ordering::Relaxed)
 }
 
-/// Debug cross-check of the two producers.
-///
-/// The assembly's column is loaded here and every row a collector would publish is *subtracted* from
-/// it, so the two kinds of disagreement are caught separately and precisely:
-///
-/// * a row that would go below zero is one the collectors counted and the assembly did not — caught
-///   at the exact row, the moment it happens;
-/// * a row still holding a count once every instance has been collected is one the assembly counted
-///   and the collectors did not.
-///
-/// This is what makes it safe to stop accumulating in the collectors: it proves both producers see
-/// the same operations over a real execution.
-struct FropsCrossCheck {
-    /// The assembly's column, decremented as the collectors claim rows.
-    remaining: Vec<AtomicU64>,
-    /// Rows the collectors claimed beyond what the assembly counted.
-    overcounted: AtomicU64,
-    /// The first such row, for the report.
-    first_overcounted: AtomicU64,
-}
-
-static CROSS_CHECK: OnceLock<FropsCrossCheck> = OnceLock::new();
-static CROSS_CHECK_ON: AtomicBool = AtomicBool::new(false);
-
-/// No row: `first_overcounted` is only meaningful once `overcounted` is non-zero.
-const NO_ROW: u64 = u64::MAX;
-
-/// Arms the cross-check with the column the assembly produced. Idempotent per process: the column is
-/// allocated once and reloaded on later calls, so it can be used across several executions.
-pub fn load_frops_cross_check(asm_column: &[u64]) -> Result<(), String> {
-    if asm_column.len() as u64 != FROPS_TABLE_ROWS {
-        return Err(format!(
-            "the assembly delivered {} counters, the in-tree table has {FROPS_TABLE_ROWS} rows",
-            asm_column.len()
-        ));
+#[cfg(feature = "debug_frops")]
+mod cross_check {
+    use super::*;
+    /// Cross-check of the collectors against an independent reference column.
+    ///
+    /// The reference is whatever else produced the same column over the same execution: the
+    /// ROM-histogram assembly on the ASM path, a Rust replay of the minimal traces on the emulated
+    /// one. It is loaded here, and every row a collector would publish is *subtracted* from it, so
+    /// the two kinds of disagreement are caught separately and precisely:
+    ///
+    /// * a row that would go below zero is one the collectors counted and the reference did not —
+    ///   caught at the exact row, the moment it happens;
+    /// * a row still holding a count once every instance has been collected is one the reference
+    ///   counted and the collectors did not.
+    ///
+    /// This is what makes it safe to stop accumulating in the collectors: it proves both producers
+    /// see the same operations over a real execution.
+    struct FropsCrossCheck {
+        /// The reference column, decremented as the collectors claim rows.
+        remaining: Vec<AtomicU64>,
+        /// Rows the collectors claimed beyond what the reference counted.
+        overcounted: AtomicU64,
+        /// The first such row, for the report.
+        first_overcounted: AtomicU64,
     }
-    let check = CROSS_CHECK.get_or_init(|| FropsCrossCheck {
-        remaining: (0..FROPS_TABLE_ROWS).map(|_| AtomicU64::new(0)).collect(),
-        overcounted: AtomicU64::new(0),
-        first_overcounted: AtomicU64::new(NO_ROW),
-    });
-    for (slot, &count) in check.remaining.iter().zip(asm_column) {
-        slot.store(count, Ordering::Relaxed);
+
+    static CROSS_CHECK: OnceLock<FropsCrossCheck> = OnceLock::new();
+    static CROSS_CHECK_ON: AtomicBool = AtomicBool::new(false);
+
+    /// No row: `first_overcounted` is only meaningful once `overcounted` is non-zero.
+    const NO_ROW: u64 = u64::MAX;
+
+    /// Arms the cross-check with a reference column. Idempotent per process: the column is
+    /// allocated once and reloaded on later calls, so it can be used across several executions.
+    pub fn load_frops_reference(reference: &[u64]) -> Result<(), String> {
+        if reference.len() as u64 != FROPS_TABLE_ROWS {
+            return Err(format!(
+                "the reference has {} counters, the in-tree table has {FROPS_TABLE_ROWS} rows",
+                reference.len()
+            ));
+        }
+        let check = CROSS_CHECK.get_or_init(|| FropsCrossCheck {
+            remaining: (0..FROPS_TABLE_ROWS).map(|_| AtomicU64::new(0)).collect(),
+            overcounted: AtomicU64::new(0),
+            first_overcounted: AtomicU64::new(NO_ROW),
+        });
+        for (slot, &count) in check.remaining.iter().zip(reference) {
+            slot.store(count, Ordering::Relaxed);
+        }
+        check.overcounted.store(0, Ordering::Relaxed);
+        check.first_overcounted.store(NO_ROW, Ordering::Relaxed);
+        CROSS_CHECK_ON.store(true, Ordering::Relaxed);
+        Ok(())
     }
-    check.overcounted.store(0, Ordering::Relaxed);
-    check.first_overcounted.store(NO_ROW, Ordering::Relaxed);
-    CROSS_CHECK_ON.store(true, Ordering::Relaxed);
-    Ok(())
-}
 
-/// Whether the cross-check is armed. Collectors read this once, at construction: when it is on they
-/// have to compute the table row even if they no longer publish it.
-pub fn frops_cross_check_enabled() -> bool {
-    CROSS_CHECK_ON.load(Ordering::Relaxed)
-}
+    /// Whether the cross-check is armed. Collectors read this once, at construction: when it is on they
+    /// have to compute the table row even if they no longer publish it.
+    pub fn frops_check_enabled() -> bool {
+        CROSS_CHECK_ON.load(Ordering::Relaxed)
+    }
 
-/// Claims one global row on behalf of a collector. See [`FropsCrossCheck`].
-#[inline]
-pub fn frops_cross_check_row(global_row: u64) {
-    let Some(check) = CROSS_CHECK.get() else { return };
-    let Some(slot) = check.remaining.get(global_row as usize) else {
-        check.overcounted.fetch_add(1, Ordering::Relaxed);
-        let _ = check.first_overcounted.compare_exchange(
-            NO_ROW,
-            global_row,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        );
-        return;
-    };
-    // Claim the row only while the assembly still has counts left on it, so a disagreement is
-    // recorded instead of wrapping the counter around.
-    let mut current = slot.load(Ordering::Relaxed);
-    loop {
-        if current == 0 {
+    /// Claims one global row on behalf of a collector. See [`FropsCrossCheck`].
+    #[inline]
+    pub fn frops_check_claim_row(global_row: u64) {
+        let Some(check) = CROSS_CHECK.get() else { return };
+        let Some(slot) = check.remaining.get(global_row as usize) else {
             check.overcounted.fetch_add(1, Ordering::Relaxed);
             let _ = check.first_overcounted.compare_exchange(
                 NO_ROW,
@@ -288,55 +282,112 @@ pub fn frops_cross_check_row(global_row: u64) {
                 Ordering::Relaxed,
             );
             return;
-        }
-        match slot.compare_exchange_weak(current, current - 1, Ordering::Relaxed, Ordering::Relaxed)
-        {
-            Ok(_) => return,
-            Err(actual) => current = actual,
+        };
+        // Claim the row only while the assembly still has counts left on it, so a disagreement is
+        // recorded instead of wrapping the counter around.
+        let mut current = slot.load(Ordering::Relaxed);
+        loop {
+            if current == 0 {
+                check.overcounted.fetch_add(1, Ordering::Relaxed);
+                let _ = check.first_overcounted.compare_exchange(
+                    NO_ROW,
+                    global_row,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                );
+                return;
+            }
+            match slot.compare_exchange_weak(
+                current,
+                current - 1,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return,
+                Err(actual) => current = actual,
+            }
         }
     }
-}
 
-/// Reports the state of the cross-check: `Ok(())` when both producers agree so far.
-///
-/// Over-counting is final as soon as it is seen. Rows still holding counts only mean a disagreement
-/// once every instance has been collected — before that they are simply work not done yet — so the
-/// caller says whether it is at that point.
-pub fn frops_cross_check_report(all_instances_collected: bool) -> Result<(), String> {
-    let Some(check) = CROSS_CHECK.get() else {
-        return Ok(());
-    };
-    let overcounted = check.overcounted.load(Ordering::Relaxed);
-    let mut problems = Vec::new();
-    if overcounted > 0 {
-        let first = check.first_overcounted.load(Ordering::Relaxed);
-        problems.push(format!(
-            "the collectors counted {overcounted} operation(s) the assembly did not \
-             (first at global row {first})"
-        ));
-    }
-    if all_instances_collected {
-        let (rows, total) = check
-            .remaining
-            .iter()
-            .map(|s| s.load(Ordering::Relaxed))
-            .filter(|&c| c != 0)
-            .fold((0u64, 0u64), |(rows, total), c| (rows + 1, total + c));
-        if rows > 0 {
+    /// Reports the state of the cross-check: `Ok(())` when both producers agree so far.
+    ///
+    /// Over-counting is final as soon as it is seen. Rows still holding counts only mean a disagreement
+    /// once every instance has been collected — before that they are simply work not done yet — so the
+    /// caller says whether it is at that point.
+    pub fn frops_check_report(all_instances_collected: bool) -> Result<(), String> {
+        let Some(check) = CROSS_CHECK.get() else {
+            return Ok(());
+        };
+        let overcounted = check.overcounted.load(Ordering::Relaxed);
+        let mut problems = Vec::new();
+        if overcounted > 0 {
+            let first = check.first_overcounted.load(Ordering::Relaxed);
             problems.push(format!(
-                "the assembly counted {total} operation(s) over {rows} row(s) that no collector \
-                 claimed"
+                "the collectors counted {overcounted} operation(s) the assembly did not \
+                 (first at global row {first})"
             ));
         }
-    }
-    if problems.is_empty() {
-        Ok(())
-    } else {
-        Err(problems.join("; "))
+        if all_instances_collected {
+            let (rows, total) = check
+                .remaining
+                .iter()
+                .map(|s| s.load(Ordering::Relaxed))
+                .filter(|&c| c != 0)
+                .fold((0u64, 0u64), |(rows, total), c| (rows + 1, total + c));
+            if rows > 0 {
+                problems.push(format!(
+                    "the assembly counted {total} operation(s) over {rows} row(s) that no collector \
+                     claimed"
+                ));
+            }
+        }
+        if problems.is_empty() {
+            Ok(())
+        } else {
+            Err(problems.join("; "))
+        }
     }
 }
 
-#[cfg(test)]
+#[cfg(feature = "debug_frops")]
+pub use cross_check::{
+    frops_check_claim_row, frops_check_enabled, frops_check_report, load_frops_reference,
+};
+
+/// The cross-check is compiled out. These stubs keep the call sites free of `cfg`, and the
+/// constant `false` lets the optimiser delete the work that feeds them.
+#[cfg(not(feature = "debug_frops"))]
+mod cross_check_off {
+    /// Always `false`: without the `debug_frops` feature there is nothing to arm.
+    #[inline(always)]
+    pub fn frops_check_enabled() -> bool {
+        false
+    }
+
+    /// No-op: nothing claims rows when the cross-check is compiled out.
+    #[inline(always)]
+    pub fn frops_check_claim_row(_global_row: u64) {}
+
+    /// No-op: there is no column to load.
+    #[inline(always)]
+    pub fn load_frops_reference(_asm_column: &[u64]) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Nothing to report.
+    #[inline(always)]
+    pub fn frops_check_report(_all_instances_collected: bool) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+#[cfg(not(feature = "debug_frops"))]
+pub use cross_check_off::{
+    frops_check_claim_row, frops_check_enabled, frops_check_report, load_frops_reference,
+};
+
+// The only thing left to test here is the cross-check itself, so the module goes with it.
+#[cfg(all(test, feature = "debug_frops"))]
 mod tests {
     use super::*;
 
@@ -350,37 +401,37 @@ mod tests {
         column[row_b as usize] = 1;
 
         // Agreement: the collectors claim exactly what the assembly counted.
-        load_frops_cross_check(&column).expect("the column has the expected length");
-        assert!(frops_cross_check_enabled());
-        assert_eq!(frops_cross_check_report(false), Ok(()));
-        frops_cross_check_row(row_a);
-        frops_cross_check_row(row_a);
-        frops_cross_check_row(row_b);
-        assert_eq!(frops_cross_check_report(true), Ok(()), "the two producers agree");
+        load_frops_reference(&column).expect("the column has the expected length");
+        assert!(frops_check_enabled());
+        assert_eq!(frops_check_report(false), Ok(()));
+        frops_check_claim_row(row_a);
+        frops_check_claim_row(row_a);
+        frops_check_claim_row(row_b);
+        assert_eq!(frops_check_report(true), Ok(()), "the two producers agree");
 
         // The collectors claim a row the assembly did not count.
-        load_frops_cross_check(&column).unwrap();
-        frops_cross_check_row(row_a);
-        frops_cross_check_row(row_a);
-        frops_cross_check_row(row_a);
-        let err = frops_cross_check_report(false).expect_err("over-counting must be reported");
+        load_frops_reference(&column).unwrap();
+        frops_check_claim_row(row_a);
+        frops_check_claim_row(row_a);
+        frops_check_claim_row(row_a);
+        let err = frops_check_report(false).expect_err("over-counting must be reported");
         assert!(err.contains("the assembly did not"), "{err}");
         assert!(err.contains(&format!("global row {row_a}")), "{err}");
 
         // A row out of range is over-counting too, not a panic.
-        load_frops_cross_check(&column).unwrap();
-        frops_cross_check_row(FROPS_TABLE_ROWS);
-        assert!(frops_cross_check_report(false).is_err());
+        load_frops_reference(&column).unwrap();
+        frops_check_claim_row(FROPS_TABLE_ROWS);
+        assert!(frops_check_report(false).is_err());
 
         // The collectors miss a row the assembly counted: only a disagreement once they are done.
-        load_frops_cross_check(&column).unwrap();
-        frops_cross_check_row(row_a);
-        frops_cross_check_row(row_b);
-        assert_eq!(frops_cross_check_report(false), Ok(()), "still work to do, not a disagreement");
-        let err = frops_cross_check_report(true).expect_err("a row left over must be reported");
+        load_frops_reference(&column).unwrap();
+        frops_check_claim_row(row_a);
+        frops_check_claim_row(row_b);
+        assert_eq!(frops_check_report(false), Ok(()), "still work to do, not a disagreement");
+        let err = frops_check_report(true).expect_err("a row left over must be reported");
         assert!(err.contains("no collector claimed"), "{err}");
 
         // A column of the wrong length is rejected instead of arming a shifted check.
-        assert!(load_frops_cross_check(&column[1..]).is_err());
+        assert!(load_frops_reference(&column[1..]).is_err());
     }
 }

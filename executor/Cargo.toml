@@ -57,6 +57,17 @@ named-sem = { workspace = true }
 
 [features]
 default = []
+# Cross-checks the FROPS multiplicity column the state-machine collectors build
+# against an independent reference for the same execution: the ROM-histogram
+# assembly's column on the ASM path, a Rust replay of the minimal traces on the
+# emulated one. A development aid, off by default -- compiling it out removes its
+# table, the extra replay, and the per-operation branch that feeds it. See
+# `zisk_core::frops`.
+debug_frops = [
+    "zisk-core/debug_frops",
+    "zisk-sm-binary/debug_frops",
+    "zisk-sm-arith/debug_frops",
+]
 stats = []
 # Per-phase timings inside the witness computations. Off by default; see
 # `zisk_common::witness_timers`.

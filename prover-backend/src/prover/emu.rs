@@ -401,6 +401,10 @@ impl EmuCoreProver {
             options.packed,
         )?;
 
+        // No ROM-histogram assembly here, so the collectors own the column. Stated rather than
+        // assumed: the flag is process state, and an ASM prover built earlier would have left it on.
+        executor.set_frops_multiplicity_from_asm(false);
+
         let core = ProverBackend::new(
             proofman,
             snark_wrapper,

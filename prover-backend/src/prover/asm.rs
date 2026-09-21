@@ -795,6 +795,13 @@ impl AsmCoreProver {
             options.packed,
         )?;
 
+        // The ROM-histogram assembly counts every frequent operation of the whole execution in one
+        // pass, so on this path it owns the multiplicity column and the collectors stand down. The
+        // choice has to hold for every rank: only the first process runs the histogram, and its
+        // column already covers the others' share, so a rank that kept accumulating would count
+        // those operations twice.
+        executor.set_frops_multiplicity_from_asm(zisk_executor::frops_from_asm_requested());
+
         let core = ProverBackend::new(
             proofman,
             snark_wrapper,

@@ -98,6 +98,15 @@ pub enum FropsCallSite {
     Thunk(FropsSpec),
 }
 
+/// The 32-bit name of a FROPS scratch register, for the `m32` zero-extending move.
+fn reg32_of(reg: &str) -> &'static str {
+    match reg {
+        FROPS_REG_A => "r12d",
+        FROPS_REG_B => "r13d",
+        other => panic!("no 32-bit name known for FROPS register {other}"),
+    }
+}
+
 /// True when `v` can be used directly as an `imm32` operand: x86-64 sign-extends it to 64 bits, so
 /// the whole top range works too (`0xFFFF_FFFF_FFFA_C847` is `-341433`).
 fn fits_imm32(v: u64) -> bool {
@@ -174,12 +183,17 @@ pub fn emit_call(
     op: u8,
     a: FropsOperand,
     b: FropsOperand,
+    m32: bool,
     specialised_so_far: usize,
     table_address: u64,
     comment: impl Fn(&str) -> String,
     code: &mut String,
 ) -> FropsCallSite {
-    let known = FropsSpec { a: a.constant(), b: b.constant() };
+    // `m32` instructions reach the operation bus with their operands zero-extended from 32 bits
+    // (`OperationBusData::from_instruction`), and that is the form the FROPS table is keyed by. The
+    // flag is a property of the opcode, so the mask is known here and costs nothing for a constant.
+    let mask = |v: u64| if m32 { v & 0xFFFF_FFFF } else { v };
+    let known = FropsSpec { a: a.constant().map(mask), b: b.constant().map(mask) };
     if reachable_boxes(op, &known).is_empty() {
         return FropsCallSite::Nothing;
     }
@@ -213,6 +227,16 @@ pub fn emit_call(
         assert_ne!(src, FROPS_REG_A, "FROPS operand {name} may not live in {FROPS_REG_A}");
         assert_ne!(src, FROPS_REG_B, "FROPS operand {name} may not live in {FROPS_REG_B}");
         *code += &format!("\tmov {reg}, {src} {}\n", comment(&format!("frops: {name}")));
+        if m32 {
+            // A 32-bit `mov` zero-extends into the full register, which is exactly the mask. It is
+            // done on the FROPS scratch register, never on the source the operation still needs.
+            // (`and reg, 0xFFFFFFFF` would not do: that immediate sign-extends to all ones.)
+            let reg32 = reg32_of(reg);
+            *code += &format!(
+                "\tmov {reg32}, {reg32} {}\n",
+                comment(&format!("frops: {name} &= 0xFFFFFFFF (m32)"))
+            );
+        }
     }
     *code += &format!("\tcall {} {}\n", thunk_label(op, &spec), comment("frops: count"));
     FropsCallSite::Thunk(spec)
@@ -655,6 +679,70 @@ mod tests {
         assert!(smaller > 0, "specialisation never helped, which cannot be right");
     }
 
+    /// An `m32` call site counts the row of the zero-extended operands, which is the form the
+    /// operation bus delivers them in (`OperationBusData::from_instruction`) and the one the FROPS
+    /// table is keyed by.
+    #[test]
+    fn m32_call_sites_count_the_zero_extended_row() {
+        let nop = |_: &str| String::new();
+        let op = crate::zisk_ops::ZiskOp::ADD_W;
+        // `add_w` has a box reachable only by a full 64-bit `a`; under m32 that `a` arrives masked,
+        // so the very same constant must land on a different row (or on none).
+        let wide = 0xFFFF_FFFF_FFFF_FF01u64;
+        assert!(frops_row(op, wide, 0).is_some(), "the unmasked value is a FROP");
+
+        let mut raw = String::new();
+        emit_call(
+            op,
+            FropsOperand::Const(wide),
+            FropsOperand::Const(0),
+            false,
+            0,
+            TABLE,
+            nop,
+            &mut raw,
+        );
+        let mut masked = String::new();
+        emit_call(
+            op,
+            FropsOperand::Const(wide),
+            FropsOperand::Const(0),
+            true,
+            0,
+            TABLE,
+            nop,
+            &mut masked,
+        );
+        assert_ne!(raw, masked, "m32 must not count the same row as the raw operands");
+        match frops_row(op, wide & 0xFFFF_FFFF, 0) {
+            Some(row) => assert!(
+                masked.contains(&format!("0x{:x}", TABLE + row * 8)),
+                "m32 must count the masked row {row}\n{masked}"
+            ),
+            None => assert!(masked.is_empty(), "masked operands are not a FROP\n{masked}"),
+        }
+
+        // With the operand in a register the mask is a 32-bit move on the FROPS scratch register,
+        // never on the source the operation still needs.
+        let mut code = String::new();
+        emit_call(
+            op,
+            FropsOperand::Reg("rbx"),
+            FropsOperand::Reg("rax"),
+            true,
+            0,
+            TABLE,
+            nop,
+            &mut code,
+        );
+        assert!(code.contains("mov r12d, r12d"), "a is not zero-extended\n{code}");
+        assert!(code.contains("mov r13d, r13d"), "b is not zero-extended\n{code}");
+        assert!(
+            !code.contains("ebx") && !code.contains("eax"),
+            "the source must not be touched\n{code}"
+        );
+    }
+
     /// What a call site emits: nothing when it cannot be a FROP, an inline increment when the row is
     /// known, a call otherwise. And the cap must fall back to the generic thunk.
     #[test]
@@ -666,6 +754,7 @@ mod tests {
                 op,
                 FropsOperand::Reg("rbx"),
                 FropsOperand::Reg("rax"),
+                /* m32 */ false,
                 0,
                 TABLE,
                 nop,
@@ -685,6 +774,7 @@ mod tests {
                     op,
                     FropsOperand::Const(r.a_lo),
                     FropsOperand::Const(r.b_lo),
+                    /* m32 */ false,
                     0,
                     TABLE,
                     nop,
@@ -704,6 +794,7 @@ mod tests {
                     op,
                     FropsOperand::Reg("rbx"),
                     FropsOperand::Const(r.b_lo),
+                    /* m32 */ false,
                     0,
                     TABLE,
                     nop,
@@ -721,6 +812,7 @@ mod tests {
                     op,
                     FropsOperand::Reg("rbx"),
                     FropsOperand::Const(r.b_lo),
+                    /* m32 */ false,
                     MAX_SPECIALISED_THUNKS_PER_OP,
                     TABLE,
                     nop,
@@ -740,6 +832,7 @@ mod tests {
                 op,
                 FropsOperand::Reg("rbx"),
                 FropsOperand::Const(wild),
+                /* m32 */ false,
                 0,
                 TABLE,
                 nop,

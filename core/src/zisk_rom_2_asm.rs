@@ -1630,12 +1630,17 @@ impl ZiskRom2Asm {
 
                 // Use REG_A if a's value is not needed beyond the b indirection, in which case
                 // we can overwirte it to build the address to read from the b value,
-                // or REG_ADDRESS otherwise to preserve the value of a
+                // or REG_ADDRESS otherwise to preserve the value of a.
+                //
+                // The ROM-histogram mode is the exception: the FROPS count emitted further down
+                // reads `a` from REG_A, so overwriting it here would count the row of
+                // `a + b_offset_imm0` instead of the row of `a`.
                 let mut reg_address: &str = REG_A;
-                if instruction.op == ZiskOp::COPYB
-                    || instruction.op == ZiskOp::SIGNEXTEND_B
-                    || instruction.op == ZiskOp::SIGNEXTEND_H
-                    || instruction.op == ZiskOp::SIGNEXTEND_W
+                if !ctx.rom_histogram()
+                    && (instruction.op == ZiskOp::COPYB
+                        || instruction.op == ZiskOp::SIGNEXTEND_B
+                        || instruction.op == ZiskOp::SIGNEXTEND_H
+                        || instruction.op == ZiskOp::SIGNEXTEND_W)
                 {
                 } else {
                     *code += &format!(
@@ -8818,6 +8823,7 @@ impl ZiskRom2Asm {
             instruction.op,
             a,
             b,
+            instruction.m32,
             specialised,
             ctx.frops_table_address,
             |c| ctx.comment_str(c),
