@@ -16,7 +16,7 @@ several things that today are written by hand and can drift apart:
 
 ## Status
 
-**Early.** 4 of 126 opcodes are modeled — `copyb`, `add`, `eq`, `ltu`, which
+**Early.** 4 of 127 opcodes are modeled — `copyb`, `add`, `eq`, `ltu`, which
 are the four the `ziskasm` doubler example uses. The step function, the
 instruction record, and the source/store/jump machinery are complete.
 
