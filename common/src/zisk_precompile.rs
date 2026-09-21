@@ -142,6 +142,11 @@ macro_rules! zisk_precompile_explicit {
                 )
             ),* $(,)?
         ] $(,)?
+        // Optional: this precompile ships a GPU witness kernel. `op` is the
+        // per-operation struct the kernel consumes, which must be `From<&Input>`.
+        // Precompiles without a kernel omit the whole block and nothing is emitted
+        // for them -- see `stage_gpu_witness`.
+        $( gpu_witness = { op = $gpu_op:path $(,)? } $(,)? )?
     ) => {
         $crate::__zisk_paste! {
             // ============================================================
@@ -421,8 +426,41 @@ macro_rules! zisk_precompile_explicit {
                     // The airs of the ladder commit the same columns and differ only in height, so
                     // the row type is shared and the height and air id are what select the air.
                     let air_id = self.ictx.plan.air_id;
+
+                    // When the prover has a kernel registered for this air it writes cm1
+                    // itself, so the buffer carries the kernel's staged inputs instead of a
+                    // trace. Asking the prover's own registry, rather than a local copy of
+                    // the declaration, is what keeps the two from disagreeing about which of
+                    // them fills the trace. Geometry comes from the setup for the same
+                    // reason: it is the source the commit path measures against.
+                    $(
+                        #[cfg(gpu)]
+                        {
+                            let airgroup_id = self.ictx.plan.airgroup_id;
+                            if ::proofman_common::gpu_witness_registered(airgroup_id, air_id) {
+                                let setup = _sctx.get_setup(airgroup_id, air_id)?;
+                                let num_rows = 1usize << setup.stark_info.stark_struct.n_bits;
+                                let n_cols = setup.stark_info.map_sections_n["cm1"] as usize;
+                                let (air_instance, _ops) =
+                                    ::proofman_common::stage_gpu_witness::<F, $gpu_op, _>(
+                                        airgroup_id,
+                                        air_id,
+                                        num_rows,
+                                        n_cols,
+                                        trace_buffer,
+                                        &inputs,
+                                    )?;
+                                return Ok(Some(air_instance));
+                            }
+                        }
+                    )?
                     $(
                         if air_id == $air_id_path {
+                            // When the prover has a kernel registered for this air it writes
+                            // cm1 itself, so the buffer carries the kernel's inputs instead of
+                            // a trace. Asking the prover's own registry, rather than a local
+                            // copy of the declaration, is what keeps the two from disagreeing
+                            // about which of them fills the trace.
                             return if packed {
                                 Ok(Some(self.[<$name:snake _sm>].compute_witness::<
                                     $trace_row_packed<F>,
@@ -710,6 +748,7 @@ macro_rules! zisk_precompile {
                 )
             ),* $(,)?
         ] $(,)?
+        $( gpu_witness = { op = $gpu_op:path $(,)? } $(,)? )?
     ) => {
         $crate::__zisk_paste! {
             $crate::zisk_precompile_explicit! {
@@ -735,6 +774,7 @@ macro_rules! zisk_precompile {
                         ( $ext_variant $( => $enum_variant )? , $sub_input )
                     ),*
                 ],
+                $( gpu_witness = { op = $gpu_op }, )?
             }
         }
     };
@@ -755,6 +795,7 @@ macro_rules! zisk_precompile {
                 )
             ),* $(,)?
         ] $(,)?
+        $( gpu_witness = { op = $gpu_op:path $(,)? } $(,)? )?
     ) => {
         $crate::zisk_precompile! {
             name = $name,
@@ -766,6 +807,7 @@ macro_rules! zisk_precompile {
                     ( $ext_variant $( => $enum_variant )? , $sub_input )
                 ),*
             ],
+            $( gpu_witness = { op = $gpu_op }, )?
         }
     };
 }

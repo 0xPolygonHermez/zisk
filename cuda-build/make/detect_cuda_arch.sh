@@ -1,12 +1,15 @@
 #!/bin/bash
-# Detect the host GPU compute capability and write CUDA_ARCH = sm_XXX to CudaArch.mk.
+# Detect the host GPU compute capability and write CUDA_ARCH = sm_XXX to $1.
 # Used by Makefile when neither CUDA_GENCODE_FLAGS, CUDA_ARCHS nor CUDA_ARCH are
 # set externally.
+#
+# The output path is an argument so concurrent builds of different crates never
+# race on one file; callers pass a path inside their own OUT_DIR.
 #
 # On failure exits 1
 set -eu
 
-OUT_FILE="CudaArch.mk"
+OUT_FILE="${1:?usage: detect_cuda_arch.sh <output.mk>}"
 rm -f "$OUT_FILE"
 
 CAP=""

@@ -4001,7 +4001,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4012,7 +4012,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -4028,7 +4028,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "anyhow",
  "clap",
@@ -4054,7 +4054,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "colored",
  "proofman-common",
@@ -4272,7 +4272,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "bincode",
  "blake3",
@@ -4304,7 +4304,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "borsh",
  "colored",
@@ -4332,7 +4332,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "proofman-fields",
 ]
@@ -4340,7 +4340,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "anyhow",
  "proofman-starks-src",
@@ -4354,7 +4354,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -4367,7 +4367,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -4379,7 +4379,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4389,7 +4389,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -4398,12 +4398,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 
 [[package]]
 name = "proofman-util"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4412,7 +4412,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4425,7 +4425,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-multiplicities-rangecheck#fb57f3d18fd1ce4bac5375deaaad1965f0491fb6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -7522,6 +7522,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-cuda-build"
+version = "1.4.0-alpha"
+
+[[package]]
 name = "zisk-definitions"
 version = "1.4.0-alpha"
 
@@ -7580,6 +7584,13 @@ dependencies = [
  "zisk-core",
  "zisk-sm-arith",
  "zisk-sm-binary",
+]
+
+[[package]]
+name = "zisk-gpu-witness"
+version = "1.4.0-alpha"
+dependencies = [
+ "paste",
 ]
 
 [[package]]
@@ -7826,6 +7837,8 @@ dependencies = [
  "tracing",
  "zisk-common",
  "zisk-core",
+ "zisk-cuda-build",
+ "zisk-gpu-witness",
  "zisk-pil",
  "zisk-precomp-common",
  "zisk-precomp-helpers",
@@ -8091,6 +8104,7 @@ dependencies = [
  "proofman-util",
  "tracing",
  "zisk-common",
+ "zisk-cuda-build",
  "zisk-pil",
  "zisk-sm-mem-common",
 ]

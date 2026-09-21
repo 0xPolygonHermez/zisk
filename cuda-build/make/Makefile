@@ -1,7 +1,21 @@
+# Canonical CUDA build for zisk crates that ship kernels.
+#
+# Not invoked by hand: `zisk_cuda_build::compile` runs it from a crate's
+# build.rs and supplies every variable below. Arch resolution is the logic
+# that grew in state-machines/mem-cpp/cu/Makefile, kept verbatim so the
+# behaviour of existing builds does not change.
+#
+#   NVCC               nvcc binary (absolute)
+#   OUT_DIR            objects, the archive and CudaArch.mk land here
+#   SRC_DIR            directory holding the .cu sources (absolute)
+#   SRCS               .cu file names within SRC_DIR
+#   TARGET             archive name, e.g. libkeccakf_cu.a
+#   DETECT_SCRIPT      absolute path to detect_cuda_arch.sh
+#   SHARED_INCLUDE     zisk-cuda-build's include/ (zisk_gpu_witness.cuh lives there)
+#   EXTRA_HEADER_DIRS  optional extra dirs whose headers force a rebuild
+
 NVCC      ?= nvcc
 OUT_DIR   ?= ./build
-
-ROOT_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 
 comma := ,
 
@@ -17,6 +31,10 @@ endif
 # (consumer Blackwell). The two Blackwell lineages are NOT cross-compatible:
 # sm_100 has TMEM that sm_120 lacks.
 CUDA_MAJOR_ARCHS := 80 86 89 90 100 120
+
+# Written inside OUT_DIR, never beside the script: two crates building
+# concurrently share this Makefile but must not share its detection output.
+CUDA_ARCH_MK := $(OUT_DIR)/CudaArch.mk
 
 # Arch resolution and the staleness stamp run at parse time (GPU probing,
 # stamp writes, stale-object wipes) — skip all of it when every requested
@@ -48,9 +66,9 @@ else ifdef CUDA_ARCH
     $(info Converted CUDA_ARCH=$(CUDA_ARCH) to gencode flags)
 else
     # Auto-detect from host GPU (single arch)
-    CONFIGURE_STATUS := $(shell cd $(ROOT_DIR) && ./detect_cuda_arch.sh >&2; echo $$?)
+    CONFIGURE_STATUS := $(shell mkdir -p $(OUT_DIR) && $(DETECT_SCRIPT) $(CUDA_ARCH_MK) >&2; echo $$?)
     ifeq ($(CONFIGURE_STATUS),0)
-        include $(ROOT_DIR)CudaArch.mk
+        include $(CUDA_ARCH_MK)
         CUDA_ARCH_NUM := $(subst sm_,,$(CUDA_ARCH))
         CUDA_GENCODE_FLAGS := -gencode arch=compute_$(CUDA_ARCH_NUM),code=$(CUDA_ARCH) \
                               -gencode arch=compute_$(CUDA_ARCH_NUM),code=compute_$(CUDA_ARCH_NUM)
@@ -81,11 +99,17 @@ ifneq ($(strip $(CUDA_ARCH_LIST)),)
 endif
 endif # NEED_CUDA_ARCH
 
-NVCCFLAGS := -O3 -std=c++20 $(CUDA_GENCODE_FLAGS) -Xcompiler -fPIC
+# -rdc is deliberately absent. Whole-program compilation keeps every object
+# self-contained, which is what lets each crate build its own archive with no
+# cross-crate `nvcc -dlink` step — cargo cannot express one.
+NVCCFLAGS := -O3 -std=c++20 $(CUDA_GENCODE_FLAGS) -Xcompiler -fPIC $(EXTRA_NVCCFLAGS)
 
-TARGET := libmemcpp_cu.a
-SRCS   := count_and_plan.cu count_and_plan_c.cu
-OBJS   := $(addprefix $(OUT_DIR)/, $(SRCS:.cu=.o))
+OBJS := $(addprefix $(OUT_DIR)/, $(SRCS:.cu=.o))
+
+# Recompile when any header the sources can see changes.
+HEADERS := $(wildcard $(SHARED_INCLUDE)/*.cuh) \
+           $(wildcard $(SRC_DIR)/*.cuh) $(wildcard $(SRC_DIR)/*.hpp) \
+           $(foreach d,$(EXTRA_HEADER_DIRS),$(wildcard $(d)/*.cuh) $(wildcard $(d)/*.hpp))
 
 # Staleness stamp: make doesn't track flag changes, so wipe the objects at
 # parse time when the resolved gencode flags differ from the stamped ones.
@@ -103,17 +127,14 @@ ifneq ($(LAST_CUDA_FLAGS),$(strip $(CUDA_GENCODE_FLAGS)))
 endif
 endif # NEED_CUDA_ARCH
 
-# Recompile when any header in this dir or the shared cpp/ header changes.
-HEADERS := $(wildcard *.cuh) $(wildcard ../cpp/*.hpp)
-
 all: $(OUT_DIR)/$(TARGET)
 
 $(OUT_DIR)/$(TARGET): $(OBJS)
 	ar rcs $@ $^
 
-$(OUT_DIR)/%.o: %.cu $(HEADERS)
+$(OUT_DIR)/%.o: $(SRC_DIR)/%.cu $(HEADERS)
 	mkdir -p $(OUT_DIR)
-	$(NVCC) $(NVCCFLAGS) -c $< -o $@
+	$(NVCC) $(NVCCFLAGS) -I$(SHARED_INCLUDE) -I$(SRC_DIR) $(addprefix -I,$(EXTRA_HEADER_DIRS)) -c $< -o $@
 
 clean:
 	rm -f $(OUT_DIR)/*.o $(OUT_DIR)/$(TARGET)

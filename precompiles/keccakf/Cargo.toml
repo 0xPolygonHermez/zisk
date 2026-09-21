@@ -9,6 +9,7 @@ homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
+build = "build.rs"
 
 [dependencies]
 zisk-core = { workspace = true }
@@ -28,6 +29,19 @@ tracing = { workspace = true }
 rayon = { workspace = true }
 
 tiny-keccak = { workspace = true, features = ["keccak"] }
+zisk-gpu-witness = { workspace = true }
+
+[features]
+default = []
+cpu-only = []
 
 [dev-dependencies]
 zisk-test-artifacts = { workspace = true }
+
+[build-dependencies]
+zisk-cuda-build = { workspace = true }
+
+[lints.rust]
+# `gpu` is set by build.rs only when CUDA is detected; declare it so the
+# `unexpected_cfgs` lint does not flag it on non-GPU targets.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gpu)'] }

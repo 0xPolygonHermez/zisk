@@ -8,6 +8,7 @@ mod adapters;
 mod bus;
 mod error;
 mod execution;
+pub mod gpu_witness;
 mod executor;
 mod plan;
 mod ports;

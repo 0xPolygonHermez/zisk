@@ -7,9 +7,11 @@ use crate::{
     MainTraceRowInstrTable, MainTraceRowPackedIndexed, MAIN_AIRGROUP_ID, MAIN_AIR_ID, PACKED_INFO,
 };
 
+
 /// Materialize [`PACKED_INFO`] into the `(airgroup_id, air_id) -> PackedInfo` map proofman
 /// expects. Main is emitted compact (indexed): fewer packed words plus the descriptor proofman
-/// reconstructs it with. Every other air keeps the full packing.
+/// reconstructs it with. Every other air keeps the full packing, row-major -- a column-major
+/// air is one a GPU kernel fills, so its layout follows that declaration, not this one.
 pub fn get_packed_info() -> HashMap<(usize, usize), PackedInfo> {
     type Ix = MainTraceRowPackedIndexed<Goldilocks>;
     let compact_words = Ix::PACKED_WORDS as u64;

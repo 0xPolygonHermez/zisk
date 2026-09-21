@@ -2,7 +2,6 @@
 //!
 //! This state machine is responsible for calculating xor5 normalization table rows.
 
-
 /// The `KeccakfXor5TableSM` struct represents the Keccakf xor5 Table State Machine.
 pub struct KeccakfXor5TableSM;
 
