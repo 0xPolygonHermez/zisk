@@ -125,8 +125,11 @@ pub struct EmuOptions {
     /// instead of by cost. Requires option: -X
     #[clap(long, value_name = "SORT_BY_UNITS", default_value = "false")]
     pub sort_by_units: bool,
-    /// Save an aggregate statistics snapshot (semicolon-separated, no per-function detail) to this
-    /// file, so a later run can compare against it with `--ref-stats`. Requires option: -X
+    /// Save an aggregate statistics snapshot (delimited by `--csv-separator`, no per-function
+    /// detail) to this file, so a later run can compare against it with `--ref-stats`. Combined
+    /// with `--mem-stats` / `--mem-full-stats` and symbols (-S) the snapshot also carries the three
+    /// per-function memory rankings (`MEM_TOP_COST`, `MEM_TOP_UNALIGNED`, `MEM_TOP_RATIO`).
+    /// Requires option: -X
     #[clap(long, value_name = "SAVE_STATS")]
     pub save_stats: Option<String>,
     /// Load an aggregate statistics snapshot saved with `--save-stats` and print a comparison

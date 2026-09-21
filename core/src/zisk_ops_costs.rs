@@ -12,13 +12,19 @@ pub const ARITH_EQ_COST: u64 = 90 * 16;
 pub const FCALL_COST: u64 = INTERNAL_COST;
 pub const ARITH_EQ_384_COST: u64 = 80 * 24;
 pub const ADD256_COST: u64 = 104;
-pub const BLAKE2_COST: u64 = 24 * 209;
+pub const BABYJUBJUB_COST: u64 = 107 * 16;
+pub const BLAKE2B_COST: u64 = 8 * 234;
+pub const BLAKE3_COST: u64 = 56 * 218 / 2;
+pub const BLAKE2S_COST: u64 = 80 * 112;
 pub const MAIN_COST: u64 = 68;
 
+// Zba costs. sh<n>add and slli.uw are proven natively (a single Binary / BinaryExtension
+// operation); the .uw shift-and-adds are transpiled to `and` + native sh<n>add, and add.uw to
+// `and` + `add`, so their cost is the one of the sequence: one extra main step plus both ops.
 pub const ADD_U_W_COST: u64 = MAIN_COST + BINARY_COST + BINARY_ADD_COST; // step extra + and + add
-pub const SH_ADD_COST: u64 = MAIN_COST + BINARY_E_COST + BINARY_ADD_COST; // step extra + ssl + add
-pub const SH_ADD_U_W_COST: u64 = 2 * MAIN_COST + BINARY_E_COST + BINARY_COST + BINARY_ADD_COST; // 2 * step extra + ssl + and + add
-pub const SLL_U_W_COST: u64 = MAIN_COST + BINARY_COST + BINARY_E_COST; // step extra + and + ssl
+pub const SH_ADD_COST: u64 = MAIN_COST + BINARY_E_COST + BINARY_ADD_COST; // decomposed sh<n>add: step extra + ssl + add (the native one is a single BINARY_COST op)
+pub const SH_ADD_U_W_COST: u64 = MAIN_COST + BINARY_COST + BINARY_COST; // step extra + and + sh<n>add
+pub const SLL_U_W_COST: u64 = BINARY_E_COST; // native slli.uw: a single binary extension op
 
 /*
     Hash throughput comparison, where cost is clocks per columns:
@@ -35,7 +41,7 @@ pub const SLL_U_W_COST: u64 = MAIN_COST + BINARY_COST + BINARY_E_COST; // step e
     Notes:
     - Poseidon bytes are nominal (12 Goldilocks elements x 8 bytes); a Goldilocks element
     holds ~63.99 bits, so the truly absorbable payload is slightly under 96 bytes.
-    - Blake2b's BLAKE2_COST is the cost of a single round; a full compression is 12 rounds,
+    - Blake2b's BLAKE2B_COST is the cost of a single round; a full compression is 12 rounds,
     which is the full-op cost used in the table above.
 */
 

@@ -1,6 +1,3 @@
-use pil2_std_lib::Std;
-use proofman_fields::PrimeField64;
-
 #[derive(Debug, Clone, Copy)]
 pub enum MemOp {
     OneRead,
@@ -49,13 +46,18 @@ impl MemAlignRomSM {
         (first_row_idx, op_size)
     }
 
-    pub fn get_rows<F: PrimeField64>(std: &Std<F>, table_id: usize, pc: u64, op_size: u64) {
+    /// Counts the `op_size` ROM rows the program at `pc` executes into `rom`.
+    ///
+    /// `rom` is the calling task's own histogram, not `std`: this runs inside the parallel fill,
+    /// two to five times per operation, and the table is 256 rows — 32 cache lines that every
+    /// thread would otherwise contend for. See `MemAlignTally`.
+    pub fn count_rows(rom: &mut [u64; Self::TABLE_SIZE], pc: u64, op_size: u64) {
         // Check whether the row index is within the bounds
         debug_assert!(pc + op_size <= Self::TABLE_SIZE as u64);
 
         // Get the rows for the given program counter and operation size
         for i in 0..op_size {
-            std.inc_virtual_row_one(table_id, pc + i);
+            rom[(pc + i) as usize] += 1;
         }
     }
 

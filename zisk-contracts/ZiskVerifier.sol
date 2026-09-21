@@ -11,17 +11,21 @@ contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
     error InvalidProof();
 
     function VERSION() external pure returns (string memory) {
-        return "v1.2.0-alpha";
+        return "v1.3.0-alpha";
     }
 
     /// @notice Root constant as bytes32 (pre-packed to match the original uint64[4] layout)
+    /// @dev The root for a *leaf* proof. An aggregated proof is wrapped under its
+    /// recurser's own verkey instead, so a caller verifying folds passes that one.
+    /// Either way the value must be a constant of the calling contract -- see
+    /// IZiskVerifier.
     function getRootCVadcopFinal() external pure returns (bytes32) {
         return bytes32(
             abi.encodePacked(
-                uint64(6218392583875695404),
-                uint64(9353885302538021251),
-                uint64(8280779842059074605),
-                uint64(10684020678174455855)));
+                uint64(360399122715172445),
+                uint64(11878402726895691845),
+                uint64(13091834582632818813),
+                uint64(5448516663002979456)));
     }
 
     uint256 internal constant _RFIELD =

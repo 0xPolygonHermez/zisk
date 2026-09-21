@@ -1,4 +1,4 @@
-// TODO: The long path can be sped up by using Montgomery multiplication but knowing that divisions are "free"
+// TODO: The long path can be speed up by using Montgomery multiplication but knowing that divisions are "free"
 // For ref: https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf
 
 #[cfg(zisk_guest)]
@@ -7,6 +7,8 @@ use crate::alloc_extern::vec;
 use crate::alloc_extern::vec::Vec;
 
 use crate::zisklib::fcall_bin_decomp;
+
+use super::super::utils::slice_from_ffi;
 
 use super::{
     mul_and_reduce_long, mulmod_short, rem_long_init, rem_short_init, square_and_reduce_long,
@@ -240,6 +242,8 @@ fn modexp_long(
     out
 }
 
+// ==================== C FFI Functions ====================
+
 /// Compute modular exponentiation from big-endian byte arrays
 ///
 /// ### Safety
@@ -264,9 +268,14 @@ pub(crate) unsafe fn modexp_bytes_c(
     result_ptr: *mut u8,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> usize {
-    let base_bytes = core::slice::from_raw_parts(base_ptr, base_len);
-    let exp_bytes = core::slice::from_raw_parts(exp_ptr, exp_len);
-    let modulus_bytes = core::slice::from_raw_parts(modulus_ptr, modulus_len);
+    // An empty modulus leaves nothing to write, so `result_ptr` need not be valid.
+    if modulus_len == 0 {
+        return 0;
+    }
+
+    let base_bytes = slice_from_ffi(base_ptr, base_len);
+    let exp_bytes = slice_from_ffi(exp_ptr, exp_len);
+    let modulus_bytes = slice_from_ffi(modulus_ptr, modulus_len);
 
     // Convert from big-endian bytes to little-endian u64/U256 arrays
     let base_u256 = bytes_be_to_u256_le(base_bytes);
@@ -288,17 +297,16 @@ pub(crate) unsafe fn modexp_bytes_c(
     modulus_len
 }
 
-// ==================== C FFI Functions ====================
-
 /// Modular exponentiation over little-endian u64 arrays.
 ///
 /// # Safety
-/// - `base_ptr` points to `base_len * 4` u64s (little-endian U256 limbs)
-/// - `exp_ptr` points to `exp_len` u64s (little-endian)
-/// - `modulus_ptr` points to `modulus_len * 4` u64s (little-endian U256 limbs)
-/// - `result_ptr` points to a writable region of at least `modulus_len * 4` u64s
+/// - `base_ptr` points to `base_len` u64s (little-endian), `base_len` non-zero
+/// - `exp_ptr` points to `exp_len` u64s (little-endian), `exp_len` non-zero
+/// - `modulus_ptr` points to `modulus_len` u64s (little-endian)
+/// - `result_ptr` points to a writable region of at least `modulus_len` u64s
 ///
-/// Returns the number of u64s written to `result_ptr` (always `modulus_len * 4`).
+/// Writes exactly `modulus_len` u64s, zero-filled above the significant words of the
+/// result, and returns that count; `modulus_len == 0` writes nothing and returns zero.
 #[allow(clippy::too_many_arguments)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_modexp_u64_c")]
@@ -312,19 +320,24 @@ pub unsafe extern "C" fn modexp_u64_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> usize {
-    let base_flat = core::slice::from_raw_parts(base_ptr, base_len);
-    let exp = core::slice::from_raw_parts(exp_ptr, exp_len);
-    let modulus_flat = core::slice::from_raw_parts(modulus_ptr, modulus_len);
+    // No modulus means nothing to compute and nothing to write, so `result_ptr`
+    // need not be valid and must not be dereferenced.
+    if modulus_len == 0 {
+        return 0;
+    }
 
-    // Round up to multiple of 4
-    let base_len = base_flat.len().next_multiple_of(4);
-    let modulus_len = modulus_flat.len().next_multiple_of(4);
+    let base_flat = slice_from_ffi(base_ptr, base_len);
+    let exp = slice_from_ffi(exp_ptr, exp_len);
+    let modulus_flat = slice_from_ffi(modulus_ptr, modulus_len);
 
-    let mut base_padded = vec![0u64; base_len];
-    let mut modulus_padded = vec![0u64; modulus_len];
+    // Pad the operands up to whole U256 limbs for the arithmetic. These are local
+    // buffers: the caller's lengths keep their meaning, so the rounding cannot leak
+    // into the size of the output region below.
+    let mut base_padded = vec![0u64; base_len.next_multiple_of(4)];
+    let mut modulus_padded = vec![0u64; modulus_len.next_multiple_of(4)];
 
-    base_padded[..base_flat.len()].copy_from_slice(base_flat);
-    modulus_padded[..modulus_flat.len()].copy_from_slice(modulus_flat);
+    base_padded[..base_len].copy_from_slice(base_flat);
+    modulus_padded[..modulus_len].copy_from_slice(modulus_flat);
 
     let base = U256::flat_to_slice(&base_padded);
     let modulus = U256::flat_to_slice(&modulus_padded);
@@ -337,13 +350,18 @@ pub unsafe extern "C" fn modexp_u64_c(
         hints,
     );
     let result_slice = U256::slice_to_flat(&result_u256);
-    let result_len = result_slice.len();
 
-    // Convert result back to u64 array
+    // Write exactly the `modulus_len` u64s the caller declared. `result_slice` is
+    // padded up to whole U256 limbs and so may be longer, but the result is smaller
+    // than the modulus, so every word from index `modulus_len` on is zero and
+    // dropping them is lossless. It may also be shorter, since `modexp` returns a
+    // single limb for its early exits, so the high words are zero-filled.
     let result = core::slice::from_raw_parts_mut(result_ptr, modulus_len);
-    result[..result_len].copy_from_slice(result_slice);
+    let written = result_slice.len().min(modulus_len);
+    result[..written].copy_from_slice(&result_slice[..written]);
+    result[written..].fill(0);
 
-    result_len
+    modulus_len
 }
 
 /// Convert big-endian bytes to little-endian u64 array

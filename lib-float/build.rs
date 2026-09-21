@@ -46,9 +46,25 @@ fn main() {
     };
 
     if rebuild {
-        eprintln!("Building ziskfloat artifacts inside the pinned Docker image...");
-        run_command("make", &["clean"], &c_path);
-        run_command("make", &["docker"], &c_path);
+        // ZISK_CI_NO_DOCKER_REBUILD=1 (CI): use the committed lib/ artifacts as-is
+        // so the build needs no Docker daemon.
+        if std::env::var("ZISK_CI_NO_DOCKER_REBUILD").as_deref() == Ok("1") {
+            if !lib_file.exists() || !elf_file.exists() {
+                panic!(
+                    "ziskfloat artifacts are missing and ZISK_CI_NO_DOCKER_REBUILD=1 \
+                     forbids rebuilding them here. Regenerate them with `make docker` \
+                     in lib-float/c and commit the resulting lib/ files."
+                );
+            }
+            eprintln!(
+                "ZISK_CI_NO_DOCKER_REBUILD=1: using the committed ziskfloat artifacts \
+                 without rebuilding."
+            );
+        } else {
+            eprintln!("Building ziskfloat artifacts inside the pinned Docker image...");
+            run_command("make", &["clean"], &c_path);
+            run_command("make", &["docker"], &c_path);
+        }
     } else {
         println!(
             "ziskfloat artifacts already present or source code not changed, skipping rebuild."
@@ -95,6 +111,7 @@ fn run_command(cmd: &str, args: &[&str], dir: &Path) {
 
 /// Tracks changes in the `pil2-stark` directory to trigger recompilation only when needed
 fn track_cpp_changes(c_path: &Path) {
+    println!("cargo:rerun-if-env-changed=ZISK_CI_NO_DOCKER_REBUILD");
     println!("cargo:rerun-if-changed={}", c_path.join("Makefile").display());
     // Pinned toolchain/base image: changing it must regenerate the artifacts.
     println!("cargo:rerun-if-changed={}", c_path.join("docker/Dockerfile").display());

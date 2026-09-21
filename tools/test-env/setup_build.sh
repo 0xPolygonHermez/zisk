@@ -34,7 +34,7 @@
 # An input-side sha256 over:
 #   - every *.pil under  pil/ state-machines/ precompiles/
 #   - every *.pil under  ${PROOFMAN_DIR}/pil2-components/lib/std/pil
-#   - state-machines/starkstructs.json
+#   - setup/starkstructs.<mode>.json (picked by $HASH_MODE)
 #   - the *_fixed.bin files written by the fixed-data generators
 #   - pil2-compiler ref: the branch override if set, else the dep ref from
 #     ${PROOFMAN_DIR}/package.json
@@ -76,9 +76,10 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          only). On a cache hit the matching provingKey/ is
                          copied into <build-dir> and compile-pil + setup are
                          skipped; on a miss the fresh build is copied back in.
-                         The cache key is PLATFORM/<input-hash>, so changing any
-                         hashed input (see below) misses the cache. No bucket /
-                         network access — this is a plain filesystem cache.
+                         The cache key is PLATFORM/<input-hash>-<hash-mode>,
+                         so changing any hashed input (see below) or --hash-mode
+                         misses the cache. No bucket / network access — this is
+                         a plain filesystem cache.
   --recursive-jobs N     Concurrent recursive1 air pipelines (circom + pil2com).
                          Default 1. Each job can use several GB; size by RAM.
                          Also settable via RECURSIVE_JOBS env var.
@@ -99,6 +100,9 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          provingKey/ before it is cached, so a later cache hit
                          reuses them instead of rebuilding — pass --exps-arch
                          major (portable across GPUs) when populating the cache.
+  --hash-mode MODE       Hash mode the setup is generated with (Poseidon1,
+                         Poseidon2, blake3). Default: blake3. Part of the
+                         --cache-dir key. Also settable via HASH_MODE env var.
   --exps-arch SPEC       CUDA arch forwarded to gen-exps (both --gen-exps and
                          --gen-exps-only). Default: auto (detects the host GPU).
                          Also settable via EXPS_ARCH env var.
@@ -142,7 +146,7 @@ GEN_EXPS_ON_HIT=0
 # Env defaults; the --recursive-jobs / --setup-jobs CLI flags override these below.
 RECURSIVE_JOBS_ARG="${RECURSIVE_JOBS:-}"
 SETUP_JOBS_ARG="${SETUP_JOBS:-}"
-HASH="${HASH:-Poseidon1}"
+HASH_MODE="${HASH_MODE:-blake3}"
 SKIP_COMPILE_PIL=0
 VERBOSE_COUNT=0
 # Opt-in: generate + compile per-AIR Q-expression CUDA kernels (.exps.so) during
@@ -169,7 +173,7 @@ while [ $# -gt 0 ]; do
     --cache-dir)         CACHE_DIR="$2";          shift 2 ;;
     --recursive-jobs)    RECURSIVE_JOBS_ARG="$2"; shift 2 ;;
     --setup-jobs)        SETUP_JOBS_ARG="$2";     shift 2 ;;
-    --hash)              HASH="$2";               shift 2 ;;
+    --hash-mode|--hash)  HASH_MODE="$2";          shift 2 ;;
     --skip-compile-pil)  SKIP_COMPILE_PIL=1;      shift ;;
     --gen-exps)          GEN_EXPS=1;              shift ;;
     --exps-arch)         EXPS_ARCH="$2";          shift 2 ;;
@@ -332,7 +336,8 @@ case "$MODE" in
     echo "==> proofman-setup stats"
     cargo run --release --bin cargo-zisk-dev -- proofman-setup stats \
       --airout pil/zisk.pilout \
-      --starkstructs state-machines/starkstructs.json \
+      --starkstructs "$(starkstructs_path)" \
+      --hash "$HASH_MODE" \
       -o tmp/stats.txt \
       ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
     echo "stats written to tmp/stats.txt"
@@ -349,6 +354,20 @@ case "$MODE" in
 
     PUBLICS_INFO="state-machines/publics.json"
     [ -f "$PUBLICS_INFO" ] || { echo "missing $PUBLICS_INFO — final.circom needs publics layout (nPublics, chunks, hasProgramVK)" >&2; exit 1; }
+
+    # The BN128 wrap is poseidon-only. Ask the key on disk, not $HASH_MODE: this mode wraps
+    # an existing provingKey and never builds one, so $HASH_MODE here is the default for a
+    # build that is not happening — under it a valid poseidon key gets rejected whenever
+    # HASH_MODE is unset. Checked before the ptau probe so an unsupported key reports itself instead of
+    # an 18 GB download, and before setup-snark so it fails in seconds.
+    SNARK_MODE="$(proving_key_hash_mode "$BUILD_DIR/provingKey")" || exit 1
+    if [ "$(printf '%s' "$SNARK_MODE" | tr '[:upper:]' '[:lower:]')" = "blake3" ]; then
+      echo "setup-snark is not supported for the $SNARK_MODE key in $BUILD_DIR/provingKey:" >&2
+      echo "the BN128 wrap is only built for the poseidon families. Rebuild the proving key" >&2
+      echo "with --hash Poseidon1 or Poseidon2." >&2
+      exit 1
+    fi
+    echo "wrapping a $SNARK_MODE proving key"
 
     PTAU_PATH="${PTAU_PATH:-../powersOfTau28_hez_final_24.ptau}"
     if [ ! -f "$PTAU_PATH" ]; then
@@ -416,11 +435,12 @@ case "$MODE" in
       # else lowercased `uname -s`. The aggregation mode is part of the key so a
       # recursive build and a --no-aggregation build never collide (the input
       # hash itself does not encode -r).
-      cache_platform="$(printf '%s' "${ZISKUP_PLATFORM:-$(uname -s)}" | tr '[:upper:]' '[:lower:]')"
+      platform="$(printf '%s' "${ZISKUP_PLATFORM:-$(uname -s)}" | tr '[:upper:]' '[:lower:]')"
       short_hash="${LOCAL_HASH:0:4}${LOCAL_HASH: -4}"
-      cache_key="$short_hash"
-      [ "$MODE" = "no_aggregation" ] && cache_key="${short_hash}-no-aggregation"
-      CACHE_ENTRY="$CACHE_DIR/$cache_platform/$cache_key"
+      hash_mode="$(printf '%s' "$HASH_MODE" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-')"
+      cache_key="${short_hash}-${hash_mode}"
+      [ "$MODE" = "no_aggregation" ] && cache_key="${cache_key}-no-aggregation"
+      CACHE_ENTRY="$CACHE_DIR/$platform/$cache_key"
 
       if [ "${FORCE_SETUP_BUILD:-0}" = "1" ] && [ -d "$CACHE_ENTRY/provingKey" ]; then
         echo "==> FORCE_SETUP_BUILD=1 — ignoring cache hit at $CACHE_ENTRY (will rebuild, then refresh)"
@@ -471,8 +491,8 @@ if [ "$CACHE_HIT" -eq 0 ]; then
     --airout pil/zisk.pilout \
     --build-dir "$BUILD_DIR" \
     --fixed-dir tmp/fixed \
-    --stark-structs state-machines/starkstructs.json \
-    --hash "$HASH" \
+    --stark-structs "$(starkstructs_path)" \
+    --hash "$HASH_MODE" \
     ${setup_recursive_flag[@]+"${setup_recursive_flag[@]}"} \
     ${setup_jobs_flags[@]+"${setup_jobs_flags[@]}"}
 

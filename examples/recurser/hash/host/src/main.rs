@@ -10,7 +10,7 @@ use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use recurser_hash_common::{add_vecs, field_from_limbs, hash12, secret_vectors, DIGEST, RATE};
 use zisk_sdk::{
     load_aggregation_program, load_program, AggregationProgram, GuestProgram, ProofExt,
-    ProverClient, ZiskStdin,
+    ProofKind, ProverClient, ZiskStdin,
 };
 
 static LEAF: GuestProgram = load_program!("recurser_hash_guest");
@@ -40,7 +40,16 @@ async fn prove_leaf(
 ) -> Result<zisk_sdk::Proof, Box<dyn Error>> {
     let stdin = ZiskStdin::new();
     stdin.write(secret); // one [u64; 12], matching the guest's single read
-    Ok(client.prove(&LEAF, stdin).run()?.await?.get_proof().clone())
+    // Uncompressed on purpose: the client default is `VadcopFinalMinimal`, and
+    // compression strips the `is_vadcop_final_proof` flag the aggregator reads at
+    // public slot 0. A folded leaf must keep it.
+    Ok(client
+        .prove(&LEAF, stdin)
+        .wrap(ProofKind::VadcopFinal)
+        .run()?
+        .await?
+        .get_proof()
+        .clone())
 }
 
 #[tokio::main(flavor = "multi_thread")]

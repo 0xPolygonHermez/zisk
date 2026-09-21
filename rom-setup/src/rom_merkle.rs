@@ -1,5 +1,5 @@
-use anyhow::Result;
-use proofman_common::{custom_commit_file_size_bytes, ProofCtx};
+use anyhow::{Context, Result};
+use proofman_common::ProofCtx;
 use proofman_fields::{Goldilocks, PrimeField64};
 use std::path::{Path, PathBuf};
 use zisk_common::ProgramVK;
@@ -14,31 +14,17 @@ fn validate_custom_commit_file_size(elf_bin_path: &Path, hash_mode: HashMode) ->
     let n = RomRomTrace::<Goldilocks>::NUM_ROWS as u64;
     let n_cols = RomRomTrace::<Goldilocks>::ROW_SIZE as u64;
     let n_extended = hash_mode.blowup_factor() * n;
-    let expected_size =
-        custom_commit_file_size_bytes(n, n_extended, n_cols, hash_mode.merkle_tree_arity());
-
-    let actual_size = std::fs::metadata(elf_bin_path)
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to read cached ROM custom commit '{}': {e}",
-                elf_bin_path.display()
-            )
-        })?
-        .len();
-
-    if actual_size != expected_size {
-        return Err(anyhow::anyhow!(
-            "Cached ROM custom commit '{}' has the wrong size (expected {expected_size} bytes, found {actual_size} bytes). \
-            It was most likely generated with different setup parameters (blowup factor {}, merkle tree arity {}, hash mode {}) \
-            or is stale/corrupted. Delete it (or re-run setup with force) so it is regenerated.",
-            elf_bin_path.display(),
-            hash_mode.blowup_factor(),
-            hash_mode.merkle_tree_arity(),
-            hash_mode.file_tag(),
-        ));
-    }
-
-    Ok(())
+    proofman_common::custom_commit_words_per_row(
+        elf_bin_path,
+        n,
+        n_extended,
+        n_cols,
+        hash_mode.merkle_tree_arity(),
+    )
+    .map(|_| ())
+    .map_err(|e| {
+        anyhow::anyhow!("cached ROM custom commit '{}' is unusable: {e}", elf_bin_path.display())
+    })
 }
 
 /// Resolve the path of the cached ROM custom-commit binary for `elf_hash`.
@@ -93,9 +79,20 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     let elf_verkey_bin_path =
         get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path, hash_mode)?;
 
-    if !force && elf_bin_path.exists() && elf_verkey_bin_path.exists() {
-        validate_custom_commit_file_size(&elf_bin_path, hash_mode)?;
+    // A cached ROM that no longer matches the current layout (one written before the packed
+    // custom-commit format, say) is a cache MISS, not an error: fall through and rebuild it.
+    let reuse_cached = !force
+        && elf_bin_path.exists()
+        && elf_verkey_bin_path.exists()
+        && match validate_custom_commit_file_size(&elf_bin_path, hash_mode) {
+            Ok(()) => true,
+            Err(err) => {
+                tracing::info!("Regenerating ROM custom commit: {err}");
+                false
+            }
+        };
 
+    if reuse_cached {
         let vk = get_elf_vk(elf_verkey_bin_path.as_path())?
             .ok_or_else(|| anyhow::anyhow!("Failed to read existing verkey file"))?;
         return Ok(ProgramVK { vk, hash_mode });
@@ -122,6 +119,17 @@ pub fn rom_merkle_setup_verkey(
     output_dir: &Option<PathBuf>,
     hash_mode: HashMode,
 ) -> Result<ProgramVK, anyhow::Error> {
+    rom_merkle_setup_verkey_opt(elf, output_dir, hash_mode)?
+        .ok_or_else(|| anyhow::anyhow!("ROM merkle setup has not been performed yet"))
+}
+
+/// [`rom_merkle_setup_verkey`], but `Ok(None)` when this mode has no cached artifact. One that
+/// exists and will not read stays an error, so callers probing modes cannot read it as absence.
+pub fn rom_merkle_setup_verkey_opt(
+    elf: &[u8],
+    output_dir: &Option<PathBuf>,
+    hash_mode: HashMode,
+) -> Result<Option<ProgramVK>, anyhow::Error> {
     let output_path = get_output_path(output_dir)?;
 
     let elf_hash = get_elf_data_hash(elf);
@@ -129,12 +137,13 @@ pub fn rom_merkle_setup_verkey(
     let elf_verkey_bin_path =
         get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path, hash_mode)?;
 
-    if elf_verkey_bin_path.exists() {
-        let vk = get_elf_vk(elf_verkey_bin_path.as_path())?
-            .ok_or_else(|| anyhow::anyhow!("Failed to read existing verkey file"))?;
-
-        Ok(ProgramVK { vk, hash_mode })
-    } else {
-        Err(anyhow::anyhow!("ROM merkle setup has not been performed yet"))
+    if !elf_verkey_bin_path.exists() {
+        return Ok(None);
     }
+
+    let vk = get_elf_vk(elf_verkey_bin_path.as_path())
+        .with_context(|| format!("Failed to read verkey at {}", elf_verkey_bin_path.display()))?
+        .ok_or_else(|| anyhow::anyhow!("Empty verkey file at {}", elf_verkey_bin_path.display()))?;
+
+    Ok(Some(ProgramVK { vk, hash_mode }))
 }

@@ -52,5 +52,8 @@ zisk-test-artifacts = { workspace = true }
 serial_test = { workspace = true }
 
 [features]
+# Per-phase timings inside the witness computation, at `info`. Off by default: see
+# `zisk_common::witness_timers`.
+witness_timers = []
 default = []
 test_data = []

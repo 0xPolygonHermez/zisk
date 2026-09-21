@@ -35,6 +35,7 @@ proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-starks-lib-c = { workspace = true }
 pil2-stark-setup = { workspace = true }
+pil2-stark-recurser = { workspace = true }
 sysinfo = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
@@ -67,4 +68,6 @@ cpu-only = ["zisk-build/cpu-only", "zisk-prover-backend/cpu-only", "proofman-sta
 diagnostic = ["zisk-prover-backend/diagnostic"]
 custom_rust_llvm = []
 stats = []
+# Per-phase timings inside the witness computations (memory and the arith precompiles).
+witness_timers = ["zisk-sdk/witness_timers", "zisk-prover-backend/witness_timers"]
 verify = ["proofman-fields/verify"]

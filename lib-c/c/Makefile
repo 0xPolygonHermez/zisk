@@ -83,6 +83,7 @@ OTHER_OBJS = $(BUILD_DIR)/alt_bn128.o \
              $(BUILD_DIR)/splitparstr.o \
              $(BUILD_DIR)/ec.o \
              $(BUILD_DIR)/bn254.o \
+             $(BUILD_DIR)/babyjubjub.o \
              $(BUILD_DIR)/bls12_381.o \
              $(BUILD_DIR)/fcall.o \
              $(BUILD_DIR)/keccakf_cache.o \
@@ -94,6 +95,7 @@ OTHER_OBJS = $(BUILD_DIR)/alt_bn128.o \
              $(BUILD_DIR)/poseidon2_goldilocks.o \
              $(BUILD_DIR)/poseidon1_goldilocks.o \
              $(BUILD_DIR)/blake2.o \
+             $(BUILD_DIR)/blake3.o \
              $(BUILD_DIR)/keccak.o \
              $(BUILD_DIR)/bcon_sha256.o
 
@@ -206,6 +208,9 @@ $(BUILD_DIR)/ec.o: $(SRC_DIR)/ec/ec.cpp $(SRC_DIR)/ec/ec.hpp | $(BUILD_DIR)
 $(BUILD_DIR)/bn254.o: $(SRC_DIR)/bn254/bn254.cpp $(SRC_DIR)/bn254/bn254.hpp $(SRC_DIR)/bn254/bn254_fe.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
+$(BUILD_DIR)/babyjubjub.o: $(SRC_DIR)/babyjubjub/babyjubjub.cpp $(SRC_DIR)/babyjubjub/babyjubjub.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
 $(BUILD_DIR)/bls12_381.o: $(SRC_DIR)/bls12_381/bls12_381.cpp $(SRC_DIR)/bls12_381/bls12_381.hpp $(SRC_DIR)/bls12_381/bls12_381_fe.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
@@ -237,6 +242,9 @@ $(BUILD_DIR)/poseidon1_goldilocks.o: $(SRC_DIR)/poseidon1/poseidon1_goldilocks.c
 	gcc $(CFLAGS) $(INCLUDES) -I$(SRC_DIR)/poseidon2 -c $< -o $@
 
 $(BUILD_DIR)/blake2.o: $(SRC_DIR)/blake2/blake2.cpp $(SRC_DIR)/blake2/blake2.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/blake3.o: $(SRC_DIR)/blake3/blake3.cpp $(SRC_DIR)/blake3/blake3.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/keccak.o: $(SRC_DIR)/chfast/keccak.c $(SRC_DIR)/chfast/keccak.h $(SRC_DIR)/chfast/hash_types.h $(SRC_DIR)/chfast/attributes.h | $(BUILD_DIR)

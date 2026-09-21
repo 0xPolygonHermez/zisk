@@ -9,34 +9,35 @@ use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_17, P2_8};
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[repr(u8)]
 pub enum BinaryExtensionTableOp {
-    Sll = ZiskOp::Sll.code(),
-    Srl = ZiskOp::Srl.code(),
-    Sra = ZiskOp::Sra.code(),
-    SllW = ZiskOp::SllW.code(),
-    SrlW = ZiskOp::SrlW.code(),
-    SraW = ZiskOp::SraW.code(),
-    SextB = ZiskOp::SignExtendB.code(),
-    SextH = ZiskOp::SignExtendH.code(),
-    SextW = ZiskOp::SignExtendW.code(),
-    Rev8 = ZiskOp::Rev8.code(),
-    OrcB = ZiskOp::OrcB.code(),
-    Rol = ZiskOp::Rol.code(),
-    RolW = ZiskOp::RolW.code(),
-    Ror = ZiskOp::Ror.code(),
-    RorW = ZiskOp::RorW.code(),
-    Cpop = ZiskOp::Cpop.code(),
-    CpopW = ZiskOp::CpopW.code(),
-    Ctz = ZiskOp::Ctz.code(),
-    CtzW = ZiskOp::CtzW.code(),
-    Clz = ZiskOp::Clz.code(),
-    ClzW = ZiskOp::ClzW.code(),
-    Pack = ZiskOp::Pack.code(),
-    PackH = ZiskOp::PackH.code(),
-    PackW = ZiskOp::PackW.code(),
-    Bclr = ZiskOp::Bclr.code(),
-    Bext = ZiskOp::Bext.code(),
-    Binv = ZiskOp::Binv.code(),
-    Bset = ZiskOp::Bset.code(),
+    Sll = ZiskOp::SLL,
+    Srl = ZiskOp::SRL,
+    Sra = ZiskOp::SRA,
+    SllW = ZiskOp::SLL_W,
+    SrlW = ZiskOp::SRL_W,
+    SraW = ZiskOp::SRA_W,
+    SextB = ZiskOp::SIGNEXTEND_B,
+    SextH = ZiskOp::SIGNEXTEND_H,
+    SextW = ZiskOp::SIGNEXTEND_W,
+    Rev8 = ZiskOp::REV8,
+    OrcB = ZiskOp::ORC_B,
+    Rol = ZiskOp::ROL,
+    RolW = ZiskOp::ROL_W,
+    Ror = ZiskOp::ROR,
+    RorW = ZiskOp::ROR_W,
+    Cpop = ZiskOp::CPOP,
+    CpopW = ZiskOp::CPOP_W,
+    Ctz = ZiskOp::CTZ,
+    CtzW = ZiskOp::CTZ_W,
+    Clz = ZiskOp::CLZ,
+    ClzW = ZiskOp::CLZ_W,
+    Pack = ZiskOp::PACK,
+    PackH = ZiskOp::PACK_H,
+    PackW = ZiskOp::PACK_W,
+    Bclr = ZiskOp::BCLR,
+    Bext = ZiskOp::BEXT,
+    Binv = ZiskOp::BINV,
+    Bset = ZiskOp::BSET,
+    SllUw = ZiskOp::SLL_U_W,
 }
 
 /// The `BinaryExtensionTableSM` struct encapsulates the Binary Extension Table's logic.
@@ -44,6 +45,13 @@ pub struct BinaryExtensionTableSM;
 
 impl BinaryExtensionTableSM {
     pub const TABLE_ID: usize = 124;
+
+    /// Rows the table has, i.e. `BINARY_EXTENSION_TABLE_SIZE` in `binary_extension_table.pil`.
+    ///
+    /// The witness needs it to size the histogram it tallies the multiplicities into, so it cannot
+    /// live in the tests alone. `tests::table_regions_tile_the_whole_table` is what keeps it in step
+    /// with the PIL: the per-opcode regions must add up to exactly this.
+    pub const TABLE_ROWS: u64 = 2_510_848;
 
     /// Calculates the row index in the Binary Extension Table based on the operation and its
     /// inputs.
@@ -121,6 +129,135 @@ impl BinaryExtensionTableSM {
             BinaryExtensionTableOp::Bext => 15 * P2_17 + 10 * P2_11,
             BinaryExtensionTableOp::Binv => 16 * P2_17 + 10 * P2_11,
             BinaryExtensionTableOp::Bset => 17 * P2_17 + 10 * P2_11,
+            // slli.uw is shift-family too (6-bit B range), placed after the single-bit blocks.
+            BinaryExtensionTableOp::SllUw => 18 * P2_17 + 10 * P2_11,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Size in rows of each region, in the same order as the `OP` fixed column of
+    /// `binary_extension_table.pil`. MUST be kept in sync with it.
+    const TABLE_LAYOUT: &[(BinaryExtensionTableOp, u64)] = &[
+        (BinaryExtensionTableOp::Sll, P2_17),
+        (BinaryExtensionTableOp::Srl, P2_17),
+        (BinaryExtensionTableOp::Sra, P2_17),
+        (BinaryExtensionTableOp::SllW, P2_17),
+        (BinaryExtensionTableOp::SrlW, P2_17),
+        (BinaryExtensionTableOp::SraW, P2_17),
+        (BinaryExtensionTableOp::SextB, P2_11),
+        (BinaryExtensionTableOp::SextH, P2_11),
+        (BinaryExtensionTableOp::SextW, P2_11),
+        (BinaryExtensionTableOp::Rev8, P2_11),
+        (BinaryExtensionTableOp::OrcB, P2_11),
+        (BinaryExtensionTableOp::Rol, P2_17),
+        (BinaryExtensionTableOp::RolW, P2_17),
+        (BinaryExtensionTableOp::Ror, P2_17),
+        (BinaryExtensionTableOp::RorW, P2_17),
+        (BinaryExtensionTableOp::Cpop, P2_11),
+        (BinaryExtensionTableOp::CpopW, P2_11),
+        (BinaryExtensionTableOp::Ctz, P2_17),
+        (BinaryExtensionTableOp::CtzW, P2_17),
+        (BinaryExtensionTableOp::Clz, P2_17),
+        (BinaryExtensionTableOp::ClzW, P2_17),
+        (BinaryExtensionTableOp::Pack, P2_11),
+        (BinaryExtensionTableOp::PackH, P2_11),
+        (BinaryExtensionTableOp::PackW, P2_11),
+        (BinaryExtensionTableOp::Bclr, P2_17),
+        (BinaryExtensionTableOp::Bext, P2_17),
+        (BinaryExtensionTableOp::Binv, P2_17),
+        (BinaryExtensionTableOp::Bset, P2_17),
+        (BinaryExtensionTableOp::SllUw, P2_17),
+    ];
+
+    /// MUST match `BINARY_EXTENSION_TABLE_SIZE` in `binary_extension_table.pil`.
+    const BINARY_EXTENSION_TABLE_SIZE: u64 = BinaryExtensionTableSM::TABLE_ROWS;
+
+    #[test]
+    fn table_regions_tile_the_whole_table() {
+        let mut offset = 0;
+        for (op, size) in TABLE_LAYOUT {
+            assert_eq!(
+                BinaryExtensionTableSM::offset_opcode(*op),
+                offset,
+                "unexpected region offset for {op:?}"
+            );
+            offset += size;
+        }
+        assert_eq!(
+            offset, BINARY_EXTENSION_TABLE_SIZE,
+            "the regions do not tile BINARY_EXTENSION_TABLE_SIZE"
+        );
+    }
+
+    #[test]
+    fn sll_uw_rows_stay_inside_their_region() {
+        let base = BinaryExtensionTableSM::offset_opcode(BinaryExtensionTableOp::SllUw);
+
+        for b in [0, 1, 31, 63] {
+            for offset in 0..8 {
+                for a in [0, 1, 0xFF] {
+                    let row = BinaryExtensionTableSM::calculate_table_row(
+                        BinaryExtensionTableOp::SllUw,
+                        offset,
+                        a,
+                        b,
+                    );
+
+                    // Same decomposition as the fixed columns of binary_extension_table.pil
+                    assert_eq!(row, base + a + offset * P2_8 + b * P2_11);
+                    assert!(row >= base && row < base + P2_17);
+                }
+            }
+        }
+    }
+
+    /// Mirror of the `OP_SLL_U_W` case of `binary_extension_table.pil`, for a single byte.
+    fn sll_uw_table_row(offset: u32, a: u64, b: u64) -> u64 {
+        if offset >= 4 {
+            return 0;
+        }
+        // The 64-bit result drops whatever crosses bit 63 (the PIL masks it with MASK_64)
+        let bits_to_shift = (b & 0x3F) + 8 * offset as u64;
+        if bits_to_shift < 64 {
+            a << bits_to_shift
+        } else {
+            0
+        }
+    }
+
+    #[test]
+    fn sll_uw_byte_chain_matches_the_zisk_op() {
+        let values = [
+            0u64,
+            1,
+            0xFF,
+            0x8000_0000,
+            0xFFFF_FFFF,
+            0x1234_5678_9ABC_DEF0,
+            u64::MAX,
+            0x0102_0408_1020_4080,
+        ];
+
+        for a in values {
+            for b in 0..64u64 {
+                // The instruction sets m32, so the bus (and hence the witness) only ever carries
+                // the low half of a: that masking is the zero extension the operation needs.
+                let bus_a = a & 0xFFFF_FFFF;
+                let (expected, flag) = ZiskOp::execute(ZiskOp::SLL_U_W, bus_a, b);
+                assert!(!flag);
+
+                let a_bytes = bus_a.to_le_bytes();
+                let mut out: u64 = 0;
+                for (offset, byte) in a_bytes.iter().enumerate() {
+                    out += sll_uw_table_row(offset as u32, *byte as u64, b);
+                }
+
+                assert_eq!(out, expected, "mismatch for a={bus_a:#x} b={b}");
+            }
         }
     }
 }

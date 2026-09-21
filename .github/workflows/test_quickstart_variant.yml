@@ -116,6 +116,14 @@ jobs:
       - name: Start test container
         run: .github/scripts/start_test_container.sh
 
+      # HTTP/2 negotiation against github.com fails on this runner ("expected
+      # flush after ref listing"), breaking the clones the test scripts do.
+      # --system, not --global: the clones run as ziskuser, this step as root.
+      - name: Force git over HTTP/1.1 in the container
+        run: |
+          .github/scripts/docker_exec.sh \
+            -- git config --system http.version HTTP/1.1
+
       - name: Check resources
         run: |
           .github/scripts/docker_exec.sh \
@@ -140,13 +148,15 @@ jobs:
       - name: Build setup
         # INCLUDE_SNARK adds the PLONK setup the --plonk combinations need; unlike
         # the proving key it is not cached, so it is rebuilt on every run.
-        # INSTALL_SETUP installs both into $HOME/.zisk.
+        # INSTALL_SETUP installs both into $HOME/.zisk. Pinned to Poseidon1 against
+        # the blake3 default: the BN128 wrap PLONK needs has no blake3 path.
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
             -e INSTALL_SETUP="1" \
             -e INCLUDE_SNARK="1" \
+            -e HASH_MODE="Poseidon1" \
             -e PTAU_PATH="${PTAU_CONTAINER_PATH}" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env

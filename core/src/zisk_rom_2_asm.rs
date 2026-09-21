@@ -259,7 +259,10 @@ impl ZiskAsmContext {
                 | ZiskOp::Add256
                 | ZiskOp::Secp256r1Add
                 | ZiskOp::Secp256r1Dbl
-                | ZiskOp::Blake2
+                | ZiskOp::Blake2b
+                | ZiskOp::BabyJubJubAdd
+                | ZiskOp::Blake3
+                | ZiskOp::Blake2s
         )
     }
 
@@ -288,6 +291,9 @@ impl ZiskAsmContext {
         self.precompile_results()
     }
     pub fn precompile_results_secp256r1dbl(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_babyjubjubadd(&self) -> bool {
         self.precompile_results()
     }
     pub fn precompile_results_fcall(&self) -> bool {
@@ -329,7 +335,15 @@ impl ZiskAsmContext {
     pub fn precompile_results_add256(&self) -> bool {
         self.precompile_results()
     }
-    pub fn precompile_results_blake2(&self) -> bool {
+    pub fn precompile_results_blake2b(&self) -> bool {
+        //self.precompile_results()
+        false
+    }
+    pub fn precompile_results_blake3(&self) -> bool {
+        //self.precompile_results()
+        false
+    }
+    pub fn precompile_results_blake2s(&self) -> bool {
         //self.precompile_results()
         false
     }
@@ -483,7 +497,7 @@ impl ZiskAsmContext {
 //             self.c_write_value_offset = offset;
 //             offset += 8;
 //         }
-//         if instruction.op == ZiskOp::Keccak.code() || instruction.op == ZiskOp::Sha256.code() {
+//         if instruction.op == ZiskOp::KECCAK || instruction.op == ZiskOp::SHA256 {
 //             self.header_mask |= TRACE_CONTEXT_HEADER_WRITE_PREC_CONT;
 //             self.prec_cont_count_offset = offset;
 //             offset += 4;
@@ -631,6 +645,7 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_secp256k1_dbl\n";
         *code += ".extern opcode_secp256r1_add\n";
         *code += ".extern opcode_secp256r1_dbl\n";
+        *code += ".extern opcode_babyjubjub_add\n";
         *code += ".extern opcode_fcall\n";
         *code += ".extern opcode_bn254_curve_add\n";
         *code += ".extern opcode_bn254_curve_dbl\n";
@@ -644,7 +659,9 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_bls12_381_complex_sub\n";
         *code += ".extern opcode_bls12_381_complex_mul\n";
         *code += ".extern opcode_add256\n";
-        *code += ".extern opcode_blake2\n";
+        *code += ".extern opcode_blake2b\n";
+        *code += ".extern opcode_blake3\n";
+        *code += ".extern opcode_blake2s\n";
         *code += ".extern chunk_done\n";
         *code += ".extern print_fcall_ctx\n";
         *code += ".extern print_pc\n";
@@ -1248,109 +1265,7 @@ impl ZiskRom2Asm {
 
         // Set special storage destinations for a and b registers, based on operations, in order
         // to save instructions
-        let zisk_op = ZiskOp::try_from_code(instruction.op).unwrap();
-        ctx.store_a_in_c = false;
-        ctx.store_a_in_a = false;
-        ctx.store_b_in_c = false;
-        ctx.store_b_in_b = false;
-        ctx.address_is_constant = false;
-
-        match zisk_op {
-            ZiskOp::CopyB
-            | ZiskOp::PubOut
-            | ZiskOp::FcallParam
-            | ZiskOp::Fcall
-            | ZiskOp::FcallGet
-            | ZiskOp::Rev8
-            | ZiskOp::Brev8
-            | ZiskOp::Clz
-            | ZiskOp::ClzW
-            | ZiskOp::Ctz
-            | ZiskOp::CtzW
-            | ZiskOp::Cpop
-            | ZiskOp::CpopW => ctx.store_b_in_c = true,
-            ZiskOp::Xor
-            | ZiskOp::And
-            | ZiskOp::Or
-            | ZiskOp::Sll
-            | ZiskOp::Srl
-            | ZiskOp::Sra
-            | ZiskOp::Sub
-            | ZiskOp::Min
-            | ZiskOp::Minu
-            | ZiskOp::Max
-            | ZiskOp::Maxu
-            | ZiskOp::Bclr
-            | ZiskOp::Bset
-            | ZiskOp::Binv
-            | ZiskOp::Bext
-            | ZiskOp::Rol
-            | ZiskOp::RolW
-            | ZiskOp::Ror
-            | ZiskOp::RorW => ctx.store_a_in_c = true,
-            ZiskOp::MinuW
-            | ZiskOp::MinW
-            | ZiskOp::MaxuW
-            | ZiskOp::MaxW
-            | ZiskOp::Andn
-            | ZiskOp::Orn
-            | ZiskOp::Xnor
-            | ZiskOp::Pack
-            | ZiskOp::PackW
-            | ZiskOp::PackH => {
-                ctx.store_a_in_c = true;
-                ctx.store_b_in_b = true;
-            }
-            ZiskOp::SignExtendB
-            | ZiskOp::SignExtendH
-            | ZiskOp::SignExtendW
-            | ZiskOp::AddW
-            | ZiskOp::OrcB => ctx.store_b_in_b = true,
-            ZiskOp::SubW
-            | ZiskOp::Eq
-            | ZiskOp::Ltu
-            | ZiskOp::Lt
-            | ZiskOp::LtuW
-            | ZiskOp::LtW
-            | ZiskOp::Leu
-            | ZiskOp::Le
-            | ZiskOp::LeuW
-            | ZiskOp::LeW => ctx.store_a_in_a = true,
-            ZiskOp::Mulu
-            | ZiskOp::Muluh
-            | ZiskOp::Mulsuh
-            | ZiskOp::Mul
-            | ZiskOp::Mulh
-            | ZiskOp::MulW
-            | ZiskOp::Div
-            | ZiskOp::Rem
-            | ZiskOp::DivuW
-            | ZiskOp::RemuW
-            | ZiskOp::DivW
-            | ZiskOp::RemW => {
-                ctx.store_a_in_a = true;
-                ctx.store_b_in_b = true;
-            }
-            ZiskOp::Divu | ZiskOp::Remu => {
-                ctx.store_b_in_b = true;
-            }
-            ZiskOp::Add => {
-                if (instruction.a_src == SRC_IMM)
-                    && (instruction.a_offset_imm0 == 0)
-                    && (instruction.a_use_sp_imm1 == 0)
-                {
-                    ctx.store_b_in_c = true;
-                } else {
-                    ctx.store_a_in_c = true;
-                }
-            }
-            _ => {}
-        };
-
-        // Make sure we don't store two registers in the same register
-        assert!(!(ctx.store_a_in_c && ctx.store_b_in_c));
-        assert!(!(ctx.store_a_in_c && ctx.store_a_in_a));
-        assert!(!(ctx.store_b_in_c && ctx.store_b_in_b));
+        Self::set_store_hints(ctx, instruction);
 
         // Set register b content: only SRC_C
         // This is required because in case a must be stored in c, it would overwrite the
@@ -1677,10 +1592,10 @@ impl ZiskRom2Asm {
                 // we can overwirte it to build the address to read from the b value,
                 // or REG_ADDRESS otherwise to preserve the value of a
                 let mut reg_address: &str = REG_A;
-                if instruction.op == ZiskOp::CopyB.code()
-                    || instruction.op == ZiskOp::SignExtendB.code()
-                    || instruction.op == ZiskOp::SignExtendH.code()
-                    || instruction.op == ZiskOp::SignExtendH.code()
+                if instruction.op == ZiskOp::COPYB
+                    || instruction.op == ZiskOp::SIGNEXTEND_B
+                    || instruction.op == ZiskOp::SIGNEXTEND_H
+                    || instruction.op == ZiskOp::SIGNEXTEND_W
                 {
                 } else {
                     *code += &format!(
@@ -2653,6 +2568,123 @@ impl ZiskRom2Asm {
         }
     }
 
+    /// Chooses in which register the `a` and `b` operand values are materialized, so the
+    /// operation itself can work in place and save instructions. Kept apart from the code
+    /// generation so both sides (the hints here and the `assert!`s in `operation_to_asm`)
+    /// can be exercised together.
+    fn set_store_hints(ctx: &mut ZiskAsmContext, instruction: &ZiskInst) {
+        // Set special storage destinations for a and b registers, based on operations, in order
+        // to save instructions
+        let zisk_op = ZiskOp::try_from_code(instruction.op).unwrap();
+        ctx.store_a_in_c = false;
+        ctx.store_a_in_a = false;
+        ctx.store_b_in_c = false;
+        ctx.store_b_in_b = false;
+        ctx.address_is_constant = false;
+
+        match zisk_op {
+            ZiskOp::CopyB
+            | ZiskOp::PubOut
+            | ZiskOp::FcallParam
+            | ZiskOp::Fcall
+            | ZiskOp::FcallGet
+            | ZiskOp::Rev8
+            | ZiskOp::Brev8
+            | ZiskOp::Clz
+            | ZiskOp::ClzW
+            | ZiskOp::Ctz
+            | ZiskOp::CtzW
+            | ZiskOp::Cpop
+            | ZiskOp::CpopW => ctx.store_b_in_c = true,
+            ZiskOp::Xor
+            | ZiskOp::And
+            | ZiskOp::Or
+            | ZiskOp::Sll
+            | ZiskOp::Srl
+            | ZiskOp::Sra
+            | ZiskOp::Sub
+            | ZiskOp::Min
+            | ZiskOp::Minu
+            | ZiskOp::Max
+            | ZiskOp::Maxu
+            | ZiskOp::Bclr
+            | ZiskOp::Bset
+            | ZiskOp::Binv
+            | ZiskOp::Bext
+            | ZiskOp::Rol
+            | ZiskOp::RolW
+            | ZiskOp::Ror
+            | ZiskOp::RorW
+            | ZiskOp::SllUW => ctx.store_a_in_c = true,
+            // lea c, [b + a*scale] needs both operands in a register
+            ZiskOp::Sh1add | ZiskOp::Sh2add | ZiskOp::Sh3add => {
+                ctx.store_a_in_a = true;
+                ctx.store_b_in_b = true;
+            }
+            ZiskOp::MinuW
+            | ZiskOp::MinW
+            | ZiskOp::MaxuW
+            | ZiskOp::MaxW
+            | ZiskOp::Andn
+            | ZiskOp::Orn
+            | ZiskOp::Xnor
+            | ZiskOp::Pack
+            | ZiskOp::PackW
+            | ZiskOp::PackH => {
+                ctx.store_a_in_c = true;
+                ctx.store_b_in_b = true;
+            }
+            ZiskOp::SignExtendB
+            | ZiskOp::SignExtendH
+            | ZiskOp::SignExtendW
+            | ZiskOp::AddW
+            | ZiskOp::OrcB => ctx.store_b_in_b = true,
+            ZiskOp::SubW
+            | ZiskOp::Eq
+            | ZiskOp::Ltu
+            | ZiskOp::Lt
+            | ZiskOp::LtuW
+            | ZiskOp::LtW
+            | ZiskOp::Leu
+            | ZiskOp::Le
+            | ZiskOp::LeuW
+            | ZiskOp::LeW => ctx.store_a_in_a = true,
+            ZiskOp::Mulu
+            | ZiskOp::Muluh
+            | ZiskOp::Mulsuh
+            | ZiskOp::Mul
+            | ZiskOp::Mulh
+            | ZiskOp::MulW
+            | ZiskOp::Div
+            | ZiskOp::Rem
+            | ZiskOp::DivuW
+            | ZiskOp::RemuW
+            | ZiskOp::DivW
+            | ZiskOp::RemW => {
+                ctx.store_a_in_a = true;
+                ctx.store_b_in_b = true;
+            }
+            ZiskOp::Divu | ZiskOp::Remu => {
+                ctx.store_b_in_b = true;
+            }
+            ZiskOp::Add => {
+                if (instruction.a_src == SRC_IMM)
+                    && (instruction.a_offset_imm0 == 0)
+                    && (instruction.a_use_sp_imm1 == 0)
+                {
+                    ctx.store_b_in_c = true;
+                } else {
+                    ctx.store_a_in_c = true;
+                }
+            }
+            _ => {}
+        };
+
+        // Make sure we don't store two registers in the same register
+        assert!(!(ctx.store_a_in_c && ctx.store_b_in_c));
+        assert!(!(ctx.store_a_in_c && ctx.store_a_in_a));
+        assert!(!(ctx.store_b_in_c && ctx.store_b_in_b));
+    }
     fn operation_to_asm(
         ctx: &mut ZiskAsmContext,
         inst: &ZiskInst,
@@ -2694,7 +2726,7 @@ impl ZiskRom2Asm {
                     "\tmovsx {}, {} {}\n",
                     REG_C,
                     REG_B_B,
-                    ctx.comment_str("SignExtendW: sign extend b(8b) to c(64b)")
+                    ctx.comment_str("SignExtendB: sign extend b(8b) to c(64b)")
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2705,7 +2737,7 @@ impl ZiskRom2Asm {
                     "\tmovsx {}, {} {}\n",
                     REG_C,
                     REG_B_H,
-                    ctx.comment_str("SignExtendW: sign extend b(16b) to c(64b)")
+                    ctx.comment_str("SignExtendH: sign extend b(16b) to c(64b)")
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2775,6 +2807,26 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 // DEBUG: Used only to preserve b value
                 //s += &format!("\tmov {}, {} {}\n", REG_B, REG_VALUE, ctx.comment_str("AddW: b = value"));
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Sh1add | ZiskOp::Sh2add | ZiskOp::Sh3add => {
+                // c = b + (a << n), which is exactly what lea with a scaled index does
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                let shift = match zisk_op {
+                    ZiskOp::Sh1add => 1,
+                    ZiskOp::Sh2add => 2,
+                    _ => 3,
+                };
+                *code += &format!(
+                    "\tlea {}, [{} + {}*{}] {}\n",
+                    REG_C,
+                    REG_B,
+                    REG_A,
+                    1 << shift,
+                    ctx.comment(format!("Sh{shift}add: c = b + (a << {shift})"))
+                );
+                ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sub => {
@@ -2896,6 +2948,39 @@ impl ZiskRom2Asm {
                     REG_VALUE_W,
                     ctx.comment_str("SllW: sign extend to quad value -> c")
                 );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SllUW => {
+                // c = zext32(a) << (b & 63): a 32-bit operand shifted into a full 64-bit result,
+                // so unlike SllW there is neither truncation nor sign extension.
+                assert!(ctx.store_a_in_c);
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_C_W,
+                    REG_C_W,
+                    // Writing the 32-bit register clears the high half of the 64-bit one
+                    ctx.comment_str("SllUW: c = zext32(a)")
+                );
+                if ctx.b.is_constant {
+                    *code += &format!(
+                        "\tshl {}, 0x{:x} {}\n",
+                        REG_C,
+                        ctx.b.constant_value & 0x3f,
+                        ctx.comment_str("SllUW: c = zext32(a) << b")
+                    );
+                } else {
+                    *code += &format!(
+                        "\tmov rcx, {} {}\n",
+                        ctx.b.string_value,
+                        ctx.comment_str("SllUW: rcx = b")
+                    );
+                    *code += &format!(
+                        "\tshl {}, cl {}\n",
+                        REG_C,
+                        ctx.comment_str("SllUW: c = zext32(a) << b")
+                    );
+                }
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -5007,9 +5092,9 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Blake2 => {
+            ZiskOp::Blake2b => {
                 // Use the memory address as the first and unique parameter
-                *code += &ctx.full_line_comment("Blake2: rdi = b".to_string());
+                *code += &ctx.full_line_comment("Blake2b: rdi = b".to_string());
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -5029,21 +5114,101 @@ impl ZiskRom2Asm {
                 }
 
                 // Get result from precompile results data
-                if ctx.precompile_results_blake2() {
+                if ctx.precompile_results_blake2b() {
                     *code += "\tmov rdi, [rdi+8]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 16);
                 } else {
-                    // Call the Blake2 function
+                    // Call the Blake2b function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_blake2\n";
+                    *code += "\tcall _opcode_blake2b\n";
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
                 // Set result
                 *code +=
-                    &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake2: c = 0"));
+                    &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake2b: c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Blake3 => {
+                // Use the memory address as the first and unique parameter
+                *code += &ctx.full_line_comment("Blake3: rdi = b".to_string());
+
+                // Use the memory address as the first and unique parameter
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = address")
+                );
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() {
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                }
+
+                // Get result from precompile results data
+                if ctx.precompile_results_blake3() {
+                    *code += "\tmov rdi, [rdi]\n";
+                    Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                } else {
+                    // Call the Blake3 function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_blake3\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Set result
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake3: c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Blake2s => {
+                // Use the memory address as the first and unique parameter
+                *code += &ctx.full_line_comment("Blake2s: rdi = b".to_string());
+
+                // Use the memory address as the first and unique parameter
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = address")
+                );
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() {
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                }
+
+                // Get result from precompile results data
+                if ctx.precompile_results_blake2s() {
+                    *code += "\tmov rdi, [rdi]\n";
+                    Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                } else {
+                    // Call the Blake2s function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_blake2s\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Set result
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake2s: c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -6156,6 +6321,44 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::BabyJubJubAdd => {
+                *code += &ctx.full_line_comment("BabyJubJubAdd".to_string());
+
+                // Use the memory address as the first and unique parameter
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = address")
+                );
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() {
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                }
+
+                // Get result from precompile results data
+                if ctx.precompile_results_babyjubjubadd() {
+                    *code += "\tmov rdi, [rdi]\n";
+                    Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                } else {
+                    // Call the babyjubjub_add function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_babyjubjub_add\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
             ZiskOp::DmaMemCpy | ZiskOp::DmaXMemCpy => {
                 // Use the memory address as the first and unique parameter
                 *code += &ctx.full_line_comment("DmaMemCpy".to_string());
@@ -6441,14 +6644,12 @@ impl ZiskRom2Asm {
             ZiskOp::Profile => {
                 unimplemented!("Internal opcode Profile");
             }
+            // add.uw and the .uw shift-and-adds are transpiled (and + add / and + sh<n>add), so
+            // they never reach the assembly emulator as a single operation.
             ZiskOp::AddUW
-            | ZiskOp::Sh1add
             | ZiskOp::Sh1addUW
-            | ZiskOp::Sh2add
             | ZiskOp::Sh2addUW
-            | ZiskOp::Sh3add
             | ZiskOp::Sh3addUW
-            | ZiskOp::SllUW
             | ZiskOp::Clmul
             | ZiskOp::ClmulH
             | ZiskOp::ClmulR
@@ -8520,5 +8721,72 @@ impl ZiskRom2Asm {
     ///     [8B] multiplicity[S-1]
     fn get_rom_histogram_trace_address(index: u64) -> u64 {
         TRACE_ADDR_NUMBER + (1 + index) * 8
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Runs the operand-register hints and the code generation for a single operation, the same way
+    /// `instruction_to_asm` does, and returns the emitted assembly.
+    ///
+    /// `b` mimics what the b-source code leaves behind: either a constant known at generation time
+    /// or a value already loaded in REG_B.
+    fn operation_asm(op: ZiskOp, b_constant: Option<u64>) -> (ZiskAsmContext, String) {
+        let inst = ZiskInst { op: op.code(), ..Default::default() };
+        let mut ctx = ZiskAsmContext::default();
+        let (mut code, mut unusual_code) = (String::new(), String::new());
+
+        ZiskRom2Asm::set_store_hints(&mut ctx, &inst);
+
+        ctx.b.is_constant = b_constant.is_some();
+        ctx.b.constant_value = b_constant.unwrap_or(0);
+        ctx.b.string_value = match b_constant {
+            Some(value) => format!("0x{value:x}"),
+            None => REG_B.to_string(),
+        };
+        ctx.a.string_value = REG_A.to_string();
+
+        ZiskRom2Asm::operation_to_asm(&mut ctx, &inst, &mut code, &mut unusual_code);
+        assert!(unusual_code.is_empty());
+
+        // Comments are disabled here, which leaves a trailing space on every line
+        let code = code.lines().map(|l| format!("{}\n", l.trim_end())).collect();
+
+        (ctx, code)
+    }
+
+    #[test]
+    fn sh_add_is_a_single_lea() {
+        for (op, scale) in [(ZiskOp::Sh1add, 2), (ZiskOp::Sh2add, 4), (ZiskOp::Sh3add, 8)] {
+            // Both operands must be in a register for the scaled-index addressing to work
+            let (ctx, code) = operation_asm(op, None);
+            assert!(ctx.store_a_in_a && ctx.store_b_in_b, "{op:?} needs a in REG_A and b in REG_B");
+            assert_eq!(code, format!("\tlea {REG_C}, [{REG_B} + {REG_A}*{scale}]\n"));
+            assert!(ctx.c.is_saved);
+            assert!(ctx.flag_is_always_zero);
+        }
+    }
+
+    #[test]
+    fn sll_uw_zero_extends_before_shifting() {
+        // slli.uw always comes with an immediate shift amount, masked to 6 bits
+        let (ctx, code) = operation_asm(ZiskOp::SllUW, Some(0x21));
+        assert!(ctx.store_a_in_c, "SllUW works in place on REG_C");
+        assert_eq!(
+            code,
+            format!("\tmov {REG_C_W}, {REG_C_W}\n\tshl {REG_C}, 0x21\n"),
+            "the 32-bit move is what zero-extends a"
+        );
+        assert!(ctx.c.is_saved);
+        assert!(ctx.flag_is_always_zero);
+
+        // A shift amount coming from a register goes through cl, which the CPU masks to 6 bits
+        let (_, code) = operation_asm(ZiskOp::SllUW, None);
+        assert_eq!(
+            code,
+            format!("\tmov {REG_C_W}, {REG_C_W}\n\tmov rcx, {REG_B}\n\tshl {REG_C}, cl\n")
+        );
     }
 }

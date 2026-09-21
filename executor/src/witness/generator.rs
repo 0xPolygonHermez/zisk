@@ -24,7 +24,7 @@ pub struct WitnessGenerator {
     chunk_size: u64,
 
     /// Packed trace layout. For Main this means the compact indexed row
-    /// ([`MainTraceRowPackedIndexed`]) + instruction table.
+    /// ([`MainTraceRowPackedIndexed`]) plus the shared instruction table.
     packed: AtomicBool,
 }
 
@@ -78,7 +78,7 @@ impl WitnessGenerator {
             )
         };
 
-        // Packed ⇒ compact indexed Main row (+ instruction table); otherwise the unpacked row.
+        // Packed ⇒ the compact indexed Main row (one index per lane); else the unpacked row.
         let air_instance = if self.packed.load(Ordering::Relaxed) {
             main_instance.compute_witness::<MainTraceRowPackedIndexed<F>>(
                 &zisk_rom,
@@ -172,7 +172,7 @@ impl WitnessGenerator {
         self.packed.store(packed, Ordering::SeqCst);
     }
 
-    /// Whether Main is built in the compact indexed form — i.e. packed.
+    /// Whether traces are built bit-packed.
     pub fn is_packed(&self) -> bool {
         self.packed.load(Ordering::Relaxed)
     }
