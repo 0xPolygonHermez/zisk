@@ -1,0 +1,23 @@
+[package]
+name = "zisk-pilout-constraints"
+description = "Extract AIR constraints from a .pilout into a JSON IR, and render them as Lean definitions"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+[[bin]]
+name = "pilout-constraints"
+path = "src/main.rs"
+
+[dependencies]
+pil2-pilout = { workspace = true }
+anyhow = { workspace = true }
+blake3 = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

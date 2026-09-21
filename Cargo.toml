@@ -62,6 +62,7 @@ members = [
   "stream",
   "tools/circuit",
   "tools/frops-analyzer",
+  "tools/pilout-constraints",
   "distributed/crates/coordinator",
   "distributed/crates/coordinator-server",
   "distributed/crates/coordinator-api",

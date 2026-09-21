@@ -44,7 +44,14 @@ Needs Sail 0.19+ (`opam install sail`).
 make check   # typecheck the model
 make lean    # generate Lean definitions into build/lean/out
 make ops     # check opcode names against core/src/zisk_ops.rs
+make pil     # generate Lean definitions of the AIR constraints into build/pil
 ```
+
+`make pil` is the other half of step 5 below: it reads the compiled
+`pil/zisk.pilout` and emits the Main AIR's constraints as Lean, so the proof
+has a machine-generated definition on both sides instead of a hand-transcribed
+one. It needs `pil/zisk.pilout`, which is a build artifact — see
+[`tools/pilout-constraints/README.md`](../tools/pilout-constraints/README.md).
 
 `MODEL` in the Makefile is **order-sensitive**: Sail has no module system, so
 definitions must precede their use. Prelude first, step last.
@@ -108,4 +115,13 @@ and use that binding — see `store_c` in `model/zisk_step.sail`.
    subsume the round-trip test listed as a TODO in `ziskasm/README.md`
    (currently `src/assembler.rs` and `ZiskInst::to_zisk_asm` are two
    hand-written implementations of the same relation).
-5. **Lean proofs** against `main.pil`, using the generated definitions.
+5. **Lean proofs** relating the two generated definitions: `Out.Functions.zisk_step`
+   from this model, and `Pil.Zisk.Main.holds` from
+   [`pilout-constraints`](../tools/pilout-constraints/README.md), which reads
+   the constraints out of the compiled pilout. Neither side is transcribed by
+   hand, so neither can drift from what ZisK ships without the generator
+   noticing. Two things are still missing before a proof can be stated: a Lean
+   toolchain (nothing in the repo builds either lake project today), and a
+   mapping from a `zisk_inst` plus machine state to a `Pil.Zisk.Main.Row`,
+   which is where the model's `ind_width`-style typing meets the AIR's
+   flat field columns.
