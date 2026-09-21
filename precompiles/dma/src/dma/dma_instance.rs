@@ -16,7 +16,7 @@ use std::sync::Arc;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType, StatsType,
 };
-use zisk_pil::{DmaInputCpyTrace, DmaMemCpyTrace, DmaTrace};
+use zisk_pil::DmaTrace;
 
 /// The `DmaInstance` struct represents an instance for the Dma State Machine.
 ///
@@ -46,9 +46,9 @@ impl<F: PrimeField64> DmaInstance<F> {
     }
 
     pub fn build_dma_collector(&self, chunk_id: ChunkId) -> DmaCollector {
-        debug_assert!(
-            [DmaTrace::<()>::AIR_ID, DmaMemCpyTrace::<()>::AIR_ID, DmaInputCpyTrace::<()>::AIR_ID,]
-                .contains(&self.ictx.plan.air_id),
+        debug_assert_eq!(
+            self.ictx.plan.air_id,
+            DmaTrace::<()>::AIR_ID,
             "DmaInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

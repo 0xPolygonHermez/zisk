@@ -8,7 +8,15 @@ on:
       - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
     paths-ignore:
       - 'book/**'
+  schedule:
+    - cron: '0 2 * * *'
   workflow_dispatch:
+    inputs:
+      use_poseidon1_setup:
+        description: "Poseidon1 setup"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
@@ -17,18 +25,27 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  TEST_REF: ${{ github.event_name == 'schedule' && vars.TEST_POSEIDON1_BRANCH || '' }}
+
 jobs:
   cargo-tests:
     name: Cargo tests
+    # fork-PR code must not reach the self-hosted runners.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: rocket
     container:
       image: ubuntu:22.04
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      # Use the committed ziskfloat artifacts (no Docker daemon in this container).
+      ZISK_CI_NO_DOCKER_REBUILD: "1"
 
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       - name: Install dependencies
         run: |
@@ -69,6 +86,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       - name: Install system dependencies
         run: |
@@ -109,6 +128,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       - name: Install Rust nightly with rust-src
         # riscv64im-unknown-none-elf is a Tier 3 target — no pre-built std is available.
@@ -123,6 +144,8 @@ jobs:
 
   test-x86_64:
     name: Test on Ubuntu x86_64
+    # fork-PR code must not reach the self-hosted runners.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       group: zisk-gpu
     timeout-minutes: 180
@@ -138,6 +161,9 @@ jobs:
       TEST_CONTAINER: zisk-gha-test
       # zisk-eth-client guest under test: ziskethone or reth.
       ZEC_GUEST: ziskethone
+      # blake3 is the default everywhere; the nightly run is the one that keeps
+      # covering Poseidon1.
+      HASH_MODE: ${{ (github.event_name == 'schedule' || inputs.use_poseidon1_setup) && 'Poseidon1' || 'blake3' }}
 
     steps:
       - name: Fix workspace permissions
@@ -147,6 +173,8 @@ jobs:
 
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       - name: Give workspace ownership to container user
         run: |
@@ -190,12 +218,13 @@ jobs:
               /home/ziskuser/build-libziskos-isolated.sh
             '
 
-      - name: Build setup
+      - name: Build setup (${{ env.HASH_MODE }})
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
             -e INSTALL_SETUP="1" \
+            -e HASH_MODE="$HASH_MODE" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_setup.sh
@@ -305,6 +334,8 @@ jobs:
 
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       # See the same step in test-x86_64.
       - name: Force git over HTTP/1.1
@@ -343,6 +374,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -389,6 +422,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_REF }}
 
       - name: Check ZisK crates to publish
         run: tools/crates.io/check_crates_to_publish.sh --zisk-repo-path "$GITHUB_WORKSPACE"

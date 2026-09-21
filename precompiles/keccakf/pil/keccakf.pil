@@ -516,8 +516,8 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     // ═══════════════════════════════════════════════════════════════════════════
     // MAIN PROCESSOR INTEGRATION
     // ═══════════════════════════════════════════════════════════════════════════
-    proves_operation(op: OP_KECCAKF, b: [step_addr'(ADDR_A), 0], main_step: step_addr'(STEP_A), mul: in_use_a_clk_0);
-    proves_operation(op: OP_KECCAKF, b: [step_addr'(ADDR_B), 0], main_step: step_addr'(STEP_B), mul: in_use_b_clk_0);
+    proves_operation(op: OP_KECCAK, b: [step_addr'(ADDR_A), 0], main_step: step_addr'(STEP_A), mul: in_use_a_clk_0);
+    proves_operation(op: OP_KECCAK, b: [step_addr'(ADDR_B), 0], main_step: step_addr'(STEP_B), mul: in_use_b_clk_0);
 
     function rho(const expr a[]): const expr[] {
         const int len = length(a);

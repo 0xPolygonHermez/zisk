@@ -5,13 +5,13 @@ use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::OperationBlake2Data;
-use zisk_pil::{Blake2brTrace, Blake2brTraceRow, Blake2brTraceRowOps};
+use zisk_common::OperationBlake2bData;
+use zisk_pil::{Blake2brTraceRowOps, ZISK_AIRGROUP_ID};
 
-use super::blake2_constants::{BLAKE2BR_TABLE_SIZE, CLOCKS, R1_G, R2_G, R3_G, R4_G, SIGMA};
-use super::blake2_table::Blake2brTableSM;
+use super::blake2b_constants::{CLOCKS, R1_G, R2_G, R3_G, R4_G, SIGMA};
+use super::blake_table::BlakeTableSM;
 
 /// State indices (a, b, c, d) mixed by the G function at each clock:
 /// clocks 0-3 perform the column mixing, clocks 4-7 the diagonal mixing.
@@ -30,12 +30,12 @@ const G_INDICES: [(usize, usize, usize, usize); CLOCKS] = [
 const RANGE_CHECKED_LIMBS_PER_ROW: usize = 16;
 
 /// Number of unconditional XOR table lookups per row:
-/// vd', vb', vd'' and vb_pp_xor, 8 bytes each.
+/// vd', vb', vd'' and vb_pp_xor, 8 bytes each (all with rot = 0).
 const XOR_CHECKS_PER_ROW: usize = 32;
 
 /// Per-operation input record assembled from the bus payload.
 #[derive(Debug)]
-pub struct Blake2Input {
+pub struct Blake2bInput {
     pub addr_main: u32,
     pub step_main: u64,
     pub index: u64,
@@ -45,8 +45,8 @@ pub struct Blake2Input {
     pub input: [u64; 16],
 }
 
-impl Blake2Input {
-    pub fn from(values: &OperationBlake2Data<u64>) -> Self {
+impl Blake2bInput {
+    pub fn from(values: &OperationBlake2bData<u64>) -> Self {
         Self {
             addr_main: values[3] as u32,
             step_main: values[4],
@@ -59,37 +59,32 @@ impl Blake2Input {
     }
 }
 
-/// The `Blake2SM` struct encapsulates the logic of the Blake2 State Machine.
-pub struct Blake2SM<F: PrimeField64> {
+/// The `Blake2bSM` struct encapsulates the logic of the Blake2b State Machine.
+/// Nothing here depends on the height of the air: the capacity is taken from the trace each call
+/// builds, so a taller sibling would need no change.
+pub struct Blake2bSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
-
-    /// Number of available blake2s in the trace.
-    pub num_available_blake2s: usize,
 
     range_id: usize,
 
     table_id: usize,
 }
 
-impl<F: PrimeField64> Blake2SM<F> {
-    /// Creates a new Blake2 State Machine instance.
+impl<F: PrimeField64> Blake2bSM<F> {
+    /// Creates a new Blake2b State Machine instance.
     ///
     /// # Returns
-    /// A new `Blake2SM` instance.
+    /// A new `Blake2bSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_non_usable_rows = Blake2brTrace::<Blake2brTraceRow<F>>::NUM_ROWS % CLOCKS;
-        let num_available_blake2s = Blake2brTrace::<Blake2brTraceRow<F>>::NUM_ROWS / CLOCKS
-            - (num_non_usable_rows != 0) as usize;
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
 
-        let table_id = std
-            .get_virtual_table_id(Blake2brTableSM::TABLE_ID)
-            .expect("Failed to get Blake2br table ID");
+        let table_id =
+            std.get_virtual_table_id(BlakeTableSM::TABLE_ID).expect("Failed to get Blake table ID");
 
-        Arc::new(Self { std, num_available_blake2s, range_id, table_id })
+        Arc::new(Self { std, range_id, table_id })
     }
 
     /// Processes one operation, filling its CLOCKS-row chunk of the trace and
@@ -99,11 +94,11 @@ impl<F: PrimeField64> Blake2SM<F> {
     /// * `input` - The operation data to process.
     /// * `trace` - The CLOCKS-row chunk of the trace assigned to this operation.
     /// * `range_checks` - Multiplicities of the 16-bit range checks.
-    /// * `xor_checks` - Multiplicities of the Blake2br XOR table rows.
+    /// * `xor_checks` - Multiplicities of the shared Blake XOR ⊕ ROTR table rows (rot = 0).
     #[inline(always)]
     pub fn process_input<R: Blake2brTraceRowOps<F>>(
         &self,
-        input: &Blake2Input,
+        input: &Blake2bInput,
         trace: &mut [R],
         range_checks: &mut [u32],
         xor_checks: &mut [u32],
@@ -199,10 +194,10 @@ impl<F: PrimeField64> Blake2SM<F> {
             // XOR table lookups: (vd, va'), (vb, vc'), (vd', va'') and (vb', vc''), per byte
             for i in 0..8 {
                 let rows = [
-                    Blake2brTableSM::calculate_table_row(vd_bytes[i], va_p_bytes[i]),
-                    Blake2brTableSM::calculate_table_row(vb_bytes[i], vc_p_bytes[i]),
-                    Blake2brTableSM::calculate_table_row(vd_p_bytes[i], va_pp_bytes[i]),
-                    Blake2brTableSM::calculate_table_row(vb_p_bytes[i], vc_pp_bytes[i]),
+                    BlakeTableSM::calculate_table_row(vd_bytes[i], va_p_bytes[i], 0),
+                    BlakeTableSM::calculate_table_row(vb_bytes[i], vc_p_bytes[i], 0),
+                    BlakeTableSM::calculate_table_row(vd_p_bytes[i], va_pp_bytes[i], 0),
+                    BlakeTableSM::calculate_table_row(vb_p_bytes[i], vc_pp_bytes[i], 0),
                 ];
                 for table_row in rows {
                     xor_checks[table_row as usize] += 1;
@@ -229,34 +224,52 @@ impl<F: PrimeField64> Blake2SM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: Blake2brTraceRowOps<F>>(
+    /// The air is selected by the `NUM_ROWS` / `AIR_ID` consts of the trace this builds, so one
+    /// body serves every height the air is instantiated at.
+    pub fn compute_witness<
+        R: Blake2brTraceRowOps<F>,
+        const NUM_ROWS: usize,
+        const AIR_ID: usize,
+    >(
         &self,
         _sctx: &SetupCtx<F>,
-        inputs: &[Vec<Blake2Input>],
+        inputs: &[Vec<Blake2bInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = Blake2brTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec_zeroes(
+            trace_buffer,
+        )?;
         let num_rows = trace.num_rows();
-        let num_available_blake2s = self.num_available_blake2s;
+        // Capacity of the air this call builds, taken from `NUM_ROWS`: deriving it from a
+        // fixed trace alias instead is what breaks the moment the air gains a taller
+        // sibling, since the instance would be measured against the short air's capacity.
+        //
+        // Plain floor division, which is what the PIL commits to (`NUM_OPS = (N - N % CLOCKS) /
+        // CLOCKS` in blake2br.pil) and what the planner advertises through `num_available` in
+        // `lib.rs`. CLOCKS is 8 and NUM_ROWS a power of two, so the division is exact and an
+        // extra `- (NUM_ROWS % CLOCKS != 0)` term used to be invisible here -- it was the same
+        // expression that cost Blake2s its last operation, where 1048576 / 80 leaves 16 rows over.
+        // Keeping it a plain division means a future change to either constant cannot revive that.
+        let num_available_blake2bs = NUM_ROWS / CLOCKS;
 
-        // Check that we can fit all the blake2s in the trace
+        // Check that we can fit all the blake2b rounds in the trace
         let num_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
-        if num_inputs > num_available_blake2s {
+        if num_inputs > num_available_blake2bs {
             panic!(
-                "Exceeded available Blake2s inputs: requested {}, but only {} are available.",
-                num_inputs, num_available_blake2s
+                "Exceeded available Blake2b inputs: requested {}, but only {} are available.",
+                num_inputs, num_available_blake2bs
             );
         }
         let num_rows_filled = num_inputs * CLOCKS;
 
         tracing::debug!(
-            "··· Creating Blake2 instance [{} / {} rows filled {:.2}%]",
+            "··· Creating Blake2b instance [{} / {} rows filled {:.2}%]",
             num_rows_filled,
             num_rows,
             num_rows_filled as f64 / num_rows as f64 * 100.0
         );
 
-        timer_start_trace!(BLAKE2_TRACE);
+        timer_start_trace!(BLAKE2B_TRACE);
 
         // Split trace into per-operation chunks for parallel processing
         let mut trace_rows = trace.buffer.as_mut_slice();
@@ -276,7 +289,7 @@ impl<F: PrimeField64> Blake2SM<F> {
             .into_par_iter()
             .enumerate()
             .fold(
-                || (vec![0u32; 1 << 16], vec![0u32; BLAKE2BR_TABLE_SIZE]),
+                || (vec![0u32; 1 << 16], vec![0u32; BlakeTableSM::SIZE]),
                 |(mut range_checks, mut xor_checks), (index, trace)| {
                     let input_index = inputs_indexes[index];
                     let input = &inputs[input_index.0][input_index.1];
@@ -285,7 +298,7 @@ impl<F: PrimeField64> Blake2SM<F> {
                 },
             )
             .reduce(
-                || (vec![0u32; 1 << 16], vec![0u32; BLAKE2BR_TABLE_SIZE]),
+                || (vec![0u32; 1 << 16], vec![0u32; BlakeTableSM::SIZE]),
                 |(mut range_acc, mut xor_acc), (range, xor)| {
                     for (acc, val) in range_acc.iter_mut().zip(range) {
                         *acc += val;
@@ -306,11 +319,11 @@ impl<F: PrimeField64> Blake2SM<F> {
         let num_padding_rows = (num_rows - num_rows_filled) as u32;
         range_checks[0] += RANGE_CHECKED_LIMBS_PER_ROW as u32 * num_padding_rows;
 
-        timer_stop_and_log_trace!(BLAKE2_TRACE);
+        timer_stop_and_log_trace!(BLAKE2B_TRACE);
 
         self.std.range_check_ranged(self.range_id, None, &range_checks);
 
-        let zero_row = Blake2brTableSM::calculate_table_row(0, 0) as usize;
+        let zero_row = BlakeTableSM::calculate_table_row(0, 0, 0) as usize;
         xor_checks.into_par_iter().enumerate().for_each(|(row, mut value)| {
             if row == zero_row {
                 value += XOR_CHECKS_PER_ROW as u32 * num_padding_rows;

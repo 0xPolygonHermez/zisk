@@ -58,4 +58,11 @@ named-sem = { workspace = true }
 [features]
 default = []
 stats = []
+# Per-phase timings inside the witness computations. Off by default; see
+# `zisk_common::witness_timers`.
+witness_timers = [
+    "zisk-sm-mem/witness_timers",
+    "zisk-precomp-arith-eq/witness_timers",
+    "zisk-precomp-arith-eq-384/witness_timers",
+]
 cpu-only = ["zisk-asm-runner/cpu-only"]

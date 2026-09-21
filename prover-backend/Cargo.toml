@@ -45,6 +45,7 @@ alloy-sol-types = { workspace = true }
 
 [features]
 default = []
+witness_timers = ["zisk-executor/witness_timers"]
 cpu-only = ["proofman-common/cpu-only", "zisk-executor/cpu-only"]
 stats = []
 diagnostic = ["proofman/diagnostic"]

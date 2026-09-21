@@ -132,7 +132,7 @@ format = "pretty"
 mode = "coordinator"
 
 [coordinator]
-cluster_port = 50051
+port = 50051
 ```
 
 #### Example: production config
@@ -156,7 +156,7 @@ format = "json"
 mode = "coordinator"
 
 [coordinator]
-cluster_port = 50051
+port = 50051
 # config_file = "/etc/zisk/coordinator-core.toml"  # optional: tune coordinator internals
 ```
 

@@ -14,7 +14,7 @@ use proofman::{
 };
 use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
 use proofman_verifier::VadcopFinalProof;
-use zisk_pil::{get_packed_info, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::get_packed_info;
 
 use anyhow::{anyhow, Result};
 use std::{
@@ -26,7 +26,7 @@ use zisk_asm_runner::HintsShmem;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind,
-    StatsCostPerType, ZiskExecutorTime,
+    StatsCostPerType, VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 use zisk_precomp_hints::HintsProcessor;
@@ -79,15 +79,6 @@ impl AsmOptions {
         self
     }
 }
-
-/// Airs whose const *tree* is kept preallocated on-device, as `(airgroup_id, air_id)`.
-/// Cascades to each air's Basic and Recursive1 circuits. Airgroup 0's Recursive2 tree is
-/// always resident and must not be listed. Costs `const_tree_size` of VRAM per entry and
-/// saves a disk load on every proof of that air, so this is the expensive knob.
-///
-/// Main reproduces the residency proofman hardcoded before it became caller-chosen;
-/// dropping it would silently make every Main proof reload its tree from disk.
-const PRELOADED_CONST_TREE_GPU: &[(usize, usize)] = &[(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0])];
 
 /// Comprehensive prover configuration containing all settings
 #[derive(Clone)]
@@ -171,10 +162,6 @@ impl BackendProverOpts {
 
         if self.gpu {
             options.gpu();
-            // GPU-only knob, fixed in code rather than exposed as a user option: the right
-            // choice depends on the air mix and the card, not on the caller. See the constant
-            // above before changing the list.
-            options.preloaded_const_tree_gpu(PRELOADED_CONST_TREE_GPU.to_vec());
         }
 
         if self.packed {
@@ -182,8 +169,7 @@ impl BackendProverOpts {
         }
 
         // Packed traces need packed_info, with Main in compact (indexed) form. `options.packed`
-        // is the single source of truth — gpu() force-enables it and the executor's row-type gate
-        // reads the same flag — so the two sides can't diverge.
+        // is the single source of truth, read by the executor's row-type gate too.
         if options.packed {
             options.packed_info(get_packed_info());
         }
@@ -462,13 +448,20 @@ pub trait ProverEngine {
     ) -> Result<ProveOutput>;
 
     /// Wrap a vadcop_final proof to `proof_kind` (Plonk or minimal).
-    /// `publics_full` is the full-width `[program_vk(4)][user(ZISK_PUBLICS)]`
-    /// blob, used verbatim — a recurser proof's publics exceed 32 bits, so the
-    /// truncated u32 view must not be used here.
+    ///
+    /// `publics_full` is the canonical flag-free, full-width
+    /// `[program_vk(4)][user(ZISK_PUBLICS)]` blob — a recurser proof's publics
+    /// exceed 32 bits, so the truncated u32 view must not be used here.
+    ///
+    /// `source_kind` is the wrapped proof's own [`VadcopKind`], and is part of the
+    /// contract rather than a hint: it carries the `is_vadcop_final_proof` flag
+    /// the recursion layer commits to, and selects the verkey the SNARK wrapper
+    /// verifies under. Callers pass the stored kind and the backend does both.
     fn wrap_proof(
         &self,
         proof: &[u64],
         publics_full: &[u64],
+        source_kind: VadcopKind,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput>;
 
@@ -1061,12 +1054,16 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
 
     /// Execute the proof wrapping with the configured options.
     pub fn run(self) -> Result<ProveOutput> {
-        let (proof, publics_full) = match &self.proof.body {
-            ProofBody::Vadcop { proof, publics_full, .. } => (proof.as_slice(), publics_full),
+        // `kind` must travel with the publics — dropping it leaves the recursion
+        // layer a flag short and shifts the whole public window.
+        let (proof, source_kind, publics_full) = match &self.proof.body {
+            ProofBody::Vadcop { proof, kind, publics_full, .. } => {
+                (proof.as_slice(), *kind, publics_full)
+            }
             ProofBody::Plonk { .. } => {
                 return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
             }
         };
-        self.prover.wrap_proof(proof, publics_full, self.proof_kind)
+        self.prover.wrap_proof(proof, publics_full, source_kind, self.proof_kind)
     }
 }

@@ -24,33 +24,55 @@ require "opids.pil"
     determined by the operands, and any slot can hold either shape.
 
     Parameters:
-      adds_x_row - independent additions packed per row. When adds_x_row > 1, prefer an ODD value:
+      lanes_x_row - independent additions packed per row. When lanes_x_row > 1, prefer an ODD value:
                    the operation-bus contributions amortize as one standalone term for the first
                    operation plus pairs (two-by-two) for the rest — a consequence of the degree
                    bound — so an odd count leaves no unpaired remainder.
 */
-airtemplate BinaryAddHi(const int N = 2**21, const int adds_x_row = 3) {
+airtemplate BinaryAddHi(const int N = 2**21, const int lanes_x_row = 3, int sh3add_x_row = -1) {
 
-    assert(adds_x_row > 0, "adds_x_row must be greater than 0");
+    // sh3add_x_row = -1 means "every lane proves SH3ADD too". Making a lane SH3ADD-capable costs
+    // exactly one column (its sel_sh3add), whereas leaving some lanes out gives an instance two
+    // capacities at once — a total and an SH3ADD sub-total — that the distribution would have to
+    // respect. The default buys that simplicity; 0 opts out of SH3ADD entirely.
+    if (sh3add_x_row == -1) {
+        sh3add_x_row = lanes_x_row;
+    }
 
-    col witness bits(32) a[adds_x_row];
-    col witness bits(32) b[adds_x_row];
-    col witness bits(16) c_chunks[adds_x_row][2];
-    col witness bits(1) sel_b_hi_is_ff[adds_x_row];
-    const expr c[adds_x_row];
+    assert(lanes_x_row > 0, "lanes_x_row must be greater than 0");
+    assert(sh3add_x_row >= 0, "sh3add_x_row must not be negative");
+    assert(lanes_x_row >= sh3add_x_row, "lanes_x_row must be greater than or equal to sh3add_x_row");
 
-    for (int i = 0; i < adds_x_row; i++) {
-
+    col witness bits(32) a[lanes_x_row];
+    col witness bits(32) b[lanes_x_row];
+    col witness bits(16) c_chunks[lanes_x_row][2];
+    col witness bits(1) sel_b_hi_is_ff[lanes_x_row];
+    if (sh3add_x_row > 0) {
+        col witness bits(1) air.sel_sh3add[sh3add_x_row];
+    }
+    const expr c[lanes_x_row];
+    
+    for (int i = 0; i < lanes_x_row; i++) {
         c[i] = c_chunks[i][1] * 2 ** 16 + c_chunks[i][0];
         range_check(expression: c_chunks[i][0], min: 0, max: 2**16 - 1);
         range_check(expression: c_chunks[i][1], min: 0, max: 2**16 - 1);
 
         // sel_b_hi_is_ff selects shape 2 (b high = 0xFFFF_FFFF). The low limb carries iff
         // sel_b_hi_is_ff = 1, so: sel = 0 => a + b = c ; sel = 1 => a + b = c + 2^32.
-        (1 - sel_b_hi_is_ff[i]) * (a[i] + b[i] - c_chunks[i][1] * 2 ** 16 - c_chunks[i][0]) === 0;
-        (sel_b_hi_is_ff[i]) * (a[i] + b[i] - c_chunks[i][1] * 2 ** 16 - c_chunks[i][0] - 0x1_0000_0000) === 0;
+        if (i < sh3add_x_row) {
+            (1 - sel_b_hi_is_ff[i]) * (a[i] + sel_sh3add[i] * a[i] * 7 + b[i] - c_chunks[i][1] * 2 ** 16 - c_chunks[i][0]) === 0;
+            (sel_b_hi_is_ff[i]) * (a[i] + sel_sh3add[i] * a[i] * 7 + b[i] - c_chunks[i][1] * 2 ** 16 - c_chunks[i][0] - 0x1_0000_0000) === 0;
+            sel_sh3add[i] * (1 - sel_sh3add[i]) === 0;
+            proves_operation(op: OP_ADD + sel_sh3add[i] * (OP_SH3ADD - OP_ADD), 
+                             a:[a[i], 0], b:[b[i], sel_b_hi_is_ff[i] * 0xFFFF_FFFF], c:[c[i], 0]);
+
+        } else {
+            (1 - sel_b_hi_is_ff[i]) * (a[i] + b[i] - c_chunks[i][1] * 2 ** 16 - c_chunks[i][0]) === 0;
+            (sel_b_hi_is_ff[i]) * (a[i] + b[i] - c_chunks[i][1] * 2 ** 16 - c_chunks[i][0] - 0x1_0000_0000) === 0;
+
+            proves_operation(op: OP_ADD, a:[a[i], 0], b:[b[i], sel_b_hi_is_ff[i] * 0xFFFF_FFFF], c:[c[i], 0]);
+        }
         sel_b_hi_is_ff[i] * (1 - sel_b_hi_is_ff[i]) === 0;
-        proves_operation(op: OP_ADD, a:[a[i], 0], b:[b[i], sel_b_hi_is_ff[i] * 0xFFFF_FFFF], c:[c[i], 0]);
     }
 
     airval padding_size;

@@ -204,6 +204,7 @@ impl Display for WorkerState {
 
 /// Compute capacity
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
 pub struct ComputeCapacity {
     /// Number of compute units.
     pub compute_units: u32,

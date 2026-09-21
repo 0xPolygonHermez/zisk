@@ -318,14 +318,28 @@ airtemplate Dma(int N = 2**21,
 
         range_check(expression: h_src64, min: 0, max: 2**22-1, sel: sel);
         lookup_assumes(DUAL_RANGE_7_BITS_ID, expressions: [l_src64, l_dst64], sel: sel, sel_is_binary: 1);
+
+        // High 32 bits of the source address, see dst_hi below.
+        col witness bits(32) air.src_hi;
+
+        src_hi * count * sel === 0;
+        (sel_inputcpy + sel_memset) * src_hi === 0;
     } else {    
         const expr air.src = 0;
         const expr air.src64 = 0;
         const expr air.src_offset = 0;
         const expr air.src64_inc_by_pre = 0;
         const expr air.src_offset_after_pre = 0;
+        const expr air.src_hi = 0;
         range_check(expression: l_dst64, min: 0, max: 0x7F, sel: sel);
     }
+
+    // High 32 bits of the destination address. An operation with count == 0 touches no memory,
+    // so only then may the address carry bits above 32; for any other count the constraint below
+    // pins the word to zero. Declared here because bus_result reads dst_hi.
+    col witness bits(32) dst_hi;
+
+    dst_hi * count * sel === 0;
 
     col witness bits(1) use_pre;            // use pre operation
     col witness bits(1) use_loop;           // use loop (aligned, unaligned) operation
@@ -364,7 +378,7 @@ airtemplate Dma(int N = 2**21,
         col witness bits(32) air.bus_post_result[2];
 
         bus_result[0] = bus_pre_result[0] + bus_post_result[0] + dst * (1 - sel_memcmp);
-        bus_result[1] = bus_pre_result[1] + bus_post_result[1];
+        bus_result[1] = bus_pre_result[1] + bus_post_result[1] + dst_hi * (1 - sel_memcmp);
 
         (bus_pre_result[0] + bus_pre_result[1]) * (bus_post_result[0] + bus_post_result[1]) === 0;
 
@@ -397,9 +411,9 @@ airtemplate Dma(int N = 2**21,
         result_nz * (1 - sel_memcmp) === 0;
     } else {
         result_nz = 0;
-        // return dst address
+        // return dst address, the full 64 bits: main sends c = dst unmasked
         bus_result[0] = dst;
-        bus_result[1] = 0;
+        bus_result[1] = dst_hi;
         const int air.post_result_nz = 0;
         const int air.pre_result_nz = 0;
         const int air.bus_pre_result[2] = [0, 0];
@@ -533,8 +547,8 @@ airtemplate Dma(int N = 2**21,
     // OP_DMA_XMEMSET  (dst, 0, count, 0, 0,  0,  0, main_step, value)
 
     proves_operation(op: bus_op, 
-                     a: [dst, 0], 
-                     b: [src * (sel_memcpy + sel_memcmp) + count * (sel_inputcpy + sel_memset), 0], 
+                     a: [dst, dst_hi], 
+                     b: [src * (sel_memcpy + sel_memcmp) + count * (sel_inputcpy + sel_memset), src_hi], 
                      c: bus_result,
                      flag: 0, 
                      main_step:, 

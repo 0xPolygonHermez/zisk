@@ -148,13 +148,15 @@ jobs:
       - name: Build setup
         # INCLUDE_SNARK adds the PLONK setup the --plonk combinations need; unlike
         # the proving key it is not cached, so it is rebuilt on every run.
-        # INSTALL_SETUP installs both into $HOME/.zisk.
+        # INSTALL_SETUP installs both into $HOME/.zisk. Pinned to Poseidon1 against
+        # the blake3 default: the BN128 wrap PLONK needs has no blake3 path.
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
             -e INSTALL_SETUP="1" \
             -e INCLUDE_SNARK="1" \
+            -e HASH_MODE="Poseidon1" \
             -e PTAU_PATH="${PTAU_CONTAINER_PATH}" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
