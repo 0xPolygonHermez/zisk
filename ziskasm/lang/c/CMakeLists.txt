@@ -14,11 +14,17 @@
 # Notes:
 #   - Build for the guest target (rv64ima) with the same toolchain as the guest.
 #   - Do NOT strip the final ELF: elf2rom resolves the stubs by symbol name.
+#   - Provides `_start` (src/_start.s), the EF I/O functions and every accelerator
+#     stub, i.e. the whole guest-side surface of EF §9 in one archive. Pair it with
+#     a linker script that exports `_heap_start`/`_heap_end` (see
+#     example/zisk_guest.ld or ziskbuild/zisk_linker_script.ld).
 
 cmake_minimum_required(VERSION 3.16)
-project(zisklib_c C)
+project(zisklib_c C ASM)
 
-add_library(zisklib_c STATIC src/zisklib_stubs.c src/zkvm_stubs.c)
+# _start.s is part of the shipped library, not sample code: the EF standard (§9)
+# requires the archive to provide the entry point alongside I/O and accelerators.
+add_library(zisklib_c STATIC src/_start.s src/zisklib_stubs.c src/zkvm_stubs.c)
 target_include_directories(zisklib_c PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set_target_properties(zisklib_c PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
 # Keep every stub as its own section so unused ones can be GC'd, while the

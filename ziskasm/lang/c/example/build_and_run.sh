@@ -49,7 +49,7 @@ fi
 echo "### building minimal C guest (calls ziskos_keccak) ..."
 $CC -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib -ffreestanding -O2 \
     -I"$HERE" -I"$INC" -T "$HERE/zisk_guest.ld" \
-    -o "$OUT/keccak_e2e.elf" "$HERE/_start.s" "$HERE/main.c" "$STUBS"
+    -o "$OUT/keccak_e2e.elf" "$HERE/../src/_start.s" "$HERE/main.c" "$STUBS"
 
 echo "### running through ziskemu (elf2rom redirects ziskos_keccak -> zisklib_keccak) ..."
 # Keep ziskemu's output. If the redirect does not fire, the stub prints a diagnostic

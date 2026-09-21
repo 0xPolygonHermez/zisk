@@ -84,9 +84,11 @@ another — `ziskos_keccak` and `zkvm_keccak256` both resolve to
 | `zkvm_*` — EF accelerators | 20 | [`zkvm_accelerators.h`](include/zkvm_accelerators.h) | [`src/zkvm_stubs.c`](src/zkvm_stubs.c) |
 | `zkvm_u256_*` — EF U256 | 27 | [`zkvm_u256.h`](include/zkvm_u256.h) | [`src/zkvm_stubs.c`](src/zkvm_stubs.c) |
 
-Plus 3 entries with no C prototype: `read_input` / `write_output` (the ziskos
-Rust I/O symbols, redirected to `zkvm_io.zisk`) and `modexp_u64_c` (declared in
-`zisklib.h`).
+Plus 3 entries outside those three families: the EF I/O pair `read_input` /
+`write_output` (declared in [`zkvm_io.h`](include/zkvm_io.h), stubbed in
+`src/zkvm_stubs.c`, redirected to `zkvm_io.zisk`) and `modexp_u64_c` (declared in
+`zisklib.h`). The library also provides `_start` (`src/_start.s`), which is not a
+redirect entry but is part of the surface EF §9 requires the archive to ship.
 
 The `ziskos_*` set is: `add` (demo), `keccak`, `sha256`, `blake2b_compress`, the
 `*256` integer/modular ops, secp256k1 (ecdsa verify/recover, schnorr), secp256r1

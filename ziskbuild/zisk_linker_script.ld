@@ -146,5 +146,12 @@ SECTIONS
   PROVIDE(_heap_top = ORIGIN(ram) + LENGTH(ram) - _float_ram_data_size - _zisklib_ram_data_size);
   PROVIDE(_heap_size = _heap_top - _heap_bottom);
 
+  /* EF zkVM standard §9 names the allocator bounds `_heap_start` / `_heap_end`.
+     They are the same two addresses as `_heap_bottom` / `_heap_top`; alias rather
+     than rename so existing consumers (ziskos's allocator reads _heap_bottom /
+     _heap_size) keep working. */
+  PROVIDE(_heap_start = _heap_bottom);
+  PROVIDE(_heap_end = _heap_top);
+
   _end = .;
 }

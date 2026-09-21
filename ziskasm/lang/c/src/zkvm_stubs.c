@@ -25,6 +25,7 @@
  */
 #include "zkvm_accelerators.h"
 #include "zkvm_u256.h"
+#include "zkvm_io.h"
 
 #define ZKVM_STUB __attribute__((noinline, used))
 #define TOUCH(x)  __asm__ volatile("" : : "r"(x) : "memory")
@@ -57,6 +58,21 @@ static zkvm_status zkvm_stub_fail(const char *fn) {
     return ZKVM_EFAIL;                  /* never reached at runtime (faulted above) */
 }
 #define STUB_FAIL()  return zkvm_stub_fail(__func__)
+/* Void-returning stubs call the helper as a STATEMENT. `zkvm_stub_fail` is
+ * deliberately not `noreturn` (see src/zisklib_stubs.c for why: the redirected
+ * routine returns normally, so an inferred-noreturn stub would let a caller that can
+ * see the body delete its own code after the call). */
+#define STUB_FAIL_VOID()  ((void)zkvm_stub_fail(__func__))
+
+/* ---- I/O (zkvm_io.h; the standard names these without a zkvm_ prefix) -- */
+ZKVM_STUB void read_input(const uint8_t **buf_ptr, size_t *buf_size) {
+    TOUCH(buf_ptr); TOUCH(buf_size);
+    STUB_FAIL_VOID();
+}
+ZKVM_STUB void write_output(const uint8_t *output, size_t size) {
+    TOUCH(output); TOUCH(size);
+    STUB_FAIL_VOID();
+}
 
 /* ---- hashes (byte-in / byte-out; no marshalling) ----------------------- */
 ZKVM_STUB zkvm_status zkvm_keccak256(const uint8_t *data, size_t len,

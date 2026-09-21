@@ -46,7 +46,7 @@ stack slot — would read back its own output.
 ```bash
 riscv64-unknown-elf-gcc -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib \
     -ffreestanding -O2 -I. -I../include -T zisk_guest.ld -o /tmp/u256.elf \
-    _start.s u256_alias_guest.c ../src/zkvm_stubs.c
+    ../src/_start.s u256_alias_guest.c ../src/zkvm_stubs.c
 : > /tmp/empty.bin
 ../../../../target/release/ziskemu -e /tmp/u256.elf -i /tmp/empty.bin -o /tmp/u256.bin
 xxd -p -l 58 -c 58 /tmp/u256.bin
@@ -74,7 +74,7 @@ right shift, and shift counts ≥ 256 saturating to `0` or `-1`.
 ```bash
 riscv64-unknown-elf-gcc -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib \
     -ffreestanding -O2 -I. -I../include -T zisk_guest.ld -o /tmp/u256sem.elf \
-    _start.s u256_semantics_guest.c ../src/zkvm_stubs.c
+    ../src/_start.s u256_semantics_guest.c ../src/zkvm_stubs.c
 : > /tmp/empty.bin
 ../../../../target/release/ziskemu -e /tmp/u256sem.elf -i /tmp/empty.bin -o /tmp/sem.bin
 xxd -p -l 43 -c 43 /tmp/sem.bin
