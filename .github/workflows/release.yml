@@ -52,13 +52,21 @@ jobs:
   release:
     name: Build ${{ matrix.target }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    # The Linux build runs on the self-hosted runner inside a fresh container
+    # from the ZisK runner image (tools/test-env/Dockerfile built with
+    # CUDA=true), isolated from the host and from previous runs. The macOS
+    # entry sets no container, so it runs directly on the runner.
+    container: ${{ matrix.container }}
     timeout-minutes: 240
     needs: prepare
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-22.04
+          - runner: rocket
+            container: ziskvm/zisk-runner-gpu:latest
             target: x86_64-unknown-linux-gnu
             svm_target_platform: linux-amd64
             platform: linux
@@ -69,7 +77,37 @@ jobs:
             platform: darwin
             arch: arm64
     steps:
+      # Self-hosted runner: the workspace may still hold the previous run's
+      # checkout and target/. Wipe its contents (not the directory itself, it
+      # is the container mount point) so the build starts from a clean tree.
+      - name: Clean workspace
+        if: matrix.platform == 'linux'
+        run: |
+          if [ -d "$GITHUB_WORKSPACE" ]; then
+            find "$GITHUB_WORKSPACE" -mindepth 1 -delete
+          fi
+
       - uses: actions/checkout@v4
+
+      # The image already ran install_deps.sh --cuda, but as ziskuser, while
+      # job-container steps run as root. Point rustup/cargo at that user's
+      # toolchain instead of installing everything again. The Docker daemon
+      # baked into the image is not running here (no systemd, not privileged),
+      # so lib-float must use the committed ziskfloat artifacts as-is.
+      - name: Configure container environment
+        if: matrix.platform == 'linux'
+        run: |
+          echo "CARGO_HOME=/home/ziskuser/.cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=/home/ziskuser/.rustup" >> "$GITHUB_ENV"
+          echo "ZISK_CI_NO_DOCKER_REBUILD=1" >> "$GITHUB_ENV"
+          echo "/home/ziskuser/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        if: matrix.platform == 'darwin'
+        shell: bash
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_deps.sh
 
       - name: Install rust toolchain
         id: rustc-toolchain
@@ -79,12 +117,6 @@ jobs:
           profile: default
           override: true
           target: ${{ matrix.target }}
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./install_deps.sh --cuda
 
       - name: Setup macOS env vars
         if: matrix.target == 'aarch64-apple-darwin'
