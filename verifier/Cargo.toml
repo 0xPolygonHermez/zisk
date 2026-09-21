@@ -16,16 +16,16 @@ categories = { workspace = true }
 # Cargo.toml blocks. proofman-fields is direct because the generated verifiers
 # name its types and proofman-verifier does not re-export them.
 # Proofman git
-# proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.3.0-alpha", default-features = false, features = ["verify"], version = "1.3.0-alpha" }
-# proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.3.0-alpha", default-features = false, features = ["verify"], version = "1.3.0-alpha" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", default-features = false, features = ["verify"], version = "1.4.0-alpha" }
+proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", default-features = false, features = ["verify"], version = "1.4.0-alpha" }
 
 # Proofman crates.io
-proofman-verifier = { version = "1.3.0-alpha", default-features = false, features = ["verify"] }
-proofman-fields = { version = "1.3.0-alpha", default-features = false, features = ["verify"] }
+# proofman-verifier = { version = "1.4.0-alpha", default-features = false, features = ["verify"] }
+# proofman-fields = { version = "1.4.0-alpha", default-features = false, features = ["verify"] }
 
 # Proofman local development
-# proofman-verifier = { path = "../../pil2-proofman/verifier", version = "1.3.0-alpha", default-features = false, features = ["verify"] }
-# proofman-fields = { path = "../../pil2-proofman/fields", version = "1.3.0-alpha", default-features = false, features = ["verify"] }
+# proofman-verifier = { path = "../../pil2-proofman/verifier", version = "1.4.0-alpha", default-features = false, features = ["verify"] }
+# proofman-fields = { path = "../../pil2-proofman/fields", version = "1.4.0-alpha", default-features = false, features = ["verify"] }
 
 [features]
 default = []
