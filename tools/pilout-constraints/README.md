@@ -18,8 +18,8 @@ lookup and permutation arguments, constant folding, and the intermediate
 columns it introduces. The pilout has all of that already done, and it carries
 three things that make it a better source than the text:
 
-- **The expression DAG**, with sharing intact. Main is 146 constraints over
-  1778 expression nodes, about half of which are shared.
+- **The expression DAG**, with sharing intact. Main is 609 constraints over a
+  9488-node pool, 6764 of which the constraints reach.
 - **Resolved names.** A witness operand is `(stage, colIdx, rowOffset)` in the
   protobuf, and `PilOut.symbols` maps that back to `a[0]` or `b_src_ind` — the
   same names the Sail model's `zisk_inst` record uses.
@@ -57,9 +57,9 @@ the `lean` step with the repo's paths already filled in.
 ## What the listing looks like
 
 ```
-  [3] every row  main/pil/main.pil:373
-       pil: a_src_step*(a[0]-(STEP))
-       0 = a_src_step * (a[0] - Main.STEP)
+  [1] every row  main/pil/main.pil:224
+       pil: addr1[0]-(b_offset_imm0[0]+(b_src_ind[0]*a[0][0]))
+       0 = addr1[0] - (b_offset_imm0[0] + b_src_ind[0] * a[0][0])
 ```
 
 The first two lines are the pilout's; the third is this tool rendering the DAG.
@@ -69,12 +69,14 @@ walker is faithful.
 ## What the Lean looks like
 
 ```lean
-/-- `main/pil/main.pil:191` — `addr1-(b_offset_imm0+(b_src_ind*a[0]))` -/
+/-- `main/pil/main.pil:224` — `addr1[0]-(b_offset_imm0[0]+(b_src_ind[0]*a[0][0]))` -/
 def c1 (x : Ctx F) (t : Trace F) (i : Int) : Prop :=
-  (t i).addr1 - ((t i).b_offset_imm0 + (t i).b_src_ind * (t i).a_0) = 0
+  (t i).addr1 0 - ((t i).b_offset_imm0 0 + (t i).b_src_ind 0 * (t i).a 0 0) = 0
 ```
 
-Five decisions shape that output.
+Main packs four instructions into each row, which is why every column is
+indexed: `addr1 0` is the first of the row's four slots, and the same `.pil`
+line produces four constraints. Six decisions shape the output.
 
 **The field is abstract.** A pil2 constraint is a polynomial identity, so the
 generated `Pil/Prelude.lean` declares a `PilField` class with addition,
@@ -103,12 +105,25 @@ more than one place uses it, or when its inlined form would exceed
 `print::MAX_INLINE` nodes; everything else is folded into its user. That is why
 `c1` above reads like the PIL line it came from.
 
+**A PIL array is one field of function type, not one field per element.**
+`Row` and `Ctx` declare a field per PIL *symbol*: `a : Nat → Nat → F` for
+`a[4][2]`, so `a[2][0]` reads as `(t i).a 2 0`. The reason is not cosmetic.
+Lean's structure elaboration is superlinear in the field count, and flattening
+arrays gave Keccakf 599 fields across the two structures, which took **over ten
+minutes** to elaborate before a single constraint was reached; grouped, that
+AIR declares 32 fields and the file elaborates in 42 seconds. The index type is
+`Nat` rather than `Fin n` because only in-range indices are ever generated, and
+`Nat` keeps them plain numerals instead of coercions — the tool's own check
+verifies every emitted index against the declared extent.
+
 **Names are the PIL's, mangled only as far as Lean forces.**
-`Main.last_reg_value[3][1]` becomes `Main_last_reg_value_3_1`, `__L1__` stays
-`__L1__`, and `next_pc'` keeps its apostrophe because Lean allows it and it is
-the PIL's own notation. The compiler can emit two intermediates with the same
-name — Main has two `Main.previous_c`, one per limb of `c` — so a duplicated
-name gets its pilout expression index appended (`Main_previous_c_e22`).
+`Main.last_reg_value` keeps its name and takes its three indices as arguments,
+`__L1__` stays `__L1__`, and `next_pc'` keeps its apostrophe because Lean
+allows it and it is the PIL's own notation. The compiler can emit two
+intermediates with the same name — an earlier pilout had two
+`Main.previous_c`, one per limb of `c` — so a duplicated name gets its pilout
+expression index appended (`Main_previous_c_e22`). The current pilout happens
+to have no duplicates.
 
 ## Typechecking the output
 
@@ -120,11 +135,17 @@ cd sail && make pil    # generate
 cd sail && make pil-build   # typecheck
 ```
 
-Needs a Lean toolchain — install [elan](https://lean-lang.org/install/). All 21
-AIRs of the ZisK pilout elaborate, Main in a few seconds and the whole set in
-about 85s on a warm cache. That is the check that matters for this tool: an
-expression printed with the wrong precedence, a reference to a column that was
-never declared, or a name Lean will not accept all fail here.
+Needs a Lean toolchain — install [elan](https://lean-lang.org/install/). All 54
+AIRs of the ZisK pilout elaborate: about 75s for the set, 42s of that being
+Keccakf alone. That is the check that matters for this tool — an expression
+printed with the wrong precedence, a reference to a column that was never
+declared, or a name Lean will not accept all fail here.
+
+The generated files raise `maxHeartbeats`, `maxRecDepth` and
+`linter.unusedVariables`, the same three options sail's own Lean output sets.
+The first is not optional: at the default limit the wider AIRs exhaust their
+heartbeats while elaborating, and because the failure lands on `Row` itself,
+every later field access fails with it — 2 real errors became 16520.
 
 ## The IR
 
@@ -140,23 +161,25 @@ never declared, or a name Lean will not accept all fail here.
 | `constraints` | Kind (`every_row`, `first_row`, `last_row`, `every_frame`), the expression index asserted to vanish, and the `debugLine`. |
 
 PIL arrays are flattened the way the pilout numbers them: consecutive ids,
-row-major. `Main.last_reg_value` is `[31][2]`, occupies air value ids 8 to 69,
-and the next symbol starts at 70.
+row-major. `Main.last_reg_value` is `[4][31][2]`, so it covers 248 air value
+slots, ids 9 to 256, and the next symbol (`Main.last_reg_mem_step`) starts at
+257. The IR keeps one entry per scalar; the Lean backend regroups them.
 
 ## Known limits
 
 - **CI does not typecheck the generated Lean.** `make pil-build` does, but it
   needs a Lean toolchain that the PR workflow does not install. Until it does,
   the check is one a person has to remember to run.
-- **`every_frame` is untested.** Every constraint in the ZisK pilout is
+- **`every_frame` is untested.** All 4066 constraints in the ZisK pilout are
   `every_row`; boundary conditions are expressed with fixed selector columns
-  such as `__L1__` and `Main.SEGMENT_L1` instead. The other three kinds are
+  such as `__L1__` instead. The other three kinds are
   implemented and carry their frame bounds through, but nothing has exercised
   them.
 - **Fixed column *values* are not extracted.** ZisK compiles with
   `--no-proto-fixed-data`, which keeps them out of the protobuf entirely (they
   go to `tmp/fixed/`), so only the columns' names and identities are available
   here.
-- **Hints and global constraints are not extracted.** The lookup and
-  permutation arguments the `std` library builds are visible only through the
-  columns and `gsum` expressions they leave in the AIR.
+- **Hints and global constraints are not extracted.** The pilout carries 4211
+  hints and 12 global constraints; the lookup and permutation arguments the
+  `std` library builds are visible here only through the columns and `gsum`
+  expressions they leave in the AIR.

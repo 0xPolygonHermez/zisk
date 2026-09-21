@@ -89,11 +89,14 @@ fn header(out: &mut String, ir: &Ir, module: &str) {
 -/
 import {module}.Prelude
 
--- Generated definitions ignore the row argument when a constraint only relates
--- air values, and the terms are wide, so the two options sail's own Lean output
--- sets are set here too.
+-- A generated definition ignores the row argument when a constraint only
+-- relates air values, and both the terms and the structures are wide: Keccakf
+-- commits 453 columns and Main carries 756 air values, and a structure that
+-- size exceeds the default heartbeat limit while elaborating. Sail's own Lean
+-- output raises the same three options.
 set_option linter.unusedVariables false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 1000000
 
 namespace {ns}
 
@@ -148,10 +151,12 @@ fn structures(out: &mut String, names: &Names) {
     let _ = writeln!(
         out,
         "/-- Every column of one row: the committed columns of each stage, plus the\n\
-         fixed and periodic columns the AIR reads. -/\nstructure Row (F : Type) where"
+         fixed and periodic columns the AIR reads. One field per PIL symbol, so a\n\
+         PIL array is a function of its indices — `a[2][0]` is `(t i).a 2 0`. -/\n\
+         structure Row (F : Type) where"
     );
-    for (ident, comment) in &names.row_fields {
-        let _ = writeln!(out, "  {ident} : F{comment}");
+    for (declaration, comment) in &names.row_fields {
+        let _ = writeln!(out, "  {declaration}{comment}");
     }
     let _ = writeln!(out);
 
@@ -163,8 +168,8 @@ fn structures(out: &mut String, names: &Names) {
     if names.ctx_fields.is_empty() {
         let _ = writeln!(out, "  -- this AIR references none");
     }
-    for (ident, comment) in &names.ctx_fields {
-        let _ = writeln!(out, "  {ident} : F{comment}");
+    for (declaration, comment) in &names.ctx_fields {
+        let _ = writeln!(out, "  {declaration}{comment}");
     }
 
     let _ = write!(
@@ -293,15 +298,91 @@ fn aggregate(out: &mut String, ir: &Ir, names: &Names) {
     );
 }
 
+/// How to reach one scalar: a structure field, plus the indices to apply to it
+/// when that field came from a PIL array.
+struct Access {
+    field: String,
+    index: Vec<u32>,
+}
+
+impl Access {
+    /// `a 0 1`, or just `flag` when the symbol is a scalar.
+    fn render(&self) -> String {
+        let mut out = self.field.clone();
+        for i in &self.index {
+            out.push_str(&format!(" {i}"));
+        }
+        out
+    }
+}
+
+/// One structure field: a whole PIL symbol, array and all.
+struct Field {
+    /// The Lean identifier.
+    name: String,
+    /// The PIL name, for the comment.
+    pil: String,
+    /// Per-dimension extent; empty for a scalar.
+    shape: Vec<u32>,
+    /// Every scalar the symbol covers, as `(IR name, index)`.
+    slots: Vec<(String, Vec<u32>)>,
+    /// What kind of symbol it is, and which stage it sits in.
+    what: String,
+}
+
+impl Field {
+    fn new(slot: &Slot, what: &str, taken: &mut HashSet<String>) -> Field {
+        let stage = if slot.stage == 0 { String::new() } else { format!(", stage {}", slot.stage) };
+        let mut field = Field {
+            name: unique(&ident(&slot.base), taken),
+            pil: slot.base.clone(),
+            shape: Vec::new(),
+            slots: Vec::new(),
+            what: format!("{what}{stage}"),
+        };
+        field.push(slot);
+        field
+    }
+
+    fn push(&mut self, slot: &Slot) {
+        for (dim, i) in slot.index.iter().enumerate() {
+            match self.shape.get_mut(dim) {
+                Some(extent) => *extent = (*extent).max(i + 1),
+                None => self.shape.push(i + 1),
+            }
+        }
+        self.slots.push((slot.name.clone(), slot.index.clone()));
+    }
+
+    /// `a : Nat → Nat → F` with `-- a[4][2] (witness, stage 1)` beside it.
+    fn declare(&self) -> (String, String) {
+        let arrows = "Nat → ".repeat(self.shape.len());
+        let extents: String = self.shape.iter().map(|n| format!("[{n}]")).collect();
+        (
+            format!("{} : {arrows}F", self.name),
+            format!("  -- {}{extents} ({})", self.pil, self.what),
+        )
+    }
+
+    fn accesses(&self) -> Vec<(String, Access)> {
+        self.slots
+            .iter()
+            .map(|(name, index)| {
+                (name.clone(), Access { field: self.name.clone(), index: index.clone() })
+            })
+            .collect()
+    }
+}
+
 /// Lean identifiers for every name the IR mentions, kept unique.
 struct Names {
-    /// `(identifier, trailing comment)`, in structure order.
+    /// `(declaration, trailing comment)`, in structure order.
     row_fields: Vec<(String, String)>,
     ctx_fields: Vec<(String, String)>,
-    /// IR column name -> `Row` field.
-    row: HashMap<String, String>,
-    /// IR global name -> `Ctx` field.
-    ctx: HashMap<String, String>,
+    /// IR column name -> the field and indices that reach it.
+    row: HashMap<String, Access>,
+    /// IR global name -> the field and indices that reach it.
+    ctx: HashMap<String, Access>,
     /// Expression index -> definition name.
     expr: HashMap<u32, String>,
     /// Constraint index -> definition name.
@@ -320,23 +401,28 @@ impl Names {
             constraint: HashMap::new(),
         };
 
-        let add = |slots: &[Slot],
-                   what: &str,
-                   taken: &mut HashSet<String>|
-         -> Vec<(String, String, String)> {
-            slots
-                .iter()
-                .map(|s| {
-                    let id = unique(&ident(&s.name), taken);
-                    let stage =
-                        if s.stage == 0 { String::new() } else { format!(", stage {}", s.stage) };
-                    (
-                        s.name.clone(),
-                        id,
-                        format!("  -- {} ({}{}, id {})", s.name, what, stage, s.id),
-                    )
-                })
-                .collect()
+        // One field per PIL symbol rather than per scalar, so a PIL array
+        // becomes a field of function type. This is not cosmetic: Lean's
+        // structure elaboration is superlinear in the number of fields, and
+        // flattening every array put 599 fields in Keccakf's `Row` and `Ctx`,
+        // which took over ten minutes to elaborate before a single constraint
+        // was reached. Grouped, the same AIR declares a few dozen.
+        //
+        // The index type is `Nat`, not `Fin n`: only in-range indices are ever
+        // generated, and `Nat` keeps them plain numerals instead of coercions.
+        let group = |slots: &[Slot], what: &str, taken: &mut HashSet<String>| -> Vec<Field> {
+            let mut fields: Vec<Field> = Vec::new();
+            let mut by_base: HashMap<String, usize> = HashMap::new();
+            for slot in slots {
+                match by_base.get(&slot.base) {
+                    Some(&at) => fields[at].push(slot),
+                    None => {
+                        by_base.insert(slot.base.clone(), fields.len());
+                        fields.push(Field::new(slot, what, taken));
+                    }
+                }
+            }
+            fields
         };
 
         let columns = [
@@ -346,9 +432,9 @@ impl Names {
             (&ir.columns.custom, "custom commit"),
         ];
         for (slots, what) in columns {
-            for (name, id, comment) in add(slots, what, &mut taken) {
-                this.row.insert(name, id.clone());
-                this.row_fields.push((id, comment));
+            for field in group(slots, what, &mut taken) {
+                this.row.extend(field.accesses());
+                this.row_fields.push(field.declare());
             }
         }
 
@@ -360,9 +446,9 @@ impl Names {
             (&ir.globals.challenges, "challenge"),
         ];
         for (slots, what) in globals {
-            for (name, id, comment) in add(slots, what, &mut taken) {
-                this.ctx.insert(name, id.clone());
-                this.ctx_fields.push((id, comment));
+            for field in group(slots, what, &mut taken) {
+                this.ctx.extend(field.accesses());
+                this.ctx_fields.push(field.declare());
             }
         }
 
@@ -375,12 +461,13 @@ impl Names {
                 continue;
             }
             let id = unique(&ident(&name), &mut taken);
-            map.insert(name.clone(), id.clone());
+            map.insert(name.clone(), Access { field: id.clone(), index: Vec::new() });
+            let declaration = format!("{id} : F");
             let comment = format!("  -- {name} (no symbol in the pilout)");
             if row {
-                this.row_fields.push((id, comment));
+                this.row_fields.push((declaration, comment));
             } else {
-                this.ctx_fields.push((id, comment));
+                this.ctx_fields.push((declaration, comment));
             }
         }
 
@@ -460,17 +547,23 @@ impl Leaves for LeanLeaves<'_> {
     }
 
     fn column(&self, name: &str, offset: i32) -> String {
-        let field = self.names.row.get(name).cloned().unwrap_or_else(|| ident(name));
+        let access = match self.names.row.get(name) {
+            Some(access) => access.render(),
+            None => ident(name),
+        };
         let row = match offset {
             0 => "t i".to_string(),
             o if o > 0 => format!("t (i + {o})"),
             o => format!("t (i - {})", -(o as i64)),
         };
-        format!("({row}).{field}")
+        format!("({row}).{access}")
     }
 
     fn global(&self, name: &str) -> String {
-        format!("x.{}", self.names.ctx.get(name).cloned().unwrap_or_else(|| ident(name)))
+        match self.names.ctx.get(name) {
+            Some(access) => format!("x.{}", access.render()),
+            None => format!("x.{}", ident(name)),
+        }
     }
 
     fn reference(&self, idx: u32) -> String {
@@ -577,6 +670,59 @@ mod tests {
         assert_eq!(ident("a[0]."), "a_0");
         assert_eq!(ident("at"), "at_");
         assert_eq!(ident("3col"), "_3col");
+    }
+
+    #[test]
+    fn an_array_symbol_becomes_one_field_of_function_type() {
+        let slot = |name: &str, index: Vec<u32>, id: u32| Slot {
+            name: name.to_string(),
+            base: "a".to_string(),
+            index,
+            stage: 1,
+            id,
+            commit: None,
+        };
+        let mut taken = HashSet::new();
+        let mut field = Field::new(&slot("a[0][0]", vec![0, 0], 0), "witness", &mut taken);
+        for (name, index, id) in [
+            ("a[0][1]", vec![0, 1], 1),
+            ("a[1][0]", vec![1, 0], 2),
+            ("a[1][1]", vec![1, 1], 3),
+            ("a[2][0]", vec![2, 0], 4),
+            ("a[2][1]", vec![2, 1], 5),
+        ] {
+            field.push(&slot(name, index, id));
+        }
+
+        // The shape is recovered from the indices, so one field covers all six.
+        let (declaration, comment) = field.declare();
+        assert_eq!(declaration, "a : Nat → Nat → F");
+        assert_eq!(comment, "  -- a[3][2] (witness, stage 1)");
+
+        let accesses = field.accesses();
+        assert_eq!(accesses.len(), 6);
+        let rendered: Vec<String> = accesses.iter().map(|(_, a)| a.render()).collect();
+        assert_eq!(rendered[0], "a 0 0");
+        assert_eq!(rendered[5], "a 2 1");
+    }
+
+    #[test]
+    fn a_scalar_symbol_stays_a_plain_field() {
+        let mut taken = HashSet::new();
+        let field = Field::new(
+            &Slot {
+                name: "flag".to_string(),
+                base: "flag".to_string(),
+                index: vec![],
+                stage: 1,
+                id: 6,
+                commit: None,
+            },
+            "witness",
+            &mut taken,
+        );
+        assert_eq!(field.declare().0, "flag : F");
+        assert_eq!(field.accesses()[0].1.render(), "flag");
     }
 
     #[test]

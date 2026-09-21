@@ -53,7 +53,7 @@ Two more targets typecheck the generated Lean, through the lake package in
 [elan](https://lean-lang.org/install/):
 
 ```sh
-make pil-build    # elaborate the AIR constraints  (all 21 AIRs build)
+make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~75s)
 make lean-build   # elaborate the model            (9 of 12 modules build)
 ```
 
@@ -148,5 +148,10 @@ and use that binding — see `store_c` in `model/zisk_step.sail`.
    hand, so neither can drift from what ZisK ships without the generator
    noticing. The constraint side already elaborates (`make pil-build`); what is
    still missing is the model side (step 1 above) and a mapping from a
-   `zisk_inst` plus machine state to a `Pil.Zisk.Main.Row`, which is where the
-   model's `ind_width`-style typing meets the AIR's flat field columns.
+   `zisk_inst` plus machine state into a `Pil.Zisk.Main.Row`.
+
+   That mapping is where the model's `ind_width`-style typing meets the AIR's
+   field columns, and it is a mapping into a *slot*, not a row: Main packs four
+   instructions per row, so every column is indexed (`(t i).pc 2`) and one
+   `zisk_step` corresponds to one of the four. A `.pil` line such as
+   `main.pil:224` therefore yields four constraints, one per slot.
