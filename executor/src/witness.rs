@@ -58,7 +58,7 @@ pub struct WitnessContext<'a, F: PrimeField64> {
     pub stats_scope: &'a StatsScope,
 
     /// ACL surface used by the router's own pctx-equivalent lookups
-    /// (instance_info, set_witness_ready, is_my_process_instance, ...).
+    /// (instance_info, announce_witness_ready, is_my_process_instance, ...).
     pub registry: &'a dyn Dctx,
 
     /// Runtime selector for the ROM backend
@@ -159,7 +159,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
         Ok(())
     }
 
-    /// Materialise main instances into `state` and pre-stamp them as not-yet-ready on `registry`.
+    /// Materialise main instances into `state` and announce the ones this rank owns.
     pub fn populate_main_instances(
         &self,
         registry: &dyn ProofRegistry,
@@ -178,7 +178,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
 
             let gid = GlobalId(global_id);
             if registry.is_my_process_instance(gid)? {
-                registry.set_witness_ready(gid, false);
+                registry.announce_witness_ready(gid);
             }
         }
         Ok(())
@@ -374,7 +374,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
     /// `pctx` is still required because [`ChunkDataCollector::collect`]
     /// takes `&ProofCtx<F>` directly (cross-crate, library-coupled).
     /// All other `pctx`-equivalent lookups (`instance_info`,
-    /// `set_witness_ready`) route through `registry`.
+    /// `announce_witness_ready`) route through `registry`.
     pub fn pre_calculate(
         &self,
         pctx: &ProofCtx<F>,
@@ -392,12 +392,11 @@ impl<F: PrimeField64> WitnessPhase<F> {
             let info = registry.instance_info(GlobalId(global_id))?;
 
             if AirClassifier::is_main(info.air_id) {
-                registry.set_witness_ready(GlobalId(global_id), false);
+                registry.announce_witness_ready(GlobalId(global_id));
             } else if AirClassifier::is_rom(info.airgroup_id, info.air_id) {
                 if is_asm_emulator {
-                    // ASM ROM: the RH service handles collection
-                    // out-of-band; just flag the gid not-ready.
-                    registry.set_witness_ready(GlobalId(global_id), false);
+                    // ASM ROM: the RH service handles collection out-of-band.
+                    registry.announce_witness_ready(GlobalId(global_id));
                 } else {
                     handlers::rom_rust::pre_calculate(
                         registry,
@@ -449,7 +448,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
         {
             instances_to_collect.insert(global_id, &**secn_instance);
         } else {
-            registry.set_witness_ready(GlobalId(global_id), true);
+            registry.announce_witness_ready(GlobalId(global_id));
         }
 
         Ok(())

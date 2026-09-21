@@ -26,7 +26,7 @@ pub(crate) fn pre_calculate<'a, F: PrimeField64>(
 
     if rom_instance.skip_collector() {
         state.register_empty_collector(global_id, airgroup_id, air_id)?;
-        registry.set_witness_ready(gid, true);
+        registry.announce_witness_ready(gid);
     } else {
         instances_to_collect.insert(global_id, &**secn_instance);
     }
@@ -100,9 +100,9 @@ pub(crate) mod tests {
             .expect("pre_calculate must succeed on a non-ASM RomInstance");
 
         // The instance is queued for collection; collector store is not touched;
-        // the registry's witness-ready map is untouched.
+        // nothing is announced.
         assert!(instances_to_collect.contains_key(&GID));
-        assert!(registry.witness_ready.borrow().get(&GlobalId(GID)).is_none());
+        assert!(registry.announced.borrow().is_empty());
         assert!(state.collector_store.inner.read().unwrap().get(&GID).is_none());
     }
 
@@ -121,9 +121,9 @@ pub(crate) mod tests {
             .expect("pre_calculate must succeed when skip_collector returns true");
 
         // Nothing is queued for collection; the collector slot is filled (empty Vec)
-        // and the gid is flipped ready on the registry.
+        // and the gid is announced on the registry.
         assert!(instances_to_collect.is_empty());
-        assert_eq!(registry.witness_ready.borrow().get(&GlobalId(GID)), Some(&true));
+        assert_eq!(*registry.announced.borrow(), vec![GlobalId(GID)]);
         let store = state.collector_store.inner.read().unwrap();
         let slot = store.get(&GID).expect("empty collector slot must be registered");
         assert!(slot.is_empty());

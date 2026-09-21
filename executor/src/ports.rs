@@ -17,6 +17,7 @@
 #[cfg(test)]
 use crate::error::ExecutorError;
 use crate::error::ExecutorResult;
+use proofman_common::WitnessPriority;
 
 /// Newtype around a global instance ID assigned by the proof context.
 ///
@@ -47,20 +48,35 @@ impl From<GlobalId> for usize {
     }
 }
 
-/// Self-documenting `(airgroup_id, air_id)` pair.
+/// Self-documenting `(airgroup_id, air_id)` pair, plus the dispatch band the
+/// instance is registered in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct InstanceInfo {
     /// The AIR group this instance belongs to.
     pub airgroup_id: usize,
     /// The AIR id within the group.
     pub air_id: usize,
+    /// Dispatch band, fixed at registration and never mutated afterwards.
+    pub priority: WitnessPriority,
 }
 
 impl InstanceInfo {
-    /// Constructs a new [`InstanceInfo`].
+    /// Constructs a new [`InstanceInfo`] in the default (`Normal`) band.
     #[inline]
     pub fn new(airgroup_id: usize, air_id: usize) -> Self {
-        Self { airgroup_id, air_id }
+        Self::with_priority(airgroup_id, air_id, WitnessPriority::default())
+    }
+
+    /// Constructs a new [`InstanceInfo`] in an explicit band.
+    #[inline]
+    pub fn with_priority(airgroup_id: usize, air_id: usize, priority: WitnessPriority) -> Self {
+        Self { airgroup_id, air_id, priority }
+    }
+
+    /// The `(airgroup_id, air_id)` identity, ignoring the band.
+    #[inline]
+    pub fn air(self) -> (usize, usize) {
+        (self.airgroup_id, self.air_id)
     }
 }
 
@@ -89,9 +105,9 @@ pub trait Dctx {
     /// Returns `true` if the local rank owns the instance `gid`.
     fn is_my_process_instance(&self, gid: GlobalId) -> ExecutorResult<bool>;
 
-    /// Marks the witness for `gid` as ready (`true`) or not-ready
-    /// (`false`).
-    fn set_witness_ready(&self, gid: GlobalId, ready: bool);
+    /// Announces that `gid`'s witness inputs exist, queueing it for
+    /// dispatch. Urgency is the band declared at registration.
+    fn announce_witness_ready(&self, gid: GlobalId);
 
     /// Returns `true` if the local rank is the first process in the
     /// distribution group. Drives ASM ROM-histogram ownership.
@@ -114,9 +130,8 @@ pub trait ProofRegistry: Dctx {
     /// Registers a table instance. Returns the assigned global id.
     fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
 
-    /// Asks for `gid`'s witness to be computed after this rank's other
-    /// instances, leaving its global id and its owning rank alone.
-    fn set_instance_deferred(&self, gid: GlobalId);
+    /// Assigns a table instance to a previously-registered instance.
+    fn assign_table_to(&self, info: InstanceInfo, gid: GlobalId) -> ExecutorResult<()>;
 
     /// Looks up the previously-assigned global id for an AIR. Used by
     /// the planner to attach the ROM instance to its existing
@@ -182,12 +197,10 @@ pub(crate) mod fakes {
         next_id: RefCell<usize>,
         /// Sequence of `add_*` calls, in order.
         pub additions: RefCell<Vec<AddCall>>,
-        /// Witness-ready flag per gid (latest value wins).
-        pub witness_ready: RefCell<HashMap<GlobalId, bool>>,
+        /// Gids announced ready, in announcement order.
+        pub announced: RefCell<Vec<GlobalId>>,
         /// Sequence of `set_chunks` calls, in order.
         pub set_chunks_calls: RefCell<Vec<(GlobalId, Vec<usize>, bool)>>,
-        /// Instances asked to compute late, in order.
-        pub deferred: RefCell<Vec<GlobalId>>,
         /// Cumulative public outputs written.
         pub pub_outs: RefCell<Vec<(u64, u32)>>,
         /// Per-gid ownership override. Missing key = owned (`true`).
@@ -199,9 +212,8 @@ pub(crate) mod fakes {
             Self {
                 next_id: RefCell::new(0),
                 additions: RefCell::default(),
-                witness_ready: RefCell::default(),
+                announced: RefCell::default(),
                 set_chunks_calls: RefCell::default(),
-                deferred: RefCell::default(),
                 pub_outs: RefCell::default(),
                 ownership: RefCell::default(),
             }
@@ -237,8 +249,8 @@ pub(crate) mod fakes {
             Ok(self.ownership.borrow().get(&gid).copied().unwrap_or(true))
         }
 
-        fn set_witness_ready(&self, gid: GlobalId, ready: bool) {
-            self.witness_ready.borrow_mut().insert(gid, ready);
+        fn announce_witness_ready(&self, gid: GlobalId) {
+            self.announced.borrow_mut().push(gid);
         }
 
         fn is_first_process(&self) -> bool {
@@ -256,15 +268,16 @@ pub(crate) mod fakes {
         fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
             Ok(self.next_gid(AddKind::Table, info))
         }
-
-        fn set_instance_deferred(&self, gid: GlobalId) {
-            self.deferred.borrow_mut().push(gid);
+        fn assign_table_to(&self, info: InstanceInfo, gid: GlobalId) -> ExecutorResult<()> {
+            self.additions.borrow_mut().push(AddCall { kind: AddKind::Table, info, gid });
+            Ok(())
         }
         fn find_instance_id(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
+            // Identity is the AIR; the band it was registered in is not part of the lookup.
             self.additions
                 .borrow()
                 .iter()
-                .find(|a| a.info == info)
+                .find(|a| a.info.air() == info.air())
                 .map(|a| a.gid)
                 .ok_or(ExecutorError::SecnPlanMissing { phase: "find_instance_id" })
         }

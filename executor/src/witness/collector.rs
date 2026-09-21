@@ -468,11 +468,11 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             }
         }
 
-        // Advance counters; on the last chunk for an instance, flip its
-        // witness-ready flag and record completion stats.
+        // Advance counters; on the last chunk for an instance, announce it
+        // ready and record completion stats.
         for (global_id, global_id_idx) in affected_globals {
             if ctx.n_chunks_left[global_id_idx].fetch_sub(1, Ordering::SeqCst) == 1 {
-                ctx.pctx.set_witness_ready(global_id, true);
+                ctx.pctx.announce_witness_ready(global_id);
                 Self::record_completion_stats(global_id, global_id_idx, ctx);
             }
         }
