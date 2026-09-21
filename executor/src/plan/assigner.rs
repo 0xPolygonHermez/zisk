@@ -24,7 +24,19 @@ impl InstanceAssigner {
     /// # Errors
     /// Returns an error if the registry rejects the assignment.
     pub fn assign_rom_instance(registry: &dyn ProofRegistry) -> ExecutorResult<GlobalId> {
-        registry.add_instance_assign(InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]))
+        // Assigned first, and that is load-bearing: the rank is picked by least-loaded
+        // partition, so being the first instance registered is what puts ROM on the first
+        // process — the only one that runs the ROM-histogram assembly.
+        let gid =
+            registry.add_instance_assign(InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]))?;
+
+        // Computed last all the same. The ROM witness is what reads the histogram, so every
+        // instance computed before it is time the histogram runner has already had. Deferring
+        // moves only the computation order, leaving the global id and the owning rank as the
+        // assignment above set them.
+        registry.set_instance_deferred(gid);
+
+        Ok(gid)
     }
 
     /// Assigns main instances to the proof context.
