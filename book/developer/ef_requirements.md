@@ -180,8 +180,8 @@ conform but not yet audited against the spec.
 | 6 | [Memory safety guard regions](#6-memory-safety-guard-regions) | **Partial** | Null-pointer page and stack overflow trap (unmapped), but not via a named ≥4 kB stack-guard region. |
 | 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported and counted/priced by `ziskemu` stats; `compressed` (`C`) feature implemented (off by default); offline-vs.-during-proving visibility to confirm with EF. |
 | 8 | [Standard termination semantics](#8-standard-termination-semantics) | **To verify** | `main` return maps to halt + host report; exact exit-code propagation to confirm. |
-| 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Partial** | `_start`, I/O, accelerators and a W^X linker script are provided; `_heap_start`/`_heap_end` export to confirm. |
-| 10 | [Instruction-address-misaligned semantics](#10-instruction-address-misaligned-exception-semantics) | **Partial** | Production execution aborts on a jump to an invalid/misaligned address (no rounding); `compressed` (`C`) feature off by default keeps `IALIGN=32`; spec-wording review pending. |
+| 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Partial** | `_start`, I/O, all accelerators and `_heap_start`/`_heap_end` now ship in one `zisklib_c` archive + W^X linker script; only prebuilt-`.a` packaging to confirm with the EF. |
+| 10 | [Instruction-address-misaligned semantics](#10-instruction-address-misaligned-exception-semantics) | **Conformant** | At the default `IALIGN=32` (`compressed` off): misaligned entry points and executable-segment starts rejected at load; a misaligned computed jump hits its own `emu_end` slot in the per-byte jump map (rounding impossible by construction) and exits with `end=0`; the Rust emulator panics. |
 
 ---
 
@@ -304,7 +304,8 @@ diagnostics before any state reaches the prover.
 builds the ROM exclusively from `PT_LOAD` segments, zero-fills BSS, checks every
 segment/address lies within the ZisK addressable space (and errors otherwise,
 e.g. the `PT_LOAD 0x0-0x0` rejection), and validates the entry point
-(`validate_entry_point`): non-zero `e_entry`, correctly aligned, inside a loaded
+(`validate_entry_point`): non-zero `e_entry`, aligned to IALIGN (4 bytes by
+default, 2 with the `compressed` feature — see §10), inside a loaded
 executable segment — with an explicit diagnostic instructing the user to declare
 `ziskos::entrypoint!`. Executable segments are `PF_X`/`PF_X|PF_R`; a `PF_X|PF_R`
 segment currently produces a performance **warning** (allowed by the standard),
@@ -327,7 +328,9 @@ fails; idempotent) and `void write_output(const uint8_t* output, size_t size)`
 `("write_output", "zisklib_write_output")`. Input is exposed at the memory-mapped
 free-input region (`INPUT_ADDR = 0x4000_0000`); output is written to the public
 output region (`OUTPUT_ADDR = 0xa041_0000`). Reads are non-failing and side-effect
-free; successive `write_output` calls concatenate.
+free; successive `write_output` calls concatenate. C guests get both from
+[`zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) and the stubs in
+`ziskasm/lang/c/src/zkvm_stubs.c`, linked via `zisklib_c` (§9).
 
 **Assessment: Conformant.**
 
@@ -565,17 +568,40 @@ functions, and a GNU ld/LLD-compatible linker script that sets `_start` as the
 entry, enforces W^X (executable `.text*`/`.init`/`.fini` separate from read-only
 `.rodata*`), and exports `_heap_start`/`_heap_end`. `main` is `int main(void)`.
 
-**ZisK.** ZisK provides the `ziskos` runtime (entry `_start`, boot/IO setup) and,
-for the EF C ABI, the `ziskasm/lang/c` binding (accelerator stubs + I/O). The
-guest linker script sets `ENTRY(_start)` and lays out clean W^X segments via
-`PHDRS`: `text` `FLAGS(5)` (`R+X`), `rodata` `FLAGS(4)` (`R`), and `data`/`bss`
-`FLAGS(6)` (`R+W`), plus KEEP'd `.init_array`/`.fini_array` for C++ ctors/dtors.
+**ZisK.** ZisK provides the `ziskos` runtime (entry `_start`, boot/IO setup) for
+Rust guests and, for the EF C ABI, the `ziskasm/lang/c` binding. `CMakeLists.txt`
+builds the whole guest-side surface into one static library, **`zisklib_c`**:
 
-**Gaps to confirm.** Export of the `_heap_start` / `_heap_end` symbols required by
-the standard's application-allocator contract, and packaging the whole surface
-(`_start` + I/O + all accelerators) as a single distributable `.a` archive.
+| Requirement | Provided by |
+|---|---|
+| `_start` (gp/sp init, `main`, termination) | `src/_start.s` |
+| I/O functions | `src/zkvm_stubs.c` + [`include/zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) |
+| Accelerator functions | `src/zkvm_stubs.c` (20 `zkvm_*` + 27 `zkvm_u256_*`) and `src/zisklib_stubs.c` (27 `ziskos_*`) |
 
-**Assessment: Partial.**
+Every entry is an exported stub that `elf2rom` redirects by symbol name to the
+hand-written `.zisk` routine, so a C guest compiles against the headers, links
+`zisklib_c`, and runs the ziskasm implementations. `main` is `int main(void)`.
+
+The guest linker script sets `ENTRY(_start)` and lays out clean W^X segments via
+`PHDRS`. The script ZisK ships (`ziskbuild/zisk_linker_script.ld`, embedded via
+`ZISK_LINKER_SCRIPT`) uses `text FLAGS(1)` — **execute-only**, the form ZisK prefers
+for performance; the C example's `zisk_guest.ld` uses `FLAGS(5)` (`R+X`), which the
+standard also permits. Both keep `rodata` `FLAGS(4)` and `data`/`bss` `FLAGS(6)`, and
+both KEEP `.init_array`/`.fini_array` for C++ ctors/dtors.
+
+Both scripts export **`_heap_start` / `_heap_end`** as required. ZisK's own allocator
+consumes the same bounds under its historical names (`_heap_bottom` / `_heap_top`,
+with `_heap_size`), so the standard names are provided as aliases rather than a
+rename, leaving existing consumers untouched.
+
+**Gap to confirm.** Packaging: `zisklib_c` is consumed by `add_subdirectory` from the
+guest's own CMake build rather than shipped as a prebuilt `.a`. The archive contains
+the full required surface, so this is a distribution-format question for the EF — if
+a prebuilt artifact is expected, an install rule would supply it.
+
+**Assessment: Partial** (the required surface — `_start`, I/O, all accelerators,
+W^X linker script, `_heap_start`/`_heap_end` — is complete and verified from a C
+guest; only the prebuilt-`.a` packaging question remains).
 
 ---
 
@@ -587,45 +613,48 @@ terminate — **no** recovery or continuation, and specifically **no** rounding 
 target down to an aligned address. Applies to RISC-V without the C extension
 (`IALIGN = 32`).
 
-**ZisK.** Entry points are validated as instruction-aligned at load time (§3).
-The remaining requirement is the *runtime* behavior of a computed jump to a
-misaligned address during execution: it must abort rather than round or continue.
-As agreed with the EF, ZisK now has a `compressed` cargo feature (off by default)
-that controls whether the `C` extension is decoded (§7); with it off, ZisK is
-`IALIGN = 32` and the misaligned-jump semantics below apply.
+**ZisK.** ZisK has a `compressed` cargo feature, **off by default** (§7), that
+controls whether the `C` extension is decoded. With it off ZisK is `IALIGN = 32`, so
+"misaligned" means `pc % 4 != 0`, and the requirement is met at load time and on both
+runtime paths.
 
-In the **x86-64 assembly emulator** (generated by `core/src/zisk_rom_2_asm.rs`)
-this case is already handled by the dynamic-jump map. Computed jumps are resolved
-through a jump table of `.quad` entries — `map_pc_<addr>` — indexed by
-`pc - ROM_ADDR`, where each valid instruction address holds the address of its
-target label (`pc_<addr>`). To keep the index stride constant, the slots that do
-**not** correspond to a valid instruction address — the gaps between valid
-addresses, and the padding before the first one — are filled with `.quad emu_end`
-instead of a real target. A dynamic jump to any such invalid (e.g. misaligned or
-out-of-program) address therefore lands on `emu_end`, the emulator's exit path,
-**without** the success flag being set: `end = 1` is written only by executing an
-instruction explicitly marked as the terminating instruction, so exiting via a map
-slot leaves `end = 0`. The program thus stops immediately — no rounding, no
-continuation — and does so as an *unsuccessful* termination, distinguishable from a
-normal `end = 1` exit.
+**Load time.** `validate_entry_point` (§3) rejects an entry point that is not
+IALIGN-aligned, and requires the same of every executable segment's start — the
+transpiler decodes instructions from a segment's first byte, so a misaligned start
+would desynchronize the whole segment. The alignment constant tracks the feature
+(4 without `compressed`, 2 with), so the loader enforces `IALIGN = 32` exactly when
+the ISA is at `IALIGN = 32`.
 
-In the **Rust emulator** the same case fails by construction. Each step fetches the
-instruction for the current `pc` with `ZiskRom::get_instruction(pc)`
-(`core/src/zisk_rom.rs`), which resolves the address against the program's ROM
-ranges. If the `pc` falls outside those ranges, or maps to a slot with no
-instruction in the `ZiskRom`, the lookup **panics** — the emulation aborts
-immediately rather than rounding, continuing, or fabricating an instruction, and
-no successful (`end = 1`) termination is produced.
+**Runtime — x86-64 assembly emulator (production).** Computed jumps resolve through
+the `map_pc_*` branch table, which is indexed **per byte**:
+`[map_pc_80000000 + (pc - ROM_ADDR)*8]`, one `.quad` per byte address
+(`core/src/zisk_rom_2_asm.rs`). Every slot that is not a valid instruction address —
+which includes every misaligned address — holds `.quad emu_end` instead of a real
+target. A misaligned target therefore has its **own** slot and lands on the exit
+path; it cannot alias onto a nearby valid entry, so rounding down is impossible by
+construction rather than by check. The exit is also *unsuccessful*: `end = 1` is
+written only when executing an instruction explicitly marked as terminating, so
+leaving through a map slot leaves `end = 0`, distinguishable from a normal exit.
 
-In production, execution runs through the **x86-64 assembly emulator** (the Rust
-emulator is used only when the `-l` argument is given), so on both paths a jump to
-an invalid or misaligned address stops the run without a successful termination —
-the requirement is therefore already met for production execution.
+**Runtime — Rust emulator (`-l` only).** `ZiskRom::get_instruction(pc)`
+(`core/src/zisk_rom.rs`) routes a misaligned `pc` to `rom_program_na_instructions`,
+the non-aligned instruction table. Without `compressed` the transpiler never emits a
+non-aligned instruction, so that table is **empty** (`num_program_na_instructions ==
+0`); any misaligned `pc` fails its bounds check and **panics**, aborting immediately
+rather than rounding, continuing, or fabricating an instruction.
 
-**Assessment: Partial** (production execution already aborts on a jump to an
-invalid/misaligned address, and the `compressed` feature — off by default — keeps
-ZisK at `IALIGN = 32`; the remaining check is a spec-conformance review of the
-exact behavior against the EF wording).
+> **This guarantee is contingent on `compressed` being off.** With the C extension
+> enabled the non-aligned table is sized to the largest non-aligned address and
+> pre-filled with `ZiskInst::default()`, so a misaligned `pc` below that bound would
+> return a fabricated default instruction instead of aborting. That is the correct
+> behavior at `IALIGN = 16`, where those addresses are legal — but it means the
+> misaligned-abort semantics described here apply specifically at `IALIGN = 32`, i.e.
+> with the default feature set.
+
+**Assessment: Conformant** at the default `IALIGN = 32`: a misaligned entry point or
+executable segment start is rejected at load time; at runtime a misaligned computed
+jump exits through `emu_end` with `end = 0` in production and panics in the Rust
+emulator. No rounding, no continuation, no successful termination.
 
 ---
 
