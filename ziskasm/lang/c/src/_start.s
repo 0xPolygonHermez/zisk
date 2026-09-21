@@ -2,7 +2,8 @@
  *
  * The ZisK runtime / linker script declares ENTRY(_start) and places this
  * code (section .text.init) first in .text. We set up the global pointer and
- * stack pointer, call main(), then halt via the dual hardware/emulator path.
+ * stack pointer, run the static constructors, call main(), run the static
+ * destructors, then halt via the dual hardware/emulator path.
  *
  * Pattern mirrors the ZisK SDK (ziskos/entrypoint/src/lib.rs).
  */
@@ -20,8 +21,40 @@ _start:
     /* Stack pointer -> top of the reserved stack region. */
     la sp, _init_stack_top
 
+    /* C++ static constructors: call every function pointer in
+       [__init_array_start, __init_array_end). The linker script KEEPs and
+       priority-sorts .init_array, so without this walk a C++ guest's static
+       initializers are silently skipped -- the EF standard requires _start to run
+       them before main. Referencing the bracket symbols here is also what
+       materializes them: they are PROVIDE'd, so an unreferenced pair is absent
+       from the link. With no constructors the range is empty (start == end) and
+       the loop body never runs.
+
+       s0/s1/s2 are callee-saved, so they survive the calls below; a0 is not, which
+       is why main's status is parked in s2 before the destructors run. */
+    la   s0, __init_array_start
+    la   s1, __init_array_end
+4:  bgeu s0, s1, 5f
+    ld   t0, 0(s0)
+    jalr t0
+    addi s0, s0, 8
+    j    4b
+5:
+
     /* Call main(); return value lands in a0. */
     call main
+    mv   s2, a0                    /* preserve the exit status across destructors */
+
+    /* C++ static destructors, in REVERSE registration order:
+       (__fini_array_end, __fini_array_start]. */
+    la   s0, __fini_array_end
+    la   s1, __fini_array_start
+6:  bgeu s1, s0, 7f
+    addi s0, s0, -8
+    ld   t0, 0(s0)
+    jalr t0
+    j    6b
+7:  mv   a0, s2                    /* restore it for the exit paths below */
 
     /* Exit dispatch: marchid == 0xFFFEEEE only on real ZisK hardware. */
     csrr t0, marchid

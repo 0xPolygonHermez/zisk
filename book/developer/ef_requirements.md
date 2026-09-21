@@ -574,13 +574,20 @@ builds the whole guest-side surface into one static library, **`zisklib_c`**:
 
 | Requirement | Provided by |
 |---|---|
-| `_start` (gp/sp init, `main`, termination) | `src/_start.s` |
+| `_start` (gp/sp init, **C++ constructors**, `main`, **destructors**, termination) | `src/_start.s` |
 | I/O functions | `src/zkvm_stubs.c` + [`include/zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) |
 | Accelerator functions | `src/zkvm_stubs.c` (20 `zkvm_*` + 27 `zkvm_u256_*`) and `src/zisklib_stubs.c` (27 `ziskos_*`) |
 
 Every entry is an exported stub that `elf2rom` redirects by symbol name to the
 hand-written `.zisk` routine, so a C guest compiles against the headers, links
 `zisklib_c`, and runs the ziskasm implementations. `main` is `int main(void)`.
+
+`_start` walks `[__init_array_start, __init_array_end)` before `main` and
+`(__fini_array_end, __fini_array_start]` after it, so a C++ guest's static
+constructors run in priority order and its destructors in reverse — the standard
+requires `_start` to do this, and the linker script's `KEEP`'d `.init_array` is
+inert without it. Verified with a guest carrying two constructors and two
+destructors: the emitted order is `01 02 5A 82 81`.
 
 The guest linker script sets `ENTRY(_start)` and lays out clean W^X segments via
 `PHDRS`. The script ZisK ships (`ziskbuild/zisk_linker_script.ld`, embedded via
