@@ -23,7 +23,7 @@ Writing a Rust program for ZisK is similar to writing a standard Rust program, w
 
     ```toml
     [dependencies]
-    ziskos = "1.2.0-alpha"
+    ziskos = "1.3.0-alpha"
     ```
 
 Let's show these changes using the example program from the [Quickstart](./quickstart.md) section.

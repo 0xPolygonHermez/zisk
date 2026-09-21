@@ -1,0 +1,43 @@
+[package]
+name = "zisk-precomp-babyjubjub"
+description = "BabyJubJub twisted-Edwards point-addition precompile for the ZisK zkVM"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+[[bin]]
+name = "zisk-babyjubjub-generator"
+path = "src/babyjubjub_generator.rs"
+
+[dependencies]
+zisk-core = { workspace = true }
+zisk-pil = { workspace = true }
+zisk-precomp-common = { workspace = true }
+zisk-precomp-helpers = { workspace = true }
+zisk-precomp-arith-eq = { workspace = true }
+zisk-common = { workspace = true }
+
+proofman-common = { workspace = true }
+proofman-util = { workspace = true }
+pil2-std-lib = { workspace = true }
+
+proofman-fields = { workspace = true }
+tracing = { workspace = true }
+rayon = { workspace = true }
+ark-ff = { workspace = true }
+ark-std = { workspace = true }
+ark-bn254 = { workspace = true }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+
+lazy_static = { workspace = true }
+path-clean = { workspace = true }
+
+[features]
+default = []
+test_data = []

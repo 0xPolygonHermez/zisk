@@ -5,20 +5,25 @@
 # the setup hash via `setup_build.sh --print-hash`, and skips the upload when the
 # bucket already holds that hash. The hash is published as the <name>.hash sidecar.
 #
-# Artifacts (<VER> = SETUP_VERSION):
-#   provingKey/                            -> zisk-provingkey-<VER>.tar.gz       (+ .md5)
-#   provingKey/.../vadcop_final.verkey.bin -> zisk-verifykey-<VER>.tar.gz        (+ .md5)
-#   circom/            (if present)        -> zisk-circuits-<VER>.tar.gz         (+ .md5)
-#   provingKeySnark/   (if present)        -> zisk-provingkey-plonk-<VER>.tar.gz (+ .md5)
+# Artifacts (<VER> = SETUP_VERSION, <SFX> = SETUP_NAME_SUFFIX, empty by default):
+#   provingKey/                            -> zisk-provingkey-<VER><SFX>.tar.gz       (+ .md5)
+#   provingKey/.../vadcop_final.verkey.bin -> zisk-verifykey-<VER><SFX>.tar.gz        (+ .md5)
+#   circom/            (if present)        -> zisk-circuits-<VER><SFX>.tar.gz         (+ .md5)
+#   provingKeySnark/   (if present)        -> zisk-provingkey-plonk-<VER><SFX>.tar.gz (+ .md5)
 #
-# Every tarball present is uploaded (circom/provingKeySnark only when the setup
-# was built with INCLUDE_SNARK=1).
+# Every tarball present is uploaded. circom/ comes out of the recursive setup;
+# provingKeySnark/ only when INCLUDE_SNARK=1.
 #
 # Env vars:
 #   SETUP_VERSION       version tag <VER> in the tarball names.
+#   SETUP_NAME_SUFFIX   suffix after <VER> in every artifact name, .hash sidecar
+#                       included, so a setup built with a non-default hash mode
+#                       publishes next to the default one (e.g. "-blake3").
 #   FORCE_UPLOAD        upload even if the bucket .hash already matches (no gate).
 #   SETUP_ADD_DYLIBS    merge macOS *.dylib into build/provingKey before packing
 #                       (from SETUP_DYLIB_DIR, else the macOS tarball in ${OUTPUT_DIR}/macos).
+#   SETUP_PRUNE_LOCAL   delete this run's artifacts from ${OUTPUT_DIR} once
+#                       uploaded. For CI, where that directory is a shared volume.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils.sh"
@@ -75,6 +80,28 @@ write_md5() {
     fi
 }
 
+# Hash mode the proving key in $1 was built with, from its pilout.globalInfo.json.
+#
+# The mode is part of the setup's input hash (setup_common.sh's compute_input_hash
+# emits `hash-mode:$HASH_MODE`), but $HASH_MODE is a shell variable in setup_build.sh, not an
+# exported one — so a `setup_build.sh --hash Poseidon1` build leaves nothing for this
+# script's fresh `--print-hash` process to inherit, and it would fall back to the
+# default mode and publish the wrong gate hash. Read it off the built key instead,
+# which is the only record of what was actually built. Never guessed: a key with no
+# `hash` is an error, matching HashMode::from_proving_key.
+#
+# Deliberately duplicated from setup_common.sh's identically-named helper, which
+# serves setup_build.sh. Sourcing that file here would run its cargo-metadata
+# PROOFMAN_DIR resolution, which packaging has no use for.
+proving_key_hash_mode() {
+    local gi="$1/pilout.globalInfo.json"
+    [[ -f "${gi}" ]] || { err "${gi} not found — cannot tell which hash mode the setup was built with"; return 1; }
+    local mode
+    mode="$(jq -r '.hash // empty' "${gi}")" || { err "failed to parse ${gi}"; return 1; }
+    [[ -n "${mode}" ]] || { err "no 'hash' field in ${gi} — rebuild the setup so it records its hash mode"; return 1; }
+    printf '%s' "${mode}"
+}
+
 pack_dir() {
     local src="$1" tarball="$2"
     shift 2
@@ -98,10 +125,12 @@ main() {
     info "▶️  Running $(basename "$0") script..."
 
     command -v gcloud >/dev/null || { err "gcloud not found in PATH (needed to read/upload the setup)"; return 1; }
+    command -v jq >/dev/null || { err "jq not found in PATH (needed to read the setup's hash mode)"; return 1; }
 
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR SETUP_VERSION SETUP_ADD_DYLIBS FORCE_UPLOAD SETUP_DYLIB_DIR || return 1
+    load_env ZISK_REPO_DIR SETUP_VERSION SETUP_NAME_SUFFIX SETUP_ADD_DYLIBS FORCE_UPLOAD \
+        SETUP_DYLIB_DIR SETUP_PRUNE_LOCAL || return 1
 
     ZISK_REPO="$(get_zisk_repo_dir)"
     ensure cd "${ZISK_REPO}" || return 1
@@ -115,15 +144,27 @@ main() {
     # compute_input_hash only (no compile-pil / setup) and prints the 64-hex hash
     # as its sole stdout line, so the same hasher that keyed the build is reused.
     info "Computing setup hash..."
-    SETUP_HASH="$("${SCRIPT_DIR}/setup_build.sh" --print-hash --build-dir build)" || return 1
+    SETUP_MODE="$(proving_key_hash_mode build/provingKey)" || return 1
+    info "Setup hash mode: ${SETUP_MODE}"
+    SETUP_HASH="$("${SCRIPT_DIR}/setup_build.sh" --print-hash --build-dir build --hash "${SETUP_MODE}")" || return 1
     [[ -n "${SETUP_HASH}" ]] || { err "failed to compute setup hash"; return 1; }
     info "Setup hash: ${SETUP_HASH}"
 
+    # HASH_FILE follows PROVINGKEY_FILE, so the gate below reads the sidecar of
+    # this exact variant.
+    SETUP_NAME_SUFFIX="${SETUP_NAME_SUFFIX:-}"
+    PROVINGKEY_FILE="zisk-provingkey-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
+    VERIFYKEY_FILE="zisk-verifykey-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
+    CIRCUITS_FILE="zisk-circuits-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
+    SNARK_FILE="zisk-provingkey-plonk-${SETUP_VERSION}${SETUP_NAME_SUFFIX}.tar.gz"
+    HASH_FILE="${PROVINGKEY_FILE%.tar.gz}.hash"
+    info "Publishing as ${PROVINGKEY_FILE} (gate: ${HASH_FILE})"
+
     if [[ "${FORCE_UPLOAD:-0}" != "1" ]]; then
       local remote_hash
-      remote_hash="$(gcloud storage cat "${BUCKET}/zisk-provingkey-${SETUP_VERSION}.hash" 2>/dev/null | tr -d '[:space:]' || true)"
+      remote_hash="$(gcloud storage cat "${BUCKET}/${HASH_FILE}" 2>/dev/null | tr -d '[:space:]' || true)"
       if [[ "${remote_hash}" == "${SETUP_HASH}" ]]; then
-        success "Setup ${SETUP_VERSION} already in ${BUCKET} (hash matches), nothing to do."
+        success "${PROVINGKEY_FILE} already in ${BUCKET} (hash matches), nothing to do."
         return 0
       fi
     fi
@@ -142,11 +183,7 @@ main() {
 
     [[ -d "build/circom" ]] && total_steps=$((total_steps + 1))
     [[ -d "build/provingKeySnark" ]] && total_steps=$((total_steps + 1))
-
-    PROVINGKEY_FILE="zisk-provingkey-${SETUP_VERSION}.tar.gz"
-    VERIFYKEY_FILE="zisk-verifykey-${SETUP_VERSION}.tar.gz"
-    CIRCUITS_FILE="zisk-circuits-${SETUP_VERSION}.tar.gz"
-    SNARK_FILE="zisk-provingkey-plonk-${SETUP_VERSION}.tar.gz"
+    [[ "${SETUP_PRUNE_LOCAL:-0}" == "1" ]] && total_steps=$((total_steps + 1))
 
     if [[ "$SETUP_ADD_DYLIBS" == "1" ]]; then
       if [[ -n "${SETUP_DYLIB_DIR:-}" ]]; then
@@ -216,10 +253,18 @@ main() {
     ( cd "${OUTPUT_DIR}" && ensure gcloud storage cp "${ARTIFACTS[@]}" "${BUCKET}/" ) || return 1
 
     # Publish the <name>.hash sidecar (content = SETUP_HASH) — the gate file.
-    local HASH_FILE="${PROVINGKEY_FILE%.tar.gz}.hash"
     step "Uploading proving key hash sidecar ${HASH_FILE}..."
     printf '%s' "${SETUP_HASH}" > "${OUTPUT_DIR}/${HASH_FILE}" || { err "failed to write ${HASH_FILE}"; return 1; }
     ( cd "${OUTPUT_DIR}" && ensure gcloud storage cp "${HASH_FILE}" "${BUCKET}/" ) || return 1
+
+    # Already in the bucket. In CI ${OUTPUT_DIR} is shared with the setup cache and
+    # the ptau, so these must not pile up run after run.
+    if [[ "${SETUP_PRUNE_LOCAL:-0}" == "1" ]]; then
+      step "Removing uploaded artifacts from ${OUTPUT_DIR}..."
+      for f in "${ARTIFACTS[@]}" "${HASH_FILE}"; do
+        rm -f "${OUTPUT_DIR}/${f}"
+      done
+    fi
 
     cd "${current_dir}"
 

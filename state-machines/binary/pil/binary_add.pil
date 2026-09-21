@@ -3,27 +3,129 @@ require "std_range_check.pil"
 require "operations.pil"
 require "opids.pil"
 
-airtemplate BinaryAdd(const int N = 2**21, const int RC = 2) {
-    col witness bits(32) a[RC];
-    col witness bits(32) b[RC];
-    col witness bits(16) c_chunks[RC*2];
-    col witness bits(1) cout[RC];
-    const expr c[RC];
+/*
+    BinaryAdd proves full 64-bit OP_ADD operations of any shape: both operands and the result are
+    materialized as RC limbs of 32 bits, and the carry chain links one limb to the next. The carry
+    out of the top limb is discarded, which is what makes the addition modulo 2^64.
 
-    for (int i = 0; i < RC; i++) {
-        cout[i] * (1 - cout[i]) === 0;
-        expr left = a[i] + b[i];
-        if (i > 0) {
-            left = left + cout[i-1];
-        }
-        left === cout[i] * 2 ** 32 + c_chunks[i * 2 + 1] * 2 ** 16 + c_chunks[i * 2];
-        c[i] = c_chunks[i * 2 + 1] * 2 ** 16 + c_chunks[i * 2];
-        range_check(expression: c_chunks[i * 2], min: 0, max: 2**16 - 1);
-        range_check(expression: c_chunks[i * 2 + 1], min: 0, max: 2**16 - 1);
+    Parameters:
+
+      lanes_x_row  - independent operations packed per row. A "lane" is the full set of columns that
+                     proves ONE operation: a, b, the c chunks and its carry chain. Nothing in this
+                     air relates a row to its neighbour, so packing lanes is a pure widening — the
+                     same constraints repeated per lane. As in BinaryAddHi, prefer an ODD value: the
+                     operation-bus contributions amortize as one standalone term plus pairs
+                     (two-by-two), so an odd count leaves no unpaired remainder.
+
+      sh3add_x_row - how many of those lanes can also prove OP_SH3ADD (c = b + (a << 3)), selected
+                     per lane by its own sel_sh3add. It defaults to -1, which means "every lane".
+                     Only the FIRST sh3add_x_row lanes support it, so anything below lanes_x_row
+                     makes an instance hold two capacities at once — a total and an SH3ADD
+                     sub-total — which the distribution would then have to respect. Since a lane
+                     costs exactly ONE extra column to make SH3ADD-capable, the default buys that
+                     simplicity cheaply; 0 opts out of SH3ADD entirely.
+
+    How SH3ADD reuses the addition:
+
+    Writing s = 1 + 7*sel_sh3add (so s = 1 for ADD and s = 8 for SH3ADD), every lane proves
+
+        s*a[i] + b[i] + cout[i-1] === cout[i] * 2^32 + c[i]
+
+    which is c = s*a + b (mod 2^64). The shift needs no operand of its own: the bits `a << 3`
+    carries out of one limb and the addition carry land on the very same place, so a single cout[i]
+    transports both — the same trick the binary table uses to fold SHxADD into its per-byte carry.
+
+    SH3ADD is restricted to a shifted operand that fits in 32 bits and is non-negative, i.e.
+    a[i] = 0 for every limb above the first. That is what an address computation looks like
+    (`base + index*8` with a small index). An SH3ADD outside it — a shifted operand of more than
+    32 bits, or a negative one — is left to the Binary air, which proves SHxADD byte by byte and
+    has no such limitation.
+
+    The carries stay bits, exactly as in a plain addition, and that is deliberate: widening the
+    first one to hold 8*(2^32-1) + (2^32-1) would buy a range check per SH3ADD lane and cover only
+    operations that overflow 33 bits, which an address computation never does. Keeping it boolean
+    narrows what this air can prove — it needs 8*a[0] + b[0] < 2^33 — and never admits anything
+    false: a shifted addition whose low limb carries more than once simply has no witness here and
+    goes to the Binary air with the rest of the exceptional shapes.
+
+    The decomposition stays unique either way: c[i] is two range-checked 16-bit chunks, hence in
+    [0, 2^32), so cout[i] = floor(left / 2^32) is determined by the operands.
+
+    Note that a and b go to the bus UNSHIFTED — Main sends the original operands, and the op it
+    announces is what tells SH3ADD and ADD apart.
+*/
+
+airtemplate BinaryAdd(const int N = 2**21, const int RC = 2, const int lanes_x_row = 1,
+                      int sh3add_x_row = -1) {
+
+    // sh3add_x_row = -1 means "every lane proves SH3ADD too".
+    if (sh3add_x_row == -1) {
+        sh3add_x_row = lanes_x_row;
     }
 
-    proves_operation(op: OP_ADD, a:, b:, c:);
+    assert(lanes_x_row > 0, "lanes_x_row must be greater than 0");
+    assert(sh3add_x_row >= 0, "sh3add_x_row must not be negative");
+    assert(lanes_x_row >= sh3add_x_row,
+           "lanes_x_row must be greater than or equal to sh3add_x_row");
+
+    col witness bits(32) a[lanes_x_row][RC];
+    col witness bits(32) b[lanes_x_row][RC];
+    col witness bits(16) c_chunks[lanes_x_row][RC*2];
+
+    col witness bits(1) cout[lanes_x_row][RC];
+    if (sh3add_x_row > 0) {
+        col witness bits(1) air.sel_sh3add[sh3add_x_row];
+    }
+
+    const expr c[lanes_x_row][RC];
+
+    for (int lane = 0; lane < lanes_x_row; lane++) {
+
+        const int is_sh3add = lane < sh3add_x_row;
+
+        if (is_sh3add) {
+            sel_sh3add[lane] * (1 - sel_sh3add[lane]) === 0;
+        }
+
+        for (int i = 0; i < RC; i++) {
+
+            c[lane][i] = c_chunks[lane][i * 2 + 1] * 2 ** 16 + c_chunks[lane][i * 2];
+            range_check(expression: c_chunks[lane][i * 2], min: 0, max: 2**16 - 1);
+            range_check(expression: c_chunks[lane][i * 2 + 1], min: 0, max: 2**16 - 1);
+
+            expr left = a[lane][i] + b[lane][i];
+
+            if (is_sh3add) {
+                if (i == 0) {
+                    // s * a[0], where s = 1 + 7 * sel_sh3add. Kept inline so the limb equation
+                    // stays degree 2, the same degree a plain addition has.
+                    left = left + sel_sh3add[lane] * a[lane][i] * 7;
+                } else {
+                    // SH3ADD only covers a shifted operand of 32 bits, non-negative: every limb
+                    // above the first must be zero. This is also what keeps this limb's carry a
+                    // bit, since the widened term never reaches it.
+                    sel_sh3add[lane] * a[lane][i] === 0;
+                }
+            }
+
+            if (i > 0) {
+                left = left + cout[lane][i-1];
+            }
+
+            left === cout[lane][i] * 2 ** 32 + c[lane][i];
+
+            cout[lane][i] * (1 - cout[lane][i]) === 0;
+        }
+
+        if (is_sh3add) {
+            proves_operation(op: OP_ADD + sel_sh3add[lane] * (OP_SH3ADD - OP_ADD),
+                             a: a[lane], b: b[lane], c: c[lane]);
+        } else {
+            proves_operation(op: OP_ADD, a: a[lane], b: b[lane], c: c[lane]);
+        }
+    }
 
     airval padding_size;
+    // padding operation 0 + 0 = (0,0)
     assumes_padding_operation(op: OP_ADD, padding_size:);
 }

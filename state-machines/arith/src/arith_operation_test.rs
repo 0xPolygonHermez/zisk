@@ -36,20 +36,20 @@ const ALL_VALUES: [u64; 16] = [
 ];
 
 const ALL_OPERATIONS: [u8; 14] = [
-    ZiskOp::Mul.code(),
-    ZiskOp::Mulh.code(),
-    ZiskOp::Mulsuh.code(),
-    ZiskOp::Mulu.code(),
-    ZiskOp::Muluh.code(),
-    ZiskOp::Divu.code(),
-    ZiskOp::Remu.code(),
-    ZiskOp::Div.code(),
-    ZiskOp::Rem.code(),
-    ZiskOp::MulW.code(),
-    ZiskOp::DivuW.code(),
-    ZiskOp::RemuW.code(),
-    ZiskOp::DivW.code(),
-    ZiskOp::RemW.code(),
+    ZiskOp::MUL,
+    ZiskOp::MULH,
+    ZiskOp::MULSUH,
+    ZiskOp::MULU,
+    ZiskOp::MULUH,
+    ZiskOp::DIVU,
+    ZiskOp::REMU,
+    ZiskOp::DIV,
+    ZiskOp::REM,
+    ZiskOp::MUL_W,
+    ZiskOp::DIVU_W,
+    ZiskOp::REMU_W,
+    ZiskOp::DIV_W,
+    ZiskOp::REM_W,
 ];
 
 /// A structure for testing arithmetic operations.

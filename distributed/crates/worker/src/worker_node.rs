@@ -483,6 +483,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         )
                     }
                     Err(e) => {
+                        // A failed setup may still have replaced the prover's ASM resources.
+                        self.worker.forget_registered_program();
                         error!(
                             "[Setup] job_id {} Failed setup for hash_id {}: {}",
                             job_id, hash_id, e
@@ -858,6 +860,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let mut error_message = String::new();
         let mut reset_current_job = false;
+        // Shadowed so a failure while building the response can flip it. An empty
+        // `proof_data` with `success` still true reads to the coordinator as an
+        // intermediate ack, which it rejects outright on the final task.
+        let mut success = success;
 
         let result_data = match result {
             Ok(data) => {
@@ -871,47 +877,74 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     let proof_data = if !final_proof.is_empty() {
                         let is_plonk = proof_type == ProofKind::Plonk;
                         let flat_proof: Vec<u64> = final_proof.into_iter().flatten().collect();
-                        let minimal = proof_type == ProofKind::VadcopFinalMinimal;
-                        // A missing verkey or hash family yields an unusable proof
-                        // (new_from_vadcop_proof rejects an unrecognized/empty hash).
-                        // Treat it as a hard failure rather than emitting a "success"
-                        // response carrying empty proof_data.
-                        let verkey = self
-                            .worker
-                            .get_vadcop_vk(minimal)
-                            .context("Failed to get vadcop verification key")?;
-                        let hash =
-                            self.worker.hash().context("Failed to get proving-key hash family")?;
-                        match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey, hash) {
-                            Ok(zisk_proof) => {
-                                let final_proof: Proof = if is_plonk {
-                                    match self
-                                        .worker
-                                        .prover_arc()
-                                        .wrap_proof(&zisk_proof, ProofKind::Plonk)
-                                        .run()
-                                    {
-                                        Ok(wrapped) => wrapped.get_proof().clone(),
-                                        Err(e) => {
-                                            error!(
-                                                "Failed to wrap Plonk proof for {}: {}",
-                                                job_id, e
-                                            );
-                                            zisk_proof
+                        // Compression strips the flag that marks this a fold, taking the
+                        // recursion-domain check in `Proof::verify` with it.
+                        if !fold_allows_kind(proof_type) {
+                            fail_aggregation(
+                                &mut success,
+                                &mut error_message,
+                                format!(
+                                    "refusing to return the aggregated proof for {job_id} as \
+                                     {proof_type:?}: compression drops the recursion-domain \
+                                     marker"
+                                ),
+                            )
+                        } else {
+                            // A missing verkey or hash family yields an unusable proof
+                            // (new_from_vadcop_proof rejects an unrecognized/empty hash).
+                            // Treat it as a hard failure rather than emitting a "success"
+                            // response carrying empty proof_data.
+                            // `fold_allows_kind` above leaves only uncompressed kinds here.
+                            let verkey = self
+                                .worker
+                                .get_vadcop_vk(false)
+                                .context("Failed to get vadcop verification key")?;
+                            let hash = self
+                                .worker
+                                .hash()
+                                .context("Failed to get proving-key hash family")?;
+                            match Proof::new_from_vadcop_proof(&flat_proof, false, verkey, hash) {
+                                Ok(zisk_proof) => {
+                                    // On wrap failure, emit nothing: returning the
+                                    // unwrapped Vadcop proof would answer a PLONK request
+                                    // with a different proof kind.
+                                    let final_proof: Option<Proof> = if is_plonk {
+                                        match self
+                                            .worker
+                                            .prover_arc()
+                                            .wrap_proof(&zisk_proof, ProofKind::Plonk)
+                                            .run()
+                                        {
+                                            Ok(wrapped) => Some(wrapped.get_proof().clone()),
+                                            Err(e) => {
+                                                fail_aggregation(
+                                                    &mut success,
+                                                    &mut error_message,
+                                                    format!(
+                                                        "Failed to wrap Plonk proof for \
+                                                         {job_id}: {e}"
+                                                    ),
+                                                );
+                                                None
+                                            }
                                         }
+                                    } else {
+                                        Some(zisk_proof)
+                                    };
+                                    match final_proof {
+                                        Some(p) => bincode::serde::encode_to_vec(
+                                            &p,
+                                            bincode::config::standard(),
+                                        )
+                                        .unwrap_or_default(),
+                                        None => vec![],
                                     }
-                                } else {
-                                    zisk_proof
-                                };
-                                bincode::serde::encode_to_vec(
-                                    &final_proof,
-                                    bincode::config::standard(),
-                                )
-                                .unwrap_or_default()
-                            }
-                            Err(e) => {
-                                error!("Failed to build Proof: {}", e);
-                                vec![]
+                                }
+                                Err(e) => fail_aggregation(
+                                    &mut success,
+                                    &mut error_message,
+                                    format!("Failed to build Proof: {e}"),
+                                ),
                             }
                         }
                     } else {
@@ -1397,10 +1430,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
                 self.worker.set_state(WorkerState::SettingUp);
                 let prover = self.worker.prover_arc();
+                let proving_key = self.worker.proving_key().to_path_buf();
 
                 let handle = tokio::task::spawn_blocking(move || {
                     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        Self::handle_setup_aggregation_program(&prover, setup)
+                        Self::handle_setup_aggregation_program(&prover, &proving_key, setup)
                     }));
                     let (success, error_message, vk, hash_mode) = match outcome {
                         Ok(Ok((vk, hash_mode))) => (true, String::new(), vk, hash_mode),
@@ -1541,6 +1575,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// returns the existing verkey if setup has already run for this `recurser_id`.
     fn handle_setup_aggregation_program(
         prover: &ZiskProver<T>,
+        proving_key: &std::path::Path,
         setup: SetupAggregationProgram,
     ) -> Result<(Vec<u8>, String)> {
         use zisk_recurser::setup::{run_setup_recurser_aggregator, SetupRecurserAggregatorOptions};
@@ -1552,10 +1587,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let spec = setup.spec.ok_or_else(|| anyhow!("SetupAggregationProgram.spec must be set"))?;
 
-        let setup_dir = ZiskPaths::global()
-            .home
+        // The key this worker's prover actually loaded, which an explicit `--proving-key`
+        // can move off the global default. Everything below -- the vadcop_final verkey the
+        // recurser id is derived from, and the setup built from it -- has to come from that
+        // one key: a recurser built against a different key produces a verkey that cannot
+        // verify the proofs this prover goes on to make.
+        let setup_key = proving_key
             .to_str()
-            .ok_or_else(|| anyhow!("~/.zisk path is not valid UTF-8"))?
+            .ok_or_else(|| anyhow!("proving key path is not valid UTF-8"))?
             .to_string();
         let output_dir = ZiskPaths::global()
             .home
@@ -1582,7 +1621,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // The artifact dir is keyed by the *claimed* id; recompute the id from
         // the spec so a mismatched claim can't be served another definition's
         // completed setup (or silently register under the wrong name).
-        let zisk_vk = zisk_recurser::setup::read_vadcop_final_verkey(&setup_dir)
+        let zisk_vk = zisk_recurser::setup::read_vadcop_final_verkey(&setup_key)
             .map_err(|e| anyhow!("failed to read local vadcop_final verkey: {e:#}"))?;
         let expected_inputs = zisk_recurser::RecurserManifestInputs::new(
             zisk_vk,
@@ -1608,7 +1647,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         if !artifacts.is_active() {
             let opts = SetupRecurserAggregatorOptions {
-                setup_dir,
+                proving_key: setup_key,
                 output_dir: output_dir.clone(),
                 templates: zisk_recurser::CircomTemplates {
                     normalize,
@@ -1647,16 +1686,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             )
         })?;
 
-        // The hash family is a property of the proving key the recurser was set
-        // up against; read it from the same globalInfo.json the setup used so it
-        // travels with the verkey for verify-time matching. Reading from disk
-        // (not the setup return) also covers the cache-hit branch above.
-        let setup_dir = ZiskPaths::global()
-            .home
-            .to_str()
-            .ok_or_else(|| anyhow!("~/.zisk path is not valid UTF-8"))?;
-        let hash_mode = zisk_recurser::setup::read_proving_key_hash(setup_dir)
-            .map_err(|e| anyhow!("failed to read recurser hash family: {e}"))?;
+        // The hash family travels with the verkey for verify-time matching. Read it from
+        // the prover's loaded key, not `ZiskPaths::global()`: an explicit `--proving-key`
+        // would otherwise advertise the global key's family. Also covers the cache-hit
+        // branch above, where no setup ran to return it.
+        let hash_mode =
+            prover.hash().map_err(|e| anyhow!("failed to read prover hash family: {e}"))?;
 
         info!(
             "[Recurser] job_id {} Completed recurser setup for recurser_id {}",
@@ -1745,6 +1780,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         for i in 0..4 {
             let chunk: [u8; 8] = vk_bytes[i * 8..(i + 1) * 8].try_into().unwrap();
             zisk_vk.push(u64::from_le_bytes(chunk));
+        }
+
+        // Same guard as the embedded path: compression strips the flag that marks this a
+        // fold, taking the recursion-domain check in `Proof::verify` with it.
+        if vfp.compressed {
+            return Err(anyhow!(
+                "recurser produced a compressed proof; the recursion-domain check in \
+                 Proof::verify cannot classify it"
+            ));
         }
 
         // The proof's hash family travels on the VadcopFinalProof (stamped by
@@ -2263,6 +2307,52 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         message_sender.send(message)?;
         Ok(())
+    }
+}
+
+/// Whether a fold may be returned in `proof_type`.
+///
+/// `FinalCompressed` strips the `is_vadcop_final_proof` flag, and `Proof::verify` keys the
+/// recursion-domain check on it -- so a compressed fold verifies weaker than the one that
+/// was produced.
+fn fold_allows_kind(proof_type: ProofKind) -> bool {
+    proof_type != ProofKind::VadcopFinalMinimal
+}
+
+/// Record an aggregation failure and return the (empty) `proof_data` the response carries.
+///
+/// The diagnostic, the log line and the `success` flag move together: an empty
+/// `proof_data` left paired with `success` reads to the coordinator as an intermediate
+/// acknowledgement, which it rejects outright on the final task.
+fn fail_aggregation(success: &mut bool, error_message: &mut String, diagnostic: String) -> Vec<u8> {
+    error!("{diagnostic}");
+    *error_message = diagnostic;
+    *success = false;
+    Vec::new()
+}
+
+#[cfg(test)]
+mod aggregate_response_tests {
+    use super::*;
+
+    #[test]
+    fn a_fold_may_not_be_returned_compressed() {
+        assert!(!fold_allows_kind(ProofKind::VadcopFinalMinimal));
+        assert!(fold_allows_kind(ProofKind::VadcopFinal));
+        assert!(fold_allows_kind(ProofKind::Plonk));
+    }
+
+    /// The pairing the coordinator depends on: a failure never looks like an ack.
+    #[test]
+    fn a_failure_clears_success_and_carries_a_diagnostic() {
+        let mut success = true;
+        let mut error_message = String::new();
+
+        let proof_data = fail_aggregation(&mut success, &mut error_message, "boom".to_string());
+
+        assert!(!success, "an empty proof with success set reads as an intermediate ack");
+        assert_eq!(error_message, "boom");
+        assert!(proof_data.is_empty());
     }
 }
 

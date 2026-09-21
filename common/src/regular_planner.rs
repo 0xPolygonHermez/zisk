@@ -110,6 +110,10 @@ impl RegularPlanner {
 
     /// Adds a table instance to the planner.
     ///
+    /// No caller today: every ZisK table is currently a *virtual* table, planned apart from the
+    /// instances. It is kept because that is a property of the current PIL, not of the design — a
+    /// table air that is not virtual would be planned right here.
+    ///
     /// # Arguments
     /// * `table_info` - The `TableInfo` describing the table to be added.
     ///

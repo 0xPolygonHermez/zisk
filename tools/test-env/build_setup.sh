@@ -1,6 +1,7 @@
 #!/bin/bash
 #
-# Build (and optionally install) the ZisK setup (proving key).
+# Build (and optionally install) the ZisK setup (proving key). build/ is cleared
+# first, so a rebuild with a different HASH_MODE never mixes two setups.
 #
 # Env vars (loaded from .env / shell / Cargo.toml via load_env):
 #   USE_CACHE_SETUP              Reuse/populate a local provingKey cache under
@@ -16,7 +17,8 @@
 #   DYLIB_INPUT_FILES            After the build, copy the inputs needed to compile
 #                                the macOS dylib files into build/dylib_input.
 #   RECURSIVE_JOBS / SETUP_JOBS  Setup pipeline concurrency.
-#   HASH                         Hash function (default: Poseidon1).
+#   HASH_MODE                    Hash mode the setup is generated with
+#                                (default: blake3).
 #   PTAU_PATH                    Powers-of-tau file for the snark setup
 #                                (default: ../powersOfTau28_hez_final_24.ptau).
 
@@ -52,15 +54,26 @@ main() {
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
     load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP FORCE_SETUP_BUILD \
-        DISABLE_RECURSIVE_SETUP INSTALL_SETUP INCLUDE_SNARK DYLIB_INPUT_FILES \
-        HASH PTAU_PATH RECURSIVE_JOBS SETUP_JOBS || return 1
+        DISABLE_RECURSIVE_SETUP INSTALL_SETUP HASH_MODE INCLUDE_SNARK DYLIB_INPUT_FILES \
+        HASH_MODE PTAU_PATH RECURSIVE_JOBS SETUP_JOBS || return 1
 
-    # Default the hash function when neither the shell, .env, nor Cargo.toml set
+    # Default the hash mode when neither the shell, .env, nor Cargo.toml set
     # it. Exported so the setup_build.sh child process inherits it.
-    export HASH="${HASH:-Poseidon1}"
+    export HASH_MODE="${HASH_MODE:-blake3}"
+
+    # The BN128 wrap is poseidon-only, and HASH_MODE is what the STARK setup below will
+    # build the key with — so this pairing is already decided here, before any work. Checked
+    # at the top rather than beside the snark step so the run does not spend a full STARK
+    # setup to arrive at a conflict that was knowable in the first second.
+    if [[ "${INCLUDE_SNARK}" == "1" ]]; then
+        if [[ "$(printf '%s' "$HASH_MODE" | tr '[:upper:]' '[:lower:]')" == "blake3" ]]; then
+            err "INCLUDE_SNARK=1 needs a poseidon HASH_MODE; the BN128 wrap has no blake3 path (HASH_MODE=${HASH_MODE})"
+            return 1
+        fi
+    fi
 
     current_step=1
-    total_steps=2   # computing hash + building setup
+    total_steps=2   # clearing build/ + building setup
     [[ "${INCLUDE_SNARK}" == "1" ]] && total_steps=$((total_steps + 1))
     [[ "${DYLIB_INPUT_FILES}" == "1" ]] && total_steps=$((total_steps + 1))
     [[ "${INSTALL_SETUP}" == "1" ]] && total_steps=$((total_steps + 1))
@@ -71,6 +84,12 @@ main() {
     export ZISK_REPO_DIR="${ZISK_REPO}"
     ensure cd "${ZISK_REPO}" || return 1
 
+    # setup_build.sh only clears provingKey/, so the rest would survive from an
+    # earlier build and mix two hash modes in the same tree.
+    step "Clearing previous setup output from ${build_dir}..."
+    ensure rm -rf "${build_dir}/provingKey" "${build_dir}/provingKeySnark" \
+        "${build_dir}/circom" "${build_dir}/build" "${build_dir}/pil" || return 1
+
     build_flags=(--build-dir build --gen-exps --exps-arch major)
     [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]] && build_flags+=(--no-aggregation)
     [[ "${USE_CACHE_SETUP}" == "1" ]] && build_flags+=(--cache-dir "${OUTPUT_DIR}")
@@ -80,6 +99,7 @@ main() {
     # stdout line. tee streams the build output to the terminal while we keep a
     # copy to read that last line from; PIPESTATUS[0] carries setup_build.sh's
     # real exit status (no pipefail here, so tail's status would otherwise mask it).
+    step "Building setup (hash mode: ${HASH_MODE})..."
     local setup_log; setup_log="$(mktemp)"
     "${SCRIPT_DIR}/setup_build.sh" "${build_flags[@]}" | tee "$setup_log"
     if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
@@ -91,6 +111,7 @@ main() {
     rm -f "$setup_log"
 
     if [[ "${INCLUDE_SNARK}" == "1" ]]; then
+        # The HASH_MODE/blake3 conflict was already rejected above, before the STARK setup ran.
         step "Building snark setup..."
         build_flags=(--build-dir build --snark)
         ensure "${SCRIPT_DIR}/setup_build.sh" "${build_flags[@]}" || return 1
