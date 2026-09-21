@@ -448,7 +448,7 @@ impl ProverBackend {
                                     plonk_vkey,
                                 }),
                                 publics,
-                                publics_full: vadcop_proof.public_values.clone(),
+                                publics_full: program_publics(&vadcop_proof.public_values).to_vec(),
                                 rootc: vadcop_vk_u64,
                             },
                             program_vk,
