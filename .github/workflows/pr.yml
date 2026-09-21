@@ -38,8 +38,16 @@ jobs:
       image: ubuntu:22.04
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      # Use the committed ziskfloat artifacts (no Docker daemon in this container).
+      ZISK_CI_NO_DOCKER_REBUILD: "1"
 
     steps:
+      - name: Clean workspace
+        run: |
+          if [ -d "$GITHUB_WORKSPACE" ]; then
+            find "$GITHUB_WORKSPACE" -mindepth 1 -delete
+          fi
+
       - name: Checkout sources
         uses: actions/checkout@v4
         with:
