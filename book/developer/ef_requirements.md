@@ -591,8 +591,15 @@ both KEEP `.init_array`/`.fini_array` for C++ ctors/dtors.
 
 Both scripts export **`_heap_start` / `_heap_end`** as required. ZisK's own allocator
 consumes the same bounds under its historical names (`_heap_bottom` / `_heap_top`,
-with `_heap_size`), so the standard names are provided as aliases rather than a
-rename, leaving existing consumers untouched.
+with `_heap_size`), so the standard names are added alongside rather than renaming
+them, leaving existing consumers untouched.
+
+The two standard names are assigned **unconditionally**, not with `PROVIDE`. This
+matters: `PROVIDE` only materializes a symbol that some input object *references*,
+and a consumer that discovers the heap bounds by reading the ELF symbol table never
+references them at link time — so under `PROVIDE` they are absent from `.symtab` for
+exactly the guests the requirement exists to serve. Verified with a guest that does
+not mention either name: both appear in `nm` output with the correct addresses.
 
 **Gap to confirm.** Packaging: `zisklib_c` is consumed by `add_subdirectory` from the
 guest's own CMake build rather than shipped as a prebuilt `.a`. The archive contains

@@ -147,11 +147,19 @@ SECTIONS
   PROVIDE(_heap_size = _heap_top - _heap_bottom);
 
   /* EF zkVM standard §9 names the allocator bounds `_heap_start` / `_heap_end`.
-     They are the same two addresses as `_heap_bottom` / `_heap_top`; alias rather
-     than rename so existing consumers (ziskos's allocator reads _heap_bottom /
-     _heap_size) keep working. */
-  PROVIDE(_heap_start = _heap_bottom);
-  PROVIDE(_heap_end = _heap_top);
+     Same two addresses as `_heap_bottom` / `_heap_top` above; added alongside them
+     rather than renaming, so ziskos's allocator (which reads _heap_bottom /
+     _heap_size) is untouched.
+
+     Assigned UNCONDITIONALLY, not with PROVIDE: PROVIDE only materializes a symbol
+     that some input object *references*, and an EF consumer discovers these by
+     reading the ELF symbol table — it never references them at link time. Under
+     PROVIDE they would be absent from .symtab for any guest that does not itself
+     mention them, i.e. exactly the case the standard requires them for. The values
+     are recomputed rather than aliased so they do not depend on the PROVIDEs above
+     having materialized either. */
+  _heap_start = .;
+  _heap_end = ORIGIN(ram) + LENGTH(ram) - _float_ram_data_size - _zisklib_ram_data_size;
 
   _end = .;
 }
