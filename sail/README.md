@@ -35,6 +35,7 @@ about what is still missing. Filling them in is the next milestone.
 | `model/zisk_inst.sail` | The `zisk_inst` record, mirroring `ZiskInst` in `core/src/zisk_inst.rs`. |
 | `model/zisk_step.sail` | The single execution step, mirroring `Emu::step` in `emulator/src/emu.rs`. |
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
+| `lean/` | A lake package that typechecks both generated Lean trees. It has no sources of its own: one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints). A proof relating the two belongs here. |
 
 ## Building
 
@@ -46,6 +47,21 @@ make lean    # generate Lean definitions into build/lean/out
 make ops     # check opcode names against core/src/zisk_ops.rs
 make pil     # generate Lean definitions of the AIR constraints into build/pil
 ```
+
+Two more targets typecheck the generated Lean, through the lake package in
+`lean/`. They need a Lean toolchain — install
+[elan](https://lean-lang.org/install/):
+
+```sh
+make pil-build    # elaborate the AIR constraints  (all 21 AIRs build)
+make lean-build   # elaborate the model            (9 of 12 modules build)
+```
+
+`make lean-build` does not pass yet, and the reason is the gap below: `rX`,
+`wX`, `read_mem`, `write_mem` and `rom_fetch` are declared without definitions,
+so Sail emits references to Lean identifiers that do not exist and
+`Out.ZiskStep` fails to elaborate with 9 `unknown identifier` errors. The other
+nine modules — the types, the opcodes, the prelude — are fine.
 
 `make pil` is the other half of step 5 below: it reads the compiled
 `pil/zisk.pilout` and emits the Main AIR's constraints as Lean, so the proof
@@ -102,10 +118,20 @@ and use that binding — see `store_c` in `model/zisk_step.sail`.
 
 ## Next steps
 
-1. **Memory and registers.** Define `read_mem`/`write_mem`/`rX`/`wX` so the
-   model becomes executable. Note that ZisK registers are memory-mapped at
-   `SYS_ADDR` but the first 32 live in the main trace, and indices 32–63 are
-   "virtual registers" backed by memory — that distinction needs a decision.
+1. **Memory and registers.** Define `read_mem`/`write_mem`/`rX`/`wX`/`rom_fetch`
+   so the model becomes executable — and so it elaborates at all, since these
+   five are what `make lean-build` trips over. Note that ZisK registers are
+   memory-mapped at `SYS_ADDR` but the first 32 live in the main trace, and
+   indices 32–63 are "virtual registers" backed by memory — that distinction
+   needs a decision.
+
+   The plumbing is already there on the Lean side: `SequentialState` in the
+   generated `Out/Sail/Sail.lean` carries `mem : Std.HashMap Nat (BitVec 8)`,
+   and `$include <concurrency_interface/emulator_memory.sail>` declares the
+   `read_mem#`/`write_mem#` externs that reach it. So the work is the modeling
+   decisions, not the memory representation. `rom_fetch` is the odd one out: it
+   returns a `zisk_inst` record, not bytes, so it needs a ROM representation of
+   its own.
 2. **Run the doubler.** With memory in place, `sail -c` produces an emulator
    that can execute `ziskasm/examples/doubler-min`. That is the first real
    cross-check against `ziskemu`.
@@ -120,8 +146,7 @@ and use that binding — see `store_c` in `model/zisk_step.sail`.
    [`pilout-constraints`](../tools/pilout-constraints/README.md), which reads
    the constraints out of the compiled pilout. Neither side is transcribed by
    hand, so neither can drift from what ZisK ships without the generator
-   noticing. Two things are still missing before a proof can be stated: a Lean
-   toolchain (nothing in the repo builds either lake project today), and a
-   mapping from a `zisk_inst` plus machine state to a `Pil.Zisk.Main.Row`,
-   which is where the model's `ind_width`-style typing meets the AIR's
-   flat field columns.
+   noticing. The constraint side already elaborates (`make pil-build`); what is
+   still missing is the model side (step 1 above) and a mapping from a
+   `zisk_inst` plus machine state to a `Pil.Zisk.Main.Row`, which is where the
+   model's `ind_width`-style typing meets the AIR's flat field columns.

@@ -1,0 +1,24 @@
+# Typechecks the two generated Lean trees under sail/build/.
+#
+# Both are build artifacts, so this package holds no sources of its own: each
+# library points at the directory its generator writes.
+#
+#   Out — the ISA model, from `make lean` (sail --lean)
+#   Pil — the AIR constraints, from `make pil` (pilout-constraints)
+#
+# A proof relating the two goes in a library here, once both sides build. `Out`
+# does not yet: the model declares rX, wX, read_mem, write_mem and rom_fetch
+# without definitions, so Out.ZiskStep has no Lean to elaborate. See the
+# memory-and-registers milestone in ../README.md.
+name = "zisk"
+defaultTargets = ["Pil"]
+
+[[lean_lib]]
+name = "Pil"
+srcDir = "../build/pil"
+
+[[lean_lib]]
+name = "Out"
+srcDir = "../build/lean/out"
+# Sail's own generated lakefile sets this; the model's terms need the stack.
+moreLeanArgs = ["--tstack=400000"]

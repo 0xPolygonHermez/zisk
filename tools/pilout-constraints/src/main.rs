@@ -163,7 +163,37 @@ fn render(args: &RenderArgs, format: Format) -> Result<()> {
             }
         }
     }
+
+    // Lake needs a root module listing the library's modules. It is rebuilt
+    // from what is on disk rather than from this run's selection, so
+    // generating one AIR does not drop the AIRs generated before it.
+    if format == Format::Lean {
+        if let Some(dir) = &args.out {
+            let path = write_lean_root(dir, &args.module)?;
+            eprintln!("wrote {}", path.display());
+        }
+    }
     Ok(())
+}
+
+/// `<out>/<module>.lean`, importing every module in `<out>/<module>/`.
+fn write_lean_root(dir: &Path, module: &str) -> Result<PathBuf> {
+    let module_dir = dir.join(module);
+    let mut modules: Vec<String> = std::fs::read_dir(&module_dir)
+        .with_context(|| format!("listing {}", module_dir.display()))?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().extension().is_some_and(|e| e == "lean"))
+        .filter_map(|entry| entry.path().file_stem().map(|s| s.to_string_lossy().to_string()))
+        .collect();
+    modules.sort();
+
+    let mut contents = String::new();
+    for name in modules {
+        contents.push_str(&format!("import {module}.{name}\n"));
+    }
+    let path = dir.join(format!("{module}.lean"));
+    write(&path, &contents)?;
+    Ok(path)
 }
 
 /// Lean output is a module tree (`<out>/<module>/<Air>.lean`) so that `lake`

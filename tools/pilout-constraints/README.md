@@ -110,6 +110,22 @@ the PIL's own notation. The compiler can emit two intermediates with the same
 name — Main has two `Main.previous_c`, one per limb of `c` — so a duplicated
 name gets its pilout expression index appended (`Main_previous_c_e22`).
 
+## Typechecking the output
+
+The generated Lean is checked by the lake package in [`sail/lean`](../../sail/lean),
+which points at `sail/build/pil` rather than holding sources of its own:
+
+```sh
+cd sail && make pil    # generate
+cd sail && make pil-build   # typecheck
+```
+
+Needs a Lean toolchain — install [elan](https://lean-lang.org/install/). All 21
+AIRs of the ZisK pilout elaborate, Main in a few seconds and the whole set in
+about 85s on a warm cache. That is the check that matters for this tool: an
+expression printed with the wrong precedence, a reference to a column that was
+never declared, or a name Lean will not accept all fail here.
+
 ## The IR
 
 `extract` writes one JSON file per AIR:
@@ -129,10 +145,9 @@ and the next symbol starts at 70.
 
 ## Known limits
 
-- **The generated Lean is not typechecked by CI, or by anything else yet.**
-  There is no Lean toolchain in this repo — `sail/build/lean/out` is a lake
-  project nobody builds either. Until one is wired up, "it compiles" is an
-  assumption, not a fact.
+- **CI does not typecheck the generated Lean.** `make pil-build` does, but it
+  needs a Lean toolchain that the PR workflow does not install. Until it does,
+  the check is one a person has to remember to run.
 - **`every_frame` is untested.** Every constraint in the ZisK pilout is
   `every_row`; boundary conditions are expressed with fixed selector columns
   such as `__L1__` and `Main.SEGMENT_L1` instead. The other three kinds are

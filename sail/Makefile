@@ -11,6 +11,11 @@ PILOUT ?= ../pil/zisk.pilout
 # Which AIRs to extract: one by name, or `--all` for every AIR in the pilout.
 PIL_AIR ?= --air Main
 
+# Both generated Lean trees are typechecked by the lake package in lean/, which
+# points at them rather than holding sources of its own. Needs a Lean toolchain;
+# install elan from https://lean-lang.org/install/.
+LAKE ?= lake
+
 # Sail memoizes z3 results in the working directory by default; keep it in build/.
 SAILFLAGS = --memo-z3-path build/z3_problems
 
@@ -20,7 +25,7 @@ MODEL = model/zisk_prelude.sail \
         model/zisk_inst.sail \
         model/zisk_step.sail
 
-.PHONY: all check lean ops pil clean
+.PHONY: all check lean ops pil lean-env lean-build pil-build clean
 
 all: check ops
 
@@ -47,5 +52,30 @@ pil:
 	cargo run --release -p zisk-pilout-constraints -- \
 	  lean --pilout $(PILOUT) $(PIL_AIR) --out build/pil
 
+## Fail early with something actionable when the Lean setup is not usable.
+lean-env:
+	@command -v $(LAKE) >/dev/null 2>&1 || { \
+	  echo "$(LAKE) not found — install elan: https://lean-lang.org/install/" >&2; \
+	  exit 1; }
+	@if [ -f build/lean/out/lean-toolchain ] && \
+	   ! cmp -s build/lean/out/lean-toolchain lean/lean-toolchain; then \
+	  echo "warning: lean/lean-toolchain is $$(cat lean/lean-toolchain)," >&2; \
+	  echo "         but sail generated $$(cat build/lean/out/lean-toolchain)." >&2; \
+	  echo "         Both libraries share one toolchain; copy sail's over it." >&2; \
+	fi
+
+## Typecheck the generated AIR constraints. Run `make pil` first.
+pil-build: lean-env
+	@test -d build/pil || { echo "build/pil is missing — run make pil" >&2; exit 1; }
+	cd lean && $(LAKE) build Pil
+
+## Typecheck the generated model. Run `make lean` first.
+## Fails today: the model declares rX, wX, read_mem, write_mem and rom_fetch
+## without definitions, so Out.ZiskStep has no Lean to elaborate.
+lean-build: lean-env
+	@test -d build/lean/out || { echo "build/lean/out is missing — run make lean" >&2; exit 1; }
+	cd lean && $(LAKE) build Out
+
 clean:
 	rm -rf build
+	rm -rf lean/.lake
