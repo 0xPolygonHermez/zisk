@@ -52,10 +52,7 @@ jobs:
   release:
     name: Build ${{ matrix.target }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
-    # The Linux build runs on the self-hosted runner inside a fresh container
-    # from the ZisK runner image (tools/test-env/Dockerfile built with
-    # CUDA=true), isolated from the host and from previous runs. The macOS
-    # entry sets no container, so it runs directly on the runner.
+    # Empty for macOS: no container.
     container: ${{ matrix.container }}
     timeout-minutes: 240
     needs: prepare
@@ -77,9 +74,7 @@ jobs:
             platform: darwin
             arch: arm64
     steps:
-      # Self-hosted runner: the workspace may still hold the previous run's
-      # checkout and target/. Wipe its contents (not the directory itself, it
-      # is the container mount point) so the build starts from a clean tree.
+      # Self-hosted runner: remove files from previous runs.
       - name: Clean workspace
         if: matrix.platform == 'linux'
         run: |
@@ -89,16 +84,12 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      # The image already ran install_deps.sh --cuda, but as ziskuser, while
-      # job-container steps run as root. Point rustup/cargo at that user's
-      # toolchain instead of installing everything again. The Docker daemon
-      # baked into the image is not running here (no systemd, not privileged),
-      # so lib-float must use the committed ziskfloat artifacts as-is.
+      # Steps run as root. Use the rustup binary of ziskuser, but install a new
+      # toolchain: updating the one from the image fails on overlayfs.
+      # There is no Docker daemon in the container.
       - name: Configure container environment
         if: matrix.platform == 'linux'
         run: |
-          echo "CARGO_HOME=/home/ziskuser/.cargo" >> "$GITHUB_ENV"
-          echo "RUSTUP_HOME=/home/ziskuser/.rustup" >> "$GITHUB_ENV"
           echo "ZISK_CI_NO_DOCKER_REBUILD=1" >> "$GITHUB_ENV"
           echo "/home/ziskuser/.cargo/bin" >> "$GITHUB_PATH"
 
