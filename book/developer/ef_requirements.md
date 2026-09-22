@@ -177,7 +177,7 @@ conform but not yet audited against the spec.
 | 3 | [ELF loading and validation](#3-elf-loading-and-validation) | **Conformant** | `elf2rom` enforces header, PT_LOAD-only loading, zero-fill, W^X and entry-point validation. |
 | 4 | [I/O interface](#4-io-interface) | **Conformant** | `read_input` / `write_output` implemented and redirected to the ZisK library. |
 | 5 | [Memory layout restrictions](#5-memory-layout-restrictions) | **Conformant** | Standard is non-prescriptive; ZisK ships a vendor linker script defining its map. |
-| 6 | [Memory safety guard regions](#6-memory-safety-guard-regions) | **Partial** | Null-pointer page and stack overflow trap (unmapped), but not via a named ≥4 kB stack-guard region. |
+| 6 | [Memory safety guard regions](#6-memory-safety-guard-regions) | **Conformant** | Null region and the span below the stack bottom are both unmapped and trap; the guard is adjacent with no gap, named in `core/src/mem.rs` and enforced by compile-time assertions. |
 | 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported and counted/priced by `ziskemu` stats; `compressed` (`C`) feature implemented (off by default); offline-vs.-during-proving visibility to confirm with EF. |
 | 8 | [Standard termination semantics](#8-standard-termination-semantics) | **To verify** | `main` return maps to halt + host report; exact exit-code propagation to confirm. |
 | 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Conformant** | `package.sh` stages `libzisklib_c.a` (`_start` incl. C++ ctors/dtors, I/O, all accelerators) + headers + the W^X linker script exporting `_heap_start`/`_heap_end`; verified by linking C and C++ guests against the installed artifacts alone. |
@@ -367,20 +367,64 @@ script, exactly as the standard intends).
 a **null-pointer trap** over `0x0000`–`0x0FFF` (unmapped), and a **stack guard**
 of at least 4 kB immediately below the stack bottom, contiguous with no gap.
 
-**ZisK.** The low address space (`0x0`–`0x0FFF`, and everything below `ROM_ADDR =
-0x8000_0000`) is not mapped, so any null-pointer access is outside the ZisK
-addressable space and aborts — satisfying the null-pointer trap. The stack lives
-at the base of RAM (`0xa000_0000 … 0xa040_0000`, 4 MB) and grows down toward
-`0xa000_0000`; below that is a large unmapped gap (down to the ROM region), so
-stack overflow traps as an out-of-range access.
+**ZisK.** Both guard regions are satisfied by the address map, and the invariant is
+now enforced rather than incidental.
 
-**Gap.** The stack overflow guard is provided *implicitly* by the unmapped gap
-rather than by a *named, contiguous ≥4 kB guard region immediately adjacent to the
-stack bottom*, which is how the standard phrases it. Functionally an overflow
-aborts; matching the letter of the standard would mean designating an explicit
-guard page.
+**Null-pointer trap.** Nothing below `ROM_ADDR = 0x8000_0000` is mapped, so the whole
+of `0x0000`–`0x0FFF` is unmapped and any access fails the `Mem` section bounds check
+and aborts.
 
-**Assessment: Partial.**
+**Stack guard.** The stack bottom is `STACK_ADDR = RAM_ADDR = 0xa000_0000` — the
+lowest mapped RAM address — with the stack growing down from `0xa040_0000`. ROM ends
+at `0x87ff_ffff`, so the span `0x8800_0000`–`0x9fff_ffff` (384 MB) is unmapped. That
+region therefore begins at the byte immediately below the stack bottom, which is
+exactly the standard's "contiguous and adjacent to the bottom of the stack with no
+gap between them", and it is far larger than the required 4 kB.
+
+`core/src/mem.rs` names the region — `STACK_GUARD_ADDR` = `ROM_ADDR + ROM_SIZE`,
+`STACK_GUARD_SIZE` = `STACK_ADDR - STACK_GUARD_ADDR` (384 MB) — with
+`STACK_GUARD_MIN_SIZE` recording the 4 kB the standard demands. The assembly
+emulator's `GUARD_ADDR`/`GUARD_SIZE` are the same span, derived the same way, so the
+two cannot drift.
+
+The invariant is enforced at compile time: the stack must start at `RAM_ADDR`, the
+guard must be adjacent to it, at least `STACK_GUARD_MIN_SIZE`, and the input window
+must stay below it. Each failure mode was checked by making the change and observing
+the build stop — growing `ROM_SIZE` until under 4 kB remains, growing it past
+`RAM_ADDR` (which underflows the size computation and fails const evaluation),
+widening `MAX_INPUT_SIZE`, and moving `STACK_ADDR` off the RAM base.
+
+`ziskasm::assemble_library` additionally rejects a `rom_base` outside ROM or a
+`ram_base` below `RAM_ADDR`, since those bases are caller-supplied and a library
+placed in the guard would defeat it.
+
+**Host-level reservation (assembly emulator).** The Rust emulator validates every
+address against its section bounds in software, so an access to the guard aborts
+regardless of the host. The **assembly** emulator does not: it maps the guest regions
+`MAP_FIXED` at their real addresses and relies on the host MMU, so a guest access
+traps only because nothing is mapped there. An unmapped hole is exactly where the
+kernel may satisfy a later `mmap(NULL, …)` or a large `malloc` in the same process —
+and if anything landed in the span, a guest access into the guard would silently
+*succeed*.
+
+`server_setup()` (`emulator-asm/src/server.c`) therefore reserves the whole span
+`GUARD_ADDR`..`RAM_ADDR` (0x8800_0000–0x9fff_ffff, 384 MB) as
+`PROT_NONE | MAP_FIXED | MAP_NORESERVE`: the range is claimed so nothing else can be
+placed in it, any access faults, and `MAP_NORESERVE` keeps it off the commit charge
+(a single VMA, no backing pages). Measured before and after in a standalone harness:
+an allocation targeting the middle of the span **succeeds** without the reservation
+and is **refused** with it, and an access immediately below the stack bottom raises
+`SIGSEGV`.
+
+**Verified.** Writes at `0x0`, `0x800` and `0xfff` (the null region, at both ends and
+the middle) and at `0x9fff_fff8` and `0x9fff_f000` (immediately below the stack bottom
+and 4 kB below it) each abort with
+`Mem::write_silent() invalid addr=… write section start=a0000000 end=c0000000`, and
+**no output file is produced** — matching the standard's Detection and Reporting
+clause that execution halts, failure is reported, and no valid proof of successful
+execution may be generated.
+
+**Assessment: Conformant.**
 
 ---
 

@@ -15,7 +15,9 @@ use std::path::Path;
 
 use zisk_core::zisk_inst_builder::ZiskInstBuilder;
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
-use zisk_core::{GENERAL_RAM_ADDR, ROM_ADDR, ROM_ENTRY, SYS_ADDR};
+use zisk_core::{
+    GENERAL_RAM_ADDR, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SYS_ADDR,
+};
 use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp};
 
 use crate::parser::{
@@ -212,6 +214,24 @@ pub fn assemble_library(
     rom_base: u64,
     ram_base: u64,
 ) -> Result<ZiskLibrary, String> {
+    // Reject bases outside the mapped regions before laying anything out. The span
+    // below RAM_ADDR is the EF standard 6 stack guard (see `zisk_core::mem`
+    // STACK_GUARD_ADDR): it is unmapped precisely so a stack overflow traps, and a
+    // library placed there would both fault on first access and silently defeat the
+    // guard. The bases are caller-supplied, so check rather than assume.
+    if rom_base < ROM_ADDR || rom_base > ROM_ADDR_MAX {
+        return Err(format!(
+            "library rom_base 0x{rom_base:x} is outside the ROM region \
+             (0x{ROM_ADDR:x}..=0x{ROM_ADDR_MAX:x})"
+        ));
+    }
+    if ram_base < RAM_ADDR {
+        return Err(format!(
+            "library ram_base 0x{ram_base:x} is below RAM_ADDR (0x{RAM_ADDR:x}); it would land \
+             in the unmapped stack guard region reserved by EF standard 6"
+        ));
+    }
+
     let instructions = &program.instructions;
     let addr_of = |i: usize| rom_base + INST_SIZE as u64 * i as u64;
 
@@ -219,6 +239,17 @@ pub fn assemble_library(
     // requires); non-`const` data at `ram_base`.
     let rom_data_base = addr_of(instructions.len()).next_multiple_of(32);
     let (ro_section, rw_section, data_syms) = layout_data(&program.data, rom_data_base, ram_base);
+
+    // The layout must also stay inside RAM at its far end.
+    if let Some(sec) = rw_section.as_ref() {
+        let end = sec.addr + (sec.data.len() as u64) * 8;
+        if end > RAM_ADDR + RAM_SIZE {
+            return Err(format!(
+                "library RW data ends at 0x{end:x}, past the end of RAM (0x{:x})",
+                RAM_ADDR + RAM_SIZE
+            ));
+        }
+    }
 
     // Symbol table: every label (function/local) and data name → address.
     let mut sym_ref: HashMap<&str, u64> = HashMap::new();

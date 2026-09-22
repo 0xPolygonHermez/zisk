@@ -29,7 +29,13 @@
 //! `|`
 //! `| Initial value of the float library stack pointer.`
 //! `|`
-//! `|--------------- RAM_ADDR                            (0xa0000000)`
+//! `|--- STACK_GUARD_ADDR (= ROM_ADDR + ROM_SIZE)       (0x88000000)`
+//! `|`
+//! `| UNMAPPED stack guard region, 384MB, running up to the stack bottom.`
+//! `| EF standard 6 requires >= 4kB here; any access traps. The assembly`
+//! `| emulator reserves this same span PROT_NONE (see constants.hpp).`
+//! `|`
+//! `|--------------- RAM_ADDR = STACK_ADDR: stack bottom (0xa0000000)`
 //! `|`
 //! `|--------------- RAM_ADDR + STACK_SIZE - 16          (0xa03ffff0)`
 //! `|`
@@ -117,6 +123,54 @@ pub const RAM_SIZE: u64 = 0x20000000; // 512M
 pub const STACK_ADDR: u64 = RAM_ADDR;
 /// Program stack size
 pub const STACK_SIZE: u64 = 0x400000; // 4MB
+
+/// Minimum stack guard size EF zkVM standard 6 demands: "a guard region of at least
+/// 4 kB ... immediately below the bottom of the stack".
+pub const STACK_GUARD_MIN_SIZE: u64 = 0x1000; // 4KB
+
+/// First address of the stack guard region.
+///
+/// The guard is the *entire* unmapped span between the top of ROM and the bottom of
+/// the stack -- 384MB, far more than the 4 kB the standard requires. It satisfies EF
+/// standard 6: not mapped readable or writable, contiguous with the stack bottom and
+/// with no gap between them, and any access aborts.
+///
+/// `emulator-asm/src/constants.hpp` mirrors these two values as `GUARD_ADDR` /
+/// `GUARD_SIZE`, and `server_setup()` reserves exactly this span `PROT_NONE`. That
+/// matters because the assembly emulator has no software bounds check: a guest access
+/// outside the mapped regions traps only because the host has nothing there, and an
+/// unmapped hole is where the kernel would satisfy a later `mmap(NULL, ...)`.
+pub const STACK_GUARD_ADDR: u64 = ROM_ADDR + ROM_SIZE;
+/// Size of the stack guard region (see [`STACK_GUARD_ADDR`]).
+pub const STACK_GUARD_SIZE: u64 = STACK_ADDR - STACK_GUARD_ADDR;
+
+/// Compile-time enforcement of the guard-region invariant.
+///
+/// The guard is a consequence of the address map rather than a declared section, so
+/// it would shrink or vanish silently if a mapped region were grown or moved into it.
+/// These assertions turn that into a build failure instead.
+const _: () = {
+    // The stack must sit at the very bottom of RAM; otherwise the span below it is
+    // mapped RAM, not a guard.
+    assert!(STACK_ADDR == RAM_ADDR, "the stack must start at RAM_ADDR for the guard to be adjacent");
+    // Adjacency, restated so the intent survives a redefinition above.
+    assert!(
+        STACK_GUARD_ADDR + STACK_GUARD_SIZE == STACK_ADDR,
+        "the stack guard must be adjacent to the stack bottom, with no gap"
+    );
+    // Growing ROM eats into the guard. (Growing it past RAM_ADDR underflows the
+    // STACK_GUARD_SIZE subtraction above, which also fails const evaluation.)
+    assert!(
+        STACK_GUARD_SIZE >= STACK_GUARD_MIN_SIZE,
+        "ROM now reaches into the stack guard: fewer than the 4 kB EF standard 6 requires remain"
+    );
+    // The input window must stay below the guard.
+    assert!(
+        INPUT_ADDR + MAX_INPUT_SIZE <= STACK_GUARD_ADDR,
+        "the input window now reaches into the stack guard region"
+    );
+};
+
 /// First system RW memory address
 pub const SYS_ADDR: u64 = RAM_ADDR + STACK_SIZE;
 /// Size of the system RW memory

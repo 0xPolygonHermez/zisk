@@ -18,6 +18,16 @@
 #define RAM_ADDR          (uint64_t)0xA0000000
 #define RAM_SIZE          (uint64_t)0x20000000 // 512MB
 #define SYS_ADDR          (uint64_t)0xA0400000
+// Guard span between the top of ROM and the bottom of the stack (= RAM_ADDR).
+// EF zkVM standard 6 requires a >=4 kB region immediately below the stack bottom that
+// is not mapped readable or writable and whose access aborts; see STACK_GUARD_ADDR in
+// core/src/mem.rs, which names that 4 kB minimum. This span COVERS it and is much
+// larger. Unlike the Rust emulator, the assembly emulator has no software bounds
+// check -- an out-of-range guest access faults only because the host has nothing
+// mapped there -- so server_setup() reserves the whole span PROT_NONE to stop a
+// casual mmap(NULL, ...) or large malloc from being placed inside it.
+#define GUARD_ADDR        (ROM_ADDR + ROM_SIZE)   // 0x88000000
+#define GUARD_SIZE        (RAM_ADDR - GUARD_ADDR) // 0x18000000 = 384MB
 #define SYS_SIZE          (uint64_t)0x10000
 #define OUTPUT_ADDR       (SYS_ADDR + SYS_SIZE)
 
