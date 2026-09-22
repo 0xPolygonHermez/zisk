@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "f8a7ec9fdce9835c41a19a3f9aa60d7f057e1ec8fd3cefa150c076accc786e78";
+pub const PILOUT_HASH: &str = "b097e68b79bdeed2a4f39fb566ea4d0d2cfbae7deeab226e2e4033cc68a155b1";
 
 //AIRGROUP CONSTANTS
 
@@ -202,7 +202,7 @@ trace_row!(MemFixedRow<F> {
 pub type MemFixed<F> = GenericTrace<MemFixedRow<F>, 4194304, 0, 2>;
 
 trace_row!(MemTraceRow<F> {
- addr:[ubit(29); 4], step:[ubit(38); 4], sel:[bit; 4], addr_changes:[bit; 4], step_dual:[ubit(38); 4], sel_dual:[bit; 4], value:[[u32; 2]; 4], wr:[bit; 4], previous_step:[ubit(40); 4], l_increment:[ubit(22); 4], h_increment:[u16; 4], read_same_addr:[bit; 4],
+ addr:[ubit(29); 4], step:[ubit(38); 4], addr_changes:[bit; 4], step_dual:[ubit(38); 4], sel_dual:[bit; 4], value:[[u32; 2]; 4], wr:[bit; 4], previous_step:[ubit(40); 4], l_increment:[ubit(22); 4], h_increment:[u16; 4], read_same_addr:[bit; 4],
 });
 
 pub type MemTrace<R> = GenericTrace<R, 4194304, 0, 2>;
@@ -213,7 +213,7 @@ trace_row!(InputDataFixedRow<F> {
 pub type InputDataFixed<F> = GenericTrace<InputDataFixedRow<F>, 4194304, 0, 3>;
 
 trace_row!(InputDataTraceRow<F> {
- addr:[ubit(29); 1], step:[ubit(38); 1], sel:[bit; 1], addr_changes:[bit; 1], value_word:[[u16; 4]; 1], is_free_read:[bit; 1],
+ addr:[ubit(29); 1], step:[ubit(38); 1], addr_changes:[bit; 1], sel:[bit; 1], value_word:[[u16; 4]; 1], is_free_read:[bit; 1],
 });
 
 pub type InputDataTrace<R> = GenericTrace<R, 4194304, 0, 3>;
@@ -779,7 +779,7 @@ values!(MainAirValues<F> {
 });
 
 values!(MemAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], im_direct: [FieldExtension<F>; 6],
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], last_step_chunks: [F; 2], additional_last_step_limit: F, padding_size: F, im_direct: [FieldExtension<F>; 10],
 });
 
 values!(InputDataAirValues<F> {
@@ -1115,7 +1115,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 2, PackedInfoConst {
         is_packed: true,
         num_packed_words: 16,
-        unpack_info: &[29, 29, 29, 29, 38, 38, 38, 38, 1, 1, 1, 1, 1, 1, 1, 1, 38, 38, 38, 38, 1, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1, 40, 40, 40, 40, 22, 22, 22, 22, 16, 16, 16, 16, 1, 1, 1, 1],
+        unpack_info: &[29, 29, 29, 29, 38, 38, 38, 38, 1, 1, 1, 1, 38, 38, 38, 38, 1, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1, 40, 40, 40, 40, 22, 22, 22, 22, 16, 16, 16, 16, 1, 1, 1, 1],
     }),
     (0, 3, PackedInfoConst {
         is_packed: true,

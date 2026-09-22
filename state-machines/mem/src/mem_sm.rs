@@ -37,6 +37,8 @@ pub struct MemSM<F: PrimeField64> {
 
     range_22bits_id: usize,
     range_16bits_id: usize,
+    /// Range of `padding_size`, checked on the last segment only (@[mem_padding] in mem.pil).
+    range_24bits_id: usize,
 }
 #[derive(Debug, Default)]
 pub struct MemPreviousSegment {
@@ -60,7 +62,9 @@ impl<F: PrimeField64> MemSM<F> {
         let range_16bits_id =
             std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get 16 bits range ID");
 
-        Arc::new(Self { range_22bits_id, range_16bits_id, std: std.clone() })
+        let range_24bits_id =
+            std.get_range_id(0, (1 << 24) - 1, None).expect("Failed to get 24 bits range ID");
+        Arc::new(Self { range_22bits_id, range_16bits_id, range_24bits_id, std: std.clone() })
     }
 
     pub fn get_to_addr() -> u32 {
@@ -412,7 +416,6 @@ impl<F: PrimeField64> MemSM<F> {
             trace[row].set_value(lane, 1, high_val);
 
             trace[row].set_step(lane, step);
-            trace[row].set_sel(lane, true);
 
             if addr_changes || mem_op.is_write {
                 // in case of read operations of same address, add one to allow many reads
@@ -479,7 +482,6 @@ impl<F: PrimeField64> MemSM<F> {
             trace[row].set_previous_step(lane, step);
             trace[row].set_addr(lane, addr);
             trace[row].set_step(lane, step);
-            trace[row].set_sel(lane, false);
             trace[row].set_wr(lane, false);
 
             trace[row].set_value(lane, 0, value[0]);
@@ -530,10 +532,27 @@ impl<F: PrimeField64> MemSM<F> {
         air_values.distance_end[0] = F::from_u16(distance_end[0]);
         air_values.distance_end[1] = F::from_u16(distance_end[1]);
 
+        // @[last_step_bound]: the step handed to the next segment, in 22 + 16 bits plus the
+        // extra unit that only a step of exactly 2^38 needs.
+        let (last_step_chunks, last_step_extra) = split_last_step(last_step);
+        air_values.last_step_chunks[0] = F::from_u32(last_step_chunks[0]);
+        air_values.last_step_chunks[1] = F::from_u32(last_step_chunks[1]);
+        air_values.additional_last_step_limit = F::from_bool(last_step_extra);
+
+        // @[mem_padding]: the padding lanes are emitted and taken back `padding_size` times. The
+        // range check is selected by is_last_segment in the PIL, so it counts once there even
+        // when there is no padding at all.
+        air_values.padding_size = F::from_u32(padding_size as u32);
+        if is_last_segment {
+            self.std.range_check_one(self.range_24bits_id, padding_size as u64);
+        }
+
         range_16bits[distance_base[0] as usize] += 1;
         range_16bits[distance_base[1] as usize] += 1;
         range_16bits[distance_end[0] as usize] += 1;
         range_16bits[distance_end[1] as usize] += 1;
+        range_22bits[last_step_chunks[0] as usize] += 1;
+        range_16bits[last_step_chunks[1] as usize] += 1;
 
         self.std.range_check_ranged(self.range_22bits_id, None, &range_22bits);
         self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
@@ -679,6 +698,17 @@ impl<F: PrimeField64> MemSM<F> {
 
         air_values.distance_end[0] = F::from_u16(out.distance_end[0]);
         air_values.distance_end[1] = F::from_u16(out.distance_end[1]);
+
+        // @[last_step_bound], see `split_last_step`.
+        air_values.last_step_chunks[0] = F::from_u32(out.last_step_chunks[0]);
+        air_values.last_step_chunks[1] = F::from_u32(out.last_step_chunks[1]);
+        air_values.additional_last_step_limit = F::from_bool(out.last_step_extra);
+
+        // @[mem_padding], see the other witness path.
+        air_values.padding_size = F::from_u32(out.padding_size);
+        if is_last_segment {
+            self.std.range_check_one(self.range_24bits_id, out.padding_size as u64);
+        }
 
         // Timed apart from the fill because it is not free: `range_check_ranged` widens the whole
         // 2^22-entry histogram into a fresh `Vec<u64>` (32 MiB) before `assign_values_ranged` walks
@@ -827,7 +857,6 @@ struct RangeFill<R> {
 fn copy_mem_lane<F: PrimeField64, R: MemTraceRowOps<F>>(dst: &mut R, src: &R, lane: usize) {
     dst.set_addr(lane, src.get_addr(lane));
     dst.set_step(lane, src.get_step(lane));
-    dst.set_sel(lane, src.get_sel(lane));
     dst.set_addr_changes(lane, src.get_addr_changes(lane));
     dst.set_wr(lane, src.get_wr(lane));
     dst.set_sel_dual(lane, src.get_sel_dual(lane));
@@ -838,8 +867,9 @@ fn copy_mem_lane<F: PrimeField64, R: MemTraceRowOps<F>>(dst: &mut R, src: &R, la
     dst.set_h_increment(lane, src.get_h_increment(lane));
 }
 
-/// One padding lane: same address, same step, same value, not selected. Kept in one place so the
-/// partial row and the whole rows cannot drift apart.
+/// One padding lane: same address, same step, same value, a read. It reaches the bus like any
+/// other lane and is cancelled by `padding_size` (@[mem_padding] in mem.pil). Kept in one place
+/// so the partial row and the whole rows cannot drift apart.
 #[inline]
 fn set_mem_padding_lane<F: PrimeField64, R: MemTraceRowOps<F>>(
     row: &mut R,
@@ -851,7 +881,6 @@ fn set_mem_padding_lane<F: PrimeField64, R: MemTraceRowOps<F>>(
 ) {
     row.set_addr(lane, addr);
     row.set_step(lane, step);
-    row.set_sel(lane, false);
     row.set_wr(lane, false);
     row.set_value(lane, 0, low_value);
     row.set_value(lane, 1, high_value);
@@ -876,6 +905,29 @@ struct MemFillOutput {
     /// Distance from the segment's base / to the memory end, split in 16-bit halves.
     distance_base: [u16; 2],
     distance_end: [u16; 2],
+    /// `last_step` split for @[last_step_bound]: a 22-bit and a 16-bit chunk, plus the extra
+    /// unit that only a step of exactly 2^38 needs. See `split_last_step`.
+    last_step_chunks: [u32; 2],
+    last_step_extra: bool,
+    /// Padding lanes emitted and cancelled by @[mem_padding].
+    padding_size: u32,
+}
+
+/// Largest mem step a main step can produce: `RESERVED_MEM_STEPS + MAX_MEM_STEPS_PER_MAIN_STEP *
+/// (2^MAIN_STEP_BITS - 1) + 3 = 1 + 4 * (2^36 - 1) + 3`.
+const MAX_MEM_STEP: u64 = 1 << 38;
+
+/// Splits the step a segment hands to the next one the way @[last_step_bound] in `mem.pil`
+/// wants it: `step = chunks[0] + 2^22 * chunks[1] + extra`, with `chunks[0] < 2^22`,
+/// `chunks[1] < 2^16` and `extra` a bit. The bound is what stops a prover from wrapping the
+/// step clock around the field over several segments, so the chunks are range checked; the
+/// extra unit exists only because the largest legal step, 2^38, does not fit in 38 bits.
+fn split_last_step(last_step: u64) -> ([u32; 2], bool) {
+    assert!(last_step <= MAX_MEM_STEP, "MemSM: last step {last_step} exceeds 2^38");
+    if last_step == MAX_MEM_STEP {
+        return ([0, 0], true);
+    }
+    ([(last_step & ((1 << 22) - 1)) as u32, (last_step >> 22) as u32], false)
 }
 
 /// Fills a `Mem` segment's rows, splitting the work into at most `n_ranges` parallel ranges.
@@ -1107,6 +1159,11 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
     range_16bits[distance_end[0] as usize] += 1;
     range_16bits[distance_end[1] as usize] += 1;
 
+    // @[last_step_bound]
+    let (last_step_chunks, last_step_extra) = split_last_step(step);
+    range_22bits[last_step_chunks[0] as usize] += 1;
+    range_16bits[last_step_chunks[1] as usize] += 1;
+
     MemFillOutput {
         range_22bits,
         range_16bits,
@@ -1115,6 +1172,9 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
         last_value: [low_value, high_value],
         distance_base,
         distance_end,
+        last_step_chunks,
+        last_step_extra,
+        padding_size: padding_size as u32,
     }
 }
 
@@ -1338,7 +1398,6 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
             rows.at(row).set_step_dual(lane, 0);
             rows.at(row).set_addr(lane, mem_op.addr);
             rows.at(row).set_step(lane, step);
-            rows.at(row).set_sel(lane, true);
             rows.at(row).set_addr_changes(lane, addr_changes);
             rows.at(row).set_wr(lane, mem_op.is_write);
             let (low_val, high_val) = (mem_op.value as u32, (mem_op.value >> 32) as u32);

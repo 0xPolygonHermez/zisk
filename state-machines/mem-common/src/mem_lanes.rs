@@ -3,7 +3,7 @@
 //! The `Mem` airtemplate packs `lanes_x_row` independent memory lanes on every
 //! trace row (see `lanes_x_row` in `state-machines/mem/pil/mem.pil`). Each lane
 //! carries the full set of columns that used to belong to a row — `addr`,
-//! `step`, `sel`, `addr_changes`, `value`, `wr`, the increments and, with
+//! `step`, `addr_changes` (plus `sel` in the immutable memories), `value`, `wr`, the increments and, with
 //! `dual_mem`, its own `step_dual`/`sel_dual` — and the lane at index `l > 0`
 //! chains from lane `l - 1` of the same row, while lane `0` chains from the last
 //! lane of the previous row.

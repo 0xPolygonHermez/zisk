@@ -71,12 +71,11 @@ fn segment_and_ops(
 /// by the prover, and the fill never writes them.
 fn snapshot(rows: &[Row]) -> Vec<u64> {
     let lanes = lanes_x_row();
-    let mut out = Vec::with_capacity(rows.len() * lanes * 11);
+    let mut out = Vec::with_capacity(rows.len() * lanes * 10);
     for row in rows {
         for l in 0..lanes {
             out.push(row.get_addr(l) as u64);
             out.push(row.get_step(l));
-            out.push(row.get_sel(l) as u64);
             out.push(row.get_addr_changes(l) as u64);
             out.push(row.get_wr(l) as u64);
             out.push(row.get_sel_dual(l) as u64);
@@ -314,17 +313,29 @@ fn the_fill_writes_one_slot_per_operation() {
     let filled = (n_addrs * slots_per_addr) as usize;
     for slot in 0..filled {
         let (r, l) = (slot / lanes, slot % lanes);
-        assert!(rows[r].get_sel(l), "slot {slot} should be selected");
         assert_eq!(
             rows[r].get_addr(l),
             base + (slot as u32 / slots_per_addr),
             "slot {slot} holds the wrong address"
         );
     }
+    // Padding lanes have no selector: they reach the bus as reads of the last lane and are taken
+    // back `padding_size` times (@[mem_padding] in mem.pil), so each one must be exactly that tuple.
+    let (last_r, last_l) = ((filled - 1) / lanes, (filled - 1) % lanes);
     for slot in filled..(n_rows * lanes) {
         let (r, l) = (slot / lanes, slot % lanes);
-        assert!(!rows[r].get_sel(l), "padding slot {slot} must not be selected");
+        assert_eq!(rows[r].get_addr(l), rows[last_r].get_addr(last_l), "padding slot {slot}: addr");
+        assert_eq!(rows[r].get_step(l), out.last_step, "padding slot {slot}: step");
+        assert!(!rows[r].get_wr(l), "padding slot {slot} must be a read");
+        assert!(!rows[r].get_addr_changes(l), "padding slot {slot} must stay on the last address");
+        assert_eq!(rows[r].get_value(l, 0), out.last_value[0], "padding slot {slot}: value lo");
+        assert_eq!(rows[r].get_value(l, 1), out.last_value[1], "padding slot {slot}: value hi");
     }
+    assert_eq!(
+        out.padding_size as usize,
+        n_rows * lanes - filled,
+        "padding_size counts the padding lanes"
+    );
     // The last filled slot is what the padding repeats and what the segment hands on.
     assert_eq!(out.last_addr, base + n_addrs - 1);
 }
