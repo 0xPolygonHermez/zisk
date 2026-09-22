@@ -39,7 +39,9 @@ about what is still missing. Filling them in is the next milestone.
 
 ## Building
 
-Needs Sail 0.19+ (`opam install sail`).
+Needs Sail 0.19+ (`opam install sail`). This section is the per-target
+reference; for the whole path from a fresh clone, with the output each command
+produces, see [Verifying ZisK from a fresh clone](#verifying-zisk-from-a-fresh-clone).
 
 ```sh
 make check   # typecheck the model
@@ -72,6 +74,188 @@ one. It needs `pil/zisk.pilout`, which is a build artifact — see
 
 `MODEL` in the Makefile is **order-sensitive**: Sail has no module system, so
 definitions must precede their use. Prelude first, step last.
+
+## Verifying ZisK from a fresh clone
+
+> **Disclaimer — none of this verifies ZisK yet.** What the run below exercises
+> is the *scaffolding* of a verification: the ISA model typechecks, both sides
+> of the intended proof are generated from what ZisK actually ships, the AIR
+> constraints elaborate as Lean propositions, and proofs about them go through.
+> The theorem that would earn the phrase "formally verified" — that the model's
+> `Out.Functions.zisk_step` implies the AIR's `Pil.Zisk.Main.holds` — does not
+> exist, and cannot be stated until the model side elaborates, which is step 1
+> of [Next steps](#next-steps). One of the commands below is *expected to
+> fail*, and it is the one that measures how far away that is. Delete this
+> disclaimer when step 5 lands.
+
+Nothing below is assumed already built, and every figure quoted is what the
+command printed against the pilout this branch was last regenerated on: 54
+AIRs, 4066 constraints.
+
+### What you need
+
+| Tool | For | Install |
+|------|-----|---------|
+| Rust | the workspace and the constraint extractor | [rustup](https://rustup.rs); `rust-toolchain.toml` pins the version |
+| Node + npm | the pil2 compiler, pulled at the version proofman pins | any recent LTS (v24 here) |
+| Python 3 | `check_ops.py` | any 3.x |
+| Sail 0.19+ | the ISA model | `opam install sail` |
+| elan | Lean 4 | [lean-lang.org/install](https://lean-lang.org/install/). No `elan default` needed: `lean/lean-toolchain` picks the toolchain and elan fetches it on the first `lake build`. |
+
+### The run
+
+**0. Clone, and check out this branch.** The model lives on `feature/sail`
+until it merges.
+
+```sh
+git clone git@github.com:0xPolygonHermez/zisk.git && cd zisk
+git checkout feature/sail
+```
+
+**1. Compile the PIL.** Everything on the constraint side reads
+`pil/zisk.pilout`, a gitignored build artifact, so it has to be built once.
+This is by far the longest step; all the rest together take under two minutes.
+
+```sh
+tools/test-env/setup_build.sh --compile-pil
+```
+
+It generates the fixed data first, and ends with:
+
+```
+==> compile-pil
+==> pil-helpers (regenerating pil/src/pil_helpers/traces.rs)
+done. pil/zisk.pilout and pil/src/pil_helpers/ regenerated.
+```
+
+The remaining commands run from `sail/`.
+
+**2. Typecheck the model.** Silent on success — Sail prints nothing when it has
+nothing to say.
+
+```sh
+make check
+```
+
+**3. Check the opcode names against Rust.**
+
+```sh
+make ops
+```
+
+```
+Rust ops: 127   Sail clauses: 4   modeled: 4/127 (3%)
+
+UNMODELED -- 123 Rust ops with no Sail clause:
+  add256, add_u_w, add_w, and, andn, arith256, ...
+
+OK: no stale opcodes.
+```
+
+The UNMODELED list is informational and is meant to be long today; the last
+line is the one that matters. A **STALE** entry is the real failure — it means
+the model describes a machine ZisK no longer ships.
+
+**4. Generate Lean from the model.** Writes twelve modules into
+`build/lean/out/`.
+
+```sh
+make lean
+```
+
+**5. Generate Lean from the AIR constraints.** `--all` takes every AIR; the
+default, `--air Main`, is all the proofs in step 7 need.
+
+```sh
+make pil PIL_AIR=--all
+```
+
+```
+wrote build/pil/Pil/Main.lean (609 constraints)
+  6764 expressions reachable of 9488, 596 named intermediates, 181 witness columns
+...
+wrote build/pil/Pil.lean
+```
+
+55 files under `build/pil/Pil/`, one per AIR plus the prelude, in under a
+second.
+
+**6. Elaborate the constraints.** The first run also fetches the Lean
+toolchain.
+
+```sh
+make pil-build
+```
+
+```
+✔ [57/58] Built Pil
+Build completed successfully.
+```
+
+About 86 s from cold, seconds incrementally. Each of the 4066 constraints is
+now a Lean `Prop` that Lean has checked is well formed: the columns it names
+exist, and its indices are within the extents the pilout declares.
+
+**7. Check the proofs.**
+
+```sh
+make proofs
+```
+
+```
+✔ [5/6] Built Proofs
+Build completed successfully.
+```
+
+Under a second. [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds five
+theorems proved from the generated Main AIR and nothing else; it also records
+where the abstraction stops.
+
+**8. Elaborate the model — this one is expected to fail.**
+
+```sh
+make lean-build
+```
+
+```
+✖ [10/12] Building Out.ZiskStep
+error: ../build/lean/out/Out/ZiskStep.lean:23:20: unknown identifier 'rX'
+... 9 errors ...
+make: *** [Makefile:82: lean-build] Error 1
+```
+
+Nine errors, one per use of the five functions the model declares without
+defining (`rX`, `wX`, `read_mem`, `write_mem`, `rom_fetch`). The other nine
+modules do elaborate. This is exactly the gap described in step 1 of
+[Next steps](#next-steps), and it is why the correspondence theorem cannot yet
+be stated. When this command passes, the disclaimer above is a step closer to
+deletable.
+
+Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
+13 tests.
+
+### What a clean run establishes
+
+- The ISA model is well typed, and every opcode it names still exists in
+  `core/src/zisk_ops.rs`.
+- The 4066 constraints of the pilout ZisK ships are well-formed propositions
+  over a commutative ring, in Lean, **generated rather than transcribed**, each
+  carrying the `.pil` file and line it came from.
+- Those definitions are usable for proof, not merely well formed: five
+  theorems about the Main AIR go through by `grind` alone.
+
+### And what it does not
+
+- **No correspondence.** Nothing yet relates the model to the AIR. That
+  relation is the verification, and it is unwritten.
+- **123 of 127 opcodes are unmodeled**, as are memory and the register file.
+- **Lookup and permutation arguments are out of scope.** The extractor reads
+  the AIR's algebraic constraints; the pilout's 4211 hints — where range checks
+  such as the booleanity of a `bits(1)` column live — are not extracted, so a
+  `bits(1)` column is not known here to be boolean.
+- **The AIR is checked, not the prover.** Nothing here says the witness
+  computation fills the columns these constraints describe, nor anything about
+  the soundness of the STARK backend.
 
 ## Why `check_ops.py` exists
 
