@@ -1616,6 +1616,29 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
+    /// Whether to skip the CPU verification of each proof an aggregation node absorbs.
+    ///
+    /// Soundness does not rest on it -- the recursive2 circuit verifies its children, so a bad
+    /// peer proof still fails at the final vadcop proof -- but it costs ~68ms of every fold, a
+    /// third of the fold's wall time. Opt in per deployment via the worker unit's environment;
+    /// only do so where the peers are trusted, since it delays catching a corrupt one.
+    fn skip_agg_verification() -> bool {
+        static SKIP: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *SKIP.get_or_init(|| {
+            let skip = std::env::var("ZISK_SKIP_AGG_VERIFICATION")
+                .map(|v| matches!(v.trim(), "1" | "true" | "TRUE" | "yes"))
+                .unwrap_or(false);
+            if skip {
+                tracing::warn!(
+                    "ZISK_SKIP_AGG_VERIFICATION is set: absorbed aggregation proofs are not \
+                     verified on receipt; a corrupt peer proof will surface at the final proof \
+                     instead of at the fold"
+                );
+            }
+            skip
+        })
+    }
+
     /// Proof options for the prove/contribution/aggregation phases.
     /// Aggregation must always be enabled so proofman returns partial proof data.
     fn get_prove_options(&self, minimal: bool) -> ProofOptions {
@@ -1626,6 +1649,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             rma: true,
             minimal_memory: self.prover_config.minimal_memory,
             compressed: minimal,
+            skip_agg_verification: Self::skip_agg_verification(),
         }
     }
 
@@ -1639,6 +1663,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             rma: true,
             minimal_memory: self.prover_config.minimal_memory,
             compressed: false,
+            skip_agg_verification: false,
         }
     }
 

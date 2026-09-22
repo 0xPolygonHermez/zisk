@@ -77,9 +77,13 @@ pub struct AggScheduler {
     arity: usize,
     n_leaves: usize,
     distributed: bool,
-    /// The one node still taking inputs. At most one exists: a new node is seeded
-    /// only when the open one has no room, and a full node closes immediately.
-    open: Option<AggNode>,
+    /// Nodes still taking inputs. Several may be open at once: a set is held back
+    /// rather than folded against a mismatched partner when an equal-weight one is
+    /// still in flight, which is what keeps the tree from degenerating into a chain.
+    /// Undistributed runs keep at most one (see `group_cap`).
+    open: Vec<AggNode>,
+    /// Leaves fed in so far, to tell "a leaf may still arrive" from "that was the last".
+    leaves_seen: usize,
     /// Nodes folding, keyed by worker; inputs retained until they export.
     live: HashMap<WorkerId, AggNode>,
     /// Workers with an aggregation task sent but not yet acked, and what it was.
@@ -100,7 +104,8 @@ impl AggScheduler {
             arity: arity.max(2),
             n_leaves,
             distributed,
-            open: None,
+            open: Vec::new(),
+            leaves_seen: 0,
             live: HashMap::new(),
             inflight: HashMap::new(),
             pending: VecDeque::new(),
@@ -154,10 +159,62 @@ impl AggScheduler {
         Some(dispatch)
     }
 
+    /// Whether a set of this weight can still turn up: an unarrived leaf, or a node
+    /// already folding that will export one. Open nodes are deliberately NOT counted --
+    /// they only produce once something else closes them, so waiting on one could wait
+    /// forever. Every hold this justifies is backed by work already in flight.
+    fn more_of_weight_expected(&self, weight: usize) -> bool {
+        if self.live.values().any(|n| n.covers.len() == weight) {
+            return true;
+        }
+        // Leaves that have not landed yet will pair among themselves, so enough of them
+        // can still build a partner of this weight. Both terms shrink monotonically --
+        // leaves all arrive, live nodes all export -- so this cannot hold a set forever:
+        // once it goes false the set folds against whatever is nearest.
+        self.n_leaves - self.leaves_seen >= weight
+    }
+
+    /// The open node to fold this set into, or `None` to hold the set open instead.
+    ///
+    /// Equal weight first, so the tree grows level by level. Failing that the set waits,
+    /// but only while an equal-weight partner is still in flight; once nothing more of
+    /// its weight can arrive it takes the nearest partner rather than stalling. That
+    /// fallback is what guarantees progress: after the last arrival nothing is live, so
+    /// every subsequent set folds.
+    fn pick_partner(&self, set: &AggSet) -> Option<usize> {
+        if self.open.is_empty() {
+            return None;
+        }
+        // Undistributed: one node takes everything, exactly as before.
+        if !self.distributed {
+            return Some(0);
+        }
+        let weight = set.covers.len();
+        if let Some(i) = self.open.iter().position(|n| n.covers.len() == weight) {
+            return Some(i);
+        }
+        if self.more_of_weight_expected(weight) {
+            return None;
+        }
+        // Nearest weight, so the flush still pairs like with like where it can.
+        self.open
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, n)| n.covers.len().abs_diff(weight))
+            .map(|(i, _)| i)
+    }
+
     fn schedule(&mut self, set: AggSet) -> Option<AggDispatch> {
-        let Some(mut node) = self.open.take() else {
-            // Nothing to fold against: its holder drains straight to the final
-            // proof. The single-worker job, where one leaf is the whole tree.
+        if set.covers.len() == 1 {
+            self.leaves_seen += 1;
+        }
+
+        let partner = self.pick_partner(&set);
+
+        let Some(idx) = partner else {
+            // Nothing to fold against. A set already covering the job is the whole tree,
+            // so its holder drains straight to the final proof -- the single-worker job,
+            // and the last set standing once everything else has folded into it.
             if set.covers.len() >= self.n_leaves {
                 let worker = set.location.clone();
                 let covers = set.covers.clone();
@@ -181,7 +238,7 @@ impl AggScheduler {
                 });
             }
 
-            self.open = Some(AggNode {
+            self.open.push(AggNode {
                 worker: set.location.clone(),
                 covers: set.covers.clone(),
                 inputs: vec![set],
@@ -189,6 +246,8 @@ impl AggScheduler {
             });
             return None;
         };
+
+        let mut node = self.open.remove(idx);
 
         // A set already held by this node never crosses the wire.
         let held = set.location == node.worker;
@@ -209,7 +268,7 @@ impl AggScheduler {
         if last {
             self.live.insert(worker.clone(), node);
         } else {
-            self.open = Some(node);
+            self.open.push(node);
         }
 
         Some(AggDispatch {
@@ -241,7 +300,7 @@ impl AggScheduler {
     /// has seen, and replaying the queued tail would register those indexes twice.
     pub fn replay_for(&mut self, worker: &WorkerId) -> Option<AggDispatch> {
         let node =
-            self.live.get(worker).or_else(|| self.open.as_ref().filter(|n| &n.worker == worker))?;
+            self.live.get(worker).or_else(|| self.open.iter().find(|n| &n.worker == worker))?;
 
         // Everything must come from the delivered prefix. A node closes when its
         // drain dispatch is created, which may still be queued -- replaying it as a
@@ -272,7 +331,7 @@ impl AggScheduler {
     /// nothing the coordinator cannot replace, so losing it costs the job nothing.
     pub fn holds_work(&self, worker: &WorkerId) -> bool {
         self.live.contains_key(worker)
-            || self.open.as_ref().is_some_and(|n| &n.worker == worker)
+            || self.open.iter().any(|n| &n.worker == worker)
             || self.inflight.contains_key(worker)
     }
 }
@@ -340,6 +399,166 @@ mod tests {
             sent.extend(sched.on_ack(&dispatch.worker));
         }
         folds
+    }
+
+    /// Drive the scheduler like `run`, but return the depth of the finished tree --
+    /// the number of folds on its longest root-to-leaf path, which is what phase 3
+    /// actually waits through.
+    fn run_depth(order: &[u32], arity: usize) -> usize {
+        let mut sched = AggScheduler::new(arity, order.len(), true);
+        let mut ready: VecDeque<(AggSet, usize)> =
+            order.iter().map(|&i| (leaf(i), 0usize)).collect();
+        let mut sent: VecDeque<AggDispatch> = VecDeque::new();
+        // Depth of each set currently held by a node, keyed by the leaves it covers.
+        let mut depth_of: HashMap<BTreeSet<u32>, usize> = HashMap::new();
+        let mut deepest = 0;
+
+        loop {
+            if let Some((set, depth)) = ready.pop_front() {
+                depth_of.insert(set.covers.clone(), depth);
+                sent.extend(sched.on_set_ready(set));
+                continue;
+            }
+            let Some(dispatch) = sent.pop_front() else { break };
+
+            if dispatch.last_proof {
+                let node = sched.take_live(&dispatch.worker).expect("a closed node is live");
+                let d = node
+                    .inputs
+                    .iter()
+                    .map(|i| depth_of.get(&i.covers).copied().unwrap_or(0))
+                    .max()
+                    .unwrap_or(0)
+                    + 1;
+                deepest = deepest.max(d);
+                if !dispatch.final_proof {
+                    let covers: Vec<u32> = node.covers.iter().copied().collect();
+                    ready.push_back((set_of(index_of(&node.worker), &covers), d));
+                }
+            }
+            sent.extend(sched.on_ack(&dispatch.worker));
+        }
+        deepest
+    }
+
+    /// Depth when leaves trickle in rather than arriving together: after each leaf,
+    /// every fold it made possible runs to completion before the next leaf shows up.
+    /// This is the shape production actually sees -- phase 2 finishes over ~400ms while
+    /// a fold takes ~215ms -- and it is what turns a greedy scheduler into a chain.
+    fn run_depth_staggered(order: &[u32], arity: usize) -> usize {
+        let mut sched = AggScheduler::new(arity, order.len(), true);
+        let mut leaves: VecDeque<AggSet> = order.iter().map(|&i| leaf(i)).collect();
+        let mut sent: VecDeque<AggDispatch> = VecDeque::new();
+        let mut exports: VecDeque<(AggSet, usize)> = VecDeque::new();
+        let mut depth_of: HashMap<BTreeSet<u32>, usize> = HashMap::new();
+        let mut deepest = 0;
+
+        loop {
+            // Exports first: they are already in flight when the next leaf lands.
+            if let Some((set, d)) = exports.pop_front() {
+                depth_of.insert(set.covers.clone(), d);
+                sent.extend(sched.on_set_ready(set));
+                continue;
+            }
+            if let Some(dispatch) = sent.pop_front() {
+                if dispatch.last_proof {
+                    let node = sched.take_live(&dispatch.worker).expect("closed node is live");
+                    let d = node
+                        .inputs
+                        .iter()
+                        .map(|i| depth_of.get(&i.covers).copied().unwrap_or(0))
+                        .max()
+                        .unwrap_or(0)
+                        + 1;
+                    deepest = deepest.max(d);
+                    if !dispatch.final_proof {
+                        let covers: Vec<u32> = node.covers.iter().copied().collect();
+                        exports.push_back((set_of(index_of(&node.worker), &covers), d));
+                    }
+                }
+                sent.extend(sched.on_ack(&dispatch.worker));
+                continue;
+            }
+            let Some(set) = leaves.pop_front() else { break };
+            depth_of.insert(set.covers.clone(), 0);
+            sent.extend(sched.on_set_ready(set));
+        }
+        deepest
+    }
+
+    #[test]
+    fn a_staggered_arrival_still_does_not_build_a_chain() {
+        // The regression this guards: folding whatever arrived next against whatever was
+        // open left one branch several levels deeper than the rest, and phase 3 waits on
+        // the deepest branch. Two levels of slack is generous -- a chain over 8 leaves is
+        // 7 deep -- while leaving room for the flush to pair unlike weights at the end.
+        for n in [2usize, 3, 4, 5, 6, 7, 8, 11, 16] {
+            let order: Vec<u32> = (0..n as u32).collect();
+            let floor = (usize::BITS - (n - 1).leading_zeros()) as usize;
+            let depth = run_depth_staggered(&order, 2);
+            // Powers of two pair exactly and sit on the floor. Other sizes leave an odd
+            // set over that can only fold against a heavier partner, costing one level.
+            let allowed = if n.is_power_of_two() { floor } else { floor + 1 };
+            assert!(
+                depth <= allowed,
+                "n={n} staggered depth={depth} allowed={allowed}: degenerating toward a chain"
+            );
+        }
+    }
+
+    #[test]
+    fn the_tree_stays_balanced_whatever_the_arrival_order() {
+        // A chain over n leaves is n-1 deep; the floor is ceil(log2(n)). The scheduler
+        // holds a set back rather than fold it against a mismatched partner, so it should
+        // sit on the floor -- this is the whole point of pick_partner.
+        for n in [2usize, 3, 4, 5, 6, 7, 8, 12, 16] {
+            let floor = (usize::BITS - (n - 1).leading_zeros()) as usize; // ceil(log2 n)
+            for order in
+                [(0..n as u32).collect::<Vec<_>>(), (0..n as u32).rev().collect::<Vec<_>>()]
+            {
+                let depth = run_depth(&order, 2);
+                assert_eq!(depth, floor, "n={n} order={order:?} depth={depth} floor={floor}");
+            }
+        }
+    }
+
+    #[test]
+    fn balancing_does_not_change_the_number_of_folds() {
+        // Depth is bought by ordering the folds better, not by doing more of them.
+        for n in [2usize, 3, 5, 8, 12, 16] {
+            let order: Vec<u32> = (0..n as u32).collect();
+            assert_eq!(run(&order, 2, true), n - 1, "n={n}");
+        }
+    }
+
+    #[test]
+    fn no_arrival_order_can_wedge_the_scheduler() {
+        // pick_partner holds a set back when a better partner may still turn up. If that
+        // expectation is ever wrong the set sits open forever and the job hangs until the
+        // phase-3 timeout, so every order must still complete all n-1 folds. Deterministic
+        // pseudo-random orders, both feeding styles.
+        let mut seed = 0x9E3779B97F4A7C15u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for n in 1usize..=17 {
+            for _ in 0..40 {
+                let mut order: Vec<u32> = (0..n as u32).collect();
+                for i in (1..order.len()).rev() {
+                    order.swap(i, (next() % (i as u64 + 1)) as usize);
+                }
+                // One leaf is the whole tree: it drains straight to the final proof,
+                // which is a fold of its own rather than n-1 = 0 of them.
+                let expected = if n == 1 { 1 } else { n - 1 };
+                assert_eq!(run(&order, 2, true), expected, "batched, n={n}, order={order:?}");
+                // Staggered completes too: reaching a depth at all means it terminated.
+                let d = run_depth_staggered(&order, 2);
+                assert!(d >= 1 || n == 1, "staggered wedged, n={n}, order={order:?}");
+            }
+        }
     }
 
     #[test]
