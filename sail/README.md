@@ -14,6 +14,91 @@ several things that today are written by hand and can drift apart:
                      └─→ Rocq / Isabelle      (if ever wanted)
 ```
 
+## What Sail is, and why the ISA is not written in Lean directly
+
+**Sail is a language for writing down an instruction set**, developed by the
+[REMS](https://www.cl.cam.ac.uk/~pes20/rems/) project at Cambridge. A Sail
+model reads roughly like the pseudocode in an ISA manual — registers, memory
+effects, a function per instruction — but it is typechecked rather than prose:
+bitvectors carry their length in their type, and the arithmetic side conditions
+that produces are discharged by an SMT solver (z3) while the model is checked.
+Besides the RISC-V model linked above, there are Sail models of Arm-A and of
+CHERI.
+
+Sail is a *specification* language, not a logic: it has no theorems, no proofs,
+and no tactics. What it has instead are backends. Version 0.19 emits C,
+SystemVerilog, OCaml, Lean 4, Coq/Rocq, Lem (and through it Isabelle/HOL and
+HOL4), SMT problems, and documentation — every one of them from the same
+source text.
+
+**Lean is where the proving happens.** `sail --lean` turns each Sail function
+into a Lean definition — `source_a` below is the model's operand fetch, in the
+`SailM` state monad the backend generates:
+
+```lean
+def source_a (inst : zisk_inst) : SailM (BitVec 64) := do
+  match inst.a_src with
+  | A_C => readReg Zc
+  | A_REG => (pure (rX (Sail.BitVec.extractLsb inst.a_imm 4 0)))
+  ...
+```
+
+Those definitions are one half of what this branch is building toward. The
+other half is [`Pil.Zisk.Main.holds`](../tools/pilout-constraints/README.md),
+the AIR constraints ZisK's prover actually enforces, generated out of the
+compiled pilout. The verification is a hand-written Lean theorem relating the
+two, and Lean — not Sail — is where it will live.
+
+So the question is not Sail *or* Lean; it is whether the ISA side of that
+theorem should be hand-written Lean or generated from Sail. Five reasons it is
+Sail:
+
+1. **A specification has to be validated, not just written.** A proof about the
+   wrong description of ZisK is worth nothing, and no proof can tell you the
+   description is wrong. Only running it can. `sail -c` compiles the model to a
+   C emulator fast enough to execute real programs and be differential-tested
+   against `ziskemu` — so the spec can be checked against the machine before
+   anything is proved about it. Hand-written Lean gives no such check.
+2. **One source, several artifacts, no drift.** That is the diagram above. The
+   emulator, the Lean definitions and the documentation are all the same text
+   compiled differently, so they cannot disagree. This is the same argument
+   that makes the constraint side *generated* from the pilout rather than
+   transcribed: the two generated definitions are what makes a proof about ZisK
+   a proof about what ZisK ships.
+3. **ISA-shaped types, checked by the compiler.** `ind_width` is `{1, 2, 4, 8}`
+   in the model, so an illegal indirect width is a type error at compile time
+   where the Rust emulator has a runtime `panic!` — and `a_src`/`b_src` being
+   separate types makes the asymmetry between them unrepresentable. In Lean the
+   same constraints become proof obligations to carry through every lemma.
+4. **The spec is the top of the trust chain, so it has to be readable.**
+   Nothing above it is verified; it is trusted because people read it and agree
+   it describes ZisK. Sail is readable by a ZisK engineer or an external auditor
+   who does not know Lean, which keeps that audience as wide as possible. A
+   Lean specification narrows it to people fluent in Lean.
+5. **ZisK is a RISC-V machine, and RISC-V is already in Sail.** The official
+   model is `sail-riscv`. Sharing its language keeps the door open to comparing
+   against it, or reusing parts of it, instead of reimplementing RISC-V
+   semantics in Lean.
+
+### What it costs
+
+Three costs, since none of the above is free.
+
+**The Sail → Lean backend joins the trusted base.** Nothing proves that the
+Lean it emits means the same thing as the C it emits from the same source: the
+no-drift argument above buys a common origin, not a proof that two backends
+agree. The Lean backend is also the newest of them, and far less
+exercised than the C or Coq output.
+
+**The generated Lean is machine-shaped.** It is monadic and verbose, as the
+snippet above shows, and it is not what anyone would write by hand to prove
+things about. Proofs have to work against definitions this repository does not
+control, and a backend change can move them.
+
+**Two toolchains instead of one.** Sail through opam, Lean through elan, and a
+model that has no module system — which is why `MODEL` in the Makefile is
+order-sensitive.
+
 ## Status
 
 **Early.** 4 of 127 opcodes are modeled — `copyb`, `add`, `eq`, `ltu`, which
