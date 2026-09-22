@@ -1,9 +1,8 @@
 use crate::shmem_sys;
 use crate::AsmShmemHeader;
-use libc::{close, mmap, munmap, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE};
+use libc::{close, mmap, munmap, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE};
 
 use std::{
-    ffi::CString,
     io,
     os::raw::c_void,
     ptr,
@@ -47,12 +46,18 @@ unsafe impl<H: AsmShmemHeader> Send for AsmMultiShmem<H> {}
 unsafe impl<H: AsmShmemHeader> Sync for AsmMultiShmem<H> {}
 
 impl<H: AsmShmemHeader> Drop for AsmMultiShmem<H> {
+    /// Releases this handle's mappings and descriptors — and deliberately does
+    /// *not* `shm_unlink` the segments.
+    ///
+    /// The segments are named per `(pid, local_rank, hints)`, not per program,
+    /// so every program on this worker maps the same ones. Unlinking here would
+    /// destroy a segment another program's live handle is still using, and the
+    /// name would then be silently re-created by the next setup — leaving the
+    /// old inode resident and pinned with nothing able to reach it. Reaping the
+    /// names belongs to whoever owns the prefix: `cleanup_stale_shmem()` at
+    /// worker start, and the janitor.
     fn drop(&mut self) {
         for i in 0..self.mapped_files.len() {
-            let file_name = format!("{}_{}", self.base_name, i);
-            if let Ok(c_name) = CString::new(file_name) {
-                unsafe { shm_unlink(c_name.as_ptr()) };
-            }
             unsafe { close(self.mapped_files[i].fd) };
         }
 
@@ -274,8 +279,8 @@ impl<H: AsmShmemHeader> AsmMultiShmem<H> {
     /// # Panics
     /// Panics if no files are mapped yet. This is an invariant guard, not an I/O
     /// path: with no mapped files there is no readable header and the read would
-    /// be UB. `open_and_map` always maps `_0` and `release_incremental` keeps it,
-    /// so on a live handle this never fires.
+    /// be UB. `open_and_map` always maps `_0` and nothing ever unmaps it for the
+    /// handle's lifetime, so on a live handle this never fires.
     pub fn map_header(&self) -> H {
         if self.mapped_files.is_empty() {
             panic!("Multi-shmem '{}' has no mapped files, cannot read header", self.base_name);
@@ -329,6 +334,11 @@ mod tests {
         }
     }
 
+    fn unlink_segment(name: &str) {
+        let c = CString::new(name).unwrap();
+        unsafe { libc::shm_unlink(c.as_ptr()) };
+    }
+
     #[test]
     fn open_and_map_maps_file_zero_and_reads_header() {
         let base = format!("ZISK_unittest_multi_{}", std::process::id());
@@ -354,7 +364,8 @@ mod tests {
         assert_eq!(m.total_mapped_size(), initial);
         assert!(!m.mapped_ptr().is_null());
         assert!(!m.data_ptr().is_null());
-        // Drop unlinks `{base}_0` and frees the reserved range.
+        drop(m); // Frees the reserved range; Drop no longer unlinks — segments are shared.
+        unlink_segment(&file0);
     }
 
     #[test]
