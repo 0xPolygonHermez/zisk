@@ -1095,8 +1095,8 @@ dependencies = [
  "predicates",
  "proofman",
  "proofman-common",
- "proofman-fields",
- "proofman-starks-lib-c",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rand 0.8.8",
  "rayon",
  "reqwest",
@@ -3993,7 +3993,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4004,13 +4004,13 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
 dependencies = [
  "anyhow",
  "num-bigint",
  "num-traits",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "serde",
  "serde_json",
  "tera",
@@ -4020,7 +4020,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
 dependencies = [
  "anyhow",
  "clap",
@@ -4030,8 +4030,8 @@ dependencies = [
  "pil2-stark-recurser",
  "proofman-common",
  "proofman-exps-codegen",
- "proofman-fields",
- "proofman-starks-lib-c",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "prost 0.13.5",
  "rayon",
@@ -4046,11 +4046,11 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
 dependencies = [
  "colored",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-hints",
  "proofman-util",
  "proofman-witness",
@@ -4264,7 +4264,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
 dependencies = [
  "bincode",
  "blake3",
@@ -4279,12 +4279,12 @@ dependencies = [
  "pil2-std-lib",
  "proofman-common",
  "proofman-curves",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-hints",
  "proofman-macros",
- "proofman-starks-lib-c",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-witness",
  "rayon",
  "serde",
@@ -4296,7 +4296,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
 dependencies = [
  "borsh",
  "colored",
@@ -4307,9 +4307,9 @@ dependencies = [
  "libloading",
  "mpi",
  "num_cpus",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-macros",
- "proofman-starks-lib-c",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "serde",
@@ -4324,18 +4324,18 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
 dependencies = [
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
 ]
 
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
 dependencies = [
  "anyhow",
- "proofman-starks-src",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rayon",
  "regex",
  "serde",
@@ -4352,26 +4352,39 @@ dependencies = [
  "cfg-if",
  "num-bigint",
  "paste",
- "proofman-starks-lib-c",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0)",
+ "serde",
+]
+
+[[package]]
+name = "proofman-fields"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
+dependencies = [
+ "blake3",
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "serde",
 ]
 
 [[package]]
 name = "proofman-hints"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
 dependencies = [
  "itoa",
  "proofman-common",
- "proofman-fields",
- "proofman-starks-lib-c",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "tracing",
 ]
 
 [[package]]
 name = "proofman-macros"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4384,7 +4397,16 @@ version = "1.3.0-alpha"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
 dependencies = [
  "crossbeam-channel",
- "proofman-starks-src",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0)",
+]
+
+[[package]]
+name = "proofman-starks-lib-c"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
+dependencies = [
+ "crossbeam-channel",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
 ]
 
 [[package]]
@@ -4393,9 +4415,14 @@ version = "1.3.0-alpha"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
 
 [[package]]
+name = "proofman-starks-src"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
+
+[[package]]
 name = "proofman-util"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4408,7 +4435,19 @@ source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=featur
 dependencies = [
  "bincode",
  "num-traits",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0)",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "proofman-verifier"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
+dependencies = [
+ "bincode",
+ "num-traits",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rayon",
  "serde",
  "tracing",
@@ -4417,11 +4456,11 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0#61d7da32e2aa9edc5670f85f87b0cd6689616572"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation#557a9c2b3c8674c09ab9a44c95b8ebdb143a5e97"
 dependencies = [
  "libloading",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
 ]
 
 [[package]]
@@ -7313,7 +7352,7 @@ dependencies = [
  "anyhow",
  "libc",
  "named-sem",
- "proofman-starks-lib-c",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "thiserror 2.0.20",
@@ -7387,8 +7426,8 @@ dependencies = [
  "paste",
  "proofman",
  "proofman-common",
- "proofman-fields",
- "proofman-verifier",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "serde",
  "serde_json",
  "sha2",
@@ -7503,7 +7542,7 @@ name = "zisk-core"
 version = "1.3.0-alpha"
 dependencies = [
  "paste",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rayon",
  "sha2",
  "tiny-keccak",
@@ -7529,7 +7568,7 @@ dependencies = [
  "pil2-std-lib",
  "proofman",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "proofman-witness",
  "rayon",
@@ -7587,7 +7626,7 @@ name = "zisk-pil"
 version = "1.3.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-macros",
  "serde",
  "serde_arrays",
@@ -7608,7 +7647,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "regex",
@@ -7636,7 +7675,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "rustfmt-wrapper",
@@ -7664,7 +7703,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7682,7 +7721,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7700,7 +7739,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7717,7 +7756,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7733,7 +7772,7 @@ name = "zisk-precomp-common"
 version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rayon",
  "zisk-common",
  "zisk-core",
@@ -7747,7 +7786,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7765,7 +7804,7 @@ dependencies = [
  "clap",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -7811,7 +7850,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "tiny-keccak",
@@ -7830,7 +7869,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7847,7 +7886,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7894,9 +7933,9 @@ dependencies = [
  "colored",
  "proofman",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "serde",
  "tracing",
  "zisk-asm-runner",
@@ -7924,8 +7963,8 @@ dependencies = [
  "pil2-stark-setup",
  "proofman",
  "proofman-common",
- "proofman-fields",
- "proofman-verifier",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "serde",
  "serde_json",
  "tera",
@@ -7950,7 +7989,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -7966,8 +8005,8 @@ dependencies = [
  "bincode",
  "proofman",
  "proofman-common",
- "proofman-fields",
- "proofman-verifier",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rayon",
  "serde",
  "serde_json",
@@ -7991,7 +8030,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -8007,7 +8046,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rayon",
  "static_assertions",
  "tracing",
@@ -8023,7 +8062,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "clap",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "static_assertions",
  "zisk-core",
 ]
@@ -8034,7 +8073,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -8052,7 +8091,7 @@ dependencies = [
  "env",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -8067,7 +8106,7 @@ name = "zisk-sm-mem-common"
 version = "1.3.0-alpha"
 dependencies = [
  "clap",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rayon",
  "static_assertions",
  "tracing",
@@ -8092,7 +8131,7 @@ name = "zisk-sm-rom"
 version = "1.3.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -8147,8 +8186,8 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.3.0-alpha"
 dependencies = [
- "proofman-fields",
- "proofman-verifier",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0)",
 ]
 
 [[package]]
@@ -8165,7 +8204,7 @@ dependencies = [
  "config",
  "proofman",
  "proofman-common",
- "proofman-verifier",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rayon",
  "serde",
  "time",
@@ -8208,7 +8247,7 @@ dependencies = [
  "memmap2",
  "num-format",
  "object",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rayon",
  "regex",
  "serde_json",
@@ -8254,7 +8293,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "paste",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rand 0.8.8",
  "ripemd",
  "secp256k1",
@@ -8285,7 +8324,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "paste",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fdistributed-aggregation-1.3.0-aggfold-instrumentation)",
  "rand 0.8.8",
  "ripemd",
  "serde",
