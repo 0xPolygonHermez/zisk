@@ -1,0 +1,604 @@
+; ============================================================================
+; secp256k1/curve.zisk - curve point operations for secp256k1. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/secp256k1/curve.rs. A point is 8 u64:
+; x[0..4] ‖ y[0..4], little-endian limbs.
+;
+; PARTIAL: the leaf routines are ported so far — point_add (secp256k1_add/_dbl
+; precompiles + inline 256-bit compares) and is_on_curve (inline arith256_mod).
+; The remaining routines (scalar_mul, double_scalar_mul_with_g, msm,
+; jacobian_to_affine, lift_x) call the field/scalar routines in loops and need a
+; stack-based `ra` save/restore calling convention; they come next.
+;
+; Internal labels: `pa_` (point_add), `oc_` (is_on_curve).
+; ============================================================================
+
+; RAM scratch: the running point for point_add, the secp256k1_add 2-ptr header,
+; and the is_on_curve arith256_mod header + operands.
+u64 SECP_PT_R[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+u64 SECP_PT_HDR[2] = 0, 0
+u64 SECP_OC_HDR[5] = 0, 0, 0, 0, 0
+u64 SECP_OC_LHS[4] = 0, 0, 0, 0
+u64 SECP_OC_T[4]   = 0, 0, 0, 0
+u64 SECP_OC_RHS[4] = 0, 0, 0, 0
+
+; u64 zisklib_point_add_secp256k1(const u64* p1, const u64* p2, u64* result)
+;   [r10=p1, r11=p2, r12=result] -> r10 = 1 if the sum is the point at infinity
+;   (then result is untouched), else 0 (result = p1 + p2). Both inputs must be
+;   on-curve, non-identity, canonical. Mirrors add_non_infinity_points: x1 != x2
+;   -> secp256k1_add; else y1 == y2 -> secp256k1_dbl; else infinity.
+zisklib_point_add_secp256k1:
+	; R = p1 (copy 8 u64 so the precompile updates a scratch, not the caller)
+	copyb(0, r10) -> r5
+	copyb(0, SECP_PT_R) -> r6
+	copyb(0, 8) -> r7
+pa_cp:
+	eq(r7, 0), j(pa_xcmp)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(pa_cp)
+pa_xcmp:
+	; x1 == x2 ? (R.x vs p2.x)
+	copyb(0, SECP_PT_R) -> r5
+	copyb(0, r11) -> r6
+	copyb(0, 4) -> r7
+pa_xl:
+	eq(r7, 0), j(pa_ycmp)              ; x equal -> check y
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(pa_xn)
+	jump(pa_doadd)                     ; x differs -> add
+pa_xn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(pa_xl)
+pa_ycmp:
+	; y1 == y2 ? (R.y vs p2.y)
+	copyb(0, SECP_PT_R) -> r5
+	add(r5, 32) -> r5
+	copyb(0, r11) -> r6
+	add(r6, 32) -> r6
+	copyb(0, 4) -> r7
+pa_yl:
+	eq(r7, 0), j(pa_dodbl)             ; y also equal -> double
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(pa_yn)
+	jump(pa_inf)                       ; x equal, y differ -> P + (-P) = infinity
+pa_yn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(pa_yl)
+pa_doadd:
+	copyb(0, SECP_PT_HDR) -> r5
+	copyb(0, SECP_PT_R) -> r6
+	copyb(r5, r6) -> 8[a + 0]          ; &p1 = &R
+	copyb(r5, r11) -> 8[a + 8]         ; &p2
+	secp256k1_add(0, r5)               ; R += p2 (in place)
+	jump(pa_store)
+pa_dodbl:
+	copyb(0, SECP_PT_R) -> r5
+	secp256k1_dbl(0, r5)               ; R = 2R (in place)
+pa_store:
+	copyb(0, SECP_PT_R) -> r5
+	copyb(0, 8) -> r7
+pa_sl:
+	eq(r7, 0), j(pa_ret0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r12, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r12, 8) -> r12
+	sub(r7, 1) -> r7
+	jump(pa_sl)
+pa_ret0:
+	copyb(0, 0) -> r10                 ; finite result
+	ret
+pa_inf:
+	copyb(0, 1) -> r10                 ; point at infinity
+	ret
+
+; u64 zisklib_is_on_curve_secp256k1(const u64* p)  [r10=p] -> r10 = 1 if on curve.
+;   Checks y^2 == x^3 + 7 (mod P), or p == identity (all zero). Leaf: the field
+;   ops are inlined as arith256_mod with fixed P.
+zisklib_is_on_curve_secp256k1:
+	; lhs = y*y mod P   (y = p + 32)
+	copyb(0, SECP_OC_HDR) -> r5
+	copyb(0, r10) -> r7
+	add(r7, 32) -> r7
+	copyb(r5, r7) -> 8[a + 0]
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, SECP_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, SECP_OC_LHS) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; t = x*x mod P
+	copyb(0, SECP_OC_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, SECP_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, SECP_OC_T) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; t = t*x mod P   (= x^3)
+	copyb(0, SECP_OC_HDR) -> r5
+	copyb(0, SECP_OC_T) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, SECP_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, SECP_OC_T) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; rhs = t + E_B mod P   (= x^3 + 7, computed as t*1 + E_B)
+	copyb(0, SECP_OC_HDR) -> r5
+	copyb(0, SECP_OC_T) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, SECP_ONE) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	copyb(0, SECP_E_B) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, SECP_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, SECP_OC_RHS) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; lhs == rhs ?
+	copyb(0, SECP_OC_LHS) -> r5
+	copyb(0, SECP_OC_RHS) -> r6
+	copyb(0, 4) -> r7
+oc_eq:
+	eq(r7, 0), j(oc_yes)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(oc_eqn)
+	jump(oc_ident)
+oc_eqn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(oc_eq)
+oc_ident:
+	; p == identity (all 8 words zero) ?
+	copyb(0, r10) -> r5
+	copyb(0, 8) -> r7
+oc_idl:
+	eq(r7, 0), j(oc_yes)
+	copyb(r5, 8[a + 0]) -> r14
+	ltu(0, r14), j(oc_no)              ; nonzero word -> not identity
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(oc_idl)
+oc_yes:
+	copyb(0, 1) -> r10
+	ret
+oc_no:
+	copyb(0, 0) -> r10
+	ret
+
+; RAM scratch for scalar_mul: the reduced scalar, the base point, the running
+; accumulator, the secp256k1_add header, and the saved result pointer.
+u64 SECP_SM_K[4]     = 0, 0, 0, 0
+u64 SECP_SM_BASE[8]  = 0, 0, 0, 0, 0, 0, 0, 0
+u64 SECP_SM_RES[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+u64 SECP_SM_HDR[2]   = 0, 0
+u64 SECP_SM_RESPTR[1] = 0
+
+; u64 zisklib_scalar_mul_secp256k1(const u64* k, const u64* p, u64* result)
+;   [r10=k, r11=p, r12=result] -> r10 = 1 if the result is infinity (result
+;   untouched), else 0 (result = k*p). p must be on-curve, non-identity, canonical.
+;   Left-to-right double-and-add reading k's bits directly (k is trusted memory,
+;   so no msb hint / reconstruction is needed). Only nested call is reduce_fn, so
+;   ra is saved with push/pop; loop state (bit index r15, res_is_inf r13) lives in
+;   registers, which survive the dbl/add precompiles. Labels `sm_`.
+zisklib_scalar_mul_secp256k1:
+	push r1
+	; save result pointer (reduce_fn may clobber caller-saved r12)
+	copyb(0, SECP_SM_RESPTR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; base = p  (copy before reduce_fn clobbers r11)
+	copyb(0, r11) -> r5
+	copyb(0, SECP_SM_BASE) -> r6
+	copyb(0, 8) -> r7
+sm_cpbase:
+	eq(r7, 0), j(sm_reduce)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sm_cpbase)
+sm_reduce:
+	; SECP_SM_K = k mod N   (r10 = k already)
+	copyb(0, SECP_SM_K) -> r11
+	call zisklib_reduce_fn_secp256k1
+
+	; --- trivial cases on the reduced scalar ---
+	; k == 0 -> infinity
+	copyb(0, SECP_SM_K) -> r5
+	copyb(0, 4) -> r6
+sm_zchk:
+	eq(r6, 0), j(sm_inf)               ; all words zero -> k == 0
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(sm_not0)
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(sm_zchk)
+sm_not0:
+	; k == 1 ? -> result = base
+	copyb(0, SECP_SM_K) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 1), j(sm_k1_hi)
+	jump(sm_msb)
+sm_k1_hi:
+	copyb(r5, 8[a + 8]) -> r14
+	ltu(0, r14), j(sm_msb)
+	copyb(r5, 8[a + 16]) -> r14
+	ltu(0, r14), j(sm_msb)
+	copyb(r5, 8[a + 24]) -> r14
+	ltu(0, r14), j(sm_msb)
+	; k == 1: copy base -> result
+	copyb(0, SECP_SM_BASE) -> r5
+	jump(sm_store_from)
+
+sm_msb:
+	; --- find MSB position of SECP_SM_K -> top (r6*64 + hb) ---
+	copyb(0, SECP_SM_K) -> r5
+	add(r5, 24) -> r5
+	copyb(0, 3) -> r6
+sm_findw:
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(sm_foundw)
+	sub(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(sm_findw)                     ; k != 0 guaranteed, so a word is nonzero
+sm_foundw:
+	sll(r6, 6) -> r6
+sm_hb:
+	srl(r7, 1) -> r14
+	eq(r14, 0), j(sm_loop_init)
+	copyb(0, r14) -> r7
+	add(r6, 1) -> r6
+	jump(sm_hb)
+sm_loop_init:
+	sub(r6, 1) -> r15                  ; p = top - 1 (the MSB itself sets res=base)
+	; res = base ; res_is_inf = 0 (r13)
+	copyb(0, SECP_SM_BASE) -> r5
+	copyb(0, SECP_SM_RES) -> r6
+	copyb(0, 8) -> r7
+sm_cpres:
+	eq(r7, 0), j(sm_loop)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sm_cpres)
+sm_loop:
+	copyb(0, 0) -> r13                  ; res_is_inf = 0 (res currently = base)
+sm_iter:
+	; res = 2*res  (res is never infinity from here: base is non-identity and the
+	; loop only re-enters infinity transiently below)
+	eq(r13, 0), j(sm_dbl)
+	jump(sm_bit)                       ; skip double while res is infinity
+sm_dbl:
+	copyb(0, SECP_SM_RES) -> r5
+	secp256k1_dbl(0, r5)
+sm_bit:
+	; bit = bit_p(k)
+	srl(r15, 6) -> r6
+	sll(r6, 3) -> r6
+	copyb(0, SECP_SM_K) -> r5
+	add(r5, r6) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	and(r15, 63) -> r7
+	srl(r5, r7) -> r5
+	and(r5, 1) -> r5
+	eq(r5, 0), j(sm_next)              ; bit clear -> no add
+	; --- add base to res ---
+	eq(r13, 0), j(sm_addni)            ; res finite -> add_non_infinity
+	; res is infinity -> res = base, res_is_inf = 0
+	copyb(0, SECP_SM_BASE) -> r5
+	copyb(0, SECP_SM_RES) -> r6
+	copyb(0, 8) -> r7
+sm_setbase:
+	eq(r7, 0), j(sm_setinf0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sm_setbase)
+sm_setinf0:
+	copyb(0, 0) -> r13
+	jump(sm_next)
+sm_addni:
+	; add_non_infinity(res, base): compare res.x vs base.x
+	copyb(0, SECP_SM_RES) -> r5
+	copyb(0, SECP_SM_BASE) -> r6
+	copyb(0, 4) -> r7
+sm_xl:
+	eq(r7, 0), j(sm_ycmp)              ; x equal -> check y
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r28
+	eq(r14, r28), j(sm_xn)
+	jump(sm_doadd)
+sm_xn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sm_xl)
+sm_ycmp:
+	copyb(0, SECP_SM_RES) -> r5
+	add(r5, 32) -> r5
+	copyb(0, SECP_SM_BASE) -> r6
+	add(r6, 32) -> r6
+	copyb(0, 4) -> r7
+sm_yl:
+	eq(r7, 0), j(sm_dodbl2)            ; y equal too -> double
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r28
+	eq(r14, r28), j(sm_yn)
+	copyb(0, 1) -> r13                 ; res == -base -> infinity
+	jump(sm_next)
+sm_yn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sm_yl)
+sm_doadd:
+	copyb(0, SECP_SM_HDR) -> r5
+	copyb(0, SECP_SM_RES) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, SECP_SM_BASE) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	secp256k1_add(0, r5)
+	jump(sm_next)
+sm_dodbl2:
+	copyb(0, SECP_SM_RES) -> r5
+	secp256k1_dbl(0, r5)
+sm_next:
+	; recompute the bit index counter: it lives in r15, but sm_xl/sm_yl reused r28
+	eq(r15, 0), j(sm_finish)
+	sub(r15, 1) -> r15
+	jump(sm_iter)
+sm_finish:
+	eq(r13, 0), j(sm_store_res)
+	jump(sm_inf)
+sm_store_res:
+	copyb(0, SECP_SM_RES) -> r5
+sm_store_from:
+	; copy 8 u64 from r5 -> [SECP_SM_RESPTR]
+	copyb(0, SECP_SM_RESPTR) -> r6
+	copyb(r6, 8[a + 0]) -> r6          ; result ptr
+	copyb(0, 8) -> r7
+sm_st:
+	eq(r7, 0), j(sm_ret0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sm_st)
+sm_ret0:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+sm_inf:
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+
+; RAM scratch for double_scalar_mul_with_g: the two partial products and the
+; saved argument pointers / infinity flags across the nested calls.
+u64 SECP_DSM_A[8]    = 0, 0, 0, 0, 0, 0, 0, 0
+u64 SECP_DSM_B[8]    = 0, 0, 0, 0, 0, 0, 0, 0
+u64 SECP_DSM_K2[1]   = 0
+u64 SECP_DSM_P[1]    = 0
+u64 SECP_DSM_RES[1]  = 0
+u64 SECP_DSM_AINF[1] = 0
+u64 SECP_DSM_BINF[1] = 0
+
+; u64 zisklib_double_scalar_mul_with_g_secp256k1(const u64* k1, const u64* k2,
+;                                                const u64* p, u64* result)
+;   [r10=k1, r11=k2, r12=p, r13=result] -> r10 = 1 if k1*G + k2*p is infinity
+;   (result untouched), else 0. Correctness-first composition: A = k1*G,
+;   B = k2*p (each via scalar_mul, which reduces the scalar and yields infinity on
+;   0), then combine (A inf -> B; B inf -> A; both -> infinity; else point_add,
+;   which yields infinity when A == -B). ziskos uses an optimized Strauss-Shamir
+;   with G+P precompute + special cases; that optimization is deferred. Labels `dsm_`.
+zisklib_double_scalar_mul_with_g_secp256k1:
+	push r1
+	; save k2, p, result pointers (clobbered by the nested scalar_mul calls)
+	copyb(0, SECP_DSM_K2) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, SECP_DSM_P) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, SECP_DSM_RES) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	; A = scalar_mul(k1, G)   (k1 already in r10)
+	copyb(0, SECP_G_X) -> r11
+	copyb(0, SECP_DSM_A) -> r12
+	call zisklib_scalar_mul_secp256k1
+	copyb(0, SECP_DSM_AINF) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	; B = scalar_mul(k2, p)
+	copyb(0, SECP_DSM_K2) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_DSM_P) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, SECP_DSM_B) -> r12
+	call zisklib_scalar_mul_secp256k1
+	copyb(0, SECP_DSM_BINF) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	; combine: r6 = a_inf, r7 = b_inf
+	copyb(0, SECP_DSM_AINF) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, SECP_DSM_BINF) -> r5
+	copyb(r5, 8[a + 0]) -> r7
+	eq(r6, 0), j(dsm_afin)
+	; A is infinity
+	eq(r7, 0), j(dsm_copyB)
+	; both infinity
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+dsm_copyB:
+	copyb(0, SECP_DSM_B) -> r5
+	copyb(0, SECP_DSM_RES) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(0, 8) -> r7
+dsm_cB:
+	eq(r7, 0), j(dsm_fin0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(dsm_cB)
+dsm_afin:
+	; A finite: if B infinity -> result = A; else point_add(A, B)
+	eq(r7, 0), j(dsm_add)
+	copyb(0, SECP_DSM_A) -> r5
+	copyb(0, SECP_DSM_RES) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(0, 8) -> r7
+dsm_cA:
+	eq(r7, 0), j(dsm_fin0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(dsm_cA)
+dsm_fin0:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+dsm_add:
+	copyb(0, SECP_DSM_A) -> r10
+	copyb(0, SECP_DSM_B) -> r11
+	copyb(0, SECP_DSM_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	call zisklib_point_add_secp256k1   ; is_inf -> r10 (A == -B case)
+	pop r1
+	ret
+
+; RAM scratch for lift_x.
+u64 SECP_LX_X[1]   = 0
+u64 SECP_LX_PAR[1] = 0
+u64 SECP_LX_RES[1] = 0
+u64 SECP_LX_HDR[5] = 0, 0, 0, 0, 0
+u64 SECP_LX_T[4]   = 0, 0, 0, 0
+u64 SECP_LX_YSQ[4] = 0, 0, 0, 0
+u64 SECP_LX_Y[4]   = 0, 0, 0, 0
+
+; u64 zisklib_lift_x_secp256k1(const u64* x, u64 y_is_odd, u64* result)
+;   [r10=x, r11=y_is_odd, r12=result] -> r10 = 0 on success (result = (x, y) with
+;   the requested y parity), 1 if x is not a valid curve x (no square root).
+;   Mirrors lift_x: y = sqrt(x^3 + 7) with the requested parity; asserts the parity
+;   matches (soundness — the sqrt hint already selects it). Non-leaf (calls sqrt_fp).
+zisklib_lift_x_secp256k1:
+	push r1
+	copyb(0, SECP_LX_X) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, SECP_LX_PAR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, SECP_LX_RES) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; t = x*x mod P   (r10 = x survives the arith256_mod ops)
+	copyb(0, SECP_LX_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, SECP_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, SECP_LX_T) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; t = t*x mod P   (= x^3)
+	copyb(0, SECP_LX_HDR) -> r5
+	copyb(0, SECP_LX_T) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, SECP_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, SECP_LX_T) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; ysq = t + E_B mod P   (= x^3 + 7)
+	copyb(0, SECP_LX_HDR) -> r5
+	copyb(0, SECP_LX_T) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, SECP_ONE) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	copyb(0, SECP_E_B) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(0, SECP_P) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, SECP_LX_YSQ) -> r6
+	copyb(r5, r6) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	; (y, is_qr) = sqrt_fp(ysq, y_is_odd)
+	copyb(0, SECP_LX_YSQ) -> r10
+	copyb(0, SECP_LX_PAR) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, SECP_LX_Y) -> r12
+	call zisklib_sqrt_fp_secp256k1
+	eq(r10, 0), j(lx_nosqrt)
+	; assert y[0]&1 == y_is_odd
+	copyb(0, SECP_LX_Y) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	and(r6, 1) -> r6
+	copyb(0, SECP_LX_PAR) -> r5
+	copyb(r5, 8[a + 0]) -> r7
+	eq(r6, r7), j(lx_ok)
+	copyb(0, 0) -> r10, end            ; parity mismatch (unreachable given a valid hint)
+lx_ok:
+	; result = (x, y)
+	copyb(0, SECP_LX_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r6          ; result ptr
+	copyb(0, SECP_LX_X) -> r5
+	copyb(r5, 8[a + 0]) -> r5          ; x ptr
+	copyb(0, 4) -> r7
+lx_cx:
+	eq(r7, 0), j(lx_cy)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(lx_cx)
+lx_cy:
+	copyb(0, SECP_LX_Y) -> r5
+	copyb(0, 4) -> r7
+lx_cyl:
+	eq(r7, 0), j(lx_retok)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(lx_cyl)
+lx_retok:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+lx_nosqrt:
+	copyb(0, 1) -> r10
+	pop r1
+	ret

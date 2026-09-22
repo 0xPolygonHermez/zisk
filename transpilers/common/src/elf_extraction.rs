@@ -15,11 +15,24 @@ const RAM_START_ADDR: u64 = RAM_ADDR;
 const RAM_END_ADDR: u64 = RAM_ADDR + RAM_SIZE;
 const ROM_START_ADDR: u64 = ROM_ADDR;
 const ROM_END_ADDR: u64 = ROM_ADDR + ROM_SIZE;
-/// Minimum alignment required for a loadable segment's virtual address and for the
-/// entry point. ZisK decodes the RISC-V C (compressed) extension, whose instructions
-/// are 2-byte units, so the minimum instruction alignment is 2 bytes — a 4-byte
-/// requirement would reject valid entry points that land on a compressed instruction.
+/// RISC-V IALIGN: the alignment every instruction — and therefore the entry point and
+/// the start of an executable segment — must satisfy.
+///
+/// With the `compressed` feature the C extension is decoded, instructions are 2-byte
+/// units and IALIGN = 16 bits; a 4-byte requirement would reject valid entry points
+/// landing on a compressed instruction. Without it a 16-bit parcel is an illegal
+/// instruction (`riscv_interpreter` emits a CHalt rather than decoding it), so
+/// IALIGN = 32 bits and an entry at `% 4 == 2` would start in the middle of an
+/// uncompressed instruction. Reject that here instead of letting it halt at run time.
+#[cfg(feature = "compressed")]
 const INSTRUCTION_ALIGN: u64 = 2;
+#[cfg(not(feature = "compressed"))]
+const INSTRUCTION_ALIGN: u64 = 4;
+
+/// Minimum alignment for *any* loadable segment's virtual address. A non-executable
+/// segment holds no instructions, so IALIGN does not apply to it and tightening this
+/// with the `compressed` feature would reject legitimate data segments.
+const SEGMENT_ALIGN: u64 = 2;
 
 /// All sections that `ZiskRom` cares about in the ELF file, categorized
 #[derive(Debug, Default)]
@@ -122,10 +135,13 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
             print_xr_warning(seg_start);
         }
 
-        // Alignment: p_vaddr must be at least {INSTRUCTION_ALIGN}-byte (instruction) aligned.
-        if seg_start % INSTRUCTION_ALIGN != 0 {
+        // Alignment: every segment must meet SEGMENT_ALIGN; an executable one must also
+        // meet IALIGN, since the transpiler decodes instructions from its first byte and
+        // a misaligned start would desynchronize the whole segment.
+        let align = if is_exec { INSTRUCTION_ALIGN } else { SEGMENT_ALIGN };
+        if seg_start % align != 0 {
             return Err(format!(
-                "PT_LOAD segment virtual address 0x{seg_start:x} is not {INSTRUCTION_ALIGN}-byte aligned"
+                "PT_LOAD segment virtual address 0x{seg_start:x} is not {align}-byte aligned"
             )
             .into());
         }
@@ -388,6 +404,37 @@ pub fn get_symbol_addresses_from_bytes(
     Ok(result)
 }
 
+/// Like [`get_symbol_addresses_from_bytes`], but also returns each symbol's byte
+/// size (`st_size`): name → (address, size). Used by the RISC-V symbol-redirect to
+/// know both where an intercepted guest function starts and how many bytes of its
+/// body to skip.
+pub fn get_symbol_addresses_and_sizes_from_bytes(
+    file_data: &[u8],
+    symbol_names: &[&str],
+) -> Result<HashMap<String, (u64, u64)>, Box<dyn Error>> {
+    let elf = ElfBytes::<LittleEndian>::minimal_parse(file_data)?;
+    let mut result = HashMap::new();
+    let names_set: std::collections::HashSet<&str> = symbol_names.iter().copied().collect();
+
+    if let Some((symtab, strtab)) = elf.symbol_table()? {
+        for sym in symtab {
+            // Skip undefined (imported) entries: they carry st_value = 0, so a redirect
+            // built from one would target address 0, and a later UND entry would
+            // otherwise overwrite the defined symbol this lookup is after.
+            if sym.is_undefined() {
+                continue;
+            }
+            if let Ok(name) = strtab.get(sym.st_name as usize) {
+                if names_set.contains(name) {
+                    result.insert(name.to_string(), (sym.st_value, sym.st_size));
+                }
+            }
+        }
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,8 +564,9 @@ mod tests {
 
     #[test]
     fn test_entry_point_at_last_instruction_is_ok() {
-        // Last addressable 2-byte slot in the segment [start, start+len).
-        let p = payload_with_exec(0x8000_00fe, &[(0x8000_0000, 0x100)]);
+        // Last addressable IALIGN-aligned slot in the segment [start, start+len).
+        let last = 0x8000_0100 - INSTRUCTION_ALIGN;
+        let p = payload_with_exec(last, &[(0x8000_0000, 0x100)]);
         assert!(validate_entry_point(&p).is_ok());
     }
 
@@ -536,11 +584,24 @@ mod tests {
         assert!(validate_entry_point(&p).is_err());
     }
 
+    /// IALIGN is 2 only when the C extension is decoded, so a 2-byte-aligned entry is
+    /// valid exactly when `compressed` is on.
     #[test]
+    #[cfg(feature = "compressed")]
     fn test_entry_point_two_byte_aligned_is_ok() {
         // A compressed-instruction entry (2-byte, not 4-byte aligned) must be accepted.
         let p = payload_with_exec(0x8000_000a, &[(0x8000_0000, 0x100)]);
         assert!(validate_entry_point(&p).is_ok());
+    }
+
+    /// Without `compressed` a 16-bit parcel is illegal (riscv_interpreter emits a CHalt),
+    /// so an entry at `% 4 == 2` would begin mid-instruction. It must be rejected here
+    /// rather than transpiled into a run-time halt.
+    #[test]
+    #[cfg(not(feature = "compressed"))]
+    fn test_entry_point_two_byte_aligned_is_rejected_without_compressed() {
+        let p = payload_with_exec(0x8000_000a, &[(0x8000_0000, 0x100)]);
+        assert!(validate_entry_point(&p).is_err());
     }
 
     #[test]

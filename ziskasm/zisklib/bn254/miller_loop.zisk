@@ -1,0 +1,494 @@
+; ============================================================================
+; bn254/miller_loop.zisk - optimal-ate Miller loop over BN254 (single pair).
+; GENERATED (scratchpad/gen_miller.py). Uses hinted line coeffs (fcalls 8/9).
+; Prefix ml_. (hint-verification checks added in a later pass.)
+; ============================================================================
+
+const u64 ML_LOOP[65] = 1, 1, 0, 1, 0, 0, 2, 0, 1, 1, 0, 0, 0, 2, 0, 0, 1, 1, 0, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 1, 1, 1, 0, 0, 0, 0, 2, 0, 1, 0, 0, 2, 0, 1, 1, 0, 0, 1, 0, 0, 2, 1, 0, 0, 2, 0, 1, 0, 1, 0, 0, 0
+
+u64 ML_P[1] = 0
+u64 ML_Q[1] = 0
+u64 ML_PR[1] = 0
+u64 ML_WP1[1] = 0
+u64 ML_WP2[1] = 0
+u64 ML_XPP[4] = 0,0,0,0
+u64 ML_YPP[4] = 0,0,0,0
+u64 ML_NEGYPP[4] = 0,0,0,0
+u64 ML_TMP4[4] = 0,0,0,0
+u64 ML_R[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ML_R2[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ML_F[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ML_LAMMU[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ML_L[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ML_QP[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ML_QF[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ML_QF2[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ML_UT[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ML_X3[8] = 0,0,0,0,0,0,0,0
+u64 ML_Y3[8] = 0,0,0,0,0,0,0,0
+u64 ML_T1[8] = 0,0,0,0,0,0,0,0
+u64 ML_T2[8] = 0,0,0,0,0,0,0,0
+u64 ML_C1[8] = 0,0,0,0,0,0,0,0
+u64 ML_C2[8] = 0,0,0,0,0,0,0,0
+u64 ML_C3[8] = 0,0,0,0,0,0,0,0
+u64 ML_ILQ1[1] = 0
+u64 ML_ILQ2[1] = 0
+
+; void zisklib_ml_dbl_coeffs_bn254(const u64* r)  [r10=&r(16)] -> ML_LAMMU[16]=(lam,mu)
+zisklib_ml_dbl_coeffs_bn254:
+	fcall_param(16, r10) -> r14
+	fcall(FCALL_BN254_TWIST_DBL_LINE_COEFFS, 0) -> r14
+	copyb(0, ML_LAMMU) -> r6
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	copyb(0, 15) -> r15
+mldc_rd:
+	eq(r15, 0), j(mldc_done)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r15, 1) -> r15
+	jump(mldc_rd)
+mldc_done:
+	ret
+
+; void zisklib_ml_add_coeffs_bn254(const u64* r, const u64* qp)  [r10,r11] -> ML_LAMMU
+zisklib_ml_add_coeffs_bn254:
+	fcall_param(16, r10) -> r14
+	fcall_param(16, r11) -> r14
+	fcall(FCALL_BN254_TWIST_ADD_LINE_COEFFS, 0) -> r14
+	copyb(0, ML_LAMMU) -> r6
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	copyb(0, 15) -> r15
+mlac_rd:
+	eq(r15, 0), j(mlac_done)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r15, 1) -> r15
+	jump(mlac_rd)
+mlac_done:
+	ret
+
+; void zisklib_ml_line_eval_bn254()  uses ML_LAMMU, ML_XPP, ML_NEGYPP -> ML_L
+zisklib_ml_line_eval_bn254:
+	push r1
+	copyb(0, ML_LAMMU) -> r10
+	copyb(0, ML_XPP) -> r11
+	copyb(0, ML_L) -> r12
+	call zisklib_scalar_mul_fp2_bn254
+	copyb(0, ML_LAMMU) -> r10
+	add(r10, 64) -> r10
+	copyb(0, ML_NEGYPP) -> r11
+	copyb(0, ML_L) -> r12
+	add(r12, 64) -> r12
+	call zisklib_scalar_mul_fp2_bn254
+	pop r1
+	ret
+
+; void zisklib_ml_dbl_wh_bn254(const u64* q)  [r10=&q] uses ML_LAMMU -> ML_R2
+zisklib_ml_dbl_wh_bn254:
+	push r1
+	copyb(0, ML_WP1) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ML_WP1) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ML_T1) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	copyb(0, ML_LAMMU) -> r10
+	copyb(0, ML_X3) -> r11
+	call zisklib_square_fp2_bn254
+	copyb(0, ML_T1) -> r10
+	copyb(0, ML_T2) -> r11
+	call zisklib_dbl_fp2_bn254
+	copyb(0, ML_X3) -> r10
+	copyb(0, ML_T2) -> r11
+	copyb(0, ML_X3) -> r12
+	call zisklib_sub_fp2_bn254
+	copyb(0, ML_LAMMU) -> r10
+	copyb(0, ML_X3) -> r11
+	copyb(0, ML_Y3) -> r12
+	call zisklib_mul_fp2_bn254
+	copyb(0, ML_LAMMU) -> r10
+	add(r10, 64) -> r10
+	copyb(0, ML_Y3) -> r11
+	copyb(0, ML_T2) -> r12
+	call zisklib_add_fp2_bn254
+	copyb(0, ML_T2) -> r10
+	copyb(0, ML_Y3) -> r11
+	call zisklib_neg_fp2_bn254
+	copyb(0, ML_X3) -> r10
+	copyb(0, ML_R2) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	copyb(0, ML_Y3) -> r10
+	copyb(0, ML_R2) -> r11
+	add(r11, 64) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+
+; void zisklib_ml_add_wh_bn254(const u64* q1, const u64* q2)  [r10,r11] uses ML_LAMMU -> ML_R2
+zisklib_ml_add_wh_bn254:
+	push r1
+	copyb(0, ML_WP1) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ML_WP2) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ML_WP1) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ML_T1) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	copyb(0, ML_WP2) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ML_T2) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	copyb(0, ML_LAMMU) -> r10
+	copyb(0, ML_X3) -> r11
+	call zisklib_square_fp2_bn254
+	copyb(0, ML_X3) -> r10
+	copyb(0, ML_T1) -> r11
+	copyb(0, ML_X3) -> r12
+	call zisklib_sub_fp2_bn254
+	copyb(0, ML_X3) -> r10
+	copyb(0, ML_T2) -> r11
+	copyb(0, ML_X3) -> r12
+	call zisklib_sub_fp2_bn254
+	copyb(0, ML_LAMMU) -> r10
+	copyb(0, ML_X3) -> r11
+	copyb(0, ML_Y3) -> r12
+	call zisklib_mul_fp2_bn254
+	copyb(0, ML_LAMMU) -> r10
+	add(r10, 64) -> r10
+	copyb(0, ML_Y3) -> r11
+	copyb(0, ML_T2) -> r12
+	call zisklib_add_fp2_bn254
+	copyb(0, ML_T2) -> r10
+	copyb(0, ML_Y3) -> r11
+	call zisklib_neg_fp2_bn254
+	copyb(0, ML_X3) -> r10
+	copyb(0, ML_R2) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	copyb(0, ML_Y3) -> r10
+	copyb(0, ML_R2) -> r11
+	add(r11, 64) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+
+; u64 zisklib_ml_line_check_bn254(const u64* q)  [r10=&q] uses ML_LAMMU -> r10 (y==lam*x+mu)
+zisklib_ml_line_check_bn254:
+	push r1
+	copyb(0, ML_WP1) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ML_WP1) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ML_C1) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	copyb(0, ML_WP1) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 64) -> r10
+	copyb(0, ML_C2) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	copyb(0, ML_LAMMU) -> r10
+	copyb(0, ML_C1) -> r11
+	copyb(0, ML_C3) -> r12
+	call zisklib_mul_fp2_bn254
+	copyb(0, ML_C3) -> r10
+	copyb(0, ML_LAMMU) -> r11
+	add(r11, 64) -> r11
+	copyb(0, ML_C3) -> r12
+	call zisklib_add_fp2_bn254
+	copyb(0, ML_C3) -> r10
+	copyb(0, ML_C2) -> r11
+	copyb(0, 8) -> r12
+	call bn254_eqn
+	pop r1
+	ret
+
+; u64 zisklib_ml_is_tangent_bn254(const u64* q)  [r10=&q] uses ML_LAMMU -> r10 bool
+zisklib_ml_is_tangent_bn254:
+	push r1
+	copyb(0, ML_WP2) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ML_WP2) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 64) -> r10
+	copyb(0, BN_G1_IDENTITY) -> r11
+	copyb(0, 8) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(mit_false)
+	copyb(0, ML_WP2) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_ml_line_check_bn254
+	eq(r10, 0), j(mit_false)
+	copyb(0, ML_WP2) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ML_C1) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	copyb(0, ML_WP2) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 64) -> r10
+	copyb(0, ML_C2) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	copyb(0, ML_LAMMU) -> r10
+	copyb(0, ML_C2) -> r11
+	copyb(0, ML_C3) -> r12
+	call zisklib_mul_fp2_bn254
+	copyb(0, ML_C3) -> r10
+	copyb(0, ML_C3) -> r11
+	call zisklib_dbl_fp2_bn254
+	copyb(0, ML_C1) -> r10
+	copyb(0, ML_C2) -> r11
+	call zisklib_square_fp2_bn254
+	copyb(0, ML_C2) -> r10
+	copyb(0, BN_THREE) -> r11
+	copyb(0, ML_C2) -> r12
+	call zisklib_scalar_mul_fp2_bn254
+	copyb(0, ML_C3) -> r10
+	copyb(0, ML_C2) -> r11
+	copyb(0, 8) -> r12
+	call bn254_eqn
+	pop r1
+	ret
+mit_false:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; u64 zisklib_ml_is_line_bn254(const u64* q1, const u64* q2)  [r10,r11] uses ML_LAMMU -> r10 bool
+zisklib_ml_is_line_bn254:
+	push r1
+	copyb(0, ML_ILQ1) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ML_ILQ2) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ML_ILQ1) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ML_ILQ2) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 8) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(mil_false)
+	copyb(0, ML_ILQ1) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_ml_line_check_bn254
+	eq(r10, 0), j(mil_false)
+	copyb(0, ML_ILQ2) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zisklib_ml_line_check_bn254
+	pop r1
+	ret
+mil_false:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; void zisklib_miller_loop_bn254(const u64* p, const u64* q, u64* result)  [8,16,48]
+zisklib_miller_loop_bn254:
+	push r1
+	copyb(0, ML_Q) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ML_PR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, ML_P) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ML_P) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, ML_YPP) -> r11
+	call zisklib_inv_fp_bn254
+	copyb(0, ML_P) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ML_XPP) -> r11
+	call zisklib_neg_fp_bn254
+	copyb(0, ML_XPP) -> r10
+	copyb(0, ML_YPP) -> r11
+	copyb(0, ML_XPP) -> r12
+	call zisklib_mul_fp_bn254
+	copyb(0, ML_YPP) -> r10
+	copyb(0, ML_NEGYPP) -> r11
+	call zisklib_neg_fp_bn254
+	copyb(0, ML_Q) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ML_R) -> r11
+	copyb(0, 16) -> r12
+	call bn254_memcpy
+	copyb(0, ML_F) -> r11
+	copyb(r11, 1) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(r11, 0) -> 8[a + 32]
+	copyb(r11, 0) -> 8[a + 40]
+	copyb(r11, 0) -> 8[a + 48]
+	copyb(r11, 0) -> 8[a + 56]
+	copyb(r11, 0) -> 8[a + 64]
+	copyb(r11, 0) -> 8[a + 72]
+	copyb(r11, 0) -> 8[a + 80]
+	copyb(r11, 0) -> 8[a + 88]
+	copyb(r11, 0) -> 8[a + 96]
+	copyb(r11, 0) -> 8[a + 104]
+	copyb(r11, 0) -> 8[a + 112]
+	copyb(r11, 0) -> 8[a + 120]
+	copyb(r11, 0) -> 8[a + 128]
+	copyb(r11, 0) -> 8[a + 136]
+	copyb(r11, 0) -> 8[a + 144]
+	copyb(r11, 0) -> 8[a + 152]
+	copyb(r11, 0) -> 8[a + 160]
+	copyb(r11, 0) -> 8[a + 168]
+	copyb(r11, 0) -> 8[a + 176]
+	copyb(r11, 0) -> 8[a + 184]
+	copyb(r11, 0) -> 8[a + 192]
+	copyb(r11, 0) -> 8[a + 200]
+	copyb(r11, 0) -> 8[a + 208]
+	copyb(r11, 0) -> 8[a + 216]
+	copyb(r11, 0) -> 8[a + 224]
+	copyb(r11, 0) -> 8[a + 232]
+	copyb(r11, 0) -> 8[a + 240]
+	copyb(r11, 0) -> 8[a + 248]
+	copyb(r11, 0) -> 8[a + 256]
+	copyb(r11, 0) -> 8[a + 264]
+	copyb(r11, 0) -> 8[a + 272]
+	copyb(r11, 0) -> 8[a + 280]
+	copyb(r11, 0) -> 8[a + 288]
+	copyb(r11, 0) -> 8[a + 296]
+	copyb(r11, 0) -> 8[a + 304]
+	copyb(r11, 0) -> 8[a + 312]
+	copyb(r11, 0) -> 8[a + 320]
+	copyb(r11, 0) -> 8[a + 328]
+	copyb(r11, 0) -> 8[a + 336]
+	copyb(r11, 0) -> 8[a + 344]
+	copyb(r11, 0) -> 8[a + 352]
+	copyb(r11, 0) -> 8[a + 360]
+	copyb(r11, 0) -> 8[a + 368]
+	copyb(r11, 0) -> 8[a + 376]
+	copyb(0, 1) -> r13
+ml_loop:
+	eq(r13, 65), j(ml_final)
+	copyb(0, ML_R) -> r10
+	call zisklib_ml_dbl_coeffs_bn254
+	copyb(0, ML_R) -> r10
+	call zisklib_ml_is_tangent_bn254
+	eq(r10, 0), j(ml_bad)
+	copyb(0, ML_F) -> r10
+	copyb(0, ML_F) -> r11
+	call zisklib_square_fp12_bn254
+	call zisklib_ml_line_eval_bn254
+	copyb(0, ML_F) -> r10
+	copyb(0, ML_L) -> r11
+	copyb(0, ML_F) -> r12
+	call zisklib_sparse_mul_fp12_bn254
+	copyb(0, ML_R) -> r10
+	call zisklib_ml_dbl_wh_bn254
+	copyb(0, ML_R2) -> r10
+	copyb(0, ML_R) -> r11
+	copyb(0, 16) -> r12
+	call bn254_memcpy
+	copyb(0, ML_LOOP) -> r5
+	sll(r13, 3) -> r6
+	add(r5, r6) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	eq(r6, 0), j(ml_next)
+	eq(r6, 1), j(ml_qpos)
+	copyb(0, ML_Q) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ML_QP) -> r11
+	call zisklib_neg_twist_bn254
+	jump(ml_qdone)
+ml_qpos:
+	copyb(0, ML_Q) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ML_QP) -> r11
+	copyb(0, 16) -> r12
+	call bn254_memcpy
+ml_qdone:
+	copyb(0, ML_R) -> r10
+	copyb(0, ML_QP) -> r11
+	call zisklib_ml_add_coeffs_bn254
+	copyb(0, ML_R) -> r10
+	copyb(0, ML_QP) -> r11
+	call zisklib_ml_is_line_bn254
+	eq(r10, 0), j(ml_bad)
+	call zisklib_ml_line_eval_bn254
+	copyb(0, ML_F) -> r10
+	copyb(0, ML_L) -> r11
+	copyb(0, ML_F) -> r12
+	call zisklib_sparse_mul_fp12_bn254
+	copyb(0, ML_R) -> r10
+	copyb(0, ML_QP) -> r11
+	call zisklib_ml_add_wh_bn254
+	copyb(0, ML_R2) -> r10
+	copyb(0, ML_R) -> r11
+	copyb(0, 16) -> r12
+	call bn254_memcpy
+ml_next:
+	add(r13, 1) -> r13
+	jump(ml_loop)
+ml_final:
+	copyb(0, ML_Q) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ML_QF) -> r11
+	call zisklib_utf_endomorphism_twist_bn254
+	copyb(0, ML_R) -> r10
+	copyb(0, ML_QF) -> r11
+	call zisklib_ml_add_coeffs_bn254
+	copyb(0, ML_R) -> r10
+	copyb(0, ML_QF) -> r11
+	call zisklib_ml_is_line_bn254
+	eq(r10, 0), j(ml_bad)
+	call zisklib_ml_line_eval_bn254
+	copyb(0, ML_F) -> r10
+	copyb(0, ML_L) -> r11
+	copyb(0, ML_F) -> r12
+	call zisklib_sparse_mul_fp12_bn254
+	copyb(0, ML_R) -> r10
+	copyb(0, ML_QF) -> r11
+	call zisklib_ml_add_wh_bn254
+	copyb(0, ML_R2) -> r10
+	copyb(0, ML_R) -> r11
+	copyb(0, 16) -> r12
+	call bn254_memcpy
+	copyb(0, ML_QF) -> r10
+	copyb(0, ML_UT) -> r11
+	call zisklib_utf_endomorphism_twist_bn254
+	copyb(0, ML_UT) -> r10
+	copyb(0, ML_QF2) -> r11
+	call zisklib_neg_twist_bn254
+	copyb(0, ML_R) -> r10
+	copyb(0, ML_QF2) -> r11
+	call zisklib_ml_add_coeffs_bn254
+	copyb(0, ML_R) -> r10
+	copyb(0, ML_QF2) -> r11
+	call zisklib_ml_is_line_bn254
+	eq(r10, 0), j(ml_bad)
+	call zisklib_ml_line_eval_bn254
+	copyb(0, ML_F) -> r10
+	copyb(0, ML_L) -> r11
+	copyb(0, ML_F) -> r12
+	call zisklib_sparse_mul_fp12_bn254
+	copyb(0, ML_F) -> r10
+	copyb(0, ML_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 48) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+ml_bad:
+	copyb(0, 0) -> r10, end
+

@@ -1,0 +1,180 @@
+; ============================================================================
+; uint256/pow.zisk - 256-bit exponentiation mod 2^256. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/uint256/pow.rs (the checked/saturating/
+; wrapping_pow256 variants are Rust wrappers over this overflowing core).
+; Shared data lives in common.zisk. Internal labels: `op_`.
+; ============================================================================
+
+; RAM scratch: sticky overflow flag, set whenever an arith256 high word is
+; nonzero. The running result / temp (U256_POW_RES / U256_POW_TMP) are shared
+; with pow_mod256 and live in the common file.
+u64 U256_POW_OVF[1] = 0
+
+; ----------------------------------------------------------------------------
+; u64 zisklib_overflowing_pow256(const u64* base, const u64* exp, u64* result)
+;   result = base^exp (mod 2^256) via square-and-multiply; returns 1 if the true
+;   power exceeded 256 bits at any step (sticky), else 0. Same bit-walk as
+;   pow_mod256, but each square/multiply is an arith256 precompile (a*b, low 256
+;   -> TMP, high 256 -> DH); overflow is OR-accumulated whenever DH != 0.
+;   exp == 0 yields 1 (no overflow; includes 0^0 = 1). Args: r10=base, r11=exp,
+;   r12=result; r15 = bit index; r14 = precompile throwaway; U256_POW_OVF sticky.
+; ----------------------------------------------------------------------------
+zisklib_overflowing_pow256:
+	copyb(0, U256_POW_OVF) -> r5       ; ovf = 0
+	copyb(r5, 0) -> 8[a + 0]
+
+	; === find the exponent's MSB position (top); exp == 0 -> result = 1 ===
+	copyb(0, r11) -> r5
+	add(r5, 24) -> r5
+	copyb(0, 3) -> r6
+op_findw:
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(op_foundw)
+	eq(r6, 0), j(op_expzero)
+	sub(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(op_findw)
+op_foundw:
+	sll(r6, 6) -> r6
+op_hb:
+	srl(r7, 1) -> r14
+	eq(r14, 0), j(op_init)
+	copyb(0, r14) -> r7
+	add(r6, 1) -> r6
+	jump(op_hb)
+
+op_init:
+	; RES = base (base^1 for the top bit; already < 2^256, no reduction)
+	copyb(0, r10) -> r5
+	copyb(0, U256_POW_RES) -> r7
+	copyb(0, 4) -> r14
+op_initcp:
+	eq(r14, 0), j(op_initdone)
+	copyb(r5, 8[a + 0]) -> r15
+	copyb(r7, r15) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r7, 8) -> r7
+	sub(r14, 1) -> r14
+	jump(op_initcp)
+op_initdone:
+	eq(r6, 0), j(op_write)             ; exp == 1 -> result = base
+	sub(r6, 1) -> r15                  ; p = top - 1
+
+op_loop:
+	; --- RES = RES^2 (mod 2^256): arith256 [&RES, &RES, &zero, &TMP, &DH] ---
+	copyb(0, U256_HDR) -> r5
+	copyb(0, U256_POW_RES) -> r7
+	copyb(r5, r7) -> 8[a + 0]
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, U256_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, U256_POW_TMP) -> r7
+	copyb(r5, r7) -> 8[a + 24]         ; &dl = TMP
+	copyb(0, U256_DH) -> r7
+	copyb(r5, r7) -> 8[a + 32]         ; &dh
+	arith256(0, r5) -> r14
+	; ovf |= (DH != 0)
+	copyb(0, U256_DH) -> r5
+	copyb(0, 4) -> r6
+op_sqdh:
+	eq(r6, 0), j(op_sqcp)
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(op_sqovf)
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(op_sqdh)
+op_sqovf:
+	copyb(0, U256_POW_OVF) -> r5
+	copyb(r5, 1) -> 8[a + 0]
+op_sqcp:
+	; RES = TMP
+	copyb(0, U256_POW_TMP) -> r5
+	copyb(0, U256_POW_RES) -> r6
+	copyb(0, 4) -> r7
+op_sqcp_l:
+	eq(r7, 0), j(op_bit)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(op_sqcp_l)
+
+op_bit:
+	; --- extract bit p (r15) of exp ---
+	srl(r15, 6) -> r6
+	sll(r6, 3) -> r6
+	add(r11, r6) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	and(r15, 63) -> r7
+	srl(r6, r7) -> r6
+	and(r6, 1) -> r6
+	eq(r6, 0), j(op_next)
+
+	; --- RES = RES * base (mod 2^256): arith256 [&RES, &base, &zero, &TMP, &DH] ---
+	copyb(0, U256_HDR) -> r5
+	copyb(0, U256_POW_RES) -> r7
+	copyb(r5, r7) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	copyb(0, U256_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, U256_POW_TMP) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(0, U256_DH) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	arith256(0, r5) -> r14
+	; ovf |= (DH != 0)
+	copyb(0, U256_DH) -> r5
+	copyb(0, 4) -> r6
+op_muldh:
+	eq(r6, 0), j(op_mulcp)
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(op_mulovf)
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(op_muldh)
+op_mulovf:
+	copyb(0, U256_POW_OVF) -> r5
+	copyb(r5, 1) -> 8[a + 0]
+op_mulcp:
+	copyb(0, U256_POW_TMP) -> r5
+	copyb(0, U256_POW_RES) -> r6
+	copyb(0, 4) -> r7
+op_mulcp_l:
+	eq(r7, 0), j(op_next)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(op_mulcp_l)
+
+op_next:
+	eq(r15, 0), j(op_write)
+	sub(r15, 1) -> r15
+	jump(op_loop)
+
+op_write:
+	copyb(0, U256_POW_RES) -> r5
+	copyb(0, 4) -> r7
+op_wr:
+	eq(r7, 0), j(op_done)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r12, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r12, 8) -> r12
+	sub(r7, 1) -> r7
+	jump(op_wr)
+op_done:
+	copyb(0, U256_POW_OVF) -> r5
+	copyb(r5, 8[a + 0]) -> r10         ; return the sticky overflow flag
+	ret
+
+op_expzero:
+	copyb(0, r12) -> r5                ; exp == 0 -> base^0 = 1, no overflow
+	copyb(r5, 1) -> 8[a + 0]
+	copyb(r5, 0) -> 8[a + 8]
+	copyb(r5, 0) -> 8[a + 16]
+	copyb(r5, 0) -> 8[a + 24]
+	copyb(0, 0) -> r10
+	ret

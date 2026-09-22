@@ -24,6 +24,10 @@ zisk-lib-float = { workspace = true, optional = true }
 # sequences) to opt out.
 default = ["zba_native"]
 float = ["dep:zisk-lib-float", "zisk-lib-float/float"]
+# Enable decoding of the RISC-V C (compressed, 16-bit) extension in the decoder
+# and transpiler. OFF by default: without it a 2-byte parcel is an illegal
+# instruction (IALIGN = 32), matching the EF RISC-V-target standard.
+compressed = []
 zba = []
 zbc = []
 zbkc = []

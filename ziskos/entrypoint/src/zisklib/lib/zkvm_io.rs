@@ -146,10 +146,6 @@ pub(crate) fn reset() {
     // fresh input on the next call, leaking one allocation per test run.
     *STANDARD_INPUT.lock().unwrap() = None;
 
-    reset_output();
-}
-
-pub(crate) fn reset_output() {
     unsafe {
         OUTPUT_WORD_SLOT = 0;
         OUTPUT_PENDING = [0; OUTPUT_WORD_SIZE];
