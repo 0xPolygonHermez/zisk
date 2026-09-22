@@ -178,7 +178,7 @@ conform but not yet audited against the spec.
 | 4 | [I/O interface](#4-io-interface) | **Conformant** | `read_input` / `write_output` implemented and redirected to the ZisK library. |
 | 5 | [Memory layout restrictions](#5-memory-layout-restrictions) | **Conformant** | Standard is non-prescriptive; ZisK ships a vendor linker script defining its map. |
 | 6 | [Memory safety guard regions](#6-memory-safety-guard-regions) | **Conformant** | Null region and the span below the stack bottom are both unmapped and trap; the guard is adjacent with no gap, named in `core/src/mem.rs` and enforced by compile-time assertions. |
-| 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported and counted/priced by `ziskemu` stats; `compressed` (`C`) feature implemented (off by default); offline-vs.-during-proving visibility to confirm with EF. |
+| 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported and counted/priced by `ziskemu` stats; `compressed` (`C`) feature implemented (off by default). The observability wording is now resolved: it requires a per-proof count via CLI/log, so two changes remain — emit that count from the proving path (the tally already exists in `MemCounters`), and stage unaligned precompile operands into aligned buffers. |
 | 8 | [Standard termination semantics](#8-standard-termination-semantics) | **To verify** | `main` return maps to halt + host report; exact exit-code propagation to confirm. |
 | 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Conformant** | `package.sh` stages `libzisklib_c.a` (`_start` incl. C++ ctors/dtors, I/O, all accelerators) + headers + the W^X linker script exporting `_heap_start`/`_heap_end`; verified by linking C and C++ guests against the installed artifacts alone. |
 | 10 | [Instruction-address-misaligned semantics](#10-instruction-address-misaligned-exception-semantics) | **Conformant** | At the default `IALIGN=32` (`compressed` off): misaligned entry points and executable-segment starts rejected at load; a misaligned computed jump hits its own `emu_end` slot in the per-byte jump map (rounding impossible by construction) and exits with `end=0`; the Rust emulator panics. |
@@ -561,25 +561,54 @@ This was validated end-to-end: an `rv64ima` (no-C) guest runs identically with a
 without the feature, an `rv64imac` (with-C) guest is **rejected** (halt-with-error)
 by a default `ziskemu` and **runs correctly** under `ziskemu --features compressed`.
 
-**Items to confirm.**
-- **Offline vs. during-proving visibility:** the unaligned counts above are
-  produced by the **emulator** (the witness/execution side) and printed as an
-  analysis artifact — i.e. *offline*. The standard's wording is "during proving".
-  We need to confirm with the EF whether an offline, emulator-reported count
-  satisfies the requirement, or whether the count must be surfaced by the prover
-  as part of proof generation.
+**Observability: what the standard actually requires.** The open question we carried
+here — whether an offline, emulator-reported count satisfies "during proving" — is
+settled by the standard's own wording
+([standards/riscv-target/target.md](https://github.com/eth-act/zkevm-standards/blob/main/standards/riscv-target/target.md)):
 
-**Assessment: Partial** (base + M + little-endian + LP64 + unaligned support are
-met, `ziskemu` already reports the unaligned-access count and cost, and the
-`compressed` feature is implemented; the one open item is the EF clarification on
-offline-vs.-during-proving visibility of the unaligned count).
+> "zkVMs **must** provide visibility into the number of unaligned memory accesses
+> that occur during proof generation." At minimum, they **should** "expose a count of
+> unaligned accesses **per proof** through **command-line output or log files**,
+> though more granular metrics are encouraged."
 
-**TODO.**
-- Report the number of unaligned memory accesses in a well-known log **during
-  production** (not only in the offline `-X` statistics report), and document that
-  log's format in this document.
-- Modify the precompile calls to copy input data into local aligned buffers when
-  the input data is not aligned.
+So the bar is explicitly CLI or log output, per proof. There is no requirement for
+the count to be an in-circuit quantity or a prover-internal artifact — our earlier
+reading was stricter than the text. But it does rule out what we ship today:
+`ziskemu -X --mem-stats` is a *separate, offline invocation*, not per-proof output
+from proof generation.
+
+**The count already exists on the proving path.** `MemCounters` tallies
+`mem_align_counters.{full_5, full_3, full_2, read_byte, write_byte}`
+(`state-machines/mem-common/src/mem_counters.rs`) unconditionally — it has to, because
+that is how the MemAlign AIRs are sized — and a MemAlign operation *is* an unaligned
+access. The existing `mem_align_stats` cargo feature gates only the per-instance
+*printing*, not the counting. The totals are therefore available for free at planning
+time, on both paths: `MemPlanner::plan()` (`state-machines/mem/src/mem_planner.rs`),
+which receives every chunk's counters and is driven from
+`emulator-asm/asm-runner/src/asm_mo_runner.rs`, and `gpu_count_and_plan.rs`, which
+already aggregates the same five values for the GPU path.
+
+**TODO 1 — report the count per proof.** Sum the five shapes across all chunks and
+emit one line per proof, at a stable and greppable format, from both planning paths.
+It must *not* sit behind a cargo feature: the standard says MUST, so it has to be on
+by default. The per-shape breakdown comes for free and covers the "more granular
+metrics are encouraged" clause. The exact log format becomes a documented interface
+the EF may check against, so it should be fixed here once chosen.
+
+**TODO 2 — align precompile operands.** The memory-based precompiles require aligned
+operand buffers (see *Precompile operand alignment* above), and today that is stated
+as the caller's responsibility. The `.zisk` accelerators already stage the EF
+byte-array ABI into aligned library scratch, so the standard `zkvm_*` entry points
+hold; the gap is the flat `ziskos_*` ABI and direct `zisklib` calls from Rust guests,
+where an unaligned guest pointer can reach a precompile. Make those call sites copy
+into a local aligned buffer when the argument is not aligned, and copy back. Note
+this costs a branch — and, when unaligned, a copy — on the common aligned path, so it
+should be measured against the `keccak_ab`/`modexp_ab` dual-backend benchmarks.
+
+**Assessment: Partial** (base + M + little-endian + LP64 + unaligned support are met
+and the `compressed` feature is implemented; the observability question is now
+resolved *against* us — the required per-proof CLI/log output is TODO 1 — and TODO 2
+remains).
 
 ---
 
