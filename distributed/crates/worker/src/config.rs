@@ -164,6 +164,8 @@ pub struct ProverServiceConfigDto {
     pub max_witness_stored: Option<usize>,
     /// Prefer lower memory usage over speed.
     pub minimal_memory: bool,
+    /// Skip verifying absorbed aggregation proofs before folding them. See the CLI flag.
+    pub skip_agg_verification: bool,
     /// Use the GPU proving path.
     pub gpu: bool,
     /// Enable PLONK/SNARK proof generation.

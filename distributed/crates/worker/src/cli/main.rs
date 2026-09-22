@@ -89,6 +89,14 @@ struct Cli {
     #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
+    /// Skip verifying each proof this worker absorbs during phase-3 aggregation.
+    ///
+    /// Soundness does not rest on that check -- the recursive2 circuit verifies its own children,
+    /// so a corrupt peer proof still fails at the final proof -- but it costs a CPU stark
+    /// verification on the fold's critical path. Only for clusters whose peers are trusted.
+    #[clap(long, default_value_t = false)]
+    pub skip_agg_verification: bool,
+
     #[cfg(not(feature = "cpu-only"))]
     #[clap(short = 'g', long, default_value_t = false)]
     pub gpu: bool,
@@ -143,6 +151,7 @@ async fn main() -> Result<()> {
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
         minimal_memory: cli.minimal_memory,
+        skip_agg_verification: cli.skip_agg_verification,
         preload_plonk: cli.preload_plonk,
         gpu,
         cpu_mops,

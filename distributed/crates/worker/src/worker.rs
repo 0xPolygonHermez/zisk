@@ -266,6 +266,9 @@ pub struct ProverConfig {
     /// Whether to use minimal memory mode
     pub minimal_memory: bool,
 
+    /// Skip verifying absorbed aggregation proofs before folding them. See the worker CLI flag.
+    pub skip_agg_verification: bool,
+
     /// Enable GPU acceleration
     pub gpu: bool,
 
@@ -323,6 +326,7 @@ impl ProverConfig {
             unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
             asm_out_file: prover_service_config.asm_out_file,
             minimal_memory: prover_service_config.minimal_memory,
+            skip_agg_verification: prover_service_config.skip_agg_verification,
             gpu: prover_service_config.gpu,
             cpu_mops: prover_service_config.cpu_mops,
             max_streams: prover_service_config.max_streams,
@@ -1626,6 +1630,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             rma: true,
             minimal_memory: self.prover_config.minimal_memory,
             compressed: minimal,
+            verify_agg_proofs: !self.prover_config.skip_agg_verification,
         }
     }
 
@@ -1639,6 +1644,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             rma: true,
             minimal_memory: self.prover_config.minimal_memory,
             compressed: false,
+            verify_agg_proofs: true,
         }
     }
 
