@@ -17,7 +17,7 @@
 #   - Provides `_start` (src/_start.s), the EF I/O functions and every accelerator
 #     stub, i.e. the whole guest-side surface of EF §9 in one archive. Pair it with
 #     a linker script that exports `_heap_start`/`_heap_end` (see
-#     example/zisk_guest.ld or ziskbuild/zisk_linker_script.ld).
+#     ziskbuild/zisk_linker_script.ld -- the single guest linker script).
 
 cmake_minimum_required(VERSION 3.16)
 project(zisklib_c C ASM)

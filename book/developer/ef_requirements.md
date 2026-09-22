@@ -345,8 +345,7 @@ against libc, defines heap boundaries and region demarcations), and that program
 are linked with it.
 
 **ZisK.** ZisK defines its map in `core/src/mem.rs` and ships the matching guest
-linker script (`ziskasm/lang/c/example/zisk_guest.ld`, mirroring
-`ziskbuild/zisk_linker_script.ld`):
+linker script (`ziskbuild/zisk_linker_script.ld`):
 
 | Region | Address |
 |--------|---------|
@@ -589,14 +588,14 @@ requires `_start` to do this, and the linker script's `KEEP`'d `.init_array` is
 inert without it. Verified with a guest carrying two constructors and two
 destructors: the emitted order is `01 02 5A 82 81`.
 
-The guest linker script sets `ENTRY(_start)` and lays out clean W^X segments via
-`PHDRS`. The script ZisK ships (`ziskbuild/zisk_linker_script.ld`, embedded via
-`ZISK_LINKER_SCRIPT`) uses `text FLAGS(1)` — **execute-only**, the form ZisK prefers
-for performance; the C example's `zisk_guest.ld` uses `FLAGS(5)` (`R+X`), which the
-standard also permits. Both keep `rodata` `FLAGS(4)` and `data`/`bss` `FLAGS(6)`, and
-both KEEP `.init_array`/`.fini_array` for C++ ctors/dtors.
+There is a **single** guest linker script, `ziskbuild/zisk_linker_script.ld`
+(embedded for Rust guests via `ZISK_LINKER_SCRIPT`, and referenced directly by the C
+example). It sets `ENTRY(_start)` and lays out clean W^X segments via `PHDRS`:
+`text FLAGS(1)` — **execute-only**, the form ZisK prefers for performance and the
+stricter of the two the standard permits — with `rodata` `FLAGS(4)` and `data`/`bss`
+`FLAGS(6)`, and it KEEPs `.init_array`/`.fini_array` for C++ ctors/dtors.
 
-Both scripts export **`_heap_start` / `_heap_end`** as required. ZisK's own allocator
+The script exports **`_heap_start` / `_heap_end`** as required. ZisK's own allocator
 consumes the same bounds under its historical names (`_heap_bottom` / `_heap_top`,
 with `_heap_size`), so the standard names are added alongside rather than renaming
 them, leaving existing consumers untouched.

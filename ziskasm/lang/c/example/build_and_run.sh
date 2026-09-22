@@ -15,6 +15,7 @@ ZISKEMU="${ZISKEMU:-$ZISKEMU_DEFAULT}"
 CC="${RISCV_CC:-riscv64-unknown-elf-gcc}"
 INC="$HERE/../include"                 # zisklib.h
 STUBS="$HERE/../src/zisklib_stubs.c"   # ziskos_* stubs (redirected)
+LD="$ZISK/ziskbuild/zisk_linker_script.ld"   # the ONE guest linker script
 OUT="${OUT:-/tmp/zisk_c_e2e}"; mkdir -p "$OUT"
 : > "$OUT/empty.bin"
 
@@ -48,7 +49,7 @@ fi
 
 echo "### building minimal C guest (calls ziskos_keccak) ..."
 $CC -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib -ffreestanding -O2 \
-    -I"$HERE" -I"$INC" -T "$HERE/zisk_guest.ld" \
+    -I"$HERE" -I"$INC" -T "$LD" \
     -o "$OUT/keccak_e2e.elf" "$HERE/../src/_start.s" "$HERE/main.c" "$STUBS"
 
 echo "### running through ziskemu (elf2rom redirects ziskos_keccak -> zisklib_keccak) ..."

@@ -170,7 +170,7 @@ pub const ZISKLIB_ROM_ADDR: u64 = FLOAT_LIB_ROM_ADDR - ZISKLIB_ROM_SIZE;
 pub const ZISKLIB_ROM_ADDR_MAX: u64 = ZISKLIB_ROM_ADDR + ZISKLIB_ROM_SIZE - 1;
 /// Size of ZisK library RAM (mutable scratch / variables).
 /// Keep in sync with `_zisklib_ram_data_size` in the guest linker scripts
-/// (ziskbuild/zisk_linker_script.ld and ziskasm/lang/c/example/zisk_guest.ld),
+/// (ziskbuild/zisk_linker_script.ld),
 /// which reserve this same amount below the float-library RAM so the guest heap
 /// never grows into it.
 pub const ZISKLIB_RAM_SIZE: u64 = 0x30000; // 192K
