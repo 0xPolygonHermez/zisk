@@ -31,4 +31,6 @@ reth-inputs/
 /hints
 /benchmark
 dist/
+# ziskasm/lang/c/package.sh scratch build dir
+build-pkg/
 package-lock.json

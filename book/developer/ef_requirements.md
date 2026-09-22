@@ -180,7 +180,7 @@ conform but not yet audited against the spec.
 | 6 | [Memory safety guard regions](#6-memory-safety-guard-regions) | **Partial** | Null-pointer page and stack overflow trap (unmapped), but not via a named ≥4 kB stack-guard region. |
 | 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported and counted/priced by `ziskemu` stats; `compressed` (`C`) feature implemented (off by default); offline-vs.-during-proving visibility to confirm with EF. |
 | 8 | [Standard termination semantics](#8-standard-termination-semantics) | **To verify** | `main` return maps to halt + host report; exact exit-code propagation to confirm. |
-| 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Partial** | `_start`, I/O, all accelerators and `_heap_start`/`_heap_end` now ship in one `zisklib_c` archive + W^X linker script; only prebuilt-`.a` packaging to confirm with the EF. |
+| 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Conformant** | `package.sh` stages `libzisklib_c.a` (`_start` incl. C++ ctors/dtors, I/O, all accelerators) + headers + the W^X linker script exporting `_heap_start`/`_heap_end`; verified by linking C and C++ guests against the installed artifacts alone. |
 | 10 | [Instruction-address-misaligned semantics](#10-instruction-address-misaligned-exception-semantics) | **Conformant** | At the default `IALIGN=32` (`compressed` off): misaligned entry points and executable-segment starts rejected at load; a misaligned computed jump hits its own `emu_end` slot in the per-byte jump map (rounding impossible by construction) and exits with `end=0`; the Rust emulator panics. |
 
 ---
@@ -607,14 +607,32 @@ references them at link time — so under `PROVIDE` they are absent from `.symta
 exactly the guests the requirement exists to serve. Verified with a guest that does
 not mention either name: both appear in `nm` output with the correct addresses.
 
-**Gap to confirm.** Packaging: `zisklib_c` is consumed by `add_subdirectory` from the
-guest's own CMake build rather than shipped as a prebuilt `.a`. The archive contains
-the full required surface, so this is a distribution-format question for the EF — if
-a prebuilt artifact is expected, an install rule would supply it.
+**Packaging.** `ziskasm/lang/c/package.sh` builds the distributable artifact with a
+cross toolchain file (`zisk-guest-toolchain.cmake`) and stages it:
 
-**Assessment: Partial** (the required surface — `_start`, I/O, all accelerators,
-W^X linker script, `_heap_start`/`_heap_end` — is complete and verified from a C
-guest; only the prebuilt-`.a` packaging question remains).
+```
+dist/include/{zisklib.h,zkvm_accelerators.h,zkvm_io.h,zkvm_u256.h}
+dist/lib/libzisklib_c.a
+dist/share/zisk/zisk_linker_script.ld
+```
+
+The archive and the script are installed together because the archive's `_start`
+depends on symbols only the script defines. It is built `rv64ima`, not `rv64imac`,
+so it contains no 16-bit encodings and is usable by a default (`IALIGN = 32`) ZisK —
+verified by disassembling the archive. Verified end to end by linking both a C guest
+and a C++ guest with a static object against **only** the installed artifacts, with
+nothing from the source tree: the C guest reports `08 01 aa 5a` (read_input,
+heap bounds, write_output) and the C++ guest `c7 5a` (constructor, then `main`).
+
+One property to communicate with the artifact: it is **not standalone-functional**.
+Every symbol in it is a stub whose entry `elf2rom` rewrites at transpile time, so a
+guest linked against it and run through a ZisK built without `--features ziskasm`
+reaches the stub bodies, which fail hard by design. A clean link proves nothing on
+its own.
+
+**Assessment: Conformant** (`_start` incl. C++ constructors/destructors, the I/O
+functions, every accelerator, a W^X linker script exporting `_heap_start`/`_heap_end`,
+and a build that stages them as a distributable `.a` + script).
 
 ---
 

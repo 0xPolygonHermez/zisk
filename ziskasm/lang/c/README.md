@@ -70,6 +70,57 @@ extern "C" union ethash_hash256 ethash_keccak256(const uint8_t* d, size_t n) noe
 - **No linker-script change.** The `.zisk` implementation is merged into the ROM
   by `elf2rom`, not linked into the ELF.
 
+## Packaging the static library
+
+EF zkVM standard §9 asks the vendor to ship a `.a` providing `_start`, the I/O
+functions and every accelerator, together with a linker script. `package.sh` builds
+exactly that:
+
+```bash
+./package.sh                                        # -> dist/
+PREFIX=/tmp/out ./package.sh                        # install elsewhere
+TARBALL=1 ./package.sh                              # also produce dist.tar.gz
+ZISK_TOOLCHAIN_PREFIX=riscv-none-elf- ./package.sh  # xPack toolchain
+```
+
+It stages:
+
+```
+dist/include/{zisklib.h,zkvm_accelerators.h,zkvm_io.h,zkvm_u256.h}
+dist/lib/libzisklib_c.a
+dist/share/zisk/zisk_linker_script.ld
+```
+
+and then checks the archive really exports `_start`, `read_input`, `write_output`
+and a sample accelerator before declaring success.
+
+A guest then needs nothing from this source tree:
+
+```bash
+riscv64-unknown-elf-gcc -march=rv64ima -mabi=lp64 -mcmodel=medany \
+    -nostdlib -ffreestanding -O2 \
+    -Idist/include -T dist/share/zisk/zisk_linker_script.ld \
+    -o guest.elf guest.c dist/lib/libzisklib_c.a
+```
+
+Three things about this artifact are worth stating plainly, because none of them
+behave like an ordinary static library:
+
+- **It is not standalone-functional.** Every symbol in it is a stub whose entry
+  `elf2rom` rewrites to a hand-written `.zisk` routine at transpile time. Link it and
+  run the result through a `ziskemu`/`cargo-zisk` built *without* `--features
+  ziskasm` and you reach the stub bodies, which fail hard by design. A clean link
+  proves nothing on its own.
+- **The linker script is not optional.** The archive's `_start` depends on symbols
+  only the script defines (`_global_pointer`, `_init_stack_top`, `__init_array_*`,
+  `_heap_start`/`_heap_end`), which is why the two are installed together.
+- **It is built `rv64ima`, deliberately not `rv64imac`.** ZisK decodes the compressed
+  extension only under the `compressed` cargo feature, which is off by default, so a
+  default ZisK is `IALIGN = 32` and rejects 16-bit instructions. Override with
+  `-DZISK_GUEST_ARCH` if you have enabled that feature.
+
+Do not `--strip` the linked guest: `elf2rom` resolves the stubs by symbol name.
+
 ## Coverage
 
 `REDIRECTS` holds **77** entries across three independent symbol families, and
