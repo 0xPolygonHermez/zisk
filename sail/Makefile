@@ -25,7 +25,7 @@ MODEL = model/zisk_prelude.sail \
         model/zisk_inst.sail \
         model/zisk_step.sail
 
-.PHONY: all check lean ops pil lean-env lean-build pil-build clean
+.PHONY: all check lean ops pil lean-env lean-build pil-build proofs clean
 
 all: check ops
 
@@ -68,6 +68,11 @@ lean-env:
 pil-build: lean-env
 	@test -d build/pil || { echo "build/pil is missing — run make pil" >&2; exit 1; }
 	cd lean && $(LAKE) build Pil
+
+## Check the proofs in lean/Proofs against the generated constraints.
+proofs: lean-env
+	@test -d build/pil || { echo "build/pil is missing — run make pil" >&2; exit 1; }
+	cd lean && $(LAKE) build Proofs
 
 ## Typecheck the generated model. Run `make lean` first.
 ## Fails today: the model declares rX, wX, read_mem, write_mem and rom_fetch

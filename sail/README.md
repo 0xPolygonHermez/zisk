@@ -35,7 +35,7 @@ about what is still missing. Filling them in is the next milestone.
 | `model/zisk_inst.sail` | The `zisk_inst` record, mirroring `ZiskInst` in `core/src/zisk_inst.rs`. |
 | `model/zisk_step.sail` | The single execution step, mirroring `Emu::step` in `emulator/src/emu.rs`. |
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
-| `lean/` | A lake package that typechecks both generated Lean trees. It has no sources of its own: one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints). A proof relating the two belongs here. |
+| `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. A proof relating the two belongs here. |
 
 ## Building
 
@@ -53,7 +53,8 @@ Two more targets typecheck the generated Lean, through the lake package in
 [elan](https://lean-lang.org/install/):
 
 ```sh
-make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~75s)
+make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~85s)
+make proofs       # check lean/Proofs against them
 make lean-build   # elaborate the model            (9 of 12 modules build)
 ```
 

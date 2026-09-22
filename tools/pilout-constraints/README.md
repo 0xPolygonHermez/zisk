@@ -78,14 +78,18 @@ Main packs four instructions into each row, which is why every column is
 indexed: `addr1 0` is the first of the row's four slots, and the same `.pil`
 line produces four constraints. Six decisions shape the output.
 
-**The field is abstract.** A pil2 constraint is a polynomial identity, so the
-generated `Pil/Prelude.lean` declares a `PilField` class with addition,
-subtraction, multiplication, negation and numerals, and nothing else. This
-avoids a Mathlib dependency — the Lean that Sail generates into
-`sail/build/lean/out` has no dependencies either — and it sidesteps a question
-the pilout does not answer: stage-2 columns and the challenges are elements of
-the cubic extension, while stage-1 columns and constants are base field
-elements embedded in it. Left abstract, one definition covers both.
+**The ring is abstract, and is Lean's own.** A pil2 constraint is a polynomial
+identity, so what it needs is a commutative ring. Lean's core ships one —
+`Lean.Grind.CommRing` — with the laws attached and the `grind` tactic able to
+reason with it, so `Pil/Prelude.lean` is a one-line abbreviation over it and
+**no Mathlib is needed**, for the AIRs or for proofs about them. (The Lean Sail
+generates into `sail/build/lean/out` has no dependencies either, and its
+toolchain is a PR release that Mathlib would not match anyway.)
+
+Leaving the ring abstract also sidesteps a question the pilout does not answer:
+stage-2 columns and the challenges are elements of the cubic extension, while
+stage-1 columns and constants are base field elements embedded in it. Stated
+over any commutative ring, one definition covers both.
 
 **A row index is an `Int`, and the trace is asserted periodic.** Row offsets in
 the ZisK pilout run from `-50400` to `+1008`, and PIL offsets wrap around the
@@ -146,6 +150,35 @@ The generated files raise `maxHeartbeats`, `maxRecDepth` and
 The first is not optional: at the default limit the wider AIRs exhaust their
 heartbeats while elaborating, and because the failure lands on `Row` itself,
 every later field access fails with it — 2 real errors became 16520.
+
+## What the output can prove
+
+Elaborating is not the same as being usable, so [`sail/lean/Proofs/Main.lean`](../../sail/lean/Proofs/Main.lean)
+proves five things from the generated Main and nothing else — `cd sail && make proofs`:
+
+```lean
+/-- `main.pil:224` determines `addr1`, so the column can be eliminated. -/
+theorem addr1_eq (h : c1 x t i) :
+    (t i).addr1 0 = (t i).b_offset_imm0 0 + (t i).b_src_ind 0 * (t i).a 0 0 := by
+  unfold c1 at h; grind
+```
+
+They cover the three moves a correspondence proof needs constantly: turning a
+vanishing polynomial into an equation, combining two constraints, and reaching
+one constraint out of `holds` without unfolding the other 608. All five go
+through by `grind` alone, in under a second.
+
+Two limits surfaced while writing them, both worth knowing before planning a
+larger proof:
+
+- **Booleanity is not a constraint.** `a_src_mem` is `bits(1)` in the PIL, but
+  that range check is a lookup argument — it lives in the hints, which this
+  tool does not extract. So `a_src_mem * (1 - a_src_mem) = 0` cannot be had
+  from the AIR, and a proof that needs it must take it as a hypothesis.
+- **Ring laws are not field laws.** Mutual exclusion of two selectors follows
+  from the constraints only up to a factor of two, because dividing by two
+  needs `2 ≠ 0`. A proof needing that instantiates `F` at the concrete field;
+  every generated AIR records its characteristic as `basePrime`.
 
 ## The IR
 
