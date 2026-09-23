@@ -51,14 +51,6 @@ impl DmaUnalignedInput {
         pending.min(self.count as usize * DMA_UNALIGNED_OPS_BY_ROW)
     }
 
-    pub fn get_last_count(&self) -> usize {
-        let rows = self.count as usize;
-        let initial_count = self.get_initial_count();
-        initial_count - (rows - 1) * DMA_UNALIGNED_OPS_BY_ROW
-    }
-    pub fn get_initial_count(&self) -> usize {
-        DmaInfo::get_count(self.encoded) - self.skip as usize * DMA_UNALIGNED_OPS_BY_ROW
-    }
     pub fn from(
         data: &[u64],
         data_ext: &[u64],
@@ -106,10 +98,6 @@ impl DmaUnalignedInput {
             src_values: data_ext[data_offset..data_offset + src_values_count].to_vec(),
         }
     }
-    pub fn get_rows(&self) -> usize {
-        DmaInfo::get_loop_count(self.encoded)
-    }
-
     #[cfg(feature = "save_dma_inputs")]
     /// Writes a list of DmaUnalignedInput instances to a text file with columns separated by |.
     /// Path is taken from DEBUG_OUTPUT_PATH environment variable, defaulting to "tmp/".

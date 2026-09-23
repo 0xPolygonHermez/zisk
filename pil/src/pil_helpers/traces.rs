@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "2592e333a38b3535cc4803c449cc814f3a7f57494f7568904499ab5184afef1e";
+pub const PILOUT_HASH: &str = "ca803ea398e8c7db5f34433dcebc23e69a5bd654150e52d4b92ae319845afeba";
 
 //AIRGROUP CONSTANTS
 
@@ -136,11 +136,15 @@ pub const DMA_PRE_POST_AIR_IDS: &[usize] = &[54];
 
 pub const DMA_WITH_PRE_POST_AIR_IDS: &[usize] = &[55];
 
-pub const JUMP_DEST_AIR_IDS: &[usize] = &[56];
+pub const DMA_LOOP_AIR_IDS: &[usize] = &[56];
 
-pub const VIRTUAL_TABLE_ZISK_0_AIR_IDS: &[usize] = &[57];
+pub const COMPACT_DMA_AIR_IDS: &[usize] = &[57];
 
-pub const VIRTUAL_TABLE_ZISK_1_AIR_IDS: &[usize] = &[58];
+pub const JUMP_DEST_AIR_IDS: &[usize] = &[58];
+
+pub const VIRTUAL_TABLE_ZISK_0_AIR_IDS: &[usize] = &[59];
+
+pub const VIRTUAL_TABLE_ZISK_1_AIR_IDS: &[usize] = &[60];
 
 
 //PUBLICS
@@ -181,7 +185,7 @@ values!(ZiskPublicValues<F> {
 });
  
 values!(ZiskProofValues<F> {
- enable_input_data: F, enable_rom_data: F, enable_dma_64_aligned: F, enable_dma_64_aligned_large: F, enable_dma_64_aligned_inputcpy: F, enable_dma_64_aligned_mem: F, enable_dma_64_aligned_mem_large: F, enable_dma_64_aligned_memcpy: F, enable_dma_64_aligned_memset: F, enable_dma_unaligned: F, enable_jump_dest: F,
+ enable_input_data: F, enable_rom_data: F, enable_dma_64_aligned: F, enable_dma_64_aligned_large: F, enable_dma_64_aligned_inputcpy: F, enable_dma_64_aligned_mem: F, enable_dma_64_aligned_mem_large: F, enable_dma_64_aligned_memcpy: F, enable_dma_64_aligned_memset: F, enable_dma_unaligned: F, enable_dma_loop: F, enable_compact_dma: F, enable_jump_dest: F,
 });
  
 trace_row!(MainFixedRow<F> {
@@ -800,38 +804,60 @@ trace_row!(DmaWithPrePostTraceRow<F> {
 
 pub type DmaWithPrePostTrace<R> = GenericTrace<R, 2097152, 0, 55>;
 
+trace_row!(DmaLoopFixedRow<F> {
+ __L1__: F,
+});
+pub type DmaLoopFixed<F> = GenericTrace<DmaLoopFixedRow<F>, 2097152, 0, 56>;
+
+trace_row!(DmaLoopTraceRow<F> {
+ main_step:ubit(36), src64:ubit(29), dst64:ubit(29), count:u32, seq_end:bit, previous_seq_end:bit, sel_memcpy:bit, sel_memeq:bit, sel_memset:bit, sel_inputcpy:bit, sel_memcpy_count_load:bit, sel_op_from_1:[bit; 3], fill_byte:u8, offset_1:bit, offset_2:bit, offset_3:bit, offset_4:bit, offset_5:bit, offset_6:bit, offset_7:bit, read_bytes:[u8; 32], no_last_no_seq_end:bit, write_value:[[u32; 2]; 4], tail_no_write:bit, sel_read:[bit; 4], sel_write:[bit; 4], b0:u32, extended_arg:u32,
+});
+
+pub type DmaLoopTrace<R> = GenericTrace<R, 2097152, 0, 56>;
+
+trace_row!(CompactDmaFixedRow<F> {
+ __L1__: F,
+});
+pub type CompactDmaFixed<F> = GenericTrace<CompactDmaFixedRow<F>, 1048576, 0, 57>;
+
+trace_row!(CompactDmaTraceRow<F> {
+ wpp_is_pre_row:bit, wpp_has_pre_row:bit, wpp_sel_memcpy:bit, wpp_sel_memcmp:bit, wpp_sel_memset:bit, wpp_sel_inputcpy:bit, wpp_sel_extended:bit, wpp_fill_byte:u8, wpp_h_count:ubit(24), wpp_count_lt_256:bit, wpp_l_count:ubit(9), wpp_count_diff_chunks:[u16; 2], wpp_main_step:ubit(36), wpp_h_dst64:ubit(22), wpp_l_dst64:ubit(7), wpp_dst_offset:ubit(3), wpp_h_src64:ubit(22), wpp_l_src64:ubit(7), wpp_src_offset:ubit(3), wpp_src_offset_after_pre:ubit(3), wpp_src64_inc_by_pre:bit, wpp_use_pre:bit, wpp_use_loop:bit, wpp_use_post:bit, wpp_pre_count:ubit(3), wpp_l_count64:ubit(9), wpp_pp_dst_addr:u32, wpp_pp_src_addr:u32, wpp_pp_dst_offset:ubit(3), wpp_pp_src_offset:ubit(3), wpp_pp_count:ubit(4), wpp_pp_load_src:bit, wpp_pp_sel_write:bit, wpp_pp_sel_byte_rc:bit, wpp_pp_sel_memcmp:bit, wpp_pp_sel_memset:bit, wpp_selr:[bit; 7], wpp_dst_offset_gt_src_offset:bit, wpp_enabled_second_read:bit, wpp_rb:[u8; 16], wpp_pb:[u8; 8], wpp_sb:[bit; 8], wpp_memcmp_result_nz:bit, wpp_last_dst_byte:u8, wpp_abs_diff_dst_src:u8, wpp_memcmp_result_is_negative:bit, wpp_diff_factor:[u64; 2], wpp_l_memcmp_result:u32, wpp_bus_write_value:[u32; 2], wpp_write_value:[u32; 4], wpp_loop_b0:u32, wpp_loop_extended_arg:u32, wpp_static_count:u32, wpp_sel_count_from_mem:bit, loop_main_step:ubit(36), loop_src64:ubit(29), loop_dst64:ubit(29), loop_count:u32, loop_seq_end:bit, loop_previous_seq_end:bit, loop_sel_memcpy:bit, loop_sel_memeq:bit, loop_sel_memset:bit, loop_sel_inputcpy:bit, loop_sel_memcpy_count_load:bit, loop_sel_op_from_1:[bit; 3], loop_fill_byte:u8, loop_offset_1:bit, loop_offset_2:bit, loop_offset_3:bit, loop_offset_4:bit, loop_offset_5:bit, loop_offset_6:bit, loop_offset_7:bit, loop_read_bytes:[u8; 32], loop_no_last_no_seq_end:bit, loop_write_value:[[u32; 2]; 4], loop_tail_no_write:bit, loop_sel_read:[bit; 4], loop_sel_write:[bit; 4], loop_b0:u32, loop_extended_arg:u32,
+});
+
+pub type CompactDmaTrace<R> = GenericTrace<R, 1048576, 0, 57>;
+
 trace_row!(JumpDestFixedRow<F> {
  CLOCK: F, __L1__: F,
 });
-pub type JumpDestFixed<F> = GenericTrace<JumpDestFixedRow<F>, 2097152, 0, 56>;
+pub type JumpDestFixed<F> = GenericTrace<JumpDestFixedRow<F>, 2097152, 0, 58>;
 
 trace_row!(JumpDestTraceRow<F> {
  seq_end:bit, sel:bit, seq_start:bit, data:[[u16; 2]; 4], cdata:[[u8; 2]; 4], sel_mem_load:[bit; 2], bitmap_byte:[u8; 2], state:[ubit(6); 3], bytes_used:[ubit(4); 2], src64:ubit(29), dst64:ubit(29), main_step:ubit(36), count:u32,
 });
 
-pub type JumpDestTrace<R> = GenericTrace<R, 2097152, 0, 56>;
+pub type JumpDestTrace<R> = GenericTrace<R, 2097152, 0, 58>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
  COL_0_0_0: F, COL_0_0_1: F, COL_0_0_2: F, COL_0_0_3: F, COL_0_0_5: F, COL_0_0_7: F, COL_1_8_0: F, COL_1_8_1: F, COL_1_8_2: F, COL_1_8_3: F, COL_1_8_5: F, COL_1_8_7: F, COL_2_16_1: F, COL_2_16_3: F, COL_2_16_5: F, COL_5_40_0: F, COL_5_40_1: F, COL_5_40_2: F, COL_5_40_3: F, COL_5_40_5: F, COL_5_40_6: F, COL_6_48_0: F, COL_6_48_1: F, COL_6_48_2: F, COL_6_48_3: F, COL_6_48_5: F, COL_7_56_1: F, COL_7_56_3: F, COL_7_56_5: F, COL_8_64_0: F, COL_8_64_1: F, COL_8_64_2: F, COL_8_64_3: F, COL_8_64_5: F, COL_8_64_6: F, COL_9_72_1: F, COL_9_72_3: F, COL_9_72_5: F, COL_9_72_6: F, COL_10_80_0: F, COL_10_80_1: F, COL_10_80_2: F, COL_10_80_3: F, COL_10_80_5: F, COL_10_80_6: F, COL_11_88_0: F, COL_11_88_1: F, COL_11_88_2: F, COL_11_88_3: F, COL_11_88_5: F, COL_11_88_6: F, COL_11_88_7: F, UID_11: F, __L1__: F,
 });
-pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 57>;
+pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 59>;
 
 trace_row!(VirtualTableZisk0TraceRow<F> {
  multiplicity:[F; 12],
 });
 
-pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 57>;
+pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 59>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
  __ROW_INDEX__: F, COL_9_9_0: F, COL_14_14_0: F, COL_14_14_1: F, UID_14: F, COL_15_16_0: F, COL_15_16_1: F, COL_15_16_2: F, COL_15_16_3: F, COL_15_16_4: F, COL_15_16_5: F, UID_15: F, COL_16_22_0: F, COL_16_22_1: F, COL_16_22_2: F, COL_16_22_3: F, COL_16_22_4: F, COL_16_22_5: F, UID_16: F, COL_17_28_0: F, COL_17_28_1: F, COL_17_28_2: F, COL_17_28_3: F, COL_17_28_4: F, COL_17_28_5: F, COL_17_28_6: F, UID_17: F, COL_18_35_0: F, COL_18_35_1: F, COL_18_35_2: F, COL_18_35_3: F, COL_18_35_4: F, COL_18_35_5: F, COL_18_35_6: F, COL_19_42_0: F, COL_19_42_1: F, COL_19_42_4: F, COL_19_42_5: F, COL_19_42_6: F, COL_20_49_0: F, COL_20_49_1: F, COL_20_49_4: F, COL_20_49_5: F, COL_20_49_6: F, COL_21_56_0: F, COL_21_56_1: F, COL_21_56_2: F, COL_21_56_3: F, COL_21_56_4: F, COL_21_56_5: F, COL_21_56_6: F, UID_21: F, __L1__: F,
 });
-pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 58>;
+pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 60>;
 
 trace_row!(VirtualTableZisk1TraceRow<F> {
  multiplicity:[F; 22],
 });
 
-pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 58>;
+pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 60>;
 
 trace_row!(RomRomTraceRow<F> {
  is_data: F, line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -961,6 +987,14 @@ values!(Dma64AlignedMemCpyAirValues<F> {
 
 values!(DmaUnalignedAirValues<F> {
  segment_id: F, segment_previous_seq_end: F, segment_previous_src64: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_offset: F, segment_previous_count: F, segment_first_bytes: [F; 8], segment_last_seq_end: F, segment_last_src64: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_offset: F, segment_last_count: F, segment_next_bytes: [F; 8], is_last_segment: F, segment_previous_is_memeq: F, segment_last_is_memeq: F, padding_size: F, last_count_chunk: [F; 2], im_direct: [FieldExtension<F>; 6],
+});
+
+values!(DmaLoopAirValues<F> {
+ segment_id: F, segment_previous_seq_end: F, segment_previous_src64: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_count: F, segment_previous_flags: F, segment_previous_fill_byte: F, segment_first_bytes: [F; 8], segment_last_seq_end: F, segment_last_src64: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_count: F, segment_last_flags: F, segment_last_fill_byte: F, segment_next_bytes: [F; 8], is_last_segment: F, padding_size: F, last_count_chunk: [F; 2], im_direct: [FieldExtension<F>; 5],
+});
+
+values!(CompactDmaAirValues<F> {
+ loop_segment_id: F, loop_segment_previous_seq_end: F, loop_segment_previous_src64: F, loop_segment_previous_dst64: F, loop_segment_previous_main_step: F, loop_segment_previous_count: F, loop_segment_previous_flags: F, loop_segment_previous_fill_byte: F, loop_segment_first_bytes: [F; 8], loop_segment_last_seq_end: F, loop_segment_last_src64: F, loop_segment_last_dst64: F, loop_segment_last_main_step: F, loop_segment_last_count: F, loop_segment_last_flags: F, loop_segment_last_fill_byte: F, loop_segment_next_bytes: [F; 8], loop_is_last_segment: F, loop_padding_size: F, loop_last_count_chunk: [F; 2], im_direct: [FieldExtension<F>; 5],
 });
 
 values!(JumpDestAirValues<F> {
@@ -1188,6 +1222,14 @@ values!(DmaPrePostAirGroupValues<F> {
 });
 
 values!(DmaWithPrePostAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(DmaLoopAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(CompactDmaAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
@@ -1481,6 +1523,16 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 56, PackedInfoConst {
         is_packed: true,
+        num_packed_words: 12,
+        unpack_info: &[36, 29, 29, 32, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, 1, 32, 32],
+    }),
+    (0, 57, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 27,
+        unpack_info: &[1, 1, 1, 1, 1, 1, 1, 8, 24, 1, 9, 16, 16, 36, 22, 7, 3, 22, 7, 3, 3, 1, 1, 1, 1, 3, 9, 32, 32, 3, 3, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 1, 64, 64, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 36, 29, 29, 32, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, 1, 32, 32],
+    }),
+    (0, 58, PackedInfoConst {
+        is_packed: true,
         num_packed_words: 6,
         unpack_info: &[1, 1, 1, 16, 16, 16, 16, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 8, 8, 6, 6, 6, 4, 4, 29, 29, 36, 32],
     }),
@@ -1545,7 +1597,9 @@ pub const AIR_NAMES: &[(usize, usize, &str)] = &[
     (0, 53, "DmaUnaligned"),
     (0, 54, "DmaPrePost"),
     (0, 55, "DmaWithPrePost"),
-    (0, 56, "JumpDest"),
-    (0, 57, "VirtualTableZisk0"),
-    (0, 58, "VirtualTableZisk1"),
+    (0, 56, "DmaLoop"),
+    (0, 57, "CompactDma"),
+    (0, 58, "JumpDest"),
+    (0, 59, "VirtualTableZisk0"),
+    (0, 60, "VirtualTableZisk1"),
 ];

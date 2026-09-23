@@ -80,6 +80,11 @@ pub trait InputDataLaneRow<F: PrimeField64>:
     fn set_is_free_read(&mut self, lane: usize, value: bool);
     fn get_value_word(&self, lane: usize, index: usize) -> u16;
     fn set_value_word(&mut self, lane: usize, index: usize, value: u16);
+
+    /// Overwrites the `InputData` block of this row with `src`'s, leaving every other block
+    /// untouched. Same role as [`MemLaneRow::copy_mem_block_from`]: the padding of a segment is
+    /// one row repeated, built once and copied in parallel.
+    fn copy_input_block_from(&mut self, src: &Self);
 }
 
 /// The columns of a `RomData` lane, as the `RomData` fill writes them.
@@ -96,6 +101,10 @@ pub trait RomDataLaneRow<F: PrimeField64>:
     fn set_addr_change(&mut self, lane: usize, value: bool);
     fn get_value(&self, lane: usize, index: usize) -> u32;
     fn set_value(&mut self, lane: usize, index: usize, value: u32);
+
+    /// Overwrites the `RomData` block of this row with `src`'s, leaving every other block
+    /// untouched. See [`InputDataLaneRow::copy_input_block_from`].
+    fn copy_rom_block_from(&mut self, src: &Self);
 }
 
 /// `MemLaneRow` for a row that is nothing but a `Mem` block: every accessor is the generated one,
@@ -226,6 +235,10 @@ macro_rules! impl_input_data_lane_row_standalone {
             fn set_value_word(&mut self, lane: usize, index: usize, value: u16) {
                 InputDataTraceRowOps::set_value_word(self, lane, index, value)
             }
+            #[inline(always)]
+            fn copy_input_block_from(&mut self, src: &Self) {
+                *self = *src;
+            }
         }
     };
     (@fwd $get:ident, $set:ident, $ty:ty) => {
@@ -264,6 +277,15 @@ macro_rules! impl_input_data_lane_row_compact {
             fn set_value_word(&mut self, lane: usize, index: usize, value: u16) {
                 $row::set_input_value_word(self, lane, index, value)
             }
+            #[inline(always)]
+            fn copy_input_block_from(&mut self, src: &Self) {
+                self.set_all_input_addr(&src.get_all_input_addr());
+                self.set_all_input_step(&src.get_all_input_step());
+                self.set_all_input_sel(&src.get_all_input_sel());
+                self.set_all_input_addr_changes(&src.get_all_input_addr_changes());
+                self.set_all_input_value_word(&src.get_all_input_value_word());
+                self.set_all_input_is_free_read(&src.get_all_input_is_free_read());
+            }
         }
     };
     (@fwd $row:ident, $get:ident, $set:ident, $src_get:ident, $src_set:ident, $ty:ty) => {
@@ -300,6 +322,10 @@ macro_rules! impl_rom_data_lane_row_standalone {
             fn set_value(&mut self, lane: usize, index: usize, value: u32) {
                 RomDataTraceRowOps::set_value(self, lane, index, value)
             }
+            #[inline(always)]
+            fn copy_rom_block_from(&mut self, src: &Self) {
+                *self = *src;
+            }
         }
     };
     (@fwd $get:ident, $set:ident, $ty:ty) => {
@@ -335,6 +361,13 @@ macro_rules! impl_rom_data_lane_row_compact {
             #[inline(always)]
             fn set_value(&mut self, lane: usize, index: usize, value: u32) {
                 $row::set_rom_value(self, lane, index, value)
+            }
+            #[inline(always)]
+            fn copy_rom_block_from(&mut self, src: &Self) {
+                self.set_all_rom_addr_change(&src.get_all_rom_addr_change());
+                self.set_all_rom_addr(&src.get_all_rom_addr());
+                self.set_all_rom_step(&src.get_all_rom_step());
+                self.set_all_rom_value(&src.get_all_rom_value());
             }
         }
     };
@@ -394,5 +427,36 @@ mod tests {
         assert!(MemLaneRow::<Goldilocks>::get_sel(&dst, 0));
         assert_eq!(InputDataLaneRow::<Goldilocks>::get_addr(&dst, 0), 0x1111);
         assert_eq!(RomDataLaneRow::<Goldilocks>::get_addr(&dst, 0), 0x2222);
+    }
+
+    /// Same for the other two blocks: each copy takes its own block and nothing else.
+    #[test]
+    fn copy_input_and_rom_blocks_leave_the_other_blocks_alone() {
+        let mut src = CompactMemTraceRow::<Goldilocks>::default();
+        MemLaneRow::<Goldilocks>::set_addr(&mut src, 0, 0x1234);
+        InputDataLaneRow::<Goldilocks>::set_addr(&mut src, 0, 0xAAAA);
+        InputDataLaneRow::<Goldilocks>::set_value_word(&mut src, 0, 3, 0x5555);
+        InputDataLaneRow::<Goldilocks>::set_is_free_read(&mut src, 0, true);
+        RomDataLaneRow::<Goldilocks>::set_addr(&mut src, 0, 0xBBBB);
+        RomDataLaneRow::<Goldilocks>::set_value(&mut src, 0, 1, 0x7777);
+        RomDataLaneRow::<Goldilocks>::set_addr_change(&mut src, 0, true);
+
+        let mut dst = CompactMemTraceRow::<Goldilocks>::default();
+        MemLaneRow::<Goldilocks>::set_addr(&mut dst, 0, 0x0001);
+        RomDataLaneRow::<Goldilocks>::set_addr(&mut dst, 0, 0x2222);
+
+        InputDataLaneRow::<Goldilocks>::copy_input_block_from(&mut dst, &src);
+        assert_eq!(InputDataLaneRow::<Goldilocks>::get_addr(&dst, 0), 0xAAAA);
+        assert_eq!(InputDataLaneRow::<Goldilocks>::get_value_word(&dst, 0, 3), 0x5555);
+        assert!(InputDataLaneRow::<Goldilocks>::get_is_free_read(&dst, 0));
+        assert_eq!(MemLaneRow::<Goldilocks>::get_addr(&dst, 0), 0x0001);
+        assert_eq!(RomDataLaneRow::<Goldilocks>::get_addr(&dst, 0), 0x2222);
+
+        RomDataLaneRow::<Goldilocks>::copy_rom_block_from(&mut dst, &src);
+        assert_eq!(RomDataLaneRow::<Goldilocks>::get_addr(&dst, 0), 0xBBBB);
+        assert_eq!(RomDataLaneRow::<Goldilocks>::get_value(&dst, 0, 1), 0x7777);
+        assert!(RomDataLaneRow::<Goldilocks>::get_addr_change(&dst, 0));
+        assert_eq!(MemLaneRow::<Goldilocks>::get_addr(&dst, 0), 0x0001);
+        assert_eq!(InputDataLaneRow::<Goldilocks>::get_addr(&dst, 0), 0xAAAA);
     }
 }

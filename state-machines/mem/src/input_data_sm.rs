@@ -18,6 +18,7 @@ use zisk_sm_mem_common::{
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
+use rayon::prelude::*;
 use zisk_common::SegmentId;
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::{
@@ -595,19 +596,41 @@ impl<F: PrimeField64> InputDataSM<F> {
         let value_2 = rows[last_row].get_value_word(last_lane, 2);
         let value_3 = rows[last_row].get_value_word(last_lane, 3);
 
+        // Every padding slot repeats the same values, so the row holding them is built once and
+        // the whole rows are overwritten in parallel; only the row the last operation shares with
+        // the padding has its lanes set one at a time. Address doesn't change in padding lanes, so
+        // no range check is required.
         let padding_size = num_slots - count;
-        for islot in count..num_slots {
-            let (row, lane) = lanes.split(islot);
-            rows[row].set_addr(lane, last_addr);
-            rows[row].set_step(lane, last_step);
-            rows[row].set_sel(lane, false);
-            rows[row].set_is_free_read(lane, is_free_read);
-            rows[row].set_addr_changes(lane, false);
-            rows[row].set_value_word(lane, 0, value_0);
-            rows[row].set_value_word(lane, 1, value_1);
-            rows[row].set_value_word(lane, 2, value_2);
-            rows[row].set_value_word(lane, 3, value_3);
-            // address doesn't change in padding lanes, no range check is required
+        if padding_size > 0 {
+            let lanes_x_row = lanes.lanes();
+            let value_words = [value_0, value_1, value_2, value_3];
+            let partial_end = count.next_multiple_of(lanes_x_row).min(num_slots);
+            for islot in count..partial_end {
+                let (row, lane) = lanes.split(islot);
+                set_input_padding_lane::<F, R>(
+                    &mut rows[row],
+                    lane,
+                    last_addr,
+                    last_step,
+                    is_free_read,
+                    &value_words,
+                );
+            }
+            let from_row = partial_end / lanes_x_row;
+            if from_row < rows.len() {
+                let mut pad_row = R::default();
+                for lane in 0..lanes_x_row {
+                    set_input_padding_lane::<F, R>(
+                        &mut pad_row,
+                        lane,
+                        last_addr,
+                        last_step,
+                        is_free_read,
+                        &value_words,
+                    );
+                }
+                rows[from_row..].par_iter_mut().for_each(|row| row.copy_input_block_from(&pad_row));
+            }
         }
 
         range_16bits[value_0 as usize] += padding_size as u32;
@@ -697,6 +720,27 @@ impl<F: PrimeField64> InputDataSM<F> {
 
         air_values.distance_end[0] = F::from_u16(out.distance_end[0]);
         air_values.distance_end[1] = F::from_u16(out.distance_end[1]);
+    }
+}
+
+/// One padding lane of an `InputData` segment: the last address, step and value, not selected.
+/// Kept in one place so the partial row and the whole rows cannot drift apart.
+#[inline]
+fn set_input_padding_lane<F: PrimeField64, R: InputDataLaneRow<F>>(
+    row: &mut R,
+    lane: usize,
+    addr: u32,
+    step: u64,
+    is_free_read: bool,
+    value_words: &[u16; 4],
+) {
+    row.set_addr(lane, addr);
+    row.set_step(lane, step);
+    row.set_sel(lane, false);
+    row.set_is_free_read(lane, is_free_read);
+    row.set_addr_changes(lane, false);
+    for (index, &word) in value_words.iter().enumerate() {
+        row.set_value_word(lane, index, word);
     }
 }
 

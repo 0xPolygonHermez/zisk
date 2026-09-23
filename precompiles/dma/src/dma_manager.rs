@@ -7,15 +7,16 @@ use zisk_common::{
     BusDeviceMode, ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner,
 };
 use zisk_pil::{
-    Dma64AlignedLargeTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemLargeTrace,
-    Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace, DmaPrePostTrace, DmaTrace,
-    DmaUnalignedTrace, DmaWithPrePostTrace, ZiskProofValues,
+    CompactDmaTrace, Dma64AlignedLargeTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemLargeTrace,
+    Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace, DmaLoopTrace,
+    DmaPrePostTrace, DmaTrace, DmaUnalignedTrace, DmaWithPrePostTrace, ZiskProofValues,
 };
 
 use crate::{
-    Dma64AlignedInstance, Dma64AlignedMemCpySM, Dma64AlignedMemSM, Dma64AlignedMemSetSM,
-    Dma64AlignedSM, DmaCounterInputGen, DmaInstance, DmaPlanner, DmaPrePostInstance, DmaPrePostSM,
-    DmaSM, DmaUnalignedInstance, DmaUnalignedSM, DmaWithPrePostInstance, DmaWithPrePostSM,
+    CompactDmaInstance, CompactDmaSM, Dma64AlignedInstance, Dma64AlignedMemCpySM,
+    Dma64AlignedMemSM, Dma64AlignedMemSetSM, Dma64AlignedSM, DmaCounterInputGen, DmaInstance,
+    DmaLoopInstance, DmaLoopSM, DmaPlanner, DmaPrePostInstance, DmaPrePostSM, DmaSM,
+    DmaUnalignedInstance, DmaUnalignedSM, DmaWithPrePostInstance, DmaWithPrePostSM,
 };
 
 /// The `DmaManager` struct represents the Dma manager,
@@ -36,6 +37,10 @@ pub struct DmaManager<F: PrimeField64> {
     dma_64_aligned_memcpy_sm: Arc<Dma64AlignedMemCpySM<F>>,
     dma_64_aligned_memset_sm: Arc<Dma64AlignedMemSetSM<F>>,
     dma_unaligned_sm: Arc<DmaUnalignedSM<F>>,
+    /// `Dma64Aligned` and `DmaUnaligned` fused into a single air.
+    dma_loop_sm: Arc<DmaLoopSM<F>>,
+    /// `DmaWithPrePost` and `DmaLoop` side by side in a single air.
+    compact_dma_sm: Arc<CompactDmaSM<F>>,
 }
 
 impl<F: PrimeField64> DmaManager<F> {
@@ -56,7 +61,11 @@ impl<F: PrimeField64> DmaManager<F> {
             Dma64AlignedMemSM::new(std.clone(), Dma64AlignedMemLargeTrace::<()>::AIR_ID);
         let dma_64_aligned_memcpy_sm = Dma64AlignedMemCpySM::new(std.clone());
         let dma_64_aligned_memset_sm = Dma64AlignedMemSetSM::new(std.clone());
-        let dma_unaligned_sm = DmaUnalignedSM::new(std);
+        let dma_unaligned_sm = DmaUnalignedSM::new(std.clone());
+        let dma_loop_sm = DmaLoopSM::new(std);
+        // The fused air fills its blocks with the state machines of the airs they come from, so it
+        // shares them: they hold the `Std` ids its checks are raised against.
+        let compact_dma_sm = CompactDmaSM::new(dma_with_pre_post_sm.clone(), dma_loop_sm.clone());
 
         Arc::new(Self {
             dma_sm,
@@ -69,6 +78,8 @@ impl<F: PrimeField64> DmaManager<F> {
             dma_64_aligned_memcpy_sm,
             dma_64_aligned_memset_sm,
             dma_unaligned_sm,
+            dma_loop_sm,
+            compact_dma_sm,
         })
     }
 }
@@ -133,6 +144,14 @@ impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
             DmaUnalignedTrace::<()>::AIR_ID => {
                 Box::new(DmaUnalignedInstance::new(self.dma_unaligned_sm.clone(), ictx))
             }
+            // DMA loop instances, aligned or not
+            DmaLoopTrace::<()>::AIR_ID => {
+                Box::new(DmaLoopInstance::new(self.dma_loop_sm.clone(), ictx))
+            }
+            // The controller and the loop fused side by side
+            CompactDmaTrace::<()>::AIR_ID => {
+                Box::new(CompactDmaInstance::new(self.compact_dma_sm.clone(), ictx))
+            }
             _ => {
                 panic!("DmaBuilder::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id)
             }
@@ -159,6 +178,10 @@ impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
         proof_values.enable_dma_64_aligned_memset =
             F::from_bool(planned(Dma64AlignedMemSetTrace::<()>::AIR_ID));
         proof_values.enable_dma_unaligned = F::from_bool(planned(DmaUnalignedTrace::<()>::AIR_ID));
+        proof_values.enable_dma_loop = F::from_bool(planned(DmaLoopTrace::<()>::AIR_ID));
+        // The loop block of the fused air walks a chain of its own, whose segments are the
+        // instances of the air -- even the ones whose loop block got nothing to prove.
+        proof_values.enable_compact_dma = F::from_bool(planned(CompactDmaTrace::<()>::AIR_ID));
         // No air is instantiated for the dedicated inputcpy variant any more.
         proof_values.enable_dma_64_aligned_inputcpy = F::ZERO;
     }

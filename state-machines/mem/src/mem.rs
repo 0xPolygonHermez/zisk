@@ -39,12 +39,8 @@ impl<F: PrimeField64> Mem<F> {
         let input_data_sm = InputDataSM::new(std.clone());
         let rom_data_sm = RomDataSM::new(std.clone());
         let mem_align_byte_sm = MemAlignByteSM::new(std.clone());
-        let compact_mem_sm = CompactMemSM::new(
-            std.clone(),
-            mem_sm.clone(),
-            input_data_sm.clone(),
-            rom_data_sm.clone(),
-        );
+        let compact_mem_sm =
+            CompactMemSM::new(mem_sm.clone(), input_data_sm.clone(), rom_data_sm.clone());
 
         let compact_mem_align_sm =
             CompactMemAlignSM::new(mem_align_sm.clone(), mem_align_byte_sm.clone());

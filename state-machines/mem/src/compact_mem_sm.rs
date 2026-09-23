@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use zisk_common::SegmentId;
@@ -47,7 +46,6 @@ impl<F: PrimeField64> CompactMemSM<F> {
     /// they hold the `Std` range-check ids, and the ids must be the same ones the standalone airs
     /// raise their checks against.
     pub fn new(
-        _std: Arc<Std<F>>,
         mem_sm: Arc<MemSM<F>>,
         input_data_sm: Arc<InputDataSM<F>>,
         rom_data_sm: Arc<RomDataSM<F>>,

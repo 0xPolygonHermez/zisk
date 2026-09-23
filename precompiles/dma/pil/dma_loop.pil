@@ -7,7 +7,7 @@
 // OPERATION_BUS_ID and either of them proves it, the witness decides which. So this air is not a
 // fusion in the sense `DmaWithPrePost` is (it removes no bus leg): it's a **third alternative on
 // the same bus**. Which is why the controller does not change at all to accommodate it — the only
-// edit `dma.pil` needs is the continuation id below it.
+// edit `dma.pil` needs is its continuation id.
 //
 // What it buys, and what it costs
 // ───────────────────────────────
@@ -90,10 +90,8 @@
 // since the chunks would be taken directly. It has been seen that these operations are not the
 // most frequent.
 
-// Continuation id of this air's chain. It lives here rather than next to DMA_64_ALIGNED_CONT_ID /
-// DMA_UNALIGNED_CONT_ID in `dma.pil` so that requiring this file is the only thing that pulls it
-// in — `dma.pil` is on the live path of `zisk.pil` and this air is not instantiated yet.
-const int DMA_LOOP_CONT_ID = 8202;
+// The continuation id of this air's chain, DMA_LOOP_CONT_ID, lives in `dma.pil` next to the ones of
+// Dma64Aligned and DmaUnaligned.
 
 airtemplate DmaLoop(int N = 2**21,                // Rows of instance
                     const expr enable_flag = 1,   // Expression to active the beggining of

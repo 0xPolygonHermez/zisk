@@ -1,0 +1,843 @@
+require "dma/pil/dma.pil"
+require "dma/pil/dma_loop.pil"
+require "dma/pil/dma_with_pre_post.pil"
+
+/*
+    Compact DMA (CompactDma)
+    ========================
+
+    This machine is the fusion of TWO DMA airs into a single one:
+
+      · the controller with its PRE/POST sub-operations -- `DmaWithPrePost`
+                                                            (precompiles/dma/pil/dma_with_pre_post.pil)
+      · the 64-bit loop, aligned or not                  -- `DmaLoop`
+                                                            (precompiles/dma/pil/dma_loop.pil)
+
+    Unlike the two airs it fuses, this is NOT a machine that proves one part of an operation or the
+    other: EVERY row carries the two of them at once. Each block keeps its own columns and its own
+    buses; the blocks share nothing but the row index, and no constraint crosses from one block to
+    the other. Read this file as two independent airs stacked side by side.
+
+        ROW i   ┌──────────────────────────────────────────────────────────────────┐
+                │ wpp_*   : one row of the `DmaWithPrePost` sequence               │
+                │ loop_*  : one row of the `DmaLoop` sequence (loop_op_x_row words) │
+                └──────────────────────────────────────────────────────────────────┘
+
+    Why
+    ───
+
+    Every DMA operation that is not direct needs a controller row, and every operation with at least
+    one whole 64-bit word needs loop rows, so an execution that uses the DMA at all opens a
+    `DmaWithPrePost` instance plus one loop instance (a `Dma64Aligned*` one, a `DmaUnaligned` one, or
+    both). When the DMA is used lightly all of them are far from full, and what costs is not the basic
+    proof but the recursion over the number of instances. One instance of this air does the work of
+    two or three.
+
+    It is the idea of the `DmaCompact` evaluated on an older branch -- one small instance that does
+    every phase of every operation -- built with the airs this branch has: the controller and its
+    sub-operations are already one air (`DmaWithPrePost`), and the aligned and unaligned loops are
+    already one air (`DmaLoop`). That design went further and shared the columns between the row
+    kinds (controller, pre/post, loop) to get the narrowest possible row, at the price of a
+    relational design of its own. This one keeps the two airs as they are: the soundness argument is
+    theirs, and the witness is computed by their own code.
+
+    Operations do not cross the blocks: the controller of the `wpp_` block delegates its loop on the
+    operation bus exactly as `DmaWithPrePost` does, and whichever loop air the planner routed that
+    loop to proves it -- the `loop_` block of this same instance, or any other.
+
+    Is this really the same air, twice?
+    ───────────────────────────────────
+
+    It is meant to be, and it can be checked. Compile a PIL that instantiates `DmaWithPrePost`,
+    `DmaLoop` and `CompactDma` side by side with `-O output-constraints -O raw-constraints-format`,
+    strip the block prefixes, and compare the constraint sets: they match one for one, and so do the
+    bus interactions. The two blocks were transcribed from the files above with every name they
+    declare prefixed and the comments stripped, so read those files for the why of each constraint.
+
+    The bus interactions differ in shape but not in content: the two blocks share one gsum
+    accumulator, so the standard library packs their terms into different clusters than it does when
+    each air accumulates on its own.
+
+    Continuations
+    ─────────────
+
+    The `wpp_` block has none: an operation is atomic there (its extra PRE row must follow its DMA
+    row), so every instance proves whole operations and nothing flows from one to the next.
+
+    The `loop_` block keeps the continuation chain of `DmaLoop` on DMA_LOOP_CONT_ID, with a
+    `cont_subid` of its own taken from the same `proof.dma_loop` container, so its chain never mixes
+    with the one of a standalone `DmaLoop`. The instances of this air are the segments of that chain,
+    and `loop_enable_flag` gates its global seed exactly as `enable_flag` does in `DmaLoop`: it has to
+    be on whenever this air has an instance, even when its `loop_` block is only padding.
+*/
+
+airtemplate CompactDma(int N = 2**20,
+                       const expr loop_enable_flag = 1,   // gates the global seed of the loop chain
+                       const int loop_op_x_row = 4,       // 64-bit words per row of the loop block
+                       int loop_cont_subid = 0) {         // subid of the loop chain, 0 = auto
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // BLOCK 1 of 2 -- CONTROLLER WITH PRE/POST
+    //
+    // Transcription of `DmaWithPrePost` (precompiles/dma/pil/dma_with_pre_post.pil) with every name
+    // prefixed `wpp_`.
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    const int wpp_RC = 2;
+
+    col witness bits(1) wpp_is_pre_row;
+    wpp_is_pre_row * (1 - wpp_is_pre_row) === 0;
+
+    col witness bits(1) wpp_has_pre_row;
+
+    col witness bits(1) wpp_sel_memcpy;
+    col witness bits(1) wpp_sel_memcmp;
+    col witness bits(1) wpp_sel_memset;
+    col witness bits(1) wpp_sel_inputcpy;
+    col witness bits(1) wpp_sel_extended;
+
+    wpp_sel_memcpy * (1 - wpp_sel_memcpy) === 0;
+    wpp_sel_memcmp * (1 - wpp_sel_memcmp) === 0;
+    wpp_sel_memset * (1 - wpp_sel_memset) === 0;
+    wpp_sel_inputcpy * (1 - wpp_sel_inputcpy) === 0;
+    wpp_sel_extended * (1 - wpp_sel_extended) === 0;
+
+    col witness bits(8) wpp_fill_byte;
+
+    (1 - wpp_sel_memset) * wpp_fill_byte === 0;
+
+    const expr wpp_bus_op = wpp_sel_memcpy * OP_DMA_MEMCPY +
+                        wpp_sel_memcmp * OP_DMA_MEMCMP +
+                        wpp_sel_memset * __OP_DMA_MEMSET__ +
+                        wpp_sel_inputcpy * OP_DMA_INPUTCPY +
+                        wpp_sel_extended * OP_DMA_X_OFFSET;
+
+    const expr wpp_loop_op = wpp_sel_memcpy * OP_DMA_XMEMCPY +
+                         wpp_sel_memcmp * OP_DMA_XMEMEQ +
+                         wpp_sel_memset * OP_DMA_XMEMSET +
+                         wpp_sel_inputcpy * OP_DMA_INPUTCPY;
+
+    const expr wpp_sel_load_count_from_mem = wpp_sel_memcpy + wpp_sel_memcmp + wpp_sel_memset;
+
+    const expr wpp_use_src = wpp_sel_memcpy + wpp_sel_memcmp;
+
+    const expr wpp_sel_op = wpp_sel_memcpy + wpp_sel_memcmp + wpp_sel_memset + wpp_sel_inputcpy;
+    wpp_sel_op * (1 - wpp_sel_op) === 0;
+
+    wpp_is_pre_row * (1 - wpp_sel_op) === 0;
+
+    const expr wpp_sel_dma = wpp_sel_op - wpp_is_pre_row;
+
+    wpp_is_pre_row * wpp_sel_extended === 0;
+
+    col witness bits(24) wpp_h_count;
+
+    col witness bits(1) wpp_count_lt_256;
+    col witness bits(9) wpp_l_count;
+    const expr wpp_count = wpp_h_count * 256 + wpp_l_count;
+
+    wpp_count_lt_256 * (1 - wpp_count_lt_256) === 0;
+
+    wpp_count_lt_256 * wpp_h_count === 0;
+
+    range_check(expression: wpp_h_count, min: 0, max: 2**24-1, sel: wpp_sel_dma);
+
+    col witness bits(16) wpp_count_diff_chunks[2];
+    const expr wpp_count_diff = wpp_count_diff_chunks[0] + wpp_count_diff_chunks[1] * P2_16;
+    const expr wpp_count_bus = wpp_count + wpp_count_diff;
+
+    range_check(expression: wpp_count_diff_chunks[0], min: 0, max: 0xFFFF, sel: wpp_sel_memcmp);
+    range_check(expression: wpp_count_diff_chunks[1], min: 0, max: 0xFFFF, sel: wpp_sel_memcmp);
+
+    (wpp_sel_memcpy + wpp_sel_inputcpy + wpp_sel_memset) * wpp_count_diff === 0;
+
+    col witness bits(MAIN_STEP_BITS) wpp_main_step;
+
+    col witness bits(22) wpp_h_dst64;
+    col witness bits(7) wpp_l_dst64;
+    col witness bits(3) wpp_dst_offset;
+    const expr wpp_dst = wpp_h_dst64 * 2**10 + wpp_l_dst64 * 2**3 + wpp_dst_offset;
+    const expr wpp_dst64 = wpp_h_dst64 * 2**10 + wpp_l_dst64 * 2**3;
+
+    range_check(expression: wpp_h_dst64, min: 0, max: 2**22-1, sel: wpp_sel_dma);
+
+    col witness bits(22) wpp_h_src64;
+    col witness bits(7) wpp_l_src64;
+    col witness bits(3) wpp_src_offset;
+    col witness bits(3) wpp_src_offset_after_pre;
+
+    col witness bits(1) wpp_src64_inc_by_pre;
+    wpp_src64_inc_by_pre * (1 - wpp_src64_inc_by_pre) === 0;
+
+    const expr wpp_src = wpp_h_src64 * 2**10 + wpp_l_src64 * 2**3 + wpp_src_offset;
+    const expr wpp_src64 = wpp_h_src64 * 2**10 + wpp_l_src64 * 2**3;
+
+    (wpp_sel_memset + wpp_sel_inputcpy) * wpp_src_offset_after_pre === 0;
+
+    range_check(expression: wpp_h_src64, min: 0, max: 2**22-1, sel: wpp_sel_dma);
+    lookup_assumes(DUAL_RANGE_7_BITS_ID, expressions: [wpp_l_src64, wpp_l_dst64], sel: wpp_sel_dma, sel_is_binary: 1);
+
+    col witness bits(1) wpp_use_pre;
+    col witness bits(1) wpp_use_loop;
+    col witness bits(1) wpp_use_post;
+
+    wpp_use_pre * (1 - wpp_use_pre) === 0;
+    wpp_use_loop * (1 - wpp_use_loop) === 0;
+    wpp_use_post * (1 - wpp_use_post) === 0;
+
+    col witness bits(3) wpp_pre_count;
+    col witness bits(9) wpp_l_count64;
+
+    const expr wpp_post_count = wpp_count - wpp_pre_count - wpp_h_count * 256 - wpp_l_count64 * 8;
+
+    (1 - wpp_sel_dma) * wpp_use_pre === 0;
+    (1 - wpp_sel_dma) * wpp_use_loop === 0;
+    (1 - wpp_sel_dma) * wpp_use_post === 0;
+
+    wpp_has_pre_row <== wpp_use_pre * wpp_use_post;
+
+    wpp_is_pre_row === 'wpp_has_pre_row;
+
+    wpp_is_pre_row * (wpp_main_step - 'wpp_main_step) === 0;
+    wpp_is_pre_row * (wpp_fill_byte - 'wpp_fill_byte) === 0;
+    wpp_is_pre_row * (wpp_sel_memcpy - 'wpp_sel_memcpy) === 0;
+    wpp_is_pre_row * (wpp_sel_memcmp - 'wpp_sel_memcmp) === 0;
+    wpp_is_pre_row * (wpp_sel_memset - 'wpp_sel_memset) === 0;
+    wpp_is_pre_row * (wpp_sel_inputcpy - 'wpp_sel_inputcpy) === 0;
+
+    const expr wpp_pp_is_post = wpp_use_post;
+
+    const expr wpp_pp_sel = wpp_is_pre_row + wpp_use_pre + wpp_use_post - wpp_has_pre_row;
+
+    const expr wpp_loop_bytes = wpp_h_count * 256 + wpp_l_count64 * 8;
+    const expr wpp_post_dst_addr = wpp_dst + wpp_pre_count + wpp_loop_bytes;
+    const expr wpp_post_src_addr = wpp_src + wpp_pre_count - wpp_src_offset_after_pre + wpp_loop_bytes;
+
+    col witness bits(ADDR_BITS) wpp_pp_dst_addr;
+    col witness bits(ADDR_BITS) wpp_pp_src_addr;
+    col witness bits(3) wpp_pp_dst_offset;
+    col witness bits(3) wpp_pp_src_offset;
+    col witness bits(4) wpp_pp_count;
+
+    wpp_pp_dst_addr <== wpp_dst64 + wpp_pp_is_post * (wpp_post_dst_addr - wpp_dst64) + wpp_is_pre_row * ('wpp_dst64 - wpp_dst64);
+    wpp_pp_src_addr <== wpp_src64 + wpp_pp_is_post * (wpp_post_src_addr - wpp_src64) + wpp_is_pre_row * ('wpp_src64 - wpp_src64);
+    wpp_pp_dst_offset <== wpp_dst_offset - wpp_pp_is_post * wpp_dst_offset + wpp_is_pre_row * ('wpp_dst_offset - wpp_dst_offset);
+    wpp_pp_src_offset <== wpp_src_offset + wpp_pp_is_post * (wpp_src_offset_after_pre - wpp_src_offset) +
+                      wpp_is_pre_row * ('wpp_src_offset - wpp_src_offset);
+    wpp_pp_count <== wpp_pre_count + wpp_pp_is_post * (wpp_post_count - wpp_pre_count) + wpp_is_pre_row * ('wpp_pre_count - wpp_pre_count);
+
+    col witness bits(1) wpp_pp_load_src;
+    col witness bits(1) wpp_pp_sel_write;
+    col witness bits(1) wpp_pp_sel_byte_rc;
+    col witness bits(1) wpp_pp_sel_memcmp;
+    col witness bits(1) wpp_pp_sel_memset;
+
+    wpp_pp_load_src <== (wpp_sel_memcpy + wpp_sel_memcmp) * wpp_pp_sel;
+
+    wpp_pp_sel_write <== (wpp_sel_memcpy + wpp_sel_inputcpy + wpp_sel_memset) * wpp_pp_sel;
+    wpp_pp_sel_byte_rc <== (wpp_sel_memcpy + wpp_sel_memcmp + wpp_sel_inputcpy) * wpp_pp_sel;
+    wpp_pp_sel_memcmp <== wpp_sel_memcmp * wpp_pp_sel;
+    wpp_pp_sel_memset <== wpp_sel_memset * wpp_pp_sel;
+
+    col witness bits(1) wpp_selr[7];
+
+    const expr wpp_sr[8];
+    expr wpp__sr_0to6 = 0;
+    expr wpp__sr_value = 0;
+    for (int i = 0; i < 7; ++i) {
+        wpp_selr[i] * (1 - wpp_selr[i]) === 0;
+        wpp_sr[i] = wpp_selr[i];
+        wpp__sr_0to6 = wpp__sr_0to6 + wpp_selr[i];
+        if (i > 0) {
+            wpp__sr_value = wpp__sr_value + i * wpp_sr[i];
+        }
+    }
+    const expr wpp_sr_0to6 = wpp__sr_0to6;
+    wpp__sr_value = wpp__sr_value + 7 * wpp_sr[7];
+    const expr wpp_sr_value = wpp__sr_value;
+
+    wpp_sr_0to6 * (1 - wpp_sr_0to6) === 0;
+    wpp_sr[7] = (1 - wpp_sr_0to6);
+
+    col witness bits(1) wpp_dst_offset_gt_src_offset;
+    wpp_dst_offset_gt_src_offset * (1 - wpp_dst_offset_gt_src_offset) === 0;
+
+    col witness bits(1) wpp_enabled_second_read;
+    wpp_enabled_second_read * (1 - wpp_enabled_second_read) === 0;
+
+    wpp_enabled_second_read * (1 - wpp_pp_sel) === 0;
+
+    expr wpp_rom_flags = DMA_PRE_POST_DST_OFFSET_GT_SRC_F * wpp_dst_offset_gt_src_offset +
+                     DMA_PRE_POST_ENABLED_SECOND_READ_F * wpp_enabled_second_read +
+                     DMA_PRE_POST_SR_VALUE_F * wpp_sr_value +
+                     DMA_PRE_POST_IS_POST * wpp_pp_is_post +
+                     DMA_PRE_POST_LOAD_SRC * wpp_pp_load_src;
+
+    const int wpp_RB = wpp_RC * 4 * 2;
+    const int wpp_RV = wpp_RB / 4;
+
+    col witness bits(8) wpp_rb[wpp_RB];
+    const expr wpp_r_values[wpp_RV];
+
+    for (int i = 0; i < wpp_RB; i+=2) {
+        range_dual_byte(wpp_rb[i+1], wpp_rb[i], wpp_pp_sel_byte_rc);
+
+        wpp_pp_sel_memset * (wpp_rb[i] - wpp_fill_byte) === 0;
+        wpp_pp_sel_memset * (wpp_rb[i+1] - wpp_fill_byte) === 0;
+    }
+
+    for (int i = 0; i < wpp_RV; ++i) {
+        wpp_r_values[i] = wpp_rb[i*4] + P2_8 * wpp_rb[i*4+1]  + P2_16 * wpp_rb[i*4+2]  + P2_24 * wpp_rb[i*4+3];
+    }
+
+    const int wpp_PRB = wpp_RC * 4;
+    col witness bits(8) wpp_pb[wpp_PRB];
+
+    const expr wpp_p_values[wpp_RC];
+
+    for (int i = 0; i < wpp_PRB; i+=2) {
+        range_dual_byte(wpp_pb[i+1], wpp_pb[i], wpp_pp_sel);
+    }
+    for (int i = 0; i < wpp_RC; ++i) {
+        wpp_p_values[i] = wpp_pb[i*4] + P2_8 * wpp_pb[i*4+1]  + P2_16 * wpp_pb[i*4+2]  + P2_24 * wpp_pb[i*4+3];
+    }
+
+    col witness bits(1) wpp_sb[8];
+    for (int i = 0; i < 8; ++i) {
+        wpp_sb[i] * (1 - wpp_sb[i]) === 0;
+        wpp_rom_flags += wpp_sb[i] * (1 << (7-i));
+    }
+
+    col witness bits(1) wpp_memcmp_result_nz;
+    wpp_memcmp_result_nz * (1 - wpp_memcmp_result_nz) === 0;
+
+    wpp_memcmp_result_nz * (1 - wpp_sel_memcmp) === 0;
+
+    wpp_memcmp_result_nz * (1 - wpp_pp_sel) === 0;
+
+    wpp_is_pre_row * wpp_memcmp_result_nz === 0;
+
+    col witness bits(8) wpp_last_dst_byte;
+    col witness bits(8) wpp_abs_diff_dst_src;
+    col witness bits(1) wpp_memcmp_result_is_negative;
+    col witness bits(64, signed) wpp_diff_factor[2];
+    col witness bits(32) wpp_l_memcmp_result;
+    const expr wpp_diff_dst_src[2];
+
+    wpp_memcmp_result_is_negative * (1 - wpp_memcmp_result_is_negative) === 0;
+
+    (1 - wpp_memcmp_result_nz) * wpp_l_memcmp_result === 0;
+    (1 - wpp_memcmp_result_nz) * wpp_memcmp_result_is_negative === 0;
+
+    wpp_last_dst_byte <== wpp_sb[0] * (1 - wpp_sb[1]) * (wpp_pb[0] - wpp_pb[7]) +
+                      wpp_sb[1] * (1 - wpp_sb[2]) * (wpp_pb[1] - wpp_pb[7]) +
+                      wpp_sb[2] * (1 - wpp_sb[3]) * (wpp_pb[2] - wpp_pb[7]) +
+                      wpp_sb[3] * (1 - wpp_sb[4]) * (wpp_pb[3] - wpp_pb[7]) +
+                      wpp_sb[4] * (1 - wpp_sb[5]) * (wpp_pb[4] - wpp_pb[7]) +
+                      wpp_sb[5] * (1 - wpp_sb[6]) * (wpp_pb[5] - wpp_pb[7]) +
+                      wpp_sb[6] * (1 - wpp_sb[7]) * (wpp_pb[6] - wpp_pb[7]) +
+                      wpp_pb[7];
+
+    wpp_diff_dst_src[0] = wpp_diff_factor[0] * wpp_abs_diff_dst_src * wpp_memcmp_result_nz;
+    wpp_diff_dst_src[1] = wpp_diff_factor[1] * wpp_abs_diff_dst_src * wpp_memcmp_result_nz;
+
+    wpp_l_memcmp_result <== 0x1_0000_0000 * wpp_memcmp_result_is_negative +
+                        (1 - 2 * wpp_memcmp_result_is_negative) * wpp_abs_diff_dst_src;
+
+    wpp_rom_flags += DMA_PRE_POST_MEMCMP_RESULT_IS_NEG_F * wpp_memcmp_result_is_negative +
+                 DMA_PRE_POST_MEMCMP_RESULT_NZ_F * wpp_memcmp_result_nz;
+
+    lookup_assumes(DMA_BYTE_CMP_TABLE_ID, [wpp_last_dst_byte,
+                                           wpp_memcmp_result_is_negative,
+                                           wpp_abs_diff_dst_src
+                                           ], sel: wpp_memcmp_result_nz, sel_is_binary: 1);
+
+    const expr wpp_result_nz = wpp_memcmp_result_nz;
+    const expr wpp_bus_result[2];
+    wpp_bus_result[0] = wpp_l_memcmp_result + wpp_dst * (1 - wpp_sel_memcmp);
+    wpp_bus_result[1] = 0xFFFF_FFFF * wpp_memcmp_result_is_negative;
+
+    (1 - wpp_result_nz) * wpp_count_diff === 0;
+
+    col witness bits(32) wpp_bus_write_value[2];
+    col witness bits(32) wpp_write_value[4];
+
+    expr wpp__wr_0 = 0;
+    expr wpp__wr_1 = 0;
+    for (int j = 0; j < 8; ++j) {
+        expr wpp__sr_wr_0 = 0;
+        expr wpp__sr_wr_1 = 0;
+        for (int i = 0; i < 4; ++i) {
+            const int wpp_factor = 1 << (i * 8);
+            wpp__sr_wr_0 += wpp_factor * wpp_sb[i] * wpp_rb[i+j];
+            wpp__sr_wr_1 += wpp_factor * wpp_sb[i+4] * wpp_rb[i+4+j];
+        }
+        wpp__wr_0 += wpp_sr[j] * wpp__sr_wr_0;
+        wpp__wr_1 += wpp_sr[j] * wpp__sr_wr_1;
+    }
+    for (int i = 0; i < 4; ++i) {
+        const int wpp_factor = 1 << (i * 8);
+        wpp__wr_0 += wpp_factor * (1 - wpp_sb[i]) * wpp_pb[i];
+        wpp__wr_1 += wpp_factor * (1 - wpp_sb[i+4]) * wpp_pb[i+4];
+    }
+    wpp_write_value[0] <== wpp__wr_0;
+    wpp_write_value[1] <== wpp__wr_1;
+
+    wpp_write_value[2] <== wpp_sr[3] * (                                                               wpp_sb[3] * P2_24 * wpp_rb[0]) +
+                       wpp_sr[2] * (                                       wpp_sb[2] * P2_16 * wpp_rb[0] + wpp_sb[3] * P2_24 * wpp_rb[1]) +
+                       wpp_sr[1] * (                wpp_sb[1] * P2_8 * wpp_rb[0] + wpp_sb[2] * P2_16 * wpp_rb[1] + wpp_sb[3] * P2_24 * wpp_rb[2]) +
+                       (1 - wpp_sb[0]) * wpp_pb[0] + (1 - wpp_sb[1]) * P2_8 * wpp_pb[1] + (1 - wpp_sb[2]) * P2_16 * wpp_pb[2] + (1 - wpp_sb[3]) * P2_24 * wpp_pb[3];
+
+    wpp_write_value[3] <== wpp_sr[7] * (                                                             + wpp_sb[7] * P2_24 * wpp_rb[0]) +
+                       wpp_sr[6] * (                                     + wpp_sb[6] * P2_16 * wpp_rb[0] + wpp_sb[7] * P2_24 * wpp_rb[1]) +
+                       wpp_sr[5] * (              + wpp_sb[5] * P2_8 * wpp_rb[0] + wpp_sb[6] * P2_16 * wpp_rb[1] + wpp_sb[7] * P2_24 * wpp_rb[2]) +
+                       wpp_sr[4] * (wpp_sb[4] * wpp_rb[0] + wpp_sb[5] * P2_8 * wpp_rb[1] + wpp_sb[6] * P2_16 * wpp_rb[2] + wpp_sb[7] * P2_24 * wpp_rb[3]) +
+                       wpp_sr[3] * (wpp_sb[4] * wpp_rb[1] + wpp_sb[5] * P2_8 * wpp_rb[2] + wpp_sb[6] * P2_16 * wpp_rb[3] + wpp_sb[7] * P2_24 * wpp_rb[4]) +
+                       wpp_sr[2] * (wpp_sb[4] * wpp_rb[2] + wpp_sb[5] * P2_8 * wpp_rb[3] + wpp_sb[6] * P2_16 * wpp_rb[4] + wpp_sb[7] * P2_24 * wpp_rb[5]) +
+                       wpp_sr[1] * (wpp_sb[4] * wpp_rb[3] + wpp_sb[5] * P2_8 * wpp_rb[4] + wpp_sb[6] * P2_16 * wpp_rb[5] + wpp_sb[7] * P2_24 * wpp_rb[6]) +
+                       (1 - wpp_sb[4]) * wpp_pb[4] + (1 - wpp_sb[5]) * P2_8 * wpp_pb[5] + (1 - wpp_sb[6]) * P2_16 * wpp_pb[6] + (1 - wpp_sb[7]) * P2_24 * wpp_pb[7];
+
+    wpp_bus_write_value[0] <== wpp_dst_offset_gt_src_offset * (wpp_write_value[2] - wpp_write_value[0]) + wpp_write_value[0];
+    wpp_bus_write_value[1] <== wpp_dst_offset_gt_src_offset * (wpp_write_value[3] - wpp_write_value[1]) + wpp_write_value[1];
+
+    precompiled_mem_load(sel: wpp_pp_load_src, main_step: wpp_main_step, addr: wpp_pp_src_addr, value: [wpp_r_values[0], wpp_r_values[1]]);
+    precompiled_mem_load(sel: wpp_enabled_second_read, main_step: wpp_main_step, addr: wpp_pp_src_addr + 8, value: [wpp_r_values[2], wpp_r_values[3]]);
+
+    precompiled_mem_load(sel: wpp_pp_sel, main_step: wpp_main_step, addr: wpp_pp_dst_addr, value: wpp_p_values);
+
+    precompiled_mem_store(sel: wpp_pp_sel_write, main_step: wpp_main_step, addr: wpp_pp_dst_addr, value: wpp_bus_write_value);
+
+    wpp_pp_sel_memcmp * (wpp_p_values[0] - wpp_bus_write_value[0] - wpp_diff_dst_src[0]) === 0;
+    wpp_pp_sel_memcmp * (wpp_p_values[1] - wpp_bus_write_value[1] - wpp_diff_dst_src[1]) === 0;
+
+    lookup_assumes(DMA_PRE_POST_TABLE_ID, [wpp_rom_flags,
+                                           wpp_pp_dst_offset,
+                                           wpp_pp_src_offset,
+                                           wpp_pp_count,
+                                           ...wpp_diff_factor], sel: wpp_pp_sel, sel_is_binary: 1);
+
+    const expr wpp_flags = wpp_use_pre * DMA_ROM_USE_PRE_F +
+                       wpp_use_loop * DMA_ROM_LOOP_F +
+                       wpp_use_post * DMA_ROM_USE_POST_F +
+                       wpp_src64_inc_by_pre * DMA_ROM_SRC64_INC_BY_PRE_F +
+                       wpp_count_lt_256 * DMA_ROM_COUNT_LT_256_F +
+                       wpp_result_nz * DMA_ROM_NEQ_F +
+                       wpp_use_src * DMA_ROM_USE_SRC_F;
+
+    lookup_assumes(DMA_ROM_ID, expressions: [wpp_dst_offset, wpp_src_offset, wpp_l_count, wpp_flags, wpp_pre_count,
+                                             wpp_src_offset_after_pre, wpp_l_count64],
+                   sel: wpp_sel_dma, sel_is_binary: 1);
+
+    const expr wpp_loop_count = wpp_h_count * 256 + wpp_l_count64 * 8;
+    const expr wpp_loop_dst = wpp_dst64 + wpp_use_pre * 8;
+    const expr wpp_loop_src = wpp_src64 + wpp_src64_inc_by_pre * 8;
+
+    col witness bits(32) wpp_loop_b0;
+    wpp_loop_b0 <== wpp_loop_src * (wpp_sel_memcpy + wpp_sel_memcmp) + wpp_loop_count * (wpp_sel_inputcpy + wpp_sel_memset);
+
+    col witness bits(32) wpp_loop_extended_arg;
+    wpp_loop_extended_arg <== wpp_loop_count * (wpp_sel_memcpy + wpp_sel_memcmp) + wpp_fill_byte * wpp_sel_memset;
+
+    assumes_operation(op: wpp_loop_op, a: [wpp_loop_dst, 0],
+                                   b: [wpp_loop_b0, 0],
+                                   c: [wpp_loop_dst, 0],
+                                   main_step: wpp_main_step,
+                                   extended_arg: wpp_loop_extended_arg,
+                                   extra_args: [wpp_src_offset_after_pre],
+                                   sel: wpp_use_loop);
+
+    col witness bits(32) wpp_static_count;
+    wpp_static_count <== wpp_count_bus * wpp_sel_extended;
+
+    proves_operation(op: wpp_bus_op,
+                     a: [wpp_dst, 0],
+                     b: [wpp_src * (wpp_sel_memcpy + wpp_sel_memcmp) + wpp_count * (wpp_sel_inputcpy + wpp_sel_memset), 0],
+                     c: wpp_bus_result,
+                     flag: 0,
+                     main_step: wpp_main_step,
+                     extended_arg: wpp_static_count * (wpp_sel_memcpy + wpp_sel_memcmp) + wpp_fill_byte * wpp_sel_memset,
+                     mul: wpp_sel_dma);
+
+    col witness bits(1) wpp_sel_count_from_mem;
+    wpp_sel_count_from_mem <== (wpp_sel_load_count_from_mem - wpp_sel_extended) * (1 - wpp_is_pre_row);
+
+    precompiled_mem_load(sel: wpp_sel_count_from_mem,
+                         main_step: wpp_main_step,
+                         addr: EXTRA_PARAMS_ADDR,
+                         value: [wpp_count_bus, 0]);
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+    // BLOCK 2 of 2 -- 64-BIT LOOP
+    //
+    // Transcription of `DmaLoop` (precompiles/dma/pil/dma_loop.pil) with every name prefixed
+    // `loop_`, its parameters included.
+    // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+    const int loop_RC = 2;
+
+    assert(loop_op_x_row >= 1);
+
+    const int loop_ROW_BYTES = 8 * loop_op_x_row;
+    const int loop_STREAM_BYTES = loop_ROW_BYTES + 8;
+
+    container proof.dma_loop {
+        int cont_subids_count = 0;
+        int cont_subids[64];
+    }
+    use proof.dma_loop;
+
+    if (loop_cont_subid == 0) {
+        loop_cont_subid = cont_subids_count + 1;
+        for (int i = 0; i < cont_subids_count; ++i) {
+            if (cont_subids[i] >= loop_cont_subid) {
+                loop_cont_subid = cont_subids[i] + 1;
+            }
+        }
+    } else {
+        for (int i = 0; i < cont_subids_count; ++i) {
+            assert(cont_subids[i] != loop_cont_subid, `duplicated loop_cont_subid ${loop_cont_subid}`);
+        }
+    }
+    cont_subids[cont_subids_count] = loop_cont_subid;
+    cont_subids_count += 1;
+
+    const expr loop_L1 = get_L1();
+    const expr loop_LAST = loop_L1';
+
+    airval loop_segment_id;
+    airval loop_segment_previous_seq_end;
+    airval loop_segment_previous_src64;
+    airval loop_segment_previous_dst64;
+    airval loop_segment_previous_main_step;
+    airval loop_segment_previous_count;
+    airval loop_segment_previous_flags;
+    airval loop_segment_previous_fill_byte;
+
+    airval loop_segment_first_bytes[8];
+
+    airval loop_segment_last_seq_end;
+    airval loop_segment_last_src64;
+    airval loop_segment_last_dst64;
+    airval loop_segment_last_main_step;
+    airval loop_segment_last_count;
+    airval loop_segment_last_flags;
+    airval loop_segment_last_fill_byte;
+
+    airval loop_segment_next_bytes[8];
+
+    airval loop_is_last_segment;
+
+    loop_segment_previous_seq_end * (1 - loop_segment_previous_seq_end) === 0;
+    loop_segment_last_seq_end * (1 - loop_segment_last_seq_end) === 0;
+    loop_is_last_segment * (1 - loop_is_last_segment) === 0;
+
+    loop_is_last_segment * (1 - loop_segment_last_seq_end) === 0;
+
+    col witness bits(MAIN_STEP_BITS) loop_main_step;
+    col witness bits(ADDR_W_BITS) loop_src64;
+    col witness bits(ADDR_W_BITS) loop_dst64;
+    col witness bits(32) loop_count;
+
+    col witness bits(1) loop_seq_end;
+    loop_seq_end * (1 - loop_seq_end) === 0;
+
+    col witness bits(1) loop_previous_seq_end;
+    loop_previous_seq_end <== loop_L1 * (loop_segment_previous_seq_end - 'loop_seq_end) + 'loop_seq_end;
+
+    col witness bits(1) loop_sel_memcpy;
+    col witness bits(1) loop_sel_memeq;
+    col witness bits(1) loop_sel_memset;
+    col witness bits(1) loop_sel_inputcpy;
+
+    loop_sel_memcpy * (1 - loop_sel_memcpy) === 0;
+    loop_sel_memeq * (1 - loop_sel_memeq) === 0;
+    loop_sel_memset * (1 - loop_sel_memset) === 0;
+    loop_sel_inputcpy * (1 - loop_sel_inputcpy) === 0;
+
+    const expr loop_sel = loop_sel_memcpy + loop_sel_memeq + loop_sel_memset + loop_sel_inputcpy;
+    loop_sel * (1 - loop_sel) === 0;
+
+    col witness bits(1) loop_sel_memcpy_count_load;
+    loop_sel_memcpy_count_load * (1 - loop_sel_memcpy_count_load) === 0;
+    loop_sel_memcpy_count_load * (1 - loop_sel_memcpy) === 0;
+
+    loop_sel_memcpy_count_load * (1 - loop_previous_seq_end) === 0;
+
+    const expr loop_sel_op[loop_op_x_row + 1];
+    loop_sel_op[0] = loop_sel;
+    loop_sel_op[loop_op_x_row] = 0;
+
+    if (loop_op_x_row > 1) {
+        col witness bits(1) air.loop_sel_op_from_1[loop_op_x_row - 1];
+        for (int i = 1; i < loop_op_x_row; ++i) {
+            loop_sel_op_from_1[i-1] * (1 - loop_sel_op_from_1[i-1]) === 0;
+            loop_sel_op[i] = loop_sel_op_from_1[i-1];
+
+            (1 - loop_sel_op[i-1]) * loop_sel_op[i] === 0;
+        }
+    }
+
+    expr loop__ops_selected = 0;
+    for (int i = 0; i < loop_op_x_row; ++i) {
+        loop__ops_selected += loop_sel_op[i];
+    }
+    const expr loop_ops_selected = loop__ops_selected;
+
+    const expr loop_sel_op_last[loop_op_x_row];
+    for (int i = 0; i < loop_op_x_row; ++i) {
+        loop_sel_op_last[i] = loop_sel_op[i] - loop_sel_op[i+1];
+    }
+
+    col witness bits(8) loop_fill_byte;
+
+    (1 - loop_sel_memset) * loop_fill_byte === 0;
+
+    col witness bits(1) loop_offset_1;
+    col witness bits(1) loop_offset_2;
+    col witness bits(1) loop_offset_3;
+    col witness bits(1) loop_offset_4;
+    col witness bits(1) loop_offset_5;
+    col witness bits(1) loop_offset_6;
+    col witness bits(1) loop_offset_7;
+
+    loop_offset_1 * (1 - loop_offset_1) === 0;
+    loop_offset_2 * (1 - loop_offset_2) === 0;
+    loop_offset_3 * (1 - loop_offset_3) === 0;
+    loop_offset_4 * (1 - loop_offset_4) === 0;
+    loop_offset_5 * (1 - loop_offset_5) === 0;
+    loop_offset_6 * (1 - loop_offset_6) === 0;
+    loop_offset_7 * (1 - loop_offset_7) === 0;
+
+    const expr loop_offset_1to7 = loop_offset_1 + loop_offset_2 + loop_offset_3 + loop_offset_4 + loop_offset_5 + loop_offset_6 +
+                             loop_offset_7;
+    loop_offset_1to7 * (loop_offset_1to7 - 1) === 0;
+
+    const expr loop_offset_0 = (1 - loop_offset_1to7);
+    const expr loop_offset = loop_offset_1 + loop_offset_2 * 2 + loop_offset_3 * 3 + loop_offset_4 * 4 + loop_offset_5 * 5 +
+                        loop_offset_6 * 6 + loop_offset_7 * 7;
+
+    (loop_sel_memset + loop_sel_inputcpy) * loop_offset_1to7 === 0;
+
+    const int loop_F_SEL_MEMCPY = 1;
+    const int loop_F_SEL_MEMCMP = 2;
+    const int loop_F_SEL_INPUTCPY = 4;
+    const int loop_F_SEL_MEMSET = 8;
+    const int loop_F_OFFSET = 16;
+
+    const expr loop_flags = loop_F_SEL_MEMCPY * loop_sel_memcpy + loop_F_SEL_MEMCMP * loop_sel_memeq +
+                       loop_F_SEL_INPUTCPY * loop_sel_inputcpy + loop_F_SEL_MEMSET * loop_sel_memset +
+                       loop_F_OFFSET * loop_offset;
+
+    col witness bits(8) loop_read_bytes[loop_ROW_BYTES];
+
+    const expr loop_read_value[loop_op_x_row][loop_RC];
+    for (int i = 0; i < loop_op_x_row; ++i) {
+        const int loop_base = 8 * i;
+        for (int c = 0; c < loop_RC; ++c) {
+            const int loop_cbase = loop_base + 4 * c;
+            range_dual_byte(loop_read_bytes[loop_cbase+1], loop_read_bytes[loop_cbase], loop_sel_op[i]);
+            range_dual_byte(loop_read_bytes[loop_cbase+3], loop_read_bytes[loop_cbase+2], loop_sel_op[i]);
+            loop_read_value[i][c] = loop_read_bytes[loop_cbase] + P2_8 * loop_read_bytes[loop_cbase+1] +
+                               P2_16 * loop_read_bytes[loop_cbase+2] + P2_24 * loop_read_bytes[loop_cbase+3];
+        }
+    }
+
+    for (int i = 0; i < loop_ROW_BYTES; ++i) {
+        loop_sel_memset * (loop_read_bytes[i] - loop_fill_byte) === 0;
+    }
+
+    const expr loop_next_bytes[8];
+
+    col witness bits(1) loop_no_last_no_seq_end;
+    loop_no_last_no_seq_end <== (1 - loop_LAST) * (1 - loop_seq_end);
+
+    for (int i = 0; i < 8; ++i) {
+
+        loop_next_bytes[i] = loop_LAST * loop_segment_next_bytes[i] + loop_no_last_no_seq_end * loop_read_bytes[i]';
+
+        (1 - loop_segment_previous_seq_end) * loop_L1 * (loop_segment_first_bytes[i] - loop_read_bytes[i]) === 0;
+
+        loop_segment_last_seq_end * loop_segment_next_bytes[i] === 0;
+
+        loop_segment_previous_seq_end * loop_L1 * loop_segment_first_bytes[i] === 0;
+    }
+
+    col witness bits(32) loop_write_value[loop_op_x_row][loop_RC];
+
+    const expr loop_stream_byte[loop_STREAM_BYTES];
+    for (int j = 0; j < loop_ROW_BYTES; ++j) {
+        loop_stream_byte[j] = loop_read_bytes[j];
+    }
+    for (int j = 0; j < 8; ++j) {
+        loop_stream_byte[loop_ROW_BYTES + j] = loop_next_bytes[j];
+    }
+
+    const expr loop_offset_sel[8] = [loop_offset_0, loop_offset_1, loop_offset_2, loop_offset_3,
+                                loop_offset_4, loop_offset_5, loop_offset_6, loop_offset_7];
+
+    for (int i = 0; i < loop_op_x_row; ++i) {
+        for (int c = 0; c < loop_RC; ++c) {
+            expr loop__wr = 0;
+            for (int f = 0; f < 8; ++f) {
+                expr loop__chunk = 0;
+                for (int b = 0; b < 4; ++b) {
+                    loop__chunk += (1 << (8 * b)) * loop_stream_byte[8 * i + f + 4 * c + b];
+                }
+                loop__wr += loop_offset_sel[f] * loop__chunk;
+            }
+            loop_write_value[i][c] <== loop__wr;
+        }
+    }
+
+    const expr loop_sel_load_src = loop_sel_memcpy + loop_sel_memeq;
+
+    col witness bits(1) loop_tail_no_write;
+    loop_tail_no_write <== loop_seq_end * loop_offset_1to7;
+
+    col witness bits(1) loop_sel_read[loop_op_x_row];
+    col witness bits(1) loop_sel_write[loop_op_x_row];
+
+    for (int i = 0; i < loop_op_x_row; ++i) {
+        loop_sel_read[i] <== loop_sel_op[i] * loop_sel_load_src;
+        loop_sel_write[i] <== loop_sel_op[i] - loop_tail_no_write * loop_sel_op_last[i];
+
+        precompiled_mem_load(
+            sel: loop_sel_read[i],
+            main_step: loop_main_step,
+            addr: loop_src64 * 8 + 8 * i,
+            value: loop_read_value[i]
+        );
+
+        precompiled_mem_op(
+            is_write: loop_sel_memcpy + loop_sel_memset + loop_sel_inputcpy,
+            sel: loop_sel_write[i],
+            main_step: loop_main_step,
+            addr: loop_dst64 * 8 + 8 * i,
+            value: loop_write_value[i]
+        );
+    }
+
+    precompiled_mem_load(
+        sel: loop_sel_memcpy_count_load,
+        main_step: loop_main_step,
+        addr: EXTRA_PARAMS_ADDR,
+        value: [loop_count * 8, 0]
+    );
+
+    const expr loop_op = OP_DMA_XMEMCPY * loop_sel_memcpy + OP_DMA_XMEMEQ * loop_sel_memeq +
+                    OP_DMA_XMEMSET * loop_sel_memset + OP_DMA_INPUTCPY * loop_sel_inputcpy +
+                    (OP_DMA_MEMCPY - OP_DMA_XMEMCPY) * loop_sel_memcpy_count_load;
+
+    col witness bits(32) loop_b0;
+    loop_b0 <== loop_src64 * 8 * (loop_sel_memcpy + loop_sel_memeq) + loop_count * 8 * (loop_sel_inputcpy + loop_sel_memset);
+
+    col witness bits(32) loop_extended_arg;
+    loop_extended_arg <== loop_count * 8 * (loop_sel_memcpy - loop_sel_memcpy_count_load + loop_sel_memeq) + loop_fill_byte;
+
+    proves_operation(op: loop_op,
+                     a: [loop_dst64 * 8, 0],
+                     b: [loop_b0, 0],
+                     c: [loop_dst64 * 8, 0],
+                     flag: 0,
+                     main_step: loop_main_step,
+                     extended_arg: loop_extended_arg,
+                     extra_args: [loop_offset],
+                     mul: loop_previous_seq_end);
+
+    airval loop_padding_size;
+    assumes_padding_operation(op: 0, padding_size: loop_padding_size);
+
+    loop_LAST * (loop_seq_end - loop_segment_last_seq_end) === 0;
+    loop_LAST * (1 - loop_seq_end) * (loop_src64 - loop_segment_last_src64) === 0;
+    loop_LAST * (1 - loop_seq_end) * (loop_dst64 - loop_segment_last_dst64) === 0;
+    loop_LAST * (1 - loop_seq_end) * (loop_main_step - loop_segment_last_main_step) === 0;
+    loop_LAST * (1 - loop_seq_end) * (loop_count - loop_segment_last_count) === 0;
+    loop_LAST * (1 - loop_seq_end) * (loop_flags - loop_segment_last_flags) === 0;
+    loop_LAST * (1 - loop_seq_end) * (loop_fill_byte - loop_segment_last_fill_byte) === 0;
+
+    loop_segment_last_src64 * loop_segment_last_seq_end === 0;
+    loop_segment_last_dst64 * loop_segment_last_seq_end === 0;
+    loop_segment_last_main_step * loop_segment_last_seq_end === 0;
+    loop_segment_last_count * loop_segment_last_seq_end === 0;
+    loop_segment_last_flags * loop_segment_last_seq_end === 0;
+    loop_segment_last_fill_byte * loop_segment_last_seq_end === 0;
+
+    loop_segment_previous_src64 * loop_segment_previous_seq_end === 0;
+    loop_segment_previous_dst64 * loop_segment_previous_seq_end === 0;
+    loop_segment_previous_main_step * loop_segment_previous_seq_end === 0;
+    loop_segment_previous_count * loop_segment_previous_seq_end === 0;
+    loop_segment_previous_flags * loop_segment_previous_seq_end === 0;
+    loop_segment_previous_fill_byte * loop_segment_previous_seq_end === 0;
+
+    const expr loop_continue_seq_on_l1 = loop_L1 * (1 - loop_segment_previous_seq_end);
+    const expr loop_continue_seq_on_no_l1 = (1 - loop_L1) * (1 - 'loop_seq_end);
+
+    loop_continue_seq_on_l1 * (loop_count - (loop_segment_previous_count - loop_op_x_row)) === 0;
+    loop_continue_seq_on_no_l1 * (loop_count - ('loop_count - loop_op_x_row)) === 0;
+
+    loop_continue_seq_on_l1 * (loop_src64 - (loop_segment_previous_src64 + loop_op_x_row)) === 0;
+    loop_continue_seq_on_no_l1 * (loop_src64 - ('loop_src64 + loop_op_x_row)) === 0;
+
+    loop_continue_seq_on_l1 * (loop_dst64 - (loop_segment_previous_dst64 + loop_op_x_row)) === 0;
+    loop_continue_seq_on_no_l1 * (loop_dst64 - ('loop_dst64 + loop_op_x_row)) === 0;
+
+    loop_continue_seq_on_l1 * (loop_flags - loop_segment_previous_flags) === 0;
+    loop_continue_seq_on_no_l1 * (loop_flags - 'loop_flags) === 0;
+
+    loop_continue_seq_on_l1 * (loop_fill_byte - loop_segment_previous_fill_byte) === 0;
+    loop_continue_seq_on_no_l1 * (loop_fill_byte - 'loop_fill_byte) === 0;
+
+    loop_continue_seq_on_l1 * (loop_main_step - loop_segment_previous_main_step) === 0;
+    loop_continue_seq_on_no_l1 * (loop_main_step - 'loop_main_step) === 0;
+
+    loop_seq_end * (loop_count + 1 - loop_offset_0 - loop_ops_selected) === 0;
+
+    (1 - loop_seq_end) * (loop_ops_selected - loop_op_x_row) === 0;
+
+    airval loop_last_count_chunk[2];
+    range_check(expression: loop_last_count_chunk[0], min: 0, max: 2**16-1);
+    range_check(expression: loop_last_count_chunk[1], min: 0, max: 2**16-1);
+    loop_last_count_chunk[0] + loop_last_count_chunk[1] * P2_16 === loop_segment_last_count;
+
+    direct_global_update_proves(DMA_LOOP_CONT_ID,
+                                    [0,
+                                     0,
+                                     loop_cont_subid,
+                                     1,
+                                     0,
+                                     0,
+                                     0,
+                                     0,
+                                     0,
+                                     0,
+                                     0,0,0,0,0,0,0,0],
+                                     sel: loop_enable_flag);
+
+    direct_update_assumes(DMA_LOOP_CONT_ID,
+                                [loop_segment_id,
+                                 0,
+                                 loop_cont_subid,
+                                 loop_segment_previous_seq_end,
+                                 loop_segment_previous_src64,
+                                 loop_segment_previous_dst64,
+                                 loop_segment_previous_count,
+                                 loop_segment_previous_main_step,
+                                 loop_segment_previous_flags,
+                                 loop_segment_previous_fill_byte,
+                                 ...loop_segment_first_bytes
+                                ]);
+
+    direct_update_proves(DMA_LOOP_CONT_ID,
+                               [loop_segment_id + 1,
+                                loop_is_last_segment,
+                                loop_cont_subid,
+                                loop_segment_last_seq_end,
+                                loop_segment_last_src64,
+                                loop_segment_last_dst64,
+                                loop_segment_last_count,
+                                loop_segment_last_main_step,
+                                loop_segment_last_flags,
+                                loop_segment_last_fill_byte,
+                                ...loop_segment_next_bytes
+                               ], sel: 1 - loop_is_last_segment);
+}

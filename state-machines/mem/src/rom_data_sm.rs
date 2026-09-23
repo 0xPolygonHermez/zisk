@@ -4,6 +4,7 @@ use crate::{mem_sm::MemPreviousSegment, MemModule, MemOps};
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
+use rayon::prelude::*;
 use std::{
     fs::File,
     io::{BufWriter, Write},
@@ -372,13 +373,26 @@ impl<F: PrimeField64> RomDataSM<F> {
         // this address. The step is pinned to MEMORY_INIT_STEP because that is the step the
         // padding lookup subtracts (`mul: -padding_size` in rom_data.pil), so these extra proves
         // cancel out on the bus.
-        for islot in count..num_slots {
-            let (row, lane) = lanes.split(islot);
-            rows[row].set_addr(lane, last_addr);
-            rows[row].set_step(lane, MEMORY_INIT_STEP);
-            rows[row].set_value(lane, 0, last_value[0]);
-            rows[row].set_value(lane, 1, last_value[1]);
-            rows[row].set_addr_change(lane, false);
+        //
+        // Every padding slot repeats the same values, so the row holding them is built once and
+        // the whole rows are overwritten in parallel; only the row the last operation shares with
+        // the padding has its lanes set one at a time.
+        let padding_size = num_slots - count;
+        if padding_size > 0 {
+            let lanes_x_row = lanes.lanes();
+            let partial_end = count.next_multiple_of(lanes_x_row).min(num_slots);
+            for islot in count..partial_end {
+                let (row, lane) = lanes.split(islot);
+                set_rom_padding_lane::<F, R>(&mut rows[row], lane, last_addr, &last_value);
+            }
+            let from_row = partial_end / lanes_x_row;
+            if from_row < rows.len() {
+                let mut pad_row = R::default();
+                for lane in 0..lanes_x_row {
+                    set_rom_padding_lane::<F, R>(&mut pad_row, lane, last_addr, &last_value);
+                }
+                rows[from_row..].par_iter_mut().for_each(|row| row.copy_rom_block_from(&pad_row));
+            }
         }
 
         assert!(
@@ -386,7 +400,6 @@ impl<F: PrimeField64> RomDataSM<F> {
             "All intermediate segments must fill all lanes"
         );
 
-        let padding_size = num_slots - count;
         if is_last_segment {
             self.std.range_check_one(self.range_24bits_id, padding_size as u64);
         }
@@ -522,6 +535,23 @@ impl<F: PrimeField64> RomDataSM<F> {
         writeln!(writer).unwrap();
         println!("[RomDataDebug] done");
     }
+}
+
+/// One padding lane of a `RomData` segment: the last address and value at `MEMORY_INIT_STEP`,
+/// with no address change. Kept in one place so the partial row and the whole rows cannot drift
+/// apart.
+#[inline]
+fn set_rom_padding_lane<F: PrimeField64, R: RomDataLaneRow<F>>(
+    row: &mut R,
+    lane: usize,
+    addr: u32,
+    value: &[u32; 2],
+) {
+    row.set_addr(lane, addr);
+    row.set_step(lane, MEMORY_INIT_STEP);
+    row.set_value(lane, 0, value[0]);
+    row.set_value(lane, 1, value[1]);
+    row.set_addr_change(lane, false);
 }
 
 impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {

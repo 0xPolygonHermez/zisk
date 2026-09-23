@@ -7784,6 +7784,7 @@ dependencies = [
 name = "zisk-precomp-dma"
 version = "1.3.0-alpha"
 dependencies = [
+ "paste",
  "pil2-std-lib",
  "proofman-common",
  "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Findexed-main-lanes)",

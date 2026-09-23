@@ -225,6 +225,20 @@ pub const DMA_PRE_POST_INSTANCE_COST: usize = 4741;
 /// `DmaWithPrePost`: 6.07 GB.
 pub const DMA_WITH_PRE_POST_INSTANCE_COST: usize = 6216;
 
+/// `DmaLoop`: 5.93 GB at `2**21` rows and 4 words per row, ESTIMATED -- refresh from
+/// `build/setup.log` on the next setup. The air is `DmaUnaligned` with the aligned path and three
+/// more operations on top, and it carries about the same bus terms per committed column, so it is
+/// priced at `DmaUnaligned`'s measured cost per committed MB (9.14 GB for 1824 MB at `2**22`): 1184
+/// MB committed, times 5.13.
+pub const DMA_LOOP_INSTANCE_COST: usize = 6074;
+
+/// `CompactDma`: 6.00 GB at `2**20` rows, ESTIMATED -- refresh from `build/setup.log` on the next
+/// setup. It is `DmaWithPrePost` and `DmaLoop` side by side, so it is priced as the two blocks
+/// apart at its height: the `wpp_` block at `DmaWithPrePost`'s measured cost halved (6.07 GB at
+/// `2**21`), the `loop_` block at `DmaLoop`'s estimate halved. The two share one gsum and one
+/// instance's fixed overhead, so the measured figure should come out somewhat below this one.
+pub const COMPACT_DMA_INSTANCE_COST: usize = 6145;
+
 /// `JumpDest`: 3.40 GB.
 pub const JUMP_DEST_INSTANCE_COST: usize = 3482;
 
@@ -339,6 +353,8 @@ mod tests {
                     DmaUnalignedTrace: DmaUnalignedTraceRow: DMA_UNALIGNED_INSTANCE_COST,
                     DmaPrePostTrace: DmaPrePostTraceRow: DMA_PRE_POST_INSTANCE_COST,
                     DmaWithPrePostTrace: DmaWithPrePostTraceRow: DMA_WITH_PRE_POST_INSTANCE_COST,
+                    DmaLoopTrace: DmaLoopTraceRow: DMA_LOOP_INSTANCE_COST,
+                    CompactDmaTrace: CompactDmaTraceRow: COMPACT_DMA_INSTANCE_COST,
                     JumpDestTrace: JumpDestTraceRow: JUMP_DEST_INSTANCE_COST,
                 );
     }

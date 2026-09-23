@@ -36,6 +36,8 @@ require "dma/pil/dma_pre_post_table.pil"
 require "dma/pil/dma_byte_cmp_table.pil"
 require "dma/pil/dma_64_aligned.pil"
 require "dma/pil/dma_unaligned.pil"
+require "dma/pil/dma_loop.pil"
+require "dma/pil/compact_dma.pil"
 require "poseidon/pil/poseidon.pil"
 require "blake2/pil/blake2br.pil"
 require "blake3/pil/blake3f.pil"
@@ -58,6 +60,8 @@ proofval enable_dma_64_aligned_mem_large;
 proofval enable_dma_64_aligned_memcpy;
 proofval enable_dma_64_aligned_memset;
 proofval enable_dma_unaligned;
+proofval enable_dma_loop;
+proofval enable_compact_dma;
 proofval enable_jump_dest;
 
 // Binary constraints to continuations enable proofvals
@@ -71,6 +75,8 @@ enable_dma_64_aligned_mem_large * (1 - enable_dma_64_aligned_mem_large) === 0;
 enable_dma_64_aligned_memcpy * (1 - enable_dma_64_aligned_memcpy) === 0;
 enable_dma_64_aligned_memset * (1 - enable_dma_64_aligned_memset) === 0;
 enable_dma_unaligned * (1 - enable_dma_unaligned) === 0;
+enable_dma_loop * (1 - enable_dma_loop) === 0;
+enable_compact_dma * (1 - enable_compact_dma) === 0;
 enable_jump_dest * (1 - enable_jump_dest) === 0;
 
 const int PUBLIC_INPUTS_64_BITS = 32;  // 32 x 64 bits = 2048 bits
@@ -225,6 +231,19 @@ airgroup Zisk {
     // to it; while DmaStrategy::USE_DMA_WITH_PRE_POST is true that is every non-direct operation,
     // and Dma() / DmaPrePost() are the ones left without an instance.
     DmaWithPrePost();
+
+    // Dma64Aligned and DmaUnaligned fused in a single air: the loop phase of any operation, aligned
+    // or not, one to four words per row. A generalist for the strategy, which picks it when a
+    // workload has both kinds of loop and not enough of either to justify an instance of each. Its
+    // op_x_row matches the four words per row the loop counters budget, so its rows are the ones
+    // Dma64Aligned and DmaUnaligned are sized with.
+    DmaLoop(N: 2**21, enable_flag: enable_dma_loop, op_x_row: 4);
+
+    // DmaWithPrePost and DmaLoop fused side by side: one instance carries the controller with its
+    // PRE/POST sub-operations and the loop, so an execution that uses the DMA lightly pays one
+    // instance instead of two or three. Small on purpose: it is meant for that case, the standalone
+    // airs take over when the work does not fit.
+    CompactDma(N: 2**20, loop_enable_flag: enable_compact_dma, loop_op_x_row: 4);
 
     virtual DmaByteCmpTable();
     virtual DmaRom();

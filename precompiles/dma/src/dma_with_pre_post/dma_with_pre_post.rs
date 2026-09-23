@@ -8,19 +8,20 @@ use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
-    DmaWithPrePostTrace, DmaWithPrePostTraceRow, DmaWithPrePostTraceRowOps,
-    DmaWithPrePostTraceRowPacked, DMA_BYTE_CMP_TABLE_ID, DMA_PRE_POST_TABLE_ID,
-    DMA_PRE_POST_TABLE_SIZE, DMA_ROM_ID, DUAL_RANGE_7_BITS_ID, DUAL_RANGE_BYTE_ID,
+    DmaWithPrePostTrace, DmaWithPrePostTraceRow, DmaWithPrePostTraceRowPacked,
+    DMA_BYTE_CMP_TABLE_ID, DMA_PRE_POST_TABLE_ID, DMA_PRE_POST_TABLE_SIZE, DMA_ROM_ID,
+    DUAL_RANGE_7_BITS_ID, DUAL_RANGE_BYTE_ID,
 };
 
 use crate::{
-    dma_trace, DmaPrePostRom, DmaRom, DmaWithPrePostInput, DmaWithPrePostModule,
-    DMA_ROM_WITH_MEMCMP_SIZE,
+    dma_trace, DmaPrePostRom, DmaRom, DmaWithPrePostBlockRow, DmaWithPrePostInput,
+    DmaWithPrePostModule, DMA_ROM_WITH_MEMCMP_SIZE,
 };
 use zisk_precomp_helpers::DmaInfo;
 
 /// Multiplicities of every table the air looks up, accumulated per worker and merged at the end.
-struct Mults {
+#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
+pub(crate) struct Mults {
     /// `DUAL_RANGE_7_BITS`: the (l_src64, l_dst64) pair of a DMA row.
     dual_7_bits: Vec<u64>,
     /// 22-bit range check of h_src64 / h_dst64.
@@ -149,7 +150,7 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
     /// `static_count`, `sel_count_from_mem`) are *not* written here: they carry a `witness_calc`
     /// hint and the prover derives them from their expression.
     #[inline(always)]
-    fn process_op<R: DmaWithPrePostTraceRowOps<F>>(
+    fn process_op<R: DmaWithPrePostBlockRow<F>>(
         input: &DmaWithPrePostInput,
         rows: &mut [R],
         mults: &mut Mults,
@@ -174,7 +175,7 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
     }
 
     /// Fills the DMA controller columns of the row that drives the operation.
-    fn fill_dma_row<R: DmaWithPrePostTraceRowOps<F>>(
+    fn fill_dma_row<R: DmaWithPrePostBlockRow<F>>(
         input: &DmaWithPrePostInput,
         row: &mut R,
         mults: &mut Mults,
@@ -277,7 +278,7 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
 
     /// Fills the extra PRE row: no DMA operation at all, only the columns it shares with the DMA
     /// row of the operation (@[latch] in the PIL) plus the PRE/POST part filled by `fill_sub_op`.
-    fn fill_pre_row<R: DmaWithPrePostTraceRowOps<F>>(
+    fn fill_pre_row<R: DmaWithPrePostBlockRow<F>>(
         input: &DmaWithPrePostInput,
         row: &mut R,
         mults: &mut Mults,
@@ -303,7 +304,7 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
 
     /// Fills the PRE/POST part of a row: the byte selectors and rotation, the bytes read and
     /// pre-written, and the memcmp result of the sub-operation.
-    fn fill_sub_op<R: DmaWithPrePostTraceRowOps<F>>(
+    fn fill_sub_op<R: DmaWithPrePostBlockRow<F>>(
         input: &DmaWithPrePostInput,
         row: &mut R,
         is_post: bool,
@@ -456,50 +457,50 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
         mults.pre_post[table_row] += 1;
     }
 
-    fn compute_witness_inner<R: DmaWithPrePostTraceRowOps<F> + Copy + Send>(
-        &self,
-        inputs: &[Vec<DmaWithPrePostInput>],
-        trace_buffer: Vec<F>,
-    ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = DmaWithPrePostTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
-        let num_rows = trace.num_rows();
-
-        let flat_inputs: Vec<&DmaWithPrePostInput> = inputs.iter().flatten().collect();
-        let total_rows: usize = flat_inputs.iter().map(|input| input.rows()).sum();
-
+    /// Fills `rows` with `inputs`, in order, and returns the multiplicities the rows raise.
+    ///
+    /// `rows` is the whole instance, and the rows past the operations are left as they are: the
+    /// buffer is zeroed, and a zero row is the air's padding. The operations are split into groups
+    /// and the rows cut at the row each group starts on. An operation is never split, so a group
+    /// always owns whole operations and its rows are contiguous -- which is what keeps a PRE row
+    /// next to its DMA row.
+    ///
+    /// Takes `rows` rather than a `DmaWithPrePostTrace` because the fused `CompactDma` air carries
+    /// this block inside a wider row (see [`DmaWithPrePostBlockRow`]).
+    pub(crate) fn fill_rows<R: DmaWithPrePostBlockRow<F>>(
+        inputs: &[&DmaWithPrePostInput],
+        rows: &mut [R],
+    ) -> Mults {
+        let total_rows: usize = inputs.iter().map(|input| input.rows()).sum();
         // The planner reserves the rows of every operation as a block (see
         // `DmaWithPrePostInstancesBuilder`), so this can only fire if the plan and the collected
         // inputs disagree.
         assert!(
-            total_rows <= num_rows,
-            "DmaWithPrePost: {} operations need {total_rows} rows, only {num_rows} available",
-            flat_inputs.len()
+            total_rows <= rows.len(),
+            "DmaWithPrePost: {} operations need {total_rows} rows, only {} available",
+            inputs.len(),
+            rows.len()
         );
 
-        dma_trace("DmaWithPrePost", total_rows, num_rows);
-
-        timer_start_trace!(DMA_WITH_PRE_POST_TRACE);
-
-        // Split the inputs into groups and cut the trace at the row each group starts on. An
-        // operation is never split, so a group always owns whole operations and its rows are
-        // contiguous — which is what keeps a PRE row next to its DMA row.
         let num_threads = rayon::current_num_threads();
-        let group_len = flat_inputs.len().div_ceil(num_threads).max(1);
+        let group_len = inputs.len().div_ceil(num_threads).max(1);
 
         let mut groups: Vec<(&[&DmaWithPrePostInput], &mut [R])> = Vec::new();
-        let mut pending_inputs: &[&DmaWithPrePostInput] = &flat_inputs;
-        let mut pending_rows: &mut [R] = trace.buffer.as_mut_slice();
+        let mut pending_inputs: &[&DmaWithPrePostInput] = inputs;
+        let mut pending_rows: &mut [R] = rows;
         while !pending_inputs.is_empty() {
             let take = group_len.min(pending_inputs.len());
-            let rows: usize = pending_inputs[..take].iter().map(|input| input.rows()).sum();
+            let group_rows: usize = pending_inputs[..take].iter().map(|input| input.rows()).sum();
             let (group_inputs, rest_inputs) = pending_inputs.split_at(take);
-            let (group_rows, rest_rows) = pending_rows.split_at_mut(rows);
+            let (group_rows, rest_rows) = pending_rows.split_at_mut(group_rows);
             groups.push((group_inputs, group_rows));
             pending_inputs = rest_inputs;
             pending_rows = rest_rows;
         }
 
-        let mults = groups
+        // One `Mults` per group, merged once they are all done: a `reduce` with an identity would
+        // allocate (and zero) an extra ~2.4 MB `Mults` for every reduction leaf rayon opens.
+        groups
             .into_par_iter()
             .map(|(group_inputs, group_rows)| {
                 let mut mults = Mults::new();
@@ -511,11 +512,16 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
                 }
                 mults
             })
-            .reduce(Mults::new, Mults::merge);
+            .collect::<Vec<_>>()
+            .into_iter()
+            .reduce(Mults::merge)
+            .unwrap_or_else(Mults::new)
+    }
 
-        // The padding rows are left as `new_from_vec_zeroes` made them: with every selector at
-        // zero the air asks nothing of them, and no lookup is charged for them.
-
+    /// Raises in the `Std` the multiplicities a fill returned.
+    ///
+    /// The padding rows are left out: with every selector at zero the air asks nothing of them.
+    pub(crate) fn charge(&self, mults: Mults) {
         self.std.inc_virtual_rows_ranged(self.dual_range_7_bits_id, None, &mults.dual_7_bits);
         self.std.inc_virtual_rows_ranged(self.rom_table_id, None, &mults.rom);
         self.std.inc_virtual_rows_ranged(self.pre_post_table_id, None, &mults.pre_post);
@@ -523,14 +529,28 @@ impl<F: PrimeField64> DmaWithPrePostSM<F> {
         self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, None, &mults.dual_byte);
         self.std.range_check_ranged(self.range_24_bits_id, None, &mults.low_24_bits);
         self.std.range_check_ranged(self.range_16_bits_id, None, &mults.range_16_bits);
-        for value in mults.values_22_bits {
-            self.std.range_check_one(self.range_22_bits_id, value);
-        }
-        for value in mults.values_24_bits {
-            self.std.range_check_one(self.range_24_bits_id, value);
-        }
+        // Two 22-bit values per DMA row: one batched call instead of millions of single ones.
+        self.std.range_check_batch_one(self.range_22_bits_id, &mults.values_22_bits);
+        self.std.range_check_batch_one(self.range_24_bits_id, &mults.values_24_bits);
+    }
 
+    fn compute_witness_inner<R: DmaWithPrePostBlockRow<F>>(
+        &self,
+        inputs: &[Vec<DmaWithPrePostInput>],
+        trace_buffer: Vec<F>,
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = DmaWithPrePostTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
+        let num_rows = trace.num_rows();
+
+        let flat_inputs: Vec<&DmaWithPrePostInput> = inputs.iter().flatten().collect();
+        let total_rows: usize = flat_inputs.iter().map(|input| input.rows()).sum();
+        dma_trace("DmaWithPrePost", total_rows, num_rows);
+
+        timer_start_trace!(DMA_WITH_PRE_POST_TRACE);
+        let mults = Self::fill_rows(&flat_inputs, trace.buffer.as_mut_slice());
+        self.charge(mults);
         timer_stop_and_log_trace!(DMA_WITH_PRE_POST_TRACE);
+
         let from_trace = FromTrace::new(&mut trace);
         Ok(AirInstance::new_from_trace(from_trace))
     }
