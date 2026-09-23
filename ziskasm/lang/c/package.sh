@@ -8,9 +8,9 @@
 #   TARBALL=1 ./package.sh             # also produce dist.tar.gz
 #   ZISK_TOOLCHAIN_PREFIX=riscv-none-elf- ./package.sh   # xPack toolchain
 #
-# NOTE: the archive is NOT standalone-functional. Every symbol in it is a stub
-# whose entry `elf2rom` rewrites to a hand-written .zisk routine at transpile
-# time. A guest that links it and is then run through a ziskemu/cargo-zisk built
+# NOTE: the archive is NOT standalone-functional. Every accelerator/I-O symbol in
+# it is a stub whose entry `elf2rom` rewrites to a hand-written .zisk routine at
+# transpile time (_start and the DMA-backed mem* routines are real code). A guest that links it and is then run through a ziskemu/cargo-zisk built
 # WITHOUT the `ziskasm` feature reaches the stub bodies, which deliberately fail
 # hard (diagnostic + fault) rather than returning wrong answers.
 set -e
@@ -49,7 +49,8 @@ echo
 echo "### checking the archive exports the required symbols ..."
 AR_FILE="$(find "$PREFIX" -name 'libzisklib_c.a' | head -1)"
 MISSING=0
-for sym in _start read_input write_output zkvm_keccak256 zkvm_u256_add; do
+for sym in _start read_input write_output zkvm_keccak256 zkvm_u256_add \
+           memcpy memmove memcmp memset; do
     if "${CC_PREFIX}nm" "$AR_FILE" 2>/dev/null | grep -qE "^[0-9a-f]* T $sym$"; then
         echo "  OK   $sym"
     else

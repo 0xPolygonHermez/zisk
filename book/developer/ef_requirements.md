@@ -173,7 +173,7 @@ conform but not yet audited against the spec.
 |---|----------|------------|-----------------|
 | 1 | [C interface for accelerators](#1-c-interface-for-accelerators) | **Conformant** | All 19 `zkvm_*` functions implemented natively in `.zisk`; runtime-validated on real blocks via ziskethone. |
 | 1b | [U256 arithmetic C interface](#1b-u256-arithmetic-accelerator-c-interface) | **Conformant** | All 27 `zkvm_u256_*` functions implemented natively in `.zisk` over the shared uint256 precompile cores; golden-vector-validated against an EVM reference. |
-| 2 | [Accelerated memory operations](#2-accelerated-memory-operations) | **Partial** | `memcpy`/`memcmp`/`memset` accelerated via DMA precompiles; `memmove` and the link-precedence guarantee to confirm. |
+| 2 | [Accelerated memory operations](#2-accelerated-memory-operations) | **Conformant** | All four `mem*` accelerated via DMA precompiles in ziskos and in the packaged C archive; `memmove` shares `memcpy`'s DMA op, which is overlap-safe in the emulator and the prover; the C archive's definitions sit in `_start`'s object, so they win symbol resolution regardless of link order. |
 | 3 | [ELF loading and validation](#3-elf-loading-and-validation) | **Conformant** | `elf2rom` enforces header, PT_LOAD-only loading, zero-fill, W^X and entry-point validation. |
 | 4 | [I/O interface](#4-io-interface) | **Conformant** | `read_input` / `write_output` implemented and redirected to the ZisK library. |
 | 5 | [Memory layout restrictions](#5-memory-layout-restrictions) | **Conformant** | Standard is non-prescriptive; ZisK ships a vendor linker script defining its map. |
@@ -276,17 +276,41 @@ guaranteed to win symbol resolution in the guest link (strong runtime definition
 or `--whole-archive`; link order alone does not conform).
 
 **ZisK.** ZisK accelerates bulk memory operations through dedicated **DMA
-precompiles** (`dma_memcpy`, `dma_memcmp`, `dma_xmemset`), and the C guest link
-routes `memcpy`/`memcmp`/`memset` to assembly shims backed by those precompiles
-(ziskethone's `runtime.cpp` relies on this, building with `-fno-builtin` so the
-calls stay out-of-line). Arbitrary alignment and `n == 0` are handled.
+precompiles** (`dma_memcpy`, `dma_memcmp`, `dma_xmemset`). The guest runtime
+defines `memcpy`/`memmove`/`memcmp`/`memset` as assembly thunks whose
+CSR `0x813/0x814/0x816` + `add`/`addi` pattern the transpiler lowers to a single
+DMA op. The Rust runtime has them in `ziskos/entrypoint/src/dma/*.s`, the packaged
+C archive in `ziskasm/lang/c/src/_start.s`, and ziskethone vendors its own copies
+(built with `-fno-builtin` so the calls stay out-of-line). Arbitrary alignment
+and `n == 0` are handled, and the DMA circuits prove the aligned, unaligned and
+partial head/tail cases (`precompiles/dma/`).
 
-**Gaps to confirm.** (a) `memmove` acceleration and its overlap semantics; (b) the
-formal link-precedence guarantee (that the ZisK definitions always win via a
-strong/always-linked definition rather than link order).
+**`memmove`.** `memmove` uses the same CSR `0x813` op as `memcpy`. That op has
+`memmove` semantics: when source and destination overlap, the emulator copies
+through a temporary buffer (`Mem::memcpy` in `core/src/mem.rs`), and the prover
+constrains the overlapping case too (confirmed with the DMA precompile
+developers). One DMA op is therefore correct for every overlap direction.
 
-**Assessment: Partial** (acceleration present and used; `memmove` and the
-link-precedence guarantee to be confirmed).
+**Link precedence.** The thunks are **strong** global definitions.
+
+- *ziskos* (the mandatory Rust guest runtime): they override `compiler_builtins`'
+  weak byte-loop fallbacks.
+- *Packaged C archive* (§9, `libzisklib_c.a`): the thunks are in the same object
+  as `_start`, not in archive members of their own. `ENTRY(_start)` pulls that
+  object into every guest, so the accelerated definitions are always linked,
+  whatever the link order. If a libc earlier on the command line also contributes
+  its `mem*`, the link fails with a multiple-definition error instead of silently
+  keeping the byte loop. A separate archive member would lose silently in that
+  case, since it is only pulled when the symbol is still undefined. Both outcomes
+  were checked against a stand-in libc archive. A runtime test linked only against
+  the installed package checks overlapping `memmove` in both directions, `n == 0`,
+  unaligned `memcpy`, `memset` with zero and non-zero fill, and the sign of
+  `memcmp` under `ziskemu`. Each call executes as one DMA op.
+- *ziskethone* links its copies as object files, so they are always part of the
+  link.
+
+**Assessment: Conformant** (all four operations accelerated, `memmove` overlap-safe
+end to end, and precedence independent of link order).
 
 ---
 
@@ -764,8 +788,7 @@ emulator. No rounding, no continuation, no successful termination.
 
 ## Roadmap
 
-- Confirm the **Partial**/**To verify** items above (memory-op link precedence and
-  `memmove`; the explicit stack-guard region; whether `ziskemu`'s offline
+- Confirm the **Partial**/**To verify** items above (the explicit stack-guard region; whether `ziskemu`'s offline
   unaligned-access count satisfies the EF "during proving" wording; exit-code
   propagation; `_heap_*` symbols and the packaged `.a`).
 - Replace ziskethone with **evm-asm** as the conformance vehicle once it is ready,

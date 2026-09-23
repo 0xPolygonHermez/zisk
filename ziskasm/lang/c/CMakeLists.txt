@@ -22,7 +22,9 @@
 #   - Build for the guest target (rv64ima) with the same toolchain as the guest.
 #   - Do NOT strip the final ELF: elf2rom resolves the stubs by symbol name.
 #   - Provides `_start` (src/_start.s), the EF I/O functions and every accelerator
-#     stub, i.e. the whole guest-side surface of EF §9 in one archive. Pair it with
+#     stub, i.e. the whole guest-side surface of EF §9 in one archive, plus the
+#     DMA-accelerated memcpy/memmove/memcmp/memset (EF §2), which _start.s defines
+#     so they are always linked. Pair it with
 #     a linker script that exports `_heap_start`/`_heap_end` (see
 #     ziskbuild/zisk_linker_script.ld -- the single guest linker script).
 

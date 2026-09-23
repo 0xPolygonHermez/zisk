@@ -91,8 +91,8 @@ dist/lib/libzisklib_c.a
 dist/share/zisk/zisk_linker_script.ld
 ```
 
-and then checks the archive really exports `_start`, `read_input`, `write_output`
-and a sample accelerator before declaring success.
+and then checks the archive really exports `_start`, `read_input`, `write_output`,
+a sample accelerator and the four `mem*` routines before declaring success.
 
 A guest then needs nothing from this source tree:
 
@@ -106,11 +106,20 @@ riscv64-unknown-elf-gcc -march=rv64ima -mabi=lp64 -mcmodel=medany \
 Three things about this artifact are worth stating plainly, because none of them
 behave like an ordinary static library:
 
-- **It is not standalone-functional.** Every symbol in it is a stub whose entry
-  `elf2rom` rewrites to a hand-written `.zisk` routine at transpile time. Link it and
-  run the result through a `ziskemu`/`cargo-zisk` built *without* `--features
-  ziskasm` and you reach the stub bodies, which fail hard by design. A clean link
-  proves nothing on its own.
+- **It is not standalone-functional.** Every accelerator and I/O symbol in it is a
+  stub whose entry `elf2rom` rewrites to a hand-written `.zisk` routine at transpile
+  time. Link it and run the result through a `ziskemu`/`cargo-zisk` built *without*
+  `--features ziskasm` and you reach the stub bodies, which fail hard by design. A
+  clean link proves nothing on its own. The exception is `_start` and the `mem*`
+  routines below, which are real code.
+- **It defines `memcpy`/`memmove`/`memcmp`/`memset` (EF §2).** They are DMA
+  precompile thunks (`memmove` is overlap-safe; it shares `memcpy`'s DMA op, which
+  has memmove semantics) and they live in the same object as `_start`. Every guest
+  links that object, so they always win symbol resolution regardless of link order.
+  If a libc on the command line also contributes its `mem*`, the link fails with a
+  multiple-definition error rather than silently falling back to a byte loop. Build
+  guests with `-fno-builtin` if you want GCC to keep calls out-of-line instead of
+  inlining small copies.
 - **The linker script is not optional.** The archive's `_start` depends on symbols
   only the script defines (`_global_pointer`, `_init_stack_top`, `__init_array_*`,
   `_heap_start`/`_heap_end`), which is why the two are installed together.
@@ -139,7 +148,8 @@ Plus 3 entries outside those three families: the EF I/O pair `read_input` /
 `write_output` (declared in [`zkvm_io.h`](include/zkvm_io.h), stubbed in
 `src/zkvm_stubs.c`, redirected to `zkvm_io.zisk`) and `modexp_u64_c` (declared in
 `zisklib.h`). The library also provides `_start` (`src/_start.s`), which is not a
-redirect entry but is part of the surface EF §9 requires the archive to ship.
+redirect entry but is part of the surface EF §9 requires the archive to ship, and
+the DMA-backed `memcpy`/`memmove`/`memcmp`/`memset` in the same file (EF §2).
 
 The `ziskos_*` set is: `add` (demo), `keccak`, `sha256`, `blake2b_compress`, the
 `*256` integer/modular ops, secp256k1 (ecdsa verify/recover, schnorr), secp256r1
