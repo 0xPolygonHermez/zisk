@@ -336,6 +336,107 @@ fn the_fill_writes_one_slot_per_operation() {
         n_rows * lanes - filled,
         "padding_size counts the padding lanes"
     );
+    // @[mem_padding]: the chunks rebuild padding_size, and with the ones of its distance to the
+    // maximum add up to the last lane index, which is what bounds it on both sides.
+    let rebuild = |c: [u16; 2]| c[0] as u32 + ((c[1] as u32) << 16);
+    assert_eq!(rebuild(out.padding_size_chunks), out.padding_size);
+    assert_eq!(
+        rebuild(out.padding_size_chunks) + rebuild(out.padding_size_to_max_chunks),
+        (n_rows * lanes - 1) as u32
+    );
     // The last filled slot is what the padding repeats and what the segment hands on.
     assert_eq!(out.last_addr, base + n_addrs - 1);
+}
+
+/// @[mem_padding] and the end of the region do not collide. When the last real lane sits on the
+/// last word of the memory, the padding repeats that very address -- it never steps past it, so
+/// `internal_end_address - segment_last_addr` is exactly zero, still inside its range -- and
+/// `padding_size` is the number of lanes the lookup takes back.
+#[test]
+fn padding_after_an_access_to_the_last_word_of_memory_stays_inside_it() {
+    let (n_addrs, slots_per_addr) = (3u32, 2u32);
+    let base = RAM_W_ADDR_END - (n_addrs - 1);
+    let mut seg = MemModuleSegmentCheckPoint::default();
+    for a in 0..n_addrs {
+        seg.add_addr_offset(base + a, a * slots_per_addr + 1);
+    }
+    let mut ops = Vec::new();
+    let mut step = 1u64;
+    for a in 0..n_addrs {
+        for o in 0..slots_per_addr {
+            ops.push(MemInput::new(base + a, o > 0, step, 0x1234 + a as u64));
+            step += 1;
+        }
+    }
+
+    let lanes = lanes_x_row();
+    let n_rows = rows_for(n_addrs, slots_per_addr);
+    let mut rows = vec![Row::default(); n_rows];
+    let prev = MemPreviousSegment { addr: RAM_W_ADDR_INIT, step: 0, value: 0 };
+    let chunks = in_chunks(&ops, 1);
+    let out = fill_mem_trace::<Goldilocks, Row>(
+        &mut rows,
+        MemOps::new(&chunks),
+        &seg,
+        &prev,
+        SegmentId(0),
+        true,
+        1,
+    );
+
+    let filled = (n_addrs * slots_per_addr) as usize;
+    assert_eq!(out.last_addr, RAM_W_ADDR_END, "the last real lane is on the last word");
+    assert_eq!(out.distance_end, [0, 0], "the distance to the end of the region is zero");
+    assert_eq!(out.padding_size as usize, n_rows * lanes - filled);
+    assert!(out.padding_size > 0, "the test needs padding after the last word");
+    for slot in filled..(n_rows * lanes) {
+        let (r, l) = (slot / lanes, slot % lanes);
+        assert_eq!(rows[r].get_addr(l), RAM_W_ADDR_END, "padding slot {slot} left the last word");
+        assert!(!rows[r].get_addr_changes(l) && !rows[r].get_wr(l), "padding slot {slot}");
+        assert_eq!(rows[r].get_step(l), out.last_step, "padding slot {slot}: step");
+    }
+}
+
+/// @[last_step_bound]: the two chunks the segment hands over rebuild the step, and the largest
+/// step a memory operation can carry -- the last main step is END, which touches no memory --
+/// still fits them, so no extra bit is needed.
+#[test]
+fn the_last_step_splits_into_two_range_checked_chunks() {
+    assert_eq!(MAX_MEM_STEP, (1 << 38) - 4);
+    for step in [0u64, 1, (1 << 22) - 1, 1 << 22, (1 << 38) - 5, MAX_MEM_STEP] {
+        let [low, high] = split_last_step(step);
+        assert!(low < 1 << 22 && high < 1 << 16, "step {step}: a chunk is out of its range");
+        assert_eq!(
+            low as u64 + ((high as u64) << 22),
+            step,
+            "step {step}: the chunks do not rebuild it"
+        );
+    }
+}
+
+/// A step past the last memory access is a broken assumption, not a value to represent.
+#[test]
+#[should_panic(expected = "exceeds")]
+fn a_step_past_the_last_memory_access_is_rejected() {
+    split_last_step(MAX_MEM_STEP + 1);
+}
+
+/// @[mem_padding]: both ends of the padding range split into in-range chunks, a zero padding gives
+/// the whole maximum to the distance, and a padding past the last lane is rejected.
+#[test]
+fn padding_size_and_its_distance_to_the_maximum_split_into_chunks() {
+    let max = (lanes_x_row() * MemTrace::<Row>::NUM_ROWS - 1) as u32;
+    for padding in [0u32, 1, 0xFFFF, 0x1_0000, max - 1, max] {
+        let (chunks, to_max) = split_padding_size(padding, max);
+        let rebuild = |c: [u16; 2]| c[0] as u32 + ((c[1] as u32) << 16);
+        assert_eq!(rebuild(chunks), padding, "padding {padding}");
+        assert_eq!(rebuild(to_max), max - padding, "padding {padding}: distance to the maximum");
+    }
+}
+
+#[test]
+#[should_panic(expected = "exceeds")]
+fn a_padding_covering_the_whole_segment_is_rejected() {
+    let max = (lanes_x_row() * MemTrace::<Row>::NUM_ROWS - 1) as u32;
+    split_padding_size(max + 1, max);
 }

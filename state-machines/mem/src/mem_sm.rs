@@ -37,8 +37,6 @@ pub struct MemSM<F: PrimeField64> {
 
     range_22bits_id: usize,
     range_16bits_id: usize,
-    /// Range of `padding_size`, checked on the last segment only (@[mem_padding] in mem.pil).
-    range_24bits_id: usize,
 }
 #[derive(Debug, Default)]
 pub struct MemPreviousSegment {
@@ -62,9 +60,7 @@ impl<F: PrimeField64> MemSM<F> {
         let range_16bits_id =
             std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get 16 bits range ID");
 
-        let range_24bits_id =
-            std.get_range_id(0, (1 << 24) - 1, None).expect("Failed to get 24 bits range ID");
-        Arc::new(Self { range_22bits_id, range_16bits_id, range_24bits_id, std: std.clone() })
+        Arc::new(Self { range_22bits_id, range_16bits_id, std: std.clone() })
     }
 
     pub fn get_to_addr() -> u32 {
@@ -532,19 +528,22 @@ impl<F: PrimeField64> MemSM<F> {
         air_values.distance_end[0] = F::from_u16(distance_end[0]);
         air_values.distance_end[1] = F::from_u16(distance_end[1]);
 
-        // @[last_step_bound]: the step handed to the next segment, in 22 + 16 bits plus the
-        // extra unit that only a step of exactly 2^38 needs.
-        let (last_step_chunks, last_step_extra) = split_last_step(last_step);
+        // @[last_step_bound]: the step handed to the next segment, in 22 + 16 bits.
+        let last_step_chunks = split_last_step(last_step);
         air_values.last_step_chunks[0] = F::from_u32(last_step_chunks[0]);
         air_values.last_step_chunks[1] = F::from_u32(last_step_chunks[1]);
-        air_values.additional_last_step_limit = F::from_bool(last_step_extra);
 
-        // @[mem_padding]: the padding lanes are emitted and taken back `padding_size` times. The
-        // range check is selected by is_last_segment in the PIL, so it counts once there even
-        // when there is no padding at all.
-        air_values.padding_size = F::from_u32(padding_size as u32);
+        // @[mem_padding]: the padding lanes are emitted and taken back `padding_size` times, and
+        // padding_size is bounded through its 16-bit chunks and those of its distance to the
+        // maximum, range checked on the last segment only (@[padding_last_only]).
+        let (padding_chunks, to_max_chunks) =
+            split_padding_size(padding_size as u32, (num_slots - 1) as u32);
+        air_values.padding_size_chunks = padding_chunks.map(F::from_u16);
+        air_values.padding_size_to_max_chunks = to_max_chunks.map(F::from_u16);
         if is_last_segment {
-            self.std.range_check_one(self.range_24bits_id, padding_size as u64);
+            for chunk in padding_chunks.into_iter().chain(to_max_chunks) {
+                range_16bits[chunk as usize] += 1;
+            }
         }
 
         range_16bits[distance_base[0] as usize] += 1;
@@ -677,6 +676,13 @@ impl<F: PrimeField64> MemSM<F> {
             is_last_segment,
             n_ranges,
         );
+        // @[mem_padding]: only the last segment may carry padding; anywhere else the emitted
+        // padding lanes would have nothing to cancel them and the bus would not balance.
+        assert!(
+            is_last_segment || out.padding_size == 0,
+            "MemSM: padding_size must be 0 for non last segment, but got {}",
+            out.padding_size
+        );
 
         let mut air_values = MemAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());
@@ -702,13 +708,10 @@ impl<F: PrimeField64> MemSM<F> {
         // @[last_step_bound], see `split_last_step`.
         air_values.last_step_chunks[0] = F::from_u32(out.last_step_chunks[0]);
         air_values.last_step_chunks[1] = F::from_u32(out.last_step_chunks[1]);
-        air_values.additional_last_step_limit = F::from_bool(out.last_step_extra);
 
-        // @[mem_padding], see the other witness path.
-        air_values.padding_size = F::from_u32(out.padding_size);
-        if is_last_segment {
-            self.std.range_check_one(self.range_24bits_id, out.padding_size as u64);
-        }
+        // @[mem_padding], see `split_padding_size`; the chunks are already in the histogram.
+        air_values.padding_size_chunks = out.padding_size_chunks.map(F::from_u16);
+        air_values.padding_size_to_max_chunks = out.padding_size_to_max_chunks.map(F::from_u16);
 
         // Timed apart from the fill because it is not free: `range_check_ranged` widens the whole
         // 2^22-entry histogram into a fresh `Vec<u64>` (32 MiB) before `assign_values_ranged` walks
@@ -905,29 +908,44 @@ struct MemFillOutput {
     /// Distance from the segment's base / to the memory end, split in 16-bit halves.
     distance_base: [u16; 2],
     distance_end: [u16; 2],
-    /// `last_step` split for @[last_step_bound]: a 22-bit and a 16-bit chunk, plus the extra
-    /// unit that only a step of exactly 2^38 needs. See `split_last_step`.
+    /// `last_step` split for @[last_step_bound]: a 22-bit and a 16-bit chunk. See
+    /// `split_last_step`.
     last_step_chunks: [u32; 2],
-    last_step_extra: bool,
-    /// Padding lanes emitted and cancelled by @[mem_padding].
+    /// Padding lanes emitted and cancelled by @[mem_padding], and the 16-bit chunks of it and
+    /// of its distance to `N * lanes_x_row - 1` that bound it. See `split_padding_size`.
     padding_size: u32,
+    padding_size_chunks: [u16; 2],
+    padding_size_to_max_chunks: [u16; 2],
 }
 
-/// Largest mem step a main step can produce: `RESERVED_MEM_STEPS + MAX_MEM_STEPS_PER_MAIN_STEP *
-/// (2^MAIN_STEP_BITS - 1) + 3 = 1 + 4 * (2^36 - 1) + 3`.
-const MAX_MEM_STEP: u64 = 1 << 38;
+/// Splits `padding_size` and its distance to `max_padding` (`N * lanes_x_row - 1`) into the 16-bit
+/// chunks @[mem_padding] in `mem.pil` range checks. Four chunks in range make both values
+/// integers below 2^32, whose sum cannot wrap the field, so the constraint tying that sum to the
+/// maximum bounds padding_size on both sides. Air values are cheap on the bus; a range table of
+/// the maximum's size would not be.
+fn split_padding_size(padding_size: u32, max_padding: u32) -> ([u16; 2], [u16; 2]) {
+    assert!(
+        padding_size <= max_padding,
+        "MemSM: padding_size {padding_size} exceeds the {max_padding} lanes a segment can pad"
+    );
+    let chunks = |value: u32| [value as u16, (value >> 16) as u16];
+    (chunks(padding_size), chunks(max_padding - padding_size))
+}
+
+/// Largest mem step a memory operation can carry (@[max_mem_step] in `mem.pil`). A main step
+/// `s` puts its accesses at `RESERVED_MEM_STEPS + MAX_MEM_STEPS_PER_MAIN_STEP * s + {0, 1, 2, 3}`,
+/// and the last main step, `2^MAIN_STEP_BITS - 1` at most, is always the END instruction, which
+/// makes no memory access. So the largest one is `1 + 4 * (2^36 - 2) + 3 = 2^38 - 4`, and it
+/// fits the 38 bits of the `step` column.
+const MAX_MEM_STEP: u64 = 1 + 4 * ((1 << 36) - 2) + 3;
 
 /// Splits the step a segment hands to the next one the way @[last_step_bound] in `mem.pil`
-/// wants it: `step = chunks[0] + 2^22 * chunks[1] + extra`, with `chunks[0] < 2^22`,
-/// `chunks[1] < 2^16` and `extra` a bit. The bound is what stops a prover from wrapping the
-/// step clock around the field over several segments, so the chunks are range checked; the
-/// extra unit exists only because the largest legal step, 2^38, does not fit in 38 bits.
-fn split_last_step(last_step: u64) -> ([u32; 2], bool) {
-    assert!(last_step <= MAX_MEM_STEP, "MemSM: last step {last_step} exceeds 2^38");
-    if last_step == MAX_MEM_STEP {
-        return ([0, 0], true);
-    }
-    ([(last_step & ((1 << 22) - 1)) as u32, (last_step >> 22) as u32], false)
+/// wants it: `step = chunks[0] + 2^22 * chunks[1]`, with `chunks[0] < 2^22` and
+/// `chunks[1] < 2^16`. The bound is what stops a prover from wrapping the step clock around the
+/// field over several segments, so both chunks are range checked.
+fn split_last_step(last_step: u64) -> [u32; 2] {
+    assert!(last_step <= MAX_MEM_STEP, "MemSM: last step {last_step} exceeds 2^38 - 4");
+    [(last_step & ((1 << 22) - 1)) as u32, (last_step >> 22) as u32]
 }
 
 /// Fills a `Mem` segment's rows, splitting the work into at most `n_ranges` parallel ranges.
@@ -1160,9 +1178,18 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
     range_16bits[distance_end[1] as usize] += 1;
 
     // @[last_step_bound]
-    let (last_step_chunks, last_step_extra) = split_last_step(step);
+    let last_step_chunks = split_last_step(step);
     range_22bits[last_step_chunks[0] as usize] += 1;
     range_16bits[last_step_chunks[1] as usize] += 1;
+
+    // @[mem_padding], range checked on the last segment only (@[padding_last_only])
+    let (padding_size_chunks, padding_size_to_max_chunks) =
+        split_padding_size(padding_size as u32, (num_slots - 1) as u32);
+    if is_last_segment {
+        for chunk in padding_size_chunks.into_iter().chain(padding_size_to_max_chunks) {
+            range_16bits[chunk as usize] += 1;
+        }
+    }
 
     MemFillOutput {
         range_22bits,
@@ -1173,8 +1200,9 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
         distance_base,
         distance_end,
         last_step_chunks,
-        last_step_extra,
         padding_size: padding_size as u32,
+        padding_size_chunks,
+        padding_size_to_max_chunks,
     }
 }
 

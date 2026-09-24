@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "b097e68b79bdeed2a4f39fb566ea4d0d2cfbae7deeab226e2e4033cc68a155b1";
+pub const PILOUT_HASH: &str = "5a922685849b69c7626a6326977dfdc45924874d9947c4b27819827dbec89393";
 
 //AIRGROUP CONSTANTS
 
@@ -779,7 +779,7 @@ values!(MainAirValues<F> {
 });
 
 values!(MemAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], last_step_chunks: [F; 2], additional_last_step_limit: F, padding_size: F, im_direct: [FieldExtension<F>; 10],
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], last_step_chunks: [F; 2], padding_size_chunks: [F; 2], padding_size_to_max_chunks: [F; 2], im_direct: [FieldExtension<F>; 13],
 });
 
 values!(InputDataAirValues<F> {

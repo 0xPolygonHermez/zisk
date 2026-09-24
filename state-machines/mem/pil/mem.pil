@@ -554,20 +554,21 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         // main's own range checks, or it is a padding lane whose step is segment_last_step, itself
         // the step of a real lane. Second, this bound: previous_segment_step of the next segment
         // equals segment_last_step through the continuation bus (a single chain, seeded with step
-        // 0), so every segment starts its clock at most at 2^38, and a segment of N * lanes_x_row
-        // slots cannot add enough to reach p. Either fact suffices; both are kept so the argument
-        // does not rest on a single constraint. Only the mutable memory orders by step, so only it
-        // needs this.
+        // 0), so every segment starts its clock below 2^38, and a segment of N * lanes_x_row slots
+        // (at most 2^24, asserted below) cannot add enough to reach p: 2^24 * 2^38 = 2^62. Either
+        // fact suffices; both are kept so the argument does not rest on a single constraint. Only
+        // the mutable memory orders by step, so only it needs this.
         //
-        // The extra bit covers the largest step a main step can produce, 1 + 4 * (2^36 - 1) + 3 =
-        // 2^38, which does not fit in 22 + 16 bits. The honest witness sets it only for that
-        // exact value; for any other value it is 0 and the chunks hold the plain decomposition.
+        // 22 + 16 bits hold every step a memory operation can carry @[max_mem_step]. A main step s
+        // puts its accesses at mem steps 1 + 4 * s + {0, 1, 2, 3}, and the last main step, 2^36 - 1
+        // at most, is always the END instruction, which makes no memory access. So the largest mem
+        // step is 1 + 4 * (2^36 - 2) + 3 = 2^38 - 4 < 2^38.
+
+        assert(N * lanes_x_row <= 2**24);
 
         airval last_step_chunks[2];
-        airval additional_last_step_limit;
 
-        additional_last_step_limit * (1 - additional_last_step_limit) === 0;
-        segment_last_step === last_step_chunks[0] + P2_22 * last_step_chunks[1] + additional_last_step_limit;
+        segment_last_step === last_step_chunks[0] + P2_22 * last_step_chunks[1];
 
         range_check(expression: last_step_chunks[0], min: 0, max: P2_22 - 1);
         range_check(expression: last_step_chunks[1], min: 0, max: P2_16 - 1);
@@ -590,15 +591,40 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         // the assumes side. A negative padding_size would only add proves of a true tuple; it is
         // excluded anyway, together with padding outside the last segment, to keep the honest shape
         // the only one.
-        airval padding_size;
+        //
+        // padding_size counts lanes, not rows, and is bounded on both sides: it cannot be negative
+        // (p - k would ADD k proves of the tuple to the bus), and it cannot reach N * lanes_x_row,
+        // because a segment with no real lane does not exist -- the tuple is the last real lane.
+        // Both bounds come out of one decomposition: padding_size and its distance to the maximum
+        // are two 16-bit chunks each, and the two values add up to the maximum. Four chunks in
+        // [0, 2^16) make both values integers below 2^32, whose sum cannot wrap the field, so
+        // 0 <= padding_size <= N * lanes_x_row - 1. Air values are cheap on the bus, so this costs
+        // four emissions against the 16-bit range already in use, and no range table of its own.
+        // Only the last segment has padding, so only there are the chunks range checked: on every
+        // other segment the padding chunks are pinned to zero, and the sum then pins the distance
+        // to the maximum @[padding_last_only].
+        // The tuple itself cannot lie: segment_last_addr, segment_last_step and segment_last_value
+        // are pinned to the LAST lane by the SEGMENT_LAST constraints above, and the lanes taken
+        // back are lanes this same trace emits.
+        airval padding_size_chunks[2];
+        airval padding_size_to_max_chunks[2];
+
+        const expr padding_size = padding_size_chunks[0] + P2_16 * padding_size_chunks[1];
+        const expr padding_size_to_max = padding_size_to_max_chunks[0] + P2_16 * padding_size_to_max_chunks[1];
+
+        range_check(expression: padding_size_chunks[0], min: 0, max: P2_16 - 1, sel: is_last_segment);
+        range_check(expression: padding_size_chunks[1], min: 0, max: P2_16 - 1, sel: is_last_segment);
+        range_check(expression: padding_size_to_max_chunks[0], min: 0, max: P2_16 - 1, sel: is_last_segment);
+        range_check(expression: padding_size_to_max_chunks[1], min: 0, max: P2_16 - 1, sel: is_last_segment);
+
+        padding_size + padding_size_to_max === N * lanes_x_row - 1;
+
+        // @[padding_last_only]
+        (1 - is_last_segment) * padding_size_chunks[0] === 0;
+        (1 - is_last_segment) * padding_size_chunks[1] === 0;
+
         lookup(MEMORY_ID, expressions: [MEMORY_LOAD_OP, segment_last_addr * bytes, segment_last_step, bytes, ...segment_last_value],
                mul: -padding_size);
-
-        (1 - is_last_segment) * padding_size === 0;
-
-        // padding_size counts lanes, not rows; a segment with no real lane does not exist.
-        assert(N * lanes_x_row <= 2**24);
-        range_check(expression: padding_size, min: 0, max: 2**24 - 1, sel: is_last_segment);
     }
 
     // if addr_changes is 0, check that previous address match with current addr.
