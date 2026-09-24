@@ -625,7 +625,7 @@ dependencies = [
  "nom",
  "num-traits",
  "rusticata-macros",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "time",
 ]
 
@@ -1129,7 +1129,7 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1768,7 +1768,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
 dependencies = [
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3097,7 +3097,7 @@ dependencies = [
  "jni-sys",
  "log",
  "simd_cesu8",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "walkdir",
  "windows-link 0.2.1",
 ]
@@ -3431,7 +3431,7 @@ dependencies = [
  "metrics-util",
  "quanta",
  "rustls",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
 ]
@@ -3498,7 +3498,7 @@ dependencies = [
  "mpi-sys",
  "once_cell",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3562,7 +3562,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0875efe1a57a20d0cee7034499aa9d764b3c7525563fa3c3f16a2ccf01ddfa04"
 dependencies = [
  "libc",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "windows 0.61.3",
 ]
 
@@ -4001,7 +4001,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4012,7 +4012,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -4028,7 +4028,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "anyhow",
  "clap",
@@ -4054,7 +4054,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "colored",
  "proofman-common",
@@ -4272,7 +4272,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "bincode",
  "blake3",
@@ -4304,7 +4304,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "borsh",
  "colored",
@@ -4323,7 +4323,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sysinfo 0.35.2",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
  "yansi",
@@ -4332,7 +4332,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "proofman-fields",
 ]
@@ -4340,7 +4340,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "anyhow",
  "proofman-starks-src",
@@ -4354,7 +4354,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -4367,7 +4367,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -4379,7 +4379,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4389,7 +4389,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -4398,12 +4398,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 
 [[package]]
 name = "proofman-util"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4412,7 +4412,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4425,7 +4425,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#9fca42c58f6dc6ccdbd445ddc69a18b1df912ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-witness-kernels#84add89ec04182d5db8a232c6c15431d7c770e74"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -4601,7 +4601,7 @@ dependencies = [
  "rustc-hash",
  "rustls",
  "socket2",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "web-time",
@@ -4625,7 +4625,7 @@ dependencies = [
  "rustls-pki-types",
  "rustls-platform-verifier",
  "slab",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tinyvec",
  "tracing",
  "web-time",
@@ -4845,7 +4845,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60dc65c0ff1a7ae1294b0c67b9f14baf70b644404010370171787bfac1038fc0"
 dependencies = [
  "libredox",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -5927,11 +5927,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
 dependencies = [
- "thiserror-impl 2.0.20",
+ "thiserror-impl 2.0.21",
 ]
 
 [[package]]
@@ -5947,9 +5947,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6373,7 +6373,7 @@ checksum = "050686193eb999b4bb3bc2acfa891a13da00f79734704c4b8b4ef1a10b368a3c"
 dependencies = [
  "crossbeam-channel",
  "symlink",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "time",
  "tracing-subscriber",
 ]
@@ -7166,7 +7166,7 @@ dependencies = [
  "oid-registry",
  "ring",
  "rusticata-macros",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "time",
 ]
 
@@ -7222,18 +7222,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.57"
+version = "0.8.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d35102a9f36d089ccae9e4c6802bc118be4487b80aaffc0ab4e0cf5ce92d2873"
+checksum = "c17e8fafad82b542ff3717217ecdc736231b59e387768c9630123b4ce4d2db44"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.57"
+version = "0.8.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "146c01f5ab44258da43cf276c74a2763db2ff3969c9c652c3f2de07041d0b2bc"
+checksum = "595f56e044df4f46a0c9a626f65c3d99eb8488f7e8a8baa12dd76326d9710bf2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7324,7 +7324,7 @@ dependencies = [
  "proofman-starks-lib-c",
  "proofman-util",
  "rayon",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -7400,7 +7400,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tikv-jemallocator",
  "tracing",
  "zisk-core",
@@ -7433,7 +7433,7 @@ dependencies = [
  "serde",
  "signal-hook",
  "signal-hook-tokio",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tonic",
  "tracing",
@@ -7491,7 +7491,7 @@ dependencies = [
  "serde",
  "signal-hook",
  "signal-hook-tokio",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -7545,7 +7545,7 @@ dependencies = [
  "proofman-util",
  "proofman-witness",
  "rayon",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "zisk-asm-runner",
  "zisk-common",
@@ -7950,7 +7950,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tera",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "zisk-verifier",
 ]
@@ -7992,7 +7992,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "uuid",
@@ -8057,7 +8057,7 @@ dependencies = [
  "proofman-common",
  "proofman-fields",
  "rayon",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -8116,7 +8116,7 @@ dependencies = [
  "proofman-common",
  "proofman-fields",
  "rayon",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "zisk-asm-runner",
  "zisk-common",
@@ -8134,7 +8134,7 @@ dependencies = [
  "quinn",
  "rcgen",
  "rustls",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
 ]
