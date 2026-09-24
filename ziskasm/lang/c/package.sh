@@ -8,11 +8,13 @@
 #   TARBALL=1 ./package.sh             # also produce dist.tar.gz
 #   ZISK_TOOLCHAIN_PREFIX=riscv-none-elf- ./package.sh   # xPack toolchain
 #
-# NOTE: the archive is NOT standalone-functional. Every accelerator/I-O symbol in
-# it is a stub whose entry `elf2rom` rewrites to a hand-written .zisk routine at
-# transpile time (_start and the DMA-backed mem* routines are real code). A guest that links it and is then run through a ziskemu/cargo-zisk built
-# WITHOUT the `ziskasm` feature reaches the stub bodies, which deliberately fail
-# hard (diagnostic + fault) rather than returning wrong answers.
+# NOTE: the archive is NOT standalone-functional. Every accelerator/I-O function in
+# it is a zkvmcall thunk that the transpiler turns into a jump to a hand-written
+# .zisk routine (_start and the DMA-backed mem* routines are real code). A guest
+# that uses one is rejected at transpile time by a ziskemu/cargo-zisk built WITHOUT
+# the `ziskasm` feature. The `ziskos_*` stubs are redirected by symbol name; if that
+# redirect does not fire, their bodies fail hard (diagnostic + fault) rather than
+# returning wrong answers.
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PREFIX="${PREFIX:-$HERE/dist}"
@@ -67,7 +69,8 @@ fi
 
 echo
 echo "Link a guest with:"
-echo "  ${CC_PREFIX}gcc -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib -ffreestanding \\"
+echo "  ${CC_PREFIX}gcc -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib -ffreestanding -Wl,--gc-sections \\"
 echo "      -I$PREFIX/include -T $PREFIX/share/zisk/zisk_linker_script.ld \\"
 echo "      -o guest.elf guest.c $AR_FILE"
-echo "Do NOT strip the result: elf2rom resolves the stubs by symbol name."
+echo "If the guest calls ziskos_* functions, do NOT strip the result: elf2rom"
+echo "resolves those stubs by symbol name (zkvm_* and the I/O functions do not need it)."

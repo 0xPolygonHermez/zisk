@@ -9,3 +9,4 @@ description = "Rust bindings for the ZisK assembly library (ziskasm/zisklib): gu
 publish = false
 
 [dependencies]
+zisk-definitions = { workspace = true }

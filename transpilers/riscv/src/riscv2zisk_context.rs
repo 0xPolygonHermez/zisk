@@ -2,18 +2,21 @@
 //! instances of ZiskInstBuilder, and accumulates these instances in a hash map as a public
 //! attribute.
 
+use std::collections::BTreeSet;
+
 use crate::{riscv_interpreter, RiscvInst, RiscvInstName};
 use zisk_definitions::{
-    SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID, SYSCALL_ARITH384_MOD_ID,
-    SYSCALL_BABYJUBJUB_ADD_ID, SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLAKE2SF_ID, SYSCALL_BLAKE3F_ID,
-    SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_BLS12_381_COMPLEX_MUL_ID,
-    SYSCALL_BLS12_381_COMPLEX_SUB_ID, SYSCALL_BLS12_381_CURVE_ADD_ID,
-    SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID, SYSCALL_BN254_COMPLEX_MUL_ID,
-    SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID, SYSCALL_BN254_CURVE_DBL_ID,
-    SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID,
-    SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID,
-    SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID,
-    SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID,
+    zkvmcall_by_id, SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID,
+    SYSCALL_ARITH384_MOD_ID, SYSCALL_BABYJUBJUB_ADD_ID, SYSCALL_BLAKE2B_ROUND_ID,
+    SYSCALL_BLAKE2SF_ID, SYSCALL_BLAKE3F_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID,
+    SYSCALL_BLS12_381_COMPLEX_MUL_ID, SYSCALL_BLS12_381_COMPLEX_SUB_ID,
+    SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
+    SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
+    SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
+    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID,
+    SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
+    SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
+    SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START,
 };
 
 use zisk_core::zisk_rom::ZiskRom;
@@ -2766,11 +2769,17 @@ impl<'a> Riscv2ZiskContext<'a> {
 /// [`Riscv2ZiskContext::emit_symbol_redirect`]) and skips the function body, so
 /// the hand-written `.zisk` implementation runs in the guest function's place. An
 /// empty map transpiles the section verbatim.
+///
+/// `zkvmcalls` maps a zkvmcall ID (see `zisk_definitions::ZKVMCALLS`) to its library
+/// entry address. Each `csrs <id>, x0` zkvmcall is replaced by a tail-jump to that
+/// entry. Every zkvmcall in the section must be in the map; [`zkvmcall_ids`] finds
+/// them beforehand.
 pub fn add_zisk_code(
     rom: &mut ZiskRom,
     addr: u64,
     data: &[u8],
     redirects: &std::collections::HashMap<u64, (u64, u64)>,
+    zkvmcalls: &std::collections::HashMap<u16, u64>,
 ) {
     // Convert input data to a u32 vector
     let code_vector: Vec<u16> = convert_vector(data);
@@ -2799,12 +2808,69 @@ pub fn add_zisk_code(
             continue;
         }
 
+        // A zkvmcall: tail-jump to the library routine, which returns to our caller.
+        if let Some(id) = zkvmcall_id(riscv_instruction) {
+            let lib_addr = *zkvmcalls.get(&id).unwrap_or_else(|| {
+                panic!("zkvmcall 0x{id:X} at 0x{inst_addr:x} has no library entry")
+            });
+            ctx.emit_symbol_redirect(inst_addr, lib_addr);
+            continue;
+        }
+
         // Get slice of remaining instructions after current one
         let next_instructions = &riscv_instructions[(i + 1)..];
 
         // Convert RISC-V instruction to ZisK instruction and store it in rom.insts
         ctx.convert(riscv_instruction, next_instructions);
     }
+}
+
+/// Returns the zkvmcall ID of `inst` if it is a zkvmcall (`csrs <id>, x0` with `id` in
+/// the zkvmcall CSR range).
+fn zkvmcall_id(inst: &RiscvInst) -> Option<u16> {
+    let csr = inst.csr as u16;
+    (inst.inst_name == RiscvInstName::Csrrs
+        && inst.rd == 0
+        && inst.rs1 == 0
+        && (ZKVMCALL_ADDR_START..=ZKVMCALL_ADDR_END).contains(&csr))
+    .then_some(csr)
+}
+
+/// Returns the IDs of all the zkvmcalls in a RISC-V code section, so the caller can
+/// decide whether to link the ZisK library before transpiling it.
+///
+/// Any instruction that touches a zkvmcall CSR must be exactly `csrs <id>, x0` with a
+/// known `id`; anything else is an error, since it can only come from a guest built
+/// against a different set of zkvmcalls.
+pub fn zkvmcall_ids(addr: u64, data: &[u8]) -> Result<BTreeSet<u16>, String> {
+    let code_vector: Vec<u16> = convert_vector(data);
+    let mut ids = BTreeSet::new();
+    for inst in riscv_interpreter(addr, &code_vector) {
+        let csr = inst.csr as u16;
+        let is_csr_inst = matches!(
+            inst.inst_name,
+            RiscvInstName::Csrrw
+                | RiscvInstName::Csrrs
+                | RiscvInstName::Csrrc
+                | RiscvInstName::Csrrwi
+                | RiscvInstName::Csrrsi
+                | RiscvInstName::Csrrci
+        );
+        if !is_csr_inst || !(ZKVMCALL_ADDR_START..=ZKVMCALL_ADDR_END).contains(&csr) {
+            continue;
+        }
+        let Some(id) = zkvmcall_id(&inst) else {
+            return Err(format!(
+                "malformed zkvmcall at 0x{:x}: expected `csrs 0x{csr:X}, x0`, found {:?} rd=x{} rs1=x{}",
+                inst.rom_address, inst.inst_name, inst.rd, inst.rs1
+            ));
+        };
+        if zkvmcall_by_id(id).is_none() {
+            return Err(format!("unknown zkvmcall 0x{id:X} at 0x{:x}", inst.rom_address));
+        }
+        ids.insert(id);
+    }
+    Ok(ids)
 }
 
 /// Add initial data to ZisK rom.

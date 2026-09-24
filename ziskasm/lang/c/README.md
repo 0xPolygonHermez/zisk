@@ -57,7 +57,7 @@ extern "C" union ethash_hash256 ethash_keccak256(const uint8_t* d, size_t n) noe
 }
 ```
 
-## Rules that keep the redirect working
+## Rules that keep the `ziskos_*` redirect working
 
 - **Stable symbols, real bodies.** Stubs are `__attribute__((noinline, used))`
   and never `static`, so each has an address and a nonzero size for `elf2rom` to
@@ -98,20 +98,26 @@ A guest then needs nothing from this source tree:
 
 ```bash
 riscv64-unknown-elf-gcc -march=rv64ima -mabi=lp64 -mcmodel=medany \
-    -nostdlib -ffreestanding -O2 \
+    -nostdlib -ffreestanding -O2 -Wl,--gc-sections \
     -Idist/include -T dist/share/zisk/zisk_linker_script.ld \
     -o guest.elf guest.c dist/lib/libzisklib_c.a
 ```
 
+`--gc-sections` drops the zkvmcall thunks the guest never calls. Without it every
+thunk stays in the ELF, and `elf2rom` then assembles the ZisK library even for a
+guest that uses none of them.
+
 Three things about this artifact are worth stating plainly, because none of them
 behave like an ordinary static library:
 
-- **It is not standalone-functional.** Every accelerator and I/O symbol in it is a
-  stub whose entry `elf2rom` rewrites to a hand-written `.zisk` routine at transpile
-  time. Link it and run the result through a `ziskemu`/`cargo-zisk` built *without*
-  `--features ziskasm` and you reach the stub bodies, which fail hard by design. A
-  clean link proves nothing on its own. The exception is `_start` and the `mem*`
-  routines below, which are real code.
+- **It is not standalone-functional.** Every accelerator and I/O function in it is
+  a zkvmcall thunk (`csrs <id>, x0; ret`, see [`src/zkvm_calls.s`](src/zkvm_calls.s))
+  that the transpiler turns into a jump to a hand-written `.zisk` routine. A
+  `ziskemu`/`cargo-zisk` built *without* `--features ziskasm` rejects a guest that
+  uses one at transpile time. The `ziskos_*` stubs are redirected by symbol name
+  instead, and fail hard if that redirect does not fire. A clean link proves nothing
+  on its own. The exception is `_start` and the `mem*` routines below, which are
+  real code.
 - **It defines `memcpy`/`memmove`/`memcmp`/`memset` (EF §2).** They are DMA
   precompile thunks (`memmove` is overlap-safe; it shares `memcpy`'s DMA op, which
   has memmove semantics) and they live in the same object as `_start`. Every guest
@@ -128,40 +134,43 @@ behave like an ordinary static library:
   default ZisK is `IALIGN = 32` and rejects 16-bit instructions. Override with
   `-DZISK_GUEST_ARCH` if you have enabled that feature.
 
-Do not `--strip` the linked guest: `elf2rom` resolves the stubs by symbol name.
+A guest that only uses the EF functions can be stripped: the transpiler finds
+zkvmcalls by instruction. Do not `--strip` a guest that calls `ziskos_*`: `elf2rom`
+resolves those stubs by symbol name.
 
 ## Coverage
 
-`REDIRECTS` holds **77** entries across three independent symbol families, and
-this header covers only the first. The families are siblings, not layers: where
-they overlap they target the *same* routine rather than calling through one
-another — `ziskos_keccak` and `zkvm_keccak256` both resolve to
-`ziskasm_zkvm_keccak256`, likewise `sha256` and `blake2b_compress`/`blake2f`.
+The library reaches the `.zisk` routines in two ways:
 
-| Family | Count | Declared in | Stubs in |
-|--------|-------|-------------|----------|
-| `ziskos_*` — ZisK flat ABI | 27 | [`zisklib.h`](include/zisklib.h) | [`src/zisklib_stubs.c`](src/zisklib_stubs.c) |
-| `zkvm_*` — EF accelerators | 20 | [`zkvm_accelerators.h`](include/zkvm_accelerators.h) | [`src/zkvm_stubs.c`](src/zkvm_stubs.c) |
-| `zkvm_u256_*` — EF U256 | 27 | [`zkvm_u256.h`](include/zkvm_u256.h) | [`src/zkvm_stubs.c`](src/zkvm_stubs.c) |
+| Family | Count | Declared in | Implemented by |
+|--------|-------|-------------|----------------|
+| `zkvm_*` — EF accelerators | 20 | [`zkvm_accelerators.h`](include/zkvm_accelerators.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s); `zkvm_keccak_f1600` is inline in the header |
+| `zkvm_u256_*` — EF U256 | 27 | [`zkvm_u256.h`](include/zkvm_u256.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s) |
+| `read_input`/`write_output` — EF I/O | 2 | [`zkvm_io.h`](include/zkvm_io.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s) |
+| `ziskos_*` — ZisK flat ABI | 27 | [`zisklib.h`](include/zisklib.h) | stubs in [`src/zisklib_stubs.c`](src/zisklib_stubs.c), redirected by `REDIRECTS` |
 
-Plus 3 entries outside those three families: the EF I/O pair `read_input` /
-`write_output` (declared in [`zkvm_io.h`](include/zkvm_io.h), stubbed in
-`src/zkvm_stubs.c`, redirected to `zkvm_io.zisk`) and `modexp_u64_c` (declared in
-`zisklib.h`). The library also provides `_start` (`src/_start.s`), which is not a
-redirect entry but is part of the surface EF §9 requires the archive to ship, and
-the DMA-backed `memcpy`/`memmove`/`memcmp`/`memset` in the same file (EF §2).
+The zkvmcall IDs live in `definitions/src/zkvmcall.rs`. `REDIRECTS` (28 entries)
+covers the `ziskos_*` set plus `modexp_u64_c`. The families are siblings, not
+layers: where they overlap they target the *same* routine rather than calling
+through one another. `ziskos_keccak` and `zkvm_keccak256` both reach
+`ziskasm_zkvm_keccak256`, and likewise `sha256` and `blake2b_compress`/`blake2f`.
+
+The library also provides `_start` (`src/_start.s`), which EF §9 requires the
+archive to ship, and the DMA-backed `memcpy`/`memmove`/`memcmp`/`memset` in the
+same file (EF §2).
 
 The `ziskos_*` set is: `add` (demo), `keccak`, `sha256`, `blake2b_compress`, the
 `*256` integer/modular ops, secp256k1 (ecdsa verify/recover, schnorr), secp256r1
 (ecdsa verify), bn254 pairing check, and bls12_381 (pairing check,
 map/hash-to-curve, BLS verify, KZG proof).
 
-Adding a new routine = a `REDIRECTS` row + a prototype/stub pair **in the header
-for that family** (and, for `ziskos_*`, in the Rust binding). A new EF entry does
-not belong in `zisklib.h`.
+Adding a new EF routine = a row in `definitions/src/zkvmcall.rs` (a new ID, never
+a reused one), a `ZKVMCALL` line in `src/zkvm_calls.s` and a prototype in the
+header for that family. Adding a new `ziskos_*` routine = a `REDIRECTS` row + a
+prototype/stub pair in `zisklib.h`/`zisklib_stubs.c` (and in the Rust binding).
 
 ## Status
 
-Scaffold. The header + stubs compile clean for the host and for `rv64ima`
+Scaffold. The headers, stubs and thunks compile clean for the host and for `rv64ima`
 (`riscv*-elf-gcc`). Wiring individual cpp-guest precompiles to these entries, and
 validating each against the existing C++ ports, is the next step.

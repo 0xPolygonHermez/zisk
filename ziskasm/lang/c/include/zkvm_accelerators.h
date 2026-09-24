@@ -4,20 +4,18 @@
  *   github.com/eth-act/zkevm-standards/standards/c-interface-accelerators/zkvm_accelerators.h
  *
  * This is the STANDARD, vendor-neutral surface. ZisK implements it with NO C
- * marshalling layer: src/zkvm_stubs.c carries one exported placeholder body per
- * symbol, and at transpile time elf2rom redirects each `zkvm_*` symbol DIRECTLY to
- * the matching hand-written `ziskasm_zkvm_*` routine in ziskasm/zisklib/zkvm/, which
- * consumes the EF byte-array ABI as-is. A guest that follows the EF standard compiles
- * against this header and links src/zkvm_stubs.c (see CMakeLists.txt, which builds it
- * into `zisklib_c`) and transparently runs the ziskasm crypto.
+ * marshalling layer. Each function is a two-instruction thunk in src/zkvm_calls.s
+ * (`csrs <id>, x0; ret`), which the transpiler turns into a jump to the matching
+ * hand-written `ziskasm_zkvm_*` routine in ziskasm/zisklib/zkvm/. That routine
+ * consumes the EF byte-array ABI as-is. A guest that follows the EF standard
+ * compiles against this header, links `zisklib_c` (see CMakeLists.txt) and runs
+ * the ziskasm crypto.
  *
- * The flat `ziskos_*` bindings in zisklib.h are a SEPARATE entry point onto the same
- * routines, not a layer this header goes through: elf2rom's REDIRECTS table maps both
- * `ziskos_keccak` and `zkvm_keccak256` to the same `ziskasm_zkvm_keccak256` label.
+ * zkvm_keccak_f1600 is the exception: it is a single keccak-f precompile, so it is
+ * defined inline below and costs one instruction at the call site.
  *
- * If a placeholder body ever executes, the redirect did not fire (stripped ELF, or
- * ziskemu/cargo-zisk built without the `ziskasm` feature); it then prints a
- * diagnostic naming the symbol and faults rather than returning a wrong value.
+ * Running such a guest needs ziskemu/cargo-zisk built with --features ziskasm.
+ * Without it, the transpiler rejects the ELF instead of running a wrong body.
  */
 #ifndef ZKVM_ACCELERATORS_H
 #define ZKVM_ACCELERATORS_H
@@ -97,9 +95,17 @@ typedef zkvm_bytes_32 zkvm_kzg_field_element;
 /* ---- functions --------------------------------------------------------- */
 zkvm_status zkvm_keccak256(const uint8_t* data, size_t len, zkvm_keccak256_hash* output);
 /* Keccak-f[1600] permutation, applied in place to the raw 25-word state (no
- * sponge/padding). state: 25 uint64_t words, updated in place. ZKVM_EOK on
- * success, ZKVM_EFAIL on failure. */
+ * sponge/padding). state: 25 uint64_t words, updated in place. Always returns
+ * ZKVM_EOK. On ZisK it is the keccakf precompile (CSR 0x800), inlined; other
+ * targets (e.g. host-side tests) only get the prototype. */
+#if defined(__riscv)
+static inline zkvm_status zkvm_keccak_f1600(uint64_t* state) {
+    __asm__ volatile("csrs 0x800, %0" : : "r"(state) : "memory");
+    return ZKVM_EOK;
+}
+#else
 zkvm_status zkvm_keccak_f1600(uint64_t* state);
+#endif
 zkvm_status zkvm_sha256(const uint8_t* data, size_t len, zkvm_sha256_hash* output);
 zkvm_status zkvm_ripemd160(const uint8_t* data, size_t len, zkvm_ripemd160_hash* output);
 

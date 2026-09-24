@@ -3,19 +3,17 @@
  *   github.com/eth-act/zkevm-standards
  *
  * The private-input and public-output channels. Note these two symbols are NOT
- * `zkvm_`-prefixed: the standard names them plainly, and elf2rom's REDIRECTS table
- * matches those exact names.
+ * `zkvm_`-prefixed: the standard names them plainly.
  *
  * ZisK implements both with no C marshalling layer, exactly like the accelerators:
- * src/zkvm_stubs.c carries an exported placeholder body per symbol, and at transpile
- * time elf2rom redirects `read_input` / `write_output` DIRECTLY to
- * `zisklib_read_input` / `zisklib_write_output` in ziskasm/zisklib/zkvm_io.zisk.
- * A guest compiles against this header and links src/zkvm_stubs.c (built into
- * `zisklib_c` by CMakeLists.txt).
+ * each is a zkvmcall thunk in src/zkvm_calls.s (`csrs <id>, x0; ret`), which the
+ * transpiler turns into a jump to `zisklib_read_input` / `zisklib_write_output` in
+ * ziskasm/zisklib/zkvm_io.zisk. A guest compiles against this header and links
+ * `zisklib_c` (see CMakeLists.txt).
  *
- * If a placeholder body ever executes, the redirect did not fire; it prints a
- * diagnostic naming the symbol and faults rather than returning silently, which for
- * these two would otherwise look like "empty input" or "output discarded".
+ * Running such a guest needs ziskemu/cargo-zisk built with --features ziskasm.
+ * Without it, the transpiler rejects the ELF, rather than letting these two look
+ * like "empty input" or "output discarded".
  */
 #ifndef ZKVM_IO_H
 #define ZKVM_IO_H
