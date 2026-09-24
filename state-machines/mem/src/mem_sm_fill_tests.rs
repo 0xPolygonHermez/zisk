@@ -319,18 +319,28 @@ fn the_fill_writes_one_slot_per_operation() {
             "slot {slot} holds the wrong address"
         );
     }
-    // Padding lanes have no selector: they reach the bus as reads of the last lane and are taken
-    // back `padding_size` times (@[mem_padding] in mem.pil), so each one must be exactly that tuple.
+    // Padding lanes have no selector: they reach the bus as reads of the last word of the region
+    // and are taken back `padding_size` times (@[mem_padding] in mem.pil), so each one must be
+    // exactly that tuple. The last real lane is elsewhere here, so the first padding lane changes
+    // address, reads zero and carries the distance in its increment; the rest repeat it.
     let (last_r, last_l) = ((filled - 1) / lanes, (filled - 1) % lanes);
+    let last_real_addr = rows[last_r].get_addr(last_l);
+    assert_ne!(last_real_addr, RAM_W_ADDR_END);
     for slot in filled..(n_rows * lanes) {
         let (r, l) = (slot / lanes, slot % lanes);
-        assert_eq!(rows[r].get_addr(l), rows[last_r].get_addr(last_l), "padding slot {slot}: addr");
+        let first = slot == filled;
+        assert_eq!(rows[r].get_addr(l), RAM_W_ADDR_END, "padding slot {slot}: addr");
         assert_eq!(rows[r].get_step(l), out.last_step, "padding slot {slot}: step");
         assert!(!rows[r].get_wr(l), "padding slot {slot} must be a read");
-        assert!(!rows[r].get_addr_changes(l), "padding slot {slot} must stay on the last address");
-        assert_eq!(rows[r].get_value(l, 0), out.last_value[0], "padding slot {slot}: value lo");
-        assert_eq!(rows[r].get_value(l, 1), out.last_value[1], "padding slot {slot}: value hi");
+        assert_eq!(rows[r].get_addr_changes(l), first, "padding slot {slot}: addr_changes");
+        assert_eq!(rows[r].get_value(l, 0), 0, "padding slot {slot}: a fresh word reads zero");
+        assert_eq!(rows[r].get_value(l, 1), 0, "padding slot {slot}: a fresh word reads zero");
+        let increment =
+            rows[r].get_l_increment(l) as u64 + ((rows[r].get_h_increment(l) as u64) << 22);
+        let expected = if first { (RAM_W_ADDR_END - last_real_addr - 1) as u64 } else { 0 };
+        assert_eq!(increment, expected, "padding slot {slot}: increment");
     }
+    assert_eq!(out.last_value, [0, 0], "the air values describe the padding lane");
     assert_eq!(
         out.padding_size as usize,
         n_rows * lanes - filled,
@@ -344,14 +354,14 @@ fn the_fill_writes_one_slot_per_operation() {
         rebuild(out.padding_size_chunks) + rebuild(out.padding_size_to_max_chunks),
         (n_rows * lanes - 1) as u32
     );
-    // The last filled slot is what the padding repeats and what the segment hands on.
-    assert_eq!(out.last_addr, base + n_addrs - 1);
+    // With padding, the LAST lane -- and so segment_last_addr -- is the last word of the region.
+    assert_eq!(out.last_addr, RAM_W_ADDR_END);
 }
 
-/// @[mem_padding] and the end of the region do not collide. When the last real lane sits on the
-/// last word of the memory, the padding repeats that very address -- it never steps past it, so
-/// `internal_end_address - segment_last_addr` is exactly zero, still inside its range -- and
-/// `padding_size` is the number of lanes the lookup takes back.
+/// @[mem_padding] when the last real lane already sits on the last word of the memory: the
+/// padding repeats it, value included, without an address change, `internal_end_address -
+/// segment_last_addr` is exactly zero, still inside its range, and `padding_size` is the number of
+/// lanes the lookup takes back.
 #[test]
 fn padding_after_an_access_to_the_last_word_of_memory_stays_inside_it() {
     let (n_addrs, slots_per_addr) = (3u32, 2u32);
@@ -389,12 +399,21 @@ fn padding_after_an_access_to_the_last_word_of_memory_stays_inside_it() {
     assert_eq!(out.distance_end, [0, 0], "the distance to the end of the region is zero");
     assert_eq!(out.padding_size as usize, n_rows * lanes - filled);
     assert!(out.padding_size > 0, "the test needs padding after the last word");
+    let (last_r, last_l) = ((filled - 1) / lanes, (filled - 1) % lanes);
+    let last_value = [rows[last_r].get_value(last_l, 0), rows[last_r].get_value(last_l, 1)];
     for slot in filled..(n_rows * lanes) {
         let (r, l) = (slot / lanes, slot % lanes);
         assert_eq!(rows[r].get_addr(l), RAM_W_ADDR_END, "padding slot {slot} left the last word");
         assert!(!rows[r].get_addr_changes(l) && !rows[r].get_wr(l), "padding slot {slot}");
         assert_eq!(rows[r].get_step(l), out.last_step, "padding slot {slot}: step");
+        assert_eq!(
+            [rows[r].get_value(l, 0), rows[r].get_value(l, 1)],
+            last_value,
+            "padding slot {slot} repeats the value of the last word"
+        );
+        assert_eq!(rows[r].get_l_increment(l) + rows[r].get_h_increment(l) as u32, 0);
     }
+    assert_eq!(out.last_value, last_value);
 }
 
 /// @[last_step_bound]: the two chunks the segment hands over rebuild the step, and the largest
