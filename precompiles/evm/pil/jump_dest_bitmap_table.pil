@@ -40,7 +40,13 @@ require "opids.pil"
 //   "PUSH32 at the end of the bytecode with the trailing zeros omitted": both
 //   compress to the same cdata4. So one input value admits up to 8 rows, one per
 //   position where the bytecode may end, and it is the count constraint in the
-//   machine that picks. 54272 keys, 19960 of them with more than one row.
+//   machine that picks. The candidates run from the byte after the last one in
+//   use to the first byte that is ignored with no PUSH data pending, inclusive:
+//   inside the bytecode every byte is an instruction or PUSH data, so the code
+//   cannot reach past that byte, and a row saying otherwise would let a prover
+//   declare the code finished early, keep the true bytes_used and drop the
+//   JUMPDEST bits after the fake end. 54272 keys, 19495 of them with more than one
+//   row.
 //
 // ROW ORDER — the enumeration walks (state_in, cdata0..cdata3, BYTES_USED) in
 // dense lexicographic order, dropping incoherent combinations. That ordering is
@@ -59,7 +65,7 @@ require "opids.pil"
 //
 // So the multiplicity of the lookup is the row selector, not sel_mem_load.
 //
-// SIZE: 138953 rows = 138702 for loaded words + 251 for skipped ones, and all 34
+// SIZE: 137974 rows = 137723 for loaded words + 251 for skipped ones, and all 34
 // state_in values are covered. It needs 2^18: 2^17 held the 86252 rows of the
 // earlier design, where a word that used all 8 of its bytes could not be the one
 // that finishes the bytecode. It has to be, or the next op starts with a state
@@ -67,7 +73,7 @@ require "opids.pil"
 // So every full-word row now comes in two readings, told apart by state_out, and
 // count is what picks between them.
 
-const int JUMP_DEST_BITMAP_TABLE_ROWS = 138953;
+const int JUMP_DEST_BITMAP_TABLE_ROWS = 137974;
 
 const int JD_CDATA_VALUES = 137;   // cdata is 0..136 with no gaps
 const int JD_STATE_FINISHED = 33;
