@@ -1,0 +1,835 @@
+; ============================================================================
+; zkvm/u256_le.zisk - the little-endian U256 ABI (ziskasm/lang/c/include/
+; zkvm_u256_le.h). Entry points `ziskasm_zkvm_u256_le_*`, reached through
+; zkvmcalls: the header's default implementation calls all 27 functions here
+; (-DZKVM_U256_LE_INLINE switches all but the division family to inline C).
+; and/or/xor/not have no entry here: they are byte-order agnostic, so their
+; zkvmcalls target the big-endian routines in zkvm/u256.zisk directly.
+;
+; Every value is 4 little-endian u64 limbs (limb 0 least significant), the layout
+; the uint256 cores already use, so there is nothing to byte-reverse: most
+; routines call a core (uint256/{add,mul,modular,pow,div}.zisk) on the argument
+; pointers directly. The division family keeps the bodies of zkvm/u256.zisk with
+; the big-endian marshalling replaced by plain 4-word copies. Every routine reads
+; all of its inputs before writing its output, so results may alias inputs.
+; Scratch (ZU_*) and the zu_* limb helpers are shared with zkvm/u256.zisk.
+; Labels `zul*`.
+; ============================================================================
+
+; ---- LE helpers -------------------------------------------------------------
+
+; zul_load2: [r10=a_ptr, r11=b_ptr, r12=result_ptr]. Spills result_ptr to ZU_POUT
+; and b_ptr to ZU_PB, copies a -> ZU_A and b -> ZU_B. Leaf (no nested call).
+zul_load2:
+	copyb(0, ZU_POUT) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, ZU_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ZU_A) -> r5
+	copyb(r10, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	copyb(0, ZU_B) -> r5
+	copyb(r11, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(r11, 8[a + 8]) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	copyb(r11, 8[a + 16]) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(r11, 8[a + 24]) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	ret
+
+; zul_wr_r: copy ZU_R to the result pointer spilled in ZU_POUT. Leaf.
+zul_wr_r:
+	copyb(0, ZU_POUT) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(0, ZU_R) -> r7
+	copyb(r7, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(r7, 8[a + 8]) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	copyb(r7, 8[a + 16]) -> r6
+	copyb(r5, r6) -> 8[a + 16]
+	copyb(r7, 8[a + 24]) -> r6
+	copyb(r5, r6) -> 8[a + 24]
+	ret
+
+; zul_copy4: [r10=src, r11=dst] copy 4 words (r12, the limb count, is ignored:
+; the call sites are the former zkvm_be_to_limbs / zkvm_limbs_to_be calls with
+; nlimbs = 4). Leaf.
+zul_copy4:
+	copyb(r10, 8[a + 0]) -> r6
+	copyb(r11, r6) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r6
+	copyb(r11, r6) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r6
+	copyb(r11, r6) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r6
+	copyb(r11, r6) -> 8[a + 24]
+	ret
+
+; ============================================================================
+; Entry points
+; ============================================================================
+
+; zkvm_status zkvm_u256_le_div(a, b, quotient) : q = a / b; b == 0 -> 0 (EVM).
+ziskasm_zkvm_u256_le_div:
+	push r1
+	call zul_load2
+	copyb(0, ZU_B) -> r10
+	call zu_iszero
+	eq(r10, 0), j(zuldiv_do)            ; b != 0 -> divide
+	call zu_wr_zero
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zuldiv_do:
+	copyb(0, ZU_A) -> r10
+	copyb(0, ZU_B) -> r11
+	copyb(0, ZU_R) -> r12             ; q_out = ZU_R (written out)
+	copyb(0, ZU_Q) -> r13             ; r_out = ZU_Q (discarded)
+	call zisklib_div_rem256
+	call zul_wr_r
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_mod(a, b, remainder) : r = a % b; b == 0 -> 0 (EVM).
+ziskasm_zkvm_u256_le_mod:
+	push r1
+	call zul_load2
+	copyb(0, ZU_B) -> r10
+	call zu_iszero
+	eq(r10, 0), j(zulmod_do)
+	call zu_wr_zero
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zulmod_do:
+	copyb(0, ZU_A) -> r10
+	copyb(0, ZU_B) -> r11
+	copyb(0, ZU_Q) -> r12             ; q_out discarded
+	copyb(0, ZU_R) -> r13             ; r_out = ZU_R (written out)
+	call zisklib_div_rem256
+	call zul_wr_r
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_divmod(a, b, quotient, remainder) : b == 0 -> both 0.
+ziskasm_zkvm_u256_le_divmod:
+	push r1
+	copyb(0, ZU_POUT) -> r5           ; quotient ptr
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, ZU_POUT2) -> r5          ; remainder ptr
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, ZU_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ZU_A) -> r11             ; copy a
+	copyb(0, 4) -> r12
+	call zul_copy4
+	copyb(0, ZU_PB) -> r10            ; copy b
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZU_B) -> r11
+	copyb(0, 4) -> r12
+	call zul_copy4
+	copyb(0, ZU_B) -> r10
+	call zu_iszero
+	eq(r10, 0), j(zuldm_do)
+	; b == 0 -> quotient = remainder = 0
+	copyb(0, ZU_POUT) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+	copyb(r5, 0) -> 8[a + 8]
+	copyb(r5, 0) -> 8[a + 16]
+	copyb(r5, 0) -> 8[a + 24]
+	copyb(0, ZU_POUT2) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+	copyb(r5, 0) -> 8[a + 8]
+	copyb(r5, 0) -> 8[a + 16]
+	copyb(r5, 0) -> 8[a + 24]
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zuldm_do:
+	copyb(0, ZU_A) -> r10
+	copyb(0, ZU_B) -> r11
+	copyb(0, ZU_Q) -> r12
+	copyb(0, ZU_R) -> r13
+	call zisklib_div_rem256
+	copyb(0, ZU_Q) -> r10             ; quotient -> *POUT
+	copyb(0, ZU_POUT) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 4) -> r12
+	call zul_copy4
+	copyb(0, ZU_R) -> r10             ; remainder -> *POUT2
+	copyb(0, ZU_POUT2) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 4) -> r12
+	call zul_copy4
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_sdiv(a, b, quotient) : signed a / b, toward zero.
+;   b == 0 -> 0. -2^255 / -1 = -2^255 falls out of abs (negate(2^255)=2^255).
+ziskasm_zkvm_u256_le_sdiv:
+	push r1
+	call zul_load2
+	copyb(0, ZU_B) -> r10
+	call zu_iszero
+	eq(r10, 0), j(zulsd_do)
+	call zu_wr_zero
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zulsd_do:
+	copyb(0, ZU_A) -> r10             ; |a| -> ZU_AA, sign_a
+	copyb(0, ZU_AA) -> r11
+	call zu_abs
+	copyb(0, ZU_SA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ZU_B) -> r10             ; |b| -> ZU_BB, sign_b
+	copyb(0, ZU_BB) -> r11
+	call zu_abs
+	copyb(0, ZU_SB) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ZU_AA) -> r10            ; q = |a| / |b|
+	copyb(0, ZU_BB) -> r11
+	copyb(0, ZU_Q) -> r12
+	copyb(0, ZU_R) -> r13
+	call zisklib_div_rem256
+	copyb(0, ZU_SA) -> r5             ; sign(q) = sign_a XOR sign_b
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, ZU_SB) -> r5
+	copyb(r5, 8[a + 0]) -> r7
+	xor(r6, r7) -> r6
+	eq(r6, 0), j(zulsd_pos)
+	copyb(0, ZU_Q) -> r10             ; negative quotient
+	copyb(0, ZU_R) -> r11
+	call zu_neg
+	call zul_wr_r
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zulsd_pos:
+	copyb(0, ZU_Q) -> r10             ; positive quotient
+	copyb(0, ZU_POUT) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 4) -> r12
+	call zul_copy4
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_smod(a, b, remainder) : signed a % b, sign follows a.
+;   b == 0 -> 0.
+ziskasm_zkvm_u256_le_smod:
+	push r1
+	call zul_load2
+	copyb(0, ZU_B) -> r10
+	call zu_iszero
+	eq(r10, 0), j(zulsm_do)
+	call zu_wr_zero
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zulsm_do:
+	copyb(0, ZU_A) -> r10             ; |a| -> ZU_AA, sign_a
+	copyb(0, ZU_AA) -> r11
+	call zu_abs
+	copyb(0, ZU_SA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ZU_B) -> r10             ; |b| -> ZU_BB
+	copyb(0, ZU_BB) -> r11
+	call zu_abs
+	copyb(0, ZU_AA) -> r10            ; r = |a| % |b|
+	copyb(0, ZU_BB) -> r11
+	copyb(0, ZU_Q) -> r12
+	copyb(0, ZU_R) -> r13
+	call zisklib_div_rem256
+	copyb(0, ZU_SA) -> r5             ; sign(r) = sign_a
+	copyb(r5, 8[a + 0]) -> r6
+	eq(r6, 0), j(zulsm_pos)
+	copyb(0, ZU_R) -> r10             ; negative remainder
+	copyb(0, ZU_T) -> r11
+	call zu_neg
+	copyb(0, ZU_T) -> r10
+	copyb(0, ZU_POUT) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 4) -> r12
+	call zul_copy4
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zulsm_pos:
+	call zul_wr_r                      ; remainder in ZU_R
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_sdivmod(a, b, quotient, remainder) : signed, b == 0 -> 0.
+ziskasm_zkvm_u256_le_sdivmod:
+	push r1
+	copyb(0, ZU_POUT) -> r5           ; quotient ptr
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, ZU_POUT2) -> r5          ; remainder ptr
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, ZU_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ZU_A) -> r11             ; copy a
+	copyb(0, 4) -> r12
+	call zul_copy4
+	copyb(0, ZU_PB) -> r10            ; copy b
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZU_B) -> r11
+	copyb(0, 4) -> r12
+	call zul_copy4
+	copyb(0, ZU_B) -> r10
+	call zu_iszero
+	eq(r10, 0), j(zulsdm_do)
+	; b == 0 -> quotient = remainder = 0
+	copyb(0, ZU_POUT) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+	copyb(r5, 0) -> 8[a + 8]
+	copyb(r5, 0) -> 8[a + 16]
+	copyb(r5, 0) -> 8[a + 24]
+	copyb(0, ZU_POUT2) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+	copyb(r5, 0) -> 8[a + 8]
+	copyb(r5, 0) -> 8[a + 16]
+	copyb(r5, 0) -> 8[a + 24]
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zulsdm_do:
+	copyb(0, ZU_A) -> r10             ; |a|, sign_a
+	copyb(0, ZU_AA) -> r11
+	call zu_abs
+	copyb(0, ZU_SA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ZU_B) -> r10             ; |b|, sign_b
+	copyb(0, ZU_BB) -> r11
+	call zu_abs
+	copyb(0, ZU_SB) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ZU_AA) -> r10
+	copyb(0, ZU_BB) -> r11
+	copyb(0, ZU_Q) -> r12
+	copyb(0, ZU_R) -> r13
+	call zisklib_div_rem256
+	; quotient: sign = sign_a XOR sign_b
+	copyb(0, ZU_SA) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, ZU_SB) -> r5
+	copyb(r5, 8[a + 0]) -> r7
+	xor(r6, r7) -> r6
+	eq(r6, 0), j(zulsdm_qpos)
+	copyb(0, ZU_Q) -> r10
+	copyb(0, ZU_T) -> r11
+	call zu_neg
+	copyb(0, ZU_T) -> r10
+	jump(zulsdm_qwr)
+zulsdm_qpos:
+	copyb(0, ZU_Q) -> r10
+zulsdm_qwr:
+	copyb(0, ZU_POUT) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 4) -> r12
+	call zul_copy4
+	; remainder: sign = sign_a
+	copyb(0, ZU_SA) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	eq(r6, 0), j(zulsdm_rpos)
+	copyb(0, ZU_R) -> r10
+	copyb(0, ZU_T) -> r11
+	call zu_neg
+	copyb(0, ZU_T) -> r10
+	jump(zulsdm_rwr)
+zulsdm_rpos:
+	copyb(0, ZU_R) -> r10
+zulsdm_rwr:
+	copyb(0, ZU_POUT2) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 4) -> r12
+	call zul_copy4
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; ---- more LE helpers ---------------------------------------------------------
+
+; zul_amount: [r10=ptr] -> r10 = limb 0, r11 = 1 if limbs 1..3 are all zero (the
+; amount is < 2^64) else 0. Leaf; uses r5-r7.
+zul_amount:
+	copyb(0, r10) -> r5
+	copyb(r5, 8[a + 8]) -> r6
+	copyb(r5, 8[a + 16]) -> r7
+	or(r6, r7) -> r6
+	copyb(r5, 8[a + 24]) -> r7
+	or(r6, r7) -> r6
+	copyb(r5, 8[a + 0]) -> r10
+	eq(r6, 0), j(zulam_in)
+	copyb(0, 0) -> r11
+	ret
+zulam_in:
+	copyb(0, 1) -> r11
+	ret
+
+; zul_cmp_u: [r10=a, r11=b] -> r10 = 0 if a < b, 1 if a == b, 2 if a > b
+; (unsigned). Leaf; uses r14/r15.
+zul_cmp_u:
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r11, 8[a + 24]) -> r15
+	ltu(r14, r15), j(zulcu_lt)
+	ltu(r15, r14), j(zulcu_gt)
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r11, 8[a + 16]) -> r15
+	ltu(r14, r15), j(zulcu_lt)
+	ltu(r15, r14), j(zulcu_gt)
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r11, 8[a + 8]) -> r15
+	ltu(r14, r15), j(zulcu_lt)
+	ltu(r15, r14), j(zulcu_gt)
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r11, 8[a + 0]) -> r15
+	ltu(r14, r15), j(zulcu_lt)
+	ltu(r15, r14), j(zulcu_gt)
+	copyb(0, 1) -> r10
+	ret
+zulcu_lt:
+	copyb(0, 0) -> r10
+	ret
+zulcu_gt:
+	copyb(0, 2) -> r10
+	ret
+
+; zul_scmp: [r10=a, r11=b] -> r10 = 1 if a < b (signed) else 0.
+zul_scmp:
+	copyb(r10, 8[a + 24]) -> r6
+	srl(r6, 63) -> r6                   ; sign(a)
+	copyb(r11, 8[a + 24]) -> r7
+	srl(r7, 63) -> r7                   ; sign(b)
+	eq(r6, r7), j(zulsc_same)
+	copyb(0, r6) -> r10                 ; signs differ: a < b iff a is negative
+	ret
+zulsc_same:
+	push r1
+	call zul_cmp_u                      ; same sign: unsigned order == signed order
+	pop r1
+	eq(r10, 0), j(zulsc_lt)
+	copyb(0, 0) -> r10
+	ret
+zulsc_lt:
+	copyb(0, 1) -> r10
+	ret
+
+; zul_wr_bool: [r12=result, r10=0 or 1] write r10 as a 256-bit value. Leaf.
+zul_wr_bool:
+	copyb(r12, r10) -> 8[a + 0]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 24]
+	ret
+
+; ============================================================================
+; Arithmetic: the uint256 cores on the argument pointers
+; ============================================================================
+
+; zkvm_status zkvm_u256_le_add(a, b, result) : (a + b) mod 2^256.
+ziskasm_zkvm_u256_le_add:
+	push r1
+	call zisklib_overflowing_add256     ; carry ignored (wrapping)
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_sub(a, b, result) : (a - b) mod 2^256.
+ziskasm_zkvm_u256_le_sub:
+	push r1
+	call zisklib_overflowing_sub256     ; borrow ignored (wrapping)
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_mul(a, b, result) : (a * b) mod 2^256.
+ziskasm_zkvm_u256_le_mul:
+	push r1
+	call zisklib_overflowing_mul256     ; high 256 bits ignored (wrapping)
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_exp(base, exponent, result) : base^exponent mod 2^256.
+ziskasm_zkvm_u256_le_exp:
+	push r1
+	call zisklib_overflowing_pow256     ; overflow ignored (wrapping)
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_addmod(a, b, n, result) : (a + b) % n; n == 0 -> 0.
+ziskasm_zkvm_u256_le_addmod:
+	push r1
+	copyb(0, r10) -> r14                ; hold a (zu_iszero uses r5-r7, r10)
+	copyb(0, r12) -> r10
+	call zu_iszero
+	eq(r10, 0), j(zuladdm_do)
+	copyb(r13, 0) -> 8[a + 0]           ; n == 0 -> result = 0
+	copyb(r13, 0) -> 8[a + 8]
+	copyb(r13, 0) -> 8[a + 16]
+	copyb(r13, 0) -> 8[a + 24]
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zuladdm_do:
+	copyb(0, r14) -> r10
+	call zisklib_add_mod256             ; r10=a, r11=b, r12=n, r13=result
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_mulmod(a, b, n, result) : (a * b) % n; n == 0 -> 0.
+ziskasm_zkvm_u256_le_mulmod:
+	push r1
+	copyb(0, r10) -> r14
+	copyb(0, r12) -> r10
+	call zu_iszero
+	eq(r10, 0), j(zulmulm_do)
+	copyb(r13, 0) -> 8[a + 0]
+	copyb(r13, 0) -> 8[a + 8]
+	copyb(r13, 0) -> 8[a + 16]
+	copyb(r13, 0) -> 8[a + 24]
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zulmulm_do:
+	copyb(0, r14) -> r10
+	call zisklib_mul_mod256
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; ============================================================================
+; Comparisons (result is 0 or 1)
+; ============================================================================
+
+; zkvm_status zkvm_u256_le_lt(a, b, result) : a < b (unsigned).
+ziskasm_zkvm_u256_le_lt:
+	push r1
+	call zul_cmp_u                      ; r12 survives (cmp uses r10, r11, r14, r15)
+	eq(r10, 0), j(zullt_t)
+	copyb(0, 0) -> r10
+	jump(zullt_w)
+zullt_t:
+	copyb(0, 1) -> r10
+zullt_w:
+	call zul_wr_bool
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_gt(a, b, result) : a > b (unsigned).
+ziskasm_zkvm_u256_le_gt:
+	push r1
+	call zul_cmp_u
+	copyb(0, 2) -> r5
+	eq(r10, r5), j(zulgt_t)
+	copyb(0, 0) -> r10
+	jump(zulgt_w)
+zulgt_t:
+	copyb(0, 1) -> r10
+zulgt_w:
+	call zul_wr_bool
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_slt(a, b, result) : a < b (signed).
+ziskasm_zkvm_u256_le_slt:
+	push r1
+	call zul_scmp
+	call zul_wr_bool
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_sgt(a, b, result) : a > b (signed) = b < a.
+ziskasm_zkvm_u256_le_sgt:
+	push r1
+	copyb(0, r10) -> r5
+	copyb(0, r11) -> r10
+	copyb(0, r5) -> r11
+	call zul_scmp
+	call zul_wr_bool
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_eq(a, b, result) : a == b. Leaf.
+ziskasm_zkvm_u256_le_eq:
+	copyb(r10, 8[a + 0]) -> r5
+	copyb(r11, 8[a + 0]) -> r6
+	xor(r5, r6) -> r7
+	copyb(r10, 8[a + 8]) -> r5
+	copyb(r11, 8[a + 8]) -> r6
+	xor(r5, r6) -> r5
+	or(r7, r5) -> r7
+	copyb(r10, 8[a + 16]) -> r5
+	copyb(r11, 8[a + 16]) -> r6
+	xor(r5, r6) -> r5
+	or(r7, r5) -> r7
+	copyb(r10, 8[a + 24]) -> r5
+	copyb(r11, 8[a + 24]) -> r6
+	xor(r5, r6) -> r5
+	or(r7, r5) -> r7
+	eq(r7, 0), j(zuleq_t)
+	copyb(r12, 0) -> 8[a + 0]
+	jump(zuleq_w)
+zuleq_t:
+	copyb(r12, 1) -> 8[a + 0]
+zuleq_w:
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 24]
+	copyb(0, 0) -> r10
+	ret
+
+; zkvm_status zkvm_u256_le_iszero(a, result) : a == 0. Leaf.
+ziskasm_zkvm_u256_le_iszero:
+	copyb(r10, 8[a + 0]) -> r5
+	copyb(r10, 8[a + 8]) -> r6
+	or(r5, r6) -> r5
+	copyb(r10, 8[a + 16]) -> r6
+	or(r5, r6) -> r5
+	copyb(r10, 8[a + 24]) -> r6
+	or(r5, r6) -> r5
+	eq(r5, 0), j(zuliz_t)
+	copyb(r11, 0) -> 8[a + 0]
+	jump(zuliz_w)
+zuliz_t:
+	copyb(r11, 1) -> 8[a + 0]
+zuliz_w:
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(0, 0) -> r10
+	ret
+
+; ============================================================================
+; Byte, shifts, sign extension
+; ============================================================================
+
+; zkvm_status zkvm_u256_le_byte(i, a, result) : byte i of a counting from the most
+; significant (EVM BYTE), which in little-endian memory is at a + (31 - i).
+ziskasm_zkvm_u256_le_byte:
+	push r1
+	copyb(0, r11) -> r13                ; a (zul_amount uses r5-r7, r10, r11)
+	call zul_amount                     ; r10 = i, r11 = in-range
+	eq(r11, 0), j(zulby_zero)
+	ltu(r10, 32), j(zulby_ok)
+zulby_zero:
+	copyb(0, 0) -> r10
+	jump(zulby_w)
+zulby_ok:
+	copyb(0, 31) -> r5
+	sub(r5, r10) -> r5
+	add(r13, r5) -> r5
+	copyb(r5, 1[a + 0]) -> r10          ; the byte
+zulby_w:
+	call zul_wr_bool
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_shl(shift, value, result) : value << shift; >= 256 -> 0.
+ziskasm_zkvm_u256_le_shl:
+	push r1
+	copyb(0, ZU_POUT) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, ZU_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	call zul_amount                     ; r10 = s, r11 = in-range
+	eq(r11, 0), j(zulshl_zero)
+	ltu(r10, 256), j(zulshl_ok)
+zulshl_zero:
+	call zu_wr_zero
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zulshl_ok:
+	copyb(0, r10) -> r12                ; s
+	copyb(0, ZU_PB) -> r10              ; value -> ZU_V (private copy: result may alias)
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZU_V) -> r11
+	call zul_copy4
+	copyb(0, ZU_V) -> r10
+	copyb(0, ZU_POUT) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	call zu_shl_limbs                   ; result = ZU_V << s
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_shr(shift, value, result) : value >> shift; >= 256 -> 0.
+ziskasm_zkvm_u256_le_shr:
+	push r1
+	copyb(0, ZU_POUT) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, ZU_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	call zul_amount
+	eq(r11, 0), j(zulshr_zero)
+	ltu(r10, 256), j(zulshr_ok)
+zulshr_zero:
+	call zu_wr_zero
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zulshr_ok:
+	copyb(0, r10) -> r12
+	copyb(0, ZU_PB) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZU_V) -> r11
+	call zul_copy4
+	copyb(0, ZU_V) -> r10
+	copyb(0, ZU_POUT) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	call zu_shr_limbs                   ; result = ZU_V >> s
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_sar(shift, value, result) : arithmetic shift right;
+; shift >= 256 -> all sign bits. Negative values go through ~((~value) >> shift).
+ziskasm_zkvm_u256_le_sar:
+	push r1
+	copyb(0, ZU_POUT) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, ZU_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(r11, 8[a + 24]) -> r6
+	srl(r6, 63) -> r6                   ; sign(value)
+	copyb(0, ZU_SA) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	call zul_amount                     ; r10 = s, r11 = in-range
+	eq(r11, 0), j(zulsar_full)
+	ltu(r10, 256), j(zulsar_ok)
+zulsar_full:
+	copyb(0, ZU_SA) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	eq(r6, 0), j(zulsar_fz)
+	copyb(0, ZU_POUT) -> r5             ; negative -> all ones
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(r5, 0xffffffffffffffff) -> 8[a + 0]
+	copyb(r5, 0xffffffffffffffff) -> 8[a + 8]
+	copyb(r5, 0xffffffffffffffff) -> 8[a + 16]
+	copyb(r5, 0xffffffffffffffff) -> 8[a + 24]
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zulsar_fz:
+	call zu_wr_zero
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zulsar_ok:
+	copyb(0, ZU_S) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ZU_PB) -> r10              ; value -> ZU_V
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZU_V) -> r11
+	call zul_copy4
+	copyb(0, ZU_SA) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	eq(r6, 0), j(zulsar_pos)
+	copyb(0, ZU_V) -> r10               ; ZU_T = ~value
+	copyb(0, ZU_T) -> r11
+	call zu_not4
+	copyb(0, ZU_T) -> r10               ; ZU_R = ZU_T >> s
+	copyb(0, ZU_R) -> r11
+	copyb(0, ZU_S) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	call zu_shr_limbs
+	copyb(0, ZU_R) -> r10               ; result = ~ZU_R
+	copyb(0, ZU_POUT) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	call zu_not4
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zulsar_pos:
+	copyb(0, ZU_V) -> r10
+	copyb(0, ZU_POUT) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZU_S) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	call zu_shr_limbs
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; zkvm_status zkvm_u256_le_signextend(b, value, result) : extend the sign of byte b
+; (0 = least significant); b >= 31 -> value unchanged. With bit = 8b + 7, limb
+; q = bit / 64 keeps its bits 0..s (s = bit % 64) and takes the sign above them,
+; and limbs q+1..3 become all sign bits.
+ziskasm_zkvm_u256_le_signextend:
+	push r1
+	copyb(0, ZU_POUT) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, ZU_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]          ; spill the b pointer
+	copyb(0, r11) -> r10                ; value -> ZU_V (private copy: result may alias)
+	copyb(0, ZU_V) -> r11
+	call zul_copy4
+	copyb(0, ZU_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	call zul_amount                     ; r10 = b, r11 = in-range
+	eq(r11, 0), j(zulse_wr)
+	ltu(r10, 31), j(zulse_ext)
+	jump(zulse_wr)
+zulse_ext:
+	sll(r10, 3) -> r5
+	add(r5, 7) -> r5                    ; bit
+	srl(r5, 6) -> r6                    ; q
+	and(r5, 63) -> r7                   ; s
+	sll(r6, 3) -> r6
+	copyb(0, ZU_V) -> r14
+	add(r14, r6) -> r14                 ; &ZU_V[q]
+	copyb(r14, 8[a + 0]) -> r15         ; limb q
+	srl(r15, r7) -> r16
+	and(r16, 1) -> r16                  ; sign
+	copyb(0, 0) -> r28
+	sub(r28, r16) -> r28                ; fill = 0 - sign
+	copyb(0, 2) -> r29
+	sll(r29, r7) -> r29
+	sub(r29, 1) -> r29                  ; keep = (2 << s) - 1 (all ones for s = 63)
+	and(r15, r29) -> r15
+	xor(r29, 0xffffffffffffffff) -> r29
+	and(r28, r29) -> r29
+	or(r15, r29) -> r15
+	copyb(r14, r15) -> 8[a + 0]
+	copyb(0, ZU_V) -> r5
+	add(r5, 24) -> r5                   ; &ZU_V[3]
+zulse_fill:
+	eq(r14, r5), j(zulse_wr)
+	add(r14, 8) -> r14
+	copyb(r14, r28) -> 8[a + 0]
+	jump(zulse_fill)
+zulse_wr:
+	copyb(0, ZU_V) -> r10
+	copyb(0, ZU_POUT) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	call zul_copy4
+	copyb(0, 0) -> r10
+	pop r1
+	ret

@@ -146,8 +146,27 @@ The library reaches the `.zisk` routines in two ways:
 |--------|-------|-------------|----------------|
 | `zkvm_*` — EF accelerators | 20 | [`zkvm_accelerators.h`](include/zkvm_accelerators.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s); `zkvm_keccak_f1600` is inline in the header |
 | `zkvm_u256_*` — EF U256 | 27 | [`zkvm_u256.h`](include/zkvm_u256.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s) |
+| `zkvm_u256_le_*` — little-endian U256 (ZisK proposal, not EF) | 27 | [`zkvm_u256_le.h`](include/zkvm_u256_le.h) | zkvmcall thunks to `zkvm/u256_le.zisk`; with `ZKVM_U256_LE_INLINE`, inline in the header except the division family |
 | `read_input`/`write_output` — EF I/O | 2 | [`zkvm_io.h`](include/zkvm_io.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s) |
 | `ziskos_*` — ZisK flat ABI | 27 | [`zisklib.h`](include/zisklib.h) | stubs in [`src/zisklib_stubs.c`](src/zisklib_stubs.c), redirected by `REDIRECTS` |
+
+The `zkvm_u256_*` functions have a second implementation under the same ABI:
+define `ZKVM_U256_INLINE` before including `zkvm_u256.h` and every function except
+the division family (`div`, `mod`, `divmod`, `sdiv`, `smod`, `sdivmod`) becomes a
+`static inline` definition from [`zkvm_u256_inline.h`](include/zkvm_u256_inline.h).
+Guest code doesn't change. [`example/u256_bench_guest.c`](example/u256_bench_guest.c)
+measures both: the inline versions take 1.4× to 5.3× fewer steps.
+
+[`zkvm_u256_le.h`](include/zkvm_u256_le.h) is the same 27 operations on four
+little-endian 64-bit limbs instead of 32 big-endian bytes, the layout EVM
+interpreters keep their stack in and the ZisK precompiles consume, so most
+functions become a single precompile on the operands in place. It has the same two
+implementations as the big-endian ABI: calls by default, inline with
+`ZKVM_U256_LE_INLINE`. `add` costs 23 steps called and 5 inline, against 175 and 40
+for the big-endian ABI.
+[`example/u256_le_guest.c`](example/u256_le_guest.c) checks all 27 against the
+big-endian ABI, including aliasing, and `u256_bench_guest.c -DU256_LE` measures them
+(add `-DZKVM_U256_LE_INLINE` for the inline implementation).
 
 The zkvmcall IDs live in `definitions/src/zkvmcall.rs`. `REDIRECTS` (28 entries)
 covers the `ziskos_*` set plus `modexp_u64_c`. The families are siblings, not
