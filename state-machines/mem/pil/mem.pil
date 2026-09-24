@@ -45,7 +45,7 @@ require "opids.pil"
 
     Lanes per row:
 
-    - A "lane" is the set of columns that verifies one step of the sorted memory: addr, step, sel,
+    - A "lane" is the set of columns that verifies one step of the sorted memory: addr, step, sel (immutable only),
       addr_changes, value, wr, increments, and, when dual_mem is active, its own step_dual/sel_dual.
     - With `lanes_x_row` > 1 the same row contains `lanes_x_row` consecutive lanes of the sorted
       memory sequence. Lanes inside a row are ordered from index 0 to index lanes_x_row - 1, so the
@@ -146,8 +146,19 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
     col witness bits(29) addr[lanes_x_row];
     col witness bits(MEM_STEP_BITS) step[lanes_x_row];
-    col witness bits(1) sel[lanes_x_row];
     col witness bits(1) addr_changes[lanes_x_row];
+
+    // Only the immutable memories keep a lane selector. They need lanes that reach no bus: the
+    // internal reads that bridge address gaps larger than the delta_addr range, and their padding.
+    // The mutable memory has no such lane: every lane is emitted, and its padding is cancelled by
+    // @[mem_padding] below. A lane the bus never sees is a lane whose step nobody bounds, which is
+    // what the step clock attack described at @[last_step_bound] was built on.
+    if (free_input_mem || immutable) {
+        col witness bits(1) air.sel[lanes_x_row];
+        for (int lane = 0; lane < lanes_x_row; ++lane) {
+            sel[lane] * (1 - sel[lane]) === 0;
+        }
+    }
 
     if (dual_mem) {
         // Dual mem feature not supported for free input memory
@@ -162,14 +173,12 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
         for (int lane = 0; lane < lanes_x_row; ++lane) {
             sel_dual[lane] * (1 - sel_dual[lane]) === 0;
-            (1 - sel[lane]) * sel_dual[lane] === 0;
         }
     }
 
     // boolean constraints
 
     for (int lane = 0; lane < lanes_x_row; ++lane) {
-        sel[lane] * (1 - sel[lane]) === 0;
         addr_changes[lane] * (1 - addr_changes[lane]) === 0;
     }
 
@@ -227,9 +236,8 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
             // boolean constraint over wr;
             wr[lane] * (1 - wr[lane]) === 0;
-
-            // all writes must be "launched" to the bus, not allowed silent writes
-            wr[lane] * (1 - sel[lane]) === 0;
+            // No silent writes: every lane of the mutable memory reaches the bus, so a write that
+            // main did not assume has nothing to match and the bus does not balance.
         }
     }
 
@@ -532,6 +540,100 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         }
 
         is_first_segment * SEGMENT_L1 * (1 - addr_changes[0]) === 0;
+
+        // SECURITY: bound the absolute step handed to the next segment @[last_step_bound]
+        //
+        // The increment constraint above only fixes step DIFFERENCES: inside an address group each
+        // lane may advance the clock by up to 2^38 - 1, as a relation in the field. If some lane
+        // could advance the clock without being matched on the bus, a prover could chain such lanes
+        // over about p / 2^38 = 2^26 slots (four segments of 2^24 lanes), wrap the clock around p,
+        // and place a read of an address after a later write of it, returning the written value.
+        //
+        // Two independent facts rule it out. First, the mutable memory has no unselected lane: every
+        // lane is emitted, so its step equals a step some other air assumed, all of them bounded by
+        // main's own range checks, or it is a padding lane whose step is segment_last_step, itself
+        // the step of a real lane. Second, this bound: previous_segment_step of the next segment
+        // equals segment_last_step through the continuation bus (a single chain, seeded with step
+        // 0), so every segment starts its clock below 2^38, and a segment of N * lanes_x_row slots
+        // (at most 2^24, asserted below) cannot add enough to reach p: 2^24 * 2^38 = 2^62. Either
+        // fact suffices; both are kept so the argument does not rest on a single constraint. Only
+        // the mutable memory orders by step, so only it needs this.
+        //
+        // 22 + 16 bits hold every step a memory operation can carry @[max_mem_step]. A main step s
+        // puts its accesses at mem steps 1 + 4 * s + {0, 1, 2, 3}, and the last main step, 2^36 - 1
+        // at most, is always the END instruction, which makes no memory access. So the largest mem
+        // step is 1 + 4 * (2^36 - 2) + 3 = 2^38 - 4 < 2^38.
+
+        assert(N * lanes_x_row <= 2**24);
+
+        airval last_step_chunks[2];
+
+        segment_last_step === last_step_chunks[0] + P2_22 * last_step_chunks[1];
+
+        range_check(expression: last_step_chunks[0], min: 0, max: P2_22 - 1);
+        range_check(expression: last_step_chunks[1], min: 0, max: P2_16 - 1);
+
+        // PADDING @[mem_padding]
+        //
+        // The slots after the last memory operation are reads of the LAST WORD of the region,
+        // internal_end_address, at the step of the last real lane, with wr = 0 and zero
+        // increments. When the last real lane sits elsewhere the first padding lane changes
+        // address: the sequence is sorted, so no operation of the proof touched that word, and the
+        // lane reads 0 as addr_changes * (1 - wr) * value demands, its increment carrying the
+        // distance. When the last real lane is already that word the padding repeats it, value
+        // included. Either way the padding lanes reach the bus as reads
+        // [LOAD, internal_end_address, segment_last_step, segment_last_value], one per lane, and
+        // this lookup takes exactly padding_size of them back.
+        //
+        // Why cancelling them is safe: the tuple is a true statement about the memory -- the value
+        // the last word holds at that step -- and its parts are a constant and air values pinned to
+        // the LAST lane by the SEGMENT_LAST constraints above. So if a real read of main happens to
+        // be that very tuple the counts still balance, proves = real lanes + padding against
+        // assumes = main + padding_size; and a padding lane that deviates from the tuple is an
+        // ordinary emission that needs a matching assume, which only main and the precompiles can
+        // provide. The padding_size assumes cannot stand in for any of main's, since both sit on
+        // the assumes side. A negative padding_size would only add proves of a true tuple; it is
+        // excluded anyway, together with padding outside the last segment, to keep the honest shape
+        // the only one. Pinning the padding to the last word also makes @[padding_at_end] below
+        // possible: with any padding at all, segment_last_addr IS internal_end_address.
+        //
+        // padding_size counts lanes, not rows, and is bounded on both sides: it cannot be negative
+        // (p - k would ADD k proves of the tuple to the bus), and it cannot reach N * lanes_x_row,
+        // because a segment with no real lane does not exist -- the tuple is the last real lane.
+        // Both bounds come out of one decomposition: padding_size and its distance to the maximum
+        // are two 16-bit chunks each, and the two values add up to the maximum. Four chunks in
+        // [0, 2^16) make both values integers below 2^32, whose sum cannot wrap the field, so
+        // 0 <= padding_size <= N * lanes_x_row - 1. Air values are cheap on the bus, so this costs
+        // four emissions against the 16-bit range already in use, and no range table of its own.
+        // Only the last segment has padding, so only there are the chunks range checked: on every
+        // other segment the padding chunks are pinned to zero, and the sum then pins the distance
+        // to the maximum @[padding_last_only].
+        // The tuple itself cannot lie: segment_last_addr, segment_last_step and segment_last_value
+        // are pinned to the LAST lane by the SEGMENT_LAST constraints above, and the lanes taken
+        // back are lanes this same trace emits.
+        airval padding_size_chunks[2];
+        airval padding_size_to_max_chunks[2];
+
+        const expr padding_size = padding_size_chunks[0] + P2_16 * padding_size_chunks[1];
+        const expr padding_size_to_max = padding_size_to_max_chunks[0] + P2_16 * padding_size_to_max_chunks[1];
+
+        range_check(expression: padding_size_chunks[0], min: 0, max: P2_16 - 1, sel: is_last_segment);
+        range_check(expression: padding_size_chunks[1], min: 0, max: P2_16 - 1, sel: is_last_segment);
+        range_check(expression: padding_size_to_max_chunks[0], min: 0, max: P2_16 - 1, sel: is_last_segment);
+        range_check(expression: padding_size_to_max_chunks[1], min: 0, max: P2_16 - 1, sel: is_last_segment);
+
+        padding_size + padding_size_to_max === N * lanes_x_row - 1;
+
+        // @[padding_last_only]
+        (1 - is_last_segment) * padding_size_chunks[0] === 0;
+        (1 - is_last_segment) * padding_size_chunks[1] === 0;
+
+        lookup(MEMORY_ID, expressions: [MEMORY_LOAD_OP, internal_end_address * bytes, segment_last_step, bytes, ...segment_last_value],
+               mul: -padding_size);
+
+        // @[padding_at_end]: the padding sits on the last word of the region, so with any padding
+        // the LAST lane, which segment_last_addr is pinned to, is that word.
+        padding_size * (segment_last_addr - internal_end_address) === 0;
     }
 
     // if addr_changes is 0, check that previous address match with current addr.
@@ -540,8 +642,10 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         (1 - addr_changes[lane]) * (addr[lane] - previous_addr[lane]) === 0;
     }
 
-    // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd = 1, wr = 0
-    //          setting is_last_segment = 1
+    // PADDING: in the immutable memories the slots after the last operation repeat the last lane
+    //          (same addr, same step, same value, wr = 0) with sel = 0 and reach no bus; in the
+    //          mutable memory they read the last word of the region, are emitted and cancelled,
+    //          see @[mem_padding].
 
     // if addr_changes == 0 means that addr and previous address are the same
 
@@ -582,7 +686,12 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     const expr mem_op[lanes_x_row];
     for (int lane = 0; lane < lanes_x_row; ++lane) {
         mem_op[lane] = wr[lane] * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
-        permutation_proves(MEMORY_ID, expressions: [mem_op[lane], addr[lane] * bytes, step[lane], bytes, ...value[lane]], sel: sel[lane], sel_is_binary: 1);
+        if (free_input_mem || immutable) {
+            permutation_proves(MEMORY_ID, expressions: [mem_op[lane], addr[lane] * bytes, step[lane], bytes, ...value[lane]], sel: sel[lane], sel_is_binary: 1);
+        } else {
+            // Unconditional: every lane of the mutable memory is a real bus emission, padding included.
+            permutation_proves(MEMORY_ID, expressions: [mem_op[lane], addr[lane] * bytes, step[lane], bytes, ...value[lane]]);
+        }
 
         if (dual_mem) {
             // dual mem memory, send to bus always a READ operation, with same address, and value, only change de step.
