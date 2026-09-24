@@ -90,3 +90,13 @@ This will run the Docker container and open the ZisK test menu inside the contai
 
 17. **Exit**
     Exits the Release Kit container and returns to the host shell.
+
+## Update proofman dependencies
+
+```bash
+./update-proofman-deps.sh [--list] [cargo update args...]
+```
+
+Runs `cargo update` in every workspace of the repo that depends, directly or indirectly, on a crate from `pil2-proofman` (`proofman`, `proofman-fields`, `pil2-std-lib`, ...). A crate counts as a proofman crate when its `repository` or `source` points to the `pil2-proofman` GitHub repo, so it works the same whether the dependency comes from git, a local path or crates.io. The workspace roots are located with `cargo locate-project` and their resolved graph is read with `cargo metadata --frozen`; when a `Cargo.lock` is missing or out of date the dependencies are resolved again (this rewrites that lock).
+
+With `--list` it only prints the workspaces that would be updated. Any other argument is forwarded to `cargo update`, for example `./update-proofman-deps.sh --dry-run` or `./update-proofman-deps.sh -p proofman`.
