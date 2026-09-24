@@ -102,6 +102,12 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
             continue;
         }
 
+        // An empty segment loads nothing. GNU ld emits them, at address 0, for the
+        // linker script's R and RW PHDRS when the guest has no .rodata or .data.
+        if ph.p_memsz == 0 {
+            continue;
+        }
+
         let is_exec = (ph.p_flags & PF_X) != 0;
         let is_write = (ph.p_flags & PF_W) != 0;
         let is_read = (ph.p_flags & PF_R) != 0;
