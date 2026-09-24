@@ -8,10 +8,15 @@
  * zkvm_accelerators.h. The result pointer MAY alias any input pointer. Division
  * by zero and addmod/mulmod with a zero modulus return zero (EVM semantics).
  *
- * The ZisK implementation redirects each standard `zkvm_u256_*` symbol DIRECTLY
- * to the hand-written `ziskasm_zkvm_u256_*` .zisk routine (zkvm/u256.zisk), which
- * marshals the big-endian operands to little-endian limbs and runs the shared
- * uint256 precompile cores (arith256 / arith256_mod / add256).
+ * ZisK provides two implementations of the same ABI, chosen at compile time:
+ *   - default: each function is a zkvmcall thunk (src/zkvm_calls.s) that the
+ *     transpiler turns into a jump to the hand-written `ziskasm_zkvm_u256_*`
+ *     routine (ziskasm/zisklib/zkvm/u256.zisk);
+ *   - with ZKVM_U256_INLINE defined before including this header (RISC-V builds
+ *     only): static inline definitions from zkvm_u256_inline.h, for everything
+ *     but the division family (div, mod, divmod, sdiv, smod, sdivmod), which
+ *     stays a call.
+ * Guest code is the same either way.
  */
 #ifndef ZKVM_U256_H
 #define ZKVM_U256_H
@@ -25,19 +30,28 @@ extern "C" {
 /* 256-bit unsigned integer, stored as 32 bytes big-endian. */
 typedef zkvm_bytes_32 zkvm_u256;
 
+#if defined(ZKVM_U256_INLINE) && defined(__riscv)
+#include "zkvm_u256_inline.h"
+#define ZKVM_U256_HAVE_INLINE
+#endif
+
 /* ---- arithmetic -------------------------------------------------------- */
+#ifndef ZKVM_U256_HAVE_INLINE
 zkvm_status zkvm_u256_add(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* result);
 zkvm_status zkvm_u256_sub(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* result);
 zkvm_status zkvm_u256_mul(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* result);
+#endif
 zkvm_status zkvm_u256_div(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* quotient);
 zkvm_status zkvm_u256_mod(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* remainder);
 zkvm_status zkvm_u256_divmod(const zkvm_u256* a, const zkvm_u256* b,
                              zkvm_u256* quotient, zkvm_u256* remainder);
+#ifndef ZKVM_U256_HAVE_INLINE
 zkvm_status zkvm_u256_addmod(const zkvm_u256* a, const zkvm_u256* b,
                              const zkvm_u256* n, zkvm_u256* result);
 zkvm_status zkvm_u256_mulmod(const zkvm_u256* a, const zkvm_u256* b,
                              const zkvm_u256* n, zkvm_u256* result);
 zkvm_status zkvm_u256_exp(const zkvm_u256* base, const zkvm_u256* exponent, zkvm_u256* result);
+#endif
 
 /* ---- signed arithmetic (two's complement) ------------------------------ */
 zkvm_status zkvm_u256_sdiv(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* quotient);
@@ -45,6 +59,7 @@ zkvm_status zkvm_u256_smod(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* re
 zkvm_status zkvm_u256_sdivmod(const zkvm_u256* a, const zkvm_u256* b,
                               zkvm_u256* quotient, zkvm_u256* remainder);
 
+#ifndef ZKVM_U256_HAVE_INLINE
 /* ---- comparisons (result is 0 or 1) ------------------------------------ */
 zkvm_status zkvm_u256_lt(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* result);
 zkvm_status zkvm_u256_gt(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* result);
@@ -65,6 +80,7 @@ zkvm_status zkvm_u256_sar(const zkvm_u256* shift, const zkvm_u256* value, zkvm_u
 
 /* ---- extended ---------------------------------------------------------- */
 zkvm_status zkvm_u256_signextend(const zkvm_u256* b, const zkvm_u256* value, zkvm_u256* result);
+#endif /* !ZKVM_U256_HAVE_INLINE */
 
 #ifdef __cplusplus
 } /* extern "C" */
