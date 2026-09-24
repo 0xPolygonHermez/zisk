@@ -54,6 +54,9 @@ fn u32_to_limbs16(value: u32) -> [u16; 2] {
 /// Number of 16-bit range-checked limbs per row (per lane): va[2], vc[2], x[2], y[2].
 const RANGE_CHECKED_LIMBS_PER_ROW: usize = 8;
 
+/// Number of 8-bit range checks per row (per lane): the rotl-by-1 carry check `2·z[0] - 256·t`.
+const RANGE_CHECKED_BYTES_PER_ROW: usize = 1;
+
 /// Number of unconditional rot-0 XOR table lookups per row (per lane):
 /// vd', vd'' and vb''-xor, 4 bytes each.
 const XOR_ROT0_CHECKS_PER_ROW: usize = 12;
@@ -90,8 +93,9 @@ pub struct Blake3SM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
 
-    /// Number of available blake3s in the trace.
     range_id: usize,
+
+    range_8_id: usize,
 
     table_id: usize,
 }
@@ -105,12 +109,13 @@ impl<F: PrimeField64> Blake3SM<F> {
         // Compute some useful values
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
+        let range_8_id = std.get_range_id(0, 0xFF, None).expect("Failed to get 8-bit range ID");
 
         let table_id = std
             .get_virtual_table_id(Blake3fTableSM::TABLE_ID)
             .expect("Failed to get Blake3f table ID");
 
-        Arc::new(Self { std, range_id, table_id })
+        Arc::new(Self { std, range_id, range_8_id, table_id })
     }
 
     /// Processes one operation, filling one lane of its CLOCKS-row cycle and
@@ -121,6 +126,7 @@ impl<F: PrimeField64> Blake3SM<F> {
     /// * `lane` - The lane of the cycle this operation is placed in.
     /// * `trace` - The CLOCKS-row cycle shared by the LANES operations packed side by side.
     /// * `range_checks` - Multiplicities of the 16-bit range checks.
+    /// * `range_checks_8` - Multiplicities of the 8-bit range checks.
     /// * `xor_checks` - Multiplicities of the Blake3f XOR⊕ROTR table rows.
     #[inline(always)]
     pub fn process_input<R: Blake3fTraceRowOps<F>>(
@@ -129,6 +135,7 @@ impl<F: PrimeField64> Blake3SM<F> {
         lane: usize,
         trace: &mut [R],
         range_checks: &mut [u32],
+        range_checks_8: &mut [u32],
         xor_checks: &mut [u32],
     ) {
         // Fill the step_addr
@@ -225,6 +232,10 @@ impl<F: PrimeField64> Blake3SM<F> {
             // Top bit of rotr8(z), i.e. bit 7 of z's byte 0 (the rotl-by-1 carry)
             row.set_vb_pp_t(lane, (z >> 7) & 1 == 1);
 
+            // range_check(2·z[0] - 256·t ∈ [0, 255]); with t the
+            // top bit of z[0] that value is 2·z[0] mod 256
+            range_checks_8[(z_bytes[0] << 1) as usize] += 1;
+
             // XOR table lookups: (vd, va', rot 0), (vb, vc', rot 12), (vd', va'', rot 0)
             // and (vb', vc'', rot 0), per byte
             for i in 0..4 {
@@ -304,12 +315,12 @@ impl<F: PrimeField64> Blake3SM<F> {
         }
 
         // Fill the trace, collecting the range-check and XOR-table multiplicities
-        let (mut range_checks, xor_checks) = par_traces
+        let (mut range_checks, mut range_checks_8, xor_checks) = par_traces
             .into_par_iter()
             .enumerate()
             .fold(
-                || (vec![0u32; 1 << 16], vec![0u32; BLAKE3F_TABLE_SIZE]),
-                |(mut range_checks, mut xor_checks), (cycle, trace)| {
+                || (vec![0u32; 1 << 16], vec![0u32; 1 << 8], vec![0u32; BLAKE3F_TABLE_SIZE]),
+                |(mut range_checks, mut range_checks_8, mut xor_checks), (cycle, trace)| {
                     // Lanes must be filled in order: the last cycle may leave the
                     // trailing lanes empty
                     let inputs = &flat_inputs[cycle * LANES..];
@@ -319,22 +330,26 @@ impl<F: PrimeField64> Blake3SM<F> {
                             lane,
                             trace,
                             &mut range_checks,
+                            &mut range_checks_8,
                             &mut xor_checks,
                         );
                     }
-                    (range_checks, xor_checks)
+                    (range_checks, range_checks_8, xor_checks)
                 },
             )
             .reduce(
-                || (vec![0u32; 1 << 16], vec![0u32; BLAKE3F_TABLE_SIZE]),
-                |(mut range_acc, mut xor_acc), (range, xor)| {
+                || (vec![0u32; 1 << 16], vec![0u32; 1 << 8], vec![0u32; BLAKE3F_TABLE_SIZE]),
+                |(mut range_acc, mut range_8_acc, mut xor_acc), (range, range_8, xor)| {
                     for (acc, val) in range_acc.iter_mut().zip(range) {
+                        *acc += val;
+                    }
+                    for (acc, val) in range_8_acc.iter_mut().zip(range_8) {
                         *acc += val;
                     }
                     for (acc, val) in xor_acc.iter_mut().zip(xor) {
                         *acc += val;
                     }
-                    (range_acc, xor_acc)
+                    (range_acc, range_8_acc, xor_acc)
                 },
             );
 
@@ -349,10 +364,12 @@ impl<F: PrimeField64> Blake3SM<F> {
         // contributes them over zeros
         let num_empty_lane_rows = (num_rows * LANES - num_inputs * CLOCKS) as u32;
         range_checks[0] += RANGE_CHECKED_LIMBS_PER_ROW as u32 * num_empty_lane_rows;
+        range_checks_8[0] += RANGE_CHECKED_BYTES_PER_ROW as u32 * num_empty_lane_rows;
 
         timer_stop_and_log_trace!(BLAKE3_TRACE);
 
         self.std.range_check_ranged(self.range_id, None, &range_checks);
+        self.std.range_check_ranged(self.range_8_id, None, &range_checks_8);
 
         let zero_rot0_row = Blake3fTableSM::calculate_table_row(0, 0, 0) as usize;
         let zero_rot12_row = Blake3fTableSM::calculate_table_row(0, 0, 12) as usize;

@@ -8,7 +8,7 @@ use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::OperationBlake2bData;
-use zisk_pil::{Blake2brTraceRowOps, ZISK_AIRGROUP_ID};
+use zisk_pil::{Blake2brTraceRowOps, DUAL_RANGE_BYTE_ID, ZISK_AIRGROUP_ID};
 
 use super::blake2b_constants::{CLOCKS, R1_G, R2_G, R3_G, R4_G, SIGMA};
 use super::blake_table::BlakeTableSM;
@@ -28,6 +28,13 @@ const G_INDICES: [(usize, usize, usize, usize); CLOCKS] = [
 
 /// Number of 16-bit range-checked limbs per row: x[4], y[4], va[4], vc[4].
 const RANGE_CHECKED_LIMBS_PER_ROW: usize = 16;
+
+/// Number of dual-byte range checks per row: the pair of rotl-by-1 carry checks
+/// `(2·z[3] - 256·t0, 2·z[7] - 256·t1)`.
+const DUAL_BYTE_CHECKS_PER_ROW: usize = 1;
+
+/// Number of rows of the dual-byte range table, indexed by `byte_a · 256 + byte_b`.
+const DUAL_BYTE_TABLE_SIZE: usize = 1 << 16;
 
 /// Number of unconditional XOR table lookups per row:
 /// vd', vb', vd'' and vb_pp_xor, 8 bytes each (all with rot = 0).
@@ -68,6 +75,8 @@ pub struct Blake2bSM<F: PrimeField64> {
 
     range_id: usize,
 
+    dual_byte_id: usize,
+
     table_id: usize,
 }
 
@@ -81,10 +90,13 @@ impl<F: PrimeField64> Blake2bSM<F> {
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
 
+        let dual_byte_id =
+            std.get_virtual_table_id(DUAL_RANGE_BYTE_ID).expect("Failed to get dual byte table ID");
+
         let table_id =
             std.get_virtual_table_id(BlakeTableSM::TABLE_ID).expect("Failed to get Blake table ID");
 
-        Arc::new(Self { std, range_id, table_id })
+        Arc::new(Self { std, range_id, dual_byte_id, table_id })
     }
 
     /// Processes one operation, filling its CLOCKS-row chunk of the trace and
@@ -94,6 +106,7 @@ impl<F: PrimeField64> Blake2bSM<F> {
     /// * `input` - The operation data to process.
     /// * `trace` - The CLOCKS-row chunk of the trace assigned to this operation.
     /// * `range_checks` - Multiplicities of the 16-bit range checks.
+    /// * `dual_checks` - Multiplicities of the dual-byte range table rows.
     /// * `xor_checks` - Multiplicities of the shared Blake XOR ⊕ ROTR table rows (rot = 0).
     #[inline(always)]
     pub fn process_input<R: Blake2brTraceRowOps<F>>(
@@ -101,6 +114,7 @@ impl<F: PrimeField64> Blake2bSM<F> {
         input: &Blake2bInput,
         trace: &mut [R],
         range_checks: &mut [u32],
+        dual_checks: &mut [u32],
         xor_checks: &mut [u32],
     ) {
         let idx_usize = input.index as usize;
@@ -190,6 +204,13 @@ impl<F: PrimeField64> Blake2bSM<F> {
 
             // Top bits of z's low and high 32-bit limbs (rotl-by-1 carries)
             row.set_all_vb_pp_t(&[(z >> 31) & 1 == 1, (z >> 63) & 1 == 1]);
+
+            // range_dual_byte(2·z[3] - 256·t0, 2·z[7] - 256·t1);
+            // with t0, t1 the top bits of z[3], z[7] those values are 2·z[3] mod 256 and
+            // 2·z[7] mod 256, looked up at row byte_a · 256 + byte_b
+            let carry_a = (z_bytes[3] << 1) as usize;
+            let carry_b = (z_bytes[7] << 1) as usize;
+            dual_checks[(carry_a << 8) | carry_b] += 1;
 
             // XOR table lookups: (vd, va'), (vb, vc'), (vd', va'') and (vb', vc''), per byte
             for i in 0..8 {
@@ -285,28 +306,49 @@ impl<F: PrimeField64> Blake2bSM<F> {
         }
 
         // Fill the trace, collecting the range-check and XOR-table multiplicities
-        let (mut range_checks, xor_checks) = par_traces
+        let (mut range_checks, mut dual_checks, xor_checks) = par_traces
             .into_par_iter()
             .enumerate()
             .fold(
-                || (vec![0u32; 1 << 16], vec![0u32; BlakeTableSM::SIZE]),
-                |(mut range_checks, mut xor_checks), (index, trace)| {
+                || {
+                    (
+                        vec![0u32; 1 << 16],
+                        vec![0u32; DUAL_BYTE_TABLE_SIZE],
+                        vec![0u32; BlakeTableSM::SIZE],
+                    )
+                },
+                |(mut range_checks, mut dual_checks, mut xor_checks), (index, trace)| {
                     let input_index = inputs_indexes[index];
                     let input = &inputs[input_index.0][input_index.1];
-                    self.process_input::<R>(input, trace, &mut range_checks, &mut xor_checks);
-                    (range_checks, xor_checks)
+                    self.process_input::<R>(
+                        input,
+                        trace,
+                        &mut range_checks,
+                        &mut dual_checks,
+                        &mut xor_checks,
+                    );
+                    (range_checks, dual_checks, xor_checks)
                 },
             )
             .reduce(
-                || (vec![0u32; 1 << 16], vec![0u32; BlakeTableSM::SIZE]),
-                |(mut range_acc, mut xor_acc), (range, xor)| {
+                || {
+                    (
+                        vec![0u32; 1 << 16],
+                        vec![0u32; DUAL_BYTE_TABLE_SIZE],
+                        vec![0u32; BlakeTableSM::SIZE],
+                    )
+                },
+                |(mut range_acc, mut dual_acc, mut xor_acc), (range, dual, xor)| {
                     for (acc, val) in range_acc.iter_mut().zip(range) {
+                        *acc += val;
+                    }
+                    for (acc, val) in dual_acc.iter_mut().zip(dual) {
                         *acc += val;
                     }
                     for (acc, val) in xor_acc.iter_mut().zip(xor) {
                         *acc += val;
                     }
-                    (range_acc, xor_acc)
+                    (range_acc, dual_acc, xor_acc)
                 },
             );
 
@@ -318,10 +360,12 @@ impl<F: PrimeField64> Blake2bSM<F> {
 
         let num_padding_rows = (num_rows - num_rows_filled) as u32;
         range_checks[0] += RANGE_CHECKED_LIMBS_PER_ROW as u32 * num_padding_rows;
+        dual_checks[0] += DUAL_BYTE_CHECKS_PER_ROW as u32 * num_padding_rows;
 
         timer_stop_and_log_trace!(BLAKE2B_TRACE);
 
         self.std.range_check_ranged(self.range_id, None, &range_checks);
+        self.std.inc_virtual_rows_ranged(self.dual_byte_id, None, &dual_checks);
 
         let zero_row = BlakeTableSM::calculate_table_row(0, 0, 0) as usize;
         xor_checks.into_par_iter().enumerate().for_each(|(row, mut value)| {
