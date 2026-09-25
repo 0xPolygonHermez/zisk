@@ -183,16 +183,35 @@ ZKVM_U256_LE_I zkvm_status zkvm_u256_le_mulmod(const zkvm_u256_le* a, const zkvm
     else zkvm_u256_le_i_arith256_mod(a, b, &zero, n, result);
     return ZKVM_EOK;
 }
+/* Left-to-right square-and-multiply from the exponent's top set bit, with both
+ * arith256 parameter blocks built once: each exponent bit costs one squaring, one
+ * multiply if the bit is set, a shift and a compare. The bits below a limb's MSB
+ * go through t = limb << 1 | 1, whose low sentinel bit reaches the top exactly
+ * when they are used up, so the loop needs no counter. */
 ZKVM_U256_LE_I zkvm_status zkvm_u256_le_exp(const zkvm_u256_le* base,
                                             const zkvm_u256_le* exponent,
                                             zkvm_u256_le* result) {
     static const zkvm_u256_le zero = {{0, 0, 0, 0}};
-    zkvm_u256_le b = *base, e = *exponent, acc = {{1, 0, 0, 0}}, hi;
-    int top = 255;                                     /* skip the exponent's leading zeros */
-    while (top >= 0 && !((e.limbs[top / 64] >> (top % 64)) & 1)) top--;
-    for (int i = top; i >= 0; i--) {                   /* left-to-right square-and-multiply */
-        zkvm_u256_le_i_arith256(&acc, &acc, &zero, &acc, &hi);
-        if ((e.limbs[i / 64] >> (i % 64)) & 1) zkvm_u256_le_i_arith256(&acc, &b, &zero, &acc, &hi);
+    const uint64_t done = 1ull << 63;
+    zkvm_u256_le b = *base, acc = {{1, 0, 0, 0}}, hi;   /* result may alias base */
+    const void* sq[5] = {&acc, &acc, &zero, &acc, &hi}; /* acc = acc * acc */
+    const void* mu[5] = {&acc, &b, &zero, &acc, &hi};   /* acc = acc * base */
+    int w = 3;
+    while (w >= 0 && exponent->limbs[w] == 0) w--;      /* skip zero limbs from the top */
+    if (w >= 0) {
+        uint64_t e = exponent->limbs[w], t = (e << 1) | 1;
+        while ((int64_t)e >= 0) { e <<= 1; t <<= 1; }   /* and leading zero bits */
+        for (;;) {
+            __asm__ volatile("csrs 0x801, %0" : : "r"(sq) : "memory");   /* the MSB */
+            if ((int64_t)e < 0) __asm__ volatile("csrs 0x801, %0" : : "r"(mu) : "memory");
+            for (; t != done; t <<= 1) {                /* the bits below it */
+                __asm__ volatile("csrs 0x801, %0" : : "r"(sq) : "memory");
+                if ((int64_t)t < 0) __asm__ volatile("csrs 0x801, %0" : : "r"(mu) : "memory");
+            }
+            if (--w < 0) break;
+            e = exponent->limbs[w];                     /* result is written last */
+            t = (e << 1) | 1;
+        }
     }
     *result = acc;
     return ZKVM_EOK;

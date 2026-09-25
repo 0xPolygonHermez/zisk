@@ -88,8 +88,7 @@ pub const ZKVMCALLS: &[ZkvmCall] = &[
     zc(0x87D, "zkvm_u256_shr", "ziskasm_zkvm_u256_shr"),
     zc(0x87E, "zkvm_u256_sar", "ziskasm_zkvm_u256_sar"),
     zc(0x87F, "zkvm_u256_signextend", "ziskasm_zkvm_u256_signextend"),
-    // Little-endian U256 (ziskasm/lang/c/include/zkvm_u256_le.h, not EF). and/or/xor/
-    // not are byte-order agnostic, so they target the big-endian routines
+    // Little-endian U256 (ziskasm/lang/c/include/zkvm_u256_le.h, not EF)
     zc(0x880, "zkvm_u256_le_div", "ziskasm_zkvm_u256_le_div"),
     zc(0x881, "zkvm_u256_le_mod", "ziskasm_zkvm_u256_le_mod"),
     zc(0x882, "zkvm_u256_le_divmod", "ziskasm_zkvm_u256_le_divmod"),
@@ -108,10 +107,10 @@ pub const ZKVMCALLS: &[ZkvmCall] = &[
     zc(0x88F, "zkvm_u256_le_sgt", "ziskasm_zkvm_u256_le_sgt"),
     zc(0x890, "zkvm_u256_le_eq", "ziskasm_zkvm_u256_le_eq"),
     zc(0x891, "zkvm_u256_le_iszero", "ziskasm_zkvm_u256_le_iszero"),
-    zc(0x892, "zkvm_u256_le_and", "ziskasm_zkvm_u256_and"),
-    zc(0x893, "zkvm_u256_le_or", "ziskasm_zkvm_u256_or"),
-    zc(0x894, "zkvm_u256_le_xor", "ziskasm_zkvm_u256_xor"),
-    zc(0x895, "zkvm_u256_le_not", "ziskasm_zkvm_u256_not"),
+    zc(0x892, "zkvm_u256_le_and", "ziskasm_zkvm_u256_le_and"),
+    zc(0x893, "zkvm_u256_le_or", "ziskasm_zkvm_u256_le_or"),
+    zc(0x894, "zkvm_u256_le_xor", "ziskasm_zkvm_u256_le_xor"),
+    zc(0x895, "zkvm_u256_le_not", "ziskasm_zkvm_u256_le_not"),
     zc(0x896, "zkvm_u256_le_byte", "ziskasm_zkvm_u256_le_byte"),
     zc(0x897, "zkvm_u256_le_shl", "ziskasm_zkvm_u256_le_shl"),
     zc(0x898, "zkvm_u256_le_shr", "ziskasm_zkvm_u256_le_shr"),
