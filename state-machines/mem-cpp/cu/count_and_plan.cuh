@@ -98,6 +98,9 @@ public:
     // Lifetime: *metas_out is valid until the next reset() on this
     // CountAndPlan instance 
     bool run(InstanceMeta** metas_out, uint32_t& n_metas);
+    // Finish every submitted chunk (joins the pool, syncs the streams). run() does it too; calling
+    // it first lets the backlog run while the prover's slot commits are still allowed.
+    void drain();
 
     // Reset for the next block.
     void reset();
@@ -180,6 +183,12 @@ private:
     void*          d_cub_temp_[N_STREAMS]          = {nullptr};
     size_t         cub_temp_bytes_                 = 0;
     uint32_t*      h_n_emits_[N_STREAMS]           = {nullptr};
+    // Pinned bounce for each stream's memops upload, double-buffered: the asm trace is pageable,
+    // and a pageable cudaMemcpyAsync blocks this thread and holds the driver lock against every
+    // other thread's launches (the prover's slot commits run concurrently with this phase).
+    MemOp*         h_memops_bounce_[N_STREAMS][2]  = {};
+    cudaEvent_t    e_memops_bounce_[N_STREAMS][2]  = {};
+    uint32_t       memops_bounce_next_[N_STREAMS]  = {};
 
     // ─── Ops pool (bump-allocated by add_chunk) ──────────────────────
 

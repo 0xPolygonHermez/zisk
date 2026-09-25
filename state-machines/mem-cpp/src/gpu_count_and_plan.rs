@@ -118,6 +118,11 @@ impl GpuCountAndPlan {
         unsafe { gpu_bindings::count_and_plan_reset(self.inner) };
     }
 
+    /// Finish every chunk submitted so far. `run()` does this first anyway.
+    pub fn drain(&self) {
+        unsafe { gpu_bindings::count_and_plan_drain(self.inner) };
+    }
+
     pub fn register_input_pinned(&self, ptr: *const c_void, bytes: usize) -> bool {
         unsafe {
             gpu_bindings::count_and_plan_register_input_pinned(

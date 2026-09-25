@@ -1312,6 +1312,11 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     CUDA_CHECK(cudaMallocHost(&h_present_counters_, (size_t)max_active_ * sizeof(uint32_t)));
     for (int s = 0; s < N_STREAMS; s++)
         CUDA_CHECK(cudaMallocHost(&h_n_emits_[s], sizeof(uint32_t)));
+    for (int s = 0; s < N_STREAMS; s++)
+        for (int k = 0; k < 2; k++) {
+            CUDA_CHECK(cudaMallocHost(&h_memops_bounce_[s][k], (size_t)MAX_MEMOPS_PER_CHUNK * sizeof(MemOp)));
+            CUDA_CHECK(cudaEventCreateWithFlags(&e_memops_bounce_[s][k], cudaEventDisableTiming));
+        }
 
     pool_enabled_ = (ZISK_MOPS_POOL != 0);
     if (pool_enabled_) {
@@ -1425,8 +1430,16 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
     const int g_pot    = ((uint32_t)pot + BLOCK - 1) / BLOCK;
     const int g_ram    = ram == 0 ? 0 : (int)((ram + BLOCK - 1) / BLOCK);
 
-    CUDA_CHECK(cudaMemcpyAsync(d_memops_[s], memops,
-                               sizeof(MemOp) * n, cudaMemcpyHostToDevice, st));
+    {
+        // Reuse a bounce only once the copy that last read it has run.
+        const uint32_t k = memops_bounce_next_[s];
+        memops_bounce_next_[s] = k ^ 1u;
+        CUDA_CHECK(cudaEventSynchronize(e_memops_bounce_[s][k]));
+        memcpy(h_memops_bounce_[s][k], memops, sizeof(MemOp) * n);
+        CUDA_CHECK(cudaMemcpyAsync(d_memops_[s], h_memops_bounce_[s][k],
+                                   sizeof(MemOp) * n, cudaMemcpyHostToDevice, st));
+        CUDA_CHECK(cudaEventRecord(e_memops_bounce_[s][k], st));
+    }
     CUDA_CHECK(cudaMemsetAsync(d_ram_count_[s],    0, 4, st));
     CUDA_CHECK(cudaMemsetAsync(d_spill_count_[s],  0, 4, st));
     CUDA_CHECK(cudaMemsetAsync(d_spill_status_[s], 0, n, st));
@@ -1535,6 +1548,13 @@ void CountAndPlan::pool_stop_() {
     for (int s = 0; s < N_STREAMS; s++) pool_cv_[s].notify_all();
     for (int s = 0; s < N_STREAMS; s++)
         if (pool_threads_[s].joinable()) pool_threads_[s].join();
+}
+
+void CountAndPlan::drain() {
+    bind_device(gpu_device_);
+    if (pool_enabled_) pool_stop_();
+    for (int s = 0; s < N_STREAMS; s++)
+        CUDA_CHECK(cudaStreamSynchronize(streams_[s]));
 }
 
 bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
@@ -1674,6 +1694,11 @@ void CountAndPlan::free_pinned_() {
     if (h_chunk_counters_per_chunk_) { cudaFreeHost(h_chunk_counters_per_chunk_); h_chunk_counters_per_chunk_ = nullptr; }
     for (int s = 0; s < N_STREAMS; s++)
         if (h_n_emits_[s]) { cudaFreeHost(h_n_emits_[s]); h_n_emits_[s] = nullptr; }
+    for (int s = 0; s < N_STREAMS; s++)
+        for (int k = 0; k < 2; k++) {
+            if (h_memops_bounce_[s][k]) { cudaFreeHost(h_memops_bounce_[s][k]); h_memops_bounce_[s][k] = nullptr; }
+            if (e_memops_bounce_[s][k]) { cudaEventDestroy(e_memops_bounce_[s][k]); e_memops_bounce_[s][k] = nullptr; }
+        }
 }
 
 void CountAndPlan::free_all_() {

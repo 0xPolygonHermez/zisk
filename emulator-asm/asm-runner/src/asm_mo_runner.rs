@@ -378,8 +378,11 @@ impl AsmRunnerMO {
         // release (and everything mem-plan dependent with it). Backend-
         // dispatched in libstarks: no-op when slots are disabled or on the
         // CPU backend.
+        // Drain the chunk backlog first, with the slots still running: it is throughput work, and
+        // under the pause it held the slots idle for ~190 ms of a ~210 ms GPU_MOPS_TIME.
         #[cfg(gpu)]
-        if gpu_count_and_plan_opt.is_some() {
+        if let Some(ref gpu_count_and_plan) = gpu_count_and_plan_opt {
+            gpu_count_and_plan.drain();
             proofman_starks_lib_c::stream_commit_pause_c();
         }
 
