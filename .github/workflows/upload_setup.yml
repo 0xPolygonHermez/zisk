@@ -119,15 +119,13 @@ jobs:
 
           VERSION="${{ inputs.version }}"
           if [ -z "$VERSION" ]; then
-            # Take the workspace package version from Cargo.toml. Prefix it with
-            # "pre-" (e.g. 1.0.0-alpha => pre-1.0.0-alpha) EXCEPT on the develop
-            # branch, which publishes the bare Cargo.toml version.
-            CARGO_VERSION="$(sed -nE 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p' "$GITHUB_WORKSPACE/Cargo.toml" | head -n1)"
-            [ -n "$CARGO_VERSION" ] || { echo "could not read version from Cargo.toml"; exit 1; }
+            # The setup version (setup/Cargo.toml), "pre-"-prefixed except on develop.
+            SETUP_VERSION="$(sed -nE 's/^setup_version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$GITHUB_WORKSPACE/setup/Cargo.toml")"
+            [ -n "$SETUP_VERSION" ] || { echo "could not read setup_version from setup/Cargo.toml"; exit 1; }
             if [ "${{ github.ref_name }}" = "develop" ]; then
-              VERSION="${CARGO_VERSION}"
+              VERSION="${SETUP_VERSION}"
             else
-              VERSION="pre-${CARGO_VERSION}"
+              VERSION="pre-${SETUP_VERSION}"
             fi
           fi
           [ -n "$VERSION" ] || { echo "could not resolve version"; exit 1; }
