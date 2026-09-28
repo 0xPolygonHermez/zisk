@@ -57,6 +57,10 @@ impl<F: PrimeField64> StateMachines<F> {
 pub struct StaticSMBundle<F: PrimeField64> {
     /// Every built-in and precompile SM registered in this bundle.
     sm: Vec<SMType<F>>,
+
+    /// The standard library instance; `publish_frops_from_asm` publishes the FROPS
+    /// multiplicity into its virtual tables.
+    std: Arc<Std<F>>,
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
@@ -78,7 +82,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             }))
             .collect();
 
-        Self { sm }
+        Self { sm, std }
     }
 
     /// Selects where the FROPS multiplicity column comes from.
@@ -190,11 +194,6 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) => Some(rom_sm),
             _ => None,
         })
-    }
-
-    /// Getter for the shared `Std` instance in the bundle, used by built-in SMs and precompiles.
-    pub fn get_std(&self) -> Arc<Std<F>> {
-        self.std.clone()
     }
 
     /// Configure the instances of the SMs in the bundle for the given plans.
