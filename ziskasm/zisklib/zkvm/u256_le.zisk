@@ -516,7 +516,8 @@ zulsmod_rdone:
 	copyb(0, 0) -> r10
 	ret
 
-; zkvm_status zkvm_u256_le_sdivmod(a, b, quotient, remainder) : signed, b == 0 -> 0.
+; zkvm_status zkvm_u256_le_sdivmod(a, b, quotient, remainder) : signed, b == 0
+; -> 0.
 ziskasm_zkvm_u256_le_sdivmod:
 	copyb(r11, 8[a + 24])
 	ltu(0, c), j(zulsdivmod_go)          ; b != 0
@@ -849,7 +850,8 @@ u64 ZULE_P15_DH[1] = ZUL_HI
 ; Arithmetic: straight-line leaves around one precompile
 ; ============================================================================
 
-; void zkvm_u256_le_add(a, b, result) : (a + b) mod 2^256. Inline zkvmcall.
+; zkvm_status zkvm_u256_le_add(a, b, result) : (a + b) mod 2^256. Inline
+; zkvmcall.
 ziskasm_zkvm_u256_le_add:
 	copyb(0, r10) -> [ZULA_A]
 	copyb(0, r11) -> [ZULA_B]
@@ -857,8 +859,8 @@ ziskasm_zkvm_u256_le_add:
 	add256(0, ZULA_A)                   ; carry out ignored (wrapping)
 	ret
 
-; void zkvm_u256_le_sub(a, b, result) : (a - b) mod 2^256 = a + ~b + 1. Inline
-; zkvmcall.
+; zkvm_status zkvm_u256_le_sub(a, b, result) : (a - b) mod 2^256 = a + ~b + 1.
+; Inline zkvmcall.
 ziskasm_zkvm_u256_le_sub:
 	copyb(r11, 8[a + 0])
 	xor(c, 0xffffffffffffffff) -> [ZUL_NB0]
@@ -873,7 +875,8 @@ ziskasm_zkvm_u256_le_sub:
 	add256(0, ZULS_A)
 	ret
 
-; void zkvm_u256_le_mul(a, b, result) : (a * b) mod 2^256. Inline zkvmcall.
+; zkvm_status zkvm_u256_le_mul(a, b, result) : (a * b) mod 2^256. Inline
+; zkvmcall.
 ziskasm_zkvm_u256_le_mul:
 	copyb(0, r10) -> [ZULM_A]
 	copyb(0, r11) -> [ZULM_B]
@@ -881,8 +884,8 @@ ziskasm_zkvm_u256_le_mul:
 	arith256(0, ZULM_A)                 ; high 256 bits discarded (wrapping)
 	ret
 
-; void zkvm_u256_le_addmod(a, b, n, result) : (a * 1 + b) mod n; n == 0 -> 0.
-; Inline zkvmcall. n is tested from its top limb down, so a modulus with a
+; zkvm_status zkvm_u256_le_addmod(a, b, n, result) : (a * 1 + b) mod n; n == 0
+; -> 0. Inline zkvmcall. n is tested from its top limb down, so a modulus with a
 ; nonzero top limb costs one test (the jumps cost nothing inline).
 ziskasm_zkvm_u256_le_addmod:
 	copyb(r12, 8[a + 24])
@@ -913,8 +916,8 @@ zuladdmod_zero:
 	copyb(r13, 0) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_mulmod(a, b, n, result) : (a * b + 0) mod n; n == 0 -> 0.
-; Inline zkvmcall. n is tested from its top limb down, so a modulus with a
+; zkvm_status zkvm_u256_le_mulmod(a, b, n, result) : (a * b + 0) mod n; n == 0
+; -> 0. Inline zkvmcall. n is tested from its top limb down, so a modulus with a
 ; nonzero top limb costs one test (the jumps cost nothing inline).
 ziskasm_zkvm_u256_le_mulmod:
 	copyb(r12, 8[a + 24])
@@ -945,13 +948,13 @@ zulmulmod_zero:
 	copyb(r13, 0) -> 8[a + 24]
 	ret
 
-; zkvm_status zkvm_u256_le_exp(base, exponent, result) : base^exponent mod 2^256.
-; Left-to-right, on the accumulator ZULE_ACC. An exponent >= 256 uses a 4-bit
-; window: a table ZULE_T0..T15 of base^0..15 (14 preset multiplies), then per
-; digit 4 squarings and one multiply by T[digit] (T[0] = 1, so no branch); the
-; top limb is scanned with a sentinel nibble, the lower limbs are unrolled. A
-; smaller exponent goes a bit at a time. Every arith256 block is preset but the
-; multiplier (ZULE_MU_B, ZULE_M1_B), and the result is written last.
+; zkvm_status zkvm_u256_le_exp(base, exponent, result) : base^exponent mod
+; 2^256. Left-to-right, on the accumulator ZULE_ACC. An exponent >= 256 uses a
+; 4-bit window: a table ZULE_T0..T15 of base^0..15 (14 preset multiplies), then
+; per digit 4 squarings and one multiply by T[digit] (T[0] = 1, so no branch);
+; the top limb is scanned with a sentinel nibble, the lower limbs are unrolled.
+; A smaller exponent goes a bit at a time. Every arith256 block is preset but
+; the multiplier (ZULE_MU_B, ZULE_M1_B), and the result is written last.
 ziskasm_zkvm_u256_le_exp:
 	copyb(r11, 8[a + 24]) -> r13        ; the exponent's top nonzero limb
 	ltu(0, c), j(zulex_t3)
@@ -1194,8 +1197,8 @@ zulex_done:
 ; Comparisons (result is 0 or 1): unrolled from the most significant limb
 ; ============================================================================
 
-; void zkvm_u256_le_lt(a, b, result) : a < b (unsigned). Inline zkvmcall: from
-; the most significant limb down, the first that differs decides.
+; zkvm_status zkvm_u256_le_lt(a, b, result) : a < b (unsigned). Inline zkvmcall:
+; from the most significant limb down, the first that differs decides.
 ziskasm_zkvm_u256_le_lt:
 	copyb(r10, 8[a + 24]) -> r32
 	copyb(r11, 8[a + 24]) -> r33
@@ -1225,8 +1228,8 @@ zullt_w:
 	copyb(r12, 0) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_gt(a, b, result) : a > b (unsigned). Inline zkvmcall: from
-; the most significant limb down, the first that differs decides.
+; zkvm_status zkvm_u256_le_gt(a, b, result) : a > b (unsigned). Inline zkvmcall:
+; from the most significant limb down, the first that differs decides.
 ziskasm_zkvm_u256_le_gt:
 	copyb(r10, 8[a + 24]) -> r32
 	copyb(r11, 8[a + 24]) -> r33
@@ -1256,8 +1259,8 @@ zulgt_w:
 	copyb(r12, 0) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_slt(a, b, result) : a < b (signed). Inline zkvmcall. Signs
-; differ: the result is the sign of a; same sign: the unsigned order.
+; zkvm_status zkvm_u256_le_slt(a, b, result) : a < b (signed). Inline zkvmcall.
+; Signs differ: the result is the sign of a; same sign: the unsigned order.
 ziskasm_zkvm_u256_le_slt:
 	copyb(r10, 8[a + 24]) -> r32
 	copyb(r11, 8[a + 24]) -> r33
@@ -1272,8 +1275,8 @@ zulslt_diff:
 	copyb(r12, 0) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_sgt(a, b, result) : a > b (signed). Inline zkvmcall. Signs
-; differ: the result is the sign of b; same sign: the unsigned order.
+; zkvm_status zkvm_u256_le_sgt(a, b, result) : a > b (signed). Inline zkvmcall.
+; Signs differ: the result is the sign of b; same sign: the unsigned order.
 ziskasm_zkvm_u256_le_sgt:
 	copyb(r10, 8[a + 24]) -> r32
 	copyb(r11, 8[a + 24]) -> r33
@@ -1288,9 +1291,9 @@ zulsgt_diff:
 	copyb(r12, 0) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_eq(a, b, result) : a == b. Inline zkvmcall, branchless: the
-; limb differences OR-ed into r33, then eq leaves the 0/1 result in c. The result
-; is written after every load, so it may alias a or b.
+; zkvm_status zkvm_u256_le_eq(a, b, result) : a == b. Inline zkvmcall,
+; branchless: the limb differences OR-ed into r33, then eq leaves the 0/1 result
+; in c. The result is written after every load, so it may alias a or b.
 ziskasm_zkvm_u256_le_eq:
 	copyb(r10, 8[a + 0]) -> r32
 	copyb(r11, 8[a + 0])
@@ -1314,8 +1317,9 @@ ziskasm_zkvm_u256_le_eq:
 	copyb(r12, 0) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_iszero(a, result) : a == 0. Inline zkvmcall, branchless: the
-; limbs OR-ed through r32 and c, then eq leaves the 0/1 result in c.
+; zkvm_status zkvm_u256_le_iszero(a, result) : a == 0. Inline zkvmcall,
+; branchless: the limbs OR-ed through r32 and c, then eq leaves the 0/1 result
+; in c.
 ziskasm_zkvm_u256_le_iszero:
 	copyb(r10, 8[a + 0]) -> r32
 	copyb(r10, 8[a + 8])
@@ -1335,7 +1339,8 @@ ziskasm_zkvm_u256_le_iszero:
 ; Bitwise
 ; ============================================================================
 
-; void zkvm_u256_le_and(a, b, result). Inline zkvmcall: a's limb in r32, b's in c.
+; zkvm_status zkvm_u256_le_and(a, b, result). Inline zkvmcall: a's limb in r32,
+; b's in c.
 ziskasm_zkvm_u256_le_and:
 	copyb(r10, 8[a + 0]) -> r32
 	copyb(r11, 8[a + 0])
@@ -1355,7 +1360,8 @@ ziskasm_zkvm_u256_le_and:
 	copyb(r12, c) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_or(a, b, result). Inline zkvmcall: a's limb in r32, b's in c.
+; zkvm_status zkvm_u256_le_or(a, b, result). Inline zkvmcall: a's limb in r32,
+; b's in c.
 ziskasm_zkvm_u256_le_or:
 	copyb(r10, 8[a + 0]) -> r32
 	copyb(r11, 8[a + 0])
@@ -1375,7 +1381,8 @@ ziskasm_zkvm_u256_le_or:
 	copyb(r12, c) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_xor(a, b, result). Inline zkvmcall: a's limb in r32, b's in c.
+; zkvm_status zkvm_u256_le_xor(a, b, result). Inline zkvmcall: a's limb in r32,
+; b's in c.
 ziskasm_zkvm_u256_le_xor:
 	copyb(r10, 8[a + 0]) -> r32
 	copyb(r11, 8[a + 0])
@@ -1395,10 +1402,10 @@ ziskasm_zkvm_u256_le_xor:
 	copyb(r12, c) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_not(a, result). An inline zkvmcall: the transpiler expands
-; the body (up to the `ret`) at the call site, on the caller's registers for a
-; (r10) and result (r11). Each limb goes through c (load, xor, store), so it
-; writes no register at all, only memory, and needs no temporary.
+; zkvm_status zkvm_u256_le_not(a, result). An inline zkvmcall: the transpiler
+; expands the body (up to the `ret`) at the call site, on the caller's registers
+; for a (r10) and result (r11). Each limb goes through c (load, xor, store), so
+; it writes no register at all, only memory, and needs no temporary.
 ziskasm_zkvm_u256_le_not:
 	copyb(r10, 8[a + 0])
 	xor(c, 0xffffffffffffffff)
@@ -1418,9 +1425,9 @@ ziskasm_zkvm_u256_le_not:
 ; Byte, shifts, sign extension: a case per word shift, no loops
 ; ============================================================================
 
-; void zkvm_u256_le_byte(i, a, result) : byte i of a counting from the most
-; significant (EVM BYTE), which in little-endian memory is at a + (31 - i). Inline
-; zkvmcall.
+; zkvm_status zkvm_u256_le_byte(i, a, result) : byte i of a counting from the
+; most significant (EVM BYTE), which in little-endian memory is at a + (31 - i).
+; Inline zkvmcall.
 ziskasm_zkvm_u256_le_byte:
 	copyb(r10, 8[a + 8]) -> r32
 	copyb(r10, 8[a + 16])
@@ -1449,10 +1456,10 @@ zulby_big:
 	copyb(r12, 0) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_shr(shift, value, result) : value >> shift; shift >= 256 -> 0.
-; Inline zkvmcall. r33 = shift (< 256), r34 = b = shift % 64, r35 = 64 - b; a
-; case per word shift q, each output limb built from two input limbs read in
-; ascending order (so the result may alias the value).
+; zkvm_status zkvm_u256_le_shr(shift, value, result) : value >> shift; shift >=
+; 256 -> 0. Inline zkvmcall. r33 = shift (< 256), r34 = b = shift % 64, r35 = 64
+; - b; a case per word shift q, each output limb built from two input limbs read
+; in ascending order (so the result may alias the value).
 ziskasm_zkvm_u256_le_shr:
 	copyb(r10, 8[a + 8]) -> r32
 	copyb(r10, 8[a + 16])
@@ -1579,10 +1586,11 @@ zulshr_big:
 	copyb(r12, 0) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_sar(shift, value, result) : arithmetic shift right; shift >= 256 -> all sign bits.
-; Inline zkvmcall. r33 = shift (< 256), r34 = b = shift % 64, r35 = 64 - b; a
-; case per word shift q, each output limb built from two input limbs read in
-; ascending order (so the result may alias the value), r38 = fill.
+; zkvm_status zkvm_u256_le_sar(shift, value, result) : arithmetic shift right;
+; shift >= 256 -> all sign bits. Inline zkvmcall. r33 = shift (< 256), r34 = b =
+; shift % 64, r35 = 64 - b; a case per word shift q, each output limb built from
+; two input limbs read in ascending order (so the result may alias the value),
+; r38 = fill.
 ziskasm_zkvm_u256_le_sar:
 	copyb(r11, 8[a + 24])
 	sra(c, 63) -> r38                   ; fill: 0, or all ones if negative
@@ -1711,10 +1719,10 @@ zulsar_big:
 	copyb(r12, r38) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_shl(shift, value, result) : value << shift; shift >= 256 -> 0.
-; Inline zkvmcall. r33 = shift (< 256), r34 = b = shift % 64, r35 = 64 - b; a
-; case per word shift q, each output limb built from two input limbs read in
-; descending order (so the result may alias the value).
+; zkvm_status zkvm_u256_le_shl(shift, value, result) : value << shift; shift >=
+; 256 -> 0. Inline zkvmcall. r33 = shift (< 256), r34 = b = shift % 64, r35 = 64
+; - b; a case per word shift q, each output limb built from two input limbs read
+; in descending order (so the result may alias the value).
 ziskasm_zkvm_u256_le_shl:
 	copyb(r10, 8[a + 8]) -> r32
 	copyb(r10, 8[a + 16])
@@ -1841,11 +1849,11 @@ zulshl_big:
 	copyb(r12, 0) -> 8[a + 24]
 	ret
 
-; void zkvm_u256_le_signextend(b, value, result) : extend the sign of byte b
-; (0 = least significant); b >= 31 -> value unchanged. Inline zkvmcall. Byte b
-; is in limb q = b / 8, whose top bit is 8 * (b % 8) + 7: shifting the limb left
-; and then arithmetically right by r34 = t = 8 * (7 - b % 8) extends it, and its
-; sign fills the limbs above.
+; zkvm_status zkvm_u256_le_signextend(b, value, result) : extend the sign of
+; byte b (0 = least significant); b >= 31 -> value unchanged. Inline zkvmcall.
+; Byte b is in limb q = b / 8, whose top bit is 8 * (b % 8) + 7: shifting the
+; limb left and then arithmetically right by r34 = t = 8 * (7 - b % 8) extends
+; it, and its sign fills the limbs above.
 ziskasm_zkvm_u256_le_signextend:
 	copyb(r10, 8[a + 8]) -> r32
 	copyb(r10, 8[a + 16])
