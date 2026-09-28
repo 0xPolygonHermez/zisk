@@ -798,21 +798,23 @@ ziskasm_zkvm_u256_le_xor:
 	copyb(0, 0) -> r10
 	ret
 
-; zkvm_status zkvm_u256_le_not(a, result).
+; void zkvm_u256_le_not(a, result). An inline zkvmcall: the transpiler expands
+; the body (up to the `ret`) at the call site, on the caller's registers for a
+; (r10) and result (r11). Each limb goes through c (load, xor, store), so it
+; writes no register at all, only memory, and needs no temporary.
 ziskasm_zkvm_u256_le_not:
-	copyb(r10, 8[a + 0]) -> r5
-	xor(r5, 0xffffffffffffffff) -> r5
-	copyb(r11, r5) -> 8[a + 0]
-	copyb(r10, 8[a + 8]) -> r5
-	xor(r5, 0xffffffffffffffff) -> r5
-	copyb(r11, r5) -> 8[a + 8]
-	copyb(r10, 8[a + 16]) -> r5
-	xor(r5, 0xffffffffffffffff) -> r5
-	copyb(r11, r5) -> 8[a + 16]
-	copyb(r10, 8[a + 24]) -> r5
-	xor(r5, 0xffffffffffffffff) -> r5
-	copyb(r11, r5) -> 8[a + 24]
-	copyb(0, 0) -> r10
+	copyb(r10, 8[a + 0])
+	xor(c, 0xffffffffffffffff)
+	copyb(r11, c) -> 8[a + 0]
+	copyb(r10, 8[a + 8])
+	xor(c, 0xffffffffffffffff)
+	copyb(r11, c) -> 8[a + 8]
+	copyb(r10, 8[a + 16])
+	xor(c, 0xffffffffffffffff)
+	copyb(r11, c) -> 8[a + 16]
+	copyb(r10, 8[a + 24])
+	xor(c, 0xffffffffffffffff)
+	copyb(r11, c) -> 8[a + 24]
 	ret
 
 ; ============================================================================

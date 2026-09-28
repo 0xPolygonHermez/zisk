@@ -15,11 +15,30 @@
 // a0..a7, returns its result in a0 and `ret`s straight to the caller; the thunk's
 // own `ret` is never reached.
 //
+// A routine marked inline (see `zci`) is instead expanded at the call site, and has
+// no thunk. The C header defines the function as `static inline` asm: a sequence of
+// `csrs`, one per pointer argument, each naming the register the compiler chose for
+// that argument:
+//
+//     csrs 0x895, a1        // the zkvmcall, carrying argument 0
+//     csrs 0x8E0, a5        // ZKVMCALL_ARG_ADDR_START + k - 1, carrying argument k
+//
+// The transpiler replaces the sequence with the routine's body (see
+// `ZiskLibrary::inline_body`), reading those registers where the body reads r10,
+// r11, ...: no argument moves, no jump, no return. The body is straight-line code
+// that writes only memory and the virtual registers r32..r39, so the asm declares
+// no register clobbers and the compiler saves nothing around it.
+//
 // Important: IDs must match ziskasm/lang/c/src/zkvm_calls.s (checked by a test in
 // transpilers/common), and are never reused or renumbered once assigned.
 
 pub const ZKVMCALL_ADDR_START: u16 = 0x850;
 pub const ZKVMCALL_ADDR_END: u16 = 0x8BF;
+
+/// The CSRs that carry arguments 1.. of an inline zkvmcall (argument 0 rides on the
+/// zkvmcall itself), in order and right after it.
+pub const ZKVMCALL_ARG_ADDR_START: u16 = 0x8E0;
+pub const ZKVMCALL_ARG_ADDR_END: u16 = 0x8E7;
 
 /// One zkvmcall: its CSR number, the guest function it implements and the ZisK
 /// library routine the transpiler jumps to.
@@ -27,10 +46,17 @@ pub struct ZkvmCall {
     pub id: u16,
     pub name: &'static str,
     pub target: &'static str,
+    /// 0 for a thunk; otherwise the call is inline and takes this many pointer
+    /// arguments, one per `csrs` of its sequence.
+    pub inline_args: u8,
 }
 
 const fn zc(id: u16, name: &'static str, target: &'static str) -> ZkvmCall {
-    ZkvmCall { id, name, target }
+    ZkvmCall { id, name, target, inline_args: 0 }
+}
+
+const fn zci(id: u16, name: &'static str, target: &'static str, args: u8) -> ZkvmCall {
+    ZkvmCall { id, name, target, inline_args: args }
 }
 
 /// Every zkvmcall, in ID order. `zkvm_keccak_f1600` is not here: it is a single
@@ -110,7 +136,7 @@ pub const ZKVMCALLS: &[ZkvmCall] = &[
     zc(0x892, "zkvm_u256_le_and", "ziskasm_zkvm_u256_le_and"),
     zc(0x893, "zkvm_u256_le_or", "ziskasm_zkvm_u256_le_or"),
     zc(0x894, "zkvm_u256_le_xor", "ziskasm_zkvm_u256_le_xor"),
-    zc(0x895, "zkvm_u256_le_not", "ziskasm_zkvm_u256_le_not"),
+    zci(0x895, "zkvm_u256_le_not", "ziskasm_zkvm_u256_le_not", 2),
     zc(0x896, "zkvm_u256_le_byte", "ziskasm_zkvm_u256_le_byte"),
     zc(0x897, "zkvm_u256_le_shl", "ziskasm_zkvm_u256_le_shl"),
     zc(0x898, "zkvm_u256_le_shr", "ziskasm_zkvm_u256_le_shr"),

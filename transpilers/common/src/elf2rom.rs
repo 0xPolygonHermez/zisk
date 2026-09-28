@@ -81,6 +81,11 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     let mut zkvmcalls: HashMap<u16, u64> = HashMap::new();
     #[cfg(not(feature = "ziskasm"))]
     let zkvmcalls: HashMap<u16, u64> = HashMap::new();
+    // zkvmcall ID → routine body, for every used inline zkvmcall.
+    #[cfg(feature = "ziskasm")]
+    let mut inline_zkvmcalls: HashMap<u16, Vec<zisk_core::ZiskInst>> = HashMap::new();
+    #[cfg(not(feature = "ziskasm"))]
+    let inline_zkvmcalls: HashMap<u16, Vec<zisk_core::ZiskInst>> = HashMap::new();
 
     // Guest-symbol → library-entry redirect map. Populated only when the `ziskasm`
     // feature is enabled; otherwise it stays empty and elf2rom neither assembles the
@@ -169,6 +174,12 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
                     )
                 })?;
                 zkvmcalls.insert(*id, lib_addr);
+                if call.inline_args > 0 {
+                    let body = library
+                        .inline_body(call.target, call.inline_args)
+                        .map_err(|e| format!("inline zkvmcall 0x{id:X} (`{}`): {e}", call.name))?;
+                    inline_zkvmcalls.insert(*id, body);
+                }
             }
             Some(library)
         }
@@ -189,7 +200,14 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
         // Add executable code sections (redirects intercept guest library stubs).
         for section in &exec {
-            add_zisk_code(&mut rom, section.addr, &section.data, &redirects, &zkvmcalls);
+            add_zisk_code(
+                &mut rom,
+                section.addr,
+                &section.data,
+                &redirects,
+                &zkvmcalls,
+                &inline_zkvmcalls,
+            );
         }
 
         // Add read-only data sections.  They will be stored in ROM, but there can be some RAM
@@ -742,8 +760,9 @@ mod zkvmcall_tests {
         }
     }
 
-    /// The C thunks (`ZKVMCALL <name>, <id>` lines) match the table exactly, so a
-    /// C guest can never call one routine and get another.
+    /// The C thunks (`ZKVMCALL <name>, <id>` lines) match the table exactly (but for
+    /// the inline zkvmcalls, which have none), so a C guest can never call one
+    /// routine and get another.
     #[test]
     fn c_thunks_match_zkvmcall_table() {
         const ASM: &str = include_str!("../../../ziskasm/lang/c/src/zkvm_calls.s");
@@ -756,8 +775,11 @@ mod zkvmcall_tests {
                 (name.trim().to_string(), u16::from_str_radix(id, 16).expect("hex ID"))
             })
             .collect();
-        let table: Vec<(String, u16)> =
-            ZKVMCALLS.iter().map(|c| (c.name.to_string(), c.id)).collect();
+        let table: Vec<(String, u16)> = ZKVMCALLS
+            .iter()
+            .filter(|c| c.inline_args == 0)
+            .map(|c| (c.name.to_string(), c.id))
+            .collect();
         assert_eq!(thunks, table);
     }
 

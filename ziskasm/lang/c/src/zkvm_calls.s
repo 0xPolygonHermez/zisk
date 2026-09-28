@@ -108,7 +108,7 @@ ZKVMCALL zkvm_u256_le_iszero,       0x891
 ZKVMCALL zkvm_u256_le_and,          0x892
 ZKVMCALL zkvm_u256_le_or,           0x893
 ZKVMCALL zkvm_u256_le_xor,          0x894
-ZKVMCALL zkvm_u256_le_not,          0x895
+/* zkvm_u256_le_not (0x895) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 ZKVMCALL zkvm_u256_le_byte,         0x896
 ZKVMCALL zkvm_u256_le_shl,          0x897
 ZKVMCALL zkvm_u256_le_shr,          0x898

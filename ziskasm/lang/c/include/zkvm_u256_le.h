@@ -4,16 +4,17 @@
  * NOT part of the EF standard: a ZisK proposal. Same 27 operations, same EVM
  * semantics (division by zero and addmod/mulmod with a zero modulus return zero,
  * out-of-range shifts saturate), results may alias inputs, and every function
- * returns ZKVM_EOK. The one difference is the value layout: four 64-bit limbs,
- * least significant first, which is how EVM interpreters (evmone's intx, revm's
- * ruint, ziskethone's zevm) already keep their stack words and what the ZisK
- * 256-bit precompiles consume. So there is no byte reversal on either side.
+ * returns ZKVM_EOK, except not, which returns nothing. The one difference is the
+ * value layout: four 64-bit limbs, least significant first, which is how EVM
+ * interpreters (evmone's intx, revm's ruint, ziskethone's zevm) already keep
+ * their stack words and what the ZisK 256-bit precompiles consume. So there is
+ * no byte reversal on either side.
  *
  * Two implementations of the same ABI, chosen at compile time (as for zkvm_u256.h):
  *   - default: every function is a zkvmcall thunk (src/zkvm_calls.s) that the
  *     transpiler turns into a jump to a .zisk routine
  *     (ziskasm/zisklib/zkvm/u256_le.zisk), which calls the uint256 cores on the
- *     argument pointers directly;
+ *     argument pointers directly; not is expanded inline instead (see below);
  *   - with ZKVM_U256_LE_INLINE defined before including this header (RISC-V
  *     builds only): static inline definitions for everything but the division
  *     family (div, mod, divmod, sdiv, smod, sdivmod), most of them a single
@@ -69,7 +70,21 @@ zkvm_status zkvm_u256_le_iszero(const zkvm_u256_le* a, zkvm_u256_le* result);
 zkvm_status zkvm_u256_le_and(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
 zkvm_status zkvm_u256_le_or(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
 zkvm_status zkvm_u256_le_xor(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
-zkvm_status zkvm_u256_le_not(const zkvm_u256_le* a, zkvm_u256_le* result);
+/* not cannot fail, so it returns nothing. On RISC-V it is an inline zkvmcall
+ * (definitions/src/zkvmcall.rs): a `csrs` per argument, each naming the register
+ * the compiler picked, which the transpiler replaces by the .zisk routine's body
+ * on those registers. The body writes no RISC-V register, so the compiler is told
+ * only which memory is read and written. */
+#ifdef __riscv
+static inline __attribute__((always_inline)) void zkvm_u256_le_not(const zkvm_u256_le* a,
+                                                                   zkvm_u256_le* result) {
+    __asm__("csrs 0x895, %1\n\t"                       /* zkvmcall, argument 0 */
+            "csrs 0x8E0, %2"                            /* argument 1 */
+            : "=m"(*result) : "r"(a), "r"(result), "m"(*a));
+}
+#else
+void zkvm_u256_le_not(const zkvm_u256_le* a, zkvm_u256_le* result);
+#endif
 zkvm_status zkvm_u256_le_byte(const zkvm_u256_le* i, const zkvm_u256_le* a, zkvm_u256_le* result);
 zkvm_status zkvm_u256_le_shl(const zkvm_u256_le* shift, const zkvm_u256_le* value,
                              zkvm_u256_le* result);
@@ -268,12 +283,11 @@ ZKVM_U256_LE_I_BITWISE(or, |)
 ZKVM_U256_LE_I_BITWISE(xor, ^)
 #undef ZKVM_U256_LE_I_BITWISE
 
-ZKVM_U256_LE_I zkvm_status zkvm_u256_le_not(const zkvm_u256_le* a, zkvm_u256_le* result) {
+ZKVM_U256_LE_I void zkvm_u256_le_not(const zkvm_u256_le* a, zkvm_u256_le* result) {
     zkvm_u256_le r;
     _Pragma("GCC unroll 4")
     for (int i = 0; i < 4; i++) r.limbs[i] = ~a->limbs[i];
     *result = r;
-    return ZKVM_EOK;
 }
 /* byte(i, a): byte i counting from the most significant (EVM BYTE). */
 ZKVM_U256_LE_I zkvm_status zkvm_u256_le_byte(const zkvm_u256_le* i, const zkvm_u256_le* a,

@@ -98,6 +98,17 @@ static void load(int i, int j, int k) {
         if (!same_le(&T, &LR)) bad_alias[idx] = 1;                                \
     }
 
+/* Unary op returning nothing (not). */
+#define CHECK_UN_VOID(idx, op)                                                    \
+    for (int i = 0; i < NV; i++) {                                                \
+        load(i, 0, 0);                                                            \
+        if (zkvm_u256_##op(&BA, &BR) != ZKVM_EOK) bad[idx] = 1;                   \
+        zkvm_u256_le_##op(&LA, &LR);                                              \
+        if (!same(&LR, &BR)) bad[idx] = 1;                                        \
+        T = LA; zkvm_u256_le_##op(&T, &T);                                        \
+        if (!same_le(&T, &LR)) bad_alias[idx] = 1;                                \
+    }
+
 #define CHECK_TER(idx, op)                                                        \
     for (int i = 0; i < NV; i++)                                                  \
         for (int j = 0; j < NV; j++)                                              \
@@ -151,7 +162,7 @@ int main(void) {
     CHECK_BIN(18, and)
     CHECK_BIN(19, or)
     CHECK_BIN(20, xor)
-    CHECK_UN(21, not)
+    CHECK_UN_VOID(21, not)
     CHECK_BIN(22, byte)
     CHECK_BIN(23, shl)
     CHECK_BIN(24, shr)

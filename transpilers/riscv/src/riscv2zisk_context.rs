@@ -16,9 +16,11 @@ use zisk_definitions::{
     SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID,
     SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
     SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
-    SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START,
+    SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START, ZKVMCALL_ARG_ADDR_END,
+    ZKVMCALL_ARG_ADDR_START,
 };
 
+use zisk_core::zisk_inst::{ZiskInst, SRC_IMM, SRC_REG};
 use zisk_core::zisk_rom::ZiskRom;
 use zisk_core::{
     convert_vector, ZiskInstBuilder, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR, EXTRA_PARAMS_ADDR,
@@ -1586,6 +1588,52 @@ impl<'a> Riscv2ZiskContext<'a> {
         zib.build(self.rom);
     }
 
+    /// An inline zkvmcall: the library routine's straight-line `body` (see
+    /// `ZiskLibrary::inline_body`) in place of its `csrs` sequence, which starts at
+    /// `at_addr` and ends before `next_addr`. The body reads `regs[k]` where it reads
+    /// r(10 + k). Its first instruction takes the RISC-V address and the rest take
+    /// internal ones, each jumping to the next and the last to `next_addr`.
+    pub fn emit_inline_zkvmcall(
+        &mut self,
+        at_addr: u64,
+        next_addr: u64,
+        regs: &[u32],
+        body: &[ZiskInst],
+    ) {
+        let mut paddr = at_addr;
+        for (k, template) in body.iter().enumerate() {
+            let last = k + 1 == body.len();
+            let next = if last { next_addr } else { self.rom.get_internal_address() };
+            let mut zib = if k == 0 {
+                ZiskInstBuilder::new_from_riscv(at_addr, "zkvmcall".to_string())
+            } else {
+                ZiskInstBuilder::new_internal(paddr, at_addr)
+            };
+            let (paddr0, riscv_inst, external_ref_addr) =
+                (zib.i.paddr, zib.i.riscv_inst.take(), zib.i.external_ref_addr);
+            zib.i = template.clone();
+            zib.i.paddr = paddr0;
+            zib.i.riscv_inst = riscv_inst;
+            zib.i.external_ref_addr = external_ref_addr;
+            zib.i.next_internal_inst = (!last).then_some(next);
+            zib.i.meta_rs1 = None;
+            zib.i.meta_rd = None;
+            for (src, reg) in [
+                (&mut zib.i.a_src, &mut zib.i.a_offset_imm0),
+                (&mut zib.i.b_src, &mut zib.i.b_offset_imm0),
+            ] {
+                if *src == SRC_REG {
+                    let r = regs[(*reg - 10) as usize] as u64;
+                    // x0 is not a main-trace register: read it as the immediate 0.
+                    (*src, *reg) = if r == 0 { (SRC_IMM, 0) } else { (SRC_REG, r) };
+                }
+            }
+            zib.j(next as i64 - paddr as i64, next as i64 - paddr as i64);
+            zib.build(self.rom);
+            paddr = next;
+        }
+    }
+
     pub fn jal(&mut self, i: &RiscvInst, inst_size: u64) {
         assert!(inst_size == 4 || inst_size == 2);
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
@@ -2773,13 +2821,17 @@ impl<'a> Riscv2ZiskContext<'a> {
 /// `zkvmcalls` maps a zkvmcall ID (see `zisk_definitions::ZKVMCALLS`) to its library
 /// entry address. Each `csrs <id>, x0` zkvmcall is replaced by a tail-jump to that
 /// entry. Every zkvmcall in the section must be in the map; [`zkvmcall_ids`] finds
-/// them beforehand.
+/// them beforehand (and checks their form).
+///
+/// `inline_zkvmcalls` maps the ID of an inline zkvmcall to its routine's body (see
+/// `ZiskLibrary::inline_body`), which replaces each of its `csrs` sequences.
 pub fn add_zisk_code(
     rom: &mut ZiskRom,
     addr: u64,
     data: &[u8],
     redirects: &std::collections::HashMap<u64, (u64, u64)>,
     zkvmcalls: &std::collections::HashMap<u16, u64>,
+    inline_zkvmcalls: &std::collections::HashMap<u16, Vec<ZiskInst>>,
 ) {
     // Convert input data to a u32 vector
     let code_vector: Vec<u16> = convert_vector(data);
@@ -2808,8 +2860,18 @@ pub fn add_zisk_code(
             continue;
         }
 
-        // A zkvmcall: tail-jump to the library routine, which returns to our caller.
+        // An inline zkvmcall: the library routine's body, on the caller's registers.
+        // Any other zkvmcall: tail-jump to the library routine, which returns to our
+        // caller.
         if let Some(id) = zkvmcall_id(riscv_instruction) {
+            if let Some(body) = inline_zkvmcalls.get(&id) {
+                let regs = inline_zkvmcall_regs(&riscv_instructions[i..])
+                    .unwrap_or_else(|e| panic!("{e}"));
+                let next_addr = inst_addr + 4 * regs.len() as u64;
+                ctx.emit_inline_zkvmcall(inst_addr, next_addr, &regs, body);
+                skip_until = next_addr;
+                continue;
+            }
             let lib_addr = *zkvmcalls.get(&id).unwrap_or_else(|| {
                 panic!("zkvmcall 0x{id:X} at 0x{inst_addr:x} has no library entry")
             });
@@ -2825,27 +2887,57 @@ pub fn add_zisk_code(
     }
 }
 
-/// Returns the zkvmcall ID of `inst` if it is a zkvmcall (`csrs <id>, x0` with `id` in
-/// the zkvmcall CSR range).
+/// Returns the zkvmcall ID of `inst` if it is a zkvmcall (`csrs <id>, rs` with `id`
+/// in the zkvmcall CSR range; `rs` is x0 but for an inline one).
 fn zkvmcall_id(inst: &RiscvInst) -> Option<u16> {
     let csr = inst.csr as u16;
     (inst.inst_name == RiscvInstName::Csrrs
         && inst.rd == 0
-        && inst.rs1 == 0
         && (ZKVMCALL_ADDR_START..=ZKVMCALL_ADDR_END).contains(&csr))
     .then_some(csr)
+}
+
+/// The argument registers of the inline zkvmcall that starts `insts`: the `rs` of
+/// the zkvmcall itself, then that of each `csrs <ZKVMCALL_ARG_ADDR_START + k - 1>, rs`
+/// that must follow it, in order and contiguous.
+fn inline_zkvmcall_regs(insts: &[RiscvInst]) -> Result<Vec<u32>, String> {
+    let (id, addr) = (insts[0].csr as u16, insts[0].rom_address);
+    let args = zkvmcall_by_id(id).map_or(0, |c| c.inline_args) as usize;
+    let mut regs = vec![insts[0].rs1];
+    for k in 1..args {
+        let arg = insts.get(k).filter(|a| {
+            a.inst_name == RiscvInstName::Csrrs
+                && a.rd == 0
+                && a.csr as u16 == ZKVMCALL_ARG_ADDR_START + k as u16 - 1
+                && a.rom_address == addr + 4 * k as u64
+        });
+        let Some(arg) = arg else {
+            return Err(format!(
+                "inline zkvmcall 0x{id:X} at 0x{addr:x}: argument {k} must follow as \
+                 `csrs 0x{:X}, <reg>`",
+                ZKVMCALL_ARG_ADDR_START + k as u16 - 1
+            ));
+        };
+        regs.push(arg.rs1);
+    }
+    Ok(regs)
 }
 
 /// Returns the IDs of all the zkvmcalls in a RISC-V code section, so the caller can
 /// decide whether to link the ZisK library before transpiling it.
 ///
 /// Any instruction that touches a zkvmcall CSR must be exactly `csrs <id>, x0` with a
-/// known `id`; anything else is an error, since it can only come from a guest built
-/// against a different set of zkvmcalls.
+/// known `id`, or for an inline zkvmcall its whole `csrs` sequence; and an argument
+/// CSR may only appear inside such a sequence. Anything else is an error, since it
+/// can only come from a guest built against a different set of zkvmcalls.
 pub fn zkvmcall_ids(addr: u64, data: &[u8]) -> Result<BTreeSet<u16>, String> {
     let code_vector: Vec<u16> = convert_vector(data);
+    let insts = riscv_interpreter(addr, &code_vector);
     let mut ids = BTreeSet::new();
-    for inst in riscv_interpreter(addr, &code_vector) {
+    let mut i = 0;
+    while i < insts.len() {
+        let inst = &insts[i];
+        i += 1;
         let csr = inst.csr as u16;
         let is_csr_inst = matches!(
             inst.inst_name,
@@ -2856,19 +2948,33 @@ pub fn zkvmcall_ids(addr: u64, data: &[u8]) -> Result<BTreeSet<u16>, String> {
                 | RiscvInstName::Csrrsi
                 | RiscvInstName::Csrrci
         );
-        if !is_csr_inst || !(ZKVMCALL_ADDR_START..=ZKVMCALL_ADDR_END).contains(&csr) {
+        if !is_csr_inst {
             continue;
         }
-        let Some(id) = zkvmcall_id(&inst) else {
+        if (ZKVMCALL_ARG_ADDR_START..=ZKVMCALL_ARG_ADDR_END).contains(&csr) {
             return Err(format!(
+                "zkvmcall argument CSR 0x{csr:X} at 0x{:x} outside an inline zkvmcall",
+                inst.rom_address
+            ));
+        }
+        if !(ZKVMCALL_ADDR_START..=ZKVMCALL_ADDR_END).contains(&csr) {
+            continue;
+        }
+        let malformed = || {
+            format!(
                 "malformed zkvmcall at 0x{:x}: expected `csrs 0x{csr:X}, x0`, found {:?} rd=x{} rs1=x{}",
                 inst.rom_address, inst.inst_name, inst.rd, inst.rs1
-            ));
+            )
         };
-        if zkvmcall_by_id(id).is_none() {
-            return Err(format!("unknown zkvmcall 0x{id:X} at 0x{:x}", inst.rom_address));
+        let id = zkvmcall_id(inst).ok_or_else(malformed)?;
+        let call = zkvmcall_by_id(id)
+            .ok_or_else(|| format!("unknown zkvmcall 0x{id:X} at 0x{:x}", inst.rom_address))?;
+        if call.inline_args > 0 {
+            i += inline_zkvmcall_regs(&insts[i - 1..])?.len() - 1;
+        } else if inst.rs1 != 0 {
+            return Err(malformed());
         }
-        ids.insert(id);
+        ids.insert(csr);
     }
     Ok(ids)
 }

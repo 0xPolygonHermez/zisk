@@ -13,7 +13,8 @@
  *
  * One operation per build: -DOP=<name> (e.g. -DOP=add) plus its operand shape,
  * one of -DKIND_BIN (op(a, b, r)), -DKIND_SHIFT (op(s, a, r): shl/shr/sar/byte/
- * signextend), -DKIND_UN (op(a, r)), -DKIND_TER (op(a, b, m, r)), -DKIND_DIVMOD
+ * signextend), -DKIND_UN (op(a, r)), -DKIND_UN_VOID (op(a, r) returning nothing:
+ * the LE not), -DKIND_TER (op(a, b, m, r)), -DKIND_DIVMOD
  * (op(a, b, q, r)) or -DKIND_NOP (empty loop, for the loop's own cost).
  *
  * Each iteration runs the operation once on fixed operands; a compiler barrier
@@ -91,12 +92,14 @@ int main(void) {
         st = FN(OPND(S), OPND(A), OPND(R));
 #elif defined(KIND_UN)
         st = FN(OPND(A), OPND(R));
+#elif defined(KIND_UN_VOID)
+        FN(OPND(A), OPND(R));
 #elif defined(KIND_TER)
         st = FN(OPND(A), OPND(B), OPND(M), OPND(R));
 #elif defined(KIND_DIVMOD)
         st = FN(OPND(A), OPND(B), OPND(Q), OPND(R));
 #elif !defined(KIND_NOP)
-#error "pick an operand shape: -DKIND_BIN, _SHIFT, _UN, _TER, _DIVMOD or _NOP"
+#error "pick an operand shape: -DKIND_BIN, _SHIFT, _UN, _UN_VOID, _TER, _DIVMOD or _NOP"
 #endif
         if (st != ZKVM_EOK) failures++;
         __asm__ volatile("" : : : "memory");   /* recompute every iteration */

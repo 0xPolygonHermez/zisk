@@ -13,10 +13,11 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
+use zisk_core::zisk_inst::{ZiskInst, SRC_C, SRC_REG, STORE_MEM, STORE_REG};
 use zisk_core::zisk_inst_builder::ZiskInstBuilder;
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::{
-    GENERAL_RAM_ADDR, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SYS_ADDR,
+    GENERAL_RAM_ADDR, RAM_ADDR, RAM_SIZE, REG_FIRST, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SYS_ADDR,
 };
 use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp};
 
@@ -162,6 +163,49 @@ impl ZiskLibrary {
         let ram_bytes = ram_end.saturating_sub(ram_start);
 
         (rom_bytes, ram_bytes)
+    }
+
+    /// The body of the routine at `name`, for the transpiler to expand at an inline
+    /// zkvmcall with `args` pointer arguments: every instruction from its entry up to
+    /// (excluding) the first `setpc`, its return. The body must be straight-line
+    /// code that reads no RISC-V register but its arguments (r10, r11, ..., which
+    /// the transpiler replaces by the caller's registers) and writes only memory and
+    /// the virtual registers r32..r39, so it clobbers nothing the compiler can see.
+    /// It may not start by reading `c` either.
+    pub fn inline_body(&self, name: &str, args: u8) -> Result<Vec<ZiskInst>, String> {
+        let entry = *self.symbols.get(name).ok_or_else(|| format!("no routine `{name}`"))?;
+        let arg_regs = 10..10 + args as u64;
+        let virtual_regs = REG_FIRST + 32 * 8..REG_FIRST + 40 * 8;
+        let reg_area = REG_FIRST..REG_FIRST + 64 * 8;
+        let mut body = Vec::new();
+        let mut addr = entry;
+        loop {
+            let i = &self.insts.get(&addr).ok_or_else(|| format!("`{name}` has no return"))?.i;
+            if i.set_pc {
+                break;
+            }
+            let at = || format!("`{name}` + {}", addr - entry);
+            if i.jmp_offset1 != INST_SIZE || i.jmp_offset2 != INST_SIZE || i.store_pc || i.end {
+                return Err(format!("{}: not straight-line code", at()));
+            }
+            for (src, reg) in [(i.a_src, i.a_offset_imm0), (i.b_src, i.b_offset_imm0)] {
+                if src == SRC_REG && !arg_regs.contains(&reg) {
+                    return Err(format!("{}: reads r{reg}", at()));
+                }
+                if src == SRC_C && body.is_empty() {
+                    return Err(format!("{}: starts by reading c", at()));
+                }
+            }
+            let dst = i.store_offset as u64;
+            if i.store == STORE_REG
+                || (i.store == STORE_MEM && reg_area.contains(&dst) && !virtual_regs.contains(&dst))
+            {
+                return Err(format!("{}: writes a register outside r32..r39", at()));
+            }
+            body.push(i.clone());
+            addr += INST_SIZE as u64;
+        }
+        Ok(body)
     }
 }
 
