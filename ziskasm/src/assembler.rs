@@ -185,7 +185,9 @@ impl ZiskLibrary {
                 break;
             }
             let at = || format!("`{name}` + {}", addr - entry);
-            if i.jmp_offset1 != INST_SIZE || i.jmp_offset2 != INST_SIZE || i.store_pc || i.end {
+            // A precompile's flag is always 0, and its jmp_offset1 may be a parameter.
+            let jmp1_ok = i.is_precompiled || i.jmp_offset1 == INST_SIZE;
+            if !jmp1_ok || i.jmp_offset2 != INST_SIZE || i.store_pc || i.end {
                 return Err(format!("{}: not straight-line code", at()));
             }
             for (src, reg) in [(i.a_src, i.a_offset_imm0), (i.b_src, i.b_offset_imm0)] {

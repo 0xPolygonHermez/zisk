@@ -88,6 +88,20 @@ static void load(int i, int j, int k) {
             if (!same_le(&T, &LR)) bad_alias[idx] = 1;                            \
         }
 
+/* Binary op returning nothing (add, sub, mul, and, or, xor). */
+#define CHECK_BIN_VOID(idx, op)                                                   \
+    for (int i = 0; i < NV; i++)                                                  \
+        for (int j = 0; j < NV; j++) {                                            \
+            load(i, j, 0);                                                        \
+            if (zkvm_u256_##op(&BA, &BB, &BR) != ZKVM_EOK) bad[idx] = 1;          \
+            zkvm_u256_le_##op(&LA, &LB, &LR);                                     \
+            if (!same(&LR, &BR)) bad[idx] = 1;                                    \
+            T = LA; zkvm_u256_le_##op(&T, &LB, &T);                               \
+            if (!same_le(&T, &LR)) bad_alias[idx] = 1;                            \
+            T = LB; zkvm_u256_le_##op(&LA, &T, &T);                               \
+            if (!same_le(&T, &LR)) bad_alias[idx] = 1;                            \
+        }
+
 #define CHECK_UN(idx, op)                                                         \
     for (int i = 0; i < NV; i++) {                                                \
         load(i, 0, 0);                                                            \
@@ -141,9 +155,9 @@ static void load(int i, int j, int k) {
         }
 
 int main(void) {
-    CHECK_BIN(0, add)
-    CHECK_BIN(1, sub)
-    CHECK_BIN(2, mul)
+    CHECK_BIN_VOID(0, add)
+    CHECK_BIN_VOID(1, sub)
+    CHECK_BIN_VOID(2, mul)
     CHECK_BIN(3, div)
     CHECK_BIN(4, mod)
     CHECK_DIVMOD(5, divmod)
@@ -159,9 +173,9 @@ int main(void) {
     CHECK_BIN(15, sgt)
     CHECK_BIN(16, eq)
     CHECK_UN(17, iszero)
-    CHECK_BIN(18, and)
-    CHECK_BIN(19, or)
-    CHECK_BIN(20, xor)
+    CHECK_BIN_VOID(18, and)
+    CHECK_BIN_VOID(19, or)
+    CHECK_BIN_VOID(20, xor)
     CHECK_UN_VOID(21, not)
     CHECK_BIN(22, byte)
     CHECK_BIN(23, shl)

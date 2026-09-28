@@ -1628,7 +1628,9 @@ impl<'a> Riscv2ZiskContext<'a> {
                     (*src, *reg) = if r == 0 { (SRC_IMM, 0) } else { (SRC_REG, r) };
                 }
             }
-            zib.j(next as i64 - paddr as i64, next as i64 - paddr as i64);
+            let jmp = next as i64 - paddr as i64;
+            // A precompile's jmp_offset1 is a parameter (its flag is always 0).
+            zib.j(if template.is_precompiled { template.jmp_offset1 } else { jmp }, jmp);
             zib.build(self.rom);
             paddr = next;
         }
