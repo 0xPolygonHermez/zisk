@@ -1626,7 +1626,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             rma: true,
             minimal_memory: self.prover_config.minimal_memory,
             compressed: minimal,
-            verify_agg_proofs: false,
         }
     }
 
@@ -1640,7 +1639,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             rma: true,
             minimal_memory: self.prover_config.minimal_memory,
             compressed: false,
-            verify_agg_proofs: false,
         }
     }
 
