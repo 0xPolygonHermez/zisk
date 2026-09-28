@@ -1090,6 +1090,7 @@ uninstall_command() {
     esac
   fi
 
+  rm -f "$ZISK_DIR/setup_version"
   rm -f "$(bundle_path)"
 
   # Try rmdir — succeeds only if dir is empty. If operator put extra files

@@ -57,10 +57,14 @@ jobs:
           [ -n "$V" ] || { echo "could not read setup_version from setup/Cargo.toml"; exit 1; }
           echo "setup_version=$V" >> "$GITHUB_OUTPUT"
           missing=""
-          for f in provingkey-$V verifykey-$V provingkey-$V-blake3 verifykey-$V-blake3 provingkey-plonk-$V; do
+          for f in provingkey-$V verifykey-$V provingkey-$V-blake3 verifykey-$V-blake3; do
             for g in "zisk-$f.tar.gz" "zisk-$f.tar.gz.md5"; do
               curl -sfI "https://storage.googleapis.com/zisk-setup/$g" > /dev/null || missing="$missing $g"
             done
+          done
+          # The SNARK key is optional: upload_setup.yml only builds it on develop or with include_snark.
+          for g in "zisk-provingkey-plonk-$V.tar.gz" "zisk-provingkey-plonk-$V.tar.gz.md5"; do
+            curl -sfI "https://storage.googleapis.com/zisk-setup/$g" > /dev/null || echo "::warning::SNARK key not in the bucket: $g"
           done
           [ -z "$missing" ] && exit 0
           if [ "$IS_TEST" = "true" ]; then echo "::warning::not in the bucket:$missing"; exit 0; fi
@@ -122,6 +126,7 @@ jobs:
           PLATFORM_NAME: ${{ matrix.platform }}
           TARGET: ${{ matrix.target }}
           ARCH: ${{ matrix.arch }}
+          SETUP_VERSION: ${{ needs.prepare.outputs.setup_version }}
         shell: bash
         run: |
           mkdir -p zisk-dist/bin
@@ -143,7 +148,7 @@ jobs:
           cp ./ziskup/ziskup                                       zisk-dist/bin/
           cp ./target/${TARGET}/release/libziskclib.a              zisk-dist/bin/
           # ziskup installs the keys named after this, not after the release tag.
-          echo "${{ needs.prepare.outputs.setup_version }}" > zisk-dist/setup_version
+          echo "${SETUP_VERSION}" > zisk-dist/setup_version
 
           if [[ "${PLATFORM_NAME}" == "linux" ]]; then
             mkdir -p zisk-dist/zisk/emulator-asm/src
