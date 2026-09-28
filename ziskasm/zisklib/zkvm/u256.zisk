@@ -473,104 +473,285 @@ ziskasm_zkvm_u256_mul:
 	rev8(r12, [ZUB_R3]) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_div(a, b, quotient) : q = a / b; b == 0 -> 0 (EVM).
+; ---- the division family's scratch ---------------------------------------------
+; a and b as LE limbs in ZUB_A/ZUB_B (their absolute values for the signed
+; routines), the hint's q and r, and its check; ~x for a negation, whose add256
+; blocks write |a|, |b|, -q and -r to fixed scratch.
+u64 ZUBD_Q0[1] = 0
+u64 ZUBD_Q1[1] = 0
+u64 ZUBD_Q2[1] = 0
+u64 ZUBD_Q3[1] = 0
+u64 ZUBD_R0[1] = 0
+u64 ZUBD_R1[1] = 0
+u64 ZUBD_R2[1] = 0
+u64 ZUBD_R3[1] = 0
+u64 ZUBD_DL0[1] = 0
+u64 ZUBD_DL1[1] = 0
+u64 ZUBD_DL2[1] = 0
+u64 ZUBD_DL3[1] = 0
+u64 ZUBD_DH0[1] = 0
+u64 ZUBD_DH1[1] = 0
+u64 ZUBD_DH2[1] = 0
+u64 ZUBD_DH3[1] = 0
+u64 ZUBD_HA[1]  = ZUBD_Q0     ; arith256 for the check: &q, &b, &r, &dl, &dh
+u64 ZUBD_HB[1]  = ZUB_B0
+u64 ZUBD_HC[1]  = ZUBD_R0
+u64 ZUBD_HDL[1] = ZUBD_DL0
+u64 ZUBD_HDH[1] = ZUBD_DH0
+u64 ZUB_NX0[1] = 0
+u64 ZUB_NX1[1] = 0
+u64 ZUB_NX2[1] = 0
+u64 ZUB_NX3[1] = 0
+u64 ZUBNA_A[1] = ZUB_NX0       ; add256 for |a|: &~x, &0, cin = 1, &ZUB_A
+u64 ZUBNA_B[1] = U256_ZERO
+u64 ZUBNA_CIN[1] = 1
+u64 ZUBNA_C[1] = ZUB_A0
+u64 ZUBNB_A[1] = ZUB_NX0       ; add256 for |b|: &~x, &0, cin = 1, &ZUB_B
+u64 ZUBNB_B[1] = U256_ZERO
+u64 ZUBNB_CIN[1] = 1
+u64 ZUBNB_C[1] = ZUB_B0
+u64 ZUBNQ_A[1] = ZUB_NX0       ; add256 for -q: &~x, &0, cin = 1, &ZUB_R
+u64 ZUBNQ_B[1] = U256_ZERO
+u64 ZUBNQ_CIN[1] = 1
+u64 ZUBNQ_C[1] = ZUB_R0
+u64 ZUBNR_A[1] = ZUB_NX0       ; add256 for -r: &~x, &0, cin = 1, &ZUB_N
+u64 ZUBNR_B[1] = U256_ZERO
+u64 ZUBNR_CIN[1] = 1
+u64 ZUBNR_C[1] = ZUB_N0
+
+; zkvm_status zkvm_u256_div(a, b, quotient) : q = a / b; b == 0 -> 0 (EVM). The
+; division family converts its operands to LE scratch (one rev8 per limb; the
+; signed routines their absolute values), checks the FCALL_UINT256_DIV hint with
+; one arith256 on a preset header (a == q * b + r, no high part) and r < b, and
+; only then writes the results (negated where their sign is), so they may alias
+; a or b. A failed check halts (zubd_panic).
 ziskasm_zkvm_u256_div:
-	push r1
-	call zu_load2
-	copyb(0, ZU_B) -> r10
-	call zu_iszero
-	eq(r10, 0), j(zudiv_do)            ; b != 0 -> divide
-	call zu_wr_zero
+	copyb(r11, 8[a + 0])
+	ltu(0, c), j(zubdiv_go)          ; b != 0
+	copyb(r11, 8[a + 8])
+	ltu(0, c), j(zubdiv_go)          ; b != 0
+	copyb(r11, 8[a + 16])
+	ltu(0, c), j(zubdiv_go)          ; b != 0
+	copyb(r11, 8[a + 24])
+	ltu(0, c), j(zubdiv_go)          ; b != 0
+	; b == 0 -> 0
+	copyb(r12, 0) -> 8[a + 0]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 24]
 	copyb(0, 0) -> r10
-	pop r1
 	ret
-zudiv_do:
-	copyb(0, ZU_A) -> r10
-	copyb(0, ZU_B) -> r11
-	copyb(0, ZU_R) -> r12             ; q_out = ZU_R (written out)
-	copyb(0, ZU_Q) -> r13             ; r_out = ZU_Q (discarded)
-	call zisklib_div_rem256
-	call zu_wr_r
+zubdiv_go:
+	rev8(r10, 8[a + 24]) -> [ZUB_A0]
+	rev8(r10, 8[a + 16]) -> [ZUB_A1]
+	rev8(r10, 8[a + 8]) -> [ZUB_A2]
+	rev8(r10, 8[a + 0]) -> [ZUB_A3]
+	rev8(r11, 8[a + 24]) -> [ZUB_B0]
+	rev8(r11, 8[a + 16]) -> [ZUB_B1]
+	rev8(r11, 8[a + 8]) -> [ZUB_B2]
+	rev8(r11, 8[a + 0]) -> [ZUB_B3]
+	fcall_param(4, ZUB_A0)              ; hint q, r = a / b, a % b
+	fcall_param(4, ZUB_B0)
+	fcall(FCALL_UINT256_DIV, 0)
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q0]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q1]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q2]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q3]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R0]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R1]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R2]
+	copyb(0, [FREE_INPUT]) -> [ZUBD_R3]
+	arith256(0, ZUBD_HA)                ; dl:dh = q * b + r
+	eq([ZUB_A0], [ZUBD_DL0]), j(zubdiv_dl0)
+	jump(zubd_panic)
+zubdiv_dl0:
+	eq([ZUB_A1], [ZUBD_DL1]), j(zubdiv_dl1)
+	jump(zubd_panic)
+zubdiv_dl1:
+	eq([ZUB_A2], [ZUBD_DL2]), j(zubdiv_dl2)
+	jump(zubd_panic)
+zubdiv_dl2:
+	eq([ZUB_A3], [ZUBD_DL3]), j(zubdiv_dl3)
+	jump(zubd_panic)
+zubdiv_dl3:
+	copyb(0, [ZUBD_DH0])                ; dh == 0
+	or(c, [ZUBD_DH1])
+	or(c, [ZUBD_DH2])
+	or(c, [ZUBD_DH3])
+	eq(c, 0), j(zubdiv_lt)
+	jump(zubd_panic)
+zubdiv_lt:
+	ltu([ZUBD_R3], [ZUB_B3]), j(zubdiv_ok)
+	ltu([ZUB_B3], [ZUBD_R3]), j(zubd_panic)
+	ltu([ZUBD_R2], [ZUB_B2]), j(zubdiv_ok)
+	ltu([ZUB_B2], [ZUBD_R2]), j(zubd_panic)
+	ltu([ZUBD_R1], [ZUB_B1]), j(zubdiv_ok)
+	ltu([ZUB_B1], [ZUBD_R1]), j(zubd_panic)
+	ltu([ZUBD_R0], [ZUB_B0]), j(zubdiv_ok)
+	ltu([ZUB_B0], [ZUBD_R0]), j(zubd_panic)
+	jump(zubd_panic)                    ; r == b
+zubdiv_ok:
+	rev8(r12, [ZUBD_Q0]) -> 8[a + 24]
+	rev8(r12, [ZUBD_Q1]) -> 8[a + 16]
+	rev8(r12, [ZUBD_Q2]) -> 8[a + 8]
+	rev8(r12, [ZUBD_Q3]) -> 8[a + 0]
 	copyb(0, 0) -> r10
-	pop r1
 	ret
 
 ; zkvm_status zkvm_u256_mod(a, b, remainder) : r = a % b; b == 0 -> 0 (EVM).
 ziskasm_zkvm_u256_mod:
-	push r1
-	call zu_load2
-	copyb(0, ZU_B) -> r10
-	call zu_iszero
-	eq(r10, 0), j(zumod_do)
-	call zu_wr_zero
+	copyb(r11, 8[a + 0])
+	ltu(0, c), j(zubmod_go)          ; b != 0
+	copyb(r11, 8[a + 8])
+	ltu(0, c), j(zubmod_go)          ; b != 0
+	copyb(r11, 8[a + 16])
+	ltu(0, c), j(zubmod_go)          ; b != 0
+	copyb(r11, 8[a + 24])
+	ltu(0, c), j(zubmod_go)          ; b != 0
+	; b == 0 -> 0
+	copyb(r12, 0) -> 8[a + 0]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 24]
 	copyb(0, 0) -> r10
-	pop r1
 	ret
-zumod_do:
-	copyb(0, ZU_A) -> r10
-	copyb(0, ZU_B) -> r11
-	copyb(0, ZU_Q) -> r12             ; q_out discarded
-	copyb(0, ZU_R) -> r13             ; r_out = ZU_R (written out)
-	call zisklib_div_rem256
-	call zu_wr_r
+zubmod_go:
+	rev8(r10, 8[a + 24]) -> [ZUB_A0]
+	rev8(r10, 8[a + 16]) -> [ZUB_A1]
+	rev8(r10, 8[a + 8]) -> [ZUB_A2]
+	rev8(r10, 8[a + 0]) -> [ZUB_A3]
+	rev8(r11, 8[a + 24]) -> [ZUB_B0]
+	rev8(r11, 8[a + 16]) -> [ZUB_B1]
+	rev8(r11, 8[a + 8]) -> [ZUB_B2]
+	rev8(r11, 8[a + 0]) -> [ZUB_B3]
+	fcall_param(4, ZUB_A0)              ; hint q, r = a / b, a % b
+	fcall_param(4, ZUB_B0)
+	fcall(FCALL_UINT256_DIV, 0)
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q0]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q1]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q2]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q3]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R0]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R1]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R2]
+	copyb(0, [FREE_INPUT]) -> [ZUBD_R3]
+	arith256(0, ZUBD_HA)                ; dl:dh = q * b + r
+	eq([ZUB_A0], [ZUBD_DL0]), j(zubmod_dl0)
+	jump(zubd_panic)
+zubmod_dl0:
+	eq([ZUB_A1], [ZUBD_DL1]), j(zubmod_dl1)
+	jump(zubd_panic)
+zubmod_dl1:
+	eq([ZUB_A2], [ZUBD_DL2]), j(zubmod_dl2)
+	jump(zubd_panic)
+zubmod_dl2:
+	eq([ZUB_A3], [ZUBD_DL3]), j(zubmod_dl3)
+	jump(zubd_panic)
+zubmod_dl3:
+	copyb(0, [ZUBD_DH0])                ; dh == 0
+	or(c, [ZUBD_DH1])
+	or(c, [ZUBD_DH2])
+	or(c, [ZUBD_DH3])
+	eq(c, 0), j(zubmod_lt)
+	jump(zubd_panic)
+zubmod_lt:
+	ltu([ZUBD_R3], [ZUB_B3]), j(zubmod_ok)
+	ltu([ZUB_B3], [ZUBD_R3]), j(zubd_panic)
+	ltu([ZUBD_R2], [ZUB_B2]), j(zubmod_ok)
+	ltu([ZUB_B2], [ZUBD_R2]), j(zubd_panic)
+	ltu([ZUBD_R1], [ZUB_B1]), j(zubmod_ok)
+	ltu([ZUB_B1], [ZUBD_R1]), j(zubd_panic)
+	ltu([ZUBD_R0], [ZUB_B0]), j(zubmod_ok)
+	ltu([ZUB_B0], [ZUBD_R0]), j(zubd_panic)
+	jump(zubd_panic)                    ; r == b
+zubmod_ok:
+	rev8(r12, [ZUBD_R0]) -> 8[a + 24]
+	rev8(r12, [ZUBD_R1]) -> 8[a + 16]
+	rev8(r12, [ZUBD_R2]) -> 8[a + 8]
+	rev8(r12, [ZUBD_R3]) -> 8[a + 0]
 	copyb(0, 0) -> r10
-	pop r1
 	ret
 
 ; zkvm_status zkvm_u256_divmod(a, b, quotient, remainder) : b == 0 -> both 0.
 ziskasm_zkvm_u256_divmod:
-	push r1
-	copyb(0, ZU_POUT) -> r5           ; quotient ptr
-	copyb(r5, r12) -> 8[a + 0]
-	copyb(0, ZU_POUT2) -> r5          ; remainder ptr
-	copyb(r5, r13) -> 8[a + 0]
-	copyb(0, ZU_PB) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, ZU_A) -> r11             ; marshal a
-	copyb(0, 4) -> r12
-	call zkvm_be_to_limbs
-	copyb(0, ZU_PB) -> r10            ; marshal b
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, ZU_B) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_be_to_limbs
-	copyb(0, ZU_B) -> r10
-	call zu_iszero
-	eq(r10, 0), j(zudm_do)
-	; b == 0 -> quotient = remainder = 0
-	copyb(0, ZU_POUT) -> r5
-	copyb(r5, 8[a + 0]) -> r5
-	copyb(r5, 0) -> 8[a + 0]
-	copyb(r5, 0) -> 8[a + 8]
-	copyb(r5, 0) -> 8[a + 16]
-	copyb(r5, 0) -> 8[a + 24]
-	copyb(0, ZU_POUT2) -> r5
-	copyb(r5, 8[a + 0]) -> r5
-	copyb(r5, 0) -> 8[a + 0]
-	copyb(r5, 0) -> 8[a + 8]
-	copyb(r5, 0) -> 8[a + 16]
-	copyb(r5, 0) -> 8[a + 24]
+	copyb(r11, 8[a + 0])
+	ltu(0, c), j(zubdivmod_go)          ; b != 0
+	copyb(r11, 8[a + 8])
+	ltu(0, c), j(zubdivmod_go)          ; b != 0
+	copyb(r11, 8[a + 16])
+	ltu(0, c), j(zubdivmod_go)          ; b != 0
+	copyb(r11, 8[a + 24])
+	ltu(0, c), j(zubdivmod_go)          ; b != 0
+	; b == 0 -> 0 and 0
+	copyb(r12, 0) -> 8[a + 0]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 24]
+	copyb(r13, 0) -> 8[a + 0]
+	copyb(r13, 0) -> 8[a + 8]
+	copyb(r13, 0) -> 8[a + 16]
+	copyb(r13, 0) -> 8[a + 24]
 	copyb(0, 0) -> r10
-	pop r1
 	ret
-zudm_do:
-	copyb(0, ZU_A) -> r10
-	copyb(0, ZU_B) -> r11
-	copyb(0, ZU_Q) -> r12
-	copyb(0, ZU_R) -> r13
-	call zisklib_div_rem256
-	copyb(0, ZU_Q) -> r10             ; quotient -> POUT
-	copyb(0, ZU_POUT) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_limbs_to_be
-	copyb(0, ZU_R) -> r10             ; remainder -> POUT2
-	copyb(0, ZU_POUT2) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_limbs_to_be
+zubdivmod_go:
+	rev8(r10, 8[a + 24]) -> [ZUB_A0]
+	rev8(r10, 8[a + 16]) -> [ZUB_A1]
+	rev8(r10, 8[a + 8]) -> [ZUB_A2]
+	rev8(r10, 8[a + 0]) -> [ZUB_A3]
+	rev8(r11, 8[a + 24]) -> [ZUB_B0]
+	rev8(r11, 8[a + 16]) -> [ZUB_B1]
+	rev8(r11, 8[a + 8]) -> [ZUB_B2]
+	rev8(r11, 8[a + 0]) -> [ZUB_B3]
+	fcall_param(4, ZUB_A0)              ; hint q, r = a / b, a % b
+	fcall_param(4, ZUB_B0)
+	fcall(FCALL_UINT256_DIV, 0)
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q0]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q1]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q2]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q3]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R0]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R1]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R2]
+	copyb(0, [FREE_INPUT]) -> [ZUBD_R3]
+	arith256(0, ZUBD_HA)                ; dl:dh = q * b + r
+	eq([ZUB_A0], [ZUBD_DL0]), j(zubdivmod_dl0)
+	jump(zubd_panic)
+zubdivmod_dl0:
+	eq([ZUB_A1], [ZUBD_DL1]), j(zubdivmod_dl1)
+	jump(zubd_panic)
+zubdivmod_dl1:
+	eq([ZUB_A2], [ZUBD_DL2]), j(zubdivmod_dl2)
+	jump(zubd_panic)
+zubdivmod_dl2:
+	eq([ZUB_A3], [ZUBD_DL3]), j(zubdivmod_dl3)
+	jump(zubd_panic)
+zubdivmod_dl3:
+	copyb(0, [ZUBD_DH0])                ; dh == 0
+	or(c, [ZUBD_DH1])
+	or(c, [ZUBD_DH2])
+	or(c, [ZUBD_DH3])
+	eq(c, 0), j(zubdivmod_lt)
+	jump(zubd_panic)
+zubdivmod_lt:
+	ltu([ZUBD_R3], [ZUB_B3]), j(zubdivmod_ok)
+	ltu([ZUB_B3], [ZUBD_R3]), j(zubd_panic)
+	ltu([ZUBD_R2], [ZUB_B2]), j(zubdivmod_ok)
+	ltu([ZUB_B2], [ZUBD_R2]), j(zubd_panic)
+	ltu([ZUBD_R1], [ZUB_B1]), j(zubdivmod_ok)
+	ltu([ZUB_B1], [ZUBD_R1]), j(zubd_panic)
+	ltu([ZUBD_R0], [ZUB_B0]), j(zubdivmod_ok)
+	ltu([ZUB_B0], [ZUBD_R0]), j(zubd_panic)
+	jump(zubd_panic)                    ; r == b
+zubdivmod_ok:
+	rev8(r12, [ZUBD_Q0]) -> 8[a + 24]
+	rev8(r12, [ZUBD_Q1]) -> 8[a + 16]
+	rev8(r12, [ZUBD_Q2]) -> 8[a + 8]
+	rev8(r12, [ZUBD_Q3]) -> 8[a + 0]
+	rev8(r13, [ZUBD_R0]) -> 8[a + 24]
+	rev8(r13, [ZUBD_R1]) -> 8[a + 16]
+	rev8(r13, [ZUBD_R2]) -> 8[a + 8]
+	rev8(r13, [ZUBD_R3]) -> 8[a + 0]
 	copyb(0, 0) -> r10
-	pop r1
 	ret
 
 ; zkvm_status zkvm_u256_addmod(a, b, n, result) : (a * 1 + b) mod n; n == 0 -> 0.
@@ -662,197 +843,396 @@ ziskasm_zkvm_u256_exp:
 ; Signed arithmetic (two's complement via abs + sign)
 ; ============================================================================
 
-; zkvm_status zkvm_u256_sdiv(a, b, quotient) : signed a / b, toward zero.
-;   b == 0 -> 0. -2^255 / -1 = -2^255 falls out of abs (negate(2^255)=2^255).
+; zkvm_status zkvm_u256_sdiv(a, b, quotient) : signed a / b, toward zero;
+; b == 0 -> 0. -2^255 / -1 = -2^255 falls out: |-2^255| = 2^255.
 ziskasm_zkvm_u256_sdiv:
-	push r1
-	call zu_load2
-	copyb(0, ZU_B) -> r10
-	call zu_iszero
-	eq(r10, 0), j(zusd_do)
-	call zu_wr_zero
+	copyb(r11, 8[a + 0])
+	ltu(0, c), j(zubsdiv_go)          ; b != 0
+	copyb(r11, 8[a + 8])
+	ltu(0, c), j(zubsdiv_go)          ; b != 0
+	copyb(r11, 8[a + 16])
+	ltu(0, c), j(zubsdiv_go)          ; b != 0
+	copyb(r11, 8[a + 24])
+	ltu(0, c), j(zubsdiv_go)          ; b != 0
+	; b == 0 -> 0
+	copyb(r12, 0) -> 8[a + 0]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 24]
 	copyb(0, 0) -> r10
-	pop r1
 	ret
-zusd_do:
-	copyb(0, ZU_A) -> r10             ; |a| -> ZU_AA, sign_a
-	copyb(0, ZU_AA) -> r11
-	call zu_abs
-	copyb(0, ZU_SA) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, ZU_B) -> r10             ; |b| -> ZU_BB, sign_b
-	copyb(0, ZU_BB) -> r11
-	call zu_abs
-	copyb(0, ZU_SB) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, ZU_AA) -> r10            ; q = |a| / |b|
-	copyb(0, ZU_BB) -> r11
-	copyb(0, ZU_Q) -> r12
-	copyb(0, ZU_R) -> r13
-	call zisklib_div_rem256
-	copyb(0, ZU_SA) -> r5             ; sign(q) = sign_a XOR sign_b
-	copyb(r5, 8[a + 0]) -> r6
-	copyb(0, ZU_SB) -> r5
-	copyb(r5, 8[a + 0]) -> r7
-	xor(r6, r7) -> r6
-	eq(r6, 0), j(zusd_pos)
-	copyb(0, ZU_Q) -> r10             ; negative quotient
-	copyb(0, ZU_R) -> r11
-	call zu_neg
-	call zu_wr_r
+zubsdiv_go:
+	rev8(r10, 8[a + 0]) -> r5             ; top limb of a
+	srl(c, 63) -> r16                   ; sign of a
+	eq(c, 0), j(zubsdiv_pa)
+	xor(r5, 0xffffffffffffffff) -> [ZUB_NX3]     ; negative: |a| = ~a + 1
+	rev8(r10, 8[a + 24])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX0]
+	rev8(r10, 8[a + 16])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX1]
+	rev8(r10, 8[a + 8])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX2]
+	add256(0, ZUBNA_A)
+	jump(zubsdiv_b)
+zubsdiv_pa:
+	copyb(0, r5) -> [ZUB_A3]
+	rev8(r10, 8[a + 24]) -> [ZUB_A0]
+	rev8(r10, 8[a + 16]) -> [ZUB_A1]
+	rev8(r10, 8[a + 8]) -> [ZUB_A2]
+zubsdiv_b:
+	rev8(r11, 8[a + 0]) -> r5             ; top limb of b
+	srl(c, 63) -> r17                   ; sign of b
+	eq(c, 0), j(zubsdiv_pb)
+	xor(r5, 0xffffffffffffffff) -> [ZUB_NX3]     ; negative: |b| = ~b + 1
+	rev8(r11, 8[a + 24])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX0]
+	rev8(r11, 8[a + 16])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX1]
+	rev8(r11, 8[a + 8])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX2]
+	add256(0, ZUBNB_A)
+	jump(zubsdiv_core)
+zubsdiv_pb:
+	copyb(0, r5) -> [ZUB_B3]
+	rev8(r11, 8[a + 24]) -> [ZUB_B0]
+	rev8(r11, 8[a + 16]) -> [ZUB_B1]
+	rev8(r11, 8[a + 8]) -> [ZUB_B2]
+zubsdiv_core:
+	fcall_param(4, ZUB_A0)              ; hint q, r = a / b, a % b
+	fcall_param(4, ZUB_B0)
+	fcall(FCALL_UINT256_DIV, 0)
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q0]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q1]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q2]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q3]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R0]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R1]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R2]
+	copyb(0, [FREE_INPUT]) -> [ZUBD_R3]
+	arith256(0, ZUBD_HA)                ; dl:dh = q * b + r
+	eq([ZUB_A0], [ZUBD_DL0]), j(zubsdiv_dl0)
+	jump(zubd_panic)
+zubsdiv_dl0:
+	eq([ZUB_A1], [ZUBD_DL1]), j(zubsdiv_dl1)
+	jump(zubd_panic)
+zubsdiv_dl1:
+	eq([ZUB_A2], [ZUBD_DL2]), j(zubsdiv_dl2)
+	jump(zubd_panic)
+zubsdiv_dl2:
+	eq([ZUB_A3], [ZUBD_DL3]), j(zubsdiv_dl3)
+	jump(zubd_panic)
+zubsdiv_dl3:
+	copyb(0, [ZUBD_DH0])                ; dh == 0
+	or(c, [ZUBD_DH1])
+	or(c, [ZUBD_DH2])
+	or(c, [ZUBD_DH3])
+	eq(c, 0), j(zubsdiv_lt)
+	jump(zubd_panic)
+zubsdiv_lt:
+	ltu([ZUBD_R3], [ZUB_B3]), j(zubsdiv_ok)
+	ltu([ZUB_B3], [ZUBD_R3]), j(zubd_panic)
+	ltu([ZUBD_R2], [ZUB_B2]), j(zubsdiv_ok)
+	ltu([ZUB_B2], [ZUBD_R2]), j(zubd_panic)
+	ltu([ZUBD_R1], [ZUB_B1]), j(zubsdiv_ok)
+	ltu([ZUB_B1], [ZUBD_R1]), j(zubd_panic)
+	ltu([ZUBD_R0], [ZUB_B0]), j(zubsdiv_ok)
+	ltu([ZUB_B0], [ZUBD_R0]), j(zubd_panic)
+	jump(zubd_panic)                    ; r == b
+zubsdiv_ok:
+	xor(r16, r17)                       ; sign of q
+	eq(c, 0), j(zubsdiv_qpos)
+	copyb(0, [ZUBD_Q0])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX0]
+	copyb(0, [ZUBD_Q1])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX1]
+	copyb(0, [ZUBD_Q2])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX2]
+	copyb(0, [ZUBD_Q3])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX3]
+	add256(0, ZUBNQ_A)                   ; -x = ~x + 1
+	rev8(r12, [ZUB_R0]) -> 8[a + 24]
+	rev8(r12, [ZUB_R1]) -> 8[a + 16]
+	rev8(r12, [ZUB_R2]) -> 8[a + 8]
+	rev8(r12, [ZUB_R3]) -> 8[a + 0]
+	jump(zubsdiv_qdone)
+zubsdiv_qpos:
+	rev8(r12, [ZUBD_Q0]) -> 8[a + 24]
+	rev8(r12, [ZUBD_Q1]) -> 8[a + 16]
+	rev8(r12, [ZUBD_Q2]) -> 8[a + 8]
+	rev8(r12, [ZUBD_Q3]) -> 8[a + 0]
+zubsdiv_qdone:
 	copyb(0, 0) -> r10
-	pop r1
-	ret
-zusd_pos:
-	copyb(0, ZU_Q) -> r10             ; positive quotient
-	copyb(0, ZU_POUT) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_limbs_to_be
-	copyb(0, 0) -> r10
-	pop r1
 	ret
 
-; zkvm_status zkvm_u256_smod(a, b, remainder) : signed a % b, sign follows a.
-;   b == 0 -> 0.
+; zkvm_status zkvm_u256_smod(a, b, remainder) : signed a % b, sign follows a;
+; b == 0 -> 0.
 ziskasm_zkvm_u256_smod:
-	push r1
-	call zu_load2
-	copyb(0, ZU_B) -> r10
-	call zu_iszero
-	eq(r10, 0), j(zusm_do)
-	call zu_wr_zero
+	copyb(r11, 8[a + 0])
+	ltu(0, c), j(zubsmod_go)          ; b != 0
+	copyb(r11, 8[a + 8])
+	ltu(0, c), j(zubsmod_go)          ; b != 0
+	copyb(r11, 8[a + 16])
+	ltu(0, c), j(zubsmod_go)          ; b != 0
+	copyb(r11, 8[a + 24])
+	ltu(0, c), j(zubsmod_go)          ; b != 0
+	; b == 0 -> 0
+	copyb(r12, 0) -> 8[a + 0]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 24]
 	copyb(0, 0) -> r10
-	pop r1
 	ret
-zusm_do:
-	copyb(0, ZU_A) -> r10             ; |a| -> ZU_AA, sign_a
-	copyb(0, ZU_AA) -> r11
-	call zu_abs
-	copyb(0, ZU_SA) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, ZU_B) -> r10             ; |b| -> ZU_BB
-	copyb(0, ZU_BB) -> r11
-	call zu_abs
-	copyb(0, ZU_AA) -> r10            ; r = |a| % |b|
-	copyb(0, ZU_BB) -> r11
-	copyb(0, ZU_Q) -> r12
-	copyb(0, ZU_R) -> r13
-	call zisklib_div_rem256
-	copyb(0, ZU_SA) -> r5             ; sign(r) = sign_a
-	copyb(r5, 8[a + 0]) -> r6
-	eq(r6, 0), j(zusm_pos)
-	copyb(0, ZU_R) -> r10             ; negative remainder
-	copyb(0, ZU_T) -> r11
-	call zu_neg
-	copyb(0, ZU_T) -> r10
-	copyb(0, ZU_POUT) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_limbs_to_be
+zubsmod_go:
+	rev8(r10, 8[a + 0]) -> r5             ; top limb of a
+	srl(c, 63) -> r16                   ; sign of a
+	eq(c, 0), j(zubsmod_pa)
+	xor(r5, 0xffffffffffffffff) -> [ZUB_NX3]     ; negative: |a| = ~a + 1
+	rev8(r10, 8[a + 24])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX0]
+	rev8(r10, 8[a + 16])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX1]
+	rev8(r10, 8[a + 8])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX2]
+	add256(0, ZUBNA_A)
+	jump(zubsmod_b)
+zubsmod_pa:
+	copyb(0, r5) -> [ZUB_A3]
+	rev8(r10, 8[a + 24]) -> [ZUB_A0]
+	rev8(r10, 8[a + 16]) -> [ZUB_A1]
+	rev8(r10, 8[a + 8]) -> [ZUB_A2]
+zubsmod_b:
+	rev8(r11, 8[a + 0]) -> r5             ; top limb of b
+	srl(c, 63) -> r17                   ; sign of b
+	eq(c, 0), j(zubsmod_pb)
+	xor(r5, 0xffffffffffffffff) -> [ZUB_NX3]     ; negative: |b| = ~b + 1
+	rev8(r11, 8[a + 24])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX0]
+	rev8(r11, 8[a + 16])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX1]
+	rev8(r11, 8[a + 8])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX2]
+	add256(0, ZUBNB_A)
+	jump(zubsmod_core)
+zubsmod_pb:
+	copyb(0, r5) -> [ZUB_B3]
+	rev8(r11, 8[a + 24]) -> [ZUB_B0]
+	rev8(r11, 8[a + 16]) -> [ZUB_B1]
+	rev8(r11, 8[a + 8]) -> [ZUB_B2]
+zubsmod_core:
+	fcall_param(4, ZUB_A0)              ; hint q, r = a / b, a % b
+	fcall_param(4, ZUB_B0)
+	fcall(FCALL_UINT256_DIV, 0)
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q0]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q1]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q2]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q3]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R0]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R1]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R2]
+	copyb(0, [FREE_INPUT]) -> [ZUBD_R3]
+	arith256(0, ZUBD_HA)                ; dl:dh = q * b + r
+	eq([ZUB_A0], [ZUBD_DL0]), j(zubsmod_dl0)
+	jump(zubd_panic)
+zubsmod_dl0:
+	eq([ZUB_A1], [ZUBD_DL1]), j(zubsmod_dl1)
+	jump(zubd_panic)
+zubsmod_dl1:
+	eq([ZUB_A2], [ZUBD_DL2]), j(zubsmod_dl2)
+	jump(zubd_panic)
+zubsmod_dl2:
+	eq([ZUB_A3], [ZUBD_DL3]), j(zubsmod_dl3)
+	jump(zubd_panic)
+zubsmod_dl3:
+	copyb(0, [ZUBD_DH0])                ; dh == 0
+	or(c, [ZUBD_DH1])
+	or(c, [ZUBD_DH2])
+	or(c, [ZUBD_DH3])
+	eq(c, 0), j(zubsmod_lt)
+	jump(zubd_panic)
+zubsmod_lt:
+	ltu([ZUBD_R3], [ZUB_B3]), j(zubsmod_ok)
+	ltu([ZUB_B3], [ZUBD_R3]), j(zubd_panic)
+	ltu([ZUBD_R2], [ZUB_B2]), j(zubsmod_ok)
+	ltu([ZUB_B2], [ZUBD_R2]), j(zubd_panic)
+	ltu([ZUBD_R1], [ZUB_B1]), j(zubsmod_ok)
+	ltu([ZUB_B1], [ZUBD_R1]), j(zubd_panic)
+	ltu([ZUBD_R0], [ZUB_B0]), j(zubsmod_ok)
+	ltu([ZUB_B0], [ZUBD_R0]), j(zubd_panic)
+	jump(zubd_panic)                    ; r == b
+zubsmod_ok:
+	copyb(0, r16)                       ; sign of r = sign of a
+	eq(c, 0), j(zubsmod_rpos)
+	copyb(0, [ZUBD_R0])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX0]
+	copyb(0, [ZUBD_R1])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX1]
+	copyb(0, [ZUBD_R2])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX2]
+	copyb(0, [ZUBD_R3])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX3]
+	add256(0, ZUBNR_A)                   ; -x = ~x + 1
+	rev8(r12, [ZUB_N0]) -> 8[a + 24]
+	rev8(r12, [ZUB_N1]) -> 8[a + 16]
+	rev8(r12, [ZUB_N2]) -> 8[a + 8]
+	rev8(r12, [ZUB_N3]) -> 8[a + 0]
+	jump(zubsmod_rdone)
+zubsmod_rpos:
+	rev8(r12, [ZUBD_R0]) -> 8[a + 24]
+	rev8(r12, [ZUBD_R1]) -> 8[a + 16]
+	rev8(r12, [ZUBD_R2]) -> 8[a + 8]
+	rev8(r12, [ZUBD_R3]) -> 8[a + 0]
+zubsmod_rdone:
 	copyb(0, 0) -> r10
-	pop r1
-	ret
-zusm_pos:
-	call zu_wr_r                      ; remainder in ZU_R
-	copyb(0, 0) -> r10
-	pop r1
 	ret
 
 ; zkvm_status zkvm_u256_sdivmod(a, b, quotient, remainder) : signed, b == 0 -> 0.
 ziskasm_zkvm_u256_sdivmod:
-	push r1
-	copyb(0, ZU_POUT) -> r5           ; quotient ptr
-	copyb(r5, r12) -> 8[a + 0]
-	copyb(0, ZU_POUT2) -> r5          ; remainder ptr
-	copyb(r5, r13) -> 8[a + 0]
-	copyb(0, ZU_PB) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, ZU_A) -> r11             ; marshal a
-	copyb(0, 4) -> r12
-	call zkvm_be_to_limbs
-	copyb(0, ZU_PB) -> r10            ; marshal b
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, ZU_B) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_be_to_limbs
-	copyb(0, ZU_B) -> r10
-	call zu_iszero
-	eq(r10, 0), j(zusdm_do)
-	; b == 0 -> quotient = remainder = 0
-	copyb(0, ZU_POUT) -> r5
-	copyb(r5, 8[a + 0]) -> r5
-	copyb(r5, 0) -> 8[a + 0]
-	copyb(r5, 0) -> 8[a + 8]
-	copyb(r5, 0) -> 8[a + 16]
-	copyb(r5, 0) -> 8[a + 24]
-	copyb(0, ZU_POUT2) -> r5
-	copyb(r5, 8[a + 0]) -> r5
-	copyb(r5, 0) -> 8[a + 0]
-	copyb(r5, 0) -> 8[a + 8]
-	copyb(r5, 0) -> 8[a + 16]
-	copyb(r5, 0) -> 8[a + 24]
+	copyb(r11, 8[a + 0])
+	ltu(0, c), j(zubsdivmod_go)          ; b != 0
+	copyb(r11, 8[a + 8])
+	ltu(0, c), j(zubsdivmod_go)          ; b != 0
+	copyb(r11, 8[a + 16])
+	ltu(0, c), j(zubsdivmod_go)          ; b != 0
+	copyb(r11, 8[a + 24])
+	ltu(0, c), j(zubsdivmod_go)          ; b != 0
+	; b == 0 -> 0 and 0
+	copyb(r12, 0) -> 8[a + 0]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 24]
+	copyb(r13, 0) -> 8[a + 0]
+	copyb(r13, 0) -> 8[a + 8]
+	copyb(r13, 0) -> 8[a + 16]
+	copyb(r13, 0) -> 8[a + 24]
 	copyb(0, 0) -> r10
-	pop r1
 	ret
-zusdm_do:
-	copyb(0, ZU_A) -> r10             ; |a|, sign_a
-	copyb(0, ZU_AA) -> r11
-	call zu_abs
-	copyb(0, ZU_SA) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, ZU_B) -> r10             ; |b|, sign_b
-	copyb(0, ZU_BB) -> r11
-	call zu_abs
-	copyb(0, ZU_SB) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, ZU_AA) -> r10
-	copyb(0, ZU_BB) -> r11
-	copyb(0, ZU_Q) -> r12
-	copyb(0, ZU_R) -> r13
-	call zisklib_div_rem256
-	; quotient: sign = sign_a XOR sign_b
-	copyb(0, ZU_SA) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	copyb(0, ZU_SB) -> r5
-	copyb(r5, 8[a + 0]) -> r7
-	xor(r6, r7) -> r6
-	eq(r6, 0), j(zusdm_qpos)
-	copyb(0, ZU_Q) -> r10
-	copyb(0, ZU_T) -> r11
-	call zu_neg
-	copyb(0, ZU_T) -> r10
-	jump(zusdm_qwr)
-zusdm_qpos:
-	copyb(0, ZU_Q) -> r10
-zusdm_qwr:
-	copyb(0, ZU_POUT) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_limbs_to_be
-	; remainder: sign = sign_a
-	copyb(0, ZU_SA) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	eq(r6, 0), j(zusdm_rpos)
-	copyb(0, ZU_R) -> r10
-	copyb(0, ZU_T) -> r11
-	call zu_neg
-	copyb(0, ZU_T) -> r10
-	jump(zusdm_rwr)
-zusdm_rpos:
-	copyb(0, ZU_R) -> r10
-zusdm_rwr:
-	copyb(0, ZU_POUT2) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_limbs_to_be
+zubsdivmod_go:
+	rev8(r10, 8[a + 0]) -> r5             ; top limb of a
+	srl(c, 63) -> r16                   ; sign of a
+	eq(c, 0), j(zubsdivmod_pa)
+	xor(r5, 0xffffffffffffffff) -> [ZUB_NX3]     ; negative: |a| = ~a + 1
+	rev8(r10, 8[a + 24])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX0]
+	rev8(r10, 8[a + 16])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX1]
+	rev8(r10, 8[a + 8])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX2]
+	add256(0, ZUBNA_A)
+	jump(zubsdivmod_b)
+zubsdivmod_pa:
+	copyb(0, r5) -> [ZUB_A3]
+	rev8(r10, 8[a + 24]) -> [ZUB_A0]
+	rev8(r10, 8[a + 16]) -> [ZUB_A1]
+	rev8(r10, 8[a + 8]) -> [ZUB_A2]
+zubsdivmod_b:
+	rev8(r11, 8[a + 0]) -> r5             ; top limb of b
+	srl(c, 63) -> r17                   ; sign of b
+	eq(c, 0), j(zubsdivmod_pb)
+	xor(r5, 0xffffffffffffffff) -> [ZUB_NX3]     ; negative: |b| = ~b + 1
+	rev8(r11, 8[a + 24])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX0]
+	rev8(r11, 8[a + 16])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX1]
+	rev8(r11, 8[a + 8])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX2]
+	add256(0, ZUBNB_A)
+	jump(zubsdivmod_core)
+zubsdivmod_pb:
+	copyb(0, r5) -> [ZUB_B3]
+	rev8(r11, 8[a + 24]) -> [ZUB_B0]
+	rev8(r11, 8[a + 16]) -> [ZUB_B1]
+	rev8(r11, 8[a + 8]) -> [ZUB_B2]
+zubsdivmod_core:
+	fcall_param(4, ZUB_A0)              ; hint q, r = a / b, a % b
+	fcall_param(4, ZUB_B0)
+	fcall(FCALL_UINT256_DIV, 0)
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q0]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q1]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q2]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_Q3]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R0]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R1]
+	fcall_get(0, [FREE_INPUT]) -> [ZUBD_R2]
+	copyb(0, [FREE_INPUT]) -> [ZUBD_R3]
+	arith256(0, ZUBD_HA)                ; dl:dh = q * b + r
+	eq([ZUB_A0], [ZUBD_DL0]), j(zubsdivmod_dl0)
+	jump(zubd_panic)
+zubsdivmod_dl0:
+	eq([ZUB_A1], [ZUBD_DL1]), j(zubsdivmod_dl1)
+	jump(zubd_panic)
+zubsdivmod_dl1:
+	eq([ZUB_A2], [ZUBD_DL2]), j(zubsdivmod_dl2)
+	jump(zubd_panic)
+zubsdivmod_dl2:
+	eq([ZUB_A3], [ZUBD_DL3]), j(zubsdivmod_dl3)
+	jump(zubd_panic)
+zubsdivmod_dl3:
+	copyb(0, [ZUBD_DH0])                ; dh == 0
+	or(c, [ZUBD_DH1])
+	or(c, [ZUBD_DH2])
+	or(c, [ZUBD_DH3])
+	eq(c, 0), j(zubsdivmod_lt)
+	jump(zubd_panic)
+zubsdivmod_lt:
+	ltu([ZUBD_R3], [ZUB_B3]), j(zubsdivmod_ok)
+	ltu([ZUB_B3], [ZUBD_R3]), j(zubd_panic)
+	ltu([ZUBD_R2], [ZUB_B2]), j(zubsdivmod_ok)
+	ltu([ZUB_B2], [ZUBD_R2]), j(zubd_panic)
+	ltu([ZUBD_R1], [ZUB_B1]), j(zubsdivmod_ok)
+	ltu([ZUB_B1], [ZUBD_R1]), j(zubd_panic)
+	ltu([ZUBD_R0], [ZUB_B0]), j(zubsdivmod_ok)
+	ltu([ZUB_B0], [ZUBD_R0]), j(zubd_panic)
+	jump(zubd_panic)                    ; r == b
+zubsdivmod_ok:
+	xor(r16, r17)                       ; sign of q
+	eq(c, 0), j(zubsdivmod_qpos)
+	copyb(0, [ZUBD_Q0])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX0]
+	copyb(0, [ZUBD_Q1])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX1]
+	copyb(0, [ZUBD_Q2])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX2]
+	copyb(0, [ZUBD_Q3])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX3]
+	add256(0, ZUBNQ_A)                   ; -x = ~x + 1
+	rev8(r12, [ZUB_R0]) -> 8[a + 24]
+	rev8(r12, [ZUB_R1]) -> 8[a + 16]
+	rev8(r12, [ZUB_R2]) -> 8[a + 8]
+	rev8(r12, [ZUB_R3]) -> 8[a + 0]
+	jump(zubsdivmod_qdone)
+zubsdivmod_qpos:
+	rev8(r12, [ZUBD_Q0]) -> 8[a + 24]
+	rev8(r12, [ZUBD_Q1]) -> 8[a + 16]
+	rev8(r12, [ZUBD_Q2]) -> 8[a + 8]
+	rev8(r12, [ZUBD_Q3]) -> 8[a + 0]
+zubsdivmod_qdone:
+	copyb(0, r16)                       ; sign of r = sign of a
+	eq(c, 0), j(zubsdivmod_rpos)
+	copyb(0, [ZUBD_R0])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX0]
+	copyb(0, [ZUBD_R1])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX1]
+	copyb(0, [ZUBD_R2])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX2]
+	copyb(0, [ZUBD_R3])
+	xor(c, 0xffffffffffffffff) -> [ZUB_NX3]
+	add256(0, ZUBNR_A)                   ; -x = ~x + 1
+	rev8(r13, [ZUB_N0]) -> 8[a + 24]
+	rev8(r13, [ZUB_N1]) -> 8[a + 16]
+	rev8(r13, [ZUB_N2]) -> 8[a + 8]
+	rev8(r13, [ZUB_N3]) -> 8[a + 0]
+	jump(zubsdivmod_rdone)
+zubsdivmod_rpos:
+	rev8(r13, [ZUBD_R0]) -> 8[a + 24]
+	rev8(r13, [ZUBD_R1]) -> 8[a + 16]
+	rev8(r13, [ZUBD_R2]) -> 8[a + 8]
+	rev8(r13, [ZUBD_R3]) -> 8[a + 0]
+zubsdivmod_rdone:
 	copyb(0, 0) -> r10
-	pop r1
 	ret
 
-; ============================================================================
-; Comparison operations (result is a big-endian U256, 0 or 1)
-; ============================================================================
+zubd_panic:                             ; a hint that failed verification
+	copyb(0, 0) -> r10, end
 
 ; zkvm_status zkvm_u256_lt(a, b, result) : a < b (unsigned). Inline zkvmcall:
 ; from the most significant limb down, the first that differs decides.
