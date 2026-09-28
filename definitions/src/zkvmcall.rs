@@ -138,11 +138,11 @@ pub const ZKVMCALLS: &[ZkvmCall] = &[
     zci(0x893, "zkvm_u256_le_or", "ziskasm_zkvm_u256_le_or", 3),
     zci(0x894, "zkvm_u256_le_xor", "ziskasm_zkvm_u256_le_xor", 3),
     zci(0x895, "zkvm_u256_le_not", "ziskasm_zkvm_u256_le_not", 2),
-    zc(0x896, "zkvm_u256_le_byte", "ziskasm_zkvm_u256_le_byte"),
-    zc(0x897, "zkvm_u256_le_shl", "ziskasm_zkvm_u256_le_shl"),
-    zc(0x898, "zkvm_u256_le_shr", "ziskasm_zkvm_u256_le_shr"),
-    zc(0x899, "zkvm_u256_le_sar", "ziskasm_zkvm_u256_le_sar"),
-    zc(0x89A, "zkvm_u256_le_signextend", "ziskasm_zkvm_u256_le_signextend"),
+    zci(0x896, "zkvm_u256_le_byte", "ziskasm_zkvm_u256_le_byte", 3),
+    zci(0x897, "zkvm_u256_le_shl", "ziskasm_zkvm_u256_le_shl", 3),
+    zci(0x898, "zkvm_u256_le_shr", "ziskasm_zkvm_u256_le_shr", 3),
+    zci(0x899, "zkvm_u256_le_sar", "ziskasm_zkvm_u256_le_sar", 3),
+    zci(0x89A, "zkvm_u256_le_signextend", "ziskasm_zkvm_u256_le_signextend", 3),
 ];
 
 /// Returns the zkvmcall with CSR number `id`, if any.

@@ -15,8 +15,8 @@
  * one of -DKIND_BIN (op(a, b, r)), -DKIND_SHIFT (op(s, a, r): shl/shr/sar/byte/
  * signextend), -DKIND_UN (op(a, r)), -DKIND_TER (op(a, b, m, r)), their _VOID
  * forms for the LE functions that return nothing (-DKIND_BIN_VOID: add/sub/mul/
- * lt/gt/slt/sgt/eq/and/or/xor, -DKIND_UN_VOID: iszero/not, -DKIND_TER_VOID:
- * addmod/mulmod), -DKIND_DIVMOD
+ * lt/gt/slt/sgt/eq/and/or/xor, -DKIND_SHIFT_VOID: shl/shr/sar/byte/signextend,
+ * -DKIND_UN_VOID: iszero/not, -DKIND_TER_VOID: addmod/mulmod), -DKIND_DIVMOD
  * (op(a, b, q, r)) or -DKIND_NOP (empty loop, for the loop's own cost).
  *
  * Each iteration runs the operation once on fixed operands; a compiler barrier
@@ -94,6 +94,8 @@ int main(void) {
         FN(OPND(A), OPND(B), OPND(R));
 #elif defined(KIND_SHIFT)
         st = FN(OPND(S), OPND(A), OPND(R));
+#elif defined(KIND_SHIFT_VOID)
+        FN(OPND(S), OPND(A), OPND(R));
 #elif defined(KIND_UN)
         st = FN(OPND(A), OPND(R));
 #elif defined(KIND_UN_VOID)
@@ -105,7 +107,7 @@ int main(void) {
 #elif defined(KIND_DIVMOD)
         st = FN(OPND(A), OPND(B), OPND(Q), OPND(R));
 #elif !defined(KIND_NOP)
-#error "pick an operand shape: -DKIND_BIN, _BIN_VOID, _SHIFT, _UN, _UN_VOID, _TER, _TER_VOID, _DIVMOD or _NOP"
+#error "pick an operand shape: -DKIND_BIN, _BIN_VOID, _SHIFT, _SHIFT_VOID, _UN, _UN_VOID, _TER, _TER_VOID, _DIVMOD or _NOP"
 #endif
         if (st != ZKVM_EOK) failures++;
         __asm__ volatile("" : : : "memory");   /* recompute every iteration */

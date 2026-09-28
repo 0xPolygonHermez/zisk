@@ -2,7 +2,7 @@
  * checked differentially against the big-endian EF ABI (zkvm_u256.h), which
  * u256_semantics_guest.c and u256_alias_guest.c already validate.
  *
- * For every operation and every combination of the 16 operand values below
+ * For every operation and every combination of the 22 operand values below
  * (every pair for binary ops, every triple for addmod/mulmod), the LE function's
  * result, converted to big-endian, must equal the BE function's. Each LE call is
  * then repeated with the result aliasing each input in turn, and must give the
@@ -22,7 +22,7 @@
 #include "zkvm_u256.h"
 #include "zkvm_u256_le.h"
 
-#define NV 16
+#define NV 22
 /* Operand values, as little-endian limbs. */
 static const uint64_t VALS[NV][4] = {
     {0, 0, 0, 0},
@@ -33,6 +33,12 @@ static const uint64_t VALS[NV][4] = {
     {64, 0, 0, 0},
     {255, 0, 0, 0},
     {256, 0, 0, 0},
+    {13, 0, 0, 0},       /* 13, 20, 27: signextend of limbs 1..3, byte indices */
+    {20, 0, 0, 0},
+    {27, 0, 0, 0},
+    {100, 0, 0, 0},      /* 100, 150, 200: word shifts 1..3 with a bit shift */
+    {150, 0, 0, 0},
+    {200, 0, 0, 0},
     {~0ull, 0, 0, 0},                                            /* 2^64 - 1 */
     {0, 1, 0, 0},                                                /* 2^64 */
     {0x94d88ca5e197602full, 0xd1b54a32d192ed03ull, 0, 0},        /* 128-bit */
@@ -88,8 +94,7 @@ static void load(int i, int j, int k) {
             if (!same_le(&T, &LR)) bad_alias[idx] = 1;                            \
         }
 
-/* Binary op returning nothing (add, sub, mul, lt, gt, slt, sgt, eq, and, or,
- * xor). */
+/* Binary op returning nothing (all but the division family and exp). */
 #define CHECK_BIN_VOID(idx, op)                                                   \
     for (int i = 0; i < NV; i++)                                                  \
         for (int j = 0; j < NV; j++) {                                            \
@@ -169,11 +174,11 @@ int main(void) {
     CHECK_BIN_VOID(19, or)
     CHECK_BIN_VOID(20, xor)
     CHECK_UN_VOID(21, not)
-    CHECK_BIN(22, byte)
-    CHECK_BIN(23, shl)
-    CHECK_BIN(24, shr)
-    CHECK_BIN(25, sar)
-    CHECK_BIN(26, signextend)
+    CHECK_BIN_VOID(22, byte)
+    CHECK_BIN_VOID(23, shl)
+    CHECK_BIN_VOID(24, shr)
+    CHECK_BIN_VOID(25, sar)
+    CHECK_BIN_VOID(26, signextend)
 
     /* Negative control: VALS[1] vs VALS[2] must mismatch, VALS[1] vs itself match. */
     load(1, 2, 0);

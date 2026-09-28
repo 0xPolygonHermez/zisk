@@ -4,20 +4,17 @@
  * NOT part of the EF standard: a ZisK proposal. Same 27 operations, same EVM
  * semantics (division by zero and addmod/mulmod with a zero modulus return zero,
  * out-of-range shifts saturate), results may alias inputs, and every function
- * returns ZKVM_EOK, except the ones that are expanded inline (add, sub, mul,
- * addmod, mulmod, lt, gt, slt, sgt, eq, iszero, and, or, xor and not), which
- * return nothing. The one difference is the value layout: four 64-bit limbs, least
+ * returns ZKVM_EOK, except the ones that are expanded inline (all but the
+ * division family and exp), which return nothing. The one difference is the value layout: four 64-bit limbs, least
  * significant first, which is how EVM interpreters (evmone's intx, revm's ruint,
  * ziskethone's zevm) already keep their stack words and what the ZisK 256-bit
  * precompiles consume. So there is no byte reversal on either side.
  *
  * Two implementations of the same ABI, chosen at compile time (as for zkvm_u256.h):
- *   - default: every function is a zkvmcall thunk (src/zkvm_calls.s) that the
- *     transpiler turns into a jump to a .zisk routine
- *     (ziskasm/zisklib/zkvm/u256_le.zisk), which calls the uint256 cores on the
- *     argument pointers directly; add, sub, mul, addmod, mulmod, lt, gt, slt,
- *     sgt, eq, iszero, and, or, xor and not are expanded inline instead (see
- *     below);
+ *   - default: the .zisk routines (ziskasm/zisklib/zkvm/u256_le.zisk), which
+ *     work on the argument pointers directly. The division family and exp are
+ *     zkvmcall thunks (src/zkvm_calls.s) that the transpiler turns into a jump
+ *     to the routine; every other function is expanded inline (see below);
  *   - with ZKVM_U256_LE_INLINE defined before including this header (RISC-V
  *     builds only): static inline definitions for everything but the division
  *     family (div, mod, divmod, sdiv, smod, sdivmod), most of them a single
@@ -55,8 +52,7 @@ zkvm_status zkvm_u256_le_sdivmod(const zkvm_u256_le* a, const zkvm_u256_le* b,
 #if !(defined(ZKVM_U256_LE_INLINE) && defined(__riscv))
 
 /* ---- default: inline zkvmcalls ------------------------------------------------ */
-/* add, sub, mul, addmod, mulmod, lt, gt, slt, sgt, eq, iszero, and, or, xor and
- * not cannot fail, so they return nothing. On
+/* All but the division family and exp cannot fail, so they return nothing. On
  * RISC-V each is an inline zkvmcall (definitions/src/zkvmcall.rs): a `csrs` per
  * argument, each naming the register the compiler picked, which the transpiler
  * replaces by the .zisk routine's body on those registers. The body writes no
@@ -81,6 +77,11 @@ ZKVM_U256_LE_ZC_BIN(eq, 0x890)
 ZKVM_U256_LE_ZC_BIN(and, 0x892)
 ZKVM_U256_LE_ZC_BIN(or, 0x893)
 ZKVM_U256_LE_ZC_BIN(xor, 0x894)
+ZKVM_U256_LE_ZC_BIN(byte, 0x896)       /* (i, a, result) */
+ZKVM_U256_LE_ZC_BIN(shl, 0x897)        /* (shift, value, result) */
+ZKVM_U256_LE_ZC_BIN(shr, 0x898)
+ZKVM_U256_LE_ZC_BIN(sar, 0x899)
+ZKVM_U256_LE_ZC_BIN(signextend, 0x89A) /* (b, value, result) */
 #undef ZKVM_U256_LE_ZC_BIN
 #define ZKVM_U256_LE_ZC_TER(name, id)                                                     \
     static inline __attribute__((always_inline)) void zkvm_u256_le_##name(                \
@@ -124,20 +125,20 @@ void zkvm_u256_le_and(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le
 void zkvm_u256_le_or(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
 void zkvm_u256_le_xor(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
 void zkvm_u256_le_not(const zkvm_u256_le* a, zkvm_u256_le* result);
+void zkvm_u256_le_byte(const zkvm_u256_le* i, const zkvm_u256_le* a, zkvm_u256_le* result);
+void zkvm_u256_le_shl(const zkvm_u256_le* shift, const zkvm_u256_le* value,
+                      zkvm_u256_le* result);
+void zkvm_u256_le_shr(const zkvm_u256_le* shift, const zkvm_u256_le* value,
+                      zkvm_u256_le* result);
+void zkvm_u256_le_sar(const zkvm_u256_le* shift, const zkvm_u256_le* value,
+                      zkvm_u256_le* result);
+void zkvm_u256_le_signextend(const zkvm_u256_le* b, const zkvm_u256_le* value,
+                             zkvm_u256_le* result);
 #endif
 
 /* ---- default: calls ------------------------------------------------------------ */
 zkvm_status zkvm_u256_le_exp(const zkvm_u256_le* base, const zkvm_u256_le* exponent,
                              zkvm_u256_le* result);
-zkvm_status zkvm_u256_le_byte(const zkvm_u256_le* i, const zkvm_u256_le* a, zkvm_u256_le* result);
-zkvm_status zkvm_u256_le_shl(const zkvm_u256_le* shift, const zkvm_u256_le* value,
-                             zkvm_u256_le* result);
-zkvm_status zkvm_u256_le_shr(const zkvm_u256_le* shift, const zkvm_u256_le* value,
-                             zkvm_u256_le* result);
-zkvm_status zkvm_u256_le_sar(const zkvm_u256_le* shift, const zkvm_u256_le* value,
-                             zkvm_u256_le* result);
-zkvm_status zkvm_u256_le_signextend(const zkvm_u256_le* b, const zkvm_u256_le* value,
-                                    zkvm_u256_le* result);
 
 #else /* ZKVM_U256_LE_INLINE */
 
@@ -321,15 +322,14 @@ ZKVM_U256_LE_I void zkvm_u256_le_not(const zkvm_u256_le* a, zkvm_u256_le* result
     *result = r;
 }
 /* byte(i, a): byte i counting from the most significant (EVM BYTE). */
-ZKVM_U256_LE_I zkvm_status zkvm_u256_le_byte(const zkvm_u256_le* i, const zkvm_u256_le* a,
-                                             zkvm_u256_le* result) {
+ZKVM_U256_LE_I void zkvm_u256_le_byte(const zkvm_u256_le* i, const zkvm_u256_le* a,
+                                      zkvm_u256_le* result) {
     uint64_t k = zkvm_u256_le_i_small(i, 32);
     uint64_t v = k < 32 ? (a->limbs[(31 - k) / 8] >> (8 * ((31 - k) % 8))) & 0xff : 0;
     zkvm_u256_le_i_set_small(result, v);
-    return ZKVM_EOK;
 }
-ZKVM_U256_LE_I zkvm_status zkvm_u256_le_shl(const zkvm_u256_le* shift, const zkvm_u256_le* value,
-                                            zkvm_u256_le* result) {
+ZKVM_U256_LE_I void zkvm_u256_le_shl(const zkvm_u256_le* shift, const zkvm_u256_le* value,
+                                     zkvm_u256_le* result) {
     const uint64_t* x = value->limbs;
     uint64_t z[4] = {0, 0, 0, 0};
     uint64_t s = zkvm_u256_le_i_small(shift, 256);
@@ -345,19 +345,17 @@ ZKVM_U256_LE_I zkvm_status zkvm_u256_le_shl(const zkvm_u256_le* shift, const zkv
     }
     _Pragma("GCC unroll 4")
     for (int i = 0; i < 4; i++) result->limbs[i] = z[i];
-    return ZKVM_EOK;
 }
-ZKVM_U256_LE_I zkvm_status zkvm_u256_le_shr(const zkvm_u256_le* shift, const zkvm_u256_le* value,
-                                            zkvm_u256_le* result) {
+ZKVM_U256_LE_I void zkvm_u256_le_shr(const zkvm_u256_le* shift, const zkvm_u256_le* value,
+                                     zkvm_u256_le* result) {
     uint64_t z[4] = {0, 0, 0, 0};
     uint64_t s = zkvm_u256_le_i_small(shift, 256);
     if (s < 256) zkvm_u256_le_i_shr(value->limbs, (unsigned)s, 0, z);
     _Pragma("GCC unroll 4")
     for (int i = 0; i < 4; i++) result->limbs[i] = z[i];
-    return ZKVM_EOK;
 }
-ZKVM_U256_LE_I zkvm_status zkvm_u256_le_sar(const zkvm_u256_le* shift, const zkvm_u256_le* value,
-                                            zkvm_u256_le* result) {
+ZKVM_U256_LE_I void zkvm_u256_le_sar(const zkvm_u256_le* shift, const zkvm_u256_le* value,
+                                     zkvm_u256_le* result) {
     uint64_t z[4];
     uint64_t fill = (int64_t)value->limbs[3] < 0 ? ~0ull : 0;
     uint64_t s = zkvm_u256_le_i_small(shift, 256);
@@ -365,15 +363,14 @@ ZKVM_U256_LE_I zkvm_status zkvm_u256_le_sar(const zkvm_u256_le* shift, const zkv
     else z[0] = z[1] = z[2] = z[3] = fill;
     _Pragma("GCC unroll 4")
     for (int i = 0; i < 4; i++) result->limbs[i] = z[i];
-    return ZKVM_EOK;
 }
 
 /* ---- extended -------------------------------------------------------------- */
 
 /* signextend(b, value): extend the sign of byte b (0 = least significant). */
-ZKVM_U256_LE_I zkvm_status zkvm_u256_le_signextend(const zkvm_u256_le* b,
-                                                   const zkvm_u256_le* value,
-                                                   zkvm_u256_le* result) {
+ZKVM_U256_LE_I void zkvm_u256_le_signextend(const zkvm_u256_le* b,
+                                            const zkvm_u256_le* value,
+                                            zkvm_u256_le* result) {
     zkvm_u256_le x = *value;
     uint64_t k = zkvm_u256_le_i_small(b, 31);
     if (k < 31) {
@@ -384,7 +381,6 @@ ZKVM_U256_LE_I zkvm_status zkvm_u256_le_signextend(const zkvm_u256_le* b,
         for (unsigned i = q + 1; i < 4; i++) x.limbs[i] = fill;
     }
     *result = x;
-    return ZKVM_EOK;
 }
 
 #undef ZKVM_U256_LE_I

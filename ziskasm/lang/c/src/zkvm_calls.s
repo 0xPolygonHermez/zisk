@@ -109,8 +109,8 @@ ZKVMCALL zkvm_u256_le_exp,          0x88B
 /* zkvm_u256_le_or (0x893) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 /* zkvm_u256_le_xor (0x894) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 /* zkvm_u256_le_not (0x895) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
-ZKVMCALL zkvm_u256_le_byte,         0x896
-ZKVMCALL zkvm_u256_le_shl,          0x897
-ZKVMCALL zkvm_u256_le_shr,          0x898
-ZKVMCALL zkvm_u256_le_sar,          0x899
-ZKVMCALL zkvm_u256_le_signextend,   0x89A
+/* zkvm_u256_le_byte (0x896) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
+/* zkvm_u256_le_shl (0x897) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
+/* zkvm_u256_le_shr (0x898) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
+/* zkvm_u256_le_sar (0x899) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
+/* zkvm_u256_le_signextend (0x89A) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
