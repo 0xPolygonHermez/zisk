@@ -141,6 +141,11 @@ pub struct Coordinator {
     /// A mutex, not an atomic: adopting a value reads the pool first.
     agg_arity: tokio::sync::Mutex<u64>,
 
+    /// Held from the arity check until the worker is in the pool, so two first registrations
+    /// cannot both see an empty fleet and adopt different arities. Taken only by the
+    /// registration handlers, so it never nests inside a job lock.
+    registration: tokio::sync::Mutex<()>,
+
     /// Number of registrations accumulated.
     registrations: AtomicU64,
 
@@ -282,6 +287,7 @@ impl Coordinator {
             workers_pool: Arc::new(WorkersPool::new()),
             jobs: RwLock::new(HashMap::new()),
             agg_arity: tokio::sync::Mutex::new(0),
+            registration: tokio::sync::Mutex::new(()),
             registrations: AtomicU64::new(0),
             reconnections: AtomicU64::new(0),
             job_events: RwLock::new(HashMap::new()),
@@ -1415,6 +1421,7 @@ impl Coordinator {
     }
 
     /// Record the arity a worker reports; one that disagrees with the cluster is rejected.
+    /// Callers hold `registration` until the worker is registered.
     pub(crate) async fn observe_agg_arity(
         &self,
         worker_id: &WorkerId,

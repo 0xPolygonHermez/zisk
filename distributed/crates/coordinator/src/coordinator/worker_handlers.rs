@@ -470,6 +470,7 @@ impl Coordinator {
     ) -> (bool, String, Option<SetupProgramDto>) {
         self.registrations.fetch_add(1, Ordering::Relaxed);
 
+        let registering = self.registration.lock().await;
         if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
             return (false, e.to_string(), None);
         }
@@ -507,11 +508,13 @@ impl Coordinator {
             );
         }
 
-        match self
+        let registered = self
             .workers_pool
             .register_worker(req.worker_id, req.compute_capacity, msg_sender, initial_state)
-            .await
-        {
+            .await;
+        drop(registering);
+
+        match registered {
             Ok(()) => {
                 // Send any additional known setups (beyond the first) as messages.
                 for setup in setups {
@@ -557,6 +560,7 @@ impl Coordinator {
     ) -> (bool, String, Option<ReconnectionDirectiveDto>, Option<SetupProgramDto>) {
         self.reconnections.fetch_add(1, Ordering::Relaxed);
 
+        let registering = self.registration.lock().await;
         if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
             return (false, e.to_string(), None, None);
         }
@@ -615,6 +619,7 @@ impl Coordinator {
         {
             return (false, format!("Reconnection failed: {e}"), None, None);
         }
+        drop(registering);
 
         if let Some(ref d) = directive {
             match d {

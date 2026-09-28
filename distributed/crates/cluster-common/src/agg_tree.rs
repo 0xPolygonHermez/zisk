@@ -459,10 +459,15 @@ mod tests {
                     for i in (1..order.len()).rev() {
                         order.swap(i, (next() % (i as u64 + 1)) as usize);
                     }
-                    for staggered in [false, true] {
-                        let (folds, _, covered) = drive(&order, arity, true, staggered);
-                        assert_eq!(covered, n, "arity={arity} n={n} {order:?}: wedged");
-                        if arity == 2 {
+                    for (distributed, staggered) in
+                        [(true, false), (true, true), (false, false), (false, true)]
+                    {
+                        let (folds, _, covered) = drive(&order, arity, distributed, staggered);
+                        assert_eq!(
+                            covered, n,
+                            "arity={arity} n={n} distributed={distributed} {order:?}: wedged"
+                        );
+                        if arity == 2 && distributed {
                             assert_eq!(folds, n.saturating_sub(1).max(1), "n={n} {order:?}");
                         }
                     }
