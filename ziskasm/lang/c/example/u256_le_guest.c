@@ -94,39 +94,23 @@ static void load(int i, int j, int k) {
             if (!same_le(&T, &LR)) bad_alias[idx] = 1;                            \
         }
 
-/* Binary op returning nothing (all but the division family and exp). */
-#define CHECK_BIN_VOID(idx, op)                                                   \
-    for (int i = 0; i < NV; i++)                                                  \
-        for (int j = 0; j < NV; j++) {                                            \
-            load(i, j, 0);                                                        \
-            if (zkvm_u256_##op(&BA, &BB, &BR) != ZKVM_EOK) bad[idx] = 1;          \
-            zkvm_u256_le_##op(&LA, &LB, &LR);                                     \
-            if (!same(&LR, &BR)) bad[idx] = 1;                                    \
-            T = LA; zkvm_u256_le_##op(&T, &LB, &T);                               \
-            if (!same_le(&T, &LR)) bad_alias[idx] = 1;                            \
-            T = LB; zkvm_u256_le_##op(&LA, &T, &T);                               \
-            if (!same_le(&T, &LR)) bad_alias[idx] = 1;                            \
-        }
-
-/* Unary op returning nothing (iszero, not). */
-#define CHECK_UN_VOID(idx, op)                                                    \
+#define CHECK_UN(idx, op)                                                         \
     for (int i = 0; i < NV; i++) {                                                \
         load(i, 0, 0);                                                            \
         if (zkvm_u256_##op(&BA, &BR) != ZKVM_EOK) bad[idx] = 1;                   \
-        zkvm_u256_le_##op(&LA, &LR);                                              \
+        if (zkvm_u256_le_##op(&LA, &LR) != ZKVM_EOK) bad[idx] = 1;                \
         if (!same(&LR, &BR)) bad[idx] = 1;                                        \
         T = LA; zkvm_u256_le_##op(&T, &T);                                        \
         if (!same_le(&T, &LR)) bad_alias[idx] = 1;                                \
     }
 
-/* Ternary op returning nothing (addmod, mulmod). */
-#define CHECK_TER_VOID(idx, op)                                                   \
+#define CHECK_TER(idx, op)                                                        \
     for (int i = 0; i < NV; i++)                                                  \
         for (int j = 0; j < NV; j++)                                              \
             for (int k = 0; k < NV; k++) {                                        \
                 load(i, j, k);                                                    \
                 if (zkvm_u256_##op(&BA, &BB, &BN, &BR) != ZKVM_EOK) bad[idx] = 1; \
-                zkvm_u256_le_##op(&LA, &LB, &LN, &LR);                            \
+                if (zkvm_u256_le_##op(&LA, &LB, &LN, &LR) != ZKVM_EOK) bad[idx] = 1; \
                 if (!same(&LR, &BR)) bad[idx] = 1;                                \
                 T = LA; zkvm_u256_le_##op(&T, &LB, &LN, &T);                      \
                 if (!same_le(&T, &LR)) bad_alias[idx] = 1;                        \
@@ -152,33 +136,33 @@ static void load(int i, int j, int k) {
         }
 
 int main(void) {
-    CHECK_BIN_VOID(0, add)
-    CHECK_BIN_VOID(1, sub)
-    CHECK_BIN_VOID(2, mul)
+    CHECK_BIN(0, add)
+    CHECK_BIN(1, sub)
+    CHECK_BIN(2, mul)
     CHECK_BIN(3, div)
     CHECK_BIN(4, mod)
     CHECK_DIVMOD(5, divmod)
-    CHECK_TER_VOID(6, addmod)
-    CHECK_TER_VOID(7, mulmod)
+    CHECK_TER(6, addmod)
+    CHECK_TER(7, mulmod)
     CHECK_BIN(8, exp)
     CHECK_BIN(9, sdiv)
     CHECK_BIN(10, smod)
     CHECK_DIVMOD(11, sdivmod)
-    CHECK_BIN_VOID(12, lt)
-    CHECK_BIN_VOID(13, gt)
-    CHECK_BIN_VOID(14, slt)
-    CHECK_BIN_VOID(15, sgt)
-    CHECK_BIN_VOID(16, eq)
-    CHECK_UN_VOID(17, iszero)
-    CHECK_BIN_VOID(18, and)
-    CHECK_BIN_VOID(19, or)
-    CHECK_BIN_VOID(20, xor)
-    CHECK_UN_VOID(21, not)
-    CHECK_BIN_VOID(22, byte)
-    CHECK_BIN_VOID(23, shl)
-    CHECK_BIN_VOID(24, shr)
-    CHECK_BIN_VOID(25, sar)
-    CHECK_BIN_VOID(26, signextend)
+    CHECK_BIN(12, lt)
+    CHECK_BIN(13, gt)
+    CHECK_BIN(14, slt)
+    CHECK_BIN(15, sgt)
+    CHECK_BIN(16, eq)
+    CHECK_UN(17, iszero)
+    CHECK_BIN(18, and)
+    CHECK_BIN(19, or)
+    CHECK_BIN(20, xor)
+    CHECK_UN(21, not)
+    CHECK_BIN(22, byte)
+    CHECK_BIN(23, shl)
+    CHECK_BIN(24, shr)
+    CHECK_BIN(25, sar)
+    CHECK_BIN(26, signextend)
 
     /* Negative control: VALS[1] vs VALS[2] must mismatch, VALS[1] vs itself match. */
     load(1, 2, 0);

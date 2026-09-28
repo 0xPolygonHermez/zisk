@@ -162,11 +162,11 @@ little-endian 64-bit limbs instead of 32 big-endian bytes, the layout EVM
 interpreters keep their stack in and the ZisK precompiles consume, so most
 functions become a single precompile on the operands in place. It has the same two
 implementations as the big-endian ABI: the `.zisk` routines by default, inline C
-with `ZKVM_U256_LE_INLINE`. By default every function but the division family and `exp`
-(which stay thunk calls) is an inline zkvmcall that returns nothing: a `csrs` per
-argument that the transpiler replaces by the routine's body on the registers the
-compiler picked, with no call and no register saves (see
-`definitions/src/zkvmcall.rs`). The shifts expand to about 100 instructions per
+with `ZKVM_U256_LE_INLINE`. By default every function but the division family
+and `exp` (which stay thunk calls) is an inline zkvmcall: a `csrs` per argument
+that the transpiler replaces by the routine's body on the registers the compiler
+picked, with no call and no register saves (see `definitions/src/zkvmcall.rs`),
+and a constant `ZKVM_EOK` status that the compiler folds away. The shifts expand to about 100 instructions per
 call site, the others to 4..60. `add` costs 4 steps as an
 inline zkvmcall and 5 as inline C, against 175 and 40 for the big-endian ABI.
 [`example/u256_le_guest.c`](example/u256_le_guest.c) checks all 27 against the
