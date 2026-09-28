@@ -284,10 +284,10 @@ pub fn assemble_library(
     // `const` data right after the code (32-byte aligned, as the ROM-init trace
     // requires); non-`const` data at `ram_base`.
     let rom_data_base = addr_of(instructions.len()).next_multiple_of(32);
-    let (ro_section, rw_section, data_syms) = layout_data(&program.data, rom_data_base, ram_base);
+    let mut layout = layout_data(&program.data, rom_data_base, ram_base);
 
     // The layout must also stay inside RAM at its far end.
-    if let Some(sec) = rw_section.as_ref() {
+    if let Some(sec) = layout.rw.as_ref() {
         let end = sec.addr + (sec.data.len() as u64) * 8;
         if end > RAM_ADDR + RAM_SIZE {
             return Err(format!(
@@ -306,17 +306,18 @@ pub fn assemble_library(
             }
         }
     }
-    for &(name, addr) in &data_syms {
+    for &(name, addr) in &layout.syms {
         if sym_ref.insert(name, addr).is_some() {
             return Err(format!("duplicate symbol `{name}`"));
         }
     }
+    layout.resolve(&sym_ref)?;
 
     // Encode into a throwaway ROM (no BIOS / launcher / optimize); `bios_finalize`
     // is unused because library code returns via `ret`, never `ret_to_bios`.
     let mut rom = ZiskRom::default();
-    rom.ro_data_64.extend(ro_section);
-    rom.rw_data_64.extend(rw_section);
+    rom.ro_data_64.extend(layout.ro);
+    rom.rw_data_64.extend(layout.rw);
     for (i, inst) in instructions.iter().enumerate() {
         encode(&mut rom, addr_of(i), inst, &sym_ref, 0)?;
     }
@@ -380,13 +381,12 @@ pub fn assemble_with_symbols(program: &Program) -> Result<(ZiskRom, HashMap<Stri
 
     // Lay out data: `const` goes in ROM right after the code, non-`const` in RAM
     // at GENERAL_RAM_ADDR. This yields the initialized sections and each data
-    // symbol's address.
+    // symbol's address; symbol initializers are filled once all symbols are known.
     // 32-byte align the ROM data base: the ROM-init trace commits data in 4-u64
     // (32-byte) rows anchored at the section address (state-machines/rom), matching
     // the RISC-V transpiler's aligned section starts, so proving works.
     let rom_data_base = addr_of(ordered.len()).next_multiple_of(32);
-    let (ro_section, rw_section, data_syms) =
-        layout_data(&program.data, rom_data_base, GENERAL_RAM_ADDR);
+    let mut layout = layout_data(&program.data, rom_data_base, GENERAL_RAM_ADDR);
 
     // Symbol table: labels (code addresses) + data names. Used to resolve jump
     // targets and symbolic operands. Names must be unique across both.
@@ -398,11 +398,12 @@ pub fn assemble_with_symbols(program: &Program) -> Result<(ZiskRom, HashMap<Stri
             }
         }
     }
-    for &(name, addr) in &data_syms {
+    for &(name, addr) in &layout.syms {
         if symbols.insert(name, addr).is_some() {
             return Err(format!("duplicate symbol `{name}`"));
         }
     }
+    layout.resolve(&symbols)?;
 
     // `_start` is now instruction 0, i.e. ROM_ADDR.
     let entry =
@@ -419,8 +420,8 @@ pub fn assemble_with_symbols(program: &Program) -> Result<(ZiskRom, HashMap<Stri
     let bios_finalize = rom.next_init_inst_addr + BIOS_FINALIZE_OFFSET;
 
     // Initialized data sections (read by the emulator at startup).
-    rom.ro_data_64.extend(ro_section);
-    rom.rw_data_64.extend(rw_section);
+    rom.ro_data_64.extend(layout.ro);
+    rom.rw_data_64.extend(layout.rw);
 
     // Pass 2: encode each instruction at its address, resolving symbols.
     for (i, inst) in ordered.iter().enumerate() {
@@ -436,24 +437,53 @@ pub fn assemble_with_symbols(program: &Program) -> Result<(ZiskRom, HashMap<Stri
     Ok((rom, symbols))
 }
 
+/// The data layout: the `const` (ROM) and non-`const` (RAM) sections, each
+/// symbol's address, and the slots whose initializer is a symbol, still to be
+/// filled by [`DataLayout::resolve`] once every address is known.
+struct DataLayout<'a> {
+    ro: Option<DataSection64>,
+    rw: Option<DataSection64>,
+    syms: Vec<(&'a str, u64)>,
+    /// `(is_const, slot index, symbol)` for each symbol initializer.
+    fixups: Vec<(bool, usize, &'a str)>,
+}
+
+impl DataLayout<'_> {
+    /// Fills each symbol initializer with its symbol's address.
+    fn resolve(&mut self, symbols: &HashMap<&str, u64>) -> Result<(), String> {
+        for &(is_const, k, name) in &self.fixups {
+            let addr = *symbols
+                .get(name)
+                .ok_or_else(|| format!("undefined symbol `{name}` in a data initializer"))?;
+            let section = if is_const { &mut self.ro } else { &mut self.rw };
+            section.as_mut().expect("a fixup lies in a non-empty section").data[k] = addr;
+        }
+        Ok(())
+    }
+}
+
 /// Lays out the `const` (ROM, at `rom_data_base`) and non-`const` (RAM, at
 /// `GENERAL_RAM_ADDR`) data declarations, packing each element into one 8-byte
-/// slot in declaration order. Returns the two initialized sections (if non-empty)
-/// and each symbol's address.
-fn layout_data(
-    data: &[DataDecl],
-    rom_data_base: u64,
-    ram_data_base: u64,
-) -> (Option<DataSection64>, Option<DataSection64>, Vec<(&str, u64)>) {
+/// slot in declaration order. Symbol initializers are left as 0 and recorded as
+/// fixups (see [`DataLayout::resolve`]).
+fn layout_data(data: &[DataDecl], rom_data_base: u64, ram_data_base: u64) -> DataLayout<'_> {
     let mut ro: Vec<u64> = Vec::new();
     let mut rw: Vec<u64> = Vec::new();
     let mut syms: Vec<(&str, u64)> = Vec::new();
+    let mut fixups = Vec::new();
     for d in data {
         let base = if d.is_const { rom_data_base } else { ram_data_base };
         let buf = if d.is_const { &mut ro } else { &mut rw };
         syms.push((d.name.as_str(), base + buf.len() as u64 * 8));
         for k in 0..d.count {
-            buf.push(d.values.get(k).copied().unwrap_or(0));
+            buf.push(match d.values.get(k) {
+                Some(Num::Lit(v)) => *v,
+                Some(Num::Sym(name)) => {
+                    fixups.push((d.is_const, buf.len(), name.as_str()));
+                    0
+                }
+                None => 0,
+            });
         }
     }
     // Pad each section to a multiple of 4 u64s (32 bytes). The ROM-init trace packs
@@ -464,9 +494,12 @@ fn layout_data(
     ro.resize(ro.len().next_multiple_of(4), 0);
     rw.resize(rw.len().next_multiple_of(4), 0);
 
-    let ro_section = (!ro.is_empty()).then_some(DataSection64 { addr: rom_data_base, data: ro });
-    let rw_section = (!rw.is_empty()).then_some(DataSection64 { addr: ram_data_base, data: rw });
-    (ro_section, rw_section, syms)
+    DataLayout {
+        ro: (!ro.is_empty()).then_some(DataSection64 { addr: rom_data_base, data: ro }),
+        rw: (!rw.is_empty()).then_some(DataSection64 { addr: ram_data_base, data: rw }),
+        syms,
+        fixups,
+    }
 }
 
 /// Whether any instruction carries the given label.

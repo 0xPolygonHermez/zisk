@@ -370,14 +370,17 @@ zulsdm_rwr:
 ; Each block is a run of one-word symbols (consecutive declarations are laid out
 ; contiguously), so a routine fills it with absolute stores and passes its first
 ; symbol to the precompile as an immediate: no register holds the block address.
-; Constant fields are preset: the add/sub carry-in.
+; Constant fields are preset, so a routine only writes the caller's pointers: the
+; add/sub carry-in, and the fixed operand addresses (sub's ~b, mul's zero addend
+; and discarded high half, addmod's multiplier 1 and mulmod's zero addend). So
+; each block belongs to one routine.
 
 u64 ZULA_A[1]   = 0     ; add256 for add: &a, &b, cin = 0, &result
 u64 ZULA_B[1]   = 0
 u64 ZULA_CIN[1] = 0
 u64 ZULA_C[1]   = 0
 u64 ZULS_A[1]   = 0     ; add256 for sub (a + ~b + 1): &a, &ZUL_NB, cin = 1, &result
-u64 ZULS_B[1]   = 0
+u64 ZULS_B[1]   = ZUL_NB0
 u64 ZULS_CIN[1] = 1
 u64 ZULS_C[1]   = 0
 u64 ZUL_NB0[1]  = 0     ; ~b
@@ -386,14 +389,19 @@ u64 ZUL_NB2[1]  = 0
 u64 ZUL_NB3[1]  = 0
 u64 ZULM_A[1]   = 0     ; arith256 for mul: &a, &b, &0, &dl = result, &dh
 u64 ZULM_B[1]   = 0
-u64 ZULM_C[1]   = 0
+u64 ZULM_C[1]   = U256_ZERO
 u64 ZULM_DL[1]  = 0
-u64 ZULM_DH[1]  = 0
-u64 ZULMM_A[1]  = 0     ; arith256_mod for addmod/mulmod: &a, &b, &c, &n, &result
-u64 ZULMM_B[1]  = 0
-u64 ZULMM_C[1]  = 0
-u64 ZULMM_N[1]  = 0
-u64 ZULMM_D[1]  = 0
+u64 ZULM_DH[1]  = ZUL_HI
+u64 ZULAM_A[1]  = 0     ; arith256_mod for addmod: &a, &1, &b, &n, &result
+u64 ZULAM_B[1]  = U256_ONE
+u64 ZULAM_C[1]  = 0
+u64 ZULAM_N[1]  = 0
+u64 ZULAM_D[1]  = 0
+u64 ZULMU_A[1]  = 0     ; arith256_mod for mulmod: &a, &b, &0, &n, &result
+u64 ZULMU_B[1]  = 0
+u64 ZULMU_C[1]  = U256_ZERO
+u64 ZULMU_N[1]  = 0
+u64 ZULMU_D[1]  = 0
 u64 ZULE_SQ[5]  = 0, 0, 0, 0, 0   ; arith256 for exp: acc = acc * acc
 u64 ZULE_MU[5]  = 0, 0, 0, 0, 0   ; arith256 for exp: acc = acc * base
 u64 ZUL_HI[4]   = 0, 0, 0, 0      ; discarded high halves
@@ -424,7 +432,6 @@ ziskasm_zkvm_u256_le_sub:
 	copyb(r11, 8[a + 24])
 	xor(c, 0xffffffffffffffff) -> [ZUL_NB3]
 	copyb(0, r10) -> [ZULS_A]
-	copyb(0, ZUL_NB0) -> [ZULS_B]
 	copyb(0, r12) -> [ZULS_C]
 	add256(0, ZULS_A)
 	ret
@@ -433,9 +440,7 @@ ziskasm_zkvm_u256_le_sub:
 ziskasm_zkvm_u256_le_mul:
 	copyb(0, r10) -> [ZULM_A]
 	copyb(0, r11) -> [ZULM_B]
-	copyb(0, U256_ZERO) -> [ZULM_C]
 	copyb(0, r12) -> [ZULM_DL]
-	copyb(0, ZUL_HI) -> [ZULM_DH]
 	arith256(0, ZULM_A)                 ; high 256 bits discarded (wrapping)
 	ret
 
@@ -449,12 +454,11 @@ ziskasm_zkvm_u256_le_addmod:
 	or(r5, r7) -> r5
 	or(r5, r14) -> r5
 	eq(r5, 0), j(zuladdmod_zero)
-	copyb(0, r10) -> [ZULMM_A]
-	copyb(0, U256_ONE) -> [ZULMM_B]
-	copyb(0, r11) -> [ZULMM_C]
-	copyb(0, r12) -> [ZULMM_N]
-	copyb(0, r13) -> [ZULMM_D]
-	arith256_mod(0, ZULMM_A) -> r5
+	copyb(0, r10) -> [ZULAM_A]
+	copyb(0, r11) -> [ZULAM_C]
+	copyb(0, r12) -> [ZULAM_N]
+	copyb(0, r13) -> [ZULAM_D]
+	arith256_mod(0, ZULAM_A) -> r5
 	copyb(0, 0) -> r10
 	ret
 zuladdmod_zero:
@@ -475,12 +479,11 @@ ziskasm_zkvm_u256_le_mulmod:
 	or(r5, r7) -> r5
 	or(r5, r14) -> r5
 	eq(r5, 0), j(zulmulmod_zero)
-	copyb(0, r10) -> [ZULMM_A]
-	copyb(0, r11) -> [ZULMM_B]
-	copyb(0, U256_ZERO) -> [ZULMM_C]
-	copyb(0, r12) -> [ZULMM_N]
-	copyb(0, r13) -> [ZULMM_D]
-	arith256_mod(0, ZULMM_A) -> r5
+	copyb(0, r10) -> [ZULMU_A]
+	copyb(0, r11) -> [ZULMU_B]
+	copyb(0, r12) -> [ZULMU_N]
+	copyb(0, r13) -> [ZULMU_D]
+	arith256_mod(0, ZULMU_A) -> r5
 	copyb(0, 0) -> r10
 	ret
 zulmulmod_zero:

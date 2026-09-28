@@ -37,8 +37,10 @@ pub struct DataDecl {
     pub is_const: bool,
     /// Number of 8-byte slots (>= 1). A scalar is a 1-element array.
     pub count: usize,
-    /// Initial values, one per slot; `len() <= count`, remaining slots are zero.
-    pub values: Vec<u64>,
+    /// Initial values, one per slot; `len() <= count`, remaining slots are zero. A
+    /// symbol (only in `u64` data) is the address of a label or data name, resolved
+    /// at assemble time.
+    pub values: Vec<Num>,
     pub file: String,
     pub line: usize,
 }
@@ -446,7 +448,8 @@ fn is_data_decl(code: &str) -> bool {
     first == "const" || DataType::from_keyword(first).is_some()
 }
 
-/// Parses `[const] TYPE NAME[SIZE] [= v0, v1, ...]`.
+/// Parses `[const] TYPE NAME[SIZE] [= v0, v1, ...]`; each `v` is a number or, for
+/// `u64`, a symbol (its address).
 fn parse_data_decl(code: &str, file: &str, line: usize) -> Result<DataDecl, String> {
     let mut rest = code.trim();
     let is_const = match rest.strip_prefix("const ") {
@@ -488,11 +491,18 @@ fn parse_data_decl(code: &str, file: &str, line: usize) -> Result<DataDecl, Stri
     if let Some(v) = values_str {
         if !v.is_empty() {
             for part in v.split(',') {
-                let val = parse_u64(part.trim())?;
-                if val > ty.max_value() {
-                    return Err(format!("value {val} does not fit in {type_kw}"));
+                let val = parse_num(part)?;
+                match val {
+                    Num::Lit(n) if n > ty.max_value() => {
+                        return Err(format!("value {n} does not fit in {type_kw}"));
+                    }
+                    Num::Sym(ref sym) if ty != DataType::U64 => {
+                        return Err(format!(
+                            "`{sym}`: a symbol initializer (an address) needs u64, not {type_kw}"
+                        ));
+                    }
+                    _ => values.push(val),
                 }
-                values.push(val);
             }
         }
     }
