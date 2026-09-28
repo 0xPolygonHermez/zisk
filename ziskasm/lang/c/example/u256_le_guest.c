@@ -88,7 +88,7 @@ static void load(int i, int j, int k) {
             if (!same_le(&T, &LR)) bad_alias[idx] = 1;                            \
         }
 
-/* Binary op returning nothing (add, sub, mul, and, or, xor). */
+/* Binary op returning nothing (add, sub, mul, eq, and, or, xor). */
 #define CHECK_BIN_VOID(idx, op)                                                   \
     for (int i = 0; i < NV; i++)                                                  \
         for (int j = 0; j < NV; j++) {                                            \
@@ -102,17 +102,7 @@ static void load(int i, int j, int k) {
             if (!same_le(&T, &LR)) bad_alias[idx] = 1;                            \
         }
 
-#define CHECK_UN(idx, op)                                                         \
-    for (int i = 0; i < NV; i++) {                                                \
-        load(i, 0, 0);                                                            \
-        if (zkvm_u256_##op(&BA, &BR) != ZKVM_EOK) bad[idx] = 1;                   \
-        if (zkvm_u256_le_##op(&LA, &LR) != ZKVM_EOK) bad[idx] = 1;                \
-        if (!same(&LR, &BR)) bad[idx] = 1;                                        \
-        T = LA; zkvm_u256_le_##op(&T, &T);                                        \
-        if (!same_le(&T, &LR)) bad_alias[idx] = 1;                                \
-    }
-
-/* Unary op returning nothing (not). */
+/* Unary op returning nothing (iszero, not). */
 #define CHECK_UN_VOID(idx, op)                                                    \
     for (int i = 0; i < NV; i++) {                                                \
         load(i, 0, 0);                                                            \
@@ -171,8 +161,8 @@ int main(void) {
     CHECK_BIN(13, gt)
     CHECK_BIN(14, slt)
     CHECK_BIN(15, sgt)
-    CHECK_BIN(16, eq)
-    CHECK_UN(17, iszero)
+    CHECK_BIN_VOID(16, eq)
+    CHECK_UN_VOID(17, iszero)
     CHECK_BIN_VOID(18, and)
     CHECK_BIN_VOID(19, or)
     CHECK_BIN_VOID(20, xor)

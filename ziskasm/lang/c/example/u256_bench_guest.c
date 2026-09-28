@@ -13,9 +13,9 @@
  *
  * One operation per build: -DOP=<name> (e.g. -DOP=add) plus its operand shape,
  * one of -DKIND_BIN (op(a, b, r)), -DKIND_BIN_VOID (op(a, b, r) returning nothing:
- * the LE add/sub/mul/and/or/xor), -DKIND_SHIFT (op(s, a, r): shl/shr/sar/byte/
+ * the LE add/sub/mul/eq/and/or/xor), -DKIND_SHIFT (op(s, a, r): shl/shr/sar/byte/
  * signextend), -DKIND_UN (op(a, r)), -DKIND_UN_VOID (op(a, r) returning nothing:
- * the LE not), -DKIND_TER (op(a, b, m, r)), -DKIND_DIVMOD
+ * the LE iszero/not), -DKIND_TER (op(a, b, m, r)), -DKIND_DIVMOD
  * (op(a, b, q, r)) or -DKIND_NOP (empty loop, for the loop's own cost).
  *
  * Each iteration runs the operation once on fixed operands; a compiler barrier

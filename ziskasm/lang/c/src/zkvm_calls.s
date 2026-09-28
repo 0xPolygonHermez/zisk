@@ -103,8 +103,8 @@ ZKVMCALL zkvm_u256_le_lt,           0x88C
 ZKVMCALL zkvm_u256_le_gt,           0x88D
 ZKVMCALL zkvm_u256_le_slt,          0x88E
 ZKVMCALL zkvm_u256_le_sgt,          0x88F
-ZKVMCALL zkvm_u256_le_eq,           0x890
-ZKVMCALL zkvm_u256_le_iszero,       0x891
+/* zkvm_u256_le_eq (0x890) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
+/* zkvm_u256_le_iszero (0x891) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 /* zkvm_u256_le_and (0x892) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 /* zkvm_u256_le_or (0x893) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 /* zkvm_u256_le_xor (0x894) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */

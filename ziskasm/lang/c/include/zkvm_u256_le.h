@@ -4,8 +4,8 @@
  * NOT part of the EF standard: a ZisK proposal. Same 27 operations, same EVM
  * semantics (division by zero and addmod/mulmod with a zero modulus return zero,
  * out-of-range shifts saturate), results may alias inputs, and every function
- * returns ZKVM_EOK, except add, sub, mul, and, or, xor and not, which return
- * nothing. The one difference is the value layout: four 64-bit limbs, least
+ * returns ZKVM_EOK, except add, sub, mul, eq, iszero, and, or, xor and not,
+ * which return nothing. The one difference is the value layout: four 64-bit limbs, least
  * significant first, which is how EVM interpreters (evmone's intx, revm's ruint,
  * ziskethone's zevm) already keep their stack words and what the ZisK 256-bit
  * precompiles consume. So there is no byte reversal on either side.
@@ -14,8 +14,8 @@
  *   - default: every function is a zkvmcall thunk (src/zkvm_calls.s) that the
  *     transpiler turns into a jump to a .zisk routine
  *     (ziskasm/zisklib/zkvm/u256_le.zisk), which calls the uint256 cores on the
- *     argument pointers directly; add, sub, mul, and, or, xor and not are
- *     expanded inline instead (see below);
+ *     argument pointers directly; add, sub, mul, eq, iszero, and, or, xor and
+ *     not are expanded inline instead (see below);
  *   - with ZKVM_U256_LE_INLINE defined before including this header (RISC-V
  *     builds only): static inline definitions for everything but the division
  *     family (div, mod, divmod, sdiv, smod, sdivmod), most of them a single
@@ -53,7 +53,8 @@ zkvm_status zkvm_u256_le_sdivmod(const zkvm_u256_le* a, const zkvm_u256_le* b,
 #if !(defined(ZKVM_U256_LE_INLINE) && defined(__riscv))
 
 /* ---- default: inline zkvmcalls ------------------------------------------------ */
-/* add, sub, mul, and, or, xor and not cannot fail, so they return nothing. On
+/* add, sub, mul, eq, iszero, and, or, xor and not cannot fail, so they return
+ * nothing. On
  * RISC-V each is an inline zkvmcall (definitions/src/zkvmcall.rs): a `csrs` per
  * argument, each naming the register the compiler picked, which the transpiler
  * replaces by the .zisk routine's body on those registers. The body writes no
@@ -70,20 +71,27 @@ zkvm_status zkvm_u256_le_sdivmod(const zkvm_u256_le* a, const zkvm_u256_le* b,
 ZKVM_U256_LE_ZC_BIN(add, 0x886)
 ZKVM_U256_LE_ZC_BIN(sub, 0x887)
 ZKVM_U256_LE_ZC_BIN(mul, 0x888)
+ZKVM_U256_LE_ZC_BIN(eq, 0x890)
 ZKVM_U256_LE_ZC_BIN(and, 0x892)
 ZKVM_U256_LE_ZC_BIN(or, 0x893)
 ZKVM_U256_LE_ZC_BIN(xor, 0x894)
 #undef ZKVM_U256_LE_ZC_BIN
-static inline __attribute__((always_inline)) void zkvm_u256_le_not(const zkvm_u256_le* a,
-                                                                   zkvm_u256_le* result) {
-    __asm__("csrs 0x895, %1\n\t"                       /* zkvmcall, argument 0 */
-            "csrs 0x8E0, %2"                            /* argument 1 */
-            : "=m"(*result) : "r"(a), "r"(result), "m"(*a));
-}
+#define ZKVM_U256_LE_ZC_UN(name, id)                                                      \
+    static inline __attribute__((always_inline)) void zkvm_u256_le_##name(                \
+        const zkvm_u256_le* a, zkvm_u256_le* result) {                                    \
+        __asm__("csrs " #id ", %1\n\t"                /* zkvmcall, argument 0 */         \
+                "csrs 0x8E0, %2"                       /* argument 1 */                   \
+                : "=m"(*result) : "r"(a), "r"(result), "m"(*a));                          \
+    }
+ZKVM_U256_LE_ZC_UN(iszero, 0x891)
+ZKVM_U256_LE_ZC_UN(not, 0x895)
+#undef ZKVM_U256_LE_ZC_UN
 #else
 void zkvm_u256_le_add(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
 void zkvm_u256_le_sub(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
 void zkvm_u256_le_mul(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
+void zkvm_u256_le_eq(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
+void zkvm_u256_le_iszero(const zkvm_u256_le* a, zkvm_u256_le* result);
 void zkvm_u256_le_and(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
 void zkvm_u256_le_or(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
 void zkvm_u256_le_xor(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
@@ -101,8 +109,6 @@ zkvm_status zkvm_u256_le_lt(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u
 zkvm_status zkvm_u256_le_gt(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
 zkvm_status zkvm_u256_le_slt(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
 zkvm_status zkvm_u256_le_sgt(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
-zkvm_status zkvm_u256_le_eq(const zkvm_u256_le* a, const zkvm_u256_le* b, zkvm_u256_le* result);
-zkvm_status zkvm_u256_le_iszero(const zkvm_u256_le* a, zkvm_u256_le* result);
 zkvm_status zkvm_u256_le_byte(const zkvm_u256_le* i, const zkvm_u256_le* a, zkvm_u256_le* result);
 zkvm_status zkvm_u256_le_shl(const zkvm_u256_le* shift, const zkvm_u256_le* value,
                              zkvm_u256_le* result);
@@ -269,16 +275,14 @@ ZKVM_U256_LE_I zkvm_status zkvm_u256_le_sgt(const zkvm_u256_le* a, const zkvm_u2
     zkvm_u256_le_i_set_small(result, zkvm_u256_le_i_slt(b->limbs, a->limbs));
     return ZKVM_EOK;
 }
-ZKVM_U256_LE_I zkvm_status zkvm_u256_le_eq(const zkvm_u256_le* a, const zkvm_u256_le* b,
-                                           zkvm_u256_le* result) {
+ZKVM_U256_LE_I void zkvm_u256_le_eq(const zkvm_u256_le* a, const zkvm_u256_le* b,
+                                    zkvm_u256_le* result) {
     uint64_t d = (a->limbs[0] ^ b->limbs[0]) | (a->limbs[1] ^ b->limbs[1]) |
                  (a->limbs[2] ^ b->limbs[2]) | (a->limbs[3] ^ b->limbs[3]);
     zkvm_u256_le_i_set_small(result, d == 0);
-    return ZKVM_EOK;
 }
-ZKVM_U256_LE_I zkvm_status zkvm_u256_le_iszero(const zkvm_u256_le* a, zkvm_u256_le* result) {
+ZKVM_U256_LE_I void zkvm_u256_le_iszero(const zkvm_u256_le* a, zkvm_u256_le* result) {
     zkvm_u256_le_i_set_small(result, zkvm_u256_le_i_is_zero(a));
-    return ZKVM_EOK;
 }
 
 /* ---- bitwise --------------------------------------------------------------- */
