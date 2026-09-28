@@ -826,22 +826,363 @@ zubmulmod_go:
 	rev8(r13, [ZUB_R3]) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_exp(base, exponent, result) : base^exp mod 2^256.
-ziskasm_zkvm_u256_exp:
-	push r1
-	call zu_load2                     ; ZU_A = base, ZU_B = exponent
-	copyb(0, ZU_A) -> r10
-	copyb(0, ZU_B) -> r11
-	copyb(0, ZU_R) -> r12
-	call zisklib_overflowing_pow256   ; wrapping (mod 2^256), overflow ignored
-	call zu_wr_r
-	copyb(0, 0) -> r10
-	pop r1
-	ret
+; ---- exp: the accumulator, the window table and its arith256 blocks -----------
+u64 ZUBE_ACC0[1] = 0     ; exp: the accumulator
+u64 ZUBE_ACC1[1] = 0
+u64 ZUBE_ACC2[1] = 0
+u64 ZUBE_ACC3[1] = 0
+; exp's window table, 16 contiguous values (T[d] at ZUBE_T0 + 32 * d): base^d
+u64 ZUBE_T0[4]   = 1, 0, 0, 0
+u64 ZUBE_T1_0[1] = 0     ; the base (a private copy: the result may alias it)
+u64 ZUBE_T1_1[1] = 0
+u64 ZUBE_T1_2[1] = 0
+u64 ZUBE_T1_3[1] = 0
+u64 ZUBE_T2[4]   = 0, 0, 0, 0
+u64 ZUBE_T3[4]   = 0, 0, 0, 0
+u64 ZUBE_T4[4]   = 0, 0, 0, 0
+u64 ZUBE_T5[4]   = 0, 0, 0, 0
+u64 ZUBE_T6[4]   = 0, 0, 0, 0
+u64 ZUBE_T7[4]   = 0, 0, 0, 0
+u64 ZUBE_T8[4]   = 0, 0, 0, 0
+u64 ZUBE_T9[4]   = 0, 0, 0, 0
+u64 ZUBE_T10[4]   = 0, 0, 0, 0
+u64 ZUBE_T11[4]   = 0, 0, 0, 0
+u64 ZUBE_T12[4]   = 0, 0, 0, 0
+u64 ZUBE_T13[4]   = 0, 0, 0, 0
+u64 ZUBE_T14[4]   = 0, 0, 0, 0
+u64 ZUBE_T15[4]   = 0, 0, 0, 0
+; arith256 blocks for exp: acc = acc * acc, acc = acc * multiplier, acc = 1 * multiplier
+u64 ZUBE_SQ_A[1] = ZUBE_ACC0
+u64 ZUBE_SQ_B[1] = ZUBE_ACC0
+u64 ZUBE_SQ_C[1] = U256_ZERO
+u64 ZUBE_SQ_DL[1] = ZUBE_ACC0
+u64 ZUBE_SQ_DH[1] = ZUB_HI
+u64 ZUBE_MU_A[1] = ZUBE_ACC0
+u64 ZUBE_MU_B[1] = 0
+u64 ZUBE_MU_C[1] = U256_ZERO
+u64 ZUBE_MU_DL[1] = ZUBE_ACC0
+u64 ZUBE_MU_DH[1] = ZUB_HI
+u64 ZUBE_M1_A[1] = U256_ONE
+u64 ZUBE_M1_B[1] = 0
+u64 ZUBE_M1_C[1] = U256_ZERO
+u64 ZUBE_M1_DL[1] = ZUBE_ACC0
+u64 ZUBE_M1_DH[1] = ZUB_HI
+; and T[k] = T[k - 1] * T[1]
+u64 ZUBE_P2_A[1] = ZUBE_T1_0
+u64 ZUBE_P2_B[1] = ZUBE_T1_0
+u64 ZUBE_P2_C[1] = U256_ZERO
+u64 ZUBE_P2_DL[1] = ZUBE_T2
+u64 ZUBE_P2_DH[1] = ZUB_HI
+u64 ZUBE_P3_A[1] = ZUBE_T2
+u64 ZUBE_P3_B[1] = ZUBE_T1_0
+u64 ZUBE_P3_C[1] = U256_ZERO
+u64 ZUBE_P3_DL[1] = ZUBE_T3
+u64 ZUBE_P3_DH[1] = ZUB_HI
+u64 ZUBE_P4_A[1] = ZUBE_T3
+u64 ZUBE_P4_B[1] = ZUBE_T1_0
+u64 ZUBE_P4_C[1] = U256_ZERO
+u64 ZUBE_P4_DL[1] = ZUBE_T4
+u64 ZUBE_P4_DH[1] = ZUB_HI
+u64 ZUBE_P5_A[1] = ZUBE_T4
+u64 ZUBE_P5_B[1] = ZUBE_T1_0
+u64 ZUBE_P5_C[1] = U256_ZERO
+u64 ZUBE_P5_DL[1] = ZUBE_T5
+u64 ZUBE_P5_DH[1] = ZUB_HI
+u64 ZUBE_P6_A[1] = ZUBE_T5
+u64 ZUBE_P6_B[1] = ZUBE_T1_0
+u64 ZUBE_P6_C[1] = U256_ZERO
+u64 ZUBE_P6_DL[1] = ZUBE_T6
+u64 ZUBE_P6_DH[1] = ZUB_HI
+u64 ZUBE_P7_A[1] = ZUBE_T6
+u64 ZUBE_P7_B[1] = ZUBE_T1_0
+u64 ZUBE_P7_C[1] = U256_ZERO
+u64 ZUBE_P7_DL[1] = ZUBE_T7
+u64 ZUBE_P7_DH[1] = ZUB_HI
+u64 ZUBE_P8_A[1] = ZUBE_T7
+u64 ZUBE_P8_B[1] = ZUBE_T1_0
+u64 ZUBE_P8_C[1] = U256_ZERO
+u64 ZUBE_P8_DL[1] = ZUBE_T8
+u64 ZUBE_P8_DH[1] = ZUB_HI
+u64 ZUBE_P9_A[1] = ZUBE_T8
+u64 ZUBE_P9_B[1] = ZUBE_T1_0
+u64 ZUBE_P9_C[1] = U256_ZERO
+u64 ZUBE_P9_DL[1] = ZUBE_T9
+u64 ZUBE_P9_DH[1] = ZUB_HI
+u64 ZUBE_P10_A[1] = ZUBE_T9
+u64 ZUBE_P10_B[1] = ZUBE_T1_0
+u64 ZUBE_P10_C[1] = U256_ZERO
+u64 ZUBE_P10_DL[1] = ZUBE_T10
+u64 ZUBE_P10_DH[1] = ZUB_HI
+u64 ZUBE_P11_A[1] = ZUBE_T10
+u64 ZUBE_P11_B[1] = ZUBE_T1_0
+u64 ZUBE_P11_C[1] = U256_ZERO
+u64 ZUBE_P11_DL[1] = ZUBE_T11
+u64 ZUBE_P11_DH[1] = ZUB_HI
+u64 ZUBE_P12_A[1] = ZUBE_T11
+u64 ZUBE_P12_B[1] = ZUBE_T1_0
+u64 ZUBE_P12_C[1] = U256_ZERO
+u64 ZUBE_P12_DL[1] = ZUBE_T12
+u64 ZUBE_P12_DH[1] = ZUB_HI
+u64 ZUBE_P13_A[1] = ZUBE_T12
+u64 ZUBE_P13_B[1] = ZUBE_T1_0
+u64 ZUBE_P13_C[1] = U256_ZERO
+u64 ZUBE_P13_DL[1] = ZUBE_T13
+u64 ZUBE_P13_DH[1] = ZUB_HI
+u64 ZUBE_P14_A[1] = ZUBE_T13
+u64 ZUBE_P14_B[1] = ZUBE_T1_0
+u64 ZUBE_P14_C[1] = U256_ZERO
+u64 ZUBE_P14_DL[1] = ZUBE_T14
+u64 ZUBE_P14_DH[1] = ZUB_HI
+u64 ZUBE_P15_A[1] = ZUBE_T14
+u64 ZUBE_P15_B[1] = ZUBE_T1_0
+u64 ZUBE_P15_C[1] = U256_ZERO
+u64 ZUBE_P15_DL[1] = ZUBE_T15
+u64 ZUBE_P15_DH[1] = ZUB_HI
 
-; ============================================================================
-; Signed arithmetic (two's complement via abs + sign)
-; ============================================================================
+; zkvm_status zkvm_u256_exp(base, exponent, result) : base^exponent mod
+; 2^256. Left-to-right, on the accumulator ZUBE_ACC. An exponent >= 256 uses a
+; 4-bit window: a table ZUBE_T0..T15 of base^0..15 (14 preset multiplies), then
+; per digit 4 squarings and one multiply by T[digit] (T[0] = 1, so no branch);
+; the top limb is scanned with a sentinel nibble, the lower limbs are unrolled.
+; A smaller exponent goes a bit at a time. Every arith256 block is preset but
+; the multiplier (ZUBE_MU_B, ZUBE_M1_B), and the result is written last.
+ziskasm_zkvm_u256_exp:
+	rev8(r11, 8[a + 0]) -> r13        ; the exponent's top nonzero limb
+	ltu(0, c), j(zubex_t3)
+	rev8(r11, 8[a + 8]) -> r13
+	ltu(0, c), j(zubex_t2)
+	rev8(r11, 8[a + 16]) -> r13
+	ltu(0, c), j(zubex_t1)
+	rev8(r11, 8[a + 24]) -> r13
+	ltu(c, 256), j(zubex_small)
+	copyb(0, 0) -> r7                   ; r7 = lower limbs left
+	jump(zubex_win)
+zubex_t3:
+	copyb(0, 3) -> r7
+	jump(zubex_win)
+zubex_t2:
+	copyb(0, 2) -> r7
+	jump(zubex_win)
+zubex_t1:
+	copyb(0, 1) -> r7
+zubex_win:
+	rev8(r10, 8[a + 24]) -> [ZUBE_T1_0]
+	rev8(r10, 8[a + 16]) -> [ZUBE_T1_1]
+	rev8(r10, 8[a + 8]) -> [ZUBE_T1_2]
+	rev8(r10, 8[a + 0]) -> [ZUBE_T1_3]
+	arith256(0, ZUBE_P2_A)                ; T2 = T1 * T1
+	arith256(0, ZUBE_P3_A)                ; T3 = T2 * T1
+	arith256(0, ZUBE_P4_A)                ; T4 = T3 * T1
+	arith256(0, ZUBE_P5_A)                ; T5 = T4 * T1
+	arith256(0, ZUBE_P6_A)                ; T6 = T5 * T1
+	arith256(0, ZUBE_P7_A)                ; T7 = T6 * T1
+	arith256(0, ZUBE_P8_A)                ; T8 = T7 * T1
+	arith256(0, ZUBE_P9_A)                ; T9 = T8 * T1
+	arith256(0, ZUBE_P10_A)                ; T10 = T9 * T1
+	arith256(0, ZUBE_P11_A)                ; T11 = T10 * T1
+	arith256(0, ZUBE_P12_A)                ; T12 = T11 * T1
+	arith256(0, ZUBE_P13_A)                ; T13 = T12 * T1
+	arith256(0, ZUBE_P14_A)                ; T14 = T13 * T1
+	arith256(0, ZUBE_P15_A)                ; T15 = T14 * T1
+	sll(r13, 4)                         ; r14 = the nibbles below the top one,
+	or(c, 8) -> r14                     ; then a sentinel that reaches bit 63
+	ltu(r13, 0x1000000000000000), j(zubex_norm, zubex_first)   ; when they are used up
+zubex_norm:                               ; skip leading zero nibbles
+	sll(r13, 4) -> r13
+	sll(r14, 4) -> r14
+	ltu(r13, 0x1000000000000000), j(zubex_norm, zubex_first)
+zubex_first:                              ; acc = 1 * T[top digit]
+	srl(r13, 55)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_M1_B]
+	arith256(0, ZUBE_M1_A)
+	eq(r14, 0x8000000000000000), j(zubex_limbs, zubex_digit)
+zubex_digit:                              ; the top limb's other digits
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r14, 55)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	sll(r14, 4) -> r14
+	eq(r14, 0x8000000000000000), j(zubex_limbs, zubex_digit)
+zubex_limbs:                              ; each lower limb, 16 digits unrolled
+	eq(r7, 0), j(zubex_done)
+	sub(r7, 1) -> r7
+	sll(r7, 3)
+	sub(r11, c)                         ; BE: limb i is word 3 - i
+	rev8(c, 8[a + 24]) -> r13
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 55)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 51)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 47)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 43)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 39)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 35)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 31)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 27)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 23)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 19)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 15)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 11)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 7)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	srl(r13, 3)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	sll(r13, 1)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	arith256(0, ZUBE_SQ_A)
+	sll(r13, 5)
+	and(c, 0x1e0)
+	add(c, ZUBE_T0) -> [ZUBE_MU_B]
+	arith256(0, ZUBE_MU_A)
+	jump(zubex_limbs)
+zubex_small:                              ; exponent < 256, in r13
+	eq(r13, 0), j(zubex_one)
+	rev8(r10, 8[a + 24]) -> [ZUBE_T1_0]
+	rev8(r10, 8[a + 16]) -> [ZUBE_T1_1]
+	rev8(r10, 8[a + 8]) -> [ZUBE_T1_2]
+	rev8(r10, 8[a + 0]) -> [ZUBE_T1_3]
+	copyb(0, ZUBE_T1_0) -> [ZUBE_MU_B]
+	copyb(0, ZUBE_T1_0) -> [ZUBE_M1_B]
+	arith256(0, ZUBE_M1_A)                ; acc = base: the top bit
+	sll(r13, 56) -> r13                 ; r13 = e << 56, r14 = the bits below
+	sll(c, 1)                           ; its top one, then a sentinel that
+	or(c, 0x0100000000000000) -> r14    ; reaches bit 63 when they are used up
+	ltu(r13, 0x8000000000000000), j(zubex_snorm, zubex_sbit0)
+zubex_snorm:                              ; skip leading zero bits
+	sll(r13, 1) -> r13
+	sll(r14, 1) -> r14
+	ltu(r13, 0x8000000000000000), j(zubex_snorm, zubex_sbit0)
+zubex_sbit0:
+	eq(r14, 0x8000000000000000), j(zubex_done, zubex_sbit)
+zubex_sbit:
+	arith256(0, ZUBE_SQ_A)
+	ltu(r14, 0x8000000000000000), j(zubex_snomul)
+	arith256(0, ZUBE_MU_A)
+zubex_snomul:
+	sll(r14, 1) -> r14
+	eq(r14, 0x8000000000000000), j(zubex_done, zubex_sbit)
+zubex_one:                                ; exponent 0 -> 1
+	copyb(r12, 0x100000000000000) -> 8[a + 24]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 0]
+	copyb(0, 0) -> r10
+	ret
+zubex_done:
+	rev8(r12, [ZUBE_ACC0]) -> 8[a + 24]
+	rev8(r12, [ZUBE_ACC1]) -> 8[a + 16]
+	rev8(r12, [ZUBE_ACC2]) -> 8[a + 8]
+	rev8(r12, [ZUBE_ACC3]) -> 8[a + 0]
+	copyb(0, 0) -> r10
+	ret
 
 ; zkvm_status zkvm_u256_sdiv(a, b, quotient) : signed a / b, toward zero;
 ; b == 0 -> 0. -2^255 / -1 = -2^255 falls out: |-2^255| = 2^255.
