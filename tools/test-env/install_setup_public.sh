@@ -16,7 +16,9 @@ main () {
     if [[ -z "$ZISK_SETUP_FILE" ]]; then
         SETUP_VERSION="$(sed -nE 's/^setup_version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$(get_zisk_repo_dir)/setup/Cargo.toml")"
         [[ -n "$SETUP_VERSION" ]] || { err "could not read setup_version from setup/Cargo.toml"; return 1; }
+        # upload_setup.yml publishes "pre-$SETUP_VERSION" outside develop.
         ZISK_SETUP_FILE="zisk-provingkey-${SETUP_VERSION}.tar.gz"
+        curl -sfI "https://storage.googleapis.com/zisk-setup/${ZISK_SETUP_FILE}" > /dev/null || ZISK_SETUP_FILE="zisk-provingkey-pre-${SETUP_VERSION}.tar.gz"
     fi
 
     info "Using setup file: ${ZISK_SETUP_FILE}"
