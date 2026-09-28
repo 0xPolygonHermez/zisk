@@ -63,7 +63,7 @@ impl From<AggProofData> for ProofStark {
         ProofStark {
             airgroup_id: row_data.airgroup_id,
             values: row_data.values,
-            worker_idx: row_data.worker_idx,
+            worker_indexes: row_data.worker_indexes,
         }
     }
 }
@@ -73,7 +73,7 @@ impl From<ProofStark> for AggProofData {
         AggProofData {
             airgroup_id: grpc_row_data.airgroup_id,
             values: grpc_row_data.values,
-            worker_idx: grpc_row_data.worker_idx,
+            worker_indexes: grpc_row_data.worker_indexes,
         }
     }
 }
@@ -83,6 +83,7 @@ impl From<WorkerRegisterRequest> for WorkerRegisterRequestDto {
         WorkerRegisterRequestDto {
             worker_id: req.worker_id.into(),
             compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
+            aggregation_arity: req.aggregation_arity,
         }
     }
 }
@@ -93,6 +94,7 @@ impl From<WorkerReconnectRequest> for WorkerReconnectRequestDto {
             worker_id: req.worker_id.into(),
             compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
             last_known_job_id: req.last_known_job_id.map(JobId::from),
+            aggregation_arity: req.aggregation_arity,
         }
     }
 }
@@ -371,13 +373,31 @@ impl From<AggParamsDto> for AggParams {
             last_proof: dto.last_proof,
             final_proof: dto.final_proof,
             proof_type: i32::from(dto.proof_type),
+            keep_resident: dto.keep_resident,
+            reset_state: dto.reset_state,
         }
     }
 }
 
+fn proof_list_to_dto(proof_list: ProofList) -> Vec<ProofStarkDto> {
+    proof_list
+        .proofs
+        .into_iter()
+        .map(|p| ProofStarkDto {
+            worker_indexes: p.worker_indexes,
+            airgroup_id: p.airgroup_id,
+            values: p.values,
+        })
+        .collect()
+}
+
 impl From<ProofStarkDto> for ProofStark {
     fn from(dto: ProofStarkDto) -> Self {
-        ProofStark { worker_idx: dto.worker_idx, airgroup_id: dto.airgroup_id, values: dto.values }
+        ProofStark {
+            worker_indexes: dto.worker_indexes,
+            airgroup_id: dto.airgroup_id,
+            values: dto.values,
+        }
     }
 }
 
@@ -458,17 +478,11 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                 }))
             }
             Some(execute_task_response::ResultData::Proofs(proof_list)) => {
-                let proofs: Vec<ProofStarkDto> = proof_list
-                    .proofs
-                    .into_iter()
-                    .map(|p| ProofStarkDto {
-                        worker_idx: p.worker_idx,
-                        airgroup_id: p.airgroup_id,
-                        values: p.values,
-                    })
-                    .collect();
-                Some(ExecuteTaskResponseResultDataDto::Proofs(proofs))
+                Some(ExecuteTaskResponseResultDataDto::Proofs(proof_list_to_dto(proof_list)))
             }
+            Some(execute_task_response::ResultData::PartialAggProofs(proof_list)) => Some(
+                ExecuteTaskResponseResultDataDto::PartialAggProofs(proof_list_to_dto(proof_list)),
+            ),
             Some(execute_task_response::ResultData::FinalProof(final_proof)) => {
                 Some(ExecuteTaskResponseResultDataDto::FinalProof(FinalProofDto {
                     proof_data: final_proof.proof_data,

@@ -470,6 +470,10 @@ impl Coordinator {
     ) -> (bool, String, Option<SetupProgramDto>) {
         self.registrations.fetch_add(1, Ordering::Relaxed);
 
+        if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
+            return (false, e.to_string(), None);
+        }
+
         let max_connections = self.config.coordinator.max_total_workers as usize;
         if self.workers_pool.num_workers().await >= max_connections {
             return (
@@ -553,6 +557,10 @@ impl Coordinator {
     ) -> (bool, String, Option<ReconnectionDirectiveDto>, Option<SetupProgramDto>) {
         self.reconnections.fetch_add(1, Ordering::Relaxed);
 
+        if let Err(e) = self.observe_agg_arity(&req.worker_id, req.aggregation_arity).await {
+            return (false, e.to_string(), None, None);
+        }
+
         // Check max connections — but allow if the worker already exists (reconnection)
         let max_connections = self.config.coordinator.max_total_workers as usize;
         if self.workers_pool.num_workers().await >= max_connections
@@ -572,8 +580,13 @@ impl Coordinator {
         // Compute the directive first so we know whether to preserve the worker's
         // Computing state. Doing this before register_worker avoids a window where
         // the worker briefly appears Idle and becomes eligible for new job dispatch.
-        let directive =
-            self.compute_reconnection_directive(&worker_id, last_known_job_id.clone()).await;
+        let (directive, keep_phase) = match self
+            .compute_reconnection_directive(&worker_id, last_known_job_id.clone())
+            .await
+        {
+            Some((d, phase)) => (Some(d), phase),
+            None => (None, None),
+        };
 
         // Non-KeepComputing reconnects won't produce a matching WRC, so any
         // leftover pending_recovery entry is stale and would wedge the worker
@@ -589,10 +602,10 @@ impl Coordinator {
         let default_state =
             if first_setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
-        let initial_state = if matches!(directive, Some(ReconnectionDirectiveDto::KeepComputing)) {
-            self.workers_pool.worker_state(&worker_id).await.unwrap_or(default_state)
-        } else {
-            default_state
+        // `do_disconnect` overwrote the stored state, so it is rebuilt from the job.
+        let initial_state = match (keep_phase, last_known_job_id.as_ref()) {
+            (Some(phase), Some(job_id)) => WorkerState::Computing((job_id.clone(), phase)),
+            _ => default_state,
         };
 
         if let Err(e) = self
@@ -658,7 +671,7 @@ impl Coordinator {
         &self,
         worker_id: &WorkerId,
         last_known_job_id: Option<JobId>,
-    ) -> Option<ReconnectionDirectiveDto> {
+    ) -> Option<(ReconnectionDirectiveDto, Option<JobPhase>)> {
         let claimed_job_id = last_known_job_id?;
 
         let job_entry = {
@@ -666,7 +679,7 @@ impl Coordinator {
             match jobs_map.get(&claimed_job_id) {
                 None => {
                     // Coordinator has no record (restarted or job expired)
-                    return Some(ReconnectionDirectiveDto::CancelStaleJob);
+                    return Some((ReconnectionDirectiveDto::CancelStaleJob, None));
                 }
                 Some(entry) => entry.clone(),
             }
@@ -675,17 +688,26 @@ impl Coordinator {
         let job = job_entry.read().await;
 
         if job.state.is_resolved() {
-            return Some(ReconnectionDirectiveDto::CancelStaleJob);
+            return Some((ReconnectionDirectiveDto::CancelStaleJob, None));
         }
 
         if !job.workers.contains(worker_id) {
-            return Some(ReconnectionDirectiveDto::CancelStaleJob);
+            return Some((ReconnectionDirectiveDto::CancelStaleJob, None));
         }
 
-        // Job is active and worker is still assigned — process survived the
-        // disconnect so the computation may still be running. Let the worker
-        // continue; the re-established channel will deliver the result.
-        Some(ReconnectionDirectiveDto::KeepComputing)
+        // Still assigned: keep computing in the phase it was in. A donor already
+        // released (leaf in, nothing held) is done with the job.
+        let submitted =
+            job.results.get(&JobPhase::Prove).is_some_and(|r| r.contains_key(worker_id));
+        let phase = match &job.state {
+            JobState::Running(JobPhase::Recurse) if !submitted => JobPhase::Prove,
+            JobState::Running(phase) => phase.clone(),
+            _ => JobPhase::Contributions,
+        };
+        if submitted && !job.agg.as_ref().is_some_and(|a| a.holds_work(worker_id)) {
+            return Some((ReconnectionDirectiveDto::CancelStaleJob, None));
+        }
+        Some((ReconnectionDirectiveDto::KeepComputing, Some(phase)))
     }
 
     /// If the worker was Computing, fail its job via `fail_job` so every
@@ -940,7 +962,8 @@ impl Coordinator {
             ExecuteTaskResponseResultDataDto::Proofs(_) => {
                 self.handle_proofs_completion(message).await
             }
-            ExecuteTaskResponseResultDataDto::FinalProof(_) => {
+            ExecuteTaskResponseResultDataDto::FinalProof(_)
+            | ExecuteTaskResponseResultDataDto::PartialAggProofs(_) => {
                 self.handle_recurser_completion(message).await
             }
             ExecuteTaskResponseResultDataDto::WrapResult(_) => {
@@ -1036,7 +1059,7 @@ impl Coordinator {
     /// Two deliberate asymmetries in the mapping:
     ///
     /// * `Proofs` is accepted in `Recurse` as well as `Prove`.
-    ///   `resolve_recurser_assignment` flips the job to `Recurse` as soon as the
+    ///   the aggregation scheduler flips the job to `Recurse` as soon as the
     ///   *first* worker finishes Phase 2, so the remaining workers legitimately
     ///   report in while the job is already recursing.
     /// * Execution-only jobs run in `Running(Contributions)` — `JobPhase::Execution`
@@ -1075,6 +1098,9 @@ impl Coordinator {
                 ("Proofs", matches!(phase, JobPhase::Prove | JobPhase::Recurse), "Prove or Recurse")
             }
             Payload::FinalProof(_) => ("FinalProof", *phase == JobPhase::Recurse, "Recurse"),
+            Payload::PartialAggProofs(_) => {
+                ("PartialAggProofs", *phase == JobPhase::Recurse, "Recurse")
+            }
             Payload::WrapResult(_) => ("WrapResult", *phase == JobPhase::Recurse, "Recurse"),
         };
 
