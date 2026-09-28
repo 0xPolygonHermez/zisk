@@ -421,7 +421,7 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
             let imm4_3 = ((inst >> 5) & 0x3) as u32;
             let imm8_6 = ((inst >> 2) & 0x7) as u32;
             i.imm = ((imm8_6 << 6) | (imm5 << 5) | (imm4_3 << 3)) as i32;
-            if i.rd == 0 {
+            if i.rd == 0 && inst_name == RiscvInstName::CLdsp {
                 i.inst_name = RiscvInstName::CReserved;
             }
             i.rs1 = 2; // x2 is always the base pointer for LDSP/FLDSP instructions
