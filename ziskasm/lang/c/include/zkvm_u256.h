@@ -90,6 +90,10 @@ ZKVM_U256_ZC_BIN(and, 0x877)
 ZKVM_U256_ZC_BIN(or, 0x878)
 ZKVM_U256_ZC_BIN(xor, 0x879)
 ZKVM_U256_ZC_BIN(byte, 0x87B)
+ZKVM_U256_ZC_BIN(shl, 0x87C)
+ZKVM_U256_ZC_BIN(shr, 0x87D)
+ZKVM_U256_ZC_BIN(sar, 0x87E)
+ZKVM_U256_ZC_BIN(signextend, 0x87F)
 ZKVM_U256_ZC_UN(iszero, 0x876)
 ZKVM_U256_ZC_UN(not, 0x87A)
 #undef ZKVM_U256_ZC_BIN
@@ -105,14 +109,6 @@ zkvm_status zkvm_u256_mulmod(const zkvm_u256* a, const zkvm_u256* b, const zkvm_
                              zkvm_u256* result);
 zkvm_status zkvm_u256_exp(const zkvm_u256* base, const zkvm_u256* exponent,
                           zkvm_u256* result);
-zkvm_status zkvm_u256_shl(const zkvm_u256* shift, const zkvm_u256* value,
-                          zkvm_u256* result);
-zkvm_status zkvm_u256_shr(const zkvm_u256* shift, const zkvm_u256* value,
-                          zkvm_u256* result);
-zkvm_status zkvm_u256_sar(const zkvm_u256* shift, const zkvm_u256* value,
-                          zkvm_u256* result);
-zkvm_status zkvm_u256_signextend(const zkvm_u256* b, const zkvm_u256* value,
-                                 zkvm_u256* result);
 
 #else
 /* ---- declarations only: calls ------------------------------------------- */
