@@ -1099,7 +1099,9 @@ pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64], result: &mut [u64]
 // EF zkVM-accelerator ABI (zkvm_accelerators.h, zkvm_u256.h) — zkvmcall thunks,
 // the Rust twin of ziskasm/lang/c/src/zkvm_calls.s. Each `zkvm_*` is a naked
 // function `csrs <id>, x0; ret`; the transpiler turns the `csrs` into a jump to the
-// native `ziskasm_zkvm_*` .zisk routine, which returns straight to the caller. The
+// native `ziskasm_zkvm_*` .zisk routine, which returns straight to the caller, or,
+// for an inline zkvmcall (most of zkvm_u256.h), into the routine's body followed by
+// a0 = ZKVM_EOK, so the thunk's `ret` returns. The
 // ID comes from `zisk_definitions::ZKVMCALLS` by name, so it cannot drift. A guest
 // links EITHER these OR the portable `zkvm-interface` impl of the same standard
 // symbols — never both. Byte structs cross as raw pointers (ABI-identical).

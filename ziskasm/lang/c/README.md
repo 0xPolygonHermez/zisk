@@ -145,32 +145,45 @@ The library reaches the `.zisk` routines in two ways:
 | Family | Count | Declared in | Implemented by |
 |--------|-------|-------------|----------------|
 | `zkvm_*` — EF accelerators | 20 | [`zkvm_accelerators.h`](include/zkvm_accelerators.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s); `zkvm_keccak_f1600` is inline in the header |
-| `zkvm_u256_*` — EF U256 | 27 | [`zkvm_u256.h`](include/zkvm_u256.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s) |
+| `zkvm_u256_*` — EF U256 | 27 | [`zkvm_u256.h`](include/zkvm_u256.h) | inline zkvmcalls, but for the division family and `exp`, which are calls, to `zkvm/u256.zisk`; every function also has a thunk in [`src/zkvm_calls.s`](src/zkvm_calls.s) (used with `ZKVM_U256_CALLS` or a declarations-only header); with `ZKVM_U256_INLINE`, inline C in the header except the division family |
 | `zkvm_u256_le_*` — little-endian U256 (ZisK proposal, not EF) | 27 | [`zkvm_u256_le.h`](include/zkvm_u256_le.h) | inline zkvmcalls, but for the division family and `exp`, which are zkvmcall thunks, to `zkvm/u256_le.zisk`; with `ZKVM_U256_LE_INLINE`, inline C in the header except the division family |
 | `read_input`/`write_output` — EF I/O | 2 | [`zkvm_io.h`](include/zkvm_io.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s) |
 | `ziskos_*` — ZisK flat ABI | 27 | [`zisklib.h`](include/zisklib.h) | stubs in [`src/zisklib_stubs.c`](src/zisklib_stubs.c), redirected by `REDIRECTS` |
 
-The `zkvm_u256_*` functions have a second implementation under the same ABI:
-define `ZKVM_U256_INLINE` before including `zkvm_u256.h` and every function except
-the division family (`div`, `mod`, `divmod`, `sdiv`, `smod`, `sdivmod`) becomes a
-`static inline` definition from [`zkvm_u256_inline.h`](include/zkvm_u256_inline.h).
-Guest code doesn't change. [`example/u256_bench_guest.c`](example/u256_bench_guest.c)
-measures both: the inline versions take 1.4× to 5.3× fewer steps.
+The `zkvm_u256_*` functions have three builds under the same ABI, chosen when
+including `zkvm_u256.h`:
+- by default, every function but the division family (`div`, `mod`, `divmod`,
+  `sdiv`, `smod`, `sdivmod`) and `exp` is an inline zkvmcall (see below), and those
+  seven are calls;
+- with `ZKVM_U256_CALLS`, every function is only declared, as in the EF standard's
+  header, and called through its thunk; the thunk of an inline zkvmcall expands the
+  same routine body, so it gives the same results for about 10 more steps;
+- with `ZKVM_U256_INLINE`, every function but the division family is a
+  `static inline` C definition from [`zkvm_u256_inline.h`](include/zkvm_u256_inline.h).
+
+Guest code doesn't change. The `.zisk` routines are the little-endian ones below
+with every limb load and store turned into a `rev8` at the mirrored offset, which
+costs nothing extra; the functions that feed a precompile or the division hint
+convert their operands to little-endian scratch first. So they cost what the
+little-endian ones do, plus about 8 to 12 steps for those conversions:
+[`example/u256_bench_guest.c`](example/u256_bench_guest.c) measures `add` at 13
+steps (C inline 40, thunk 23), the shifts at 30 to 32 (C inline 60 to 63), `div`
+at 55 and `exp` at 333 (C inline 3,738).
 
 [`zkvm_u256_le.h`](include/zkvm_u256_le.h) is the same 27 operations on four
 little-endian 64-bit limbs instead of 32 big-endian bytes, the layout EVM
 interpreters keep their stack in and the ZisK precompiles consume, so most
-functions become a single precompile on the operands in place. It has the same two
-implementations as the big-endian ABI: the `.zisk` routines by default, inline C
-with `ZKVM_U256_LE_INLINE`. By default every function but the division family
+functions become a single precompile on the operands in place. It has two builds:
+the `.zisk` routines by default, inline C with `ZKVM_U256_LE_INLINE`. By default every function but the division family
 and `exp` (which stay thunk calls) is an inline zkvmcall: a `csrs` per argument
 that the transpiler replaces by the routine's body on the registers the compiler
 picked, with no call and no register saves (see `definitions/src/zkvmcall.rs`),
-and a constant `ZKVM_EOK` status that the compiler folds away. The shifts expand to about 100 instructions per
-call site, the others to 4..60. `add` costs 4 steps as an
-inline zkvmcall and 5 as inline C, against 175 and 40 for the big-endian ABI.
+and a constant `ZKVM_EOK` status that the compiler folds away. The shifts expand
+to about 100 instructions per call site, the others to 4..60. `add` costs 4 steps
+as an inline zkvmcall and 5 as inline C, against 13 and 40 for the big-endian ABI.
 [`example/u256_le_guest.c`](example/u256_le_guest.c) checks all 27 against the
-big-endian ABI, including aliasing, and `u256_bench_guest.c -DU256_LE` measures them
+big-endian ABI, including aliasing (and so, as long as the little-endian side is
+unchanged, checks the big-endian one too), and `u256_bench_guest.c -DU256_LE` measures them
 (add `-DZKVM_U256_LE_INLINE` for the inline implementation).
 
 The zkvmcall IDs live in `definitions/src/zkvmcall.rs`. `REDIRECTS` (28 entries)
