@@ -88,7 +88,8 @@ static void load(int i, int j, int k) {
             if (!same_le(&T, &LR)) bad_alias[idx] = 1;                            \
         }
 
-/* Binary op returning nothing (add, sub, mul, eq, and, or, xor). */
+/* Binary op returning nothing (add, sub, mul, lt, gt, slt, sgt, eq, and, or,
+ * xor). */
 #define CHECK_BIN_VOID(idx, op)                                                   \
     for (int i = 0; i < NV; i++)                                                  \
         for (int j = 0; j < NV; j++) {                                            \
@@ -113,13 +114,14 @@ static void load(int i, int j, int k) {
         if (!same_le(&T, &LR)) bad_alias[idx] = 1;                                \
     }
 
-#define CHECK_TER(idx, op)                                                        \
+/* Ternary op returning nothing (addmod, mulmod). */
+#define CHECK_TER_VOID(idx, op)                                                   \
     for (int i = 0; i < NV; i++)                                                  \
         for (int j = 0; j < NV; j++)                                              \
             for (int k = 0; k < NV; k++) {                                        \
                 load(i, j, k);                                                    \
                 if (zkvm_u256_##op(&BA, &BB, &BN, &BR) != ZKVM_EOK) bad[idx] = 1; \
-                if (zkvm_u256_le_##op(&LA, &LB, &LN, &LR) != ZKVM_EOK) bad[idx] = 1; \
+                zkvm_u256_le_##op(&LA, &LB, &LN, &LR);                            \
                 if (!same(&LR, &BR)) bad[idx] = 1;                                \
                 T = LA; zkvm_u256_le_##op(&T, &LB, &LN, &T);                      \
                 if (!same_le(&T, &LR)) bad_alias[idx] = 1;                        \
@@ -151,16 +153,16 @@ int main(void) {
     CHECK_BIN(3, div)
     CHECK_BIN(4, mod)
     CHECK_DIVMOD(5, divmod)
-    CHECK_TER(6, addmod)
-    CHECK_TER(7, mulmod)
+    CHECK_TER_VOID(6, addmod)
+    CHECK_TER_VOID(7, mulmod)
     CHECK_BIN(8, exp)
     CHECK_BIN(9, sdiv)
     CHECK_BIN(10, smod)
     CHECK_DIVMOD(11, sdivmod)
-    CHECK_BIN(12, lt)
-    CHECK_BIN(13, gt)
-    CHECK_BIN(14, slt)
-    CHECK_BIN(15, sgt)
+    CHECK_BIN_VOID(12, lt)
+    CHECK_BIN_VOID(13, gt)
+    CHECK_BIN_VOID(14, slt)
+    CHECK_BIN_VOID(15, sgt)
     CHECK_BIN_VOID(16, eq)
     CHECK_UN_VOID(17, iszero)
     CHECK_BIN_VOID(18, and)

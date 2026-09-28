@@ -13,13 +13,13 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
-use zisk_core::zisk_inst::{ZiskInst, SRC_C, SRC_REG, STORE_MEM, STORE_REG};
+use zisk_core::zisk_inst::{ZiskInst, SRC_C, SRC_IMM, SRC_REG, STORE_MEM, STORE_REG};
 use zisk_core::zisk_inst_builder::ZiskInstBuilder;
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::{
     GENERAL_RAM_ADDR, RAM_ADDR, RAM_SIZE, REG_FIRST, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SYS_ADDR,
 };
-use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp};
+use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, InlineBody};
 
 use crate::parser::{
     self, ASource, BSource, Control, DataDecl, Instruction, JumpTarget, Kind, Num, Op, Program,
@@ -166,48 +166,93 @@ impl ZiskLibrary {
     }
 
     /// The body of the routine at `name`, for the transpiler to expand at an inline
-    /// zkvmcall with `args` pointer arguments: every instruction from its entry up to
-    /// (excluding) the first `setpc`, its return. The body must be straight-line
-    /// code that reads no RISC-V register but its arguments (r10, r11, ..., which
-    /// the transpiler replaces by the caller's registers) and writes only memory and
-    /// the virtual registers r32..r39, so it clobbers nothing the compiler can see.
-    /// It may not start by reading `c` either.
-    pub fn inline_body(&self, name: &str, args: u8) -> Result<Vec<ZiskInst>, String> {
+    /// zkvmcall with `args` pointer arguments: every instruction reachable from its
+    /// entry, following branches (possibly into other routines' code), as a small
+    /// control-flow graph (see [`InlineBody`]). A `ret` becomes the end of the call
+    /// site and a `jump(label)` is followed to its target, so neither costs a step.
+    ///
+    /// The body reads no RISC-V register but its arguments (r10, r11, ..., which the
+    /// transpiler replaces by the caller's registers) and writes only memory and the
+    /// virtual registers r32..r39, so it clobbers nothing the compiler can see. It
+    /// has no calls, and neither its entry nor a `jump` target reads `c` (a skipped
+    /// `jump` would have set it).
+    pub fn inline_body(&self, name: &str, args: u8) -> Result<InlineBody, String> {
         let entry = *self.symbols.get(name).ok_or_else(|| format!("no routine `{name}`"))?;
+        let at = |addr: u64| format!("`{name}` + {}", addr as i64 - entry as i64);
+        let inst = |addr: u64| {
+            self.insts.get(&addr).map(|b| &b.i).ok_or_else(|| format!("{}: no code", at(addr)))
+        };
+        let reads_c = |i: &ZiskInst| i.a_src == SRC_C || i.b_src == SRC_C;
+
+        // Where control goes from `addr`: the first instruction that is neither a
+        // `jump` (followed) nor a `ret` (None: the end of the call site).
+        let resolve = |mut addr: u64| -> Result<Option<u64>, String> {
+            for jumps in 0..=self.insts.len() {
+                let i = inst(addr)?;
+                if !i.set_pc {
+                    if jumps > 0 && reads_c(i) {
+                        return Err(format!("{}: a jump target reads c", at(addr)));
+                    }
+                    return Ok(Some(addr));
+                }
+                if i.op_str == "and" && i.b_src == SRC_REG && i.b_offset_imm0 == 1 {
+                    return Ok(None); // ret
+                }
+                if i.op_str == "copyb" && i.a_src == SRC_IMM && i.b_src == SRC_IMM {
+                    addr = i.b_offset_imm0 | (i.b_use_sp_imm1 << 32); // jump(label)
+                    continue;
+                }
+                return Err(format!("{}: indirect jump", at(addr)));
+            }
+            Err(format!("{}: a loop of jumps", at(addr)))
+        };
+
+        let first = resolve(entry)?.ok_or_else(|| format!("`{name}` is empty"))?;
+        if reads_c(inst(first)?) {
+            return Err(format!("{}: starts by reading c", at(first)));
+        }
+
+        // Every reachable instruction, and where each one continues to.
         let arg_regs = 10..10 + args as u64;
         let virtual_regs = REG_FIRST + 32 * 8..REG_FIRST + 40 * 8;
         let reg_area = REG_FIRST..REG_FIRST + 64 * 8;
-        let mut body = Vec::new();
-        let mut addr = entry;
-        loop {
-            let i = &self.insts.get(&addr).ok_or_else(|| format!("`{name}` has no return"))?.i;
-            if i.set_pc {
-                break;
+        let mut succ: BTreeMap<u64, [Option<u64>; 2]> = BTreeMap::new();
+        let mut todo = vec![first];
+        while let Some(addr) = todo.pop() {
+            if succ.contains_key(&addr) {
+                continue;
             }
-            let at = || format!("`{name}` + {}", addr - entry);
-            // A precompile's flag is always 0, and its jmp_offset1 may be a parameter.
-            let jmp1_ok = i.is_precompiled || i.jmp_offset1 == INST_SIZE;
-            if !jmp1_ok || i.jmp_offset2 != INST_SIZE || i.store_pc || i.end {
-                return Err(format!("{}: not straight-line code", at()));
+            let i = inst(addr)?;
+            if i.store_pc || i.end {
+                return Err(format!("{}: a call or an end", at(addr)));
             }
             for (src, reg) in [(i.a_src, i.a_offset_imm0), (i.b_src, i.b_offset_imm0)] {
                 if src == SRC_REG && !arg_regs.contains(&reg) {
-                    return Err(format!("{}: reads r{reg}", at()));
-                }
-                if src == SRC_C && body.is_empty() {
-                    return Err(format!("{}: starts by reading c", at()));
+                    return Err(format!("{}: reads r{reg}", at(addr)));
                 }
             }
             let dst = i.store_offset as u64;
             if i.store == STORE_REG
                 || (i.store == STORE_MEM && reg_area.contains(&dst) && !virtual_regs.contains(&dst))
             {
-                return Err(format!("{}: writes a register outside r32..r39", at()));
+                return Err(format!("{}: writes a register outside r32..r39", at(addr)));
             }
-            body.push(i.clone());
-            addr += INST_SIZE as u64;
+            let target = |off: i64| resolve((addr as i64 + off) as u64);
+            // A precompile's flag is always 0, and its jmp_offset1 may be a parameter.
+            let next2 = target(i.jmp_offset2)?;
+            let next1 = if i.is_precompiled { next2 } else { target(i.jmp_offset1)? };
+            todo.extend(next1.into_iter().chain(next2));
+            succ.insert(addr, [next1, next2]);
         }
-        Ok(body)
+
+        // Entry first, then the rest in address order.
+        let order: Vec<u64> =
+            std::iter::once(first).chain(succ.keys().copied().filter(|&a| a != first)).collect();
+        let index: HashMap<u64, usize> = order.iter().enumerate().map(|(k, &a)| (a, k)).collect();
+        Ok(InlineBody {
+            insts: order.iter().map(|a| self.insts[a].i.clone()).collect(),
+            next: order.iter().map(|a| succ[a].map(|n| n.map(|n| index[&n]))).collect(),
+        })
     }
 }
 

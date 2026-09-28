@@ -1588,26 +1588,26 @@ impl<'a> Riscv2ZiskContext<'a> {
         zib.build(self.rom);
     }
 
-    /// An inline zkvmcall: the library routine's straight-line `body` (see
-    /// `ZiskLibrary::inline_body`) in place of its `csrs` sequence, which starts at
-    /// `at_addr` and ends before `next_addr`. The body reads `regs[k]` where it reads
-    /// r(10 + k). Its first instruction takes the RISC-V address and the rest take
-    /// internal ones, each jumping to the next and the last to `next_addr`.
+    /// An inline zkvmcall: the library routine's `body` (see `InlineBody`) in place
+    /// of its `csrs` sequence, which starts at `at_addr` and ends before `next_addr`.
+    /// The body reads `regs[k]` where it reads r(10 + k). Its first instruction takes
+    /// the RISC-V address and the rest take internal ones, chained in body order;
+    /// every jump is explicit, and an exit goes to `next_addr`.
     pub fn emit_inline_zkvmcall(
         &mut self,
         at_addr: u64,
         next_addr: u64,
         regs: &[u32],
-        body: &[ZiskInst],
+        body: &InlineBody,
     ) {
-        let mut paddr = at_addr;
-        for (k, template) in body.iter().enumerate() {
-            let last = k + 1 == body.len();
-            let next = if last { next_addr } else { self.rom.get_internal_address() };
+        let addrs: Vec<u64> = (0..body.insts.len())
+            .map(|k| if k == 0 { at_addr } else { self.rom.get_internal_address() })
+            .collect();
+        for (k, template) in body.insts.iter().enumerate() {
             let mut zib = if k == 0 {
                 ZiskInstBuilder::new_from_riscv(at_addr, "zkvmcall".to_string())
             } else {
-                ZiskInstBuilder::new_internal(paddr, at_addr)
+                ZiskInstBuilder::new_internal(addrs[k], at_addr)
             };
             let (paddr0, riscv_inst, external_ref_addr) =
                 (zib.i.paddr, zib.i.riscv_inst.take(), zib.i.external_ref_addr);
@@ -1615,7 +1615,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             zib.i.paddr = paddr0;
             zib.i.riscv_inst = riscv_inst;
             zib.i.external_ref_addr = external_ref_addr;
-            zib.i.next_internal_inst = (!last).then_some(next);
+            zib.i.next_internal_inst = addrs.get(k + 1).copied();
             zib.i.meta_rs1 = None;
             zib.i.meta_rd = None;
             for (src, reg) in [
@@ -1628,11 +1628,13 @@ impl<'a> Riscv2ZiskContext<'a> {
                     (*src, *reg) = if r == 0 { (SRC_IMM, 0) } else { (SRC_REG, r) };
                 }
             }
-            let jmp = next as i64 - paddr as i64;
+            let jmp =
+                |next: Option<usize>| next.map_or(next_addr, |n| addrs[n]) as i64 - addrs[k] as i64;
+            let [next1, next2] = body.next[k];
             // A precompile's jmp_offset1 is a parameter (its flag is always 0).
-            zib.j(if template.is_precompiled { template.jmp_offset1 } else { jmp }, jmp);
+            let jmp1 = if template.is_precompiled { template.jmp_offset1 } else { jmp(next1) };
+            zib.j(jmp1, jmp(next2));
             zib.build(self.rom);
-            paddr = next;
         }
     }
 
@@ -2813,6 +2815,17 @@ impl<'a> Riscv2ZiskContext<'a> {
 /// Riscv2ZiskContext to perform the instruction transpilation
 /// Transpiles a RISC-V code section into ZisK instructions.
 ///
+/// A library routine's body for an inline zkvmcall (see `ZiskLibrary::inline_body`),
+/// as a small control-flow graph: the instructions, entry first, and for each one
+/// the index of the instruction it continues to when its flag is set
+/// (`jmp_offset1`) and when it is not (`jmp_offset2`), `None` being the end of the
+/// call site. A precompile's first target is unused: its `jmp_offset1` is a
+/// parameter.
+pub struct InlineBody {
+    pub insts: Vec<ZiskInst>,
+    pub next: Vec<[Option<usize>; 2]>,
+}
+
 /// `redirects` maps an intercepted guest-function entry address to
 /// `(library_entry_address, function_byte_size)`. When transpilation reaches such
 /// an entry, it emits a single tail-jump into the ZisK library (via
@@ -2825,15 +2838,15 @@ impl<'a> Riscv2ZiskContext<'a> {
 /// entry. Every zkvmcall in the section must be in the map; [`zkvmcall_ids`] finds
 /// them beforehand (and checks their form).
 ///
-/// `inline_zkvmcalls` maps the ID of an inline zkvmcall to its routine's body (see
-/// `ZiskLibrary::inline_body`), which replaces each of its `csrs` sequences.
+/// `inline_zkvmcalls` maps the ID of an inline zkvmcall to its routine's body, which
+/// replaces each of its `csrs` sequences.
 pub fn add_zisk_code(
     rom: &mut ZiskRom,
     addr: u64,
     data: &[u8],
     redirects: &std::collections::HashMap<u64, (u64, u64)>,
     zkvmcalls: &std::collections::HashMap<u16, u64>,
-    inline_zkvmcalls: &std::collections::HashMap<u16, Vec<ZiskInst>>,
+    inline_zkvmcalls: &std::collections::HashMap<u16, InlineBody>,
 ) {
     // Convert input data to a u32 vector
     let code_vector: Vec<u16> = convert_vector(data);

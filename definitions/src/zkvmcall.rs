@@ -25,9 +25,10 @@
 //
 // The transpiler replaces the sequence with the routine's body (see
 // `ZiskLibrary::inline_body`), reading those registers where the body reads r10,
-// r11, ...: no argument moves, no jump, no return. The body is straight-line code
-// that writes only memory and the virtual registers r32..r39, so the asm declares
-// no register clobbers and the compiler saves nothing around it.
+// r11, ...: no argument moves, no call, no return. The body may branch (its `ret`s
+// become jumps past the sequence, and its `jump`s cost nothing), but it has no
+// calls and writes only memory and the virtual registers r32..r39, so the asm
+// declares no register clobbers and the compiler saves nothing around it.
 //
 // Important: IDs must match ziskasm/lang/c/src/zkvm_calls.s (checked by a test in
 // transpilers/common), and are never reused or renumbered once assigned.
@@ -124,13 +125,13 @@ pub const ZKVMCALLS: &[ZkvmCall] = &[
     zci(0x886, "zkvm_u256_le_add", "ziskasm_zkvm_u256_le_add", 3),
     zci(0x887, "zkvm_u256_le_sub", "ziskasm_zkvm_u256_le_sub", 3),
     zci(0x888, "zkvm_u256_le_mul", "ziskasm_zkvm_u256_le_mul", 3),
-    zc(0x889, "zkvm_u256_le_addmod", "ziskasm_zkvm_u256_le_addmod"),
-    zc(0x88A, "zkvm_u256_le_mulmod", "ziskasm_zkvm_u256_le_mulmod"),
+    zci(0x889, "zkvm_u256_le_addmod", "ziskasm_zkvm_u256_le_addmod", 4),
+    zci(0x88A, "zkvm_u256_le_mulmod", "ziskasm_zkvm_u256_le_mulmod", 4),
     zc(0x88B, "zkvm_u256_le_exp", "ziskasm_zkvm_u256_le_exp"),
-    zc(0x88C, "zkvm_u256_le_lt", "ziskasm_zkvm_u256_le_lt"),
-    zc(0x88D, "zkvm_u256_le_gt", "ziskasm_zkvm_u256_le_gt"),
-    zc(0x88E, "zkvm_u256_le_slt", "ziskasm_zkvm_u256_le_slt"),
-    zc(0x88F, "zkvm_u256_le_sgt", "ziskasm_zkvm_u256_le_sgt"),
+    zci(0x88C, "zkvm_u256_le_lt", "ziskasm_zkvm_u256_le_lt", 3),
+    zci(0x88D, "zkvm_u256_le_gt", "ziskasm_zkvm_u256_le_gt", 3),
+    zci(0x88E, "zkvm_u256_le_slt", "ziskasm_zkvm_u256_le_slt", 3),
+    zci(0x88F, "zkvm_u256_le_sgt", "ziskasm_zkvm_u256_le_sgt", 3),
     zci(0x890, "zkvm_u256_le_eq", "ziskasm_zkvm_u256_le_eq", 3),
     zci(0x891, "zkvm_u256_le_iszero", "ziskasm_zkvm_u256_le_iszero", 2),
     zci(0x892, "zkvm_u256_le_and", "ziskasm_zkvm_u256_le_and", 3),

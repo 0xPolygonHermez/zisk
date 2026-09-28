@@ -444,54 +444,68 @@ ziskasm_zkvm_u256_le_mul:
 	arith256(0, ZULM_A)                 ; high 256 bits discarded (wrapping)
 	ret
 
-; zkvm_status zkvm_u256_le_addmod(a, b, n, result) : (a * 1 + b) mod n; n == 0 -> 0.
+; void zkvm_u256_le_addmod(a, b, n, result) : (a * 1 + b) mod n; n == 0 -> 0.
+; Inline zkvmcall. n is tested from its top limb down, so a modulus with a
+; nonzero top limb costs one test (the jumps cost nothing inline).
 ziskasm_zkvm_u256_le_addmod:
-	copyb(r12, 8[a + 0]) -> r5
-	copyb(r12, 8[a + 8]) -> r6
-	copyb(r12, 8[a + 16]) -> r7
-	copyb(r12, 8[a + 24]) -> r14
-	or(r5, r6) -> r5
-	or(r5, r7) -> r5
-	or(r5, r14) -> r5
-	eq(r5, 0), j(zuladdmod_zero)
+	copyb(r12, 8[a + 24])
+	eq(c, 0), j(zuladdmod_2)
+zuladdmod_go:
 	copyb(0, r10) -> [ZULAM_A]
 	copyb(0, r11) -> [ZULAM_C]
 	copyb(0, r12) -> [ZULAM_N]
 	copyb(0, r13) -> [ZULAM_D]
-	arith256_mod(0, ZULAM_A) -> r5
-	copyb(0, 0) -> r10
+	arith256_mod(0, ZULAM_A)
 	ret
+zuladdmod_2:
+	copyb(r12, 8[a + 16])
+	eq(c, 0), j(zuladdmod_1)
+	jump(zuladdmod_go)
+zuladdmod_1:
+	copyb(r12, 8[a + 8])
+	eq(c, 0), j(zuladdmod_0)
+	jump(zuladdmod_go)
+zuladdmod_0:
+	copyb(r12, 8[a + 0])
+	eq(c, 0), j(zuladdmod_zero)
+	jump(zuladdmod_go)
 zuladdmod_zero:
 	copyb(r13, 0) -> 8[a + 0]
 	copyb(r13, 0) -> 8[a + 8]
 	copyb(r13, 0) -> 8[a + 16]
 	copyb(r13, 0) -> 8[a + 24]
-	copyb(0, 0) -> r10
 	ret
 
-; zkvm_status zkvm_u256_le_mulmod(a, b, n, result) : (a * b + 0) mod n; n == 0 -> 0.
+; void zkvm_u256_le_mulmod(a, b, n, result) : (a * b + 0) mod n; n == 0 -> 0.
+; Inline zkvmcall. n is tested from its top limb down, so a modulus with a
+; nonzero top limb costs one test (the jumps cost nothing inline).
 ziskasm_zkvm_u256_le_mulmod:
-	copyb(r12, 8[a + 0]) -> r5
-	copyb(r12, 8[a + 8]) -> r6
-	copyb(r12, 8[a + 16]) -> r7
-	copyb(r12, 8[a + 24]) -> r14
-	or(r5, r6) -> r5
-	or(r5, r7) -> r5
-	or(r5, r14) -> r5
-	eq(r5, 0), j(zulmulmod_zero)
+	copyb(r12, 8[a + 24])
+	eq(c, 0), j(zulmulmod_2)
+zulmulmod_go:
 	copyb(0, r10) -> [ZULMU_A]
 	copyb(0, r11) -> [ZULMU_B]
 	copyb(0, r12) -> [ZULMU_N]
 	copyb(0, r13) -> [ZULMU_D]
-	arith256_mod(0, ZULMU_A) -> r5
-	copyb(0, 0) -> r10
+	arith256_mod(0, ZULMU_A)
 	ret
+zulmulmod_2:
+	copyb(r12, 8[a + 16])
+	eq(c, 0), j(zulmulmod_1)
+	jump(zulmulmod_go)
+zulmulmod_1:
+	copyb(r12, 8[a + 8])
+	eq(c, 0), j(zulmulmod_0)
+	jump(zulmulmod_go)
+zulmulmod_0:
+	copyb(r12, 8[a + 0])
+	eq(c, 0), j(zulmulmod_zero)
+	jump(zulmulmod_go)
 zulmulmod_zero:
 	copyb(r13, 0) -> 8[a + 0]
 	copyb(r13, 0) -> 8[a + 8]
 	copyb(r13, 0) -> 8[a + 16]
 	copyb(r13, 0) -> 8[a + 24]
-	copyb(0, 0) -> r10
 	ret
 
 ; zkvm_status zkvm_u256_le_exp(base, exponent, result) : base^exponent mod 2^256.
@@ -588,26 +602,26 @@ zulex_done:
 ; Comparisons (result is 0 or 1): unrolled from the most significant limb
 ; ============================================================================
 
-; zkvm_status zkvm_u256_le_lt(a, b, result) : a < b (unsigned).
+; void zkvm_u256_le_lt(a, b, result) : a < b (unsigned). Inline zkvmcall: from
+; the most significant limb down, the first that differs decides.
 ziskasm_zkvm_u256_le_lt:
-	copyb(r10, 8[a + 24]) -> r5
-	copyb(r11, 8[a + 24]) -> r6
-zullt_3:                                ; r5/r6 = most significant limbs of a/b
-	ltu(r5, r6), j(zullt_one)
-	ltu(r6, r5), j(zullt_zero)
-	copyb(r10, 8[a + 16]) -> r5
-	copyb(r11, 8[a + 16]) -> r6
-	ltu(r5, r6), j(zullt_one)
-	ltu(r6, r5), j(zullt_zero)
-	copyb(r10, 8[a + 8]) -> r5
-	copyb(r11, 8[a + 8]) -> r6
-	ltu(r5, r6), j(zullt_one)
-	ltu(r6, r5), j(zullt_zero)
-	copyb(r10, 8[a + 0]) -> r5
-	copyb(r11, 8[a + 0]) -> r6
-	ltu(r5, r6), j(zullt_one)
-	ltu(r6, r5), j(zullt_zero)
-	jump(zullt_zero)
+	copyb(r10, 8[a + 24]) -> r32
+	copyb(r11, 8[a + 24]) -> r33
+zullt_3:                                ; r32/r33 = most significant limbs of a/b
+	ltu(r32, r33), j(zullt_one)
+	ltu(r33, r32), j(zullt_zero)
+	copyb(r10, 8[a + 16]) -> r32
+	copyb(r11, 8[a + 16]) -> r33
+	ltu(r32, r33), j(zullt_one)
+	ltu(r33, r32), j(zullt_zero)
+	copyb(r10, 8[a + 8]) -> r32
+	copyb(r11, 8[a + 8]) -> r33
+	ltu(r32, r33), j(zullt_one)
+	ltu(r33, r32), j(zullt_zero)
+	copyb(r10, 8[a + 0]) -> r32
+	copyb(r11, 8[a + 0]) -> r33
+	ltu(r32, r33), j(zullt_one)
+	jump(zullt_zero)                    ; equal
 zullt_zero:
 	copyb(r12, 0) -> 8[a + 0]
 	jump(zullt_w)
@@ -617,29 +631,28 @@ zullt_w:
 	copyb(r12, 0) -> 8[a + 8]
 	copyb(r12, 0) -> 8[a + 16]
 	copyb(r12, 0) -> 8[a + 24]
-	copyb(0, 0) -> r10
 	ret
 
-; zkvm_status zkvm_u256_le_gt(a, b, result) : a > b (unsigned).
+; void zkvm_u256_le_gt(a, b, result) : a > b (unsigned). Inline zkvmcall: from
+; the most significant limb down, the first that differs decides.
 ziskasm_zkvm_u256_le_gt:
-	copyb(r10, 8[a + 24]) -> r5
-	copyb(r11, 8[a + 24]) -> r6
-zulgt_3:                                ; r5/r6 = most significant limbs of a/b
-	ltu(r6, r5), j(zulgt_one)
-	ltu(r5, r6), j(zulgt_zero)
-	copyb(r11, 8[a + 16]) -> r5
-	copyb(r10, 8[a + 16]) -> r6
-	ltu(r5, r6), j(zulgt_one)
-	ltu(r6, r5), j(zulgt_zero)
-	copyb(r11, 8[a + 8]) -> r5
-	copyb(r10, 8[a + 8]) -> r6
-	ltu(r5, r6), j(zulgt_one)
-	ltu(r6, r5), j(zulgt_zero)
-	copyb(r11, 8[a + 0]) -> r5
-	copyb(r10, 8[a + 0]) -> r6
-	ltu(r5, r6), j(zulgt_one)
-	ltu(r6, r5), j(zulgt_zero)
-	jump(zulgt_zero)
+	copyb(r10, 8[a + 24]) -> r32
+	copyb(r11, 8[a + 24]) -> r33
+zulgt_3:                                ; r32/r33 = most significant limbs of a/b
+	ltu(r33, r32), j(zulgt_one)
+	ltu(r32, r33), j(zulgt_zero)
+	copyb(r10, 8[a + 16]) -> r32
+	copyb(r11, 8[a + 16]) -> r33
+	ltu(r33, r32), j(zulgt_one)
+	ltu(r32, r33), j(zulgt_zero)
+	copyb(r10, 8[a + 8]) -> r32
+	copyb(r11, 8[a + 8]) -> r33
+	ltu(r33, r32), j(zulgt_one)
+	ltu(r32, r33), j(zulgt_zero)
+	copyb(r10, 8[a + 0]) -> r32
+	copyb(r11, 8[a + 0]) -> r33
+	ltu(r33, r32), j(zulgt_one)
+	jump(zulgt_zero)                    ; equal
 zulgt_zero:
 	copyb(r12, 0) -> 8[a + 0]
 	jump(zulgt_w)
@@ -649,37 +662,38 @@ zulgt_w:
 	copyb(r12, 0) -> 8[a + 8]
 	copyb(r12, 0) -> 8[a + 16]
 	copyb(r12, 0) -> 8[a + 24]
-	copyb(0, 0) -> r10
 	ret
 
-; zkvm_status zkvm_u256_le_slt(a, b, result) : a < b (signed). Different signs:
-; a < b iff a is negative; same sign: the unsigned order.
+; void zkvm_u256_le_slt(a, b, result) : a < b (signed). Inline zkvmcall. Signs
+; differ: the result is the sign of a; same sign: the unsigned order.
 ziskasm_zkvm_u256_le_slt:
-	copyb(r10, 8[a + 24]) -> r5
-	copyb(r11, 8[a + 24]) -> r6
-	srl(r5, 63) -> r13
-	srl(r6, 63) -> r14
-	eq(r13, r14), j(zullt_3)
-	copyb(r12, r13) -> 8[a + 0]
+	copyb(r10, 8[a + 24]) -> r32
+	copyb(r11, 8[a + 24]) -> r33
+	xor(r32, r33)
+	lt(c, 0), j(zulslt_diff)         ; the signs differ
+	jump(zullt_3)
+zulslt_diff:
+	srl(r32, 63)
+	copyb(r12, c) -> 8[a + 0]
 	copyb(r12, 0) -> 8[a + 8]
 	copyb(r12, 0) -> 8[a + 16]
 	copyb(r12, 0) -> 8[a + 24]
-	copyb(0, 0) -> r10
 	ret
 
-; zkvm_status zkvm_u256_le_sgt(a, b, result) : a > b (signed). Different signs:
-; a > b iff b is negative; same sign: the unsigned order.
+; void zkvm_u256_le_sgt(a, b, result) : a > b (signed). Inline zkvmcall. Signs
+; differ: the result is the sign of b; same sign: the unsigned order.
 ziskasm_zkvm_u256_le_sgt:
-	copyb(r10, 8[a + 24]) -> r5
-	copyb(r11, 8[a + 24]) -> r6
-	srl(r5, 63) -> r13
-	srl(r6, 63) -> r14
-	eq(r13, r14), j(zulgt_3)
-	copyb(r12, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 24]) -> r32
+	copyb(r11, 8[a + 24]) -> r33
+	xor(r32, r33)
+	lt(c, 0), j(zulsgt_diff)         ; the signs differ
+	jump(zulgt_3)
+zulsgt_diff:
+	srl(r33, 63)
+	copyb(r12, c) -> 8[a + 0]
 	copyb(r12, 0) -> 8[a + 8]
 	copyb(r12, 0) -> 8[a + 16]
 	copyb(r12, 0) -> 8[a + 24]
-	copyb(0, 0) -> r10
 	ret
 
 ; void zkvm_u256_le_eq(a, b, result) : a == b. Inline zkvmcall, branchless: the

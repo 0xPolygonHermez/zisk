@@ -96,13 +96,13 @@ ZKVMCALL zkvm_u256_le_sdivmod,     0x885
 /* zkvm_u256_le_add (0x886) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 /* zkvm_u256_le_sub (0x887) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 /* zkvm_u256_le_mul (0x888) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
-ZKVMCALL zkvm_u256_le_addmod,       0x889
-ZKVMCALL zkvm_u256_le_mulmod,       0x88A
+/* zkvm_u256_le_addmod (0x889) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
+/* zkvm_u256_le_mulmod (0x88A) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 ZKVMCALL zkvm_u256_le_exp,          0x88B
-ZKVMCALL zkvm_u256_le_lt,           0x88C
-ZKVMCALL zkvm_u256_le_gt,           0x88D
-ZKVMCALL zkvm_u256_le_slt,          0x88E
-ZKVMCALL zkvm_u256_le_sgt,          0x88F
+/* zkvm_u256_le_lt (0x88C) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
+/* zkvm_u256_le_gt (0x88D) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
+/* zkvm_u256_le_slt (0x88E) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
+/* zkvm_u256_le_sgt (0x88F) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 /* zkvm_u256_le_eq (0x890) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 /* zkvm_u256_le_iszero (0x891) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 /* zkvm_u256_le_and (0x892) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */

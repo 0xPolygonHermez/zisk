@@ -11,7 +11,7 @@ use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
 use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
 use zisk_riscv::riscv2zisk_context::{
-    add_end_and_lib, add_entry_exit_jmp, add_zisk_code, zkvmcall_ids as zkvmcall_ids_in,
+    add_end_and_lib, add_entry_exit_jmp, add_zisk_code, zkvmcall_ids as zkvmcall_ids_in, InlineBody,
 };
 
 /// Executes the ROM transpilation process: from ELF to Zisk
@@ -83,9 +83,9 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     let zkvmcalls: HashMap<u16, u64> = HashMap::new();
     // zkvmcall ID → routine body, for every used inline zkvmcall.
     #[cfg(feature = "ziskasm")]
-    let mut inline_zkvmcalls: HashMap<u16, Vec<zisk_core::ZiskInst>> = HashMap::new();
+    let mut inline_zkvmcalls: HashMap<u16, InlineBody> = HashMap::new();
     #[cfg(not(feature = "ziskasm"))]
-    let inline_zkvmcalls: HashMap<u16, Vec<zisk_core::ZiskInst>> = HashMap::new();
+    let inline_zkvmcalls: HashMap<u16, InlineBody> = HashMap::new();
 
     // Guest-symbol → library-entry redirect map. Populated only when the `ziskasm`
     // feature is enabled; otherwise it stays empty and elf2rom neither assembles the

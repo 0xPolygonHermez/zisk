@@ -12,10 +12,11 @@
  * same bytes.
  *
  * One operation per build: -DOP=<name> (e.g. -DOP=add) plus its operand shape,
- * one of -DKIND_BIN (op(a, b, r)), -DKIND_BIN_VOID (op(a, b, r) returning nothing:
- * the LE add/sub/mul/eq/and/or/xor), -DKIND_SHIFT (op(s, a, r): shl/shr/sar/byte/
- * signextend), -DKIND_UN (op(a, r)), -DKIND_UN_VOID (op(a, r) returning nothing:
- * the LE iszero/not), -DKIND_TER (op(a, b, m, r)), -DKIND_DIVMOD
+ * one of -DKIND_BIN (op(a, b, r)), -DKIND_SHIFT (op(s, a, r): shl/shr/sar/byte/
+ * signextend), -DKIND_UN (op(a, r)), -DKIND_TER (op(a, b, m, r)), their _VOID
+ * forms for the LE functions that return nothing (-DKIND_BIN_VOID: add/sub/mul/
+ * lt/gt/slt/sgt/eq/and/or/xor, -DKIND_UN_VOID: iszero/not, -DKIND_TER_VOID:
+ * addmod/mulmod), -DKIND_DIVMOD
  * (op(a, b, q, r)) or -DKIND_NOP (empty loop, for the loop's own cost).
  *
  * Each iteration runs the operation once on fixed operands; a compiler barrier
@@ -99,10 +100,12 @@ int main(void) {
         FN(OPND(A), OPND(R));
 #elif defined(KIND_TER)
         st = FN(OPND(A), OPND(B), OPND(M), OPND(R));
+#elif defined(KIND_TER_VOID)
+        FN(OPND(A), OPND(B), OPND(M), OPND(R));
 #elif defined(KIND_DIVMOD)
         st = FN(OPND(A), OPND(B), OPND(Q), OPND(R));
 #elif !defined(KIND_NOP)
-#error "pick an operand shape: -DKIND_BIN, _BIN_VOID, _SHIFT, _UN, _UN_VOID, _TER, _DIVMOD or _NOP"
+#error "pick an operand shape: -DKIND_BIN, _BIN_VOID, _SHIFT, _UN, _UN_VOID, _TER, _TER_VOID, _DIVMOD or _NOP"
 #endif
         if (st != ZKVM_EOK) failures++;
         __asm__ volatile("" : : : "memory");   /* recompute every iteration */
