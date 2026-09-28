@@ -372,44 +372,105 @@ zu_not4:
 ; Arithmetic operations (marshal -> precompile core -> marshal back)
 ; ============================================================================
 
-; zkvm_status zkvm_u256_add(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* result)
-;   result = (a + b) mod 2^256.
+; ---- BE scratch: the operands and result as LE limbs --------------------------
+; The precompiles consume LE limbs, so the routines that fire one convert their
+; big-endian operands here (one rev8 per limb) and their result back; with every
+; pointer a fixed scratch word, their parameter blocks are fully preset.
+u64 ZUB_A0[1] = 0
+u64 ZUB_A1[1] = 0
+u64 ZUB_A2[1] = 0
+u64 ZUB_A3[1] = 0
+u64 ZUB_B0[1] = 0       ; b, or ~b for sub
+u64 ZUB_B1[1] = 0
+u64 ZUB_B2[1] = 0
+u64 ZUB_B3[1] = 0
+u64 ZUB_N0[1] = 0
+u64 ZUB_N1[1] = 0
+u64 ZUB_N2[1] = 0
+u64 ZUB_N3[1] = 0
+u64 ZUB_R0[1] = 0
+u64 ZUB_R1[1] = 0
+u64 ZUB_R2[1] = 0
+u64 ZUB_R3[1] = 0
+u64 ZUB_HI[4] = 0, 0, 0, 0      ; discarded high halves
+u64 ZUBA_A[1]   = ZUB_A0        ; add256 for add: &a, &b, cin = 0, &r
+u64 ZUBA_B[1]   = ZUB_B0
+u64 ZUBA_CIN[1] = 0
+u64 ZUBA_C[1]   = ZUB_R0
+u64 ZUBS_A[1]   = ZUB_A0        ; add256 for sub: &a, &~b, cin = 1, &r
+u64 ZUBS_B[1]   = ZUB_B0
+u64 ZUBS_CIN[1] = 1
+u64 ZUBS_C[1]   = ZUB_R0
+u64 ZUBM_A[1]   = ZUB_A0        ; arith256 for mul: &a, &b, &0, &r, &hi
+u64 ZUBM_B[1]   = ZUB_B0
+u64 ZUBM_C[1]   = U256_ZERO
+u64 ZUBM_DL[1]  = ZUB_R0
+u64 ZUBM_DH[1]  = ZUB_HI
+u64 ZUBAM_A[1]  = ZUB_A0        ; arith256_mod for addmod: &a, &1, &b, &n, &r
+u64 ZUBAM_B[1]  = U256_ONE
+u64 ZUBAM_C[1]  = ZUB_B0
+u64 ZUBAM_N[1]  = ZUB_N0
+u64 ZUBAM_D[1]  = ZUB_R0
+u64 ZUBMU_A[1]  = ZUB_A0        ; arith256_mod for mulmod: &a, &b, &0, &n, &r
+u64 ZUBMU_B[1]  = ZUB_B0
+u64 ZUBMU_C[1]  = U256_ZERO
+u64 ZUBMU_N[1]  = ZUB_N0
+u64 ZUBMU_D[1]  = ZUB_R0
+
+; zkvm_status zkvm_u256_add(a, b, result) : (a + b) mod 2^256. Inline zkvmcall.
 ziskasm_zkvm_u256_add:
-	push r1
-	call zu_load2
-	copyb(0, ZU_A) -> r10
-	copyb(0, ZU_B) -> r11
-	copyb(0, ZU_R) -> r12
-	call zisklib_overflowing_add256    ; carry ignored (wrapping)
-	call zu_wr_r
-	copyb(0, 0) -> r10
-	pop r1
+	rev8(r10, 8[a + 24]) -> [ZUB_A0]
+	rev8(r10, 8[a + 16]) -> [ZUB_A1]
+	rev8(r10, 8[a + 8]) -> [ZUB_A2]
+	rev8(r10, 8[a + 0]) -> [ZUB_A3]
+	rev8(r11, 8[a + 24]) -> [ZUB_B0]
+	rev8(r11, 8[a + 16]) -> [ZUB_B1]
+	rev8(r11, 8[a + 8]) -> [ZUB_B2]
+	rev8(r11, 8[a + 0]) -> [ZUB_B3]
+	add256(0, ZUBA_A)                   ; carry out ignored (wrapping)
+	rev8(r12, [ZUB_R0]) -> 8[a + 24]
+	rev8(r12, [ZUB_R1]) -> 8[a + 16]
+	rev8(r12, [ZUB_R2]) -> 8[a + 8]
+	rev8(r12, [ZUB_R3]) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_sub(a, b, result) : result = (a - b) mod 2^256.
+; zkvm_status zkvm_u256_sub(a, b, result) : (a - b) mod 2^256 = a + ~b + 1.
+; Inline zkvmcall.
 ziskasm_zkvm_u256_sub:
-	push r1
-	call zu_load2
-	copyb(0, ZU_A) -> r10
-	copyb(0, ZU_B) -> r11
-	copyb(0, ZU_R) -> r12
-	call zisklib_overflowing_sub256    ; borrow ignored (wrapping)
-	call zu_wr_r
-	copyb(0, 0) -> r10
-	pop r1
+	rev8(r10, 8[a + 24]) -> [ZUB_A0]
+	rev8(r10, 8[a + 16]) -> [ZUB_A1]
+	rev8(r10, 8[a + 8]) -> [ZUB_A2]
+	rev8(r10, 8[a + 0]) -> [ZUB_A3]
+	rev8(r11, 8[a + 24])
+	xor(c, 0xffffffffffffffff) -> [ZUB_B0]
+	rev8(r11, 8[a + 16])
+	xor(c, 0xffffffffffffffff) -> [ZUB_B1]
+	rev8(r11, 8[a + 8])
+	xor(c, 0xffffffffffffffff) -> [ZUB_B2]
+	rev8(r11, 8[a + 0])
+	xor(c, 0xffffffffffffffff) -> [ZUB_B3]
+	add256(0, ZUBS_A)
+	rev8(r12, [ZUB_R0]) -> 8[a + 24]
+	rev8(r12, [ZUB_R1]) -> 8[a + 16]
+	rev8(r12, [ZUB_R2]) -> 8[a + 8]
+	rev8(r12, [ZUB_R3]) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_mul(a, b, result) : result = (a * b) mod 2^256 (low 256).
+; zkvm_status zkvm_u256_mul(a, b, result) : (a * b) mod 2^256. Inline zkvmcall.
 ziskasm_zkvm_u256_mul:
-	push r1
-	call zu_load2
-	copyb(0, ZU_A) -> r10
-	copyb(0, ZU_B) -> r11
-	copyb(0, ZU_R) -> r12
-	call zisklib_overflowing_mul256    ; high 256 ignored (wrapping)
-	call zu_wr_r
-	copyb(0, 0) -> r10
-	pop r1
+	rev8(r10, 8[a + 24]) -> [ZUB_A0]
+	rev8(r10, 8[a + 16]) -> [ZUB_A1]
+	rev8(r10, 8[a + 8]) -> [ZUB_A2]
+	rev8(r10, 8[a + 0]) -> [ZUB_A3]
+	rev8(r11, 8[a + 24]) -> [ZUB_B0]
+	rev8(r11, 8[a + 16]) -> [ZUB_B1]
+	rev8(r11, 8[a + 8]) -> [ZUB_B2]
+	rev8(r11, 8[a + 0]) -> [ZUB_B3]
+	arith256(0, ZUBM_A)                 ; high 256 bits discarded (wrapping)
+	rev8(r12, [ZUB_R0]) -> 8[a + 24]
+	rev8(r12, [ZUB_R1]) -> 8[a + 16]
+	rev8(r12, [ZUB_R2]) -> 8[a + 8]
+	rev8(r12, [ZUB_R3]) -> 8[a + 0]
 	ret
 
 ; zkvm_status zkvm_u256_div(a, b, quotient) : q = a / b; b == 0 -> 0 (EVM).
@@ -512,49 +573,76 @@ zudm_do:
 	pop r1
 	ret
 
-; zkvm_status zkvm_u256_addmod(a, b, n, result) : (a + b) % n; n == 0 -> 0.
+; zkvm_status zkvm_u256_addmod(a, b, n, result) : (a * 1 + b) mod n; n == 0 -> 0.
+; Inline zkvmcall. The operands are converted to LE scratch, n last, so c holds
+; its top limb; n is tested from there down.
 ziskasm_zkvm_u256_addmod:
-	push r1
-	call zu_load3
-	copyb(0, ZU_N) -> r10
-	call zu_iszero
-	eq(r10, 0), j(zuam_do)
-	call zu_wr_zero
-	copyb(0, 0) -> r10
-	pop r1
+	rev8(r10, 8[a + 24]) -> [ZUB_A0]
+	rev8(r10, 8[a + 16]) -> [ZUB_A1]
+	rev8(r10, 8[a + 8]) -> [ZUB_A2]
+	rev8(r10, 8[a + 0]) -> [ZUB_A3]
+	rev8(r11, 8[a + 24]) -> [ZUB_B0]
+	rev8(r11, 8[a + 16]) -> [ZUB_B1]
+	rev8(r11, 8[a + 8]) -> [ZUB_B2]
+	rev8(r11, 8[a + 0]) -> [ZUB_B3]
+	rev8(r12, 8[a + 24]) -> [ZUB_N0]
+	rev8(r12, 8[a + 16]) -> [ZUB_N1]
+	rev8(r12, 8[a + 8]) -> [ZUB_N2]
+	rev8(r12, 8[a + 0]) -> [ZUB_N3]
+	ltu(0, c), j(zubaddmod_go)                 ; n != 0
+	copyb(0, [ZUB_N2])
+	ltu(0, c), j(zubaddmod_go)
+	copyb(0, [ZUB_N1])
+	ltu(0, c), j(zubaddmod_go)
+	copyb(0, [ZUB_N0])
+	ltu(0, c), j(zubaddmod_go)
+	copyb(r13, 0) -> 8[a + 0]
+	copyb(r13, 0) -> 8[a + 8]
+	copyb(r13, 0) -> 8[a + 16]
+	copyb(r13, 0) -> 8[a + 24]
 	ret
-zuam_do:
-	copyb(0, ZU_A) -> r10
-	copyb(0, ZU_B) -> r11
-	copyb(0, ZU_N) -> r12
-	copyb(0, ZU_R) -> r13
-	call zisklib_add_mod256           ; (a*1 + b) mod n, full-width intermediate
-	call zu_wr_r
-	copyb(0, 0) -> r10
-	pop r1
+zubaddmod_go:
+	arith256_mod(0, ZUBAM_A)
+	rev8(r13, [ZUB_R0]) -> 8[a + 24]
+	rev8(r13, [ZUB_R1]) -> 8[a + 16]
+	rev8(r13, [ZUB_R2]) -> 8[a + 8]
+	rev8(r13, [ZUB_R3]) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_mulmod(a, b, n, result) : (a * b) % n; n == 0 -> 0.
-;   The core computes the full 512-bit product before reducing (arith256_mod).
+; zkvm_status zkvm_u256_mulmod(a, b, n, result) : (a * b + 0) mod n; n == 0 -> 0.
+; Inline zkvmcall. The operands are converted to LE scratch, n last, so c holds
+; its top limb; n is tested from there down.
 ziskasm_zkvm_u256_mulmod:
-	push r1
-	call zu_load3
-	copyb(0, ZU_N) -> r10
-	call zu_iszero
-	eq(r10, 0), j(zumm_do)
-	call zu_wr_zero
-	copyb(0, 0) -> r10
-	pop r1
+	rev8(r10, 8[a + 24]) -> [ZUB_A0]
+	rev8(r10, 8[a + 16]) -> [ZUB_A1]
+	rev8(r10, 8[a + 8]) -> [ZUB_A2]
+	rev8(r10, 8[a + 0]) -> [ZUB_A3]
+	rev8(r11, 8[a + 24]) -> [ZUB_B0]
+	rev8(r11, 8[a + 16]) -> [ZUB_B1]
+	rev8(r11, 8[a + 8]) -> [ZUB_B2]
+	rev8(r11, 8[a + 0]) -> [ZUB_B3]
+	rev8(r12, 8[a + 24]) -> [ZUB_N0]
+	rev8(r12, 8[a + 16]) -> [ZUB_N1]
+	rev8(r12, 8[a + 8]) -> [ZUB_N2]
+	rev8(r12, 8[a + 0]) -> [ZUB_N3]
+	ltu(0, c), j(zubmulmod_go)                 ; n != 0
+	copyb(0, [ZUB_N2])
+	ltu(0, c), j(zubmulmod_go)
+	copyb(0, [ZUB_N1])
+	ltu(0, c), j(zubmulmod_go)
+	copyb(0, [ZUB_N0])
+	ltu(0, c), j(zubmulmod_go)
+	copyb(r13, 0) -> 8[a + 0]
+	copyb(r13, 0) -> 8[a + 8]
+	copyb(r13, 0) -> 8[a + 16]
+	copyb(r13, 0) -> 8[a + 24]
 	ret
-zumm_do:
-	copyb(0, ZU_A) -> r10
-	copyb(0, ZU_B) -> r11
-	copyb(0, ZU_N) -> r12
-	copyb(0, ZU_R) -> r13
-	call zisklib_mul_mod256
-	call zu_wr_r
-	copyb(0, 0) -> r10
-	pop r1
+zubmulmod_go:
+	arith256_mod(0, ZUBMU_A)
+	rev8(r13, [ZUB_R0]) -> 8[a + 24]
+	rev8(r13, [ZUB_R1]) -> 8[a + 16]
+	rev8(r13, [ZUB_R2]) -> 8[a + 8]
+	rev8(r13, [ZUB_R3]) -> 8[a + 0]
 	ret
 
 ; zkvm_status zkvm_u256_exp(base, exponent, result) : base^exp mod 2^256.
