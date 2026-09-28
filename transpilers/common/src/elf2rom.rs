@@ -760,9 +760,10 @@ mod zkvmcall_tests {
         }
     }
 
-    /// The C thunks (`ZKVMCALL <name>, <id>` lines) match the table exactly (but for
-    /// the inline zkvmcalls, which have none), so a C guest can never call one
-    /// routine and get another.
+    /// The C thunks (`ZKVMCALL <name>, <id>` lines) match the table, so a C guest can
+    /// never call one routine and get another: every thunk is a table entry, and every
+    /// entry has a thunk but the inline zkvmcalls, which may (a thunk calls them too,
+    /// see `inline_zkvmcall_site`) or may not.
     #[test]
     fn c_thunks_match_zkvmcall_table() {
         const ASM: &str = include_str!("../../../ziskasm/lang/c/src/zkvm_calls.s");
@@ -775,12 +776,20 @@ mod zkvmcall_tests {
                 (name.trim().to_string(), u16::from_str_radix(id, 16).expect("hex ID"))
             })
             .collect();
-        let table: Vec<(String, u16)> = ZKVMCALLS
-            .iter()
-            .filter(|c| c.inline_args == 0)
-            .map(|c| (c.name.to_string(), c.id))
-            .collect();
-        assert_eq!(thunks, table);
+        for (name, id) in &thunks {
+            assert!(
+                ZKVMCALLS.iter().any(|c| c.name == name && c.id == *id),
+                "thunk {name} 0x{id:X} is not in the table"
+            );
+        }
+        for c in ZKVMCALLS.iter().filter(|c| c.inline_args == 0) {
+            assert!(
+                thunks.iter().any(|(name, id)| name == c.name && *id == c.id),
+                "{} 0x{:X} has no thunk",
+                c.name,
+                c.id
+            );
+        }
     }
 
     /// Every zkvmcall target exists in the assembled ZisK library.

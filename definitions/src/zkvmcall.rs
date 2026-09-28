@@ -30,6 +30,11 @@
 // calls and writes only memory and the virtual registers r32..r39, so the asm
 // declares no register clobbers and the compiler saves nothing around it.
 //
+// An inline zkvmcall can still be called through a thunk (`csrs <id>, x0; ret`, as
+// above): a lone `csrs <id>, x0` expands the same body on a0, a1, ... and then sets
+// a0 = ZKVM_EOK. So a guest built against a header that only declares the function
+// (the EF standard's, the Rust binding, a vendored `zkvm_calls.s`) keeps working.
+//
 // Important: IDs must match ziskasm/lang/c/src/zkvm_calls.s (checked by a test in
 // transpilers/common), and are never reused or renumbered once assigned.
 
