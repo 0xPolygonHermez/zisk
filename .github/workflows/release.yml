@@ -55,17 +55,14 @@ jobs:
         run: |
           V="$(sed -nE 's/^setup_version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' setup/Cargo.toml)"
           [ -n "$V" ] || { echo "could not read setup_version from setup/Cargo.toml"; exit 1; }
-          # upload_setup.yml publishes "pre-$V" outside develop.
-          for N in "$V" "pre-$V"; do
-            missing=""
-            for f in provingkey-$N verifykey-$N provingkey-$N-blake3 verifykey-$N-blake3; do
-              for g in "zisk-$f.tar.gz" "zisk-$f.tar.gz.md5"; do
-                curl -sfI "https://storage.googleapis.com/zisk-setup/$g" > /dev/null || missing="$missing $g"
-              done
-            done
-            [ -z "$missing" ] && { V="$N"; break; }
-          done
           echo "setup_version=$V" >> "$GITHUB_OUTPUT"
+          # Only the keys upload_setup.yml publishes from develop; its "pre-" keys never ship.
+          missing=""
+          for f in provingkey-$V verifykey-$V provingkey-$V-blake3 verifykey-$V-blake3; do
+            for g in "zisk-$f.tar.gz" "zisk-$f.tar.gz.md5"; do
+              curl -sfI "https://storage.googleapis.com/zisk-setup/$g" > /dev/null || missing="$missing $g"
+            done
+          done
           # The SNARK key is optional: upload_setup.yml only builds it on develop or with include_snark.
           for g in "zisk-provingkey-plonk-$V.tar.gz" "zisk-provingkey-plonk-$V.tar.gz.md5"; do
             curl -sfI "https://storage.googleapis.com/zisk-setup/$g" > /dev/null || echo "::warning::SNARK key not in the bucket: $g"
