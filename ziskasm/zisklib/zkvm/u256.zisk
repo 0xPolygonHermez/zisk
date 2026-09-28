@@ -766,68 +766,98 @@ zusdm_rwr:
 ; Comparison operations (result is a big-endian U256, 0 or 1)
 ; ============================================================================
 
-; zkvm_status zkvm_u256_lt(a, b, result) : (a < b) unsigned.
+; zkvm_status zkvm_u256_lt(a, b, result) : a < b (unsigned). Inline zkvmcall:
+; from the most significant limb down, the first that differs decides.
 ziskasm_zkvm_u256_lt:
-	push r1
-	copyb(0, ZU_POUT) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	call zu_cmp_u
-	eq(r10, 0), j(zult_t)
-	copyb(0, 0) -> r10
-	call zu_wr_bool
-	copyb(0, 0) -> r10
-	pop r1
-	ret
-zult_t:
-	copyb(0, 1) -> r10
-	call zu_wr_bool
-	copyb(0, 0) -> r10
-	pop r1
+	rev8(r10, 8[a + 0]) -> r32
+	rev8(r11, 8[a + 0]) -> r33
+zublt_3:                                ; r32/r33 = most significant limbs of a/b
+	ltu(r32, r33), j(zublt_one)
+	ltu(r33, r32), j(zublt_zero)
+	rev8(r10, 8[a + 8]) -> r32
+	rev8(r11, 8[a + 8]) -> r33
+	ltu(r32, r33), j(zublt_one)
+	ltu(r33, r32), j(zublt_zero)
+	rev8(r10, 8[a + 16]) -> r32
+	rev8(r11, 8[a + 16]) -> r33
+	ltu(r32, r33), j(zublt_one)
+	ltu(r33, r32), j(zublt_zero)
+	rev8(r10, 8[a + 24]) -> r32
+	rev8(r11, 8[a + 24]) -> r33
+	ltu(r32, r33), j(zublt_one)
+	jump(zublt_zero)                    ; equal
+zublt_zero:
+	copyb(r12, 0) -> 8[a + 24]
+	jump(zublt_w)
+zublt_one:
+	copyb(r12, 0x100000000000000) -> 8[a + 24]
+zublt_w:
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_gt(a, b, result) : (a > b) unsigned.
+; zkvm_status zkvm_u256_gt(a, b, result) : a > b (unsigned). Inline zkvmcall:
+; from the most significant limb down, the first that differs decides.
 ziskasm_zkvm_u256_gt:
-	push r1
-	copyb(0, ZU_POUT) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	call zu_cmp_u
-	copyb(0, 2) -> r6
-	eq(r10, r6), j(zugt_t)
-	copyb(0, 0) -> r10
-	call zu_wr_bool
-	copyb(0, 0) -> r10
-	pop r1
-	ret
-zugt_t:
-	copyb(0, 1) -> r10
-	call zu_wr_bool
-	copyb(0, 0) -> r10
-	pop r1
+	rev8(r10, 8[a + 0]) -> r32
+	rev8(r11, 8[a + 0]) -> r33
+zubgt_3:                                ; r32/r33 = most significant limbs of a/b
+	ltu(r33, r32), j(zubgt_one)
+	ltu(r32, r33), j(zubgt_zero)
+	rev8(r10, 8[a + 8]) -> r32
+	rev8(r11, 8[a + 8]) -> r33
+	ltu(r33, r32), j(zubgt_one)
+	ltu(r32, r33), j(zubgt_zero)
+	rev8(r10, 8[a + 16]) -> r32
+	rev8(r11, 8[a + 16]) -> r33
+	ltu(r33, r32), j(zubgt_one)
+	ltu(r32, r33), j(zubgt_zero)
+	rev8(r10, 8[a + 24]) -> r32
+	rev8(r11, 8[a + 24]) -> r33
+	ltu(r33, r32), j(zubgt_one)
+	jump(zubgt_zero)                    ; equal
+zubgt_zero:
+	copyb(r12, 0) -> 8[a + 24]
+	jump(zubgt_w)
+zubgt_one:
+	copyb(r12, 0x100000000000000) -> 8[a + 24]
+zubgt_w:
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_slt(a, b, result) : (a < b) signed.
+; zkvm_status zkvm_u256_slt(a, b, result) : a < b (signed). Inline zkvmcall.
+; Signs differ: the result is the sign of a; same sign: the unsigned order.
 ziskasm_zkvm_u256_slt:
-	push r1
-	copyb(0, ZU_POUT) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	call zu_scmp                      ; r10 = 1 if a < b (signed)
-	call zu_wr_bool
-	copyb(0, 0) -> r10
-	pop r1
+	rev8(r10, 8[a + 0]) -> r32
+	rev8(r11, 8[a + 0]) -> r33
+	xor(r32, r33)
+	lt(c, 0), j(zubslt_diff)         ; the signs differ
+	jump(zublt_3)
+zubslt_diff:
+	srl(r32, 63)
+	rev8(r12, c) -> 8[a + 24]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_sgt(a, b, result) : (a > b) signed = (b < a) signed.
+; zkvm_status zkvm_u256_sgt(a, b, result) : a > b (signed). Inline zkvmcall.
+; Signs differ: the result is the sign of b; same sign: the unsigned order.
 ziskasm_zkvm_u256_sgt:
-	push r1
-	copyb(0, ZU_POUT) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	copyb(0, r10) -> r6               ; swap: scmp(b, a)
-	copyb(0, r11) -> r10
-	copyb(0, r6) -> r11
-	call zu_scmp
-	call zu_wr_bool
-	copyb(0, 0) -> r10
-	pop r1
+	rev8(r10, 8[a + 0]) -> r32
+	rev8(r11, 8[a + 0]) -> r33
+	xor(r32, r33)
+	lt(c, 0), j(zubsgt_diff)         ; the signs differ
+	jump(zubgt_3)
+zubsgt_diff:
+	srl(r33, 63)
+	rev8(r12, c) -> 8[a + 24]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 0]
 	ret
 
 ; zkvm_status zkvm_u256_eq(a, b, result) : a == b. Inline zkvmcall,
@@ -956,42 +986,35 @@ ziskasm_zkvm_u256_not:
 	rev8(r11, c) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_byte(i, a, result) : byte i of a (0 = MSB), zero-extended.
-;   i >= 32 -> 0. In big-endian layout byte i is simply a's memory byte i.
+; zkvm_status zkvm_u256_byte(i, a, result) : byte i of a counting from the
+; most significant (EVM BYTE), which in big-endian memory is at a + i.
+; Inline zkvmcall.
 ziskasm_zkvm_u256_byte:
-	push r1
-	copyb(0, ZU_POUT) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	copyb(0, ZU_PB) -> r5             ; a_ptr
-	copyb(r5, r11) -> 8[a + 0]
-	call zu_amount                    ; r10 = idx, r11 = in-range (< 2^64)
-	eq(r11, 0), j(zubyte_z)
-	ltu(r10, 32), j(zubyte_do)
-zubyte_z:
-	call zu_wr_zero
-	copyb(0, 0) -> r10
-	pop r1
+	rev8(r10, 8[a + 16]) -> r32
+	rev8(r10, 8[a + 8])
+	or(r32, c) -> r32
+	rev8(r10, 8[a + 0])
+	or(r32, c)
+	eq(c, 0), j(zubby_lo)
+	jump(zubby_big)
+zubby_lo:
+	rev8(r10, 8[a + 24]) -> r33
+	ltu(c, 32), j(zubby_ok)
+	jump(zubby_big)
+zubby_ok:
+	add(r11, r33)                      ; BE: byte i is at a + i
+	copyb(c, 1[a + 0])
+	rev8(r12, c) -> 8[a + 24]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 0]
 	ret
-zubyte_do:
-	copyb(0, ZU_PB) -> r5
-	copyb(r5, 8[a + 0]) -> r5
-	add(r5, r10) -> r5                ; &a[idx]
-	copyb(r5, 1[a + 0]) -> r6         ; the byte
-	copyb(0, ZU_POUT) -> r7
-	copyb(r7, 8[a + 0]) -> r7
-	copyb(r7, 0) -> 8[a + 0]
-	copyb(r7, 0) -> 8[a + 8]
-	copyb(r7, 0) -> 8[a + 16]
-	copyb(r7, 0) -> 8[a + 24]
-	add(r7, 31) -> r7                 ; least-significant output byte
-	copyb(r7, r6) -> 1[a + 0]
-	copyb(0, 0) -> r10
-	pop r1
+zubby_big:
+	copyb(r12, 0) -> 8[a + 24]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 0]
 	ret
-
-; ============================================================================
-; Shifts (EVM stack order: shift amount first). >= 256 -> 0 (SAR: sign fill).
-; ============================================================================
 
 ; zkvm_status zkvm_u256_shl(shift, value, result) : value << shift.
 ziskasm_zkvm_u256_shl:

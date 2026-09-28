@@ -81,10 +81,15 @@ zkvm_status zkvm_u256_sdivmod(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256*
                 : "=m"(*result) : "r"(a), "r"(result), "m"(*a));                          \
         return ZKVM_EOK;                                                                  \
     }
+ZKVM_U256_ZC_BIN(lt, 0x871)
+ZKVM_U256_ZC_BIN(gt, 0x872)
+ZKVM_U256_ZC_BIN(slt, 0x873)
+ZKVM_U256_ZC_BIN(sgt, 0x874)
 ZKVM_U256_ZC_BIN(eq, 0x875)
 ZKVM_U256_ZC_BIN(and, 0x877)
 ZKVM_U256_ZC_BIN(or, 0x878)
 ZKVM_U256_ZC_BIN(xor, 0x879)
+ZKVM_U256_ZC_BIN(byte, 0x87B)
 ZKVM_U256_ZC_UN(iszero, 0x876)
 ZKVM_U256_ZC_UN(not, 0x87A)
 #undef ZKVM_U256_ZC_BIN
@@ -100,11 +105,6 @@ zkvm_status zkvm_u256_mulmod(const zkvm_u256* a, const zkvm_u256* b, const zkvm_
                              zkvm_u256* result);
 zkvm_status zkvm_u256_exp(const zkvm_u256* base, const zkvm_u256* exponent,
                           zkvm_u256* result);
-zkvm_status zkvm_u256_lt(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* result);
-zkvm_status zkvm_u256_gt(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* result);
-zkvm_status zkvm_u256_slt(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* result);
-zkvm_status zkvm_u256_sgt(const zkvm_u256* a, const zkvm_u256* b, zkvm_u256* result);
-zkvm_status zkvm_u256_byte(const zkvm_u256* i, const zkvm_u256* a, zkvm_u256* result);
 zkvm_status zkvm_u256_shl(const zkvm_u256* shift, const zkvm_u256* value,
                           zkvm_u256* result);
 zkvm_status zkvm_u256_shr(const zkvm_u256* shift, const zkvm_u256* value,
