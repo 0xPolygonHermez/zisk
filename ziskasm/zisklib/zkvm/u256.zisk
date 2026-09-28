@@ -830,156 +830,130 @@ ziskasm_zkvm_u256_sgt:
 	pop r1
 	ret
 
-; zkvm_status zkvm_u256_eq(a, b, result) : (a == b). Byte-order agnostic.
+; zkvm_status zkvm_u256_eq(a, b, result) : a == b. Inline zkvmcall,
+; branchless: the limb differences OR-ed into r33, then eq leaves the 0/1 result
+; in c. The result is written after every load, so it may alias a or b.
 ziskasm_zkvm_u256_eq:
-	copyb(0, r10) -> r5               ; &a
-	copyb(0, r11) -> r6               ; &b
-	copyb(0, r12) -> r7               ; &result
-	copyb(r5, 8[a + 0]) -> r14
-	copyb(r6, 8[a + 0]) -> r15
-	xor(r14, r15) -> r16
-	copyb(r5, 8[a + 8]) -> r14
-	copyb(r6, 8[a + 8]) -> r15
-	xor(r14, r15) -> r14
-	or(r16, r14) -> r16
-	copyb(r5, 8[a + 16]) -> r14
-	copyb(r6, 8[a + 16]) -> r15
-	xor(r14, r15) -> r14
-	or(r16, r14) -> r16
-	copyb(r5, 8[a + 24]) -> r14
-	copyb(r6, 8[a + 24]) -> r15
-	xor(r14, r15) -> r14
-	or(r16, r14) -> r16               ; 0 iff a == b
-	copyb(r7, 0) -> 8[a + 0]
-	copyb(r7, 0) -> 8[a + 8]
-	copyb(r7, 0) -> 8[a + 16]
-	copyb(r7, 0) -> 8[a + 24]
-	eq(r16, 0), j(zueq_t)
-	copyb(0, 0) -> r10
-	ret
-zueq_t:
-	add(r7, 31) -> r6
-	copyb(r6, 1) -> 1[a + 0]
-	copyb(0, 0) -> r10
+	rev8(r10, 8[a + 24]) -> r32
+	rev8(r11, 8[a + 24])
+	xor(r32, c) -> r33
+	rev8(r10, 8[a + 16]) -> r32
+	rev8(r11, 8[a + 16])
+	xor(r32, c)
+	or(r33, c) -> r33
+	rev8(r10, 8[a + 8]) -> r32
+	rev8(r11, 8[a + 8])
+	xor(r32, c)
+	or(r33, c) -> r33
+	rev8(r10, 8[a + 0]) -> r32
+	rev8(r11, 8[a + 0])
+	xor(r32, c)
+	or(r33, c)
+	eq(c, 0)
+	rev8(r12, c) -> 8[a + 24]
+	copyb(r12, 0) -> 8[a + 16]
+	copyb(r12, 0) -> 8[a + 8]
+	copyb(r12, 0) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_iszero(a, result) : (a == 0).
+; zkvm_status zkvm_u256_iszero(a, result) : a == 0. Inline zkvmcall,
+; branchless: the limbs OR-ed through r32 and c, then eq leaves the 0/1 result
+; in c.
 ziskasm_zkvm_u256_iszero:
-	copyb(0, r10) -> r5               ; &a
-	copyb(0, r11) -> r7               ; &result
-	copyb(r5, 8[a + 0]) -> r14
-	copyb(r5, 8[a + 8]) -> r15
-	or(r14, r15) -> r16
-	copyb(r5, 8[a + 16]) -> r14
-	or(r16, r14) -> r16
-	copyb(r5, 8[a + 24]) -> r14
-	or(r16, r14) -> r16
-	copyb(r7, 0) -> 8[a + 0]
-	copyb(r7, 0) -> 8[a + 8]
-	copyb(r7, 0) -> 8[a + 16]
-	copyb(r7, 0) -> 8[a + 24]
-	eq(r16, 0), j(zuiszero_t)
-	copyb(0, 0) -> r10
-	ret
-zuiszero_t:
-	add(r7, 31) -> r6
-	copyb(r6, 1) -> 1[a + 0]
-	copyb(0, 0) -> r10
+	rev8(r10, 8[a + 24]) -> r32
+	rev8(r10, 8[a + 16])
+	or(r32, c) -> r32
+	rev8(r10, 8[a + 8])
+	or(r32, c) -> r32
+	rev8(r10, 8[a + 0])
+	or(r32, c)
+	eq(c, 0)
+	rev8(r11, c) -> 8[a + 24]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 0]
 	ret
 
-; ============================================================================
-; Bitwise operations (byte-order agnostic; act on the raw words)
-; ============================================================================
-
-; zkvm_status zkvm_u256_and(a, b, result) : result = a & b.
+; zkvm_status zkvm_u256_and(a, b, result). Inline zkvmcall: a's limb in r32,
+; b's in c.
 ziskasm_zkvm_u256_and:
-	copyb(0, r10) -> r5
-	copyb(0, r11) -> r6
-	copyb(0, r12) -> r7
-	copyb(r5, 8[a + 0]) -> r14
-	copyb(r6, 8[a + 0]) -> r15
-	and(r14, r15) -> r14
-	copyb(r7, r14) -> 8[a + 0]
-	copyb(r5, 8[a + 8]) -> r14
-	copyb(r6, 8[a + 8]) -> r15
-	and(r14, r15) -> r14
-	copyb(r7, r14) -> 8[a + 8]
-	copyb(r5, 8[a + 16]) -> r14
-	copyb(r6, 8[a + 16]) -> r15
-	and(r14, r15) -> r14
-	copyb(r7, r14) -> 8[a + 16]
-	copyb(r5, 8[a + 24]) -> r14
-	copyb(r6, 8[a + 24]) -> r15
-	and(r14, r15) -> r14
-	copyb(r7, r14) -> 8[a + 24]
-	copyb(0, 0) -> r10
+	rev8(r10, 8[a + 24]) -> r32
+	rev8(r11, 8[a + 24])
+	and(r32, c)
+	rev8(r12, c) -> 8[a + 24]
+	rev8(r10, 8[a + 16]) -> r32
+	rev8(r11, 8[a + 16])
+	and(r32, c)
+	rev8(r12, c) -> 8[a + 16]
+	rev8(r10, 8[a + 8]) -> r32
+	rev8(r11, 8[a + 8])
+	and(r32, c)
+	rev8(r12, c) -> 8[a + 8]
+	rev8(r10, 8[a + 0]) -> r32
+	rev8(r11, 8[a + 0])
+	and(r32, c)
+	rev8(r12, c) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_or(a, b, result) : result = a | b.
+; zkvm_status zkvm_u256_or(a, b, result). Inline zkvmcall: a's limb in r32,
+; b's in c.
 ziskasm_zkvm_u256_or:
-	copyb(0, r10) -> r5
-	copyb(0, r11) -> r6
-	copyb(0, r12) -> r7
-	copyb(r5, 8[a + 0]) -> r14
-	copyb(r6, 8[a + 0]) -> r15
-	or(r14, r15) -> r14
-	copyb(r7, r14) -> 8[a + 0]
-	copyb(r5, 8[a + 8]) -> r14
-	copyb(r6, 8[a + 8]) -> r15
-	or(r14, r15) -> r14
-	copyb(r7, r14) -> 8[a + 8]
-	copyb(r5, 8[a + 16]) -> r14
-	copyb(r6, 8[a + 16]) -> r15
-	or(r14, r15) -> r14
-	copyb(r7, r14) -> 8[a + 16]
-	copyb(r5, 8[a + 24]) -> r14
-	copyb(r6, 8[a + 24]) -> r15
-	or(r14, r15) -> r14
-	copyb(r7, r14) -> 8[a + 24]
-	copyb(0, 0) -> r10
+	rev8(r10, 8[a + 24]) -> r32
+	rev8(r11, 8[a + 24])
+	or(r32, c)
+	rev8(r12, c) -> 8[a + 24]
+	rev8(r10, 8[a + 16]) -> r32
+	rev8(r11, 8[a + 16])
+	or(r32, c)
+	rev8(r12, c) -> 8[a + 16]
+	rev8(r10, 8[a + 8]) -> r32
+	rev8(r11, 8[a + 8])
+	or(r32, c)
+	rev8(r12, c) -> 8[a + 8]
+	rev8(r10, 8[a + 0]) -> r32
+	rev8(r11, 8[a + 0])
+	or(r32, c)
+	rev8(r12, c) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_xor(a, b, result) : result = a ^ b.
+; zkvm_status zkvm_u256_xor(a, b, result). Inline zkvmcall: a's limb in r32,
+; b's in c.
 ziskasm_zkvm_u256_xor:
-	copyb(0, r10) -> r5
-	copyb(0, r11) -> r6
-	copyb(0, r12) -> r7
-	copyb(r5, 8[a + 0]) -> r14
-	copyb(r6, 8[a + 0]) -> r15
-	xor(r14, r15) -> r14
-	copyb(r7, r14) -> 8[a + 0]
-	copyb(r5, 8[a + 8]) -> r14
-	copyb(r6, 8[a + 8]) -> r15
-	xor(r14, r15) -> r14
-	copyb(r7, r14) -> 8[a + 8]
-	copyb(r5, 8[a + 16]) -> r14
-	copyb(r6, 8[a + 16]) -> r15
-	xor(r14, r15) -> r14
-	copyb(r7, r14) -> 8[a + 16]
-	copyb(r5, 8[a + 24]) -> r14
-	copyb(r6, 8[a + 24]) -> r15
-	xor(r14, r15) -> r14
-	copyb(r7, r14) -> 8[a + 24]
-	copyb(0, 0) -> r10
+	rev8(r10, 8[a + 24]) -> r32
+	rev8(r11, 8[a + 24])
+	xor(r32, c)
+	rev8(r12, c) -> 8[a + 24]
+	rev8(r10, 8[a + 16]) -> r32
+	rev8(r11, 8[a + 16])
+	xor(r32, c)
+	rev8(r12, c) -> 8[a + 16]
+	rev8(r10, 8[a + 8]) -> r32
+	rev8(r11, 8[a + 8])
+	xor(r32, c)
+	rev8(r12, c) -> 8[a + 8]
+	rev8(r10, 8[a + 0]) -> r32
+	rev8(r11, 8[a + 0])
+	xor(r32, c)
+	rev8(r12, c) -> 8[a + 0]
 	ret
 
-; zkvm_status zkvm_u256_not(a, result) : result = ~a.
+; zkvm_status zkvm_u256_not(a, result). An inline zkvmcall: the transpiler
+; expands the body (up to the `ret`) at the call site, on the caller's registers
+; for a (r10) and result (r11). Each limb goes through c (load, xor, store), so
+; it writes no register at all, only memory, and needs no temporary.
 ziskasm_zkvm_u256_not:
-	copyb(0, r10) -> r5
-	copyb(0, r11) -> r6
-	copyb(r5, 8[a + 0]) -> r14
-	xor(r14, 0xffffffffffffffff) -> r14
-	copyb(r6, r14) -> 8[a + 0]
-	copyb(r5, 8[a + 8]) -> r14
-	xor(r14, 0xffffffffffffffff) -> r14
-	copyb(r6, r14) -> 8[a + 8]
-	copyb(r5, 8[a + 16]) -> r14
-	xor(r14, 0xffffffffffffffff) -> r14
-	copyb(r6, r14) -> 8[a + 16]
-	copyb(r5, 8[a + 24]) -> r14
-	xor(r14, 0xffffffffffffffff) -> r14
-	copyb(r6, r14) -> 8[a + 24]
-	copyb(0, 0) -> r10
+	rev8(r10, 8[a + 24])
+	xor(c, 0xffffffffffffffff)
+	rev8(r11, c) -> 8[a + 24]
+	rev8(r10, 8[a + 16])
+	xor(c, 0xffffffffffffffff)
+	rev8(r11, c) -> 8[a + 16]
+	rev8(r10, 8[a + 8])
+	xor(c, 0xffffffffffffffff)
+	rev8(r11, c) -> 8[a + 8]
+	rev8(r10, 8[a + 0])
+	xor(c, 0xffffffffffffffff)
+	rev8(r11, c) -> 8[a + 0]
 	ret
 
 ; zkvm_status zkvm_u256_byte(i, a, result) : byte i of a (0 = MSB), zero-extended.
