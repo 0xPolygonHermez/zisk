@@ -3,6 +3,15 @@
 ; (scratchpad/gen_bls_verify.py). Mirrors bls.rs. Prefix lv_.
 ; ============================================================================
 
+; inline-op headers (zopt): precompile parameter blocks
+const u64 ZBLS_VERIFY_H0[5] = BLS_V_X, BLS_V_X, BLS_ZERO, BLS_P, BLS_V_Y
+const u64 ZBLS_VERIFY_H1[5] = BLS_V_Y, BLS_V_X, BLS_ZERO, BLS_P, BLS_V_Y
+const u64 ZBLS_VERIFY_H2[5] = BLS_V_Y, BLS_ONE, BLS_E_B, BLS_P, BLS_V_Y
+const u64 ZBLS_VERIFY_H3[5] = BLS_V_Y, BLS_P_MINUS_ONE, BLS_ZERO, BLS_P, BLS_V_YN
+const u64 ZBLS_VERIFY_H4[2] = BLS_V_YF, BLS_V_XF
+const u64 ZBLS_VERIFY_H5[2] = BLS_V_YF, BLS_ETWISTED_B
+const u64 ZBLS_VERIFY_H6[2] = BLS_V_MILL, BLS_F2_NEGMUL
+
 const u64 BLS_DST_STR[6] = 0x5f4749535f534c42, 0x3138333231534c42, 0x533a444d585f3247, 0x535f3635322d4148, 0x4e5f4f525f555753, 0x00000000005f4c55
 define BLS_DST_LEN 43
 u64 BLS_V_TMP96[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -38,33 +47,29 @@ u64 BLS_V_DEST[1] = 0
 ; void zisklib_fill_be6(const u8* bytes48, u64* dest6)
 zisklib_fill_be6_bls12_381:
 	push r1
-	copyb(0, BLS_V_FBIN) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_V_DEST) -> r5
-	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_V_FBIN]
+	copyb(0, r11) -> [BLS_V_DEST]
+	copyb(0, 0) -> [BLS_V_I]
 	copyb(0, BLS_V_I) -> r5
-	copyb(r5, 0) -> 8[a + 0]
 lv_fb6_loop:
 	copyb(0, BLS_V_I) -> r5
-	copyb(r5, 8[a + 0]) -> r13
+	copyb(0, [BLS_V_I]) -> r13
 	eq(r13, 6), j(lv_fb6_done)
-	copyb(0, BLS_V_FBIN) -> r5
-	copyb(r5, 8[a + 0]) -> r10
 	sll(r13, 3) -> r6
+	copyb(0, [BLS_V_FBIN]) -> r10
 	add(r10, r6) -> r10
+	copyb(0, BLS_V_FBIN) -> r5
 	call zisklib_be64
-	copyb(0, BLS_V_I) -> r5
-	copyb(r5, 8[a + 0]) -> r13
 	copyb(0, 5) -> r6
+	copyb(0, [BLS_V_I]) -> r13
 	sub(r6, r13) -> r6
 	sll(r6, 3) -> r6
-	copyb(0, BLS_V_DEST) -> r5
-	copyb(r5, 8[a + 0]) -> r7
+	copyb(0, [BLS_V_DEST]) -> r7
 	add(r7, r6) -> r7
 	copyb(r7, r10) -> 8[a + 0]
 	add(r13, 1) -> r13
+	copyb(0, r13) -> [BLS_V_I]
 	copyb(0, BLS_V_I) -> r5
-	copyb(r5, r13) -> 8[a + 0]
 	jump(lv_fb6_loop)
 lv_fb6_done:
 	pop r1
@@ -73,14 +78,13 @@ lv_fb6_done:
 ; u64 zisklib_decompress_g1(const u8* in48) [r10] -> r10 status; result BLS_V_PK + BLS_V_G1INF
 zisklib_decompress_g1_bls12_381:
 	push r1
-	copyb(0, BLS_V_IN) -> r5
-	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_V_IN]
 	copyb(r10, 1[a + 0]) -> r6
-	copyb(0, BLS_V_YSIGN) -> r5
 	srl(r6, 5) -> r7
 	and(r7, 1) -> r7
-	copyb(r5, r7) -> 8[a + 0]
+	copyb(0, r7) -> [BLS_V_YSIGN]
 	and(r6, 0x80) -> r7
+	copyb(0, BLS_V_YSIGN) -> r5
 	eq(r7, 0), j(lv_dg1_err)
 	and(r6, 0x40) -> r7
 	eq(r7, 0), j(lv_dg1_notinf)
@@ -90,31 +94,28 @@ zisklib_decompress_g1_bls12_381:
 	; the identity, so a point would have many valid encodings.
 	and(r6, 0x3f) -> r7
 	ltu(0, r7), j(lv_dg1_err)
-	copyb(0, r10) -> r5
-	add(r5, 1) -> r5
-	copyb(0, 47) -> r7                  ; bytes 1..48 of the 48-byte encoding
+	add(r10, 1) -> r5
+	copyb(0, 47) -> r7
 lv_dg1_infz:
 	eq(r7, 0), j(lv_dg1_infok)
 	copyb(r5, 1[a + 0]) -> r14
 	ltu(0, r14), j(lv_dg1_err)
-	add(r5, 1) -> r5
 	sub(r7, 1) -> r7
+	add(r5, 1) -> r5
 	jump(lv_dg1_infz)
 lv_dg1_infok:
-	copyb(0, BLS_G1_IDENTITY) -> r10    ; src = identity
-	copyb(0, BLS_V_PK) -> r11           ; dst = decompressed point (BLS_V_PK <- identity)
-	copyb(0, 12) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(BLS_V_PK, BLS_G1_IDENTITY) -> r5, j(96, 4)
+	copyb(0, 1) -> [BLS_V_G1INF]
 	copyb(0, BLS_V_G1INF) -> r5
-	copyb(r5, 1) -> 8[a + 0]
 	copyb(0, 0) -> r10
+	copyb(0, BLS_V_PK) -> r11
+	copyb(0, 12) -> r12
 	pop r1
 	ret
 lv_dg1_notinf:
+	copyb(0, 0) -> [BLS_V_G1INF]
 	copyb(0, BLS_V_G1INF) -> r5
-	copyb(r5, 0) -> 8[a + 0]
-	copyb(0, BLS_V_IN) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [BLS_V_IN]) -> r10
 	copyb(0, BLS_V_TMP96) -> r11
 	copyb(0, 48) -> r12
 	call zisklib_bytecopy
@@ -128,58 +129,78 @@ lv_dg1_notinf:
 	copyb(0, BLS_V_X) -> r10
 	copyb(0, BLS_P) -> r11
 	copyb(0, 6) -> r12
-	call bn254_ltn
+	ltu([BLS_V_X + 40], [BLS_P + 40]), j(zbls_verify_lt0)
+	ltu([BLS_P + 40], [BLS_V_X + 40]), j(zbls_verify_ge0)
+	ltu([BLS_V_X + 32], [BLS_P + 32]), j(zbls_verify_lt0)
+	ltu([BLS_P + 32], [BLS_V_X + 32]), j(zbls_verify_ge0)
+	ltu([BLS_V_X + 24], [BLS_P + 24]), j(zbls_verify_lt0)
+	ltu([BLS_P + 24], [BLS_V_X + 24]), j(zbls_verify_ge0)
+	ltu([BLS_V_X + 16], [BLS_P + 16]), j(zbls_verify_lt0)
+	ltu([BLS_P + 16], [BLS_V_X + 16]), j(zbls_verify_ge0)
+	ltu([BLS_V_X + 8], [BLS_P + 8]), j(zbls_verify_lt0)
+	ltu([BLS_P + 8], [BLS_V_X + 8]), j(zbls_verify_ge0)
+	ltu([BLS_V_X], [BLS_P]), j(zbls_verify_lt0)
+	ltu([BLS_P], [BLS_V_X]), j(zbls_verify_ge0)
+zbls_verify_ge0:
+	copyb(0, 0) -> r10
+	jump(zbls_verify_le0)
+zbls_verify_lt0:
+	copyb(0, 1) -> r10
+zbls_verify_le0:
+	copyb(0, BLS_P) -> r11
+	copyb(0, 6) -> r12
 	eq(r10, 0), j(lv_dg1_err)
-	copyb(0, BLS_V_X) -> r10
-	copyb(0, BLS_V_Y) -> r11
-	call zisklib_square_fp_bls12_381
-	copyb(0, BLS_V_Y) -> r10
-	copyb(0, BLS_V_X) -> r11
-	copyb(0, BLS_V_Y) -> r12
-	call zisklib_mul_fp_bls12_381
-	copyb(0, BLS_V_Y) -> r10
-	copyb(0, BLS_E_B) -> r11
-	copyb(0, BLS_V_Y) -> r12
-	call zisklib_add_fp_bls12_381
+	arith384_mod(0, ZBLS_VERIFY_H0)
+	arith384_mod(0, ZBLS_VERIFY_H1)
+	arith384_mod(0, ZBLS_VERIFY_H2)
 	copyb(0, BLS_V_Y) -> r10
 	copyb(0, BLS_V_YR) -> r11
+	copyb(0, BLS_V_Y) -> r12
 	call zisklib_sqrt_fp_bls12_381
 	eq(r10, 0), j(lv_dg1_err)
-	copyb(0, BLS_V_YR) -> r10
-	copyb(0, BLS_V_Y) -> r11
-	copyb(0, 6) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_V_Y) -> r10
-	copyb(0, BLS_V_YN) -> r11
-	call zisklib_neg_fp_bls12_381
+	dma_xmemcpy(BLS_V_Y, BLS_V_YR) -> r5, j(48, 4)
+	arith384_mod(0, ZBLS_VERIFY_H3)
 	copyb(0, BLS_V_YN) -> r10
 	copyb(0, BLS_V_Y) -> r11
 	copyb(0, 6) -> r12
-	call bn254_ltn
+	ltu([BLS_V_YN + 40], [BLS_V_Y + 40]), j(zbls_verify_lt1)
+	ltu([BLS_V_Y + 40], [BLS_V_YN + 40]), j(zbls_verify_ge1)
+	ltu([BLS_V_YN + 32], [BLS_V_Y + 32]), j(zbls_verify_lt1)
+	ltu([BLS_V_Y + 32], [BLS_V_YN + 32]), j(zbls_verify_ge1)
+	ltu([BLS_V_YN + 24], [BLS_V_Y + 24]), j(zbls_verify_lt1)
+	ltu([BLS_V_Y + 24], [BLS_V_YN + 24]), j(zbls_verify_ge1)
+	ltu([BLS_V_YN + 16], [BLS_V_Y + 16]), j(zbls_verify_lt1)
+	ltu([BLS_V_Y + 16], [BLS_V_YN + 16]), j(zbls_verify_ge1)
+	ltu([BLS_V_YN + 8], [BLS_V_Y + 8]), j(zbls_verify_lt1)
+	ltu([BLS_V_Y + 8], [BLS_V_YN + 8]), j(zbls_verify_ge1)
+	ltu([BLS_V_YN], [BLS_V_Y]), j(zbls_verify_lt1)
+	ltu([BLS_V_Y], [BLS_V_YN]), j(zbls_verify_ge1)
+zbls_verify_ge1:
+	copyb(0, 0) -> r10
+	jump(zbls_verify_le1)
+zbls_verify_lt1:
+	copyb(0, 1) -> r10
+zbls_verify_le1:
 	copyb(0, BLS_V_YSIGN) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [BLS_V_YSIGN]) -> r6
+	copyb(0, BLS_V_Y) -> r11
+	copyb(0, 6) -> r12
 	eq(r10, r6), j(lv_dg1_usey)
+	dma_xmemcpy(BLS_V_YF, BLS_V_YN) -> r5, j(48, 4)
 	copyb(0, BLS_V_YN) -> r10
 	copyb(0, BLS_V_YF) -> r11
-	copyb(0, 6) -> r12
-	call bn254_memcpy
 	jump(lv_dg1_setpk)
 lv_dg1_usey:
+	dma_xmemcpy(BLS_V_YF, BLS_V_Y) -> r5, j(48, 4)
 	copyb(0, BLS_V_Y) -> r10
 	copyb(0, BLS_V_YF) -> r11
 	copyb(0, 6) -> r12
-	call bn254_memcpy
 lv_dg1_setpk:
-	copyb(0, BLS_V_X) -> r10
-	copyb(0, BLS_V_PK) -> r11
-	copyb(0, 6) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_V_YF) -> r10
-	copyb(0, BLS_V_PK) -> r11
-	add(r11, 48) -> r11
-	copyb(0, 6) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(BLS_V_PK, BLS_V_X) -> r5, j(48, 4)
+	dma_xmemcpy(BLS_V_PK + 48, BLS_V_YF) -> r5, j(48, 4)
 	copyb(0, 0) -> r10
+	copyb(0, BLS_V_PK + 48) -> r11
+	copyb(0, 6) -> r12
 	pop r1
 	ret
 lv_dg1_err:
@@ -190,14 +211,13 @@ lv_dg1_err:
 ; u64 zisklib_decompress_g2(const u8* in96) [r10] -> r10 status; result BLS_V_SIG + BLS_V_G2INF
 zisklib_decompress_g2_bls12_381:
 	push r1
-	copyb(0, BLS_V_IN) -> r5
-	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_V_IN]
 	copyb(r10, 1[a + 0]) -> r6
-	copyb(0, BLS_V_YSIGN) -> r5
 	srl(r6, 5) -> r7
 	and(r7, 1) -> r7
-	copyb(r5, r7) -> 8[a + 0]
+	copyb(0, r7) -> [BLS_V_YSIGN]
 	and(r6, 0x80) -> r7
+	copyb(0, BLS_V_YSIGN) -> r5
 	eq(r7, 0), j(lv_dg2_err)
 	and(r6, 0x40) -> r7
 	eq(r7, 0), j(lv_dg2_notinf)
@@ -205,31 +225,28 @@ zisklib_decompress_g2_bls12_381:
 	; rule to the 96-byte G2 encoding).
 	and(r6, 0x3f) -> r7
 	ltu(0, r7), j(lv_dg2_err)
-	copyb(0, r10) -> r5
-	add(r5, 1) -> r5
-	copyb(0, 95) -> r7                  ; bytes 1..96 of the 96-byte encoding
+	add(r10, 1) -> r5
+	copyb(0, 95) -> r7
 lv_dg2_infz:
 	eq(r7, 0), j(lv_dg2_infok)
 	copyb(r5, 1[a + 0]) -> r14
 	ltu(0, r14), j(lv_dg2_err)
-	add(r5, 1) -> r5
 	sub(r7, 1) -> r7
+	add(r5, 1) -> r5
 	jump(lv_dg2_infz)
 lv_dg2_infok:
-	copyb(0, BLS_G2_IDENTITY) -> r10    ; src = identity
-	copyb(0, BLS_V_SIG) -> r11          ; dst = decompressed point (BLS_V_SIG <- identity)
-	copyb(0, 24) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(BLS_V_SIG, BLS_G2_IDENTITY) -> r5, j(192, 4)
+	copyb(0, 1) -> [BLS_V_G2INF]
 	copyb(0, BLS_V_G2INF) -> r5
-	copyb(r5, 1) -> 8[a + 0]
 	copyb(0, 0) -> r10
+	copyb(0, BLS_V_SIG) -> r11
+	copyb(0, 24) -> r12
 	pop r1
 	ret
 lv_dg2_notinf:
+	copyb(0, 0) -> [BLS_V_G2INF]
 	copyb(0, BLS_V_G2INF) -> r5
-	copyb(r5, 0) -> 8[a + 0]
-	copyb(0, BLS_V_IN) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [BLS_V_IN]) -> r10
 	copyb(0, BLS_V_TMP96) -> r11
 	copyb(0, 48) -> r12
 	call zisklib_bytecopy
@@ -240,112 +257,142 @@ lv_dg2_notinf:
 	copyb(0, BLS_V_TMP96) -> r10
 	copyb(0, BLS_V_XI) -> r11
 	call zisklib_fill_be6_bls12_381
-	copyb(0, BLS_V_IN) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 48) -> r10
+	add([BLS_V_IN], 48) -> r10
 	copyb(0, BLS_V_XR) -> r11
 	call zisklib_fill_be6_bls12_381
 	copyb(0, BLS_V_XR) -> r10
 	copyb(0, BLS_P) -> r11
 	copyb(0, 6) -> r12
-	call bn254_ltn
-	eq(r10, 0), j(lv_dg2_err)
-	copyb(0, BLS_V_XI) -> r10
+	ltu([BLS_V_XR + 40], [BLS_P + 40]), j(zbls_verify_lt2)
+	ltu([BLS_P + 40], [BLS_V_XR + 40]), j(zbls_verify_ge2)
+	ltu([BLS_V_XR + 32], [BLS_P + 32]), j(zbls_verify_lt2)
+	ltu([BLS_P + 32], [BLS_V_XR + 32]), j(zbls_verify_ge2)
+	ltu([BLS_V_XR + 24], [BLS_P + 24]), j(zbls_verify_lt2)
+	ltu([BLS_P + 24], [BLS_V_XR + 24]), j(zbls_verify_ge2)
+	ltu([BLS_V_XR + 16], [BLS_P + 16]), j(zbls_verify_lt2)
+	ltu([BLS_P + 16], [BLS_V_XR + 16]), j(zbls_verify_ge2)
+	ltu([BLS_V_XR + 8], [BLS_P + 8]), j(zbls_verify_lt2)
+	ltu([BLS_P + 8], [BLS_V_XR + 8]), j(zbls_verify_ge2)
+	ltu([BLS_V_XR], [BLS_P]), j(zbls_verify_lt2)
+	ltu([BLS_P], [BLS_V_XR]), j(zbls_verify_ge2)
+zbls_verify_ge2:
+	copyb(0, 0) -> r10
+	jump(zbls_verify_le2)
+zbls_verify_lt2:
+	copyb(0, 1) -> r10
+zbls_verify_le2:
 	copyb(0, BLS_P) -> r11
 	copyb(0, 6) -> r12
-	call bn254_ltn
 	eq(r10, 0), j(lv_dg2_err)
-	copyb(0, BLS_V_XR) -> r10
-	copyb(0, BLS_V_XF) -> r11
-	copyb(0, 6) -> r12
-	call bn254_memcpy
 	copyb(0, BLS_V_XI) -> r10
-	copyb(0, BLS_V_XF) -> r11
-	add(r11, 48) -> r11
+	ltu([BLS_V_XI + 40], [BLS_P + 40]), j(zbls_verify_lt3)
+	ltu([BLS_P + 40], [BLS_V_XI + 40]), j(zbls_verify_ge3)
+	ltu([BLS_V_XI + 32], [BLS_P + 32]), j(zbls_verify_lt3)
+	ltu([BLS_P + 32], [BLS_V_XI + 32]), j(zbls_verify_ge3)
+	ltu([BLS_V_XI + 24], [BLS_P + 24]), j(zbls_verify_lt3)
+	ltu([BLS_P + 24], [BLS_V_XI + 24]), j(zbls_verify_ge3)
+	ltu([BLS_V_XI + 16], [BLS_P + 16]), j(zbls_verify_lt3)
+	ltu([BLS_P + 16], [BLS_V_XI + 16]), j(zbls_verify_ge3)
+	ltu([BLS_V_XI + 8], [BLS_P + 8]), j(zbls_verify_lt3)
+	ltu([BLS_P + 8], [BLS_V_XI + 8]), j(zbls_verify_ge3)
+	ltu([BLS_V_XI], [BLS_P]), j(zbls_verify_lt3)
+	ltu([BLS_P], [BLS_V_XI]), j(zbls_verify_ge3)
+zbls_verify_ge3:
+	copyb(0, 0) -> r10
+	jump(zbls_verify_le3)
+zbls_verify_lt3:
+	copyb(0, 1) -> r10
+zbls_verify_le3:
+	copyb(0, BLS_P) -> r11
 	copyb(0, 6) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_V_XF) -> r10
-	copyb(0, BLS_V_YF) -> r11
-	call zisklib_square_fp2_bls12_381
-	copyb(0, BLS_V_YF) -> r10
-	copyb(0, BLS_V_XF) -> r11
-	copyb(0, BLS_V_YF) -> r12
-	call zisklib_mul_fp2_bls12_381
-	copyb(0, BLS_V_YF) -> r10
-	copyb(0, BLS_ETWISTED_B) -> r11
-	copyb(0, BLS_V_YF) -> r12
-	call zisklib_add_fp2_bls12_381
+	eq(r10, 0), j(lv_dg2_err)
+	dma_xmemcpy(BLS_V_XF, BLS_V_XR) -> r5, j(48, 4)
+	dma_xmemcpy(BLS_V_XF + 48, BLS_V_XI) -> r5, j(48, 4)
+	dma_xmemcpy(BLS_V_YF, BLS_V_XF) -> r5, j(96, 4)
+	bls12_381_complex_mul(0, ZBLS_VERIFY_H4)
+	bls12_381_complex_mul(0, ZBLS_VERIFY_H4)
+	bls12_381_complex_add(0, ZBLS_VERIFY_H5)
 	copyb(0, BLS_V_YF) -> r10
 	copyb(0, BLS_V_MILL) -> r11
+	copyb(0, BLS_V_YF) -> r12
 	call zisklib_sqrt_fp2_bls12_381
 	eq(r10, 0), j(lv_dg2_err)
-	copyb(0, BLS_V_MILL) -> r10
-	copyb(0, BLS_V_YF) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_V_YF) -> r10
-	copyb(0, BLS_V_MILL) -> r11
-	call zisklib_neg_fp2_bls12_381
-	copyb(0, BLS_V_YF) -> r10
-	copyb(0, BLS_V_YR) -> r11
-	copyb(0, 6) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_V_YF) -> r10
-	add(r10, 48) -> r10
-	copyb(0, BLS_V_YI) -> r11
-	copyb(0, 6) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_V_MILL) -> r10
-	copyb(0, BLS_V_YNR) -> r11
-	copyb(0, 6) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_V_MILL) -> r10
-	add(r10, 48) -> r10
+	dma_xmemcpy(BLS_V_YF, BLS_V_MILL) -> r5, j(96, 4)
+	dma_xmemcpy(BLS_V_MILL, BLS_V_YF) -> r5, j(96, 4)
+	bls12_381_complex_mul(0, ZBLS_VERIFY_H6)
+	dma_xmemcpy(BLS_V_YR, BLS_V_YF) -> r5, j(48, 4)
+	dma_xmemcpy(BLS_V_YI, BLS_V_YF + 48) -> r5, j(48, 4)
+	dma_xmemcpy(BLS_V_YNR, BLS_V_MILL) -> r5, j(48, 4)
+	dma_xmemcpy(BLS_V_YNI, BLS_V_MILL + 48) -> r5, j(48, 4)
+	dma_xmemcmp(BLS_V_YI, BLS_V_YNI) -> r5, j(48, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BLS_V_YNI) -> r11
 	copyb(0, 6) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_V_YI) -> r10
-	copyb(0, BLS_V_YNI) -> r11
-	copyb(0, 6) -> r12
-	call bn254_eqn
 	ltu(0, r10), j(lv_dg2_cmpr)
 	copyb(0, BLS_V_YNI) -> r10
 	copyb(0, BLS_V_YI) -> r11
+	ltu([BLS_V_YNI + 40], [BLS_V_YI + 40]), j(zbls_verify_lt4)
+	ltu([BLS_V_YI + 40], [BLS_V_YNI + 40]), j(zbls_verify_ge4)
+	ltu([BLS_V_YNI + 32], [BLS_V_YI + 32]), j(zbls_verify_lt4)
+	ltu([BLS_V_YI + 32], [BLS_V_YNI + 32]), j(zbls_verify_ge4)
+	ltu([BLS_V_YNI + 24], [BLS_V_YI + 24]), j(zbls_verify_lt4)
+	ltu([BLS_V_YI + 24], [BLS_V_YNI + 24]), j(zbls_verify_ge4)
+	ltu([BLS_V_YNI + 16], [BLS_V_YI + 16]), j(zbls_verify_lt4)
+	ltu([BLS_V_YI + 16], [BLS_V_YNI + 16]), j(zbls_verify_ge4)
+	ltu([BLS_V_YNI + 8], [BLS_V_YI + 8]), j(zbls_verify_lt4)
+	ltu([BLS_V_YI + 8], [BLS_V_YNI + 8]), j(zbls_verify_ge4)
+	ltu([BLS_V_YNI], [BLS_V_YI]), j(zbls_verify_lt4)
+	ltu([BLS_V_YI], [BLS_V_YNI]), j(zbls_verify_ge4)
+zbls_verify_ge4:
+	copyb(0, 0) -> r10
+	jump(zbls_verify_le4)
+zbls_verify_lt4:
+	copyb(0, 1) -> r10
+zbls_verify_le4:
+	copyb(0, BLS_V_YI) -> r11
 	copyb(0, 6) -> r12
-	call bn254_ltn
 	jump(lv_dg2_havelarge)
 lv_dg2_cmpr:
 	copyb(0, BLS_V_YNR) -> r10
 	copyb(0, BLS_V_YR) -> r11
 	copyb(0, 6) -> r12
-	call bn254_ltn
+	ltu([BLS_V_YNR + 40], [BLS_V_YR + 40]), j(zbls_verify_lt5)
+	ltu([BLS_V_YR + 40], [BLS_V_YNR + 40]), j(zbls_verify_ge5)
+	ltu([BLS_V_YNR + 32], [BLS_V_YR + 32]), j(zbls_verify_lt5)
+	ltu([BLS_V_YR + 32], [BLS_V_YNR + 32]), j(zbls_verify_ge5)
+	ltu([BLS_V_YNR + 24], [BLS_V_YR + 24]), j(zbls_verify_lt5)
+	ltu([BLS_V_YR + 24], [BLS_V_YNR + 24]), j(zbls_verify_ge5)
+	ltu([BLS_V_YNR + 16], [BLS_V_YR + 16]), j(zbls_verify_lt5)
+	ltu([BLS_V_YR + 16], [BLS_V_YNR + 16]), j(zbls_verify_ge5)
+	ltu([BLS_V_YNR + 8], [BLS_V_YR + 8]), j(zbls_verify_lt5)
+	ltu([BLS_V_YR + 8], [BLS_V_YNR + 8]), j(zbls_verify_ge5)
+	ltu([BLS_V_YNR], [BLS_V_YR]), j(zbls_verify_lt5)
+	ltu([BLS_V_YR], [BLS_V_YNR]), j(zbls_verify_ge5)
+zbls_verify_ge5:
+	copyb(0, 0) -> r10
+	jump(zbls_verify_le5)
+zbls_verify_lt5:
+	copyb(0, 1) -> r10
+zbls_verify_le5:
+	copyb(0, BLS_V_YR) -> r11
+	copyb(0, 6) -> r12
 lv_dg2_havelarge:
 	copyb(0, BLS_V_YSIGN) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [BLS_V_YSIGN]) -> r6
 	eq(r10, r6), j(lv_dg2_usey)
-	copyb(0, BLS_V_XF) -> r10
-	copyb(0, BLS_V_SIG) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_V_MILL) -> r10
-	copyb(0, BLS_V_SIG) -> r11
-	add(r11, 96) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(BLS_V_SIG, BLS_V_XF) -> r5, j(96, 4)
+	dma_xmemcpy(BLS_V_SIG + 96, BLS_V_MILL) -> r5, j(96, 4)
 	copyb(0, 0) -> r10
+	copyb(0, BLS_V_SIG + 96) -> r11
+	copyb(0, 12) -> r12
 	pop r1
 	ret
 lv_dg2_usey:
-	copyb(0, BLS_V_XF) -> r10
-	copyb(0, BLS_V_SIG) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_V_YF) -> r10
-	copyb(0, BLS_V_SIG) -> r11
-	add(r11, 96) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(BLS_V_SIG, BLS_V_XF) -> r5, j(96, 4)
+	dma_xmemcpy(BLS_V_SIG + 96, BLS_V_YF) -> r5, j(96, 4)
 	copyb(0, 0) -> r10
+	copyb(0, BLS_V_SIG + 96) -> r11
+	copyb(0, 12) -> r12
 	pop r1
 	ret
 lv_dg2_err:
@@ -356,13 +403,12 @@ lv_dg2_err:
 ; void zisklib_pairing_bls12_381(const u64* p12, const u64* q24, u64* dest72)
 zisklib_pairing_bls12_381:
 	push r1
+	copyb(0, r12) -> [BLS_V_DEST]
 	copyb(0, BLS_V_DEST) -> r5
-	copyb(r5, r12) -> 8[a + 0]
 	copyb(0, BLS_V_MILL) -> r12
 	call zisklib_miller_loop_bls12_381
 	copyb(0, BLS_V_MILL) -> r10
-	copyb(0, BLS_V_DEST) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [BLS_V_DEST]) -> r11
 	call zisklib_final_exp_bls12_381
 	pop r1
 	ret
@@ -370,39 +416,32 @@ zisklib_pairing_bls12_381:
 ; u64 zisklib_bls_verify(const u8* pk48, const u8* msg, u64 msglen, const u8* sig96) -> r10
 zisklib_bls_verify_bls12_381:
 	push r1
-	copyb(0, BLS_V_PKP) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_V_MSG) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, BLS_V_MSGLEN) -> r5
-	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_V_PKP]
+	copyb(0, r11) -> [BLS_V_MSG]
+	copyb(0, r12) -> [BLS_V_MSGLEN]
+	copyb(0, r13) -> [BLS_V_SIGP]
 	copyb(0, BLS_V_SIGP) -> r5
-	copyb(r5, r13) -> 8[a + 0]
-	copyb(0, BLS_V_SIGP) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, r13) -> r10
 	call zisklib_decompress_g2_bls12_381
 	ltu(0, r10), j(lv_bv_bad)
 	copyb(0, BLS_V_G2INF) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [BLS_V_G2INF]) -> r6
 	ltu(0, r6), j(lv_bv_sigok)
 	copyb(0, BLS_V_SIG) -> r10
 	call zisklib_is_on_subgroup_twist_bls12_381
 	eq(r10, 0), j(lv_bv_bad)
 lv_bv_sigok:
-	copyb(0, BLS_V_PKP) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [BLS_V_PKP]) -> r10
 	call zisklib_decompress_g1_bls12_381
 	ltu(0, r10), j(lv_bv_bad)
 	copyb(0, BLS_V_G1INF) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [BLS_V_G1INF]) -> r6
 	ltu(0, r6), j(lv_bv_bad)
 	copyb(0, BLS_V_PK) -> r10
 	call zisklib_is_on_subgroup_bls12_381
 	eq(r10, 0), j(lv_bv_bad)
-	copyb(0, BLS_V_MSG) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_V_MSGLEN) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [BLS_V_MSG]) -> r10
+	copyb(0, [BLS_V_MSGLEN]) -> r11
 	copyb(0, BLS_DST_STR) -> r12
 	copyb(0, BLS_DST_LEN) -> r13
 	copyb(0, BLS_V_Q) -> r14
@@ -415,10 +454,10 @@ lv_bv_sigok:
 	copyb(0, BLS_V_SIG) -> r11
 	copyb(0, BLS_V_C2) -> r12
 	call zisklib_pairing_bls12_381
-	copyb(0, BLS_V_C1) -> r10
+	dma_xmemcmp(BLS_V_C1, BLS_V_C2) -> r5, j(576, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BLS_V_C2) -> r11
 	copyb(0, 72) -> r12
-	call bn254_eqn
 	pop r1
 	ret
 lv_bv_bad:
