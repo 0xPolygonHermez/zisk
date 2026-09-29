@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "f8a7ec9fdce9835c41a19a3f9aa60d7f057e1ec8fd3cefa150c076accc786e78";
+pub const PILOUT_HASH: &str = "397b504dbf257012cb1d7d5e89da1a4555ecb0a9e26b202b2312762bf5ac18b8";
 
 //AIRGROUP CONSTANTS
 
@@ -775,7 +775,7 @@ pub type RomRomTrace<F> = GenericTrace<RomRomTraceRow<F>, 4194304, 0, 1, 0>;
 
 
 values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], segment_initial_step: F, last_reg_value: [[[F; 2]; 31]; 4], last_reg_mem_step: [[F; 31]; 4], im_direct: [FieldExtension<F>; 375],
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], segment_initial_step: F, last_reg_value: [[[F; 2]; 39]; 4], last_reg_mem_step: [[F; 39]; 4], im_direct: [FieldExtension<F>; 471],
 });
 
 values!(MemAirValues<F> {
