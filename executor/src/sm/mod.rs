@@ -2,11 +2,12 @@
 //!
 //! The bundle holds every constructed state machine the executor needs at
 //! **witness time** (`build_instance`, `configure_instances`, `set_rom`,
-//! `set_rh_data`). Plan-time counter/planner construction lives in this
+//! `park_rh_handle`). Plan-time counter/planner construction lives in this
 //! module too but goes through static dispatch ([`plan_sec`], the
 //! `ComponentPlanBuilder<F>` impls) and does not touch the bundle.
 
 mod builtins;
+pub(crate) mod frops;
 mod precompiles;
 // `register_precompiles!` macro module; exported via `#[macro_export]`.
 mod register_precompiles;
@@ -25,8 +26,10 @@ use zisk_common::{Instance, InstanceCtx, Plan};
 use zisk_pil::ZISK_AIRGROUP_ID;
 
 use zisk_asm_runner::AsmRunnerRH;
+use zisk_common::LateJoinHandle;
 
 use zisk_core::ZiskRom;
+use zisk_sm_rom::RomSM;
 
 pub type SMType<F> = (SMAirType, StateMachines<F>);
 
@@ -81,25 +84,113 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         Self { sm, std }
     }
 
+    /// Selects where the FROPS multiplicity column comes from.
+    ///
+    /// With `true` the column published by the ROM-histogram assembly is used, which only one worker
+    /// computes; the collectors must then not accumulate it as well, or every multiplicity would be
+    /// counted twice. With `false` (the default) the collectors own it, which is the only option on
+    /// an execution path that has no ROM-histogram assembly.
+    ///
+    /// The choice is process state (`zisk_core::frops`) because every collector has to agree with
+    /// whoever publishes the column. Set it before witness computation starts.
+    pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
+        zisk_core::frops::set_frops_multiplicity_from_asm(from_asm);
+    }
+
     /// Sets the ROM for the `RomSM` in the bundle.
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
-        for (_, sm) in self.sm.iter() {
-            if let StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) = sm {
-                rom_sm.set_rom(zisk_rom.clone())?;
-            }
+        match self.rom_sm() {
+            Some(rom_sm) => rom_sm.set_rom(zisk_rom)?,
+            None => return Err(ExecutorError::BundleComponentMissing { kind: "RomSM" }),
         }
         Ok(())
     }
 
-    /// Sets the RH data for the `RomSM` in the bundle.
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
-        for (_, sm) in self.sm.iter() {
-            if let StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) = sm {
-                rom_sm.set_rh_data(rh_data)?;
-                break;
-            }
-        }
+    /// Parks this execution's ASM ROM-histogram runner on the `RomSM` in the bundle.
+    ///
+    /// The runner is *not* joined here: it is read at the point of use, when the ROM
+    /// instance computes its witness. Parking is what selects that instance's ASM
+    /// backend, so it has to happen before the instance is built.
+    ///
+    /// # Errors
+    /// [`ExecutorError::BundleComponentMissing`] if the bundle has no `RomSM`. Dropping
+    /// the handle instead would *detach* the runner thread, leaving it reading shared
+    /// memory that the next job is entitled to rewind.
+    pub(crate) fn park_rh_handle(&self, handle: LateJoinHandle<AsmRunnerRH>) -> ExecutorResult<()> {
+        let rom_sm =
+            self.rom_sm().ok_or(ExecutorError::BundleComponentMissing { kind: "RomSM" })?;
+        rom_sm.rh().park(handle);
         Ok(())
+    }
+
+    /// Publishes what this execution's ROM histogram carries for FROPS: the multiplicity
+    /// column, when the assembly is where that column comes from, and the debug
+    /// cross-check when it is armed.
+    ///
+    /// Called at the end of execution, from the executor's own thread. That is the first
+    /// point the histogram is worth waiting for and the last one before its readers, all
+    /// of which run after `execute` returns: the virtual tables that consume the column,
+    /// and the collectors that read the cross-check flag in their constructors. Reading
+    /// it here also caches it, so the ROM witness does not wait later.
+    ///
+    /// A no-op when neither output is wanted, so a run that uses neither never joins the
+    /// runner on this thread.
+    pub(crate) fn publish_frops_from_asm(&self) -> ExecutorResult<()> {
+        let publish = zisk_core::frops::frops_multiplicity_from_asm();
+        // Compile-time: the `debug_frops` feature is the whole switch, so a build without
+        // it folds this away along with everything the cross-check would have done.
+        let cross_check = cfg!(feature = "debug_frops");
+        if !publish && !cross_check {
+            return Ok(());
+        }
+
+        // Nothing parked: the Rust emulator, or a rank that does not run the histogram.
+        // Neither has a column to publish, and neither is an error.
+        let Some(cell) = self.rom_sm().map(|rom_sm| rom_sm.rh()) else {
+            return Ok(());
+        };
+        if !cell.is_armed() {
+            return Ok(());
+        }
+
+        cell.with(|runner| {
+            let column = &runner.asm_rowh_output.frops_count;
+            if publish {
+                frops::publish_frops_multiplicity(&self.std, column)?;
+                tracing::info!(
+                    "FROPS multiplicity published from the assembly ({} rows, {} counted); the collectors do not accumulate it",
+                    column.len(),
+                    column.iter().sum::<u64>(),
+                );
+            }
+            if cross_check {
+                zisk_core::frops::load_frops_reference(column)
+                    .map_err(ExecutorError::Internal)?;
+                tracing::info!(
+                    "FROPS cross-check armed from the assembly's column ({} rows)",
+                    column.len()
+                );
+            }
+            Ok(())
+        })
+        .map_err(|e| ExecutorError::Internal(format!("ROM histogram unavailable: {e}")))?
+    }
+
+    /// Retires a runner a previous execution left unconsumed, and releases its
+    /// histogram. Must run before the next execution touches the ASM shared memory.
+    pub(crate) fn drain_rh(&self) {
+        if let Some(rom_sm) = self.rom_sm() {
+            rom_sm.rh().drain();
+        }
+    }
+
+    /// The bundle's `RomSM`, or `None` if it has none. The one place that knows where
+    /// in the bundle it lives.
+    fn rom_sm(&self) -> Option<&Arc<RomSM>> {
+        self.sm.iter().find_map(|(_, sm)| match sm {
+            StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) => Some(rom_sm),
+            _ => None,
+        })
     }
 
     /// Getter for the shared `Std` instance in the bundle, used by built-in SMs and precompiles.

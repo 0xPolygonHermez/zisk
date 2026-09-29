@@ -810,6 +810,15 @@ impl AsmCoreProver {
             options.packed,
         )?;
 
+        // The ROM-histogram assembly counts every frequent operation of the whole execution in one
+        // pass, so on this path it owns the multiplicity column and the collectors stand down. The
+        // choice has to hold for every rank: only the first process runs the histogram, and its
+        // column already covers the others' share, so a rank that kept accumulating would count
+        // those operations twice. The executor applies it only to executions that run on the ASM
+        // backend; `execute_emulator` and friends switch this same executor to the Rust path, where
+        // the collectors own the column again.
+        executor.set_frops_multiplicity_from_asm(zisk_executor::frops_from_asm_requested());
+
         let core = ProverBackend::new(
             proofman,
             snark_wrapper,
@@ -847,6 +856,9 @@ impl ExecuteClient for ZiskProver<Asm> {
         stdin: ZiskStdin,
         hints: Option<StreamSource>,
     ) -> Result<ExecuteOutput> {
+        // Every call is a job boundary for this client, which executes many times after
+        // one setup. Before the hints below — see `ZiskExecutor::reset_for_new_job`.
+        ZiskProver::<Asm>::reset(self)?;
         if let Some(stream) = hints {
             ZiskProver::<Asm>::register_hints_stream(self, stream)?;
         }

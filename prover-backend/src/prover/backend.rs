@@ -149,11 +149,14 @@ impl ProverBackend {
         Ok(())
     }
 
+    /// Retires the previous job's ASM state.
+    ///
+    /// Goes through the executor rather than straight to the ASM emulator: the executor
+    /// owns the producers still reading that shared memory, so only it can retire them
+    /// before the rewind. `ZiskExecutor::reset_for_new_job` documents the ordering
+    /// callers must respect.
     pub(crate) fn reset(&self) -> Result<()> {
-        if let Some(asm) = self.asm_emulator() {
-            asm.reset()?;
-        }
-        Ok(())
+        self.executor.reset_for_new_job().map_err(Into::into)
     }
 
     pub(crate) fn cancel(&self) {

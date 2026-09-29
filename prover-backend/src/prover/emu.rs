@@ -416,6 +416,10 @@ impl EmuCoreProver {
             options.packed,
         )?;
 
+        // No ROM-histogram assembly here, so the collectors own the column. The executor would
+        // apply this anyway, since it never runs on the ASM backend; stated for clarity.
+        executor.set_frops_multiplicity_from_asm(false);
+
         let core = ProverBackend::new(
             proofman,
             snark_wrapper,
