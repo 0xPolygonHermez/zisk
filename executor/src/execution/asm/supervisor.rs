@@ -37,7 +37,9 @@ use std::sync::Arc;
 use zisk_asm_runner::{AsmRunnerMO, AsmRunnerRH};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::ExecutorStatsHandle;
-use zisk_common::{LateJoinHandle, LateValueError};
+use zisk_common::LateJoinHandle;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use zisk_common::LateValueError;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crate::error::{ExecutorError, MutexExt};
