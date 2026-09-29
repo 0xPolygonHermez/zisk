@@ -22,8 +22,8 @@
 ;     NOTHING here calls zisklib_modexp_u64_c itself.
 ; The first two walk the exponent straight from its big-endian bytes, bit at a
 ; time for short exponents and with a 4-bit fixed window from 8 significant bytes.
-; GENERATED (the direct and Montgomery paths) by me_gen.py + mont_gen.py from the
-; general-path source.
+; GENERATED (the direct and Montgomery paths) by scripts/modexp_gen.py +
+; scripts/modexp_mont.py from the general-path source.
 ; Labels `zme_` / `zmm_`, data `ZKVM_ME_*` / `ZME*` / `ZMM_*` (BI_ZERO/BI_ONE are
 ; shared consts).
 ; ============================================================================

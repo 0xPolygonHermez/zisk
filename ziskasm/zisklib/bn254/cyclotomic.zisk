@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bn254/cyclotomic.zisk - GΦ6(p²) subgroup arithmetic (compressed cyclotomic).
-; GENERATED from cyclotomic.rs (scratchpad/gen_cyclo.py). Compressed = 32 u64
+; GENERATED from cyclotomic.rs (scripts/legacy/gen_cyclo.py). Compressed = 32 u64
 ; [a2,a3,a4,a5]; Fp12 = 48 u64. Prefixes cy_/dec_/expx_.
 ; ============================================================================
 

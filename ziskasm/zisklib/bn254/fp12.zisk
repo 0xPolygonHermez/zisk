@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bn254/fp12.zisk - degree-12 extension Fp12 = Fp6[w]/(w²-v) for BN254.
-; GENERATED from fp12.rs (scratchpad/gen_fp12.py). Fp12 element = 48 u64 =
+; GENERATED from fp12.rs (scripts/legacy/gen_fp12.py). Fp12 element = 48 u64 =
 ; a1‖a2 (each Fp6 = 24 u64). Non-leaf (call fp6/fp2). Prefix bx12_.
 ; ============================================================================
 

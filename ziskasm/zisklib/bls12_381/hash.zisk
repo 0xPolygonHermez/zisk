@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bls12_381/hash.zisk - hash_to_curve for G2 (RFC9380 BLS12381G2_XMD:SHA-256_
-; SSWU_RO_). GENERATED (scratchpad/gen_bls_hash.py). Prefix lh_.
+; SSWU_RO_). GENERATED (scripts/legacy/gen_bls_hash.py). Prefix lh_.
 ; ============================================================================
 
 ; inline-op headers (zopt): precompile parameter blocks

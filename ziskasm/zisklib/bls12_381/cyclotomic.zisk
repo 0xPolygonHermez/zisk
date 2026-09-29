@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bls12_381/cyclotomic.zisk - GΦ6(p²) subgroup arithmetic. GENERATED
-; (scratchpad/gen_bls_cyclo.py). Compressed = 48 u64 [a2,a3,a4,a5]; Fp12 = 72.
+; (scripts/legacy/gen_bls_cyclo.py). Compressed = 48 u64 [a2,a3,a4,a5]; Fp12 = 72.
 ; ξ=1+u=BLS_XI, (2+u)=BLS_XI2. Prefix lcy_.
 ; ============================================================================
 

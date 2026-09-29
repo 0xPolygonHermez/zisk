@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bls12_381/fp12.zisk - degree-12 extension Fp12 = Fp6[w]/(w²-v). GENERATED
-; from bls12_381/fp12.rs (scratchpad/gen_bls_fp12.py). Fp12 = 72 u64 = a1‖a2
+; from bls12_381/fp12.rs (scripts/legacy/gen_bls_fp12.py). Fp12 = 72 u64 = a1‖a2
 ; (each Fp6 = 36 u64). Only frobenius1 + frobenius2 (no frob3). Prefix BLS_F12_.
 ; ============================================================================
 

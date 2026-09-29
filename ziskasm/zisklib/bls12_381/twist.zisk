@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bls12_381/twist.zisk - G2 point arithmetic on E'/Fp2: y²=x³+4(1+u). GENERATED
-; (scratchpad/gen_bls_twist.py). G2 point = 24 u64 = x(Fp2)‖y(Fp2). Affine
+; (scripts/legacy/gen_bls_twist.py). G2 point = 24 u64 = x(Fp2)‖y(Fp2). Affine
 ; add/dbl via inv_fp2. General scalar_mul_twist. Prefix ltw_. (ψ/subgroup: M5b)
 ; ============================================================================
 

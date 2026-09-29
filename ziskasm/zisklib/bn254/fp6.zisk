@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bn254/fp6.zisk - degree-6 extension Fp6 = Fp2[v]/(v³-(9+u)) for BN254.
-; GENERATED from fp6.rs formulas (see scratchpad/gen_fp6.py). Fp6 element = 24
+; GENERATED from fp6.rs formulas (see scripts/legacy/gen_fp6.py). Fp6 element = 24
 ; u64 = a1‖a2‖a3 (each Fp2 = 8 u64). All routines are non-leaf (call the fp2
 ; leaves) and share the static scratch pool below (no fp6 routine calls another
 ; fp6 routine, so sharing is safe). Prefix `f6_`.

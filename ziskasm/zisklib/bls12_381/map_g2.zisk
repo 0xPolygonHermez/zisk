@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bls12_381/map_g2.zisk - map_to_curve for G2 (EIP-2537 MAP_FP2_TO_G2). GENERATED
-; (scratchpad/gen_bls_map_g2.py). Fp2 SSWU -> 3-isogeny -> clear_cofactor_twist.
+; (scripts/legacy/gen_bls_map_g2.py). Fp2 SSWU -> 3-isogeny -> clear_cofactor_twist.
 ; Prefix lm2_.
 ; ============================================================================
 

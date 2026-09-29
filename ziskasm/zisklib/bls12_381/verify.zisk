@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bls12_381/verify.zisk - BLS signature verify + point decompression. GENERATED
-; (scratchpad/gen_bls_verify.py). Mirrors bls.rs. Prefix lv_.
+; (scripts/legacy/gen_bls_verify.py). Mirrors bls.rs. Prefix lv_.
 ; ============================================================================
 
 ; inline-op headers (zopt): precompile parameter blocks

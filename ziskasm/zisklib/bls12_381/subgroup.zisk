@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bls12_381/subgroup.zisk - G1/G2 subgroup membership (EIP-2537). GENERATED
-; (scratchpad/gen_bls_subgroup.py). G1: ((x^2-1)/3)(2σP-P-σ^2P)==σ^2P.
+; (scripts/legacy/gen_bls_subgroup.py). G1: ((x^2-1)/3)(2σP-P-σ^2P)==σ^2P.
 ; G2: x·ψ^3(P)+P==ψ^2(P).  Prefix lsg_.
 ; ============================================================================
 

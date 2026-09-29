@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bn254/twist.zisk - G2 point arithmetic on the twist E'/Fp2: y²=x³+3/(9+u).
-; GENERATED from twist.rs (scratchpad/gen_twist.py). G2 point = 16 u64 =
+; GENERATED from twist.rs (scripts/legacy/gen_twist.py). G2 point = 16 u64 =
 ; x(Fp2)‖y(Fp2). Identity = all-zero. Affine add/dbl via inv_fp2.
 ; ============================================================================
 

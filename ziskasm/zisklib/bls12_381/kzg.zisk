@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bls12_381/kzg.zisk - verify_kzg_proof (EIP-4844 point evaluation). GENERATED
-; (scratchpad/gen_bls_kzg.py). e(C-[y]G1,-G2)·e(proof,[tau-z]G2)==1. lk_.
+; (scripts/legacy/gen_bls_kzg.py). e(C-[y]G1,-G2)·e(proof,[tau-z]G2)==1. lk_.
 ; ============================================================================
 
 u64 BLS_K_Z[4] = 0, 0, 0, 0

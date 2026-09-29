@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bls12_381/map.zisk - map_to_curve for G1 (EIP-2537 MAP_FP_TO_G1). GENERATED
-; (scratchpad/gen_bls_map.py). SSWU -> 11-isogeny -> cofactor·(1-x). lmp_.
+; (scripts/legacy/gen_bls_map.py). SSWU -> 11-isogeny -> cofactor·(1-x). lmp_.
 ; ============================================================================
 
 ; inline-op headers (zopt): precompile parameter blocks

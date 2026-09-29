@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bls12_381/fp6.zisk - degree-6 extension Fp6 = Fp2[v]/(v³-(1+u)). GENERATED
-; from bls12_381/fp6.rs (scratchpad/gen_bls_fp6.py). Fp6 = 36 u64 = a1‖a2‖a3
+; from bls12_381/fp6.rs (scripts/legacy/gen_bls_fp6.py). Fp6 = 36 u64 = a1‖a2‖a3
 ; (each Fp2 = 12 u64). Non-leaf (call fp2). Prefix BLS_F6_. ξ = 1+u = BLS_XI.
 ; ============================================================================
 
