@@ -1600,6 +1600,12 @@ impl Coordinator {
         for (job_id, job_lock) in entries {
             let job = job_lock.read().await;
             if let JobState::Running(ref phase) = job.state {
+                // Aggregation starts on the first phase-2 result but its clock only once
+                // every leaf is in; until then the job is still bound by phase 2's.
+                let phase = match phase {
+                    JobPhase::Recurse if job.phase_start_time(phase).is_none() => &JobPhase::Prove,
+                    _ => phase,
+                };
                 let timeout_secs = self.phase_timeout_secs(phase);
                 if timeout_secs == 0 {
                     continue;
@@ -1972,6 +1978,35 @@ mod tests {
             let mut job = entry.write().await;
             job.phase_timings.insert(
                 JobPhase::Contributions,
+                PhaseTimings {
+                    start_time: Utc::now() - chrono::Duration::seconds(600),
+                    end_time: None,
+                },
+            );
+        }
+
+        coordinator.check_phase_timeouts().await;
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    /// A job enters `Recurse` on its first phase-2 result, before the Recurse clock
+    /// starts. A prover that never answers must still time it out on phase 2's clock.
+    #[tokio::test]
+    async fn test_check_phase_timeouts_recurse_before_all_leaves() {
+        let (coordinator, _workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Recurse, |c| {
+                c.coordinator.phase2_timeout_seconds = 300;
+            })
+            .await;
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let mut job = entry.write().await;
+            job.phase_timings.remove(&JobPhase::Recurse);
+            job.phase_timings.insert(
+                JobPhase::Prove,
                 PhaseTimings {
                     start_time: Utc::now() - chrono::Duration::seconds(600),
                     end_time: None,
