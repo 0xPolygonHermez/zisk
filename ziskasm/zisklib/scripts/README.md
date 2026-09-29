@@ -5,13 +5,14 @@ scripts here. A file's header names the script that wrote it. Edit the script an
 regenerate; a hand edit to a generated file is lost the next time it is
 regenerated.
 
-All scripts need only Python 3 (no packages) and are run from any directory.
+The generators need only Python 3 (no packages) and are run from any directory.
 
 | Script | Writes | How to regenerate |
 |---|---|---|
 | `ripemd160_gen.py` | `zkvm/ripemd160.zisk` (whole file) | `python3 ripemd160_gen.py` |
 | `modexp_gen.py` + `modexp_mont.py` | `zkvm/modexp.zisk`: the direct and Montgomery paths, in front of the general path | see below |
 | `pairing/build.sh` + `pairing/*.py` | the optimized `bn254/*` and `bls12_381/*` files, `kernels.zisk`, `zkvm/bn254.zisk`, `zkvm/bls12_381.zisk` | `bash pairing/build.sh` |
+| `benchmark/` | nothing: per-call benchmarks and correctness checks of the `zkvm_*` functions | see [benchmark/README.md](benchmark/README.md) |
 | `legacy/gen_*.py` | first versions of the `bn254`, `bls12_381` and `bigint` files | not for regenerating (see below) |
 
 ## modexp
