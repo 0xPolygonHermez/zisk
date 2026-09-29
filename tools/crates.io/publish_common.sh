@@ -54,6 +54,7 @@ ZISK_CRATES=(
   "zisk-core"
   "zisk-common"
   "zisk-riscv"
+  "zisk-asm"
   "zisk-sm-frequent-ops"
   "zisk-cluster-common"
   "zisk-coordinator-api"

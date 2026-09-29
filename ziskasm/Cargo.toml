@@ -1,0 +1,31 @@
+[package]
+# Published on crates.io as `zisk-asm` (hyphenated, matching the other zisk-*
+# crates). The lib keeps the `ziskasm` crate name below so internal bins and
+# dependents can `use ziskasm::...` unchanged (dependents alias it via the
+# workspace dependency's `package = "zisk-asm"`).
+name = "zisk-asm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+name = "ziskasm"
+
+[dependencies]
+zisk-core = { workspace = true }
+zisk-riscv = { workspace = true }
+
+[dev-dependencies]
+# PATH-ONLY, deliberately not `{ workspace = true }`. The workspace entry carries a
+# `version`, and cargo keeps a versioned dev-dependency in the published manifest,
+# where it must resolve on crates.io. `ziskemu` optionally depends on `zisk-asm` and
+# publish_common.sh uploads `zisk-asm` first, so a versioned dev-dep here would be an
+# unpublishable cycle. Without a `version` cargo strips the entry at publish time
+# while `cargo test -p zisk-asm` still resolves it through the path.
+ziskemu = { path = "../emulator" }
+# Safe as a workspace dep: zisk-common is published BEFORE zisk-asm and does not
+# depend on it, so no cycle.
+zisk-common = { workspace = true }

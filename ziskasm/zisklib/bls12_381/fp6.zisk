@@ -1,0 +1,783 @@
+; ============================================================================
+; bls12_381/fp6.zisk - degree-6 extension Fp6 = Fp2[v]/(v³-(1+u)). GENERATED
+; from bls12_381/fp6.rs (scratchpad/gen_bls_fp6.py). Fp6 = 36 u64 = a1‖a2‖a3
+; (each Fp2 = 12 u64). Non-leaf (call fp2). Prefix BLS_F6_. ξ = 1+u = BLS_XI.
+; ============================================================================
+
+u64 BLS_F6_PA[1] = 0
+u64 BLS_F6_PB[1] = 0
+u64 BLS_F6_PR[1] = 0
+u64 BLS_F6_A1[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_A2[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_A3[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_B1[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_B2[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_B3[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_C1[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_C2[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_C3[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_T1[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_T2[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_T3[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_T4[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_T5[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_T6[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_T7[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_T8[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_T9[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_F6_T10[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+; void zisklib_add_fp6_bls12_381(const u64* a, const u64* b, u64* result)
+zisklib_add_fp6_bls12_381:
+	push r1
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F6_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_PB) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_PB) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 96) -> r11
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	add(r12, 96) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 192) -> r10
+	copyb(0, BLS_F6_PB) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 192) -> r11
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	add(r12, 192) -> r12
+	call zisklib_add_fp2_bls12_381
+	pop r1
+	ret
+
+; void zisklib_sub_fp6_bls12_381(const u64* a, const u64* b, u64* result)
+zisklib_sub_fp6_bls12_381:
+	push r1
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F6_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_PB) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	call zisklib_sub_fp2_bls12_381
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_PB) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 96) -> r11
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	add(r12, 96) -> r12
+	call zisklib_sub_fp2_bls12_381
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 192) -> r10
+	copyb(0, BLS_F6_PB) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 192) -> r11
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	add(r12, 192) -> r12
+	call zisklib_sub_fp2_bls12_381
+	pop r1
+	ret
+
+; void zisklib_dbl_fp6_bls12_381(const u64* a, u64* result)
+zisklib_dbl_fp6_bls12_381:
+	push r1
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	call zisklib_dbl_fp2_bls12_381
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 96) -> r11
+	call zisklib_dbl_fp2_bls12_381
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 192) -> r10
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 192) -> r11
+	call zisklib_dbl_fp2_bls12_381
+	pop r1
+	ret
+
+; void zisklib_neg_fp6_bls12_381(const u64* a, u64* result)
+zisklib_neg_fp6_bls12_381:
+	push r1
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	call zisklib_neg_fp2_bls12_381
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 96) -> r11
+	call zisklib_neg_fp2_bls12_381
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 192) -> r10
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 192) -> r11
+	call zisklib_neg_fp2_bls12_381
+	pop r1
+	ret
+
+; void zisklib_mul_fp6_bls12_381(const u64* a, const u64* b, u64* result)  [36,36,36]
+zisklib_mul_fp6_bls12_381:
+	push r1
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F6_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_A1) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_A2) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 192) -> r10
+	copyb(0, BLS_F6_A3) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PB) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PB) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_B2) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PB) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 192) -> r10
+	copyb(0, BLS_F6_B3) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_A2) -> r10
+	copyb(0, BLS_F6_B3) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A3) -> r10
+	copyb(0, BLS_F6_B2) -> r11
+	copyb(0, BLS_F6_T2) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_T1) -> r10
+	copyb(0, BLS_F6_T2) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_T1) -> r10
+	copyb(0, BLS_XI) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, BLS_F6_C1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C1) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_A3) -> r10
+	copyb(0, BLS_F6_B3) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_T1) -> r10
+	copyb(0, BLS_XI) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_B2) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_A2) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_B3) -> r11
+	copyb(0, BLS_F6_C3) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A2) -> r10
+	copyb(0, BLS_F6_B2) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C3) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C3) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_A3) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C3) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C3) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 96) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_C3) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 192) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+
+; void zisklib_square_fp6_bls12_381(const u64* a, u64* result)  [36,36]
+zisklib_square_fp6_bls12_381:
+	push r1
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_A1) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_A2) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 192) -> r10
+	copyb(0, BLS_F6_A3) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_C1) -> r11
+	call zisklib_square_fp2_bls12_381
+	copyb(0, BLS_F6_A2) -> r10
+	copyb(0, BLS_F6_A3) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_T1) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	call zisklib_dbl_fp2_bls12_381
+	copyb(0, BLS_F6_T1) -> r10
+	copyb(0, BLS_XI) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C1) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_A3) -> r10
+	copyb(0, BLS_F6_C2) -> r11
+	call zisklib_square_fp2_bls12_381
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_XI) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_A2) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_T1) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	call zisklib_dbl_fp2_bls12_381
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_A2) -> r10
+	copyb(0, BLS_F6_C3) -> r11
+	call zisklib_square_fp2_bls12_381
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_A3) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_T1) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	call zisklib_dbl_fp2_bls12_381
+	copyb(0, BLS_F6_C3) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C3) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 96) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_C3) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 192) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+
+; void zisklib_inv_fp6_bls12_381(const u64* a, u64* result)  [36,36]
+zisklib_inv_fp6_bls12_381:
+	push r1
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_A1) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_A2) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 192) -> r10
+	copyb(0, BLS_F6_A3) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	call zisklib_square_fp2_bls12_381
+	copyb(0, BLS_F6_A2) -> r10
+	copyb(0, BLS_F6_T2) -> r11
+	call zisklib_square_fp2_bls12_381
+	copyb(0, BLS_F6_A3) -> r10
+	copyb(0, BLS_F6_T3) -> r11
+	call zisklib_square_fp2_bls12_381
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_A2) -> r11
+	copyb(0, BLS_F6_T4) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_A3) -> r11
+	copyb(0, BLS_F6_T5) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A2) -> r10
+	copyb(0, BLS_F6_A3) -> r11
+	copyb(0, BLS_F6_T6) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_T6) -> r10
+	copyb(0, BLS_XI) -> r11
+	copyb(0, BLS_F6_T7) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_T1) -> r10
+	copyb(0, BLS_F6_T7) -> r11
+	copyb(0, BLS_F6_C1) -> r12
+	call zisklib_sub_fp2_bls12_381
+	copyb(0, BLS_F6_T3) -> r10
+	copyb(0, BLS_XI) -> r11
+	copyb(0, BLS_F6_T7) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_T7) -> r10
+	copyb(0, BLS_F6_T4) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_sub_fp2_bls12_381
+	copyb(0, BLS_F6_T2) -> r10
+	copyb(0, BLS_F6_T5) -> r11
+	copyb(0, BLS_F6_C3) -> r12
+	call zisklib_sub_fp2_bls12_381
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_C1) -> r11
+	copyb(0, BLS_F6_T8) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A3) -> r10
+	copyb(0, BLS_F6_C2) -> r11
+	copyb(0, BLS_F6_T9) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A2) -> r10
+	copyb(0, BLS_F6_C3) -> r11
+	copyb(0, BLS_F6_T10) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_T9) -> r10
+	copyb(0, BLS_F6_T10) -> r11
+	copyb(0, BLS_F6_T9) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_T9) -> r10
+	copyb(0, BLS_XI) -> r11
+	copyb(0, BLS_F6_T9) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_T9) -> r10
+	copyb(0, BLS_F6_T8) -> r11
+	copyb(0, BLS_F6_T9) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_T9) -> r10
+	copyb(0, BLS_F6_T9) -> r11
+	call zisklib_inv_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_F6_T9) -> r11
+	copyb(0, BLS_F6_C1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_F6_T9) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C3) -> r10
+	copyb(0, BLS_F6_T9) -> r11
+	copyb(0, BLS_F6_C3) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 96) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_C3) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 192) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+
+; void zisklib_sparse_mula_fp6_bls12_381(const u64* a, const u64* b2, u64* result)  [36,12,36]
+zisklib_sparse_mula_fp6_bls12_381:
+	push r1
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F6_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_A1) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_A2) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 192) -> r10
+	copyb(0, BLS_F6_A3) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PB) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_B1) -> r10
+	copyb(0, BLS_F6_A3) -> r11
+	copyb(0, BLS_F6_C1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_XI) -> r11
+	copyb(0, BLS_F6_C1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_B1) -> r10
+	copyb(0, BLS_F6_A1) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_B1) -> r10
+	copyb(0, BLS_F6_A2) -> r11
+	copyb(0, BLS_F6_C3) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 96) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_C3) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 192) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+
+; void zisklib_sparse_mulb_fp6_bls12_381(const u64* a, const u64* b, u64* result)  [36,24,36]
+zisklib_sparse_mulb_fp6_bls12_381:
+	push r1
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F6_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_A1) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_A2) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 192) -> r10
+	copyb(0, BLS_F6_A3) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PB) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PB) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_B2) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_A2) -> r10
+	copyb(0, BLS_F6_B2) -> r11
+	copyb(0, BLS_F6_C1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A3) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C1) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_XI) -> r11
+	copyb(0, BLS_F6_C1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A3) -> r10
+	copyb(0, BLS_F6_B2) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_XI) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_B2) -> r11
+	copyb(0, BLS_F6_C3) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A2) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C3) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C3) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 96) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_C3) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 192) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+
+; void zisklib_sparse_mulc_fp6_bls12_381(const u64* a, const u64* b, u64* result)  [36,24,36]
+zisklib_sparse_mulc_fp6_bls12_381:
+	push r1
+	copyb(0, BLS_F6_PA) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_F6_PB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_F6_PR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_A1) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_A2) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PA) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 192) -> r10
+	copyb(0, BLS_F6_A3) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PB) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_PB) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_F6_B2) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_A2) -> r10
+	copyb(0, BLS_F6_B2) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_T1) -> r10
+	copyb(0, BLS_XI) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, BLS_F6_C1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C1) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_A3) -> r10
+	copyb(0, BLS_F6_B2) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_T1) -> r10
+	copyb(0, BLS_XI) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A2) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C2) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_A1) -> r10
+	copyb(0, BLS_F6_B2) -> r11
+	copyb(0, BLS_F6_C3) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_A3) -> r10
+	copyb(0, BLS_F6_B1) -> r11
+	copyb(0, BLS_F6_T1) -> r12
+	call zisklib_mul_fp2_bls12_381
+	copyb(0, BLS_F6_C3) -> r10
+	copyb(0, BLS_F6_T1) -> r11
+	copyb(0, BLS_F6_C3) -> r12
+	call zisklib_add_fp2_bls12_381
+	copyb(0, BLS_F6_C1) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_C2) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 96) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_F6_C3) -> r10
+	copyb(0, BLS_F6_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	add(r11, 192) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+

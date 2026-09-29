@@ -96,7 +96,7 @@ typedef struct {
 /* Hash types */
 typedef zkvm_bytes_32 zkvm_keccak256_hash;
 typedef zkvm_bytes_32 zkvm_sha256_hash;
-typedef zkvm_bytes_32 zkvm_ripemd160_hash;  /* 20-byte hash padded to 32 bytes, last 12 bytes are zero */
+typedef zkvm_bytes_32 zkvm_ripemd160_hash;  /* 20-byte hash right-aligned in 32 bytes: first 12 bytes are zero, digest in [12..32] (precompile 0x03 left-pads) */
 
 /* secp256k1 types */
 typedef zkvm_bytes_32 zkvm_secp256k1_hash;
@@ -228,7 +228,8 @@ zkvm_status zkvm_sha256(const uint8_t* data, size_t len, zkvm_sha256_hash* outpu
  *
  * @param data Pointer to input data
  * @param len Length of input data in bytes
- * @param[out] output Pointer to output hash (20 bytes of hash, last 12 bytes zero-padded)
+ * @param[out] output Pointer to output hash (first 12 bytes zero, 20-byte digest in
+ *             bytes [12..32] -- right-aligned, as precompile 0x03 returns it)
  * @return ZKVM_EOK on success, ZKVM_EFAIL on failure
  */
 zkvm_status zkvm_ripemd160(const uint8_t* data, size_t len, zkvm_ripemd160_hash* output);
@@ -246,6 +247,11 @@ zkvm_status zkvm_ripemd160(const uint8_t* data, size_t len, zkvm_ripemd160_hash*
  * Precompile: 0x05
  *
  * Computes (base^exp) % modulus for arbitrary precision integers.
+ *
+ * ZisK limit: base_len, exp_len and mod_len must each be <= 1056 bytes. A longer
+ * operand returns ZKVM_EFAIL, because the ziskasm zisklib assembles operands in
+ * fixed-size limb buffers. The portable software implementation has no such cap,
+ * so this bound applies only when the ziskasm redirect is enabled.
  *
  * @param base Pointer to base value bytes
  * @param base_len Length of base in bytes
@@ -298,6 +304,11 @@ zkvm_status zkvm_bn254_g1_mul(const zkvm_bn254_g1_point* point,
  * EIP-197
  *
  * Checks if the pairing equation holds for the given points.
+ *
+ * ZisK limit: num_pairs must be <= 32; a larger count returns ZKVM_EFAIL, because
+ * the ziskasm zisklib stages the points in fixed-size buffers. The portable software
+ * implementation has no such cap, so this applies only when the ziskasm redirect is
+ * enabled.
  *
  * @param pairs Array of G1-G2 point pairs
  * @param num_pairs Number of point pairs
@@ -421,6 +432,11 @@ zkvm_status zkvm_bls12_g2_msm(const zkvm_bls12_381_g2_msm_pair* pairs,
  *
  * Precompile: 0x0f
  * EIP-2537
+ *
+ * ZisK limit: num_pairs must be in 1..=32; 0 or a larger count returns ZKVM_EFAIL,
+ * because the ziskasm zisklib stages the points in fixed-size buffers. The portable
+ * software implementation has no such cap, so this applies only when the ziskasm
+ * redirect is enabled.
  *
  * @param pairs Array of G1-G2 point pairs
  * @param num_pairs Number of point pairs

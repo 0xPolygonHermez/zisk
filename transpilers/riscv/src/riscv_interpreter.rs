@@ -53,8 +53,19 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInst> {
         /***********/
         // If this is a 16 bits instruction, then we can parse it directly
         if (inst & 0x3) != 0x3 {
-            let i = riscv_get_instruction_16(inst, rom_address, instruction_code_index);
-            insts.push(i);
+            #[cfg(feature = "compressed")]
+            {
+                let i = riscv_get_instruction_16(inst, rom_address, instruction_code_index);
+                insts.push(i);
+            }
+            // Without the `compressed` feature the RISC-V C (compressed) extension is
+            // disabled (IALIGN = 32), so a 16-bit parcel is an illegal instruction: emit a
+            // halt-with-error (CHalt) instead of decoding it, aborting the run.
+            #[cfg(not(feature = "compressed"))]
+            insts.push(RiscvInst::c_halt(
+                inst as u32,
+                rom_address + (instruction_code_index * 2) as u64,
+            ));
         }
         /***********/
         /* 32 bits */
@@ -308,6 +319,7 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
     i
 }
 
+#[cfg(feature = "compressed")]
 fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> RiscvInst {
     // This is a 16-bit instruction, so we need to decode it accordingly
     let (inst_type, inst_name) = RiscvDecoder::decode_16(inst);

@@ -1,0 +1,49 @@
+; ============================================================================
+; doubler.zisk (minimal / auto-launcher variant)
+;
+; Same program as examples/doubler, but written as a single file with only a
+; `main:` entry label and no hand-written launcher. When a program has no
+; explicit `_start`, the assembler synthesizes one automatically around `main`
+; (or `_zisk_main`): it sets gp/sp, `call`s the entry, and returns to the BIOS
+; with `ret_to_bios`. Compare with examples/doubler, which writes that launcher
+; out explicitly in ziskos.zisk.
+;
+; Reads an array of u64 values from the program input, doubles each value, and
+; writes the doubled results to the program output. See examples/doubler for the
+; full I/O memory contract.
+;
+; Run it (reusing the doubler input):
+;   ziskemu -z ziskasm/examples/doubler-min -i ziskasm/examples/doubler/input.bin -c
+; ============================================================================
+
+
+; ---- Definitions ----
+
+define INPUT_COUNT   0x40000008       ; address of N (the value count)
+define INPUT_VALUES  0x40000010       ; address of value[0]
+define OUTPUT_ADDR   0xa0410000       ; address of result[0]
+
+
+main:
+	; ---- Setup ----
+	copyb(0, [INPUT_COUNT]) -> r6         ; r6 = N          (8-byte load from a fixed address)
+	copyb(0, INPUT_VALUES) -> r10         ; r10 = input pointer  -> value[0]
+	copyb(0, OUTPUT_ADDR) -> r11          ; r11 = output pointer -> result[0]
+	copyb(0, 0) -> r5                     ; r5 = i = 0
+
+	; Nothing to do when the array is empty.
+	eq(r6, 0), j(_return)                 ; if N == 0 goto _return, else fall through to loop
+
+loop:
+	copyb(r10, 8[a + 0]) -> r7            ; r7 = value = mem[r10]      (8-byte indirect load)
+	add(r7, r7) -> r8                     ; r8 = value + value         (double, wrapping)
+	copyb(r11, r8) -> 8[a + 0]           ; mem[r11] = r8              (8-byte indirect store)
+	add(r10, 8) -> r10                    ; input pointer  += 8
+	add(r11, 8) -> r11                    ; output pointer += 8
+	add(r5, 1) -> r5                      ; i += 1
+	ltu(r5, r6), j(loop)                  ; if i < N goto loop, else fall through to _return
+
+_return:
+	; Return to the auto-generated launcher (its `call main` left the return
+	; address in r1); the launcher then returns to the BIOS.
+	ret

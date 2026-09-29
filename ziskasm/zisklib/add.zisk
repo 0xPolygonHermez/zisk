@@ -1,0 +1,10 @@
+; ============================================================================
+; add.zisk - demo ZisK library routine (a simple add), callable from a
+; RISC-V guest via the elf2rom symbol redirect. See keccak.zisk for the
+; ABI / calling conventions shared by all zisklib_* routines.
+; ============================================================================
+
+; u64 zisklib_add(u64 a, u64 b) -> a + b
+zisklib_add:
+	add(r10, r11) -> r10           ; r10 = a0 + a1
+	ret

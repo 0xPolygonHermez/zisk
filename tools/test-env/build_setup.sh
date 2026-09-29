@@ -54,7 +54,7 @@ main() {
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
     load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP FORCE_SETUP_BUILD \
-        DISABLE_RECURSIVE_SETUP INSTALL_SETUP INCLUDE_SNARK DYLIB_INPUT_FILES \
+        DISABLE_RECURSIVE_SETUP INSTALL_SETUP HASH_MODE INCLUDE_SNARK DYLIB_INPUT_FILES \
         HASH_MODE PTAU_PATH RECURSIVE_JOBS SETUP_JOBS || return 1
 
     # Default the hash mode when neither the shell, .env, nor Cargo.toml set
@@ -73,7 +73,7 @@ main() {
     fi
 
     current_step=1
-    total_steps=3   # clearing build/ + computing hash + building setup
+    total_steps=2   # clearing build/ + building setup
     [[ "${INCLUDE_SNARK}" == "1" ]] && total_steps=$((total_steps + 1))
     [[ "${DYLIB_INPUT_FILES}" == "1" ]] && total_steps=$((total_steps + 1))
     [[ "${INSTALL_SETUP}" == "1" ]] && total_steps=$((total_steps + 1))
@@ -99,6 +99,7 @@ main() {
     # stdout line. tee streams the build output to the terminal while we keep a
     # copy to read that last line from; PIPESTATUS[0] carries setup_build.sh's
     # real exit status (no pipefail here, so tail's status would otherwise mask it).
+    step "Building setup (hash mode: ${HASH_MODE})..."
     local setup_log; setup_log="$(mktemp)"
     "${SCRIPT_DIR}/setup_build.sh" "${build_flags[@]}" | tee "$setup_log"
     if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then

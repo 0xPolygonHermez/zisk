@@ -49,7 +49,10 @@
 //!     * If the address is not aligned, then get it from the vector `rom_float_na_instructions`,
 //!       using as index `(pc-FLOAT_LIB_ROM_ADDR)`
 use crate::FLOAT_LIB_ROM_ADDR_MAX;
-use crate::{ZiskInst, ZiskInstBuilder, FLOAT_LIB_ROM_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY};
+use crate::{
+    ZiskInst, ZiskInstBuilder, FLOAT_LIB_ROM_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
+    ZISKLIB_ROM_ADDR,
+};
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use std::collections::BTreeMap;
@@ -94,6 +97,12 @@ pub struct ZiskRom {
     /// ROM program instructions with an address that is not aligned to 4 bytes
     pub rom_program_na_instructions: Vec<ZiskInst>,
 
+    /// ROM ZisK-library instructions with an address that is aligned to 4 bytes
+    pub rom_zisklib_instructions: Vec<ZiskInst>,
+
+    /// ROM ZisK-library instructions with an address that is not aligned to 4 bytes
+    pub rom_zisklib_na_instructions: Vec<ZiskInst>,
+
     /// ROM float instructions with an address that is aligned to 4 bytes
     pub rom_float_instructions: Vec<ZiskInst>,
 
@@ -105,6 +114,9 @@ pub struct ZiskRom {
 
     /// Maximum program ROM instruction PC
     pub max_program_pc: u64,
+
+    /// Maximum ZisK-library ROM instruction PC
+    pub max_zisklib_pc: u64,
 
     /// Maximum float library ROM instruction PC
     pub max_float_pc: u64,
@@ -144,7 +156,7 @@ impl ZiskRom {
     ///    - Accessed via: `array[(addr - ROM_ENTRY) / 4]`
     ///
     /// 2. Main program instructions:
-    ///    - Address range: `[ROM_ADDR, FLOAT_LIB_ROM_ADDR)`
+    ///    - Address range: `[ROM_ADDR, ZISKLIB_ROM_ADDR)`
     ///    - 4-byte aligned instructions in the main ROM area
     ///    - Accessed via: `array[(addr - ROM_ADDR) / 4]`
     ///
@@ -152,12 +164,19 @@ impl ZiskRom {
     ///    - Any instruction NOT on a 4-byte boundary
     ///    - Accessed via: `array[addr - ROM_ADDR]`
     ///
-    /// 4. Float library program instructions:
+    /// 4. ZisK library instructions:
+    ///    - Address range: `[ZISKLIB_ROM_ADDR, FLOAT_LIB_ROM_ADDR)`
+    ///    - Indexed from its own base so a tiny guest does not force a dense table
+    ///      spanning the whole `[ROM_ADDR, ZISKLIB_ROM_ADDR)` gap
+    ///    - Accessed via: `array[(addr - ZISKLIB_ROM_ADDR) / 4]`, non-aligned via
+    ///      `array[addr - ZISKLIB_ROM_ADDR]`
+    ///
+    /// 5. Float library program instructions:
     ///    - Address range: `[FLOAT_LIB_ROM_ADDR, ROM_ADDR_MAX]`
     ///    - 4-byte aligned instructions in the float library ROM area
     ///    - Accessed via: `array[(addr - FLOAT_LIB_ROM_ADDR) / 4]`
     ///
-    /// 5. Non-aligned float library instructions:
+    /// 6. Non-aligned float library instructions:
     ///    - Any instruction NOT on a 4-byte boundary
     ///    - Accessed via: `array[addr - FLOAT_LIB_ROM_ADDR]`
     ///
@@ -172,6 +191,8 @@ impl ZiskRom {
         let mut max_program_address = 0_u64;
         //let mut min_program_na_address = u64::MAX;
         let mut max_program_na_address = 0_u64;
+        let mut max_zisklib_address = 0_u64;
+        let mut max_zisklib_na_address = 0_u64;
         //let mut min_float_address = u64::MAX;
         let mut max_float_address = 0_u64;
         //let mut min_float_na_address = u64::MAX;
@@ -205,7 +226,7 @@ impl ZiskRom {
                     .into());
                 }
                 max_bios_address = std::cmp::max(max_bios_address, addr);
-            } else if addr < FLOAT_LIB_ROM_ADDR {
+            } else if addr < ZISKLIB_ROM_ADDR {
                 // Main ROM program area
                 if addr & 0x03 != 0 {
                     // Non-aligned instruction in main program area
@@ -215,6 +236,13 @@ impl ZiskRom {
                     // Aligned instruction in main area
                     min_program_address = min_program_address.min(addr);
                     max_program_address = max_program_address.max(addr);
+                }
+            } else if addr < FLOAT_LIB_ROM_ADDR {
+                // ZisK library area
+                if addr & 0x03 != 0 {
+                    max_zisklib_na_address = std::cmp::max(max_zisklib_na_address, addr);
+                } else {
+                    max_zisklib_address = std::cmp::max(max_zisklib_address, addr);
                 }
             } else if addr <= ROM_ADDR_MAX {
                 // Float library area
@@ -243,6 +271,7 @@ impl ZiskRom {
 
         self.max_bios_pc = max_bios_address;
         self.max_program_pc = max_program_address.max(max_program_na_address);
+        self.max_zisklib_pc = max_zisklib_address.max(max_zisklib_na_address);
         self.max_float_pc = max_float_address.max(max_float_na_address);
         self.min_program_pc =
             if min_program_address == u64::MAX { ROM_ADDR } else { min_program_address };
@@ -253,6 +282,16 @@ impl ZiskRom {
             if max_program_address > 0 { (max_program_address - ROM_ADDR) / 4 + 1 } else { 0 };
         let num_program_na_instructions =
             if max_program_na_address > 0 { (max_program_na_address - ROM_ADDR) + 1 } else { 0 };
+        let num_zisklib_instructions = if max_zisklib_address > 0 {
+            (max_zisklib_address - ZISKLIB_ROM_ADDR) / 4 + 1
+        } else {
+            0
+        };
+        let num_zisklib_na_instructions = if max_zisklib_na_address > 0 {
+            (max_zisklib_na_address - ZISKLIB_ROM_ADDR) + 1
+        } else {
+            0
+        };
         let num_float_instructions = if max_float_address > 0 {
             (max_float_address - FLOAT_LIB_ROM_ADDR) / 4 + 1
         } else {
@@ -271,6 +310,10 @@ impl ZiskRom {
             (0..num_program_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
         self.rom_program_na_instructions =
             (0..num_program_na_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
+        self.rom_zisklib_instructions =
+            (0..num_zisklib_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
+        self.rom_zisklib_na_instructions =
+            (0..num_zisklib_na_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
         self.rom_float_instructions =
             (0..num_float_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
         self.rom_float_na_instructions =
@@ -287,7 +330,7 @@ impl ZiskRom {
                 // Entry/BIOS area: divide by 4 for index (using shift for efficiency)
                 self.rom_bios_instructions[((addr - ROM_ENTRY) >> 2) as usize] =
                     instruction.1.i.clone();
-            } else if addr < FLOAT_LIB_ROM_ADDR {
+            } else if addr < ZISKLIB_ROM_ADDR {
                 if addr % 4 != 0 {
                     // Non-aligned: store at offset from minimum non-aligned address
                     self.rom_program_na_instructions[(addr - ROM_ADDR) as usize] =
@@ -295,6 +338,16 @@ impl ZiskRom {
                 } else {
                     // Main ROM: divide by 4 for index (using shift for efficiency)
                     self.rom_program_instructions[((addr - ROM_ADDR) >> 2) as usize] =
+                        instruction.1.i.clone();
+                }
+            } else if addr < FLOAT_LIB_ROM_ADDR {
+                if addr % 4 != 0 {
+                    // Non-aligned: store at offset from the ZisK library base
+                    self.rom_zisklib_na_instructions[(addr - ZISKLIB_ROM_ADDR) as usize] =
+                        instruction.1.i.clone();
+                } else {
+                    // ZisK library ROM: divide by 4 for index
+                    self.rom_zisklib_instructions[((addr - ZISKLIB_ROM_ADDR) >> 2) as usize] =
                         instruction.1.i.clone();
                 }
             } else if addr <= ROM_ADDR_MAX {
@@ -376,7 +429,7 @@ impl ZiskRom {
                 );
             }
             &self.rom_bios_instructions[rom_index]
-        } else if pc < FLOAT_LIB_ROM_ADDR {
+        } else if pc < ZISKLIB_ROM_ADDR {
             // pc is in the ROM_ADDR range
             // If the address is aligned, take it from the proper vector
             if pc & 0x03 == 0 {
@@ -401,6 +454,30 @@ impl ZiskRom {
                     );
                 }
                 &self.rom_program_na_instructions[rom_index]
+            }
+        } else if pc < FLOAT_LIB_ROM_ADDR {
+            // pc is in the ZISKLIB_ROM_ADDR range (own dense table, indexed from its
+            // own base so a small guest does not force a table spanning the whole gap)
+            if pc & 0x03 == 0 {
+                let rom_index = ((pc - ZISKLIB_ROM_ADDR) >> 2) as usize;
+                if rom_index >= self.rom_zisklib_instructions.len() {
+                    panic!(
+                        "ZiskRom::get_instruction() pc=0x{pc:x} ({pc}) is out of range rom_zisklib_instructions (rom_index:{} >= {})",
+                        rom_index,
+                        self.rom_zisklib_instructions.len()
+                    );
+                }
+                &self.rom_zisklib_instructions[rom_index]
+            } else {
+                let rom_index = (pc - ZISKLIB_ROM_ADDR) as usize;
+                if rom_index >= self.rom_zisklib_na_instructions.len() {
+                    panic!(
+                        "ZiskRom::get_instruction() pc=0x{pc:x} is out of range rom_zisklib_na_instructions (rom_index:{} >= {})",
+                        rom_index,
+                        self.rom_zisklib_na_instructions.len()
+                    );
+                }
+                &self.rom_zisklib_na_instructions[rom_index]
             }
         } else if pc <= ROM_ADDR_MAX {
             // pc is in the FLOAT_LIB_ROM_ADDR range
@@ -436,12 +513,19 @@ impl ZiskRom {
     pub fn get_internal_instruction(&self, pc: u64) -> Option<&ZiskInst> {
         if pc & 0x01 == 0 {
             None
-        } else if (ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(&pc) {
+        } else if (ROM_ADDR..ZISKLIB_ROM_ADDR).contains(&pc) {
             let rom_index = (pc - ROM_ADDR) as usize;
             if rom_index >= self.rom_program_na_instructions.len() {
                 None
             } else {
                 Some(&self.rom_program_na_instructions[rom_index])
+            }
+        } else if (ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(&pc) {
+            let rom_index = (pc - ZISKLIB_ROM_ADDR) as usize;
+            if rom_index >= self.rom_zisklib_na_instructions.len() {
+                None
+            } else {
+                Some(&self.rom_zisklib_na_instructions[rom_index])
             }
         } else if (FLOAT_LIB_ROM_ADDR..=FLOAT_LIB_ROM_ADDR_MAX).contains(&pc) {
             let rom_index = (pc - FLOAT_LIB_ROM_ADDR) as usize;
@@ -481,7 +565,7 @@ impl ZiskRom {
                 );
             }
             &mut self.rom_bios_instructions[rom_index]
-        } else if pc < FLOAT_LIB_ROM_ADDR {
+        } else if pc < ZISKLIB_ROM_ADDR {
             // pc is in the ROM_ADDR range
             // If the address is aligned, take it from the proper vector
             if pc & 0x03 == 0 {
@@ -508,6 +592,30 @@ impl ZiskRom {
                     );
                 }
                 &mut self.rom_program_na_instructions[rom_index]
+            }
+        } else if pc < FLOAT_LIB_ROM_ADDR {
+            // pc is in the ZISKLIB_ROM_ADDR range (own dense table, indexed from its
+            // own base so a small guest does not force a table spanning the whole gap)
+            if pc & 0x03 == 0 {
+                let rom_index = ((pc - ZISKLIB_ROM_ADDR) >> 2) as usize;
+                if rom_index >= self.rom_zisklib_instructions.len() {
+                    panic!(
+                        "ZiskRom::get_mut_instruction() pc=0x{pc:x} ({pc}) is out of range rom_zisklib_instructions (rom_index:{} >= {})",
+                        rom_index,
+                        self.rom_zisklib_instructions.len()
+                    );
+                }
+                &mut self.rom_zisklib_instructions[rom_index]
+            } else {
+                let rom_index = (pc - ZISKLIB_ROM_ADDR) as usize;
+                if rom_index >= self.rom_zisklib_na_instructions.len() {
+                    panic!(
+                        "ZiskRom::get_mut_instruction() pc=0x{pc:x} is out of range rom_zisklib_na_instructions (rom_index:{} >= {})",
+                        rom_index,
+                        self.rom_zisklib_na_instructions.len()
+                    );
+                }
+                &mut self.rom_zisklib_na_instructions[rom_index]
             }
         } else if pc <= ROM_ADDR_MAX {
             // pc is in the FLOAT_LIB_ROM_ADDR range
