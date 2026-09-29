@@ -9,6 +9,7 @@
 # Variables this defines (read by callers):
 #   PROOFMAN_DIR    resolved pil2-proofman checkout
 #   VERSION         zisk version from Cargo.toml
+#   ZISK_SETUP_VERSION  setup label from setup/Cargo.toml (written into the key)
 #   INCLUDE_PATHS   --include arg for compile-pil
 #
 # Variables this exports (read by the setup binaries, not by callers):
@@ -260,6 +261,8 @@ export_proofman_paths() {
 export_proofman_paths
 
 VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Cargo.toml")"
+ZISK_SETUP_VERSION="$(sed -nE 's/^setup_version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$ROOT_DIR/setup/Cargo.toml")"
+[ -n "$ZISK_SETUP_VERSION" ] || { echo "could not read setup_version from setup/Cargo.toml" >&2; exit 1; }
 INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles"
 
 # Fixed columns that a PIL loads from disk rather than building itself, either
@@ -376,5 +379,7 @@ compute_input_hash() (
     printf 'hash-mode:%s\n' "$HASH_MODE"
     printf 'pil2-compiler:%s\n' "$pil2_compiler_version"
     printf 'pil2-stark-setup:%s\n' "$pil2_stark_setup_source"
+    # Written into globalInfo.json, so a bump must not cache-hit a key carrying the old label.
+    printf 'setup-version:%s\n' "$ZISK_SETUP_VERSION"
   } | sha256_hex
 )
