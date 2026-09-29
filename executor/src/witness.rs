@@ -399,12 +399,9 @@ impl<F: PrimeField64> WitnessPhase<F> {
                     registry.announce_witness_ready(GlobalId(global_id));
                 } else {
                     handlers::rom_rust::pre_calculate(
-                        registry,
-                        state,
                         &secn_instances_guard,
                         &mut instances_to_collect,
                         global_id,
-                        info.airgroup_id,
                         info.air_id,
                     )?;
                 }

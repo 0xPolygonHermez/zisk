@@ -88,6 +88,18 @@ pub enum ExecutorError {
         global_id: usize,
     },
 
+    /// A Rust execution reached a ROM instance built for the ASM backend.
+    ///
+    /// The Rust emulator produces no ROM histogram, so the one that selected this
+    /// instance's backend was left armed by a previous job, and the ROM witness would
+    /// be that job's rather than this one's. It means a job boundary was skipped — a
+    /// lifecycle bug, not a mode.
+    #[error("Rust execution reached an ASM-backend ROM instance for global_id={global_id}: a previous job's ROM histogram was never retired")]
+    RomBackendStale {
+        /// The global instance id of the ROM instance.
+        global_id: usize,
+    },
+
     /// The parsed ZisK ROM has not been installed yet via `ZiskExecutor::set_rom`.
     #[error("ROM not initialized")]
     RomNotInitialized,

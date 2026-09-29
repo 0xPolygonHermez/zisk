@@ -5,38 +5,33 @@ use zisk_sm_rom::RomInstance;
 
 use super::{SecnInstanceMap, SecnInstanceMapRef};
 use crate::error::{ExecutorError, ExecutorResult};
-use crate::ports::{Dctx, GlobalId};
-use crate::state::ExecutionState;
 
-/// Pre-calculate hook for Rust ROM.
+/// Pre-calculate hook for Rust ROM: queues the instance for collection.
+///
+/// Rejects an ASM-backend instance rather than serving it. The Rust emulator parks
+/// no ROM histogram, so one reaching this path was built from a histogram a previous
+/// job left armed — see [`ExecutorError::RomBackendStale`].
 pub(crate) fn pre_calculate<'a, F: PrimeField64>(
-    registry: &dyn Dctx,
-    state: &ExecutionState<F>,
     secn_instances: &'a SecnInstanceMap<F>,
     instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
     global_id: usize,
-    airgroup_id: usize,
     air_id: usize,
 ) -> ExecutorResult<()> {
-    let gid = GlobalId(global_id);
     let secn_instance =
         secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
     let rom_instance =
         crate::sm::downcast::<F, RomInstance>(&**secn_instance, air_id, global_id, "RomInstance")?;
 
     if rom_instance.skip_collector() {
-        state.register_empty_collector(global_id, airgroup_id, air_id)?;
-        registry.announce_witness_ready(gid);
-    } else {
-        instances_to_collect.insert(global_id, &**secn_instance);
+        return Err(ExecutorError::RomBackendStale { global_id });
     }
+    instances_to_collect.insert(global_id, &**secn_instance);
     Ok(())
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::ports::fakes::FakeProofRegistry;
     use proofman_fields::Goldilocks;
     use std::collections::HashMap;
     use std::sync::{atomic::AtomicU64, Arc};
@@ -70,73 +65,45 @@ pub(crate) mod tests {
     }
 
     fn run_pre_calculate<'a>(
-        registry: &FakeProofRegistry,
-        state: &ExecutionState<F>,
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
     ) -> ExecutorResult<()> {
-        pre_calculate(
-            registry,
-            state,
-            secn_instances,
-            instances_to_collect,
-            GID,
-            AIRGROUP_ID,
-            AIR_ID,
-        )
+        pre_calculate(secn_instances, instances_to_collect, GID, AIR_ID)
     }
 
     #[test]
-    fn pre_calculate_enqueues_when_skip_collector_false() {
-        // Non-ASM RomInstance (no rh_data, no counter_stats) → skip_collector() == false.
+    fn pre_calculate_enqueues_a_rust_backend_instance() {
         let mut secn_instances: SecnInstanceMap<F> = HashMap::new();
         secn_instances.insert(GID, make_rom_instance(None));
-
-        let registry = FakeProofRegistry::new();
-        let state: ExecutionState<F> = ExecutionState::new();
         let mut instances_to_collect: SecnInstanceMapRef<'_, F> = HashMap::new();
 
-        run_pre_calculate(&registry, &state, &secn_instances, &mut instances_to_collect)
-            .expect("pre_calculate must succeed on a non-ASM RomInstance");
+        run_pre_calculate(&secn_instances, &mut instances_to_collect)
+            .expect("pre_calculate must succeed on a Rust-backend RomInstance");
 
-        // The instance is queued for collection; collector store is not touched;
-        // nothing is announced.
         assert!(instances_to_collect.contains_key(&GID));
-        assert!(registry.announced.borrow().is_empty());
-        assert!(state.collector_store.inner.read().unwrap().get(&GID).is_none());
     }
 
     #[test]
-    fn pre_calculate_skips_and_marks_ready_when_skip_collector_true() {
-        // ASM-execution RomInstance (rh_data is Some) → skip_collector() == true.
+    fn pre_calculate_rejects_an_asm_backend_instance() {
+        // What a previous job's histogram, never drained, makes `RomSM` build.
         let rh_data = AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()));
         let mut secn_instances: SecnInstanceMap<F> = HashMap::new();
         secn_instances.insert(GID, make_rom_instance(Some(rh_data)));
-
-        let registry = FakeProofRegistry::new();
-        let state: ExecutionState<F> = ExecutionState::new();
         let mut instances_to_collect: SecnInstanceMapRef<'_, F> = HashMap::new();
 
-        run_pre_calculate(&registry, &state, &secn_instances, &mut instances_to_collect)
-            .expect("pre_calculate must succeed when skip_collector returns true");
+        let err = run_pre_calculate(&secn_instances, &mut instances_to_collect)
+            .expect_err("a stale histogram must not become this execution's ROM witness");
 
-        // Nothing is queued for collection; the collector slot is filled (empty Vec)
-        // and the gid is announced on the registry.
+        assert!(matches!(err, ExecutorError::RomBackendStale { global_id: GID }), "got {err:?}");
         assert!(instances_to_collect.is_empty());
-        assert_eq!(*registry.announced.borrow(), vec![GlobalId(GID)]);
-        let store = state.collector_store.inner.read().unwrap();
-        let slot = store.get(&GID).expect("empty collector slot must be registered");
-        assert!(slot.is_empty());
     }
 
     #[test]
     fn pre_calculate_errors_when_instance_missing() {
         let secn_instances: SecnInstanceMap<F> = HashMap::new(); // empty
-        let registry = FakeProofRegistry::new();
-        let state: ExecutionState<F> = ExecutionState::new();
         let mut instances_to_collect: SecnInstanceMapRef<'_, F> = HashMap::new();
 
-        let err = run_pre_calculate(&registry, &state, &secn_instances, &mut instances_to_collect)
+        let err = run_pre_calculate(&secn_instances, &mut instances_to_collect)
             .expect_err("must err when the gid isn't present in the map");
         assert!(err.to_string().contains(&format!("instance not found for global_id={GID}")));
     }
