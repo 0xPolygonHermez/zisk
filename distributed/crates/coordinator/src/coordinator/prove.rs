@@ -143,7 +143,16 @@ impl Coordinator {
         let dispatches = scheduler.on_set_ready(set);
         // Also here: a final dispatch leaves no later point to free the donors.
         let freed = scheduler.take_released();
+        let nothing_to_prove = scheduler.all_leaves_empty();
         drop(job);
+
+        if nothing_to_prove {
+            let e = CoordinatorError::InvalidRequest(format!(
+                "No worker returned a Phase2 proof for {job_id}"
+            ));
+            self.fail_job(&job_id, &e.to_string()).await?;
+            return Err(e);
+        }
 
         self.release_donors(&job_id, &freed).await;
 

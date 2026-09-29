@@ -2186,8 +2186,13 @@ mod tests {
         let mut scheduler = AggScheduler::new(2, n_leaves, true);
 
         if inflight_all_done.is_some() {
+            // Each carries a proof: a set without one is an empty leaf, never folded.
             let set = |covers: [u32; 1], location: WorkerId| AggSet {
-                proofs: vec![],
+                proofs: vec![zisk_cluster_common::AggProofData {
+                    airgroup_id: 0,
+                    values: vec![],
+                    worker_indexes: covers.to_vec(),
+                }],
                 covers: BTreeSet::from(covers),
                 location,
             };

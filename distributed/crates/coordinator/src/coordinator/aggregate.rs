@@ -459,16 +459,17 @@ impl Coordinator {
             ));
         };
 
-        // Coverage tells the scheduler the job is done and comes from an untrusted
-        // worker. A leaf covers its own index and nothing else.
-        let covers: BTreeSet<u32> =
-            proofs.iter().flat_map(|p| p.worker_indexes.iter().copied()).collect();
-        if covers != BTreeSet::from([worker_index]) {
+        // Coverage tells the scheduler the job is done, so it comes from the assignment,
+        // not the untrusted payload. A leaf covers its own index and nothing else; one
+        // with no instances returns no proofs and is still a leaf.
+        if let Some(p) = proofs.iter().find(|p| p.worker_indexes != [worker_index]) {
             return Err(CoordinatorError::InvalidRequest(format!(
-                "Worker {worker_id} claims its Phase2 proof covers {covers:?}, expected \
-                 only {worker_index}"
+                "Worker {worker_id} claims its Phase2 proof for airgroup {} covers {:?}, \
+                 expected only {worker_index}",
+                p.airgroup_id, p.worker_indexes
             )));
         }
+        let covers = BTreeSet::from([worker_index]);
 
         // Only now: taking first would destroy the leaf on a rejected payload, and
         // the duplicate guard blocks any resubmission.
@@ -544,21 +545,16 @@ impl Coordinator {
 
             // A replay finds nothing to consume; folding it again would trip
             // proofman's duplicate-index check.
-            if scheduler.take_live(worker_id).is_none() {
+            let Some(node) = scheduler.take_live(worker_id) else {
                 return Ok(());
-            }
+            };
             let released = scheduler.on_ack(worker_id);
 
-            info!(
-                "[Phase3] {job_id} {worker_id} returned a subtree covering {:?}",
-                per_airgroup.values().flatten().copied().collect::<BTreeSet<_>>()
-            );
+            info!("[Phase3] {job_id} {worker_id} returned a subtree covering {:?}", node.covers);
 
-            let set = AggSet {
-                covers: per_airgroup.values().flatten().copied().collect(),
-                proofs: folded,
-                location: worker_id.clone(),
-            };
+            // The scheduler's own record, not the proofs': those only list the leaves that
+            // had instances in each airgroup.
+            let set = AggSet { covers: node.covers, proofs: folded, location: worker_id.clone() };
             // One export can yield both: what the ack released, and the new fold.
             let dispatches: Vec<_> =
                 released.into_iter().chain(scheduler.on_set_ready(set)).collect();
