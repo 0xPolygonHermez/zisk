@@ -572,8 +572,18 @@ impl Coordinator {
 
         self.release_donors(job_id, &freed).await;
 
-        // Send them all before reporting: abandoning the second would leave it
-        // marked in-flight forever with nothing to retry it.
+        self.dispatch_all(job_id, dispatches).await
+    }
+
+    /// Send every dispatch before reporting the first failure: the scheduler already
+    /// marked them all in flight, so one skipped after an error would never be retried.
+    /// A failed send needs no requeue: its worker's stream is gone, so either the
+    /// disconnect fails the job or a reconnect replays the node.
+    pub(super) async fn dispatch_all(
+        &self,
+        job_id: &JobId,
+        dispatches: Vec<AggDispatch>,
+    ) -> CoordinatorResult<()> {
         let mut first_error = None;
         for dispatch in dispatches {
             if let Err(e) = self.dispatch_agg(job_id, dispatch).await {

@@ -151,11 +151,7 @@ impl Coordinator {
             self.fire_job_event(&job_id, CoordinatorJobEvent::Progress(JobPhase::Recurse)).await;
         }
 
-        for dispatch in dispatches {
-            self.dispatch_agg(&job_id, dispatch).await?;
-        }
-
-        Ok(())
+        self.dispatch_all(&job_id, dispatches).await
     }
 
     /// Stores a single worker's Contribution response in the job state.
