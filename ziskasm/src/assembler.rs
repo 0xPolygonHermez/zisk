@@ -489,17 +489,18 @@ struct DataLayout<'a> {
     ro: Option<DataSection64>,
     rw: Option<DataSection64>,
     syms: Vec<(&'a str, u64)>,
-    /// `(is_const, slot index, symbol)` for each symbol initializer.
-    fixups: Vec<(bool, usize, &'a str)>,
+    /// `(is_const, slot index, symbol, offset)` for each symbol initializer.
+    fixups: Vec<(bool, usize, &'a str, i64)>,
 }
 
 impl DataLayout<'_> {
     /// Fills each symbol initializer with its symbol's address.
     fn resolve(&mut self, symbols: &HashMap<&str, u64>) -> Result<(), String> {
-        for &(is_const, k, name) in &self.fixups {
-            let addr = *symbols
+        for &(is_const, k, name, off) in &self.fixups {
+            let addr = symbols
                 .get(name)
-                .ok_or_else(|| format!("undefined symbol `{name}` in a data initializer"))?;
+                .ok_or_else(|| format!("undefined symbol `{name}` in a data initializer"))?
+                .wrapping_add_signed(off);
             let section = if is_const { &mut self.ro } else { &mut self.rw };
             section.as_mut().expect("a fixup lies in a non-empty section").data[k] = addr;
         }
@@ -523,8 +524,8 @@ fn layout_data(data: &[DataDecl], rom_data_base: u64, ram_data_base: u64) -> Dat
         for k in 0..d.count {
             buf.push(match d.values.get(k) {
                 Some(Num::Lit(v)) => *v,
-                Some(Num::Sym(name)) => {
-                    fixups.push((d.is_const, buf.len(), name.as_str()));
+                Some(Num::Sym(name, off)) => {
+                    fixups.push((d.is_const, buf.len(), name.as_str(), *off));
                     0
                 }
                 None => 0,
@@ -603,9 +604,10 @@ fn resolve(target: &Target, pc: u64, symbols: &HashMap<&str, u64>) -> Result<i64
 fn resolve_num(n: &Num, symbols: &HashMap<&str, u64>) -> Result<u64, String> {
     match n {
         Num::Lit(v) => Ok(*v),
-        Num::Sym(name) => {
-            symbols.get(name.as_str()).copied().ok_or_else(|| format!("undefined symbol `{name}`"))
-        }
+        Num::Sym(name, off) => symbols
+            .get(name.as_str())
+            .map(|a| a.wrapping_add_signed(*off))
+            .ok_or_else(|| format!("undefined symbol `{name}`")),
     }
 }
 

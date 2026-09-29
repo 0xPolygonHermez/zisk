@@ -58,7 +58,7 @@ ZisK supports 32 extra virtual registers, meaning that they are transpiled as me
 
 In some cases memory must be used to load or to store data.  There are several ways to specify how this memory operation is performed.
 
-The format `[N]`, where N is a literal number either in decimal format or in hexadecimal format, refers to the memory value addressed by N.
+The format `[N]`, where N is a literal number either in decimal format or in hexadecimal format, refers to the memory value addressed by N.  N can also be a symbol (a data name or a label), optionally followed by one or more `+ M` / `- M` byte offsets: `[BLOCK + 8]` is the second u64 of the data block `BLOCK`.  The same `SYMBOL ± M` form is accepted wherever a number is, e.g. as an immediate operand or a `u64` data initializer.
 
 The formats `[a + N]` and `[a - N]`, where N is a literal number in decimal format or hexadecimal format, refers to the memory value addressed by the value of the `a` register plus/minus the value of N.  The value of N is stored in the corresponding ZiskInst instance field with sign.
 

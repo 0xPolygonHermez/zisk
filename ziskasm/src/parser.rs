@@ -78,11 +78,12 @@ impl DataType {
 }
 
 /// A number operand that is either a literal or a symbol (a label or data name)
-/// resolved to its address by the assembler.
+/// plus a signed byte offset (`NAME`, `NAME + N`, `NAME - N`), resolved to an
+/// address by the assembler.
 #[derive(Debug, Clone)]
 pub enum Num {
     Lit(u64),
-    Sym(String),
+    Sym(String, i64),
 }
 
 #[derive(Debug, Clone)]
@@ -496,7 +497,7 @@ fn parse_data_decl(code: &str, file: &str, line: usize) -> Result<DataDecl, Stri
                     Num::Lit(n) if n > ty.max_value() => {
                         return Err(format!("value {n} does not fit in {type_kw}"));
                     }
-                    Num::Sym(ref sym) if ty != DataType::U64 => {
+                    Num::Sym(ref sym, _) if ty != DataType::U64 => {
                         return Err(format!(
                             "`{sym}`: a symbol initializer (an address) needs u64, not {type_kw}"
                         ));
@@ -727,10 +728,30 @@ fn parse_num(s: &str) -> Result<Num, String> {
         return Err("empty operand".into());
     }
     if is_identifier(s) {
-        Ok(Num::Sym(s.to_string()))
-    } else {
-        Ok(Num::Lit(parse_u64(s)?))
+        return Ok(Num::Sym(s.to_string(), 0));
     }
+    // `NAME ± N ± M ...`: a symbol plus a byte offset, e.g. a field of a data block
+    // (`[BLOCK + 8]`).
+    if let Some(i) = s.find(['+', '-']) {
+        let name = s[..i].trim();
+        if is_identifier(name) {
+            if name == "a" {
+                return Err(format!("`{s}`: an indirect operand needs a width, `W[a ± N]`"));
+            }
+            let mut off = 0i64;
+            let mut rest = &s[i..];
+            while !rest.is_empty() {
+                let neg = rest.starts_with('-');
+                let term = &rest[1..];
+                let end = term.find(['+', '-']).unwrap_or(term.len());
+                let n = parse_i64(term[..end].trim())?;
+                off = off.wrapping_add(if neg { -n } else { n });
+                rest = term[end..].trim_start();
+            }
+            return Ok(Num::Sym(name.to_string(), off));
+        }
+    }
+    Ok(Num::Lit(parse_u64(s)?))
 }
 
 fn parse_target(s: &str) -> Result<Target, String> {
@@ -898,5 +919,25 @@ mod tests {
         for s in ["r", "rx", "r1a"] {
             assert!(parse_reg(s).unwrap_err().contains("invalid register"), "{s}");
         }
+    }
+
+    #[test]
+    fn parse_num_accepts_a_symbol_with_offsets() {
+        let sym = |s: &str| match parse_num(s).unwrap() {
+            Num::Sym(name, off) => (name, off),
+            n => panic!("{s}: {n:?}"),
+        };
+        assert_eq!(sym("BLOCK"), ("BLOCK".to_string(), 0));
+        assert_eq!(sym("BLOCK + 8"), ("BLOCK".to_string(), 8));
+        assert_eq!(sym("BLOCK-0x10"), ("BLOCK".to_string(), -16));
+        assert_eq!(sym("BLOCK + 32 + 8 - 4"), ("BLOCK".to_string(), 36));
+        assert!(matches!(parse_num("0x10").unwrap(), Num::Lit(16)));
+    }
+
+    #[test]
+    fn parse_num_rejects_bad_offsets() {
+        assert!(parse_num("a + 8").unwrap_err().contains("needs a width"));
+        assert!(parse_num("BLOCK + x").is_err());
+        assert!(parse_num("BLOCK +").is_err());
     }
 }
