@@ -59,6 +59,9 @@ pub struct AggDispatch {
     pub reset_state: bool,
     /// Leaves the node covers once it has taken this input (for logging).
     pub covers: BTreeSet<u32>,
+    /// Hands the node one of its `inputs`; false for a bare drain or a replay. Replay
+    /// counts these to tell what the worker has already received.
+    pub adds_input: bool,
 }
 
 /// Greedy reduction over the sets a job produces.
@@ -72,9 +75,6 @@ pub struct AggScheduler {
     open: Vec<AggNode>,
     /// Leaves fed in so far.
     leaves_seen: usize,
-    /// Leaves that arrived with no proofs (a partition with no instances). They count
-    /// toward completion but never join a node: a drain needs a proof per airgroup.
-    empty: BTreeSet<u32>,
     /// Nodes folding, keyed by worker; inputs retained until they export.
     live: HashMap<WorkerId, AggNode>,
     /// Workers with an aggregation task sent but not yet acked, and what it was.
@@ -94,7 +94,6 @@ impl AggScheduler {
             distributed,
             open: Vec::new(),
             leaves_seen: 0,
-            empty: BTreeSet::new(),
             live: HashMap::new(),
             inflight: HashMap::new(),
             pending: VecDeque::new(),
@@ -110,67 +109,45 @@ impl AggScheduler {
         }
     }
 
-    /// Leaves a set must cover to be the whole job: the empty ones have nothing to fold.
-    fn needed(&self) -> usize {
-        self.n_leaves.saturating_sub(self.empty.len())
-    }
-
-    /// Every leaf arrived and none had a proof, so there is nothing to aggregate.
-    pub fn all_leaves_empty(&self) -> bool {
-        self.leaves_seen >= self.n_leaves && self.needed() == 0
-    }
-
     /// Feed a newly available set -- a phase-2 leaf or a node's export.
     pub fn on_set_ready(&mut self, set: AggSet) -> Vec<AggDispatch> {
         if set.covers.len() == 1 {
             self.leaves_seen += 1;
         }
-        let mut out: Vec<AggDispatch> = Vec::new();
-        if set.proofs.is_empty() {
-            // Nothing to fold: account for it and free its worker.
-            self.empty.extend(set.covers.iter().copied());
-            self.released.push(set.location);
-        } else {
-            out.extend(self.schedule(set));
-        }
+        let mut out: Vec<AggDispatch> = self.schedule(set).into_iter().collect();
         out.extend(self.flush());
         out.into_iter().filter_map(|d| self.gate(d)).collect()
     }
 
     /// When nothing more can arrive (every leaf in, nothing folding) no open node will fill:
-    /// drain all but the heaviest, whose exports then fold into it. A lone open node is
-    /// left only when an empty leaf came last; it already covers the job.
+    /// drain all but the heaviest, whose exports then fold into it.
     fn flush(&mut self) -> Vec<AggDispatch> {
-        if self.leaves_seen < self.n_leaves || !self.live.is_empty() || self.open.is_empty() {
+        if self.leaves_seen < self.n_leaves || !self.live.is_empty() || self.open.len() < 2 {
             return Vec::new();
-        }
-        if self.open.len() == 1 {
-            let node = self.open.pop().expect("one open");
-            return self.drain(node).into_iter().collect();
         }
         let keep = (0..self.open.len()).max_by_key(|&i| self.open[i].covers.len()).expect("open");
         let kept = self.open.swap_remove(keep);
         let others = std::mem::replace(&mut self.open, vec![kept]);
-        others.into_iter().filter_map(|node| self.drain(node)).collect()
-    }
-
-    /// Close an open node early. One that folded nothing just passes its set on.
-    fn drain(&mut self, mut node: AggNode) -> Option<AggDispatch> {
-        if node.inputs.len() == 1 {
-            return self.schedule(node.inputs.pop().expect("one input"));
+        let mut out = Vec::new();
+        for mut node in others {
+            if node.inputs.len() == 1 {
+                // Folded nothing: its only input is still the set itself, so fold that.
+                out.extend(self.schedule(node.inputs.pop().expect("one input")));
+                continue;
+            }
+            out.push(AggDispatch {
+                worker: node.worker.clone(),
+                proofs: Vec::new(),
+                last_proof: true,
+                final_proof: false,
+                keep_resident: true,
+                reset_state: false,
+                covers: node.covers.clone(),
+                adds_input: false,
+            });
+            self.live.insert(node.worker.clone(), node);
         }
-        node.is_final = node.covers.len() >= self.needed();
-        let dispatch = AggDispatch {
-            worker: node.worker.clone(),
-            proofs: Vec::new(),
-            last_proof: true,
-            final_proof: node.is_final,
-            keep_resident: !node.is_final,
-            reset_state: false,
-            covers: node.covers.clone(),
-        };
-        self.live.insert(node.worker.clone(), node);
-        Some(dispatch)
+        out
     }
 
     /// The workers freed since the last call, for the caller to return to the pool.
@@ -235,7 +212,7 @@ impl AggScheduler {
 
         let Some(idx) = partner else {
             // A set covering the whole job drains straight to the final proof.
-            if set.covers.len() >= self.needed() {
+            if set.covers.len() >= self.n_leaves {
                 let worker = set.location.clone();
                 let covers = set.covers.clone();
                 self.live.insert(
@@ -255,6 +232,7 @@ impl AggScheduler {
                     keep_resident: false,
                     reset_state: false,
                     covers,
+                    adds_input: false,
                 });
             }
 
@@ -279,7 +257,7 @@ impl AggScheduler {
         node.covers.extend(set.covers.iter().copied());
         node.inputs.push(set);
 
-        let is_final = node.covers.len() >= self.needed();
+        let is_final = node.covers.len() >= self.n_leaves;
         let last = is_final || node.inputs.len() >= self.group_cap();
         node.is_final = is_final;
 
@@ -299,6 +277,7 @@ impl AggScheduler {
             keep_resident: last && !is_final,
             reset_state: false,
             covers,
+            adds_input: true,
         })
     }
 
@@ -318,9 +297,11 @@ impl AggScheduler {
         let node =
             self.live.get(worker).or_else(|| self.open.iter().find(|n| &n.worker == worker))?;
 
-        let queued = self.pending.iter().filter(|d| &d.worker == worker).count();
-        let delivered = node.inputs.len().saturating_sub(queued);
-        let drained = queued == 0 && self.live.contains_key(worker);
+        // A queued drain holds no input, so it must not shrink what was delivered.
+        let queued: Vec<_> = self.pending.iter().filter(|d| &d.worker == worker).collect();
+        let queued_inputs = queued.iter().filter(|d| d.adds_input).count();
+        let delivered = node.inputs.len().saturating_sub(queued_inputs);
+        let drained = queued.is_empty() && self.live.contains_key(worker);
 
         let dispatch = AggDispatch {
             worker: worker.clone(),
@@ -333,6 +314,7 @@ impl AggScheduler {
             keep_resident: drained && !node.is_final,
             reset_state: true,
             covers: node.covers.clone(),
+            adds_input: false,
         };
 
         self.inflight.insert(worker.clone(), kind_of(&dispatch));
@@ -379,10 +361,6 @@ mod tests {
         set_of(n, &[n])
     }
 
-    fn empty_leaf(n: u32) -> AggSet {
-        AggSet { proofs: Vec::new(), covers: BTreeSet::from([n]), location: worker(n) }
-    }
-
     /// The single dispatch a step produced, if any: these tests never trigger a flush.
     fn one(v: Vec<AggDispatch>) -> Option<AggDispatch> {
         assert!(v.len() <= 1, "expected at most one dispatch, got {}", v.len());
@@ -402,22 +380,8 @@ mod tests {
         distributed: bool,
         staggered: bool,
     ) -> (usize, usize, usize) {
-        drive_with_empty(order, &[], arity, distributed, staggered)
-    }
-
-    /// As `drive`, with the leaves in `empty` arriving without proofs.
-    fn drive_with_empty(
-        order: &[u32],
-        empty: &[u32],
-        arity: usize,
-        distributed: bool,
-        staggered: bool,
-    ) -> (usize, usize, usize) {
         let mut sched = AggScheduler::new(arity, order.len(), distributed);
-        let mut leaves: VecDeque<AggSet> = order
-            .iter()
-            .map(|&i| if empty.contains(&i) { empty_leaf(i) } else { leaf(i) })
-            .collect();
+        let mut leaves: VecDeque<AggSet> = order.iter().map(|&i| leaf(i)).collect();
         let mut exports: VecDeque<(AggSet, usize)> = VecDeque::new();
         let mut sent: VecDeque<AggDispatch> = VecDeque::new();
         let mut depth_of: HashMap<BTreeSet<u32>, usize> = HashMap::new();
@@ -522,71 +486,26 @@ mod tests {
     }
 
     #[test]
-    fn empty_leaves_are_counted_but_never_folded() {
-        // A worker whose partition had no instances returns no proofs. It must still count
-        // toward completion, or the job waits forever for coverage it cannot reach.
-        let mut seed = 0x9E3779B97F4A7C15u64;
-        let mut next = move || {
-            seed ^= seed << 13;
-            seed ^= seed >> 7;
-            seed ^= seed << 17;
-            seed
-        };
-        for arity in [2usize, 3, 4] {
-            for n in 2usize..=12 {
-                for _ in 0..20 {
-                    let mut order: Vec<u32> = (0..n as u32).collect();
-                    for i in (1..order.len()).rev() {
-                        order.swap(i, (next() % (i as u64 + 1)) as usize);
-                    }
-                    // Leaf 0 keeps its proofs, so there is always something to prove.
-                    let empty: Vec<u32> = (1..n as u32).filter(|_| next() % 2 == 0).collect();
-                    for (distributed, staggered) in
-                        [(true, false), (true, true), (false, false), (false, true)]
-                    {
-                        let (_, _, covered) =
-                            drive_with_empty(&order, &empty, arity, distributed, staggered);
-                        assert_eq!(
-                            covered,
-                            n - empty.len(),
-                            "arity={arity} n={n} distributed={distributed} {order:?} \
-                             empty={empty:?}: wedged"
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn an_empty_leaf_is_released_without_a_task() {
-        let mut sched = AggScheduler::new(2, 3, true);
-        assert!(sched.on_set_ready(empty_leaf(1)).is_empty(), "nothing to fold");
-        assert_eq!(sched.take_released(), vec![worker(1)], "its worker is freed at once");
-        assert!(!sched.holds_work(&worker(1)));
-    }
-
-    #[test]
-    fn an_empty_last_leaf_closes_the_open_node() {
-        // arity 3: leaves 0 and 1 share a node that is not full; the empty third leaf is
-        // the last event, so it has to trigger the final drain itself.
-        let mut sched = AggScheduler::new(3, 3, true);
+    fn a_replay_behind_a_queued_drain_still_resends_every_delivered_input() {
+        // arity 3, five leaves: {0,1,2} folds on w0 and waits open; w3 takes leaf 4, and
+        // the flush queues w3's bare drain behind that absorb. Both of w3's inputs were sent.
+        let mut sched = AggScheduler::new(3, 5, true);
         sched.on_set_ready(leaf(0));
-        let absorb = one(sched.on_set_ready(leaf(1))).expect("absorb");
-        assert!(!absorb.last_proof);
+        sched.on_set_ready(leaf(1));
         sched.on_ack(&worker(0));
-        let d = one(sched.on_set_ready(empty_leaf(2))).expect("final drain");
-        assert!(d.final_proof && d.last_proof && d.proofs.is_empty());
-        assert_eq!(d.worker, worker(0));
-    }
+        sched.on_set_ready(leaf(2));
+        sched.take_live(&worker(0)).expect("the full group drains");
+        sched.on_ack(&worker(0));
+        sched.on_set_ready(set_of(0, &[0, 1, 2]));
+        sched.on_set_ready(leaf(3));
+        let absorb = one(sched.on_set_ready(leaf(4))).expect("leaf 4 goes to w3");
+        assert_eq!(absorb.worker, worker(3));
+        assert!(sched.pending.iter().any(|d| d.worker == worker(3) && !d.adds_input));
 
-    #[test]
-    fn a_job_of_only_empty_leaves_reports_it() {
-        let mut sched = AggScheduler::new(2, 2, true);
-        sched.on_set_ready(empty_leaf(0));
-        assert!(!sched.all_leaves_empty(), "one leaf still to come");
-        sched.on_set_ready(empty_leaf(1));
-        assert!(sched.all_leaves_empty());
+        let replay = sched.replay_for(&worker(3)).expect("the node replays");
+        let resent: Vec<u64> = replay.proofs.iter().map(|p| p.values[0]).collect();
+        assert_eq!(resent, vec![3, 4], "leaf 4's absorb had been sent");
+        assert!(!replay.last_proof, "its drain is still queued");
     }
 
     #[test]

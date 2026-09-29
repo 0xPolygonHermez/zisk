@@ -459,9 +459,18 @@ impl Coordinator {
             ));
         };
 
+        // A partition with no instances returns no proofs. proofman cannot finish such a
+        // job (its final drain requires every worker's contribution to be aggregated), so
+        // fail here rather than at the root.
+        if proofs.is_empty() {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Worker {worker_id} returned no Phase2 proofs for {job_id}: partitions without \
+                 instances are not supported"
+            )));
+        }
+
         // Coverage tells the scheduler the job is done, so it comes from the assignment,
-        // not the untrusted payload. A leaf covers its own index and nothing else; one
-        // with no instances returns no proofs and is still a leaf.
+        // not the untrusted payload. A leaf covers its own index and nothing else.
         if let Some(p) = proofs.iter().find(|p| p.worker_indexes != [worker_index]) {
             return Err(CoordinatorError::InvalidRequest(format!(
                 "Worker {worker_id} claims its Phase2 proof for airgroup {} covers {:?}, \
