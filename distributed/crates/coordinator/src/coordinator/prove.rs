@@ -1,12 +1,13 @@
 use crate::coordinator_errors::{CoordinatorError, CoordinatorResult};
+use crate::job_events::CoordinatorJobEvent;
 use chrono::Utc;
 use std::time::Duration;
 use tracing::{error, info, warn};
 use zisk_cluster_common::{
-    AggProofData, ChallengesDto, CoordinatorMessageDto, ExecuteTaskRequestDto,
+    AggProofData, AggScheduler, ChallengesDto, CoordinatorMessageDto, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, Job,
-    JobId, JobPhase, JobResult, JobResultData, JobState, PendingAggTask, PhaseTimings,
-    ProveParamsDto, WorkerId, WorkerState,
+    JobId, JobPhase, JobResult, JobResultData, JobState, PhaseTimings, ProveParamsDto, WorkerId,
+    WorkerState,
 };
 
 use crate::Coordinator;
@@ -98,53 +99,59 @@ impl Coordinator {
         // Store Proof response
         self.store_proof_response(&mut job, execute_task_response).await?;
 
-        // Assign aggregator worker if not already assigned
-        let agg_worker_id = self.resolve_recurser_assignment(&mut job, &worker_id).await?;
+        // Stored, so a resend is a duplicate: a rejection from here on must fail the job.
+        let set = match Self::worker_agg_set(&mut job, &worker_id) {
+            Ok(set) => set,
+            Err(e) => {
+                drop(job);
+                self.fail_job(&job_id, &e.to_string()).await?;
+                return Err(e);
+            }
+        };
 
-        let all_done = self.check_phase2_completion(&job, &worker_id).await?;
+        // Held Computing until the scheduler seeds a node on its leaf or ships it.
+        if let Err(e) = self
+            .workers_pool
+            .try_transition_computing_phase(&worker_id, &job_id, JobPhase::Prove, JobPhase::Recurse)
+            .await
+        {
+            drop(job);
+            self.fail_job(&job_id, &e.to_string()).await?;
+            return Err(e);
+        }
 
-        if all_done {
+        let starting = job.agg.is_none();
+        if starting {
+            // Before the state change, so a failure leaves nothing half-started.
+            let arity = self.agg_arity().await?;
+            let distributed = self.config.coordinator.distributed_aggregation;
+            job.change_state(JobState::Running(JobPhase::Recurse));
+            job.agg = Some(AggScheduler::new(arity, job.workers.len(), distributed));
+            info!(
+                "[Phase3] Aggregation started for {job_id} (arity {arity}, distributed \
+                 {distributed})"
+            );
+        }
+
+        // Still timed from the last phase-2 completion, to stay comparable.
+        if self.check_phase2_completion(&job, &worker_id) {
             job.phase_timings
                 .insert(JobPhase::Recurse, PhaseTimings { start_time: Utc::now(), end_time: None });
         }
 
-        let proofs = self.collect_worker_proofs(&job, &agg_worker_id, &worker_id)?;
-        let task = PendingAggTask { proofs, all_done, proof_type: job.proof_type };
+        let scheduler = job.agg.as_mut().expect("just created");
+        let dispatches = scheduler.on_set_ready(set);
+        // Also here: a final dispatch leaves no later point to free the donors.
+        let freed = scheduler.take_released();
+        drop(job);
 
-        if job.agg_task_inflight.is_none() {
-            // Claim the in-flight slot WHILE STILL HOLDING the job write lock,
-            // then send. Claiming after the send opened a TOCTOU: two workers'
-            // Prove completions racing through this handler both saw the slot
-            // empty and both dispatched an Aggregate to the recurser — the
-            // duplicate ran a second concurrent proofman task over the same GPU
-            // streams, corrupting in-flight proofs. It also let the recurser reply
-            // before this task could reacquire the lock, which
-            // `handle_recurser_completion` rejects as a final proof with no task
-            // in flight.
-            //
-            // The slot is deliberately left set if the send fails: the queue's
-            // only drain (`dispatch_next_agg_task`, which likewise keeps the slot
-            // on failure) runs off an aggregator ack, so clearing it would orphan
-            // anything that queued during the send window. Keeping it lets
-            // `replay_inflight_agg_task_if_recurser` re-send on reconnect; if the
-            // recurser never returns, the disconnect handler or the phase-3
-            // timeout fails the job.
-            job.agg_task_inflight = Some(task.clone());
-            drop(job);
-            self.send_recurser_task(
-                &job_id,
-                &agg_worker_id,
-                task.proofs,
-                task.all_done,
-                task.proof_type,
-            )
-            .await?;
-        } else {
-            // Task in-flight — queue this one; it will be sent after the ack.
-            job.agg_task_queue.push_back(task);
+        self.release_donors(&job_id, &freed).await;
+
+        if starting {
+            self.fire_job_event(&job_id, CoordinatorJobEvent::Progress(JobPhase::Recurse)).await;
         }
 
-        Ok(())
+        self.dispatch_all(&job_id, dispatches).await
     }
 
     /// Stores a single worker's Contribution response in the job state.
@@ -179,7 +186,7 @@ impl Coordinator {
                     .map(|proof| AggProofData {
                         airgroup_id: proof.airgroup_id,
                         values: proof.values,
-                        worker_idx: proof.worker_idx,
+                        worker_indexes: proof.worker_indexes,
                     })
                     .collect();
                 JobResultData::AggProofs(agg_proofs)
