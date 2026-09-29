@@ -1,4 +1,4 @@
-//! Two ASM executions in one process, each reading its own input.
+//! Consecutive jobs on one ASM client in one process, each reading its own input.
 //!
 //! An ASM execution leaves its shared memory dirty: the ROM histogram is read after
 //! the execution phase returns, so the input shmem cannot be rewound at the end of it
@@ -15,6 +15,11 @@
 //!
 //! Nothing here resets anything explicitly, deliberately: the client is supposed to do
 //! that at its own job boundary, and this test fails if it does not.
+//!
+//! The last job switches the same client to the Rust emulator, which crosses the
+//! boundary too. The histogram an assembly job leaves behind is what selects the ROM
+//! instance's assembly backend, so if it survives, the Rust execution is handed the
+//! previous job's ROM witness — which the executor rejects as `RomBackendStale`.
 //!
 //! Witness mode is what makes it worth testing — `verify_constraints` builds the ROM
 //! instance and computes its witness, which is where the histogram is read. An
@@ -59,23 +64,23 @@ fn stdin_for(n: u32) -> ZiskStdin {
     stdin
 }
 
-/// One ASM verify-constraints run, returning what the guest actually executed:
+/// One verify-constraints run on `executor`, returning what the guest actually executed:
 /// its step count and the public values it committed.
-async fn run_once(client: &EmbeddedClient, n: u32) -> (u64, Vec<u64>) {
+async fn run_once(client: &EmbeddedClient, executor: ExecutorKind, n: u32) -> (u64, Vec<u64>) {
     let result = client
         .verify_constraints(&ELF_FIB_MOD, stdin_for(n))
-        .executor(ExecutorKind::Assembly)
+        .executor(executor)
         .run()
         .expect("failed to submit verify_constraints")
         .await
-        .unwrap_or_else(|e| panic!("verify_constraints failed for n={n}: {e}"));
+        .unwrap_or_else(|e| panic!("verify_constraints on {executor:?} failed for n={n}: {e}"));
 
     (result.get_execution_steps(), result.get_publics().public_u64())
 }
 
 #[tokio::test]
 #[ignore = "requires a generated proving key and the ASM microservices; run with --ignored"]
-async fn two_asm_executions_in_one_process() {
+async fn consecutive_jobs_in_one_process() {
     // Before anything reaches the pool, which rayon builds on first use. `ok()` because
     // a global pool can only be built once.
     rayon::ThreadPoolBuilder::new().stack_size(PROVING_STACK).build_global().ok();
@@ -96,8 +101,8 @@ async fn two_asm_executions_in_one_process() {
         .await
         .expect("ROM setup failed");
 
-    let (first_steps, first_publics) = run_once(&client, FIRST_N).await;
-    let (second_steps, second_publics) = run_once(&client, SECOND_N).await;
+    let (first_steps, first_publics) = run_once(&client, ExecutorKind::Assembly, FIRST_N).await;
+    let (second_steps, second_publics) = run_once(&client, ExecutorKind::Assembly, SECOND_N).await;
 
     assert_ne!(
         first_steps, second_steps,
@@ -106,5 +111,13 @@ async fn two_asm_executions_in_one_process() {
     assert_ne!(
         first_publics, second_publics,
         "the second execution committed the first one's public values — it reused the first job's input"
+    );
+
+    // Back to the first input, so a histogram still held would be the second job's
+    // and could not pass for this one's even if nothing rejected it.
+    let (_, emulator_publics) = run_once(&client, ExecutorKind::Emulator, FIRST_N).await;
+    assert_eq!(
+        emulator_publics, first_publics,
+        "the Rust emulator committed other public values than the assembly did for the same input"
     );
 }
