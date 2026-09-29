@@ -25,7 +25,10 @@ use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use proofman_witness::{WitnessComponent, WitnessManager};
 
 use std::{
-    sync::{Arc, RwLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, RwLock,
+    },
     time::Instant,
 };
 use zisk_common::{
@@ -87,6 +90,11 @@ pub struct ZiskExecutor<F: PrimeField64> {
     /// Phase-3 Witness computation. `None` on the standalone path
     /// (executor constructed without `WitnessManager` / `Std`).
     witness: Option<WitnessPhase<F>>,
+    /// Whether the FROPS multiplicity column should come from the ROM-histogram assembly when
+    /// this executor runs on the ASM path. Only a request: it is applied at the start of every
+    /// execution, together with the backend that execution actually uses. See
+    /// [`Self::set_frops_multiplicity_from_asm`].
+    frops_from_asm_requested: AtomicBool,
 }
 
 impl<F: PrimeField64> ZiskExecutor<F> {
@@ -122,6 +130,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             execution: ExecutionPhase::new(CHUNK_SIZE, with_asm_emulator),
             plan: PlanPhase::new(CHUNK_SIZE),
             witness: Some(WitnessPhase::new(CHUNK_SIZE, sm_bundle)),
+            frops_from_asm_requested: AtomicBool::new(false),
         });
         executor.set_packed(packed);
 
@@ -145,6 +154,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             execution: ExecutionPhase::new(CHUNK_SIZE, with_asm_emulator),
             plan: PlanPhase::new(CHUNK_SIZE),
             witness: None,
+            frops_from_asm_requested: AtomicBool::new(false),
         }))
     }
 
@@ -196,16 +206,19 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         Ok(())
     }
 
-    /// Selects where the FROPS multiplicity column comes from.
+    /// Selects where the FROPS multiplicity column comes from on the ASM path.
     ///
     /// With `true` it is taken from the column the ROM-histogram assembly builds, which a single
     /// worker computes and hands over with the ROM histogram; the state-machine collectors must then
-    /// not accumulate it as well. With `false` (the default) the collectors own it, which is the only
-    /// option on an execution path without the ROM-histogram assembly. See `executor::sm::frops`.
+    /// not accumulate it as well. With `false` (the default) the collectors own it. See
+    /// `executor::sm::frops`.
+    ///
+    /// This is a request, not the setting itself: the same executor can switch between the ASM and
+    /// the Rust backend from one job to the next (`set_asm_resources` / `clear_asm_resources`), and
+    /// the Rust path has no ROM-histogram assembly to take the column from. So every execution
+    /// applies it as `requested && ASM path`, just before it runs.
     pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
-        if let Some(witness) = self.witness.as_ref() {
-            witness.set_frops_multiplicity_from_asm(from_asm);
-        }
+        self.frops_from_asm_requested.store(from_asm, Ordering::Relaxed);
     }
 
     /// Sets whether to use packed representation for witness computation.
@@ -308,6 +321,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.state.stats.set_start_time(Instant::now());
 
         let is_asm_emulator = self.execution.is_asm_execution();
+
+        // Decide the FROPS multiplicity producer for this execution, from the backend it actually
+        // runs on. Every reader comes later: `publish_frops_from_asm` at the end of this execution,
+        // and the collectors built after it.
+        if let Some(witness) = self.witness.as_ref() {
+            let from_asm = is_asm_emulator && self.frops_from_asm_requested.load(Ordering::Relaxed);
+            witness.set_frops_multiplicity_from_asm(from_asm);
+        }
 
         // Reserve proofman's unified GPU buffer for MO count-and-plan
         // (no-op on CPU / standalone).

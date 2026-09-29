@@ -194,7 +194,8 @@ use std::sync::OnceLock;
 ///
 /// The choice is a property of the whole execution rather than of any one component — every
 /// collector in the process has to agree with whoever publishes the column — so it lives here as
-/// process state. Set it once before witness computation starts; it is only read afterwards.
+/// process state. The executor sets it at the start of every execution, from the backend that
+/// execution runs on; it is only read afterwards, once witness computation starts.
 static MULTIPLICITY_FROM_ASM: AtomicBool = AtomicBool::new(false);
 
 /// Selects the assembly as the producer of the multiplicity column. See [`MULTIPLICITY_FROM_ASM`].

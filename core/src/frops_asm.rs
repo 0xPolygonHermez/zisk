@@ -179,6 +179,7 @@ fn thunk_label(op: u8, spec: &FropsSpec) -> String {
 /// specialisation (see [`MAX_SPECIALISED_THUNKS_PER_OP`]); pass 0 to always specialise.
 ///
 /// Must be emitted *before* the operation code: the operation consumes `a` and `b` destructively.
+#[allow(clippy::too_many_arguments)]
 pub fn emit_call(
     op: u8,
     a: FropsOperand,

@@ -102,14 +102,11 @@ fn reference_column(traces: &[PathBuf]) -> std::io::Result<(FropsMultiplicity, u
 /// Compares the two columns and reports. Returns false when they disagree.
 pub fn verify(asm_dump: &Path, traces: &[PathBuf]) -> std::io::Result<bool> {
     let dump = read_asm_dump(asm_dump)?;
+    let inst_total: u64 = dump.inst_count.iter().sum();
     println!("assembly dump {}", asm_dump.display());
     println!("  exit code        {}", dump.exit_code);
     println!("  steps            {}", dump.steps);
-    println!(
-        "  ROM counters     {} (sum {})",
-        dump.inst_count.len(),
-        dump.inst_count.iter().sum::<u64>()
-    );
+    println!("  ROM counters     {} (sum {inst_total})", dump.inst_count.len());
     println!("  FROPS counters   {}", dump.frops_count.len());
 
     let (mult, ops) = reference_column(traces)?;
@@ -118,6 +115,18 @@ pub fn verify(asm_dump: &Path, traces: &[PathBuf]) -> std::io::Result<bool> {
     println!("  frequent ops     {}", mult.counted());
 
     let mut ok = true;
+    if dump.exit_code != 0 {
+        println!("WARNING: the assembly run ended with exit code {}", dump.exit_code);
+    }
+    // Every executed instruction, the exit one included, is counted exactly once in the histogram,
+    // so a dump whose counters do not add up to its step count is truncated or inconsistent.
+    if inst_total != dump.steps {
+        println!(
+            "MISMATCH: the instruction histogram sums to {inst_total}, the assembly ran {} steps",
+            dump.steps
+        );
+        ok = false;
+    }
     if dump.frops_count.len() as u64 != FROPS_TABLE_ROWS {
         println!(
             "MISMATCH: the assembly counted {} rows, the in-tree table has {FROPS_TABLE_ROWS}; \

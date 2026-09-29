@@ -799,7 +799,9 @@ impl AsmCoreProver {
         // pass, so on this path it owns the multiplicity column and the collectors stand down. The
         // choice has to hold for every rank: only the first process runs the histogram, and its
         // column already covers the others' share, so a rank that kept accumulating would count
-        // those operations twice.
+        // those operations twice. The executor applies it only to executions that run on the ASM
+        // backend; `execute_emulator` and friends switch this same executor to the Rust path, where
+        // the collectors own the column again.
         executor.set_frops_multiplicity_from_asm(zisk_executor::frops_from_asm_requested());
 
         let core = ProverBackend::new(

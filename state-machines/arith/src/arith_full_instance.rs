@@ -234,6 +234,21 @@ impl<F: PrimeField64> ArithInstanceCollector<F> {
         }
     }
 
+    /// Whether the FROPS table row of an operation is needed, rather than just whether the operation
+    /// is a frequent one: to publish the multiplicity, or to cross-check the assembly's column when
+    /// the `debug_frops` feature is on.
+    #[inline]
+    fn needs_frops_row(&self) -> bool {
+        #[cfg(feature = "debug_frops")]
+        {
+            self.publish_frops || self.check_frops
+        }
+        #[cfg(not(feature = "debug_frops"))]
+        {
+            self.publish_frops
+        }
+    }
+
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -260,16 +275,7 @@ impl<F: PrimeField64> ArithInstanceCollector<F> {
         // The table row is only needed to publish the multiplicity or to cross-check the
         // assembly's column. Otherwise the membership test alone decides whether this instance has
         // to prove the operation, which is the same test without the row arithmetic.
-        let (is_frop, frops_row) = if {
-            #[cfg(feature = "debug_frops")]
-            {
-                self.publish_frops || self.check_frops
-            }
-            #[cfg(not(feature = "debug_frops"))]
-            {
-                self.publish_frops
-            }
-        } {
+        let (is_frop, frops_row) = if self.needs_frops_row() {
             let row = ArithFrops::get_row(data[OP] as u8, data[A], data[B]);
             (row != ArithFrops::NO_FROPS, row)
         } else {
