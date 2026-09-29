@@ -48,6 +48,9 @@ reads_r12:
 writes_r5:
 \tcopyb(0, r10) -> r5
 \tret
+writes_r40:
+\tcopyb(0, r10) -> r40
+\tret
 calls:
 \tcall reads_r12
 \tret
@@ -64,6 +67,7 @@ uses_c:
     for (name, msg) in [
         ("reads_r12", "reads r12"),
         ("writes_r5", "writes a register outside r32..r39"),
+        ("writes_r40", "writes a register outside r32..r39"),
         ("calls", "a call"),
         ("starts_with_c", "starts by reading c"),
         ("jumps_to_c", "a jump target reads c"),

@@ -1590,7 +1590,8 @@ impl<'a> Riscv2ZiskContext<'a> {
 
     /// An inline zkvmcall: the library routine's `body` (see `InlineBody`) in place
     /// of its `csrs` sequence, which starts at `at_addr` and ends before `next_addr`.
-    /// The body reads `regs[k]` where it reads r(10 + k). Its first instruction takes
+    /// The body reads `regs[k]` where it reads r(10 + k); its scratch registers
+    /// (r32..r39) are kept as they are. Its first instruction takes
     /// the RISC-V address and the rest take internal ones, chained in body order;
     /// every jump is explicit, and an exit goes to `next_addr`, or, with `status`
     /// (a thunk), to a last instruction that sets a0 = ZKVM_EOK (0) first.
@@ -1626,7 +1627,8 @@ impl<'a> Riscv2ZiskContext<'a> {
                 (&mut zib.i.a_src, &mut zib.i.a_offset_imm0),
                 (&mut zib.i.b_src, &mut zib.i.b_offset_imm0),
             ] {
-                if *src == SRC_REG {
+                // Only the arguments are renamed; the scratch registers stay.
+                if *src == SRC_REG && (10..10 + regs.len() as u64).contains(reg) {
                     let r = regs[(*reg - 10) as usize] as u64;
                     // x0 is not a main-trace register: read it as the immediate 0.
                     (*src, *reg) = if r == 0 { (SRC_IMM, 0) } else { (SRC_REG, r) };

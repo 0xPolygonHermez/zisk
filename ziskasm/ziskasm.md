@@ -44,15 +44,15 @@ In some cases a general-purpose register is used to load or to store data.
 
 A register will be noted as `rN`, where N is the register number in decimal format.
 
-The maximum value of N is 31, i.e. the general-purpose registers are `r0` to `r31` (the RISC-V `x0` to `x31`).
+The general-purpose registers are `r0` to `r39`: `r0` to `r31` are the RISC-V `x0` to `x31`, and `r32` to `r39` are 8 extra registers that RISC-V code never uses.
 
 The register `r0` is always read as zero, regardless of any previous value written to it, and a store to `r0` is discarded.  This is the same behavior as RISC-V.  Note that the assembler encodes `r0` as an immediate value of 0 (`SRC_IMM`), not as `SRC_REG`.
 
-The registers `r1` to `r31` are the same as the RISC-V registers, and they are kept in the main execution trace (not in memory) in order to increase performance.
+The registers `r1` to `r39` are kept in the main execution trace (not in memory) in order to increase performance.  `r1` to `r31` are the RISC-V registers.  `r32` to `r39` are free for ZisK code: the RISC-V transpiler uses `r32` and `r33` as scratch within the expansion of one RISC-V instruction, and hand-written routines use all eight (an inline zkvmcall body may write only these, see `inline_body`).
 
 ## Virtual registers
 
-ZisK supports 32 extra virtual registers, meaning that they are transpiled as memory reads and writes into the registers area.  They are slower than regular, RISC-V-based registers, but convenient when you need temporary storage.  In oher words, `rN` with 32 <= `N` <= 63 will be interpreted as memory accesses to a system memory region dedicated to this purpose.
+ZisK supports 24 extra virtual registers, meaning that they are transpiled as memory reads and writes into the registers area.  They are slower than the main-trace registers, but convenient when you need temporary storage.  In other words, `rN` with 40 <= `N` <= 63 will be interpreted as memory accesses to a system memory region dedicated to this purpose.
 
 ## Memory format
 

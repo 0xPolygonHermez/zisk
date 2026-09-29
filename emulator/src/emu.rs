@@ -18,8 +18,9 @@ use zisk_common::{DataBusTrait, EmuTrace, EmuTraceStart};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
     EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
-    FREG_RA, FREG_X0, OUTPUT_ADDR, RAM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
-    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, SYS_ADDR,
+    FREG_RA, FREG_X0, OUTPUT_ADDR, RAM_ADDR, REGS_IN_MAIN_TO, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
+    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    STORE_REG, SYS_ADDR,
 };
 
 const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
@@ -1051,7 +1052,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                if instruction.store_offset >= 32 {
+                if instruction.store_offset > REGS_IN_MAIN_TO as i64 {
                     println!("instruction ALERT 0 {instruction:?}");
                 }
 
@@ -1146,7 +1147,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                if instruction.store_offset >= 32 {
+                if instruction.store_offset > REGS_IN_MAIN_TO as i64 {
                     println!("instruction ALERT 1 {instruction:?}");
                 }
 
@@ -1302,7 +1303,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                if instruction.store_offset >= 32 {
+                if instruction.store_offset > REGS_IN_MAIN_TO as i64 {
                     println!("instruction ALERT 2 {instruction:?}");
                 }
 
@@ -1454,7 +1455,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                if instruction.store_offset >= 32 {
+                if instruction.store_offset > REGS_IN_MAIN_TO as i64 {
                     println!("instruction ALERT 2 {instruction:?}");
                 }
 
@@ -3043,7 +3044,7 @@ impl<'a> Emu<'a> {
         self.ctx.tracerv.clone()
     }
 
-    /// Gets the current values of the 32 registers
+    /// Gets the current values of the 32 RISC-V registers (not r32..r39)
     pub fn get_regs_array(&self) -> [u64; 32] {
         let mut regs_array: [u64; 32] = [0; 32];
         for (i, reg) in regs_array.iter_mut().enumerate() {
@@ -3067,13 +3068,13 @@ impl<'a> Emu<'a> {
 
     #[inline(always)]
     pub fn get_reg(&self, index: usize) -> u64 {
-        debug_assert!(index < 32);
+        debug_assert!(index < REGS_IN_MAIN_TOTAL_NUMBER);
         self.ctx.inst_ctx.regs[index]
     }
 
     #[inline(always)]
     pub fn set_reg(&mut self, index: usize, value: u64) {
-        debug_assert!(index < 32);
+        debug_assert!(index < REGS_IN_MAIN_TOTAL_NUMBER);
         self.ctx.inst_ctx.regs[index] = value;
     }
 

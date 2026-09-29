@@ -4,7 +4,7 @@
 ; zkvmcalls: the division family and exp are called (thunks), and every other
 ; routine is an inline zkvmcall, whose body the transpiler expands at the call
 ; site (definitions/src/zkvmcall.rs). An inline body writes only memory, c and
-; the virtual registers r32..r39; its `jump`s and `ret`s cost nothing.
+; the scratch registers r32..r39; its `jump`s and `ret`s cost nothing.
 ;
 ; Every value is 4 little-endian u64 limbs (limb 0 least significant), the layout
 ; the precompiles consume, so there is nothing to byte-reverse. Every routine is

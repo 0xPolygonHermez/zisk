@@ -473,6 +473,12 @@ impl<F: PrimeField64> MainInstance<F> {
         large_range_checks: &mut Vec<u32>,
     ) {
         let max_range = step_range_check.len() as u64;
+        assert_eq!(
+            air_values.last_reg_value[flush_index].len(),
+            REGS_IN_MAIN,
+            "Main airvalues are sized for a different register count: set REGS_IN_MAIN_TO in \
+             state-machines/main/pil/main.pil to match zisk_core and regenerate the PIL"
+        );
         for ireg in 0..REGS_IN_MAIN {
             let reg_value = last_reg_values[ireg];
             let values = [F::from_u32(reg_value as u32), F::from_u32((reg_value >> 32) as u32)];

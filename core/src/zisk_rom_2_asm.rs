@@ -7,9 +7,18 @@ use ziskos::zisklib::FCALL_INPUT_READY_ID;
 
 use crate::{
     zisk_ops::ZiskOp, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR,
-    INPUT_ADDR, M64, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR, ZISKLIB_ROM_ADDR,
+    INPUT_ADDR, M64, REGS_IN_MAIN_TO, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR, ZISKLIB_ROM_ADDR,
 };
+
+/// Last register held in the main trace; the asm keeps a `reg_N` slot for r0..=LAST_REG.
+const LAST_REG: u64 = REGS_IN_MAIN_TO as u64;
+
+// Minimal-trace chunk layout, in u64 words: pc, sp, c, step, reg[1..=LAST_REG], last_c, end,
+// steps, mem_reads_size. Must match `emulator-asm` (constants.hpp, server.c, trace_logs.c) and
+// `AsmMTChunk` in emulator-asm/asm-runner/src/asm_mt.rs.
+const CHUNK_LAST_C: u64 = 4 + LAST_REG;
+const CHUNK_MEM_READS_SIZE: u64 = CHUNK_LAST_C + 3;
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
 // Reg rax is used to store a function’s return value.
@@ -607,7 +616,7 @@ impl ZiskRom2Asm {
         }
 
         // Allocate space for the registers
-        for r in 0u64..35u64 {
+        for r in 0u64..=LAST_REG {
             if !XMM_MAPPED_REGS.contains(&r) {
                 *code += &format!(".comm reg_{r}, 8, 8\n");
             }
@@ -754,7 +763,7 @@ impl ZiskRom2Asm {
         // Initialize registers to zero
         *code += &ctx.full_line_comment("Set RISC-V registers to zero".to_string());
 
-        for r in 0u64..35u64 {
+        for r in 0u64..=LAST_REG {
             if !XMM_MAPPED_REGS.contains(&r) {
                 *code += &format!("\tmov qword {}[reg_{}], 0\n", ctx.ptr, r);
             }
@@ -1348,7 +1357,7 @@ impl ZiskRom2Asm {
                 *code +=
                     &ctx.full_line_comment(format!("a=SRC_REG reg={}", instruction.a_offset_imm0));
 
-                assert!(instruction.a_offset_imm0 <= 34);
+                assert!(instruction.a_offset_imm0 <= LAST_REG);
 
                 // Read from memory and store in the proper register: a or c
                 let dest_reg = if ctx.store_a_in_c { REG_C } else { REG_A };
@@ -1493,7 +1502,7 @@ impl ZiskRom2Asm {
                 *code +=
                     &ctx.full_line_comment(format!("b=SRC_REG reg={}", instruction.b_offset_imm0));
 
-                assert!(instruction.b_offset_imm0 <= 34);
+                assert!(instruction.b_offset_imm0 <= LAST_REG);
 
                 // Read from memory and store in the proper register: b or c
                 let dest_reg = if ctx.store_b_in_c { REG_C } else { REG_B };
@@ -1986,7 +1995,7 @@ impl ZiskRom2Asm {
             STORE_REG => {
                 assert!(ctx.c.is_saved);
                 assert!(instruction.store_offset >= 0);
-                assert!(instruction.store_offset <= 34);
+                assert!(instruction.store_offset <= LAST_REG as i64);
 
                 *code +=
                     &ctx.full_line_comment(format!("STORE_REG reg={}", instruction.store_offset));
@@ -8175,7 +8184,7 @@ impl ZiskRom2Asm {
             );
 
             // Write chunk.start.reg
-            for i in 1..34 {
+            for i in 1..=LAST_REG {
                 Self::read_riscv_reg(ctx, code, i, REG_VALUE, "value");
                 *code += &format!(
                     "\tmov [{} + {}], {} {}\n",
@@ -8185,8 +8194,11 @@ impl ZiskRom2Asm {
                     ctx.comment(format!("chunk.start.reg[{i}] = value"))
                 );
             }
-            *code +=
-                &format!("\tadd {}, 33*8 {}\n", REG_ADDRESS, ctx.comment_str("address += 33*8"));
+            *code += &format!(
+                "\tadd {}, {LAST_REG}*8 {}\n",
+                REG_ADDRESS,
+                ctx.comment_str("address += regs")
+            );
         }
 
         if ctx.minimal_trace() || ctx.mem_op() {
@@ -8198,7 +8210,11 @@ impl ZiskRom2Asm {
                 ctx.comment_str("aux = chunk_size")
             );
             if ctx.minimal_trace() {
-                *code += &format!("\tadd {}, 40*8 {}\n", REG_AUX, ctx.comment_str("aux += 40*8"));
+                *code += &format!(
+                    "\tadd {}, {CHUNK_MEM_READS_SIZE}*8 {}\n",
+                    REG_AUX,
+                    ctx.comment_str("aux = &chunk.mem_reads_size")
+                );
             }
             if ctx.mem_op() {
                 // Skip chunk.end
@@ -8270,9 +8286,9 @@ impl ZiskRom2Asm {
                 ctx.comment_str("address = chunk_address")
             );
             *code += &format!(
-                "\tadd {}, 37*8 {}\n",
+                "\tadd {}, {CHUNK_LAST_C}*8 {}\n",
                 REG_ADDRESS,
-                ctx.comment_str("address = chunk_address + 37*8")
+                ctx.comment_str("address = &chunk.last.c")
             );
 
             // Write chunk.last.c

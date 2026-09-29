@@ -770,13 +770,13 @@ fn is_reg(s: &str) -> bool {
     s.len() >= 2 && s.starts_with('r') && s[1..].chars().all(|c| c.is_ascii_digit())
 }
 
-/// Highest register the language defines. `r0`..`r31` are the RISC-V registers kept in
-/// the main execution trace; `r32`..`r63` are the virtual registers the transpiler
-/// lowers to memory in the reserved register area (see ziskasm.md, "Virtual
-/// registers").
+/// Highest register the language defines. `r0`..`r31` are the RISC-V registers and
+/// `r32`..`r39` the extra registers, all kept in the main execution trace; `r40`..`r63`
+/// are the virtual registers the transpiler lowers to memory in the reserved register
+/// area (see ziskasm.md, "Virtual registers").
 ///
 /// The bound has to be enforced here because nothing downstream enforces it:
-/// `ZiskInstBuilder::src_a`/`src_b` map any number outside `1..=31` to the address
+/// `ZiskInstBuilder::src_a`/`src_b` map any number outside `1..=39` to the address
 /// `REG_FIRST + n * 8` without a range check. `REG_FIRST` is `SYS_ADDR`, so an
 /// unvalidated `r64` resolves to `SYS_ADDR + 0x200` — exactly `UART_ADDR`, the ZisK
 /// stdout device — and larger numbers walk further into the system region. A typo must
@@ -898,8 +898,9 @@ mod tests {
     #[test]
     fn parse_reg_accepts_the_defined_range() {
         assert_eq!(parse_reg("r0").unwrap(), 0);
-        assert_eq!(parse_reg("r31").unwrap(), 31); // last main-trace register
-        assert_eq!(parse_reg("r32").unwrap(), 32); // first virtual register
+        assert_eq!(parse_reg("r31").unwrap(), 31); // last RISC-V register
+        assert_eq!(parse_reg("r39").unwrap(), 39); // last main-trace register
+        assert_eq!(parse_reg("r40").unwrap(), 40); // first virtual register
         assert_eq!(parse_reg("r63").unwrap(), MAX_REG);
     }
 

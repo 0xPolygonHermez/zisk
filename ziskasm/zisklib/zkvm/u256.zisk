@@ -4,7 +4,7 @@
 ; through zkvmcalls: the division family and exp are called (thunks), and every
 ; other routine is an inline zkvmcall, whose body the transpiler expands at the
 ; call site (definitions/src/zkvmcall.rs); a thunk of an inline zkvmcall expands
-; the same body. An inline body writes only memory, c and the virtual registers
+; the same body. An inline body writes only memory, c and the scratch registers
 ; r32..r39; its `jump`s and `ret`s cost nothing.
 ;
 ; The EF ABI keeps every value as 32 BIG-ENDIAN bytes, and these routines are

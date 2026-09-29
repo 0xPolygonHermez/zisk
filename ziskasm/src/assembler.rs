@@ -17,7 +17,8 @@ use zisk_core::zisk_inst::{ZiskInst, SRC_C, SRC_IMM, SRC_REG, STORE_MEM, STORE_R
 use zisk_core::zisk_inst_builder::ZiskInstBuilder;
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::{
-    GENERAL_RAM_ADDR, RAM_ADDR, RAM_SIZE, REG_FIRST, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SYS_ADDR,
+    GENERAL_RAM_ADDR, RAM_ADDR, RAM_SIZE, REGS_IN_MAIN_TO, REG_FIRST, ROM_ADDR, ROM_ADDR_MAX,
+    ROM_ENTRY, SYS_ADDR,
 };
 use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, InlineBody};
 
@@ -172,8 +173,9 @@ impl ZiskLibrary {
     /// site and a `jump(label)` is followed to its target, so neither costs a step.
     ///
     /// The body reads no RISC-V register but its arguments (r10, r11, ..., which the
-    /// transpiler replaces by the caller's registers) and writes only memory and the
-    /// virtual registers r32..r39, so it clobbers nothing the compiler can see. It
+    /// transpiler replaces by the caller's registers) and the scratch registers
+    /// r32..r39, and writes only memory and r32..r39, so it clobbers nothing the
+    /// compiler can see (r32..r39 are main-trace registers RISC-V code never uses). It
     /// has no calls, and neither its entry nor a `jump` target reads `c` (a skipped
     /// `jump` would have set it).
     pub fn inline_body(&self, name: &str, args: u8) -> Result<InlineBody, String> {
@@ -214,7 +216,7 @@ impl ZiskLibrary {
 
         // Every reachable instruction, and where each one continues to.
         let arg_regs = 10..10 + args as u64;
-        let virtual_regs = REG_FIRST + 32 * 8..REG_FIRST + 40 * 8;
+        let scratch_regs = 32..=REGS_IN_MAIN_TO as u64;
         let reg_area = REG_FIRST..REG_FIRST + 64 * 8;
         let mut succ: BTreeMap<u64, [Option<u64>; 2]> = BTreeMap::new();
         let mut todo = vec![first];
@@ -227,13 +229,13 @@ impl ZiskLibrary {
                 return Err(format!("{}: a call or an end", at(addr)));
             }
             for (src, reg) in [(i.a_src, i.a_offset_imm0), (i.b_src, i.b_offset_imm0)] {
-                if src == SRC_REG && !arg_regs.contains(&reg) {
+                if src == SRC_REG && !arg_regs.contains(&reg) && !scratch_regs.contains(&reg) {
                     return Err(format!("{}: reads r{reg}", at(addr)));
                 }
             }
             let dst = i.store_offset as u64;
-            if i.store == STORE_REG
-                || (i.store == STORE_MEM && reg_area.contains(&dst) && !virtual_regs.contains(&dst))
+            if (i.store == STORE_REG && !scratch_regs.contains(&dst))
+                || (i.store == STORE_MEM && reg_area.contains(&dst))
             {
                 return Err(format!("{}: writes a register outside r32..r39", at(addr)));
             }

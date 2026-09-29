@@ -42,7 +42,7 @@
 //! `|--------------- SYS_ADDR (= RAM_ADDR + STACK_SIZE)  (0xa0400000)`
 //! `|`
 //! `| Contains system address.`
-//! `| The first 256 bytes contain 32 8-byte registers`
+//! `| The first 320 bytes contain 40 8-byte registers (r0..r39)`
 //! `| The address UART_ADDR is used as a stdout at addr = 0xa0400200`
 //! `| The first float register is at         FREG_FIRST = 0xa0401000`
 //! `| The first CSR register is at             CSR_ADDR = 0xa0408000`
@@ -97,8 +97,9 @@
 //!   read-write (RW) memory region.
 //! * The first RW memory region going from `SYS_ADDR` to `OUTPUT_ADDR` is reserved for the system
 //!   operation.
-//! * The lower addresses of this region is used to store 32 registers of 8 bytes each, i.e. 256
-//!   bytes in total.  These registers are the equivalent to the RISC-V registers.
+//! * The lower addresses of this region is used to store 40 registers of 8 bytes each, i.e. 320
+//!   bytes in total: the 32 RISC-V registers, then 8 extra registers (r32..r39) that only ZisK
+//!   code uses. All of them but r0 are held in the main trace, not in memory.
 //! * Any data of exactly 1-byte length written to UART_ADDR will be sent to the standard output of
 //!   the system.
 //! * The second RW memory region going from `OUTPUT_ADDR` onwards, up to where the general-purpose

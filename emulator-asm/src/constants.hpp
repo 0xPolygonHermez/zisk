@@ -101,7 +101,14 @@
 // instruction, according to the ZisK assembly code generation configuration.
 
 #define MAX_MTRACE_REGS_ACCESS_SIZE ((2 + 2 + 3) * 8)
-#define MAX_TRACE_CHUNK_INFO ((44*8) + 32)
+// Minimal-trace chunk header: pc, sp, c, step, reg[1..MT_CHUNK_REGS], last_c, end, steps,
+// mem_reads_size. MT_CHUNK_REGS is the last main-trace register, REGS_IN_MAIN_TO in
+// core/src/zisk_registers.rs; the layout must match the generated asm (zisk_rom_2_asm.rs) and
+// AsmMTChunk in asm-runner/src/asm_mt.rs.
+#define MT_CHUNK_REGS 39
+#define MT_CHUNK_HEADER_WORDS (4 + MT_CHUNK_REGS + 4)
+#define MT_CHUNK_END_INDEX (4 + MT_CHUNK_REGS + 1)
+#define MAX_TRACE_CHUNK_INFO (((MT_CHUNK_HEADER_WORDS + 3)*8) + 32)
 #define MAX_BYTES_DIRECT_MTRACE 256
 #define MAX_BYTES_MTRACE_STEP (MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE)
 #define MAX_CHUNK_TRACE_SIZE ((CHUNK_SIZE * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO)

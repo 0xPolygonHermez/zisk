@@ -58,12 +58,13 @@ static void on_emulation_signal(int sig)
 // avoid the parent's 10 s chunk-wait timeout. Layouts must match AsmMOChunk
 // / AsmMTChunk in emulator-asm/asm-runner/src/asm_mo.rs and asm_mt.rs:
 //   MemOp: { end, mem_ops_size }                                — 2 u64s, end @ 0
-//   MT-style: pc,sp,c,step, regs[33], last_c,end,steps,mem_reads_size — 41 u64s, end @ 38
+//   MT-style: pc,sp,c,step, regs[MT_CHUNK_REGS], last_c,end,steps,mem_reads_size
+//             — MT_CHUNK_HEADER_WORDS u64s, end @ MT_CHUNK_END_INDEX (constants.hpp)
 static void write_abort_chunk(void)
 {
     bool is_mo = (gen_method == MemOp);
-    size_t n_words = is_mo ? 2 : 41;
-    size_t end_idx = is_mo ? 0 : 38;
+    size_t n_words = is_mo ? 2 : MT_CHUNK_HEADER_WORDS;
+    size_t end_idx = is_mo ? 0 : MT_CHUNK_END_INDEX;
 
     uint64_t * chunk = (uint64_t *)MEM_CHUNK_ADDRESS;
     memset(chunk, 0, n_words * sizeof(uint64_t));
