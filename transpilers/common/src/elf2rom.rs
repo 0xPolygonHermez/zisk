@@ -354,38 +354,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Only reachable with the `ziskasm` feature (`library` is None otherwise).
     #[cfg(feature = "ziskasm")]
     if let Some(library) = library {
-        // The guest linker script reserves ZISKLIB_RAM but not ZISKLIB_ROM, and unlike
-        // the float-library region above nothing has fenced these off yet. `extend`
-        // would silently overwrite a colliding guest instruction (BTreeMap) or leave
-        // overlapping data sections, so reject the collision instead.
-        use zisk_core::{
-            ZISKLIB_RAM_ADDR, ZISKLIB_RAM_ADDR_MAX, ZISKLIB_ROM_ADDR, ZISKLIB_ROM_ADDR_MAX,
-        };
-        if let Some((&addr, _)) = rom.insts.range(ZISKLIB_ROM_ADDR..=ZISKLIB_ROM_ADDR_MAX).next() {
-            return Err(format!(
-                "guest instruction at 0x{addr:x} overlaps the reserved ZisK library ROM region (0x{ZISKLIB_ROM_ADDR:x}..0x{ZISKLIB_ROM_ADDR_MAX:x})"
-            )
-            .into());
-        }
-        for (what, sections, lo, hi) in [
-            ("ROM", &rom.ro_data_64, ZISKLIB_ROM_ADDR, ZISKLIB_ROM_ADDR_MAX),
-            ("RAM", &rom.rw_data_64, ZISKLIB_RAM_ADDR, ZISKLIB_RAM_ADDR_MAX),
-        ] {
-            for s in sections {
-                let end = s.addr + (s.data.len() * 8) as u64;
-                if s.addr <= hi && end > lo {
-                    return Err(format!(
-                        "guest data section at 0x{:x} (size {}) overlaps the reserved ZisK library {what} region (0x{lo:x}..0x{hi:x})",
-                        s.addr,
-                        s.data.len() * 8
-                    )
-                    .into());
-                }
-            }
-        }
-        rom.insts.extend(library.insts);
-        rom.ro_data_64.extend(library.ro_data);
-        rom.rw_data_64.extend(library.rw_data);
+        merge_library(&mut rom, library)?;
     }
 
     // Preprocess the ROM
@@ -394,6 +363,55 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     rom.optimize_instruction_lookup()?;
 
     Ok(rom)
+}
+
+/// Merges the assembled ZisK library into the guest ROM: its instructions and data
+/// live in the reserved region, disjoint from the guest.
+#[cfg(feature = "ziskasm")]
+fn merge_library(rom: &mut ZiskRom, library: ziskasm::ZiskLibrary) -> Result<(), Box<dyn Error>> {
+    // The guest linker script reserves ZISKLIB_RAM but not ZISKLIB_ROM, and unlike
+    // the float-library region above nothing has fenced these off yet. `extend`
+    // would silently overwrite a colliding guest instruction (BTreeMap) or leave
+    // overlapping data sections, so reject the collision instead.
+    use zisk_core::{
+        ZISKLIB_RAM_ADDR, ZISKLIB_RAM_ADDR_MAX, ZISKLIB_ROM_ADDR, ZISKLIB_ROM_ADDR_MAX,
+    };
+    if let Some((&addr, _)) = rom.insts.range(ZISKLIB_ROM_ADDR..=ZISKLIB_ROM_ADDR_MAX).next() {
+        return Err(format!(
+            "guest instruction at 0x{addr:x} overlaps the reserved ZisK library ROM region (0x{ZISKLIB_ROM_ADDR:x}..0x{ZISKLIB_ROM_ADDR_MAX:x})"
+        )
+        .into());
+    }
+    for (what, sections, lo, hi) in [
+        ("ROM", &rom.ro_data_64, ZISKLIB_ROM_ADDR, ZISKLIB_ROM_ADDR_MAX),
+        ("RAM", &rom.rw_data_64, ZISKLIB_RAM_ADDR, ZISKLIB_RAM_ADDR_MAX),
+    ] {
+        for s in sections {
+            let end = s.addr + (s.data.len() * 8) as u64;
+            if s.addr <= hi && end > lo {
+                return Err(format!(
+                    "guest data section at 0x{:x} (size {}) overlaps the reserved ZisK library {what} region (0x{lo:x}..0x{hi:x})",
+                    s.addr,
+                    s.data.len() * 8
+                )
+                .into());
+            }
+        }
+    }
+    // The library was assembled into a ROM of its own, so its instruction indexes
+    // start at 0 like the guest's. The index is the instruction's row in the ROM
+    // trace (and in the ROM state machine's multiplicities), so renumber the
+    // library after the guest: a shared index would put two instructions on one row.
+    let mut library_insts = library.insts;
+    let first_index = rom.build_counter;
+    for zib in library_insts.values_mut() {
+        zib.i.index += first_index;
+    }
+    rom.build_counter += library_insts.len() as u64;
+    rom.insts.extend(library_insts);
+    rom.ro_data_64.extend(library.ro_data);
+    rom.rw_data_64.extend(library.rw_data);
+    Ok(())
 }
 
 /// A ROM data row initializes 32 bytes (4 u64), so RW sections must be sized in
@@ -805,5 +823,27 @@ mod zkvmcall_tests {
                 call.target
             );
         }
+    }
+
+    /// The library, assembled on its own, numbers its instructions from 0 like the guest;
+    /// merged, every instruction must still have its own index (its ROM trace row).
+    #[cfg(feature = "ziskasm")]
+    #[test]
+    fn merged_library_gets_indexes_after_the_guest() {
+        use super::{add_end_and_lib, merge_library, ZiskRom, ROM_ENTRY};
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
+        add_end_and_lib(&mut rom);
+        let guest = rom.insts.len() as u64;
+        assert!(guest > 0 && rom.build_counter == guest);
+
+        let library = ziskasm::assemble_zisk_library().unwrap();
+        let lib = library.insts.len() as u64;
+        assert!(library.insts.values().any(|zib| zib.i.index == 0), "the library starts at 0");
+        merge_library(&mut rom, library).unwrap();
+
+        let mut indexes: Vec<u64> = rom.insts.values().map(|zib| zib.i.index).collect();
+        indexes.sort_unstable();
+        assert_eq!(indexes, (0..guest + lib).collect::<Vec<_>>(), "indexes are unique and dense");
+        assert_eq!(rom.build_counter, guest + lib);
     }
 }
