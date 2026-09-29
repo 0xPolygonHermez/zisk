@@ -663,6 +663,22 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "compressed")]
+    fn c_fldsp_rd_f0_is_valid() {
+        // Unlike C.LDSP, C.FLDSP with rd=f0 is a valid encoding (f0 is a real
+        // register), so it must not be classified as reserved. Gated on
+        // `compressed`, since otherwise every 16-bit parcel decodes as CHalt.
+        // 0x2002 = c.fldsp f0, 0(sp)
+        let insts = riscv_interpreter(0x8000_0000, &[0x2002]);
+        assert_eq!(insts.len(), 1);
+        let i = &insts[0];
+        assert_eq!(i.inst_name, RiscvInstName::CFldsp);
+        assert_eq!(i.rd, 0);
+        assert_eq!(i.rs1, 2);
+        assert_eq!(i.imm, 0);
+    }
+
+    #[test]
     fn reserved_32bit_encodings_are_reserved() {
         // The all-ones word is a permanently-reserved illegal instruction;
         // the interpreter maps it to CHalt.
