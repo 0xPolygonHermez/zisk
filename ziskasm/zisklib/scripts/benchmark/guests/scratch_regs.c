@@ -1,7 +1,7 @@
 /* Runs the RISC-V instructions whose ZisK expansion uses the transpiler's scratch
    registers r32 / r33: atomics (AMO*) and the Zbb / Zbs / Zbkb bit-manipulation
-   instructions, over a spread of operands. (The CSR instructions use them too, but
-   ziskemu faults on mscratch accesses, so they are not covered.) Every result is
+   instructions, over a spread of operands. (The CSR instructions use them too;
+   csr_ops.c covers those.) Every result is
    folded into a checksum per group; check.sh compares the output with a golden
    snapshot. Build with -march=rv64ima_zicsr_zbb_zbs_zbkb. */
 #include <stdint.h>

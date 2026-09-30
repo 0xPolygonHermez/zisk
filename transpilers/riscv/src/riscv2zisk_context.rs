@@ -2156,7 +2156,7 @@ impl<'a> Riscv2ZiskContext<'a> {
                 }
                 {
                     let mut zib = ZiskInstBuilder::new_internal(internal_address_3, rom_address);
-                    zib.src_a("mem", 0, false);
+                    zib.src_a("imm", 0, false);
                     zib.src_b("reg", 33, false);
                     zib.op("copyb").unwrap();
                     zib.store("reg", i.rd as i64, false, false);
@@ -2210,7 +2210,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             let internal_address_2 = self.rom.get_internal_address();
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
-                zib.src_a("mem", 0, false);
+                zib.src_a("imm", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
@@ -2294,7 +2294,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             let internal_address_1 = self.rom.get_internal_address();
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
-                zib.src_a("mem", 0, false);
+                zib.src_a("imm", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
@@ -2309,7 +2309,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             }
             {
                 let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
-                zib.src_a("mem", 0, false);
+                zib.src_a("imm", 0, false);
                 zib.src_b("imm", i.imme as u64, false);
                 zib.op("copyb").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
@@ -2383,7 +2383,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             let internal_address_1 = self.rom.get_internal_address();
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
-                zib.src_a("mem", 0, false);
+                zib.src_a("imm", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
@@ -2470,7 +2470,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             let internal_address_1 = self.rom.get_internal_address();
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
-                zib.src_a("mem", 0, false);
+                zib.src_a("imm", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
