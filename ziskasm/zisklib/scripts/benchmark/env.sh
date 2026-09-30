@@ -17,7 +17,8 @@ CFLAGS="-march=rv64ima_zicsr_zbb -mabi=lp64 -mcmodel=medany -nostdlib -ffreestan
 # guest_cc OUT.elf SRC.c [-D...]: build a C guest linked against the EF zkvm_* thunks.
 guest_cc() {
   local out=$1 src=$2; shift 2
-  $CC $CFLAGS "$@" -o "$out" "$ZISK/ziskasm/lang/c/src/_start.s" "$src" "$ZISK/ziskasm/lang/c/src/zkvm_calls.s"
+  $CC $CFLAGS "$@" -o "$out" "$ZISK/ziskasm/lang/c/src/_start.s" "$src" "$ZISK/ziskasm/lang/c/src/zkvm_calls.s" \
+      "$ZISK/ziskasm/lang/c/src/zkvm_mem.s"
 }
 
 # emu_run ELF OUT.bin [emu] -> "steps cost" (total steps and variable cost of the run)

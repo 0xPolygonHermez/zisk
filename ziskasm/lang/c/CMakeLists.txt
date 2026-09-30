@@ -36,7 +36,7 @@ project(zisklib_c C ASM)
 
 # _start.s is part of the shipped library, not sample code: the EF standard (§9)
 # requires the archive to provide the entry point alongside I/O and accelerators.
-add_library(zisklib_c STATIC src/_start.s src/zkvm_calls.s src/zisklib_stubs.c)
+add_library(zisklib_c STATIC src/_start.s src/zkvm_calls.s src/zkvm_mem.s src/zisklib_stubs.c)
 target_include_directories(zisklib_c PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set_target_properties(zisklib_c PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
 # Keep every stub as its own section so unused ones can be GC'd, while the

@@ -148,6 +148,8 @@ The library reaches the `.zisk` routines in two ways:
 | `zkvm_u256_*` — EF U256 | 27 | [`zkvm_u256.h`](include/zkvm_u256.h) | inline zkvmcalls, but for the division family and `exp`, which are calls, to `zkvm/u256.zisk`; every function also has a thunk in [`src/zkvm_calls.s`](src/zkvm_calls.s) (used with `ZKVM_U256_CALLS` or a declarations-only header); with `ZKVM_U256_INLINE`, inline C in the header except the division family |
 | `zkvm_u256_le_*` — little-endian U256 (ZisK proposal, not EF) | 27 | [`zkvm_u256_le.h`](include/zkvm_u256_le.h) | inline zkvmcalls, but for the division family and `exp`, which are zkvmcall thunks, to `zkvm/u256_le.zisk`; with `ZKVM_U256_LE_INLINE`, inline C in the header except the division family |
 | `read_input`/`write_output` — EF I/O | 2 | [`zkvm_io.h`](include/zkvm_io.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s) |
+| `zkvm_memcpy`/`memset`/`memcmp` — memory (ZisK extension, not EF) | 3 | [`zkvm_mem.h`](include/zkvm_mem.h) | inline in the header: one DMA marker each (one ZisK instruction with a constant size); a run-time memset fill calls `zkvm_memset_any` in [`src/zkvm_mem.s`](src/zkvm_mem.s), which also defines weak libc `memcpy`/`memmove`/`memcmp`/`memset` on the same DMA ops |
+| `zkvm_evm_jumpdest_bitmap` — EVM JUMPDEST analysis (ZisK extension, not EF) | 1 | [`zkvm_evm.h`](include/zkvm_evm.h) | inline in the header (the jump_dest precompile marker); `ZKVM_EFAIL` when the precompile cannot take the arguments (unaligned, empty) |
 | `ziskos_*` — ZisK flat ABI | 27 | [`zisklib.h`](include/zisklib.h) | stubs in [`src/zisklib_stubs.c`](src/zisklib_stubs.c), redirected by `REDIRECTS` |
 
 The `zkvm_u256_*` functions have three builds under the same ABI, chosen when
