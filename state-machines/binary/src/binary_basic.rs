@@ -224,6 +224,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 | ZiskOp::LEU_W
                 | ZiskOp::LE
                 | ZiskOp::LE_W
+                | ZiskOp::UNAL8
         )
     }
 
@@ -1066,6 +1067,49 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     let row = BinaryBasicTableSM::calculate_table_row(
                         binary_basic_table_op,
                         a_byte,
+                        b_bytes[i] as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    tally.inc(row);
+                }
+                row.set_all_carry(lane, &carry);
+            }
+            ZiskOp::UNAL8 => {
+                // Alignment predicate: c = flag = 1 iff a or b is not a multiple of 8. Only the 3 low
+                // bits of the first byte decide it, so the carry is a state the other bytes propagate:
+                // 1 = aligned, 2 = misaligned (never 0, which marks the first byte in the table), and
+                // the last byte turns it into the result (state - 1)
+                row.set_use_first_byte(lane, false);
+                row.set_result_is_a(lane, false);
+                row.set_c_is_signed(lane, false);
+
+                binary_basic_table_op = BinaryBasicTableOp::Unal8;
+
+                let mut carry = [0u8; 8];
+                for i in 0..8 {
+                    let previous_cin = cin;
+                    let state = if i == 0 {
+                        if (a_bytes[0] | b_bytes[0]) & 0x07 != 0 {
+                            2
+                        } else {
+                            1
+                        }
+                    } else {
+                        cin
+                    };
+                    cout = if plast[i] == 1 { state - 1 } else { state };
+                    carry[i] = cout as u8;
+                    cin = cout;
+
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
+                    let flags = cout;
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        binary_basic_table_op,
+                        a_bytes[i] as u64,
                         b_bytes[i] as u64,
                         previous_cin,
                         plast[i],

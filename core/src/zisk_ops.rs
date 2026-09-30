@@ -494,10 +494,15 @@ define_ops! {
     (Sh1add, "sh1add", Binary, BINARY_COST, 0x56, 0, 0, opc_sh1add, op_sh1add, ops_none),
     (Sh2add, "sh2add", Binary, BINARY_COST, 0x57, 0, 0, opc_sh2add, op_sh2add, ops_none),
     (Sh3add, "sh3add", Binary, BINARY_COST, 0x58, 0, 0, opc_sh3add, op_sh3add, ops_none),
-    // Opcodes 0x59-0x5f are reserved for binary
-    // Opcodes 0x60-0x68 are the m32 shadows of 0x50-0x58 and must stay empty. Only 0x62-0x68 come
-    // from ops with no m32 variant: shxadd_w does not exist in RISC-V, and brev8_w / andn_w /
-    // orn_w / xnor_w are not opcodes either
+    // Opcode 0x59 is LTU_DIV: the bus tag of the LTU that Arith injects on every division (not a
+    // ZisK opcode, see state-machines/binary/src/binary_constants.rs)
+    // ZisK-only alignment predicate (no RISC-V instruction, no m32 variant): c = flag = 1 iff a or b
+    // is not a multiple of 8. Guards the fast path of the 8-byte aligned routines
+    (Unal8, "unal8", Binary, BINARY_COST, 0x5a, 0, 0, opc_unal8, op_unal8, ops_none),
+    // Opcodes 0x5b-0x5f are reserved for binary
+    // Opcodes 0x60-0x6a are the m32 shadows of 0x50-0x5a and must stay empty. Only 0x62-0x6a come
+    // from ops with no m32 variant: shxadd_w does not exist in RISC-V, brev8_w / andn_w / orn_w /
+    // xnor_w are not opcodes either, and unal8 has no 32-bit meaning
     // Opcodes 0x69-0x6f are the shadows of the reserved 0x59-0x5f
 
     // "Software" opcodes (0x90 - 0x9F): these are not proved by any air. They are either never

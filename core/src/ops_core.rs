@@ -702,6 +702,18 @@ pub const fn op_sh3add(a: u64, b: u64) -> (u64, bool) {
     (b.wrapping_add(a << 3), false)
 }
 
+/// If a or b is not a multiple of 8, it returns c=1, flag=true; otherwise it returns c=0, flag=false.
+/// Meant to guard the fast path of the routines that need 8-byte aligned addresses and counts:
+/// `unal8(addr, count), j(slow_path)`.
+#[inline(always)]
+pub const fn op_unal8(a: u64, b: u64) -> (u64, bool) {
+    if (a | b) & 0x07 != 0 {
+        (1, true)
+    } else {
+        (0, false)
+    }
+}
+
 /// Sets c to b plus a (modulo 32) << 3, and flag to false
 #[inline(always)]
 pub const fn op_sh3add_u_w(a: u64, b: u64) -> (u64, bool) {

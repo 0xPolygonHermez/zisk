@@ -6,7 +6,9 @@
         - 0x50, 0x51 (LT_ABS_NP, LT_ABS_PN: internal, assumed by Arith)
         - 0x52-0x55 (Zbb/Zbkb bitwise)
         - 0x56-0x58 (Zba shift-and-add)
-        - 0x59-0x5F (free, reserved for binary)
+        - 0x59 (LTU_DIV: bus tag of the LTU assumed by Arith on divisions, not an opcode)
+        - 0x5A (UNAL8: 8-byte alignment predicate, ZisK-only)
+        - 0x5B-0x5F (free, reserved for binary)
         - 0x60-0x6F (m32 shadows of 0x50-0x5F, must stay empty)
       - Binary Extension Operations:
         - 0x21-0x29
@@ -120,6 +122,10 @@ const int OP_XNOR = 0x55;
 const int OP_SH1ADD = 0x56;
 const int OP_SH2ADD = 0x57;
 const int OP_SH3ADD = 0x58;
+
+// ZisK-only alignment predicate, proven by Binary: c = flag = 1 iff a or b is not a multiple of 8
+// (i.e. some of the 3 low bits of a | b is set). No m32 variant, so its shadow (0x6A) must stay empty
+const int OP_UNAL8 = 0x5A;
 
 const int OP_PUBOUT = 0xA0;
 

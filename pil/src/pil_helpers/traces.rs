@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "6e722f5d764b24242b8b65e4fec93be11b5f6ab7b09937f41c70ca6350471cdf";
+pub const PILOUT_HASH: &str = "6b3328dd031b2ebd9176b14b7ef35d3ebfdd8f6aabe848c108b6201b7e730833";
 
 //AIRGROUP CONSTANTS
 
@@ -758,12 +758,12 @@ trace_row!(VirtualTableZisk0TraceRow<F> {
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 52>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
- __ROW_INDEX__: F, COL_9_9_0: F, COL_14_14_0: F, COL_14_14_1: F, UID_14: F, COL_15_16_0: F, COL_15_16_1: F, COL_15_16_2: F, COL_15_16_3: F, COL_15_16_4: F, COL_15_16_5: F, UID_15: F, COL_16_22_0: F, COL_16_22_1: F, COL_16_22_2: F, COL_16_22_3: F, COL_16_22_4: F, COL_16_22_5: F, UID_16: F, COL_17_28_0: F, COL_17_28_1: F, COL_17_28_2: F, COL_17_28_3: F, COL_17_28_4: F, COL_17_28_5: F, COL_17_28_6: F, UID_17: F, COL_18_35_0: F, COL_18_35_1: F, COL_18_35_2: F, COL_18_35_3: F, COL_18_35_4: F, COL_18_35_5: F, COL_18_35_6: F, COL_19_42_0: F, COL_19_42_1: F, COL_19_42_4: F, COL_19_42_5: F, COL_19_42_6: F, COL_20_49_0: F, COL_20_49_1: F, COL_20_49_4: F, COL_20_49_5: F, COL_20_49_6: F, COL_21_56_0: F, COL_21_56_1: F, COL_21_56_2: F, COL_21_56_3: F, COL_21_56_4: F, COL_21_56_5: F, COL_21_56_6: F, UID_21: F, __L1__: F,
+ __ROW_INDEX__: F, COL_9_9_0: F, COL_14_14_0: F, COL_14_14_1: F, UID_14: F, COL_15_16_0: F, COL_15_16_1: F, COL_15_16_2: F, COL_15_16_3: F, COL_15_16_4: F, COL_15_16_5: F, UID_15: F, COL_16_22_0: F, COL_16_22_1: F, COL_16_22_2: F, COL_16_22_3: F, COL_16_22_4: F, COL_16_22_5: F, UID_16: F, COL_17_28_0: F, COL_17_28_1: F, COL_17_28_2: F, COL_17_28_3: F, COL_17_28_4: F, COL_17_28_5: F, COL_17_28_6: F, UID_17: F, COL_18_35_0: F, COL_18_35_1: F, COL_18_35_2: F, COL_18_35_3: F, COL_18_35_4: F, COL_18_35_5: F, COL_18_35_6: F, COL_19_42_0: F, COL_19_42_1: F, COL_19_42_4: F, COL_19_42_5: F, COL_19_42_6: F, COL_20_49_0: F, COL_20_49_1: F, COL_20_49_4: F, COL_20_49_5: F, COL_20_49_6: F, COL_21_56_0: F, COL_21_56_1: F, COL_21_56_4: F, COL_21_56_5: F, COL_21_56_6: F, COL_22_63_0: F, COL_22_63_1: F, COL_22_63_2: F, COL_22_63_3: F, COL_22_63_4: F, COL_22_63_5: F, COL_22_63_6: F, UID_22: F, __L1__: F,
 });
 pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 53>;
 
 trace_row!(VirtualTableZisk1TraceRow<F> {
- multiplicity:[F; 22],
+ multiplicity:[F; 23],
 });
 
 pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 53>;
