@@ -22,6 +22,8 @@ impl AsmShmemHeader for AsmMOHeader {
 #[derive(Debug)]
 pub(crate) struct AsmMOChunk {
     pub end: u64,
+    /// Words of memory-ops data that follow: tagged 8-byte words, one per read, two per write or
+    /// block record, 2 + n per value block.
     pub mem_ops_size: u64,
 }
 

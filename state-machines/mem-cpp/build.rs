@@ -64,7 +64,7 @@ fn main() {
     zisk_cuda_build::compile(&zisk_cuda_build::CudaLib {
         name: "memcpp_cu",
         dir: "cu",
-        sources: &["count_and_plan.cu", "count_and_plan_c.cu"],
+        sources: &["count_and_plan.cu", "count_and_plan_c.cu", "ram_fill.cu"],
         // The kernels include the CPU side's headers.
         extra_header_dirs: &["cpp"],
         ..Default::default()

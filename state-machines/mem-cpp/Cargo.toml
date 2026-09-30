@@ -17,6 +17,7 @@ zisk-sm-mem-common = { workspace = true }
 zisk-pil = { workspace = true }
 
 proofman-util = { workspace = true }
+proofman-fields = { workspace = true }
 tracing = { workspace = true }
 
 [features]

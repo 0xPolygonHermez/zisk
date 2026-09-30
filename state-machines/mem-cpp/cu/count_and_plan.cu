@@ -40,21 +40,51 @@
 #define MOPS_ALIGNED_WRITE            0x0D
 #define MOPS_ALIGNED_BLOCK_READ       0x0E
 #define MOPS_ALIGNED_BLOCK_WRITE      0x0F
+#define MOPS_BLOCK_VALUES             0x07
+#define MOPS_VALUES_STEP_SHIFT        42
+
+// Words of the record whose header word is `hdr`.
+__host__ __device__ __forceinline__ uint32_t mops_record_len(uint64_t hdr) {
+    const uint32_t mode = (uint32_t)(hdr >> 32) & 0x3Fu;
+    const uint32_t low  = mode & 0x0Fu;
+    if (low == (MOPS_ALIGNED_READ & 0x0Fu)) return 1;
+    if ((mode & 0x10u) == 0 && (low == 1u || low == 2u || low == 4u || low == 8u)) return 1;
+    if (low == MOPS_BLOCK_VALUES) return 2u + (uint32_t)((hdr >> 36) & 63u);
+    return 2;
+}
+// Decodes the record starting at word `start`. `flags` loses the tag and the relocated top bit;
+// the payload gets the value's bit 63 back (a no-op for step-field payloads).
+__host__ __device__ __forceinline__ MemOp load_record(const uint64_t* words, uint32_t start) {
+    const uint64_t hdr = words[start];
+    MemOp op;
+    op.addr  = (uint32_t)hdr;
+    op.flags = (uint32_t)(hdr >> 32) & 0x3FFFFFFFu;
+    op.payload = mops_record_len(hdr) == 1 ? 0 : (words[start + 1] | ((hdr >> 62) & 1ull) << 63);
+    return op;
+}
 
 #define MOPS_BLOCK_COUNT_SBITS        4
 
-constexpr uint32_t ZISK_ROM_ADDR_BASE     = 0x80000000u;
-constexpr uint32_t ZISK_INPUT_ADDR_BASE   = 0x40000000u;
-constexpr uint32_t ZISK_RAM_ADDR_BASE     = 0xA0000000u;
-constexpr uint32_t ZISK_RAM_SIZE_BYTES    = 512u * 1024u * 1024u;
-constexpr uint32_t ZISK_RAM_ADDR_END      = ZISK_RAM_ADDR_BASE + ZISK_RAM_SIZE_BYTES;
-constexpr uint32_t ZISK_ALIGN_MASK        = 0xFFFFFFF8u;
+// Device fault word, checked once per block before the prefix scan: bits in word 0, the compact
+// address of a counter overflow in word 1.
+constexpr uint32_t INVALID_MODE     = 1u;   // unrecognised record mode
+constexpr uint32_t INVALID_ADDRESS  = 2u;   // access outside the memory map
+constexpr uint32_t COUNTER_OVERFLOW = 4u;   // more than 2^32 - 1 rows at one address
+
+__device__ __forceinline__ void hist_add(uint32_t* counter, uint32_t n, uint32_t compact,
+                                         uint32_t* d_fault) {
+    const uint32_t old = atomicAdd(counter, n);
+    if (old + n < old) {
+        atomicOr(d_fault, COUNTER_OVERFLOW);
+        atomicExch(d_fault + 1, compact);
+    }
+}
 
 // Per-chunk capacity for block-op spill entries. Must hold every memop that
 // could be a block-op spill candidate, which in the worst case is every memop
-// in the chunk — so this MUST track MAX_MEMOPS_PER_CHUNK. 
-constexpr uint32_t MAX_BLOCKOP_SPILL_PER_CHUNK = MAX_MEMOPS_PER_CHUNK;
-static_assert(MAX_BLOCKOP_SPILL_PER_CHUNK >= MAX_MEMOPS_PER_CHUNK,
+// in the piece, so this tracks the words per piece.
+constexpr uint32_t MAX_BLOCKOP_SPILL_PER_CHUNK = MAX_WORDS_PER_PIECE;   // records <= words
+static_assert(MAX_BLOCKOP_SPILL_PER_CHUNK >= MAX_WORDS_PER_PIECE,
               "MAX_BLOCKOP_SPILL_PER_CHUNK must accommodate the worst case "
               "(every memop in the chunk being a block-op spill candidate)");
 constexpr uint32_t BLOCKOP_SPILL_THRESH_VAL    = 64u;
@@ -63,9 +93,35 @@ constexpr uint32_t BLOCKOP_SPILL_THRESH_VAL    = 64u;
 // Full definitions for the types forward-declared in the header.
 // =====================================================================
 
-struct __align__(4) PotentialEmit {
+// One aligned access a record expands to. `meta` packs what the RAM witness needs about it:
+//   bits 0-1   kind: 0 read, 1 full write, 2 partial write (bytes [off, off+width)), 3 block write
+//              whose value the stream does not carry
+//   bits 2-4   byte offset of a partial write
+//   bits 5-8   byte width of a partial write
+//   bits 9-28  (step_in_chunk << 2) | slot
+// `value` is the written word for a full write, or the write's bytes already shifted into place for
+// a partial one.
+struct __align__(8) PotentialEmit {
     uint32_t aligned_addr_packed;
+    uint32_t meta;
+    uint64_t value;
 };
+constexpr uint32_t POT_KIND_READ    = 0;
+constexpr uint32_t POT_KIND_WRITE   = 1;
+constexpr uint32_t POT_KIND_PARTIAL = 2;
+constexpr uint32_t POT_KIND_UNKNOWN = 3;
+constexpr uint32_t POT_META_OFF_SHIFT   = 2;
+constexpr uint32_t POT_META_WIDTH_SHIFT = 5;
+constexpr uint32_t POT_META_STEP_SHIFT  = 9;
+constexpr uint32_t MOPS_STEP_FIELD_MASK = (1u << 20) - 1;
+// Step field of a record: bits 38-57 of the header for non-block modes, of the payload for blocks.
+__host__ __device__ __forceinline__ uint32_t mops_step_field(const MemOp& op, bool block) {
+    return block ? (uint32_t)((op.payload >> 38) & MOPS_STEP_FIELD_MASK)
+                 : (uint32_t)((op.flags >> 6) & MOPS_STEP_FIELD_MASK);
+}
+__host__ __device__ __forceinline__ uint32_t pot_meta(uint32_t kind, uint32_t off, uint32_t width, uint32_t step) {
+    return kind | (off << POT_META_OFF_SHIFT) | (width << POT_META_WIDTH_SHIFT) | (step << POT_META_STEP_SHIFT);
+}
 
 #define POT_FLAG_IS_RAM   0x1u
 #define POT_FLAG_KIND_W   0x2u
@@ -85,25 +141,28 @@ struct BlockOpSpill {
     uint32_t aligned_base;
     uint32_t count;
     uint32_t kind_w;
+    uint64_t payload;   // the record's payload: its step field
 };
 
 
 // 64-bit RAM sort-key bit layout (see kernels below).
 //   bit 0        : kind_w
-//   bits 1..23   : orig_pos (potential index, must cover [0, MAX_POT_PER_CHUNK))
+//   bits 1..23   : orig_pos (potential index + 1; 0 marks a carry entry from the previous piece,
+//                  whose kind bit holds the pairing state)
 //   bits 24..49  : compact_ram (RAM word index, < 2^26)
-// orig_pos must span the full potential range (MAX_POT_PER_CHUNK); too few bits
-// would let the top index bit bleed into compact_ram. The static_asserts below
-// pin orig_pos width and the sort end-bit to MAX_POT_PER_CHUNK and RAM size.
+// orig_pos must span the full potential range of a piece; too few bits would let the top index
+// bit bleed into compact_ram. The static_asserts below pin orig_pos width and the sort end-bit
+// to MAX_POT_PER_PIECE and RAM size.
 #define KIND_W_BIT          0u
 #define ORIG_POS_SHIFT      1u
 #define ORIG_POS_BITS       23u
 #define ORIG_POS_MASK       ((1u << ORIG_POS_BITS) - 1u)
 #define COMPACT_ADDR_SHIFT  (ORIG_POS_SHIFT + ORIG_POS_BITS)   // 24
 #define RAM_KEY_END_BIT     50
+#define CARRY_POS           0x7FFFFFFFu   // packed orig_pos of a carry entry
 
 // orig_pos must represent every potential index in a chunk without truncation.
-static_assert((1ull << ORIG_POS_BITS) >= (uint64_t)MAX_POT_PER_CHUNK,
+static_assert((1ull << ORIG_POS_BITS) > (uint64_t)MAX_POT_PER_PIECE,
               "ORIG_POS_BITS too small: orig_pos would overflow into compact_ram");
 // the radix sort (bits [0, RAM_KEY_END_BIT)) must cover the whole compact_ram
 // field sitting above orig_pos.
@@ -212,90 +271,106 @@ bool decode(MemOp op,
         case MOPS_ALIGNED_BLOCK_WRITE+ 0x00: case MOPS_ALIGNED_BLOCK_WRITE+ 0x10:
         case MOPS_ALIGNED_BLOCK_WRITE+ 0x20: case MOPS_ALIGNED_BLOCK_WRITE+ 0x30:
             *count_out = op.flags >> MOPS_BLOCK_COUNT_SBITS; return true;
+        case MOPS_BLOCK_VALUES + 0x00: case MOPS_BLOCK_VALUES + 0x10:
+        case MOPS_BLOCK_VALUES + 0x20: case MOPS_BLOCK_VALUES + 0x30:
+            *count_out = (op.flags >> MOPS_BLOCK_COUNT_SBITS) & 63u; return true;
 
         default:
-            atomicOr(d_invalid_mode_flag, 1u);
+            atomicOr(d_invalid_mode_flag, INVALID_MODE);
             *count_out = 0;
             return false;
     }
 }
 
 __device__ __forceinline__
-void emit_pair_rw(uint32_t aligned, PotentialEmit* out) {
-    const uint32_t ram_bit = is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u;
-    out[0].aligned_addr_packed = aligned | ram_bit;                       // R
-    out[1].aligned_addr_packed = aligned | ram_bit | POT_FLAG_KIND_W;     // W
-}
-
-__device__ __forceinline__
-void emit_one_r(uint32_t aligned, PotentialEmit* out) {
+void emit_one_r(uint32_t aligned, PotentialEmit* out, uint32_t step) {
     const uint32_t ram_bit = is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u;
     out[0].aligned_addr_packed = aligned | ram_bit;
+    out[0].meta  = pot_meta(POT_KIND_READ, 0, 0, step);
+    out[0].value = 0;
 }
 
 __device__ __forceinline__
-void emit_one_w(uint32_t aligned, PotentialEmit* out) {
+void emit_one_w(uint32_t aligned, PotentialEmit* out, uint32_t step, uint32_t kind, uint64_t value) {
     const uint32_t ram_bit = is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u;
     out[0].aligned_addr_packed = aligned | ram_bit | POT_FLAG_KIND_W;
+    out[0].meta  = pot_meta(kind, 0, 0, step);
+    out[0].value = value;
+}
+
+// A partial write of `width` bytes at byte `off` of the word: the read of the old word, then the
+// write, whose value carries the bytes already shifted to `off`.
+__device__ __forceinline__
+void emit_pair_rw(uint32_t aligned, PotentialEmit* out, uint32_t step, uint32_t off, uint32_t width,
+                  uint64_t value_shifted) {
+    const uint32_t ram_bit = is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u;
+    out[0].aligned_addr_packed = aligned | ram_bit;                       // R
+    out[0].meta  = pot_meta(POT_KIND_READ, 0, 0, step);
+    out[0].value = 0;
+    // MemAlign places the aligned write one mem step after its read (`get_write_step`); the step
+    // field's low bits are the slot, so `+ 1` is that step.
+    out[1].aligned_addr_packed = aligned | ram_bit | POT_FLAG_KIND_W;     // W
+    out[1].meta  = pot_meta(POT_KIND_PARTIAL, off, width, step + 1);
+    out[1].value = value_shifted;
+}
+
+// A store of `width` bytes at `addr`: the first word takes bytes [off, 8), a second word the rest.
+__device__ __forceinline__
+void emit_store(uint32_t addr, uint32_t width, PotentialEmit* out, uint32_t step, uint64_t v) {
+    const uint32_t aligned = addr & ZISK_ALIGN_MASK;
+    const uint32_t off     = addr & 0x07u;
+    const uint32_t first_w = (8u - off) < width ? (8u - off) : width;
+    emit_pair_rw(aligned, out, step, off, first_w, v << (8u * off));
+    if (first_w < width) {
+        emit_pair_rw(aligned + 8, out + 2, step, 0, width - first_w, v >> (8u * (8u - off)));
+    }
 }
 
 __device__ __forceinline__
-void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block) {
+void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uint64_t* rec) {
     const uint32_t addr        = op.addr;
     const uint32_t aligned     = addr & ZISK_ALIGN_MASK;
     const uint8_t  mode        = op.flags & 0x3Fu;
     const uint32_t off_in_word = addr & 0x07u;
-
+    const uint32_t step        = mops_step_field(op, false);
     switch (mode) {
-        case MOPS_READ_1:                                         emit_one_r(aligned, out); break;
-        case MOPS_CWRITE_1: case MOPS_WRITE_1:                    emit_pair_rw(aligned, out); break;
-
+        case MOPS_READ_1:                                         emit_one_r(aligned, out, step); break;
+        case MOPS_CWRITE_1: case MOPS_WRITE_1:                    emit_store(addr, 1, out, step, op.payload); break;
         case MOPS_READ_2:
-            emit_one_r(aligned, out);
-            if (off_in_word > 6) emit_one_r(aligned + 8, out + 1);
+            emit_one_r(aligned, out, step);
+            if (off_in_word > 6) emit_one_r(aligned + 8, out + 1, step);
             break;
-        case MOPS_WRITE_2:
-            emit_pair_rw(aligned, out);
-            if (off_in_word > 6) emit_pair_rw(aligned + 8, out + 2);
-            break;
-
+        case MOPS_WRITE_2:  emit_store(addr, 2, out, step, op.payload); break;
         case MOPS_READ_4:
-            emit_one_r(aligned, out);
-            if (off_in_word > 4) emit_one_r(aligned + 8, out + 1);
+            emit_one_r(aligned, out, step);
+            if (off_in_word > 4) emit_one_r(aligned + 8, out + 1, step);
             break;
-        case MOPS_WRITE_4:
-            emit_pair_rw(aligned, out);
-            if (off_in_word > 4) emit_pair_rw(aligned + 8, out + 2);
-            break;
-
+        case MOPS_WRITE_4:  emit_store(addr, 4, out, step, op.payload); break;
         case MOPS_READ_8:
-            emit_one_r(aligned, out);
-            if (off_in_word > 0) emit_one_r(aligned + 8, out + 1);
+            emit_one_r(aligned, out, step);
+            if (off_in_word > 0) emit_one_r(aligned + 8, out + 1, step);
             break;
         case MOPS_WRITE_8:
             if (addr == aligned) {
-                emit_one_w(aligned, out);
+                emit_one_w(aligned, out, step, POT_KIND_WRITE, op.payload);
             } else {
-                emit_pair_rw(aligned, out);
-                emit_pair_rw(aligned + 8, out + 2);
+                emit_store(addr, 8, out, step, op.payload);
             }
             break;
-
         case MOPS_ALIGNED_READ  + 0x00: case MOPS_ALIGNED_READ  + 0x10:
         case MOPS_ALIGNED_READ  + 0x20: case MOPS_ALIGNED_READ  + 0x30:
-            emit_one_r(addr, out); break;
-
+            emit_one_r(addr, out, step); break;
         case MOPS_ALIGNED_WRITE + 0x00: case MOPS_ALIGNED_WRITE + 0x10:
         case MOPS_ALIGNED_WRITE + 0x20: case MOPS_ALIGNED_WRITE + 0x30:
-            emit_one_w(addr, out); break;
-
+            emit_one_w(addr, out, step, POT_KIND_WRITE, op.payload); break;
         case MOPS_BLOCK_READ        + 0x00: case MOPS_BLOCK_READ        + 0x10:
         case MOPS_BLOCK_READ        + 0x20: case MOPS_BLOCK_READ        + 0x30:
         case MOPS_ALIGNED_BLOCK_READ+ 0x00: case MOPS_ALIGNED_BLOCK_READ+ 0x10:
         case MOPS_ALIGNED_BLOCK_READ+ 0x20: case MOPS_ALIGNED_BLOCK_READ+ 0x30: {
             if (skip_block) break;
             const uint32_t count = op.flags >> MOPS_BLOCK_COUNT_SBITS;
-            for (uint32_t i = 0; i < count; i++) emit_one_r(addr + i * 8, out + i);
+            const uint32_t bstep = mops_step_field(op, true);
+            for (uint32_t i = 0; i < count; i++) emit_one_r(addr + i * 8, out + i, bstep);
             break;
         }
         case MOPS_BLOCK_WRITE        + 0x00: case MOPS_BLOCK_WRITE        + 0x10:
@@ -304,7 +379,19 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block) {
         case MOPS_ALIGNED_BLOCK_WRITE+ 0x20: case MOPS_ALIGNED_BLOCK_WRITE+ 0x30: {
             if (skip_block) break;
             const uint32_t count = op.flags >> MOPS_BLOCK_COUNT_SBITS;
-            for (uint32_t i = 0; i < count; i++) emit_one_w(addr + i * 8, out + i);
+            const uint32_t bstep = mops_step_field(op, true);
+            for (uint32_t i = 0; i < count; i++) emit_one_w(addr + i * 8, out + i, bstep, POT_KIND_UNKNOWN, 0);
+            break;
+        }
+        case MOPS_BLOCK_VALUES + 0x00: case MOPS_BLOCK_VALUES + 0x10:
+        case MOPS_BLOCK_VALUES + 0x20: case MOPS_BLOCK_VALUES + 0x30: {
+            const uint32_t count = (op.flags >> MOPS_BLOCK_COUNT_SBITS) & 63u;
+            const uint32_t vstep = (op.flags >> (MOPS_VALUES_STEP_SHIFT - 32)) & MOPS_STEP_FIELD_MASK;
+            const uint64_t tops  = rec[1];
+            for (uint32_t i = 0; i < count; i++) {
+                const uint64_t v = rec[2 + i] | (((tops >> i) & 1ull) << 63);
+                emit_one_w(addr + i * 8, out + i, vstep, POT_KIND_WRITE, v);
+            }
             break;
         }
         default: break;
@@ -332,7 +419,24 @@ void block_reduce_counters(const ChunkCounters& my, ChunkCounters* g_dst) {
 }
 
 __global__
-void decode_count_kernel(const MemOp* __restrict__ memops,
+void tag_flag_kernel(const uint64_t* __restrict__ words, uint32_t n_words,
+                     uint32_t* __restrict__ flags) {
+    const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n_words) flags[i] = (uint32_t)(words[i] >> 63);
+}
+// `rec_index` is the exclusive scan of the flags over n_words + 1 entries.
+__global__
+void rec_start_kernel(const uint64_t* __restrict__ words, uint32_t n_words,
+                      const uint32_t* __restrict__ rec_index,
+                      uint32_t* __restrict__ rec_start, uint32_t* __restrict__ n_records) {
+    const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i == 0) *n_records = rec_index[n_words];
+    if (i < n_words && (words[i] >> 63)) rec_start[rec_index[i]] = i;
+}
+__global__
+void decode_count_kernel(const uint64_t* __restrict__ words,
+                         const uint32_t* __restrict__ rec_start,
+                         const uint32_t* __restrict__ n_records,
                          uint32_t n_memops,
                          uint32_t* __restrict__ d_counts,
                          uint8_t* __restrict__ d_spill_status,
@@ -342,8 +446,9 @@ void decode_count_kernel(const MemOp* __restrict__ memops,
                          uint32_t* __restrict__ d_invalid_mode_flag) {
     const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
     ChunkCounters my{0,0,0,0,0};
-    if (i < n_memops) {
-        MemOp op = memops[i];
+    if (i < n_memops && i >= *n_records) d_counts[i] = 0;   // beyond the records: the scan sees zeros
+    if (i < *n_records) {
+        MemOp op = load_record(words, rec_start[i]);
         if (decode(op, &d_counts[i], my, d_invalid_mode_flag)) {
             const uint8_t mode = op.flags & 0x3Fu;
             const uint8_t base = mode & 0x0Fu;
@@ -361,6 +466,7 @@ void decode_count_kernel(const MemOp* __restrict__ memops,
                         s.aligned_base = op.addr;
                         s.count        = count;
                         s.kind_w       = is_block_write ? 1u : 0u;
+                        s.payload      = op.payload;
                         d_spill[slot] = s;
                         d_spill_status[i] = 1;
                     }
@@ -372,16 +478,18 @@ void decode_count_kernel(const MemOp* __restrict__ memops,
 }
 
 __global__
-void decode_emit_kernel(const MemOp* __restrict__ memops,
-                        uint32_t n_memops,
+void decode_emit_kernel(const uint64_t* __restrict__ words,
+                        const uint32_t* __restrict__ rec_start,
+                        const uint32_t* __restrict__ n_records,
                         const uint32_t* __restrict__ d_potential_offsets,
                         const uint8_t* __restrict__ d_spill_status,
                         PotentialEmit* __restrict__ d_potentials) {
     const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n_memops) return;
-    MemOp op = memops[i];
+    if (i >= *n_records) return;
+    const uint32_t start = rec_start[i];
+    MemOp op = load_record(words, start);
     PotentialEmit* out_ptr = d_potentials + d_potential_offsets[i];
-    decode_emit_inline(op, out_ptr, /*skip_block=*/d_spill_status[i] != 0);
+    decode_emit_inline(op, out_ptr, /*skip_block=*/d_spill_status[i] != 0, words + start);
 }
 
 
@@ -399,11 +507,11 @@ void blockop_emit_kernel(const BlockOpSpill* __restrict__ d_spill,
         const uint32_t count       = s.count;
         const uint32_t base_offset = d_potential_offsets[s.memop_idx];
         PotentialEmit* base = d_potentials + base_offset;
-        const uint32_t kind_bit = (s.kind_w ? POT_FLAG_KIND_W : 0u);
+        const uint32_t step = (uint32_t)((s.payload >> 38) & MOPS_STEP_FIELD_MASK);
         for (uint32_t i = threadIdx.x; i < count; i += blockDim.x) {
             const uint32_t a = base_addr + i * 8u;
-            const uint32_t ram_bit = is_ram_addr(a) ? POT_FLAG_IS_RAM : 0u;
-            base[i].aligned_addr_packed = a | kind_bit | ram_bit;
+            if (s.kind_w) emit_one_w(a, base + i, step, POT_KIND_UNKNOWN, 0);
+            else          emit_one_r(a, base + i, step);
         }
     }
 }
@@ -426,24 +534,19 @@ void extract_sorted_packed_kernel(const uint64_t* __restrict__ d_sorted_keys,
     const uint64_t k = d_sorted_keys[i];
     const uint32_t orig_pos = (uint32_t)((k >> ORIG_POS_SHIFT) & ORIG_POS_MASK);
     const uint32_t kind_w_bit = (uint32_t)(k & 1ull);
-    d_sorted_packed[i] = (kind_w_bit << 31) | orig_pos;
+    d_sorted_packed[i] = (kind_w_bit << 31) | (orig_pos == 0 ? CARRY_POS : orig_pos - 1);
 }
 
 // =====================================================================
 // PairSortGPU constants (those NOT in count_and_plan.cuh)
 // =====================================================================
 
-constexpr uint32_t N_ADDR_ROM   = 1u << 27;   // 128M
-constexpr uint32_t N_ADDR_INPUT = 1u << 30;   // 1G
-constexpr uint32_t N_ADDR_RAM   = 1u << 29;   // 512M
-constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;
 
 
 constexpr uint8_t REGION_ROM            = 0;
 constexpr uint8_t REGION_INPUT          = 1;
 constexpr uint8_t REGION_RAM            = 2;
 constexpr const char* REGION_NAME[3]    = {"ROM", "INPUT", "RAM"};
-constexpr uint32_t REGION_ADDR_START[3] = {0, N_ADDR_ROM, N_ADDR_ROM + N_ADDR_INPUT};
 
 // =====================================================================
 // Address-region helpers
@@ -497,6 +600,41 @@ __global__ void compact_kernel_with_shift(const PotentialEmit* __restrict__ d_po
     }
 }
 
+// Real entries among the sorted ones (carry entries are not accesses).
+__global__ void real_flags_kernel(const uint32_t* __restrict__ d_sorted_packed, uint32_t n,
+                                  uint32_t* __restrict__ d_flags) {
+    const uint32_t t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= n) return;
+    d_flags[t] = (d_sorted_packed[t] & 0x7FFFFFFFu) == CARRY_POS ? 0u : 1u;
+}
+
+// The piece's RAM accesses as records, in the (address, arrival) order of its sorted keys; with
+// carry entries in the sort, `d_rank` gives each position its rank among the real ones.
+__global__ void retain_ram_kernel(const PotentialEmit* __restrict__ d_potentials,
+                                  const uint32_t* __restrict__ d_sorted_packed, uint32_t n_sorted,
+                                  const uint32_t* __restrict__ d_rank,
+                                  size_t base, uint32_t chunk, uint32_t chunk_size_bits, RamRecords rec,
+                                  unsigned long long* __restrict__ d_nwrites) {
+    const uint32_t t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= n_sorted) return;
+    const uint32_t pos = d_sorted_packed[t] & 0x7FFFFFFFu;
+    if (pos == CARRY_POS) return;
+    const PotentialEmit p = d_potentials[pos];
+    const size_t k = base + (d_rank ? d_rank[t] : t);
+    const uint32_t field = p.meta >> POT_META_STEP_SHIFT;             // (step_in_chunk << 2) | slot
+    const uint64_t main_step = ((uint64_t)chunk << chunk_size_bits) + (field >> 2);
+    const uint64_t mem_step  = 1ull + (main_step << 2) + (field & 3u);
+    const uint64_t kind  = p.meta & 3u;
+    const uint64_t off   = (p.meta >> POT_META_OFF_SHIFT) & 7u;
+    const uint64_t width = (p.meta >> POT_META_WIDTH_SHIFT) & 15u;
+    rec.store(k, ram_compact(emit_aligned_addr(p)),
+              mem_step | (kind << RAM_META_KIND_SHIFT) | (off << RAM_META_OFF_SHIFT) | (width << RAM_META_WIDTH_SHIFT),
+              p.value);
+    // Write fraction, one atomic per warp.
+    const unsigned writers = __ballot_sync(__activemask(), kind != POT_KIND_READ);
+    if ((threadIdx.x & 31u) == (unsigned)(__ffs(__activemask()) - 1)) atomicAdd(d_nwrites, (unsigned long long)__popc(writers));
+}
+
 __global__
 void gather_ram_events_with_hist_kernel(const PotentialEmit* __restrict__ d_potentials,
                                         uint32_t n_potentials,
@@ -504,7 +642,8 @@ void gather_ram_events_with_hist_kernel(const PotentialEmit* __restrict__ d_pote
                                         uint32_t* __restrict__ d_ram_count,
                                         uint32_t* __restrict__ d_emit_bits,
                                         uint32_t* __restrict__ d_histogram,
-                                        uint32_t* __restrict__ d_max_compact) {
+                                        uint32_t* __restrict__ d_max_compact,
+                                        uint32_t* __restrict__ d_invalid_flag) {
     uint32_t local_max_rom   = 0;
     uint32_t local_max_input = 0;
 
@@ -514,16 +653,20 @@ void gather_ram_events_with_hist_kernel(const PotentialEmit* __restrict__ d_pote
         if (emit_is_ram(p)) {
             const uint32_t compact_ram = ram_compact(emit_aligned_addr(p));
             const uint64_t key = ((uint64_t)compact_ram << COMPACT_ADDR_SHIFT)
-                               | ((uint64_t)i           << ORIG_POS_SHIFT)
+                               | ((uint64_t)(i + 1)     << ORIG_POS_SHIFT)
                                | (emit_kind_w(p) ? 1ull : 0ull);
             const uint32_t slot = atomicAdd(d_ram_count, 1u);
             d_ram_keys[slot] = key;
             d_emit_bits[i] = 0;
+        } else if (const uint32_t raw = emit_aligned_addr(p);
+                   raw >= ZISK_ROM_ADDR_BASE ? raw >= ZISK_ROM_ADDR_END
+                                             : (raw < ZISK_INPUT_ADDR_BASE || raw >= ZISK_INPUT_ADDR_END)) {
+            d_emit_bits[i] = 0;
+            atomicOr(d_invalid_flag, INVALID_ADDRESS);
         } else {
             d_emit_bits[i] = 1;
-            const uint32_t raw = emit_aligned_addr(p);
             const uint32_t compact = compact_addr_dev(raw);
-            atomicAdd(&d_histogram[compact], 1u);
+            hist_add(&d_histogram[compact], 1u, compact, d_invalid_flag);
             if (compact < N_ADDR_ROM) {
                 local_max_rom = compact;
             } else {
@@ -549,7 +692,9 @@ void state_machine_by_run_with_hist_kernel(const uint32_t* __restrict__ d_run_of
                                            const uint32_t* __restrict__ d_sorted_addr,
                                            uint32_t* __restrict__ d_emit_bits,
                                            uint32_t* __restrict__ d_histogram,
-                                           uint32_t* __restrict__ d_max_compact) {
+                                           uint32_t* __restrict__ d_max_compact,
+                                           uint32_t* __restrict__ d_invalid_flag,
+                                           uint64_t* __restrict__ d_carry) {
     uint32_t local_max_ram = 0;
 
     const uint32_t t = blockIdx.x * blockDim.x + threadIdx.x;
@@ -563,6 +708,7 @@ void state_machine_by_run_with_hist_kernel(const uint32_t* __restrict__ d_run_of
             const uint32_t v = d_sorted_vals[j];
             const bool kind_w       = (v >> 31);
             const uint32_t orig_pos = v & 0x7FFFFFFFu;
+            if (orig_pos == CARRY_POS) { state = kind_w; continue; }   // previous piece's state
             uint32_t emit;
             if (kind_w) {
                 emit = 1;
@@ -574,11 +720,13 @@ void state_machine_by_run_with_hist_kernel(const uint32_t* __restrict__ d_run_of
             d_emit_bits[orig_pos] = emit;
             n_emit += emit;
         }
+        const uint32_t compact_ram = d_sorted_addr[start];
         if (n_emit > 0) {
-            const uint32_t compact_ram = d_sorted_addr[start];
-            atomicAdd(&d_histogram[compact_ram + N_ADDR_ROM + N_ADDR_INPUT], n_emit);
+            const uint32_t compact = compact_ram + N_ADDR_ROM + N_ADDR_INPUT;
+            hist_add(&d_histogram[compact], n_emit, compact, d_invalid_flag);
             local_max_ram = compact_ram;
         }
+        if (d_carry) d_carry[t] = ((uint64_t)compact_ram << COMPACT_ADDR_SHIFT) | (state ? 1ull : 0ull);
     }
 
     __shared__ uint32_t s_max_ram;
@@ -1134,8 +1282,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     auto fixed_bytes = [&]() -> size_t {
         size_t cur = 0;
         auto take = [&](size_t b) { cur = (cur + 255) & ~(size_t)255; cur += b; };
-        take(((size_t)N_ADDR + max_active_) * 4);  // d_histogram_ (also backs d_pages_dense_)
-        take(((size_t)N_ADDR + 1) * 4);
+        take(((size_t)N_ADDR + 1) * 4);              // d_histogram_, scanned in place into the prefix
         take(d_temp_hist_bytes_);
         take((size_t)max_active_ * 4);
         take((size_t)max_active_ * 4);
@@ -1146,36 +1293,41 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         take((size_t)max_active_ * 4);               // d_inst_base_pos_
         take(max_total_pages * 4);                   // d_page_starts_
         take(max_total_pages * 4);                   // d_page_single_
-        // d_pages_dense_ aliases d_histogram_ (counted above) — no take
         take((size_t)max_active_ * 4);               // d_present_counters_
         take((size_t)max_active_ * 4);               // d_page_meta_starts_
         take((size_t)max_active_ * 4);               // d_pages_dense_starts_
         take(3 * 4);
-        take(4);
+        take(8);                                      // fault word
         take((size_t)MAX_CHUNKS * sizeof(ChunkCounters));
         take((size_t)MAX_CHUNKS * 4);
         take((size_t)MAX_CHUNKS * 4);
         take(((size_t)MAX_CHUNKS + 1) * 4);
         for (int s = 0; s < N_STREAMS; s++) {
-            take((size_t)MAX_POT_PER_CHUNK    * sizeof(PotentialEmit));
-            take((size_t)MAX_POT_PER_CHUNK    * 4);
-            take(((size_t)MAX_POT_PER_CHUNK + 1) * 4);
-            take((size_t)MAX_MEMOPS_PER_CHUNK * sizeof(MemOp));
-            take(((size_t)MAX_MEMOPS_PER_CHUNK + 1) * 4);
-            take(((size_t)MAX_MEMOPS_PER_CHUNK + 1) * 4);
+            take((size_t)MAX_POT_PER_PIECE    * sizeof(PotentialEmit));
+            take((size_t)MAX_POT_PER_PIECE    * 4);
+            take(((size_t)MAX_POT_PER_PIECE + 1) * 4);
+            take((size_t)MAX_WORDS_PER_PIECE * 8);          // d_words_
+            take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);    // d_tag_flags_
+            take((size_t)MAX_WORDS_PER_PIECE * 4);          // d_rec_start_
+            take(4);                                         // d_n_records_
+            take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);    // d_counts_
+            take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);    // d_potential_offsets_
             take((size_t)MAX_BLOCKOP_SPILL_PER_CHUNK * sizeof(BlockOpSpill));
             take(4);
-            take((size_t)MAX_MEMOPS_PER_CHUNK);
-            take((size_t)MAX_POT_PER_CHUNK * 8);
-            take((size_t)MAX_POT_PER_CHUNK * 8);
-            take((size_t)MAX_POT_PER_CHUNK * 4);
-            take((size_t)MAX_POT_PER_CHUNK * 4);
-            take((size_t)MAX_POT_PER_CHUNK * 4);
-            take(((size_t)MAX_POT_PER_CHUNK + 1) * 4);
+            take((size_t)MAX_WORDS_PER_PIECE);              // d_spill_status_
+            take((size_t)MAX_SORT_PER_PIECE * 8);
+            take((size_t)MAX_SORT_PER_PIECE * 8);
+            take((size_t)MAX_SORT_PER_PIECE * 4);
+            take((size_t)MAX_SORT_PER_PIECE * 4);
+            take((size_t)MAX_SORT_PER_PIECE * 4);
+            take(((size_t)MAX_SORT_PER_PIECE + 1) * 4);
+            take((size_t)MAX_POT_PER_PIECE * 8);            // d_carry_
+            take((size_t)MAX_SORT_PER_PIECE * 4);           // d_carry_rank_
             take(4);
             take(4);
             take(cub_temp_bytes_);
         }
+        take(8);                                          // d_ram_nwrites_
         cur = (cur + 255) & ~(size_t)255;       // mirror the final round-up below
         return cur;
     }();
@@ -1184,8 +1336,8 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         if (bytes < fixed_bytes) {
             fprintf(stderr,
                     "CountAndPlan::setup ERROR: caller buffer is %zu bytes, need at least "
-                    "%zu for fixed regions (MAX_CHUNKS=%u, MAX_MEMOPS_PER_CHUNK=%u)\n",
-                    bytes, fixed_bytes, MAX_CHUNKS, MAX_MEMOPS_PER_CHUNK);
+                    "%zu for fixed regions (MAX_CHUNKS=%u, MAX_POT_PER_PIECE=%u)\n",
+                    bytes, fixed_bytes, MAX_CHUNKS, MAX_POT_PER_PIECE);
             return false;
         }
         arena_       = (uint8_t*)d_buf;
@@ -1217,8 +1369,9 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         return p;
     };
 
-    d_histogram_              = (uint32_t*)take(((size_t)N_ADDR + max_active_) * 4);
-    d_prefix_                 = (uint32_t*)take(((size_t)N_ADDR + 1) * 4);
+    // The prefix scan runs in place: after prepare_global_() the histogram holds the prefix.
+    d_histogram_              = (uint32_t*)take(((size_t)N_ADDR + 1) * 4);
+    d_prefix_                 = d_histogram_;
     d_temp_hist_              = (void*)    take(d_temp_hist_bytes_);
     d_active_ids_             = (uint32_t*)take((size_t)max_active_ * 4);
     d_active_first_           = (uint32_t*)take((size_t)max_active_ * 4);
@@ -1229,46 +1382,44 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     d_inst_base_pos_          = (uint32_t*)take((size_t)max_active_ * 4);
     d_page_starts_            = (uint32_t*)take(max_total_pages * 4);
     d_page_single_            = (uint32_t*)take(max_total_pages * 4);
-    // d_pages_dense_ aliases d_histogram_. Lifetimes are disjoint: the last
-    // read of d_histogram_ is the histogram->prefix scan in prepare_global_()
-    // (followed by a synchronous D2H, so the scan is complete); the only
-    // writer of d_pages_dense_, compact_paged_kernel, runs strictly later in
-    // process_worker_(). reset() re-zeros the histogram only at the next
-    // block boundary, after this block's compaction D2H has finished. No
-    // concurrent reader (unlike d_prefix_, which build_metas_kernel reads on
-    // a separate stream). d_histogram_ is allocated N_ADDR+max_active_ so it
-    // covers d_pages_dense_'s footprint.
-    d_pages_dense_            = d_histogram_;
+    // d_pages_dense_ is carved from the dynamic region after the plan (process_worker_).
+    d_pages_dense_            = nullptr;
     d_present_counters_       = (uint32_t*)take((size_t)max_active_ * 4);
     d_page_meta_starts_       = (uint32_t*)take((size_t)max_active_ * 4);
     d_pages_dense_starts_     = (uint32_t*)take((size_t)max_active_ * 4);
     d_max_compact_            = (uint32_t*)take(3 * 4);
-    d_invalid_mode_flag_        = (uint32_t*)take(4);
+    d_invalid_mode_flag_        = (uint32_t*)take(8);
     d_chunk_counters_per_chunk_ = (ChunkCounters*)take((size_t)MAX_CHUNKS * sizeof(ChunkCounters));
     d_gappy_offsets_          = (uint32_t*)take((size_t)MAX_CHUNKS * 4);
     d_chunk_lens_             = (uint32_t*)take((size_t)MAX_CHUNKS * 4);
     d_packed_chunk_offsets_   = (uint32_t*)take(((size_t)MAX_CHUNKS + 1) * 4);
 
     for (int s = 0; s < N_STREAMS; s++) {
-        d_potentials_[s]        = (PotentialEmit*)take((size_t)MAX_POT_PER_CHUNK    * sizeof(PotentialEmit));
-        d_emit_bits_[s]         = (uint32_t*)     take((size_t)MAX_POT_PER_CHUNK    * 4);
-        d_final_offsets_[s]     = (uint32_t*)     take(((size_t)MAX_POT_PER_CHUNK + 1) * 4);
-        d_memops_[s]            = (MemOp*)        take((size_t)MAX_MEMOPS_PER_CHUNK * sizeof(MemOp));
-        d_counts_[s]            = (uint32_t*)     take(((size_t)MAX_MEMOPS_PER_CHUNK + 1) * 4);
-        d_potential_offsets_[s] = (uint32_t*)     take(((size_t)MAX_MEMOPS_PER_CHUNK + 1) * 4);
+        d_potentials_[s]        = (PotentialEmit*)take((size_t)MAX_POT_PER_PIECE    * sizeof(PotentialEmit));
+        d_emit_bits_[s]         = (uint32_t*)     take((size_t)MAX_POT_PER_PIECE    * 4);
+        d_final_offsets_[s]     = (uint32_t*)     take(((size_t)MAX_POT_PER_PIECE + 1) * 4);
+        d_words_[s]             = (uint64_t*)     take((size_t)MAX_WORDS_PER_PIECE * 8);
+        d_tag_flags_[s]         = (uint32_t*)     take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);
+        d_rec_start_[s]         = (uint32_t*)     take((size_t)MAX_WORDS_PER_PIECE * 4);
+        d_n_records_[s]         = (uint32_t*)     take(4);
+        d_counts_[s]            = (uint32_t*)     take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);
+        d_potential_offsets_[s] = (uint32_t*)     take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);
         d_spill_[s]             = (BlockOpSpill*) take((size_t)MAX_BLOCKOP_SPILL_PER_CHUNK * sizeof(BlockOpSpill));
         d_spill_count_[s]       = (uint32_t*)     take(4);
-        d_spill_status_[s]      = (uint8_t*)      take((size_t)MAX_MEMOPS_PER_CHUNK);
-        d_ram_keys_[s]          = (uint64_t*)     take((size_t)MAX_POT_PER_CHUNK * 8);
-        d_ram_keys_sorted_[s]   = (uint64_t*)     take((size_t)MAX_POT_PER_CHUNK * 8);
-        d_sorted_addr_[s]       = (uint32_t*)     take((size_t)MAX_POT_PER_CHUNK * 4);
-        d_ram_vals_sorted_[s]   = (uint32_t*)     take((size_t)MAX_POT_PER_CHUNK * 4);
-        d_run_lengths_[s]       = (uint32_t*)     take((size_t)MAX_POT_PER_CHUNK * 4);
-        d_run_offsets_[s]       = (uint32_t*)     take(((size_t)MAX_POT_PER_CHUNK + 1) * 4);
+        d_spill_status_[s]      = (uint8_t*)      take((size_t)MAX_WORDS_PER_PIECE);
+        d_ram_keys_[s]          = (uint64_t*)     take((size_t)MAX_SORT_PER_PIECE * 8);
+        d_ram_keys_sorted_[s]   = (uint64_t*)     take((size_t)MAX_SORT_PER_PIECE * 8);
+        d_sorted_addr_[s]       = (uint32_t*)     take((size_t)MAX_SORT_PER_PIECE * 4);
+        d_ram_vals_sorted_[s]   = (uint32_t*)     take((size_t)MAX_SORT_PER_PIECE * 4);
+        d_run_lengths_[s]       = (uint32_t*)     take((size_t)MAX_SORT_PER_PIECE * 4);
+        d_run_offsets_[s]       = (uint32_t*)     take(((size_t)MAX_SORT_PER_PIECE + 1) * 4);
+        d_carry_[s]             = (uint64_t*)     take((size_t)MAX_POT_PER_PIECE * 8);
+        d_carry_rank_[s]        = (uint32_t*)     take((size_t)MAX_SORT_PER_PIECE * 4);
         d_num_unique_[s]        = (uint32_t*)     take(4);
         d_ram_count_[s]         = (uint32_t*)     take(4);
         d_cub_temp_[s]          = (void*)         take(cub_temp_bytes_);
     }
+    d_ram_nwrites_ = (unsigned long long*)take(8);
 
     cursor_ = (cursor_ + 255) & ~(size_t)255;
     if (cursor_ > arena_bytes_) {
@@ -1276,9 +1427,21 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
                 cursor_, arena_bytes_);
         return false;
     }
+    // Dynamic region: the ops pool grows up from the fixed regions, the retained RAM accesses grow
+    // down from the arena top; the reservations keep the two from crossing.
+    top_bytes_           = arena_bytes_ & ~(size_t)255;
+    ram_records_.top     = (uint32_t*)(arena_ + top_bytes_);
     d_ops_pool_          = (uint32_t*)(arena_ + cursor_);
-    d_ops_pool_cap_u32_  = (arena_bytes_ - cursor_) / 4;
+    d_ops_pool_cap_u32_  = (top_bytes_ - cursor_) / 4;
     d_ops_pool_used_u32_ = 0;
+    ram_retention_enabled_.store(top_bytes_ > cursor_, std::memory_order_relaxed);
+    piece_potentials_ = MAX_POT_PER_PIECE;
+    if (const char* e = std::getenv("ZISK_MOPS_PIECE_POTENTIALS")) {   // test knob: force small pieces
+        const long v = std::atol(e);
+        if (v > 0 && (uint32_t)v < MAX_POT_PER_PIECE) piece_potentials_ = (uint32_t)v;
+    }
+    fprintf(stderr, "[mops] arena %zu MB: fixed %zu MB, %zu MB shared by the ops pool and the retained RAM accesses\n",
+            arena_bytes_ >> 20, cursor_ >> 20, (top_bytes_ - cursor_) >> 20);
 
     // Highest device priority: the count/plan pipeline is the executor's critical
     // path, and proofman's streaming-commit slots (priority 0) may run concurrently
@@ -1310,8 +1473,10 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     CUDA_CHECK(cudaMallocHost(&h_page_single_buf_,   h_page_meta_buf_size_));
     CUDA_CHECK(cudaMallocHost(&h_pages_dense_buf_,  h_pages_dense_buf_size_));
     CUDA_CHECK(cudaMallocHost(&h_present_counters_, (size_t)max_active_ * sizeof(uint32_t)));
-    for (int s = 0; s < N_STREAMS; s++)
+    for (int s = 0; s < N_STREAMS; s++) {
         CUDA_CHECK(cudaMallocHost(&h_n_emits_[s], sizeof(uint32_t)));
+        CUDA_CHECK(cudaMallocHost(&h_n_carry_[s], sizeof(uint32_t)));
+    }
 
     pool_enabled_ = (ZISK_MOPS_POOL != 0);
     if (pool_enabled_) {
@@ -1319,120 +1484,180 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
                 N_STREAMS, gpu_device_);
     }
 
+    // The pinned buffer the RAM fill packs rows into: pinning gigabytes takes hundreds of
+    // milliseconds, so the default capacity (ZISK_MEM_GPU_ROWS_MB, 4096) is allocated now, off the
+    // block path; a block that needs more grows it.
+    {
+        size_t rows_mb = 4096;
+        if (const char* e = std::getenv("ZISK_MEM_GPU_ROWS_MB")) {
+            const long v = std::atol(e);
+            if (v >= 0) rows_mb = (size_t)v;
+        }
+        if (rows_mb > 0) {
+            const int dev = gpu_device_;
+            h_ram_rows_prealloc_ = std::thread([this, dev, rows_mb] {
+                cudaSetDevice(dev);
+                void* p = nullptr;
+                if (cudaMallocHost(&p, rows_mb << 20) == cudaSuccess) {
+                    h_ram_rows_ = (uint64_t*)p;
+                    h_ram_rows_cap_ = (rows_mb << 20) / 8;
+                }
+            });
+        }
+    }
+
     reset();
     return true;
 }
 
-bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
+bool CountAndPlan::add_chunk(const uint64_t* words, uint32_t n) {
     if (n_chunks_ >= MAX_CHUNKS) {
         fprintf(stderr,
                 "CountAndPlan::add_chunk ERROR: MAX_CHUNKS=%u exceeded\n", MAX_CHUNKS);
         std::abort();
     }
-    if (n > MAX_MEMOPS_PER_CHUNK) {
-        fprintf(stderr,
-                "CountAndPlan::add_chunk FATAL: chunk has %u memops > "
-                "MAX_MEMOPS_PER_CHUNK=%u (per-stream reception region too small)\n",
-                n, MAX_MEMOPS_PER_CHUNK);
-        std::abort();
-    }
-
     const uint32_t c = n_chunks_++;
     if (pool_enabled_) {
         const int s = c % N_STREAMS;
         {
             std::lock_guard<std::mutex> lk(pool_mtx_[s]);
-            pool_q_[s].push_back(ChunkJob{memops, n, c});
+            pool_q_[s].push_back(ChunkJob{words, n, c});
         }
         pool_cv_[s].notify_one();
         return true;
     }
     bind_device(gpu_device_);  // pool workers bind once at thread start instead
-    return add_chunk_core_(memops, n, c);
+    return add_chunk_core_(words, n, c);
 }
 
-bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) {
+bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c) {
     const int s = c % N_STREAMS;
 
-    //add potencial emission
-    auto add_pot = [](uint32_t addr, uint32_t count, size_t& pot, uint32_t& ram) {
-        pot += count;
-        if (is_ram_addr(addr)) ram += count;
-    };
-    size_t   pot = 0;
-    uint32_t ram = 0;
-    for (uint32_t k = 0; k < n; k++) {
-        const MemOp& op = memops[k];
+    // Host walk: potentials and RAM accesses per record, and the cuts into pieces of whole records.
+    struct Piece { uint32_t w0, nw, pot, ram; };
+    std::vector<Piece> pieces;
+    Piece cur{0, 0, 0, 0};
+    size_t   pot_total = 0;
+    uint32_t ram_total = 0;
+    for (uint32_t k = 0; k < n;) {
+        const uint32_t len = mops_record_len(words[k]);
+        const MemOp op = load_record(words, k);
         const uint32_t addr    = op.addr;
         const uint32_t aligned = addr & ZISK_ALIGN_MASK;
         const uint8_t  mode    = op.flags & 0x3Fu;
         const uint32_t off     = addr & 0x07u;
+        uint32_t dp = 0, dr = 0;
+        auto add_pot = [&](uint32_t a, uint32_t count) { dp += count; if (is_ram_addr(a)) dr += count; };
         switch (mode) {
-            case MOPS_READ_1:                                add_pot(aligned, 1, pot, ram); break;
-            case MOPS_CWRITE_1: case MOPS_WRITE_1:           add_pot(aligned, 2, pot, ram); break;
-            case MOPS_READ_2:   add_pot(aligned, 1, pot, ram); if (off > 6) add_pot(aligned + 8, 1, pot, ram); break;
-            case MOPS_WRITE_2:  add_pot(aligned, 2, pot, ram); if (off > 6) add_pot(aligned + 8, 2, pot, ram); break;
-            case MOPS_READ_4:   add_pot(aligned, 1, pot, ram); if (off > 4) add_pot(aligned + 8, 1, pot, ram); break;
-            case MOPS_WRITE_4:  add_pot(aligned, 2, pot, ram); if (off > 4) add_pot(aligned + 8, 2, pot, ram); break;
-            case MOPS_READ_8:   add_pot(aligned, 1, pot, ram); if (off > 0) add_pot(aligned + 8, 1, pot, ram); break;
-            case MOPS_WRITE_8:  if (addr == aligned) add_pot(aligned, 1, pot, ram);
-                                else { add_pot(aligned, 2, pot, ram); add_pot(aligned + 8, 2, pot, ram); } break;
+            case MOPS_READ_1:                                add_pot(aligned, 1); break;
+            case MOPS_CWRITE_1: case MOPS_WRITE_1:           add_pot(aligned, 2); break;
+            case MOPS_READ_2:   add_pot(aligned, 1); if (off > 6) add_pot(aligned + 8, 1); break;
+            case MOPS_WRITE_2:  add_pot(aligned, 2); if (off > 6) add_pot(aligned + 8, 2); break;
+            case MOPS_READ_4:   add_pot(aligned, 1); if (off > 4) add_pot(aligned + 8, 1); break;
+            case MOPS_WRITE_4:  add_pot(aligned, 2); if (off > 4) add_pot(aligned + 8, 2); break;
+            case MOPS_READ_8:   add_pot(aligned, 1); if (off > 0) add_pot(aligned + 8, 1); break;
+            case MOPS_WRITE_8:  if (addr == aligned) add_pot(aligned, 1);
+                                else { add_pot(aligned, 2); add_pot(aligned + 8, 2); } break;
             case MOPS_ALIGNED_READ  + 0x00: case MOPS_ALIGNED_READ  + 0x10:
             case MOPS_ALIGNED_READ  + 0x20: case MOPS_ALIGNED_READ  + 0x30:
             case MOPS_ALIGNED_WRITE + 0x00: case MOPS_ALIGNED_WRITE + 0x10:
             case MOPS_ALIGNED_WRITE + 0x20: case MOPS_ALIGNED_WRITE + 0x30:
-                add_pot(addr, 1, pot, ram); break;
-            default: { uint32_t cnt = op.flags >> MOPS_BLOCK_COUNT_SBITS;
-                       add_pot(addr, cnt, pot, ram); break; }
+                add_pot(addr, 1); break;
+            case MOPS_BLOCK_VALUES + 0x00: case MOPS_BLOCK_VALUES + 0x10:
+            case MOPS_BLOCK_VALUES + 0x20: case MOPS_BLOCK_VALUES + 0x30:
+                add_pot(addr, (op.flags >> MOPS_BLOCK_COUNT_SBITS) & 63u); break;
+            default: add_pot(addr, op.flags >> MOPS_BLOCK_COUNT_SBITS); break;
         }
+        if (cur.nw > 0 && (cur.pot + dp > piece_potentials_ || cur.nw + len > MAX_WORDS_PER_PIECE)) {
+            pieces.push_back(cur);
+            cur = Piece{k, 0, 0, 0};
+        }
+        cur.nw += len; cur.pot += dp; cur.ram += dr;
+        pot_total += dp; ram_total += dr;
+        k += len;
+    }
+    if (cur.nw > 0) pieces.push_back(cur);
+    {
+        uint32_t np = (uint32_t)pieces.size(), seen = max_pieces_.load(std::memory_order_relaxed);
+        while (np > seen && !max_pieces_.compare_exchange_weak(seen, np, std::memory_order_relaxed)) {}
     }
 
-    if (pot > MAX_POT_PER_CHUNK) {
-        fprintf(stderr,
-                "CountAndPlan::add_chunk ERROR: chunk %u has %zu potentials > "
-                "MAX_POT_PER_CHUNK=%u\n", c, pot, MAX_POT_PER_CHUNK);
-        add_error_.store(true, std::memory_order_relaxed);
-        return false;
+    // Reserve this chunk's compacted-output region in the device ops pool. Each stack bumps its
+    // own cursor before reading the other's, so two concurrent reservations cannot both miss the
+    // crossing. Meeting the retained accesses drops the device witness first; only a pool that
+    // does not fit the region on its own is an error.
+    const size_t base = pool_cursor_u32_.fetch_add(pot_total, std::memory_order_seq_cst);
+    if (pool_end_bytes(base + pot_total) > ram_low_edge_bytes(ram_cursor_.load(std::memory_order_seq_cst))
+        && ram_retention_enabled_.exchange(false)) {
+        fprintf(stderr, "CountAndPlan: the ops pool meets the retained RAM accesses at chunk %u; "
+                        "no device RAM witness for this block\n", c);
     }
-
-    // Reserve this chunk's compacted-output region in the device ops pool
-    const size_t base = pool_cursor_u32_.fetch_add(pot, std::memory_order_relaxed);
-    if (base + pot > d_ops_pool_cap_u32_) {
+    if (pool_end_bytes(base + pot_total) > top_bytes_) {
         fprintf(stderr,
                 "CountAndPlan::add_chunk ERROR: ops pool exhausted at chunk %u "
                 "(base %zu + need %zu > capacity %zu u32 entries). "
                 "Increase the buffer size passed to setup().\n",
-                c, base, pot, d_ops_pool_cap_u32_);
+                c, base, pot_total, d_ops_pool_cap_u32_);
         add_error_.store(true, std::memory_order_relaxed);
         return false;
     }
     out_offsets_[c]            = base;
-    n_potentials_per_chunk_[c] = (uint32_t)pot;
-    n_ram_per_chunk_[c]        = ram;
-
-    cudaStream_t st = streams_[s];
-
-    uint32_t* d_chunk_out = d_ops_pool_ + base;
+    n_potentials_per_chunk_[c] = (uint32_t)pot_total;
+    n_words_per_chunk_[c]      = n;
+    n_ram_per_chunk_[c]        = ram_total;
 
     if (n == 0) {
         *(h_n_emits_[s]) = 0;
         h_n_emits_all_[c] = 0;
         return true;
     }
+    uint32_t* d_chunk_out = d_ops_pool_ + base;
+    if (pieces.size() == 1)
+        return add_piece_(words, n, c, s, (uint32_t)pot_total, ram_total, d_chunk_out, 0, false, &h_n_emits_all_[c]);
 
+    // Pieces run in order on the chunk's stream; each hands its emit count and the pairing state
+    // of the addresses it touched to the next.
+    uint32_t emits = 0, n_carry = 0;
+    for (size_t p = 0; p < pieces.size(); ++p) {
+        const Piece& pc = pieces[p];
+        const bool last = p + 1 == pieces.size();
+        if (!add_piece_(words + pc.w0, pc.nw, c, s, pc.pot, pc.ram, d_chunk_out + emits, n_carry, !last, h_n_emits_[s]))
+            return false;
+        CUDA_CHECK(cudaStreamSynchronize(streams_[s]));
+        emits += *h_n_emits_[s];
+        n_carry = (!last && pc.ram + n_carry > 0) ? *h_n_carry_[s] : 0;
+    }
+    h_n_emits_all_[c] = emits;
+    return true;
+}
+
+// One piece of a chunk through the device pipeline: decode, expand, count, pair, retain, compact.
+bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int s, uint32_t pot, uint32_t ram,
+                              uint32_t* d_out, uint32_t n_carry, bool carry_out, uint32_t* h_emits) {
+    cudaStream_t st = streams_[s];
     constexpr int BLOCK = 256;
     const int g_memops = (n + BLOCK - 1) / BLOCK;
-    const int g_pot    = ((uint32_t)pot + BLOCK - 1) / BLOCK;
-    const int g_ram    = ram == 0 ? 0 : (int)((ram + BLOCK - 1) / BLOCK);
+    const int g_pot    = (pot + BLOCK - 1) / BLOCK;
+    const uint32_t n_sort = ram + n_carry;
+    const int g_sort   = n_sort == 0 ? 0 : (int)((n_sort + BLOCK - 1) / BLOCK);
 
-    CUDA_CHECK(cudaMemcpyAsync(d_memops_[s], memops,
-                               sizeof(MemOp) * n, cudaMemcpyHostToDevice, st));
+    CUDA_CHECK(cudaMemcpyAsync(d_words_[s], words, 8ull * n, cudaMemcpyHostToDevice, st));
     CUDA_CHECK(cudaMemsetAsync(d_ram_count_[s],    0, 4, st));
     CUDA_CHECK(cudaMemsetAsync(d_spill_count_[s],  0, 4, st));
     CUDA_CHECK(cudaMemsetAsync(d_spill_status_[s], 0, n, st));
+    // Record boundaries: header words are tagged; their exclusive scan indexes the records.
+    tag_flag_kernel<<<g_memops, BLOCK, 0, st>>>(d_words_[s], n, d_tag_flags_[s]);
+    CUDA_CHECK_LAUNCH();
+    {
+        size_t bytes = cub_temp_bytes_;
+        CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes,
+            d_tag_flags_[s], d_tag_flags_[s], n + 1, st));
+    }
+    rec_start_kernel<<<g_memops, BLOCK, 0, st>>>(d_words_[s], n, d_tag_flags_[s], d_rec_start_[s], d_n_records_[s]);
+    CUDA_CHECK_LAUNCH();
 
     decode_count_kernel<<<g_memops, BLOCK, 0, st>>>(
-        d_memops_[s], n, d_counts_[s], d_spill_status_[s],
+        d_words_[s], d_rec_start_[s], d_n_records_[s], n, d_counts_[s], d_spill_status_[s],
         &d_chunk_counters_per_chunk_[c],
         d_spill_[s], d_spill_count_[s],
         d_invalid_mode_flag_);
@@ -1445,7 +1670,7 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
     }
 
     decode_emit_kernel<<<g_memops, BLOCK, 0, st>>>(
-        d_memops_[s], n, d_potential_offsets_[s], d_spill_status_[s], d_potentials_[s]);
+        d_words_[s], d_rec_start_[s], d_n_records_[s], d_potential_offsets_[s], d_spill_status_[s], d_potentials_[s]);
     CUDA_CHECK_LAUNCH();
 
     blockop_emit_kernel<<<BLOCKOP_EMIT_GRID, 256, 0, st>>>(
@@ -1453,57 +1678,89 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
     CUDA_CHECK_LAUNCH();
 
     gather_ram_events_with_hist_kernel<<<g_pot, BLOCK, 0, st>>>(
-        d_potentials_[s], (uint32_t)pot,
+        d_potentials_[s], pot,
         d_ram_keys_[s], d_ram_count_[s], d_emit_bits_[s],
-        d_histogram_, d_max_compact_);
+        d_histogram_, d_max_compact_, d_invalid_mode_flag_);
     CUDA_CHECK_LAUNCH();
 
-    if (ram > 0) {
+    if (n_sort > 0) {
+        // The previous piece's pairing state enters the sort as one entry per address.
+        if (n_carry > 0)
+            CUDA_CHECK(cudaMemcpyAsync(d_ram_keys_[s] + ram, d_carry_[s], 8ull * n_carry, cudaMemcpyDeviceToDevice, st));
         size_t bytes_sort = cub_temp_bytes_;
         CUDA_CHECK(cub::DeviceRadixSort::SortKeys(d_cub_temp_[s], bytes_sort,
-            d_ram_keys_[s], d_ram_keys_sorted_[s], ram, 0, RAM_KEY_END_BIT, st));
+            d_ram_keys_[s], d_ram_keys_sorted_[s], n_sort, 0, RAM_KEY_END_BIT, st));
 
-        extract_sorted_addr_kernel<<<g_ram, BLOCK, 0, st>>>(
-            d_ram_keys_sorted_[s], ram, d_sorted_addr_[s]);
+        extract_sorted_addr_kernel<<<g_sort, BLOCK, 0, st>>>(
+            d_ram_keys_sorted_[s], n_sort, d_sorted_addr_[s]);
         CUDA_CHECK_LAUNCH();
 
-        extract_sorted_packed_kernel<<<g_ram, BLOCK, 0, st>>>(
-            d_ram_keys_sorted_[s], ram, d_ram_vals_sorted_[s]);
+        extract_sorted_packed_kernel<<<g_sort, BLOCK, 0, st>>>(
+            d_ram_keys_sorted_[s], n_sort, d_ram_vals_sorted_[s]);
         CUDA_CHECK_LAUNCH();
+
+        // Retain the piece's RAM accesses for the witness, in the sorted order.
+        if (ram > 0 && ram_retention_enabled_.load(std::memory_order_relaxed)) {
+            const size_t rbase = ram_cursor_.fetch_add(ram, std::memory_order_seq_cst);
+            if (ram_low_edge_bytes(rbase + ram) < pool_end_bytes(pool_cursor_u32_.load(std::memory_order_seq_cst))) {
+                if (ram_retention_enabled_.exchange(false)) {
+                    fprintf(stderr, "CountAndPlan: the retained RAM accesses meet the ops pool at chunk %u "
+                                    "(%zu accesses so far); no device RAM witness for this block\n", c, rbase + ram);
+                }
+            } else {
+                {
+                    std::lock_guard<std::mutex> lk(ram_runs_mtx_);
+                    ram_runs_.push_back(RamRun{(uint32_t)rbase, ram});
+                }
+                const uint32_t* d_rank = nullptr;
+                if (n_carry > 0) {
+                    real_flags_kernel<<<g_sort, BLOCK, 0, st>>>(d_ram_vals_sorted_[s], n_sort, d_carry_rank_[s]);
+                    CUDA_CHECK_LAUNCH();
+                    size_t bytes_rank = cub_temp_bytes_;
+                    CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes_rank,
+                        d_carry_rank_[s], d_carry_rank_[s], n_sort, st));
+                    d_rank = d_carry_rank_[s];
+                }
+                retain_ram_kernel<<<g_sort, BLOCK, 0, st>>>(d_potentials_[s], d_ram_vals_sorted_[s], n_sort, d_rank,
+                    rbase, c, chunk_size_bits_, ram_records_, d_ram_nwrites_);
+                CUDA_CHECK_LAUNCH();
+            }
+        }
 
         size_t bytes_rle = cub_temp_bytes_;
         CUDA_CHECK(cub::DeviceRunLengthEncode::Encode(d_cub_temp_[s], bytes_rle,
             d_sorted_addr_[s], thrust::discard_iterator<>{},
-            d_run_lengths_[s], d_num_unique_[s], ram, st));
+            d_run_lengths_[s], d_num_unique_[s], n_sort, st));
 
         size_t bytes_sr = cub_temp_bytes_;
         CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes_sr,
-            d_run_lengths_[s], d_run_offsets_[s], ram + 1, st));
+            d_run_lengths_[s], d_run_offsets_[s], n_sort + 1, st));
 
-        state_machine_by_run_with_hist_kernel<<<g_ram, BLOCK, 0, st>>>(
+        state_machine_by_run_with_hist_kernel<<<g_sort, BLOCK, 0, st>>>(
             d_run_offsets_[s], d_num_unique_[s], d_ram_vals_sorted_[s],
-            d_sorted_addr_[s], d_emit_bits_[s], d_histogram_, d_max_compact_);
+            d_sorted_addr_[s], d_emit_bits_[s], d_histogram_, d_max_compact_, d_invalid_mode_flag_,
+            carry_out ? d_carry_[s] : nullptr);
         CUDA_CHECK_LAUNCH();
+        if (carry_out)
+            CUDA_CHECK(cudaMemcpyAsync(h_n_carry_[s], d_num_unique_[s], 4, cudaMemcpyDeviceToHost, st));
     }
 
     {
         size_t bytes = cub_temp_bytes_;
         CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes,
-            d_emit_bits_[s], d_final_offsets_[s], (uint32_t)pot + 1, st));
+            d_emit_bits_[s], d_final_offsets_[s], pot + 1, st));
     }
 
-    CUDA_CHECK(cudaMemcpyAsync(&h_n_emits_all_[c],
-        d_final_offsets_[s] + pot, 4, cudaMemcpyDeviceToHost, st));
+    CUDA_CHECK(cudaMemcpyAsync(h_emits, d_final_offsets_[s] + pot, 4, cudaMemcpyDeviceToHost, st));
 
     compact_kernel_with_shift<<<g_pot, BLOCK, 0, st>>>(
         d_potentials_[s], d_emit_bits_[s], d_final_offsets_[s],
-        (uint32_t)pot, d_chunk_out);
+        pot, d_out);
     CUDA_CHECK_LAUNCH();
 
     return true;
 }
 
-// ─── add_chunk worker pool (ZISK_MOPS_POOL) ──────────────────────────
 
 void CountAndPlan::pool_thread_loop_(int s) {
     CUDA_CHECK(cudaSetDevice(gpu_device_));
@@ -1516,7 +1773,7 @@ void CountAndPlan::pool_thread_loop_(int s) {
             job = pool_q_[s].front();
             pool_q_[s].pop_front();
         }
-        add_chunk_core_(job.memops, job.n, job.c);
+        add_chunk_core_(job.words, job.n, job.c);
     }
 }
 
@@ -1569,9 +1826,19 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
                 cudaMemcpyDeviceToHost));
         }
 
+        // The prefix, the pool offsets and the instance arithmetic are u32: a block with 2^32 rows
+        // or more cannot be planned, and the counters below would wrap silently.
         packed_chunk_offsets_h_.assign(n_chunks_ + 1, 0);
-        for (uint32_t c = 0; c < n_chunks_; c++)
-            packed_chunk_offsets_h_[c + 1] = packed_chunk_offsets_h_[c] + h_n_emits_all_[c];
+        uint64_t total_rows = 0;
+        for (uint32_t c = 0; c < n_chunks_; c++) {
+            total_rows += h_n_emits_all_[c];
+            if (total_rows > 0xFFFFFFFFull) {
+                fprintf(stderr, "CountAndPlan::run FATAL: the block has more than 2^32 - 1 memory rows "
+                                "(reached at chunk %u of %u)\n", c, n_chunks_);
+                std::exit(1);
+            }
+            packed_chunk_offsets_h_[c + 1] = (uint32_t)total_rows;
+        }
         num_ops_ = packed_chunk_offsets_h_[n_chunks_];
 
         std::vector<uint32_t> gappy_u32(n_chunks_);
@@ -1585,10 +1852,16 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
                               (n_chunks_ + 1) * 4, cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(h_max_compact_, d_max_compact_, 3 * 4, cudaMemcpyDeviceToHost));
 
-        uint32_t h_invalid = 0;
-        CUDA_CHECK(cudaMemcpy(&h_invalid, d_invalid_mode_flag_, 4, cudaMemcpyDeviceToHost));
-        if (h_invalid != 0) {
-            fprintf(stderr, "CountAndPlan::run FATAL: unrecognised opcode in input\n");
+        uint32_t h_fault[2] = {0, 0};
+        CUDA_CHECK(cudaMemcpy(h_fault, d_invalid_mode_flag_, 8, cudaMemcpyDeviceToHost));
+        if (h_fault[0] & COUNTER_OVERFLOW) {
+            fprintf(stderr, "CountAndPlan::run FATAL: more than 2^32 - 1 rows at address 0x%08x\n",
+                    expand_addr(h_fault[1]));
+            std::exit(1);
+        }
+        if (h_fault[0] != 0) {
+            fprintf(stderr, "CountAndPlan::run FATAL: %s in the memory-ops stream\n",
+                    (h_fault[0] & INVALID_ADDRESS) ? "access outside the memory map" : "unrecognised record mode");
             std::exit(1);
         }
 
@@ -1622,6 +1895,9 @@ void CountAndPlan::reset() {
     out_offsets_.assign(MAX_CHUNKS, 0);
     n_potentials_per_chunk_.assign(MAX_CHUNKS, 0);
     n_ram_per_chunk_.assign(MAX_CHUNKS, 0);
+    n_words_per_chunk_.assign(MAX_CHUNKS, 0);
+    { std::lock_guard<std::mutex> lk(ram_runs_mtx_); ram_runs_.clear(); }
+    max_pieces_.store(0, std::memory_order_relaxed);
     packed_chunk_offsets_h_.clear();
     pool_cursor_u32_.store(0, std::memory_order_relaxed);
     add_error_.store(false, std::memory_order_relaxed);
@@ -1629,10 +1905,18 @@ void CountAndPlan::reset() {
     metas_ready_recorded_   = false;
     preprocessed_           = false;
     prepared_               = false;
+    ram_cursor_.store(0, std::memory_order_relaxed);
+    ram_retention_enabled_.store(top_bytes_ > cursor_, std::memory_order_relaxed);
+    ram_prepared_           = false;
+    ram_tables_ready_       = false;
+    ram_results_.clear();
+    ram_n_lanes_            = 0;
+    ram_unresolved_         = 0;
 
-    if (d_histogram_)                CUDA_CHECK(cudaMemset(d_histogram_, 0, (size_t)N_ADDR * 4));
+    if (d_histogram_)                CUDA_CHECK(cudaMemset(d_histogram_, 0, ((size_t)N_ADDR + 1) * 4));
     if (d_max_compact_)              CUDA_CHECK(cudaMemset(d_max_compact_, 0, 3 * 4));
-    if (d_invalid_mode_flag_)        CUDA_CHECK(cudaMemset(d_invalid_mode_flag_, 0, 4));
+    if (d_ram_nwrites_)              CUDA_CHECK(cudaMemset(d_ram_nwrites_, 0, 8));
+    if (d_invalid_mode_flag_)        CUDA_CHECK(cudaMemset(d_invalid_mode_flag_, 0, 8));
     if (d_chunk_counters_per_chunk_) CUDA_CHECK(cudaMemset(d_chunk_counters_per_chunk_, 0, (size_t)MAX_CHUNKS * sizeof(ChunkCounters)));
 
     if (pool_enabled_) {
@@ -1664,6 +1948,8 @@ void CountAndPlan::unregister_input_pinned(void* ptr) {
 }
 
 void CountAndPlan::free_pinned_() {
+    join_rows_prealloc_();
+    if (h_ram_rows_)                 { cudaFreeHost(h_ram_rows_);                 h_ram_rows_                 = nullptr; h_ram_rows_cap_ = 0; }
     if (h_n_emits_all_)              { cudaFreeHost(h_n_emits_all_);              h_n_emits_all_              = nullptr; }
     if (h_page_starts_buf_)          { cudaFreeHost(h_page_starts_buf_);          h_page_starts_buf_          = nullptr; }
     if (h_page_single_buf_)           { cudaFreeHost(h_page_single_buf_);           h_page_single_buf_           = nullptr; }
@@ -1672,8 +1958,10 @@ void CountAndPlan::free_pinned_() {
     if (h_result_nops_)              { cudaFreeHost(h_result_nops_);              h_result_nops_              = nullptr; }
     if (h_meta_scalars_)             { cudaFreeHost(h_meta_scalars_);             h_meta_scalars_             = nullptr; }
     if (h_chunk_counters_per_chunk_) { cudaFreeHost(h_chunk_counters_per_chunk_); h_chunk_counters_per_chunk_ = nullptr; }
-    for (int s = 0; s < N_STREAMS; s++)
+    for (int s = 0; s < N_STREAMS; s++) {
         if (h_n_emits_[s]) { cudaFreeHost(h_n_emits_[s]); h_n_emits_[s] = nullptr; }
+        if (h_n_carry_[s]) { cudaFreeHost(h_n_carry_[s]); h_n_carry_[s] = nullptr; }
+    }
 }
 
 void CountAndPlan::free_all_() {
@@ -1696,10 +1984,10 @@ void CountAndPlan::free_all_() {
 void CountAndPlan::query_cub_sizes_(size_t& scan_counts_b, size_t& scan_emit_b,
                                     size_t& scan_runs_b,   size_t& sort_b,
                                     size_t& rle_b,         size_t& hist_scan_b) {
-    const uint32_t MAX_POT = MAX_POT_PER_CHUNK;
+    const uint32_t MAX_POT = MAX_SORT_PER_PIECE;
     scan_counts_b = scan_emit_b = scan_runs_b = sort_b = rle_b = hist_scan_b = 0;
     cub::DeviceScan::ExclusiveSum(nullptr, scan_counts_b,
-        (uint32_t*)nullptr, (uint32_t*)nullptr, MAX_MEMOPS_PER_CHUNK + 1);
+        (uint32_t*)nullptr, (uint32_t*)nullptr, MAX_WORDS_PER_PIECE + 1);
     cub::DeviceScan::ExclusiveSum(nullptr, scan_emit_b,
         (uint32_t*)nullptr, (uint32_t*)nullptr, MAX_POT + 1);
     cub::DeviceScan::ExclusiveSum(nullptr, scan_runs_b,
@@ -1905,6 +2193,31 @@ void CountAndPlan::process_worker_() {
         h_pages_dense_dev_prefix[i] = total_pages;  // worst-case device reservation: np pages per instance
         total_pages += np;
         if (np > max_pages_per_inst) max_pages_per_inst = np;
+    }
+
+    // The dense pages take the dynamic region above the ops pool, which the counting kernel
+    // above was the last to read, up to the retained accesses.
+    {
+        const size_t pages_bytes = (size_t)total_pages * MEM_OFFSETS_PAGE_SIZE * 4;
+        const size_t pages_off =
+            (pool_end_bytes(pool_cursor_u32_.load(std::memory_order_relaxed)) + 255) & ~(size_t)255;
+        if (pages_off + pages_bytes > ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed))) {
+            fprintf(stderr, "CountAndPlan FATAL: no room for %zu MB of offset pages between the ops pool "
+                            "and the retained RAM accesses\n", pages_bytes >> 20);
+            std::exit(1);
+        }
+        d_pages_dense_ = (uint32_t*)(arena_ + pages_off);
+        uint32_t max_words = 0, max_pot = 0;
+        for (uint32_t ch = 0; ch < n_chunks_; ++ch) {
+            max_words = std::max(max_words, n_words_per_chunk_[ch]);
+            max_pot = std::max(max_pot, n_potentials_per_chunk_[ch]);
+        }
+        fprintf(stderr, "[mops] block: %u chunks, largest %u words and %u potentials, up to %u pieces per chunk "
+                        "(%u potentials each), ops pool %zu MB, retained %zu accesses (%zu MB), offset pages %zu MB\n",
+                n_chunks_, max_words, max_pot, max_pieces_.load(std::memory_order_relaxed), piece_potentials_,
+                pool_end_bytes(pool_cursor_u32_.load(std::memory_order_relaxed)) - cursor_ >> 20,
+                ram_cursor_.load(std::memory_order_relaxed),
+                ram_cursor_.load(std::memory_order_relaxed) * RAM_RECORD_WORDS * 4 >> 20, pages_bytes >> 20);
     }
 
     // Push prefix sums to device, zero the per-instance present counters.
