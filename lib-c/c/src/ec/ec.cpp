@@ -32,8 +32,8 @@ int inline AddPointEcFe (bool dbl, const RawFec::Element &x1, const RawFec::Elem
     {
         // s = 3*x1*x1/2*y1
         fec.mul(aux1, x1, x1);
-        fec.fromUI(aux2, 3);
-        fec.mul(aux1, aux1, aux2);
+        fec.add(aux2, aux1, aux1);
+        fec.add(aux1, aux2, aux1);
         fec.add(aux2, y1, y1);
         if (fec.isZero(aux2))
         {
@@ -93,8 +93,8 @@ int inline AddPointEcDblFe (RawFec::Element &x1, RawFec::Element &y1)
 
     // s = 3*x1*x1/2*y1
     fec.mul(aux1, x1, x1);
-    fec.fromUI(aux2, 3);
-    fec.mul(aux1, aux1, aux2);
+    fec.add(aux2, aux1, aux1);
+    fec.add(aux1, aux2, aux1);
     fec.add(aux2, y1, y1);
     if (fec.isZero(aux2))
     {

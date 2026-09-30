@@ -83,34 +83,36 @@ int BN254CurveDblP (const uint64_t * p1, uint64_t * p2)
 /* BN254 COMPLEX ADD */
 /*********************/
 
+// Works on plain values: a complex add gives the same result as on Montgomery ones
 int BN254ComplexAdd (const uint64_t * _x1, const uint64_t * _y1, const uint64_t * _x2, const uint64_t * _y2, uint64_t * _x3, uint64_t * _y3)
 {
     RawFq::Element x1, y1, x2, y2, x3, y3;
-    array2fe(_x1, x1);
-    array2fe(_y1, y1);
-    array2fe(_x2, x2);
-    array2fe(_y2, y2);
+    array2plain(_x1, x1);
+    array2plain(_y1, y1);
+    array2plain(_x2, x2);
+    array2plain(_y2, y2);
 
     int result = BN254ComplexAddFe (x1, y1, x2, y2, x3, y3);
     
-    fe2array(x3, _x3);
-    fe2array(y3, _y3);
+    plain2array(x3, _x3);
+    plain2array(y3, _y3);
 
     return result;
 }
 
+// Works on plain values: a complex add gives the same result as on Montgomery ones
 int BN254ComplexAddP (const uint64_t * p1, const uint64_t * p2, uint64_t * p3)
 {
     RawFq::Element x1, y1, x2, y2, x3, y3;
-    array2fe(p1, x1);
-    array2fe(p1 + 4, y1);
-    array2fe(p2, x2);
-    array2fe(p2 + 4, y2);
+    array2plain(p1, x1);
+    array2plain(p1 + 4, y1);
+    array2plain(p2, x2);
+    array2plain(p2 + 4, y2);
 
     int result = BN254ComplexAddFe (x1, y1, x2, y2, x3, y3);
 
-    fe2array(x3, p3);
-    fe2array(y3, p3 + 4);
+    plain2array(x3, p3);
+    plain2array(y3, p3 + 4);
 
     return result;
 }
@@ -119,34 +121,36 @@ int BN254ComplexAddP (const uint64_t * p1, const uint64_t * p2, uint64_t * p3)
 /* BN254 COMPLEX SUB */
 /*********************/
 
+// Works on plain values: a complex sub gives the same result as on Montgomery ones
 int BN254ComplexSub (const uint64_t * _x1, const uint64_t * _y1, const uint64_t * _x2, const uint64_t * _y2, uint64_t * _x3, uint64_t * _y3)
 {
     RawFq::Element x1, y1, x2, y2, x3, y3;
-    array2fe(_x1, x1);
-    array2fe(_y1, y1);
-    array2fe(_x2, x2);
-    array2fe(_y2, y2);
+    array2plain(_x1, x1);
+    array2plain(_y1, y1);
+    array2plain(_x2, x2);
+    array2plain(_y2, y2);
 
     int result = BN254ComplexSubFe (x1, y1, x2, y2, x3, y3);
     
-    fe2array(x3, _x3);
-    fe2array(y3, _y3);
+    plain2array(x3, _x3);
+    plain2array(y3, _y3);
 
     return result;
 }
 
+// Works on plain values: a complex sub gives the same result as on Montgomery ones
 int BN254ComplexSubP (const uint64_t * p1, const uint64_t * p2, uint64_t * p3)
 {
     RawFq::Element x1, y1, x2, y2, x3, y3;
-    array2fe(p1, x1);
-    array2fe(p1 + 4, y1);
-    array2fe(p2, x2);
-    array2fe(p2 + 4, y2);
+    array2plain(p1, x1);
+    array2plain(p1 + 4, y1);
+    array2plain(p2, x2);
+    array2plain(p2 + 4, y2);
 
     int result = BN254ComplexSubFe (x1, y1, x2, y2, x3, y3);
 
-    fe2array(x3, p3);
-    fe2array(y3, p3 + 4);
+    plain2array(x3, p3);
+    plain2array(y3, p3 + 4);
 
     return result;
 }
@@ -155,34 +159,38 @@ int BN254ComplexSubP (const uint64_t * p1, const uint64_t * p2, uint64_t * p3)
 /* BN254 COMPLEX MUL */
 /*********************/
 
+// Only the second operand is converted to Montgomery form: the Montgomery product of a plain
+// value and a Montgomery one is the plain product, so the result is plain
 int BN254ComplexMul (const uint64_t * _x1, const uint64_t * _y1, const uint64_t * _x2, const uint64_t * _y2, uint64_t * _x3, uint64_t * _y3)
 {
     RawFq::Element x1, y1, x2, y2, x3, y3;
-    array2fe(_x1, x1);
-    array2fe(_y1, y1);
+    array2plain(_x1, x1);
+    array2plain(_y1, y1);
     array2fe(_x2, x2);
     array2fe(_y2, y2);
 
     int result = BN254ComplexMulFe (x1, y1, x2, y2, x3, y3);
     
-    fe2array(x3, _x3);
-    fe2array(y3, _y3);
+    plain2array(x3, _x3);
+    plain2array(y3, _y3);
 
     return result;
 }
 
+// Only the second operand is converted to Montgomery form: the Montgomery product of a plain
+// value and a Montgomery one is the plain product, so the result is plain
 int BN254ComplexMulP (const uint64_t * p1, const uint64_t * p2, uint64_t * p3)
 {
     RawFq::Element x1, y1, x2, y2, x3, y3;
-    array2fe(p1, x1);
-    array2fe(p1 + 4, y1);
+    array2plain(p1, x1);
+    array2plain(p1 + 4, y1);
     array2fe(p2, x2);
     array2fe(p2 + 4, y2);
 
     int result = BN254ComplexMulFe (x1, y1, x2, y2, x3, y3);
 
-    fe2array(x3, p3);
-    fe2array(y3, p3 + 4);
+    plain2array(x3, p3);
+    plain2array(y3, p3 + 4);
 
     return result;
 }

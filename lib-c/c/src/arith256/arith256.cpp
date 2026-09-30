@@ -1,5 +1,6 @@
 #include "arith256.hpp"
 #include "../common/utils.hpp"
+#include "../common/mul_add.hpp"
 
 int Arith256 (
     const uint64_t * _a,  // 4 x 64 bits
@@ -9,24 +10,13 @@ int Arith256 (
           uint64_t * _dh  // 4 x 64 bits
 )
 {
-    // Convert input parameters to scalars
-    mpz_class a, b, c;
-    array2scalar(_a, a);
-    array2scalar(_b, b);
-    array2scalar(_c, c);
+    // d = a * b + c, computed in a temporary since the outputs may overlap the inputs
+    uint64_t d[8];
+    mul_add<4>(d, _a, _b, _c);
 
-    // Calculate the result as a scalar
-    mpz_class d;
-    d = (a * b) + c;
-
-    // Decompose d = dl + dh<<256 (dh = d)
-    mpz_class dl;
-    dl = d & ScalarMask256;
-    d >>= 256;
-
-    // Convert scalars to output parameters
-    scalar2array(dl, _dl);
-    scalar2array(d, _dh);
+    // Decompose d = dl + dh<<256
+    memcpy(_dl, &d[0], 4 * sizeof(uint64_t));
+    memcpy(_dh, &d[4], 4 * sizeof(uint64_t));
 
     return 0;
 }

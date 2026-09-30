@@ -539,14 +539,15 @@ int BN254TwistDblLineCoeffs (
 
 
     // Compute 𝜆 = 3x²/2y
-    RawFq::Element lambda_real, lambda_imaginary, aux_real, aux_imaginary, three;
+    RawFq::Element lambda_real, lambda_imaginary, aux_real, aux_imaginary, twice_lambda;
     BN254ComplexAddFe(y_real, y_imaginary, y_real, y_imaginary, lambda_real, lambda_imaginary); // 𝜆 = 2y
     BN254ComplexInvFe(lambda_real, lambda_imaginary, lambda_real, lambda_imaginary); // 𝜆 = 1/2y
     BN254ComplexMulFe(x_real, x_imaginary, x_real, x_imaginary, aux_real, aux_imaginary); // aux = x²
     BN254ComplexMulFe(lambda_real, lambda_imaginary, aux_real, aux_imaginary, lambda_real, lambda_imaginary); // 𝜆 = x²/2y
-    bn254.fromUI(three, 3); // 𝜆 = 3x²/2y
-    bn254.mul(lambda_real, lambda_real, three);
-    bn254.mul(lambda_imaginary, lambda_imaginary, three);
+    bn254.add(twice_lambda, lambda_real, lambda_real); // 𝜆 = 3x²/2y, as 2𝜆 + 𝜆
+    bn254.add(lambda_real, twice_lambda, lambda_real);
+    bn254.add(twice_lambda, lambda_imaginary, lambda_imaginary);
+    bn254.add(lambda_imaginary, twice_lambda, lambda_imaginary);
 
     // Compute 𝜇 = y - 𝜆x
     RawFq::Element mu_real, mu_imaginary;
@@ -794,14 +795,15 @@ int BLS12_381TwistDblLineCoeffs (
 
 
     // Compute 𝜆 = 3x²/2y
-    RawBLS12_381_384::Element lambda_real, lambda_imaginary, aux_real, aux_imaginary, three;
+    RawBLS12_381_384::Element lambda_real, lambda_imaginary, aux_real, aux_imaginary, twice_lambda;
     BLS12_381ComplexAddFe(y_real, y_imaginary, y_real, y_imaginary, lambda_real, lambda_imaginary); // 𝜆 = 2y
     BLS12_381ComplexInvFe(lambda_real, lambda_imaginary, lambda_real, lambda_imaginary); // 𝜆 = 1/2y
     BLS12_381ComplexMulFe(x_real, x_imaginary, x_real, x_imaginary, aux_real, aux_imaginary); // aux = x²
     BLS12_381ComplexMulFe(lambda_real, lambda_imaginary, aux_real, aux_imaginary, lambda_real, lambda_imaginary); // 𝜆 = x²/2y
-    bls12_381.fromUI(three, 3); // 𝜆 = 3x²/2y
-    bls12_381.mul(lambda_real, lambda_real, three);
-    bls12_381.mul(lambda_imaginary, lambda_imaginary, three);
+    bls12_381.add(twice_lambda, lambda_real, lambda_real); // 𝜆 = 3x²/2y, as 2𝜆 + 𝜆
+    bls12_381.add(lambda_real, twice_lambda, lambda_real);
+    bls12_381.add(twice_lambda, lambda_imaginary, lambda_imaginary);
+    bls12_381.add(lambda_imaginary, twice_lambda, lambda_imaginary);
 
     // Compute 𝜇 = y - 𝜆x
     RawBLS12_381_384::Element mu_real, mu_imaginary;
