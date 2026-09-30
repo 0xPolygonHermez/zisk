@@ -9,7 +9,6 @@
 ; ============================================================================
 
 u64 R1_PT_R[8]   = 0, 0, 0, 0, 0, 0, 0, 0
-u64 R1_PT_HDR[2] = 0, 0
 u64 R1_OC_HDR[5] = 0, 0, 0, 0, 0
 u64 R1_OC_LHS[4] = 0, 0, 0, 0
 u64 R1_OC_X3[4]  = 0, 0, 0, 0
@@ -65,11 +64,8 @@ rpa_yn:
 	sub(r7, 1) -> r7
 	jump(rpa_yl)
 rpa_doadd:
-	copyb(0, R1_PT_HDR) -> r5
-	copyb(0, R1_PT_R) -> r6
-	copyb(r5, r6) -> 8[a + 0]
-	copyb(r5, r11) -> 8[a + 8]
-	secp256r1_add(0, r5)
+	copyb(0, R1_PT_R) -> r5
+	secp256r1_add(r5, r11)
 	jump(rpa_store)
 rpa_dodbl:
 	copyb(0, R1_PT_R) -> r5
@@ -204,7 +200,6 @@ roc_no:
 u64 R1_SM_K[4]     = 0, 0, 0, 0
 u64 R1_SM_BASE[8]  = 0, 0, 0, 0, 0, 0, 0, 0
 u64 R1_SM_RES[8]   = 0, 0, 0, 0, 0, 0, 0, 0
-u64 R1_SM_HDR[2]   = 0, 0
 u64 R1_SM_RESPTR[1] = 0
 
 ; u64 zisklib_scalar_mul_secp256r1(const u64* k, const u64* p, u64* result)
@@ -352,12 +347,9 @@ rsm_yn:
 	sub(r7, 1) -> r7
 	jump(rsm_yl)
 rsm_doadd:
-	copyb(0, R1_SM_HDR) -> r5
-	copyb(0, R1_SM_RES) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, R1_SM_RES) -> r5
 	copyb(0, R1_SM_BASE) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	secp256r1_add(0, r5)
+	secp256r1_add(r5, r6)
 	jump(rsm_next)
 rsm_dodbl2:
 	copyb(0, R1_SM_RES) -> r5
@@ -407,7 +399,6 @@ u64 R1_D2_TINF[1]  = 0
 u64 R1_D2_RES[8]   = 0
 u64 R1_D2_RESPTR[1] = 0
 u64 R1_D2_PTPTR[1] = 0
-u64 R1_D2_HDR[2]   = 0
 u64 R1_D2_SAVE[2]  = 0
 
 ; r1_addpt [leaf]: res(R1_D2_RES) += *(R1_D2_PTPTR); r13 = res_inf in/out.
@@ -464,13 +455,10 @@ ra_yn:
 	sub(r7, 1) -> r7
 	jump(ra_yl)
 ra_doadd:
-	copyb(0, R1_D2_HDR) -> r5
-	copyb(0, R1_D2_RES) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, R1_D2_RES) -> r5
 	copyb(0, R1_D2_PTPTR) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	secp256r1_add(0, r5)
+	secp256r1_add(r5, r6)
 	ret
 ra_dodbl:
 	copyb(0, R1_D2_RES) -> r5

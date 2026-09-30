@@ -5,6 +5,7 @@ use crate::{executors::Bls12_381Curve, ARITH_EQ_384_U64S_DOUBLE};
 
 pub const BLS12_381_CURVE_DBL_MEM_CONFIG: ArithEq384MemInputConfig = ArithEq384MemInputConfig {
     indirect_params: 0,
+    direct_ab: false,
     rewrite_params: true,
     read_params: 1,
     write_params: 1,

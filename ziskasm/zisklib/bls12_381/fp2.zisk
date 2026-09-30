@@ -1,13 +1,12 @@
 ; ============================================================================
 ; bls12_381/fp2.zisk - degree-2 extension Fp2 = Fp[u]/(u²+1). Mirrors
 ; ziskos/.../bls12_381/fp2.rs. Arithmetic runs on the bls12_381 complex
-; precompiles (2-ptr header [&f1,&f2], each 12 u64 = real‖imag, f1 in place).
+; precompiles (a=&f1, b=&f2 directly, each 12 u64 = real‖imag, f1 in place).
 ; inv/sqrt use FCALL_BLS12_381_FP2_INV / _FP2_SQRT + verify. Non-leaf (copy inputs
 ; via bn254_memcpy). Alias rule: OUTPUT must not alias operand b. Prefix lf2_.
 ; Fp2 element = 12 u64: real (0..5) ‖ imag (6..11).
 ; ============================================================================
 
-u64 BLS_F2_HDR[2]   = 0, 0
 u64 BLS_F2_PA[1]    = 0
 u64 BLS_F2_PB[1]    = 0
 u64 BLS_F2_PR[1]    = 0
@@ -36,14 +35,11 @@ zisklib_add_fp2_bls12_381:
 	copyb(r11, 8[a + 0]) -> r11
 	copyb(0, 12) -> r12
 	call bn254_memcpy
-	copyb(0, BLS_F2_HDR) -> r5
-	copyb(0, BLS_F2_PR) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
 	copyb(0, BLS_F2_PB) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	bls12_381_complex_add(0, r5) -> r14
+	bls12_381_complex_add(r5, r6) -> r14
 	pop r1
 	ret
 
@@ -58,14 +54,11 @@ zisklib_sub_fp2_bls12_381:
 	copyb(r11, 8[a + 0]) -> r11
 	copyb(0, 12) -> r12
 	call bn254_memcpy
-	copyb(0, BLS_F2_HDR) -> r5
-	copyb(0, BLS_F2_PR) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
 	copyb(0, BLS_F2_PB) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	bls12_381_complex_sub(0, r5) -> r14
+	bls12_381_complex_sub(r5, r6) -> r14
 	pop r1
 	ret
 
@@ -80,14 +73,11 @@ zisklib_mul_fp2_bls12_381:
 	copyb(r11, 8[a + 0]) -> r11
 	copyb(0, 12) -> r12
 	call bn254_memcpy
-	copyb(0, BLS_F2_HDR) -> r5
-	copyb(0, BLS_F2_PR) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
 	copyb(0, BLS_F2_PB) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	bls12_381_complex_mul(0, r5) -> r14
+	bls12_381_complex_mul(r5, r6) -> r14
 	pop r1
 	ret
 
@@ -102,14 +92,11 @@ zisklib_dbl_fp2_bls12_381:
 	copyb(r11, 8[a + 0]) -> r11
 	copyb(0, 12) -> r12
 	call bn254_memcpy
-	copyb(0, BLS_F2_HDR) -> r5
-	copyb(0, BLS_F2_PR) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
 	copyb(0, BLS_F2_PA) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	bls12_381_complex_add(0, r5) -> r14
+	bls12_381_complex_add(r5, r6) -> r14
 	pop r1
 	ret
 
@@ -124,14 +111,11 @@ zisklib_square_fp2_bls12_381:
 	copyb(r11, 8[a + 0]) -> r11
 	copyb(0, 12) -> r12
 	call bn254_memcpy
-	copyb(0, BLS_F2_HDR) -> r5
-	copyb(0, BLS_F2_PR) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
 	copyb(0, BLS_F2_PA) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	bls12_381_complex_mul(0, r5) -> r14
+	bls12_381_complex_mul(r5, r6) -> r14
 	pop r1
 	ret
 
@@ -144,13 +128,10 @@ zisklib_neg_fp2_bls12_381:
 	copyb(r11, 8[a + 0]) -> r11
 	copyb(0, 12) -> r12
 	call bn254_memcpy
-	copyb(0, BLS_F2_HDR) -> r5
-	copyb(0, BLS_F2_PR) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
 	copyb(0, BLS_F2_NEGMUL) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	bls12_381_complex_mul(0, r5) -> r14
+	bls12_381_complex_mul(r5, r6) -> r14
 	pop r1
 	ret
 
@@ -181,13 +162,10 @@ zisklib_scalar_mul_fp2_bls12_381:
 	copyb(r11, 8[a + 0]) -> r11
 	copyb(0, 12) -> r12
 	call bn254_memcpy
-	copyb(0, BLS_F2_HDR) -> r5
-	copyb(0, BLS_F2_PR) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
 	copyb(0, BLS_F2_WB) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	bls12_381_complex_mul(0, r5) -> r14
+	bls12_381_complex_mul(r5, r6) -> r14
 	pop r1
 	ret
 
@@ -227,13 +205,10 @@ zisklib_conjugate_fp2_bls12_381:
 	add(r11, 48) -> r11             ; &WB[6]
 	copyb(0, 6) -> r12
 	call bn254_memcpy
-	copyb(0, BLS_F2_HDR) -> r5
-	copyb(0, BLS_F2_PR) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_F2_PR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
 	copyb(0, BLS_F2_WB) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	bls12_381_complex_sub(0, r5) -> r14
+	bls12_381_complex_sub(r5, r6) -> r14
 	pop r1
 	ret
 

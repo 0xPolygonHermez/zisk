@@ -141,19 +141,15 @@ airtemplate Blake2s(const int N = 2**20) {
     // Per-op discriminator: the main step of the operation, broadcast to every row of the cycle
     col witness bits(40) op_step;
 
-    // Positions of the operation data within step_addr
+    // Positions of the operation data within step_addr. The op is called with two direct
+    // operands: main operand a is the state address (the result overwrites it) and b is the input
+    // address; there is no parameter struct, so no indirection is read from memory.
     const int STEP_MAIN = 0;
-    const int ADDR_OP = STEP_MAIN + 1;
-    const int ADDR_STATE = ADDR_OP + 1;
-    const int ADDR_INPUT = ADDR_STATE + 1;
-    const int ADDR_IND_0 = ADDR_INPUT + 1;
-    const int ADDR_IND_1 = ADDR_IND_0 + 1;
+    const int ADDR_STATE = STEP_MAIN + 1;   // main operand a
+    const int ADDR_INPUT = ADDR_STATE + 1;  // main operand b
 
     op_step <== clock_shift(step_addr, STEP_MAIN, start: 0, end: CLOCKS);
 
-    // Verify address indirections match
-    clock_eq(step_addr, ADDR_STATE, ADDR_IND_0) === 0;
-    clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // G-FUNCTION CONSTRAINTS
@@ -344,7 +340,6 @@ airtemplate Blake2s(const int N = 2**20) {
     // =============================================================
     //   clock  0..7  | STEP_MAIN     | R | ADDR_INPUT + 8·k |  m[2k], m[2k+1]
     //   clock  8..15 | STEP_MAIN     | R | ADDR_STATE + 8·k |  v[2k], v[2k+1]
-    //   clock 16..17 | STEP_MAIN     | R | ADDR_OP + 8·k    |  ADDR_IND_k
     //   clock 72..79 | STEP_MAIN + 1 | W | ADDR_STATE + 8·k |  v'[2k], v'[2k+1]
     // =============================================================
     //
@@ -360,22 +355,18 @@ airtemplate Blake2s(const int N = 2**20) {
     const int WORD_SIZE = 8;                                              // bytes per u64 memory word
     const int NUM_INPUT_WORDS = 8;                                        // m[0..15] as 8 u64 words
     const int NUM_STATE_WORDS = 8;                                        // v[0..15] as 8 u64 words
-    const int NUM_PARAMS = 2;                                             // state ptr, input ptr
     const int READ_INPUT_START = 0;
     const int READ_STATE_START = READ_INPUT_START + NUM_INPUT_WORDS;      // 8
-    const int READ_PARAMS_START = READ_STATE_START + NUM_STATE_WORDS;     // 16
     const int WRITE_STATE_START = CLOCKS - NUM_STATE_WORDS;               // 48
 
     const expr clks_read_input = clock_set(start: READ_INPUT_START, end: READ_INPUT_START + NUM_INPUT_WORDS);
     const expr clks_read_state = clock_set(start: READ_STATE_START, end: READ_STATE_START + NUM_STATE_WORDS);
-    const expr clks_read_params = clock_set(start: READ_PARAMS_START, end: READ_PARAMS_START + NUM_PARAMS);
     const expr clks_write_state = clock_set(start: WRITE_STATE_START, end: CLOCKS);
-    const expr clks_mem = clks_read_input + clks_read_state + clks_read_params + clks_write_state;
+    const expr clks_mem = clks_read_input + clks_read_state + clks_write_state;
 
     const expr mem_addr =
         clock_shift(step_addr, ADDR_INPUT, start: READ_INPUT_START, end: READ_INPUT_START + NUM_INPUT_WORDS, delta: WORD_SIZE) +
         clock_shift(step_addr, ADDR_STATE, start: READ_STATE_START, end: READ_STATE_START + NUM_STATE_WORDS, delta: WORD_SIZE) +
-        clock_shift(step_addr, ADDR_OP, start: READ_PARAMS_START, end: READ_PARAMS_START + NUM_PARAMS, delta: WORD_SIZE) +
         clock_shift(step_addr, ADDR_STATE, start: WRITE_STATE_START, end: CLOCKS, delta: WORD_SIZE);
 
     const expr mem_value[2];
@@ -385,8 +376,6 @@ airtemplate Blake2s(const int N = 2**20) {
         CLK[10] * (10)'vb_packed + CLK[11] * (9)'vb_packed +
         CLK[12] * (12)'vc_packed + CLK[13] * (11)'vc_packed +
         CLK[14] * (14)'vd_packed + CLK[15] * (13)'vd_packed +
-        clock_shift(step_addr, ADDR_IND_0, READ_PARAMS_START) +
-        clock_shift(step_addr, ADDR_IND_1, READ_PARAMS_START + 1) +
         CLK[WRITE_STATE_START + 0] * va_pp_packed'(4) + CLK[WRITE_STATE_START + 1] * va_pp_packed'(5) +
         CLK[WRITE_STATE_START + 2] * vb_pp_packed'(5) + CLK[WRITE_STATE_START + 3] * vb_pp_packed'(2) +
         CLK[WRITE_STATE_START + 4] * vc_pp_packed'(2) + CLK[WRITE_STATE_START + 5] * (1)'vc_pp_packed +
@@ -402,7 +391,6 @@ airtemplate Blake2s(const int N = 2**20) {
         CLK[WRITE_STATE_START + 2] * vb_pp_packed'(2) + CLK[WRITE_STATE_START + 3] * vb_pp_packed'(3) +
         CLK[WRITE_STATE_START + 4] * vc_pp_packed'(3) + CLK[WRITE_STATE_START + 5] * vc_pp_packed +
         CLK[WRITE_STATE_START + 6] * vd_pp_packed + CLK[WRITE_STATE_START + 7] * (3)'vd_pp_packed;
-        // addresses are 32-bit values, so the high half of the param reads is 0
 
     precompiled_mem_op(
         is_write: clks_write_state,
@@ -418,8 +406,8 @@ airtemplate Blake2s(const int N = 2**20) {
     col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Blake2br operation, 0 otherwise
     in_use_clk_0 <== CLK_0 * in_use;
 
-    proves_operation(op: OP_BLAKE2S, b: [step_addr'(ADDR_OP), 0], main_step: step_addr'(STEP_MAIN),
-                     mul: in_use_clk_0);
+    proves_operation(op: OP_BLAKE2S, a: [step_addr'(ADDR_STATE), 0], b: [step_addr'(ADDR_INPUT), 0],
+                     main_step: step_addr'(STEP_MAIN), mul: in_use_clk_0);
 
     // Given a,b,c,active it checks c == (a + b) mod 2³² when active == 1
     // Assumes that a,b,c ∈ [0, 2³²), active ∈ {0,1} and that p > 2³²
@@ -459,7 +447,7 @@ airtemplate Blake2s(const int N = 2**20) {
     }
 
     // At the first row of each cycle, returns the difference between the values of
-    // mvcol at cycle positions pos1 and pos2 (used to equate address indirections)
+    // mvcol at cycle positions pos1 and pos2 (used to equate cycle positions of step_addr)
     function clock_eq(const expr mvcol, int pos1, int pos2): const expr {
         return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2));
     }

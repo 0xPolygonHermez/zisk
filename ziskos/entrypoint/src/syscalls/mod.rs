@@ -97,6 +97,36 @@ pub use sha256f::*;
 
 #[macro_export]
 macro_rules! ziskos_syscall {
+    // Two direct operands: `csrs port, a` followed by `add x0, b, x0`. The transpiler folds the
+    // pair into a single precompiled instruction with a = $a and b = $b (the `add` is never
+    // executed), so the precompile receives both addresses without a parameter struct in memory.
+    // Two direct operands plus a static argument: `csrs port, a` followed by `addi x0, b, imm`
+    // (transpiled to one precompiled instruction with a = $a, b = $b and extended_arg = imm).
+    ($csr_addr:expr, a: $a:expr, b: $b:expr, imm: $imm:expr) => {{
+        unsafe {
+            core::arch::asm!(
+                concat!("csrs {port}, {a}"),
+                "addi x0, {b}, {imm}",
+                port = const $csr_addr,
+                a = in(reg) $a,
+                b = in(reg) $b,
+                imm = const $imm,
+                options(nostack)
+            );
+        }
+    }};
+    ($csr_addr:expr, a: $a:expr, b: $b:expr) => {{
+        unsafe {
+            core::arch::asm!(
+                concat!("csrs {port}, {a}"),
+                "add x0, {b}, x0",
+                port = const $csr_addr,
+                a = in(reg) $a,
+                b = in(reg) $b,
+                options(nostack)
+            );
+        }
+    }};
     ($csr_addr:expr, $addr:expr) => {{
         unsafe {
             core::arch::asm!(

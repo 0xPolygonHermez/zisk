@@ -1,14 +1,14 @@
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 
-// Memory layout
-pub const PARAMS: usize = 3;
+// Bus payload layout: [op,op_type,a,b,step,index,state[16],input[16]], with a = state address
+// (the result overwrites it) and b = input address. The round index is the static argument.
+pub const STATIC_PARAMS: usize = 1;
 pub const READ_PARAMS: usize = 2;
-pub const DIRECT_READ_PARAMS: usize = 1;
-pub const DIRECT_READ_PARAM_POS: usize = 0;
 pub const WRITE_PARAMS: usize = 1;
 pub const RESULT_PARAMS: usize = 0;
 pub const PARAM_CHUNKS: usize = 16;
-pub const START_READ_PARAMS: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + PARAMS;
+pub const INDEX_POS: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+pub const START_READ_PARAMS: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + STATIC_PARAMS;
 
 // Generic Parameters
 pub const CLOCKS_PER_G: usize = 1;

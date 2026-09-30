@@ -1,10 +1,10 @@
 use proofman_fields::PrimeField64;
 use zisk_precomp_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
 
-use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+use zisk_common::A;
 use zisk_core::blake2sf;
 
-use crate::blake2s_constants::{PARAMS, PARAM_CHUNKS, READ_PARAMS, START_READ_PARAMS};
+use crate::blake2s_constants::{PARAM_CHUNKS, READ_PARAMS, START_READ_PARAMS};
 use crate::Blake2sSM;
 
 impl<F: PrimeField64> PrecompileMemInputs for Blake2sSM<F> {
@@ -15,21 +15,12 @@ impl<F: PrimeField64> PrecompileMemInputs for Blake2sSM<F> {
         only_counters: bool,
         mem_processors: &mut P,
     ) {
-        // data = [op,op_type,a,b,step,addr[2],state[8],input[8]]
-
-        // Start by generating the params (the two indirection reads)
-        for iparam in 0..PARAMS {
-            MemBusHelpers::mem_aligned_read(
-                addr_main + iparam as u32 * 8,
-                step_main,
-                data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + iparam],
-                mem_processors,
-            );
-        }
+        // a = state address (read and written back), b = input address (read only); see the
+        // payload layout in the constants module.
+        let param_addrs = [data[A] as u32, addr_main];
 
         // Generate memory load params
-        for iparam in 0..READ_PARAMS {
-            let param_addr = data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + iparam] as u32;
+        for (iparam, param_addr) in param_addrs.iter().enumerate().take(READ_PARAMS) {
             for ichunk in 0..PARAM_CHUNKS {
                 MemBusHelpers::mem_aligned_read(
                     param_addr + ichunk as u32 * 8,
@@ -52,8 +43,8 @@ impl<F: PrimeField64> PrecompileMemInputs for Blake2sSM<F> {
             write_data.copy_from_slice(&state);
         }
 
-        // verify write param (the permuted state goes back through the state pointer)
-        let write_addr = data[OPERATION_PRECOMPILED_BUS_DATA_SIZE] as u32;
+        // verify write param (the new state goes back to the state address, a)
+        let write_addr = param_addrs[0];
         for (ichunk, write_data) in write_data.iter().enumerate().take(PARAM_CHUNKS) {
             let param_addr = write_addr + ichunk as u32 * 8;
             MemBusHelpers::mem_aligned_write(param_addr, step_main, *write_data, mem_processors);
@@ -61,17 +52,9 @@ impl<F: PrimeField64> PrecompileMemInputs for Blake2sSM<F> {
     }
 
     fn should_skip<P: MemProcessor>(addr_main: u32, data: &[u64], mem_processors: &mut P) -> bool {
-        // Check both param words at addr_main (addr_state, addr_input)
-        for iparam in 0..PARAMS {
-            let addr = addr_main + iparam as u32 * 8;
-            if !mem_processors.skip_addr(addr) {
-                return false;
-            }
-        }
-
-        // Check READ_PARAMS arrays (state and input, each PARAM_CHUNKS u64s)
-        for iparam in 0..READ_PARAMS {
-            let param_addr = data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + iparam] as u32;
+        // Check the READ_PARAMS arrays (state at a and input at b, each PARAM_CHUNKS u64s); the
+        // state is also the write address
+        for param_addr in [data[A] as u32, addr_main] {
             for ichunk in 0..PARAM_CHUNKS {
                 let addr = param_addr + ichunk as u32 * 8;
                 if !mem_processors.skip_addr(addr) {
@@ -79,16 +62,6 @@ impl<F: PrimeField64> PrecompileMemInputs for Blake2sSM<F> {
                 }
             }
         }
-
-        // Check write address (output state array)
-        let write_addr = data[OPERATION_PRECOMPILED_BUS_DATA_SIZE] as u32;
-        for ichunk in 0..PARAM_CHUNKS {
-            let addr = write_addr + ichunk as u32 * 8;
-            if !mem_processors.skip_addr(addr) {
-                return false;
-            }
-        }
-
         true
     }
 }

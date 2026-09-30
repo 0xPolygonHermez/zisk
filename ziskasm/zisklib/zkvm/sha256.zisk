@@ -8,8 +8,8 @@
 ; Mirrors ziskos `sha256`: absorb 64-byte (512-bit) blocks with the `sha256`
 ; precompile, then a padded final block (0x80, zero fill, 64-bit big-endian bit
 ; length in the last 8 bytes; two blocks when the remainder leaves < 9 bytes).
-; The precompile takes a 2-pointer header [&state, &input]: `state` = 8 u32 packed
-; as 4 u64 (updated in place), `input` = one 64-byte block as 8 u64. Input bytes
+; The precompile takes two direct operands, a = &state and b = &input: `state` = 8 u32
+; packed as 4 u64 (updated in place), `input` = one 64-byte block as 8 u64. Input bytes
 ; and the length field are consumed verbatim; the precompile does SHA-256's
 ; big-endian message schedule internally.
 ;
@@ -22,11 +22,10 @@
 const u64 SHA_STATE_INIT[4] =
 	0xbb67ae856a09e667, 0xa54ff53a3c6ef372, 0x9b05688c510e527f, 0x5be0cd191f83d9ab
 
-; RAM scratch: the running state (updated in place by the precompile), one
-; 64-byte input block, and the 2-pointer precompile header [&state, &input].
+; RAM scratch: the running state (updated in place by the precompile) and one
+; 64-byte input block.
 u64 SHA_STATE[4] = 0, 0, 0, 0
 u64 SHA_INPUT[8] = 0, 0, 0, 0, 0, 0, 0, 0
-u64 SHA_HDR[2]   = 0, 0
 
 ; ----------------------------------------------------------------------------
 ; zkvm_status ziskasm_zkvm_sha256(const u8* input, u64 len, u8* output) -> r10 = 0
@@ -35,7 +34,7 @@ u64 SHA_HDR[2]   = 0, 0
 ;   internal secp256k1/schnorr + BLS12-381 hash-to-curve callers all reach it.
 ;   Returns r10 = 0 (ZKVM_EOK for the zkvm_sha256 redirect; the void callers ignore
 ;   it — r10 is caller-saved and clobbered by the call anyway).
-;   Caller-saved regs only: r5 holds the header address across every compress;
+;   Caller-saved regs only: r5 is scratch;
 ;   r13 is the byte offset / remaining / output-word index; r6/r7/r14/r15 scratch.
 ; ----------------------------------------------------------------------------
 ziskasm_zkvm_sha256:
@@ -52,13 +51,7 @@ sh_init:
 	sub(r14, 1) -> r14
 	jump(sh_init)
 sh_hdr:
-	; --- build the [&state, &input] header once (both pointers are fixed) ---
-	copyb(0, SHA_HDR) -> r5
-	copyb(0, SHA_STATE) -> r6
-	copyb(r5, r6) -> 8[a + 0]           ; &state
-	copyb(0, SHA_INPUT) -> r6
-	copyb(r5, r6) -> 8[a + 8]           ; &input
-	; r5 = &header, reserved for every sha256(0, r5) below
+	; sha256 takes a = &SHA_STATE (overwritten in place) and b = &SHA_INPUT directly
 
 	; --- absorb complete 64-byte blocks ---
 	copyb(0, 0) -> r13                  ; offset = 0
@@ -77,7 +70,7 @@ sh_cpb:
 	sub(r14, 1) -> r14
 	jump(sh_cpb)
 sh_comp:
-	sha256(0, r5)                       ; state <- compress(state, block), in place
+	sha256(SHA_STATE, SHA_INPUT)        ; state <- compress(state, block), in place
 	add(r13, 64) -> r13
 	jump(sh_full)
 
@@ -111,7 +104,7 @@ sh_pad:
 	copyb(r6, 0x80) -> 1[a + 0]
 	ltu(r13, 56), j(sh_len)             ; remaining < 56 -> length fits in this block
 	; remaining >= 56: compress this block, then put the length in a fresh block
-	sha256(0, r5)
+	sha256(SHA_STATE, SHA_INPUT)
 	copyb(0, SHA_INPUT) -> r6
 	copyb(0, 8) -> r7
 sh_z2:
@@ -135,7 +128,7 @@ sh_lenl:
 	add(r6, 1) -> r6
 	jump(sh_lenl)
 sh_out:
-	sha256(0, r5)
+	sha256(SHA_STATE, SHA_INPUT)
 
 	; --- write the 8 state words as 32 big-endian bytes to output ---
 	copyb(0, 0) -> r13                  ; j = 0 (u32 word index)

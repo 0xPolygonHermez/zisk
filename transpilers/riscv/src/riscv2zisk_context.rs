@@ -1853,31 +1853,39 @@ impl<'a> Riscv2ZiskContext<'a> {
                     assert!(!next_instructions.is_empty());
                     self.transpile_profile_pattern(i, next_instructions);
                 }
-                SYSCALL_KECCAKF_ID
-                | SYSCALL_ARITH256_ID
-                | SYSCALL_ARITH256_MOD_ID
-                | SYSCALL_SECP256K1_ADD_ID
-                | SYSCALL_SECP256K1_DBL_ID
-                | SYSCALL_SHA256F_ID
+                // Precompiles called with two direct operands (see transpile_precompiled_ab_pattern)
+                SYSCALL_SECP256K1_ADD_ID
+                | SYSCALL_SECP256R1_ADD_ID
                 | SYSCALL_BN254_CURVE_ADD_ID
-                | SYSCALL_BN254_CURVE_DBL_ID
                 | SYSCALL_BN254_COMPLEX_ADD_ID
                 | SYSCALL_BN254_COMPLEX_SUB_ID
                 | SYSCALL_BN254_COMPLEX_MUL_ID
-                | SYSCALL_ARITH384_MOD_ID
                 | SYSCALL_BLS12_381_CURVE_ADD_ID
-                | SYSCALL_BLS12_381_CURVE_DBL_ID
                 | SYSCALL_BLS12_381_COMPLEX_ADD_ID
                 | SYSCALL_BLS12_381_COMPLEX_SUB_ID
                 | SYSCALL_BLS12_381_COMPLEX_MUL_ID
-                | SYSCALL_POSEIDON2_ID
-                | SYSCALL_POSEIDON1_ID
-                | SYSCALL_SECP256R1_ADD_ID
-                | SYSCALL_SECP256R1_DBL_ID
-                | SYSCALL_BLAKE2B_ROUND_ID
                 | SYSCALL_BABYJUBJUB_ADD_ID
+                | SYSCALL_SHA256F_ID
                 | SYSCALL_BLAKE3F_ID
                 | SYSCALL_BLAKE2SF_ID => {
+                    let precompiled =
+                        CSR_PRECOMPILED[i.csr as usize - CSR_PRECOMPILED_ADDR_START as usize];
+                    self.transpile_precompiled_ab_pattern(i, next_instructions, precompiled);
+                }
+                // Two direct operands plus a static argument (the round index)
+                SYSCALL_BLAKE2B_ROUND_ID => {
+                    self.transpile_precompiled_abx_pattern(i, next_instructions, "blake2b");
+                }
+                SYSCALL_KECCAKF_ID
+                | SYSCALL_ARITH256_ID
+                | SYSCALL_ARITH256_MOD_ID
+                | SYSCALL_SECP256K1_DBL_ID
+                | SYSCALL_BN254_CURVE_DBL_ID
+                | SYSCALL_ARITH384_MOD_ID
+                | SYSCALL_BLS12_381_CURVE_DBL_ID
+                | SYSCALL_POSEIDON2_ID
+                | SYSCALL_POSEIDON1_ID
+                | SYSCALL_SECP256R1_DBL_ID => {
                     let mut zib =
                         ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                     zib.src_b("reg", i.rs1 as u64, false);
@@ -2657,6 +2665,75 @@ impl<'a> Riscv2ZiskContext<'a> {
         panic!(
             "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as memcpy/memcmp with a \
                         consecutive add/addi (next[0]:{})",
+            i.csr, i.rom_address, next_0
+        );
+    }
+
+    /// Precompiles that take two operands directly in registers (no parameter struct in memory):
+    /// the first one is the operand that receives the result. The guest emits `csrs port, reg(p1)`
+    /// followed by `add x0, reg(p2), x0`, and both are folded into a single precompiled instruction
+    /// with a = reg(p1) and b = reg(p2), skipping the `add`.
+    fn transpile_precompiled_ab_pattern(
+        &mut self,
+        i: &RiscvInst,
+        next_instructions: &[RiscvInst],
+        op: &str,
+    ) {
+        if i.imme == 0
+            && next_instructions.len() > 1
+            && next_instructions[0].inst_name == RiscvInstName::Add
+            && next_instructions[0].rd == 0
+            && next_instructions[0].rs2 == 0
+        {
+            // precompiled a,b transpilation pattern:
+            //
+            //  csrs  0x81x, reg(p1)          ===>  precompiled reg(p1), reg(p2) ─┐
+            //  add   x0, reg(p2), x0               add x0, reg(p2), x0           │ jmp+8
+            //  ..........                          ..........   <───────────────┘
+            let p1 = i.rs1;
+            let p2 = next_instructions[0].rs1;
+            let next_pc = next_instructions[1].rom_address;
+            self.create_extended_precompiles_op(i, op, p1, p2 as u64, 0, 0, false, next_pc);
+            return;
+        }
+        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
+        panic!(
+            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as {op} with a \
+                        consecutive add x0, reg, x0 (next[0]:{})",
+            i.csr, i.rom_address, next_0
+        );
+    }
+
+    /// Like `transpile_precompiled_ab_pattern` with a static argument on top: the guest emits
+    /// `csrs port, reg(p1)` followed by `addi x0, reg(p2), imm`, folded into one precompiled
+    /// instruction with a = reg(p1), b = reg(p2) and extended_arg = imm.
+    fn transpile_precompiled_abx_pattern(
+        &mut self,
+        i: &RiscvInst,
+        next_instructions: &[RiscvInst],
+        op: &str,
+    ) {
+        if i.imme == 0
+            && next_instructions.len() > 1
+            && next_instructions[0].inst_name == RiscvInstName::Addi
+            && next_instructions[0].rd == 0
+        {
+            // precompiled a,b,x transpilation pattern:
+            //
+            //  csrs  0x81x, reg(p1)          ===>  precompiled reg(p1), reg(p2), imm ─┐
+            //  addi  x0, reg(p2), imm              addi x0, reg(p2), imm              │ jmp+8
+            //  ..........                          ..........   <────────────────────┘
+            let p1 = i.rs1;
+            let p2 = next_instructions[0].rs1;
+            let imm = next_instructions[0].imm as i64;
+            let next_pc = next_instructions[1].rom_address;
+            self.create_extended_precompiles_op(i, op, p1, p2 as u64, 0, imm, false, next_pc);
+            return;
+        }
+        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
+        panic!(
+            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as {op} with a \
+                        consecutive addi x0, reg, imm (next[0]:{})",
             i.csr, i.rom_address, next_0
         );
     }

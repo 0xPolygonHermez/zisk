@@ -1,12 +1,12 @@
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 
-// Memory layout
-pub const PARAMS: usize = 2;
+// Bus payload layout: [op,op_type,a,b,step,state[8],input[8]], with a = state address (the result
+// overwrites it) and b = input address. No parameter struct, no indirections.
 pub const READ_PARAMS: usize = 2;
 pub const WRITE_PARAMS: usize = 1;
 pub const RESULT_PARAMS: usize = 0;
 pub const PARAM_CHUNKS: usize = 8;
-pub const START_READ_PARAMS: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + PARAMS;
+pub const START_READ_PARAMS: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 
 // Generic Parameters
 pub const CLOCKS_PER_G: usize = 1;
