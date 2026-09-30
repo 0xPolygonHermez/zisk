@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <algorithm>
+#include <time.h>
 #include "fcall/fcall.hpp"
 
 #if defined(__x86_64__) && defined(__linux__)
@@ -67,7 +69,8 @@ int BabyJubJubAddP(const uint64_t *p1, const uint64_t *p2, uint64_t *p3);
 
 // Per-call cost of the op itself, read with rdtsc and rdpmc (see emulator-asm/src/emu.hpp)
 static struct perf_event_mmap_page *perf_page = NULL;
-static uint64_t acc_cycles = 0, acc_instructions = 0, overhead_cycles = 0, overhead_instructions = 0;
+static uint64_t acc_cycles = 0, acc_instructions = 0;
+static double overhead_cycles = 0, overhead_instructions = 0;
 
 static inline uint64_t rdpmc_instructions() {
     struct perf_event_mmap_page *pc = perf_page;
@@ -97,10 +100,10 @@ static inline Sample sample() {
     _mm_lfence(); s.c = __rdtsc(); _mm_lfence(); s.i = rdpmc_instructions(); _mm_lfence();
     return s;
 }
+// Accumulates the raw measurement; the mean overhead is subtracted when printing
 static inline void accumulate(const Sample &a, const Sample &b) {
-    uint64_t c = b.c - a.c, i = b.i - a.i;
-    acc_cycles += c > overhead_cycles ? c - overhead_cycles : 0;
-    acc_instructions += i > overhead_instructions ? i - overhead_instructions : 0;
+    acc_cycles += b.c - a.c;
+    acc_instructions += b.i - a.i;
 }
 #define TIMED(x) ({ Sample _s0 = sample(); auto _r = (x); Sample _s1 = sample(); accumulate(_s0, _s1); _r; })
 #define TIMEDV(x) do { Sample _s0 = sample(); x; Sample _s1 = sample(); accumulate(_s0, _s1); } while (0)
@@ -530,14 +533,33 @@ static void bench(const char *filter) {
     }
     if (perf_page == NULL) fprintf(stderr, "warning: no instructions counter\n");
 
-    // Calibrate the cost of an empty measurement
-    overhead_cycles = overhead_instructions = UINT64_MAX;
-    for (int k = 0; k < 10000; k++) {
-        Sample a = sample(), b = sample();
-        if (b.c - a.c < overhead_cycles) overhead_cycles = b.c - a.c;
-        if (b.i - a.i < overhead_instructions) overhead_instructions = b.i - a.i;
+    // Calibrate the mean cost of an empty measurement, as in emulator-asm/src/emu.c: after
+    // keeping the CPU busy for 100 ms so that its clock has ramped up, and leaving out the top 1%.
+    // The mean, not the minimum, since the TSC advances in coarse steps on some CPUs
+    {
+        volatile uint64_t spin = 0;
+        struct timespec start, now;
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        do {
+            for (int k = 0; k < 100000; k++) spin++;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+        } while ((uint64_t)(now.tv_sec - start.tv_sec) * 1000000000 + now.tv_nsec - start.tv_nsec < 100000000);
+        std::vector<uint64_t> dc(100000), di(100000);
+        for (size_t k = 0; k < dc.size(); k++) {
+            Sample a = sample(), b = sample();
+            dc[k] = b.c - a.c;
+            di[k] = b.i - a.i;
+        }
+        std::sort(dc.begin(), dc.end());
+        std::sort(di.begin(), di.end());
+        size_t kept = dc.size() - dc.size() / 100;
+        double sc = 0, si = 0;
+        for (size_t k = 0; k < kept; k++) { sc += (double)dc[k]; si += (double)di[k]; }
+        overhead_cycles = sc / kept;
+        overhead_instructions = si / kept;
     }
 
+    fprintf(stderr, "measurement overhead %.1f cycles / %.1f instructions per call (mean, subtracted)\n", overhead_cycles, overhead_instructions);
     fprintf(stderr, "%-40s %10s %10s\n", "op (canonical inputs, best of 3)", "cyc/call", "instr/call");
     for (const Op &op : ops) {
         if (!matches(op, filter)) continue;
@@ -546,8 +568,10 @@ static void bench(const char *filter) {
             std::vector<size_t> offsets;
             acc_cycles = acc_instructions = 0;
             run_mode(op, true, offsets);
-            if ((double)acc_cycles / op.n < best_cyc) best_cyc = (double)acc_cycles / op.n;
-            if ((double)acc_instructions / op.n < best_ins) best_ins = (double)acc_instructions / op.n;
+            double cyc = (double)acc_cycles / op.n - overhead_cycles;
+            double ins = (double)acc_instructions / op.n - overhead_instructions;
+            if (cyc < best_cyc) best_cyc = cyc;
+            if (ins < best_ins) best_ins = ins;
         }
         fprintf(stderr, "%-40s %10.0f %10.0f\n", op.name.c_str(), best_cyc, best_ins);
     }

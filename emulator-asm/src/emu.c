@@ -99,8 +99,9 @@ static const char * asm_call_fcall_names[ASM_CALL_FCALL_IDS] = {
     [FCALL_GET_KECCAKF_CACHE_INDEX_ID] = "get_keccakf_cache_index",
 };
 
-// Cost of an empty start/stop measurement, subtracted from every recorded call
-static AsmCallSample asm_call_overhead;
+// Mean cost of an empty start/stop measurement, subtracted from the recorded calls when printing
+static double asm_call_overhead_cycles = 0;
+static double asm_call_overhead_instructions = 0;
 
 // Run-level samples, to convert TSC cycles into time and to report the whole run
 static AsmCallSample asm_call_run_start;
@@ -137,30 +138,57 @@ static void asm_call_perf_open (void)
     }
 }
 
-// Measures the minimum cost of an empty start/stop pair
+static int asm_call_compare_u64 (const void * a, const void * b)
+{
+    uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
+    return (x < y) ? -1 : (x > y);
+}
+
+// Measures the mean cost of an empty start/stop pair. The mean, and not the minimum, is what has
+// to be subtracted: the TSC advances in coarse steps on some CPUs (29 ticks on Zen 2), so single
+// measurements are quantized and only their average is meaningful. The top 1% is left out, as
+// interrupts. The CPU is kept busy for 100 ms before measuring, so that its clock has ramped up;
+// measured on a cold CPU, the overhead comes out several times larger
 static void asm_call_calibrate (void)
 {
-    asm_call_overhead.cycles = UINT64_MAX;
-    asm_call_overhead.instructions = UINT64_MAX;
-    for (int i = 0; i < 10000; i++)
+    struct timespec start, now;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    volatile uint64_t spin = 0;
+    do
+    {
+        for (int i = 0; i < 100000; i++) spin++;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+    } while ((uint64_t)(now.tv_sec - start.tv_sec) * 1000000000 + now.tv_nsec - start.tv_nsec < 100000000);
+
+    const int n = 100000;
+    static uint64_t cycles[100000], instructions[100000];
+    for (int i = 0; i < n; i++)
     {
         AsmCallSample start, stop;
         asm_call_metrics_sample(&start);
         asm_call_metrics_sample(&stop);
-        uint64_t cycles = stop.cycles - start.cycles;
-        uint64_t instructions = stop.instructions - start.instructions;
-        if (cycles < asm_call_overhead.cycles) asm_call_overhead.cycles = cycles;
-        if (instructions < asm_call_overhead.instructions) asm_call_overhead.instructions = instructions;
+        cycles[i] = stop.cycles - start.cycles;
+        instructions[i] = stop.instructions - start.instructions;
     }
+    qsort(cycles, n, sizeof(uint64_t), asm_call_compare_u64);
+    qsort(instructions, n, sizeof(uint64_t), asm_call_compare_u64);
+    const int kept = n - n / 100;
+    double sum_cycles = 0, sum_instructions = 0;
+    for (int i = 0; i < kept; i++)
+    {
+        sum_cycles += (double)cycles[i];
+        sum_instructions += (double)instructions[i];
+    }
+    asm_call_overhead_cycles = sum_cycles / kept;
+    asm_call_overhead_instructions = sum_instructions / kept;
 }
 
+// Accumulates the raw measurement; the overhead is subtracted when printing
 static inline void asm_call_metric_add (AsmCallMetric * metric, const AsmCallSample * start, const AsmCallSample * stop)
 {
-    uint64_t cycles = stop->cycles - start->cycles;
-    uint64_t instructions = stop->instructions - start->instructions;
     metric->counter++;
-    metric->cycles += (cycles > asm_call_overhead.cycles) ? cycles - asm_call_overhead.cycles : 0;
-    metric->instructions += (instructions > asm_call_overhead.instructions) ? instructions - asm_call_overhead.instructions : 0;
+    metric->cycles += stop->cycles - start->cycles;
+    metric->instructions += stop->instructions - start->instructions;
 }
 
 void asm_call_metrics_record (AsmCallMetric * metric, const AsmCallSample * start)
@@ -181,6 +209,8 @@ void asm_call_metrics_record_fcall (uint64_t function_id, const AsmCallSample * 
 
 void reset_asm_call_metrics (void)
 {
+    // Calibrate once: the emulation always runs with the CPU clock ramped up, as right after the
+    // calibration warm-up, while a later calibration could find it slowed down by an idle wait
     static bool initialized = false;
     if (!initialized)
     {
@@ -193,20 +223,31 @@ void reset_asm_call_metrics (void)
     asm_call_metrics_sample(&asm_call_run_start);
 }
 
-static void print_asm_call_metric (FILE * csv, uint64_t run_index, const char * kind, const char * name, const AsmCallMetric * metric, double ns_per_cycle, uint64_t run_cycles)
+// Prints one metric; for precompile calls, subtract_overhead removes the measurement overhead
+// of each call from the raw totals
+static void print_asm_call_metric (FILE * csv, uint64_t run_index, const char * kind, const char * name, const AsmCallMetric * metric, double ns_per_cycle, uint64_t run_cycles, bool subtract_overhead)
 {
     if (metric->counter == 0) return;
+    double cycles = (double)metric->cycles;
+    double instructions = (double)metric->instructions;
+    if (subtract_overhead)
+    {
+        cycles -= (double)metric->counter * asm_call_overhead_cycles;
+        instructions -= (double)metric->counter * asm_call_overhead_instructions;
+        if (cycles < 0) cycles = 0;
+        if (instructions < 0) instructions = 0;
+    }
     asm_printf("%-34s %10lu %10.3f %6.2f%% %10.1f %10.1f %10.1f\n",
         name,
         metric->counter,
-        (double)metric->cycles * ns_per_cycle / 1000000.0,
-        run_cycles == 0 ? 0.0 : (double)metric->cycles * 100.0 / (double)run_cycles,
-        (double)metric->cycles * ns_per_cycle / (double)metric->counter,
-        (double)metric->cycles / (double)metric->counter,
-        (double)metric->instructions / (double)metric->counter);
+        cycles * ns_per_cycle / 1000000.0,
+        run_cycles == 0 ? 0.0 : cycles * 100.0 / (double)run_cycles,
+        cycles * ns_per_cycle / (double)metric->counter,
+        cycles / (double)metric->counter,
+        instructions / (double)metric->counter);
     if (csv != NULL)
     {
-        fprintf(csv, "%lu,%s,%s,%lu,%lu,%lu\n", run_index, kind, name, metric->counter, metric->cycles, metric->instructions);
+        fprintf(csv, "%lu,%s,%s,%lu,%lu,%lu\n", run_index, kind, name, metric->counter, (uint64_t)(cycles + 0.5), (uint64_t)(instructions + 0.5));
     }
 }
 
@@ -233,23 +274,23 @@ void print_asm_call_metrics (uint64_t total_duration)
         if (csv == NULL) asm_printf("ASM_CALL_METRICS: failed opening %s errno=%d=%s\n", csv_path, errno, strerror(errno));
     }
 
-    asm_printf("\nprint_asm_call_metrics: emulation = %lu us, measurement overhead = %lu cycles / %lu instructions per call (subtracted), %.3f ns per TSC cycle\n",
-        total_duration, asm_call_overhead.cycles, asm_call_overhead.instructions, ns_per_cycle);
+    asm_printf("\nprint_asm_call_metrics: emulation = %lu us, measurement overhead = %.1f cycles / %.1f instructions per call (mean, subtracted), %.3f ns per TSC cycle\n",
+        total_duration, asm_call_overhead_cycles, asm_call_overhead_instructions, ns_per_cycle);
     asm_printf("%-34s %10s %10s %7s %10s %10s %10s\n", "precompile", "calls", "total ms", "% run", "ns/call", "cyc/call", "instr/call");
 
     AsmCallMetric total;
     memset(&total, 0, sizeof(total));
     for (int i = 0; i < ASM_CALL_COUNT; i++)
     {
-        print_asm_call_metric(csv, run_index, "call", asm_call_names[i], &asm_call_metrics.call[i], ns_per_cycle, run_cycles);
+        print_asm_call_metric(csv, run_index, "call", asm_call_names[i], &asm_call_metrics.call[i], ns_per_cycle, run_cycles, true);
         total.counter += asm_call_metrics.call[i].counter;
         total.cycles += asm_call_metrics.call[i].cycles;
         total.instructions += asm_call_metrics.call[i].instructions;
     }
-    print_asm_call_metric(csv, run_index, "total", "TOTAL precompiles", &total, ns_per_cycle, run_cycles);
+    print_asm_call_metric(csv, run_index, "total", "TOTAL precompiles", &total, ns_per_cycle, run_cycles, true);
 
     AsmCallMetric run = { 1, run_cycles, run_stop.instructions - asm_call_run_start.instructions };
-    print_asm_call_metric(csv, run_index, "run", "RUN (whole emulation)", &run, ns_per_cycle, run_cycles);
+    print_asm_call_metric(csv, run_index, "run", "RUN (whole emulation)", &run, ns_per_cycle, run_cycles, false);
 
     if (asm_call_metrics.call[ASM_CALL_FCALL].counter != 0)
     {
@@ -258,7 +299,7 @@ void print_asm_call_metrics (uint64_t total_duration)
         {
             char name[64];
             snprintf(name, sizeof(name), "%2d %s", i, asm_call_fcall_names[i] == NULL ? "?" : asm_call_fcall_names[i]);
-            print_asm_call_metric(csv, run_index, "fcall", name, &asm_call_metrics.fcall[i], ns_per_cycle, run_cycles);
+            print_asm_call_metric(csv, run_index, "fcall", name, &asm_call_metrics.fcall[i], ns_per_cycle, run_cycles, true);
         }
     }
     asm_printf("\n");

@@ -60,7 +60,8 @@ typedef enum {
 // Fcall function ids are small; unknown ids are accounted in slot 0
 #define ASM_CALL_FCALL_IDS 32
 
-// Accumulated cost of one precompile, with the measurement overhead already subtracted
+// Accumulated raw cost of one precompile; the mean measurement overhead per call is subtracted
+// when printing
 typedef struct {
     uint64_t counter;
     uint64_t cycles;        // TSC cycles
