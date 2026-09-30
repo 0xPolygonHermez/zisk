@@ -251,10 +251,10 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
 
     // Scratch: the arena below the retained accesses. Every device structure of the plan is dead
     // once run() returned (metas, offset pages and align counters are on the host) until reset()
-    // starts the next block. Carve: sort keys in/out (the sorted keys stay: they give every lane
-    // its address and step), sorted values in/out (arrival index; the output is sidx, the input
-    // becomes emit), lane, lane_first, the propagation block, one instance's rows, cub temp:
-    // 32 bytes per access here plus about 12 of cub sort temporaries.
+    // starts the next block. Carve: two key and two index buffers that the sort ping-pongs
+    // between (the sorted keys stay: they give every lane its address and step; the sorted
+    // indexes are sidx; the other two become anchors, emit and the resolved values), lane,
+    // lane_first, the propagation block, one instance's rows, cub temp: 32 bytes per access.
     uint8_t* cur = arena_;
     uint8_t* end = arena_ + (ram_low_edge_bytes(n) & ~(size_t)255);
     auto take = [&](size_t bytes) -> uint8_t* {
@@ -262,10 +262,8 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
         cur = p + bytes;
         return p;
     };
-    uint64_t* keys_in  = (uint64_t*)take(n * 8);
-    uint64_t* keys_out = (uint64_t*)take(n * 8);
-    uint32_t* vals_in  = (uint32_t*)take(n * 4);
-    uint32_t* sidx     = (uint32_t*)take(n * 4);
+    cub::DoubleBuffer<uint64_t> dkeys((uint64_t*)take(n * 8), (uint64_t*)take(n * 8));
+    cub::DoubleBuffer<uint32_t> didx((uint32_t*)take(n * 4), (uint32_t*)take(n * 4));
     uint32_t* lane     = (uint32_t*)take(n * 4);
     uint32_t* lfirst   = (uint32_t*)take(n * 4);
     Merge*    prop_in  = (Merge*)take(RF_PROP_BLOCK * sizeof(Merge));
@@ -275,8 +273,7 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     const uint32_t n_rows = instance_rows_[RF_REGION_RAM] / mem_lanes_x_row_;
     uint64_t* rows = (uint64_t*)take((size_t)n_rows * mem_words_per_row_ * 8);
     size_t t_sort = 0, t_max = 0, t_sum = 0, t_bykey = 0;
-    cub::DeviceRadixSort::SortPairs(nullptr, t_sort, keys_in, keys_out, vals_in, sidx, n, 0,
-                                    (int)(RF_STEP_BITS + RF_ADDR_BITS));
+    cub::DeviceRadixSort::SortPairs(nullptr, t_sort, dkeys, didx, n, 0, (int)(RF_STEP_BITS + RF_ADDR_BITS));
     cub::DeviceScan::InclusiveScan(nullptr, t_max, (uint32_t*)nullptr, (uint32_t*)nullptr, MaxU32Op(), n);
     cub::DeviceScan::ExclusiveSum(nullptr, t_sum, (uint32_t*)nullptr, (uint32_t*)nullptr, n);
     cub::DeviceScan::InclusiveScanByKey(nullptr, t_bykey, prop_keys, prop_in, prop_out, MergeOp(),
@@ -289,21 +286,24 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
         out->status = -3;
         return false;
     }
+    fprintf(stderr, "ram_fill: %zu accesses, scratch %zu MB (%.1f bytes per access)\n", n,
+            (size_t)(cur - arena_) >> 20, (double)(cur - arena_) / (double)n);
     RF_TRY(cudaMemcpy(&ram_writes_, d_ram_nwrites_, 8, cudaMemcpyDeviceToHost));
     RF_TRY(cudaEventRecord(ev[4]));
 
     // 1. sort by (address, step), stable
-    rf_keys_kernel<<<rf_grid(n), RF_BLOCK>>>(ram_records_, n, keys_in, vals_in);
+    rf_keys_kernel<<<rf_grid(n), RF_BLOCK>>>(ram_records_, n, dkeys.Current(), didx.Current());
     RF_TRY(cudaGetLastError());
     size_t tb = t_bytes;
-    RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, keys_in, keys_out, vals_in, sidx, n, 0,
-                                           (int)(RF_STEP_BITS + RF_ADDR_BITS)));
+    RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, dkeys, didx, n, 0, (int)(RF_STEP_BITS + RF_ADDR_BITS)));
+    uint64_t* keys_out = dkeys.Current();
+    uint32_t* sidx     = didx.Current();
     RF_TRY(cudaEventRecord(ev[1]));
 
-    // 2. lanes. keys_in is free: its halves hold the anchors and the max-scan; vals_in takes emit.
-    uint32_t* anchor = (uint32_t*)keys_in;
+    // 2. lanes. The free key buffer holds the anchors and the max-scan; the free index buffer, emit.
+    uint32_t* anchor = (uint32_t*)dkeys.Alternate();
     uint32_t* last_anchor = anchor + n;
-    uint32_t* emit = vals_in;
+    uint32_t* emit = didx.Alternate();
     rf_anchors_kernel<<<rf_grid(n), RF_BLOCK>>>(keys_out, sidx, ram_records_, n, chunk_size_bits_, anchor);
     RF_TRY(cudaGetLastError());
     tb = t_bytes;
@@ -320,8 +320,8 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     RF_TRY(cudaGetLastError());
     RF_TRY(cudaEventRecord(ev[2]));
 
-    // 3. values, in blocks with a carry. keys_in is free again and takes the resolved values.
-    uint64_t* resolved = keys_in;
+    // 3. values, in blocks with a carry. The free key buffer takes the resolved values.
+    uint64_t* resolved = dkeys.Alternate();
     RF_TRY(cudaMemset(d_unresolved, 0, 8));
     Merge carry{0, 0};
     uint32_t carry_addr = 0xFFFFFFFFu;
