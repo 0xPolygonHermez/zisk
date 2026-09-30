@@ -38,3 +38,15 @@ ziskemu --elf target/wasm32-wasip1/release/wasm-fibonacci.wasm -i /tmp/n.bin
 The emulator integration test `emulator/tests/wasm_example.rs` builds this crate for
 `wasm32-wasip1` and validates both runs end to end (transpile + emulate + check output). It is
 skipped with a notice when the `wasm32-wasip1` rustup target is not installed.
+
+## Go guests
+
+Go's `GOOS=wasip1 GOARCH=wasm` output also runs, provided the emulator is built with the `float`
+feature: the Go runtime executes f64 arithmetic even in integer-only programs, and the wasm
+machine lowers f32/f64 onto the RISC-V soft-float library that this feature links into every ROM.
+
+```bash
+cargo build --release -p ziskemu --features float
+GOOS=wasip1 GOARCH=wasm go build -o /tmp/guest.wasm .
+ziskemu --elf /tmp/guest.wasm -i /tmp/input.bin   # 8-byte LE length, data, zero-padded to 8
+```

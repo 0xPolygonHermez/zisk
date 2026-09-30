@@ -31,8 +31,10 @@ fn wasm_target_installed() -> bool {
 /// Compiles the wasm-fibonacci example crate and returns the wasm module bytes.
 fn build_example() -> Vec<u8> {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/wasm-fibonacci");
+    let target_dir = dir.join("target");
     let output = Command::new("cargo")
-        .args(["build", "--release", "--target", "wasm32-wasip1"])
+        .args(["build", "--release", "--target", "wasm32-wasip1", "--target-dir"])
+        .arg(&target_dir)
         .current_dir(&dir)
         .output()
         .expect("failed to spawn cargo");
@@ -41,7 +43,7 @@ fn build_example() -> Vec<u8> {
         "building wasm-fibonacci failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    std::fs::read(dir.join("target/wasm32-wasip1/release/wasm-fibonacci.wasm"))
+    std::fs::read(target_dir.join("wasm32-wasip1/release/wasm-fibonacci.wasm"))
         .expect("wasm artifact missing after successful build")
 }
 

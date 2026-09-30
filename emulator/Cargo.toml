@@ -72,6 +72,7 @@ default = []
 # Enable RISC-V C (compressed) extension decoding in the transpiler (see
 # zisk-riscv's `compressed`). OFF by default, matching IALIGN = 32.
 compressed = ["zisk-transpiler-riscv/compressed"]
+float = ["zisk-transpiler-riscv/float", "zisk-transpiler-wasm/float"]
 debug_stats_trace = []
 minimal_trace_index_debug = []
 handle_stdout = []

@@ -8,9 +8,12 @@
 //! * [`layout`] — the Zisk address-space and register assignment for the wasm machine.
 //! * [`emit`] — low-level instruction emitter with symbolic jump fixups.
 //! * [`lowering`] — per-function lowering of the integer wasm subset.
+//! * [`float`] — f32/f64 operators, lowered onto the RISC-V soft-float library (`float` feature).
 //! * [`wasi`] — minimal `wasi_snapshot_preview1` runtime.
 
 pub mod emit;
+#[cfg(feature = "float")]
+pub mod float;
 pub mod layout;
 pub mod lowering;
 pub mod module;
@@ -21,10 +24,13 @@ use std::error::Error;
 use emit::{Code, Fixup};
 use layout::*;
 use module::{parse_module, WasmModule};
+use zisk_core::mem::DataSection;
+use zisk_core::zisk_rom::DataSection64;
 use zisk_core::{
     ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
 use zisk_riscv::add_end_and_lib;
+use zisk_transpiler_common::elf2rom::normalize_rw_data_sections;
 
 /// Reserve below `WASM_STACK_TOP` for the synthetic entry "frame" that calls `_start`.
 const ENTRY_FRAME_RESERVE: i64 = 64;
@@ -41,10 +47,33 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
-    // Reuse the RISC-V BIOS prologue: it installs the end instruction (at ROM_EXIT) and the float
-    // handler, and the initial jump that lands at the first post-BIOS instruction (our entry
-    // routine).  The float handler is never reached by wasm code.
+    // Reuse the RISC-V BIOS prologue: it installs the end instruction (at ROM_EXIT), the float
+    // handler (with the `float` feature), and the initial jump that lands at the first post-BIOS
+    // instruction (our entry routine).
     add_end_and_lib(&mut rom);
+
+    // The soft-float library the float handler dispatches to lives in its own reserved ROM/RAM
+    // windows (see `zisk_core::mem`), so it never collides with the wasm machine's areas.
+    #[cfg(feature = "float")]
+    float::link_float_lib(&mut rom)?;
+
+    let segments = module
+        .data
+        .iter()
+        .map(|seg| DataSection { addr: WASM_MEM_BASE + seg.offset, data: seg.bytes.clone() })
+        .collect();
+    for section in normalize_rw_data_sections(segments) {
+        let end = section.addr + section.data.len() as u64;
+        if end > WASM_MEM_LIMIT {
+            return Err(format!(
+                "wasm: data segment ending at linear address {:#x} exceeds the supported memory",
+                end - WASM_MEM_BASE
+            )
+            .into());
+        }
+        let data = section.data.chunks(8).map(|c| u64::from_le_bytes(c.try_into().unwrap()));
+        rom.rw_data_64.push(DataSection64 { addr: section.addr, data: data.collect() });
+    }
 
     // -- lower every function (imports become WASI stubs) --------------------
     let n_funcs = module.func_count() as usize;
@@ -115,6 +144,9 @@ fn resolve_and_insert(rom: &mut ZiskRom, code: &Code, base: u64, func_addr: &[u6
             Fixup::FuncAddr(index) => {
                 zib.src_b("imm", func_addr[*index as usize], false);
             }
+            Fixup::LabelAddr(label) => {
+                zib.src_b("imm", base + 4 * code.label_target(*label) as u64, false);
+            }
         }
         zib.build(rom);
     }
@@ -147,11 +179,6 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], start_index: u32)
             store_const_to_abs(&mut code, table_entry_addr(entry), func_addr[func_index as usize]);
             store_const_to_abs(&mut code, table_entry_addr(entry) + 8, canonical as u64);
         }
-    }
-
-    // Active data segments -> linear memory.
-    for seg in &module.data {
-        emit_init_bytes(&mut code, WASM_MEM_BASE + seg.offset, &seg.bytes);
     }
 
     // Set up the first frame and call _start.
@@ -197,23 +224,4 @@ fn func_type_index(module: &WasmModule, func_index: u32) -> u32 {
 fn store_const_to_abs(code: &mut Code, addr: u64, value: u64) {
     code.load_imm_to_reg(REG_T0, value);
     code.store_reg_to_abs(addr, REG_T0, 8);
-}
-
-/// Stores `bytes` into linear memory starting at absolute `addr`, 8 bytes at a time.
-fn emit_init_bytes(code: &mut Code, addr: u64, bytes: &[u8]) {
-    let mut off = 0usize;
-    while off + 8 <= bytes.len() {
-        let v = u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
-        code.load_imm_to_reg(REG_T0, v);
-        code.load_imm_to_reg(REG_T1, addr + off as u64);
-        code.store_reg_to_mem(REG_T1, 0, REG_T0, 8);
-        off += 8;
-    }
-    // Tail bytes, one at a time.
-    while off < bytes.len() {
-        code.load_imm_to_reg(REG_T0, bytes[off] as u64);
-        code.load_imm_to_reg(REG_T1, addr + off as u64);
-        code.store_reg_to_mem(REG_T1, 0, REG_T0, 1);
-        off += 1;
-    }
 }

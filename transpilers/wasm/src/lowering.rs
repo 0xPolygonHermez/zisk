@@ -71,19 +71,19 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
     }
     let num_locals = local_kinds.len() as u32;
 
+    let mut code = Code::new();
+    let func_end = code.new_label();
     let mut gen = FuncGen {
         module,
         sig,
         num_locals,
-        code: Code::new(),
+        code,
         depth: 0,
         ctrl: Vec::new(),
         unreachable: false,
         dead_nesting: 0,
+        func_end,
     };
-
-    // Function-level end label: targets of `return` and the implicit fallthrough land here.
-    let func_end = gen.code.new_label();
 
     // Prologue: save the return address and zero the non-parameter locals.
     gen.code.store_reg_to_slot(FRAME_RET_PC_OFF, REG_RA);
@@ -97,32 +97,41 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
         gen.lower_op(op, func_end)?;
     }
 
-    // Epilogue (bound at func_end): place the result into REG_RET, restore caller FP, return.
+    // Fallthrough off the end of the body: the result is on top of the operand stack.  Every
+    // other path to `func_end` (explicit or implicit `return`) has already loaded `REG_RET`.
+    if !gen.unreachable && !sig.results.is_empty() {
+        let off = gen.slot(gen.depth - 1);
+        gen.code.load_slot_to_reg(REG_RET, off);
+    }
+    // Epilogue (bound at func_end): restore caller FP and return.
     gen.code.bind(func_end);
     gen.emit_epilogue();
 
     Ok(gen.code)
 }
 
-struct FuncGen<'a, 'b> {
+pub(crate) struct FuncGen<'a, 'b> {
     module: &'b WasmModule<'a>,
     sig: &'b FuncSig,
     num_locals: u32,
-    code: Code,
-    depth: u32,
+    pub(crate) code: Code,
+    pub(crate) depth: u32,
     ctrl: Vec<CtrlFrame>,
     unreachable: bool,
     /// Number of fully-dead nested blocks while `unreachable` (see module docs).
     dead_nesting: u32,
+    /// Function-level end label: the target of `return`, of branches whose depth reaches past the
+    /// outermost block (the function body is itself a label), and of the implicit fallthrough.
+    func_end: LabelId,
 }
 
 impl<'a, 'b> FuncGen<'a, 'b> {
     /// Byte offset (from FP) of operand-stack slot at depth `d`.
-    fn slot(&self, d: u32) -> i64 {
+    pub(crate) fn slot(&self, d: u32) -> i64 {
         operand_offset(self.num_locals, d)
     }
 
-    fn push(&mut self) -> i64 {
+    pub(crate) fn push(&mut self) -> i64 {
         let off = self.slot(self.depth);
         self.depth += 1;
         if self.depth > OPERAND_CAP {
@@ -149,15 +158,6 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     }
 
     fn emit_epilogue(&mut self) {
-        // Result, if any, into REG_RET. When reached via fallthrough the result is on top of stack.
-        if !self.sig.results.is_empty() {
-            // depth may be unreliable if we got here only via `return`; returns load REG_RET
-            // themselves, so only load here when there is a live operand.
-            if self.depth >= 1 {
-                let off = self.slot(self.depth - 1);
-                self.code.load_slot_to_reg(REG_RET, off);
-            }
-        }
         // Restore caller FP and jump to the saved return address.
         self.code.load_slot_to_reg(REG_T0, FRAME_RET_PC_OFF);
         self.code.load_slot_to_reg(REG_T2, FRAME_CALLER_FP_OFF);
@@ -207,6 +207,11 @@ impl<'a, 'b> FuncGen<'a, 'b> {
                 End => {
                     if self.dead_nesting > 0 {
                         self.dead_nesting -= 1;
+                        return Ok(());
+                    }
+                    // The function-level End: nothing follows, the body stays unreachable (the
+                    // epilogue must not try to read a result that was never pushed).
+                    if self.ctrl.is_empty() {
                         return Ok(());
                     }
                     // Closing the block that was open when we became unreachable: the code that
@@ -425,17 +430,17 @@ impl<'a, 'b> FuncGen<'a, 'b> {
             BrIf { relative_depth } => self.branch_if(relative_depth),
             BrTable { targets } => self.br_table(targets)?,
             Return => {
-                if !self.sig.results.is_empty() {
-                    let off = self.slot(self.depth - 1);
-                    self.code.load_slot_to_reg(REG_RET, off);
-                }
-                self.code.jump(func_end);
+                self.emit_return();
                 self.unreachable = true;
             }
             Call { function_index } => self.call(function_index)?,
             CallIndirect { type_index, .. } => self.call_indirect(type_index)?,
 
             other => {
+                #[cfg(feature = "float")]
+                if self.lower_float_op(&other)? {
+                    return Ok(());
+                }
                 return Err(format!("wasm: unsupported operator: {other:?}").into());
             }
         }
@@ -532,7 +537,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.store_reg_to_slot(a, REG_T0);
     }
 
-    fn unop_signextend(&mut self, op: &str) {
+    pub(crate) fn unop_signextend(&mut self, op: &str) {
         let a = self.slot(self.depth - 1);
         self.code.load_slot_to_reg(REG_T0, a);
         // signextend acts on `b`; route REG_T0 through `b`.
@@ -683,14 +688,14 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.alu_ri("add", reg, reg, (WASM_MEM_BASE + static_offset) as i64);
     }
 
-    fn load(&mut self, op: &str, width: u64, static_offset: u64) {
+    pub(crate) fn load(&mut self, op: &str, width: u64, static_offset: u64) {
         let a = self.slot(self.depth - 1);
         self.compute_addr(REG_T0, a, static_offset);
         self.code.load_mem_to_reg(op, REG_T1, REG_T0, 0, width);
         self.code.store_reg_to_slot(a, REG_T1);
     }
 
-    fn store(&mut self, width: u64, static_offset: u64) {
+    pub(crate) fn store(&mut self, width: u64, static_offset: u64) {
         let addr_slot = self.slot(self.depth - 2);
         let val_slot = self.slot(self.depth - 1);
         self.code.load_slot_to_reg(REG_T1, val_slot);
@@ -724,38 +729,95 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         let val = self.slot(self.depth - 2);
         let len = self.slot(self.depth - 1);
         self.code.load_slot_to_reg(REG_T2, len);
+        self.code.alu_ri("and", REG_T2, REG_T2, 0xFFFF_FFFF);
         self.code.load_slot_to_reg(REG_T1, val);
         self.compute_addr(REG_T0, dst, 0);
-        let head = self.code.new_label();
+        // Replicate the byte into all eight lanes for the word loop.
+        self.code.alu_ri("and", REG_T1, REG_T1, 0xFF);
+        self.code.alu_ri("mul", REG_T1, REG_T1, 0x0101_0101_0101_0101);
+        let words = self.code.new_label();
+        let bytes = self.code.new_label();
         let end = self.code.new_label();
-        self.code.bind(head);
+        self.code.bind(words);
+        self.code.cmp_imm_branch("ltu", REG_T2, 8, bytes, true); // len < 8 -> byte tail
+        self.code.store_reg_to_mem(REG_T0, 0, REG_T1, 8);
+        self.code.alu_ri("add", REG_T0, REG_T0, 8);
+        self.code.alu_ri("sub", REG_T2, REG_T2, 8);
+        self.code.jump(words);
+        self.code.bind(bytes);
         self.code.cmp_imm_branch("eq", REG_T2, 0, end, true);
         self.code.store_reg_to_mem(REG_T0, 0, REG_T1, 1);
         self.code.alu_ri("add", REG_T0, REG_T0, 1);
         self.code.alu_ri("sub", REG_T2, REG_T2, 1);
-        self.code.jump(head);
+        self.code.jump(bytes);
         self.code.bind(end);
         self.depth -= 3;
     }
 
+    /// `memory.copy` with memmove semantics: copies forward unless the destination starts inside
+    /// the source range, in which case it copies backward from the end.  Both directions move
+    /// whole words while at least 8 bytes remain.
     fn memory_copy(&mut self) {
-        // stack: dst, src, len. Forward byte copy (non-overlapping or dst <= src).
+        // stack: dst, src, len
         let dst = self.slot(self.depth - 3);
         let src = self.slot(self.depth - 2);
         let len = self.slot(self.depth - 1);
         self.code.load_slot_to_reg(REG_T2, len);
+        self.code.alu_ri("and", REG_T2, REG_T2, 0xFFFF_FFFF);
         self.compute_addr(REG_T1, src, 0);
         self.compute_addr(REG_T0, dst, 0);
-        let head = self.code.new_label();
+        let forward = self.code.new_label();
+        let backward = self.code.new_label();
         let end = self.code.new_label();
-        self.code.bind(head);
+        // dst <= src: forward is always safe.  Otherwise dst > src and forward is only safe when
+        // dst >= src + len, i.e. the ranges do not overlap.
+        self.code.cmp_reg_branch("leu", REG_T0, REG_T1, forward, true);
+        self.code.alu_rr("add", REG_T3, REG_T1, REG_T2); // src end
+        self.code.cmp_reg_branch("ltu", REG_T0, REG_T3, backward, true); // dst < src+len
+
+        // -- forward ------------------------------------------------------
+        self.code.bind(forward);
+        let fwords = self.code.new_label();
+        let fbytes = self.code.new_label();
+        self.code.bind(fwords);
+        self.code.cmp_imm_branch("ltu", REG_T2, 8, fbytes, true);
+        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 8);
+        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 8);
+        self.code.alu_ri("add", REG_T0, REG_T0, 8);
+        self.code.alu_ri("add", REG_T1, REG_T1, 8);
+        self.code.alu_ri("sub", REG_T2, REG_T2, 8);
+        self.code.jump(fwords);
+        self.code.bind(fbytes);
         self.code.cmp_imm_branch("eq", REG_T2, 0, end, true);
         self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 1);
         self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 1);
         self.code.alu_ri("add", REG_T0, REG_T0, 1);
         self.code.alu_ri("add", REG_T1, REG_T1, 1);
         self.code.alu_ri("sub", REG_T2, REG_T2, 1);
-        self.code.jump(head);
+        self.code.jump(fbytes);
+
+        // -- backward (pointers moved to the end, pre-decremented) ------------
+        self.code.bind(backward);
+        self.code.alu_rr("add", REG_T0, REG_T0, REG_T2);
+        self.code.alu_rr("add", REG_T1, REG_T1, REG_T2);
+        let bwords = self.code.new_label();
+        let bbytes = self.code.new_label();
+        self.code.bind(bwords);
+        self.code.cmp_imm_branch("ltu", REG_T2, 8, bbytes, true);
+        self.code.alu_ri("sub", REG_T0, REG_T0, 8);
+        self.code.alu_ri("sub", REG_T1, REG_T1, 8);
+        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 8);
+        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 8);
+        self.code.alu_ri("sub", REG_T2, REG_T2, 8);
+        self.code.jump(bwords);
+        self.code.bind(bbytes);
+        self.code.cmp_imm_branch("eq", REG_T2, 0, end, true);
+        self.code.alu_ri("sub", REG_T0, REG_T0, 1);
+        self.code.alu_ri("sub", REG_T1, REG_T1, 1);
+        self.code.load_mem_to_reg("copyb", REG_T3, REG_T1, 0, 1);
+        self.code.store_reg_to_mem(REG_T0, 0, REG_T3, 1);
+        self.code.alu_ri("sub", REG_T2, REG_T2, 1);
+        self.code.jump(bbytes);
         self.code.bind(end);
         self.depth -= 3;
     }
@@ -778,19 +840,26 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.depth -= 2;
     }
 
-    fn emit_trap(&mut self) {
-        // Halt the machine with an error (wasm trap). `halt` (op 0xff) ends execution.
-        let mut zib = ZiskInstBuilder::new(0);
-        zib.src_a("imm", 0, false);
-        zib.src_b("imm", 0, false);
-        zib.op("halt").unwrap();
-        zib.j(0, 0);
+    pub(crate) fn emit_trap(&mut self) {
+        self.code.trap();
+    }
 
-        self.code.push_raw(zib, Fixup::None);
+    /// Emits a `return`: the result (if any) goes to `REG_RET`, then jump to the epilogue.
+    fn emit_return(&mut self) {
+        if !self.sig.results.is_empty() {
+            let off = self.slot(self.depth - 1);
+            self.code.load_slot_to_reg(REG_RET, off);
+        }
+        self.code.jump(self.func_end);
     }
 
     /// Moves the top `arity` results to a target block's result slots and jumps to its label.
+    /// A depth one past the outermost block targets the function body itself, i.e. returns.
     fn branch_to(&mut self, relative_depth: u32) {
+        if relative_depth as usize == self.ctrl.len() {
+            self.emit_return();
+            return;
+        }
         let frame_idx = self.ctrl.len() - 1 - relative_depth as usize;
         let frame = &self.ctrl[frame_idx];
         let is_loop = frame.kind == CtrlKind::Loop;
@@ -821,22 +890,34 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         let cond = self.slot(self.depth - 1);
         self.depth -= 1;
         self.code.load_slot_to_reg(REG_T0, cond);
-        // Validate arity 0 across targets and emit a compare chain.
-        for (i, target) in targets.targets().enumerate() {
-            let rel = target?;
-            let frame_idx = self.ctrl.len() - 1 - rel as usize;
-            if self.ctrl[frame_idx].kind != CtrlKind::Loop && self.ctrl[frame_idx].result_arity != 0
+        // Validate arity 0 across targets and emit a compare chain.  A target past the outermost
+        // block is the function body: those cases jump to a shared return stub emitted after
+        // the chain.
+        let mut return_stub: Option<LabelId> = None;
+        let mut target_label = |this: &mut Self, rel: u32| -> Result<LabelId, Box<dyn Error>> {
+            if rel as usize == this.ctrl.len() {
+                if this.sig.results.len() > 1 {
+                    return Err("wasm: br_table with result values is not supported".into());
+                }
+                return Ok(*return_stub.get_or_insert_with(|| this.code.new_label()));
+            }
+            let frame_idx = this.ctrl.len() - 1 - rel as usize;
+            if this.ctrl[frame_idx].kind != CtrlKind::Loop && this.ctrl[frame_idx].result_arity != 0
             {
                 return Err("wasm: br_table with result values is not supported".into());
             }
-            let label = self.ctrl[frame_idx].branch_label;
+            Ok(this.ctrl[frame_idx].branch_label)
+        };
+        for (i, target) in targets.targets().enumerate() {
+            let label = target_label(self, target?)?;
             self.code.cmp_imm_branch("eq", REG_T0, i as i64, label, true);
         }
-        // default
-        let rel = targets.default();
-        let frame_idx = self.ctrl.len() - 1 - rel as usize;
-        let label = self.ctrl[frame_idx].branch_label;
+        let label = target_label(self, targets.default())?;
         self.code.jump(label);
+        if let Some(stub) = return_stub {
+            self.code.bind(stub);
+            self.emit_return();
+        }
         self.unreachable = true;
         Ok(())
     }
