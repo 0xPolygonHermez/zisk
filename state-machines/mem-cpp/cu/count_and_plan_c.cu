@@ -79,4 +79,40 @@ bool count_and_plan_save_metas(const InstanceMeta* metas, uint32_t n,
     return true;
 }
 
+// ─── RAM witness from the retained accesses ───────────────────────────
+void count_and_plan_set_chunk_size_bits(void* h, uint32_t bits) {
+    if (h) static_cast<CountAndPlan*>(h)->set_chunk_size_bits(bits);
+}
+
+bool count_and_plan_set_mem_layout(void* h, const uint32_t* col_widths, uint32_t n_cols,
+                                   uint32_t words_per_row, uint32_t lanes_x_row) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->set_mem_layout(col_widths, n_cols, words_per_row, lanes_x_row);
+}
+
+bool count_and_plan_ram_retention_ok(void* h) {
+    return h && static_cast<CountAndPlan*>(h)->ram_retention_ok();
+}
+
+bool count_and_plan_prepare_ram_fill(void* h, RamFillPrepared* out) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->prepare_ram_fill(out);
+}
+
+bool count_and_plan_fill_ram_instance(void* h, uint32_t inst, uint64_t* out_rows, uint32_t n_rows,
+                                      RamFillResult* res) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->fill_ram_instance(inst, out_rows, n_rows, res);
+}
+
+bool count_and_plan_fill_all_ram_instances(void* h, uint32_t n_rows, RamFillPrepared* prepared) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->fill_all_ram_instances(n_rows, prepared);
+}
+
+const uint64_t* count_and_plan_ram_instance_rows(void* h, uint32_t inst, RamFillResult* res) {
+    if (!h) return nullptr;
+    return static_cast<CountAndPlan*>(h)->ram_instance_rows(inst, res);
+}
+
 }  // extern "C"

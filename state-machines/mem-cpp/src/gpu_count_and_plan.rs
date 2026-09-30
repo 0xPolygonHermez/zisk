@@ -104,6 +104,11 @@ impl GpuCountAndPlan {
         }
     }
 
+    /// The C++ planner, for the RAM witness registry. Valid while `self` lives.
+    pub fn raw_handle(&self) -> *mut gpu_bindings::CountAndPlanHandle {
+        self.inner
+    }
+
     /// Bytes of the borrowed GPU arena used for the current block.
     /// Valid after `run()` and until the next `reset()` (or drop).
     pub fn max_used_bytes(&self) -> usize {

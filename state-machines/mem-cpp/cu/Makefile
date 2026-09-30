@@ -84,7 +84,7 @@ endif # NEED_CUDA_ARCH
 NVCCFLAGS := -O3 -std=c++20 $(CUDA_GENCODE_FLAGS) -Xcompiler -fPIC
 
 TARGET := libmemcpp_cu.a
-SRCS   := count_and_plan.cu count_and_plan_c.cu
+SRCS   := count_and_plan.cu count_and_plan_c.cu ram_fill.cu
 OBJS   := $(addprefix $(OUT_DIR)/, $(SRCS:.cu=.o))
 
 # Staleness stamp: make doesn't track flag changes, so wipe the objects at

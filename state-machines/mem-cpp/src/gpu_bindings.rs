@@ -45,6 +45,39 @@ pub struct InstanceMeta {
 
 pub enum CountAndPlanHandle {}
 
+/// Mirrors `RamFillPrepared` in `cu/count_and_plan.cuh`.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct RamFillPrepared {
+    pub status: i32,
+    pub n_instances: u32,
+    pub n_accesses: u64,
+    pub n_lanes: u64,
+    pub unresolved_writes: u64,
+    pub ms_sort: f32,
+    pub ms_lanes: f32,
+    pub ms_values: f32,
+    pub ms_total: f32,
+}
+const _: () = assert!(core::mem::size_of::<RamFillPrepared>() == 48);
+
+/// Mirrors `RamFillResult` in `cu/count_and_plan.cuh`.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct RamFillResult {
+    pub status: i32,
+    pub n_lanes: u32,
+    pub prev_addr_w: u32,
+    pub last_addr_w: u32,
+    pub prev_step: u64,
+    pub prev_value: u64,
+    pub last_step: u64,
+    pub last_value: u64,
+    pub ms_rows: f32,
+    pub ms_d2h: f32,
+}
+const _: () = assert!(core::mem::size_of::<RamFillResult>() == 56);
+
 /// Per-chunk mem-align counters produced by the GPU kernel. Same five u32
 /// fields the CPU planner's `MemAlignCounters` uses (without `chunk_id` —
 /// the index in the returned slice IS the chunk_id).
@@ -70,6 +103,7 @@ extern "C" {
         gpu_id: i32,
         instance_rows: *const u32,
     ) -> bool;
+    /// `words`: the chunk's memory-ops stream, `n_words` tagged 8-byte words.
     pub fn count_and_plan_add_chunk(
         h: *mut CountAndPlanHandle,
         words: *const u64,
@@ -81,6 +115,29 @@ extern "C" {
         n_metas: *mut u32,
     ) -> bool;
     pub fn count_and_plan_reset(h: *mut CountAndPlanHandle);
+    pub fn count_and_plan_set_chunk_size_bits(h: *mut CountAndPlanHandle, bits: u32);
+    pub fn count_and_plan_set_mem_layout(
+        h: *mut CountAndPlanHandle,
+        col_widths: *const u32,
+        n_cols: u32,
+        words_per_row: u32,
+        lanes_x_row: u32,
+    ) -> bool;
+    pub fn count_and_plan_ram_retention_ok(h: *mut CountAndPlanHandle) -> bool;
+    pub fn count_and_plan_prepare_ram_fill(
+        h: *mut CountAndPlanHandle,
+        out: *mut RamFillPrepared,
+    ) -> bool;
+    pub fn count_and_plan_fill_all_ram_instances(
+        h: *mut CountAndPlanHandle,
+        n_rows: u32,
+        prepared: *mut RamFillPrepared,
+    ) -> bool;
+    pub fn count_and_plan_ram_instance_rows(
+        h: *mut CountAndPlanHandle,
+        inst: u32,
+        res: *mut RamFillResult,
+    ) -> *const u64;
     pub fn count_and_plan_max_used_bytes(h: *mut CountAndPlanHandle) -> usize;
     pub fn count_and_plan_register_input_pinned(
         h: *mut CountAndPlanHandle,
