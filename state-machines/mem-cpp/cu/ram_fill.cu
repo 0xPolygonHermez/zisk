@@ -256,6 +256,8 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     // starts the next block. Carve: sort keys in/out (the sorted keys stay: they give every lane
     // its address and step), sorted values in/out (arrival index; the output is sidx, the input
     // becomes emit), lane, lane_first, the propagation block, one instance's rows, cub temp.
+    // Per access: 32 bytes carved here plus 12 of cub sort temporaries; the planner sizes the
+    // retention capacity with RAM_FILL_SCRATCH_BYTES_PER_ACCESS and RAM_FILL_SCRATCH_FIXED_BYTES.
     uint8_t* cur = arena_;
     uint8_t* end = (uint8_t*)d_ram_addr_;
     auto take = [&](size_t bytes) -> uint8_t* {

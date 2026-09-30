@@ -56,10 +56,22 @@ struct ChunkCounters {
     uint32_t write_byte;
 };
 
-// Compact address space of the three memory areas, in words.
-constexpr uint32_t N_ADDR_ROM   = 1u << 27;   // 128M
-constexpr uint32_t N_ADDR_INPUT = 1u << 30;   // 1G
-constexpr uint32_t N_ADDR_RAM   = 1u << 29;   // 512M
+// ZisK memory map (core/src/mem.rs): input 1 GB, ROM 128 MB, RAM 512 MB.
+constexpr uint32_t ZISK_INPUT_ADDR_BASE   = 0x40000000u;
+constexpr uint32_t ZISK_INPUT_SIZE_BYTES  = 1u << 30;
+constexpr uint32_t ZISK_INPUT_ADDR_END    = ZISK_INPUT_ADDR_BASE + ZISK_INPUT_SIZE_BYTES;
+constexpr uint32_t ZISK_ROM_ADDR_BASE     = 0x80000000u;
+constexpr uint32_t ZISK_ROM_SIZE_BYTES    = 1u << 27;
+constexpr uint32_t ZISK_ROM_ADDR_END      = ZISK_ROM_ADDR_BASE + ZISK_ROM_SIZE_BYTES;
+constexpr uint32_t ZISK_RAM_ADDR_BASE     = 0xA0000000u;
+constexpr uint32_t ZISK_RAM_SIZE_BYTES    = 1u << 29;
+constexpr uint32_t ZISK_RAM_ADDR_END      = ZISK_RAM_ADDR_BASE + ZISK_RAM_SIZE_BYTES;
+constexpr uint32_t ZISK_ALIGN_MASK        = 0xFFFFFFF8u;
+
+// Compact address space: one entry per 8-byte word of each area, ROM then input then RAM.
+constexpr uint32_t N_ADDR_ROM   = ZISK_ROM_SIZE_BYTES >> 3;    // 2^24
+constexpr uint32_t N_ADDR_INPUT = ZISK_INPUT_SIZE_BYTES >> 3;  // 2^27
+constexpr uint32_t N_ADDR_RAM   = ZISK_RAM_SIZE_BYTES >> 3;    // 2^26
 constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;
 
 // Meta word of a retained RAM access: bits 0-39 mem step, 40-41 kind (0 read, 1 full write,
@@ -69,9 +81,17 @@ constexpr uint32_t RAM_META_KIND_SHIFT  = 40;
 constexpr uint32_t RAM_META_OFF_SHIFT   = 42;
 constexpr uint32_t RAM_META_WIDTH_SHIFT = 45;
 constexpr uint64_t RAM_META_STEP_MASK   = (1ull << 40) - 1;
-// Word index of the first RAM address: RAM_ADDR >> 3.
-constexpr uint32_t RAM_W_ADDR_BASE = 0xA0000000u >> 3;
-constexpr uint32_t RAM_W_ADDR_LAST = (0xA0000000u + 512u * 1024u * 1024u - 8u) >> 3;
+// The fill needs 64 bytes per retained access at the same time: the 20-byte record (address,
+// meta, value) kept in the retention region, and 44 bytes of scratch carved below it (sort keys
+// and arrival indexes in and out, lane numbers, cub sort temporaries), plus fixed buffers (the
+// value-propagation block, one instance's rows). The retention capacity is sized so that a
+// block that fills it still fits its scratch.
+constexpr size_t RAM_RETAIN_BYTES_PER_ACCESS      = 20;
+constexpr size_t RAM_FILL_SCRATCH_BYTES_PER_ACCESS = 44;
+constexpr size_t RAM_FILL_SCRATCH_FIXED_BYTES      = (size_t)2 << 30;
+// Word index of the first and last RAM addresses.
+constexpr uint32_t RAM_W_ADDR_BASE = ZISK_RAM_ADDR_BASE >> 3;
+constexpr uint32_t RAM_W_ADDR_LAST = (ZISK_RAM_ADDR_END - 8u) >> 3;
 
 // What prepare_ram_fill established for the block. POD, mirrored in gpu_bindings.rs.
 struct RamFillPrepared {
