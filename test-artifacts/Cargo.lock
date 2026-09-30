@@ -2730,10 +2730,11 @@ dependencies = [
 
 [[package]]
 name = "keccak-asm"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd5dc2c0d691cbf7595cde551ced329cca99c2387c2cbc97754c5d0cd045d3ee"
+checksum = "f32890f646914a263e39064295005972f0e95b928254061b2aca98445f304ee9"
 dependencies = [
+ "cfg-if",
  "digest 0.10.7",
  "sha3-asm",
 ]
@@ -3390,7 +3391,8 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e33d50d8ddcc03643a323b7fd567cb637e534c1f5bb1be62a8ec7530a3f31131"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -3401,7 +3403,8 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be22608b6b84e8d54d2510c3c8391f19382496d8a3242fd57cc44501efa8e580"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -3417,7 +3420,8 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ae638a53a6e70019011a3cbb826a9e77791afb3c91f848e22ae023808e65cc5"
 dependencies = [
  "anyhow",
  "clap",
@@ -3443,7 +3447,8 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c978590064142e9692b1446305eb6a6c9ca9a7c8f6a87f68aaee9ad19c7d834"
 dependencies = [
  "colored",
  "proofman-common",
@@ -3603,7 +3608,8 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20b5b1efeaeae3c40499d89ff43198e7e4c6dab1af821b74d4a022ce431b5108"
 dependencies = [
  "bincode",
  "blake3",
@@ -3635,7 +3641,8 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53606f78c0b7dd40e618140c3177bb85d3b8fbdffb56c2a2106436da5b2ebcf8"
 dependencies = [
  "borsh",
  "colored",
@@ -3663,7 +3670,8 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02583568e18a77e08c302ace22821fb6d833b0c89e60bb40c34ad3b27bc88508"
 dependencies = [
  "proofman-fields",
 ]
@@ -3671,7 +3679,8 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a034e0e688896c8c81443538a88984378e51512ec79dd73caa7700131dc8913"
 dependencies = [
  "anyhow",
  "proofman-starks-src",
@@ -3685,7 +3694,8 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "288f1cfadffdd60f4297428d41fa27dbae9837a63c89f77ba3e9ce8f5e03f987"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -3698,7 +3708,8 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8976eb1eeb543a74772fc83b654a96cd7e483750262fa8ca35c8e65ca1c70402"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -3710,7 +3721,8 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "541ae1751c469a81f21210f8a2bd0c4e08980a82b08a5cd80eac021bab9e770c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3720,7 +3732,8 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71fbc5a3cbea8630ccc96c4373ee45c8f63f5ac243f9b9456026773e30ab130e"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -3729,12 +3742,14 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec72725ea4f99741a95b52edc3290d5b9fe904762b6991b14aedb399ce43e86a"
 
 [[package]]
 name = "proofman-util"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1558e3975f49c44713e27d4c49662b3dca24071987892ab88489c9b73afb9e13"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -3743,7 +3758,8 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcfb929d02d38e48617f4badd3c5cc9cf140742dcf539c0d53ea5e6d9c037ab7"
 dependencies = [
  "bincode",
  "num-traits",
@@ -3756,7 +3772,8 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0fce6674550d900e44ad619a20bc9a5b2a454d3fc8f4385c4fe95497915c1b9"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -3925,9 +3942,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.18"
+version = "0.11.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9746dbde176634f4f2f1faf2404e30a31b2bc1e9cafb5329c95d8177a18c9fc"
+checksum = "0e750cca55fe4f0439a15d0bb529da9651e79993e8e72c61a899a36d462befbe"
 dependencies = [
  "bytes",
  "fastbloom",
@@ -3949,9 +3966,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.5.15"
+version = "0.5.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35a133f956daabe89a61a685c2649f13d82d5aa4bd5d12d1277e1072a21c0694"
+checksum = "af66907df18639dcf4db56ca65490cabc4b27a97dbadd96f2926cca73298f016"
 dependencies = [
  "cfg_aliases",
  "libc",
@@ -4708,9 +4725,9 @@ dependencies = [
 
 [[package]]
 name = "sha3-asm"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6287fd675f713484342a89cbf0a386abef5f15919cfad607e5e1f19e1e15331"
+checksum = "471668161349031e3d415412f996b030c477488eec267cc3cadae3d06c0a367f"
 dependencies = [
  "cc",
  "cfg-if",
