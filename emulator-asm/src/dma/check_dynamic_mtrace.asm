@@ -49,6 +49,7 @@
 # - Updates trace_address_threshold after realloc
 
 .global check_dynamic_mtrace
+.global check_dynamic_mops
 
 .extern fast_dma_encode
 .extern trace_address_threshold
@@ -72,6 +73,17 @@
 #   R_MT_INDEX = current index into mtrace (qwords)
 #   R_STEP     = steps remaining until end of chunk
 #   R_COUNT    = bytes needed by current request
+
+# Memory-ops variant: a recorder is about to append up to 4 bytes of records per byte of R_COUNT
+# (a value block costs 8 bytes per word written, plus the reads) plus its fixed records. Grows the
+# trace when that would pass the threshold; the margin heuristic of the minimal trace does not
+# apply because the records are not bounded per step.
+check_dynamic_mops:
+    lea     R_AUX, [R_MT_ADDR + 8 * R_MT_INDEX]
+    lea     R_AUX, [R_AUX + R_COUNT * 4 + MAX_DMA_MOPS_MARGIN]
+    sub     R_AUX, [trace_address_threshold]
+    jnc     .L_call_realloc
+    ret
 
 check_dynamic_mtrace:
 

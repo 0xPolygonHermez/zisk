@@ -8,11 +8,12 @@
 # memory operation addresses to the mops buffer for verification.
 #
 # MAIN TASKS:
-# 1. Record memory operation addresses (pre-reads for partial qwords, writes)
+# 1. Record memory operation addresses (pre-reads for partial qwords)
 # 2. Perform the actual memset operation (via fast_memset)
+# 3. Record one write per destination word with its value (dma_constants.inc)
 #
 # REGISTER USAGE:
-#   Uses: rax, rcx, rdx, rdi, rsi, r9, r12, r13
+#   Uses: rax, rcx, rdx, rdi, rsi, r8, r9, r10, r11, r12, r13; reads r14 (step)
 #   Does NOT use XMM registers (caller doesn't need to save them)
 #   Modifies: r13 (mops index output)
 #
@@ -35,6 +36,7 @@
 
 .global direct_dma_xmemset_mops
 .extern fast_memset
+.extern check_dynamic_mops
 
 .include "dma_constants.inc"
 
@@ -65,6 +67,13 @@ direct_dma_xmemset_mops:
     test    rdx, rdx
     jz      .L_xmemset_mops_done
 
+    # Make sure the trace has room for one write record per word
+    cmp     rdx, MAX_DMA_BYTES_DIRECT_MOPS
+    jbe     .L_xmemset_mops_headers
+    call    check_dynamic_mops
+.L_xmemset_mops_headers:
+    MOPS_STEP_HEADERS
+
     # Check if dst is 8-byte aligned
     test    rdi, 0x7
     jnz     .L_xmemset_mops_rdi_unaligned
@@ -84,12 +93,9 @@ direct_dma_xmemset_mops:
     add     r9, rax                           # 1 cycle - add qword count
     add     r9, rdi                           # 1 cycle - add dst (already aligned)
 
-    mov     [r12 + r13 * 8], r9               # ~4 cycles - write mops entry
-    inc     r13                               # 1 cycle - advance mops index
+    mov     [r12 + r13 * 8], r9               # ~4 cycles - write block descriptor, expanded after the fill
 
-    jmp     fast_memset                       # tail call to fast_memset
-
-    # fast_memset "execute" the return, memset set rax = rdi
+    jmp     .L_xmemset_mops_fill
 
     # ========== BRANCH 1 ==========
     # dst aligned, count NOT multiple of 8
@@ -105,7 +111,7 @@ direct_dma_xmemset_mops:
     lea     rcx, [rdi + r9 * 8 - 8]           # 1 cycle - address of last qword
     mov     rax, MOPS_ALIGNED_READ            # 1 cycle - read flag
     add     rcx, rax                          # 1 cycle - combine
-    mov     [r12 + r13 * 8], rcx              # ~4 cycles - write pre-read entry
+    MOPS_REC_READ rcx
 
     # BRANCH 1 - Write block entry
     shl     r9, MOPS_BLOCK_WORDS_RS           # 1 cycle - format qwords for mops
@@ -113,12 +119,9 @@ direct_dma_xmemset_mops:
     add     rax, r9                           # 1 cycle - add qword count
     add     rax, rdi                          # 1 cycle - add dst (aligned)
 
-    mov     [r12 + r13 * 8 + 8], rax          # ~4 cycles - write block entry
-    add     r13, 2  
-                                              # 1 cycle - advance index by 2
-    jmp     fast_memset                       # tail call to fast_memset
+    mov     [r12 + r13 * 8], rax              # ~4 cycles - write block descriptor, expanded after the fill
 
-    # fast_memset "execute" the return, memset set rax = rdi
+    jmp     .L_xmemset_mops_fill
 
     # ========== BRANCH 2 ==========
     # dst NOT aligned
@@ -161,17 +164,14 @@ direct_dma_xmemset_mops:
     add     rcx, r9                           # 1 cycle - add flag
     add     rcx, rax                          # 1 cycle - add aligned address
 
-    mov     [r12 + r13 * 8 + 8], rcx          # ~4 cycles - write block entry
+    mov     [r12 + r13 * 8 + 8], rcx          # ~4 cycles - write block descriptor after the read record
 
     # PRE read entry (first qword contains unaligned start)
     mov     rcx, MOPS_ALIGNED_READ            # 1 cycle - read flag
     add     rcx, rax                          # 1 cycle - add aligned address
-    mov     [r12 + r13 * 8], rcx              # ~4 cycles - write pre-read entry
-    add     r13, 2                            # 1 cycle - advance index by 2
+    MOPS_REC_READ rcx
 
-    jmp     fast_memset                       # tail call to fast_memset
-
-    # fast_memset "execute" the return, memset set rax = rdi
+    jmp     .L_xmemset_mops_fill
 
     # ========== BRANCH 2.2 ==========
     # dst unaligned AND end unaligned (spans multiple partial qwords)
@@ -188,24 +188,24 @@ direct_dma_xmemset_mops:
     and     rcx, ALIGN_MASK                   # 1 cycle - rcx = aligned dst
     add     rax, rcx                          # 1 cycle - add aligned address
 
-    mov     [r12 + r13 * 8 + 16], rax         # ~4 cycles - write block entry (3rd slot)
+    mov     [r12 + r13 * 8 + 16], rax         # ~4 cycles - write block descriptor after the two read records
 
     # PRE read entry (first partial qword)
     mov     rax, MOPS_ALIGNED_READ            # 1 cycle - read flag
     add     rcx, rax                          # 1 cycle - rcx = aligned dst + read flag
-    mov     [r12 + r13 * 8], rcx              # ~4 cycles - write PRE read entry
+    MOPS_REC_READ rcx
 
     # POST read entry (last partial qword)
     lea     r9, [rdi + rdx]                   # 1 cycle - r9 = dst + count
     and     r9, ALIGN_MASK                    # 1 cycle - align to qword
     add     r9, rax                           # 1 cycle - add read flag
-    mov     [r12 + r13 * 8 + 8], r9           # ~4 cycles - write POST read entry
+    MOPS_REC_READ r9
 
-    add     r13, 3                            # 1 cycle - advance index by 3
-
-    jmp     fast_memset                       # tail call to fast_memset
-
-    # fast_memset "execute" the return, memset set rax = rdi
+    # ========== FILL, then one write record per destination word ==========
+.L_xmemset_mops_fill:
+    call    fast_memset                       # rax = dst; keeps r10 (step field)
+    MOPS_EXPAND_BLOCK_WRITE
+    ret
 
 .L_xmemset_mops_done:
 

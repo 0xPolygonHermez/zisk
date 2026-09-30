@@ -121,3 +121,99 @@
 
 .equ ENCODE_MEMSET_ZERO,        DMA_REQUIRES_DMA_MASK
 .equ ENCODE_MEMSET_ALIGNED_NO_COUNT_M8, DMA_REQUIRES_DMA_MASK | (1 << DMA_PRE_WRITES_RS)
+
+.ifndef MOPS_RECORD_MACROS
+.set MOPS_RECORD_MACROS, 1
+# MEMORY-OPS RECORDS
+# Every stream word carries a tag in bit 63: set on header words, clear on payload words. A read
+# is one header word (address | mode | step field << MOPS_STEP_SHIFT). Block records are a header
+# plus the step field as payload. A value block (MOPS_BLOCK_VALUES) is a header (aligned address | mode |
+# words << 36 | write step field << 42), a word with the values' bits 63, then up to 63 values
+# with bit 63 cleared. R_MOPS_R holds the read step field shifted into place.
+.set R_MOPS_R, r10
+.equ MOPS_STEP_SHIFT, 38
+.equ MOPS_TAG, 0x8000000000000000
+.equ MOPS_BLOCK_VALUES, 0x0000000700000000
+.equ MOPS_VALUES_STEP_SHIFT, 42
+.equ MOPS_VALUES_MAX, 63
+# A recorder writing more than this many bytes checks the trace space first.
+.equ MAX_DMA_BYTES_DIRECT_MOPS, 256
+.equ MAX_DMA_MOPS_MARGIN, 8 * 16
+.extern chunk_size
+
+.macro MOPS_STEP_HEADERS
+    mov     R_MOPS_R, [chunk_size]
+    sub     R_MOPS_R, R_STEP
+    shl     R_MOPS_R, 2
+    or      R_MOPS_R, 2
+    shl     R_MOPS_R, MOPS_STEP_SHIFT
+.endm
+
+# \reg = address | non-block read mode: one tagged header word with the step field, appended.
+.macro MOPS_REC_READ reg
+    add     \reg, R_MOPS_R
+    bts     \reg, 63
+    mov     [R_MT_ADDR + R_MT_INDEX * 8], \reg
+    inc     R_MT_INDEX
+.endm
+
+# \reg = block header (address | block mode | word count): tagged header, step field payload.
+.macro MOPS_REC_BLOCK reg
+    bts     \reg, 63
+    mov     [R_MT_ADDR + R_MT_INDEX * 8], \reg
+    mov     [R_MT_ADDR + R_MT_INDEX * 8 + 8], R_MOPS_R
+    add     R_MT_INDEX, 2
+.endm
+
+# The 8-byte block-write descriptor a recorder left at the current index (aligned address in the
+# low 32 bits, word count above MOPS_BLOCK_WORDS_RS) becomes value blocks of up to 63 words, the
+# values read back from memory: the routine that wrote the words has run. Uses rcx, rdx, rsi,
+# rdi, r8, r9, r11; keeps rax. A zero count leaves no record.
+.macro MOPS_EXPAND_BLOCK_WRITE
+    mov     rdx, [R_MT_ADDR + R_MT_INDEX * 8]
+    mov     rcx, rdx
+    shr     rcx, MOPS_BLOCK_WORDS_RS      # rcx = words left
+    jz      9f
+    push    rax
+    mov     edx, edx                      # rdx = aligned address
+    mov     r11, R_MOPS_R
+    shl     r11, 4                        # read step field moved to bit 42
+    bts     r11, MOPS_VALUES_STEP_SHIFT   # slot 3, the write slot
+    bts     r11, 63                       # tag
+    mov     r8, MOPS_BLOCK_VALUES
+    add     r11, r8                       # r11 = mode | write step field | tag
+5:  # one value block of r8 = min(words left, 63) words
+    mov     r8, MOPS_VALUES_MAX
+    cmp     rcx, r8
+    cmovb   r8, rcx
+    sub     rcx, r8
+    lea     rdi, [R_MT_ADDR + R_MT_INDEX * 8]
+    mov     r9, r8
+    shl     r9, MOPS_BLOCK_WORDS_RS
+    add     r9, rdx
+    add     r9, r11
+    mov     [rdi], r9                     # header
+    lea     R_MT_INDEX, [R_MT_INDEX + r8 + 2]
+    add     rdi, 16                       # first value slot; the mask slot is at rdi - 8
+    xor     r9d, r9d                      # r9 = the values' bits 63
+    xor     esi, esi                      # rsi = index in the block
+8:  mov     rax, [rdx]
+    bt      rax, 63
+    jnc     7f
+    bts     r9, rsi
+    btr     rax, 63
+7:  mov     [rdi], rax
+    add     rdx, 8
+    add     rdi, 8
+    inc     rsi
+    cmp     rsi, r8
+    jb      8b
+    lea     rsi, [r8 * 8 + 8]
+    sub     rdi, rsi
+    mov     [rdi], r9                     # the mask word
+    test    rcx, rcx
+    jnz     5b
+    pop     rax
+9:
+.endm
+.endif
