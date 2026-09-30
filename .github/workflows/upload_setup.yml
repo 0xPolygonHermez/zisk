@@ -3,7 +3,6 @@ name: Upload Setup to bucket
 on:
   push:
     branches:
-      - develop
       - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
   workflow_dispatch:
     inputs:
@@ -96,9 +95,9 @@ jobs:
         id: resolve
         run: |
           # blake3 is what the tests run on, so it is the one published by default.
-          # A push to develop publishes both — that run is also the one that adds the
-          # macOS dylibs and the SNARK setup, both of which only apply to Poseidon1.
-          BUILD_POSEIDON1="${{ ((github.event_name == 'push' && github.ref_name == 'develop') || inputs.include_poseidon1) && '1' || '0' }}"
+          # Poseidon1 (and with it the macOS dylibs and the SNARK setup) is only
+          # built when asked for on workflow_dispatch.
+          BUILD_POSEIDON1="${{ inputs.include_poseidon1 && '1' || '0' }}"
           BUILD_BLAKE3="${{ (github.event_name != 'workflow_dispatch' || inputs.include_blake3) && '1' || '0' }}"
           if [ "$BUILD_POSEIDON1" = "0" ] && [ "$BUILD_BLAKE3" = "0" ]; then
             echo "nothing to build: tick include_poseidon1 and/or include_blake3" >&2
@@ -119,29 +118,24 @@ jobs:
 
           VERSION="${{ inputs.version }}"
           if [ -z "$VERSION" ]; then
-            # Take the workspace package version from Cargo.toml. Prefix it with
-            # "pre-" (e.g. 1.0.0-alpha => pre-1.0.0-alpha) EXCEPT on the develop
-            # branch, which publishes the bare Cargo.toml version.
+            # Take the workspace package version from Cargo.toml and prefix it
+            # with "pre-" (e.g. 1.0.0-alpha => pre-1.0.0-alpha).
             CARGO_VERSION="$(sed -nE 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p' "$GITHUB_WORKSPACE/Cargo.toml" | head -n1)"
             [ -n "$CARGO_VERSION" ] || { echo "could not read version from Cargo.toml"; exit 1; }
-            if [ "${{ github.ref_name }}" = "develop" ]; then
-              VERSION="${CARGO_VERSION}"
-            else
-              VERSION="pre-${CARGO_VERSION}"
-            fi
+            VERSION="pre-${CARGO_VERSION}"
           fi
           [ -n "$VERSION" ] || { echo "could not resolve version"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved setup version: $VERSION"
 
-          # macOS dylibs: always on a push to develop; honor the input on workflow_dispatch.
-          INCLUDE_DYLIB="${{ ((github.event_name == 'push' && github.ref_name == 'develop') || inputs.include_dylib) && '1' || '0' }}"
+          # macOS dylibs: only when asked for on workflow_dispatch.
+          INCLUDE_DYLIB="${{ inputs.include_dylib && '1' || '0' }}"
           echo "include_dylib=$INCLUDE_DYLIB" >> "$GITHUB_OUTPUT"
           echo "include_dylib: $INCLUDE_DYLIB"
 
-          # SNARK setup: always on a push to develop; honor the input otherwise.
+          # SNARK setup: only when asked for on workflow_dispatch.
           # Only the Poseidon1 round builds it — blake3 has no SNARK support.
-          INCLUDE_SNARK="${{ ((github.event_name == 'push' && github.ref_name == 'develop') || inputs.include_snark) && '1' || '0' }}"
+          INCLUDE_SNARK="${{ inputs.include_snark && '1' || '0' }}"
           echo "include_snark=$INCLUDE_SNARK" >> "$GITHUB_OUTPUT"
           echo "include_snark: $INCLUDE_SNARK"
 
