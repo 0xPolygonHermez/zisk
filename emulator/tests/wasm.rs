@@ -226,3 +226,30 @@ fn branch_to_function_body_returns() {
     let out = run(&module_printing_i64(body), &[]);
     assert_eq!(out_u64(&out), 77);
 }
+
+#[test]
+fn data_segments_must_not_overlap() {
+    // Touching segments are fine and both land in memory ...
+    let touching = r#"(module
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (data (i32.const 64) "\01\02\03\04")
+      (data (i32.const 68) "\05\06\07\08")
+      (func (export "_start")
+        (i32.store (i32.const 0) (i32.const 64))
+        (i32.store (i32.const 4) (i32.const 8))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 48)))))"#;
+    let out = run(&wat::parse_str(touching).unwrap(), &[]);
+    assert_eq!(out_u64(&out), u64::from_le_bytes([1, 2, 3, 4, 5, 6, 7, 8]));
+
+    // ... but a shared byte is rejected at transpile time (the spec's "last wins" is not
+    // implemented), regardless of segment order.
+    let overlapping = r#"(module
+      (memory 1)
+      (data (i32.const 68) "\05\06\07\08")
+      (data (i32.const 64) "\01\02\03\04\ff")
+      (func (export "_start")))"#;
+    let err = wasm2rom(&wat::parse_str(overlapping).unwrap()).expect_err("must be rejected");
+    assert!(err.to_string().contains("overlapping data segments"), "{err}");
+}

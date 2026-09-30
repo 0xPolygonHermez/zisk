@@ -57,6 +57,11 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     #[cfg(feature = "float")]
     float::link_float_lib(&mut rom)?;
 
+    // Active data segments become ROM-initialized RAM, exactly like an ELF's writable segments:
+    // the emulator/prover populate them before the first instruction, so no init code runs.
+    // The spec lets segments overlap (later ones win); the merge below assumes they do not, so
+    // overlaps are rejected rather than resolved.
+    reject_overlapping_segments(&module.data)?;
     let segments = module
         .data
         .iter()
@@ -115,6 +120,27 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     rom.optimize_instruction_lookup()?;
 
     Ok(rom)
+}
+
+/// Fails if any two active data segments cover a common linear-memory byte.
+fn reject_overlapping_segments(data: &[module::DataSeg]) -> Result<(), Box<dyn Error>> {
+    let mut ranges: Vec<(u64, u64)> = data
+        .iter()
+        .filter(|seg| !seg.bytes.is_empty())
+        .map(|seg| (seg.offset, seg.offset + seg.bytes.len() as u64))
+        .collect();
+    ranges.sort_unstable();
+    for pair in ranges.windows(2) {
+        let ((prev_start, prev_end), (start, end)) = (pair[0], pair[1]);
+        if start < prev_end {
+            return Err(format!(
+                "wasm: overlapping data segments [{prev_start:#x}, {prev_end:#x}) and \
+                 [{start:#x}, {end:#x}) are not supported"
+            )
+            .into());
+        }
+    }
+    Ok(())
 }
 
 /// Resolves the symbolic fixups of a [`Code`] laid out at `base` and inserts every instruction into
