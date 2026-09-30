@@ -81,14 +81,26 @@ constexpr uint32_t RAM_META_KIND_SHIFT  = 40;
 constexpr uint32_t RAM_META_OFF_SHIFT   = 42;
 constexpr uint32_t RAM_META_WIDTH_SHIFT = 45;
 constexpr uint64_t RAM_META_STEP_MASK   = (1ull << 40) - 1;
-// The fill needs 64 bytes per retained access at the same time: the 20-byte record (address,
-// meta, value) kept in the retention region, and 44 bytes of scratch carved below it (sort keys
-// and arrival indexes in and out, lane numbers, cub sort temporaries), plus fixed buffers (the
-// value-propagation block, one instance's rows). The retention capacity is sized so that a
-// block that fills it still fits its scratch.
-constexpr size_t RAM_RETAIN_BYTES_PER_ACCESS      = 20;
-constexpr size_t RAM_FILL_SCRATCH_BYTES_PER_ACCESS = 44;
-constexpr size_t RAM_FILL_SCRATCH_FIXED_BYTES      = (size_t)2 << 30;
+// Retained RAM accesses: 20-byte records (address, meta, value) growing down from the arena top,
+// record k at top - 20 (k + 1), in arrival order. The ops pool grows up from the fixed regions
+// and the reservations keep the two from crossing. Records are 4-byte aligned, so the 64-bit
+// fields are word pairs.
+constexpr size_t RAM_RECORD_WORDS = 5;
+struct RamRecords {
+    uint32_t* top = nullptr;  // one past the highest record
+    __host__ __device__ __forceinline__ uint32_t* rec(size_t k) const { return top - RAM_RECORD_WORDS * (k + 1); }
+    __device__ __forceinline__ uint32_t addr(size_t k) const { return rec(k)[0]; }
+    __device__ __forceinline__ uint64_t meta(size_t k) const {
+        const uint32_t* r = rec(k); return r[1] | ((uint64_t)r[2] << 32);
+    }
+    __device__ __forceinline__ uint64_t value(size_t k) const {
+        const uint32_t* r = rec(k); return r[3] | ((uint64_t)r[4] << 32);
+    }
+    __device__ __forceinline__ void store(size_t k, uint32_t a, uint64_t m, uint64_t v) const {
+        uint32_t* r = rec(k);
+        r[0] = a; r[1] = (uint32_t)m; r[2] = (uint32_t)(m >> 32); r[3] = (uint32_t)v; r[4] = (uint32_t)(v >> 32);
+    }
+};
 // Word index of the first and last RAM addresses.
 constexpr uint32_t RAM_W_ADDR_BASE = ZISK_RAM_ADDR_BASE >> 3;
 constexpr uint32_t RAM_W_ADDR_LAST = (ZISK_RAM_ADDR_END - 8u) >> 3;
@@ -206,7 +218,7 @@ public:
     size_t max_used_bytes() const {
         const size_t used = cursor_ + pool_cursor_u32_.load(std::memory_order_relaxed) * 4;
         // The retained accesses sit at the top of the arena: any retention touches its end.
-        if (ram_cap_ > 0 && ram_cursor_.load(std::memory_order_relaxed) > 0) return arena_bytes_;
+        if (ram_cursor_.load(std::memory_order_relaxed) > 0) return arena_bytes_;
         return used;
     }
 
@@ -286,11 +298,12 @@ private:
     // Retained RAM accesses, in arrival order: compact word address, packed step/kind, value.
     // Device resident, carved from the top of the arena at setup (the pool grows towards them);
     // they survive run() and feed the post-plan phase, whose scratch is everything below them.
-    uint32_t*          d_ram_addr_   = nullptr;
-    uint64_t*          d_ram_meta_   = nullptr;
-    uint64_t*          d_ram_value_  = nullptr;
-    size_t             ram_cap_      = 0;
+    RamRecords         ram_records_;
+    size_t             top_bytes_    = 0;   // arena offset of ram_records_.top
     std::atomic<size_t> ram_cursor_{0};
+    // Byte bounds of the two stacks of the dynamic region, used by the reservations.
+    size_t pool_end_bytes(size_t pool_words) const { return cursor_ + pool_words * 4; }
+    size_t ram_low_edge_bytes(size_t records) const { return top_bytes_ - records * RAM_RECORD_WORDS * 4; }
     std::atomic<bool>   ram_retention_enabled_{false};
     uint32_t*          d_ram_flags_[N_STREAMS]      = {nullptr};
     uint32_t*          d_ram_pos_[N_STREAMS]        = {nullptr};

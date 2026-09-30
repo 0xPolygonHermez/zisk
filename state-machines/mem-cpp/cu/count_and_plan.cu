@@ -609,8 +609,7 @@ __global__ void ram_flags_kernel(const PotentialEmit* __restrict__ d_potentials,
 
 __global__ void retain_ram_kernel(const PotentialEmit* __restrict__ d_potentials, uint32_t n,
                                   const uint32_t* __restrict__ d_pos, size_t base, uint32_t chunk,
-                                  uint32_t chunk_size_bits, uint32_t* __restrict__ d_addr,
-                                  uint64_t* __restrict__ d_meta, uint64_t* __restrict__ d_value,
+                                  uint32_t chunk_size_bits, RamRecords rec,
                                   unsigned long long* __restrict__ d_nwrites) {
     const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
@@ -623,9 +622,9 @@ __global__ void retain_ram_kernel(const PotentialEmit* __restrict__ d_potentials
     const uint64_t kind  = p.meta & 3u;
     const uint64_t off   = (p.meta >> POT_META_OFF_SHIFT) & 7u;
     const uint64_t width = (p.meta >> POT_META_WIDTH_SHIFT) & 15u;
-    d_addr[k]  = ram_compact(emit_aligned_addr(p));
-    d_meta[k]  = mem_step | (kind << RAM_META_KIND_SHIFT) | (off << RAM_META_OFF_SHIFT) | (width << RAM_META_WIDTH_SHIFT);
-    d_value[k] = p.value;
+    rec.store(k, ram_compact(emit_aligned_addr(p)),
+              mem_step | (kind << RAM_META_KIND_SHIFT) | (off << RAM_META_OFF_SHIFT) | (width << RAM_META_WIDTH_SHIFT),
+              p.value);
     // Write fraction, one atomic per warp (the early returns above make the mask partial).
     const unsigned writers = __ballot_sync(__activemask(), kind != POT_KIND_READ);
     if ((threadIdx.x & 31u) == (unsigned)(__ffs(__activemask()) - 1)) atomicAdd(d_nwrites, (unsigned long long)__popc(writers));
@@ -1429,36 +1428,16 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
                 cursor_, arena_bytes_);
         return false;
     }
-    // Retained RAM accesses (20 bytes each) at the top of the arena; the ops pool takes what is
-    // left between the fixed regions and them. ZISK_MEM_GPU_POOL_MB reserves the pool (default
-    // 2048 MB); a block with more accesses than fit gets no device witness.
-    {
-        size_t pool_reserve = (size_t)2048 << 20;
-        if (const char* e = std::getenv("ZISK_MEM_GPU_POOL_MB")) {
-            const long v = std::atol(e);
-            if (v > 0) pool_reserve = (size_t)v << 20;
-        }
-        const size_t free_bytes = arena_bytes_ - cursor_;
-        ram_cap_ = free_bytes > pool_reserve ? (free_bytes - pool_reserve) / RAM_RETAIN_BYTES_PER_ACCESS : 0;
-        const size_t fill_cap = arena_bytes_ > RAM_FILL_SCRATCH_FIXED_BYTES
-            ? (arena_bytes_ - RAM_FILL_SCRATCH_FIXED_BYTES)
-                  / (RAM_RETAIN_BYTES_PER_ACCESS + RAM_FILL_SCRATCH_BYTES_PER_ACCESS)
-            : 0;
-        ram_cap_ = std::min(ram_cap_, std::min(fill_cap, (size_t)1 << 30));
-        ram_cap_ &= ~(size_t)63;                       // keeps every array 256-byte aligned
-        const size_t ram_bytes = ram_cap_ * RAM_RETAIN_BYTES_PER_ACCESS;
-        uint8_t* ram_base = arena_ + ((arena_bytes_ - ram_bytes) & ~(size_t)255);
-        d_ram_addr_  = (uint32_t*)ram_base;
-        d_ram_meta_  = (uint64_t*)(ram_base + ram_cap_ * 4);
-        d_ram_value_ = (uint64_t*)(ram_base + ram_cap_ * 12);
-        d_ops_pool_          = (uint32_t*)(arena_ + cursor_);
-        d_ops_pool_cap_u32_  = ((size_t)(ram_base - (arena_ + cursor_))) / 4;
-        d_ops_pool_used_u32_ = 0;
-    }
-    ram_retention_enabled_.store(ram_cap_ > 0, std::memory_order_relaxed);
-    fprintf(stderr, "[mops] arena %zu MB: fixed %zu MB, pool %zu MB, RAM witness retention %zu MB (%zu accesses)\n",
-            arena_bytes_ >> 20, cursor_ >> 20, d_ops_pool_cap_u32_ * 4 >> 20,
-            ram_cap_ * RAM_RETAIN_BYTES_PER_ACCESS >> 20, ram_cap_);
+    // Dynamic region: the ops pool grows up from the fixed regions, the retained RAM accesses grow
+    // down from the arena top; the reservations keep the two from crossing.
+    top_bytes_           = arena_bytes_ & ~(size_t)255;
+    ram_records_.top     = (uint32_t*)(arena_ + top_bytes_);
+    d_ops_pool_          = (uint32_t*)(arena_ + cursor_);
+    d_ops_pool_cap_u32_  = (top_bytes_ - cursor_) / 4;
+    d_ops_pool_used_u32_ = 0;
+    ram_retention_enabled_.store(top_bytes_ > cursor_, std::memory_order_relaxed);
+    fprintf(stderr, "[mops] arena %zu MB: fixed %zu MB, %zu MB shared by the ops pool and the retained RAM accesses\n",
+            arena_bytes_ >> 20, cursor_ >> 20, (top_bytes_ - cursor_) >> 20);
 
     // Highest device priority: the count/plan pipeline is the executor's critical
     // path, and proofman's streaming-commit slots (priority 0) may run concurrently
@@ -1578,9 +1557,17 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
         return false;
     }
 
-    // Reserve this chunk's compacted-output region in the device ops pool
-    const size_t base = pool_cursor_u32_.fetch_add(pot, std::memory_order_relaxed);
-    if (base + pot > d_ops_pool_cap_u32_) {
+    // Reserve this chunk's compacted-output region in the device ops pool. Each stack bumps its
+    // own cursor before reading the other's, so two concurrent reservations cannot both miss the
+    // crossing. Meeting the retained accesses drops the device witness first; only a pool that
+    // does not fit the region on its own is an error.
+    const size_t base = pool_cursor_u32_.fetch_add(pot, std::memory_order_seq_cst);
+    if (pool_end_bytes(base + pot) > ram_low_edge_bytes(ram_cursor_.load(std::memory_order_seq_cst))
+        && ram_retention_enabled_.exchange(false)) {
+        fprintf(stderr, "CountAndPlan: the ops pool meets the retained RAM accesses at chunk %u; "
+                        "no device RAM witness for this block\n", c);
+    }
+    if (pool_end_bytes(base + pot) > top_bytes_) {
         fprintf(stderr,
                 "CountAndPlan::add_chunk ERROR: ops pool exhausted at chunk %u "
                 "(base %zu + need %zu > capacity %zu u32 entries). "
@@ -1652,12 +1639,11 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
 
     // Retain the chunk's RAM accesses for the witness, in arrival order.
     if (ram > 0 && ram_retention_enabled_.load(std::memory_order_relaxed)) {
-        const size_t rbase = ram_cursor_.fetch_add(ram, std::memory_order_relaxed);
-        if (rbase + ram > ram_cap_) {
+        const size_t rbase = ram_cursor_.fetch_add(ram, std::memory_order_seq_cst);
+        if (ram_low_edge_bytes(rbase + ram) < pool_end_bytes(pool_cursor_u32_.load(std::memory_order_seq_cst))) {
             if (ram_retention_enabled_.exchange(false)) {
-                fprintf(stderr,
-                        "CountAndPlan: retained RAM accesses exceed the capacity of %zu; no device "
-                        "RAM witness for this block\n", ram_cap_);
+                fprintf(stderr, "CountAndPlan: the retained RAM accesses meet the ops pool at chunk %u "
+                                "(%zu accesses so far); no device RAM witness for this block\n", c, rbase + ram);
             }
         } else {
             ram_flags_kernel<<<g_pot, BLOCK, 0, st>>>(d_potentials_[s], (uint32_t)pot, d_ram_flags_[s]);
@@ -1666,8 +1652,7 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
             CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes_rf,
                 d_ram_flags_[s], d_ram_pos_[s], (uint32_t)pot + 1, st));
             retain_ram_kernel<<<g_pot, BLOCK, 0, st>>>(d_potentials_[s], (uint32_t)pot,
-                d_ram_pos_[s], rbase, c, chunk_size_bits_,
-                d_ram_addr_, d_ram_meta_, d_ram_value_, d_ram_nwrites_);
+                d_ram_pos_[s], rbase, c, chunk_size_bits_, ram_records_, d_ram_nwrites_);
             CUDA_CHECK_LAUNCH();
         }
     }
@@ -1850,7 +1835,7 @@ void CountAndPlan::reset() {
     preprocessed_           = false;
     prepared_               = false;
     ram_cursor_.store(0, std::memory_order_relaxed);
-    ram_retention_enabled_.store(ram_cap_ > 0, std::memory_order_relaxed);
+    ram_retention_enabled_.store(top_bytes_ > cursor_, std::memory_order_relaxed);
     ram_prepared_           = false;
     ram_results_.clear();
     ram_n_lanes_            = 0;
