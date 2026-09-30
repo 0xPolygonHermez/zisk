@@ -58,6 +58,10 @@ use crate::{
 struct LookupMuls {
     compressor: Vec<u64>,
     bitmap: Vec<u64>,
+    /// Multiplicities of the @[block_not_empty] range check, indexed by the
+    /// `bytes_used` of the first op of an active block. The PIL checks
+    /// `bytes_used[0] - 1` against the 8-bit range on every first clock.
+    block_first_op: [u64; 9],
 }
 
 impl LookupMuls {
@@ -65,7 +69,15 @@ impl LookupMuls {
         Self {
             compressor: vec![0; JUMP_DEST_COMPRESSOR_TABLE_ROWS],
             bitmap: vec![0; JUMP_DEST_BITMAP_TABLE_ROWS],
+            block_first_op: [0; 9],
         }
+    }
+
+    /// Counts the range check of a block's first op, which is what proves the
+    /// block consumes at least one byte.
+    #[inline(always)]
+    fn count_block_start(&mut self, op: &JumpDestOp) {
+        self.block_first_op[op.bytes_used as usize] += 1;
     }
 
     /// Counts the five lookups of one op: one per 16-bit chunk against the
@@ -111,6 +123,9 @@ pub struct JumpDestSM<F: PrimeField64> {
     /// against. Its multiplicity is ours to raise too — a range check on an
     /// airvalue is a bus emission like any other.
     range_16_bits_id: usize,
+    /// The 8-bit range `bytes_used[0] - 1` is checked against on the first
+    /// clock of every active block, @[block_not_empty] in the PIL.
+    range_8_bits_id: usize,
 }
 
 impl<F: PrimeField64> JumpDestSM<F> {
@@ -124,6 +139,8 @@ impl<F: PrimeField64> JumpDestSM<F> {
 
         let range_16_bits_id =
             std.get_range_id(0, 0xFFFF, None).expect("Failed to get the 16-bit range id");
+        let range_8_bits_id =
+            std.get_range_id(0, 0xFF, None).expect("Failed to get the 8-bit range id");
 
         Arc::new(Self {
             std,
@@ -131,19 +148,21 @@ impl<F: PrimeField64> JumpDestSM<F> {
             bitmap_table_id,
             bitmap_index: JumpDestBitmapTableIndex::new(),
             range_16_bits_id,
+            range_8_bits_id,
         })
     }
 
     /// Writes the rows of one operation, starting `skip_rows` into it. Returns
     /// how many rows were written and where the walk stands afterwards.
-    /// `on_op` is handed every op of an active row, which is where the lookup
+    /// `on_row` is handed the ops of every active row, and whether that row is
+    /// the first clock of its block; that is where the lookup and range check
     /// multiplicities are raised. It is a parameter so the row logic can be
     /// exercised without a `Std`.
     fn process_input<R: JumpDestTraceRowOps<F>>(
         input: &JumpDestInput,
         skip_rows: usize,
         trace: &mut [R],
-        mut on_op: impl FnMut(&JumpDestOp),
+        mut on_row: impl FnMut(&[JumpDestOp], bool),
     ) -> (usize, Cursor) {
         let ops = expand_jump_dest_ops(input.count as usize, &input.words);
         let total_rows = ops.len() / JUMP_DEST_OPS_X_ROW;
@@ -157,6 +176,7 @@ impl<F: PrimeField64> JumpDestSM<F> {
         for (index, row) in trace.iter_mut().enumerate().take(rows) {
             let row_index = skip_rows + index;
             let block = row_index / JUMP_DEST_ROWS_X_BLOCK;
+            let is_first_clock = row_index % JUMP_DEST_ROWS_X_BLOCK == 0;
             let is_last_clock = row_index % JUMP_DEST_ROWS_X_BLOCK == JUMP_DEST_ROWS_X_BLOCK - 1;
             let seq_end = row_index + 1 == total_rows;
 
@@ -186,7 +206,7 @@ impl<F: PrimeField64> JumpDestSM<F> {
             Self::set_cursor(row, &cursor);
             Self::set_ops(row, slice);
             // Only selected rows drive the lookups, so only these are counted.
-            slice.iter().for_each(&mut on_op);
+            on_row(slice, is_first_clock);
         }
 
         (rows, cursor)
@@ -332,9 +352,13 @@ impl<F: PrimeField64> JumpDestSM<F> {
             if offset >= num_rows {
                 break;
             }
-            let (written, cursor) = Self::process_input(input, skip, &mut rows[offset..], |op| {
-                muls.count(op, &self.bitmap_index)
-            });
+            let (written, cursor) =
+                Self::process_input(input, skip, &mut rows[offset..], |slice, is_first_clock| {
+                    slice.iter().for_each(|op| muls.count(op, &self.bitmap_index));
+                    if is_first_clock {
+                        muls.count_block_start(&slice[0]);
+                    }
+                });
             offset += written;
             skip = 0;
             last = cursor;
@@ -372,6 +396,20 @@ impl<F: PrimeField64> JumpDestSM<F> {
 
         self.std.inc_virtual_rows_ranged(self.compressor_table_id, None, &muls.compressor);
         self.std.inc_virtual_rows_ranged(self.bitmap_table_id, None, &muls.bitmap);
+
+        // @[block_not_empty]: the first op of every active block proves it
+        // consumes at least one byte, as `bytes_used[0] - 1` in the 8-bit range.
+        // A block opening with nothing left never happens while count > 0.
+        debug_assert_eq!(
+            muls.block_first_op[0], 0,
+            "an active block must consume at least one byte"
+        );
+        for bytes_used in 1..=8u64 {
+            let mul = muls.block_first_op[bytes_used as usize];
+            if mul > 0 {
+                self.std.range_check(self.range_8_bits_id, bytes_used - 1, mul);
+            }
+        }
 
         // `count` is proved non-negative by splitting the segment's last value
         // into two 16-bit chunks.
@@ -577,6 +615,17 @@ mod tests {
                 );
             }
 
+            // range_check(bytes_used[0] - 1, [0, 0xFF], sel: FIRST_CLOCK * sel)
+            // An active block consumes at least one byte in its first op, so a
+            // sequence cannot grow an empty block once its count is exhausted.
+            let is_first_clock = index % JUMP_DEST_ROWS_X_BLOCK == 0;
+            if is_first_clock && row.get_sel() {
+                assert!(
+                    row.get_bytes_used(0) >= 1,
+                    "row {index}: an active block opens with nothing to consume"
+                );
+            }
+
             if prev.seq_end {
                 // A new sequence: src64, dst64, count and state are pinned by
                 // the operation, not by the row before. Only state[0] === 0 at
@@ -661,7 +710,7 @@ mod tests {
         let bytecode = vec![0x5bu8; 200];
         let inp = input(&bytecode, 0xA000_0000, 0xB000_0000);
         let mut rows = blank(inp.rows() as usize);
-        let (written, cursor) = JumpDestSM::<F>::process_input(&inp, 0, &mut rows, |_| {});
+        let (written, cursor) = JumpDestSM::<F>::process_input(&inp, 0, &mut rows, |_, _| {});
 
         assert_eq!(written, bitmap_words(200) * JUMP_DEST_ROWS_X_BLOCK);
         JumpDestSM::<F>::fill_seq_start(&mut rows, true);
@@ -681,7 +730,7 @@ mod tests {
         let bytecode = vec![0x00u8; 200];
         let inp = input(&bytecode, 0xA000_0000, 0xB000_0000);
         let mut rows = blank(inp.rows() as usize);
-        JumpDestSM::<F>::process_input(&inp, 0, &mut rows, |_| {});
+        JumpDestSM::<F>::process_input(&inp, 0, &mut rows, |_, _| {});
 
         let base = (0xA000_0000u64 / 8) as u32;
         for block in 0..bitmap_words(200) {
@@ -704,11 +753,11 @@ mod tests {
         let total = inp.rows() as usize;
 
         let mut whole = blank(total);
-        JumpDestSM::<F>::process_input(&inp, 0, &mut whole, |_| {});
+        JumpDestSM::<F>::process_input(&inp, 0, &mut whole, |_, _| {});
 
         let cut = JUMP_DEST_ROWS_X_BLOCK * 3;
         let mut tail = blank(total - cut);
-        JumpDestSM::<F>::process_input(&inp, cut, &mut tail, |_| {});
+        JumpDestSM::<F>::process_input(&inp, cut, &mut tail, |_, _| {});
 
         for (index, (t, w)) in tail.iter().zip(&whole[cut..]).enumerate() {
             assert_eq!(t.get_src64(), w.get_src64(), "row {index}: src64");
@@ -732,6 +781,9 @@ mod tests {
         // first segment ended on.
         let previous = JumpDestSM::<F>::cursor_before(&inp, cut);
         let boundary = &whole[cut - 1];
+        // (1 - is_last_segment) * LAST * (1 - sel) === 0: a segment that hands
+        // a sequence over must end on an active row.
+        assert!(boundary.get_sel(), "the first segment must end active");
         assert_eq!(previous.src64, boundary.get_src64());
         assert_eq!(previous.dst64, boundary.get_dst64());
         assert_eq!(previous.count, boundary.get_count());
@@ -761,7 +813,7 @@ mod tests {
                 }
                 let inp = input(&bytecode, 0xA000_0000, 0xB000_0000);
                 let mut rows = blank(inp.rows() as usize);
-                JumpDestSM::<F>::process_input(&inp, 0, &mut rows, |_| {});
+                JumpDestSM::<F>::process_input(&inp, 0, &mut rows, |_, _| {});
 
                 check_transitions(&rows, &Cursor { seq_end: true, ..Cursor::default() });
 
@@ -787,7 +839,8 @@ mod tests {
         let used = inp.rows() as usize;
         let mut rows = blank(used + 3 * JUMP_DEST_ROWS_X_BLOCK);
 
-        let (written, cursor) = JumpDestSM::<F>::process_input(&inp, 0, &mut rows[..used], |_| {});
+        let (written, cursor) =
+            JumpDestSM::<F>::process_input(&inp, 0, &mut rows[..used], |_, _| {});
         JumpDestSM::<F>::fill_inactive(written, &cursor, &mut rows[written..]);
 
         for row in &rows[written..] {

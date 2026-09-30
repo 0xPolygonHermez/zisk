@@ -1,7 +1,7 @@
 //! Fixed-column generation for `JumpDestBitmapTable`.
 //!
 //! The table is described in `pil/jump_dest_bitmap_table.pil`; that file is the
-//! specification and this is the generator, because producing its 138953 rows
+//! specification and this is the generator, because producing its 137974 rows
 //! from an interpreted PIL loop costs minutes of compile time. Keep the two in step: the
 //! PIL declares the columns and the row count, this fills them.
 //!
@@ -46,7 +46,7 @@ pub const JD_CDATA4_SHIFT: u64 = 1 << 6;
 pub const JD_MEM_LOAD_SHIFT: u64 = 1 << 38;
 
 /// Rows the generator must produce, asserted here and declared in the PIL.
-pub const JUMP_DEST_BITMAP_TABLE_ROWS: usize = 138953;
+pub const JUMP_DEST_BITMAP_TABLE_ROWS: usize = 137974;
 
 /// Rows of `JumpDestCompressorTable`, four per 16-bit chunk value — one per
 /// combination of "byte 0 ignored" and "byte 1 ignored". Mirrors
@@ -97,6 +97,10 @@ struct Step {
     pending: u8,
     /// The bytecode ended at or before this chunk.
     ended: bool,
+    /// Byte of this chunk, 0 or 1, at which the bytecode was found to end: an
+    /// ignored byte with no PUSH data pending to account for it. Only the chunk
+    /// that finds the end sets it.
+    end_at: Option<u8>,
     /// The chunk's two bitmap bits.
     bits: u8,
     /// Byte states, needed to find the last byte of the word in use.
@@ -108,7 +112,7 @@ struct Step {
 /// which is what forces the four chunks of a word to be coherent.
 fn jd_step(cdata: u8, pending: u8, ended: bool) -> Option<Step> {
     let (bs0, bs1, n) = jd_decode(cdata);
-    let mut out = Step { pending: 0, ended: false, bits: 0, bs0, bs1 };
+    let mut out = Step { pending: 0, ended: false, bits: 0, bs0, bs1, end_at: None };
 
     if ended {
         // Past the end of the bytecode every byte must be ignored.
@@ -129,7 +133,10 @@ fn jd_step(cdata: u8, pending: u8, ended: bool) -> Option<Step> {
             return None;
         }
         match bs1 {
-            JD_I => out.ended = true,
+            JD_I => {
+                out.ended = true;
+                out.end_at = Some(1);
+            }
             JD_J => out.bits = 2,
             JD_N => {}
             _ => out.pending = n,
@@ -140,6 +147,7 @@ fn jd_step(cdata: u8, pending: u8, ended: bool) -> Option<Step> {
             return None;
         }
         out.ended = true;
+        out.end_at = Some(0);
     } else if bs0 == JD_P {
         // Byte 1 is the first data byte, so n - 1 bytes spill past the chunk.
         if bs1 != JD_I {
@@ -151,7 +159,10 @@ fn jd_step(cdata: u8, pending: u8, ended: bool) -> Option<Step> {
             out.bits = 1;
         }
         match bs1 {
-            JD_I => out.ended = true,
+            JD_I => {
+                out.ended = true;
+                out.end_at = Some(1);
+            }
             JD_J => out.bits += 2,
             JD_N => {}
             _ => out.pending = n,
@@ -211,6 +222,19 @@ pub fn build_jump_dest_bitmap_table() -> Vec<JumpDestBitmapTableRow> {
                             }
                         }
 
+                        // Where the bytecode was found to end: the first byte
+                        // that is ignored with no PUSH data pending to account
+                        // for it. Inside the bytecode every byte is either an
+                        // instruction or PUSH data, so the code cannot extend
+                        // past this byte; 8 when the word never reaches it.
+                        let end = [s0, s1, s2, s3]
+                            .iter()
+                            .enumerate()
+                            .find_map(|(index, step)| {
+                                step.end_at.map(|byte| 2 * index as i32 + byte as i32)
+                            })
+                            .unwrap_or(8);
+
                         // The whole word lies inside the bytecode. Two ways out:
                         // the code carries on, or it ends exactly at the word
                         // boundary. The byte states cannot tell them apart —
@@ -222,11 +246,17 @@ pub fn build_jump_dest_bitmap_table() -> Vec<JumpDestBitmapTableRow> {
                             push(cdata4, state, 8, bits, s3.pending);
                             push(cdata4, state, 8, bits, JD_STATE_FINISHED);
                         }
-                        // Or it ends anywhere after the last byte in use. The
-                        // byte states cannot tell a PUSH with its data present
-                        // from one truncated at the end of the bytecode, so all
-                        // of these are legal here and `count` picks one.
-                        for k in (last + 1)..8 {
+                        // Or it ends anywhere after the last byte in use, up to
+                        // the byte where the end was found. In between there is
+                        // only PUSH data, and the byte states cannot tell data
+                        // that is present from data truncated at the end of the
+                        // bytecode, so all of these are legal here and `count`
+                        // picks one. Never beyond `end`: a row claiming that byte
+                        // inside the bytecode while it is ignored with nothing
+                        // pending would let a prover declare the code finished
+                        // early, keep the true bytes_used and drop the JUMPDEST
+                        // bits after the fake end.
+                        for k in (last + 1)..=end.min(7) {
                             push(cdata4, state, k as u8, bits, JD_STATE_FINISHED);
                         }
                     }
@@ -379,6 +409,41 @@ mod tests {
             let found = index.row(state_in, cdata4, row.bytes_used as u8, row.state_out as u8);
             assert_eq!(found as usize, position, "row {position}");
         }
+    }
+
+    /// A word that finds the end of the bytecode at byte `e` — an ignored byte
+    /// with no PUSH data pending — cannot claim more than `e` bytes in use.
+    /// Otherwise a prover could mark the tail of the last word as ignored, keep
+    /// the true `bytes_used`, and drop the JUMPDEST bits after the fake end.
+    #[test]
+    fn an_early_end_cannot_claim_bytes_past_it() {
+        let table = build_jump_dest_bitmap_table();
+        let claims: HashSet<(u64, u64)> =
+            table.iter().map(|r| (r.state_cdata4_mem_load, r.bytes_used)).collect();
+        let word = |chunks: [u8; 4]| {
+            chunks.iter().enumerate().fold(0u64, |acc, (i, c)| acc | (*c as u64) << (8 * i))
+        };
+        let legal = |input: u64| -> Vec<u64> {
+            (0..=8u64).filter(|k| claims.contains(&(input, *k))).collect()
+        };
+        let ignored = jd_cdata(JD_I, JD_I, 0);
+
+        // Every byte ignored with nothing pending: the code ended before the
+        // word, so nothing of it is in use.
+        assert_eq!(legal(jd_pack_input(0, word([ignored; 4]))), vec![0]);
+
+        // PUSH1 x JUMPDEST STOP | end: bytes 0..=3 in use, byte 4 is the end.
+        let chunks = [jd_cdata(JD_P, JD_I, 1), jd_cdata(JD_J, JD_N, 0), ignored, ignored];
+        assert_eq!(legal(jd_pack_input(0, word(chunks))), vec![4]);
+
+        // STOP PUSH2 x x | end: the two data bytes may be present or truncated,
+        // so the code may end at byte 2, 3 or 4, but not later.
+        let chunks = [jd_cdata(JD_N, JD_P, 2), ignored, ignored, ignored];
+        assert_eq!(legal(jd_pack_input(0, word(chunks))), vec![2, 3, 4]);
+
+        // A full word that carries on keeps both readings and no partial one.
+        let chunks = [jd_cdata(JD_J, JD_N, 0); 4];
+        assert_eq!(legal(jd_pack_input(0, word(chunks))), vec![8]);
     }
 
     /// The compressor table holds four rows per data value, and the one the

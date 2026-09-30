@@ -128,6 +128,7 @@ impl ZiskProofmanSetupSetup {
             agg_arity,
             recursive_n_bits: self.recursive_n_bits,
             compressed_final,
+            setup_version: Some(zisk_setup::ZISK_SETUP_VERSION.to_string()),
             gen_exps: self.gen_exps,
             exps_arch: self.exps_arch.clone(),
             exps_cap: self.exps_cap,

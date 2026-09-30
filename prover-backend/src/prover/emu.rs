@@ -364,6 +364,7 @@ impl EmuCoreProver {
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
+        zisk_setup::check_setup_version(&proving_key)?;
 
         let proofman = ProofMan::new(proving_key.clone(), options.clone())
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
