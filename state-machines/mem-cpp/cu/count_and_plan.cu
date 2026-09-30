@@ -65,9 +65,20 @@ __host__ __device__ __forceinline__ MemOp load_record(const uint64_t* words, uin
 
 #define MOPS_BLOCK_COUNT_SBITS        4
 
-// Bits of the device fault flag, checked once per block before the prefix scan.
-constexpr uint32_t INVALID_MODE    = 1u;   // unrecognised record mode
-constexpr uint32_t INVALID_ADDRESS = 2u;   // access outside the memory map
+// Device fault word, checked once per block before the prefix scan: bits in word 0, the compact
+// address of a counter overflow in word 1.
+constexpr uint32_t INVALID_MODE     = 1u;   // unrecognised record mode
+constexpr uint32_t INVALID_ADDRESS  = 2u;   // access outside the memory map
+constexpr uint32_t COUNTER_OVERFLOW = 4u;   // more than 2^32 - 1 rows at one address
+
+__device__ __forceinline__ void hist_add(uint32_t* counter, uint32_t n, uint32_t compact,
+                                         uint32_t* d_fault) {
+    const uint32_t old = atomicAdd(counter, n);
+    if (old + n < old) {
+        atomicOr(d_fault, COUNTER_OVERFLOW);
+        atomicExch(d_fault + 1, compact);
+    }
+}
 
 // Per-chunk capacity for block-op spill entries. Must hold every memop that
 // could be a block-op spill candidate, which in the worst case is every memop
@@ -651,7 +662,7 @@ void gather_ram_events_with_hist_kernel(const PotentialEmit* __restrict__ d_pote
         } else {
             d_emit_bits[i] = 1;
             const uint32_t compact = compact_addr_dev(raw);
-            atomicAdd(&d_histogram[compact], 1u);
+            hist_add(&d_histogram[compact], 1u, compact, d_invalid_flag);
             if (compact < N_ADDR_ROM) {
                 local_max_rom = compact;
             } else {
@@ -677,7 +688,8 @@ void state_machine_by_run_with_hist_kernel(const uint32_t* __restrict__ d_run_of
                                            const uint32_t* __restrict__ d_sorted_addr,
                                            uint32_t* __restrict__ d_emit_bits,
                                            uint32_t* __restrict__ d_histogram,
-                                           uint32_t* __restrict__ d_max_compact) {
+                                           uint32_t* __restrict__ d_max_compact,
+                                           uint32_t* __restrict__ d_invalid_flag) {
     uint32_t local_max_ram = 0;
 
     const uint32_t t = blockIdx.x * blockDim.x + threadIdx.x;
@@ -704,7 +716,8 @@ void state_machine_by_run_with_hist_kernel(const uint32_t* __restrict__ d_run_of
         }
         if (n_emit > 0) {
             const uint32_t compact_ram = d_sorted_addr[start];
-            atomicAdd(&d_histogram[compact_ram + N_ADDR_ROM + N_ADDR_INPUT], n_emit);
+            const uint32_t compact = compact_ram + N_ADDR_ROM + N_ADDR_INPUT;
+            hist_add(&d_histogram[compact], n_emit, compact, d_invalid_flag);
             local_max_ram = compact_ram;
         }
     }
@@ -1279,7 +1292,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         take((size_t)max_active_ * 4);               // d_page_meta_starts_
         take((size_t)max_active_ * 4);               // d_pages_dense_starts_
         take(3 * 4);
-        take(4);
+        take(8);                                      // fault word
         take((size_t)MAX_CHUNKS * sizeof(ChunkCounters));
         take((size_t)MAX_CHUNKS * 4);
         take((size_t)MAX_CHUNKS * 4);
@@ -1377,7 +1390,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     d_page_meta_starts_       = (uint32_t*)take((size_t)max_active_ * 4);
     d_pages_dense_starts_     = (uint32_t*)take((size_t)max_active_ * 4);
     d_max_compact_            = (uint32_t*)take(3 * 4);
-    d_invalid_mode_flag_        = (uint32_t*)take(4);
+    d_invalid_mode_flag_        = (uint32_t*)take(8);
     d_chunk_counters_per_chunk_ = (ChunkCounters*)take((size_t)MAX_CHUNKS * sizeof(ChunkCounters));
     d_gappy_offsets_          = (uint32_t*)take((size_t)MAX_CHUNKS * 4);
     d_chunk_lens_             = (uint32_t*)take((size_t)MAX_CHUNKS * 4);
@@ -1683,7 +1696,7 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
 
         state_machine_by_run_with_hist_kernel<<<g_ram, BLOCK, 0, st>>>(
             d_run_offsets_[s], d_num_unique_[s], d_ram_vals_sorted_[s],
-            d_sorted_addr_[s], d_emit_bits_[s], d_histogram_, d_max_compact_);
+            d_sorted_addr_[s], d_emit_bits_[s], d_histogram_, d_max_compact_, d_invalid_mode_flag_);
         CUDA_CHECK_LAUNCH();
     }
 
@@ -1786,11 +1799,16 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
                               (n_chunks_ + 1) * 4, cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(h_max_compact_, d_max_compact_, 3 * 4, cudaMemcpyDeviceToHost));
 
-        uint32_t h_invalid = 0;
-        CUDA_CHECK(cudaMemcpy(&h_invalid, d_invalid_mode_flag_, 4, cudaMemcpyDeviceToHost));
-        if (h_invalid != 0) {
+        uint32_t h_fault[2] = {0, 0};
+        CUDA_CHECK(cudaMemcpy(h_fault, d_invalid_mode_flag_, 8, cudaMemcpyDeviceToHost));
+        if (h_fault[0] & COUNTER_OVERFLOW) {
+            fprintf(stderr, "CountAndPlan::run FATAL: more than 2^32 - 1 rows at address 0x%08x\n",
+                    expand_addr(h_fault[1]));
+            std::exit(1);
+        }
+        if (h_fault[0] != 0) {
             fprintf(stderr, "CountAndPlan::run FATAL: %s in the memory-ops stream\n",
-                    (h_invalid & INVALID_ADDRESS) ? "access outside the memory map" : "unrecognised record mode");
+                    (h_fault[0] & INVALID_ADDRESS) ? "access outside the memory map" : "unrecognised record mode");
             std::exit(1);
         }
 
@@ -1842,7 +1860,7 @@ void CountAndPlan::reset() {
     if (d_histogram_)                CUDA_CHECK(cudaMemset(d_histogram_, 0, (size_t)N_ADDR * 4));
     if (d_max_compact_)              CUDA_CHECK(cudaMemset(d_max_compact_, 0, 3 * 4));
     if (d_ram_nwrites_)              CUDA_CHECK(cudaMemset(d_ram_nwrites_, 0, 8));
-    if (d_invalid_mode_flag_)        CUDA_CHECK(cudaMemset(d_invalid_mode_flag_, 0, 4));
+    if (d_invalid_mode_flag_)        CUDA_CHECK(cudaMemset(d_invalid_mode_flag_, 0, 8));
     if (d_chunk_counters_per_chunk_) CUDA_CHECK(cudaMemset(d_chunk_counters_per_chunk_, 0, (size_t)MAX_CHUNKS * sizeof(ChunkCounters)));
 
     if (pool_enabled_) {
