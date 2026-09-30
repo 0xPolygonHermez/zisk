@@ -294,7 +294,9 @@ impl<F: PrimeField64> MemSM<F> {
         packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
         // The legacy fill reads `mem_ops[index - 1]`, so it is the one path that needs the
-        // operations contiguous. It also sorts them, so it needs ownership regardless.
+        // operations contiguous. The caller has already sorted them -- see this method's doc --
+        // so all this buys is contiguity, and it pays for it even when they already are; see
+        // `MemOps::to_flat_vec`.
         let mem_ops = &mem_ops.to_flat_vec()[..];
         if packed {
             self.legacy_compute_witness_inner::<MemTraceRowPacked<F>>(
