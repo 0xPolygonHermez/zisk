@@ -12,11 +12,12 @@
 #
 # MAIN TASKS:
 # 1. Encode memcpy metadata (offsets, counts, alignment flags)
-# 2. Record all memory operation addresses (reads and writes) to mops buffer
+# 2. Record the memory operations (dma_constants.inc): the reads before the copy, then
+#    one write record per destination word with its value, read back after the copy
 # 3. Perform the actual memory copy from src to dst (with overlap handling)
 #
 # REGISTER USAGE:
-#   Uses: rax, rcx, rdx, rdi, rsi, r9, r12, r13
+#   Uses: rax, rcx, rdx, rdi, rsi, r8, r9, r10, r11, r12, r13; reads r14 (step)
 #   Does NOT use XMM registers (caller doesn't need to save them)
 #   Modifies: r13 (mops index output)
 #
@@ -38,7 +39,7 @@
 
 .global direct_dma_memcpy_mops
 .global direct_dma_xmemcpy_mops
-.extern check_dynamic_mtrace
+.extern check_dynamic_mops
 
 .include "dma_constants.inc"
 .include "fast_dma_encode_macro.inc"
@@ -72,8 +73,15 @@ direct_dma_xmemcpy_mops:
     #   r13 = updated mops index (output)
     #   rax = encoded metadata
 
+    # Make sure the trace has room for one write record per copied word
+    cmp     rdx, MAX_DMA_BYTES_DIRECT_MOPS
+    jbe     .L_xmemcpy_encode
+    call    check_dynamic_mops         # keeps rdx, rsi, rdi
+.L_xmemcpy_encode:
+
     # Encode memcpy parameters: rdi=dst, rsi=src, rdx=count
     FAST_DMA_ENCODE  # ~15-20 cycles - table lookup encoding
+    MOPS_STEP_HEADERS
 
     # Skip the EXTENDED_PARAM read entry (not needed for xmemcpy)
     jmp     direct_dma_xmemcpy_common_entry_point
@@ -106,13 +114,19 @@ direct_dma_memcpy_mops:
     #   r13 = updated mops index (output)
     #   rax = encoded metadata
 
+    # Make sure the trace has room for one write record per copied word
+    cmp     rdx, MAX_DMA_BYTES_DIRECT_MOPS
+    jbe     .L_memcpy_encode
+    call    check_dynamic_mops
+.L_memcpy_encode:
+
     # Encode memcpy parameters: rdi=dst, rsi=src, rdx=count
     FAST_DMA_ENCODE            # ~15-20 cycles - table lookup encoding
+    MOPS_STEP_HEADERS
 
     # Record EXTENDED_PARAM read (memcpy opcode reads count from this address)
     mov     r9, (MOPS_ALIGNED_READ + EXTRA_PARAMETER_ADDR)  # 1 cycle
-    mov     [r12 + r13 * 8], r9                             # ~4 cycles
-    inc     r13                                             # 1 cycle
+    MOPS_REC_READ r9
 
 direct_dma_xmemcpy_common_entry_point:
 
@@ -132,7 +146,7 @@ direct_dma_xmemcpy_common_entry_point:
     mov     r9, MOPS_ALIGNED_READ      # 1 cycle - read operation flag
     add     r9, rdi                    # 1 cycle - add dst address
     and     r9, ALIGN_MASK             # 1 cycle - align to 8-byte boundary
-    mov     [r12 + r13 * 8], r9        # ~4 cycles - write mops entry
+    MOPS_REC_READ r9
 
     # Check if source spans two qwords (unaligned causing double read)
     test    rax, DMA_DOUBLE_SRC_PRE_MASK   # 1 cycle
@@ -143,18 +157,15 @@ direct_dma_xmemcpy_common_entry_point:
     mov     r9, MOPS_ALIGNED_READ      # 1 cycle - single read flag
     add     r9, rsi                    # 1 cycle - add src address
     and     r9, ALIGN_MASK             # 1 cycle - align to 8-byte boundary
-    mov     [r12 + r13 * 8 + 8], r9    # ~4 cycles - write mops entry
-    jmp     .L_pre_src_inc_mops_index  # 2 cycles
+    MOPS_REC_READ r9
+    jmp     .L_post_dst_to_mops        # 2 cycles
 
 .L_pre_double_src_to_mops:
     # Source spans two qwords (needs double read)
     mov     r9, MOPS_ALIGNED_READ_2W   # 1 cycle - double read flag
     add     r9, rsi                    # 1 cycle - add src address
     and     r9, ALIGN_MASK             # 1 cycle - align to 8-byte boundary
-    mov     [r12 + r13 * 8 + 8], r9    # ~4 cycles - write mops entry
-
-.L_pre_src_inc_mops_index:
-    add     r13, 2                     # 1 cycle - advance index (dst + src entries)
+    MOPS_REC_BLOCK r9
 
     # ========== PHASE 2: Record POST-alignment memory operations ==========
 
@@ -169,7 +180,7 @@ direct_dma_xmemcpy_common_entry_point:
     lea     r9, [rdi + rdx - 1]        # 1 cycle - r9 = last dst byte address
     and     r9, ALIGN_MASK             # 1 cycle - align to 8-byte boundary
     add     r9, rcx                    # 1 cycle - add mops flags
-    mov     [r12 + r13 * 8], r9        # ~4 cycles - write mops entry
+    MOPS_REC_READ r9
 
     # Calculate source address for post-alignment bytes
     mov     r9, rax                    # 1 cycle
@@ -185,17 +196,14 @@ direct_dma_xmemcpy_common_entry_point:
     # Source fits in single qword
     mov     rcx, MOPS_ALIGNED_READ     # 1 cycle - single read flag
     add     r9, rcx                    # 1 cycle - add mops flags
-    mov     [r12 + r13 * 8 + 8], r9    # ~4 cycles - write mops entry
-    jmp     .L_post_src_inc_mops_index # 2 cycles
+    MOPS_REC_READ r9
+    jmp     .L_src_to_mops             # 2 cycles
 
 .L_post_double_src_to_mops:
     # Source spans two qwords (needs double read)
     mov     rcx, MOPS_ALIGNED_READ_2W  # 1 cycle - double read flag
     add     r9, rcx                    # 1 cycle - add mops flags
-    mov     [r12 + r13 * 8 + 8], r9    # ~4 cycles - write mops entry
-
-.L_post_src_inc_mops_index:
-    add     r13, 2                     # 1 cycle - advance index (dst + src entries)
+    MOPS_REC_BLOCK r9
 
     # ========== PHASE 3: Record LOOP (aligned bulk) memory operations ==========
 
@@ -230,8 +238,7 @@ direct_dma_xmemcpy_common_entry_point:
 
 .L_src_to_mops_ready:
     and     r9, ALIGN_MASK                 # 1 cycle - align address
-    mov     [r12 + r13 * 8], r9            # ~4 cycles - write mops entry
-    inc     r13                            # 1 cycle
+    MOPS_REC_BLOCK r9
 
 .L_save_dst_addr_reusing_rcx:
     # Record destination write block
@@ -247,8 +254,7 @@ direct_dma_xmemcpy_common_entry_point:
     add     r9, rcx                        # 1 cycle - add mops flags
     and     r9, ALIGN_MASK                 # 1 cycle - align address
 
-    mov     [r12 + r13 * 8], r9            # ~4 cycles - write mops entry
-    inc     r13                            # 1 cycle
+    mov     [r12 + r13 * 8], r9            # ~4 cycles - write block descriptor, expanded after the copy
     jmp     .L_mops_done                   # 2 cycles
 
 .L_save_dst_with_loop_count_zero:
@@ -263,8 +269,7 @@ direct_dma_xmemcpy_common_entry_point:
     add     r9, rcx                        # 1 cycle - add mops flags
     and     r9, ALIGN_MASK                 # 1 cycle - align address
 
-    mov     [r12 + r13 * 8], r9            # ~4 cycles - write mops entry
-    inc     r13                            # 1 cycle
+    mov     [r12 + r13 * 8], r9            # ~4 cycles - write block descriptor, expanded after the copy
 
     # ========== PHASE 4: Perform actual memory copy ==========
 
@@ -290,7 +295,7 @@ direct_dma_xmemcpy_common_entry_point:
     rep movsb                       # ~3-5 cycles/byte (backward, slower)
     cld                             # ~20-50 cycles - clear direction flag
 
-    ret                             # ~3 cycles
+    jmp     .L_write_records
 
 .L_copy_forward:
     # No overlap - perform optimized forward copy
@@ -302,6 +307,9 @@ direct_dma_xmemcpy_common_entry_point:
     mov     rcx, rdx                # 1 cycle - rcx = count
     rep movsb                       # ~3-5 cycles/byte
 
+    # ========== PHASE 5: one write record per destination word ==========
+.L_write_records:
+    MOPS_EXPAND_BLOCK_WRITE         # keeps rax = dst
     ret                             # ~3 cycles
 /*
 .L_copy_forward_pre:

@@ -9,7 +9,8 @@
 #   1. one aligned read of EXTRA_PARAMETER_ADDR (the opcode reads count there)
 #   2. one aligned block read per maximal run of consecutive loaded source
 #      words — only the words the walk actually loads, not the whole range
-#   3. one aligned block write covering every bitmap word (always consecutive)
+#   3. after the walk, one write per bitmap word with its value (value blocks,
+#      dma_constants.inc)
 #
 # Grouping runs matters: a run of k words costs one entry instead of k, and the
 # entries are what the mops buffer holds. Reads are emitted as blocks even when
@@ -19,12 +20,9 @@
 #
 # BUFFER SPACE: the worst case is a run of one word followed by a skipped word,
 # repeating — any two adjacent loaded words merge into one entry — so the reads
-# cost at most ceil(ceil(count/8)/2) entries, and the whole op at most
-#
-#     2 + ceil(count/16) entries = 16 + 8*ceil(count/16) bytes < count/2 + 24
-#
-# which is why this variant, unlike the DMA ones, has to check the buffer at
-# all: the DMA mops are bounded at 6 entries regardless of count.
+# cost at most ceil(ceil(count/8)/2) two-word entries, and the bitmap words
+# about 8.3 bytes each: under count + 32 bytes in total, within the R_COUNT*4
+# that check_dynamic_mops bills.
 #
 # PARAMETERS (non-standard ABI):
 #   rdi = dst (u64*)                  - bitmap base, 8-byte aligned
@@ -40,7 +38,7 @@
 .global direct_jump_dest_mops
 .global direct_jump_dest_mops_with_count_check
 
-.extern check_dynamic_mtrace
+.extern check_dynamic_mops
 
 .include "dma_constants.inc"
 .include "jump_dest_macro.inc"
@@ -48,14 +46,12 @@
 .section .text
 
 direct_jump_dest_mops_with_count_check:
-    cmp     rdx, MAX_DMA_BYTES_DIRECT_MTRACE
+    cmp     rdx, MAX_DMA_BYTES_DIRECT_MOPS
     ja      .L_jdb_mops_check_dynamic
     jmp     direct_jump_dest_mops
 
 .L_jdb_mops_check_dynamic:
-    # check_dynamic_mtrace bills R_COUNT (= rdx = count) bytes, comfortably over
-    # the count/2 + 24 the mops actually need.
-    call    check_dynamic_mtrace
+    call    check_dynamic_mops
 
 direct_jump_dest_mops:
     push    rbx
@@ -63,12 +59,13 @@ direct_jump_dest_mops:
     push    r10
     push    r11
     push    r15
-    push    rdi                           # original dst, for the write block
+    push    rdi                           # original dst, for the write records
+    MOPS_STEP_HEADERS
+    push    R_MOPS_R                      # [rsp] = step field, read by JD_RECORD_MOPS
 
     # The opcode reads count from EXTRA_PARAMETER_ADDR.
     mov     rax, (MOPS_ALIGNED_READ + EXTRA_PARAMETER_ADDR)
-    mov     [r12 + r13 * 8], rax
-    inc     r13
+    MOPS_REC_READ rax
 
     test    rdx, rdx
     jz      .L_jdb_mops_done              # count == 0: no reads and no bitmap
@@ -77,9 +74,9 @@ direct_jump_dest_mops:
 
     JUMP_DEST_WALK JD_RECORD_MOPS
 
-    # Bitmap write block: ceil(count/64) consecutive aligned words, always one
-    # entry however long the bitmap is.
-    mov     rdi, [rsp]                    # original dst
+    # Bitmap write block: ceil(count/64) consecutive aligned words, as a
+    # descriptor that MOPS_EXPAND_BLOCK_WRITE turns into one write per word.
+    mov     rdi, [rsp + 8]                # original dst
     lea     rax, [rdx + 63]
     shr     rax, 6
     shl     rax, MOPS_BLOCK_WORDS_RS
@@ -87,9 +84,11 @@ direct_jump_dest_mops:
     add     rax, rcx
     add     rax, rdi
     mov     [r12 + r13 * 8], rax
-    inc     r13
+    mov     R_MOPS_R, [rsp]
+    MOPS_EXPAND_BLOCK_WRITE
 
 .L_jdb_mops_done:
+    add     rsp, 8                        # the step field
     pop     rax                           # rax = dst
     pop     r15
     pop     r11

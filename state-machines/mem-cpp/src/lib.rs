@@ -10,9 +10,17 @@ mod mem_planner;
 mod gpu_bindings;
 #[cfg(gpu)]
 mod gpu_count_and_plan;
+#[cfg(gpu)]
+mod gpu_ram_witness;
+#[cfg(not(gpu))]
+mod gpu_ram_witness_stub;
 
 pub use mem_checkpoints::*;
 pub use mem_planner::*;
 
 #[cfg(gpu)]
 pub use gpu_count_and_plan::*;
+#[cfg(gpu)]
+pub use gpu_ram_witness::*;
+#[cfg(not(gpu))]
+pub use gpu_ram_witness_stub::*;

@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const ALIGN_MASK: u32 = 0xFFFF_FFF8;
@@ -30,6 +30,42 @@ const MOPS_ALIGNED_READ: u32 = 0x0C;
 const MOPS_ALIGNED_WRITE: u32 = 0x0D;
 const MOPS_ALIGNED_BLOCK_READ: u32 = 0x0E;
 const MOPS_ALIGNED_BLOCK_WRITE: u32 = 0x0F;
+/// Stream layout: state-machines/mem-cpp/cpp/mem_config.hpp.
+const MOPS_BLOCK_VALUES: u32 = 0x07;
+
+/// Words of the record whose header word is `hdr` (bit 63 is the header tag).
+fn mops_record_len(hdr: u64) -> usize {
+    let mode = ((hdr >> 32) & 0x3F) as u32;
+    let low = mode & 0x0F;
+    if low == MOPS_ALIGNED_READ || ((mode & 0x10) == 0 && matches!(low, 1 | 2 | 4 | 8)) {
+        1
+    } else if low == MOPS_BLOCK_VALUES {
+        2 + ((hdr >> 36) & 63) as usize
+    } else {
+        2
+    }
+}
+
+/// Decodes the record at `w`; a value block becomes an aligned block write of its words.
+fn mops_decode_record(w: &[u64]) -> MemCountersBusData {
+    let hdr = w[0];
+    let mut flags = ((hdr >> 32) & 0x3FFF_FFFF) as u32;
+    if flags & 0x0F == MOPS_BLOCK_VALUES {
+        flags = MOPS_ALIGNED_BLOCK_WRITE | ((((hdr >> 36) & 63) as u32) << MOPS_BLOCK_COUNT_SBITS);
+    }
+    MemCountersBusData { addr: hdr as u32, flags }
+}
+
+/// The records of a chunk's word stream.
+fn decode_stream(words: &[u64]) -> Vec<MemCountersBusData> {
+    let mut out = Vec::with_capacity(words.len() / 2);
+    let mut w = 0;
+    while w < words.len() {
+        out.push(mops_decode_record(&words[w..]));
+        w += mops_record_len(words[w]);
+    }
+    out
+}
 
 const MOPS_BLOCK_COUNT_SBITS: u32 = 4;
 
@@ -303,32 +339,15 @@ fn stats_chunk(chunk_id: u32, data: &[MemCountersBusData]) -> ChunkMemAlignCount
     s
 }
 
-/// Read a chunk binary file into a Vec<MemCountersBusData>
+/// Read a chunk binary file (the chunk's stream words) into decoded records
 fn read_chunk_file(path: &Path) -> Result<Vec<MemCountersBusData>> {
     let data = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
-    let entry_size = std::mem::size_of::<MemCountersBusData>();
-    if data.len() % entry_size != 0 {
-        bail!(
-            "File {} size {} is not a multiple of entry size {}",
-            path.display(),
-            data.len(),
-            entry_size
-        );
+    if data.len() % 8 != 0 {
+        bail!("File {} size {} is not a multiple of 8", path.display(), data.len());
     }
-    let count = data.len() / entry_size;
-    let mut entries = Vec::with_capacity(count);
-    let mut cursor = &data[..];
-    for _ in 0..count {
-        let mut addr_bytes = [0u8; 4];
-        let mut flags_bytes = [0u8; 4];
-        cursor.read_exact(&mut addr_bytes)?;
-        cursor.read_exact(&mut flags_bytes)?;
-        entries.push(MemCountersBusData {
-            addr: u32::from_le_bytes(addr_bytes),
-            flags: u32::from_le_bytes(flags_bytes),
-        });
-    }
-    Ok(entries)
+    let words: Vec<u64> =
+        data.chunks_exact(8).map(|b| u64::from_le_bytes(b.try_into().unwrap())).collect();
+    Ok(decode_stream(&words))
 }
 
 /// Write expanded addresses as a binary file of little-endian u32 values
