@@ -188,3 +188,41 @@ fn reads_input() {
     let out = run(&wasm, &input);
     assert_eq!(out_u64(&out), 1234);
 }
+
+#[test]
+fn memory_copy_overlapping_forward_and_backward() {
+    // Fill 0..16 with 0..15, then shift up by 3 (dst > src: must copy backward) and read the
+    // 8 bytes at 3, then shift down by 5 (dst < src) and read the 8 bytes at 0.
+    let body = |shift: &str, at: u32| {
+        format!(
+            r#"(module
+          (import "wasi_snapshot_preview1" "fd_write"
+            (func $fd_write (param i32 i32 i32 i32) (result i32)))
+          (memory 1)
+          (func (export "_start")
+            (local $i i32)
+            (loop $l
+              (i32.store8 (i32.add (i32.const 64) (local.get $i)) (local.get $i))
+              (local.set $i (i32.add (local.get $i) (i32.const 1)))
+              (br_if $l (i32.lt_u (local.get $i) (i32.const 16))))
+            {shift}
+            (i32.store (i32.const 0) (i32.const {at}))
+            (i32.store (i32.const 4) (i32.const 8))
+            (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 48)))))"#
+        )
+    };
+    let up = body("(memory.copy (i32.const 67) (i32.const 64) (i32.const 13))", 67);
+    let out = run(&wat::parse_str(up).unwrap(), &[]);
+    assert_eq!(out_u64(&out), u64::from_le_bytes([0, 1, 2, 3, 4, 5, 6, 7]));
+    let down = body("(memory.copy (i32.const 64) (i32.const 69) (i32.const 11))", 64);
+    let out = run(&wat::parse_str(down).unwrap(), &[]);
+    assert_eq!(out_u64(&out), u64::from_le_bytes([5, 6, 7, 8, 9, 10, 11, 12]));
+}
+
+#[test]
+fn branch_to_function_body_returns() {
+    // `br 1` from inside a block targets the function itself (Go emits this shape).
+    let body = r#"(block (br 1 (i64.const 77))) (i64.const 1)"#;
+    let out = run(&module_printing_i64(body), &[]);
+    assert_eq!(out_u64(&out), 77);
+}

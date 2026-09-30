@@ -31,6 +31,9 @@ pub enum Fixup {
     JumpIfNotFlag(LabelId),
     /// Set the `b` immediate to the absolute ROM address of function `index` (for `call`).
     FuncAddr(u32),
+    /// Set the `b` immediate to the absolute ROM address of `label` within this function (used
+    /// to hand a return address to an out-of-line runtime routine).
+    LabelAddr(LabelId),
 }
 
 /// One emitted instruction plus its fixup.
@@ -109,6 +112,45 @@ impl Code {
         zib.op("copyb").unwrap();
         zib.ind_width(8);
         zib.store("ind", dst_off, false, false);
+        zib.j(4, 4);
+
+        self.push(zib, Fixup::None);
+    }
+
+    /// `mem[abs_addr] = op(mem[FP+slot_off])` in one instruction; `op` is `copyb` or a
+    /// `signextend_*` (which act on `b`).
+    pub fn slot_to_abs(&mut self, abs_addr: u64, slot_off: i64, op: &str) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("reg", REG_FP, false);
+        zib.src_b("ind", slot_off as u64, false);
+        zib.op(op).unwrap();
+        zib.ind_width(8);
+        zib.store("mem", abs_addr as i64, false, false);
+        zib.j(4, 4);
+
+        self.push(zib, Fixup::None);
+    }
+
+    /// `mem[FP+slot_off] = mem[abs_addr]` in one instruction.
+    pub fn abs_to_slot(&mut self, slot_off: i64, abs_addr: u64) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("reg", REG_FP, false);
+        zib.src_b("mem", abs_addr, false);
+        zib.op("copyb").unwrap();
+        zib.ind_width(8);
+        zib.store("ind", slot_off, false, false);
+        zib.j(4, 4);
+
+        self.push(zib, Fixup::None);
+    }
+
+    /// `reg = signextend_w(reg)`: re-canonicalizes a 32-bit value to the sign-extended i32 form.
+    pub fn signextend_w_reg(&mut self, reg: u64) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("imm", 0, false);
+        zib.src_b("reg", reg, false);
+        zib.op("signextend_w").unwrap();
+        zib.store("reg", reg as i64, false, false);
         zib.j(4, 4);
 
         self.push(zib, Fixup::None);
@@ -222,6 +264,55 @@ impl Code {
         zib.op("copyb").unwrap();
         zib.store("reg", reg as i64, false, false);
         zib.j(4, 4);
+
+        self.push(zib, Fixup::None);
+    }
+
+    /// `mem[abs_addr] = imm` (absolute system address) in one instruction.
+    pub fn store_imm_to_abs(&mut self, abs_addr: u64, imm: u64) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", imm, false);
+        zib.op("copyb").unwrap();
+        zib.store("mem", abs_addr as i64, false, false);
+        zib.j(4, 4);
+
+        self.push(zib, Fixup::None);
+    }
+
+    /// `mem[abs_addr] = <absolute address of label>`: stores the ROM address `label` resolves to.
+    pub fn store_label_addr_to_abs(&mut self, abs_addr: u64, label: LabelId) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", 0, false); // patched to the label address
+        zib.op("copyb").unwrap();
+        zib.store("mem", abs_addr as i64, false, false);
+        zib.j(4, 4);
+
+        self.push(zib, Fixup::LabelAddr(label));
+    }
+
+    /// Halts the machine with an error (a wasm trap): `halt` raises the emulator's error flag and
+    /// the `end` marker stops execution right there, so the failing step and pc get reported.
+    pub fn trap(&mut self) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", 0, false);
+        zib.op("halt").unwrap();
+        zib.end();
+        zib.j(0, 0);
+
+        self.push(zib, Fixup::None);
+    }
+
+    /// Unconditional jump to an absolute ROM address.
+    pub fn jump_abs(&mut self, abs_addr: u64) {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", abs_addr, false);
+        zib.op("copyb").unwrap();
+        zib.set_pc();
+        zib.j(0, 4);
 
         self.push(zib, Fixup::None);
     }

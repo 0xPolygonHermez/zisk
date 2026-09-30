@@ -8236,6 +8236,7 @@ dependencies = [
  "wat",
  "zisk-core",
  "zisk-riscv",
+ "zisk-transpiler-common",
 ]
 
 [[package]]

@@ -10,11 +10,14 @@ use wasmparser::{
     DataKind, ElementItems, ElementKind, ExternalKind, Operator, Parser, Payload, TypeRef, ValType,
 };
 
-/// The value kinds the MVP supports.  wasm i32/i64 both live in 64-bit Zisk slots.
+/// The value kinds the lowering supports.  Every kind lives in a 64-bit Zisk slot: i32 values are
+/// kept sign-extended, f32 values occupy the low 32 bits (the high half is don't-care).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ValKind {
     I32,
     I64,
+    F32,
+    F64,
 }
 
 impl ValKind {
@@ -23,7 +26,12 @@ impl ValKind {
             ValType::I32 => Ok(ValKind::I32),
             ValType::I64 => Ok(ValKind::I64),
             ValType::F32 | ValType::F64 => {
-                Err("wasm: floating-point types are not supported (MVP is integer-only)".into())
+                if !cfg!(feature = "float") {
+                    return Err("wasm: floating-point types require the `float` feature (the \
+                                soft-float library is not linked into this build)"
+                        .into());
+                }
+                Ok(if t == ValType::F32 { ValKind::F32 } else { ValKind::F64 })
             }
             ValType::V128 => Err("wasm: SIMD (v128) is not supported".into()),
             ValType::Ref(_) => Err("wasm: reference types are not supported".into()),
@@ -132,6 +140,8 @@ fn eval_const_expr(
     let value = match op {
         Operator::I32Const { value } => value as i64,
         Operator::I64Const { value } => value,
+        Operator::F32Const { value } => value.bits() as i64,
+        Operator::F64Const { value } => value.bits() as i64,
         Operator::GlobalGet { global_index } => {
             globals
                 .get(global_index as usize)
