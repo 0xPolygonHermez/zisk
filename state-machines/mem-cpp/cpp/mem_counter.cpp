@@ -116,7 +116,7 @@ void MemCounter::execute() {
     #endif
 }
 
-void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chunk_data, uint32_t chunk_size) {
+void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chunk_words, uint32_t chunk_size) {
 
 #ifdef MEM_STATS_ACTIVE
     // Get start time for stats
@@ -126,7 +126,10 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
 
     current_chunk = chunk_id;
 
-    for (const MemCountersBusData *chunk_eod = chunk_data + chunk_size; chunk_eod != chunk_data; chunk_data++) {
+    const uint64_t *words = (const uint64_t *)chunk_words;
+    for (uint32_t w = 0; w < chunk_size; w += mops_record_len(words[w])) {
+        const MemCountersBusData rec = mops_decode_record(words + w);
+        const MemCountersBusData *chunk_data = &rec;
         const uint8_t bytes = chunk_data->flags & 0x0F;
         const uint32_t addr = chunk_data->addr;
         switch (bytes) {

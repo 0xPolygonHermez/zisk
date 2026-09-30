@@ -104,6 +104,14 @@
 #define MOPS_ALIGNED_WRITE 0x0D
 #define MOPS_ALIGNED_BLOCK_READ 0x0E
 #define MOPS_ALIGNED_BLOCK_WRITE 0x0F
+// Memory-ops stream: tagged 8-byte words, bit 63 set on header words and clear on payload words.
+// Header: address (bits 0-31), mode (32-37), step field `(step_in_chunk << 2) | slot` (38-57).
+// A read is the header alone; a write adds the value with its bit 63 moved to header bit 62; a
+// block read (word count from bit 36) adds the step field as payload.
+// Value block: aligned address | 0x07 | words (6 bits at 36) | write step field (20 bits at 42);
+// then a word of the values' bits 63 and the values with bit 63 cleared.
+#define MOPS_BLOCK_VALUES 0x07
+#define MOPS_VALUES_STEP_SHIFT 42
 
 #define MOPS_BLOCK_COUNT_SBITS      4
 
