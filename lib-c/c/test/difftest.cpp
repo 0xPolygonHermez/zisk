@@ -44,6 +44,7 @@ int Arith256(const uint64_t *a, const uint64_t *b, const uint64_t *c, uint64_t *
 int Arith384Mod(const uint64_t *a, const uint64_t *b, const uint64_t *c, const uint64_t *module, uint64_t *d);
 int Add256(const uint64_t *a, const uint64_t *b, const uint64_t cin, uint64_t *c);
 int AddPointEcP(const uint64_t dbl, const uint64_t *p1, const uint64_t *p2, uint64_t *p3);
+int AddPointEc(uint64_t dbl, const uint64_t *x1, const uint64_t *y1, const uint64_t *x2, const uint64_t *y2, uint64_t *x3, uint64_t *y3);
 int secp256r1_add_point_ecp(const uint64_t dbl, const uint64_t *p1, const uint64_t *p2, uint64_t *p3);
 int BN254CurveAddP(const uint64_t *p1, const uint64_t *p2, uint64_t *p3);
 int BN254CurveDblP(const uint64_t *p1, uint64_t *p2);
@@ -341,6 +342,24 @@ static void register_ops() {
 
     add_point_op("secp256k1_add", P_SECP256K1, 4, true, [](uint64_t *p1, uint64_t *p2) { return AddPointEcP(0, p1, p2, p1); });
     add_point_op("secp256k1_dbl", P_SECP256K1, 4, false, [](uint64_t *p1, uint64_t *) { return AddPointEcP(1, p1, NULL, p1); });
+    // AddPointEc(), with separate coordinates, as called from Rust; in "any" mode the result
+    // overwrites the first point
+    for (int dbl = 0; dbl < 2; dbl++) {
+        ops.push_back({dbl ? "secp256k1_dbl_xy" : "secp256k1_add_xy", 20000, [dbl](Rng &r, bool canon, Record &rec) {
+            uint64_t x1[4], y1[4], x2[4], y2[4], x3[4], y3[4];
+            rand_fe(r, P_SECP256K1, 4, x1, canon);
+            rand_fe(r, P_SECP256K1, 4, y1, canon, dbl);
+            rand_fe(r, P_SECP256K1, 4, x2, canon);
+            rand_fe(r, P_SECP256K1, 4, y2, canon);
+            if (r.below(100) == 0) memcpy(x2, x1, sizeof(x1));
+            rec.put(x1, 4); rec.put(y1, 4);
+            if (!dbl) { rec.put(x2, 4); rec.put(y2, 4); }
+            uint64_t *rx = canon ? x3 : x1, *ry = canon ? y3 : y1;
+            int rc = TIMED(AddPointEc(dbl, x1, y1, x2, y2, rx, ry));
+            rec.put((uint64_t)(int64_t)rc);
+            if (rc == 0) { rec.put(rx, 4); rec.put(ry, 4); }
+        }});
+    }
     add_point_op("secp256r1_add", P_SECP256R1, 4, true, [](uint64_t *p1, uint64_t *p2) { return secp256r1_add_point_ecp(0, p1, p2, p1); });
     add_point_op("secp256r1_dbl", P_SECP256R1, 4, false, [](uint64_t *p1, uint64_t *) { return secp256r1_add_point_ecp(1, p1, NULL, p1); });
     add_point_op("bn254_curve_add", P_BN254, 4, true, [](uint64_t *p1, uint64_t *p2) { return BN254CurveAddP(p1, p2, p1); });

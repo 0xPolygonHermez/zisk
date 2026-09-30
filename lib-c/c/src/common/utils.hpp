@@ -140,6 +140,32 @@ inline void fe2array (const RawnSecp256r1::Element &fe, uint64_t * a)
 // on plain values as on Montgomery ones, and a Montgomery multiplication of a plain value by a
 // Montgomery one gives the plain product, so some operations can skip the conversions
 
+// Converts an array of 4 u64 LE to a plain FEC element, reduced to [0, q)
+inline void array2plain (const uint64_t * a, RawFec::Element &fe)
+{
+    memcpy(fe.v, a, sizeof(fe.v));
+    limbs_reduce<4>(fe.v, Fec_q.longVal);
+}
+
+// Converts a plain FEC element to an array of 4 u64 LE
+inline void plain2array (const RawFec::Element &fe, uint64_t * a)
+{
+    memcpy(a, fe.v, sizeof(fe.v));
+}
+
+// Converts an array of 4 u64 LE to a plain Fq (Secp256r1) element, reduced to [0, q)
+inline void array2plain (const uint64_t * a, RawpSecp256r1::Element &fe)
+{
+    memcpy(fe.v, a, sizeof(fe.v));
+    limbs_reduce<4>(fe.v, pSecp256r1_q.longVal);
+}
+
+// Converts a plain Fq (Secp256r1) element to an array of 4 u64 LE
+inline void plain2array (const RawpSecp256r1::Element &fe, uint64_t * a)
+{
+    memcpy(a, fe.v, sizeof(fe.v));
+}
+
 // Converts an array of 4 u64 LE to a plain Fq (BN254) element, reduced to [0, q)
 inline void array2plain (const uint64_t * a, RawFq::Element &fe)
 {

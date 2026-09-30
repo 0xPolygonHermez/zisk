@@ -4,6 +4,7 @@
 #include "bn254_fe.hpp"
 #include "../ffiasm/fq.hpp"
 #include "../common/utils.hpp"
+#include "../common/curve_plain.hpp"
 #include "../common/globals.hpp"
 #include <stdint.h>
 
@@ -33,16 +34,17 @@ int BN254CurveAdd (const uint64_t * _x1, const uint64_t * _y1, const uint64_t * 
 
 int BN254CurveAddP (const uint64_t * p1, const uint64_t * p2, uint64_t * p3)
 {
+    // Works on plain values, see curve_plain.hpp
     RawFq::Element x1, y1, x2, y2, x3, y3;
-    array2fe(p1, x1);
-    array2fe(p1 + 4, y1);
-    array2fe(p2, x2);
-    array2fe(p2 + 4, y2);
+    array2plain(p1, x1);
+    array2plain(p1 + 4, y1);
+    array2plain(p2, x2);
+    array2plain(p2 + 4, y2);
 
-    int result = BN254CurveAddFe (x1, y1, x2, y2, x3, y3);
+    int result = curve_add_plain(bn254, "BN254CurveAddFe()", x1, y1, x2, y2, x3, y3);
 
-    fe2array(x3, p3);
-    fe2array(y3, p3 + 4);
+    plain2array(x3, p3);
+    plain2array(y3, p3 + 4);
 
     return result;
 }
@@ -67,14 +69,15 @@ int BN254CurveDbl (const uint64_t * _x1, const uint64_t * _y1, uint64_t * _x2, u
 
 int BN254CurveDblP (const uint64_t * p1, uint64_t * p2)
 {
+    // Works on plain values, see curve_plain.hpp
     RawFq::Element x1, y1, x2, y2;
-    array2fe(p1, x1);
-    array2fe(p1 + 4, y1);
+    array2plain(p1, x1);
+    array2plain(p1 + 4, y1);
 
-    int result = BN254CurveDblFe (x1, y1, x2, y2);
+    int result = curve_dbl_plain(bn254, "BN254CurveDblFe()", false, x1, y1, x2, y2);
 
-    fe2array(x2, p2);
-    fe2array(y2, p2 + 4);
+    plain2array(x2, p2);
+    plain2array(y2, p2 + 4);
 
     return result;
 }

@@ -4,6 +4,7 @@
 #include "../ffiasm/psecp256r1.hpp"
 #include "../ffiasm/nsecp256r1.hpp"
 #include "../common/utils.hpp"
+#include "../common/curve_plain.hpp"
 #include "../common/globals.hpp"
 #include <stdint.h>
 
@@ -159,26 +160,24 @@ int secp256r1_add_point_ec_dbl (uint64_t * _x1, uint64_t * _y1)
 
 int secp256r1_add_point_ecp (uint64_t _dbl, const uint64_t * p1, const uint64_t * p2, uint64_t * p3)
 {
-    bool dbl = _dbl;
-
+    // Works on plain values, see curve_plain.hpp
     RawpSecp256r1::Element x1, y1, x2, y2, x3, y3;
-    array2fe(p1, x1);
-    array2fe(p1 + 4, y1);
-    if (!dbl)
+    array2plain(p1, x1);
+    array2plain(p1 + 4, y1);
+    int result;
+    if (_dbl)
     {
-        array2fe(p2, x2);
-        array2fe(p2 + 4, y2);
+        result = curve_dbl_plain(secp256r1, "secp256r1_add_point_ec()", true, x1, y1, x3, y3);
+    }
+    else
+    {
+        array2plain(p2, x2);
+        array2plain(p2 + 4, y2);
+        result = curve_add_plain(secp256r1, "secp256r1_add_point_ec()", x1, y1, x2, y2, x3, y3);
     }
 
-    // printf("secp256r1_add_point_ecp() x1=%s\n", secp256r1.toString(x1, 16).c_str());
-    // printf("secp256r1_add_point_ecp() y1=%s\n", secp256r1.toString(y1, 16).c_str());
-    // printf("secp256r1_add_point_ecp() x2=%s\n", secp256r1.toString(x2, 16).c_str());
-    // printf("secp256r1_add_point_ecp() y2=%s\n", secp256r1.toString(y2, 16).c_str());
-
-    int result = secp256r1_add_point_ec_fe (dbl, x1, y1, x2, y2, x3, y3);
-
-    fe2array(x3, p3);
-    fe2array(y3, p3 + 4);
+    plain2array(x3, p3);
+    plain2array(y3, p3 + 4);
 
     return result;
 }

@@ -4,6 +4,7 @@
 #include "bls12_381_fe.hpp"
 #include "../ffiasm/bls12_381_384.hpp"
 #include "../common/utils.hpp"
+#include "../common/curve_plain.hpp"
 #include "../common/globals.hpp"
 #include <stdint.h>
 
@@ -33,16 +34,17 @@ int BLS12_381CurveAdd (const uint64_t * _x1, const uint64_t * _y1, const uint64_
 
 int BLS12_381CurveAddP (const uint64_t * p1, const uint64_t * p2, uint64_t * p3)
 {
+    // Works on plain values, see curve_plain.hpp
     RawBLS12_381_384::Element x1, y1, x2, y2, x3, y3;
-    array2fe(p1, x1);
-    array2fe(p1 + 6, y1);
-    array2fe(p2, x2);
-    array2fe(p2 + 6, y2);
+    array2plain(p1, x1);
+    array2plain(p1 + 6, y1);
+    array2plain(p2, x2);
+    array2plain(p2 + 6, y2);
 
-    int result = BLS12_381CurveAddFe (x1, y1, x2, y2, x3, y3);
+    int result = curve_add_plain(bls12_381, "BLS12_381CurveAddFe()", x1, y1, x2, y2, x3, y3);
 
-    fe2array(x3, p3);
-    fe2array(y3, p3 + 6);
+    plain2array(x3, p3);
+    plain2array(y3, p3 + 6);
 
     return result;
 }
@@ -67,14 +69,15 @@ int BLS12_381CurveDbl (const uint64_t * _x1, const uint64_t * _y1, uint64_t * _x
 
 int BLS12_381CurveDblP (const uint64_t * p1, uint64_t * p2)
 {
+    // Works on plain values, see curve_plain.hpp
     RawBLS12_381_384::Element x1, y1, x2, y2;
-    array2fe(p1, x1);
-    array2fe(p1 + 6, y1);
+    array2plain(p1, x1);
+    array2plain(p1 + 6, y1);
 
-    int result = BLS12_381CurveDblFe (x1, y1, x2, y2);
+    int result = curve_dbl_plain(bls12_381, "BLS12_381CurveDblFe()", false, x1, y1, x2, y2);
 
-    fe2array(x2, p2);
-    fe2array(y2, p2 + 6);
+    plain2array(x2, p2);
+    plain2array(y2, p2 + 6);
 
     return result;
 }
