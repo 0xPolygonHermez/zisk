@@ -21,7 +21,6 @@ protected:
     uint64_t *prev_dst;
     uint64_t byte;
     bool execute_single_test(void);
-    bool check_mop(size_t index, uint64_t expected, const char *tag);
 public:
     TestDmaMemSetMops(size_t max_count = 1024);
     virtual ~TestDmaMemSetMops();
@@ -56,14 +55,6 @@ void TestDmaMemSetMops::run(void) {
     printf("\nAll %ld tests are [\x1B[1;32mOK\x1B[0m]\n", total_tests);
 }
 
-bool TestDmaMemSetMops::check_mop(size_t index, uint64_t expected, const char *tag) {
-    if (mtrace[index] != expected) {
-        printf("\nERROR: %s expected: 0x%016lX (%s) found: mtrace[%ld]:%016lX (%s)\n", tag, expected, 
-                decode(expected).c_str(), index, mtrace[index], decode(mtrace[index]).c_str());
-        return false;
-    }
-    return true;
-}
 bool TestDmaMemSetMops::execute_single_test(void) {
     memset(test_trace, 0, trace_size);
     fill_pattern(dst, data_size, 1821904675);
@@ -86,29 +77,26 @@ bool TestDmaMemSetMops::execute_single_test(void) {
         pre_count = count;
     }
     if (pre_count > 0) {
-        if (!check_mop(index, encode_aligned_read((uint64_t)dst), "PRE pre write") ) {
+        if (!check_record(index, encode_aligned_read((uint64_t)dst), "PRE pre write") ) {
             return false;
         }
-        index += 1;
     }
     size_t loop_count = (count - pre_count) >> 3;
     size_t post_count = (count - pre_count) & 0x07;
     if (post_count > 0) {
         uint64_t dst_post = ((uint64_t)dst + dst_offset + pre_count + loop_count * 8) & ~0x07;
-        if (!check_mop(index, encode_aligned_read((uint64_t)dst_post), "POST pre write")) {
+        if (!check_record(index, encode_aligned_read((uint64_t)dst_post), "POST pre write")) {
             return false;
         }
-        index += 1;
     }
     if (count > 0) {
         size_t dst_qwords = (dst_offset + count + 7) >> 3;
-        if (!check_mop(index, encode_aligned_block_write((uint64_t)dst, dst_qwords), "dst write")) {
+        if (!check_write_records(index, (uint64_t)dst, dst_qwords, "dst write")) {
             return false;
         }
-        ++index;
     }
     if (trace_count != index) {
-        printf("ERROR: invalid mtrace len expected:%ld vs found:%ld\n", index, trace_count);
+        printf("ERROR: invalid mtrace len expected:%ld words vs found:%ld\n", index, trace_count);
         return false;
     }
     memset((uint8_t *)prev_dst + dst_offset, byte, count);

@@ -289,12 +289,12 @@ void save_chunk_data(uint32_t chunk_id, MemCountersBusData *chunk_data, uint32_t
         return;
     }
 
-    ssize_t bytes_written = write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
+    ssize_t bytes_written = write(fd, chunk_data, sizeof(uint64_t) * chunk_size);
     if (bytes_written < 0) {
         perror("Error writing to file");
-    } else if (static_cast<size_t>(bytes_written) != sizeof(MemCountersBusData) * chunk_size) {
+    } else if (static_cast<size_t>(bytes_written) != sizeof(uint64_t) * chunk_size) {
         fprintf(stderr, "Partial write: expected %zu bytes, but wrote %zd bytes\n",
-                sizeof(MemCountersBusData) * chunk_size, bytes_written);
+                sizeof(uint64_t) * chunk_size, bytes_written);
     }
 
     close(fd);
