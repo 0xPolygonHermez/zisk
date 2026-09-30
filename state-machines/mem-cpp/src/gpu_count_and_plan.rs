@@ -10,9 +10,7 @@ use zisk_sm_mem_common::{
 
 use crate::gpu_bindings;
 
-pub use crate::gpu_bindings::{
-    GpuMemAlignCounter, InstanceMeta as GpuInstanceMeta, MemOp as GpuMemOp,
-};
+pub use crate::gpu_bindings::{GpuMemAlignCounter, InstanceMeta as GpuInstanceMeta};
 
 /// Serialize GPU-produced metas to `path` in the canonical `metas.bin`
 /// format (the one `load_instance_metas` / the standalone runner use).
@@ -102,7 +100,7 @@ impl GpuCountAndPlan {
 
     pub fn add_chunk(&self, len: u64, data: *const c_void) -> bool {
         unsafe {
-            gpu_bindings::count_and_plan_add_chunk(self.inner, data as *const GpuMemOp, len as u32)
+            gpu_bindings::count_and_plan_add_chunk(self.inner, data as *const u64, len as u32)
         }
     }
 

@@ -23,8 +23,8 @@ bool count_and_plan_setup(void* h, void* d_buf, size_t bytes,
                                                instance_rows);
 }
 
-bool count_and_plan_add_chunk(void* h, const MemOp* memops, uint32_t n) {
-    return static_cast<CountAndPlan*>(h)->add_chunk(memops, n);
+bool count_and_plan_add_chunk(void* h, const uint64_t* words, uint32_t n_words) {
+    return static_cast<CountAndPlan*>(h)->add_chunk(words, n_words);
 }
 
 bool count_and_plan_run(void* h, InstanceMeta** metas_out, uint32_t* n_metas) {

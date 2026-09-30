@@ -26,10 +26,19 @@
 
 // ─── Public input type ──────────────────────────────────────────────
 
+// One memory-ops record. `flags` holds the mode in bits 0-5; for non-block modes bits 6-25 hold
+// `(step_in_chunk << 2) | slot`, for block modes bits 4-31 hold the word count and the step field
+// sits in `payload` at the same position it has in a non-block header (bits 38-57). For non-block
+// writes `payload` is the written value.
 struct __align__(8) MemOp {
     uint32_t addr;
     uint32_t flags;
+    uint64_t payload;
 };
+static_assert(sizeof(MemOp) == 16, "MemOp is one decoded record");
+
+// Stream layout: cpp/mem_config.hpp. `load_record` decodes the record at a word position into a
+// `MemOp`.
 
 // ─── Internal types
 struct PotentialEmit;
@@ -47,6 +56,48 @@ struct ChunkCounters {
     uint32_t write_byte;
 };
 
+// Compact address space of the three memory areas, in words.
+constexpr uint32_t N_ADDR_ROM   = 1u << 27;   // 128M
+constexpr uint32_t N_ADDR_INPUT = 1u << 30;   // 1G
+constexpr uint32_t N_ADDR_RAM   = 1u << 29;   // 512M
+constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;
+
+// Meta word of a retained RAM access: bits 0-39 mem step, 40-41 kind (0 read, 1 full write,
+// 2 partial write, 3 block write of unknown value), 42-44 byte offset and 45-48 byte width of a
+// partial write.
+constexpr uint32_t RAM_META_KIND_SHIFT  = 40;
+constexpr uint32_t RAM_META_OFF_SHIFT   = 42;
+constexpr uint32_t RAM_META_WIDTH_SHIFT = 45;
+constexpr uint64_t RAM_META_STEP_MASK   = (1ull << 40) - 1;
+// Word index of the first RAM address: RAM_ADDR >> 3.
+constexpr uint32_t RAM_W_ADDR_BASE = 0xA0000000u >> 3;
+constexpr uint32_t RAM_W_ADDR_LAST = (0xA0000000u + 512u * 1024u * 1024u - 8u) >> 3;
+
+// What prepare_ram_fill established for the block. POD, mirrored in gpu_bindings.rs.
+struct RamFillPrepared {
+    int32_t  status;             // 0 ok
+    uint32_t n_instances;        // RAM instances (lanes / instance_rows, rounded up)
+    uint64_t n_accesses;         // retained RAM accesses
+    uint64_t n_lanes;            // lanes after dual pairing
+    uint64_t unresolved_writes;  // block writes whose value the stream does not carry
+    float    ms_sort, ms_lanes, ms_values, ms_total;
+};
+static_assert(sizeof(RamFillPrepared) == 48, "RamFillPrepared layout changed: update gpu_bindings.rs");
+
+// One filled RAM instance. POD, mirrored in gpu_bindings.rs.
+struct RamFillResult {
+    int32_t  status;
+    uint32_t n_lanes;            // lanes the instance's accesses occupy (before padding)
+    uint32_t prev_addr_w;        // last lane of the previous instance (continuation)
+    uint32_t last_addr_w;        // last lane of this instance
+    uint64_t prev_step;
+    uint64_t prev_value;
+    uint64_t last_step;
+    uint64_t last_value;
+    float    ms_rows, ms_d2h;
+};
+static_assert(sizeof(RamFillResult) == 56, "RamFillResult layout changed: update gpu_bindings.rs");
+
 // ─── Sizing constants visible to callers and to class-array bounds ──
 //     to be revised...
 constexpr int      N_STREAMS             = 4;
@@ -55,6 +106,7 @@ constexpr uint32_t MASK_WORDS            = (MAX_INSTANCES + 31) / 32;
 // MUST stay <= the C++ consumer cap MAX_CHUNKS (mem_config.hpp)
 constexpr uint32_t MAX_CHUNKS            = MEM_GPU_MAX_META_CHUNKS; // 16384
 constexpr uint32_t MAX_MEMOPS_PER_CHUNK  = 1u << 20;          // 1048576 (2 memops/step at CHUNK_SIZE=2^18 -> now 4/step; ~+0.9 GB GPU device mem vs 1<<19). Raising this forces ORIG_POS_BITS/RAM_KEY_END_BIT up (static_asserts in count_and_plan.cu)
+constexpr uint32_t MAX_MEMOPS_WORDS      = MAX_MEMOPS_PER_CHUNK * 2; // stream words per chunk (16 MB)
 constexpr uint32_t POTENTIAL_FACTOR      = 8;                 
 constexpr uint32_t MAX_POT_PER_CHUNK     = MAX_MEMOPS_PER_CHUNK * POTENTIAL_FACTOR;
 constexpr uint32_t MAX_TOTAL_MEMOPS      = 1u << 29;          // 512M ops
@@ -87,7 +139,8 @@ public:
                int gpu_id, const uint32_t instance_rows[3]);
 
     // Submit one chunk's memops.
-    bool add_chunk(const MemOp* memops, uint32_t n);
+    // Submit one chunk's memory-ops stream: `n_words` tagged 8-byte words.
+    bool add_chunk(const uint64_t* words, uint32_t n_words);
 
     // Drains the per-chunk preprocessing streams and generated instances metadata 
     // On success: *metas_out = internal pointer (== metas_data()),
@@ -102,6 +155,23 @@ public:
     // Reset for the next block.
     void reset();
 
+    // ─── RAM witness from the retained accesses (after run()) ─────────
+    // Every RAM access of the block is retained as it arrives (compact address, mem step, kind,
+    // value). After the plan is closed, `prepare_ram_fill` sorts them by (address, time), pairs
+    // dual lanes and resolves every read's value from the writes before it; `fill_ram_instance`
+    // then packs one Mem instance's rows exactly as the CPU fill does.
+    void set_chunk_size_bits(uint32_t bits) { chunk_size_bits_ = bits; }
+    bool set_mem_layout(const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row,
+                        uint32_t lanes_x_row);
+    bool ram_retention_ok() const { return ram_retention_enabled_.load(std::memory_order_relaxed); }
+    size_t ram_accesses() const { return ram_cursor_.load(std::memory_order_relaxed); }
+    bool prepare_ram_fill(RamFillPrepared* out);
+    bool fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res);
+    // Packs every RAM instance into pinned host memory while the arena is still borrowed; the
+    // witness phase then copies rows out with `ram_instance_rows`. Prepares if needed.
+    bool fill_all_ram_instances(uint32_t n_rows, RamFillPrepared* prepared);
+    const uint64_t* ram_instance_rows(uint32_t inst, RamFillResult* res) const;
+
 
     bool register_input_pinned(void* ptr, size_t bytes);
     void unregister_input_pinned(void* ptr);
@@ -114,7 +184,10 @@ public:
     // Arena usage of the CURRENT block in BYTES: fixed carve end + ops-pool cursor.
     // Valid between run() and the next reset() (reset zeroes the pool cursor). 
     size_t max_used_bytes() const {
-        return cursor_ + pool_cursor_u32_.load(std::memory_order_relaxed) * 4;
+        const size_t used = cursor_ + pool_cursor_u32_.load(std::memory_order_relaxed) * 4;
+        // The retained accesses sit at the top of the arena: any retention touches its end.
+        if (ram_cap_ > 0 && ram_cursor_.load(std::memory_order_relaxed) > 0) return arena_bytes_;
+        return used;
     }
 
     // Per-chunk mem-align counters, valid after `run()`. Length == n_chunks().
@@ -160,7 +233,10 @@ private:
     // ─── Per-stream device buffers (parallel arrays) ──────────────────
 
     cudaStream_t   streams_[N_STREAMS]             = {nullptr};
-    MemOp*         d_memops_[N_STREAMS]            = {nullptr};
+    uint64_t*      d_words_[N_STREAMS]             = {nullptr};   // the chunk's stream
+    uint32_t*      d_tag_flags_[N_STREAMS]         = {nullptr};   // header flag per word, then its scan
+    uint32_t*      d_rec_start_[N_STREAMS]         = {nullptr};   // record -> first word
+    uint32_t*      d_n_records_[N_STREAMS]         = {nullptr};
     uint32_t*      d_counts_[N_STREAMS]            = {nullptr};
     uint32_t*      d_potential_offsets_[N_STREAMS] = {nullptr};
     PotentialEmit* d_potentials_[N_STREAMS]        = {nullptr};
@@ -186,6 +262,38 @@ private:
     uint32_t* d_ops_pool_         = nullptr;
     size_t    d_ops_pool_cap_u32_ = 0;
     size_t    d_ops_pool_used_u32_= 0;
+
+    // Retained RAM accesses, in arrival order: compact word address, packed step/kind, value.
+    // Device resident, carved from the top of the arena at setup (the pool grows towards them);
+    // they survive run() and feed the post-plan phase, whose scratch is everything below them.
+    uint32_t*          d_ram_addr_   = nullptr;
+    uint64_t*          d_ram_meta_   = nullptr;
+    uint64_t*          d_ram_value_  = nullptr;
+    size_t             ram_cap_      = 0;
+    std::atomic<size_t> ram_cursor_{0};
+    std::atomic<bool>   ram_retention_enabled_{false};
+    uint32_t*          d_ram_flags_[N_STREAMS]      = {nullptr};
+    uint32_t*          d_ram_pos_[N_STREAMS]        = {nullptr};
+    unsigned long long* d_ram_nwrites_ = nullptr;             // writes among the retained accesses
+    uint64_t           ram_writes_     = 0;                   // read back by prepare_ram_fill
+    uint32_t           chunk_size_bits_ = 18;
+    // Prepared lane table (see ram_fill.cu).
+    bool               ram_prepared_    = false;
+    uint32_t*          d_lane_sidx_     = nullptr;  // sorted position -> retained index
+    uint32_t*          d_lane_emit_     = nullptr;  // 1 when the sorted position opens a lane
+    uint32_t*          d_lane_first_    = nullptr;  // lane -> sorted position of its opener
+    uint64_t*          d_lane_value_    = nullptr;  // sorted position -> resolved value
+    uint64_t*          d_lane_keys_     = nullptr;  // sorted position -> (address << 38) | mem step
+    uint64_t*          d_rows_scratch_  = nullptr;  // one instance's packed rows
+    size_t             ram_n_lanes_     = 0;
+    size_t             ram_n_sorted_    = 0;
+    uint64_t           ram_unresolved_  = 0;
+    uint64_t*                  h_ram_rows_       = nullptr;   // pinned, n_instances x rows x words
+    size_t                     h_ram_rows_cap_   = 0;         // u64 words
+    size_t                     ram_rows_stride_  = 0;         // u64 words per instance
+    std::vector<RamFillResult> ram_results_;
+    uint32_t           mem_col_widths_[64] = {0};
+    uint32_t           mem_n_cols_ = 0, mem_words_per_row_ = 0, mem_lanes_x_row_ = 0;
 
     // ─── Pinned host buffers ─────────────────────────────────────────
 
@@ -248,7 +356,7 @@ private:
     uint32_t                instance_rows_[3]     = {0, 0, 0};  // rows per instance {ROM, INPUT, RAM}, captured in setup()
     bool                    pool_enabled_         = false; // ZISK_MOPS_POOL
 
-    struct ChunkJob { const MemOp* memops; uint32_t n; uint32_t c; };
+    struct ChunkJob { const uint64_t* words; uint32_t n; uint32_t c; };
     std::deque<ChunkJob>     pool_q_[N_STREAMS];
     std::mutex               pool_mtx_[N_STREAMS];
     std::condition_variable  pool_cv_[N_STREAMS];
@@ -273,7 +381,7 @@ private:
     void   set_active_worker_();
     void   pick_active_instances_();
 
-    bool   add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c);
+    bool   add_chunk_core_(const uint64_t* words, uint32_t n_words, uint32_t c);
     void   pool_start_();
     void   pool_stop_();
     void   pool_thread_loop_(int s);

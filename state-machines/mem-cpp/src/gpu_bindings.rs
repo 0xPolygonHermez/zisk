@@ -5,7 +5,10 @@ use std::os::raw::c_void;
 pub struct MemOp {
     pub addr: u32,
     pub flags: u32,
+    /// Written value for non-block writes; step field for block records.
+    pub payload: u64,
 }
+const _: () = assert!(core::mem::size_of::<MemOp>() == 16);
 
 /// Paged cumulative-offset table. WIRE/FFI-significant: field order &
 /// types must match `cpp/instance_meta.hpp::PagedOffsets` and the
@@ -69,8 +72,8 @@ extern "C" {
     ) -> bool;
     pub fn count_and_plan_add_chunk(
         h: *mut CountAndPlanHandle,
-        memops: *const MemOp,
-        n: u32,
+        words: *const u64,
+        n_words: u32,
     ) -> bool;
     pub fn count_and_plan_run(
         h: *mut CountAndPlanHandle,

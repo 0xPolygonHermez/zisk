@@ -12,13 +12,18 @@
     push    r13                       # 1 cycle - save callee-saved register
     push    r9                        # 1 cycle - save caller-saved register (used internally)
     push    rbx                       # 1 cycle - save callee-saved register
-    
+    push    r14                       # steps left in the chunk, read by the mops recorders
+    push    r15                       # keeps the 16-byte stack alignment the realloc path needs
+
     mov     r12, rcx                  # 1 cycle - setup mtrace address from count parameter
     mov     r13, 1                    # 1 cycle - initialize mtrace index to 1, first position for count
+    mov     r14, 1000                 # TEST_STEP_LEFT
     call    \asm_call                 # ~3 cycles + function cost
 
     dec     r13
     mov     [r12], r13                # store in first position the length
+    pop     r15
+    pop     r14
     pop     rbx                       # 1 cycle - restore register
     pop     r9                        # 1 cycle - restore register
     pop     r13                       # 1 cycle - restore register
