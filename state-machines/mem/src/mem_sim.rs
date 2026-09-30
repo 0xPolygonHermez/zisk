@@ -4,6 +4,8 @@ mod mem_inputs;
 pub use mem_module::*;
 mod mem_module;
 pub use mem_inputs::*;
+mod mem_gpu_fill;
+mod mem_trace_hash;
 mod mem_sm;
 pub use mem_sm::*;
 mod mem_witness_split;

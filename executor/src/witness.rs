@@ -266,6 +266,9 @@ impl<F: PrimeField64> WitnessPhase<F> {
     ///      * `Instance` (non-ROM) → [`SecondaryWitnessHandler`]
     pub fn dispatch(&self, ctx: &WitnessContext<'_, F>, global_id: usize) -> ExecutorResult<()> {
         let (airgroup_id, air_id) = ctx.get_instance_info(global_id)?;
+        if !AirClassifier::witness_only_selected(air_id) {
+            return Ok(());
+        }
         let stats_scope_id = ctx.stats_scope.id();
 
         if AirClassifier::is_main(air_id) {
@@ -312,6 +315,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
                         global_id,
                         ctx.buffer_pool,
                         stats_scope_id,
+                        !AirClassifier::mem_collected_on_device(air_id),
                     )
                 }
             }
@@ -406,6 +410,13 @@ impl<F: PrimeField64> WitnessPhase<F> {
         for &global_id in global_ids {
             let info = registry.instance_info(GlobalId(global_id))?;
 
+            // Left out of this run, or filled on the device: nothing to collect, ready as is.
+            if !AirClassifier::witness_only_selected(info.air_id)
+                || AirClassifier::mem_collected_on_device(info.air_id)
+            {
+                registry.announce_witness_ready(GlobalId(global_id));
+                continue;
+            }
             if AirClassifier::is_main(info.air_id) {
                 registry.announce_witness_ready(GlobalId(global_id));
             } else if AirClassifier::is_rom(info.airgroup_id, info.air_id) {

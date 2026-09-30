@@ -9,6 +9,7 @@ mod mem_align_rom_sm;
 mod mem_align_sm;
 mod mem_align_write_byte_instance;
 mod mem_counters_cursor;
+mod mem_gpu_fill;
 mod mem_inputs;
 mod mem_module;
 mod mem_module_collector;
@@ -17,6 +18,7 @@ mod mem_module_planner;
 mod mem_planner;
 mod mem_sm;
 mod mem_test;
+mod mem_trace_hash;
 mod mem_witness_split;
 mod rom_data_sm;
 
