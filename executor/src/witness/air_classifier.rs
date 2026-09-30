@@ -33,6 +33,40 @@ impl AirClassifier {
                 .any(|(&id, &assigned)| id == air_id && assigned)
     }
 
+    /// `ZISK_WITNESS_ONLY` restricts the witness computation for benchmarking: `ram` computes only
+    /// the Mem instances, `mem` the three memory AIRs, anything else everything.
+    /// `ZISK_WITNESS_SKIP` is a comma-separated list of AIR names left out.
+    pub fn witness_only_selected(air_id: usize) -> bool {
+        static MODE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+        static SKIP: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+        let skip = SKIP.get_or_init(|| {
+            std::env::var("ZISK_WITNESS_SKIP")
+                .map(|v| v.split(',').map(|n| n.trim().to_lowercase()).collect())
+                .unwrap_or_default()
+        });
+        if !skip.is_empty() {
+            let name = AIR_NAMES
+                .iter()
+                .find(|(ag, a, _)| *ag == ZISK_AIRGROUP_ID && *a == air_id)
+                .map(|(_, _, n)| n.to_lowercase());
+            if name.is_some_and(|n| skip.contains(&n)) {
+                return false;
+            }
+        }
+        match MODE.get_or_init(|| std::env::var("ZISK_WITNESS_ONLY").ok()).as_deref() {
+            Some("ram") => air_id == MEM_AIR_IDS[0],
+            Some("mem") => Self::is_memory_related(air_id),
+            _ => true,
+        }
+    }
+
+    /// The Mem instances need no collection from the replay when this block's RAM rows come from
+    /// the GPU planner (`ZISK_MEM_GPU_FILL=arena` and the device fill succeeded).
+    pub fn mem_collected_on_device(air_id: usize) -> bool {
+        air_id == MEM_AIR_IDS[0]
+            && zisk_common::MEM_RAM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire)
+    }
+
     /// Checks if the AIR ID corresponds to a memory-related state machine.
     #[inline]
     pub fn is_memory_related(air_id: usize) -> bool {
