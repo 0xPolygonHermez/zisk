@@ -319,7 +319,6 @@ impl<F: PrimeField64> MemSM<F> {
         let lanes = lanes_of::<F, R>();
         let num_slots = lanes.slots(trace.num_rows());
 
-
         // use special counter for internal reads
         let distance_base = previous_segment.addr - RAM_W_ADDR_INIT;
         let mut last_addr = previous_segment.addr;
@@ -511,8 +510,6 @@ impl<F: PrimeField64> MemSM<F> {
         air_values.distance_end[0] = F::from_u16(distance_end[0]);
         air_values.distance_end[1] = F::from_u16(distance_end[1]);
 
-
-
         #[cfg(feature = "debug_mem")]
         {
             let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
@@ -552,14 +549,26 @@ impl<F: PrimeField64> MemSM<F> {
         seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.compute_witness_with_offsets_inner::<MemTraceRowPacked<F>>(
-                mem_ops,
-                segment_id,
-                is_last_segment,
-                previous_segment,
-                trace_buffer,
-                seg,
-            )
+            match crate::mem_gpu_fill::gpu_fill_mode() {
+                crate::mem_gpu_fill::GpuFillMode::Off | crate::mem_gpu_fill::GpuFillMode::Arena => {
+                    self.compute_witness_with_offsets_inner::<MemTraceRowPacked<F>>(
+                        mem_ops,
+                        segment_id,
+                        is_last_segment,
+                        previous_segment,
+                        trace_buffer,
+                        seg,
+                    )
+                }
+                crate::mem_gpu_fill::GpuFillMode::ArenaCheck => self.compute_witness_arena_check(
+                    mem_ops,
+                    segment_id,
+                    is_last_segment,
+                    previous_segment,
+                    trace_buffer,
+                    seg,
+                ),
+            }
         } else {
             self.compute_witness_with_offsets_inner::<MemTraceRow<F>>(
                 mem_ops,
@@ -569,6 +578,137 @@ impl<F: PrimeField64> MemSM<F> {
                 trace_buffer,
                 seg,
             )
+        }
+    }
+
+    /// The air values of a `Mem` segment from what the fill produced.
+    fn set_mem_air_values(
+        air_values: &mut MemAirValues<'_, F>,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        out: &MemFillOutput,
+    ) {
+        air_values.segment_id = F::from_usize(segment_id.into());
+        air_values.is_first_segment = F::from_bool(segment_id == 0);
+        air_values.is_last_segment = F::from_bool(is_last_segment);
+        air_values.previous_segment_step = F::from_u64(previous_segment.step);
+        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
+        air_values.segment_last_addr = F::from_u32(out.last_addr);
+        air_values.segment_last_step = F::from_u64(out.last_step);
+
+        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
+        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
+
+        air_values.segment_last_value[0] = F::from_u32(out.last_value[0]);
+        air_values.segment_last_value[1] = F::from_u32(out.last_value[1]);
+
+        air_values.distance_base[0] = F::from_u16(out.distance_base[0]);
+        air_values.distance_base[1] = F::from_u16(out.distance_base[1]);
+
+        air_values.distance_end[0] = F::from_u16(out.distance_end[0]);
+        air_values.distance_end[1] = F::from_u16(out.distance_end[1]);
+    }
+
+    /// `ZISK_MEM_GPU_FILL=arena-check`: fills the instance both ways, compares every word and
+    /// scalar, proves the CPU rows.
+    #[allow(clippy::too_many_arguments)]
+    fn compute_witness_arena_check(
+        &self,
+        mem_ops: MemOps<'_>,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
+        seg: &MemModuleSegmentCheckPoint,
+    ) -> ProofmanResult<AirInstance<F>> {
+        use crate::mem_gpu_fill::{arena_fill_packed_rows, compare_rows, packed_rows_as_words};
+        type Row<F> = MemTraceRowPacked<F>;
+        let seg_idx = usize::from(segment_id);
+        let mut trace = MemTrace::<Row<F>>::new_from_vec_zeroes(trace_buffer)?;
+        let n_rows = trace.num_rows();
+        let words_per_row = Row::<F>::PACKED_WORDS;
+        {
+            let mut scratch = vec![0u64; n_rows * words_per_row];
+            let arena = arena_fill_packed_rows(&mut scratch, n_rows, segment_id);
+            let n_ranges = rayon::current_num_threads();
+            let t_cpu = std::time::Instant::now();
+            let out = fill_mem_trace::<F, Row<F>>(
+                &mut trace.buffer,
+                mem_ops,
+                seg,
+                previous_segment,
+                segment_id,
+                is_last_segment,
+                n_ranges,
+            );
+            let cpu_ms = t_cpu.elapsed().as_secs_f64() * 1e3;
+            match &arena {
+                Ok(report) => {
+                    let cpu_words = packed_rows_as_words(&mut trace.buffer);
+                    let (count, first) = compare_rows(cpu_words, &scratch, words_per_row);
+                    let scalars_ok = report.out.last_addr == out.last_addr
+                        && report.out.last_step == out.last_step
+                        && report.out.last_value == out.last_value
+                        && report.previous_segment.addr == previous_segment.addr
+                        && report.previous_segment.step == previous_segment.step
+                        && report.previous_segment.value == previous_segment.value;
+                    if count > 0 {
+                        let lanes = zisk_sm_mem_common::mem_lanes_x_row();
+                        let by_col = crate::mem_gpu_fill::compare_rows_by_column(
+                            cpu_words,
+                            &scratch,
+                            words_per_row,
+                            lanes,
+                        );
+                        let summary: Vec<String> = by_col
+                            .iter()
+                            .filter(|(_, n, _)| *n > 0)
+                            .map(|(g, n, first)| match first {
+                                Some((row, lane, c, gv)) => format!("{g}: {n} lanes (first row {row} lane {lane}: cpu {c:#x} gpu {gv:#x})"),
+                                None => format!("{g}: {n}"),
+                            })
+                            .collect();
+                        tracing::info!(
+                            "Mem[{seg_idx}] arena CHECK columns: {}",
+                            summary.join(" | ")
+                        );
+                    }
+                    let p = &report.prepared;
+                    tracing::info!(
+                        "Mem[{seg_idx}] arena CHECK: block {} accesses -> {} lanes ({} instances, {} unresolved block writes) prepare sort {:.0} lanes {:.0} values {:.0} total {:.0}ms | instance {} lanes rows {:.1}ms d2h {:.1}ms | cpu fill {cpu_ms:.0}ms ({n_ranges} ranges, {} ops) | {} words differ{} | scalars {}{}",
+                        p.n_accesses, p.n_lanes, p.n_instances, p.unresolved_writes, p.ms_sort, p.ms_lanes, p.ms_values, p.ms_total,
+                        report.res.n_lanes, report.res.ms_rows, report.res.ms_d2h,
+                        mem_ops.len(),
+                        count,
+                        first.map(|(row, w, c, g)| format!(", first row {row} word {w}: cpu {c:#x} gpu {g:#x}")).unwrap_or_default(),
+                        if scalars_ok { "match" } else { "DIFFER" },
+                        if scalars_ok { String::new() } else { format!(" (cpu prev {:#x}/{}/{:#x} last {:#x}/{}/{:?}; gpu prev {:#x}/{}/{:#x} last {:#x}/{}/{:?})",
+                            previous_segment.addr, previous_segment.step, previous_segment.value, out.last_addr, out.last_step, out.last_value,
+                            report.previous_segment.addr, report.previous_segment.step, report.previous_segment.value, report.out.last_addr, report.out.last_step, report.out.last_value) }
+                    );
+                }
+                Err(e) => tracing::warn!("Mem[{seg_idx}] arena CHECK unavailable: {e}"),
+            }
+            crate::mem_trace_hash::dump(
+                self.get_mem_name(),
+                seg_idx,
+                is_last_segment,
+                crate::mem_trace_hash::rows_as_words(&trace.buffer),
+                previous_segment,
+                &out,
+            );
+            let mut air_values = MemAirValues::<F>::new();
+            Self::set_mem_air_values(
+                &mut air_values,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                &out,
+            );
+            Ok(AirInstance::new_from_trace(
+                FromTrace::new(&mut trace).with_air_values(&mut air_values),
+            ))
         }
     }
 
@@ -634,26 +774,22 @@ impl<F: PrimeField64> MemSM<F> {
             n_ranges,
         );
 
+        crate::mem_trace_hash::dump(
+            self.get_mem_name(),
+            usize::from(segment_id),
+            is_last_segment,
+            crate::mem_trace_hash::rows_as_words(&trace.buffer),
+            previous_segment,
+            &out,
+        );
         let mut air_values = MemAirValues::<F>::new();
-        air_values.segment_id = F::from_usize(segment_id.into());
-        air_values.is_first_segment = F::from_bool(segment_id == 0);
-        air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_step = F::from_u64(previous_segment.step);
-        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
-        air_values.segment_last_addr = F::from_u32(out.last_addr);
-        air_values.segment_last_step = F::from_u64(out.last_step);
-
-        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
-
-        air_values.segment_last_value[0] = F::from_u32(out.last_value[0]);
-        air_values.segment_last_value[1] = F::from_u32(out.last_value[1]);
-
-        air_values.distance_base[0] = F::from_u16(out.distance_base[0]);
-        air_values.distance_base[1] = F::from_u16(out.distance_base[1]);
-
-        air_values.distance_end[0] = F::from_u16(out.distance_end[0]);
-        air_values.distance_end[1] = F::from_u16(out.distance_end[1]);
+        Self::set_mem_air_values(
+            &mut air_values,
+            segment_id,
+            is_last_segment,
+            previous_segment,
+            &out,
+        );
 
         phase_start!(t_air);
         let air_instance = AirInstance::new_from_trace(
@@ -661,10 +797,9 @@ impl<F: PrimeField64> MemSM<F> {
         );
         phase_end!(d_air, t_air);
         phase_log!(
-            "Mem[{}] witness: zero trace {:.0}ms range checks {:.0}ms air instance {:.0}ms",
+            "Mem[{}] witness: zero trace {:.0}ms air instance {:.0}ms",
             usize::from(segment_id),
             phase_ms!(d_zero),
-            phase_ms!(d_rc),
             phase_ms!(d_air)
         );
 
@@ -682,6 +817,59 @@ impl<F: PrimeField64> MemSM<F> {
 }
 
 impl<F: PrimeField64> MemModule<F> for MemSM<F> {
+    fn compute_witness_gpu_arena(
+        &self,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<Option<AirInstance<F>>> {
+        use crate::mem_gpu_fill::{arena_fill_packed_rows, packed_rows_as_words};
+        if !packed {
+            return Err(proofman_common::ProofmanError::InvalidParameters(
+                "ZISK_MEM_GPU_FILL=arena needs the packed Mem trace".to_string(),
+            ));
+        }
+        let seg_idx = usize::from(segment_id);
+        let t_zero = std::time::Instant::now();
+        let mut trace = MemTrace::<MemTraceRowPacked<F>>::new_from_vec_zeroes(trace_buffer)?;
+        let zero_ms = t_zero.elapsed().as_secs_f64() * 1e3;
+        let n_rows = trace.num_rows();
+        let report = {
+            let words = packed_rows_as_words(&mut trace.buffer);
+            arena_fill_packed_rows(words, n_rows, segment_id)
+        }
+        .map_err(|e| {
+            proofman_common::ProofmanError::InvalidParameters(format!(
+                "Mem[{seg_idx}] RAM witness from the GPU planner failed: {e}"
+            ))
+        })?;
+        let p = &report.prepared;
+        tracing::info!(
+            "Mem[{seg_idx}] arena fill: block {} accesses -> {} lanes ({} unresolved block writes), prepare {:.0}ms | instance {} lanes: zero {zero_ms:.0}ms rows {:.1}ms d2h {:.1}ms",
+            p.n_accesses, p.n_lanes, p.unresolved_writes, p.ms_total, report.res.n_lanes, report.res.ms_rows, report.res.ms_d2h
+        );
+        crate::mem_trace_hash::dump(
+            self.get_mem_name(),
+            seg_idx,
+            is_last_segment,
+            crate::mem_trace_hash::rows_as_words(&trace.buffer),
+            &report.previous_segment,
+            &report.out,
+        );
+        let mut air_values = MemAirValues::<F>::new();
+        Self::set_mem_air_values(
+            &mut air_values,
+            segment_id,
+            is_last_segment,
+            &report.previous_segment,
+            &report.out,
+        );
+        Ok(Some(AirInstance::new_from_trace(
+            FromTrace::new(&mut trace).with_air_values(&mut air_values),
+        )))
+    }
+
     fn get_addr_range(&self) -> (u32, u32) {
         (RAM_W_ADDR_INIT, RAM_W_ADDR_END)
     }
@@ -830,15 +1018,16 @@ fn set_mem_padding_lane<F: PrimeField64, R: MemTraceRowOps<F>>(
 /// What the fill produces besides the rows themselves: the scalars the air values are built from.
 /// Deliberately not `MemAirValues` -- that type carries a lifetime and a self-referential buffer,
 /// and building it is the caller's business anyway.
-struct MemFillOutput {
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MemFillOutput {
     /// Address, step and value of the last filled slot: what the padding repeats and what the
     /// segment hands to the next one.
-    last_addr: u32,
-    last_step: u64,
-    last_value: [u32; 2],
+    pub(crate) last_addr: u32,
+    pub(crate) last_step: u64,
+    pub(crate) last_value: [u32; 2],
     /// Distance from the segment's base / to the memory end, split in 16-bit halves.
-    distance_base: [u16; 2],
-    distance_end: [u16; 2],
+    pub(crate) distance_base: [u16; 2],
+    pub(crate) distance_end: [u16; 2],
 }
 
 /// Fills a `Mem` segment's rows, splitting the work into at most `n_ranges` parallel ranges.
@@ -846,7 +1035,7 @@ struct MemFillOutput {
 /// Takes `rows` rather than a `MemTrace` so the equivalence test can run it over a handful of rows:
 /// the generated `MemTrace` fixes 2^22 rows, which at 104 columns is 3.25 GB and unusable from a
 /// test. `rows.len()` is the segment's row count, exactly as `trace.num_rows()` was.
-fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
+pub(crate) fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
     rows: &mut [R],
     mem_ops: MemOps<'_>,
     seg: &MemModuleSegmentCheckPoint,
@@ -1037,7 +1226,6 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
     let distance_base = [distance_base as u16, (distance_base >> 16) as u16];
     let distance_end = [distance_end as u16, (distance_end >> 16) as u16];
 
-
     MemFillOutput {
         last_addr: addr,
         last_step: step,
@@ -1067,7 +1255,6 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
     let lanes_x_row = lanes.lanes();
     let first_row = range.slot_from / lanes_x_row;
     let mut rows = RowView { head: R::default(), owned, first_row };
-
 
     // Address cursors, this range's addresses only: `current_offsets[addr_index - addr_base]`.
     let addr_base = range.addr_from as usize;
@@ -1278,7 +1465,6 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
             let h_increment = increment >> 22;
             rows.at(row).set_l_increment(lane, l_increment as u32);
             rows.at(row).set_h_increment(lane, h_increment as u16);
-
         }
         // rows.at(row).set_previous_step(lane, ...)
         if dual_available {

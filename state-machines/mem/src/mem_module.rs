@@ -64,6 +64,17 @@ impl<'a> MemOps<'a> {
 }
 
 pub trait MemModule<F: Clone>: Send + Sync {
+    /// The witness from the accesses the GPU planner retained, with no collectors at all. `None`
+    /// when this module has no such path.
+    fn compute_witness_gpu_arena(
+        &self,
+        _segment_id: SegmentId,
+        _is_last_segment: bool,
+        _trace_buffer: Vec<F>,
+        _packed: bool,
+    ) -> ProofmanResult<Option<AirInstance<F>>> {
+        Ok(None)
+    }
     #[allow(clippy::too_many_arguments)]
     fn compute_witness(
         &self,

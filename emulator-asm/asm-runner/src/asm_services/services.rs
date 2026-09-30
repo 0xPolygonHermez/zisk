@@ -68,10 +68,25 @@ impl AsmService {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         {
             use std::os::unix::process::CommandExt;
+            // ZISK_ASM_CPUS=<mt>,<mo>,<rh>: pin each emulator to one CPU (benchmarking on hybrid
+            // CPUs, where the scheduler may place an emulator on an efficiency core).
+            let pinned_cpu = std::env::var("ZISK_ASM_CPUS").ok().and_then(|v| {
+                let idx = match self {
+                    AsmService::MT => 0,
+                    AsmService::MO => 1,
+                    AsmService::RH => 2,
+                };
+                v.split(',').nth(idx).and_then(|c| c.trim().parse::<usize>().ok())
+            });
             unsafe {
-                command.pre_exec(|| {
+                command.pre_exec(move || {
                     libc::setpriority(libc::PRIO_PROCESS, 0, -5);
                     libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                    if let Some(cpu) = pinned_cpu {
+                        let mut set: libc::cpu_set_t = std::mem::zeroed();
+                        libc::CPU_SET(cpu, &mut set);
+                        libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &set);
+                    }
                     Ok(())
                 });
             }
@@ -108,6 +123,9 @@ impl AsmService {
 
         if options.verbose {
             command.arg("-v");
+        }
+        if options.metrics {
+            command.arg("-m");
         }
 
         command.stderr(if options.verbose { Stdio::inherit() } else { Stdio::null() });

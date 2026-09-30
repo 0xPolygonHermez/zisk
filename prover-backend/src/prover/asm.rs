@@ -223,7 +223,15 @@ impl AsmProver {
         let gpu_buffer_source = if self.core_prover.asm_info.cpu_mops {
             GpuBufferSource::Cpu
         } else {
-            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_first_gpu_buffer();
+            // The device-resident RAM witness keeps every access on the card: it needs the
+            // whole buffer, slots and const-pols tail included (re-uploaded after the borrow).
+            let arena_witness =
+                std::env::var("ZISK_MEM_GPU_FILL").map(|v| v.starts_with("arena")).unwrap_or(false);
+            let (gpu_buf_ptr, gpu_buf_size) = if arena_witness {
+                pctx.get_first_gpu_buffer_exclusive()
+            } else {
+                pctx.get_first_gpu_buffer()
+            };
             let gpu_id = pctx.first_gpu_id();
             GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize, gpu_id }
         };

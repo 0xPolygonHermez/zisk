@@ -234,6 +234,9 @@ impl AsmRunnerMO {
         };
         // Take the optional GPU planner for this block.
         #[cfg(gpu)]
+        // A new block: the previous block's RAM witness source is gone.
+        #[cfg(gpu)]
+        zisk_sm_mem_planner::clear_gpu_ram_witness();
         let gpu_count_and_plan_opt: Option<GpuCountAndPlan> = preloaded.gpu_count_and_plan.take();
 
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
@@ -414,6 +417,29 @@ impl AsmRunnerMO {
         crate::drain_chunk_done(&mut sem_chunk_done);
 
         // inject GPU-produced segments to the C++ segment table.
+        // The plan is closed: the planner can now serve the block's RAM witness.
+        #[cfg(gpu)]
+        if let Some(gpu_count_and_plan) = gpu_count_and_plan_opt.as_ref() {
+            if gpu_metas_view.is_some() {
+                zisk_sm_mem_planner::register_gpu_ram_witness(gpu_count_and_plan, chunk_size);
+                // The device phase of the RAM witness must run while the arena is still ours: the
+                // executor hands the buffer back to the prover as soon as the plan returns.
+                if std::env::var("ZISK_MEM_GPU_FILL")
+                    .map(|v| v.starts_with("arena"))
+                    .unwrap_or(false)
+                {
+                    timer_start_info!(GPU_MEM_WITNESS);
+                    match zisk_sm_mem_planner::gpu_ram_witness_fill_all() {
+                        Ok(p) => tracing::info!(
+                            "[gpu] RAM witness: {} accesses -> {} lanes, {} instances, {} unresolved writes; sort {:.0} pairing {:.0} values {:.0} prepare {:.0}ms",
+                            p.n_accesses, p.n_lanes, p.n_instances, p.unresolved_writes, p.ms_sort, p.ms_lanes, p.ms_values, p.ms_total
+                        ),
+                        Err(e) => tracing::warn!("[gpu] RAM witness unavailable for this block: {e}"),
+                    }
+                    timer_stop_and_log_info!(GPU_MEM_WITNESS);
+                }
+            }
+        }
         #[cfg(gpu)]
         let inject_ok = match gpu_metas_view {
             Some((metas_ptr, n)) => unsafe {
