@@ -5,6 +5,7 @@
 #include "../ffiasm/bls12_381_384.hpp"
 #include "../common/utils.hpp"
 #include "../common/curve_plain.hpp"
+#include "../common/complex_plain.hpp"
 #include "../common/globals.hpp"
 #include <stdint.h>
 
@@ -162,8 +163,8 @@ int BLS12_381ComplexSubP (const uint64_t * p1, const uint64_t * p2, uint64_t * p
 /* BLS12_381 COMPLEX MUL */
 /*************************/
 
-// Only the second operand is converted to Montgomery form: the Montgomery product of a plain
-// value and a Montgomery one is the plain product, so the result is plain
+// Only the second operand is converted to Montgomery form, and the product uses Karatsuba,
+// see complex_plain.hpp
 int BLS12_381ComplexMul (const uint64_t * _x1, const uint64_t * _y1, const uint64_t * _x2, const uint64_t * _y2, uint64_t * _x3, uint64_t * _y3)
 {
     RawBLS12_381_384::Element x1, y1, x2, y2, x3, y3;
@@ -172,7 +173,8 @@ int BLS12_381ComplexMul (const uint64_t * _x1, const uint64_t * _y1, const uint6
     array2fe(_x2, x2);
     array2fe(_y2, y2);
 
-    int result = BLS12_381ComplexMulFe (x1, y1, x2, y2, x3, y3);
+    complex_mul_plain(bls12_381, x1, y1, x2, y2, x3, y3);
+    int result = 0;
 
     plain2array(x3, _x3);
     plain2array(y3, _y3);
@@ -180,8 +182,8 @@ int BLS12_381ComplexMul (const uint64_t * _x1, const uint64_t * _y1, const uint6
     return result;
 }
 
-// Only the second operand is converted to Montgomery form: the Montgomery product of a plain
-// value and a Montgomery one is the plain product, so the result is plain
+// Only the second operand is converted to Montgomery form, and the product uses Karatsuba,
+// see complex_plain.hpp
 int BLS12_381ComplexMulP (const uint64_t * p1, const uint64_t * p2, uint64_t * p3)
 {
     RawBLS12_381_384::Element x1, y1, x2, y2, x3, y3;
@@ -190,7 +192,8 @@ int BLS12_381ComplexMulP (const uint64_t * p1, const uint64_t * p2, uint64_t * p
     array2fe(p2, x2);
     array2fe(p2 + 6, y2);
 
-    int result = BLS12_381ComplexMulFe (x1, y1, x2, y2, x3, y3);
+    complex_mul_plain(bls12_381, x1, y1, x2, y2, x3, y3);
+    int result = 0;
 
     plain2array(x3, p3);
     plain2array(y3, p3 + 6);
