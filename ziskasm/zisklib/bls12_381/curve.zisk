@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bls12_381/curve.zisk - G1 point arithmetic on E/Fp: y² = x³ + 4. Mirrors
-; ziskos/.../bls12_381/curve.rs. Uses bls12_381_curve_add (header [&p1,&p2] each
+; ziskos/.../bls12_381/curve.rs. Uses bls12_381_curve_add (a=&p1, b=&p2, each
 ; 12 u64, p1+=p2 in place) and bls12_381_curve_dbl (b=&point, in place). G1 point
 ; = 12 u64 (x[6]‖y[6]). Identity = all-zero. Prefixes lcv_/loc_/lsm_/lj2a_.
 ; ============================================================================
@@ -11,7 +11,6 @@ u64 BLS_OC_X2[6]    = 0, 0, 0, 0, 0, 0
 u64 BLS_OC_X3[6]    = 0, 0, 0, 0, 0, 0
 u64 BLS_OC_RHS[6]   = 0, 0, 0, 0, 0, 0
 
-u64 BLS_ADD_HDR[2]  = 0, 0
 u64 BLS_ADD_P1[1]   = 0
 u64 BLS_ADD_P2[1]   = 0
 u64 BLS_ADD_RES[1]  = 0
@@ -20,7 +19,6 @@ u64 BLS_SM_PPTR[1]  = 0
 u64 BLS_SM_RESPTR[1]= 0
 u64 BLS_SM_K[4]     = 0, 0, 0, 0
 u64 BLS_SM_Q[12]    = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-u64 BLS_SM_HDR[2]   = 0, 0
 
 u64 BLS_J2A_P[1]    = 0
 u64 BLS_J2A_R[1]    = 0
@@ -195,14 +193,11 @@ lcv_add_generic:
 	copyb(r5, 8[a + 0]) -> r11
 	copyb(0, 12) -> r12
 	call bn254_memcpy
-	copyb(0, BLS_ADD_HDR) -> r5
-	copyb(0, BLS_ADD_RES) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_ADD_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r5
 	copyb(0, BLS_ADD_P2) -> r7
 	copyb(r7, 8[a + 0]) -> r7
-	copyb(r5, r7) -> 8[a + 8]
-	bls12_381_curve_add(0, r5) -> r14
+	bls12_381_curve_add(r5, r7) -> r14
 	pop r1
 	ret
 
@@ -316,13 +311,10 @@ lsm_loop:
 	srl(r7, r6) -> r7
 	and(r7, 1) -> r7
 	eq(r7, 0), j(lsm_noadd)
-	copyb(0, BLS_SM_HDR) -> r5
-	copyb(0, BLS_SM_Q) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_SM_Q) -> r5
 	copyb(0, BLS_SM_PPTR) -> r7
 	copyb(r7, 8[a + 0]) -> r7
-	copyb(r5, r7) -> 8[a + 8]
-	bls12_381_curve_add(0, r5) -> r14
+	bls12_381_curve_add(r5, r7) -> r14
 lsm_noadd:
 	eq(r13, 0), j(lsm_done)
 	sub(r13, 1) -> r13

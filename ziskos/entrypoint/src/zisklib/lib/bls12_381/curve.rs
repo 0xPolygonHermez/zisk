@@ -4,10 +4,7 @@
 use crate::alloc_extern::vec::Vec;
 
 use crate::{
-    syscalls::{
-        syscall_bls12_381_curve_add, syscall_bls12_381_curve_dbl, SyscallBls12_381CurveAddParams,
-        SyscallPoint384,
-    },
+    syscalls::{syscall_bls12_381_curve_add, syscall_bls12_381_curve_dbl, SyscallPoint384},
     zisklib::{eq, fcall_msb_pos_256, is_one, is_two, is_zero, lt},
 };
 
@@ -304,9 +301,9 @@ pub(crate) fn add_bls12_381(
     // Compute the addition
     let mut p1 = SyscallPoint384 { x: x1, y: y1 };
     let p2 = SyscallPoint384 { x: x2, y: y2 };
-    let mut params = SyscallBls12_381CurveAddParams { p1: &mut p1, p2: &p2 };
     syscall_bls12_381_curve_add(
-        &mut params,
+        &mut p1,
+        &p2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -712,9 +709,9 @@ pub fn scalar_mul_bls12_381(
             // Get the next bit b of k.
             // If b == 1, we should add P to Q, otherwise start the next iteration
             if ((k[i] >> j) & 1) == 1 {
-                let mut params = SyscallBls12_381CurveAddParams { p1: &mut q, p2: &p };
                 syscall_bls12_381_curve_add(
-                    &mut params,
+                    &mut q,
+                    &p,
                     #[cfg(feature = "hints")]
                     hints,
                 );

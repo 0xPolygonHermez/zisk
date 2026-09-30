@@ -5,10 +5,6 @@ pub fn diagnostic_blake3() {
     // Blake3 Tests
     //////////////
 
-    let mut state: [u64; 8] = [0; 8];
-    let input: [u64; 8] = [0; 8];
-    let mut params = SyscallBlake3fParams { state: &mut state, input: &input };
-
     // Test #0: blake3
     let mut state: [u64; 8] = [
         0xbb67ae856a09e667,
@@ -21,9 +17,7 @@ pub fn diagnostic_blake3() {
         0x0000000b00000003,
     ];
     let input: [u64; 8] = [0x636261, 0, 0, 0, 0, 0, 0, 0];
-    params.state = &mut state;
-    params.input = &input;
-    syscall_blake3f(&mut params);
+    syscall_blake3f(&mut state, &input);
     let expected_out: [u64; 8] = [
         0x58c37bce68ea631c,
         0x59cfd54f14e356a5,
@@ -34,5 +28,5 @@ pub fn diagnostic_blake3() {
         0xd77aa67bcdaec952,
         0x505fb92aed830054,
     ];
-    assert_eq!(params.state, &expected_out);
+    assert_eq!(state, expected_out);
 }

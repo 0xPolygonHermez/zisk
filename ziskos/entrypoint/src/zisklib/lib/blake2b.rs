@@ -1,6 +1,6 @@
 //! BLAKE2b hash function.
 
-use crate::syscalls::{syscall_blake2b_round, SyscallBlake2bRoundParams};
+use crate::syscalls::syscall_blake2b_round;
 
 /// BLAKE2b initialization vectors
 const IV: [u64; 8] = [
@@ -36,10 +36,10 @@ pub fn blake2b_compress(
     v[15] = IV[7];
 
     for r in 0..rounds {
-        let mut params =
-            SyscallBlake2bRoundParams { index: (r % 10) as u64, state: &mut v, input: m };
         syscall_blake2b_round(
-            &mut params,
+            (r % 10) as u64,
+            &mut v,
+            m,
             #[cfg(feature = "hints")]
             hints,
         );

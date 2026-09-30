@@ -1,10 +1,17 @@
 use proofman_fields::PrimeField64;
 use zisk_precomp_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
 
-use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+use zisk_common::{A, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 use zisk_core::sha256f;
 
 use crate::Sha256fSM;
+
+/// Bus payload: `[op, op_type, a, b, step, state[4], input[8]]`, with a = state address (the result
+/// overwrites it) and b = input address. No parameter struct, no indirections.
+const STATE_WORDS: usize = 4;
+const INPUT_WORDS: usize = 8;
+const STATE_OFFSET: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+const INPUT_OFFSET: usize = STATE_OFFSET + STATE_WORDS;
 
 impl<F: PrimeField64> PrecompileMemInputs for Sha256fSM<F> {
     fn generate<P: MemProcessor>(
@@ -14,92 +21,57 @@ impl<F: PrimeField64> PrecompileMemInputs for Sha256fSM<F> {
         only_counters: bool,
         mem_processors: &mut P,
     ) {
-        // Get the basic data from the input
-        // op,op_type,a,b,addr[2],...
-        let state: &mut [u64; 4] = &mut data[7..11].try_into().unwrap();
-        let input: &[u64; 8] = &data[11..19].try_into().unwrap();
+        let state_addr = data[A] as u32;
+        let input_addr = addr_main;
+        let mut state: [u64; STATE_WORDS] =
+            data[STATE_OFFSET..STATE_OFFSET + STATE_WORDS].try_into().unwrap();
+        let input: [u64; INPUT_WORDS] =
+            data[INPUT_OFFSET..INPUT_OFFSET + INPUT_WORDS].try_into().unwrap();
 
-        // Apply the sha256f function and get the output
-        sha256f(state, input);
-
-        // Generate the memory reads/writes
-        let indirect_params = 2;
-
-        // Start by generating the indirection reads
-        for iparam in 0..indirect_params {
+        // Reads: the state at a, then the input at b
+        for (i, value) in state.iter().enumerate() {
             MemBusHelpers::mem_aligned_read(
-                addr_main + iparam as u32 * 8,
+                state_addr + i as u32 * 8,
                 step_main,
-                data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + iparam],
+                *value,
+                mem_processors,
+            );
+        }
+        for (i, value) in input.iter().enumerate() {
+            MemBusHelpers::mem_aligned_read(
+                input_addr + i as u32 * 8,
+                step_main,
+                *value,
                 mem_processors,
             );
         }
 
-        // Now we can treat the raw inputs
-        let read_params = 2;
-        let write_params = 1;
-        let chunks_per_param = [4usize, 8, 4];
-        let params_count = read_params + write_params;
-        let params_offset = OPERATION_PRECOMPILED_BUS_DATA_SIZE + indirect_params;
-        let mut read_chunks = 0;
-        for (iparam, &chunks) in chunks_per_param.iter().enumerate().take(params_count) {
-            let is_write = iparam >= read_params;
-            let param_index = if is_write { iparam - read_params } else { iparam };
-            let param_addr = data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_index] as u32;
-            // read/write all chunks of the iparam parameter
-            let current_param_offset = if is_write {
-                // if write calculate index over write_data
-                chunks * param_index
-            } else {
-                // if read calculate param
-                let offset = params_offset + read_chunks;
-                read_chunks += chunks;
-                offset
-            };
-            for ichunk in 0..chunks {
-                let chunk_data = if only_counters && is_write {
-                    0
-                } else if is_write {
-                    state[current_param_offset + ichunk]
-                } else {
-                    data[current_param_offset + ichunk]
-                };
-                MemBusHelpers::mem_aligned_op(
-                    param_addr + ichunk as u32 * 8,
-                    step_main,
-                    chunk_data,
-                    is_write,
-                    mem_processors,
-                );
-            }
+        // Write: the new state back at a
+        if only_counters {
+            state = [0; STATE_WORDS];
+        } else {
+            sha256f(&mut state, &input);
+        }
+        for (i, value) in state.iter().enumerate() {
+            MemBusHelpers::mem_aligned_write(
+                state_addr + i as u32 * 8,
+                step_main,
+                *value,
+                mem_processors,
+            );
         }
     }
 
     fn should_skip<P: MemProcessor>(addr_main: u32, data: &[u64], mem_processors: &mut P) -> bool {
-        let indirect_params = 2;
-        let read_params = 2;
-        let write_params = 1;
-        let chunks_per_param = [4usize, 8, 4];
-
-        for iparam in 0..indirect_params {
-            let addr = addr_main + iparam as u32 * 8;
-            if !mem_processors.skip_addr(addr) {
+        let state_addr = data[A] as u32;
+        for i in 0..STATE_WORDS {
+            if !mem_processors.skip_addr(state_addr + i as u32 * 8) {
                 return false;
             }
         }
-
-        for (iparam, &chunks) in
-            chunks_per_param.iter().enumerate().take(read_params + write_params)
-        {
-            let is_write = iparam >= read_params;
-            let param_index = if is_write { iparam - read_params } else { iparam };
-            let param_addr = data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_index] as u32;
-
-            for ichunk in 0..chunks {
-                let addr = param_addr + ichunk as u32 * 8;
-                if !mem_processors.skip_addr(addr) {
-                    return false;
-                }
+        for i in 0..INPUT_WORDS {
+            if !mem_processors.skip_addr(addr_main + i as u32 * 8) {
+                return false;
             }
         }
         true

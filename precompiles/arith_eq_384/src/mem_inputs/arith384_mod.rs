@@ -5,6 +5,7 @@ use crate::{executors::Arith384Mod, ARITH_EQ_384_U64S};
 
 pub const ARITH_384_MOD_MEM_CONFIG: ArithEq384MemInputConfig = ArithEq384MemInputConfig {
     indirect_params: 5,
+    direct_ab: false,
     rewrite_params: false,
     read_params: 4,
     write_params: 1,

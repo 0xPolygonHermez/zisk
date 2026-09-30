@@ -16,8 +16,9 @@ use super::sha256f_constants::*;
 #[derive(Debug)]
 pub struct Sha256fInput {
     pub step_main: u64,
-    pub addr_main: u32,
+    /// Main operand a: the state address (the result overwrites it).
     pub state_addr: u32,
+    /// Main operand b: the input block address.
     pub input_addr: u32,
     pub state: [u64; 4],
     pub input: [u64; 8],
@@ -25,13 +26,13 @@ pub struct Sha256fInput {
 
 impl Sha256fInput {
     pub fn from(values: &OperationSha256Data<u64>) -> Self {
+        // op,op_type,a,b,step,state[4],input[8]
         Self {
             step_main: values[4],
-            addr_main: values[3] as u32,
-            state_addr: values[5] as u32,
-            input_addr: values[6] as u32,
-            state: values[7..11].try_into().unwrap(),
-            input: values[11..19].try_into().unwrap(),
+            state_addr: values[2] as u32,
+            input_addr: values[3] as u32,
+            state: values[5..9].try_into().unwrap(),
+            input: values[9..17].try_into().unwrap(),
         }
     }
 }
@@ -81,7 +82,6 @@ impl<F: PrimeField64> Sha256fSM<F> {
         let mut e_range_checks = [0u32; 8];
 
         let step_main = input.step_main;
-        let addr_main = input.addr_main;
         let state_addr = input.state_addr;
         let input_addr = input.input_addr;
         let state = &input.state;
@@ -89,11 +89,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
 
         // Fill the step_addr
         trace[0].set_step_addr(step_main); // STEP_MAIN
-        trace[1].set_step_addr(addr_main as u64); // ADDR_OP
-        trace[2].set_step_addr(state_addr as u64); // ADDR_STATE
-        trace[3].set_step_addr(input_addr as u64); // ADDR_INPUT
-        trace[4].set_step_addr(state_addr as u64); // ADDR_IND_0
-        trace[5].set_step_addr(input_addr as u64); // ADDR_IND_1
+        trace[1].set_step_addr(state_addr as u64); // ADDR_STATE (main operand a)
+        trace[2].set_step_addr(input_addr as u64); // ADDR_INPUT (main operand b)
 
         // Activate the in_use selector
         for r in trace.iter_mut().take(18) {

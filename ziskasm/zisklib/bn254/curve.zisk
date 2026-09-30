@@ -1,7 +1,7 @@
 ; ============================================================================
 ; bn254/curve.zisk - G1 point arithmetic on E/Fp: y² = x³ + 3. Mirrors
 ; ziskos/entrypoint/src/zisklib/lib/bn254/curve.rs. Uses bn254_curve_add
-; (header [&p1,&p2], p1+=p2 in place) and bn254_curve_dbl (b=&point, in place).
+; (a=&p1, b=&p2, p1+=p2 in place) and bn254_curve_dbl (b=&point, in place).
 ; G1 point = 8 u64 (x‖y). Identity = all-zero. Prefixes bcv_/boc_/bsm_/bj2a_.
 ; ============================================================================
 
@@ -11,7 +11,6 @@ u64 BN_OC_X2[4]    = 0, 0, 0, 0
 u64 BN_OC_X3[4]    = 0, 0, 0, 0
 u64 BN_OC_RHS[4]   = 0, 0, 0, 0
 
-u64 BN_ADD_HDR[2]  = 0, 0
 u64 BN_ADD_P1[1]   = 0
 u64 BN_ADD_P2[1]   = 0
 u64 BN_ADD_RES[1]  = 0
@@ -20,7 +19,6 @@ u64 BN_SM_PPTR[1]  = 0
 u64 BN_SM_RESPTR[1]= 0
 u64 BN_SM_K[4]     = 0, 0, 0, 0
 u64 BN_SM_Q[8]     = 0, 0, 0, 0, 0, 0, 0, 0
-u64 BN_SM_HDR[2]   = 0, 0
 
 u64 BN_J2A_P[1]    = 0
 u64 BN_J2A_ZINV[4] = 0, 0, 0, 0
@@ -169,14 +167,11 @@ bcv_add_generic:
 	copyb(r5, 8[a + 0]) -> r11
 	copyb(0, 8) -> r12
 	call bn254_memcpy
-	copyb(0, BN_ADD_HDR) -> r5
-	copyb(0, BN_ADD_RES) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BN_ADD_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r5
 	copyb(0, BN_ADD_P2) -> r7
 	copyb(r7, 8[a + 0]) -> r7
-	copyb(r5, r7) -> 8[a + 8]
-	bn254_curve_add(0, r5) -> r14
+	bn254_curve_add(r5, r7) -> r14
 	pop r1
 	ret
 
@@ -243,13 +238,10 @@ bsm_loop:
 	and(r7, 1) -> r7
 	eq(r7, 0), j(bsm_noadd)
 	; q += p
-	copyb(0, BN_SM_HDR) -> r5
-	copyb(0, BN_SM_Q) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BN_SM_Q) -> r5
 	copyb(0, BN_SM_PPTR) -> r7
 	copyb(r7, 8[a + 0]) -> r7
-	copyb(r5, r7) -> 8[a + 8]
-	bn254_curve_add(0, r5) -> r14
+	bn254_curve_add(r5, r7) -> r14
 bsm_noadd:
 	eq(r13, 0), j(bsm_done)
 	sub(r13, 1) -> r13

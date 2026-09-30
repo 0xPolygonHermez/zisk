@@ -1,15 +1,9 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use ziskos::syscalls::{
-    syscall_bls12_381_curve_add, SyscallBls12_381CurveAddParams, SyscallPoint384,
-};
+use ziskos::syscalls::{syscall_bls12_381_curve_add, SyscallPoint384};
 
 fn main() {
-    let mut p1 = SyscallPoint384 { x: [0, 0, 0, 0, 0, 0], y: [0, 0, 0, 0, 0, 0] };
-    let p2 = SyscallPoint384 { x: [0, 0, 0, 0, 0, 0], y: [0, 0, 0, 0, 0, 0] };
-    let mut params = SyscallBls12_381CurveAddParams { p1: &mut p1, p2: &p2 };
-
     // Test #0: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
         x: [
@@ -47,9 +41,7 @@ fn main() {
             1427959147343986543,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             2483123199531220974,
@@ -68,8 +60,8 @@ fn main() {
             492447461400967883,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #1: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -108,9 +100,7 @@ fn main() {
             619255054984480128,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             9656420674841242008,
@@ -129,8 +119,8 @@ fn main() {
             790415697630434679,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #2: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -169,9 +159,7 @@ fn main() {
             1764360982502867629,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             2153797389212653653,
@@ -190,8 +178,8 @@ fn main() {
             816214722286493984,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #3: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -230,9 +218,7 @@ fn main() {
             407064847962126282,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             7102671272810680009,
@@ -251,8 +237,8 @@ fn main() {
             932312993548812762,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #4: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -291,9 +277,7 @@ fn main() {
             344780985663840343,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             1301716063109011605,
@@ -312,8 +296,8 @@ fn main() {
             162585030203693799,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #5: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -352,9 +336,7 @@ fn main() {
             368892175296963408,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             11338530672197641314,
@@ -373,8 +355,8 @@ fn main() {
             1184698649328272626,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #6: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -413,9 +395,7 @@ fn main() {
             1517747191232238462,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             8157943722394627168,
@@ -434,8 +414,8 @@ fn main() {
             223334612600112959,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #7: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -474,9 +454,7 @@ fn main() {
             1347498591684327477,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             3327636199940642094,
@@ -495,8 +473,8 @@ fn main() {
             741357245887649684,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #8: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -535,9 +513,7 @@ fn main() {
             800714267471224265,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             7739486811239128581,
@@ -556,8 +532,8 @@ fn main() {
             1506629853561262871,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #9: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -596,9 +572,7 @@ fn main() {
             1800471522722980573,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             13512258873463757594,
@@ -617,8 +591,8 @@ fn main() {
             14798037580342778,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #10: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -657,9 +631,7 @@ fn main() {
             1763850244390996660,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             16598228158148446948,
@@ -678,8 +650,8 @@ fn main() {
             1289777397175968725,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #11: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -718,9 +690,7 @@ fn main() {
             296056026898035477,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             15092620614628911796,
@@ -739,8 +709,8 @@ fn main() {
             649280050516699705,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #12: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -779,9 +749,7 @@ fn main() {
             87644019362167401,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             2604767796627040179,
@@ -800,8 +768,8 @@ fn main() {
             1138048991429521270,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #13: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -840,9 +808,7 @@ fn main() {
             1731923809929645558,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             14041999320970731695,
@@ -861,8 +827,8 @@ fn main() {
             142782140482632713,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 
     // Test #14: bls12_381_curve_add
     let mut p1 = SyscallPoint384 {
@@ -901,9 +867,7 @@ fn main() {
             149896740736755094,
         ],
     };
-    params.p1 = &mut p1;
-    params.p2 = &p2;
-    syscall_bls12_381_curve_add(&mut params);
+    syscall_bls12_381_curve_add(&mut p1, &p2);
     let p3 = SyscallPoint384 {
         x: [
             8948993161889914149,
@@ -922,6 +886,6 @@ fn main() {
             1699466559831952174,
         ],
     };
-    assert_eq!(params.p1.x, p3.x);
-    assert_eq!(params.p1.y, p3.y);
+    assert_eq!(p1.x, p3.x);
+    assert_eq!(p1.y, p3.y);
 }

@@ -1,4 +1,4 @@
-use crate::syscalls::{syscall_blake3f, SyscallBlake3fParams};
+use crate::syscalls::syscall_blake3f;
 
 /// BLAKE3 initialization vectors
 const IV: [u32; 8] = [
@@ -23,9 +23,9 @@ pub fn blake3_compress(
     let state_u64: &mut [u64; 8] = unsafe { &mut *(state.as_mut_ptr() as *mut [u64; 8]) };
     let input: &[u64; 8] = unsafe { &*(m.as_ptr() as *const [u64; 8]) };
 
-    let mut params = SyscallBlake3fParams { state: state_u64, input };
     syscall_blake3f(
-        &mut params,
+        state_u64,
+        input,
         #[cfg(feature = "hints")]
         hints,
     );

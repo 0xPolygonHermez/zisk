@@ -5149,29 +5149,32 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sha256 => {
-                // Use the memory address as the first and unique parameter
-                *code += &ctx.full_line_comment("SHA256: rdi = b".to_string());
+                // Two direct operands: a = state address (receives the result), b = input address
+                *code += &ctx.full_line_comment("SHA256: rdi = a, rsi = b".to_string());
 
-                // Use the memory address as the first and unique parameter
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = state address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = input address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[4, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 4, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[4, 8], 0, 0, 4);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 4, 8, 4);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_sha256() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 4);
                 } else {
                     // Call the SHA256 function
@@ -5189,29 +5192,40 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Blake2b => {
-                // Use the memory address as the first and unique parameter
-                *code += &ctx.full_line_comment("Blake2b: rdi = b".to_string());
+                // Two direct operands (a = state address, receives the result; b = input address)
+                // plus the round index as the static argument of the instruction
+                *code +=
+                    &ctx.full_line_comment("Blake2b: rdi = a, rsi = b, rdx = index".to_string());
 
-                // Use the memory address as the first and unique parameter
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = state address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = input address")
+                );
+                *code += &format!(
+                    "\tmov rdx, {} {}\n",
+                    inst.jmp_offset1,
+                    ctx.comment(format!("rdx = index = {}", inst.jmp_offset1))
                 );
 
-                // Save data into mem_reads
+                // Save data into mem_reads: the index first, then the state and the input
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 3, &[0, 16, 16]);
+                    Self::precompiled_save_static_arg_mem_reads(ctx, code, inst.jmp_offset1);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 16, 16);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 3, &[0, 16, 16], 1, 1, 16);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 16, 16, 16);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_blake2b() {
-                    *code += "\tmov rdi, [rdi+8]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 16);
                 } else {
                     // Call the Blake2b function
@@ -5229,29 +5243,32 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Blake3 => {
-                // Use the memory address as the first and unique parameter
-                *code += &ctx.full_line_comment("Blake3: rdi = b".to_string());
+                // Two direct operands: a = state address (receives the result), b = input address
+                *code += &ctx.full_line_comment("Blake3: rdi = a, rsi = b".to_string());
 
-                // Use the memory address as the first and unique parameter
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = state address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = input address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_blake3() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the Blake3 function
@@ -5269,29 +5286,32 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Blake2s => {
-                // Use the memory address as the first and unique parameter
-                *code += &ctx.full_line_comment("Blake2s: rdi = b".to_string());
+                // Two direct operands: a = state address (receives the result), b = input address
+                *code += &ctx.full_line_comment("Blake2s: rdi = a, rsi = b".to_string());
 
-                // Use the memory address as the first and unique parameter
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = state address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = input address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_blake2s() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the Blake2s function
@@ -5490,26 +5510,30 @@ impl ZiskRom2Asm {
             ZiskOp::Secp256k1Add => {
                 *code += &ctx.full_line_comment("Secp256k1Add".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_secp256k1add() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the secp256k1_add function
@@ -5590,26 +5614,30 @@ impl ZiskRom2Asm {
             ZiskOp::Secp256r1Add => {
                 *code += &ctx.full_line_comment("Secp256r1Add".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_secp256r1add() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the secp256r1_add function
@@ -5901,26 +5929,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bn254CurveAdd => {
                 *code += &ctx.full_line_comment("Bn254CurveAdd".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bn254curveadd() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the bn254_curve_add function
@@ -6001,26 +6033,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bn254ComplexAdd => {
                 *code += &ctx.full_line_comment("Bn254ComplexAdd".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bn254complexadd() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the bn254_complex_add function
@@ -6039,26 +6075,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bn254ComplexSub => {
                 *code += &ctx.full_line_comment("Bn254ComplexSub".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bn254complexsub() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the bn254_complex_sub function
@@ -6077,26 +6117,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bn254ComplexMul => {
                 *code += &ctx.full_line_comment("Bn254ComplexMul".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bn254complexmul() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the bn254_complex_mul function
@@ -6162,26 +6206,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bls12_381CurveAdd => {
                 *code += &ctx.full_line_comment("Bls12_381CurveAdd".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[12, 12]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 12, 12);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[12, 12], 0, 0, 12);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 12, 12, 12);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bls12_381curveadd() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                 } else {
                     // Call the bls12_381_curve_add function
@@ -6262,26 +6310,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bls12_381ComplexAdd => {
                 *code += &ctx.full_line_comment("Bls12_381ComplexAdd".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[12, 12]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 12, 12);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[12, 12], 0, 0, 12);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 12, 12, 12);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bls12_381complexadd() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                 } else {
                     // Call the bls12_381_complex_add function
@@ -6300,26 +6352,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bls12_381ComplexSub => {
                 *code += &ctx.full_line_comment("Bls12_381ComplexSub".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[12, 12]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 12, 12);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[12, 12], 0, 0, 12);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 12, 12, 12);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bls12_381complexsub() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                 } else {
                     // Call the bls12_381_complex_sub function
@@ -6338,26 +6394,30 @@ impl ZiskRom2Asm {
             ZiskOp::Bls12_381ComplexMul => {
                 *code += &ctx.full_line_comment("Bls12_381ComplexMul".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[12, 12]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 12, 12);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[12, 12], 0, 0, 12);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 12, 12, 12);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_bls12_381complexmul() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                 } else {
                     // Call the bls12_381_complex_mul function
@@ -6420,26 +6480,30 @@ impl ZiskRom2Asm {
             ZiskOp::BabyJubJubAdd => {
                 *code += &ctx.full_line_comment("BabyJubJubAdd".to_string());
 
-                // Use the memory address as the first and unique parameter
+                // Two direct operands: a = first operand address (receives the result), b = second
                 *code += &format!(
                     "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
                     ctx.b.string_value,
-                    ctx.comment_str("rdi = b = address")
+                    ctx.comment_str("rsi = b = second operand address")
                 );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
-                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
                 }
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
                 }
 
                 // Get result from precompile results data
                 if ctx.precompile_results_babyjubjubadd() {
-                    *code += "\tmov rdi, [rdi]\n";
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                 } else {
                     // Call the babyjubjub_add function
@@ -7322,6 +7386,57 @@ impl ZiskRom2Asm {
         );
     }
 
+    /// Minimal trace of a precompile called with two direct operands (no parameter struct):
+    /// `chunks_a` words read from the address in rdi (a) followed by `chunks_b` words read from
+    /// the address in rsi (b).
+    fn precompiled_save_ab_mem_reads(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        chunks_a: u64,
+        chunks_b: u64,
+    ) {
+        // This index will be incremented as we insert data into mem_reads
+        let mut mem_reads_index: u64 = 0;
+
+        for (reg, chunks) in [("rdi", chunks_a), ("rsi", chunks_b)] {
+            for k in 0..chunks {
+                *code += &format!(
+                    "\tmov {REG_VALUE}, [{reg} + {k}*8] {}\n",
+                    ctx.comment(format!("value = mem[{reg}+{k}]"))
+                );
+                *code += &format!(
+                    "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + {mem_reads_index}*8], {REG_VALUE} {}\n",
+                    ctx.comment_str("mem_reads[@+size*8+ind*8] = value")
+                );
+                mem_reads_index += 1;
+            }
+        }
+
+        // Increment chunk.steps.mem_reads_size
+        *code += &format!(
+            "\tadd {REG_MEM_READS_SIZE}, {mem_reads_index} {}\n",
+            ctx.comment(format!("mem_reads_size+={mem_reads_index}"))
+        );
+    }
+
+    /// Stores a static argument of the instruction (an immediate carried by the rom, e.g. the
+    /// blake2b round index) as the next word of the minimal trace.
+    fn precompiled_save_static_arg_mem_reads(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        value: i64,
+    ) {
+        *code += &format!(
+            "\tmov {REG_VALUE}, {value} {}\n",
+            ctx.comment(format!("value = static arg {value}"))
+        );
+        *code += &format!(
+            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {REG_VALUE} {}\n",
+            ctx.comment_str("mem_reads[@+size*8] = static arg")
+        );
+        *code += &format!("\tinc {REG_MEM_READS_SIZE} {}\n", ctx.comment_str("mem_reads_size++"));
+    }
+
     fn precompiled_save_result(ctx: &mut ZiskAsmContext, code: &mut String) {
         *code += &format!(
             "\tmov [{} + {}*8], {} {}\n",
@@ -7718,6 +7833,21 @@ impl ZiskRom2Asm {
         let mem_reads_index =
             Self::internal_mem_op_precompiled_read(ctx, code, params_count, load_sizes, false);
         Self::internal_mem_op_precompiled_write(ctx, code, begin, end, write_size, mem_reads_index);
+    }
+
+    /// Memory operations of a precompile called with two direct operands: a block read of `read_a`
+    /// words at rdi (a), a block read of `read_b` words at rsi (b) and a block write of `write_a`
+    /// words at rdi (the result overwrites the first operand).
+    fn mem_op_precompiled_ab_read_and_write(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        read_a: u64,
+        read_b: u64,
+        write_a: u64,
+    ) {
+        Self::mem_op_array(ctx, code, "rdi", false, read_a);
+        Self::mem_op_array(ctx, code, "rsi", false, read_b);
+        Self::mem_op_array(ctx, code, "rdi", true, write_a);
     }
 
     #[inline(always)]

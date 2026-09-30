@@ -4,7 +4,7 @@ ziskos::entrypoint!(main);
 use rand::Rng;
 
 use zisk_precomp_helpers::blake2b_round;
-use ziskos::syscalls::{syscall_blake2b_round, SyscallBlake2bRoundParams};
+use ziskos::syscalls::syscall_blake2b_round;
 
 const ACTIVATE_CONSISTENCY_TEST: bool = false;
 
@@ -46,8 +46,7 @@ fn blake2b_apply(rng: &mut rand::rngs::ThreadRng) {
 
     let mut state_copy = state.clone();
 
-    let mut params = SyscallBlake2bRoundParams { index, state: &mut state, input: &input };
-    syscall_blake2b_round(&mut params);
+    syscall_blake2b_round(index, &mut state, &input);
 
     // Compare against a tested blake2b implementation
     blake2b_round(&mut state_copy, &input, index as u32);
@@ -82,8 +81,7 @@ fn run_consistency_test() {
     ];
     let input: [u64; 16] = [0x636261, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-    let mut params = SyscallBlake2bRoundParams { index, state: &mut state, input: &input };
-    syscall_blake2b_round(&mut params);
+    syscall_blake2b_round(index, &mut state, &input);
 
     const EXPECTED_RESULT: [u64; 16] = [
         0x86b7c1568029bb79,

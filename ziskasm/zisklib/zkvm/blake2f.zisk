@@ -19,7 +19,6 @@ const u64 ZKVM_BLK_IV[8] =
 	0x510E527FADE682D1, 0x9B05688C2B3E6C1F, 0x1F83D9ABFB41BD6B, 0x5BE0CD19137E2179
 
 u64 ZKVM_BLK_V[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-u64 ZKVM_BLK_HDR[3] = 0, 0, 0
 
 ziskasm_zkvm_blake2f:
 	; --- v[0..8] = h[0..8] ---
@@ -85,16 +84,51 @@ zb2_v14:
 	add(r6, 120) -> r6
 	copyb(r6, r5) -> 8[a + 0]
 
-	; --- round loop: blake2b(index = r % 10, v, m) ---
-	copyb(0, ZKVM_BLK_HDR) -> r5
-	copyb(0, ZKVM_BLK_V) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	copyb(r5, r12) -> 8[a + 16]
+	; --- round loop: blake2b(a = &v, b = &m) with round index r % 10 ---
+	; The index is the static argument of the instruction (extended arg, j(idx, 4)),
+	; so the dynamic r13 is dispatched over its ten possible values.
+	copyb(0, ZKVM_BLK_V) -> r5          ; a = &v (updated in place); b = r12 = &m
 	copyb(0, 0) -> r13
 zb2_round:
 	eq(r10, 0), j(zb2_finalize)
-	copyb(r5, r13) -> 8[a + 0]
-	blake2b(0, r5)
+	eq(r13, 0), j(zb2_i0)
+	eq(r13, 1), j(zb2_i1)
+	eq(r13, 2), j(zb2_i2)
+	eq(r13, 3), j(zb2_i3)
+	eq(r13, 4), j(zb2_i4)
+	eq(r13, 5), j(zb2_i5)
+	eq(r13, 6), j(zb2_i6)
+	eq(r13, 7), j(zb2_i7)
+	eq(r13, 8), j(zb2_i8)
+	blake2b(r5, r12), j(9, 4)
+	jump(zb2_next)
+zb2_i0:
+	blake2b(r5, r12), j(0, 4)
+	jump(zb2_next)
+zb2_i1:
+	blake2b(r5, r12), j(1, 4)
+	jump(zb2_next)
+zb2_i2:
+	blake2b(r5, r12), j(2, 4)
+	jump(zb2_next)
+zb2_i3:
+	blake2b(r5, r12), j(3, 4)
+	jump(zb2_next)
+zb2_i4:
+	blake2b(r5, r12), j(4, 4)
+	jump(zb2_next)
+zb2_i5:
+	blake2b(r5, r12), j(5, 4)
+	jump(zb2_next)
+zb2_i6:
+	blake2b(r5, r12), j(6, 4)
+	jump(zb2_next)
+zb2_i7:
+	blake2b(r5, r12), j(7, 4)
+	jump(zb2_next)
+zb2_i8:
+	blake2b(r5, r12), j(8, 4)
+zb2_next:
 	add(r13, 1) -> r13
 	ltu(r13, 10), j(zb2_dec)
 	copyb(0, 0) -> r13

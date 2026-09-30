@@ -45,9 +45,10 @@ const XOR_ROT12_CHECKS_PER_ROW: usize = 4;
 /// Per-operation input record assembled from the bus payload.
 #[derive(Debug)]
 pub struct Blake2sInput {
-    pub addr_main: u32,
     pub step_main: u64,
+    /// Main operand a: the state address (the result overwrites it).
     pub state_addr: u32,
+    /// Main operand b: the input block address.
     pub input_addr: u32,
     pub state: [u64; 8],
     pub input: [u64; 8],
@@ -55,13 +56,13 @@ pub struct Blake2sInput {
 
 impl Blake2sInput {
     pub fn from(values: &OperationBlake2sData<u64>) -> Self {
+        // op,op_type,a,b,step,state[8],input[8]
         Self {
-            addr_main: values[3] as u32,
             step_main: values[4],
-            state_addr: values[5] as u32,
-            input_addr: values[6] as u32,
-            state: values[7..15].try_into().unwrap(),
-            input: values[15..23].try_into().unwrap(),
+            state_addr: values[2] as u32,
+            input_addr: values[3] as u32,
+            state: values[5..13].try_into().unwrap(),
+            input: values[13..21].try_into().unwrap(),
         }
     }
 }
@@ -111,11 +112,8 @@ impl<F: PrimeField64> Blake2sSM<F> {
     ) {
         // Fill the step_addr
         trace[0].set_step_addr(input.step_main); // STEP_MAIN
-        trace[1].set_step_addr(input.addr_main as u64); // ADDR_OP
-        trace[2].set_step_addr(input.state_addr as u64); // ADDR_STATE
-        trace[3].set_step_addr(input.input_addr as u64); // ADDR_INPUT
-        trace[4].set_step_addr(input.state_addr as u64); // ADDR_IND_0
-        trace[5].set_step_addr(input.input_addr as u64); // ADDR_IND_1
+        trace[1].set_step_addr(input.state_addr as u64); // ADDR_STATE (main operand a)
+        trace[2].set_step_addr(input.input_addr as u64); // ADDR_INPUT (main operand b)
 
         // View the state and the message block as 16 little-endian u32 words each
         let mut v = [0u32; 16];

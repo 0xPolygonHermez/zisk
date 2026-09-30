@@ -1,13 +1,12 @@
 ; ============================================================================
 ; bn254/fp2.zisk - degree-2 extension field Fp2 = Fp[u]/(u²+1) for BN254.
 ; Mirrors ziskos/entrypoint/src/zisklib/lib/bn254/fp2.rs. All arithmetic runs on
-; the bn254 complex precompiles (bn254_complex_add/sub/mul), which take a 2-ptr
-; header [&f1,&f2] (each 8 u64 = real‖imag) and update f1 in place. inv uses the
+; the bn254 complex precompiles (bn254_complex_add/sub/mul), which take a = &f1
+; and b = &f2 directly (each 8 u64 = real‖imag) and update f1 in place. inv uses the
 ; FCALL_BN254_FP2_INV hint + verify. All leaves. Prefix `bf2_`.
 ; Fp2 element = 8 u64 LE limbs: real (limbs 0..3) ‖ imag (limbs 4..7).
 ; ============================================================================
 
-u64 BN_F2_HDR[2]  = 0, 0
 u64 BN_F2_WB[8]   = 0, 0, 0, 0, 0, 0, 0, 0
 u64 BN_F2_INV[8]  = 0, 0, 0, 0, 0, 0, 0, 0
 u64 BN_F2_PROD[8] = 0, 0, 0, 0, 0, 0, 0, 0
@@ -36,10 +35,7 @@ zisklib_add_fp2_bn254:
 	copyb(r12, r14) -> 8[a + 48]
 	copyb(r10, 8[a + 56]) -> r14
 	copyb(r12, r14) -> 8[a + 56]
-	copyb(0, BN_F2_HDR) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	copyb(r5, r11) -> 8[a + 8]
-	bn254_complex_add(0, r5) -> r14
+	bn254_complex_add(r12, r11) -> r14
 	ret
 
 ; void zisklib_sub_fp2_bn254(const u64* a, const u64* b, u64* result)  [r10,r11,r12]
@@ -60,10 +56,7 @@ zisklib_sub_fp2_bn254:
 	copyb(r12, r14) -> 8[a + 48]
 	copyb(r10, 8[a + 56]) -> r14
 	copyb(r12, r14) -> 8[a + 56]
-	copyb(0, BN_F2_HDR) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	copyb(r5, r11) -> 8[a + 8]
-	bn254_complex_sub(0, r5) -> r14
+	bn254_complex_sub(r12, r11) -> r14
 	ret
 
 ; void zisklib_mul_fp2_bn254(const u64* a, const u64* b, u64* result)  [r10,r11,r12]
@@ -84,10 +77,7 @@ zisklib_mul_fp2_bn254:
 	copyb(r12, r14) -> 8[a + 48]
 	copyb(r10, 8[a + 56]) -> r14
 	copyb(r12, r14) -> 8[a + 56]
-	copyb(0, BN_F2_HDR) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	copyb(r5, r11) -> 8[a + 8]
-	bn254_complex_mul(0, r5) -> r14
+	bn254_complex_mul(r12, r11) -> r14
 	ret
 
 ; void zisklib_dbl_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
@@ -108,10 +98,7 @@ zisklib_dbl_fp2_bn254:
 	copyb(r11, r14) -> 8[a + 48]
 	copyb(r10, 8[a + 56]) -> r14
 	copyb(r11, r14) -> 8[a + 56]
-	copyb(0, BN_F2_HDR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(r5, r10) -> 8[a + 8]
-	bn254_complex_add(0, r5) -> r14
+	bn254_complex_add(r11, r10) -> r14
 	ret
 
 ; void zisklib_square_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
@@ -133,10 +120,7 @@ zisklib_square_fp2_bn254:
 	copyb(r11, r14) -> 8[a + 48]
 	copyb(r10, 8[a + 56]) -> r14
 	copyb(r11, r14) -> 8[a + 56]
-	copyb(0, BN_F2_HDR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(r5, r10) -> 8[a + 8]
-	bn254_complex_mul(0, r5) -> r14
+	bn254_complex_mul(r11, r10) -> r14
 	ret
 
 ; void zisklib_neg_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
@@ -158,11 +142,8 @@ zisklib_neg_fp2_bn254:
 	copyb(r11, r14) -> 8[a + 48]
 	copyb(r10, 8[a + 56]) -> r14
 	copyb(r11, r14) -> 8[a + 56]
-	copyb(0, BN_F2_HDR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
 	copyb(0, BN_F2_NEGMUL) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	bn254_complex_mul(0, r5) -> r14
+	bn254_complex_mul(r11, r6) -> r14
 	ret
 
 ; void zisklib_scalar_mul_fp2_bn254(const u64* a, const u64* b, u64* result)
@@ -199,11 +180,8 @@ zisklib_scalar_mul_fp2_bn254:
 	copyb(r12, r14) -> 8[a + 48]
 	copyb(r10, 8[a + 56]) -> r14
 	copyb(r12, r14) -> 8[a + 56]
-	copyb(0, BN_F2_HDR) -> r5
-	copyb(r5, r12) -> 8[a + 0]
 	copyb(0, BN_F2_WB) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	bn254_complex_mul(0, r5) -> r14
+	bn254_complex_mul(r12, r6) -> r14
 	ret
 
 ; void zisklib_conjugate_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
@@ -236,11 +214,8 @@ zisklib_conjugate_fp2_bn254:
 	copyb(r6, r14) -> 8[a + 48]
 	copyb(r10, 8[a + 56]) -> r14
 	copyb(r6, r14) -> 8[a + 56]
-	copyb(0, BN_F2_HDR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
 	copyb(0, BN_F2_WB) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	bn254_complex_sub(0, r5) -> r14
+	bn254_complex_sub(r11, r6) -> r14
 	ret
 
 ; void zisklib_inv_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
@@ -344,11 +319,8 @@ bf2_inv_vfy:
 	copyb(r6, r14) -> 8[a + 48]
 	copyb(r10, 8[a + 56]) -> r14
 	copyb(r6, r14) -> 8[a + 56]
-	copyb(0, BN_F2_HDR) -> r5
-	copyb(r5, r6) -> 8[a + 0]
 	copyb(0, BN_F2_INV) -> r7
-	copyb(r5, r7) -> 8[a + 8]
-	bn254_complex_mul(0, r5) -> r14
+	bn254_complex_mul(r6, r7) -> r14
 	; is_one(PROD): PROD[0]==1 and PROD[1..8]==0
 	copyb(0, BN_F2_PROD) -> r5
 	copyb(r5, 8[a + 0]) -> r14
