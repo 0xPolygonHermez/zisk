@@ -2,10 +2,10 @@
 
 The field files in this directory (`<field>.asm`, `<field>.hpp`, `<field>.cpp`, `<field>_element.hpp`,
 `<field>_generic.cpp`, `<field>_raw_generic.cpp` and `<field>_raw_arm64.s`) are generated with
-[iden3/ffiasm](https://github.com/iden3/ffiasm), commit `0685e15`. It includes
+[iden3/ffiasm](https://github.com/iden3/ffiasm) `v0.1.6` (commit `4ba57e8`). It includes
 [PR #8](https://github.com/iden3/ffiasm/pull/8), which added the safegcd modular inverse to the
-generator, so regenerating at that commit reproduces these files exactly, inverse included. Do not
-edit them by hand: change the generator instead and regenerate them.
+generator, so regenerating with that version reproduces these files exactly, inverse included. Do
+not edit them by hand: change the generator instead and regenerate them.
 
 To regenerate them, run from this directory, with `<ffiasm>` a checkout of that repository after
 `npm install`:
@@ -27,7 +27,7 @@ secp256r1 base (`pSecp256r1`) and scalar (`nSecp256r1`) fields.
 
 The other files in this directory (`alt_bn128`, `curve`, `f2field`, `fft`, `misc`, `multiexp`,
 `naf`, `splitparstr`, ...) are not generated. They are support code from ffiasm's `c/` directory,
-and several of them differ from the version at the commit above, so do not overwrite them when
+and several of them differ from the ones in that version, so do not overwrite them when
 regenerating.
 
 After regenerating, check that the precompile results are unchanged with `lib-c/c/test/difftest.sh`.
