@@ -286,6 +286,13 @@ fn memory_must_fit_the_machine() {
       (func (export "_start")))"#;
     let err = wasm2rom(&wat::parse_str(past_end).unwrap()).expect_err("must be rejected");
     assert!(err.to_string().contains("does not fit the initial memory"), "{err}");
+    // A negative i32 offset is the unsigned memory32 address 0xffffffff, not a 64-bit value.
+    let negative = r#"(module
+      (memory 1)
+      (data (i32.const -1) "\01")
+      (func (export "_start")))"#;
+    let err = wasm2rom(&wat::parse_str(negative).unwrap()).expect_err("must be rejected");
+    assert!(err.to_string().contains("offset 0xffffffff"), "{err}");
 }
 
 #[test]
@@ -669,4 +676,90 @@ fn wasi_imports_must_have_the_expected_signature() {
         let err = wasm2rom(&wat::parse_str(wat).unwrap()).expect_err(what);
         assert!(err.to_string().contains("expected"), "{what}: {err}");
     }
+}
+
+#[test]
+fn memory_grow_honors_the_declared_maximum() {
+    // `(memory 1 2)`: one grow succeeds (returns the old size 1), the next must fail with -1 and
+    // leave the size at 2; `(memory 1 1)` cannot grow at all.
+    let grow_results = |memory: &str| -> (i64, i64, i64) {
+        let wat = format!(
+            r#"(module
+              (import "wasi_snapshot_preview1" "fd_write"
+                (func $fd_write (param i32 i32 i32 i32) (result i32)))
+              (memory {memory})
+              (func (export "_start")
+                (i64.store (i32.const 8) (i64.extend_i32_s (memory.grow (i32.const 1))))
+                (i64.store (i32.const 16) (i64.extend_i32_s (memory.grow (i32.const 1))))
+                (i64.store (i32.const 24) (i64.extend_i32_s (memory.size)))
+                (i32.store (i32.const 0) (i32.const 8))
+                (i32.store (i32.const 4) (i32.const 24))
+                (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        );
+        let out = run(&wat::parse_str(wat).unwrap(), &[]);
+        let word = |i: usize| i64::from_le_bytes(out[8 * i..8 * i + 8].try_into().unwrap());
+        (word(0), word(1), word(2))
+    };
+    assert_eq!(grow_results("1 2"), (1, -1, 2));
+    assert_eq!(grow_results("1 1"), (-1, -1, 1));
+    // Without a declared maximum the machine's own limit is the only bound.
+    assert_eq!(grow_results("1"), (1, 2, 3));
+}
+
+#[test]
+fn start_section_runs_before_the_command_entry() {
+    // The start section initializes a global that `_start` then reads: if only one of them ran
+    // (or they ran in the wrong order) the printed value would differ.
+    let wat = r#"(module
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (global $g (mut i64) (i64.const 1))
+      (func $init (global.set $g (i64.mul (global.get $g) (i64.const 10))))
+      (start $init)
+      (func (export "_start")
+        (i64.store (i32.const 16) (i64.add (global.get $g) (i64.const 5)))
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const 8))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#;
+    let out = run(&wat::parse_str(wat).unwrap(), &[]);
+    assert_eq!(out_u64(&out), 15);
+    // `_start` must be a WASI command entry: () -> ().
+    let typed = r#"(module (func (export "_start") (param i32)))"#;
+    let err = wasm2rom(&wat::parse_str(typed).unwrap()).expect_err("must be rejected");
+    assert!(err.to_string().contains("() -> ()"), "{err}");
+}
+
+#[test]
+fn stdout_mirror_stops_at_the_public_output_limit() {
+    use zisk_core::OUTPUT_MAX_SIZE;
+    use zisk_transpiler_wasm::layout::{WASM_GLOBALS_ADDR, WASM_MEM_BASE, WASM_MEM_PAGES_ADDR};
+    // Write 200_000 bytes (> 128 KiB) of stdout in one call: the console takes it all and the
+    // call reports the full count, but the public output stops at OUTPUT_MAX_SIZE, so the areas
+    // that follow it (globals, control cells) are untouched.
+    let len = OUTPUT_MAX_SIZE as u32 + 68_928;
+    let wat = format!(
+        r#"(module
+          (import "wasi_snapshot_preview1" "fd_write"
+            (func $fd_write (param i32 i32 i32 i32) (result i32)))
+          (memory 4)
+          (global $g (mut i64) (i64.const 0x4242))
+          (func (export "_start")
+            (memory.fill (i32.const 1024) (i32.const 0x61) (i32.const {len}))
+            (i32.store (i32.const 0) (i32.const 1024))
+            (i32.store (i32.const 4) (i32.const {len}))
+            (i64.store (i32.const 16)
+              (i64.extend_i32_u (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40))))
+            (i64.store (i32.const 24) (i64.extend_i32_u (i32.load (i32.const 40))))))"#
+    );
+    let rom = wasm2rom(&wat::parse_str(wat).unwrap()).expect("wasm2rom");
+    let mut emu = ziskemu::Emu::new(&rom);
+    emu.run(Vec::new(), &EmuOptions::default(), None::<fn(EmuTrace)>);
+    assert!(emu.terminated() && !emu.ctx.inst_ctx.error);
+    let mem = &emu.ctx.inst_ctx.mem;
+    assert_eq!(mem.read(WASM_MEM_BASE + 16, 8), 0, "errno");
+    assert_eq!(mem.read(WASM_MEM_BASE + 24, 8), len as u64, "nwritten reports the full write");
+    assert_eq!(mem.read(WASM_GLOBALS_ADDR, 8), 0x4242, "globals survive");
+    assert_eq!(mem.read(WASM_MEM_PAGES_ADDR, 8), 4, "control cells survive");
+    assert_eq!(emu.get_output_8()[..8], [0x61; 8], "the mirror holds the first bytes");
 }
