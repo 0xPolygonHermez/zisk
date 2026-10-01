@@ -580,6 +580,7 @@ bool CountAndPlan::fill_all_ram_instances(uint32_t n_rows, RamFillPrepared* prep
     const uint32_t n_inst = prepared->n_instances;
     const size_t stride = (size_t)n_rows * mem_words_per_row_;
     const size_t need = stride * n_inst;
+    join_rows_prealloc_();
     if (need > h_ram_rows_cap_) {
         if (h_ram_rows_) { cudaFreeHost(h_ram_rows_); h_ram_rows_ = nullptr; h_ram_rows_cap_ = 0; }
         if (cudaMallocHost(&h_ram_rows_, need * 8) != cudaSuccess) {

@@ -341,6 +341,8 @@ private:
     uint64_t           ram_unresolved_  = 0;
     uint64_t*                  h_ram_rows_       = nullptr;   // pinned, n_instances x rows x words
     size_t                     h_ram_rows_cap_   = 0;         // u64 words
+    std::thread                h_ram_rows_prealloc_;          // allocates the default capacity at setup
+    void join_rows_prealloc_() { if (h_ram_rows_prealloc_.joinable()) h_ram_rows_prealloc_.join(); }
     size_t                     ram_rows_stride_  = 0;         // u64 words per instance
     std::vector<RamFillResult> ram_results_;
     uint32_t           mem_col_widths_[64] = {0};

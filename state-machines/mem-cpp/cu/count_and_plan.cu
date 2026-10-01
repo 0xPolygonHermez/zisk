@@ -1484,6 +1484,28 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
                 N_STREAMS, gpu_device_);
     }
 
+    // The pinned buffer the RAM fill packs rows into: pinning gigabytes takes hundreds of
+    // milliseconds, so the default capacity (ZISK_MEM_GPU_ROWS_MB, 4096) is allocated now, off the
+    // block path; a block that needs more grows it.
+    {
+        size_t rows_mb = 4096;
+        if (const char* e = std::getenv("ZISK_MEM_GPU_ROWS_MB")) {
+            const long v = std::atol(e);
+            if (v >= 0) rows_mb = (size_t)v;
+        }
+        if (rows_mb > 0) {
+            const int dev = gpu_device_;
+            h_ram_rows_prealloc_ = std::thread([this, dev, rows_mb] {
+                cudaSetDevice(dev);
+                void* p = nullptr;
+                if (cudaMallocHost(&p, rows_mb << 20) == cudaSuccess) {
+                    h_ram_rows_ = (uint64_t*)p;
+                    h_ram_rows_cap_ = (rows_mb << 20) / 8;
+                }
+            });
+        }
+    }
+
     reset();
     return true;
 }
@@ -1916,6 +1938,7 @@ void CountAndPlan::unregister_input_pinned(void* ptr) {
 }
 
 void CountAndPlan::free_pinned_() {
+    join_rows_prealloc_();
     if (h_ram_rows_)                 { cudaFreeHost(h_ram_rows_);                 h_ram_rows_                 = nullptr; h_ram_rows_cap_ = 0; }
     if (h_n_emits_all_)              { cudaFreeHost(h_n_emits_all_);              h_n_emits_all_              = nullptr; }
     if (h_page_starts_buf_)          { cudaFreeHost(h_page_starts_buf_);          h_page_starts_buf_          = nullptr; }
