@@ -25,7 +25,10 @@ pub fn func_frame_size(num_locals: u32) -> i64 {
     frame_size(num_locals, OPERAND_CAP)
 }
 
-fn callee_frame_size(module: &WasmModule, func_index: u32) -> Result<i64, Box<dyn Error>> {
+pub(crate) fn callee_frame_size(
+    module: &WasmModule,
+    func_index: u32,
+) -> Result<i64, Box<dyn Error>> {
     let num_locals = module.num_locals(func_index)?;
     Ok(if func_index < module.func_import_count {
         frame_size(num_locals, 0)

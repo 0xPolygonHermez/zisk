@@ -534,6 +534,17 @@ fn wasi_stubs_reject_out_of_range_guest_pointers() {
     assert_eq!(errno(&format!("(block (result i32) {} (call $fd_read (i32.const 0) (i32.const 64) (i32.const 1) (i32.const 72)))", iovec(65530, 16))), 21);
     assert_eq!(errno("(call $random_get (i32.const 65535) (i32.const 2))"), 21);
     assert_eq!(errno("(call $args_sizes_get (i32.const 128) (i32.const 65533))"), 21);
+    // A buffer that overlaps the iovec array can rewrite a later descriptor after the pre-pass
+    // validated it; the rewritten descriptor must be re-checked when it is used.  Here iovec 0
+    // reads the 8 input bytes (all 0x01) over iovec 1 at 72, turning it into {{buf, len}} =
+    // {{0x01010101, 0x01010101}}, which must fault instead of writing through it.
+    assert_eq!(
+        errno("(block (result i32) \
+                 (i32.store (i32.const 64) (i32.const 72)) (i32.store (i32.const 68) (i32.const 8)) \
+                 (i32.store (i32.const 72) (i32.const 128)) (i32.store (i32.const 76) (i32.const 8)) \
+                 (call $fd_read (i32.const 0) (i32.const 64) (i32.const 2) (i32.const 96)))"),
+        21
+    );
     // A faulting read must not have consumed input: the next valid read still sees the 8 bytes.
     assert_eq!(
         errno(&format!(
@@ -737,11 +748,14 @@ fn start_section_runs_before_the_command_entry() {
 
 #[test]
 fn stdout_mirror_stops_at_the_public_output_limit() {
-    use zisk_core::OUTPUT_MAX_SIZE;
-    use zisk_transpiler_wasm::layout::{WASM_GLOBALS_ADDR, WASM_MEM_BASE, WASM_MEM_PAGES_ADDR};
-    // Write 200_000 bytes (> 128 KiB) of stdout in one call: the console takes it all and the
-    // call reports the full count, but the public output stops at OUTPUT_MAX_SIZE, so the areas
-    // that follow it (globals, control cells) are untouched.
+    use zisk_core::{OUTPUT_ADDR, OUTPUT_MAX_SIZE};
+    use zisk_transpiler_wasm::layout::{
+        WASM_GLOBALS_ADDR, WASM_MEM_BASE, WASM_MEM_PAGES_ADDR, WASM_PUBLIC_OUTPUT_BYTES,
+    };
+    // Write 200_000 bytes (> the whole 128 KiB output region) of stdout in one call: the console
+    // takes it all and the call reports the full count, but the mirror stops at the published
+    // width, so the rest of the region and the areas after it (globals, control cells) are
+    // untouched.
     let len = OUTPUT_MAX_SIZE as u32 + 68_928;
     let wat = format!(
         r#"(module
@@ -766,7 +780,11 @@ fn stdout_mirror_stops_at_the_public_output_limit() {
     assert_eq!(mem.read(WASM_MEM_BASE + 24, 8), len as u64, "nwritten reports the full write");
     assert_eq!(mem.read(WASM_GLOBALS_ADDR, 8), 0x4242, "globals survive");
     assert_eq!(mem.read(WASM_MEM_PAGES_ADDR, 8), 4, "control cells survive");
-    assert_eq!(emu.get_output_8()[..8], [0x61; 8], "the mirror holds the first bytes");
+    let out = emu.get_output_8();
+    assert_eq!(out.len() as u64, WASM_PUBLIC_OUTPUT_BYTES, "what the emulator publishes");
+    assert!(out.iter().all(|&b| b == 0x61), "the published prefix holds the first bytes");
+    let past_publication = OUTPUT_ADDR + WASM_PUBLIC_OUTPUT_BYTES;
+    assert_eq!(mem.read(past_publication, 8), 0, "nothing is mirrored past the published width");
 }
 
 #[test]

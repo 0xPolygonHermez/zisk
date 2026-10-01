@@ -8,6 +8,8 @@
 
 use zisk_core::{FLOAT_LIB_RAM_ADDR, OUTPUT_ADDR, OUTPUT_MAX_SIZE};
 
+pub const WASM_PUBLIC_OUTPUT_BYTES: u64 = 32 * 8;
+
 /// Base of the Zisk general-purpose RW region, i.e. the first address above the output region.
 /// The wasm runtime areas below are carved out of it.
 const GP_RAM_ADDR: u64 = OUTPUT_ADDR + OUTPUT_MAX_SIZE;
