@@ -82,6 +82,7 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
         unreachable: false,
         dead_nesting: 0,
         func_end,
+        overflowed: false,
     };
 
     // Prologue: save the return address and zero the non-parameter locals.
@@ -94,6 +95,12 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
     while !op_reader.eof() {
         let op = op_reader.read()?;
         gen.lower_op(op, func_end)?;
+        if gen.overflowed {
+            return Err(format!(
+                "wasm: operand stack deeper than the {OPERAND_CAP} slots a frame reserves"
+            )
+            .into());
+        }
     }
 
     // Fallthrough off the end of the body: the result is on top of the operand stack.  Every
@@ -122,6 +129,8 @@ pub(crate) struct FuncGen<'a, 'b> {
     /// Function-level end label: the target of `return`, of branches whose depth reaches past the
     /// outermost block (the function body is itself a label), and of the implicit fallthrough.
     func_end: LabelId,
+    /// Set by `push` when the operand stack outgrows the frame's reserved slots.
+    overflowed: bool,
 }
 
 impl<'a, 'b> FuncGen<'a, 'b> {
@@ -134,7 +143,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         let off = self.slot(self.depth);
         self.depth += 1;
         if self.depth > OPERAND_CAP {
-            panic!("wasm: operand stack depth exceeded OPERAND_CAP ({OPERAND_CAP})");
+            self.overflowed = true;
         }
         off
     }
