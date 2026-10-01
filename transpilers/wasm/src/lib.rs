@@ -269,6 +269,8 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], start_index: u32)
     store_const_to_abs(&mut code, WASM_MEM_PAGES_ADDR, module.mem_initial_pages);
     store_const_to_abs(&mut code, WASM_STDIN_POS_ADDR, 0);
     store_const_to_abs(&mut code, WASM_STDOUT_LEN_ADDR, 0);
+    store_const_to_abs(&mut code, WASM_RNG_STATE_ADDR, wasi::RNG_SEED);
+    store_const_to_abs(&mut code, WASM_RNG_WARNED_ADDR, 0);
 
     // Globals.
     for (i, g) in module.globals.iter().enumerate() {

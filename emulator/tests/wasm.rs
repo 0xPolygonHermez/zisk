@@ -477,3 +477,196 @@ fn malformed_modules_are_rejected_not_panicked() {
         assert!(wasm2rom(&bytes).is_err(), "{what}: must be rejected");
     }
 }
+
+#[test]
+fn wasi_stubs_reject_out_of_range_guest_pointers() {
+    // One page of memory.  `{call}` yields an errno, stored at 8 and printed through a valid
+    // fd_write; EFAULT (21) must come back for any range outside the guest's memory, and nothing
+    // must have been written in that case.
+    let errno = |call: &str| -> u64 {
+        let wat = format!(
+            r#"(module
+              (import "wasi_snapshot_preview1" "fd_write"
+                (func $fd_write (param i32 i32 i32 i32) (result i32)))
+              (import "wasi_snapshot_preview1" "fd_read"
+                (func $fd_read (param i32 i32 i32 i32) (result i32)))
+              (import "wasi_snapshot_preview1" "random_get"
+                (func $random_get (param i32 i32) (result i32)))
+              (import "wasi_snapshot_preview1" "args_sizes_get"
+                (func $args_sizes_get (param i32 i32) (result i32)))
+              (memory 1)
+              ;; iovec at 64: {{ buf, len }}, filled by the call expression as needed
+              (func (export "_start")
+                (i64.store (i32.const 8) (i64.extend_i32_u {call}))
+                (i32.store (i32.const 0) (i32.const 8))
+                (i32.store (i32.const 4) (i32.const 8))
+                (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        );
+        let mut input = Vec::new();
+        input.extend_from_slice(&8u64.to_le_bytes());
+        input.extend_from_slice(&[1u8; 8]);
+        out_u64(&run(&wat::parse_str(wat).unwrap(), &input))
+    };
+    let iovec = |buf: u32, len: u32| {
+        format!("(i32.store (i32.const 64) (i32.const {buf})) (i32.store (i32.const 68) (i32.const {len}))")
+    };
+    // Valid: an in-range buffer, EOF-less read into it, and the sizes probe.
+    assert_eq!(errno(&format!("(block (result i32) {} (call $fd_write (i32.const 1) (i32.const 64) (i32.const 1) (i32.const 72)))", iovec(128, 8))), 0);
+    assert_eq!(errno(&format!("(block (result i32) {} (call $fd_read (i32.const 0) (i32.const 64) (i32.const 1) (i32.const 72)))", iovec(128, 8))), 0);
+    assert_eq!(errno("(call $args_sizes_get (i32.const 128) (i32.const 132))"), 0);
+    // The iovec array itself past the end (8 bytes at 65532).
+    assert_eq!(
+        errno("(call $fd_write (i32.const 1) (i32.const 65532) (i32.const 1) (i32.const 72))"),
+        21
+    );
+    // A buffer crossing the end, a buffer wrapping the address space, and a bad nwritten pointer.
+    assert_eq!(errno(&format!("(block (result i32) {} (call $fd_write (i32.const 1) (i32.const 64) (i32.const 1) (i32.const 72)))", iovec(65530, 16))), 21);
+    assert_eq!(errno(&format!("(block (result i32) {} (call $fd_write (i32.const 1) (i32.const 64) (i32.const 1) (i32.const 72)))", iovec(0xffff_ffff, 1))), 21);
+    assert_eq!(errno(&format!("(block (result i32) {} (call $fd_write (i32.const 1) (i32.const 64) (i32.const 1) (i32.const 65533)))", iovec(128, 8))), 21);
+    // Same for reads and the other writers.
+    assert_eq!(errno(&format!("(block (result i32) {} (call $fd_read (i32.const 0) (i32.const 64) (i32.const 1) (i32.const 72)))", iovec(65530, 16))), 21);
+    assert_eq!(errno("(call $random_get (i32.const 65535) (i32.const 2))"), 21);
+    assert_eq!(errno("(call $args_sizes_get (i32.const 128) (i32.const 65533))"), 21);
+    // A faulting read must not have consumed input: the next valid read still sees the 8 bytes.
+    assert_eq!(
+        errno(&format!(
+            "(block (result i32) {} \
+               (drop (call $fd_read (i32.const 0) (i32.const 64) (i32.const 1) (i32.const 72))) \
+               {} \
+               (drop (call $fd_read (i32.const 0) (i32.const 64) (i32.const 1) (i32.const 72))) \
+               (i32.load (i32.const 72)))",
+            iovec(65530, 16),
+            iovec(128, 8)
+        )),
+        8
+    );
+}
+
+#[test]
+fn random_get_is_a_seeded_splitmix64_stream() {
+    // Reference splitmix64 over the machine's fixed seed.
+    fn splitmix64(state: &mut u64) -> u64 {
+        *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = *state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+    let mut state = zisk_transpiler_wasm::wasi::RNG_SEED;
+    let module = |calls: &str, len: u32| {
+        let wat = format!(
+            r#"(module
+              (import "wasi_snapshot_preview1" "fd_write"
+                (func $fd_write (param i32 i32 i32 i32) (result i32)))
+              (import "wasi_snapshot_preview1" "random_get"
+                (func $random_get (param i32 i32) (result i32)))
+              (memory 1)
+              (func (export "_start")
+                {calls}
+                (i32.store (i32.const 0) (i32.const 128))
+                (i32.store (i32.const 4) (i32.const {len}))
+                (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        );
+        run(&wat::parse_str(wat).unwrap(), &[])
+    };
+    // Two whole-word calls continue the same stream.
+    let out = module(
+        "(drop (call $random_get (i32.const 128) (i32.const 8)))
+         (drop (call $random_get (i32.const 136) (i32.const 8)))",
+        16,
+    );
+    let (first, second) = (splitmix64(&mut state), splitmix64(&mut state));
+    assert_eq!(u64::from_le_bytes(out[0..8].try_into().unwrap()), first);
+    assert_eq!(u64::from_le_bytes(out[8..16].try_into().unwrap()), second);
+    assert_ne!(first, 0, "the stream must not be the old zero fill");
+    // A short request takes one output per byte and leaves the rest untouched.
+    let out = module("(drop (call $random_get (i32.const 128) (i32.const 3)))", 8);
+    let mut state = zisk_transpiler_wasm::wasi::RNG_SEED;
+    let mut byte = || splitmix64(&mut state) as u8;
+    let expected = [byte(), byte(), byte(), 0, 0, 0, 0, 0];
+    assert_eq!(&out[0..8], &expected);
+}
+
+#[test]
+fn fd_read_and_fd_write_reject_unknown_descriptors() {
+    // The errno of `{call}` is stored at 8 and printed through a valid fd_write on stdout; the
+    // 8 bytes at 128 (the only buffer the calls touch) follow, so a rejected call must also have
+    // left them alone.
+    let outcome = |call: &str| -> (u64, u64) {
+        let wat = format!(
+            r#"(module
+              (import "wasi_snapshot_preview1" "fd_write"
+                (func $fd_write (param i32 i32 i32 i32) (result i32)))
+              (import "wasi_snapshot_preview1" "fd_read"
+                (func $fd_read (param i32 i32 i32 i32) (result i32)))
+              (memory 1)
+              (func (export "_start")
+                (i32.store (i32.const 64) (i32.const 128))
+                (i32.store (i32.const 68) (i32.const 8))
+                (i64.store (i32.const 8) (i64.extend_i32_u {call}))
+                (i64.store (i32.const 16) (i64.load (i32.const 128)))
+                (i32.store (i32.const 0) (i32.const 8))
+                (i32.store (i32.const 4) (i32.const 16))
+                (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        );
+        let mut input = Vec::new();
+        input.extend_from_slice(&8u64.to_le_bytes());
+        input.extend_from_slice(&0x1111_1111_1111_1111u64.to_le_bytes());
+        let out = run(&wat::parse_str(wat).unwrap(), &input);
+        (out_u64(&out), u64::from_le_bytes(out[8..16].try_into().unwrap()))
+    };
+    // stdin reads, stdout/stderr writes.
+    assert_eq!(
+        outcome("(call $fd_read (i32.const 0) (i32.const 64) (i32.const 1) (i32.const 72))"),
+        (0, 0x1111_1111_1111_1111)
+    );
+    assert_eq!(
+        outcome("(call $fd_write (i32.const 1) (i32.const 64) (i32.const 1) (i32.const 72))").0,
+        0
+    );
+    assert_eq!(
+        outcome("(call $fd_write (i32.const 2) (i32.const 64) (i32.const 1) (i32.const 72))").0,
+        0
+    );
+    // Anything else is not an open descriptor: EBADF, and the buffer is untouched.
+    for call in [
+        "(call $fd_read (i32.const 1) (i32.const 64) (i32.const 1) (i32.const 72))",
+        "(call $fd_read (i32.const 3) (i32.const 64) (i32.const 1) (i32.const 72))",
+        "(call $fd_write (i32.const 0) (i32.const 64) (i32.const 1) (i32.const 72))",
+        "(call $fd_write (i32.const 3) (i32.const 64) (i32.const 1) (i32.const 72))",
+        "(call $fd_write (i32.const -1) (i32.const 64) (i32.const 1) (i32.const 72))",
+    ] {
+        assert_eq!(outcome(call), (8, 0), "{call}");
+    }
+}
+
+#[test]
+fn wasi_imports_must_have_the_expected_signature() {
+    // The stubs read fixed argument slots: an import declared with another type is refused.
+    for (what, wat) in [
+        (
+            "fd_write with one parameter",
+            r#"(module (import "wasi_snapshot_preview1" "fd_write" (func (param i32) (result i32)))
+                       (func (export "_start")))"#,
+        ),
+        (
+            "fd_write without a result",
+            r#"(module (import "wasi_snapshot_preview1" "fd_write" (func (param i32 i32 i32 i32)))
+                       (func (export "_start")))"#,
+        ),
+        (
+            "proc_exit with an i64 status",
+            r#"(module (import "wasi_snapshot_preview1" "proc_exit" (func (param i64)))
+                       (func (export "_start")))"#,
+        ),
+        (
+            "clock_time_get with an i32 precision",
+            r#"(module (import "wasi_snapshot_preview1" "clock_time_get"
+                         (func (param i32 i32 i32) (result i32)))
+                       (func (export "_start")))"#,
+        ),
+    ] {
+        let err = wasm2rom(&wat::parse_str(wat).unwrap()).expect_err(what);
+        assert!(err.to_string().contains("expected"), "{what}: {err}");
+    }
+}
