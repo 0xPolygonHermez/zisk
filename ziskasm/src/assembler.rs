@@ -18,7 +18,7 @@ use zisk_core::zisk_inst_builder::ZiskInstBuilder;
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::{
     GENERAL_RAM_ADDR, RAM_ADDR, RAM_SIZE, REGS_IN_MAIN_TO, REG_FIRST, ROM_ADDR, ROM_ADDR_MAX,
-    ROM_ENTRY, SYS_ADDR,
+    ROM_ENTRY, ROM_SIZE, SYS_ADDR,
 };
 use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, InlineBody};
 
@@ -333,9 +333,31 @@ pub fn assemble_library(
     let rom_data_base = addr_of(instructions.len()).next_multiple_of(32);
     let mut layout = layout_data(&program.data, rom_data_base, ram_base);
 
-    // The layout must also stay inside RAM at its far end.
+    // The layout must also stay inside its region at the far end: ROM for the code
+    // and the `const` data after it, RAM for the rest.
+    let section_end = |sec: &DataSection64| {
+        (sec.data.len() as u64).checked_mul(8).and_then(|n| sec.addr.checked_add(n))
+    };
+    let code_end = (instructions.len() as u64)
+        .checked_mul(INST_SIZE as u64)
+        .and_then(|n| rom_base.checked_add(n));
+    let rom_end = match (code_end, layout.ro.as_ref()) {
+        (Some(end), Some(sec)) => section_end(sec).map(|ro_end| ro_end.max(end)),
+        (end, None) => end,
+        (None, Some(_)) => None,
+    };
+    match rom_end {
+        Some(end) if end <= ROM_ADDR + ROM_SIZE => {}
+        Some(end) => {
+            return Err(format!(
+                "library code and const data end at 0x{end:x}, past the end of ROM (0x{:x})",
+                ROM_ADDR + ROM_SIZE
+            ));
+        }
+        None => return Err("library code and const data overflow the address space".into()),
+    }
     if let Some(sec) = layout.rw.as_ref() {
-        let end = sec.addr + (sec.data.len() as u64) * 8;
+        let end = section_end(sec).ok_or("library RW data overflows the address space")?;
         if end > RAM_ADDR + RAM_SIZE {
             return Err(format!(
                 "library RW data ends at 0x{end:x}, past the end of RAM (0x{:x})",
