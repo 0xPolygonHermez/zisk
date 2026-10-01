@@ -101,6 +101,7 @@ pub struct WasmModule<'a> {
     pub data: Vec<DataSeg>,
     pub elems: Vec<ElemSeg>,
     pub mem_initial_pages: u64,
+    pub mem_max_pages: u64,
     pub has_memory: bool,
     pub table_initial: u64,
     max_num_locals: u32,
