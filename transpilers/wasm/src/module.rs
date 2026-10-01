@@ -1,14 +1,26 @@
 //! Structural scan of a wasm module with `wasmparser`.
 //!
-//! This collects everything the lowering needs (signatures, imports, function bodies, globals,
-//! active data/element segments, memory size, exports) and rejects unsupported features
-//! (floating point, SIMD, reference types, threads, multiple memories) with a clear error so the
-//! MVP integer subset fails loudly rather than miscompiling.
+//! The module is first run through `wasmparser::Validator`, so everything downstream (the scan
+//! here and the lowering) can rely on the spec's static guarantees: in-range indices, well-typed
+//! function bodies with known operand-stack depths, no writes to immutable globals, and so on.
+//! The scan then collects everything the lowering needs (signatures, imports, function bodies,
+//! globals, active data/element segments, memory size, exports) and rejects the valid-but-
+//! unsupported constructs (SIMD, reference types, threads, multiple memories, passive segments,
+//! and floating point without the `float` feature) with a clear error, so the supported subset
+//! fails loudly rather than miscompiling.
 
 use std::error::Error;
 use wasmparser::{
     DataKind, ElementItems, ElementKind, ExternalKind, Operator, Parser, Payload, TypeRef, ValType,
+    Validator, WasmFeatures,
 };
+
+const SUPPORTED_FEATURES: WasmFeatures = WasmFeatures::WASM1
+    .union(WasmFeatures::BULK_MEMORY)
+    .union(WasmFeatures::REFERENCE_TYPES)
+    .union(WasmFeatures::SIGN_EXTENSION)
+    .union(WasmFeatures::SATURATING_FLOAT_TO_INT)
+    .union(WasmFeatures::MULTI_VALUE);
 
 /// The value kinds the lowering supports.  Every kind lives in a 64-bit Zisk slot: i32 values are
 /// kept sign-extended, f32 values occupy the low 32 bits (the high half is don't-care).
@@ -172,6 +184,10 @@ fn eval_const_expr(
 
 /// Parses and validates a wasm module into a [`WasmModule`].
 pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
+    Validator::new_with_features(SUPPORTED_FEATURES)
+        .validate_all(bytes)
+        .map_err(|e| format!("wasm: invalid module: {e}"))?;
+
     let mut sigs: Vec<FuncSig> = Vec::new();
     let mut func_import_count: u32 = 0;
     let mut imports: Vec<(String, String, u32)> = Vec::new();

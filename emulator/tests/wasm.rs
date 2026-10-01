@@ -454,3 +454,26 @@ fn deep_recursion_traps_instead_of_overflowing_the_stack() {
     assert!(module("(drop (call $forever (i64.const 0)))").0);
     assert!(module("(call $forever_indirect)").0);
 }
+
+#[test]
+fn malformed_modules_are_rejected_not_panicked() {
+    // Decodable but invalid modules must come back as errors from `wasm2rom` (the lowering indexes
+    // and pops with the guarantees validation gives it).
+    for (what, wat) in [
+        ("stack underflow", r#"(module (func (export "_start") (drop (i64.add (i64.const 1)))))"#),
+        (
+            "immutable global write",
+            r#"(module (global $g i64 (i64.const 0))
+                       (func (export "_start") (global.set $g (i64.const 1))))"#,
+        ),
+        ("undefined function", r#"(module (func (export "_start") (call 7)))"#),
+        (
+            "result type mismatch",
+            r#"(module (func $f (result i64) (i32.const 1)) (func (export "_start")))"#,
+        ),
+        ("undefined local", r#"(module (func (export "_start") (drop (local.get 3))))"#),
+    ] {
+        let bytes = wat::parse_str(wat).unwrap_or_else(|e| panic!("{what}: wat encoding: {e}"));
+        assert!(wasm2rom(&bytes).is_err(), "{what}: must be rejected");
+    }
+}
