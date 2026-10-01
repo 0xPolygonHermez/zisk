@@ -43,8 +43,8 @@ build "$C" new
 
 echo "Generating reference records"
 mkdir -p "$WORK/records"
-"$WORK/ref/difftest" gen "$WORK/records" $FILTER > /dev/null
+"$WORK/ref/difftest" gen "$WORK/records" "$FILTER" > /dev/null
 
 echo "Checking"
 # The library prints some expected errors (e.g. division by zero cases) to stdout
-"$WORK/new/difftest" check "$WORK/records" $FILTER > /dev/null
+"$WORK/new/difftest" check "$WORK/records" "$FILTER" > /dev/null
