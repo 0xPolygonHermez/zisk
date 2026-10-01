@@ -146,7 +146,6 @@ constexpr uint32_t MAX_CHUNKS            = MEM_GPU_MAX_META_CHUNKS; // 16384
 constexpr uint32_t MAX_POT_PER_PIECE   = 1u << 20;
 constexpr uint32_t MAX_WORDS_PER_PIECE = MAX_POT_PER_PIECE + 128;
 constexpr uint32_t MAX_SORT_PER_PIECE  = 2 * MAX_POT_PER_PIECE;
-constexpr uint32_t MAX_TOTAL_MEMOPS      = 1u << 29;          // 512M ops
 
 // Internal compile-time toggle for the add_chunk worker pool 
 #define ZISK_MOPS_POOL 1

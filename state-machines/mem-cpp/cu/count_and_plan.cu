@@ -1826,9 +1826,19 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
                 cudaMemcpyDeviceToHost));
         }
 
+        // The prefix, the pool offsets and the instance arithmetic are u32: a block with 2^32 rows
+        // or more cannot be planned, and the counters below would wrap silently.
         packed_chunk_offsets_h_.assign(n_chunks_ + 1, 0);
-        for (uint32_t c = 0; c < n_chunks_; c++)
-            packed_chunk_offsets_h_[c + 1] = packed_chunk_offsets_h_[c] + h_n_emits_all_[c];
+        uint64_t total_rows = 0;
+        for (uint32_t c = 0; c < n_chunks_; c++) {
+            total_rows += h_n_emits_all_[c];
+            if (total_rows > 0xFFFFFFFFull) {
+                fprintf(stderr, "CountAndPlan::run FATAL: the block has more than 2^32 - 1 memory rows "
+                                "(reached at chunk %u of %u)\n", c, n_chunks_);
+                std::exit(1);
+            }
+            packed_chunk_offsets_h_[c + 1] = (uint32_t)total_rows;
+        }
         num_ops_ = packed_chunk_offsets_h_[n_chunks_];
 
         std::vector<uint32_t> gappy_u32(n_chunks_);
