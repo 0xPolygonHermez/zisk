@@ -2,9 +2,9 @@
 
 The field files in this directory (`<field>.asm`, `<field>.hpp`, `<field>.cpp`, `<field>_element.hpp`,
 `<field>_generic.cpp`, `<field>_raw_generic.cpp` and `<field>_raw_arm64.s`) are generated with
-[iden3/ffiasm](https://github.com/iden3/ffiasm), commit `783dac7`, the merge of
+[iden3/ffiasm](https://github.com/iden3/ffiasm), commit `0685e15`. It includes
 [PR #8](https://github.com/iden3/ffiasm/pull/8), which added the safegcd modular inverse to the
-generator: regenerating at that commit reproduces these files exactly, inverse included. Do not
+generator, so regenerating at that commit reproduces these files exactly, inverse included. Do not
 edit them by hand: change the generator instead and regenerate them.
 
 To regenerate them, run from this directory, with `<ffiasm>` a checkout of that repository after

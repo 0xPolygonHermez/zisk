@@ -360,7 +360,7 @@ _BLS12_381_384_rawNegLS:
         sbcs  x19, x12, xzr
         sbcs  x20, x13, xzr
 
-        cset   x2,  cs
+        cset   x2,  cc
 
         ldp    x4,  x5, [x1]
         subs  x14, x14,  x4
@@ -374,7 +374,7 @@ _BLS12_381_384_rawNegLS:
         sbcs  x19, x19,  x4
         sbcs  x20, x20,  x5
 
-        cset   x3,  cs
+        cset   x3,  cc
         orr    x3,  x3,  x2
 
         cbz    x3, BLS12_381_384_rawNegLS_done
@@ -1654,7 +1654,8 @@ _BLS12_381_384_rawShr:
 
         lsr    x2,  x2,  #6
         adr    x5, BLS12_381_384_rawShr_word_shift
-        ldr    x5, [x5, x2, lsl 3]
+        ldrsw  x2, [x5, x2, lsl 2]
+        add    x5,  x5,  x2
         br     x5
 
 BLS12_381_384_rawShr_word_shift_0:
@@ -1766,12 +1767,12 @@ BLS12_381_384_rawShr_word_shift_5:
         ret
 
 BLS12_381_384_rawShr_word_shift:
-        .quad BLS12_381_384_rawShr_word_shift_0
-        .quad BLS12_381_384_rawShr_word_shift_1
-        .quad BLS12_381_384_rawShr_word_shift_2
-        .quad BLS12_381_384_rawShr_word_shift_3
-        .quad BLS12_381_384_rawShr_word_shift_4
-        .quad BLS12_381_384_rawShr_word_shift_5
+        .long BLS12_381_384_rawShr_word_shift_0 - BLS12_381_384_rawShr_word_shift
+        .long BLS12_381_384_rawShr_word_shift_1 - BLS12_381_384_rawShr_word_shift
+        .long BLS12_381_384_rawShr_word_shift_2 - BLS12_381_384_rawShr_word_shift
+        .long BLS12_381_384_rawShr_word_shift_3 - BLS12_381_384_rawShr_word_shift
+        .long BLS12_381_384_rawShr_word_shift_4 - BLS12_381_384_rawShr_word_shift
+        .long BLS12_381_384_rawShr_word_shift_5 - BLS12_381_384_rawShr_word_shift
 
 
 BLS12_381_384_rawShl:
@@ -1789,7 +1790,8 @@ _BLS12_381_384_rawShl:
 
         lsr    x2,  x2,  #6
         adr    x5, BLS12_381_384_rawShl_word_shift
-        ldr    x5, [x5, x2, lsl 3]
+        ldrsw  x2, [x5, x2, lsl 2]
+        add    x5,  x5,  x2
         br     x5
 
 BLS12_381_384_rawShl_word_shift_0:
@@ -1930,12 +1932,12 @@ BLS12_381_384_rawShl_sub:
         ldp   x19, x20, [sp], #16
         ret
 BLS12_381_384_rawShl_word_shift:
-        .quad BLS12_381_384_rawShl_word_shift_0
-        .quad BLS12_381_384_rawShl_word_shift_1
-        .quad BLS12_381_384_rawShl_word_shift_2
-        .quad BLS12_381_384_rawShl_word_shift_3
-        .quad BLS12_381_384_rawShl_word_shift_4
-        .quad BLS12_381_384_rawShl_word_shift_5
+        .long BLS12_381_384_rawShl_word_shift_0 - BLS12_381_384_rawShl_word_shift
+        .long BLS12_381_384_rawShl_word_shift_1 - BLS12_381_384_rawShl_word_shift
+        .long BLS12_381_384_rawShl_word_shift_2 - BLS12_381_384_rawShl_word_shift
+        .long BLS12_381_384_rawShl_word_shift_3 - BLS12_381_384_rawShl_word_shift
+        .long BLS12_381_384_rawShl_word_shift_4 - BLS12_381_384_rawShl_word_shift
+        .long BLS12_381_384_rawShl_word_shift_5 - BLS12_381_384_rawShl_word_shift
 
 
 

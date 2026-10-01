@@ -269,7 +269,7 @@ _BLS12_381_rawNegLS:
         sbcs  x14, x10, xzr
         sbcs  x15, x11, xzr
 
-        cset   x2,  cs
+        cset   x2,  cc
 
         ldp    x4,  x5, [x1]
         subs  x12, x12,  x4
@@ -279,7 +279,7 @@ _BLS12_381_rawNegLS:
         sbcs  x14, x14,  x6
         sbcs  x15, x15,  x7
 
-        cset   x3,  cs
+        cset   x3,  cc
         orr    x3,  x3,  x2
 
         cbz    x3, BLS12_381_rawNegLS_done
@@ -1028,7 +1028,8 @@ _BLS12_381_rawShr:
 
         lsr    x2,  x2,  #6
         adr    x5, BLS12_381_rawShr_word_shift
-        ldr    x5, [x5, x2, lsl 3]
+        ldrsw  x2, [x5, x2, lsl 2]
+        add    x5,  x5,  x2
         br     x5
 
 BLS12_381_rawShr_word_shift_0:
@@ -1084,10 +1085,10 @@ BLS12_381_rawShr_word_shift_3:
         ret
 
 BLS12_381_rawShr_word_shift:
-        .quad BLS12_381_rawShr_word_shift_0
-        .quad BLS12_381_rawShr_word_shift_1
-        .quad BLS12_381_rawShr_word_shift_2
-        .quad BLS12_381_rawShr_word_shift_3
+        .long BLS12_381_rawShr_word_shift_0 - BLS12_381_rawShr_word_shift
+        .long BLS12_381_rawShr_word_shift_1 - BLS12_381_rawShr_word_shift
+        .long BLS12_381_rawShr_word_shift_2 - BLS12_381_rawShr_word_shift
+        .long BLS12_381_rawShr_word_shift_3 - BLS12_381_rawShr_word_shift
 
 
 BLS12_381_rawShl:
@@ -1101,7 +1102,8 @@ _BLS12_381_rawShl:
 
         lsr    x2,  x2,  #6
         adr    x5, BLS12_381_rawShl_word_shift
-        ldr    x5, [x5, x2, lsl 3]
+        ldrsw  x2, [x5, x2, lsl 2]
+        add    x5,  x5,  x2
         br     x5
 
 BLS12_381_rawShl_word_shift_0:
@@ -1176,10 +1178,10 @@ BLS12_381_rawShl_sub:
 
         ret
 BLS12_381_rawShl_word_shift:
-        .quad BLS12_381_rawShl_word_shift_0
-        .quad BLS12_381_rawShl_word_shift_1
-        .quad BLS12_381_rawShl_word_shift_2
-        .quad BLS12_381_rawShl_word_shift_3
+        .long BLS12_381_rawShl_word_shift_0 - BLS12_381_rawShl_word_shift
+        .long BLS12_381_rawShl_word_shift_1 - BLS12_381_rawShl_word_shift
+        .long BLS12_381_rawShl_word_shift_2 - BLS12_381_rawShl_word_shift
+        .long BLS12_381_rawShl_word_shift_3 - BLS12_381_rawShl_word_shift
 
 
 
