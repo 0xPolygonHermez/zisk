@@ -1,5 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Secp256r1;
+use zisk_core::zisk_ops::swap_endianness_elements;
 use zisk_precomp_common::MemProcessor;
 
 pub const SECP256R1_ADD_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
@@ -15,14 +16,18 @@ pub fn generate_secp256r1_add_mem_inputs<P: MemProcessor>(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
+    big_endian: bool,
     mem_processors: &mut P,
 ) {
     // op,op_type,a,b,addr[2],...
-    let p1: &[u64; 8] = &data[7..15].try_into().unwrap();
-    let p2: &[u64; 8] = &data[15..23].try_into().unwrap();
+    let p1: &[u64; 8] = &super::operand::<8>(&data[7..15], big_endian);
+    let p2: &[u64; 8] = &super::operand::<8>(&data[15..23], big_endian);
     let mut p3 = [0u64; 8];
 
     Secp256r1::calculate_add(p1, p2, &mut p3);
+    if big_endian {
+        swap_endianness_elements(&mut p3, 4);
+    }
     super::generate_mem_inputs(
         addr_main,
         step_main,

@@ -36,12 +36,18 @@
 //! ### Elliptic curve (BLS12-381)
 //! - [`syscall_bls12_381_curve_add`] / [`syscall_bls12_381_curve_dbl`] — Curve operations
 //! - [`syscall_bls12_381_complex_add`] / [`syscall_bls12_381_complex_mul`] / [`syscall_bls12_381_complex_sub`] — Fp2 arithmetic
+//!
+//! ### Big-endian twins
+//! Every arithmetic and elliptic-curve syscall above (except `add256`) has a `*_be` twin in
+//! [`big_endian`] that takes and returns its 256/384-bit operands as big-endian integers in memory
+//! (e.g. [`syscall_secp256k1_add_be`], [`syscall_arith256_be`]).
 
 mod add256;
 mod arith256;
 mod arith256_mod;
 mod arith384_mod;
 mod babyjubjub_add;
+mod big_endian;
 mod blake2br;
 mod blake2sf;
 mod blake3f;
@@ -71,6 +77,7 @@ pub use arith256::*;
 pub use arith256_mod::*;
 pub use arith384_mod::*;
 pub use babyjubjub_add::*;
+pub use big_endian::*;
 pub use blake2br::*;
 pub use blake2sf::*;
 pub use blake3f::*;

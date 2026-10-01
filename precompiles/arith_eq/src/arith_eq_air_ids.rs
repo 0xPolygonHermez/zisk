@@ -13,14 +13,17 @@
 
 use crate::air_metas;
 use zisk_pil::{
-    Arith256XLargeTrace, Arith256XTrace, ArithBn254LargeTrace, ArithBn254Trace, ArithEqLargeTrace,
-    ArithEqTrace, ArithSecp256K1LargeTrace, ArithSecp256K1Trace,
+    Arith256XBeLargeTrace, Arith256XBeTrace, Arith256XLargeTrace, Arith256XTrace,
+    ArithBn254BeLargeTrace, ArithBn254BeTrace, ArithBn254LargeTrace, ArithBn254Trace,
+    ArithEqBeLargeTrace, ArithEqBeTrace, ArithEqLargeTrace, ArithEqTrace,
+    ArithSecp256K1BeLargeTrace, ArithSecp256K1BeTrace, ArithSecp256K1LargeTrace,
+    ArithSecp256K1Trace,
 };
 
 /// Air ids of every `ArithEq` config air instantiated in `pil/zisk.pil`, from the trace `AIR_ID`
 /// consts so it cannot drift. A config comes in as many heights as `zisk.pil` gives it aliases —
 /// currently a plain air plus a `Large` for every config — all committing the same columns over
-/// more rows.
+/// more rows, and each config has a big-endian twin (`*Be`).
 pub const ARITH_EQ_CONFIG_AIR_IDS: &[usize] = &[
     ArithEqTrace::<()>::AIR_ID,
     ArithEqLargeTrace::<()>::AIR_ID,
@@ -30,6 +33,14 @@ pub const ARITH_EQ_CONFIG_AIR_IDS: &[usize] = &[
     ArithSecp256K1LargeTrace::<()>::AIR_ID,
     ArithBn254Trace::<()>::AIR_ID,
     ArithBn254LargeTrace::<()>::AIR_ID,
+    ArithEqBeTrace::<()>::AIR_ID,
+    ArithEqBeLargeTrace::<()>::AIR_ID,
+    Arith256XBeTrace::<()>::AIR_ID,
+    Arith256XBeLargeTrace::<()>::AIR_ID,
+    ArithSecp256K1BeTrace::<()>::AIR_ID,
+    ArithSecp256K1BeLargeTrace::<()>::AIR_ID,
+    ArithBn254BeTrace::<()>::AIR_ID,
+    ArithBn254BeLargeTrace::<()>::AIR_ID,
 ];
 
 /// Same list as a `Vec` for runtime consumers (planner). Kept consistent with

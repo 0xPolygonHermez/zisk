@@ -1,5 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Secp256k1;
+use zisk_core::zisk_ops::swap_endianness_elements;
 use zisk_precomp_common::MemProcessor;
 
 pub const SECP256K1_DBL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
@@ -15,13 +16,17 @@ pub fn generate_secp256k1_dbl_mem_inputs<P: MemProcessor>(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
+    big_endian: bool,
     processor: &mut P,
 ) {
     // op,op_type,a,b,...
-    let p1: &[u64; 8] = &data[5..13].try_into().unwrap();
+    let p1: &[u64; 8] = &super::operand::<8>(&data[5..13], big_endian);
     let mut p3 = [0u64; 8];
 
     Secp256k1::calculate_dbl(p1, &mut p3);
+    if big_endian {
+        swap_endianness_elements(&mut p3, 4);
+    }
     super::generate_mem_inputs(
         addr_main,
         step_main,

@@ -1,7 +1,8 @@
+use zisk_core::zisk_ops::swap_endianness_elements;
 use zisk_precomp_common::MemProcessor;
 
 use super::ArithEq384MemInputConfig;
-use crate::{executors::Bls12_381Curve, ARITH_EQ_384_U64S_DOUBLE};
+use crate::{executors::Bls12_381Curve, ARITH_EQ_384_U64S, ARITH_EQ_384_U64S_DOUBLE};
 
 pub const BLS12_381_CURVE_DBL_MEM_CONFIG: ArithEq384MemInputConfig = ArithEq384MemInputConfig {
     indirect_params: 0,
@@ -16,14 +17,20 @@ pub fn generate_bls12_381_curve_dbl_mem_inputs<P: MemProcessor>(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
+    big_endian: bool,
     mem_processors: &mut P,
 ) {
     let pos_offset: usize = 5; // op,op_type,a,b,...
-    let p1: &[u64; ARITH_EQ_384_U64S_DOUBLE] =
-        &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S_DOUBLE)].try_into().unwrap();
+    let p1: &[u64; ARITH_EQ_384_U64S_DOUBLE] = &super::operand::<ARITH_EQ_384_U64S_DOUBLE>(
+        &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S_DOUBLE)],
+        big_endian,
+    );
     let mut p3 = [0u64; ARITH_EQ_384_U64S_DOUBLE];
 
     Bls12_381Curve::calculate_dbl(p1, &mut p3);
+    if big_endian {
+        swap_endianness_elements(&mut p3, ARITH_EQ_384_U64S);
+    }
     super::generate_mem_inputs(
         addr_main,
         step_main,

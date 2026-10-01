@@ -1,3 +1,4 @@
+use zisk_core::zisk_ops::swap_endianness_elements;
 use zisk_precomp_common::MemProcessor;
 
 use super::ArithEq384MemInputConfig;
@@ -16,23 +17,35 @@ pub fn generate_arith384_mod_mem_inputs<P: MemProcessor>(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
+    big_endian: bool,
     mem_processors: &mut P,
 ) {
     let mut pos_offset: usize = 10; // op,op_type,a,b,addr[5],...
-    let a: &[u64; ARITH_EQ_384_U64S] =
-        &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S)].try_into().unwrap();
+    let a: &[u64; ARITH_EQ_384_U64S] = &super::operand::<ARITH_EQ_384_U64S>(
+        &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S)],
+        big_endian,
+    );
     pos_offset += ARITH_EQ_384_U64S;
-    let b: &[u64; ARITH_EQ_384_U64S] =
-        &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S)].try_into().unwrap();
+    let b: &[u64; ARITH_EQ_384_U64S] = &super::operand::<ARITH_EQ_384_U64S>(
+        &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S)],
+        big_endian,
+    );
     pos_offset += ARITH_EQ_384_U64S;
-    let c: &[u64; ARITH_EQ_384_U64S] =
-        &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S)].try_into().unwrap();
+    let c: &[u64; ARITH_EQ_384_U64S] = &super::operand::<ARITH_EQ_384_U64S>(
+        &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S)],
+        big_endian,
+    );
     pos_offset += ARITH_EQ_384_U64S;
-    let module: &[u64; ARITH_EQ_384_U64S] =
-        &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S)].try_into().unwrap();
+    let module: &[u64; ARITH_EQ_384_U64S] = &super::operand::<ARITH_EQ_384_U64S>(
+        &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S)],
+        big_endian,
+    );
     let mut d: [u64; ARITH_EQ_384_U64S] = [0u64; ARITH_EQ_384_U64S];
 
     Arith384Mod::calculate(a, b, c, module, &mut d);
+    if big_endian {
+        swap_endianness_elements(&mut d, ARITH_EQ_384_U64S);
+    }
     super::generate_mem_inputs(
         addr_main,
         step_main,

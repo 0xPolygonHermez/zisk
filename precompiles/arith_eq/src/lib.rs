@@ -27,3 +27,7 @@ pub use arith_eq_row::*;
 #[cfg(test)]
 #[path = "tests/arith_eq_tests.rs"]
 mod arith_eq_tests;
+
+#[cfg(test)]
+#[path = "tests/arith_eq_big_endian_tests.rs"]
+mod arith_eq_big_endian_tests;

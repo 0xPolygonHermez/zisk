@@ -4,8 +4,11 @@
 
 use super::*;
 use zisk_pil::{
-    Arith256XLargeTrace, Arith256XTrace, ArithBn254LargeTrace, ArithBn254Trace, ArithEqLargeTrace,
-    ArithEqTrace, ArithSecp256K1LargeTrace, ArithSecp256K1Trace,
+    Arith256XBeLargeTrace, Arith256XBeTrace, Arith256XLargeTrace, Arith256XTrace,
+    ArithBn254BeLargeTrace, ArithBn254BeTrace, ArithBn254LargeTrace, ArithBn254Trace,
+    ArithEqBeLargeTrace, ArithEqBeTrace, ArithEqLargeTrace, ArithEqTrace,
+    ArithSecp256K1BeLargeTrace, ArithSecp256K1BeTrace, ArithSecp256K1LargeTrace,
+    ArithSecp256K1Trace,
 };
 
 fn counts(pairs: &[(ArithEqOp, u64)]) -> [u64; ARITH_EQ_OP_NUM] {
@@ -41,7 +44,20 @@ fn all_air_ids() -> Vec<usize> {
         ArithSecp256K1LargeTrace::<()>::AIR_ID,
         ArithBn254Trace::<()>::AIR_ID,
         ArithBn254LargeTrace::<()>::AIR_ID,
+        ArithEqBeTrace::<()>::AIR_ID,
+        ArithEqBeLargeTrace::<()>::AIR_ID,
+        Arith256XBeTrace::<()>::AIR_ID,
+        Arith256XBeLargeTrace::<()>::AIR_ID,
+        ArithSecp256K1BeTrace::<()>::AIR_ID,
+        ArithSecp256K1BeLargeTrace::<()>::AIR_ID,
+        ArithBn254BeTrace::<()>::AIR_ID,
+        ArithBn254BeLargeTrace::<()>::AIR_ID,
     ]
+}
+
+/// The big-endian air ids, which cover the `*Be` operations only.
+fn big_endian_air_ids() -> Vec<usize> {
+    all_air_ids()[8..].to_vec()
 }
 
 fn assert_conserves(plan: &[ArithEqAirPlan], totals: &[u64; ARITH_EQ_OP_NUM]) {
@@ -65,6 +81,10 @@ fn every_config_is_a_size_ladder() {
         &[Arith256XTrace::<()>::AIR_ID, Arith256XLargeTrace::<()>::AIR_ID][..],
         &[ArithSecp256K1Trace::<()>::AIR_ID, ArithSecp256K1LargeTrace::<()>::AIR_ID][..],
         &[ArithBn254Trace::<()>::AIR_ID, ArithBn254LargeTrace::<()>::AIR_ID][..],
+        &[ArithEqBeTrace::<()>::AIR_ID, ArithEqBeLargeTrace::<()>::AIR_ID][..],
+        &[Arith256XBeTrace::<()>::AIR_ID, Arith256XBeLargeTrace::<()>::AIR_ID][..],
+        &[ArithSecp256K1BeTrace::<()>::AIR_ID, ArithSecp256K1BeLargeTrace::<()>::AIR_ID][..],
+        &[ArithBn254BeTrace::<()>::AIR_ID, ArithBn254BeLargeTrace::<()>::AIR_ID][..],
     ] {
         for step in ladder.windows(2) {
             let (short, tall) = (meta_of(step[0]), meta_of(step[1]));
@@ -76,26 +96,92 @@ fn every_config_is_a_size_ladder() {
 }
 
 /// The sweep is exhaustive over which air takes each tail, so its cost is the product of the
-/// candidate counts. Pinning the current worst case keeps the headroom under
+/// candidate counts, per component. Pinning the current worst case keeps the headroom under
 /// [`MAX_TAIL_COMBINATIONS`] visible: a new config air multiplies it, it does not add to it.
 #[test]
 fn the_sweep_stays_within_its_ceiling() {
     // Worst case: every operation has a tail, so every one contributes its full candidate count.
+    // The little-endian and the big-endian ops never share an air, so they are two components and
+    // the bound applies to each one.
     let airs = all_air_ids();
     let metas = air_metas();
-    let combinations: u64 = ArithEqOp::ALL
-        .iter()
-        .map(|&op| metas.iter().filter(|m| airs.contains(&m.air_id) && m.covers(op)).count() as u64)
-        .product();
+    for ops in [ArithEqOp::ALL_LE, ArithEqOp::ALL_BE] {
+        let combinations: u64 = ops
+            .iter()
+            .map(|&op| {
+                metas.iter().filter(|m| airs.contains(&m.air_id) && m.covers(op)).count() as u64
+            })
+            .product();
 
-    // An operation's candidates are its config's heights plus the two universal airs: four for the
-    // two arith256, the two secp256k1 and the five bn254 operations (two heights each), two for the
-    // secp256r1 pair that only the universal airs prove.
-    assert_eq!(combinations, 4u64.pow(2) * 4u64.pow(2) * 4u64.pow(5) * 2u64.pow(2));
-    assert!(
-        combinations <= MAX_TAIL_COMBINATIONS,
-        "{combinations} placements exceed the {MAX_TAIL_COMBINATIONS} the sweep is sized for",
-    );
+        // An operation's candidates are its config's heights plus the two universal airs: four for
+        // the two arith256, the two secp256k1 and the five bn254 operations (two heights each), two
+        // for the secp256r1 pair that only the universal airs prove.
+        assert_eq!(combinations, 4u64.pow(2) * 4u64.pow(2) * 4u64.pow(5) * 2u64.pow(2));
+        assert!(
+            combinations <= MAX_TAIL_COMBINATIONS,
+            "{combinations} placements exceed the {MAX_TAIL_COMBINATIONS} the sweep is sized for",
+        );
+    }
+}
+
+/// Every little-endian and every big-endian operation with a tail at once: swept jointly that would
+/// be the square of the per-endianness worst case, far past the ceiling. Placed per component it is
+/// two sweeps, and each op lands only in airs of its own endianness.
+#[test]
+fn little_and_big_endian_tails_are_placed_independently() {
+    let cap = cap(&meta_of(ArithEqTrace::<()>::AIR_ID));
+    let pairs: Vec<(ArithEqOp, u64)> =
+        ArithEqOp::ALL.iter().enumerate().map(|(i, &op)| (op, cap + 1 + i as u64)).collect();
+    let totals = counts(&pairs);
+    let plan = plan_air_strategy(&all_air_ids(), &totals);
+    assert_conserves(&plan, &totals);
+
+    let be_airs = big_endian_air_ids();
+    for p in &plan {
+        for (idx, &n) in p.op_counts.iter().enumerate() {
+            if n == 0 {
+                continue;
+            }
+            let op = ArithEqOp::ALL[idx];
+            assert_eq!(
+                be_airs.contains(&p.air_id),
+                op.is_big_endian(),
+                "{op:?} planned in air {} of the other endianness",
+                p.air_id
+            );
+        }
+    }
+
+    // The placement of each half is the one the half would get on its own.
+    for ops in [&ArithEqOp::ALL_LE[..], &ArithEqOp::ALL_BE[..]] {
+        let half: Vec<(ArithEqOp, u64)> =
+            pairs.iter().copied().filter(|(op, _)| ops.contains(op)).collect();
+        let half_totals = counts(&half);
+        let half_plan = plan_air_strategy(&all_air_ids(), &half_totals);
+        let expected: Vec<&ArithEqAirPlan> =
+            plan.iter().filter(|p| ops.iter().any(|op| p.op_counts[op.index()] > 0)).collect();
+        assert_eq!(half_plan.iter().collect::<Vec<_>>(), expected);
+    }
+}
+
+/// A big-endian operation is proved by the big-endian airs only: the little-endian ones, however
+/// cheap, are never candidates. Two small big-endian tails pool into the one universal big-endian
+/// instance the secp256r1 pair needs anyway, as their little-endian twins would.
+#[test]
+fn big_endian_ops_take_the_big_endian_airs() {
+    let totals = counts(&[(ArithEqOp::Secp256k1AddBe, 3), (ArithEqOp::Secp256r1DblBe, 2)]);
+    let plan = plan_air_strategy(&all_air_ids(), &totals);
+    assert_conserves(&plan, &totals);
+    assert_eq!(plan.len(), 1, "{plan:?}");
+    assert_eq!(plan[0].air_id, ArithEqBeTrace::<()>::AIR_ID, "{plan:?}");
+
+    // A bulk of a specialized big-endian op goes to its own big-endian config.
+    let cap = cap(&meta_of(ArithSecp256K1BeLargeTrace::<()>::AIR_ID));
+    let totals = counts(&[(ArithEqOp::Secp256k1AddBe, cap)]);
+    let plan = plan_air_strategy(&all_air_ids(), &totals);
+    assert_conserves(&plan, &totals);
+    assert_eq!(plan.len(), 1, "{plan:?}");
+    assert_eq!(plan[0].air_id, ArithSecp256K1BeLargeTrace::<()>::AIR_ID, "{plan:?}");
 }
 
 /// A handful of operations must not open a tall instance: one instance either way, so the memory

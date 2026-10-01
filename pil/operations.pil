@@ -194,6 +194,32 @@ const int OP_BN254_COMPLEX_ADD = 0xFC;
 const int OP_BN254_COMPLEX_SUB = 0xFD;
 const int OP_BN254_COMPLEX_MUL = 0xFE;
 
+// Big-endian twins of the ArithEq / ArithEq384 precompiles (ArithEq(big_endian: 1) and
+// ArithEq384(big_endian: 1) in zisk.pil). Same operation as the little-endian one, but every 256/384-bit
+// operand is read from and written to memory as a big-endian integer (most significant byte at the
+// lowest address). The opcode is the little-endian opcode with bit 7 cleared (OP_X_BE = OP_X - 0x80);
+// keep that rule when mirroring them in core (zisk_ops.rs).
+const int OP_ARITH384_MOD_BE = 0x62;          // OP_ARITH384_MOD - 0x80
+const int OP_BLS12_381_CURVE_ADD_BE = 0x63;   // OP_BLS12_381_CURVE_ADD - 0x80
+const int OP_BLS12_381_CURVE_DBL_BE = 0x64;   // OP_BLS12_381_CURVE_DBL - 0x80
+const int OP_BLS12_381_COMPLEX_ADD_BE = 0x65; // OP_BLS12_381_COMPLEX_ADD - 0x80
+const int OP_BLS12_381_COMPLEX_SUB_BE = 0x66; // OP_BLS12_381_COMPLEX_SUB - 0x80
+const int OP_BLS12_381_COMPLEX_MUL_BE = 0x67; // OP_BLS12_381_COMPLEX_MUL - 0x80
+
+const int OP_SECP256R1_ADD_BE = 0x68;         // OP_SECP256R1_ADD - 0x80
+const int OP_SECP256R1_DBL_BE = 0x69;         // OP_SECP256R1_DBL - 0x80
+
+const int OP_ARITH256_BE = 0x72;              // OP_ARITH256 - 0x80
+const int OP_ARITH256_MOD_BE = 0x73;          // OP_ARITH256_MOD - 0x80
+const int OP_SECP256K1_ADD_BE = 0x74;         // OP_SECP256K1_ADD - 0x80
+const int OP_SECP256K1_DBL_BE = 0x75;         // OP_SECP256K1_DBL - 0x80
+
+const int OP_BN254_CURVE_ADD_BE = 0x7A;       // OP_BN254_CURVE_ADD - 0x80
+const int OP_BN254_CURVE_DBL_BE = 0x7B;       // OP_BN254_CURVE_DBL - 0x80
+const int OP_BN254_COMPLEX_ADD_BE = 0x7C;     // OP_BN254_COMPLEX_ADD - 0x80
+const int OP_BN254_COMPLEX_SUB_BE = 0x7D;     // OP_BN254_COMPLEX_SUB - 0x80
+const int OP_BN254_COMPLEX_MUL_BE = 0x7E;     // OP_BN254_COMPLEX_MUL - 0x80
+
 const int OP_HALT = 0xFF;
 
 function assumes_operation (const expr op, const expr a[] = [0,0], const expr b[] = [0,0], const expr c[] = [0,0], 

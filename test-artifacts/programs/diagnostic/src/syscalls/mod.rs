@@ -1,6 +1,7 @@
 mod arith256;
 mod arith384;
 mod babyjubjub;
+mod big_endian;
 mod blake2b;
 mod blake2s;
 mod blake3;
@@ -26,6 +27,7 @@ pub fn diagnostic_syscalls() {
     poseidon2::diagnostic_poseidon2();
     secp256k1::diagnostic_secp256k1();
     secp256r1::diagnostic_secp256r1();
+    big_endian::diagnostic_big_endian();
     blake3::diagnostic_blake3();
     sha256f::diagnostic_sha256f();
 

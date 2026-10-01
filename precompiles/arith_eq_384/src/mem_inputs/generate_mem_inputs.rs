@@ -1,6 +1,22 @@
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+use zisk_core::zisk_ops::swap_endianness_elements;
 use zisk_precomp_common::MemBusHelpers;
 use zisk_precomp_common::MemProcessor;
+
+use crate::ARITH_EQ_384_U64S;
+
+/// One operand of the operation as the executor wants it: the `N` words of the bus data (`words`,
+/// the memory image), converted from big-endian 384-bit elements to little-endian limbs when the
+/// op is a big-endian one. The bus data itself stays as read, since that is what goes to the
+/// memory bus.
+#[inline(always)]
+pub fn operand<const N: usize>(words: &[u64], big_endian: bool) -> [u64; N] {
+    let mut operand: [u64; N] = words.try_into().expect("operand: unexpected length");
+    if big_endian {
+        swap_endianness_elements(&mut operand, ARITH_EQ_384_U64S);
+    }
+    operand
+}
 
 #[derive(Debug)]
 pub struct ArithEq384MemInputConfig {

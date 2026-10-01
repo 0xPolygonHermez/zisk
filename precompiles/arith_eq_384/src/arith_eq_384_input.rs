@@ -1,3 +1,5 @@
+use zisk_core::zisk_ops::swap_endianness_elements;
+
 use zisk_common::{
     OperationArith384ModData, OperationBls12_381ComplexAddData, OperationBls12_381ComplexMulData,
     OperationBls12_381ComplexSubData, OperationBls12_381CurveAddData,
@@ -32,6 +34,20 @@ pub struct Arith384ModInput {
 }
 
 impl Arith384ModInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationArith384ModData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.a, ARITH_EQ_384_U64S);
+            swap_endianness_elements(&mut input.b, ARITH_EQ_384_U64S);
+            swap_endianness_elements(&mut input.c, ARITH_EQ_384_U64S);
+            swap_endianness_elements(&mut input.module, ARITH_EQ_384_U64S);
+        }
+        input
+    }
+
     pub fn from(values: &OperationArith384ModData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
@@ -60,6 +76,18 @@ pub struct Bls12_381CurveAddInput {
 }
 
 impl Bls12_381CurveAddInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationBls12_381CurveAddData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.p1, ARITH_EQ_384_U64S);
+            swap_endianness_elements(&mut input.p2, ARITH_EQ_384_U64S);
+        }
+        input
+    }
+
     pub fn from(values: &OperationBls12_381CurveAddData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
@@ -80,6 +108,17 @@ pub struct Bls12_381CurveDblInput {
 }
 
 impl Bls12_381CurveDblInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationBls12_381CurveDblData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.p1, ARITH_EQ_384_U64S);
+        }
+        input
+    }
+
     pub fn from(values: &OperationBls12_381CurveDblData<u64>) -> Self {
         Self { addr: values[3] as u32, step: values[4], p1: values[5..17].try_into().unwrap() }
     }
@@ -96,6 +135,18 @@ pub struct Bls12_381ComplexAddInput {
 }
 
 impl Bls12_381ComplexAddInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationBls12_381ComplexAddData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.f1, ARITH_EQ_384_U64S);
+            swap_endianness_elements(&mut input.f2, ARITH_EQ_384_U64S);
+        }
+        input
+    }
+
     pub fn from(values: &OperationBls12_381ComplexAddData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
@@ -119,6 +170,18 @@ pub struct Bls12_381ComplexSubInput {
 }
 
 impl Bls12_381ComplexSubInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationBls12_381ComplexSubData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.f1, ARITH_EQ_384_U64S);
+            swap_endianness_elements(&mut input.f2, ARITH_EQ_384_U64S);
+        }
+        input
+    }
+
     pub fn from(values: &OperationBls12_381ComplexSubData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
@@ -142,6 +205,18 @@ pub struct Bls12_381ComplexMulInput {
 }
 
 impl Bls12_381ComplexMulInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationBls12_381ComplexMulData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.f1, ARITH_EQ_384_U64S);
+            swap_endianness_elements(&mut input.f2, ARITH_EQ_384_U64S);
+        }
+        input
+    }
+
     pub fn from(values: &OperationBls12_381ComplexMulData<u64>) -> Self {
         Self {
             addr: values[3] as u32,

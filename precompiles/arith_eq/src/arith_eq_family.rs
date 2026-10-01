@@ -104,8 +104,9 @@ impl ArithEqCheckPoints {
 // CounterInputGen — per-op counting + mem-input generation.
 // ============================================================================
 
-/// Counts each `ArithEq` sub-operation separately and drives `PrecompileMemInputs`. Used in all
-/// three bus modes (`Counter`, `CounterAsm`, `InputGenerator`).
+/// Counts each `ArithEq` sub-operation separately (a big-endian op apart from its little-endian
+/// twin, since only the `big_endian: 1` airs prove it) and drives `PrecompileMemInputs`. Used in
+/// all three bus modes (`Counter`, `CounterAsm`, `InputGenerator`).
 pub struct ArithEqCounterInputGen<F: PrimeField64> {
     /// Per-sub-op occurrence counts, indexed by `ArithEqOp::index`.
     pub counts: [u64; ARITH_EQ_OP_NUM],
@@ -236,39 +237,42 @@ impl ArithEqCollector {
 
         let ext: ExtOperationData<u64> =
             data.try_into().expect("ArithEqCollector: failed to convert bus data");
+        // A big-endian op shares the bus layout and the witness path of its little-endian twin;
+        // `from_bus` converts its memory-image operands to the limbs the executors work on.
+        let big_endian = op.is_big_endian();
         let input = match ext {
             ExtOperationData::OperationArith256Data(d) => {
-                ArithEqInput::Arith256(Arith256Input::from(&d))
+                ArithEqInput::Arith256(Arith256Input::from_bus(&d, big_endian))
             }
             ExtOperationData::OperationArith256ModData(d) => {
-                ArithEqInput::Arith256Mod(Arith256ModInput::from(&d))
+                ArithEqInput::Arith256Mod(Arith256ModInput::from_bus(&d, big_endian))
             }
             ExtOperationData::OperationSecp256k1AddData(d) => {
-                ArithEqInput::Secp256k1Add(Secp256k1AddInput::from(&d))
+                ArithEqInput::Secp256k1Add(Secp256k1AddInput::from_bus(&d, big_endian))
             }
             ExtOperationData::OperationSecp256k1DblData(d) => {
-                ArithEqInput::Secp256k1Dbl(Secp256k1DblInput::from(&d))
+                ArithEqInput::Secp256k1Dbl(Secp256k1DblInput::from_bus(&d, big_endian))
             }
             ExtOperationData::OperationBn254CurveAddData(d) => {
-                ArithEqInput::Bn254CurveAdd(Bn254CurveAddInput::from(&d))
+                ArithEqInput::Bn254CurveAdd(Bn254CurveAddInput::from_bus(&d, big_endian))
             }
             ExtOperationData::OperationBn254CurveDblData(d) => {
-                ArithEqInput::Bn254CurveDbl(Bn254CurveDblInput::from(&d))
+                ArithEqInput::Bn254CurveDbl(Bn254CurveDblInput::from_bus(&d, big_endian))
             }
             ExtOperationData::OperationBn254ComplexAddData(d) => {
-                ArithEqInput::Bn254ComplexAdd(Bn254ComplexAddInput::from(&d))
+                ArithEqInput::Bn254ComplexAdd(Bn254ComplexAddInput::from_bus(&d, big_endian))
             }
             ExtOperationData::OperationBn254ComplexSubData(d) => {
-                ArithEqInput::Bn254ComplexSub(Bn254ComplexSubInput::from(&d))
+                ArithEqInput::Bn254ComplexSub(Bn254ComplexSubInput::from_bus(&d, big_endian))
             }
             ExtOperationData::OperationBn254ComplexMulData(d) => {
-                ArithEqInput::Bn254ComplexMul(Bn254ComplexMulInput::from(&d))
+                ArithEqInput::Bn254ComplexMul(Bn254ComplexMulInput::from_bus(&d, big_endian))
             }
             ExtOperationData::OperationSecp256r1AddData(d) => {
-                ArithEqInput::Secp256r1Add(Secp256r1AddInput::from(&d))
+                ArithEqInput::Secp256r1Add(Secp256r1AddInput::from_bus(&d, big_endian))
             }
             ExtOperationData::OperationSecp256r1DblData(d) => {
-                ArithEqInput::Secp256r1Dbl(Secp256r1DblInput::from(&d))
+                ArithEqInput::Secp256r1Dbl(Secp256r1DblInput::from_bus(&d, big_endian))
             }
             _ => return true,
         };
