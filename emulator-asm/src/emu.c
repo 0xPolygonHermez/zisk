@@ -1611,7 +1611,7 @@ extern int _opcode_bls12_381_curve_add(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BL12_381_CURVE_ADD].counter, address, p1, p2);
+        asm_printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_BLS12_381_CURVE_ADD].counter, address, p1, p2);
 #else
         asm_printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
