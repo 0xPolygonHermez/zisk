@@ -82,9 +82,10 @@ constexpr uint32_t RAM_META_OFF_SHIFT   = 42;
 constexpr uint32_t RAM_META_WIDTH_SHIFT = 45;
 constexpr uint64_t RAM_META_STEP_MASK   = (1ull << 40) - 1;
 // Retained RAM accesses: 20-byte records (address, meta, value) growing down from the arena top,
-// record k at top - 20 (k + 1), in arrival order. The ops pool grows up from the fixed regions
-// and the reservations keep the two from crossing. Records are 4-byte aligned, so the 64-bit
-// fields are word pairs.
+// record k at top - 20 (k + 1). Each chunk holds one contiguous run of records in (address,
+// arrival) order; chunks follow their reservation order. The ops pool grows up from the fixed
+// regions and the reservations keep the two from crossing. Records are 4-byte aligned, so the
+// 64-bit fields are word pairs.
 constexpr size_t RAM_RECORD_WORDS = 5;
 struct RamRecords {
     uint32_t* top = nullptr;  // one past the highest record
@@ -305,8 +306,7 @@ private:
     size_t pool_end_bytes(size_t pool_words) const { return cursor_ + pool_words * 4; }
     size_t ram_low_edge_bytes(size_t records) const { return top_bytes_ - records * RAM_RECORD_WORDS * 4; }
     std::atomic<bool>   ram_retention_enabled_{false};
-    uint32_t*          d_ram_flags_[N_STREAMS]      = {nullptr};
-    uint32_t*          d_ram_pos_[N_STREAMS]        = {nullptr};
+    std::vector<size_t> ram_base_per_chunk_;                    // first record of each chunk
     unsigned long long* d_ram_nwrites_ = nullptr;             // writes among the retained accesses
     uint64_t           ram_writes_     = 0;                   // read back by prepare_ram_fill
     uint32_t           chunk_size_bits_ = 18;

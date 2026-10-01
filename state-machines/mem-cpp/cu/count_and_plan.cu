@@ -599,23 +599,15 @@ __global__ void compact_kernel_with_shift(const PotentialEmit* __restrict__ d_po
     }
 }
 
-// RAM accesses of a chunk, in arrival order, appended to the retained arrays.
-__global__ void ram_flags_kernel(const PotentialEmit* __restrict__ d_potentials, uint32_t n,
-                                 uint32_t* __restrict__ d_flags) {
-    const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    d_flags[i] = emit_is_ram(d_potentials[i]) ? 1u : 0u;
-}
-
-__global__ void retain_ram_kernel(const PotentialEmit* __restrict__ d_potentials, uint32_t n,
-                                  const uint32_t* __restrict__ d_pos, size_t base, uint32_t chunk,
-                                  uint32_t chunk_size_bits, RamRecords rec,
+// The chunk's RAM accesses as records, in the (address, arrival) order of the chunk's sorted keys.
+__global__ void retain_ram_kernel(const PotentialEmit* __restrict__ d_potentials,
+                                  const uint32_t* __restrict__ d_sorted_packed, uint32_t ram,
+                                  size_t base, uint32_t chunk, uint32_t chunk_size_bits, RamRecords rec,
                                   unsigned long long* __restrict__ d_nwrites) {
-    const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    const PotentialEmit p = d_potentials[i];
-    if (!emit_is_ram(p)) return;
-    const size_t k = base + d_pos[i];
+    const uint32_t t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= ram) return;
+    const PotentialEmit p = d_potentials[d_sorted_packed[t] & 0x7FFFFFFFu];
+    const size_t k = base + t;
     const uint32_t field = p.meta >> POT_META_STEP_SHIFT;             // (step_in_chunk << 2) | slot
     const uint64_t main_step = ((uint64_t)chunk << chunk_size_bits) + (field >> 2);
     const uint64_t mem_step  = 1ull + (main_step << 2) + (field & 3u);
@@ -625,7 +617,7 @@ __global__ void retain_ram_kernel(const PotentialEmit* __restrict__ d_potentials
     rec.store(k, ram_compact(emit_aligned_addr(p)),
               mem_step | (kind << RAM_META_KIND_SHIFT) | (off << RAM_META_OFF_SHIFT) | (width << RAM_META_WIDTH_SHIFT),
               p.value);
-    // Write fraction, one atomic per warp (the early returns above make the mask partial).
+    // Write fraction, one atomic per warp.
     const unsigned writers = __ballot_sync(__activemask(), kind != POT_KIND_READ);
     if ((threadIdx.x & 31u) == (unsigned)(__ffs(__activemask()) - 1)) atomicAdd(d_nwrites, (unsigned long long)__popc(writers));
 }
@@ -1316,8 +1308,6 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
             take(4);
             take(4);
             take(cub_temp_bytes_);
-            take(((size_t)MAX_POT_PER_CHUNK + 1) * 4);   // d_ram_flags_
-            take(((size_t)MAX_POT_PER_CHUNK + 1) * 4);   // d_ram_pos_
         }
         take(8);                                          // d_ram_nwrites_
         cur = (cur + 255) & ~(size_t)255;       // mirror the final round-up below
@@ -1408,8 +1398,6 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         d_num_unique_[s]        = (uint32_t*)     take(4);
         d_ram_count_[s]         = (uint32_t*)     take(4);
         d_cub_temp_[s]          = (void*)         take(cub_temp_bytes_);
-        d_ram_flags_[s]         = (uint32_t*)     take(((size_t)MAX_POT_PER_CHUNK + 1) * 4);
-        d_ram_pos_[s]           = (uint32_t*)     take(((size_t)MAX_POT_PER_CHUNK + 1) * 4);
     }
     d_ram_nwrites_ = (unsigned long long*)take(8);
 
@@ -1628,26 +1616,6 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
         d_histogram_, d_max_compact_, d_invalid_mode_flag_);
     CUDA_CHECK_LAUNCH();
 
-    // Retain the chunk's RAM accesses for the witness, in arrival order.
-    if (ram > 0 && ram_retention_enabled_.load(std::memory_order_relaxed)) {
-        const size_t rbase = ram_cursor_.fetch_add(ram, std::memory_order_seq_cst);
-        if (ram_low_edge_bytes(rbase + ram) < pool_end_bytes(pool_cursor_u32_.load(std::memory_order_seq_cst))) {
-            if (ram_retention_enabled_.exchange(false)) {
-                fprintf(stderr, "CountAndPlan: the retained RAM accesses meet the ops pool at chunk %u "
-                                "(%zu accesses so far); no device RAM witness for this block\n", c, rbase + ram);
-            }
-        } else {
-            ram_flags_kernel<<<g_pot, BLOCK, 0, st>>>(d_potentials_[s], (uint32_t)pot, d_ram_flags_[s]);
-            CUDA_CHECK_LAUNCH();
-            size_t bytes_rf = cub_temp_bytes_;
-            CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes_rf,
-                d_ram_flags_[s], d_ram_pos_[s], (uint32_t)pot + 1, st));
-            retain_ram_kernel<<<g_pot, BLOCK, 0, st>>>(d_potentials_[s], (uint32_t)pot,
-                d_ram_pos_[s], rbase, c, chunk_size_bits_, ram_records_, d_ram_nwrites_);
-            CUDA_CHECK_LAUNCH();
-        }
-    }
-
     if (ram > 0) {
         size_t bytes_sort = cub_temp_bytes_;
         CUDA_CHECK(cub::DeviceRadixSort::SortKeys(d_cub_temp_[s], bytes_sort,
@@ -1660,6 +1628,22 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
         extract_sorted_packed_kernel<<<g_ram, BLOCK, 0, st>>>(
             d_ram_keys_sorted_[s], ram, d_ram_vals_sorted_[s]);
         CUDA_CHECK_LAUNCH();
+
+        // Retain the chunk's RAM accesses for the witness, in the sorted order.
+        if (ram_retention_enabled_.load(std::memory_order_relaxed)) {
+            const size_t rbase = ram_cursor_.fetch_add(ram, std::memory_order_seq_cst);
+            ram_base_per_chunk_[c] = rbase;
+            if (ram_low_edge_bytes(rbase + ram) < pool_end_bytes(pool_cursor_u32_.load(std::memory_order_seq_cst))) {
+                if (ram_retention_enabled_.exchange(false)) {
+                    fprintf(stderr, "CountAndPlan: the retained RAM accesses meet the ops pool at chunk %u "
+                                    "(%zu accesses so far); no device RAM witness for this block\n", c, rbase + ram);
+                }
+            } else {
+                retain_ram_kernel<<<g_ram, BLOCK, 0, st>>>(d_potentials_[s], d_ram_vals_sorted_[s], ram,
+                    rbase, c, chunk_size_bits_, ram_records_, d_ram_nwrites_);
+                CUDA_CHECK_LAUNCH();
+            }
+        }
 
         size_t bytes_rle = cub_temp_bytes_;
         CUDA_CHECK(cub::DeviceRunLengthEncode::Encode(d_cub_temp_[s], bytes_rle,
@@ -1818,6 +1802,7 @@ void CountAndPlan::reset() {
     out_offsets_.assign(MAX_CHUNKS, 0);
     n_potentials_per_chunk_.assign(MAX_CHUNKS, 0);
     n_ram_per_chunk_.assign(MAX_CHUNKS, 0);
+    ram_base_per_chunk_.assign(MAX_CHUNKS, 0);
     packed_chunk_offsets_h_.clear();
     pool_cursor_u32_.store(0, std::memory_order_relaxed);
     add_error_.store(false, std::memory_order_relaxed);
