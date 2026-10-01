@@ -17,6 +17,7 @@
 #include "mem_pack.cuh"
 
 #include <cub/cub.cuh>
+#include <thrust/iterator/counting_iterator.h>
 #include <cuda_runtime.h>
 
 #include <algorithm>
@@ -106,13 +107,6 @@ __global__ void rf_emit_kernel(const uint32_t* __restrict__ last_anchor, size_t 
     if (j >= n) return;
     const uint32_t a = last_anchor[j] - 1;
     emit[j] = (((uint32_t)j - a) & 1u) == 0u ? 1u : 0u;
-}
-
-__global__ void rf_lane_first_kernel(const uint32_t* __restrict__ emit, const uint32_t* __restrict__ lane,
-                                     size_t n, uint32_t* __restrict__ lane_first) {
-    const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-    if (j >= n) return;
-    if (emit[j]) lane_first[lane[j]] = (uint32_t)j;
 }
 
 // Merge elements and sorted addresses for one propagation block.
@@ -253,8 +247,8 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     // once run() returned (metas, offset pages and align counters are on the host) until reset()
     // starts the next block. Carve: two key and two index buffers that the sort ping-pongs
     // between (the sorted keys stay: they give every lane its address and step; the sorted
-    // indexes are sidx; the other two become anchors, emit and the resolved values), lane,
-    // lane_first, the propagation block, one instance's rows, cub temp: 32 bytes per access.
+    // indexes are sidx; the other two become anchors, emit and the resolved values), lane_first,
+    // the propagation block, one instance's rows, cub temp: 28 bytes per access.
     uint8_t* cur = arena_;
     uint8_t* end = arena_ + (ram_low_edge_bytes(n) & ~(size_t)255);
     auto take = [&](size_t bytes) -> uint8_t* {
@@ -264,21 +258,23 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     };
     cub::DoubleBuffer<uint64_t> dkeys((uint64_t*)take(n * 8), (uint64_t*)take(n * 8));
     cub::DoubleBuffer<uint32_t> didx((uint32_t*)take(n * 4), (uint32_t*)take(n * 4));
-    uint32_t* lane     = (uint32_t*)take(n * 4);
     uint32_t* lfirst   = (uint32_t*)take(n * 4);
+    uint32_t* d_n_lanes = (uint32_t*)take(4);
     Merge*    prop_in  = (Merge*)take(RF_PROP_BLOCK * sizeof(Merge));
     Merge*    prop_out = (Merge*)take(RF_PROP_BLOCK * sizeof(Merge));
     uint32_t* prop_keys = (uint32_t*)take(RF_PROP_BLOCK * 4);
     unsigned long long* d_unresolved = (unsigned long long*)take(8);
     const uint32_t n_rows = instance_rows_[RF_REGION_RAM] / mem_lanes_x_row_;
     uint64_t* rows = (uint64_t*)take((size_t)n_rows * mem_words_per_row_ * 8);
-    size_t t_sort = 0, t_max = 0, t_sum = 0, t_bykey = 0;
+    size_t t_sort = 0, t_max = 0, t_sum = 0, t_bykey = 0, t_select = 0;
     cub::DeviceRadixSort::SortPairs(nullptr, t_sort, dkeys, didx, n, 0, (int)(RF_STEP_BITS + RF_ADDR_BITS));
     cub::DeviceScan::InclusiveScan(nullptr, t_max, (uint32_t*)nullptr, (uint32_t*)nullptr, MaxU32Op(), n);
     cub::DeviceScan::ExclusiveSum(nullptr, t_sum, (uint32_t*)nullptr, (uint32_t*)nullptr, n);
+    cub::DeviceSelect::Flagged(nullptr, t_select, thrust::counting_iterator<uint32_t>(0),
+                               (uint32_t*)nullptr, (uint32_t*)nullptr, (uint32_t*)nullptr, n);
     cub::DeviceScan::InclusiveScanByKey(nullptr, t_bykey, prop_keys, prop_in, prop_out, MergeOp(),
                                         RF_PROP_BLOCK, EqU32());
-    const size_t t_bytes = std::max(std::max(t_sort, t_max), std::max(t_sum, t_bykey));
+    const size_t t_bytes = std::max(std::max(std::max(t_sort, t_max), std::max(t_sum, t_bykey)), t_select);
     void* temp = take(t_bytes);
     if (cur > end) {
         fprintf(stderr, "ram_fill: scratch needs %zu MB, the arena has %zu MB below the retained accesses; RAM witness off\n",
@@ -310,14 +306,13 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     RF_TRY(cub::DeviceScan::InclusiveScan(temp, tb, anchor, last_anchor, MaxU32Op(), n));
     rf_emit_kernel<<<rf_grid(n), RF_BLOCK>>>(last_anchor, n, emit);
     RF_TRY(cudaGetLastError());
+    // lane_first: the sorted positions that start a lane, in order.
     tb = t_bytes;
-    RF_TRY(cub::DeviceScan::ExclusiveSum(temp, tb, emit, lane, n));
-    uint32_t tail[2];
-    RF_TRY(cudaMemcpy(&tail[0], lane + (n - 1), 4, cudaMemcpyDeviceToHost));
-    RF_TRY(cudaMemcpy(&tail[1], emit + (n - 1), 4, cudaMemcpyDeviceToHost));
-    const size_t n_lanes = (size_t)tail[0] + tail[1];
-    rf_lane_first_kernel<<<rf_grid(n), RF_BLOCK>>>(emit, lane, n, lfirst);
-    RF_TRY(cudaGetLastError());
+    RF_TRY(cub::DeviceSelect::Flagged(temp, tb, thrust::counting_iterator<uint32_t>(0), emit, lfirst,
+                                      d_n_lanes, n));
+    uint32_t n_lanes32 = 0;
+    RF_TRY(cudaMemcpy(&n_lanes32, d_n_lanes, 4, cudaMemcpyDeviceToHost));
+    const size_t n_lanes = n_lanes32;
     RF_TRY(cudaEventRecord(ev[2]));
 
     // 3. values, in blocks with a carry. The free key buffer takes the resolved values.
