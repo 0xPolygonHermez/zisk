@@ -139,10 +139,13 @@ constexpr uint32_t MAX_INSTANCES         = MEM_GPU_MAX_INSTANCES;
 constexpr uint32_t MASK_WORDS            = (MAX_INSTANCES + 31) / 32;
 // MUST stay <= the C++ consumer cap MAX_CHUNKS (mem_config.hpp)
 constexpr uint32_t MAX_CHUNKS            = MEM_GPU_MAX_META_CHUNKS; // 16384
-constexpr uint32_t MAX_MEMOPS_PER_CHUNK  = 1u << 20;          // 1048576 (2 memops/step at CHUNK_SIZE=2^18 -> now 4/step; ~+0.9 GB GPU device mem vs 1<<19). Raising this forces ORIG_POS_BITS/RAM_KEY_END_BIT up (static_asserts in count_and_plan.cu)
-constexpr uint32_t MAX_MEMOPS_WORDS      = MAX_MEMOPS_PER_CHUNK * 2; // stream words per chunk (16 MB)
-constexpr uint32_t POTENTIAL_FACTOR      = 8;                 
-constexpr uint32_t MAX_POT_PER_CHUNK     = MAX_MEMOPS_PER_CHUNK * POTENTIAL_FACTOR;
+// A chunk is processed in pieces of whole records, each with at most MAX_POT_PER_PIECE potentials
+// and MAX_WORDS_PER_PIECE stream words, so the per-stream buffers are sized for one piece and a
+// chunk of any size fits. The RAM pairing state crosses pieces as one bit per address, which
+// enters the next piece's sort as a carry entry (MAX_SORT_PER_PIECE).
+constexpr uint32_t MAX_POT_PER_PIECE   = 1u << 20;
+constexpr uint32_t MAX_WORDS_PER_PIECE = MAX_POT_PER_PIECE + 128;
+constexpr uint32_t MAX_SORT_PER_PIECE  = 2 * MAX_POT_PER_PIECE;
 constexpr uint32_t MAX_TOTAL_MEMOPS      = 1u << 29;          // 512M ops
 
 // Internal compile-time toggle for the add_chunk worker pool 
@@ -290,6 +293,9 @@ private:
     void*          d_cub_temp_[N_STREAMS]          = {nullptr};
     size_t         cub_temp_bytes_                 = 0;
     uint32_t*      h_n_emits_[N_STREAMS]           = {nullptr};
+    uint64_t*      d_carry_[N_STREAMS]             = {nullptr};   // pairing state per address, as sort keys
+    uint32_t*      d_carry_rank_[N_STREAMS]        = {nullptr};   // sorted position -> real entries before it
+    uint32_t*      h_n_carry_[N_STREAMS]           = {nullptr};
 
     // ─── Ops pool (bump-allocated by add_chunk) ──────────────────────
 
@@ -307,7 +313,11 @@ private:
     size_t pool_end_bytes(size_t pool_words) const { return cursor_ + pool_words * 4; }
     size_t ram_low_edge_bytes(size_t records) const { return top_bytes_ - records * RAM_RECORD_WORDS * 4; }
     std::atomic<bool>   ram_retention_enabled_{false};
-    std::vector<size_t> ram_base_per_chunk_;                    // first record of each chunk
+    struct RamRun { uint32_t base; uint32_t n; };               // one piece's records
+    std::vector<RamRun> ram_runs_;
+    std::mutex          ram_runs_mtx_;
+    uint32_t            piece_potentials_ = MAX_POT_PER_PIECE;  // cut threshold (ZISK_MOPS_PIECE_POTENTIALS lowers it for tests)
+    std::atomic<uint32_t> max_pieces_{0};
     unsigned long long* d_ram_nwrites_ = nullptr;             // writes among the retained accesses
     uint64_t           ram_writes_     = 0;                   // read back by prepare_ram_fill
     uint32_t           chunk_size_bits_ = 18;
@@ -371,6 +381,8 @@ private:
     std::vector<size_t>   out_offsets_;
     std::vector<uint32_t> n_potentials_per_chunk_;
     std::vector<uint32_t> n_ram_per_chunk_;
+    uint32_t              rf_n_runs_ = 0;
+    std::vector<uint32_t> n_words_per_chunk_;
     std::vector<uint32_t> packed_chunk_offsets_h_;
     bool                  preprocessed_            = false;
     bool                  prepared_                = false;
@@ -423,6 +435,8 @@ private:
     void   pick_active_instances_();
 
     bool   add_chunk_core_(const uint64_t* words, uint32_t n_words, uint32_t c);
+    bool   add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int s, uint32_t pot, uint32_t ram,
+                      uint32_t* d_out, uint32_t n_carry, bool carry_out, uint32_t* h_emits);
     void   pool_start_();
     void   pool_stop_();
     void   pool_thread_loop_(int s);

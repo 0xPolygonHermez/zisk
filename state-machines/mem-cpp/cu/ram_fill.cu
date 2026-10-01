@@ -284,8 +284,9 @@ bool CountAndPlan::set_mem_layout(const uint32_t* col_widths, uint32_t n_cols, u
 }
 
 // Tables for the per-instance fill, carved at the bottom of the arena (every plan structure
-// there is dead once run() returned): the chunks' record bases and counts, every RAM instance's
-// address range, the (chunk, instance) bounds and the per-instance chunk prefixes.
+// there is dead once run() returned): the record runs' bases and counts (one run per piece of a
+// chunk), every RAM instance's address range, the (run, instance) bounds and the per-instance
+// run prefixes.
 bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     if (out) *out = RamFillPrepared{};
     if (!out) return false;
@@ -312,7 +313,10 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
         return true;
     }
     if (!ram_tables_ready_) {
-        const uint32_t nc = n_chunks_;
+        std::vector<RamRun> runs;
+        { std::lock_guard<std::mutex> lk(ram_runs_mtx_); runs = ram_runs_; }
+        const uint32_t nc = (uint32_t)runs.size();
+        rf_n_runs_ = nc;
         uint8_t* cur = arena_;
         auto take = [&](size_t bytes) -> uint8_t* {
             uint8_t* p = (uint8_t*)(((uintptr_t)cur + 255) & ~(uintptr_t)255);
@@ -327,11 +331,11 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
         d_rf_bound_      = (uint32_t*)take((size_t)nc * 2 * n_inst * 4);
         d_rf_pref_       = (uint32_t*)take((size_t)nc * n_inst * 4);
         rf_scratch_      = (uint8_t*)take(0);
-        std::vector<uint32_t> h_base(nc), h_ids(n_inst);
-        for (uint32_t c = 0; c < nc; ++c) h_base[c] = (uint32_t)ram_base_per_chunk_[c];
+        std::vector<uint32_t> h_base(nc), h_n(nc), h_ids(n_inst);
+        for (uint32_t c = 0; c < nc; ++c) { h_base[c] = runs[c].base; h_n[c] = runs[c].n; }
         for (uint32_t i = 0; i < n_inst; ++i) h_ids[i] = i;
         RF_TRY(cudaMemcpy(d_rf_chunk_base_, h_base.data(), (size_t)nc * 4, cudaMemcpyHostToDevice));
-        RF_TRY(cudaMemcpy(d_rf_chunk_n_, n_ram_per_chunk_.data(), (size_t)nc * 4, cudaMemcpyHostToDevice));
+        RF_TRY(cudaMemcpy(d_rf_chunk_n_, h_n.data(), (size_t)nc * 4, cudaMemcpyHostToDevice));
         RF_TRY(cudaMemcpy(d_rf_inst_ids_, h_ids.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice));
         // Address range of every RAM instance of the block, from the prefix the plan left in place.
         instance_boundaries_kernel<<<1, n_inst>>>(d_prefix_, REGION_ADDR_START[RF_REGION_RAM],
@@ -453,8 +457,8 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     if (scratch_bytes > rf_scratch_peak_) rf_scratch_peak_ = scratch_bytes;
 
     // 0. gather, 1. sort by (address, step), stable
-    rf_gather_kernel<<<rf_grid(n), RF_BLOCK>>>(ram_records_, d_rf_chunk_base_, d_rf_pref_ + (size_t)inst * n_chunks_,
-                                               n_chunks_, d_rf_bound_, 2 * n_inst, inst, n,
+    rf_gather_kernel<<<rf_grid(n), RF_BLOCK>>>(ram_records_, d_rf_chunk_base_, d_rf_pref_ + (size_t)inst * rf_n_runs_,
+                                               rf_n_runs_, d_rf_bound_, 2 * n_inst, inst, n,
                                                dkeys.Current(), didx.Current());
     RF_TRY(cudaGetLastError());
     size_t tb = t_bytes;
