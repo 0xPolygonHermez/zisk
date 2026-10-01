@@ -7214,7 +7214,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-setup"
-version = "1.3.1-alpha"
+version = "1.4.0-alpha"
 dependencies = [
  "serde_json",
 ]
