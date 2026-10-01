@@ -47,7 +47,7 @@ const ENTRY_FRAME_RESERVE: i64 = 64;
 /// Transpiles a wasm module into a Zisk ROM.
 pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     let module = parse_module(bytes)?;
-    reject_unsupported_memory(&module)?;
+    reject_unsupported_layout(&module)?;
 
     // Resolve the program entry point.
     let start_index = module
@@ -133,11 +133,48 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     Ok(rom)
 }
 
-/// Fails if the module's linear memory cannot be hosted: the declared initial size must fit the
-/// fixed window below `WASM_MEM_LIMIT` (it is what `memory.size` reports and what `memory.grow`
-/// extends), and every active data segment must lie inside that initial memory, as instantiation
-/// requires.  Both are checked in wasm address space, before any Zisk base address is added.
-fn reject_unsupported_memory(module: &WasmModule) -> Result<(), Box<dyn Error>> {
+/// Fails if the module does not fit the machine's fixed runtime areas (see `layout.rs`):
+///
+/// * the linear memory's declared initial size must fit the window below `WASM_MEM_LIMIT` (it is
+///   what `memory.size` reports and what `memory.grow` extends), and every active data segment
+///   must lie inside that initial memory, as instantiation requires;
+/// * the globals must fit `WASM_MAX_GLOBALS`;
+/// * table 0's declared size must fit `WASM_MAX_TABLE_ENTRIES`, and every active element segment
+///   must lie inside it.
+///
+/// Everything is checked in wasm index/address space, before any Zisk base address is added, so
+/// an oversized module cannot initialize one area over the next.
+fn reject_unsupported_layout(module: &WasmModule) -> Result<(), Box<dyn Error>> {
+    if module.globals.len() as u64 > WASM_MAX_GLOBALS {
+        return Err(format!(
+            "wasm: {} globals exceed the {} this machine supports",
+            module.globals.len(),
+            WASM_MAX_GLOBALS
+        )
+        .into());
+    }
+    if module.table_initial > WASM_MAX_TABLE_ENTRIES {
+        return Err(format!(
+            "wasm: table of {} entries exceeds the {} this machine supports",
+            module.table_initial, WASM_MAX_TABLE_ENTRIES
+        )
+        .into());
+    }
+    for seg in &module.elems {
+        let fits = (seg.table_offset as u64)
+            .checked_add(seg.func_indices.len() as u64)
+            .is_some_and(|end| end <= module.table_initial);
+        if !fits {
+            return Err(format!(
+                "wasm: element segment at table index {} ({} entries) does not fit the table of \
+                 {} entries",
+                seg.table_offset,
+                seg.func_indices.len(),
+                module.table_initial
+            )
+            .into());
+        }
+    }
     if module.mem_initial_pages > WASM_MAX_PAGES {
         return Err(format!(
             "wasm: initial memory of {} pages exceeds the {} pages this machine supports",

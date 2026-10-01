@@ -995,13 +995,20 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.depth -= 1;
         self.code.load_slot_to_reg(REG_T0, idx_slot);
         self.code.alu_ri("and", REG_T0, REG_T0, 0xFFFF_FFFF);
+        let in_bounds = self.code.new_label();
+        self.code.cmp_imm_branch("ltu", REG_T0, self.module.table_initial as i64, in_bounds, true);
+        self.emit_trap();
+        self.code.bind(in_bounds);
         // entry address = WASM_TABLE_ADDR + idx*16
         self.code.alu_ri("mul", REG_T0, REG_T0, WASM_TABLE_ENTRY_BYTES as i64);
         self.code.alu_ri("add", REG_T0, REG_T0, WASM_TABLE_ADDR as i64);
         // load target pc (offset 0) and canonical type id (offset 8)
         self.code.load_mem_to_reg("copyb", REG_T3, REG_T0, 0, 8); // target pc
         self.code.load_mem_to_reg("copyb", REG_T1, REG_T0, 8, 8); // canonical type id
-                                                                  // type check: trap if the table entry's type does not match the expected (structural) type
+        let non_null = self.code.new_label();
+        self.code.cmp_imm_branch("eq", REG_T3, 0, non_null, false);
+        self.emit_trap();
+        self.code.bind(non_null);
         let expected = self.module.canonical_type(type_index);
         let ok = self.code.new_label();
         self.code.cmp_imm_branch("eq", REG_T1, expected as i64, ok, true);
