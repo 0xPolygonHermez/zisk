@@ -327,7 +327,7 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
                             if memory_index != 0 {
                                 return Err("wasm: only memory 0 is supported".into());
                             }
-                            let offset = eval_const_expr(&offset_expr, &globals)? as u64;
+                            let offset = eval_const_expr(&offset_expr, &globals)? as u32 as u64;
                             data.push(DataSeg { offset, bytes: segment.data.to_vec() });
                         }
                         DataKind::Passive => {
