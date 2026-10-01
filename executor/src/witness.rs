@@ -17,7 +17,10 @@ pub use handlers::*;
 
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
@@ -105,6 +108,9 @@ pub struct WitnessPhase<F: PrimeField64> {
 
     /// Reusable ROM trace buffer (single allocation across runs).
     trace_buffer_rom: Mutex<Vec<F>>,
+
+    /// The ROM witness may be recomputed in the same proof; the FROPS column is published once.
+    frops_published: AtomicBool,
 }
 
 impl<F: PrimeField64> WitnessPhase<F> {
@@ -112,7 +118,13 @@ impl<F: PrimeField64> WitnessPhase<F> {
         let collector = ChunkDataCollector::new(sm_bundle.clone());
         let witness_generator = WitnessGenerator::new(chunk_size);
         let trace_buffer_rom = Mutex::new(vec![F::ZERO; RomTrace::<F>::NUM_ROWS]);
-        Self { sm_bundle, collector, witness_generator, trace_buffer_rom }
+        Self {
+            sm_bundle,
+            collector,
+            witness_generator,
+            trace_buffer_rom,
+            frops_published: AtomicBool::new(false),
+        }
     }
 
     /// Parks this execution's ASM ROM-histogram runner on the ROM state machine.
@@ -123,10 +135,9 @@ impl<F: PrimeField64> WitnessPhase<F> {
         self.sm_bundle.park_rh_handle(handle)
     }
 
-    /// Publishes the FROPS outputs this execution's ROM histogram carries.
-    /// See [`StaticSMBundle::publish_frops_from_asm`].
-    pub fn publish_frops_from_asm(&self) -> ExecutorResult<()> {
-        self.sm_bundle.publish_frops_from_asm()
+    /// See [`StaticSMBundle::arm_frops_cross_check`].
+    pub fn arm_frops_cross_check(&self) -> ExecutorResult<()> {
+        self.sm_bundle.arm_frops_cross_check()
     }
 
     /// Retires a ROM-histogram runner a previous execution left unconsumed.
@@ -155,6 +166,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
     pub fn reset(&self) -> ExecutorResult<()> {
         *self.trace_buffer_rom.lock_or_poison("trace_buffer_rom")? =
             vec![F::ZERO; RomTrace::<F>::NUM_ROWS];
+        self.frops_published.store(false, Ordering::Relaxed);
 
         Ok(())
     }
@@ -366,7 +378,13 @@ impl<F: PrimeField64> WitnessPhase<F> {
             collectors,
             trace_buffer,
             stats_scope_id,
-        )
+        )?;
+
+        // After the trace is handed over, so the ROM proof does not wait on the copy.
+        if !self.frops_published.swap(true, Ordering::Relaxed) {
+            self.sm_bundle.publish_frops_from_asm()?;
+        }
+        Ok(())
     }
 
     /// Pre-calculates witnesses by determining which instances need collection.

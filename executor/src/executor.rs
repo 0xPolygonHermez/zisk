@@ -323,8 +323,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let is_asm_emulator = self.execution.is_asm_execution();
 
         // Decide the FROPS multiplicity producer for this execution, from the backend it actually
-        // runs on. Every reader comes later: `publish_frops_from_asm` at the end of this execution,
-        // and the collectors built after it.
+        // runs on. Every reader comes later: the collectors built after this execution, and the ROM
+        // witness, which publishes the column (`publish_frops_from_asm`).
         if let Some(witness) = self.witness.as_ref() {
             let from_asm = is_asm_emulator && self.frops_from_asm_requested.load(Ordering::Relaxed);
             witness.set_frops_multiplicity_from_asm(from_asm);
@@ -499,13 +499,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         stats_end!(self.state.stats, &_config_scope);
 
-        // Everything FROPS needs out of this execution's ROM histogram, read here because
-        // this is the last point before its readers: the virtual tables that consume the
-        // multiplicity column, and the collectors that read the cross-check flag when they
-        // are built. Both run after `execute` returns. A no-op unless FROPS wants one of
-        // them, and it caches the histogram for the ROM witness either way.
+        // The debug cross-check, which the collectors read when they are built, right after
+        // `execute` returns. The multiplicity column itself is published by the ROM witness,
+        // which reads the histogram anyway, so the end of execution never waits for it.
         if let Some(witness) = self.witness.as_ref() {
-            witness.publish_frops_from_asm()?;
+            witness.arm_frops_cross_check()?;
         }
 
         // ────────────────────────────────────────────────────────────
