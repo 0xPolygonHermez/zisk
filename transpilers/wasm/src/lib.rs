@@ -27,9 +27,18 @@ use module::{parse_module, WasmModule};
 use zisk_core::mem::DataSection;
 use zisk_core::zisk_rom::DataSection64;
 use zisk_core::{
-    ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
+    ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, MAX_ZISK_OS_ROM_ADDR, ROM_ADDR,
+    ROM_ENTRY,
 };
 use zisk_riscv::add_end_and_lib;
+
+/// One past the last program ROM address generated functions may occupy.  With the `float`
+/// feature the top of the program ROM window holds the soft-float library (linked by
+/// `float::link_float_lib`), so the program must stop below it.
+#[cfg(feature = "float")]
+const PROGRAM_ROM_END: u64 = zisk_core::FLOAT_LIB_ROM_ADDR;
+#[cfg(not(feature = "float"))]
+const PROGRAM_ROM_END: u64 = zisk_core::ROM_ADDR_MAX + 1;
 use zisk_transpiler_common::elf2rom::normalize_rw_data_sections;
 
 /// Reserve below `WASM_STACK_TOP` for the synthetic entry "frame" that calls `_start`.
@@ -91,9 +100,10 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     for (i, code) in codes.iter().enumerate() {
         func_addr[i] = addr;
         addr += 4 * code.len() as u64;
-        if addr > ROM_ADDR_MAX {
+        if addr > PROGRAM_ROM_END {
             return Err(format!(
-                "wasm: program too large ({addr:#x} exceeds ROM_ADDR_MAX {ROM_ADDR_MAX:#x})"
+                "wasm: program too large ({addr:#x} exceeds the program ROM end \
+                 {PROGRAM_ROM_END:#x})"
             )
             .into());
         }
@@ -107,8 +117,16 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // -- emit the entry routine (init data + call _start + finalize) ---------
     let entry = build_entry_routine(&module, &func_addr, start_index);
     let entry_base = rom.next_init_inst_addr;
+    let entry_end = entry_base + 4 * entry.len() as u64;
+    if entry_end > MAX_ZISK_OS_ROM_ADDR + 1 {
+        return Err(format!(
+            "wasm: entry routine too large ({entry_end:#x} exceeds the BIOS ROM end {:#x})",
+            MAX_ZISK_OS_ROM_ADDR + 1
+        )
+        .into());
+    }
     resolve_and_insert(&mut rom, &entry, entry_base, &func_addr);
-    rom.next_init_inst_addr = entry_base + 4 * entry.len() as u64;
+    rom.next_init_inst_addr = entry_end;
 
     rom.optimize_instruction_lookup()?;
 
