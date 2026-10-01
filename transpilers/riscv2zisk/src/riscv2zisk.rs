@@ -1,7 +1,12 @@
-//! Converts a guest program into a Zisk program.
+//! Converts a RISC-V ELF guest program into a Zisk program.
 //!
-//! The input parameter is the contents (bytes) of an ELF RISC-V file or of a WebAssembly binary.
-//! Optionally, the Zisk ROM can also be saved in x86-64 NASM assembly format.
+//! The input parameter is the contents (bytes) of an ELF RISC-V file.  Optionally, the Zisk ROM
+//! can also be saved in x86-64 NASM assembly format (`runfile`, the `zisk-transpiler-riscv`
+//! binary).
+//!
+//! The in-memory path (`run` / [`program2rom`]) is shared with the WebAssembly machine: it
+//! dispatches on the file's magic bytes so the emulator can load either guest.  The file path is
+//! RISC-V only; WebAssembly guests have their own `wasm2zisk` binary.
 
 use zisk_core::is_elf_file;
 use zisk_core::is_wasm_file;
