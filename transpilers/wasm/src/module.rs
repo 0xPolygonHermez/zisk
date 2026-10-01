@@ -10,6 +10,8 @@
 //! fails loudly rather than miscompiling.
 
 use std::error::Error;
+
+use super::layout::WASM_MAX_PAGES;
 use wasmparser::{
     DataKind, ElementItems, ElementKind, ExternalKind, Operator, Parser, Payload, TypeRef, ValType,
     Validator, WasmFeatures,
@@ -197,6 +199,7 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
     let mut data: Vec<DataSeg> = Vec::new();
     let mut elems: Vec<ElemSeg> = Vec::new();
     let mut mem_initial_pages: u64 = 0;
+    let mut mem_max_pages: u64 = WASM_MAX_PAGES;
     let mut has_memory = false;
     let mut table_initial: u64 = 0;
     let mut has_table = false;
@@ -270,6 +273,9 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
                     }
                     has_memory = true;
                     mem_initial_pages = mem.initial;
+                    if let Some(max) = mem.maximum {
+                        mem_max_pages = mem_max_pages.min(max);
+                    }
                 }
             }
             Payload::TableSection(reader) => {
@@ -385,6 +391,7 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
         data,
         elems,
         mem_initial_pages,
+        mem_max_pages,
         has_memory,
         table_initial,
         max_num_locals,
