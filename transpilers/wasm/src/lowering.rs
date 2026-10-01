@@ -25,6 +25,15 @@ pub fn func_frame_size(num_locals: u32) -> i64 {
     frame_size(num_locals, OPERAND_CAP)
 }
 
+fn callee_frame_size(module: &WasmModule, func_index: u32) -> Result<i64, Box<dyn Error>> {
+    let num_locals = module.num_locals(func_index)?;
+    Ok(if func_index < module.func_import_count {
+        frame_size(num_locals, 0)
+    } else {
+        func_frame_size(num_locals)
+    })
+}
+
 /// Byte count of a bounds-checked linear-memory access.
 #[derive(Clone, Copy)]
 enum Len {
@@ -59,24 +68,7 @@ pub fn lower_function(module: &WasmModule, func_index: u32) -> Result<Code, Box<
     let func = &module.defined[defined_index];
     let sig = &module.sigs[func.type_index as usize];
 
-    // Build the full local list: parameters followed by declared locals.
-    let mut local_kinds: Vec<wasmparser::ValType> = Vec::new();
-    {
-        // Re-read params from the original wasm type via the signature kinds.
-        for _ in &sig.params {
-            local_kinds.push(wasmparser::ValType::I64); // kind not needed beyond count
-        }
-        let mut locals_reader = func.body.get_locals_reader()?;
-        let count = locals_reader.get_count();
-        for _ in 0..count {
-            let (n, ty) = locals_reader.read()?;
-            super::module::ValKind::from_valtype(ty)?; // reject unsupported local types
-            for _ in 0..n {
-                local_kinds.push(ty);
-            }
-        }
-    }
-    let num_locals = local_kinds.len() as u32;
+    let num_locals = func.num_locals;
 
     let mut code = Code::new();
     let func_end = code.new_label();
@@ -695,6 +687,9 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.alu_ri("add", reg, reg, (WASM_MEM_BASE + static_offset) as i64);
     }
 
+    /// Traps unless the `len` bytes starting at the absolute address in `addr_reg` lie inside the
+    /// current linear memory (`addr + len <= REG_MEM_END`); `scratch` receives the end address.
+    /// `len` is a register for the bulk operations and an immediate for plain accesses.
     fn check_bounds(&mut self, addr_reg: u64, len: Len, scratch: u64) {
         match len {
             Len::Imm(n) => self.code.alu_ri("add", scratch, addr_reg, n as i64),
@@ -947,6 +942,14 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         Ok(())
     }
 
+    fn check_stack(&mut self, new_fp_reg: u64, callee_frame: i64, scratch: u64) {
+        self.code.alu_ri("add", scratch, new_fp_reg, -callee_frame);
+        let ok = self.code.new_label();
+        self.code.cmp_imm_branch("ltu", scratch, WASM_STACK_LIMIT as i64, ok, false);
+        self.emit_trap();
+        self.code.bind(ok);
+    }
+
     fn call(&mut self, callee: u32) -> Result<(), Box<dyn Error>> {
         let sig = self.module.func_sig(callee)?.clone();
         let n_args = sig.params.len() as u32;
@@ -955,6 +958,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
         // newFP = FP - frame_size(caller)
         self.code.alu_ri("add", REG_T2, REG_FP, -frame_sz);
+        let callee_frame = callee_frame_size(self.module, callee)?;
+        self.check_stack(REG_T2, callee_frame, REG_T3);
         // Copy arguments into callee locals.
         for i in 0..n_args {
             let src = self.slot(self.depth - n_args + i);
@@ -1042,6 +1047,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
         // newFP = FP - frame_size
         self.code.alu_ri("add", REG_T2, REG_FP, -frame_sz);
+        let worst_frame = func_frame_size(self.module.max_num_locals());
+        self.check_stack(REG_T2, worst_frame, REG_T1);
         for i in 0..n_args {
             let src = self.slot(self.depth - n_args + i);
             self.code.load_slot_to_reg(REG_T1, src);

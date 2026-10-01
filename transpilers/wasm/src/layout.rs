@@ -28,6 +28,9 @@ pub const REG_T3: u64 = 8;
 /// Function return value register.
 pub const REG_RET: u64 = 10;
 /// One past the last valid absolute linear-memory address (`WASM_MEM_BASE + pages * 64 KiB`).
+/// Live for the whole run: set by the entry routine and only ever changed by `memory.grow`; every
+/// linear-memory access is bounds-checked against it.  WASI stubs and the float handler must
+/// preserve it (the handler saves/restores every register).
 pub const REG_MEM_END: u64 = 9;
 
 // ---------------------------------------------------------------------------
@@ -98,6 +101,9 @@ pub const WASM_MAX_PAGES: u64 = (WASM_MEM_LIMIT - WASM_MEM_BASE) / WASM_PAGE_SIZ
 /// Top of the call/operand stack; frames grow downward from here.  Kept below the float library
 /// RAM region so the two never collide (wasm never touches the float lib, but we stay clear).
 pub const WASM_STACK_TOP: u64 = FLOAT_LIB_RAM_ADDR - 0x10000; // 0xbffe0000
+/// Lowest address a frame may occupy: the stack ends where linear memory can grow to.  Calls trap
+/// (stack exhaustion) instead of placing a frame below it.
+pub const WASM_STACK_LIMIT: u64 = WASM_MEM_LIMIT;
 
 /// Absolute address of global `i`.
 #[inline]

@@ -72,6 +72,7 @@ pub struct ElemSeg {
 pub struct DefinedFunc<'a> {
     pub type_index: u32,
     pub body: wasmparser::FunctionBody<'a>,
+    pub num_locals: u32,
 }
 
 /// The collected, validated module.
@@ -88,6 +89,7 @@ pub struct WasmModule<'a> {
     pub mem_initial_pages: u64,
     pub has_memory: bool,
     pub table_initial: u64,
+    max_num_locals: u32,
     pub start_func: Option<u32>,
     pub exports: Vec<(String, ExternalKind, u32)>,
 }
@@ -96,6 +98,18 @@ impl<'a> WasmModule<'a> {
     /// Total number of functions (imported + defined).
     pub fn func_count(&self) -> u32 {
         self.func_import_count + self.defined.len() as u32
+    }
+
+    pub fn num_locals(&self, func_index: u32) -> Result<u32, Box<dyn Error>> {
+        if func_index < self.func_import_count {
+            Ok(self.func_sig(func_index)?.params.len() as u32)
+        } else {
+            Ok(self.defined[(func_index - self.func_import_count) as usize].num_locals)
+        }
+    }
+
+    pub fn max_num_locals(&self) -> u32 {
+        self.max_num_locals
     }
 
     /// Returns the signature of function `func_index` (across the whole index space).
@@ -325,11 +339,26 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
         .into());
     }
 
-    let defined = defined_types
-        .into_iter()
-        .zip(bodies)
-        .map(|(type_index, body)| DefinedFunc { type_index, body })
-        .collect();
+    let mut defined = Vec::with_capacity(bodies.len());
+    for (type_index, body) in defined_types.into_iter().zip(bodies) {
+        let sig = sigs
+            .get(type_index as usize)
+            .ok_or_else(|| format!("wasm: function has invalid type index {type_index}"))?;
+        let mut num_locals = sig.params.len() as u32;
+        for local in body.get_locals_reader()? {
+            let (count, ty) = local?;
+            ValKind::from_valtype(ty)?; // reject unsupported local types
+            num_locals =
+                num_locals.checked_add(count).ok_or("wasm: function declares too many locals")?;
+        }
+        defined.push(DefinedFunc { type_index, body, num_locals });
+    }
+    let import_params = imports.iter().filter_map(|(_, _, ty)| sigs.get(*ty as usize));
+    let max_num_locals = import_params
+        .map(|sig| sig.params.len() as u32)
+        .chain(defined.iter().map(|f| f.num_locals))
+        .max()
+        .unwrap_or(0);
 
     Ok(WasmModule {
         sigs,
@@ -342,6 +371,7 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
         mem_initial_pages,
         has_memory,
         table_initial,
+        max_num_locals,
         start_func,
         exports,
     })
