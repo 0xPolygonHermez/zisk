@@ -606,6 +606,8 @@ fn fd_read_and_fd_write_reject_unknown_descriptors() {
                 (func $fd_write (param i32 i32 i32 i32) (result i32)))
               (import "wasi_snapshot_preview1" "fd_read"
                 (func $fd_read (param i32 i32 i32 i32) (result i32)))
+              (import "wasi_snapshot_preview1" "fd_fdstat_get"
+                (func $fd_fdstat_get (param i32 i32) (result i32)))
               (memory 1)
               (func (export "_start")
                 (i32.store (i32.const 64) (i32.const 128))
@@ -642,9 +644,12 @@ fn fd_read_and_fd_write_reject_unknown_descriptors() {
         "(call $fd_write (i32.const 0) (i32.const 64) (i32.const 1) (i32.const 72))",
         "(call $fd_write (i32.const 3) (i32.const 64) (i32.const 1) (i32.const 72))",
         "(call $fd_write (i32.const -1) (i32.const 64) (i32.const 1) (i32.const 72))",
+        "(call $fd_fdstat_get (i32.const 99) (i32.const 128))",
     ] {
         assert_eq!(outcome(call), (8, 0), "{call}");
     }
+    // The three standard descriptors do have an fdstat (filetype 2 = character device).
+    assert_eq!(outcome("(call $fd_fdstat_get (i32.const 2) (i32.const 128))"), (0, 2));
 }
 
 #[test]
