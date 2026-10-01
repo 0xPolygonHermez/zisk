@@ -285,6 +285,9 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], start_index: u32)
         }
     }
 
+    // Linear-memory bound for the access checks (kept in a register, see `REG_MEM_END`).
+    code.load_imm_to_reg(REG_MEM_END, WASM_MEM_BASE + module.mem_initial_pages * WASM_PAGE_SIZE);
+
     // Set up the first frame and call _start.
     code.load_imm_to_reg(REG_FP, WASM_STACK_TOP);
     code.load_imm_to_reg(REG_T2, (WASM_STACK_TOP as i64 - ENTRY_FRAME_RESERVE) as u64); // newFP

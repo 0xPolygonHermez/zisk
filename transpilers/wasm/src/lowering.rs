@@ -25,6 +25,13 @@ pub fn func_frame_size(num_locals: u32) -> i64 {
     frame_size(num_locals, OPERAND_CAP)
 }
 
+/// Byte count of a bounds-checked linear-memory access.
+#[derive(Clone, Copy)]
+enum Len {
+    Imm(u64),
+    Reg(u64),
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum CtrlKind {
     Block,
@@ -681,16 +688,28 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     }
 
     /// Computes the absolute linear-memory address of a wasm i32 address operand + static offset
-    /// into `reg`.
+    /// into `reg`.  The sum cannot wrap: `u32 + u32 + WASM_MEM_BASE` fits in 34 bits.
     fn compute_addr(&mut self, reg: u64, addr_slot: i64, static_offset: u64) {
         self.code.load_slot_to_reg(reg, addr_slot);
         self.code.alu_ri("and", reg, reg, 0xFFFF_FFFF); // zero-extend to u32
         self.code.alu_ri("add", reg, reg, (WASM_MEM_BASE + static_offset) as i64);
     }
 
+    fn check_bounds(&mut self, addr_reg: u64, len: Len, scratch: u64) {
+        match len {
+            Len::Imm(n) => self.code.alu_ri("add", scratch, addr_reg, n as i64),
+            Len::Reg(r) => self.code.alu_rr("add", scratch, addr_reg, r),
+        }
+        let ok = self.code.new_label();
+        self.code.cmp_reg_branch("leu", scratch, REG_MEM_END, ok, true);
+        self.emit_trap();
+        self.code.bind(ok);
+    }
+
     pub(crate) fn load(&mut self, op: &str, width: u64, static_offset: u64) {
         let a = self.slot(self.depth - 1);
         self.compute_addr(REG_T0, a, static_offset);
+        self.check_bounds(REG_T0, Len::Imm(width), REG_T1);
         self.code.load_mem_to_reg(op, REG_T1, REG_T0, 0, width);
         self.code.store_reg_to_slot(a, REG_T1);
     }
@@ -700,6 +719,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         let val_slot = self.slot(self.depth - 1);
         self.code.load_slot_to_reg(REG_T1, val_slot);
         self.compute_addr(REG_T0, addr_slot, static_offset);
+        self.check_bounds(REG_T0, Len::Imm(width), REG_T2);
         self.code.store_reg_to_mem(REG_T0, 0, REG_T1, width);
         self.depth -= 2;
     }
@@ -716,9 +736,11 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.load_imm_to_reg(REG_T3, (-1i64) as u64);
         self.code.store_reg_to_slot(a, REG_T3);
         self.code.jump(done);
-        // success: update page count, push old size
+        // success: update page count and the bounds register, push old size
         self.code.bind(success);
         self.code.store_reg_to_abs(WASM_MEM_PAGES_ADDR, REG_T2, 8);
+        self.code.alu_ri("sll", REG_T3, REG_T2, WASM_PAGE_SIZE.trailing_zeros() as i64);
+        self.code.alu_ri("add", REG_MEM_END, REG_T3, WASM_MEM_BASE as i64);
         self.code.store_reg_to_slot(a, REG_T1);
         self.code.bind(done);
     }
@@ -732,6 +754,7 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.alu_ri("and", REG_T2, REG_T2, 0xFFFF_FFFF);
         self.code.load_slot_to_reg(REG_T1, val);
         self.compute_addr(REG_T0, dst, 0);
+        self.check_bounds(REG_T0, Len::Reg(REG_T2), REG_T3);
         // Replicate the byte into all eight lanes for the word loop.
         self.code.alu_ri("and", REG_T1, REG_T1, 0xFF);
         self.code.alu_ri("mul", REG_T1, REG_T1, 0x0101_0101_0101_0101);
@@ -766,6 +789,8 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.alu_ri("and", REG_T2, REG_T2, 0xFFFF_FFFF);
         self.compute_addr(REG_T1, src, 0);
         self.compute_addr(REG_T0, dst, 0);
+        self.check_bounds(REG_T1, Len::Reg(REG_T2), REG_T3);
+        self.check_bounds(REG_T0, Len::Reg(REG_T2), REG_T3);
         let forward = self.code.new_label();
         let backward = self.code.new_label();
         let end = self.code.new_label();

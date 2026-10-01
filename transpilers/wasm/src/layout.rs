@@ -27,6 +27,8 @@ pub const REG_T2: u64 = 7;
 pub const REG_T3: u64 = 8;
 /// Function return value register.
 pub const REG_RET: u64 = 10;
+/// One past the last valid absolute linear-memory address (`WASM_MEM_BASE + pages * 64 KiB`).
+pub const REG_MEM_END: u64 = 9;
 
 // ---------------------------------------------------------------------------
 // Stack frame layout (grows downward from REG_FP)
