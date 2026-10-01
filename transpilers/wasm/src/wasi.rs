@@ -18,7 +18,7 @@ use std::error::Error;
 use super::emit::{Code, LabelId};
 use super::layout::*;
 use super::module::{FuncSig, ValKind, WasmModule};
-use zisk_core::{ZiskInstBuilder, INPUT_ADDR, OUTPUT_ADDR, ROM_EXIT, UART_ADDR};
+use zisk_core::{ZiskInstBuilder, INPUT_ADDR, OUTPUT_ADDR, OUTPUT_MAX_SIZE, ROM_EXIT, UART_ADDR};
 
 /// WASI errno values we use.
 const ERRNO_SUCCESS: u64 = 0;
@@ -212,13 +212,14 @@ fn check_iovecs(code: &mut Code, iovs: u64, count: u64, j: u64, fault: LabelId) 
 }
 
 /// `fd_write(fd, iovs, iovs_len, nwritten) -> errno`.  Writes every iovec byte to the UART console
-/// and, for the standard streams, into the public output region; stores the byte count to
-/// `*nwritten` and returns success.
+/// and mirrors it into the public output region; stores the byte count to `*nwritten` and returns
+/// success.  Every range is validated before the first byte moves.
 fn body_fd_write(code: &mut Code, fault: LabelId, done: LabelId) {
     // locals: 0=fd, 1=iovs, 2=iovs_len, 3=nwritten
     const R_OUT: u64 = 22; // running absolute pointer into the public output region
     const R_NWRITTEN: u64 = 23; // absolute address of *nwritten
     const R_UART: u64 = 24; // UART base address
+    const R_LIMIT: u64 = 26; // end of the public output region (bytes past it are console-only)
     require_fd(code, &[1, 2], done); // stdout, stderr
     code.load_slot_to_reg(R_A, local_offset(1)); // iovs ptr
     code.load_slot_to_reg(R_D, local_offset(2)); // iovs_len
@@ -234,6 +235,7 @@ fn body_fd_write(code: &mut Code, fault: LabelId, done: LabelId) {
                                   // output pointer = OUTPUT_ADDR + current stdout length
     code.load_abs_to_reg(R_OUT, WASM_STDOUT_LEN_ADDR);
     code.alu_ri("add", R_OUT, R_OUT, OUTPUT_ADDR as i64);
+    code.load_imm_to_reg(R_LIMIT, OUTPUT_ADDR + OUTPUT_MAX_SIZE);
     // UART base address (a width-1 store here streams a byte to the console).
     code.load_imm_to_reg(R_UART, UART_ADDR);
 
@@ -256,8 +258,11 @@ fn body_fd_write(code: &mut Code, fault: LabelId, done: LabelId) {
     code.cmp_imm_branch("eq", R_G, 0, inner_end, true); // len == 0 -> done
     code.load_mem_to_reg("copyb", R_H, R_F, 0, 1); // byte
     code.store_reg_to_mem(R_UART, 0, R_H, 1); // stream to the console (width-1 store to UART)
+    let no_mirror = code.new_label();
+    code.cmp_reg_branch("ltu", R_OUT, R_LIMIT, no_mirror, false); // output region full
     code.store_reg_to_mem(R_OUT, 0, R_H, 1); // mirror into public output
     code.alu_ri("add", R_OUT, R_OUT, 1);
+    code.bind(no_mirror);
     code.alu_ri("add", R_F, R_F, 1);
     code.alu_ri("sub", R_G, R_G, 1);
     code.jump(inner);
