@@ -426,7 +426,8 @@ pub fn build_wasi_stub(module: &WasmModule, import_index: usize) -> Result<Code,
         }),
         // The runtime queries stdout/stderr/stdin via fd_fdstat_get to set up buffering; report a
         // character device so writes are accepted (and line-buffered). locals: 0=fd, 1=retptr.
-        "fd_fdstat_get" => wrap_stub(|code, fault, _done| {
+        "fd_fdstat_get" => wrap_stub(|code, fault, done| {
+            require_fd(code, &[0, 1, 2], done);
             // fdstat struct (24 bytes): fs_filetype(u8)=2 (character device), then zeros.
             code.load_slot_to_reg(R_A, local_offset(1));
             checked_linear(code, R_A, Len::Imm(24), fault);
