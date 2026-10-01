@@ -416,3 +416,41 @@ fn linear_memory_accesses_are_bounds_checked() {
     );
     assert!(outcome("(drop (memory.grow (i32.const 1))) (drop (i64.load (i32.const 131072)))").0);
 }
+
+#[test]
+fn deep_recursion_traps_instead_of_overflowing_the_stack() {
+    // `$sum n` recurses n deep; `$forever` never returns, directly or through the table.
+    let module = |body: &str| {
+        let wat = format!(
+            r#"(module
+              (import "wasi_snapshot_preview1" "fd_write"
+                (func $fd_write (param i32 i32 i32 i32) (result i32)))
+              (type $sig (func))
+              (table 1 funcref)
+              (elem (i32.const 0) $forever_indirect)
+              (memory 1)
+              (func $sum (param $n i64) (result i64)
+                (if (result i64) (i64.eqz (local.get $n))
+                  (then (i64.const 0))
+                  (else (i64.add (local.get $n)
+                                 (call $sum (i64.sub (local.get $n) (i64.const 1)))))))
+              (func $forever (param $n i64) (result i64) (call $forever (local.get $n)))
+              (func $forever_indirect (call_indirect (type $sig) (i32.const 0)))
+              (func (export "_start")
+                {body}
+                (i32.store (i32.const 0) (i32.const 8))
+                (i32.store (i32.const 4) (i32.const 8))
+                (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        );
+        let rom = wasm2rom(&wat::parse_str(wat).unwrap()).expect("wasm2rom");
+        let mut emu = ziskemu::Emu::new(&rom);
+        emu.run(Vec::new(), &EmuOptions::default(), None::<fn(EmuTrace)>);
+        assert!(emu.terminated(), "emulation did not terminate for {body}");
+        (emu.ctx.inst_ctx.error, u64::from_le_bytes(emu.get_output_8()[0..8].try_into().unwrap()))
+    };
+    // 1000 frames fit comfortably.
+    assert_eq!(module("(i64.store (i32.const 8) (call $sum (i64.const 1000)))"), (false, 500500));
+    // Unbounded recursion halts with the error flag rather than running into linear memory.
+    assert!(module("(drop (call $forever (i64.const 0)))").0);
+    assert!(module("(call $forever_indirect)").0);
+}
