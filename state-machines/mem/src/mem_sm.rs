@@ -682,10 +682,9 @@ impl<F: PrimeField64> MemSM<F> {
         );
         phase_end!(d_air, t_air);
         phase_log!(
-            "Mem[{}] witness: zero trace {:.0}ms range checks {:.0}ms air instance {:.0}ms",
+            "Mem[{}] witness: zero trace {:.0}ms air instance {:.0}ms",
             usize::from(segment_id),
             phase_ms!(d_zero),
-            phase_ms!(d_rc),
             phase_ms!(d_air)
         );
 
