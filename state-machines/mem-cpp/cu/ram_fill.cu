@@ -76,11 +76,19 @@ __device__ __forceinline__ uint64_t rf_chunk(uint64_t meta, uint32_t chunk_bits)
 // Sort keys: the address above the mem step, so equal keys are the same word at the same step; the
 // stable sort then keeps their arrival order, which inside a chunk is the record order (the read
 // of a partial write precedes its write).
+// The arrival index travels through the sort with the access kind in its top two bits, so the
+// passes that only need the kind do not read records at random.
+constexpr uint32_t RF_IDX_KIND_SHIFT = 30;
+constexpr uint32_t RF_IDX_MASK       = (1u << RF_IDX_KIND_SHIFT) - 1;
+__device__ __forceinline__ uint32_t rf_sidx_kind(uint32_t s) { return s >> RF_IDX_KIND_SHIFT; }
+__device__ __forceinline__ uint32_t rf_sidx_index(uint32_t s) { return s & RF_IDX_MASK; }
+
 __global__ void rf_keys_kernel(RamRecords rec, size_t n, uint64_t* __restrict__ keys, uint32_t* __restrict__ idx) {
     const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
-    keys[i] = ((uint64_t)rec.addr(i) << RF_STEP_BITS) | (rf_step(rec.meta(i)) & RF_STEP_MASK);
-    idx[i] = (uint32_t)i;
+    const uint64_t m = rec.meta(i);
+    keys[i] = ((uint64_t)rec.addr(i) << RF_STEP_BITS) | (rf_step(m) & RF_STEP_MASK);
+    idx[i] = (uint32_t)i | (rf_kind(m) << RF_IDX_KIND_SHIFT);
 }
 
 // sidx and the lane anchors from the sorted keys.
@@ -89,12 +97,11 @@ __device__ __forceinline__ uint64_t rf_key_chunk(uint64_t key, uint32_t chunk_bi
 }
 
 __global__ void rf_anchors_kernel(const uint64_t* __restrict__ keys, const uint32_t* __restrict__ sidx,
-                                  RamRecords rec, size_t n, uint32_t chunk_bits,
-                                  uint32_t* __restrict__ anchor) {
+                                  size_t n, uint32_t chunk_bits, uint32_t* __restrict__ anchor) {
     const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (j >= n) return;
     bool pairable = false;
-    if (j > 0 && rf_kind(rec.meta(sidx[j])) == 0) {
+    if (j > 0 && rf_sidx_kind(sidx[j]) == 0) {
         const uint64_t k = keys[j], kp = keys[j - 1];
         pairable = (k >> RF_STEP_BITS) == (kp >> RF_STEP_BITS) &&
                    rf_key_chunk(k, chunk_bits) == rf_key_chunk(kp, chunk_bits);
@@ -115,13 +122,14 @@ __global__ void rf_merge_in_kernel(const uint32_t* __restrict__ sidx, const uint
                                    uint32_t* __restrict__ keys, unsigned long long* __restrict__ unresolved) {
     const size_t k = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (k >= n) return;
-    const uint32_t i = sidx[j0 + k];
-    const uint64_t m = rec.meta(i);
-    const uint32_t kind = rf_kind(m);
+    const uint32_t s = sidx[j0 + k];
+    const uint32_t i = rf_sidx_index(s);
+    const uint32_t kind = rf_sidx_kind(s);
     Merge e;
     if (kind == 0) {
         e.mask = 0; e.val = 0;
     } else if (kind == 2) {
+        const uint64_t m = rec.meta(i);
         const uint32_t off = (uint32_t)((m >> RAM_META_OFF_SHIFT) & 7u);
         const uint32_t width = (uint32_t)((m >> RAM_META_WIDTH_SHIFT) & 15u);
         const uint64_t bytes = width >= 8 ? ~0ull : ((1ull << (8 * width)) - 1);
@@ -154,14 +162,14 @@ __global__ void rf_merge_out_kernel(const Merge* __restrict__ out, const uint32_
 __device__ __forceinline__ MemPackLane rf_lane(size_t g, const uint32_t* __restrict__ lane_first,
                                                const uint32_t* __restrict__ sidx, const uint32_t* __restrict__ emit,
                                                size_t n_sorted, const uint64_t* __restrict__ skeys,
-                                               RamRecords rec, const uint64_t* __restrict__ resolved) {
+                                               const uint64_t* __restrict__ resolved) {
     const uint32_t j = lane_first[g];
     const uint64_t k = skeys[j];
     MemPackLane l;
     l.addr = (uint32_t)(k >> RF_STEP_BITS) + RAM_W_ADDR_BASE;
     l.step = k & RF_STEP_MASK;
     l.value = resolved[j];
-    l.wr = rf_kind(rec.meta(sidx[j])) != 0;
+    l.wr = rf_sidx_kind(sidx[j]) != 0;
     l.dual = ((size_t)j + 1 < n_sorted) && emit[j + 1] == 0;
     l.step_dual = l.dual ? (skeys[j + 1] & RF_STEP_MASK) : 0;
     return l;
@@ -171,8 +179,7 @@ __global__ void rf_rows_kernel(MemPackLayout layout, size_t lane_from, uint32_t 
                                bool first_instance, const uint32_t* __restrict__ lane_first,
                                const uint32_t* __restrict__ sidx, const uint32_t* __restrict__ emit,
                                size_t n_sorted, const uint64_t* __restrict__ skeys,
-                               RamRecords rec, const uint64_t* __restrict__ resolved,
-                               uint64_t* __restrict__ out_rows) {
+                               const uint64_t* __restrict__ resolved, uint64_t* __restrict__ out_rows) {
     const uint32_t r = blockIdx.x * blockDim.x + threadIdx.x;
     if (r >= n_rows) return;
     const uint32_t L = layout.lanes_x_row;
@@ -180,14 +187,14 @@ __global__ void rf_rows_kernel(MemPackLayout layout, size_t lane_from, uint32_t 
 #pragma unroll
     for (uint32_t k = 0; k < MEMPACK_MAX_WORDS_PER_ROW; ++k) w[k] = 0;
 
-    const MemPackLane last = rf_lane(lane_from + n_lanes_inst - 1, lane_first, sidx, emit, n_sorted, skeys, rec, resolved);
+    const MemPackLane last = rf_lane(lane_from + n_lanes_inst - 1, lane_first, sidx, emit, n_sorted, skeys, resolved);
     const uint64_t pad_step = last.dual ? last.step_dual : last.step;
 
     for (uint32_t lane = 0; lane < L; ++lane) {
         const uint32_t v = r * L + lane;
         if (v < n_lanes_inst) {
             const size_t g = lane_from + v;
-            const MemPackLane me = rf_lane(g, lane_first, sidx, emit, n_sorted, skeys, rec, resolved);
+            const MemPackLane me = rf_lane(g, lane_first, sidx, emit, n_sorted, skeys, resolved);
             bool addr_changes;
             uint64_t inc;
             if (g == 0) {
@@ -195,7 +202,7 @@ __global__ void rf_rows_kernel(MemPackLayout layout, size_t lane_from, uint32_t 
                 addr_changes = true;
                 inc = mempack_increment(true, me, RAM_W_ADDR_BASE - 1, 0);
             } else {
-                const MemPackLane pv = rf_lane(g - 1, lane_first, sidx, emit, n_sorted, skeys, rec, resolved);
+                const MemPackLane pv = rf_lane(g - 1, lane_first, sidx, emit, n_sorted, skeys, resolved);
                 addr_changes = pv.addr != me.addr;
                 inc = mempack_increment(addr_changes, me, pv.addr, pv.dual ? pv.step_dual : pv.step);
             }
@@ -230,6 +237,12 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     out->n_accesses = n;
     if (!ram_retention_enabled_.load(std::memory_order_relaxed) || n == 0 || mem_n_cols_ == 0) {
         out->status = -1;
+        return false;
+    }
+    if (n > (size_t)RF_IDX_MASK + 1) {
+        fprintf(stderr, "ram_fill: %zu accesses exceed the %u the arrival index can address; RAM witness off\n",
+                n, RF_IDX_MASK + 1);
+        out->status = -3;
         return false;
     }
     if (ram_prepared_) {
@@ -300,7 +313,7 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     uint32_t* anchor = (uint32_t*)dkeys.Alternate();
     uint32_t* last_anchor = anchor + n;
     uint32_t* emit = didx.Alternate();
-    rf_anchors_kernel<<<rf_grid(n), RF_BLOCK>>>(keys_out, sidx, ram_records_, n, chunk_size_bits_, anchor);
+    rf_anchors_kernel<<<rf_grid(n), RF_BLOCK>>>(keys_out, sidx, n, chunk_size_bits_, anchor);
     RF_TRY(cudaGetLastError());
     tb = t_bytes;
     RF_TRY(cub::DeviceScan::InclusiveScan(temp, tb, anchor, last_anchor, MaxU32Op(), n));
@@ -402,7 +415,7 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     RF_TRY(cudaEventRecord(ev[0]));
     rf_rows_kernel<<<(n_rows + RF_BLOCK - 1) / RF_BLOCK, RF_BLOCK>>>(
         layout, lane_from, n_lanes_inst, n_rows, inst == 0, d_lane_first_, d_lane_sidx_, d_lane_emit_,
-        ram_n_sorted_, d_lane_keys_, ram_records_, d_lane_value_, d_rows_scratch_);
+        ram_n_sorted_, d_lane_keys_, d_lane_value_, d_rows_scratch_);
     RF_TRY(cudaGetLastError());
     RF_TRY(cudaEventRecord(ev[1]));
     RF_TRY(cudaMemcpy(out_rows, d_rows_scratch_, (size_t)n_rows * mem_words_per_row_ * 8, cudaMemcpyDeviceToHost));
