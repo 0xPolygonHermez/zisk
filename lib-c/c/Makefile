@@ -166,6 +166,14 @@ endif
 $(BUILD_DIR)/clib: $(SRC_DIR)/main.cpp $(ALL_OBJS)
 	gcc $(CFLAGS) $(INCLUDES) $< -lc $(ALL_OBJS) -o $@ -lgmp -lstdc++ -lgmpxx -Wl,-z,noexecstack
 
+# Differential test of the precompile entry points, not built by default; test/difftest.sh
+# builds it against a reference commit and the working tree, and runs it
+.PHONY: difftest
+difftest: $(BUILD_DIR)/difftest
+
+$(BUILD_DIR)/difftest: test/difftest.cpp $(LIB_FILE)
+	g++ -O2 -std=c++17 $(INCLUDES) $< $(LIB_FILE) -o $@ -lgmpxx -lgmp -lpthread
+
 # x86_64 NASM rules (used only when FIELD_BACKEND=asm_x86_64)
 $(BUILD_DIR)/%_asm.o: $(SRC_DIR)/ffiasm/%.asm | $(BUILD_DIR)
 	nasm -felf64 $< -o $@

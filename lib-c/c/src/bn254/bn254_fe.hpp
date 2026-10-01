@@ -45,8 +45,8 @@ int inline BN254CurveDblFe (const RawFq::Element &x1, const RawFq::Element &y1, 
 
     // s = 3*x1*x1/2*y1
     bn254.mul(aux1, x1, x1);
-    bn254.fromUI(aux2, 3);
-    bn254.mul(aux1, aux1, aux2);
+    bn254.add(aux2, aux1, aux1);
+    bn254.add(aux1, aux2, aux1);
     bn254.add(aux2, y1, y1);
     if (bn254.isZero(aux2))
     {
