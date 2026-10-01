@@ -864,15 +864,6 @@ impl MemPadding {
         }
     }
 
-    /// The increments of a padding lane: only the first one may carry a distance.
-    fn increments(&self, first: bool) -> (u32, u16) {
-        if first {
-            self.first_increments
-        } else {
-            (0, 0)
-        }
-    }
-
     /// Turns the padding lane at `lane` into the first one: the address change, when there is
     /// one, and its increments.
     fn set_first_lane<F: PrimeField64, R: MemTraceRowOps<F>>(&self, row: &mut R, lane: usize) {
