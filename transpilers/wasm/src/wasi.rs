@@ -18,7 +18,7 @@ use std::error::Error;
 use super::emit::{Code, LabelId};
 use super::layout::*;
 use super::module::{FuncSig, ValKind, WasmModule};
-use zisk_core::{ZiskInstBuilder, INPUT_ADDR, OUTPUT_ADDR, OUTPUT_MAX_SIZE, ROM_EXIT, UART_ADDR};
+use zisk_core::{ZiskInstBuilder, INPUT_ADDR, OUTPUT_ADDR, ROM_EXIT, UART_ADDR};
 
 /// WASI errno values we use.
 const ERRNO_SUCCESS: u64 = 0;
@@ -43,7 +43,7 @@ const R_END: u64 = 25;
 /// Emits the public-output publication loop followed by a jump to `ROM_EXIT`.  Terminates the
 /// program.  Mirrors the finalization sequence of the RISC-V entry/exit code.
 pub fn emit_pubout_exit(code: &mut Code) {
-    code.load_imm_to_reg(11, 32); // output length, in 8-byte words
+    code.load_imm_to_reg(11, WASM_PUBLIC_OUTPUT_BYTES / 8); // output length, in 8-byte words
     code.load_imm_to_reg(12, 0); // index
     code.load_imm_to_reg(13, OUTPUT_ADDR); // data pointer
     let head = code.new_label();
@@ -219,7 +219,7 @@ fn body_fd_write(code: &mut Code, fault: LabelId, done: LabelId) {
     const R_OUT: u64 = 22; // running absolute pointer into the public output region
     const R_NWRITTEN: u64 = 23; // absolute address of *nwritten
     const R_UART: u64 = 24; // UART base address
-    const R_LIMIT: u64 = 26; // end of the public output region (bytes past it are console-only)
+    const R_LIMIT: u64 = 26; // end of the published output (bytes past it are console-only)
     require_fd(code, &[1, 2], done); // stdout, stderr
     code.load_slot_to_reg(R_A, local_offset(1)); // iovs ptr
     code.load_slot_to_reg(R_D, local_offset(2)); // iovs_len
@@ -235,7 +235,7 @@ fn body_fd_write(code: &mut Code, fault: LabelId, done: LabelId) {
                                   // output pointer = OUTPUT_ADDR + current stdout length
     code.load_abs_to_reg(R_OUT, WASM_STDOUT_LEN_ADDR);
     code.alu_ri("add", R_OUT, R_OUT, OUTPUT_ADDR as i64);
-    code.load_imm_to_reg(R_LIMIT, OUTPUT_ADDR + OUTPUT_MAX_SIZE);
+    code.load_imm_to_reg(R_LIMIT, OUTPUT_ADDR + WASM_PUBLIC_OUTPUT_BYTES);
     // UART base address (a width-1 store here streams a byte to the console).
     code.load_imm_to_reg(R_UART, UART_ADDR);
 
@@ -259,7 +259,7 @@ fn body_fd_write(code: &mut Code, fault: LabelId, done: LabelId) {
     code.load_mem_to_reg("copyb", R_H, R_F, 0, 1); // byte
     code.store_reg_to_mem(R_UART, 0, R_H, 1); // stream to the console (width-1 store to UART)
     let no_mirror = code.new_label();
-    code.cmp_reg_branch("ltu", R_OUT, R_LIMIT, no_mirror, false); // output region full
+    code.cmp_reg_branch("ltu", R_OUT, R_LIMIT, no_mirror, false); // published output full
     code.store_reg_to_mem(R_OUT, 0, R_H, 1); // mirror into public output
     code.alu_ri("add", R_OUT, R_OUT, 1);
     code.bind(no_mirror);
@@ -314,8 +314,8 @@ fn body_fd_read(code: &mut Code, fault: LabelId, done: LabelId) {
     code.alu_ri("mul", R_F, R_F, 8);
     code.alu_rr("add", R_F, R_D, R_F);
     code.load_mem_to_reg("copyb", R_G, R_F, 0, 4); // buf ptr
-    to_linear(code, R_G);
     code.load_mem_to_reg("copyb", R_H, R_F, 4, 4); // len
+    checked_linear(code, R_G, Len::Reg(R_H), fault);
 
     let inner = code.new_label();
     let inner_end = code.new_label();

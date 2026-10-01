@@ -61,6 +61,18 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         }
     }
     let entry_calls: Vec<u32> = module.start_func.into_iter().chain(command).collect();
+    let entry_fp = WASM_STACK_TOP - ENTRY_FRAME_RESERVE as u64;
+    for &index in &entry_calls {
+        let frame = lowering::callee_frame_size(&module, index)? as u64;
+        if entry_fp.saturating_sub(frame) < WASM_STACK_LIMIT {
+            return Err(format!(
+                "wasm: entry function {index} needs a {frame}-byte frame, more than the \
+                 {}-byte stack",
+                entry_fp - WASM_STACK_LIMIT
+            )
+            .into());
+        }
+    }
 
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
