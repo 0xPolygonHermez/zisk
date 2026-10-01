@@ -50,10 +50,17 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     reject_unsupported_layout(&module)?;
 
     // Resolve the program entry point.
-    let start_index = module
-        .start_func
-        .or_else(|| module.exported_func("_start"))
-        .ok_or("wasm: module has neither a start section nor an exported '_start'")?;
+    let command = module.exported_func("_start");
+    if module.start_func.is_none() && command.is_none() {
+        return Err("wasm: module has neither a start section nor an exported '_start'".into());
+    }
+    if let Some(index) = command {
+        let sig = module.func_sig(index)?;
+        if !sig.params.is_empty() || !sig.results.is_empty() {
+            return Err("wasm: the exported '_start' must have type () -> ()".into());
+        }
+    }
+    let entry_calls: Vec<u32> = module.start_func.into_iter().chain(command).collect();
 
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
@@ -115,7 +122,7 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     }
 
     // -- emit the entry routine (init data + call _start + finalize) ---------
-    let entry = build_entry_routine(&module, &func_addr, start_index);
+    let entry = build_entry_routine(&module, &func_addr, &entry_calls);
     let entry_base = rom.next_init_inst_addr;
     let entry_end = entry_base + 4 * entry.len() as u64;
     if entry_end > MAX_ZISK_OS_ROM_ADDR + 1 {
@@ -256,10 +263,11 @@ fn resolve_and_insert(rom: &mut ZiskRom, code: &Code, base: u64, func_addr: &[u6
     }
 }
 
-/// Builds the BIOS entry routine: initialize the runtime, call `_start`, then publish output and
-/// halt.  Returned as a [`Code`] so its `_start` call and internal jumps resolve through the same
-/// fixup machinery as ordinary functions.
-fn build_entry_routine(module: &WasmModule, func_addr: &[u64], start_index: u32) -> Code {
+/// Builds the BIOS entry routine: initialize the runtime, call each of `entry_calls` in order
+/// (the start-section function, then `_start`), then publish output and halt.  Returned as a
+/// [`Code`] so its calls and internal jumps resolve through the same fixup machinery as ordinary
+/// functions.
+fn build_entry_routine(module: &WasmModule, func_addr: &[u64], entry_calls: &[u32]) -> Code {
     let mut code = Code::new();
 
     // marchid = Zisk (parity with the RISC-V path).
@@ -290,8 +298,17 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], start_index: u32)
     // Linear-memory bound for the access checks (kept in a register, see `REG_MEM_END`).
     code.load_imm_to_reg(REG_MEM_END, WASM_MEM_BASE + module.mem_initial_pages * WASM_PAGE_SIZE);
 
-    // Set up the first frame and call _start.
     code.load_imm_to_reg(REG_FP, WASM_STACK_TOP);
+    for &func_index in entry_calls {
+        emit_entry_call(&mut code, func_index);
+    }
+
+    wasi::emit_pubout_exit(&mut code);
+
+    code
+}
+
+fn emit_entry_call(code: &mut Code, func_index: u32) {
     code.load_imm_to_reg(REG_T2, (WASM_STACK_TOP as i64 - ENTRY_FRAME_RESERVE) as u64); // newFP
                                                                                         // mem[newFP - 16] = caller FP
     let mut zib = ZiskInstBuilder::new(0);
@@ -304,21 +321,16 @@ fn build_entry_routine(module: &WasmModule, func_addr: &[u64], start_index: u32)
 
     code.push_raw(zib, Fixup::None);
     code.mov_reg(REG_FP, REG_T2);
-    // CALL _start
     let mut zib = ZiskInstBuilder::new(0);
     zib.src_a("imm", 0, false);
-    zib.src_b("imm", 0, false); // patched to _start address
+    zib.src_b("imm", 0, false);
     zib.op("copyb").unwrap();
     zib.set_pc();
     zib.store_pc("reg", REG_RA as i64, false);
     zib.j(0, 4);
 
-    code.push_raw(zib, Fixup::FuncAddr(start_index));
-
     // On return: publish output and halt.
-    wasi::emit_pubout_exit(&mut code);
-
-    code
+    code.push_raw(zib, Fixup::FuncAddr(func_index));
 }
 
 fn func_type_index(module: &WasmModule, func_index: u32) -> u32 {
