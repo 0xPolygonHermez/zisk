@@ -64,6 +64,7 @@ for k in [random.randrange(BN) for _ in range(5)] + [0, 1, 2, BN - 1, BN, BN + 1
     P = bn_rg1()
     case('bn_mul', [bn_g1(P), be(k, 32)], 64, bn_g1(bn.multiply(P, k % BN)))
 case('bn_mul', [bytes(64), be(12345, 32)], 64, bytes(64))
+case('bn_mul', [bytes(64), be(2, 32)], 64, bytes(64))        # doubling the identity
 case('bn_mul', [be(1, 32) + be(3, 32), be(7, 32)], 64)        # off curve
 # ---- bn254 pairing ----
 def bn_pairs(ps): return [b''.join(bn_g1(P) + bn_g2(Q) for P, Q in ps)]
@@ -76,6 +77,7 @@ case('bn_pair', bn_pairs([(P, Q), (bn_rg1(), bn_rg2())]), 2, b'\x00\x00', n=2)
 case('bn_pair', bn_pairs([(P, Q)]), 2, b'\x00\x00', n=1)
 case('bn_pair', bn_pairs([(bn.Z1, Q)]), 2, b'\x00\x01', n=1)
 case('bn_pair', bn_pairs([(P, bn.Z2)]), 2, b'\x00\x01', n=1)
+case('bn_pair', bn_pairs([(bn.Z1, bn.Z2)]), 2, b'\x00\x01', n=1)
 c = random.randrange(1, BN)
 case('bn_pair', bn_pairs([(bn.multiply(P, a), Q), (bn.multiply(P, c), Q), (bn.neg(bn.multiply(P, (a + c) % BN)), Q)]), 2, b'\x00\x01', n=3)
 case('bn_pair', [bn_g1(P) + bn_g2(Q)[:127] + bytes([bn_g2(Q)[127] ^ 1])], 2, n=1)   # G2 off curve
@@ -113,10 +115,17 @@ for n in (1, 2, 3, 4):
     case('bl_g1msm', msm1(ps), 96, bl_g1(lin(ps, bl.Z1)), n=n)
 ps = [(bl_rg1(), LN)]
 case('bl_g1msm', msm1(ps), 96, bytes(96), n=1)
+# doubling the identity, and doublings that cancel (k = 2 is a fast path)
+P = bl_rg1()
+for ps in ([(bl.Z1, 2)], [(P, 2)], [(bl.Z1, 1), (bl.Z1, 2)], [(P, 2), (bl.neg(P), 2)]):
+    case('bl_g1msm', msm1(ps), 96, bl_g1(lin(ps, bl.Z1)), n=len(ps))
 for n in (1, 2, 3):
     ps = [(bl_rg2(), random.randrange(2**256)) for _ in range(n)]
     if n == 3: ps[0] = (ps[0][0], 1)
     case('bl_g2msm', msm2(ps), 192, bl_g2(lin(ps, bl.Z2)), n=n)
+Q = bl_rg2()
+for ps in ([(bl.Z2, 2)], [(Q, 2)], [(bl.Z2, 1), (bl.Z2, 2)], [(Q, 2), (bl.neg(Q), 2)]):
+    case('bl_g2msm', msm2(ps), 192, bl_g2(lin(ps, bl.Z2)), n=len(ps))
 # ---- bls pairing ----
 def bl_pairs(ps): return [b''.join(bl_g1(P) + bl_g2(Q) for P, Q in ps)]
 P, Q = bl_rg1(), bl_rg2()
@@ -126,6 +135,8 @@ case('bl_pair', bl_pairs([(bl.multiply(P, a), bl.multiply(Q, b)), (bl.neg(bl.mul
 case('bl_pair', bl_pairs([(P, Q)]), 2, b'\x00\x00', n=1)
 case('bl_pair', bl_pairs([(P, Q), (bl_rg1(), Q)]), 2, b'\x00\x00', n=2)
 case('bl_pair', bl_pairs([(bl.Z1, Q)]), 2, b'\x00\x01', n=1)
+case('bl_pair', bl_pairs([(P, bl.Z2)]), 2, b'\x00\x01', n=1)
+case('bl_pair', bl_pairs([(bl.Z1, bl.Z2)]), 2, b'\x00\x01', n=1)
 if not FAST:
     c = random.randrange(1, LN)
     case('bl_pair', bl_pairs([(bl.multiply(P, a), Q), (bl.multiply(P, c), Q), (bl.neg(bl.multiply(P, (a + c) % LN)), Q)]), 2, b'\x00\x01', n=3)
