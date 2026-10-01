@@ -1,0 +1,89 @@
+; ============================================================================
+; mul.zisk - diagnostic for the ZisK multiply instructions (Arith SM, M ext).
+;
+;   mul     (low 64 bits, a*b)
+;   mulh    (high 64 bits, signed x signed)
+;   mulsuh  (high 64 bits, signed x unsigned)   [RISC-V mulhsu]
+;   muluh   (high 64 bits, unsigned x unsigned)  [RISC-V mulhu]
+;   mulu    (low 64 bits, unsigned) [no RISC-V mnemonic - only reachable from .zisk]
+;   mul_w   (low 32 bits of the 32-bit product, sign-extended)
+;
+; Pure-constant style; expected values generated from core/src/ops_core.rs.
+; Corners: signed/unsigned extremes, i64::MIN*i64::MIN, MIN*-1, -1*-1.
+;
+; MUL_TABLE columns: a b mul mulh mulsuh muluh mulu mul_w
+; First mismatch returns 0x10CC (01=mul 02=mulh 03=mulsuh 04=muluh 05=mulu 06=mul_w).
+;
+; Registers: r5 row ptr  r6 row index  r7 a  r8 b  r12 exp  r13 res.
+; ============================================================================
+
+define ROWS      11
+define ROW_BYTES 64      ; 8 u64 columns * 8 bytes
+
+; a, b, mul, mulh, mulsuh, muluh, mulu, mul_w
+const u64 MUL_TABLE =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000002, 0x0000000000000003, 0x0000000000000006, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000006, 0x0000000000000006,
+	0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000001, 0x0000000000000000, 0xffffffffffffffff, 0xfffffffffffffffe, 0x0000000000000001, 0x0000000000000001,
+	0x7fffffffffffffff, 0x7fffffffffffffff, 0x0000000000000001, 0x3fffffffffffffff, 0x3fffffffffffffff, 0x3fffffffffffffff, 0x0000000000000001, 0x0000000000000001,
+	0x8000000000000000, 0x8000000000000000, 0x0000000000000000, 0x4000000000000000, 0xc000000000000000, 0x4000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x8000000000000000, 0xffffffffffffffff, 0x8000000000000000, 0x0000000000000000, 0x8000000000000000, 0x7fffffffffffffff, 0x8000000000000000, 0x0000000000000000,
+	0xffffffffffffffff, 0x0000000000000002, 0xfffffffffffffffe, 0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000001, 0xfffffffffffffffe, 0xfffffffffffffffe,
+	0x00000000ffffffff, 0x00000000ffffffff, 0xfffffffe00000001, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0xfffffffe00000001, 0x0000000000000001,
+	0x0000000080000000, 0x0000000000000002, 0x0000000100000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000100000000, 0x0000000000000000,
+	0x00000000deadbeef, 0x00000000cafebabe, 0xb092ab7b88cf5b62, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0xb092ab7b88cf5b62, 0xffffffff88cf5b62,
+	0x123456789abcdef0, 0x0000000000000001, 0x123456789abcdef0, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x123456789abcdef0, 0xffffffff9abcdef0
+
+mul:
+	copyb(0, MUL_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+mu_loop:
+	eq(r6, ROWS), j(mu_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	mul(r7, r8) -> r13
+	eq(r13, r12), j(mu_c1)
+	copyb(0, 0x1001) -> r10
+	ret
+mu_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	mulh(r7, r8) -> r13
+	eq(r13, r12), j(mu_c2)
+	copyb(0, 0x1002) -> r10
+	ret
+mu_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	mulsuh(r7, r8) -> r13
+	eq(r13, r12), j(mu_c3)
+	copyb(0, 0x1003) -> r10
+	ret
+mu_c3:
+	copyb(r5, 8[a + 40]) -> r12
+	muluh(r7, r8) -> r13
+	eq(r13, r12), j(mu_c4)
+	copyb(0, 0x1004) -> r10
+	ret
+mu_c4:
+	copyb(r5, 8[a + 48]) -> r12
+	mulu(r7, r8) -> r13
+	eq(r13, r12), j(mu_c5)
+	copyb(0, 0x1005) -> r10
+	ret
+mu_c5:
+	copyb(r5, 8[a + 56]) -> r12
+	mul_w(r7, r8) -> r13
+	eq(r13, r12), j(mu_next)
+	copyb(0, 0x1006) -> r10
+	ret
+
+mu_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(mu_loop)
+
+mu_ok:
+	copyb(0, 0) -> r10
+	ret

@@ -5,7 +5,7 @@
 use crate::{
     zisk_ops::{InvalidNameError, OpType, ZiskOp},
     ZiskInst, ZiskRom, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO, REG_FIRST, SRC_C, SRC_IMM, SRC_IND,
-    SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // #[cfg(feature = "sp")]
@@ -66,9 +66,9 @@ impl ZiskInstBuilder {
             "mem" => SRC_MEM,
             "imm" => SRC_IMM,
             "lastc" => SRC_C,
+            "step" => SRC_STEP,
             // #[cfg(feature = "sp")]
             // "sp" => SRC_SP,
-            // "step" => SRC_STEP,
             _ => panic!("ZiskInstBuilder::a_src() called with invalid src={src}"),
         }
     }

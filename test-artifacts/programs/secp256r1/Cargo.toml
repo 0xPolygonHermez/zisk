@@ -5,3 +5,10 @@ edition.workspace = true
 
 [dependencies]
 ziskos.workspace = true
+zisklib = { path = "../../../ziskasm/lang/rust", optional = true }
+
+[features]
+# Run the redirected precompile tests against the ziskasm zisklib instead of the
+# in-guest Rust zisklib. Internal-arithmetic tests (fp/scalar/curve) have no
+# ziskasm binding and are skipped in this build.
+ziskasm = ["dep:zisklib"]

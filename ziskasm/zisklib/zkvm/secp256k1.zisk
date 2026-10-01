@@ -1,0 +1,288 @@
+; ============================================================================
+; zkvm/secp256k1.zisk - secp256k1 for the EF zkVM accelerator C ABI.
+; Entry `ziskasm_zkvm_secp256k1_verify`, redirect target of `zkvm_secp256k1_verify`.
+;
+; New, self-contained EF-native routine: it marshals the EF big-endian byte inputs
+; to LE limbs with the shared zkvm_be_to_limbs (rev8) helper, then runs the ECDSA
+; verify flow authored here (lifted from ziskasm/zisklib/secp256k1/ecdsa.zisk, NOT
+; calling zisklib_ecdsa_verify_secp256k1). It reuses the shared PRIMITIVES:
+; ecu_is_zero/ecu_gt/ecu_eq, zisklib_is_on_curve/inv_fn/mul_fn/reduce_fn_secp256k1,
+; and zisklib_glv_double_scalar_mul_with_g_secp256k1.
+;
+;   zkvm_status zkvm_secp256k1_verify(const zkvm_secp256k1_hash* msg,      (32B, BE)
+;                                     const zkvm_secp256k1_signature* sig, (64B = r||s, BE)
+;                                     const zkvm_secp256k1_pubkey* pubkey, (64B = x||y, BE)
+;                                     bool* verified)
+;     [r10=msg, r11=sig, r12=pubkey, r13=verified] -> a0 = ZKVM_EOK (0);
+;     *verified = 1 iff the signature is valid, else 0.
+; Labels `zv_`, data `ZKVM_K1_*`.
+; ============================================================================
+
+u64 ZKVM_K1_Z[4]    = 0, 0, 0, 0
+u64 ZKVM_K1_R[4]    = 0, 0, 0, 0
+u64 ZKVM_K1_S[4]    = 0, 0, 0, 0
+u64 ZKVM_K1_PK[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_K1_SINV[4] = 0, 0, 0, 0
+u64 ZKVM_K1_U1[4]   = 0, 0, 0, 0
+u64 ZKVM_K1_U2[4]   = 0, 0, 0, 0
+u64 ZKVM_K1_PT[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_K1_XR[4]   = 0, 0, 0, 0
+u64 ZKVM_K1_VER[1]  = 0
+u64 ZKVM_K1_SIGP[1] = 0
+u64 ZKVM_K1_PKP[1]  = 0
+
+ziskasm_zkvm_secp256k1_verify:
+	push r1
+	; save verified ptr, sig ptr, pubkey ptr (marshalling clobbers r10..r13)
+	copyb(0, ZKVM_K1_VER) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, ZKVM_K1_SIGP) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ZKVM_K1_PKP) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+
+	; z = rev8(msg[0..32])   (r10 still = msg)
+	copyb(0, ZKVM_K1_Z) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+	; r = rev8(sig[0..32])
+	copyb(0, ZKVM_K1_SIGP) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, ZKVM_K1_R) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+	; s = rev8(sig[32..64])
+	copyb(0, ZKVM_K1_SIGP) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, ZKVM_K1_S) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+	; pk_x = rev8(pubkey[0..32])
+	copyb(0, ZKVM_K1_PKP) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, ZKVM_K1_PK) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+	; pk_y = rev8(pubkey[32..64])
+	copyb(0, ZKVM_K1_PKP) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, ZKVM_K1_PK) -> r11
+	add(r11, 32) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+
+	; ================= verify (limb arrays ZKVM_K1_*) =================
+	; --- r in [1, n-1] ---
+	copyb(0, ZKVM_K1_R) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(zv_false)
+	copyb(0, ZKVM_K1_R) -> r10
+	copyb(0, SECP_N_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(zv_false)
+	; --- s in [1, n-1] ---
+	copyb(0, ZKVM_K1_S) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(zv_false)
+	copyb(0, ZKVM_K1_S) -> r10
+	copyb(0, SECP_N_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(zv_false)
+	; --- pk != identity ---
+	copyb(0, ZKVM_K1_PK) -> r10
+	call ecu_is_zero
+	eq(r10, 0), j(zv_pkxok)
+	copyb(0, ZKVM_K1_PK) -> r10
+	add(r10, 32) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(zv_false)
+zv_pkxok:
+	; --- pk_x, pk_y in [0, p-1] ---
+	copyb(0, ZKVM_K1_PK) -> r10
+	copyb(0, SECP_P_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(zv_false)
+	copyb(0, ZKVM_K1_PK) -> r10
+	add(r10, 32) -> r10
+	copyb(0, SECP_P_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(zv_false)
+	; --- pk on curve ---
+	copyb(0, ZKVM_K1_PK) -> r10
+	call zisklib_is_on_curve_secp256k1
+	eq(r10, 0), j(zv_false)
+	; --- s_inv = s^-1 (mod n) ---
+	copyb(0, ZKVM_K1_S) -> r10
+	copyb(0, ZKVM_K1_SINV) -> r11
+	call zisklib_inv_fn_secp256k1
+	; --- u1 = z * s_inv ---
+	copyb(0, ZKVM_K1_Z) -> r10
+	copyb(0, ZKVM_K1_SINV) -> r11
+	copyb(0, ZKVM_K1_U1) -> r12
+	call zisklib_mul_fn_secp256k1
+	; --- u2 = r * s_inv ---
+	copyb(0, ZKVM_K1_R) -> r10
+	copyb(0, ZKVM_K1_SINV) -> r11
+	copyb(0, ZKVM_K1_U2) -> r12
+	call zisklib_mul_fn_secp256k1
+	; --- (x,y) = u1*G + u2*pk ---
+	copyb(0, ZKVM_K1_U1) -> r10
+	copyb(0, ZKVM_K1_U2) -> r11
+	copyb(0, ZKVM_K1_PK) -> r12
+	copyb(0, ZKVM_K1_PT) -> r13
+	call zisklib_glv_double_scalar_mul_with_g_secp256k1
+	ltu(0, r10), j(zv_false)            ; infinity -> invalid
+	; --- accept iff x == r (mod n) ---
+	copyb(0, ZKVM_K1_PT) -> r10
+	copyb(0, ZKVM_K1_R) -> r11
+	call ecu_eq
+	ltu(0, r10), j(zv_true)
+	copyb(0, ZKVM_K1_PT) -> r10
+	copyb(0, ZKVM_K1_XR) -> r11
+	call zisklib_reduce_fn_secp256k1
+	copyb(0, ZKVM_K1_XR) -> r10
+	copyb(0, ZKVM_K1_R) -> r11
+	call ecu_eq
+	ltu(0, r10), j(zv_true)
+
+zv_false:
+	copyb(0, 0) -> r14
+	jump(zv_store)
+zv_true:
+	copyb(0, 1) -> r14
+zv_store:
+	copyb(0, ZKVM_K1_VER) -> r5
+	copyb(r5, 8[a + 0]) -> r5           ; verified ptr
+	copyb(r5, r14) -> 1[a + 0]          ; *verified = r14 (1 byte, bool)
+	copyb(0, 0) -> r10                  ; return ZKVM_EOK (a0 = 0)
+	pop r1
+	ret
+
+; ----------------------------------------------------------------------------
+; zkvm_status zkvm_secp256k1_ecrecover(const zkvm_secp256k1_hash* msg,   (32B, BE)
+;                                      const zkvm_secp256k1_signature* sig, (64B r||s, BE)
+;                                      uint8_t recid,
+;                                      zkvm_secp256k1_pubkey* output)     (64B x||y, BE)
+;   [r10=msg, r11=sig, r12=recid, r13=output] -> a0 = ZKVM_EOK on success (output
+;   = recovered pubkey), ZKVM_EFAIL (-1) on any failure. Recover flow lifted from
+;   secp256k1/ecdsa.zisk (reuses lift_x/inv_fn/neg_fn/mul_fn/glv + ecu_* primitives);
+;   x‖y limbs converted back to big-endian bytes with zkvm_limbs_to_be (per 4-limb
+;   coordinate). Labels `zr_`, data `ZKVM_KR_*`.
+; ----------------------------------------------------------------------------
+u64 ZKVM_KR_Z[4]    = 0, 0, 0, 0
+u64 ZKVM_KR_R[4]    = 0, 0, 0, 0
+u64 ZKVM_KR_S[4]    = 0, 0, 0, 0
+u64 ZKVM_KR_PAR[1]  = 0
+u64 ZKVM_KR_RPT[8]  = 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_KR_RINV[4] = 0, 0, 0, 0
+u64 ZKVM_KR_NEGZ[4] = 0, 0, 0, 0
+u64 ZKVM_KR_U1[4]   = 0, 0, 0, 0
+u64 ZKVM_KR_U2[4]   = 0, 0, 0, 0
+u64 ZKVM_KR_RES[8]  = 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_KR_OUTP[1] = 0
+u64 ZKVM_KR_SIGP[1] = 0
+u64 ZKVM_KR_RECID[1] = 0
+
+ziskasm_zkvm_secp256k1_ecrecover:
+	push r1
+	copyb(0, ZKVM_KR_OUTP) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, ZKVM_KR_SIGP) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ZKVM_KR_RECID) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; z = rev8(msg[0..32])  (r10 still = msg)
+	copyb(0, ZKVM_KR_Z) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+	; r = rev8(sig[0..32])
+	copyb(0, ZKVM_KR_SIGP) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, ZKVM_KR_R) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+	; s = rev8(sig[32..64])
+	copyb(0, ZKVM_KR_SIGP) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, ZKVM_KR_S) -> r11
+	copyb(0, 4) -> r12
+	call zkvm_be_to_limbs
+
+	; --- r in [1, n-1] ---
+	copyb(0, ZKVM_KR_R) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(zr_fail)
+	copyb(0, ZKVM_KR_R) -> r10
+	copyb(0, SECP_N_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(zr_fail)
+	; --- s in [1, n-1] ---
+	copyb(0, ZKVM_KR_S) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(zr_fail)
+	copyb(0, ZKVM_KR_S) -> r10
+	copyb(0, SECP_N_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(zr_fail)
+	; --- recid <= 1 ; parity = recid & 1 ---
+	copyb(0, ZKVM_KR_RECID) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(1, r6), j(zr_fail)
+	and(r6, 1) -> r6
+	copyb(0, ZKVM_KR_PAR) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	; --- R = lift_x(r, parity) ---
+	copyb(0, ZKVM_KR_R) -> r10
+	copyb(0, ZKVM_KR_PAR) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, ZKVM_KR_RPT) -> r12
+	call zisklib_lift_x_secp256k1
+	ltu(0, r10), j(zr_fail)
+	; --- r_inv = r^-1 (mod n) ---
+	copyb(0, ZKVM_KR_R) -> r10
+	copyb(0, ZKVM_KR_RINV) -> r11
+	call zisklib_inv_fn_secp256k1
+	; --- neg_z = -z (mod n) ---
+	copyb(0, ZKVM_KR_Z) -> r10
+	copyb(0, ZKVM_KR_NEGZ) -> r11
+	call zisklib_neg_fn_secp256k1
+	; --- u1 = neg_z * r_inv ; u2 = s * r_inv (mod n) ---
+	copyb(0, ZKVM_KR_NEGZ) -> r10
+	copyb(0, ZKVM_KR_RINV) -> r11
+	copyb(0, ZKVM_KR_U1) -> r12
+	call zisklib_mul_fn_secp256k1
+	copyb(0, ZKVM_KR_S) -> r10
+	copyb(0, ZKVM_KR_RINV) -> r11
+	copyb(0, ZKVM_KR_U2) -> r12
+	call zisklib_mul_fn_secp256k1
+	; --- pk = u1*G + u2*R ; infinity -> fail ---
+	copyb(0, ZKVM_KR_U1) -> r10
+	copyb(0, ZKVM_KR_U2) -> r11
+	copyb(0, ZKVM_KR_RPT) -> r12
+	copyb(0, ZKVM_KR_RES) -> r13
+	call zisklib_glv_double_scalar_mul_with_g_secp256k1
+	ltu(0, r10), j(zr_fail)
+
+	; --- success: write output = x‖y (each 4 limbs -> 32 BE bytes) ---
+	copyb(0, ZKVM_KR_RES) -> r10                ; x limbs
+	copyb(0, ZKVM_KR_OUTP) -> r5
+	copyb(r5, 8[a + 0]) -> r11                  ; output
+	copyb(0, 4) -> r12
+	call zkvm_limbs_to_be
+	copyb(0, ZKVM_KR_RES) -> r10
+	add(r10, 32) -> r10                         ; y limbs
+	copyb(0, ZKVM_KR_OUTP) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 32) -> r11                         ; output + 32
+	copyb(0, 4) -> r12
+	call zkvm_limbs_to_be
+	copyb(0, 0) -> r10                          ; ZKVM_EOK
+	pop r1
+	ret
+zr_fail:
+	copyb(0, 0xffffffffffffffff) -> r10         ; ZKVM_EFAIL (-1)
+	pop r1
+	ret

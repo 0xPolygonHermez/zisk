@@ -1,14 +1,17 @@
 //! Zisk ROM to ASM
 //!
 //! Generates i86_64 assembly code that implements the Zisk ROM program
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ziskos::zisklib::FCALL_INPUT_READY_ID;
 
 use crate::{
-    zisk_ops::ZiskOp, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR,
-    INPUT_ADDR, M64, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR,
+    frops_asm::{self, FropsCallSite, FropsOperand, FropsSpec},
+    zisk_ops::ZiskOp,
+    ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, INPUT_ADDR, M64,
+    ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM,
+    STORE_NONE, STORE_REG, UART_ADDR, ZISKLIB_ROM_ADDR,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -195,6 +198,12 @@ pub struct ZiskAsmContext {
     //assert_rsp_counter: u64,
     precompile_results: bool, // Set to true is we are consuming precompile results
     wait_for_prec_counter: u64, // Counter of wait_for_prec_avail calls, reset at every instruction
+
+    // FROPS (frequent operations) counting, only used in ROM histogram mode
+    frops_table_address: u64, // Absolute address of frops_mult[0]
+    // Counting thunks that have at least one call site, i.e. the ones to emit, grouped by opcode so
+    // that the number of specialisations of an opcode can be capped
+    frops_used: BTreeMap<u8, BTreeSet<FropsSpec>>,
 }
 
 impl ZiskAsmContext {
@@ -701,12 +710,28 @@ impl ZiskRom2Asm {
             *code += "\tret\n\n";
         }
 
+        // The FROPS multiplicity table follows the instruction histogram, which has one counter
+        // per ROM instruction, so its address is known at generation time
+        ctx.frops_table_address = Self::get_frops_trace_address(rom.insts.len() as u64);
+
         // Functions to let C know about ASM generation
 
         // get_rom_length() returns the length of the ROM
         *code += ".global get_rom_length\n";
         *code += "get_rom_length:\n";
         *code += &format!("\tmov rax, 0x{:08x}\n", rom.insts.len());
+        *code += "\tret\n\n";
+
+        // get_frops_length() returns the number of rows of the FROPS multiplicity table that
+        // follows the ROM histogram in the output trace, or 0 when this generation method does not
+        // count frequent operations
+        *code += ".global get_frops_length\n";
+        *code += "get_frops_length:\n";
+        if ctx.rom_histogram() {
+            *code += &format!("\tmov rax, 0x{:08x}\n", crate::frops::FROPS_TABLE_ROWS);
+        } else {
+            *code += "\tmov rax, 0\n";
+        }
         *code += "\tret\n\n";
 
         // get_gen_method() returns the generation method used to generate the assembly
@@ -1001,6 +1026,21 @@ impl ZiskRom2Asm {
         /****************/
         *code += unusual_code.as_str();
 
+        /***************/
+        /* FROPS CODE  */
+        /***************/
+
+        // One out-of-line counting thunk per opcode that has at least one call site: the membership
+        // test is too long to inline at every one of them (see crate::frops_asm)
+        if !ctx.frops_used.is_empty() {
+            *code += &format!("\n{}\n", ctx.comment_str("FROPS counting thunks"));
+            for (op, specs) in std::mem::take(&mut ctx.frops_used) {
+                for spec in &specs {
+                    frops_asm::emit_thunk(op, spec, ctx.frops_table_address, ctx.comments, code);
+                }
+            }
+        }
+
         /**********************/
         /* READ_ONLY ROM DATA */
         /**********************/
@@ -1057,75 +1097,7 @@ impl ZiskRom2Asm {
         /* BRANCH TABLES */
         /*****************/
 
-        // For all program addresses in the vector, create an assembly set of instructions with a
-        // map label
-        *code += "\n";
-        *code += ".section .rodata\n";
-        *code += ".align 64\n";
-
-        // Safety check: Ensure the minimum program address label exists
-        //
-        // This is defensive programming for rare cases where min_program_pc has no valid
-        // instruction (non-NOP padding, data in text section).
-        // In practice with NOP padding, this check never triggers and the entrypoint
-        // is the min_program_pc
-        if rom.min_program_pc >= ROM_ADDR && !rom.sorted_pc_list.contains(&rom.min_program_pc) {
-            *code +=
-                &format!("map_pc_{:x}: \t.quad pc_{:x}\n", rom.min_program_pc, rom.min_program_pc);
-        }
-
-        // Init previous key to the first ROM entry
-        let mut previous_key: u64 = ROM_ENTRY;
-        for key in &rom.sorted_pc_list {
-            // When in chunk player mode, we need to resume the chunk at any address,
-            // including internal, odd addresses not aligned to 2B.  We need to fill all the
-            // gaps between alligned addresses to make the distance between addresses constant
-            // and allow jumping to the proper branch using pc - ROM_ADDR as an increment
-            //
-            // 4N
-            //   4N + 1   <--  We want to be able to dynamically start a chunk at this pc
-            //   4N + 2
-            //   4N + 3
-            // 4(N+1)
-
-            // If not in chunk player mode, we can skip all odd, internal addresses, since you
-            // cannot jump to them.  In chunk player mode, you might have to jump to them at the
-            // beginning of a chunk
-            if key & 0x1 != 0 {
-                continue;
-            }
-
-            // Add the missing `map_pc_{ROM_ADDR}` label and padding to the first key, so the jump
-            // table resolves when .text starts above ROM_ADDR, e.g. Go ELFs.
-            if previous_key < ROM_ADDR
-                && (*key > ROM_ADDR)
-                && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
-            {
-                *code += &format!("map_pc_{ROM_ADDR:x}: \t.quad emu_end\n");
-                for _ in ROM_ADDR + 1..*key {
-                    *code += "\t.quad emu_end\n";
-                }
-            }
-
-            // Fill the gaps between consecutive, valid keys with dummy labels, in order to keep
-            // the distance between labels constant and allow jumping to the proper branch using
-            // pc - ROM_ADDR as an increment
-            if (previous_key >= ROM_ADDR)
-                && (*key > ROM_ADDR)
-                && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
-            {
-                for _ in previous_key + 1..*key {
-                    *code += "\t.quad emu_end\n";
-                }
-            }
-
-            // Use labels always
-            *code += &format!("map_pc_{key:x}: \t.quad pc_{key:x}\n");
-
-            // Update previous key
-            previous_key = *key;
-        }
-        *code += "\n";
+        Self::append_branch_table(rom, code);
 
         #[cfg(debug_assertions)]
         {
@@ -1176,6 +1148,96 @@ impl ZiskRom2Asm {
         }
     }
 
+    /// Emit the `map_pc_*` dynamic-jump branch table: one `.quad pc_<addr>` per mapped ROM
+    /// address, with the gaps between consecutive addresses padded by `.quad emu_end` so an
+    /// indirect jump can index the table by `pc - base`.
+    ///
+    /// Reads only `rom.min_program_pc` and `rom.sorted_pc_list`; kept as a standalone function
+    /// so its address-window handling (float and ZisK-library exclusions) can be unit-tested
+    /// without building a full ROM.
+    fn append_branch_table(rom: &ZiskRom, code: &mut String) {
+        // For all program addresses in the vector, create an assembly set of instructions with a
+        // map label
+        *code += "\n";
+        *code += ".section .rodata\n";
+        *code += ".align 64\n";
+
+        // Safety check: Ensure the minimum program address label exists
+        //
+        // This is defensive programming for rare cases where min_program_pc has no valid
+        // instruction (non-NOP padding, data in text section).
+        // In practice with NOP padding, this check never triggers and the entrypoint
+        // is the min_program_pc
+        if rom.min_program_pc >= ROM_ADDR && !rom.sorted_pc_list.contains(&rom.min_program_pc) {
+            *code +=
+                &format!("map_pc_{:x}: \t.quad pc_{:x}\n", rom.min_program_pc, rom.min_program_pc);
+        }
+
+        // Init previous key to the first ROM entry
+        let mut previous_key: u64 = ROM_ENTRY;
+        for key in &rom.sorted_pc_list {
+            // When in chunk player mode, we need to resume the chunk at any address,
+            // including internal, odd addresses not aligned to 2B.  We need to fill all the
+            // gaps between alligned addresses to make the distance between addresses constant
+            // and allow jumping to the proper branch using pc - ROM_ADDR as an increment
+            //
+            // 4N
+            //   4N + 1   <--  We want to be able to dynamically start a chunk at this pc
+            //   4N + 2
+            //   4N + 3
+            // 4(N+1)
+
+            // If not in chunk player mode, we can skip all odd, internal addresses, since you
+            // cannot jump to them.  In chunk player mode, you might have to jump to them at the
+            // beginning of a chunk
+            if key & 0x1 != 0 {
+                continue;
+            }
+
+            // The ZisK library is entered only by *static* jumps, never dynamically, so its
+            // instructions are never a dynamic-jump target and need no map_pc entry. Skipping
+            // the reserved library window [ZISKLIB_ROM_ADDR, FLOAT_LIB_ROM_ADDR) also avoids
+            // filling the large ROM gap between the guest program and the library with one
+            // `.quad emu_end` per address (tens of millions of entries). The library's own
+            // `ret` back into guest code IS dynamic, but it targets guest addresses, which are
+            // resolved through the unaffected map_pc_{ROM_ADDR} entries.
+            if (ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(key) {
+                continue;
+            }
+
+            // Add the missing `map_pc_{ROM_ADDR}` label and padding to the first key, so the jump
+            // table resolves when .text starts above ROM_ADDR, e.g. Go ELFs.
+            if previous_key < ROM_ADDR
+                && (*key > ROM_ADDR)
+                && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
+            {
+                *code += &format!("map_pc_{ROM_ADDR:x}: \t.quad emu_end\n");
+                for _ in ROM_ADDR + 1..*key {
+                    *code += "\t.quad emu_end\n";
+                }
+            }
+
+            // Fill the gaps between consecutive, valid keys with dummy labels, in order to keep
+            // the distance between labels constant and allow jumping to the proper branch using
+            // pc - ROM_ADDR as an increment
+            if (previous_key >= ROM_ADDR)
+                && (*key > ROM_ADDR)
+                && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
+            {
+                for _ in previous_key + 1..*key {
+                    *code += "\t.quad emu_end\n";
+                }
+            }
+
+            // Use labels always
+            *code += &format!("map_pc_{key:x}: \t.quad pc_{key:x}\n");
+
+            // Update previous key
+            previous_key = *key;
+        }
+        *code += "\n";
+    }
+
     /// Generate assembly code for an instruction
     fn instruction_to_asm(
         ctx: &mut ZiskAsmContext,
@@ -1215,10 +1277,29 @@ impl ZiskRom2Asm {
             );
         }
 
-        // Instruction label
+        // Instruction label. Two alignments improve readability:
+        // * `verbose` is left-padded to VERBOSE_ALIGN_WIDTH so `ZisK:` starts at the
+        //   same column on most lines;
+        // * the whole comment is then right-padded so the closing `*/` ends at
+        //   column CLOSE_COMMENT_COLUMN on the lines that fit within it.
+        // Longer lines (big immediates, BIOS/float/precompile setup) overflow either
+        // width and are left misaligned. The `*/` pad is computed from the actual
+        // `pc_<addr>:` label length so it aligns regardless of the address width.
+        const VERBOSE_ALIGN_WIDTH: usize = 40;
+        const CLOSE_COMMENT_COLUMN: usize = 120;
         *code += "\n";
-        let instruction_comment = instruction.to_text();
-        *code += &format!("pc_{:x}: {}\n", ctx.pc, ctx.comment(instruction_comment));
+        let label = format!("pc_{:x}: ", ctx.pc);
+        let content = format!(
+            "verbose: {:<vw$} ZisK: {}",
+            instruction.verbose,
+            instruction.to_zisk_asm(),
+            vw = VERBOSE_ALIGN_WIDTH,
+        );
+        // `+ 6` accounts for the comment wrapper: the `/* ` opener (3) and the ` */`
+        // closer (3), so the line ends exactly at CLOSE_COMMENT_COLUMN.
+        let content_width = CLOSE_COMMENT_COLUMN.saturating_sub(label.len() + 6);
+        let padded = format!("{:<cw$}", content, cw = content_width);
+        *code += &format!("{}{}\n", label, ctx.comment(padded));
 
         // Self::push_internal_registers(ctx, code, false);
         // *code += &format!("\tmov rdi, {}\n", ctx.pc);
@@ -1590,12 +1671,17 @@ impl ZiskRom2Asm {
 
                 // Use REG_A if a's value is not needed beyond the b indirection, in which case
                 // we can overwirte it to build the address to read from the b value,
-                // or REG_ADDRESS otherwise to preserve the value of a
+                // or REG_ADDRESS otherwise to preserve the value of a.
+                //
+                // The ROM-histogram mode is the exception: the FROPS count emitted further down
+                // reads `a` from REG_A, so overwriting it here would count the row of
+                // `a + b_offset_imm0` instead of the row of `a`.
                 let mut reg_address: &str = REG_A;
-                if instruction.op == ZiskOp::COPYB
-                    || instruction.op == ZiskOp::SIGNEXTEND_B
-                    || instruction.op == ZiskOp::SIGNEXTEND_H
-                    || instruction.op == ZiskOp::SIGNEXTEND_W
+                if !ctx.rom_histogram()
+                    && (instruction.op == ZiskOp::COPYB
+                        || instruction.op == ZiskOp::SIGNEXTEND_B
+                        || instruction.op == ZiskOp::SIGNEXTEND_H
+                        || instruction.op == ZiskOp::SIGNEXTEND_W)
                 {
                 } else {
                     *code += &format!(
@@ -1924,6 +2010,16 @@ impl ZiskRom2Asm {
                 "ZiskRom2Asm::save_to_asm() Invalid b_src={} pc={}",
                 instruction.b_src, ctx.pc
             ),
+        }
+
+        /*********/
+        /* FROPS */
+        /*********/
+
+        // Count this operation in the FROPS multiplicity table.  This must happen before the
+        // operation, which consumes a and b destructively.
+        if ctx.rom_histogram() {
+            Self::frops_to_asm(ctx, instruction, code);
         }
 
         /*************/
@@ -8719,8 +8815,64 @@ impl ZiskRom2Asm {
     ///     [8B] multiplicity[1]
     ///     …
     ///     [8B] multiplicity[S-1]
+    /// FROPS multiplicity: (get_frops_trace_address())
+    ///     [8B] frops_size = F = FROPS_TABLE_ROWS
+    ///     [8B] frops_mult[0]
+    ///     …
+    ///     [8B] frops_mult[F-1]
     fn get_rom_histogram_trace_address(index: u64) -> u64 {
         TRACE_ADDR_NUMBER + (1 + index) * 8
+    }
+
+    /// This function calculates the address of `frops_mult[0]`, the multiplicity table of the
+    /// frequent operations, which follows the instruction histogram of `rom_length` counters (see
+    /// the structure above).
+    fn get_frops_trace_address(rom_length: u64) -> u64 {
+        TRACE_ADDR_NUMBER + (2 + rom_length) * 8
+    }
+
+    /// Where an operand actually is at the point the FROPS check is emitted, i.e. after the a and b
+    /// source code has run and before the operation consumes them.
+    ///
+    /// `reg.string_value` cannot be used for this: it keeps naming the operand's own register even
+    /// when the value was loaded into `REG_C` because the operation needs it there (`store_*_in_c`).
+    fn frops_operand(
+        reg: &ZiskAsmRegister,
+        store_in_c: bool,
+        own_reg: &'static str,
+    ) -> FropsOperand<'static> {
+        if reg.is_constant {
+            FropsOperand::Const(reg.constant_value)
+        } else if store_in_c {
+            FropsOperand::Reg(REG_C)
+        } else {
+            FropsOperand::Reg(own_reg)
+        }
+    }
+
+    /// Emits the code that counts one executed operation in the FROPS multiplicity table, and
+    /// records the opcode so that its counting thunk gets emitted.
+    ///
+    /// Nothing is emitted when the operation can never be a frequent operation: either the opcode
+    /// has no FROPS at all, or the generator already knows an operand whose value falls outside
+    /// every box of that opcode.
+    fn frops_to_asm(ctx: &mut ZiskAsmContext, instruction: &ZiskInst, code: &mut String) {
+        let a = Self::frops_operand(&ctx.a, ctx.store_a_in_c, REG_A);
+        let b = Self::frops_operand(&ctx.b, ctx.store_b_in_c, REG_B);
+        let specialised = ctx.frops_used.get(&instruction.op).map_or(0, |s| s.len());
+        let site = frops_asm::emit_call(
+            instruction.op,
+            a,
+            b,
+            instruction.m32,
+            specialised,
+            ctx.frops_table_address,
+            |c| ctx.comment_str(c),
+            code,
+        );
+        if let FropsCallSite::Thunk(spec) = site {
+            ctx.frops_used.entry(instruction.op).or_default().insert(spec);
+        }
     }
 }
 
@@ -8787,6 +8939,48 @@ mod tests {
         assert_eq!(
             code,
             format!("\tmov {REG_C_W}, {REG_C_W}\n\tmov rcx, {REG_B}\n\tshl {REG_C}, cl\n")
+        );
+    }
+
+    /// The `map_pc_*` branch table must not map the reserved ZisK-library window
+    /// [ZISKLIB_ROM_ADDR, FLOAT_LIB_ROM_ADDR): the library is entered only by static jumps,
+    /// so its instructions are never dynamic-jump targets, and mapping them would pad the
+    /// ~126 MB gap between the guest program and the library with one `.quad emu_end` per
+    /// address (tens of millions of lines). Regression guard for that skip.
+    #[test]
+    fn branch_table_excludes_zisk_library_window() {
+        let guest0 = ROM_ADDR;
+        let guest1 = ROM_ADDR + 4;
+        let lib0 = ZISKLIB_ROM_ADDR;
+        let lib1 = ZISKLIB_ROM_ADDR + 4;
+        let float0 = FLOAT_LIB_ROM_ADDR;
+
+        let rom = ZiskRom {
+            min_program_pc: guest0,
+            sorted_pc_list: vec![guest0, guest1, lib0, lib1, float0],
+            ..Default::default()
+        };
+
+        let mut code = String::new();
+        ZiskRom2Asm::append_branch_table(&rom, &mut code);
+
+        // Guest and float-library addresses are mapped...
+        assert!(code.contains(&format!("map_pc_{guest0:x}:")), "guest0 should be mapped");
+        assert!(code.contains(&format!("map_pc_{guest1:x}:")), "guest1 should be mapped");
+        assert!(code.contains(&format!("map_pc_{float0:x}:")), "float base should be mapped");
+
+        // ...but the ZisK-library window is not.
+        assert!(!code.contains(&format!("map_pc_{lib0:x}:")), "library pc must not be mapped");
+        assert!(!code.contains(&format!("map_pc_{lib1:x}:")), "library pc must not be mapped");
+
+        // The only padding is the 3 addresses strictly between the two adjacent guest
+        // instructions (guest0+1..guest1). The huge guest->library and library->float gaps
+        // are left unmapped; a regression that maps the library window would emit tens of
+        // millions of `.quad emu_end` lines instead of exactly 3.
+        assert_eq!(
+            code.matches(".quad emu_end").count(),
+            3,
+            "unexpected padding; the ZisK-library window may be getting mapped"
         );
     }
 }

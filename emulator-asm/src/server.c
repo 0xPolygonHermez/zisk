@@ -117,8 +117,10 @@ void server_signal_handler(void)
 //#define USE_HUGE_PAGES
 
 // ROM histogram
+static void save_rom_histogram_to_file (void);
 uint64_t histogram_size = 0;
 uint64_t rom_length = 0;
+uint64_t frops_length = 0;
 
 // Shutdown done semaphore: notifies the caller when a shutdown has been processed
 sem_t * sem_shutdown_done = NULL;
@@ -813,11 +815,13 @@ void server_setup (void)
     // If ROM histogram, configure trace size
     if (gen_method == RomHistogram)
     {
-        // Get rom length, i.e. number of instructions
+        // Get rom length, i.e. number of instructions, and the number of FROPS table rows
         rom_length = get_rom_length();
+        frops_length = get_frops_length();
 
-        // Calculate histogram size
-        histogram_size = (4 + 1 + rom_length)*8;
+        // Calculate histogram size: control header (4) + [size + one counter per ROM instruction]
+        // + [size + one counter per FROPS table row]
+        histogram_size = (4 + 1 + rom_length + 1 + frops_length)*8;
         if (histogram_size > TRACE_INITIAL_SIZE_RH)
         {
             asm_printf("ERROR: ROM histogram size %lu is larger than the trace initial size RH %lu\n", histogram_size, TRACE_INITIAL_SIZE_RH);
@@ -1184,6 +1188,8 @@ void server_run (void)
         {
             pOutput[3] = MEM_STEP;
             pOutput[4] = rom_length;
+            // The FROPS multiplicity table follows the instruction multiplicity table
+            pOutput[5 + rom_length] = frops_length;
         }
         else
         {
@@ -1247,6 +1253,33 @@ void server_run (void)
     {
         save_mem_op_to_files();
     }
+    if ((gen_method == RomHistogram) && save_to_file)
+    {
+        save_rom_histogram_to_file();
+    }
+}
+
+// Dumps the whole ROM histogram output region (control header, instruction multiplicity and FROPS
+// multiplicity, see get_rom_histogram_trace_address() in core/src/zisk_rom_2_asm.rs) to
+// /tmp/<shm_prefix>_RH_output.bin, so it can be compared against the same tables computed in Rust.
+static void save_rom_histogram_to_file (void)
+{
+    char file_name[256];
+    snprintf(file_name, sizeof(file_name), "/tmp/%s_RH_output.bin", shm_prefix);
+    FILE * f = fopen(file_name, "wb");
+    if (f == NULL)
+    {
+        asm_printf("ERROR: save_rom_histogram_to_file() failed calling fopen(%s) errno=%d=%s\n", file_name, errno, strerror(errno));
+        return;
+    }
+    size_t written = fwrite((const void *)trace_address, 1, histogram_size, f);
+    fclose(f);
+    if (written != histogram_size)
+    {
+        asm_printf("ERROR: save_rom_histogram_to_file() wrote %zu of %lu B to %s\n", written, histogram_size, file_name);
+        return;
+    }
+    if (!silent) asm_printf("Saved ROM histogram output (%lu B) to %s\n", histogram_size, file_name);
 }
 
 void server_cleanup (void)

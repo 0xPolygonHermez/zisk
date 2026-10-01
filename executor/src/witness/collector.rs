@@ -30,7 +30,6 @@ use ziskemu::ZiskEmulator;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::{state::ChunkCollector, ExecutionState, StaticDataBusCollect, StaticSMBundle};
-use zisk_asm_runner::AsmRunnerRH;
 
 /// Per-instance chunk-collector slot map. Same shape as
 /// [`crate::ChunkCollectorStore::inner`].
@@ -93,8 +92,10 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         self.sm_bundle.set_rom(zisk_rom)
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
-        self.sm_bundle.set_rh_data(rh_data)
+    /// Selects where the FROPS multiplicity column comes from; see
+    /// `StaticSMBundle::set_frops_multiplicity_from_asm`.
+    pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
+        self.sm_bundle.set_frops_multiplicity_from_asm(from_asm)
     }
 
     /// Computes which chunks need to be executed for each instance.
@@ -467,11 +468,11 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             }
         }
 
-        // Advance counters; on the last chunk for an instance, flip its
-        // witness-ready flag and record completion stats.
+        // Advance counters; on the last chunk for an instance, announce it
+        // ready and record completion stats.
         for (global_id, global_id_idx) in affected_globals {
             if ctx.n_chunks_left[global_id_idx].fetch_sub(1, Ordering::SeqCst) == 1 {
-                ctx.pctx.set_witness_ready(global_id, true);
+                ctx.pctx.announce_witness_ready(global_id);
                 Self::record_completion_stats(global_id, global_id_idx, ctx);
             }
         }

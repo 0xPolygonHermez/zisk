@@ -1,0 +1,11 @@
+[package]
+name = "zisklib"
+version = "0.1.0"
+edition = "2021"
+description = "Rust bindings for the ZisK assembly library (ziskasm/zisklib): guest-side stubs redirected to hand-written .zisk routines during transpilation, plus ergonomic wrappers."
+# Guest-side glue only: consumed by examples and test guests via path dependency,
+# never as a versioned crates.io crate. Not published (keeps it out of the
+# workspace crates.io publish list; see tools/crates.io/publish_common.sh).
+publish = false
+
+[dependencies]

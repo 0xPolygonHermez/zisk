@@ -1,0 +1,107 @@
+; ============================================================================
+; bls12_381/final_exp.zisk - final exponentiation f^((p^12-1)/r).
+; Easy part: (p^6-1)(p^2+1). Hard part: (p^4-p^2+1)/r via cyclotomic exps.
+; Linear composition of validated fp12/cyclotomic routines. Prefix lfe_.
+; ============================================================================
+
+u64 BLS_FE_IN[1] = 0
+u64 BLS_FE_RES[1] = 0
+u64 BLS_FE_M[72]    = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+u64 BLS_FE_EASY[72] = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+u64 BLS_FE_A[72]    = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+u64 BLS_FE_B[72]    = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+u64 BLS_FE_C[72]    = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+u64 BLS_FE_F[72]    = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+; void zisklib_final_exp_bls12_381(const u64* f, u64* result)  [72,72]
+zisklib_final_exp_bls12_381:
+	push r1
+	copyb(0, BLS_FE_IN) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_FE_RES) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+
+	; ---- easy part ----
+	; FE_A = conj(f) ; FE_B = inv(f) ; FE_EASY = FE_A * FE_B
+	copyb(0, BLS_FE_IN) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_FE_A) -> r11
+	call zisklib_conjugate_fp12_bls12_381
+	copyb(0, BLS_FE_IN) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_FE_B) -> r11
+	call zisklib_inv_fp12_bls12_381
+	copyb(0, BLS_FE_A) -> r10
+	copyb(0, BLS_FE_B) -> r11
+	copyb(0, BLS_FE_EASY) -> r12
+	call zisklib_mul_fp12_bls12_381
+
+	; FE_A = frob2(easy1) ; FE_M = FE_A * easy1
+	copyb(0, BLS_FE_EASY) -> r10
+	copyb(0, BLS_FE_A) -> r11
+	call zisklib_frobenius2_fp12_bls12_381
+	copyb(0, BLS_FE_A) -> r10
+	copyb(0, BLS_FE_EASY) -> r11
+	copyb(0, BLS_FE_M) -> r12
+	call zisklib_mul_fp12_bls12_381
+
+	; ---- hard part ----
+	; f = m^{(x+1)/3}
+	copyb(0, BLS_FE_M) -> r10
+	copyb(0, BLS_FE_F) -> r11
+	call zisklib_exp_by_xdiv3_cyclo_bls12_381
+	; f = f^(x+1)
+	copyb(0, BLS_FE_F) -> r10
+	copyb(0, BLS_FE_A) -> r11
+	call zisklib_exp_by_xone_cyclo_bls12_381
+	copyb(0, BLS_FE_A) -> r10
+	copyb(0, BLS_FE_F) -> r11
+	copyb(0, 72) -> r12
+	call bn254_memcpy
+
+	; f1 = f^p (FE_B) ; f2 = (conj f)^x (FE_C) ; f = f1*f2
+	copyb(0, BLS_FE_F) -> r10
+	copyb(0, BLS_FE_B) -> r11
+	call zisklib_frobenius1_fp12_bls12_381
+	copyb(0, BLS_FE_F) -> r10
+	copyb(0, BLS_FE_A) -> r11
+	call zisklib_conjugate_fp12_bls12_381
+	copyb(0, BLS_FE_A) -> r10
+	copyb(0, BLS_FE_C) -> r11
+	call zisklib_exp_by_x_cyclo_bls12_381
+	copyb(0, BLS_FE_B) -> r10
+	copyb(0, BLS_FE_C) -> r11
+	copyb(0, BLS_FE_F) -> r12
+	call zisklib_mul_fp12_bls12_381
+
+	; f1 = (f^x)^x (FE_B) ; f2 = f^p^2 (FE_C) ; f3 = conj f (FE_EASY)
+	copyb(0, BLS_FE_F) -> r10
+	copyb(0, BLS_FE_A) -> r11
+	call zisklib_exp_by_x_cyclo_bls12_381
+	copyb(0, BLS_FE_A) -> r10
+	copyb(0, BLS_FE_B) -> r11
+	call zisklib_exp_by_x_cyclo_bls12_381
+	copyb(0, BLS_FE_F) -> r10
+	copyb(0, BLS_FE_C) -> r11
+	call zisklib_frobenius2_fp12_bls12_381
+	copyb(0, BLS_FE_F) -> r10
+	copyb(0, BLS_FE_EASY) -> r11
+	call zisklib_conjugate_fp12_bls12_381
+
+	; f = f1*f2*f3*m
+	copyb(0, BLS_FE_B) -> r10
+	copyb(0, BLS_FE_C) -> r11
+	copyb(0, BLS_FE_A) -> r12
+	call zisklib_mul_fp12_bls12_381
+	copyb(0, BLS_FE_A) -> r10
+	copyb(0, BLS_FE_EASY) -> r11
+	copyb(0, BLS_FE_B) -> r12
+	call zisklib_mul_fp12_bls12_381
+	copyb(0, BLS_FE_B) -> r10
+	copyb(0, BLS_FE_M) -> r11
+	copyb(0, BLS_FE_RES) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zisklib_mul_fp12_bls12_381
+
+	pop r1
+	ret

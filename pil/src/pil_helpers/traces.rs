@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "1a4e5d6a6ab3529c1fae78252669121e30e564001fb0ab224bf236de4e288ea8";
+pub const PILOUT_HASH: &str = "b6ed1e0d78bc9433383dadc6b052f0e9eab50032dba1e081e125af24b108d151";
 
 //AIRGROUP CONSTANTS
 
@@ -747,7 +747,7 @@ trace_row!(JumpDestTraceRow<F> {
 pub type JumpDestTrace<R> = GenericTrace<R, 2097152, 0, 51>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- COL_0_0_0: F, COL_0_0_1: F, COL_0_0_2: F, COL_0_0_3: F, COL_0_0_5: F, COL_0_0_7: F, COL_1_8_0: F, COL_1_8_1: F, COL_1_8_2: F, COL_1_8_3: F, COL_1_8_5: F, COL_1_8_7: F, COL_2_16_1: F, COL_2_16_3: F, COL_2_16_5: F, COL_5_40_0: F, COL_5_40_1: F, COL_5_40_2: F, COL_5_40_3: F, COL_5_40_5: F, COL_5_40_6: F, COL_6_48_0: F, COL_6_48_1: F, COL_6_48_2: F, COL_6_48_3: F, COL_6_48_5: F, COL_7_56_1: F, COL_7_56_3: F, COL_7_56_5: F, COL_8_64_0: F, COL_8_64_1: F, COL_8_64_2: F, COL_8_64_3: F, COL_8_64_5: F, COL_8_64_6: F, COL_9_72_1: F, COL_9_72_3: F, COL_9_72_5: F, COL_9_72_6: F, COL_10_80_0: F, COL_10_80_1: F, COL_10_80_2: F, COL_10_80_3: F, COL_10_80_5: F, COL_10_80_6: F, COL_11_88_0: F, COL_11_88_1: F, COL_11_88_2: F, COL_11_88_3: F, COL_11_88_5: F, COL_11_88_6: F, COL_11_88_7: F, UID_11: F, __L1__: F,
+ COL_0_0_0: F, COL_0_0_1: F, COL_0_0_2: F, COL_0_0_3: F, COL_0_0_5: F, COL_0_0_7: F, COL_1_8_0: F, COL_1_8_1: F, COL_1_8_3: F, COL_1_8_5: F, COL_2_16_1: F, COL_2_16_3: F, COL_2_16_5: F, COL_3_24_1: F, COL_3_24_3: F, COL_3_24_5: F, COL_4_32_1: F, COL_4_32_3: F, COL_4_32_5: F, COL_5_40_1: F, COL_5_40_3: F, COL_5_40_5: F, COL_6_48_1: F, COL_6_48_3: F, COL_6_48_5: F, COL_7_56_1: F, COL_7_56_3: F, COL_7_56_5: F, COL_8_64_0: F, COL_8_64_1: F, COL_8_64_2: F, COL_8_64_3: F, COL_8_64_5: F, COL_8_64_6: F, COL_9_72_0: F, COL_9_72_1: F, COL_9_72_2: F, COL_9_72_3: F, COL_9_72_5: F, COL_9_72_6: F, COL_10_80_0: F, COL_10_80_1: F, COL_10_80_2: F, COL_10_80_3: F, COL_10_80_5: F, COL_10_80_6: F, COL_11_88_0: F, COL_11_88_1: F, COL_11_88_2: F, COL_11_88_3: F, COL_11_88_5: F, COL_11_88_6: F, COL_11_88_7: F, UID_11: F, __L1__: F,
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 52>;
 
