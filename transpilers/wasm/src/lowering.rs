@@ -721,12 +721,13 @@ impl<'a, 'b> FuncGen<'a, 'b> {
 
     fn memory_grow(&mut self) {
         let a = self.slot(self.depth - 1);
-        self.code.load_slot_to_reg(REG_T0, a); // delta pages
+        self.code.load_slot_to_reg(REG_T0, a); // delta pages (u32)
+        self.code.alu_ri("and", REG_T0, REG_T0, 0xFFFF_FFFF);
         self.code.load_abs_to_reg(REG_T1, WASM_MEM_PAGES_ADDR); // current pages
         self.code.alu_rr("add", REG_T2, REG_T1, REG_T0); // new pages
         let success = self.code.new_label();
         let done = self.code.new_label();
-        self.code.cmp_imm_branch("leu", REG_T2, WASM_MAX_PAGES as i64, success, true);
+        self.code.cmp_imm_branch("leu", REG_T2, self.module.mem_max_pages as i64, success, true);
         // failure: push -1
         self.code.load_imm_to_reg(REG_T3, (-1i64) as u64);
         self.code.store_reg_to_slot(a, REG_T3);
