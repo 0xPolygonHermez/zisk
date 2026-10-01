@@ -253,3 +253,37 @@ fn data_segments_must_not_overlap() {
     let err = wasm2rom(&wat::parse_str(overlapping).unwrap()).expect_err("must be rejected");
     assert!(err.to_string().contains("overlapping data segments"), "{err}");
 }
+
+#[test]
+fn memory_must_fit_the_machine() {
+    use zisk_transpiler_wasm::layout::WASM_MAX_PAGES;
+
+    // The largest supported initial memory is accepted and reported by memory.size ...
+    let max = format!(
+        r#"(module
+          (import "wasi_snapshot_preview1" "fd_write"
+            (func $fd_write (param i32 i32 i32 i32) (result i32)))
+          (memory {WASM_MAX_PAGES})
+          (func (export "_start")
+            (i64.store (i32.const 16) (i64.extend_i32_u (memory.size)))
+            (i32.store (i32.const 0) (i32.const 16))
+            (i32.store (i32.const 4) (i32.const 8))
+            (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+    );
+    let out = run(&wat::parse_str(max).unwrap(), &[]);
+    assert_eq!(out_u64(&out), WASM_MAX_PAGES);
+
+    // ... one page more is a valid module this machine cannot host.
+    let too_big = format!(r#"(module (memory {}) (func (export "_start")))"#, WASM_MAX_PAGES + 1);
+    let err = wasm2rom(&wat::parse_str(too_big).unwrap()).expect_err("must be rejected");
+    assert!(err.to_string().contains("initial memory"), "{err}");
+
+    // A data segment past the end of the initial memory is rejected too (instantiation would
+    // trap), even by a single byte.
+    let past_end = r#"(module
+      (memory 1)
+      (data (i32.const 65533) "\01\02\03\04")
+      (func (export "_start")))"#;
+    let err = wasm2rom(&wat::parse_str(past_end).unwrap()).expect_err("must be rejected");
+    assert!(err.to_string().contains("does not fit the initial memory"), "{err}");
+}

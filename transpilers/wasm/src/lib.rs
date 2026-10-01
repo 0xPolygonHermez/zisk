@@ -38,6 +38,7 @@ const ENTRY_FRAME_RESERVE: i64 = 64;
 /// Transpiles a wasm module into a Zisk ROM.
 pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     let module = parse_module(bytes)?;
+    reject_unsupported_memory(&module)?;
 
     // Resolve the program entry point.
     let start_index = module
@@ -68,14 +69,6 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         .map(|seg| DataSection { addr: WASM_MEM_BASE + seg.offset, data: seg.bytes.clone() })
         .collect();
     for section in normalize_rw_data_sections(segments) {
-        let end = section.addr + section.data.len() as u64;
-        if end > WASM_MEM_LIMIT {
-            return Err(format!(
-                "wasm: data segment ending at linear address {:#x} exceeds the supported memory",
-                end - WASM_MEM_BASE
-            )
-            .into());
-        }
         let data = section.data.chunks(8).map(|c| u64::from_le_bytes(c.try_into().unwrap()));
         rom.rw_data_64.push(DataSection64 { addr: section.addr, data: data.collect() });
     }
@@ -120,6 +113,36 @@ pub fn wasm2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     rom.optimize_instruction_lookup()?;
 
     Ok(rom)
+}
+
+/// Fails if the module's linear memory cannot be hosted: the declared initial size must fit the
+/// fixed window below `WASM_MEM_LIMIT` (it is what `memory.size` reports and what `memory.grow`
+/// extends), and every active data segment must lie inside that initial memory, as instantiation
+/// requires.  Both are checked in wasm address space, before any Zisk base address is added.
+fn reject_unsupported_memory(module: &WasmModule) -> Result<(), Box<dyn Error>> {
+    if module.mem_initial_pages > WASM_MAX_PAGES {
+        return Err(format!(
+            "wasm: initial memory of {} pages exceeds the {} pages this machine supports",
+            module.mem_initial_pages, WASM_MAX_PAGES
+        )
+        .into());
+    }
+    let mem_bytes = module.mem_initial_pages * WASM_PAGE_SIZE;
+    for seg in &module.data {
+        let fits =
+            seg.offset.checked_add(seg.bytes.len() as u64).is_some_and(|end| end <= mem_bytes);
+        if !fits {
+            return Err(format!(
+                "wasm: data segment at offset {:#x} ({} bytes) does not fit the initial memory \
+                 of {} bytes",
+                seg.offset,
+                seg.bytes.len(),
+                mem_bytes
+            )
+            .into());
+        }
+    }
+    Ok(())
 }
 
 /// Fails if any two active data segments cover a common linear-memory byte.
