@@ -768,3 +768,36 @@ fn stdout_mirror_stops_at_the_public_output_limit() {
     assert_eq!(mem.read(WASM_MEM_PAGES_ADDR, 8), 4, "control cells survive");
     assert_eq!(emu.get_output_8()[..8], [0x61; 8], "the mirror holds the first bytes");
 }
+#[test]
+fn signed_division_overflow_traps() {
+    // Returns (trapped, printed value) for a body leaving one i64 on the stack.
+    let outcome = |body: &str| -> (bool, u64) {
+        let rom = wasm2rom(&module_printing_i64(body)).expect("wasm2rom");
+        let mut emu = ziskemu::Emu::new(&rom);
+        emu.run(Vec::new(), &EmuOptions::default(), None::<fn(EmuTrace)>);
+        assert!(emu.terminated(), "did not terminate: {body}");
+        (emu.ctx.inst_ctx.error, out_u64(&emu.get_output_8()))
+    };
+    // MIN / -1 overflows: a trap for both widths; MIN % -1 is 0 and MIN / 1 is MIN.
+    assert!(outcome("(i64.extend_i32_s (i32.div_s (i32.const 0x80000000) (i32.const -1)))").0);
+    assert!(outcome("(i64.div_s (i64.const 0x8000000000000000) (i64.const -1))").0);
+    assert_eq!(
+        outcome("(i64.extend_i32_s (i32.rem_s (i32.const 0x80000000) (i32.const -1)))"),
+        (false, 0)
+    );
+    assert_eq!(outcome("(i64.rem_s (i64.const 0x8000000000000000) (i64.const -1))"), (false, 0));
+    assert_eq!(
+        outcome("(i64.extend_i32_s (i32.div_s (i32.const 0x80000000) (i32.const 1)))"),
+        (false, i32::MIN as i64 as u64)
+    );
+    assert_eq!(outcome("(i64.div_s (i64.const -8) (i64.const -1))"), (false, 8));
+    // Division by zero traps for every variant.
+    for body in [
+        "(i64.extend_i32_s (i32.div_s (i32.const 1) (i32.const 0)))",
+        "(i64.extend_i32_u (i32.div_u (i32.const 1) (i32.const 0)))",
+        "(i64.div_s (i64.const 1) (i64.const 0))",
+        "(i64.rem_u (i64.const 1) (i64.const 0))",
+    ] {
+        assert!(outcome(body).0, "{body}");
+    }
+}
