@@ -1,5 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Bn254Curve;
+use zisk_core::zisk_ops::swap_endianness_elements;
 use zisk_precomp_common::MemProcessor;
 
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
@@ -17,16 +18,20 @@ pub fn generate_bn254_curve_dbl_mem_inputs<P: MemProcessor>(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
+    big_endian: bool,
     mem_processors: &mut P,
 ) {
     // op,op_type,a,b,addr[2],...
-    let p1: &[u64; 8] = &data
-        [OPERATION_PRECOMPILED_BUS_DATA_SIZE..OPERATION_PRECOMPILED_BUS_DATA_SIZE + 8]
-        .try_into()
-        .unwrap();
+    let p1: &[u64; 8] = &super::operand::<8>(
+        &data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..OPERATION_PRECOMPILED_BUS_DATA_SIZE + 8],
+        big_endian,
+    );
     let mut p3 = [0u64; 8];
 
     Bn254Curve::calculate_dbl(p1, &mut p3);
+    if big_endian {
+        swap_endianness_elements(&mut p3, 4);
+    }
     super::generate_mem_inputs(
         addr_main,
         step_main,

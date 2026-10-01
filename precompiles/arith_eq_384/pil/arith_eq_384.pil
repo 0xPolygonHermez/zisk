@@ -4,7 +4,12 @@ require "operations.pil"
 require "opids.pil"
 require "arith_eq_lt_table.pil"
 
-airtemplate ArithEq384(const int N) {
+// big_endian: memory layout of the six 384-bit operands x1,y1,x2,y2,x3,y3 (the ones read from /
+// written to memory). 0 = little-endian (as always), 1 = big-endian (most significant byte at the
+// lowest address). The arithmetic is identical; see the operand columns below for how the chunks
+// are committed in each mode and map_chunks_to_m32 for the memory word layout. A big-endian instance
+// proves the OP_*_BE opcodes.
+airtemplate ArithEq384(const int N, const int big_endian = 0) {
     /*
         EQ0 : x1 * y1 + x2 - x3 - q1 * y2 * p2_384 - q0 * y2  modular arith  ARITH_384_MOD      x3 = mod(x1*y1+x2, y2)
         EQ1 : s * x2 - s * x1 - y2 + y1 + (q0 * p)            lambda - ADD   EC_ADD_BLS12_381
@@ -67,12 +72,75 @@ airtemplate ArithEq384(const int N) {
     const int MAX_CEQS = 3; // Max concurrent equations
     const int QS = 3;       // Number of quotients
 
-    col witness bits(CHUNK_BITS) x1;
-    col witness bits(CHUNK_BITS) y1;
-    col witness bits(CHUNK_BITS) x2;
-    col witness bits(CHUNK_BITS) y2;
-    col witness bits(CHUNK_BITS) x3;
-    col witness bits(CHUNK_BITS) y3;
+    // Operand columns x1,y1,x2,y2,x3,y3: the six values that go through memory, one 16-bit chunk per
+    // row (chunk 0, the least significant, on the first clock of the cycle). How a chunk is committed
+    // depends on big_endian:
+    //
+    //   big_endian = 0  one 16-bit witness column per operand, range-checked on [0, CHUNK_MAX].
+    //                   In memory the operand is a little-endian integer: chunk 0 at the lowest
+    //                   address.
+    //
+    //   big_endian = 1  two byte witness columns per operand, x1_c[0] (low byte) and x1_c[1] (high
+    //                   byte), and the chunk is the expression x1 = x1_c[0] + 256 * x1_c[1]. The range
+    //                   check is one dual-byte lookup per chunk instead of one 16-bit lookup, so the
+    //                   number of lookups does not change. In memory the operand is a big-endian
+    //                   integer: its byte 47 (the most significant) at the lowest address, so the
+    //                   memory map reverses the chunk order and swaps the two bytes of every chunk.
+    //
+    // Everything else (equations, carries, quotients, lambda, the alias-free check of x3/y3 and the
+    // x1 != x2 check) is written in terms of the chunk values x1..y3 and is the same in both modes:
+    // x1 is either a column or a degree-1 expression of two columns. s and q0..q2 are computed, never
+    // read from or written to memory, and stay 16-bit chunk columns in both modes.
+    //
+    // x1_mem..y3_mem is the chunk as it sits inside a memory word: the chunk itself in little-endian
+    // mode, the chunk with its two bytes swapped in big-endian mode (see map_chunks_to_m32).
+    if (big_endian) {
+        col witness bits(8) air.x1_c[2];
+        col witness bits(8) air.y1_c[2];
+        col witness bits(8) air.x2_c[2];
+        col witness bits(8) air.y2_c[2];
+        col witness bits(8) air.x3_c[2];
+        col witness bits(8) air.y3_c[2];
+
+        const expr air.x1 = x1_c[0] + 256 * x1_c[1];
+        const expr air.y1 = y1_c[0] + 256 * y1_c[1];
+        const expr air.x2 = x2_c[0] + 256 * x2_c[1];
+        const expr air.y2 = y2_c[0] + 256 * y2_c[1];
+        const expr air.x3 = x3_c[0] + 256 * x3_c[1];
+        const expr air.y3 = y3_c[0] + 256 * y3_c[1];
+
+        const expr air.x1_mem = x1_c[1] + 256 * x1_c[0];
+        const expr air.y1_mem = y1_c[1] + 256 * y1_c[0];
+        const expr air.x2_mem = x2_c[1] + 256 * x2_c[0];
+        const expr air.y2_mem = y2_c[1] + 256 * y2_c[0];
+        const expr air.x3_mem = x3_c[1] + 256 * x3_c[0];
+        const expr air.y3_mem = y3_c[1] + 256 * y3_c[0];
+
+        // Dual-byte range checks, high byte first so the looked-up pair (a, b) is the chunk value
+        // a * 256 + b itself (the witness counts one DualByte row per chunk, indexed by the chunk).
+        range_dual_byte(x1_c[1], x1_c[0]);
+        range_dual_byte(y1_c[1], y1_c[0]);
+        range_dual_byte(x2_c[1], x2_c[0]);
+        range_dual_byte(y2_c[1], y2_c[0]);
+        range_dual_byte(x3_c[1], x3_c[0]);
+        range_dual_byte(y3_c[1], y3_c[0]);
+    } else {
+        col witness bits(CHUNK_BITS) air.x1;
+        col witness bits(CHUNK_BITS) air.y1;
+        col witness bits(CHUNK_BITS) air.x2;
+        col witness bits(CHUNK_BITS) air.y2;
+        col witness bits(CHUNK_BITS) air.x3;
+        col witness bits(CHUNK_BITS) air.y3;
+
+        const expr air.x1_mem = x1;
+        const expr air.y1_mem = y1;
+        const expr air.x2_mem = x2;
+        const expr air.y2_mem = y2;
+        const expr air.x3_mem = x3;
+        const expr air.y3_mem = y3;
+    }
+    // Number of operand columns that go through memory (x1,y1,x2,y2,x3,y3), the first ones of chunk_cols.
+    const int MEM_COLS = 6;
     col witness bits(Q_HSC_BITS) q0;
     col witness bits(Q_HSC_BITS) q1;
     col witness bits(Q_HSC_BITS) q2;
@@ -164,7 +232,11 @@ airtemplate ArithEq384(const int N) {
     }
 
     for (int i = 0; i < length(chunk_cols); ++i) {
-        range_check(min: 0, max: CHUNK_MAX, expression: chunk_cols[i]);
+        // In big-endian mode the memory operands are already range-checked byte by byte (above);
+        // s is always a 16-bit chunk column.
+        if (!big_endian || i >= MEM_COLS) {
+            range_check(min: 0, max: CHUNK_MAX, expression: chunk_cols[i]);
+        }
         if (i < length(qs)) {
             // range_sel = 1 => [0, CHUNK_MAX]
             // range_sel = 0 => [0, Q_HSC_MAX]
@@ -420,6 +492,9 @@ airtemplate ArithEq384(const int N) {
 
     // MEMORY ACCESS MAP
     //
+    // (chunk ranges as laid out for big_endian = 0; with big_endian = 1 the word at +0 holds
+    // x1[23..20], the one at +8 x1[19..16], and so on, bytes swapped inside every chunk)
+    //
     //  0  STEP     | R | ADDR_X1       x1[0..3]    1         | ADDR_Y1       y1[0..3]    1
     //  1  STEP     | R | ADDR_X1 + 8   x1[4..7]    1         | ADDR_Y1 + 8   y1[4..7]    1
     //  2  STEP     | R | ADDR_X1 + 16  x1[8..11]   1         | ADDR_Y1 + 16  y1[8..11]   1
@@ -526,28 +601,28 @@ airtemplate ArithEq384(const int N) {
 
     const expr mem_value[2][2];
 
-    mem_value[0][0] =   map_chunks_to_m32(x1, start: 0,  end: 5) +
-                        map_chunks_to_m32(x2, start: 6,  end: 11) +
-                        map_chunks_to_m32(x3, start: 12, end: 17) +
+    mem_value[0][0] =   map_chunks_to_m32(x1_mem, start: 0,  end: 5) +
+                        map_chunks_to_m32(x2_mem, start: 6,  end: 11) +
+                        map_chunks_to_m32(x3_mem, start: 12, end: 17) +
                         clock_map(step_addr, ADDR_IND_0, 18) +
                         clock_map(step_addr, ADDR_IND_2, 19) +
                         clock_map(step_addr, ADDR_IND_4, 20);
 
-    mem_value[0][1] =   map_chunks_to_m32(x1, index: 2, start: 0,  end: 5) +
-                        map_chunks_to_m32(x2, index: 2, start: 6,  end: 11) +
-                        map_chunks_to_m32(x3, index: 2, start: 12, end: 17);
+    mem_value[0][1] =   map_chunks_to_m32(x1_mem, index: 2, start: 0,  end: 5) +
+                        map_chunks_to_m32(x2_mem, index: 2, start: 6,  end: 11) +
+                        map_chunks_to_m32(x3_mem, index: 2, start: 12, end: 17);
                         // high bits of indirect addresses are 0.
 
-    mem_value[1][0] =   map_chunks_to_m32(y1, start: 0,  end: 5) +
-                        map_chunks_to_m32(y2, start: 6,  end: 11) +
-                        map_chunks_to_m32(y3, start: 12, end: 17) +
+    mem_value[1][0] =   map_chunks_to_m32(y1_mem, start: 0,  end: 5) +
+                        map_chunks_to_m32(y2_mem, start: 6,  end: 11) +
+                        map_chunks_to_m32(y3_mem, start: 12, end: 17) +
                         clock_map(step_addr, ADDR_IND_1, 18) +
                         clock_map(step_addr, ADDR_IND_3, 19) +
                         clock_map(step_addr, ADDR_IND_5, 20);
 
-    mem_value[1][1] =   map_chunks_to_m32(y1, index: 2, start: 0,  end: 5) +
-                        map_chunks_to_m32(y2, index: 2, start: 6,  end: 11) +
-                        map_chunks_to_m32(y3, index: 2, start: 12, end: 17);
+    mem_value[1][1] =   map_chunks_to_m32(y1_mem, index: 2, start: 0,  end: 5) +
+                        map_chunks_to_m32(y2_mem, index: 2, start: 6,  end: 11) +
+                        map_chunks_to_m32(y3_mem, index: 2, start: 12, end: 17);
                         // high bits of indirect addresses are 0.
 
     const expr mem_sel[2];
@@ -583,12 +658,20 @@ airtemplate ArithEq384(const int N) {
             value: mem_value[1]
     );
 
-    const expr bus_op = sel_arith384_mod * OP_ARITH384_MOD +
-                        sel_bls12_381_curve_add * OP_BLS12_381_CURVE_ADD +
-                        sel_bls12_381_curve_dbl * OP_BLS12_381_CURVE_DBL +
-                        sel_bls12_381_complex_add * OP_BLS12_381_COMPLEX_ADD +
-                        sel_bls12_381_complex_sub * OP_BLS12_381_COMPLEX_SUB +
-                        sel_bls12_381_complex_mul * OP_BLS12_381_COMPLEX_MUL;
+    // Opcodes proved on the operation bus: the little-endian ops, or their big-endian twins.
+    const int op_arith384_mod          = big_endian ? OP_ARITH384_MOD_BE         : OP_ARITH384_MOD;
+    const int op_bls12_381_curve_add   = big_endian ? OP_BLS12_381_CURVE_ADD_BE   : OP_BLS12_381_CURVE_ADD;
+    const int op_bls12_381_curve_dbl   = big_endian ? OP_BLS12_381_CURVE_DBL_BE   : OP_BLS12_381_CURVE_DBL;
+    const int op_bls12_381_complex_add = big_endian ? OP_BLS12_381_COMPLEX_ADD_BE : OP_BLS12_381_COMPLEX_ADD;
+    const int op_bls12_381_complex_sub = big_endian ? OP_BLS12_381_COMPLEX_SUB_BE : OP_BLS12_381_COMPLEX_SUB;
+    const int op_bls12_381_complex_mul = big_endian ? OP_BLS12_381_COMPLEX_MUL_BE : OP_BLS12_381_COMPLEX_MUL;
+
+    const expr bus_op = sel_arith384_mod * op_arith384_mod +
+                        sel_bls12_381_curve_add * op_bls12_381_curve_add +
+                        sel_bls12_381_curve_dbl * op_bls12_381_curve_dbl +
+                        sel_bls12_381_complex_add * op_bls12_381_complex_add +
+                        sel_bls12_381_complex_sub * op_bls12_381_complex_sub +
+                        sel_bls12_381_complex_mul * op_bls12_381_complex_mul;
 
     proves_operation(op: bus_op,  a:[0, 0],  b:[step_addr'(ADDR_OP), 0], c:[0, 0], flag:0, 
                      main_step: step_addr'(MAIN_STEP), mul: in_use_clk0);
@@ -606,10 +689,24 @@ airtemplate ArithEq384(const int N) {
         return res;
     }
 
+    // One 32-bit half (index 0: low, index 2: high) of the 64-bit memory word accessed on each clock of
+    // [start, end], as two consecutive chunks of the operand `cl`. `index` is the little-endian chunk
+    // index of the low chunk of the half on clock `start`; it advances `delta_index` chunks per clock.
+    //
+    //   big_endian = 0   half = cl[index] + 2^16 * cl[index + 1]
+    //   big_endian = 1   the operand is a big-endian integer in memory: the first word holds the most
+    //                    significant chunks, in descending order, and inside a chunk the high byte
+    //                    comes first. So `cl` must be the *_mem (byte-swapped) expression and
+    //                    half = cl[hi] + 2^16 * cl[hi - 1] with hi = CHUNKS - 1 - index.
     function map_chunks_to_m32(const expr cl, int index = 0, int start = 0, int end = 0, int delta_index = 4): const expr {
         expr res = 0;
         for (int iclock = start; iclock <= end; ++iclock) {
-            res += air.CLK[iclock]*(index_on_clock(cl, index, iclock) + air.CHUNK_SIZE * index_on_clock(cl, index + 1, iclock));
+            if (air.big_endian) {
+                int hi = air.CHUNKS - 1 - index;
+                res += air.CLK[iclock]*(index_on_clock(cl, hi, iclock) + air.CHUNK_SIZE * index_on_clock(cl, hi - 1, iclock));
+            } else {
+                res += air.CLK[iclock]*(index_on_clock(cl, index, iclock) + air.CHUNK_SIZE * index_on_clock(cl, index + 1, iclock));
+            }
             index += delta_index;
         }
         return res;

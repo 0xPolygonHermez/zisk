@@ -27,8 +27,15 @@ use proofman_common::trace::TraceRow;
 use proofman_common::{AirInstance, ProofmanResult};
 use proofman_fields::PrimeField64;
 
-/// The 11 sub-operations, in the canonical order used by both the PIL selector list and the witness
-/// (`SEL_OP_*` in `arith_eq_constants`).
+/// The sub-operations, in the canonical order used by both the PIL selector list and the witness
+/// (`SEL_OP_*` in `arith_eq_constants`): the 11 little-endian ones first, then their 11 big-endian
+/// twins in the same order.
+///
+/// A big-endian op (`*Be`) is the same operation with its 256-bit operands stored in memory as
+/// big-endian integers. It is a *different bus opcode* (`OP_*_BE`), proved only by the
+/// `big_endian: 1` airs, so the counter/planner/collector keep it apart from its little-endian twin;
+/// but inside an air it drives the *same* selector column (`sel_arith256`, ...) and the same
+/// equations, so the witness fill only needs [`ArithEqOp::little_endian`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ArithEqOp {
     Arith256,
@@ -42,6 +49,17 @@ pub enum ArithEqOp {
     Bn254ComplexMul,
     Secp256r1Add,
     Secp256r1Dbl,
+    Arith256Be,
+    Arith256ModBe,
+    Secp256k1AddBe,
+    Secp256k1DblBe,
+    Bn254CurveAddBe,
+    Bn254CurveDblBe,
+    Bn254ComplexAddBe,
+    Bn254ComplexSubBe,
+    Bn254ComplexMulBe,
+    Secp256r1AddBe,
+    Secp256r1DblBe,
 }
 
 impl ArithEqOp {
@@ -49,6 +67,25 @@ impl ArithEqOp {
     #[inline]
     pub fn index(self) -> usize {
         self as usize
+    }
+
+    /// Whether the operands of this op live in memory as big-endian integers.
+    #[inline]
+    pub fn is_big_endian(self) -> bool {
+        self.index() >= crate::ARITH_EQ_LE_OP_NUM
+    }
+
+    /// The little-endian twin of this op (itself for a little-endian op): the one whose selector
+    /// column and equations it uses inside an air.
+    #[inline]
+    pub fn little_endian(self) -> ArithEqOp {
+        Self::ALL[self.index() % crate::ARITH_EQ_LE_OP_NUM]
+    }
+
+    /// The big-endian twin of this op (itself for a big-endian op).
+    #[inline]
+    pub fn big_endian(self) -> ArithEqOp {
+        Self::ALL[self.index() % crate::ARITH_EQ_LE_OP_NUM + crate::ARITH_EQ_LE_OP_NUM]
     }
 
     /// Map a ZisK opcode (`data[OP]`) to its `ArithEqOp`, or `None` if it isn't an ArithEq sub-op.
@@ -66,12 +103,23 @@ impl ArithEqOp {
             ZiskOp::BN254_COMPLEX_MUL => ArithEqOp::Bn254ComplexMul,
             ZiskOp::SECP256R1_ADD => ArithEqOp::Secp256r1Add,
             ZiskOp::SECP256R1_DBL => ArithEqOp::Secp256r1Dbl,
+            ZiskOp::ARITH256_BE => ArithEqOp::Arith256Be,
+            ZiskOp::ARITH256_MOD_BE => ArithEqOp::Arith256ModBe,
+            ZiskOp::SECP256K1_ADD_BE => ArithEqOp::Secp256k1AddBe,
+            ZiskOp::SECP256K1_DBL_BE => ArithEqOp::Secp256k1DblBe,
+            ZiskOp::BN254_CURVE_ADD_BE => ArithEqOp::Bn254CurveAddBe,
+            ZiskOp::BN254_CURVE_DBL_BE => ArithEqOp::Bn254CurveDblBe,
+            ZiskOp::BN254_COMPLEX_ADD_BE => ArithEqOp::Bn254ComplexAddBe,
+            ZiskOp::BN254_COMPLEX_SUB_BE => ArithEqOp::Bn254ComplexSubBe,
+            ZiskOp::BN254_COMPLEX_MUL_BE => ArithEqOp::Bn254ComplexMulBe,
+            ZiskOp::SECP256R1_ADD_BE => ArithEqOp::Secp256r1AddBe,
+            ZiskOp::SECP256R1_DBL_BE => ArithEqOp::Secp256r1DblBe,
             _ => return None,
         })
     }
 
     /// All operations, indexed by their `SEL_OP_*` value.
-    pub const ALL: [ArithEqOp; 11] = [
+    pub const ALL: [ArithEqOp; 22] = [
         ArithEqOp::Arith256,
         ArithEqOp::Arith256Mod,
         ArithEqOp::Secp256k1Add,
@@ -83,6 +131,47 @@ impl ArithEqOp {
         ArithEqOp::Bn254ComplexMul,
         ArithEqOp::Secp256r1Add,
         ArithEqOp::Secp256r1Dbl,
+        ArithEqOp::Arith256Be,
+        ArithEqOp::Arith256ModBe,
+        ArithEqOp::Secp256k1AddBe,
+        ArithEqOp::Secp256k1DblBe,
+        ArithEqOp::Bn254CurveAddBe,
+        ArithEqOp::Bn254CurveDblBe,
+        ArithEqOp::Bn254ComplexAddBe,
+        ArithEqOp::Bn254ComplexSubBe,
+        ArithEqOp::Bn254ComplexMulBe,
+        ArithEqOp::Secp256r1AddBe,
+        ArithEqOp::Secp256r1DblBe,
+    ];
+
+    /// The little-endian operations, indexed by their `SEL_OP_*` value.
+    pub const ALL_LE: [ArithEqOp; 11] = [
+        ArithEqOp::Arith256,
+        ArithEqOp::Arith256Mod,
+        ArithEqOp::Secp256k1Add,
+        ArithEqOp::Secp256k1Dbl,
+        ArithEqOp::Bn254CurveAdd,
+        ArithEqOp::Bn254CurveDbl,
+        ArithEqOp::Bn254ComplexAdd,
+        ArithEqOp::Bn254ComplexSub,
+        ArithEqOp::Bn254ComplexMul,
+        ArithEqOp::Secp256r1Add,
+        ArithEqOp::Secp256r1Dbl,
+    ];
+
+    /// The big-endian operations, in the order of their little-endian twins.
+    pub const ALL_BE: [ArithEqOp; 11] = [
+        ArithEqOp::Arith256Be,
+        ArithEqOp::Arith256ModBe,
+        ArithEqOp::Secp256k1AddBe,
+        ArithEqOp::Secp256k1DblBe,
+        ArithEqOp::Bn254CurveAddBe,
+        ArithEqOp::Bn254CurveDblBe,
+        ArithEqOp::Bn254ComplexAddBe,
+        ArithEqOp::Bn254ComplexSubBe,
+        ArithEqOp::Bn254ComplexMulBe,
+        ArithEqOp::Secp256r1AddBe,
+        ArithEqOp::Secp256r1DblBe,
     ];
 }
 
@@ -104,6 +193,10 @@ pub trait ArithEqRow<F: PrimeField64>: TraceRow {
     const USE_S: bool;
     /// Number of concurrent-equation carry rows this config has (MAX_CEQS: 1, 2, or 3).
     const CEQS: usize;
+    /// Whether this is a `big_endian: 1` air: x1..y3 are committed as byte pairs (`x1_c[2]`, ...)
+    /// and range-checked in the `DualByte` table instead of the 16-bit chunk range, and the air
+    /// proves the big-endian opcodes. The setters below take the 16-bit chunk in both cases.
+    const BIG_ENDIAN: bool;
 
     /// Create the trace over an existing field buffer.
     fn new_trace(buffer: Vec<F>) -> ProofmanResult<Self::Trace>;
@@ -114,7 +207,7 @@ pub trait ArithEqRow<F: PrimeField64>: TraceRow {
     /// Wrap the filled trace into an `AirInstance` tagged with this config's air.
     fn into_air_instance(trace: &mut Self::Trace) -> AirInstance<F>;
 
-    // 16-bit chunk columns — present in every config.
+    // 16-bit chunk columns — present in every config (as two byte columns in a big-endian air).
     fn set_x1(&mut self, v: u16);
     fn set_y1(&mut self, v: u16);
     fn set_x2(&mut self, v: u16);
@@ -156,8 +249,11 @@ pub trait ArithEqRow<F: PrimeField64>: TraceRow {
 /// * `trace:` the `GenericTrace` alias for this air (used as `Alias<Self>`, so the same alias works
 ///   for both packed and unpacked rows).
 /// * `ceqs:` MAX_CEQS for this config — how many `carry` rows the trace actually has (1, 2, or 3).
+/// * `big_endian:` whether the air was instantiated with `big_endian: 1` (x1..y3 are `x1_c[2]`...
+///   byte pairs; the chunk setters split the value). Optional, defaults to `false`.
 /// * `opt:` the optional scalar columns the config has (delegated; the rest stay no-op).
-/// * `sels:` for each operation the config instantiates, `Variant => selector setter, clk0 setter`.
+/// * `sels:` for each operation the config instantiates, `Variant => selector setter, clk0 setter`
+///   (for a big-endian air, the `*Be` variants, which drive the same selector columns).
 ///
 /// ```ignore
 /// impl_arith_eq_row!(
@@ -179,19 +275,23 @@ macro_rules! impl_arith_eq_row {
         qs: $qs:literal,
         use_s: $use_s:literal,
         ceqs: $ceqs:literal,
+        $( big_endian: $big_endian:tt, )?
         opt: [ $($opt:ident),* $(,)? ],
         sels: [ $( $variant:ident => $sel_set:ident, $clk0_set:ident ),* $(,)? ]
     ) => {
         $crate::impl_arith_eq_row!(@row $unpacked, $trace, $qs, $use_s, $ceqs,
+            big_endian: [ $( $big_endian )? ],
             opt: [ $($opt),* ],
             sels: [ $( $variant => $sel_set, $clk0_set ),* ]);
         $crate::impl_arith_eq_row!(@row $packed, $trace, $qs, $use_s, $ceqs,
+            big_endian: [ $( $big_endian )? ],
             opt: [ $($opt),* ],
             sels: [ $( $variant => $sel_set, $clk0_set ),* ]);
     };
 
     // Internal: implement for a single row type.
     (@row $row:ident, $trace:ident, $qs:literal, $use_s:literal, $ceqs:literal,
+        big_endian: [ $( $big_endian:tt )? ],
         opt: [ $($opt:ident),* $(,)? ],
         sels: [ $( $variant:ident => $sel_set:ident, $clk0_set:ident ),* $(,)? ]
     ) => {
@@ -202,6 +302,7 @@ macro_rules! impl_arith_eq_row {
                 const QS: usize = $qs;
                 const USE_S: bool = $use_s;
                 const CEQS: usize = $ceqs;
+                const BIG_ENDIAN: bool = false $( || $big_endian )?;
 
                 fn new_trace(buffer: ::std::vec::Vec<F>)
                     -> ::proofman_common::ProofmanResult<Self::Trace>
@@ -216,13 +317,9 @@ macro_rules! impl_arith_eq_row {
                     )
                 }
 
-                // Always-present columns.
-                fn set_x1(&mut self, v: u16) { self.set_x1(v); }
-                fn set_y1(&mut self, v: u16) { self.set_y1(v); }
-                fn set_x2(&mut self, v: u16) { self.set_x2(v); }
-                fn set_y2(&mut self, v: u16) { self.set_y2(v); }
-                fn set_x3(&mut self, v: u16) { self.set_x3(v); }
-                fn set_y3(&mut self, v: u16) { self.set_y3(v); }
+                // Always-present columns: the memory operands as 16-bit chunks, or as byte pairs
+                // (low byte, high byte) in a big-endian air.
+                $crate::impl_arith_eq_row!(@mem_cols [ $( $big_endian )? ]);
                 fn set_step_addr(&mut self, v: u64) { self.set_step_addr(v); }
                 fn set_carry(&mut self, carry: &[[u64; 2]; 3]) {
                     // The trace's carry is [[u64;2];CEQS]; take the first CEQS equation rows.
@@ -250,6 +347,26 @@ macro_rules! impl_arith_eq_row {
                     }
                 }
             }
+    };
+
+    // Internal: the six memory-operand setters. Little-endian air: one 16-bit column each.
+    (@mem_cols [ ]) => {
+        fn set_x1(&mut self, v: u16) { self.set_x1(v); }
+        fn set_y1(&mut self, v: u16) { self.set_y1(v); }
+        fn set_x2(&mut self, v: u16) { self.set_x2(v); }
+        fn set_y2(&mut self, v: u16) { self.set_y2(v); }
+        fn set_x3(&mut self, v: u16) { self.set_x3(v); }
+        fn set_y3(&mut self, v: u16) { self.set_y3(v); }
+    };
+    (@mem_cols [ false ]) => { $crate::impl_arith_eq_row!(@mem_cols [ ]); };
+    // Big-endian air: `x1_c[2]` byte pair, `x1 = x1_c[0] + 256 * x1_c[1]` in the PIL.
+    (@mem_cols [ true ]) => {
+        fn set_x1(&mut self, v: u16) { self.set_all_x1_c(&[v as u8, (v >> 8) as u8]); }
+        fn set_y1(&mut self, v: u16) { self.set_all_y1_c(&[v as u8, (v >> 8) as u8]); }
+        fn set_x2(&mut self, v: u16) { self.set_all_x2_c(&[v as u8, (v >> 8) as u8]); }
+        fn set_y2(&mut self, v: u16) { self.set_all_y2_c(&[v as u8, (v >> 8) as u8]); }
+        fn set_x3(&mut self, v: u16) { self.set_all_x3_c(&[v as u8, (v >> 8) as u8]); }
+        fn set_y3(&mut self, v: u16) { self.set_all_y3_c(&[v as u8, (v >> 8) as u8]); }
     };
 
     // Internal: one delegating override per optional column, keyed on its name so the signature is

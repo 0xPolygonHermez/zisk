@@ -30,6 +30,12 @@
 //! `op_counts` capture that split, and the planner's filler assigns non-overlapping per-op collect
 //! windows in the order the plans are returned.
 //!
+//! The sweep runs per **component**: tails whose candidate airs overlap (directly or through other
+//! tails) are placed together, tails that can never share an air are placed independently. The cost
+//! is a sum over airs, so placing independent groups separately is exact, and it keeps the product
+//! of candidate counts per group rather than over every tail at once. The little-endian and the
+//! big-endian airs never cover a common operation, so they are always separate components.
+//!
 //! # Known gap
 //!
 //! Placing tails whole is *not* globally optimal. Dividing one tail to top up the spare capacity of
@@ -44,10 +50,11 @@ use zisk_common::Cost;
 /// that adding heavily overlapping airs fails loudly instead of silently hanging, since optimal tail
 /// placement is a bin-packing problem.
 ///
-/// An operation's candidates are its config's heights plus the two universal airs: four for the
-/// arith256, secp256k1 and bn254 operations (two heights each), and two for the secp256r1 pair no
-/// specialised config covers. With the current table that is
-/// `4^2 · 4^2 · 4^5 · 2^2 = 1_048_576` — see `the_sweep_stays_within_its_ceiling`,
+/// An operation's candidates are its config's heights plus the two universal airs of its
+/// endianness: four for the arith256, secp256k1 and bn254 operations (two heights each), and two
+/// for the secp256r1 pair no specialised config covers. The bound applies per component (the
+/// little-endian ops and the big-endian ops never share an air), so with the current table each of
+/// the two is `4^2 · 4^2 · 4^5 · 2^2 = 1_048_576` — see `the_sweep_stays_within_its_ceiling`,
 /// which pins it so the headroom left here stays visible. Each combination is a handful of
 /// arithmetic over `metas.len()` airs and allocates nothing, so `2^23` is still milliseconds; what
 /// the bound really guards against is a table that grows the exponent.
@@ -136,65 +143,117 @@ pub fn plan_air_strategy(
         }
     }
 
-    let combinations = tails
-        .iter()
-        .try_fold(1u64, |acc, t| acc.checked_mul(t.candidates.len() as u64))
-        .unwrap_or(u64::MAX);
-    assert!(
-        combinations <= MAX_TAIL_COMBINATIONS,
-        "plan_air_strategy: {combinations} tail placements exceed the {MAX_TAIL_COMBINATIONS} this \
-         exhaustive search is sized for; the air table needs a smarter search"
-    );
-
-    // Hoisted out of the sweep below: `memory` would otherwise recompute both divisions once per air
-    // per combination.
+    // Hoisted out of the sweeps below: `memory` would otherwise recompute both divisions once per
+    // air per combination.
     let caps: Vec<u64> = metas.iter().map(cap).collect();
     let instance_areas: Vec<u64> = metas.iter().map(|m| m.cost as u64).collect();
 
-    // Mixed-radix sweep over the tail placements: choice[i] indexes tails[i].candidates.
-    let mut choice = vec![0usize; tails.len()];
-    let mut best_choice = choice.clone();
-    let mut best = Cost { instances: u64::MAX, memory: u64::MAX };
-    let mut rows = vec![0u64; metas.len()];
-    loop {
-        rows.copy_from_slice(&bulk_rows);
-        for (t, &c) in tails.iter().zip(choice.iter()) {
-            rows[t.candidates[c]] += t.rows;
+    // Group the tails into components: two tails are in the same component when they share a
+    // candidate air, transitively. Union-find over the tails, keyed by air.
+    let mut parent: Vec<usize> = (0..tails.len()).collect();
+    fn find(parent: &mut [usize], i: usize) -> usize {
+        let mut root = i;
+        while parent[root] != root {
+            root = parent[root];
         }
-        // Folded rather than collected: this runs once per combination, so an allocation here
-        // would be one per placement considered.
-        let mut total = Cost::default();
-        for (j, &r) in rows.iter().enumerate() {
-            if r != 0 {
-                let instances = r.div_ceil(caps[j]);
-                total.instances += instances;
-                total.memory += instances * instance_areas[j];
+        let mut cur = i;
+        while parent[cur] != root {
+            let next = parent[cur];
+            parent[cur] = root;
+            cur = next;
+        }
+        root
+    }
+    let mut first_tail_of_air: Vec<Option<usize>> = vec![None; metas.len()];
+    for (t_idx, t) in tails.iter().enumerate() {
+        for &air in &t.candidates {
+            match first_tail_of_air[air] {
+                None => first_tail_of_air[air] = Some(t_idx),
+                Some(other) => {
+                    let a = find(&mut parent, t_idx);
+                    let b = find(&mut parent, other);
+                    if a != b {
+                        parent[a] = b;
+                    }
+                }
             }
         }
-        if total < best {
-            best = total;
-            best_choice.copy_from_slice(&choice);
-        }
-
-        // Advance from the rightmost digit; a carry out of the leftmost means we are back to the
-        // all-zeros placement and every combination has been seen. With no tails at all this exits
-        // after the single evaluation above.
-        let mut carry = true;
-        for (pos, digit) in choice.iter_mut().enumerate().rev() {
-            *digit += 1;
-            if *digit < tails[pos].candidates.len() {
-                carry = false;
-                break;
+    }
+    let mut components: Vec<Vec<usize>> = Vec::new();
+    let mut component_of_root: Vec<Option<usize>> = vec![None; tails.len()];
+    for t_idx in 0..tails.len() {
+        let root = find(&mut parent, t_idx);
+        match component_of_root[root] {
+            Some(c) => components[c].push(t_idx),
+            None => {
+                component_of_root[root] = Some(components.len());
+                components.push(vec![t_idx]);
             }
-            *digit = 0;
-        }
-        if carry {
-            break;
         }
     }
 
-    for (t, &c) in tails.iter().zip(best_choice.iter()) {
-        air_counts[t.candidates[c]][t.op_idx] += t.rows;
+    for component in &components {
+        let combinations = component
+            .iter()
+            .try_fold(1u64, |acc, &t| acc.checked_mul(tails[t].candidates.len() as u64))
+            .unwrap_or(u64::MAX);
+        assert!(
+            combinations <= MAX_TAIL_COMBINATIONS,
+            "plan_air_strategy: {combinations} tail placements exceed the {MAX_TAIL_COMBINATIONS} \
+             this exhaustive search is sized for; the air table needs a smarter search"
+        );
+
+        // Mixed-radix sweep over the component's tail placements: choice[i] indexes
+        // tails[component[i]].candidates. The airs of other components hold their bulk rows only
+        // (or their already-placed tails), a constant the comparison below is indifferent to.
+        let mut choice = vec![0usize; component.len()];
+        let mut best_choice = choice.clone();
+        let mut best = Cost { instances: u64::MAX, memory: u64::MAX };
+        let mut rows = vec![0u64; metas.len()];
+        loop {
+            rows.copy_from_slice(&bulk_rows);
+            for (&t, &c) in component.iter().zip(choice.iter()) {
+                rows[tails[t].candidates[c]] += tails[t].rows;
+            }
+            // Folded rather than collected: this runs once per combination, so an allocation here
+            // would be one per placement considered.
+            let mut total = Cost::default();
+            for (j, &r) in rows.iter().enumerate() {
+                if r != 0 {
+                    let instances = r.div_ceil(caps[j]);
+                    total.instances += instances;
+                    total.memory += instances * instance_areas[j];
+                }
+            }
+            if total < best {
+                best = total;
+                best_choice.copy_from_slice(&choice);
+            }
+
+            // Advance from the rightmost digit; a carry out of the leftmost means we are back to
+            // the all-zeros placement and every combination has been seen. With no tails at all
+            // this exits after the single evaluation above.
+            let mut carry = true;
+            for (pos, digit) in choice.iter_mut().enumerate().rev() {
+                *digit += 1;
+                if *digit < tails[component[pos]].candidates.len() {
+                    carry = false;
+                    break;
+                }
+                *digit = 0;
+            }
+            if carry {
+                break;
+            }
+        }
+
+        // Commit the component's placement: its tails now count as fixed rows for the components
+        // still to be swept (they cannot share an air with them anyway).
+        for (&t, &c) in component.iter().zip(best_choice.iter()) {
+            let air = tails[t].candidates[c];
+            bulk_rows[air] += tails[t].rows;
+            air_counts[air][tails[t].op_idx] += tails[t].rows;
+        }
     }
 
     let plans: Vec<ArithEqAirPlan> = metas

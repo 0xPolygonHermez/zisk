@@ -26,6 +26,7 @@
 //! | `chunk`  | `[0, 2^16 - 1]`       | 2^16    |
 //! | `carry`  | `[-(2^22 - 1), 2^22]` | 2^23    |
 //! | `lt`     | table rows            | 655_360 |
+//! | `dual`   | `DualByte` rows       | 2^16    |
 //!
 //! `carry` is signed, so it is shifted by [`CARRY_BIAS`] on the way in and the flush tells `std`
 //! which value the slice starts at.
@@ -33,6 +34,12 @@
 //! `lt` is not a range but the `ArithEqLtTable` virtual table, whose rows
 //! `ArithEqLtTableSM::calculate_table_row` already returns as a flat index. It rides along in the
 //! same allocation because it shares the batch's lifetime and adds 2.5 MiB to 48.25.
+//!
+//! `dual` is the `DualByte` virtual table (`range_dual_byte` in PIL): the big-endian airs range-check
+//! their six memory operands as byte pairs instead of 16-bit chunks. The PIL looks the pair up high
+//! byte first, so the row of a chunk is the chunk value itself, and [`MultiplicityCache::dual_chunk`]
+//! is [`MultiplicityCache::chunk`] counting into this region instead. Little-endian airs never
+//! touch it, and the flush skips it when nothing landed there.
 //!
 //! # Why `u32` counters
 //!
@@ -59,6 +66,9 @@ const CARRY_LEN: usize = 1 << 23;
 /// `ARITH_EQ_LT_TABLE_SIZE` in `arith_eq_lt_table.pil`.
 const LT_LEN: usize = (1 << 18) + (1 << 18) + (1 << 17);
 
+/// Rows of the `DualByte` virtual table: one per `(high byte, low byte)` pair, i.e. one per chunk value.
+const DUAL_LEN: usize = 1 << 16;
+
 /// Added to a carry value to index its bucket: the range starts at `-(2^22 - 1)`.
 const CARRY_BIAS: i64 = (1 << 22) - 1;
 
@@ -66,9 +76,10 @@ const Q_HSC_BASE: usize = 0;
 const CHUNK_BASE: usize = Q_HSC_BASE + Q_HSC_LEN;
 const CARRY_BASE: usize = CHUNK_BASE + CHUNK_LEN;
 const LT_BASE: usize = CARRY_BASE + CARRY_LEN;
+const DUAL_BASE: usize = LT_BASE + LT_LEN;
 
-/// One allocation for the three ranges and the LT table.
-const CACHE_LEN: usize = LT_BASE + LT_LEN;
+/// One allocation for the three ranges, the LT table and the DualByte table.
+const CACHE_LEN: usize = DUAL_BASE + DUAL_LEN;
 
 /// Bytes one batch's cache occupies. Reported by the caller's timing so the cost of `n` batches is
 /// visible rather than inferred.
@@ -110,6 +121,28 @@ impl MultiplicityCache {
             "chunk value {value} outside [0, 2^16)"
         );
         self.counts[CHUNK_BASE + value as usize] += 1;
+        value
+    }
+
+    /// Counts a 16-bit chunk of a big-endian memory operand: the same value as [`Self::chunk`], but
+    /// looked up in the `DualByte` table (as its two bytes, high byte first) rather than the 16-bit
+    /// range. `big_endian` selects between the two so the call site reads the same in both modes.
+    #[inline(always)]
+    pub fn mem_chunk(&mut self, value: i64, big_endian: bool) -> i64 {
+        if big_endian {
+            self.dual_chunk(value)
+        } else {
+            self.chunk(value)
+        }
+    }
+
+    #[inline(always)]
+    pub fn dual_chunk(&mut self, value: i64) -> i64 {
+        debug_assert!(
+            (0..DUAL_LEN as i64).contains(&value),
+            "dual chunk value {value} outside [0, 2^16)"
+        );
+        self.counts[DUAL_BASE + value as usize] += 1;
         value
     }
 
@@ -159,7 +192,8 @@ impl MultiplicityCache {
     /// Hands each range's multiplicities to `std` in a single call.
     ///
     /// One call per range, not one per value: `range_check_ranged` takes the whole slice and walks
-    /// it once, skipping the buckets nothing landed in.
+    /// it once, skipping the buckets nothing landed in. The `DualByte` table is only handed over
+    /// when a big-endian air counted into it, so a little-endian witness costs nothing extra.
     pub fn flush<F: PrimeField64>(
         &self,
         std: &Arc<Std<F>>,
@@ -167,11 +201,16 @@ impl MultiplicityCache {
         chunk_range_id: usize,
         carry_range_id: usize,
         lt_table_id: usize,
+        dual_byte_table_id: usize,
     ) {
         std.range_check_ranged(q_hsc_range_id, None, &self.counts[Q_HSC_BASE..CHUNK_BASE]);
         std.range_check_ranged(chunk_range_id, None, &self.counts[CHUNK_BASE..CARRY_BASE]);
         std.range_check_ranged(carry_range_id, None, &self.counts[CARRY_BASE..LT_BASE]);
-        std.inc_virtual_rows_ranged(lt_table_id, None, &self.counts[LT_BASE..]);
+        std.inc_virtual_rows_ranged(lt_table_id, None, &self.counts[LT_BASE..DUAL_BASE]);
+        let dual = &self.counts[DUAL_BASE..];
+        if dual.iter().any(|&c| c != 0) {
+            std.inc_virtual_rows_ranged(dual_byte_table_id, None, dual);
+        }
     }
 }
 
@@ -192,7 +231,11 @@ mod tests {
             "ARITH_EQ_LT_TABLE_SIZE in arith_eq_lt_table.pil"
         );
         assert_eq!(LT_LEN, 0xA0000, "and the bound calculate_table_row enforces");
-        assert_eq!(CACHE_BYTES, 53_215_232, "50.75 MiB per batch: 48.25 of ranges + 2.5 of LT");
+        assert_eq!(DUAL_LEN, 0xFFFF + 1, "DualByte has one row per (high, low) byte pair");
+        assert_eq!(
+            CACHE_BYTES, 53_477_376,
+            "51 MiB per batch: 48.25 of ranges + 2.5 of LT + 0.25 of DualByte"
+        );
     }
 
     /// The LT rows must land in their own region: `calculate_table_row` returns a flat index up to
@@ -203,9 +246,26 @@ mod tests {
         cache.lt_row(0);
         cache.lt_row(LT_LEN - 1);
         assert_eq!(cache.counts[LT_BASE], 1, "row 0 is the region's first bucket");
-        assert_eq!(cache.counts[CACHE_LEN - 1], 1, "the last row is the last bucket");
+        assert_eq!(cache.counts[DUAL_BASE - 1], 1, "the last row is the region's last bucket");
         assert_eq!(cache.counts[LT_BASE - 1], 0, "the carry range above it is untouched");
+        assert_eq!(cache.counts[DUAL_BASE], 0, "the DualByte table below it is untouched");
         assert_eq!(cache.counts.iter().filter(|&&c| c != 0).count(), 2);
+    }
+
+    /// A big-endian chunk lands in the DualByte region, at the row equal to its value, and never in
+    /// the 16-bit chunk range; a little-endian chunk does the opposite.
+    #[test]
+    fn mem_chunk_picks_the_table_by_endianness() {
+        let mut cache = MultiplicityCache::new();
+        assert_eq!(cache.mem_chunk(0xABCD, true), 0xABCD);
+        assert_eq!(cache.mem_chunk(0xABCD, false), 0xABCD);
+        cache.dual_chunk(0);
+        cache.dual_chunk(0xFFFF);
+        assert_eq!(cache.counts[DUAL_BASE + 0xABCD], 1, "big-endian: DualByte row = chunk value");
+        assert_eq!(cache.counts[CHUNK_BASE + 0xABCD], 1, "little-endian: 16-bit range bucket");
+        assert_eq!(cache.counts[DUAL_BASE], 1, "row 0 is the region's first bucket");
+        assert_eq!(cache.counts[CACHE_LEN - 1], 1, "row 0xFFFF is the last bucket of the cache");
+        assert_eq!(cache.counts.iter().filter(|&&c| c != 0).count(), 4, "no bucket counted twice");
     }
 
     /// Every range must land in its own region, and the extremes of each must be in bounds: an

@@ -34,3 +34,23 @@ pub const SYSCALL_JUMP_DEST_ID: u16 = 0x81C;
 pub const SYSCALL_BABYJUBJUB_ADD_ID: u16 = 0x81D;
 pub const SYSCALL_BLAKE3F_ID: u16 = 0x81E;
 pub const SYSCALL_BLAKE2SF_ID: u16 = 0x81F;
+
+// Big-endian twins of the ArithEq / ArithEq384 precompiles: same operation, every 256/384-bit
+// operand stored in memory as a big-endian integer.
+pub const SYSCALL_ARITH256_BE_ID: u16 = 0x820;
+pub const SYSCALL_ARITH256_MOD_BE_ID: u16 = 0x821;
+pub const SYSCALL_SECP256K1_ADD_BE_ID: u16 = 0x822;
+pub const SYSCALL_SECP256K1_DBL_BE_ID: u16 = 0x823;
+pub const SYSCALL_BN254_CURVE_ADD_BE_ID: u16 = 0x824;
+pub const SYSCALL_BN254_CURVE_DBL_BE_ID: u16 = 0x825;
+pub const SYSCALL_BN254_COMPLEX_ADD_BE_ID: u16 = 0x826;
+pub const SYSCALL_BN254_COMPLEX_SUB_BE_ID: u16 = 0x827;
+pub const SYSCALL_BN254_COMPLEX_MUL_BE_ID: u16 = 0x828;
+pub const SYSCALL_SECP256R1_ADD_BE_ID: u16 = 0x829;
+pub const SYSCALL_SECP256R1_DBL_BE_ID: u16 = 0x82A;
+pub const SYSCALL_ARITH384_MOD_BE_ID: u16 = 0x82B;
+pub const SYSCALL_BLS12_381_CURVE_ADD_BE_ID: u16 = 0x82C;
+pub const SYSCALL_BLS12_381_CURVE_DBL_BE_ID: u16 = 0x82D;
+pub const SYSCALL_BLS12_381_COMPLEX_ADD_BE_ID: u16 = 0x82E;
+pub const SYSCALL_BLS12_381_COMPLEX_SUB_BE_ID: u16 = 0x82F;
+pub const SYSCALL_BLS12_381_COMPLEX_MUL_BE_ID: u16 = 0x830;

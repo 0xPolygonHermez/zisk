@@ -272,6 +272,23 @@ impl ZiskAsmContext {
                 | ZiskOp::BabyJubJubAdd
                 | ZiskOp::Blake3
                 | ZiskOp::Blake2s
+                | ZiskOp::Arith256Be
+                | ZiskOp::Arith256ModBe
+                | ZiskOp::Secp256k1AddBe
+                | ZiskOp::Secp256k1DblBe
+                | ZiskOp::Bn254CurveAddBe
+                | ZiskOp::Bn254CurveDblBe
+                | ZiskOp::Bn254ComplexAddBe
+                | ZiskOp::Bn254ComplexSubBe
+                | ZiskOp::Bn254ComplexMulBe
+                | ZiskOp::Secp256r1AddBe
+                | ZiskOp::Secp256r1DblBe
+                | ZiskOp::Arith384ModBe
+                | ZiskOp::Bls12_381CurveAddBe
+                | ZiskOp::Bls12_381CurveDblBe
+                | ZiskOp::Bls12_381ComplexAddBe
+                | ZiskOp::Bls12_381ComplexSubBe
+                | ZiskOp::Bls12_381ComplexMulBe
         )
     }
 
@@ -517,6 +534,32 @@ impl ZiskAsmContext {
 //         }
 //     }
 // }
+
+/// Suffix of the C implementation a precompile opcode calls in the assembly emulator: the
+/// big-endian twins (`OP_*_BE`: operands stored in memory as big-endian integers) share the
+/// generated code of their little-endian op and call its `_opcode_<name>_be` wrapper instead.
+fn be_suffix(zisk_op: ZiskOp) -> &'static str {
+    match zisk_op {
+        ZiskOp::Arith256Be
+        | ZiskOp::Arith256ModBe
+        | ZiskOp::Secp256k1AddBe
+        | ZiskOp::Secp256k1DblBe
+        | ZiskOp::Bn254CurveAddBe
+        | ZiskOp::Bn254CurveDblBe
+        | ZiskOp::Bn254ComplexAddBe
+        | ZiskOp::Bn254ComplexSubBe
+        | ZiskOp::Bn254ComplexMulBe
+        | ZiskOp::Secp256r1AddBe
+        | ZiskOp::Secp256r1DblBe
+        | ZiskOp::Arith384ModBe
+        | ZiskOp::Bls12_381CurveAddBe
+        | ZiskOp::Bls12_381CurveDblBe
+        | ZiskOp::Bls12_381ComplexAddBe
+        | ZiskOp::Bls12_381ComplexSubBe
+        | ZiskOp::Bls12_381ComplexMulBe => "_be",
+        _ => "",
+    }
+}
 
 pub struct ZiskRom2Asm {}
 
@@ -5382,8 +5425,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Arith256 => {
-                *code += &ctx.full_line_comment("Arith256".to_string());
+            ZiskOp::Arith256 | ZiskOp::Arith256Be => {
+                *code += &ctx.full_line_comment(format!("Arith256{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -5413,7 +5456,7 @@ impl ZiskRom2Asm {
                     // Call the arith256 function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_arith256\n";
+                    *code += &format!("\tcall _opcode_arith256{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -5423,8 +5466,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Arith256Mod => {
-                *code += &ctx.full_line_comment("Arith256Mod".to_string());
+            ZiskOp::Arith256Mod | ZiskOp::Arith256ModBe => {
+                *code += &ctx.full_line_comment(format!("Arith256Mod{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -5451,7 +5494,7 @@ impl ZiskRom2Asm {
                     // Call the arith256_mod function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_arith256_mod\n";
+                    *code += &format!("\tcall _opcode_arith256_mod{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
 
@@ -5487,8 +5530,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Secp256k1Add => {
-                *code += &ctx.full_line_comment("Secp256k1Add".to_string());
+            ZiskOp::Secp256k1Add | ZiskOp::Secp256k1AddBe => {
+                *code += &ctx.full_line_comment(format!("Secp256k1Add{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -5515,7 +5558,7 @@ impl ZiskRom2Asm {
                     // Call the secp256k1_add function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_secp256k1_add\n";
+                    *code += &format!("\tcall _opcode_secp256k1_add{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -5525,8 +5568,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Secp256k1Dbl => {
-                *code += &ctx.full_line_comment("Secp256k1Dbl".to_string());
+            ZiskOp::Secp256k1Dbl | ZiskOp::Secp256k1DblBe => {
+                *code += &ctx.full_line_comment(format!("Secp256k1Dbl{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -5577,7 +5620,7 @@ impl ZiskRom2Asm {
                     // Call the secp256k1_dbl function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_secp256k1_dbl\n";
+                    *code += &format!("\tcall _opcode_secp256k1_dbl{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -5587,8 +5630,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Secp256r1Add => {
-                *code += &ctx.full_line_comment("Secp256r1Add".to_string());
+            ZiskOp::Secp256r1Add | ZiskOp::Secp256r1AddBe => {
+                *code += &ctx.full_line_comment(format!("Secp256r1Add{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -5615,7 +5658,7 @@ impl ZiskRom2Asm {
                     // Call the secp256r1_add function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_secp256r1_add\n";
+                    *code += &format!("\tcall _opcode_secp256r1_add{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -5625,8 +5668,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Secp256r1Dbl => {
-                *code += &ctx.full_line_comment("Secp256r1Dbl".to_string());
+            ZiskOp::Secp256r1Dbl | ZiskOp::Secp256r1DblBe => {
+                *code += &ctx.full_line_comment(format!("Secp256r1Dbl{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -5677,7 +5720,7 @@ impl ZiskRom2Asm {
                     // Call the secp256r1_dbl function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_secp256r1_dbl\n";
+                    *code += &format!("\tcall _opcode_secp256r1_dbl{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -5898,8 +5941,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Bn254CurveAdd => {
-                *code += &ctx.full_line_comment("Bn254CurveAdd".to_string());
+            ZiskOp::Bn254CurveAdd | ZiskOp::Bn254CurveAddBe => {
+                *code += &ctx.full_line_comment(format!("Bn254CurveAdd{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -5926,7 +5969,7 @@ impl ZiskRom2Asm {
                     // Call the bn254_curve_add function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bn254_curve_add\n";
+                    *code += &format!("\tcall _opcode_bn254_curve_add{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -5936,8 +5979,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Bn254CurveDbl => {
-                *code += &ctx.full_line_comment("Bn254CurveDbl".to_string());
+            ZiskOp::Bn254CurveDbl | ZiskOp::Bn254CurveDblBe => {
+                *code += &ctx.full_line_comment(format!("Bn254CurveDbl{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -5988,7 +6031,7 @@ impl ZiskRom2Asm {
                     // Call the bn254_curve_dbl function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bn254_curve_dbl\n";
+                    *code += &format!("\tcall _opcode_bn254_curve_dbl{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -5998,8 +6041,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Bn254ComplexAdd => {
-                *code += &ctx.full_line_comment("Bn254ComplexAdd".to_string());
+            ZiskOp::Bn254ComplexAdd | ZiskOp::Bn254ComplexAddBe => {
+                *code += &ctx.full_line_comment(format!("Bn254ComplexAdd{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -6026,7 +6069,7 @@ impl ZiskRom2Asm {
                     // Call the bn254_complex_add function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bn254_complex_add\n";
+                    *code += &format!("\tcall _opcode_bn254_complex_add{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -6036,8 +6079,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Bn254ComplexSub => {
-                *code += &ctx.full_line_comment("Bn254ComplexSub".to_string());
+            ZiskOp::Bn254ComplexSub | ZiskOp::Bn254ComplexSubBe => {
+                *code += &ctx.full_line_comment(format!("Bn254ComplexSub{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -6064,7 +6107,7 @@ impl ZiskRom2Asm {
                     // Call the bn254_complex_sub function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bn254_complex_sub\n";
+                    *code += &format!("\tcall _opcode_bn254_complex_sub{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -6074,8 +6117,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Bn254ComplexMul => {
-                *code += &ctx.full_line_comment("Bn254ComplexMul".to_string());
+            ZiskOp::Bn254ComplexMul | ZiskOp::Bn254ComplexMulBe => {
+                *code += &ctx.full_line_comment(format!("Bn254ComplexMul{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -6102,7 +6145,7 @@ impl ZiskRom2Asm {
                     // Call the bn254_complex_mul function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bn254_complex_mul\n";
+                    *code += &format!("\tcall _opcode_bn254_complex_mul{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -6121,8 +6164,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_one = true;
             }
-            ZiskOp::Arith384Mod => {
-                *code += &ctx.full_line_comment("Arith384Mod".to_string());
+            ZiskOp::Arith384Mod | ZiskOp::Arith384ModBe => {
+                *code += &ctx.full_line_comment(format!("Arith384Mod{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -6149,7 +6192,7 @@ impl ZiskRom2Asm {
                     // Call the arith384_mod function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_arith384_mod\n";
+                    *code += &format!("\tcall _opcode_arith384_mod{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -6159,8 +6202,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Bls12_381CurveAdd => {
-                *code += &ctx.full_line_comment("Bls12_381CurveAdd".to_string());
+            ZiskOp::Bls12_381CurveAdd | ZiskOp::Bls12_381CurveAddBe => {
+                *code += &ctx.full_line_comment(format!("Bls12_381CurveAdd{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -6187,7 +6230,7 @@ impl ZiskRom2Asm {
                     // Call the bls12_381_curve_add function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bls12_381_curve_add\n";
+                    *code += &format!("\tcall _opcode_bls12_381_curve_add{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -6197,8 +6240,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Bls12_381CurveDbl => {
-                *code += &ctx.full_line_comment("Bls12_381CurveDbl".to_string());
+            ZiskOp::Bls12_381CurveDbl | ZiskOp::Bls12_381CurveDblBe => {
+                *code += &ctx.full_line_comment(format!("Bls12_381CurveDbl{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -6249,7 +6292,7 @@ impl ZiskRom2Asm {
                     // Call the bls12_381_curve_dbl function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bls12_381_curve_dbl\n";
+                    *code += &format!("\tcall _opcode_bls12_381_curve_dbl{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -6259,8 +6302,9 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Bls12_381ComplexAdd => {
-                *code += &ctx.full_line_comment("Bls12_381ComplexAdd".to_string());
+            ZiskOp::Bls12_381ComplexAdd | ZiskOp::Bls12_381ComplexAddBe => {
+                *code +=
+                    &ctx.full_line_comment(format!("Bls12_381ComplexAdd{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -6287,7 +6331,8 @@ impl ZiskRom2Asm {
                     // Call the bls12_381_complex_add function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bls12_381_complex_add\n";
+                    *code +=
+                        &format!("\tcall _opcode_bls12_381_complex_add{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -6297,8 +6342,9 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Bls12_381ComplexSub => {
-                *code += &ctx.full_line_comment("Bls12_381ComplexSub".to_string());
+            ZiskOp::Bls12_381ComplexSub | ZiskOp::Bls12_381ComplexSubBe => {
+                *code +=
+                    &ctx.full_line_comment(format!("Bls12_381ComplexSub{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -6325,7 +6371,8 @@ impl ZiskRom2Asm {
                     // Call the bls12_381_complex_sub function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bls12_381_complex_sub\n";
+                    *code +=
+                        &format!("\tcall _opcode_bls12_381_complex_sub{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -6335,8 +6382,9 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Bls12_381ComplexMul => {
-                *code += &ctx.full_line_comment("Bls12_381ComplexMul".to_string());
+            ZiskOp::Bls12_381ComplexMul | ZiskOp::Bls12_381ComplexMulBe => {
+                *code +=
+                    &ctx.full_line_comment(format!("Bls12_381ComplexMul{}", be_suffix(zisk_op)));
 
                 // Use the memory address as the first and unique parameter
                 *code += &format!(
@@ -6363,7 +6411,8 @@ impl ZiskRom2Asm {
                     // Call the bls12_381_complex_mul function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bls12_381_complex_mul\n";
+                    *code +=
+                        &format!("\tcall _opcode_bls12_381_complex_mul{}\n", be_suffix(zisk_op));
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }

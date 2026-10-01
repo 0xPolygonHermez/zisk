@@ -6,7 +6,10 @@
 //! criterion: fewest instances first, least memory to break a tie.
 //!
 //! A config comes in as many heights as `zisk.pil` gives it aliases — currently two: a plain air and
-//! a `Large` sibling, each committing exactly the same columns over more rows. The taller one keeps
+//! a `Large` sibling, each committing exactly the same columns over more rows — and in two
+//! endiannesses: the `big_endian: 1` twins (`*Be`) cover the `*Be` operations only, so the
+//! little-endian and big-endian halves of the table never share an operation and are planned
+//! independently. The taller one keeps
 //! the instance count down; the shorter one keeps the memory down once the count is settled. Every
 //! `Large` sits at the same height as the universal `ArithEqLarge`, so a bulk of an operation a
 //! specialized config covers ties on instance count with the universal air and is sent to the
@@ -86,11 +89,34 @@ pub fn air_metas() -> Vec<ArithEqAirMeta> {
         ArithBn254Trace: ARITH_BN_254_INSTANCE_COST,
         ArithBn254LargeTrace: ARITH_BN_254_LARGE_INSTANCE_COST,
     ));
-    // The full airs, which cover every operation and are the only home of the secp256r1 ones.
+    // The full airs, which cover every little-endian operation and are the only home of the
+    // secp256r1 ones.
     metas.extend(config!(
-        &ArithEqOp::ALL,
+        &ArithEqOp::ALL_LE,
         ArithEqTrace: ARITH_EQ_INSTANCE_COST,
         ArithEqLargeTrace: ARITH_EQ_LARGE_INSTANCE_COST,
+    ));
+
+    // The big-endian twins, in the same order: they cover the `*Be` operations only.
+    metas.extend(config!(
+        &[Arith256Be, Arith256ModBe],
+        Arith256XBeTrace: ARITH_256_X_BE_INSTANCE_COST,
+        Arith256XBeLargeTrace: ARITH_256_X_BE_LARGE_INSTANCE_COST,
+    ));
+    metas.extend(config!(
+        &[Secp256k1AddBe, Secp256k1DblBe],
+        ArithSecp256K1BeTrace: ARITH_SECP_256_K_1_BE_INSTANCE_COST,
+        ArithSecp256K1BeLargeTrace: ARITH_SECP_256_K_1_BE_LARGE_INSTANCE_COST,
+    ));
+    metas.extend(config!(
+        &[Bn254CurveAddBe, Bn254CurveDblBe, Bn254ComplexAddBe, Bn254ComplexSubBe, Bn254ComplexMulBe],
+        ArithBn254BeTrace: ARITH_BN_254_BE_INSTANCE_COST,
+        ArithBn254BeLargeTrace: ARITH_BN_254_BE_LARGE_INSTANCE_COST,
+    ));
+    metas.extend(config!(
+        &ArithEqOp::ALL_BE,
+        ArithEqBeTrace: ARITH_EQ_BE_INSTANCE_COST,
+        ArithEqBeLargeTrace: ARITH_EQ_BE_LARGE_INSTANCE_COST,
     ));
     metas
 }
@@ -134,6 +160,15 @@ impl<F: PrimeField64> ArithEqSM<F> {
                 ArithSecp256K1LargeTraceRow / ArithSecp256K1LargeTraceRowPacked,
             ArithBn254Trace: ArithBn254TraceRow / ArithBn254TraceRowPacked,
             ArithBn254LargeTrace: ArithBn254LargeTraceRow / ArithBn254LargeTraceRowPacked,
+            ArithEqBeTrace: ArithEqBeTraceRow / ArithEqBeTraceRowPacked,
+            ArithEqBeLargeTrace: ArithEqBeLargeTraceRow / ArithEqBeLargeTraceRowPacked,
+            Arith256XBeTrace: Arith256XBeTraceRow / Arith256XBeTraceRowPacked,
+            Arith256XBeLargeTrace: Arith256XBeLargeTraceRow / Arith256XBeLargeTraceRowPacked,
+            ArithSecp256K1BeTrace: ArithSecp256K1BeTraceRow / ArithSecp256K1BeTraceRowPacked,
+            ArithSecp256K1BeLargeTrace:
+                ArithSecp256K1BeLargeTraceRow / ArithSecp256K1BeLargeTraceRowPacked,
+            ArithBn254BeTrace: ArithBn254BeTraceRow / ArithBn254BeTraceRowPacked,
+            ArithBn254BeLargeTrace: ArithBn254BeLargeTraceRow / ArithBn254BeLargeTraceRowPacked,
         )
     }
 }

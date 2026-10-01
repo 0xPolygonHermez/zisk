@@ -1,3 +1,5 @@
+use zisk_core::zisk_ops::swap_endianness_elements;
+
 use zisk_common::{
     OperationArith256Data, OperationArith256ModData, OperationBn254ComplexAddData,
     OperationBn254ComplexMulData, OperationBn254ComplexSubData, OperationBn254CurveAddData,
@@ -35,6 +37,19 @@ pub struct Arith256Input {
 }
 
 impl Arith256Input {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationArith256Data<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.a, 4);
+            swap_endianness_elements(&mut input.b, 4);
+            swap_endianness_elements(&mut input.c, 4);
+        }
+        input
+    }
+
     pub fn from(values: &OperationArith256Data<u64>) -> Self {
         Self {
             addr: values[3] as u32,
@@ -67,6 +82,20 @@ pub struct Arith256ModInput {
 }
 
 impl Arith256ModInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationArith256ModData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.a, 4);
+            swap_endianness_elements(&mut input.b, 4);
+            swap_endianness_elements(&mut input.c, 4);
+            swap_endianness_elements(&mut input.module, 4);
+        }
+        input
+    }
+
     pub fn from(values: &OperationArith256ModData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
@@ -95,6 +124,18 @@ pub struct Secp256k1AddInput {
 }
 
 impl Secp256k1AddInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationSecp256k1AddData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.p1, 4);
+            swap_endianness_elements(&mut input.p2, 4);
+        }
+        input
+    }
+
     pub fn from(values: &OperationSecp256k1AddData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
@@ -115,6 +156,17 @@ pub struct Secp256k1DblInput {
 }
 
 impl Secp256k1DblInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationSecp256k1DblData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.p1, 4);
+        }
+        input
+    }
+
     pub fn from(values: &OperationSecp256k1DblData<u64>) -> Self {
         Self { addr: values[3] as u32, step: values[4], p1: values[5..13].try_into().unwrap() }
     }
@@ -131,6 +183,18 @@ pub struct Bn254CurveAddInput {
 }
 
 impl Bn254CurveAddInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationBn254CurveAddData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.p1, 4);
+            swap_endianness_elements(&mut input.p2, 4);
+        }
+        input
+    }
+
     pub fn from(values: &OperationBn254CurveAddData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
@@ -151,6 +215,17 @@ pub struct Bn254CurveDblInput {
 }
 
 impl Bn254CurveDblInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationBn254CurveDblData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.p1, 4);
+        }
+        input
+    }
+
     pub fn from(values: &OperationBn254CurveDblData<u64>) -> Self {
         Self { addr: values[3] as u32, step: values[4], p1: values[5..13].try_into().unwrap() }
     }
@@ -167,6 +242,18 @@ pub struct Bn254ComplexAddInput {
 }
 
 impl Bn254ComplexAddInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationBn254ComplexAddData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.f1, 4);
+            swap_endianness_elements(&mut input.f2, 4);
+        }
+        input
+    }
+
     pub fn from(values: &OperationBn254ComplexAddData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
@@ -190,6 +277,18 @@ pub struct Bn254ComplexSubInput {
 }
 
 impl Bn254ComplexSubInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationBn254ComplexSubData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.f1, 4);
+            swap_endianness_elements(&mut input.f2, 4);
+        }
+        input
+    }
+
     pub fn from(values: &OperationBn254ComplexSubData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
@@ -213,6 +312,18 @@ pub struct Bn254ComplexMulInput {
 }
 
 impl Bn254ComplexMulInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationBn254ComplexMulData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.f1, 4);
+            swap_endianness_elements(&mut input.f2, 4);
+        }
+        input
+    }
+
     pub fn from(values: &OperationBn254ComplexMulData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
@@ -236,6 +347,18 @@ pub struct Secp256r1AddInput {
 }
 
 impl Secp256r1AddInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationSecp256r1AddData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.p1, 4);
+            swap_endianness_elements(&mut input.p2, 4);
+        }
+        input
+    }
+
     pub fn from(values: &OperationSecp256r1AddData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
@@ -256,6 +379,17 @@ pub struct Secp256r1DblInput {
 }
 
 impl Secp256r1DblInput {
+    /// From the bus data of the little-endian op, or of its big-endian twin: a big-endian
+    /// op carries its operands as they sit in memory (big-endian integers), and the executors
+    /// work on little-endian limbs, so they are converted here (addresses are not affected).
+    pub fn from_bus(values: &OperationSecp256r1DblData<u64>, big_endian: bool) -> Self {
+        let mut input = Self::from(values);
+        if big_endian {
+            swap_endianness_elements(&mut input.p1, 4);
+        }
+        input
+    }
+
     pub fn from(values: &OperationSecp256r1DblData<u64>) -> Self {
         Self { addr: values[3] as u32, step: values[4], p1: values[5..13].try_into().unwrap() }
     }

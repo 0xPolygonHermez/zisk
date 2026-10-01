@@ -21,6 +21,7 @@ use zisk_common::{
     phase_end, phase_log, phase_max_ms, phase_max_record, phase_max_start, phase_ms, phase_start,
 };
 // `CACHE_BYTES` is only reported by the `witness_timers` line.
+use zisk_pil::DUAL_RANGE_BYTE_ID;
 #[allow(unused_imports)]
 use zisk_precomp_common::{MultiplicityCache, CACHE_BYTES};
 
@@ -32,8 +33,11 @@ pub struct ArithEqSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
 
-    /// The table ID for the Keccakf Table State Machine
+    /// The table ID for the ArithEqLtTable (alias-free checks of x3/y3).
     table_id: usize,
+
+    /// The table ID for the DualByte virtual table, where the big-endian airs range-check x1..y3.
+    dual_byte_table_id: usize,
 
     pub q_hsc_range_id: usize,
     pub chunk_range_id: usize,
@@ -65,11 +69,21 @@ impl<F: PrimeField64> ArithEqSM<F> {
         let carry_range_id =
             std.get_range_id(-(p2_22 - 1), p2_22, None).expect("Failed to get range ID");
 
-        // Get the table ID
+        // Get the table IDs
         let table_id =
             std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
+        let dual_byte_table_id = std
+            .get_virtual_table_id(DUAL_RANGE_BYTE_ID)
+            .expect("Failed to get the DualByte table ID");
 
-        Arc::new(Self { std, q_hsc_range_id, chunk_range_id, carry_range_id, table_id })
+        Arc::new(Self {
+            std,
+            q_hsc_range_id,
+            chunk_range_id,
+            carry_range_id,
+            table_id,
+            dual_byte_table_id,
+        })
     }
     fn get_lt_flags(input: &ArithEqInput) -> u8 {
         const X3_LT_FLAG: u8 = 1;
@@ -417,12 +431,15 @@ impl<F: PrimeField64> ArithEqSM<F> {
             trace[i].set_carry(&carry_values);
 
             let q_last_clock = i == ARITH_EQ_ROWS_BY_OP - 1;
-            trace[i].set_x1(to_field::<F>(cache.chunk(data.x1[i])) as u16);
-            trace[i].set_y1(to_field::<F>(cache.chunk(data.y1[i])) as u16);
-            trace[i].set_x2(to_field::<F>(cache.chunk(data.x2[i])) as u16);
-            trace[i].set_y2(to_field::<F>(cache.chunk(data.y2[i])) as u16);
-            trace[i].set_x3(to_field::<F>(cache.chunk(data.x3[i])) as u16);
-            trace[i].set_y3(to_field::<F>(cache.chunk(data.y3[i])) as u16);
+            // The memory operands: 16-bit chunks range-checked on the chunk range, or, in a
+            // big-endian air, byte pairs looked up in the DualByte table (same value, same row).
+            let be = R::BIG_ENDIAN;
+            trace[i].set_x1(to_field::<F>(cache.mem_chunk(data.x1[i], be)) as u16);
+            trace[i].set_y1(to_field::<F>(cache.mem_chunk(data.y1[i], be)) as u16);
+            trace[i].set_x2(to_field::<F>(cache.mem_chunk(data.x2[i], be)) as u16);
+            trace[i].set_y2(to_field::<F>(cache.mem_chunk(data.y2[i], be)) as u16);
+            trace[i].set_x3(to_field::<F>(cache.mem_chunk(data.x3[i], be)) as u16);
+            trace[i].set_y3(to_field::<F>(cache.mem_chunk(data.y3[i], be)) as u16);
             // Quotients / lambda: range-check + fill only the columns this config has, so the shared
             // witness registers exactly the std range-checks the config's PIL looks up.
             if R::QS >= 1 {
@@ -440,8 +457,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
             // Set the one-hot operation selector (and its clk0 twin on the first clock). Iterating
             // all ops mirrors the previous full-array write, so it doesn't rely on zero-init; ops the
-            // active config doesn't have resolve to no-op arms in the row impl.
-            let active_op = ArithEqOp::ALL[sel_op];
+            // active config doesn't have resolve to no-op arms in the row impl. `sel_op` is the
+            // little-endian index; a big-endian air maps its `*Be` variant to the same columns.
+            let active_op =
+                if R::BIG_ENDIAN { ArithEqOp::ALL_BE[sel_op] } else { ArithEqOp::ALL_LE[sel_op] };
             for op in ArithEqOp::ALL {
                 trace[i].set_sel(op, op == active_op);
                 trace[i].set_sel_clk0(op, i == 0 && op == active_op);
@@ -734,6 +753,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
                 self.chunk_range_id,
                 self.carry_range_id,
                 self.table_id,
+                self.dual_byte_table_id,
             );
         }
 
@@ -746,15 +766,27 @@ impl<F: PrimeField64> ArithEqSM<F> {
         //   q_hsc: QS q-columns range-checked on the last clock only            → QS
         //   chunk: x1..y3 (6·16=96) + q on the 15 non-last clocks (QS·15) + s (USE_S·16)
         //   carry: MAX_CEQS · CBC(2) · 16 rows                                   → CEQS·32
+        // In a big-endian air the 96 x1..y3 chunks are DualByte lookups instead (row 0 for the
+        // all-zero padding rows), so they leave the chunk range.
         // Capacity of *this* config's air, taken from the trace: the configs come in two heights
         // and hold a different number of operations each.
         let padding_ops = (num_rows / ARITH_EQ_ROWS_BY_OP - index) as u64;
         let q_hsc_per_op = R::QS as u64;
-        let chunk_per_op = 96 + R::QS as u64 * 15 + if R::USE_S { 16 } else { 0 };
+        let mem_chunks_per_op = 6 * ARITH_EQ_ROWS_BY_OP as u64;
+        let chunk_per_op = if R::BIG_ENDIAN { 0 } else { mem_chunks_per_op }
+            + R::QS as u64 * 15
+            + if R::USE_S { 16 } else { 0 };
         let carry_per_op = R::CEQS as u64 * 32;
         self.std.range_check(self.q_hsc_range_id, 0, q_hsc_per_op * padding_ops);
         self.std.range_check(self.chunk_range_id, 0, chunk_per_op * padding_ops);
         self.std.range_check(self.carry_range_id, 0, carry_per_op * padding_ops);
+        if R::BIG_ENDIAN && padding_ops > 0 {
+            self.std.inc_virtual_row(
+                self.dual_byte_table_id,
+                0u64,
+                mem_chunks_per_op * padding_ops,
+            );
+        }
 
         let padding_row = R::default();
 

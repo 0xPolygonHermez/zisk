@@ -581,6 +581,26 @@ define_ops! {
     (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, 64, opc_bn254_complex_add, op_bn254_complex_add, ops_bn254_complex_add),
     (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, 64, opc_bn254_complex_sub, op_bn254_complex_sub, ops_bn254_complex_sub),
     (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, 64, opc_bn254_complex_mul, op_bn254_complex_mul, ops_bn254_complex_mul),
+    // Big-endian twins of the ArithEq / ArithEq384 precompiles: same operation, but every
+    // 256/384-bit operand is read from and written to memory as a big-endian integer. The opcode
+    // is the little-endian one with bit 7 cleared (mirrors OP_*_BE in pil/operations.pil).
+    (Arith384ModBe, "arith384_mod_be", ArithEq384, ARITH_EQ_384_COST, 0x62, 232, 48, opc_arith384_mod_be, op_arith384_mod_be, ops_arith384_mod),
+    (Bls12_381CurveAddBe, "bls12_381_curve_add_be", ArithEq384, ARITH_EQ_384_COST, 0x63, 208, 96, opc_bls12_381_curve_add_be, op_bls12_381_curve_add_be, ops_bls12_381_curve_add),
+    (Bls12_381CurveDblBe, "bls12_381_curve_dbl_be", ArithEq384, ARITH_EQ_384_COST, 0x64, 96, 96, opc_bls12_381_curve_dbl_be, op_bls12_381_curve_dbl_be, ops_bls12_381_curve_dbl),
+    (Bls12_381ComplexAddBe, "bls12_381_complex_add_be", ArithEq384, ARITH_EQ_384_COST, 0x65, 208, 96, opc_bls12_381_complex_add_be, op_bls12_381_complex_add_be, ops_bls12_381_complex_add),
+    (Bls12_381ComplexSubBe, "bls12_381_complex_sub_be", ArithEq384, ARITH_EQ_384_COST, 0x66, 208, 96, opc_bls12_381_complex_sub_be, op_bls12_381_complex_sub_be, ops_bls12_381_complex_sub),
+    (Bls12_381ComplexMulBe, "bls12_381_complex_mul_be", ArithEq384, ARITH_EQ_384_COST, 0x67, 208, 96, opc_bls12_381_complex_mul_be, op_bls12_381_complex_mul_be, ops_bls12_381_complex_mul),
+    (Secp256r1AddBe, "secp256r1_add_be", ArithEq, ARITH_EQ_COST, 0x68, 144, 64, opc_secp256r1_add_be, op_secp256r1_add_be, ops_secp256r1_add),
+    (Secp256r1DblBe, "secp256r1_dbl_be", ArithEq, ARITH_EQ_COST, 0x69, 64, 64, opc_secp256r1_dbl_be, op_secp256r1_dbl_be, ops_secp256r1_dbl),
+    (Arith256Be, "arith256_be", ArithEq, ARITH_EQ_COST, 0x72, 136, 64, opc_arith256_be, op_arith256_be, ops_arith256),
+    (Arith256ModBe, "arith256_mod_be", ArithEq, ARITH_EQ_COST, 0x73, 168, 32, opc_arith256_mod_be, op_arith256_mod_be, ops_arith256_mod),
+    (Secp256k1AddBe, "secp256k1_add_be", ArithEq, ARITH_EQ_COST, 0x74, 144, 64, opc_secp256k1_add_be, op_secp256k1_add_be, ops_secp256k1_add),
+    (Secp256k1DblBe, "secp256k1_dbl_be", ArithEq, ARITH_EQ_COST, 0x75, 64, 64, opc_secp256k1_dbl_be, op_secp256k1_dbl_be, ops_secp256k1_dbl),
+    (Bn254CurveAddBe, "bn254_curve_add_be", ArithEq, ARITH_EQ_COST, 0x7a, 144, 64, opc_bn254_curve_add_be, op_bn254_curve_add_be, ops_bn254_curve_add),
+    (Bn254CurveDblBe, "bn254_curve_dbl_be", ArithEq, ARITH_EQ_COST, 0x7b, 64, 64, opc_bn254_curve_dbl_be, op_bn254_curve_dbl_be, ops_bn254_curve_dbl),
+    (Bn254ComplexAddBe, "bn254_complex_add_be", ArithEq, ARITH_EQ_COST, 0x7c, 144, 64, opc_bn254_complex_add_be, op_bn254_complex_add_be, ops_bn254_complex_add),
+    (Bn254ComplexSubBe, "bn254_complex_sub_be", ArithEq, ARITH_EQ_COST, 0x7d, 144, 64, opc_bn254_complex_sub_be, op_bn254_complex_sub_be, ops_bn254_complex_sub),
+    (Bn254ComplexMulBe, "bn254_complex_mul_be", ArithEq, ARITH_EQ_COST, 0x7e, 144, 64, opc_bn254_complex_mul_be, op_bn254_complex_mul_be, ops_bn254_complex_mul),
     (Halt, "halt", Internal, INTERNAL_COST, 0xff, 144, 0, opc_halt, op_halt, ops_none),
 }
 
@@ -1057,6 +1077,32 @@ pub fn ops_blake2b(ctx: &InstContext, stats: &mut dyn OpStats) {
     stats.mem_align_write(state_addr, 16);
 }
 
+/// Big-endian precompile operands.
+///
+/// The `*_be` precompiles take their 256/384-bit operands as big-endian integers in memory (most
+/// significant byte at the lowest address), while the arithmetic helpers work on little-endian
+/// 64-bit limbs. Reading such an operand as little-endian words gives the limbs in reverse order
+/// with the bytes of every limb reversed, so the conversion is: reverse the words, then swap the
+/// bytes of each. It is an involution, so the same call converts a result back before it is
+/// written.
+#[inline(always)]
+pub fn swap_endianness(words: &mut [u64]) {
+    words.reverse();
+    for w in words.iter_mut() {
+        *w = w.swap_bytes();
+    }
+}
+
+/// [`swap_endianness`] applied to each of the consecutive `limbs`-word integers in `words` (a point
+/// is two coordinates, a complex number two components: each one is a separate big-endian integer).
+#[inline(always)]
+pub fn swap_endianness_elements(words: &mut [u64], limbs: usize) {
+    debug_assert_eq!(words.len() % limbs, 0);
+    for element in words.chunks_exact_mut(limbs) {
+        swap_endianness(element);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 #[inline(always)]
 pub fn precompiled_load_data(
@@ -1302,12 +1348,34 @@ pub fn ops_add256(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_arith256(ctx: &mut InstContext) {
+    arith256_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_arith256`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_arith256_be(ctx: &mut InstContext) {
+    arith256_impl(ctx, true);
+}
+
+/// Unimplemented.  Arith256Be can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_arith256_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_arith256_be() is not implemented");
+}
+
+#[inline(always)]
+fn arith256_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 5 + 3 * 4;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 5, 3, 4, 0, None, &mut data, "arith256");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[5..], 4);
+        }
         // ignore 5 indirections
         let (_, rest) = data.split_at(5);
         let (a, rest) = rest.split_at(4);
@@ -1323,8 +1391,14 @@ pub fn opc_arith256(ctx: &mut InstContext) {
         zisk_precomp_helpers::arith256(a, b, c, &mut dl, &mut dh);
 
         // [a,b,c,3:dl,4:dh]
+        if big_endian {
+            swap_endianness_elements(&mut dl, 4);
+        }
         for (i, dl_item) in dl.iter().enumerate() {
             ctx.mem.write(data[3] + (8 * i as u64), *dl_item, 8);
+        }
+        if big_endian {
+            swap_endianness_elements(&mut dh, 4);
         }
         for (i, dh_item) in dh.iter().enumerate() {
             ctx.mem.write(data[4] + (8 * i as u64), *dh_item, 8);
@@ -1349,12 +1423,34 @@ pub fn ops_arith256(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_arith256_mod(ctx: &mut InstContext) {
+    arith256_mod_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_arith256_mod`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_arith256_mod_be(ctx: &mut InstContext) {
+    arith256_mod_impl(ctx, true);
+}
+
+/// Unimplemented.  Arith256ModBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_arith256_mod_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_arith256_mod_be() is not implemented");
+}
+
+#[inline(always)]
+fn arith256_mod_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 5 + 4 * 4;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 5, 4, 4, 0, None, &mut data, "arith256_mod");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[5..], 4);
+        }
         // ignore 5 indirections
         let (_, rest) = data.split_at(5);
         let (a, rest) = rest.split_at(4);
@@ -1372,6 +1468,9 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
         zisk_precomp_helpers::arith256_mod(a, b, c, module, &mut d);
 
         // [a,b,c,module,4:d]
+        if big_endian {
+            swap_endianness_elements(&mut d, 4);
+        }
         for (i, d) in d.iter().enumerate() {
             ctx.mem.write(data[4] + (8 * i as u64), *d, 8);
         }
@@ -1395,12 +1494,34 @@ pub fn ops_arith256_mod(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_secp256k1_add(ctx: &mut InstContext) {
+    secp256k1_add_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_secp256k1_add`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_secp256k1_add_be(ctx: &mut InstContext) {
+    secp256k1_add_impl(ctx, true);
+}
+
+/// Unimplemented.  Secp256k1AddBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256k1_add_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256k1_add_be() is not implemented");
+}
+
+#[inline(always)]
+fn secp256k1_add_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "secp256k1_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[2..], 4);
+        }
         // ignore 2 indirections
         let (_, rest) = data.split_at(2);
         let (p1, p2) = rest.split_at(8);
@@ -1412,6 +1533,9 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
         zisk_precomp_helpers::secp256k1_add(p1, p2, &mut p3);
 
         // [0:p1,p2]
+        if big_endian {
+            swap_endianness_elements(&mut p3, 4);
+        }
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
         }
@@ -1434,17 +1558,42 @@ pub fn ops_secp256k1_add(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
+    secp256k1_dbl_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_secp256k1_dbl`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_secp256k1_dbl_be(ctx: &mut InstContext) {
+    secp256k1_dbl_impl(ctx, true);
+}
+
+/// Unimplemented.  Secp256k1DblBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256k1_dbl_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256k1_dbl_be() is not implemented");
+}
+
+#[inline(always)]
+fn secp256k1_dbl_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 0, 1, 8, 0, None, &mut data, "secp256k1_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[0..], 4);
+        }
         let p1: &[u64; 8] = &data;
         let mut p3 = [0u64; 8];
 
         zisk_precomp_helpers::secp256k1_dbl(p1, &mut p3);
 
+        if big_endian {
+            swap_endianness_elements(&mut p3, 4);
+        }
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
         }
@@ -1468,12 +1617,34 @@ pub fn ops_secp256k1_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_secp256r1_add(ctx: &mut InstContext) {
+    secp256r1_add_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_secp256r1_add`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_secp256r1_add_be(ctx: &mut InstContext) {
+    secp256r1_add_impl(ctx, true);
+}
+
+/// Unimplemented.  Secp256r1AddBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256r1_add_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256r1_add_be() is not implemented");
+}
+
+#[inline(always)]
+fn secp256r1_add_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "secp256r1_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[2..], 4);
+        }
         // ignore 2 indirections
         let (_, rest) = data.split_at(2);
         let (p1, p2) = rest.split_at(8);
@@ -1485,6 +1656,9 @@ pub fn opc_secp256r1_add(ctx: &mut InstContext) {
         zisk_precomp_helpers::secp256r1_add(p1, p2, &mut p3);
 
         // [0:p1,p2]
+        if big_endian {
+            swap_endianness_elements(&mut p3, 4);
+        }
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
         }
@@ -1507,17 +1681,42 @@ pub fn ops_secp256r1_add(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_secp256r1_dbl(ctx: &mut InstContext) {
+    secp256r1_dbl_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_secp256r1_dbl`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_secp256r1_dbl_be(ctx: &mut InstContext) {
+    secp256r1_dbl_impl(ctx, true);
+}
+
+/// Unimplemented.  Secp256r1DblBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256r1_dbl_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256r1_dbl_be() is not implemented");
+}
+
+#[inline(always)]
+fn secp256r1_dbl_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 0, 1, 8, 0, None, &mut data, "secp256r1_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[0..], 4);
+        }
         let p1: &[u64; 8] = &data;
         let mut p3 = [0u64; 8];
 
         zisk_precomp_helpers::secp256r1_dbl(p1, &mut p3);
 
+        if big_endian {
+            swap_endianness_elements(&mut p3, 4);
+        }
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
         }
@@ -1541,12 +1740,34 @@ pub fn ops_secp256r1_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
+    bn254_curve_add_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_bn254_curve_add`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_bn254_curve_add_be(ctx: &mut InstContext) {
+    bn254_curve_add_impl(ctx, true);
+}
+
+/// Unimplemented.  Bn254CurveAddBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bn254_curve_add_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bn254_curve_add_be() is not implemented");
+}
+
+#[inline(always)]
+fn bn254_curve_add_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "bn254_curve_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[2..], 4);
+        }
         // ignore 2 indirections
         let (_, rest) = data.split_at(2);
         let (p1, p2) = rest.split_at(8);
@@ -1558,6 +1779,9 @@ pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
         zisk_precomp_helpers::bn254_curve_add(p1, p2, &mut p3);
 
         // [0:p1,p2]
+        if big_endian {
+            swap_endianness_elements(&mut p3, 4);
+        }
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
         }
@@ -1621,17 +1845,42 @@ pub fn ops_babyjubjub_add(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
+    bn254_curve_dbl_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_bn254_curve_dbl`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_bn254_curve_dbl_be(ctx: &mut InstContext) {
+    bn254_curve_dbl_impl(ctx, true);
+}
+
+/// Unimplemented.  Bn254CurveDblBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bn254_curve_dbl_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bn254_curve_dbl_be() is not implemented");
+}
+
+#[inline(always)]
+fn bn254_curve_dbl_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 0, 1, 8, 0, None, &mut data, "bn254_curve_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[0..], 4);
+        }
         let p1: &[u64; 8] = &data;
         let mut p3 = [0u64; 8];
 
         zisk_precomp_helpers::bn254_curve_dbl(p1, &mut p3);
 
+        if big_endian {
+            swap_endianness_elements(&mut p3, 4);
+        }
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
         }
@@ -1655,12 +1904,34 @@ pub fn ops_bn254_curve_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
+    bn254_complex_add_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_bn254_complex_add`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_bn254_complex_add_be(ctx: &mut InstContext) {
+    bn254_complex_add_impl(ctx, true);
+}
+
+/// Unimplemented.  Bn254ComplexAddBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bn254_complex_add_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bn254_complex_add_be() is not implemented");
+}
+
+#[inline(always)]
+fn bn254_complex_add_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "bn254_complex_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[2..], 4);
+        }
         // ignore 2 indirections
         let (_, rest) = data.split_at(2);
         let (f1, f2) = rest.split_at(8);
@@ -1672,6 +1943,9 @@ pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
         zisk_precomp_helpers::bn254_complex_add(f1, f2, &mut f3);
 
         // [0:f1,f2]
+        if big_endian {
+            swap_endianness_elements(&mut f3, 4);
+        }
         for (i, d) in f3.iter().enumerate() {
             ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
         }
@@ -1695,12 +1969,34 @@ pub fn ops_bn254_complex_add(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
+    bn254_complex_sub_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_bn254_complex_sub`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_bn254_complex_sub_be(ctx: &mut InstContext) {
+    bn254_complex_sub_impl(ctx, true);
+}
+
+/// Unimplemented.  Bn254ComplexSubBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bn254_complex_sub_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bn254_complex_sub_be() is not implemented");
+}
+
+#[inline(always)]
+fn bn254_complex_sub_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "bn254_complex_sub");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[2..], 4);
+        }
         // ignore 2 indirections
         let (_, rest) = data.split_at(2);
         let (f1, f2) = rest.split_at(8);
@@ -1712,6 +2008,9 @@ pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
         zisk_precomp_helpers::bn254_complex_sub(f1, f2, &mut f3);
 
         // [0:f1,f2]
+        if big_endian {
+            swap_endianness_elements(&mut f3, 4);
+        }
         for (i, d) in f3.iter().enumerate() {
             ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
         }
@@ -1735,12 +2034,34 @@ pub fn ops_bn254_complex_sub(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
+    bn254_complex_mul_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_bn254_complex_mul`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_bn254_complex_mul_be(ctx: &mut InstContext) {
+    bn254_complex_mul_impl(ctx, true);
+}
+
+/// Unimplemented.  Bn254ComplexMulBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bn254_complex_mul_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bn254_complex_mul_be() is not implemented");
+}
+
+#[inline(always)]
+fn bn254_complex_mul_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "bn254_complex_mul");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[2..], 4);
+        }
         // ignore 2 indirections
         let (_, rest) = data.split_at(2);
         let (f1, f2) = rest.split_at(8);
@@ -1752,6 +2073,9 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
         zisk_precomp_helpers::bn254_complex_mul(f1, f2, &mut f3);
 
         // [0:f1,f2]
+        if big_endian {
+            swap_endianness_elements(&mut f3, 4);
+        }
         for (i, d) in f3.iter().enumerate() {
             ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
         }
@@ -1775,12 +2099,34 @@ pub fn ops_bn254_complex_mul(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_arith384_mod(ctx: &mut InstContext) {
+    arith384_mod_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_arith384_mod`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_arith384_mod_be(ctx: &mut InstContext) {
+    arith384_mod_impl(ctx, true);
+}
+
+/// Unimplemented.  Arith384ModBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_arith384_mod_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_arith384_mod_be() is not implemented");
+}
+
+#[inline(always)]
+fn arith384_mod_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 5 + 4 * 6;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 5, 4, 6, 0, None, &mut data, "arith384_mod");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[5..], 6);
+        }
         // ignore 5 indirections
         let (_, rest) = data.split_at(5);
         let (a, rest) = rest.split_at(6);
@@ -1798,6 +2144,9 @@ pub fn opc_arith384_mod(ctx: &mut InstContext) {
         zisk_precomp_helpers::arith384_mod(a, b, c, module, &mut d);
 
         // [a,b,c,module,4:d]
+        if big_endian {
+            swap_endianness_elements(&mut d, 6);
+        }
         for (i, d) in d.iter().enumerate() {
             ctx.mem.write(data[4] + (8 * i as u64), *d, 8);
         }
@@ -1821,12 +2170,34 @@ pub fn ops_arith384_mod(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_bls12_381_curve_add(ctx: &mut InstContext) {
+    bls12_381_curve_add_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_bls12_381_curve_add`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_bls12_381_curve_add_be(ctx: &mut InstContext) {
+    bls12_381_curve_add_impl(ctx, true);
+}
+
+/// Unimplemented.  Bls12_381CurveAddBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_curve_add_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_curve_add_be() is not implemented");
+}
+
+#[inline(always)]
+fn bls12_381_curve_add_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 2, 2, 12, 0, None, &mut data, "bls12_381_curve_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[2..], 6);
+        }
         // ignore 2 indirections
         let (_, rest) = data.split_at(2);
         let (p1, p2) = rest.split_at(12);
@@ -1838,6 +2209,9 @@ pub fn opc_bls12_381_curve_add(ctx: &mut InstContext) {
         zisk_precomp_helpers::bls12_381_curve_add(p1, p2, &mut p3);
 
         // [0:p1,p2]
+        if big_endian {
+            swap_endianness_elements(&mut p3, 6);
+        }
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
         }
@@ -1861,17 +2235,42 @@ pub fn ops_bls12_381_curve_add(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_bls12_381_curve_dbl(ctx: &mut InstContext) {
+    bls12_381_curve_dbl_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_bls12_381_curve_dbl`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_bls12_381_curve_dbl_be(ctx: &mut InstContext) {
+    bls12_381_curve_dbl_impl(ctx, true);
+}
+
+/// Unimplemented.  Bls12_381CurveDblBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_curve_dbl_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_curve_dbl_be() is not implemented");
+}
+
+#[inline(always)]
+fn bls12_381_curve_dbl_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 12;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 0, 1, 12, 0, None, &mut data, "bls12_381_curve_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[0..], 6);
+        }
         let p1: &[u64; 12] = &data;
         let mut p3 = [0u64; 12];
 
         zisk_precomp_helpers::bls12_381_curve_dbl(p1, &mut p3);
 
+        if big_endian {
+            swap_endianness_elements(&mut p3, 6);
+        }
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
         }
@@ -1895,12 +2294,34 @@ pub fn ops_bls12_381_curve_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_bls12_381_complex_add(ctx: &mut InstContext) {
+    bls12_381_complex_add_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_bls12_381_complex_add`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_bls12_381_complex_add_be(ctx: &mut InstContext) {
+    bls12_381_complex_add_impl(ctx, true);
+}
+
+/// Unimplemented.  Bls12_381ComplexAddBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_complex_add_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_complex_add_be() is not implemented");
+}
+
+#[inline(always)]
+fn bls12_381_complex_add_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 2, 2, 12, 0, None, &mut data, "bls12_381_complex_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[2..], 6);
+        }
         // ignore 2 indirections
         let (_, rest) = data.split_at(2);
         let (f1, f2) = rest.split_at(12);
@@ -1912,6 +2333,9 @@ pub fn opc_bls12_381_complex_add(ctx: &mut InstContext) {
         zisk_precomp_helpers::bls12_381_complex_add(f1, f2, &mut f3);
 
         // [0:f1,f2]
+        if big_endian {
+            swap_endianness_elements(&mut f3, 6);
+        }
         for (i, d) in f3.iter().enumerate() {
             ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
         }
@@ -1935,12 +2359,34 @@ pub fn ops_bls12_381_complex_add(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_bls12_381_complex_sub(ctx: &mut InstContext) {
+    bls12_381_complex_sub_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_bls12_381_complex_sub`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_bls12_381_complex_sub_be(ctx: &mut InstContext) {
+    bls12_381_complex_sub_impl(ctx, true);
+}
+
+/// Unimplemented.  Bls12_381ComplexSubBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_complex_sub_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_complex_sub_be() is not implemented");
+}
+
+#[inline(always)]
+fn bls12_381_complex_sub_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 2, 2, 12, 0, None, &mut data, "bls12_381_complex_sub");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[2..], 6);
+        }
         // ignore 2 indirections
         let (_, rest) = data.split_at(2);
         let (f1, f2) = rest.split_at(12);
@@ -1952,6 +2398,9 @@ pub fn opc_bls12_381_complex_sub(ctx: &mut InstContext) {
         zisk_precomp_helpers::bls12_381_complex_sub(f1, f2, &mut f3);
 
         // [0:f1,f2]
+        if big_endian {
+            swap_endianness_elements(&mut f3, 6);
+        }
         for (i, d) in f3.iter().enumerate() {
             ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
         }
@@ -1975,12 +2424,34 @@ pub fn ops_bls12_381_complex_sub(ctx: &InstContext, stats: &mut dyn OpStats) {
 
 #[inline(always)]
 pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
+    bls12_381_complex_mul_impl(ctx, false);
+}
+
+/// Big-endian twin of `opc_bls12_381_complex_mul`: same operation, operands stored in memory as big-endian
+/// integers (see [`swap_endianness`]).
+#[inline(always)]
+pub fn opc_bls12_381_complex_mul_be(ctx: &mut InstContext) {
+    bls12_381_complex_mul_impl(ctx, true);
+}
+
+/// Unimplemented.  Bls12_381ComplexMulBe can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_complex_mul_be(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_complex_mul_be() is not implemented");
+}
+
+#[inline(always)]
+fn bls12_381_complex_mul_impl(ctx: &mut InstContext, big_endian: bool) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 2, 2, 12, 0, None, &mut data, "bls12_381_complex_mul");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        if big_endian {
+            swap_endianness_elements(&mut data[2..], 6);
+        }
         // ignore 2 indirections
         let (_, rest) = data.split_at(2);
         let (f1, f2) = rest.split_at(12);
@@ -1992,6 +2463,9 @@ pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
         zisk_precomp_helpers::bls12_381_complex_mul(f1, f2, &mut f3);
 
         // [0:f1,f2]
+        if big_endian {
+            swap_endianness_elements(&mut f3, 6);
+        }
         for (i, d) in f3.iter().enumerate() {
             ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
         }
@@ -2225,4 +2699,79 @@ pub fn opc_halt(ctx: &mut InstContext) {
     ctx.error = true;
     ctx.c = 0;
     ctx.flag = false;
+}
+
+#[cfg(test)]
+mod big_endian_tests {
+    use super::*;
+
+    /// A big-endian 256-bit integer read as four little-endian words, converted to little-endian
+    /// limbs: the value 0x0102..._20 (bytes 1..32 from the most significant one).
+    #[test]
+    fn swap_endianness_reads_a_big_endian_integer_as_little_endian_limbs() {
+        let bytes: [u8; 32] = core::array::from_fn(|i| i as u8 + 1);
+        let mut words: [u64; 4] = core::array::from_fn(|i| {
+            u64::from_le_bytes(bytes[8 * i..8 * i + 8].try_into().unwrap())
+        });
+        swap_endianness(&mut words);
+        // limb 0 is the least significant: bytes 32..25
+        assert_eq!(words[0], 0x191A1B1C1D1E1F20);
+        assert_eq!(words[3], 0x0102030405060708);
+        let mut back = words;
+        swap_endianness(&mut back);
+        let orig: [u64; 4] = core::array::from_fn(|i| {
+            u64::from_le_bytes(bytes[8 * i..8 * i + 8].try_into().unwrap())
+        });
+        assert_eq!(back, orig, "it is an involution");
+    }
+
+    /// A point is two independent big-endian coordinates: each one is converted on its own.
+    #[test]
+    fn swap_endianness_elements_converts_each_coordinate() {
+        let mut p = [1u64, 2, 3, 4, 5, 6, 7, 8];
+        swap_endianness_elements(&mut p, 4);
+        assert_eq!(
+            p,
+            [
+                4u64.swap_bytes(),
+                3u64.swap_bytes(),
+                2u64.swap_bytes(),
+                1u64.swap_bytes(),
+                8u64.swap_bytes(),
+                7u64.swap_bytes(),
+                6u64.swap_bytes(),
+                5u64.swap_bytes()
+            ]
+        );
+    }
+
+    /// The big-endian opcodes are the little-endian ones with bit 7 cleared, as pil/operations.pil
+    /// defines them.
+    #[test]
+    fn big_endian_opcodes_clear_bit_7_of_the_little_endian_ones() {
+        let pairs = [
+            (ZiskOp::Arith256, ZiskOp::Arith256Be),
+            (ZiskOp::Arith256Mod, ZiskOp::Arith256ModBe),
+            (ZiskOp::Secp256k1Add, ZiskOp::Secp256k1AddBe),
+            (ZiskOp::Secp256k1Dbl, ZiskOp::Secp256k1DblBe),
+            (ZiskOp::Bn254CurveAdd, ZiskOp::Bn254CurveAddBe),
+            (ZiskOp::Bn254CurveDbl, ZiskOp::Bn254CurveDblBe),
+            (ZiskOp::Bn254ComplexAdd, ZiskOp::Bn254ComplexAddBe),
+            (ZiskOp::Bn254ComplexSub, ZiskOp::Bn254ComplexSubBe),
+            (ZiskOp::Bn254ComplexMul, ZiskOp::Bn254ComplexMulBe),
+            (ZiskOp::Secp256r1Add, ZiskOp::Secp256r1AddBe),
+            (ZiskOp::Secp256r1Dbl, ZiskOp::Secp256r1DblBe),
+            (ZiskOp::Arith384Mod, ZiskOp::Arith384ModBe),
+            (ZiskOp::Bls12_381CurveAdd, ZiskOp::Bls12_381CurveAddBe),
+            (ZiskOp::Bls12_381CurveDbl, ZiskOp::Bls12_381CurveDblBe),
+            (ZiskOp::Bls12_381ComplexAdd, ZiskOp::Bls12_381ComplexAddBe),
+            (ZiskOp::Bls12_381ComplexSub, ZiskOp::Bls12_381ComplexSubBe),
+            (ZiskOp::Bls12_381ComplexMul, ZiskOp::Bls12_381ComplexMulBe),
+        ];
+        for (le, be) in pairs {
+            assert_eq!(be.code(), le.code() & 0x7F, "{be:?}");
+            assert_eq!(be.op_type(), le.op_type(), "{be:?}");
+            assert_eq!(be.input_size(), le.input_size(), "{be:?}");
+        }
+    }
 }

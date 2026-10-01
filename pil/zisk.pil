@@ -149,6 +149,19 @@ airgroup Zisk {
     ArithEq384(N: 2**20);
     ArithEq384(N: 2**21) alias ArithEq384Large;
 
+    // Big-endian twins of the ArithEq / ArithEq384 airs above: same equations, operands stored in
+    // memory as big-endian integers, proving the OP_*_BE opcodes.
+    ArithEq(N: 2**20, big_endian: 1) alias ArithEqBe;
+    ArithEq(N: 2**21, big_endian: 1) alias ArithEqBeLarge;
+    ArithEq(N: 2**20, equations: EQ_ARITH256 + EQ_ARITH256_MOD, big_endian: 1) alias Arith256XBe;
+    ArithEq(N: 2**21, equations: EQ_ARITH256 + EQ_ARITH256_MOD, big_endian: 1) alias Arith256XBeLarge;
+    ArithEq(N: 2**20, equations: EQ_SECP256K1, big_endian: 1) alias ArithSecp256K1Be;
+    ArithEq(N: 2**21, equations: EQ_SECP256K1, big_endian: 1) alias ArithSecp256K1BeLarge;
+    ArithEq(N: 2**20, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL, big_endian: 1) alias ArithBn254Be;
+    ArithEq(N: 2**21, equations: EQ_BN254_EC + EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL, big_endian: 1) alias ArithBn254BeLarge;
+    ArithEq384(N: 2**20, big_endian: 1) alias ArithEq384Be;
+    ArithEq384(N: 2**21, big_endian: 1) alias ArithEq384BeLarge;
+
     BabyJubJub(N: 2**18);
     virtual ArithEqLtTable(ARITH_EQ_LT_TABLE_SIZE);
 

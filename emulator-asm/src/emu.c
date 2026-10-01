@@ -2140,6 +2140,161 @@ extern int _opcode_bls12_381_complex_mul(uint64_t * address)
     return 0;
 }
 
+/*
+ * Big-endian twins of the ArithEq / ArithEq384 precompiles (opcodes OP_*_BE).
+ *
+ * Same operation as the little-endian opcode, but every 256/384-bit operand is stored in memory as
+ * a big-endian integer (most significant byte at the lowest address). Reading such an operand as
+ * little-endian 64-bit words gives the limbs reversed with the bytes of every limb reversed, so the
+ * conversion is: reverse the words, then byte-swap each one; it is an involution.
+ *
+ * Each twin copies the operands into local buffers, converts them to little-endian limbs, runs the
+ * little-endian opcode function on the copies (so the cache / metrics / debug paths are shared), and
+ * converts the results back before writing them to the guest buffers. Copies rather than in-place
+ * conversion keep aliased parameters (an output buffer that is also an input) correct.
+ */
+
+static inline void swap_endianness(uint64_t * words, uint64_t limbs)
+{
+    for (uint64_t i = 0, j = limbs - 1; i < j; i++, j--)
+    {
+        uint64_t t = words[i];
+        words[i] = words[j];
+        words[j] = t;
+    }
+    for (uint64_t i = 0; i < limbs; i++)
+    {
+        words[i] = __builtin_bswap64(words[i]);
+    }
+}
+
+static inline void swap_endianness_elements(uint64_t * words, uint64_t words_count, uint64_t limbs)
+{
+    for (uint64_t i = 0; i < words_count; i += limbs)
+    {
+        swap_endianness(words + i, limbs);
+    }
+}
+
+#define BE_MAX_PARAMS 5
+#define BE_MAX_WORDS 12
+
+/*
+ * Indirect form: `address` holds `params` pointers to buffers of `words` 64-bit words each, every
+ * buffer made of `limbs`-word integers. `outputs_mask` has bit p set when parameter p is written by
+ * the operation (it may also be an input, e.g. p1 of a point addition).
+ */
+static int opcode_big_endian_indirect(int (*op)(uint64_t *), uint64_t * address, uint64_t params, uint64_t words, uint64_t limbs, uint64_t outputs_mask)
+{
+    uint64_t local[BE_MAX_PARAMS][BE_MAX_WORDS];
+    uint64_t local_address[BE_MAX_PARAMS];
+    for (uint64_t p = 0; p < params; p++)
+    {
+        uint64_t * buffer = (uint64_t *)address[p];
+        for (uint64_t i = 0; i < words; i++) local[p][i] = buffer[i];
+        swap_endianness_elements(local[p], words, limbs);
+        local_address[p] = (uint64_t)local[p];
+    }
+    int result = op(local_address);
+    for (uint64_t p = 0; p < params; p++)
+    {
+        if ((outputs_mask & (1 << p)) == 0) continue;
+        swap_endianness_elements(local[p], words, limbs);
+        uint64_t * buffer = (uint64_t *)address[p];
+        for (uint64_t i = 0; i < words; i++) buffer[i] = local[p][i];
+    }
+    return result;
+}
+
+/*
+ * Direct form (point doubling): `address` points to the `words`-word point itself, read and written
+ * in place.
+ */
+static int opcode_big_endian_direct(int (*op)(uint64_t *), uint64_t * address, uint64_t words, uint64_t limbs)
+{
+    uint64_t local[BE_MAX_WORDS];
+    for (uint64_t i = 0; i < words; i++) local[i] = address[i];
+    swap_endianness_elements(local, words, limbs);
+    int result = op(local);
+    swap_endianness_elements(local, words, limbs);
+    for (uint64_t i = 0; i < words; i++) address[i] = local[i];
+    return result;
+}
+
+// arith256 / arith256_mod / arith384_mod: [a, b, c, (module | dl), (dh | d)], results in the last two / last one
+extern int _opcode_arith256_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_arith256, address, 5, 4, 4, (1 << 3) | (1 << 4));
+}
+extern int _opcode_arith256_mod_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_arith256_mod, address, 5, 4, 4, 1 << 4);
+}
+extern int _opcode_arith384_mod_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_arith384_mod, address, 5, 6, 6, 1 << 4);
+}
+
+// point / complex binary operations: [p1, p2], result in p1; each a pair of coordinates
+extern int _opcode_secp256k1_add_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_secp256k1_add, address, 2, 8, 4, 1 << 0);
+}
+extern int _opcode_secp256r1_add_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_secp256r1_add, address, 2, 8, 4, 1 << 0);
+}
+extern int _opcode_bn254_curve_add_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_bn254_curve_add, address, 2, 8, 4, 1 << 0);
+}
+extern int _opcode_bn254_complex_add_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_bn254_complex_add, address, 2, 8, 4, 1 << 0);
+}
+extern int _opcode_bn254_complex_sub_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_bn254_complex_sub, address, 2, 8, 4, 1 << 0);
+}
+extern int _opcode_bn254_complex_mul_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_bn254_complex_mul, address, 2, 8, 4, 1 << 0);
+}
+extern int _opcode_bls12_381_curve_add_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_bls12_381_curve_add, address, 2, 12, 6, 1 << 0);
+}
+extern int _opcode_bls12_381_complex_add_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_bls12_381_complex_add, address, 2, 12, 6, 1 << 0);
+}
+extern int _opcode_bls12_381_complex_sub_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_bls12_381_complex_sub, address, 2, 12, 6, 1 << 0);
+}
+extern int _opcode_bls12_381_complex_mul_be(uint64_t * address)
+{
+    return opcode_big_endian_indirect(_opcode_bls12_381_complex_mul, address, 2, 12, 6, 1 << 0);
+}
+
+// point doubling: the point itself, in place
+extern int _opcode_secp256k1_dbl_be(uint64_t * address)
+{
+    return opcode_big_endian_direct(_opcode_secp256k1_dbl, address, 8, 4);
+}
+extern int _opcode_secp256r1_dbl_be(uint64_t * address)
+{
+    return opcode_big_endian_direct(_opcode_secp256r1_dbl, address, 8, 4);
+}
+extern int _opcode_bn254_curve_dbl_be(uint64_t * address)
+{
+    return opcode_big_endian_direct(_opcode_bn254_curve_dbl, address, 8, 4);
+}
+extern int _opcode_bls12_381_curve_dbl_be(uint64_t * address)
+{
+    return opcode_big_endian_direct(_opcode_bls12_381_curve_dbl, address, 12, 6);
+}
+
 
 extern uint64_t _opcode_add256(uint64_t * address)
 {

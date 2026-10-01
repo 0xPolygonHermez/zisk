@@ -9,30 +9,34 @@ use zisk_common::{
 };
 
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::{ArithEq384TraceRowOps, ZISK_AIRGROUP_ID};
+use zisk_pil::DUAL_RANGE_BYTE_ID;
 use zisk_precomp_arith_eq::ArithEqLtTableSM;
 // `CACHE_BYTES` is only reported by the `witness_timers` line.
 #[allow(unused_imports)]
 use zisk_precomp_common::{MultiplicityCache, CACHE_BYTES};
 
 use crate::{
-    arith_eq_384_constants::*, executors, Arith384ModInput, ArithEq384Input,
+    arith_eq_384_constants::*, executors, Arith384ModInput, ArithEq384Input, ArithEq384Row,
     Bls12_381ComplexAddInput, Bls12_381ComplexMulInput, Bls12_381ComplexSubInput,
     Bls12_381CurveAddInput, Bls12_381CurveDblInput,
 };
 
 /// The `ArithEq384SM` struct encapsulates the logic of the ArithEq384 State Machine.
 ///
-/// Nothing here depends on the height of the air: the same state machine serves `ArithEq384` and its
-/// taller `ArithEq384Large` sibling, and the capacity is taken from the trace each call builds.
+/// Nothing here depends on the height or the endianness of the air: the same state machine serves
+/// `ArithEq384`, its taller `ArithEq384Large` sibling and their `big_endian: 1` twins; the row type
+/// `R` selects the air, and the capacity is taken from the trace each call builds.
 pub struct ArithEq384SM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
 
-    /// The table ID for the Keccakf Table State Machine
+    /// The table ID for the ArithEqLtTable (alias-free checks of x3/y3).
     table_id: usize,
+
+    /// The table ID for the DualByte virtual table, where the big-endian airs range-check x1..y3.
+    dual_byte_table_id: usize,
 
     pub q_hsc_range_id: usize,
     pub chunk_range_id: usize,
@@ -67,16 +71,26 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             .get_range_id(ARITH_EQ_384_CARRY_MIN, ARITH_EQ_384_CARRY_MAX, None)
             .expect("Failed to get range ID");
 
-        // Get the table ID
+        // Get the table IDs
         let table_id =
             std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
+        let dual_byte_table_id = std
+            .get_virtual_table_id(DUAL_RANGE_BYTE_ID)
+            .expect("Failed to get the DualByte table ID");
 
-        Arc::new(Self { std, q_hsc_range_id, chunk_range_id, carry_range_id, table_id })
+        Arc::new(Self {
+            std,
+            q_hsc_range_id,
+            chunk_range_id,
+            carry_range_id,
+            table_id,
+            dual_byte_table_id,
+        })
     }
     // Returns the LT flags for x3 and y3. The flags are determined solely by the operation type.
     /// Writes one operation's rows. Split out of the fill so the batched walk and the dispatch stay
     /// separate concerns; the body is the match the per-operation closure used to hold.
-    fn process_input<R: ArithEq384TraceRowOps<F>>(
+    fn process_input<R: ArithEq384Row<F>>(
         &self,
         input: &ArithEq384Input,
         trace: &mut [R],
@@ -118,10 +132,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             ArithEq384Input::Bls12_381ComplexMul(_) => X3_LT_FLAG | Y3_LT_FLAG,
         }
     }
-    fn expand_addr_step_on_trace<R: ArithEq384TraceRowOps<F>>(
-        data: &ArithEq384StepAddr,
-        trace: &mut [R],
-    ) {
+    fn expand_addr_step_on_trace<R: ArithEq384Row<F>>(data: &ArithEq384StepAddr, trace: &mut [R]) {
         trace[0].set_step_addr(data.main_step);
         trace[1].set_step_addr(data.addr_op as u64);
         trace[2].set_step_addr(data.addr_x1 as u64);
@@ -138,7 +149,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         }
     }
 
-    fn process_arith384_mod<R: ArithEq384TraceRowOps<F>>(
+    fn process_arith384_mod<R: ArithEq384Row<F>>(
         &self,
         input: &Arith384ModInput,
         trace: &mut [R],
@@ -169,7 +180,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
-    fn process_bls12_381_curve_add<R: ArithEq384TraceRowOps<F>>(
+    fn process_bls12_381_curve_add<R: ArithEq384Row<F>>(
         &self,
         input: &Bls12_381CurveAddInput,
         trace: &mut [R],
@@ -200,7 +211,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
-    fn process_bls12_381_curve_dbl<R: ArithEq384TraceRowOps<F>>(
+    fn process_bls12_381_curve_dbl<R: ArithEq384Row<F>>(
         &self,
         input: &Bls12_381CurveDblInput,
         trace: &mut [R],
@@ -231,7 +242,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
-    fn process_bls12_381_complex_add<R: ArithEq384TraceRowOps<F>>(
+    fn process_bls12_381_complex_add<R: ArithEq384Row<F>>(
         &self,
         input: &Bls12_381ComplexAddInput,
         trace: &mut [R],
@@ -262,7 +273,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
-    fn process_bls12_381_complex_sub<R: ArithEq384TraceRowOps<F>>(
+    fn process_bls12_381_complex_sub<R: ArithEq384Row<F>>(
         &self,
         input: &Bls12_381ComplexSubInput,
         trace: &mut [R],
@@ -293,7 +304,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
-    fn process_bls12_381_complex_mul<R: ArithEq384TraceRowOps<F>>(
+    fn process_bls12_381_complex_mul<R: ArithEq384Row<F>>(
         &self,
         input: &Bls12_381ComplexMulInput,
         trace: &mut [R],
@@ -327,7 +338,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     const FIRST_CLOCK: u8 = 0;
     const LAST_CLOCK: u8 = ARITH_EQ_384_ROWS_BY_OP as u8 - 1;
 
-    fn expand_data_on_trace<R: ArithEq384TraceRowOps<F>>(
+    fn expand_data_on_trace<R: ArithEq384Row<F>>(
         &self,
         data: &executors::ArithEq384Data,
         trace: &mut [R],
@@ -352,12 +363,15 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             }
             trace[i].set_all_carry(&carry_values);
             let q_last_clock = i == ARITH_EQ_384_ROWS_BY_OP - 1;
-            trace[i].set_x1(to_field::<F>(cache.chunk(data.x1[i])) as u16);
-            trace[i].set_y1(to_field::<F>(cache.chunk(data.y1[i])) as u16);
-            trace[i].set_x2(to_field::<F>(cache.chunk(data.x2[i])) as u16);
-            trace[i].set_y2(to_field::<F>(cache.chunk(data.y2[i])) as u16);
-            trace[i].set_x3(to_field::<F>(cache.chunk(data.x3[i])) as u16);
-            trace[i].set_y3(to_field::<F>(cache.chunk(data.y3[i])) as u16);
+            // The memory operands: 16-bit chunks range-checked on the chunk range, or, in a
+            // big-endian air, byte pairs looked up in the DualByte table (same value, same row).
+            let be = R::BIG_ENDIAN;
+            trace[i].set_x1(to_field::<F>(cache.mem_chunk(data.x1[i], be)) as u16);
+            trace[i].set_y1(to_field::<F>(cache.mem_chunk(data.y1[i], be)) as u16);
+            trace[i].set_x2(to_field::<F>(cache.mem_chunk(data.x2[i], be)) as u16);
+            trace[i].set_y2(to_field::<F>(cache.mem_chunk(data.y2[i], be)) as u16);
+            trace[i].set_x3(to_field::<F>(cache.mem_chunk(data.x3[i], be)) as u16);
+            trace[i].set_y3(to_field::<F>(cache.mem_chunk(data.y3[i], be)) as u16);
             trace[i].set_q0(to_field::<F>(cache.q_column(data.q0[i], q_last_clock)) as u32);
             trace[i].set_q1(to_field::<F>(cache.q_column(data.q1[i], q_last_clock)) as u32);
             trace[i].set_q2(to_field::<F>(cache.q_column(data.q2[i], q_last_clock)) as u32);
@@ -451,22 +465,16 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    /// The air is selected by the `NUM_ROWS` / `AIR_ID` consts of the trace this builds, so one
-    /// body serves every height the air is instantiated at.
-    pub fn compute_witness<
-        R: ArithEq384TraceRowOps<F>,
-        const NUM_ROWS: usize,
-        const AIR_ID: usize,
-    >(
+    /// The air is selected by the row type `R` through its `ArithEq384Row::Trace` (height, air id
+    /// and endianness), so one body serves every air the template is instantiated as.
+    pub fn compute_witness<R: ArithEq384Row<F>>(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<ArithEq384Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec_zeroes(
-            trace_buffer,
-        )?;
-        let num_rows = trace.num_rows();
+        let mut trace = R::new_trace(trace_buffer)?;
+        let num_rows = R::trace_num_rows(&trace);
         // Capacity of *this* air, not of the shortest one: the two heights hold a different number
         // of operations, and a `Large` instance priced against the short air's capacity would reject
         // the very inputs the planner routed to it.
@@ -487,7 +495,8 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         };
 
         tracing::debug!(
-            "··· Creating ArithEq384 instance [{} / {} rows filled {:.2}%]",
+            "··· Creating {} instance [{} / {} rows filled {:.2}%]",
+            R::AIR_NAME,
             num_rows_needed,
             num_rows,
             num_rows_needed as f64 / num_rows as f64 * 100.0
@@ -523,7 +532,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         // `ARITH_EQ_384_ROWS_BY_OP` (2^20 leaves 16 rows over). Those trailing rows are padding, and
         // slicing them in here would open one batch past the last operation.
         let fill_rows = total_inputs * ARITH_EQ_384_ROWS_BY_OP;
-        let caches: Vec<MultiplicityCache> = trace.buffer[..fill_rows]
+        let caches: Vec<MultiplicityCache> = R::trace_rows(&mut trace)[..fill_rows]
             .par_chunks_mut(ops_per_batch * ARITH_EQ_384_ROWS_BY_OP)
             .enumerate()
             .map(|(batch, batch_rows)| {
@@ -568,12 +577,14 @@ impl<F: PrimeField64> ArithEq384SM<F> {
                 self.chunk_range_id,
                 self.carry_range_id,
                 self.table_id,
+                self.dual_byte_table_id,
             );
         }
         phase_end!(d_flush, t_flush);
         phase_log!(
-            "ArithEq384 witness: {} ops, {} threads, {} caches x {:.1}MiB | cache init {:.1}ms \
+            "{} witness: {} ops, {} threads, {} caches x {:.1}MiB | cache init {:.1}ms \
              (slowest batch) fill {:.0}ms merge {:.0}ms flush {:.0}ms",
+            R::AIR_NAME,
             total_inputs,
             rayon::current_num_threads(),
             n_batches,
@@ -587,22 +598,30 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         // Padding
 
         // All-zero padding rows satisfy every constraint, so we must only handle the range_checks.
-
+        // In a big-endian air the six memory operands are DualByte lookups (row 0 on a zero row)
+        // instead of 16-bit chunk range checks, on every padding row: whole unused op-slots and the
+        // tail rows the height leaves over.
+        let padding_rows = (num_available_ops - index) as u64 * ARITH_EQ_384_ROWS_BY_OP as u64
+            + num_non_usable_rows;
         let padding_ops = (num_available_ops - index) as u64;
         let q_hsc_range_mult = 3 * padding_ops;
-        let chunk_range_mult = (7 * ARITH_EQ_384_ROWS_BY_OP as u64
+        let mem_chunk_cols = if R::BIG_ENDIAN { 0 } else { 6 };
+        let chunk_range_mult = ((mem_chunk_cols + 1) * ARITH_EQ_384_ROWS_BY_OP as u64
             + 3 * (ARITH_EQ_384_ROWS_BY_OP - 1) as u64)
             * padding_ops
-            + 10 * num_non_usable_rows; // 7 chunk_cols + 3 q_cols on every tail row
+            + (mem_chunk_cols + 4) * num_non_usable_rows; // x1..y3 + s chunk_cols + 3 q_cols on every tail row
         let carry_range_mult =
             (6 * ARITH_EQ_384_ROWS_BY_OP as u64) * padding_ops + 6 * num_non_usable_rows; // 6 carry_cols
         self.std.range_check(self.q_hsc_range_id, 0, q_hsc_range_mult);
         self.std.range_check(self.chunk_range_id, 0, chunk_range_mult);
         self.std.range_check(self.carry_range_id, 0, carry_range_mult);
+        if R::BIG_ENDIAN && padding_rows > 0 {
+            self.std.inc_virtual_row(self.dual_byte_table_id, 0u64, 6 * padding_rows);
+        }
 
         timer_stop_and_log_trace!(ARITH_EQ_384_TRACE);
 
-        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
+        Ok(R::into_air_instance(&mut trace))
     }
 }
 
