@@ -2,8 +2,8 @@
 (odd -> Montgomery path, even -> general path), expected values from Python pow.
 MODLENS is a Python list of modulus lengths, e.g. '[49,64,97,256,1024]'. Output as
 modexp_vec.py."""
-import random, sys
-MLS = eval(sys.argv[1]); OUT = sys.argv[2]
+import ast, random, sys
+MLS = ast.literal_eval(sys.argv[1]); OUT = sys.argv[2]
 random.seed(11)
 def rnd(n, lz=0):
     b = bytes(random.randrange(256) for _ in range(n))
