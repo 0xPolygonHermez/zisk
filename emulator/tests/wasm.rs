@@ -365,3 +365,54 @@ fn call_indirect_traps_out_of_bounds_and_null() {
     assert!(run_flag(3).0, "null entry must trap");
     assert!(run_flag(4).0, "out-of-bounds index must trap");
 }
+
+#[test]
+fn linear_memory_accesses_are_bounds_checked() {
+    // One page of memory: 65536 bytes.  Each body runs in `_start`; a trap halts with the
+    // emulator's error flag set, otherwise the i64 at address 8 is printed.
+    let outcome = |body: &str| -> (bool, u64) {
+        let wat = format!(
+            r#"(module
+              (import "wasi_snapshot_preview1" "fd_write"
+                (func $fd_write (param i32 i32 i32 i32) (result i32)))
+              (memory 1)
+              (func (export "_start")
+                {body}
+                (i32.store (i32.const 0) (i32.const 8))
+                (i32.store (i32.const 4) (i32.const 8))
+                (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        );
+        let rom = wasm2rom(&wat::parse_str(wat).unwrap()).expect("wasm2rom");
+        let mut emu = ziskemu::Emu::new(&rom);
+        emu.run(Vec::new(), &EmuOptions::default(), None::<fn(EmuTrace)>);
+        assert!(emu.terminated(), "emulation did not terminate for {body}");
+        (emu.ctx.inst_ctx.error, u64::from_le_bytes(emu.get_output_8()[0..8].try_into().unwrap()))
+    };
+    // Last addressable word is fine; one byte further, or a static offset that pushes past the
+    // end, traps.  Same for stores.
+    assert_eq!(outcome("(i64.store (i32.const 8) (i64.load (i32.const 65528)))"), (false, 0));
+    assert!(outcome("(drop (i64.load (i32.const 65529)))").0);
+    assert!(outcome("(drop (i32.load offset=65533 (i32.const 0)))").0);
+    assert!(outcome("(i32.store (i32.const 65533) (i32.const 1))").0);
+    assert!(outcome("(i64.store8 (i32.const 65536) (i64.const 1))").0);
+    // An address that wraps when the static offset is added is out of bounds, not aliased.
+    assert!(outcome("(drop (i32.load8_u offset=1 (i32.const 0xffffffff)))").0);
+    // Bulk operations are checked up front, on both operands.
+    assert!(outcome("(memory.fill (i32.const 65530) (i32.const 7) (i32.const 7))").0);
+    assert!(outcome("(memory.copy (i32.const 0) (i32.const 65530) (i32.const 7))").0);
+    assert!(outcome("(memory.copy (i32.const 65530) (i32.const 0) (i32.const 7))").0);
+    assert_eq!(
+        outcome("(memory.fill (i32.const 8) (i32.const 0x55) (i32.const 8))"),
+        (false, 0x5555_5555_5555_5555)
+    );
+    // Growing the memory moves the bound: the same access succeeds afterwards.
+    assert_eq!(
+        outcome(
+            "(drop (memory.grow (i32.const 1)))
+             (i64.store (i32.const 65536) (i64.const 42))
+             (i64.store (i32.const 8) (i64.load (i32.const 65536)))"
+        ),
+        (false, 42)
+    );
+    assert!(outcome("(drop (memory.grow (i32.const 1))) (drop (i64.load (i32.const 131072)))").0);
+}
