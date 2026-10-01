@@ -44,6 +44,7 @@ void poseidon2_hash(uint64_t *state);
 void poseidon1_hash(uint64_t *state);
 int Arith256(const uint64_t *a, const uint64_t *b, const uint64_t *c, uint64_t *dl, uint64_t *dh);
 int Arith384Mod(const uint64_t *a, const uint64_t *b, const uint64_t *c, const uint64_t *module, uint64_t *d);
+int Arith256Mod(const uint64_t *a, const uint64_t *b, const uint64_t *c, const uint64_t *module, uint64_t *d);
 int Add256(const uint64_t *a, const uint64_t *b, const uint64_t cin, uint64_t *c);
 int AddPointEcP(const uint64_t dbl, const uint64_t *p1, const uint64_t *p2, uint64_t *p3);
 int AddPointEc(uint64_t dbl, const uint64_t *x1, const uint64_t *y1, const uint64_t *x2, const uint64_t *y2, uint64_t *x3, uint64_t *y3);
@@ -138,6 +139,7 @@ static const mpz_class P_BN254("30644e72e131a029b85045b68181585d97816a916871ca8d
 static const mpz_class R_BN254("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001", 16);
 static const mpz_class P_BLS12_381("1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab", 16);
 static const mpz_class P_GOLDILOCKS("ffffffff00000001", 16);
+static const mpz_class P_STARKNET("0800000000000011000000000000000000000000000000000000000000000001", 16);
 
 static void to_limbs(const mpz_class &v, uint64_t *out, int n) {
     memset(out, 0, n * 8);
@@ -331,6 +333,26 @@ static void register_ops() {
         } else {
             rc = Arith384Mod(a, b, c, m, a);
             rec.put((uint64_t)(int64_t)rc); rec.put(a, 6);
+        }
+    }});
+    ops.push_back({"arith256_mod", 20000, [](Rng &r, bool canon, Record &rec) {
+        // Mostly the moduli of the fast path, otherwise any non-zero one
+        static const mpz_class *known[] = {&P_SECP256K1, &N_SECP256K1, &P_BN254, &R_BN254, &P_STARKNET};
+        uint64_t a[4], b[4], c[4], m[4], d[4];
+        if (r.below(5) < 3) to_limbs(*known[r.below(5)], m, 4);
+        else rand_fe(r, mpz_class(1) << (64 * (1 + r.below(4))), 4, m, true, true);
+        mpz_class mod = from_limbs(m, 4);
+        rand_fe(r, mod, 4, a, canon);
+        rand_fe(r, mod, 4, b, canon);
+        rand_fe(r, mod, 4, c, canon);
+        rec.put(a, 4); rec.put(b, 4); rec.put(c, 4); rec.put(m, 4);
+        int rc;
+        if (canon) {
+            rc = TIMED(Arith256Mod(a, b, c, m, d));
+            rec.put((uint64_t)(int64_t)rc); rec.put(d, 4);
+        } else {
+            rc = Arith256Mod(a, b, c, m, a);
+            rec.put((uint64_t)(int64_t)rc); rec.put(a, 4);
         }
     }});
     ops.push_back({"add256", 20000, [](Rng &r, bool canon, Record &rec) {

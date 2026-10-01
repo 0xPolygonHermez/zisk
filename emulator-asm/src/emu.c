@@ -826,12 +826,16 @@ extern int _opcode_arith256_mod(uint64_t * address)
     if (precompile_cache_storing)
     {
 #endif
-        // Compute (no-hints path): fast assembly implementation instead of the Rust Arith256Mod.
-        int result = arith256_mod (address);
-        if (result != 0)
+        // Compute (no-hints path): Montgomery fast path for the usual moduli, otherwise the
+        // assembly long division implementation instead of the Rust Arith256Mod.
+        if (Arith256ModFast(a, b, c, module, d) != 0)
         {
-            asm_printf("_opcode_arith256_mod() failed calling arith256_mod() result=%d;", result);
-            exit(-1);
+            int result = arith256_mod (address);
+            if (result != 0)
+            {
+                asm_printf("_opcode_arith256_mod() failed calling arith256_mod() result=%d;", result);
+                exit(-1);
+            }
         }
 
 #ifdef ASM_PRECOMPILE_CACHE
