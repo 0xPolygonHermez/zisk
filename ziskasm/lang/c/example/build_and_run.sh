@@ -48,7 +48,7 @@ if ! has_ziskasm "$ZISKEMU"; then
 fi
 
 echo "### building minimal C guest (calls ziskos_keccak) ..."
-$CC -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib -ffreestanding -O2 \
+$CC -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany -nostdlib -ffreestanding -O2 \
     -I"$HERE" -I"$INC" -T "$LD" \
     -o "$OUT/keccak_e2e.elf" "$HERE/../src/_start.s" "$HERE/main.c" "$STUBS"
 

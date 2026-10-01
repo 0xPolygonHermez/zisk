@@ -12,7 +12,7 @@
  * Both variants permute the same state N times (each permutation depends on the
  * previous one) and emit its first 32 bytes, so their outputs must match.
  *
- *   riscv64-unknown-elf-gcc -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib \
+ *   riscv64-unknown-elf-gcc -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany -nostdlib \
  *       -ffreestanding -O2 -Wl,--gc-sections -I. -I../include \
  *       -T ../../../../ziskbuild/zisk_linker_script.ld [-DKF_CALL] [-DKF_N=10000] \
  *       -o kf.elf ../src/_start.s keccak_f_bench_guest.c

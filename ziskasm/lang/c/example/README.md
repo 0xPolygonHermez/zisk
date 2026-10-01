@@ -44,7 +44,7 @@ for an EVM interpreter, where operands are popped and the result pushed over the
 stack slot — would read back its own output.
 
 ```bash
-riscv64-unknown-elf-gcc -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib \
+riscv64-unknown-elf-gcc -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany -nostdlib \
     -ffreestanding -O2 -I. -I../include -T ../../../../ziskbuild/zisk_linker_script.ld -o /tmp/u256.elf \
     ../src/_start.s u256_alias_guest.c ../src/zkvm_calls.s
 : > /tmp/empty.bin
@@ -72,7 +72,7 @@ the U256 ABI that the aliasing guest does not touch: `slt`, `sgt`, `sdiv`, `smod
 right shift, and shift counts ≥ 256 saturating to `0` or `-1`.
 
 ```bash
-riscv64-unknown-elf-gcc -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib \
+riscv64-unknown-elf-gcc -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany -nostdlib \
     -ffreestanding -O2 -I. -I../include -T ../../../../ziskbuild/zisk_linker_script.ld -o /tmp/u256sem.elf \
     ../src/_start.s u256_semantics_guest.c ../src/zkvm_calls.s
 : > /tmp/empty.bin

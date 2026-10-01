@@ -69,7 +69,7 @@ fi
 
 echo
 echo "Link a guest with:"
-echo "  ${CC_PREFIX}gcc -march=rv64ima -mabi=lp64 -mcmodel=medany -nostdlib -ffreestanding -Wl,--gc-sections \\"
+echo "  ${CC_PREFIX}gcc -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany -nostdlib -ffreestanding -Wl,--gc-sections \\"
 echo "      -I$PREFIX/include -T $PREFIX/share/zisk/zisk_linker_script.ld \\"
 echo "      -o guest.elf guest.c $AR_FILE"
 echo "If the guest calls ziskos_* functions, do NOT strip the result: elf2rom"

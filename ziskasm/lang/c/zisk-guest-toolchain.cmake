@@ -19,7 +19,7 @@ if(NOT DEFINED ZISK_TOOLCHAIN_PREFIX)
   set(ZISK_TOOLCHAIN_PREFIX "riscv64-unknown-elf-")
 endif()
 if(NOT DEFINED ZISK_GUEST_ARCH)
-  set(ZISK_GUEST_ARCH "-march=rv64ima -mabi=lp64 -mcmodel=medany")
+  set(ZISK_GUEST_ARCH "-march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany")
 endif()
 
 set(CMAKE_C_COMPILER   ${ZISK_TOOLCHAIN_PREFIX}gcc)

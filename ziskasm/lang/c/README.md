@@ -97,7 +97,7 @@ a sample accelerator and the four `mem*` routines before declaring success.
 A guest then needs nothing from this source tree:
 
 ```bash
-riscv64-unknown-elf-gcc -march=rv64ima -mabi=lp64 -mcmodel=medany \
+riscv64-unknown-elf-gcc -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany \
     -nostdlib -ffreestanding -O2 -Wl,--gc-sections \
     -Idist/include -T dist/share/zisk/zisk_linker_script.ld \
     -o guest.elf guest.c dist/lib/libzisklib_c.a
