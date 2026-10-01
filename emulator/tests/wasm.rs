@@ -768,6 +768,7 @@ fn stdout_mirror_stops_at_the_public_output_limit() {
     assert_eq!(mem.read(WASM_MEM_PAGES_ADDR, 8), 4, "control cells survive");
     assert_eq!(emu.get_output_8()[..8], [0x61; 8], "the mirror holds the first bytes");
 }
+
 #[test]
 fn signed_division_overflow_traps() {
     // Returns (trapped, printed value) for a body leaving one i64 on the stack.
@@ -800,4 +801,27 @@ fn signed_division_overflow_traps() {
     ] {
         assert!(outcome(body).0, "{body}");
     }
+}
+
+#[test]
+fn unsupported_but_valid_shapes_are_rejected_not_panicked() {
+    // A function type with two results is valid wasm (multi-value) but the calling convention
+    // returns one value.
+    let multi = r#"(module
+      (func $two (result i64 i64) (i64.const 1) (i64.const 2))
+      (func (export "_start") (drop (drop (call $two)))))"#;
+    let err = wasm2rom(&wat::parse_str(multi).unwrap()).expect_err("must be rejected");
+    assert!(err.to_string().contains("multi-value"), "{err}");
+
+    // An operand stack deeper than the frame's reserved area: 1025 pushes before any add.
+    let pushes = "(i64.const 1) ".repeat(1025);
+    let adds = "(i64.add) ".repeat(1024);
+    let deep = format!(r#"(module (func (export "_start") {pushes} {adds} (drop)))"#);
+    let err = wasm2rom(&wat::parse_str(deep).unwrap()).expect_err("must be rejected");
+    assert!(err.to_string().contains("operand stack deeper"), "{err}");
+    // One fewer fits.
+    let pushes = "(i64.const 1) ".repeat(1024);
+    let adds = "(i64.add) ".repeat(1023);
+    let fits = format!(r#"(module (func (export "_start") {pushes} {adds} (drop)))"#);
+    wasm2rom(&wat::parse_str(fits).unwrap()).expect("exactly OPERAND_CAP slots are allowed");
 }
