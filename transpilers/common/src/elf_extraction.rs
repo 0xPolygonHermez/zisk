@@ -104,7 +104,9 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
 
         // An empty segment loads nothing. GNU ld emits them, at address 0, for the
         // linker script's R and RW PHDRS when the guest has no .rodata or .data.
-        if ph.p_memsz == 0 {
+        // A segment with file bytes but no memory size is malformed, and is rejected
+        // by the p_filesz > p_memsz check below.
+        if ph.p_memsz == 0 && ph.p_filesz == 0 {
             continue;
         }
 
