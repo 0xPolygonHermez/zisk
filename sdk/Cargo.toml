@@ -34,7 +34,7 @@ zisk-rom-setup = { workspace = true }
 # Recurser-aggregator support
 zisk-recurser = { workspace = true }
 proofman = { workspace = true }
-proofman-verifier = { workspace = true }
+proofman-verifier = { workspace = true, default-features = true }
 rayon = { workspace = true }
 serde_json = { workspace = true }
 proofman-fields = { workspace = true }

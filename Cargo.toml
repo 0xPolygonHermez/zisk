@@ -31,6 +31,7 @@ members = [
   "ziskasm",
   "ziskasm/lang/rust",
   "rom-setup",
+  "setup",
   "state-machines/arith",
   "state-machines/binary",
   "state-machines/frequent-ops",
@@ -121,6 +122,7 @@ zisk-riscv = { path = "transpilers/riscv", version = "1.4.0-alpha" }
 zisk-transpiler-common = { path = "transpilers/common", version = "1.4.0-alpha" }
 zisk-transpiler-riscv = { path = "transpilers/riscv2zisk", version = "1.4.0-alpha" }
 zisk-rom-setup = { path = "rom-setup", version = "1.4.0-alpha" }
+zisk-setup = { path = "setup", version = "1.4.0-alpha" }
 zisk-sm-arith = { path = "state-machines/arith", version = "1.4.0-alpha" }
 zisk-sm-binary = { path = "state-machines/binary", version = "1.4.0-alpha" }
 zisk-sm-main = { path = "state-machines/main", version = "1.4.0-alpha" }
@@ -157,7 +159,7 @@ zisk-coordinator-client = { path = "distributed/crates/coordinator-client", vers
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
 proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
 proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha", default-features = false }
 proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
 pil2-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
 proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
@@ -171,7 +173,7 @@ proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofma
 # proofman = "1.4.0-alpha"
 # proofman-common = "1.4.0-alpha"
 # proofman-macros = "1.4.0-alpha"
-# proofman-verifier = "1.4.0-alpha"
+# proofman-verifier = { version = "1.4.0-alpha", default-features = false }
 # proofman-util = "1.4.0-alpha"
 # pil2-std-lib = "1.4.0-alpha"
 # proofman-witness = "1.4.0-alpha"
@@ -185,7 +187,7 @@ proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofma
 # proofman = { path = "../pil2-proofman/proofman", version = "1.4.0-alpha" }
 # proofman-common = { path = "../pil2-proofman/common", version = "1.4.0-alpha" }
 # proofman-macros = { path = "../pil2-proofman/macros", version = "1.4.0-alpha" }
-# proofman-verifier = { path = "../pil2-proofman/verifier", version = "1.4.0-alpha" }
+# proofman-verifier = { path = "../pil2-proofman/verifier", version = "1.4.0-alpha", default-features = false }
 # proofman-util = { path = "../pil2-proofman/util", version = "1.4.0-alpha" }
 # pil2-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs", version = "1.4.0-alpha" }
 # proofman-witness = { path = "../pil2-proofman/witness", version = "1.4.0-alpha" }

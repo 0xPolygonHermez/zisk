@@ -350,19 +350,21 @@ airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
         const expr vd_prime_prime_packed = pack_bytes(vd_prime_prime[l]);
         add2_check(vc_prime_packed, vd_prime_prime_packed, vc_prime_prime_packed);
 
+        // vb'' === (vb' ^ vc'') >>> 7 = ((vb' ^ vc'') >>> 8) <<< 1
         for (int i = 0; i < 4; i++) {
             xor_rotr_check(a: vb_prime[i], b: vc_prime_prime[l][i], rot: 0, c0: vb_pp_xor[l][i], c1: 0);
         }
-        vb_pp_t[l] * (1 - vb_pp_t[l]) === 0;
 
         // y = rotr8(z): byte i of y is z[(i + 1) % 4]
         const expr vb_pp_rotr8 = pack_bytes([vb_pp_xor[l][1], vb_pp_xor[l][2], vb_pp_xor[l][3], vb_pp_xor[l][0]]);
+
+        // For a byte b, 2b - 256t lies in [0, 255] exactly when t = floor(2b / 256) = bit 7 of b.
+        // If b < 128 only t = 0 fits; if b >= 128 only t = 1 fits; any other t gives a negative or >= 256 value.
+        vb_pp_t[l] * (1 - vb_pp_t[l]) === 0;
+        range_check(expression: 2 * vb_pp_xor[l][0] - P2_8 * vb_pp_t[l], min: 0, max: P2_8 - 1);
+
         // vb'' = rotl1(y) = 2·y mod 2³² + top(y)
         const expr vb_pp_packed = 2*vb_pp_rotr8 - P2_32*vb_pp_t[l] + vb_pp_t[l];
-        // The carry bit is sound with just booleanity: z bytes are table-bound, so y < 2³², and
-        // the transition constraint equates vb_pp_packed to a future vb_packed which is also < 2³².
-        // If the prover lies about vb_pp_t, the expression lands outside [0, 2³²) as a field element
-        // (off by ±(2³² - 1)), so the equality can never hold.
 
         // ───────────────────────────────────────────────────────────────────────
         // TRANSITION CONSTRAINTS

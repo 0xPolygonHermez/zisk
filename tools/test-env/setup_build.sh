@@ -254,7 +254,7 @@ apply_zisk_compiler_override() {
   echo "==> using zisk-pinned pil2-compiler: PIL2C_EXEC=$pil2c" >&2
 }
 
-echo "version: $VERSION  mode: $MODE" >&2
+echo "version: $VERSION  setup version: $ZISK_SETUP_VERSION  mode: $MODE" >&2
 
 run_compile_pil() {
   if [ $SKIP_COMPILE_PIL -eq 1 ]; then
