@@ -5,7 +5,8 @@
  * DMA operation. memmove is memcpy: the DMA copy is overlap-safe.
  *
  * memset's fill byte must be the `addi` immediate, so a 256-entry jump table (16
- * bytes per entry) turns the run-time byte into one. */
+ * bytes per entry, assembled without compressed instructions) turns the run-time
+ * byte into one. */
 
         .section ".note.GNU-stack","",@progbits
         .text
@@ -50,6 +51,9 @@ memset:
         la      t0, 2f
         add     t0, t0, a1
         jr      t0
+        /* 16 bytes per entry: no compressed ret/nop, or the a1 << 4 index misses */
+        .option push
+        .option norvc
         .p2align 4
 2:
         .irp    val, 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
@@ -76,4 +80,5 @@ memset:
         .irp    val, 224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255
         csrs 0x816, a0; addi x0, a2, \val; ret; nop
         .endr
+        .option pop
         .size   zkvm_memset_any, .-zkvm_memset_any
