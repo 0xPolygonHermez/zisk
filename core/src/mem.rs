@@ -153,7 +153,10 @@ pub const STACK_GUARD_SIZE: u64 = STACK_ADDR - STACK_GUARD_ADDR;
 const _: () = {
     // The stack must sit at the very bottom of RAM; otherwise the span below it is
     // mapped RAM, not a guard.
-    assert!(STACK_ADDR == RAM_ADDR, "the stack must start at RAM_ADDR for the guard to be adjacent");
+    assert!(
+        STACK_ADDR == RAM_ADDR,
+        "the stack must start at RAM_ADDR for the guard to be adjacent"
+    );
     // Adjacency, restated so the intent survives a redefinition above.
     assert!(
         STACK_GUARD_ADDR + STACK_GUARD_SIZE == STACK_ADDR,

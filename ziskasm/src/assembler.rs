@@ -312,7 +312,7 @@ pub fn assemble_library(
     // STACK_GUARD_ADDR): it is unmapped precisely so a stack overflow traps, and a
     // library placed there would both fault on first access and silently defeat the
     // guard. The bases are caller-supplied, so check rather than assume.
-    if rom_base < ROM_ADDR || rom_base > ROM_ADDR_MAX {
+    if !(ROM_ADDR..=ROM_ADDR_MAX).contains(&rom_base) {
         return Err(format!(
             "library rom_base 0x{rom_base:x} is outside the ROM region \
              (0x{ROM_ADDR:x}..=0x{ROM_ADDR_MAX:x})"
