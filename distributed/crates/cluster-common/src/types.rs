@@ -10,7 +10,7 @@ use proofman::{ContributionsInfo, ProvePhaseInputs, WitnessInfo};
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, HashMap},
     fmt::{self, Debug, Display},
     ops::Range,
 };
@@ -319,8 +319,8 @@ pub struct Job {
     pub minimal_compute_capacity: ComputeCapacity,
     /// Workers assigned to the job.
     pub workers: Vec<WorkerId>,
-    /// Worker handling aggregation, if assigned.
-    pub agg_worker_id: Option<WorkerId>,
+    /// Aggregation tree for phase 3, created when the first worker finishes phase 2.
+    pub agg: Option<crate::agg_tree::AggScheduler>,
     /// Per-worker compute-unit partitions.
     pub partitions: Vec<Vec<u32>>,
     /// Per-phase, per-worker results.
@@ -343,11 +343,6 @@ pub struct Job {
     pub execution_only: bool,
     /// The kind of proof requested.
     pub proof_type: ProofKind,
-    /// Aggregation task currently in-flight to the recurser (sent, not yet acked).
-    /// Re-sent verbatim if the recurser reconnects before returning its result.
-    pub agg_task_inflight: Option<PendingAggTask>,
-    /// Queued aggregation tasks awaiting dispatch.
-    pub agg_task_queue: VecDeque<PendingAggTask>,
 }
 
 impl Job {
@@ -381,7 +376,7 @@ impl Job {
             compute_capacity,
             minimal_compute_capacity,
             workers: selected_workers,
-            agg_worker_id: None,
+            agg: None,
             partitions,
             results: HashMap::new(),
             task_received_time: None,
@@ -394,8 +389,6 @@ impl Job {
             metadata,
             execution_only,
             proof_type,
-            agg_task_inflight: None,
-            agg_task_queue: VecDeque::new(),
         }
     }
 
@@ -474,8 +467,7 @@ impl Job {
         self.results.clear();
         self.phase_timings.clear();
         self.challenges = None;
-        self.agg_task_inflight = None;
-        self.agg_task_queue.clear();
+        self.agg = None;
     }
 }
 
@@ -516,23 +508,12 @@ impl fmt::Display for JobState {
 /// A single airgroup's partial proof produced by a worker.
 #[derive(Debug, Clone)]
 pub struct AggProofData {
-    /// Index of the producing worker.
-    pub worker_idx: u32,
+    /// Leaf workers this proof covers.
+    pub worker_indexes: Vec<u32>,
     /// The airgroup this proof belongs to.
     pub airgroup_id: u64,
     /// The proof field-element values.
     pub values: Vec<u64>,
-}
-
-/// An aggregation task queued or in-flight to the recurser.
-#[derive(Debug, Clone)]
-pub struct PendingAggTask {
-    /// The partial proofs to aggregate.
-    pub proofs: Vec<AggProofData>,
-    /// Whether this is the final aggregation step.
-    pub all_done: bool,
-    /// The kind of proof being produced.
-    pub proof_type: ProofKind,
 }
 
 /// Result of the contribution phase for one worker.
@@ -670,6 +651,10 @@ pub struct AggregationParams {
     pub final_proof: bool,
     /// The kind of proof being produced.
     pub proof_type: ProofKind,
+    /// Keep the folded proof resident so this node can absorb again.
+    pub keep_resident: bool,
+    /// Drop any resident aggregation state first. Recovery only.
+    pub reset_state: bool,
 }
 
 /// A worker's partition of a job's total work.

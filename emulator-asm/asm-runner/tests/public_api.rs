@@ -52,7 +52,7 @@ fn service_identity_is_the_documented_wire_contract() {
 
 #[test]
 fn rom_histogram_payload_round_trips_through_public_api() {
-    let data = AsmRHData::new(123, vec![1, 2, 3, 4]);
+    let data = AsmRHData::new(123, vec![1, 2, 3, 4], vec![7, 8]);
     assert_eq!(data.steps, 123);
     assert_eq!(data.inst_count, vec![1, 2, 3, 4]);
 }

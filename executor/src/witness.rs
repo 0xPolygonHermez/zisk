@@ -22,10 +22,13 @@ use std::sync::{Arc, Mutex};
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use zisk_asm_runner::AsmRunnerRH;
-use zisk_common::{CheckPoint, InstanceCtx, InstanceType, Plan, StatsScope};
+use zisk_common::{
+    CheckPoint, Instance, InstanceCtx, InstanceType, LateJoinHandle, Plan, StatsScope,
+};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 use zisk_sm_main::MainInstance;
+use zisk_sm_rom::RomInstance;
 
 use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
 use crate::ports::{Dctx, GlobalId, ProofRegistry};
@@ -55,7 +58,7 @@ pub struct WitnessContext<'a, F: PrimeField64> {
     pub stats_scope: &'a StatsScope,
 
     /// ACL surface used by the router's own pctx-equivalent lookups
-    /// (instance_info, set_witness_ready, is_my_process_instance, ...).
+    /// (instance_info, announce_witness_ready, is_my_process_instance, ...).
     pub registry: &'a dyn Dctx,
 
     /// Runtime selector for the ROM backend
@@ -112,8 +115,29 @@ impl<F: PrimeField64> WitnessPhase<F> {
         Self { sm_bundle, collector, witness_generator, trace_buffer_rom }
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
-        self.collector.set_rh_data(rh_data)
+    /// Parks this execution's ASM ROM-histogram runner on the ROM state machine.
+    ///
+    /// Straight to the bundle: the collector has no part in a handle that is read at
+    /// witness time. See [`StaticSMBundle::park_rh_handle`].
+    pub fn park_rh_handle(&self, handle: LateJoinHandle<AsmRunnerRH>) -> ExecutorResult<()> {
+        self.sm_bundle.park_rh_handle(handle)
+    }
+
+    /// Publishes the FROPS outputs this execution's ROM histogram carries.
+    /// See [`StaticSMBundle::publish_frops_from_asm`].
+    pub fn publish_frops_from_asm(&self) -> ExecutorResult<()> {
+        self.sm_bundle.publish_frops_from_asm()
+    }
+
+    /// Retires a ROM-histogram runner a previous execution left unconsumed.
+    pub fn drain_rh(&self) {
+        self.sm_bundle.drain_rh();
+    }
+
+    /// Selects where the FROPS multiplicity column comes from; see
+    /// `StaticSMBundle::set_frops_multiplicity_from_asm`.
+    pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
+        self.collector.set_frops_multiplicity_from_asm(from_asm)
     }
 
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
@@ -135,7 +159,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
         Ok(())
     }
 
-    /// Materialise main instances into `state` and pre-stamp them as not-yet-ready on `registry`.
+    /// Materialise main instances into `state` and announce the ones this rank owns.
     pub fn populate_main_instances(
         &self,
         registry: &dyn ProofRegistry,
@@ -154,7 +178,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
 
             let gid = GlobalId(global_id);
             if registry.is_my_process_instance(gid)? {
-                registry.set_witness_ready(gid, false);
+                registry.announce_witness_ready(gid);
             }
         }
         Ok(())
@@ -310,6 +334,13 @@ impl<F: PrimeField64> WitnessPhase<F> {
             .contains_key(&global_id);
 
         let instance = &**secn_instance;
+
+        // The ROM backend is picked when the instance is built; this is where an
+        // ASM execution finds out it got the wrong one. See `require_asm_rom_mode`.
+        if ctx.is_asm_emulator {
+            require_asm_rom_mode(instance, global_id, air_id)?;
+        }
+
         if needs_collection {
             if ctx.is_asm_emulator {
                 // ASM ROM: the RH service supplies the data — pin an
@@ -343,7 +374,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
     /// `pctx` is still required because [`ChunkDataCollector::collect`]
     /// takes `&ProofCtx<F>` directly (cross-crate, library-coupled).
     /// All other `pctx`-equivalent lookups (`instance_info`,
-    /// `set_witness_ready`) route through `registry`.
+    /// `announce_witness_ready`) route through `registry`.
     pub fn pre_calculate(
         &self,
         pctx: &ProofCtx<F>,
@@ -361,20 +392,16 @@ impl<F: PrimeField64> WitnessPhase<F> {
             let info = registry.instance_info(GlobalId(global_id))?;
 
             if AirClassifier::is_main(info.air_id) {
-                registry.set_witness_ready(GlobalId(global_id), false);
+                registry.announce_witness_ready(GlobalId(global_id));
             } else if AirClassifier::is_rom(info.airgroup_id, info.air_id) {
                 if is_asm_emulator {
-                    // ASM ROM: the RH service handles collection
-                    // out-of-band; just flag the gid not-ready.
-                    registry.set_witness_ready(GlobalId(global_id), false);
+                    // ASM ROM: the RH service handles collection out-of-band.
+                    registry.announce_witness_ready(GlobalId(global_id));
                 } else {
                     handlers::rom_rust::pre_calculate(
-                        registry,
-                        state,
                         &secn_instances_guard,
                         &mut instances_to_collect,
                         global_id,
-                        info.airgroup_id,
                         info.air_id,
                     )?;
                 }
@@ -418,9 +445,71 @@ impl<F: PrimeField64> WitnessPhase<F> {
         {
             instances_to_collect.insert(global_id, &**secn_instance);
         } else {
-            registry.set_witness_ready(GlobalId(global_id), true);
+            registry.announce_witness_ready(GlobalId(global_id));
         }
 
         Ok(())
+    }
+}
+
+/// Fails an ASM execution whose ROM instance was built for the Rust backend.
+///
+/// On the ASM path the ROM witness comes from the assembly histogram, and
+/// [`WitnessPhase::rom_dispatch`] registers an empty collector because nothing is
+/// meant to fill one. A Rust-backend instance reaching that path therefore
+/// aggregates no collectors at all and computes an **all-zero ROM trace**, which
+/// then gets proved without complaint. The backend is chosen when the instance is
+/// built, from whether the histogram is available by then, so this can only mean
+/// the histogram was missing at build time — a lifecycle bug, not a valid mode.
+///
+/// A free function so it can be exercised on a bare [`RomInstance`], with no proof
+/// or witness context to construct.
+fn require_asm_rom_mode<F: PrimeField64>(
+    instance: &dyn Instance<F>,
+    global_id: usize,
+    air_id: usize,
+) -> ExecutorResult<()> {
+    let rom_instance =
+        crate::sm::downcast::<F, RomInstance>(instance, air_id, global_id, "RomInstance")?;
+
+    // `skip_collector` is the instance's own name for "my witness comes from the
+    // assembly histogram" — the ASM backend, and the only correct one here.
+    if rom_instance.skip_collector() {
+        Ok(())
+    } else {
+        Err(ExecutorError::RomBackendDowngrade { global_id })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::witness::handlers::rom_rust::tests::{make_rom_instance, AIR_ID, GID};
+    use proofman_fields::Goldilocks;
+    use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
+
+    type F = Goldilocks;
+
+    /// An ASM-backend ROM instance, i.e. one built while a histogram runner was parked.
+    fn asm_rom_instance() -> Box<dyn Instance<F>> {
+        make_rom_instance(Some(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()))))
+    }
+
+    #[test]
+    fn asm_backend_rom_instance_passes() {
+        let instance = asm_rom_instance();
+        require_asm_rom_mode::<F>(&*instance, GID, AIR_ID)
+            .expect("the ASM backend is what an ASM execution must find");
+    }
+
+    #[test]
+    fn rust_backend_rom_instance_is_rejected() {
+        let instance = make_rom_instance(None);
+        let err = require_asm_rom_mode::<F>(&*instance, GID, AIR_ID)
+            .expect_err("a Rust-backend instance here would prove an all-zero ROM trace");
+        assert!(
+            matches!(err, ExecutorError::RomBackendDowngrade { global_id: GID }),
+            "got {err:?}"
+        );
     }
 }
