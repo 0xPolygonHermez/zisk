@@ -1,8 +1,14 @@
 // The RAM witness from the accesses the planner retained (see count_and_plan.cuh).
 //
-// prepare_ram_fill, once per block after run():
-//   1. sort   — keys (compact address << 29 | arrival index): the sorted order is the lane order
-//               once dual pairs merge, since lanes go by address and, inside one, by time.
+// prepare_ram_fill, once per block after run(), finds every instance's address range and, per
+// chunk, the slice of the chunk's address-sorted records that falls in it. Instances are cut by
+// row count, so an address can straddle two of them: each instance takes its whole address range,
+// pairs and resolves it, and packs only its window of lanes. Each instance is filled on its own,
+// so the scratch scales with the largest instance, not the block:
+//   0. gather — the instance's slices from all chunks into sort keys (address << 38 | step) and
+//               arrival indexes.
+//   1. sort   — the sorted order is the lane order once dual pairs merge, since lanes go by
+//               address and, inside one, by time.
 //   2. lanes  — dual pairing as a scan: a read pairs into the lane before it when that lane is
 //               open (created by the previous access, not yet paired), on the same address and in
 //               the same chunk; within a run of pairable reads the lanes alternate open/paired, so
@@ -11,7 +17,10 @@
 //               address of byte-masked merges, run in blocks with a carry so the scratch stays
 //               bounded. Block writes whose value the stream does not carry are counted; the rows
 //               that depend on them are wrong and the caller's check reports them.
-// fill_ram_instance packs one instance's lanes; the CPU `fill_mem_range` is the oracle.
+//   4. rows   — the instance's window of lanes packed into its rows. The range starts at the
+//               address holding the row before the window, so the lane the window continues
+//               from is in the same data and every instance is filled on its own. The CPU
+//               `fill_mem_range` is the oracle.
 
 #include "count_and_plan.cuh"
 #include "mem_pack.cuh"
@@ -176,7 +185,7 @@ __device__ __forceinline__ MemPackLane rf_lane(size_t g, const uint32_t* __restr
 }
 
 __global__ void rf_rows_kernel(MemPackLayout layout, size_t lane_from, uint32_t n_lanes_inst, uint32_t n_rows,
-                               bool first_instance, const uint32_t* __restrict__ lane_first,
+                               const uint32_t* __restrict__ lane_first,
                                const uint32_t* __restrict__ sidx, const uint32_t* __restrict__ emit,
                                size_t n_sorted, const uint64_t* __restrict__ skeys,
                                const uint64_t* __restrict__ resolved, uint64_t* __restrict__ out_rows) {
@@ -197,16 +206,15 @@ __global__ void rf_rows_kernel(MemPackLayout layout, size_t lane_from, uint32_t 
             const MemPackLane me = rf_lane(g, lane_first, sidx, emit, n_sorted, skeys, resolved);
             bool addr_changes;
             uint64_t inc;
-            if (g == 0) {
-                // No previous lane at all: the segment starts the memory cycle at the RAM base.
-                addr_changes = true;
-                inc = mempack_increment(true, me, RAM_W_ADDR_BASE - 1, 0);
-            } else {
+            if (g > 0) {
                 const MemPackLane pv = rf_lane(g - 1, lane_first, sidx, emit, n_sorted, skeys, resolved);
                 addr_changes = pv.addr != me.addr;
                 inc = mempack_increment(addr_changes, me, pv.addr, pv.dual ? pv.step_dual : pv.step);
+            } else {
+                // No previous lane at all: the segment starts the memory cycle at the RAM base.
+                addr_changes = true;
+                inc = mempack_increment(true, me, RAM_W_ADDR_BASE - 1, 0);
             }
-            (void)first_instance;
             mempack_lane(layout, w, lane, me, addr_changes, inc);
         } else {
             mempack_padding(layout, w, lane, last.addr, pad_step, last.value);
@@ -216,7 +224,53 @@ __global__ void rf_rows_kernel(MemPackLayout layout, size_t lane_from, uint32_t 
     for (uint32_t k = 0; k < layout.words_per_row; ++k) dst[k] = w[k];
 }
 
+// Per (chunk, instance): the ranks inside the chunk's address-sorted run where the instance's
+// address range starts and ends (two columns per instance).
+__global__ void rf_bounds_kernel(RamRecords rec, const uint32_t* __restrict__ chunk_base,
+                                 const uint32_t* __restrict__ chunk_n, uint32_t n_chunks,
+                                 const uint32_t* __restrict__ inst_first, const uint32_t* __restrict__ inst_last,
+                                 uint32_t n_inst, uint32_t* __restrict__ bound) {
+    const size_t t = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= (size_t)n_chunks * 2 * n_inst) return;
+    const uint32_t c = (uint32_t)(t / (2 * n_inst)), col = (uint32_t)(t % (2 * n_inst));
+    const uint32_t n = chunk_n[c];
+    const uint32_t a = (col & 1) ? inst_last[col >> 1] + 1 : inst_first[col >> 1];
+    const size_t base = chunk_base[c];
+    uint32_t lo = 0, hi = n;
+    while (lo < hi) {
+        const uint32_t mid = lo + (hi - lo) / 2;
+        if (rec.addr(base + mid) < a) lo = mid + 1; else hi = mid;
+    }
+    bound[t] = lo;
+}
+
+// The instance's records from every chunk's slice, as sort keys and arrival indexes. `pref` is
+// the exclusive prefix of the slice sizes over the chunks.
+__global__ void rf_gather_kernel(RamRecords rec, const uint32_t* __restrict__ chunk_base,
+                                 const uint32_t* __restrict__ pref, uint32_t n_chunks,
+                                 const uint32_t* __restrict__ bound, uint32_t stride, uint32_t inst,
+                                 size_t n, uint64_t* __restrict__ keys, uint32_t* __restrict__ idx) {
+    const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= n) return;
+    uint32_t lo = 0, hi = n_chunks;   // last chunk whose prefix is <= j
+    while (lo + 1 < hi) {
+        const uint32_t mid = (lo + hi) / 2;
+        if (pref[mid] <= j) lo = mid; else hi = mid;
+    }
+    const size_t k = (size_t)chunk_base[lo] + bound[(size_t)lo * stride + 2 * inst] + (j - pref[lo]);
+    const uint64_t m = rec.meta(k);
+    keys[j] = ((uint64_t)rec.addr(k) << RF_STEP_BITS) | (rf_step(m) & RF_STEP_MASK);
+    idx[j] = (uint32_t)k | (rf_kind(m) << RF_IDX_KIND_SHIFT);
+}
+
 }  // namespace
+
+// count_and_plan.cu
+__global__ void instance_boundaries_kernel(const uint32_t* prefix, uint32_t prefix_base_addr,
+                                           uint32_t num_addr_region, uint32_t num_ops_region,
+                                           uint32_t instance_size, const uint32_t* active_ids,
+                                           uint32_t* active_first, uint32_t* active_last,
+                                           uint32_t num_active);
 
 bool CountAndPlan::set_mem_layout(const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row,
                                   uint32_t lanes_x_row) {
@@ -229,6 +283,9 @@ bool CountAndPlan::set_mem_layout(const uint32_t* col_widths, uint32_t n_cols, u
     return true;
 }
 
+// Tables for the per-instance fill, carved at the bottom of the arena (every plan structure
+// there is dead once run() returned): the chunks' record bases and counts, every RAM instance's
+// address range, the (chunk, instance) bounds and the per-instance chunk prefixes.
 bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     if (out) *out = RamFillPrepared{};
     if (!out) return false;
@@ -245,25 +302,123 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
         out->status = -3;
         return false;
     }
+    const uint32_t n_inst = num_inst_[RF_REGION_RAM];
     if (ram_prepared_) {
         out->status = 0;
+        out->n_instances = n_inst;
         out->n_lanes = ram_n_lanes_;
         out->unresolved_writes = ram_unresolved_;
-        out->n_instances = (uint32_t)((ram_n_lanes_ + instance_rows_[RF_REGION_RAM] - 1) / instance_rows_[RF_REGION_RAM]);
+        out->ms_sort = ram_ms_[0]; out->ms_lanes = ram_ms_[1]; out->ms_values = ram_ms_[2]; out->ms_total = ram_ms_[3];
         return true;
     }
-    cudaEvent_t ev[5];
+    if (!ram_tables_ready_) {
+        const uint32_t nc = n_chunks_;
+        uint8_t* cur = arena_;
+        auto take = [&](size_t bytes) -> uint8_t* {
+            uint8_t* p = (uint8_t*)(((uintptr_t)cur + 255) & ~(uintptr_t)255);
+            cur = p + bytes;
+            return p;
+        };
+        d_rf_chunk_base_ = (uint32_t*)take((size_t)nc * 4);
+        d_rf_chunk_n_    = (uint32_t*)take((size_t)nc * 4);
+        d_rf_inst_ids_   = (uint32_t*)take((size_t)n_inst * 4);
+        d_rf_inst_first_ = (uint32_t*)take((size_t)n_inst * 4);
+        d_rf_inst_last_  = (uint32_t*)take((size_t)n_inst * 4);
+        d_rf_bound_      = (uint32_t*)take((size_t)nc * 2 * n_inst * 4);
+        d_rf_pref_       = (uint32_t*)take((size_t)nc * n_inst * 4);
+        rf_scratch_      = (uint8_t*)take(0);
+        std::vector<uint32_t> h_base(nc), h_ids(n_inst);
+        for (uint32_t c = 0; c < nc; ++c) h_base[c] = (uint32_t)ram_base_per_chunk_[c];
+        for (uint32_t i = 0; i < n_inst; ++i) h_ids[i] = i;
+        RF_TRY(cudaMemcpy(d_rf_chunk_base_, h_base.data(), (size_t)nc * 4, cudaMemcpyHostToDevice));
+        RF_TRY(cudaMemcpy(d_rf_chunk_n_, n_ram_per_chunk_.data(), (size_t)nc * 4, cudaMemcpyHostToDevice));
+        RF_TRY(cudaMemcpy(d_rf_inst_ids_, h_ids.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice));
+        // Address range of every RAM instance of the block, from the prefix the plan left in place.
+        instance_boundaries_kernel<<<1, n_inst>>>(d_prefix_, REGION_ADDR_START[RF_REGION_RAM],
+            h_max_compact_[RF_REGION_RAM] + 1, region_n_ops_[RF_REGION_RAM], instance_rows_[RF_REGION_RAM],
+            d_rf_inst_ids_, d_rf_inst_first_, d_rf_inst_last_, n_inst);
+        RF_TRY(cudaGetLastError());
+        // Instance ranges as compact RAM words, and the row the range starts at, so the instance
+        // can skip the lanes of a straddling address that belong to the instance before it.
+        const uint32_t region = REGION_ADDR_START[RF_REGION_RAM];
+        std::vector<uint32_t> h_first(n_inst), h_last(n_inst);
+        RF_TRY(cudaMemcpy(h_first.data(), d_rf_inst_first_, (size_t)n_inst * 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpy(h_last.data(), d_rf_inst_last_, (size_t)n_inst * 4, cudaMemcpyDeviceToHost));
+        uint32_t region_row = 0;
+        RF_TRY(cudaMemcpy(&region_row, d_prefix_ + region, 4, cudaMemcpyDeviceToHost));
+        h_rf_inst_skip_.assign(n_inst, 0);
+        h_rf_inst_lanes_.assign(n_inst, 0);
+        for (uint32_t i = 0; i < n_inst; ++i) {
+            uint32_t row_first = 0, row_end = 0;
+            RF_TRY(cudaMemcpy(&row_first, d_prefix_ + h_first[i], 4, cudaMemcpyDeviceToHost));
+            RF_TRY(cudaMemcpy(&row_end, d_prefix_ + h_last[i] + 1, 4, cudaMemcpyDeviceToHost));
+            h_rf_inst_skip_[i] = (size_t)i * instance_rows_[RF_REGION_RAM] - (row_first - region_row);
+            h_rf_inst_lanes_[i] = row_end - row_first;
+            h_first[i] -= region;
+            h_last[i] -= region;
+        }
+        RF_TRY(cudaMemcpy(d_rf_inst_first_, h_first.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice));
+        RF_TRY(cudaMemcpy(d_rf_inst_last_, h_last.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice));
+        rf_bounds_kernel<<<rf_grid((size_t)nc * 2 * n_inst), RF_BLOCK>>>(ram_records_, d_rf_chunk_base_,
+            d_rf_chunk_n_, nc, d_rf_inst_first_, d_rf_inst_last_, n_inst, d_rf_bound_);
+        RF_TRY(cudaGetLastError());
+        std::vector<uint32_t> h_bound((size_t)nc * 2 * n_inst);
+        RF_TRY(cudaMemcpy(h_bound.data(), d_rf_bound_, h_bound.size() * 4, cudaMemcpyDeviceToHost));
+        std::vector<uint32_t> h_pref((size_t)nc * n_inst);
+        h_rf_inst_count_.assign(n_inst, 0);
+        for (uint32_t i = 0; i < n_inst; ++i) {
+            size_t acc = 0;
+            for (uint32_t c = 0; c < nc; ++c) {
+                h_pref[(size_t)i * nc + c] = (uint32_t)acc;
+                acc += h_bound[(size_t)c * 2 * n_inst + 2 * i + 1] - h_bound[(size_t)c * 2 * n_inst + 2 * i];
+            }
+            h_rf_inst_count_[i] = acc;
+        }
+        RF_TRY(cudaMemcpy(d_rf_pref_, h_pref.data(), h_pref.size() * 4, cudaMemcpyHostToDevice));
+        RF_TRY(cudaMemcpy(&ram_writes_, d_ram_nwrites_, 8, cudaMemcpyDeviceToHost));
+        ram_tables_ready_ = true;
+    }
+    out->status = 0;
+    out->n_instances = n_inst;
+    return true;
+}
+
+// One instance: gather, sort, pair, resolve, pack and copy out.
+bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res) {
+    if (res) *res = RamFillResult{};
+    if (!res || !out_rows) return false;
+    cudaSetDevice(gpu_device_);
+    if (!ram_tables_ready_) { res->status = -1; return false; }
+    const size_t R = instance_rows_[RF_REGION_RAM];
+    if ((size_t)n_rows * mem_lanes_x_row_ != R) {
+        fprintf(stderr, "ram_fill: instance has %zu lanes, the caller's trace %u rows x %u lanes\n",
+                R, n_rows, mem_lanes_x_row_);
+        res->status = -2;
+        return false;
+    }
+    const uint32_t n_inst = num_inst_[RF_REGION_RAM];
+    if (inst >= n_inst) { res->status = -3; return false; }
+    const size_t n = h_rf_inst_count_[inst];
+    const size_t n_total = ram_cursor_.load(std::memory_order_relaxed);
+    if (n == 0) { res->status = -3; return false; }
+    const size_t   lane_from = h_rf_inst_skip_[inst];
+    const uint32_t n_lanes_inst = (uint32_t)std::min(R, (size_t)region_n_ops_[RF_REGION_RAM] - (size_t)inst * R);
+    if (inst > 0 && lane_from == 0) {
+        fprintf(stderr, "ram_fill: instance %u's address range does not hold the lane before it\n", inst);
+        res->status = -3;
+        return false;
+    }
+
+    cudaEvent_t ev[6];
     for (auto& e : ev) RF_TRY(cudaEventCreate(&e));
     RF_TRY(cudaEventRecord(ev[0]));
 
-    // Scratch: the arena below the retained accesses. Every device structure of the plan is dead
-    // once run() returned (metas, offset pages and align counters are on the host) until reset()
-    // starts the next block. Carve: two key and two index buffers that the sort ping-pongs
-    // between (the sorted keys stay: they give every lane its address and step; the sorted
-    // indexes are sidx; the other two become anchors, emit and the resolved values), lane_first,
-    // the propagation block, one instance's rows, cub temp: 28 bytes per access.
-    uint8_t* cur = arena_;
-    uint8_t* end = arena_ + (ram_low_edge_bytes(n) & ~(size_t)255);
+    // Scratch above the tables, up to the retained accesses: two key and two index buffers that
+    // the sort ping-pongs between (the sorted keys stay: they give every lane its address and
+    // step; the sorted indexes are sidx; the other two become anchors, emit and the resolved
+    // values), lane_first, the propagation block, the instance's rows, cub temp.
+    uint8_t* cur = rf_scratch_;
+    uint8_t* end = arena_ + (ram_low_edge_bytes(n_total) & ~(size_t)255);
     auto take = [&](size_t bytes) -> uint8_t* {
         uint8_t* p = (uint8_t*)(((uintptr_t)cur + 255) & ~(uintptr_t)255);
         cur = p + bytes;
@@ -273,38 +428,34 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     cub::DoubleBuffer<uint32_t> didx((uint32_t*)take(n * 4), (uint32_t*)take(n * 4));
     uint32_t* lfirst   = (uint32_t*)take(n * 4);
     uint32_t* d_n_lanes = (uint32_t*)take(4);
-    Merge*    prop_in  = (Merge*)take(RF_PROP_BLOCK * sizeof(Merge));
-    Merge*    prop_out = (Merge*)take(RF_PROP_BLOCK * sizeof(Merge));
-    uint32_t* prop_keys = (uint32_t*)take(RF_PROP_BLOCK * 4);
+    const size_t prop_block = std::min(RF_PROP_BLOCK, n);
+    Merge*    prop_in  = (Merge*)take(prop_block * sizeof(Merge));
+    Merge*    prop_out = (Merge*)take(prop_block * sizeof(Merge));
+    uint32_t* prop_keys = (uint32_t*)take(prop_block * 4);
     unsigned long long* d_unresolved = (unsigned long long*)take(8);
-    const uint32_t n_rows = instance_rows_[RF_REGION_RAM] / mem_lanes_x_row_;
     uint64_t* rows = (uint64_t*)take((size_t)n_rows * mem_words_per_row_ * 8);
-    size_t t_sort = 0, t_max = 0, t_sum = 0, t_bykey = 0, t_select = 0;
+    size_t t_sort = 0, t_max = 0, t_bykey = 0, t_select = 0;
     cub::DeviceRadixSort::SortPairs(nullptr, t_sort, dkeys, didx, n, 0, (int)(RF_STEP_BITS + RF_ADDR_BITS));
     cub::DeviceScan::InclusiveScan(nullptr, t_max, (uint32_t*)nullptr, (uint32_t*)nullptr, MaxU32Op(), n);
-    cub::DeviceScan::ExclusiveSum(nullptr, t_sum, (uint32_t*)nullptr, (uint32_t*)nullptr, n);
     cub::DeviceSelect::Flagged(nullptr, t_select, thrust::counting_iterator<uint32_t>(0),
                                (uint32_t*)nullptr, (uint32_t*)nullptr, (uint32_t*)nullptr, n);
     cub::DeviceScan::InclusiveScanByKey(nullptr, t_bykey, prop_keys, prop_in, prop_out, MergeOp(),
-                                        RF_PROP_BLOCK, EqU32());
-    const size_t t_bytes = std::max(std::max(std::max(t_sort, t_max), std::max(t_sum, t_bykey)), t_select);
+                                        prop_block, EqU32());
+    const size_t t_bytes = std::max(std::max(t_sort, t_max), std::max(t_bykey, t_select));
     void* temp = take(t_bytes);
+    const size_t scratch_bytes = (size_t)(cur - rf_scratch_);
     if (cur > end) {
-        fprintf(stderr, "ram_fill: scratch needs %zu MB, the arena has %zu MB below the retained accesses; RAM witness off\n",
-                (size_t)(cur - arena_) >> 20, (size_t)(end - arena_) >> 20);
-        out->status = -3;
+        fprintf(stderr, "ram_fill: instance %u needs %zu MB of scratch, the arena has %zu MB below the retained "
+                        "accesses; RAM witness off\n", inst, scratch_bytes >> 20, (size_t)(end - rf_scratch_) >> 20);
+        res->status = -3;
         return false;
     }
-    fprintf(stderr, "ram_fill: %zu accesses, scratch %zu MB: %zu MB per access (%.1f bytes each) + fixed "
-                    "propagation %zu MB, rows %zu MB, cub %zu MB\n",
-            n, (size_t)(cur - arena_) >> 20, n * 28 >> 20, 28.0,
-            (size_t)(2 * RF_PROP_BLOCK * sizeof(Merge) + RF_PROP_BLOCK * 4) >> 20,
-            (size_t)n_rows * mem_words_per_row_ * 8 >> 20, t_bytes >> 20);
-    RF_TRY(cudaMemcpy(&ram_writes_, d_ram_nwrites_, 8, cudaMemcpyDeviceToHost));
-    RF_TRY(cudaEventRecord(ev[4]));
+    if (scratch_bytes > rf_scratch_peak_) rf_scratch_peak_ = scratch_bytes;
 
-    // 1. sort by (address, step), stable
-    rf_keys_kernel<<<rf_grid(n), RF_BLOCK>>>(ram_records_, n, dkeys.Current(), didx.Current());
+    // 0. gather, 1. sort by (address, step), stable
+    rf_gather_kernel<<<rf_grid(n), RF_BLOCK>>>(ram_records_, d_rf_chunk_base_, d_rf_pref_ + (size_t)inst * n_chunks_,
+                                               n_chunks_, d_rf_bound_, 2 * n_inst, inst, n,
+                                               dkeys.Current(), didx.Current());
     RF_TRY(cudaGetLastError());
     size_t tb = t_bytes;
     RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, dkeys, didx, n, 0, (int)(RF_STEP_BITS + RF_ADDR_BITS)));
@@ -322,22 +473,27 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     RF_TRY(cub::DeviceScan::InclusiveScan(temp, tb, anchor, last_anchor, MaxU32Op(), n));
     rf_emit_kernel<<<rf_grid(n), RF_BLOCK>>>(last_anchor, n, emit);
     RF_TRY(cudaGetLastError());
-    // lane_first: the sorted positions that start a lane, in order.
     tb = t_bytes;
     RF_TRY(cub::DeviceSelect::Flagged(temp, tb, thrust::counting_iterator<uint32_t>(0), emit, lfirst,
                                       d_n_lanes, n));
-    uint32_t n_lanes32 = 0;
-    RF_TRY(cudaMemcpy(&n_lanes32, d_n_lanes, 4, cudaMemcpyDeviceToHost));
-    const size_t n_lanes = n_lanes32;
+    uint32_t n_lanes = 0;
+    RF_TRY(cudaMemcpy(&n_lanes, d_n_lanes, 4, cudaMemcpyDeviceToHost));
     RF_TRY(cudaEventRecord(ev[2]));
+    if (n_lanes != h_rf_inst_lanes_[inst] || lane_from + n_lanes_inst > n_lanes) {
+        fprintf(stderr, "ram_fill: instance %u: %u lanes from the retained accesses, the plan counted %zu "
+                        "(window %zu + %u)\n", inst, n_lanes, h_rf_inst_lanes_[inst], lane_from, n_lanes_inst);
+        res->status = -4;
+        return false;
+    }
 
-    // 3. values, in blocks with a carry. The free key buffer takes the resolved values.
+    // 3. values, in blocks with a carry. The free key buffer takes the resolved values. Instances
+    // split at addresses, so no state carries in from the previous one.
     uint64_t* resolved = dkeys.Alternate();
     RF_TRY(cudaMemset(d_unresolved, 0, 8));
     Merge carry{0, 0};
     uint32_t carry_addr = 0xFFFFFFFFu;
-    for (size_t j0 = 0; j0 < n; j0 += RF_PROP_BLOCK) {
-        const size_t len = std::min(RF_PROP_BLOCK, n - j0);
+    for (size_t j0 = 0; j0 < n; j0 += prop_block) {
+        const size_t len = std::min(prop_block, n - j0);
         rf_merge_in_kernel<<<rf_grid(len), RF_BLOCK>>>(sidx, keys_out, ram_records_, j0, len,
                                                        prop_in, prop_keys, d_unresolved);
         RF_TRY(cudaGetLastError());
@@ -361,90 +517,38 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     unsigned long long unresolved = 0;
     RF_TRY(cudaMemcpy(&unresolved, d_unresolved, 8, cudaMemcpyDeviceToHost));
     RF_TRY(cudaEventRecord(ev[3]));
-    RF_TRY(cudaDeviceSynchronize());
 
-    d_lane_sidx_ = sidx;
-    d_lane_emit_ = emit;
-    d_lane_first_ = lfirst;
-    d_lane_value_ = resolved;
-    d_lane_keys_ = keys_out;
-    d_rows_scratch_ = rows;
-    ram_n_lanes_ = n_lanes;
-    ram_n_sorted_ = n;
-    ram_unresolved_ = unresolved;
-    ram_prepared_ = true;
-
-    if (n_lanes != region_n_ops_[RF_REGION_RAM]) {
-        fprintf(stderr, "ram_fill: %zu lanes from the retained accesses, the plan counted %u\n",
-                n_lanes, region_n_ops_[RF_REGION_RAM]);
-    }
-    fprintf(stderr, "ram_fill: %zu accesses retained on the device (%zu MB), %llu writes (%.1f%%), pool used %zu MB\n",
-            n, n * 20 >> 20, (unsigned long long)ram_writes_, n ? 100.0 * (double)ram_writes_ / (double)n : 0.0,
-            pool_cursor_u32_.load(std::memory_order_relaxed) * 4 >> 20);
-    auto ms = [&](int a, int b) { float t = 0; cudaEventElapsedTime(&t, ev[a], ev[b]); return t; };
-    out->status = 0;
-    out->n_lanes = n_lanes;
-    out->unresolved_writes = unresolved;
-    out->n_instances = (uint32_t)((n_lanes + instance_rows_[RF_REGION_RAM] - 1) / instance_rows_[RF_REGION_RAM]);
-    out->ms_sort = ms(4, 1);
-    out->ms_lanes = ms(1, 2);
-    out->ms_values = ms(2, 3);
-    out->ms_total = ms(0, 3);
-    for (auto& e : ev) cudaEventDestroy(e);
-    return true;
-}
-
-bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res) {
-    if (res) *res = RamFillResult{};
-    if (!res || !out_rows) return false;
-    cudaSetDevice(gpu_device_);
-    if (!ram_prepared_) { res->status = -1; return false; }
-    const size_t R = instance_rows_[RF_REGION_RAM];
-    if ((size_t)n_rows * mem_lanes_x_row_ != R) {
-        fprintf(stderr, "ram_fill: instance has %zu lanes, the caller's trace %u rows x %u lanes\n",
-                R, n_rows, mem_lanes_x_row_);
-        res->status = -2;
-        return false;
-    }
-    const size_t lane_from = (size_t)inst * R;
-    if (lane_from >= ram_n_lanes_) { res->status = -3; return false; }
-    const uint32_t n_lanes_inst = (uint32_t)std::min(R, ram_n_lanes_ - lane_from);
-
+    // 4. rows, then out to the caller's buffer.
     MemPackLayout layout{};
     mempack_layout(layout, mem_col_widths_, mem_n_cols_, mem_words_per_row_, mem_lanes_x_row_);
-
-    cudaEvent_t ev[3];
-    for (auto& e : ev) RF_TRY(cudaEventCreate(&e));
-    RF_TRY(cudaEventRecord(ev[0]));
     rf_rows_kernel<<<(n_rows + RF_BLOCK - 1) / RF_BLOCK, RF_BLOCK>>>(
-        layout, lane_from, n_lanes_inst, n_rows, inst == 0, d_lane_first_, d_lane_sidx_, d_lane_emit_,
-        ram_n_sorted_, d_lane_keys_, d_lane_value_, d_rows_scratch_);
+        layout, lane_from, n_lanes_inst, n_rows, lfirst, sidx, emit, n, keys_out, resolved, rows);
     RF_TRY(cudaGetLastError());
-    RF_TRY(cudaEventRecord(ev[1]));
-    RF_TRY(cudaMemcpy(out_rows, d_rows_scratch_, (size_t)n_rows * mem_words_per_row_ * 8, cudaMemcpyDeviceToHost));
-    RF_TRY(cudaEventRecord(ev[2]));
+    RF_TRY(cudaEventRecord(ev[4]));
+    RF_TRY(cudaMemcpy(out_rows, rows, (size_t)n_rows * mem_words_per_row_ * 8, cudaMemcpyDeviceToHost));
+    RF_TRY(cudaEventRecord(ev[5]));
     RF_TRY(cudaDeviceSynchronize());
 
-    // Continuation scalars: the lane before the instance and its last lane.
+    // Continuation scalars: the lane before the window and the window's last lane.
     auto lane_scalars = [&](size_t g, uint32_t& addr_w, uint64_t& step, uint64_t& value) -> bool {
-        uint32_t j = 0, i = 0, e_next = 1, i_next = 0;
-        RF_TRY(cudaMemcpy(&j, d_lane_first_ + g, 4, cudaMemcpyDeviceToHost));
-        (void)i; (void)i_next;
+        uint32_t j = 0, e_next = 1;
         uint64_t k = 0;
-        RF_TRY(cudaMemcpy(&k, d_lane_keys_ + j, 8, cudaMemcpyDeviceToHost));
-        RF_TRY(cudaMemcpy(&value, d_lane_value_ + j, 8, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpy(&j, lfirst + g, 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpy(&k, keys_out + j, 8, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpy(&value, resolved + j, 8, cudaMemcpyDeviceToHost));
         addr_w = (uint32_t)(k >> RF_STEP_BITS) + RAM_W_ADDR_BASE;
         step = k & RF_STEP_MASK;
-        if ((size_t)j + 1 < ram_n_sorted_) {
-            RF_TRY(cudaMemcpy(&e_next, d_lane_emit_ + j + 1, 4, cudaMemcpyDeviceToHost));
+        if ((size_t)j + 1 < n) {
+            RF_TRY(cudaMemcpy(&e_next, emit + j + 1, 4, cudaMemcpyDeviceToHost));
             if (e_next == 0) {
                 uint64_t k2 = 0;
-                RF_TRY(cudaMemcpy(&k2, d_lane_keys_ + j + 1, 8, cudaMemcpyDeviceToHost));
+                RF_TRY(cudaMemcpy(&k2, keys_out + j + 1, 8, cudaMemcpyDeviceToHost));
                 step = k2 & RF_STEP_MASK;
             }
         }
         return true;
     };
+    if (!lane_scalars(lane_from + n_lanes_inst - 1, res->last_addr_w, res->last_step, res->last_value)) return false;
     if (lane_from > 0) {
         if (!lane_scalars(lane_from - 1, res->prev_addr_w, res->prev_step, res->prev_value)) return false;
     } else {
@@ -452,18 +556,23 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
         res->prev_step = 0;
         res->prev_value = 0;
     }
-    if (!lane_scalars(lane_from + n_lanes_inst - 1, res->last_addr_w, res->last_step, res->last_value)) return false;
     res->n_lanes = n_lanes_inst;
     auto ms = [&](int a, int b) { float t = 0; cudaEventElapsedTime(&t, ev[a], ev[b]); return t; };
-    res->ms_rows = ms(0, 1);
-    res->ms_d2h = ms(1, 2);
+    ram_ms_[0] += ms(0, 1); ram_ms_[1] += ms(1, 2); ram_ms_[2] += ms(2, 3); ram_ms_[3] += ms(0, 3);
+    res->ms_rows = ms(3, 4);
+    res->ms_d2h = ms(4, 5);
     res->status = 0;
+    ram_n_lanes_ += n_lanes_inst;
+    ram_unresolved_ += unresolved;
+    fprintf(stderr, "ram_fill: instance %u: %zu accesses, %u lanes (window %zu + %u), scratch %zu MB\n",
+            inst, n, n_lanes, lane_from, n_lanes_inst, scratch_bytes >> 20);
     for (auto& e : ev) cudaEventDestroy(e);
     return true;
 }
 
 bool CountAndPlan::fill_all_ram_instances(uint32_t n_rows, RamFillPrepared* prepared) {
     if (!prepare_ram_fill(prepared)) return false;
+    if (ram_prepared_) return true;
     const uint32_t n_inst = prepared->n_instances;
     const size_t stride = (size_t)n_rows * mem_words_per_row_;
     const size_t need = stride * n_inst;
@@ -478,10 +587,25 @@ bool CountAndPlan::fill_all_ram_instances(uint32_t n_rows, RamFillPrepared* prep
     }
     ram_rows_stride_ = stride;
     ram_results_.assign(n_inst, RamFillResult{});
+    ram_n_lanes_ = 0;
+    ram_unresolved_ = 0;
+    for (int t = 0; t < 4; ++t) ram_ms_[t] = 0;
+    rf_scratch_peak_ = 0;
     for (uint32_t i = 0; i < n_inst; ++i) {
-        if (!fill_ram_instance(i, h_ram_rows_ + (size_t)i * stride, n_rows, &ram_results_[i])) return false;
+        if (!fill_ram_instance(i, h_ram_rows_ + (size_t)i * stride, n_rows, &ram_results_[i])) {
+            prepared->status = ram_results_[i].status;
+            return false;
+        }
     }
-    return true;
+    ram_prepared_ = true;
+    const size_t n = ram_cursor_.load(std::memory_order_relaxed);
+    size_t largest = 0;
+    for (uint32_t i = 0; i < n_inst; ++i) largest = std::max(largest, h_rf_inst_count_[i]);
+    fprintf(stderr, "ram_fill: %zu accesses retained (%zu MB), %llu writes (%.1f%%), %u instances, largest %zu accesses, "
+                    "scratch peak %zu MB, tables %zu MB\n",
+            n, n * 20 >> 20, (unsigned long long)ram_writes_, n ? 100.0 * (double)ram_writes_ / (double)n : 0.0,
+            n_inst, largest, rf_scratch_peak_ >> 20, (size_t)(rf_scratch_ - arena_) >> 20);
+    return prepare_ram_fill(prepared);
 }
 
 const uint64_t* CountAndPlan::ram_instance_rows(uint32_t inst, RamFillResult* res) const {

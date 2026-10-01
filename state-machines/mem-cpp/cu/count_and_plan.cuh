@@ -73,6 +73,7 @@ constexpr uint32_t N_ADDR_ROM   = ZISK_ROM_SIZE_BYTES >> 3;    // 2^24
 constexpr uint32_t N_ADDR_INPUT = ZISK_INPUT_SIZE_BYTES >> 3;  // 2^27
 constexpr uint32_t N_ADDR_RAM   = ZISK_RAM_SIZE_BYTES >> 3;    // 2^26
 constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;
+constexpr uint32_t REGION_ADDR_START[3] = {0, N_ADDR_ROM, N_ADDR_ROM + N_ADDR_INPUT};
 
 // Meta word of a retained RAM access: bits 0-39 mem step, 40-41 kind (0 read, 1 full write,
 // 2 partial write, 3 block write of unknown value), 42-44 byte offset and 45-48 byte width of a
@@ -311,15 +312,22 @@ private:
     uint64_t           ram_writes_     = 0;                   // read back by prepare_ram_fill
     uint32_t           chunk_size_bits_ = 18;
     // Prepared lane table (see ram_fill.cu).
-    bool               ram_prepared_    = false;
-    uint32_t*          d_lane_sidx_     = nullptr;  // sorted position -> retained index
-    uint32_t*          d_lane_emit_     = nullptr;  // 1 when the sorted position opens a lane
-    uint32_t*          d_lane_first_    = nullptr;  // lane -> sorted position of its opener
-    uint64_t*          d_lane_value_    = nullptr;  // sorted position -> resolved value
-    uint64_t*          d_lane_keys_     = nullptr;  // sorted position -> (address << 38) | mem step
-    uint64_t*          d_rows_scratch_  = nullptr;  // one instance's packed rows
+    bool               ram_prepared_    = false;    // every instance filled; totals valid
+    bool               ram_tables_ready_ = false;   // per-instance fill tables built
+    uint32_t*          d_rf_chunk_base_ = nullptr;  // chunk -> first record index
+    uint32_t*          d_rf_chunk_n_    = nullptr;  // chunk -> record count
+    uint32_t*          d_rf_inst_ids_   = nullptr;
+    uint32_t*          d_rf_inst_first_ = nullptr;  // instance -> first compact RAM word
+    uint32_t*          d_rf_inst_last_  = nullptr;
+    uint32_t*          d_rf_bound_      = nullptr;  // (chunk, instance) -> rank where the range starts
+    uint32_t*          d_rf_pref_       = nullptr;  // (instance, chunk) -> exclusive prefix of slice sizes
+    uint8_t*           rf_scratch_      = nullptr;  // per-instance scratch starts here
+    size_t             rf_scratch_peak_ = 0;
+    std::vector<size_t> h_rf_inst_count_;           // instance -> accesses of its address range
+    std::vector<size_t> h_rf_inst_skip_;            // instance -> lanes of the range before its window
+    std::vector<size_t> h_rf_inst_lanes_;           // instance -> lanes of its whole address range
+    float              ram_ms_[4]       = {0, 0, 0, 0};  // sort, lanes, values, total over the instances
     size_t             ram_n_lanes_     = 0;
-    size_t             ram_n_sorted_    = 0;
     uint64_t           ram_unresolved_  = 0;
     uint64_t*                  h_ram_rows_       = nullptr;   // pinned, n_instances x rows x words
     size_t                     h_ram_rows_cap_   = 0;         // u64 words

@@ -545,7 +545,6 @@ constexpr uint8_t REGION_ROM            = 0;
 constexpr uint8_t REGION_INPUT          = 1;
 constexpr uint8_t REGION_RAM            = 2;
 constexpr const char* REGION_NAME[3]    = {"ROM", "INPUT", "RAM"};
-constexpr uint32_t REGION_ADDR_START[3] = {0, N_ADDR_ROM, N_ADDR_ROM + N_ADDR_INPUT};
 
 // =====================================================================
 // Address-region helpers
@@ -1813,9 +1812,9 @@ void CountAndPlan::reset() {
     ram_cursor_.store(0, std::memory_order_relaxed);
     ram_retention_enabled_.store(top_bytes_ > cursor_, std::memory_order_relaxed);
     ram_prepared_           = false;
+    ram_tables_ready_       = false;
     ram_results_.clear();
     ram_n_lanes_            = 0;
-    ram_n_sorted_           = 0;
     ram_unresolved_         = 0;
 
     if (d_histogram_)                CUDA_CHECK(cudaMemset(d_histogram_, 0, ((size_t)N_ADDR + 1) * 4));
