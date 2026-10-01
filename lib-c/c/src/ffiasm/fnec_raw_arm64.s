@@ -269,7 +269,7 @@ _Fnec_rawNegLS:
         sbcs  x14, x10, xzr
         sbcs  x15, x11, xzr
 
-        cset   x2,  cs
+        cset   x2,  cc
 
         ldp    x4,  x5, [x1]
         subs  x12, x12,  x4
@@ -279,7 +279,7 @@ _Fnec_rawNegLS:
         sbcs  x14, x14,  x6
         sbcs  x15, x15,  x7
 
-        cset   x3,  cs
+        cset   x3,  cc
         orr    x3,  x3,  x2
 
         cbz    x3, Fnec_rawNegLS_done
@@ -1047,7 +1047,8 @@ _Fnec_rawShr:
 
         lsr    x2,  x2,  #6
         adr    x5, Fnec_rawShr_word_shift
-        ldr    x5, [x5, x2, lsl 3]
+        ldrsw  x2, [x5, x2, lsl 2]
+        add    x5,  x5,  x2
         br     x5
 
 Fnec_rawShr_word_shift_0:
@@ -1103,10 +1104,10 @@ Fnec_rawShr_word_shift_3:
         ret
 
 Fnec_rawShr_word_shift:
-        .quad Fnec_rawShr_word_shift_0
-        .quad Fnec_rawShr_word_shift_1
-        .quad Fnec_rawShr_word_shift_2
-        .quad Fnec_rawShr_word_shift_3
+        .long Fnec_rawShr_word_shift_0 - Fnec_rawShr_word_shift
+        .long Fnec_rawShr_word_shift_1 - Fnec_rawShr_word_shift
+        .long Fnec_rawShr_word_shift_2 - Fnec_rawShr_word_shift
+        .long Fnec_rawShr_word_shift_3 - Fnec_rawShr_word_shift
 
 
 Fnec_rawShl:
@@ -1120,7 +1121,8 @@ _Fnec_rawShl:
 
         lsr    x2,  x2,  #6
         adr    x5, Fnec_rawShl_word_shift
-        ldr    x5, [x5, x2, lsl 3]
+        ldrsw  x2, [x5, x2, lsl 2]
+        add    x5,  x5,  x2
         br     x5
 
 Fnec_rawShl_word_shift_0:
@@ -1195,10 +1197,10 @@ Fnec_rawShl_sub:
 
         ret
 Fnec_rawShl_word_shift:
-        .quad Fnec_rawShl_word_shift_0
-        .quad Fnec_rawShl_word_shift_1
-        .quad Fnec_rawShl_word_shift_2
-        .quad Fnec_rawShl_word_shift_3
+        .long Fnec_rawShl_word_shift_0 - Fnec_rawShl_word_shift
+        .long Fnec_rawShl_word_shift_1 - Fnec_rawShl_word_shift
+        .long Fnec_rawShl_word_shift_2 - Fnec_rawShl_word_shift
+        .long Fnec_rawShl_word_shift_3 - Fnec_rawShl_word_shift
 
 
 
