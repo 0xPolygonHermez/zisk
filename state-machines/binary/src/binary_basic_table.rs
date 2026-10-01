@@ -36,6 +36,7 @@ pub enum BinaryBasicTableOp {
     Sh1add = ZiskOp::SH1ADD as u16,
     Sh2add = ZiskOp::SH2ADD as u16,
     Sh3add = ZiskOp::SH3ADD as u16,
+    Unal8 = ZiskOp::UNAL8 as u16,
 }
 
 impl BinaryBasicTableOp {
@@ -65,7 +66,7 @@ impl BinaryBasicTableSM {
     /// The witness needs it to size the histogram it tallies the multiplicities into, so it cannot
     /// live in the tests alone. `tests::table_regions_tile_the_whole_table` is what keeps it in step
     /// with the PIL: the per-opcode regions must add up to exactly this.
-    pub const TABLE_ROWS: u64 = 8_781_824;
+    pub const TABLE_ROWS: u64 = 9_175_040;
 
     /// Calculates the table row offset based on the provided parameters.
     ///
@@ -95,6 +96,8 @@ impl BinaryBasicTableSM {
                 BinaryBasicTableOp::LtAbsNP => 0x03,
                 // The SHxADD carry also holds the bits shifted out of the previous byte
                 op if op.shift() != 0 => 1 << op.shift(),
+                // The UNAL8 carry is a state: 0 first byte, 1 aligned, 2 misaligned
+                BinaryBasicTableOp::Unal8 => 0x02,
                 _ => 0x01,
             }
         );
@@ -145,6 +148,8 @@ impl BinaryBasicTableSM {
             BinaryBasicTableOp::Sh1add => P2_20 + P2_19 + 12 * P2_18 + 13 * P2_17 + 2 * P2_16,
             BinaryBasicTableOp::Sh2add => P2_20 + P2_19 + 12 * P2_18 + 16 * P2_17 + 2 * P2_16,
             BinaryBasicTableOp::Sh3add => P2_20 + P2_19 + 12 * P2_18 + 21 * P2_17 + 2 * P2_16,
+            // UNAL8 takes 3 blocks of P2_17 rows (one per CIN value: first byte, aligned, misaligned)
+            BinaryBasicTableOp::Unal8 => P2_20 + P2_19 + 12 * P2_18 + 30 * P2_17 + 2 * P2_16,
         }
     }
 
@@ -175,7 +180,8 @@ impl BinaryBasicTableSM {
             | BinaryBasicTableOp::Brev8
             | BinaryBasicTableOp::Sh1add
             | BinaryBasicTableOp::Sh2add
-            | BinaryBasicTableOp::Sh3add => P2_16,
+            | BinaryBasicTableOp::Sh3add
+            | BinaryBasicTableOp::Unal8 => P2_16,
 
             BinaryBasicTableOp::Sext00 | BinaryBasicTableOp::SextFF => 0,
         }
@@ -196,7 +202,8 @@ impl BinaryBasicTableSM {
             | BinaryBasicTableOp::Le
             | BinaryBasicTableOp::Sh1add
             | BinaryBasicTableOp::Sh2add
-            | BinaryBasicTableOp::Sh3add => P2_17,
+            | BinaryBasicTableOp::Sh3add
+            | BinaryBasicTableOp::Unal8 => P2_17,
 
             BinaryBasicTableOp::Minu
             | BinaryBasicTableOp::Min
@@ -244,7 +251,8 @@ impl BinaryBasicTableSM {
             | BinaryBasicTableOp::Brev8
             | BinaryBasicTableOp::Sh1add
             | BinaryBasicTableOp::Sh2add
-            | BinaryBasicTableOp::Sh3add => 0,
+            | BinaryBasicTableOp::Sh3add
+            | BinaryBasicTableOp::Unal8 => 0,
         }
     }
 }
@@ -282,6 +290,7 @@ mod tests {
         (BinaryBasicTableOp::Sh1add, 3 * P2_17),
         (BinaryBasicTableOp::Sh2add, 5 * P2_17),
         (BinaryBasicTableOp::Sh3add, 9 * P2_17),
+        (BinaryBasicTableOp::Unal8, 3 * P2_17),
     ];
 
     /// MUST match `BINARY_TABLE_SIZE` in `binary_table.pil`.
@@ -354,6 +363,57 @@ mod tests {
         assert!(sum >> 8 <= 1, "byte sum overflowed twice: {sum}");
 
         (sum & 0xFF, if plast { 0 } else { (sum >> 8) + (a >> (8 - shift)) })
+    }
+
+    /// Mirror of the `OP_UNAL8` case of `binary_table.pil`, for a single byte. Returns `cout`.
+    fn unal8_table_row(a: u64, b: u64, cin: u64, plast: bool) -> u64 {
+        let state = if cin == 0 {
+            if (a | b) & 0x07 != 0 {
+                2
+            } else {
+                1
+            }
+        } else {
+            cin
+        };
+        if plast {
+            state - 1
+        } else {
+            state
+        }
+    }
+
+    /// The carry chain of UNAL8 is a state decided by the first byte and propagated by the rest:
+    /// never 0 after the first byte, and turned into the flag by the last one.
+    #[test]
+    fn unal8_byte_chain_matches_the_zisk_op() {
+        for a in VALUES.iter().copied().chain([8u64, 0x10, 0x11, 0xA000_0007]) {
+            for b in VALUES.iter().copied().chain([8u64, 0x10, 0x11, 0xA000_0007]) {
+                let (expected, flag) = ZiskOp::execute(ZiskOp::Unal8.code(), a, b);
+                assert_eq!(expected, flag as u64);
+
+                let (a_bytes, b_bytes) = (a.to_le_bytes(), b.to_le_bytes());
+                let mut cin = 0;
+                for i in 0..8 {
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        BinaryBasicTableOp::Unal8,
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        cin,
+                        (i == 7) as u64,
+                        0,
+                    );
+                    let base = BinaryBasicTableSM::offset_opcode(BinaryBasicTableOp::Unal8);
+                    assert!(row >= base && row < base + 3 * P2_17, "unal8 row out of region");
+
+                    cin = unal8_table_row(a_bytes[i] as u64, b_bytes[i] as u64, cin, i == 7);
+                    if i < 7 {
+                        assert!(cin == 1 || cin == 2, "a middle byte must carry the state");
+                    }
+                }
+                assert_eq!(cin, expected, "unal8 mismatch for a={a:#x} b={b:#x}");
+            }
+        }
     }
 
     #[test]

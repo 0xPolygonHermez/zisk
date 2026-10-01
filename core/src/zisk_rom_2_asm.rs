@@ -2712,6 +2712,8 @@ impl ZiskRom2Asm {
             | ZiskOp::Ror
             | ZiskOp::RorW
             | ZiskOp::SllUW => ctx.store_a_in_c = true,
+            // c = (a | b) & 7 is computed in place over a
+            ZiskOp::Unal8 => ctx.store_a_in_c = true,
             // lea c, [b + a*scale] needs both operands in a register
             ZiskOp::Sh1add | ZiskOp::Sh2add | ZiskOp::Sh3add => {
                 ctx.store_a_in_a = true;
@@ -2924,6 +2926,39 @@ impl ZiskRom2Asm {
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Unal8 => {
+                // c = flag = ((a | b) & 7 != 0): 1 iff a or b is not a multiple of 8
+                assert!(ctx.store_a_in_c);
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Unal8: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
+                *code += &format!(
+                    "\tor {}, {} {}\n",
+                    REG_C,
+                    ctx.b.string_value,
+                    ctx.comment_str("Unal8: c = a | b")
+                );
+                *code += &format!("\tand {}, 7 {}\n", REG_C, ctx.comment_str("Unal8: c = c & 7"));
+                *code += &format!("\tjnz pc_{:x}_unal8_true\n", ctx.pc);
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\tjmp pc_{:x}_unal8_done\n", ctx.pc);
+                *code += &format!("pc_{:x}_unal8_true:\n", ctx.pc);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("pc_{:x}_unal8_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
             }
             ZiskOp::Sub => {
                 assert!(ctx.store_a_in_c);
