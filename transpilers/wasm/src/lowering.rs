@@ -500,6 +500,18 @@ impl<'a, 'b> FuncGen<'a, 'b> {
         self.code.cmp_imm_branch("eq", REG_T1, 0, ok, false); // jump to ok when divisor != 0
         self.emit_trap();
         self.code.bind(ok);
+        let signed_min = match op {
+            "div_w" => Some(i32::MIN as i64),
+            "div" => Some(i64::MIN),
+            _ => None,
+        };
+        if let Some(min) = signed_min {
+            let ok = self.code.new_label();
+            self.code.cmp_imm_branch("eq", REG_T1, -1, ok, false); // divisor != -1
+            self.code.cmp_imm_branch("eq", REG_T0, min, ok, false); // dividend != MIN
+            self.emit_trap();
+            self.code.bind(ok);
+        }
         if swap {
             self.code.alu_rr(op, REG_T0, REG_T1, REG_T0);
         } else {
