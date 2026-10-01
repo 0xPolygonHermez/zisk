@@ -532,8 +532,14 @@ static int gen_or_check(const char *dir, bool check, const char *filter) {
                 }
                 bad++;
             }
-            fprintf(stderr, "%-40s %-5s %s (%d/%d mismatches)\n", op.name.c_str(), canon ? "canon" : "any", bad ? "FAIL" : "ok", bad, op.n);
-            if (bad) failures++;
+            // The reference must end exactly where the last record ends: extra records or words
+            // mean it was not generated with the same cases
+            bool size_mismatch = ref.size() != got.size();
+            if (size_mismatch) {
+                fprintf(stderr, "  %s %s reference has %zu words, expected %zu\n", op.name.c_str(), canon ? "canon" : "any", ref.size(), got.size());
+            }
+            fprintf(stderr, "%-40s %-5s %s (%d/%d mismatches%s)\n", op.name.c_str(), canon ? "canon" : "any", (bad || size_mismatch) ? "FAIL" : "ok", bad, op.n, size_mismatch ? ", size mismatch" : "");
+            if (bad || size_mismatch) failures++;
         }
     }
     return failures;
