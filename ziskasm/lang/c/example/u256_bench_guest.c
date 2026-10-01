@@ -1,15 +1,19 @@
-/* u256_bench_guest.c -- step cost of the EF U256 ABI (zkvm_u256.h) under its two
- * ZisK implementations. The guest code is identical; only the implementation
- * behind the standard zkvm_u256_* functions changes:
- *   - default: zkvmcall thunks, i.e. a call that the transpiler turns into a jump
- *     to the .zisk routine;
+/* u256_bench_guest.c -- step cost of the EF U256 ABI (zkvm_u256.h) under its ZisK
+ * implementations. The guest code is identical; only the implementation behind
+ * the standard zkvm_u256_* functions changes:
+ *   - default: inline zkvmcalls, i.e. a `csrs` per argument that the transpiler
+ *     replaces by the .zisk routine's body at the call site, so there is no call;
+ *     only the division family and exp are zkvmcall thunks (a call that the
+ *     transpiler turns into a jump to the routine);
+ *   - -DZKVM_U256_CALLS: every operation through its thunk, i.e. the default
+ *     routines plus the call and return;
  *   - -DZKVM_U256_INLINE: the static inline C versions from zkvm_u256_inline.h
  *     (the division family has none and stays a call).
  * -DU256_LE runs the same loop through the little-endian variant instead
- * (zkvm_u256_le.h), which has the same two implementations: calls by default,
- * -DZKVM_U256_LE_INLINE for inline. The operands are converted once before the
- * loop and the result once after it, so all four builds of an operation emit the
- * same bytes.
+ * (zkvm_u256_le.h), which has the default and inline implementations (inline
+ * zkvmcalls by default, -DZKVM_U256_LE_INLINE for its inline C versions) and no
+ * all-calls build. The operands are converted once before the loop and the result
+ * once after it, so all five builds of an operation emit the same bytes.
  *
  * One operation per build: -DOP=<name> (e.g. -DOP=add) plus its operand shape,
  * one of -DKIND_BIN (op(a, b, r)), -DKIND_SHIFT (op(s, a, r): shl/shr/sar/byte/
@@ -17,13 +21,13 @@
  * (op(a, b, q, r)) or -DKIND_NOP (empty loop, for the loop's own cost).
  *
  * Each iteration runs the operation once on fixed operands; a compiler barrier
- * makes the inline versions recompute every time. The result is emitted, so both
- * builds of one operation must produce the same output.
+ * makes the inline versions recompute every time. The result is emitted, so every
+ * build of one operation must produce the same output.
  *
  *   riscv-none-elf-gcc -march=rv64ima_zicsr_zbb -mabi=lp64 -mcmodel=medany \
  *       -nostdlib -ffreestanding -O2 -Wl,--gc-sections -I. -I../include \
  *       -T ../../../../ziskbuild/zisk_linker_script.ld -DOP=add -DKIND_BIN \
- *       [-DZKVM_U256_INLINE | -DU256_LE [-DZKVM_U256_LE_INLINE]] [-DU256_N=1000] \
+ *       [-DZKVM_U256_CALLS | -DZKVM_U256_INLINE | -DU256_LE [-DZKVM_U256_LE_INLINE]] [-DU256_N=1000] \
  *       -o u256.elf ../src/_start.s u256_bench_guest.c ../src/zkvm_calls.s
  *   ziskemu -e u256.elf -i empty.bin -o out.bin -X
  */
