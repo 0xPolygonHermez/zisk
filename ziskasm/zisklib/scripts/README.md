@@ -11,6 +11,7 @@ The generators need only Python 3 (no packages) and are run from any directory.
 |---|---|---|
 | `ripemd160_gen.py` | `zkvm/ripemd160.zisk` (whole file) | `python3 ripemd160_gen.py` |
 | `modexp_gen.py` + `modexp_mont.py` | `zkvm/modexp.zisk`: the direct and Montgomery paths, in front of the general path | see below |
+| `secp256k1_glv4_gen.py` | `secp256k1/glv4.zisk` (whole file) | `python3 secp256k1_glv4_gen.py` |
 | `pairing/build.sh` + `pairing/*.py` | the optimized `bn254/*` and `bls12_381/*` files, `kernels.zisk`, `zkvm/bn254.zisk`, `zkvm/bls12_381.zisk` | `bash pairing/build.sh` |
 | `benchmark/` | nothing: per-call benchmarks and correctness checks of the `zkvm_*` functions | see [benchmark/README.md](benchmark/README.md) |
 | `legacy/gen_*.py` | first versions of the `bn254`, `bls12_381` and `bigint` files | not for regenerating (see below) |

@@ -39,6 +39,7 @@ pub const ZISK_LIBRARY: &[(&str, &str)] = &[
     ("secp256k1/curve", include_str!("../zisklib/secp256k1/curve.zisk")),
     ("secp256k1/ecdsa", include_str!("../zisklib/secp256k1/ecdsa.zisk")),
     ("secp256k1/glv", include_str!("../zisklib/secp256k1/glv.zisk")),
+    ("secp256k1/glv4", include_str!("../zisklib/secp256k1/glv4.zisk")),
     ("secp256k1/schnorr", include_str!("../zisklib/secp256k1/schnorr.zisk")),
     ("secp256r1/constants", include_str!("../zisklib/secp256r1/constants.zisk")),
     ("secp256r1/field", include_str!("../zisklib/secp256r1/field.zisk")),
