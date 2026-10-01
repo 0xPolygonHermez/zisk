@@ -224,6 +224,14 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
                         .iter()
                         .map(|t| ValKind::from_valtype(*t))
                         .collect::<Result<Vec<_>, _>>()?;
+                    // The calling convention returns a single value in `REG_RET`.
+                    if results.len() > 1 {
+                        return Err(format!(
+                            "wasm: functions with {} results are not supported (multi-value)",
+                            results.len()
+                        )
+                        .into());
+                    }
                     sigs.push(FuncSig { params, results });
                 }
             }
