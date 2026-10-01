@@ -287,3 +287,81 @@ fn memory_must_fit_the_machine() {
     let err = wasm2rom(&wat::parse_str(past_end).unwrap()).expect_err("must be rejected");
     assert!(err.to_string().contains("does not fit the initial memory"), "{err}");
 }
+
+#[test]
+fn globals_and_table_must_fit_the_machine() {
+    use zisk_transpiler_wasm::layout::{WASM_MAX_GLOBALS, WASM_MAX_TABLE_ENTRIES};
+
+    // Exactly the capacity is fine; the last global is readable at its own address.
+    let globals = |n: u64| {
+        let decls: String = (0..n).map(|i| format!("(global i64 (i64.const {i}))")).collect();
+        let last = n - 1;
+        let wat = format!(
+            r#"(module
+              (import "wasi_snapshot_preview1" "fd_write"
+                (func $fd_write (param i32 i32 i32 i32) (result i32)))
+              (memory 1)
+              {decls}
+              (func (export "_start")
+                (i64.store (i32.const 16) (global.get {last}))
+                (i32.store (i32.const 0) (i32.const 16))
+                (i32.store (i32.const 4) (i32.const 8))
+                (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        );
+        wat::parse_str(wat).unwrap()
+    };
+    assert_eq!(out_u64(&run(&globals(WASM_MAX_GLOBALS), &[])), WASM_MAX_GLOBALS - 1);
+    let err = wasm2rom(&globals(WASM_MAX_GLOBALS + 1)).expect_err("must be rejected");
+    assert!(err.to_string().contains("globals exceed"), "{err}");
+
+    // A table larger than the reserved area is rejected ...
+    let big_table = format!(
+        r#"(module (table {} funcref) (func (export "_start")))"#,
+        WASM_MAX_TABLE_ENTRIES + 1
+    );
+    let err = wasm2rom(&wat::parse_str(big_table).unwrap()).expect_err("must be rejected");
+    assert!(err.to_string().contains("table of"), "{err}");
+
+    // ... and so is an element segment that does not fit the declared table.
+    let past_end = r#"(module
+      (table 2 funcref)
+      (elem (i32.const 1) $f $f)
+      (func $f)
+      (func (export "_start")))"#;
+    let err = wasm2rom(&wat::parse_str(past_end).unwrap()).expect_err("must be rejected");
+    assert!(err.to_string().contains("element segment"), "{err}");
+}
+
+#[test]
+fn call_indirect_traps_out_of_bounds_and_null() {
+    // Table of 4 entries, only entry 1 initialized.  Index 1 works; 3 (null) and 4 (out of
+    // bounds) trap, i.e. halt with the emulator's error flag set.
+    let module = |index: u32| {
+        let wat = format!(
+            r#"(module
+              (import "wasi_snapshot_preview1" "fd_write"
+                (func $fd_write (param i32 i32 i32 i32) (result i32)))
+              (type $sig (func (result i64)))
+              (table 4 funcref)
+              (elem (i32.const 1) $f)
+              (memory 1)
+              (func $f (result i64) (i64.const 99))
+              (func (export "_start")
+                (i64.store (i32.const 16) (call_indirect (type $sig) (i32.const {index})))
+                (i32.store (i32.const 0) (i32.const 16))
+                (i32.store (i32.const 4) (i32.const 8))
+                (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        );
+        wasm2rom(&wat::parse_str(wat).unwrap()).expect("wasm2rom")
+    };
+    let run_flag = |index: u32| {
+        let rom = module(index);
+        let mut emu = ziskemu::Emu::new(&rom);
+        emu.run(Vec::new(), &EmuOptions::default(), None::<fn(EmuTrace)>);
+        assert!(emu.terminated(), "index {index}: emulation did not terminate");
+        (emu.ctx.inst_ctx.error, u64::from_le_bytes(emu.get_output_8()[0..8].try_into().unwrap()))
+    };
+    assert_eq!(run_flag(1), (false, 99));
+    assert!(run_flag(3).0, "null entry must trap");
+    assert!(run_flag(4).0, "out-of-bounds index must trap");
+}

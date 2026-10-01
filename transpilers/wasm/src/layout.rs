@@ -65,15 +65,18 @@ pub fn frame_size(num_locals: u32, max_stack_depth: u32) -> i64 {
 
 /// Base of wasm globals, 8 bytes each.
 pub const WASM_GLOBALS_ADDR: u64 = GP_RAM_ADDR; // 0xa0430000
-/// Maximum number of globals (keeps globals well clear of the table area).
-pub const WASM_MAX_GLOBALS: u64 = 0x2000; // 8192 globals -> 64 KiB
+/// Capacity of the globals area, in globals (64 KiB).  Enforced at transpile time.
+pub const WASM_MAX_GLOBALS: u64 = 0x2000;
 
 /// Base of the indirect-call table, 16 bytes per entry: `{ zisk_pc: u64, type_index: u64 }`.
-pub const WASM_TABLE_ADDR: u64 = GP_RAM_ADDR + 0x10000; // 0xa0440000
+pub const WASM_TABLE_ADDR: u64 = WASM_GLOBALS_ADDR + 8 * WASM_MAX_GLOBALS; // 0xa0440000
 pub const WASM_TABLE_ENTRY_BYTES: u64 = 16;
+/// Capacity of the table area, in entries (1 MiB; a Go program declares ~12k).  Enforced at
+/// transpile time against the declared table size, and at run time by `call_indirect`.
+pub const WASM_MAX_TABLE_ENTRIES: u64 = 0x10000;
 
 /// Control cells used by the runtime.
-pub const WASM_CTRL_ADDR: u64 = GP_RAM_ADDR + 0x20000; // 0xa0450000
+pub const WASM_CTRL_ADDR: u64 = WASM_TABLE_ADDR + WASM_TABLE_ENTRY_BYTES * WASM_MAX_TABLE_ENTRIES; // 0xa0540000
 /// Current linear-memory size, in 64 KiB pages.
 pub const WASM_MEM_PAGES_ADDR: u64 = WASM_CTRL_ADDR;
 /// Read cursor into the input region, used by `fd_read` on stdin.

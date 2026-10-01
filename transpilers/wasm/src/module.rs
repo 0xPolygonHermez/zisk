@@ -87,6 +87,7 @@ pub struct WasmModule<'a> {
     pub elems: Vec<ElemSeg>,
     pub mem_initial_pages: u64,
     pub has_memory: bool,
+    pub table_initial: u64,
     pub start_func: Option<u32>,
     pub exports: Vec<(String, ExternalKind, u32)>,
 }
@@ -167,6 +168,8 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
     let mut elems: Vec<ElemSeg> = Vec::new();
     let mut mem_initial_pages: u64 = 0;
     let mut has_memory = false;
+    let mut table_initial: u64 = 0;
+    let mut has_table = false;
     let mut start_func: Option<u32> = None;
     let mut exports: Vec<(String, ExternalKind, u32)> = Vec::new();
 
@@ -237,6 +240,19 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
                     }
                     has_memory = true;
                     mem_initial_pages = mem.initial;
+                }
+            }
+            Payload::TableSection(reader) => {
+                for table in reader {
+                    let table = table?;
+                    if has_table {
+                        return Err("wasm: only table 0 is supported".into());
+                    }
+                    if table.ty.table64 {
+                        return Err("wasm: 64-bit tables are not supported".into());
+                    }
+                    has_table = true;
+                    table_initial = table.ty.initial;
                 }
             }
             Payload::GlobalSection(reader) => {
@@ -325,6 +341,7 @@ pub fn parse_module(bytes: &[u8]) -> Result<WasmModule<'_>, Box<dyn Error>> {
         elems,
         mem_initial_pages,
         has_memory,
+        table_initial,
         start_func,
         exports,
     })
