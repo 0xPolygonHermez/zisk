@@ -280,11 +280,7 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         for inner_memp_ops in mem_ops.iter() {
             for input in inner_memp_ops.iter() {
                 assert!(irow < num_rows);
-                self.compute_row_witness(
-                    input,
-                    irow,
-                    R::get_row_mut(&mut trace, irow),
-                );
+                self.compute_row_witness(input, irow, R::get_row_mut(&mut trace, irow));
                 irow += 1;
             }
         }

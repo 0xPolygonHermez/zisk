@@ -4,15 +4,13 @@ use std::sync::Arc;
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
-use std::marker::PhantomData;
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use std::marker::PhantomData;
 use zisk_common::OperationBlake3Data;
 use zisk_pil::{Blake3fTraceRowOps, ZISK_AIRGROUP_ID};
 
-use super::blake3_constants::{
-    CLOCKS, LANES, NUM_G_PER_ROUND, R1_G, R2_G, R3_G, R4_G, SIGMA,
-};
+use super::blake3_constants::{CLOCKS, LANES, NUM_G_PER_ROUND, R1_G, R2_G, R3_G, R4_G, SIGMA};
 
 /// State indices (a, b, c, d) mixed by the G function at each clock of a round:
 /// clocks 0-3 perform the column mixing, clocks 4-7 the diagonal mixing.
@@ -50,7 +48,6 @@ fn u32_to_limbs16(value: u32) -> [u16; 2] {
     [value as u16, (value >> 16) as u16]
 }
 
-
 /// Per-operation input record assembled from the bus payload.
 #[derive(Debug)]
 pub struct Blake3Input {
@@ -77,7 +74,7 @@ impl Blake3Input {
 
 /// The `Blake3SM` struct encapsulates the logic of the Blake3 State Machine.
 pub struct Blake3SM<F: PrimeField64> {
-   _phantom: PhantomData<F>,
+    _phantom: PhantomData<F>,
 }
 
 impl<F: PrimeField64> Blake3SM<F> {
@@ -86,9 +83,7 @@ impl<F: PrimeField64> Blake3SM<F> {
     /// # Returns
     /// A new `Blake3SM` instance.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            _phantom: PhantomData,
-        })
+        Arc::new(Self { _phantom: PhantomData })
     }
 
     /// Processes one operation, filling one lane of its CLOCKS-row cycle.
@@ -259,20 +254,14 @@ impl<F: PrimeField64> Blake3SM<F> {
 
         // Fill the trace. The XOR-table lookups and 16-bit range checks the lanes used to tally
         // here are computed by the prover from the committed trace.
-        par_traces
-            .into_par_iter()
-            .enumerate()
-            .for_each(
-                |(cycle, trace)| {
-                    // Lanes must be filled in order: the last cycle may leave the
-                    // trailing lanes empty
-                    let inputs = &flat_inputs[cycle * LANES..];
-                    for (lane, input) in inputs.iter().take(LANES).enumerate() {
-                        self.process_input::<R>(input, lane, trace);
-                    }
-                    
-                },
-            );
+        par_traces.into_par_iter().enumerate().for_each(|(cycle, trace)| {
+            // Lanes must be filled in order: the last cycle may leave the
+            // trailing lanes empty
+            let inputs = &flat_inputs[cycle * LANES..];
+            for (lane, input) in inputs.iter().take(LANES).enumerate() {
+                self.process_input::<R>(input, lane, trace);
+            }
+        });
 
         // Padding rows are all-zero: in_use is off, so the only bus contributions are the
         // unconditional XOR table lookups over zeros
@@ -281,7 +270,6 @@ impl<F: PrimeField64> Blake3SM<F> {
             .for_each(|slot| *slot = R::default());
 
         timer_stop_and_log_trace!(BLAKE3_TRACE);
-
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }

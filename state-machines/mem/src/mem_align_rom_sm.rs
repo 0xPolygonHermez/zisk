@@ -13,7 +13,6 @@ const TWO_WORD_COMBINATIONS: u64 = 11; // (1..4,[8]), (5,6,[4,8]), (7,[2,4,8]) -
 pub struct MemAlignRomSM;
 
 impl MemAlignRomSM {
-
     pub fn calculate_next_pc_and_op_size(opcode: MemOp, offset: usize, width: usize) -> (u64, u64) {
         // Get the table offset
         let (table_offset, one_word) = match opcode {

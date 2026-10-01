@@ -148,12 +148,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         previous_lt_flags: u8,
     ) {
         let data = executors::Bls12_381Curve::execute_add(&input.p1, &input.p2);
-        self.expand_data_on_trace(
-            &data,
-            trace,
-            SEL_OP_BLS12_381_CURVE_ADD,
-            previous_lt_flags,
-        );
+        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_CURVE_ADD, previous_lt_flags);
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
                 main_step: input.step,
@@ -177,12 +172,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         previous_lt_flags: u8,
     ) {
         let data = executors::Bls12_381Curve::execute_dbl(&input.p1);
-        self.expand_data_on_trace(
-            &data,
-            trace,
-            SEL_OP_BLS12_381_CURVE_DBL,
-            previous_lt_flags,
-        );
+        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_CURVE_DBL, previous_lt_flags);
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
                 main_step: input.step,
@@ -206,12 +196,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         previous_lt_flags: u8,
     ) {
         let data = executors::Bls12_381Complex::execute_add(&input.f1, &input.f2);
-        self.expand_data_on_trace(
-            &data,
-            trace,
-            SEL_OP_BLS12_381_COMPLEX_ADD,
-            previous_lt_flags,
-        );
+        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_COMPLEX_ADD, previous_lt_flags);
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
                 main_step: input.step,
@@ -235,12 +220,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         previous_lt_flags: u8,
     ) {
         let data = executors::Bls12_381Complex::execute_sub(&input.f1, &input.f2);
-        self.expand_data_on_trace(
-            &data,
-            trace,
-            SEL_OP_BLS12_381_COMPLEX_SUB,
-            previous_lt_flags,
-        );
+        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_COMPLEX_SUB, previous_lt_flags);
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
                 main_step: input.step,
@@ -264,12 +244,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         previous_lt_flags: u8,
     ) {
         let data = executors::Bls12_381Complex::execute_mul(&input.f1, &input.f2);
-        self.expand_data_on_trace(
-            &data,
-            trace,
-            SEL_OP_BLS12_381_COMPLEX_MUL,
-            previous_lt_flags,
-        );
+        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_COMPLEX_MUL, previous_lt_flags);
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
                 main_step: input.step,
@@ -285,7 +260,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             trace,
         );
     }
-
 
     fn expand_data_on_trace<R: ArithEq384TraceRowOps<F>>(
         &self,

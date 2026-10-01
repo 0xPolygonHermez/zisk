@@ -1,8 +1,8 @@
-use core::panic;
-use std::sync::Arc;
 use core::marker::PhantomData;
+use core::panic;
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
+use std::sync::Arc;
 
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
@@ -23,7 +23,6 @@ const G_INDICES: [(usize, usize, usize, usize); CLOCKS] = [
     (2, 7, 8, 13),
     (3, 4, 9, 14),
 ];
-
 
 /// Per-operation input record assembled from the bus payload.
 #[derive(Debug)]
@@ -76,11 +75,7 @@ impl<F: PrimeField64> Blake2bSM<F> {
     /// * `input` - The operation data to process.
     /// * `trace` - The CLOCKS-row chunk of the trace assigned to this operation.
     #[inline(always)]
-    pub fn process_input<R: Blake2brTraceRowOps<F>>(
-        &self,
-        input: &Blake2bInput,
-        trace: &mut [R],
-    ) {
+    pub fn process_input<R: Blake2brTraceRowOps<F>>(&self, input: &Blake2bInput, trace: &mut [R]) {
         let idx_usize = input.index as usize;
         let s = &SIGMA[idx_usize];
 
@@ -238,16 +233,11 @@ impl<F: PrimeField64> Blake2bSM<F> {
         }
 
         // Fill the trace
-        par_traces
-            .into_par_iter()
-            .enumerate()
-            .for_each(
-                |(index, trace)| {
-                    let input_index = inputs_indexes[index];
-                    let input = &inputs[input_index.0][input_index.1];
-                    self.process_input::<R>(input, trace);
-                },
-            );
+        par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
+            let input_index = inputs_indexes[index];
+            let input = &inputs[input_index.0][input_index.1];
+            self.process_input::<R>(input, trace);
+        });
 
         // Padding rows are all-zero: in_use is off, so the only bus contributions
         // are the unconditional range checks and XOR table lookups over zeros

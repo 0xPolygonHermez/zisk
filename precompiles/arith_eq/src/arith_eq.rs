@@ -6,12 +6,12 @@ use proofman_common::{AirInstance, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
 use crate::{
-    arith_eq_constants::*, executors, Arith256Input, Arith256ModInput, ArithEqInput,
-    ArithEqOp, ArithEqRow, Bn254ComplexAddInput, Bn254ComplexMulInput,
-    Bn254ComplexSubInput, Bn254CurveAddInput, Bn254CurveDblInput, Secp256k1AddInput,
-    Secp256k1DblInput, Secp256r1AddInput, Secp256r1DblInput, BN254_PRIME_CHUNKS,
-    SECP256K1_PRIME_CHUNKS, SECP256R1_PRIME_CHUNKS, SEL_OP_ARITH256, SEL_OP_ARITH256_MOD,
-    SEL_OP_SECP256K1_ADD, SEL_OP_SECP256K1_DBL, SEL_OP_SECP256R1_ADD, SEL_OP_SECP256R1_DBL,
+    arith_eq_constants::*, executors, Arith256Input, Arith256ModInput, ArithEqInput, ArithEqOp,
+    ArithEqRow, Bn254ComplexAddInput, Bn254ComplexMulInput, Bn254ComplexSubInput,
+    Bn254CurveAddInput, Bn254CurveDblInput, Secp256k1AddInput, Secp256k1DblInput,
+    Secp256r1AddInput, Secp256r1DblInput, BN254_PRIME_CHUNKS, SECP256K1_PRIME_CHUNKS,
+    SECP256R1_PRIME_CHUNKS, SEL_OP_ARITH256, SEL_OP_ARITH256_MOD, SEL_OP_SECP256K1_ADD,
+    SEL_OP_SECP256K1_DBL, SEL_OP_SECP256R1_ADD, SEL_OP_SECP256R1_DBL,
 };
 // `phase_ms` / `phase_max_ms` are only read inside a `phase_log!`, which vanishes without the
 // `witness_timers` feature -- and takes the only use of those imports with it.
@@ -493,9 +493,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
         previous_lt_flags: u8,
     ) {
         match input {
-            ArithEqInput::Arith256(idata) => {
-                self.process_arith256(idata, trace, previous_lt_flags)
-            }
+            ArithEqInput::Arith256(idata) => self.process_arith256(idata, trace, previous_lt_flags),
             ArithEqInput::Arith256Mod(idata) => {
                 self.process_arith256_mod(idata, trace, previous_lt_flags)
             }

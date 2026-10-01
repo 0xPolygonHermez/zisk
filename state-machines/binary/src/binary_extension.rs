@@ -626,7 +626,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", input.op),
         }
 
-
         row.set_fields(
             lane,
             input.op,

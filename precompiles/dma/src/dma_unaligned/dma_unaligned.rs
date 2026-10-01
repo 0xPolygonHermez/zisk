@@ -7,9 +7,7 @@ use crate::{dma_trace, DmaUnalignedInput};
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::SegmentId;
-use zisk_pil::{
-    DmaUnalignedAirValues, DmaUnalignedTrace, DmaUnalignedTraceRowOps,
-};
+use zisk_pil::{DmaUnalignedAirValues, DmaUnalignedTrace, DmaUnalignedTraceRowOps};
 use zisk_precomp_helpers::DmaInfo;
 
 pub struct DmaUnalignedPrevSegment {
@@ -116,7 +114,6 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
 
             // row.set_write_value(0, write_value as u32);
             // row.set_write_value(1, (write_value >> 32) as u32);
-
         }
 
         if is_last_instance_input {
@@ -200,11 +197,8 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         let mut air_values = DmaUnalignedAirValues::<F>::new();
         let mut row_offset = 0;
         for input in flat_inputs.iter() {
-            let rows_used = self.process_input(
-                input,
-                &mut trace_rows[row_offset..],
-                &mut air_values,
-            );
+            let rows_used =
+                self.process_input(input, &mut trace_rows[row_offset..], &mut air_values);
             row_offset += rows_used;
         }
 

@@ -67,12 +67,7 @@ impl<F: PrimeField64> Add256SM<F> {
     /// * `trace` - A mutable reference to the Add256 trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_slice<R: Add256TraceRowOps<F>>(
-        &self,
-        input: &Add256Input,
-        trace: &mut R,
-        multiplicities: &mut [u32],
-    ) {
+    pub fn process_slice<R: Add256TraceRowOps<F>>(&self, input: &Add256Input, trace: &mut R) {
         debug_assert!(input.cin < 2);
         trace.set_cin(input.cin != 0);
 
@@ -111,11 +106,6 @@ impl<F: PrimeField64> Add256SM<F> {
 
             cout_values[i][0] = cout_1 != 0;
             cout_values[i][1] = cout_2 != 0;
-
-            multiplicities[cll as usize] += 1;
-            multiplicities[clh as usize] += 1;
-            multiplicities[chl as usize] += 1;
-            multiplicities[chh as usize] += 1;
         }
 
         trace.set_all_a(&a_values);
@@ -172,30 +162,13 @@ impl<F: PrimeField64> Add256SM<F> {
         let num_threads = rayon::current_num_threads();
         let chunk_size = std::cmp::max(1, flat_inputs.len() / num_threads);
 
-        // Process in chunks to allow per-chunk local multiplicities arrays
-        let local_multiplicities_vec: Vec<Vec<u32>> = flat_inputs
-            .par_chunks(chunk_size)
-            .zip(trace_rows.par_chunks_mut(chunk_size))
-            .map(|(input_chunk, trace_chunk)| {
-                // Local array shared by this chunk
-                let mut local_multiplicities = vec![0u32; 1 << 16];
-
-                // Sum all local arrays into a global one
+        flat_inputs.par_chunks(chunk_size).zip(trace_rows.par_chunks_mut(chunk_size)).for_each(
+            |(input_chunk, trace_chunk)| {
                 for (input, trace_row) in input_chunk.iter().zip(trace_chunk.iter_mut()) {
-                    self.process_slice(input, trace_row, &mut local_multiplicities);
+                    self.process_slice(input, trace_row);
                 }
-
-                local_multiplicities
-            })
-            .collect();
-
-        // Sum all local arrays into a global one
-        let mut global_multiplicities = vec![0u32; 1 << 16];
-        for local_multiplicities in local_multiplicities_vec {
-            for (i, count) in local_multiplicities.iter().enumerate() {
-                global_multiplicities[i] += count;
-            }
-        }
+            },
+        );
 
         timer_stop_and_log_trace!(ADD256_TRACE);
 

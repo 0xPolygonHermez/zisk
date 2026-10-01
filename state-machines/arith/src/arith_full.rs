@@ -4,15 +4,13 @@
 //! trace generation. The `ArithTable`/`ArithRangeTable` lookup multiplicities are no longer
 //! counted here: the prover derives them directly from the committed trace.
 
-use std::collections::VecDeque;
-use std::sync::Arc;
-use std::marker::PhantomData;
-use crate::{
-    ArithOperation,
-};
+use crate::ArithOperation;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
+use std::collections::VecDeque;
+use std::marker::PhantomData;
+use std::sync::Arc;
 use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::{ArithAirValues, ArithTrace, ArithTraceRowOps};
@@ -39,7 +37,6 @@ impl<F: PrimeField64> ArithFullSM<F> {
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithFullSM`.
     pub fn new() -> Arc<Self> {
-       
         Arc::new(Self { _phantom: PhantomData })
     }
 
@@ -184,10 +181,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         }
     }
 
-    fn process_slice<R: ArithTraceRowOps<F>>(
-        aop: &mut ArithOperation,
-        input: &[u64; 4],
-    ) -> R {
+    fn process_slice<R: ArithTraceRowOps<F>>(aop: &mut ArithOperation, input: &[u64; 4]) -> R {
         let input_data = ExtOperationData::OperationData(*input);
 
         let opcode = OperationBusData::get_op(&input_data);
@@ -200,7 +194,6 @@ impl<F: PrimeField64> ArithFullSM<F> {
         row.set_all_b(&aop.b);
         row.set_all_c(&aop.c);
         row.set_all_d(&aop.d);
-
 
         let mut carry_values = [0u64; 7];
         for (i, carry_value) in carry_values.iter_mut().enumerate() {
@@ -239,7 +232,6 @@ impl<F: PrimeField64> ArithFullSM<F> {
             0
         };
         row.set_inv_sum_all_bs(inv_sum_all_bs);
-
 
         row
     }

@@ -319,7 +319,6 @@ impl<F: PrimeField64> MemSM<F> {
         let lanes = lanes_of::<F, R>();
         let num_slots = lanes.slots(trace.num_rows());
 
-
         // use special counter for internal reads
         let distance_base = previous_segment.addr - RAM_W_ADDR_INIT;
         let mut last_addr = previous_segment.addr;
@@ -519,7 +518,6 @@ impl<F: PrimeField64> MemSM<F> {
             split_padding_size(padding_size as u32, (num_slots - 1) as u32);
         air_values.padding_size_chunks = padding_chunks.map(F::from_u16);
         air_values.padding_size_to_max_chunks = to_max_chunks.map(F::from_u16);
-
 
         #[cfg(feature = "debug_mem")]
         {
@@ -1167,7 +1165,6 @@ fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
     let distance_base = [distance_base as u16, (distance_base >> 16) as u16];
     let distance_end = [distance_end as u16, (distance_end >> 16) as u16];
 
-
     // @[last_step_bound]
     let last_step_chunks = split_last_step(step);
 
@@ -1208,7 +1205,6 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
     let lanes_x_row = lanes.lanes();
     let first_row = range.slot_from / lanes_x_row;
     let mut rows = RowView { head: R::default(), owned, first_row };
-
 
     // Address cursors, this range's addresses only: `current_offsets[addr_index - addr_base]`.
     let addr_base = range.addr_from as usize;
@@ -1418,7 +1414,6 @@ fn fill_mem_range<F: PrimeField64, R: MemTraceRowOps<F>>(
             let h_increment = increment >> 22;
             rows.at(row).set_l_increment(lane, l_increment as u32);
             rows.at(row).set_h_increment(lane, h_increment as u16);
-
         }
         // rows.at(row).set_previous_step(lane, ...)
         if dual_available {

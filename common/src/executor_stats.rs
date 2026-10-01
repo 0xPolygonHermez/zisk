@@ -291,6 +291,7 @@ impl ExecutorStats {
         while self.pending.pop().is_some() {}
         self.finalized.lock().unwrap_or_else(|e| e.into_inner()).clear();
         self.witness_stats.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.collect_phase_wall_ms.store(0, Ordering::Relaxed);
     }
 
     /// Adds a new statistic entry to the executor stats. Lock-free.

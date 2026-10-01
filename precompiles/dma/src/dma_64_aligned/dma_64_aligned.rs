@@ -47,12 +47,7 @@ impl<F: PrimeField64> Dma64AlignedSM<F> {
             air_id == AIR_ID || air_id == LARGE_AIR_ID,
             "Dma64AlignedSM: unsupported air_id {air_id}"
         );
-        Arc::new(Self {
-            air_id,
-            op_x_rows: DMA_64_ALIGNED_OPS_BY_ROW,
-            _phantom: PhantomData,
-
-        })
+        Arc::new(Self { air_id, op_x_rows: DMA_64_ALIGNED_OPS_BY_ROW, _phantom: PhantomData })
     }
 
     /// Processes a slice of operation data, updating the trace.
@@ -238,11 +233,8 @@ impl<F: PrimeField64> Dma64AlignedSM<F> {
         // TODO: inputs between instances
         let mut row_offset = 0;
         for input in flat_inputs.iter() {
-            let rows_used = self.process_input(
-                input,
-                &mut trace_rows[row_offset..],
-                &mut air_values,
-            );
+            let rows_used =
+                self.process_input(input, &mut trace_rows[row_offset..], &mut air_values);
             row_offset += rows_used;
         }
 

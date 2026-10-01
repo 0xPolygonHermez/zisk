@@ -5,11 +5,9 @@ use rayon::prelude::*;
 
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::{
-    DmaTrace, DmaTraceRow, DmaTraceRowOps, DmaTraceRowPacked,
-};
 use std::marker::PhantomData;
+use zisk_core::zisk_ops::ZiskOp;
+use zisk_pil::{DmaTrace, DmaTraceRow, DmaTraceRowOps, DmaTraceRowPacked};
 
 use crate::{dma_trace, DmaInput, DmaModule};
 use zisk_precomp_helpers::DmaInfo;
@@ -25,9 +23,7 @@ impl<F: PrimeField64> DmaSM<F> {
     /// # Returns
     /// A new `DmaSM` instance.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            _phantom: PhantomData,
-        })
+        Arc::new(Self { _phantom: PhantomData })
     }
 
     /// Processes a slice of operation data, updating the trace.
@@ -137,7 +133,6 @@ impl<F: PrimeField64> DmaSM<F> {
             }
             _ => panic!("Invalid DMA operation {}", input.op),
         }
-
     }
 
     /// Processes a slice of operation data, updating the trace.
@@ -173,14 +168,13 @@ impl<F: PrimeField64> DmaSM<F> {
         let num_threads = rayon::current_num_threads();
         let chunk_size = std::cmp::max(1, flat_inputs.len() / num_threads);
 
-        flat_inputs
-            .par_chunks(chunk_size)
-            .zip(trace_rows.par_chunks_mut(chunk_size))
-            .for_each(|(input_chunk, trace_chunk)| {
+        flat_inputs.par_chunks(chunk_size).zip(trace_rows.par_chunks_mut(chunk_size)).for_each(
+            |(input_chunk, trace_chunk)| {
                 for (input, trace_row) in input_chunk.iter().zip(trace_chunk.iter_mut()) {
                     self.process_slice(input, trace_row);
                 }
-            });
+            },
+        );
 
         if total_inputs < num_rows {
             self.process_empty_slice(&mut trace_rows[total_inputs]);

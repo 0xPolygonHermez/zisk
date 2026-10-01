@@ -8,9 +8,9 @@
 /// debugging checks during testing.
 pub struct ArithTableHelpers;
 
-use crate::{ARITH_TABLE_ROWS, FIRST_OP, ICASES};
 #[cfg(test)]
 use crate::ROWS;
+use crate::{ARITH_TABLE_ROWS, FIRST_OP, ICASES};
 
 impl ArithTableHelpers {
     /// Retrieves the row index from the arithmetic table based on the provided operation and flags.

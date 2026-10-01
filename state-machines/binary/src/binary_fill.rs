@@ -141,24 +141,22 @@ pub fn fill_slots<R, Slot, Pad>(
     let tasks = rayon::current_num_threads().max(1);
     let rows_per_task = rows.len().div_ceil(tasks).max(1);
 
-    rows.par_chunks_mut(rows_per_task)
-        .enumerate()
-        .for_each(|(task, row_chunk)| {
-            let mut done = task * rows_per_task * lanes_x_row;
-            let mut cursor = InputCursor::new(inputs, &starts, done);
+    rows.par_chunks_mut(rows_per_task).enumerate().for_each(|(task, row_chunk)| {
+        let mut done = task * rows_per_task * lanes_x_row;
+        let mut cursor = InputCursor::new(inputs, &starts, done);
 
-            for row in row_chunk.iter_mut() {
-                let filled = lanes_x_row.min(total_inputs - done);
-                for lane in 0..filled {
-                    let input = cursor.next().expect("the cursor holds one input per filled slot");
-                    slot(row, lane, input);
-                }
-                for lane in filled..lanes_x_row {
-                    pad(row, lane);
-                }
-                done += filled;
+        for row in row_chunk.iter_mut() {
+            let filled = lanes_x_row.min(total_inputs - done);
+            for lane in 0..filled {
+                let input = cursor.next().expect("the cursor holds one input per filled slot");
+                slot(row, lane, input);
             }
-        });
+            for lane in filled..lanes_x_row {
+                pad(row, lane);
+            }
+            done += filled;
+        }
+    });
 }
 
 #[cfg(test)]
@@ -232,7 +230,6 @@ mod tests {
                     rows_used * lanes_x_row - total,
                     "{lengths:?} at {lanes_x_row} lanes"
                 );
-
             }
         }
     }

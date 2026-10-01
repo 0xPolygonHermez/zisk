@@ -221,7 +221,6 @@ impl<F: PrimeField64> BinaryAddSM<F> {
                 input.op,
             );
             cout_values[i] = cin != 0;
-
         }
 
         row.set_slot(lane, &a_values, &b_values, &c_chunks_values, &cout_values, sh3add);

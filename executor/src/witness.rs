@@ -182,9 +182,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
             state.instance_set.main_instances.write_or_poison("main_instances")?;
         for (global_id, plan) in assignments {
             main_instances.entry(global_id).or_insert_with(|| {
-                std::sync::Arc::new(MainInstance::new(
-                    InstanceCtx::new(global_id, plan),
-                ))
+                std::sync::Arc::new(MainInstance::new(InstanceCtx::new(global_id, plan)))
             });
 
             let gid = GlobalId(global_id);

@@ -27,9 +27,7 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
     /// # Returns
     /// A new `DmaPrePostSM` instance.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            _phantom: std::marker::PhantomData,
-        })
+        Arc::new(Self { _phantom: std::marker::PhantomData })
     }
 
     /// Processes a slice of operation data, updating the trace.
@@ -125,7 +123,6 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
         pb[5] = (value >> 40) as u8;
         pb[6] = (value >> 48) as u8;
         pb[7] = (value >> 56) as u8;
-
 
         let selr_value = if dst_offset > src_offset {
             trace.set_dst_offset_gt_src_offset(true);
@@ -228,7 +225,6 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
                 }
             }
         }
-
     }
     fn compute_witness_inner<R: DmaPrePostTraceRowOps<F> + Copy + Send>(
         &self,
@@ -256,21 +252,14 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
         let chunk_size = std::cmp::max(1, flat_inputs.len() / num_threads);
 
         // Process in chunks to allow per-chunk local multiplicities arrays
-        flat_inputs
-            .par_chunks(chunk_size)
-            .zip(trace_rows.par_chunks_mut(chunk_size))
-            .for_each(|(input_chunk, trace_chunk)| {
-
+        flat_inputs.par_chunks(chunk_size).zip(trace_rows.par_chunks_mut(chunk_size)).for_each(
+            |(input_chunk, trace_chunk)| {
                 // Sum all local arrays into a global one
                 for (input, trace_row) in input_chunk.iter().zip(trace_chunk.iter_mut()) {
-                    self.process_slice(
-                        input,
-                        trace_row,
-                    )
+                    self.process_slice(input, trace_row)
                 }
-            });
-        
-    
+            },
+        );
 
         // for i in [
         //     4538, 4541, 4542, 4544, 4545, 4546, 4549, 4550, 4551, 4739, 147059, 147215, 147258,

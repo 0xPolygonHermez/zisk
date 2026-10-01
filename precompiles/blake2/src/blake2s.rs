@@ -6,9 +6,9 @@ use rayon::prelude::*;
 
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use std::marker::PhantomData;
 use zisk_common::OperationBlake2sData;
 use zisk_pil::{Blake2sTraceRowOps, ZISK_AIRGROUP_ID};
-use std::marker::PhantomData;
 
 use super::blake2s_constants::{CLOCKS, NUM_G_PER_ROUND, R1_G, R2_G, R3_G, R4_G, SIGMA};
 
@@ -30,8 +30,6 @@ const G_INDICES: [(usize, usize, usize, usize); NUM_G_PER_ROUND] = [
 fn u32_to_limbs16(value: u32) -> [u16; 2] {
     [value as u16, (value >> 16) as u16]
 }
-
-
 
 /// Per-operation input record assembled from the bus payload.
 #[derive(Debug)]
@@ -70,9 +68,7 @@ impl<F: PrimeField64> Blake2sSM<F> {
     /// # Returns
     /// A new `Blake2sSM` instance.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            _phantom: PhantomData,
-        })
+        Arc::new(Self { _phantom: PhantomData })
     }
 
     /// Processes one operation, filling its CLOCKS-row cycle.
@@ -81,11 +77,7 @@ impl<F: PrimeField64> Blake2sSM<F> {
     /// * `input` - The operation data to process.
     /// * `trace` - The CLOCKS-row cycle assigned to this operation.
     #[inline(always)]
-    pub fn process_input<R: Blake2sTraceRowOps<F>>(
-        &self,
-        input: &Blake2sInput,
-        trace: &mut [R],
-    ) {
+    pub fn process_input<R: Blake2sTraceRowOps<F>>(&self, input: &Blake2sInput, trace: &mut [R]) {
         // Fill the step_addr
         trace[0].set_step_addr(input.step_main); // STEP_MAIN
         trace[1].set_step_addr(input.addr_main as u64); // ADDR_OP
@@ -240,17 +232,9 @@ impl<F: PrimeField64> Blake2sSM<F> {
         }
 
         // Fill the trace
-        par_traces
-            .into_par_iter()
-            .enumerate()
-            .for_each(
-                |(index, trace)| {
-                    self.process_input::<R>(
-                        flat_inputs[index],
-                        trace,
-                    );
-                },
-            );
+        par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
+            self.process_input::<R>(flat_inputs[index], trace);
+        });
 
         // Padding rows are all-zero: in_use is off, so the only bus contributions
         // are the unconditional range checks and XOR table lookups over zeros

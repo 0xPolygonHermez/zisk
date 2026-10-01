@@ -191,7 +191,6 @@ impl<F: PrimeField64> MainInstance<F> {
         let next_pc = last_result.next_pc;
         let pad_row = last_result.pad_row;
 
-
         // Prepare main AIR values (filled below and by the flush-window closings)
         let mut air_values = MainAirValues::<F>::new();
 

@@ -93,7 +93,6 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
         }
     }
 
-
     fn expand_data_on_trace<R: BabyJubJubTraceRowOps<F>>(
         &self,
         data: &executors::BabyJubJubData,
@@ -111,11 +110,7 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
             for j in 0..7 {
                 let carry_0 = if i == 0 { 0 } else { data.cout[i * 2 - 1][j] };
                 trace[i].set_carry(j, 0, self.to_ranged_field(carry_0));
-                trace[i].set_carry(
-                    j,
-                    1,
-                    self.to_ranged_field(data.cout[i * 2][j]),
-                );
+                trace[i].set_carry(j, 1, self.to_ranged_field(data.cout[i * 2][j]));
             }
             trace[i].set_x1(self.to_ranged_field(data.x1[i]) as u16);
             trace[i].set_y1(self.to_ranged_field(data.y1[i]) as u16);
@@ -145,7 +140,6 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
                     trace[i].set_sel_op_clk0(j, false);
                 }
             }
-
 
             // Complete addition: both result coordinates are reduced (< p) and range-checked.
             let x3_lt = data.x3[i] < BABYJUBJUB_PRIME_CHUNKS[i]

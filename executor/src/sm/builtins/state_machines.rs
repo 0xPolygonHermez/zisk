@@ -113,10 +113,7 @@ impl<F: PrimeField64> BuiltinSMs<F> {
             (Cow::Borrowed(BINARY_AIR_IDS_MAP), Self::BinarySM(BinarySM::new(std.clone()))),
             (Cow::Borrowed(ARITH_AIR_IDS_MAP), Self::ArithSM(ArithSM::new(std.clone()))),
             (Cow::Borrowed(DMA_AIR_IDS_MAP), Self::DmaManager(DmaManager::new())),
-            (
-                Cow::Borrowed(JUMP_DEST_AIR_IDS_MAP),
-                Self::JumpDestManager(JumpDestManager::new()),
-            ),
+            (Cow::Borrowed(JUMP_DEST_AIR_IDS_MAP), Self::JumpDestManager(JumpDestManager::new())),
         ]
     }
 

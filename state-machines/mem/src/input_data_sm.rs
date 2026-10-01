@@ -211,8 +211,6 @@ impl<F: PrimeField64> InputDataSM<F> {
             num_slots
         );
 
-
-
         let distance_base = previous_segment.addr - INPUT_DATA_W_ADDR_INIT;
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
@@ -257,7 +255,7 @@ impl<F: PrimeField64> InputDataSM<F> {
                     // same lane content as the previous internal read, only the address moves on
                     let (row, lane) = lanes.split(i);
                     last_addr += SEGMENT_ADDR_MAX_DISTANCE as u32;
-                        trace[row].set_addr(lane, last_addr);
+                    trace[row].set_addr(lane, last_addr);
                     trace[row].set_addr_changes(lane, true);
                     trace[row].set_step(lane, 0);
                     trace[row].set_sel(lane, false);
@@ -281,8 +279,8 @@ impl<F: PrimeField64> InputDataSM<F> {
 
             let value = mem_op.value;
             let value_words = self.get_u16_values(value);
-            for j in 0..4 {
-                trace[row].set_value_word(lane, j, value_words[j]);
+            for (j, value) in value_words.iter().enumerate() {
+                trace[row].set_value_word(lane, j, *value);
             }
 
             let addr_changes = last_addr != mem_op.addr;
@@ -332,8 +330,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         let distance_end = INPUT_DATA_W_ADDR_END - last_addr;
 
         // range of chunks
-        for j in 0..4 {
-        }
+        for j in 0..4 {}
 
         let mut air_values = InputDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());
@@ -358,8 +355,6 @@ impl<F: PrimeField64> InputDataSM<F> {
 
         air_values.distance_end[0] = F::from_u16(distance_end[0]);
         air_values.distance_end[1] = F::from_u16(distance_end[1]);
-
-
 
         #[cfg(feature = "debug_mem")]
         {
@@ -589,8 +584,6 @@ impl<F: PrimeField64> InputDataSM<F> {
             }
         }
 
-
-
         let mut air_values = InputDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());
         air_values.is_first_segment = F::from_bool(segment_id == 0);
@@ -617,7 +610,6 @@ impl<F: PrimeField64> InputDataSM<F> {
 
         air_values.distance_end[0] = F::from_u16(distance_end_chunks[0]);
         air_values.distance_end[1] = F::from_u16(distance_end_chunks[1]);
-
 
         #[cfg(feature = "debug_mem")]
         {

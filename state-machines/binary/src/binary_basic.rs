@@ -5,9 +5,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::{
-    binary_constants::*, fill_slots, BinaryBasicTableOp, BinaryInput, BinaryLanes,
-};
+use crate::{binary_constants::*, fill_slots, BinaryBasicTableOp, BinaryInput, BinaryLanes};
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
@@ -368,7 +366,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
                     carry[i] = cout as u8;
                     cin = cout;
-
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -413,7 +410,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     carry[i] = cout as u8;
 
                     cin = cout;
-
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -457,7 +453,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     carry[i] = cout as u8;
 
                     cin = cout;
-
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -495,7 +490,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     carry[i] = cout as u8;
 
                     cin = cout;
-
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -541,7 +535,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     carry[i] = cout as u8;
 
                     cin = cout;
-
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -580,7 +573,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     carry[i] = cout as u8;
 
                     cin = cout;
-
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -611,7 +603,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     carry[i] = cout as u8;
 
                     cin = cout;
-
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -635,7 +626,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     cout = result >> 8;
                     cin = if i == carry_byte { 0 } else { cout };
                     carry[i] = cin as u8;
-
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -658,7 +648,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     cout = if a_bytes[i] as u64 >= (b_bytes[i] as u64 + cin) { 0 } else { 1 };
                     cin = if i == carry_byte { 0 } else { cout };
                     carry[i] = cin as u8;
-
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -702,7 +691,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     }
                     cin = cout;
                     carry[i] = cin as u8;
-
                 }
                 row.set_all_carry(lane, &carry);
             }
@@ -721,7 +709,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
                 // No carry
                 row.set_all_carry(lane, &[0u8; 8]);
-
             }
             ZiskOp::OR => {
                 // Set first byte
@@ -738,7 +725,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
                 // No carry
                 row.set_all_carry(lane, &[0u8; 8]);
-
             }
             ZiskOp::XOR => {
                 // Set first byte
@@ -755,7 +741,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
                 // No carry
                 row.set_all_carry(lane, &[0u8; 8]);
-
             }
             ZiskOp::ANDN | ZiskOp::ORN | ZiskOp::XNOR | ZiskOp::BREV8 => {
                 // Bitwise ops with no carry, one table row per byte (like AND/OR/XOR).
@@ -774,7 +759,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
                 // No carry
                 row.set_all_carry(lane, &[0u8; 8]);
-
             }
             ZiskOp::SH1ADD | ZiskOp::SH2ADD | ZiskOp::SH3ADD => {
                 // Zba shift-and-add: c = b + (a << shift), computed as an addition of the shifted
@@ -803,7 +787,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     cout = (result >> 8) + (a_byte >> (8 - shift));
                     cin = if i == carry_byte { 0 } else { cout };
                     carry[i] = cin as u8;
-
                 }
                 row.set_all_carry(lane, &carry);
             }

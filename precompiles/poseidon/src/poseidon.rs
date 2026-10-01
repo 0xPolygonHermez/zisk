@@ -97,7 +97,6 @@ impl<F: PrimeField64> PoseidonSM<F> {
             trace[r].set_all_chunks(&chunks);
             trace[r].set_all_t_inv(&t_inv);
             trace[r].set_sel_poseidon1(sel_poseidon1);
-
         }
 
         if !is_active {

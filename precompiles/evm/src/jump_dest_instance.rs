@@ -36,12 +36,9 @@ use zisk_common::{
     StatsType,
 };
 use zisk_pil::{
-    JumpDestAirValues, JumpDestTrace, JumpDestTraceRow, JumpDestTraceRowOps,
-    JumpDestTraceRowPacked,
+    JumpDestAirValues, JumpDestTrace, JumpDestTraceRow, JumpDestTraceRowOps, JumpDestTraceRowPacked,
 };
-use zisk_precomp_helpers::{
-    expand_jump_dest_ops, JumpDestOp,
-};
+use zisk_precomp_helpers::{expand_jump_dest_ops, JumpDestOp};
 
 use crate::{
     JumpDestCheckPoint, JumpDestCollector, JumpDestInput, JUMP_DEST_OPS_X_ROW,
@@ -299,7 +296,6 @@ impl<F: PrimeField64> JumpDestSM<F> {
         }
 
         Self::fill_seq_start(rows, previous.seq_end);
-
 
         // `count` is proved non-negative by splitting the segment's last value
         // into two 16-bit chunks.

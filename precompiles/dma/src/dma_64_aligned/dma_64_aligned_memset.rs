@@ -30,11 +30,7 @@ impl<F: PrimeField64> Dma64AlignedMemSetSM<F> {
     /// # Returns
     /// A new `Dma64AlignedMemSetSM` instance.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            op_x_rows: DMA_64_ALIGNED_MEMSET_OPS_BY_ROW,
-            _phantom: PhantomData,
-
-        })
+        Arc::new(Self { op_x_rows: DMA_64_ALIGNED_MEMSET_OPS_BY_ROW, _phantom: PhantomData })
     }
 
     /// Processes a slice of operation data, updating the trace.
@@ -166,11 +162,8 @@ impl<F: PrimeField64> Dma64AlignedMemSetSM<F> {
 
         let mut row_offset = 0;
         for input in flat_inputs.iter() {
-            let rows_used = self.process_input(
-                input,
-                &mut trace_rows[row_offset..],
-                &mut air_values,
-            );
+            let rows_used =
+                self.process_input(input, &mut trace_rows[row_offset..], &mut air_values);
             row_offset += rows_used;
         }
 
@@ -193,7 +186,6 @@ impl<F: PrimeField64> Dma64AlignedMemSetSM<F> {
         }
 
         // add range check of count to check that it's a positive 32-bits number
-
 
         let segment_id = segment_id.into();
         air_values.segment_id = F::from_usize(segment_id);

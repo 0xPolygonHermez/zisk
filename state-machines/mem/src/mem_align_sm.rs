@@ -112,7 +112,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let (next_pc, _op_size) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneRead, offset, width);
 
-
                 let mut read_row: R = Default::default();
                 read_row.set_step(step);
                 read_row.set_addr(addr_read);
@@ -231,7 +230,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 // Get the next pc
                 let (next_pc, _op_size) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneWrite, offset, width);
-
 
                 // Compute the write value
                 let value_write = {
@@ -408,7 +406,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 // Get the next pc
                 let (next_pc, _op_size) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoReads, offset, width);
-
 
                 let mut first_read_row: R = Default::default();
                 first_read_row.set_step(step);
@@ -608,7 +605,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 // Get the next pc
                 let (next_pc, _op_size) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoWrites, offset, width);
-
 
                 // RWVWR
                 let mut first_read_row: R = Default::default();
