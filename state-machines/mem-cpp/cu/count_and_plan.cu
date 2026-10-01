@@ -1274,8 +1274,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     auto fixed_bytes = [&]() -> size_t {
         size_t cur = 0;
         auto take = [&](size_t b) { cur = (cur + 255) & ~(size_t)255; cur += b; };
-        take(((size_t)N_ADDR + (size_t)max_active_ * MEM_OFFSETS_PAGE_SIZE) * 4);  // d_histogram_ (also backs d_pages_dense_)
-        take(((size_t)N_ADDR + 1) * 4);
+        take(((size_t)N_ADDR + 1) * 4);              // d_histogram_, scanned in place into the prefix
         take(d_temp_hist_bytes_);
         take((size_t)max_active_ * 4);
         take((size_t)max_active_ * 4);
@@ -1286,7 +1285,6 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         take((size_t)max_active_ * 4);               // d_inst_base_pos_
         take(max_total_pages * 4);                   // d_page_starts_
         take(max_total_pages * 4);                   // d_page_single_
-        // d_pages_dense_ aliases d_histogram_ (counted above) — no take
         take((size_t)max_active_ * 4);               // d_present_counters_
         take((size_t)max_active_ * 4);               // d_page_meta_starts_
         take((size_t)max_active_ * 4);               // d_pages_dense_starts_
@@ -1363,8 +1361,9 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         return p;
     };
 
-    d_histogram_              = (uint32_t*)take(((size_t)N_ADDR + (size_t)max_active_ * MEM_OFFSETS_PAGE_SIZE) * 4);
-    d_prefix_                 = (uint32_t*)take(((size_t)N_ADDR + 1) * 4);
+    // The prefix scan runs in place: after prepare_global_() the histogram holds the prefix.
+    d_histogram_              = (uint32_t*)take(((size_t)N_ADDR + 1) * 4);
+    d_prefix_                 = d_histogram_;
     d_temp_hist_              = (void*)    take(d_temp_hist_bytes_);
     d_active_ids_             = (uint32_t*)take((size_t)max_active_ * 4);
     d_active_first_           = (uint32_t*)take((size_t)max_active_ * 4);
@@ -1375,16 +1374,8 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     d_inst_base_pos_          = (uint32_t*)take((size_t)max_active_ * 4);
     d_page_starts_            = (uint32_t*)take(max_total_pages * 4);
     d_page_single_            = (uint32_t*)take(max_total_pages * 4);
-    // d_pages_dense_ aliases d_histogram_. Lifetimes are disjoint: the last
-    // read of d_histogram_ is the histogram->prefix scan in prepare_global_()
-    // (followed by a synchronous D2H, so the scan is complete); the only
-    // writer of d_pages_dense_, compact_paged_kernel, runs strictly later in
-    // process_worker_(). reset() re-zeros the histogram only at the next
-    // block boundary, after this block's compaction D2H has finished. No
-    // concurrent reader (unlike d_prefix_, which build_metas_kernel reads on
-    // a separate stream). d_pages_dense_ holds one page-rounded range per instance, so
-    // d_histogram_ is allocated N_ADDR plus one page per instance to cover it.
-    d_pages_dense_            = d_histogram_;
+    // d_pages_dense_ is carved from the dynamic region after the plan (process_worker_).
+    d_pages_dense_            = nullptr;
     d_present_counters_       = (uint32_t*)take((size_t)max_active_ * 4);
     d_page_meta_starts_       = (uint32_t*)take((size_t)max_active_ * 4);
     d_pages_dense_starts_     = (uint32_t*)take((size_t)max_active_ * 4);
@@ -1842,7 +1833,7 @@ void CountAndPlan::reset() {
     ram_n_sorted_           = 0;
     ram_unresolved_         = 0;
 
-    if (d_histogram_)                CUDA_CHECK(cudaMemset(d_histogram_, 0, (size_t)N_ADDR * 4));
+    if (d_histogram_)                CUDA_CHECK(cudaMemset(d_histogram_, 0, ((size_t)N_ADDR + 1) * 4));
     if (d_max_compact_)              CUDA_CHECK(cudaMemset(d_max_compact_, 0, 3 * 4));
     if (d_ram_nwrites_)              CUDA_CHECK(cudaMemset(d_ram_nwrites_, 0, 8));
     if (d_invalid_mode_flag_)        CUDA_CHECK(cudaMemset(d_invalid_mode_flag_, 0, 8));
@@ -2119,6 +2110,24 @@ void CountAndPlan::process_worker_() {
         h_pages_dense_dev_prefix[i] = total_pages;  // worst-case device reservation: np pages per instance
         total_pages += np;
         if (np > max_pages_per_inst) max_pages_per_inst = np;
+    }
+
+    // The dense pages take the dynamic region above the ops pool, which the counting kernel
+    // above was the last to read, up to the retained accesses.
+    {
+        const size_t pages_bytes = (size_t)total_pages * MEM_OFFSETS_PAGE_SIZE * 4;
+        const size_t pages_off =
+            (pool_end_bytes(pool_cursor_u32_.load(std::memory_order_relaxed)) + 255) & ~(size_t)255;
+        if (pages_off + pages_bytes > ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed))) {
+            fprintf(stderr, "CountAndPlan FATAL: no room for %zu MB of offset pages between the ops pool "
+                            "and the retained RAM accesses\n", pages_bytes >> 20);
+            std::exit(1);
+        }
+        d_pages_dense_ = (uint32_t*)(arena_ + pages_off);
+        fprintf(stderr, "[mops] block: %u chunks, ops pool %zu MB, retained %zu accesses (%zu MB), offset pages %zu MB\n",
+                n_chunks_, pool_end_bytes(pool_cursor_u32_.load(std::memory_order_relaxed)) - cursor_ >> 20,
+                ram_cursor_.load(std::memory_order_relaxed),
+                ram_cursor_.load(std::memory_order_relaxed) * RAM_RECORD_WORDS * 4 >> 20, pages_bytes >> 20);
     }
 
     // Push prefix sums to device, zero the per-instance present counters.

@@ -295,8 +295,11 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
         out->status = -3;
         return false;
     }
-    fprintf(stderr, "ram_fill: %zu accesses, scratch %zu MB (%.1f bytes per access)\n", n,
-            (size_t)(cur - arena_) >> 20, (double)(cur - arena_) / (double)n);
+    fprintf(stderr, "ram_fill: %zu accesses, scratch %zu MB: %zu MB per access (%.1f bytes each) + fixed "
+                    "propagation %zu MB, rows %zu MB, cub %zu MB\n",
+            n, (size_t)(cur - arena_) >> 20, n * 28 >> 20, 28.0,
+            (size_t)(2 * RF_PROP_BLOCK * sizeof(Merge) + RF_PROP_BLOCK * 4) >> 20,
+            (size_t)n_rows * mem_words_per_row_ * 8 >> 20, t_bytes >> 20);
     RF_TRY(cudaMemcpy(&ram_writes_, d_ram_nwrites_, 8, cudaMemcpyDeviceToHost));
     RF_TRY(cudaEventRecord(ev[4]));
 
