@@ -33,6 +33,17 @@ ziskemu --elf target/wasm32-wasip1/release/wasm-fibonacci.wasm -i /tmp/n.bin
 # -> fib(90) = 2880067194370816120
 ```
 
+## Zisk ROM / assembly output
+
+`wasm2zisk` is the WebAssembly counterpart of `riscv2zisk`: it transpiles a `.wasm` guest and
+saves the ROM as an x86-64 NASM file for the given generation method (`--gen=0` fast,
+`1` minimal traces, `2` ROM histogram, `7` memory ops).
+
+```bash
+cargo run --release -p zisk-transpiler-wasm --bin wasm2zisk -- \
+    target/wasm32-wasip1/release/wasm-fibonacci.wasm /tmp/fib.asm --gen=0
+```
+
 ## Testing
 
 The emulator integration test `emulator/tests/wasm_example.rs` builds this crate for
