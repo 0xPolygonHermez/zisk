@@ -77,42 +77,6 @@
 // write_flag (1)    4
 // clear_flag (1)    5
 
-// ALIGNED WRITE BLOCKS FLAGS
-//                bits
-// bytes(4)        0-3   (14 read block/15 write block)
-// word_count(28) 4-31   2^28 * 2^3 = 2^31 bytes = 2GB MAX_MEMCPY_SIZE
-
-
-#define MOPS_WRITE_FLAG 0x10
-#define MOPS_WRITE_BYTE_CLEAR_FLAG 0x20
-
-#define MOPS_READ_8   0x08
-#define MOPS_READ_4   0x04
-#define MOPS_READ_2   0x02
-#define MOPS_READ_1   0x01
-
-#define MOPS_WRITE_8  0x18
-#define MOPS_WRITE_4  0x14
-#define MOPS_WRITE_2  0x12
-#define MOPS_WRITE_1  0x11
-
-#define MOPS_CWRITE_1 0x31
-
-#define MOPS_BLOCK_READ 0x0A
-#define MOPS_BLOCK_WRITE 0x0B
-#define MOPS_ALIGNED_READ 0x0C
-#define MOPS_ALIGNED_WRITE 0x0D
-#define MOPS_ALIGNED_BLOCK_READ 0x0E
-#define MOPS_ALIGNED_BLOCK_WRITE 0x0F
-// Memory-ops stream: tagged 8-byte words, bit 63 set on header words and clear on payload words.
-// Header: address (bits 0-31), mode (32-37), step field `(step_in_chunk << 2) | slot` (38-57).
-// A read is the header alone; a write adds the value with its bit 63 moved to header bit 62; a
-// block read (word count from bit 36) adds the step field as payload.
-// Value block: aligned address | 0x07 | words (6 bits at 36) | write step field (20 bits at 42);
-// then a word of the values' bits 63 and the values with bit 63 cleared.
-#define MOPS_BLOCK_VALUES 0x07
-#define MOPS_VALUES_STEP_SHIFT 42
-
-#define MOPS_BLOCK_COUNT_SBITS      4
+#include "mops_format.hpp"
 
 #endif

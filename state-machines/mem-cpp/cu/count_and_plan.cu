@@ -3,6 +3,7 @@
 // =====================================================================
 
 #include "count_and_plan.cuh"
+#include "../cpp/mops_format.hpp"
 
 #include <cub/device/device_radix_sort.cuh>
 #include <cub/device/device_run_length_encode.cuh>
@@ -19,39 +20,6 @@
 // Preprocessing constants
 // =====================================================================
 
-#define MOPS_WRITE_FLAG               0x10
-#define MOPS_WRITE_BYTE_CLEAR_FLAG    0x20
-
-#define MOPS_READ_8                   0x08
-#define MOPS_READ_4                   0x04
-#define MOPS_READ_2                   0x02
-#define MOPS_READ_1                   0x01
-
-#define MOPS_WRITE_8                  0x18
-#define MOPS_WRITE_4                  0x14
-#define MOPS_WRITE_2                  0x12
-#define MOPS_WRITE_1                  0x11
-
-#define MOPS_CWRITE_1                 0x31
-
-#define MOPS_BLOCK_READ               0x0A
-#define MOPS_BLOCK_WRITE              0x0B
-#define MOPS_ALIGNED_READ             0x0C
-#define MOPS_ALIGNED_WRITE            0x0D
-#define MOPS_ALIGNED_BLOCK_READ       0x0E
-#define MOPS_ALIGNED_BLOCK_WRITE      0x0F
-#define MOPS_BLOCK_VALUES             0x07
-#define MOPS_VALUES_STEP_SHIFT        42
-
-// Words of the record whose header word is `hdr`.
-__host__ __device__ __forceinline__ uint32_t mops_record_len(uint64_t hdr) {
-    const uint32_t mode = (uint32_t)(hdr >> 32) & 0x3Fu;
-    const uint32_t low  = mode & 0x0Fu;
-    if (low == (MOPS_ALIGNED_READ & 0x0Fu)) return 1;
-    if ((mode & 0x10u) == 0 && (low == 1u || low == 2u || low == 4u || low == 8u)) return 1;
-    if (low == MOPS_BLOCK_VALUES) return 2u + (uint32_t)((hdr >> 36) & 63u);
-    return 2;
-}
 // Decodes the record starting at word `start`. `flags` loses the tag and the relocated top bit;
 // the payload gets the value's bit 63 back (a no-op for step-field payloads).
 __host__ __device__ __forceinline__ MemOp load_record(const uint64_t* words, uint32_t start) {
@@ -63,13 +31,12 @@ __host__ __device__ __forceinline__ MemOp load_record(const uint64_t* words, uin
     return op;
 }
 
-#define MOPS_BLOCK_COUNT_SBITS        4
-
 // Device fault word, checked once per block before the prefix scan: bits in word 0, the compact
 // address of a counter overflow in word 1.
 constexpr uint32_t INVALID_MODE     = 1u;   // unrecognised record mode
 constexpr uint32_t INVALID_ADDRESS  = 2u;   // access outside the memory map
 constexpr uint32_t COUNTER_OVERFLOW = 4u;   // more than 2^32 - 1 rows at one address
+constexpr uint32_t LIGHT_RECORD     = 8u;   // a record of the light form (no value or step): no device witness
 
 __device__ __forceinline__ void hist_add(uint32_t* counter, uint32_t n, uint32_t compact,
                                          uint32_t* d_fault) {
@@ -302,7 +269,7 @@ void emit_one_w(uint32_t aligned, PotentialEmit* out, uint32_t step, uint32_t ki
 // write, whose value carries the bytes already shifted to `off`.
 __device__ __forceinline__
 void emit_pair_rw(uint32_t aligned, PotentialEmit* out, uint32_t step, uint32_t off, uint32_t width,
-                  uint64_t value_shifted) {
+                  uint64_t value_shifted, uint32_t kind_w) {
     const uint32_t ram_bit = is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u;
     out[0].aligned_addr_packed = aligned | ram_bit;                       // R
     out[0].meta  = pot_meta(POT_KIND_READ, 0, 0, step);
@@ -310,19 +277,19 @@ void emit_pair_rw(uint32_t aligned, PotentialEmit* out, uint32_t step, uint32_t 
     // MemAlign places the aligned write one mem step after its read (`get_write_step`); the step
     // field's low bits are the slot, so `+ 1` is that step.
     out[1].aligned_addr_packed = aligned | ram_bit | POT_FLAG_KIND_W;     // W
-    out[1].meta  = pot_meta(POT_KIND_PARTIAL, off, width, step + 1);
+    out[1].meta  = pot_meta(kind_w, off, width, step + 1);
     out[1].value = value_shifted;
 }
 
 // A store of `width` bytes at `addr`: the first word takes bytes [off, 8), a second word the rest.
 __device__ __forceinline__
-void emit_store(uint32_t addr, uint32_t width, PotentialEmit* out, uint32_t step, uint64_t v) {
+void emit_store(uint32_t addr, uint32_t width, PotentialEmit* out, uint32_t step, uint64_t v, uint32_t kind_w) {
     const uint32_t aligned = addr & ZISK_ALIGN_MASK;
     const uint32_t off     = addr & 0x07u;
     const uint32_t first_w = (8u - off) < width ? (8u - off) : width;
-    emit_pair_rw(aligned, out, step, off, first_w, v << (8u * off));
+    emit_pair_rw(aligned, out, step, off, first_w, v << (8u * off), kind_w);
     if (first_w < width) {
-        emit_pair_rw(aligned + 8, out + 2, step, 0, width - first_w, v >> (8u * (8u - off)));
+        emit_pair_rw(aligned + 8, out + 2, step, 0, width - first_w, v >> (8u * (8u - off)), kind_w);
     }
 }
 
@@ -333,28 +300,32 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uin
     const uint8_t  mode        = op.flags & 0x3Fu;
     const uint32_t off_in_word = addr & 0x07u;
     const uint32_t step        = mops_step_field(op, false);
+    // A single write without its value (header bit MOPS_NO_VALUE_BIT) is a write of unknown value.
+    const bool     novalue     = ((op.flags >> (MOPS_NO_VALUE_BIT - 32)) & 1u) != 0;
+    const uint32_t kind_full   = novalue ? POT_KIND_UNKNOWN : POT_KIND_WRITE;
+    const uint32_t kind_part   = novalue ? POT_KIND_UNKNOWN : POT_KIND_PARTIAL;
     switch (mode) {
         case MOPS_READ_1:                                         emit_one_r(aligned, out, step); break;
-        case MOPS_CWRITE_1: case MOPS_WRITE_1:                    emit_store(addr, 1, out, step, op.payload); break;
+        case MOPS_CWRITE_1: case MOPS_WRITE_1:                    emit_store(addr, 1, out, step, op.payload, kind_part); break;
         case MOPS_READ_2:
             emit_one_r(aligned, out, step);
             if (off_in_word > 6) emit_one_r(aligned + 8, out + 1, step);
             break;
-        case MOPS_WRITE_2:  emit_store(addr, 2, out, step, op.payload); break;
+        case MOPS_WRITE_2:  emit_store(addr, 2, out, step, op.payload, kind_part); break;
         case MOPS_READ_4:
             emit_one_r(aligned, out, step);
             if (off_in_word > 4) emit_one_r(aligned + 8, out + 1, step);
             break;
-        case MOPS_WRITE_4:  emit_store(addr, 4, out, step, op.payload); break;
+        case MOPS_WRITE_4:  emit_store(addr, 4, out, step, op.payload, kind_part); break;
         case MOPS_READ_8:
             emit_one_r(aligned, out, step);
             if (off_in_word > 0) emit_one_r(aligned + 8, out + 1, step);
             break;
         case MOPS_WRITE_8:
             if (addr == aligned) {
-                emit_one_w(aligned, out, step, POT_KIND_WRITE, op.payload);
+                emit_one_w(aligned, out, step, kind_full, op.payload);
             } else {
-                emit_store(addr, 8, out, step, op.payload);
+                emit_store(addr, 8, out, step, op.payload, kind_part);
             }
             break;
         case MOPS_ALIGNED_READ  + 0x00: case MOPS_ALIGNED_READ  + 0x10:
@@ -362,7 +333,7 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uin
             emit_one_r(addr, out, step); break;
         case MOPS_ALIGNED_WRITE + 0x00: case MOPS_ALIGNED_WRITE + 0x10:
         case MOPS_ALIGNED_WRITE + 0x20: case MOPS_ALIGNED_WRITE + 0x30:
-            emit_one_w(addr, out, step, POT_KIND_WRITE, op.payload); break;
+            emit_one_w(addr, out, step, kind_full, op.payload); break;
         case MOPS_BLOCK_READ        + 0x00: case MOPS_BLOCK_READ        + 0x10:
         case MOPS_BLOCK_READ        + 0x20: case MOPS_BLOCK_READ        + 0x30:
         case MOPS_ALIGNED_BLOCK_READ+ 0x00: case MOPS_ALIGNED_BLOCK_READ+ 0x10:
@@ -449,6 +420,7 @@ void decode_count_kernel(const uint64_t* __restrict__ words,
     if (i < n_memops && i >= *n_records) d_counts[i] = 0;   // beyond the records: the scan sees zeros
     if (i < *n_records) {
         MemOp op = load_record(words, rec_start[i]);
+        if (mops_record_is_light(words[rec_start[i]])) atomicOr(d_invalid_mode_flag, LIGHT_RECORD);
         if (decode(op, &d_counts[i], my, d_invalid_mode_flag)) {
             const uint8_t mode = op.flags & 0x3Fu;
             const uint8_t base = mode & 0x0Fu;
@@ -1530,8 +1502,43 @@ bool CountAndPlan::add_chunk(const uint64_t* words, uint32_t n) {
     return add_chunk_core_(words, n, c);
 }
 
+// The chunk rewritten in the light form, one word per record: steps zeroed, writes without
+// values, block records without payload, value blocks as block writes. Test support
+// (ZISK_MOPS_TEST_LIGHT_STREAM) for the form the light emulator emits.
+static std::vector<uint64_t> strip_values(const uint64_t* words, uint32_t n) {
+    std::vector<uint64_t> out;
+    out.reserve(n);
+    const uint64_t step_bits = 0xFFFFFull << 38;
+    for (uint32_t k = 0; k < n;) {
+        const uint64_t hdr = words[k];
+        const uint32_t len = mops_record_len(hdr);
+        const uint32_t mode = (uint32_t)(hdr >> 32) & 0x3Fu, low = mode & 0x0Fu;
+        const bool single = (low == 1 || low == 2 || low == 4 || low == 8);
+        if (low == MOPS_BLOCK_VALUES) {
+            const uint64_t count = (hdr >> 36) & 63u;
+            out.push_back((hdr & 0xFFFFFFFFull) | ((uint64_t)MOPS_ALIGNED_BLOCK_WRITE << 32) | (count << 36)
+                          | (1ull << MOPS_NO_PAYLOAD_BIT) | (1ull << 63));
+        } else if (low == MOPS_ALIGNED_READ || (single && (mode & MOPS_WRITE_FLAG) == 0)) {
+            out.push_back(hdr & ~step_bits);                                                      // read
+        } else if (single || low == MOPS_ALIGNED_WRITE) {
+            out.push_back(((hdr | (1ull << MOPS_NO_VALUE_BIT)) & ~(1ull << 62)) & ~step_bits);    // write
+        } else {
+            out.push_back(hdr | (1ull << MOPS_NO_PAYLOAD_BIT));                                  // block read or write
+        }
+        k += len;
+    }
+    return out;
+}
+
 bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c) {
     const int s = c % N_STREAMS;
+    static const bool light_stream = std::getenv("ZISK_MOPS_TEST_LIGHT_STREAM") != nullptr;
+    std::vector<uint64_t> light;
+    if (light_stream) {
+        light = strip_values(words, n);
+        words = light.data();
+        n = (uint32_t)light.size();
+    }
 
     // Host walk: potentials and RAM accesses per record, and the cuts into pieces of whole records.
     struct Piece { uint32_t w0, nw, pot, ram; };
@@ -1612,8 +1619,11 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
         return true;
     }
     uint32_t* d_chunk_out = d_ops_pool_ + base;
-    if (pieces.size() == 1)
-        return add_piece_(words, n, c, s, (uint32_t)pot_total, ram_total, d_chunk_out, 0, false, &h_n_emits_all_[c]);
+    if (pieces.size() == 1) {
+        const bool ok = add_piece_(words, n, c, s, (uint32_t)pot_total, ram_total, d_chunk_out, 0, false, &h_n_emits_all_[c]);
+        if (light_stream) CUDA_CHECK(cudaStreamSynchronize(streams_[s]));   // the rewritten words die here
+        return ok;
+    }
 
     // Pieces run in order on the chunk's stream; each hands its emit count and the pairing state
     // of the addresses it touched to the next.
@@ -1854,6 +1864,14 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
 
         uint32_t h_fault[2] = {0, 0};
         CUDA_CHECK(cudaMemcpy(h_fault, d_invalid_mode_flag_, 8, cudaMemcpyDeviceToHost));
+        if (h_fault[0] & LIGHT_RECORD) {
+            // The stream is in the light form (no values, no steps): the plan stands, the device
+            // witness does not.
+            if (ram_retention_enabled_.exchange(false))
+                fprintf(stderr, "CountAndPlan: the stream is in the light form (no values or steps); no device "
+                                "RAM witness for this block\n");
+            h_fault[0] &= ~LIGHT_RECORD;
+        }
         if (h_fault[0] & COUNTER_OVERFLOW) {
             fprintf(stderr, "CountAndPlan::run FATAL: more than 2^32 - 1 rows at address 0x%08x\n",
                     expand_addr(h_fault[1]));
@@ -1911,7 +1929,6 @@ void CountAndPlan::reset() {
     ram_tables_ready_       = false;
     ram_results_.clear();
     ram_n_lanes_            = 0;
-    ram_unresolved_         = 0;
 
     if (d_histogram_)                CUDA_CHECK(cudaMemset(d_histogram_, 0, ((size_t)N_ADDR + 1) * 4));
     if (d_max_compact_)              CUDA_CHECK(cudaMemset(d_max_compact_, 0, 3 * 4));
