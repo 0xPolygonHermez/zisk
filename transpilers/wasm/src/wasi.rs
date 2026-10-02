@@ -24,6 +24,12 @@ use zisk_core::{ZiskInstBuilder, INPUT_ADDR, OUTPUT_ADDR, ROM_EXIT, UART_ADDR};
 const ERRNO_SUCCESS: u64 = 0;
 const ERRNO_BADF: u64 = 8;
 const ERRNO_FAULT: u64 = 21;
+const ERRNO_NOSYS: u64 = 52;
+
+const INPUT_LEN_ADDR: u64 = INPUT_ADDR + 8;
+const INPUT_DATA_ADDR: u64 = INPUT_ADDR + 16;
+
+const CLOCK_QUANTUM_NS: u64 = 1_000_000;
 
 pub const RNG_SEED: u64 = 0x1234_5678_9abc_def0;
 const RNG_WARNING: &str = "WARNING: Using insecure random number generator.\n";
@@ -299,7 +305,7 @@ fn body_fd_read(code: &mut Code, fault: LabelId, done: LabelId) {
     // Input layout (ziskos convention): an 8-byte length prefix at INPUT_ADDR+8, data at
     // INPUT_ADDR+16. (The emulator writes a zero "free input" word at INPUT_ADDR itself.)
     // R_A = input length, R_B = cursor, R_C = total read
-    code.load_abs_to_reg(R_A, INPUT_ADDR + 8); // input length (u64)
+    code.load_abs_to_reg(R_A, INPUT_LEN_ADDR); // input length (u64)
     code.load_abs_to_reg(R_B, WASM_STDIN_POS_ADDR); // cursor
     code.load_imm_to_reg(R_C, 0);
 
@@ -325,7 +331,7 @@ fn body_fd_read(code: &mut Code, fault: LabelId, done: LabelId) {
                                                             // byte = mem[INPUT_ADDR + 16 + cursor]
     let breg = 23u64;
     code.mov_reg(breg, R_B);
-    code.alu_ri("add", breg, breg, (INPUT_ADDR + 16) as i64);
+    code.alu_ri("add", breg, breg, INPUT_DATA_ADDR as i64);
     let tmp = 24u64;
     code.load_mem_to_reg("copyb", tmp, breg, 0, 1);
     code.store_reg_to_mem(R_G, 0, tmp, 1);
@@ -363,7 +369,7 @@ fn expected_signature(name: &str) -> Option<(&'static [ValKind], &'static [ValKi
     const ERRNO: &[ValKind] = &[I32];
     Some(match name {
         "proc_exit" => (&[I32], &[]),
-        "fd_write" | "fd_read" => (&[I32, I32, I32, I32], ERRNO),
+        "fd_write" | "fd_read" | "poll_oneoff" => (&[I32, I32, I32, I32], ERRNO),
         "args_sizes_get" | "args_get" | "environ_sizes_get" | "environ_get" | "random_get"
         | "fd_fdstat_get" | "fd_prestat_get" | "fd_filestat_get" => (&[I32, I32], ERRNO),
         "clock_time_get" => (&[I32, I64, I32], ERRNO),
@@ -377,6 +383,14 @@ fn expected_signature(name: &str) -> Option<(&'static [ValKind], &'static [ValKi
 
 fn check_signature(name: &str, declared: &FuncSig) -> Result<(), Box<dyn Error>> {
     let Some((params, results)) = expected_signature(name) else {
+        if declared.results != [ValKind::I32] {
+            return Err(format!(
+                "wasm: import wasi_snapshot_preview1::{name} is declared as {:?} -> {:?}, expected \
+                 an errno (i32) result",
+                declared.params, declared.results
+            )
+            .into());
+        }
         return Ok(());
     };
     if declared.params != params || declared.results != results {
@@ -405,7 +419,14 @@ pub fn build_wasi_stub(module: &WasmModule, import_index: usize) -> Result<Code,
         "proc_exit" => {
             // Terminates the program; does not return.
             let mut code = Code::new();
+            let failed = code.new_label();
+            code.load_slot_to_reg(R_A, local_offset(0));
+            code.alu_ri("and", R_A, R_A, 0xFFFF_FFFF);
+            code.cmp_imm_branch("eq", R_A, 0, failed, false);
             emit_pubout_exit(&mut code);
+            code.bind(failed);
+            emit_console_str(&mut code, "wasm: guest exited with a non-zero status\n");
+            code.trap();
             code
         }
         "fd_write" => wrap_stub(body_fd_write),
@@ -420,8 +441,17 @@ pub fn build_wasi_stub(module: &WasmModule, import_index: usize) -> Result<Code,
             // report 0. locals: 0=id, 1=precision, 2=time_ptr
             code.load_slot_to_reg(R_A, local_offset(2));
             checked_linear(code, R_A, Len::Imm(8), fault);
-            code.load_imm_to_reg(R_B, 0);
+            code.load_abs_to_reg(R_B, WASM_CLOCK_ADDR);
+            code.alu_ri("add", R_B, R_B, CLOCK_QUANTUM_NS as i64);
+            code.store_reg_to_abs(WASM_CLOCK_ADDR, R_B, 8);
             code.store_reg_to_mem(R_A, 0, R_B, 8);
+            code.load_imm_to_reg(REG_RET, ERRNO_SUCCESS);
+        }),
+        "poll_oneoff" => wrap_stub(|code, fault, _done| {
+            code.load_slot_to_reg(R_A, local_offset(3));
+            checked_linear(code, R_A, Len::Imm(4), fault);
+            code.load_slot_to_reg(R_B, local_offset(2));
+            code.store_reg_to_mem(R_A, 0, R_B, 4);
             code.load_imm_to_reg(REG_RET, ERRNO_SUCCESS);
         }),
         // The runtime queries stdout/stderr/stdin via fd_fdstat_get to set up buffering; report a
@@ -449,11 +479,9 @@ pub fn build_wasi_stub(module: &WasmModule, import_index: usize) -> Result<Code,
         "sched_yield" => wrap_stub(|code, _fault, _done| {
             code.load_imm_to_reg(REG_RET, ERRNO_SUCCESS);
         }),
-        other => {
-            return Err(
-                format!("wasm: unsupported wasi import 'wasi_snapshot_preview1::{other}'").into()
-            );
-        }
+        _ => wrap_stub(|code, _fault, _done| {
+            code.load_imm_to_reg(REG_RET, ERRNO_NOSYS);
+        }),
     };
     Ok(code)
 }

@@ -90,6 +90,7 @@ pub const WASM_MEM_PAGES_ADDR: u64 = WASM_CTRL_ADDR;
 pub const WASM_STDIN_POS_ADDR: u64 = WASM_CTRL_ADDR + 8;
 /// Number of bytes written to the public output so far, used by `fd_write` on stdout.
 pub const WASM_STDOUT_LEN_ADDR: u64 = WASM_CTRL_ADDR + 16;
+pub const WASM_CLOCK_ADDR: u64 = WASM_CTRL_ADDR + 24;
 /// State of the deterministic generator behind `random_get` (see `wasi.rs`).
 pub const WASM_RNG_STATE_ADDR: u64 = WASM_CTRL_ADDR + 32;
 /// Non-zero once the insecure-randomness warning has been printed.

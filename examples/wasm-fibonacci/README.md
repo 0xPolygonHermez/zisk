@@ -61,3 +61,6 @@ cargo build --release -p ziskemu --features float
 GOOS=wasip1 GOARCH=wasm go build -o /tmp/guest.wasm .
 ziskemu --elf /tmp/guest.wasm -i /tmp/input.bin   # 8-byte LE length, data, zero-padded to 8
 ```
+
+A non-zero WASI exit status halts the emulation with its error flag set (`ziskemu` reports
+`finished with error at step=… pc=…`).
