@@ -40,4 +40,10 @@ $(OUT_DIR)/%.o: %.cpp $(HEADERS)
 clean:
 	rm -f *.o build/$(TARGET)
 
-.PHONY: all clean
+TEST_DIR := $(or $(OUT_DIR),build)
+test: test/test_mops_format.cpp mops_format.hpp mem_types.hpp mem_config.hpp
+	@mkdir -p $(TEST_DIR)
+	$(CXX) -std=c++17 -O2 -I. test/test_mops_format.cpp -o $(TEST_DIR)/test_mops_format
+	$(TEST_DIR)/test_mops_format
+
+.PHONY: all clean test
