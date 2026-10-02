@@ -21,7 +21,7 @@ fn main() {
         for (i, arg) in args.iter().enumerate() {
             eprintln!("Argument {i}: {arg}");
         }
-        eprintln!("Usage: wasm2zisk <wasm_file> <i86-64_asm_file> <generation_method>");
+        eprintln!("Usage: wasm2zisk <wasm_file> <x86-64_asm_file> <generation_method>");
         process::exit(1);
     }
 
