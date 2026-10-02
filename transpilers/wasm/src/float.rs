@@ -395,8 +395,10 @@ impl<'a, 'b> FuncGen<'a, 'b> {
     }
 
     /// Integer -> float.  i32 operands are widened first (they are canonical sign-extended, so an
-    /// unsigned one just needs masking), then converted with the 64-bit `fcvt.<p>.l[u]`, which is
-    /// exact for every 32-bit input.
+    /// unsigned one just needs masking), then converted with the 64-bit `fcvt.<p>.l[u]`.  The
+    /// widening is exact, so the library sees the same integer the 32-bit `fcvt.<p>.w[u]` would
+    /// and performs the same single correctly-rounded conversion — for an f32 target that rounding
+    /// is inherent (e.g. 16777217 -> 16777216), not an artifact of the widening.
     fn f_from_int(&mut self, prec: Prec, ty: IntTy, signed: bool) {
         let a = self.slot(self.depth - 1);
         self.code.load_slot_to_reg(REG_T0, a);
