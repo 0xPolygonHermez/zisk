@@ -3,9 +3,9 @@
 # pow): modexp_vec.py (up to 64-byte moduli, edge cases) and modexp_vec_long.py
 # (49..1025-byte moduli, odd and even).
 source "$(dirname "$0")/env.sh"
-python3 "$BENCH/modexp_vec.py" "$WORK/mx_short.c" >/dev/null
-python3 "$BENCH/modexp_vec_long.py" "[49,63,64,65,96,97,128,200,256,257,384,512,779,1000,1024]" "$WORK/mx_long.c" >/dev/null
-python3 "$BENCH/modexp_vec_long.py" "[1025]" "$WORK/mx_1025.c" >/dev/null
+python3 "$BENCH/modexp_vec.py" "$WORK/mx_short.c" >/dev/null || exit 1
+python3 "$BENCH/modexp_vec_long.py" "[49,63,64,65,96,97,128,200,256,257,384,512,779,1000,1024]" "$WORK/mx_long.c" >/dev/null || exit 1
+python3 "$BENCH/modexp_vec_long.py" "[1025]" "$WORK/mx_1025.c" >/dev/null || exit 1
 fail=0
 for g in mx_short mx_long mx_1025; do
   n=$(grep -c 'zkvm_modexp(' "$WORK/$g.c")
