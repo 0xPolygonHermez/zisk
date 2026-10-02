@@ -102,12 +102,10 @@ macro_rules! register_precompiles {
             /// Canonical default precompile set — one entry per registered
             /// variant. Macro-generated from the registration list; mirrors
             /// `BuiltinSMs::all` on the built-in side.
-            pub(crate) fn all(
-                std: ::std::sync::Arc<::pil2_std_lib::Std<F>>,
-            ) -> ::std::vec::Vec<(&'static [::std::primitive::usize], Self)> {
+            pub(crate) fn all() -> ::std::vec::Vec<(&'static [::std::primitive::usize], Self)> {
                 ::std::vec![
                     $(
-                        ($air, Self::$variant(<$mgr>::new(std.clone()))),
+                        ($air, Self::$variant(<$mgr>::new())),
                     )*
                 ]
             }

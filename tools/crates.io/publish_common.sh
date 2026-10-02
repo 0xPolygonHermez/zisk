@@ -39,6 +39,7 @@ PROOFMAN_CRATES=(
 
 ZISK_CRATES=(
   "zisk-definitions"
+  "zisk-setup"
   "zisk-lib-c"
   "zisk-lib-float"
   "zisk-pil"
