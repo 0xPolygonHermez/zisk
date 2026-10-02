@@ -32,7 +32,8 @@ public:
     static uint64_t step_field(uint64_t slot) { return (((TEST_CHUNK_SIZE - TEST_STEP_LEFT) << 2) | slot) << TEST_STEP_SHIFT; }
     // The record at word `w` has header `expected` (address | mode): a non-block read is one
     // tagged header word with the step field, a block record a tagged header and the step field
-    // payload. Advances `w`.
+    // payload; in the light form (MOPS_LIGHT) every record is one word without the step.
+    // Advances `w`.
     bool check_record(size_t &w, uint64_t expected, const char *tag);
     // The records at `w` are the aligned writes of `words` words from `addr` as value blocks
     // (header, top-bit mask, values), with the current memory contents as values. Advances `w`.
