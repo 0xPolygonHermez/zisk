@@ -156,17 +156,37 @@ bool TestDmaMemMops::check_record(size_t &w, uint64_t expected, const char *tag)
     const uint64_t mode = (expected >> 32) & 0x0F;
     const bool block = (mode == MOPS_BLOCK_READ) || (mode == MOPS_BLOCK_WRITE) ||
                        (mode == MOPS_ALIGNED_BLOCK_READ) || (mode == MOPS_ALIGNED_BLOCK_WRITE);
+#ifdef MOPS_LIGHT
+    // Light form: one word per record, no step; a block record carries the no-payload bit.
+    const uint64_t header = expected | TAG | (block ? (1ull << MOPS_NO_PAYLOAD_BIT) : 0);
+    const bool ok = mtrace[w] == header;
+    const size_t len = 1;
+#else
     const uint64_t header = (block ? expected : (expected | step_field(2))) | TAG;
-    if (mtrace[w] != header || (block && mtrace[w + 1] != step_field(2))) {
+    const bool ok = mtrace[w] == header && (!block || mtrace[w + 1] == step_field(2));
+    const size_t len = block ? 2 : 1;
+#endif
+    if (!ok) {
         printf("\nERROR: %s expected: 0x%016lX (%s) found: mtrace[%ld]:0x%016lX/0x%016lX (%s)\n", tag,
                header, decode(expected).c_str(), w, mtrace[w], mtrace[w + 1], decode(mtrace[w] & ~TAG).c_str());
         return false;
     }
-    w += block ? 2 : 1;
+    w += len;
     return true;
 }
 
 bool TestDmaMemMops::check_write_records(size_t &w, uint64_t addr, size_t words, const char *tag) {
+#ifdef MOPS_LIGHT
+    // Light form: the block-write descriptor is the record, one word, no values.
+    const uint64_t header = addr | ((uint64_t)MOPS_ALIGNED_BLOCK_WRITE << 32) | ((uint64_t)words << 36)
+                            | (1ull << MOPS_NO_PAYLOAD_BIT) | TAG;
+    if (mtrace[w] != header) {
+        printf("\nERROR: %s block write at word %ld expected header 0x%016lX found 0x%016lX\n", tag, w, header, mtrace[w]);
+        return false;
+    }
+    w += 1;
+    return true;
+#endif
     const uint64_t wstep = step_field(3) << 4;   // the value block keeps the step field at bit 42
     size_t k = 0;
     while (k < words) {

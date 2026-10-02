@@ -128,6 +128,16 @@
     lea     rax, [rsi + rax]
     cmp     rax, r15
     je      .L_jd_mops_extend\@
+.ifdef MOPS_LIGHT
+    mov     rcx, MOPS_ALIGNED_BLOCK_READ + MOPS_BLOCK_ONE_WORD + MOPS_TAG + (1 << MOPS_NO_PAYLOAD_BIT)
+    add     rcx, rax
+    mov     [r12 + r13 * 8], rcx         # one word, no step payload
+    inc     r13
+    jmp     .L_jd_mops_done\@
+.L_jd_mops_extend\@:
+    mov     rcx, MOPS_BLOCK_ONE_WORD
+    add     [r12 + r13 * 8 - 8], rcx     # one more word on the open block read
+.else
     mov     rcx, MOPS_ALIGNED_BLOCK_READ + MOPS_BLOCK_ONE_WORD + MOPS_TAG
     add     rcx, rax
     mov     [r12 + r13 * 8], rcx
@@ -138,6 +148,7 @@
 .L_jd_mops_extend\@:
     mov     rcx, MOPS_BLOCK_ONE_WORD
     add     [r12 + r13 * 8 - 16], rcx    # one more word on the open block read
+.endif
 .L_jd_mops_done\@:
     lea     r15, [rax + 8]
 .endm

@@ -36,8 +36,9 @@ fn main() {
         "--gen=1" => zisk_core::AsmGenerationMethod::AsmMinimalTraces,
         "--gen=2" => zisk_core::AsmGenerationMethod::AsmRomHistogram,
         "--gen=7" => zisk_core::AsmGenerationMethod::AsmMemOp,
+        "--gen=7l" => zisk_core::AsmGenerationMethod::AsmMemOpLight,
         _ => {
-            eprintln!("Invalid generation method. Use --gen=0 (fast), =1 (minimal trace), =2 (rom histogram), =7 (mem op).");
+            eprintln!("Invalid generation method. Use --gen=0 (fast), =1 (minimal trace), =2 (rom histogram), =7 (mem op), =7l (mem op, light).");
             process::exit(1);
         }
     };

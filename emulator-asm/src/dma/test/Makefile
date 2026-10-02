@@ -31,12 +31,7 @@ OBJS_ASM = $(BDIR)/direct_memcpy_mtrace.o $(BDIR)/memcpy_fast.o $(BDIR)/fast_mem
 		   $(BDIR)/direct_memcmp_mops.o $(BDIR)/direct_memcmp_mtrace.o $(BDIR)/fast_memcmp.o \
 		   $(BDIR)/fast_inputcpy.o $(BDIR)/test_dma_api.o
 
-OBJS = $(OBJS_ASM) test_dma.o test_dma_encode.o test_dma_tools.o test_mock.o \
-		test_dma_memcmp_mtrace.o test_dma_memcmp_mops.o \
-		test_dma_memcpy_mtrace.o test_dma_memcpy_mops.o \
-		test_dma_memset_mtrace.o test_dma_memset_mops.o \
-		test_dma_inputcpy_mtrace.o test_dma_inputcpy_mops.o \
-		test_dma_mem.o test_dma_mem_mtrace.o test_dma_mem_mops.o
+OBJS = $(OBJS_ASM) $(addprefix $(BDIR)/, $(SRCS_CPP:.cpp=.o))
 
 TARGET = test_dma
 
@@ -44,9 +39,11 @@ all: $(TARGET)
 
 # Rule to compile assembly files from parent directory into current directory
 $(BDIR)/%.o: ../%.asm
+	@mkdir -p $(BDIR)
 	as $(ASMFLAGS) -o $@ $<
 
-%.o: %.cpp
+$(BDIR)/%.o: %.cpp
+	@mkdir -p $(BDIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 $(TARGET): $(OBJS)
@@ -55,7 +52,11 @@ $(TARGET): $(OBJS)
 test: $(TARGET)
 	./$(TARGET)
 
+# The recorders in the light form (MOPS_LIGHT): the decoded records are the same.
+test-light:
+	$(MAKE) BDIR=build_light TARGET=test_dma_light ASMFLAGS="$(ASMFLAGS) --defsym MOPS_LIGHT=1" CXXFLAGS="$(CXXFLAGS) -DMOPS_LIGHT" test
+
 clean:
-	rm -f *.o $(TARGET) $(OBJS_ASM)
+	rm -rf build build_light test_dma test_dma_light
 
 .PHONY: all test clean
