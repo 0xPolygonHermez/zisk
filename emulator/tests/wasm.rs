@@ -843,3 +843,94 @@ fn unsupported_but_valid_shapes_are_rejected_not_panicked() {
     let fits = format!(r#"(module (func (export "_start") {pushes} {adds} (drop)))"#);
     wasm2rom(&wat::parse_str(fits).unwrap()).expect("exactly OPERAND_CAP slots are allowed");
 }
+
+#[test]
+fn code_after_an_unreachable_inner_end_is_typed_by_the_outer_frame() {
+    // After an inner block whose body never falls through, the outer block is reachable again
+    // for validation purposes: its operands must be explicit (the first module), and a
+    // stack-polymorphic use there is a validation error, not a lowering crash (the second).
+    let dead_but_typed = r#"
+        (block $outer
+          (block (br $outer))
+          (drop (i64.add (i64.const 1) (i64.const 2))))
+        (i64.const 7)"#;
+    assert_eq!(out_u64(&run(&module_printing_i64(dead_but_typed), &[])), 7);
+    let polymorphic = r#"(module (func (export "_start")
+        (block $outer (block (br $outer)) (drop (i32.add)))))"#;
+    let err = wasm2rom(&wat::parse_str(polymorphic).unwrap()).expect_err("invalid module");
+    assert!(err.to_string().contains("invalid module"), "{err}");
+}
+
+#[test]
+fn fd_read_tolerates_a_bogus_input_length_prefix() {
+    // The host-provided prefix claims more input than exists (and than the window can hold):
+    // reads past the real data see zeros, nothing panics.
+    let wat = r#"(module
+      (import "wasi_snapshot_preview1" "fd_read"
+        (func $fd_read (param i32 i32 i32 i32) (result i32)))
+      (import "wasi_snapshot_preview1" "fd_write"
+        (func $fd_write (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (func (export "_start")
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const 16))
+        (drop (call $fd_read (i32.const 0) (i32.const 0) (i32.const 1) (i32.const 40)))
+        ;; print the first 8 bytes read: the real input (len prefix lies, data is 8 bytes)
+        (i32.store (i32.const 0) (i32.const 16))
+        (i32.store (i32.const 4) (i32.const 8))
+        (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 48)))))"#;
+    let mut input = Vec::new();
+    input.extend_from_slice(&u64::MAX.to_le_bytes()); // bogus length prefix
+    input.extend_from_slice(&0x0102_0304_0506_0708u64.to_le_bytes());
+    let out = run(&wat::parse_str(wat).unwrap(), &input);
+    assert_eq!(out_u64(&out), 0x0102_0304_0506_0708);
+}
+
+#[test]
+fn nonzero_exit_status_is_a_failure() {
+    let wat = r#"(module
+      (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+      (memory 1)
+      (func (export "_start") (call $exit (i32.const 3))))"#;
+    let rom = wasm2rom(&wat::parse_str(wat).unwrap()).unwrap();
+    let mut emu = ziskemu::Emu::new(&rom);
+    emu.run(Vec::new(), &EmuOptions::default(), None::<fn(EmuTrace)>);
+    assert!(emu.terminated());
+    assert!(emu.ctx.inst_ctx.error, "a non-zero exit status must halt with the error flag set");
+}
+
+#[test]
+fn poll_oneoff_writes_well_formed_events() {
+    // Two subscriptions at 256: a clock (type 0, userdata 0x11) and an fd_read on stdin (type 1,
+    // userdata 0x22); events go to 512, nevents to 768.  Then an unknown type 7 (userdata 0x33).
+    let wat = r#"(module
+      (import "wasi_snapshot_preview1" "poll_oneoff"
+        (func $poll (param i32 i32 i32 i32) (result i32)))
+      (memory 1)
+      (func (export "_start")
+        (i64.store (i32.const 256) (i64.const 0x11)) (i32.store8 (i32.const 264) (i32.const 0))
+        (i64.store (i32.const 304) (i64.const 0x22)) (i32.store8 (i32.const 312) (i32.const 1))
+        (i64.store (i32.const 352) (i64.const 0x33)) (i32.store8 (i32.const 360) (i32.const 7))
+        ;; poison the event area so untouched fields would show
+        (memory.fill (i32.const 512) (i32.const 0xee) (i32.const 96))
+        (i64.store (i32.const 128) (i64.extend_i32_u
+          (call $poll (i32.const 256) (i32.const 512) (i32.const 3) (i32.const 768))))))"#;
+    let rom = wasm2rom(&wat::parse_str(wat).unwrap()).expect("wasm2rom");
+    let mut emu = ziskemu::Emu::new(&rom);
+    emu.run(Vec::new(), &EmuOptions::default(), None::<fn(EmuTrace)>);
+    assert!(emu.terminated() && !emu.ctx.inst_ctx.error);
+    let mem = &emu.ctx.inst_ctx.mem;
+    let base = zisk_transpiler_wasm::layout::WASM_MEM_BASE;
+    assert_eq!(mem.read(base + 128, 8), 0, "errno");
+    assert_eq!(mem.read(base + 768, 4), 3, "nevents");
+    // event { userdata @0, error u16 @8, type u8 @10, nbytes @16, flags u16 @24 }
+    for (i, (userdata, error, ty)) in [(0x11, 0, 0), (0x22, 0, 1), (0x33, 28, 7)].iter().enumerate()
+    {
+        let ev = base + 512 + 32 * i as u64;
+        assert_eq!(mem.read(ev, 8), *userdata, "event {i} userdata");
+        assert_eq!(mem.read(ev + 8, 2), *error, "event {i} error");
+        assert_eq!(mem.read(ev + 10, 1), *ty, "event {i} type");
+        assert_eq!(mem.read(ev + 16, 8), 0, "event {i} nbytes");
+        assert_eq!(mem.read(ev + 24, 2), 0, "event {i} flags");
+    }
+}
