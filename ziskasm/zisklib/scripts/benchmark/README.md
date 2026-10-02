@@ -8,10 +8,10 @@ and runs them on `ziskemu -X`.
 
 - A RISC-V bare-metal C compiler, set in `RISCV_CC`: `riscv64-unknown-elf-gcc`
   (the default) or the xpack `riscv-none-elf-gcc`.
-- A ziskemu built with the ziskasm feature. This is the default `ZISKEMU`:
+- A ziskemu. This is the default `ZISKEMU`:
 
   ```
-  cargo build --release -p ziskemu --features ziskasm
+  cargo build --release -p ziskemu
   ```
 
 - Python 3. The curve vectors also need `py_ecc`, and the KZG cases read the

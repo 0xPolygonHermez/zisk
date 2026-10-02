@@ -6672,6 +6672,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-asm"
+version = "1.4.0-alpha"
+dependencies = [
+ "zisk-core",
+ "zisk-riscv",
+]
+
+[[package]]
 name = "zisk-asm-runner"
 version = "1.4.0-alpha"
 dependencies = [
@@ -7373,6 +7381,7 @@ name = "zisk-transpiler-common"
 version = "1.4.0-alpha"
 dependencies = [
  "elf",
+ "zisk-asm",
  "zisk-core",
  "zisk-definitions",
  "zisk-riscv",
@@ -7418,6 +7427,7 @@ dependencies = [
  "sysinfo 0.38.4",
  "time",
  "vergen-git2",
+ "zisk-asm",
  "zisk-common",
  "zisk-core",
  "zisk-definitions",

@@ -66,30 +66,13 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             zkvmcall_ids.extend(zkvmcall_ids_in(section.addr, &section.data)?);
         }
     }
-    #[cfg(not(feature = "ziskasm"))]
-    if let Some(id) = zkvmcall_ids.first() {
-        return Err(format!(
-            "Guest ELF uses zkvmcall 0x{id:X} ({}), which needs the ZisK library: \
-             build ziskemu/cargo-zisk with --features ziskasm",
-            zisk_definitions::zkvmcall_by_id(*id).unwrap().name
-        )
-        .into());
-    }
-
     // zkvmcall ID → library-entry map, filled in below once the library is assembled.
-    #[cfg(feature = "ziskasm")]
     let mut zkvmcalls: HashMap<u16, u64> = HashMap::new();
-    #[cfg(not(feature = "ziskasm"))]
-    let zkvmcalls: HashMap<u16, u64> = HashMap::new();
     // zkvmcall ID → routine body, for every used inline zkvmcall.
-    #[cfg(feature = "ziskasm")]
     let mut inline_zkvmcalls: HashMap<u16, InlineBody> = HashMap::new();
-    #[cfg(not(feature = "ziskasm"))]
-    let inline_zkvmcalls: HashMap<u16, InlineBody> = HashMap::new();
 
     // A guest with no zkvmcall never reaches the library, so it is neither assembled
     // nor merged into the ROM (see the merge below). `None` = nothing to link.
-    #[cfg(feature = "ziskasm")]
     let library = {
         if zkvmcall_ids.is_empty() {
             None
@@ -288,8 +271,6 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
     // Merge the ZisK library (only assembled when a zkvmcall uses it): its
     // instructions and data live in the reserved region, disjoint from the guest.
-    // Only reachable with the `ziskasm` feature (`library` is None otherwise).
-    #[cfg(feature = "ziskasm")]
     if let Some(library) = library {
         merge_library(&mut rom, library)?;
     }
@@ -304,7 +285,6 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
 /// Merges the assembled ZisK library into the guest ROM: its instructions and data
 /// live in the reserved region, disjoint from the guest.
-#[cfg(feature = "ziskasm")]
 fn merge_library(rom: &mut ZiskRom, library: ziskasm::ZiskLibrary) -> Result<(), Box<dyn Error>> {
     // The guest linker script reserves ZISKLIB_RAM but not ZISKLIB_ROM, and unlike
     // the float-library region above nothing has fenced these off yet. `extend`
@@ -748,7 +728,6 @@ mod zkvmcall_tests {
     }
 
     /// Every zkvmcall target exists in the assembled ZisK library.
-    #[cfg(feature = "ziskasm")]
     #[test]
     fn zkvmcall_targets_exist_in_library() {
         let library = ziskasm::assemble_zisk_library().unwrap();
@@ -764,7 +743,6 @@ mod zkvmcall_tests {
 
     /// The library, assembled on its own, numbers its instructions from 0 like the guest;
     /// merged, every instruction must still have its own index (its ROM trace row).
-    #[cfg(feature = "ziskasm")]
     #[test]
     fn merged_library_gets_indexes_after_the_guest() {
         use super::{add_end_and_lib, merge_library, ZiskRom, ROM_ENTRY};

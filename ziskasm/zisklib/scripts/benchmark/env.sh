@@ -2,7 +2,7 @@
 #   RISCV_CC  bare-metal RISC-V C compiler (riscv64-unknown-elf-gcc or the xpack
 #             riscv-none-elf-gcc)
 #   ZISKEMU   emulator to measure; build it with
-#             `cargo build --release -p ziskemu --features ziskasm`
+#             `cargo build --release -p ziskemu`
 #   WORK      scratch directory for the ELFs, outputs and logs
 BENCH=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ZISK=$(cd "$BENCH/../../../.." && pwd)

@@ -6,7 +6,7 @@
 //! On zkVM targets each fcall issues a CSR read; on native targets it delegates to
 //! [`fcalls_impl`](super::fcalls_impl).
 
-// fcall 0x860 - 0x8DF (128 fcalls)
+// fcalls: CSR 0x8C0 + (id >> 5) with immediate id & 31, so 0x8C0 - 0x8DF (1024 ids)
 
 pub const FCALL_SECP256K1_FP_INV_ID: u16 = 1;
 pub const FCALL_SECP256K1_FN_INV_ID: u16 = 2;

@@ -97,10 +97,9 @@ behave like an ordinary static library:
 
 - **It is not standalone-functional.** Every accelerator and I/O function in it is
   a zkvmcall thunk (`csrs <id>, x0; ret`, see [`src/zkvm_calls.s`](src/zkvm_calls.s))
-  that the transpiler turns into a jump to a hand-written `.zisk` routine. A
-  `ziskemu`/`cargo-zisk` built *without* `--features ziskasm` rejects a guest that
-  uses one at transpile time. A clean link proves nothing on its own. The exception is `_start` and the `mem*` routines below, which are
-  real code.
+  that the transpiler turns into a jump to a hand-written `.zisk` routine, so a guest
+  linked against it runs only under ZisK. A clean link proves nothing on its own.
+  The exception is `_start` and the `mem*` routines below, which are real code.
 - **It defines `memcpy`/`memmove`/`memcmp`/`memset` (EF §2).** They are DMA
   precompile thunks (`memmove` is overlap-safe; it shares `memcpy`'s DMA op, which
   has memmove semantics) and they live in the same object as `_start`. Every guest

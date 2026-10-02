@@ -14,9 +14,8 @@ so the `.zisk` implementation runs in the guest's place.
 It builds a minimal freestanding C guest ([`ef_keccak_guest.c`](ef_keccak_guest.c))
 that calls `zkvm_keccak256(input, 0, &out)`, emits the 32-byte result to the ZisK
 public-output region, and the script checks it against the canonical
-`keccak256("") = c5d2460186f7233c…d85a470`. A `ziskemu` built without the
-`ziskasm` feature rejects the guest at transpile time; the script checks for the
-feature first and builds it if needed.
+`keccak256("") = c5d2460186f7233c…d85a470`. It builds `ziskemu` first if
+`target/release/ziskemu` does not exist.
 
 Overridable env vars: `RISCV_CC`, `ZISKEMU`, `ZISK_ROOT`, `OUT`.
 

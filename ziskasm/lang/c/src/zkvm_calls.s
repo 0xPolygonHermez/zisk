@@ -12,9 +12,7 @@
  *
  * The IDs are the ones in definitions/src/zkvmcall.rs, and a test in
  * transpilers/common checks that the two lists match. Since the transpiler finds
- * the calls by instruction, not by symbol name, the guest ELF can be stripped. A
- * guest that uses one needs ziskemu/cargo-zisk built with --features ziskasm;
- * without it, the transpiler rejects the ELF.
+ * the calls by instruction, not by symbol name, the guest ELF can be stripped.
  *
  * zkvm_keccak_f1600 is not here: it is a single precompile, so zkvm_accelerators.h
  * defines it inline.

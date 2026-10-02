@@ -54,17 +54,13 @@ instruction at the call site.
 
 Consequences worth knowing:
 
-- **A zkvmcall without the library is a transpile error.** An unknown or malformed
-  zkvmcall, or any zkvmcall when ZisK was built without the `ziskasm` feature, makes
-  `elf2rom` reject the ELF with a message naming the function.
+- **A bad zkvmcall is a transpile error.** An unknown or malformed zkvmcall makes
+  `elf2rom` reject the ELF with a message naming it.
 - **Link with `--gc-sections`.** Otherwise every thunk in the archive stays in the
   ELF, and `elf2rom` assembles the library even for a guest that calls none of them.
 
-This whole mechanism is **gated behind the `ziskasm` cargo feature** (off by
-default): without it, `elf2rom` does not assemble the library, and it rejects
-guests that use zkvmcalls. See
-[Building and running the test](#building-and-running-the-test) for how to enable
-it.
+A guest that uses no zkvmcall never gets the library: `elf2rom` then neither
+assembles nor merges it, and the ROM is exactly what it would be without it.
 
 ## How we test conformance: ziskethone (for now)
 
@@ -95,19 +91,13 @@ built with the standard C ABI turned on).
 **1. Build ZisK (`ziskemu`)** — from the `zisk` repository:
 
 ```sh
-cargo build --release -p ziskemu --bin ziskemu --features ziskasm   # -> target/release/ziskemu
+cargo build --release -p ziskemu --bin ziskemu   # -> target/release/ziskemu
 ```
 
-The **`ziskasm` feature is required** to get the ZisK library: it is off by
-default, and without it `elf2rom` does not assemble the library (a default
-`ziskemu` behaves like mainline: it rejects a guest that uses zkvmcalls at
-transpile time). The feature also enables the emulator's `-z` ZisK-assembly path.
-The same feature is plumbed through the proving pipeline, so
-`cargo build -p cargo-zisk --features ziskasm` handles zkvmcall guests during ROM
-generation and proving as well (Cargo feature
-unification keeps every transpile path in the build consistent). (Not to be
-confused with the unrelated `ziskasm` *feature* under `test-artifacts/programs/`,
-which toggles the Rust `zisklib` for the dual-backend unit tests.)
+The ZisK library is always built in: every `ziskemu` and `cargo-zisk` handles
+zkvmcall guests, in emulation, ROM generation and proving alike. (The `ziskasm`
+*features* under `test-artifacts/programs/` are unrelated: they switch those test
+guests from the Rust `zisklib` to the ZisK library.)
 
 **2. Build the ziskethone guest with the standard ABI** — from the `ziskethone`
 repository. A RISC-V bare-metal C++ toolchain (xPack `riscv-none-elf-g++` 14.x)
@@ -710,8 +700,7 @@ heap bounds, write_output) and the C++ guest `c7 5a` (constructor, then `main`).
 
 One property to communicate with the artifact: it is **not standalone-functional**.
 Every accelerator and I/O function in it is a zkvmcall thunk, so a guest linked
-against it and run through a ZisK built without `--features ziskasm` is rejected at
-transpile time. A clean link proves nothing on its own.
+against it runs only under ZisK. A clean link proves nothing on its own.
 
 **Assessment: Conformant** (`_start` incl. C++ constructors/destructors, the I/O
 functions, every accelerator, a W^X linker script exporting `_heap_start`/`_heap_end`,

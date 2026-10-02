@@ -10,9 +10,8 @@
 #
 # NOTE: the archive is NOT standalone-functional. Every accelerator/I-O function in
 # it is a zkvmcall thunk that the transpiler turns into a jump to a hand-written
-# .zisk routine (_start and the DMA-backed mem* routines are real code). A guest
-# that uses one is rejected at transpile time by a ziskemu/cargo-zisk built WITHOUT
-# the `ziskasm` feature.
+# .zisk routine (_start and the DMA-backed mem* routines are real code), so a
+# guest linked against it runs only under ZisK.
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PREFIX="${PREFIX:-$HERE/dist}"
