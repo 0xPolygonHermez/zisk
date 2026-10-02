@@ -26,6 +26,7 @@ use zisk_core::{ZiskInstBuilder, INPUT_ADDR, MAX_INPUT_SIZE, OUTPUT_ADDR, ROM_EX
 const ERRNO_SUCCESS: u64 = 0;
 const ERRNO_BADF: u64 = 8;
 const ERRNO_FAULT: u64 = 21;
+const ERRNO_SPIPE: u64 = 29;
 const ERRNO_NOSYS: u64 = 52;
 
 const INPUT_LEN_ADDR: u64 = INPUT_ADDR + 8;
@@ -527,12 +528,29 @@ pub fn build_wasi_stub(module: &WasmModule, import_index: usize) -> Result<Code,
             code.load_imm_to_reg(REG_RET, ERRNO_SUCCESS);
         }),
         // File-descriptor probing used by the Rust runtime to enumerate preopens: report EBADF so
-        // it concludes there are none.
-        "fd_prestat_get" | "fd_prestat_dir_name" | "fd_seek" | "fd_close" | "fd_filestat_get" => {
-            wrap_stub(|code, _fault, _done| {
-                code.load_imm_to_reg(REG_RET, ERRNO_BADF);
-            })
-        }
+        "fd_prestat_get" | "fd_prestat_dir_name" => wrap_stub(|code, _fault, _done| {
+            code.load_imm_to_reg(REG_RET, ERRNO_BADF);
+        }),
+        "fd_close" => wrap_stub(|code, _fault, done| {
+            require_fd(code, &[0, 1, 2], done);
+            code.load_imm_to_reg(REG_RET, ERRNO_SUCCESS);
+        }),
+        "fd_seek" => wrap_stub(|code, _fault, done| {
+            require_fd(code, &[0, 1, 2], done);
+            code.load_imm_to_reg(REG_RET, ERRNO_SPIPE);
+        }),
+        "fd_filestat_get" => wrap_stub(|code, fault, done| {
+            require_fd(code, &[0, 1, 2], done);
+            code.load_slot_to_reg(R_A, local_offset(1));
+            checked_linear(code, R_A, Len::Imm(64), fault);
+            code.load_imm_to_reg(R_B, 0);
+            for off in (0..64).step_by(8) {
+                code.store_reg_to_mem(R_A, off, R_B, 8);
+            }
+            code.load_imm_to_reg(R_B, 2); // CHARACTER_DEVICE
+            code.store_reg_to_mem(R_A, 16, R_B, 1);
+            code.load_imm_to_reg(REG_RET, ERRNO_SUCCESS);
+        }),
         "sched_yield" => wrap_stub(|code, _fault, _done| {
             code.load_imm_to_reg(REG_RET, ERRNO_SUCCESS);
         }),

@@ -664,6 +664,49 @@ fn fd_read_and_fd_write_reject_unknown_descriptors() {
 }
 
 #[test]
+fn standard_streams_answer_close_seek_and_filestat() {
+    // Errno of `{call}` at 8, then the 8 bytes at 144 (filestat offset 16: filetype) at 16.
+    let outcome = |call: &str| -> (u64, u64) {
+        let wat = format!(
+            r#"(module
+              (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+              (import "wasi_snapshot_preview1" "fd_seek"
+                (func $fd_seek (param i32 i64 i32 i32) (result i32)))
+              (import "wasi_snapshot_preview1" "fd_filestat_get"
+                (func $fd_filestat_get (param i32 i32) (result i32)))
+              (import "wasi_snapshot_preview1" "fd_write"
+                (func $fd_write (param i32 i32 i32 i32) (result i32)))
+              (memory 1)
+              (func (export "_start")
+                (memory.fill (i32.const 128) (i32.const 0xee) (i32.const 64))
+                (i64.store (i32.const 8) (i64.extend_i32_u {call}))
+                (i64.store (i32.const 16) (i64.load (i32.const 144)))
+                (i32.store (i32.const 0) (i32.const 8))
+                (i32.store (i32.const 4) (i32.const 16))
+                (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 40)))))"#
+        );
+        let out = run(&wat::parse_str(wat).unwrap(), &[]);
+        (out_u64(&out), u64::from_le_bytes(out[8..16].try_into().unwrap()))
+    };
+    // Closing a standard stream is accepted and leaves it usable (the print after it works).
+    assert_eq!(outcome("(call $fd_close (i32.const 1))").0, 0);
+    assert_eq!(outcome("(call $fd_close (i32.const 7))").0, 8);
+    // Character devices cannot seek.
+    assert_eq!(
+        outcome("(call $fd_seek (i32.const 0) (i64.const 0) (i32.const 0) (i32.const 64))").0,
+        29
+    );
+    assert_eq!(
+        outcome("(call $fd_seek (i32.const 7) (i64.const 0) (i32.const 0) (i32.const 64))").0,
+        8
+    );
+    // filestat: filetype 2 (character device) at offset 16, the rest zeroed (poison overwritten).
+    assert_eq!(outcome("(call $fd_filestat_get (i32.const 2) (i32.const 128))"), (0, 2));
+    assert_eq!(outcome("(call $fd_filestat_get (i32.const 7) (i32.const 128))").0, 8);
+    assert_eq!(outcome("(call $fd_filestat_get (i32.const 0) (i32.const 65500))").0, 21);
+}
+
+#[test]
 fn wasi_imports_must_have_the_expected_signature() {
     // The stubs read fixed argument slots: an import declared with another type is refused.
     for (what, wat) in [
