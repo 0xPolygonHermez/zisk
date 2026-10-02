@@ -1,7 +1,7 @@
 ; ============================================================================
 ; zkvm/bls12_381.zisk - BLS12-381 (EIP-2537 + EIP-4844 KZG) for the EF zkVM
 ; accelerator C ABI. Entrypoints ziskasm_zkvm_bls12_{g1_add,g2_add,g1_msm,g2_msm,
-; pairing,map_fp_to_g1,map_fp2_to_g2} and ziskasm_zkvm_kzg_point_eval; redirect
+; pairing,map_fp_to_g1,map_fp2_to_g2} and ziskasm_zkvm_kzg_point_eval; zkvmcall
 ; targets of zkvm_bls12_*/zkvm_kzg_point_eval.
 ;
 ; EF encodings are PACKED big-endian (no 16-byte pad): Fp=48B, scalar=32B,

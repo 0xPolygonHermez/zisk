@@ -1,7 +1,7 @@
 ; ============================================================================
 ; zkvm/bn254.zisk - BN254 (alt_bn128) G1 add/mul + optimal-ate pairing check for
 ; the EF zkVM accelerator C ABI. Entrypoints ziskasm_zkvm_bn254_{g1_add,g1_mul,
-; pairing}, redirect targets of zkvm_bn254_*.
+; pairing}, zkvmcall targets of zkvm_bn254_*.
 ;
 ; EF encodings (all big-endian bytes):
 ;   G1 point (64B)  = x(32B) ‖ y(32B)                    -> 8 LE u64 (x‖y)

@@ -358,7 +358,7 @@ push rN
 pop rN
 ```
 
-`push`/`pop` maintain a downward-growing software stack on the stack pointer `sp` (`r2`), which the launcher (and, for a redirected library routine, the guest) initialises to a valid stack region.  Each expands to **two** ZisK instructions:
+`push`/`pop` maintain a downward-growing software stack on the stack pointer `sp` (`r2`), which the launcher (and, for a library routine called from a guest, the guest) initialises to a valid stack region.  Each expands to **two** ZisK instructions:
 
 - `push rN` → `sub(r2, 8) -> r2` then `copyb(r2, rN) -> 8[a + 0]` (decrement `sp`, store `rN` at `[sp]`).
 - `pop rN` → `copyb(r2, 8[a + 0]) -> rN` then `add(r2, 8) -> r2` (load `rN` from `[sp]`, increment `sp`).

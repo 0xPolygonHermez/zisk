@@ -2,12 +2,11 @@
 #
 # Produces a small static library `zisklib_c` plus its public include dir:
 #   - the Ethereum-Foundation `zkvm_*` functions and the EF I/O functions
-#     (<zkvm_accelerators.h> / <zkvm_u256.h> / <zkvm_io.h>) as zkvmcall thunks
-#     (`src/zkvm_calls.s`), each a `csrs <id>, x0; ret` that the transpiler turns
-#     into a jump to the hand-written .zisk routine;
-#   - the `ziskos_*` flat-ABI stubs (`zisklib_stubs.c`, from <zisklib.h>), which
-#     elf2rom redirects by symbol name at transpile time.
-# A guest (e.g. ziskethone's cpp-guest) links it and calls either set.
+#     (<zkvm_accelerators.h> / <zkvm_u256.h> / <zkvm_io.h>) and ZisK's extensions
+#     (<zkvm_u256_le.h> / <zkvm_zisklib.h>) as zkvmcall thunks (`src/zkvm_calls.s`),
+#     each a `csrs <id>, x0; ret` that the transpiler turns into a jump to the
+#     hand-written .zisk routine; <zkvm_mem.h> / <zkvm_evm.h> are header-only.
+# A guest (e.g. ziskethone's cpp-guest) links it and calls them.
 #
 # Two ways to consume it.
 #
@@ -22,8 +21,7 @@
 #
 # Notes:
 #   - Build for the guest target (rv64ima) with the same toolchain as the guest.
-#   - Do NOT strip the final ELF if it calls `ziskos_*`: elf2rom resolves those
-#     stubs by symbol name. The `zkvm_*`/I-O thunks don't need symbols.
+#   - The final ELF may be stripped: the transpiler finds zkvmcalls by instruction.
 #   - Provides `_start` (src/_start.s), the EF I/O functions and every accelerator
 #     stub, i.e. the whole guest-side surface of EF §9 in one archive, plus the
 #     DMA-accelerated memcpy/memmove/memcmp/memset (EF §2), which _start.s defines
@@ -36,12 +34,11 @@ project(zisklib_c C ASM)
 
 # _start.s is part of the shipped library, not sample code: the EF standard (§9)
 # requires the archive to provide the entry point alongside I/O and accelerators.
-add_library(zisklib_c STATIC src/_start.s src/zkvm_calls.s src/zkvm_mem.s src/zisklib_stubs.c)
+add_library(zisklib_c STATIC src/_start.s src/zkvm_calls.s src/zkvm_mem.s)
 target_include_directories(zisklib_c PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set_target_properties(zisklib_c PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
-# Keep every stub as its own section so unused ones can be GC'd, while the
-# referenced ones (the only ones that need redirecting) are retained with symbols.
-# (zkvm_calls.s puts each thunk in its own section itself.)
+# zkvm_calls.s puts each thunk in its own section, so --gc-sections drops the
+# unused ones.
 target_compile_options(zisklib_c PRIVATE -ffunction-sections -O2)
 
 # ---------------------------------------------------------------------------

@@ -1,36 +1,21 @@
 # C-binding end-to-end test
 
 Proves the [`ziskasm/lang/c`](../) binding works end to end: a real C guest calls
-`ziskos_keccak`, and at transpile time `elf2rom` redirects that symbol to the
-hand-written `ziskasm_zkvm_keccak256` routine in `ziskasm/zisklib/zkvm/keccak.zisk`, so the
-`.zisk` implementation runs in the guest's place.
+`zkvm_keccak256`, and at transpile time `elf2rom` turns that zkvmcall into a jump to
+the hand-written `ziskasm_zkvm_keccak256` routine in `ziskasm/zisklib/zkvm/keccak.zisk`,
+so the `.zisk` implementation runs in the guest's place.
 
-## Level 1 — the C binding + redirect (runs today)
+## Level 1 — the C binding (runs today)
 
 ```bash
 ./build_and_run.sh            # uses riscv64-unknown-elf-gcc + target/release/ziskemu
 ```
 
-It builds a minimal freestanding C guest ([`main.c`](main.c)) that calls
-`ziskos_keccak(input, 0, out)`, emits the 32-byte result to the ZisK public-output
-region, and the script checks it against the canonical `keccak256("") =
-c5d2460186f7233c…d85a470`.
-
-- **PASS** (the real hash) ⇒ the redirect fired and the `.zisk` routine produced
-  the correct result.
-- If the redirect does *not* fire, the placeholder body in `src/zisklib_stubs.c`
-  runs and **fails hard** rather than returning a plausible-but-wrong value: it
-  writes `ERROR: ziskasm library stub reached without redirect: ziskos_keccak()…`
-  to the ZisK stdout UART, then stores to address 0, which aborts ziskemu
-  (`Mem::write_silent() invalid addr=0`) before any output is written. So the
-  negative control is an abort naming the unresolved symbol, not a wrong hash —
-  the script prints ziskemu's output in that case.
-
-  You can see it deliberately by stripping the guest ELF (`elf2rom` resolves the
-  stubs by name in `.symtab`, so a stripped ELF cannot be redirected).
-
-This confirms the mechanism is real: any ELF (C, C++, Rust) that exports and calls
-a `ziskos_*` symbol from the `REDIRECTS` table gets the shared `.zisk` routine.
+It builds a minimal freestanding C guest ([`ef_keccak_guest.c`](ef_keccak_guest.c))
+that calls `zkvm_keccak256(input, 0, &out)`, emits the 32-byte result to the ZisK
+public-output region, and the script checks it against the canonical
+`keccak256("") = c5d2460186f7233c…d85a470`. It builds `ziskemu` first if
+`target/release/ziskemu` does not exist.
 
 Overridable env vars: `RISCV_CC`, `ZISKEMU`, `ZISK_ROOT`, `OUT`.
 
@@ -91,24 +76,8 @@ regenerate rather than hand-writing a 32-byte constant.
 
 ## Level 2 — a real block through ziskethone's cpp-guest
 
-Same mechanism, applied to the block prover. In `../../../../../ziskethone`:
-
-1. **Toolchain.** The C++ guest needs xpack `riscv-none-elf-g++` 14 or 16 on
-   `PATH` (Ubuntu's `riscv64-unknown-elf-g++` 13 lacks libstdc++ headers — it can
-   build this pure-C example but not the C++ guest).
-2. **Wire one precompile.** In `cpp-guest/zisk/keccak_zisk.cpp`, replace the body
-   of `ethash_keccak256` with a call to `ziskos_keccak` (from `<zisklib.h>`); add
-   `src/zisklib_stubs.c` and this binding's `include/` to the cmake target.
-   keccak is the cleanest first cut — the whole guest funnels through that one
-   symbol.
-3. **Build + run.** Build the guest ELF, then run it through the *local*
-   `target/release/ziskemu` (which carries the `REDIRECTS` table) on a framed
-   block input (see `ziskethone/cpp-guest/zisk/README.md`). The public output —
-   the block hash — must match the reference `52f6334943830a72…`.
-4. **Measure.** `-m` for steps, `-X` for the proving-cost report; compare the
-   keccak share against the baseline (this block was ~48.25M steps, keccak 35% of
-   cost).
-
-Do NOT `--strip` the guest ELF: `elf2rom` resolves the stubs by name in `.symtab`.
-No linker-script change is needed — the `.zisk` code is merged into the ROM by
-`elf2rom`, not linked into the ELF.
+ziskethone's C++ guest (branch `feature/zkvm-abi`) reaches all of its crypto, EVM
+arithmetic, memory operations and I/O through this binding. Its
+[`cpp-guest/zisk/README.md`](../../../../../ziskethone/cpp-guest/zisk/README.md)
+explains how to build it and run a block through `ziskemu`; the public output (the
+block hash) must match the native guest's.

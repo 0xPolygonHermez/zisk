@@ -10,11 +10,8 @@
 #
 # NOTE: the archive is NOT standalone-functional. Every accelerator/I-O function in
 # it is a zkvmcall thunk that the transpiler turns into a jump to a hand-written
-# .zisk routine (_start and the DMA-backed mem* routines are real code). A guest
-# that uses one is rejected at transpile time by a ziskemu/cargo-zisk built WITHOUT
-# the `ziskasm` feature. The `ziskos_*` stubs are redirected by symbol name; if that
-# redirect does not fire, their bodies fail hard (diagnostic + fault) rather than
-# returning wrong answers.
+# .zisk routine (_start and the DMA-backed mem* routines are real code), so a
+# guest linked against it runs only under ZisK.
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PREFIX="${PREFIX:-$HERE/dist}"
@@ -51,7 +48,7 @@ echo
 echo "### checking the archive exports the required symbols ..."
 AR_FILE="$(find "$PREFIX" -name 'libzisklib_c.a' | head -1)"
 MISSING=0
-for sym in _start read_input write_output zkvm_keccak256 zkvm_u256_add \
+for sym in _start read_input write_output zkvm_keccak256 zkvm_u256_add zkvm_zisklib_add \
            memcpy memmove memcmp memset; do
     if "${CC_PREFIX}nm" "$AR_FILE" 2>/dev/null | grep -qE "^[0-9a-f]* T $sym$"; then
         echo "  OK   $sym"
@@ -72,5 +69,3 @@ echo "Link a guest with:"
 echo "  ${CC_PREFIX}gcc -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany -nostdlib -ffreestanding -Wl,--gc-sections \\"
 echo "      -I$PREFIX/include -T $PREFIX/share/zisk/zisk_linker_script.ld \\"
 echo "      -o guest.elf guest.c $AR_FILE"
-echo "If the guest calls ziskos_* functions, do NOT strip the result: elf2rom"
-echo "resolves those stubs by symbol name (zkvm_* and the I/O functions do not need it)."

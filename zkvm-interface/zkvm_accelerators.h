@@ -251,7 +251,7 @@ zkvm_status zkvm_ripemd160(const uint8_t* data, size_t len, zkvm_ripemd160_hash*
  * ZisK limit: base_len, exp_len and mod_len must each be <= 1056 bytes. A longer
  * operand returns ZKVM_EFAIL, because the ziskasm zisklib assembles operands in
  * fixed-size limb buffers. The portable software implementation has no such cap,
- * so this bound applies only when the ziskasm redirect is enabled.
+ * so this bound applies only to the ziskasm (.zisk) implementation.
  *
  * @param base Pointer to base value bytes
  * @param base_len Length of base in bytes
@@ -307,8 +307,8 @@ zkvm_status zkvm_bn254_g1_mul(const zkvm_bn254_g1_point* point,
  *
  * ZisK limit: num_pairs must be <= 32; a larger count returns ZKVM_EFAIL, because
  * the ziskasm zisklib stages the points in fixed-size buffers. The portable software
- * implementation has no such cap, so this applies only when the ziskasm redirect is
- * enabled.
+ * implementation has no such cap, so this applies only to the ziskasm (.zisk)
+ * implementation.
  *
  * @param pairs Array of G1-G2 point pairs
  * @param num_pairs Number of point pairs
@@ -435,8 +435,8 @@ zkvm_status zkvm_bls12_g2_msm(const zkvm_bls12_381_g2_msm_pair* pairs,
  *
  * ZisK limit: num_pairs must be in 1..=32; 0 or a larger count returns ZKVM_EFAIL,
  * because the ziskasm zisklib stages the points in fixed-size buffers. The portable
- * software implementation has no such cap, so this applies only when the ziskasm
- * redirect is enabled.
+ * software implementation has no such cap, so this applies only to the ziskasm
+ * (.zisk) implementation.
  *
  * @param pairs Array of G1-G2 point pairs
  * @param num_pairs Number of point pairs

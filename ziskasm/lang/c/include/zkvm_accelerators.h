@@ -14,8 +14,8 @@
  * zkvm_keccak_f1600 is the exception: it is a single keccak-f precompile, so it is
  * defined inline below and costs one instruction at the call site.
  *
- * Running such a guest needs ziskemu/cargo-zisk built with --features ziskasm.
- * Without it, the transpiler rejects the ELF instead of running a wrong body.
+ * A thunk is only a `csrs`: the guest runs under ZisK, whose transpiler gives it
+ * meaning, and nowhere else.
  */
 #ifndef ZKVM_ACCELERATORS_H
 #define ZKVM_ACCELERATORS_H

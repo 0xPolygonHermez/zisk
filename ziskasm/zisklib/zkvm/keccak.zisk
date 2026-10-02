@@ -1,11 +1,9 @@
 ; ============================================================================
 ; zkvm/keccak.zisk - keccak256 for the Ethereum Foundation zkVM accelerator C
 ; ABI (zkvm_accelerators.h). Entry point `ziskasm_zkvm_keccak256`, reached from a
-; guest via the elf2rom redirect of the standard symbol `zkvm_keccak256`.
+; guest through the zkvmcall of the standard function `zkvm_keccak256`.
 ;
-; This is the single keccak256 sponge in the library, presenting the standard
-; ABI. The guest `ziskos_keccak` symbol (same (input,len,output) ABI) also
-; redirects here, so there is no separate legacy copy:
+; This is the single keccak256 sponge in the library, presenting the standard ABI:
 ;
 ;   zkvm_status zkvm_keccak256(const uint8_t* data, size_t len,
 ;                              zkvm_keccak256_hash* output)

@@ -92,8 +92,8 @@ _start:
  * DMA-accelerated memcpy / memmove / memcmp / memset (EF §2).
  *
  * Each thunk is a `csrs <port>, ...` + `add`/`addi x0, ...` pair that the
- * transpiler lowers to a single DMA precompile op. Unlike the accelerator stubs,
- * these work without the `ziskasm` feature. Bodies are the ones in
+ * transpiler lowers to a single DMA precompile op; unlike the zkvmcalls they need
+ * no ZisK library routine. Bodies are the ones in
  * ziskos/entrypoint/src/dma/*.s, minus their `.attribute` lines (an arch
  * attribute is rejected after the instructions above).
  *

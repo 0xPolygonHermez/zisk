@@ -1,8 +1,8 @@
-//! Demo guest: calls a function implemented in the ZisK library (`ziskasm/zisklib/`)
-//! rather than in Rust. The `ziskos_add` stub (see `ziskos.rs`) is redirected by
-//! the transpiler to the hand-written `zisklib_add` routine, which runs as ZisK
-//! instructions in the guest's place. The committed result (7) proves the
-//! redirect happened — the stub's own body would return 0xBAD.
+//! Demo guest: calls functions implemented in the ZisK library (`ziskasm/zisklib/`)
+//! rather than in Rust. Each `zisklib` function is a zkvmcall thunk, which the
+//! transpiler turns into a jump to the hand-written `.zisk` routine (here
+//! `zkvm_zisklib_add` → `zisklib_add`), so the routine runs as ZisK instructions in
+//! the guest's place. The committed result (7) shows it ran.
 
 #![no_main]
 
@@ -19,7 +19,7 @@ use zisklib::{
     secp256k1_ecdsa_recover, secp256k1_ecdsa_verify, secp256k1_schnorr_verify,
     secp256r1_ecdsa_verify, sha256, square_mod256, wrapping_add256, wrapping_mul256,
     wrapping_neg256, wrapping_pow256, wrapping_rem256, wrapping_square256, wrapping_sub256,
-    ziskos_add,
+    zkvm_zisklib_add,
 };
 
 // ---- BN254 (alt_bn128) ecPairing vectors: e(G1,G2)·e(-G1,G2) == 1, so the
@@ -405,13 +405,13 @@ const SHA256_56A: [u8; 32] = [
     0x59, 0x0c, 0xe2, 0x0f, 0x1b, 0xde, 0x70, 0x90, 0xef, 0x79, 0x70, 0x68, 0x6e, 0xc6, 0x73, 0x8a,
 ];
 
-/// keccak256 via the ziskasm-backed wrapper (`zisklib::keccak256` → redirected
-/// `zisklib_keccak`), checked against a hardcoded expected digest.
+/// keccak256 via the ziskasm-backed wrapper (`zisklib::keccak256` → the
+/// `zkvm_keccak256` zkvmcall), checked against a hardcoded expected digest.
 fn keccak_matches(input: &[u8], expected: &[u8; 32]) -> bool {
     &keccak256(input) == expected
 }
 
-/// SHA-256 via `zisklib::sha256` (→ redirected `zisklib_sha256`), checked against
+/// SHA-256 via `zisklib::sha256` (→ the `zkvm_sha256` zkvmcall), checked against
 /// a hardcoded expected digest.
 fn sha256_matches(input: &[u8], expected: &[u8; 32]) -> bool {
     &sha256(input) == expected
@@ -421,7 +421,8 @@ fn main() {
     // 1. Simple function: `black_box` keeps args opaque so the call is real.
     let a = black_box(3u64);
     let b = black_box(4u64);
-    let sum = ziskos_add(a, b);
+    // SAFETY: zkvm_zisklib_add takes two values and touches no memory.
+    let sum = unsafe { zkvm_zisklib_add(a, b) };
 
     // 2. keccak256, checked against the reference ziskos implementation. Inputs
     // are 8-byte aligned with len % 8 == 0 (the current zisklib_keccak constraint):

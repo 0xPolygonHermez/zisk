@@ -1,5 +1,5 @@
-// `neg_bn254` has no redirected binding, so it always runs the Rust zisklib
-// (only `pairing_check` is redirected in the ziskasm build).
+// `neg_bn254` has no ziskasm binding, so it always runs the Rust zisklib
+// (only `pairing_check` has one in the ziskasm build).
 use ziskos::zisklib::neg_bn254;
 #[cfg(not(feature = "ziskasm"))]
 use ziskos::zisklib::{exp_fp12_bn254, pairing_bn254, pairing_check_safe_bn254};
@@ -302,7 +302,7 @@ pub fn pairing_check_tests() {
 }
 
 // Exercises the raw `pairing_bn254` / `exp_fp12_bn254` entry points, which have
-// no redirected ziskasm binding — Rust backend only.
+// no ziskasm binding — Rust backend only.
 #[cfg(not(feature = "ziskasm"))]
 pub fn pairing_tests() {
     let mut one = [0; 48];

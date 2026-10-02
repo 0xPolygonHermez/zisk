@@ -1,6 +1,6 @@
 ; ============================================================================
 ; zkvm/secp256k1.zisk - secp256k1 for the EF zkVM accelerator C ABI.
-; Entry `ziskasm_zkvm_secp256k1_verify`, redirect target of `zkvm_secp256k1_verify`.
+; Entry `ziskasm_zkvm_secp256k1_verify`, zkvmcall target of `zkvm_secp256k1_verify`.
 ;
 ; New, self-contained EF-native routine: it marshals the EF big-endian byte inputs
 ; to LE limbs in line (`rev8(ptr, 8[a + off]) -> [limb]`, one step per limb), then

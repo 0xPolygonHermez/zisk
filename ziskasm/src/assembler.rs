@@ -127,7 +127,7 @@ fn merge_public_defines<'a>(
 /// A hand-written `.zisk` library assembled for merging into a program ROM. Unlike
 /// [`assemble`], there is no launcher / `_start` / BIOS: it is a set of callable
 /// functions placed at a fixed base, plus the exported symbol table (label / data
-/// name → address) used to resolve calls into it (see the RISC-V symbol-redirect in
+/// name → address) used to resolve calls into it (see the zkvmcalls in
 /// `transpilers/common/src/elf2rom.rs`).
 pub struct ZiskLibrary {
     /// Assembled instructions keyed by ROM address (`rom_base + 4*i`, file order).

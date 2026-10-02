@@ -11,9 +11,8 @@
  * ziskasm/zisklib/zkvm_io.zisk. A guest compiles against this header and links
  * `zisklib_c` (see CMakeLists.txt).
  *
- * Running such a guest needs ziskemu/cargo-zisk built with --features ziskasm.
- * Without it, the transpiler rejects the ELF, rather than letting these two look
- * like "empty input" or "output discarded".
+ * A thunk is only a `csrs`: the guest runs under ZisK, whose transpiler gives it
+ * meaning, and nowhere else.
  */
 #ifndef ZKVM_IO_H
 #define ZKVM_IO_H
