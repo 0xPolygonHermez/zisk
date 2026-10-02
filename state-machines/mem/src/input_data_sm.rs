@@ -329,9 +329,6 @@ impl<F: PrimeField64> InputDataSM<F> {
 
         let distance_end = INPUT_DATA_W_ADDR_END - last_addr;
 
-        // range of chunks
-        for j in 0..4 {}
-
         let mut air_values = InputDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());
         air_values.is_first_segment = F::from_bool(segment_id == 0);

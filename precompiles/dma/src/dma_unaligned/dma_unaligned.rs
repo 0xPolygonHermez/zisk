@@ -203,11 +203,6 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         }
 
         let padding_size = num_rows - row_offset;
-        let _last_count = if padding_size == 0 && !trace_rows[num_rows - 1].get_seq_end() {
-            trace_rows[num_rows - 1].get_count()
-        } else {
-            0
-        };
 
         air_values.segment_id = F::from_usize(segment_id.into());
         air_values.is_last_segment = F::from_bool(is_last_segment);
