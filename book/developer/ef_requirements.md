@@ -28,9 +28,11 @@ into a **reserved ROM/RAM region** (`ZISKLIB_ROM_ADDR`, carved out of the addres
 space so it never collides with guest allocations) and merged into the guest's ROM.
 The guest reaches them through zkvmcalls.
 
-Every function in `zkvm_accelerators.h`, `zkvm_u256.h` and `zkvm_io.h`, and in
-ZisK's extension headers (`zkvm_u256_le.h`, `zkvm_zisklib.h`), is a
-two-instruction thunk — for the C ABI in
+A zkvmcall takes one of two forms.
+
+**Thunk.** Every function in `zkvm_accelerators.h` and `zkvm_io.h`, the division
+family and `exp` of `zkvm_u256.h` and `zkvm_u256_le.h`, and every function in
+ZisK's `zkvm_zisklib.h`, is a two-instruction thunk — for the C ABI in
 `ziskasm/lang/c/src/zkvm_calls.s`, for Rust guests as naked functions in the
 `zisklib` crate:
 
@@ -48,9 +50,25 @@ convention. When `elf2rom` converts the ELF into a ZisK ROM, it replaces each
 a *tail* jump, `ra` is untouched, so the `.zisk` routine's own `ret` returns
 straight to the guest's original caller; the thunk's `ret` never runs. The
 transpiler finds zkvmcalls by instruction, not by symbol name, so **the guest ELF
-may be stripped**. `zkvm_keccak_f1600` is the exception: it is a single keccak-f
-precompile, so the header defines it inline (`csrs 0x800, state`) and it costs one
-instruction at the call site.
+may be stripped**.
+
+**Inline zkvmcall.** By default the other `zkvm_u256.h` and `zkvm_u256_le.h`
+functions (add, compare, shift, ...) are `static inline` asm in the header: a
+sequence of `csrs`, the zkvmcall carrying argument 0 and one `csrs 0x8E0 + k - 1`
+per further argument k, each naming the register the compiler chose for it.
+`elf2rom` replaces the whole sequence with the routine's **body**, reading those
+registers: no argument moves, no call and no return, and the constant `ZKVM_EOK`
+status folds away. The body writes only memory and the virtual registers
+`r32..r39`, so the asm clobbers no register. Each such `zkvm_u256.h` function also
+has a thunk (used with `ZKVM_U256_CALLS` or by a declarations-only header), which
+expands the same body; the inline `zkvm_u256_le.h` functions have none.
+`definitions/src/zkvmcall.rs` marks which IDs are inline and explains the
+sequence; [the C binding's README](../../ziskasm/lang/c/README.md#coverage) lists
+the builds of each family.
+
+`zkvm_keccak_f1600` is neither: it is a single keccak-f precompile, so the header
+defines it inline (`csrs 0x800, state`) and it costs one instruction at the call
+site.
 
 Consequences worth knowing:
 
