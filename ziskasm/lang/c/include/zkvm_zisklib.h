@@ -31,7 +31,8 @@ uint64_t zkvm_zisklib_add(uint64_t a, uint64_t b);
 
 /* ---- 256-bit integer arithmetic (little-endian u64[4]) ----------------- */
 
-/* Word-inverse used by the div path. Returns a status; writes result[0..4]. */
+/* result = a^{-1} mod 2^256. Returns 1 and writes result[0..4] when a is
+ * invertible (odd); returns 0 and leaves result untouched when a is even. */
 uint64_t zkvm_zisklib_inv256(const uint64_t *a, uint64_t *result);
 
 /* result = a + b; returns the carry-out (0/1). */

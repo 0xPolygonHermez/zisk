@@ -96,7 +96,7 @@ pub fn blake2b_compress(rounds: u32, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 
 zkvmcall! {
     /// `a^(-1) mod 2^256` if it exists, else "not invertible". zkvmcall to
     /// `uint256/mul.zisk`'s `zisklib_inv256`: returns `1` and writes `result[0..4]`
-    /// when `a` is invertible (odd), `0` otherwise.
+    /// when `a` is invertible (odd), `0` otherwise, leaving `result` untouched.
     ///
     /// # Safety
     /// `a` must point to a valid `[u64; 4]` and `result` to a writable `[u64; 4]`.
