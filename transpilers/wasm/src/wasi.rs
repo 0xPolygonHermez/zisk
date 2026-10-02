@@ -351,6 +351,55 @@ fn body_fd_read(code: &mut Code, fault: LabelId, done: LabelId) {
     code.load_imm_to_reg(REG_RET, ERRNO_SUCCESS);
 }
 
+fn body_poll_oneoff(code: &mut Code, fault: LabelId, _done: LabelId) {
+    const SUBSCRIPTION_BYTES: i64 = 48;
+    const EVENT_BYTES: i64 = 32;
+    const ERRNO_INVAL: u64 = 28;
+    const LAST_EVENT_TYPE: i64 = 2;
+    code.load_slot_to_reg(R_C, local_offset(2));
+    code.alu_ri("and", R_C, R_C, 0xFFFF_FFFF);
+    code.load_slot_to_reg(R_A, local_offset(0));
+    code.alu_ri("mul", R_E, R_C, SUBSCRIPTION_BYTES);
+    checked_linear(code, R_A, Len::Reg(R_E), fault);
+    code.load_slot_to_reg(R_B, local_offset(1));
+    code.alu_ri("mul", R_E, R_C, EVENT_BYTES);
+    checked_linear(code, R_B, Len::Reg(R_E), fault);
+    code.load_slot_to_reg(R_D, local_offset(3));
+    checked_linear(code, R_D, Len::Imm(4), fault);
+
+    let head = code.new_label();
+    let end = code.new_label();
+    code.load_imm_to_reg(R_E, 0); // j
+    code.bind(head);
+    code.cmp_reg_branch("ltu", R_E, R_C, end, false);
+    code.load_mem_to_reg("copyb", R_F, R_A, 0, 8); // subscription.userdata
+    code.store_reg_to_mem(R_B, 0, R_F, 8); // event.userdata
+    code.load_mem_to_reg("copyb", R_G, R_A, 8, 1); // subscription.u.tag = event type
+                                                   // event.error (u16 @8) and event.type (u8 @10), stored as one little-endian word.
+    let known = code.new_label();
+    let typed = code.new_label();
+    code.cmp_imm_branch("leu", R_G, LAST_EVENT_TYPE, known, true);
+    code.load_imm_to_reg(R_H, ERRNO_INVAL);
+    code.jump(typed);
+    code.bind(known);
+    code.load_imm_to_reg(R_H, ERRNO_SUCCESS);
+    code.bind(typed);
+    code.alu_ri("sll", R_G, R_G, 16);
+    code.alu_rr("or", R_H, R_H, R_G);
+    code.store_reg_to_mem(R_B, 8, R_H, 8);
+    code.load_imm_to_reg(R_H, 0); // fd_readwrite.nbytes @16, .flags @24
+    code.store_reg_to_mem(R_B, 16, R_H, 8);
+    code.store_reg_to_mem(R_B, 24, R_H, 8);
+    code.alu_ri("add", R_A, R_A, SUBSCRIPTION_BYTES);
+    code.alu_ri("add", R_B, R_B, EVENT_BYTES);
+    code.alu_ri("add", R_E, R_E, 1);
+    code.jump(head);
+    code.bind(end);
+
+    code.store_reg_to_mem(R_D, 0, R_C, 4); // *nevents = nsubscriptions
+    code.load_imm_to_reg(REG_RET, ERRNO_SUCCESS);
+}
+
 /// Stores zero into the two u32 cells pointed to by locals 0 and 1 (the `*_sizes_get` shape);
 /// both pointers are validated before either cell is written.
 fn store_two_zero_u32(code: &mut Code, fault: LabelId, _done: LabelId) {
@@ -447,13 +496,7 @@ pub fn build_wasi_stub(module: &WasmModule, import_index: usize) -> Result<Code,
             code.store_reg_to_mem(R_A, 0, R_B, 8);
             code.load_imm_to_reg(REG_RET, ERRNO_SUCCESS);
         }),
-        "poll_oneoff" => wrap_stub(|code, fault, _done| {
-            code.load_slot_to_reg(R_A, local_offset(3));
-            checked_linear(code, R_A, Len::Imm(4), fault);
-            code.load_slot_to_reg(R_B, local_offset(2));
-            code.store_reg_to_mem(R_A, 0, R_B, 4);
-            code.load_imm_to_reg(REG_RET, ERRNO_SUCCESS);
-        }),
+        "poll_oneoff" => wrap_stub(body_poll_oneoff),
         // The runtime queries stdout/stderr/stdin via fd_fdstat_get to set up buffering; report a
         // character device so writes are accepted (and line-buffered). locals: 0=fd, 1=retptr.
         "fd_fdstat_get" => wrap_stub(|code, fault, done| {
