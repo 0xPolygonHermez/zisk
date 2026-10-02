@@ -5,9 +5,11 @@
 //! returned in `REG_RET`, and the routine restores the caller frame and returns.  `proc_exit` is
 //! special — it terminates the program instead of returning.
 //!
-//! The surface is deliberately small: enough for a stock `wasm32-wasip1` Rust/C program that reads
-//! stdin and writes stdout to run.  stdin is mapped to the Zisk input region and stdout/stderr to
-//! the public output region and the UART console.
+//! The surface is deliberately small: enough for a stock `wasm32-wasip1` Rust/C/Go program that
+//! reads stdin and writes stdout to run.  stdin is mapped to the Zisk input region and
+//! stdout/stderr to the public output region and the UART console.  Every other WASI function is
+//! accepted at transpile time and fails with `ENOSYS` when called, so a guest that merely links
+//! the whole `wasi_snapshot_preview1` surface (as Go does) still runs.
 //!
 //! Guest pointers are untrusted: every range a stub reads or writes is checked against the current
 //! linear-memory size (`REG_MEM_END`) before the stub touches anything, and a bad range fails the
@@ -221,6 +223,13 @@ fn check_iovecs(code: &mut Code, iovs: u64, count: u64, j: u64, fault: LabelId) 
 /// `fd_write(fd, iovs, iovs_len, nwritten) -> errno`.  Writes every iovec byte to the UART console
 /// and mirrors it into the public output region; stores the byte count to `*nwritten` and returns
 /// success.  Every range is validated before the first byte moves.
+///
+/// The public output is `WASM_PUBLIC_OUTPUT_BYTES` wide (what finalization actually publishes):
+/// it receives the first that many bytes of stdout/stderr and the mirror then stops, while the
+/// console keeps receiving everything and the call still reports the full count.  The console is
+/// the stream's primary sink, so a guest that writes more than fits in the public output (logs,
+/// say) is not failed or short-written for it, which would make `write_all`-style loops in
+/// Rust/Go runtimes abort.
 fn body_fd_write(code: &mut Code, fault: LabelId, done: LabelId) {
     // locals: 0=fd, 1=iovs, 2=iovs_len, 3=nwritten
     const R_OUT: u64 = 22; // running absolute pointer into the public output region
@@ -303,9 +312,9 @@ fn body_fd_read(code: &mut Code, fault: LabelId, done: LabelId) {
     checked_linear(code, R_NREAD, Len::Imm(4), fault);
     check_iovecs(code, R_D, R_E, jreg, fault);
 
-    // Input layout (ziskos convention): an 8-byte length prefix at INPUT_ADDR+8, data at
-    // INPUT_ADDR+16. (The emulator writes a zero "free input" word at INPUT_ADDR itself.)
-    // R_A = input length, R_B = cursor, R_C = total read
+    // R_A = input length, R_B = cursor, R_C = total read.  The length prefix is host-provided
+    // and only trusted up to the size of the input window: past the data the window reads as
+    // zero, but past the window the emulator has no memory at all, so the loop bound is clamped.
     code.load_abs_to_reg(R_A, INPUT_LEN_ADDR); // input length (u64)
     let clamped = code.new_label();
     code.cmp_imm_branch("leu", R_A, MAX_INPUT_DATA as i64, clamped, true);
