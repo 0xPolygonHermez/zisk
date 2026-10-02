@@ -14,10 +14,12 @@ for g in "$@"; do
   CFLAGS=$CFLAGS0; [ -n "$march" ] && CFLAGS="${CFLAGS0/-march=rv64ima_zicsr_zbb/$march}"
   guest_cc "$WORK/$g.elf" "$src" 2>"$WORK/cc.err" || { echo "$g: COMPILE ERROR"; head "$WORK/cc.err"; fail=1; continue; }
   rm -f "$WORK/$g.out"
-  read st co <<<"$(emu_run "$WORK/$g.elf" "$WORK/$g.out")"
-  if [ $mode = snap ]; then cp "$WORK/$g.out" "$BENCH/gold/$g.out"; r=snap
+  m=$(emu_run "$WORK/$g.elf" "$WORK/$g.out") || { m="- -"; rm -f "$WORK/$g.out"; }
+  read st co <<<"$m"
+  if [ "$st" = - ]; then r="EMULATOR FAILED"; fail=1
+  elif [ $mode = snap ]; then cp "$WORK/$g.out" "$BENCH/gold/$g.out"; r=snap
   elif cmp -s "$WORK/$g.out" "$BENCH/gold/$g.out"; then r=ok
   else r=DIFF; fail=1; fi
-  printf "%-24s %12s %16s  %s\n" $g "$st" "$co" $r
+  printf "%-24s %12s %16s  %s\n" $g "$st" "$co" "$r"
 done
 exit $fail

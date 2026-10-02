@@ -21,8 +21,17 @@ guest_cc() {
       "$ZISK/ziskasm/lang/c/src/zkvm_mem.s"
 }
 
-# emu_run ELF OUT.bin [emu] -> "steps cost" (total steps and variable cost of the run)
+# emu_run ELF OUT.bin [emu] -> "steps cost" (total steps and variable cost of the run).
+# Fails (status 1, nothing on stdout, the emulator's last lines on stderr) when the
+# emulator fails or times out, or its report has no step and cost totals.
 emu_run() {
-  timeout 1200 "${3:-$ZISKEMU}" -e "$1" -i "$WORK/empty.bin" -o "$2" -X 2>&1 |
-    awk '/^STEPS/{gsub(",","",$2); s=$2} /^VARIABLE/{gsub(",","",$2); v=$2} END{print s, v}'
+  local log rc m
+  log=$(timeout 1200 "${3:-$ZISKEMU}" -e "$1" -i "$WORK/empty.bin" -o "$2" -X 2>&1); rc=$?
+  m=$(awk '/^STEPS +[0-9]/{gsub(",","",$2); s=$2} /^VARIABLE +[0-9]/{gsub(",","",$2); v=$2} END{print s, v}' <<<"$log")
+  if [ $rc -ne 0 ] || ! [[ $m =~ ^[0-9]+\ [0-9]+$ ]]; then
+    echo "emu_run: $(basename "$1") failed (exit $rc$([ $rc = 124 ] && echo ", timeout"))" >&2
+    tail -n 5 <<<"$log" | sed 's/^/  /' >&2
+    return 1
+  fi
+  echo "$m"
 }

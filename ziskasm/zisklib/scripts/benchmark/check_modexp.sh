@@ -11,10 +11,11 @@ for g in mx_short mx_long mx_1025; do
   n=$(grep -c 'zkvm_modexp(' "$WORK/$g.c")
   guest_cc "$WORK/$g.elf" "$WORK/$g.c" || exit 1
   rm -f "$WORK/$g.out"
-  read st co <<<"$(emu_run "$WORK/$g.elf" "$WORK/$g.out")"
+  m=$(emu_run "$WORK/$g.elf" "$WORK/$g.out") || { m="- -"; rm -f "$WORK/$g.out"; }
+  read st co <<<"$m"
   # byte i = 1 if case i failed; byte n = 1 once every case has run
-  bad=$(od -An -v -tu1 -N$n "$WORK/$g.out" | tr -s ' ' '\n' | grep -c '^1$')
-  done_=$(od -An -tu1 -j$n -N1 "$WORK/$g.out" | tr -d ' ')
+  bad=$(od -An -v -tu1 -N$n "$WORK/$g.out" 2>/dev/null | tr -s ' ' '\n' | grep -c '^1$')
+  done_=$(od -An -tu1 -j$n -N1 "$WORK/$g.out" 2>/dev/null | tr -d ' ')
   r=ok; { [ "$bad" = 0 ] && [ "$done_" = 1 ]; } || { r="FAIL ($bad of $n cases, done=$done_)"; fail=1; }
   printf "%-10s %4d cases %12s %16s  %s\n" $g $n "$st" "$co" "$r"
 done

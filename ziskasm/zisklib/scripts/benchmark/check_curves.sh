@@ -11,7 +11,8 @@ for seed in "$@"; do
   guest_cc "$WORK/curves$seed.elf" "$WORK/curves_vec$seed.c" || exit 1
   for E in "$ZISKEMU" $REF_ZISKEMU; do
     rm -f "$WORK/curves.out"
-    read st co <<<"$(emu_run "$WORK/curves$seed.elf" "$WORK/curves.out" "$E")"
+    m=$(emu_run "$WORK/curves$seed.elf" "$WORK/curves.out" "$E") || { m="- -"; rm -f "$WORK/curves.out"; }
+    read st co <<<"$m"
     # [fails u32][first failing case u32][ncases u32][0 u32][keccak(transcript)]
     read f first n <<<"$(od -An -tu4 -N12 "$WORK/curves.out")"
     h=$(od -An -tx1 -j16 -N32 "$WORK/curves.out" | tr -d ' \n')
