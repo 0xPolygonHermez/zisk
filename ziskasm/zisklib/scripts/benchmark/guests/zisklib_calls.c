@@ -30,7 +30,10 @@ static const uint64_t A[4] = {0x0123456789abcdef, 0xfedcba9876543210, 0x0f1e2d3c
 static const uint64_t B[4] = {0x8877665544332211, 0x0011223344556677, 0x99aabbccddeeff00, 0x0000000000000abc};
 static const uint64_t M[4] = {0xffffffff00000001, 0x0000000000000000, 0x00000000ffffffff, 0xffffffff00000000};
 static const uint64_t E[4] = {0x10001, 0, 0, 0};
-static const uint64_t ONE4[4] = {1, 0, 0, 0};
+/* map_to_curve inputs: an Fp element (6 limbs) and an Fp2 element (12 limbs), each below p */
+static const uint64_t U_FP[6] = {1, 0, 0, 0, 0, 0};
+static const uint64_t U_FP2[12] = {0x0123456789abcdef, 0xfedcba9876543210, 0x0f1e2d3c4b5a6978,
+                                   0x1122334455667788, 0, 0, 2, 0, 0, 0, 0, 0};
 
 static const uint8_t MSG[3] = {'a', 'b', 'c'};
 static const uint8_t DST[] = "QUUX-V01-CS02-with-BLS12381G2_XMD:SHA-256_SSWU_RO_";
@@ -89,9 +92,9 @@ int main(void) {
     CALL(F_BNP1, out, 8);
 #define F_BLP(p) p(pairing_check_bls12_381)(g1, g2, 0) + (out[0] = 0)
     CALL(F_BLP, out, 8);
-#define F_MAP1(p) p(map_to_curve_g1_bls12_381)(ONE4, out)
+#define F_MAP1(p) p(map_to_curve_g1_bls12_381)(U_FP, out)
     CALL(F_MAP1, out, 96);
-#define F_MAP2(p) p(map_to_curve_g2_bls12_381)(A, out)
+#define F_MAP2(p) p(map_to_curve_g2_bls12_381)(U_FP2, out)
     CALL(F_MAP2, out, 192);
 #define F_H2C(p) (p(hash_to_curve_g2_bls12_381)(MSG, 3, DST, sizeof DST - 1, out), 0)
     CALL(F_H2C, out, 192);
