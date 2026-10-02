@@ -146,8 +146,8 @@ pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 4025;
 /// `BabyJubJub`: 0.60 GB.
 pub const BABY_JUB_JUB_INSTANCE_COST: usize = 614;
 
-/// `Keccakf`: 12.54 GB.
-pub const KECCAKF_INSTANCE_COST: usize = 12841;
+/// `Keccakf`: 20.95 GB.
+pub const KECCAKF_INSTANCE_COST: usize = 21453;
 
 /// `Sha256f`: 0.74 GB.
 pub const SHA_256_F_INSTANCE_COST: usize = 758;
