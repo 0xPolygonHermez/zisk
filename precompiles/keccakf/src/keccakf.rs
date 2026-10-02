@@ -462,6 +462,10 @@ impl<F: PrimeField64> KeccakfSM<F> {
     }
 }
 
+#[cfg(all(test, gpu))]
+#[path = "keccakf_gpu_compare.rs"]
+mod gpu_compare;
+
 #[cfg(test)]
 mod tests {
     use super::*;

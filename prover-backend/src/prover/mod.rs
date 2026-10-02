@@ -179,10 +179,30 @@ impl BackendProverOpts {
         // witness, which is the same cost as counting it but with nobody asking for it.
         options.std_owned_tables(FROPS_TABLE_IDS.to_vec());
 
+        // Airs whose witness a GPU kernel writes on the device, deleting their
+        // per-instance trace upload (Keccakf: ~816 MiB packed at 2^21 rows). On by
+        // default; ZISK_GPU_WITNESS=0 takes the host path, which is the only way
+        // back if a kernel ever disagrees with the CPU.
+        //
+        // Packed GPU runs only: the kernels emit packed cm1, so proofman refuses the
+        // declaration otherwise.
+        let gpu_witness_airs = if options.gpu
+            && options.packed
+            && std::env::var("ZISK_GPU_WITNESS").map(|v| v != "0").unwrap_or(true)
+        {
+            zisk_executor::gpu_witness::gpu_witness_airs()
+        } else {
+            Vec::new()
+        };
+
         // Packed traces need packed_info, with Main in compact (indexed) form. `options.packed`
         // is the single source of truth, read by the executor's row-type gate too.
         if options.packed {
             options.packed_info(get_packed_info());
+        }
+
+        if !gpu_witness_airs.is_empty() {
+            options.gpu_witness_airs(gpu_witness_airs);
         }
 
         options.verbose_mode(self.verbose.into());
