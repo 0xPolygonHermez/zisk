@@ -8,6 +8,11 @@
  * call into a jump to the hand-written .zisk routine of the ZisK library
  * (ziskasm/zisklib/), named zisklib_<name>, which follows the RISC-V calling
  * convention. Statuses are each function's own (see below), not zkvm_status.
+ *
+ * These are raw routines: they do not validate every input. A call that breaks
+ * a stated precondition either ends the program at that point (exit 0, so the
+ * rest of the guest never runs) or makes the emulator abort; either way no proof
+ * of a correct run exists. Check the preconditions before calling.
  */
 #ifndef ZKVM_ZISKLIB_H
 #define ZKVM_ZISKLIB_H
@@ -36,8 +41,11 @@ uint64_t zkvm_zisklib_overflowing_sub256(const uint64_t *a, const uint64_t *b, u
 /* result = low 256 bits of a * b; returns 1 if the product overflowed 256 bits. */
 uint64_t zkvm_zisklib_overflowing_mul256(const uint64_t *a, const uint64_t *b, uint64_t *result);
 
-/* q = a / b, r = a % b. */
+/* q = a / b, r = a % b. Requires b != 0: b == 0 ends the program. */
 void zkvm_zisklib_div_rem256(const uint64_t *a, const uint64_t *b, uint64_t *q, uint64_t *r);
+
+/* The modular functions below require m != 0: m == 0 aborts the emulator (the
+ * arith256_mod precompile divides by m). */
 
 /* result = a mod m. */
 void zkvm_zisklib_reduce_mod256(const uint64_t *a, const uint64_t *m, uint64_t *result);
@@ -45,9 +53,11 @@ void zkvm_zisklib_reduce_mod256(const uint64_t *a, const uint64_t *m, uint64_t *
 void zkvm_zisklib_add_mod256(const uint64_t *a, const uint64_t *b, const uint64_t *m, uint64_t *result);
 /* result = (a * b) mod m. */
 void zkvm_zisklib_mul_mod256(const uint64_t *a, const uint64_t *b, const uint64_t *m, uint64_t *result);
-/* result = a^{-1} mod m; returns a status (nonzero if no inverse exists). */
+/* result = a^{-1} mod m; returns 1 and writes `result` if the inverse exists,
+ * 0 otherwise. Requires m != 0. */
 uint64_t zkvm_zisklib_inv_mod256(const uint64_t *a, const uint64_t *m, uint64_t *result);
-/* result = base^exp mod m. */
+/* result = base^exp mod m. Requires m >= 2 (with m == 1 and exp == 0 it returns
+ * 1, not 0). */
 void zkvm_zisklib_pow_mod256(const uint64_t *base, const uint64_t *exp, const uint64_t *m, uint64_t *result);
 /* result = low 256 bits of base^exp; returns 1 if it overflowed 256 bits. */
 uint64_t zkvm_zisklib_overflowing_pow256(const uint64_t *base, const uint64_t *exp, uint64_t *result);
@@ -120,7 +130,11 @@ uint64_t zkvm_zisklib_verify_kzg_proof_bls12_381(const uint8_t *z, const uint8_t
 /* base^exp mod modulus, arbitrary precision. Each operand is a little-endian
  * u64 limb array of the given length; writes result limbs to `result` and
  * returns the number of limbs written (single-U256 moduli and edge cases return
- * 4; larger moduli return ceil(modulus_len/4)*4). */
+ * 4; larger moduli return ceil(modulus_len/4)*4).
+ * Requires 1 <= base_len, exp_len, modulus_len <= 132 (1056 bytes): a zero-length
+ * modulus aborts the emulator, and a zero-length base or an operand over 132
+ * limbs ends the program. `result` must hold max(4, ceil(modulus_len/4)*4)
+ * limbs. */
 size_t zkvm_zisklib_modexp_u64_c(const uint64_t *base, size_t base_len,
                                  const uint64_t *exp, size_t exp_len,
                                  const uint64_t *modulus, size_t modulus_len,

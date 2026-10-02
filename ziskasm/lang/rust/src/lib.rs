@@ -222,7 +222,7 @@ pub fn checked_neg256(a: &[u64; 4]) -> Option<[u64; 4]> {
 zkvmcall! {
     /// zkvmcall to `zisklib_overflowing_mul256`: writes the low 256 bits of `a * b` to
     /// `result` and returns 1 if the product overflows 256 bits (high 256 bits != 0),
-    /// else 0. Distinct sentinel body (see the ICF note above).
+    /// else 0.
     ///
     /// # Safety
     /// `a`, `b` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
@@ -292,12 +292,11 @@ pub fn saturating_square256(a: &[u64; 4]) -> [u64; 4] {
 
 zkvmcall! {
     /// zkvmcall to `zisklib_div_rem256`: writes `a / b` to `q` and `a % b` to `r`.
-    /// Halts on `b == 0` on-target (the `checked_*` wrappers guard against that in Rust
-    /// first). Distinct sentinel bodies (see the ICF note above); writing two output
-    /// buffers already makes this body distinct from the one-output add/sub/mul stubs.
+    /// The `checked_*` wrappers guard `b == 0` in Rust first.
     ///
     /// # Safety
     /// `a`, `b` must point to valid `[u64; 4]`; `q`, `r` to writable `[u64; 4]`.
+    /// `b` must be nonzero: `b == 0` ends the program.
     fn zkvm_zisklib_div_rem256(a: *const u64, b: *const u64, q: *mut u64, r: *mut u64) -> ()
 }
 
@@ -344,14 +343,15 @@ pub fn div_ceil256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
 //
 // The precompile requires `module != 0`; the wrappers short-circuit that case to
 // `ZERO_256` (matching ziskos, which returns zero rather than panicking) and never
-// call the stub with a zero modulus. Inputs need not be `< module`; the result is
-// always reduced. Each stub carries a distinct sentinel (ICF, see the note above).
+// call the thunk with a zero modulus, which would abort the emulator. Inputs need
+// not be `< module`; the result is always reduced.
 
 zkvmcall! {
     /// zkvmcall to `zisklib_reduce_mod256`: `result = a mod m`.
     ///
     /// # Safety
     /// `a`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+    /// `m` must be nonzero: `m == 0` aborts the emulator.
     fn zkvm_zisklib_reduce_mod256(a: *const u64, m: *const u64, result: *mut u64) -> ()
 }
 
@@ -360,6 +360,7 @@ zkvmcall! {
     ///
     /// # Safety
     /// `a`, `b`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+    /// `m` must be nonzero: `m == 0` aborts the emulator.
     fn zkvm_zisklib_add_mod256(a: *const u64, b: *const u64, m: *const u64, result: *mut u64) -> ()
 }
 
@@ -368,6 +369,7 @@ zkvmcall! {
     ///
     /// # Safety
     /// `a`, `b`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+    /// `m` must be nonzero: `m == 0` aborts the emulator.
     fn zkvm_zisklib_mul_mod256(a: *const u64, b: *const u64, m: *const u64, result: *mut u64) -> ()
 }
 
@@ -413,10 +415,10 @@ zkvmcall! {
     /// zkvmcall to `zisklib_inv_mod256`: writes `a^(-1) mod m` to `result` and returns
     /// 1 if the inverse exists, else 0. On-target the routine verifies whichever
     /// outcome the hint claims (the inverse, or a gcd witness that none exists).
-    /// Distinct sentinel (ICF, see the note above).
     ///
     /// # Safety
     /// `a`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+    /// `m` must be nonzero: `m == 0` aborts the emulator.
     fn zkvm_zisklib_inv_mod256(a: *const u64, m: *const u64, result: *mut u64) -> u64
 }
 
@@ -439,10 +441,12 @@ pub fn inv_mod256(a: &[u64; 4], modulus: &[u64; 4]) -> Option<[u64; 4]> {
 
 zkvmcall! {
     /// zkvmcall to `zisklib_pow_mod256`: `result = base^exp mod m`. `m in {0, 1}` is
-    /// handled by the wrapper. Distinct sentinel (ICF).
+    /// handled by the wrapper.
     ///
     /// # Safety
     /// `base`, `exp`, `m` must point to valid `[u64; 4]`; `result` to a writable one.
+    /// `m` must be at least 2: `m == 0` aborts the emulator, and with `m == 1` and
+    /// `exp == 0` it returns 1, not 0.
     fn zkvm_zisklib_pow_mod256(base: *const u64, exp: *const u64, m: *const u64, result: *mut u64) -> ()
 }
 
@@ -464,7 +468,6 @@ pub fn pow_mod256(base: &[u64; 4], exp: &[u64; 4], modulus: &[u64; 4]) -> [u64; 
 zkvmcall! {
     /// zkvmcall to `zisklib_overflowing_pow256`: writes `base^exp mod 2^256` to
     /// `result` and returns 1 if the true power exceeded 256 bits at any step, else 0.
-    /// Distinct sentinel (ICF).
     ///
     /// # Safety
     /// `base`, `exp` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
@@ -808,11 +811,12 @@ zkvmcall! {
     /// `result` (little-endian) and returns the number of u64 limbs written.
     ///
     /// # Safety
-    /// `base`/`exp`/`modulus` point to their respective `*_len` readable u64s; `result`
-    /// must be writable for at least `modulus_len.next_multiple_of(4).max(4)` u64s. The
-    /// `.max(4)` matters: the edge-case paths (zero/one modulus, zero exponent, zero/one
-    /// base) write a full four-limb U256 regardless of `modulus_len`, so a zero-length
-    /// modulus still needs four writable limbs.
+    /// `base`/`exp`/`modulus` point to their respective `*_len` readable u64s, with
+    /// each length in `1..=MODEXP_MAX_LIMBS` (132): a zero-length modulus aborts the
+    /// emulator, and a zero-length base or a longer operand ends the program. `result`
+    /// must be writable for at least `modulus_len.next_multiple_of(4).max(4)` u64s: the
+    /// edge-case paths (zero/one modulus value, zero exponent, zero/one base) write a
+    /// full four-limb U256 regardless of `modulus_len`.
     #[allow(clippy::too_many_arguments)]
     fn zkvm_zisklib_modexp_u64_c(
         base: *const u64,
@@ -1025,7 +1029,7 @@ zkvmcall! {
     fn zkvm_bn254_pairing(pairs: *const u8, num_pairs: usize, verified: *mut bool)
 }
 
-// ---- BLS12-381 (EIP-2537) + KZG (EIP-4844) stubs -----------------------------
+// ---- BLS12-381 (EIP-2537) + KZG (EIP-4844) ------------------------------------
 // All operands are packed big-endian bytes (Fp=48, G1=96, G2=192, scalar=32);
 // each calls the matching ziskasm_zkvm_* .zisk routine. 0=EOK, -1=EFAIL.
 
@@ -1087,7 +1091,7 @@ zkvmcall! {
     fn zkvm_ripemd160(data: *const u8, len: usize, output: *mut u8)
 }
 
-// ---- U256 EVM-word arithmetic (zkvm_u256.h) stubs ----------------------------
+// ---- U256 EVM-word arithmetic (zkvm_u256.h) ------------------------------------
 
 zkvmcall! {
     /// `zkvm_u256_add(...)` — calls `ziskasm_zkvm_u256_add`. Big-endian
