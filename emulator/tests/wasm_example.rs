@@ -63,13 +63,21 @@ fn out_text(out: &[u8]) -> &str {
     ignore = "the wasm32-wasip1 target is not installed (rustup target add wasm32-wasip1)"
 )]
 fn compiled_fibonacci_guest() {
-    let wasm = build_example();
+    check_fibonacci_guest(&build_example());
+}
 
+#[test]
+fn prebuilt_fibonacci_guest() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/wasm-fibonacci.wasm");
+    check_fibonacci_guest(&std::fs::read(path).expect("read the committed wasm guest"));
+}
+
+fn check_fibonacci_guest(wasm: &[u8]) {
     // Default run: no input, n = 10.
-    let out = run(&wasm, &[]);
+    let out = run(wasm, &[]);
     assert_eq!(out_text(&out), "fib(10) = 55\n");
 
     // Input-driven run: n = 90, near the u64 limit.
-    let out = run(&wasm, &input_blob(&90u64.to_le_bytes()));
+    let out = run(wasm, &input_blob(&90u64.to_le_bytes()));
     assert_eq!(out_text(&out), "fib(90) = 2880067194370816120\n");
 }
