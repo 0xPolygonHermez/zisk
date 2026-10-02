@@ -1706,8 +1706,14 @@ impl ZiskRom2Asm {
                 // The ROM-histogram mode is the exception: the FROPS count emitted further down
                 // reads `a` from REG_A, so overwriting it here would count the row of
                 // `a + b_offset_imm0` instead of the row of `a`.
+                //
+                // An indirect store is the other exception: STORE_IND forms its address from
+                // REG_A too (`a + store_offset`), so `a` must survive the read.  The RISC-V
+                // transpiler never pairs SRC_IND with STORE_IND, but the wasm lowering does for
+                // its slot-to-slot copies (`copy_slot`: `mem[FP+dst] = mem[FP+src]`).
                 let mut reg_address: &str = REG_A;
                 if !ctx.rom_histogram()
+                    && instruction.store != STORE_IND
                     && (instruction.op == ZiskOp::COPYB
                         || instruction.op == ZiskOp::SIGNEXTEND_B
                         || instruction.op == ZiskOp::SIGNEXTEND_H
@@ -9085,6 +9091,49 @@ mod tests {
             code.matches(".quad emu_end").count(),
             6,
             "unexpected padding; the ZisK-library window may be getting mapped"
+        );
+    }
+    #[test]
+    fn indirect_store_keeps_a_intact_across_an_indirect_read() {
+        let pc = ROM_ADDR;
+        let mut zib = crate::ZiskInstBuilder::new(pc);
+        zib.src_a("reg", 2, false); // a = FP
+        zib.src_b("ind", (-40i64) as u64, false); // b = mem[a - 40]
+        zib.op("copyb").unwrap();
+        zib.ind_width(8);
+        zib.store("ind", -24, false, false); // mem[a - 24] = c
+        zib.j(4, 4);
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
+        zib.build(&mut rom);
+        rom.optimize_instruction_lookup().unwrap();
+
+        let mut asm = String::new();
+        ZiskRom2Asm::save_to_asm(&rom, &mut asm, AsmGenerationMethod::AsmFast, false, false, false);
+        let block: Vec<&str> = asm
+            .lines()
+            .skip_while(|l| !l.starts_with(&format!("pc_{pc:x}:")))
+            .skip(1)
+            .take_while(|l| !l.starts_with("pc_"))
+            .map(str::trim)
+            .collect();
+        assert!(!block.is_empty(), "no code emitted for pc {pc:#x}");
+
+        let read_offset = (-40i64) as u64;
+        assert!(
+            block.contains(&format!("mov {REG_ADDRESS}, {REG_A}").as_str())
+                && block.contains(&format!("add {REG_ADDRESS}, 0x{read_offset:x}").as_str()),
+            "the b indirection must not clobber REG_A:\n{}",
+            block.join("\n")
+        );
+        // ... and REG_A, still holding `a`, only ever receives the store offset.
+        let store_offset = (-24i64) as u64;
+        let adds_to_a: Vec<&&str> =
+            block.iter().filter(|l| l.starts_with(&format!("add {REG_A},"))).collect();
+        assert_eq!(
+            adds_to_a,
+            vec![&format!("add {REG_A}, 0x{store_offset:x}").as_str()],
+            "the store address must be a + store_offset:\n{}",
+            block.join("\n")
         );
     }
 }
