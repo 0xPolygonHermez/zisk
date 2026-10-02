@@ -62,6 +62,7 @@ ZISK_CRATES=(
   "zisk-sm-binary"
   "zisk-sm-mem-common"
   "zisk-transpiler-common"
+  "zisk-transpiler-wasm"
   "zisk-coordinator-client"
   "zisk-precomp-hints"
   "zisk-sm-arith"
