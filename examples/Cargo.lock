@@ -7364,6 +7364,7 @@ version = "1.4.0-alpha"
 dependencies = [
  "elf",
  "zisk-core",
+ "zisk-definitions",
  "zisk-riscv",
 ]
 
@@ -7421,6 +7422,9 @@ dependencies = [
 [[package]]
 name = "zisklib"
 version = "0.1.0"
+dependencies = [
+ "zisk-definitions",
+]
 
 [[package]]
 name = "zisklib-demo-guest"

@@ -1,192 +1,116 @@
 //! Rust bindings for the ZisK assembly library (`ziskasm/zisklib/`).
 //!
-//! A guest program links this crate and calls its functions. Each `ziskos_*` item
-//! is a raw C-ABI **stub** with a stable `#[no_mangle]` symbol and a placeholder
-//! body; during transpilation (`elf2rom`) the stub's entry is redirected to the
-//! matching hand-written `zisklib_*` routine in `ziskasm/zisklib/*.zisk`, so the
-//! ziskasm implementation runs in the guest's place. On top of the raw stubs sit
+//! A guest program links this crate and calls its functions. Each raw function is a
+//! zkvmcall thunk: a naked `csrs <id>, x0; ret` whose ID comes from
+//! `zisk_definitions::ZKVMCALLS` by name. At transpile time the `csrs` becomes a
+//! jump to the hand-written `.zisk` routine, which follows the RISC-V calling
+//! convention and returns straight to the caller. On top of the raw thunks sit
 //! ergonomic Rust wrappers (e.g. [`keccak256`]) that marshal idiomatic Rust types
-//! (`&[u8]`, `[u8; 32]`) into the flat `(ptr, len, ...)` primitives the ABI
-//! boundary requires.
+//! (`&[u8]`, `[u8; 32]`) into the flat `(ptr, len, ...)` arguments the routines take.
+//!
+//! - `zkvm_zisklib_*`: the ZisK library functions outside the EF standard (256-bit
+//!   arithmetic on little-endian limbs, secp256k1 / secp256r1 signatures, BN254 and
+//!   BLS12-381 pairings, maps and hashes to curves, BLS and KZG verification,
+//!   modexp), as in `ziskasm/lang/c/include/zkvm_zisklib.h`;
+//! - `zkvm_*`: the EF zkVM accelerator ABI (`zkvm_accelerators.h`, `zkvm_u256.h`).
+//!
+//! The thunks are not `#[no_mangle]`: the transpiler finds a zkvmcall by its `csrs`,
+//! not by symbol, so they keep Rust names and never clash with the `zkvm_*` symbols
+//! a Rust guest gets from ziskos. The guest ELF may be stripped. Running one needs
+//! ziskemu/cargo-zisk built with the ZisK library, which assembles and links the
+//! routines into the guest's ROM.
 //!
 //! This is the Rust language binding; sibling directories under `ziskasm/lang/`
-//! can provide equivalent bindings for other high-level languages.
-//!
-//! If a placeholder body ever runs, the redirect did NOT fire (a stripped ELF, a
-//! missing symbol, or ziskemu/cargo-zisk built without the `ziskasm` feature), so
-//! the stub FAILS HARD via [`stub_fail`] — it prints a diagnostic to the ZisK
-//! stdout and then accesses address 0 to force abnormal termination — rather than
-//! returning a plausible-but-wrong value. (The per-function doc comments below may
-//! still describe the old sentinel return; the behavior is now the hard fault.)
-//!
-//! Stub rules that keep the redirect working:
-//! - `#[no_mangle]` + `#[inline(never)]`: a stable symbol and a real call site the
-//!   transpiler can redirect (never inlined/folded away).
-//! - The body must *touch every argument* (via [`core::hint::black_box`]). The
-//!   redirected routine reads its args from `a0..a7`; a stub that ignored an
-//!   argument would let the optimizer elide setting up that register at the call
-//!   site, leaving garbage for the real routine.
-//! - Each stub body stays *distinct*: `stub_fail("<name>")` carries a unique string
-//!   per stub, so identical-code folding cannot merge two same-signature stubs into
-//!   one symbol (which would collapse their separate redirect entries).
+//! provide the same functions for other languages.
 
 #![no_std]
 
-use core::hint::black_box;
+/// Defines a zkvmcall thunk (`-> i32` unless a return type is given). On other
+/// targets (host builds) the function exists only so the crate compiles; calling it
+/// panics.
+macro_rules! zkvmcall {
+    ($(#[$attr:meta])* fn $name:ident($($arg:ident: $ty:ty),* $(,)?)) => {
+        zkvmcall! { $(#[$attr])* fn $name($($arg: $ty),*) -> i32 }
+    };
+    ($(#[$attr:meta])* fn $name:ident($($arg:ident: $ty:ty),* $(,)?) -> $ret:ty) => {
+        $(#[$attr])*
+        #[cfg(target_arch = "riscv64")]
+        #[unsafe(naked)]
+        pub unsafe extern "C" fn $name($($arg: $ty),*) -> $ret {
+            core::arch::naked_asm!(
+                "csrs {id}, x0",
+                "ret",
+                id = const zisk_definitions::zkvmcall_id(stringify!($name)),
+            )
+        }
 
-/// Diagnostic + hard fault for a stub whose `elf2rom` redirect did not fire.
-/// Prints a one-line message to the ZisK memory-mapped stdout (UART at
-/// 0xA0400200, one byte per store), then accesses address 0 to force abnormal
-/// termination. Reached only when the redirect did not happen (a stripped ELF, a
-/// missing symbol, or ziskemu/cargo-zisk built without the `ziskasm` feature) —
-/// failing hard beats returning a plausible-but-wrong value.
-///
-/// IMPORTANT: this is deliberately **not** `-> !`. The volatile store to address 0
-/// aborts the machine at runtime, but to the compiler it is an ordinary returning
-/// function (a store, not a diverge). Were it `-> !`, every stub tail-calling it
-/// would be inferred `noreturn`, and a caller that can see the body — under LTO, or
-/// if a stub shares a translation unit with a caller — would delete its own code
-/// *after* the call. Since the redirected `.zisk` routine returns normally, that
-/// would corrupt the guest. Returning `T: Default` keeps each stub non-diverging
-/// (and lets the stub's tail `stub_fail(..)` supply its own return type), so no
-/// caller is ever miscompiled; the returned value is never reached at runtime.
-#[inline(never)]
-fn stub_fail<T: Default>(name: &str) -> T {
-    let uart = 0xA040_0200_usize as *mut u8; // ZisK stdout: one byte per store
-    unsafe {
-        for &c in b"ERROR: ziskasm stub reached without redirect: " {
-            core::ptr::write_volatile(uart, c);
+        $(#[$attr])*
+        #[cfg(not(target_arch = "riscv64"))]
+        pub unsafe extern "C" fn $name($($arg: $ty),*) -> $ret {
+            let _ = ($($arg,)*);
+            unreachable!(concat!(stringify!($name), " only runs on ZisK"))
         }
-        for &c in name.as_bytes() {
-            core::ptr::write_volatile(uart, c);
-        }
-        for &c in b"() -- build ziskemu/cargo-zisk with --features ziskasm and do not strip the guest ELF\n" {
-            core::ptr::write_volatile(uart, c);
-        }
-        // Access the null guard page -> abnormal termination. black_box hides the
-        // null from the optimizer so it emits a real store rather than a trap/UB.
-        let null = black_box(0usize) as *mut u8;
-        core::ptr::write_volatile(null, 0);
-    }
-    black_box(T::default())
+    };
 }
 
-/// `a + b`. Implemented in ziskasm as `zisklib_add` (a demo routine). The
-/// placeholder returns an obviously-wrong, argument-dependent sentinel
-/// (`0xBAD00000000 + a + b`); a plain sum proves the ziskasm routine ran in its
-/// place. Being argument-dependent, the optimizer cannot const-fold the call away.
-#[no_mangle]
-#[inline(never)]
-pub extern "C" fn ziskos_add(a: u64, b: u64) -> u64 {
-    let _ = black_box((a, b));
-    stub_fail("ziskos_add")
+zkvmcall! {
+    /// `a + b`, a zkvmcall to `zisklib_add`: the smallest library call (a demo).
+    ///
+    /// # Safety
+    /// Always safe; `unsafe` only because every zkvmcall thunk is.
+    fn zkvm_zisklib_add(a: u64, b: u64) -> u64
 }
 
-/// `keccak256(input[0..len])` → `output[0..32]`. Raw ABI boundary redirected to
-/// `ziskasm_zkvm_keccak256` (any `len`, any `input` alignment). The placeholder fills
-/// `output` with a sentinel (`0xBA`), so a correct hash proves the ziskasm routine
-/// ran. `black_box` on all arguments is essential (see the crate docs): otherwise
-/// the optimizer would elide the `a0`/`a1` setup.
-///
-/// # Safety
-/// `input` must point to `len` readable bytes and `output` to 32 writable bytes.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_keccak(input: *const u8, len: usize, output: *mut u8) {
-    let _ = black_box((input, len, output));
-    stub_fail("ziskos_keccak")
-}
-
-/// Ergonomic Rust API over the raw [`ziskos_keccak`] boundary: the keccak256 digest
+/// Ergonomic Rust API over the raw [`zkvm_keccak256`] boundary: the keccak256 digest
 /// of `input` (any length, any alignment). Marshals the `&[u8]` into `(ptr, len)`
 /// and returns the `[u8; 32]` buffer; only those flattened primitives cross into
 /// ziskasm.
 pub fn keccak256(input: &[u8]) -> [u8; 32] {
     let mut out = [0u8; 32];
     // SAFETY: `input` is a valid slice of `input.len()` bytes; `out` is 32 writable bytes.
-    unsafe { ziskos_keccak(input.as_ptr(), input.len(), out.as_mut_ptr()) };
+    unsafe { zkvm_keccak256(input.as_ptr(), input.len(), out.as_mut_ptr()) };
     out
 }
 
-/// `sha256(input[0..len])` → `output[0..32]`. Raw ABI boundary redirected to
-/// `ziskasm_zkvm_sha256` (any `len`, any `input` alignment). Distinct sentinel byte
-/// (`0x5A`) from [`ziskos_keccak`]'s `0xBA` so identical-code folding cannot merge
-/// the two same-signature stubs (see the crate docs).
-///
-/// # Safety
-/// `input` must point to `len` readable bytes and `output` to 32 writable bytes.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_sha256(input: *const u8, len: usize, output: *mut u8) {
-    let _ = black_box((input, len, output));
-    stub_fail("ziskos_sha256")
-}
-
-/// Ergonomic Rust API over the raw [`ziskos_sha256`] boundary: the SHA2-256 digest
+/// Ergonomic Rust API over the raw [`zkvm_sha256`] boundary: the SHA2-256 digest
 /// of `input` (any length, any alignment). Marshals the `&[u8]` into `(ptr, len)`
 /// and returns the `[u8; 32]` buffer.
 pub fn sha256(input: &[u8]) -> [u8; 32] {
     let mut out = [0u8; 32];
     // SAFETY: `input` is a valid slice of `input.len()` bytes; `out` is 32 writable bytes.
-    unsafe { ziskos_sha256(input.as_ptr(), input.len(), out.as_mut_ptr()) };
+    unsafe { zkvm_sha256(input.as_ptr(), input.len(), out.as_mut_ptr()) };
     out
 }
 
-/// BLAKE2b compression function F (RFC 7693). Raw ABI boundary redirected to
-/// `ziskasm_zkvm_blake2f`: mixes message block `message[0..16]` into state
-/// `state[0..8]` over `rounds` rounds with 128-bit counter `offset[0..2]` and
-/// finalization flag `final_block`; `state` is updated in place. This is the
-/// low-level primitive — the caller handles message blocking and padding.
-/// Distinct sentinel (`0x0B2B…`); the 5-argument signature is unique anyway.
-///
-/// # Safety
-/// `state` must point to a writable `[u64; 8]`, `message` to a readable `[u64; 16]`,
-/// and `offset` to a readable `[u64; 2]`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_blake2b_compress(
-    rounds: u32,
-    state: *mut u64,
-    message: *const u64,
-    offset: *const u64,
-    final_block: u8,
-) {
-    let _ = black_box((rounds, state, message, offset, final_block));
-    stub_fail("ziskos_blake2b_compress")
-}
-
-/// Ergonomic wrapper over [`ziskos_blake2b_compress`]: one BLAKE2b compression,
+/// Ergonomic wrapper over [`zkvm_blake2f`]: one BLAKE2b compression,
 /// mixing message block `m` into state `h` over `rounds` rounds with counter `t`
 /// and finalization flag `f` (`h` updated in place). Mirrors ziskos
 /// `blake2b_compress`.
 pub fn blake2b_compress(rounds: u32, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 2], f: bool) {
     // SAFETY: `h`/`m`/`t` are valid arrays of the required lengths (`h` writable).
-    unsafe { ziskos_blake2b_compress(rounds, h.as_mut_ptr(), m.as_ptr(), t.as_ptr(), f as u8) };
+    unsafe {
+        zkvm_blake2f(rounds, h.as_mut_ptr().cast(), m.as_ptr().cast(), t.as_ptr().cast(), f as u8)
+    };
 }
 
-/// `a^(-1) mod 2^256` if it exists, else "not invertible". Raw ABI boundary
-/// redirected to `uint256/mul.zisk`'s `zisklib_inv256`: returns `1` and writes
-/// `result[0..4]` when `a` is invertible (odd), `0` otherwise. The placeholder
-/// writes a sentinel and returns an argument-dependent value so the optimizer
-/// keeps the call and sets up both argument registers.
-///
-/// # Safety
-/// `a` must point to a valid `[u64; 4]` and `result` to a writable `[u64; 4]`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_inv256(a: *const u64, result: *mut u64) -> u64 {
-    let _ = black_box((a, result));
-    stub_fail("ziskos_inv256")
+zkvmcall! {
+    /// `a^(-1) mod 2^256` if it exists, else "not invertible". zkvmcall to
+    /// `uint256/mul.zisk`'s `zisklib_inv256`: returns `1` and writes `result[0..4]`
+    /// when `a` is invertible (odd), `0` otherwise.
+    ///
+    /// # Safety
+    /// `a` must point to a valid `[u64; 4]` and `result` to a writable `[u64; 4]`.
+    fn zkvm_zisklib_inv256(a: *const u64, result: *mut u64) -> u64
 }
 
-/// Ergonomic Rust API over [`ziskos_inv256`]: the modular inverse of `a` mod
+/// Ergonomic Rust API over [`zkvm_zisklib_inv256`]: the modular inverse of `a` mod
 /// 2^256, or `None` if `a` is not invertible (i.e. even). Mirrors ziskos
 /// `inv256`. The ziskasm routine hints the inverse and verifies `a * inv ≡ 1`
 /// (mod 2^256) with the arith256 precompile before returning it.
 pub fn inv256(a: &[u64; 4]) -> Option<[u64; 4]> {
     let mut result = [0u64; 4];
     // SAFETY: `a` is a `[u64; 4]`; `result` is a writable `[u64; 4]`.
-    let invertible = unsafe { ziskos_inv256(a.as_ptr(), result.as_mut_ptr()) };
+    let invertible = unsafe { zkvm_zisklib_inv256(a.as_ptr(), result.as_mut_ptr()) };
     (invertible != 0).then_some(result)
 }
 
@@ -195,37 +119,22 @@ const MAX_256: [u64; 4] = [u64::MAX; 4];
 const ZERO_256: [u64; 4] = [0; 4];
 const ONE_256: [u64; 4] = [1, 0, 0, 0];
 
-/// Raw ABI boundary redirected to `zisklib_overflowing_add256`: writes `a + b`
-/// (mod 2^256) to `result` and returns the carry-out (1 on overflow, else 0).
-/// Placeholder touches all args and has a side effect so the call site survives.
-///
-/// # Safety
-/// `a`, `b` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_overflowing_add256(
-    a: *const u64,
-    b: *const u64,
-    result: *mut u64,
-) -> u64 {
-    let _ = black_box((a, b, result));
-    stub_fail("ziskos_overflowing_add256")
+zkvmcall! {
+    /// zkvmcall to `zisklib_overflowing_add256`: writes `a + b` (mod 2^256) to `result`
+    /// and returns the carry-out (1 on overflow, else 0).
+    ///
+    /// # Safety
+    /// `a`, `b` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+    fn zkvm_zisklib_overflowing_add256(a: *const u64, b: *const u64, result: *mut u64) -> u64
 }
 
-/// Raw ABI boundary redirected to `zisklib_overflowing_sub256`: writes `a - b`
-/// (mod 2^256) to `result` and returns 1 on borrow/underflow (`a < b`), else 0.
-///
-/// # Safety
-/// `a`, `b` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_overflowing_sub256(
-    a: *const u64,
-    b: *const u64,
-    result: *mut u64,
-) -> u64 {
-    let _ = black_box((a, b, result));
-    stub_fail("ziskos_overflowing_sub256")
+zkvmcall! {
+    /// zkvmcall to `zisklib_overflowing_sub256`: writes `a - b` (mod 2^256) to `result`
+    /// and returns 1 on borrow/underflow (`a < b`), else 0.
+    ///
+    /// # Safety
+    /// `a`, `b` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+    fn zkvm_zisklib_overflowing_sub256(a: *const u64, b: *const u64, result: *mut u64) -> u64
 }
 
 // --- 256-bit addition ---------------------------------------------------------
@@ -234,7 +143,7 @@ pub unsafe extern "C" fn ziskos_overflowing_sub256(
 pub fn overflowing_add256(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], bool) {
     let mut r = [0u64; 4];
     // SAFETY: all three are valid `[u64; 4]` (`r` writable).
-    let carry = unsafe { ziskos_overflowing_add256(a.as_ptr(), b.as_ptr(), r.as_mut_ptr()) };
+    let carry = unsafe { zkvm_zisklib_overflowing_add256(a.as_ptr(), b.as_ptr(), r.as_mut_ptr()) };
     (r, carry != 0)
 }
 
@@ -265,7 +174,7 @@ pub fn saturating_add256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
 pub fn overflowing_sub256(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], bool) {
     let mut r = [0u64; 4];
     // SAFETY: all three are valid `[u64; 4]` (`r` writable).
-    let borrow = unsafe { ziskos_overflowing_sub256(a.as_ptr(), b.as_ptr(), r.as_mut_ptr()) };
+    let borrow = unsafe { zkvm_zisklib_overflowing_sub256(a.as_ptr(), b.as_ptr(), r.as_mut_ptr()) };
     (r, borrow != 0)
 }
 
@@ -310,21 +219,14 @@ pub fn checked_neg256(a: &[u64; 4]) -> Option<[u64; 4]> {
 
 // --- 256-bit multiplication ---------------------------------------------------
 
-/// Raw ABI boundary redirected to `zisklib_overflowing_mul256`: writes the low 256
-/// bits of `a * b` to `result` and returns 1 if the product overflows 256 bits
-/// (high 256 bits != 0), else 0. Distinct sentinel body (see the ICF note above).
-///
-/// # Safety
-/// `a`, `b` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_overflowing_mul256(
-    a: *const u64,
-    b: *const u64,
-    result: *mut u64,
-) -> u64 {
-    let _ = black_box((a, b, result));
-    stub_fail("ziskos_overflowing_mul256")
+zkvmcall! {
+    /// zkvmcall to `zisklib_overflowing_mul256`: writes the low 256 bits of `a * b` to
+    /// `result` and returns 1 if the product overflows 256 bits (high 256 bits != 0),
+    /// else 0. Distinct sentinel body (see the ICF note above).
+    ///
+    /// # Safety
+    /// `a`, `b` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+    fn zkvm_zisklib_overflowing_mul256(a: *const u64, b: *const u64, result: *mut u64) -> u64
 }
 
 /// Low 256 bits of `a * b`, with the overflow flag (`true` if the true product
@@ -332,7 +234,8 @@ pub unsafe extern "C" fn ziskos_overflowing_mul256(
 pub fn overflowing_mul256(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], bool) {
     let mut r = [0u64; 4];
     // SAFETY: all three are valid `[u64; 4]` (`r` writable).
-    let overflow = unsafe { ziskos_overflowing_mul256(a.as_ptr(), b.as_ptr(), r.as_mut_ptr()) };
+    let overflow =
+        unsafe { zkvm_zisklib_overflowing_mul256(a.as_ptr(), b.as_ptr(), r.as_mut_ptr()) };
     (r, overflow != 0)
 }
 
@@ -387,19 +290,15 @@ pub fn saturating_square256(a: &[u64; 4]) -> [u64; 4] {
 
 // --- 256-bit division / remainder ---------------------------------------------
 
-/// Raw ABI boundary redirected to `zisklib_div_rem256`: writes `a / b` to `q` and
-/// `a % b` to `r`. Halts on `b == 0` on-target (the `checked_*` wrappers guard
-/// against that in Rust first). Distinct sentinel bodies (see the ICF note above);
-/// writing two output buffers already makes this body distinct from the one-output
-/// add/sub/mul stubs.
-///
-/// # Safety
-/// `a`, `b` must point to valid `[u64; 4]`; `q`, `r` to writable `[u64; 4]`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_div_rem256(a: *const u64, b: *const u64, q: *mut u64, r: *mut u64) {
-    let _ = black_box((a, b, q, r));
-    stub_fail("ziskos_div_rem256")
+zkvmcall! {
+    /// zkvmcall to `zisklib_div_rem256`: writes `a / b` to `q` and `a % b` to `r`.
+    /// Halts on `b == 0` on-target (the `checked_*` wrappers guard against that in Rust
+    /// first). Distinct sentinel bodies (see the ICF note above); writing two output
+    /// buffers already makes this body distinct from the one-output add/sub/mul stubs.
+    ///
+    /// # Safety
+    /// `a`, `b` must point to valid `[u64; 4]`; `q`, `r` to writable `[u64; 4]`.
+    fn zkvm_zisklib_div_rem256(a: *const u64, b: *const u64, q: *mut u64, r: *mut u64) -> ()
 }
 
 /// `(a / b, a % b)` (Euclidean). **Panics on `b == 0`** (halts on-target).
@@ -407,7 +306,7 @@ pub fn div_rem256(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], [u64; 4]) {
     let mut q = [0u64; 4];
     let mut r = [0u64; 4];
     // SAFETY: `a`, `b` are valid `[u64; 4]`; `q`, `r` are writable `[u64; 4]`.
-    unsafe { ziskos_div_rem256(a.as_ptr(), b.as_ptr(), q.as_mut_ptr(), r.as_mut_ptr()) };
+    unsafe { zkvm_zisklib_div_rem256(a.as_ptr(), b.as_ptr(), q.as_mut_ptr(), r.as_mut_ptr()) };
     (q, r)
 }
 
@@ -448,47 +347,28 @@ pub fn div_ceil256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
 // call the stub with a zero modulus. Inputs need not be `< module`; the result is
 // always reduced. Each stub carries a distinct sentinel (ICF, see the note above).
 
-/// Raw ABI boundary redirected to `zisklib_reduce_mod256`: `result = a mod m`.
-///
-/// # Safety
-/// `a`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_reduce_mod256(a: *const u64, m: *const u64, result: *mut u64) {
-    let _ = black_box((a, m, result));
-    stub_fail("ziskos_reduce_mod256")
+zkvmcall! {
+    /// zkvmcall to `zisklib_reduce_mod256`: `result = a mod m`.
+    ///
+    /// # Safety
+    /// `a`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+    fn zkvm_zisklib_reduce_mod256(a: *const u64, m: *const u64, result: *mut u64) -> ()
 }
 
-/// Raw ABI boundary redirected to `zisklib_add_mod256`: `result = (a + b) mod m`.
-///
-/// # Safety
-/// `a`, `b`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_add_mod256(
-    a: *const u64,
-    b: *const u64,
-    m: *const u64,
-    result: *mut u64,
-) {
-    let _ = black_box((a, b, m, result));
-    stub_fail("ziskos_add_mod256")
+zkvmcall! {
+    /// zkvmcall to `zisklib_add_mod256`: `result = (a + b) mod m`.
+    ///
+    /// # Safety
+    /// `a`, `b`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+    fn zkvm_zisklib_add_mod256(a: *const u64, b: *const u64, m: *const u64, result: *mut u64) -> ()
 }
 
-/// Raw ABI boundary redirected to `zisklib_mul_mod256`: `result = (a * b) mod m`.
-///
-/// # Safety
-/// `a`, `b`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_mul_mod256(
-    a: *const u64,
-    b: *const u64,
-    m: *const u64,
-    result: *mut u64,
-) {
-    let _ = black_box((a, b, m, result));
-    stub_fail("ziskos_mul_mod256")
+zkvmcall! {
+    /// zkvmcall to `zisklib_mul_mod256`: `result = (a * b) mod m`.
+    ///
+    /// # Safety
+    /// `a`, `b`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+    fn zkvm_zisklib_mul_mod256(a: *const u64, b: *const u64, m: *const u64, result: *mut u64) -> ()
 }
 
 /// `a mod modulus` (`0` if `modulus == 0`).
@@ -498,7 +378,7 @@ pub fn reduce_mod256(a: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
     }
     let mut d = [0u64; 4];
     // SAFETY: `a`, `modulus` are valid `[u64; 4]`; `d` is a writable `[u64; 4]`.
-    unsafe { ziskos_reduce_mod256(a.as_ptr(), modulus.as_ptr(), d.as_mut_ptr()) };
+    unsafe { zkvm_zisklib_reduce_mod256(a.as_ptr(), modulus.as_ptr(), d.as_mut_ptr()) };
     d
 }
 
@@ -509,7 +389,7 @@ pub fn add_mod256(a: &[u64; 4], b: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
     }
     let mut d = [0u64; 4];
     // SAFETY: `a`, `b`, `modulus` are valid `[u64; 4]`; `d` is a writable `[u64; 4]`.
-    unsafe { ziskos_add_mod256(a.as_ptr(), b.as_ptr(), modulus.as_ptr(), d.as_mut_ptr()) };
+    unsafe { zkvm_zisklib_add_mod256(a.as_ptr(), b.as_ptr(), modulus.as_ptr(), d.as_mut_ptr()) };
     d
 }
 
@@ -520,7 +400,7 @@ pub fn mul_mod256(a: &[u64; 4], b: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
     }
     let mut d = [0u64; 4];
     // SAFETY: `a`, `b`, `modulus` are valid `[u64; 4]`; `d` is a writable `[u64; 4]`.
-    unsafe { ziskos_mul_mod256(a.as_ptr(), b.as_ptr(), modulus.as_ptr(), d.as_mut_ptr()) };
+    unsafe { zkvm_zisklib_mul_mod256(a.as_ptr(), b.as_ptr(), modulus.as_ptr(), d.as_mut_ptr()) };
     d
 }
 
@@ -529,18 +409,15 @@ pub fn square_mod256(a: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
     mul_mod256(a, a, modulus)
 }
 
-/// Raw ABI boundary redirected to `zisklib_inv_mod256`: writes `a^(-1) mod m` to
-/// `result` and returns 1 if the inverse exists, else 0. On-target the routine
-/// verifies whichever outcome the hint claims (the inverse, or a gcd witness that
-/// none exists). Distinct sentinel (ICF, see the note above).
-///
-/// # Safety
-/// `a`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_inv_mod256(a: *const u64, m: *const u64, result: *mut u64) -> u64 {
-    let _ = black_box((a, m, result));
-    stub_fail("ziskos_inv_mod256")
+zkvmcall! {
+    /// zkvmcall to `zisklib_inv_mod256`: writes `a^(-1) mod m` to `result` and returns
+    /// 1 if the inverse exists, else 0. On-target the routine verifies whichever
+    /// outcome the hint claims (the inverse, or a gcd witness that none exists).
+    /// Distinct sentinel (ICF, see the note above).
+    ///
+    /// # Safety
+    /// `a`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+    fn zkvm_zisklib_inv_mod256(a: *const u64, m: *const u64, result: *mut u64) -> u64
 }
 
 /// Modular inverse: `a^(-1) mod modulus`, or `None` if it does not exist (i.e.
@@ -553,27 +430,20 @@ pub fn inv_mod256(a: &[u64; 4], modulus: &[u64; 4]) -> Option<[u64; 4]> {
     }
     let mut result = [0u64; 4];
     // SAFETY: `a`, `modulus` are valid `[u64; 4]`; `result` is a writable `[u64; 4]`.
-    let has_inv = unsafe { ziskos_inv_mod256(a.as_ptr(), modulus.as_ptr(), result.as_mut_ptr()) };
+    let has_inv =
+        unsafe { zkvm_zisklib_inv_mod256(a.as_ptr(), modulus.as_ptr(), result.as_mut_ptr()) };
     (has_inv != 0).then_some(result)
 }
 
 // --- 256-bit modular exponentiation -------------------------------------------
 
-/// Raw ABI boundary redirected to `zisklib_pow_mod256`: `result = base^exp mod m`.
-/// `m in {0, 1}` is handled by the wrapper. Distinct sentinel (ICF).
-///
-/// # Safety
-/// `base`, `exp`, `m` must point to valid `[u64; 4]`; `result` to a writable one.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_pow_mod256(
-    base: *const u64,
-    exp: *const u64,
-    m: *const u64,
-    result: *mut u64,
-) {
-    let _ = black_box((base, exp, m, result));
-    stub_fail("ziskos_pow_mod256")
+zkvmcall! {
+    /// zkvmcall to `zisklib_pow_mod256`: `result = base^exp mod m`. `m in {0, 1}` is
+    /// handled by the wrapper. Distinct sentinel (ICF).
+    ///
+    /// # Safety
+    /// `base`, `exp`, `m` must point to valid `[u64; 4]`; `result` to a writable one.
+    fn zkvm_zisklib_pow_mod256(base: *const u64, exp: *const u64, m: *const u64, result: *mut u64) -> ()
 }
 
 /// `base^exp mod modulus`. `modulus in {0, 1}` yields `0` (every value is `0` mod 1).
@@ -583,27 +453,22 @@ pub fn pow_mod256(base: &[u64; 4], exp: &[u64; 4], modulus: &[u64; 4]) -> [u64; 
     }
     let mut r = [0u64; 4];
     // SAFETY: `base`, `exp`, `modulus` are valid `[u64; 4]`; `r` is writable.
-    unsafe { ziskos_pow_mod256(base.as_ptr(), exp.as_ptr(), modulus.as_ptr(), r.as_mut_ptr()) };
+    unsafe {
+        zkvm_zisklib_pow_mod256(base.as_ptr(), exp.as_ptr(), modulus.as_ptr(), r.as_mut_ptr())
+    };
     r
 }
 
 // --- 256-bit exponentiation (mod 2^256) ---------------------------------------
 
-/// Raw ABI boundary redirected to `zisklib_overflowing_pow256`: writes
-/// `base^exp mod 2^256` to `result` and returns 1 if the true power exceeded 256
-/// bits at any step, else 0. Distinct sentinel (ICF).
-///
-/// # Safety
-/// `base`, `exp` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_overflowing_pow256(
-    base: *const u64,
-    exp: *const u64,
-    result: *mut u64,
-) -> u64 {
-    let _ = black_box((base, exp, result));
-    stub_fail("ziskos_overflowing_pow256")
+zkvmcall! {
+    /// zkvmcall to `zisklib_overflowing_pow256`: writes `base^exp mod 2^256` to
+    /// `result` and returns 1 if the true power exceeded 256 bits at any step, else 0.
+    /// Distinct sentinel (ICF).
+    ///
+    /// # Safety
+    /// `base`, `exp` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+    fn zkvm_zisklib_overflowing_pow256(base: *const u64, exp: *const u64, result: *mut u64) -> u64
 }
 
 /// `base^exp mod 2^256`, with the overflow flag (`true` if the true power exceeds
@@ -612,7 +477,7 @@ pub fn overflowing_pow256(base: &[u64; 4], exp: &[u64; 4]) -> ([u64; 4], bool) {
     let mut r = [0u64; 4];
     // SAFETY: `base`, `exp` are valid `[u64; 4]`; `r` is a writable `[u64; 4]`.
     let overflow =
-        unsafe { ziskos_overflowing_pow256(base.as_ptr(), exp.as_ptr(), r.as_mut_ptr()) };
+        unsafe { zkvm_zisklib_overflowing_pow256(base.as_ptr(), exp.as_ptr(), r.as_mut_ptr()) };
     (r, overflow != 0)
 }
 
@@ -646,50 +511,35 @@ pub fn saturating_pow256(base: &[u64; 4], exp: &[u64; 4]) -> [u64; 4] {
 // `ziskasm/zisklib/secp256{k1,r1}/`.
 // ===========================================================================
 
-/// secp256k1 ECDSA verification, redirected to `zisklib_ecdsa_verify_secp256k1`.
-/// Returns `1` iff `(r, s)` verifies over hash `z` under public key `pk`.
-///
-/// # Safety
-/// `pk` points to 8 readable `u64`; `z`, `r`, `s` each to 4 readable `u64`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_ecdsa_verify_secp256k1(
-    pk: *const u64,
-    z: *const u64,
-    r: *const u64,
-    s: *const u64,
-) -> u64 {
-    let _ = black_box((pk, z, r, s));
-    stub_fail("ziskos_ecdsa_verify_secp256k1")
+zkvmcall! {
+    /// secp256k1 ECDSA verification, a zkvmcall to `zisklib_ecdsa_verify_secp256k1`.
+    /// Returns `1` iff `(r, s)` verifies over hash `z` under public key `pk`.
+    ///
+    /// # Safety
+    /// `pk` points to 8 readable `u64`; `z`, `r`, `s` each to 4 readable `u64`.
+    fn zkvm_zisklib_ecdsa_verify_secp256k1(pk: *const u64, z: *const u64, r: *const u64, s: *const u64) -> u64
 }
 
-/// Ergonomic API over [`ziskos_ecdsa_verify_secp256k1`]: `true` iff the signature
+/// Ergonomic API over [`zkvm_zisklib_ecdsa_verify_secp256k1`]: `true` iff the signature
 /// `(r, s)` over hash `z` is valid for public key `pk` (x‖y, little-endian limbs).
 pub fn secp256k1_ecdsa_verify(pk: &[u64; 8], z: &[u64; 4], r: &[u64; 4], s: &[u64; 4]) -> bool {
     // SAFETY: all pointers reference the correctly-sized local arrays.
-    unsafe { ziskos_ecdsa_verify_secp256k1(pk.as_ptr(), z.as_ptr(), r.as_ptr(), s.as_ptr()) != 0 }
+    unsafe {
+        zkvm_zisklib_ecdsa_verify_secp256k1(pk.as_ptr(), z.as_ptr(), r.as_ptr(), s.as_ptr()) != 0
+    }
 }
 
-/// secp256k1 public-key recovery, redirected to `zisklib_ecdsa_recover_secp256k1`.
-/// Writes the recovered public key (x‖y) to `result` and returns an error code
-/// (`0` = success; nonzero = failure, see the wrapper).
-///
-/// # Safety
-/// `r`, `s`, `z` each point to 4 readable `u64`; `result` to 8 writable `u64`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_ecdsa_recover_secp256k1(
-    r: *const u64,
-    s: *const u64,
-    z: *const u64,
-    recid: u64,
-    result: *mut u64,
-) -> u64 {
-    let _ = black_box((r, s, z, recid, result));
-    stub_fail("ziskos_ecdsa_recover_secp256k1")
+zkvmcall! {
+    /// secp256k1 public-key recovery, a zkvmcall to `zisklib_ecdsa_recover_secp256k1`.
+    /// Writes the recovered public key (x‖y) to `result` and returns an error code (`0`
+    /// = success; nonzero = failure, see the wrapper).
+    ///
+    /// # Safety
+    /// `r`, `s`, `z` each point to 4 readable `u64`; `result` to 8 writable `u64`.
+    fn zkvm_zisklib_ecdsa_recover_secp256k1(r: *const u64, s: *const u64, z: *const u64, recid: u64, result: *mut u64) -> u64
 }
 
-/// Ergonomic API over [`ziskos_ecdsa_recover_secp256k1`]: recover the public key
+/// Ergonomic API over [`zkvm_zisklib_ecdsa_recover_secp256k1`]: recover the public key
 /// (x‖y, little-endian limbs) that produced signature `(r, s)` over hash `z` with
 /// recovery id `recid`. `Ok(pk)` on success, or `Err(code)` (`1` invalid r, `2`
 /// invalid s, `3` invalid recid, `4` point not on curve, `5` recovery failed).
@@ -702,7 +552,13 @@ pub fn secp256k1_ecdsa_recover(
     let mut pk = [0u64; 8];
     // SAFETY: `r`, `s`, `z` are `[u64; 4]`; `pk` is a writable `[u64; 8]`.
     let err = unsafe {
-        ziskos_ecdsa_recover_secp256k1(r.as_ptr(), s.as_ptr(), z.as_ptr(), recid, pk.as_mut_ptr())
+        zkvm_zisklib_ecdsa_recover_secp256k1(
+            r.as_ptr(),
+            s.as_ptr(),
+            z.as_ptr(),
+            recid,
+            pk.as_mut_ptr(),
+        )
     };
     if err == 0 {
         Ok(pk)
@@ -711,32 +567,23 @@ pub fn secp256k1_ecdsa_recover(
     }
 }
 
-/// secp256k1 BIP-340 Schnorr verification, redirected to
-/// `zisklib_schnorr_verify_secp256k1`. Returns `1` iff `(r, s)` verifies over
-/// `msg` under the x-only public key `pk_x`.
-///
-/// # Safety
-/// `pk_x`, `r`, `s` each point to 4 readable `u64`; `msg` to `msg_len` bytes.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_schnorr_verify_secp256k1(
-    pk_x: *const u64,
-    r: *const u64,
-    s: *const u64,
-    msg: *const u8,
-    msg_len: u64,
-) -> u64 {
-    let _ = black_box((pk_x, r, s, msg, msg_len));
-    stub_fail("ziskos_schnorr_verify_secp256k1")
+zkvmcall! {
+    /// secp256k1 BIP-340 Schnorr verification, a zkvmcall to
+    /// `zisklib_schnorr_verify_secp256k1`. Returns `1` iff `(r, s)` verifies over `msg`
+    /// under the x-only public key `pk_x`.
+    ///
+    /// # Safety
+    /// `pk_x`, `r`, `s` each point to 4 readable `u64`; `msg` to `msg_len` bytes.
+    fn zkvm_zisklib_schnorr_verify_secp256k1(pk_x: *const u64, r: *const u64, s: *const u64, msg: *const u8, msg_len: u64) -> u64
 }
 
-/// Ergonomic API over [`ziskos_schnorr_verify_secp256k1`]: `true` iff the BIP-340
+/// Ergonomic API over [`zkvm_zisklib_schnorr_verify_secp256k1`]: `true` iff the BIP-340
 /// signature `(r, s)` over `msg` is valid for x-only public key `pk_x` (little-
 /// endian limbs). `msg` is raw bytes of any length.
 pub fn secp256k1_schnorr_verify(pk_x: &[u64; 4], r: &[u64; 4], s: &[u64; 4], msg: &[u8]) -> bool {
     // SAFETY: limb arrays are `[u64; 4]`; `msg` is a valid slice of `msg.len()` bytes.
     unsafe {
-        ziskos_schnorr_verify_secp256k1(
+        zkvm_zisklib_schnorr_verify_secp256k1(
             pk_x.as_ptr(),
             r.as_ptr(),
             s.as_ptr(),
@@ -746,48 +593,39 @@ pub fn secp256k1_schnorr_verify(pk_x: &[u64; 4], r: &[u64; 4], s: &[u64; 4], msg
     }
 }
 
-/// secp256r1 (NIST P-256) ECDSA verification, redirected to
-/// `zisklib_ecdsa_verify_secp256r1`. Returns `1` iff `(r, s)` verifies over hash
-/// `z` under public key `pk`.
-///
-/// # Safety
-/// `pk` points to 8 readable `u64`; `z`, `r`, `s` each to 4 readable `u64`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_ecdsa_verify_secp256r1(
-    pk: *const u64,
-    z: *const u64,
-    r: *const u64,
-    s: *const u64,
-) -> u64 {
-    let _ = black_box((pk, z, r, s));
-    stub_fail("ziskos_ecdsa_verify_secp256r1")
+zkvmcall! {
+    /// secp256r1 (NIST P-256) ECDSA verification, a zkvmcall to
+    /// `zisklib_ecdsa_verify_secp256r1`. Returns `1` iff `(r, s)` verifies over hash
+    /// `z` under public key `pk`.
+    ///
+    /// # Safety
+    /// `pk` points to 8 readable `u64`; `z`, `r`, `s` each to 4 readable `u64`.
+    fn zkvm_zisklib_ecdsa_verify_secp256r1(pk: *const u64, z: *const u64, r: *const u64, s: *const u64) -> u64
 }
 
-/// Ergonomic API over [`ziskos_ecdsa_verify_secp256r1`]: `true` iff the signature
+/// Ergonomic API over [`zkvm_zisklib_ecdsa_verify_secp256r1`]: `true` iff the signature
 /// `(r, s)` over hash `z` is valid for P-256 public key `pk` (x‖y, little-endian
 /// limbs).
 pub fn secp256r1_ecdsa_verify(pk: &[u64; 8], z: &[u64; 4], r: &[u64; 4], s: &[u64; 4]) -> bool {
     // SAFETY: all pointers reference the correctly-sized local arrays.
-    unsafe { ziskos_ecdsa_verify_secp256r1(pk.as_ptr(), z.as_ptr(), r.as_ptr(), s.as_ptr()) != 0 }
+    unsafe {
+        zkvm_zisklib_ecdsa_verify_secp256r1(pk.as_ptr(), z.as_ptr(), r.as_ptr(), s.as_ptr()) != 0
+    }
 }
 
-/// BN254 (alt_bn128) optimal-ate pairing check (EIP-197 ecPairing), redirected to
-/// `zisklib_pairing_check_bn254`. `g1`/`g2` are `n` points (affine, x‖y, little-
-/// endian limbs; G1 = 8 u64, G2 = 16 u64). Returns a status code: `0` = the
-/// pairing product is 1 (accept), `1` = it is not (reject), `2`..`6` = input
-/// validation errors (see the wrapper).
-///
-/// # Safety
-/// `g1` points to `8*n` readable `u64`, `g2` to `16*n` readable `u64`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_pairing_check_bn254(g1: *const u64, g2: *const u64, n: u64) -> u64 {
-    let _ = black_box((g1, g2, n));
-    stub_fail("ziskos_pairing_check_bn254")
+zkvmcall! {
+    /// BN254 (alt_bn128) optimal-ate pairing check (EIP-197 ecPairing), a zkvmcall to
+    /// `zisklib_pairing_check_bn254`. `g1`/`g2` are `n` points (affine, x‖y, little-
+    /// endian limbs; G1 = 8 u64, G2 = 16 u64). Returns a status code: `0` = the pairing
+    /// product is 1 (accept), `1` = it is not (reject), `2`..`6` = input validation
+    /// errors (see the wrapper).
+    ///
+    /// # Safety
+    /// `g1` points to `8*n` readable `u64`, `g2` to `16*n` readable `u64`.
+    fn zkvm_zisklib_pairing_check_bn254(g1: *const u64, g2: *const u64, n: u64) -> u64
 }
 
-/// Ergonomic API over [`ziskos_pairing_check_bn254`]: returns the raw status code
+/// Ergonomic API over [`zkvm_zisklib_pairing_check_bn254`]: returns the raw status code
 /// for the BN254 pairing check over `n` pairs (`g1[i]`, `g2[i]`). `0` accepts
 /// (∏ e(g1ᵢ, g2ᵢ) == 1); `1` rejects; `2` G1 not canonical; `3` G1 not on curve;
 /// `4` G2 not canonical; `5` G2 not on curve; `6` G2 not in subgroup.
@@ -795,7 +633,7 @@ pub fn bn254_pairing_check(g1: &[[u64; 8]], g2: &[[u64; 16]]) -> u64 {
     assert_eq!(g1.len(), g2.len(), "g1 and g2 must have the same number of points");
     // SAFETY: `g1`/`g2` are contiguous arrays of `len` points of 8/16 u64 each.
     unsafe {
-        ziskos_pairing_check_bn254(
+        zkvm_zisklib_pairing_check_bn254(
             g1.as_ptr() as *const u64,
             g2.as_ptr() as *const u64,
             g1.len() as u64,
@@ -803,26 +641,19 @@ pub fn bn254_pairing_check(g1: &[[u64; 8]], g2: &[[u64; 16]]) -> u64 {
     }
 }
 
-/// BLS12-381 optimal-ate pairing check (EIP-2537), redirected to
-/// `zisklib_pairing_check_bls12_381`. `g1`/`g2` are `n` points (affine, x‖y,
-/// little-endian limbs; G1 = 12 u64, G2 = 24 u64). Returns a status code: `0` =
-/// the pairing product is 1 (accept), `1` = it is not (reject), `2`..`7` = input
-/// validation errors (see the wrapper).
-///
-/// # Safety
-/// `g1` points to `12*n` readable `u64`, `g2` to `24*n` readable `u64`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_pairing_check_bls12_381(
-    g1: *const u64,
-    g2: *const u64,
-    n: u64,
-) -> u64 {
-    let _ = black_box((g1, g2, n));
-    stub_fail("ziskos_pairing_check_bls12_381")
+zkvmcall! {
+    /// BLS12-381 optimal-ate pairing check (EIP-2537), a zkvmcall to
+    /// `zisklib_pairing_check_bls12_381`. `g1`/`g2` are `n` points (affine, x‖y,
+    /// little-endian limbs; G1 = 12 u64, G2 = 24 u64). Returns a status code: `0` = the
+    /// pairing product is 1 (accept), `1` = it is not (reject), `2`..`7` = input
+    /// validation errors (see the wrapper).
+    ///
+    /// # Safety
+    /// `g1` points to `12*n` readable `u64`, `g2` to `24*n` readable `u64`.
+    fn zkvm_zisklib_pairing_check_bls12_381(g1: *const u64, g2: *const u64, n: u64) -> u64
 }
 
-/// Ergonomic API over [`ziskos_pairing_check_bls12_381`]: returns the raw status
+/// Ergonomic API over [`zkvm_zisklib_pairing_check_bls12_381`]: returns the raw status
 /// code for the BLS12-381 pairing check over `n` pairs (`g1[i]`, `g2[i]`). `0`
 /// accepts (∏ e(g1ᵢ, g2ᵢ) == 1); `1` rejects; `2` G1 not canonical; `3` G1 not
 /// on curve; `4` G1 not in subgroup; `5` G2 not canonical; `6` G2 not on curve;
@@ -831,7 +662,7 @@ pub fn bls12_381_pairing_check(g1: &[[u64; 12]], g2: &[[u64; 24]]) -> u64 {
     assert_eq!(g1.len(), g2.len(), "g1 and g2 must have the same number of points");
     // SAFETY: `g1`/`g2` are contiguous arrays of `len` points of 12/24 u64 each.
     unsafe {
-        ziskos_pairing_check_bls12_381(
+        zkvm_zisklib_pairing_check_bls12_381(
             g1.as_ptr() as *const u64,
             g2.as_ptr() as *const u64,
             g1.len() as u64,
@@ -839,25 +670,22 @@ pub fn bls12_381_pairing_check(g1: &[[u64; 12]], g2: &[[u64; 24]]) -> u64 {
     }
 }
 
-/// BLS12-381 map field element Fp → G1 (EIP-2537 MAP_FP_TO_G1), redirected to
-/// `zisklib_map_to_curve_g1_bls12_381`. Writes the resulting G1 point (12 u64,
-/// x‖y little-endian) to `result`; returns `0` on success, `1` if `u ≥ p`.
-///
-/// # Safety
-/// `u` points to 6 readable `u64`, `result` to 12 writable `u64`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_map_to_curve_g1_bls12_381(u: *const u64, result: *mut u64) -> u64 {
-    let _ = black_box((u, result));
-    stub_fail("ziskos_map_to_curve_g1_bls12_381")
+zkvmcall! {
+    /// BLS12-381 map field element Fp → G1 (EIP-2537 MAP_FP_TO_G1), a zkvmcall to
+    /// `zisklib_map_to_curve_g1_bls12_381`. Writes the resulting G1 point (12 u64, x‖y
+    /// little-endian) to `result`; returns `0` on success, `1` if `u ≥ p`.
+    ///
+    /// # Safety
+    /// `u` points to 6 readable `u64`, `result` to 12 writable `u64`.
+    fn zkvm_zisklib_map_to_curve_g1_bls12_381(u: *const u64, result: *mut u64) -> u64
 }
 
-/// Ergonomic API over [`ziskos_map_to_curve_g1_bls12_381`]: maps `u ∈ Fp` to a
+/// Ergonomic API over [`zkvm_zisklib_map_to_curve_g1_bls12_381`]: maps `u ∈ Fp` to a
 /// G1 point. Returns `Ok(point)` (12 u64, x‖y) or `Err(1)` when `u ≥ p`.
 pub fn bls12_381_map_to_curve_g1(u: &[u64; 6]) -> Result<[u64; 12], u64> {
     let mut point = [0u64; 12];
     // SAFETY: `u` is 6 u64, `point` is 12 u64.
-    let status = unsafe { ziskos_map_to_curve_g1_bls12_381(u.as_ptr(), point.as_mut_ptr()) };
+    let status = unsafe { zkvm_zisklib_map_to_curve_g1_bls12_381(u.as_ptr(), point.as_mut_ptr()) };
     if status == 0 {
         Ok(point)
     } else {
@@ -865,27 +693,24 @@ pub fn bls12_381_map_to_curve_g1(u: &[u64; 6]) -> Result<[u64; 12], u64> {
     }
 }
 
-/// BLS12-381 map field element Fp2 → G2 (EIP-2537 MAP_FP2_TO_G2), redirected to
-/// `zisklib_map_to_curve_g2_bls12_381`. Writes the resulting G2 point (24 u64,
-/// x‖y little-endian, each Fp2) to `result`; returns `0` on success, `1` if
-/// either coordinate of `u` is `≥ p`.
-///
-/// # Safety
-/// `u` points to 12 readable `u64`, `result` to 24 writable `u64`.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_map_to_curve_g2_bls12_381(u: *const u64, result: *mut u64) -> u64 {
-    let _ = black_box((u, result));
-    stub_fail("ziskos_map_to_curve_g2_bls12_381")
+zkvmcall! {
+    /// BLS12-381 map field element Fp2 → G2 (EIP-2537 MAP_FP2_TO_G2), a zkvmcall to
+    /// `zisklib_map_to_curve_g2_bls12_381`. Writes the resulting G2 point (24 u64, x‖y
+    /// little-endian, each Fp2) to `result`; returns `0` on success, `1` if either
+    /// coordinate of `u` is `≥ p`.
+    ///
+    /// # Safety
+    /// `u` points to 12 readable `u64`, `result` to 24 writable `u64`.
+    fn zkvm_zisklib_map_to_curve_g2_bls12_381(u: *const u64, result: *mut u64) -> u64
 }
 
-/// Ergonomic API over [`ziskos_map_to_curve_g2_bls12_381`]: maps `u ∈ Fp2` to a
+/// Ergonomic API over [`zkvm_zisklib_map_to_curve_g2_bls12_381`]: maps `u ∈ Fp2` to a
 /// G2 point. Returns `Ok(point)` (24 u64, x‖y each Fp2) or `Err(1)` when either
 /// coordinate of `u` is `≥ p`.
 pub fn bls12_381_map_to_curve_g2(u: &[u64; 12]) -> Result<[u64; 24], u64> {
     let mut point = [0u64; 24];
     // SAFETY: `u` is 12 u64, `point` is 24 u64.
-    let status = unsafe { ziskos_map_to_curve_g2_bls12_381(u.as_ptr(), point.as_mut_ptr()) };
+    let status = unsafe { zkvm_zisklib_map_to_curve_g2_bls12_381(u.as_ptr(), point.as_mut_ptr()) };
     if status == 0 {
         Ok(point)
     } else {
@@ -893,32 +718,23 @@ pub fn bls12_381_map_to_curve_g2(u: &[u64; 12]) -> Result<[u64; 24], u64> {
     }
 }
 
-/// BLS12-381 hash-to-curve to G2 (RFC 9380, suite BLS12381G2_XMD:SHA-256_SSWU_RO_),
-/// redirected to `zisklib_hash_to_curve_g2_bls12_381`. Hashes `msg` under domain
-/// tag `dst` to a G2 point (24 u64, x‖y each Fp2) written to `result`.
-///
-/// # Safety
-/// `msg`/`dst` are readable for `msg_len`/`dst_len` bytes; `result` is 24 writable u64.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_hash_to_curve_g2_bls12_381(
-    msg: *const u8,
-    msg_len: u64,
-    dst: *const u8,
-    dst_len: u64,
-    result: *mut u64,
-) {
-    let _ = black_box((msg, msg_len, dst, dst_len, result));
-    stub_fail("ziskos_hash_to_curve_g2_bls12_381")
+zkvmcall! {
+    /// BLS12-381 hash-to-curve to G2 (RFC 9380, suite BLS12381G2_XMD:SHA-256_SSWU_RO_),
+    /// a zkvmcall to `zisklib_hash_to_curve_g2_bls12_381`. Hashes `msg` under domain
+    /// tag `dst` to a G2 point (24 u64, x‖y each Fp2) written to `result`.
+    ///
+    /// # Safety
+    /// `msg`/`dst` are readable for `msg_len`/`dst_len` bytes; `result` is 24 writable u64.
+    fn zkvm_zisklib_hash_to_curve_g2_bls12_381(msg: *const u8, msg_len: u64, dst: *const u8, dst_len: u64, result: *mut u64) -> ()
 }
 
-/// Ergonomic API over [`ziskos_hash_to_curve_g2_bls12_381`]: returns the G2 point
+/// Ergonomic API over [`zkvm_zisklib_hash_to_curve_g2_bls12_381`]: returns the G2 point
 /// (24 u64, x‖y each Fp2) that `msg` hashes to under domain-separation tag `dst`.
 pub fn bls12_381_hash_to_curve_g2(msg: &[u8], dst: &[u8]) -> [u64; 24] {
     let mut point = [0u64; 24];
     // SAFETY: slices are valid for their lengths; `point` is 24 u64.
     unsafe {
-        ziskos_hash_to_curve_g2_bls12_381(
+        zkvm_zisklib_hash_to_curve_g2_bls12_381(
             msg.as_ptr(),
             msg.len() as u64,
             dst.as_ptr(),
@@ -929,57 +745,41 @@ pub fn bls12_381_hash_to_curve_g2(msg: &[u8], dst: &[u8]) -> [u64; 24] {
     point
 }
 
-/// BLS12-381 signature verification (minimal-pubkey-size / G2 signatures, basic
-/// scheme, DST `BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_`), redirected to
-/// `zisklib_bls_verify_bls12_381`. `pk` is a 48-byte compressed G1 public key,
-/// `sig` a 96-byte compressed G2 signature. Returns `true` iff the signature is
-/// valid for `msg`.
-///
-/// # Safety
-/// `pk` points to 48 bytes, `sig` to 96 bytes, `msg` to `msg_len` bytes.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_bls_verify_bls12_381(
-    pk: *const u8,
-    msg: *const u8,
-    msg_len: u64,
-    sig: *const u8,
-) -> u64 {
-    let _ = black_box((pk, msg, msg_len, sig));
-    stub_fail("ziskos_bls_verify_bls12_381")
+zkvmcall! {
+    /// BLS12-381 signature verification (minimal-pubkey-size / G2 signatures, basic
+    /// scheme, DST `BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_`), a zkvmcall to
+    /// `zisklib_bls_verify_bls12_381`. `pk` is a 48-byte compressed G1 public key,
+    /// `sig` a 96-byte compressed G2 signature. Returns `true` iff the signature is
+    /// valid for `msg`.
+    ///
+    /// # Safety
+    /// `pk` points to 48 bytes, `sig` to 96 bytes, `msg` to `msg_len` bytes.
+    fn zkvm_zisklib_bls_verify_bls12_381(pk: *const u8, msg: *const u8, msg_len: u64, sig: *const u8) -> u64
 }
 
-/// Ergonomic API over [`ziskos_bls_verify_bls12_381`]: verifies a BLS signature
+/// Ergonomic API over [`zkvm_zisklib_bls_verify_bls12_381`]: verifies a BLS signature
 /// (48-byte compressed G1 `pk`, 96-byte compressed G2 `sig`) over `msg`.
 pub fn bls12_381_verify(pk: &[u8; 48], msg: &[u8], sig: &[u8; 96]) -> bool {
     // SAFETY: `pk`/`sig` are fixed-size; `msg` is valid for its length.
     let r = unsafe {
-        ziskos_bls_verify_bls12_381(pk.as_ptr(), msg.as_ptr(), msg.len() as u64, sig.as_ptr())
+        zkvm_zisklib_bls_verify_bls12_381(pk.as_ptr(), msg.as_ptr(), msg.len() as u64, sig.as_ptr())
     };
     r == 1
 }
 
-/// BLS12-381 KZG proof verification (EIP-4844 point evaluation), redirected to
-/// `zisklib_verify_kzg_proof_bls12_381`. Checks that a polynomial committed to by
-/// `commitment` (48-byte compressed G1) evaluates to `y` at `z` with the given
-/// `proof` (48-byte compressed G1). `z`/`y` are 32-byte big-endian field scalars.
-/// Returns `true` iff the proof is valid.
-///
-/// # Safety
-/// `z`/`y` point to 32 bytes each; `commitment`/`proof` to 48 bytes each.
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_verify_kzg_proof_bls12_381(
-    z: *const u8,
-    y: *const u8,
-    commitment: *const u8,
-    proof: *const u8,
-) -> u64 {
-    let _ = black_box((z, y, commitment, proof));
-    stub_fail("ziskos_verify_kzg_proof_bls12_381")
+zkvmcall! {
+    /// BLS12-381 KZG proof verification (EIP-4844 point evaluation), a zkvmcall to
+    /// `zisklib_verify_kzg_proof_bls12_381`. Checks that a polynomial committed to by
+    /// `commitment` (48-byte compressed G1) evaluates to `y` at `z` with the given
+    /// `proof` (48-byte compressed G1). `z`/`y` are 32-byte big-endian field scalars.
+    /// Returns `true` iff the proof is valid.
+    ///
+    /// # Safety
+    /// `z`/`y` point to 32 bytes each; `commitment`/`proof` to 48 bytes each.
+    fn zkvm_zisklib_verify_kzg_proof_bls12_381(z: *const u8, y: *const u8, commitment: *const u8, proof: *const u8) -> u64
 }
 
-/// Ergonomic API over [`ziskos_verify_kzg_proof_bls12_381`]: verifies an EIP-4844
+/// Ergonomic API over [`zkvm_zisklib_verify_kzg_proof_bls12_381`]: verifies an EIP-4844
 /// KZG evaluation proof that the polynomial behind `commitment` takes value `y`
 /// at point `z`, given `proof`. `z`/`y` are 32-byte big-endian scalars;
 /// `commitment`/`proof` are 48-byte compressed G1 points.
@@ -991,7 +791,7 @@ pub fn bls12_381_verify_kzg_proof(
 ) -> bool {
     // SAFETY: all inputs are fixed-size arrays of the documented lengths.
     let r = unsafe {
-        ziskos_verify_kzg_proof_bls12_381(
+        zkvm_zisklib_verify_kzg_proof_bls12_381(
             z.as_ptr(),
             y.as_ptr(),
             commitment.as_ptr(),
@@ -1001,31 +801,28 @@ pub fn bls12_381_verify_kzg_proof(
     r == 1
 }
 
-/// EIP-198 modular exponentiation `base^exp mod modulus` over little-endian u64
-/// limb arrays, redirected to `zisklib_modexp_u64_c`. Handles arbitrary-precision
-/// operands (radix-2^256 with hint-verified division). Writes the result limbs to
-/// `result` (little-endian) and returns the number of u64 limbs written.
-///
-/// # Safety
-/// `base`/`exp`/`modulus` point to their respective `*_len` readable u64s; `result`
-/// must be writable for at least `modulus_len.next_multiple_of(4).max(4)` u64s. The
-/// `.max(4)` matters: the edge-case paths (zero/one modulus, zero exponent, zero/one
-/// base) write a full four-limb U256 regardless of `modulus_len`, so a zero-length
-/// modulus still needs four writable limbs.
-#[allow(clippy::too_many_arguments)]
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_modexp_u64_c(
-    base: *const u64,
-    base_len: usize,
-    exp: *const u64,
-    exp_len: usize,
-    modulus: *const u64,
-    modulus_len: usize,
-    result: *mut u64,
-) -> usize {
-    let _ = black_box((base, base_len, exp, exp_len, modulus, modulus_len, result));
-    stub_fail("ziskos_modexp_u64_c")
+zkvmcall! {
+    /// EIP-198 modular exponentiation `base^exp mod modulus` over little-endian u64
+    /// limb arrays, a zkvmcall to `zisklib_modexp_u64_c`. Handles arbitrary-precision
+    /// operands (radix-2^256 with hint-verified division). Writes the result limbs to
+    /// `result` (little-endian) and returns the number of u64 limbs written.
+    ///
+    /// # Safety
+    /// `base`/`exp`/`modulus` point to their respective `*_len` readable u64s; `result`
+    /// must be writable for at least `modulus_len.next_multiple_of(4).max(4)` u64s. The
+    /// `.max(4)` matters: the edge-case paths (zero/one modulus, zero exponent, zero/one
+    /// base) write a full four-limb U256 regardless of `modulus_len`, so a zero-length
+    /// modulus still needs four writable limbs.
+    #[allow(clippy::too_many_arguments)]
+    fn zkvm_zisklib_modexp_u64_c(
+        base: *const u64,
+        base_len: usize,
+        exp: *const u64,
+        exp_len: usize,
+        modulus: *const u64,
+        modulus_len: usize,
+        result: *mut u64,
+    ) -> usize
 }
 
 /// Largest operand `zisklib_modexp_u64_c` accepts, in u64 limbs (= 1056 bytes).
@@ -1036,7 +833,7 @@ pub unsafe extern "C" fn ziskos_modexp_u64_c(
 /// returning — so [`modexp_u64`] checks it first and panics with a message instead.
 pub const MODEXP_MAX_LIMBS: usize = 132;
 
-/// Ergonomic API over [`ziskos_modexp_u64_c`]: computes `base^exp mod modulus`
+/// Ergonomic API over [`zkvm_zisklib_modexp_u64_c`]: computes `base^exp mod modulus`
 /// where all operands are little-endian u64 limb slices. Writes the result limbs
 /// to `result` and returns the number of limbs written (edge cases and single-U256
 /// moduli return 4; larger moduli return `ceil(modulus_len/4) * 4`).
@@ -1083,7 +880,7 @@ pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64], result: &mut [u64]
     // SAFETY: all slices are valid for their lengths; `result` is checked above to
     // hold every limb the callee can write.
     unsafe {
-        ziskos_modexp_u64_c(
+        zkvm_zisklib_modexp_u64_c(
             base.as_ptr(),
             base.len(),
             exp.as_ptr(),
@@ -1101,40 +898,15 @@ pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64], result: &mut [u64]
 // function `csrs <id>, x0; ret`; the transpiler turns the `csrs` into a jump to the
 // native `ziskasm_zkvm_*` .zisk routine, which returns straight to the caller, or,
 // for an inline zkvmcall (most of zkvm_u256.h), into the routine's body followed by
-// a0 = ZKVM_EOK, so the thunk's `ret` returns. The
-// ID comes from `zisk_definitions::ZKVMCALLS` by name, so it cannot drift. A guest
-// links EITHER these OR the portable `zkvm-interface` impl of the same standard
-// symbols — never both. Byte structs cross as raw pointers (ABI-identical).
-// Return: 0 = ZKVM_EOK, -1 = ZKVM_EFAIL.
+// a0 = ZKVM_EOK, so the thunk's `ret` returns. The ID comes from
+// `zisk_definitions::ZKVMCALLS` by name, so it cannot drift. The thunks keep Rust
+// symbol names, so they coexist with the `zkvm_*` symbols ziskos exports. Byte
+// structs cross as raw pointers (ABI-identical). Return: 0 = ZKVM_EOK, -1 =
+// ZKVM_EFAIL.
 //
 // The EF I/O pair (`read_input`/`write_output`) is not here: in a Rust guest,
 // ziskos defines those symbols.
 // ============================================================================
-
-/// Defines a zkvmcall thunk. On other targets (host builds) the function exists
-/// only so the crate compiles; calling it panics.
-macro_rules! zkvmcall {
-    ($(#[$attr:meta])* fn $name:ident($($arg:ident: $ty:ty),* $(,)?)) => {
-        $(#[$attr])*
-        #[cfg(target_arch = "riscv64")]
-        #[no_mangle]
-        #[unsafe(naked)]
-        pub unsafe extern "C" fn $name($($arg: $ty),*) -> i32 {
-            core::arch::naked_asm!(
-                "csrs {id}, x0",
-                "ret",
-                id = const zisk_definitions::zkvmcall_id(stringify!($name)),
-            )
-        }
-
-        $(#[$attr])*
-        #[cfg(not(target_arch = "riscv64"))]
-        pub unsafe extern "C" fn $name($($arg: $ty),*) -> i32 {
-            let _ = ($($arg,)*);
-            unreachable!(concat!(stringify!($name), " only runs on ZisK"))
-        }
-    };
-}
 
 zkvmcall! {
     /// `zkvm_keccak256(data, len, output)` — calls `ziskasm_zkvm_keccak256`.
