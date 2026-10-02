@@ -76,8 +76,8 @@ constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;
 constexpr uint32_t REGION_ADDR_START[3] = {0, N_ADDR_ROM, N_ADDR_ROM + N_ADDR_INPUT};
 
 // Meta word of a retained RAM access: bits 0-39 mem step, 40-41 kind (0 read, 1 full write,
-// 2 partial write, 3 block write of unknown value), 42-44 byte offset and 45-48 byte width of a
-// partial write.
+// 2 partial write; 3, a write without its value, declines the device witness for the block),
+// 42-44 byte offset and 45-48 byte width of a partial write.
 constexpr uint32_t RAM_META_KIND_SHIFT  = 40;
 constexpr uint32_t RAM_META_OFF_SHIFT   = 42;
 constexpr uint32_t RAM_META_WIDTH_SHIFT = 45;
@@ -113,10 +113,9 @@ struct RamFillPrepared {
     uint32_t n_instances;        // RAM instances (lanes / instance_rows, rounded up)
     uint64_t n_accesses;         // retained RAM accesses
     uint64_t n_lanes;            // lanes after dual pairing
-    uint64_t unresolved_writes;  // block writes whose value the stream does not carry
     float    ms_sort, ms_lanes, ms_values, ms_total;
 };
-static_assert(sizeof(RamFillPrepared) == 48, "RamFillPrepared layout changed: update gpu_bindings.rs");
+static_assert(sizeof(RamFillPrepared) == 40, "RamFillPrepared layout changed: update gpu_bindings.rs");
 
 // One filled RAM instance. POD, mirrored in gpu_bindings.rs.
 struct RamFillResult {
@@ -337,7 +336,6 @@ private:
     std::vector<size_t> h_rf_inst_lanes_;           // instance -> lanes of its whole address range
     float              ram_ms_[4]       = {0, 0, 0, 0};  // sort, lanes, values, total over the instances
     size_t             ram_n_lanes_     = 0;
-    uint64_t           ram_unresolved_  = 0;
     uint64_t*                  h_ram_rows_       = nullptr;   // pinned, n_instances x rows x words
     size_t                     h_ram_rows_cap_   = 0;         // u64 words
     std::thread                h_ram_rows_prealloc_;          // allocates the default capacity at setup

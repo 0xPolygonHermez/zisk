@@ -15,8 +15,8 @@
 //               emit = parity of the distance to the last non-pairable access.
 //   3. values — every read's value is what the writes before it on that address left: a scan by
 //               address of byte-masked merges, run in blocks with a carry so the scratch stays
-//               bounded. Block writes whose value the stream does not carry are counted; the rows
-//               that depend on them are wrong and the caller's check reports them.
+//               bounded. A block whose stream carries writes without values never reaches the
+//               fill: the planner declines the device witness for it.
 //   4. rows   — the instance's window of lanes packed into its rows. The range starts at the
 //               address holding the row before the window, so the lane the window continues
 //               from is in the same data and every instance is filled on its own. The CPU
@@ -128,7 +128,7 @@ __global__ void rf_emit_kernel(const uint32_t* __restrict__ last_anchor, size_t 
 // Merge elements and sorted addresses for one propagation block.
 __global__ void rf_merge_in_kernel(const uint32_t* __restrict__ sidx, const uint64_t* __restrict__ skeys,
                                    RamRecords rec, size_t j0, size_t n, Merge* __restrict__ in,
-                                   uint32_t* __restrict__ keys, unsigned long long* __restrict__ unresolved) {
+                                   uint32_t* __restrict__ keys) {
     const size_t k = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (k >= n) return;
     const uint32_t s = sidx[j0 + k];
@@ -146,7 +146,6 @@ __global__ void rf_merge_in_kernel(const uint32_t* __restrict__ sidx, const uint
         e.val = rec.value(i) & e.mask;
     } else {
         e.mask = ~0ull; e.val = rec.value(i);
-        if (kind == 3) atomicAdd(unresolved, 1ull);
     }
     in[k] = e;
     keys[k] = (uint32_t)(skeys[j0 + k] >> RF_STEP_BITS);
@@ -315,7 +314,6 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
         out->status = 0;
         out->n_instances = n_inst;
         out->n_lanes = ram_n_lanes_;
-        out->unresolved_writes = ram_unresolved_;
         out->ms_sort = ram_ms_[0]; out->ms_lanes = ram_ms_[1]; out->ms_values = ram_ms_[2]; out->ms_total = ram_ms_[3];
         return true;
     }
@@ -443,7 +441,6 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     Merge*    prop_in  = (Merge*)take(prop_block * sizeof(Merge));
     Merge*    prop_out = (Merge*)take(prop_block * sizeof(Merge));
     uint32_t* prop_keys = (uint32_t*)take(prop_block * 4);
-    unsigned long long* d_unresolved = (unsigned long long*)take(8);
     uint64_t* rows = (uint64_t*)take((size_t)n_rows * mem_words_per_row_ * 8);
     size_t t_sort = 0, t_max = 0, t_bykey = 0, t_select = 0;
     cub::DeviceRadixSort::SortPairs(nullptr, t_sort, dkeys, didx, n, 0, (int)(RF_STEP_BITS + RF_ADDR_BITS));
@@ -500,13 +497,12 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     // 3. values, in blocks with a carry. The free key buffer takes the resolved values. Instances
     // split at addresses, so no state carries in from the previous one.
     uint64_t* resolved = dkeys.Alternate();
-    RF_TRY(cudaMemset(d_unresolved, 0, 8));
     Merge carry{0, 0};
     uint32_t carry_addr = 0xFFFFFFFFu;
     for (size_t j0 = 0; j0 < n; j0 += prop_block) {
         const size_t len = std::min(prop_block, n - j0);
         rf_merge_in_kernel<<<rf_grid(len), RF_BLOCK>>>(sidx, keys_out, ram_records_, j0, len,
-                                                       prop_in, prop_keys, d_unresolved);
+                                                       prop_in, prop_keys);
         RF_TRY(cudaGetLastError());
         tb = t_bytes;
         RF_TRY(cub::DeviceScan::InclusiveScanByKey(temp, tb, prop_keys, prop_in, prop_out, MergeOp(), len, EqU32()));
@@ -525,8 +521,6 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
         carry = last_state;
         carry_addr = last_key;
     }
-    unsigned long long unresolved = 0;
-    RF_TRY(cudaMemcpy(&unresolved, d_unresolved, 8, cudaMemcpyDeviceToHost));
     RF_TRY(cudaEventRecord(ev[3]));
 
     // 4. rows, then out to the caller's buffer.
@@ -574,7 +568,6 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     res->ms_d2h = ms(4, 5);
     res->status = 0;
     ram_n_lanes_ += n_lanes_inst;
-    ram_unresolved_ += unresolved;
     fprintf(stderr, "ram_fill: instance %u: %zu accesses, %u lanes (window %zu + %u), scratch %zu MB\n",
             inst, n, n_lanes, lane_from, n_lanes_inst, scratch_bytes >> 20);
     for (auto& e : ev) cudaEventDestroy(e);
@@ -600,7 +593,6 @@ bool CountAndPlan::fill_all_ram_instances(uint32_t n_rows, RamFillPrepared* prep
     ram_rows_stride_ = stride;
     ram_results_.assign(n_inst, RamFillResult{});
     ram_n_lanes_ = 0;
-    ram_unresolved_ = 0;
     for (int t = 0; t < 4; ++t) ram_ms_[t] = 0;
     rf_scratch_peak_ = 0;
     for (uint32_t i = 0; i < n_inst; ++i) {

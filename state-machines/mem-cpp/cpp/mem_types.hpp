@@ -10,15 +10,6 @@ struct MemCountersBusData {
     uint32_t flags;
 } __attribute__((packed));
 
-// Words of the record whose header word is `hdr` (bit 63 is the header tag).
-static inline uint32_t mops_record_len(uint64_t hdr) {
-    const uint32_t mode = (uint32_t)(hdr >> 32) & 0x3F;
-    const uint32_t low = mode & 0x0F;
-    if (low == MOPS_ALIGNED_READ) return 1;
-    if ((mode & 0x10) == 0 && (low == 1 || low == 2 || low == 4 || low == 8)) return 1;
-    if (low == MOPS_BLOCK_VALUES) return 2 + (uint32_t)((hdr >> 36) & 63);
-    return 2;
-}
 // Decodes the header of the record at `w` (the counters need no payload). A value block is
 // reported as an aligned block write of its words.
 static inline MemCountersBusData mops_decode_record(const uint64_t *w) {
