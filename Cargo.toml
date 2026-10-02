@@ -79,6 +79,8 @@ members = [
   "zkvm-interface",
   "verifier",
   "recurser",
+  "cuda-build",
+  "gpu-witness",
 ]
 resolver = "2"
 exclude = ["test-artifacts"]
@@ -154,6 +156,10 @@ zisk-worker = { path = "distributed/crates/worker", version = "1.4.0-alpha" }
 zisk-coordinator-server = { path = "distributed/crates/coordinator-server", version = "1.4.0-alpha" }
 zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = "1.4.0-alpha" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.4.0-alpha" }
+
+# GPU witness kernels
+zisk-cuda-build = { path = "cuda-build", version = "1.4.0-alpha" }
+zisk-gpu-witness = { path = "gpu-witness", version = "1.4.0-alpha" }
 
 # Proofman git
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
