@@ -16,18 +16,6 @@ use zisk_common::EmuTrace;
 use zisk_transpiler_wasm::wasm2rom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
-/// Returns true if the `wasm32-wasip1` rustup target is available for the active toolchain.
-fn wasm_target_installed() -> bool {
-    Command::new("rustup")
-        .args(["target", "list", "--installed"])
-        .output()
-        .map(|o| {
-            o.status.success()
-                && String::from_utf8_lossy(&o.stdout).lines().any(|l| l.trim() == "wasm32-wasip1")
-        })
-        .unwrap_or(false)
-}
-
 /// Compiles the wasm-fibonacci example crate and returns the wasm module bytes.
 fn build_example() -> Vec<u8> {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/wasm-fibonacci");
@@ -70,15 +58,11 @@ fn out_text(out: &[u8]) -> &str {
 }
 
 #[test]
+#[cfg_attr(
+    not(wasm32_wasip1_target),
+    ignore = "the wasm32-wasip1 target is not installed (rustup target add wasm32-wasip1)"
+)]
 fn compiled_fibonacci_guest() {
-    if !wasm_target_installed() {
-        eprintln!(
-            "SKIPPED compiled_fibonacci_guest: rustup target wasm32-wasip1 is not installed \
-             (run `rustup target add wasm32-wasip1`)"
-        );
-        return;
-    }
-
     let wasm = build_example();
 
     // Default run: no input, n = 10.
