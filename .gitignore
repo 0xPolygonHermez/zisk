@@ -35,3 +35,10 @@ dist/
 # ziskasm/lang/c/package.sh scratch build dir
 build-pkg/
 package-lock.json
+/emulator-asm/src/dma/test/build_light/
+/emulator-asm/src/dma/test/test_dma
+/emulator-asm/src/dma/test/test_dma_light
+/emulator-asm/src/evm/test/build_light/
+/emulator-asm/src/evm/test/test_jump_dest
+/emulator-asm/src/evm/test/test_jump_dest_light
+/state-machines/mem-cpp/cpp/build/
