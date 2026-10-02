@@ -103,14 +103,37 @@ mod tests {
             .unwrap_or_else(|_| panic!("constants.hpp: `{line}` is not an integer define"))
     }
 
-    /// The C runtime keeps its own copy of the register count in the chunk header; it must
-    /// match the main-trace registers, which the generated asm and `AsmMTChunk` follow.
+    /// The value of `.equ NAME, <value>` in emulator-asm/src/dma/dma_constants.inc.
+    fn asm_equ(name: &str) -> String {
+        let inc = include_str!("../../src/dma/dma_constants.inc");
+        let prefix = format!(".equ {name}, ");
+        let line = inc
+            .lines()
+            .find(|l| l.starts_with(&prefix))
+            .unwrap_or_else(|| panic!("dma_constants.inc has no `{prefix}...`"));
+        line[prefix.len()..].trim().to_string()
+    }
+
+    /// The C runtime and the DMA assembly each keep their own copy of the register count in
+    /// the chunk header; both must match the main-trace registers, which the generated asm
+    /// and `AsmMTChunk` follow.
     #[test]
     fn chunk_layout_matches_the_c_runtime() {
         assert_eq!(
             c_define("MT_CHUNK_REGS"),
             REGS_IN_MAIN_TO,
             "set MT_CHUNK_REGS in emulator-asm/src/constants.hpp to REGS_IN_MAIN_TO"
+        );
+        assert_eq!(
+            asm_equ("MT_CHUNK_REGS").parse::<usize>().ok(),
+            Some(REGS_IN_MAIN_TO),
+            "set MT_CHUNK_REGS in emulator-asm/src/dma/dma_constants.inc to REGS_IN_MAIN_TO"
+        );
+        // The assembly derives the chunk allowance from MT_CHUNK_REGS with the same formula.
+        assert_eq!(
+            asm_equ("MAX_TRACE_CHUNK_INFO"),
+            "(((4 + MT_CHUNK_REGS + 4 + 3) * 8) + 32)",
+            "dma_constants.inc must derive MAX_TRACE_CHUNK_INFO from MT_CHUNK_REGS"
         );
         // pc, sp, c, step, registers, last_c, end, steps, mem_reads_size
         assert_eq!(std::mem::size_of::<AsmMTChunk>(), (4 + REGS_IN_MAIN_TO + 4) * 8);
