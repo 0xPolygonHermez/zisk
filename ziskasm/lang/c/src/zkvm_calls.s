@@ -1,6 +1,7 @@
 /* zkvm_calls.s -- the zkvmcall thunks: every EF standard function implemented by
  * a hand-written .zisk routine (zkvm_accelerators.h, zkvm_io.h, zkvm_u256.h),
- * plus ZisK's little-endian U256 variant (zkvm_u256_le.h).
+ * plus ZisK's little-endian U256 variant (zkvm_u256_le.h) and the other ZisK
+ * library functions (zkvm_zisklib.h).
  *
  * Each thunk is a `csrs <id>, x0` followed by `ret`. The caller has already put
  * the arguments in a0..a7 and its return address in ra, following the RISC-V
@@ -114,3 +115,29 @@ ZKVMCALL zkvm_u256_le_exp,          0x88B
 /* zkvm_u256_le_shr (0x898) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 /* zkvm_u256_le_sar (0x899) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
 /* zkvm_u256_le_signextend (0x89A) is an inline zkvmcall: no thunk (zkvm_u256_le.h). */
+
+/* ZisK library functions (zkvm_zisklib.h, not EF) */
+ZKVMCALL zkvm_zisklib_add, 0x89B
+ZKVMCALL zkvm_zisklib_inv256, 0x89C
+ZKVMCALL zkvm_zisklib_overflowing_add256, 0x89D
+ZKVMCALL zkvm_zisklib_overflowing_sub256, 0x89E
+ZKVMCALL zkvm_zisklib_overflowing_mul256, 0x89F
+ZKVMCALL zkvm_zisklib_div_rem256, 0x8A0
+ZKVMCALL zkvm_zisklib_reduce_mod256, 0x8A1
+ZKVMCALL zkvm_zisklib_add_mod256, 0x8A2
+ZKVMCALL zkvm_zisklib_mul_mod256, 0x8A3
+ZKVMCALL zkvm_zisklib_inv_mod256, 0x8A4
+ZKVMCALL zkvm_zisklib_pow_mod256, 0x8A5
+ZKVMCALL zkvm_zisklib_overflowing_pow256, 0x8A6
+ZKVMCALL zkvm_zisklib_ecdsa_verify_secp256k1, 0x8A7
+ZKVMCALL zkvm_zisklib_ecdsa_recover_secp256k1, 0x8A8
+ZKVMCALL zkvm_zisklib_schnorr_verify_secp256k1, 0x8A9
+ZKVMCALL zkvm_zisklib_ecdsa_verify_secp256r1, 0x8AA
+ZKVMCALL zkvm_zisklib_pairing_check_bn254, 0x8AB
+ZKVMCALL zkvm_zisklib_pairing_check_bls12_381, 0x8AC
+ZKVMCALL zkvm_zisklib_map_to_curve_g1_bls12_381, 0x8AD
+ZKVMCALL zkvm_zisklib_map_to_curve_g2_bls12_381, 0x8AE
+ZKVMCALL zkvm_zisklib_hash_to_curve_g2_bls12_381, 0x8AF
+ZKVMCALL zkvm_zisklib_bls_verify_bls12_381, 0x8B0
+ZKVMCALL zkvm_zisklib_verify_kzg_proof_bls12_381, 0x8B1
+ZKVMCALL zkvm_zisklib_modexp_u64_c, 0x8B2

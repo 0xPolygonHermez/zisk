@@ -150,6 +150,7 @@ The library reaches the `.zisk` routines in two ways:
 | `read_input`/`write_output` — EF I/O | 2 | [`zkvm_io.h`](include/zkvm_io.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s) |
 | `zkvm_memcpy`/`memset`/`memcmp` — memory (ZisK extension, not EF) | 3 | [`zkvm_mem.h`](include/zkvm_mem.h) | inline in the header: one DMA marker each (one ZisK instruction with a constant size); a run-time memset fill calls `zkvm_memset_any` in [`src/zkvm_mem.s`](src/zkvm_mem.s), which also defines weak libc `memcpy`/`memmove`/`memcmp`/`memset` on the same DMA ops |
 | `zkvm_evm_jumpdest_bitmap` — EVM JUMPDEST analysis (ZisK extension, not EF) | 1 | [`zkvm_evm.h`](include/zkvm_evm.h) | inline in the header (the jump_dest precompile marker); `ZKVM_EFAIL` when the precompile cannot take the arguments (unaligned, empty) |
+| `zkvm_zisklib_*` — other ZisK library functions (not EF): 256-bit arithmetic on u64[4] limbs, secp256k1/r1 signatures, BN254/BLS12-381 pairings, maps and hashes to curves, BLS and KZG verify, modexp | 24 | [`zkvm_zisklib.h`](include/zkvm_zisklib.h) | zkvmcall thunks in [`src/zkvm_calls.s`](src/zkvm_calls.s), to the `zisklib_*` routines |
 | `ziskos_*` — ZisK flat ABI | 27 | [`zisklib.h`](include/zisklib.h) | stubs in [`src/zisklib_stubs.c`](src/zisklib_stubs.c), redirected by `REDIRECTS` |
 
 The `zkvm_u256_*` functions have three builds under the same ABI, chosen when

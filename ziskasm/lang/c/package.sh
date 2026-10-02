@@ -51,7 +51,7 @@ echo
 echo "### checking the archive exports the required symbols ..."
 AR_FILE="$(find "$PREFIX" -name 'libzisklib_c.a' | head -1)"
 MISSING=0
-for sym in _start read_input write_output zkvm_keccak256 zkvm_u256_add \
+for sym in _start read_input write_output zkvm_keccak256 zkvm_u256_add zkvm_zisklib_add \
            memcpy memmove memcmp memset; do
     if "${CC_PREFIX}nm" "$AR_FILE" 2>/dev/null | grep -qE "^[0-9a-f]* T $sym$"; then
         echo "  OK   $sym"
