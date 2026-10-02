@@ -37,14 +37,12 @@ u64 FE_PR[1] = 0
 ; void zisklib_final_exp_bn254(const u64* f, u64* result)  [48,48]
 zisklib_final_exp_bn254:
 	push r1
-	copyb(0, FE_PR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, r11) -> [FE_PR]
 	copyb(r10, 8[a + 0]) -> r14
-	copyb(0, FE_F) -> r11
-	copyb(0, 48) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(FE_F, r10) -> r5, j(384, 4)
 	copyb(0, FE_F) -> r10
 	copyb(0, FE_FCONJ) -> r11
+	copyb(0, 48) -> r12
 	call zisklib_conjugate_fp12_bn254
 	copyb(0, FE_F) -> r10
 	copyb(0, FE_FINV) -> r11
@@ -169,10 +167,10 @@ zisklib_final_exp_bn254:
 	copyb(0, FE_T24) -> r11
 	copyb(0, FE_T14) -> r12
 	call zisklib_mul_fp12_bn254
+	copyb(0, [FE_PR]) -> r5
+	dma_xmemcpy(r5, FE_T14) -> r5, j(384, 4)
 	copyb(0, FE_T14) -> r10
-	copyb(0, FE_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [FE_PR]) -> r11
 	copyb(0, 48) -> r12
-	call bn254_memcpy
 	pop r1
 	ret

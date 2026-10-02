@@ -353,3 +353,10 @@ Selected by header `profile` bit0:
   room to grow.
 - Reordering flag bits, changing a canonical default, or changing the header/
   section layout is a breaking change — bump `version` and record it here.
+- A change in what an encoded instruction means is breaking too, even when the
+  byte layout stays the same.
+
+| Version | Change |
+|---------|--------|
+| 1 | Initial format. |
+| 2 | r32..r39 are main-trace registers: the assembler encodes them as `SRC_REG` / `STORE_REG`, where version 1 ROMs address them as RAM at `0xA0400100..`. The layout is unchanged, but a version 1 ROM's RAM accesses to that register area are now treated as a bug (the emulator's `Mem` debug-asserts against them), so it is rejected: rebuild it with `zisk2zisk --elf`. |

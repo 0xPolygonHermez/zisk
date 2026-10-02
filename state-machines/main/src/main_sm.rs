@@ -423,6 +423,12 @@ impl<F: PrimeField64> MainInstance<F> {
         last_reg_values: &[u64],
         reg_steps: &mut [u64; REGS_IN_MAIN],
     ) {
+        assert_eq!(
+            air_values.last_reg_value[flush_index].len(),
+            REGS_IN_MAIN,
+            "Main airvalues are sized for a different register count: set REGS_IN_MAIN_TO in \
+             state-machines/main/pil/main.pil to match zisk_core and regenerate the PIL"
+        );
         for ireg in 0..REGS_IN_MAIN {
             let reg_value = last_reg_values[ireg];
             let values = [F::from_u32(reg_value as u32), F::from_u32((reg_value >> 32) as u32)];

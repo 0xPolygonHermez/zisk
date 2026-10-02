@@ -10,7 +10,9 @@ use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ENTRY, ROM_SIZE};
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
 use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
-use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, add_zisk_code};
+use zisk_riscv::riscv2zisk_context::{
+    add_end_and_lib, add_entry_exit_jmp, add_zisk_code, zkvmcall_ids as zkvmcall_ids_in, InlineBody,
+};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
@@ -55,6 +57,36 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // e_entry rather than booting from a fixed address).
     validate_entry_point(&payloads[elf_index])?;
 
+    // zkvmcalls (`csrs <id>, x0`, see zisk_definitions::ZKVMCALLS) used by the guest.
+    // Unlike the symbol redirects below they need no symbol table, so they also work
+    // on stripped ELFs.
+    let mut zkvmcall_ids = std::collections::BTreeSet::new();
+    for payload in &payloads {
+        for section in &payload.exec {
+            zkvmcall_ids.extend(zkvmcall_ids_in(section.addr, &section.data)?);
+        }
+    }
+    #[cfg(not(feature = "ziskasm"))]
+    if let Some(id) = zkvmcall_ids.first() {
+        return Err(format!(
+            "Guest ELF uses zkvmcall 0x{id:X} ({}), which needs the ZisK library: \
+             build ziskemu/cargo-zisk with --features ziskasm",
+            zisk_definitions::zkvmcall_by_id(*id).unwrap().name
+        )
+        .into());
+    }
+
+    // zkvmcall ID → library-entry map, filled in below once the library is assembled.
+    #[cfg(feature = "ziskasm")]
+    let mut zkvmcalls: HashMap<u16, u64> = HashMap::new();
+    #[cfg(not(feature = "ziskasm"))]
+    let zkvmcalls: HashMap<u16, u64> = HashMap::new();
+    // zkvmcall ID → routine body, for every used inline zkvmcall.
+    #[cfg(feature = "ziskasm")]
+    let mut inline_zkvmcalls: HashMap<u16, InlineBody> = HashMap::new();
+    #[cfg(not(feature = "ziskasm"))]
+    let inline_zkvmcalls: HashMap<u16, InlineBody> = HashMap::new();
+
     // Guest-symbol → library-entry redirect map. Populated only when the `ziskasm`
     // feature is enabled; otherwise it stays empty and elf2rom neither assembles the
     // ZisK library nor redirects any symbol, so guest code runs verbatim (this is the
@@ -69,57 +101,6 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     const REDIRECTS: &[(&str, &str)] = &[
         ("ziskos_add", "zisklib_add"),
         ("ziskos_keccak", "ziskasm_zkvm_keccak256"),
-        // EF zkVM-accelerator C ABI (zkvm_accelerators.h): the standard `zkvm_*`
-        // symbols redirect DIRECTLY to the native `ziskasm_zkvm_*` .zisk routines
-        // (single call, no C/Rust wrapper). Kept explicit for auditability.
-        ("zkvm_keccak256", "ziskasm_zkvm_keccak256"),
-        ("zkvm_keccak_f1600", "ziskasm_zkvm_keccak_f1600"),
-        ("zkvm_sha256", "ziskasm_zkvm_sha256"),
-        ("zkvm_secp256k1_verify", "ziskasm_zkvm_secp256k1_verify"),
-        ("zkvm_secp256k1_ecrecover", "ziskasm_zkvm_secp256k1_ecrecover"),
-        ("zkvm_secp256r1_verify", "ziskasm_zkvm_secp256r1_verify"),
-        ("zkvm_blake2f", "ziskasm_zkvm_blake2f"),
-        ("zkvm_modexp", "ziskasm_zkvm_modexp"),
-        ("zkvm_bn254_g1_add", "ziskasm_zkvm_bn254_g1_add"),
-        ("zkvm_bn254_g1_mul", "ziskasm_zkvm_bn254_g1_mul"),
-        ("zkvm_bn254_pairing", "ziskasm_zkvm_bn254_pairing"),
-        ("zkvm_bls12_g1_add", "ziskasm_zkvm_bls12_g1_add"),
-        ("zkvm_bls12_g2_add", "ziskasm_zkvm_bls12_g2_add"),
-        ("zkvm_bls12_g1_msm", "ziskasm_zkvm_bls12_g1_msm"),
-        ("zkvm_bls12_g2_msm", "ziskasm_zkvm_bls12_g2_msm"),
-        ("zkvm_bls12_pairing", "ziskasm_zkvm_bls12_pairing"),
-        ("zkvm_bls12_map_fp_to_g1", "ziskasm_zkvm_bls12_map_fp_to_g1"),
-        ("zkvm_bls12_map_fp2_to_g2", "ziskasm_zkvm_bls12_map_fp2_to_g2"),
-        ("zkvm_kzg_point_eval", "ziskasm_zkvm_kzg_point_eval"),
-        ("zkvm_ripemd160", "ziskasm_zkvm_ripemd160"),
-        // EF U256 arithmetic accelerator C ABI (zkvm_u256.h): 256-bit EVM-word ops.
-        ("zkvm_u256_add", "ziskasm_zkvm_u256_add"),
-        ("zkvm_u256_sub", "ziskasm_zkvm_u256_sub"),
-        ("zkvm_u256_mul", "ziskasm_zkvm_u256_mul"),
-        ("zkvm_u256_div", "ziskasm_zkvm_u256_div"),
-        ("zkvm_u256_mod", "ziskasm_zkvm_u256_mod"),
-        ("zkvm_u256_divmod", "ziskasm_zkvm_u256_divmod"),
-        ("zkvm_u256_addmod", "ziskasm_zkvm_u256_addmod"),
-        ("zkvm_u256_mulmod", "ziskasm_zkvm_u256_mulmod"),
-        ("zkvm_u256_exp", "ziskasm_zkvm_u256_exp"),
-        ("zkvm_u256_sdiv", "ziskasm_zkvm_u256_sdiv"),
-        ("zkvm_u256_smod", "ziskasm_zkvm_u256_smod"),
-        ("zkvm_u256_sdivmod", "ziskasm_zkvm_u256_sdivmod"),
-        ("zkvm_u256_lt", "ziskasm_zkvm_u256_lt"),
-        ("zkvm_u256_gt", "ziskasm_zkvm_u256_gt"),
-        ("zkvm_u256_slt", "ziskasm_zkvm_u256_slt"),
-        ("zkvm_u256_sgt", "ziskasm_zkvm_u256_sgt"),
-        ("zkvm_u256_eq", "ziskasm_zkvm_u256_eq"),
-        ("zkvm_u256_iszero", "ziskasm_zkvm_u256_iszero"),
-        ("zkvm_u256_and", "ziskasm_zkvm_u256_and"),
-        ("zkvm_u256_or", "ziskasm_zkvm_u256_or"),
-        ("zkvm_u256_xor", "ziskasm_zkvm_u256_xor"),
-        ("zkvm_u256_not", "ziskasm_zkvm_u256_not"),
-        ("zkvm_u256_byte", "ziskasm_zkvm_u256_byte"),
-        ("zkvm_u256_shl", "ziskasm_zkvm_u256_shl"),
-        ("zkvm_u256_shr", "ziskasm_zkvm_u256_shr"),
-        ("zkvm_u256_sar", "ziskasm_zkvm_u256_sar"),
-        ("zkvm_u256_signextend", "ziskasm_zkvm_u256_signextend"),
         ("ziskos_sha256", "ziskasm_zkvm_sha256"),
         ("ziskos_blake2b_compress", "ziskasm_zkvm_blake2f"),
         ("ziskos_inv256", "zisklib_inv256"),
@@ -144,21 +125,19 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("ziskos_hash_to_curve_g2_bls12_381", "zisklib_hash_to_curve_g2_bls12_381"),
         ("ziskos_bls_verify_bls12_381", "zisklib_bls_verify_bls12_381"),
         ("ziskos_verify_kzg_proof_bls12_381", "zisklib_verify_kzg_proof_bls12_381"),
-        ("read_input", "zisklib_read_input"),
-        ("write_output", "zisklib_write_output"),
         ("modexp_u64_c", "zisklib_modexp_u64_c"),
         ("ziskos_modexp_u64_c", "zisklib_modexp_u64_c"),
     ];
 
     // Scan the guest symbol table first: it is far cheaper than assembling the library,
-    // and a guest with no stub symbol redirects nothing, so the library would never be
-    // merged into the ROM (see the merge below). `None` = nothing to link.
+    // and a guest with no stub symbol and no zkvmcall never reaches the library, so it
+    // would never be merged into the ROM (see the merge below). `None` = nothing to link.
     #[cfg(feature = "ziskasm")]
     let library = {
         let guest_names: Vec<&str> = REDIRECTS.iter().map(|(g, _)| *g).collect();
         let guest_syms =
             crate::elf_extraction::get_symbol_addresses_and_sizes_from_bytes(elf, &guest_names)?;
-        if guest_syms.is_empty() {
+        if guest_syms.is_empty() && zkvmcall_ids.is_empty() {
             None
         } else {
             let library = ziskasm::assemble_zisk_library()
@@ -186,6 +165,22 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
                     redirects.insert(guest_addr, (lib_addr, size));
                 }
             }
+            for id in &zkvmcall_ids {
+                let call = zisk_definitions::zkvmcall_by_id(*id).unwrap();
+                let lib_addr = *library.symbols.get(call.target).ok_or_else(|| {
+                    format!(
+                        "ZisK library has no function `{}` (zkvmcall 0x{id:X}, `{}`)",
+                        call.target, call.name
+                    )
+                })?;
+                zkvmcalls.insert(*id, lib_addr);
+                if call.inline_args > 0 {
+                    let body = library
+                        .inline_body(call.target, call.inline_args)
+                        .map_err(|e| format!("inline zkvmcall 0x{id:X} (`{}`): {e}", call.name))?;
+                    inline_zkvmcalls.insert(*id, body);
+                }
+            }
             Some(library)
         }
     };
@@ -205,7 +200,14 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
         // Add executable code sections (redirects intercept guest library stubs).
         for section in &exec {
-            add_zisk_code(&mut rom, section.addr, &section.data, &redirects);
+            add_zisk_code(
+                &mut rom,
+                section.addr,
+                &section.data,
+                &redirects,
+                &zkvmcalls,
+                &inline_zkvmcalls,
+            );
         }
 
         // Add read-only data sections.  They will be stored in ROM, but there can be some RAM
@@ -352,38 +354,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Only reachable with the `ziskasm` feature (`library` is None otherwise).
     #[cfg(feature = "ziskasm")]
     if let Some(library) = library {
-        // The guest linker script reserves ZISKLIB_RAM but not ZISKLIB_ROM, and unlike
-        // the float-library region above nothing has fenced these off yet. `extend`
-        // would silently overwrite a colliding guest instruction (BTreeMap) or leave
-        // overlapping data sections, so reject the collision instead.
-        use zisk_core::{
-            ZISKLIB_RAM_ADDR, ZISKLIB_RAM_ADDR_MAX, ZISKLIB_ROM_ADDR, ZISKLIB_ROM_ADDR_MAX,
-        };
-        if let Some((&addr, _)) = rom.insts.range(ZISKLIB_ROM_ADDR..=ZISKLIB_ROM_ADDR_MAX).next() {
-            return Err(format!(
-                "guest instruction at 0x{addr:x} overlaps the reserved ZisK library ROM region (0x{ZISKLIB_ROM_ADDR:x}..0x{ZISKLIB_ROM_ADDR_MAX:x})"
-            )
-            .into());
-        }
-        for (what, sections, lo, hi) in [
-            ("ROM", &rom.ro_data_64, ZISKLIB_ROM_ADDR, ZISKLIB_ROM_ADDR_MAX),
-            ("RAM", &rom.rw_data_64, ZISKLIB_RAM_ADDR, ZISKLIB_RAM_ADDR_MAX),
-        ] {
-            for s in sections {
-                let end = s.addr + (s.data.len() * 8) as u64;
-                if s.addr <= hi && end > lo {
-                    return Err(format!(
-                        "guest data section at 0x{:x} (size {}) overlaps the reserved ZisK library {what} region (0x{lo:x}..0x{hi:x})",
-                        s.addr,
-                        s.data.len() * 8
-                    )
-                    .into());
-                }
-            }
-        }
-        rom.insts.extend(library.insts);
-        rom.ro_data_64.extend(library.ro_data);
-        rom.rw_data_64.extend(library.rw_data);
+        merge_library(&mut rom, library)?;
     }
 
     // Preprocess the ROM
@@ -392,6 +363,55 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     rom.optimize_instruction_lookup()?;
 
     Ok(rom)
+}
+
+/// Merges the assembled ZisK library into the guest ROM: its instructions and data
+/// live in the reserved region, disjoint from the guest.
+#[cfg(feature = "ziskasm")]
+fn merge_library(rom: &mut ZiskRom, library: ziskasm::ZiskLibrary) -> Result<(), Box<dyn Error>> {
+    // The guest linker script reserves ZISKLIB_RAM but not ZISKLIB_ROM, and unlike
+    // the float-library region above nothing has fenced these off yet. `extend`
+    // would silently overwrite a colliding guest instruction (BTreeMap) or leave
+    // overlapping data sections, so reject the collision instead.
+    use zisk_core::{
+        ZISKLIB_RAM_ADDR, ZISKLIB_RAM_ADDR_MAX, ZISKLIB_ROM_ADDR, ZISKLIB_ROM_ADDR_MAX,
+    };
+    if let Some((&addr, _)) = rom.insts.range(ZISKLIB_ROM_ADDR..=ZISKLIB_ROM_ADDR_MAX).next() {
+        return Err(format!(
+            "guest instruction at 0x{addr:x} overlaps the reserved ZisK library ROM region (0x{ZISKLIB_ROM_ADDR:x}..0x{ZISKLIB_ROM_ADDR_MAX:x})"
+        )
+        .into());
+    }
+    for (what, sections, lo, hi) in [
+        ("ROM", &rom.ro_data_64, ZISKLIB_ROM_ADDR, ZISKLIB_ROM_ADDR_MAX),
+        ("RAM", &rom.rw_data_64, ZISKLIB_RAM_ADDR, ZISKLIB_RAM_ADDR_MAX),
+    ] {
+        for s in sections {
+            let end = s.addr + (s.data.len() * 8) as u64;
+            if s.addr <= hi && end > lo {
+                return Err(format!(
+                    "guest data section at 0x{:x} (size {}) overlaps the reserved ZisK library {what} region (0x{lo:x}..0x{hi:x})",
+                    s.addr,
+                    s.data.len() * 8
+                )
+                .into());
+            }
+        }
+    }
+    // The library was assembled into a ROM of its own, so its instruction indexes
+    // start at 0 like the guest's. The index is the instruction's row in the ROM
+    // trace (and in the ROM state machine's multiplicities), so renumber the
+    // library after the guest: a shared index would put two instructions on one row.
+    let mut library_insts = library.insts;
+    let first_index = rom.build_counter;
+    for zib in library_insts.values_mut() {
+        zib.i.index += first_index;
+    }
+    rom.build_counter += library_insts.len() as u64;
+    rom.insts.extend(library_insts);
+    rom.ro_data_64.extend(library.ro_data);
+    rom.rw_data_64.extend(library.rw_data);
+    Ok(())
 }
 
 /// A ROM data row initializes 32 bytes (4 u64), so RW sections must be sized in
@@ -730,5 +750,100 @@ mod tests {
         for piece in &out {
             assert_eq!(piece.data.len(), 32);
         }
+    }
+}
+
+#[cfg(test)]
+mod zkvmcall_tests {
+    use zisk_definitions::{ZKVMCALLS, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START};
+
+    /// The table itself: IDs in range, strictly increasing (so none is reused).
+    #[test]
+    fn zkvmcall_ids_are_in_range_and_unique() {
+        for call in ZKVMCALLS {
+            assert!(
+                (ZKVMCALL_ADDR_START..=ZKVMCALL_ADDR_END).contains(&call.id),
+                "{} has out-of-range ID 0x{:X}",
+                call.name,
+                call.id
+            );
+        }
+        for pair in ZKVMCALLS.windows(2) {
+            assert!(
+                pair[0].id < pair[1].id,
+                "{} and {} are out of order",
+                pair[0].name,
+                pair[1].name
+            );
+        }
+    }
+
+    /// The C thunks (`ZKVMCALL <name>, <id>` lines) match the table, so a C guest can
+    /// never call one routine and get another: every thunk is a table entry, and every
+    /// entry has a thunk but the inline zkvmcalls, which may (a thunk calls them too,
+    /// see `inline_zkvmcall_site`) or may not.
+    #[test]
+    fn c_thunks_match_zkvmcall_table() {
+        const ASM: &str = include_str!("../../../ziskasm/lang/c/src/zkvm_calls.s");
+        let thunks: Vec<(String, u16)> = ASM
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("ZKVMCALL "))
+            .map(|rest| {
+                let (name, id) = rest.split_once(',').expect("ZKVMCALL <name>, <id>");
+                let id = id.trim().strip_prefix("0x").expect("hex ID");
+                (name.trim().to_string(), u16::from_str_radix(id, 16).expect("hex ID"))
+            })
+            .collect();
+        for (name, id) in &thunks {
+            assert!(
+                ZKVMCALLS.iter().any(|c| c.name == name && c.id == *id),
+                "thunk {name} 0x{id:X} is not in the table"
+            );
+        }
+        for c in ZKVMCALLS.iter().filter(|c| c.inline_args == 0) {
+            assert!(
+                thunks.iter().any(|(name, id)| name == c.name && *id == c.id),
+                "{} 0x{:X} has no thunk",
+                c.name,
+                c.id
+            );
+        }
+    }
+
+    /// Every zkvmcall target exists in the assembled ZisK library.
+    #[cfg(feature = "ziskasm")]
+    #[test]
+    fn zkvmcall_targets_exist_in_library() {
+        let library = ziskasm::assemble_zisk_library().unwrap();
+        for call in ZKVMCALLS {
+            assert!(
+                library.symbols.contains_key(call.target),
+                "{} targets missing library routine {}",
+                call.name,
+                call.target
+            );
+        }
+    }
+
+    /// The library, assembled on its own, numbers its instructions from 0 like the guest;
+    /// merged, every instruction must still have its own index (its ROM trace row).
+    #[cfg(feature = "ziskasm")]
+    #[test]
+    fn merged_library_gets_indexes_after_the_guest() {
+        use super::{add_end_and_lib, merge_library, ZiskRom, ROM_ENTRY};
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
+        add_end_and_lib(&mut rom);
+        let guest = rom.insts.len() as u64;
+        assert!(guest > 0 && rom.build_counter == guest);
+
+        let library = ziskasm::assemble_zisk_library().unwrap();
+        let lib = library.insts.len() as u64;
+        assert!(library.insts.values().any(|zib| zib.i.index == 0), "the library starts at 0");
+        merge_library(&mut rom, library).unwrap();
+
+        let mut indexes: Vec<u64> = rom.insts.values().map(|zib| zib.i.index).collect();
+        indexes.sort_unstable();
+        assert_eq!(indexes, (0..guest + lib).collect::<Vec<_>>(), "indexes are unique and dense");
+        assert_eq!(rom.build_counter, guest + lib);
     }
 }

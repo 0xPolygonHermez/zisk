@@ -58,12 +58,13 @@ static void on_emulation_signal(int sig)
 // avoid the parent's 10 s chunk-wait timeout. Layouts must match AsmMOChunk
 // / AsmMTChunk in emulator-asm/asm-runner/src/asm_mo.rs and asm_mt.rs:
 //   MemOp: { end, mem_ops_size }                                — 2 u64s, end @ 0
-//   MT-style: pc,sp,c,step, regs[33], last_c,end,steps,mem_reads_size — 41 u64s, end @ 38
+//   MT-style: pc,sp,c,step, regs[MT_CHUNK_REGS], last_c,end,steps,mem_reads_size
+//             — MT_CHUNK_HEADER_WORDS u64s, end @ MT_CHUNK_END_INDEX (constants.hpp)
 static void write_abort_chunk(void)
 {
     bool is_mo = (gen_method == MemOp);
-    size_t n_words = is_mo ? 2 : 41;
-    size_t end_idx = is_mo ? 0 : 38;
+    size_t n_words = is_mo ? 2 : MT_CHUNK_HEADER_WORDS;
+    size_t end_idx = is_mo ? 0 : MT_CHUNK_END_INDEX;
 
     uint64_t * chunk = (uint64_t *)MEM_CHUNK_ADDRESS;
     memset(chunk, 0, n_words * sizeof(uint64_t));
@@ -797,6 +798,39 @@ void server_setup (void)
             exit(-1);
         }
         shmem_ram_fd = -1;
+
+        /****************/
+        /* GUARD REGION */
+        /****************/
+
+        // Reserve the span between the top of ROM and the bottom of the stack
+        // (GUARD_ADDR..RAM_ADDR) as PROT_NONE. This is the guard region EF zkVM
+        // standard 6 requires below the stack, and it must stay inaccessible.
+        //
+        // Leaving it simply unmapped is not enough here. The assembly emulator does no
+        // software bounds checking: a guest access outside the mapped regions faults
+        // only because the host has nothing mapped at that address. An unmapped hole
+        // is exactly where the kernel may satisfy a later mmap(NULL, ...) or a large
+        // malloc in this same process, and if anything lands there a guest access into
+        // the guard would silently SUCCEED instead of aborting.
+        //
+        // MAP_FIXED claims the range, PROT_NONE makes any access fault, and
+        // MAP_NORESERVE keeps the 384MB off the commit charge -- no pages are backed,
+        // only a VMA is taken, so the cost is one kernel bookkeeping entry.
+        void * pGuard = mmap((void *)GUARD_ADDR, GUARD_SIZE, PROT_NONE,
+                             MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_NORESERVE, -1, 0);
+        if (pGuard == MAP_FAILED)
+        {
+            asm_printf("ERROR: Failed calling mmap(guard) errno=%d=%s\n", errno, strerror(errno));
+            exit(-1);
+        }
+        if ((uint64_t)pGuard != GUARD_ADDR)
+        {
+            asm_printf("ERROR: Called mmap(guard) but returned address = %p != 0x%08lx\n", pGuard, GUARD_ADDR);
+            exit(-1);
+        }
+        if (verbose) asm_printf("Reserved guard region 0x%08lx-0x%08lx (%lu MB) as PROT_NONE\n",
+                                GUARD_ADDR, GUARD_ADDR + GUARD_SIZE - 1, GUARD_SIZE >> 20);
 
         // Report duration
         if (verbose)

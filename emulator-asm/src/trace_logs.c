@@ -31,8 +31,8 @@
             [8B] register[1]
             …
             [8B] register[31]
-            [8B] register[32]
-            [8B] register[33]
+            …
+            [8B] register[MT_CHUNK_REGS] (r39)
         Last state:
             [8B] c
         End:
@@ -83,7 +83,7 @@ void log_minimal_trace(void)
         i++;
         asm_printf("\t\tstep=%lu\n", chunk[i]);
         i++;
-        for (uint64_t r=1; r<34; r++)
+        for (uint64_t r=1; r<=MT_CHUNK_REGS; r++)
         {
             asm_printf("\t\treg[%lu]=0x%lx\n", r, chunk[i]);
             i++;

@@ -25,8 +25,9 @@ const INST_SIZE: i64 = 4;
 
 /// Container magic tag.
 const MAGIC: &[u8; 4] = b"ZKRM";
-/// Container format version.
-const VERSION: u8 = 1;
+/// Container format version. 2: r32..r39 are main-trace registers (`SRC_REG` /
+/// `STORE_REG`), where version 1 ROMs address them as RAM; see ziskbin.md §8.
+const VERSION: u8 = 2;
 /// Private ELF machine id marking a ziskbin ELF ("ZK").
 pub const EM_ZISK: u16 = 0x5a4b;
 /// Section name holding the ROM container blob.
@@ -437,7 +438,10 @@ pub fn decode_rom(blob: &[u8]) -> Result<ZiskRom, String> {
     }
     let version = r.u8()?;
     if version != VERSION {
-        return Err(format!("ziskbin: unsupported version {version}"));
+        return Err(format!(
+            "ziskbin: unsupported version {version} (this build reads version {VERSION}); \
+             rebuild the program with `zisk2zisk --elf`"
+        ));
     }
     let _profile = r.u8()?;
     let inst_count = r.uvarint()?;
@@ -677,6 +681,15 @@ mod tests {
         let first = encode_rom(&rom);
         let second = encode_rom(&decode_rom(&first).unwrap());
         assert_eq!(first, second, "re-encoding a decoded ROM must be byte-identical");
+    }
+
+    /// A blob of an older version is refused (version 1 addressed r32..r39 as RAM).
+    #[test]
+    fn rejects_other_versions() {
+        let mut blob = encode_rom(&sample_rom());
+        blob[MAGIC.len()] = 1;
+        let err = decode_rom(&blob).unwrap_err();
+        assert!(err.contains("unsupported version 1"), "{err}");
     }
 
     /// Header for a hand-built blob with the given section/instruction counts.

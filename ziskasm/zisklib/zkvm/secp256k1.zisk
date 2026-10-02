@@ -3,8 +3,8 @@
 ; Entry `ziskasm_zkvm_secp256k1_verify`, redirect target of `zkvm_secp256k1_verify`.
 ;
 ; New, self-contained EF-native routine: it marshals the EF big-endian byte inputs
-; to LE limbs with the shared zkvm_be_to_limbs (rev8) helper, then runs the ECDSA
-; verify flow authored here (lifted from ziskasm/zisklib/secp256k1/ecdsa.zisk, NOT
+; to LE limbs in line (`rev8(ptr, 8[a + off]) -> [limb]`, one step per limb), then
+; runs the ECDSA verify flow authored here (lifted from ziskasm/zisklib/secp256k1/ecdsa.zisk, NOT
 ; calling zisklib_ecdsa_verify_secp256k1). It reuses the shared PRIMITIVES:
 ; ecu_is_zero/ecu_gt/ecu_eq, zisklib_is_on_curve/inv_fn/mul_fn/reduce_fn_secp256k1,
 ; and zisklib_glv_double_scalar_mul_with_g_secp256k1.
@@ -27,54 +27,37 @@ u64 ZKVM_K1_U1[4]   = 0, 0, 0, 0
 u64 ZKVM_K1_U2[4]   = 0, 0, 0, 0
 u64 ZKVM_K1_PT[8]   = 0, 0, 0, 0, 0, 0, 0, 0
 u64 ZKVM_K1_XR[4]   = 0, 0, 0, 0
-u64 ZKVM_K1_VER[1]  = 0
-u64 ZKVM_K1_SIGP[1] = 0
-u64 ZKVM_K1_PKP[1]  = 0
 
 ziskasm_zkvm_secp256k1_verify:
 	push r1
-	; save verified ptr, sig ptr, pubkey ptr (marshalling clobbers r10..r13)
-	copyb(0, ZKVM_K1_VER) -> r5
-	copyb(r5, r13) -> 8[a + 0]
-	copyb(0, ZKVM_K1_SIGP) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, ZKVM_K1_PKP) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-
-	; z = rev8(msg[0..32])   (r10 still = msg)
-	copyb(0, ZKVM_K1_Z) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_be_to_limbs
-	; r = rev8(sig[0..32])
-	copyb(0, ZKVM_K1_SIGP) -> r5
-	copyb(r5, 8[a + 0]) -> r10
-	copyb(0, ZKVM_K1_R) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_be_to_limbs
-	; s = rev8(sig[32..64])
-	copyb(0, ZKVM_K1_SIGP) -> r5
-	copyb(r5, 8[a + 0]) -> r10
-	add(r10, 32) -> r10
-	copyb(0, ZKVM_K1_S) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_be_to_limbs
-	; pk_x = rev8(pubkey[0..32])
-	copyb(0, ZKVM_K1_PKP) -> r5
-	copyb(r5, 8[a + 0]) -> r10
-	copyb(0, ZKVM_K1_PK) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_be_to_limbs
-	; pk_y = rev8(pubkey[32..64])
-	copyb(0, ZKVM_K1_PKP) -> r5
-	copyb(r5, 8[a + 0]) -> r10
-	add(r10, 32) -> r10
-	copyb(0, ZKVM_K1_PK) -> r11
-	add(r11, 32) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_be_to_limbs
+	copyb(0, r13) -> r32                ; the verified pointer, for the end (no callee uses r32..r39)
+	; --- marshal z, r, s, pk (BE bytes -> LE limbs, 1 step per limb) ---
+	rev8(r10, 8[a + 24]) -> [ZKVM_K1_Z + 0]
+	rev8(r10, 8[a + 16]) -> [ZKVM_K1_Z + 8]
+	rev8(r10, 8[a + 8]) -> [ZKVM_K1_Z + 16]
+	rev8(r10, 8[a + 0]) -> [ZKVM_K1_Z + 24]
+	rev8(r11, 8[a + 24]) -> [ZKVM_K1_R + 0]
+	rev8(r11, 8[a + 16]) -> [ZKVM_K1_R + 8]
+	rev8(r11, 8[a + 8]) -> [ZKVM_K1_R + 16]
+	rev8(r11, 8[a + 0]) -> [ZKVM_K1_R + 24]
+	rev8(r11, 8[a + 56]) -> [ZKVM_K1_S + 0]
+	rev8(r11, 8[a + 48]) -> [ZKVM_K1_S + 8]
+	rev8(r11, 8[a + 40]) -> [ZKVM_K1_S + 16]
+	rev8(r11, 8[a + 32]) -> [ZKVM_K1_S + 24]
+	rev8(r12, 8[a + 24]) -> [ZKVM_K1_PK + 0]
+	rev8(r12, 8[a + 16]) -> [ZKVM_K1_PK + 8]
+	rev8(r12, 8[a + 8]) -> [ZKVM_K1_PK + 16]
+	rev8(r12, 8[a + 0]) -> [ZKVM_K1_PK + 24]
+	rev8(r12, 8[a + 56]) -> [ZKVM_K1_PK + 32 + 0]
+	rev8(r12, 8[a + 48]) -> [ZKVM_K1_PK + 32 + 8]
+	rev8(r12, 8[a + 40]) -> [ZKVM_K1_PK + 32 + 16]
+	rev8(r12, 8[a + 32]) -> [ZKVM_K1_PK + 32 + 24]
 
 	; ================= verify (limb arrays ZKVM_K1_*) =================
-	; --- r in [1, n-1] ---
+	; --- r, s in [1, n-1] ---
+	copyb(0, [ZKVM_K1_R + 24])
+	sub(c, 1)
+	ltu(c, 0xfffffffffffffffe), j(zv_rok)   ; top limb in [1, 2^64-2]: in range
 	copyb(0, ZKVM_K1_R) -> r10
 	call ecu_is_zero
 	ltu(0, r10), j(zv_false)
@@ -82,7 +65,10 @@ ziskasm_zkvm_secp256k1_verify:
 	copyb(0, SECP_N_MINUS_ONE) -> r11
 	call ecu_gt
 	ltu(0, r10), j(zv_false)
-	; --- s in [1, n-1] ---
+zv_rok:
+	copyb(0, [ZKVM_K1_S + 24])
+	sub(c, 1)
+	ltu(c, 0xfffffffffffffffe), j(zv_sok)   ; top limb in [1, 2^64-2]: in range
 	copyb(0, ZKVM_K1_S) -> r10
 	call ecu_is_zero
 	ltu(0, r10), j(zv_false)
@@ -90,7 +76,10 @@ ziskasm_zkvm_secp256k1_verify:
 	copyb(0, SECP_N_MINUS_ONE) -> r11
 	call ecu_gt
 	ltu(0, r10), j(zv_false)
+zv_sok:
 	; --- pk != identity ---
+	copyb(0, [ZKVM_K1_PK + 24])
+	ltu(0, c), j(zv_pkxok)              ; x's top limb nonzero: not the identity
 	copyb(0, ZKVM_K1_PK) -> r10
 	call ecu_is_zero
 	eq(r10, 0), j(zv_pkxok)
@@ -100,15 +89,20 @@ ziskasm_zkvm_secp256k1_verify:
 	ltu(0, r10), j(zv_false)
 zv_pkxok:
 	; --- pk_x, pk_y in [0, p-1] ---
+	copyb(0, [ZKVM_K1_PK + 24])
+	ltu(c, 0xffffffffffffffff), j(zv_pxok)   ; top limb below 2^64-1: in range
 	copyb(0, ZKVM_K1_PK) -> r10
 	copyb(0, SECP_P_MINUS_ONE) -> r11
 	call ecu_gt
 	ltu(0, r10), j(zv_false)
-	copyb(0, ZKVM_K1_PK) -> r10
-	add(r10, 32) -> r10
+zv_pxok:
+	copyb(0, [ZKVM_K1_PK + 32 + 24])
+	ltu(c, 0xffffffffffffffff), j(zv_pyok)   ; top limb below 2^64-1: in range
+	copyb(0, ZKVM_K1_PK + 32) -> r10
 	copyb(0, SECP_P_MINUS_ONE) -> r11
 	call ecu_gt
 	ltu(0, r10), j(zv_false)
+zv_pyok:
 	; --- pk on curve ---
 	copyb(0, ZKVM_K1_PK) -> r10
 	call zisklib_is_on_curve_secp256k1
@@ -153,9 +147,7 @@ zv_false:
 zv_true:
 	copyb(0, 1) -> r14
 zv_store:
-	copyb(0, ZKVM_K1_VER) -> r5
-	copyb(r5, 8[a + 0]) -> r5           ; verified ptr
-	copyb(r5, r14) -> 1[a + 0]          ; *verified = r14 (1 byte, bool)
+	copyb(r32, r14) -> 1[a + 0]          ; *verified = r14 (1 byte, bool)
 	copyb(0, 0) -> r10                  ; return ZKVM_EOK (a0 = 0)
 	pop r1
 	ret
@@ -168,76 +160,66 @@ zv_store:
 ;   [r10=msg, r11=sig, r12=recid, r13=output] -> a0 = ZKVM_EOK on success (output
 ;   = recovered pubkey), ZKVM_EFAIL (-1) on any failure. Recover flow lifted from
 ;   secp256k1/ecdsa.zisk (reuses lift_x/inv_fn/neg_fn/mul_fn/glv + ecu_* primitives);
-;   x‖y limbs converted back to big-endian bytes with zkvm_limbs_to_be (per 4-limb
-;   coordinate). Labels `zr_`, data `ZKVM_KR_*`.
+;   x‖y limbs converted back to big-endian bytes in line (rev8 + store per limb).
+;   The range checks read only the top limb unless it is 0 or 2^64-1, where they
+;   fall back to the exact ecu_* comparisons. Labels `zr_`, data `ZKVM_KR_*`.
 ; ----------------------------------------------------------------------------
 u64 ZKVM_KR_Z[4]    = 0, 0, 0, 0
 u64 ZKVM_KR_R[4]    = 0, 0, 0, 0
 u64 ZKVM_KR_S[4]    = 0, 0, 0, 0
-u64 ZKVM_KR_PAR[1]  = 0
 u64 ZKVM_KR_RPT[8]  = 0, 0, 0, 0, 0, 0, 0, 0
 u64 ZKVM_KR_RINV[4] = 0, 0, 0, 0
 u64 ZKVM_KR_NEGZ[4] = 0, 0, 0, 0
 u64 ZKVM_KR_U1[4]   = 0, 0, 0, 0
 u64 ZKVM_KR_U2[4]   = 0, 0, 0, 0
 u64 ZKVM_KR_RES[8]  = 0, 0, 0, 0, 0, 0, 0, 0
-u64 ZKVM_KR_OUTP[1] = 0
-u64 ZKVM_KR_SIGP[1] = 0
-u64 ZKVM_KR_RECID[1] = 0
 
 ziskasm_zkvm_secp256k1_ecrecover:
-	push r1
-	copyb(0, ZKVM_KR_OUTP) -> r5
-	copyb(r5, r13) -> 8[a + 0]
-	copyb(0, ZKVM_KR_SIGP) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, ZKVM_KR_RECID) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	; z = rev8(msg[0..32])  (r10 still = msg)
-	copyb(0, ZKVM_KR_Z) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_be_to_limbs
-	; r = rev8(sig[0..32])
-	copyb(0, ZKVM_KR_SIGP) -> r5
-	copyb(r5, 8[a + 0]) -> r10
-	copyb(0, ZKVM_KR_R) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_be_to_limbs
-	; s = rev8(sig[32..64])
-	copyb(0, ZKVM_KR_SIGP) -> r5
-	copyb(r5, 8[a + 0]) -> r10
-	add(r10, 32) -> r10
-	copyb(0, ZKVM_KR_S) -> r11
-	copyb(0, 4) -> r12
-	call zkvm_be_to_limbs
-
-	; --- r in [1, n-1] ---
-	copyb(0, ZKVM_KR_R) -> r10
-	call ecu_is_zero
-	ltu(0, r10), j(zr_fail)
-	copyb(0, ZKVM_KR_R) -> r10
-	copyb(0, SECP_N_MINUS_ONE) -> r11
-	call ecu_gt
-	ltu(0, r10), j(zr_fail)
-	; --- s in [1, n-1] ---
-	copyb(0, ZKVM_KR_S) -> r10
-	call ecu_is_zero
-	ltu(0, r10), j(zr_fail)
-	copyb(0, ZKVM_KR_S) -> r10
-	copyb(0, SECP_N_MINUS_ONE) -> r11
-	call ecu_gt
-	ltu(0, r10), j(zr_fail)
 	; --- recid <= 1 ; parity = recid & 1 ---
-	copyb(0, ZKVM_KR_RECID) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	ltu(1, r6), j(zr_fail)
-	and(r6, 1) -> r6
-	copyb(0, ZKVM_KR_PAR) -> r5
-	copyb(r5, r6) -> 8[a + 0]
+	ltu(1, r12), j(zr_fail0)
+	copyb(0, r12) -> r33                ; parity (no callee uses r32..r39)
+	push r1
+	copyb(0, r13) -> r32                ; the output pointer, for the end
+	; --- marshal z, r, s (BE bytes -> LE limbs, 1 step per limb) ---
+	rev8(r10, 8[a + 24]) -> [ZKVM_KR_Z + 0]
+	rev8(r10, 8[a + 16]) -> [ZKVM_KR_Z + 8]
+	rev8(r10, 8[a + 8]) -> [ZKVM_KR_Z + 16]
+	rev8(r10, 8[a + 0]) -> [ZKVM_KR_Z + 24]
+	rev8(r11, 8[a + 24]) -> [ZKVM_KR_R + 0]
+	rev8(r11, 8[a + 16]) -> [ZKVM_KR_R + 8]
+	rev8(r11, 8[a + 8]) -> [ZKVM_KR_R + 16]
+	rev8(r11, 8[a + 0]) -> [ZKVM_KR_R + 24]
+	rev8(r11, 8[a + 56]) -> [ZKVM_KR_S + 0]
+	rev8(r11, 8[a + 48]) -> [ZKVM_KR_S + 8]
+	rev8(r11, 8[a + 40]) -> [ZKVM_KR_S + 16]
+	rev8(r11, 8[a + 32]) -> [ZKVM_KR_S + 24]
+
+	; --- r, s in [1, n-1] ---
+	copyb(0, [ZKVM_KR_R + 24])
+	sub(c, 1)
+	ltu(c, 0xfffffffffffffffe), j(zr_rok)   ; top limb in [1, 2^64-2]: in range
+	copyb(0, ZKVM_KR_R) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(zr_fail)
+	copyb(0, ZKVM_KR_R) -> r10
+	copyb(0, SECP_N_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(zr_fail)
+zr_rok:
+	copyb(0, [ZKVM_KR_S + 24])
+	sub(c, 1)
+	ltu(c, 0xfffffffffffffffe), j(zr_sok)   ; top limb in [1, 2^64-2]: in range
+	copyb(0, ZKVM_KR_S) -> r10
+	call ecu_is_zero
+	ltu(0, r10), j(zr_fail)
+	copyb(0, ZKVM_KR_S) -> r10
+	copyb(0, SECP_N_MINUS_ONE) -> r11
+	call ecu_gt
+	ltu(0, r10), j(zr_fail)
+zr_sok:
 	; --- R = lift_x(r, parity) ---
 	copyb(0, ZKVM_KR_R) -> r10
-	copyb(0, ZKVM_KR_PAR) -> r5
-	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, r33) -> r11
 	copyb(0, ZKVM_KR_RPT) -> r12
 	call zisklib_lift_x_secp256k1
 	ltu(0, r10), j(zr_fail)
@@ -266,23 +248,28 @@ ziskasm_zkvm_secp256k1_ecrecover:
 	call zisklib_glv_double_scalar_mul_with_g_secp256k1
 	ltu(0, r10), j(zr_fail)
 
-	; --- success: write output = x‖y (each 4 limbs -> 32 BE bytes) ---
-	copyb(0, ZKVM_KR_RES) -> r10                ; x limbs
-	copyb(0, ZKVM_KR_OUTP) -> r5
-	copyb(r5, 8[a + 0]) -> r11                  ; output
-	copyb(0, 4) -> r12
-	call zkvm_limbs_to_be
-	copyb(0, ZKVM_KR_RES) -> r10
-	add(r10, 32) -> r10                         ; y limbs
-	copyb(0, ZKVM_KR_OUTP) -> r5
-	copyb(r5, 8[a + 0]) -> r11
-	add(r11, 32) -> r11                         ; output + 32
-	copyb(0, 4) -> r12
-	call zkvm_limbs_to_be
+	; --- success: output = x‖y (4 LE limbs each -> 32 BE bytes) ---
+	rev8(0, [ZKVM_KR_RES + 0])
+	copyb(r32, c) -> 8[a + 24]
+	rev8(0, [ZKVM_KR_RES + 8])
+	copyb(r32, c) -> 8[a + 16]
+	rev8(0, [ZKVM_KR_RES + 16])
+	copyb(r32, c) -> 8[a + 8]
+	rev8(0, [ZKVM_KR_RES + 24])
+	copyb(r32, c) -> 8[a + 0]
+	rev8(0, [ZKVM_KR_RES + 32 + 0])
+	copyb(r32, c) -> 8[a + 56]
+	rev8(0, [ZKVM_KR_RES + 32 + 8])
+	copyb(r32, c) -> 8[a + 48]
+	rev8(0, [ZKVM_KR_RES + 32 + 16])
+	copyb(r32, c) -> 8[a + 40]
+	rev8(0, [ZKVM_KR_RES + 32 + 24])
+	copyb(r32, c) -> 8[a + 32]
 	copyb(0, 0) -> r10                          ; ZKVM_EOK
 	pop r1
 	ret
 zr_fail:
-	copyb(0, 0xffffffffffffffff) -> r10         ; ZKVM_EFAIL (-1)
 	pop r1
+zr_fail0:
+	copyb(0, 0xffffffffffffffff) -> r10         ; ZKVM_EFAIL (-1)
 	ret

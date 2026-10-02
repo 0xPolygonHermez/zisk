@@ -16,19 +16,15 @@ u64 BLS_FE_F[72]    = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 ; void zisklib_final_exp_bls12_381(const u64* f, u64* result)  [72,72]
 zisklib_final_exp_bls12_381:
 	push r1
-	copyb(0, BLS_FE_IN) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_FE_RES) -> r5
-	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_FE_IN]
+	copyb(0, r11) -> [BLS_FE_RES]
 
 	; ---- easy part ----
 	; FE_A = conj(f) ; FE_B = inv(f) ; FE_EASY = FE_A * FE_B
-	copyb(0, BLS_FE_IN) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_FE_RES) -> r5
 	copyb(0, BLS_FE_A) -> r11
 	call zisklib_conjugate_fp12_bls12_381
-	copyb(0, BLS_FE_IN) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [BLS_FE_IN]) -> r10
 	copyb(0, BLS_FE_B) -> r11
 	call zisklib_inv_fp12_bls12_381
 	copyb(0, BLS_FE_A) -> r10
@@ -54,14 +50,12 @@ zisklib_final_exp_bls12_381:
 	copyb(0, BLS_FE_F) -> r10
 	copyb(0, BLS_FE_A) -> r11
 	call zisklib_exp_by_xone_cyclo_bls12_381
-	copyb(0, BLS_FE_A) -> r10
-	copyb(0, BLS_FE_F) -> r11
-	copyb(0, 72) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(BLS_FE_F, BLS_FE_A) -> r5, j(576, 4)
 
 	; f1 = f^p (FE_B) ; f2 = (conj f)^x (FE_C) ; f = f1*f2
 	copyb(0, BLS_FE_F) -> r10
 	copyb(0, BLS_FE_B) -> r11
+	copyb(0, 72) -> r12
 	call zisklib_frobenius1_fp12_bls12_381
 	copyb(0, BLS_FE_F) -> r10
 	copyb(0, BLS_FE_A) -> r11
@@ -99,8 +93,7 @@ zisklib_final_exp_bls12_381:
 	call zisklib_mul_fp12_bls12_381
 	copyb(0, BLS_FE_B) -> r10
 	copyb(0, BLS_FE_M) -> r11
-	copyb(0, BLS_FE_RES) -> r12
-	copyb(r12, 8[a + 0]) -> r12
+	copyb(0, [BLS_FE_RES]) -> r12
 	call zisklib_mul_fp12_bls12_381
 
 	pop r1

@@ -8150,6 +8150,7 @@ dependencies = [
  "elf",
  "zisk-asm",
  "zisk-core",
+ "zisk-definitions",
  "zisk-lib-float",
  "zisk-riscv",
 ]
@@ -8252,6 +8253,9 @@ dependencies = [
 [[package]]
 name = "zisklib"
 version = "0.1.0"
+dependencies = [
+ "zisk-definitions",
+]
 
 [[package]]
 name = "ziskos"

@@ -23,10 +23,13 @@ const u64 SHA_STATE_INIT[4] =
 	0xbb67ae856a09e667, 0xa54ff53a3c6ef372, 0x9b05688c510e527f, 0x5be0cd191f83d9ab
 
 ; RAM scratch: the running state (updated in place by the precompile), one
-; 64-byte input block, and the 2-pointer precompile header [&state, &input].
+; 64-byte input block, and the 2-pointer precompile header [&state, &input],
+; preset since both pointers are fixed.
 u64 SHA_STATE[4] = 0, 0, 0, 0
 u64 SHA_INPUT[8] = 0, 0, 0, 0, 0, 0, 0, 0
-u64 SHA_HDR[2]   = 0, 0
+u64 SHA_HDR[2]   = SHA_STATE, SHA_INPUT
+
+define SH_DMA_COUNT 0xa0400f00          ; dma_memcpy reads its byte count here
 
 ; ----------------------------------------------------------------------------
 ; zkvm_status ziskasm_zkvm_sha256(const u8* input, u64 len, u8* output) -> r10 = 0
@@ -35,140 +38,54 @@ u64 SHA_HDR[2]   = 0, 0
 ;   internal secp256k1/schnorr + BLS12-381 hash-to-curve callers all reach it.
 ;   Returns r10 = 0 (ZKVM_EOK for the zkvm_sha256 redirect; the void callers ignore
 ;   it — r10 is caller-saved and clobbered by the call anyway).
-;   Caller-saved regs only: r5 holds the header address across every compress;
-;   r13 is the byte offset / remaining / output-word index; r6/r7/r14/r15 scratch.
+;   Caller-saved regs only: r13 = remaining bytes, r5/r6 scratch. The state and
+;   the blocks are set up with the DMA precompiles (one step each, much cheaper
+;   than a main step per word).
 ; ----------------------------------------------------------------------------
 ziskasm_zkvm_sha256:
-	; --- initialise the state from SHA_STATE_INIT ---
-	copyb(0, SHA_STATE_INIT) -> r6
-	copyb(0, SHA_STATE) -> r7
-	copyb(0, 4) -> r14
-sh_init:
-	eq(r14, 0), j(sh_hdr)
-	copyb(r6, 8[a + 0]) -> r15
-	copyb(r7, r15) -> 8[a + 0]
-	add(r6, 8) -> r6
-	add(r7, 8) -> r7
-	sub(r14, 1) -> r14
-	jump(sh_init)
-sh_hdr:
-	; --- build the [&state, &input] header once (both pointers are fixed) ---
-	copyb(0, SHA_HDR) -> r5
-	copyb(0, SHA_STATE) -> r6
-	copyb(r5, r6) -> 8[a + 0]           ; &state
-	copyb(0, SHA_INPUT) -> r6
-	copyb(r5, r6) -> 8[a + 8]           ; &input
-	; r5 = &header, reserved for every sha256(0, r5) below
+	dma_xmemcpy(SHA_STATE, SHA_STATE_INIT) -> r5, j(32, 4)
+	copyb(0, r11) -> r13                ; remaining; r11 keeps len (for bit length)
 
 	; --- absorb complete 64-byte blocks ---
-	copyb(0, 0) -> r13                  ; offset = 0
 sh_full:
-	add(r13, 64) -> r6
-	ltu(r11, r6), j(sh_final)           ; len < offset + 64 -> no more full blocks
-	add(r10, r13) -> r6                 ; &input[offset]
-	copyb(0, SHA_INPUT) -> r7
-	copyb(0, 8) -> r14
-sh_cpb:
-	eq(r14, 0), j(sh_comp)
-	copyb(r6, 8[a + 0]) -> r15          ; unaligned-safe 8-byte load
-	copyb(r7, r15) -> 8[a + 0]
-	add(r6, 8) -> r6
-	add(r7, 8) -> r7
-	sub(r14, 1) -> r14
-	jump(sh_cpb)
-sh_comp:
-	sha256(0, r5)                       ; state <- compress(state, block), in place
-	add(r13, 64) -> r13
+	ltu(r13, 64), j(sh_final)
+	dma_xmemcpy(SHA_INPUT, r10) -> r5, j(64, 4)
+	sha256(0, SHA_HDR)                  ; state <- compress(state, block), in place
+	add(r10, 64) -> r10
+	sub(r13, 64) -> r13
 	jump(sh_full)
 
 sh_final:
-	; --- final block(s): r13 = offset, remaining = len - offset (0..63) ---
-	add(r10, r13) -> r10                ; r10 = &input[offset] (start of the tail)
-	sub(r11, r13) -> r13                ; r13 = remaining; r11 keeps len (for bit length)
-	; zero the block
-	copyb(0, SHA_INPUT) -> r6
-	copyb(0, 8) -> r7
-sh_zero:
-	eq(r7, 0), j(sh_crem)
-	copyb(r6, 0) -> 8[a + 0]
-	add(r6, 8) -> r6
-	sub(r7, 1) -> r7
-	jump(sh_zero)
-sh_crem:
-	; copy the `remaining` tail bytes into the block
-	copyb(0, SHA_INPUT) -> r6
-	copyb(0, r13) -> r7                 ; count = remaining
-sh_cr:
-	eq(r7, 0), j(sh_pad)
-	copyb(r10, 1[a + 0]) -> r14
-	copyb(r6, r14) -> 1[a + 0]
-	add(r10, 1) -> r10
-	add(r6, 1) -> r6
-	sub(r7, 1) -> r7
-	jump(sh_cr)
-sh_pad:
-	; r6 now points at byte `remaining` -> the 0x80 terminator
-	copyb(r6, 0x80) -> 1[a + 0]
+	; --- final block(s): the r13 = 0..63 tail bytes, 0x80, zero fill ---
+	dma_xmemset(SHA_INPUT, 64) -> r5, j(0, 4)
+	copyb(0, r13) -> [SH_DMA_COUNT]
+	dma_memcpy(SHA_INPUT, r10) -> r5
+	add(r13, SHA_INPUT) -> r6
+	copyb(r6, 0x80) -> 1[a + 0]         ; the terminator after the tail
 	ltu(r13, 56), j(sh_len)             ; remaining < 56 -> length fits in this block
 	; remaining >= 56: compress this block, then put the length in a fresh block
-	sha256(0, r5)
-	copyb(0, SHA_INPUT) -> r6
-	copyb(0, 8) -> r7
-sh_z2:
-	eq(r7, 0), j(sh_len)
-	copyb(r6, 0) -> 8[a + 0]
-	add(r6, 8) -> r6
-	sub(r7, 1) -> r7
-	jump(sh_z2)
+	sha256(0, SHA_HDR)
+	dma_xmemset(SHA_INPUT, 64) -> r5, j(0, 4)
 sh_len:
-	; write bit_len = len*8 as 8 big-endian bytes at block offsets 56..63
-	sll(r11, 3) -> r15                  ; bit length
-	copyb(0, SHA_INPUT) -> r6
-	add(r6, 56) -> r6
-	copyb(0, 56) -> r7                  ; shift = 56, 48, ..., 0 (MSB first)
-sh_lenl:
-	srl(r15, r7) -> r14
-	and(r14, 0xff) -> r14
-	copyb(r6, r14) -> 1[a + 0]
-	eq(r7, 0), j(sh_out)
-	sub(r7, 8) -> r7
-	add(r6, 1) -> r6
-	jump(sh_lenl)
-sh_out:
-	sha256(0, r5)
+	; bit_len = len*8 as 8 big-endian bytes at block offsets 56..63
+	sll(r11, 3)
+	rev8(0, c) -> [SHA_INPUT + 56]
+	sha256(0, SHA_HDR)
 
-	; --- write the 8 state words as 32 big-endian bytes to output ---
-	copyb(0, 0) -> r13                  ; j = 0 (u32 word index)
-	copyb(0, r12) -> r6                 ; output cursor
-sh_ow:
-	eq(r13, 8), j(sh_done)
-	srl(r13, 1) -> r7                   ; u64 index = j / 2
-	sll(r7, 3) -> r7
-	copyb(0, SHA_STATE) -> r14
-	add(r14, r7) -> r14
-	copyb(r14, 8[a + 0]) -> r14         ; w = SHA_STATE[j/2]
-	and(r13, 1) -> r7
-	eq(r7, 0), j(sh_lo)
-	srl(r14, 32) -> r14                 ; odd j -> high u32
-sh_lo:
-	and(r14, 0xffffffff) -> r14         ; v = the u32 word
-	srl(r14, 24) -> r15
-	and(r15, 0xff) -> r15
-	copyb(r6, r15) -> 1[a + 0]
-	add(r6, 1) -> r6
-	srl(r14, 16) -> r15
-	and(r15, 0xff) -> r15
-	copyb(r6, r15) -> 1[a + 0]
-	add(r6, 1) -> r6
-	srl(r14, 8) -> r15
-	and(r15, 0xff) -> r15
-	copyb(r6, r15) -> 1[a + 0]
-	add(r6, 1) -> r6
-	and(r14, 0xff) -> r15
-	copyb(r6, r15) -> 1[a + 0]
-	add(r6, 1) -> r6
-	add(r13, 1) -> r13
-	jump(sh_ow)
-sh_done:
+	; --- the 8 state words as 32 big-endian bytes. A state u64 holds word 2k in
+	; its low half and 2k+1 in its high half: rev8 byte-swaps both words but also
+	; swaps the halves, and ror 32 puts them back. ---
+	rev8(0, [SHA_STATE + 0])
+	ror(c, 32)
+	copyb(r12, c) -> 8[a + 0]
+	rev8(0, [SHA_STATE + 8])
+	ror(c, 32)
+	copyb(r12, c) -> 8[a + 8]
+	rev8(0, [SHA_STATE + 16])
+	ror(c, 32)
+	copyb(r12, c) -> 8[a + 16]
+	rev8(0, [SHA_STATE + 24])
+	ror(c, 32)
+	copyb(r12, c) -> 8[a + 24]
 	copyb(0, 0) -> r10                  ; 0 = success; doubles as ZKVM_EOK for zkvm_sha256
 	ret

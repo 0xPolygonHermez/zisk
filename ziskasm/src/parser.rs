@@ -37,8 +37,10 @@ pub struct DataDecl {
     pub is_const: bool,
     /// Number of 8-byte slots (>= 1). A scalar is a 1-element array.
     pub count: usize,
-    /// Initial values, one per slot; `len() <= count`, remaining slots are zero.
-    pub values: Vec<u64>,
+    /// Initial values, one per slot; `len() <= count`, remaining slots are zero. A
+    /// symbol (only in `u64` data) is the address of a label or data name, resolved
+    /// at assemble time.
+    pub values: Vec<Num>,
     pub file: String,
     pub line: usize,
 }
@@ -76,11 +78,12 @@ impl DataType {
 }
 
 /// A number operand that is either a literal or a symbol (a label or data name)
-/// resolved to its address by the assembler.
+/// plus a signed byte offset (`NAME`, `NAME + N`, `NAME - N`), resolved to an
+/// address by the assembler.
 #[derive(Debug, Clone)]
 pub enum Num {
     Lit(u64),
-    Sym(String),
+    Sym(String, i64),
 }
 
 #[derive(Debug, Clone)]
@@ -446,7 +449,8 @@ fn is_data_decl(code: &str) -> bool {
     first == "const" || DataType::from_keyword(first).is_some()
 }
 
-/// Parses `[const] TYPE NAME[SIZE] [= v0, v1, ...]`.
+/// Parses `[const] TYPE NAME[SIZE] [= v0, v1, ...]`; each `v` is a number or, for
+/// `u64`, a symbol (its address).
 fn parse_data_decl(code: &str, file: &str, line: usize) -> Result<DataDecl, String> {
     let mut rest = code.trim();
     let is_const = match rest.strip_prefix("const ") {
@@ -488,11 +492,18 @@ fn parse_data_decl(code: &str, file: &str, line: usize) -> Result<DataDecl, Stri
     if let Some(v) = values_str {
         if !v.is_empty() {
             for part in v.split(',') {
-                let val = parse_u64(part.trim())?;
-                if val > ty.max_value() {
-                    return Err(format!("value {val} does not fit in {type_kw}"));
+                let val = parse_num(part)?;
+                match val {
+                    Num::Lit(n) if n > ty.max_value() => {
+                        return Err(format!("value {n} does not fit in {type_kw}"));
+                    }
+                    Num::Sym(ref sym, _) if ty != DataType::U64 => {
+                        return Err(format!(
+                            "`{sym}`: a symbol initializer (an address) needs u64, not {type_kw}"
+                        ));
+                    }
+                    _ => values.push(val),
                 }
-                values.push(val);
             }
         }
     }
@@ -717,10 +728,30 @@ fn parse_num(s: &str) -> Result<Num, String> {
         return Err("empty operand".into());
     }
     if is_identifier(s) {
-        Ok(Num::Sym(s.to_string()))
-    } else {
-        Ok(Num::Lit(parse_u64(s)?))
+        return Ok(Num::Sym(s.to_string(), 0));
     }
+    // `NAME ± N ± M ...`: a symbol plus a byte offset, e.g. a field of a data block
+    // (`[BLOCK + 8]`).
+    if let Some(i) = s.find(['+', '-']) {
+        let name = s[..i].trim();
+        if is_identifier(name) {
+            if name == "a" {
+                return Err(format!("`{s}`: an indirect operand needs a width, `W[a ± N]`"));
+            }
+            let mut off = 0i64;
+            let mut rest = &s[i..];
+            while !rest.is_empty() {
+                let neg = rest.starts_with('-');
+                let term = &rest[1..];
+                let end = term.find(['+', '-']).unwrap_or(term.len());
+                let n = parse_i64(term[..end].trim())?;
+                off = off.wrapping_add(if neg { -n } else { n });
+                rest = term[end..].trim_start();
+            }
+            return Ok(Num::Sym(name.to_string(), off));
+        }
+    }
+    Ok(Num::Lit(parse_u64(s)?))
 }
 
 fn parse_target(s: &str) -> Result<Target, String> {
@@ -739,13 +770,13 @@ fn is_reg(s: &str) -> bool {
     s.len() >= 2 && s.starts_with('r') && s[1..].chars().all(|c| c.is_ascii_digit())
 }
 
-/// Highest register the language defines. `r0`..`r31` are the RISC-V registers kept in
-/// the main execution trace; `r32`..`r63` are the virtual registers the transpiler
-/// lowers to memory in the reserved register area (see ziskasm.md, "Virtual
-/// registers").
+/// Highest register the language defines. `r0`..`r31` are the RISC-V registers and
+/// `r32`..`r39` the extra registers, all kept in the main execution trace; `r40`..`r63`
+/// are the virtual registers the transpiler lowers to memory in the reserved register
+/// area (see ziskasm.md, "Virtual registers").
 ///
 /// The bound has to be enforced here because nothing downstream enforces it:
-/// `ZiskInstBuilder::src_a`/`src_b` map any number outside `1..=31` to the address
+/// `ZiskInstBuilder::src_a`/`src_b` map any number outside `1..=39` to the address
 /// `REG_FIRST + n * 8` without a range check. `REG_FIRST` is `SYS_ADDR`, so an
 /// unvalidated `r64` resolves to `SYS_ADDR + 0x200` — exactly `UART_ADDR`, the ZisK
 /// stdout device — and larger numbers walk further into the system region. A typo must
@@ -867,8 +898,9 @@ mod tests {
     #[test]
     fn parse_reg_accepts_the_defined_range() {
         assert_eq!(parse_reg("r0").unwrap(), 0);
-        assert_eq!(parse_reg("r31").unwrap(), 31); // last main-trace register
-        assert_eq!(parse_reg("r32").unwrap(), 32); // first virtual register
+        assert_eq!(parse_reg("r31").unwrap(), 31); // last RISC-V register
+        assert_eq!(parse_reg("r39").unwrap(), 39); // last main-trace register
+        assert_eq!(parse_reg("r40").unwrap(), 40); // first virtual register
         assert_eq!(parse_reg("r63").unwrap(), MAX_REG);
     }
 
@@ -888,5 +920,25 @@ mod tests {
         for s in ["r", "rx", "r1a"] {
             assert!(parse_reg(s).unwrap_err().contains("invalid register"), "{s}");
         }
+    }
+
+    #[test]
+    fn parse_num_accepts_a_symbol_with_offsets() {
+        let sym = |s: &str| match parse_num(s).unwrap() {
+            Num::Sym(name, off) => (name, off),
+            n => panic!("{s}: {n:?}"),
+        };
+        assert_eq!(sym("BLOCK"), ("BLOCK".to_string(), 0));
+        assert_eq!(sym("BLOCK + 8"), ("BLOCK".to_string(), 8));
+        assert_eq!(sym("BLOCK-0x10"), ("BLOCK".to_string(), -16));
+        assert_eq!(sym("BLOCK + 32 + 8 - 4"), ("BLOCK".to_string(), 36));
+        assert!(matches!(parse_num("0x10").unwrap(), Num::Lit(16)));
+    }
+
+    #[test]
+    fn parse_num_rejects_bad_offsets() {
+        assert!(parse_num("a + 8").unwrap_err().contains("needs a width"));
+        assert!(parse_num("BLOCK + x").is_err());
+        assert!(parse_num("BLOCK +").is_err());
     }
 }
