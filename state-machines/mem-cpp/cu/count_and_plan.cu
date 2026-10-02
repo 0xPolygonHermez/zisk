@@ -70,6 +70,7 @@ __host__ __device__ __forceinline__ MemOp load_record(const uint64_t* words, uin
 constexpr uint32_t INVALID_MODE     = 1u;   // unrecognised record mode
 constexpr uint32_t INVALID_ADDRESS  = 2u;   // access outside the memory map
 constexpr uint32_t COUNTER_OVERFLOW = 4u;   // more than 2^32 - 1 rows at one address
+constexpr uint32_t VALUELESS_WRITE  = 8u;   // a RAM write without its value: no device witness
 
 __device__ __forceinline__ void hist_add(uint32_t* counter, uint32_t n, uint32_t compact,
                                          uint32_t* d_fault) {
@@ -651,6 +652,7 @@ void gather_ram_events_with_hist_kernel(const PotentialEmit* __restrict__ d_pote
     if (i < n_potentials) {
         PotentialEmit p = d_potentials[i];
         if (emit_is_ram(p)) {
+            if ((p.meta & 3u) == POT_KIND_UNKNOWN) atomicOr(d_invalid_flag, VALUELESS_WRITE);
             const uint32_t compact_ram = ram_compact(emit_aligned_addr(p));
             const uint64_t key = ((uint64_t)compact_ram << COMPACT_ADDR_SHIFT)
                                | ((uint64_t)(i + 1)     << ORIG_POS_SHIFT)
@@ -1854,6 +1856,14 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
 
         uint32_t h_fault[2] = {0, 0};
         CUDA_CHECK(cudaMemcpy(h_fault, d_invalid_mode_flag_, 8, cudaMemcpyDeviceToHost));
+        if (h_fault[0] & VALUELESS_WRITE) {
+            // The stream carried RAM writes without their values (the lighter, count-only form):
+            // the plan stands, the device witness does not.
+            if (ram_retention_enabled_.exchange(false))
+                fprintf(stderr, "CountAndPlan: the stream carries RAM writes without values; no device RAM "
+                                "witness for this block\n");
+            h_fault[0] &= ~VALUELESS_WRITE;
+        }
         if (h_fault[0] & COUNTER_OVERFLOW) {
             fprintf(stderr, "CountAndPlan::run FATAL: more than 2^32 - 1 rows at address 0x%08x\n",
                     expand_addr(h_fault[1]));
@@ -1911,7 +1921,6 @@ void CountAndPlan::reset() {
     ram_tables_ready_       = false;
     ram_results_.clear();
     ram_n_lanes_            = 0;
-    ram_unresolved_         = 0;
 
     if (d_histogram_)                CUDA_CHECK(cudaMemset(d_histogram_, 0, ((size_t)N_ADDR + 1) * 4));
     if (d_max_compact_)              CUDA_CHECK(cudaMemset(d_max_compact_, 0, 3 * 4));

@@ -12,7 +12,6 @@ pub struct RamFillPrepared {
     pub n_instances: u32,
     pub n_accesses: u64,
     pub n_lanes: u64,
-    pub unresolved_writes: u64,
     pub ms_sort: f32,
     pub ms_lanes: f32,
     pub ms_values: f32,
