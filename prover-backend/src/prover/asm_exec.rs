@@ -108,13 +108,13 @@ impl AsmExecClient {
     /// Resolves cached `<base>-mt.bin` path. Generates all 3 ASM binaries
     /// via `zisk_rom_setup::generate_assembly` if any are missing.
     fn ensure_asm_binaries(&self, program: &GuestProgram, with_hints: bool) -> Result<PathBuf> {
-        let [mt, rh, mo] = zisk_rom_setup::get_assembly_file_paths_from_id(
+        let [mt, rh, mo, mol] = zisk_rom_setup::get_assembly_file_paths_from_id(
             program.hash(),
             &self.asm_cache_dir,
             with_hints,
         );
 
-        if mt.exists() && rh.exists() && mo.exists() {
+        if mt.exists() && rh.exists() && mo.exists() && mol.exists() {
             tracing::debug!(
                 "Using cached ASM binaries for ELF '{}' at {}",
                 program.name(),

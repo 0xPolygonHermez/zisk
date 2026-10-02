@@ -238,6 +238,16 @@ impl AsmRunnerMO {
         #[cfg(gpu)]
         zisk_sm_mem_planner::clear_gpu_ram_witness();
         zisk_common::MEM_RAM_ROWS_ON_DEVICE.store(false, Ordering::Release);
+        static LIGHT_ARENA_WARNED: std::sync::Once = std::sync::Once::new();
+        if std::env::var("ZISK_MOPS_LIGHT").as_deref() == Ok("1")
+            && std::env::var("ZISK_MEM_GPU_FILL").map(|v| v.starts_with("arena")).unwrap_or(false)
+        {
+            LIGHT_ARENA_WARNED.call_once(|| {
+                tracing::warn!(
+                    "ZISK_MOPS_LIGHT=1: the light memory-ops stream carries no values, so the RAM witness stays on the CPU for every block"
+                )
+            });
+        }
         let gpu_count_and_plan_opt: Option<GpuCountAndPlan> = preloaded.gpu_count_and_plan.take();
 
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;

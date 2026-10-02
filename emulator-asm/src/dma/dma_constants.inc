@@ -94,6 +94,8 @@
 .equ MOPS_ALIGNED_WRITE,        0x0000000D00000000
 .equ MOPS_ALIGNED_BLOCK_READ,   0x0000000E00000000
 .equ MOPS_ALIGNED_BLOCK_WRITE,  0x0000000F00000000
+.equ MOPS_NO_VALUE_BIT,         58                       # light form: single write without a value word
+.equ MOPS_NO_PAYLOAD_BIT,       62                       # light form: block record without a step word
 
 .equ FCALL_PARAMS_LENGTH,       386
 .equ FCALL_RESULT_LENGTH,       8193
@@ -137,20 +139,47 @@
 .equ MAX_DMA_MOPS_MARGIN, 8 * 16
 .extern chunk_size
 
-.macro MOPS_STEP_HEADERS
-    mov     R_MOPS_R, [chunk_size]
-    sub     R_MOPS_R, R_STEP
-    shl     R_MOPS_R, 2
-    or      R_MOPS_R, 2
-    shl     R_MOPS_R, MOPS_STEP_SHIFT
-.endm
-
 # \reg = address | non-block read mode: one tagged header word with the step field, appended.
 .macro MOPS_REC_READ reg
     add     \reg, R_MOPS_R
     bts     \reg, 63
     mov     [R_MT_ADDR + R_MT_INDEX * 8], \reg
     inc     R_MT_INDEX
+.endm
+
+.ifdef MOPS_LIGHT
+# Light form: one word per record, no steps and no values. R_MOPS_R is zero so the read macro
+# stays shared; a block record is its header with MOPS_NO_PAYLOAD_BIT; the block-write descriptor
+# a recorder left at the current index is the record itself.
+.macro MOPS_STEP_HEADERS
+    xor     R_MOPS_R, R_MOPS_R
+.endm
+
+.macro MOPS_REC_BLOCK reg
+    bts     \reg, 63
+    bts     \reg, MOPS_NO_PAYLOAD_BIT
+    mov     [R_MT_ADDR + R_MT_INDEX * 8], \reg
+    inc     R_MT_INDEX
+.endm
+
+.macro MOPS_EXPAND_BLOCK_WRITE
+    mov     rdx, [R_MT_ADDR + R_MT_INDEX * 8]
+    mov     rcx, rdx
+    shr     rcx, MOPS_BLOCK_WORDS_RS      # rcx = words
+    jz      9f
+    bts     rdx, 63
+    bts     rdx, MOPS_NO_PAYLOAD_BIT
+    mov     [R_MT_ADDR + R_MT_INDEX * 8], rdx
+    inc     R_MT_INDEX
+9:
+.endm
+.else
+.macro MOPS_STEP_HEADERS
+    mov     R_MOPS_R, [chunk_size]
+    sub     R_MOPS_R, R_STEP
+    shl     R_MOPS_R, 2
+    or      R_MOPS_R, 2
+    shl     R_MOPS_R, MOPS_STEP_SHIFT
 .endm
 
 # \reg = block header (address | block mode | word count): tagged header, step field payload.
@@ -212,4 +241,5 @@
     pop     rax
 9:
 .endm
+.endif
 .endif
