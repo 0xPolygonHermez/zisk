@@ -33,9 +33,10 @@ use zisk_definitions::{
 use zisk_core::{STORE_IND, UART_ADDR};
 
 use crate::{
-    CallPathProfiler, MemoryOperationsStats, OpsCosts, OpsCount, RamMonitor, RegionsOfInterest,
-    StatsCosts, StatsCoverageReport, StatsReport, BASE_COST, BINARY_ADD_HI_COST, MAIN_COST,
-    MEM_ACCESS_INVALID, MEM_ACCESS_MONITOR, MEM_WRITE_COST, NO_ROI_ID, ROM_READ_COST,
+    CallPathProfiler, DmaLoopStats, MemDualStats, MemoryOperationsStats, OpsCosts, OpsCount,
+    RamMonitor, RegionsOfInterest, StatsCosts, StatsCoverageReport, StatsReport, BASE_COST,
+    BINARY_ADD_HI_COST, MAIN_COST, MEM_ACCESS_INVALID, MEM_ACCESS_MONITOR, MEM_WRITE_COST,
+    NO_ROI_ID, ROM_READ_COST,
 };
 
 #[derive(Debug, Clone)]
@@ -255,6 +256,10 @@ pub struct Stats {
     /// Log every costly unaligned memory access (double 4B/8B, i.e. `MEM_ACCESS_MONITOR`) with its
     /// execution context. Off by default; enabled by `--log-costly-unaligned`.
     log_costly_unaligned: bool,
+    /// Memory dual-row occupancy analysis; `None` unless `--mem-duals` was given.
+    mem_duals: Option<Box<MemDualStats>>,
+    /// DMA 64-bit loop occupancy analysis; `None` unless `--dma-stats` was given.
+    dma_loops: Option<Box<DmaLoopStats>>,
     /// PC histogram, i.e. number of times each PC was executed
     pc_histogram: HashMap<u64, u64>,
     previous_pc: u64,
@@ -415,6 +420,8 @@ impl Default for Stats {
             mem_full_stats: false,
             collect_offsets: false,
             log_costly_unaligned: false,
+            mem_duals: None,
+            dma_loops: None,
             ram_monitor: RamMonitor::new(),
             profile_tags_map: HashMap::new(),
             profile_tags: Vec::new(),
@@ -544,8 +551,12 @@ impl Stats {
 
     /// Called every time some data is read from memory, if statistics are enabled
     pub fn on_memory_read(&mut self, address: u64, width: u64) {
+        let step = self.current_step;
         if self.collect_offsets && width == 1 {
             self.byte_reads[(address as usize) & 0x7] += 1;
+        }
+        if let Some(duals) = &mut self.mem_duals {
+            duals.on_access(address, width, false, step);
         }
         let status = self.costs.memory_read(address, width);
         self.handle_mem_status(status, false, address, width, 0);
@@ -553,6 +564,7 @@ impl Stats {
 
     /// Called every time some data is written to memory, if statistics are enabled
     pub fn on_memory_write(&mut self, address: u64, width: u64, value: u64) {
+        let step = self.current_step;
         if self.collect_offsets && width == 1 {
             let offset = (address as usize) & 0x7;
             if value < 0x100 {
@@ -560,6 +572,9 @@ impl Stats {
             } else {
                 self.byte_dirty_writes[offset] += 1;
             }
+        }
+        if let Some(duals) = &mut self.mem_duals {
+            duals.on_access(address, width, true, step);
         }
         let status = self.costs.memory_write(address, width, value);
         self.handle_mem_status(status, true, address, width, value);
@@ -2935,6 +2950,14 @@ impl Stats {
             self.report_duplicates(&mut report, total_cost);
         }
 
+        if let Some(duals) = &self.mem_duals {
+            duals.report(&mut report);
+        }
+
+        if let Some(dma_loops) = &self.dma_loops {
+            dma_loops.report(&mut report);
+        }
+
         if self.reg_step_distance {
             self.report_reg_step_distance(&mut report);
         }
@@ -3410,6 +3433,18 @@ impl Stats {
     pub fn set_sdk_top_functions(&mut self, value: bool) {
         self.sdk_top_functions = value;
     }
+    /// Enables the DMA 64-bit loop occupancy analysis (`--dma-stats`) for the given candidate row
+    /// widths (`--dma-ops-x-row`).
+    pub fn set_dma_loops(&mut self, ops_x_row: &[u32]) {
+        self.dma_loops = Some(Box::new(DmaLoopStats::new(ops_x_row)));
+    }
+
+    /// Enables the memory dual-row occupancy analysis (`--mem-duals`) for `duals` duals per row and
+    /// a reset period of 2^`reset_bits` steps.
+    pub fn set_mem_duals(&mut self, duals: u32, reset_bits: u32) {
+        self.mem_duals = Some(Box::new(MemDualStats::new(duals, reset_bits)));
+    }
+
     pub fn set_mem_stats(&mut self, value: bool) {
         self.mem_stats = value;
     }
@@ -3715,6 +3750,11 @@ impl OpStats for Stats {
     }
     fn set_variable_cost(&mut self, cost: u64) {
         self.current_variable_cost = cost;
+    }
+    fn dma_loop(&mut self, kind: u8, loop_count: usize, aligned: bool) {
+        if let Some(dma_loops) = &mut self.dma_loops {
+            dma_loops.on_loop(kind, loop_count, aligned);
+        }
     }
 }
 

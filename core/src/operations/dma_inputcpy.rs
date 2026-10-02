@@ -1,8 +1,9 @@
 use zisk_precomp_helpers::DmaInfo;
 
 use crate::{
-    zisk_ops::OpStats, EmulationMode, InstContext, DMA_64_ALIGNED_INPUTCPY_COST,
-    DMA_64_ALIGNED_INPUTCPY_DIVISOR, DMA_PRE_POST_INPUTCPY_COST, FCALL_RESULT_MAX_SIZE,
+    zisk_ops::{OpStats, DMA_LOOP_INPUTCPY},
+    EmulationMode, InstContext, DMA_64_ALIGNED_INPUTCPY_COST, DMA_64_ALIGNED_INPUTCPY_DIVISOR,
+    DMA_PRE_POST_INPUTCPY_COST, FCALL_RESULT_MAX_SIZE,
 };
 
 fn read_from_input(ctx: &mut InstContext, dst: u64, count: u64) {
@@ -236,6 +237,8 @@ pub fn ops_dma_inputcpy(ctx: &InstContext, stats: &mut dyn OpStats) {
         // but if all bytes are equal count = count_eq, no need extra reads
         let first_loop_dst64 = (addr_a + pre_count) >> 3;
 
+        // inputcpy reads from the input stream, not from memory, so its loop is always aligned.
+        stats.dma_loop(DMA_LOOP_INPUTCPY, loop_count as usize, true);
         stats.mem_align_write(first_loop_dst64 * 8, loop_count as usize);
 
         stats.set_variable_cost(

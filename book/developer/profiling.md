@@ -18,37 +18,41 @@ This guide walks you through ZiskEmu's profiling capabilities, progressing from 
 
 6. **Memory Statistics**: Breaking the memory cost down by region, alignment and access shape, and ranking functions by memory traffic
 
-7. **Register Step Distance**: Measuring how long registers keep a value between accesses, against the proof's distance limit
+7. **Memory Dual Occupancy**: Measuring how many memory operations share a row, to size the dual mechanism
 
-8. **Opcode Coverage**: Which opcodes, precompiles and RISC-V instructions the run exercised
+8. **DMA Loop Occupancy**: Measuring how many word operations share a DMA loop row, to size `ops_x_row`
 
-9. **Comparing Runs**: Saving a statistics snapshot and diffing a later run against it to validate an optimization
+9. **Register Step Distance**: Measuring how long registers keep a value between accesses, against the proof's distance limit
 
-10. **HTML Report**: Rendering a run, or the comparison of two runs, as a standalone shareable page
+10. **Opcode Coverage**: Which opcodes, precompiles and RISC-V instructions the run exercised
 
-11. **SDK Report Mode**: Streamlined, compact output format ideal for CI/CD and quick checks, with selective section display options
+11. **Comparing Runs**: Saving a statistics snapshot and diffing a later run against it to validate an optimization
 
-12. **Function Name Display Options**: Configure how long function names are displayed with compact and no-compact modes
+12. **HTML Report**: Rendering a run, or the comparison of two runs, as a standalone shareable page
 
-13. **Profile Tags**: Instrument your code to measure specific sections, with immediate or deferred reporting of steps and costs
+13. **SDK Report Mode**: Streamlined, compact output format ideal for CI/CD and quick checks, with selective section display options
 
-14. **Firefox Profiler Integration**: Export profiling data for advanced visualization and interactive analysis
+14. **Function Name Display Options**: Configure how long function names are displayed with compact and no-compact modes
 
-15. **Function-Level Profiling**: Identifying which functions consume the most resources with cumulative analysis
+15. **Profile Tags**: Instrument your code to measure specific sections, with immediate or deferred reporting of steps and costs
 
-16. **Customizing ROI Display**: Controlling how many functions to show and filtering by patterns
+16. **Firefox Profiler Integration**: Export profiling data for advanced visualization and interactive analysis
 
-17. **Detailed Caller Analysis**: In-depth breakdown showing which operations are expensive within each function and who calls them
+17. **Function-Level Profiling**: Identifying which functions consume the most resources with cumulative analysis
 
-18. **Tracking Function Calls**: Logging individual call parameters to analyze usage patterns and optimize for common cases
+18. **Customizing ROI Display**: Controlling how many functions to show and filtering by patterns
 
-19. **PC Histogram Analysis**: Low-level view of the most frequently executed RISC-V instruction sequences
+19. **Detailed Caller Analysis**: In-depth breakdown showing which operations are expensive within each function and who calls them
 
-20. **Instruction Tracing and Disassembly**: Step-by-step traces, change traces and an annotated disassembly with execution counts
+20. **Tracking Function Calls**: Logging individual call parameters to analyze usage patterns and optimize for common cases
 
-21. **Additional Options**: Quick reference for other useful flags (steps, progress indicators, formatting)
+21. **PC Histogram Analysis**: Low-level view of the most frequently executed RISC-V instruction sequences
 
-22. **Practical Example**: Real-world case study analyzing Ethereum opcode costs in a block validator
+22. **Instruction Tracing and Disassembly**: Step-by-step traces, change traces and an annotated disassembly with execution counts
+
+23. **Additional Options**: Quick reference for other useful flags (steps, progress indicators, formatting)
+
+24. **Practical Example**: Real-world case study analyzing Ethereum opcode costs in a block validator
 
 ## Introduction
 
@@ -705,6 +709,208 @@ Each line gives the **pc**, the **function** it belongs to, the **address**, the
 whether it is a read or a write, the **offset** within the 8-byte word, and (for writes) the value.
 This is verbose — redirect it to a file, and use it only after the rankings above have told you
 where to look.
+
+## Memory Dual Occupancy
+
+A **dual** row of the memory state machine packs several memory operations into a single row: they
+share the same address and the same value, only the step differs. The shape is one read or write
+followed by up to *D* reads — a write changes the value, so it always starts a new row, while a read
+can join the row already open for its address as long as a slot is free. *D* = 1 is the standard
+dual (two operations per row), but nothing forces it to be two: the trade-off is between the rows
+saved and the extra columns a wider row costs.
+
+`--mem-duals` measures that trade-off on a real program, so the choice of *D* can be made on
+numbers instead of intuition:
+
+```bash
+# Standard dual (D = 1) — the flag defaults to 1 with no value
+ziskemu -e <elf> -i <input> -X --mem-duals
+
+# No dual mechanism at all: one operation per row, the baseline
+ziskemu -e <elf> -i <input> -X --mem-duals 0
+
+# Would a wider row pay off?
+ziskemu -e <elf> -i <input> -X --mem-duals 4
+```
+
+Rows cannot span two chunks, because the count-and-plan phase works per chunk: every
+2^`--mem-dual-reset-bits` steps (default 18, the current chunk size of 262,144 steps) the open rows
+are dropped and the next operation on an address has to open a new one. Raising that value shows
+what lifting the per-chunk limitation would buy.
+
+### Occupancy (`--mem-duals`)
+
+```
+MEM DUAL OCCUPANCY (1 dual per row, 2 ops per row, reset 2^18 = 262,144 steps)
+ZONE                 OPS           READS          WRITES            ROWS   OCCUP%   SAVED%      RESET LOST       FULL LOST
+--------------------------------------------------------------------------------------------------------------------------
+INPUT          2,024,798       2,024,798               0       1,954,842   51.79%    3.45%         122,817          49,529
+ROM              353,612         353,612               0         178,367   99.12%   49.56%           2,883         172,526
+RAM           50,222,491      26,917,863      23,304,628      32,552,454   77.14%   35.18%         896,558       7,972,912
+--------------------------------------------------------------------------------------------------------------------------
+TOTAL         52,600,901      29,296,273      23,304,628      34,685,663   75.83%   34.06%       1,022,258       8,194,967
+```
+
+One row per memory zone — **INPUT** (128M addresses), **ROM** data (16M) and **RAM** (64M) — each
+accounted independently, since each is proven by its own instances. Registers do not appear: they
+are proven by the main state machine, not by the memory one. Inside the input zone there is one
+address that never duals: the very first one, `0x40000000`, is the **free-input** address, and each
+read of it yields a different value — the input provides it, memory does not store it — so two of
+its operations can never share a row. Those reads are counted (they do need a row each) but they are
+not blamed on the reset or on the row width.
+
+- **OPS**: Aligned memory operations, the unit a row holds. An aligned 8-byte access is one
+  operation; any other access is resolved by the memory-align state machine, which reads every
+  8-byte address it touches (one, or two when the access crosses the boundary) and writes back the
+  ones it modifies — so an unaligned 4-byte write inside one address is two operations (a read and a
+  write), and the same write crossing the boundary is four.
+- **READS** / **WRITES**: The same operations split by kind. Only reads can be duals.
+- **ROWS**: Memory rows actually used, i.e. the operations that could not join an open row.
+- **OCCUP%**: `OPS / (ROWS × (1 + D))` — how full the rows are. With `--mem-duals 0` it is 100% by
+  definition, since every row holds exactly one operation.
+- **SAVED%**: `(OPS − ROWS) / OPS` — the rows the mechanism saves against that one-per-row baseline.
+  This is the number to compare across values of *D*.
+- **RESET LOST**: Reads that had to open a new row although the row open for their address still had
+  a free slot, only because that row belonged to the previous chunk. This is the price of the
+  per-chunk reset: it is what a solution to that limitation would recover.
+- **FULL LOST**: Reads that had to open a new row because every slot of the open row was already
+  taken. This is what a **larger** *D* would absorb — with `--mem-duals 0` it is the whole upside of
+  introducing duals in the first place.
+
+In the example, ROM data reads are almost perfectly paired (99.12% occupancy, half the rows saved):
+a handful of addresses read over and over. Input reads are the opposite (51.79%): they are streamed
+once each — plus the free-input reads, which can never pair — so most rows stay half empty. RAM sits
+in between, and its 7,972,912 `FULL LOST` reads say a wider row still has something to collect.
+
+### Distribution (`--mem-duals`)
+
+The occupancy table says how full the rows are on average; the distribution says how that average is
+made up, one table per zone:
+
+```
+MEM DUAL DISTRIBUTION RAM (9,584,394 addresses touched)
+DUALS               ROWS    %ROWS      READ FIRST        %     WRITE FIRST        %
+-----------------------------------------------------------------------------------
+0             14,882,417   45.72%       4,500,878   30.24%      10,381,539   69.76%
+1             17,670,037   54.28%       4,746,948   26.86%      12,923,089   73.14%
+-----------------------------------------------------------------------------------
+TOTAL         32,552,454  100.00%       9,247,826   28.41%      23,304,628   71.59%
+```
+
+- **DUALS**: How many duals the row ended up holding, from 0 (a lone operation, no dual) up to *D*
+  (a full row). With `--mem-duals 4` there are five lines, so you can see whether the rows that use
+  the extra width are a meaningful share or a long tail.
+- **ROWS** / **%ROWS**: Rows in that bucket, and their share of the zone's rows.
+- **READ FIRST** / **WRITE FIRST**: The same rows split by the kind of the operation that *opened*
+  them, each with its share of the bucket. A row opened by a write is a value that was stored and
+  then read back; one opened by a read is a value read several times without being modified.
+
+Here 54.28% of the RAM rows carry their dual and 45.72% are half empty, and the paired rows are
+mostly write-then-read (73.14%): the classic store-then-load pattern.
+
+**Cost.** The analysis keeps one 8-byte entry per address touched, in lazily allocated pages, so its
+memory grows with the working set of the program (roughly 100 MB for a program touching 13M
+addresses) and it costs about 10% of the run time. It needs `-X`.
+
+## DMA Loop Occupancy
+
+Every DMA operation (`memcpy`, `memset`, `memcmp`, `inputcpy`) is proven in three parts: an
+unaligned head (*pre*), an unaligned tail (*post*), and in between a **loop** over whole 64-bit
+words — where the bulk of the work is. That loop is proven in rows that pack several word
+operations each (`ops_x_row`: today 4 or 8 for the aligned machines, 1 for the unaligned one), and a
+row belongs to a single DMA call, so **the last row of every call is padded**. Wider rows need fewer
+rows for a long loop but waste more slots on a short one.
+
+`--dma-stats` measures both sides of that trade-off on a real program, for a list of candidate row
+widths, separately for the aligned and the unaligned loop — they are proven by different machines:
+
+```bash
+# Default candidates: 2, 4, 8, 12, 16, 24, 32 operations per row
+ziskemu -e <elf> -i <input> -X --dma-stats
+
+# Custom candidates; adding 1 shows the current unaligned machine as the baseline
+ziskemu -e <elf> -i <input> -X --dma-stats --dma-ops-x-row 1,2,4,6,8,16
+```
+
+A loop is **aligned** when destination and source share the same 8-byte offset (the same condition
+the DMA planner encodes as `unaligned_dst_src`), and `memset` / `inputcpy` have no source at all, so
+their loops are always aligned. An unaligned loop packs one operation more than it writes, since
+every destination word is stitched from two source words — the same count `dma_unaligned` uses
+today, so its row at `OPS/ROW` 1 reproduces the current accounting exactly.
+
+### Occupancy (`--dma-stats`)
+
+One table per operation kind and alignment, plus a `TOTAL` per alignment when more than one kind
+feeds it:
+
+```
+MEMCPY UNALIGNED — 170,464 calls, 878,860 loop ops, 5.2 ops/call (min 2, max 5,394)
+OPS/ROW             ROWS          SLOTS    OCCUP%            PAD     ROWS-%    SLOTS+%
+--------------------------------------------------------------------------------------
+2                443,475        886,950    99.09%          8,090     +0.00%     +0.00%
+4                223,270        893,080    98.41%         14,220    -49.65%     +0.69%
+8                196,139      1,569,112    56.01%        690,252    -55.77%    +76.91%
+12               187,191      2,246,292    39.12%      1,367,432    -57.79%   +153.26%
+16               183,010      2,928,160    30.01%      2,049,300    -58.73%   +230.14%
+24               178,094      4,274,256    20.56%      3,395,396    -59.84%   +381.90%
+32               176,107      5,635,424    15.60%      4,756,564    -60.29%   +535.37%
+```
+
+- **OPS/ROW**: The candidate row width being measured.
+- **ROWS**: Rows the loops of every call would need at that width, `Σ ceil(ops / OPS/ROW)`.
+- **SLOTS**: The operation slots those rows offer, `ROWS × OPS/ROW`.
+- **OCCUP%**: `loop ops / SLOTS` — how full the rows are.
+- **PAD**: The slots left empty, `SLOTS − loop ops`.
+- **ROWS-%** / **SLOTS+%**: Both relative to the **narrowest** candidate measured. Widening a row
+  always cuts rows and always adds padding, and these two columns are the whole trade-off: a row of
+  *R* operations costs a fixed part (paid per row) plus *R* times a per-operation part (paid per
+  slot), so the best width is the one that minimises `ROWS × fixed + SLOTS × per_op` for the actual
+  column counts of the machine.
+
+In the example, going from 2 to 4 operations per row halves the rows for 0.69% more slots — clearly
+worth it. Going to 8 buys only 6 points more of row reduction while inflating the slots by 77%,
+because 94% of these loops are 4 to 7 words long: they cannot fill a row of 8.
+
+**Occupancy is not monotonic** in the row width, which is exactly why it is worth measuring. When
+the loop lengths cluster around one value, a width that divides that value well wins over narrower
+ones:
+
+```
+MEMCMP ALIGNED — 1,627 calls, 40,499 loop ops, 24.9 ops/call (min 3, max 25)
+OPS/ROW             ROWS          SLOTS    OCCUP%            PAD     ROWS-%    SLOTS+%
+--------------------------------------------------------------------------------------
+2                 21,063         42,126    96.14%          1,627     +0.00%     +0.00%
+4                 11,341         45,364    89.28%          4,865    -46.16%     +7.69%
+8                  6,484         51,872    78.07%         11,373    -69.22%    +23.14%
+12                 4,865         58,380    69.37%         17,881    -76.90%    +38.58%
+16                 3,246         51,936    77.98%         11,437    -84.59%    +23.29%
+24                 3,246         77,904    51.99%         37,405    -84.59%    +84.93%
+32                 1,627         52,064    77.79%         11,565    -92.28%    +23.59%
+```
+
+Almost every one of these loops is exactly 25 words. A row of 32 holds a whole call in **one** row
+(92% fewer rows) at the same 23% slot overhead as a row of 8, while a row of 24 is the worst of the
+list: it needs two rows per call and wastes half of them.
+
+### Loop length distribution (`--dma-stats`)
+
+Under each occupancy table, the lengths that produce it, in power-of-two buckets:
+
+```
+OPS/CALL                 CALLS         %       LOOP OPS         %
+2-3                      7,787     4.57%         22,419     2.55%
+4-7                    160,800    94.33%        644,040    73.28%
+8-15                       357     0.21%          4,360     0.50%
+16-31                    1,032     0.61%         19,573     2.23%
+```
+
+**CALLS** is where the padding comes from (every call pays a partial row) and **LOOP OPS** is where
+the work is. A distribution concentrated in the low buckets, as above, caps the row width that makes
+sense; one concentrated in the high buckets means wide rows will fill up.
+
+The exact length of every loop is kept (one counter per distinct length), so the rows a candidate
+width needs are computed exactly, not estimated — re-running with a different `--dma-ops-x-row` is
+the only thing needed to try other widths. It needs `-X`.
 
 ## Register Step Distance
 
