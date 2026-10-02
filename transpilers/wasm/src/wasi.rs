@@ -18,7 +18,7 @@ use std::error::Error;
 use super::emit::{Code, LabelId};
 use super::layout::*;
 use super::module::{FuncSig, ValKind, WasmModule};
-use zisk_core::{ZiskInstBuilder, INPUT_ADDR, OUTPUT_ADDR, ROM_EXIT, UART_ADDR};
+use zisk_core::{ZiskInstBuilder, INPUT_ADDR, MAX_INPUT_SIZE, OUTPUT_ADDR, ROM_EXIT, UART_ADDR};
 
 /// WASI errno values we use.
 const ERRNO_SUCCESS: u64 = 0;
@@ -28,6 +28,7 @@ const ERRNO_NOSYS: u64 = 52;
 
 const INPUT_LEN_ADDR: u64 = INPUT_ADDR + 8;
 const INPUT_DATA_ADDR: u64 = INPUT_ADDR + 16;
+const MAX_INPUT_DATA: u64 = MAX_INPUT_SIZE - 16;
 
 const CLOCK_QUANTUM_NS: u64 = 1_000_000;
 
@@ -306,6 +307,10 @@ fn body_fd_read(code: &mut Code, fault: LabelId, done: LabelId) {
     // INPUT_ADDR+16. (The emulator writes a zero "free input" word at INPUT_ADDR itself.)
     // R_A = input length, R_B = cursor, R_C = total read
     code.load_abs_to_reg(R_A, INPUT_LEN_ADDR); // input length (u64)
+    let clamped = code.new_label();
+    code.cmp_imm_branch("leu", R_A, MAX_INPUT_DATA as i64, clamped, true);
+    code.load_imm_to_reg(R_A, MAX_INPUT_DATA);
+    code.bind(clamped);
     code.load_abs_to_reg(R_B, WASM_STDIN_POS_ADDR); // cursor
     code.load_imm_to_reg(R_C, 0);
 
