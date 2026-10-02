@@ -19,6 +19,13 @@ pub(crate) enum GpuFillMode {
     Arena,
 }
 
+/// Whether this block's RAM rows are served from the device: arena mode and a device fill that
+/// succeeded for the block; otherwise the instances are collected and filled on the CPU.
+pub(crate) fn ram_rows_on_device() -> bool {
+    gpu_fill_mode() == GpuFillMode::Arena
+        && zisk_common::MEM_RAM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire)
+}
+
 /// `ZISK_MEM_GPU_FILL`: unset or anything else is `Off`.
 pub(crate) fn gpu_fill_mode() -> GpuFillMode {
     match std::env::var("ZISK_MEM_GPU_FILL").as_deref() {

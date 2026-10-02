@@ -60,12 +60,11 @@ impl AirClassifier {
         }
     }
 
-    /// The Mem instances need no collection from the replay when their witness comes from the
-    /// accesses the GPU planner retained (`ZISK_MEM_GPU_FILL=arena`).
+    /// The Mem instances need no collection from the replay when this block's RAM rows come from
+    /// the GPU planner (`ZISK_MEM_GPU_FILL=arena` and the device fill succeeded).
     pub fn mem_collected_on_device(air_id: usize) -> bool {
-        static ARENA: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         air_id == MEM_AIR_IDS[0]
-            && *ARENA.get_or_init(|| std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("arena"))
+            && zisk_common::MEM_RAM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire)
     }
 
     /// Checks if the AIR ID corresponds to a memory-related state machine.

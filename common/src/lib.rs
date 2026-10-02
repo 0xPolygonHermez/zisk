@@ -50,3 +50,8 @@ pub use regular_planner::*;
 pub use types::*;
 pub use utils::*;
 pub use zisk_precompile::*;
+
+/// Whether the current block's RAM memory witness rows come from the GPU planner. Set by the
+/// memory-ops runner once the device fill succeeded, cleared when a block starts; while it is
+/// false the Mem instances are collected and filled on the CPU.
+pub static MEM_RAM_ROWS_ON_DEVICE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

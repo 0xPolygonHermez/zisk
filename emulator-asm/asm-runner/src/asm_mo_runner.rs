@@ -237,6 +237,7 @@ impl AsmRunnerMO {
         // A new block: the previous block's RAM witness source is gone.
         #[cfg(gpu)]
         zisk_sm_mem_planner::clear_gpu_ram_witness();
+        zisk_common::MEM_RAM_ROWS_ON_DEVICE.store(false, Ordering::Release);
         let gpu_count_and_plan_opt: Option<GpuCountAndPlan> = preloaded.gpu_count_and_plan.take();
 
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
@@ -429,11 +430,20 @@ impl AsmRunnerMO {
                 {
                     timer_start_info!(GPU_MEM_WITNESS);
                     match zisk_sm_mem_planner::gpu_ram_witness_fill_all() {
-                        Ok(p) => tracing::info!(
-                            "[gpu] RAM witness: {} accesses -> {} lanes, {} instances, {} unresolved writes; sort {:.0} pairing {:.0} values {:.0} prepare {:.0}ms",
-                            p.n_accesses, p.n_lanes, p.n_instances, p.unresolved_writes, p.ms_sort, p.ms_lanes, p.ms_values, p.ms_total
+                        Ok(p) => {
+                            tracing::info!(
+                                "[gpu] RAM witness: {} accesses -> {} lanes, {} instances, {} unresolved writes; sort {:.0} pairing {:.0} values {:.0} prepare {:.0}ms",
+                                p.n_accesses, p.n_lanes, p.n_instances, p.unresolved_writes, p.ms_sort, p.ms_lanes, p.ms_values, p.ms_total
+                            );
+                            // Only `arena` serves the rows from the device; `arena-check` keeps the
+                            // CPU witness and compares against it.
+                            if std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("arena") {
+                                zisk_common::MEM_RAM_ROWS_ON_DEVICE.store(true, Ordering::Release);
+                            }
+                        }
+                        Err(e) => tracing::warn!(
+                            "[gpu] RAM witness unavailable for this block ({e}); the Mem instances fall back to the CPU witness"
                         ),
-                        Err(e) => tracing::warn!("[gpu] RAM witness unavailable for this block: {e}"),
                     }
                     timer_stop_and_log_info!(GPU_MEM_WITNESS);
                 }
