@@ -432,8 +432,8 @@ impl AsmRunnerMO {
                     match zisk_sm_mem_planner::gpu_ram_witness_fill_all() {
                         Ok(p) => {
                             tracing::info!(
-                                "[gpu] RAM witness: {} accesses -> {} lanes, {} instances, {} unresolved writes; sort {:.0} pairing {:.0} values {:.0} prepare {:.0}ms",
-                                p.n_accesses, p.n_lanes, p.n_instances, p.unresolved_writes, p.ms_sort, p.ms_lanes, p.ms_values, p.ms_total
+                                "[gpu] RAM witness: {} accesses -> {} lanes, {} instances; sort {:.0} pairing {:.0} values {:.0} prepare {:.0}ms",
+                                p.n_accesses, p.n_lanes, p.n_instances, p.ms_sort, p.ms_lanes, p.ms_values, p.ms_total
                             );
                             // Only `arena` serves the rows from the device; `arena-check` keeps the
                             // CPU witness and compares against it.

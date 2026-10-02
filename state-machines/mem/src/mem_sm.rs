@@ -691,8 +691,8 @@ impl<F: PrimeField64> MemSM<F> {
                     }
                     let p = &report.prepared;
                     tracing::info!(
-                        "Mem[{seg_idx}] arena CHECK: block {} accesses -> {} lanes ({} instances, {} unresolved block writes) prepare sort {:.0} lanes {:.0} values {:.0} total {:.0}ms | instance {} lanes rows {:.1}ms d2h {:.1}ms | cpu fill {cpu_ms:.0}ms ({n_ranges} ranges, {} ops) | {} words differ{} | scalars {}{}",
-                        p.n_accesses, p.n_lanes, p.n_instances, p.unresolved_writes, p.ms_sort, p.ms_lanes, p.ms_values, p.ms_total,
+                        "Mem[{seg_idx}] arena CHECK: block {} accesses -> {} lanes ({} instances) prepare sort {:.0} lanes {:.0} values {:.0} total {:.0}ms | instance {} lanes rows {:.1}ms d2h {:.1}ms | cpu fill {cpu_ms:.0}ms ({n_ranges} ranges, {} ops) | {} words differ{} | scalars {}{}",
+                        p.n_accesses, p.n_lanes, p.n_instances, p.ms_sort, p.ms_lanes, p.ms_values, p.ms_total,
                         report.res.n_lanes, report.res.ms_rows, report.res.ms_d2h,
                         mem_ops.len(),
                         count,
@@ -874,8 +874,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         );
         let p = &report.prepared;
         tracing::info!(
-            "Mem[{seg_idx}] arena fill: block {} accesses -> {} lanes ({} unresolved block writes), prepare {:.0}ms | instance {} lanes: zero {zero_ms:.0}ms rows {:.1}ms d2h {:.1}ms",
-            p.n_accesses, p.n_lanes, p.unresolved_writes, p.ms_total, report.res.n_lanes, report.res.ms_rows, report.res.ms_d2h
+            "Mem[{seg_idx}] arena fill: block {} accesses -> {} lanes, prepare {:.0}ms | instance {} lanes: zero {zero_ms:.0}ms rows {:.1}ms d2h {:.1}ms",
+            p.n_accesses, p.n_lanes, p.ms_total, report.res.n_lanes, report.res.ms_rows, report.res.ms_d2h
         );
         crate::mem_trace_hash::dump(
             self.get_mem_name(),
