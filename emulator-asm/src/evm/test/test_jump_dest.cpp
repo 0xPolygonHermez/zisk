@@ -276,6 +276,19 @@ void Test::run_case(const std::string &name, const std::vector<uint8_t> &code) {
     const uint64_t step_read = (((uint64_t)(1 << 18) - 1024) << 2 | 2) << 38;
     const uint64_t values_header = ((uint64_t)0x07 << 32) | ((step_read | (1ull << 38)) << 4) | TAG;
     std::vector<uint64_t> want;
+#ifdef MOPS_LIGHT
+    // Light form: one word per record, no steps, no values; block records carry the no-payload bit.
+    (void)step_read; (void)values_header;
+    const uint64_t NO_PAYLOAD = 1ull << 62;   // MOPS_NO_PAYLOAD_BIT (mops_format.hpp)
+    want.push_back(encode_aligned_read(EXTRA_PARAMETER_ADDR) | TAG);
+    if (count > 0) {
+        for (const auto &run : expected.runs) {
+            want.push_back(encode_block(MOPS_ALIGNED_BLOCK_READ,
+                                        (uint64_t)src + run.first * 8, run.second) | TAG | NO_PAYLOAD);
+        }
+        want.push_back(encode_block(MOPS_ALIGNED_BLOCK_WRITE, (uint64_t)dst, expected.bitmap.size()) | TAG | NO_PAYLOAD);
+    }
+#else
     want.push_back(encode_aligned_read(EXTRA_PARAMETER_ADDR) | step_read | TAG);
     if (count > 0) {
         for (const auto &run : expected.runs) {
@@ -293,6 +306,7 @@ void Test::run_case(const std::string &name, const std::vector<uint8_t> &code) {
             for (size_t i = 0; i < n; ++i) want.push_back(expected.bitmap[w0 + i] & ~TAG);
         }
     }
+#endif
 
     const uint64_t *mops = trace + 1;
     if (trace[0] != want.size()) {
