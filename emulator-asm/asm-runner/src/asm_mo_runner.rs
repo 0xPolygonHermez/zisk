@@ -274,10 +274,9 @@ impl AsmRunnerMO {
         // Mirrors the memory-ops trace bound of constants.hpp (TRACE_TARGET_MO).
         let _ = MAX_BYTES_MTRACE_STEP;
         const MAX_BYTES_MO_STEP: usize = 1024;
-        const MAX_MO_INIT_DATA_MARGIN: usize = 64 << 20;
         let threshold_bytes = (chunk_size as usize * MAX_BYTES_MO_STEP)
             + MAX_TRACE_CHUNK_INFO
-            + MAX_MO_INIT_DATA_MARGIN;
+            + zisk_core::MAX_MO_INIT_DATA_MARGIN as usize;
         let mut threshold = unsafe {
             preloaded
                 .output_shmem

@@ -100,6 +100,9 @@ const F_MOPS_BLOCK_LENGTH_SHIFT: u64 = 36;
 // Non-block headers: `(step_in_chunk << 2) | slot` at bits 38-57. Block records carry the same
 // field, at the same position, in their payload word.
 const F_MOPS_STEP_SHIFT: u64 = 38;
+/// Trace space the memory-ops runner keeps for the initialised-data records at the ROM entry,
+/// two words per data word (constants.hpp MAX_MO_INIT_DATA_MARGIN).
+pub const MAX_MO_INIT_DATA_MARGIN: u64 = 64 << 20;
 
 // const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x100000; // 1MB
 const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x8000000; // 128MB
@@ -7589,6 +7592,13 @@ impl ZiskRom2Asm {
         if sections.is_empty() {
             return;
         }
+        let init_words: u64 = sections.iter().map(|(_, len)| len).sum();
+        assert!(
+            init_words * 16 <= MAX_MO_INIT_DATA_MARGIN,
+            "initialised data of {init_words} words needs {} bytes of memory-ops trace, more than the \
+             {MAX_MO_INIT_DATA_MARGIN} reserved for it",
+            init_words * 16
+        );
         let mask = F_MOPS_ALIGNED_WRITE | (2u64 << F_MOPS_STEP_SHIFT);
         *code +=
             &format!("\tmov {REG_AUX}, 0x{mask:x} {}\n", ctx.comment_str("aux = init write mask"));
