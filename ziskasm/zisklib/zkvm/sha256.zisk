@@ -1,9 +1,9 @@
 ; ============================================================================
 ; zkvm/sha256.zisk - SHA2-256 (FIPS 180-4). The single canonical SHA-256 routine
 ; in the library: entry `ziskasm_zkvm_sha256`, presenting the EF zkVM accelerator
-; C ABI (redirect target of `zkvm_sha256`). The guest `ziskos_sha256` symbol also
-; redirects here, and it is called internally by secp256k1/schnorr and the
-; BLS12-381 hash-to-curve — all share the same (input, len, output) ABI.
+; C ABI (zkvmcall target of `zkvm_sha256`). It is also called internally by
+; secp256k1/schnorr and the BLS12-381 hash-to-curve — all share the same
+; (input, len, output) ABI.
 ;
 ; Mirrors ziskos `sha256`: absorb 64-byte (512-bit) blocks with the `sha256`
 ; precompile, then a padded final block (0x80, zero fill, 64-bit big-endian bit
@@ -34,9 +34,9 @@ define SH_DMA_COUNT 0xa0400f00          ; dma_memcpy reads its byte count here
 ; ----------------------------------------------------------------------------
 ; zkvm_status ziskasm_zkvm_sha256(const u8* input, u64 len, u8* output) -> r10 = 0
 ;   output[0..32] = SHA-256(input[0..len]). Args: r10=input, r11=len, r12=output.
-;   The single SHA-256 body in the library; `ziskos_sha256`, `zkvm_sha256`, and the
-;   internal secp256k1/schnorr + BLS12-381 hash-to-curve callers all reach it.
-;   Returns r10 = 0 (ZKVM_EOK for the zkvm_sha256 redirect; the void callers ignore
+;   The single SHA-256 body in the library; `zkvm_sha256` and the internal
+;   secp256k1/schnorr + BLS12-381 hash-to-curve callers all reach it.
+;   Returns r10 = 0 (ZKVM_EOK for the zkvm_sha256 zkvmcall; the void callers ignore
 ;   it — r10 is caller-saved and clobbered by the call anyway).
 ;   Caller-saved regs only: r13 = remaining bytes, r5/r6 scratch. The state and
 ;   the blocks are set up with the DMA precompiles (one step each, much cheaper

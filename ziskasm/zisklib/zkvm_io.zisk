@@ -1,6 +1,6 @@
 ; ============================================================================
 ; zkvm_io.zisk - standard zkVM I/O (mirrors ziskos zkvm_io.rs read_input /
-; write_output). Redirect targets for the guest's `read_input` / `write_output`.
+; write_output). zkvmcall targets of the guest's `read_input` / `write_output`.
 ;
 ; --- I/O memory contract (see examples/doubler + core/src/mem.rs) ---
 ;   Input at INPUT_ADDR (0x40000000):
@@ -21,12 +21,9 @@ define IO_OUTPUT_ADDR 0xa0410000    ; address of output word 0
 ;
 ; NOTE: there is deliberately no reset entrypoint. ziskos keeps its own cursor in
 ; the Rust-side OUTPUT_WORD_SLOT / OUTPUT_PENDING / OUTPUT_PENDING_LEN statics, which
-; the redirect leaves unused, so a ziskos-side reset would not clear the three below
-; and the next write would continue at the old slot with any pending bytes intact.
-; ziskos exposes no public reset for that reason. Adding one later means exporting it
-; as a `no_mangle extern "C"` symbol on the ziskos side first: the redirect resolves
-; by name, and an ordinary mangled Rust fn is not redirectable the way
-; `read_input`/`write_output` are.
+; a guest calling these routines leaves unused, so a ziskos-side reset would not
+; clear the three below and the next write would continue at the old slot with any
+; pending bytes intact. Adding a reset later means a new zkvmcall for it.
 u64 IO_SLOT[1] = 0      ; next output u32 slot index
 u64 IO_PEND[1] = 0      ; up to 4 buffered bytes (little-endian), zero-padded
 u64 IO_PENDLEN[1] = 0   ; number of valid bytes in IO_PEND (0..3)

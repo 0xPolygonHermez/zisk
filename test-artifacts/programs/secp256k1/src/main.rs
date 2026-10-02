@@ -4,8 +4,8 @@ ziskos::entrypoint!(main);
 mod constants;
 mod ecdsa;
 // fp/scalar/curve/schnorr exercise internal helpers (or the byte-based schnorr
-// entry point) that have no redirected ziskasm binding — only ECDSA verify is
-// redirected. They build against the Rust zisklib only.
+// entry point) that have no ziskasm binding — only ECDSA verify has one. They
+// build against the Rust zisklib only.
 #[cfg(not(feature = "ziskasm"))]
 mod curve;
 #[cfg(not(feature = "ziskasm"))]

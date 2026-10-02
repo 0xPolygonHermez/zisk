@@ -1,6 +1,6 @@
 //! Library mode: assemble `.zisk` as a set of callable functions at a fixed base
-//! (no launcher / `_start` / BIOS), exporting the symbol table for the RISC-V
-//! symbol-redirect merge.
+//! (no launcher / `_start` / BIOS), exporting the symbol table that resolves the
+//! zkvmcalls of a RISC-V guest.
 
 use zisk_core::{
     RAM_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_SIZE, STACK_GUARD_ADDR, ZISKLIB_RAM_ADDR,

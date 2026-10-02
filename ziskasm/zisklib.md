@@ -15,20 +15,20 @@ implementation happens at **transpile time** and is invisible to the guest sourc
 ```
 guest (Rust)                       zisklib::keccak256(&[u8]) -> [u8;32]     ← ergonomic wrapper (pure Rust)
                                         │  marshals &[u8] -> (ptr,len), returns [u8;32]
-raw ABI boundary (C ABI)           ziskos_keccak(*const u8, usize, *mut u8) ← #[no_mangle] stub, placeholder body
-                                        │  (transpile-time symbol redirect)
+zkvmcall thunk (C ABI)             zkvm_keccak256(*const u8, usize, *mut u8) ← naked fn: csrs 0x850, x0; ret
+                                        │  (the transpiler turns the csrs into a jump)
 ziskasm routine                    ziskasm_zkvm_keccak256:  … keccak op per block …  ← ziskasm/zisklib/zkvm/keccak.zisk
                                                                                 (placed in the reserved ZISKLIB ROM region)
 ```
 
-- The **ergonomic wrapper** and the **raw stub** live in the `zisklib` crate
-  (`ziskasm/lang/rust/`). The stub is a real `#[no_mangle]` symbol with a
-  throwaway body.
-- During transpilation, [`elf2rom`](../transpilers/common/src/elf2rom.rs) finds the
-  stub's symbol in the guest ELF and **redirects its entry** to the matching
-  hand-written `zisklib_*` routine (assembled from `ziskasm/zisklib/*.zisk` and merged
-  into the ROM at a reserved region). The routine returns straight to the guest
-  caller.
+- The **ergonomic wrapper** and the **zkvmcall thunk** live in the `zisklib` crate
+  (`ziskasm/lang/rust/`). The thunk is a two-instruction naked function whose
+  `csrs` names the zkvmcall ID (`definitions/src/zkvmcall.rs`).
+- During transpilation, [`elf2rom`](../transpilers/common/src/elf2rom.rs) finds each
+  zkvmcall by its `csrs` and **replaces it with a jump** to the matching hand-written
+  routine (assembled from `ziskasm/zisklib/*.zisk` and merged into the ROM at a
+  reserved region). The routine returns straight to the guest caller. Calls are
+  found by instruction, so the guest ELF may be stripped.
 
 `ziskasm/lang/rust/` is the **Rust** binding; sibling `ziskasm/lang/<language>/`
 directories can provide the same surface for other guest languages.
@@ -72,7 +72,7 @@ Build the guest ELF with the **repository's** `cargo-zisk` (the version bundled 
 target/debug/cargo-zisk build --release        # from the guest crate directory
 ```
 
-Run / prove it through the normal ELF pipeline; the redirect happens inside
+Run / prove it through the normal ELF pipeline; the zkvmcalls are resolved inside
 `elf2rom`, so nothing special is needed:
 
 ```
@@ -106,13 +106,16 @@ against known-answer vectors in the demo guest.
 | `inv_mod256(a, modulus) -> Option<[u64; 4]>` | `zisklib_inv_mod256` | Modular inverse (fcall hint; verifies `a·inv ≡ 1 (mod m)` or a gcd witness for non-existence). |
 | `pow_mod256(base, exp, modulus)` | `zisklib_pow_mod256` | Modular exponentiation `base^exp mod m` (square-and-multiply over `arith256_mod`); `m in {0,1}` → 0. |
 | `{overflowing,checked,saturating,wrapping}_pow256` | `zisklib_overflowing_pow256` | `base^exp mod 2^256` with overflow flag (square-and-multiply over `arith256`). |
-| `ziskos_add(a: u64, b: u64) -> u64` | `zisklib_add` | Demo / smoke-test (a + b). |
+| `zkvm_zisklib_add(a: u64, b: u64) -> u64` (raw thunk) | `zisklib_add` | Demo / smoke-test (a + b). |
 
-The surface grows over time; see "Adding a routine" below.
+The crate also wraps the secp256k1 / secp256r1 signatures, the BN254 and BLS12-381
+pairings, maps and hashes to curves, BLS and KZG verification, and modexp (see
+[`lang/rust/src/lib.rs`](lang/rust/src/lib.rs)). The surface grows over time; see
+"Adding a routine" below.
 
 ---
 
-## How the redirect works
+## How a call reaches the routine
 
 1. **Reserved ROM/RAM regions.** `ziskasm/zisklib/*.zisk` is assembled in *library
    mode* (no launcher / `_start` / BIOS) at `ZISKLIB_ROM_ADDR` — a 1 MB region
@@ -120,17 +123,18 @@ The surface grows over time; see "Adding a routine" below.
    sits right after the code; its mutable scratch/variables go to `ZISKLIB_RAM_ADDR`
    (a reserved RAM slice). The guest linker fences these off so guest allocations
    never collide.
-2. **Merge.** `elf2rom` assembles the library (`ziskasm::assemble_library_sources`,
+2. **Merge.** `elf2rom` assembles the library (`ziskasm::assemble_zisk_library`,
    embedding each `.zisk` file at compile time via `include_str!`) and merges its
    instructions + data into the guest's ROM.
-3. **Symbol redirect.** For each registered `(ziskos_*, zisklib_*)` pair, `elf2rom`
-   looks up the guest stub's address and size in the ELF symbol table and, when
-   transpilation reaches that address, emits a static tail-jump into the library
-   routine and skips the stub body. Because it is a *tail* jump, the return address
-   (`ra` / `r1`) is untouched, so the routine's `ret` returns to the guest caller.
+3. **zkvmcall.** Every `csrs <id>, x0` with an ID in the zkvmcall range
+   (0x850..0x8BF) is replaced by a static tail-jump into the routine that
+   `definitions/src/zkvmcall.rs` maps the ID to. Because it is a *tail* jump, the
+   return address (`ra` / `r1`) is untouched, so the routine's `ret` returns to the
+   guest caller. An *inline* zkvmcall (a `csrs` per argument) is instead replaced by
+   the routine's body, on the registers the compiler chose.
 
-The redirect and the library are only added when the guest actually references a
-registered stub, so unused guests pay nothing.
+The library is only assembled and merged when the guest uses a zkvmcall, so other
+guests pay nothing.
 
 ---
 
@@ -177,46 +181,51 @@ Two recurring shapes are worth knowing (both used throughout the `zisklib/uint25
   mirroring the reference `assert!`. **The fcall passthrough throwaway must target a
   caller-saved register** (e.g. `r14`), never `r4` (`tp`), which is callee-saved.
 
-### 2. Register it in the transpiler — `transpilers/common/src/elf2rom.rs`
+### 2. Register it in the library — `ziskasm/src/zisklib.rs`
 
-Add the source file to `ZISK_LIBRARY` and the redirect pair to `REDIRECTS`:
+Add the source file to `ZISK_LIBRARY`:
 
 ```rust
-const ZISK_LIBRARY: &[(&str, &str)] = &[
+pub const ZISK_LIBRARY: &[(&str, &str)] = &[
     // …
-    ("foo", include_str!("../../../ziskasm/zisklib/foo.zisk")),
-];
-const REDIRECTS: &[(&str, &str)] = &[
-    // …
-    ("ziskos_foo", "zisklib_foo"),   // (guest stub symbol, library routine label)
+    ("foo", include_str!("../zisklib/foo.zisk")),
 ];
 ```
 
-### 3. Add the Rust binding — `ziskasm/lang/rust/src/lib.rs`
+### 3. Give it a zkvmcall ID — `definitions/src/zkvmcall.rs`
 
-A raw stub (the ABI boundary) plus, if useful, an ergonomic wrapper:
+Add a row with the next free ID. IDs are never reused or renumbered once assigned:
 
 ```rust
-/// Raw ABI boundary, redirected to `zisklib_foo`.
-/// # Safety
-/// … describe the pointer/length contract …
-#[no_mangle]
-#[inline(never)]
-pub unsafe extern "C" fn ziskos_foo(input: *const u8, len: usize, output: *mut u8) {
-    // Placeholder body. MUST touch every argument via `black_box` (see below).
-    let _ = black_box((input, len, output));
-    // Reached only if the redirect did NOT fire: print a diagnostic naming the
-    // symbol, then fault. Never return a plausible-but-wrong value -- that turns a
-    // build/config mistake into a silently wrong result. The `&str` also gives the
-    // body a per-stub constant, which is what stops identical-code folding merging
-    // it with another stub (see below).
-    stub_fail("ziskos_foo")
+    zc(0x8B3, "zkvm_zisklib_foo", "zisklib_foo"),   // (ID, guest function, routine label)
+```
+
+### 4. Add the bindings
+
+The C thunk goes in `ziskasm/lang/c/src/zkvm_calls.s` (a test in
+`transpilers/common` checks that it matches the table) and its prototype in the
+header for its family:
+
+```
+ZKVMCALL zkvm_zisklib_foo, 0x8B3
+```
+
+The Rust thunk, plus an ergonomic wrapper if useful, goes in
+`ziskasm/lang/rust/src/lib.rs`; the macro looks the ID up by name:
+
+```rust
+zkvmcall! {
+    /// `foo(input[0..len])` -> `output`, a zkvmcall to `zisklib_foo`.
+    ///
+    /// # Safety
+    /// … describe the pointer/length contract …
+    fn zkvm_zisklib_foo(input: *const u8, len: usize, output: *mut u8) -> ()
 }
 
 /// Ergonomic wrapper.
 pub fn foo(input: &[u8]) -> [u8; OUTPUT_LEN] {
     let mut out = [0u8; OUTPUT_LEN];
-    unsafe { ziskos_foo(input.as_ptr(), input.len(), out.as_mut_ptr()) };
+    unsafe { zkvm_zisklib_foo(input.as_ptr(), input.len(), out.as_mut_ptr()) };
     out
 }
 ```
@@ -227,33 +236,13 @@ Rebuild the guest and it can call `zisklib::foo(...)`.
 
 ## Rules & gotchas
 
-- **The stub must touch every argument** (via `core::hint::black_box`), and be
-  `#[no_mangle] #[inline(never)]`. The redirected routine reads its arguments from
-  `a0..a7`; if the stub's placeholder body ignored an argument, the optimizer would
-  elide setting up that argument register at the call site (it only sees the stub
-  body), leaving garbage for the real routine. A stub whose result is a pure
-  constant is likewise folded away and its symbol garbage-collected — make the body
-  observably depend on its inputs / have a side effect.
-- **Give each stub a distinct body.** Two stubs with byte-identical bodies (same
-  signature, same placeholder) are merged by identical-code folding into a single
-  symbol at one address, so their separate `REDIRECTS` entries collide and both
-  route to whichever was registered last. Keep the machine code distinct with a
-  per-stub constant — passing the function's own name to `stub_fail` does this for
-  free. (Symptom: `readelf -s` shows two `ziskos_*` at the same address.)
+- **Never reuse or renumber a zkvmcall ID.** An ELF built against an old table
+  would silently call a different routine.
 - **Respect the callee-saved contract.** A routine that clobbers `s0..s11`,
   `sp`, `gp`, or `tp` will corrupt the guest after it returns.
-- **An unredirected stub must fail hard, not return a sentinel.** Both bindings
-  (`lang/rust/src/lib.rs` `stub_fail`, `lang/c/src/zisklib_stubs.c`
-  `zisklib_stub_fail`) write `ERROR: … stub reached without redirect: <fn>()` to the
-  ZisK stdout UART and then store to address 0, aborting the run. So a missing
-  redirect shows up as an abort naming the unresolved symbol — not as wrong output
-  to be spotted later. Note the C helper is deliberately **not** `noreturn`: the
-  redirected routine returns normally, so an inferred-`noreturn` stub would let a
-  caller that can see the body (LTO, or same translation unit) delete its own code
-  after the call.
-- **Placeholder ≠ native implementation.** The stub body only runs off-target (it
-  never runs under ZisK, where it is redirected). If you also want the program to
-  run natively, give the wrapper a real fallback behind `#[cfg(not(zisk_guest))]`.
+- **Thunks only run under ZisK.** On a host build a thunk panics. If you also want
+  the program to run natively, give the wrapper a real fallback behind
+  `#[cfg(not(zisk_guest))]`.
 - **Use the repository `cargo-zisk`** to build guests (`target/debug/cargo-zisk`),
   not a stale installed release.
 - **Performance:** keep the hot loop cheap. `ziskasm_zkvm_keccak256` absorbs full rate
@@ -264,7 +253,7 @@ Rebuild the guest and it can call `zisklib::foo(...)`.
   squarings as it has bits.
 - **Test the routine in isolation first.** Assemble the `.zisk` file with a small
   hand-written caller and run it under `ziskemu -z <dir> -c` before wiring the
-  redirect — it's far faster than the ~30 s guest rebuild. Compare against a
+  zkvmcall — it's far faster than the ~30 s guest rebuild. Compare against a
   *independently* produced golden vector (`sha256sum`, `b2sum`, a throwaway host
   harness): a value transcribed by hand is itself suspect, and a mismatch is as
   likely a bad expected constant as a bad routine — check element-by-element.
@@ -273,9 +262,12 @@ Rebuild the guest and it can call `zisklib::foo(...)`.
 
 | Path | Role |
 |------|------|
-| [`ziskasm/lang/rust/`](lang/rust/) | Crate `zisklib`: Rust stubs + ergonomic wrappers. |
+| [`ziskasm/lang/rust/`](lang/rust/) | Crate `zisklib`: Rust zkvmcall thunks + ergonomic wrappers. |
+| [`ziskasm/lang/c/`](lang/c/) | The C binding: zkvmcall thunks (`src/zkvm_calls.s`) and headers. |
+| [`definitions/src/zkvmcall.rs`](../definitions/src/zkvmcall.rs) | The zkvmcall table: ID → guest function → routine. |
+| [`ziskasm/src/zisklib.rs`](src/zisklib.rs) | `ZISK_LIBRARY`: the `.zisk` files of the library. |
 | [`ziskasm/zisklib/`](zisklib/) | Hand-written ziskasm routines, one file per family (`keccak.zisk`, …); large families get a subdirectory (`zisklib/uint256/`). Shared `pub define`s live in `mem.zisk` / `fcall.zisk`. |
-| [`transpilers/common/src/elf2rom.rs`](../transpilers/common/src/elf2rom.rs) | `ZISK_LIBRARY` + `REDIRECTS` registries; assembles, merges, and redirects. |
+| [`transpilers/common/src/elf2rom.rs`](../transpilers/common/src/elf2rom.rs) | Finds the zkvmcalls; assembles and merges the library; emits the jumps. |
 | `core/src/mem.rs` | `ZISKLIB_ROM_ADDR` / `ZISKLIB_RAM_ADDR` reserved regions. |
 | [`ziskasm/src/assembler.rs`](src/assembler.rs) | `assemble_library*` (library mode). |
 | [`examples/zisklib-demo/guest/`](../examples/zisklib-demo/guest/) | Worked example guest. |

@@ -5,7 +5,7 @@ mod constants;
 mod pairing;
 // Everything except the pairing *check* exercises internal helpers
 // (fp/fp2/.../twist/cyclotomic/final_exp) or the raw pairing entry points, none
-// of which have a redirected ziskasm binding. They build against Rust zisklib.
+// of which have a ziskasm binding. They build against Rust zisklib.
 #[cfg(not(feature = "ziskasm"))]
 mod cyclotomic;
 #[cfg(not(feature = "ziskasm"))]

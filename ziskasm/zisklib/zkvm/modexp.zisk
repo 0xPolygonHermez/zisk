@@ -1,6 +1,6 @@
 ; ============================================================================
 ; zkvm/modexp.zisk - modular exponentiation (EIP-198) for the EF zkVM
-; accelerator C ABI. Entry `ziskasm_zkvm_modexp`, redirect target of `zkvm_modexp`.
+; accelerator C ABI. Entry `ziskasm_zkvm_modexp`, zkvmcall target of `zkvm_modexp`.
 ;
 ;   zkvm_status zkvm_modexp(const uint8_t* base, size_t base_len,   (BE bytes, any length)
 ;                           const uint8_t* exp,  size_t exp_len,    (BE bytes)

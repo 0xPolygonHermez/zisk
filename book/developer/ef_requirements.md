@@ -13,23 +13,24 @@ This document records, standard by standard, how ZisK currently measures up.
 
 > Note: the EF standards target a **RISC-V** guest. ZisK proves RISC-V programs;
 > the ZisK-assembly (`.zisk`) routines mentioned below are ZisK's *internal*
-> hand-written implementations that guest RISC-V symbols are redirected to at
+> hand-written implementations that the guest's calls are turned into jumps to at
 > transpile time — they are an implementation detail of how ZisK accelerates the
 > standard interfaces, not something a conforming guest is written in.
 
-## How the standard interfaces are wired: zkvmcalls and redirects
+## How the standard interfaces are wired: zkvmcalls
 
 The guest is compiled by an **ordinary RISC-V toolchain** that knows nothing about
 ZisK. It must nonetheless call the standard symbols — `zkvm_keccak256`,
-`read_input`, `write_output`, the `ziskos_*` primitives, and so on. The real
+`read_input`, `write_output`, and so on. The real
 implementations are hand-written `.zisk` files under `ziskasm/zisklib/` (e.g.
 `zkvm/keccak.zisk`). They are assembled — via `include_str!`, at ZisK build time —
 into a **reserved ROM/RAM region** (`ZISKLIB_ROM_ADDR`, carved out of the address
 space so it never collides with guest allocations) and merged into the guest's ROM.
-The guest reaches them in one of two ways.
+The guest reaches them through zkvmcalls.
 
-**The EF functions: zkvmcalls.** Every function in `zkvm_accelerators.h`,
-`zkvm_u256.h` and `zkvm_io.h` is a two-instruction thunk — for the C ABI in
+Every function in `zkvm_accelerators.h`, `zkvm_u256.h` and `zkvm_io.h`, and in
+ZisK's extension headers (`zkvm_u256_le.h`, `zkvm_zisklib.h`), is a
+two-instruction thunk — for the C ABI in
 `ziskasm/lang/c/src/zkvm_calls.s`, for Rust guests as naked functions in the
 `zisklib` crate:
 
@@ -51,29 +52,8 @@ may be stripped**. `zkvm_keccak_f1600` is the exception: it is a single keccak-f
 precompile, so the header defines it inline (`csrs 0x800, state`) and it costs one
 instruction at the call site.
 
-**The `ziskos_*` primitives: symbol redirects.** The guest links stubs that define
-each `ziskos_*` symbol with a throwaway placeholder body (`zisklib_stubs.c`
-declared in `zisklib.h`, or the `#[no_mangle]` stubs in the `zisklib` crate).
-`elf2rom` consults a fixed **`REDIRECTS` table**
-(`transpilers/common/src/elf2rom.rs`) of `(guest stub symbol → library routine)`
-pairs — for example `("ziskos_keccak", "ziskasm_zkvm_keccak256")`. It looks up each
-stub's address and size in the ELF symbol table and, when transpilation reaches
-that address, emits the same tail-jump and skips the stub body.
-
 Consequences worth knowing:
 
-- **Do not strip a guest that calls `ziskos_*`.** `elf2rom` resolves those stubs by
-  name in the symbol table (`.symtab`); a stripped ELF has nothing to redirect, so
-  the placeholder bodies run instead. zkvmcalls don't have this restriction.
-- **A reached stub panics — it never returns a wrong value.** If a `ziskos_*`
-  redirect does *not* fire — the ELF was stripped, the symbol wasn't in the table,
-  or ZisK was built without the `ziskasm` feature — the stub body runs, and every
-  stub is written to **fail hard**: it prints a one-line diagnostic to the ZisK
-  stdout (`ERROR: ziskasm … stub reached without redirect: <function>() -- build …
-  with --features ziskasm …`) and then **accesses address 0**, which lands in the
-  null-pointer guard region and triggers abnormal termination. This is deliberate:
-  a missing redirect is a build/link error, so failing loudly is far safer than
-  silently returning a plausible-but-wrong value.
 - **A zkvmcall without the library is a transpile error.** An unknown or malformed
   zkvmcall, or any zkvmcall when ZisK was built without the `ziskasm` feature, makes
   `elf2rom` reject the ELF with a message naming the function.
@@ -81,8 +61,8 @@ Consequences worth knowing:
   ELF, and `elf2rom` assembles the library even for a guest that calls none of them.
 
 This whole mechanism is **gated behind the `ziskasm` cargo feature** (off by
-default): without it, `elf2rom` neither assembles the library nor installs any
-redirect, and it rejects guests that use zkvmcalls. See
+default): without it, `elf2rom` does not assemble the library, and it rejects
+guests that use zkvmcalls. See
 [Building and running the test](#building-and-running-the-test) for how to enable
 it.
 
@@ -108,8 +88,8 @@ the standards it must satisfy are the ones tracked here.
 ### Building and running the test
 
 Two builds are involved: **ZisK** (to get `ziskemu`, which carries the `elf2rom`
-transpiler and the redirect table that maps the standard `zkvm_*`/`ziskos_*`
-symbols onto the native `.zisk` accelerators) and **ziskethone** (the guest ELF,
+transpiler and the zkvmcall table that maps the standard `zkvm_*` functions onto
+the native `.zisk` accelerators) and **ziskethone** (the guest ELF,
 built with the standard C ABI turned on).
 
 **1. Build ZisK (`ziskemu`)** — from the `zisk` repository:
@@ -118,16 +98,13 @@ built with the standard C ABI turned on).
 cargo build --release -p ziskemu --bin ziskemu --features ziskasm   # -> target/release/ziskemu
 ```
 
-The **`ziskasm` feature is required** to get the redirect: it is off by default,
-and without it `elf2rom` neither assembles the ZisK library nor redirects any
-`ziskos_*` symbol (a default `ziskemu` behaves like mainline: it rejects an EF-ABI
-guest that uses zkvmcalls at transpile time, and a `ziskos_*` stub it reaches
-panics — prints a diagnostic and faults on address 0 — rather than returning a
-wrong result). The
-feature also enables the
-emulator's `-z` ZisK-assembly path. The same feature is plumbed through the
-proving pipeline, so `cargo build -p cargo-zisk --features ziskasm` redirects
-`zisklib` guests during ROM generation and proving as well (Cargo feature
+The **`ziskasm` feature is required** to get the ZisK library: it is off by
+default, and without it `elf2rom` does not assemble the library (a default
+`ziskemu` behaves like mainline: it rejects a guest that uses zkvmcalls at
+transpile time). The feature also enables the emulator's `-z` ZisK-assembly path.
+The same feature is plumbed through the proving pipeline, so
+`cargo build -p cargo-zisk --features ziskasm` handles zkvmcall guests during ROM
+generation and proving as well (Cargo feature
 unification keeps every transpile path in the build consistent). (Not to be
 confused with the unrelated `ziskasm` *feature* under `test-artifacts/programs/`,
 which toggles the Rust `zisklib` for the dual-backend unit tests.)
@@ -150,8 +127,8 @@ cmake --build cpp-guest/zisk/build -j8 --target zisk_eth_guest.elf
 
 The `-DZKVM_ABI="…"` list is the switch that makes the guest **use the zkVM
 interface**: each token replaces one crypto call site with the standard `zkvm_*`
-symbol (e.g. `ZKVM_KECCAK` → `zkvm_keccak256`), which `elf2rom` then redirects to
-the native `.zisk` routine. Building with an empty `-DZKVM_ABI=""` instead selects
+symbol (e.g. `ZKVM_KECCAK` → `zkvm_keccak256`), whose zkvmcall `elf2rom` then
+turns into a jump to the native `.zisk` routine. Building with an empty `-DZKVM_ABI=""` instead selects
 ziskethone's own in-guest software/precompile paths — that build is the **native
 reference** for the A/B check below.
 
@@ -186,7 +163,7 @@ conform but not yet audited against the spec.
 | 1b | [U256 arithmetic C interface](#1b-u256-arithmetic-accelerator-c-interface) | **Conformant** | All 27 `zkvm_u256_*` functions implemented natively in `.zisk` over the shared uint256 precompile cores; golden-vector-validated against an EVM reference. |
 | 2 | [Accelerated memory operations](#2-accelerated-memory-operations) | **Conformant** | All four `mem*` accelerated via DMA precompiles in ziskos and in the packaged C archive; `memmove` shares `memcpy`'s DMA op, which is overlap-safe in the emulator and the prover; the C archive's definitions sit in `_start`'s object, so they win symbol resolution regardless of link order. |
 | 3 | [ELF loading and validation](#3-elf-loading-and-validation) | **Conformant** | `elf2rom` enforces header, PT_LOAD-only loading, zero-fill, W^X and entry-point validation. |
-| 4 | [I/O interface](#4-io-interface) | **Conformant** | `read_input` / `write_output` implemented and redirected to the ZisK library. |
+| 4 | [I/O interface](#4-io-interface) | **Conformant** | `read_input` / `write_output` implemented in the ZisK library, reached through zkvmcalls. |
 | 5 | [Memory layout restrictions](#5-memory-layout-restrictions) | **Conformant** | Standard is non-prescriptive; ZisK ships a vendor linker script defining its map. |
 | 6 | [Memory safety guard regions](#6-memory-safety-guard-regions) | **Conformant** | Null region and the span below the stack bottom are both unmapped and trap; the guard is adjacent with no gap, named in `core/src/mem.rs` and enforced by compile-time assertions. |
 | 7 | [RISC-V target](#7-risc-v-target) | **Partial** | RV64IMA, little-endian, LP64, unaligned access supported and counted/priced by `ziskemu` stats; `compressed` (`C`) feature implemented (off by default). The observability wording is now resolved: it requires a per-proof count via CLI/log, so two changes remain — emit that count from the proving path (the tally already exists in `MemCounters`), and stage unaligned precompile operands into aligned buffers. |
@@ -206,8 +183,8 @@ operands.
 **ZisK.** This is the standard we implement most completely. All **19** functions
 of `zkvm_accelerators.h` are implemented as hand-written ZisK-assembly routines
 under `ziskasm/zisklib/zkvm/*.zisk`, exposed under the exact `ziskasm_zkvm_*`
-entry points and reached from a guest through the `elf2rom` symbol redirect of the
-standard `zkvm_*` symbols:
+entry points and reached from a guest through the zkvmcalls of the standard `zkvm_*`
+functions:
 
 - Hashes: `zkvm_keccak256`, `zkvm_sha256`, `zkvm_ripemd160`
 - secp256k1: `zkvm_secp256k1_verify`, `zkvm_secp256k1_ecrecover`
@@ -246,8 +223,8 @@ zero (EVM semantics), and `mulmod` must reduce the full 512-bit product.
 
 **ZisK.** All **27** functions of `zkvm_u256.h` are implemented as hand-written
 ZisK-assembly routines in `ziskasm/zisklib/zkvm/u256.zisk`, exposed under the
-`ziskasm_zkvm_u256_*` entry points and reached from a guest through the `elf2rom`
-redirect of the standard `zkvm_u256_*` symbols:
+`ziskasm_zkvm_u256_*` entry points and reached from a guest through the zkvmcalls
+of the standard `zkvm_u256_*` functions:
 
 - Arithmetic: `add`, `sub`, `mul`, `div`, `mod`, `divmod`, `addmod`, `mulmod`, `exp`
 - Signed (two's complement): `sdiv`, `smod`, `sdivmod`
@@ -358,9 +335,8 @@ buf_size)` (returns a read-only pointer + length to the private input; never
 fails; idempotent) and `void write_output(const uint8_t* output, size_t size)`
 (successive calls concatenate into the public result; never fails).
 
-**ZisK.** Both symbols are implemented in the ZisK library and wired via the
-`elf2rom` redirects `("read_input", "zisklib_read_input")` and
-`("write_output", "zisklib_write_output")`. Input is exposed at the memory-mapped
+**ZisK.** Both functions are implemented in the ZisK library (`zisklib_read_input`,
+`zisklib_write_output`) and reached through zkvmcalls (0x863, 0x864). Input is exposed at the memory-mapped
 free-input region (`INPUT_ADDR = 0x4000_0000`); output is written to the public
 output region (`OUTPUT_ADDR = 0xa041_0000`). Reads are non-failing and side-effect
 free; successive `write_output` calls concatenate. C guests get both from
@@ -634,7 +610,7 @@ the EF may check against, so it should be fixed here once chosen.
 operand buffers (see *Precompile operand alignment* above), and today that is stated
 as the caller's responsibility. The `.zisk` accelerators already stage the EF
 byte-array ABI into aligned library scratch, so the standard `zkvm_*` entry points
-hold; the gap is the flat `ziskos_*` ABI and direct `zisklib` calls from Rust guests,
+hold; the gap is the `zkvm_zisklib_*` functions and direct `zisklib` calls from Rust guests,
 where an unaligned guest pointer can reach a precompile. Make those call sites copy
 into a local aligned buffer when the argument is not aligned, and copy back. Note
 this costs a branch — and, when unaligned, a copy — on the common aligned path, so it
@@ -683,11 +659,10 @@ builds the whole guest-side surface into one static library, **`zisklib_c`**:
 |---|---|
 | `_start` (gp/sp init, **C++ constructors**, `main`, **destructors**, termination) | `src/_start.s` |
 | I/O functions | `src/zkvm_calls.s` + [`include/zkvm_io.h`](../../ziskasm/lang/c/include/zkvm_io.h) |
-| Accelerator functions | `src/zkvm_calls.s` (19 `zkvm_*` + 27 `zkvm_u256_*`; `zkvm_keccak_f1600` is inline in the header) and `src/zisklib_stubs.c` (27 `ziskos_*`) |
+| Accelerator functions | `src/zkvm_calls.s` (19 `zkvm_*` + 27 `zkvm_u256_*`; `zkvm_keccak_f1600` is inline in the header), plus ZisK's 24 `zkvm_zisklib_*` |
 
-Every EF entry is a zkvmcall thunk that the transpiler turns into a jump to the
-hand-written `.zisk` routine, and every `ziskos_*` entry a stub that `elf2rom`
-redirects by symbol name, so a C guest compiles against the headers, links
+Every entry is a zkvmcall thunk that the transpiler turns into a jump to the
+hand-written `.zisk` routine, so a C guest compiles against the headers, links
 `zisklib_c`, and runs the ziskasm implementations. `main` is `int main(void)`.
 
 `_start` walks `[__init_array_start, __init_array_end)` before `main` and
@@ -734,11 +709,9 @@ nothing from the source tree: the C guest reports `08 01 aa 5a` (read_input,
 heap bounds, write_output) and the C++ guest `c7 5a` (constructor, then `main`).
 
 One property to communicate with the artifact: it is **not standalone-functional**.
-Every accelerator and I/O function in it is a zkvmcall thunk or a redirected stub,
-so a guest linked against it and run through a ZisK built without
-`--features ziskasm` is rejected at transpile time (zkvmcalls) or reaches the stub
-bodies, which fail hard by design (`ziskos_*`). A clean link proves nothing on
-its own.
+Every accelerator and I/O function in it is a zkvmcall thunk, so a guest linked
+against it and run through a ZisK built without `--features ziskasm` is rejected at
+transpile time. A clean link proves nothing on its own.
 
 **Assessment: Conformant** (`_start` incl. C++ constructors/destructors, the I/O
 functions, every accelerator, a W^X linker script exporting `_heap_start`/`_heap_end`,

@@ -1,6 +1,6 @@
 ; ============================================================================
 ; zkvm/secp256r1.zisk - secp256r1 (P-256) for the EF zkVM accelerator C ABI.
-; Entry `ziskasm_zkvm_secp256r1_verify`, redirect target of `zkvm_secp256r1_verify`.
+; Entry `ziskasm_zkvm_secp256r1_verify`, zkvmcall target of `zkvm_secp256r1_verify`.
 ;
 ; Same shape as zkvm/secp256k1.zisk's verify: rev8-marshal the EF big-endian byte
 ; inputs to LE limbs in line, then run the verify flow lifted from secp256r1/ecdsa.zisk

@@ -5,7 +5,7 @@ mod constants;
 
 // The array-arithmetic and squaring tests exercise internal bigint helpers
 // (mul_long, div_long, square_long, ...) that have no ziskasm binding — only the
-// public `modexp` entry point is redirected. They run against the Rust zisklib
+// public `modexp` entry point has one. They run against the Rust zisklib
 // only; the `ziskasm` backend build skips them.
 #[cfg(not(feature = "ziskasm"))]
 mod array_arith;

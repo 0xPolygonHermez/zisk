@@ -507,7 +507,7 @@ pub fn saturating_pow256(base: &[u64; 4], exp: &[u64; 4]) -> [u64; 4] {
 //
 // Points and scalars cross the ABI as 256-bit little-endian limb arrays: a
 // scalar/coordinate is `[u64; 4]` and an affine point is `[u64; 8]` = x‖y.
-// Redirected to the hand-written `zisklib_*_secp256{k1,r1}` routines under
+// zkvmcalls to the hand-written `zisklib_*_secp256{k1,r1}` routines under
 // `ziskasm/zisklib/secp256{k1,r1}/`.
 // ===========================================================================
 

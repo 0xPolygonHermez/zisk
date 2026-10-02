@@ -5,8 +5,8 @@ use ziskos::zisklib::U256;
 #[cfg(not(feature = "ziskasm"))]
 use ziskos::zisklib::modexp;
 
-// `ziskasm`: call the flat `zisklib::modexp_u64` binding, whose `ziskos_*` stub
-// is redirected to the hand-written `.zisk` routine during transpilation. This
+// `ziskasm`: call the flat `zisklib::modexp_u64` binding, a zkvmcall to the
+// hand-written `.zisk` routine. This
 // glue adapts the flat (ptr,len) ABI to the rich `&[U256] -> Vec<U256>`
 // signature so every test body below is identical for both backends.
 #[cfg(feature = "ziskasm")]

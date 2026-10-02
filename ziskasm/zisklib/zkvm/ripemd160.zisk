@@ -1,6 +1,6 @@
 ; ============================================================================
 ; zkvm/ripemd160.zisk - RIPEMD-160 (precompile 0x03) for the EF zkVM
-; accelerator C ABI. Entry `ziskasm_zkvm_ripemd160`, redirect target of `zkvm_ripemd160`.
+; accelerator C ABI. Entry `ziskasm_zkvm_ripemd160`, zkvmcall target of `zkvm_ripemd160`.
 ;
 ;   zkvm_status zkvm_ripemd160(const uint8_t* data, size_t len,
 ;                              zkvm_ripemd160_hash* output)   (output = 32 bytes)
