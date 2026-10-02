@@ -59,6 +59,10 @@ fn f64_arithmetic() {
     assert_eq!(eval_f64("(f64.sqrt (f64.const 2.0))"), 2f64.sqrt());
     // Round-to-nearest-even is observable: 1 + 2^-53 rounds back to 1.
     assert_eq!(eval_f64("(f64.add (f64.const 1.0) (f64.const 0x1p-53))"), 1.0);
+    assert_eq!(
+        eval_f64("(f64.add (f64.const 1.0) (f64.const 0x1.8p-52))").to_bits(),
+        0x3ff0_0000_0000_0002
+    );
     assert!(eval_f64("(f64.div (f64.const 0.0) (f64.const 0.0))").is_nan());
     assert_eq!(eval_f64("(f64.div (f64.const 1.0) (f64.const 0.0))"), f64::INFINITY);
 }

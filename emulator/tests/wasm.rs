@@ -872,18 +872,22 @@ fn fd_read_tolerates_a_bogus_input_length_prefix() {
         (func $fd_write (param i32 i32 i32 i32) (result i32)))
       (memory 1)
       (func (export "_start")
+        (memory.fill (i32.const 16) (i32.const 0xee) (i32.const 16))
         (i32.store (i32.const 0) (i32.const 16))
         (i32.store (i32.const 4) (i32.const 16))
         (drop (call $fd_read (i32.const 0) (i32.const 0) (i32.const 1) (i32.const 40)))
-        ;; print the first 8 bytes read: the real input (len prefix lies, data is 8 bytes)
+        ;; publish the 16 bytes read followed by nread (as a u64)
+        (i64.store (i32.const 32) (i64.extend_i32_u (i32.load (i32.const 40))))
         (i32.store (i32.const 0) (i32.const 16))
-        (i32.store (i32.const 4) (i32.const 8))
+        (i32.store (i32.const 4) (i32.const 24))
         (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 48)))))"#;
     let mut input = Vec::new();
     input.extend_from_slice(&u64::MAX.to_le_bytes()); // bogus length prefix
     input.extend_from_slice(&0x0102_0304_0506_0708u64.to_le_bytes());
     let out = run(&wat::parse_str(wat).unwrap(), &input);
-    assert_eq!(out_u64(&out), 0x0102_0304_0506_0708);
+    assert_eq!(out_u64(&out), 0x0102_0304_0506_0708, "the real input comes first");
+    assert_eq!(out[8..16], [0u8; 8], "bytes past the real input must read as zeros");
+    assert_eq!(u64::from_le_bytes(out[16..24].try_into().unwrap()), 16, "nread");
 }
 
 #[test]
