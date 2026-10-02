@@ -30,17 +30,26 @@ const MOPS_ALIGNED_READ: u32 = 0x0C;
 const MOPS_ALIGNED_WRITE: u32 = 0x0D;
 const MOPS_ALIGNED_BLOCK_READ: u32 = 0x0E;
 const MOPS_ALIGNED_BLOCK_WRITE: u32 = 0x0F;
-/// Stream layout: state-machines/mem-cpp/cpp/mem_config.hpp.
+/// Stream layout: state-machines/mem-cpp/cpp/mops_format.hpp.
 const MOPS_BLOCK_VALUES: u32 = 0x07;
+/// Light form: a single write with this bit carries no value; a block record with the payload bit
+/// carries no step word.
+const MOPS_NO_VALUE_BIT: u64 = 58;
+const MOPS_NO_PAYLOAD_BIT: u64 = 62;
 
 /// Words of the record whose header word is `hdr` (bit 63 is the header tag).
 fn mops_record_len(hdr: u64) -> usize {
     let mode = ((hdr >> 32) & 0x3F) as u32;
     let low = mode & 0x0F;
-    if low == MOPS_ALIGNED_READ || ((mode & 0x10) == 0 && matches!(low, 1 | 2 | 4 | 8)) {
+    let single = matches!(low, 1 | 2 | 4 | 8);
+    if low == MOPS_ALIGNED_READ || (single && (mode & MOPS_WRITE_FLAG) == 0) {
         1
+    } else if single || low == MOPS_ALIGNED_WRITE {
+        if (hdr >> MOPS_NO_VALUE_BIT) & 1 == 1 { 1 } else { 2 }
     } else if low == MOPS_BLOCK_VALUES {
         2 + ((hdr >> 36) & 63) as usize
+    } else if (hdr >> MOPS_NO_PAYLOAD_BIT) & 1 == 1 {
+        1
     } else {
         2
     }
@@ -607,5 +616,72 @@ fn main() -> Result<()> {
         Command::Expand(expand_args) => cmd_expand(expand_args),
         Command::Count(count_args) => cmd_count(count_args),
         Command::MemAlignCount(mac_args) => cmd_mem_align_count(mac_args),
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One record of every kind of both forms, heavy and light. The same words and expectations
+    /// are in state-machines/mem-cpp/cpp/test/test_mops_format.cpp.
+    const WORDS: &[u64] = &[
+        0x8048d141a0000003, 0xc048d158a0000010, 0x0000000000000001, 0x84000014a0000006,
+        0x8048d171a0000001, 0x000000000000005a, 0x8048d14c80001000, 0x8048d14da0002000,
+        0x0000000000000007, 0x8400000da0002008, 0x8000005a40000008, 0x0048d14000000000,
+        0x8000064e40001000, 0x0048d14000000000, 0xc000007a40002000, 0xc000003ba0003000,
+        0xc00000cfa0004000, 0x8000009fa0005000, 0x0048d14000000000, 0xaaf37bf7a0100000,
+        0x0000000000000020, 0x0000000000000000, 0x0101010101010101, 0x0202020202020202,
+        0x0303030303030303, 0x0404040404040404, 0x0505050505050505, 0x0606060606060606,
+        0x0707070707070707, 0x0808080808080808, 0x0909090909090909, 0x0a0a0a0a0a0a0a0a,
+        0x0b0b0b0b0b0b0b0b, 0x0c0c0c0c0c0c0c0c, 0x0d0d0d0d0d0d0d0d, 0x0e0e0e0e0e0e0e0e,
+        0x0f0f0f0f0f0f0f0f, 0x1010101010101010, 0x1111111111111111, 0x1212121212121212,
+        0x1313131313131313, 0x1414141414141414, 0x1515151515151515, 0x1616161616161616,
+        0x1717171717171717, 0x1818181818181818, 0x1919191919191919, 0x1a1a1a1a1a1a1a1a,
+        0x1b1b1b1b1b1b1b1b, 0x1c1c1c1c1c1c1c1c, 0x1d1d1d1d1d1d1d1d, 0x1e1e1e1e1e1e1e1e,
+        0x1f1f1f1f1f1f1f1f, 0x2020202020202020, 0x2121212121212121, 0x2222222222222222,
+        0x2323232323232323, 0x2424242424242424, 0x2525252525252525, 0x2626262626262626,
+        0x2727272727272727, 0x2828282828282828, 0x2929292929292929, 0x2a2a2a2a2a2a2a2a,
+        0x2b2b2b2b2b2b2b2b, 0x2c2c2c2c2c2c2c2c, 0x2d2d2d2d2d2d2d2d, 0x2e2e2e2e2e2e2e2e,
+        0x2f2f2f2f2f2f2f2f, 0x3030303030303030, 0x3131313131313131, 0x3232323232323232,
+        0x3333333333333333, 0x3434343434343434, 0x3535353535353535, 0x3636363636363636,
+        0x3737373737373737, 0x3838383838383838, 0x3939393939393939, 0x3a3a3a3a3a3a3a3a,
+        0x3b3b3b3b3b3b3b3b, 0x3c3c3c3c3c3c3c3c, 0x3d3d3d3d3d3d3d3d, 0x3e3e3e3e3e3e3e3e,
+        0xaaf37817a0200000, 0x0000000000000000, 0x0000000000000042
+    ];
+    const EXPECT: &[(usize, u32, u32, i64, &str)] = &[
+        (1, 0xa0000003, 0x01, -1, "read_1 unaligned"),
+        (2, 0xa0000010, 0x18, -1, "write_8 aligned, bit 63 value"),
+        (1, 0xa0000006, 0x14, -1, "write_4 no value"),
+        (2, 0xa0000001, 0x31, -1, "cwrite_1 with value"),
+        (1, 0x80001000, 0x0c, -1, "aligned read"),
+        (2, 0xa0002000, 0x0d, -1, "aligned write with value"),
+        (1, 0xa0002008, 0x0d, -1, "aligned write no value"),
+        (2, 0x40000008, 0x0a, 5, "block read 5"),
+        (2, 0x40001000, 0x0e, 100, "aligned block read 100"),
+        (1, 0x40002000, 0x0a, 7, "block read 7, no payload"),
+        (1, 0xa0003000, 0x0b, 3, "block write 3, no payload"),
+        (1, 0xa0004000, 0x0f, 12, "aligned block write 12, no payload"),
+        (2, 0xa0005000, 0x0f, 9, "aligned block write 9 with step payload"),
+        (65, 0xa0100000, 0x0f, 63, "value block 63"),
+        (3, 0xa0200000, 0x0f, 1, "value block 1"),
+    ];
+
+    #[test]
+    fn decoders_agree_with_the_table() {
+        let mut k = 0;
+        for &(len, addr, mode, count, name) in EXPECT {
+            assert!(k < WORDS.len(), "{name}: stream ended");
+            let got_len = mops_record_len(WORDS[k]);
+            let d = mops_decode_record(&WORDS[k..]);
+            let low = d.flags & 0x0F;
+            let block = low >= 0x0A && low != 0x0C && low != 0x0D;
+            let got_count = if block { (d.flags >> MOPS_BLOCK_COUNT_SBITS) as i64 } else { -1 };
+            let got_mode = if block { low } else { d.flags & 0x3F };
+            assert_eq!((got_len, d.addr, got_mode, got_count), (len, addr, mode, count), "{name}");
+            k += got_len;
+        }
+        assert_eq!(k, WORDS.len(), "words consumed");
     }
 }
