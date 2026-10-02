@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """hints.py file: replace the looped line-coefficient hint readers with unrolled ones."""
-import re, sys
+import os, re, sys
 p = sys.argv[1]
 s = open(p).read()
-c = 'bls12_381' if 'bls12_381' in p else 'bn254'
+# the curve is the file's directory (<root>/bn254/ or <root>/bls12_381/), not any part of <root>
+c = os.path.basename(os.path.dirname(os.path.abspath(p)))
+if c not in ('bn254', 'bls12_381'):
+    sys.exit(f"hints.py: {p} is not in a bn254/ or bls12_381/ directory")
 n, buf, fc = (24, 'BLS_ML_LAMMU', 'FCALL_BLS12_381_TWIST_') if c == 'bls12_381' else (16, 'ML_LAMMU', 'FCALL_BN254_TWIST_')
 def body(name, params, fcall):
     L = [f'zisklib_ml_{name}_coeffs_{c}:']
