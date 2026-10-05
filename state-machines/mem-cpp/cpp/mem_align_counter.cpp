@@ -153,6 +153,8 @@ void MemAlignCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData 
             case MOPS_ALIGNED_BLOCK_WRITE + 0x20:
             case MOPS_ALIGNED_BLOCK_WRITE + 0x30:
                 break;
+            case MOPS_READ_8_VALUE:   // the free-input word: an aligned read
+                break;
             default:
                 printf("MemAlignCounter: Unknown flags: 0x%X\n", rec.flags);
                 assert(false && "Unknown flags in MemAlignCounter");

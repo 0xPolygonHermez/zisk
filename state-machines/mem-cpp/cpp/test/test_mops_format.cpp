@@ -27,7 +27,8 @@ static const uint64_t WORDS[] = {
     0x3333333333333333ull, 0x3434343434343434ull, 0x3535353535353535ull, 0x3636363636363636ull,
     0x3737373737373737ull, 0x3838383838383838ull, 0x3939393939393939ull, 0x3a3a3a3a3a3a3a3aull,
     0x3b3b3b3b3b3b3b3bull, 0x3c3c3c3c3c3c3c3cull, 0x3d3d3d3d3d3d3d3dull, 0x3e3e3e3e3e3e3e3eull,
-    0xaaf37817a0200000ull, 0x0000000000000000ull, 0x0000000000000042ull
+    0xaaf37817a0200000ull, 0x0000000000000000ull, 0x0000000000000042ull,
+    0xc048d16840000000ull, 0x0000000000000042ull, 0x8400002840000000ull
 };
 struct Expect { uint32_t len; uint32_t addr; uint32_t mode; int count; const char* name; };
 static const Expect EXPECT[] = {
@@ -46,6 +47,8 @@ static const Expect EXPECT[] = {
     {2u, 0xa0005000u, 0x0fu, 9, "aligned block write 9 with step payload"},
     {65u, 0xa0100000u, 0x0fu, 63, "value block 63"},
     {3u, 0xa0200000u, 0x0fu, 1, "value block 1"},
+    {2u, 0x40000000u, 0x28u, -1, "free-input read with value"},
+    {1u, 0x40000000u, 0x28u, -1, "free-input read, light"},
 };
 
 int main() {

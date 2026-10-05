@@ -28,6 +28,9 @@
 #define MOPS_WRITE_1  0x11
 
 #define MOPS_CWRITE_1 0x31
+// An aligned 8-byte read that carries the value read: the free-input word, whose reads return
+// successive fcall results that no image holds.
+#define MOPS_READ_8_VALUE 0x28
 
 #define MOPS_BLOCK_READ 0x0A
 #define MOPS_BLOCK_WRITE 0x0B
@@ -53,6 +56,7 @@ MOPS_HD uint32_t mops_record_len(uint64_t hdr) {
     const uint32_t low  = mode & 0x0F;
     const int single = (low == 1 || low == 2 || low == 4 || low == 8);
     if (low == MOPS_ALIGNED_READ) return 1;
+    if (mode == MOPS_READ_8_VALUE) return ((hdr >> MOPS_NO_VALUE_BIT) & 1) ? 1 : 2;
     if (single && (mode & MOPS_WRITE_FLAG) == 0) return 1;
     if (single || low == MOPS_ALIGNED_WRITE) return ((hdr >> MOPS_NO_VALUE_BIT) & 1) ? 1 : 2;
     if (low == MOPS_BLOCK_VALUES) return 2 + (uint32_t)((hdr >> 36) & 63);
@@ -61,6 +65,7 @@ MOPS_HD uint32_t mops_record_len(uint64_t hdr) {
 // A record of the light form: a write without its value or a block record without its payload.
 MOPS_HD int mops_record_is_light(uint64_t hdr) {
     const uint32_t low = (uint32_t)(hdr >> 32) & 0x0F;
+    if (((uint32_t)(hdr >> 32) & 0x3F) == MOPS_READ_8_VALUE) return (int)((hdr >> MOPS_NO_VALUE_BIT) & 1);
     if (low == MOPS_BLOCK_VALUES || low == MOPS_ALIGNED_READ) return 0;
     if (low == 1 || low == 2 || low == 4 || low == 8 || low == MOPS_ALIGNED_WRITE) return (int)((hdr >> MOPS_NO_VALUE_BIT) & 1);
     return (int)((hdr >> MOPS_NO_PAYLOAD_BIT) & 1);
