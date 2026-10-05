@@ -1564,7 +1564,7 @@ impl<'a> Emu<'a> {
         if self.ctx.inst_ctx.error {
             eprintln!(
                 "Emu::run_fast() finished with error at step={} pc=0x{:x}",
-                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+                self.ctx.inst_ctx.error_step, self.ctx.inst_ctx.error_pc
             );
         }
     }
@@ -1999,7 +1999,7 @@ impl<'a> Emu<'a> {
         if self.ctx.inst_ctx.error {
             eprintln!(
                 "Emu::run() finished with error at step={} pc=0x{:x}",
-                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+                self.ctx.inst_ctx.error_step, self.ctx.inst_ctx.error_pc
             );
         }
 
@@ -2151,7 +2151,7 @@ impl<'a> Emu<'a> {
         if self.ctx.inst_ctx.error {
             eprintln!(
                 "Emu::par_run() finished with error at step={} pc=0x{:x}",
-                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+                self.ctx.inst_ctx.error_step, self.ctx.inst_ctx.error_pc
             );
         }
 
@@ -2987,10 +2987,11 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end
     }
 
-    /// Returns the step and pc where the execution failed (an illegal instruction, a
-    /// nonzero exit code, ...), or None if it did not fail
+    /// Returns the step and pc of the instruction where the execution failed (an illegal
+    /// instruction, a nonzero exit code, ...), or None if it did not fail
     pub fn failure(&self) -> Option<(u64, u64)> {
-        self.ctx.inst_ctx.error.then_some((self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc))
+        let ctx = &self.ctx.inst_ctx;
+        ctx.error.then_some((ctx.error_step, ctx.error_pc))
     }
 
     /// Returns the number of executed steps

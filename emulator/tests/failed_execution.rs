@@ -45,16 +45,16 @@ fn assert_fails_at(name: &str, failing_pc: u64) {
     }
 }
 
-// The reported pc is the one after the halting instruction.
-
 #[test]
 fn trap_fails() {
-    assert_fails_at("trap_unimp", 0x8000_0004);
+    // unimp is the first instruction
+    assert_fails_at("trap_unimp", 0x8000_0000);
 }
 
 #[test]
 fn write_to_read_only_csr_fails() {
-    assert_fails_at("write_ro_csr", 0x8000_0008);
+    // li t0, 1; csrrs x0, mvendorid, t0
+    assert_fails_at("write_ro_csr", 0x8000_0004);
 }
 
 #[test]
