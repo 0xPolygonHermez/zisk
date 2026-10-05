@@ -1,6 +1,4 @@
 #![cfg_attr(zisk_guest, no_std)]
-#![cfg_attr(zisk_guest, feature(core_intrinsics))]
-#![cfg_attr(zisk_guest, allow(internal_features))]
 
 // This crate produces libziskos.a for linking by C (or Rust) host programs.
 //
@@ -22,7 +20,10 @@
 #[cfg(all(feature = "panic-handler", zisk_guest))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
-    core::intrinsics::abort()
+    // A trap, which ZisK ends as a failed execution. `unimp` is what the unstable
+    // core::intrinsics::abort lowered to; nightly has since renamed that intrinsic,
+    // and the inline asm builds on any toolchain.
+    unsafe { core::arch::asm!("unimp", options(noreturn)) }
 }
 
 /// Defines a `#[no_mangle] extern "C"` wrapper that resets ziskos's bump heap and
