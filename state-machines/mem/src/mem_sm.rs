@@ -559,16 +559,17 @@ impl<F: PrimeField64> MemSM<F> {
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
             match crate::mem_gpu_fill::gpu_fill_mode() {
-                crate::mem_gpu_fill::GpuFillMode::Off | crate::mem_gpu_fill::GpuFillMode::Arena => {
-                    self.compute_witness_with_offsets_inner::<MemTraceRowPacked<F>>(
+                crate::mem_gpu_fill::GpuFillMode::Off
+                | crate::mem_gpu_fill::GpuFillMode::Arena
+                | crate::mem_gpu_fill::GpuFillMode::Slot => self
+                    .compute_witness_with_offsets_inner::<MemTraceRowPacked<F>>(
                         mem_ops,
                         segment_id,
                         is_last_segment,
                         previous_segment,
                         trace_buffer,
                         seg,
-                    )
-                }
+                    ),
                 crate::mem_gpu_fill::GpuFillMode::ArenaCheck => self.compute_witness_arena_check(
                     mem_ops,
                     segment_id,
@@ -896,6 +897,58 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         Ok(Some(AirInstance::new_from_trace(
             FromTrace::new(&mut trace).with_air_values(&mut air_values),
         )))
+    }
+
+    fn compute_witness_gpu_slot(
+        &self,
+        decl: &proofman_common::GpuWitnessAir,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<Option<AirInstance<F>>> {
+        use proofman_common::trace::TraceRow;
+        if !packed {
+            return Err(proofman_common::ProofmanError::InvalidParameters(
+                "ZISK_MEM_GPU_FILL=slot needs the packed Mem trace".to_string(),
+            ));
+        }
+        let seg_idx = usize::from(segment_id);
+        let n_rows = MemTrace::<MemTraceRowPacked<F>>::NUM_ROWS;
+        let res = zisk_sm_mem_planner::gpu_mem_witness_scalars(
+            crate::mem_gpu_fill::SLOT_FAMILY_RAM,
+            seg_idx as u32,
+        )
+        .map_err(|e| {
+            proofman_common::ProofmanError::InvalidParameters(format!(
+                "Mem[{seg_idx}] scalars from the GPU planner failed: {e}"
+            ))
+        })?;
+        let (previous_segment, out) = crate::mem_gpu_fill::mem_report(&res, n_rows);
+        assert!(
+            is_last_segment || out.padding_size == 0,
+            "MemSM: padding_size must be 0 for non last segment, but got {}",
+            out.padding_size
+        );
+        let mut air_values = MemAirValues::<F>::new();
+        Self::set_mem_air_values(
+            &mut air_values,
+            segment_id,
+            is_last_segment,
+            &previous_segment,
+            &out,
+        );
+        crate::mem_gpu_fill::slot_instance(
+            decl,
+            crate::mem_gpu_fill::SLOT_FAMILY_RAM,
+            MemTrace::<()>::AIR_ID,
+            seg_idx,
+            n_rows,
+            MemTraceRow::<F>::ROW_SIZE,
+            trace_buffer,
+            proofman_common::trace::Values::get_buffer(&mut air_values),
+        )
+        .map(Some)
     }
 
     fn get_addr_range(&self) -> (u32, u32) {

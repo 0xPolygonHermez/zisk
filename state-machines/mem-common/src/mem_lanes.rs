@@ -74,6 +74,23 @@ pub fn rom_data_lanes_x_row() -> usize {
     RomDataTraceRow::<Goldilocks>::default().get_all_addr().len()
 }
 
+/// Rows of a MemAlign air (the seven of the family), `None` for any other air.
+pub fn mem_align_air_rows(air_id: usize) -> Option<usize> {
+    use zisk_pil::*;
+    [
+        (MemAlignTrace::<()>::AIR_ID, MemAlignTrace::<()>::NUM_ROWS),
+        (MemAlignLargeTrace::<()>::AIR_ID, MemAlignLargeTrace::<()>::NUM_ROWS),
+        (MemAlignByteTrace::<()>::AIR_ID, MemAlignByteTrace::<()>::NUM_ROWS),
+        (MemAlignByteLargeTrace::<()>::AIR_ID, MemAlignByteLargeTrace::<()>::NUM_ROWS),
+        (MemAlignReadByteTrace::<()>::AIR_ID, MemAlignReadByteTrace::<()>::NUM_ROWS),
+        (MemAlignReadByteLargeTrace::<()>::AIR_ID, MemAlignReadByteLargeTrace::<()>::NUM_ROWS),
+        (MemAlignWriteByteTrace::<()>::AIR_ID, MemAlignWriteByteTrace::<()>::NUM_ROWS),
+    ]
+    .into_iter()
+    .find(|(a, _)| *a == air_id)
+    .map(|(_, n)| n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

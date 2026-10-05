@@ -28,6 +28,9 @@ pub(crate) enum GpuFillMode {
     ArenaCheck,
     /// Fill from the planner's retained accesses, no collectors; the device rows are proved.
     Arena,
+    /// The prover's commit kernel fills each memory instance straight into its slot from the
+    /// retained accesses; no rows leave the device. The proofs collect the memory airs on the CPU.
+    Slot,
 }
 
 /// `ZISK_MEM_GPU_FILL`: unset or anything else is `Off`.
@@ -35,6 +38,7 @@ pub(crate) fn gpu_fill_mode() -> GpuFillMode {
     match std::env::var("ZISK_MEM_GPU_FILL").as_deref() {
         Ok("arena-check") => GpuFillMode::ArenaCheck,
         Ok("arena") => GpuFillMode::Arena,
+        Ok("slot") => GpuFillMode::Slot,
         _ => GpuFillMode::Off,
     }
 }
@@ -93,6 +97,15 @@ pub(crate) fn arena_fill_packed_rows(
         rows,
         n_rows as u32,
     )?;
+    let (previous_segment, out) = mem_report(&res, n_rows);
+    Ok(ArenaFillReport { prepared, res, previous_segment, out })
+}
+
+/// The scalars a filled Mem instance's air values are built from, out of the planner's result.
+pub(crate) fn mem_report(
+    res: &zisk_sm_mem_planner::RamFillResult,
+    n_rows: usize,
+) -> (MemPreviousSegment, MemFillOutput) {
     let previous_segment =
         MemPreviousSegment { addr: res.prev_addr_w, step: res.prev_step, value: res.prev_value };
     // The padding (`MemPadding` in mem_sm.rs) reads the last word of the region: when there is
@@ -121,7 +134,7 @@ pub(crate) fn arena_fill_packed_rows(
         padding_size_chunks,
         padding_size_to_max_chunks,
     };
-    Ok(ArenaFillReport { prepared, res, previous_segment, out })
+    (previous_segment, out)
 }
 
 /// One column group's mismatches: name, differing lanes, first as (row, lane, cpu, gpu).
@@ -253,4 +266,52 @@ pub(crate) fn compare_rows(
         }
     }
     (count, first)
+}
+
+/// The kernel input of one memory instance (`MemSlotOp` of the planner, byte for byte).
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MemSlotOp {
+    pub family: u32,
+    pub air_id: u32,
+    pub segment: u32,
+    pub n_rows: u32,
+}
+// SAFETY: `#[repr(C)]`, four `u32` fields, no padding, no pointers: the planner's `MemSlotOp`.
+unsafe impl proofman_common::GpuWitnessOp for MemSlotOp {}
+impl From<&MemSlotOp> for MemSlotOp {
+    fn from(op: &MemSlotOp) -> Self {
+        *op
+    }
+}
+
+/// The families the kernel input names.
+pub(crate) const SLOT_FAMILY_RAM: u32 = 0;
+pub(crate) const SLOT_FAMILY_ROM: u32 = 1;
+pub(crate) const SLOT_FAMILY_INPUT: u32 = 2;
+
+/// An instance the prover's kernel fills into its slot: the staged op in the trace buffer and the
+/// air values, which the device resolved ahead. `decl` is the prover's declaration of the air.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn slot_instance<F: proofman_fields::PrimeField64>(
+    decl: &proofman_common::GpuWitnessAir,
+    family: u32,
+    air_id: usize,
+    segment: usize,
+    n_rows: usize,
+    n_cols: usize,
+    trace_buffer: Vec<F>,
+    air_values: Vec<F>,
+) -> proofman_common::ProofmanResult<proofman_common::AirInstance<F>> {
+    let op =
+        MemSlotOp { family, air_id: air_id as u32, segment: segment as u32, n_rows: n_rows as u32 };
+    let (mut instance, _) = proofman_common::stage_gpu_witness::<F, MemSlotOp, MemSlotOp>(
+        decl,
+        n_rows,
+        n_cols,
+        trace_buffer,
+        &[vec![op]],
+    )?;
+    instance.airvalues = air_values;
+    Ok(instance)
 }

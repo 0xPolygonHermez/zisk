@@ -54,8 +54,23 @@ pub struct OwnedMemInstances<'a> {
 }
 
 /// Never built on this platform.
+#[derive(Debug)]
 pub struct DeviceMemWitness;
 
 impl DeviceMemWitness {
-    pub fn fill_owned(&self, _owned: &OwnedMemInstances<'_>) {}
+    pub fn fill_owned(
+        &self,
+        _owned: &OwnedMemInstances<'_>,
+        _d_buffers: *mut std::ffi::c_void,
+    ) -> bool {
+        false
+    }
+}
+
+/// No device witness on this platform.
+pub fn device_mem_witness_end() {}
+
+/// No device witness on this platform.
+pub fn device_mem_witness_requested() -> bool {
+    false
 }

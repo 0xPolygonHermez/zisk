@@ -10,6 +10,8 @@ mod mem_align_sm;
 mod mem_align_write_byte_instance;
 mod mem_counters_cursor;
 mod mem_device_rows;
+pub use mem_device_rows::mem_slot_witness_airs;
+pub use mem_gpu_fill::MemSlotOp;
 mod mem_gpu_fill;
 mod mem_inputs;
 mod mem_module;

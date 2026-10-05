@@ -118,6 +118,10 @@ pub trait Dctx {
 ///
 /// Inherits [`Dctx`] for the shared distribution queries.
 pub trait ProofRegistry: Dctx {
+    /// Registers a distributed instance, placed by the batch balancer at the end of the
+    /// execution. Returns the assigned global id.
+    fn add_instance(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
+
     /// Registers an instance, placed on the least-loaded partition as it is registered.
     /// Returns the assigned global id.
     fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
@@ -167,6 +171,8 @@ pub(crate) mod fakes {
     /// Kind of registration call made via [`FakeProofRegistry`].
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum AddKind {
+        /// `add_instance` (placed by the batch balancer).
+        Instance,
         /// `add_instance_assign`.
         InstanceAssign,
         /// `add_table`.
@@ -252,6 +258,9 @@ pub(crate) mod fakes {
     }
 
     impl ProofRegistry for FakeProofRegistry {
+        fn add_instance(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
+            Ok(self.next_gid(AddKind::Instance, info))
+        }
         fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
             Ok(self.next_gid(AddKind::InstanceAssign, info))
         }

@@ -190,19 +190,74 @@ pub struct OwnedMemInstances<'a> {
 /// The block's device memory witness: the GPU planner retained the block's accesses and can fill
 /// the memory instances' rows while its arena is still borrowed. The executor calls `fill_owned`
 /// once the memory instances are registered and placed, before it releases the arena.
+#[derive(Debug)]
 pub struct DeviceMemWitness {
     shm_prefix: String,
     /// `ZISK_MEM_GPU_FILL=arena`: the rows are served from the device (`arena-check` fills and
     /// compares, the CPU rows are proved).
     serve_rows: bool,
+    /// `ZISK_MEM_GPU_FILL=slot`: the prover's kernel fills each instance into its slot; the arena
+    /// stays borrowed until the last owned memory instance is committed.
+    slot: bool,
 }
 
 impl DeviceMemWitness {
     /// Fills the owned instances of each family, RAM first (the others resolve their old words
-    /// from it), and marks the families whose fill succeeded as served from the device.
-    pub fn fill_owned(&self, owned: &OwnedMemInstances<'_>) {
+    /// from it), and marks the families whose fill succeeded as served from the device. In slot
+    /// mode it prepares the block instead and arms the arena's release (`d_buffers` is the
+    /// prover's device buffers) for the last owned instance's commit; returns whether the release
+    /// is deferred that way.
+    pub fn fill_owned(&self, owned: &OwnedMemInstances<'_>, d_buffers: *mut c_void) -> bool {
         #[cfg(not(gpu))]
-        let _ = owned;
+        let _ = (owned, d_buffers);
+        #[cfg(gpu)]
+        if self.slot {
+            timer_start_info!(GPU_MEM_WITNESS);
+            let prepared = input_image(&self.shm_prefix).and_then(|image| {
+                zisk_sm_mem_planner::gpu_slot_witness_prepare(image.bytes(), &owned.align)
+            });
+            timer_stop_and_log_info!(GPU_MEM_WITNESS);
+            match prepared {
+                Ok(p) => {
+                    let n_owned =
+                        owned.ram.len() + owned.rom.len() + owned.input.len() + owned.align.len();
+                    tracing::info!(
+                        "[gpu] memory witness in the slots: {} accesses resolved, {} instances, {} owned",
+                        p.n_accesses, p.n_instances, n_owned
+                    );
+                    let d_buffers = d_buffers as usize;
+                    zisk_sm_mem_planner::gpu_slot_witness_arm(
+                        n_owned,
+                        Box::new(move || {
+                            // The last owned memory instance is in its slot: the arena goes back and
+                            // the memory airs are host airs for the rest of the block (the proofs).
+                            zisk_common::MEM_ROWS_ON_DEVICE.store(0, Ordering::Release);
+                            proofman_starks_lib_c::release_first_gpu_buffer_c(
+                                d_buffers as *mut c_void,
+                            );
+                        }),
+                    );
+                    if n_owned == 0 {
+                        zisk_sm_mem_planner::gpu_slot_witness_release_now();
+                        return false;
+                    }
+                    zisk_common::MEM_ROWS_ON_DEVICE.store(
+                        zisk_common::MEM_ROWS_RAM
+                            | zisk_common::MEM_ROWS_ROM
+                            | zisk_common::MEM_ROWS_INPUT
+                            | zisk_common::MEM_ROWS_ALIGN,
+                        Ordering::Release,
+                    );
+                    return true;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "[gpu] memory witness in the slots unavailable for this block ({e}); the memory instances fall back to the CPU witness"
+                    );
+                    return false;
+                }
+            }
+        }
         #[cfg(gpu)]
         {
             timer_start_info!(GPU_MEM_WITNESS);
@@ -273,7 +328,21 @@ impl DeviceMemWitness {
                 timer_stop_and_log_info!(GPU_ALIGN_WITNESS);
             }
         }
+        false
     }
+}
+
+/// Whether `ZISK_MEM_GPU_FILL` asks for the memory witness on the device (`arena` or `slot`): the
+/// executor then registers the secondaries in two rounds and the slot commits run through the plan.
+pub fn device_mem_witness_requested() -> bool {
+    matches!(std::env::var("ZISK_MEM_GPU_FILL").as_deref(), Ok("arena") | Ok("slot"))
+}
+
+/// Releases the arena a slot-mode block still holds (its memory instances were not all
+/// committed) and clears the device flags: the proof's end.
+pub fn device_mem_witness_end() {
+    #[cfg(gpu)]
+    zisk_sm_mem_planner::gpu_slot_witness_release_now();
 }
 
 /// This struct is used to run the assembly code in a separate process and generate minimal traces.
@@ -507,18 +576,24 @@ impl AsmRunnerMO {
         // In the GPU case no-op since the GPU planner has no background threads
         mem_planner.set_completed();
 
-        // The prover's streaming-commit slots keep running through the final GPU
-        // planning phase and the device fills: with the secondaries registered in
-        // two rounds, only the memory instances wait for them. The plan itself runs
-        // ~10x slower beside the commit kernels (host-paced micro-ops), which
-        // `ZISK_MOPS_COMMIT_PAUSE=1` avoids by quiescing the slots first, at the
-        // price of idling them for the whole window. Backend-dispatched in
+        // With the memory witness on the device the prover's streaming-commit slots
+        // keep running through the final GPU planning phase and the device fills:
+        // the secondaries are registered in two rounds and only the memory
+        // instances wait for the plan. The plan itself runs ~10x slower beside the
+        // commit kernels (host-paced micro-ops), so with the CPU witness, where
+        // everything waits for it, the slots are quiesced first.
+        // `ZISK_MOPS_COMMIT_PAUSE=1`/`0` forces either. Backend-dispatched in
         // libstarks: no-op when slots are disabled or on the CPU backend.
         #[cfg(gpu)]
-        if gpu_count_and_plan_opt.is_some()
-            && std::env::var("ZISK_MOPS_COMMIT_PAUSE").as_deref() == Ok("1")
-        {
-            proofman_starks_lib_c::stream_commit_pause_c();
+        if gpu_count_and_plan_opt.is_some() {
+            let pause = match std::env::var("ZISK_MOPS_COMMIT_PAUSE").as_deref() {
+                Ok("1") => true,
+                Ok("0") => false,
+                _ => !device_mem_witness_requested(),
+            };
+            if pause {
+                proofman_starks_lib_c::stream_commit_pause_c();
+            }
         }
 
         // GPU path: evaluate metas
@@ -560,6 +635,13 @@ impl AsmRunnerMO {
                     device_witness = Some(DeviceMemWitness {
                         shm_prefix: shm_prefix.clone(),
                         serve_rows: mode == "arena",
+                        slot: false,
+                    });
+                } else if mode == "slot" {
+                    device_witness = Some(DeviceMemWitness {
+                        shm_prefix: shm_prefix.clone(),
+                        serve_rows: true,
+                        slot: true,
                     });
                 }
             }

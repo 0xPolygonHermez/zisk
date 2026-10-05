@@ -130,6 +130,15 @@ impl<F: PrimeField64> Dctx for ProofmanAdapter<'_, F> {
 }
 
 impl<F: PrimeField64> ProofRegistry for ProofmanAdapter<'_, F> {
+    fn add_instance(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
+        self.track(&info);
+        Ok(GlobalId(self.pctx.add_instance_with_priority(
+            info.airgroup_id,
+            info.air_id,
+            info.priority,
+        )?))
+    }
+
     fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         self.track(&info);
         Ok(GlobalId(self.pctx.add_instance_assign(info.airgroup_id, info.air_id, info.priority)?))
@@ -214,6 +223,10 @@ impl Dctx for NoopProofRegistry {
 }
 
 impl ProofRegistry for NoopProofRegistry {
+    fn add_instance(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
+        self.track(info);
+        Ok(GlobalId(0))
+    }
     fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         self.track(info);
         Ok(GlobalId(0))
