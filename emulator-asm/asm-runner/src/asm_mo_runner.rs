@@ -173,6 +173,109 @@ impl Drop for MOShmemReader {
     }
 }
 
+/// The memory instances this process owns, by family: segment ids for Mem, RomData and
+/// InputData, the plans (with their checkpoints) for the MemAlign airs.
+#[derive(Default)]
+pub struct OwnedMemInstances<'a> {
+    /// Segment ids of the owned `Mem` instances.
+    pub ram: Vec<u32>,
+    /// Segment ids of the owned `RomData` instances.
+    pub rom: Vec<u32>,
+    /// Segment ids of the owned `InputData` instances.
+    pub input: Vec<u32>,
+    /// The owned MemAlign plans, with their checkpoints.
+    pub align: Vec<&'a Plan>,
+}
+
+/// The block's device memory witness: the GPU planner retained the block's accesses and can fill
+/// the memory instances' rows while its arena is still borrowed. The executor calls `fill_owned`
+/// once the memory instances are registered and placed, before it releases the arena.
+pub struct DeviceMemWitness {
+    shm_prefix: String,
+    /// `ZISK_MEM_GPU_FILL=arena`: the rows are served from the device (`arena-check` fills and
+    /// compares, the CPU rows are proved).
+    serve_rows: bool,
+}
+
+impl DeviceMemWitness {
+    /// Fills the owned instances of each family, RAM first (the others resolve their old words
+    /// from it), and marks the families whose fill succeeded as served from the device.
+    pub fn fill_owned(&self, owned: &OwnedMemInstances<'_>) {
+        #[cfg(not(gpu))]
+        let _ = owned;
+        #[cfg(gpu)]
+        {
+            timer_start_info!(GPU_MEM_WITNESS);
+            let mark = |bit: u32| {
+                if self.serve_rows {
+                    zisk_common::MEM_ROWS_ON_DEVICE.fetch_or(bit, Ordering::AcqRel);
+                }
+            };
+            let ram = zisk_sm_mem_planner::gpu_ram_witness_fill_all(&owned.ram);
+            let mut all_ok = false;
+            match &ram {
+                Ok(p) => {
+                    tracing::info!(
+                        "[gpu] RAM witness: {} accesses -> {} lanes, {} of {} instances; sort {:.0} pairing {:.0} values {:.0} prepare {:.0}ms",
+                        p.n_accesses, p.n_lanes, owned.ram.len(), p.n_instances, p.ms_sort, p.ms_lanes, p.ms_values, p.ms_total
+                    );
+                    mark(zisk_common::MEM_ROWS_RAM);
+                    let rom = zisk_sm_mem_planner::gpu_rom_witness_fill_all(&owned.rom);
+                    match &rom {
+                        Ok(p) => {
+                            tracing::info!(
+                                "[gpu] RomData witness: {} ROM and input accesses, {} of {} instances",
+                                p.n_accesses, owned.rom.len(), p.n_instances
+                            );
+                            mark(zisk_common::MEM_ROWS_ROM);
+                        }
+                        Err(e) => tracing::warn!(
+                            "[gpu] RomData witness unavailable for this block ({e}); its instances fall back to the CPU witness"
+                        ),
+                    }
+                    let input = input_image(&self.shm_prefix).and_then(|image| {
+                        zisk_sm_mem_planner::gpu_input_witness_fill_all(image.bytes(), &owned.input)
+                    });
+                    match &input {
+                        Ok(p) => {
+                            tracing::info!(
+                                "[gpu] InputData witness: {} of {} instances",
+                                owned.input.len(), p.n_instances
+                            );
+                            mark(zisk_common::MEM_ROWS_INPUT);
+                        }
+                        Err(e) => tracing::warn!(
+                            "[gpu] InputData witness unavailable for this block ({e}); its instances fall back to the CPU witness"
+                        ),
+                    }
+                    all_ok = rom.is_ok() && input.is_ok();
+                }
+                Err(e) => tracing::warn!(
+                    "[gpu] RAM witness unavailable for this block ({e}); the Mem instances fall back to the CPU witness"
+                ),
+            }
+            timer_stop_and_log_info!(GPU_MEM_WITNESS);
+            // The MemAlign rows need the old words all three fills scattered.
+            if all_ok {
+                timer_start_info!(GPU_ALIGN_WITNESS);
+                match zisk_sm_mem_planner::gpu_align_witness_fill_all(&owned.align) {
+                    Ok(p) => {
+                        tracing::info!(
+                            "[gpu] MemAlign witness: {} accesses, {} instances",
+                            p.n_accesses, p.n_instances
+                        );
+                        mark(zisk_common::MEM_ROWS_ALIGN);
+                    }
+                    Err(e) => tracing::warn!(
+                        "[gpu] MemAlign witness unavailable for this block ({e}); its instances fall back to the CPU witness"
+                    ),
+                }
+                timer_stop_and_log_info!(GPU_ALIGN_WITNESS);
+            }
+        }
+    }
+}
+
 /// This struct is used to run the assembly code in a separate process and generate minimal traces.
 pub struct AsmRunnerMO {
     /// The generated plans from the MO trace.
@@ -180,12 +283,15 @@ pub struct AsmRunnerMO {
     /// Bytes of the proofman-owned GPU buffer consumed by the GPU mem-ops
     /// planner; `None` on the CPU planner path.
     pub gpu_mops_used_bytes: Option<u64>,
+    /// The device memory witness of this block, when the GPU planner retained the accesses and
+    /// `ZISK_MEM_GPU_FILL` asks for it.
+    pub device_witness: Option<DeviceMemWitness>,
 }
 
 impl AsmRunnerMO {
     /// Creates a new `AsmRunnerMO` with the given plans (no GPU planner usage).
     pub fn new(plans: Vec<Plan>) -> Self {
-        Self { plans, gpu_mops_used_bytes: None }
+        Self { plans, gpu_mops_used_bytes: None, device_witness: None }
     }
 
     /// Runs the assembly code in a separate process, collects the MO trace, and generates plans.
@@ -441,75 +547,20 @@ impl AsmRunnerMO {
 
         // inject GPU-produced segments to the C++ segment table.
         // The plan is closed: the planner can now serve the block's RAM witness.
-        // The MemAlign fill needs the three memory fills' old words: only after all of them.
-        #[cfg(gpu)]
-        let mut device_fills_ok = false;
+        // The plan is closed: the planner can serve the block's memory witness. The fills run
+        // from the executor once the memory instances are registered and placed, so only the
+        // owned ones are filled; the arena stays borrowed until then.
+        let mut device_witness = None;
         #[cfg(gpu)]
         if let Some(gpu_count_and_plan) = gpu_count_and_plan_opt.as_ref() {
             if gpu_metas_view.is_some() {
                 zisk_sm_mem_planner::register_gpu_ram_witness(gpu_count_and_plan, chunk_size);
-                // The device phase of the RAM witness must run while the arena is still ours: the
-                // executor hands the buffer back to the prover as soon as the plan returns.
-                if std::env::var("ZISK_MEM_GPU_FILL")
-                    .map(|v| v.starts_with("arena"))
-                    .unwrap_or(false)
-                {
-                    timer_start_info!(GPU_MEM_WITNESS);
-                    let (mut ram_filled, mut rom_filled, mut input_filled) = (false, false, false);
-                    match zisk_sm_mem_planner::gpu_ram_witness_fill_all() {
-                        Ok(p) => {
-                            ram_filled = true;
-                            tracing::info!(
-                                "[gpu] RAM witness: {} accesses -> {} lanes, {} instances; sort {:.0} pairing {:.0} values {:.0} prepare {:.0}ms",
-                                p.n_accesses, p.n_lanes, p.n_instances, p.ms_sort, p.ms_lanes, p.ms_values, p.ms_total
-                            );
-                            // Only `arena` serves the rows from the device; `arena-check` keeps the
-                            // CPU witness and compares against it.
-                            if std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("arena") {
-                                zisk_common::MEM_ROWS_ON_DEVICE
-                                    .fetch_or(zisk_common::MEM_ROWS_RAM, Ordering::AcqRel);
-                            }
-                            match zisk_sm_mem_planner::gpu_rom_witness_fill_all() {
-                                Ok(p) => {
-                                    rom_filled = true;
-                                    tracing::info!(
-                                        "[gpu] RomData witness: {} ROM and input accesses -> {} lanes, {} instances",
-                                        p.n_accesses, p.n_lanes, p.n_instances
-                                    );
-                                    if std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("arena") {
-                                        zisk_common::MEM_ROWS_ON_DEVICE
-                                            .fetch_or(zisk_common::MEM_ROWS_ROM, Ordering::AcqRel);
-                                    }
-                                }
-                                Err(e) => tracing::warn!(
-                                    "[gpu] RomData witness unavailable for this block ({e}); its instances fall back to the CPU witness"
-                                ),
-                            }
-                            match input_image(&shm_prefix)
-                                .and_then(|image| zisk_sm_mem_planner::gpu_input_witness_fill_all(image.bytes()))
-                            {
-                                Ok(p) => {
-                                    input_filled = true;
-                                    tracing::info!(
-                                        "[gpu] InputData witness: {} lanes, {} instances",
-                                        p.n_lanes, p.n_instances
-                                    );
-                                    if std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("arena") {
-                                        zisk_common::MEM_ROWS_ON_DEVICE
-                                            .fetch_or(zisk_common::MEM_ROWS_INPUT, Ordering::AcqRel);
-                                    }
-                                }
-                                Err(e) => tracing::warn!(
-                                    "[gpu] InputData witness unavailable for this block ({e}); its instances fall back to the CPU witness"
-                                ),
-                            }
-                        }
-                        Err(e) => tracing::warn!(
-                            "[gpu] RAM witness unavailable for this block ({e}); the Mem instances fall back to the CPU witness"
-                        ),
-                    }
-                    timer_stop_and_log_info!(GPU_MEM_WITNESS);
-                    device_fills_ok = ram_filled && rom_filled && input_filled;
+                let mode = std::env::var("ZISK_MEM_GPU_FILL").unwrap_or_default();
+                if mode.starts_with("arena") {
+                    device_witness = Some(DeviceMemWitness {
+                        shm_prefix: shm_prefix.clone(),
+                        serve_rows: mode == "arena",
+                    });
                 }
             }
         }
@@ -572,29 +623,6 @@ impl AsmRunnerMO {
             #[cfg(not(gpu))]
             let mut mem_align_plans = mem_planner.wait_mem_align_plans();
 
-            // The MemAlign instances' rows, from the plans just built and the old words the memory
-            // fills left; still inside the arena's borrow.
-            #[cfg(gpu)]
-            if device_fills_ok {
-                timer_start_info!(GPU_ALIGN_WITNESS);
-                match zisk_sm_mem_planner::gpu_align_witness_fill_all(&mem_align_plans) {
-                    Ok(p) => {
-                        tracing::info!(
-                            "[gpu] MemAlign witness: {} accesses, {} instances",
-                            p.n_accesses, p.n_instances
-                        );
-                        if std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("arena") {
-                            zisk_common::MEM_ROWS_ON_DEVICE
-                                .fetch_or(zisk_common::MEM_ROWS_ALIGN, Ordering::AcqRel);
-                        }
-                    }
-                    Err(e) => tracing::warn!(
-                        "[gpu] MemAlign witness unavailable for this block ({e}); its instances fall back to the CPU witness"
-                    ),
-                }
-                timer_stop_and_log_info!(GPU_ALIGN_WITNESS);
-            }
-
             stats_end!(_stats, &_process_scope);
             stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);
             let plans = mem_planner.collect_plans(&mut mem_align_plans);
@@ -619,6 +647,6 @@ impl AsmRunnerMO {
         save_plans(&plans, "mem_plans_cpp.txt");
 
         stats_end!(_stats, &_runner_scope);
-        Ok(AsmRunnerMO { plans, gpu_mops_used_bytes })
+        Ok(AsmRunnerMO { plans, gpu_mops_used_bytes, device_witness })
     }
 }
