@@ -1,14 +1,16 @@
 use crate::{MemAlignCollector, MemAlignSM};
 use zisk_sm_mem_common::MemAlignCheckPoint;
 
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{MemAlignLargeTrace, MemAlignTrace, MemAlignTraceRow, MemAlignTraceRowPacked};
+use zisk_pil::{
+    MemAlignLargeTrace, MemAlignTrace, MemAlignTraceRow, MemAlignTraceRowPacked, ZISK_AIRGROUP_ID,
+};
 
 /// Height and air id of each `MemAlign` air, as const-generic arguments for the witness computation.
 const ROWS: usize = MemAlignTrace::<()>::NUM_ROWS;
@@ -46,6 +48,50 @@ impl<F: PrimeField64> MemAlignInstance<F> {
     pub fn build_mem_align_collector(&self, chunk_id: ChunkId) -> MemAlignCollector {
         MemAlignCollector::new(&self.checkpoint[&chunk_id])
     }
+
+    /// The instance from the rows the GPU planner built (`ZISK_MEM_GPU_FILL=arena`).
+    fn device_witness(
+        &self,
+        air_id: usize,
+        segment: usize,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<AirInstance<F>> {
+        if !packed {
+            return Err(proofman_common::ProofmanError::InvalidParameters(
+                "ZISK_MEM_GPU_FILL=arena needs the packed MemAlign trace".to_string(),
+            ));
+        }
+        if self.is_large() {
+            Self::device_trace::<LARGE_ROWS, LARGE_AIR_ID>(air_id, segment, trace_buffer)
+        } else {
+            Self::device_trace::<ROWS, AIR_ID>(air_id, segment, trace_buffer)
+        }
+    }
+
+    fn device_trace<const N: usize, const A: usize>(
+        air_id: usize,
+        segment: usize,
+        trace_buffer: Vec<F>,
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace =
+            GenericTrace::<MemAlignTraceRowPacked<F>, N, ZISK_AIRGROUP_ID, A>::new_from_vec(
+                trace_buffer,
+            )?;
+        let used = crate::mem_device_rows::align_device_rows(
+            air_id,
+            segment,
+            crate::mem_trace_hash::rows_as_words_mut(&mut trace.buffer),
+        )?;
+        crate::mem_device_rows::align_dump(
+            air_id,
+            segment,
+            crate::mem_trace_hash::rows_as_words(&trace.buffer),
+            used,
+            MemAlignTraceRowPacked::<F>::PACKED_WORDS,
+        );
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
@@ -57,6 +103,17 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         trace_buffer: Vec<F>,
         packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
+        let air_id = self.ictx.plan.air_id;
+        let segment =
+            usize::from(self.ictx.plan.segment_id.expect("MemAlign plan without segment"));
+        if crate::mem_device_rows::rows_on_device("align") {
+            return self.device_witness(air_id, segment, trace_buffer, packed).map(Some);
+        }
+        let mut hook = move |cpu: &[u64], f: &crate::mem_gpu_fill::RowsFilled| {
+            crate::mem_device_rows::align_filled(air_id, segment, cpu, f.used, f.words_per_row);
+        };
+        let mut on_filled: crate::mem_gpu_fill::OnFilled<'_, crate::mem_gpu_fill::RowsFilled> =
+            if packed { Some(&mut hook) } else { None };
         let mut total_rows = 0;
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -75,22 +132,26 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
                 &inputs,
                 used_rows,
                 trace_buffer,
+                on_filled.take(),
             )?,
             (false, false) => sm.compute_witness::<MemAlignTraceRow<F>, ROWS, AIR_ID>(
                 &inputs,
                 used_rows,
                 trace_buffer,
+                on_filled.take(),
             )?,
             (true, true) => sm
                 .compute_witness::<MemAlignTraceRowPacked<F>, LARGE_ROWS, LARGE_AIR_ID>(
                     &inputs,
                     used_rows,
                     trace_buffer,
+                    on_filled.take(),
                 )?,
             (true, false) => sm.compute_witness::<MemAlignTraceRow<F>, LARGE_ROWS, LARGE_AIR_ID>(
                 &inputs,
                 used_rows,
                 trace_buffer,
+                on_filled.take(),
             )?,
         }))
     }

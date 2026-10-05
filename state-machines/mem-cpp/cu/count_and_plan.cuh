@@ -103,6 +103,31 @@ struct RamRecords {
         r[0] = a; r[1] = (uint32_t)m; r[2] = (uint32_t)(m >> 32); r[3] = (uint32_t)v; r[4] = (uint32_t)(v >> 32);
     }
 };
+// A MemAlign access (unaligned, or one byte wide), retained in arrival order in its own region at
+// the arena top. The read potentials of the access carry the index of its old-word slots, which
+// the memory fills scatter the resolved words into.
+struct AlignRecord {
+    uint32_t addr;     // byte address
+    uint32_t chunk;
+    uint64_t info;     // mem step (40) | kind << 40 (3) | width << 43 (4) | wr << 47
+    uint64_t value;    // the written value as the stream carries it; 0 for a read
+    uint64_t old[2];   // the words the access found, filled in by the fills
+};
+constexpr uint32_t ALIGN_KIND_SHIFT = 40, ALIGN_WIDTH_SHIFT = 43, ALIGN_WR_SHIFT = 47;
+constexpr uint32_t ALIGN_KINDS = 5;          // full_5, full_3, full_2, read_byte, write_byte
+constexpr uint32_t ALIGN_KIND_NONE = ALIGN_KINDS;
+constexpr uint32_t ALIGN_RUN_NONE = 0xFFFFFFFFu;
+constexpr uint32_t MAX_ALIGN_RUNS = 1u << 19;  // one per piece
+struct AlignRun { uint32_t base; uint32_t n; };
+// One MemAlign instance of the host plan: `air_kind` 0 full (MemAlign, MemAlignLarge), 1 byte
+// (MemAlignByte, MemAlignByteLarge), 2 read byte, 3 write byte; its chunks are
+// entries[entry_from, entry_from + entry_n). POD, mirrored in gpu_bindings.rs.
+struct AlignPlanDesc { uint32_t air_kind, air_id, segment, n_rows, entry_from, entry_n; };
+// Per chunk of an instance: of the chunk's accesses of each kind, in arrival order, skip the
+// first `skip` and take the next `count` (the CPU collector's counters). POD, mirrored in Rust.
+struct AlignChunkEntry { uint32_t chunk; uint32_t skip[ALIGN_KINDS]; uint32_t count[ALIGN_KINDS]; };
+static_assert(sizeof(AlignPlanDesc) == 24 && sizeof(AlignChunkEntry) == 44, "align plan layout changed: update gpu_bindings.rs");
+
 // Word index of the first and last RAM addresses.
 constexpr uint32_t RAM_W_ADDR_BASE = ZISK_RAM_ADDR_BASE >> 3;
 constexpr uint32_t RAM_W_ADDR_LAST = (ZISK_RAM_ADDR_END - 8u) >> 3;
@@ -223,6 +248,15 @@ public:
                           uint32_t lanes_x_row);
     bool fill_all_input_instances(uint32_t n_rows, const void* image, size_t image_bytes, RamFillPrepared* prepared);
     const uint64_t* input_instance_rows(uint32_t inst, RamFillResult* res) const;
+
+    // ─── MemAlign witness from the retained align accesses (after the three memory fills) ─────
+    // The fills leave every access's old words in its record; each instance of the host plan then
+    // selects its accesses (per chunk, per kind, skip/count), builds its rows in arrival order and
+    // packs them into pinned memory, served by (air id, segment).
+    bool set_align_layout(uint32_t air_kind, const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row);
+    bool fill_all_align_instances(const AlignPlanDesc* plans, uint32_t n_plans, const AlignChunkEntry* entries,
+                                  uint32_t n_entries, RamFillPrepared* prepared);
+    const uint64_t* align_instance_rows(uint32_t air_id, uint32_t segment, RamFillResult* res) const;
 
 
     bool register_input_pinned(void* ptr, size_t bytes);
@@ -395,6 +429,33 @@ private:
     std::vector<RamFillResult> input_results_;
     bool fill_input_instance(uint32_t inst, const uint64_t* d_image, const uint64_t* h_image, size_t image_words,
                              uint8_t* scratch, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res);
+    // MemAlign retention (count_and_plan.cu) and fill (ram_fill.cu).
+    AlignRecord*               d_align_ = nullptr;           // region at the arena top, align_cap_ records
+    size_t                     align_cap_ = 0;
+    uint32_t*                  d_align_cursor_ = nullptr;    // records reserved (device atomic)
+    uint32_t*                  d_align_overflow_ = nullptr;  // set when a reservation did not fit
+    AlignRun*                  d_align_runs_ = nullptr;      // per piece slot
+    std::atomic<uint32_t>      align_slot_{0};
+    std::atomic<bool>          align_enabled_{false};
+    struct AlignPieceRun { uint32_t chunk, slot; };
+    std::vector<AlignPieceRun> align_runs_;                  // under ram_runs_mtx_
+    uint8_t*                   d_align_kind_[N_STREAMS] = {nullptr};
+    uint32_t*                  d_align_flag_[N_STREAMS] = {nullptr};
+    uint32_t*                  d_align_rank_[N_STREAMS] = {nullptr};
+    uint32_t                   align_col_widths_[4][64] = {{0}};
+    uint32_t                   align_n_cols_[4] = {0}, align_words_per_row_[4] = {0};
+    bool                       align_prepared_ = false;
+    size_t                     align_total_ = 0;
+    uint32_t*                  d_align_order_ = nullptr;     // access -> record index, in (chunk, arrival) order
+    std::vector<size_t>        h_align_chunk_start_;         // first access of each chunk in that order
+    uint8_t*                   align_scratch_ = nullptr;
+    uint64_t*                  h_align_rows_ = nullptr;      // pinned
+    size_t                     h_align_rows_cap_ = 0;
+    struct AlignFilled { uint32_t air_id, segment; size_t offset; RamFillResult res; };
+    std::vector<AlignFilled>   align_results_;
+    bool prepare_align_index_();
+    bool fill_align_instance(const AlignPlanDesc& plan, const AlignChunkEntry* entries, uint8_t* scratch,
+                             uint64_t* out_rows, RamFillResult* res);
     uint32_t           mem_col_widths_[64] = {0};
     uint32_t           mem_n_cols_ = 0, mem_words_per_row_ = 0, mem_lanes_x_row_ = 0;
 

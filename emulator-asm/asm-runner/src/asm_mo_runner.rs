@@ -438,6 +438,9 @@ impl AsmRunnerMO {
 
         // inject GPU-produced segments to the C++ segment table.
         // The plan is closed: the planner can now serve the block's RAM witness.
+        // The MemAlign fill needs the three memory fills' old words: only after all of them.
+        #[cfg(gpu)]
+        let mut device_fills_ok = false;
         #[cfg(gpu)]
         if let Some(gpu_count_and_plan) = gpu_count_and_plan_opt.as_ref() {
             if gpu_metas_view.is_some() {
@@ -449,8 +452,10 @@ impl AsmRunnerMO {
                     .unwrap_or(false)
                 {
                     timer_start_info!(GPU_MEM_WITNESS);
+                    let (mut ram_filled, mut rom_filled, mut input_filled) = (false, false, false);
                     match zisk_sm_mem_planner::gpu_ram_witness_fill_all() {
                         Ok(p) => {
+                            ram_filled = true;
                             tracing::info!(
                                 "[gpu] RAM witness: {} accesses -> {} lanes, {} instances; sort {:.0} pairing {:.0} values {:.0} prepare {:.0}ms",
                                 p.n_accesses, p.n_lanes, p.n_instances, p.ms_sort, p.ms_lanes, p.ms_values, p.ms_total
@@ -463,6 +468,7 @@ impl AsmRunnerMO {
                             }
                             match zisk_sm_mem_planner::gpu_rom_witness_fill_all() {
                                 Ok(p) => {
+                                    rom_filled = true;
                                     tracing::info!(
                                         "[gpu] RomData witness: {} ROM and input accesses -> {} lanes, {} instances",
                                         p.n_accesses, p.n_lanes, p.n_instances
@@ -480,6 +486,7 @@ impl AsmRunnerMO {
                                 .and_then(|image| zisk_sm_mem_planner::gpu_input_witness_fill_all(image.bytes()))
                             {
                                 Ok(p) => {
+                                    input_filled = true;
                                     tracing::info!(
                                         "[gpu] InputData witness: {} lanes, {} instances",
                                         p.n_lanes, p.n_instances
@@ -499,6 +506,7 @@ impl AsmRunnerMO {
                         ),
                     }
                     timer_stop_and_log_info!(GPU_MEM_WITNESS);
+                    device_fills_ok = ram_filled && rom_filled && input_filled;
                 }
             }
         }
@@ -560,6 +568,29 @@ impl AsmRunnerMO {
                 .unwrap_or_else(|| mem_planner.wait_mem_align_plans());
             #[cfg(not(gpu))]
             let mut mem_align_plans = mem_planner.wait_mem_align_plans();
+
+            // The MemAlign instances' rows, from the plans just built and the old words the memory
+            // fills left; still inside the arena's borrow.
+            #[cfg(gpu)]
+            if device_fills_ok {
+                timer_start_info!(GPU_ALIGN_WITNESS);
+                match zisk_sm_mem_planner::gpu_align_witness_fill_all(&mem_align_plans) {
+                    Ok(p) => {
+                        tracing::info!(
+                            "[gpu] MemAlign witness: {} accesses, {} instances",
+                            p.n_accesses, p.n_instances
+                        );
+                        if std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("arena") {
+                            zisk_common::MEM_ROWS_ON_DEVICE
+                                .fetch_or(zisk_common::MEM_ROWS_ALIGN, Ordering::AcqRel);
+                        }
+                    }
+                    Err(e) => tracing::warn!(
+                        "[gpu] MemAlign witness unavailable for this block ({e}); its instances fall back to the CPU witness"
+                    ),
+                }
+                timer_stop_and_log_info!(GPU_ALIGN_WITNESS);
+            }
 
             stats_end!(_stats, &_process_scope);
             stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);

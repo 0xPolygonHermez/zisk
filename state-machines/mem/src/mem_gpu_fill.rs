@@ -14,6 +14,13 @@ use crate::mem_sm::{split_last_step, split_padding_size, MemFillOutput, MemPrevi
 /// built. The arena check compares them with the device rows.
 pub type OnFilled<'a, O> = Option<&'a mut dyn FnMut(&[u64], &O)>;
 
+/// What a MemAlign fill reports: the rows its accesses took and the words of a row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RowsFilled {
+    pub used: usize,
+    pub words_per_row: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GpuFillMode {
     Off,
