@@ -40,9 +40,15 @@ Please include as much of the following as you can:
 - We will send an initial assessment, including whether we consider it a vulnerability and how severe it is.
 - We will keep you informed while we work on a fix, and tell you when it is released.
 
-Once a fix is available, we publish a GitHub security advisory describing the issue. We credit reporters in the advisory unless they ask to remain anonymous. Please keep the issue confidential until the advisory is published.
+Once a fix is available, we publish a GitHub security advisory describing the issue. We credit reporters in the advisory and in the release notes of the version that fixes the issue, unless they ask to remain anonymous. Please keep the issue confidential until the advisory is published.
 
-**There is no Bug Bounty Programme at the moment.**
+## Rewards
+
+**ZisK does not currently run a bug bounty programme.**
+
+Submitting a report does not entitle the reporter to a payment. We do recognise valid reports by crediting the reporter in the published security advisory and in the release notes, as described above.
+
+If a reward programme is launched in the future, it will be announced publicly.
 
 ## Scope
 
