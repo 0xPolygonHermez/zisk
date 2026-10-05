@@ -7,7 +7,7 @@
 use std::sync::{Mutex, MutexGuard};
 
 use crate::gpu_bindings::{AlignChunkEntry, AlignPlanDesc};
-pub use crate::gpu_bindings::{RamFillPrepared, RamFillResult};
+pub use crate::gpu_bindings::{MemSlotOp, RamFillPrepared, RamFillResult};
 
 /// A registered planner. The raw handle is only ever used under [`GPU_RAM_WITNESS`]'s lock, which
 /// serialises every device call, and only while the runner keeps the planner alive.
@@ -307,9 +307,11 @@ pub fn gpu_input_witness_fill(
     Ok(res)
 }
 
-/// Builds the MemAlign instances `plans` into pinned host memory, after the three memory fills.
-/// Each plan carries its per-chunk checkpoints, which become the device's windows.
-pub fn gpu_align_witness_fill_all(plans: &[&zisk_common::Plan]) -> Result<RamFillPrepared, String> {
+/// The device's view of MemAlign plans: one descriptor per plan, its chunks' per-kind windows in
+/// `entries` (the checkpoints the plan carries).
+fn align_tables(
+    plans: &[&zisk_common::Plan],
+) -> Result<(Vec<AlignPlanDesc>, Vec<AlignChunkEntry>), String> {
     use std::collections::HashMap;
     use zisk_common::ChunkId;
     use zisk_sm_mem_common::MemAlignCheckPoint;
@@ -351,6 +353,13 @@ pub fn gpu_align_witness_fill_all(plans: &[&zisk_common::Plan]) -> Result<RamFil
             entry_n: entries.len() as u32 - entry_from,
         });
     }
+    Ok((descs, entries))
+}
+
+/// Builds the MemAlign instances `plans` into pinned host memory, after the three memory fills.
+/// Each plan carries its per-chunk checkpoints, which become the device's windows.
+pub fn gpu_align_witness_fill_all(plans: &[&zisk_common::Plan]) -> Result<RamFillPrepared, String> {
+    let (descs, entries) = align_tables(plans)?;
     let reg = registry();
     let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
     let mut prepared = RamFillPrepared::default();
@@ -529,4 +538,141 @@ pub fn gpu_ram_witness_fill(
     };
     copy_rows(out_rows, src);
     Ok(res)
+}
+
+// ─── Memory instances filled into the prover's slots (ZISK_MEM_GPU_FILL=slot) ─────────────────
+
+/// What runs when the last owned memory instance has been filled into its slot: the arena goes
+/// back to the prover, and the memory airs leave the device for the rest of the block.
+struct SlotRelease {
+    pending: usize,
+    release: Option<Box<dyn FnOnce() + Send>>,
+}
+
+static SLOT_RELEASE: Mutex<SlotRelease> = Mutex::new(SlotRelease { pending: 0, release: None });
+
+/// Prepares the block for the slot fills: every instance resolved (scalars and MemAlign old
+/// words), the input image on the device, the owned MemAlign plans known to the planner.
+pub fn gpu_slot_witness_prepare(
+    image: &[u8],
+    align_plans: &[&zisk_common::Plan],
+) -> Result<RamFillPrepared, String> {
+    let (descs, entries) = align_tables(align_plans)?;
+    let reg = registry();
+    let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
+    let mut prepared = RamFillPrepared::default();
+    // SAFETY: registered handle, under the lock; the tables and the image outlive the call, which
+    // copies what it keeps; `prepared` is a valid out-parameter.
+    let ok = unsafe {
+        crate::gpu_bindings::count_and_plan_prepare_slot_fills(
+            r.inner,
+            image.as_ptr(),
+            image.len(),
+            descs.as_ptr(),
+            descs.len() as u32,
+            entries.as_ptr(),
+            entries.len() as u32,
+            &mut prepared,
+        )
+    };
+    if !ok {
+        return Err(format!("prepare_slot_fills failed with status {}", prepared.status));
+    }
+    Ok(prepared)
+}
+
+/// The scalars of a resolved instance (`family` 0 Mem, 1 RomData, 2 InputData), for its air
+/// values; valid after the slot preparation, with or without rows.
+pub fn gpu_mem_witness_scalars(family: u32, inst: u32) -> Result<RamFillResult, String> {
+    let reg = registry();
+    let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
+    let mut res = RamFillResult::default();
+    // SAFETY: registered handle, under the lock; `res` is a valid out-parameter.
+    let ok = unsafe {
+        crate::gpu_bindings::count_and_plan_instance_scalars(r.inner, family, inst, &mut res)
+    };
+    if !ok {
+        return Err(format!("instance {inst} of family {family} was not resolved on the device"));
+    }
+    Ok(res)
+}
+
+/// Arms the release that follows the last of `n_pending` slot fills.
+pub fn gpu_slot_witness_arm(n_pending: usize, release: Box<dyn FnOnce() + Send>) {
+    let mut g = SLOT_RELEASE.lock().unwrap_or_else(|e| e.into_inner());
+    g.pending = n_pending;
+    g.release = Some(release);
+}
+
+/// Runs the armed release now, if it has not run: the end of the proof, or a block whose memory
+/// instances were not all committed.
+pub fn gpu_slot_witness_release_now() {
+    let release = {
+        let mut g = SLOT_RELEASE.lock().unwrap_or_else(|e| e.into_inner());
+        g.pending = 0;
+        g.release.take()
+    };
+    if let Some(release) = release {
+        release();
+    }
+}
+
+fn slot_fill_done() {
+    let release = {
+        let mut g = SLOT_RELEASE.lock().unwrap_or_else(|e| e.into_inner());
+        if g.pending == 0 {
+            None
+        } else {
+            g.pending -= 1;
+            if g.pending == 0 {
+                g.release.take()
+            } else {
+                None
+            }
+        }
+    };
+    if let Some(release) = release {
+        release();
+    }
+}
+
+/// The prover's GPU-witness kernel for the memory airs: builds the instance named by the staged
+/// `MemSlotOp` into `d_dst` (the commit slot) from the retained accesses, while the arena is still
+/// borrowed; after the last owned instance the armed release hands the arena back.
+///
+/// # Safety
+/// Called by the prover with `d_ops` a device buffer holding `num_ops` staged ops, `d_dst` the
+/// slot's packed rows and `stream` the commit stream that uploaded them; the planner waits for
+/// that stream, serialises the fills under its lock and synchronises the device before returning.
+pub unsafe extern "C" fn zisk_mem_witness_slot_kernel(
+    d_ops: *const core::ffi::c_void,
+    num_ops: u64,
+    d_dst: *mut u64,
+    _device_id: i32,
+    stream: *mut core::ffi::c_void,
+) -> i32 {
+    let ok = {
+        let reg = registry();
+        let Some(r) = reg.as_ref() else {
+            tracing::error!("[gpu] slot fill: no GPU planner registered");
+            return -1;
+        };
+        let mut res = RamFillResult::default();
+        // SAFETY: registered handle, under the lock; the prover's pointers are valid for the call.
+        let ok = unsafe {
+            crate::gpu_bindings::count_and_plan_fill_slot(
+                r.inner, d_ops, num_ops, d_dst, stream, &mut res,
+            )
+        };
+        if !ok {
+            tracing::error!("[gpu] slot fill failed with status {}", res.status);
+        }
+        ok
+    };
+    if ok {
+        slot_fill_done();
+        0
+    } else {
+        -2
+    }
 }

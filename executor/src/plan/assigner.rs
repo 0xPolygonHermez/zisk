@@ -86,10 +86,15 @@ impl InstanceAssigner {
     /// # Errors
     /// Returns an error if any registry assignment fails or if
     /// `global_ids` is poisoned.
+    /// `place_on_registration`: the secondaries are registered in two rounds (the minimal-trace
+    /// side first, the memory side when the memory-ops runner joins) and the first round's
+    /// witnesses start before the second is known, which the batch balancer at the end of the
+    /// execution would be too late for; otherwise the balancer places them, as one round did.
     pub fn assign_secn_instances(
         registry: &dyn ProofRegistry,
         global_ids: &RwLock<Vec<usize>>,
         plans: &mut [Plan],
+        place_on_registration: bool,
     ) -> ExecutorResult<()> {
         for plan in plans.iter_mut() {
             // Secondaries are announced only once their collectors have run, so they are the
@@ -105,11 +110,10 @@ impl InstanceAssigner {
                 registry.add_instance_assign(info)?
             } else {
                 match plan.instance_type {
-                    // Placed on registration: the secondaries are registered in two rounds (the
-                    // minimal-trace side first, the memory side when the memory-ops runner joins)
-                    // and the first round's witnesses start before the second is known, which the
-                    // batch balancer at the end of the execution would be too late for.
-                    InstanceType::Instance => registry.add_instance_assign(info)?,
+                    InstanceType::Instance if place_on_registration => {
+                        registry.add_instance_assign(info)?
+                    }
+                    InstanceType::Instance => registry.add_instance(info)?,
                     // Tables are not witness-dispatched; the band is irrelevant to them.
                     InstanceType::Table => {
                         registry.add_table(InstanceInfo::new(plan.airgroup_id, plan.air_id))?
@@ -193,17 +197,23 @@ mod tests {
         let registry = FakeProofRegistry::new();
         let global_ids = RwLock::new(Vec::<usize>::new());
 
-        // Plain Instance → add_instance_assign, Table → add_table.
+        // Plain Instance → add_instance (batch placement) or add_instance_assign (placed on
+        // registration), Table → add_table.
         let mut plans = vec![
             Plan::new(7, 200, None, InstanceType::Instance, zisk_common::CheckPoint::None, None),
             Plan::new(7, 201, None, InstanceType::Table, zisk_common::CheckPoint::None, None),
+            Plan::new(7, 202, None, InstanceType::Instance, zisk_common::CheckPoint::None, None),
         ];
 
-        InstanceAssigner::assign_secn_instances(&registry, &global_ids, &mut plans).expect("ok");
+        InstanceAssigner::assign_secn_instances(&registry, &global_ids, &mut plans[..2], false)
+            .expect("ok");
+        InstanceAssigner::assign_secn_instances(&registry, &global_ids, &mut plans[2..], true)
+            .expect("ok");
 
         let calls = registry.additions.borrow();
-        assert_eq!(calls.len(), 2);
-        assert_eq!(calls[0].kind, AddKind::InstanceAssign);
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[2].kind, AddKind::InstanceAssign);
+        assert_eq!(calls[0].kind, AddKind::Instance);
         assert_eq!(calls[1].kind, AddKind::Table);
     }
 }

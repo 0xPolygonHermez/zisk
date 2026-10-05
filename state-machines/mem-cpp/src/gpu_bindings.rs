@@ -101,6 +101,18 @@ pub struct AlignChunkEntry {
 }
 const _: () = assert!(core::mem::size_of::<AlignChunkEntry>() == 44);
 
+/// Mirrors `MemSlotOp` in `cu/count_and_plan.cuh`: the kernel input of one memory instance filled
+/// into a prover slot. `family`: 0 Mem, 1 RomData, 2 InputData, 3 MemAlign.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct MemSlotOp {
+    pub family: u32,
+    pub air_id: u32,
+    pub segment: u32,
+    pub n_rows: u32,
+}
+const _: () = assert!(core::mem::size_of::<MemSlotOp>() == 16);
+
 /// Per-chunk mem-align counters produced by the GPU kernel. Same five u32
 /// fields the CPU planner's `MemAlignCounters` uses (without `chunk_id` —
 /// the index in the returned slice IS the chunk_id).
@@ -219,6 +231,30 @@ extern "C" {
         segment: u32,
         res: *mut RamFillResult,
     ) -> *const u64;
+    pub fn count_and_plan_prepare_slot_fills(
+        h: *mut CountAndPlanHandle,
+        image: *const u8,
+        image_bytes: usize,
+        plans: *const AlignPlanDesc,
+        n_plans: u32,
+        entries: *const AlignChunkEntry,
+        n_entries: u32,
+        prepared: *mut RamFillPrepared,
+    ) -> bool;
+    pub fn count_and_plan_fill_slot(
+        h: *mut CountAndPlanHandle,
+        d_ops: *const core::ffi::c_void,
+        n_ops: u64,
+        dst: *mut u64,
+        stream: *mut core::ffi::c_void,
+        res: *mut RamFillResult,
+    ) -> bool;
+    pub fn count_and_plan_instance_scalars(
+        h: *mut CountAndPlanHandle,
+        family: u32,
+        inst: u32,
+        res: *mut RamFillResult,
+    ) -> bool;
     pub fn count_and_plan_ram_instance_rows(
         h: *mut CountAndPlanHandle,
         inst: u32,

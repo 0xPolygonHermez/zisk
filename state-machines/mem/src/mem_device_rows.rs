@@ -14,8 +14,50 @@ pub(crate) fn rows_on_device(name: &str) -> bool {
         "align" => zisk_common::MEM_ROWS_ALIGN,
         _ => return false,
     };
-    gpu_fill_mode() == GpuFillMode::Arena
+    matches!(gpu_fill_mode(), GpuFillMode::Arena | GpuFillMode::Slot)
         && zisk_common::MEM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire) & bit != 0
+}
+
+/// `ZISK_MEM_GPU_FILL=slot`: the memory instances are committed by the prover's kernel.
+pub(crate) fn slot_mode() -> bool {
+    gpu_fill_mode() == GpuFillMode::Slot
+}
+
+/// The kernel-input family of the MemAlign airs (the other three live with the staging helpers).
+pub(crate) const SLOT_FAMILY_ALIGN: u32 = 3;
+
+/// The prover's declaration of the memory airs the planner's kernel fills (`ZISK_MEM_GPU_FILL=slot`):
+/// Mem, RomData, InputData and the seven MemAlign airs, packed rows, host traces allowed (the
+/// proofs collect them on the CPU).
+pub fn mem_slot_witness_airs() -> Vec<proofman_common::GpuWitnessAir> {
+    use proofman_common::{GpuWitnessAir, TraceLayout};
+    use zisk_pil::*;
+    let op_bytes = std::mem::size_of::<crate::mem_gpu_fill::MemSlotOp>() as u64;
+    [
+        MemTrace::<()>::AIR_ID,
+        RomDataTrace::<()>::AIR_ID,
+        InputDataTrace::<()>::AIR_ID,
+        MemAlignTrace::<()>::AIR_ID,
+        MemAlignLargeTrace::<()>::AIR_ID,
+        MemAlignByteTrace::<()>::AIR_ID,
+        MemAlignByteLargeTrace::<()>::AIR_ID,
+        MemAlignReadByteTrace::<()>::AIR_ID,
+        MemAlignReadByteLargeTrace::<()>::AIR_ID,
+        MemAlignWriteByteTrace::<()>::AIR_ID,
+    ]
+    .into_iter()
+    .map(|air_id| {
+        GpuWitnessAir::new(
+            ZISK_AIRGROUP_ID,
+            air_id,
+            op_bytes,
+            op_bytes,
+            TraceLayout::PackedCm1,
+            zisk_sm_mem_planner::zisk_mem_witness_slot_kernel,
+        )
+        .with_host_trace()
+    })
+    .collect()
 }
 
 /// The rows of MemAlign instance (`air_id`, `segment`) from the GPU planner into `rows`; the rows
