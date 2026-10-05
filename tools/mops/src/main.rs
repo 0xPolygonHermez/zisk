@@ -23,6 +23,8 @@ const MOPS_WRITE_2: u32 = 0x12;
 const MOPS_WRITE_1: u32 = 0x11;
 
 const MOPS_CWRITE_1: u32 = 0x31;
+/// An aligned 8-byte read that carries its value (the free-input word).
+const MOPS_READ_8_VALUE: u32 = 0x28;
 
 const MOPS_BLOCK_READ: u32 = 0x0A;
 const MOPS_BLOCK_WRITE: u32 = 0x0B;
@@ -42,7 +44,7 @@ fn mops_record_len(hdr: u64) -> usize {
     let mode = ((hdr >> 32) & 0x3F) as u32;
     let low = mode & 0x0F;
     let single = matches!(low, 1 | 2 | 4 | 8);
-    if low == MOPS_ALIGNED_READ || (single && (mode & MOPS_WRITE_FLAG) == 0) {
+    if low == MOPS_ALIGNED_READ || (mode != MOPS_READ_8_VALUE && single && (mode & MOPS_WRITE_FLAG) == 0) {
         1
     } else if single || low == MOPS_ALIGNED_WRITE {
         if (hdr >> MOPS_NO_VALUE_BIT) & 1 == 1 { 1 } else { 2 }
@@ -232,8 +234,8 @@ impl MopsExpander {
                     }
                 }
 
-                // Aligned read
-                MOPS_ALIGNED_READ => {
+                // Aligned read, with or without the value (the free-input word carries it)
+                MOPS_ALIGNED_READ | MOPS_READ_8_VALUE => {
                     self.add_aligned_read(addr, &mut output);
                 }
                 // Aligned write
@@ -648,7 +650,8 @@ mod tests {
         0x3333333333333333, 0x3434343434343434, 0x3535353535353535, 0x3636363636363636,
         0x3737373737373737, 0x3838383838383838, 0x3939393939393939, 0x3a3a3a3a3a3a3a3a,
         0x3b3b3b3b3b3b3b3b, 0x3c3c3c3c3c3c3c3c, 0x3d3d3d3d3d3d3d3d, 0x3e3e3e3e3e3e3e3e,
-        0xaaf37817a0200000, 0x0000000000000000, 0x0000000000000042
+        0xaaf37817a0200000, 0x0000000000000000, 0x0000000000000042,
+        0xc048d16840000000, 0x0000000000000042, 0x8400002840000000,
     ];
     const EXPECT: &[(usize, u32, u32, i64, &str)] = &[
         (1, 0xa0000003, 0x01, -1, "read_1 unaligned"),
@@ -666,6 +669,8 @@ mod tests {
         (2, 0xa0005000, 0x0f, 9, "aligned block write 9 with step payload"),
         (65, 0xa0100000, 0x0f, 63, "value block 63"),
         (3, 0xa0200000, 0x0f, 1, "value block 1"),
+        (2, 0x40000000, 0x28, -1, "free-input read with value"),
+        (1, 0x40000000, 0x28, -1, "free-input read, light"),
     ];
 
     #[test]
