@@ -2987,6 +2987,12 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end
     }
 
+    /// Returns the step and pc where the execution failed (an illegal instruction, a
+    /// nonzero exit code, ...), or None if it did not fail
+    pub fn failure(&self) -> Option<(u64, u64)> {
+        self.ctx.inst_ctx.error.then_some((self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc))
+    }
+
     /// Returns the number of executed steps
     pub fn number_of_steps(&self) -> u64 {
         self.ctx.inst_ctx.step

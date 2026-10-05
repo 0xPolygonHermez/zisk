@@ -242,6 +242,12 @@ impl<'a> Riscv2ZiskContext<'a> {
             // I.6 Privileged & System Instructions (Part of I Base)
             RiscvInstName::Ecall => self.ecall(riscv_instruction),
             RiscvInstName::Ebreak => self.nop(riscv_instruction, 4),
+            // A write to a read-only CSR is an illegal instruction, so the execution
+            // fails there. `unimp` (`csrrw x0, cycle, x0`) is one: compilers emit it
+            // for every trap (core::intrinsics::abort, Rust's __rust_abort, llvm.trap).
+            _ if writes_read_only_csr(riscv_instruction) => {
+                self.halt_with_error(riscv_instruction, 4)
+            }
             RiscvInstName::Csrrw => self.csrrw(riscv_instruction),
             RiscvInstName::Csrrs => self.csrrs(riscv_instruction, next_instructions),
             RiscvInstName::Csrrc => self.csrrc(riscv_instruction),
@@ -3124,4 +3130,19 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
             rom.next_init_inst_addr, MAX_ZISK_OS_ROM_ADDR
         );
     }
+}
+
+/// Whether `i` is a CSR instruction that writes a read-only CSR (address bits 11:10 =
+/// 0b11), which RISC-V defines as an illegal instruction. CSRRW/CSRRWI always write;
+/// CSRRS/CSRRC write only when rs1 != x0, and CSRRSI/CSRRCI only when uimm != 0, so
+/// a plain read (`csrr`) of a read-only CSR, such as marchid or the fcall result
+/// 0xFFE, stays legal.
+fn writes_read_only_csr(i: &RiscvInst) -> bool {
+    let writes = match i.inst_name {
+        RiscvInstName::Csrrw | RiscvInstName::Csrrwi => true,
+        RiscvInstName::Csrrs | RiscvInstName::Csrrc => i.rs1 != 0,
+        RiscvInstName::Csrrsi | RiscvInstName::Csrrci => i.imme != 0,
+        _ => false,
+    };
+    writes && (i.csr >> 10) & 0b11 == 0b11
 }
