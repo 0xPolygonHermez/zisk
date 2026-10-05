@@ -612,6 +612,26 @@ __global__ void retain_ram_kernel(const PotentialEmit* __restrict__ d_potentials
     if ((threadIdx.x & 31u) == (unsigned)(__ffs(__activemask()) - 1)) atomicAdd(d_nwrites, (unsigned long long)__popc(writers));
 }
 
+// Retains the piece's ROM and input accesses in arrival order, as records of the same stack as
+// the RAM ones (compact address of the whole map, mem step, kind, value). `d_flag` is the emit
+// bit the histogram kernel set: 1 for every access outside RAM within the memory map.
+__global__ void retain_other_kernel(const PotentialEmit* __restrict__ d_potentials, uint32_t n,
+                                    const uint32_t* __restrict__ d_flag, const uint32_t* __restrict__ d_rank,
+                                    size_t base, uint32_t chunk, uint32_t chunk_size_bits, RamRecords rec) {
+    const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n || d_flag[i] == 0) return;
+    const PotentialEmit p = d_potentials[i];
+    const uint32_t field = p.meta >> POT_META_STEP_SHIFT;
+    const uint64_t main_step = ((uint64_t)chunk << chunk_size_bits) + (field >> 2);
+    const uint64_t mem_step  = 1ull + (main_step << 2) + (field & 3u);
+    const uint64_t kind  = p.meta & 3u;
+    const uint64_t off   = (p.meta >> POT_META_OFF_SHIFT) & 7u;
+    const uint64_t width = (p.meta >> POT_META_WIDTH_SHIFT) & 15u;
+    rec.store(base + d_rank[i], compact_addr_dev(emit_aligned_addr(p)),
+              mem_step | (kind << RAM_META_KIND_SHIFT) | (off << RAM_META_OFF_SHIFT) | (width << RAM_META_WIDTH_SHIFT),
+              p.value);
+}
+
 __global__
 void gather_ram_events_with_hist_kernel(const PotentialEmit* __restrict__ d_potentials,
                                         uint32_t n_potentials,
@@ -1374,6 +1394,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     for (int s = 0; s < N_STREAMS; s++) {
         d_potentials_[s]        = (PotentialEmit*)take((size_t)MAX_POT_PER_PIECE    * sizeof(PotentialEmit));
         d_emit_bits_[s]         = (uint32_t*)     take((size_t)MAX_POT_PER_PIECE    * 4);
+        d_other_rank_[s]        = (uint32_t*)     take(((size_t)MAX_POT_PER_PIECE + 1) * 4);
         d_final_offsets_[s]     = (uint32_t*)     take(((size_t)MAX_POT_PER_PIECE + 1) * 4);
         d_words_[s]             = (uint64_t*)     take((size_t)MAX_WORDS_PER_PIECE * 8);
         d_tag_flags_[s]         = (uint32_t*)     take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);
@@ -1699,6 +1720,29 @@ bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int
         d_histogram_, d_max_compact_, d_invalid_mode_flag_);
     CUDA_CHECK_LAUNCH();
 
+    // Retain the piece's ROM and input accesses, in arrival order.
+    if (pot > ram && ram_retention_enabled_.load(std::memory_order_relaxed)) {
+        const uint32_t n_other = pot - ram;
+        const size_t obase = ram_cursor_.fetch_add(n_other, std::memory_order_seq_cst);
+        if (ram_low_edge_bytes(obase + n_other) < pool_end_bytes(pool_cursor_u32_.load(std::memory_order_seq_cst))) {
+            if (ram_retention_enabled_.exchange(false)) {
+                fprintf(stderr, "CountAndPlan: the retained accesses meet the ops pool at chunk %u "
+                                "(%zu accesses so far); no device memory witness for this block\n", c, obase + n_other);
+            }
+        } else {
+            {
+                std::lock_guard<std::mutex> lk(ram_runs_mtx_);
+                other_runs_.push_back(RamRun{(uint32_t)obase, n_other});
+            }
+            size_t bytes_rank = cub_temp_bytes_;
+            CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes_rank,
+                d_emit_bits_[s], d_other_rank_[s], pot, st));
+            retain_other_kernel<<<g_pot, BLOCK, 0, st>>>(d_potentials_[s], pot, d_emit_bits_[s], d_other_rank_[s],
+                obase, c, chunk_size_bits_, ram_records_);
+            CUDA_CHECK_LAUNCH();
+        }
+    }
+
     if (n_sort > 0) {
         // The previous piece's pairing state enters the sort as one entry per address.
         if (n_carry > 0)
@@ -1935,6 +1979,14 @@ void CountAndPlan::reset() {
     ram_tables_ready_       = false;
     ram_results_.clear();
     ram_n_lanes_            = 0;
+    { std::lock_guard<std::mutex> lk(ram_runs_mtx_); other_runs_.clear(); }
+    rom_prepared_           = false;
+    rom_results_.clear();
+    input_prepared_         = false;
+    input_results_.clear();
+    other_total_            = 0;
+    d_other_idx_            = nullptr;
+    d_other_addr_           = nullptr;
 
     if (d_histogram_)                CUDA_CHECK(cudaMemset(d_histogram_, 0, ((size_t)N_ADDR + 1) * 4));
     if (d_max_compact_)              CUDA_CHECK(cudaMemset(d_max_compact_, 0, 3 * 4));
@@ -1973,6 +2025,8 @@ void CountAndPlan::unregister_input_pinned(void* ptr) {
 void CountAndPlan::free_pinned_() {
     join_rows_prealloc_();
     if (h_ram_rows_)                 { cudaFreeHost(h_ram_rows_);                 h_ram_rows_                 = nullptr; h_ram_rows_cap_ = 0; }
+    if (h_rom_rows_)                 { cudaFreeHost(h_rom_rows_);                 h_rom_rows_                 = nullptr; h_rom_rows_cap_ = 0; }
+    if (h_input_rows_)               { cudaFreeHost(h_input_rows_);               h_input_rows_               = nullptr; h_input_rows_cap_ = 0; }
     if (h_n_emits_all_)              { cudaFreeHost(h_n_emits_all_);              h_n_emits_all_              = nullptr; }
     if (h_page_starts_buf_)          { cudaFreeHost(h_page_starts_buf_);          h_page_starts_buf_          = nullptr; }
     if (h_page_single_buf_)           { cudaFreeHost(h_page_single_buf_);           h_page_single_buf_           = nullptr; }

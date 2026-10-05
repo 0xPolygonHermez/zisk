@@ -19,16 +19,27 @@ unsafe impl Send for ShmemReader {}
 unsafe impl Sync for ShmemReader {}
 
 impl ShmemReader {
-    /// Opens and maps a shared memory region for read-only access.
+    /// Opens and maps a shared memory region for read-only access, locked in memory.
     pub fn new(name: &str, size: usize) -> Result<Self> {
-        // Open existing shared memory (read-only)
+        Self::open(name, size, true)
+    }
+
+    /// Like [`new`](Self::new), without locking the pages: for a large region read once.
+    pub fn new_unlocked(name: &str, size: usize) -> Result<Self> {
+        Self::open(name, size, false)
+    }
+
+    fn open(name: &str, size: usize, lock: bool) -> Result<Self> {
         let fd = shmem_sys::open(name, libc::O_RDONLY)?;
+        let ptr = shmem_sys::map(fd, size, PROT_READ, lock, name)?;
+        Ok(Self { ptr: ptr as *const u8, size, fd, name: name.to_string() })
+    }
 
-        // Map the memory region for read-only (always locked)
-        let ptr = shmem_sys::map(fd, size, PROT_READ, true, name)?;
-        let ptr_u8 = ptr as *const u8;
-
-        Ok(Self { ptr: ptr_u8, size, fd, name: name.to_string() })
+    /// The whole mapped region.
+    pub fn bytes(&self) -> &[u8] {
+        // SAFETY: `ptr` maps `size` readable bytes for the handle's lifetime; the writer side may
+        // change them, which a shared-memory reader accepts as it does in `read_u64_at`.
+        unsafe { std::slice::from_raw_parts(self.ptr, self.size) }
     }
 
     unsafe fn unmap(&mut self) {
