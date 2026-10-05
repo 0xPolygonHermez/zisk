@@ -89,20 +89,6 @@ impl<F: PrimeField64> MemModuleInstance<F> {
     }
 }
 
-/// Whether this block's rows of the memory module `name` ("ram", "rom", "input") are served from
-/// the device: arena mode and a device fill that succeeded for the block; otherwise the instances
-/// are collected and filled on the CPU.
-fn rows_on_device(name: &str) -> bool {
-    let bit = match name {
-        "ram" => zisk_common::MEM_ROWS_RAM,
-        "rom" => zisk_common::MEM_ROWS_ROM,
-        "input" => zisk_common::MEM_ROWS_INPUT,
-        _ => return false,
-    };
-    crate::mem_gpu_fill::gpu_fill_mode() == crate::mem_gpu_fill::GpuFillMode::Arena
-        && zisk_common::MEM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire) & bit != 0
-}
-
 impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
     fn compute_witness(
         &self,
@@ -119,7 +105,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         // Timed apart: flattening the per-chunk input vectors into one is a full copy of every
         // operation, and `Iterator::flatten` gives `collect` no usable size hint, so the
         // destination is grown and recopied as it goes.
-        if rows_on_device(self.module.get_mem_name()) {
+        if crate::mem_device_rows::rows_on_device(self.module.get_mem_name()) {
             let segment_id = self.ictx.plan.segment_id.unwrap();
             return self.module.compute_witness_gpu_arena(
                 segment_id,
@@ -205,7 +191,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         // The device built this block's rows of this memory from the planner's retained accesses:
         // nothing to collect from the replay.
-        if rows_on_device(self.module.get_mem_name()) {
+        if crate::mem_device_rows::rows_on_device(self.module.get_mem_name()) {
             return None;
         }
         let chunk_check_point = self.check_point.chunks.get(&chunk_id).unwrap();

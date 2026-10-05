@@ -251,11 +251,11 @@ bool decode(MemOp op,
 }
 
 __device__ __forceinline__
-void emit_one_r(uint32_t aligned, PotentialEmit* out, uint32_t step) {
+void emit_one_r(uint32_t aligned, PotentialEmit* out, uint32_t step, uint64_t tag = 0) {
     const uint32_t ram_bit = is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u;
     out[0].aligned_addr_packed = aligned | ram_bit;
     out[0].meta  = pot_meta(POT_KIND_READ, 0, 0, step);
-    out[0].value = 0;
+    out[0].value = tag;   // a read's value field: the old-word slot of its MemAlign access, or 0
 }
 
 __device__ __forceinline__
@@ -270,11 +270,11 @@ void emit_one_w(uint32_t aligned, PotentialEmit* out, uint32_t step, uint32_t ki
 // write, whose value carries the bytes already shifted to `off`.
 __device__ __forceinline__
 void emit_pair_rw(uint32_t aligned, PotentialEmit* out, uint32_t step, uint32_t off, uint32_t width,
-                  uint64_t value_shifted, uint32_t kind_w) {
+                  uint64_t value_shifted, uint32_t kind_w, uint64_t tag) {
     const uint32_t ram_bit = is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u;
     out[0].aligned_addr_packed = aligned | ram_bit;                       // R
     out[0].meta  = pot_meta(POT_KIND_READ, 0, 0, step);
-    out[0].value = 0;
+    out[0].value = tag;
     // MemAlign places the aligned write one mem step after its read (`get_write_step`); the step
     // field's low bits are the slot, so `+ 1` is that step.
     out[1].aligned_addr_packed = aligned | ram_bit | POT_FLAG_KIND_W;     // W
@@ -284,18 +284,37 @@ void emit_pair_rw(uint32_t aligned, PotentialEmit* out, uint32_t step, uint32_t 
 
 // A store of `width` bytes at `addr`: the first word takes bytes [off, 8), a second word the rest.
 __device__ __forceinline__
-void emit_store(uint32_t addr, uint32_t width, PotentialEmit* out, uint32_t step, uint64_t v, uint32_t kind_w) {
+void emit_store(uint32_t addr, uint32_t width, PotentialEmit* out, uint32_t step, uint64_t v, uint32_t kind_w,
+                uint64_t tag0 = 0, uint64_t tag1 = 0) {
     const uint32_t aligned = addr & ZISK_ALIGN_MASK;
     const uint32_t off     = addr & 0x07u;
     const uint32_t first_w = (8u - off) < width ? (8u - off) : width;
-    emit_pair_rw(aligned, out, step, off, first_w, v << (8u * off), kind_w);
+    emit_pair_rw(aligned, out, step, off, first_w, v << (8u * off), kind_w, tag0);
     if (first_w < width) {
-        emit_pair_rw(aligned + 8, out + 2, step, 0, width - first_w, v >> (8u * (8u - off)), kind_w);
+        emit_pair_rw(aligned + 8, out + 2, step, 0, width - first_w, v >> (8u * (8u - off)), kind_w, tag1);
     }
 }
 
+// The MemAlign record of an access, and the slot tags of its reads: tag = (2 * index + word) + 1.
 __device__ __forceinline__
-void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uint64_t* rec) {
+void write_align_record(AlignRecord* rec, uint32_t addr, uint32_t chunk, uint32_t chunk_bits, uint32_t step_field,
+                        uint32_t kind, uint32_t width, bool wr, uint64_t value) {
+    const uint64_t main_step = ((uint64_t)chunk << chunk_bits) + (step_field >> 2);
+    const uint64_t mem_step  = 1ull + (main_step << 2) + (step_field & 3u);
+    rec->addr  = addr;
+    rec->chunk = chunk;
+    rec->info  = mem_step | ((uint64_t)kind << ALIGN_KIND_SHIFT) | ((uint64_t)width << ALIGN_WIDTH_SHIFT)
+               | ((uint64_t)(wr ? 1 : 0) << ALIGN_WR_SHIFT);
+    rec->value = wr ? value : 0;
+    rec->old[0] = 0; rec->old[1] = 0;
+}
+
+// `align_rec` is the MemAlign record of this access when it is one (`align_kind` < ALIGN_KINDS)
+// and the record region holds it; `align_idx` its index, which tags its reads.
+__device__ __forceinline__
+void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uint64_t* rec,
+                        AlignRecord* align_rec, uint32_t align_idx, uint32_t align_kind,
+                        uint32_t chunk, uint32_t chunk_bits) {
     const uint32_t addr        = op.addr;
     const uint32_t aligned     = addr & ZISK_ALIGN_MASK;
     const uint8_t  mode        = op.flags & 0x3Fu;
@@ -305,28 +324,35 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uin
     const bool     novalue     = ((op.flags >> (MOPS_NO_VALUE_BIT - 32)) & 1u) != 0;
     const uint32_t kind_full   = novalue ? POT_KIND_UNKNOWN : POT_KIND_WRITE;
     const uint32_t kind_part   = novalue ? POT_KIND_UNKNOWN : POT_KIND_PARTIAL;
+    const uint64_t tag0 = align_rec ? 2ull * align_idx + 1 : 0;
+    const uint64_t tag1 = align_rec ? 2ull * align_idx + 2 : 0;
+    if (align_rec) {
+        const uint32_t width = mode & 0x0Fu;   // the single-access modes carry their width in the low nibble
+        write_align_record(align_rec, addr, chunk, chunk_bits, step, align_kind, width,
+                           (mode & MOPS_WRITE_FLAG) != 0, op.payload);
+    }
     switch (mode) {
-        case MOPS_READ_1:                                         emit_one_r(aligned, out, step); break;
-        case MOPS_CWRITE_1: case MOPS_WRITE_1:                    emit_store(addr, 1, out, step, op.payload, kind_part); break;
+        case MOPS_READ_1:                                         emit_one_r(aligned, out, step, tag0); break;
+        case MOPS_CWRITE_1: case MOPS_WRITE_1:                    emit_store(addr, 1, out, step, op.payload, kind_part, tag0, tag1); break;
         case MOPS_READ_2:
-            emit_one_r(aligned, out, step);
-            if (off_in_word > 6) emit_one_r(aligned + 8, out + 1, step);
+            emit_one_r(aligned, out, step, tag0);
+            if (off_in_word > 6) emit_one_r(aligned + 8, out + 1, step, tag1);
             break;
-        case MOPS_WRITE_2:  emit_store(addr, 2, out, step, op.payload, kind_part); break;
+        case MOPS_WRITE_2:  emit_store(addr, 2, out, step, op.payload, kind_part, tag0, tag1); break;
         case MOPS_READ_4:
-            emit_one_r(aligned, out, step);
-            if (off_in_word > 4) emit_one_r(aligned + 8, out + 1, step);
+            emit_one_r(aligned, out, step, tag0);
+            if (off_in_word > 4) emit_one_r(aligned + 8, out + 1, step, tag1);
             break;
-        case MOPS_WRITE_4:  emit_store(addr, 4, out, step, op.payload, kind_part); break;
+        case MOPS_WRITE_4:  emit_store(addr, 4, out, step, op.payload, kind_part, tag0, tag1); break;
         case MOPS_READ_8:
-            emit_one_r(aligned, out, step);
-            if (off_in_word > 0) emit_one_r(aligned + 8, out + 1, step);
+            emit_one_r(aligned, out, step, tag0);
+            if (off_in_word > 0) emit_one_r(aligned + 8, out + 1, step, tag1);
             break;
         case MOPS_WRITE_8:
             if (addr == aligned) {
                 emit_one_w(aligned, out, step, kind_full, op.payload);
             } else {
-                emit_store(addr, 8, out, step, op.payload, kind_part);
+                emit_store(addr, 8, out, step, op.payload, kind_part, tag0, tag1);
             }
             break;
         case MOPS_ALIGNED_READ  + 0x00: case MOPS_ALIGNED_READ  + 0x10:
@@ -419,14 +445,21 @@ void decode_count_kernel(const uint64_t* __restrict__ words,
                          ChunkCounters* __restrict__ d_chunk_counters_entry,
                          BlockOpSpill* __restrict__ d_spill,
                          uint32_t* __restrict__ d_spill_count,
-                         uint32_t* __restrict__ d_invalid_mode_flag) {
+                         uint32_t* __restrict__ d_invalid_mode_flag,
+                         uint8_t* __restrict__ d_align_kind,
+                         uint32_t* __restrict__ d_align_flag) {
     const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
     ChunkCounters my{0,0,0,0,0};
-    if (i < n_memops && i >= *n_records) d_counts[i] = 0;   // beyond the records: the scan sees zeros
+    if (i < n_memops && i >= *n_records) { d_counts[i] = 0; d_align_flag[i] = 0; }   // beyond the records: the scans see zeros
     if (i < *n_records) {
         MemOp op = load_record(words, rec_start[i]);
         if (mops_record_is_light(words[rec_start[i]])) atomicOr(d_invalid_mode_flag, LIGHT_RECORD);
-        if (decode(op, &d_counts[i], my, d_invalid_mode_flag)) {
+        const bool ok = decode(op, &d_counts[i], my, d_invalid_mode_flag);
+        // The MemAlign kind of a single access, from the counters the decode set (one at most).
+        const uint32_t ak = my.full_5 ? 0u : my.full_3 ? 1u : my.full_2 ? 2u : my.read_byte ? 3u : my.write_byte ? 4u : ALIGN_KIND_NONE;
+        d_align_kind[i] = (uint8_t)ak;
+        d_align_flag[i] = ak < ALIGN_KINDS ? 1u : 0u;
+        if (ok) {
             const uint8_t mode = op.flags & 0x3Fu;
             const uint8_t base = mode & 0x0Fu;
             const bool is_block_read  = (base == (MOPS_BLOCK_READ  & 0x0Fu)) ||
@@ -460,13 +493,36 @@ void decode_emit_kernel(const uint64_t* __restrict__ words,
                         const uint32_t* __restrict__ n_records,
                         const uint32_t* __restrict__ d_potential_offsets,
                         const uint8_t* __restrict__ d_spill_status,
-                        PotentialEmit* __restrict__ d_potentials) {
+                        PotentialEmit* __restrict__ d_potentials,
+                        const uint8_t* __restrict__ d_align_kind,
+                        const uint32_t* __restrict__ d_align_rank,
+                        const AlignRun* __restrict__ align_run,
+                        AlignRecord* __restrict__ d_align,
+                        uint32_t chunk, uint32_t chunk_bits) {
     const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= *n_records) return;
     const uint32_t start = rec_start[i];
     MemOp op = load_record(words, start);
     PotentialEmit* out_ptr = d_potentials + d_potential_offsets[i];
-    decode_emit_inline(op, out_ptr, /*skip_block=*/d_spill_status[i] != 0, words + start);
+    const uint32_t ak = d_align_kind[i];
+    AlignRecord* arec = nullptr;
+    uint32_t aidx = 0;
+    if (ak < ALIGN_KINDS && align_run != nullptr && align_run->base != ALIGN_RUN_NONE) {
+        aidx = align_run->base + d_align_rank[i];
+        arec = d_align + aidx;
+    }
+    decode_emit_inline(op, out_ptr, /*skip_block=*/d_spill_status[i] != 0, words + start, arec, aidx, ak, chunk, chunk_bits);
+}
+
+// Reserves the piece's MemAlign records: `rank[n_records]` of them, at the device cursor.
+__global__
+void align_reserve_kernel(const uint32_t* __restrict__ d_align_rank, const uint32_t* __restrict__ n_records,
+                          uint32_t* __restrict__ d_cursor, uint32_t cap, AlignRun* __restrict__ run,
+                          uint32_t* __restrict__ d_overflow) {
+    const uint32_t n = d_align_rank[*n_records];
+    const uint32_t base = atomicAdd(d_cursor, n);
+    if ((uint64_t)base + n > cap) { *run = AlignRun{ALIGN_RUN_NONE, 0}; atomicOr(d_overflow, 1u); }
+    else                          { *run = AlignRun{base, n}; }
 }
 
 
@@ -1395,6 +1451,9 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         d_potentials_[s]        = (PotentialEmit*)take((size_t)MAX_POT_PER_PIECE    * sizeof(PotentialEmit));
         d_emit_bits_[s]         = (uint32_t*)     take((size_t)MAX_POT_PER_PIECE    * 4);
         d_other_rank_[s]        = (uint32_t*)     take(((size_t)MAX_POT_PER_PIECE + 1) * 4);
+        d_align_kind_[s]        = (uint8_t*)      take((size_t)MAX_WORDS_PER_PIECE);
+        d_align_flag_[s]        = (uint32_t*)     take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);
+        d_align_rank_[s]        = (uint32_t*)     take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);
         d_final_offsets_[s]     = (uint32_t*)     take(((size_t)MAX_POT_PER_PIECE + 1) * 4);
         d_words_[s]             = (uint64_t*)     take((size_t)MAX_WORDS_PER_PIECE * 8);
         d_tag_flags_[s]         = (uint32_t*)     take(((size_t)MAX_WORDS_PER_PIECE + 1) * 4);
@@ -1418,6 +1477,9 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         d_cub_temp_[s]          = (void*)         take(cub_temp_bytes_);
     }
     d_ram_nwrites_ = (unsigned long long*)take(8);
+    d_align_cursor_   = (uint32_t*)take(4);
+    d_align_overflow_ = (uint32_t*)take(4);
+    d_align_runs_     = (AlignRun*)take((size_t)MAX_ALIGN_RUNS * sizeof(AlignRun));
 
     cursor_ = (cursor_ + 255) & ~(size_t)255;
     if (cursor_ > arena_bytes_) {
@@ -1428,6 +1490,23 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     // Dynamic region: the ops pool grows up from the fixed regions, the retained RAM accesses grow
     // down from the arena top; the reservations keep the two from crossing.
     top_bytes_           = arena_bytes_ & ~(size_t)255;
+    // The MemAlign records take a fixed region at the very top (ZISK_MEM_ALIGN_MB, 2560): the
+    // reservations are made on the device, so they cannot share the host-reserved record stack.
+    {
+        size_t align_mb = 2560;
+        if (const char* e = std::getenv("ZISK_MEM_ALIGN_MB")) {
+            const long v = std::atol(e);
+            if (v >= 0) align_mb = (size_t)v;
+        }
+        const size_t align_bytes = (align_mb << 20) & ~(size_t)255;
+        if (align_bytes > 0 && top_bytes_ > cursor_ + align_bytes + ((size_t)1 << 30)) {
+            top_bytes_ -= align_bytes;
+            d_align_    = (AlignRecord*)(arena_ + top_bytes_);
+            align_cap_  = align_bytes / sizeof(AlignRecord);
+        } else if (align_bytes > 0) {
+            fprintf(stderr, "CountAndPlan: no room for a %zu MB MemAlign region; its witness stays on the CPU\n", align_mb);
+        }
+    }
     ram_records_.top     = (uint32_t*)(arena_ + top_bytes_);
     d_ops_pool_          = (uint32_t*)(arena_ + cursor_);
     d_ops_pool_cap_u32_  = (top_bytes_ - cursor_) / 4;
@@ -1482,23 +1561,33 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
                 N_STREAMS, gpu_device_);
     }
 
-    // The pinned buffer the RAM fill packs rows into: pinning gigabytes takes hundreds of
-    // milliseconds, so the default capacity (ZISK_MEM_GPU_ROWS_MB, 4096) is allocated now, off the
-    // block path; a block that needs more grows it.
+    // The pinned buffers the RAM and MemAlign fills pack rows into: pinning gigabytes takes
+    // hundreds of milliseconds, so the default capacities (ZISK_MEM_GPU_ROWS_MB 4096,
+    // ZISK_MEM_ALIGN_ROWS_MB 2560) are allocated now, off the block path; a block that needs more
+    // grows them.
     {
-        size_t rows_mb = 4096;
-        if (const char* e = std::getenv("ZISK_MEM_GPU_ROWS_MB")) {
-            const long v = std::atol(e);
-            if (v >= 0) rows_mb = (size_t)v;
-        }
-        if (rows_mb > 0) {
+        auto mb_of = [](const char* name, size_t dflt) {
+            if (const char* e = std::getenv(name)) {
+                const long v = std::atol(e);
+                if (v >= 0) return (size_t)v;
+            }
+            return dflt;
+        };
+        const size_t rows_mb = mb_of("ZISK_MEM_GPU_ROWS_MB", 4096);
+        const size_t align_mb = mb_of("ZISK_MEM_ALIGN_ROWS_MB", 2560);
+        if (rows_mb > 0 || align_mb > 0) {
             const int dev = gpu_device_;
-            h_ram_rows_prealloc_ = std::thread([this, dev, rows_mb] {
+            h_ram_rows_prealloc_ = std::thread([this, dev, rows_mb, align_mb] {
                 cudaSetDevice(dev);
                 void* p = nullptr;
-                if (cudaMallocHost(&p, rows_mb << 20) == cudaSuccess) {
+                if (rows_mb > 0 && cudaMallocHost(&p, rows_mb << 20) == cudaSuccess) {
                     h_ram_rows_ = (uint64_t*)p;
                     h_ram_rows_cap_ = (rows_mb << 20) / 8;
+                }
+                p = nullptr;
+                if (align_mb > 0 && cudaMallocHost(&p, align_mb << 20) == cudaSuccess) {
+                    h_align_rows_ = (uint64_t*)p;
+                    h_align_rows_cap_ = (align_mb << 20) / 8;
                 }
             });
         }
@@ -1697,7 +1786,7 @@ bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int
         d_words_[s], d_rec_start_[s], d_n_records_[s], n, d_counts_[s], d_spill_status_[s],
         &d_chunk_counters_per_chunk_[c],
         d_spill_[s], d_spill_count_[s],
-        d_invalid_mode_flag_);
+        d_invalid_mode_flag_, d_align_kind_[s], d_align_flag_[s]);
     CUDA_CHECK_LAUNCH();
 
     {
@@ -1706,8 +1795,28 @@ bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int
             d_counts_[s], d_potential_offsets_[s], n + 1, st));
     }
 
+    // The piece's MemAlign accesses: ranked, reserved at the device cursor, recorded by the emit.
+    const AlignRun* align_run = nullptr;
+    if (align_enabled_.load(std::memory_order_relaxed)) {
+        const uint32_t slot = align_slot_.fetch_add(1, std::memory_order_relaxed);
+        if (slot < MAX_ALIGN_RUNS) {
+            size_t bytes = cub_temp_bytes_;
+            CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes,
+                d_align_flag_[s], d_align_rank_[s], n + 1, st));
+            align_reserve_kernel<<<1, 1, 0, st>>>(d_align_rank_[s], d_n_records_[s], d_align_cursor_,
+                                                  (uint32_t)align_cap_, d_align_runs_ + slot, d_align_overflow_);
+            CUDA_CHECK_LAUNCH();
+            align_run = d_align_runs_ + slot;
+            std::lock_guard<std::mutex> lk(ram_runs_mtx_);
+            align_runs_.push_back(AlignPieceRun{c, slot});
+        } else if (align_enabled_.exchange(false)) {
+            fprintf(stderr, "CountAndPlan: more than %u pieces; no device MemAlign witness for this block\n", MAX_ALIGN_RUNS);
+        }
+    }
+
     decode_emit_kernel<<<g_memops, BLOCK, 0, st>>>(
-        d_words_[s], d_rec_start_[s], d_n_records_[s], d_potential_offsets_[s], d_spill_status_[s], d_potentials_[s]);
+        d_words_[s], d_rec_start_[s], d_n_records_[s], d_potential_offsets_[s], d_spill_status_[s], d_potentials_[s],
+        d_align_kind_[s], d_align_rank_[s], align_run, d_align_, c, chunk_size_bits_);
     CUDA_CHECK_LAUNCH();
 
     blockop_emit_kernel<<<BLOCKOP_EMIT_GRID, 256, 0, st>>>(
@@ -1984,6 +2093,15 @@ void CountAndPlan::reset() {
     rom_results_.clear();
     input_prepared_         = false;
     input_results_.clear();
+    align_prepared_         = false;
+    align_results_.clear();
+    align_total_            = 0;
+    d_align_order_          = nullptr;
+    align_runs_.clear();
+    align_slot_.store(0, std::memory_order_relaxed);
+    align_enabled_.store(d_align_ != nullptr && top_bytes_ > cursor_, std::memory_order_relaxed);
+    if (d_align_cursor_)             CUDA_CHECK(cudaMemset(d_align_cursor_, 0, 4));
+    if (d_align_overflow_)           CUDA_CHECK(cudaMemset(d_align_overflow_, 0, 4));
     other_total_            = 0;
     d_other_idx_            = nullptr;
     d_other_addr_           = nullptr;
@@ -2027,6 +2145,7 @@ void CountAndPlan::free_pinned_() {
     if (h_ram_rows_)                 { cudaFreeHost(h_ram_rows_);                 h_ram_rows_                 = nullptr; h_ram_rows_cap_ = 0; }
     if (h_rom_rows_)                 { cudaFreeHost(h_rom_rows_);                 h_rom_rows_                 = nullptr; h_rom_rows_cap_ = 0; }
     if (h_input_rows_)               { cudaFreeHost(h_input_rows_);               h_input_rows_               = nullptr; h_input_rows_cap_ = 0; }
+    if (h_align_rows_)               { cudaFreeHost(h_align_rows_);               h_align_rows_               = nullptr; h_align_rows_cap_ = 0; }
     if (h_n_emits_all_)              { cudaFreeHost(h_n_emits_all_);              h_n_emits_all_              = nullptr; }
     if (h_page_starts_buf_)          { cudaFreeHost(h_page_starts_buf_);          h_page_starts_buf_          = nullptr; }
     if (h_page_single_buf_)           { cudaFreeHost(h_page_single_buf_);           h_page_single_buf_           = nullptr; }

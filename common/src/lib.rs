@@ -63,3 +63,5 @@ pub const MEM_ROWS_RAM: u32 = 1;
 pub const MEM_ROWS_ROM: u32 = 2;
 /// `MEM_ROWS_ON_DEVICE` bit: the `InputData` rows.
 pub const MEM_ROWS_INPUT: u32 = 4;
+/// `MEM_ROWS_ON_DEVICE` bit: the rows of the `MemAlign` airs.
+pub const MEM_ROWS_ALIGN: u32 = 8;

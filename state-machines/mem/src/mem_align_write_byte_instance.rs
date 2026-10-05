@@ -1,7 +1,7 @@
 use crate::{mem_align_byte_sm::MemAlignByteSM, MemAlignCollector};
 use zisk_sm_mem_common::MemAlignCheckPoint;
 
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
@@ -9,7 +9,8 @@ use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 use zisk_pil::{
-    MemAlignWriteByteTrace, MemAlignWriteByteTraceRow, MemAlignWriteByteTraceRowPacked,
+    MemAlignWriteByteAirValues, MemAlignWriteByteTrace, MemAlignWriteByteTraceRow,
+    MemAlignWriteByteTraceRowPacked,
 };
 
 pub struct MemAlignWriteByteInstance<F: PrimeField64> {
@@ -36,6 +37,39 @@ impl<F: PrimeField64> MemAlignWriteByteInstance<F> {
     pub fn build_mem_align_write_byte_collector(&self, chunk_id: ChunkId) -> MemAlignCollector {
         MemAlignCollector::new(&self.checkpoint[&chunk_id])
     }
+
+    /// The instance from the rows the GPU planner built (`ZISK_MEM_GPU_FILL=arena`).
+    fn device_witness(
+        &self,
+        air_id: usize,
+        segment: usize,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<AirInstance<F>> {
+        if !packed {
+            return Err(proofman_common::ProofmanError::InvalidParameters(
+                "ZISK_MEM_GPU_FILL=arena needs the packed MemAlign byte trace".to_string(),
+            ));
+        }
+        let mut trace = MemAlignWriteByteTrace::<MemAlignWriteByteTraceRowPacked<F>>::new_from_vec(
+            trace_buffer,
+        )?;
+        let used = crate::mem_device_rows::align_device_rows(
+            air_id,
+            segment,
+            crate::mem_trace_hash::rows_as_words_mut(&mut trace.buffer),
+        )?;
+        crate::mem_device_rows::align_dump(
+            air_id,
+            segment,
+            crate::mem_trace_hash::rows_as_words(&trace.buffer),
+            used,
+            MemAlignWriteByteTraceRowPacked::<F>::PACKED_WORDS,
+        );
+        let mut air_values = MemAlignWriteByteAirValues::<F>::new();
+        air_values.padding_size = F::from_usize(trace.num_rows() - used);
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for MemAlignWriteByteInstance<F> {
@@ -47,6 +81,17 @@ impl<F: PrimeField64> Instance<F> for MemAlignWriteByteInstance<F> {
         trace_buffer: Vec<F>,
         packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
+        let air_id = self.ictx.plan.air_id;
+        let segment =
+            usize::from(self.ictx.plan.segment_id.expect("MemAlign plan without segment"));
+        if crate::mem_device_rows::rows_on_device("align") {
+            return self.device_witness(air_id, segment, trace_buffer, packed).map(Some);
+        }
+        let mut hook = move |cpu: &[u64], f: &crate::mem_gpu_fill::RowsFilled| {
+            crate::mem_device_rows::align_filled(air_id, segment, cpu, f.used, f.words_per_row);
+        };
+        let mut on_filled: crate::mem_gpu_fill::OnFilled<'_, crate::mem_gpu_fill::RowsFilled> =
+            if packed { Some(&mut hook) } else { None };
         let mut total_rows = 0;
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -63,13 +108,13 @@ impl<F: PrimeField64> Instance<F> for MemAlignWriteByteInstance<F> {
                 .compute_witness::<
                     MemAlignWriteByteTrace<MemAlignWriteByteTraceRowPacked<F>>,
                     MemAlignWriteByteTraceRowPacked<F>,
-                >(&inputs, total_rows as usize, trace_buffer)?
+                >(&inputs, total_rows as usize, trace_buffer, on_filled.take())?
         } else {
             self.mem_align_byte_sm
                 .compute_witness::<
                     MemAlignWriteByteTrace<MemAlignWriteByteTraceRow<F>>,
                     MemAlignWriteByteTraceRow<F>,
-                >(&inputs, total_rows as usize, trace_buffer)?
+                >(&inputs, total_rows as usize, trace_buffer, on_filled.take())?
         }))
     }
 
