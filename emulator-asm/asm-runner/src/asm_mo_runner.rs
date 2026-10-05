@@ -401,14 +401,17 @@ impl AsmRunnerMO {
         // In the GPU case no-op since the GPU planner has no background threads
         mem_planner.set_completed();
 
-        // Quiesce the prover's streaming-commit slots before the final GPU
-        // planning phase: that phase is host-paced micro-ops whose latency
-        // amplifies ~40x under concurrent commit kernels, delaying the buffer
-        // release (and everything mem-plan dependent with it). Backend-
-        // dispatched in libstarks: no-op when slots are disabled or on the
-        // CPU backend.
+        // The prover's streaming-commit slots keep running through the final GPU
+        // planning phase and the device fills: with the secondaries registered in
+        // two rounds, only the memory instances wait for them. The plan itself runs
+        // ~10x slower beside the commit kernels (host-paced micro-ops), which
+        // `ZISK_MOPS_COMMIT_PAUSE=1` avoids by quiescing the slots first, at the
+        // price of idling them for the whole window. Backend-dispatched in
+        // libstarks: no-op when slots are disabled or on the CPU backend.
         #[cfg(gpu)]
-        if gpu_count_and_plan_opt.is_some() {
+        if gpu_count_and_plan_opt.is_some()
+            && std::env::var("ZISK_MOPS_COMMIT_PAUSE").as_deref() == Ok("1")
+        {
             proofman_starks_lib_c::stream_commit_pause_c();
         }
 
