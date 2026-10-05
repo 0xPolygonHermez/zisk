@@ -2228,6 +2228,8 @@ pub fn opc_halt(ctx: &mut InstContext) {
     // Record where: the emulator advances step and pc after the operation
     ctx.error_step = ctx.step;
     ctx.error_pc = ctx.pc;
+    // A nonzero exit halts with a = the exit code; a trap halts with a = 0
+    ctx.error_code = ctx.a;
     ctx.c = 0;
     ctx.flag = false;
 }

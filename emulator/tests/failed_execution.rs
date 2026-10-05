@@ -11,7 +11,7 @@
 
 use zisk_common::EmuTrace;
 use zisk_transpiler_common::elf2rom::elf2rom;
-use ziskemu::{EmuOptions, Emulator, ZiskEmulator, ZiskEmulatorErr};
+use ziskemu::{EmuOptions, Emulator, FailureReason, ZiskEmulator, ZiskEmulatorErr};
 
 fn elf_path(name: &str) -> String {
     format!("{}/../elf-regressions/failed_execution/{name}.elf", env!("CARGO_MANIFEST_DIR"))
@@ -29,20 +29,26 @@ fn minimal_traces(name: &str) -> Result<Vec<EmuTrace>, ZiskEmulatorErr> {
     ZiskEmulator::compute_minimal_traces(&rom, &[], &options, 2)
 }
 
-/// The failure must be reported at the failing instruction.
+/// Both entry points must reject `name` for `reason`, returning (the failing pc of
+/// emulate, that of minimal traces).
+fn assert_fails(name: &str, reason: FailureReason) -> (u64, u64) {
+    let emulate_pc = match emulate(name) {
+        Err(ZiskEmulatorErr::ExecutionFailed { reason: r, pc, .. }) if r == reason => pc,
+        other => panic!("{name}: emulate must fail with {reason:?}, got {other:?}"),
+    };
+    let traces_pc = match minimal_traces(name) {
+        Err(ZiskEmulatorErr::ExecutionFailed { reason: r, pc, .. }) if r == reason => pc,
+        other => panic!(
+            "{name}: minimal traces must fail with {reason:?}, got {:?}",
+            other.map(|t| t.len())
+        ),
+    };
+    (emulate_pc, traces_pc)
+}
+
+/// A trap must be reported at the trapping instruction.
 fn assert_fails_at(name: &str, failing_pc: u64) {
-    match emulate(name) {
-        Err(ZiskEmulatorErr::ExecutionFailed { pc, .. }) => {
-            assert_eq!(pc, failing_pc, "{name}: emulate failed at the wrong pc")
-        }
-        other => panic!("{name}: emulate must fail, got {other:?}"),
-    }
-    match minimal_traces(name) {
-        Err(ZiskEmulatorErr::ExecutionFailed { pc, .. }) => {
-            assert_eq!(pc, failing_pc, "{name}: minimal traces failed at the wrong pc")
-        }
-        other => panic!("{name}: minimal traces must fail, got {:?}", other.map(|t| t.len())),
-    }
+    assert_eq!(assert_fails(name, FailureReason::Trap), (failing_pc, failing_pc), "{name}");
 }
 
 #[test]
@@ -69,17 +75,11 @@ fn write_to_read_only_csr_fails() {
 
 #[test]
 fn nonzero_exit_code_fails() {
-    // The exit code is checked in the BIOS exit handler, not in the guest.
-    match emulate("exit_code") {
-        Err(ZiskEmulatorErr::ExecutionFailed { pc, .. }) => {
-            assert!(pc < 0x8000_0000, "exit_code: must fail in the BIOS, got pc={pc:#x}")
-        }
-        other => panic!("exit_code: emulate must fail, got {other:?}"),
-    }
-    assert!(
-        matches!(minimal_traces("exit_code"), Err(ZiskEmulatorErr::ExecutionFailed { .. })),
-        "exit_code: minimal traces must fail"
-    );
+    // exit(42): the error carries the code, and the exit code is checked in the BIOS
+    // exit handler, not in the guest.
+    let (pc, traces_pc) = assert_fails("exit_code", FailureReason::ExitCode(42));
+    assert!(pc < 0x8000_0000, "exit_code: must fail in the BIOS, got pc={pc:#x}");
+    assert_eq!(pc, traces_pc);
 }
 
 #[test]
