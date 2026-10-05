@@ -1,8 +1,10 @@
 //! AIR classification helpers.
 
 use zisk_pil::{
-    AIR_NAMES, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
-    ZISK_AIRGROUP_ID,
+    AIR_NAMES, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS,
+    MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_BYTE_LARGE_AIR_IDS, MEM_ALIGN_LARGE_AIR_IDS,
+    MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS,
+    ROM_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 use crate::{PRECOMPILE_AIR_IDS, PRECOMPILE_RANK_ASSIGN};
@@ -56,6 +58,7 @@ impl AirClassifier {
         match MODE.get_or_init(|| std::env::var("ZISK_WITNESS_ONLY").ok()).as_deref() {
             Some("ram") => air_id == MEM_AIR_IDS[0],
             Some("mem") => Self::is_memory_related(air_id),
+            Some("memall") => Self::is_memory_related(air_id) || Self::is_mem_align(air_id),
             _ => true,
         }
     }
@@ -69,10 +72,23 @@ impl AirClassifier {
             zisk_common::MEM_ROWS_ROM
         } else if air_id == INPUT_DATA_AIR_IDS[0] {
             zisk_common::MEM_ROWS_INPUT
+        } else if Self::is_mem_align(air_id) {
+            zisk_common::MEM_ROWS_ALIGN
         } else {
             return false;
         };
         zisk_common::MEM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire) & bit != 0
+    }
+
+    /// The seven `MemAlign` airs.
+    fn is_mem_align(air_id: usize) -> bool {
+        air_id == MEM_ALIGN_AIR_IDS[0]
+            || air_id == MEM_ALIGN_LARGE_AIR_IDS[0]
+            || air_id == MEM_ALIGN_BYTE_AIR_IDS[0]
+            || air_id == MEM_ALIGN_BYTE_LARGE_AIR_IDS[0]
+            || air_id == MEM_ALIGN_READ_BYTE_AIR_IDS[0]
+            || air_id == MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS[0]
+            || air_id == MEM_ALIGN_WRITE_BYTE_AIR_IDS[0]
     }
 
     /// Checks if the AIR ID corresponds to a memory-related state machine.

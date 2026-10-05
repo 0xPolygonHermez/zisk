@@ -1,7 +1,7 @@
 use crate::{mem_align_byte_sm::MemAlignByteSM, MemAlignCollector};
 use zisk_sm_mem_common::MemAlignCheckPoint;
 
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
@@ -9,8 +9,8 @@ use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 use zisk_pil::{
-    MemAlignReadByteLargeTrace, MemAlignReadByteTrace, MemAlignReadByteTraceRow,
-    MemAlignReadByteTraceRowPacked,
+    MemAlignReadByteAirValues, MemAlignReadByteLargeAirValues, MemAlignReadByteLargeTrace,
+    MemAlignReadByteTrace, MemAlignReadByteTraceRow, MemAlignReadByteTraceRowPacked,
 };
 
 pub struct MemAlignReadByteInstance<F: PrimeField64> {
@@ -43,6 +43,66 @@ impl<F: PrimeField64> MemAlignReadByteInstance<F> {
     pub fn build_mem_align_read_byte_collector(&self, chunk_id: ChunkId) -> MemAlignCollector {
         MemAlignCollector::new(&self.checkpoint[&chunk_id])
     }
+
+    /// The instance from the rows the GPU planner built (`ZISK_MEM_GPU_FILL=arena`).
+    fn device_witness(
+        &self,
+        air_id: usize,
+        segment: usize,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<AirInstance<F>> {
+        if !packed {
+            return Err(proofman_common::ProofmanError::InvalidParameters(
+                "ZISK_MEM_GPU_FILL=arena needs the packed MemAlign byte trace".to_string(),
+            ));
+        }
+        if self.is_large() {
+            let mut trace =
+                MemAlignReadByteLargeTrace::<MemAlignReadByteTraceRowPacked<F>>::new_from_vec(
+                    trace_buffer,
+                )?;
+            let used = crate::mem_device_rows::align_device_rows(
+                air_id,
+                segment,
+                crate::mem_trace_hash::rows_as_words_mut(&mut trace.buffer),
+            )?;
+            crate::mem_device_rows::align_dump(
+                air_id,
+                segment,
+                crate::mem_trace_hash::rows_as_words(&trace.buffer),
+                used,
+                MemAlignReadByteTraceRowPacked::<F>::PACKED_WORDS,
+            );
+            let mut air_values = MemAlignReadByteLargeAirValues::<F>::new();
+            air_values.padding_size = F::from_usize(trace.num_rows() - used);
+            Ok(AirInstance::new_from_trace(
+                FromTrace::new(&mut trace).with_air_values(&mut air_values),
+            ))
+        } else {
+            let mut trace =
+                MemAlignReadByteTrace::<MemAlignReadByteTraceRowPacked<F>>::new_from_vec(
+                    trace_buffer,
+                )?;
+            let used = crate::mem_device_rows::align_device_rows(
+                air_id,
+                segment,
+                crate::mem_trace_hash::rows_as_words_mut(&mut trace.buffer),
+            )?;
+            crate::mem_device_rows::align_dump(
+                air_id,
+                segment,
+                crate::mem_trace_hash::rows_as_words(&trace.buffer),
+                used,
+                MemAlignReadByteTraceRowPacked::<F>::PACKED_WORDS,
+            );
+            let mut air_values = MemAlignReadByteAirValues::<F>::new();
+            air_values.padding_size = F::from_usize(trace.num_rows() - used);
+            Ok(AirInstance::new_from_trace(
+                FromTrace::new(&mut trace).with_air_values(&mut air_values),
+            ))
+        }
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
@@ -54,6 +114,17 @@ impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
         trace_buffer: Vec<F>,
         packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
+        let air_id = self.ictx.plan.air_id;
+        let segment =
+            usize::from(self.ictx.plan.segment_id.expect("MemAlign plan without segment"));
+        if crate::mem_device_rows::rows_on_device("align") {
+            return self.device_witness(air_id, segment, trace_buffer, packed).map(Some);
+        }
+        let mut hook = move |cpu: &[u64], f: &crate::mem_gpu_fill::RowsFilled| {
+            crate::mem_device_rows::align_filled(air_id, segment, cpu, f.used, f.words_per_row);
+        };
+        let mut on_filled: crate::mem_gpu_fill::OnFilled<'_, crate::mem_gpu_fill::RowsFilled> =
+            if packed { Some(&mut hook) } else { None };
         let mut total_rows = 0;
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -71,19 +142,19 @@ impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
             (false, true) => sm.compute_witness::<
                 MemAlignReadByteTrace<MemAlignReadByteTraceRowPacked<F>>,
                 MemAlignReadByteTraceRowPacked<F>,
-            >(&inputs, used_rows, trace_buffer)?,
+            >(&inputs, used_rows, trace_buffer, on_filled.take())?,
             (false, false) => sm.compute_witness::<
                 MemAlignReadByteTrace<MemAlignReadByteTraceRow<F>>,
                 MemAlignReadByteTraceRow<F>,
-            >(&inputs, used_rows, trace_buffer)?,
+            >(&inputs, used_rows, trace_buffer, on_filled.take())?,
             (true, true) => sm.compute_witness::<
                 MemAlignReadByteLargeTrace<MemAlignReadByteTraceRowPacked<F>>,
                 MemAlignReadByteTraceRowPacked<F>,
-            >(&inputs, used_rows, trace_buffer)?,
+            >(&inputs, used_rows, trace_buffer, on_filled.take())?,
             (true, false) => sm.compute_witness::<
                 MemAlignReadByteLargeTrace<MemAlignReadByteTraceRow<F>>,
                 MemAlignReadByteTraceRow<F>,
-            >(&inputs, used_rows, trace_buffer)?,
+            >(&inputs, used_rows, trace_buffer, on_filled.take())?,
         }))
     }
 

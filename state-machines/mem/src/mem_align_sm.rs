@@ -826,6 +826,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,
         trace_buffer: Vec<F>,
+        on_filled: crate::mem_gpu_fill::OnFilled<'_, crate::mem_gpu_fill::RowsFilled>,
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace =
             GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec(trace_buffer)?;
@@ -875,6 +876,16 @@ impl<F: PrimeField64> MemAlignSM<F> {
         // Store the padding rows
         trace.buffer[total_index..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 
+        if let Some(hook) = on_filled {
+            let words = crate::mem_trace_hash::rows_as_words(&trace.buffer);
+            hook(
+                words,
+                &crate::mem_gpu_fill::RowsFilled {
+                    used: total_index,
+                    words_per_row: std::mem::size_of::<R>() / 8,
+                },
+            );
+        }
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }
 }

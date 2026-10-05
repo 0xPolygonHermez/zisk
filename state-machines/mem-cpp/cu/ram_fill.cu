@@ -95,6 +95,37 @@ constexpr uint32_t RF_IDX_MASK       = (1u << RF_IDX_KIND_SHIFT) - 1;
 __device__ __forceinline__ uint32_t rf_sidx_kind(uint32_t s) { return s >> RF_IDX_KIND_SHIFT; }
 __device__ __forceinline__ uint32_t rf_sidx_index(uint32_t s) { return s & RF_IDX_MASK; }
 
+// A read's record value is the old-word slot tag of its MemAlign access (0: none).
+__device__ __forceinline__ void align_scatter(AlignRecord* align, uint64_t tag, uint64_t word) {
+    if (tag == 0) return;
+    const uint64_t t = tag - 1;
+    align[t >> 1].old[t & 1] = word;
+}
+// RAM: sorted position j is record rf_sidx_index(sidx[j]) with its resolved value.
+__global__ void rf_scatter_align_kernel(const uint32_t* __restrict__ sidx, const uint64_t* __restrict__ resolved,
+                                        size_t n, RamRecords rec, AlignRecord* __restrict__ align) {
+    const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= n) return;
+    const uint32_t s = sidx[j];
+    if (rf_sidx_kind(s) != 0) return;
+    align_scatter(align, rec.value(rf_sidx_index(s)), resolved[j]);
+}
+// ROM and input: sorted position g is record idx[g]; the word is its resolved value or the
+// image word of its address.
+__global__ void other_scatter_align_kernel(const uint32_t* __restrict__ idx, const uint32_t* __restrict__ addr_sorted,
+                                           const uint64_t* __restrict__ resolved, const uint64_t* __restrict__ image,
+                                           size_t image_words, uint32_t image_base, size_t n, RamRecords rec,
+                                           AlignRecord* __restrict__ align) {
+    const size_t g = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (g >= n) return;
+    const uint32_t k = idx[g];
+    if (rf_kind(rec.meta(k)) != 0) return;
+    uint64_t word;
+    if (resolved) word = resolved[g];
+    else { const uint32_t off = addr_sorted[g] - image_base; word = off < image_words ? image[off] : 0; }
+    align_scatter(align, rec.value(k), word);
+}
+
 __global__ void rf_keys_kernel(RamRecords rec, size_t n, uint64_t* __restrict__ keys, uint32_t* __restrict__ idx) {
     const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
@@ -524,6 +555,10 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
         carry = last_state;
         carry_addr = last_key;
     }
+    if (d_align_) {
+        rf_scatter_align_kernel<<<rf_grid(n), RF_BLOCK>>>(sidx, resolved, n, ram_records_, d_align_);
+        RF_TRY(cudaGetLastError());
+    }
     RF_TRY(cudaEventRecord(ev[3]));
 
     // 4. rows, then out to the caller's buffer.
@@ -948,6 +983,10 @@ bool CountAndPlan::fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t
         carry = last_state;
         carry_addr = last_key;
     }
+    if (d_align_) {
+        other_scatter_align_kernel<<<rf_grid(n), RF_BLOCK>>>(idx, addr_sorted, resolved, nullptr, 0, 0, n, ram_records_, d_align_);
+        RF_TRY(cudaGetLastError());
+    }
     RF_TRY(cudaEventRecord(ev[2]));
 
     // Rows, then out.
@@ -1157,6 +1196,11 @@ bool CountAndPlan::fill_input_instance(uint32_t inst, const uint64_t* d_image, c
         res->status = -3;
         return false;
     }
+    if (d_align_) {
+        other_scatter_align_kernel<<<rf_grid(n), RF_BLOCK>>>(idx, addr_sorted, nullptr, d_image, image_words,
+                                                             REGION_ADDR_START[RF_REGION_INPUT], n, ram_records_, d_align_);
+        RF_TRY(cudaGetLastError());
+    }
     RF_TRY(cudaEventRecord(ev[1]));
 
     const uint32_t prev_addr = inst == 0 ? REGION_ADDR_START[RF_REGION_INPUT] : 0xFFFFFFFFu;
@@ -1263,3 +1307,515 @@ const uint64_t* CountAndPlan::input_instance_rows(uint32_t inst, RamFillResult* 
     return h_input_rows_ + (size_t)inst * input_rows_stride_;
 }
 
+// ─── MemAlign: the retained align accesses, per instance of the host plan ───────────────────────
+//
+// The CPU collector walks each chunk's bus in arrival order and, per kind, skips `skip` accesses
+// then takes `count`; the rows of an instance follow that order across its chunks. Here the
+// records are first put in (chunk, arrival) order (pieces of a chunk were reserved in order on
+// one stream, chunks in completion order), each access gets its per-kind ordinal inside its chunk
+// with a scan by chunk, and the instance's accesses are the ones inside their chunk's window.
+// A full-air access takes 2, 3 or 5 rows (its kind), a byte-air access one; the row contents are
+// the CPU fill's (mem_align_sm.rs, mem_align_byte_sm.rs).
+
+namespace {
+
+__device__ __forceinline__ uint32_t align_kind_of(uint64_t info)  { return (uint32_t)(info >> ALIGN_KIND_SHIFT) & 7u; }
+__device__ __forceinline__ uint32_t align_width_of(uint64_t info) { return (uint32_t)(info >> ALIGN_WIDTH_SHIFT) & 15u; }
+__device__ __forceinline__ bool     align_wr_of(uint64_t info)    { return ((info >> ALIGN_WR_SHIFT) & 1u) != 0; }
+__device__ __forceinline__ uint64_t align_step_of(uint64_t info)  { return info & RAM_META_STEP_MASK; }
+
+// Every retained align access: its record index, in (chunk, arrival) order.
+__global__ void align_order_kernel(const uint32_t* __restrict__ run_base, const uint32_t* __restrict__ run_pref,
+                                   uint32_t n_runs, size_t n, uint32_t* __restrict__ order) {
+    const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= n) return;
+    uint32_t lo = 0, hi = n_runs;   // last run whose prefix is <= j
+    while (lo + 1 < hi) {
+        const uint32_t mid = (lo + hi) / 2;
+        if (run_pref[mid] <= j) lo = mid; else hi = mid;
+    }
+    order[j] = run_base[lo] + (uint32_t)(j - run_pref[lo]);
+}
+
+__global__ void align_keys_kernel(const AlignRecord* __restrict__ align, const uint32_t* __restrict__ order,
+                                  size_t p0, size_t m, uint32_t* __restrict__ chunk, uint8_t* __restrict__ kind) {
+    const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= m) return;
+    const AlignRecord& r = align[order[p0 + j]];
+    chunk[j] = r.chunk;
+    kind[j] = (uint8_t)align_kind_of(r.info);
+}
+__global__ void align_kind_flag_kernel(const uint8_t* __restrict__ kind, size_t m, uint32_t k, uint32_t* __restrict__ flag) {
+    const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= m) return;
+    flag[j] = kind[j] == k ? 1u : 0u;
+}
+// Selected: the access's ordinal among its kind in its chunk falls in the chunk's window.
+__global__ void align_select_kernel(const uint32_t* __restrict__ chunk, const uint8_t* __restrict__ kind,
+                                    const uint32_t* const* __restrict__ ordinal, size_t m,
+                                    const AlignChunkEntry* __restrict__ table, uint32_t c_first, uint32_t n_table,
+                                    uint32_t* __restrict__ sel) {
+    const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= m) return;
+    const uint32_t k = kind[j];
+    const uint32_t c = chunk[j] - c_first;
+    if (k >= ALIGN_KINDS || c >= n_table) { sel[j] = 0; return; }
+    const AlignChunkEntry& e = table[c];
+    const uint32_t o = ordinal[k][j];
+    sel[j] = (o >= e.skip[k] && o < e.skip[k] + e.count[k]) ? 1u : 0u;
+}
+__global__ void align_rows_per_op_kernel(const AlignRecord* __restrict__ align, const uint32_t* __restrict__ order,
+                                         size_t p0, const uint32_t* __restrict__ selected, size_t n_sel,
+                                         uint32_t air_kind, uint32_t* __restrict__ rows_per) {
+    const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= n_sel) return;
+    if (air_kind != 0) { rows_per[j] = 1; return; }
+    // full_5, full_3, full_2; a byte read is a one-word read (2), a byte write a one-word write (3).
+    const uint32_t k = align_kind_of(align[order[p0 + selected[j]]].info);
+    rows_per[j] = k == 0 ? 5 : k == 1 ? 3 : k == 2 ? 2 : k == 3 ? 2 : 3;
+}
+
+// The bytes the access read, as the CPU's get_read_value.
+__device__ __forceinline__ uint64_t align_read_value(uint32_t addr, uint32_t width, const uint64_t* old) {
+    const uint32_t off = (addr & 7u) * 8;
+    uint64_t v = old[0] >> off;
+    if ((addr & 7u) + width > 8) v |= old[1] << (64 - off);
+    return width >= 8 ? v : (v & ((1ull << (8 * width)) - 1));
+}
+__device__ __forceinline__ uint32_t align_byte(uint64_t v, uint32_t i, uint32_t rot) {
+    return (uint32_t)((v >> (((rot + i) & 7u) * 8)) & 0xFFu);
+}
+// The first row of the access in the MemAlignRom table (mem_align_rom_sm.rs).
+__device__ __forceinline__ uint32_t align_pc(bool wr, bool two, uint32_t off, uint32_t width) {
+    const uint32_t op_size = two ? (wr ? 5u : 3u) : (wr ? 3u : 2u);
+    const uint32_t base = two ? (wr ? 134u : 101u) : (wr ? 41u : 1u);
+    uint32_t combos = 0, widx = 0;
+    if (!two) {
+        for (uint32_t i = 0; i < off; ++i) combos += i <= 4 ? 3u : (i <= 6 ? 2u : 1u);
+        widx = width == 1 ? 0u : width == 2 ? 1u : 2u;
+    } else {
+        for (uint32_t i = 1; i < off; ++i) combos += i <= 4 ? 1u : (i <= 6 ? 2u : 3u);
+        widx = off <= 4 ? 0u : off <= 6 ? (width == 4 ? 0u : 1u) : (width == 2 ? 0u : width == 4 ? 1u : 2u);
+    }
+    return base + op_size * (combos + widx);
+}
+
+// MemAlign columns, in declaration order.
+enum : uint32_t { MA_ADDR = 0, MA_OFFSET, MA_WIDTH, MA_WR, MA_PC, MA_RESET, MA_UP_TO_DOWN, MA_DOWN_TO_UP, MA_NON_ALIGNED,
+                  MA_W_LT8, MA_W_LT4, MA_W_LT2, MA_REG = 12, MA_SEL = 20, MA_STEP = 28, MA_DELTA_ADDR = 29, MA_VALUE = 30,
+                  MA_COLS = 32 };
+
+struct MaRow {
+    uint32_t addr_w, offset, width, pc; bool wr, reset, up, down, non_aligned, lt8, lt4, lt2;
+    uint64_t step, reg_value /* the 8 reg bytes as one word */, value; uint8_t sel;   // sel bit i: lane i
+};
+__device__ __forceinline__ void ma_put(const RowPackLayout& l, uint64_t* out, const MaRow& r) {
+    uint64_t w[MEMPACK_MAX_WORDS_PER_ROW];
+#pragma unroll
+    for (uint32_t k = 0; k < MEMPACK_MAX_WORDS_PER_ROW; ++k) w[k] = 0;
+    rowpack_put(l, w, MA_ADDR, r.addr_w);
+    rowpack_put(l, w, MA_OFFSET, r.offset);
+    rowpack_put(l, w, MA_WIDTH, r.width);
+    rowpack_put(l, w, MA_WR, r.wr ? 1 : 0);
+    rowpack_put(l, w, MA_PC, r.pc);
+    rowpack_put(l, w, MA_RESET, r.reset ? 1 : 0);
+    rowpack_put(l, w, MA_UP_TO_DOWN, r.up ? 1 : 0);
+    rowpack_put(l, w, MA_DOWN_TO_UP, r.down ? 1 : 0);
+    rowpack_put(l, w, MA_NON_ALIGNED, r.non_aligned ? 1 : 0);
+    rowpack_put(l, w, MA_W_LT8, r.lt8 ? 1 : 0);
+    rowpack_put(l, w, MA_W_LT4, r.lt4 ? 1 : 0);
+    rowpack_put(l, w, MA_W_LT2, r.lt2 ? 1 : 0);
+#pragma unroll
+    for (uint32_t i = 0; i < 8; ++i) {
+        rowpack_put(l, w, MA_REG + i, (r.reg_value >> (8 * i)) & 0xFFu);
+        rowpack_put(l, w, MA_SEL + i, (r.sel >> i) & 1u);
+    }
+    rowpack_put(l, w, MA_STEP, r.step);
+    rowpack_put(l, w, MA_VALUE, (uint32_t)r.value);
+    rowpack_put(l, w, MA_VALUE + 1, (uint32_t)(r.value >> 32));
+    for (uint32_t k = 0; k < l.words_per_row; ++k) out[k] = w[k];
+}
+__device__ __forceinline__ MaRow ma_blank(uint32_t addr_w, uint64_t step) {
+    MaRow r;
+    r.addr_w = addr_w; r.offset = 0; r.width = 8; r.pc = 0; r.wr = false; r.reset = false; r.up = false; r.down = false;
+    r.non_aligned = false; r.lt8 = false; r.lt4 = false; r.lt2 = false; r.step = step; r.reg_value = 0; r.value = 0; r.sel = 0;
+    return r;
+}
+__device__ __forceinline__ uint64_t ma_rot(uint64_t v, uint32_t rot) {   // reg[i] = byte (rot + i) % 8 of v
+    uint64_t out = 0;
+#pragma unroll
+    for (uint32_t i = 0; i < 8; ++i) out |= (uint64_t)align_byte(v, i, rot) << (8 * i);
+    return out;
+}
+__device__ __forceinline__ uint8_t ma_sel_range(uint32_t from, uint32_t to) {   // lanes [from, to)
+    uint8_t s = 0;
+    for (uint32_t i = from; i < to && i < 8; ++i) s |= (uint8_t)(1u << i);
+    return s;
+}
+
+// The 2, 3 or 5 rows of one full-air access, as prove_mem_align_op builds them.
+__device__ void ma_rows(const RowPackLayout& l, const AlignRecord& a, uint64_t* out) {
+    const uint32_t off = a.addr & 7u, width = align_width_of(a.info);
+    const bool wr = align_wr_of(a.info);
+    const bool two = off + width > 8;
+    const uint64_t step = align_step_of(a.info);
+    const uint32_t addr_w = a.addr >> 3;
+    const uint64_t value = wr ? a.value : align_read_value(a.addr, width, a.old);
+    const uint32_t pc = align_pc(wr, two, off, width);
+    const uint64_t first = a.old[0], second = a.old[1];
+    const uint32_t rem = (off + width) & 7u;
+    const uint64_t wmask = width >= 8 ? ~0ull : ((1ull << (8 * width)) - 1);
+    uint32_t n = 0;
+    if (!two && !wr) {
+        MaRow r = ma_blank(addr_w, step); r.reset = true; r.up = true; r.reg_value = first; r.sel = ma_sel_range(off, off + width); r.value = first;
+        ma_put(l, out + (n++) * l.words_per_row, r);
+        MaRow v = ma_blank(addr_w, step); v.offset = off; v.width = width; v.pc = pc; v.non_aligned = true;
+        v.lt8 = width < 8; v.lt4 = width < 4; v.lt2 = width < 2; v.reg_value = ma_rot(value, 8 - off); v.sel = (uint8_t)(1u << off); v.value = value;
+        ma_put(l, out + (n++) * l.words_per_row, v);
+    } else if (!two) {
+        const uint64_t mask = wmask << (8 * off);
+        const uint64_t written = (first & ~mask) | ((value & wmask) << (8 * off));
+        MaRow r = ma_blank(addr_w, step); r.reset = true; r.up = true; r.reg_value = first; r.sel = (uint8_t)~ma_sel_range(off, off + width); r.value = first;
+        ma_put(l, out + (n++) * l.words_per_row, r);
+        MaRow w = ma_blank(addr_w, step + 1); w.wr = true; w.pc = pc; w.up = true; w.reg_value = written; w.sel = ma_sel_range(off, off + width); w.value = written;
+        ma_put(l, out + (n++) * l.words_per_row, w);
+        MaRow v = ma_blank(addr_w, step); v.offset = off; v.width = width; v.wr = true; v.pc = pc + 1; v.non_aligned = true;
+        const uint64_t rot = ma_rot(value, 8 - off);
+        v.reg_value = (rot & ~mask) | (written & mask); v.sel = (uint8_t)(1u << off); v.value = value;
+        ma_put(l, out + (n++) * l.words_per_row, v);
+    } else if (!wr) {
+        MaRow r = ma_blank(addr_w, step); r.reset = true; r.up = true; r.reg_value = first; r.sel = ma_sel_range(off, 8); r.value = first;
+        ma_put(l, out + (n++) * l.words_per_row, r);
+        MaRow v = ma_blank(addr_w, step); v.offset = off; v.width = width; v.pc = pc; v.non_aligned = true;
+        v.lt8 = width < 8; v.lt4 = width < 4; v.lt2 = width < 2; v.reg_value = ma_rot(value, 8 - off); v.sel = (uint8_t)(1u << off); v.value = value;
+        ma_put(l, out + (n++) * l.words_per_row, v);
+        MaRow r2 = ma_blank(addr_w + 1, step); r2.pc = pc + 1; r2.down = true; r2.reg_value = second; r2.sel = ma_sel_range(0, rem); r2.value = second;
+        ma_put(l, out + (n++) * l.words_per_row, r2);
+    } else {
+        const uint32_t width_norm = 8 - off;
+        const uint64_t wb = (1ull << (8 * width_norm)) - 1;
+        const uint64_t mask1 = wb << (8 * off);
+        const uint64_t first_w = (first & ~mask1) | ((value & wb) << (8 * off));
+        const uint64_t mask2 = (1ull << (8 * rem)) - 1;
+        const uint64_t second_w = (second & ~mask2) | ((value >> (8 * width_norm)) & mask2);
+        MaRow r = ma_blank(addr_w, step); r.reset = true; r.up = true; r.reg_value = first; r.sel = ma_sel_range(0, off); r.value = first;
+        ma_put(l, out + (n++) * l.words_per_row, r);
+        MaRow w = ma_blank(addr_w, step + 1); w.wr = true; w.pc = pc; w.up = true; w.reg_value = first_w; w.sel = ma_sel_range(off, 8); w.value = first_w;
+        ma_put(l, out + (n++) * l.words_per_row, w);
+        MaRow v = ma_blank(addr_w, step); v.offset = off; v.width = width; v.wr = true; v.pc = pc + 1; v.non_aligned = true;
+        const uint64_t rot = ma_rot(value, 8 - off);
+        v.reg_value = (second_w & mask2) | (first_w & mask1 & ~mask2) | (rot & ~mask1 & ~mask2);
+        v.sel = (uint8_t)(1u << off); v.value = value;
+        ma_put(l, out + (n++) * l.words_per_row, v);
+        MaRow w2 = ma_blank(addr_w + 1, step + 1); w2.wr = true; w2.pc = pc + 2; w2.down = true; w2.reg_value = second_w; w2.sel = ma_sel_range(0, rem); w2.value = second_w;
+        ma_put(l, out + (n++) * l.words_per_row, w2);
+        MaRow r2 = ma_blank(addr_w + 1, step); r2.pc = pc + 3; r2.down = true; r2.reg_value = second; r2.sel = ma_sel_range(rem, 8); r2.value = second;
+        ma_put(l, out + (n++) * l.words_per_row, r2);
+    }
+}
+
+// Byte airs: the row of one byte access (compute_row_witness). Column order per air:
+//   1 MemAlignByte:      sel_high_4b, sel_high_2b, sel_high_b, direct, composed, written_composed,
+//                        written_byte, value_16b, value_8b, byte, addr_w, step, is_write, mem_write[2], bus_byte
+//   2 MemAlignReadByte:  sel_high_4b, sel_high_2b, sel_high_b, direct, composed, value_16b, value_8b, byte, addr_w, step
+//   3 MemAlignWriteByte: sel_high_4b, sel_high_2b, sel_high_b, direct, composed, written_composed,
+//                        written_byte, value_16b, value_8b, byte, addr_w, step, mem_write[2]
+__device__ void mb_row(const RowPackLayout& l, uint32_t air_kind, const AlignRecord& a, uint64_t* out) {
+    const uint32_t off = a.addr & 7u;
+    const uint32_t high = (uint32_t)(a.old[0] >> 32), low = (uint32_t)a.old[0];
+    const bool wr = align_wr_of(a.info);
+    const uint32_t direct = off < 4 ? high : low;
+    const uint32_t composed = off < 4 ? low : high;
+    const uint32_t shift = (off & 3u) * 8;
+    const uint32_t byte = (composed >> shift) & 0xFFu;
+    const uint32_t value_16b = (off & 2u) ? (composed & 0xFFFFu) : (composed >> 16);
+    const uint32_t value_8b = (off & 1u) ? ((composed >> (shift - 8)) & 0xFFu) : ((composed >> (shift + 8)) & 0xFFu);
+    const uint32_t written_byte = wr ? (uint32_t)(a.value & 0xFFu) : byte;
+    const uint32_t written_composed = (composed & ~(0xFFu << shift)) | (written_byte << shift);
+    const uint32_t mw0 = off < 4 ? written_composed : low, mw1 = off < 4 ? high : written_composed;
+    uint64_t w[MEMPACK_MAX_WORDS_PER_ROW];
+#pragma unroll
+    for (uint32_t k = 0; k < MEMPACK_MAX_WORDS_PER_ROW; ++k) w[k] = 0;
+    uint32_t c = 0;
+    rowpack_put(l, w, c++, (off & 4u) ? 1 : 0);
+    rowpack_put(l, w, c++, (off & 2u) ? 1 : 0);
+    rowpack_put(l, w, c++, (off & 1u) ? 1 : 0);
+    rowpack_put(l, w, c++, direct);
+    rowpack_put(l, w, c++, composed);
+    if (air_kind != 2) { rowpack_put(l, w, c++, written_composed); rowpack_put(l, w, c++, written_byte); }
+    rowpack_put(l, w, c++, value_16b);
+    rowpack_put(l, w, c++, value_8b);
+    rowpack_put(l, w, c++, byte);
+    rowpack_put(l, w, c++, a.addr >> 3);
+    rowpack_put(l, w, c++, align_step_of(a.info));
+    if (air_kind == 1) rowpack_put(l, w, c++, wr ? 1 : 0);
+    if (air_kind != 2) { rowpack_put(l, w, c++, mw0); rowpack_put(l, w, c++, mw1); }
+    if (air_kind == 1) rowpack_put(l, w, c++, wr ? written_byte : byte);
+    for (uint32_t k = 0; k < l.words_per_row; ++k) out[k] = w[k];
+}
+
+__global__ void align_rows_kernel(RowPackLayout layout, uint32_t air_kind, const AlignRecord* __restrict__ align,
+                                  const uint32_t* __restrict__ order, size_t p0, const uint32_t* __restrict__ selected,
+                                  const uint32_t* __restrict__ row_off, size_t n_sel, uint64_t* __restrict__ out_rows) {
+    const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= n_sel) return;
+    const AlignRecord a = align[order[p0 + selected[j]]];
+    uint64_t* out = out_rows + (size_t)row_off[j] * layout.words_per_row;
+    if (air_kind == 0) ma_rows(layout, a, out);
+    else               mb_row(layout, air_kind, a, out);
+}
+// Padding rows: the full airs' default row with reset set; the byte airs' are all zero.
+__global__ void align_padding_kernel(RowPackLayout layout, uint32_t air_kind, uint32_t from, uint32_t n_rows,
+                                     uint64_t* __restrict__ out_rows) {
+    const uint32_t r = from + blockIdx.x * blockDim.x + threadIdx.x;
+    if (r >= n_rows) return;
+    uint64_t w[MEMPACK_MAX_WORDS_PER_ROW];
+#pragma unroll
+    for (uint32_t k = 0; k < MEMPACK_MAX_WORDS_PER_ROW; ++k) w[k] = 0;
+    if (air_kind == 0) rowpack_put(layout, w, MA_RESET, 1);
+    uint64_t* dst = out_rows + (size_t)r * layout.words_per_row;
+    for (uint32_t k = 0; k < layout.words_per_row; ++k) dst[k] = w[k];
+}
+
+}  // namespace
+
+bool CountAndPlan::set_align_layout(uint32_t air_kind, const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row) {
+    static const uint32_t expect[4] = {MA_COLS, 16, 10, 14};
+    RowPackLayout l;
+    if (air_kind >= 4 || n_cols != expect[air_kind] || n_cols > 64 || !rowpack_layout(l, col_widths, n_cols, words_per_row))
+        return false;
+    for (uint32_t c = 0; c < n_cols; ++c) align_col_widths_[air_kind][c] = col_widths[c];
+    align_n_cols_[air_kind] = n_cols;
+    align_words_per_row_[air_kind] = words_per_row;
+    return true;
+}
+
+// The align accesses in (chunk, arrival) order: `d_align_order_` maps that order to record
+// indexes; `h_align_chunk_start_[c]` is where chunk c starts in it. Carved after the other
+// fills' tables (their per-instance scratch is dead by then).
+bool CountAndPlan::prepare_align_index_() {
+    if (d_align_order_) return true;
+    if (!d_align_ || !align_enabled_.load(std::memory_order_relaxed)) return false;
+    uint32_t overflow = 0;
+    RF_TRY(cudaMemcpy(&overflow, d_align_overflow_, 4, cudaMemcpyDeviceToHost));
+    if (overflow) {
+        fprintf(stderr, "align_fill: the MemAlign region (%zu records) overflowed; witness off\n", align_cap_);
+        return false;
+    }
+    std::vector<AlignPieceRun> runs;
+    { std::lock_guard<std::mutex> lk(ram_runs_mtx_); runs = align_runs_; }
+    std::sort(runs.begin(), runs.end(), [](const AlignPieceRun& a, const AlignPieceRun& b) {
+        return a.chunk != b.chunk ? a.chunk < b.chunk : a.slot < b.slot;
+    });
+    std::vector<AlignRun> h_runs(align_slot_.load(std::memory_order_relaxed));
+    if (!h_runs.empty())
+        RF_TRY(cudaMemcpy(h_runs.data(), d_align_runs_, h_runs.size() * sizeof(AlignRun), cudaMemcpyDeviceToHost));
+    std::vector<uint32_t> h_base, h_pref;
+    h_base.reserve(runs.size()); h_pref.reserve(runs.size() + 1);
+    h_align_chunk_start_.assign((size_t)n_chunks_ + 1, 0);
+    size_t total = 0;
+    uint32_t c_next = 0;
+    for (const AlignPieceRun& r : runs) {
+        const AlignRun d = h_runs[r.slot];
+        if (d.base == ALIGN_RUN_NONE) { fprintf(stderr, "align_fill: a piece has no reservation; witness off\n"); return false; }
+        while (c_next <= r.chunk && c_next < n_chunks_) h_align_chunk_start_[c_next++] = total;
+        h_base.push_back(d.base); h_pref.push_back((uint32_t)total); total += d.n;
+    }
+    while (c_next <= n_chunks_) h_align_chunk_start_[c_next++] = total;
+    h_pref.push_back((uint32_t)total);
+    align_total_ = total;
+    if (total == 0) return true;
+    ScratchCursor sc{other_scratch_ ? other_scratch_ : (rf_scratch_ ? rf_scratch_ : arena_ + cursor_)};
+    uint32_t* d_base = (uint32_t*)sc.take(h_base.size() * 4);
+    uint32_t* d_pref = (uint32_t*)sc.take(h_pref.size() * 4);
+    d_align_order_ = (uint32_t*)sc.take(total * 4);
+    align_scratch_ = sc.take(0);
+    if (align_scratch_ > arena_ + ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed))) {
+        fprintf(stderr, "align_fill: no room for the access order below the retained accesses; witness off\n");
+        d_align_order_ = nullptr;
+        return false;
+    }
+    RF_TRY(cudaMemcpy(d_base, h_base.data(), h_base.size() * 4, cudaMemcpyHostToDevice));
+    RF_TRY(cudaMemcpy(d_pref, h_pref.data(), h_pref.size() * 4, cudaMemcpyHostToDevice));
+    align_order_kernel<<<rf_grid(total), RF_BLOCK>>>(d_base, d_pref, (uint32_t)h_base.size(), total, d_align_order_);
+    RF_TRY(cudaGetLastError());
+    RF_TRY(cudaDeviceSynchronize());
+    return true;
+}
+
+bool CountAndPlan::fill_align_instance(const AlignPlanDesc& plan, const AlignChunkEntry* entries, uint8_t* scratch,
+                                       uint64_t* out_rows, RamFillResult* res) {
+    if (res) *res = RamFillResult{};
+    if (!res || !out_rows || plan.entry_n == 0 || plan.air_kind >= 4 || align_n_cols_[plan.air_kind] == 0) {
+        if (res) res->status = -2;
+        return false;
+    }
+    const uint32_t words = align_words_per_row_[plan.air_kind];
+    uint32_t c_first = 0xFFFFFFFFu, c_last = 0;
+    uint64_t expect = 0;
+    for (uint32_t e = 0; e < plan.entry_n; ++e) {
+        const AlignChunkEntry& en = entries[e];
+        c_first = std::min(c_first, en.chunk); c_last = std::max(c_last, en.chunk);
+        for (uint32_t k = 0; k < ALIGN_KINDS; ++k) expect += en.count[k];
+    }
+    if (c_last >= n_chunks_) { res->status = -2; return false; }
+    const uint32_t n_table = c_last - c_first + 1;
+    std::vector<AlignChunkEntry> table(n_table);
+    for (uint32_t c = 0; c < n_table; ++c) { table[c] = AlignChunkEntry{}; table[c].chunk = c_first + c; }
+    for (uint32_t e = 0; e < plan.entry_n; ++e) table[entries[e].chunk - c_first] = entries[e];
+    const size_t p0 = h_align_chunk_start_[c_first], p1 = h_align_chunk_start_[c_last + 1];
+    const size_t m = p1 - p0;
+    const size_t n_total = ram_cursor_.load(std::memory_order_relaxed);
+
+    cudaEvent_t ev[3];
+    for (auto& e : ev) RF_TRY(cudaEventCreate(&e));
+    RF_TRY(cudaEventRecord(ev[0]));
+
+    ScratchCursor sc{scratch};
+    uint8_t* end = arena_ + (ram_low_edge_bytes(n_total) & ~(size_t)255);
+    AlignChunkEntry* d_table = (AlignChunkEntry*)sc.take((size_t)n_table * sizeof(AlignChunkEntry));
+    uint32_t* chunk = (uint32_t*)sc.take(m * 4);
+    uint8_t* kind = (uint8_t*)sc.take(m);
+    uint32_t* flag = (uint32_t*)sc.take(m * 4);
+    uint32_t* ordinal[ALIGN_KINDS];
+    for (uint32_t k = 0; k < ALIGN_KINDS; ++k) ordinal[k] = (uint32_t*)sc.take(m * 4);
+    uint32_t** d_ordinal = (uint32_t**)sc.take(ALIGN_KINDS * sizeof(uint32_t*));
+    uint32_t* sel_flag = (uint32_t*)sc.take(m * 4);
+    uint32_t* selected = (uint32_t*)sc.take(m * 4);
+    uint32_t* d_n_sel = (uint32_t*)sc.take(4);
+    uint32_t* rows_per = (uint32_t*)sc.take(m * 4 + 4);
+    uint32_t* row_off = (uint32_t*)sc.take(m * 4 + 4);
+    uint64_t* rows = (uint64_t*)sc.take((size_t)plan.n_rows * words * 8);
+    size_t t_scan = 0, t_select = 0, t_sum = 0;
+    cub::DeviceScan::ExclusiveScanByKey(nullptr, t_scan, chunk, flag, ordinal[0], SumU32(), 0u, m, EqU32());
+    cub::DeviceSelect::Flagged(nullptr, t_select, thrust::counting_iterator<uint32_t>(0), (uint32_t*)nullptr,
+                               (uint32_t*)nullptr, (uint32_t*)nullptr, m);
+    cub::DeviceScan::ExclusiveSum(nullptr, t_sum, rows_per, row_off, m + 1);
+    const size_t t_bytes = std::max(t_scan, std::max(t_select, t_sum));
+    void* temp = sc.take(t_bytes);
+    if (sc.cur > end) {
+        fprintf(stderr, "align_fill: air %u segment %u needs %zu MB of scratch, %zu MB free below the retained accesses\n",
+                plan.air_id, plan.segment, (size_t)(sc.cur - scratch) >> 20, (size_t)(end - scratch) >> 20);
+        res->status = -3;
+        return false;
+    }
+    RF_TRY(cudaMemcpy(d_table, table.data(), (size_t)n_table * sizeof(AlignChunkEntry), cudaMemcpyHostToDevice));
+    RF_TRY(cudaMemcpy(d_ordinal, ordinal, ALIGN_KINDS * sizeof(uint32_t*), cudaMemcpyHostToDevice));
+
+    // 1. the instance's chunk range: per-kind ordinals inside each chunk, then the windows.
+    if (m > 0) {
+        align_keys_kernel<<<rf_grid(m), RF_BLOCK>>>(d_align_, d_align_order_, p0, m, chunk, kind);
+        RF_TRY(cudaGetLastError());
+        for (uint32_t k = 0; k < ALIGN_KINDS; ++k) {
+            align_kind_flag_kernel<<<rf_grid(m), RF_BLOCK>>>(kind, m, k, flag);
+            RF_TRY(cudaGetLastError());
+            size_t tb = t_bytes;
+            RF_TRY(cub::DeviceScan::ExclusiveScanByKey(temp, tb, chunk, flag, ordinal[k], SumU32(), 0u, m, EqU32()));
+        }
+        align_select_kernel<<<rf_grid(m), RF_BLOCK>>>(chunk, kind, d_ordinal, m, d_table, c_first, n_table, sel_flag);
+        RF_TRY(cudaGetLastError());
+    }
+    size_t tb = t_bytes;
+    uint32_t n_sel = 0;
+    if (m > 0) {
+        RF_TRY(cub::DeviceSelect::Flagged(temp, tb, thrust::counting_iterator<uint32_t>(0), sel_flag, selected, d_n_sel, m));
+        RF_TRY(cudaMemcpy(&n_sel, d_n_sel, 4, cudaMemcpyDeviceToHost));
+    }
+    if (n_sel != expect) {
+        fprintf(stderr, "align_fill: air %u segment %u: %u accesses selected, the plan counted %llu (chunks %u..%u, %zu accesses)\n",
+                plan.air_id, plan.segment, n_sel, (unsigned long long)expect, c_first, c_last, m);
+        res->status = -4;
+        return false;
+    }
+    RF_TRY(cudaEventRecord(ev[1]));
+
+    // 2. rows: the accesses' rows in order, then the padding.
+    uint32_t used = 0;
+    if (n_sel > 0) {
+        align_rows_per_op_kernel<<<rf_grid(n_sel), RF_BLOCK>>>(d_align_, d_align_order_, p0, selected, n_sel, plan.air_kind, rows_per);
+        RF_TRY(cudaGetLastError());
+        tb = t_bytes;
+        RF_TRY(cub::DeviceScan::ExclusiveSum(temp, tb, rows_per, row_off, (size_t)n_sel + 1));
+        RF_TRY(cudaMemcpy(&used, row_off + n_sel, 4, cudaMemcpyDeviceToHost));
+    }
+    if (used > plan.n_rows) {
+        fprintf(stderr, "align_fill: air %u segment %u: %u rows for %u\n", plan.air_id, plan.segment, used, plan.n_rows);
+        res->status = -4;
+        return false;
+    }
+    RowPackLayout layout{};
+    rowpack_layout(layout, align_col_widths_[plan.air_kind], align_n_cols_[plan.air_kind], words);
+    if (n_sel > 0) {
+        align_rows_kernel<<<rf_grid(n_sel), RF_BLOCK>>>(layout, plan.air_kind, d_align_, d_align_order_, p0, selected, row_off, n_sel, rows);
+        RF_TRY(cudaGetLastError());
+    }
+    if (used < plan.n_rows) {
+        align_padding_kernel<<<rf_grid(plan.n_rows - used), RF_BLOCK>>>(layout, plan.air_kind, used, plan.n_rows, rows);
+        RF_TRY(cudaGetLastError());
+    }
+    RF_TRY(cudaMemcpy(out_rows, rows, (size_t)plan.n_rows * words * 8, cudaMemcpyDeviceToHost));
+    RF_TRY(cudaEventRecord(ev[2]));
+    RF_TRY(cudaDeviceSynchronize());
+    res->n_lanes = used;
+    auto ms = [&](int a, int b) { float t = 0; cudaEventElapsedTime(&t, ev[a], ev[b]); return t; };
+    res->ms_rows = ms(1, 2);
+    res->status = 0;
+    fprintf(stderr, "align_fill: air %u segment %u: chunks %u..%u, %zu accesses, %u selected, %u rows; select %.1f rows+out %.1f ms\n",
+            plan.air_id, plan.segment, c_first, c_last, m, n_sel, used, ms(0, 1), ms(1, 2));
+    for (auto& e : ev) cudaEventDestroy(e);
+    return true;
+}
+
+bool CountAndPlan::fill_all_align_instances(const AlignPlanDesc* plans, uint32_t n_plans, const AlignChunkEntry* entries,
+                                            uint32_t n_entries, RamFillPrepared* prepared) {
+    if (prepared) *prepared = RamFillPrepared{};
+    if (!prepared || (!plans && n_plans)) return false;
+    cudaSetDevice(gpu_device_);
+    if (!ram_retention_enabled_.load(std::memory_order_relaxed) || !d_align_) { prepared->status = -1; return false; }
+    if (align_prepared_) { prepared->status = 0; prepared->n_instances = (uint32_t)align_results_.size(); prepared->n_lanes = align_total_; return true; }
+    if (!prepare_align_index_()) { prepared->status = -1; return false; }
+    prepared->n_accesses = align_total_;
+    join_rows_prealloc_();
+    size_t need = 0;
+    for (uint32_t i = 0; i < n_plans; ++i) {
+        if (plans[i].air_kind >= 4 || plans[i].entry_from + plans[i].entry_n > n_entries) { prepared->status = -2; return false; }
+        need += (size_t)plans[i].n_rows * align_words_per_row_[plans[i].air_kind];
+    }
+    if (need > h_align_rows_cap_) {
+        if (h_align_rows_) { cudaFreeHost(h_align_rows_); h_align_rows_ = nullptr; h_align_rows_cap_ = 0; }
+        if (cudaMallocHost(&h_align_rows_, need * 8) != cudaSuccess) {
+            fprintf(stderr, "align_fill: pinned allocation of %zu MB for the instance rows failed\n", (need * 8) >> 20);
+            h_align_rows_ = nullptr;
+            return false;
+        }
+        h_align_rows_cap_ = need;
+    }
+    align_results_.clear();
+    size_t offset = 0;
+    for (uint32_t i = 0; i < n_plans; ++i) {
+        AlignFilled f{plans[i].air_id, plans[i].segment, offset, RamFillResult{}};
+        if (!fill_align_instance(plans[i], entries + plans[i].entry_from, align_scratch_, h_align_rows_ + offset, &f.res)) {
+            prepared->status = f.res.status;
+            align_results_.clear();
+            return false;
+        }
+        align_results_.push_back(f);
+        offset += (size_t)plans[i].n_rows * align_words_per_row_[plans[i].air_kind];
+    }
+    align_prepared_ = true;
+    prepared->status = 0;
+    prepared->n_instances = n_plans;
+    prepared->n_lanes = align_total_;
+    return true;
+}
+
+const uint64_t* CountAndPlan::align_instance_rows(uint32_t air_id, uint32_t segment, RamFillResult* res) const {
+    if (h_align_rows_ == nullptr) return nullptr;
+    for (const AlignFilled& f : align_results_) {
+        if (f.air_id == air_id && f.segment == segment) {
+            if (res) *res = f.res;
+            return h_align_rows_ + f.offset;
+        }
+    }
+    return nullptr;
+}
