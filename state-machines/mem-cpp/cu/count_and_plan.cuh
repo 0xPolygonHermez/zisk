@@ -207,6 +207,23 @@ public:
     bool fill_all_ram_instances(uint32_t n_rows, RamFillPrepared* prepared);
     const uint64_t* ram_instance_rows(uint32_t inst, RamFillResult* res) const;
 
+    // ─── RomData witness from the retained ROM accesses (after the RAM fill) ─────────
+    // ROM and input accesses are retained as they arrive, in arrival order. `fill_all_rom_instances`
+    // sorts each RomData instance's accesses by (address, step), resolves every read from the init
+    // write of its word and packs the rows as the CPU fill does.
+    bool set_rom_layout(const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row,
+                        uint32_t lanes_x_row);
+    bool fill_all_rom_instances(uint32_t n_rows, RamFillPrepared* prepared);
+    const uint64_t* rom_instance_rows(uint32_t inst, RamFillResult* res) const;
+
+    // ─── InputData witness from the retained input accesses (after the RomData fill) ─────────
+    // `image` is the input region as the guest sees it (the input shared memory from its start,
+    // `image_bytes` of it); every read resolves to its word, the free-input word to its record.
+    bool set_input_layout(const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row,
+                          uint32_t lanes_x_row);
+    bool fill_all_input_instances(uint32_t n_rows, const void* image, size_t image_bytes, RamFillPrepared* prepared);
+    const uint64_t* input_instance_rows(uint32_t inst, RamFillResult* res) const;
+
 
     bool register_input_pinned(void* ptr, size_t bytes);
     void unregister_input_pinned(void* ptr);
@@ -342,6 +359,42 @@ private:
     void join_rows_prealloc_() { if (h_ram_rows_prealloc_.joinable()) h_ram_rows_prealloc_.join(); }
     size_t                     ram_rows_stride_  = 0;         // u64 words per instance
     std::vector<RamFillResult> ram_results_;
+
+    // Retained ROM and input accesses: records of the same stack, one run per piece in arrival order.
+    std::vector<RamRun>        other_runs_;
+    uint32_t*                  d_other_rank_[N_STREAMS] = {nullptr};
+    // RomData fill (see ram_fill.cu).
+    uint32_t                   rom_col_widths_[64] = {0};
+    uint32_t                   rom_n_cols_ = 0, rom_words_per_row_ = 0, rom_lanes_x_row_ = 0;
+    bool                       rom_prepared_ = false;
+    size_t                     other_total_ = 0;            // retained ROM and input accesses
+    uint32_t*                  d_other_idx_ = nullptr;      // other access -> record index
+    uint32_t*                  d_other_addr_ = nullptr;     // other access -> compact address
+    uint8_t*                   other_scratch_ = nullptr;    // per-instance scratch starts here
+    std::vector<size_t>        h_rom_inst_skip_, h_rom_inst_count_;
+    std::vector<uint32_t>      h_rom_inst_first_, h_rom_inst_last_;
+    uint64_t*                  h_rom_rows_ = nullptr;       // pinned, n_instances x rows x words
+    size_t                     h_rom_rows_cap_ = 0;
+    size_t                     rom_rows_stride_ = 0;
+    std::vector<RamFillResult> rom_results_;
+    bool prepare_other_index_();
+    bool other_geometry_(int region, std::vector<uint32_t>& first, std::vector<uint32_t>& last,
+                         std::vector<size_t>& skip, std::vector<size_t>& count);
+    bool other_sorted_(struct ScratchCursor& sc, uint32_t first, uint32_t last, size_t expect,
+                       uint32_t** addr_sorted, uint32_t** idx, size_t* n_out);
+    bool fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res);
+    // InputData fill (see ram_fill.cu).
+    uint32_t                   input_col_widths_[64] = {0};
+    uint32_t                   input_n_cols_ = 0, input_words_per_row_ = 0, input_lanes_x_row_ = 0;
+    bool                       input_prepared_ = false;
+    std::vector<size_t>        h_input_inst_skip_, h_input_inst_count_;
+    std::vector<uint32_t>      h_input_inst_first_, h_input_inst_last_;
+    uint64_t*                  h_input_rows_ = nullptr;     // pinned, n_instances x rows x words
+    size_t                     h_input_rows_cap_ = 0;
+    size_t                     input_rows_stride_ = 0;
+    std::vector<RamFillResult> input_results_;
+    bool fill_input_instance(uint32_t inst, const uint64_t* d_image, const uint64_t* h_image, size_t image_words,
+                             uint8_t* scratch, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res);
     uint32_t           mem_col_widths_[64] = {0};
     uint32_t           mem_n_cols_ = 0, mem_words_per_row_ = 0, mem_lanes_x_row_ = 0;
 

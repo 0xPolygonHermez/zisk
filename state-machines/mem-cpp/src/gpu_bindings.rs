@@ -132,6 +132,42 @@ extern "C" {
         n_rows: u32,
         prepared: *mut RamFillPrepared,
     ) -> bool;
+    pub fn count_and_plan_set_rom_layout(
+        h: *mut CountAndPlanHandle,
+        col_widths: *const u32,
+        n_cols: u32,
+        words_per_row: u32,
+        lanes_x_row: u32,
+    ) -> bool;
+    pub fn count_and_plan_fill_all_rom_instances(
+        h: *mut CountAndPlanHandle,
+        n_rows: u32,
+        prepared: *mut RamFillPrepared,
+    ) -> bool;
+    pub fn count_and_plan_rom_instance_rows(
+        h: *mut CountAndPlanHandle,
+        inst: u32,
+        res: *mut RamFillResult,
+    ) -> *const u64;
+    pub fn count_and_plan_set_input_layout(
+        h: *mut CountAndPlanHandle,
+        col_widths: *const u32,
+        n_cols: u32,
+        words_per_row: u32,
+        lanes_x_row: u32,
+    ) -> bool;
+    pub fn count_and_plan_fill_all_input_instances(
+        h: *mut CountAndPlanHandle,
+        n_rows: u32,
+        image: *const u8,
+        image_bytes: usize,
+        prepared: *mut RamFillPrepared,
+    ) -> bool;
+    pub fn count_and_plan_input_instance_rows(
+        h: *mut CountAndPlanHandle,
+        inst: u32,
+        res: *mut RamFillResult,
+    ) -> *const u64;
     pub fn count_and_plan_ram_instance_rows(
         h: *mut CountAndPlanHandle,
         inst: u32,

@@ -101,6 +101,14 @@ fn setup_gpu_count_and_plan(gpu_buffer: GpuBufferSource) -> Option<GpuCountAndPl
     Some(gpu_count_and_plan)
 }
 
+/// The block's input region as the guest sees it: the input shared memory up to the bytes written.
+#[cfg(gpu)]
+fn input_image(shm_prefix: &str) -> std::result::Result<crate::ShmemReader, String> {
+    let size = crate::ControlShmem::inputs_size_of(shm_prefix).map_err(|e| e.to_string())?;
+    let name = crate::shmem_input_name(shm_prefix);
+    crate::ShmemReader::new_unlocked(&name, 8 + size as usize).map_err(|e| e.to_string())
+}
+
 /// This struct manages the shared memory and synchronization primitives for reading memory operation traces from the C++ side.
 pub struct MOShmemReader {
     pub(crate) output_shmem: AsmMultiShmem<AsmMOHeader>,
@@ -207,6 +215,8 @@ impl AsmRunnerMO {
             );
         }
 
+        #[cfg(gpu)]
+        let shm_prefix = asm_services.shm_prefix().to_string();
         // Capture parent id for thread
         let _parent_id = _runner_scope.id();
         let _thread_stats = _stats.clone();
@@ -238,7 +248,7 @@ impl AsmRunnerMO {
         // A new block: the previous block's RAM witness source is gone.
         #[cfg(gpu)]
         zisk_sm_mem_planner::clear_gpu_ram_witness();
-        zisk_common::MEM_RAM_ROWS_ON_DEVICE.store(false, Ordering::Release);
+        zisk_common::MEM_ROWS_ON_DEVICE.store(0, Ordering::Release);
         static LIGHT_ARENA_WARNED: std::sync::Once = std::sync::Once::new();
         if std::env::var("ZISK_MOPS_LIGHT").as_deref() == Ok("1")
             && std::env::var("ZISK_MEM_GPU_FILL").map(|v| v.starts_with("arena")).unwrap_or(false)
@@ -448,7 +458,40 @@ impl AsmRunnerMO {
                             // Only `arena` serves the rows from the device; `arena-check` keeps the
                             // CPU witness and compares against it.
                             if std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("arena") {
-                                zisk_common::MEM_RAM_ROWS_ON_DEVICE.store(true, Ordering::Release);
+                                zisk_common::MEM_ROWS_ON_DEVICE
+                                    .fetch_or(zisk_common::MEM_ROWS_RAM, Ordering::AcqRel);
+                            }
+                            match zisk_sm_mem_planner::gpu_rom_witness_fill_all() {
+                                Ok(p) => {
+                                    tracing::info!(
+                                        "[gpu] RomData witness: {} ROM and input accesses -> {} lanes, {} instances",
+                                        p.n_accesses, p.n_lanes, p.n_instances
+                                    );
+                                    if std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("arena") {
+                                        zisk_common::MEM_ROWS_ON_DEVICE
+                                            .fetch_or(zisk_common::MEM_ROWS_ROM, Ordering::AcqRel);
+                                    }
+                                }
+                                Err(e) => tracing::warn!(
+                                    "[gpu] RomData witness unavailable for this block ({e}); its instances fall back to the CPU witness"
+                                ),
+                            }
+                            match input_image(&shm_prefix)
+                                .and_then(|image| zisk_sm_mem_planner::gpu_input_witness_fill_all(image.bytes()))
+                            {
+                                Ok(p) => {
+                                    tracing::info!(
+                                        "[gpu] InputData witness: {} lanes, {} instances",
+                                        p.n_lanes, p.n_instances
+                                    );
+                                    if std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("arena") {
+                                        zisk_common::MEM_ROWS_ON_DEVICE
+                                            .fetch_or(zisk_common::MEM_ROWS_INPUT, Ordering::AcqRel);
+                                    }
+                                }
+                                Err(e) => tracing::warn!(
+                                    "[gpu] InputData witness unavailable for this block ({e}); its instances fall back to the CPU witness"
+                                ),
                             }
                         }
                         Err(e) => tracing::warn!(
