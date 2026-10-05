@@ -77,6 +77,13 @@ jobs:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
 
+      # The compressed (C) decoder is off by default; check its traps fail too.
+      - name: Run the failed-execution tests with the compressed feature
+        run: cargo test --release -p ziskemu --features compressed --test failed_execution
+        env:
+          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
+          RUST_BACKTRACE: 1
+
   zisk-contracts:
     name: Hardhat tests (zisk-contracts)
     runs-on: ubuntu-latest
