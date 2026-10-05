@@ -1,8 +1,8 @@
 //! A failed guest execution must end as failed, so that it is never proven
 //! (zkvm-standards, Termination Semantics). Each guest in
-//! `elf-regressions/failed_execution/` fails one way: a trap (`unimp`), a write to a
-//! read-only CSR, or a nonzero exit code; `exit_ok` is the control, which reads
-//! read-only CSRs and exits 0.
+//! `elf-regressions/failed_execution/` fails one way: a trap (`unimp`, `ebreak`,
+//! `c.ebreak`), a write to a read-only CSR, or a nonzero exit code; `exit_ok` is the
+//! control, which reads read-only CSRs and exits 0.
 //!
 //! Both emulator entry points must reject a failed execution: `emulate` (ziskemu,
 //! `cargo-zisk execute`) and `compute_minimal_traces`, the first phase of proving, so
@@ -49,6 +49,16 @@ fn assert_fails_at(name: &str, failing_pc: u64) {
 fn trap_fails() {
     // unimp is the first instruction
     assert_fails_at("trap_unimp", 0x8000_0000);
+}
+
+#[test]
+fn ebreak_fails() {
+    assert_fails_at("trap_ebreak", 0x8000_0000);
+}
+
+#[test]
+fn compressed_ebreak_fails() {
+    assert_fails_at("trap_c_ebreak", 0x8000_0000);
 }
 
 #[test]
