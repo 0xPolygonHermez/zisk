@@ -10,6 +10,10 @@ use zisk_sm_mem_common::{RAM_W_ADDR_END, RAM_W_ADDR_INIT};
 
 use crate::mem_sm::{split_last_step, split_padding_size, MemFillOutput, MemPreviousSegment};
 
+/// A fill's observer: the filled rows as words and the fill's scalars, before the air instance is
+/// built. The arena check compares them with the device rows.
+pub type OnFilled<'a, O> = Option<&'a mut dyn FnMut(&[u64], &O)>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GpuFillMode {
     Off,
@@ -17,13 +21,6 @@ pub(crate) enum GpuFillMode {
     ArenaCheck,
     /// Fill from the planner's retained accesses, no collectors; the device rows are proved.
     Arena,
-}
-
-/// Whether this block's RAM rows are served from the device: arena mode and a device fill that
-/// succeeded for the block; otherwise the instances are collected and filled on the CPU.
-pub(crate) fn ram_rows_on_device() -> bool {
-    gpu_fill_mode() == GpuFillMode::Arena
-        && zisk_common::MEM_RAM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire)
 }
 
 /// `ZISK_MEM_GPU_FILL`: unset or anything else is `Off`.
@@ -195,6 +192,41 @@ pub(crate) fn compare_rows_by_column(
         }
     }
     out
+}
+
+/// The bits a packed row of the air uses, counted from its first word; `None` when not packed.
+pub(crate) fn packed_used_bits(airgroup_id: usize, air_id: usize) -> Option<usize> {
+    PACKED_INFO
+        .iter()
+        .find(|(ag, a, _)| *ag == airgroup_id && *a == air_id)
+        .filter(|(_, _, c)| c.is_packed)
+        .map(|(_, _, c)| c.unpack_info.iter().map(|&w| w as usize).sum())
+}
+
+/// Like [`compare_rows`], ignoring the bits of each row's last word beyond `used_bits`: the CPU
+/// fill of an air that does not zero its trace leaves whatever the buffer held there, which the
+/// prover never reads.
+pub(crate) fn compare_rows_masked(
+    cpu: &[u64],
+    gpu: &[u64],
+    words_per_row: usize,
+    used_bits: usize,
+) -> (usize, Option<(usize, usize, u64, u64)>) {
+    let tail_bits = used_bits - 64 * (words_per_row - 1);
+    let tail_mask = if tail_bits >= 64 { u64::MAX } else { (1u64 << tail_bits) - 1 };
+    let mut count = 0;
+    let mut first = None;
+    for (i, (a, b)) in cpu.iter().zip(gpu.iter()).enumerate() {
+        let w = i % words_per_row;
+        let (a, b) = if w == words_per_row - 1 { (a & tail_mask, b & tail_mask) } else { (*a, *b) };
+        if a != b {
+            count += 1;
+            if first.is_none() {
+                first = Some((i / words_per_row, w, a, b));
+            }
+        }
+    }
+    (count, first)
 }
 
 /// First differing word between two row buffers, as (row, word, cpu, gpu), and the count.

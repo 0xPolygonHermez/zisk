@@ -53,7 +53,13 @@ pub use types::*;
 pub use utils::*;
 pub use zisk_precompile::*;
 
-/// Whether the current block's RAM memory witness rows come from the GPU planner. Set by the
-/// memory-ops runner once the device fill succeeded, cleared when a block starts; while it is
-/// false the Mem instances are collected and filled on the CPU.
-pub static MEM_RAM_ROWS_ON_DEVICE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Which memory airs' witness rows come from the GPU planner for the current block, as a mask of
+/// `MEM_ROWS_*` bits. Set by the memory-ops runner once each device fill succeeded, cleared when a
+/// block starts; an air whose bit is clear is collected and filled on the CPU.
+pub static MEM_ROWS_ON_DEVICE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// `MEM_ROWS_ON_DEVICE` bit: the `Mem` (RAM) rows.
+pub const MEM_ROWS_RAM: u32 = 1;
+/// `MEM_ROWS_ON_DEVICE` bit: the `RomData` rows.
+pub const MEM_ROWS_ROM: u32 = 2;
+/// `MEM_ROWS_ON_DEVICE` bit: the `InputData` rows.
+pub const MEM_ROWS_INPUT: u32 = 4;

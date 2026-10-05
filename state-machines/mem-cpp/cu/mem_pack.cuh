@@ -118,4 +118,32 @@ __device__ __forceinline__ uint64_t mempack_increment(bool addr_changes, const M
     return me.step - prev_last_step - (me.wr ? 1 : 0);
 }
 
+// Generic packed row: `n_cols` columns at sequential bit offsets, in the trace's declaration order,
+// for airs whose kernels address columns by index.
+struct RowPackLayout {
+    uint32_t off[MEMPACK_MAX_COLS];
+    uint32_t width[MEMPACK_MAX_COLS];
+    uint32_t words_per_row;
+    uint32_t n_cols;
+};
+
+inline bool rowpack_layout(RowPackLayout& l, const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row) {
+    if (words_per_row == 0 || words_per_row > MEMPACK_MAX_WORDS_PER_ROW || n_cols == 0 || n_cols > MEMPACK_MAX_COLS)
+        return false;
+    uint32_t off = 0;
+    for (uint32_t c = 0; c < n_cols; ++c) {
+        l.off[c] = off;
+        l.width[c] = col_widths[c];
+        off += col_widths[c];
+    }
+    if (off > words_per_row * 64) return false;
+    l.words_per_row = words_per_row;
+    l.n_cols = n_cols;
+    return true;
+}
+
+__device__ __forceinline__ void rowpack_put(const RowPackLayout& l, uint64_t* w, uint32_t col, uint64_t v) {
+    mempack_put_bits(w, l.off[col], l.width[col], v);
+}
+
 #endif  // MEM_PACK_CUH

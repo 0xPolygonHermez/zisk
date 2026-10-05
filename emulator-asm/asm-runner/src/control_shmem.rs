@@ -56,6 +56,13 @@ impl ControlShmem {
         Ok(())
     }
 
+    /// The inputs size another process (or this one) recorded, read through a fresh mapping.
+    pub fn inputs_size_of(shm_prefix: &str) -> Result<u64> {
+        let name = shmem_control_input_name(shm_prefix);
+        let reader = crate::ShmemReader::new(&name, Self::CONTROL_WRITER_SIZE as usize)?;
+        Ok(reader.read_u64_at(ControlShmemOffsets::InputsSize as usize))
+    }
+
     /// Increments the inputs size in the control shared memory by the given size, which signals the C++ side that new inputs have been added.
     pub fn inc_inputs_size(&self, size: usize) -> Result<()> {
         let current_size = self.writer.read_u64_at(ControlShmemOffsets::InputsSize as usize);

@@ -60,11 +60,19 @@ impl AirClassifier {
         }
     }
 
-    /// The Mem instances need no collection from the replay when this block's RAM rows come from
-    /// the GPU planner (`ZISK_MEM_GPU_FILL=arena` and the device fill succeeded).
+    /// A memory instance needs no collection from the replay when this block's rows of its air come
+    /// from the GPU planner (`ZISK_MEM_GPU_FILL=arena` and the device fill succeeded).
     pub fn mem_collected_on_device(air_id: usize) -> bool {
-        air_id == MEM_AIR_IDS[0]
-            && zisk_common::MEM_RAM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire)
+        let bit = if air_id == MEM_AIR_IDS[0] {
+            zisk_common::MEM_ROWS_RAM
+        } else if air_id == ROM_DATA_AIR_IDS[0] {
+            zisk_common::MEM_ROWS_ROM
+        } else if air_id == INPUT_DATA_AIR_IDS[0] {
+            zisk_common::MEM_ROWS_INPUT
+        } else {
+            return false;
+        };
+        zisk_common::MEM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire) & bit != 0
     }
 
     /// Checks if the AIR ID corresponds to a memory-related state machine.
