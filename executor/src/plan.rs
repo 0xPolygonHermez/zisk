@@ -29,6 +29,8 @@ pub struct MemPlanArtifacts {
     pub count_and_plan_mo_duration: Duration,
     /// Bytes of the borrowed GPU buffer the mem-ops planner used for this block
     pub gpu_mops_used_bytes: Option<u64>,
+    /// The block's device memory witness, to fill once the memory instances are placed.
+    pub device_witness: Option<zisk_asm_runner::DeviceMemWitness>,
 }
 
 /// Pure-planning phase actor. Owns chunk size only.
@@ -111,13 +113,18 @@ impl<F: PrimeField64> PlanPhase<F> {
         let mo_start = Instant::now();
 
         stats_begin!(stats, exec_scope, _mo_wait_scope, "MO_PLAN_WAIT", 0);
-        let (mem_plans, gpu_mops_used_bytes) = backend.await_mem_plans()?;
+        let (mem_plans, gpu_mops_used_bytes, device_witness) = backend.await_mem_plans()?;
         stats_end!(stats, &_mo_wait_scope);
 
         let count_and_plan_mo_duration = mo_start.elapsed();
         timer_stop_and_log_info!(WAIT_PLAN_MEM_CPP);
 
-        Ok(MemPlanArtifacts { mem_plans, count_and_plan_mo_duration, gpu_mops_used_bytes })
+        Ok(MemPlanArtifacts {
+            mem_plans,
+            count_and_plan_mo_duration,
+            gpu_mops_used_bytes,
+            device_witness,
+        })
     }
 }
 
