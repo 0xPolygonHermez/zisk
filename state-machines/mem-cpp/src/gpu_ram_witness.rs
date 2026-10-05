@@ -215,16 +215,23 @@ pub fn register_gpu_ram_witness(planner: &crate::GpuCountAndPlan, chunk_size: u6
     *registry() = Some(Registered { inner });
 }
 
-/// Builds every RomData instance's rows into pinned host memory, after the RAM fill and while the
-/// planner's arena is still borrowed.
-pub fn gpu_rom_witness_fill_all() -> Result<RamFillPrepared, String> {
+/// Builds the RomData instances `insts` (segment ids) into pinned host memory, after the RAM fill
+/// and while the planner's arena is still borrowed.
+pub fn gpu_rom_witness_fill_all(insts: &[u32]) -> Result<RamFillPrepared, String> {
     let reg = registry();
     let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
     let n_rows = zisk_pil::RomDataTrace::<()>::NUM_ROWS as u32;
     let mut prepared = RamFillPrepared::default();
-    // SAFETY: registered handle, under the lock; `prepared` is a valid out-parameter.
+    // SAFETY: registered handle, under the lock; `insts` outlives the call; `prepared` is a valid
+    // out-parameter.
     let ok = unsafe {
-        crate::gpu_bindings::count_and_plan_fill_all_rom_instances(r.inner, n_rows, &mut prepared)
+        crate::gpu_bindings::count_and_plan_fill_all_rom_instances(
+            r.inner,
+            n_rows,
+            insts.as_ptr(),
+            insts.len() as u32,
+            &mut prepared,
+        )
     };
     if !ok {
         return Err(format!("fill_all_rom_instances failed with status {}", prepared.status));
@@ -253,9 +260,9 @@ pub fn gpu_rom_witness_fill(
     Ok(res)
 }
 
-/// Builds every InputData instance's rows into pinned host memory, after the RomData fill. `image`
-/// is the input region as the guest sees it, from its first byte.
-pub fn gpu_input_witness_fill_all(image: &[u8]) -> Result<RamFillPrepared, String> {
+/// Builds the InputData instances `insts` (segment ids) into pinned host memory, after the RomData
+/// fill. `image` is the input region as the guest sees it, from its first byte.
+pub fn gpu_input_witness_fill_all(image: &[u8], insts: &[u32]) -> Result<RamFillPrepared, String> {
     let reg = registry();
     let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
     let n_rows = zisk_pil::InputDataTrace::<()>::NUM_ROWS as u32;
@@ -268,6 +275,8 @@ pub fn gpu_input_witness_fill_all(image: &[u8]) -> Result<RamFillPrepared, Strin
             n_rows,
             image.as_ptr(),
             image.len(),
+            insts.as_ptr(),
+            insts.len() as u32,
             &mut prepared,
         )
     };
@@ -298,9 +307,9 @@ pub fn gpu_input_witness_fill(
     Ok(res)
 }
 
-/// Builds every MemAlign instance of `plans` into pinned host memory, after the three memory
-/// fills. Each plan carries its per-chunk checkpoints, which become the device's windows.
-pub fn gpu_align_witness_fill_all(plans: &[zisk_common::Plan]) -> Result<RamFillPrepared, String> {
+/// Builds the MemAlign instances `plans` into pinned host memory, after the three memory fills.
+/// Each plan carries its per-chunk checkpoints, which become the device's windows.
+pub fn gpu_align_witness_fill_all(plans: &[&zisk_common::Plan]) -> Result<RamFillPrepared, String> {
     use std::collections::HashMap;
     use zisk_common::ChunkId;
     use zisk_sm_mem_common::MemAlignCheckPoint;
@@ -463,16 +472,23 @@ pub fn gpu_ram_witness_available() -> bool {
     }
 }
 
-/// Builds every RAM instance's rows into pinned host memory. Must run while the planner's arena is
-/// still borrowed (right after the plan); the witness phase then only copies.
-pub fn gpu_ram_witness_fill_all() -> Result<RamFillPrepared, String> {
+/// Builds the RAM instances `insts` (segment ids) into pinned host memory. Must run while the
+/// planner's arena is still borrowed; the witness phase then only copies.
+pub fn gpu_ram_witness_fill_all(insts: &[u32]) -> Result<RamFillPrepared, String> {
     let reg = registry();
     let r = reg.as_ref().ok_or("no GPU planner registered for the RAM witness")?;
     let n_rows = zisk_pil::MemTrace::<()>::NUM_ROWS as u32;
     let mut prepared = RamFillPrepared::default();
-    // SAFETY: registered handle, under the lock; `prepared` is a valid out-parameter.
+    // SAFETY: registered handle, under the lock; `insts` outlives the call; `prepared` is a valid
+    // out-parameter.
     let ok = unsafe {
-        crate::gpu_bindings::count_and_plan_fill_all_ram_instances(r.inner, n_rows, &mut prepared)
+        crate::gpu_bindings::count_and_plan_fill_all_ram_instances(
+            r.inner,
+            n_rows,
+            insts.as_ptr(),
+            insts.len() as u32,
+            &mut prepared,
+        )
     };
     if !ok {
         return Err(format!("fill_all_ram_instances failed with status {}", prepared.status));

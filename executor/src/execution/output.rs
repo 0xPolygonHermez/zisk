@@ -22,7 +22,7 @@
 
 use std::{sync::Arc, thread::JoinHandle};
 
-use zisk_asm_runner::{AsmRunnerMO, AsmRunnerRH};
+use zisk_asm_runner::{AsmRunnerMO, AsmRunnerRH, DeviceMemWitness};
 use zisk_common::{EmuTrace, LateJoinHandle, Plan};
 
 use crate::error::{ExecutorError, ExecutorResult};
@@ -76,7 +76,9 @@ impl BackendArtifacts {
     ///
     /// Each call consumes the `mo` handle inside the `Asm` variant; a
     /// second call returns an error noting the handle was already taken.
-    pub fn await_mem_plans(&mut self) -> ExecutorResult<(Vec<Plan>, Option<u64>)> {
+    pub fn await_mem_plans(
+        &mut self,
+    ) -> ExecutorResult<(Vec<Plan>, Option<u64>, Option<DeviceMemWitness>)> {
         match self {
             Self::Asm { mo, .. } => {
                 let handle = mo.take().ok_or(ExecutorError::RunnerHandleConsumed { name: "MO" })?;
@@ -87,9 +89,13 @@ impl BackendArtifacts {
                         name: "MO",
                         message: e.to_string(),
                     })?;
-                Ok((asm_runner_mo.plans, asm_runner_mo.gpu_mops_used_bytes))
+                Ok((
+                    asm_runner_mo.plans,
+                    asm_runner_mo.gpu_mops_used_bytes,
+                    asm_runner_mo.device_witness,
+                ))
             }
-            Self::Rust => Ok((Vec::new(), None)),
+            Self::Rust => Ok((Vec::new(), None, None)),
         }
     }
 

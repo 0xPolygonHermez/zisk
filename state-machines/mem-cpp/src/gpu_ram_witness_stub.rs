@@ -44,11 +44,11 @@ pub fn gpu_ram_witness_fill(
     Err("built without CUDA".to_string())
 }
 
-pub fn gpu_ram_witness_fill_all() -> Result<RamFillPrepared, String> {
+pub fn gpu_ram_witness_fill_all(_insts: &[u32]) -> Result<RamFillPrepared, String> {
     Err("built without CUDA".to_string())
 }
 
-pub fn gpu_rom_witness_fill_all() -> Result<RamFillPrepared, String> {
+pub fn gpu_rom_witness_fill_all(_insts: &[u32]) -> Result<RamFillPrepared, String> {
     Err("built without CUDA".to_string())
 }
 
@@ -60,7 +60,10 @@ pub fn gpu_rom_witness_fill(
     Err("built without CUDA".to_string())
 }
 
-pub fn gpu_input_witness_fill_all(_image: &[u8]) -> Result<RamFillPrepared, String> {
+pub fn gpu_input_witness_fill_all(
+    _image: &[u8],
+    _insts: &[u32],
+) -> Result<RamFillPrepared, String> {
     Err("built without CUDA".to_string())
 }
 
@@ -72,7 +75,9 @@ pub fn gpu_input_witness_fill(
     Err("built without CUDA".to_string())
 }
 
-pub fn gpu_align_witness_fill_all(_plans: &[zisk_common::Plan]) -> Result<RamFillPrepared, String> {
+pub fn gpu_align_witness_fill_all(
+    _plans: &[&zisk_common::Plan],
+) -> Result<RamFillPrepared, String> {
     Err("built without CUDA".to_string())
 }
 

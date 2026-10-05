@@ -105,9 +105,10 @@ bool count_and_plan_fill_ram_instance(void* h, uint32_t inst, uint64_t* out_rows
     return static_cast<CountAndPlan*>(h)->fill_ram_instance(inst, out_rows, n_rows, res);
 }
 
-bool count_and_plan_fill_all_ram_instances(void* h, uint32_t n_rows, RamFillPrepared* prepared) {
+bool count_and_plan_fill_all_ram_instances(void* h, uint32_t n_rows, const uint32_t* insts, uint32_t n_insts,
+                                           RamFillPrepared* prepared) {
     if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->fill_all_ram_instances(n_rows, prepared);
+    return static_cast<CountAndPlan*>(h)->fill_all_ram_instances(n_rows, insts, n_insts, prepared);
 }
 
 const uint64_t* count_and_plan_ram_instance_rows(void* h, uint32_t inst, RamFillResult* res) {
@@ -121,9 +122,10 @@ bool count_and_plan_set_rom_layout(void* h, const uint32_t* col_widths, uint32_t
     return static_cast<CountAndPlan*>(h)->set_rom_layout(col_widths, n_cols, words_per_row, lanes_x_row);
 }
 
-bool count_and_plan_fill_all_rom_instances(void* h, uint32_t n_rows, RamFillPrepared* prepared) {
+bool count_and_plan_fill_all_rom_instances(void* h, uint32_t n_rows, const uint32_t* insts, uint32_t n_insts,
+                                           RamFillPrepared* prepared) {
     if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->fill_all_rom_instances(n_rows, prepared);
+    return static_cast<CountAndPlan*>(h)->fill_all_rom_instances(n_rows, insts, n_insts, prepared);
 }
 
 const uint64_t* count_and_plan_rom_instance_rows(void* h, uint32_t inst, RamFillResult* res) {
@@ -138,9 +140,9 @@ bool count_and_plan_set_input_layout(void* h, const uint32_t* col_widths, uint32
 }
 
 bool count_and_plan_fill_all_input_instances(void* h, uint32_t n_rows, const void* image, size_t image_bytes,
-                                             RamFillPrepared* prepared) {
+                                             const uint32_t* insts, uint32_t n_insts, RamFillPrepared* prepared) {
     if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->fill_all_input_instances(n_rows, image, image_bytes, prepared);
+    return static_cast<CountAndPlan*>(h)->fill_all_input_instances(n_rows, image, image_bytes, insts, n_insts, prepared);
 }
 
 const uint64_t* count_and_plan_input_instance_rows(void* h, uint32_t inst, RamFillResult* res) {

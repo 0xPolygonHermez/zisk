@@ -81,7 +81,7 @@ impl AirClassifier {
     }
 
     /// The seven `MemAlign` airs.
-    fn is_mem_align(air_id: usize) -> bool {
+    pub fn is_mem_align(air_id: usize) -> bool {
         air_id == MEM_ALIGN_AIR_IDS[0]
             || air_id == MEM_ALIGN_LARGE_AIR_IDS[0]
             || air_id == MEM_ALIGN_BYTE_AIR_IDS[0]

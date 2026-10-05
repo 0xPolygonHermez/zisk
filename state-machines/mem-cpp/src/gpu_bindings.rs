@@ -154,6 +154,8 @@ extern "C" {
     pub fn count_and_plan_fill_all_ram_instances(
         h: *mut CountAndPlanHandle,
         n_rows: u32,
+        insts: *const u32,
+        n_insts: u32,
         prepared: *mut RamFillPrepared,
     ) -> bool;
     pub fn count_and_plan_set_rom_layout(
@@ -166,6 +168,8 @@ extern "C" {
     pub fn count_and_plan_fill_all_rom_instances(
         h: *mut CountAndPlanHandle,
         n_rows: u32,
+        insts: *const u32,
+        n_insts: u32,
         prepared: *mut RamFillPrepared,
     ) -> bool;
     pub fn count_and_plan_rom_instance_rows(
@@ -185,6 +189,8 @@ extern "C" {
         n_rows: u32,
         image: *const u8,
         image_bytes: usize,
+        insts: *const u32,
+        n_insts: u32,
         prepared: *mut RamFillPrepared,
     ) -> bool;
     pub fn count_and_plan_input_instance_rows(
