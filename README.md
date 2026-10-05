@@ -4,7 +4,7 @@ This version serves as the foundation for the production release and is currentl
 
 Although extensive testing and validation have been performed, additional bugs or vulnerabilities may still be discovered. Users should evaluate the software according to their own requirements and use it at their own discretion and responsibility.
 
-Feedback and bug reports are highly appreciated and help improve the reliability of the project.
+Feedback and bug reports are highly appreciated and help improve the reliability of the project. Please report security vulnerabilities privately, as described in [SECURITY.md](SECURITY.md).
 
 # ZisK
 
