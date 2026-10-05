@@ -3265,9 +3265,10 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :0060
-    // Nonzero exit code: end the execution with an error
+    // Nonzero exit code: end the execution with an error. The halt reads a0 as its `a`
+    // operand, so the error carries the exit code (a trap's halt has a = 0)
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
+    zib.src_a("reg", 10, false);
     zib.src_b("imm", 0, false);
     zib.op("halt").unwrap();
     zib.j(0, 0);
