@@ -109,6 +109,8 @@ const F_MOPS_WRITE_2: u64 = 0x0000_0012_0000_0000 | F_MOPS_TAG;
 const F_MOPS_WRITE_1: u64 = 0x0000_0011_0000_0000 | F_MOPS_TAG;
 
 const F_MOPS_ALIGNED_READ: u64 = 0x0000_000C_0000_0000 | F_MOPS_TAG;
+/// An aligned 8-byte read with its value: the free-input word, whose reads are fcall results.
+const F_MOPS_READ_8_VALUE: u64 = 0x0000_0028_0000_0000 | F_MOPS_TAG;
 const F_MOPS_ALIGNED_WRITE: u64 = 0x0000_000D_0000_0000 | F_MOPS_TAG;
 // const F_MOPS_ALIGNED_BLOCK_READ: u64 = 0x0000_000E_0000_0000;
 const F_MOPS_ALIGNED_BLOCK_WRITE: u64 = 0x0000_000F_0000_0000 | F_MOPS_TAG;
@@ -7682,6 +7684,14 @@ impl ZiskRom2Asm {
 
     /// Source read of a whole word; `slot` is 0 for `a` and 1 for `b`.
     fn src_read_mops(ctx: &mut ZiskAsmContext, code: &mut String, slot: u64) {
+        // The free-input word returns a different fcall result on every read, so the record
+        // carries the value just loaded (b, or c when b is stored there).
+        if ctx.address_is_constant && ctx.address_constant_value == FREE_INPUT_ADDR {
+            Self::mops_header(ctx, code, REG_ADDRESS, F_MOPS_READ_8_VALUE, slot);
+            let reg_value = if ctx.store_b_in_c { REG_C } else { REG_B };
+            Self::mops_store_write(ctx, code, REG_ADDRESS, reg_value, REG_AUX);
+            return;
+        }
         let mask = Self::read_mops_mask(ctx, 8);
         Self::mops_header(ctx, code, REG_ADDRESS, mask, slot);
         Self::mops_store_record(ctx, code, REG_ADDRESS, None);
