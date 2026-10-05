@@ -134,8 +134,8 @@ impl ZiskEmulator {
         }
 
         // A failed execution has no valid result
-        if let Some((step, pc)) = emu.failure() {
-            return Err(ZiskEmulatorErr::ExecutionFailed { step, pc });
+        if let Some((reason, step, pc)) = emu.failure() {
+            return Err(ZiskEmulatorErr::ExecutionFailed { reason, step, pc });
         }
 
         // Store the duration of the emulation process as a difference vs. the start time
@@ -217,8 +217,8 @@ impl ZiskEmulator {
                         return Err(ZiskEmulatorErr::EmulationNoCompleted);
                     }
                     // A failed execution must never be proven
-                    if let Some((step, pc)) = emu.failure() {
-                        return Err(ZiskEmulatorErr::ExecutionFailed { step, pc });
+                    if let Some((reason, step, pc)) = emu.failure() {
+                        return Err(ZiskEmulatorErr::ExecutionFailed { reason, step, pc });
                     }
                     Ok(trace)
                 }))

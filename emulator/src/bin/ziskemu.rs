@@ -1,7 +1,10 @@
 use clap::Parser;
 use std::{fmt::Write, fs, process};
 use zisk_common::EmuTrace;
-use ziskemu::{diff_stats_files, report, resolve_color, EmuOptions, Emulator, ZiskEmulator};
+use ziskemu::{
+    diff_stats_files, report, resolve_color, EmuOptions, Emulator, FailureReason, ZiskEmulator,
+    ZiskEmulatorErr,
+};
 
 fn main() {
     // Create a emulator options instance based on arguments or default values
@@ -62,6 +65,15 @@ fn main() {
                 acc
             });
             // print!("Result: 0x{}", hex_string);
+        }
+        Err(ZiskEmulatorErr::ExecutionFailed { reason: FailureReason::ExitCode(code), .. }) => {
+            // Report the guest's exit code to the host (as a shell exit status: its low 8
+            // bits, or 1 if those are 0, so a failure never looks like success)
+            eprintln!("Error during emulation: guest exited with code {}", code as i64);
+            process::exit(match code as u8 {
+                0 => 1,
+                status => status as i32,
+            });
         }
         Err(e) => {
             eprintln!("Error during emulation: {e:?}");
