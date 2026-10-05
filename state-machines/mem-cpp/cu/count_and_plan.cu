@@ -223,6 +223,7 @@ bool decode(MemOp op,
             else                 { *count_out = 4; counters_out.full_5 = 1; }
             return true;
 
+        case MOPS_READ_8_VALUE:
         case MOPS_ALIGNED_READ  + 0x00: case MOPS_ALIGNED_READ  + 0x10:
         case MOPS_ALIGNED_READ  + 0x20: case MOPS_ALIGNED_READ  + 0x30:
         case MOPS_ALIGNED_WRITE + 0x00: case MOPS_ALIGNED_WRITE + 0x10:
@@ -333,6 +334,10 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block, const uin
             emit_one_r(addr, out, step); break;
         case MOPS_ALIGNED_WRITE + 0x00: case MOPS_ALIGNED_WRITE + 0x10:
         case MOPS_ALIGNED_WRITE + 0x20: case MOPS_ALIGNED_WRITE + 0x30:
+            emit_one_w(addr, out, step, kind_full, op.payload); break;
+        // A read that carries its value (the free-input word): kept as a value-carrying access so
+        // the InputData fill takes the value from the record; the word never belongs to RAM.
+        case MOPS_READ_8_VALUE:
             emit_one_w(addr, out, step, kind_full, op.payload); break;
         case MOPS_BLOCK_READ        + 0x00: case MOPS_BLOCK_READ        + 0x10:
         case MOPS_BLOCK_READ        + 0x20: case MOPS_BLOCK_READ        + 0x30:
@@ -1518,7 +1523,7 @@ static std::vector<uint64_t> strip_values(const uint64_t* words, uint32_t n) {
             const uint64_t count = (hdr >> 36) & 63u;
             out.push_back((hdr & 0xFFFFFFFFull) | ((uint64_t)MOPS_ALIGNED_BLOCK_WRITE << 32) | (count << 36)
                           | (1ull << MOPS_NO_PAYLOAD_BIT) | (1ull << 63));
-        } else if (low == MOPS_ALIGNED_READ || (single && (mode & MOPS_WRITE_FLAG) == 0)) {
+        } else if (low == MOPS_ALIGNED_READ || (mode != MOPS_READ_8_VALUE && single && (mode & MOPS_WRITE_FLAG) == 0)) {
             out.push_back(hdr & ~step_bits);                                                      // read
         } else if (single || low == MOPS_ALIGNED_WRITE) {
             out.push_back(((hdr | (1ull << MOPS_NO_VALUE_BIT)) & ~(1ull << 62)) & ~step_bits);    // write
@@ -1563,6 +1568,7 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
             case MOPS_READ_4:   add_pot(aligned, 1); if (off > 4) add_pot(aligned + 8, 1); break;
             case MOPS_WRITE_4:  add_pot(aligned, 2); if (off > 4) add_pot(aligned + 8, 2); break;
             case MOPS_READ_8:   add_pot(aligned, 1); if (off > 0) add_pot(aligned + 8, 1); break;
+            case MOPS_READ_8_VALUE: add_pot(addr, 1); break;
             case MOPS_WRITE_8:  if (addr == aligned) add_pot(aligned, 1);
                                 else { add_pot(aligned, 2); add_pot(aligned + 8, 2); } break;
             case MOPS_ALIGNED_READ  + 0x00: case MOPS_ALIGNED_READ  + 0x10:
