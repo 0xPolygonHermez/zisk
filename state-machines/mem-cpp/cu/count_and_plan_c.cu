@@ -115,4 +115,37 @@ const uint64_t* count_and_plan_ram_instance_rows(void* h, uint32_t inst, RamFill
     return static_cast<CountAndPlan*>(h)->ram_instance_rows(inst, res);
 }
 
+bool count_and_plan_set_rom_layout(void* h, const uint32_t* col_widths, uint32_t n_cols,
+                                   uint32_t words_per_row, uint32_t lanes_x_row) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->set_rom_layout(col_widths, n_cols, words_per_row, lanes_x_row);
+}
+
+bool count_and_plan_fill_all_rom_instances(void* h, uint32_t n_rows, RamFillPrepared* prepared) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->fill_all_rom_instances(n_rows, prepared);
+}
+
+const uint64_t* count_and_plan_rom_instance_rows(void* h, uint32_t inst, RamFillResult* res) {
+    if (!h) return nullptr;
+    return static_cast<CountAndPlan*>(h)->rom_instance_rows(inst, res);
+}
+
+bool count_and_plan_set_input_layout(void* h, const uint32_t* col_widths, uint32_t n_cols,
+                                     uint32_t words_per_row, uint32_t lanes_x_row) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->set_input_layout(col_widths, n_cols, words_per_row, lanes_x_row);
+}
+
+bool count_and_plan_fill_all_input_instances(void* h, uint32_t n_rows, const void* image, size_t image_bytes,
+                                             RamFillPrepared* prepared) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->fill_all_input_instances(n_rows, image, image_bytes, prepared);
+}
+
+const uint64_t* count_and_plan_input_instance_rows(void* h, uint32_t inst, RamFillResult* res) {
+    if (!h) return nullptr;
+    return static_cast<CountAndPlan*>(h)->input_instance_rows(inst, res);
+}
+
 }  // extern "C"

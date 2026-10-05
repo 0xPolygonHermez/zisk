@@ -47,3 +47,27 @@ pub fn gpu_ram_witness_fill(
 pub fn gpu_ram_witness_fill_all() -> Result<RamFillPrepared, String> {
     Err("built without CUDA".to_string())
 }
+
+pub fn gpu_rom_witness_fill_all() -> Result<RamFillPrepared, String> {
+    Err("built without CUDA".to_string())
+}
+
+pub fn gpu_rom_witness_fill(
+    _inst: u32,
+    _out_rows: &mut [u64],
+    _n_rows: u32,
+) -> Result<RamFillResult, String> {
+    Err("built without CUDA".to_string())
+}
+
+pub fn gpu_input_witness_fill_all(_image: &[u8]) -> Result<RamFillPrepared, String> {
+    Err("built without CUDA".to_string())
+}
+
+pub fn gpu_input_witness_fill(
+    _inst: u32,
+    _out_rows: &mut [u64],
+    _n_rows: u32,
+) -> Result<RamFillResult, String> {
+    Err("built without CUDA".to_string())
+}
