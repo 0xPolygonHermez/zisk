@@ -474,12 +474,22 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         registry.write_pub_outs(&pub_outs.0);
 
         stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
-        let first_round =
-            self.register_secn_round(registry, global_ids, proofman_extras, secn_planning)?;
+        // Two rounds, with the first collected early and every secondary placed on registration,
+        // only when the memory airs come from the device: with the CPU witness the memory
+        // instances would need a second collect pass of their own, which costs more than the
+        // overlap gains (641_54, 24 cores: +0.7 s), so that path keeps the one-round flow.
+        let two_rounds = is_asm_emulator && zisk_asm_runner::device_mem_witness_requested();
+        let first_round = self.register_secn_round(
+            registry,
+            global_ids,
+            proofman_extras,
+            secn_planning,
+            two_rounds,
+        )?;
 
         let mem_artifacts = std::thread::scope(|scope| -> ExecutorResult<MemPlanArtifacts> {
             let collecting = match (self.witness.as_ref(), proofman_extras) {
-                (Some(witness), Some(extras)) if !first_round.is_empty() => {
+                (Some(witness), Some(extras)) if two_rounds && !first_round.is_empty() => {
                     Some(scope.spawn(|| {
                         witness.pre_calculate(
                             extras.pctx(),
@@ -500,8 +510,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             // the instances this process owns are filled, while the arena is still borrowed.
             let mut mem_plans = std::mem::take(&mut mem_artifacts.mem_plans);
             mem_planning.entry(MEM_POSITION).or_default().append(&mut mem_plans);
-            let (plans, ids) =
-                self.assign_secn_round(registry, global_ids, proofman_extras, mem_planning)?;
+            let (plans, ids) = self.assign_secn_round(
+                registry,
+                global_ids,
+                proofman_extras,
+                mem_planning,
+                two_rounds,
+            )?;
+            let mut release_deferred = false;
             if let Some(device_witness) = mem_artifacts.device_witness.as_ref() {
                 let mut owned = OwnedMemInstances::default();
                 for (plan, &gid) in plans.iter().zip(ids.iter()) {
@@ -519,18 +535,23 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                         owned.align.push(plan);
                     }
                 }
-                device_witness.fill_owned(&owned);
+                let d_buffers = proofman_extras
+                    .map(|extras| extras.pctx().get_device_buffers_ptr())
+                    .unwrap_or(std::ptr::null_mut());
+                release_deferred = device_witness.fill_owned(&owned, d_buffers);
             }
 
             // MO runner joined and the fills are done; release the buffer back to proofman.
             // Earlier error paths skip the release on purpose: the MO thread may still be using
-            // the buffer.
+            // the buffer. In slot mode the release follows the last memory instance's commit.
             if is_asm_emulator {
                 if let Some(extras) = proofman_extras {
                     if let Some(used) = mem_artifacts.gpu_mops_used_bytes {
                         extras.pctx().report_first_gpu_buffer_usage(used);
                     }
-                    extras.release_gpu_buffer();
+                    if !release_deferred {
+                        extras.release_gpu_buffer();
+                    }
                 }
             }
             self.populate_secn_round(registry, plans, &ids)?;
@@ -600,9 +621,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         global_ids: &RwLock<Vec<usize>>,
         proofman_extras: Option<&ProofmanAdapter<'_, F>>,
         planning: BTreeMap<usize, Vec<Plan>>,
+        place_on_registration: bool,
     ) -> ExecutorResult<Vec<usize>> {
-        let (plans, ids) =
-            self.assign_secn_round(registry, global_ids, proofman_extras, planning)?;
+        let (plans, ids) = self.assign_secn_round(
+            registry,
+            global_ids,
+            proofman_extras,
+            planning,
+            place_on_registration,
+        )?;
         self.populate_secn_round(registry, plans, &ids)?;
         Ok(ids)
     }
@@ -615,13 +642,19 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         global_ids: &RwLock<Vec<usize>>,
         proofman_extras: Option<&ProofmanAdapter<'_, F>>,
         planning: BTreeMap<usize, Vec<Plan>>,
+        place_on_registration: bool,
     ) -> ExecutorResult<(Vec<Plan>, Vec<usize>)> {
         if let (Some(witness), Some(extras)) = (self.witness.as_ref(), proofman_extras) {
             witness.configure_sm_instances(extras.pctx(), &planning);
         }
 
         let mut plans: Vec<Plan> = planning.into_values().flatten().collect();
-        InstanceAssigner::assign_secn_instances(registry, global_ids, &mut plans)?;
+        InstanceAssigner::assign_secn_instances(
+            registry,
+            global_ids,
+            &mut plans,
+            place_on_registration,
+        )?;
         let ids: Vec<usize> = plans
             .iter()
             .map(|plan| {
@@ -728,6 +761,17 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 }
 
 impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
+    /// The proof's end: a slot-mode block that still holds the arena hands it back.
+    fn end(
+        &self,
+        _pctx: Arc<ProofCtx<F>>,
+        _sctx: Arc<SetupCtx<F>>,
+        _debug_info: &proofman_common::DebugInfo,
+    ) -> ProofmanResult<()> {
+        zisk_asm_runner::device_mem_witness_end();
+        Ok(())
+    }
+
     /// Executes the ZisK ROM program and calculate the plans for main and secondary state machines.
     fn execute(
         &self,

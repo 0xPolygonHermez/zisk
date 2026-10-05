@@ -2095,6 +2095,14 @@ void CountAndPlan::reset() {
     input_results_.clear();
     align_prepared_         = false;
     align_results_.clear();
+    slot_prepared_          = false;
+    resolve_all_            = false;
+    slot_scratch_           = nullptr;
+    input_scratch_          = nullptr;
+    d_image_                = nullptr;
+    image_words_            = 0;
+    slot_align_plans_.clear();
+    slot_align_entries_.clear();
     align_total_            = 0;
     d_align_order_          = nullptr;
     align_runs_.clear();

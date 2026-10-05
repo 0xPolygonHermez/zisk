@@ -688,6 +688,56 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         )))
     }
 
+    fn compute_witness_gpu_slot(
+        &self,
+        decl: &proofman_common::GpuWitnessAir,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<Option<AirInstance<F>>> {
+        use proofman_common::trace::TraceRow;
+        if !packed {
+            return Err(proofman_common::ProofmanError::InvalidParameters(
+                "ZISK_MEM_GPU_FILL=slot needs the packed RomData trace".to_string(),
+            ));
+        }
+        let seg_idx = usize::from(segment_id);
+        let n_rows = RomDataTrace::<RomDataTraceRowPacked<F>>::NUM_ROWS;
+        let res = zisk_sm_mem_planner::gpu_mem_witness_scalars(
+            crate::mem_gpu_fill::SLOT_FAMILY_ROM,
+            seg_idx as u32,
+        )
+        .map_err(|e| {
+            proofman_common::ProofmanError::InvalidParameters(format!(
+                "RomData[{seg_idx}] scalars from the GPU planner failed: {e}"
+            ))
+        })?;
+        let num_slots = n_rows * zisk_sm_mem_common::rom_data_lanes_x_row();
+        let out = RomDataFillOutput {
+            last_addr: res.last_addr_w,
+            last_value: [res.last_value as u32, (res.last_value >> 32) as u32],
+            padding_size: (num_slots - res.n_lanes as usize) as u32,
+        };
+        let previous_segment = MemPreviousSegment {
+            addr: res.prev_addr_w,
+            step: res.prev_step,
+            value: res.prev_value,
+        };
+        let mut air_values = out.air_values::<F>(segment_id, is_last_segment, &previous_segment);
+        crate::mem_gpu_fill::slot_instance(
+            decl,
+            crate::mem_gpu_fill::SLOT_FAMILY_ROM,
+            RomDataTrace::<()>::AIR_ID,
+            seg_idx,
+            n_rows,
+            RomDataTraceRow::<F>::ROW_SIZE,
+            trace_buffer,
+            proofman_common::trace::Values::get_buffer(&mut air_values),
+        )
+        .map(Some)
+    }
+
     fn get_addr_range(&self) -> (u32, u32) {
         (ROM_DATA_W_ADDR_INIT, ROM_DATA_W_ADDR_END)
     }

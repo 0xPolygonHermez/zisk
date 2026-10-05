@@ -167,4 +167,21 @@ const uint64_t* count_and_plan_align_instance_rows(void* h, uint32_t air_id, uin
     return static_cast<CountAndPlan*>(h)->align_instance_rows(air_id, segment, res);
 }
 
+bool count_and_plan_prepare_slot_fills(void* h, const void* image, size_t image_bytes, const AlignPlanDesc* plans,
+                                       uint32_t n_plans, const AlignChunkEntry* entries, uint32_t n_entries,
+                                       RamFillPrepared* prepared) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->prepare_slot_fills(image, image_bytes, plans, n_plans, entries, n_entries, prepared);
+}
+
+bool count_and_plan_fill_slot(void* h, const void* d_ops, uint64_t n_ops, uint64_t* dst, void* stream, RamFillResult* res) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->fill_slot(d_ops, n_ops, dst, stream, res);
+}
+
+bool count_and_plan_instance_scalars(void* h, uint32_t family, uint32_t inst, RamFillResult* res) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->instance_scalars(family, inst, res);
+}
+
 }  // extern "C"

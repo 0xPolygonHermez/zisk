@@ -75,6 +75,19 @@ pub trait MemModule<F: Clone>: Send + Sync {
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         Ok(None)
     }
+    /// The instance the prover's kernel fills into its slot (`ZISK_MEM_GPU_FILL=slot`): its staged
+    /// op and its air values, from the scalars the device resolved. `None` when this module has no
+    /// such path.
+    fn compute_witness_gpu_slot(
+        &self,
+        _decl: &proofman_common::GpuWitnessAir,
+        _segment_id: SegmentId,
+        _is_last_segment: bool,
+        _trace_buffer: Vec<F>,
+        _packed: bool,
+    ) -> ProofmanResult<Option<AirInstance<F>>> {
+        Ok(None)
+    }
     #[allow(clippy::too_many_arguments)]
     fn compute_witness(
         &self,
