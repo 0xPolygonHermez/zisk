@@ -261,6 +261,13 @@ process_all_directories() {
         if [[ "$(basename "$dir")" == "$OUTPUT_DIR" ]] || [[ "$(basename "$dir")" == .* ]]; then
             continue
         fi
+
+        # Skip failed_execution: its guests must fail, which the test harness would
+        # report as failures. It has its own build.sh and committed ELFs, checked by
+        # emulator/tests/failed_execution.rs.
+        if [[ "$(basename "$dir")" == "failed_execution" ]]; then
+            continue
+        fi
         
         if process_directory "$dir"; then
             ((total_dirs++))

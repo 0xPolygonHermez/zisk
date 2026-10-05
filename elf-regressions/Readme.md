@@ -37,8 +37,8 @@ Some cases are not assembly and are not built by `./scripts/build.sh`:
   copied into `elf-output/` by the build script.
 - **[`failed_execution/`](failed_execution/)** — guests whose execution must
   fail: a trap (`unimp`), a write to a read-only CSR and a nonzero exit code, plus a
-  control that exits 0. Failing ELFs would trip the shell harness, so they are not
-  built by `./scripts/build.sh`: the directory has its own `build.sh`, its ELFs are
+  control that exits 0. Failing ELFs would trip the shell harness, so
+  `./scripts/build.sh` skips this directory: it has its own `build.sh`, its ELFs are
   committed, and `cargo test -p ziskemu --test failed_execution` checks that both
   the emulator and the minimal-trace phase of proving reject the failing ones.
 
