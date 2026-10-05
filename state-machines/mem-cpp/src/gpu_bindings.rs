@@ -77,6 +77,30 @@ pub struct RamFillResult {
 }
 const _: () = assert!(core::mem::size_of::<RamFillResult>() == 56);
 
+/// Mirrors `AlignPlanDesc` in `cu/count_and_plan.cuh`: one MemAlign instance of the host plan.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct AlignPlanDesc {
+    pub air_kind: u32,
+    pub air_id: u32,
+    pub segment: u32,
+    pub n_rows: u32,
+    pub entry_from: u32,
+    pub entry_n: u32,
+}
+const _: () = assert!(core::mem::size_of::<AlignPlanDesc>() == 24);
+
+/// Mirrors `AlignChunkEntry`: a chunk's per-kind windows (full_5, full_3, full_2, read_byte,
+/// write_byte) of one instance.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct AlignChunkEntry {
+    pub chunk: u32,
+    pub skip: [u32; 5],
+    pub count: [u32; 5],
+}
+const _: () = assert!(core::mem::size_of::<AlignChunkEntry>() == 44);
+
 /// Per-chunk mem-align counters produced by the GPU kernel. Same five u32
 /// fields the CPU planner's `MemAlignCounters` uses (without `chunk_id` —
 /// the index in the returned slice IS the chunk_id).
@@ -166,6 +190,27 @@ extern "C" {
     pub fn count_and_plan_input_instance_rows(
         h: *mut CountAndPlanHandle,
         inst: u32,
+        res: *mut RamFillResult,
+    ) -> *const u64;
+    pub fn count_and_plan_set_align_layout(
+        h: *mut CountAndPlanHandle,
+        air_kind: u32,
+        col_widths: *const u32,
+        n_cols: u32,
+        words_per_row: u32,
+    ) -> bool;
+    pub fn count_and_plan_fill_all_align_instances(
+        h: *mut CountAndPlanHandle,
+        plans: *const AlignPlanDesc,
+        n_plans: u32,
+        entries: *const AlignChunkEntry,
+        n_entries: u32,
+        prepared: *mut RamFillPrepared,
+    ) -> bool;
+    pub fn count_and_plan_align_instance_rows(
+        h: *mut CountAndPlanHandle,
+        air_id: u32,
+        segment: u32,
         res: *mut RamFillResult,
     ) -> *const u64;
     pub fn count_and_plan_ram_instance_rows(

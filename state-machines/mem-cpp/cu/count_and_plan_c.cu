@@ -148,4 +148,21 @@ const uint64_t* count_and_plan_input_instance_rows(void* h, uint32_t inst, RamFi
     return static_cast<CountAndPlan*>(h)->input_instance_rows(inst, res);
 }
 
+bool count_and_plan_set_align_layout(void* h, uint32_t air_kind, const uint32_t* col_widths, uint32_t n_cols,
+                                     uint32_t words_per_row) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->set_align_layout(air_kind, col_widths, n_cols, words_per_row);
+}
+
+bool count_and_plan_fill_all_align_instances(void* h, const AlignPlanDesc* plans, uint32_t n_plans,
+                                             const AlignChunkEntry* entries, uint32_t n_entries, RamFillPrepared* prepared) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->fill_all_align_instances(plans, n_plans, entries, n_entries, prepared);
+}
+
+const uint64_t* count_and_plan_align_instance_rows(void* h, uint32_t air_id, uint32_t segment, RamFillResult* res) {
+    if (!h) return nullptr;
+    return static_cast<CountAndPlan*>(h)->align_instance_rows(air_id, segment, res);
+}
+
 }  // extern "C"

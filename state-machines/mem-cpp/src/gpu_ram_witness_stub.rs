@@ -71,3 +71,15 @@ pub fn gpu_input_witness_fill(
 ) -> Result<RamFillResult, String> {
     Err("built without CUDA".to_string())
 }
+
+pub fn gpu_align_witness_fill_all(_plans: &[zisk_common::Plan]) -> Result<RamFillPrepared, String> {
+    Err("built without CUDA".to_string())
+}
+
+pub fn gpu_align_witness_fill(
+    _air_id: usize,
+    _segment: usize,
+    _out_rows: &mut [u64],
+) -> Result<usize, String> {
+    Err("built without CUDA".to_string())
+}
