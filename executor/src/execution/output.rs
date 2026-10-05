@@ -124,10 +124,11 @@ mod tests {
     #[test]
     fn rust_await_mem_plans_yields_empty() {
         let mut backend = BackendArtifacts::Rust;
-        let (plans, gpu_mops_used_bytes) =
+        let (plans, gpu_mops_used_bytes, device_witness) =
             backend.await_mem_plans().expect("await_mem_plans on Rust");
         assert!(plans.is_empty());
         assert!(gpu_mops_used_bytes.is_none());
+        assert!(device_witness.is_none());
     }
 
     #[test]
@@ -145,10 +146,11 @@ mod tests {
         let mo_handle = std::thread::spawn(move || Ok(AsmRunnerMO::new(canned)));
         let mut backend = BackendArtifacts::Asm { mo: Some(mo_handle), rh: None };
 
-        let (plans, gpu_mops_used_bytes) =
+        let (plans, gpu_mops_used_bytes, device_witness) =
             backend.await_mem_plans().expect("await_mem_plans on Asm");
         assert_eq!(plans.len(), expected_len);
         assert!(gpu_mops_used_bytes.is_none());
+        assert!(device_witness.is_none());
     }
 
     #[test]

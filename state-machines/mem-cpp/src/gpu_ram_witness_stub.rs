@@ -88,3 +88,40 @@ pub fn gpu_align_witness_fill(
 ) -> Result<usize, String> {
     Err("built without CUDA".to_string())
 }
+
+/// Mirrors the CUDA side's kernel input; unused without CUDA.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct MemSlotOp {
+    pub family: u32,
+    pub air_id: u32,
+    pub segment: u32,
+    pub n_rows: u32,
+}
+
+pub fn gpu_slot_witness_prepare(
+    _image: &[u8],
+    _align_plans: &[&zisk_common::Plan],
+) -> Result<RamFillPrepared, String> {
+    Err("built without CUDA".to_string())
+}
+
+pub fn gpu_mem_witness_scalars(_family: u32, _inst: u32) -> Result<RamFillResult, String> {
+    Err("built without CUDA".to_string())
+}
+
+pub fn gpu_slot_witness_arm(_n_pending: usize, _release: Box<dyn FnOnce() + Send>) {}
+
+pub fn gpu_slot_witness_release_now() {}
+
+/// # Safety
+/// Never invoked without CUDA; the prover declares no kernel airs then.
+pub unsafe extern "C" fn zisk_mem_witness_slot_kernel(
+    _d_ops: *const core::ffi::c_void,
+    _num_ops: u64,
+    _d_dst: *mut u64,
+    _device_id: i32,
+    _stream: *mut core::ffi::c_void,
+) -> i32 {
+    -1
+}

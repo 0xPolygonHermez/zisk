@@ -44,6 +44,55 @@ impl<F: PrimeField64> MemAlignByteInstance<F> {
         MemAlignCollector::new(&self.checkpoint[&chunk_id])
     }
 
+    /// The instance the prover's kernel fills into its slot (`ZISK_MEM_GPU_FILL=slot`): the staged
+    /// op and the air values the plan determines.
+    fn slot_witness(
+        &self,
+        pctx: &ProofCtx<F>,
+        air_id: usize,
+        segment: usize,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<AirInstance<F>> {
+        use proofman_common::trace::TraceRow;
+        if !packed {
+            return Err(proofman_common::ProofmanError::InvalidParameters(
+                "ZISK_MEM_GPU_FILL=slot needs the packed MemAlign traces".to_string(),
+            ));
+        }
+        let decl =
+            pctx.gpu_witness_airs.get(self.ictx.plan.airgroup_id, air_id).ok_or_else(|| {
+                proofman_common::ProofmanError::InvalidParameters(format!(
+                    "ZISK_MEM_GPU_FILL=slot: air {air_id} has no GPU witness declaration"
+                ))
+            })?;
+        let n_rows = zisk_sm_mem_common::mem_align_air_rows(air_id).ok_or_else(|| {
+            proofman_common::ProofmanError::InvalidParameters(format!(
+                "air {air_id} is not a MemAlign air"
+            ))
+        })?;
+        let used: usize = self.checkpoint.values().map(|c| c.count() as usize).sum();
+        let air_values = if self.is_large() {
+            let mut v = MemAlignByteLargeAirValues::<F>::new();
+            v.padding_size = F::from_usize(n_rows - used);
+            proofman_common::trace::Values::get_buffer(&mut v)
+        } else {
+            let mut v = MemAlignByteAirValues::<F>::new();
+            v.padding_size = F::from_usize(n_rows - used);
+            proofman_common::trace::Values::get_buffer(&mut v)
+        };
+        crate::mem_gpu_fill::slot_instance(
+            decl,
+            crate::mem_device_rows::SLOT_FAMILY_ALIGN,
+            air_id,
+            segment,
+            n_rows,
+            MemAlignByteTraceRow::<F>::ROW_SIZE,
+            trace_buffer,
+            air_values,
+        )
+    }
+
     /// The instance from the rows the GPU planner built (`ZISK_MEM_GPU_FILL=arena`).
     fn device_witness(
         &self,
@@ -115,6 +164,9 @@ impl<F: PrimeField64> Instance<F> for MemAlignByteInstance<F> {
         let segment =
             usize::from(self.ictx.plan.segment_id.expect("MemAlign plan without segment"));
         if crate::mem_device_rows::rows_on_device("align") {
+            if crate::mem_device_rows::slot_mode() {
+                return self.slot_witness(_pctx, air_id, segment, trace_buffer, packed).map(Some);
+            }
             return self.device_witness(air_id, segment, trace_buffer, packed).map(Some);
         }
         let mut hook = move |cpu: &[u64], f: &crate::mem_gpu_fill::RowsFilled| {
