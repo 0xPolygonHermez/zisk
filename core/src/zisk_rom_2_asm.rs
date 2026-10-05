@@ -9093,6 +9093,13 @@ mod tests {
             "unexpected padding; the ZisK-library window may be getting mapped"
         );
     }
+
+    /// A slot-to-slot copy, `mem[a + dst] = mem[a + src]` in one instruction (b = SRC_IND,
+    /// store = STORE_IND with the same `a`), is what the wasm lowering emits for every
+    /// `local.get`/`local.set`/`local.tee`.  The b read must not build its address in REG_A,
+    /// because the store builds its own address from REG_A afterwards: doing so wrote the value
+    /// to `a + src + dst`.  The Rust emulator computes both addresses from `a`, so only the
+    /// assembly backend showed it.
     #[test]
     fn indirect_store_keeps_a_intact_across_an_indirect_read() {
         let pc = ROM_ADDR;
@@ -9118,6 +9125,7 @@ mod tests {
             .collect();
         assert!(!block.is_empty(), "no code emitted for pc {pc:#x}");
 
+        // The read goes through REG_ADDRESS (a copied, then offset by the b offset) ...
         let read_offset = (-40i64) as u64;
         assert!(
             block.contains(&format!("mov {REG_ADDRESS}, {REG_A}").as_str())
