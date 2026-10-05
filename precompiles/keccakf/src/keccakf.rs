@@ -520,6 +520,68 @@ mod tests {
         }
     }
 
+    /// One slot with distinct ops, read back off the rows as the AIR reads them: op A's plain
+    /// bits, op B's (v - a) / 8 at the round-0 and round-24 groups, and every xor5 key against
+    /// the sliced column sums of its own round group.
+    #[test]
+    fn slot_rows_decode_both_ops_and_xor5_keys() {
+        let mut seed = 0x6a09_e667_f3bc_c908u64;
+        let mut lanes = || {
+            core::array::from_fn::<u64, 25, _>(|_| {
+                seed ^= seed << 7;
+                seed ^= seed >> 9;
+                seed ^= seed << 8;
+                seed
+            })
+        };
+        let input_a = KeccakfInput { step_main: 1, addr_main: 0x1000, state: lanes() };
+        let input_b = KeccakfInput { step_main: 2, addr_main: 0x2000, state: lanes() };
+        let (mut out_a, mut out_b) = (input_a.state, input_b.state);
+        tiny_keccak::keccakf(&mut out_a);
+        tiny_keccak::keccakf(&mut out_b);
+
+        let mut rows = vec![KeccakfTraceRow::<Goldilocks>::default(); CLOCKS];
+        KeccakfSM::<Goldilocks>::new().process_slot(&mut rows, &input_a, Some(&input_b));
+
+        // Cell (x, y, z) of the state group at `group`: lane 5y + x sits on group-row y
+        let cell = |group: usize, x: usize, y: usize, z: usize| -> u64 {
+            rows[group + y].get_all_state()[x * LANE_BITS + z] as u64
+        };
+        let bit = |lanes: &[u64; 25], x: usize, y: usize, z: usize| (lanes[x + 5 * y] >> z) & 1;
+        let group_round_last = GROUP_ROUND_0 + ROUNDS * ROWS_PER_STATE;
+        for (x, y, z) in
+            (0..5).flat_map(|x| (0..5).flat_map(move |y| (0..64).map(move |z| (x, y, z))))
+        {
+            let (a_in, a_out) = (cell(GROUP_IN_A, x, y, z), cell(GROUP_OUT_A, x, y, z));
+            assert_eq!(a_in, bit(&input_a.state, x, y, z), "op A input ({x},{y},{z})");
+            assert_eq!(a_out, bit(&out_a, x, y, z), "op A output ({x},{y},{z})");
+            assert_eq!(
+                (cell(GROUP_ROUND_0, x, y, z) - a_in) / SLOT as u64,
+                bit(&input_b.state, x, y, z)
+            );
+            assert_eq!(
+                (cell(group_round_last, x, y, z) - a_out) / SLOT as u64,
+                bit(&out_b, x, y, z)
+            );
+        }
+
+        // Row k of round r's group holds the keys of column x = k (C_PER_ROW == 64)
+        for r in 0..ROUNDS {
+            let group = GROUP_ROUND_0 + r * ROWS_PER_STATE;
+            for k in 0..ROWS_PER_STATE {
+                for (g, &key) in rows[group + k].get_all_xor5_acc().iter().enumerate() {
+                    for d in 0..XOR5_BATCH {
+                        let z = g * XOR5_BATCH + d;
+                        let sum: u64 = (0..5).map(|y| cell(group, k, y, z)).sum();
+                        let digit = (key as u64 / (XOR5_KEY_BASE as u64).pow(d as u32))
+                            % XOR5_KEY_BASE as u64;
+                        assert_eq!(digit, sum, "round {r}, column {k}, z {z}");
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn packed_bulk_writer_matches_generated_setters() {
         let mut seed = 0xd1b5_4a32_d192_ed03u64;
