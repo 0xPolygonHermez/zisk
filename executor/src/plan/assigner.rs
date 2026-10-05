@@ -105,7 +105,11 @@ impl InstanceAssigner {
                 registry.add_instance_assign(info)?
             } else {
                 match plan.instance_type {
-                    InstanceType::Instance => registry.add_instance(info)?,
+                    // Placed on registration: the secondaries are registered in two rounds (the
+                    // minimal-trace side first, the memory side when the memory-ops runner joins)
+                    // and the first round's witnesses start before the second is known, which the
+                    // batch balancer at the end of the execution would be too late for.
+                    InstanceType::Instance => registry.add_instance_assign(info)?,
                     // Tables are not witness-dispatched; the band is irrelevant to them.
                     InstanceType::Table => {
                         registry.add_table(InstanceInfo::new(plan.airgroup_id, plan.air_id))?
@@ -189,7 +193,7 @@ mod tests {
         let registry = FakeProofRegistry::new();
         let global_ids = RwLock::new(Vec::<usize>::new());
 
-        // Plain Instance → add_instance, Table → add_table.
+        // Plain Instance → add_instance_assign, Table → add_table.
         let mut plans = vec![
             Plan::new(7, 200, None, InstanceType::Instance, zisk_common::CheckPoint::None, None),
             Plan::new(7, 201, None, InstanceType::Table, zisk_common::CheckPoint::None, None),
@@ -199,7 +203,7 @@ mod tests {
 
         let calls = registry.additions.borrow();
         assert_eq!(calls.len(), 2);
-        assert_eq!(calls[0].kind, AddKind::Instance);
+        assert_eq!(calls[0].kind, AddKind::InstanceAssign);
         assert_eq!(calls[1].kind, AddKind::Table);
     }
 }

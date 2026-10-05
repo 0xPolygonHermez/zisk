@@ -118,13 +118,8 @@ pub trait Dctx {
 ///
 /// Inherits [`Dctx`] for the shared distribution queries.
 pub trait ProofRegistry: Dctx {
-    /// Registers a distributed instance (any rank may own it). Returns
-    /// the assigned global id.
-    fn add_instance(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
-
-    /// Registers a rank-owned instance (this rank owns it). Returns the
-    /// assigned global id. Used for ROM and `rank_assign: true`
-    /// precompiles (today: only Keccakf).
+    /// Registers an instance, placed on the least-loaded partition as it is registered.
+    /// Returns the assigned global id.
     fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
 
     /// Registers a table instance. Returns the assigned global id.
@@ -172,9 +167,7 @@ pub(crate) mod fakes {
     /// Kind of registration call made via [`FakeProofRegistry`].
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum AddKind {
-        /// `add_instance` (distributed).
-        Instance,
-        /// `add_instance_assign` (rank-owned).
+        /// `add_instance_assign`.
         InstanceAssign,
         /// `add_table`.
         Table,
@@ -259,9 +252,6 @@ pub(crate) mod fakes {
     }
 
     impl ProofRegistry for FakeProofRegistry {
-        fn add_instance(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
-            Ok(self.next_gid(AddKind::Instance, info))
-        }
         fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
             Ok(self.next_gid(AddKind::InstanceAssign, info))
         }
@@ -315,24 +305,21 @@ mod tests {
     #[test]
     fn fake_registry_records_add_instance_calls_in_order() {
         let reg = FakeProofRegistry::new();
-        let a = reg.add_instance(InstanceInfo::new(0, 10)).unwrap();
-        let b = reg.add_instance_assign(InstanceInfo::new(0, 11)).unwrap();
-        let c = reg.add_table(InstanceInfo::new(0, 12)).unwrap();
+        let a = reg.add_instance_assign(InstanceInfo::new(0, 11)).unwrap();
+        let b = reg.add_table(InstanceInfo::new(0, 12)).unwrap();
         let additions = reg.additions.borrow();
-        assert_eq!(additions.len(), 3);
-        assert_eq!(additions[0].kind, AddKind::Instance);
-        assert_eq!(additions[1].kind, AddKind::InstanceAssign);
-        assert_eq!(additions[2].kind, AddKind::Table);
+        assert_eq!(additions.len(), 2);
+        assert_eq!(additions[0].kind, AddKind::InstanceAssign);
+        assert_eq!(additions[1].kind, AddKind::Table);
         assert_eq!(additions[0].gid, a);
         assert_eq!(additions[1].gid, b);
-        assert_eq!(additions[2].gid, c);
     }
 
     #[test]
     fn fake_registry_instance_info_round_trips_assignment() {
         let reg = FakeProofRegistry::new();
         let info = InstanceInfo::new(1, 99);
-        let gid = reg.add_instance(info).unwrap();
+        let gid = reg.add_instance_assign(info).unwrap();
         assert_eq!(reg.instance_info(gid).unwrap(), info);
     }
 
@@ -340,7 +327,7 @@ mod tests {
     fn fake_registry_find_by_info() {
         let reg = FakeProofRegistry::new();
         let info = InstanceInfo::new(1, 99);
-        let gid = reg.add_instance(info).unwrap();
+        let gid = reg.add_instance_assign(info).unwrap();
         assert_eq!(reg.find_instance_id(info).unwrap(), gid);
         assert!(reg.find_instance_id(InstanceInfo::new(0, 0)).is_err());
     }
@@ -348,14 +335,14 @@ mod tests {
     #[test]
     fn fake_registry_ownership_default_is_owned() {
         let reg = FakeProofRegistry::new();
-        let gid = reg.add_instance(InstanceInfo::new(0, 1)).unwrap();
+        let gid = reg.add_instance_assign(InstanceInfo::new(0, 1)).unwrap();
         assert!(reg.is_my_process_instance(gid).unwrap());
     }
 
     #[test]
     fn fake_registry_ownership_override() {
         let reg = FakeProofRegistry::new();
-        let gid = reg.add_instance(InstanceInfo::new(0, 1)).unwrap();
+        let gid = reg.add_instance_assign(InstanceInfo::new(0, 1)).unwrap();
         reg.ownership.borrow_mut().insert(gid, false);
         assert!(!reg.is_my_process_instance(gid).unwrap());
     }
@@ -363,8 +350,8 @@ mod tests {
     #[test]
     fn fake_registry_records_set_chunks_in_order() {
         let reg = FakeProofRegistry::new();
-        let a = reg.add_instance(InstanceInfo::new(0, 1)).unwrap();
-        let b = reg.add_instance(InstanceInfo::new(0, 2)).unwrap();
+        let a = reg.add_instance_assign(InstanceInfo::new(0, 1)).unwrap();
+        let b = reg.add_instance_assign(InstanceInfo::new(0, 2)).unwrap();
         reg.set_chunks(a, &[0, 1, 2], false);
         reg.set_chunks(b, &[5], true);
         let calls = reg.set_chunks_calls.borrow();

@@ -1,6 +1,7 @@
 //! [`PlanPhase`] — pure planning over `ExecutionOutput`.
 //!
-//! Split into [`PlanPhase::run_main`] and [`PlanPhase::run_secondary`].
+//! Split into [`PlanPhase::run_main`], [`PlanPhase::run_secondary_mt`] and
+//! [`PlanPhase::await_mem_plans`].
 //! Instance materialization + SM configuration live on [`crate::WitnessPhase`];
 //! cost accounting lives on [`crate::ProofmanAdapter`].
 
@@ -17,16 +18,14 @@ use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use zisk_common::{stats_begin, stats_end, ExecutorStatsHandle, Plan, StatsScope};
 use zisk_sm_main::MainPlanner;
 
-use crate::sm::{extend_mem_plans, plan_sec};
+use crate::sm::plan_sec;
 use crate::{BackendArtifacts, CountersChunkMetrics};
 
-/// Telemetry returned by [`PlanPhase::run_secondary`].
-pub struct SecondaryPlanArtifacts {
-    /// Secondary plans, keyed by bundle position, pre-flatten, pre-GID.
-    pub secn_planning: BTreeMap<usize, Vec<Plan>>,
-    /// Wall-clock for count + plan_secondary, before the MO merge wait.
-    pub count_and_plan_duration: Duration,
-    /// Wall-clock waiting on the MO runner and merging its plans.
+/// What the memory-ops runner hands back when it joins, after the minimal trace.
+pub struct MemPlanArtifacts {
+    /// The memory-side plans (Mem, MemAlign, RomData, InputData).
+    pub mem_plans: Vec<Plan>,
+    /// Wall-clock waiting on the MO runner.
     pub count_and_plan_mo_duration: Duration,
     /// Bytes of the borrowed GPU buffer the mem-ops planner used for this block
     pub gpu_mops_used_bytes: Option<u64>,
@@ -78,27 +77,36 @@ impl<F: PrimeField64> PlanPhase<F> {
         Ok(plans)
     }
 
-    /// Plan secondary + await `await_mem_plans` + merge. No bundle / pctx / registry contact.
+    /// Plan the secondaries the minimal trace determines. No bundle / pctx / registry contact.
     #[allow(unused_variables)]
-    pub fn run_secondary(
+    pub fn run_secondary_mt(
         &self,
         counters: &mut CountersChunkMetrics,
         num_chunks: usize,
         is_asm_emulator: bool,
-        backend: &mut BackendArtifacts,
         stats: &ExecutorStatsHandle,
         exec_scope: &StatsScope,
-    ) -> ExecutorResult<SecondaryPlanArtifacts> {
+    ) -> ExecutorResult<(BTreeMap<usize, Vec<Plan>>, Duration)> {
         stats_begin!(stats, exec_scope, _secn_plan_scope, "SECN_PLAN", 0);
         timer_start_info!(PLAN_SECONDARY);
         let start_partial = Instant::now();
 
-        let mut secn_planning = Self::plan_secondary(counters, num_chunks, is_asm_emulator);
+        let secn_planning = Self::plan_secondary(counters, num_chunks, is_asm_emulator);
 
         let count_and_plan_duration = start_partial.elapsed();
         timer_stop_and_log_info!(PLAN_SECONDARY);
         stats_end!(stats, &_secn_plan_scope);
+        Ok((secn_planning, count_and_plan_duration))
+    }
 
+    /// Join the memory-ops runner and take its plans. No bundle / pctx / registry contact.
+    #[allow(unused_variables)]
+    pub fn await_mem_plans(
+        &self,
+        backend: &mut BackendArtifacts,
+        stats: &ExecutorStatsHandle,
+        exec_scope: &StatsScope,
+    ) -> ExecutorResult<MemPlanArtifacts> {
         timer_start_info!(WAIT_PLAN_MEM_CPP);
         let mo_start = Instant::now();
 
@@ -106,19 +114,10 @@ impl<F: PrimeField64> PlanPhase<F> {
         let (mem_plans, gpu_mops_used_bytes) = backend.await_mem_plans()?;
         stats_end!(stats, &_mo_wait_scope);
 
-        stats_begin!(stats, exec_scope, _mo_add_scope, "MO_PLAN_ADD", 0);
-        extend_mem_plans(&mut secn_planning, mem_plans);
-        stats_end!(stats, &_mo_add_scope);
-
         let count_and_plan_mo_duration = mo_start.elapsed();
         timer_stop_and_log_info!(WAIT_PLAN_MEM_CPP);
 
-        Ok(SecondaryPlanArtifacts {
-            secn_planning,
-            count_and_plan_duration,
-            count_and_plan_mo_duration,
-            gpu_mops_used_bytes,
-        })
+        Ok(MemPlanArtifacts { mem_plans, count_and_plan_mo_duration, gpu_mops_used_bytes })
     }
 }
 

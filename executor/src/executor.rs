@@ -15,9 +15,9 @@
 //! maintaining clarity and modularity in the computation process.
 
 use crate::{
-    ports::ProofRegistry, witness::WitnessContext, AirClassifier, AsmResources, EmulatorAsm,
-    ExecutionPhase, ExecutionState, InstanceAssigner, NoopProofRegistry, PlanPhase,
-    ProofmanAdapter, StaticSMBundle, WitnessPhase,
+    plan::MemPlanArtifacts, ports::ProofRegistry, sm::MEM_POSITION, witness::WitnessContext,
+    AirClassifier, AsmResources, EmulatorAsm, ExecutionPhase, ExecutionState, InstanceAssigner,
+    NoopProofRegistry, PlanPhase, ProofmanAdapter, StaticSMBundle, WitnessPhase,
 };
 use proofman_common::{lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
@@ -25,6 +25,7 @@ use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use proofman_witness::{WitnessComponent, WitnessManager};
 
 use std::{
+    collections::BTreeMap,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, RwLock,
@@ -450,52 +451,70 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         };
 
         // ────────────────────────────────────────────────────────────
-        // Phase 1.3: Plan secondary, await async, configure + populate (witness only)
+        // Phase 1.3: Plan and register the secondaries in two rounds (witness only)
         // ────────────────────────────────────────────────────────────
-        let secn_artifacts = self.plan.run_secondary(
+        // The minimal trace determines every secondary but the memory ones. Those are
+        // registered first and their inputs collected while the memory-ops runner finishes,
+        // so their witnesses do not wait for it; the memory plans form the second round.
+        let (mut secn_planning, count_and_plan_duration) = self.plan.run_secondary_mt(
             &mut counters,
             num_chunks,
             is_asm_emulator,
-            &mut backend,
             &self.state.stats,
             &_exec_scope,
         )?;
-
-        // MO runner joined in `run_secondary`; release the buffer back to proofman.
-        // Earlier error paths skip the release on purpose: the MO thread may
-        // still be using the buffer.
-        if is_asm_emulator {
-            if let Some(extras) = proofman_extras {
-                if let Some(used) = secn_artifacts.gpu_mops_used_bytes {
-                    extras.pctx().report_first_gpu_buffer_usage(used);
-                }
-                extras.release_gpu_buffer();
-            }
+        let mut mem_planning = BTreeMap::new();
+        if let Some(mem_mt_plans) = secn_planning.remove(&MEM_POSITION) {
+            mem_planning.insert(MEM_POSITION, mem_mt_plans);
         }
-
-        stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
-
-        if let (Some(witness), Some(extras)) = (self.witness.as_ref(), proofman_extras) {
-            witness.configure_sm_instances(extras.pctx(), &secn_artifacts.secn_planning);
-        }
-
-        let mut secn_plans: Vec<Plan> =
-            secn_artifacts.secn_planning.into_values().flatten().collect();
-        InstanceAssigner::assign_secn_instances(registry, global_ids, &mut secn_plans)?;
-        let secn_global_ids: Vec<usize> = secn_plans
-            .iter()
-            .map(|plan| {
-                plan.global_id
-                    .ok_or(crate::error::ExecutorError::SecnPlanMissing { phase: "assignment" })
-            })
-            .collect::<ExecutorResult<Vec<_>>>()?;
 
         registry.write_pub_outs(&pub_outs.0);
 
-        if let Some(witness) = self.witness.as_ref() {
-            witness.populate_secn_instances(&self.state, secn_plans)?;
-            witness.configure_checkpoints(registry, &self.state, &secn_global_ids)?;
-        }
+        stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
+        let first_round =
+            self.register_secn_round(registry, global_ids, proofman_extras, secn_planning)?;
+
+        let mem_artifacts = std::thread::scope(|scope| -> ExecutorResult<MemPlanArtifacts> {
+            let collecting = match (self.witness.as_ref(), proofman_extras) {
+                (Some(witness), Some(extras)) if !first_round.is_empty() => {
+                    Some(scope.spawn(|| {
+                        witness.pre_calculate(
+                            extras.pctx(),
+                            extras,
+                            &self.state,
+                            &first_round,
+                            is_asm_emulator,
+                        )
+                    }))
+                }
+                _ => None,
+            };
+
+            let mem_artifacts =
+                self.plan.await_mem_plans(&mut backend, &self.state.stats, &_exec_scope)?;
+
+            // MO runner joined; release the buffer back to proofman. Earlier error paths skip
+            // the release on purpose: the MO thread may still be using the buffer.
+            if is_asm_emulator {
+                if let Some(extras) = proofman_extras {
+                    if let Some(used) = mem_artifacts.gpu_mops_used_bytes {
+                        extras.pctx().report_first_gpu_buffer_usage(used);
+                    }
+                    extras.release_gpu_buffer();
+                }
+            }
+
+            if let Some(handle) = collecting {
+                handle
+                    .join()
+                    .map_err(|_| ExecutorError::SecnPlanMissing { phase: "collect" })??;
+            }
+            Ok(mem_artifacts)
+        })?;
+
+        let mut mem_plans = mem_artifacts.mem_plans;
+        mem_planning.entry(MEM_POSITION).or_default().append(&mut mem_plans);
+        self.register_secn_round(registry, global_ids, proofman_extras, mem_planning)?;
 
         stats_end!(self.state.stats, &_config_scope);
 
@@ -518,9 +537,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let zisk_execution_time = ZiskExecutorTime {
             execution_duration: execution_duration.as_millis() as u64,
-            count_and_plan_duration: secn_artifacts.count_and_plan_duration.as_millis() as u64,
-            count_and_plan_mo_duration: secn_artifacts.count_and_plan_mo_duration.as_millis()
-                as u64,
+            count_and_plan_duration: count_and_plan_duration.as_millis() as u64,
+            count_and_plan_mo_duration: mem_artifacts.count_and_plan_mo_duration.as_millis() as u64,
             total_duration: start_total.elapsed().as_millis() as u64,
             asm_execution_duration: self.execution.get_asm_execution_info()?,
         };
@@ -545,6 +563,35 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.state.set_execution_result(execution_result);
 
         Ok(())
+    }
+
+    /// Registers one round of secondary plans: SM configuration, placement, instances and
+    /// checkpoints. Returns the round's global ids.
+    fn register_secn_round(
+        &self,
+        registry: &dyn ProofRegistry,
+        global_ids: &RwLock<Vec<usize>>,
+        proofman_extras: Option<&ProofmanAdapter<'_, F>>,
+        planning: BTreeMap<usize, Vec<Plan>>,
+    ) -> ExecutorResult<Vec<usize>> {
+        if let (Some(witness), Some(extras)) = (self.witness.as_ref(), proofman_extras) {
+            witness.configure_sm_instances(extras.pctx(), &planning);
+        }
+
+        let mut plans: Vec<Plan> = planning.into_values().flatten().collect();
+        InstanceAssigner::assign_secn_instances(registry, global_ids, &mut plans)?;
+        let ids: Vec<usize> = plans
+            .iter()
+            .map(|plan| {
+                plan.global_id.ok_or(ExecutorError::SecnPlanMissing { phase: "assignment" })
+            })
+            .collect::<ExecutorResult<Vec<_>>>()?;
+
+        if let Some(witness) = self.witness.as_ref() {
+            witness.populate_secn_instances(&self.state, plans)?;
+            witness.configure_checkpoints(registry, &self.state, &ids)?;
+        }
+        Ok(ids)
     }
 
     fn witness_or_panic(&self) -> &WitnessPhase<F> {
