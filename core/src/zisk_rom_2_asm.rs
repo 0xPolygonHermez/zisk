@@ -257,7 +257,8 @@ impl ZiskAsmContext {
         self.mode == AsmGenerationMethod::AsmRomHistogram
     }
     pub fn mem_op(&self) -> bool {
-        self.mode == AsmGenerationMethod::AsmMemOp || self.mode == AsmGenerationMethod::AsmMemOpLight
+        self.mode == AsmGenerationMethod::AsmMemOp
+            || self.mode == AsmGenerationMethod::AsmMemOpLight
     }
     pub fn light_mops(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmMemOpLight
@@ -7815,7 +7816,10 @@ impl ZiskRom2Asm {
         );
         if ctx.light_mops() {
             for (address, length) in &sections {
-                assert!(*length < (1u64 << 26), "initialised data section of {length} words exceeds a block header");
+                assert!(
+                    *length < (1u64 << 26),
+                    "initialised data section of {length} words exceeds a block header"
+                );
                 *code += &format!(
                     "\tmov {REG_AUX}, 0x{:x} {}\n",
                     F_MOPS_ALIGNED_BLOCK_WRITE
