@@ -2,6 +2,9 @@ name: Test ZisK
 
 on:
   pull_request:
+    # 'labeled' is listed so adding the ci:full label triggers a run; the
+    # other three are the defaults, which an explicit 'types' replaces.
+    types: [opened, synchronize, reopened, labeled]
     branches:
       - develop
       - main
@@ -31,8 +34,14 @@ env:
 jobs:
   cargo-tests:
     name: Cargo tests
-    # fork-PR code must not reach the self-hosted runners.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # fork-PR code must not reach the self-hosted runners, except while a member
+    # keeps the ci:full label on the PR: every push runs here until the label
+    # is removed. Each run of an external contributor still needs the manual
+    # workflow approval.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
     runs-on: rocket
     container:
       image: ubuntu:22.04
@@ -150,8 +159,11 @@ jobs:
 
   test-x86_64:
     name: Test on Ubuntu x86_64
-    # fork-PR code must not reach the self-hosted runners.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # See cargo-tests: self-hosted runners only for same-repo PRs or ci:full.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
     runs-on:
       group: zisk-gpu
     timeout-minutes: 180
