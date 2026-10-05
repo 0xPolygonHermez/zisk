@@ -241,6 +241,12 @@ impl<'a> Riscv2ZiskContext<'a> {
             // I.6 Privileged & System Instructions (Part of I Base)
             RiscvInstName::Ecall => self.ecall(riscv_instruction),
             RiscvInstName::Ebreak => self.nop(riscv_instruction, 4),
+            // A write to a read-only CSR is an illegal instruction, so the execution
+            // fails there. `unimp` (`csrrw x0, cycle, x0`) is one: compilers emit it
+            // for every trap (core::intrinsics::abort, Rust's __rust_abort, llvm.trap).
+            _ if writes_read_only_csr(riscv_instruction) => {
+                self.halt_with_error(riscv_instruction, 4)
+            }
             RiscvInstName::Csrrw => self.csrrw(riscv_instruction),
             RiscvInstName::Csrrs => self.csrrs(riscv_instruction, next_instructions),
             RiscvInstName::Csrrc => self.csrrc(riscv_instruction),
@@ -3156,14 +3162,14 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     // This code is executed when the program makes an ecall (system call).
     // The pc is set to this address, and after the system call, it returns to the pc next to the
     // one that made the ecall
-    // If register a7==CAUSE_EXIT, then execute the next instruction to end the program;
-    // otherwise jump to the one after the next one
+    // If register a7==CAUSE_EXIT, jump to the exit code check (:005c); otherwise
+    // return to the caller (:0058)
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 17, false);
     zib.src_b("imm", CAUSE_EXIT, false);
     zib.op("eq").unwrap();
-    zib.j(-64, 4);
-    zib.verbose(&format!("beq r17, {CAUSE_EXIT} # Check if is exit, jump to output, then end"));
+    zib.j(8, 4);
+    zib.verbose(&format!("beq r17, {CAUSE_EXIT} # Check if is exit, jump to the exit code check"));
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
@@ -3179,6 +3185,31 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
+    // :005c
+    // Exit: the exit code is in a0 (register #10). 0 means success: publish the output
+    // and end (:0014); anything else is a failed execution (:0060), which must not be
+    // proven
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("reg", 10, false);
+    zib.src_b("imm", 0, false);
+    zib.op("eq").unwrap();
+    zib.j(-72, 4);
+    zib.verbose("beq r10, 0 # Exit code 0: jump to output, then end");
+    zib.build(rom);
+    rom.next_init_inst_addr += 4;
+
+    // :0060
+    // Nonzero exit code: end the execution with an error
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", 0, false);
+    zib.src_b("imm", 0, false);
+    zib.op("halt").unwrap();
+    zib.j(0, 0);
+    zib.end();
+    zib.verbose("halt # Nonzero exit code: failed execution");
+    zib.build(rom);
+    rom.next_init_inst_addr += 4;
+
     // Check resulting rom address does not exceed max
     if rom.next_init_inst_addr > MAX_ZISK_OS_ROM_ADDR {
         panic!(
@@ -3186,6 +3217,21 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
             rom.next_init_inst_addr, MAX_ZISK_OS_ROM_ADDR
         );
     }
+}
+
+/// Whether `i` is a CSR instruction that writes a read-only CSR (address bits 11:10 =
+/// 0b11), which RISC-V defines as an illegal instruction. CSRRW/CSRRWI always write;
+/// CSRRS/CSRRC write only when rs1 != x0, and CSRRSI/CSRRCI only when uimm != 0, so
+/// a plain read (`csrr`) of a read-only CSR, such as marchid or the fcall result
+/// 0xFFE, stays legal.
+fn writes_read_only_csr(i: &RiscvInst) -> bool {
+    let writes = match i.inst_name {
+        RiscvInstName::Csrrw | RiscvInstName::Csrrwi => true,
+        RiscvInstName::Csrrs | RiscvInstName::Csrrc => i.rs1 != 0,
+        RiscvInstName::Csrrsi | RiscvInstName::Csrrci => i.imme != 0,
+        _ => false,
+    };
+    writes && (i.csr >> 10) & 0b11 == 0b11
 }
 
 /// Add the end jump program section to the rom instruction set.
