@@ -67,6 +67,17 @@ fn compressed_ebreak_fails() {
     assert_fails_at("trap_c_ebreak", 0x8000_0000);
 }
 
+/// trap_c_ebreak fails either way, but only with the `compressed` feature does the
+/// parcel decode as c.ebreak and reach its own transpiler arm: without it, every
+/// 16-bit parcel is c.halt. CI runs this file with `--features compressed` too.
+#[test]
+fn compressed_ebreak_takes_its_own_path() {
+    let elf = std::fs::read(elf_path("trap_c_ebreak")).expect("committed ELF");
+    let rom = elf2rom(&elf).expect("ELF must transpile");
+    let expected = if cfg!(feature = "compressed") { "c.ebreak" } else { "c.halt" };
+    assert_eq!(rom.get_instruction(0x8000_0000).riscv_inst.as_deref(), Some(expected));
+}
+
 #[test]
 fn write_to_read_only_csr_fails() {
     // li t0, 1; csrrs x0, mvendorid, t0
