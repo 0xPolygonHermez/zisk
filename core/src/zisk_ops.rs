@@ -2225,6 +2225,9 @@ pub fn op_halt(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_halt(ctx: &mut InstContext) {
     ctx.error = true;
+    // Record where: the emulator advances step and pc after the operation
+    ctx.error_step = ctx.step;
+    ctx.error_pc = ctx.pc;
     ctx.c = 0;
     ctx.flag = false;
 }
