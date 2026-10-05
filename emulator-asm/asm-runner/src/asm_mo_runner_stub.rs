@@ -17,11 +17,12 @@ pub struct AsmRunnerMO {
     /// Bytes of the proofman-owned GPU buffer consumed by the GPU mem-ops
     /// planner; always `None` on this stub (no GPU planner on unsupported targets).
     pub gpu_mops_used_bytes: Option<u64>,
+    pub device_witness: Option<DeviceMemWitness>,
 }
 
 impl AsmRunnerMO {
     pub fn new(plans: Vec<Plan>) -> Self {
-        AsmRunnerMO { plans, gpu_mops_used_bytes: None }
+        AsmRunnerMO { plans, gpu_mops_used_bytes: None, device_witness: None }
     }
 
     pub fn run(
@@ -37,4 +38,24 @@ impl AsmRunnerMO {
             "AsmRunnerMO::run() is not supported on this platform. Only Linux x86_64 is supported."
         ))
     }
+}
+
+/// The memory instances this process owns, by family (no device witness on this platform).
+#[derive(Default)]
+pub struct OwnedMemInstances<'a> {
+    /// Segment ids of the owned `Mem` instances.
+    pub ram: Vec<u32>,
+    /// Segment ids of the owned `RomData` instances.
+    pub rom: Vec<u32>,
+    /// Segment ids of the owned `InputData` instances.
+    pub input: Vec<u32>,
+    /// The owned MemAlign plans, with their checkpoints.
+    pub align: Vec<&'a Plan>,
+}
+
+/// Never built on this platform.
+pub struct DeviceMemWitness;
+
+impl DeviceMemWitness {
+    pub fn fill_owned(&self, _owned: &OwnedMemInstances<'_>) {}
 }
