@@ -240,7 +240,9 @@ impl<'a> Riscv2ZiskContext<'a> {
 
             // I.6 Privileged & System Instructions (Part of I Base)
             RiscvInstName::Ecall => self.ecall(riscv_instruction),
-            RiscvInstName::Ebreak => self.nop(riscv_instruction, 4),
+            // ebreak raises a breakpoint exception: the execution fails there. GCC emits it
+            // for __builtin_trap, which C's abort() reaches.
+            RiscvInstName::Ebreak => self.halt_with_error(riscv_instruction, 4),
             // A write to a read-only CSR is an illegal instruction, so the execution
             // fails there. `unimp` (`csrrw x0, cycle, x0`) is one: compilers emit it
             // for every trap (core::intrinsics::abort, Rust's __rust_abort, llvm.trap).
@@ -396,7 +398,8 @@ impl<'a> Riscv2ZiskContext<'a> {
             }
 
             // C.I.6.Privileged & System Instructions
-            RiscvInstName::CEbreak => self.nop(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
+            RiscvInstName::CEbreak => self.halt_with_error(riscv_instruction, 2),
 
             // C.D: Double-Precision Floating-Point:
             #[cfg(feature = "float")]
