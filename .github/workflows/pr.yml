@@ -99,6 +99,14 @@ jobs:
         with:
           node-version: 20
 
+      # Native dependencies pick their instruction set from the build machine (pil2-stark
+      # adds -mavx512f when /proc/cpuinfo has it), and ubuntu-latest mixes CPUs with and
+      # without AVX-512. Key the cache on the CPU's feature flags, so code built for one
+      # CPU type is never reused on another, where it dies with SIGILL.
+      - name: Fingerprint the CPU features
+        id: cpu
+        run: echo "flags=$(grep -m1 '^flags' /proc/cpuinfo | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+        
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
