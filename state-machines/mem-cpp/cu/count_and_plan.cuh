@@ -278,6 +278,8 @@ public:
     bool prepare_slot_fills(const void* image, size_t image_bytes, const AlignPlanDesc* plans, uint32_t n_plans,
                             const AlignChunkEntry* entries, uint32_t n_entries, RamFillPrepared* prepared);
     bool fill_slot(const void* d_ops, uint64_t n_ops, uint64_t* dst, void* stream, RamFillResult* res);
+    // The device the planner and the fills run on (`setup`'s gpu_id).
+    int device() const { return gpu_device_; }
     bool instance_scalars(uint32_t family, uint32_t inst, RamFillResult* res) const;
 
 

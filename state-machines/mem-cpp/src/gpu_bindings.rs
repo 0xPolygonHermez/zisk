@@ -242,6 +242,8 @@ extern "C" {
         n_entries: u32,
         prepared: *mut RamFillPrepared,
     ) -> bool;
+    /// The device the planner holds the retained accesses on.
+    pub fn count_and_plan_device(h: *mut CountAndPlanHandle) -> i32;
     pub fn count_and_plan_fill_slot(
         h: *mut CountAndPlanHandle,
         d_ops: *const core::ffi::c_void,

@@ -576,7 +576,7 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     RF_TRY(cudaEventRecord(ev[4]));
     if (out_rows) RF_TRY(cudaMemcpy(out_rows, rows, (size_t)n_rows * mem_words_per_row_ * 8, cudaMemcpyDeviceToHost));
     RF_TRY(cudaEventRecord(ev[5]));
-    RF_TRY(cudaDeviceSynchronize());
+    RF_TRY(cudaStreamSynchronize(0));   // the legacy stream and the planner's blocking streams
 
     // Continuation scalars: the lane before the window and the window's last lane.
     auto lane_scalars = [&](size_t g, uint32_t& addr_w, uint64_t& step, uint64_t& value) -> bool {
@@ -758,7 +758,7 @@ bool CountAndPlan::prepare_other_index_() {
     other_index_kernel<<<rf_grid(total), RF_BLOCK>>>(ram_records_, d_base, d_pref, (uint32_t)runs.size(), total,
                                                      d_other_idx_, d_other_addr_);
     RF_TRY(cudaGetLastError());
-    RF_TRY(cudaDeviceSynchronize());
+    RF_TRY(cudaStreamSynchronize(0));   // the legacy stream and the planner's blocking streams
     return true;
 }
 
@@ -1039,7 +1039,7 @@ bool CountAndPlan::fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     }
     if (out_rows) RF_TRY(cudaMemcpy(out_rows, rows, (size_t)n_rows * rom_words_per_row_ * 8, cudaMemcpyDeviceToHost));
     RF_TRY(cudaEventRecord(ev[3]));
-    RF_TRY(cudaDeviceSynchronize());
+    RF_TRY(cudaStreamSynchronize(0));   // the legacy stream and the planner's blocking streams
 
     // The last lane, and the lane before the window (the selection holds it for every instance but the first).
     auto lane_scalars = [&](size_t g, uint32_t& addr_w, uint64_t& step, uint64_t& value) -> bool {
@@ -1264,7 +1264,7 @@ bool CountAndPlan::fill_input_instance(uint32_t inst, const uint64_t* d_image, c
     }
     if (out_rows) RF_TRY(cudaMemcpy(out_rows, rows, (size_t)n_rows * input_words_per_row_ * 8, cudaMemcpyDeviceToHost));
     RF_TRY(cudaEventRecord(ev[2]));
-    RF_TRY(cudaDeviceSynchronize());
+    RF_TRY(cudaStreamSynchronize(0));   // the legacy stream and the planner's blocking streams
 
     // The last lane, and the lane before the window (the selection holds it for every instance but the first).
     auto lane_scalars = [&](size_t g, uint32_t& addr_w, uint64_t& step, uint64_t& value) -> bool {
@@ -1702,7 +1702,7 @@ bool CountAndPlan::prepare_align_index_() {
     RF_TRY(cudaMemcpy(d_pref, h_pref.data(), h_pref.size() * 4, cudaMemcpyHostToDevice));
     align_order_kernel<<<rf_grid(total), RF_BLOCK>>>(d_base, d_pref, (uint32_t)h_base.size(), total, d_align_order_);
     RF_TRY(cudaGetLastError());
-    RF_TRY(cudaDeviceSynchronize());
+    RF_TRY(cudaStreamSynchronize(0));   // the legacy stream and the planner's blocking streams
     return true;
 }
 
@@ -1818,7 +1818,7 @@ bool CountAndPlan::fill_align_instance(const AlignPlanDesc& plan, const AlignChu
     }
     if (out_rows) RF_TRY(cudaMemcpy(out_rows, rows, (size_t)plan.n_rows * words * 8, cudaMemcpyDeviceToHost));
     RF_TRY(cudaEventRecord(ev[2]));
-    RF_TRY(cudaDeviceSynchronize());
+    RF_TRY(cudaStreamSynchronize(0));   // the legacy stream and the planner's blocking streams
     res->n_lanes = used;
     auto ms = [&](int a, int b) { float t = 0; cudaEventElapsedTime(&t, ev[a], ev[b]); return t; };
     res->ms_rows = ms(1, 2);
@@ -1930,8 +1930,9 @@ bool CountAndPlan::prepare_slot_fills(const void* image, size_t image_bytes, con
 }
 
 // `stream`: the prover's commit stream, which uploaded the ops and zeroed the slot; the fill runs
-// on the legacy stream after it and synchronises the device before returning, so the commit's
-// later work on `stream` sees the rows.
+// on the legacy stream after it and waits for that stream only before returning, so the commit's
+// later work on `stream` sees the rows while another slot's commit kernels keep running (the
+// prover's slot streams are non-blocking).
 bool CountAndPlan::fill_slot(const void* d_ops, uint64_t n_ops, uint64_t* dst, void* stream, RamFillResult* res) {
     if (res) *res = RamFillResult{};
     if (!res) return false;

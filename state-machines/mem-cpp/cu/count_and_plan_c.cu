@@ -174,6 +174,10 @@ bool count_and_plan_prepare_slot_fills(void* h, const void* image, size_t image_
     return static_cast<CountAndPlan*>(h)->prepare_slot_fills(image, image_bytes, plans, n_plans, entries, n_entries, prepared);
 }
 
+int count_and_plan_device(void* h) {
+    return h ? static_cast<CountAndPlan*>(h)->device() : -1;
+}
+
 bool count_and_plan_fill_slot(void* h, const void* d_ops, uint64_t n_ops, uint64_t* dst, void* stream, RamFillResult* res) {
     if (!h) return false;
     return static_cast<CountAndPlan*>(h)->fill_slot(d_ops, n_ops, dst, stream, res);
