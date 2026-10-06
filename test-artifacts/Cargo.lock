@@ -660,13 +660,13 @@ dependencies = [
 
 [[package]]
 name = "auto_impl"
-version = "1.3.0"
+version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffdcb70bdbc4d478427380519163274ac86e52916e10f0a8889adf0f96d3fee7"
+checksum = "683bf733a032aec4f8954e5c0ec9d5c2183c341c49d0939ad77acc0a19fa338a"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -1033,9 +1033,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.5.1"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f360145194ee8e21db5ee7f3fcd4fe52210864c75c985dae33218202c8bbe040"
+checksum = "f74872d07caf508b30a21f6836e7d7016a2eaf7d9ff4f48deaa58cd8a0407630"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -2756,15 +2756,15 @@ checksum = "a4933f3f57a8e9d9da04db23fb153356ecaf00cbd14aee46279c33dc80925c37"
 
 [[package]]
 name = "lazy_static"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
 name = "libc"
-version = "0.2.189"
+version = "0.2.190"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
 
 [[package]]
 name = "libffi"
@@ -2938,9 +2938,9 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "1.2.3"
+version = "1.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b18443e9c262bfe8fa82f51666e2642c53393f7e5c27b3e1aeab922cff5b9d8"
+checksum = "1788edb87fdc09c7e26304471e2f5be8cdefb1b6930d6e3985fc02ff53bf86ee"
 dependencies = [
  "libc",
  "wasi",
@@ -3391,8 +3391,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e33d50d8ddcc03643a323b7fd567cb637e534c1f5bb1be62a8ec7530a3f31131"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -3403,8 +3402,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be22608b6b84e8d54d2510c3c8391f19382496d8a3242fd57cc44501efa8e580"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -3420,8 +3418,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ae638a53a6e70019011a3cbb826a9e77791afb3c91f848e22ae023808e65cc5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "anyhow",
  "clap",
@@ -3447,8 +3444,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c978590064142e9692b1446305eb6a6c9ca9a7c8f6a87f68aaee9ad19c7d834"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "colored",
  "proofman-common",
@@ -3531,9 +3527,9 @@ dependencies = [
 
 [[package]]
 name = "powerfmt"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
+checksum = "4a6394b9e965e73d0a289ee54f589087e2c676aedf60885baf52c76b771e4958"
 
 [[package]]
 name = "ppv-lite86"
@@ -3608,8 +3604,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20b5b1efeaeae3c40499d89ff43198e7e4c6dab1af821b74d4a022ce431b5108"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "bincode",
  "blake3",
@@ -3641,8 +3636,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53606f78c0b7dd40e618140c3177bb85d3b8fbdffb56c2a2106436da5b2ebcf8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "borsh",
  "colored",
@@ -3670,8 +3664,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02583568e18a77e08c302ace22821fb6d833b0c89e60bb40c34ad3b27bc88508"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "proofman-fields",
 ]
@@ -3679,8 +3672,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a034e0e688896c8c81443538a88984378e51512ec79dd73caa7700131dc8913"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "anyhow",
  "proofman-starks-src",
@@ -3694,8 +3686,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "288f1cfadffdd60f4297428d41fa27dbae9837a63c89f77ba3e9ce8f5e03f987"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -3708,8 +3699,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8976eb1eeb543a74772fc83b654a96cd7e483750262fa8ca35c8e65ca1c70402"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -3721,8 +3711,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "541ae1751c469a81f21210f8a2bd0c4e08980a82b08a5cd80eac021bab9e770c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3732,8 +3721,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71fbc5a3cbea8630ccc96c4373ee45c8f63f5ac243f9b9456026773e30ab130e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -3742,14 +3730,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec72725ea4f99741a95b52edc3290d5b9fe904762b6991b14aedb399ce43e86a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 
 [[package]]
 name = "proofman-util"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1558e3975f49c44713e27d4c49662b3dca24071987892ab88489c9b73afb9e13"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -3758,8 +3744,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcfb929d02d38e48617f4badd3c5cc9cf140742dcf539c0d53ea5e6d9c037ab7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "bincode",
  "num-traits",
@@ -3772,8 +3757,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0fce6674550d900e44ad619a20bc9a5b2a454d3fc8f4385c4fe95497915c1b9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -5185,9 +5169,9 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tokio"
-version = "1.53.1"
+version = "1.53.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "202caea871b69668250d242070849eb495be178ed697a3e98aebce5bc81a0bed"
+checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
 dependencies = [
  "bytes",
  "libc",
@@ -5528,9 +5512,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "twox-hash"
-version = "2.1.4"
+version = "2.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5283634e518fe9e82c7b20520bb4bc209009fd16c82077c802f8111ecbb0117a"
+checksum = "86a801b3cea342a06d468c8710662aa29e5e05e4f5c0d62f00bbb7f2ad7941c2"
 
 [[package]]
 name = "typenum"
@@ -5564,9 +5548,9 @@ checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
 
 [[package]]
 name = "unicase"
-version = "2.9.0"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
+checksum = "357cc3acc6a036009fd6c973ed009037c732d60d0b4f6c673e9041497482a28f"
 
 [[package]]
 name = "unicode-ident"
@@ -5624,9 +5608,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.26.1"
+version = "1.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ef6dac1e96601b4fb3acccccff2139741fcb757cb9a36089bf5be91cfb285ce"
+checksum = "97277d36b9c3ace13e58fa6e753f8b0bbbf302a18dd193240d70f9e29681059a"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
@@ -5704,9 +5688,9 @@ dependencies = [
 
 [[package]]
 name = "want"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfa7760aed19e106de2c7c0b581b509f2f25d3dacaf737cb82ac61bc6d760b0e"
+checksum = "ec4cdd0dd910afe868b7ef477227d8d538b46b3075031afee8a9f2acb0a2ed0b"
 dependencies = [
  "try-lock",
 ]
@@ -6215,9 +6199,9 @@ dependencies = [
 
 [[package]]
 name = "yoke-derive"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78"
+checksum = "ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6227,18 +6211,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.59"
+version = "0.8.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6df92bf3d9227be3d53173901ddbffac2babc27ae50f397776ffd6dc33f800cb"
+checksum = "6400fc4bb7426f6faac3fb07566122bb18622e3022bd2c36426a92ed489b1dbe"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.59"
+version = "0.8.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac4f328cf2f05d084e496c3e9c3f33ed0a183656a16e1fcec4d464d8373aec82"
+checksum = "99c27cc7525bad4df59a45e073c45b2c2aa820efb588234cc23a547ec69a34db"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6321,7 +6305,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-asm-runner"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "anyhow",
  "libc",
@@ -6339,7 +6323,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-build"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "anyhow",
  "blake3",
@@ -6355,11 +6339,11 @@ dependencies = [
 
 [[package]]
 name = "zisk-circuit"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 
 [[package]]
 name = "zisk-cluster-common"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "anyhow",
  "borsh",
@@ -6377,7 +6361,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-common"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "alloy-sol-types",
  "bincode",
@@ -6405,7 +6389,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-coordinator-api"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6420,7 +6404,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-coordinator-client"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "anyhow",
  "bytes",
@@ -6435,7 +6419,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-core"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "paste",
  "proofman-fields",
@@ -6449,11 +6433,11 @@ dependencies = [
 
 [[package]]
 name = "zisk-definitions"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 
 [[package]]
 name = "zisk-executor"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -6497,11 +6481,11 @@ dependencies = [
 
 [[package]]
 name = "zisk-lib-c"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 
 [[package]]
 name = "zisk-pil"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "proofman-common",
  "proofman-fields",
@@ -6512,7 +6496,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-arith-eq"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "ark-bn254",
  "ark-ff 0.5.0",
@@ -6541,7 +6525,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-arith-eq-384"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "ark-bls12-381",
  "ark-ff 0.5.0",
@@ -6566,7 +6550,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-babyjubjub"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "ark-bn254",
  "ark-ff 0.5.0",
@@ -6591,7 +6575,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-big-int"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
@@ -6608,7 +6592,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-blake2"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
@@ -6624,7 +6608,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-blake3"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
@@ -6640,7 +6624,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-common"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-fields",
@@ -6653,7 +6637,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-dma"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
@@ -6670,7 +6654,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-evm"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "clap",
  "pil2-std-lib",
@@ -6685,7 +6669,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-helpers"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -6702,7 +6686,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-hints"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "anyhow",
  "borsh",
@@ -6716,7 +6700,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-keccakf"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
@@ -6734,7 +6718,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-poseidon"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
@@ -6750,7 +6734,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-sha256f"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
@@ -6766,7 +6750,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-program-macros"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "blake3",
  "proc-macro-crate",
@@ -6777,7 +6761,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-prover-backend"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "alloy-sol-types",
  "anyhow",
@@ -6808,7 +6792,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-recurser"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "anyhow",
  "blake3",
@@ -6829,7 +6813,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-riscv"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "zisk-core",
  "zisk-definitions",
@@ -6837,7 +6821,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-rom-setup"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "anyhow",
  "blake3",
@@ -6853,7 +6837,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-sdk"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "bincode",
  "proofman",
@@ -6878,14 +6862,14 @@ dependencies = [
 
 [[package]]
 name = "zisk-setup"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "zisk-sm-arith"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
@@ -6901,7 +6885,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-sm-binary"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
@@ -6917,7 +6901,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-sm-frequent-ops"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "clap",
  "proofman-common",
@@ -6928,7 +6912,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-sm-main"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
@@ -6945,7 +6929,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-sm-mem"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "env",
  "pil2-std-lib",
@@ -6962,7 +6946,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-sm-mem-common"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "clap",
  "proofman-fields",
@@ -6976,7 +6960,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-sm-mem-planner"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "proofman-util",
  "tracing",
@@ -6987,7 +6971,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-sm-rom"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "proofman-common",
  "proofman-fields",
@@ -7004,7 +6988,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-stream"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "libc",
  "quinn",
@@ -7024,7 +7008,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-transpiler-common"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "elf",
  "zisk-core",
@@ -7033,7 +7017,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-transpiler-riscv"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "zisk-core",
  "zisk-transpiler-common",
@@ -7041,7 +7025,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-verifier"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "proofman-fields",
  "proofman-verifier",
@@ -7049,14 +7033,14 @@ dependencies = [
 
 [[package]]
 name = "zisk-zkvm-interface"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "bindgen",
 ]
 
 [[package]]
 name = "ziskemu"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "clap",
  "flate2",
@@ -7084,7 +7068,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -7123,7 +7107,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos-hints"
-version = "1.3.1-alpha"
+version = "1.3.2-alpha"
 dependencies = [
  "anyhow",
  "bincode",
