@@ -638,17 +638,19 @@ fn slot_fill_done() {
 
 /// The prover's GPU-witness kernel for the memory airs: builds the instance named by the staged
 /// `MemSlotOp` into `d_dst` (the commit slot) from the retained accesses, while the arena is still
-/// borrowed; after the last owned instance the armed release hands the arena back.
+/// borrowed; after the last owned instance the armed release hands the arena back. The slot must
+/// be on the planner's GPU: the rows are produced there, never copied across devices.
 ///
 /// # Safety
 /// Called by the prover with `d_ops` a device buffer holding `num_ops` staged ops, `d_dst` the
-/// slot's packed rows and `stream` the commit stream that uploaded them; the planner waits for
-/// that stream, serialises the fills under its lock and synchronises the device before returning.
+/// slot's packed rows, `device_id` the slot's GPU and `stream` the commit stream that uploaded
+/// them; the planner waits for that stream, serialises the fills under its lock and waits for its
+/// own stream before returning, so the commit's later work on `stream` sees the rows.
 pub unsafe extern "C" fn zisk_mem_witness_slot_kernel(
     d_ops: *const core::ffi::c_void,
     num_ops: u64,
     d_dst: *mut u64,
-    _device_id: i32,
+    device_id: i32,
     stream: *mut core::ffi::c_void,
 ) -> i32 {
     let ok = {
@@ -657,6 +659,14 @@ pub unsafe extern "C" fn zisk_mem_witness_slot_kernel(
             tracing::error!("[gpu] slot fill: no GPU planner registered");
             return -1;
         };
+        // SAFETY: registered handle, under the lock.
+        let planner_device = unsafe { crate::gpu_bindings::count_and_plan_device(r.inner) };
+        if device_id != planner_device {
+            tracing::error!(
+                "[gpu] slot fill: the slot is on GPU {device_id} but the planner holds the accesses on GPU {planner_device};                  the memory airs must commit on the planner's GPU"
+            );
+            return -3;
+        }
         let mut res = RamFillResult::default();
         // SAFETY: registered handle, under the lock; the prover's pointers are valid for the call.
         let ok = unsafe {
