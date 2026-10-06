@@ -103,6 +103,9 @@ endif # NEED_CUDA_ARCH
 # self-contained, which is what lets each crate build its own archive with no
 # cross-crate `nvcc -dlink` step — cargo cannot express one.
 NVCCFLAGS := -O3 -std=c++20 $(CUDA_GENCODE_FLAGS) -Xcompiler -fPIC $(EXTRA_NVCCFLAGS)
+INCLUDES  := -I$(SHARED_INCLUDE) -I$(SRC_DIR) $(addprefix -I,$(EXTRA_HEADER_DIRS))
+# Everything but the file names: the staleness stamp below compares this whole line.
+NVCC_CMD  := $(NVCC) $(NVCCFLAGS) $(INCLUDES)
 
 OBJS := $(addprefix $(OUT_DIR)/, $(SRCS:.cu=.o))
 
@@ -112,17 +115,18 @@ HEADERS := $(wildcard $(SHARED_INCLUDE)/*.cuh) \
            $(foreach d,$(EXTRA_HEADER_DIRS),$(wildcard $(d)/*.cuh) $(wildcard $(d)/*.hpp))
 
 # Staleness stamp: make doesn't track flag changes, so wipe the objects at
-# parse time when the resolved gencode flags differ from the stamped ones.
+# parse time when the compile line (nvcc, gencode, extra flags, includes)
+# differs from the stamped one.
 ifdef NEED_CUDA_ARCH
-CUDA_ARCH_STAMP := $(OUT_DIR)/.cuda_arch_stamp
-LAST_CUDA_FLAGS := $(strip $(shell cat $(CUDA_ARCH_STAMP) 2>/dev/null))
-ifneq ($(LAST_CUDA_FLAGS),$(strip $(CUDA_GENCODE_FLAGS)))
+CUDA_FLAGS_STAMP := $(OUT_DIR)/.cuda_flags_stamp
+LAST_CUDA_CMD := $(strip $(shell cat $(CUDA_FLAGS_STAMP) 2>/dev/null))
+ifneq ($(LAST_CUDA_CMD),$(strip $(NVCC_CMD)))
     ifndef MAKE_DRY_RUN
         ifneq ($(wildcard $(OUT_DIR)/*.o),)
-            $(warning CUDA gencode flags changed — removing stale GPU objects in $(OUT_DIR))
-            CUDA_ARCH_CLEAN := $(shell rm -f $(OUT_DIR)/*.o $(OUT_DIR)/$(TARGET))
+            $(warning CUDA compile flags changed — removing stale GPU objects in $(OUT_DIR))
+            CUDA_FLAGS_CLEAN := $(shell rm -f $(OUT_DIR)/*.o $(OUT_DIR)/$(TARGET))
         endif
-        CUDA_ARCH_WRITE := $(shell mkdir -p $(OUT_DIR) && echo '$(strip $(CUDA_GENCODE_FLAGS))' > $(CUDA_ARCH_STAMP))
+        CUDA_FLAGS_WRITE := $(shell mkdir -p $(OUT_DIR) && printf '%s\n' '$(subst ','\'',$(strip $(NVCC_CMD)))' > $(CUDA_FLAGS_STAMP))
     endif
 endif
 endif # NEED_CUDA_ARCH
@@ -134,7 +138,7 @@ $(OUT_DIR)/$(TARGET): $(OBJS)
 
 $(OUT_DIR)/%.o: $(SRC_DIR)/%.cu $(HEADERS)
 	mkdir -p $(OUT_DIR)
-	$(NVCC) $(NVCCFLAGS) -I$(SHARED_INCLUDE) -I$(SRC_DIR) $(addprefix -I,$(EXTRA_HEADER_DIRS)) -c $< -o $@
+	$(NVCC_CMD) -c $< -o $@
 
 clean:
 	rm -f $(OUT_DIR)/*.o $(OUT_DIR)/$(TARGET)
