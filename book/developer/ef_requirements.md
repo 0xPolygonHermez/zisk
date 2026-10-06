@@ -117,28 +117,30 @@ zkvmcall guests, in emulation, ROM generation and proving alike. (The `ziskasm`
 *features* under `test-artifacts/programs/` are unrelated: they switch those test
 guests from the Rust `zisklib` to the ZisK library.)
 
-**2. Build the ziskethone guest with the standard ABI** — from the `ziskethone`
-repository. A RISC-V bare-metal C++ toolchain (xPack `riscv-none-elf-g++` 14.x)
-must be on `PATH`:
+**2. Build the ziskethone guest** — from the `ziskethone` repository, branch
+`feature/zkvm-abi`. A RISC-V bare-metal C++ toolchain (xPack `riscv-none-elf-g++`
+14.x) must be on `PATH`:
 
 ```sh
-# once: populate evmone into cpp-guest/build/_deps
+# once: fetch evmone and apply the branch's patches (host build, cpp-guest/build)
 cmake -S cpp-guest -B cpp-guest/build
 
-# build the guest with the EF accelerator ABI enabled
+# the ZisK guest
 cmake -S cpp-guest/zisk -B cpp-guest/zisk/build \
       -DCMAKE_TOOLCHAIN_FILE=$(pwd)/cpp-guest/zisk/toolchain.cmake \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DZKVM_ABI="ZKVM_KECCAK;ZKVM_SHA256;ZKVM_SECP256K1;ZKVM_MODEXP;ZKVM_BLAKE2F;ZKVM_SECP256R1;ZKVM_BLS;ZKVM_KZG;ZKVM_BN254"
-cmake --build cpp-guest/zisk/build -j8 --target zisk_eth_guest.elf
+      -DCMAKE_BUILD_TYPE=Release
+cmake --build cpp-guest/zisk/build -j8
+# -> cpp-guest/zisk/build/zisk_eth_guest.elf
 ```
 
-The `-DZKVM_ABI="…"` list is the switch that makes the guest **use the zkVM
-interface**: each token replaces one crypto call site with the standard `zkvm_*`
-symbol (e.g. `ZKVM_KECCAK` → `zkvm_keccak256`), whose zkvmcall `elf2rom` then
-turns into a jump to the native `.zisk` routine. Building with an empty `-DZKVM_ABI=""` instead selects
-ziskethone's own in-guest software/precompile paths — that build is the **native
-reference** for the A/B check below.
+On this branch the guest always uses the zkVM interface; there is no switch to
+turn it off. Every precompile, the EVM's 256-bit arithmetic, its memory operations
+and its I/O call the standard functions (`zkvm_keccak256`, `zkvm_u256_*`,
+`read_input`, ...), whose zkvmcalls `elf2rom` turns into the native `.zisk`
+routines. `EVM_BACKEND=zevm` selects ziskethone's hand-written interpreter instead
+of evmone (use a separate build directory); the guest's
+[`cpp-guest/zisk/README.md`](https://github.com/0xPolygonHermez/ziskethone/blob/feature/zkvm-abi/cpp-guest/zisk/README.md)
+lists the other options and which ABI function each guest feature uses.
 
 **3. Run through `ziskemu`** and read the public output (the 32-byte block hash):
 
@@ -149,15 +151,24 @@ $ZE -e "$GUEST" -i <block-input>.bin -o /tmp/out.bin -X    # -X prints step/cost
 xxd -p -c32 /tmp/out.bin                                    # the block hash
 ```
 
-Framed block inputs live in the `zisk-eth-client` repo, e.g.
-`bin/guests/stateless-validator-ziskethone/inputs/*.bin` (already wrapped as
-`[u64 LE length][payload]`).
+`ziskemu` expects the input framed as `[u64 LE length][payload]`, where the payload
+is ziskethone's block container (it starts with the `ZEG0` magic). Framed inputs
+live in the `zisk-eth-client` repo, e.g.
+`bin/guests/stateless-validator-ziskethone/inputs/*.bin`.
 
-**4. Confirm conformance (A/B).** Build a second guest with `-DZKVM_ABI=""`, run it
-on the same block, and check the two `out.bin` block hashes are **byte-identical** —
-proving the standard C ABI produces exactly the native result. (On real mainnet
-blocks this holds for keccak/sha256/secp256k1/bn254; the rarer precompiles are
-covered by the per-function golden-vector guests in `ziskasm/lang/c/example/`.)
+**4. Confirm conformance (A/B).** Run the same block through ziskethone's native
+host build, which uses none of the zkVM interface, and check that it prints the same
+block hash:
+
+```sh
+cmake --build cpp-guest/build -j8                      # the native guest
+tail -c +9 <block-input>.bin > /tmp/blk.container      # drop the 8-byte length frame
+./cpp-guest/build/zisk_eth_guest /tmp/blk.container | tail -1
+```
+
+A byte-identical hash shows the zkVM interface produces exactly the native result.
+The rarer precompiles, which real blocks may not reach, are covered by the
+per-function golden-vector guests under `ziskasm/zisklib/scripts/benchmark/`.
 
 ## Summary
 
