@@ -384,7 +384,7 @@ fn push_block_range(
 /// The downward expansion is clamped to `RAM_ADDR` (the lowest writable RAM address):
 /// it must never cross below it, since that region is the stack guard. `RAM_ADDR` is
 /// 32-byte aligned (checked at compile time above), so clamping preserves alignment.
-fn normalize_rw_data_sections(sections: Vec<DataSection>) -> Vec<DataSection> {
+pub fn normalize_rw_data_sections(sections: Vec<DataSection>) -> Vec<DataSection> {
     const BLOCK: u64 = ROM_DATA_BLOCK as u64;
 
     // ---- Phase 1: trim + expand to absolute 32-byte block bounds -----------
