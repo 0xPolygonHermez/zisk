@@ -551,39 +551,94 @@ struct SlotRelease {
 
 static SLOT_RELEASE: Mutex<SlotRelease> = Mutex::new(SlotRelease { pending: 0, release: None });
 
-/// Prepares the block for the slot fills: every instance resolved (scalars and MemAlign old
-/// words), the input image on the device, the owned MemAlign plans known to the planner.
-pub fn gpu_slot_witness_prepare(
-    image: &[u8],
+/// The block's slot preparation, running on its own thread; joined by the first slot fill or
+/// scalar read of the block, or by the arena's release.
+struct SlotPrepare {
+    handle: Option<std::thread::JoinHandle<Result<RamFillPrepared, String>>>,
+    done: Option<Result<(), String>>,
+}
+static SLOT_PREPARE: Mutex<SlotPrepare> = Mutex::new(SlotPrepare { handle: None, done: None });
+
+/// Starts the block's preparation for the slot fills (every instance resolved, scalars and
+/// MemAlign old words, the input image on the device, the owned MemAlign plans known to the
+/// planner) on its own thread, off the executor's path: it runs beside the registration of the
+/// secondaries and the first commits, and the first slot fill waits for it. The host-side checks
+/// stay synchronous, so a block the device cannot serve still falls back before any instance is
+/// built: the retained accesses must be complete and the MemAlign tables well formed.
+pub fn gpu_slot_witness_prepare_async(
+    image: Vec<u8>,
     align_plans: &[&zisk_common::Plan],
-) -> Result<RamFillPrepared, String> {
+) -> Result<(), String> {
     let (descs, entries) = align_tables(align_plans)?;
-    let reg = registry();
-    let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
-    let mut prepared = RamFillPrepared::default();
-    // SAFETY: registered handle, under the lock; the tables and the image outlive the call, which
-    // copies what it keeps; `prepared` is a valid out-parameter.
-    let ok = unsafe {
-        crate::gpu_bindings::count_and_plan_prepare_slot_fills(
-            r.inner,
-            image.as_ptr(),
-            image.len(),
-            descs.as_ptr(),
-            descs.len() as u32,
-            entries.as_ptr(),
-            entries.len() as u32,
-            &mut prepared,
-        )
-    };
-    if !ok {
-        return Err(format!("prepare_slot_fills failed with status {}", prepared.status));
+    {
+        let reg = registry();
+        let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
+        // SAFETY: registered handle, under the lock.
+        if !unsafe { crate::gpu_bindings::count_and_plan_ram_retention_ok(r.inner) } {
+            return Err("the retained accesses are incomplete for this block".into());
+        }
     }
-    Ok(prepared)
+    let handle = std::thread::Builder::new()
+        .name("mem-slot-prepare".into())
+        .spawn(move || {
+            let reg = registry();
+            let r = reg
+                .as_ref()
+                .ok_or_else(|| "no GPU planner registered for the memory witness".to_string())?;
+            let mut prepared = RamFillPrepared::default();
+            // SAFETY: registered handle, under the lock for the whole preparation so no fill runs
+            // before it; the tables and the image outlive the call, which copies what it keeps;
+            // `prepared` is a valid out-parameter.
+            let ok = unsafe {
+                crate::gpu_bindings::count_and_plan_prepare_slot_fills(
+                    r.inner,
+                    image.as_ptr(),
+                    image.len(),
+                    descs.as_ptr(),
+                    descs.len() as u32,
+                    entries.as_ptr(),
+                    entries.len() as u32,
+                    &mut prepared,
+                )
+            };
+            if !ok {
+                return Err(format!("prepare_slot_fills failed with status {}", prepared.status));
+            }
+            tracing::info!(
+                "[gpu] memory witness in the slots: {} accesses resolved, {} instances",
+                prepared.n_accesses,
+                prepared.n_instances
+            );
+            Ok(prepared)
+        })
+        .map_err(|e| format!("cannot start the slot preparation thread: {e}"))?;
+    let mut g = SLOT_PREPARE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(stale) = g.handle.take() {
+        let _ = stale.join();
+    }
+    g.done = None;
+    g.handle = Some(handle);
+    Ok(())
+}
+
+/// Waits for the block's slot preparation; its failure is every fill's failure. The lock is
+/// held through the join, so a second waiter blocks until the result is known.
+fn slot_prepare_join() -> Result<(), String> {
+    let mut g = SLOT_PREPARE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(h) = g.handle.take() {
+        g.done = Some(match h.join() {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err("the slot preparation thread panicked".into()),
+        });
+    }
+    g.done.clone().unwrap_or(Ok(()))
 }
 
 /// The scalars of a resolved instance (`family` 0 Mem, 1 RomData, 2 InputData), for its air
 /// values; valid after the slot preparation, with or without rows.
 pub fn gpu_mem_witness_scalars(family: u32, inst: u32) -> Result<RamFillResult, String> {
+    slot_prepare_join()?;
     let reg = registry();
     let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
     let mut res = RamFillResult::default();
@@ -607,6 +662,8 @@ pub fn gpu_slot_witness_arm(n_pending: usize, release: Box<dyn FnOnce() + Send>)
 /// Runs the armed release now, if it has not run: the end of the proof, or a block whose memory
 /// instances were not all committed.
 pub fn gpu_slot_witness_release_now() {
+    // The preparation may still be using the arena: never release it underneath.
+    let _ = slot_prepare_join();
     let release = {
         let mut g = SLOT_RELEASE.lock().unwrap_or_else(|e| e.into_inner());
         g.pending = 0;
@@ -653,6 +710,10 @@ pub unsafe extern "C" fn zisk_mem_witness_slot_kernel(
     device_id: i32,
     stream: *mut core::ffi::c_void,
 ) -> i32 {
+    if let Err(e) = slot_prepare_join() {
+        tracing::error!("[gpu] slot fill: the block's preparation failed: {e}");
+        return -4;
+    }
     let ok = {
         let reg = registry();
         let Some(r) = reg.as_ref() else {

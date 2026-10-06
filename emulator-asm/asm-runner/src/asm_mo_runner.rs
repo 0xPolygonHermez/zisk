@@ -214,17 +214,20 @@ impl DeviceMemWitness {
         #[cfg(gpu)]
         if self.slot {
             timer_start_info!(GPU_MEM_WITNESS);
+            // The preparation runs on its own thread; the first slot fill waits for it.
             let prepared = input_image(&self.shm_prefix).and_then(|image| {
-                zisk_sm_mem_planner::gpu_slot_witness_prepare(image.bytes(), &owned.align)
+                zisk_sm_mem_planner::gpu_slot_witness_prepare_async(
+                    image.bytes().to_vec(),
+                    &owned.align,
+                )
             });
             timer_stop_and_log_info!(GPU_MEM_WITNESS);
             match prepared {
-                Ok(p) => {
+                Ok(()) => {
                     let n_owned =
                         owned.ram.len() + owned.rom.len() + owned.input.len() + owned.align.len();
                     tracing::info!(
-                        "[gpu] memory witness in the slots: {} accesses resolved, {} instances, {} owned",
-                        p.n_accesses, p.n_instances, n_owned
+                        "[gpu] memory witness in the slots: {n_owned} owned instances, preparing"
                     );
                     let d_buffers = d_buffers as usize;
                     zisk_sm_mem_planner::gpu_slot_witness_arm(
@@ -607,6 +610,14 @@ impl AsmRunnerMO {
         #[cfg(gpu)]
         if gpu_count_and_plan_opt.is_some() {
             let pause = match std::env::var("ZISK_MOPS_COMMIT_PAUSE").as_deref() {
+                // In slot mode the memory commits need the paused slots before the arena is
+                // released, so the pause would never lift.
+                Ok("1") if std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("slot") => {
+                    tracing::warn!(
+                        "ZISK_MOPS_COMMIT_PAUSE=1 ignored: the slot commits run through the final plan in slot mode"
+                    );
+                    false
+                }
                 Ok("1") => true,
                 Ok("0") => false,
                 _ => !device_mem_witness_requested(),
