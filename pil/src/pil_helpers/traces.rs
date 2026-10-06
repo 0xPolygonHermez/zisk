@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "1ce788b2f3fc31bb9111c8c9031fe200fb1d2ea6e90e42a00029417859518785";
+pub const PILOUT_HASH: &str = "42e1281e47d498a2bcc63fa960bfccfc7f25f40c2a59d49fb6f8e5e1bcb8edf9";
 
 //AIRGROUP CONSTANTS
 
@@ -202,7 +202,7 @@ trace_row!(MemFixedRow<F> {
 pub type MemFixed<F> = GenericTrace<MemFixedRow<F>, 4194304, 0, 2>;
 
 trace_row!(MemTraceRow<F> {
- addr:[ubit(29); 4], step:[ubit(38); 4], sel:[bit; 4], addr_changes:[bit; 4], step_dual:[ubit(38); 4], sel_dual:[bit; 4], value:[[u32; 2]; 4], wr:[bit; 4], previous_step:[ubit(40); 4], l_increment:[ubit(22); 4], h_increment:[u16; 4], read_same_addr:[bit; 4],
+ addr:[ubit(29); 4], step:[ubit(38); 4], addr_changes:[bit; 4], step_dual:[ubit(38); 4], sel_dual:[bit; 4], value:[[u32; 2]; 4], wr:[bit; 4], previous_step:[ubit(40); 4], l_increment:[ubit(22); 4], h_increment:[u16; 4], read_same_addr:[bit; 4],
 });
 
 pub type MemTrace<R> = GenericTrace<R, 4194304, 0, 2>;
@@ -213,7 +213,7 @@ trace_row!(InputDataFixedRow<F> {
 pub type InputDataFixed<F> = GenericTrace<InputDataFixedRow<F>, 4194304, 0, 3>;
 
 trace_row!(InputDataTraceRow<F> {
- addr:[ubit(29); 1], step:[ubit(38); 1], sel:[bit; 1], addr_changes:[bit; 1], value_word:[[u16; 4]; 1], is_free_read:[bit; 1],
+ addr:[ubit(29); 1], step:[ubit(38); 1], addr_changes:[bit; 1], sel:[bit; 1], value_word:[[u16; 4]; 1], is_free_read:[bit; 1],
 });
 
 pub type InputDataTrace<R> = GenericTrace<R, 4194304, 0, 3>;
@@ -747,7 +747,7 @@ trace_row!(JumpDestTraceRow<F> {
 pub type JumpDestTrace<R> = GenericTrace<R, 2097152, 0, 51>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- COL_0_0_0: F, COL_0_0_1: F, COL_0_0_2: F, COL_0_0_3: F, COL_0_0_5: F, COL_0_0_7: F, COL_1_8_0: F, COL_1_8_1: F, COL_1_8_3: F, COL_1_8_5: F, COL_2_16_1: F, COL_2_16_3: F, COL_2_16_5: F, COL_3_24_1: F, COL_3_24_3: F, COL_3_24_5: F, COL_4_32_1: F, COL_4_32_3: F, COL_4_32_5: F, COL_5_40_1: F, COL_5_40_3: F, COL_5_40_5: F, COL_6_48_1: F, COL_6_48_3: F, COL_6_48_5: F, COL_7_56_1: F, COL_7_56_3: F, COL_7_56_5: F, COL_8_64_0: F, COL_8_64_1: F, COL_8_64_2: F, COL_8_64_3: F, COL_8_64_5: F, COL_8_64_6: F, COL_9_72_0: F, COL_9_72_1: F, COL_9_72_2: F, COL_9_72_3: F, COL_9_72_5: F, COL_9_72_6: F, COL_10_80_0: F, COL_10_80_1: F, COL_10_80_2: F, COL_10_80_3: F, COL_10_80_5: F, COL_10_80_6: F, COL_11_88_0: F, COL_11_88_1: F, COL_11_88_2: F, COL_11_88_3: F, COL_11_88_5: F, COL_11_88_6: F, COL_11_88_7: F, UID_11: F, __L1__: F,
+ COL_0_0_0: F, COL_0_0_1: F, COL_0_0_2: F, COL_0_0_3: F, COL_0_0_5: F, COL_0_0_7: F, COL_1_8_0: F, COL_1_8_1: F, COL_1_8_2: F, COL_1_8_3: F, COL_1_8_5: F, COL_1_8_7: F, COL_2_16_1: F, COL_2_16_3: F, COL_2_16_5: F, COL_5_40_0: F, COL_5_40_1: F, COL_5_40_2: F, COL_5_40_3: F, COL_5_40_5: F, COL_5_40_6: F, COL_6_48_0: F, COL_6_48_1: F, COL_6_48_2: F, COL_6_48_3: F, COL_6_48_5: F, COL_7_56_1: F, COL_7_56_3: F, COL_7_56_5: F, COL_8_64_0: F, COL_8_64_1: F, COL_8_64_2: F, COL_8_64_3: F, COL_8_64_5: F, COL_8_64_6: F, COL_9_72_1: F, COL_9_72_3: F, COL_9_72_5: F, COL_9_72_6: F, COL_10_80_0: F, COL_10_80_1: F, COL_10_80_2: F, COL_10_80_3: F, COL_10_80_5: F, COL_10_80_6: F, COL_11_88_0: F, COL_11_88_1: F, COL_11_88_2: F, COL_11_88_3: F, COL_11_88_5: F, COL_11_88_6: F, COL_11_88_7: F, UID_11: F, __L1__: F,
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 52>;
 
@@ -775,11 +775,11 @@ pub type RomRomTrace<F> = GenericTrace<RomRomTraceRow<F>, 4194304, 0, 1, 0>;
 
 
 values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], segment_initial_step: F, last_reg_value: [[[F; 2]; 31]; 4], last_reg_mem_step: [[F; 31]; 4], im_direct: [FieldExtension<F>; 375],
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], segment_initial_step: F, last_reg_value: [[[F; 2]; 39]; 4], last_reg_mem_step: [[F; 39]; 4], im_direct: [FieldExtension<F>; 471],
 });
 
 values!(MemAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], im_direct: [FieldExtension<F>; 6],
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], last_step_chunks: [F; 2], padding_size_chunks: [F; 2], padding_size_to_max_chunks: [F; 2], im_direct: [FieldExtension<F>; 13],
 });
 
 values!(InputDataAirValues<F> {
@@ -1115,7 +1115,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 2, PackedInfoConst {
         is_packed: true,
         num_packed_words: 16,
-        unpack_info: &[29, 29, 29, 29, 38, 38, 38, 38, 1, 1, 1, 1, 1, 1, 1, 1, 38, 38, 38, 38, 1, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1, 40, 40, 40, 40, 22, 22, 22, 22, 16, 16, 16, 16, 1, 1, 1, 1],
+        unpack_info: &[29, 29, 29, 29, 38, 38, 38, 38, 1, 1, 1, 1, 38, 38, 38, 38, 1, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1, 40, 40, 40, 40, 22, 22, 22, 22, 16, 16, 16, 16, 1, 1, 1, 1],
     }),
     (0, 3, PackedInfoConst {
         is_packed: true,

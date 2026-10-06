@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bn254/twist.zisk - G2 point arithmetic on the twist E'/Fp2: y²=x³+3/(9+u).
-; GENERATED from twist.rs (scratchpad/gen_twist.py). G2 point = 16 u64 =
+; GENERATED from twist.rs (scripts/legacy/gen_twist.py). G2 point = 16 u64 =
 ; x(Fp2)‖y(Fp2). Identity = all-zero. Affine add/dbl via inv_fp2.
 ; ============================================================================
 
@@ -38,124 +38,76 @@ u64 OCT_T[8] = 0, 0, 0, 0, 0, 0, 0, 0
 ; void zisklib_neg_twist_bn254(const u64* p, u64* result)  [16,16]
 zisklib_neg_twist_bn254:
 	push r1
-	copyb(0, TW_P1) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, TW_PR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 64) -> r10
-	copyb(0, TW_Y1) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_Y1) -> r10
-	copyb(0, TW_Y3) -> r11
-	call zisklib_neg_fp2_bn254
-	copyb(0, TW_X1) -> r10
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
+	copyb(0, r10) -> [TW_P1]
+	copyb(0, r11) -> [TW_PR]
+	dma_xmemcpy(TW_X1, r10) -> r5, j(64, 4)
+	add(r10, 64) -> r5
+	dma_xmemcpy(TW_Y1, r5) -> r5, j(64, 4)
+	dma_xmemcpy(TW_Y3, TW_Y1) -> r5, j(64, 4)
+	bn254_complex_mul(TW_Y3, BN_F2_NEGMUL)
+	dma_xmemcpy(r11, TW_X1) -> r5, j(64, 4)
+	add(r11, 64) -> r5
+	dma_xmemcpy(r5, TW_Y3) -> r5, j(64, 4)
 	copyb(0, TW_Y3) -> r10
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
 	add(r11, 64) -> r11
 	copyb(0, 8) -> r12
-	call bn254_memcpy
 	pop r1
 	ret
 
 ; void zisklib_utf_endomorphism_twist_bn254(const u64* p, u64* result)  [16,16]
 zisklib_utf_endomorphism_twist_bn254:
 	push r1
-	copyb(0, TW_P1) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, TW_PR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 64) -> r10
-	copyb(0, TW_Y1) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
+	copyb(0, r10) -> [TW_P1]
+	copyb(0, r11) -> [TW_PR]
+	dma_xmemcpy(TW_X1, r10) -> r5, j(64, 4)
+	add(r10, 64) -> r5
+	dma_xmemcpy(TW_Y1, r5) -> r5, j(64, 4)
 	copyb(0, TW_X1) -> r10
 	copyb(0, TW_X2) -> r11
+	copyb(0, 8) -> r12
 	call zisklib_conjugate_fp2_bn254
 	copyb(0, TW_Y1) -> r10
 	copyb(0, TW_Y2) -> r11
 	call zisklib_conjugate_fp2_bn254
-	copyb(0, BN_FROBENIUS_GAMMA12) -> r10
-	copyb(0, TW_X2) -> r11
-	copyb(0, TW_X3) -> r12
-	call zisklib_mul_fp2_bn254
-	copyb(0, BN_FROBENIUS_GAMMA13) -> r10
-	copyb(0, TW_Y2) -> r11
-	copyb(0, TW_Y3) -> r12
-	call zisklib_mul_fp2_bn254
-	copyb(0, TW_X3) -> r10
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(TW_X3, BN_FROBENIUS_GAMMA12) -> r5, j(64, 4)
+	bn254_complex_mul(TW_X3, TW_X2)
+	dma_xmemcpy(TW_Y3, BN_FROBENIUS_GAMMA13) -> r5, j(64, 4)
+	bn254_complex_mul(TW_Y3, TW_Y2)
+	copyb(0, [TW_PR]) -> r5
+	dma_xmemcpy(r5, TW_X3) -> r5, j(64, 4)
+	add([TW_PR], 64) -> r5
+	dma_xmemcpy(r5, TW_Y3) -> r5, j(64, 4)
 	copyb(0, TW_Y3) -> r10
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	add(r11, 64) -> r11
+	add([TW_PR], 64) -> r11
 	copyb(0, 8) -> r12
-	call bn254_memcpy
 	pop r1
 	ret
 
 ; u64 zisklib_is_on_curve_twist_bn254(const u64* p)  [r10=&p] -> r10 (1 if on twist)
 zisklib_is_on_curve_twist_bn254:
 	push r1
-	copyb(0, TW_P1) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 64) -> r10
-	copyb(0, TW_Y1) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_X1) -> r10
-	copyb(0, TW_T1) -> r11
-	call zisklib_square_fp2_bn254
-	copyb(0, TW_T1) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, TW_T2) -> r12
-	call zisklib_mul_fp2_bn254
-	copyb(0, TW_T2) -> r10
-	copyb(0, BN_ETWISTED_B) -> r11
-	copyb(0, TW_X3) -> r12
-	call zisklib_add_fp2_bn254
-	copyb(0, TW_Y1) -> r10
-	copyb(0, TW_Y3) -> r11
-	call zisklib_square_fp2_bn254
-	copyb(0, TW_X3) -> r10
+	copyb(0, r10) -> [TW_P1]
+	dma_xmemcpy(TW_X1, r10) -> r5, j(64, 4)
+	add(r10, 64) -> r5
+	dma_xmemcpy(TW_Y1, r5) -> r5, j(64, 4)
+	dma_xmemcpy(TW_T1, TW_X1) -> r5, j(64, 4)
+	bn254_complex_mul(TW_T1, TW_X1)
+	dma_xmemcpy(TW_T2, TW_T1) -> r5, j(64, 4)
+	bn254_complex_mul(TW_T2, TW_X1)
+	dma_xmemcpy(TW_X3, TW_T2) -> r5, j(64, 4)
+	bn254_complex_add(TW_X3, BN_ETWISTED_B)
+	dma_xmemcpy(TW_Y3, TW_Y1) -> r5, j(64, 4)
+	bn254_complex_mul(TW_Y3, TW_Y1)
+	dma_xmemcmp(TW_X3, TW_Y3) -> r5, j(64, 4)
+	eq(r5, 0) -> r10
 	copyb(0, TW_Y3) -> r11
 	copyb(0, 8) -> r12
-	call bn254_eqn
 	ltu(0, r10), j(twoc_true)
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [TW_P1]) -> r5
+	dma_xmemcmp(r5, BN_G2_IDENTITY) -> r5, j(128, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BN_G2_IDENTITY) -> r11
 	copyb(0, 16) -> r12
-	call bn254_eqn
 	pop r1
 	ret
 twoc_true:
@@ -166,111 +118,64 @@ twoc_true:
 ; void zisklib_dbl_twist_bn254(const u64* p, u64* result)  [16,16] (p non-identity)
 zisklib_dbl_twist_bn254:
 	push r1
-	copyb(0, TW_P1) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, TW_PR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 64) -> r10
-	copyb(0, TW_Y1) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_Y1) -> r10
-	copyb(0, TW_L) -> r11
-	call zisklib_dbl_fp2_bn254
+	copyb(0, r10) -> [TW_P1]
+	copyb(0, r11) -> [TW_PR]
+	dma_xmemcpy(TW_X1, r10) -> r5, j(64, 4)
+	add(r10, 64) -> r5
+	dma_xmemcpy(TW_Y1, r5) -> r5, j(64, 4)
+	dma_xmemcpy(TW_L, TW_Y1) -> r5, j(64, 4)
+	bn254_complex_add(TW_L, TW_Y1)
 	copyb(0, TW_L) -> r10
 	copyb(0, TW_L) -> r11
+	copyb(0, 8) -> r12
 	call zisklib_inv_fp2_bn254
-	copyb(0, TW_L) -> r10
-	copyb(0, BN_E_B) -> r11
-	copyb(0, TW_L) -> r12
-	call zisklib_scalar_mul_fp2_bn254
-	copyb(0, TW_L) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, TW_L) -> r12
-	call zisklib_mul_fp2_bn254
-	copyb(0, TW_L) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, TW_L) -> r12
-	call zisklib_mul_fp2_bn254
-	copyb(0, TW_L) -> r10
-	copyb(0, TW_X3) -> r11
-	call zisklib_square_fp2_bn254
-	copyb(0, TW_X3) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, TW_X3) -> r12
-	call zisklib_sub_fp2_bn254
-	copyb(0, TW_X3) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, TW_X3) -> r12
-	call zisklib_sub_fp2_bn254
-	copyb(0, TW_X1) -> r10
-	copyb(0, TW_X3) -> r11
-	copyb(0, TW_Y3) -> r12
-	call zisklib_sub_fp2_bn254
-	copyb(0, TW_L) -> r10
-	copyb(0, TW_Y3) -> r11
-	copyb(0, TW_T2) -> r12
-	call zisklib_mul_fp2_bn254
-	copyb(0, TW_T2) -> r10
-	copyb(0, TW_Y1) -> r11
-	copyb(0, TW_Y3) -> r12
-	call zisklib_sub_fp2_bn254
-	copyb(0, TW_X3) -> r10
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(BN_F2_SB, BN_E_B) -> r5, j(32, 4)
+	bn254_complex_mul(TW_L, BN_F2_SB)
+	bn254_complex_mul(TW_L, TW_X1)
+	bn254_complex_mul(TW_L, TW_X1)
+	dma_xmemcpy(TW_X3, TW_L) -> r5, j(64, 4)
+	bn254_complex_mul(TW_X3, TW_L)
+	bn254_complex_sub(TW_X3, TW_X1)
+	bn254_complex_sub(TW_X3, TW_X1)
+	dma_xmemcpy(TW_Y3, TW_X1) -> r5, j(64, 4)
+	bn254_complex_sub(TW_Y3, TW_X3)
+	dma_xmemcpy(TW_T2, TW_L) -> r5, j(64, 4)
+	bn254_complex_mul(TW_T2, TW_Y3)
+	dma_xmemcpy(TW_Y3, TW_T2) -> r5, j(64, 4)
+	bn254_complex_sub(TW_Y3, TW_Y1)
+	copyb(0, [TW_PR]) -> r5
+	dma_xmemcpy(r5, TW_X3) -> r5, j(64, 4)
+	add([TW_PR], 64) -> r5
+	dma_xmemcpy(r5, TW_Y3) -> r5, j(64, 4)
 	copyb(0, TW_Y3) -> r10
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	add(r11, 64) -> r11
+	add([TW_PR], 64) -> r11
 	copyb(0, 8) -> r12
-	call bn254_memcpy
 	pop r1
 	ret
 
 ; void zisklib_add_twist_bn254(const u64* p1, const u64* p2, u64* result)  [16,16,16]
 zisklib_add_twist_bn254:
 	push r1
-	copyb(0, TW_P1) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, TW_P2) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, TW_PR) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, TW_P2) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, r10) -> [TW_P1]
+	copyb(0, r11) -> [TW_P2]
+	copyb(0, r12) -> [TW_PR]
+	dma_xmemcmp(r10, r11) -> r5, j(64, 4)
+	eq(r5, 0) -> r10
 	copyb(0, 8) -> r12
-	call bn254_eqn
 	eq(r10, 0), j(twadd_generic)
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 64) -> r10
-	copyb(0, TW_P2) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	add(r11, 64) -> r11
-	copyb(0, 8) -> r12
-	call bn254_eqn
+	add([TW_P1], 64) -> r5
+	add([TW_P2], 64) -> r10
+	dma_xmemcmp(r5, r10) -> r5, j(64, 4)
+	eq(r5, 0) -> r10
+	add([TW_P2], 64) -> r11
 	eq(r10, 0), j(twadd_inf)
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [TW_P1]) -> r10
+	copyb(0, [TW_PR]) -> r11
 	call zisklib_dbl_twist_bn254
 	pop r1
 	ret
 twadd_inf:
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [TW_PR]) -> r11
 	copyb(r11, 0) -> 8[a + 0]
 	copyb(r11, 0) -> 8[a + 8]
 	copyb(r11, 0) -> 8[a + 16]
@@ -290,125 +195,75 @@ twadd_inf:
 	pop r1
 	ret
 twadd_generic:
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 64) -> r10
-	copyb(0, TW_Y1) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_P2) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, TW_X2) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_P2) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 64) -> r10
-	copyb(0, TW_Y2) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_X2) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, TW_DEN) -> r12
-	call zisklib_sub_fp2_bn254
+	copyb(0, [TW_P1]) -> r5
+	dma_xmemcpy(TW_X1, r5) -> r5, j(64, 4)
+	add([TW_P1], 64) -> r5
+	dma_xmemcpy(TW_Y1, r5) -> r5, j(64, 4)
+	copyb(0, [TW_P2]) -> r5
+	dma_xmemcpy(TW_X2, r5) -> r5, j(64, 4)
+	add([TW_P2], 64) -> r5
+	dma_xmemcpy(TW_Y2, r5) -> r5, j(64, 4)
+	dma_xmemcpy(TW_DEN, TW_X2) -> r5, j(64, 4)
+	bn254_complex_sub(TW_DEN, TW_X1)
 	copyb(0, TW_DEN) -> r10
 	copyb(0, TW_DEN) -> r11
+	copyb(0, TW_DEN) -> r12
 	call zisklib_inv_fp2_bn254
-	copyb(0, TW_Y2) -> r10
-	copyb(0, TW_Y1) -> r11
-	copyb(0, TW_L) -> r12
-	call zisklib_sub_fp2_bn254
-	copyb(0, TW_L) -> r10
-	copyb(0, TW_DEN) -> r11
-	copyb(0, TW_L) -> r12
-	call zisklib_mul_fp2_bn254
-	copyb(0, TW_L) -> r10
-	copyb(0, TW_X3) -> r11
-	call zisklib_square_fp2_bn254
-	copyb(0, TW_X3) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, TW_X3) -> r12
-	call zisklib_sub_fp2_bn254
-	copyb(0, TW_X3) -> r10
-	copyb(0, TW_X2) -> r11
-	copyb(0, TW_X3) -> r12
-	call zisklib_sub_fp2_bn254
-	copyb(0, TW_X1) -> r10
-	copyb(0, TW_X3) -> r11
-	copyb(0, TW_Y3) -> r12
-	call zisklib_sub_fp2_bn254
-	copyb(0, TW_L) -> r10
-	copyb(0, TW_Y3) -> r11
-	copyb(0, TW_T2) -> r12
-	call zisklib_mul_fp2_bn254
-	copyb(0, TW_T2) -> r10
-	copyb(0, TW_Y1) -> r11
-	copyb(0, TW_Y3) -> r12
-	call zisklib_sub_fp2_bn254
-	copyb(0, TW_X3) -> r10
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(TW_L, TW_Y2) -> r5, j(64, 4)
+	bn254_complex_sub(TW_L, TW_Y1)
+	bn254_complex_mul(TW_L, TW_DEN)
+	dma_xmemcpy(TW_X3, TW_L) -> r5, j(64, 4)
+	bn254_complex_mul(TW_X3, TW_L)
+	bn254_complex_sub(TW_X3, TW_X1)
+	bn254_complex_sub(TW_X3, TW_X2)
+	dma_xmemcpy(TW_Y3, TW_X1) -> r5, j(64, 4)
+	bn254_complex_sub(TW_Y3, TW_X3)
+	dma_xmemcpy(TW_T2, TW_L) -> r5, j(64, 4)
+	bn254_complex_mul(TW_T2, TW_Y3)
+	dma_xmemcpy(TW_Y3, TW_T2) -> r5, j(64, 4)
+	bn254_complex_sub(TW_Y3, TW_Y1)
+	copyb(0, [TW_PR]) -> r5
+	dma_xmemcpy(r5, TW_X3) -> r5, j(64, 4)
+	add([TW_PR], 64) -> r5
+	dma_xmemcpy(r5, TW_Y3) -> r5, j(64, 4)
 	copyb(0, TW_Y3) -> r10
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	add(r11, 64) -> r11
+	add([TW_PR], 64) -> r11
 	copyb(0, 8) -> r12
-	call bn254_memcpy
 	pop r1
 	ret
 
 ; void zisklib_add_complete_twist_bn254(const u64* p1, const u64* p2, u64* result)
 zisklib_add_complete_twist_bn254:
 	push r1
-	copyb(0, AC_P1) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, AC_P2) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, AC_PR) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	copyb(0, AC_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, r10) -> [AC_P1]
+	copyb(0, r11) -> [AC_P2]
+	copyb(0, r12) -> [AC_PR]
+	dma_xmemcmp(r10, BN_G2_IDENTITY) -> r5, j(128, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BN_G2_IDENTITY) -> r11
 	copyb(0, 16) -> r12
-	call bn254_eqn
 	eq(r10, 0), j(act_chk2)
-	copyb(0, AC_P2) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, AC_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 16) -> r12
+	copyb(0, [AC_P2]) -> r10
+	copyb(0, [AC_PR]) -> r11
 	call bn254_memcpy
 	pop r1
 	ret
 act_chk2:
-	copyb(0, AC_P2) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [AC_P2]) -> r5
+	dma_xmemcmp(r5, BN_G2_IDENTITY) -> r5, j(128, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BN_G2_IDENTITY) -> r11
 	copyb(0, 16) -> r12
-	call bn254_eqn
 	eq(r10, 0), j(act_add)
-	copyb(0, AC_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, AC_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 16) -> r12
+	copyb(0, [AC_P1]) -> r10
+	copyb(0, [AC_PR]) -> r11
 	call bn254_memcpy
 	pop r1
 	ret
 act_add:
-	copyb(0, AC_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, AC_P2) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, AC_PR) -> r12
-	copyb(r12, 8[a + 0]) -> r12
+	copyb(0, [AC_P1]) -> r10
+	copyb(0, [AC_P2]) -> r11
+	copyb(0, [AC_PR]) -> r12
 	call zisklib_add_twist_bn254
 	pop r1
 	ret
@@ -416,18 +271,14 @@ act_add:
 ; void zisklib_dbl_complete_twist_bn254(const u64* p, u64* result)
 zisklib_dbl_complete_twist_bn254:
 	push r1
-	copyb(0, DC_P) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, DC_PR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, DC_P) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, r10) -> [DC_P]
+	copyb(0, r11) -> [DC_PR]
+	dma_xmemcmp(r10, BN_G2_IDENTITY) -> r5, j(128, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BN_G2_IDENTITY) -> r11
 	copyb(0, 16) -> r12
-	call bn254_eqn
 	eq(r10, 0), j(dct_dbl)
-	copyb(0, DC_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [DC_PR]) -> r11
 	copyb(r11, 0) -> 8[a + 0]
 	copyb(r11, 0) -> 8[a + 8]
 	copyb(r11, 0) -> 8[a + 16]
@@ -447,10 +298,8 @@ zisklib_dbl_complete_twist_bn254:
 	pop r1
 	ret
 dct_dbl:
-	copyb(0, DC_P) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, DC_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [DC_P]) -> r10
+	copyb(0, [DC_PR]) -> r11
 	call zisklib_dbl_twist_bn254
 	pop r1
 	ret
@@ -458,18 +307,14 @@ dct_dbl:
 ; void zisklib_scalar_mul_by_x_complete_twist_bn254(const u64* p, u64* result)  [16,16]
 zisklib_scalar_mul_by_x_complete_twist_bn254:
 	push r1
-	copyb(0, SMX_P) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, SMX_PRSLOT) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, SMX_P) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, r10) -> [SMX_P]
+	copyb(0, r11) -> [SMX_PRSLOT]
+	dma_xmemcmp(r10, BN_G2_IDENTITY) -> r5, j(128, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BN_G2_IDENTITY) -> r11
 	copyb(0, 16) -> r12
-	call bn254_eqn
 	eq(r10, 0), j(smx_run)
-	copyb(0, SMX_PRSLOT) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [SMX_PRSLOT]) -> r11
 	copyb(r11, 0) -> 8[a + 0]
 	copyb(r11, 0) -> 8[a + 8]
 	copyb(r11, 0) -> 8[a + 16]
@@ -489,58 +334,54 @@ zisklib_scalar_mul_by_x_complete_twist_bn254:
 	pop r1
 	ret
 smx_run:
-	copyb(0, SMX_P) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [SMX_P]) -> r5
+	dma_xmemcpy(SMX_R, r5) -> r5, j(128, 4)
+	copyb(0, [SMX_P]) -> r10
 	copyb(0, SMX_R) -> r11
 	copyb(0, 16) -> r12
-	call bn254_memcpy
 	copyb(0, 1) -> r13
 smx_loop:
 	eq(r13, 63), j(smx_done)
 	copyb(0, SMX_R) -> r10
 	copyb(0, SMX_RR) -> r11
 	call zisklib_dbl_complete_twist_bn254
-	copyb(0, SMX_RR) -> r10
-	copyb(0, SMX_R) -> r11
-	copyb(0, 16) -> r12
-	call bn254_memcpy
-	copyb(0, BN_X_BIN_BE) -> r5
+	dma_xmemcpy(SMX_R, SMX_RR) -> r5, j(128, 4)
 	sll(r13, 3) -> r6
+	copyb(0, BN_X_BIN_BE) -> r5
 	add(r5, r6) -> r5
 	copyb(r5, 1[a + 0]) -> r6
-	eq(r6, 0), j(smx_next)
-	copyb(0, SMX_R) -> r10
-	copyb(0, SMX_P) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, SMX_RR) -> r12
-	call zisklib_add_complete_twist_bn254
 	copyb(0, SMX_RR) -> r10
 	copyb(0, SMX_R) -> r11
 	copyb(0, 16) -> r12
-	call bn254_memcpy
+	eq(r6, 0), j(smx_next)
+	copyb(0, SMX_R) -> r10
+	copyb(0, [SMX_P]) -> r11
+	copyb(0, SMX_RR) -> r12
+	call zisklib_add_complete_twist_bn254
+	dma_xmemcpy(SMX_R, SMX_RR) -> r5, j(128, 4)
+	copyb(0, SMX_RR) -> r10
+	copyb(0, SMX_R) -> r11
+	copyb(0, 16) -> r12
 smx_next:
 	add(r13, 1) -> r13
 	jump(smx_loop)
 smx_done:
+	copyb(0, [SMX_PRSLOT]) -> r5
+	dma_xmemcpy(r5, SMX_R) -> r5, j(128, 4)
 	copyb(0, SMX_R) -> r10
-	copyb(0, SMX_PRSLOT) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [SMX_PRSLOT]) -> r11
 	copyb(0, 16) -> r12
-	call bn254_memcpy
 	pop r1
 	ret
 
 ; u64 zisklib_is_on_subgroup_twist_bn254(const u64* p)  [r10=&p] -> r10 bool
 zisklib_is_on_subgroup_twist_bn254:
 	push r1
+	copyb(0, r10) -> [SUB_P]
 	copyb(0, SUB_P) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, SUB_P) -> r10
-	copyb(r10, 8[a + 0]) -> r10
 	copyb(0, SUB_XP) -> r11
 	call zisklib_scalar_mul_by_x_complete_twist_bn254
-	copyb(0, SUB_P) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [SUB_P]) -> r10
 	copyb(0, SUB_XP) -> r11
 	copyb(0, SUB_X1P) -> r12
 	call zisklib_add_complete_twist_bn254
@@ -570,29 +411,25 @@ zisklib_is_on_subgroup_twist_bn254:
 	copyb(0, SUB_RHS) -> r10
 	copyb(0, SUB_RHS) -> r11
 	call zisklib_utf_endomorphism_twist_bn254
-	copyb(0, SUB_LHS) -> r10
+	dma_xmemcmp(SUB_LHS, SUB_RHS) -> r5, j(128, 4)
+	eq(r5, 0) -> r10
 	copyb(0, SUB_RHS) -> r11
 	copyb(0, 16) -> r12
-	call bn254_eqn
 	pop r1
 	ret
 
 ; void zisklib_jacobian_to_affine_twist_bn254(const u64* p, u64* result)  [24,16]
 zisklib_jacobian_to_affine_twist_bn254:
 	push r1
-	copyb(0, TW_P1) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, TW_PR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 128) -> r10
+	copyb(0, r10) -> [TW_P1]
+	copyb(0, r11) -> [TW_PR]
+	add(r10, 128) -> r5
+	dma_xmemcmp(r5, BN_G2_IDENTITY) -> r5, j(64, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BN_G2_IDENTITY) -> r11
 	copyb(0, 8) -> r12
-	call bn254_eqn
 	eq(r10, 0), j(j2at_nz)
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [TW_PR]) -> r11
 	copyb(r11, 0) -> 8[a + 0]
 	copyb(r11, 0) -> 8[a + 8]
 	copyb(r11, 0) -> 8[a + 16]
@@ -612,52 +449,30 @@ zisklib_jacobian_to_affine_twist_bn254:
 	pop r1
 	ret
 j2at_nz:
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, TW_X1) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 64) -> r10
-	copyb(0, TW_Y1) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 128) -> r10
-	copyb(0, TW_X2) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
+	copyb(0, [TW_P1]) -> r5
+	dma_xmemcpy(TW_X1, r5) -> r5, j(64, 4)
+	add([TW_P1], 64) -> r5
+	dma_xmemcpy(TW_Y1, r5) -> r5, j(64, 4)
+	add([TW_P1], 128) -> r5
+	dma_xmemcpy(TW_X2, r5) -> r5, j(64, 4)
 	copyb(0, TW_X2) -> r10
 	copyb(0, TW_DEN) -> r11
+	copyb(0, 8) -> r12
 	call zisklib_inv_fp2_bn254
-	copyb(0, TW_DEN) -> r10
-	copyb(0, TW_L) -> r11
-	call zisklib_square_fp2_bn254
-	copyb(0, TW_X1) -> r10
-	copyb(0, TW_L) -> r11
-	copyb(0, TW_X3) -> r12
-	call zisklib_mul_fp2_bn254
-	copyb(0, TW_Y1) -> r10
-	copyb(0, TW_L) -> r11
-	copyb(0, TW_Y3) -> r12
-	call zisklib_mul_fp2_bn254
+	dma_xmemcpy(TW_L, TW_DEN) -> r5, j(64, 4)
+	bn254_complex_mul(TW_L, TW_DEN)
+	dma_xmemcpy(TW_X3, TW_X1) -> r5, j(64, 4)
+	bn254_complex_mul(TW_X3, TW_L)
+	dma_xmemcpy(TW_Y3, TW_Y1) -> r5, j(64, 4)
+	bn254_complex_mul(TW_Y3, TW_L)
+	bn254_complex_mul(TW_Y3, TW_DEN)
+	copyb(0, [TW_PR]) -> r5
+	dma_xmemcpy(r5, TW_X3) -> r5, j(64, 4)
+	add([TW_PR], 64) -> r5
+	dma_xmemcpy(r5, TW_Y3) -> r5, j(64, 4)
 	copyb(0, TW_Y3) -> r10
-	copyb(0, TW_DEN) -> r11
-	copyb(0, TW_Y3) -> r12
-	call zisklib_mul_fp2_bn254
-	copyb(0, TW_X3) -> r10
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	add([TW_PR], 64) -> r11
 	copyb(0, 8) -> r12
-	call bn254_memcpy
-	copyb(0, TW_Y3) -> r10
-	copyb(0, TW_PR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	add(r11, 64) -> r11
-	copyb(0, 8) -> r12
-	call bn254_memcpy
 	pop r1
 	ret
 

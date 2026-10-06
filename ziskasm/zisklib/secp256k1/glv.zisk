@@ -5,10 +5,10 @@
 ; k1*P1 + k2*phi-adjusted with k1,k2 < 2^128 (glv_decompose, already verified),
 ; halving the doublings via an interleaved Strauss-Shamir loop.
 ;
-; glv_double_scalar_mul_with_g computes k1*G + k2*p as
-; glv_scalar_mul(k1,G) + glv_scalar_mul(k2,p) (each ~128 doublings) -- a 2x
-; speedup over the plain double_scalar_mul. The full 4-way interleave (ziskos'
-; 11-precompute Strauss-Shamir, ~4x) is a further optimization left for later.
+; secp_glv_dsm_general computes k1*G + k2*p over one shared ladder with two
+; 2-bit pair tables (up to two additions per bit). It is the general case of
+; zisklib_glv_double_scalar_mul_with_g_secp256k1 (glv4.zisk, one 16-entry
+; table), used when that table is degenerate.
 ;
 ; Internal labels: `gsm_` (glv_scalar_mul), `gd_` (glv_double).
 ; ============================================================================
@@ -460,10 +460,12 @@ sa_dodbl:
 	secp256k1_dbl(0, r5)
 	ret
 
-; u64 zisklib_glv_double_scalar_mul_with_g_secp256k1(k1, k2, p, result)
+; u64 secp_glv_dsm_general(k1, k2, p, result)
 ;   [r10=k1, r11=k2, r12=p, r13=result] -> r10 = 1 if k1*G + k2*p is infinity.
-;   4-way GLV interleave: ONE shared doubling ladder over both scalars (~128 dbl).
-zisklib_glv_double_scalar_mul_with_g_secp256k1:
+;   One shared doubling ladder over both scalars (~128 dbl), two pair tables.
+;   The general case of zisklib_glv_double_scalar_mul_with_g_secp256k1
+;   (glv4.zisk), which runs it when its 16-entry table is degenerate.
+secp_glv_dsm_general:
 	push r1
 	copyb(0, SECP_D4_RESPTR) -> r5
 	copyb(r5, r13) -> 8[a + 0]

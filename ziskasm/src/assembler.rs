@@ -13,10 +13,14 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
+use zisk_core::zisk_inst::{ZiskInst, SRC_C, SRC_IMM, SRC_REG, STORE_MEM, STORE_REG};
 use zisk_core::zisk_inst_builder::ZiskInstBuilder;
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
-use zisk_core::{GENERAL_RAM_ADDR, ROM_ADDR, ROM_ENTRY, SYS_ADDR};
-use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp};
+use zisk_core::{
+    GENERAL_RAM_ADDR, RAM_ADDR, RAM_SIZE, REGS_IN_MAIN_TO, REG_FIRST, ROM_ADDR, ROM_ADDR_MAX,
+    ROM_ENTRY, ROM_SIZE, SYS_ADDR,
+};
+use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, InlineBody};
 
 use crate::parser::{
     self, ASource, BSource, Control, DataDecl, Instruction, JumpTarget, Kind, Num, Op, Program,
@@ -123,7 +127,7 @@ fn merge_public_defines<'a>(
 /// A hand-written `.zisk` library assembled for merging into a program ROM. Unlike
 /// [`assemble`], there is no launcher / `_start` / BIOS: it is a set of callable
 /// functions placed at a fixed base, plus the exported symbol table (label / data
-/// name → address) used to resolve calls into it (see the RISC-V symbol-redirect in
+/// name → address) used to resolve calls into it (see the zkvmcalls in
 /// `transpilers/common/src/elf2rom.rs`).
 pub struct ZiskLibrary {
     /// Assembled instructions keyed by ROM address (`rom_base + 4*i`, file order).
@@ -160,6 +164,97 @@ impl ZiskLibrary {
         let ram_bytes = ram_end.saturating_sub(ram_start);
 
         (rom_bytes, ram_bytes)
+    }
+
+    /// The body of the routine at `name`, for the transpiler to expand at an inline
+    /// zkvmcall with `args` pointer arguments: every instruction reachable from its
+    /// entry, following branches (possibly into other routines' code), as a small
+    /// control-flow graph (see [`InlineBody`]). A `ret` becomes the end of the call
+    /// site and a `jump(label)` is followed to its target, so neither costs a step.
+    ///
+    /// The body reads no RISC-V register but its arguments (r10, r11, ..., which the
+    /// transpiler replaces by the caller's registers) and the scratch registers
+    /// r32..r39, and writes only memory and r32..r39, so it clobbers nothing the
+    /// compiler can see (r32..r39 are main-trace registers RISC-V code never uses). It
+    /// has no calls, and neither its entry nor a `jump` target reads `c` (a skipped
+    /// `jump` would have set it).
+    pub fn inline_body(&self, name: &str, args: u8) -> Result<InlineBody, String> {
+        let entry = *self.symbols.get(name).ok_or_else(|| format!("no routine `{name}`"))?;
+        let at = |addr: u64| format!("`{name}` + {}", addr as i64 - entry as i64);
+        let inst = |addr: u64| {
+            self.insts.get(&addr).map(|b| &b.i).ok_or_else(|| format!("{}: no code", at(addr)))
+        };
+        let reads_c = |i: &ZiskInst| i.a_src == SRC_C || i.b_src == SRC_C;
+
+        // Where control goes from `addr`: the first instruction that is neither a
+        // `jump` (followed) nor a `ret` (None: the end of the call site).
+        let resolve = |mut addr: u64| -> Result<Option<u64>, String> {
+            for jumps in 0..=self.insts.len() {
+                let i = inst(addr)?;
+                if !i.set_pc {
+                    if jumps > 0 && reads_c(i) {
+                        return Err(format!("{}: a jump target reads c", at(addr)));
+                    }
+                    return Ok(Some(addr));
+                }
+                if i.op_str == "and" && i.b_src == SRC_REG && i.b_offset_imm0 == 1 {
+                    return Ok(None); // ret
+                }
+                if i.op_str == "copyb" && i.a_src == SRC_IMM && i.b_src == SRC_IMM {
+                    addr = i.b_offset_imm0 | (i.b_use_sp_imm1 << 32); // jump(label)
+                    continue;
+                }
+                return Err(format!("{}: indirect jump", at(addr)));
+            }
+            Err(format!("{}: a loop of jumps", at(addr)))
+        };
+
+        let first = resolve(entry)?.ok_or_else(|| format!("`{name}` is empty"))?;
+        if reads_c(inst(first)?) {
+            return Err(format!("{}: starts by reading c", at(first)));
+        }
+
+        // Every reachable instruction, and where each one continues to.
+        let arg_regs = 10..10 + args as u64;
+        let scratch_regs = 32..=REGS_IN_MAIN_TO as u64;
+        let reg_area = REG_FIRST..REG_FIRST + 64 * 8;
+        let mut succ: BTreeMap<u64, [Option<u64>; 2]> = BTreeMap::new();
+        let mut todo = vec![first];
+        while let Some(addr) = todo.pop() {
+            if succ.contains_key(&addr) {
+                continue;
+            }
+            let i = inst(addr)?;
+            if i.store_pc || i.end {
+                return Err(format!("{}: a call or an end", at(addr)));
+            }
+            for (src, reg) in [(i.a_src, i.a_offset_imm0), (i.b_src, i.b_offset_imm0)] {
+                if src == SRC_REG && !arg_regs.contains(&reg) && !scratch_regs.contains(&reg) {
+                    return Err(format!("{}: reads r{reg}", at(addr)));
+                }
+            }
+            let dst = i.store_offset as u64;
+            if (i.store == STORE_REG && !scratch_regs.contains(&dst))
+                || (i.store == STORE_MEM && reg_area.contains(&dst))
+            {
+                return Err(format!("{}: writes a register outside r32..r39", at(addr)));
+            }
+            let target = |off: i64| resolve((addr as i64 + off) as u64);
+            // A precompile's flag is always 0, and its jmp_offset1 may be a parameter.
+            let next2 = target(i.jmp_offset2)?;
+            let next1 = if i.is_precompiled { next2 } else { target(i.jmp_offset1)? };
+            todo.extend(next1.into_iter().chain(next2));
+            succ.insert(addr, [next1, next2]);
+        }
+
+        // Entry first, then the rest in address order.
+        let order: Vec<u64> =
+            std::iter::once(first).chain(succ.keys().copied().filter(|&a| a != first)).collect();
+        let index: HashMap<u64, usize> = order.iter().enumerate().map(|(k, &a)| (a, k)).collect();
+        Ok(InlineBody {
+            insts: order.iter().map(|a| self.insts[a].i.clone()).collect(),
+            next: order.iter().map(|a| succ[a].map(|n| n.map(|n| index[&n]))).collect(),
+        })
     }
 }
 
@@ -212,13 +307,64 @@ pub fn assemble_library(
     rom_base: u64,
     ram_base: u64,
 ) -> Result<ZiskLibrary, String> {
+    // Reject bases outside the mapped regions before laying anything out. The span
+    // below RAM_ADDR is the EF standard 6 stack guard (see `zisk_core::mem`
+    // STACK_GUARD_ADDR): it is unmapped precisely so a stack overflow traps, and a
+    // library placed there would both fault on first access and silently defeat the
+    // guard. The bases are caller-supplied, so check rather than assume.
+    if !(ROM_ADDR..=ROM_ADDR_MAX).contains(&rom_base) {
+        return Err(format!(
+            "library rom_base 0x{rom_base:x} is outside the ROM region \
+             (0x{ROM_ADDR:x}..=0x{ROM_ADDR_MAX:x})"
+        ));
+    }
+    if ram_base < RAM_ADDR {
+        return Err(format!(
+            "library ram_base 0x{ram_base:x} is below RAM_ADDR (0x{RAM_ADDR:x}); it would land \
+             in the unmapped stack guard region reserved by EF standard 6"
+        ));
+    }
+
     let instructions = &program.instructions;
     let addr_of = |i: usize| rom_base + INST_SIZE as u64 * i as u64;
 
     // `const` data right after the code (32-byte aligned, as the ROM-init trace
     // requires); non-`const` data at `ram_base`.
     let rom_data_base = addr_of(instructions.len()).next_multiple_of(32);
-    let (ro_section, rw_section, data_syms) = layout_data(&program.data, rom_data_base, ram_base);
+    let mut layout = layout_data(&program.data, rom_data_base, ram_base);
+
+    // The layout must also stay inside its region at the far end: ROM for the code
+    // and the `const` data after it, RAM for the rest.
+    let section_end = |sec: &DataSection64| {
+        (sec.data.len() as u64).checked_mul(8).and_then(|n| sec.addr.checked_add(n))
+    };
+    let code_end = (instructions.len() as u64)
+        .checked_mul(INST_SIZE as u64)
+        .and_then(|n| rom_base.checked_add(n));
+    let rom_end = match (code_end, layout.ro.as_ref()) {
+        (Some(end), Some(sec)) => section_end(sec).map(|ro_end| ro_end.max(end)),
+        (end, None) => end,
+        (None, Some(_)) => None,
+    };
+    match rom_end {
+        Some(end) if end <= ROM_ADDR + ROM_SIZE => {}
+        Some(end) => {
+            return Err(format!(
+                "library code and const data end at 0x{end:x}, past the end of ROM (0x{:x})",
+                ROM_ADDR + ROM_SIZE
+            ));
+        }
+        None => return Err("library code and const data overflow the address space".into()),
+    }
+    if let Some(sec) = layout.rw.as_ref() {
+        let end = section_end(sec).ok_or("library RW data overflows the address space")?;
+        if end > RAM_ADDR + RAM_SIZE {
+            return Err(format!(
+                "library RW data ends at 0x{end:x}, past the end of RAM (0x{:x})",
+                RAM_ADDR + RAM_SIZE
+            ));
+        }
+    }
 
     // Symbol table: every label (function/local) and data name → address.
     let mut sym_ref: HashMap<&str, u64> = HashMap::new();
@@ -229,17 +375,18 @@ pub fn assemble_library(
             }
         }
     }
-    for &(name, addr) in &data_syms {
+    for &(name, addr) in &layout.syms {
         if sym_ref.insert(name, addr).is_some() {
             return Err(format!("duplicate symbol `{name}`"));
         }
     }
+    layout.resolve(&sym_ref)?;
 
     // Encode into a throwaway ROM (no BIOS / launcher / optimize); `bios_finalize`
     // is unused because library code returns via `ret`, never `ret_to_bios`.
     let mut rom = ZiskRom::default();
-    rom.ro_data_64.extend(ro_section);
-    rom.rw_data_64.extend(rw_section);
+    rom.ro_data_64.extend(layout.ro);
+    rom.rw_data_64.extend(layout.rw);
     for (i, inst) in instructions.iter().enumerate() {
         encode(&mut rom, addr_of(i), inst, &sym_ref, 0)?;
     }
@@ -303,13 +450,12 @@ pub fn assemble_with_symbols(program: &Program) -> Result<(ZiskRom, HashMap<Stri
 
     // Lay out data: `const` goes in ROM right after the code, non-`const` in RAM
     // at GENERAL_RAM_ADDR. This yields the initialized sections and each data
-    // symbol's address.
+    // symbol's address; symbol initializers are filled once all symbols are known.
     // 32-byte align the ROM data base: the ROM-init trace commits data in 4-u64
     // (32-byte) rows anchored at the section address (state-machines/rom), matching
     // the RISC-V transpiler's aligned section starts, so proving works.
     let rom_data_base = addr_of(ordered.len()).next_multiple_of(32);
-    let (ro_section, rw_section, data_syms) =
-        layout_data(&program.data, rom_data_base, GENERAL_RAM_ADDR);
+    let mut layout = layout_data(&program.data, rom_data_base, GENERAL_RAM_ADDR);
 
     // Symbol table: labels (code addresses) + data names. Used to resolve jump
     // targets and symbolic operands. Names must be unique across both.
@@ -321,11 +467,12 @@ pub fn assemble_with_symbols(program: &Program) -> Result<(ZiskRom, HashMap<Stri
             }
         }
     }
-    for &(name, addr) in &data_syms {
+    for &(name, addr) in &layout.syms {
         if symbols.insert(name, addr).is_some() {
             return Err(format!("duplicate symbol `{name}`"));
         }
     }
+    layout.resolve(&symbols)?;
 
     // `_start` is now instruction 0, i.e. ROM_ADDR.
     let entry =
@@ -342,8 +489,8 @@ pub fn assemble_with_symbols(program: &Program) -> Result<(ZiskRom, HashMap<Stri
     let bios_finalize = rom.next_init_inst_addr + BIOS_FINALIZE_OFFSET;
 
     // Initialized data sections (read by the emulator at startup).
-    rom.ro_data_64.extend(ro_section);
-    rom.rw_data_64.extend(rw_section);
+    rom.ro_data_64.extend(layout.ro);
+    rom.rw_data_64.extend(layout.rw);
 
     // Pass 2: encode each instruction at its address, resolving symbols.
     for (i, inst) in ordered.iter().enumerate() {
@@ -359,24 +506,54 @@ pub fn assemble_with_symbols(program: &Program) -> Result<(ZiskRom, HashMap<Stri
     Ok((rom, symbols))
 }
 
+/// The data layout: the `const` (ROM) and non-`const` (RAM) sections, each
+/// symbol's address, and the slots whose initializer is a symbol, still to be
+/// filled by [`DataLayout::resolve`] once every address is known.
+struct DataLayout<'a> {
+    ro: Option<DataSection64>,
+    rw: Option<DataSection64>,
+    syms: Vec<(&'a str, u64)>,
+    /// `(is_const, slot index, symbol, offset)` for each symbol initializer.
+    fixups: Vec<(bool, usize, &'a str, i64)>,
+}
+
+impl DataLayout<'_> {
+    /// Fills each symbol initializer with its symbol's address.
+    fn resolve(&mut self, symbols: &HashMap<&str, u64>) -> Result<(), String> {
+        for &(is_const, k, name, off) in &self.fixups {
+            let addr = symbols
+                .get(name)
+                .ok_or_else(|| format!("undefined symbol `{name}` in a data initializer"))?
+                .wrapping_add_signed(off);
+            let section = if is_const { &mut self.ro } else { &mut self.rw };
+            section.as_mut().expect("a fixup lies in a non-empty section").data[k] = addr;
+        }
+        Ok(())
+    }
+}
+
 /// Lays out the `const` (ROM, at `rom_data_base`) and non-`const` (RAM, at
 /// `GENERAL_RAM_ADDR`) data declarations, packing each element into one 8-byte
-/// slot in declaration order. Returns the two initialized sections (if non-empty)
-/// and each symbol's address.
-fn layout_data(
-    data: &[DataDecl],
-    rom_data_base: u64,
-    ram_data_base: u64,
-) -> (Option<DataSection64>, Option<DataSection64>, Vec<(&str, u64)>) {
+/// slot in declaration order. Symbol initializers are left as 0 and recorded as
+/// fixups (see [`DataLayout::resolve`]).
+fn layout_data(data: &[DataDecl], rom_data_base: u64, ram_data_base: u64) -> DataLayout<'_> {
     let mut ro: Vec<u64> = Vec::new();
     let mut rw: Vec<u64> = Vec::new();
     let mut syms: Vec<(&str, u64)> = Vec::new();
+    let mut fixups = Vec::new();
     for d in data {
         let base = if d.is_const { rom_data_base } else { ram_data_base };
         let buf = if d.is_const { &mut ro } else { &mut rw };
         syms.push((d.name.as_str(), base + buf.len() as u64 * 8));
         for k in 0..d.count {
-            buf.push(d.values.get(k).copied().unwrap_or(0));
+            buf.push(match d.values.get(k) {
+                Some(Num::Lit(v)) => *v,
+                Some(Num::Sym(name, off)) => {
+                    fixups.push((d.is_const, buf.len(), name.as_str(), *off));
+                    0
+                }
+                None => 0,
+            });
         }
     }
     // Pad each section to a multiple of 4 u64s (32 bytes). The ROM-init trace packs
@@ -387,9 +564,12 @@ fn layout_data(
     ro.resize(ro.len().next_multiple_of(4), 0);
     rw.resize(rw.len().next_multiple_of(4), 0);
 
-    let ro_section = (!ro.is_empty()).then_some(DataSection64 { addr: rom_data_base, data: ro });
-    let rw_section = (!rw.is_empty()).then_some(DataSection64 { addr: ram_data_base, data: rw });
-    (ro_section, rw_section, syms)
+    DataLayout {
+        ro: (!ro.is_empty()).then_some(DataSection64 { addr: rom_data_base, data: ro }),
+        rw: (!rw.is_empty()).then_some(DataSection64 { addr: ram_data_base, data: rw }),
+        syms,
+        fixups,
+    }
 }
 
 /// Whether any instruction carries the given label.
@@ -448,9 +628,10 @@ fn resolve(target: &Target, pc: u64, symbols: &HashMap<&str, u64>) -> Result<i64
 fn resolve_num(n: &Num, symbols: &HashMap<&str, u64>) -> Result<u64, String> {
     match n {
         Num::Lit(v) => Ok(*v),
-        Num::Sym(name) => {
-            symbols.get(name.as_str()).copied().ok_or_else(|| format!("undefined symbol `{name}`"))
-        }
+        Num::Sym(name, off) => symbols
+            .get(name.as_str())
+            .map(|a| a.wrapping_add_signed(*off))
+            .ok_or_else(|| format!("undefined symbol `{name}`")),
     }
 }
 

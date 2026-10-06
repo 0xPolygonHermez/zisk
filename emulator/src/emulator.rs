@@ -391,25 +391,17 @@ impl Emulator for ZiskEmulator {
             // Call process_rom_file()
             Self::process_rom_file(rom_filename, &inputs, options, callback)
         }
-        // If a ZisK assembly path is provided, assemble it into a ROM and run it
-        // (requires the `ziskasm` feature; without it, `-z` is rejected).
+        // If a ZisK assembly path is provided, assemble it into a ROM and run it.
         else if options.zisk.is_some() {
-            #[cfg(not(feature = "ziskasm"))]
-            return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
-                "ZisK assembly (-z) requires building ziskemu with the `ziskasm` feature",
-            )));
-            #[cfg(feature = "ziskasm")]
-            {
-                let zisk_path = options.zisk.clone().unwrap();
-                let files = ziskasm::collect_zisk_files(&zisk_path)
-                    .map_err(|msg| ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(msg)))?;
-                let rom = ziskasm::assemble_files(&files).map_err(|e| {
-                    ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(format!(
-                        "Could not assemble ZisK assembly at '{zisk_path}': {e}"
-                    )))
-                })?;
-                Self::process_rom(&rom, &inputs, options, callback)
-            }
+            let zisk_path = options.zisk.clone().unwrap();
+            let files = ziskasm::collect_zisk_files(&zisk_path)
+                .map_err(|msg| ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(msg)))?;
+            let rom = ziskasm::assemble_files(&files).map_err(|e| {
+                ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(format!(
+                    "Could not assemble ZisK assembly at '{zisk_path}': {e}"
+                )))
+            })?;
+            Self::process_rom(&rom, &inputs, options, callback)
         }
         // Process the ELF file
         else {

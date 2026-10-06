@@ -102,6 +102,14 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
             continue;
         }
 
+        // An empty segment loads nothing. GNU ld emits them, at address 0, for the
+        // linker script's R and RW PHDRS when the guest has no .rodata or .data.
+        // A segment with file bytes but no memory size is malformed, and is rejected
+        // by the p_filesz > p_memsz check below.
+        if ph.p_memsz == 0 && ph.p_filesz == 0 {
+            continue;
+        }
+
         let is_exec = (ph.p_flags & PF_X) != 0;
         let is_write = (ph.p_flags & PF_W) != 0;
         let is_read = (ph.p_flags & PF_R) != 0;
@@ -396,37 +404,6 @@ pub fn get_symbol_addresses_from_bytes(
             if let Ok(name) = strtab.get(sym.st_name as usize) {
                 if names_set.contains(name) {
                     result.insert(name.to_string(), sym.st_value);
-                }
-            }
-        }
-    }
-
-    Ok(result)
-}
-
-/// Like [`get_symbol_addresses_from_bytes`], but also returns each symbol's byte
-/// size (`st_size`): name → (address, size). Used by the RISC-V symbol-redirect to
-/// know both where an intercepted guest function starts and how many bytes of its
-/// body to skip.
-pub fn get_symbol_addresses_and_sizes_from_bytes(
-    file_data: &[u8],
-    symbol_names: &[&str],
-) -> Result<HashMap<String, (u64, u64)>, Box<dyn Error>> {
-    let elf = ElfBytes::<LittleEndian>::minimal_parse(file_data)?;
-    let mut result = HashMap::new();
-    let names_set: std::collections::HashSet<&str> = symbol_names.iter().copied().collect();
-
-    if let Some((symtab, strtab)) = elf.symbol_table()? {
-        for sym in symtab {
-            // Skip undefined (imported) entries: they carry st_value = 0, so a redirect
-            // built from one would target address 0, and a later UND entry would
-            // otherwise overwrite the defined symbol this lookup is after.
-            if sym.is_undefined() {
-                continue;
-            }
-            if let Ok(name) = strtab.get(sym.st_name as usize) {
-                if names_set.contains(name) {
-                    result.insert(name.to_string(), (sym.st_value, sym.st_size));
                 }
             }
         }

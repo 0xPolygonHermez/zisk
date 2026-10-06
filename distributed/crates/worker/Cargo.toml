@@ -28,7 +28,7 @@ zisk-common = { workspace = true }
 zisk-prover-backend = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-proofman-verifier = { workspace = true }
+proofman-verifier = { workspace = true, default-features = true }
 bincode = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 rayon = { workspace = true }

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use pil2_std_lib::Std;
 use proofman_common::ProofCtx;
 use proofman_fields::PrimeField64;
 use zisk_common::{
@@ -41,19 +40,17 @@ impl<F: PrimeField64> DmaManager<F> {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `DmaManager`.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let dma_sm = DmaSM::new(std.clone());
-        let dma_pre_post_sm = DmaPrePostSM::new(std.clone());
-        let dma_64_aligned_sm = Dma64AlignedSM::new(std.clone(), Dma64AlignedTrace::<()>::AIR_ID);
-        let dma_64_aligned_large_sm =
-            Dma64AlignedSM::new(std.clone(), Dma64AlignedLargeTrace::<()>::AIR_ID);
-        let dma_64_aligned_mem_sm =
-            Dma64AlignedMemSM::new(std.clone(), Dma64AlignedMemTrace::<()>::AIR_ID);
+    pub fn new() -> Arc<Self> {
+        let dma_sm = DmaSM::new();
+        let dma_pre_post_sm = DmaPrePostSM::new();
+        let dma_64_aligned_sm = Dma64AlignedSM::new(Dma64AlignedTrace::<()>::AIR_ID);
+        let dma_64_aligned_large_sm = Dma64AlignedSM::new(Dma64AlignedLargeTrace::<()>::AIR_ID);
+        let dma_64_aligned_mem_sm = Dma64AlignedMemSM::new(Dma64AlignedMemTrace::<()>::AIR_ID);
         let dma_64_aligned_mem_large_sm =
-            Dma64AlignedMemSM::new(std.clone(), Dma64AlignedMemLargeTrace::<()>::AIR_ID);
-        let dma_64_aligned_memcpy_sm = Dma64AlignedMemCpySM::new(std.clone());
-        let dma_64_aligned_memset_sm = Dma64AlignedMemSetSM::new(std.clone());
-        let dma_unaligned_sm = DmaUnalignedSM::new(std);
+            Dma64AlignedMemSM::new(Dma64AlignedMemLargeTrace::<()>::AIR_ID);
+        let dma_64_aligned_memcpy_sm = Dma64AlignedMemCpySM::new();
+        let dma_64_aligned_memset_sm = Dma64AlignedMemSetSM::new();
+        let dma_unaligned_sm = DmaUnalignedSM::new();
 
         Arc::new(Self {
             dma_sm,

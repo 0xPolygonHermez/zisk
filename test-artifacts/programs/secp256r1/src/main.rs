@@ -27,6 +27,6 @@ fn main() {
         curve_tests();
     }
 
-    // ECDSA: redirected to the .zisk routine in the `ziskasm` build.
+    // ECDSA: the .zisk routine (a zkvmcall) in the `ziskasm` build.
     ecdsa_tests();
 }

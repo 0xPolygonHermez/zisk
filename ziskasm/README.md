@@ -81,6 +81,9 @@ instructions come from the `.zisk` parser instead of the RISC-V transpiler:
   `DataSection64 = Vec<u64>` granularity). Both emulators initialize memory from
   these sections. Sections are 8-byte aligned; the 32-byte alignment the RISC-V
   transpiler applies is *not* required for emulation (verified on both emulators).
+  A `u64` initializer may also be a symbol (label or data name, forward references
+  included), which stores its address: `u64 PARAM_B = NB0` presets a pointer in a
+  precompile parameter block, so the routine doesn't store it on every call.
 - **Symbolic operands**: a `Num` operand is a literal *or* a symbol (label or data
   name) resolved at assemble time. `NAME` = the symbol's address; `[NAME]` = the
   value at it. Array elements use a register base + indirect `W[a + N]`.

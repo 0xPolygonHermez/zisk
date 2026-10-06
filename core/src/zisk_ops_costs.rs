@@ -13,9 +13,9 @@ pub const FCALL_COST: u64 = INTERNAL_COST;
 pub const ARITH_EQ_384_COST: u64 = 80 * 24;
 pub const ADD256_COST: u64 = 104;
 pub const BABYJUBJUB_COST: u64 = 107 * 16;
-pub const BLAKE2B_COST: u64 = 8 * 234;
-pub const BLAKE3_COST: u64 = 56 * 218 / 2;
-pub const BLAKE2S_COST: u64 = 80 * 112;
+pub const BLAKE2B_COST: u64 = 8 * 237;
+pub const BLAKE3_COST: u64 = 56 * 221 / 2;
+pub const BLAKE2S_COST: u64 = 80 * 115;
 pub const MAIN_COST: u64 = 68;
 
 // Zba costs. sh<n>add and slli.uw are proven natively (a single Binary / BinaryExtension

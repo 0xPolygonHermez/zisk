@@ -3,7 +3,7 @@ ziskos::entrypoint!(main);
 
 // Matched keccak256 A/B. Both backends call the same ZisK keccak-f precompile;
 // only the sponge wrapper differs: compiled Rust zisklib vs the hand-written
-// `.zisk` routine (redirected at transpile time).
+// `.zisk` routine (reached through a zkvmcall).
 #[cfg(not(feature = "ziskasm"))]
 use ziskos::zisklib::keccak256;
 #[cfg(feature = "ziskasm")]

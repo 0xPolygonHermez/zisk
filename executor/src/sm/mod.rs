@@ -58,7 +58,8 @@ pub struct StaticSMBundle<F: PrimeField64> {
     /// Every built-in and precompile SM registered in this bundle.
     sm: Vec<SMType<F>>,
 
-    /// The standard library instance to be shared across built-in SMs and precompiles.
+    /// The standard library instance; `publish_frops_from_asm` publishes the FROPS
+    /// multiplicity into its virtual tables.
     std: Arc<Std<F>>,
 }
 
@@ -123,54 +124,56 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         Ok(())
     }
 
-    /// Publishes what this execution's ROM histogram carries for FROPS: the multiplicity
-    /// column, when the assembly is where that column comes from, and the debug
-    /// cross-check when it is armed.
+    /// Publishes the FROPS multiplicity column into its virtual tables, when the assembly is
+    /// where that column comes from.
     ///
-    /// Called at the end of execution, from the executor's own thread. That is the first
-    /// point the histogram is worth waiting for and the last one before its readers, all
-    /// of which run after `execute` returns: the virtual tables that consume the column,
-    /// and the collectors that read the cross-check flag in their constructors. Reading
-    /// it here also caches it, so the ROM witness does not wait later.
-    ///
-    /// A no-op when neither output is wanted, so a run that uses neither never joins the
-    /// runner on this thread.
+    /// Called right after the ROM witness, which has just read the histogram, so this does not
+    /// wait for it; the virtual tables that consume the column are built after every witness.
     pub(crate) fn publish_frops_from_asm(&self) -> ExecutorResult<()> {
-        let publish = zisk_core::frops::frops_multiplicity_from_asm();
-        // Compile-time: the `debug_frops` feature is the whole switch, so a build without
-        // it folds this away along with everything the cross-check would have done.
-        let cross_check = cfg!(feature = "debug_frops");
-        if !publish && !cross_check {
+        if !zisk_core::frops::frops_multiplicity_from_asm() {
             return Ok(());
         }
-
         // Nothing parked: the Rust emulator, or a rank that does not run the histogram.
         // Neither has a column to publish, and neither is an error.
-        let Some(cell) = self.rom_sm().map(|rom_sm| rom_sm.rh()) else {
+        let Some(cell) = self.rom_sm().map(|rom_sm| rom_sm.rh()).filter(|cell| cell.is_armed())
+        else {
             return Ok(());
         };
-        if !cell.is_armed() {
-            return Ok(());
-        }
 
         cell.with(|runner| {
             let column = &runner.asm_rowh_output.frops_count;
-            if publish {
-                frops::publish_frops_multiplicity(&self.std, column)?;
-                tracing::info!(
-                    "FROPS multiplicity published from the assembly ({} rows, {} counted); the collectors do not accumulate it",
-                    column.len(),
-                    column.iter().sum::<u64>(),
-                );
-            }
-            if cross_check {
-                zisk_core::frops::load_frops_reference(column)
-                    .map_err(ExecutorError::Internal)?;
-                tracing::info!(
-                    "FROPS cross-check armed from the assembly's column ({} rows)",
-                    column.len()
-                );
-            }
+            frops::publish_frops_multiplicity(&self.std, column)?;
+            tracing::info!(
+                "FROPS multiplicity published from the assembly ({} rows); the collectors do not accumulate it",
+                column.len(),
+            );
+            Ok(())
+        })
+        .map_err(|e| ExecutorError::Internal(format!("ROM histogram unavailable: {e}")))?
+    }
+
+    /// Arms the FROPS debug cross-check from this execution's histogram.
+    ///
+    /// Called at the end of execution: the collectors read it in their constructors, right
+    /// after `execute` returns, so this is the one FROPS reader that joins the runner there.
+    pub(crate) fn arm_frops_cross_check(&self) -> ExecutorResult<()> {
+        // Compile-time: the `debug_frops` feature is the whole switch, so a build without
+        // it folds this away along with everything the cross-check would have done.
+        if !cfg!(feature = "debug_frops") {
+            return Ok(());
+        }
+        let Some(cell) = self.rom_sm().map(|rom_sm| rom_sm.rh()).filter(|cell| cell.is_armed())
+        else {
+            return Ok(());
+        };
+
+        cell.with(|runner| {
+            let column = &runner.asm_rowh_output.frops_count;
+            zisk_core::frops::load_frops_reference(column).map_err(ExecutorError::Internal)?;
+            tracing::info!(
+                "FROPS cross-check armed from the assembly's column ({} rows)",
+                column.len()
+            );
             Ok(())
         })
         .map_err(|e| ExecutorError::Internal(format!("ROM histogram unavailable: {e}")))?
@@ -191,11 +194,6 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) => Some(rom_sm),
             _ => None,
         })
-    }
-
-    /// Getter for the shared `Std` instance in the bundle, used by built-in SMs and precompiles.
-    pub fn get_std(&self) -> Arc<Std<F>> {
-        self.std.clone()
     }
 
     /// Configure the instances of the SMs in the bundle for the given plans.

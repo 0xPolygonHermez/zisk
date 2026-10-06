@@ -15,11 +15,12 @@ categories = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
-proofman-verifier = { workspace = true, features = ["parallel"] }
+proofman-verifier = { workspace = true, default-features = true, features = ["parallel"] }
 
 # Zisk internal crates
 zisk-program-macros = { workspace = true }
 zisk-common = { workspace = true }
+zisk-setup = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
 zisk-cluster-common = { workspace = true }
@@ -52,9 +53,6 @@ default = []
 # table, the extra replay, and the per-operation branch that feeds it. See
 # `zisk_core::frops`.
 debug_frops = ["zisk-executor/debug_frops"]
-# Enable the ZisK-library symbol redirect in elf2rom when transpiling the ELF
-# (see zisk-transpiler-common's `ziskasm` feature). OFF by default.
-ziskasm = ["zisk-transpiler-riscv/ziskasm"]
 # RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
 compressed = ["zisk-transpiler-riscv/compressed"]
 witness_timers = ["zisk-executor/witness_timers"]

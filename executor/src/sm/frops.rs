@@ -20,6 +20,7 @@
 
 use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
+use rayon::prelude::*;
 
 use zisk_core::frops::{
     FROPS_ARITH_BASE, FROPS_BINARY_BASIC_BASE, FROPS_BINARY_EXT_BASE, FROPS_TABLE_ROWS,
@@ -29,10 +30,9 @@ use zisk_sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
 
 use crate::error::{ExecutorError, ExecutorResult};
 
-/// Rows published per call. `inc_virtual_rows_ranged` copies its slice into a temporary buffer, so
-/// the column is fed in chunks to keep that buffer small instead of allocating another copy of the
-/// whole table.
-const CHUNK_ROWS: usize = 1 << 20;
+/// Rows per parallel publish task; the increments are atomic. The ~23M-row column takes one
+/// thread 16-25 ms, and ~7 ms in tasks of this size.
+const CHUNK_ROWS: usize = 1 << 18;
 
 /// Environment variable that overrides where the multiplicity column comes from on the ASM path,
 /// where the assembly owns it by default. Set it to `0` / `false` / `no` to hand the column back to
@@ -80,10 +80,10 @@ pub fn publish_frops_multiplicity<F: PrimeField64>(
         let id = std.get_virtual_table_id(table_id).map_err(|e| {
             ExecutorError::Internal(format!("no virtual table for FROPS table id {table_id}: {e}"))
         })?;
-        for (chunk_idx, chunk) in family.chunks(CHUNK_ROWS).enumerate() {
+        family.par_chunks(CHUNK_ROWS).enumerate().for_each(|(chunk_idx, chunk)| {
             let start = (chunk_idx * CHUNK_ROWS) as u64;
             std.inc_virtual_rows_ranged(id, Some(start), chunk);
-        }
+        });
     }
     Ok(())
 }

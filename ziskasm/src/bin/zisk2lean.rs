@@ -8,6 +8,10 @@
 //! are a hard error — never silently skipped or approximated.
 //!
 //! Usage: zisk2lean <zisk_file_or_dir> <out.lean> [lean_def_name]
+//!
+//! Built only with the `lean` feature (`cargo run -p zisk-asm --features lean --bin
+//! zisk2lean -- ...`). The Lean model covers registers r0..r31 only, so a routine that
+//! uses the main-trace registers r32..r39 is rejected until the model supports them.
 
 use std::{
     env, fs,

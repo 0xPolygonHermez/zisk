@@ -5,6 +5,18 @@
 ; = 12 u64 (x[6]‖y[6]). Identity = all-zero. Prefixes lcv_/loc_/lsm_/lj2a_.
 ; ============================================================================
 
+; inline-op headers (zopt): arith256_mod / arith384_mod parameter blocks
+const u64 ZBLS_CURVE_H3[5] = BLS_OC_X3, BLS_ONE, BLS_E_B, BLS_P, BLS_OC_RHS
+const u64 ZBLS_CURVE_H6[5] = BLS_J2A_ZINV, BLS_J2A_ZINV, BLS_ZERO, BLS_P, BLS_J2A_ZSQ
+u64 ZBLS_CURVE_H0[5] = 0, 0, BLS_ZERO, BLS_P, BLS_OC_LHS
+u64 ZBLS_CURVE_H1[5] = 0, 0, BLS_ZERO, BLS_P, BLS_OC_X2
+u64 ZBLS_CURVE_H2[5] = BLS_OC_X2, 0, BLS_ZERO, BLS_P, BLS_OC_X3
+u64 ZBLS_CURVE_H4[5] = 0, BLS_P_MINUS_ONE, BLS_ZERO, BLS_P, 0
+u64 ZBLS_CURVE_H5[5] = 0, BLS_GAMMA, BLS_ZERO, BLS_P, 0
+u64 ZBLS_CURVE_H7[5] = 0, BLS_J2A_ZSQ, BLS_ZERO, BLS_P, 0
+u64 ZBLS_CURVE_H8[5] = 0, BLS_J2A_ZSQ, BLS_ZERO, BLS_P, BLS_J2A_T
+u64 ZBLS_CURVE_H9[5] = BLS_J2A_T, BLS_J2A_ZINV, BLS_ZERO, BLS_P, 0
+
 u64 BLS_OC_P[1]     = 0
 u64 BLS_OC_LHS[6]   = 0, 0, 0, 0, 0, 0
 u64 BLS_OC_X2[6]    = 0, 0, 0, 0, 0, 0
@@ -31,40 +43,32 @@ u64 BLS_SIG_P[1]    = 0
 ; u64 zisklib_is_on_curve_bls12_381(const u64* p)  [r10=&p] -> r10 (1 if on curve)
 zisklib_is_on_curve_bls12_381:
 	push r1
-	copyb(0, BLS_OC_P) -> r5
-	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_OC_P]
 	; lhs = y²   (y = p + 48)
-	add(r10, 48) -> r10
-	copyb(0, BLS_OC_LHS) -> r11
-	call zisklib_square_fp_bls12_381
+	add(r10, 48) -> [ZBLS_CURVE_H0]
+	add(r10, 48) -> [ZBLS_CURVE_H0 + 8]
+	arith384_mod(0, ZBLS_CURVE_H0)
 	; x2 = x²
-	copyb(0, BLS_OC_P) -> r5
-	copyb(r5, 8[a + 0]) -> r10
-	copyb(0, BLS_OC_X2) -> r11
-	call zisklib_square_fp_bls12_381
+	copyb(0, r10) -> [ZBLS_CURVE_H1]
+	copyb(0, r10) -> [ZBLS_CURVE_H1 + 8]
+	arith384_mod(0, ZBLS_CURVE_H1)
 	; x3 = x2 · x
-	copyb(0, BLS_OC_X2) -> r10
-	copyb(0, BLS_OC_P) -> r5
-	copyb(r5, 8[a + 0]) -> r11
-	copyb(0, BLS_OC_X3) -> r12
-	call zisklib_mul_fp_bls12_381
+	copyb(0, r10) -> [ZBLS_CURVE_H2 + 8]
+	arith384_mod(0, ZBLS_CURVE_H2)
 	; rhs = x3 + 4
-	copyb(0, BLS_OC_X3) -> r10
-	copyb(0, BLS_E_B) -> r11
-	copyb(0, BLS_OC_RHS) -> r12
-	call zisklib_add_fp_bls12_381
+	arith384_mod(0, ZBLS_CURVE_H3)
 	; lhs == rhs ?
-	copyb(0, BLS_OC_LHS) -> r10
+	dma_xmemcmp(BLS_OC_LHS, BLS_OC_RHS) -> r5, j(48, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BLS_OC_RHS) -> r11
 	copyb(0, 6) -> r12
-	call bn254_eqn
 	ltu(0, r10), j(loc_true)
 	; else: p == identity ?
-	copyb(0, BLS_OC_P) -> r5
-	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, [BLS_OC_P]) -> r5
+	dma_xmemcmp(r5, BLS_G1_IDENTITY) -> r5, j(96, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BLS_G1_IDENTITY) -> r11
 	copyb(0, 12) -> r12
-	call bn254_eqn
 	pop r1
 	ret
 loc_true:
@@ -75,26 +79,24 @@ loc_true:
 ; void zisklib_dbl_bls12_381(const u64* p, u64* result)  [r10=p, r11=result]  (p non-identity)
 zisklib_dbl_bls12_381:
 	push r1
-	copyb(0, 12) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(r11, r10) -> r5, j(96, 4)
 	bls12_381_curve_dbl(0, r11) -> r14
+	copyb(0, 12) -> r12
 	pop r1
 	ret
 
 ; void zisklib_dbl_complete_bls12_381(const u64* p, u64* result)  [r10=p, r11=result]
 zisklib_dbl_complete_bls12_381:
 	push r1
-	copyb(0, BLS_ADD_P1) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_ADD_RES) -> r5
-	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_ADD_P1]
+	copyb(0, r11) -> [BLS_ADD_RES]
+	dma_xmemcmp(r10, BLS_G1_IDENTITY) -> r5, j(96, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BLS_G1_IDENTITY) -> r11
 	copyb(0, 12) -> r12
-	call bn254_eqn
 	eq(r10, 0), j(lcv_dc_go)
 	; identity -> result = identity
-	copyb(0, BLS_ADD_RES) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [BLS_ADD_RES]) -> r11
 	copyb(r11, 0) -> 8[a + 0]
 	copyb(r11, 0) -> 8[a + 8]
 	copyb(r11, 0) -> 8[a + 16]
@@ -110,10 +112,8 @@ zisklib_dbl_complete_bls12_381:
 	pop r1
 	ret
 lcv_dc_go:
-	copyb(0, BLS_ADD_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_ADD_RES) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [BLS_ADD_P1]) -> r10
+	copyb(0, [BLS_ADD_RES]) -> r11
 	call zisklib_dbl_bls12_381
 	pop r1
 	ret
@@ -121,57 +121,46 @@ lcv_dc_go:
 ; void zisklib_neg_bls12_381(const u64* p, u64* result)  [r10=p, r11=result]  (x, -y)
 zisklib_neg_bls12_381:
 	push r1
-	copyb(0, BLS_ADD_P1) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_ADD_RES) -> r5
-	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_ADD_P1]
+	copyb(0, r11) -> [BLS_ADD_RES]
 	; result[0..6] = x
-	copyb(0, 6) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(r11, r10) -> r5, j(48, 4)
 	; result[6..12] = neg_fp(p[6..12])
-	copyb(0, BLS_ADD_P1) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 48) -> [ZBLS_CURVE_H4]
+	add(r11, 48) -> [ZBLS_CURVE_H4 + 32]
+	arith384_mod(0, ZBLS_CURVE_H4)
 	add(r10, 48) -> r10
-	copyb(0, BLS_ADD_RES) -> r11
-	copyb(r11, 8[a + 0]) -> r11
 	add(r11, 48) -> r11
-	call zisklib_neg_fp_bls12_381
+	copyb(0, 6) -> r12
 	pop r1
 	ret
 
 ; void zisklib_add_bls12_381(const u64* p1, const u64* p2, u64* result)  (both non-identity)
 zisklib_add_bls12_381:
 	push r1
-	copyb(0, BLS_ADD_P1) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_ADD_P2) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, BLS_ADD_RES) -> r5
-	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_ADD_P1]
+	copyb(0, r11) -> [BLS_ADD_P2]
+	copyb(0, r12) -> [BLS_ADD_RES]
 	; x1 == x2 ?
+	dma_xmemcmp(r10, r11) -> r5, j(48, 4)
+	eq(r5, 0) -> r10
 	copyb(0, 6) -> r12
-	call bn254_eqn
 	eq(r10, 0), j(lcv_add_generic)
 	; x1 == x2: y1 == y2 ?
-	copyb(0, BLS_ADD_P1) -> r5
-	copyb(r5, 8[a + 0]) -> r10
-	add(r10, 48) -> r10
-	copyb(0, BLS_ADD_P2) -> r5
-	copyb(r5, 8[a + 0]) -> r11
-	add(r11, 48) -> r11
-	copyb(0, 6) -> r12
-	call bn254_eqn
+	add([BLS_ADD_P1], 48) -> r5
+	add([BLS_ADD_P2], 48) -> r10
+	dma_xmemcmp(r5, r10) -> r5, j(48, 4)
+	eq(r5, 0) -> r10
+	add([BLS_ADD_P2], 48) -> r11
 	eq(r10, 0), j(lcv_add_inf)
-	copyb(0, BLS_ADD_P1) -> r5
-	copyb(r5, 8[a + 0]) -> r10
 	copyb(0, BLS_ADD_RES) -> r5
-	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, [BLS_ADD_P1]) -> r10
+	copyb(0, [BLS_ADD_RES]) -> r11
 	call zisklib_dbl_bls12_381
 	pop r1
 	ret
 lcv_add_inf:
-	copyb(0, BLS_ADD_RES) -> r5
-	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, [BLS_ADD_RES]) -> r11
 	copyb(r11, 0) -> 8[a + 0]
 	copyb(r11, 0) -> 8[a + 8]
 	copyb(r11, 0) -> 8[a + 16]
@@ -184,19 +173,16 @@ lcv_add_inf:
 	copyb(r11, 0) -> 8[a + 72]
 	copyb(r11, 0) -> 8[a + 80]
 	copyb(r11, 0) -> 8[a + 88]
+	copyb(0, BLS_ADD_RES) -> r5
 	pop r1
 	ret
 lcv_add_generic:
-	copyb(0, BLS_ADD_P1) -> r5
-	copyb(r5, 8[a + 0]) -> r10
-	copyb(0, BLS_ADD_RES) -> r5
-	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, [BLS_ADD_P1]) -> r10
+	copyb(0, [BLS_ADD_RES]) -> r11
 	copyb(0, 12) -> r12
 	call bn254_memcpy
-	copyb(0, BLS_ADD_RES) -> r5
-	copyb(r5, 8[a + 0]) -> r5
-	copyb(0, BLS_ADD_P2) -> r7
-	copyb(r7, 8[a + 0]) -> r7
+	copyb(0, [BLS_ADD_RES]) -> r5
+	copyb(0, [BLS_ADD_P2]) -> r7
 	bls12_381_curve_add(r5, r7) -> r14
 	pop r1
 	ret
@@ -204,52 +190,39 @@ lcv_add_generic:
 ; void zisklib_add_complete_bls12_381(const u64* p1, const u64* p2, u64* result)
 zisklib_add_complete_bls12_381:
 	push r1
-	copyb(0, BLS_SM_PPTR) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_SM_RESPTR) -> r5
-	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_SM_PPTR]
+	copyb(0, r12) -> [BLS_SM_RESPTR]
 	; NOTE: reuse SM_PPTR/SM_RESPTR to stash p1/result (add uses ADD_* only);
 	; also stash p2 in SM_K[0..1]
-	copyb(0, BLS_SM_K) -> r5
-	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, r11) -> [BLS_SM_K]
 	; p1 == identity ? -> result = p2
-	copyb(0, BLS_SM_PPTR) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	dma_xmemcmp(r10, BLS_G1_IDENTITY) -> r5, j(96, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BLS_G1_IDENTITY) -> r11
 	copyb(0, 12) -> r12
-	call bn254_eqn
 	eq(r10, 0), j(lcv_ac_chk2)
-	copyb(0, BLS_SM_K) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_SM_RESPTR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 12) -> r12
+	copyb(0, [BLS_SM_K]) -> r10
+	copyb(0, [BLS_SM_RESPTR]) -> r11
 	call bn254_memcpy
 	pop r1
 	ret
 lcv_ac_chk2:
 	; p2 == identity ? -> result = p1
-	copyb(0, BLS_SM_K) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [BLS_SM_K]) -> r5
+	dma_xmemcmp(r5, BLS_G1_IDENTITY) -> r5, j(96, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BLS_G1_IDENTITY) -> r11
 	copyb(0, 12) -> r12
-	call bn254_eqn
 	eq(r10, 0), j(lcv_ac_add)
-	copyb(0, BLS_SM_PPTR) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_SM_RESPTR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 12) -> r12
+	copyb(0, [BLS_SM_PPTR]) -> r10
+	copyb(0, [BLS_SM_RESPTR]) -> r11
 	call bn254_memcpy
 	pop r1
 	ret
 lcv_ac_add:
-	copyb(0, BLS_SM_PPTR) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_SM_K) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, BLS_SM_RESPTR) -> r12
-	copyb(r12, 8[a + 0]) -> r12
+	copyb(0, [BLS_SM_PPTR]) -> r10
+	copyb(0, [BLS_SM_K]) -> r11
+	copyb(0, [BLS_SM_RESPTR]) -> r12
 	call zisklib_add_bls12_381
 	pop r1
 	ret
@@ -257,12 +230,14 @@ lcv_ac_add:
 ; u64 zisklib_scalar_mul_bls12_381(const u64* p, const u64* k, u64* result)
 ;   [r10=p, r11=k, r12=result] -> r10 = 1 if result is identity, else 0.
 ;   result = k·p; k reduced mod R first. Reads k bits directly (trusted).
+u64 BLS_SM_P[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+const u64 LSM_TAB[256] = lsm_done, lsm_s1, lsm_s2, lsm_s3, lsm_s4, lsm_s5, lsm_s6, lsm_s7, lsm_s8, lsm_s9, lsm_s10, lsm_s11, lsm_s12, lsm_s13, lsm_s14, lsm_s15, lsm_s16, lsm_s17, lsm_s18, lsm_s19, lsm_s20, lsm_s21, lsm_s22, lsm_s23, lsm_s24, lsm_s25, lsm_s26, lsm_s27, lsm_s28, lsm_s29, lsm_s30, lsm_s31, lsm_s32, lsm_s33, lsm_s34, lsm_s35, lsm_s36, lsm_s37, lsm_s38, lsm_s39, lsm_s40, lsm_s41, lsm_s42, lsm_s43, lsm_s44, lsm_s45, lsm_s46, lsm_s47, lsm_s48, lsm_s49, lsm_s50, lsm_s51, lsm_s52, lsm_s53, lsm_s54, lsm_s55, lsm_s56, lsm_s57, lsm_s58, lsm_s59, lsm_s60, lsm_s61, lsm_s62, lsm_s63, lsm_t64, lsm_s65, lsm_s66, lsm_s67, lsm_s68, lsm_s69, lsm_s70, lsm_s71, lsm_s72, lsm_s73, lsm_s74, lsm_s75, lsm_s76, lsm_s77, lsm_s78, lsm_s79, lsm_s80, lsm_s81, lsm_s82, lsm_s83, lsm_s84, lsm_s85, lsm_s86, lsm_s87, lsm_s88, lsm_s89, lsm_s90, lsm_s91, lsm_s92, lsm_s93, lsm_s94, lsm_s95, lsm_s96, lsm_s97, lsm_s98, lsm_s99, lsm_s100, lsm_s101, lsm_s102, lsm_s103, lsm_s104, lsm_s105, lsm_s106, lsm_s107, lsm_s108, lsm_s109, lsm_s110, lsm_s111, lsm_s112, lsm_s113, lsm_s114, lsm_s115, lsm_s116, lsm_s117, lsm_s118, lsm_s119, lsm_s120, lsm_s121, lsm_s122, lsm_s123, lsm_s124, lsm_s125, lsm_s126, lsm_s127, lsm_t128, lsm_s129, lsm_s130, lsm_s131, lsm_s132, lsm_s133, lsm_s134, lsm_s135, lsm_s136, lsm_s137, lsm_s138, lsm_s139, lsm_s140, lsm_s141, lsm_s142, lsm_s143, lsm_s144, lsm_s145, lsm_s146, lsm_s147, lsm_s148, lsm_s149, lsm_s150, lsm_s151, lsm_s152, lsm_s153, lsm_s154, lsm_s155, lsm_s156, lsm_s157, lsm_s158, lsm_s159, lsm_s160, lsm_s161, lsm_s162, lsm_s163, lsm_s164, lsm_s165, lsm_s166, lsm_s167, lsm_s168, lsm_s169, lsm_s170, lsm_s171, lsm_s172, lsm_s173, lsm_s174, lsm_s175, lsm_s176, lsm_s177, lsm_s178, lsm_s179, lsm_s180, lsm_s181, lsm_s182, lsm_s183, lsm_s184, lsm_s185, lsm_s186, lsm_s187, lsm_s188, lsm_s189, lsm_s190, lsm_s191, lsm_t192, lsm_s193, lsm_s194, lsm_s195, lsm_s196, lsm_s197, lsm_s198, lsm_s199, lsm_s200, lsm_s201, lsm_s202, lsm_s203, lsm_s204, lsm_s205, lsm_s206, lsm_s207, lsm_s208, lsm_s209, lsm_s210, lsm_s211, lsm_s212, lsm_s213, lsm_s214, lsm_s215, lsm_s216, lsm_s217, lsm_s218, lsm_s219, lsm_s220, lsm_s221, lsm_s222, lsm_s223, lsm_s224, lsm_s225, lsm_s226, lsm_s227, lsm_s228, lsm_s229, lsm_s230, lsm_s231, lsm_s232, lsm_s233, lsm_s234, lsm_s235, lsm_s236, lsm_s237, lsm_s238, lsm_s239, lsm_s240, lsm_s241, lsm_s242, lsm_s243, lsm_s244, lsm_s245, lsm_s246, lsm_s247, lsm_s248, lsm_s249, lsm_s250, lsm_s251, lsm_s252, lsm_s253, lsm_s254, lsm_s255
+
 zisklib_scalar_mul_bls12_381:
 	push r1
-	copyb(0, BLS_SM_PPTR) -> r5
-	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_SM_PPTR]
+	copyb(0, r12) -> [BLS_SM_RESPTR]
 	copyb(0, BLS_SM_RESPTR) -> r5
-	copyb(r5, r12) -> 8[a + 0]
 	copyb(0, r11) -> r10
 	copyb(0, BLS_SM_K) -> r11
 	call zisklib_reduce_fr_bls12_381
@@ -273,64 +248,2094 @@ zisklib_scalar_mul_bls12_381:
 	copyb(r5, 8[a + 24]) -> r7
 	or(r6, r7) -> r6
 	ltu(0, r6), j(lsm_general)
-	copyb(r5, 8[a + 0]) -> r7
+	copyb(0, [BLS_SM_K]) -> r7
 	eq(r7, 0), j(lsm_zero)
 	eq(r7, 1), j(lsm_one)
 	eq(r7, 2), j(lsm_two)
 lsm_general:
-	copyb(0, BLS_SM_PPTR) -> r5
-	copyb(r5, 8[a + 0]) -> r10
-	copyb(0, BLS_SM_Q) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
-	copyb(0, 255) -> r13
+	copyb(0, [BLS_SM_PPTR]) -> r5
+	dma_xmemcpy(BLS_SM_P, r5) -> r5, j(96, 4)
+	dma_xmemcpy(BLS_SM_Q, BLS_SM_P) -> r5, j(96, 4)
+	copyb(0, [BLS_SM_K + 24]) -> r15
+	copyb(0, 0) -> r13
+	ltu(0, r15), j(lsm_lz)
+	copyb(0, [BLS_SM_K + 16]) -> r15
+	copyb(0, 64) -> r13
+	ltu(0, r15), j(lsm_lz)
+	copyb(0, [BLS_SM_K + 8]) -> r15
+	copyb(0, 128) -> r13
+	ltu(0, r15), j(lsm_lz)
+	copyb(0, [BLS_SM_K]) -> r15
+	copyb(0, 192) -> r13
+lsm_lz:
+	lt(r15, 0), j(lsm_msb)
+	sll(r15, 1) -> r15
+	add(r13, 1) -> r13
+	jump(lsm_lz)
 lsm_msb:
-	srl(r13, 6) -> r5
-	and(r13, 63) -> r6
-	sll(r5, 3) -> r5
-	copyb(0, BLS_SM_K) -> r7
-	add(r7, r5) -> r7
-	copyb(r7, 8[a + 0]) -> r7
-	srl(r7, r6) -> r7
-	and(r7, 1) -> r7
-	ltu(0, r7), j(lsm_loopstart)
-	sub(r13, 1) -> r13
-	jump(lsm_msb)
-lsm_loopstart:
-	eq(r13, 0), j(lsm_done)
-	sub(r13, 1) -> r13
-lsm_loop:
-	copyb(0, BLS_SM_Q) -> r5
-	bls12_381_curve_dbl(0, r5) -> r14
-	srl(r13, 6) -> r5
-	and(r13, 63) -> r6
-	sll(r5, 3) -> r5
-	copyb(0, BLS_SM_K) -> r7
-	add(r7, r5) -> r7
-	copyb(r7, 8[a + 0]) -> r7
-	srl(r7, r6) -> r7
-	and(r7, 1) -> r7
-	eq(r7, 0), j(lsm_noadd)
-	copyb(0, BLS_SM_Q) -> r5
-	copyb(0, BLS_SM_PPTR) -> r7
-	copyb(r7, 8[a + 0]) -> r7
-	bls12_381_curve_add(r5, r7) -> r14
-lsm_noadd:
-	eq(r13, 0), j(lsm_done)
-	sub(r13, 1) -> r13
-	jump(lsm_loop)
+	sll(r15, 1) -> r15
+	add(r13, 1) -> r13
+	eq(r13, 256), j(lsm_done)
+	sll(r13, 3) -> r13
+	add(r13, LSM_TAB) -> r13
+	copyb(r13, 8[a + 0]), setpc(0)
+lsm_s1:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a1)
+	sll(r15, 1) -> r15
+lsm_s2:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a2)
+	sll(r15, 1) -> r15
+lsm_s3:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a3)
+	sll(r15, 1) -> r15
+lsm_s4:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a4)
+	sll(r15, 1) -> r15
+lsm_s5:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a5)
+	sll(r15, 1) -> r15
+lsm_s6:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a6)
+	sll(r15, 1) -> r15
+lsm_s7:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a7)
+	sll(r15, 1) -> r15
+lsm_s8:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a8)
+	sll(r15, 1) -> r15
+lsm_s9:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a9)
+	sll(r15, 1) -> r15
+lsm_s10:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a10)
+	sll(r15, 1) -> r15
+lsm_s11:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a11)
+	sll(r15, 1) -> r15
+lsm_s12:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a12)
+	sll(r15, 1) -> r15
+lsm_s13:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a13)
+	sll(r15, 1) -> r15
+lsm_s14:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a14)
+	sll(r15, 1) -> r15
+lsm_s15:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a15)
+	sll(r15, 1) -> r15
+lsm_s16:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a16)
+	sll(r15, 1) -> r15
+lsm_s17:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a17)
+	sll(r15, 1) -> r15
+lsm_s18:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a18)
+	sll(r15, 1) -> r15
+lsm_s19:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a19)
+	sll(r15, 1) -> r15
+lsm_s20:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a20)
+	sll(r15, 1) -> r15
+lsm_s21:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a21)
+	sll(r15, 1) -> r15
+lsm_s22:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a22)
+	sll(r15, 1) -> r15
+lsm_s23:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a23)
+	sll(r15, 1) -> r15
+lsm_s24:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a24)
+	sll(r15, 1) -> r15
+lsm_s25:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a25)
+	sll(r15, 1) -> r15
+lsm_s26:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a26)
+	sll(r15, 1) -> r15
+lsm_s27:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a27)
+	sll(r15, 1) -> r15
+lsm_s28:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a28)
+	sll(r15, 1) -> r15
+lsm_s29:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a29)
+	sll(r15, 1) -> r15
+lsm_s30:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a30)
+	sll(r15, 1) -> r15
+lsm_s31:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a31)
+	sll(r15, 1) -> r15
+lsm_s32:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a32)
+	sll(r15, 1) -> r15
+lsm_s33:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a33)
+	sll(r15, 1) -> r15
+lsm_s34:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a34)
+	sll(r15, 1) -> r15
+lsm_s35:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a35)
+	sll(r15, 1) -> r15
+lsm_s36:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a36)
+	sll(r15, 1) -> r15
+lsm_s37:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a37)
+	sll(r15, 1) -> r15
+lsm_s38:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a38)
+	sll(r15, 1) -> r15
+lsm_s39:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a39)
+	sll(r15, 1) -> r15
+lsm_s40:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a40)
+	sll(r15, 1) -> r15
+lsm_s41:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a41)
+	sll(r15, 1) -> r15
+lsm_s42:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a42)
+	sll(r15, 1) -> r15
+lsm_s43:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a43)
+	sll(r15, 1) -> r15
+lsm_s44:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a44)
+	sll(r15, 1) -> r15
+lsm_s45:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a45)
+	sll(r15, 1) -> r15
+lsm_s46:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a46)
+	sll(r15, 1) -> r15
+lsm_s47:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a47)
+	sll(r15, 1) -> r15
+lsm_s48:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a48)
+	sll(r15, 1) -> r15
+lsm_s49:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a49)
+	sll(r15, 1) -> r15
+lsm_s50:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a50)
+	sll(r15, 1) -> r15
+lsm_s51:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a51)
+	sll(r15, 1) -> r15
+lsm_s52:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a52)
+	sll(r15, 1) -> r15
+lsm_s53:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a53)
+	sll(r15, 1) -> r15
+lsm_s54:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a54)
+	sll(r15, 1) -> r15
+lsm_s55:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a55)
+	sll(r15, 1) -> r15
+lsm_s56:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a56)
+	sll(r15, 1) -> r15
+lsm_s57:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a57)
+	sll(r15, 1) -> r15
+lsm_s58:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a58)
+	sll(r15, 1) -> r15
+lsm_s59:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a59)
+	sll(r15, 1) -> r15
+lsm_s60:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a60)
+	sll(r15, 1) -> r15
+lsm_s61:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a61)
+	sll(r15, 1) -> r15
+lsm_s62:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a62)
+	sll(r15, 1) -> r15
+lsm_s63:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a63)
+	sll(r15, 1) -> r15
+lsm_t64:
+	copyb(0, [BLS_SM_K + 16]) -> r15
+lsm_s64:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a64)
+	sll(r15, 1) -> r15
+lsm_s65:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a65)
+	sll(r15, 1) -> r15
+lsm_s66:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a66)
+	sll(r15, 1) -> r15
+lsm_s67:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a67)
+	sll(r15, 1) -> r15
+lsm_s68:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a68)
+	sll(r15, 1) -> r15
+lsm_s69:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a69)
+	sll(r15, 1) -> r15
+lsm_s70:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a70)
+	sll(r15, 1) -> r15
+lsm_s71:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a71)
+	sll(r15, 1) -> r15
+lsm_s72:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a72)
+	sll(r15, 1) -> r15
+lsm_s73:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a73)
+	sll(r15, 1) -> r15
+lsm_s74:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a74)
+	sll(r15, 1) -> r15
+lsm_s75:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a75)
+	sll(r15, 1) -> r15
+lsm_s76:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a76)
+	sll(r15, 1) -> r15
+lsm_s77:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a77)
+	sll(r15, 1) -> r15
+lsm_s78:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a78)
+	sll(r15, 1) -> r15
+lsm_s79:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a79)
+	sll(r15, 1) -> r15
+lsm_s80:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a80)
+	sll(r15, 1) -> r15
+lsm_s81:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a81)
+	sll(r15, 1) -> r15
+lsm_s82:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a82)
+	sll(r15, 1) -> r15
+lsm_s83:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a83)
+	sll(r15, 1) -> r15
+lsm_s84:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a84)
+	sll(r15, 1) -> r15
+lsm_s85:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a85)
+	sll(r15, 1) -> r15
+lsm_s86:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a86)
+	sll(r15, 1) -> r15
+lsm_s87:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a87)
+	sll(r15, 1) -> r15
+lsm_s88:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a88)
+	sll(r15, 1) -> r15
+lsm_s89:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a89)
+	sll(r15, 1) -> r15
+lsm_s90:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a90)
+	sll(r15, 1) -> r15
+lsm_s91:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a91)
+	sll(r15, 1) -> r15
+lsm_s92:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a92)
+	sll(r15, 1) -> r15
+lsm_s93:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a93)
+	sll(r15, 1) -> r15
+lsm_s94:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a94)
+	sll(r15, 1) -> r15
+lsm_s95:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a95)
+	sll(r15, 1) -> r15
+lsm_s96:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a96)
+	sll(r15, 1) -> r15
+lsm_s97:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a97)
+	sll(r15, 1) -> r15
+lsm_s98:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a98)
+	sll(r15, 1) -> r15
+lsm_s99:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a99)
+	sll(r15, 1) -> r15
+lsm_s100:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a100)
+	sll(r15, 1) -> r15
+lsm_s101:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a101)
+	sll(r15, 1) -> r15
+lsm_s102:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a102)
+	sll(r15, 1) -> r15
+lsm_s103:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a103)
+	sll(r15, 1) -> r15
+lsm_s104:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a104)
+	sll(r15, 1) -> r15
+lsm_s105:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a105)
+	sll(r15, 1) -> r15
+lsm_s106:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a106)
+	sll(r15, 1) -> r15
+lsm_s107:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a107)
+	sll(r15, 1) -> r15
+lsm_s108:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a108)
+	sll(r15, 1) -> r15
+lsm_s109:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a109)
+	sll(r15, 1) -> r15
+lsm_s110:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a110)
+	sll(r15, 1) -> r15
+lsm_s111:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a111)
+	sll(r15, 1) -> r15
+lsm_s112:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a112)
+	sll(r15, 1) -> r15
+lsm_s113:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a113)
+	sll(r15, 1) -> r15
+lsm_s114:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a114)
+	sll(r15, 1) -> r15
+lsm_s115:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a115)
+	sll(r15, 1) -> r15
+lsm_s116:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a116)
+	sll(r15, 1) -> r15
+lsm_s117:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a117)
+	sll(r15, 1) -> r15
+lsm_s118:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a118)
+	sll(r15, 1) -> r15
+lsm_s119:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a119)
+	sll(r15, 1) -> r15
+lsm_s120:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a120)
+	sll(r15, 1) -> r15
+lsm_s121:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a121)
+	sll(r15, 1) -> r15
+lsm_s122:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a122)
+	sll(r15, 1) -> r15
+lsm_s123:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a123)
+	sll(r15, 1) -> r15
+lsm_s124:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a124)
+	sll(r15, 1) -> r15
+lsm_s125:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a125)
+	sll(r15, 1) -> r15
+lsm_s126:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a126)
+	sll(r15, 1) -> r15
+lsm_s127:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a127)
+	sll(r15, 1) -> r15
+lsm_t128:
+	copyb(0, [BLS_SM_K + 8]) -> r15
+lsm_s128:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a128)
+	sll(r15, 1) -> r15
+lsm_s129:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a129)
+	sll(r15, 1) -> r15
+lsm_s130:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a130)
+	sll(r15, 1) -> r15
+lsm_s131:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a131)
+	sll(r15, 1) -> r15
+lsm_s132:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a132)
+	sll(r15, 1) -> r15
+lsm_s133:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a133)
+	sll(r15, 1) -> r15
+lsm_s134:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a134)
+	sll(r15, 1) -> r15
+lsm_s135:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a135)
+	sll(r15, 1) -> r15
+lsm_s136:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a136)
+	sll(r15, 1) -> r15
+lsm_s137:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a137)
+	sll(r15, 1) -> r15
+lsm_s138:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a138)
+	sll(r15, 1) -> r15
+lsm_s139:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a139)
+	sll(r15, 1) -> r15
+lsm_s140:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a140)
+	sll(r15, 1) -> r15
+lsm_s141:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a141)
+	sll(r15, 1) -> r15
+lsm_s142:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a142)
+	sll(r15, 1) -> r15
+lsm_s143:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a143)
+	sll(r15, 1) -> r15
+lsm_s144:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a144)
+	sll(r15, 1) -> r15
+lsm_s145:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a145)
+	sll(r15, 1) -> r15
+lsm_s146:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a146)
+	sll(r15, 1) -> r15
+lsm_s147:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a147)
+	sll(r15, 1) -> r15
+lsm_s148:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a148)
+	sll(r15, 1) -> r15
+lsm_s149:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a149)
+	sll(r15, 1) -> r15
+lsm_s150:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a150)
+	sll(r15, 1) -> r15
+lsm_s151:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a151)
+	sll(r15, 1) -> r15
+lsm_s152:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a152)
+	sll(r15, 1) -> r15
+lsm_s153:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a153)
+	sll(r15, 1) -> r15
+lsm_s154:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a154)
+	sll(r15, 1) -> r15
+lsm_s155:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a155)
+	sll(r15, 1) -> r15
+lsm_s156:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a156)
+	sll(r15, 1) -> r15
+lsm_s157:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a157)
+	sll(r15, 1) -> r15
+lsm_s158:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a158)
+	sll(r15, 1) -> r15
+lsm_s159:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a159)
+	sll(r15, 1) -> r15
+lsm_s160:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a160)
+	sll(r15, 1) -> r15
+lsm_s161:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a161)
+	sll(r15, 1) -> r15
+lsm_s162:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a162)
+	sll(r15, 1) -> r15
+lsm_s163:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a163)
+	sll(r15, 1) -> r15
+lsm_s164:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a164)
+	sll(r15, 1) -> r15
+lsm_s165:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a165)
+	sll(r15, 1) -> r15
+lsm_s166:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a166)
+	sll(r15, 1) -> r15
+lsm_s167:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a167)
+	sll(r15, 1) -> r15
+lsm_s168:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a168)
+	sll(r15, 1) -> r15
+lsm_s169:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a169)
+	sll(r15, 1) -> r15
+lsm_s170:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a170)
+	sll(r15, 1) -> r15
+lsm_s171:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a171)
+	sll(r15, 1) -> r15
+lsm_s172:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a172)
+	sll(r15, 1) -> r15
+lsm_s173:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a173)
+	sll(r15, 1) -> r15
+lsm_s174:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a174)
+	sll(r15, 1) -> r15
+lsm_s175:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a175)
+	sll(r15, 1) -> r15
+lsm_s176:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a176)
+	sll(r15, 1) -> r15
+lsm_s177:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a177)
+	sll(r15, 1) -> r15
+lsm_s178:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a178)
+	sll(r15, 1) -> r15
+lsm_s179:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a179)
+	sll(r15, 1) -> r15
+lsm_s180:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a180)
+	sll(r15, 1) -> r15
+lsm_s181:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a181)
+	sll(r15, 1) -> r15
+lsm_s182:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a182)
+	sll(r15, 1) -> r15
+lsm_s183:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a183)
+	sll(r15, 1) -> r15
+lsm_s184:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a184)
+	sll(r15, 1) -> r15
+lsm_s185:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a185)
+	sll(r15, 1) -> r15
+lsm_s186:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a186)
+	sll(r15, 1) -> r15
+lsm_s187:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a187)
+	sll(r15, 1) -> r15
+lsm_s188:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a188)
+	sll(r15, 1) -> r15
+lsm_s189:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a189)
+	sll(r15, 1) -> r15
+lsm_s190:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a190)
+	sll(r15, 1) -> r15
+lsm_s191:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a191)
+	sll(r15, 1) -> r15
+lsm_t192:
+	copyb(0, [BLS_SM_K + 0]) -> r15
+lsm_s192:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a192)
+	sll(r15, 1) -> r15
+lsm_s193:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a193)
+	sll(r15, 1) -> r15
+lsm_s194:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a194)
+	sll(r15, 1) -> r15
+lsm_s195:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a195)
+	sll(r15, 1) -> r15
+lsm_s196:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a196)
+	sll(r15, 1) -> r15
+lsm_s197:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a197)
+	sll(r15, 1) -> r15
+lsm_s198:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a198)
+	sll(r15, 1) -> r15
+lsm_s199:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a199)
+	sll(r15, 1) -> r15
+lsm_s200:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a200)
+	sll(r15, 1) -> r15
+lsm_s201:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a201)
+	sll(r15, 1) -> r15
+lsm_s202:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a202)
+	sll(r15, 1) -> r15
+lsm_s203:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a203)
+	sll(r15, 1) -> r15
+lsm_s204:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a204)
+	sll(r15, 1) -> r15
+lsm_s205:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a205)
+	sll(r15, 1) -> r15
+lsm_s206:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a206)
+	sll(r15, 1) -> r15
+lsm_s207:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a207)
+	sll(r15, 1) -> r15
+lsm_s208:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a208)
+	sll(r15, 1) -> r15
+lsm_s209:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a209)
+	sll(r15, 1) -> r15
+lsm_s210:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a210)
+	sll(r15, 1) -> r15
+lsm_s211:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a211)
+	sll(r15, 1) -> r15
+lsm_s212:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a212)
+	sll(r15, 1) -> r15
+lsm_s213:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a213)
+	sll(r15, 1) -> r15
+lsm_s214:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a214)
+	sll(r15, 1) -> r15
+lsm_s215:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a215)
+	sll(r15, 1) -> r15
+lsm_s216:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a216)
+	sll(r15, 1) -> r15
+lsm_s217:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a217)
+	sll(r15, 1) -> r15
+lsm_s218:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a218)
+	sll(r15, 1) -> r15
+lsm_s219:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a219)
+	sll(r15, 1) -> r15
+lsm_s220:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a220)
+	sll(r15, 1) -> r15
+lsm_s221:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a221)
+	sll(r15, 1) -> r15
+lsm_s222:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a222)
+	sll(r15, 1) -> r15
+lsm_s223:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a223)
+	sll(r15, 1) -> r15
+lsm_s224:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a224)
+	sll(r15, 1) -> r15
+lsm_s225:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a225)
+	sll(r15, 1) -> r15
+lsm_s226:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a226)
+	sll(r15, 1) -> r15
+lsm_s227:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a227)
+	sll(r15, 1) -> r15
+lsm_s228:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a228)
+	sll(r15, 1) -> r15
+lsm_s229:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a229)
+	sll(r15, 1) -> r15
+lsm_s230:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a230)
+	sll(r15, 1) -> r15
+lsm_s231:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a231)
+	sll(r15, 1) -> r15
+lsm_s232:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a232)
+	sll(r15, 1) -> r15
+lsm_s233:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a233)
+	sll(r15, 1) -> r15
+lsm_s234:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a234)
+	sll(r15, 1) -> r15
+lsm_s235:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a235)
+	sll(r15, 1) -> r15
+lsm_s236:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a236)
+	sll(r15, 1) -> r15
+lsm_s237:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a237)
+	sll(r15, 1) -> r15
+lsm_s238:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a238)
+	sll(r15, 1) -> r15
+lsm_s239:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a239)
+	sll(r15, 1) -> r15
+lsm_s240:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a240)
+	sll(r15, 1) -> r15
+lsm_s241:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a241)
+	sll(r15, 1) -> r15
+lsm_s242:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a242)
+	sll(r15, 1) -> r15
+lsm_s243:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a243)
+	sll(r15, 1) -> r15
+lsm_s244:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a244)
+	sll(r15, 1) -> r15
+lsm_s245:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a245)
+	sll(r15, 1) -> r15
+lsm_s246:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a246)
+	sll(r15, 1) -> r15
+lsm_s247:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a247)
+	sll(r15, 1) -> r15
+lsm_s248:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a248)
+	sll(r15, 1) -> r15
+lsm_s249:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a249)
+	sll(r15, 1) -> r15
+lsm_s250:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a250)
+	sll(r15, 1) -> r15
+lsm_s251:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a251)
+	sll(r15, 1) -> r15
+lsm_s252:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a252)
+	sll(r15, 1) -> r15
+lsm_s253:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a253)
+	sll(r15, 1) -> r15
+lsm_s254:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a254)
+	sll(r15, 1) -> r15
+lsm_s255:
+	bls12_381_curve_dbl(0, BLS_SM_Q)
+	lt(r15, 0), j(lsm_a255)
+	sll(r15, 1) -> r15
+	jump(lsm_done)
+lsm_a1:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s2)
+lsm_a2:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s3)
+lsm_a3:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s4)
+lsm_a4:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s5)
+lsm_a5:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s6)
+lsm_a6:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s7)
+lsm_a7:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s8)
+lsm_a8:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s9)
+lsm_a9:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s10)
+lsm_a10:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s11)
+lsm_a11:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s12)
+lsm_a12:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s13)
+lsm_a13:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s14)
+lsm_a14:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s15)
+lsm_a15:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s16)
+lsm_a16:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s17)
+lsm_a17:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s18)
+lsm_a18:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s19)
+lsm_a19:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s20)
+lsm_a20:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s21)
+lsm_a21:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s22)
+lsm_a22:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s23)
+lsm_a23:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s24)
+lsm_a24:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s25)
+lsm_a25:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s26)
+lsm_a26:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s27)
+lsm_a27:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s28)
+lsm_a28:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s29)
+lsm_a29:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s30)
+lsm_a30:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s31)
+lsm_a31:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s32)
+lsm_a32:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s33)
+lsm_a33:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s34)
+lsm_a34:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s35)
+lsm_a35:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s36)
+lsm_a36:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s37)
+lsm_a37:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s38)
+lsm_a38:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s39)
+lsm_a39:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s40)
+lsm_a40:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s41)
+lsm_a41:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s42)
+lsm_a42:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s43)
+lsm_a43:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s44)
+lsm_a44:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s45)
+lsm_a45:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s46)
+lsm_a46:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s47)
+lsm_a47:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s48)
+lsm_a48:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s49)
+lsm_a49:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s50)
+lsm_a50:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s51)
+lsm_a51:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s52)
+lsm_a52:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s53)
+lsm_a53:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s54)
+lsm_a54:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s55)
+lsm_a55:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s56)
+lsm_a56:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s57)
+lsm_a57:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s58)
+lsm_a58:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s59)
+lsm_a59:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s60)
+lsm_a60:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s61)
+lsm_a61:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s62)
+lsm_a62:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s63)
+lsm_a63:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_t64)
+lsm_a64:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s65)
+lsm_a65:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s66)
+lsm_a66:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s67)
+lsm_a67:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s68)
+lsm_a68:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s69)
+lsm_a69:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s70)
+lsm_a70:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s71)
+lsm_a71:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s72)
+lsm_a72:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s73)
+lsm_a73:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s74)
+lsm_a74:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s75)
+lsm_a75:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s76)
+lsm_a76:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s77)
+lsm_a77:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s78)
+lsm_a78:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s79)
+lsm_a79:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s80)
+lsm_a80:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s81)
+lsm_a81:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s82)
+lsm_a82:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s83)
+lsm_a83:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s84)
+lsm_a84:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s85)
+lsm_a85:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s86)
+lsm_a86:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s87)
+lsm_a87:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s88)
+lsm_a88:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s89)
+lsm_a89:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s90)
+lsm_a90:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s91)
+lsm_a91:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s92)
+lsm_a92:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s93)
+lsm_a93:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s94)
+lsm_a94:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s95)
+lsm_a95:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s96)
+lsm_a96:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s97)
+lsm_a97:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s98)
+lsm_a98:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s99)
+lsm_a99:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s100)
+lsm_a100:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s101)
+lsm_a101:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s102)
+lsm_a102:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s103)
+lsm_a103:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s104)
+lsm_a104:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s105)
+lsm_a105:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s106)
+lsm_a106:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s107)
+lsm_a107:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s108)
+lsm_a108:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s109)
+lsm_a109:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s110)
+lsm_a110:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s111)
+lsm_a111:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s112)
+lsm_a112:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s113)
+lsm_a113:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s114)
+lsm_a114:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s115)
+lsm_a115:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s116)
+lsm_a116:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s117)
+lsm_a117:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s118)
+lsm_a118:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s119)
+lsm_a119:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s120)
+lsm_a120:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s121)
+lsm_a121:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s122)
+lsm_a122:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s123)
+lsm_a123:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s124)
+lsm_a124:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s125)
+lsm_a125:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s126)
+lsm_a126:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s127)
+lsm_a127:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_t128)
+lsm_a128:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s129)
+lsm_a129:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s130)
+lsm_a130:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s131)
+lsm_a131:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s132)
+lsm_a132:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s133)
+lsm_a133:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s134)
+lsm_a134:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s135)
+lsm_a135:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s136)
+lsm_a136:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s137)
+lsm_a137:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s138)
+lsm_a138:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s139)
+lsm_a139:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s140)
+lsm_a140:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s141)
+lsm_a141:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s142)
+lsm_a142:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s143)
+lsm_a143:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s144)
+lsm_a144:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s145)
+lsm_a145:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s146)
+lsm_a146:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s147)
+lsm_a147:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s148)
+lsm_a148:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s149)
+lsm_a149:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s150)
+lsm_a150:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s151)
+lsm_a151:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s152)
+lsm_a152:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s153)
+lsm_a153:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s154)
+lsm_a154:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s155)
+lsm_a155:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s156)
+lsm_a156:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s157)
+lsm_a157:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s158)
+lsm_a158:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s159)
+lsm_a159:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s160)
+lsm_a160:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s161)
+lsm_a161:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s162)
+lsm_a162:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s163)
+lsm_a163:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s164)
+lsm_a164:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s165)
+lsm_a165:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s166)
+lsm_a166:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s167)
+lsm_a167:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s168)
+lsm_a168:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s169)
+lsm_a169:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s170)
+lsm_a170:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s171)
+lsm_a171:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s172)
+lsm_a172:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s173)
+lsm_a173:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s174)
+lsm_a174:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s175)
+lsm_a175:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s176)
+lsm_a176:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s177)
+lsm_a177:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s178)
+lsm_a178:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s179)
+lsm_a179:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s180)
+lsm_a180:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s181)
+lsm_a181:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s182)
+lsm_a182:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s183)
+lsm_a183:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s184)
+lsm_a184:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s185)
+lsm_a185:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s186)
+lsm_a186:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s187)
+lsm_a187:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s188)
+lsm_a188:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s189)
+lsm_a189:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s190)
+lsm_a190:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s191)
+lsm_a191:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_t192)
+lsm_a192:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s193)
+lsm_a193:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s194)
+lsm_a194:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s195)
+lsm_a195:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s196)
+lsm_a196:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s197)
+lsm_a197:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s198)
+lsm_a198:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s199)
+lsm_a199:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s200)
+lsm_a200:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s201)
+lsm_a201:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s202)
+lsm_a202:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s203)
+lsm_a203:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s204)
+lsm_a204:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s205)
+lsm_a205:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s206)
+lsm_a206:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s207)
+lsm_a207:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s208)
+lsm_a208:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s209)
+lsm_a209:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s210)
+lsm_a210:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s211)
+lsm_a211:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s212)
+lsm_a212:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s213)
+lsm_a213:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s214)
+lsm_a214:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s215)
+lsm_a215:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s216)
+lsm_a216:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s217)
+lsm_a217:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s218)
+lsm_a218:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s219)
+lsm_a219:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s220)
+lsm_a220:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s221)
+lsm_a221:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s222)
+lsm_a222:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s223)
+lsm_a223:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s224)
+lsm_a224:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s225)
+lsm_a225:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s226)
+lsm_a226:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s227)
+lsm_a227:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s228)
+lsm_a228:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s229)
+lsm_a229:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s230)
+lsm_a230:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s231)
+lsm_a231:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s232)
+lsm_a232:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s233)
+lsm_a233:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s234)
+lsm_a234:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s235)
+lsm_a235:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s236)
+lsm_a236:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s237)
+lsm_a237:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s238)
+lsm_a238:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s239)
+lsm_a239:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s240)
+lsm_a240:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s241)
+lsm_a241:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s242)
+lsm_a242:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s243)
+lsm_a243:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s244)
+lsm_a244:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s245)
+lsm_a245:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s246)
+lsm_a246:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s247)
+lsm_a247:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s248)
+lsm_a248:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s249)
+lsm_a249:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s250)
+lsm_a250:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s251)
+lsm_a251:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s252)
+lsm_a252:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s253)
+lsm_a253:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s254)
+lsm_a254:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_s255)
+lsm_a255:
+	bls12_381_curve_add(BLS_SM_Q, BLS_SM_P)
+	sll(r15, 1) -> r15
+	jump(lsm_done)
 lsm_done:
-	copyb(0, BLS_SM_Q) -> r10
-	copyb(0, BLS_SM_RESPTR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
+	copyb(0, [BLS_SM_RESPTR]) -> r5
+	dma_xmemcpy(r5, BLS_SM_Q) -> r5, j(96, 4)
 	copyb(0, 0) -> r10
+	copyb(0, [BLS_SM_RESPTR]) -> r11
+	copyb(0, 12) -> r12
 	pop r1
 	ret
 lsm_zero:
-	copyb(0, BLS_SM_RESPTR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [BLS_SM_RESPTR]) -> r11
 	copyb(r11, 0) -> 8[a + 0]
 	copyb(r11, 0) -> 8[a + 8]
 	copyb(r11, 0) -> 8[a + 16]
@@ -347,20 +2352,16 @@ lsm_zero:
 	pop r1
 	ret
 lsm_one:
-	copyb(0, BLS_SM_PPTR) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_SM_RESPTR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [BLS_SM_PPTR]) -> r10
+	copyb(0, [BLS_SM_RESPTR]) -> r11
 	copyb(0, 12) -> r12
 	call bn254_memcpy
 	copyb(0, 0) -> r10
 	pop r1
 	ret
 lsm_two:
-	copyb(0, BLS_SM_PPTR) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_SM_RESPTR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [BLS_SM_PPTR]) -> r10
+	copyb(0, [BLS_SM_RESPTR]) -> r11
 	call zisklib_dbl_bls12_381
 	copyb(0, 0) -> r10
 	pop r1
@@ -370,24 +2371,19 @@ lsm_two:
 ;   result = (ɣ·x, y).
 zisklib_sigma_endomorphism_bls12_381:
 	push r1
-	copyb(0, BLS_SIG_P) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_J2A_R) -> r5
-	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_SIG_P]
+	copyb(0, r11) -> [BLS_J2A_R]
 	; result.x = x · GAMMA
-	copyb(0, BLS_GAMMA) -> r11
-	copyb(0, BLS_J2A_R) -> r12
-	copyb(r12, 8[a + 0]) -> r12
-	call zisklib_mul_fp_bls12_381
+	copyb(0, r10) -> [ZBLS_CURVE_H5]
+	copyb(0, r11) -> [ZBLS_CURVE_H5 + 32]
+	arith384_mod(0, ZBLS_CURVE_H5)
 	; result.y = y
-	copyb(0, BLS_SIG_P) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	add(r11, 48) -> r5
+	add(r10, 48) -> r14
+	dma_xmemcpy(r5, r14) -> r5, j(48, 4)
 	add(r10, 48) -> r10
-	copyb(0, BLS_J2A_R) -> r11
-	copyb(r11, 8[a + 0]) -> r11
 	add(r11, 48) -> r11
 	copyb(0, 6) -> r12
-	call bn254_memcpy
 	pop r1
 	ret
 
@@ -395,13 +2391,10 @@ zisklib_sigma_endomorphism_bls12_381:
 ;   p = x‖y‖z (each 6). z==0 -> identity; else affine = (x/z², y/z³).
 zisklib_jacobian_to_affine_bls12_381:
 	push r1
-	copyb(0, BLS_J2A_P) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_J2A_R) -> r5
-	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_J2A_P]
+	copyb(0, r11) -> [BLS_J2A_R]
 	; z == 0 ? (p[12..18], byte offset 96)
-	copyb(0, r10) -> r5
-	add(r5, 96) -> r5
+	add(r10, 96) -> r5
 	copyb(r5, 8[a + 0]) -> r6
 	copyb(r5, 8[a + 8]) -> r7
 	or(r6, r7) -> r6
@@ -414,8 +2407,7 @@ zisklib_jacobian_to_affine_bls12_381:
 	copyb(r5, 8[a + 40]) -> r7
 	or(r6, r7) -> r6
 	ltu(0, r6), j(lj2a_nz)
-	copyb(0, BLS_J2A_R) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [BLS_J2A_R]) -> r11
 	copyb(r11, 0) -> 8[a + 0]
 	copyb(r11, 0) -> 8[a + 8]
 	copyb(r11, 0) -> 8[a + 16]
@@ -432,34 +2424,22 @@ zisklib_jacobian_to_affine_bls12_381:
 	ret
 lj2a_nz:
 	; zinv = inv_fp(z)
-	copyb(0, BLS_J2A_P) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 96) -> r10
+	add([BLS_J2A_P], 96) -> r10
 	copyb(0, BLS_J2A_ZINV) -> r11
 	call zisklib_inv_fp_bls12_381
-	copyb(0, BLS_J2A_ZINV) -> r10
-	copyb(0, BLS_J2A_ZSQ) -> r11
-	call zisklib_square_fp_bls12_381
+	arith384_mod(0, ZBLS_CURVE_H6)
 	; result.x = x · zsq
-	copyb(0, BLS_J2A_P) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_J2A_ZSQ) -> r11
-	copyb(0, BLS_J2A_R) -> r12
-	copyb(r12, 8[a + 0]) -> r12
-	call zisklib_mul_fp_bls12_381
+	copyb(0, [BLS_J2A_P]) -> [ZBLS_CURVE_H7]
+	copyb(0, [BLS_J2A_R]) -> [ZBLS_CURVE_H7 + 32]
+	arith384_mod(0, ZBLS_CURVE_H7)
 	; t = y · zsq
-	copyb(0, BLS_J2A_P) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 48) -> r10
-	copyb(0, BLS_J2A_ZSQ) -> r11
-	copyb(0, BLS_J2A_T) -> r12
-	call zisklib_mul_fp_bls12_381
+	add([BLS_J2A_P], 48) -> [ZBLS_CURVE_H8]
+	arith384_mod(0, ZBLS_CURVE_H8)
 	; result.y = t · zinv
+	add([BLS_J2A_R], 48) -> [ZBLS_CURVE_H9 + 32]
+	arith384_mod(0, ZBLS_CURVE_H9)
 	copyb(0, BLS_J2A_T) -> r10
 	copyb(0, BLS_J2A_ZINV) -> r11
-	copyb(0, BLS_J2A_R) -> r12
-	copyb(r12, 8[a + 0]) -> r12
-	add(r12, 48) -> r12
-	call zisklib_mul_fp_bls12_381
+	add([BLS_J2A_R], 48) -> r12
 	pop r1
 	ret
