@@ -46,11 +46,10 @@ fn cpu_packed(inputs: &[KeccakfInput]) -> Vec<u64> {
 
 #[test]
 fn gpu_matches_cpu_packed_trace() {
-    if KeccakfKernel::available() {
-        // A geometry drift in the .cu shows up here rather than as a wrong proof.
-        assert_eq!(KeccakfKernel::row_words(), Row::PACKED_WORDS);
-        assert_eq!(KeccakfKernel::out_words(OPS_PER_SLOT), CLOCKS * Row::PACKED_WORDS);
-    }
+    // A geometry drift in the .cu shows up here rather than as a wrong proof. Host-only
+    // calls, so they run without a device too.
+    assert_eq!(KeccakfKernel::row_words(), Row::PACKED_WORDS);
+    assert_eq!(KeccakfKernel::out_words(OPS_PER_SLOT), CLOCKS * Row::PACKED_WORDS);
     zisk_gpu_witness::assert_matches_cpu::<KeccakfKernel, _>(
         DEFAULT_COMPARE_COUNTS,
         random_inputs,

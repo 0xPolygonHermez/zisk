@@ -180,7 +180,7 @@ impl BackendProverOpts {
         options.std_owned_tables(FROPS_TABLE_IDS.to_vec());
 
         // Airs whose witness a GPU kernel writes on the device, deleting their
-        // per-instance trace upload (Keccakf: ~816 MiB packed at 2^21 rows). On by
+        // per-instance trace upload (Keccakf: 912 MiB packed at 2^21 rows). On by
         // default; ZISK_GPU_WITNESS=0 takes the host path, which is the only way
         // back if a kernel ever disagrees with the CPU.
         //

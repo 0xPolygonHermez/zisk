@@ -243,7 +243,8 @@ __global__ __launch_bounds__(256) void keccakf_witness_kernel(
     // (498 -> 115 GB/s: 8 useful bytes per 128-byte line) and cannot be coalesced here -- the
     // algorithm is slot-parallel, so neighbouring warp lanes own rows CLOCKS apart. The commit
     // transposes instead, where one thread per row makes both sides coalesce.
-    uint64_t* const slot_out = out + (size_t)slot * CLOCKS * ROW_WORDS;
+    // Lanes past the last slot never store (`owns`), but still need an in-bounds base.
+    uint64_t* const slot_out = out + (size_t)(in_range ? slot : 0) * CLOCKS * ROW_WORDS;
     auto row_at = [&](int clock) { return slot_out + (size_t)clock * ROW_WORDS; };
     // The pair splits a slot's rows: the A lane writes even group-rows, the B lane odd ones.
     auto owns = [&](int k) { return in_range && (((k & 1) == 0) == is_a); };
