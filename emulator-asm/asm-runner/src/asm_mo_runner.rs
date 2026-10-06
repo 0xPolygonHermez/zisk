@@ -83,7 +83,8 @@ fn setup_gpu_count_and_plan(gpu_buffer: GpuBufferSource) -> Option<GpuCountAndPl
     let gpu_count_and_plan = GpuCountAndPlan::new();
     // SAFETY: `d_buf` is either null (self-allocated) or a device buffer of
     // `bytes` bytes borrowed from the prover, which outlives this planner.
-    if !unsafe { gpu_count_and_plan.setup(d_buf, bytes, 1, 0, gpu_id) } {
+    if !unsafe { gpu_count_and_plan.setup(d_buf, bytes, 1, 0, gpu_id, device_mem_rows_retained()) }
+    {
         tracing::error!("[gpu] GpuCountAndPlan::setup returned false; falling back to CPU");
         return None;
     }
@@ -338,6 +339,25 @@ pub fn device_mem_witness_requested() -> bool {
     matches!(std::env::var("ZISK_MEM_GPU_FILL").as_deref(), Ok("arena") | Ok("slot"))
 }
 
+/// Whether the planner must retain the accesses and MemAlign records: any device fill mode,
+/// including the check against the CPU witness.
+pub fn device_mem_rows_retained() -> bool {
+    matches!(
+        std::env::var("ZISK_MEM_GPU_FILL").as_deref(),
+        Ok("arena-check") | Ok("arena") | Ok("slot")
+    )
+}
+
+/// Whether the memory-ops emulator runs in its light form (no values, no steps): the default
+/// unless a device fill mode needs them; `ZISK_MOPS_LIGHT=1`/`0` forces either.
+pub fn mops_light() -> bool {
+    match std::env::var("ZISK_MOPS_LIGHT").as_deref() {
+        Ok("1") => true,
+        Ok("0") => false,
+        _ => !device_mem_rows_retained(),
+    }
+}
+
 /// Releases the arena a slot-mode block still holds (its memory instances were not all
 /// committed) and clears the device flags: the proof's end.
 pub fn device_mem_witness_end() {
@@ -425,7 +445,7 @@ impl AsmRunnerMO {
         zisk_sm_mem_planner::clear_gpu_ram_witness();
         zisk_common::MEM_ROWS_ON_DEVICE.store(0, Ordering::Release);
         static LIGHT_ARENA_WARNED: std::sync::Once = std::sync::Once::new();
-        if std::env::var("ZISK_MOPS_LIGHT").as_deref() == Ok("1")
+        if mops_light()
             && std::env::var("ZISK_MEM_GPU_FILL").map(|v| v.starts_with("arena")).unwrap_or(false)
         {
             LIGHT_ARENA_WARNED.call_once(|| {

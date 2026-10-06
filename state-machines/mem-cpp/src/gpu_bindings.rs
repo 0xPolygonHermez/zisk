@@ -137,6 +137,7 @@ extern "C" {
         worker_id: u32,
         gpu_id: i32,
         instance_rows: *const u32,
+        retain_rows: bool,
     ) -> bool;
     /// `words`: the chunk's memory-ops stream, `n_words` tagged 8-byte words.
     pub fn count_and_plan_add_chunk(

@@ -1273,8 +1273,9 @@ CountAndPlan::~CountAndPlan() { free_all_bound_(); }
 
 bool CountAndPlan::setup(void* d_buf, size_t bytes,
                          uint32_t n_workers, uint32_t worker_id,
-                         int gpu_id, const uint32_t instance_rows[3]) {
+                         int gpu_id, const uint32_t instance_rows[3], bool retain_rows) {
     free_all_bound_();
+    retain_rows_ = retain_rows;
 
     if (n_workers == 0 || worker_id >= n_workers) {
         fprintf(stderr,
@@ -1499,7 +1500,9 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
             if (v >= 0) align_mb = (size_t)v;
         }
         const size_t align_bytes = (align_mb << 20) & ~(size_t)255;
-        if (align_bytes > 0 && top_bytes_ > cursor_ + align_bytes + ((size_t)1 << 30)) {
+        if (!retain_rows_) {
+            // CPU witness: no records are kept, the whole dynamic region is the ops pool.
+        } else if (align_bytes > 0 && top_bytes_ > cursor_ + align_bytes + ((size_t)1 << 30)) {
             top_bytes_ -= align_bytes;
             d_align_    = (AlignRecord*)(arena_ + top_bytes_);
             align_cap_  = align_bytes / sizeof(AlignRecord);
@@ -1511,7 +1514,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     d_ops_pool_          = (uint32_t*)(arena_ + cursor_);
     d_ops_pool_cap_u32_  = (top_bytes_ - cursor_) / 4;
     d_ops_pool_used_u32_ = 0;
-    ram_retention_enabled_.store(top_bytes_ > cursor_, std::memory_order_relaxed);
+    ram_retention_enabled_.store(retain_rows_ && top_bytes_ > cursor_, std::memory_order_relaxed);
     piece_potentials_ = MAX_POT_PER_PIECE;
     if (const char* e = std::getenv("ZISK_MOPS_PIECE_POTENTIALS")) {   // test knob: force small pieces
         const long v = std::atol(e);
@@ -2083,7 +2086,7 @@ void CountAndPlan::reset() {
     preprocessed_           = false;
     prepared_               = false;
     ram_cursor_.store(0, std::memory_order_relaxed);
-    ram_retention_enabled_.store(top_bytes_ > cursor_, std::memory_order_relaxed);
+    ram_retention_enabled_.store(retain_rows_ && top_bytes_ > cursor_, std::memory_order_relaxed);
     ram_prepared_           = false;
     ram_tables_ready_       = false;
     ram_results_.clear();
@@ -2107,7 +2110,7 @@ void CountAndPlan::reset() {
     d_align_order_          = nullptr;
     align_runs_.clear();
     align_slot_.store(0, std::memory_order_relaxed);
-    align_enabled_.store(d_align_ != nullptr && top_bytes_ > cursor_, std::memory_order_relaxed);
+    align_enabled_.store(retain_rows_ && d_align_ != nullptr && top_bytes_ > cursor_, std::memory_order_relaxed);
     if (d_align_cursor_)             CUDA_CHECK(cudaMemset(d_align_cursor_, 0, 4));
     if (d_align_overflow_)           CUDA_CHECK(cudaMemset(d_align_overflow_, 0, 4));
     other_total_            = 0;
