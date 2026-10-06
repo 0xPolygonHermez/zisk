@@ -16,4 +16,6 @@ pub use core::*;
 pub(crate) use core::{INPUT_INITIAL_OFFSET, INPUT_POS};
 
 // Add hints-specific modules that only exist in ziskos-hints
+/// Per-precompile hint handlers: decode a precompile's hint data and compute
+/// the values fed back to the emulator.
 pub mod handlers;

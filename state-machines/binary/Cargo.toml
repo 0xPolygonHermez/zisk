@@ -1,30 +1,43 @@
 [package]
-name = "sm-binary"
+name = "zisk-sm-binary"
+description = "Binary operations state machine for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [[bin]]
-name = "binary_basic_frops_fixed_gen"
+name = "zisk-binary-basic-frops-fixed-gen"
 path = "src/binary_basic_frops_fixed_gen.rs"
 
 [[bin]]
-name = "binary_extension_frops_fixed_gen"
+name = "zisk-binary-extension-frops-fixed-gen"
 path = "src/binary_extension_frops_fixed_gen.rs"
 
 [dependencies]
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
-sm-frequent-ops = { workspace = true }
+zisk-sm-frequent-ops = { workspace = true }
 
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 proofman-common = { workspace = true }
-pil-std-lib = { workspace = true }
+pil2-std-lib = { workspace = true }
 
 tracing = { workspace = true }
 rayon = { workspace = true }
 static_assertions = { workspace = true }
+
+[features]
+default = []
+# Cross-checks the FROPS multiplicity column the state-machine collectors build
+# against an independent reference for the same execution: the ROM-histogram
+# assembly's column on the ASM path, a Rust replay of the minimal traces on the
+# emulated one. A development aid, off by default -- compiling it out removes its
+# table, the extra replay, and the per-operation branch that feeds it. See
+# `zisk_core::frops`.
+debug_frops = ["zisk-core/debug_frops"]

@@ -3,8 +3,8 @@
 
 use std::collections::HashMap;
 
-use sm_arith::ArithFrops;
-use sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
+use zisk_sm_arith::ArithFrops;
+use zisk_sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
 
 use crate::ops::FropsTable;
 

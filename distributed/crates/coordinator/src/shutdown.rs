@@ -33,11 +33,13 @@ pub struct ShutdownHandler {
 }
 
 impl ShutdownHandler {
+    /// Register SIGTERM/SIGINT handlers and return a shutdown handler.
     pub fn new() -> io::Result<Self> {
         let signals = Signals::new([signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT])?;
         Ok(Self { signals })
     }
 
+    /// Resolve when a SIGTERM or SIGINT signal is received.
     pub async fn wait_for_shutdown(&mut self) {
         while let Some(signal) = self.signals.next().await {
             match signal {

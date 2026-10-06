@@ -10,13 +10,17 @@
 use std::sync::Arc;
 
 use crate::{
-    BinaryAddInstance, BinaryAddSM, BinaryBasicInstance, BinaryBasicSM, BinaryCounter,
-    BinaryExtensionInstance, BinaryExtensionSM, BinaryPlanner,
+    BinaryAddHiInstance, BinaryAddHiSM, BinaryAddInstance, BinaryAddSM, BinaryBasicInstance,
+    BinaryBasicSM, BinaryCounter, BinaryExtensionInstance, BinaryExtensionSM, BinaryPlanner,
 };
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
+use proofman_fields::PrimeField64;
 use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Planner};
-use zisk_pil::{BinaryAddTrace, BinaryExtensionTrace, BinaryTrace};
+use zisk_pil::{
+    BinaryAddHiHugeTrace, BinaryAddHiLargeTrace, BinaryAddHiTrace, BinaryAddHugeTrace,
+    BinaryAddLargeTrace, BinaryAddTrace, BinaryExtensionLargeTrace, BinaryExtensionTrace,
+    BinaryHugeTrace, BinaryLargeTrace, BinaryTrace,
+};
 
 /// The `BinarySM` struct represents the Binary State Machine,
 /// managing basic, extension and specific add binary operations.
@@ -31,6 +35,9 @@ pub struct BinarySM<F: PrimeField64> {
     /// Binary Add state machine (optimal only for addition)
     binary_add_sm: Arc<BinaryAddSM<F>>,
 
+    /// Binary Add Hi state machine (packs the additions that fit in the low 32-bit limb)
+    binary_add_hi_sm: Arc<BinaryAddHiSM<F>>,
+
     std: Arc<Std<F>>,
 }
 
@@ -43,13 +50,21 @@ impl<F: PrimeField64> BinarySM<F> {
     /// # Returns
     /// An `Arc`-wrapped instance of `BinarySM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let binary_basic_sm = BinaryBasicSM::new(std.clone());
+        let binary_basic_sm = BinaryBasicSM::new();
 
-        let binary_extension_sm = BinaryExtensionSM::new(std.clone());
+        let binary_extension_sm = BinaryExtensionSM::new();
 
-        let binary_add_sm = BinaryAddSM::new(std.clone());
+        let binary_add_sm = BinaryAddSM::new();
 
-        Arc::new(Self { binary_basic_sm, binary_extension_sm, binary_add_sm, std })
+        let binary_add_hi_sm = BinaryAddHiSM::new();
+
+        Arc::new(Self {
+            binary_basic_sm,
+            binary_extension_sm,
+            binary_add_sm,
+            binary_add_hi_sm,
+            std,
+        })
     }
 }
 
@@ -73,21 +88,37 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
     ///
     /// # Returns
     /// A boxed implementation of `Instance` for binary operations.
+    /// The three sizes of an air share one instance type, which picks the trace — and with it the
+    /// row layout and the air id — from `ictx.plan.air_id`. Every air the planner can open must be
+    /// listed here, or the plan names an air nothing knows how to build.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            BinaryTrace::<()>::AIR_ID => Box::new(BinaryBasicInstance::new(
+            BinaryTrace::<()>::AIR_ID
+            | BinaryLargeTrace::<()>::AIR_ID
+            | BinaryHugeTrace::<()>::AIR_ID => Box::new(BinaryBasicInstance::new(
                 self.binary_basic_sm.clone(),
                 ictx,
                 self.std.clone(),
             )),
-            BinaryExtensionTrace::<()>::AIR_ID => Box::new(BinaryExtensionInstance::new(
-                self.binary_extension_sm.clone(),
+            BinaryExtensionTrace::<()>::AIR_ID | BinaryExtensionLargeTrace::<()>::AIR_ID => {
+                Box::new(BinaryExtensionInstance::new(
+                    self.binary_extension_sm.clone(),
+                    ictx,
+                    self.std.clone(),
+                ))
+            }
+            BinaryAddTrace::<()>::AIR_ID
+            | BinaryAddLargeTrace::<()>::AIR_ID
+            | BinaryAddHugeTrace::<()>::AIR_ID => {
+                Box::new(BinaryAddInstance::new(self.binary_add_sm.clone(), ictx, self.std.clone()))
+            }
+            BinaryAddHiTrace::<()>::AIR_ID
+            | BinaryAddHiLargeTrace::<()>::AIR_ID
+            | BinaryAddHiHugeTrace::<()>::AIR_ID => Box::new(BinaryAddHiInstance::new(
+                self.binary_add_hi_sm.clone(),
                 ictx,
                 self.std.clone(),
             )),
-            BinaryAddTrace::<()>::AIR_ID => {
-                Box::new(BinaryAddInstance::new(self.binary_add_sm.clone(), ictx, self.std.clone()))
-            }
             _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }
     }

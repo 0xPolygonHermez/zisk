@@ -3,9 +3,9 @@
 //! The input parameter is the contents (bytes) of an ELF RISC-V file.
 //! Optionally, the Zisk ROM can also be saved in x86-64 NASM assembly format.
 
-use transpilers_common::{elf2rom, elf2romfile};
 use zisk_core::AsmGenerationMethod;
 use zisk_core::ZiskRom;
+use zisk_transpiler_common::{elf2rom, elf2romfile};
 
 use std::{error::Error, path::PathBuf};
 

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::ZiskPaths;
 
-use fields::Goldilocks;
+use proofman_fields::Goldilocks;
 
 use proofman::{check_setup_snark, ProofMan};
 use zisk_prover_backend::setup_logger;

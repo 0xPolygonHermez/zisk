@@ -5,13 +5,13 @@ use std::{
 
 use zisk_core::zisk_ops::ZiskOp;
 
-struct OpIndirectTable {
-    base_count: usize,
+pub(super) struct OpIndirectTable {
+    pub(super) base_count: usize,
     precompiled_count: usize,
-    table: [Option<(usize, u64)>; 256],
+    pub(super) table: [Option<(usize, u64)>; 256],
 }
 
-static TABLE: LazyLock<OpIndirectTable> = LazyLock::new(|| {
+pub(super) static TABLE: LazyLock<OpIndirectTable> = LazyLock::new(|| {
     let mut table: [Option<(usize, u64)>; 256] = [None; 256];
     let mut base_count = 0;
     let mut precompiled_count = 0;
@@ -93,21 +93,35 @@ impl OpsCosts {
     }
 
     pub fn add_fixed_cost_op(&mut self, op_code: u8) {
-        if let Some((index, fixed_cost)) = TABLE.table[op_code as usize] {
-            // PubOut has a fixed cost of 0 but must still be counted, so that the
-            // aggregate counts (total_count()) stay consistent with the per-opcode
-            // count_and_cost table below.
-            let counted = fixed_cost > 0 || op_code == ZiskOp::PubOut.code();
+        match TABLE.table[op_code as usize] {
+            Some((_, fixed_cost)) => self.add_cost_op(op_code, fixed_cost),
+            None => panic!("Invalid op code: {}", op_code),
+        }
+    }
+
+    /// Accounts one execution of `op_code` charging an explicit `cost` instead of the opcode's
+    /// tabulated fixed cost. Used for cheaper opcode variants (e.g. an add_hi ADD charged at
+    /// `BINARY_ADD_HI_COST`), so the per-opcode and aggregate costs reflect the reduced cost.
+    pub fn add_cost_op(&mut self, op_code: u8, cost: u64) {
+        if let Some((index, _)) = TABLE.table[op_code as usize] {
+            // Some opcodes have a cost of 0 but must still be counted, so that the aggregate counts
+            // (total_count()) stay consistent with the per-opcode count_and_cost table below and
+            // they remain visible in the report: PubOut and the free-input calls (fcall*).
+            let counted = cost > 0
+                || op_code == ZiskOp::PUBOUT
+                || op_code == ZiskOp::FCALL
+                || op_code == ZiskOp::FCALL_GET
+                || op_code == ZiskOp::FCALL_PARAM;
             if counted && !self.is_compact() {
                 self.count_and_cost[index].0 += 1;
-                self.count_and_cost[index].1 += fixed_cost;
+                self.count_and_cost[index].1 += cost;
             }
             if counted {
                 if index >= TABLE.base_count {
-                    self.precompiled_cost += fixed_cost;
+                    self.precompiled_cost += cost;
                     self.precompiled_count += 1;
                 } else {
-                    self.base_cost += fixed_cost;
+                    self.base_cost += cost;
                     self.base_count += 1;
                 }
             }
@@ -324,79 +338,6 @@ impl Sub for OpsCosts {
         result.precompiled_cost = self.precompiled_cost - other.precompiled_cost;
         result.base_count = self.base_count - other.base_count;
         result.precompiled_count = self.precompiled_count - other.precompiled_count;
-        result
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct OpsCount<const N: usize> {
-    count: Vec<[u64; N]>,
-}
-
-impl<const N: usize> Default for OpsCount<N> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<const N: usize> OpsCount<N> {
-    pub fn new() -> Self {
-        Self { count: Vec::new() }
-    }
-    pub fn inc(&mut self, op_code: u8, category: usize) {
-        if self.count.is_empty() {
-            self.count = vec![[0; N]; TABLE.base_count];
-        }
-        if let Some((index, _t)) = TABLE.table[op_code as usize] {
-            self.count[index][category] += 1;
-        }
-    }
-    pub fn get_by_opcode(&self, op_code: u8) -> Option<&[u64; N]> {
-        if let Some((index, _t)) = TABLE.table[op_code as usize] {
-            self.count.get(index)
-        } else {
-            None
-        }
-    }
-}
-
-impl<const N: usize> Add for OpsCount<N> {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self {
-        let mut result = Self::new();
-        if result.count.is_empty() {
-            result.count = vec![[0; N]; TABLE.base_count];
-        }
-        for i in 0..result.count.len() {
-            for j in 0..N {
-                result.count[i][j] = self.count[i][j] + other.count[i][j];
-            }
-        }
-        result
-    }
-}
-
-impl<const N: usize> AddAssign for OpsCount<N> {
-    fn add_assign(&mut self, other: Self) {
-        for i in 0..self.count.len() {
-            for j in 0..N {
-                self.count[i][j] += other.count[i][j];
-            }
-        }
-    }
-}
-
-impl<const N: usize> Sub for OpsCount<N> {
-    type Output = Self;
-
-    fn sub(self, other: Self) -> Self {
-        let mut result = Self::new();
-        for i in 0..result.count.len() {
-            for j in 0..N {
-                result.count[i][j] = self.count[i][j] - other.count[i][j];
-            }
-        }
         result
     }
 }

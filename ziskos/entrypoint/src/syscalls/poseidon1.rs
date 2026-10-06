@@ -7,7 +7,7 @@ use core::arch::asm;
 use crate::ziskos_syscall;
 
 #[cfg(not(zisk_guest))]
-use fields::{poseidon1_hash, Goldilocks, Poseidon1_16, PrimeField64};
+use proofman_fields::{poseidon1_hash, Goldilocks, Poseidon1_16, PrimeField64};
 
 /// Executes the Poseidon1 permutation on the given state.
 ///

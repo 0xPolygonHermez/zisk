@@ -37,6 +37,8 @@ pub enum GpuBufferSource {
         ptr: usize,
         /// Buffer size in bytes.
         size: usize,
+        /// Device the buffer lives on (proofman's my_gpu_ids[0]); not always 0.
+        gpu_id: u32,
     },
     /// The buffer is allocated and owned by the runner.
     SelfAllocated,

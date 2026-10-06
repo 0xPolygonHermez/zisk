@@ -5,18 +5,19 @@
 use std::collections::VecDeque;
 
 use crate::{pub_outs_collector::PubOutsCollector, BuiltinCounters, PrecompileCounters};
-use data_bus::DataBusTrait;
-use fields::PrimeField64;
-use mem_common::MemCounters;
-use precomp_dma::DmaCounterInputGen;
-use precompiles_common::MemCounterProcessor;
-use sm_arith::ArithCounterInputGen;
-use sm_binary::BinaryCounter;
+use proofman_fields::PrimeField64;
+use zisk_common::DataBusTrait;
 use zisk_common::{BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{
     MemDataSection, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, DMA_OP_TYPE_ID,
-    PUB_OUT_OP_TYPE_ID,
+    EVM_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID,
 };
+use zisk_precomp_common::MemCounterProcessor;
+use zisk_precomp_dma::DmaCounterInputGen;
+use zisk_precomp_evm::JumpDestCounterInputGen;
+use zisk_sm_arith::ArithCounterInputGen;
+use zisk_sm_binary::BinaryCounter;
+use zisk_sm_mem_common::MemCounters;
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
 ///
@@ -46,6 +47,9 @@ pub struct StaticDataBus<D, F: PrimeField64> {
     /// DMA operation counter.
     dma_counter: (usize, DmaCounterInputGen),
 
+    /// EVM `jump_dest` counter.
+    jump_dest_counter: (usize, JumpDestCounterInputGen),
+
     /// Precompile operation counters.
     precompiles: PrecompileCounters<F>,
 
@@ -67,6 +71,7 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
             arith_counter: builtins.arith,
             binary_counter: builtins.binary,
             dma_counter: builtins.dma,
+            jump_dest_counter: builtins.jump_dest,
             precompiles,
             pending_transfers: VecDeque::new(),
         }
@@ -125,6 +130,12 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
                     data_ext,
                     &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
+                EVM_OP_TYPE_ID => self.jump_dest_counter.1.process_data(
+                    &bus_id,
+                    data,
+                    data_ext,
+                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
+                ),
                 op => self.precompiles.dispatch_op(op, &bus_id, data, self.mem_counter.1.as_mut()),
             },
             _ => true,
@@ -168,6 +179,7 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>
         ];
         counters.extend(self.precompiles.into_device_entries());
         counters.push((self.dma_counter.0, Box::new(self.dma_counter.1)));
+        counters.push((self.jump_dest_counter.0, Box::new(self.jump_dest_counter.1)));
 
         if let Some(mem_counter) = self.mem_counter.1 {
             counters.insert(0, (self.mem_counter.0, Box::new(mem_counter)));

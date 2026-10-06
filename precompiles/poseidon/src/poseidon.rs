@@ -1,17 +1,17 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
-use fields::{
+use proofman_fields::{
     add, matmul_external, pow7, pow7add, prodadd, Poseidon1Constants, Poseidon1_16,
     Poseidon2Constants, Poseidon2_16, PrimeField64,
 };
 use rayon::prelude::*;
 
-use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::{OperationPoseidonData, OP};
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::{PoseidonTrace, PoseidonTraceRow, PoseidonTraceRowOps};
+use zisk_pil::{PoseidonTraceRowOps, ZISK_AIRGROUP_ID};
 
 /// Per-operation input record assembled from the bus payload.
 ///
@@ -41,27 +41,18 @@ impl PoseidonInput {
 
 /// The `PoseidonSM` struct encapsulates the logic of the Poseidon State Machine,
 /// serving both the Poseidon1 and Poseidon2 hash families.
+/// Nothing here depends on the height of the air: the capacity is taken from the trace each call
+/// builds, so a taller sibling would need no change.
 pub struct PoseidonSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
-
-    /// Number of available poseidon permutations in the trace.
-    pub num_available_poseidons: usize,
-
-    range_id: usize,
+    _phantom: PhantomData<F>,
 }
 
 pub const CLOCKS: usize = 14;
 
 impl<F: PrimeField64> PoseidonSM<F> {
     /// Creates a new Poseidon State Machine instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Compute some useful values
-        let num_available_poseidons = PoseidonTrace::<PoseidonTraceRow<F>>::NUM_ROWS / CLOCKS - 1;
-
-        let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
-
-        Arc::new(Self { std, num_available_poseidons, range_id })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: PhantomData })
     }
 
     /// Processes a slice of operation data, updating the trace and multiplicities.
@@ -70,16 +61,12 @@ impl<F: PrimeField64> PoseidonSM<F> {
     /// * `trace` - A mutable reference to the Poseidon trace.
     /// * `input` - The operation data to process.
     /// * `is_active` - Whether the rows belong to a real operation (`in_use` set).
-    /// * `range_checks` - U16 multiplicities for the chunk limbs; only touched when
-    ///   `is_active` (the PIL range check is gated by `mem_sel`, which is zero on
-    ///   padding rows).
     #[inline(always)]
     pub fn process_input<R: PoseidonTraceRowOps<F>>(
         &self,
         trace: &mut [R],
         input: &PoseidonInput,
         is_active: bool,
-        range_checks: &mut [u32],
     ) {
         // Fill the per-clock round states for the selected hash family. Both
         // families share the 14-clock row layout (see poseidon.pil); only the
@@ -110,16 +97,6 @@ impl<F: PrimeField64> PoseidonSM<F> {
             trace[r].set_all_chunks(&chunks);
             trace[r].set_all_t_inv(&t_inv);
             trace[r].set_sel_poseidon1(sel_poseidon1);
-
-            // The chunk limbs are range-checked on the memory rows only
-            // (mem_sel = in_use on clocks 0..4 and CLOCKS-4..CLOCKS).
-            if is_active && !(4..CLOCKS - 4).contains(&r) {
-                for chunk in chunks.iter() {
-                    for &limb in chunk.iter() {
-                        range_checks[limb as usize] += 1;
-                    }
-                }
-            }
         }
 
         if !is_active {
@@ -312,15 +289,27 @@ impl<F: PrimeField64> PoseidonSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: PoseidonTraceRowOps<F>>(
+    /// The air is selected by the `NUM_ROWS` / `AIR_ID` consts of the trace this builds, so one
+    /// body serves every height the air is instantiated at.
+    pub fn compute_witness<
+        R: PoseidonTraceRowOps<F>,
+        const NUM_ROWS: usize,
+        const AIR_ID: usize,
+    >(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<PoseidonInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut poseidon2_trace = PoseidonTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
+        let mut poseidon2_trace =
+            GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec_zeroes(
+                trace_buffer,
+            )?;
         let num_rows = poseidon2_trace.num_rows();
-        let num_available_poseidons = self.num_available_poseidons;
+        // Capacity of the air this call builds, taken from `NUM_ROWS`: deriving it from a
+        // fixed trace alias instead is what breaks the moment the air gains a taller
+        // sibling, since the instance would be measured against the short air's capacity.
+        let num_available_poseidons = NUM_ROWS / CLOCKS - 1;
 
         // Check that we can fit all the poseidons in the trace
         let num_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
@@ -331,7 +320,7 @@ impl<F: PrimeField64> PoseidonSM<F> {
         } else {
             panic!(
                 "Exceeded available Poseidon inputs: requested {}, but only {} are available.",
-                num_inputs, self.num_available_poseidons
+                num_inputs, num_available_poseidons
             );
         };
 
@@ -355,30 +344,12 @@ impl<F: PrimeField64> PoseidonSM<F> {
             }
         }
 
-        // Fill the trace and collect the U16 range checks of the chunk limbs
-        let range_checks: Vec<u32> = par_traces
-            .into_par_iter()
-            .enumerate()
-            .fold(
-                || vec![0u32; 1 << 16],
-                |mut range_checks, (index, trace)| {
-                    let input_index = inputs_indexes[index];
-                    let input = &inputs[input_index.0][input_index.1];
-                    self.process_input::<R>(trace, input, true, &mut range_checks);
-                    range_checks
-                },
-            )
-            .reduce(
-                || vec![0u32; 1 << 16],
-                |mut acc, other| {
-                    for (a, b) in acc.iter_mut().zip(other) {
-                        *a += b;
-                    }
-                    acc
-                },
-            );
-
-        self.std.range_check_ranged(self.range_id, None, &range_checks);
+        // Fill the trace
+        par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
+            let input_index = inputs_indexes[index];
+            let input = &inputs[input_index.0][input_index.1];
+            self.process_input::<R>(trace, input, true);
+        });
 
         timer_stop_and_log_trace!(POSEIDON_TRACE);
 
@@ -399,7 +370,6 @@ impl<F: PrimeField64> PoseidonSM<F> {
                 first,
                 &PoseidonInput { state: [0; 16], step_main: 0, addr_main: 0, is_poseidon1: false },
                 false,
-                &mut [],
             );
 
             rest.par_iter_mut().for_each(|chunk| {

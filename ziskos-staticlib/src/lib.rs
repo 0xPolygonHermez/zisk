@@ -1,6 +1,4 @@
 #![cfg_attr(zisk_guest, no_std)]
-#![cfg_attr(zisk_guest, feature(core_intrinsics))]
-#![cfg_attr(zisk_guest, allow(internal_features))]
 
 // This crate produces libziskos.a for linking by C (or Rust) host programs.
 //
@@ -22,7 +20,9 @@
 #[cfg(all(feature = "panic-handler", zisk_guest))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
-    core::intrinsics::abort()
+    // A trap: `unimp` is what the unstable core::intrinsics::abort lowered to; nightly
+    // has since renamed that intrinsic, and the inline asm builds on any toolchain.
+    unsafe { core::arch::asm!("unimp", options(noreturn)) }
 }
 
 /// Defines a `#[no_mangle] extern "C"` wrapper that resets ziskos's bump heap and
@@ -65,7 +65,7 @@ macro_rules! wrap_export {
 
 #[cfg(zisk_guest)]
 mod exports {
-    use zkvm_interface::{
+    use zisk_zkvm_interface::{
         zkvm_blake2f_message, zkvm_blake2f_offset, zkvm_blake2f_state, zkvm_bls12_381_fp,
         zkvm_bls12_381_fp2, zkvm_bls12_381_g1_msm_pair, zkvm_bls12_381_g1_point,
         zkvm_bls12_381_g2_msm_pair, zkvm_bls12_381_g2_point, zkvm_bls12_381_pairing_pair,

@@ -1,10 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use named_sem::NamedSemaphore;
-use zisk_common::{
-    io::{StreamError, StreamProcessor, StreamSink},
-    reinterpret_vec,
-};
+use zisk_common::io::{StreamError, StreamProcessor, StreamSink};
 use zisk_core::MAX_INPUT_SIZE;
 
 use crate::{sem_input_avail_name, shmem_input_name, AsmServices, ControlShmem, ShmemWriter};
@@ -122,8 +119,13 @@ impl InputsShmemWriter {
 
 impl StreamSink for InputsShmemWriter {
     fn submit(&self, hints: &[u64]) -> Result<(), StreamError> {
-        let bytes = reinterpret_vec(hints.to_vec()).map_err(StreamError::other)?;
-        self.append_input(&bytes).map_err(StreamError::other)
+        // SAFETY: viewing `&[u64]` as `&[u8]` is always sound — `u8`'s alignment (1)
+        // divides `u64`'s and every byte is a valid `u8`. The view borrows `hints` and
+        // is only read by `append_input`, which copies into shmem; no allocation.
+        let bytes = unsafe {
+            std::slice::from_raw_parts(hints.as_ptr() as *const u8, std::mem::size_of_val(hints))
+        };
+        self.append_input(bytes).map_err(StreamError::other)
     }
 
     fn reset(&self) {

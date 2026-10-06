@@ -2,8 +2,6 @@
 //! for regular instances and table instances. It leverages operation counts and metadata
 //! to construct detailed plans for execution.
 
-use std::any::Any;
-
 use crate::{
     BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner,
     RegularCounters,
@@ -112,6 +110,10 @@ impl RegularPlanner {
 
     /// Adds a table instance to the planner.
     ///
+    /// No caller today: every ZisK table is currently a *virtual* table, planned apart from the
+    /// instances. It is kept because that is a property of the current PIL, not of the design — a
+    /// table air that is not virtual would be planned right here.
+    ///
     /// # Arguments
     /// * `table_info` - The `TableInfo` describing the table to be added.
     ///
@@ -162,7 +164,7 @@ impl Planner for RegularPlanner {
             let plan: Vec<_> = plan(&count[idx], instance.num_ops as u64)
                 .into_iter()
                 .map(|(check_point, collect_info)| {
-                    let converted: Box<dyn Any> = Box::new(collect_info);
+                    let converted = Box::new(collect_info);
                     Plan::new(
                         instance.airgroup_id,
                         instance.air_id,

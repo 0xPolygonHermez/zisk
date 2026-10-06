@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use num_bigint::BigInt;
 
-use precompiles_helpers::{bigint_from_u64s, bigint_to_24_chunks, bigint_to_6_u64};
+use zisk_precomp_helpers::{bigint_from_u64s, bigint_to_24_chunks, bigint_to_6_u64};
 
 use super::ArithEq384Data;
 use crate::{equations, ARITH_EQ_384_CHUNKS_DOUBLE, ARITH_EQ_384_U64S};

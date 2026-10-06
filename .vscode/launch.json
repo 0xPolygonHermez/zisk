@@ -95,14 +95,14 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'riscv2zisk'",
+            "name": "Debug executable 'zisk-transpiler-riscv'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=riscv2zisk"
+                    "--bin=zisk-transpiler-riscv"
                 ],
                 "filter": {
-                    "name": "riscv2zisk",
+                    "name": "zisk-transpiler-riscv",
                     "kind": "bin"
                 }
             },

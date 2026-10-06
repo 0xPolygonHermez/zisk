@@ -1,4 +1,4 @@
-use zkvm_interface::{
+use zisk_zkvm_interface::{
     zkvm_bn254_pairing, zkvm_bn254_pairing_pair, zkvm_status_ZKVM_EOK as ZKVM_EOK,
 };
 

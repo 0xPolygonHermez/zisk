@@ -29,14 +29,11 @@ pub fn blake2b_compress(
     let mut v = [0u64; 16];
 
     v[..8].copy_from_slice(h);
-    v[8..16].copy_from_slice(&IV);
-
-    v[12] ^= t[0];
-    v[13] ^= t[1];
-
-    if f {
-        v[14] = !v[14];
-    }
+    v[8..12].copy_from_slice(&IV[..4]);
+    v[12] = t[0] ^ IV[4];
+    v[13] = t[1] ^ IV[5];
+    v[14] = IV[6] ^ if f { u64::MAX } else { 0 };
+    v[15] = IV[7];
 
     for r in 0..rounds {
         let mut params =

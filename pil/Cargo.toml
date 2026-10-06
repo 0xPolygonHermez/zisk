@@ -1,15 +1,18 @@
 [package]
 name = "zisk-pil"
+description = "PIL2 definitions for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 serde = { workspace = true }
 serde_arrays = "0.2"

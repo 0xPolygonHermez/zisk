@@ -198,9 +198,9 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
 2. Generate fixed data:
     ```bash
-    cargo run --release --bin arith_frops_fixed_gen
-    cargo run --release --bin binary_basic_frops_fixed_gen
-    cargo run --release --bin binary_extension_frops_fixed_gen
+    cargo run --release --bin zisk-arith-frops-fixed-gen
+    cargo run --release --bin zisk-binary-basic-frops-fixed-gen
+    cargo run --release --bin zisk-binary-extension-frops-fixed-gen
     ```
 
 3. Compile ZisK PIL:
@@ -230,13 +230,18 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
         --airout pil/zisk.pilout \
         --build-dir $HOME/.zisk \
         --fixed-dir tmp/fixed \
-        --stark-structs state-machines/starkstructs.json \
+        --stark-structs setup/starkstructs.blake3.json \
+        --hash blake3 \
         --recursive
     ```
 
     This command generates the `$HOME/.zisk/provingKey` directory.
 
     Additionally, to generate the snark wrapper:
+
+    The BN128 wrap is Poseidon-only, so `setup-snark` refuses a Blake3 key. Rerun the
+    command above with `--stark-structs setup/starkstructs.poseidon.json --hash Poseidon1`
+    first.
 
     First, download the powers-of-tau file into the parent folder of `zisk`:
     ```bash

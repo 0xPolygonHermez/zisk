@@ -4,23 +4,23 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 
+use pil2_pilout::pilout_proxy::PilOutProxy;
+use pil2_stark_recurser::plonk2pil::r1cs_types::PlonkOptions;
+use pil2_stark_recurser::plonk2pil::{self, PlonkResult};
+use pil2_stark_recurser::stark2circom::stark_inputs::{
+    assign_stark_inputs, define_stark_inputs, EnableInput, StarkInputOptions,
+};
+use pil2_stark_recurser::stark2circom::{gen_stark_verifier, StarkVerifierOptions};
 use pil2_stark_setup::io::fixed_cols;
 use pil2_stark_setup::output::witness_gen::WitnessTracker;
 use pil2_stark_setup::proving_key::{bctree, recursive::compile_pil};
-use pilout::pilout_proxy::PilOutProxy;
-use stark_recurser::plonk2pil::r1cs_types::PlonkOptions;
-use stark_recurser::plonk2pil::{self, PlonkResult};
-use stark_recurser::stark2circom::stark_inputs::{
-    assign_stark_inputs, define_stark_inputs, EnableInput, StarkInputOptions,
-};
-use stark_recurser::stark2circom::{gen_stark_verifier, StarkVerifierOptions};
 
 use crate::artifacts::RecurserArtifacts;
 use crate::templates::StarkInputBlocks;
 use crate::{gen_recurser, CircomTemplates};
 
 pub struct RecurserConfig<'a> {
-    /// Where artifacts land (must differ from setup_dir).
+    /// Where artifacts land (must differ from the proving key dir).
     pub output_dir: &'a str,
     /// Content-addressed setup id. Artifacts land under
     /// `<output_dir>/provingKey/recurser/<recurser_id>/`.
@@ -131,7 +131,7 @@ pub fn gen_recurser_setup(
     tracing::info!("Compiling {}...", template);
     let compile_output = std::process::Command::new(config.circom_exec)
         .args([
-            "--O1",
+            "--O2",
             "--r1cs",
             "--prime",
             "goldilocks",
@@ -181,6 +181,8 @@ pub fn gen_recurser_setup(
         max_constraint_degree: None,
         hash_id: config.hash.to_string(),
         merge_copies: true,
+        blake3_lanes: None,
+        min_n_bits: None,
     };
     let plonk_result: PlonkResult = plonk2pil::plonk2pil(&r1cs_data, "aggregation", &plonk_opts)
         .context("plonk2pil failed in recurser setup")?;
@@ -259,7 +261,8 @@ pub fn gen_recurser_setup(
         const_path.to_str().unwrap(),
         config.vadcop_final_starkinfo_path,
         verkey_json_path.to_str().unwrap(),
-    );
+    )
+    .context("compute_const_tree failed for recurser_aggregator")?;
     let verkey_bin: Vec<u8> = const_root.iter().flat_map(|v| v.to_le_bytes()).collect();
     fs::write(artifacts.verkey_bin_path(), &verkey_bin)?;
 

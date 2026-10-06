@@ -22,10 +22,10 @@
 
 use std::path::PathBuf;
 
-use test_artifacts::ELF_DIAGNOSTIC;
 use zisk_sdk::{
     EmbeddedClientBuilder, ExecutorKind, VerifyConstraintsExtension, WitnessBuilderExt, ZiskStdin,
 };
+use zisk_test_artifacts::ELF_DIAGNOSTIC;
 
 #[tokio::test]
 #[ignore = "requires a generated proving key; run with --ignored"]

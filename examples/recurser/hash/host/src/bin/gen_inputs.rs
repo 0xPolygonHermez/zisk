@@ -3,7 +3,7 @@
 //! `[u64; 12]` via `ziskos::io::read` (bincode), so a hand-typed `inline://`
 //! wouldn't match — this dumps the exact bytes the host would write.
 //!
-//! Run: `cargo run --release -p recurser-hash-host --bin gen-inputs`
+//! Run: `cargo run --release -p recurser-hash-host --bin gen-inputs-hash`
 
 use std::error::Error;
 

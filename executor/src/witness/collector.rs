@@ -10,9 +10,8 @@
 //! 3. Executes chunks and routes data to the appropriate collectors
 
 use crossbeam::atomic::AtomicCell;
-use data_bus::DataBusTrait;
-use fields::PrimeField64;
 use proofman_common::ProofCtx;
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use std::{
     collections::HashMap,
@@ -24,14 +23,13 @@ use std::{
 };
 use tracing::error;
 use zisk_common::{
-    CheckPoint, ChunkId, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, Stats,
+    CheckPoint, ChunkId, DataBusTrait, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, Stats,
 };
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::{state::ChunkCollector, ExecutionState, StaticDataBusCollect, StaticSMBundle};
-use asm_runner::AsmRunnerRH;
 
 /// Per-instance chunk-collector slot map. Same shape as
 /// [`crate::ChunkCollectorStore::inner`].
@@ -49,7 +47,7 @@ struct WorkerCtx<'a, F: PrimeField64> {
 
     // ── Inputs ──
     zisk_rom: &'a ZiskRom,
-    min_traces: &'a [EmuTrace],
+    min_traces: &'a [Arc<EmuTrace>],
     pctx: &'a ProofCtx<F>,
 
     // ── Output sinks ──
@@ -94,8 +92,10 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         self.sm_bundle.set_rom(zisk_rom)
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
-        self.sm_bundle.set_rh_data(rh_data)
+    /// Selects where the FROPS multiplicity column comes from; see
+    /// `StaticSMBundle::set_frops_multiplicity_from_asm`.
+    pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
+        self.sm_bundle.set_frops_multiplicity_from_asm(from_asm)
     }
 
     /// Computes which chunks need to be executed for each instance.
@@ -110,7 +110,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// - `global_id_chunks[global_id]` = list of chunk_ids this instance needs
     pub fn compute_chunks_to_execute(
         &self,
-        min_traces: &[EmuTrace],
+        min_traces: &[Arc<EmuTrace>],
         secn_instances: &HashMap<usize, &dyn Instance<F>>,
     ) -> (Vec<Vec<usize>>, HashMap<usize, Vec<usize>>) {
         let mut chunks_to_execute = vec![Vec::new(); min_traces.len()];
@@ -231,6 +231,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         state: &ExecutionState<F>,
         secn_instances: HashMap<usize, &dyn Instance<F>>,
     ) -> ExecutorResult<()> {
+        let phase_start = Instant::now();
         let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
         let min_traces = min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?;
 
@@ -334,6 +335,8 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             }
         });
 
+        state.stats.add_collect_phase_wall_ms(phase_start.elapsed().as_millis() as u64);
+
         // Collect any errors from parallel execution.
         // Use unwrap_or_else to handle poisoned mutex (e.g., if a worker thread panicked).
         // We extract the data even if poisoned, then report the poisoning as an additional error.
@@ -419,8 +422,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         // Run the emulator over this chunk's traces.
         ZiskEmulator::process_emu_traces::<F, _, _>(
             ctx.zisk_rom,
-            ctx.min_traces,
-            chunk_id,
+            &ctx.min_traces[chunk_id],
             &mut data_bus,
         );
 
@@ -469,11 +471,11 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             }
         }
 
-        // Advance counters; on the last chunk for an instance, flip its
-        // witness-ready flag and record completion stats.
+        // Advance counters; on the last chunk for an instance, announce it
+        // ready and record completion stats.
         for (global_id, global_id_idx) in affected_globals {
             if ctx.n_chunks_left[global_id_idx].fetch_sub(1, Ordering::SeqCst) == 1 {
-                ctx.pctx.set_witness_ready(global_id, true);
+                ctx.pctx.announce_witness_ready(global_id);
                 Self::record_completion_stats(global_id, global_id_idx, ctx);
             }
         }

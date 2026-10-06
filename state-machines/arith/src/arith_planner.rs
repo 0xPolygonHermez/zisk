@@ -4,8 +4,6 @@
 //! It organizes execution plans for both regular instances and table instances,
 //! leveraging arithmetic operation counts and metadata to construct detailed plans.
 
-use std::any::Any;
-
 use crate::ArithCounterInputGen;
 use zisk_common::{
     plan_with_frops, BusDeviceMetrics, CheckPoint, ChunkId, InstFropsCount, InstanceInfo,
@@ -91,7 +89,7 @@ impl Planner for ArithPlanner {
             let plan: Vec<_> = plan_with_frops(&count[idx], instance.num_ops as u64)
                 .into_iter()
                 .map(|(check_point, collect_info)| {
-                    let converted: Box<dyn Any> = Box::new(collect_info);
+                    let converted = Box::new(collect_info);
                     Plan::new(
                         instance.airgroup_id,
                         instance.air_id,

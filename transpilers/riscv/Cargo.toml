@@ -1,10 +1,13 @@
 [package]
-name = "riscv"
+name = "zisk-riscv"
+description = "RISC-V instruction structures and parser for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
@@ -12,11 +15,19 @@ zisk-definitions = { workspace = true }
 zisk-core = { workspace = true }
 
 [build-dependencies]
-lib-float = { workspace = true, optional = true }
+zisk-lib-float = { workspace = true, optional = true }
 
 [features]
-default = []
-float = ["dep:lib-float", "lib-float/float"]
+# Zba is proven natively by ZisK (sh<n>add and slli.uw in the binary state machines, add.uw
+# and the .uw shift-and-adds by transpilation), so it is enabled by default like the Zbb /
+# Zbs / Zbkb extensions. Use `default-features = false` (plus `zba` for the decomposed
+# sequences) to opt out.
+default = ["zba_native"]
+float = ["dep:zisk-lib-float", "zisk-lib-float/float"]
+# Enable decoding of the RISC-V C (compressed, 16-bit) extension in the decoder
+# and transpiler. OFF by default: without it a 2-byte parcel is an illegal
+# instruction (IALIGN = 32), matching the EF RISC-V-target standard.
+compressed = []
 zba = []
 zbc = []
 zbkc = []
@@ -25,3 +36,4 @@ zba_native = []
 zbc_native = []
 zbkc_native = []
 zbkx_native = []
+zicond_native = []

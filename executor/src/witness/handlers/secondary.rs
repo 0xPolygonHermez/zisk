@@ -1,8 +1,8 @@
 //! [`SecondaryWitnessHandler`] — witness compute for non-ROM `InstanceType::Instance`
 //! secondary state machines.
 
-use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
+use proofman_fields::PrimeField64;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::state::ExecutionState;

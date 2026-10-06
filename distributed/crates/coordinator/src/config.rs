@@ -1,32 +1,45 @@
 use serde::{Deserialize, Serialize};
-use std::env;
-use std::path::PathBuf;
 use zisk_cluster_common::Environment;
 use zisk_cluster_common::LoggingConfig;
 
+/// Result alias for config operations that fail with [`anyhow::Error`].
 pub type Result<T> = std::result::Result<T, anyhow::Error>;
 
+/// Top-level coordinator configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Service identity (name, version, environment).
     pub service: ServiceConfig,
+    /// Worker-facing gRPC server settings.
     pub server: ServerConfig,
+    /// Logging configuration.
     pub logging: LoggingConfig,
+    /// Orchestration, timeout, and worker-management knobs.
     pub coordinator: CoordinatorConfig,
 }
 
+/// Worker-facing gRPC server settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServerConfig {
+    /// Bind host.
     pub host: String,
+    /// Bind port.
     pub port: u16,
-    pub proofs_dir: PathBuf,
-    pub no_save_proofs: bool,
+    /// Grace period, in seconds, for in-flight work on shutdown.
     pub shutdown_timeout_seconds: u64,
 }
 
+/// Service identity metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServiceConfig {
+    /// Human-readable service name.
     pub name: String,
+    /// Service version (defaults to the crate version).
     pub version: String,
+    /// Deployment environment.
     pub environment: Environment,
 }
 
@@ -65,6 +78,7 @@ pub struct ServiceConfig {
 /// their final state, then evicted by the monitor sweep. Set to `0` to disable
 /// retention (jobs are removed on the next sweep after they terminate).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CoordinatorConfig {
     /// Maximum number of workers that can be assigned to a single job.
     pub max_workers_per_job: u32,
@@ -78,6 +92,8 @@ pub struct CoordinatorConfig {
     pub phase2_timeout_seconds: u64,
     /// Timeout for Phase 3: Aggregate (proof aggregation). Default: 100s.
     pub phase3_timeout_seconds: u64,
+    /// Spread the phase-3 fold tree across the job's workers; false keeps it on one. Default true.
+    pub distributed_aggregation: bool,
     /// Expected interval between worker heartbeats. Default: 30s.
     pub heartbeat_interval_seconds: u64,
     /// Number of missed heartbeats before a computing worker is considered dead.
@@ -115,32 +131,23 @@ impl Config {
     const DEFAULT_BIND_HOST: &'static str = "0.0.0.0";
     const DEFAULT_HOST: &'static str = "127.0.0.1";
     const DEFAULT_PORT: u16 = 50051;
-    const DEFAULT_PROOFS_DIR: &'static str = "proofs";
 
+    /// Load the configuration from built-in defaults, an optional TOML file,
+    /// and the given argument overrides.
+    ///
+    /// Every override is optional: `None` leaves the value coming from the
+    /// config file (or the built-in default) untouched.
     pub fn load(
         config_file: Option<String>,
         port: Option<u16>,
-        proofs_dir: Option<PathBuf>,
-        no_save_proofs: bool,
         webhook_url: Option<String>,
     ) -> Result<Self> {
-        // Create proofs directory if it doesn't exist
-        if let Some(ref path) = proofs_dir {
-            if !path.exists() {
-                std::fs::create_dir_all(path)?;
-            } else if !path.is_dir() {
-                anyhow::bail!("Proofs path exists but is not a directory: {}", path.display());
-            }
-        }
-
         let mut builder = config::Config::builder()
             .set_default("service.name", "ZisK Distributed Coordinator")?
             .set_default("service.version", env!("CARGO_PKG_VERSION"))?
             .set_default("service.environment", "development")?
             .set_default("server.host", Self::DEFAULT_BIND_HOST)?
             .set_default("server.port", Self::DEFAULT_PORT)?
-            .set_default("server.proofs_dir", Self::DEFAULT_PROOFS_DIR)?
-            .set_default("server.no_save_proofs", false)?
             .set_default("server.shutdown_timeout_seconds", 30)?
             .set_default("logging.level", "info")?
             .set_default("logging.format", "pretty")?
@@ -150,6 +157,7 @@ impl Config {
             .set_default("coordinator.phase1_timeout_seconds", 300)?
             .set_default("coordinator.phase2_timeout_seconds", 600)?
             .set_default("coordinator.phase3_timeout_seconds", 100)?
+            .set_default("coordinator.distributed_aggregation", true)?
             .set_default("coordinator.heartbeat_interval_seconds", 30)?
             .set_default("coordinator.heartbeat_max_missed", 3)?
             .set_default("coordinator.job_monitor_interval_seconds", 10)?
@@ -172,24 +180,17 @@ impl Config {
             builder = builder.set_override("server.port", port)?;
         }
 
-        // Override proofs_dir if provided via function argument
-        if let Some(proofs_dir) = proofs_dir {
-            builder = builder
-                .set_override("server.proofs_dir", proofs_dir.to_string_lossy().to_string())?;
-        }
-
-        builder = builder.set_override("server.no_save_proofs", no_save_proofs)?;
-
         // Override webhook_url if provided via function argument
         if let Some(url) = webhook_url {
             builder = builder.set_override("coordinator.webhook_url", url)?;
         }
 
-        let config = builder.build()?;
+        let config: Self = builder.build()?.try_deserialize()?;
 
-        Ok(config.try_deserialize()?)
+        Ok(config)
     }
 
+    /// The default coordinator URL (`http://127.0.0.1:50051`).
     pub fn default_url() -> String {
         format!("http://{}:{}", Self::DEFAULT_HOST, Self::DEFAULT_PORT)
     }

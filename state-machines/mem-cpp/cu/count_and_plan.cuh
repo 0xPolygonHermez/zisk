@@ -77,8 +77,14 @@ public:
     // n_workers ≥ 1 splits the MAX_INSTANCES space into n_workers slices via
     // (gid % n_workers); worker_id ∈ [0, n_workers) selects this instance's slice.
     // Each CountAndPlan object computes metas for its slice only.
+    // gpu_id: device the buffer lives on (proofman's my_gpu_ids[0]); negative
+    // keeps the current device (self-allocated path).
+    // instance_rows[3]: rows per instance for {ROM, INPUT, RAM}, taken from
+    // the PIL trace sizes (RomDataTrace / InputDataTrace / MemTrace
+    // NUM_ROWS). Each must be a non-zero power of two.
     bool setup(void* d_buf, size_t bytes,
-               uint32_t n_workers, uint32_t worker_id);
+               uint32_t n_workers, uint32_t worker_id,
+               int gpu_id, const uint32_t instance_rows[3]);
 
     // Submit one chunk's memops.
     bool add_chunk(const MemOp* memops, uint32_t n);
@@ -104,6 +110,12 @@ public:
 
     const InstanceMeta* metas_data()             const { return metas_.data(); }
     uint32_t            num_active_instances()   const { return num_active_; }
+
+    // Arena usage of the CURRENT block in BYTES: fixed carve end + ops-pool cursor.
+    // Valid between run() and the next reset() (reset zeroes the pool cursor). 
+    size_t max_used_bytes() const {
+        return cursor_ + pool_cursor_u32_.load(std::memory_order_relaxed) * 4;
+    }
 
     // Per-chunk mem-align counters, valid after `run()`. Length == n_chunks().
     const ChunkCounters* align_counters_data()   const { return h_chunk_counters_per_chunk_; }
@@ -136,8 +148,7 @@ private:
     uint32_t*      d_fml_                    = nullptr;
     uint32_t*      d_result_nops_            = nullptr;
     uint32_t*      d_meta_scalars_           = nullptr;
-    uint32_t*      d_addr_offsets_           = nullptr;
-    uint32_t*      d_offset_starts_          = nullptr;
+    uint32_t*      d_inst_base_pos_          = nullptr;
     uint32_t*      d_page_starts_            = nullptr;
     uint32_t*      d_page_single_            = nullptr;
     uint32_t*      d_pages_dense_            = nullptr;
@@ -234,6 +245,7 @@ private:
 
     // ─── add_chunk concurrency (ZISK_MOPS_POOL) ───────────────────────
     int                     gpu_device_           = 0;     // captured in setup()
+    uint32_t                instance_rows_[3]     = {0, 0, 0};  // rows per instance {ROM, INPUT, RAM}, captured in setup()
     bool                    pool_enabled_         = false; // ZISK_MOPS_POOL
 
     struct ChunkJob { const MemOp* memops; uint32_t n; uint32_t c; };
@@ -251,6 +263,7 @@ private:
     // ─── Internal helpers
 
     void   free_all_();
+    void   free_all_bound_();
     void   free_pinned_();
     void   query_cub_sizes_(size_t& scan_counts_b, size_t& scan_emit_b,
                             size_t& scan_runs_b,   size_t& sort_b,

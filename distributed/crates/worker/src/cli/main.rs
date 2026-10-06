@@ -93,6 +93,11 @@ struct Cli {
     #[clap(short = 'g', long, default_value_t = false)]
     pub gpu: bool,
 
+    /// Run mops planner on CPU even when --gpu is set (fallback for GPU-planner issues)
+    #[cfg(not(feature = "cpu-only"))]
+    #[clap(long, default_value_t = false)]
+    pub cpu_mops: bool,
+
     #[clap(short = 'p', long, default_value_t = false)]
     pub plonk: bool,
 
@@ -119,6 +124,11 @@ async fn main() -> Result<()> {
     #[cfg(feature = "cpu-only")]
     let gpu = false;
 
+    #[cfg(not(feature = "cpu-only"))]
+    let cpu_mops = cli.cpu_mops;
+    #[cfg(feature = "cpu-only")]
+    let cpu_mops = false;
+
     let prover_config_dto = ProverServiceConfigDto {
         asm: cli.asm.clone(),
         emulator: cli.emulator,
@@ -135,6 +145,7 @@ async fn main() -> Result<()> {
         minimal_memory: cli.minimal_memory,
         preload_plonk: cli.preload_plonk,
         gpu,
+        cpu_mops,
         plonk: cli.plonk,
     };
 

@@ -1,4 +1,4 @@
-use zkvm_interface::{
+use zisk_zkvm_interface::{
     zkvm_blake2f, zkvm_blake2f_message, zkvm_blake2f_offset, zkvm_blake2f_state,
     zkvm_status_ZKVM_EOK as ZKVM_EOK,
 };

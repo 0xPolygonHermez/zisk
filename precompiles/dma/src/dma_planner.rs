@@ -6,7 +6,7 @@
 
 use crate::DmaStrategy;
 
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use zisk_common::{BusDeviceMetrics, ChunkId, InstanceType, Plan, Planner, SegmentId};
 use zisk_pil::ZISK_AIRGROUP_ID;
 

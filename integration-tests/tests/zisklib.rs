@@ -1,8 +1,8 @@
 use serial_test::serial;
-use test_artifacts::{
+use zisk_sdk::{run, ZiskStdin};
+use zisk_test_artifacts::{
     ELF_BIGINT, ELF_BLS12_381, ELF_BN254, ELF_SECP256K1, ELF_SECP256R1, ELF_UINT256,
 };
-use zisk_sdk::{run, ZiskStdin};
 
 // Tests share a global lock (#[serial]) because each emulation run
 // allocates several GB; running them in parallel exceeds RAM.

@@ -1,8 +1,12 @@
 use std::os::raw::c_void;
 use std::sync::Arc;
 
-use mem_common::{MemAlignCounters, MemAlignPlanner};
 use zisk_common::Plan;
+use zisk_pil::{InputDataTrace, MemTrace, RomDataTrace};
+use zisk_sm_mem_common::{
+    input_data_lanes_x_row, mem_lanes_x_row, rom_data_lanes_x_row, MemAlignCounters,
+    MemAlignPlanner,
+};
 
 use crate::gpu_bindings;
 
@@ -60,15 +64,39 @@ impl GpuCountAndPlan {
     /// # Safety
     /// `d_buf` must be null (internal allocation) or a valid device buffer of at
     /// least `bytes` bytes that outlives this planner's use of it.
+    ///
+    /// `gpu_id`: device the buffer lives on (proofman's `my_gpu_ids[0]`);
+    /// negative = keep the current device (self-allocated path).
     pub unsafe fn setup(
         &self,
         d_buf: *mut c_void,
         bytes: usize,
         n_workers: u32,
         worker_id: u32,
+        gpu_id: i32,
     ) -> bool {
+        // Rows per instance for {ROM, INPUT, RAM}, from the PIL trace sizes
+        // so the GPU planner never hardcodes them.
+        //
+        // The three airs pack `lanes_x_row` memory lanes on each row and the
+        // offsets they emit are expressed in virtual rows (one per lane), so
+        // every budget is scaled by its lane count (see
+        // [`zisk_sm_mem_common::MemLanes`]).
+        let instance_rows: [u32; 3] = [
+            (RomDataTrace::<()>::NUM_ROWS * rom_data_lanes_x_row()) as u32,
+            (InputDataTrace::<()>::NUM_ROWS * input_data_lanes_x_row()) as u32,
+            (MemTrace::<()>::NUM_ROWS * mem_lanes_x_row()) as u32,
+        ];
         unsafe {
-            gpu_bindings::count_and_plan_setup(self.inner, d_buf, bytes, n_workers, worker_id)
+            gpu_bindings::count_and_plan_setup(
+                self.inner,
+                d_buf,
+                bytes,
+                n_workers,
+                worker_id,
+                gpu_id,
+                instance_rows.as_ptr(),
+            )
         }
     }
 
@@ -76,6 +104,12 @@ impl GpuCountAndPlan {
         unsafe {
             gpu_bindings::count_and_plan_add_chunk(self.inner, data as *const GpuMemOp, len as u32)
         }
+    }
+
+    /// Bytes of the borrowed GPU arena used for the current block.
+    /// Valid after `run()` and until the next `reset()` (or drop).
+    pub fn max_used_bytes(&self) -> usize {
+        unsafe { gpu_bindings::count_and_plan_max_used_bytes(self.inner) }
     }
 
     /// Clear per-block state so the same planner instance can process the

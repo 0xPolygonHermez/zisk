@@ -1,4 +1,4 @@
-use circuit::{ExpressionManager, ExpressionManagerConfig};
+use zisk_circuit::{ExpressionManager, ExpressionManagerConfig};
 
 mod chi;
 mod iota;

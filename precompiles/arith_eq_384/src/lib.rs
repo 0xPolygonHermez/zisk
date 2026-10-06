@@ -16,10 +16,22 @@ use zisk_common::zisk_precompile;
 zisk_precompile! {
     name = ArithEq384,
     op_type = ArithEq384,
-    trace = ArithEq384Trace,
-    num_available = {
-        ::zisk_pil::ArithEq384Trace::<()>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1
-    },
+    row = ArithEq384Trace,
+    // The same air at two heights. They prove the same operations and commit the same columns, so
+    // the planner sizes them together: the tall one keeps the instance count down, the short one
+    // the memory once the count is settled.
+    traces = [
+        (
+            ArithEq384Trace,
+            arith_eq_384_ops_per_instance(::zisk_pil::ArithEq384Trace::<()>::NUM_ROWS),
+            ::zisk_pil::ARITH_EQ_384_INSTANCE_COST
+        ),
+        (
+            ArithEq384LargeTrace,
+            arith_eq_384_ops_per_instance(::zisk_pil::ArithEq384LargeTrace::<()>::NUM_ROWS),
+            ::zisk_pil::ARITH_EQ_384_LARGE_INSTANCE_COST
+        ),
+    ],
     ops = [
         (OperationArith384ModData         => Arith384Mod,         Arith384ModInput),
         (OperationBls12_381CurveAddData   => Bls12_381CurveAdd,   Bls12_381CurveAddInput),
@@ -33,11 +45,11 @@ zisk_precompile! {
 #[cfg(test)]
 mod arith_eq_384_tests {
     use serial_test::serial;
-    use test_artifacts::{
+    use zisk_common::io::ZiskStdin;
+    use zisk_test_artifacts::{
         ELF_ARITH384_MOD, ELF_BLS12_381_ADD, ELF_BLS12_381_COMPLEX_ADD, ELF_BLS12_381_COMPLEX_MUL,
         ELF_BLS12_381_COMPLEX_SUB, ELF_BLS12_381_DBL,
     };
-    use zisk_common::io::ZiskStdin;
 
     // Tests share a global lock (#[serial]) because each `run_emulation`
     // allocates several GB; running them in parallel exceeds RAM.

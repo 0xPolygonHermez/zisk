@@ -1,0 +1,155 @@
+; ============================================================================
+; zkvm/keccak.zisk - keccak256 for the Ethereum Foundation zkVM accelerator C
+; ABI (zkvm_accelerators.h). Entry point `ziskasm_zkvm_keccak256`, reached from a
+; guest through the zkvmcall of the standard function `zkvm_keccak256`.
+;
+; This is the single keccak256 sponge in the library, presenting the standard ABI:
+;
+;   zkvm_status zkvm_keccak256(const uint8_t* data, size_t len,
+;                              zkvm_keccak256_hash* output)
+;     a0 = data, a1 = len, a2 = output (32-byte hash); returns a0 = ZKVM_EOK (0).
+;
+; keccak256 is byte-in / byte-out, so there is no endianness marshalling here (the
+; sponge reads the message as a little-endian byte stream, which is identity on
+; the little-endian RISC-V target). Labels are prefixed `zzk_` and the state slot
+; `ZKVM_KECCAK_STATE` so they stay unique alongside the legacy keccak.zisk when the
+; library files are merged.
+; ============================================================================
+
+u64 ZKVM_KECCAK_STATE[25] =
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_KECCAK_PAD[17] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+define ZZK_DMA_COUNT 0xa0400f00         ; dma_memcpy reads its byte count here
+
+; The state is zeroed and the message copied with the DMA precompiles, which cost
+; much less than one main step per word. The first 136-byte block is copied
+; straight into the zeroed state; each later full block is XORed in, 2 steps per
+; word. The final (partial) block is copied and padded in place: into the zeroed
+; state when it is also the first block (every input up to 135 bytes), else into
+; ZKVM_KECCAK_PAD, which is then XORed into the state like a full block.
+ziskasm_zkvm_keccak256:
+	dma_xmemset(ZKVM_KECCAK_STATE, 200) -> r5, j(0, 4)
+	ltu(r11, 136), j(zzk_fresh)
+	dma_xmemcpy(ZKVM_KECCAK_STATE, r10) -> r5, j(136, 4)
+	keccak(0, ZKVM_KECCAK_STATE)
+	add(r10, 136) -> r10
+	sub(r11, 136) -> r11
+
+; --- full blocks into the live state, r11 = remaining bytes ---
+zzk_full:
+	ltu(r11, 136), j(zzk_last)
+	copyb(r10, 8[a + 0])
+	xor([ZKVM_KECCAK_STATE + 0], c) -> [ZKVM_KECCAK_STATE + 0]
+	copyb(r10, 8[a + 8])
+	xor([ZKVM_KECCAK_STATE + 8], c) -> [ZKVM_KECCAK_STATE + 8]
+	copyb(r10, 8[a + 16])
+	xor([ZKVM_KECCAK_STATE + 16], c) -> [ZKVM_KECCAK_STATE + 16]
+	copyb(r10, 8[a + 24])
+	xor([ZKVM_KECCAK_STATE + 24], c) -> [ZKVM_KECCAK_STATE + 24]
+	copyb(r10, 8[a + 32])
+	xor([ZKVM_KECCAK_STATE + 32], c) -> [ZKVM_KECCAK_STATE + 32]
+	copyb(r10, 8[a + 40])
+	xor([ZKVM_KECCAK_STATE + 40], c) -> [ZKVM_KECCAK_STATE + 40]
+	copyb(r10, 8[a + 48])
+	xor([ZKVM_KECCAK_STATE + 48], c) -> [ZKVM_KECCAK_STATE + 48]
+	copyb(r10, 8[a + 56])
+	xor([ZKVM_KECCAK_STATE + 56], c) -> [ZKVM_KECCAK_STATE + 56]
+	copyb(r10, 8[a + 64])
+	xor([ZKVM_KECCAK_STATE + 64], c) -> [ZKVM_KECCAK_STATE + 64]
+	copyb(r10, 8[a + 72])
+	xor([ZKVM_KECCAK_STATE + 72], c) -> [ZKVM_KECCAK_STATE + 72]
+	copyb(r10, 8[a + 80])
+	xor([ZKVM_KECCAK_STATE + 80], c) -> [ZKVM_KECCAK_STATE + 80]
+	copyb(r10, 8[a + 88])
+	xor([ZKVM_KECCAK_STATE + 88], c) -> [ZKVM_KECCAK_STATE + 88]
+	copyb(r10, 8[a + 96])
+	xor([ZKVM_KECCAK_STATE + 96], c) -> [ZKVM_KECCAK_STATE + 96]
+	copyb(r10, 8[a + 104])
+	xor([ZKVM_KECCAK_STATE + 104], c) -> [ZKVM_KECCAK_STATE + 104]
+	copyb(r10, 8[a + 112])
+	xor([ZKVM_KECCAK_STATE + 112], c) -> [ZKVM_KECCAK_STATE + 112]
+	copyb(r10, 8[a + 120])
+	xor([ZKVM_KECCAK_STATE + 120], c) -> [ZKVM_KECCAK_STATE + 120]
+	copyb(r10, 8[a + 128])
+	xor([ZKVM_KECCAK_STATE + 128], c) -> [ZKVM_KECCAK_STATE + 128]
+	keccak(0, ZKVM_KECCAK_STATE)
+	add(r10, 136) -> r10
+	sub(r11, 136) -> r11
+	jump(zzk_full)
+
+; --- the final block after at least one full block: pad it in ZKVM_KECCAK_PAD ---
+zzk_last:
+	dma_xmemset(ZKVM_KECCAK_PAD, 136) -> r5, j(0, 4)
+	copyb(0, r11) -> [ZZK_DMA_COUNT]
+	dma_memcpy(ZKVM_KECCAK_PAD, r10) -> r5
+	add(r11, ZKVM_KECCAK_PAD) -> r6
+	copyb(r6, 1) -> 1[a + 0]            ; the 0x01 after the message
+	copyb(0, [ZKVM_KECCAK_PAD + 128])
+	or(c, 0x8000000000000000) -> [ZKVM_KECCAK_PAD + 128]   ; the 0x80 in byte 135
+	copyb(0, ZKVM_KECCAK_PAD) -> r10
+	copyb(r10, 8[a + 0])
+	xor([ZKVM_KECCAK_STATE + 0], c) -> [ZKVM_KECCAK_STATE + 0]
+	copyb(r10, 8[a + 8])
+	xor([ZKVM_KECCAK_STATE + 8], c) -> [ZKVM_KECCAK_STATE + 8]
+	copyb(r10, 8[a + 16])
+	xor([ZKVM_KECCAK_STATE + 16], c) -> [ZKVM_KECCAK_STATE + 16]
+	copyb(r10, 8[a + 24])
+	xor([ZKVM_KECCAK_STATE + 24], c) -> [ZKVM_KECCAK_STATE + 24]
+	copyb(r10, 8[a + 32])
+	xor([ZKVM_KECCAK_STATE + 32], c) -> [ZKVM_KECCAK_STATE + 32]
+	copyb(r10, 8[a + 40])
+	xor([ZKVM_KECCAK_STATE + 40], c) -> [ZKVM_KECCAK_STATE + 40]
+	copyb(r10, 8[a + 48])
+	xor([ZKVM_KECCAK_STATE + 48], c) -> [ZKVM_KECCAK_STATE + 48]
+	copyb(r10, 8[a + 56])
+	xor([ZKVM_KECCAK_STATE + 56], c) -> [ZKVM_KECCAK_STATE + 56]
+	copyb(r10, 8[a + 64])
+	xor([ZKVM_KECCAK_STATE + 64], c) -> [ZKVM_KECCAK_STATE + 64]
+	copyb(r10, 8[a + 72])
+	xor([ZKVM_KECCAK_STATE + 72], c) -> [ZKVM_KECCAK_STATE + 72]
+	copyb(r10, 8[a + 80])
+	xor([ZKVM_KECCAK_STATE + 80], c) -> [ZKVM_KECCAK_STATE + 80]
+	copyb(r10, 8[a + 88])
+	xor([ZKVM_KECCAK_STATE + 88], c) -> [ZKVM_KECCAK_STATE + 88]
+	copyb(r10, 8[a + 96])
+	xor([ZKVM_KECCAK_STATE + 96], c) -> [ZKVM_KECCAK_STATE + 96]
+	copyb(r10, 8[a + 104])
+	xor([ZKVM_KECCAK_STATE + 104], c) -> [ZKVM_KECCAK_STATE + 104]
+	copyb(r10, 8[a + 112])
+	xor([ZKVM_KECCAK_STATE + 112], c) -> [ZKVM_KECCAK_STATE + 112]
+	copyb(r10, 8[a + 120])
+	xor([ZKVM_KECCAK_STATE + 120], c) -> [ZKVM_KECCAK_STATE + 120]
+	copyb(r10, 8[a + 128])
+	xor([ZKVM_KECCAK_STATE + 128], c) -> [ZKVM_KECCAK_STATE + 128]
+	keccak(0, ZKVM_KECCAK_STATE)
+	jump(zzk_squeeze)
+
+; --- the whole input is one partial block: pad it in the zeroed state ---
+zzk_fresh:
+	copyb(0, r11) -> [ZZK_DMA_COUNT]
+	dma_memcpy(ZKVM_KECCAK_STATE, r10) -> r5
+	add(r11, ZKVM_KECCAK_STATE) -> r6
+	copyb(r6, 1) -> 1[a + 0]            ; the 0x01 after the message
+	copyb(0, [ZKVM_KECCAK_STATE + 128])
+	or(c, 0x8000000000000000) -> [ZKVM_KECCAK_STATE + 128]   ; the 0x80 in byte 135
+	keccak(0, ZKVM_KECCAK_STATE)
+
+zzk_squeeze:
+	dma_xmemcpy(r12, ZKVM_KECCAK_STATE) -> r5, j(32, 4)   ; the digest: state bytes 0..31
+	copyb(0, 0) -> r10                  ; return ZKVM_EOK (a0 = 0)
+	ret
+
+; ============================================================================
+; zkvm_status zkvm_keccak_f1600(uint64_t* state)
+;   Keccak-f[1600] permutation applied IN PLACE to the 25-word (25 * u64) state
+;   at a0. This is the raw permutation (no sponge/padding) — exactly what the ZisK
+;   `keccak` precompile computes on a 25-u64 state buffer. a0 = state; returns
+;   a0 = ZKVM_EOK (0). Entry `ziskasm_zkvm_keccak_f1600`. The C and Rust bindings
+;   don't call it: they inline `zkvm_keccak_f1600` as the keccakf precompile.
+; ============================================================================
+ziskasm_zkvm_keccak_f1600:
+	keccak(0, r10) -> r10               ; permute the 25-word state at [a0] in place
+	copyb(0, 0) -> r10                  ; return ZKVM_EOK (a0 = 0)
+	ret

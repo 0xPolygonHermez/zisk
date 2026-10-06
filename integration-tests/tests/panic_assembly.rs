@@ -14,8 +14,8 @@
 
 #![cfg(target_os = "linux")]
 
-use test_artifacts::ELF_PANIC_MODES;
 use zisk_sdk::{EmbeddedClientBuilder, EmbeddedExecuteOnlyClient, ZiskStdin};
+use zisk_test_artifacts::ELF_PANIC_MODES;
 
 fn execute_with_input(client: &EmbeddedExecuteOnlyClient, input: u64) -> anyhow::Result<()> {
     let stdin = ZiskStdin::new();

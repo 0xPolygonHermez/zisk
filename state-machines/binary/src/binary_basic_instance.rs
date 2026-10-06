@@ -4,17 +4,26 @@
 //! It manages collected inputs and interacts with the `BinaryBasicSM` to compute witnesses for
 //! execution plans.
 
-use crate::{BinaryBasicCollector, BinaryBasicSM};
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use crate::{BinaryBasicCollector, BinaryBasicSM, ChunkCollect, ADD_KINDS};
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType,
+    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{BinaryTrace, BinaryTraceRow, BinaryTraceRowPacked};
+use zisk_pil::{
+    BinaryHugeTrace, BinaryHugeTraceRow, BinaryHugeTraceRowPacked, BinaryLargeTrace,
+    BinaryLargeTraceRow, BinaryLargeTraceRowPacked, BinaryTrace, BinaryTraceRow,
+    BinaryTraceRowPacked,
+};
+
+/// Air id of each `Binary` air. They no longer differ only in height: each packs a different number
+/// of operations per row, so each has its own row type and the trace itself carries the rest.
+const AIR_ID: usize = BinaryTrace::<()>::AIR_ID;
+const LARGE_AIR_ID: usize = BinaryLargeTrace::<()>::AIR_ID;
+const HUGE_AIR_ID: usize = BinaryHugeTrace::<()>::AIR_ID;
 
 /// The `BinaryBasicInstance` struct represents an instance for binary-related witness computations.
 ///
@@ -27,11 +36,9 @@ pub struct BinaryBasicInstance<F: PrimeField64> {
     /// Instance context.
     ictx: InstanceCtx,
 
-    /// Indicates whether the instance should include ADD operations.
-    with_adds: bool,
-
-    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
+    /// What this instance takes from each chunk: a `(count, skip)` per kind of operation, plus the
+    /// frequent operations it accounts for.
+    collect_info: HashMap<ChunkId, ChunkCollect<ADD_KINDS>>,
 
     /// Standard library instance, providing common functionalities.
     std: Arc<Std<F>>,
@@ -52,31 +59,29 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
         mut ictx: InstanceCtx,
         std: Arc<Std<F>>,
     ) -> Self {
-        assert_eq!(
-            ictx.plan.air_id,
-            BinaryTrace::<()>::AIR_ID,
+        assert!(
+            matches!(ictx.plan.air_id, AIR_ID | LARGE_AIR_ID | HUGE_AIR_ID),
             "BinaryBasicInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
 
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
-        let (with_adds, collect_info) = *meta
-            .downcast::<(bool, HashMap<ChunkId, (u64, bool, CollectSkipper)>)>()
+        let collect_info = *meta
+            .downcast::<HashMap<ChunkId, ChunkCollect<ADD_KINDS>>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
-        Self { binary_basic_sm, ictx, with_adds, collect_info, std }
+        Self { binary_basic_sm, ictx, collect_info, std }
+    }
+
+    /// Which of the three `Binary` airs this instance is. They pack a different number of
+    /// operations per row, so this picks the row type the trace is built with.
+    fn air_id(&self) -> usize {
+        self.ictx.plan.air_id
     }
 
     pub fn build_binary_basic_collector(&self, chunk_id: ChunkId) -> BinaryBasicCollector<F> {
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
-        BinaryBasicCollector::new(
-            num_ops as usize,
-            collect_skipper,
-            self.with_adds,
-            force_execute_to_end,
-            self.std.clone(),
-        )
+        BinaryBasicCollector::new(self.collect_info[&chunk_id], self.std.clone())
     }
 }
 
@@ -109,16 +114,26 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
             })
             .collect();
 
-        if packed {
-            Ok(Some(
-                self.binary_basic_sm
-                    .compute_witness::<BinaryTraceRowPacked<F>>(&inputs, trace_buffer)?,
-            ))
-        } else {
-            Ok(Some(
-                self.binary_basic_sm.compute_witness::<BinaryTraceRow<F>>(&inputs, trace_buffer)?,
-            ))
-        }
+        let sm = &self.binary_basic_sm;
+        Ok(Some(match (self.air_id(), packed) {
+            (AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryTraceRowPacked<F>>(&inputs, trace_buffer)?
+            }
+            (AIR_ID, false) => sm.compute_witness::<_, BinaryTraceRow<F>>(&inputs, trace_buffer)?,
+            (LARGE_AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryLargeTraceRowPacked<F>>(&inputs, trace_buffer)?
+            }
+            (LARGE_AIR_ID, false) => {
+                sm.compute_witness::<_, BinaryLargeTraceRow<F>>(&inputs, trace_buffer)?
+            }
+            (HUGE_AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryHugeTraceRowPacked<F>>(&inputs, trace_buffer)?
+            }
+            (HUGE_AIR_ID, false) => {
+                sm.compute_witness::<_, BinaryHugeTraceRow<F>>(&inputs, trace_buffer)?
+            }
+            (air_id, _) => panic!("BinaryBasicInstance: Unsupported air_id: {air_id:?}"),
+        }))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -149,14 +164,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(BinaryBasicCollector::new(
-            num_ops as usize,
-            collect_skipper,
-            self.with_adds,
-            force_execute_to_end,
-            self.std.clone(),
-        )))
+        Some(Box::new(BinaryBasicCollector::new(self.collect_info[&chunk_id], self.std.clone())))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

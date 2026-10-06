@@ -4,56 +4,90 @@
 //! 1. Built-in defaults
 //! 2. TOML file (path from `--config` or `ZISK_COORDINATOR_CONFIG`)
 //! 3. CLI flags / env vars: --api-port, --cluster-port, --metrics-port, --log-level
+//!
+//! The flags themselves are [`CliArgs`], which the binary parses and hands
+//! straight to [`Config::load`].
 
 use anyhow::Result;
+use clap::Parser;
 use serde::{Deserialize, Serialize};
 use zisk_cluster_common::{Environment, LoggingConfig};
 
+/// Top-level coordinator-server configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Service identity (name, version, environment).
     pub service: ServiceConfig,
+    /// gRPC API server settings.
     pub server: ServerConfig,
+    /// Prometheus metrics endpoint settings.
     pub metrics: MetricsConfig,
+    /// Logging configuration.
     pub logging: LoggingConfig,
+    /// Which backend implementation to run.
     pub backend: BackendConfig,
+    /// Settings for the embedded coordinator core.
     pub coordinator: CoordinatorConfig,
 }
 
+/// Service identity metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServiceConfig {
+    /// Human-readable service name.
     pub name: String,
+    /// Service version (defaults to the crate version).
     pub version: String,
+    /// Deployment environment (development, production, …).
     pub environment: Environment,
 }
 
+/// gRPC API server settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServerConfig {
+    /// Bind host for the API server.
     pub host: String,
+    /// Bind port for the API server.
     pub port: u16,
+    /// Grace period, in seconds, to wait for in-flight work on shutdown.
     pub shutdown_timeout_seconds: u64,
 }
 
+/// Prometheus metrics endpoint settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MetricsConfig {
+    /// Whether the metrics endpoint is served.
     pub enabled: bool,
+    /// Bind host for the metrics endpoint.
     pub host: String,
+    /// Bind port for the metrics endpoint.
     pub port: u16,
 }
 
+/// Selects which backend the server runs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BackendConfig {
+    /// The backend mode.
     pub mode: BackendMode,
 }
 
+/// Backend implementation to run behind the API.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum BackendMode {
+    /// In-memory mock backend (no coordinator); for testing.
     Mock,
+    /// In-process coordinator core.
     Coordinator,
 }
 
 /// Config section for the coordinator core that runs in-process.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CoordinatorConfig {
     /// Path to a coordinator TOML config file. `None` uses coordinator defaults.
     pub config_file: Option<String>,
@@ -61,14 +95,70 @@ pub struct CoordinatorConfig {
     pub port: u16,
 }
 
+/// `zisk-coordinator`'s command line, and the overrides it applies on top of the
+/// config files.
+///
+/// The flag set and the override set are the same thing, so they are one struct:
+/// the binary parses this and passes it to [`Config::load`] unchanged. Passing
+/// the fields positionally instead would put three adjacent `Option<u16>` ports
+/// in a row, where transposing two compiles cleanly and misbinds the server.
+///
+/// Every field is optional: `None` leaves the value coming from the config file
+/// (or the built-in default) untouched.
+#[derive(Parser, Debug, Default, Clone)]
+#[command(name = "zisk-coordinator", about = "ZisK coordinator server", long_about = None, version)]
+pub struct CliArgs {
+    /// Path to coordinator.toml configuration file.
+    #[arg(
+        long = "config",
+        value_name = "CONFIG",
+        env = "ZISK_COORDINATOR_CONFIG",
+        help = "Path to coordinator.toml (overrides ZISK_COORDINATOR_CONFIG env var)"
+    )]
+    pub config_file: Option<String>,
+
+    /// Override the external (client-facing) gRPC API port.
+    #[arg(
+        long,
+        short,
+        env = "ZISK_COORDINATOR_API_PORT",
+        help = "External gRPC API port (client-facing)"
+    )]
+    pub api_port: Option<u16>,
+
+    /// Override the internal cluster gRPC port (worker-facing).
+    #[arg(
+        long,
+        env = "ZISK_COORDINATOR_CLUSTER_PORT",
+        help = "Internal cluster gRPC port (worker-facing)"
+    )]
+    pub cluster_port: Option<u16>,
+
+    /// Override the metrics port.
+    #[arg(
+        long,
+        env = "ZISK_COORDINATOR_METRICS_PORT",
+        value_name = "PORT",
+        help = "Prometheus metrics port (default: 9090)"
+    )]
+    pub metrics_port: Option<u16>,
+
+    /// Override the log level.
+    #[arg(
+        long,
+        env = "RUST_LOG",
+        value_name = "LEVEL",
+        help = "Log level: trace | debug | info | warn | error"
+    )]
+    pub log_level: Option<String>,
+}
+
 impl Config {
-    pub fn load(
-        config_file: Option<String>,
-        api_port: Option<u16>,
-        cluster_port: Option<u16>,
-        metrics_port: Option<u16>,
-        log_level: Option<String>,
-    ) -> Result<Self> {
+    /// Load the configuration, applying (in increasing priority) built-in
+    /// defaults, well-known and explicit TOML files, then the given CLI/env
+    /// overrides.
+    pub fn load(args: CliArgs) -> Result<Self> {
+        let CliArgs { config_file, api_port, cluster_port, metrics_port, log_level } = args;
         let mut builder = config::Config::builder()
             // service
             .set_default("service.name", "ZisK Coordinator")?
@@ -102,7 +192,7 @@ impl Config {
         }
 
         // CLI / env-var overrides — always highest priority.
-        // Each field has an explicit env var defined on the clap arg in main.rs.
+        // Each field has an explicit env var defined on its `CliArgs` flag.
         builder = builder.set_override("service.version", env!("CARGO_PKG_VERSION"))?;
         if let Some(p) = api_port {
             builder = builder.set_override("server.port", p)?;
@@ -116,14 +206,15 @@ impl Config {
         if let Some(level) = log_level {
             builder = builder.set_override("logging.level", level)?;
         }
-
         Ok(builder.build()?.try_deserialize()?)
     }
 
+    /// The `host:port` address the gRPC API server binds to.
     pub fn grpc_addr(&self) -> String {
         format!("{}:{}", self.server.host, self.server.port)
     }
 
+    /// The `host:port` address the metrics endpoint binds to.
     pub fn metrics_addr(&self) -> String {
         format!("{}:{}", self.metrics.host, self.metrics.port)
     }
@@ -157,7 +248,7 @@ mod tests {
 
     #[test]
     fn defaults_load_without_file() {
-        let cfg = Config::load(None, None, None, None, None).unwrap();
+        let cfg = Config::load(CliArgs::default()).unwrap();
         assert_eq!(cfg.server.host, "0.0.0.0");
         assert_eq!(cfg.server.port, 7000);
         assert_eq!(cfg.coordinator.port, 50051);
@@ -168,25 +259,26 @@ mod tests {
 
     #[test]
     fn cli_api_port_override() {
-        let cfg = Config::load(None, Some(8080), None, None, None).unwrap();
+        let cfg = Config::load(CliArgs { api_port: Some(8080), ..Default::default() }).unwrap();
         assert_eq!(cfg.server.port, 8080);
     }
 
     #[test]
     fn cli_cluster_port_override() {
-        let cfg = Config::load(None, None, Some(50100), None, None).unwrap();
+        let cfg =
+            Config::load(CliArgs { cluster_port: Some(50100), ..Default::default() }).unwrap();
         assert_eq!(cfg.coordinator.port, 50100);
     }
 
     #[test]
     fn cli_metrics_port_override() {
-        let cfg = Config::load(None, None, None, Some(9999), None).unwrap();
+        let cfg = Config::load(CliArgs { metrics_port: Some(9999), ..Default::default() }).unwrap();
         assert_eq!(cfg.metrics.port, 9999);
     }
 
     #[test]
     fn grpc_addr_format() {
-        let cfg = Config::load(None, Some(9000), None, None, None).unwrap();
+        let cfg = Config::load(CliArgs { api_port: Some(9000), ..Default::default() }).unwrap();
         assert_eq!(cfg.grpc_addr(), "0.0.0.0:9000");
     }
 }

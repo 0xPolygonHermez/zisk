@@ -7,28 +7,30 @@ use crate::{
     ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use crate::{ensure_program_vk, get_rom_bin_path, BackendProverOpts};
-use asm_runner::HintsShmem;
-use executor::ZiskExecutor;
-use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{initialize_logger, ProofOptions, ProofmanOptions, RankInfo, RowInfo};
 use proofman_verifier::VadcopFinalProof;
-use riscv2zisk::Riscv2zisk;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use zisk_asm_runner::HintsShmem;
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::io::StreamSource;
 use zisk_common::{
     io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, StatsCostPerType,
-    ZiskExecutorTime,
+    VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
+use zisk_executor::ZiskExecutor;
+use zisk_precomp_hints::HintsProcessor;
+use zisk_transpiler_riscv::Riscv2zisk;
 
 use anyhow::Result;
 
+/// Backend marker for the pure-Rust emulator. Selects [`EmuProver`] as the
+/// proving engine.
 pub struct Emu;
 
 impl ZiskBackend for Emu {
@@ -52,12 +54,17 @@ impl<'a> EmuSetupBuilder<'a> {
     }
 }
 
+/// Proving engine for the EMU backend. Wraps an [`EmuCoreProver`] and caches
+/// each program's parsed `ZiskRom` so repeated proofs of the same program skip
+/// ELF parsing.
 pub struct EmuProver {
     pub(crate) core_prover: EmuCoreProver,
     program_cache: Arc<RwLock<HashMap<ProgramId, Arc<ZiskRom>>>>,
 }
 
 impl EmuProver {
+    /// Build an EMU prover, loading proving keys from `proving_key` (and
+    /// `proving_key_snark` when `snark_wrapper` is set, optionally preloaded).
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         snark_wrapper: bool,
@@ -112,6 +119,10 @@ impl ProverEngine for EmuProver {
 
     fn world_rank(&self) -> i32 {
         self.core_prover.rank_info.world_rank
+    }
+
+    fn n_processes(&self) -> i32 {
+        self.core_prover.rank_info.n_processes
     }
 
     fn local_rank(&self) -> i32 {
@@ -230,11 +241,14 @@ impl ProverEngine for EmuProver {
         &self,
         proof: &[u64],
         publics_full: &[u64],
+        source_kind: VadcopKind,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics_full),
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full),
+            ProofKind::VadcopFinalMinimal => {
+                self.core_prover.backend.minimal(proof, publics_full, source_kind)
+            }
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full, source_kind),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
@@ -266,9 +280,24 @@ impl ProverEngine for EmuProver {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.core_prover.backend.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
+        self.core_prover.backend.join_worker_proofs(
+            agg_proofs,
+            last_proof,
+            final_proof,
+            keep_resident,
+            options,
+        )
+    }
+
+    fn reset_aggregation_state(&self) {
+        self.core_prover.backend.reset_aggregation_state()
+    }
+
+    fn aggregation_arity(&self) -> usize {
+        self.core_prover.backend.aggregation_arity()
     }
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
@@ -328,12 +357,17 @@ impl ProverEngine for EmuProver {
     }
 }
 
+/// Low-level EMU prover holding the initialized `ProofMan` backend and this
+/// process's [`RankInfo`] (for distributed proving).
 pub struct EmuCoreProver {
     backend: ProverBackend,
     rank_info: RankInfo,
 }
 
 impl EmuCoreProver {
+    /// Initialize `ProofMan` from `proving_key`, set up logging and the
+    /// distributed barrier, and optionally build the SNARK wrapper from
+    /// `proving_key_snark` when `use_snark_wrapper` is set.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         use_snark_wrapper: bool,
@@ -345,6 +379,7 @@ impl EmuCoreProver {
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
+        zisk_setup::check_setup_version(&proving_key)?;
 
         let proofman = ProofMan::new(proving_key.clone(), options.clone())
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
@@ -381,6 +416,10 @@ impl EmuCoreProver {
             false,
             options.packed,
         )?;
+
+        // No ROM-histogram assembly here, so the collectors own the column. The executor would
+        // apply this anyway, since it never runs on the ASM backend; stated for clarity.
+        executor.set_frops_multiplicity_from_asm(false);
 
         let core = ProverBackend::new(
             proofman,

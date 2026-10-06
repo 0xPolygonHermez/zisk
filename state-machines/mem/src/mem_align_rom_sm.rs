@@ -1,6 +1,3 @@
-use fields::PrimeField64;
-use pil_std_lib::Std;
-
 #[derive(Debug, Clone, Copy)]
 pub enum MemOp {
     OneRead,
@@ -16,12 +13,6 @@ const TWO_WORD_COMBINATIONS: u64 = 11; // (1..4,[8]), (5,6,[4,8]), (7,[2,4,8]) -
 pub struct MemAlignRomSM;
 
 impl MemAlignRomSM {
-    pub const TABLE_ID: usize = 133;
-
-    pub const TABLE_SIZE: usize = 256; // 2**8
-
-    pub const PADDING_ROW: u64 = 0;
-
     pub fn calculate_next_pc_and_op_size(opcode: MemOp, offset: usize, width: usize) -> (u64, u64) {
         // Get the table offset
         let (table_offset, one_word) = match opcode {
@@ -47,16 +38,6 @@ impl MemAlignRomSM {
         let op_size = OP_SIZES[opcode_idx];
 
         (first_row_idx, op_size)
-    }
-
-    pub fn get_rows<F: PrimeField64>(std: &Std<F>, table_id: usize, pc: u64, op_size: u64) {
-        // Check whether the row index is within the bounds
-        debug_assert!(pc + op_size <= Self::TABLE_SIZE as u64);
-
-        // Get the rows for the given program counter and operation size
-        for i in 0..op_size {
-            std.inc_virtual_row_one(table_id, pc + i);
-        }
     }
 
     fn get_first_row_idx(

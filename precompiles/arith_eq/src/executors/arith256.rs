@@ -2,7 +2,7 @@ use super::ArithEqData;
 use crate::equations;
 use lazy_static::lazy_static;
 use num_bigint::BigInt;
-use precompiles_helpers::{bigint_from_u64s, bigint_to_16_chunks, bigint_to_4_u64};
+use zisk_precomp_helpers::{bigint_from_u64s, bigint_to_16_chunks, bigint_to_4_u64};
 
 const COLS: u8 = 32;
 

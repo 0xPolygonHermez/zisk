@@ -70,7 +70,7 @@ fi
 
 # Build ZisK
 echo "Building ZisK..."
-cargo build --features=float,zba,zbc,zbkc,zbkx
+cargo build --features=float,zba,zbc,zbkc,zbkx,compressed
 
 # Create an empty input file
 echo "Creating empty input file"
@@ -114,7 +114,7 @@ do
     echo "[${COUNTER}/${MAX_COUNTER}] Emulating file: ${ELF_FILE}"
 
     # Transpile the ELF RISC-V file to ZisK, and then generate assembly file emu.asm
-    ./target/debug/riscv2zisk $ELF_FILE emulator-asm/src/emu.asm --gen=1 || exit 1
+    ./target/debug/zisk-transpiler-riscv $ELF_FILE emulator-asm/src/emu.asm --gen=1 || exit 1
 
     # Get the directory of the reference file to compare
     ELF_FILE_DIRECTORY=${ELF_FILE%%my.elf}

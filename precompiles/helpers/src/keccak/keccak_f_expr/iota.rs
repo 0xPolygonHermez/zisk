@@ -1,4 +1,4 @@
-use circuit::{ExpressionManager, ExpressionOp};
+use zisk_circuit::{ExpressionManager, ExpressionOp};
 
 use super::{bit_position, KECCAK_F_RC};
 

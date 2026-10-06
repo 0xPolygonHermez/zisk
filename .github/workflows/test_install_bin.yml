@@ -36,112 +36,23 @@ jobs:
             exit 0
           fi
 
-  install-from-binaries:
-    name: Install ZisK from binaries
+  # The same test runs twice: the CPU variant on the rocket runner, which has no
+  # GPU, and the GPU variant on the zisk-gpu runner group. They are independent
+  # (each one clones the repository and starts its own container) so they run in
+  # parallel, and both share the steps through the test_install_bin_variant
+  # reusable workflow.
+  install-from-binaries-cpu:
+    name: Install ZisK from binaries (CPU)
     needs: check-latest-release
-    runs-on: self-hosted
-    container:
-      image: ubuntu:22.04
-      options: --memory=56g --cpus=16
-    timeout-minutes: 60
-    env:
-      CARGO_HOME: /github/home/.cargo
-      RUSTUP_HOME: /github/home/.rustup
-      CARGO_BUILD_JOBS: 1
-      CARGO_INCREMENTAL: 0
+    uses: ./.github/workflows/test_install_bin_variant.yml
+    with:
+      runner: '"rocket"'
+      variant: cpu
 
-    steps:
-      - name: Clean home directory
-        run: |
-          find $HOME -mindepth 1 -delete || true
-          ls -la $HOME
-          rm -rf refs/heads/feature/gha-test-install-bin
-
-      - name: Check resources
-        run: |
-          echo "CPUs: $(nproc)"
-          free -h
-
-      - name: Install tools
-        run: apt-get update && apt-get install -y curl git
-
-      - name: Install rust toolchain
-        id: rustc-toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: default
-          override: true
-
-      - name: Install ZisK dependencies
-        shell: bash
-        run: |
-          apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev \
-              libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
-              libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common \
-              ca-certificates gnupg lsb-release libclang-dev clang gcc-riscv64-unknown-elf
-
-      - name: Install and run ziskup
-        run: |
-          curl -s -o install.sh https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh
-          chmod +x install.sh
-          export GH_RUNNER=1
-          ./install.sh
-
-      - name: Set stable as default Rust toolchain
-        run: rustup default stable
-
-      - name: Add ZisK bin directory to PATH
-        run: echo "$HOME/.zisk/bin" >> $GITHUB_PATH
-
-      - name: Create program
-        shell: bash
-        run: |
-          cargo-zisk new $HOME/guest
-
-      - name: Build program
-        shell: bash
-        run: |
-          cd $HOME/guest
-          cargo clean
-          cargo build --bin host --release -j 1
-
-      - name: Run program
-        shell: bash
-        run: |
-          cd $HOME/guest
-          ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -c | tee run_output.log
-          if ! grep -qE "4fcbc136|2ce46a82|2248a8eb|785f0c7e|9dca7861|7267cace|d028d7e5|f6a2309c|000003e8|deadbeef" run_output.log; then
-            echo "❌ Run program failed"
-            exit 1
-          fi
-
-      - name: Program setup
-        shell: bash
-        run: |
-          cd $HOME/guest
-          cargo-zisk-dev program-setup -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -v 2>&1 | tee romsetup_output.log
-          if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
-            echo "❌ Program setup failed"
-            exit 1
-          fi
-
-      - name: Prove program
-        shell: bash
-        run: |
-          cd $HOME/guest
-          cargo-zisk-dev prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -o proof.bin -y -a -u 2>&1 | tee prove_output.log
-          if ! grep -F "Vadcop Final proof was verified" prove_output.log; then
-            echo "❌ Prove program failed"
-            exit 1
-          fi
-
-      - name: Verify proof
-        shell: bash
-        run: |
-          cd $HOME/guest
-          cargo-zisk verify -p ./proof.bin 2>&1 | tee verify_output.log
-          if ! grep -F "STARK proof was verified" verify_output.log; then
-            echo "❌ Verify proof failed"
-            exit 1
-          fi
+  install-from-binaries-gpu:
+    name: Install ZisK from binaries (GPU)
+    needs: check-latest-release
+    uses: ./.github/workflows/test_install_bin_variant.yml
+    with:
+      runner: '{"group":"zisk-gpu"}'
+      variant: gpu

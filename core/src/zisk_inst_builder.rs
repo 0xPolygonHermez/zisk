@@ -5,7 +5,7 @@
 use crate::{
     zisk_ops::{InvalidNameError, OpType, ZiskOp},
     ZiskInst, ZiskRom, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO, REG_FIRST, SRC_C, SRC_IMM, SRC_IND,
-    SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // #[cfg(feature = "sp")]
@@ -66,9 +66,9 @@ impl ZiskInstBuilder {
             "mem" => SRC_MEM,
             "imm" => SRC_IMM,
             "lastc" => SRC_C,
+            "step" => SRC_STEP,
             // #[cfg(feature = "sp")]
             // "sp" => SRC_SP,
-            // "step" => SRC_STEP,
             _ => panic!("ZiskInstBuilder::a_src() called with invalid src={src}"),
         }
     }
@@ -297,5 +297,32 @@ impl ZiskInstBuilder {
     pub fn set_meta_rs1_rd(&mut self, rs1: u8, rd: u8) {
         self.i.meta_rs1 = Some(rs1);
         self.i.meta_rd = Some(rd);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `slli.uw` is proven by the binary extension assuming its operands reach the bus already
+    /// zero-extended to 32 bits, which is what the m32 flag does (see `main.pil` and
+    /// `OperationBusData::from_instruction`). m32 is derived from the operation name, so this
+    /// pins the assumption: renaming the operation would silently drop the zero extension.
+    #[test]
+    fn sll_u_w_sets_m32() {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.op("sll_u_w").unwrap();
+        assert!(zib.i.m32, "sll_u_w must set m32 so that a reaches the bus zero-extended");
+    }
+
+    /// The shift-and-adds, in contrast, take a full 64-bit b operand (rs2), so they must not mask
+    /// anything on the bus.
+    #[test]
+    fn sh_add_does_not_set_m32() {
+        for op in ["sh1add", "sh2add", "sh3add"] {
+            let mut zib = ZiskInstBuilder::new(0);
+            zib.op(op).unwrap();
+            assert!(!zib.i.m32, "{op} must not set m32");
+        }
     }
 }

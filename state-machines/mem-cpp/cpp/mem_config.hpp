@@ -29,10 +29,6 @@
 #define INPUT_ID 1
 #define RAM_ID 2
 
-#define RAM_ROWS (1 << 22)
-#define ROM_ROWS (1 << 21)
-#define INPUT_ROWS (1 << 21)
-#define MEM_ROWS (1 << 22)
 
 
 #define MAX_CHUNKS (1 << 18)     // 2^36 / 2^18 = 2^18

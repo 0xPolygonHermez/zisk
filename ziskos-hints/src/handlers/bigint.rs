@@ -3,7 +3,8 @@ use crate::zisklib;
 
 use anyhow::Result;
 
-// Processes a `MODEXP` hint.
+/// Process a `MODEXP` hint: decode the base, exponent, and modulus fields from
+/// `data` and return the modular-exponentiation result as `u64` words.
 #[inline]
 pub fn modexp_hint(data: &[u64]) -> Result<Vec<u64>> {
     let mut pos = 0;

@@ -5,12 +5,12 @@
 use std::fmt;
 use std::ops::Add;
 
-use precompiles_common::MemProcessor;
-use precompiles_helpers::DmaInfo;
 use zisk_common::{BusDevice, BusDeviceMode, BusId, Metrics, OPERATION_BUS_ID, OP_TYPE, STEP};
 use zisk_common::{OP, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::ZiskOperationType;
+use zisk_precomp_common::MemProcessor;
+use zisk_precomp_helpers::DmaInfo;
 
 use crate::{generate_dma_mem_inputs, skip_dma_mem_inputs};
 

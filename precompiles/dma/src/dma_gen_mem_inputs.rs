@@ -1,6 +1,6 @@
-use precompiles_common::MemProcessor;
 use zisk_common::OP;
 use zisk_core::zisk_ops::ZiskOp;
+use zisk_precomp_common::MemProcessor;
 
 use crate::generate_dma_inputcpy_mem_inputs;
 use crate::generate_dma_memcmp_mem_inputs;

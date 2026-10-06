@@ -1,9 +1,9 @@
-use precompiles_common::MemBusHelpers;
-use precompiles_common::MemProcessor;
-use precompiles_helpers::DmaInfo;
 use zisk_common::DMA_MEMCMP_COUNT_BUS;
 use zisk_common::{A, B, DMA_ENCODED, OP, STEP};
 use zisk_core::{zisk_ops::ZiskOp, EXTRA_PARAMS_ADDR};
+use zisk_precomp_common::MemBusHelpers;
+use zisk_precomp_common::MemProcessor;
+use zisk_precomp_helpers::DmaInfo;
 
 pub fn generate_dma_memcmp_mem_inputs<P: MemProcessor>(
     data: &[u64],

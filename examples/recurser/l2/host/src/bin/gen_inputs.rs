@@ -3,7 +3,7 @@
 //! 256-byte ABI encoding of a `BlocksInfoStruct`, wrapped as one ZiskStdin frame
 //! — not something you'd hand-type, so this dumps the exact bytes.
 //!
-//! Run: `cargo run --release -p recurser-l2-host --bin gen-inputs`
+//! Run: `cargo run --release -p recurser-l2-host --bin gen-inputs-l2`
 
 use std::error::Error;
 

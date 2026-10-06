@@ -46,7 +46,7 @@ pub extern "C" fn syscall_bn254_complex_add(
         let f1 = [params.f1.x, params.f1.y].concat().try_into().unwrap();
         let f2 = [params.f2.x, params.f2.y].concat().try_into().unwrap();
         let mut f3: [u64; 8] = [0; 8];
-        precompiles_helpers::bn254_complex_add(&f1, &f2, &mut f3);
+        zisk_precomp_helpers::bn254_complex_add(&f1, &f2, &mut f3);
         params.f1.x.copy_from_slice(&f3[0..4]);
         params.f1.y.copy_from_slice(&f3[4..8]);
         #[cfg(feature = "hints")]

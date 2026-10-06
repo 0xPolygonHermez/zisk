@@ -1,4 +1,4 @@
-use precompiles_helpers::DmaInfo;
+use zisk_precomp_helpers::DmaInfo;
 
 pub enum DmaPrePostRom {}
 

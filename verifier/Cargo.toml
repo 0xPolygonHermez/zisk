@@ -1,16 +1,18 @@
 [package]
 name = "zisk-verifier"
+description = "Proof verifier for the ZisK zkVM proofs"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha", default-features = false, features = [
-  "verify",
-] }
+proofman-verifier = { workspace = true, features = ["verify"] }
+proofman-fields = { workspace = true, features = ["verify"] }
 
 [features]
 default = []

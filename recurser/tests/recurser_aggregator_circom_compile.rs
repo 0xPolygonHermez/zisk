@@ -11,7 +11,7 @@
 use std::fs;
 use std::process::Command;
 
-use recurser::{gen_recurser, templates::StarkInputBlocks, CircomTemplates, NormalizeCircuit};
+use zisk_recurser::{gen_recurser, templates::StarkInputBlocks, CircomTemplates, NormalizeCircuit};
 
 mod common;
 use common::{AGGREGATE_0_FREE, AGGREGATE_1_FREE, NORMALIZE_1_FREE};
@@ -159,7 +159,7 @@ fn aggregator_circom_compiles_all_branches() {
             normalize,
             aggregate_publics: aggregate.to_string(),
             n_free,
-            n_publics_agg: recurser::templates::ZISK_PUBLICS,
+            n_publics_agg: zisk_recurser::templates::ZISK_PUBLICS,
             program_vks: vks,
         };
         assert_compiles(label, &templates);

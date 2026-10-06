@@ -24,9 +24,10 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use data_bus::DataBusTrait;
-use fields::PrimeField64;
-use zisk_common::{stats_begin, stats_end, ChunkId, EmuTrace, ExecutorStatsHandle, PayloadType};
+use proofman_fields::PrimeField64;
+use zisk_common::{
+    stats_begin, stats_end, ChunkId, DataBusTrait, EmuTrace, ExecutorStatsHandle, PayloadType,
+};
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
@@ -161,7 +162,7 @@ impl<F: PrimeField64> Default for MtChunkProcessor<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
 
     /// Concrete F used for tests that need a placeholder field type.
     /// MtChunkProcessor uses F only through the `StaticDataBus`

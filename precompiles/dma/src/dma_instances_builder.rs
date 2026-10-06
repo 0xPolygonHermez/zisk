@@ -122,6 +122,10 @@ impl DmaInstancesBuilder {
                 .chunks
                 .insert(chunk_id, (self.inputs_counter as u64, collect_counters));
             self.instances.last_mut().unwrap().last_chunk = Some(chunk_id);
+            // The inputs counter belongs to the (instance, chunk) record just stored: the collector
+            // built from it uses the value as its own bound. Restart it so the next record does not
+            // inherit this one's inputs.
+            self.inputs_counter = 0;
         }
     }
     #[inline(always)]
@@ -147,6 +151,55 @@ impl DmaInstancesBuilder {
         self.add_op_rows(chunk_id, skip, rows, inputs, DMA_COUNTER_INPUTCPY);
     }
 
+    /// Registers `skip` rows of `op` that this builder must not collect for the current chunk,
+    /// because another air already took them. Applies once to the whole batch.
+    #[inline(always)]
+    fn add_skip_rows(&mut self, skip: usize, op: usize) {
+        match op {
+            DMA_COUNTER_MEMCPY => {
+                assert!(
+                    self.count_memcpy_rows == 0,
+                    "Cannot have both skip and count for memcpy in the same chunk",
+                );
+                self.skip_memcpy_rows += skip;
+            }
+            DMA_COUNTER_MEMSET => {
+                assert!(
+                    self.count_memset_rows == 0,
+                    "Cannot have both skip and count for memset in the same chunk",
+                );
+                self.skip_memset_rows += skip;
+            }
+            DMA_COUNTER_MEMCMP => {
+                assert!(
+                    self.count_memcmp_rows == 0,
+                    "Cannot have both skip and count for memcmp in the same chunk",
+                );
+                self.skip_memcmp_rows += skip;
+            }
+            DMA_COUNTER_INPUTCPY => {
+                assert!(
+                    self.count_inputcpy_rows == 0,
+                    "Cannot have both skip and count for inputcpy in the same chunk",
+                );
+                self.skip_inputcpy_rows += skip;
+            }
+            _ => panic!("Unsupported operation for DMA instance builder 0x{op:02X}"),
+        }
+    }
+
+    /// Adds `rows` rows of `op` to the instance currently being filled.
+    #[inline(always)]
+    fn add_count_rows(&mut self, rows: usize, op: usize) {
+        match op {
+            DMA_COUNTER_MEMCPY => self.count_memcpy_rows += rows,
+            DMA_COUNTER_MEMSET => self.count_memset_rows += rows,
+            DMA_COUNTER_MEMCMP => self.count_memcmp_rows += rows,
+            DMA_COUNTER_INPUTCPY => self.count_inputcpy_rows += rows,
+            _ => panic!("Unsupported operation for DMA instance builder 0x{op:02X}"),
+        }
+    }
+
     pub fn add_op_rows(
         &mut self,
         chunk_id: ChunkId,
@@ -161,6 +214,7 @@ impl DmaInstancesBuilder {
             self.current_chunk = Some(chunk_id);
         }
         let mut rows = rows;
+        let mut skip = skip;
         while rows > 0 {
             if self.rows_available == 0 {
                 self.flush_current_chunk();
@@ -170,51 +224,17 @@ impl DmaInstancesBuilder {
             let rows_applicable = std::cmp::min(self.rows_available, rows);
             rows -= rows_applicable;
             self.rows_available -= rows_applicable;
-            match op {
-                DMA_COUNTER_MEMCPY => {
-                    if skip > 0 {
-                        assert!(
-                            self.count_memcpy_rows == 0,
-                            "Cannot have both skip and count for memcpy in the same chunk",
-                        );
-                        self.skip_memcpy_rows += skip;
-                    }
-                    self.count_memcpy_rows += rows_applicable;
-                }
-                DMA_COUNTER_MEMSET => {
-                    if skip > 0 {
-                        assert!(
-                            self.count_memset_rows == 0,
-                            "Cannot have both skip and count for memset in the same chunk",
-                        );
-                        self.skip_memset_rows += skip;
-                    }
-                    self.count_memset_rows += rows_applicable;
-                }
-                DMA_COUNTER_MEMCMP => {
-                    if skip > 0 {
-                        assert!(
-                            self.count_memcmp_rows == 0,
-                            "Cannot have both skip and count for memcmp in the same chunk",
-                        );
-                        self.skip_memcmp_rows += skip;
-                    }
-                    self.count_memcmp_rows += rows_applicable;
-                }
-                DMA_COUNTER_INPUTCPY => {
-                    if skip > 0 {
-                        assert!(
-                            self.count_inputcpy_rows == 0,
-                            "Cannot have both skip and count for inputcpy in the same chunk",
-                        );
-                        self.skip_inputcpy_rows += skip;
-                    }
-                    self.count_inputcpy_rows += rows_applicable;
-                }
-                _ => {
-                    panic!("Unsupported operation for DMA instance builder 0x{op:02X}")
-                }
+            // `skip` counts rows of this op already collected by another air for this chunk, so it
+            // applies once to the whole batch, not once per instance: when the batch crosses an
+            // instance boundary, `count_to_skip` above already carries the rows consumed so far.
+            if skip > 0 {
+                self.add_skip_rows(skip, op);
+                skip = 0;
             }
+            self.add_count_rows(rows_applicable, op);
+            // Upper bound on the bus entries this instance collects for the chunk: an operation
+            // straddling an instance boundary is collected (partially) by both, so `inputs` is
+            // charged to every instance the batch reaches.
             self.inputs_counter += inputs;
         }
     }
@@ -242,3 +262,7 @@ impl DmaInstancesBuilder {
         checkpoints
     }
 }
+
+#[cfg(test)]
+#[path = "tests/dma_instances_builder_tests.rs"]
+mod tests;

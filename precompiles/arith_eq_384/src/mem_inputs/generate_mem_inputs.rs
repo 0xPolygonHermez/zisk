@@ -1,6 +1,6 @@
-use precompiles_common::MemBusHelpers;
-use precompiles_common::MemProcessor;
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+use zisk_precomp_common::MemBusHelpers;
+use zisk_precomp_common::MemProcessor;
 
 #[derive(Debug)]
 pub struct ArithEq384MemInputConfig {

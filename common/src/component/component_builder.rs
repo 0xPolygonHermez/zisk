@@ -6,8 +6,8 @@
 //!   `build_instance` / `configure_instances` need the constructed SM.
 
 use crate::{BusDeviceMetrics, Instance, InstanceCtx, Plan, Planner};
-use fields::PrimeField64;
 use proofman_common::ProofCtx;
+use proofman_fields::PrimeField64;
 
 /// Static (no-`self`) plan-time builders.
 pub trait ComponentPlanBuilder<F: PrimeField64> {

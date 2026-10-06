@@ -269,7 +269,7 @@ _Fr_rawNegLS:
         sbcs  x14, x10, xzr
         sbcs  x15, x11, xzr
 
-        cset   x2,  cs
+        cset   x2,  cc
 
         ldp    x4,  x5, [x1]
         subs  x12, x12,  x4
@@ -279,7 +279,7 @@ _Fr_rawNegLS:
         sbcs  x14, x14,  x6
         sbcs  x15, x15,  x7
 
-        cset   x3,  cs
+        cset   x3,  cc
         orr    x3,  x3,  x2
 
         cbz    x3, Fr_rawNegLS_done
@@ -1028,7 +1028,8 @@ _Fr_rawShr:
 
         lsr    x2,  x2,  #6
         adr    x5, Fr_rawShr_word_shift
-        ldr    x5, [x5, x2, lsl 3]
+        ldrsw  x2, [x5, x2, lsl 2]
+        add    x5,  x5,  x2
         br     x5
 
 Fr_rawShr_word_shift_0:
@@ -1084,10 +1085,10 @@ Fr_rawShr_word_shift_3:
         ret
 
 Fr_rawShr_word_shift:
-        .quad Fr_rawShr_word_shift_0
-        .quad Fr_rawShr_word_shift_1
-        .quad Fr_rawShr_word_shift_2
-        .quad Fr_rawShr_word_shift_3
+        .long Fr_rawShr_word_shift_0 - Fr_rawShr_word_shift
+        .long Fr_rawShr_word_shift_1 - Fr_rawShr_word_shift
+        .long Fr_rawShr_word_shift_2 - Fr_rawShr_word_shift
+        .long Fr_rawShr_word_shift_3 - Fr_rawShr_word_shift
 
 
 Fr_rawShl:
@@ -1101,7 +1102,8 @@ _Fr_rawShl:
 
         lsr    x2,  x2,  #6
         adr    x5, Fr_rawShl_word_shift
-        ldr    x5, [x5, x2, lsl 3]
+        ldrsw  x2, [x5, x2, lsl 2]
+        add    x5,  x5,  x2
         br     x5
 
 Fr_rawShl_word_shift_0:
@@ -1176,10 +1178,10 @@ Fr_rawShl_sub:
 
         ret
 Fr_rawShl_word_shift:
-        .quad Fr_rawShl_word_shift_0
-        .quad Fr_rawShl_word_shift_1
-        .quad Fr_rawShl_word_shift_2
-        .quad Fr_rawShl_word_shift_3
+        .long Fr_rawShl_word_shift_0 - Fr_rawShl_word_shift
+        .long Fr_rawShl_word_shift_1 - Fr_rawShl_word_shift
+        .long Fr_rawShl_word_shift_2 - Fr_rawShl_word_shift
+        .long Fr_rawShl_word_shift_3 - Fr_rawShl_word_shift
 
 
 

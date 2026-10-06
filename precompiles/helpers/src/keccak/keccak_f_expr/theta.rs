@@ -1,6 +1,6 @@
 #![allow(clippy::needless_range_loop)]
 
-use circuit::{ExpressionManager, ExpressionOp};
+use zisk_circuit::{ExpressionManager, ExpressionOp};
 
 use super::bit_position;
 

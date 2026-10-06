@@ -18,6 +18,7 @@ jobs:
     outputs:
       tag_name: ${{ steps.release_info.outputs.tag_name }}
       release_name: ${{ steps.release_info.outputs.release_name }}
+      setup_version: ${{ steps.setup_keys.outputs.setup_version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -49,16 +50,38 @@ jobs:
             echo "release_name=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Check the proving keys are published
+        id: setup_keys
+        run: |
+          V="$(sed -nE 's/^setup_version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' setup/Cargo.toml)"
+          [ -n "$V" ] || { echo "could not read setup_version from setup/Cargo.toml"; exit 1; }
+          echo "setup_version=$V" >> "$GITHUB_OUTPUT"
+          missing=""
+          for f in provingkey-$V verifykey-$V provingkey-$V-blake3 verifykey-$V-blake3 provingkey-plonk-$V; do
+            for g in "zisk-$f.tar.gz" "zisk-$f.tar.gz.md5"; do
+              curl -sfI "https://storage.googleapis.com/zisk-setup/$g" > /dev/null || missing="$missing $g"
+            done
+          done
+          if [ -n "$missing" ]; then
+            for g in $missing; do echo "::error::not in the bucket: $g"; done
+            exit 1
+          fi
+
   release:
     name: Build ${{ matrix.target }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    # Empty for macOS: no container.
+    container: ${{ matrix.container }}
     timeout-minutes: 240
     needs: prepare
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-22.04
+          - runner: rocket
+            container: ziskvm/zisk-runner-gpu:latest
             target: x86_64-unknown-linux-gnu
             svm_target_platform: linux-amd64
             platform: linux
@@ -69,7 +92,31 @@ jobs:
             platform: darwin
             arch: arm64
     steps:
+      # Self-hosted runner: remove files from previous runs.
+      - name: Clean workspace
+        if: matrix.platform == 'linux'
+        run: |
+          if [ -d "$GITHUB_WORKSPACE" ]; then
+            find "$GITHUB_WORKSPACE" -mindepth 1 -delete
+          fi
+
       - uses: actions/checkout@v4
+
+      # Steps run as root. Use the rustup binary of ziskuser, but install a new
+      # toolchain: updating the one from the image fails on overlayfs.
+      # There is no Docker daemon in the container.
+      - name: Configure container environment
+        if: matrix.platform == 'linux'
+        run: |
+          echo "ZISK_CI_NO_DOCKER_REBUILD=1" >> "$GITHUB_ENV"
+          echo "/home/ziskuser/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        if: matrix.platform == 'darwin'
+        shell: bash
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_deps.sh
 
       - name: Install rust toolchain
         id: rustc-toolchain
@@ -79,12 +126,6 @@ jobs:
           profile: default
           override: true
           target: ${{ matrix.target }}
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./install_deps.sh --cuda
 
       - name: Setup macOS env vars
         if: matrix.target == 'aarch64-apple-darwin'
@@ -105,6 +146,7 @@ jobs:
           PLATFORM_NAME: ${{ matrix.platform }}
           TARGET: ${{ matrix.target }}
           ARCH: ${{ matrix.arch }}
+          SETUP_VERSION: ${{ needs.prepare.outputs.setup_version }}
         shell: bash
         run: |
           mkdir -p zisk-dist/bin
@@ -121,10 +163,12 @@ jobs:
             cp ./target/${TARGET}/release/zisk-worker              zisk-dist/bin/
           fi
           cp ./target/${TARGET}/release/ziskemu                    zisk-dist/bin/
-          cp ./target/${TARGET}/release/riscv2zisk                 zisk-dist/bin/
+          cp ./target/${TARGET}/release/zisk-transpiler-riscv                 zisk-dist/bin/
           cp ./target/${TARGET}/release/zisk-coordinator           zisk-dist/bin/
           cp ./ziskup/ziskup                                       zisk-dist/bin/
           cp ./target/${TARGET}/release/libziskclib.a              zisk-dist/bin/
+          # ziskup installs the keys named after this, not after the release tag.
+          echo "${SETUP_VERSION}" > zisk-dist/setup_version
 
           if [[ "${PLATFORM_NAME}" == "linux" ]]; then
             mkdir -p zisk-dist/zisk/emulator-asm/src

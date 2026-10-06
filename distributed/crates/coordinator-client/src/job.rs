@@ -13,11 +13,14 @@ use crate::input_sender::InputSender;
 
 const WAIT_POLL_SECS: u32 = 5;
 
+/// Handle to a background job-watching task. Aborting the task (explicitly or
+/// on drop) stops event delivery.
 pub struct WatchHandle {
     task: tokio::task::JoinHandle<()>,
 }
 
 impl WatchHandle {
+    /// Stop watching and abort the background task.
     pub fn abort(&self) {
         self.task.abort();
     }
@@ -29,6 +32,8 @@ impl Drop for WatchHandle {
     }
 }
 
+/// Handle to a submitted coordinator job: watch its events, wait for its
+/// terminal result, or cancel it.
 #[derive(Clone)]
 pub struct Job {
     job_id: Uuid,
@@ -42,6 +47,7 @@ impl Job {
         Ok(Self { client, job_id })
     }
 
+    /// This job's id.
     pub fn job_id(&self) -> Uuid {
         self.job_id
     }
@@ -74,10 +80,13 @@ impl Job {
         WatchHandle { task }
     }
 
+    /// Block until the job reaches a terminal state, or `timeout` elapses.
     pub fn wait(&self, timeout: Option<Duration>) -> Result<TerminalStatus> {
         crate::client::block_on(self.wait_async(timeout))
     }
 
+    /// Async form of [`wait`](Self::wait): resolve when the job reaches a
+    /// terminal state, or error if `timeout` elapses first.
     pub async fn wait_async(&self, timeout: Option<Duration>) -> Result<TerminalStatus> {
         let deadline = timeout.map(|d| tokio::time::Instant::now() + d);
         let mut gw = self.client.async_client();
@@ -122,10 +131,13 @@ impl Job {
         }
     }
 
+    /// Cancel this job. Returns `true` if the coordinator actually transitioned
+    /// it to cancelled (existed and not already terminal).
     pub fn cancel(&self) -> Result<bool> {
         crate::client::block_on(self.cancel_async())
     }
 
+    /// Async form of [`cancel`](Self::cancel).
     pub async fn cancel_async(&self) -> Result<bool> {
         let mut gw = self.client.async_client();
         let resp = gw

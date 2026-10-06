@@ -1,6 +1,8 @@
 use crate::{MemInput, MemPreviousSegment};
-use mem_common::{MemHelpers, MemModuleCheckPoint, MEMORY_INIT_STEP, MEM_BYTES, MEM_BYTES_BITS};
 use zisk_common::{BusDevice, BusId, MemBusData, SegmentId, MEM_BUS_ID};
+use zisk_sm_mem_common::{
+    MemHelpers, MemModuleCheckPoint, MEMORY_INIT_STEP, MEM_BYTES, MEM_BYTES_BITS,
+};
 
 #[cfg(feature = "save_addr_action")]
 use std::io::Write;

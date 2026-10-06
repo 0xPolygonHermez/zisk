@@ -1,8 +1,7 @@
 use std::error::Error;
 use zisk_sdk::{ExecutorKind, GuestProgram, ProverClient, ZiskHints, ZiskStdin};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...\n");
 
     let elf_path = "hints/example/zec-reth.elf";
@@ -18,15 +17,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Setting up program...");
     client.upload(&program).run()?;
-    client.setup(&program).with_hints().run()?.await?;
+    client.setup(&program).with_hints().run_sync()?;
 
     println!("Executing program...");
     let result = client
         .execute(&program, ZiskStdin::new())
         .hints(hints)
         .executor(ExecutorKind::Assembly)
-        .run()?
-        .await?;
+        .run_sync()?;
 
     println!(
         "Program executed successfully: {} cycles in {} ms",

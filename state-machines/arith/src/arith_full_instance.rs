@@ -5,15 +5,18 @@
 //! execution plans.
 
 use crate::{ArithFrops, ArithFullSM};
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
     InstanceType, OperationData, PayloadType, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
+use zisk_core::frops::frops_multiplicity_from_asm;
+#[cfg(feature = "debug_frops")]
+use zisk_core::frops::{frops_check_claim_row, frops_check_enabled, FROPS_ARITH_BASE};
 use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithTrace, ArithTraceRow, ArithTraceRowPacked};
 
@@ -175,6 +178,19 @@ pub struct ArithInstanceCollector<F: PrimeField64> {
     /// The table ID for the Arith FROPS
     frops_table_id: usize,
 
+    /// Whether this collector publishes the FROPS multiplicity column. False when the column comes
+    /// from the ROM-histogram assembly instead, in which case publishing here as well would count
+    /// every multiplicity twice. Read once, at construction: it is process state for the whole
+    /// execution.
+    publish_frops: bool,
+
+    /// Whether to cross-check the reference column against the rows this collector would have
+    /// published (`zisk_core::frops`): the assembly's on the ASM path, a Rust replay of the
+    /// minimal traces on the emulated one. Debug only, and compiled out without the `debug_frops`
+    /// feature so that neither the field nor the per-operation test below it survives.
+    #[cfg(feature = "debug_frops")]
+    check_frops: bool,
+
     /// Standard library instance, providing common functionalities.
     std: Arc<Std<F>>,
 }
@@ -198,6 +214,13 @@ impl<F: PrimeField64> ArithInstanceCollector<F> {
     ) -> Self {
         let frops_table_id =
             std.get_virtual_table_id(ArithFrops::TABLE_ID).expect("Failed to get FROPS table ID");
+
+        // Where the FROPS multiplicity column comes from is fixed for the whole execution, so it is
+        // resolved once here rather than per operation.
+        let publish_frops = !frops_multiplicity_from_asm();
+        #[cfg(feature = "debug_frops")]
+        let check_frops = frops_check_enabled();
+
         Self {
             inputs: Vec::with_capacity(num_operations as usize),
             num_operations,
@@ -205,6 +228,24 @@ impl<F: PrimeField64> ArithInstanceCollector<F> {
             force_execute_to_end,
             std,
             frops_table_id,
+            publish_frops,
+            #[cfg(feature = "debug_frops")]
+            check_frops,
+        }
+    }
+
+    /// Whether the FROPS table row of an operation is needed, rather than just whether the operation
+    /// is a frequent one: to publish the multiplicity, or to cross-check the assembly's column when
+    /// the `debug_frops` feature is on.
+    #[inline]
+    fn needs_frops_row(&self) -> bool {
+        #[cfg(feature = "debug_frops")]
+        {
+            self.publish_frops || self.check_frops
+        }
+        #[cfg(not(feature = "debug_frops"))]
+        {
+            self.publish_frops
         }
     }
 
@@ -231,14 +272,28 @@ impl<F: PrimeField64> ArithInstanceCollector<F> {
             return true;
         }
 
-        let frops_row = ArithFrops::get_row(data[OP] as u8, data[A], data[B]);
+        // The table row is only needed to publish the multiplicity or to cross-check the
+        // assembly's column. Otherwise the membership test alone decides whether this instance has
+        // to prove the operation, which is the same test without the row arithmetic.
+        let (is_frop, frops_row) = if self.needs_frops_row() {
+            let row = ArithFrops::get_row(data[OP] as u8, data[A], data[B]);
+            (row != ArithFrops::NO_FROPS, row)
+        } else {
+            (ArithFrops::is_frequent_op(data[OP] as u8, data[A], data[B]), ArithFrops::NO_FROPS)
+        };
 
-        if self.collect_skipper.should_skip_query(frops_row == ArithFrops::NO_FROPS) {
+        if self.collect_skipper.should_skip_query(!is_frop) {
             return true;
         }
 
-        if frops_row != ArithFrops::NO_FROPS {
-            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
+        if is_frop {
+            if self.publish_frops {
+                self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
+            }
+            #[cfg(feature = "debug_frops")]
+            if self.check_frops {
+                frops_check_claim_row(FROPS_ARITH_BASE + frops_row as u64);
+            }
             return true;
         }
 

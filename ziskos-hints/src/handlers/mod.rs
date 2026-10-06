@@ -1,13 +1,24 @@
+/// Hint handlers for big-integer precompiles (e.g. `MODEXP`).
 pub mod bigint;
+/// Hint handler for the BLAKE2b precompile.
 pub mod blake2b;
+/// Hint handlers for the BLS12-381 precompile.
 pub mod bls381;
+/// Hint handlers for the BN254 (alt-bn128) precompile.
 pub mod bn254;
+/// Hint handler for the Keccak-256 precompile.
 pub mod keccak256;
+/// Hint handlers for the KZG point-evaluation precompile.
 pub mod kzg;
+/// Hint handler for the RIPEMD-160 precompile.
 pub mod ripemd160;
+/// Hint handlers for the secp256k1 precompile.
 pub mod secp256k1;
+/// Hint handlers for the secp256r1 (P-256) precompile.
 pub mod secp256r1;
+/// Hint handler for the SHA-256 precompile.
 pub mod sha256;
+/// Hint handlers for 256-bit unsigned-integer precompiles (e.g. `MULMOD256`).
 pub mod uint256;
 
 /// Macro to generate size, offset, and expected length constants for hint data fields.

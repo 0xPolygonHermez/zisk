@@ -1,4 +1,4 @@
-use zkvm_interface::{zkvm_ripemd160, zkvm_ripemd160_hash, zkvm_status_ZKVM_EOK as ZKVM_EOK};
+use zisk_zkvm_interface::{zkvm_ripemd160, zkvm_ripemd160_hash, zkvm_status_ZKVM_EOK as ZKVM_EOK};
 
 pub fn diagnostic_zkvm_ripemd160() {
     // RIPEMD-160("") = 9c1185a5 c5e9fc54 61280897 7ee8f548 b2258d31, left-padded with 12 zero bytes.

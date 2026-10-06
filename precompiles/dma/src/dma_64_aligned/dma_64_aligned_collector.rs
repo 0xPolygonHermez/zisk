@@ -5,10 +5,10 @@
 //! execution plans.
 
 use crate::{Dma64AlignedInput, DmaCollectCounters, DmaCollectorRoutingLog, DmaInputPosition};
-use precompiles_helpers::DmaInfo;
 use std::any::Any;
 use zisk_common::{BusDevice, BusId, ChunkId, DMA_ENCODED, OP, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
+use zisk_precomp_helpers::DmaInfo;
 #[derive(Debug)]
 pub struct Dma64AlignedCollector {
     /// Collected inputs for witness computation.

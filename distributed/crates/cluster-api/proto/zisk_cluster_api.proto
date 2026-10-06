@@ -152,12 +152,14 @@ message Shutdown {
 message WorkerRegisterRequest {
   string worker_id = 1;
   ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
+  uint32 aggregation_arity = 3; // proving-key constant; the coordinator sizes fold groups with it
 }
 
 message WorkerReconnectRequest {
   string worker_id = 1;
   ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
   optional string last_known_job_id = 3;
+  uint32 aggregation_arity = 4;
 }
 
 message WorkerRegisterResponse {
@@ -180,6 +182,7 @@ message ExecuteTaskRequest {
     ContributionParams execution_params = 7; // Same params as contribution, but only executes without proof generation
     WrapParams wrap_params = 8;
   }
+  map<string, string> metadata = 9;
 }
 
 enum TaskType {
@@ -222,6 +225,8 @@ message AggParams {
   bool last_proof = 2;
   bool final_proof = 3;
   DistributedProofType proof_type = 4;
+  bool keep_resident = 5;
+  bool reset_state = 6;
 }
 
 message WrapParams {
@@ -271,6 +276,7 @@ message ExecuteTaskResponse {
     ProofList proofs = 8;
     FinalProof final_proof = 9;
     WrapResult wrap_result = 10;
+    ProofList partial_agg_proofs = 12;
   }
   bool worker_in_recovery = 11;
 }
@@ -340,7 +346,7 @@ message ProofList {
 }
 
 message ProofStark {
-  uint32 worker_idx = 1;
+  repeated uint32 worker_indexes = 1;
   uint64 airgroup_id = 2;
   repeated uint64 values = 3;
 }

@@ -103,6 +103,7 @@ pub(crate) trait FromWaitResult: Sized + Send + 'static {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self>;
 }
 
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum JobHandleInner<T> {
     Embedded(tokio::task::JoinHandle<Result<T>>),
     Remote { remote_job: Job, _watch_handle: WatchHandle },

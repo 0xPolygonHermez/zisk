@@ -2,6 +2,7 @@ use super::KeccakState;
 
 /// Convert from linear [u64; 25] to 5x5x64 bit array
 #[allow(clippy::needless_range_loop)]
+#[inline(always)]
 pub fn keccakf_state_from_linear(linear: &[u64; 25]) -> KeccakState {
     let mut state = [[[0u8; 64]; 5]; 5];
     for x in 0..5 {
@@ -16,6 +17,7 @@ pub fn keccakf_state_from_linear(linear: &[u64; 25]) -> KeccakState {
 }
 
 #[allow(clippy::needless_range_loop)]
+#[inline(always)]
 pub fn keccakf_state_flatten(state: &KeccakState) -> [u8; 1600] {
     let mut linear_1d = [0u8; 1600];
     for x in 0..5 {
@@ -29,8 +31,9 @@ pub fn keccakf_state_flatten(state: &KeccakState) -> [u8; 1600] {
     linear_1d
 }
 
+#[inline(always)]
 pub const fn keccakf_bit_pos(x: usize, y: usize, z: usize) -> usize {
-    assert!(x < 5 && y < 5 && z < 64);
+    debug_assert!(x < 5 && y < 5 && z < 64);
 
     64 * x + 320 * y + z
 }

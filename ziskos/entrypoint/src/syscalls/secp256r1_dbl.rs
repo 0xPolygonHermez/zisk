@@ -39,7 +39,7 @@ pub extern "C" fn syscall_secp256r1_dbl(
     {
         let _p1 = [p.x, p.y].concat().try_into().unwrap();
         let mut p3: [u64; 8] = [0; 8];
-        precompiles_helpers::secp256r1_dbl(&_p1, &mut p3);
+        zisk_precomp_helpers::secp256r1_dbl(&_p1, &mut p3);
         p.x.copy_from_slice(&p3[0..4]);
         p.y.copy_from_slice(&p3[4..8]);
         #[cfg(feature = "hints")]

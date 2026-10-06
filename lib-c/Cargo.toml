@@ -1,10 +1,13 @@
 [package]
-name = "lib-c"
+name = "zisk-lib-c"
+description = "Rust FFI bindings to C implementations of elliptic-curve and field arithmetic for ZisK"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 build = "build.rs"

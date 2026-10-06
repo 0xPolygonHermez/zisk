@@ -4,8 +4,9 @@ use std::path::Path;
 
 use anyhow::Result;
 
-/// A Circom template body, embedded at compile time via [`load_circuit!`]
-/// or loaded at runtime via [`CircomCircuit::from_path`].
+/// A Circom template body, embedded at compile time via
+/// [`load_circuit!`](crate::load_circuit) or loaded at runtime via
+/// [`CircomCircuit::from_path`].
 ///
 /// This is the circuit-side sibling of [`crate::GuestProgram`]: a typed,
 /// client-independent handle to user-supplied Circom source (e.g. the
@@ -19,7 +20,8 @@ pub struct CircomCircuit {
 }
 
 impl CircomCircuit {
-    /// Create from static strings (const-compatible; used by [`load_circuit!`]).
+    /// Create from static strings (const-compatible; used by
+    /// [`load_circuit!`](crate::load_circuit)).
     pub const fn new_static(name: &'static str, source: &'static str) -> Self {
         Self { name: Cow::Borrowed(name), source: Cow::Borrowed(source) }
     }
@@ -39,10 +41,12 @@ impl CircomCircuit {
         Ok(Self { name: Cow::Owned(name), source: Cow::Owned(source) })
     }
 
+    /// The circuit's display name (load path or file stem).
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The Circom template source.
     pub fn source(&self) -> &str {
         &self.source
     }

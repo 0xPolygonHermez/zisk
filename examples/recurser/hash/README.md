@@ -58,7 +58,7 @@ ELF=guest/target/elf/riscv64ima-zisk-zkvm-elf/release/recurser_hash_guest
 # 2. Write the leaf inputs (a.bin/b.bin/c.bin) with the exact bincode the guest
 #    expects. The workspace target dir is examples/target (this is its own
 #    workspace), so the built helper lives there.
-cargo run --release -p recurser-hash-host --bin gen-inputs
+cargo run --release -p recurser-hash-host --bin gen-inputs-hash
 
 # 3. Set up the recurser.
 $CARGO_ZISK setup --aggregation guest/aggregations/hash.toml

@@ -12,6 +12,7 @@ zisk_common::zisk_precompile! {
     num_available = {
         ::zisk_pil::Sha256fTrace::<::zisk_pil::Sha256fTraceRow<F>>::NUM_ROWS / CLOCKS - 1
     },
+    cost = ::zisk_pil::SHA_256_F_INSTANCE_COST,
     ops = [
         (OperationSha256Data, Sha256fInput),
     ],
@@ -19,8 +20,8 @@ zisk_common::zisk_precompile! {
 
 #[cfg(test)]
 mod sha256f_tests {
-    use test_artifacts::ELF_SHA256;
     use zisk_common::io::ZiskStdin;
+    use zisk_test_artifacts::ELF_SHA256;
 
     /// Number of `syscall_sha256_f` invocations the guest will perform.
     const NUM_SHA256FS: u64 = 10;

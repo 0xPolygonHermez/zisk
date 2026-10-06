@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use test_artifacts::{ELF_AGG_VERIFY, ELF_FIB_MOD};
 use zisk_sdk::{EmbeddedOpts, ProfilingMode, ProverClient, ZiskStdin};
+use zisk_test_artifacts::{ELF_AGG_VERIFY, ELF_FIB_MOD};
 
 #[derive(Serialize, Deserialize)]
 struct GuestPublics {
@@ -10,8 +10,7 @@ struct GuestPublics {
     b: u32,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...\n");
 
     let n: u32 = 2000;
@@ -27,13 +26,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = builder.build()?;
 
     println!("Setting up first program (fib_mod)...");
-    client.setup(&ELF_FIB_MOD).run()?.await?;
+    client.setup(&ELF_FIB_MOD).run_sync()?;
 
     println!("Setting up second program (agg_verify)...");
-    client.setup(&ELF_AGG_VERIFY).run()?.await?;
+    client.setup(&ELF_AGG_VERIFY).run_sync()?;
 
     println!("Executing first program...");
-    let result = client.execute(&ELF_FIB_MOD, &stdin).run()?.await?;
+    let result = client.execute(&ELF_FIB_MOD, &stdin).run_sync()?;
 
     println!(
         "Program executed successfully: {} cycles in {} ms",
@@ -60,23 +59,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Publics OK: n={}, module={}, b={}", publics.n, publics.module, publics.b);
 
     println!("Generating first proof for fib_mod...");
-    let vadcop_result1 = client.prove(&ELF_FIB_MOD, stdin).run()?.await?;
+    let vadcop_result1 = client.prove(&ELF_FIB_MOD, stdin).run_sync()?;
 
     let stdin2 = ZiskStdin::new();
     stdin2.write(&n);
     stdin2.write(&module);
 
     println!("Generating second proof for fib_mod...");
-    let vadcop_result2 = client.prove(&ELF_FIB_MOD, stdin2).run()?.await?;
+    let vadcop_result2 = client.prove(&ELF_FIB_MOD, stdin2).run_sync()?;
+
+    let proof1_bytes = vadcop_result1.get_proof_bytes()?;
+    let proof2_bytes = vadcop_result2.get_proof_bytes()?;
+
+    // Fed in only because this is a demo — a real guest hardcodes both. The serialized
+    // tail is [zisk_vk(4 u64)][hash tag(1 u64)], so the setup vk is the 32 bytes before
+    // the trailing tag; the program vk is fib_mod's ROM root.
+    let tail = proof1_bytes.len() - 8;
+    let expected_setup_vk = proof1_bytes[tail - 4 * 8..tail].to_vec();
+    let expected_program_vk: Vec<u8> =
+        vadcop_result1.get_program_vk().vk.iter().flat_map(|limb| limb.to_le_bytes()).collect();
 
     let stdin_aggregation = ZiskStdin::new();
-    stdin_aggregation.write_slice(&vadcop_result1.get_proof_bytes()?);
-    stdin_aggregation.write_slice(&vadcop_result2.get_proof_bytes()?);
+    // Written in the guest's read order.
+    stdin_aggregation.write_slice(&expected_setup_vk);
+    stdin_aggregation.write_slice(&expected_program_vk);
+    stdin_aggregation.write_slice(&proof1_bytes);
+    stdin_aggregation.write_slice(&proof2_bytes);
 
     println!("Running ZisK Emulator on aggregation program for profiling...");
     zisk_sdk::run(&ELF_AGG_VERIFY, stdin_aggregation.clone(), Some(ProfilingMode::Complete))?;
 
-    let result_aggregation = client.prove(&ELF_AGG_VERIFY, stdin_aggregation).run()?.await?;
+    let result_aggregation = client.prove(&ELF_AGG_VERIFY, stdin_aggregation).run_sync()?;
 
     result_aggregation.verify()?;
 

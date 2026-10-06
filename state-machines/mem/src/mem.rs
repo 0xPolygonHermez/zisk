@@ -5,15 +5,15 @@ use crate::{
     MemAlignReadByteInstance, MemAlignSM, MemAlignWriteByteInstance, MemModuleInstance, MemPlanner,
     MemSM, RomDataSM,
 };
-use fields::PrimeField64;
-use mem_common::MemCounters;
-use pil_std_lib::Std;
 use proofman_common::ProofCtx;
+use proofman_fields::PrimeField64;
 use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner};
 use zisk_pil::{
-    InputDataTrace, MemAlignByteTrace, MemAlignReadByteTrace, MemAlignTrace,
-    MemAlignWriteByteTrace, MemTrace, RomDataTrace, ZiskProofValues,
+    InputDataTrace, MemAlignByteLargeTrace, MemAlignByteTrace, MemAlignLargeTrace,
+    MemAlignReadByteLargeTrace, MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace,
+    MemTrace, RomDataTrace, ZiskProofValues,
 };
+use zisk_sm_mem_common::MemCounters;
 
 pub struct Mem<F: PrimeField64> {
     // Secondary State machines
@@ -25,12 +25,12 @@ pub struct Mem<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> Mem<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let mem_align_sm = MemAlignSM::new(std.clone());
-        let mem_sm = MemSM::new(std.clone());
-        let input_data_sm = InputDataSM::new(std.clone());
-        let rom_data_sm = RomDataSM::new(std.clone());
-        let mem_align_byte_sm = MemAlignByteSM::new(std.clone());
+    pub fn new() -> Arc<Self> {
+        let mem_align_sm = MemAlignSM::new();
+        let mem_sm = MemSM::new();
+        let input_data_sm = InputDataSM::new();
+        let rom_data_sm = RomDataSM::new();
+        let mem_align_byte_sm = MemAlignByteSM::new();
 
         Arc::new(Self { mem_align_sm, mem_sm, input_data_sm, rom_data_sm, mem_align_byte_sm })
     }
@@ -79,13 +79,15 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
             InputDataTrace::<()>::AIR_ID => {
                 Box::new(MemModuleInstance::new(self.input_data_sm.clone(), ictx))
             }
-            MemAlignTrace::<()>::AIR_ID => {
+            // Each air and its `Large` sibling share one instance type, which picks the trace —
+            // and with it the height and air id — from `ictx.plan.air_id`.
+            MemAlignTrace::<()>::AIR_ID | MemAlignLargeTrace::<()>::AIR_ID => {
                 Box::new(MemAlignInstance::new(self.mem_align_sm.clone(), ictx))
             }
-            MemAlignByteTrace::<()>::AIR_ID => {
+            MemAlignByteTrace::<()>::AIR_ID | MemAlignByteLargeTrace::<()>::AIR_ID => {
                 Box::new(MemAlignByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
             }
-            MemAlignReadByteTrace::<()>::AIR_ID => {
+            MemAlignReadByteTrace::<()>::AIR_ID | MemAlignReadByteLargeTrace::<()>::AIR_ID => {
                 Box::new(MemAlignReadByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
             }
             MemAlignWriteByteTrace::<()>::AIR_ID => {

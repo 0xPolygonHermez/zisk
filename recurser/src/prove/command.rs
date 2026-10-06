@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
-use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use proofman::ProofMan;
+use proofman_fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use proofman_verifier::VadcopFinalProof;
 use zisk_verifier::PROGRAM_VK_LEN;
 

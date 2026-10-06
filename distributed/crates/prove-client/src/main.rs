@@ -1,3 +1,10 @@
+//! `zisk-prove-client`: command-line client for submitting jobs (setup,
+//! execute, prove) to a ZisK coordinator over gRPC.
+
+#![warn(missing_docs)]
+#![warn(rustdoc::all)]
+#![deny(rustdoc::missing_crate_level_docs)]
+
 use std::path::PathBuf;
 use std::time::Duration;
 

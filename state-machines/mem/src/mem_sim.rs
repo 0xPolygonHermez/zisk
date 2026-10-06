@@ -1,11 +1,12 @@
-use mem_common::MemCounters;
 use zisk_common::MEM_BUS_DATA_SIZE;
+use zisk_sm_mem_common::MemCounters;
 mod mem_inputs;
 pub use mem_module::*;
 mod mem_module;
 pub use mem_inputs::*;
 mod mem_sm;
 pub use mem_sm::*;
+mod mem_witness_split;
 mod rom_data_sm;
 pub use rom_data_sm::*;
 mod input_data_sm;

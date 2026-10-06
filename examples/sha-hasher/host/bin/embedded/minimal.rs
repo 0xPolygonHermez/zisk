@@ -2,8 +2,7 @@ use sha_hasher_host::ELF_SHA_HASHER;
 use std::error::Error;
 use zisk_sdk::{ExecutorKind, ProofKind, ProverClient, ZiskStdin};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client (Minimal proof mode)...");
 
     // Create an input stream and write '1000' to it.
@@ -20,7 +19,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = builder.build()?;
 
     println!("Setting up program...");
-    client.setup(&ELF_SHA_HASHER).run()?.await?;
+    client.setup(&ELF_SHA_HASHER).run_sync()?;
     println!("Setup completed successfully");
 
     println!("Generating minimal proof (this may take a while)...");
@@ -28,8 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .prove(&ELF_SHA_HASHER, stdin)
         .executor(ExecutorKind::Assembly)
         .wrap(ProofKind::VadcopFinalMinimal)
-        .run()?
-        .await?;
+        .run_sync()?;
     println!("Minimal proof generated in {} ms", result.get_proving_time());
 
     println!("Verifying minimal proof...");

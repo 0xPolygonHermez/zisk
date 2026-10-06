@@ -28,12 +28,16 @@ pub unsafe extern "C" fn syscall_keccak_f(
     ziskos_syscall!(zisk_definitions::SYSCALL_KECCAKF_ID, state);
     #[cfg(not(zisk_guest))]
     {
+        // Register the input state if fcall_set_keccakf_cache_index() asked for it, mirroring
+        // what the emulator does before running the permutation
+        crate::zisklib::keccakf_cache::keccakf_cache_on_keccakf(unsafe { &*state });
+
         // Call keccakf
         keccakf(unsafe { &mut *state });
 
         // Store results in hints vector
         #[cfg(feature = "hints")]
-        {
+        if zisk_definitions::KECCAK_RESULTS {
             hints.extend_from_slice(unsafe { &*state });
         }
     }

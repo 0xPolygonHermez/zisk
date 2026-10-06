@@ -102,7 +102,7 @@ ELF=guest/target/elf/riscv64ima-zisk-zkvm-elf/release/recurser_l2_guest
 
 # 2. Write the leaf inputs (a.bin/b.bin/c.bin) with the exact ABI bytes each
 #    segment encodes to. The workspace target dir is examples/target.
-cargo run --release -p recurser-l2-host --bin gen-inputs
+cargo run --release -p recurser-l2-host --bin gen-inputs-l2
 
 # 3. Set up the recurser.
 $CARGO_ZISK setup --aggregation guest/aggregations/l2.toml
@@ -136,13 +136,26 @@ skipping B) and a foreign-guest proof both error.
 | [`host/`](host/src/main.rs) | Proves the three segments, folds them, decodes the collapsed publics, and checks the two rejection cases. |
 
 The aggregation uses a **leaf allow-list** (`programs = ["recurser_l2_guest"]`),
-so the recurser only accepts proofs from *this* guest. The host proves this two
+so the recurser only accepts *leaves* from this guest. The host proves this two
 ways at the end:
 
 - a **non-contiguous** fold (skip a segment) fails the `AggregatePublics` stitch, and
 - a proof from the **`foreign` guest** (a different programVK, not on the
   allow-list) makes the circuit unsatisfiable, so the fold is rejected before its
   publics even matter.
+
+> **The allow-list covers leaves only.** A child that is itself an aggregate skips
+> the membership check — the circuit has no copy of its own verkey, so it can only
+> verify that child against the recursion root the child carries. Unchecked, a fold
+> produced by a *different* recurser would be accepted here, allow-list and all.
+>
+> The fix sits at the verification boundary: a recurser proof must verify against
+> the recurser's verkey **and** declare that same verkey as its recursion domain.
+> `Proof::verify` enforces the second half for `VadcopKind::Recurser`, so pinning
+> `with_setup_vk(V_R)` is enough to make the allow-list reach every leaf in the
+> tree. On-chain, `verifySnarkProof(programVK, rootCVadcopFinal, ...)` forces the
+> same pairing: for an aggregate both must be `V_R`, and both must be contract
+> constants.
 
 ---
 

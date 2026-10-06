@@ -7,14 +7,14 @@
 #[cfg(feature = "save_dma_inputs")]
 use crate::DmaPrePostInput;
 use crate::{DmaCheckPoint, DmaPrePostCollector, DmaPrePostModule};
-use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use std::sync::Arc;
 
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType, StatsType,
 };
-use zisk_pil::{DmaPrePostInputCpyTrace, DmaPrePostMemCpyTrace, DmaPrePostTrace};
+use zisk_pil::DmaPrePostTrace;
 
 /// The `DmaPrePostInstance` struct represents an instance for the DmaPrePost State Machine.
 ///
@@ -44,13 +44,9 @@ impl<F: PrimeField64> DmaPrePostInstance<F> {
     }
 
     pub fn build_dma_collector(&self, chunk_id: ChunkId) -> DmaPrePostCollector {
-        debug_assert!(
-            [
-                DmaPrePostTrace::<()>::AIR_ID,
-                DmaPrePostMemCpyTrace::<()>::AIR_ID,
-                DmaPrePostInputCpyTrace::<()>::AIR_ID,
-            ]
-            .contains(&self.ictx.plan.air_id),
+        debug_assert_eq!(
+            self.ictx.plan.air_id,
+            DmaPrePostTrace::<()>::AIR_ID,
             "DmaPrePostInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

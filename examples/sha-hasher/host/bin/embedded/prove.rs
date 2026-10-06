@@ -4,8 +4,7 @@ use sha_hasher_host::ELF_SHA_HASHER;
 use std::error::Error;
 use zisk_sdk::{ExecutorKind, Proof, ProverClient, PublicValues, ZiskStdin};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...");
 
     // Create an input stream and write '1000' to it.
@@ -22,11 +21,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = builder.build()?;
 
     println!("Setting up program...");
-    client.setup(&ELF_SHA_HASHER).run()?.await?;
+    client.setup(&ELF_SHA_HASHER).run_sync()?;
     println!("Setup completed successfully");
 
     println!("Generating proof (this may take a while)...");
-    let result = client.prove(&ELF_SHA_HASHER, stdin).run()?.await?;
+    let result = client.prove(&ELF_SHA_HASHER, stdin).run_sync()?;
     println!("Proof generated successfully in {} ms", result.get_proving_time());
     println!("Execution steps: {}", result.get_execution_steps());
 

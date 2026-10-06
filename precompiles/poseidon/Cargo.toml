@@ -1,24 +1,27 @@
 [package]
-name = "precomp-poseidon"
+name = "zisk-precomp-poseidon"
+description = "Poseidon hash precompile for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
-precompiles-common = { workspace = true }
+zisk-precomp-common = { workspace = true }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
-pil-std-lib = { workspace = true }
-fields = { workspace = true }
+pil2-std-lib = { workspace = true }
+proofman-fields = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 
 [dev-dependencies]
-test-artifacts = { workspace = true }
+zisk-test-artifacts = { workspace = true }

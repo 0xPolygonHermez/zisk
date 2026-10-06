@@ -7,7 +7,7 @@ use core::arch::asm;
 use crate::ziskos_syscall;
 
 #[cfg(not(zisk_guest))]
-use precompiles_helpers::blake2b_round;
+use zisk_precomp_helpers::blake2b_round;
 
 #[derive(Debug)]
 #[repr(C)]

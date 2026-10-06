@@ -1,6 +1,6 @@
 use super::{ArithEqData, P_256_MASK};
 use crate::equations;
-use precompiles_helpers::{bigint_from_u64s, bigint_to_16_chunks, bigint_to_4_u64};
+use zisk_precomp_helpers::{bigint_from_u64s, bigint_to_16_chunks, bigint_to_4_u64};
 
 const COLS: u8 = 32;
 

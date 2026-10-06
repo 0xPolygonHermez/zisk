@@ -6,10 +6,10 @@ use std::{
 use anyhow::{Context, Result};
 use colored::Colorize;
 use proofman_common::VerboseMode;
-use rom_setup::get_elf_data_hash;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::ZiskPaths;
 use zisk_prover_backend::setup_logger;
+use zisk_rom_setup::get_elf_data_hash;
 
 use crate::{
     common::detect_current_project_elf,

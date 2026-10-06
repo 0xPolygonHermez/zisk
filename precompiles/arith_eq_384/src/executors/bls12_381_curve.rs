@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use num_bigint::BigInt;
 use num_traits::Zero;
 
-use precompiles_helpers::{bigint2_to_12_u64, bigint_from_field, bigint_to_24_chunks};
+use zisk_precomp_helpers::{bigint2_to_12_u64, bigint_from_field, bigint_to_24_chunks};
 
 use super::ArithEq384Data;
 use crate::{equations, ARITH_EQ_384_CHUNKS_DOUBLE, ARITH_EQ_384_U64S_DOUBLE};
@@ -79,20 +79,20 @@ impl Bls12_381Curve {
 
         let q0 = if is_dbl {
             let _q0: BigInt = 2 * &s * &y1 - 3 * &x1 * &x1;
-            assert!((&_q0 % &*BLS12_381_CURVE_PRIME).is_zero());
+            debug_assert!((&_q0 % &*BLS12_381_CURVE_PRIME).is_zero());
             &*BLS12_381_CURVE_DBL_Q0_OFFSET - (&_q0 / &*BLS12_381_CURVE_PRIME)
         } else {
             let _q0: BigInt = &s * (&x2 - &x1) - &y2 + &y1;
-            assert!((&_q0 % &*BLS12_381_CURVE_PRIME).is_zero());
+            debug_assert!((&_q0 % &*BLS12_381_CURVE_PRIME).is_zero());
             (&_q0 / &*BLS12_381_CURVE_PRIME) + &*BLS12_381_CURVE_ADD_Q0_OFFSET
         };
 
         let _q1 = &s * &s - &x1 - &x2 - &x3;
-        assert!((&_q1 % &*BLS12_381_CURVE_PRIME).is_zero());
+        debug_assert!((&_q1 % &*BLS12_381_CURVE_PRIME).is_zero());
         let q1 = (&_q1 / &*BLS12_381_CURVE_PRIME) + &*BLS12_381_CURVE_Q1_OFFSET;
 
         let _q2 = &s * &x1 - &s * &x3 - &y1 - &y3;
-        assert!((&_q2 % &*BLS12_381_CURVE_PRIME).is_zero());
+        debug_assert!((&_q2 % &*BLS12_381_CURVE_PRIME).is_zero());
         let q2 = &*BLS12_381_CURVE_Q2_OFFSET - (&_q2 / &*BLS12_381_CURVE_PRIME);
 
         if let Some(p3) = p3 {

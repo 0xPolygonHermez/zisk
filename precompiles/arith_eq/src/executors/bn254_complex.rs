@@ -2,7 +2,7 @@ use super::ArithEqData;
 use lazy_static::lazy_static;
 use num_bigint::BigInt;
 use num_traits::Zero;
-use precompiles_helpers::{bigint2_to_8_u64, bigint_from_field, bigint_to_16_chunks};
+use zisk_precomp_helpers::{bigint2_to_8_u64, bigint_from_field, bigint_to_16_chunks};
 
 use crate::equations;
 use ark_bn254::Fq as Bn254Field;
@@ -80,31 +80,31 @@ impl Bn254Complex {
         let (q1, q2) = match op {
             OpType::Add => {
                 let _q1 = &x1 + &x2 - &x3;
-                assert!((&_q1 % &*BN254_COMPLEX_PRIME).is_zero());
+                debug_assert!((&_q1 % &*BN254_COMPLEX_PRIME).is_zero());
                 let q1 = (&_q1 / &*BN254_COMPLEX_PRIME) + &*BN254_COMPLEX_ADD_Q1_OFFSET;
 
                 let _q2 = &y1 + &y2 - &y3;
-                assert!((&_q2 % &*BN254_COMPLEX_PRIME).is_zero());
+                debug_assert!((&_q2 % &*BN254_COMPLEX_PRIME).is_zero());
                 let q2 = (&_q2 / &*BN254_COMPLEX_PRIME) + &*BN254_COMPLEX_ADD_Q2_OFFSET;
                 (q1, q2)
             }
             OpType::Sub => {
                 let _q1 = &x1 - &x2 - &x3;
-                assert!((&_q1 % &*BN254_COMPLEX_PRIME).is_zero());
+                debug_assert!((&_q1 % &*BN254_COMPLEX_PRIME).is_zero());
                 let q1 = &*BN254_COMPLEX_SUB_Q1_OFFSET - (&_q1 / &*BN254_COMPLEX_PRIME);
 
                 let _q2 = &y1 - &y2 - &y3;
-                assert!((&_q2 % &*BN254_COMPLEX_PRIME).is_zero());
+                debug_assert!((&_q2 % &*BN254_COMPLEX_PRIME).is_zero());
                 let q2 = &*BN254_COMPLEX_SUB_Q2_OFFSET - (&_q2 / &*BN254_COMPLEX_PRIME);
                 (q1, q2)
             }
             OpType::Mul => {
                 let _q1 = &x1 * &x2 - &y1 * &y2 - &x3;
-                assert!((&_q1 % &*BN254_COMPLEX_PRIME).is_zero());
+                debug_assert!((&_q1 % &*BN254_COMPLEX_PRIME).is_zero());
                 let q1 = &*BN254_COMPLEX_MUL_Q1_OFFSET - (&_q1 / &*BN254_COMPLEX_PRIME);
 
                 let _q2 = &y1 * &x2 + &x1 * &y2 - &y3;
-                assert!((&_q2 % &*BN254_COMPLEX_PRIME).is_zero());
+                debug_assert!((&_q2 % &*BN254_COMPLEX_PRIME).is_zero());
                 let q2 = (&_q2 / &*BN254_COMPLEX_PRIME) + &*BN254_COMPLEX_MUL_Q2_OFFSET;
                 (q1, q2)
             }
@@ -151,8 +151,10 @@ impl Bn254Complex {
         let mut data = Self::prepare(op.clone(), f1, f2, None).unwrap();
         for icol in 0..COLS {
             let index = icol as usize;
-            // data.eq[index][0] = 0;
-            data.eq[index][1] = match op {
+            // Complex (Fp2) ops pack their 2 equations into slots 0 (x3) and 1 (y3), matching the
+            // parameterized `arith_eq.pil` (a complex-only air has MAX_CEQS = 2). Curve ops, in a
+            // separate executor, use slots 0/1/2 for lambda/x3/y3.
+            data.eq[index][0] = match op {
                 OpType::Add => equations::Bn254ComplexAddX3::calculate(
                     icol, &data.x1, &data.x2, &data.x3, &data.q1,
                 ),
@@ -163,7 +165,7 @@ impl Bn254Complex {
                     icol, &data.x1, &data.y1, &data.x2, &data.y2, &data.x3, &data.q1,
                 ),
             };
-            data.eq[index][2] = match op {
+            data.eq[index][1] = match op {
                 OpType::Add => equations::Bn254ComplexAddY3::calculate(
                     icol, &data.y1, &data.y2, &data.y3, &data.q2,
                 ),
@@ -174,7 +176,7 @@ impl Bn254Complex {
                     icol, &data.x1, &data.y1, &data.x2, &data.y2, &data.y3, &data.q2,
                 ),
             };
-            for ieq in 1..3 {
+            for ieq in 0..2 {
                 let cin = if index > 0 { data.cout[index - 1][ieq] } else { 0 };
                 let value = data.eq[index][ieq] + cin;
                 if icol != COLS - 1 {

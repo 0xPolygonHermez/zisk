@@ -1,6 +1,9 @@
 mod arith256;
 mod arith384;
-mod blake2;
+mod babyjubjub;
+mod blake2b;
+mod blake2s;
+mod blake3;
 mod bls12_381;
 mod bn254;
 mod keccakf;
@@ -13,7 +16,9 @@ mod sha256f;
 pub fn diagnostic_syscalls() {
     arith256::diagnostic_arith256();
     arith384::diagnostic_arith384();
-    blake2::diagnostic_blake2();
+    babyjubjub::diagnostic_babyjubjub();
+    blake2b::diagnostic_blake2b();
+    blake2s::diagnostic_blake2s();
     bls12_381::diagnostic_bls12_381();
     bn254::diagnostic_bn254();
     keccakf::diagnostic_keccakf();
@@ -21,6 +26,7 @@ pub fn diagnostic_syscalls() {
     poseidon2::diagnostic_poseidon2();
     secp256k1::diagnostic_secp256k1();
     secp256r1::diagnostic_secp256r1();
+    blake3::diagnostic_blake3();
     sha256f::diagnostic_sha256f();
 
     println!("All system call diagnostics passed!");

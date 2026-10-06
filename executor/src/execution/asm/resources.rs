@@ -1,13 +1,13 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use asm_runner::{
+use zisk_asm_runner::{
     AsmRunnerOptions, AsmServices, ControlShmem, GpuBufferSource, HintsShmem, InputsShmemWriter,
 };
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use asm_runner::{MOShmemReader, MTShmemReader, RHShmemReader};
-use precompiles_hints::{HintsProcessor, MpiBroadcastFn};
+use zisk_asm_runner::{MOShmemReader, MTShmemReader, RHShmemReader};
 use zisk_common::io::{StreamSink, StreamSource, ZiskStdin, ZiskStream};
+use zisk_precomp_hints::{HintsProcessor, MpiBroadcastFn};
 
 use crate::error::{ExecutorError, ExecutorResult, MutexExt};
 
@@ -348,7 +348,10 @@ impl AsmResources {
 
     /// Writes input data to the inputs shared memory segment.
     pub fn write_input(&self, stdin: &ZiskStdin) -> ExecutorResult<()> {
-        self.shared.shmem_inputs.write_input(&stdin.read_data()).map_err(ExecutorError::asm_backend)
+        // Borrowed: `write_input` only reads, and inputs are tens of MB.
+        stdin
+            .with_data(|data| self.shared.shmem_inputs.write_input(data))
+            .map_err(ExecutorError::asm_backend)
     }
 
     /// Appends raw input data to the inputs shared memory segment.

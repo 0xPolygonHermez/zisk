@@ -1,6 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Arith256Mod;
-use precompiles_common::MemProcessor;
+use zisk_precomp_common::MemProcessor;
 
 pub const ARITH_256_MOD_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 5,

@@ -37,15 +37,17 @@ This will run the Docker container and open the ZisK test menu inside the contai
 
 3. **Build setup from source**
    Builds the setup files (proving key) by delegating to `tools/setup/build-setup.sh`, which runs the `cargo-zisk` proving-key pipeline (`compile-pil` + `setup`). It no longer clones `pil2-proofman-js` / `pil2-compiler` or shells into node — `pil2-compiler` is pulled via npm at the version pinned in `pil2-proofman`'s `package.json`, and the proofman checkout is whatever `Cargo.toml` resolves to (set up by option 2). With `USE_CACHE_SETUP=1` a local artifact cache under `${HOME}/output` is reused/populated, keyed by the input hash.
-   After building, it installs the proving key to the `$HOME/.zisk` folder and generates the constant files using the `cargo-zisk-dev check-setup` command.
+   After building, it installs the proving key (and the snark proving key, when the build produced one) to the `$HOME/.zisk` folder and generates the constant files using the `cargo-zisk-dev check-setup` command.
 
 4. **Build dylib files (macOS)**
    Rebuilds the macOS witness libraries from the proving key produced by option **3. Build setup from source** (and the snark proving key, when present) and collects the resulting `*.dylib` into `build/dylib`, preserving the `provingKey/` (and `provingKeySnark/`) directory layout.
    This option must be run on macOS — it aborts otherwise, since the dylibs are platform-specific. The collected dylibs are later merged into the packaged proving key by option **6. Upload setup**.
 
-5. **Build zec-reth ELF**
-   Clones the `zisk-eth-client` repository (branch specified by `ZISK_ETH_CLIENT_BRANCH`) and patches its `bin/guests/stateless-validator-reth/Cargo.toml` so that the `ziskos` dependency points to the local ZisK repository resolved from `ZISK_REPO_DIR` (or `${HOME}/workspace/zisk` if unset). It then builds the guest with `cargo-zisk build --release` and verifies that `target/elf/riscv64ima-zisk-zkvm-elf/release/zec-reth` was produced.
-   The resulting ELF is consumed by options **9. Test Ethereum Block** and **10. Test EthProofs**, so this option must be run before either of them.
+5. **Build zec guest ELF (ZEC_GUEST)**
+   Clones the `zisk-eth-client` repository (branch specified by `ZISK_ETH_CLIENT_BRANCH`) and produces the guest ELF selected by `ZEC_GUEST`: `ziskethone` (default) or `reth`. In both cases the client `Cargo.toml`'s git dependencies on ZisK are repointed to the local ZisK repository resolved from `ZISK_REPO_DIR` (or `${HOME}/workspace/zisk` if unset).
+   For `reth` it also patches `bin/guests/stateless-validator-reth/Cargo.toml` so that `ziskos` points to the local repository, builds the guest with `cargo-zisk build --release` and verifies that `target/elf/riscv64ima-zisk-zkvm-elf/release/zec-reth` was produced.
+   For `ziskethone` the ELF is the one committed at `bin/guests/stateless-validator-ziskethone/elf/zec-ziskethone.elf`. Set `REBUILD_ZISKETHONE_GUEST=1` to regenerate it from the C++ sources in the `third_party/ziskethone` submodule; that needs `cmake` and installs a RISC-V cross-toolchain on first use (~10-15 min).
+   The resulting ELF is consumed by options **9. Test Ethereum Block** and **10. Test EthProofs**, so this option must be run before either of them, with the same `ZEC_GUEST`.
 
 6. **Upload setup**
    Packages the setup artifacts (`.tar.gz` + `.md5`) from the files generated in option **3. Build setup from source** (it requires `build/provingKey`): the proving key and verify key always, plus the circom circuits (`zisk-circuits`) and snark proving key (`zisk-provingkey-plonk`) when present in `build/`. When the macOS dylibs from option **4. Build dylib files (macOS)** are provided, they are merged into the proving key before packing.
@@ -59,12 +61,12 @@ This will run the Docker container and open the ZisK test menu inside the contai
    It also performs constraints verification.
 
 9. **Test Ethereum Block**
-   Tests Ethereum block proof generation using the `zec-reth` ELF and the input files cloned by option **5. Build zec-reth ELF** (which must be run beforehand).
+   Tests Ethereum block proof generation using the ELF selected by `ZEC_GUEST` and the input files cloned by option **5. Build zec guest ELF (ZEC_GUEST)** (which must be run beforehand). The `_zec_<client>` suffix of the configured input names is retargeted to `ZEC_GUEST`, so the same `BLOCK_INPUTS_*` value serves either guest, as long as the block has an input committed for it.
    First, it proves the input files specified in the `BLOCK_INPUTS_SINGLE` environment variable using cargo-zisk with one single process (no mpi). Second, it proves the input files specified in the `BLOCK_INPUTS_MPI` environment variable using cargo-zisk and mpi with the number of processes and threads specified in `MPI_PROCESSES` and `MPI_THREADS` environment variables.
 
 10. **Test EthProofs**
-    Clones the `zisk-ethproofs` repository, builds it, and deploys the `zisk-coordinator` and `zisk-worker` services. Requires the `zec-reth` ELF and inputs produced by option **5. Build zec-reth ELF** (which must be run beforehand).
-    Then runs the `ethproofs-client` binary against the deployed coordinator using the input files specified in `BLOCK_INPUTS_ETHPROOFS` (or `BLOCK_INPUTS_ETHPROOFS_HINTS` when `ENABLE_HINTS=1`).
+    Clones the `zisk-ethproofs` repository, builds it, and deploys the `zisk-coordinator` and `zisk-worker` services. Requires the ELF and inputs produced by option **5. Build zec guest ELF (ZEC_GUEST)** (which must be run beforehand, with the same `ZEC_GUEST`).
+    Then runs the `ethproofs-client` binary against the deployed coordinator using the input files specified in `BLOCK_INPUTS_ETHPROOFS` (or `BLOCK_INPUTS_ETHPROOFS_HINTS` when `ENABLE_HINTS=1`). Hints are a `reth`-only path: `ENABLE_HINTS` is pinned to `0` when `ZEC_GUEST=ziskethone`, which emits none.
     The distributed services are automatically uninstalled when the test finishes.
 
 11. **Test ELF diagnostic**
@@ -73,15 +75,28 @@ This will run the Docker container and open the ZisK test menu inside the contai
 12. **Test docs examples**
     Builds, runs and proves the ZisK example programs under `examples/` (both the host SDK examples and the guest programs), exercising every available `{asm, gpu}` backend combination and verifying each one.
 
-13. **Install setup from public packages**
-    Downloads and installs the proving key files from the public packages corresponding to the `ZISK_SETUP_FILE` environment variable (falling back to a name derived from the installed `cargo-zisk-dev` version when unset).
+13. **Test quickstart**
+    Runs the quickstart sequence of the `hash` example: builds and runs the guest program, generates its setup, proves and verifies it with every backend combination (`emulator`/`asm`, with and without `--plonk`), and finally proves it through the host SDK example. The whole set of combinations runs first on CPU and then again on GPU (adding `--gpu`) when a GPU build of `cargo-zisk` is installed; set `ONLY_CPU=1` to run just the CPU pass or `ONLY_GPU=1` to run just the GPU one. It expects ZisK, its dependencies and the proving keys / setups to be already installed.
 
-14. **Install setup from local packages**
+14. **Install setup from public packages**
+    Downloads and installs the proving key files from the public packages corresponding to the `ZISK_SETUP_FILE` environment variable (falling back to the `setup_version` in `setup/Cargo.toml` when unset).
+
+15. **Install setup from local packages**
     Installs the proving key files using the setup packages generated by option **6. Upload setup**, which must be located in the `${HOME}/output` directory.
-    
-15. **Shell**
+
+16. **Shell**
     Opens a command line shell inside the container.
     When you exit the shell, you will return to the ZisK Test Menu.
 
-16. **Exit**
+17. **Exit**
     Exits the Release Kit container and returns to the host shell.
+
+## Update proofman dependencies
+
+```bash
+./update-proofman-deps.sh [--list] [cargo update args...]
+```
+
+Runs `cargo update` in every workspace of the repo that depends, directly or indirectly, on a crate from `pil2-proofman` (`proofman`, `proofman-fields`, `pil2-std-lib`, ...). A crate counts as a proofman crate when its `repository` or `source` points to the `pil2-proofman` GitHub repo, so it works the same whether the dependency comes from git, a local path or crates.io. The workspace roots are located with `cargo locate-project` and their resolved graph is read with `cargo metadata --frozen`; when a `Cargo.lock` is missing or out of date the dependencies are resolved again (this rewrites that lock).
+
+With `--list` it only prints the workspaces that would be updated. Any other argument is forwarded to `cargo update`, for example `./update-proofman-deps.sh --dry-run` or `./update-proofman-deps.sh -p proofman`.

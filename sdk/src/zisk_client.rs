@@ -67,6 +67,7 @@ use crate::{
 };
 
 #[derive(Clone)]
+#[allow(clippy::large_enum_variant)]
 enum Inner {
     Embedded(EmbeddedClient),
     Remote(RemoteClient),

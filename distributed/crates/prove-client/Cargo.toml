@@ -1,10 +1,15 @@
 [package]
 name = "zisk-prove-client"
 description = "CLI client for submitting jobs to the ZisK coordinator"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+publish = false
 
 [[bin]]
 name = "zisk-prove-client"

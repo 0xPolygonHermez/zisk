@@ -10,6 +10,7 @@ zisk_common::zisk_precompile! {
     op_type = BigInt,
     trace = Add256Trace,
     num_available = ::zisk_pil::Add256Trace::<()>::NUM_ROWS,
+    cost = ::zisk_pil::ADD_256_INSTANCE_COST,
     ops = [
         (OperationAdd256Data, Add256Input),
     ],
@@ -17,8 +18,8 @@ zisk_common::zisk_precompile! {
 
 #[cfg(test)]
 mod add256_tests {
-    use test_artifacts::ELF_ADD256;
     use zisk_common::io::ZiskStdin;
+    use zisk_test_artifacts::ELF_ADD256;
 
     #[test]
     fn add256_tests() {

@@ -28,7 +28,16 @@ async fn prove_segment(
 ) -> Result<zisk_sdk::Proof, Box<dyn Error>> {
     let stdin = ZiskStdin::new();
     stdin.write_slice(&seg.abi_encode());
-    let proof = client.prove(&LEAF, stdin).run()?.await?.get_proof().clone();
+    // Uncompressed on purpose: the client default is `VadcopFinalMinimal`, and
+    // compression strips the `is_vadcop_final_proof` flag the aggregator reads at
+    // public slot 0. A folded leaf must keep it.
+    let proof = client
+        .prove(&LEAF, stdin)
+        .wrap(ProofKind::VadcopFinal)
+        .run()?
+        .await?
+        .get_proof()
+        .clone();
     Ok(proof)
 }
 
@@ -80,7 +89,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Allow-list: a proof from a non-listed guest (different programVK) makes the
     // circuit unsatisfiable, so the fold is rejected.
     let foreign_stdin = ZiskStdin::new();
-    let foreign = client.prove(&FOREIGN, foreign_stdin).run()?.await?.get_proof().clone();
+    // Uncompressed like the others, so the allow-list is what rejects this fold
+    // rather than the compressed-input guard.
+    let foreign = client
+        .prove(&FOREIGN, foreign_stdin)
+        .wrap(ProofKind::VadcopFinal)
+        .run()?
+        .await?
+        .get_proof()
+        .clone();
     let rejected = client.aggregate_proofs(&AGG_L2, &foreign, &pb).run()?.await;
     assert!(rejected.is_err(), "folding a non-allow-listed leaf must be rejected");
     println!("Foreign programVK correctly rejected by the allow-list.");

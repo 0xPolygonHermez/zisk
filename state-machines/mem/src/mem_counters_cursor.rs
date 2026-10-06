@@ -1,8 +1,8 @@
 use rayon::{prelude::*, ThreadPoolBuilder};
 use std::sync::Arc;
 
-use mem_common::MemCounters;
 use zisk_common::ChunkId;
+use zisk_sm_mem_common::MemCounters;
 
 pub struct MemCountersCursor {
     cursor_index: usize,

@@ -11,24 +11,6 @@
 use static_assertions::const_assert;
 use zisk_core::zisk_ops::ZiskOp;
 
-const OP_ADD: u8 = ZiskOp::Add.code();
-const OP_ADDW: u8 = ZiskOp::AddW.code();
-const OP_SUB: u8 = ZiskOp::Sub.code();
-const OP_SUBW: u8 = ZiskOp::SubW.code();
-const OP_EQ: u8 = ZiskOp::Eq.code();
-const OP_EQW: u8 = ZiskOp::EqW.code();
-const OP_LTU: u8 = ZiskOp::Ltu.code();
-const OP_LT: u8 = ZiskOp::Lt.code();
-const OP_LTUW: u8 = ZiskOp::LtuW.code();
-const OP_LTW: u8 = ZiskOp::LtW.code();
-const OP_LEU: u8 = ZiskOp::Leu.code();
-const OP_LE: u8 = ZiskOp::Le.code();
-const OP_LEUW: u8 = ZiskOp::LeuW.code();
-const OP_LEW: u8 = ZiskOp::LeW.code();
-const OP_AND: u8 = ZiskOp::And.code();
-const OP_OR: u8 = ZiskOp::Or.code();
-const OP_XOR: u8 = ZiskOp::Xor.code();
-
 const MAX_A_LOW_VALUE: u64 = 386;
 const MAX_B_LOW_VALUE: u64 = 386;
 const LOW_VALUE_SIZE: usize = (MAX_A_LOW_VALUE * MAX_B_LOW_VALUE) as usize;
@@ -377,19 +359,24 @@ impl BinaryBasicLegacyFrops {
         // Use lookup table for faster branching instead of match on enum
         match op {
             // Low value operations - check bounds first (most common case)
-            OP_ADDW | OP_EQW | OP_LTUW | OP_LTW | OP_LEU | OP_LE | OP_LEUW | OP_LEW => {
-                a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE
-            }
+            ZiskOp::ADD_W
+            | ZiskOp::EQ_W
+            | ZiskOp::LTU_W
+            | ZiskOp::LT_W
+            | ZiskOp::LEU
+            | ZiskOp::LE
+            | ZiskOp::LEU_W
+            | ZiskOp::LE_W => a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE,
             // Special cases - inline the logic to avoid function calls
-            OP_EQ => {
+            ZiskOp::EQ => {
                 (b == 0 && a <= EQ_OP_B_ZERO_A_LIMIT)
                     || (b < MAX_B_LOW_VALUE && a < MAX_A_LOW_VALUE)
             }
-            OP_LTU => {
+            ZiskOp::LTU => {
                 (b == 1 && !(MAX_A_LOW_VALUE..LTU_OP_B_LT_ONE_FROM).contains(&a))
                     || (b < MAX_B_LOW_VALUE && a < MAX_A_LOW_VALUE)
             }
-            OP_ADD => {
+            ZiskOp::ADD => {
                 // Inline is_frequent_add logic
                 if b < MAX_B_LOW_VALUE {
                     if a < MAX_A_LOW_VALUE {
@@ -414,7 +401,7 @@ impl BinaryBasicLegacyFrops {
                     b >= ADD_MINUS_A_B_FROM_B && a < MAX_ADD_MINUS_A
                 }
             }
-            OP_AND => {
+            ZiskOp::AND => {
                 // Inline is_frequent_and logic
                 (a == AND_CODE_ADDR_MASK
                     && (b & 0x03) == 0
@@ -426,11 +413,11 @@ impl BinaryBasicLegacyFrops {
                     || (a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE)
             }
             // Other special cases - call functions for less common operations
-            OP_LT => Self::is_frequent_lt(a, b),
-            OP_SUBW => Self::is_frequent_sub_w(a, b),
-            OP_SUB => Self::is_frequent_sub(a, b),
-            OP_OR => Self::is_frequent_or(a, b),
-            OP_XOR => Self::is_frequent_xor(a, b),
+            ZiskOp::LT => Self::is_frequent_lt(a, b),
+            ZiskOp::SUB_W => Self::is_frequent_sub_w(a, b),
+            ZiskOp::SUB => Self::is_frequent_sub(a, b),
+            ZiskOp::OR => Self::is_frequent_or(a, b),
+            ZiskOp::XOR => Self::is_frequent_xor(a, b),
             _ => false,
         }
     }
@@ -439,22 +426,29 @@ impl BinaryBasicLegacyFrops {
     pub fn get_row(op: u8, a: u64, b: u64) -> usize {
         // ecall/system call functions are not candidates to be usual
         let relative_offset = match op {
-            OP_ADDW | OP_EQW | OP_LTUW | OP_LTW | OP_LEU | OP_LE | OP_LEUW | OP_LEW => {
+            ZiskOp::ADD_W
+            | ZiskOp::EQ_W
+            | ZiskOp::LTU_W
+            | ZiskOp::LT_W
+            | ZiskOp::LEU
+            | ZiskOp::LE
+            | ZiskOp::LEU_W
+            | ZiskOp::LE_W => {
                 if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
                     Self::get_low_values_offset(a, b)
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_EQ => Self::get_eq_offset(a, b),
-            OP_LTU => Self::get_ltu_offset(a, b),
-            OP_LT => Self::get_lt_offset(a, b),
-            OP_SUBW => Self::get_sub_w_offset(a, b),
-            OP_SUB => Self::get_sub_offset(a, b),
-            OP_OR => Self::get_or_offset(a, b),
-            OP_XOR => Self::get_xor_offset(a, b),
-            OP_AND => Self::get_and_offset(a, b),
-            OP_ADD => Self::get_add_offset(a, b),
+            ZiskOp::EQ => Self::get_eq_offset(a, b),
+            ZiskOp::LTU => Self::get_ltu_offset(a, b),
+            ZiskOp::LT => Self::get_lt_offset(a, b),
+            ZiskOp::SUB_W => Self::get_sub_w_offset(a, b),
+            ZiskOp::SUB => Self::get_sub_offset(a, b),
+            ZiskOp::OR => Self::get_or_offset(a, b),
+            ZiskOp::XOR => Self::get_xor_offset(a, b),
+            ZiskOp::AND => Self::get_and_offset(a, b),
+            ZiskOp::ADD => Self::get_add_offset(a, b),
             _ => Self::NO_FROPS,
         };
         if relative_offset == Self::NO_FROPS {

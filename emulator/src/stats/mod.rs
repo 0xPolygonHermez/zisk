@@ -1,6 +1,7 @@
 mod mem_operations_stats;
 mod name_shortener;
 mod ops_costs;
+mod ops_count;
 mod profiler;
 mod ram_monitor;
 mod regions_of_interest;
@@ -12,6 +13,7 @@ mod stats_report;
 pub use mem_operations_stats::*;
 pub use name_shortener::*;
 pub use ops_costs::*;
+pub use ops_count::*;
 pub use profiler::*;
 pub use ram_monitor::*;
 pub use regions_of_interest::*;

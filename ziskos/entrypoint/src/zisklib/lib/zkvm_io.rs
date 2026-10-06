@@ -146,10 +146,6 @@ pub(crate) fn reset() {
     // fresh input on the next call, leaking one allocation per test run.
     *STANDARD_INPUT.lock().unwrap() = None;
 
-    reset_output();
-}
-
-pub(crate) fn reset_output() {
     unsafe {
         OUTPUT_WORD_SLOT = 0;
         OUTPUT_PENDING = [0; OUTPUT_WORD_SIZE];
@@ -161,7 +157,7 @@ pub(crate) fn reset_output() {
 #[allow(dead_code)]
 mod _interface_type_checks {
     use super::*;
-    use zkvm_interface as bindings;
+    use zisk_zkvm_interface as bindings;
 
     fn _check() {
         let _ = [bindings::read_input, super::read_input];

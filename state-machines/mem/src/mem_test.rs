@@ -2,8 +2,8 @@
 use std::sync::Arc;
 
 use crate::{MemModulePlanner, MemModulePlannerConfig, MemPlanCalculator};
-use mem_common::{MemCounters, MEMORY_LOAD_OP, MEMORY_STORE_OP};
 use zisk_common::{ChunkId, Plan, MEM_BUS_ID};
+use zisk_sm_mem_common::{MemCounters, MEMORY_LOAD_OP, MEMORY_STORE_OP};
 
 fn generate_test_plans(
     from_addr: u32,

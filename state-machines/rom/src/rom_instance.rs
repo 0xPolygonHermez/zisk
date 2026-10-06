@@ -4,17 +4,17 @@ use std::sync::{atomic::AtomicU64, Arc};
 
 use crate::rom_counter::RomCounter;
 use crate::{RomError, RomResult};
-use asm_runner::{AsmRHData, AsmRunnerRH};
-use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanError, ProofmanResult, SetupCtx, TraceInfo};
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
+use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
 use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx, InstanceType,
-    Metrics, PayloadType, ROM_BUS_ID,
+    LateValue, Metrics, PayloadType, ROM_BUS_ID,
 };
 use zisk_core::{ZiskRom, ROM_EXIT};
-use zisk_pil::{MainTrace, RomTrace};
+use zisk_pil::{RomTrace, MAIN_STEPS_PER_SEGMENT};
 
 /// Per-emulator state held by a `RomInstance`. Each variant owns exactly the data
 /// its execution path needs and implements its own behaviour.
@@ -29,10 +29,11 @@ struct RustState {
     inst_count: Arc<Vec<AtomicU64>>,
 }
 
-/// State for the ASM-emulator path: histogram delivered by the assembly runner,
-/// consumed directly when computing the witness.
+/// State for the ASM-emulator path: the histogram is produced by a runner thread the
+/// executor parks in this cell, and read here when the witness is computed — which is
+/// the last point it is needed, and so the latest the runner has to have finished.
 struct AsmState {
-    rh_data: AsmRunnerRH,
+    rh: Arc<LateValue<AsmRunnerRH>>,
 }
 
 impl RustState {
@@ -66,14 +67,18 @@ impl RustState {
 }
 
 impl AsmState {
-    fn new(rh_data: AsmRunnerRH) -> Self {
-        Self { rh_data }
+    fn new(rh: Arc<LateValue<AsmRunnerRH>>) -> Self {
+        Self { rh }
     }
 
-    /// Borrowed view of the assembly histogram. Keeps the wrapping `AsmRunnerRH`'s
-    /// shape private to this module.
-    fn histogram(&self) -> &AsmRHData {
-        &self.rh_data.asm_rowh_output
+    /// Lends the assembly histogram to `f`, joining the runner first if it has not
+    /// finished yet.
+    ///
+    /// Borrowed rather than handed over: it aliases a shared-memory mapping the cell
+    /// owns, and the witness may be recomputed later in the same proof. Keeps the
+    /// wrapping `AsmRunnerRH`'s shape private to this module.
+    fn with_histogram<T>(&self, f: impl FnOnce(&AsmRHData) -> T) -> RomResult<T> {
+        Ok(self.rh.with(|runner| f(&runner.asm_rowh_output))?)
     }
 }
 
@@ -101,8 +106,16 @@ impl RomInstance {
     }
 
     /// Creates a `RomInstance` for the ASM emulator path.
-    pub fn new_asm(zisk_rom: Arc<ZiskRom>, ictx: InstanceCtx, rh_data: AsmRunnerRH) -> Self {
-        Self { zisk_rom, ictx, mode: RomInstanceMode::Asm(AsmState::new(rh_data)) }
+    ///
+    /// `rh` is the cell the executor parked this execution's histogram runner in; it is
+    /// shared with [`crate::RomSM`], which outlives this instance and retires the runner
+    /// at the next job boundary.
+    pub fn new_asm(
+        zisk_rom: Arc<ZiskRom>,
+        ictx: InstanceCtx,
+        rh: Arc<LateValue<AsmRunnerRH>>,
+    ) -> Self {
+        Self { zisk_rom, ictx, mode: RomInstanceMode::Asm(AsmState::new(rh)) }
     }
 
     /// Returns true when this instance produces its witness without collecting bus data
@@ -120,13 +133,31 @@ impl RomInstance {
         }
     }
 
+    /// Extra proves the end instruction needs beyond the times it was really executed.
+    ///
+    /// Main pads its last segment by repeating the end instruction on every leftover row, and
+    /// sends one unconditional ROM lookup per lane of every row, so the ROM has to prove the end
+    /// instruction once more for each of those padding rows.
+    ///
+    /// The subtlety this exists for: when `steps` is an exact multiple of `main_trace_len` the
+    /// last segment is full and there are NO padding rows, so the answer is 0, not a whole
+    /// `main_trace_len`. Getting that wrong proves a segment Main never assumes and the ROM bus
+    /// fails to balance -- an error that surfaces at proving time naming no row and no bus id.
+    /// Both witness paths need it, which is why it lives here rather than inline in each.
+    fn end_pc_padding(steps: u64, main_trace_len: u64) -> u64 {
+        match steps % main_trace_len {
+            0 => 0,
+            executed_in_last_segment => main_trace_len - executed_in_last_segment,
+        }
+    }
+
     /// Builds the ROM air instance from aggregated Rust-emulator counters.
     fn compute_witness_from_rust<F: PrimeField64>(
         zisk_rom: &ZiskRom,
         counter_stats: &CounterStats,
         mut trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
+        let main_trace_len = MAIN_STEPS_PER_SEGMENT as u64;
 
         // For every instruction in the rom, fill its corresponding ROM trace
         for zib in zisk_rom.insts.values() {
@@ -141,7 +172,7 @@ impl RomInstance {
                 continue;
             }
             if inst.paddr == counter_stats.end_pc {
-                multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
+                multiplicity += Self::end_pc_padding(counter_stats.steps, main_trace_len);
             }
 
             let index = inst.index as usize;
@@ -201,9 +232,10 @@ impl RomInstance {
         );
 
         // Increment as if executed the number of times needed to reach the end of the main trace
-        // instance, i.e. repeat the last instruction until the end of the instance.
-        let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
-        trace_buffer[index] = F::from_u64(1 + main_trace_len - asm_romh.steps % main_trace_len);
+        // instance, i.e. repeat the last instruction until the end of the instance. The assert above
+        // pins the executed count at exactly one.
+        let main_trace_len = MAIN_STEPS_PER_SEGMENT as u64;
+        trace_buffer[index] = F::from_u64(1 + Self::end_pc_padding(asm_romh.steps, main_trace_len));
 
         Self::build_air_instance(trace_buffer)
     }
@@ -233,25 +265,26 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
+        // The ASM arm is where this execution's histogram runner is finally joined, if
+        // it has not finished already: this is the last point the histogram is needed.
         let air = match &self.mode {
-            RomInstanceMode::Asm(a) => {
-                Self::compute_witness_from_asm(&self.zisk_rom, a.histogram(), trace_buffer)
-            }
-            RomInstanceMode::Rust(r) => {
-                let stats = r
-                    .aggregate_stats(collectors)
-                    .map_err(|e| ProofmanError::InvalidParameters(e.to_string()))?;
-                Self::compute_witness_from_rust(&self.zisk_rom, &stats, trace_buffer)
-            }
-        };
+            RomInstanceMode::Asm(a) => a.with_histogram(|histogram| {
+                Self::compute_witness_from_asm(&self.zisk_rom, histogram, trace_buffer)
+            }),
+            RomInstanceMode::Rust(r) => r
+                .aggregate_stats(collectors)
+                .map(|stats| Self::compute_witness_from_rust(&self.zisk_rom, &stats, trace_buffer)),
+        }
+        .map_err(|e| ProofmanError::InvalidParameters(e.to_string()))?;
         Ok(Some(air))
     }
 
     fn reset(&self) {
         match &self.mode {
-            // ASM mode: rh_data is source input from the assembly runner, not derived state.
-            // `registry.rs` calls `reset()` before `compute_witness`, so clearing rh_data here
-            // would drop the histogram we need.
+            // ASM mode: the histogram is source input from the assembly runner, not derived
+            // state. `registry.rs` calls `reset()` before `compute_witness`, so releasing the
+            // cell here would drop the histogram we are about to read — and it is shared with
+            // the state machine, which owns its lifetime across jobs.
             RomInstanceMode::Asm(_) => {}
             RomInstanceMode::Rust(r) => r.reset(),
         }
@@ -311,10 +344,11 @@ impl BusDevice<u64> for RomCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use asm_runner::{AsmRHData, AsmRunnerRH};
-    use fields::Goldilocks;
+    use crate::rom::RH_LABEL;
+    use proofman_fields::Goldilocks;
     use std::sync::atomic::{AtomicU64, Ordering};
-    use zisk_common::Plan;
+    use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
+    use zisk_common::{LateValueError, Plan};
     use zisk_core::{ZiskInst, ZiskInstBuilder};
 
     type F = Goldilocks;
@@ -323,8 +357,15 @@ mod tests {
         InstanceCtx::new(0, Plan::new(0, 0, None, InstanceType::Instance, CheckPoint::None, None))
     }
 
-    fn asm_runner_rh_empty() -> AsmRunnerRH {
-        AsmRunnerRH::new(AsmRHData::new(0, vec![]))
+    /// A cell already holding `histogram`, as a parked runner that has finished leaves it.
+    fn armed_cell(histogram: AsmRunnerRH) -> Arc<LateValue<AsmRunnerRH>> {
+        Arc::new(LateValue::ready(RH_LABEL, histogram))
+    }
+
+    /// An armed cell holding an empty histogram. `AsmRunnerRH`'s `Drop` `mem::forget`s
+    /// its payload, so an empty `Vec` keeps the test leak-free.
+    fn armed_rh_cell() -> Arc<LateValue<AsmRunnerRH>> {
+        armed_cell(AsmRunnerRH::new(AsmRHData::new(0, vec![], vec![])))
     }
 
     /// Builds a ZiskRom with `n` instructions placed at `min_program_pc + 4*i`, each
@@ -342,6 +383,37 @@ mod tests {
 
     fn atomics_from(counts: &[u64]) -> Arc<Vec<AtomicU64>> {
         Arc::new(counts.iter().map(|&c| AtomicU64::new(c)).collect())
+    }
+
+    /// The padding arithmetic itself, at the boundaries the two witness paths cannot reach with
+    /// light fixtures. The exact-multiple case is the one that used to be wrong.
+    #[test]
+    fn end_pc_padding_is_zero_exactly_on_a_segment_boundary() {
+        let len = 1024;
+
+        assert_eq!(RomInstance::end_pc_padding(0, len), 0, "no steps, nothing to pad");
+        for segments in [1u64, 2, 7, 1000] {
+            assert_eq!(
+                RomInstance::end_pc_padding(segments * len, len),
+                0,
+                "{segments} full segments leave no padding row"
+            );
+        }
+
+        // One step into a segment leaves len-1 padding rows; one step short leaves exactly one.
+        assert_eq!(RomInstance::end_pc_padding(1, len), len - 1);
+        assert_eq!(RomInstance::end_pc_padding(3 * len + 1, len), len - 1);
+        assert_eq!(RomInstance::end_pc_padding(len - 1, len), 1);
+        assert_eq!(RomInstance::end_pc_padding(4 * len - 1, len), 1);
+
+        // Whatever the remainder, executed + padding is a whole number of segments.
+        for steps in [1u64, 5, 511, 512, 513, 1023, 1025, 4097] {
+            assert_eq!(
+                (steps + RomInstance::end_pc_padding(steps, len)) % len,
+                0,
+                "steps={steps} must round up to a segment boundary"
+            );
+        }
     }
 
     #[test]
@@ -375,7 +447,7 @@ mod tests {
         let rom = rom_with_indexed_insts(0x8000_0000, 3);
         let end_pc = 0x8000_0008; // paddr of inst with index=2
         let stats = CounterStats { inst_count: atomics_from(&[1, 1, 1]), end_pc, steps: 100 };
-        let main_len = MainTrace::<()>::NUM_ROWS as u64;
+        let main_len = MAIN_STEPS_PER_SEGMENT as u64;
         let expected_bump = main_len - 100 % main_len;
 
         let air =
@@ -384,6 +456,30 @@ mod tests {
         assert_eq!(air.trace[0], F::from_u64(1));
         assert_eq!(air.trace[1], F::from_u64(1));
         assert_eq!(air.trace[2], F::from_u64(1 + expected_bump));
+    }
+
+    /// The end instruction is padded once per padding row of the last Main segment. An execution
+    /// that ends exactly on a segment boundary leaves no padding rows, so nothing may be added:
+    /// a whole `main_trace_len` there proves a segment Main never assumes, and the ROM bus fails
+    /// to balance with no row or bus id to point at.
+    #[test]
+    fn from_rust_adds_no_padding_when_steps_fill_the_last_segment() {
+        let rom = rom_with_indexed_insts(0x8000_0000, 3);
+        let end_pc = 0x8000_0008; // paddr of inst with index=2
+        let main_len = MAIN_STEPS_PER_SEGMENT as u64;
+
+        for segments in [1u64, 2, 7] {
+            let stats = CounterStats {
+                inst_count: atomics_from(&[1, 1, 1]),
+                end_pc,
+                steps: segments * main_len,
+            };
+
+            let air =
+                RomInstance::compute_witness_from_rust::<F>(&rom, &stats, vec![F::from_u64(0); 10]);
+
+            assert_eq!(air.trace[2], F::from_u64(1), "{segments} full segments");
+        }
     }
 
     #[test]
@@ -419,8 +515,8 @@ mod tests {
         let rom = rom_with_exit(exit_trace_index);
         // The histogram's value at `exit_trace_index` must be exactly 1 — the assembly
         // runner is expected to record the exit instruction as executed once.
-        let asm_romh = AsmRHData::new(/* steps */ 50, vec![3, 0, 1]);
-        let main_len = MainTrace::<()>::NUM_ROWS as u64;
+        let asm_romh = AsmRHData::new(/* steps */ 50, vec![3, 0, 1], vec![]);
+        let main_len = MAIN_STEPS_PER_SEGMENT as u64;
         let expected_exit = 1 + main_len - 50 % main_len;
 
         let air =
@@ -431,12 +527,31 @@ mod tests {
         assert_eq!(air.trace[2], F::from_u64(expected_exit));
     }
 
+    /// The same edge on the ASM path, which is the production one for large runs.
+    #[test]
+    fn from_asm_adds_no_padding_when_steps_fill_the_last_segment() {
+        let rom = rom_with_exit(/* exit_trace_index */ 2);
+        let main_len = MAIN_STEPS_PER_SEGMENT as u64;
+
+        for segments in [1u64, 2, 7] {
+            let asm_romh = AsmRHData::new(segments * main_len, vec![3, 0, 1], vec![]);
+
+            let air = RomInstance::compute_witness_from_asm::<F>(
+                &rom,
+                &asm_romh,
+                vec![F::from_u64(0); 10],
+            );
+
+            assert_eq!(air.trace[2], F::from_u64(1), "{segments} full segments");
+        }
+    }
+
     #[test]
     #[should_panic(expected = "exit instruction should have been executed once")]
     fn from_asm_panics_when_histogram_lacks_exit_record() {
         let rom = rom_with_exit(/* exit_trace_index */ 2);
         // Histogram does NOT mark index 2 as executed → soundness assert must fire.
-        let asm_romh = AsmRHData::new(50, vec![3, 0, 0]);
+        let asm_romh = AsmRHData::new(50, vec![3, 0, 0], vec![]);
         let _ =
             RomInstance::compute_witness_from_asm::<F>(&rom, &asm_romh, vec![F::from_u64(0); 10]);
     }
@@ -459,8 +574,8 @@ mod tests {
         // In ASM mode, reset() is documented as a no-op (the histogram is source input,
         // not derived state). After reset the instance must still be in ASM mode so the
         // next compute_witness can consume the same rh_data.
-        let rh_data = AsmRunnerRH::new(AsmRHData::new(50, vec![3, 0, 1]));
-        let inst = RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), rh_data);
+        let cell = armed_cell(AsmRunnerRH::new(AsmRHData::new(50, vec![3, 0, 1], vec![])));
+        let inst = RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), cell);
 
         <RomInstance as Instance<F>>::reset(&inst);
 
@@ -470,7 +585,7 @@ mod tests {
     #[test]
     fn build_inputs_collector_returns_none_for_asm_mode() {
         let inst =
-            RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), asm_runner_rh_empty());
+            RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), armed_rh_cell());
 
         let collector = <RomInstance as Instance<F>>::build_inputs_collector(&inst, ChunkId(0));
         assert!(collector.is_none());
@@ -502,9 +617,22 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_runner_surfaces_as_an_error_not_a_histogram() {
+        let cell = Arc::new(LateValue::new(RH_LABEL));
+        cell.park(std::thread::spawn(|| Err(LateValueError::failed("runner died"))));
+
+        // The path `compute_witness` takes in ASM mode. A failure has to arrive here as
+        // an error: the alternative is a witness computed from a histogram that does
+        // not exist.
+        let err = AsmState::new(cell)
+            .with_histogram(|_| ())
+            .expect_err("a failed runner delivers no histogram");
+        assert!(matches!(err, RomError::RhUnavailable(_)), "got {err:?}");
+    }
+
+    #[test]
     fn build_rom_collector_reflects_mode() {
-        let asm =
-            RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), asm_runner_rh_empty());
+        let asm = RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), armed_rh_cell());
         assert!(asm.build_rom_collector(ChunkId(0)).is_none(), "ASM mode returns no collector");
 
         let rust =

@@ -1,7 +1,7 @@
-use precompiles_common::MemBusHelpers;
-use precompiles_common::MemProcessor;
-use precompiles_helpers::DmaInfo;
 use zisk_common::{A, DMA_ENCODED, STEP};
+use zisk_precomp_common::MemBusHelpers;
+use zisk_precomp_common::MemProcessor;
+use zisk_precomp_helpers::DmaInfo;
 
 pub fn generate_dma_inputcpy_mem_inputs<P: MemProcessor>(
     data: &[u64],

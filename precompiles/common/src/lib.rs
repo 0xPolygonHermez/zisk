@@ -4,10 +4,10 @@ mod goldilocks_constants;
 
 pub use goldilocks_constants::{get_ks, GOLDILOCKS_GEN, GOLDILOCKS_K};
 
-use mem_common::MemCounters;
-use sm_mem::{MemAlignCollector, MemModuleCollector};
 use zisk_common::MEM_BUS_ID;
 use zisk_core::InstContext;
+use zisk_sm_mem::{MemAlignCollector, MemModuleCollector};
+use zisk_sm_mem_common::MemCounters;
 
 /// Represents a precompile operation code.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -67,10 +67,10 @@ pub trait MemProcessor {
     fn skip_addr_range(&mut self, addr_from: u32, addr_to: u32) -> bool;
 }
 
-/// Mem-input contract for uniform precompiles (`blake2`, `keccakf`, `sha256f`,
+/// Mem-input contract for uniform precompiles (`blake2b`, `blake2s`, `keccakf`, `sha256f`,
 /// `poseidon2`, `add256`).
 ///
-/// Implemented on each precompile's SM (`Blake2SM<F>`, `KeccakfSM<F>`, …).
+/// Implemented on each precompile's SM (`Blake2bSM<F>`, `KeccakfSM<F>`, …).
 /// The `zisk_precompile!` macro dispatches to these methods from the
 /// generated `*CounterInputGen::process_data` body in Counter / InputGenerator
 /// modes.
