@@ -99,10 +99,10 @@ pub struct MemSlotOp {
     pub n_rows: u32,
 }
 
-pub fn gpu_slot_witness_prepare(
-    _image: &[u8],
+pub fn gpu_slot_witness_prepare_async(
+    _image: Vec<u8>,
     _align_plans: &[&zisk_common::Plan],
-) -> Result<RamFillPrepared, String> {
+) -> Result<(), String> {
     Err("built without CUDA".to_string())
 }
 
