@@ -74,3 +74,8 @@ pub fn device_mem_witness_end() {}
 pub fn device_mem_witness_requested() -> bool {
     false
 }
+
+/// The light memory-ops emulator only on request (`ZISK_MOPS_LIGHT=1`).
+pub fn mops_light() -> bool {
+    std::env::var("ZISK_MOPS_LIGHT").as_deref() == Ok("1")
+}

@@ -53,7 +53,7 @@ impl AsmService {
     /// Returns the command path for a given service based on the trimmed base path.
     pub fn command_path_for(&self, trimmed_path: &str) -> String {
         // The light memory-ops emulator (one word per record, no values, no steps).
-        if *self == AsmService::MO && std::env::var("ZISK_MOPS_LIGHT").as_deref() == Ok("1") {
+        if *self == AsmService::MO && crate::mops_light() {
             return format!("{trimmed_path}-mol.bin");
         }
         format!("{}-{}.bin", trimmed_path, self)
