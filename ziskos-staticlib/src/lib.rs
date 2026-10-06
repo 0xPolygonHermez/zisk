@@ -1,6 +1,4 @@
 #![cfg_attr(zisk_guest, no_std)]
-#![cfg_attr(zisk_guest, feature(core_intrinsics))]
-#![cfg_attr(zisk_guest, allow(internal_features))]
 
 // This crate produces libziskos.a for linking by C (or Rust) host programs.
 //
