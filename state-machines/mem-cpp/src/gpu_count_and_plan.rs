@@ -72,6 +72,7 @@ impl GpuCountAndPlan {
         n_workers: u32,
         worker_id: u32,
         gpu_id: i32,
+        retain_rows: bool,
     ) -> bool {
         // Rows per instance for {ROM, INPUT, RAM}, from the PIL trace sizes
         // so the GPU planner never hardcodes them.
@@ -94,6 +95,7 @@ impl GpuCountAndPlan {
                 worker_id,
                 gpu_id,
                 instance_rows.as_ptr(),
+                retain_rows,
             )
         }
     }
