@@ -199,9 +199,11 @@ public:
     // instance_rows[3]: rows per instance for {ROM, INPUT, RAM}, taken from
     // the PIL trace sizes (RomDataTrace / InputDataTrace / MemTrace
     // NUM_ROWS). Each must be a non-zero power of two.
+    // `retain_rows`: keep the accesses and MemAlign records the device witness needs; off, the
+    // planner only counts and plans.
     bool setup(void* d_buf, size_t bytes,
                uint32_t n_workers, uint32_t worker_id,
-               int gpu_id, const uint32_t instance_rows[3]);
+               int gpu_id, const uint32_t instance_rows[3], bool retain_rows);
 
     // Submit one chunk's memops.
     // Submit one chunk's memory-ops stream: `n_words` tagged 8-byte words.
@@ -553,6 +555,7 @@ private:
 
     // ─── add_chunk concurrency (ZISK_MOPS_POOL) ───────────────────────
     int                     gpu_device_           = 0;     // captured in setup()
+    bool                    retain_rows_          = false; // device witness requested, captured in setup()
     uint32_t                instance_rows_[3]     = {0, 0, 0};  // rows per instance {ROM, INPUT, RAM}, captured in setup()
     bool                    pool_enabled_         = false; // ZISK_MOPS_POOL
 
