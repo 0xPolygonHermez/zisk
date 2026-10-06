@@ -1,17 +1,19 @@
 ## Keccakf `lanes_per_row` matrix (N=2^18)
 
-|                           | **LPR=25** (current)            | **LPR=5**                       | **LPR=1**                      |
+|                           | **LPR=25**                      | **LPR=5** (current)             | **LPR=1**                      |
 | ------------------------- | ------------------------------- | ------------------------------- | ------------------------------ |
-| Trace shape               | 29 rows x 1600 cols x 2 Keccakf | 145 rows x 320 cols x 2 Keccakf | 725 rows x 64 cols x 2 Keccakf |
+| Trace shape               | 27 rows x 1600 cols x 2 Keccakf | 135 rows x 320 cols x 2 Keccakf | 675 rows x 64 cols x 2 Keccakf |
 | Fixed                     | 2                               | 3                               | 3                              |
-| Stage1                    | 1,925                           | 453                             | 146                            |
-| Stage2                    | 721                             | 184                             | 121                            |
-| **Total cols**            | **2,652**                       | **643**                         | **273**                        |
-| Constraints               | 1,874                           | 459                             | 178                            |
+| Stage1                    | 1,923                           | 467                             | 148                            |
+| Stage2                    | 682                             | 142                             | 112                            |
+| **Total cols**            | **2,611**                       | **615**                         | **266**                        |
+| Constraints               | 1,859                           | 459                             | 177                            |
 | Max degree                | 3                               | 3                               | 3                              |
-| Opening points            | 32                              | 150                             | 754                            |
-| nEvals                    | 5,408                           | 3,635                           | 4,006                          |
-| Expressions               | 66,128                          | 21,941                          | 16,318                         |
-| **Prover mem / instance** | **12.78 GB**                    | **3.12 GB**                     | **1.21 GB**                    |
-| **Cells / Keccakf**       | 2652x29/2 = **38,454**          | 643x145/2 = **46,618** (+21%)   | 273x725/2 = **98,963** (+157%) |
-| **Throughput / instance** | 2¹⁸/29x2 = **18,078**           | 2¹⁸/145x2 = **3,614**           | 2¹⁸/725x2 = **722**            |
+| Opening points            | 30                              | 140                             | 704                            |
+| nEvals                    | 5,392                           | 3,628                           | 3,958                          |
+| Expressions               | 79,578                          | 22,926                          | 15,056                         |
+| **Prover mem / instance** | **10.30 GB**                    | **2.51 GB**                     | **1.15 GB**                    |
+| **Cells / Keccakf**       | 2611x27/2 = **35,249**          | 615x135/2 = **41,513** (+18%)   | 266x675/2 = **89,775** (+155%) |
+| **Throughput / instance** | 2¹⁸/27x2 = **19,418**           | 2¹⁸/135x2 = **3,882**           | 2¹⁸/675x2 = **776**            |
+
+`proofman-setup stats`, blowup 1. Prover memory is the GPU prover buffer (`mapTotalN`).

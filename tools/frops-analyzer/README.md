@@ -65,17 +65,15 @@ This rewrites:
 - `state-machines/binary/src/binary_basic_frops.rs`
 - `state-machines/binary/src/binary_extension_frops.rs`
 
-and additionally emits x86-64 assembly macros for counting FROPS multiplicity:
+and additionally emits the box data those predicates were generated from:
 
-- `emulator-asm/src/frops/frops.s`
+- `core/src/frops_regions.rs`
 
-One `.macro FROP_<OP> a, b, t0, t1` per operation (GAS `.intel_syntax noprefix`). `a`/`b` are the
-operands (register or immediate, read-only); `t0`/`t1` are the only registers the macro clobbers
-freely (plus FLAGS; the overflow path also push/pops `rax`/`rcx`/`rdx`). If `(op, a, b)` is a FROP it
-does `mult[row] += 1` on the per-family multiplicity table (`.extern frops_<family>_mult`); on a u32
-wrap it appends the row offset to `frops_<family>_overflow` at `frops_<family>_overflow_index`. If the
-op is not a FROP (or has no FROPS), the macro does nothing. The three multiplicity tables and overflow
-vectors are referenced as external symbols (the runtime owns the memory).
+That module is the single source of truth: `zisk_core::frops_asm` generates the x86-64 code that
+counts frequent operations in the ROM-histogram assembly from the very same boxes, so the assembly
+and the state machines can never disagree about which triples are covered or which row each one
+lands on. Rows there are numbered over the three family tables concatenated
+(`FROPS_ARITH_BASE`, `FROPS_BINARY_BASIC_BASE`, `FROPS_BINARY_EXT_BASE` split them again).
 
 The first time it overwrites a file it saves the original as `<file>.rs.bak` (later runs never clobber
 that backup). Then:
@@ -85,12 +83,12 @@ that backup). Then:
 git diff state-machines/*/src/*_frops.rs
 
 # 2. Regenerate the fixed .bin tables consumed by the proving backend.
-cargo run -p sm-arith  --bin arith_frops_fixed_gen
-cargo run -p sm-binary --bin binary_basic_frops_fixed_gen
-cargo run -p sm-binary --bin binary_extension_frops_fixed_gen
+cargo run --release -p zisk-sm-arith  --bin zisk-arith-frops-fixed-gen
+cargo run --release -p zisk-sm-binary --bin zisk-binary-basic-frops-fixed-gen
+cargo run --release -p zisk-sm-binary --bin zisk-binary-extension-frops-fixed-gen
 
 # 3. Run the generated consistency tests.
-cargo test -p sm-arith -p sm-binary
+cargo test -p zisk-sm-arith -p zisk-sm-binary
 ```
 
 Each generated file ships two tests: `test_table_offsets` (the per-op offset table matches what
@@ -102,46 +100,94 @@ Each generated file ships two tests: `test_table_offsets` (the per-op offset tab
 To change the proposal (e.g. a different `--max-regions-per-op`) and refresh all artifacts:
 
 ```bash
-# 1. Regenerate the Rust sources AND the x86-64 assembly macros (pick the cap).
+# 1. Regenerate the Rust sources AND the box data the assembly is generated from (pick the cap).
 frops-analyzer generate \
     --input <traces-dir> --max-table 16777216 --low-cap 4096 --table-cost 3 \
     --max-regions-per-op 8 --workspace .
 #    -> state-machines/{arith,binary}/src/*_frops.rs   (the is_frequent_op / get_row / build_table)
-#    -> emulator-asm/src/frops/frops.s                 (the FROP_<OP> counting macros)
+#    -> core/src/frops_regions.rs                      (the boxes, shared with the asm generator)
 
-# 2. Regenerate the fixed .bin multiplicity tables consumed by the proving backend.
-cargo run -p sm-arith  --bin arith_frops_fixed_gen
-cargo run -p sm-binary --bin binary_basic_frops_fixed_gen
-cargo run -p sm-binary --bin binary_extension_frops_fixed_gen
+# 2. Format them: the emitted `*_frops.rs` are not rustfmt-clean (`frops_regions.rs` is).
+cargo fmt --all
 
-# 3. Verify consistency (offsets + accessibility) on the regenerated tables.
-cargo test -p sm-arith -p sm-binary
+# 3. Regenerate the fixed .bin multiplicity tables consumed by the proving backend.
+cargo run --release -p zisk-sm-arith  --bin zisk-arith-frops-fixed-gen
+cargo run --release -p zisk-sm-binary --bin zisk-binary-basic-frops-fixed-gen
+cargo run --release -p zisk-sm-binary --bin zisk-binary-extension-frops-fixed-gen
 
-# 4. (optional) Emit the ORIGINAL hand-tuned FROPS as assembly to compare detection cycles.
-frops-analyzer asm-original   # -> emulator-asm/src/frops/frops_original.s
+# 4. Verify consistency (offsets + accessibility) on the regenerated tables.
+cargo test -p zisk-sm-arith -p zisk-sm-binary
+
+# 5. Check that the boxes, the generated predicates and the emitted assembly all agree.
+cargo test -p zisk-core --lib frops
 ```
 
-Each macro in `frops.s` / `frops_original.s` is annotated with a cost comment (cycles, `imul`=3 else
-1): worst case to reject a non-FROP, and best/worst case to count a FROP (no overflow).
+## Cross-checking the assembly against Rust
+
+The FROPS multiplicity column has two independent producers: the ROM-histogram assembly
+(`zisk_core::frops_asm`) and `zisk_core::frops::FropsMultiplicity`. The proof's lookup argument only
+balances if whichever one is used agrees with what the state machines claim, so they can be compared
+directly over a real execution:
+
+```bash
+# 1. Run the ROM-histogram assembly with -f: it dumps its whole output (control header, instruction
+#    histogram and FROPS multiplicity) to /tmp/<shm_prefix>_RH_output.bin.
+ziskemuasm -s -m -f --gen=2 --shm_prefix VERIF -p 23500 &
+ziskemuasm -c -i <input> --gen=2 --shm_prefix VERIF -p 23500 --mt 1
+ziskemuasm -c -i <input> --gen=2 --shm_prefix VERIF -p 23500 --shutdown
+
+# 2. Take the operation trace of the same ELF and input (--stats is what enables the dump).
+ziskemu -e <elf> -i <input> --stats --store-op-output ops.bin
+
+# 3. Compare the two columns row by row.
+frops-analyzer verify-asm --asm-dump /tmp/VERIF_RH_output.bin --trace ops.bin
+```
+
+It also checks that the instruction histogram sums to the step count. Exit status is non-zero on any
+disagreement, so it can be dropped into a regression script.
 
 ## Choosing `--max-regions-per-op` (detection speed vs circuit area)
 
-More regions per op = more FROPS coverage (smaller circuit area) but a longer membership test (more
-cycles to reject a non-FROP in the assembly path). It is the **speed ↔ area knob**.
+More regions per op = more FROPS coverage (smaller circuit area) but a longer membership test, and
+that test runs on every executed arith / binary operation in the ROM-histogram assembly. It is the
+**speed ↔ area knob**. Each counting thunk `zisk_core::frops_asm` emits is annotated with its
+instruction count and its worst case to reject a non-FROP.
 
-Measured on the 12 mainnet blocks (1.28 B ops; `--max-table 2^24 --low-cap 4096 --table-cost 3`):
+Measured over 103 mainnet blocks (8.3 G steps, 4.33 G candidate operations; `--max-table 25165824
+--partition-bits 21 --low-cap 4096 --table-cost 3`), regenerating the tables for each cap and timing
+the ROM-histogram assembly itself on a Ryzen 9 9950X3D:
 
-| cap | area (no padding) | coverage | total regions | reject worst-case (srl/eq/or, cyc) |
-|-----|-------------------|----------|---------------|------------------------------------|
-| hand-tuned (original) | 37.749 B          | 39.56%   | ~1–7 / op     | 9–93   |
-| **4**                 | 35.967 B (−4.7%)  | 41.41%   | 51            | ~50–68 |
-| **8**                 | 35.540 B (−5.9%)  | 42.12%   | 80            | ~99–136 |
-| 16                    | 35.197 B (−6.8%)  | 42.62%   | 127           | ~200–289 |
+| cap | table rows | coverage | area (no padding) | RH pass | over no FROPS |
+|-----|-----------:|---------:|------------------:|--------:|--------------:|
+| no FROPS at all       |         0 |      0% | 204.30 B |  20.42 s |      — |
+| in-tree tables (other traces) | 24.26 M | 33.47% | 123.17 B | 24.77 s | +21.3% |
+| **1**                 |   19.72 M |  37.60% | 117.71 B |  24.28 s | +18.9% |
+| **2**                 |   21.98 M |  40.87% | 112.94 B |  25.26 s | +23.7% |
+| **4**                 |   23.74 M |  44.30% | 108.78 B |  26.20 s | +28.3% |
+| 8                     |   24.37 M |  44.66% | 108.17 B |  27.02 s | +32.3% |
 
-**Recommended cap: between 4 and 8.** Going from 8 to 16 buys only ~0.5 coverage points / 0.34 B area
-while roughly doubling the worst-case reject cost — not worth it. Use **4** when emulation/detection
-speed matters most, **8** to squeeze a bit more area at ~2× the reject cost. Several ops (`add`, `mul`,
-`sub`, `and`) already saturate at cap 8 (no extra regions beyond that).
+Two things to take from it:
+
+* **Cap 8 is not worth it**: +0.36 coverage points over cap 4 for +0.8 s of sequential pass. Cap 16
+  (the old default) is worse still — `--max-table` caps the table before the extra regions pay off.
+* **The knob is a poor lever on the assembly cost.** Dropping from cap 4 to cap 1 removes only a
+  third of the counting time (−1.9 s of 5.8 s) and costs 6.7 coverage points and 8.2% more area,
+  because most of the cost is the first box of every op, not the later ones. If the ROM-histogram
+  pass is on the critical path, this knob will not get it off — see the note below.
+
+Which cap to use depends on what is scarce. When the sequential ROM-histogram pass gates the
+pipeline, a lower cap buys wall clock; when it does not — a 100-200 ms delay is nothing against a
+whole proof — take the coverage and the area. The measurements above are for one workload and one
+machine: rerun them for yours rather than trusting the ranking.
+
+### Whether the ROM-histogram pass is on the critical path
+
+The three sequential assemblies (MT, MO, RH) run in parallel and the pipeline only waits for RH long
+after MT, so counting FROPS there is free while RH has slack. On the workload above it has almost
+none: over the same 103 blocks MT totals 21.3 s and MO 20.7 s against RH's 20.42 s, a median margin
+of about 9 ms per block. Any of the caps above spends more than that, so RH becomes the critical path
+and the pass' extra time turns into wall clock. Check the `WAIT_ASM_RH` timer of a real run before
+assuming otherwise.
 
 ## Options
 

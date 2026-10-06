@@ -1,0 +1,99 @@
+; ============================================================================
+; divrem.zisk - diagnostic for the ZisK divide / remainder instructions (Arith SM).
+;
+;   div  divu  rem  remu           (64-bit, signed/unsigned)
+;   div_w divu_w rem_w remu_w        (32-bit; results sign-extended)
+;
+; RISC-V div/rem edge cases are covered:
+;   - divide by zero: quotient = all-ones, remainder = dividend
+;   - signed overflow (MIN / -1): quotient = MIN, remainder = 0
+; Remainder truncates toward zero (sign of the dividend).
+; Pure-constant style; expected values generated from core/src/ops_core.rs.
+;
+; DIVREM_TABLE columns: a b div divu rem remu div_w divu_w rem_w remu_w
+; First mismatch returns 0x11CC (01=div .. 08=remu_w).
+;
+; Registers: r5 row ptr  r6 row index  r7 a  r8 b  r12 exp  r13 res.
+; ============================================================================
+
+define ROWS      10
+define ROW_BYTES 80      ; 10 u64 columns * 8 bytes
+
+; a, b, div, divu, rem, remu, div_w, divu_w, rem_w, remu_w
+const u64 DIVREM_TABLE =
+	0x0000000000000007, 0x0000000000000002, 0x0000000000000003, 0x0000000000000003, 0x0000000000000001, 0x0000000000000001, 0x0000000000000003, 0x0000000000000003, 0x0000000000000001, 0x0000000000000001,
+	0xfffffffffffffff9, 0x0000000000000002, 0xfffffffffffffffd, 0x7ffffffffffffffc, 0xffffffffffffffff, 0x0000000000000001, 0xfffffffffffffffd, 0x000000007ffffffc, 0xffffffffffffffff, 0x0000000000000001,
+	0x0000000000000007, 0xfffffffffffffffe, 0xfffffffffffffffd, 0x0000000000000000, 0x0000000000000001, 0x0000000000000007, 0xfffffffffffffffd, 0x0000000000000000, 0x0000000000000001, 0x0000000000000007,
+	0x000000000000000a, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff, 0x000000000000000a, 0x000000000000000a, 0xffffffffffffffff, 0xffffffffffffffff, 0x000000000000000a, 0x000000000000000a,
+	0x8000000000000000, 0xffffffffffffffff, 0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x8000000000000000, 0x0000000000000002, 0xc000000000000000, 0x4000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x00000000fffffff9, 0x0000000000000002, 0x000000007ffffffc, 0x000000007ffffffc, 0x0000000000000001, 0x0000000000000001, 0xfffffffffffffffd, 0x000000007ffffffc, 0xffffffffffffffff, 0x0000000000000001,
+	0x0000000080000000, 0x00000000ffffffff, 0x0000000000000000, 0x0000000000000000, 0x0000000080000000, 0x0000000080000000, 0xffffffff80000000, 0x0000000000000000, 0x0000000000000000, 0xffffffff80000000,
+	0x0000000000000000, 0x0000000000000005, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x00000000ffffffff, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff, 0x00000000ffffffff, 0x00000000ffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff
+
+divrem:
+	copyb(0, DIVREM_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+dr_loop:
+	eq(r6, ROWS), j(dr_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	div(r7, r8) -> r13
+	eq(r13, r12), j(dr_c1)
+	copyb(0, 0x1101) -> r10
+	ret
+dr_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	divu(r7, r8) -> r13
+	eq(r13, r12), j(dr_c2)
+	copyb(0, 0x1102) -> r10
+	ret
+dr_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	rem(r7, r8) -> r13
+	eq(r13, r12), j(dr_c3)
+	copyb(0, 0x1103) -> r10
+	ret
+dr_c3:
+	copyb(r5, 8[a + 40]) -> r12
+	remu(r7, r8) -> r13
+	eq(r13, r12), j(dr_c4)
+	copyb(0, 0x1104) -> r10
+	ret
+dr_c4:
+	copyb(r5, 8[a + 48]) -> r12
+	div_w(r7, r8) -> r13
+	eq(r13, r12), j(dr_c5)
+	copyb(0, 0x1105) -> r10
+	ret
+dr_c5:
+	copyb(r5, 8[a + 56]) -> r12
+	divu_w(r7, r8) -> r13
+	eq(r13, r12), j(dr_c6)
+	copyb(0, 0x1106) -> r10
+	ret
+dr_c6:
+	copyb(r5, 8[a + 64]) -> r12
+	rem_w(r7, r8) -> r13
+	eq(r13, r12), j(dr_c7)
+	copyb(0, 0x1107) -> r10
+	ret
+dr_c7:
+	copyb(r5, 8[a + 72]) -> r12
+	remu_w(r7, r8) -> r13
+	eq(r13, r12), j(dr_next)
+	copyb(0, 0x1108) -> r10
+	ret
+
+dr_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(dr_loop)
+
+dr_ok:
+	copyb(0, 0) -> r10
+	ret

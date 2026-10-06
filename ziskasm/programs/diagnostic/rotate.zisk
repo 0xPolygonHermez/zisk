@@ -1,0 +1,76 @@
+; ============================================================================
+; rotate.zisk - diagnostic for the ZisK rotate instructions (Zbb).
+;
+;   rol   ror              (64-bit; amount = b & 0x3f)
+;   rol_w ror_w            (32-bit; amount = b & 0x1f; result sign-extended)
+;
+; Pure-constant style (see minmax.zisk). Amount masking is exercised (rotate by
+; 64 == 0, 65 == 1). Expected values generated from core/src/ops_core.rs.
+;
+; ROT_TABLE columns: a b rol ror rol_w ror_w
+; First mismatch returns 0x06CC (01=rol 02=ror 03=rol_w 04=ror_w).
+;
+; Registers: r5 row ptr  r6 row index  r7 a(value)  r8 b(amount)  r12 exp  r13 res.
+; ============================================================================
+
+define ROWS      14
+define ROW_BYTES 48      ; 6 u64 columns * 8 bytes
+
+; a, b, rol, ror, rol_w, ror_w
+const u64 ROT_TABLE =
+	0x0000000000000001, 0x0000000000000000, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001,
+	0x0000000000000001, 0x0000000000000001, 0x0000000000000002, 0x8000000000000000, 0x0000000000000002, 0xffffffff80000000,
+	0x0000000000000001, 0x000000000000003f, 0x8000000000000000, 0x0000000000000002, 0xffffffff80000000, 0x0000000000000002,
+	0x0000000000000001, 0x0000000000000040, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001,
+	0x0000000000000001, 0x0000000000000041, 0x0000000000000002, 0x8000000000000000, 0x0000000000000002, 0xffffffff80000000,
+	0x8000000000000000, 0x0000000000000001, 0x0000000000000001, 0x4000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0xffffffffffffffff, 0x0000000000000004, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff,
+	0xffffffff00000000, 0x0000000000000008, 0xffffff00000000ff, 0x00ffffffff000000, 0x0000000000000000, 0x0000000000000000,
+	0x00000000ffffffff, 0x0000000000000004, 0x0000000ffffffff0, 0xf00000000fffffff, 0xffffffffffffffff, 0xffffffffffffffff,
+	0x0000000080000000, 0x0000000000000001, 0x0000000100000000, 0x0000000040000000, 0x0000000000000001, 0x0000000040000000,
+	0xdeadbeefcafebabe, 0x000000000000000c, 0xdbeefcafebabedea, 0xabedeadbeefcafeb, 0xffffffffebabecaf, 0xffffffffabecafeb,
+	0x0000000000000001, 0x000000000000001f, 0x0000000080000000, 0x0000000200000000, 0xffffffff80000000, 0x0000000000000002,
+	0x0000000000000001, 0x0000000000000020, 0x0000000100000000, 0x0000000100000000, 0x0000000000000001, 0x0000000000000001,
+	0x00000000ffffffff, 0x0000000000000021, 0xfffffffe00000001, 0x7fffffff80000000, 0xffffffffffffffff, 0xffffffffffffffff
+
+rotate:
+	copyb(0, ROT_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+ro_loop:
+	eq(r6, ROWS), j(ro_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	rol(r7, r8) -> r13
+	eq(r13, r12), j(ro_c1)
+	copyb(0, 0x0601) -> r10
+	ret
+ro_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	ror(r7, r8) -> r13
+	eq(r13, r12), j(ro_c2)
+	copyb(0, 0x0602) -> r10
+	ret
+ro_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	rol_w(r7, r8) -> r13
+	eq(r13, r12), j(ro_c3)
+	copyb(0, 0x0603) -> r10
+	ret
+ro_c3:
+	copyb(r5, 8[a + 40]) -> r12
+	ror_w(r7, r8) -> r13
+	eq(r13, r12), j(ro_next)
+	copyb(0, 0x0604) -> r10
+	ret
+
+ro_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(ro_loop)
+
+ro_ok:
+	copyb(0, 0) -> r10
+	ret

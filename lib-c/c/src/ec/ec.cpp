@@ -4,6 +4,7 @@
 #include "../ffiasm/fec.hpp"
 #include "../ffiasm/fnec.hpp"
 #include "../common/utils.hpp"
+#include "../common/curve_plain.hpp"
 #include "../common/globals.hpp"
 #include <stdint.h>
 
@@ -32,8 +33,8 @@ int inline AddPointEcFe (bool dbl, const RawFec::Element &x1, const RawFec::Elem
     {
         // s = 3*x1*x1/2*y1
         fec.mul(aux1, x1, x1);
-        fec.fromUI(aux2, 3);
-        fec.mul(aux1, aux1, aux2);
+        fec.add(aux2, aux1, aux1);
+        fec.add(aux1, aux2, aux1);
         fec.add(aux2, y1, y1);
         if (fec.isZero(aux2))
         {
@@ -93,8 +94,8 @@ int inline AddPointEcDblFe (RawFec::Element &x1, RawFec::Element &y1)
 
     // s = 3*x1*x1/2*y1
     fec.mul(aux1, x1, x1);
-    fec.fromUI(aux2, 3);
-    fec.mul(aux1, aux1, aux2);
+    fec.add(aux2, aux1, aux1);
+    fec.add(aux1, aux2, aux1);
     fec.add(aux2, y1, y1);
     if (fec.isZero(aux2))
     {
@@ -123,21 +124,24 @@ int inline AddPointEcDblFe (RawFec::Element &x1, RawFec::Element &y1)
 
 int AddPointEc (uint64_t _dbl, const uint64_t * _x1, const uint64_t * _y1, const uint64_t * _x2, const uint64_t * _y2, uint64_t * _x3, uint64_t * _y3)
 {
-    bool dbl = _dbl;
-
+    // Works on plain values, see curve_plain.hpp
     RawFec::Element x1, y1, x2, y2, x3, y3;
-    array2fe(_x1, x1);
-    array2fe(_y1, y1);
-    if (!dbl)
+    array2plain(_x1, x1);
+    array2plain(_y1, y1);
+    int result;
+    if (_dbl)
     {
-        array2fe(_x2, x2);
-        array2fe(_y2, y2);
+        result = curve_dbl_plain(fec, "AddPointEc()", false, x1, y1, x3, y3);
+    }
+    else
+    {
+        array2plain(_x2, x2);
+        array2plain(_y2, y2);
+        result = curve_add_plain(fec, "AddPointEc()", x1, y1, x2, y2, x3, y3);
     }
 
-    int result = AddPointEcFe (dbl, x1, y1, x2, y2, x3, y3);
-    
-    fe2array(x3, _x3);
-    fe2array(y3, _y3);
+    plain2array(x3, _x3);
+    plain2array(y3, _y3);
 
     return result;
 }
@@ -158,26 +162,24 @@ int AddPointEcDbl (uint64_t * _x1, uint64_t * _y1)
 
 int AddPointEcP (uint64_t _dbl, const uint64_t * p1, const uint64_t * p2, uint64_t * p3)
 {
-    bool dbl = _dbl;
-
+    // Works on plain values, see curve_plain.hpp
     RawFec::Element x1, y1, x2, y2, x3, y3;
-    array2fe(p1, x1);
-    array2fe(p1 + 4, y1);
-    if (!dbl)
+    array2plain(p1, x1);
+    array2plain(p1 + 4, y1);
+    int result;
+    if (_dbl)
     {
-        array2fe(p2, x2);
-        array2fe(p2 + 4, y2);
+        result = curve_dbl_plain(fec, "AddPointEc()", false, x1, y1, x3, y3);
+    }
+    else
+    {
+        array2plain(p2, x2);
+        array2plain(p2 + 4, y2);
+        result = curve_add_plain(fec, "AddPointEc()", x1, y1, x2, y2, x3, y3);
     }
 
-    // printf("AddPointEcP() x1=%s\n", fec.toString(x1, 16).c_str());
-    // printf("AddPointEcP() y1=%s\n", fec.toString(y1, 16).c_str());
-    // printf("AddPointEcP() x2=%s\n", fec.toString(x2, 16).c_str());
-    // printf("AddPointEcP() y2=%s\n", fec.toString(y2, 16).c_str());
-
-    int result = AddPointEcFe (dbl, x1, y1, x2, y2, x3, y3);
-
-    fe2array(x3, p3);
-    fe2array(y3, p3 + 4);
+    plain2array(x3, p3);
+    plain2array(y3, p3 + 4);
 
     return result;
 }

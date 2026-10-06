@@ -45,8 +45,8 @@ int inline BLS12_381CurveDblFe (const RawBLS12_381_384::Element &x1, const RawBL
 
     // s = 3*x1*x1/2*y1
     bls12_381.mul(aux1, x1, x1);
-    bls12_381.fromUI(aux2, 3);
-    bls12_381.mul(aux1, aux1, aux2);
+    bls12_381.add(aux2, aux1, aux1);
+    bls12_381.add(aux1, aux2, aux1);
     bls12_381.add(aux2, y1, y1);
     if (bls12_381.isZero(aux2))
     {

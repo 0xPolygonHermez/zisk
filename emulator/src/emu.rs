@@ -21,8 +21,9 @@ use zisk_common::{DataBusTrait, EmuTrace, EmuTraceStart};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
     EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
-    FREG_RA, FREG_X0, OUTPUT_ADDR, RAM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
-    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, SYS_ADDR,
+    FREG_RA, FREG_X0, OUTPUT_ADDR, RAM_ADDR, REGS_IN_MAIN_TO, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
+    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    STORE_REG, SYS_ADDR,
 };
 
 const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
@@ -84,8 +85,8 @@ pub struct Emu<'a> {
 /// ZiskExecutor::calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>, global_ids: &[usize], n_cores: usize, buffer_pool: &dyn BufferPool<F>,)
 ///     ZiskExecutor::witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance, trace_buffer: Vec<F>,)
 ///         MainSM::compute_witness<F: PrimeField64>(zisk_rom: &ZiskRom, min_traces: &[EmuTrace], chunk_size: u64, main_instance: &MainInstance, std: Arc<Std<F>>, trace_buffer: Vec<F>,) -> AirInstance<F>
-///             MainSM::fill_partial_trace<F: PrimeField64>(zisk_rom: &ZiskRom, main_trace: &mut [MainTraceRow<F>], min_trace: &EmuTrace, reg_trace: &mut EmuRegTrace, step_range_check: &mut [u32], last_reg_values: bool, with_pad_row: bool,) -> (u64, Vec<u64>, Option<MainTraceRow<F>>)
-///                 Emu::step_slice_full_trace<R: MainTraceRowOps<F>, F: PrimeField64>(&mut self, trace: &mut R, lane: usize, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace, step_range_check: Option<&mut [u32]>,)
+///             MainSM::fill_partial_trace<F: PrimeField64>(zisk_rom: &ZiskRom, main_trace: &mut [MainTraceRow<F>], min_trace: &EmuTrace, reg_trace: &mut EmuRegTrace, last_reg_values: bool, with_pad_row: bool,) -> (u64, Vec<u64>, Option<MainTraceRow<F>>)
+///                 Emu::step_slice_full_trace<R: MainTraceRowOps<F>, F: PrimeField64>(&mut self, trace: &mut R, lane: usize, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace,)
 ///                     Emu::source_a_mem_reads_consume(&mut self, instruction: &ZiskInst, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace,)
 ///
 /// 2.- When called from ZiskEmu to simply emulate a RISC-V ELF file with an input file:
@@ -1054,7 +1055,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                if instruction.store_offset >= 32 {
+                if instruction.store_offset > REGS_IN_MAIN_TO as i64 {
                     println!("instruction ALERT 0 {instruction:?}");
                 }
 
@@ -1149,7 +1150,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                if instruction.store_offset >= 32 {
+                if instruction.store_offset > REGS_IN_MAIN_TO as i64 {
                     println!("instruction ALERT 1 {instruction:?}");
                 }
 
@@ -1305,7 +1306,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                if instruction.store_offset >= 32 {
+                if instruction.store_offset > REGS_IN_MAIN_TO as i64 {
                     println!("instruction ALERT 2 {instruction:?}");
                 }
 
@@ -1457,7 +1458,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                if instruction.store_offset >= 32 {
+                if instruction.store_offset > REGS_IN_MAIN_TO as i64 {
                     println!("instruction ALERT 2 {instruction:?}");
                 }
 
@@ -2772,7 +2773,6 @@ impl<'a> Emu<'a> {
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
         reg_trace: &mut EmuRegTrace,
-        step_range_check: Option<&mut [u32]>,
     ) where
         R: MainTraceRowOps<F> + IndexedFill,
     {
@@ -2787,7 +2787,7 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.step, mem_reads_index, self.ctx.inst_ctx.pc
         );
 
-        reg_trace.clear_reg_step_ranges();
+        reg_trace.clear_reg_prev_steps();
 
         self.source_a_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
         self.source_b_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
@@ -2810,10 +2810,6 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.data_ext_len = 0;
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
-
-        if let Some(step_range_check) = step_range_check {
-            reg_trace.update_step_range_check(step_range_check);
-        }
 
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
@@ -3057,7 +3053,7 @@ impl<'a> Emu<'a> {
         self.ctx.tracerv.clone()
     }
 
-    /// Gets the current values of the 32 registers
+    /// Gets the current values of the 32 RISC-V registers (not r32..r39)
     pub fn get_regs_array(&self) -> [u64; 32] {
         let mut regs_array: [u64; 32] = [0; 32];
         for (i, reg) in regs_array.iter_mut().enumerate() {
@@ -3081,13 +3077,13 @@ impl<'a> Emu<'a> {
 
     #[inline(always)]
     pub fn get_reg(&self, index: usize) -> u64 {
-        debug_assert!(index < 32);
+        debug_assert!(index < REGS_IN_MAIN_TOTAL_NUMBER);
         self.ctx.inst_ctx.regs[index]
     }
 
     #[inline(always)]
     pub fn set_reg(&mut self, index: usize, value: u64) {
-        debug_assert!(index < 32);
+        debug_assert!(index < REGS_IN_MAIN_TOTAL_NUMBER);
         self.ctx.inst_ctx.regs[index] = value;
     }
 

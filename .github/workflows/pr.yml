@@ -2,6 +2,9 @@ name: Test ZisK
 
 on:
   pull_request:
+    # 'labeled' is listed so adding the ci:full label triggers a run; the
+    # other three are the defaults, which an explicit 'types' replaces.
+    types: [opened, synchronize, reopened, labeled]
     branches:
       - develop
       - main
@@ -31,8 +34,14 @@ env:
 jobs:
   cargo-tests:
     name: Cargo tests
-    # fork-PR code must not reach the self-hosted runners.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # fork-PR code must not reach the self-hosted runners, except while a member
+    # keeps the ci:full label on the PR: every push runs here until the label
+    # is removed. Each run of an external contributor still needs the manual
+    # workflow approval.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
     runs-on: rocket
     container:
       image: ubuntu:22.04
@@ -42,6 +51,12 @@ jobs:
       ZISK_CI_NO_DOCKER_REBUILD: "1"
 
     steps:
+      - name: Clean workspace
+        run: |
+          if [ -d "$GITHUB_WORKSPACE" ]; then
+            find "$GITHUB_WORKSPACE" -mindepth 1 -delete
+          fi
+
       - name: Checkout sources
         uses: actions/checkout@v4
         with:
@@ -106,9 +121,18 @@ jobs:
         with:
           node-version: 20
 
+      # Native dependencies pick their instruction set from the build machine (pil2-stark
+      # adds -mavx512f when /proc/cpuinfo has it), and ubuntu-latest mixes CPUs with and
+      # without AVX-512. Key the cache on the CPU's feature flags, so code built for one
+      # CPU type is never reused on another, where it dies with SIGILL.
+      - name: Fingerprint the CPU features
+        id: cpu
+        run: echo "flags=$(grep -m1 '^flags' /proc/cpuinfo | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          key: cpu-${{ steps.cpu.outputs.flags }}
 
       - name: Build cargo-zisk-dev
         run: cargo build --release -p cargo-zisk --bin cargo-zisk-dev
@@ -151,8 +175,11 @@ jobs:
 
   test-x86_64:
     name: Test on Ubuntu x86_64
-    # fork-PR code must not reach the self-hosted runners.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # See cargo-tests: self-hosted runners only for same-repo PRs or ci:full.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
     runs-on:
       group: zisk-gpu
     timeout-minutes: 180

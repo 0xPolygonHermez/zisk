@@ -225,7 +225,10 @@ pub struct Stats {
     pub air_id: usize,
     /// Collect start time
     pub collect_start_time: Instant,
-    /// Collect duration in microseconds
+    /// Per-instance collect span in ms: first chunk touching this instance to
+    /// its last. Instances share one rayon pool so these overlap heavily --
+    /// do not sum them. For the phase total use
+    /// `ExecutorStats::collect_phase_wall_ms`.
     pub collect_duration: u64,
     /// Witness start time
     pub witness_start_time: Instant,

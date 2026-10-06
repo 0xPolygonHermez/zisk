@@ -1,12 +1,12 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
-use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
-use super::{keccakf_constants::*, KeccakfChiTableSM, KeccakfXor5TableSM};
+use super::{keccakf_constants::*, KeccakfChiTableSM};
 use zisk_common::OperationKeccakData;
 use zisk_pil::{KeccakfTraceRow, KeccakfTraceRowOps, KeccakfTraceRowPacked, ZISK_AIRGROUP_ID};
 
@@ -34,14 +34,7 @@ impl KeccakfInput {
 /// Nothing here depends on the height of the air: the capacity is taken from the trace each call
 /// builds, so a taller sibling would need no change.
 pub struct KeccakfSM<F: PrimeField64> {
-    /// Number of available keccakfs in the trace.
-
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
-
-    /// The virtual table IDs for the χ-row S-box and xor5 tables
-    chi_table_id: usize,
-    xor5_table_id: usize,
+    _phantom: PhantomData<F>,
 }
 
 /// Per-instance round data derived from a clean (bit-valued) state:
@@ -49,10 +42,10 @@ pub struct KeccakfSM<F: PrimeField64> {
 pub type LaneState = [u64; 25];
 
 /// Packed-row bit layout, mirroring the generated `KeccakfTraceRow`
-/// declaration: four activation flags, then the group-row's four-bit state
+/// declaration: two activation flags, then the group-row's four-bit state
 /// cells, then its four-bit parity cells. Everything else is derived from the
 /// PIL's `lanes_per_row`, so changing it moves these offsets with it.
-const FLAG_BITS: usize = 4;
+const FLAG_BITS: usize = 2;
 const CELL_BITS: usize = 4;
 const CELLS_PER_WORD: usize = LANE_BITS / CELL_BITS;
 const WORDS_PER_LANE: usize = LANE_BITS / CELLS_PER_WORD;
@@ -134,7 +127,7 @@ fn blit_bits(packed: &mut [u64], bit_offset: usize, src: &[u64], nbits: usize) {
 /// positions [k·C_PER_ROW, (k+1)·C_PER_ROW); both methods write one such row.
 /// The fallback keeps the generic unpacked representation, while the GPU path
 /// writes the generated packed row directly, at offsets derived from the row
-/// declaration: four flag bits, the row's state cells, then its parity cells.
+/// declaration: two flag bits, the row's state cells, then its parity cells.
 #[doc(hidden)]
 pub trait KeccakfTraceWriter<F: PrimeField64>: KeccakfTraceRowOps<F> {
     fn set_state_lanes(&mut self, row: usize, a: &LaneState, b: &LaneState);
@@ -250,33 +243,21 @@ fn chi_iota(b: &LaneState, round: usize) -> LaneState {
 impl<F: PrimeField64> KeccakfSM<F> {
     /// Creates a new Keccakf State Machine instance.
     ///
-    /// # Arguments
-    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
     ///
     /// # Returns
     /// A new `KeccakfSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Compute some useful values
-
-        // Get the table IDs
-        let chi_table_id = std
-            .get_virtual_table_id(KeccakfChiTableSM::TABLE_ID)
-            .expect("Failed to get Keccakf χ table ID");
-        let xor5_table_id = std
-            .get_virtual_table_id(KeccakfXor5TableSM::TABLE_ID)
-            .expect("Failed to get Keccakf xor5 table ID");
-
-        Arc::new(Self { std, chi_table_id, xor5_table_id })
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { _phantom: PhantomData })
     }
 
     /// Processes one slot: fills its CLOCKS-row block of the trace with the two
     /// operations' data and accumulates the lookups into the table histograms.
     ///
-    /// The GROUP_IN_A/GROUP_IN_B and GROUP_OUT_A/GROUP_OUT_B state-groups hold
-    /// the plain input and output bits of each op; the round groups hold the
-    /// SLICED states a + 8·b together with the sliced column parities c. When op
-    /// B is absent, its half runs Keccak-f of the zero state (its memory and bus
-    /// flags stay off).
+    /// The GROUP_IN_A and GROUP_OUT_A state-groups hold op A's plain input and
+    /// output bits; op B has none, the AIR reads its bits as (v - a) / 8 off the
+    /// round-0 and round-24 groups. The round groups hold the SLICED states
+    /// a + 8·b together with the sliced column parities c. When op B is absent,
+    /// its half runs Keccak-f of the zero state (its memory and bus flags stay off).
     #[inline(always)]
     #[allow(clippy::needless_range_loop)]
     fn process_slot<R: KeccakfTraceWriter<F>>(
@@ -284,8 +265,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
         trace: &mut [R],
         input_a: &KeccakfInput,
         input_b: Option<&KeccakfInput>,
-        chi_hist: &mut [u32],
-        xor5_hist: &mut [u32],
     ) {
         // Fill step and addr of both ops
         trace[0].set_step_addr(input_a.step_main);
@@ -306,9 +285,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let mut state_a = input_a.state;
         let mut state_b = input_b.map_or([0u64; 25], |b| b.state);
 
-        // Boundary input groups: plain bits
+        // Boundary input group: op A's plain bits
         Self::set_lane_group(trace, GROUP_IN_A, &state_a);
-        Self::set_lane_group(trace, GROUP_IN_B, &state_b);
 
         // Round groups
         let mut ta = [0u8; 5];
@@ -337,23 +315,27 @@ impl<F: PrimeField64> KeccakfSM<F> {
                 trace[group + row].set_c_parities(row, &cols_a.parities, &cols_b.parities);
             }
 
-            // xor5 lookups: MUST mirror the AIR's batching — at each round row,
-            // three c-column slots per lookup, where slot j of group-row `row`
+            // xor5 accumulators: MUST mirror the AIR's batching — at each round
+            // row, four c-column slots per lookup, where slot j of group-row `row`
             // holds position row·C_PER_ROW + j; tail slots are zero-padded and
-            // triples never cross a row boundary
+            // batches never cross a row boundary. Each holds its batch's sliced
+            // column sums sA + 8·sB packed base XOR5_KEY_BASE. Like chi_acc, xor5_acc
+            // exists only in the narrow layout (LANES_PER_ROW < 25).
             for row in 0..ROWS_PER_STATE {
-                for g in 0..XOR5_GROUPS {
-                    let mut sums = [(0u8, 0u8); XOR5_BATCH];
-                    for k in 0..XOR5_BATCH {
+                let mut accs = [0u32; XOR5_GROUPS];
+                for (g, acc) in accs.iter_mut().enumerate() {
+                    for k in (0..XOR5_BATCH).rev() {
                         let j = g * XOR5_BATCH + k;
                         let pos = row * C_PER_ROW + j;
+                        let mut sum = 0u32;
                         if j < C_PER_ROW && pos < 320 {
                             let (x, z) = (pos / 64, pos % 64);
-                            sums[k] = (cols_a.sums[x][z], cols_b.sums[x][z]);
+                            sum = cols_a.sums[x][z] as u32 + SLOT as u32 * cols_b.sums[x][z] as u32;
                         }
+                        *acc = *acc * XOR5_KEY_BASE + sum;
                     }
-                    xor5_hist[KeccakfXor5TableSM::calculate_table_row(&sums) as usize] += 1;
                 }
+                trace[group + row].set_all_xor5_acc(&accs);
             }
 
             // χ-row lookups: one per (y, z); only y = 0 rows carry the ι bit
@@ -369,9 +351,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
                             as u8;
                     }
                     let rc = y == 0 && ((RC[r] >> z) & 1) == 1;
-                    let chi_row = KeccakfChiTableSM::calculate_table_row(&ta, &tb, rc);
-                    chi_hist[chi_row as usize] += 1;
-
                     // The committed accumulator holds the packed lookup INPUT
                     // (base 28), NOT the compact table-row index (base 16)
                     chi_accs[z] = KeccakfChiTableSM::calculate_table_input(&ta, &tb, rc);
@@ -391,9 +370,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
             state_b = chi_iota(&theta_lo_b, r);
         }
 
-        // Boundary output groups: plain bits of the final states
+        // Boundary output group: op A's plain bits of the final state
         Self::set_lane_group(trace, GROUP_OUT_A, &state_a);
-        Self::set_lane_group(trace, GROUP_OUT_B, &state_b);
     }
 
     /// Writes a clean (bit-valued) state into one boundary group.
@@ -452,54 +430,32 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
         timer_start_trace!(KECCAKF_TRACE);
 
-        // Pair the inputs into slots (A-first; a trailing odd op runs with a zero op B)
+        // Walk the trace itself, `CLOCKS` rows to a slot, and take each slot's operations by index.
+        // The shape used to be four vectors -- the flattened inputs, a Vec of trace slices, a Vec of
+        // input pairs, and the two zipped into a third -- because a slot also carried a pair of
+        // lookup histograms that had to live somewhere. The prover derives those multiplicities from
+        // the committed trace now, so the slot owns nothing but its rows and the two ops that fill
+        // them, and the trace can be chunked directly.
+        //
+        // Slots are paired A-first; a trailing odd operation runs with a zero op B.
         let flat_inputs: Vec<&KeccakfInput> = inputs.iter().flatten().collect();
-        let mut trace_rows = &mut trace.buffer[..];
-        let mut par_traces = Vec::with_capacity(num_slots_needed);
-        let mut slot_inputs = Vec::with_capacity(num_slots_needed);
-        for pair in flat_inputs.chunks(OPS_PER_SLOT) {
-            let (head, tail) = trace_rows.split_at_mut(CLOCKS);
-            par_traces.push(head);
-            slot_inputs.push((pair[0], pair.get(1).copied()));
-            trace_rows = tail;
-        }
+        let slots_per_chunk = num_slots_needed.div_ceil(rayon::current_num_threads()).max(1);
 
-        // One histogram pair per worker thread. Do NOT use `fold`/`reduce` here:
-        // rayon allocates an accumulator per split leaf, and at CHI_TABLE_SIZE =
-        // 2^21 each leaf costs an 8 MiB zeroed Vec plus an 8 MiB merge — measured
-        // 4.2 s versus 150 ms for this version.
-        let mut slots: Vec<_> = par_traces.into_iter().zip(slot_inputs).collect();
-        let chunk_size = num_slots_needed.div_ceil(rayon::current_num_threads()).max(1);
-
-        let new_hists =
-            || (vec![0u32; CHI_TABLE_SIZE as usize], vec![0u32; XOR5_TABLE_SIZE as usize]);
-        let (chi_hist, xor5_hist): (Vec<u32>, Vec<u32>) = slots
-            .par_chunks_mut(chunk_size)
-            .map(|chunk| {
-                let (mut chi, mut xor5) = new_hists();
-                for (trace, (input_a, input_b)) in chunk.iter_mut() {
-                    self.process_slot::<R>(trace, input_a, *input_b, &mut chi, &mut xor5);
+        trace.buffer[..num_rows_needed]
+            .par_chunks_mut(CLOCKS * slots_per_chunk)
+            .enumerate()
+            .for_each(|(chunk, chunk_rows)| {
+                for (i, slot_rows) in chunk_rows.chunks_mut(CLOCKS).enumerate() {
+                    let op = (chunk * slots_per_chunk + i) * OPS_PER_SLOT;
+                    self.process_slot::<R>(
+                        slot_rows,
+                        flat_inputs[op],
+                        flat_inputs.get(op + 1).copied(),
+                    );
                 }
-                (chi, xor5)
-            })
-            .reduce_with(|(mut chi_a, mut xor5_a), (chi_b, xor5_b)| {
-                chi_a.iter_mut().zip(chi_b.iter()).for_each(|(a, b)| *a += b);
-                xor5_a.iter_mut().zip(xor5_b.iter()).for_each(|(a, b)| *a += b);
-                (chi_a, xor5_a)
-            })
-            .unwrap_or_else(new_hists);
+            });
 
         // Update the lookup table multiplicities
-        chi_hist.into_par_iter().enumerate().for_each(|(row, value)| {
-            if value > 0 {
-                self.std.inc_virtual_row(self.chi_table_id, row as u32, value);
-            }
-        });
-        xor5_hist.into_par_iter().enumerate().for_each(|(row, value)| {
-            if value > 0 {
-                self.std.inc_virtual_row(self.xor5_table_id, row as u32, value);
-            }
-        });
         timer_stop_and_log_trace!(KECCAKF_TRACE);
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
@@ -560,6 +516,68 @@ mod tests {
                 keccak_f_round(&mut reference, round);
                 reference.iter_mut().flatten().flatten().for_each(|bit| *bit %= 2);
                 assert_eq!(lanes, lanes_from_bits(&reference));
+            }
+        }
+    }
+
+    /// One slot with distinct ops, read back off the rows as the AIR reads them: op A's plain
+    /// bits, op B's (v - a) / 8 at the round-0 and round-24 groups, and every xor5 key against
+    /// the sliced column sums of its own round group.
+    #[test]
+    fn slot_rows_decode_both_ops_and_xor5_keys() {
+        let mut seed = 0x6a09_e667_f3bc_c908u64;
+        let mut lanes = || {
+            core::array::from_fn::<u64, 25, _>(|_| {
+                seed ^= seed << 7;
+                seed ^= seed >> 9;
+                seed ^= seed << 8;
+                seed
+            })
+        };
+        let input_a = KeccakfInput { step_main: 1, addr_main: 0x1000, state: lanes() };
+        let input_b = KeccakfInput { step_main: 2, addr_main: 0x2000, state: lanes() };
+        let (mut out_a, mut out_b) = (input_a.state, input_b.state);
+        tiny_keccak::keccakf(&mut out_a);
+        tiny_keccak::keccakf(&mut out_b);
+
+        let mut rows = vec![KeccakfTraceRow::<Goldilocks>::default(); CLOCKS];
+        KeccakfSM::<Goldilocks>::new().process_slot(&mut rows, &input_a, Some(&input_b));
+
+        // Cell (x, y, z) of the state group at `group`: lane 5y + x sits on group-row y
+        let cell = |group: usize, x: usize, y: usize, z: usize| -> u64 {
+            rows[group + y].get_all_state()[x * LANE_BITS + z] as u64
+        };
+        let bit = |lanes: &[u64; 25], x: usize, y: usize, z: usize| (lanes[x + 5 * y] >> z) & 1;
+        let group_round_last = GROUP_ROUND_0 + ROUNDS * ROWS_PER_STATE;
+        for (x, y, z) in
+            (0..5).flat_map(|x| (0..5).flat_map(move |y| (0..64).map(move |z| (x, y, z))))
+        {
+            let (a_in, a_out) = (cell(GROUP_IN_A, x, y, z), cell(GROUP_OUT_A, x, y, z));
+            assert_eq!(a_in, bit(&input_a.state, x, y, z), "op A input ({x},{y},{z})");
+            assert_eq!(a_out, bit(&out_a, x, y, z), "op A output ({x},{y},{z})");
+            assert_eq!(
+                (cell(GROUP_ROUND_0, x, y, z) - a_in) / SLOT as u64,
+                bit(&input_b.state, x, y, z)
+            );
+            assert_eq!(
+                (cell(group_round_last, x, y, z) - a_out) / SLOT as u64,
+                bit(&out_b, x, y, z)
+            );
+        }
+
+        // Row k of round r's group holds the keys of column x = k (C_PER_ROW == 64)
+        for r in 0..ROUNDS {
+            let group = GROUP_ROUND_0 + r * ROWS_PER_STATE;
+            for k in 0..ROWS_PER_STATE {
+                for (g, &key) in rows[group + k].get_all_xor5_acc().iter().enumerate() {
+                    for d in 0..XOR5_BATCH {
+                        let z = g * XOR5_BATCH + d;
+                        let sum: u64 = (0..5).map(|y| cell(group, k, y, z)).sum();
+                        let digit = (key as u64 / (XOR5_KEY_BASE as u64).pow(d as u32))
+                            % XOR5_KEY_BASE as u64;
+                        assert_eq!(digit, sum, "round {r}, column {k}, z {z}");
+                    }
+                }
             }
         }
     }

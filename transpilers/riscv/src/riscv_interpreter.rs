@@ -53,8 +53,19 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInst> {
         /***********/
         // If this is a 16 bits instruction, then we can parse it directly
         if (inst & 0x3) != 0x3 {
-            let i = riscv_get_instruction_16(inst, rom_address, instruction_code_index);
-            insts.push(i);
+            #[cfg(feature = "compressed")]
+            {
+                let i = riscv_get_instruction_16(inst, rom_address, instruction_code_index);
+                insts.push(i);
+            }
+            // Without the `compressed` feature the RISC-V C (compressed) extension is
+            // disabled (IALIGN = 32), so a 16-bit parcel is an illegal instruction: emit a
+            // halt-with-error (CHalt) instead of decoding it, aborting the run.
+            #[cfg(not(feature = "compressed"))]
+            insts.push(RiscvInst::c_halt(
+                inst as u32,
+                rom_address + (instruction_code_index * 2) as u64,
+            ));
         }
         /***********/
         /* 32 bits */
@@ -308,6 +319,7 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
     i
 }
 
+#[cfg(feature = "compressed")]
 fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> RiscvInst {
     // This is a 16-bit instruction, so we need to decode it accordingly
     let (inst_type, inst_name) = RiscvDecoder::decode_16(inst);
@@ -409,7 +421,7 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
             let imm4_3 = ((inst >> 5) & 0x3) as u32;
             let imm8_6 = ((inst >> 2) & 0x7) as u32;
             i.imm = ((imm8_6 << 6) | (imm5 << 5) | (imm4_3 << 3)) as i32;
-            if i.rd == 0 {
+            if i.rd == 0 && inst_name == RiscvInstName::CLdsp {
                 i.inst_name = RiscvInstName::CReserved;
             }
             i.rs1 = 2; // x2 is always the base pointer for LDSP/FLDSP instructions
@@ -648,6 +660,22 @@ mod tests {
         assert_reserved(&[0x4002], "c.lwsp rd=x0");
         // C.LDSP with rd=x0: reserved.
         assert_reserved(&[0x6002], "c.ldsp rd=x0");
+    }
+
+    #[test]
+    #[cfg(feature = "compressed")]
+    fn c_fldsp_rd_f0_is_valid() {
+        // Unlike C.LDSP, C.FLDSP with rd=f0 is a valid encoding (f0 is a real
+        // register), so it must not be classified as reserved. Gated on
+        // `compressed`, since otherwise every 16-bit parcel decodes as CHalt.
+        // 0x2002 = c.fldsp f0, 0(sp)
+        let insts = riscv_interpreter(0x8000_0000, &[0x2002]);
+        assert_eq!(insts.len(), 1);
+        let i = &insts[0];
+        assert_eq!(i.inst_name, RiscvInstName::CFldsp);
+        assert_eq!(i.rd, 0);
+        assert_eq!(i.rs1, 2);
+        assert_eq!(i.imm, 0);
     }
 
     #[test]
