@@ -106,10 +106,11 @@ jobs:
       - name: Fingerprint the CPU features
         id: cpu
         run: echo "flags=$(grep -m1 '^flags' /proc/cpuinfo | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
-        
+
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          key: cpu-${{ steps.cpu.outputs.flags }}
 
       - name: Build cargo-zisk-dev
         run: cargo build --release -p cargo-zisk --bin cargo-zisk-dev
