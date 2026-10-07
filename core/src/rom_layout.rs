@@ -22,10 +22,18 @@ pub const FLOAT_HANDLER_ADDR: u64 = 0x1008;
 #[cfg(feature = "float")]
 const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 34; // 31 regs + set sp + set ra + jump to zisk_float
 
-/// ROM address of the ecall trap handler installed by [`add_entry_exit_jmp`] when there is no
-/// float handler.
+/// ROM address of the block [`add_entry_exit_jmp`] emits: right after [`add_end_and_lib`]'s entry
+/// jump, end instruction and, with the `float` feature, float handler.
+#[cfg(feature = "float")]
+const ENTRY_EXIT_JMP_ADDR: u64 = ROM_ENTRY + 4 * 68;
 #[cfg(not(feature = "float"))]
-pub const NO_FLOAT_ECALL_ADDR: u64 = ROM_EXIT + 4 + 0x54; // must match add_entry_exit_jmp's trap_handler offset
+const ENTRY_EXIT_JMP_ADDR: u64 = ROM_ENTRY + 4 * 2;
+
+/// ROM address of the ecall trap handler that [`add_entry_exit_jmp`] stores in MTVEC.
+///
+/// It depends on this crate's `float` feature, which selects the BIOS layout, so code that jumps
+/// to the handler directly must use this constant rather than derive it from its own features.
+pub const ECALL_HANDLER_ADDR: u64 = ENTRY_EXIT_JMP_ADDR + 0x54; // must match add_entry_exit_jmp's trap handler offset
 
 /// A library routine's body for an inline zkvmcall (see `ZiskLibrary::inline_body`),
 /// as a small control-flow graph: the instructions, entry first, and for each one
@@ -42,13 +50,9 @@ pub struct InlineBody {
 pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     //print!("add_entry_exit_jmp() rom.next_init_inst_addr={}\n", rom.next_init_inst_addr);
 
-    // Calculate the trap handler rom pc address as an offset from the current instruction address
-    // to the beginning of the ecall section
-    #[cfg(not(feature = "float"))]
-    assert!(rom.next_init_inst_addr == ROM_EXIT + 4);
-    let trap_handler: u64 = rom.next_init_inst_addr + 0x54;
-    #[cfg(not(feature = "float"))]
-    assert!(trap_handler == NO_FLOAT_ECALL_ADDR);
+    // The trap handler (the ecall section) is at a fixed offset from the start of this block
+    assert!(rom.next_init_inst_addr == ENTRY_EXIT_JMP_ADDR);
+    let trap_handler: u64 = ECALL_HANDLER_ADDR;
 
     // :0000 we note the rom pc address offset from the first address for each instruction
     // Store the Zisk architecture ID into memory
@@ -365,10 +369,8 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);
     zib.op("copyb").unwrap();
-    #[cfg(feature = "float")]
-    zib.j(4 * 68, 4 * 68);
-    #[cfg(not(feature = "float"))]
-    zib.j(4 * 2, 4 * 2);
+    let jump = (ENTRY_EXIT_JMP_ADDR - ROM_ENTRY) as i64;
+    zib.j(jump, jump);
     #[cfg(feature = "float")]
     zib.verbose("Jump over end instruction and float handler");
     #[cfg(not(feature = "float"))]
@@ -470,6 +472,8 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
         zib.build(rom);
         rom.next_init_inst_addr += 4;
     }
+
+    assert!(rom.next_init_inst_addr == ENTRY_EXIT_JMP_ADDR);
 
     // Check resulting rom address does not exceed max
     if rom.next_init_inst_addr > MAX_ZISK_OS_ROM_ADDR {
@@ -654,6 +658,18 @@ pub fn normalize_rw_data_sections(sections: Vec<DataSection>) -> Vec<DataSection
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The BIOS blocks line up with ENTRY_EXIT_JMP_ADDR (the asserts in both functions), and the
+    /// address stored in MTVEC is ECALL_HANDLER_ADDR, with or without the `float` feature.
+    #[test]
+    fn mtvec_is_ecall_handler_addr() {
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
+        add_end_and_lib(&mut rom);
+        add_entry_exit_jmp(&mut rom, crate::ROM_ADDR);
+        let set_mtvec = &rom.insts[&(ENTRY_EXIT_JMP_ADDR + 4)].i;
+        assert_eq!(set_mtvec.store_offset, MTVEC as i64);
+        assert_eq!(set_mtvec.b_offset_imm0, ECALL_HANDLER_ADDR);
+    }
 
     // Fixtures live inside real RAM so the RAM_ADDR clamp is exercised realistically.
     const BASE: u64 = RAM_ADDR;

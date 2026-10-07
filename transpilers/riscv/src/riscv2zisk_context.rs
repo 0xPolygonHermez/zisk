@@ -28,10 +28,10 @@ use zisk_core::{
     ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
 
+#[cfg(not(feature = "float"))]
+use zisk_core::rom_layout::ECALL_HANDLER_ADDR;
 #[cfg(feature = "float")]
 use zisk_core::rom_layout::FLOAT_HANDLER_ADDR;
-#[cfg(not(feature = "float"))]
-use zisk_core::rom_layout::NO_FLOAT_ECALL_ADDR;
 #[cfg(feature = "float")]
 use zisk_core::{FREG_F0, FREG_INST, FREG_RA, MTVEC, REG_X0};
 
@@ -1671,14 +1671,14 @@ impl<'a> Riscv2ZiskContext<'a> {
         // If the float feature is enabled, we use the MTVEC register as the address to jump to for
         // the ecall.
         //
-        // If the float feature is disabled, we jump to a fixed BIOS address (NO_FLOAT_ECALL_ADDR)
+        // If the float feature is disabled, we jump to a fixed BIOS address (ECALL_HANDLER_ADDR)
         // and intentionally ignore the MTVEC CSR value. This avoids the only dynamic jump to the
         // lower address space, improving the performance of dynamic jumps in general.
 
         #[cfg(feature = "float")]
         zib.src_b("mem", MTVEC, false);
         #[cfg(not(feature = "float"))]
-        zib.src_b("imm", NO_FLOAT_ECALL_ADDR, false);
+        zib.src_b("imm", ECALL_HANDLER_ADDR, false);
         zib.op("copyb").unwrap();
         zib.store_pc("reg", 1, false);
         zib.set_pc();
