@@ -377,11 +377,11 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
         std::vector<uint32_t> h_base(nc), h_n(nc), h_ids(n_inst);
         for (uint32_t c = 0; c < nc; ++c) { h_base[c] = runs[c].base; h_n[c] = runs[c].n; }
         for (uint32_t i = 0; i < n_inst; ++i) h_ids[i] = i;
-        RF_TRY(cudaMemcpy(d_rf_chunk_base_, h_base.data(), (size_t)nc * 4, cudaMemcpyHostToDevice));
-        RF_TRY(cudaMemcpy(d_rf_chunk_n_, h_n.data(), (size_t)nc * 4, cudaMemcpyHostToDevice));
-        RF_TRY(cudaMemcpy(d_rf_inst_ids_, h_ids.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice));
+        RF_TRY(cudaMemcpyAsync(d_rf_chunk_base_, h_base.data(), (size_t)nc * 4, cudaMemcpyHostToDevice, fill_stream_));
+        RF_TRY(cudaMemcpyAsync(d_rf_chunk_n_, h_n.data(), (size_t)nc * 4, cudaMemcpyHostToDevice, fill_stream_));
+        RF_TRY(cudaMemcpyAsync(d_rf_inst_ids_, h_ids.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice, fill_stream_));
         // Address range of every RAM instance of the block, from the prefix the plan left in place.
-        instance_boundaries_kernel<<<1, n_inst>>>(d_prefix_, REGION_ADDR_START[RF_REGION_RAM],
+        instance_boundaries_kernel<<<1, n_inst, 0, fill_stream_>>>(d_prefix_, REGION_ADDR_START[RF_REGION_RAM],
             h_max_compact_[RF_REGION_RAM] + 1, region_n_ops_[RF_REGION_RAM], instance_rows_[RF_REGION_RAM],
             d_rf_inst_ids_, d_rf_inst_first_, d_rf_inst_last_, n_inst);
         RF_TRY(cudaGetLastError());
@@ -389,28 +389,28 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
         // can skip the lanes of a straddling address that belong to the instance before it.
         const uint32_t region = REGION_ADDR_START[RF_REGION_RAM];
         std::vector<uint32_t> h_first(n_inst), h_last(n_inst);
-        RF_TRY(cudaMemcpy(h_first.data(), d_rf_inst_first_, (size_t)n_inst * 4, cudaMemcpyDeviceToHost));
-        RF_TRY(cudaMemcpy(h_last.data(), d_rf_inst_last_, (size_t)n_inst * 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(h_first.data(), d_rf_inst_first_, (size_t)n_inst * 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+        RF_TRY(cudaMemcpyAsync(h_last.data(), d_rf_inst_last_, (size_t)n_inst * 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         uint32_t region_row = 0;
-        RF_TRY(cudaMemcpy(&region_row, d_prefix_ + region, 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(&region_row, d_prefix_ + region, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         h_rf_inst_skip_.assign(n_inst, 0);
         h_rf_inst_lanes_.assign(n_inst, 0);
         for (uint32_t i = 0; i < n_inst; ++i) {
             uint32_t row_first = 0, row_end = 0;
-            RF_TRY(cudaMemcpy(&row_first, d_prefix_ + h_first[i], 4, cudaMemcpyDeviceToHost));
-            RF_TRY(cudaMemcpy(&row_end, d_prefix_ + h_last[i] + 1, 4, cudaMemcpyDeviceToHost));
+            RF_TRY(cudaMemcpyAsync(&row_first, d_prefix_ + h_first[i], 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+            RF_TRY(cudaMemcpyAsync(&row_end, d_prefix_ + h_last[i] + 1, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
             h_rf_inst_skip_[i] = (size_t)i * instance_rows_[RF_REGION_RAM] - (row_first - region_row);
             h_rf_inst_lanes_[i] = row_end - row_first;
             h_first[i] -= region;
             h_last[i] -= region;
         }
-        RF_TRY(cudaMemcpy(d_rf_inst_first_, h_first.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice));
-        RF_TRY(cudaMemcpy(d_rf_inst_last_, h_last.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice));
-        rf_bounds_kernel<<<rf_grid((size_t)nc * 2 * n_inst), RF_BLOCK>>>(ram_records_, d_rf_chunk_base_,
+        RF_TRY(cudaMemcpyAsync(d_rf_inst_first_, h_first.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice, fill_stream_));
+        RF_TRY(cudaMemcpyAsync(d_rf_inst_last_, h_last.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice, fill_stream_));
+        rf_bounds_kernel<<<rf_grid((size_t)nc * 2 * n_inst), RF_BLOCK, 0, fill_stream_>>>(ram_records_, d_rf_chunk_base_,
             d_rf_chunk_n_, nc, d_rf_inst_first_, d_rf_inst_last_, n_inst, d_rf_bound_);
         RF_TRY(cudaGetLastError());
         std::vector<uint32_t> h_bound((size_t)nc * 2 * n_inst);
-        RF_TRY(cudaMemcpy(h_bound.data(), d_rf_bound_, h_bound.size() * 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(h_bound.data(), d_rf_bound_, h_bound.size() * 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         std::vector<uint32_t> h_pref((size_t)nc * n_inst);
         h_rf_inst_count_.assign(n_inst, 0);
         for (uint32_t i = 0; i < n_inst; ++i) {
@@ -421,8 +421,8 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
             }
             h_rf_inst_count_[i] = acc;
         }
-        RF_TRY(cudaMemcpy(d_rf_pref_, h_pref.data(), h_pref.size() * 4, cudaMemcpyHostToDevice));
-        RF_TRY(cudaMemcpy(&ram_writes_, d_ram_nwrites_, 8, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(d_rf_pref_, h_pref.data(), h_pref.size() * 4, cudaMemcpyHostToDevice, fill_stream_));
+        RF_TRY(cudaMemcpyAsync(&ram_writes_, d_ram_nwrites_, 8, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         ram_tables_ready_ = true;
     }
     out->status = 0;
@@ -462,7 +462,7 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
 
     cudaEvent_t ev[6];
     for (auto& e : ev) RF_TRY(cudaEventCreate(&e));
-    RF_TRY(cudaEventRecord(ev[0]));
+    RF_TRY(cudaEventRecord(ev[0], fill_stream_));
 
     // Scratch above the tables, up to the retained accesses: two key and two index buffers that
     // the sort ping-pongs between (the sorted keys stay: they give every lane its address and
@@ -485,12 +485,12 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     uint32_t* prop_keys = (uint32_t*)take(prop_block * 4);
     uint64_t* rows = d_out ? d_out : (uint64_t*)take((size_t)n_rows * mem_words_per_row_ * 8);
     size_t t_sort = 0, t_max = 0, t_bykey = 0, t_select = 0;
-    cub::DeviceRadixSort::SortPairs(nullptr, t_sort, dkeys, didx, n, (int)RF_STEP_BITS, (int)(RF_STEP_BITS + RF_ADDR_BITS));
-    cub::DeviceScan::InclusiveScan(nullptr, t_max, (uint32_t*)nullptr, (uint32_t*)nullptr, MaxU32Op(), n);
+    cub::DeviceRadixSort::SortPairs(nullptr, t_sort, dkeys, didx, n, (int)RF_STEP_BITS, (int)(RF_STEP_BITS + RF_ADDR_BITS), fill_stream_);
+    cub::DeviceScan::InclusiveScan(nullptr, t_max, (uint32_t*)nullptr, (uint32_t*)nullptr, MaxU32Op(), n, fill_stream_);
     cub::DeviceSelect::Flagged(nullptr, t_select, thrust::counting_iterator<uint32_t>(0),
-                               (uint32_t*)nullptr, (uint32_t*)nullptr, (uint32_t*)nullptr, n);
+                               (uint32_t*)nullptr, (uint32_t*)nullptr, (uint32_t*)nullptr, n, fill_stream_);
     cub::DeviceScan::InclusiveScanByKey(nullptr, t_bykey, prop_keys, prop_in, prop_out, MergeOp(),
-                                        prop_block, EqU32());
+                                        prop_block, EqU32(), fill_stream_);
     const size_t t_bytes = std::max(std::max(t_sort, t_max), std::max(t_bykey, t_select));
     void* temp = take(t_bytes);
     const size_t scratch_bytes = (size_t)(cur - rf_scratch_);
@@ -504,32 +504,32 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
 
     // 0. gather, 1. stable sort by address: the runs come in step order and each is (address, step)
     // sorted, so the step bits never need sorting.
-    rf_gather_kernel<<<rf_grid(n), RF_BLOCK>>>(ram_records_, d_rf_chunk_base_, d_rf_pref_ + (size_t)inst * rf_n_runs_,
+    rf_gather_kernel<<<rf_grid(n), RF_BLOCK, 0, fill_stream_>>>(ram_records_, d_rf_chunk_base_, d_rf_pref_ + (size_t)inst * rf_n_runs_,
                                                rf_n_runs_, d_rf_bound_, 2 * n_inst, inst, n,
                                                dkeys.Current(), didx.Current());
     RF_TRY(cudaGetLastError());
     size_t tb = t_bytes;
-    RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, dkeys, didx, n, (int)RF_STEP_BITS, (int)(RF_STEP_BITS + RF_ADDR_BITS)));
+    RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, dkeys, didx, n, (int)RF_STEP_BITS, (int)(RF_STEP_BITS + RF_ADDR_BITS), fill_stream_));
     uint64_t* keys_out = dkeys.Current();
     uint32_t* sidx     = didx.Current();
-    RF_TRY(cudaEventRecord(ev[1]));
+    RF_TRY(cudaEventRecord(ev[1], fill_stream_));
 
     // 2. lanes. The free key buffer holds the anchors and the max-scan; the free index buffer, emit.
     uint32_t* anchor = (uint32_t*)dkeys.Alternate();
     uint32_t* last_anchor = anchor + n;
     uint32_t* emit = didx.Alternate();
-    rf_anchors_kernel<<<rf_grid(n), RF_BLOCK>>>(keys_out, sidx, n, chunk_size_bits_, anchor);
+    rf_anchors_kernel<<<rf_grid(n), RF_BLOCK, 0, fill_stream_>>>(keys_out, sidx, n, chunk_size_bits_, anchor);
     RF_TRY(cudaGetLastError());
     tb = t_bytes;
-    RF_TRY(cub::DeviceScan::InclusiveScan(temp, tb, anchor, last_anchor, MaxU32Op(), n));
-    rf_emit_kernel<<<rf_grid(n), RF_BLOCK>>>(last_anchor, n, emit);
+    RF_TRY(cub::DeviceScan::InclusiveScan(temp, tb, anchor, last_anchor, MaxU32Op(), n, fill_stream_));
+    rf_emit_kernel<<<rf_grid(n), RF_BLOCK, 0, fill_stream_>>>(last_anchor, n, emit);
     RF_TRY(cudaGetLastError());
     tb = t_bytes;
     RF_TRY(cub::DeviceSelect::Flagged(temp, tb, thrust::counting_iterator<uint32_t>(0), emit, lfirst,
-                                      d_n_lanes, n));
+                                      d_n_lanes, n, fill_stream_));
     uint32_t n_lanes = 0;
-    RF_TRY(cudaMemcpy(&n_lanes, d_n_lanes, 4, cudaMemcpyDeviceToHost));
-    RF_TRY(cudaEventRecord(ev[2]));
+    RF_TRY(cudaMemcpyAsync(&n_lanes, d_n_lanes, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+    RF_TRY(cudaEventRecord(ev[2], fill_stream_));
     if (n_lanes != h_rf_inst_lanes_[inst] || lane_from + n_lanes_inst > n_lanes) {
         fprintf(stderr, "ram_fill: instance %u: %u lanes from the retained accesses, the plan counted %zu "
                         "(window %zu + %u)\n", inst, n_lanes, h_rf_inst_lanes_[inst], lane_from, n_lanes_inst);
@@ -544,20 +544,20 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     uint32_t carry_addr = 0xFFFFFFFFu;
     for (size_t j0 = 0; j0 < n; j0 += prop_block) {
         const size_t len = std::min(prop_block, n - j0);
-        rf_merge_in_kernel<<<rf_grid(len), RF_BLOCK>>>(sidx, keys_out, ram_records_, j0, len,
+        rf_merge_in_kernel<<<rf_grid(len), RF_BLOCK, 0, fill_stream_>>>(sidx, keys_out, ram_records_, j0, len,
                                                        prop_in, prop_keys);
         RF_TRY(cudaGetLastError());
         tb = t_bytes;
-        RF_TRY(cub::DeviceScan::InclusiveScanByKey(temp, tb, prop_keys, prop_in, prop_out, MergeOp(), len, EqU32()));
-        rf_merge_out_kernel<<<rf_grid(len), RF_BLOCK>>>(prop_out, prop_keys, len, carry_addr, carry, resolved, j0);
+        RF_TRY(cub::DeviceScan::InclusiveScanByKey(temp, tb, prop_keys, prop_in, prop_out, MergeOp(), len, EqU32(), fill_stream_));
+        rf_merge_out_kernel<<<rf_grid(len), RF_BLOCK, 0, fill_stream_>>>(prop_out, prop_keys, len, carry_addr, carry, resolved, j0);
         RF_TRY(cudaGetLastError());
         // Carry: the state after the block's last access, composed with the incoming carry when
         // the whole block was one run continuing it.
         Merge last_state;
         uint32_t first_key, last_key;
-        RF_TRY(cudaMemcpy(&last_state, prop_out + (len - 1), sizeof(Merge), cudaMemcpyDeviceToHost));
-        RF_TRY(cudaMemcpy(&first_key, prop_keys, 4, cudaMemcpyDeviceToHost));
-        RF_TRY(cudaMemcpy(&last_key, prop_keys + (len - 1), 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(&last_state, prop_out + (len - 1), sizeof(Merge), cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+        RF_TRY(cudaMemcpyAsync(&first_key, prop_keys, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+        RF_TRY(cudaMemcpyAsync(&last_key, prop_keys + (len - 1), 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         if (first_key == carry_addr && last_key == carry_addr) {
             last_state = MergeOp()(carry, last_state);
         }
@@ -565,38 +565,38 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
         carry_addr = last_key;
     }
     if (d_align_) {
-        rf_scatter_align_kernel<<<rf_grid(n), RF_BLOCK>>>(sidx, resolved, n, ram_records_, d_align_);
+        rf_scatter_align_kernel<<<rf_grid(n), RF_BLOCK, 0, fill_stream_>>>(sidx, resolved, n, ram_records_, d_align_);
         RF_TRY(cudaGetLastError());
     }
-    RF_TRY(cudaEventRecord(ev[3]));
+    RF_TRY(cudaEventRecord(ev[3], fill_stream_));
 
     // 4. rows, then out to the caller's buffer.
     MemPackLayout layout{};
     mempack_layout(layout, mem_col_widths_, mem_n_cols_, mem_words_per_row_, mem_lanes_x_row_);
     if (out_rows || d_out) {
-        rf_rows_kernel<<<(n_rows + RF_BLOCK - 1) / RF_BLOCK, RF_BLOCK>>>(
+        rf_rows_kernel<<<(n_rows + RF_BLOCK - 1) / RF_BLOCK, RF_BLOCK, 0, fill_stream_>>>(
             layout, lane_from, n_lanes_inst, n_rows, lfirst, sidx, emit, n, keys_out, resolved, rows);
         RF_TRY(cudaGetLastError());
     }
-    RF_TRY(cudaEventRecord(ev[4]));
-    if (out_rows) RF_TRY(cudaMemcpy(out_rows, rows, (size_t)n_rows * mem_words_per_row_ * 8, cudaMemcpyDeviceToHost));
-    RF_TRY(cudaEventRecord(ev[5]));
-    RF_TRY(cudaStreamSynchronize(0));   // the legacy stream and the planner's blocking streams
+    RF_TRY(cudaEventRecord(ev[4], fill_stream_));
+    if (out_rows) RF_TRY(cudaMemcpyAsync(out_rows, rows, (size_t)n_rows * mem_words_per_row_ * 8, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+    RF_TRY(cudaEventRecord(ev[5], fill_stream_));
+    RF_TRY(cudaStreamSynchronize(fill_stream_));
 
     // Continuation scalars: the lane before the window and the window's last lane.
     auto lane_scalars = [&](size_t g, uint32_t& addr_w, uint64_t& step, uint64_t& value) -> bool {
         uint32_t j = 0, e_next = 1;
         uint64_t k = 0;
-        RF_TRY(cudaMemcpy(&j, lfirst + g, 4, cudaMemcpyDeviceToHost));
-        RF_TRY(cudaMemcpy(&k, keys_out + j, 8, cudaMemcpyDeviceToHost));
-        RF_TRY(cudaMemcpy(&value, resolved + j, 8, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(&j, lfirst + g, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+        RF_TRY(cudaMemcpyAsync(&k, keys_out + j, 8, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+        RF_TRY(cudaMemcpyAsync(&value, resolved + j, 8, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         addr_w = (uint32_t)(k >> RF_STEP_BITS) + RAM_W_ADDR_BASE;
         step = k & RF_STEP_MASK;
         if ((size_t)j + 1 < n) {
-            RF_TRY(cudaMemcpy(&e_next, emit + j + 1, 4, cudaMemcpyDeviceToHost));
+            RF_TRY(cudaMemcpyAsync(&e_next, emit + j + 1, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
             if (e_next == 0) {
                 uint64_t k2 = 0;
-                RF_TRY(cudaMemcpy(&k2, keys_out + j + 1, 8, cudaMemcpyDeviceToHost));
+                RF_TRY(cudaMemcpyAsync(&k2, keys_out + j + 1, 8, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
                 step = k2 & RF_STEP_MASK;
             }
         }
@@ -766,12 +766,12 @@ bool CountAndPlan::prepare_other_index_() {
         d_other_idx_ = nullptr;
         return false;
     }
-    RF_TRY(cudaMemcpy(d_base, h_base.data(), h_base.size() * 4, cudaMemcpyHostToDevice));
-    RF_TRY(cudaMemcpy(d_pref, h_pref.data(), h_pref.size() * 4, cudaMemcpyHostToDevice));
-    other_index_kernel<<<rf_grid(total), RF_BLOCK>>>(ram_records_, d_base, d_pref, (uint32_t)runs.size(), total,
+    RF_TRY(cudaMemcpyAsync(d_base, h_base.data(), h_base.size() * 4, cudaMemcpyHostToDevice, fill_stream_));
+    RF_TRY(cudaMemcpyAsync(d_pref, h_pref.data(), h_pref.size() * 4, cudaMemcpyHostToDevice, fill_stream_));
+    other_index_kernel<<<rf_grid(total), RF_BLOCK, 0, fill_stream_>>>(ram_records_, d_base, d_pref, (uint32_t)runs.size(), total,
                                                      d_other_idx_, d_other_addr_);
     RF_TRY(cudaGetLastError());
-    RF_TRY(cudaStreamSynchronize(0));   // the legacy stream and the planner's blocking streams
+    RF_TRY(cudaStreamSynchronize(fill_stream_));
     return true;
 }
 
@@ -876,20 +876,20 @@ bool CountAndPlan::other_geometry_(int region, std::vector<uint32_t>& first, std
     uint32_t* d_ids = (uint32_t*)other_scratch_; uint32_t* d_first = d_ids + n_inst; uint32_t* d_last = d_first + n_inst;
     std::vector<uint32_t> h_ids(n_inst);
     for (uint32_t i = 0; i < n_inst; ++i) h_ids[i] = i;
-    RF_TRY(cudaMemcpy(d_ids, h_ids.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice));
-    instance_boundaries_kernel<<<1, n_inst>>>(d_prefix_, REGION_ADDR_START[region], h_max_compact_[region] + 1,
+    RF_TRY(cudaMemcpyAsync(d_ids, h_ids.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice, fill_stream_));
+    instance_boundaries_kernel<<<1, n_inst, 0, fill_stream_>>>(d_prefix_, REGION_ADDR_START[region], h_max_compact_[region] + 1,
                                               region_n_ops_[region], instance_rows_[region], d_ids, d_first, d_last, n_inst);
     RF_TRY(cudaGetLastError());
     first.assign(n_inst, 0); last.assign(n_inst, 0);
-    RF_TRY(cudaMemcpy(first.data(), d_first, (size_t)n_inst * 4, cudaMemcpyDeviceToHost));
-    RF_TRY(cudaMemcpy(last.data(), d_last, (size_t)n_inst * 4, cudaMemcpyDeviceToHost));
+    RF_TRY(cudaMemcpyAsync(first.data(), d_first, (size_t)n_inst * 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+    RF_TRY(cudaMemcpyAsync(last.data(), d_last, (size_t)n_inst * 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
     uint32_t region_row = 0;
-    RF_TRY(cudaMemcpy(&region_row, d_prefix_ + REGION_ADDR_START[region], 4, cudaMemcpyDeviceToHost));
+    RF_TRY(cudaMemcpyAsync(&region_row, d_prefix_ + REGION_ADDR_START[region], 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
     skip.assign(n_inst, 0); count.assign(n_inst, 0);
     for (uint32_t i = 0; i < n_inst; ++i) {
         uint32_t row_first = 0, row_end = 0;
-        RF_TRY(cudaMemcpy(&row_first, d_prefix_ + first[i], 4, cudaMemcpyDeviceToHost));
-        RF_TRY(cudaMemcpy(&row_end, d_prefix_ + last[i] + 1, 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(&row_first, d_prefix_ + first[i], 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+        RF_TRY(cudaMemcpyAsync(&row_end, d_prefix_ + last[i] + 1, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         skip[i] = (size_t)i * instance_rows_[region] - (row_first - region_row);
         count[i] = row_end - row_first;   // no pairing: one lane per access
     }
@@ -898,8 +898,8 @@ bool CountAndPlan::other_geometry_(int region, std::vector<uint32_t>& first, std
         ext_first[i] = first[i];
         if (i > 0 && last[i - 1] != first[i]) {
             uint32_t a = 0, b = 0;
-            RF_TRY(cudaMemcpy(&a, d_prefix_ + last[i - 1], 4, cudaMemcpyDeviceToHost));
-            RF_TRY(cudaMemcpy(&b, d_prefix_ + last[i - 1] + 1, 4, cudaMemcpyDeviceToHost));
+            RF_TRY(cudaMemcpyAsync(&a, d_prefix_ + last[i - 1], 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+            RF_TRY(cudaMemcpyAsync(&b, d_prefix_ + last[i - 1] + 1, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
             ext_first[i] = last[i - 1];
             extra[i] = b - a;
         }
@@ -917,13 +917,13 @@ bool CountAndPlan::other_sorted_(ScratchCursor& sc, uint32_t first, uint32_t las
     uint32_t* d_n_sel = (uint32_t*)sc.take(4);
     size_t t_select = 0;
     cub::DeviceSelect::Flagged(nullptr, t_select, thrust::counting_iterator<uint32_t>(0), (uint32_t*)nullptr,
-                               (uint32_t*)nullptr, (uint32_t*)nullptr, N);
+                               (uint32_t*)nullptr, (uint32_t*)nullptr, N, fill_stream_);
     void* temp0 = sc.take(t_select);
-    other_flag_kernel<<<rf_grid(N), RF_BLOCK>>>(d_other_addr_, N, first, last, flag);
+    other_flag_kernel<<<rf_grid(N), RF_BLOCK, 0, fill_stream_>>>(d_other_addr_, N, first, last, flag);
     RF_TRY(cudaGetLastError());
-    RF_TRY(cub::DeviceSelect::Flagged(temp0, t_select, thrust::counting_iterator<uint32_t>(0), flag, sel, d_n_sel, N));
+    RF_TRY(cub::DeviceSelect::Flagged(temp0, t_select, thrust::counting_iterator<uint32_t>(0), flag, sel, d_n_sel, N, fill_stream_));
     uint32_t n32 = 0;
-    RF_TRY(cudaMemcpy(&n32, d_n_sel, 4, cudaMemcpyDeviceToHost));
+    RF_TRY(cudaMemcpyAsync(&n32, d_n_sel, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
     const size_t n = n32;
     if (n != expect) {
         fprintf(stderr, "other_fill: %zu accesses selected in [%u, %u], the plan counted %zu\n", n, first, last, expect);
@@ -932,14 +932,14 @@ bool CountAndPlan::other_sorted_(ScratchCursor& sc, uint32_t first, uint32_t las
     cub::DoubleBuffer<uint32_t> didx((uint32_t*)sc.take(n * 4), (uint32_t*)sc.take(n * 4));
     cub::DoubleBuffer<uint32_t> akeys((uint32_t*)sc.take(n * 4), (uint32_t*)sc.take(n * 4));
     size_t t_bytes = 0;
-    cub::DeviceRadixSort::SortPairs(nullptr, t_bytes, akeys, didx, n, 0, 32);
+    cub::DeviceRadixSort::SortPairs(nullptr, t_bytes, akeys, didx, n, 0, 32, fill_stream_);
     void* temp = sc.take(t_bytes);
     // The selection is in step order (runs in chunk order, arrival order inside); a stable sort by
     // address gives (address, step).
-    other_keys_kernel<<<rf_grid(n), RF_BLOCK>>>(ram_records_, sel, d_other_idx_, n, akeys.Current(), didx.Current());
+    other_keys_kernel<<<rf_grid(n), RF_BLOCK, 0, fill_stream_>>>(ram_records_, sel, d_other_idx_, n, akeys.Current(), didx.Current());
     RF_TRY(cudaGetLastError());
     size_t tb = t_bytes;
-    RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, akeys, didx, n, 0, 32));
+    RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, akeys, didx, n, 0, 32, fill_stream_));
     *addr_sorted = akeys.Current();
     *idx = didx.Current();
     *n_out = n;
@@ -1036,7 +1036,7 @@ bool CountAndPlan::fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t
 
     cudaEvent_t ev[4];
     for (auto& e : ev) RF_TRY(cudaEventCreate(&e));
-    RF_TRY(cudaEventRecord(ev[0]));
+    RF_TRY(cudaEventRecord(ev[0], fill_stream_));
 
     // Scratch above the access table, up to the retained accesses.
     ScratchCursor sc{slot_scratch_ ? slot_scratch_ : other_scratch_};
@@ -1054,7 +1054,7 @@ bool CountAndPlan::fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     Merge* prop_out = (Merge*)sc.take(prop_block * sizeof(Merge));
     uint64_t* rows = d_out ? d_out : (uint64_t*)sc.take((size_t)n_rows * rom_words_per_row_ * 8);
     size_t t_bytes = 0;
-    cub::DeviceScan::InclusiveScanByKey(nullptr, t_bytes, addr_sorted, prop_in, prop_out, MergeOp(), prop_block, EqU32());
+    cub::DeviceScan::InclusiveScanByKey(nullptr, t_bytes, addr_sorted, prop_in, prop_out, MergeOp(), prop_block, EqU32(), fill_stream_);
     void* temp = sc.take(t_bytes);
     if (sc.cur > end) {
         if (!stage_try_) fprintf(stderr, "rom_fill: instance %u needs %zu MB of scratch, %zu MB free below the retained accesses\n",
@@ -1062,58 +1062,58 @@ bool CountAndPlan::fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t
         res->status = -3;
         return false;
     }
-    RF_TRY(cudaEventRecord(ev[1]));
+    RF_TRY(cudaEventRecord(ev[1], fill_stream_));
 
     // Values: the init write seeds each word, every read of it resolves to the word.
     Merge carry{0, 0};
     uint32_t carry_addr = 0xFFFFFFFFu;
     for (size_t j0 = 0; j0 < n; j0 += prop_block) {
         const size_t len = std::min(prop_block, n - j0);
-        rom_merge_in_kernel<<<rf_grid(len), RF_BLOCK>>>(ram_records_, idx, j0, len, prop_in);
+        rom_merge_in_kernel<<<rf_grid(len), RF_BLOCK, 0, fill_stream_>>>(ram_records_, idx, j0, len, prop_in);
         RF_TRY(cudaGetLastError());
         size_t tb = t_bytes;
-        RF_TRY(cub::DeviceScan::InclusiveScanByKey(temp, tb, addr_sorted + j0, prop_in, prop_out, MergeOp(), len, EqU32()));
-        rom_merge_out_kernel<<<rf_grid(len), RF_BLOCK>>>(prop_out, addr_sorted + j0, len, carry_addr, carry, resolved, j0);
+        RF_TRY(cub::DeviceScan::InclusiveScanByKey(temp, tb, addr_sorted + j0, prop_in, prop_out, MergeOp(), len, EqU32(), fill_stream_));
+        rom_merge_out_kernel<<<rf_grid(len), RF_BLOCK, 0, fill_stream_>>>(prop_out, addr_sorted + j0, len, carry_addr, carry, resolved, j0);
         RF_TRY(cudaGetLastError());
         Merge last_state;
         uint32_t first_key, last_key;
-        RF_TRY(cudaMemcpy(&last_state, prop_out + (len - 1), sizeof(Merge), cudaMemcpyDeviceToHost));
-        RF_TRY(cudaMemcpy(&first_key, addr_sorted + j0, 4, cudaMemcpyDeviceToHost));
-        RF_TRY(cudaMemcpy(&last_key, addr_sorted + j0 + (len - 1), 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(&last_state, prop_out + (len - 1), sizeof(Merge), cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+        RF_TRY(cudaMemcpyAsync(&first_key, addr_sorted + j0, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+        RF_TRY(cudaMemcpyAsync(&last_key, addr_sorted + j0 + (len - 1), 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         if (first_key == carry_addr && last_key == carry_addr) last_state = MergeOp()(carry, last_state);
         carry = last_state;
         carry_addr = last_key;
     }
     if (d_align_) {
-        other_scatter_align_kernel<<<rf_grid(n), RF_BLOCK>>>(idx, addr_sorted, resolved, nullptr, 0, 0, n, ram_records_, d_align_);
+        other_scatter_align_kernel<<<rf_grid(n), RF_BLOCK, 0, fill_stream_>>>(idx, addr_sorted, resolved, nullptr, 0, 0, n, ram_records_, d_align_);
         RF_TRY(cudaGetLastError());
     }
-    RF_TRY(cudaEventRecord(ev[2]));
+    RF_TRY(cudaEventRecord(ev[2], fill_stream_));
 
     // Rows, then out.
     RowPackLayout layout{};
     rowpack_layout(layout, rom_col_widths_, rom_n_cols_, rom_words_per_row_);
     if (out_rows || d_out) {
-        rom_rows_kernel<<<(n_rows + RF_BLOCK - 1) / RF_BLOCK, RF_BLOCK>>>(
+        rom_rows_kernel<<<(n_rows + RF_BLOCK - 1) / RF_BLOCK, RF_BLOCK, 0, fill_stream_>>>(
             layout, rom_lanes_x_row_, lane_from, n_lanes_inst, n_rows, addr_sorted, idx, resolved, ram_records_, rows);
         RF_TRY(cudaGetLastError());
     }
-    if (out_rows) RF_TRY(cudaMemcpy(out_rows, rows, (size_t)n_rows * rom_words_per_row_ * 8, cudaMemcpyDeviceToHost));
-    RF_TRY(cudaEventRecord(ev[3]));
-    RF_TRY(cudaStreamSynchronize(0));   // the legacy stream and the planner's blocking streams
+    if (out_rows) RF_TRY(cudaMemcpyAsync(out_rows, rows, (size_t)n_rows * rom_words_per_row_ * 8, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+    RF_TRY(cudaEventRecord(ev[3], fill_stream_));
+    RF_TRY(cudaStreamSynchronize(fill_stream_));
 
     // The last lane, and the lane before the window (the selection holds it for every instance but the first).
     auto lane_scalars = [&](size_t g, uint32_t& addr_w, uint64_t& step, uint64_t& value) -> bool {
         uint32_t a = 0, k = 0;
-        RF_TRY(cudaMemcpy(&a, addr_sorted + g, 4, cudaMemcpyDeviceToHost));
-        RF_TRY(cudaMemcpy(&k, idx + g, 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(&a, addr_sorted + g, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+        RF_TRY(cudaMemcpyAsync(&k, idx + g, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         uint32_t r[RAM_RECORD_WORDS];
-        RF_TRY(cudaMemcpy(r, ram_records_.rec(k), RAM_RECORD_WORDS * 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(r, ram_records_.rec(k), RAM_RECORD_WORDS * 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         const uint64_t m = r[1] | ((uint64_t)r[2] << 32);
         addr_w = ROM_W_ADDR_BASE + a;
         step = m & RAM_META_STEP_MASK;
         if (((m >> RAM_META_KIND_SHIFT) & 3u) == RF_KIND_READ) {
-            RF_TRY(cudaMemcpy(&value, resolved + g, 8, cudaMemcpyDeviceToHost));
+            RF_TRY(cudaMemcpyAsync(&value, resolved + g, 8, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         } else {
             value = r[3] | ((uint64_t)r[4] << 32);
         }
@@ -1294,7 +1294,7 @@ bool CountAndPlan::fill_input_instance(uint32_t inst, const uint64_t* d_image, c
 
     cudaEvent_t ev[3];
     for (auto& e : ev) RF_TRY(cudaEventCreate(&e));
-    RF_TRY(cudaEventRecord(ev[0]));
+    RF_TRY(cudaEventRecord(ev[0], fill_stream_));
 
     ScratchCursor sc{slot_scratch_ ? slot_scratch_ : scratch};
     uint8_t* end = scratch_end_(n_total);
@@ -1313,32 +1313,32 @@ bool CountAndPlan::fill_input_instance(uint32_t inst, const uint64_t* d_image, c
         return false;
     }
     if (d_align_) {
-        other_scatter_align_kernel<<<rf_grid(n), RF_BLOCK>>>(idx, addr_sorted, nullptr, d_image, image_words,
+        other_scatter_align_kernel<<<rf_grid(n), RF_BLOCK, 0, fill_stream_>>>(idx, addr_sorted, nullptr, d_image, image_words,
                                                              REGION_ADDR_START[RF_REGION_INPUT], n, ram_records_, d_align_);
         RF_TRY(cudaGetLastError());
     }
-    RF_TRY(cudaEventRecord(ev[1]));
+    RF_TRY(cudaEventRecord(ev[1], fill_stream_));
 
     const uint32_t prev_addr = inst == 0 ? REGION_ADDR_START[RF_REGION_INPUT] : 0xFFFFFFFFu;
     RowPackLayout layout{};
     rowpack_layout(layout, input_col_widths_, input_n_cols_, input_words_per_row_);
     if (out_rows || d_out) {
-        input_rows_kernel<<<(n_rows + RF_BLOCK - 1) / RF_BLOCK, RF_BLOCK>>>(
+        input_rows_kernel<<<(n_rows + RF_BLOCK - 1) / RF_BLOCK, RF_BLOCK, 0, fill_stream_>>>(
             layout, input_lanes_x_row_, lane_from, n_lanes_inst, n_rows, addr_sorted, idx, ram_records_,
             d_image, image_words, prev_addr, rows);
         RF_TRY(cudaGetLastError());
     }
-    if (out_rows) RF_TRY(cudaMemcpy(out_rows, rows, (size_t)n_rows * input_words_per_row_ * 8, cudaMemcpyDeviceToHost));
-    RF_TRY(cudaEventRecord(ev[2]));
-    RF_TRY(cudaStreamSynchronize(0));   // the legacy stream and the planner's blocking streams
+    if (out_rows) RF_TRY(cudaMemcpyAsync(out_rows, rows, (size_t)n_rows * input_words_per_row_ * 8, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+    RF_TRY(cudaEventRecord(ev[2], fill_stream_));
+    RF_TRY(cudaStreamSynchronize(fill_stream_));
 
     // The last lane, and the lane before the window (the selection holds it for every instance but the first).
     auto lane_scalars = [&](size_t g, uint32_t& addr_w, uint64_t& step, uint64_t& value) -> bool {
         uint32_t a = 0, k = 0;
-        RF_TRY(cudaMemcpy(&a, addr_sorted + g, 4, cudaMemcpyDeviceToHost));
-        RF_TRY(cudaMemcpy(&k, idx + g, 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(&a, addr_sorted + g, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+        RF_TRY(cudaMemcpyAsync(&k, idx + g, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         uint32_t r[RAM_RECORD_WORDS];
-        RF_TRY(cudaMemcpy(r, ram_records_.rec(k), RAM_RECORD_WORDS * 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(r, ram_records_.rec(k), RAM_RECORD_WORDS * 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
         const uint64_t m = r[1] | ((uint64_t)r[2] << 32);
         const uint32_t off = a - REGION_ADDR_START[RF_REGION_INPUT];
         addr_w = INPUT_W_ADDR_BASE + off;
@@ -1394,7 +1394,7 @@ bool CountAndPlan::fill_all_input_instances(uint32_t n_rows, const void* image, 
         prepared->status = -3;
         return false;
     }
-    RF_TRY(cudaMemcpy(d_image_, h_image_.data(), image_words_ * 8, cudaMemcpyHostToDevice));
+    RF_TRY(cudaMemcpyAsync(d_image_, h_image_.data(), image_words_ * 8, cudaMemcpyHostToDevice, fill_stream_));
     const size_t image_words = image_words_;
     uint64_t* d_image = d_image_;
     std::vector<uint64_t>& h_image = h_image_;
@@ -1731,7 +1731,7 @@ bool CountAndPlan::prepare_align_index_() {
     if (d_align_order_) return true;
     if (!d_align_ || !align_enabled_.load(std::memory_order_relaxed)) return false;
     uint32_t overflow = 0;
-    RF_TRY(cudaMemcpy(&overflow, d_align_overflow_, 4, cudaMemcpyDeviceToHost));
+    RF_TRY(cudaMemcpyAsync(&overflow, d_align_overflow_, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
     if (overflow) {
         fprintf(stderr, "align_fill: the MemAlign region (%zu records) overflowed; witness off\n", align_cap_);
         return false;
@@ -1743,7 +1743,7 @@ bool CountAndPlan::prepare_align_index_() {
     });
     std::vector<AlignRun> h_runs(align_slot_.load(std::memory_order_relaxed));
     if (!h_runs.empty())
-        RF_TRY(cudaMemcpy(h_runs.data(), d_align_runs_, h_runs.size() * sizeof(AlignRun), cudaMemcpyDeviceToHost));
+        RF_TRY(cudaMemcpyAsync(h_runs.data(), d_align_runs_, h_runs.size() * sizeof(AlignRun), cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
     std::vector<uint32_t> h_base, h_pref;
     h_base.reserve(runs.size()); h_pref.reserve(runs.size() + 1);
     h_align_chunk_start_.assign((size_t)n_chunks_ + 1, 0);
@@ -1769,11 +1769,11 @@ bool CountAndPlan::prepare_align_index_() {
         d_align_order_ = nullptr;
         return false;
     }
-    RF_TRY(cudaMemcpy(d_base, h_base.data(), h_base.size() * 4, cudaMemcpyHostToDevice));
-    RF_TRY(cudaMemcpy(d_pref, h_pref.data(), h_pref.size() * 4, cudaMemcpyHostToDevice));
-    align_order_kernel<<<rf_grid(total), RF_BLOCK>>>(d_base, d_pref, (uint32_t)h_base.size(), total, d_align_order_);
+    RF_TRY(cudaMemcpyAsync(d_base, h_base.data(), h_base.size() * 4, cudaMemcpyHostToDevice, fill_stream_));
+    RF_TRY(cudaMemcpyAsync(d_pref, h_pref.data(), h_pref.size() * 4, cudaMemcpyHostToDevice, fill_stream_));
+    align_order_kernel<<<rf_grid(total), RF_BLOCK, 0, fill_stream_>>>(d_base, d_pref, (uint32_t)h_base.size(), total, d_align_order_);
     RF_TRY(cudaGetLastError());
-    RF_TRY(cudaStreamSynchronize(0));   // the legacy stream and the planner's blocking streams
+    RF_TRY(cudaStreamSynchronize(fill_stream_));
     return true;
 }
 
@@ -1803,7 +1803,7 @@ bool CountAndPlan::fill_align_instance(const AlignPlanDesc& plan, const AlignChu
 
     cudaEvent_t ev[3];
     for (auto& e : ev) RF_TRY(cudaEventCreate(&e));
-    RF_TRY(cudaEventRecord(ev[0]));
+    RF_TRY(cudaEventRecord(ev[0], fill_stream_));
 
     ScratchCursor sc{slot_scratch_ ? slot_scratch_ : scratch};
     uint8_t* end = scratch_end_(n_total);
@@ -1821,10 +1821,10 @@ bool CountAndPlan::fill_align_instance(const AlignPlanDesc& plan, const AlignChu
     uint32_t* row_off = (uint32_t*)sc.take(m * 4 + 4);
     uint64_t* rows = d_out ? d_out : (uint64_t*)sc.take((size_t)plan.n_rows * words * 8);
     size_t t_scan = 0, t_select = 0, t_sum = 0;
-    cub::DeviceScan::ExclusiveScanByKey(nullptr, t_scan, chunk, flag, ordinal[0], SumU32(), 0u, m, EqU32());
+    cub::DeviceScan::ExclusiveScanByKey(nullptr, t_scan, chunk, flag, ordinal[0], SumU32(), 0u, m, EqU32(), fill_stream_);
     cub::DeviceSelect::Flagged(nullptr, t_select, thrust::counting_iterator<uint32_t>(0), (uint32_t*)nullptr,
-                               (uint32_t*)nullptr, (uint32_t*)nullptr, m);
-    cub::DeviceScan::ExclusiveSum(nullptr, t_sum, rows_per, row_off, m + 1);
+                               (uint32_t*)nullptr, (uint32_t*)nullptr, m, fill_stream_);
+    cub::DeviceScan::ExclusiveSum(nullptr, t_sum, rows_per, row_off, m + 1, fill_stream_);
     const size_t t_bytes = std::max(t_scan, std::max(t_select, t_sum));
     void* temp = sc.take(t_bytes);
     if (sc.cur > end) {
@@ -1833,27 +1833,27 @@ bool CountAndPlan::fill_align_instance(const AlignPlanDesc& plan, const AlignChu
         res->status = -3;
         return false;
     }
-    RF_TRY(cudaMemcpy(d_table, table.data(), (size_t)n_table * sizeof(AlignChunkEntry), cudaMemcpyHostToDevice));
-    RF_TRY(cudaMemcpy(d_ordinal, ordinal, ALIGN_KINDS * sizeof(uint32_t*), cudaMemcpyHostToDevice));
+    RF_TRY(cudaMemcpyAsync(d_table, table.data(), (size_t)n_table * sizeof(AlignChunkEntry), cudaMemcpyHostToDevice, fill_stream_));
+    RF_TRY(cudaMemcpyAsync(d_ordinal, ordinal, ALIGN_KINDS * sizeof(uint32_t*), cudaMemcpyHostToDevice, fill_stream_));
 
     // 1. the instance's chunk range: per-kind ordinals inside each chunk, then the windows.
     if (m > 0) {
-        align_keys_kernel<<<rf_grid(m), RF_BLOCK>>>(d_align_, d_align_order_, p0, m, chunk, kind);
+        align_keys_kernel<<<rf_grid(m), RF_BLOCK, 0, fill_stream_>>>(d_align_, d_align_order_, p0, m, chunk, kind);
         RF_TRY(cudaGetLastError());
         for (uint32_t k = 0; k < ALIGN_KINDS; ++k) {
-            align_kind_flag_kernel<<<rf_grid(m), RF_BLOCK>>>(kind, m, k, flag);
+            align_kind_flag_kernel<<<rf_grid(m), RF_BLOCK, 0, fill_stream_>>>(kind, m, k, flag);
             RF_TRY(cudaGetLastError());
             size_t tb = t_bytes;
-            RF_TRY(cub::DeviceScan::ExclusiveScanByKey(temp, tb, chunk, flag, ordinal[k], SumU32(), 0u, m, EqU32()));
+            RF_TRY(cub::DeviceScan::ExclusiveScanByKey(temp, tb, chunk, flag, ordinal[k], SumU32(), 0u, m, EqU32(), fill_stream_));
         }
-        align_select_kernel<<<rf_grid(m), RF_BLOCK>>>(chunk, kind, d_ordinal, m, d_table, c_first, n_table, sel_flag);
+        align_select_kernel<<<rf_grid(m), RF_BLOCK, 0, fill_stream_>>>(chunk, kind, d_ordinal, m, d_table, c_first, n_table, sel_flag);
         RF_TRY(cudaGetLastError());
     }
     size_t tb = t_bytes;
     uint32_t n_sel = 0;
     if (m > 0) {
-        RF_TRY(cub::DeviceSelect::Flagged(temp, tb, thrust::counting_iterator<uint32_t>(0), sel_flag, selected, d_n_sel, m));
-        RF_TRY(cudaMemcpy(&n_sel, d_n_sel, 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cub::DeviceSelect::Flagged(temp, tb, thrust::counting_iterator<uint32_t>(0), sel_flag, selected, d_n_sel, m, fill_stream_));
+        RF_TRY(cudaMemcpyAsync(&n_sel, d_n_sel, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
     }
     if (n_sel != expect) {
         fprintf(stderr, "align_fill: air %u segment %u: %u accesses selected, the plan counted %llu (chunks %u..%u, %zu accesses)\n",
@@ -1861,16 +1861,16 @@ bool CountAndPlan::fill_align_instance(const AlignPlanDesc& plan, const AlignChu
         res->status = -4;
         return false;
     }
-    RF_TRY(cudaEventRecord(ev[1]));
+    RF_TRY(cudaEventRecord(ev[1], fill_stream_));
 
     // 2. rows: the accesses' rows in order, then the padding.
     uint32_t used = 0;
     if (n_sel > 0) {
-        align_rows_per_op_kernel<<<rf_grid(n_sel), RF_BLOCK>>>(d_align_, d_align_order_, p0, selected, n_sel, plan.air_kind, rows_per);
+        align_rows_per_op_kernel<<<rf_grid(n_sel), RF_BLOCK, 0, fill_stream_>>>(d_align_, d_align_order_, p0, selected, n_sel, plan.air_kind, rows_per);
         RF_TRY(cudaGetLastError());
         tb = t_bytes;
-        RF_TRY(cub::DeviceScan::ExclusiveSum(temp, tb, rows_per, row_off, (size_t)n_sel + 1));
-        RF_TRY(cudaMemcpy(&used, row_off + n_sel, 4, cudaMemcpyDeviceToHost));
+        RF_TRY(cub::DeviceScan::ExclusiveSum(temp, tb, rows_per, row_off, (size_t)n_sel + 1, fill_stream_));
+        RF_TRY(cudaMemcpyAsync(&used, row_off + n_sel, 4, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
     }
     if (used > plan.n_rows) {
         fprintf(stderr, "align_fill: air %u segment %u: %u rows for %u\n", plan.air_id, plan.segment, used, plan.n_rows);
@@ -1880,16 +1880,16 @@ bool CountAndPlan::fill_align_instance(const AlignPlanDesc& plan, const AlignChu
     RowPackLayout layout{};
     rowpack_layout(layout, align_col_widths_[plan.air_kind], align_n_cols_[plan.air_kind], words);
     if (n_sel > 0) {
-        align_rows_kernel<<<rf_grid(n_sel), RF_BLOCK>>>(layout, plan.air_kind, d_align_, d_align_order_, p0, selected, row_off, n_sel, rows);
+        align_rows_kernel<<<rf_grid(n_sel), RF_BLOCK, 0, fill_stream_>>>(layout, plan.air_kind, d_align_, d_align_order_, p0, selected, row_off, n_sel, rows);
         RF_TRY(cudaGetLastError());
     }
     if (used < plan.n_rows) {
-        align_padding_kernel<<<rf_grid(plan.n_rows - used), RF_BLOCK>>>(layout, plan.air_kind, used, plan.n_rows, rows);
+        align_padding_kernel<<<rf_grid(plan.n_rows - used), RF_BLOCK, 0, fill_stream_>>>(layout, plan.air_kind, used, plan.n_rows, rows);
         RF_TRY(cudaGetLastError());
     }
-    if (out_rows) RF_TRY(cudaMemcpy(out_rows, rows, (size_t)plan.n_rows * words * 8, cudaMemcpyDeviceToHost));
-    RF_TRY(cudaEventRecord(ev[2]));
-    RF_TRY(cudaStreamSynchronize(0));   // the legacy stream and the planner's blocking streams
+    if (out_rows) RF_TRY(cudaMemcpyAsync(out_rows, rows, (size_t)plan.n_rows * words * 8, cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
+    RF_TRY(cudaEventRecord(ev[2], fill_stream_));
+    RF_TRY(cudaStreamSynchronize(fill_stream_));
     res->n_lanes = used;
     auto ms = [&](int a, int b) { float t = 0; cudaEventElapsedTime(&t, ev[a], ev[b]); return t; };
     res->ms_rows = ms(1, 2);
@@ -2046,7 +2046,7 @@ bool CountAndPlan::fill_slot(const void* d_ops, uint64_t n_ops, uint64_t* dst, v
     if (!slot_prepared_ || n_ops != 1 || d_ops == nullptr || dst == nullptr) { res->status = -1; return false; }
     if (stream) RF_TRY(cudaStreamSynchronize((cudaStream_t)stream));
     MemSlotOp op{};
-    RF_TRY(cudaMemcpy(&op, d_ops, sizeof(op), cudaMemcpyDeviceToHost));
+    RF_TRY(cudaMemcpyAsync(&op, d_ops, sizeof(op), cudaMemcpyDeviceToHost, fill_stream_)); RF_TRY(cudaStreamSynchronize(fill_stream_));
     StagedRows s{};
     bool staged;
     {
