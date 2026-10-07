@@ -657,8 +657,8 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             ));
         }
         let seg_idx = usize::from(segment_id);
-        let mut trace =
-            RomDataTrace::<RomDataTraceRowPacked<F>>::new_from_vec_zeroes(trace_buffer)?;
+        // The device rows cover every row of the instance, padding included.
+        let mut trace = RomDataTrace::<RomDataTraceRowPacked<F>>::new_from_vec(trace_buffer)?;
         let n_rows = trace.num_rows();
         let (out, previous_segment) = {
             let words = crate::mem_trace_hash::rows_as_words_mut(&mut trace.buffer);

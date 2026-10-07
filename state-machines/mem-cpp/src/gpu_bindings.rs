@@ -103,6 +103,25 @@ const _: () = assert!(core::mem::size_of::<AlignChunkEntry>() == 44);
 
 /// Mirrors `MemSlotOp` in `cu/count_and_plan.cuh`: the kernel input of one memory instance filled
 /// into a prover slot. `family`: 0 Mem, 1 RomData, 2 InputData, 3 MemAlign.
+/// A row image the preparation staged on the device (mirrors `StagedRows` in count_and_plan.cuh).
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct StagedRows {
+    pub ptr: *const u64,
+    pub words: u64,
+    pub family: u32,
+    pub air_id: u32,
+    pub segment: u32,
+    pub n_rows: u32,
+    pub res: RamFillResult,
+}
+impl Default for StagedRows {
+    fn default() -> Self {
+        Self { ptr: std::ptr::null(), words: 0, family: 0, air_id: 0, segment: 0, n_rows: 0, res: RamFillResult::default() }
+    }
+}
+const _: () = assert!(std::mem::size_of::<StagedRows>() == 88);
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct MemSlotOp {
@@ -254,6 +273,35 @@ extern "C" {
     ) -> bool;
     /// Waits for the slot copies still in flight on the prover's streams.
     pub fn count_and_plan_slot_quiesce(h: *mut CountAndPlanHandle);
+    /// 1 staged (`out` filled), 0 the preparation ended without it, -1 timeout. Safe to call while
+    /// the preparation runs on another thread.
+    pub fn count_and_plan_staged_wait(
+        h: *mut CountAndPlanHandle,
+        family: u32,
+        air_id: u32,
+        segment: u32,
+        timeout_ms: u32,
+        out: *mut StagedRows,
+    ) -> i32;
+    /// Copies a staged image (`words` words) to host memory on its own stream.
+    pub fn count_and_plan_copy_staged(
+        h: *mut CountAndPlanHandle,
+        family: u32,
+        air_id: u32,
+        segment: u32,
+        dst: *mut u64,
+        words: u64,
+    ) -> bool;
+    /// Builds one instance's rows into host memory after the preparation (the registry lock).
+    pub fn count_and_plan_fill_host(
+        h: *mut CountAndPlanHandle,
+        family: u32,
+        air_id: u32,
+        segment: u32,
+        n_rows: u32,
+        out_rows: *mut u64,
+        res: *mut RamFillResult,
+    ) -> bool;
     pub fn count_and_plan_instance_scalars(
         h: *mut CountAndPlanHandle,
         family: u32,
