@@ -71,11 +71,29 @@ Rules that keep this graph acyclic:
 
 Published crate and binary names never change, so they don't all match their folders. The
 dispatcher was first published as `zisk-transpiler-riscv`, so that crate still exists in
-`riscv2zisk/`, deprecated: it keeps the original `Riscv2zisk` API (marked `#[deprecated]`, on top
-of `common`) and builds the `zisk-transpiler-riscv` binary, a thin wrapper around
-`program2romfile` that accepts every format despite its name. Nothing in this workspace depends on
-the library, and the binary is not deprecated.
+`riscv2zisk/`, deprecated (see [Deprecated API](#deprecated-api)). It also builds the
+`zisk-transpiler-riscv` binary, a thin wrapper around `program2romfile` that accepts every format
+despite its name. The binary is not deprecated.
 
 Consumers (emulator, prover, ROM setup) should depend on `zisk-transpiler-common` and call
 `program2rom` rather than a format-specific crate, so that new guest formats only need changes
 here.
+
+## Deprecated API
+
+The library API of the `zisk-transpiler-riscv` crate is deprecated since 1.4.0. It still
+compiles, but every use produces a deprecation warning, and it will not get new features. Nothing
+in this workspace uses it.
+
+To migrate, depend on `zisk-transpiler-common` instead of `zisk-transpiler-riscv`, and replace:
+
+| Deprecated (`zisk_transpiler_riscv::…`) | Replacement (`zisk_transpiler_common::…`) |
+|---|---|
+| `Riscv2zisk` | `ZiskTranspiler` |
+| `Riscv2zisk::new(bytes)` | `ZiskTranspiler::new(bytes)` |
+| `Riscv2zisk::run()` | `ZiskTranspiler::run()` |
+| `Riscv2zisk::runfile(…)` | `ZiskTranspiler::runfile(…)` (same arguments) |
+| `Riscv2zisk::elf` field | `ZiskTranspiler::program` field |
+| `program2rom(bytes)` | `program2rom(bytes)` |
+
+The replacements behave the same: they accept RISC-V ELF, ziskbin ELF and WebAssembly input.
