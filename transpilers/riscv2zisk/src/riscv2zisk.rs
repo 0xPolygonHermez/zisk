@@ -12,7 +12,7 @@ use zisk_core::is_elf_file;
 use zisk_core::is_wasm_file;
 use zisk_core::AsmGenerationMethod;
 use zisk_core::ZiskRom;
-use zisk_transpiler_common::{elf2rom, elf2romfile};
+use zisk_riscv::{elf2rom, elf2romfile};
 use zisk_transpiler_wasm::wasm2rom;
 
 use std::{error::Error, path::PathBuf};

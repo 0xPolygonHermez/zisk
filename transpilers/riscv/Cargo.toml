@@ -13,6 +13,8 @@ categories = { workspace = true }
 [dependencies]
 zisk-definitions = { workspace = true }
 zisk-core = { workspace = true }
+ziskasm = { workspace = true }
+elf = "0.7.4"
 
 [build-dependencies]
 zisk-lib-float = { workspace = true, optional = true }

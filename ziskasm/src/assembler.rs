@@ -1,6 +1,6 @@
 //! Assembles parsed `.zisk` instructions into a `ZiskRom`.
 //!
-//! This mirrors `transpilers/common/src/elf2rom.rs`, but the program instructions
+//! This mirrors `transpilers/riscv/src/elf2rom.rs`, but the program instructions
 //! come from the `.zisk` parser instead of the RISC-V transpiler:
 //!   1. start an empty ROM and add the BIOS end/lib block (`add_end_and_lib`),
 //!   2. place each assembled instruction at `ROM_ADDR + 4*index`,
@@ -128,7 +128,7 @@ fn merge_public_defines<'a>(
 /// [`assemble`], there is no launcher / `_start` / BIOS: it is a set of callable
 /// functions placed at a fixed base, plus the exported symbol table (label / data
 /// name → address) used to resolve calls into it (see the zkvmcalls in
-/// `transpilers/common/src/elf2rom.rs`).
+/// `transpilers/riscv/src/elf2rom.rs`).
 pub struct ZiskLibrary {
     /// Assembled instructions keyed by ROM address (`rom_base + 4*i`, file order).
     pub insts: BTreeMap<u64, ZiskInstBuilder>,

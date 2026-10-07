@@ -8012,6 +8012,8 @@ dependencies = [
 name = "zisk-riscv"
 version = "1.4.0-alpha"
 dependencies = [
+ "elf",
+ "zisk-asm",
  "zisk-core",
  "zisk-definitions",
  "zisk-lib-float",
@@ -8209,10 +8211,7 @@ dependencies = [
 name = "zisk-transpiler-common"
 version = "1.4.0-alpha"
 dependencies = [
- "elf",
- "zisk-asm",
  "zisk-core",
- "zisk-definitions",
  "zisk-lib-float",
  "zisk-riscv",
 ]
@@ -8223,7 +8222,7 @@ version = "1.4.0-alpha"
 dependencies = [
  "zisk-core",
  "zisk-lib-float",
- "zisk-transpiler-common",
+ "zisk-riscv",
  "zisk-transpiler-wasm",
 ]
 
@@ -8235,7 +8234,6 @@ dependencies = [
  "wat",
  "zisk-core",
  "zisk-riscv",
- "zisk-transpiler-common",
 ]
 
 [[package]]
@@ -8321,7 +8319,6 @@ dependencies = [
  "zisk-sm-arith",
  "zisk-sm-binary",
  "zisk-sm-mem-common",
- "zisk-transpiler-common",
  "zisk-transpiler-riscv",
  "zisk-transpiler-wasm",
 ]

@@ -24,7 +24,7 @@ ziskasm routine                    ziskasm_zkvm_keccak256:  … keccak op per bl
 - The **ergonomic wrapper** and the **zkvmcall thunk** live in the `zisklib` crate
   (`ziskasm/lang/rust/`). The thunk is a two-instruction naked function whose
   `csrs` names the zkvmcall ID (`definitions/src/zkvmcall.rs`).
-- During transpilation, [`elf2rom`](../transpilers/common/src/elf2rom.rs) finds each
+- During transpilation, [`elf2rom`](../transpilers/riscv/src/elf2rom.rs) finds each
   zkvmcall by its `csrs` and **replaces it with a jump** to the matching hand-written
   routine (assembled from `ziskasm/zisklib/*.zisk` and merged into the ROM at a
   reserved region). The routine returns straight to the guest caller. Calls are
@@ -267,7 +267,7 @@ Rebuild the guest and it can call `zisklib::foo(...)`.
 | [`definitions/src/zkvmcall.rs`](../definitions/src/zkvmcall.rs) | The zkvmcall table: ID → guest function → routine. |
 | [`ziskasm/src/zisklib.rs`](src/zisklib.rs) | `ZISK_LIBRARY`: the `.zisk` files of the library. |
 | [`ziskasm/zisklib/`](zisklib/) | Hand-written ziskasm routines, one file per family (`keccak.zisk`, …); large families get a subdirectory (`zisklib/uint256/`). Shared `pub define`s live in `mem.zisk` / `fcall.zisk`. |
-| [`transpilers/common/src/elf2rom.rs`](../transpilers/common/src/elf2rom.rs) | Finds the zkvmcalls; assembles and merges the library; emits the jumps. |
+| [`transpilers/riscv/src/elf2rom.rs`](../transpilers/riscv/src/elf2rom.rs) | Finds the zkvmcalls; assembles and merges the library; emits the jumps. |
 | `core/src/mem.rs` | `ZISKLIB_ROM_ADDR` / `ZISKLIB_RAM_ADDR` reserved regions. |
 | [`ziskasm/src/assembler.rs`](src/assembler.rs) | `assemble_library*` (library mode). |
 | [`examples/zisklib-demo/guest/`](../examples/zisklib-demo/guest/) | Worked example guest. |

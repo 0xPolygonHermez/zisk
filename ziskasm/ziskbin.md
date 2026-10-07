@@ -45,7 +45,7 @@ file, while the transpiler recognizes it and loads the ROM directly.
   nonzero `e_entry` (any value; the real entry is inside the instruction stream —
   see §3.1), and one section header for `.ziskrom`. Nothing else is required.
 - **Detection & branch.** At the top of `elf2rom`
-  ([transpilers/common/src/elf2rom.rs](../transpilers/common/src/elf2rom.rs)) — before the
+  ([transpilers/riscv/src/elf2rom.rs](../transpilers/riscv/src/elf2rom.rs)) — before the
   RISC-V `e_entry`/payload logic — check for the marker. If present, read
   `.ziskrom` and hand it to the ROM-container decoder (§3), returning the
   `ZiskRom`. Otherwise fall through to the existing RISC-V path. Every caller

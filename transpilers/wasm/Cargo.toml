@@ -17,7 +17,6 @@ path = "src/bin/wasm2zisk.rs"
 [dependencies]
 zisk-core = { workspace = true }
 zisk-riscv = { workspace = true }
-zisk-transpiler-common = { workspace = true }
 
 wasmparser = { workspace = true }
 
@@ -26,4 +25,4 @@ wat = { workspace = true }
 
 [features]
 default = []
-float = ["zisk-riscv/float", "zisk-core/float", "zisk-transpiler-common/float"]
+float = ["zisk-riscv/float", "zisk-core/float"]

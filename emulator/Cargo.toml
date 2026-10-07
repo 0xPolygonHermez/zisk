@@ -59,7 +59,6 @@ criterion = { workspace = true, features = ["html_reports"] }
 # ELF-payload assertions need are repeated here.
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
-zisk-transpiler-common = { workspace = true }
 zisk-transpiler-wasm = { workspace = true }
 wat = { workspace = true }
 

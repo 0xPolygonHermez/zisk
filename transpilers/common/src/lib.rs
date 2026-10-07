@@ -1,4 +1,6 @@
-pub mod elf2rom;
-pub mod elf_extraction;
+//! The ELF-to-ROM transpilation that used to live here is RISC-V specific and now lives in
+//! `zisk-riscv`; it is re-exported so existing users keep compiling. See `transpilers/README.md`.
 
-pub use elf2rom::*;
+pub use zisk_riscv::{elf2rom, elf_extraction};
+
+pub use zisk_riscv::elf2rom::*;

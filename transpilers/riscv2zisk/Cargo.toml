@@ -16,7 +16,7 @@ path = "src/bin/riscv2zisk.rs"
 
 [dependencies]
 zisk-core = { workspace = true }
-zisk-transpiler-common = { workspace = true }
+zisk-riscv = { workspace = true }
 zisk-transpiler-wasm = { workspace = true }
 
 [build-dependencies]
@@ -28,15 +28,15 @@ zisk-lib-float = { workspace = true, optional = true }
 # Zbs / Zbkb extensions. Use `default-features = false` (plus `zba` for the decomposed
 # sequences) to opt out.
 default = ["zba_native"]
-zba = ["zisk-transpiler-common/zba", "zisk-core/zba"]
-zbc = ["zisk-transpiler-common/zbc", "zisk-core/zbc"]
-zbkc = ["zisk-transpiler-common/zbkc", "zisk-core/zbkc"]
-zbkx = ["zisk-transpiler-common/zbkx", "zisk-core/zbkx"]
-zba_native = ["zisk-transpiler-common/zba_native", "zisk-core/zba_native"]
-zbc_native = ["zisk-transpiler-common/zbc_native", "zisk-core/zbc_native"]
-zbkc_native = ["zisk-transpiler-common/zbkc_native", "zisk-core/zbkc_native"]
-zbkx_native = ["zisk-transpiler-common/zbkx_native", "zisk-core/zbkx_native"]
-zicond_native = ["zisk-transpiler-common/zicond_native", "zisk-core/zicond_native"]
-float = ["zisk-transpiler-common/float", "zisk-transpiler-wasm/float"]
+zba = ["zisk-riscv/zba", "zisk-core/zba"]
+zbc = ["zisk-riscv/zbc", "zisk-core/zbc"]
+zbkc = ["zisk-riscv/zbkc", "zisk-core/zbkc"]
+zbkx = ["zisk-riscv/zbkx", "zisk-core/zbkx"]
+zba_native = ["zisk-riscv/zba_native", "zisk-core/zba_native"]
+zbc_native = ["zisk-riscv/zbc_native", "zisk-core/zbc_native"]
+zbkc_native = ["zisk-riscv/zbkc_native", "zisk-core/zbkc_native"]
+zbkx_native = ["zisk-riscv/zbkx_native", "zisk-core/zbkx_native"]
+zicond_native = ["zisk-riscv/zicond_native", "zisk-core/zicond_native"]
+float = ["zisk-riscv/float", "zisk-transpiler-wasm/float"]
 # RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
-compressed = ["zisk-transpiler-common/compressed"]
+compressed = ["zisk-riscv/compressed"]

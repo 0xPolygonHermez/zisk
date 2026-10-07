@@ -3,6 +3,7 @@
 use crate::elf_extraction::{
     collect_elf_payload_from_bytes, merge_ro_sections, validate_entry_point, ElfPayload,
 };
+use crate::riscv2zisk_context::{add_zisk_code, zkvmcall_ids as zkvmcall_ids_in};
 use std::collections::HashMap;
 use std::{error::Error, path::Path};
 use zisk_core::mem::DataSection;
@@ -13,7 +14,6 @@ use zisk_core::rom_layout::{
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
 use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
-use zisk_riscv::riscv2zisk_context::{add_zisk_code, zkvmcall_ids as zkvmcall_ids_in};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
