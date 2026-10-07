@@ -854,9 +854,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             ));
         }
         let seg_idx = usize::from(segment_id);
-        let t_zero = std::time::Instant::now();
-        let mut trace = MemTrace::<MemTraceRowPacked<F>>::new_from_vec_zeroes(trace_buffer)?;
-        let zero_ms = t_zero.elapsed().as_secs_f64() * 1e3;
+        // The device rows cover every row of the instance, padding included.
+        let mut trace = MemTrace::<MemTraceRowPacked<F>>::new_from_vec(trace_buffer)?;
         let n_rows = trace.num_rows();
         let report = {
             let words = packed_rows_as_words(&mut trace.buffer);
@@ -875,7 +874,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         );
         let p = &report.prepared;
         tracing::info!(
-            "Mem[{seg_idx}] arena fill: block {} accesses -> {} lanes, prepare {:.0}ms | instance {} lanes: zero {zero_ms:.0}ms rows {:.1}ms d2h {:.1}ms",
+            "Mem[{seg_idx}] arena fill: block {} accesses -> {} lanes, prepare {:.0}ms | instance {} lanes: rows {:.1}ms d2h {:.1}ms",
             p.n_accesses, p.n_lanes, p.ms_total, report.res.n_lanes, report.res.ms_rows, report.res.ms_d2h
         );
         crate::mem_trace_hash::dump(
