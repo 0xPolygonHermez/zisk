@@ -63,7 +63,7 @@ Rules that keep this graph acyclic:
 | Input | Detected by | Handled by |
 |---|---|---|
 | WebAssembly | `\0asm` | `zisk_transpiler_wasm::wasm2rom` |
-| ziskbin ELF (prebuilt ROM from `ziskasm`) | ELF with `e_machine == EM_ZISK` | `zisk_core::ziskbin::try_elf_to_rom` |
+| ziskbin ELF (prebuilt ROM from `ziskasm`) | ELF with `e_machine == EM_ZISK` | `zisk_core::ziskbin::ziskbin2rom` |
 | RISC-V ELF | any other `\x7fELF` | `zisk_riscv::elf2rom` |
 
 `program2romfile` does the same and then writes the ROM as x86-64 assembly with

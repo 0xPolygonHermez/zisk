@@ -7,7 +7,7 @@
 
 use zisk_core::is_elf_file;
 use zisk_core::is_wasm_file;
-use zisk_core::ziskbin::try_elf_to_rom;
+use zisk_core::ziskbin::ziskbin2rom;
 use zisk_core::AsmGenerationMethod;
 use zisk_core::ZiskRom;
 use zisk_core::ZiskRom2Asm;
@@ -26,7 +26,7 @@ pub fn program2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         // A ziskbin ELF (e_machine == EM_ZISK) carries an already-built ZiskRom in a
         // `.ziskrom` section instead of RISC-V code; decode it directly and skip
         // transpilation. Any other ELF is a RISC-V guest.
-        match try_elf_to_rom(bytes)? {
+        match ziskbin2rom(bytes)? {
             Some(rom) => Ok(rom),
             None => elf2rom(bytes),
         }
