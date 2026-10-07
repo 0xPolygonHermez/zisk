@@ -33,8 +33,8 @@ impl<'a> VerifyBuilder<'a> {
         self
     }
 
-    /// Optional trusted recursion setup key (4 u64 limbs); if unset, the proof's
-    /// embedded key is used.
+    /// Trusted recursion setup key (4 u64 limbs). If unset, a plain proof verifies under
+    /// the release key for its family and stage; an aggregated proof requires it.
     #[must_use]
     pub fn with_setup_vk(mut self, setup_vk: &'a [u64]) -> Self {
         self.setup_vk = Some(setup_vk);

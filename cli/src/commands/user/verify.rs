@@ -17,8 +17,9 @@ pub(crate) struct VerifyCmd {
     #[clap(short = 'k', long = "plonk-vk")]
     plonk_vk: Option<String>,
 
-    /// Optional trusted recursion setup key (`vadcop_final.verkey.json`, a JSON
-    /// array of 4 u64 limbs); if omitted, the proof's embedded key is used.
+    /// Trusted recursion setup key (a `verkey.json`: JSON array of 4 u64 limbs). If
+    /// omitted, a plain proof verifies under this release's key for its family and stage;
+    /// a recurser (aggregated) proof requires its recurser's key here.
     #[clap(long = "setup-vk")]
     setup_vk: Option<String>,
 

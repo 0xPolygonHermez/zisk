@@ -20,39 +20,19 @@ pub fn verify_zisk_proof(
     expected_setup_vk: &[u64],
     expected_program_vk: &[u64],
 ) -> bool {
-    const TAIL: usize = zisk_verifier::VADCOP_VK_LEN_WORDS + zisk_verifier::HASH_TAG_LEN_WORDS;
-    if zisk_proof.len() < TAIL {
+    let Ok(setup_vk) = <&[u64; zisk_verifier::PROGRAM_VK_LEN]>::try_from(expected_setup_vk) else {
         return false;
-    }
-    // Tail layout: [zisk_vk(4)][hash tag(1)].
-    let (proof, tail) = zisk_proof.split_at(zisk_proof.len() - TAIL);
-    let Some(hash) = zisk_verifier::hash_id_from_tag(tail[zisk_verifier::VADCOP_VK_LEN_WORDS])
+    };
+    let Ok(program_vk) = <&[u64; zisk_verifier::PROGRAM_VK_LEN]>::try_from(expected_program_vk)
     else {
         return false;
     };
-
-    match zisk_verifier::committed_program_vk(proof) {
-        Some(vk) if vk == expected_program_vk => {}
-        _ => return false,
-    }
-
-    // An aggregate's declared domain must be the key it verifies under, or a subtree from
-    // another recurser rides through. Mirrors `Proof::verify`: both keys are the
-    // recurser's own verkey.
-    //
-    // A compressed proof cannot be classified -- `FinalCompressed` strips the flag -- so
-    // this cannot fire for one. It does not need to: a fold verifies only under its own
-    // recurser's key, so against a leaf's `expected_setup_vk` it fails outright. The gap
-    // is a caller that pins a recurser key while expecting a different program VK, which
-    // is why both keys must be the recurser's own for folds. Producers refuse to compress
-    // an aggregate for the same reason.
-    if zisk_verifier::committed_is_aggregate(proof) == Some(true)
-        && expected_program_vk != expected_setup_vk
-    {
-        return false;
-    }
-
-    zisk_verifier::verify_vadcop_final_proof(proof, expected_setup_vk, hash)
+    // Checked in place, without a copy. A proof for another program is refused before the
+    // STARK runs. An aggregate whose declared domain is not `setup_vk` is refused too, so
+    // pinning both keys is what makes them the recurser's own for a fold. A compressed
+    // proof cannot be classified -- `FinalCompressed` strips the flag -- but a fold verifies
+    // only under its own recurser's key, and producers refuse to compress an aggregate.
+    zisk_verifier::verify_saved_words(zisk_proof, setup_vk, Some(program_vk)).is_ok()
 }
 
 /// C-ABI wrapper around [verify_zisk_proof].

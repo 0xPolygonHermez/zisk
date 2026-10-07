@@ -30,6 +30,7 @@ opt-level = 3
 [workspace.dependencies]
 ziskos = { path = "../ziskos/entrypoint" }
 zisk-sdk = { path = "../sdk" }
+zisk-verifier = { path = "../verifier" }
 zisk-test-artifacts = { path = "../test-artifacts", default-features = false }
 examples-utils = { path = "utils"}
 
