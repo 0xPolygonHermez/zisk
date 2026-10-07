@@ -210,6 +210,7 @@ impl BackendProverOpts {
             && std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("slot")
         {
             gpu_witness_airs.extend(zisk_executor::mem_slot_witness_airs());
+            options.planner_gpu_dedicated(true);
         }
         if !gpu_witness_airs.is_empty() {
             options.gpu_witness_airs(gpu_witness_airs);

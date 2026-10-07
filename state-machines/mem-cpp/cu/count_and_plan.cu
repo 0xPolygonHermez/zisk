@@ -2102,7 +2102,11 @@ void CountAndPlan::reset() {
     resolve_all_            = false;
     slot_scratch_           = nullptr;
     slot_quiesce();
-    staged_.clear();
+    {
+        std::lock_guard<std::mutex> lk(staged_mtx_);
+        staged_.clear();
+        prep_done_ = false;
+    }
     stage_low_              = nullptr;
     stage_try_              = false;
     input_scratch_          = nullptr;
