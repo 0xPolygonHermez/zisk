@@ -189,36 +189,34 @@ impl AsmResources {
         Ok(Self { shared, asm_services })
     }
 
-    /// Make this program the one the shared segments and semaphores serve.
+    /// Make this program the one the shared segments and semaphores serve, unless
+    /// it already is. Call it before every job: it costs a lock when nothing
+    /// changed.
     ///
-    /// Two things have to happen together, which is why they are not separate
-    /// calls a caller could get half-right:
-    ///
-    /// 1. Bind the shared writers to *this* program's `sem_prefix`. The shmem is
-    ///    keyed by pid+rank and shared; only the semaphores are per-program.
-    /// 2. Reset this program's services, so their guest RAM and ROM are rebuilt
-    ///    from their own init data. Another program's services may have
-    ///    overwritten those shared segments since this program last ran, and a
-    ///    service's own post-emulation reset cannot know that.
-    ///
-    /// Idempotent, and cheap enough to be unconditional on a program switch: the
-    /// reset is a memset of already-resident pinned pages, not an allocation.
-    /// Callers should still skip it when the active program has not changed.
+    /// On a switch, [`AsmServices::activate`] waits for the outgoing program's
+    /// services to finish with the shared segments, then this binds the shared
+    /// writers to *this* program's `sem_prefix` (the shmem is keyed by pid+rank
+    /// and shared; only the semaphores are per-program), then this program's
+    /// services rebuild their guest RAM and ROM, which another program's
+    /// services may have overwritten since this program last ran.
     pub fn activate(&self) -> ExecutorResult<()> {
+        let hints_processor = match &self.shared.hints_stream {
+            Some(hints_stream) => {
+                Some(hints_stream.lock_or_poison("hints_stream")?.get_processor())
+            }
+            None => None,
+        };
         let sem_prefix = self.asm_services.sem_prefix();
-        self.shared.shmem_inputs.bind_semaphores(sem_prefix).map_err(ExecutorError::asm_backend)?;
 
-        if let Some(hints_stream) = &self.shared.hints_stream {
-            let processor = hints_stream.lock_or_poison("hints_stream")?.get_processor();
-            processor
-                .hints_sink()
-                .bind_semaphores(sem_prefix)
-                .map_err(ExecutorError::asm_backend)?;
-        }
-
-        self.asm_services.reset_services().map_err(ExecutorError::asm_backend)?;
-
-        Ok(())
+        self.asm_services
+            .activate(|| {
+                self.shared.shmem_inputs.bind_semaphores(sem_prefix)?;
+                if let Some(processor) = &hints_processor {
+                    processor.hints_sink().bind_semaphores(sem_prefix)?;
+                }
+                Ok(())
+            })
+            .map_err(ExecutorError::asm_backend)
     }
 
     /// Convenience constructor for the standalone path: spawns the ASM

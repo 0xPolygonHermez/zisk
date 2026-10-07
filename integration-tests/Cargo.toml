@@ -23,6 +23,8 @@ path = "src/lib.rs"
 
 [dev-dependencies]
 zisk-sdk = { workspace = true }
+zisk-prover-backend = { workspace = true }
+zisk-common = { workspace = true }
 rayon = { workspace = true }
 zisk-test-artifacts = { workspace = true }
 serial_test = { workspace = true }

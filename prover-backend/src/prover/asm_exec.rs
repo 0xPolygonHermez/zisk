@@ -24,6 +24,9 @@ use crate::output::ExecuteOutput;
 struct AsmSetupState {
     zisk_rom: Arc<ZiskRom>,
     with_hints: bool,
+    /// Kept to activate before every run: another client in this process may
+    /// have run another program on the shared segments since.
+    resources: Arc<AsmResources>,
 }
 
 /// Execute-only client backed by the ASM emulator.
@@ -69,14 +72,14 @@ impl AsmExecClient {
             )
             .context("AsmResources::new_standalone failed")?,
         );
-        self.executor.set_asm_resources(resources)?;
+        self.executor.set_asm_resources(resources.clone())?;
 
         tracing::debug!("Parsing ELF into ZiskRom");
         let zisk_rom = Riscv2zisk::new(program.elf())
             .run()
             .map_err(|e| anyhow::anyhow!("failed to parse ELF: {e}"))?;
         *self.program.lock().expect("program mutex") =
-            Some(AsmSetupState { zisk_rom: Arc::new(zisk_rom), with_hints });
+            Some(AsmSetupState { zisk_rom: Arc::new(zisk_rom), with_hints, resources });
         tracing::info!("AsmExecClient ready");
         Ok(())
     }
@@ -90,6 +93,7 @@ impl AsmExecClient {
         let setup = guard.as_ref().context("call setup(program, with_hints) before execute")?;
 
         self.executor.reset_for_new_job()?;
+        setup.resources.activate()?;
 
         if let Some(stream) = hints {
             tracing::debug!("Installing hints stream source");

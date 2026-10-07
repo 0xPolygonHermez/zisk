@@ -9,7 +9,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use std::collections::BTreeMap;
 use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::time::Duration;
 use std::{fmt, path::Path, process::Command};
@@ -32,7 +32,22 @@ use std::{fmt, path::Path, process::Command};
 /// An entry exists exactly while at least one `AsmServices` holds the prefix;
 /// the last lease out unlinks the segments and removes the entry, so a later
 /// setup creates them again.
-static PREFIX_LEASES: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
+///
+/// The entry also records which program the shared segments currently serve
+/// (see [`AsmServices::activate`]), since that is a fact about the segments, not
+/// about any one caller that set up programs on them.
+static PREFIX_LEASES: Mutex<BTreeMap<String, PrefixState>> = Mutex::new(BTreeMap::new());
+
+/// One shmem prefix in use.
+struct PrefixState {
+    /// How many `AsmServices` hold a [`PrefixLease`] on it.
+    leases: usize,
+    /// The services whose program the shared guest RAM and ROM currently hold.
+    /// Taken before anything else writes those segments, and set only once
+    /// that program's reset has completed, so a failure in between leaves no
+    /// program recorded rather than the wrong one.
+    active: Option<Weak<AsmServicesInner>>,
+}
 
 /// Proof that this `AsmServices` may use `shm_prefix`'s segments, and that they
 /// will outlive it.
@@ -47,12 +62,12 @@ struct PrefixLease {
 impl Drop for PrefixLease {
     fn drop(&mut self) {
         let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
-        let Some(count) = leases.get_mut(&self.shm_prefix) else {
+        let Some(state) = leases.get_mut(&self.shm_prefix) else {
             tracing::error!("Prefix lease for '{}' released twice", self.shm_prefix);
             return;
         };
-        *count -= 1;
-        if *count > 0 {
+        state.leases -= 1;
+        if state.leases > 0 {
             return;
         }
         // Last user out: the segments are now unreachable, so unlink them and
@@ -276,6 +291,10 @@ impl AsmServices {
         let prefix_lease =
             Self::acquire_prefix(world_rank, &shm_prefix, &sem_prefix, stripped_path, &options)?;
 
+        // Starting services writes the shared guest RAM and ROM, so the program
+        // those segments serve must have finished with them first.
+        Self::quiesce_active(&shm_prefix);
+
         // Phase 2: start services and wait for them to be ready.
         let stdio_service = StdioService::start_services(
             world_rank,
@@ -325,16 +344,17 @@ impl AsmServices {
         let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
         match leases.get_mut(shm_prefix) {
-            Some(count) => {
+            Some(state) => {
                 tracing::debug!(
                     ">>> [{world_rank}] Reusing existing shmem for prefix {shm_prefix} \
-                     ({count} user(s) before this one); skipping creation"
+                     ({} user(s) before this one); skipping creation",
+                    state.leases
                 );
-                *count += 1;
+                state.leases += 1;
             }
             None => {
                 Self::create_shmem(world_rank, shm_prefix, sem_prefix, trimmed_path, options)?;
-                leases.insert(shm_prefix.to_string(), 1);
+                leases.insert(shm_prefix.to_string(), PrefixState { leases: 1, active: None });
             }
         }
 
@@ -346,7 +366,10 @@ impl AsmServices {
     #[cfg(test)]
     fn acquire_prefix_uncreated(shm_prefix: &str) -> PrefixLease {
         let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
-        *leases.entry(shm_prefix.to_string()).or_insert(0) += 1;
+        leases
+            .entry(shm_prefix.to_string())
+            .or_insert(PrefixState { leases: 0, active: None })
+            .leases += 1;
         PrefixLease { shm_prefix: shm_prefix.to_string() }
     }
 
@@ -474,6 +497,70 @@ impl AsmServices {
             return Err(anyhow::anyhow!("One or more shmem creation commands failed"));
         }
         Ok(())
+    }
+
+    /// Make the shared segments serve this program, unless they already do.
+    ///
+    /// The segments serve one program at a time, so a switch takes three steps,
+    /// in order: wait until the program they serve now has finished with them
+    /// ([`Self::quiesce_active`]), let the caller rebind whatever is per program
+    /// (`bind`, the semaphores of the parent's shared writers), and rebuild this
+    /// program's guest RAM and ROM ([`Self::reset_services`]). It is recorded as
+    /// active only once all three have succeeded.
+    ///
+    /// The record lives with the segments, not with the caller, so every client
+    /// in the process that set up programs on them sees the same one.
+    pub fn activate(&self, bind: impl FnOnce() -> Result<()>) -> Result<()> {
+        if self.is_active() {
+            return Ok(());
+        }
+        Self::quiesce_active(&self.inner.shm_prefix);
+        bind()?;
+        self.reset_services()?;
+
+        let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(state) = leases.get_mut(&self.inner.shm_prefix) {
+            state.active = Some(Arc::downgrade(&self.inner));
+        }
+        Ok(())
+    }
+
+    /// Whether the shared segments currently serve this program.
+    pub fn is_active(&self) -> bool {
+        let leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
+        leases
+            .get(&self.inner.shm_prefix)
+            .and_then(|state| state.active.as_ref())
+            .is_some_and(|active| std::ptr::eq(active.as_ptr(), Arc::as_ptr(&self.inner)))
+    }
+
+    /// Wait until the program `shm_prefix`'s segments serve has finished with
+    /// them, and record that they serve none.
+    ///
+    /// A service keeps writing the shared guest RAM and ROM after it has
+    /// answered: its request may still be in flight (the ROM histogram's is
+    /// parked until a job reads it), and its own reset runs after the response.
+    /// A ping is answered only after both, since each service reads its next
+    /// request only when it is done with the last, and a request in flight holds
+    /// that service's handle until its response arrives. A service that does not
+    /// answer has stopped, and writes nothing more.
+    fn quiesce_active(shm_prefix: &str) {
+        let outgoing = {
+            let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
+            leases
+                .get_mut(shm_prefix)
+                .and_then(|state| state.active.take())
+                .and_then(|active| active.upgrade())
+        };
+        let Some(outgoing) = outgoing else { return };
+        for service in &Self::SERVICES {
+            if let Err(e) = outgoing.service.send_status_request(service) {
+                tracing::warn!(
+                    "Service {service} of the outgoing program did not answer before a switch; \
+                     taking it as stopped: {e:#}"
+                );
+            }
+        }
     }
 
     /// Re-initialize every service's guest RAM and ROM, and wait for all three

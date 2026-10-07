@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
-    {Arc, Mutex, RwLock},
+    {Arc, RwLock},
 };
 use zisk_asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
 use zisk_cluster_common::LoggingConfig;
@@ -99,9 +99,6 @@ pub struct AsmProver {
     /// a non-hints program do not have the same set of segments to map. Two
     /// entries at most.
     shared_resources: RwLock<HashMap<bool, Arc<AsmSharedResources>>>,
-    /// Which program the shared segments and semaphores currently serve, so a
-    /// switch can be told from a repeat and the reset paid for only on a switch.
-    active_setup: Mutex<Option<SetupKey>>,
     /// Tracks whether the currently registered program was set up with hints.
     current_with_hints: AtomicBool,
     /// Tracks whether the currently registered program was set up emulator-only.
@@ -148,7 +145,6 @@ impl AsmProver {
             core_prover,
             program_cache: RwLock::new(HashMap::new()),
             shared_resources: RwLock::new(HashMap::new()),
-            active_setup: Mutex::new(None),
             current_with_hints: AtomicBool::new(false),
             current_emulator_only: AtomicBool::new(false),
         })
@@ -211,8 +207,8 @@ impl AsmProver {
                 entry.resources.clone().expect("full-asm cache entry must have ASM resources");
             // This program's services are still running from its own setup, but the
             // shared `_ram`/`_rom` may have been overwritten by another program
-            // since. `make_active` rebuilds them before anything runs.
-            self.make_active(&setup_key, &resources)?;
+            // since. `activate` rebuilds them before anything runs.
+            resources.activate()?;
             self.core_prover.backend.set_asm_resources(resources)?;
             return Ok(());
         }
@@ -258,7 +254,7 @@ impl AsmProver {
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
         let resources = Arc::new(AsmResources::new(shared.clone(), asm_services)?);
-        self.make_active(&setup_key, &resources)?;
+        resources.activate()?;
         self.core_prover.backend.set_asm_resources(resources.clone())?;
 
         self.shared_resources.write().unwrap().insert(with_hints, shared);
@@ -308,25 +304,6 @@ impl AsmProver {
             shm_prefix,
             gpu_buffer_source,
         )?))
-    }
-
-    /// Hand the shared segments over to `setup_key`'s program, if it does not
-    /// already hold them.
-    ///
-    /// The shmem is shared and serves one program at a time, so switching means
-    /// rebinding the semaphores and rebuilding guest RAM/ROM — see
-    /// `AsmResources::activate`. Skipped when the same program runs again, which
-    /// is the common case within a batch, so the reset is paid once per switch
-    /// rather than once per proof.
-    fn make_active(&self, setup_key: &SetupKey, resources: &Arc<AsmResources>) -> Result<()> {
-        let mut active = self.active_setup.lock().unwrap();
-        if active.as_ref() == Some(setup_key) {
-            return Ok(());
-        }
-
-        resources.activate()?;
-        *active = Some(setup_key.clone());
-        Ok(())
     }
 
     fn register_program_for_emulator(&self, program_id: &ProgramId) -> Result<()> {
@@ -511,13 +488,13 @@ impl ProverEngine for AsmProver {
         // services in turn, so the last setup wins. register_program restores the right services.
         // Prefer a full-ASM entry; fall back to an emulator-only entry for the same key.
         let guard = self.program_cache.read().unwrap();
-        let (resources, rom, emulator_only, key) = {
+        let (resources, rom, emulator_only) = {
             let full_key = SetupKey::new(&*program_id.hash_id, with_hints, false);
             let emu_key = SetupKey::new(&*program_id.hash_id, with_hints, true);
             if let Some(entry) = guard.get(&full_key) {
-                (entry.resources.clone(), entry.zisk_rom.clone(), false, full_key)
+                (entry.resources.clone(), entry.zisk_rom.clone(), false)
             } else if let Some(entry) = guard.get(&emu_key) {
-                (entry.resources.clone(), entry.zisk_rom.clone(), true, emu_key)
+                (entry.resources.clone(), entry.zisk_rom.clone(), true)
             } else {
                 return Err(anyhow::anyhow!(
                     "Program '{}' (with_hints={}) not found in cache. Call setup() first.",
@@ -535,7 +512,7 @@ impl ProverEngine for AsmProver {
                 // ROM have to be rebuilt too, since another program's services may
                 // have overwritten those segments since it last ran. No-op when
                 // this program is already the active one.
-                self.make_active(&key, &r)?;
+                r.activate()?;
                 self.core_prover.backend.set_asm_resources(r)?
             }
             None => self.core_prover.backend.clear_asm_resources()?,
