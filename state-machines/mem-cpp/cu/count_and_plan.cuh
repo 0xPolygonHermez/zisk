@@ -497,6 +497,9 @@ private:
     uint32_t                   copies_in_flight_ = 0; // copy_staged calls reading the images
     bool find_staged_(uint32_t family, uint32_t air_id, uint32_t segment, StagedRows* out) const;
     uint8_t*                   stage_low_ = nullptr;
+    // The fills' stream: non-blocking and at the highest priority, so their kernels and copies
+    // neither wait for the legacy stream nor queue behind the prover's commit kernels.
+    cudaStream_t               fill_stream_ = nullptr;
     bool                       stage_try_ = false;     // staged attempt: a scratch overflow is retried, not reported
     std::vector<cudaEvent_t>   slot_copy_events_;      // the copies in flight on the prover's streams
     uint8_t*  scratch_end_(size_t n_total) const;
