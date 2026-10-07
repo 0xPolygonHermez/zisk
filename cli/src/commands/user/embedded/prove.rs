@@ -172,14 +172,17 @@ impl ZiskEmbeddedProve {
         }
         let result = request.run_sync()?;
 
+        // Only the aggregating rank holds a final proof.
         let output_file = resolve_output_path(self.output.clone(), result.job_id());
-        result.save_proof(&output_file).map_err(|e| {
-            anyhow::anyhow!("Failed to save proof to {}: {}", output_file.display(), e)
-        })?;
-
-        if self.verify_proof {
-            result.verify()?;
-            info!("{}", "Proof verified successfully.".bright_green());
+        let saved = !result.get_proof().is_empty();
+        if saved {
+            result.save_proof(&output_file).map_err(|e| {
+                anyhow::anyhow!("Failed to save proof to {}: {}", output_file.display(), e)
+            })?;
+            if self.verify_proof {
+                result.verify()?;
+                info!("{}", "Proof verified successfully.".bright_green());
+            }
         }
 
         info!("{}", "--- PROVE SUMMARY -------------".bright_green().bold());
@@ -188,7 +191,13 @@ impl ZiskEmbeddedProve {
             result.get_proving_time() as f64 / 1000.0,
             result.get_execution_steps()
         );
-        info!("Proof saved to {}", output_file.display());
+        if saved {
+            info!("Proof saved to {}", output_file.display());
+        } else if self.verify_proof {
+            info!("No final proof to write or verify for this run");
+        } else {
+            info!("No final proof to write for this run");
+        }
 
         Ok(())
     }

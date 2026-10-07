@@ -198,17 +198,15 @@ fn run_aggregate_proofs_blocking(
     let proof = Proof::new_from_vadcop_proof(
         &vfp.proof_with_publics(),
         vfp.compressed,
-        zisk_vk,
+        zisk_vk.clone(),
         vfp.hash.clone(),
     )
     .map_err(SdkError::backend)?;
 
-    Ok(ProveResult::from(ProveOutput::from_remote(
-        proof,
-        0,
-        Duration::from_secs(0),
-        StatsCostPerType::default(),
-    )))
+    Ok(ProveResult::from(
+        ProveOutput::from_remote(proof, 0, Duration::from_secs(0), StatsCostPerType::default())
+            .with_produced_under(Some(zisk_vk)),
+    ))
 }
 
 #[cfg(test)]

@@ -10,9 +10,7 @@ use core::fmt;
 use proofman_verifier::VadcopFinalProof;
 
 use crate::verifier::{first_non_canonical, is_aggregate_flag};
-use crate::{
-    expected_n_publics, hash_id_from_tag, HASH_TAG_LEN_WORDS, PROGRAM_VK_LEN, VADCOP_VK_LEN_WORDS,
-};
+use crate::{expected_n_publics, hash_id_from_tag, HASH_TAG_LEN_WORDS, VADCOP_VK_LEN_WORDS};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecodeError {
@@ -30,8 +28,6 @@ pub enum DecodeError {
     NonCanonicalPublic { index: usize },
     /// The leaf/fold flag of an uncompressed proof is neither 1 (leaf) nor 0 (fold).
     InvalidLeafFlag(u64),
-    /// A program-key limb is not a canonical Goldilocks element.
-    NonCanonicalKey { index: usize },
 }
 
 impl fmt::Display for DecodeError {
@@ -48,9 +44,6 @@ impl fmt::Display for DecodeError {
                 write!(f, "public {index} is not a canonical Goldilocks element")
             }
             Self::InvalidLeafFlag(v) => write!(f, "leaf flag {v} is not 0 or 1"),
-            Self::NonCanonicalKey { index } => {
-                write!(f, "program key limb {index} is not a canonical Goldilocks element")
-            }
         }
     }
 }
@@ -142,19 +135,6 @@ pub(crate) fn split_saved(words: &[u64]) -> Result<SavedView<'_>, DecodeError> {
     })
 }
 
-/// Decode a 32-byte program key: four little-endian u64 limbs, each a canonical
-/// Goldilocks element.
-pub fn decode_program_vk(bytes: &[u8; 32]) -> Result<[u64; PROGRAM_VK_LEN], DecodeError> {
-    let mut vk = [0u64; PROGRAM_VK_LEN];
-    for (limb, chunk) in vk.iter_mut().zip(bytes.chunks_exact(8)) {
-        *limb = u64::from_le_bytes(chunk.try_into().unwrap());
-    }
-    match first_non_canonical(&vk) {
-        Some(index) => Err(DecodeError::NonCanonicalKey { index }),
-        None => Ok(vk),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,20 +211,6 @@ mod tests {
         let short: Vec<u8> =
             [0u64, n as u64, 1, 2, 7, 7, 7, 7, tag].iter().flat_map(|w| w.to_le_bytes()).collect();
         assert_eq!(err(&short), DecodeError::Truncated);
-    }
-
-    #[test]
-    fn decode_program_vk_checks_each_limb() {
-        let mut bytes = [0u8; 32];
-        bytes[..8].copy_from_slice(&1u64.to_le_bytes());
-        bytes[24..].copy_from_slice(&(GOLDILOCKS_ORDER - 1).to_le_bytes());
-        assert_eq!(decode_program_vk(&bytes).unwrap(), [1, 0, 0, GOLDILOCKS_ORDER - 1]);
-
-        bytes[16..24].copy_from_slice(&GOLDILOCKS_ORDER.to_le_bytes());
-        assert_eq!(
-            decode_program_vk(&bytes).unwrap_err(),
-            DecodeError::NonCanonicalKey { index: 2 }
-        );
     }
 
     fn leaf_proof(flag: u64) -> VadcopFinalProof {
