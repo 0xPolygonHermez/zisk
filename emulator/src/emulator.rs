@@ -26,7 +26,7 @@ use std::{
 use sysinfo::System;
 use zisk_common::{DataBusTrait, EmuTrace};
 use zisk_core::ZiskRom;
-use zisk_transpiler::ZiskTranspiler;
+use zisk_transpiler_common::ZiskTranspiler;
 
 pub trait Emulator {
     fn emulate(

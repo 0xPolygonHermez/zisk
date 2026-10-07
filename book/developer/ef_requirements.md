@@ -576,9 +576,9 @@ standard `zkvm_*` entry points.)
 defined for `IALIGN = 32` (no `C`), and the ZisK transpiler is able to decode
 2-byte (compressed) instructions. As agreed with the EF, this is now controlled by
 a dedicated **`compressed` cargo feature (off by default)** that gates RVC decoding
-in both the RISC-V decoder and the transpiler (`zisk-transpiler-riscv`:
+in both the RISC-V decoder and the transpiler (`zisk-riscv`:
 `riscv_interpreter.rs` / `riscv2zisk_context.rs`), propagated up the build chain the
-same way `float` is (through `zisk-transpiler`/`-riscv`, `zisk-rom-setup`,
+same way `float` is (through `zisk-transpiler-common`/`-riscv`, `zisk-rom-setup`,
 `zisk-prover-backend`, and the `ziskemu`/`cargo-zisk` binaries):
 
 - **Without** the feature (the default), the `C` extension is disabled: a 2-byte

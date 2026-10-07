@@ -5,7 +5,7 @@ use std::path::Path;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ProgramVK;
 use zisk_rom_setup::{rom_merkle_setup_verkey, rom_merkle_setup_verkey_opt, HashMode};
-use zisk_transpiler::ZiskTranspiler;
+use zisk_transpiler_common::ZiskTranspiler;
 use ziskemu::ZiskEmulator;
 pub use ziskemu::{EmuOptions, ProfilingMode};
 

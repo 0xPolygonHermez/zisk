@@ -18,11 +18,11 @@ use zisk_core::{
 };
 use zisk_core::{FLOAT_LIB_ROM_ADDR, ZISKLIB_ROM_ADDR};
 use zisk_pil::RomRomTrace;
+use zisk_riscv::RiscVRegisters;
 use zisk_sm_arith::{ArithFrops, ArithLegacyFrops};
 use zisk_sm_binary::{
     BinaryBasicFrops, BinaryBasicLegacyFrops, BinaryExtensionFrops, BinaryExtensionLegacyFrops,
 };
-use zisk_transpiler_riscv::RiscVRegisters;
 
 use zisk_definitions::{
     PROFILE_END_COST_ID, PROFILE_END_STEPS_ID, PROFILE_REPORT_END_COST_ID,

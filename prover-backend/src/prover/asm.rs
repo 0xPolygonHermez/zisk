@@ -32,7 +32,7 @@ use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
 use zisk_precomp_hints::HintsProcessor;
 use zisk_rom_setup::{generate_assembly, get_output_path};
-use zisk_transpiler::ZiskTranspiler;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use anyhow::Result;
 

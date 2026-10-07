@@ -6,7 +6,7 @@ use std::{
 };
 use zisk_common::ZiskPaths;
 use zisk_core::{is_elf_file, AsmGenerationMethod};
-use zisk_transpiler::ZiskTranspiler;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use crate::get_elf_data_hash;
 use crate::get_elf_data_hash_from_path;

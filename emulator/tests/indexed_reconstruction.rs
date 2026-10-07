@@ -8,7 +8,7 @@
 use proofman_fields::Goldilocks;
 use zisk_core::InstContext;
 use zisk_pil::{MainTraceRowInstrTable, MainTraceRowPacked, MainTraceRowPackedIndexed, MAIN_LANES};
-use zisk_transpiler::ZiskTranspiler;
+use zisk_transpiler_common::ZiskTranspiler;
 use ziskemu::{Emu, EmuRegTrace};
 
 #[test]

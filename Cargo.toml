@@ -118,8 +118,8 @@ zisk-precomp-big-int = { path = "precompiles/big_int", version = "1.4.0-alpha" }
 zisk-precomp-babyjubjub = { path = "precompiles/babyjubjub", version = "1.4.0-alpha" }
 zisk-precomp-dma = { path = "precompiles/dma", version = "1.4.0-alpha" }
 zisk-precomp-evm = { path = "precompiles/evm", version = "1.4.0-alpha" }
-zisk-transpiler-riscv = { path = "transpilers/riscv", version = "1.4.0-alpha" }
-zisk-transpiler = { path = "transpilers/common", version = "1.4.0-alpha" }
+zisk-riscv = { path = "transpilers/riscv", version = "1.4.0-alpha" }
+zisk-transpiler-common = { path = "transpilers/common", version = "1.4.0-alpha" }
 zisk-transpiler-wasm = { path = "transpilers/wasm", version = "1.4.0-alpha" }
 zisk-rom-setup = { path = "rom-setup", version = "1.4.0-alpha" }
 zisk-setup = { path = "setup", version = "1.4.0-alpha" }

@@ -1,5 +1,5 @@
 [package]
-name = "zisk-transpiler"
+name = "zisk-transpiler-common"
 description = "Transpiles ZisK zkVM guest programs (RISC-V ELF, WebAssembly) into ZisK ROMs"
 version = { workspace = true }
 edition = { workspace = true }
@@ -16,7 +16,7 @@ path = "src/bin/zisk-transpiler-riscv.rs"
 
 [dependencies]
 zisk-core = { workspace = true }
-zisk-transpiler-riscv = { workspace = true }
+zisk-riscv = { workspace = true }
 zisk-transpiler-wasm = { workspace = true }
 
 [build-dependencies]
@@ -31,19 +31,18 @@ default = ["zba_native"]
 float = [
     "dep:zisk-lib-float",
     "zisk-lib-float/float",
-    "zisk-transpiler-riscv/float",
+    "zisk-riscv/float",
     "zisk-core/float",
     "zisk-transpiler-wasm/float",
 ]
-# RISC-V C (compressed) extension decoding (see zisk-transpiler-riscv's `compressed`).
-# OFF by default.
-compressed = ["zisk-transpiler-riscv/compressed"]
-zba = ["zisk-transpiler-riscv/zba", "zisk-core/zba"]
-zbc = ["zisk-transpiler-riscv/zbc", "zisk-core/zbc"]
-zbkc = ["zisk-transpiler-riscv/zbkc", "zisk-core/zbkc"]
-zbkx = ["zisk-transpiler-riscv/zbkx", "zisk-core/zbkx"]
-zba_native = ["zisk-transpiler-riscv/zba_native", "zisk-core/zba_native"]
-zbc_native = ["zisk-transpiler-riscv/zbc_native", "zisk-core/zbc_native"]
-zbkc_native = ["zisk-transpiler-riscv/zbkc_native", "zisk-core/zbkc_native"]
-zbkx_native = ["zisk-transpiler-riscv/zbkx_native", "zisk-core/zbkx_native"]
-zicond_native = ["zisk-transpiler-riscv/zicond_native", "zisk-core/zicond_native"]
+# RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
+compressed = ["zisk-riscv/compressed"]
+zba = ["zisk-riscv/zba", "zisk-core/zba"]
+zbc = ["zisk-riscv/zbc", "zisk-core/zbc"]
+zbkc = ["zisk-riscv/zbkc", "zisk-core/zbkc"]
+zbkx = ["zisk-riscv/zbkx", "zisk-core/zbkx"]
+zba_native = ["zisk-riscv/zba_native", "zisk-core/zba_native"]
+zbc_native = ["zisk-riscv/zbc_native", "zisk-core/zbc_native"]
+zbkc_native = ["zisk-riscv/zbkc_native", "zisk-core/zbkc_native"]
+zbkx_native = ["zisk-riscv/zbkx_native", "zisk-core/zbkx_native"]
+zicond_native = ["zisk-riscv/zicond_native", "zisk-core/zicond_native"]

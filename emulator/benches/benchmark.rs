@@ -4,7 +4,7 @@ use criterion::Criterion;
 //use std::{fs::File /* , time::Duration */};
 use zisk_common::EmuTrace;
 use zisk_core::ZiskRom;
-use zisk_transpiler::ZiskTranspiler;
+use zisk_transpiler_common::ZiskTranspiler;
 use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
 
 // Thanks to the example provided by @jebbow in his article

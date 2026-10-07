@@ -15,7 +15,7 @@ use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, ZiskExecutor};
-use zisk_transpiler::ZiskTranspiler;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;

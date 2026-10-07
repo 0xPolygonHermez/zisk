@@ -73,7 +73,7 @@ default = []
 # `zisk_core::frops`.
 debug_frops = ["zisk-sdk/debug_frops", "zisk-prover-backend/debug_frops"]
 # Enable RISC-V C (compressed) extension decoding in the transpiler across ROM
-# generation and proving (see zisk-transpiler-riscv's `compressed`). OFF by default.
+# generation and proving (see zisk-riscv's `compressed`). OFF by default.
 compressed = ["zisk-rom-setup/compressed", "zisk-prover-backend/compressed"]
 cpu-only = ["zisk-build/cpu-only", "zisk-prover-backend/cpu-only", "proofman-starks-lib-c/cpu-only"]
 diagnostic = ["zisk-prover-backend/diagnostic"]

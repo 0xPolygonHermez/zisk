@@ -11,7 +11,7 @@ use zisk_core::ziskbin::try_elf_to_rom;
 use zisk_core::AsmGenerationMethod;
 use zisk_core::ZiskRom;
 use zisk_core::ZiskRom2Asm;
-use zisk_transpiler_riscv::elf2rom;
+use zisk_riscv::elf2rom;
 use zisk_transpiler_wasm::wasm2rom;
 
 use std::{error::Error, path::Path, path::PathBuf};
