@@ -39,10 +39,10 @@ async fn prove_leaf(
     secret: &[u64; RATE],
 ) -> Result<zisk_sdk::Proof, Box<dyn Error>> {
     let stdin = ZiskStdin::new();
-    stdin.write(secret); // one [u64; 12], matching the guest's single read
-                         // Uncompressed on purpose: the client default is `VadcopFinalMinimal`, and
-                         // compression strips the `is_vadcop_final_proof` flag the aggregator reads at
-                         // public slot 0. A folded leaf must keep it.
+    // One [u64; 12], matching the guest's single read.
+    stdin.write(secret);
+    // Uncompressed on purpose: the client default is `VadcopFinalMinimal`, and compression
+    // strips the `is_vadcop_final_proof` flag the aggregator reads at public slot 0.
     Ok(client.prove(&LEAF, stdin).wrap(ProofKind::VadcopFinal).run()?.await?.get_proof().clone())
 }
 
