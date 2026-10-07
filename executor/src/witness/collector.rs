@@ -232,8 +232,15 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         secn_instances: HashMap<usize, &dyn Instance<F>>,
     ) -> ExecutorResult<()> {
         let phase_start = Instant::now();
-        let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
-        let min_traces = min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?;
+        // A snapshot of the chunks published so far: the replay must not hold the store's lock,
+        // which the main-trace reader takes to publish the next chunks while the run goes on.
+        let min_traces: Vec<Arc<EmuTrace>> = state
+            .min_traces
+            .read_or_poison("min_traces")?
+            .as_ref()
+            .ok_or(ExecutorError::MinTracesNotSet)?
+            .clone();
+        let min_traces = &min_traces;
 
         // Compute chunks to execute
         let (chunks_to_execute, global_id_chunks) =

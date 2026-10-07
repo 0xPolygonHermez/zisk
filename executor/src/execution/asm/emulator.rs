@@ -211,7 +211,7 @@ impl EmulatorAsm {
                 // Main-instance advancement: runs on the reader thread, in chunk
                 // order, once the counting task is on its way. Does real work only
                 // on the chunks that complete a Main instance (or end the run).
-                chunk_hook(idx, emu_traces, last).map_err(anyhow::Error::from)
+                chunk_hook(idx, emu_traces, last, processor_ref).map_err(anyhow::Error::from)
             };
 
             let asm_resources = self.transport.resources()?;

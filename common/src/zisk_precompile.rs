@@ -356,6 +356,53 @@ macro_rules! zisk_precompile_explicit {
 
                     plan_result
                 }
+
+                /// A family of one air cuts every instance at that air's capacity, so the instances
+                /// a prefix of the chunks fills completely are the first instances of the whole
+                /// plan. A ladder sizes its instances from the total and gets none.
+                fn plan_prefix(
+                    &self,
+                    counters: &[($crate::ChunkId, &dyn $crate::BusDeviceMetrics)],
+                ) -> ::std::vec::Vec<$crate::Plan> {
+                    if self.instances_info.len() != 1 || counters.is_empty() {
+                        return ::std::vec::Vec::new();
+                    }
+                    let info = &self.instances_info[0];
+                    let capacity = info.num_ops as u64;
+                    if capacity == 0 {
+                        return ::std::vec::Vec::new();
+                    }
+                    let count: ::std::vec::Vec<$crate::InstCount> = counters
+                        .iter()
+                        .map(|(chunk_id, counter)| {
+                            let reg_counter = $crate::Metrics::as_any(&**counter)
+                                .downcast_ref::<[<$name CounterInputGen>]<F>>()
+                                .unwrap();
+                            $crate::InstCount::new(*chunk_id, reg_counter.inst_count(info.op_type).unwrap())
+                        })
+                        .collect();
+                    let total: u64 = count.iter().map(|c| c.inst_count).sum();
+                    let full = (total / capacity) as usize;
+                    if full == 0 {
+                        return ::std::vec::Vec::new();
+                    }
+                    // One more capacity than there are full instances covers the partial tail,
+                    // which is dropped: the chunks after the prefix may still add to it.
+                    $crate::plan_ladder(&count, &::std::vec![capacity; full + 1])
+                        .into_iter()
+                        .take(full)
+                        .map(|(_, check_point, collect_info)| {
+                            $crate::Plan::new(
+                                info.airgroup_id,
+                                info.air_id,
+                                None,
+                                $crate::InstanceType::Instance,
+                                check_point,
+                                Some(::std::boxed::Box::new(collect_info)),
+                            )
+                        })
+                        .collect()
+                }
             }
 
             // ============================================================

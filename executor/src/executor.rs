@@ -31,7 +31,7 @@ use std::{
     collections::BTreeMap,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, RwLock,
+        Arc, Mutex, RwLock,
     },
     time::Instant,
 };
@@ -361,9 +361,32 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         //
         // No-op in standalone mode and never called by the Rust emulator; both
         // keep the post-run batch path below.
-        let num_within = MainPlanner::traces_per_segment(self.plan.chunk_size())?;
-        let on_chunk =
-            |idx: usize, traces: &[Arc<EmuTrace>], is_last: bool| -> ExecutorResult<()> {
+        // Two rounds, with the first collected early and every secondary placed on registration,
+        // only when the memory airs come from the device: with the CPU witness the memory
+        // instances would need a second collect pass of their own, which costs more than the
+        // overlap gains (641_54, 24 cores: +0.7 s), so that path keeps the one-round flow.
+        let two_rounds = is_asm_emulator && zisk_asm_runner::device_mem_witness_requested();
+        // `ZISK_EARLY_SECN=1`: the precompile instances the counted chunks already fill are
+        // registered and collected while the emulation runs (two-round mode only).
+        let early_secn = two_rounds
+            && self.witness.is_some()
+            && proofman_extras.is_some()
+            && std::env::var("ZISK_EARLY_SECN").as_deref() == Ok("1");
+
+        std::thread::scope(|early_scope| -> ExecutorResult<()> {
+            // Per precompile position, the (air, chunks) of each instance registered early, in order.
+            let early_done: Mutex<BTreeMap<usize, Vec<(usize, Vec<usize>)>>> =
+                Mutex::new(BTreeMap::new());
+            let early_collects = Mutex::new(Vec::new());
+            let precompile_positions: Vec<usize> =
+                if early_secn { crate::sm::precompile_positions().collect() } else { Vec::new() };
+
+            let num_within = MainPlanner::traces_per_segment(self.plan.chunk_size())?;
+            let on_chunk = |idx: usize,
+                            traces: &[Arc<EmuTrace>],
+                            is_last: bool,
+                            counted: &dyn crate::CountedPrefix|
+             -> ExecutorResult<()> {
                 let Some(witness) = self.witness.as_ref() else { return Ok(()) };
 
                 // This chunk neither completes a Main instance nor ends the execution.
@@ -380,237 +403,298 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 let plan = MainPlanner::plan_segment(segment, is_last);
                 let assignments =
                     InstanceAssigner::assign_main_instances(registry, global_ids, vec![plan])?;
-                witness.populate_main_instances(registry, &self.state, assignments)
-            };
-        let chunk_hook = &on_chunk;
+                witness.populate_main_instances(registry, &self.state, assignments)?;
 
-        timer_start_info!(COMPUTE_MINIMAL_TRACE);
-        let start_partial = Instant::now();
-
-        let zisk_rom = self.state.get_rom()?;
-        let stdin = self.state.get_stdin();
-        let output = self.execution.run::<F>(
-            &zisk_rom,
-            &stdin,
-            // The ROM-histogram runner is what asks the assembly child for a histogram,
-            // so not spawning it leaves that child idle. Skipped without a witness:
-            // there is no ROM state machine to read one, and the standalone path would
-            // pay for a full histogram pass only to drop the result.
-            self.witness.is_some() && registry.is_first_process(),
-            self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
-            &self.state.stats,
-            &_exec_scope,
-            chunk_hook,
-        )?;
-
-        let execution_duration = start_partial.elapsed();
-        timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
-
-        // ────────────────────────────────────────────────────────────
-        // Phase 1.2: Plan + assign main, then populate main (witness only)
-        // ────────────────────────────────────────────────────────────
-        let steps = output.steps;
-
-        let crate::ExecutionOutput { min_traces, mut counters, pub_outs, mut backend, .. } = output;
-        let num_chunks = min_traces.len();
-
-        // Hand the ROM-histogram runner over without joining it: the runner outlives the
-        // minimal-trace run, and the instance it feeds does not compute its witness until
-        // much later, so the join belongs there. Parking also selects that instance's ASM
-        // backend, so it must precede `populate_secn_instances` below.
-        //
-        // Parked here rather than after the planning phases so that an error in between
-        // still leaves the handle where the next job's drain can find it — otherwise its
-        // child could still be consuming input shmem when that job resets it.
-        if let (Some(handle), Some(witness)) = (backend.take_rh_handle(), self.witness.as_ref()) {
-            witness.park_rh_handle(handle)?;
-        }
-
-        // The hook published every chunk it saw, so on the ASM path the store is
-        // already complete and a read lock is enough (an exclusive lock here would
-        // stall main witnesses that are already computing). The Rust emulator
-        // never calls the hook, so its store is still empty and gets the whole
-        // vector at once.
-        let published =
-            self.state.min_traces.read_or_poison("min_traces")?.as_ref().map_or(0, Vec::len);
-        if published != num_chunks {
-            *self.state.min_traces.write_or_poison("min_traces")? = Some(min_traces);
-        }
-
-        // ASM + witness: the hook already released every Main instance during the
-        // run (the runner only returns `Ok` after delivering the final chunk).
-        let main_instances_count = if is_asm_emulator && self.witness.is_some() {
-            num_chunks.div_ceil(num_within)
-        } else {
-            // Rust emulator / standalone: plan and release every segment now.
-            let main_plans = self.plan.run_main(num_chunks, &self.state.stats, &_exec_scope)?;
-            let main_assignments =
-                InstanceAssigner::assign_main_instances(registry, global_ids, main_plans)?;
-            let count = main_assignments.len();
-            if let Some(witness) = self.witness.as_ref() {
-                witness.populate_main_instances(registry, &self.state, main_assignments)?;
-            }
-            count
-        };
-
-        // ────────────────────────────────────────────────────────────
-        // Phase 1.3: Plan and register the secondaries in two rounds (witness only)
-        // ────────────────────────────────────────────────────────────
-        // The minimal trace determines every secondary but the memory ones. Those are
-        // registered first and their inputs collected while the memory-ops runner finishes,
-        // so their witnesses do not wait for it; the memory plans form the second round.
-        let (mut secn_planning, count_and_plan_duration) = self.plan.run_secondary_mt(
-            &mut counters,
-            num_chunks,
-            is_asm_emulator,
-            &self.state.stats,
-            &_exec_scope,
-        )?;
-        let mut mem_planning = BTreeMap::new();
-        if let Some(mem_mt_plans) = secn_planning.remove(&MEM_POSITION) {
-            mem_planning.insert(MEM_POSITION, mem_mt_plans);
-        }
-
-        registry.write_pub_outs(&pub_outs.0);
-
-        stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
-        // Two rounds, with the first collected early and every secondary placed on registration,
-        // only when the memory airs come from the device: with the CPU witness the memory
-        // instances would need a second collect pass of their own, which costs more than the
-        // overlap gains (641_54, 24 cores: +0.7 s), so that path keeps the one-round flow.
-        let two_rounds = is_asm_emulator && zisk_asm_runner::device_mem_witness_requested();
-        let first_round = self.register_secn_round(
-            registry,
-            global_ids,
-            proofman_extras,
-            secn_planning,
-            two_rounds,
-        )?;
-
-        let mem_artifacts = std::thread::scope(|scope| -> ExecutorResult<MemPlanArtifacts> {
-            let collecting = match (self.witness.as_ref(), proofman_extras) {
-                (Some(witness), Some(extras)) if two_rounds && !first_round.is_empty() => {
-                    Some(scope.spawn(|| {
-                        witness.pre_calculate(
-                            extras.pctx(),
-                            extras,
-                            &self.state,
-                            &first_round,
-                            is_asm_emulator,
-                        )
-                    }))
+                // The precompile instances the chunks counted so far fill completely: placed in
+                // order now, and collected on their own thread while the emulation goes on.
+                let Some(extras) = proofman_extras.filter(|_| early_secn && !is_last) else {
+                    return Ok(());
+                };
+                let mut planning: BTreeMap<usize, Vec<Plan>> = BTreeMap::new();
+                {
+                    let mut done = early_done.lock().unwrap_or_else(|e| e.into_inner());
+                    for &position in &precompile_positions {
+                        let registered = done.get(&position).map_or(0, Vec::len);
+                        let mut fresh = Vec::new();
+                        counted.visit(position, &mut |prefix| {
+                            fresh =
+                                crate::sm::plan_sec_prefix::<F>(position, is_asm_emulator, prefix)
+                                    .into_iter()
+                                    .skip(registered)
+                                    .collect();
+                        });
+                        if !fresh.is_empty() {
+                            done.entry(position).or_default().extend(
+                                fresh
+                                    .iter()
+                                    .map(|p: &Plan| (p.air_id, checkpoint_chunks(&p.check_point))),
+                            );
+                            planning.insert(position, fresh);
+                        }
+                    }
                 }
-                _ => None,
+                if planning.is_empty() {
+                    return Ok(());
+                }
+                let (plans, ids) =
+                    self.assign_secn_round(registry, global_ids, proofman_extras, planning, true)?;
+                tracing::debug!("early secondaries at chunk {idx}: {} instances", ids.len());
+                self.populate_secn_round(registry, plans, &ids)?;
+                let handle = early_scope.spawn(move || {
+                    witness.pre_calculate(extras.pctx(), extras, &self.state, &ids, is_asm_emulator)
+                });
+                early_collects.lock().unwrap_or_else(|e| e.into_inner()).push(handle);
+                Ok(())
+            };
+            let chunk_hook = &on_chunk;
+
+            timer_start_info!(COMPUTE_MINIMAL_TRACE);
+            let start_partial = Instant::now();
+
+            let zisk_rom = self.state.get_rom()?;
+            let stdin = self.state.get_stdin();
+            let output = self.execution.run::<F>(
+                &zisk_rom,
+                &stdin,
+                // The ROM-histogram runner is what asks the assembly child for a histogram,
+                // so not spawning it leaves that child idle. Skipped without a witness:
+                // there is no ROM state machine to read one, and the standalone path would
+                // pay for a full histogram pass only to drop the result.
+                self.witness.is_some() && registry.is_first_process(),
+                self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
+                &self.state.stats,
+                &_exec_scope,
+                chunk_hook,
+            )?;
+
+            let execution_duration = start_partial.elapsed();
+            timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
+
+            // ────────────────────────────────────────────────────────────
+            // Phase 1.2: Plan + assign main, then populate main (witness only)
+            // ────────────────────────────────────────────────────────────
+            let steps = output.steps;
+
+            let crate::ExecutionOutput { min_traces, mut counters, pub_outs, mut backend, .. } =
+                output;
+            let num_chunks = min_traces.len();
+
+            // Hand the ROM-histogram runner over without joining it: the runner outlives the
+            // minimal-trace run, and the instance it feeds does not compute its witness until
+            // much later, so the join belongs there. Parking also selects that instance's ASM
+            // backend, so it must precede `populate_secn_instances` below.
+            //
+            // Parked here rather than after the planning phases so that an error in between
+            // still leaves the handle where the next job's drain can find it — otherwise its
+            // child could still be consuming input shmem when that job resets it.
+            if let (Some(handle), Some(witness)) = (backend.take_rh_handle(), self.witness.as_ref())
+            {
+                witness.park_rh_handle(handle)?;
+            }
+
+            // The hook published every chunk it saw, so on the ASM path the store is
+            // already complete and a read lock is enough (an exclusive lock here would
+            // stall main witnesses that are already computing). The Rust emulator
+            // never calls the hook, so its store is still empty and gets the whole
+            // vector at once.
+            let published =
+                self.state.min_traces.read_or_poison("min_traces")?.as_ref().map_or(0, Vec::len);
+            if published != num_chunks {
+                *self.state.min_traces.write_or_poison("min_traces")? = Some(min_traces);
+            }
+
+            // ASM + witness: the hook already released every Main instance during the
+            // run (the runner only returns `Ok` after delivering the final chunk).
+            let main_instances_count = if is_asm_emulator && self.witness.is_some() {
+                num_chunks.div_ceil(num_within)
+            } else {
+                // Rust emulator / standalone: plan and release every segment now.
+                let main_plans = self.plan.run_main(num_chunks, &self.state.stats, &_exec_scope)?;
+                let main_assignments =
+                    InstanceAssigner::assign_main_instances(registry, global_ids, main_plans)?;
+                let count = main_assignments.len();
+                if let Some(witness) = self.witness.as_ref() {
+                    witness.populate_main_instances(registry, &self.state, main_assignments)?;
+                }
+                count
             };
 
-            let mut mem_artifacts =
-                self.plan.await_mem_plans(&mut backend, &self.state.stats, &_exec_scope)?;
+            // ────────────────────────────────────────────────────────────
+            // Phase 1.3: Plan and register the secondaries in two rounds (witness only)
+            // ────────────────────────────────────────────────────────────
+            // The minimal trace determines every secondary but the memory ones. Those are
+            // registered first and their inputs collected while the memory-ops runner finishes,
+            // so their witnesses do not wait for it; the memory plans form the second round.
+            let (mut secn_planning, count_and_plan_duration) = self.plan.run_secondary_mt(
+                &mut counters,
+                num_chunks,
+                is_asm_emulator,
+                &self.state.stats,
+                &_exec_scope,
+            )?;
+            let mut mem_planning = BTreeMap::new();
+            if let Some(mem_mt_plans) = secn_planning.remove(&MEM_POSITION) {
+                mem_planning.insert(MEM_POSITION, mem_mt_plans);
+            }
 
-            // Round 2: the memory plans, registered and placed before the device fills so only
-            // the instances this process owns are filled, while the arena is still borrowed.
-            let mut mem_plans = std::mem::take(&mut mem_artifacts.mem_plans);
-            mem_planning.entry(MEM_POSITION).or_default().append(&mut mem_plans);
-            let (plans, ids) = self.assign_secn_round(
+            // The instances registered while the emulation ran must open the block's plan of their
+            // position unchanged; they are taken out of it so they are not registered twice.
+            let early = std::mem::take(&mut *early_done.lock().unwrap_or_else(|e| e.into_inner()));
+            for (position, expected) in early {
+                let plans = secn_planning.entry(position).or_default();
+                if let Some(index) = (0..expected.len()).find(|&i| {
+                    plans.get(i).is_none_or(|p| {
+                        p.air_id != expected[i].0
+                            || checkpoint_chunks(&p.check_point) != expected[i].1
+                    })
+                }) {
+                    return Err(ExecutorError::EarlyPlanMismatch { position, index });
+                }
+                plans.drain(..expected.len());
+            }
+
+            registry.write_pub_outs(&pub_outs.0);
+
+            stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
+            let first_round = self.register_secn_round(
                 registry,
                 global_ids,
                 proofman_extras,
-                mem_planning,
+                secn_planning,
                 two_rounds,
             )?;
-            let mut release_deferred = false;
-            if let Some(device_witness) = mem_artifacts.device_witness.as_ref() {
-                let mut owned = OwnedMemInstances::default();
-                for (plan, &gid) in plans.iter().zip(ids.iter()) {
-                    if !registry.is_my_process_instance(GlobalId(gid))? {
-                        continue;
+
+            let mem_artifacts = std::thread::scope(|scope| -> ExecutorResult<MemPlanArtifacts> {
+                let collecting = match (self.witness.as_ref(), proofman_extras) {
+                    (Some(witness), Some(extras)) if two_rounds && !first_round.is_empty() => {
+                        Some(scope.spawn(|| {
+                            witness.pre_calculate(
+                                extras.pctx(),
+                                extras,
+                                &self.state,
+                                &first_round,
+                                is_asm_emulator,
+                            )
+                        }))
                     }
-                    let segment = plan.segment_id.map(|s| usize::from(s) as u32);
-                    if plan.air_id == MEM_AIR_IDS[0] {
-                        owned.ram.extend(segment);
-                    } else if plan.air_id == ROM_DATA_AIR_IDS[0] {
-                        owned.rom.extend(segment);
-                    } else if plan.air_id == INPUT_DATA_AIR_IDS[0] {
-                        owned.input.extend(segment);
-                    } else if AirClassifier::is_mem_align(plan.air_id) {
-                        owned.align.push(plan);
+                    _ => None,
+                };
+
+                let mut mem_artifacts =
+                    self.plan.await_mem_plans(&mut backend, &self.state.stats, &_exec_scope)?;
+
+                // Round 2: the memory plans, registered and placed before the device fills so only
+                // the instances this process owns are filled, while the arena is still borrowed.
+                let mut mem_plans = std::mem::take(&mut mem_artifacts.mem_plans);
+                mem_planning.entry(MEM_POSITION).or_default().append(&mut mem_plans);
+                let (plans, ids) = self.assign_secn_round(
+                    registry,
+                    global_ids,
+                    proofman_extras,
+                    mem_planning,
+                    two_rounds,
+                )?;
+                let mut release_deferred = false;
+                if let Some(device_witness) = mem_artifacts.device_witness.as_ref() {
+                    let mut owned = OwnedMemInstances::default();
+                    for (plan, &gid) in plans.iter().zip(ids.iter()) {
+                        if !registry.is_my_process_instance(GlobalId(gid))? {
+                            continue;
+                        }
+                        let segment = plan.segment_id.map(|s| usize::from(s) as u32);
+                        if plan.air_id == MEM_AIR_IDS[0] {
+                            owned.ram.extend(segment);
+                        } else if plan.air_id == ROM_DATA_AIR_IDS[0] {
+                            owned.rom.extend(segment);
+                        } else if plan.air_id == INPUT_DATA_AIR_IDS[0] {
+                            owned.input.extend(segment);
+                        } else if AirClassifier::is_mem_align(plan.air_id) {
+                            owned.align.push(plan);
+                        }
+                    }
+                    let d_buffers = proofman_extras
+                        .map(|extras| extras.pctx().get_device_buffers_ptr())
+                        .unwrap_or(std::ptr::null_mut());
+                    release_deferred = device_witness.fill_owned(&owned, d_buffers);
+                }
+
+                // MO runner joined and the fills are done; release the buffer back to proofman.
+                // Earlier error paths skip the release on purpose: the MO thread may still be using
+                // the buffer. In slot mode the release follows the last memory instance's commit.
+                if is_asm_emulator {
+                    if let Some(extras) = proofman_extras {
+                        if let Some(used) = mem_artifacts.gpu_mops_used_bytes {
+                            extras.pctx().report_first_gpu_buffer_usage(used);
+                        }
+                        if !release_deferred {
+                            extras.release_gpu_buffer();
+                        }
                     }
                 }
-                let d_buffers = proofman_extras
-                    .map(|extras| extras.pctx().get_device_buffers_ptr())
-                    .unwrap_or(std::ptr::null_mut());
-                release_deferred = device_witness.fill_owned(&owned, d_buffers);
-            }
+                self.populate_secn_round(registry, plans, &ids)?;
 
-            // MO runner joined and the fills are done; release the buffer back to proofman.
-            // Earlier error paths skip the release on purpose: the MO thread may still be using
-            // the buffer. In slot mode the release follows the last memory instance's commit.
-            if is_asm_emulator {
-                if let Some(extras) = proofman_extras {
-                    if let Some(used) = mem_artifacts.gpu_mops_used_bytes {
-                        extras.pctx().report_first_gpu_buffer_usage(used);
-                    }
-                    if !release_deferred {
-                        extras.release_gpu_buffer();
-                    }
+                if let Some(handle) = collecting {
+                    handle
+                        .join()
+                        .map_err(|_| ExecutorError::SecnPlanMissing { phase: "collect" })??;
                 }
-            }
-            self.populate_secn_round(registry, plans, &ids)?;
+                Ok(mem_artifacts)
+            })?;
 
-            if let Some(handle) = collecting {
+            stats_end!(self.state.stats, &_config_scope);
+
+            // The debug cross-check, which the collectors read when they are built, right after
+            // `execute` returns. The multiplicity column itself is published by the ROM witness,
+            // which reads the histogram anyway, so the end of execution never waits for it.
+            if let Some(witness) = self.witness.as_ref() {
+                witness.arm_frops_cross_check()?;
+            }
+
+            // ────────────────────────────────────────────────────────────
+            // Phase 1.4: Cost accumulation (witness only — needs sctx)
+            // ────────────────────────────────────────────────────────────
+            let cost_per_type = match proofman_extras {
+                Some(extras) => extras.compute_costs(&self.state, main_instances_count)?,
+                None => Default::default(),
+            };
+
+            stats_end!(self.state.stats, &_exec_scope);
+
+            let zisk_execution_time = ZiskExecutorTime {
+                execution_duration: execution_duration.as_millis() as u64,
+                count_and_plan_duration: count_and_plan_duration.as_millis() as u64,
+                count_and_plan_mo_duration: mem_artifacts.count_and_plan_mo_duration.as_millis()
+                    as u64,
+                total_duration: start_total.elapsed().as_millis() as u64,
+                asm_execution_duration: self.execution.get_asm_execution_info()?,
+            };
+            let mut execution_result =
+                ZiskExecutorSummary::new(steps, zisk_execution_time, cost_per_type);
+            // Per-AIR instance plan, captured from the registry's planning counts. Only the
+            // full (proofman) path exposes this via the summary; the standalone path returns
+            // its own (named) plan directly, so skip the work when there's no `SetupCtx`.
+            if proofman_extras.is_some() {
+                execution_result.plan = registry
+                    .instance_counts()
+                    .into_iter()
+                    .map(|((airgroup_id, air_id), count)| AirInstanceCount {
+                        airgroup_id,
+                        air_id,
+                        count: count as u64,
+                    })
+                    .collect();
+            }
+
+            // Store the execution result
+            self.state.set_execution_result(execution_result);
+
+            for handle in early_collects.into_inner().unwrap_or_else(|e| e.into_inner()) {
                 handle
                     .join()
-                    .map_err(|_| ExecutorError::SecnPlanMissing { phase: "collect" })??;
+                    .map_err(|_| ExecutorError::SecnPlanMissing { phase: "early collect" })??;
             }
-            Ok(mem_artifacts)
-        })?;
-
-        stats_end!(self.state.stats, &_config_scope);
-
-        // The debug cross-check, which the collectors read when they are built, right after
-        // `execute` returns. The multiplicity column itself is published by the ROM witness,
-        // which reads the histogram anyway, so the end of execution never waits for it.
-        if let Some(witness) = self.witness.as_ref() {
-            witness.arm_frops_cross_check()?;
-        }
-
-        // ────────────────────────────────────────────────────────────
-        // Phase 1.4: Cost accumulation (witness only — needs sctx)
-        // ────────────────────────────────────────────────────────────
-        let cost_per_type = match proofman_extras {
-            Some(extras) => extras.compute_costs(&self.state, main_instances_count)?,
-            None => Default::default(),
-        };
-
-        stats_end!(self.state.stats, &_exec_scope);
-
-        let zisk_execution_time = ZiskExecutorTime {
-            execution_duration: execution_duration.as_millis() as u64,
-            count_and_plan_duration: count_and_plan_duration.as_millis() as u64,
-            count_and_plan_mo_duration: mem_artifacts.count_and_plan_mo_duration.as_millis() as u64,
-            total_duration: start_total.elapsed().as_millis() as u64,
-            asm_execution_duration: self.execution.get_asm_execution_info()?,
-        };
-        let mut execution_result =
-            ZiskExecutorSummary::new(steps, zisk_execution_time, cost_per_type);
-        // Per-AIR instance plan, captured from the registry's planning counts. Only the
-        // full (proofman) path exposes this via the summary; the standalone path returns
-        // its own (named) plan directly, so skip the work when there's no `SetupCtx`.
-        if proofman_extras.is_some() {
-            execution_result.plan = registry
-                .instance_counts()
-                .into_iter()
-                .map(|((airgroup_id, air_id), count)| AirInstanceCount {
-                    airgroup_id,
-                    air_id,
-                    count: count as u64,
-                })
-                .collect();
-        }
-
-        // Store the execution result
-        self.state.set_execution_result(execution_result);
-
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Registers one round of secondary plans: SM configuration, placement, instances and
@@ -964,4 +1048,15 @@ mod tests {
             }
         }
     }
+}
+
+/// The chunks of a checkpoint, sorted: the plans list them in no particular order.
+fn checkpoint_chunks(check_point: &zisk_common::CheckPoint) -> Vec<usize> {
+    let mut chunks: Vec<usize> = match check_point {
+        zisk_common::CheckPoint::None => Vec::new(),
+        zisk_common::CheckPoint::Single(chunk) => vec![chunk.0],
+        zisk_common::CheckPoint::Multiple(chunks) => chunks.iter().map(|c| c.0).collect(),
+    };
+    chunks.sort_unstable();
+    chunks
 }
