@@ -7,7 +7,7 @@ use zisk_core::zisk_ops::ZiskOp;
 use zisk_sm_frequent_ops::FrequentOpsHelpers;
 
 const OP_TABLE_OFFSETS_START: usize = 177;
-const OP_TABLE_OFFSETS: [usize; 8] = [0, 0, 0, 288793, 0, 0, 0, 1246897];
+const OP_TABLE_OFFSETS: [usize; 10] = [0, 0, 0, 32759, 0, 1612279, 0, 0, 1612381, 1761885];
 
 #[derive(Debug, Clone)]
 pub struct ArithFrops {
@@ -33,27 +33,15 @@ impl ArithFrops {
         // op muluh
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 517 && b < 517
-            for a in 0..517 {
-                for b in 0..517 {
+            // low_rect: a == 0 && b < 4087
+            for a in 0..1 {
+                for b in 0..4087 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
-            for a in (0xFFFFF000..0x100001000).step_by(8) {
-                for b in 0..19 {
-                    ops.push([a, b]);
-                }
-            }
-            // mid_box: a >= 0x11BC4E7A1FF93003 && a < 0x11BC4E7A1FF94003 && (a & 7) == 3 && b < 2
-            for a in (0x11BC4E7A1FF93003..0x11BC4E7A1FF94003).step_by(8) {
-                for b in 0..2 {
-                    ops.push([a, b]);
-                }
-            }
-            // mid_box: a >= 0x3FD8EE048ED3F003 && a < 0x3FD8EE048ED40003 && (a & 7) == 3 && b < 2
-            for a in (0x3FD8EE048ED3F003..0x3FD8EE048ED40003).step_by(8) {
-                for b in 0..2 {
+            // mid_box: a >= 0xB24007 && a < 0xB25007 && (a & 7) == 7 && b < 56
+            for a in (0xB24007..0xB25007).step_by(8) {
+                for b in 0..56 {
                     ops.push([a, b]);
                 }
             }
@@ -62,42 +50,82 @@ impl ArithFrops {
         // op mul
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 2406 && b < 388
-            for a in 0..2406 {
-                for b in 0..388 {
+            // low_rect: a < 4096 && b < 219
+            for a in 0..4096 {
+                for b in 0..219 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
-            for a in (0xFFFFF000..0x100001000).step_by(8) {
-                for b in 0..19 {
+            // mid_box: a >= 4096 && a < 24576 && (a & 7) == 0 && b < 121
+            for a in (0x1000..0x6000).step_by(8) {
+                for b in 0..121 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0x7FFFFFF001 && a < 0x8000001001 && (a & 7) == 1 && b == 2045
-            for a in (0x7FFFFFF001..0x8000001001).step_by(8) {
-                for b in 0x7FD..0x7FE {
+            // mid_box: a >= 4096 && a < 0x29000 && b == 400
+            for a in 0x1000..0x29000 {
+                for b in 0x190..0x191 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0x3FE8000000000 && a < 0x3FE8000001000 && b == 2045
-            for a in 0x3FE8000000000..0x3FE8000001000 {
-                for b in 0x7FD..0x7FE {
+            // mid_box: a >= 4096 && a < 16384 && b >= 200 && b < 217
+            for a in 0x1000..0x4000 {
+                for b in 0xC8..0xD9 {
                     ops.push([a, b]);
                 }
             }
             self.table.add_ops(ZiskOp::MUL, &mut ops, true);
         }
-        // op divu
+        // op mul_w
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 1601 && b < 513
-            for a in 0..1601 {
-                for b in 0..513 {
+            // low_rect: a < 2 && b < 51
+            for a in 0..2 {
+                for b in 0..51 {
                     ops.push([a, b]);
                 }
             }
-            self.table.add_ops(ZiskOp::DIVU, &mut ops, true);
+            self.table.add_ops(ZiskOp::MUL_W, &mut ops, true);
+        }
+        // op remu
+        {
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // mid_box: a >= 0x48EB0636CEB09006 && a < 0x48EB0636CEB0A006 && (a & 7) == 6 && b >= 1 && b < 98
+            for a in (0x48EB0636CEB09006..0x48EB0636CEB0A006).step_by(8) {
+                for b in 0x1..0x62 {
+                    ops.push([a, b]);
+                }
+            }
+            // mid_box: a >= 0xC26C753C08D9E007 && a < 0xC26C753C08D9F007 && (a & 7) == 7 && b >= 1 && b < 98
+            for a in (0xC26C753C08D9E007..0xC26C753C08D9F007).step_by(8) {
+                for b in 0x1..0x62 {
+                    ops.push([a, b]);
+                }
+            }
+            // mid_box: a >= 0xC71E833DC1974001 && a < 0xC71E833DC1975001 && (a & 7) == 1 && b >= 1 && b < 98
+            for a in (0xC71E833DC1974001..0xC71E833DC1975001).step_by(8) {
+                for b in 0x1..0x62 {
+                    ops.push([a, b]);
+                }
+            }
+            // mid_box: a >= 0xC71E833DC1974001 && a < 0xC71E833DC1975001 && (a & 7) == 1 && b == 197
+            for a in (0xC71E833DC1974001..0xC71E833DC1975001).step_by(8) {
+                for b in 0xC5..0xC6 {
+                    ops.push([a, b]);
+                }
+            }
+            self.table.add_ops(ZiskOp::REMU, &mut ops, true);
+        }
+        // op div
+        {
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 616 && b < 3
+            for a in 0..616 {
+                for b in 0..3 {
+                    ops.push([a, b]);
+                }
+            }
+            self.table.add_ops(ZiskOp::DIV, &mut ops, true);
         }
     }
 
@@ -105,18 +133,34 @@ impl ArithFrops {
     pub fn is_frequent_op(op: u8, a: u64, b: u64) -> bool {
         match op {
             ZiskOp::MULUH => {
-                a < 517 && b < 517
-                    || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
-                    || a >= 0x11BC4E7A1FF93003 && a < 0x11BC4E7A1FF94003 && (a & 7) == 3 && b < 2
-                    || a >= 0x3FD8EE048ED3F003 && a < 0x3FD8EE048ED40003 && (a & 7) == 3 && b < 2
+                a == 0 && b < 4087 || a >= 0xB24007 && a < 0xB25007 && (a & 7) == 7 && b < 56
             }
             ZiskOp::MUL => {
-                a < 2406 && b < 388
-                    || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
-                    || a >= 0x7FFFFFF001 && a < 0x8000001001 && (a & 7) == 1 && b == 2045
-                    || a >= 0x3FE8000000000 && a < 0x3FE8000001000 && b == 2045
+                a < 4096 && b < 219
+                    || a >= 4096 && a < 24576 && (a & 7) == 0 && b < 121
+                    || a >= 4096 && a < 0x29000 && b == 400
+                    || a >= 4096 && a < 16384 && b >= 200 && b < 217
             }
-            ZiskOp::DIVU => a < 1601 && b < 513,
+            ZiskOp::MUL_W => a < 2 && b < 51,
+            ZiskOp::REMU => {
+                a >= 0x48EB0636CEB09006
+                    && a < 0x48EB0636CEB0A006
+                    && (a & 7) == 6
+                    && b >= 1
+                    && b < 98
+                    || a >= 0xC26C753C08D9E007
+                        && a < 0xC26C753C08D9F007
+                        && (a & 7) == 7
+                        && b >= 1
+                        && b < 98
+                    || a >= 0xC71E833DC1974001
+                        && a < 0xC71E833DC1975001
+                        && (a & 7) == 1
+                        && b >= 1
+                        && b < 98
+                    || a >= 0xC71E833DC1974001 && a < 0xC71E833DC1975001 && (a & 7) == 1 && b == 197
+            }
+            ZiskOp::DIV => a < 616 && b < 3,
             _ => false,
         }
     }
@@ -125,36 +169,69 @@ impl ArithFrops {
     pub fn get_row(op: u8, a: u64, b: u64) -> usize {
         let relative_offset = match op {
             ZiskOp::MULUH => {
-                if a < 517 && b < 517 {
-                    (a * 517 + b) as usize
-                } else if a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19 {
-                    (((a - 0xFFFFF000) / 8) * 19 + b) as usize + 267289
-                } else if a >= 0x11BC4E7A1FF93003 && a < 0x11BC4E7A1FF94003 && (a & 7) == 3 && b < 2
-                {
-                    (((a - 0x11BC4E7A1FF93003) / 8) * 2 + b) as usize + 286745
-                } else if a >= 0x3FD8EE048ED3F003 && a < 0x3FD8EE048ED40003 && (a & 7) == 3 && b < 2
-                {
-                    (((a - 0x3FD8EE048ED3F003) / 8) * 2 + b) as usize + 287769
+                if a == 0 && b < 4087 {
+                    (a * 4087 + b) as usize
+                } else if a >= 0xB24007 && a < 0xB25007 && (a & 7) == 7 && b < 56 {
+                    (((a - 0xB24007) / 8) * 56 + b) as usize + 4087
                 } else {
                     Self::NO_FROPS
                 }
             }
             ZiskOp::MUL => {
-                if a < 2406 && b < 388 {
-                    (a * 388 + b) as usize
-                } else if a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19 {
-                    (((a - 0xFFFFF000) / 8) * 19 + b) as usize + 933528
-                } else if a >= 0x7FFFFFF001 && a < 0x8000001001 && (a & 7) == 1 && b == 2045 {
-                    ((a - 0x7FFFFFF001) / 8) as usize + 952984
-                } else if a >= 0x3FE8000000000 && a < 0x3FE8000001000 && b == 2045 {
-                    (a - 0x3FE8000000000) as usize + 954008
+                if a < 4096 && b < 219 {
+                    (a * 219 + b) as usize
+                } else if a >= 4096 && a < 24576 && (a & 7) == 0 && b < 121 {
+                    (((a - 0x1000) / 8) * 121 + b) as usize + 897024
+                } else if a >= 4096 && a < 0x29000 && b == 400 {
+                    (a - 0x1000) as usize + 1206784
+                } else if a >= 4096 && a < 16384 && b >= 200 && b < 217 {
+                    ((a - 0x1000) * 17 + (b - 0xC8)) as usize + 1370624
                 } else {
                     Self::NO_FROPS
                 }
             }
-            ZiskOp::DIVU => {
-                if a < 1601 && b < 513 {
-                    (a * 513 + b) as usize
+            ZiskOp::MUL_W => {
+                if a < 2 && b < 51 {
+                    (a * 51 + b) as usize
+                } else {
+                    Self::NO_FROPS
+                }
+            }
+            ZiskOp::REMU => {
+                if a >= 0x48EB0636CEB09006
+                    && a < 0x48EB0636CEB0A006
+                    && (a & 7) == 6
+                    && b >= 1
+                    && b < 98
+                {
+                    (((a - 0x48EB0636CEB09006) / 8) * 97 + (b - 0x1)) as usize
+                } else if a >= 0xC26C753C08D9E007
+                    && a < 0xC26C753C08D9F007
+                    && (a & 7) == 7
+                    && b >= 1
+                    && b < 98
+                {
+                    (((a - 0xC26C753C08D9E007) / 8) * 97 + (b - 0x1)) as usize + 49664
+                } else if a >= 0xC71E833DC1974001
+                    && a < 0xC71E833DC1975001
+                    && (a & 7) == 1
+                    && b >= 1
+                    && b < 98
+                {
+                    (((a - 0xC71E833DC1974001) / 8) * 97 + (b - 0x1)) as usize + 99328
+                } else if a >= 0xC71E833DC1974001
+                    && a < 0xC71E833DC1975001
+                    && (a & 7) == 1
+                    && b == 197
+                {
+                    ((a - 0xC71E833DC1974001) / 8) as usize + 148992
+                } else {
+                    Self::NO_FROPS
+                }
+            }
+            ZiskOp::DIV => {
+                if a < 616 && b < 3 {
+                    (a * 3 + b) as usize
                 } else {
                     Self::NO_FROPS
                 }

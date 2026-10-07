@@ -251,7 +251,7 @@ pub fn pairing_check_safe_bls12_381(
 /// # Input format
 /// Per pair: 288 bytes = 96 bytes G1 point + 192 bytes G2 point (big-endian)
 /// - G1 point: 48 bytes x + 48 bytes y
-/// - G2 point: 48 bytes x_i + 48 bytes x_r + 48 bytes y_i + 48 bytes y_r
+/// - G2 point: 48 bytes x_r + 48 bytes x_i + 48 bytes y_r + 48 bytes y_i (EIP-2537: c0 first)
 ///
 /// # Safety
 /// `pairs` must point to an array of `num_pairs * 288` bytes

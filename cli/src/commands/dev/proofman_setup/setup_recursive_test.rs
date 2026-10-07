@@ -60,6 +60,8 @@ impl ZiskProofmanSetupRecursiveTest {
             circom_name: self.circom_name.clone(),
             setup_type: self.r#type.clone(),
             blake3_lanes: self.blake3_lanes,
+            blowup: None,
+            min_n_bits: None,
         };
         run_setup_recursive_test(&opts)
     }

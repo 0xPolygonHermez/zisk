@@ -6,6 +6,7 @@ use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
 use tracing::{error, warn};
 
+use crate::MAX_TRACE_CHUNK_INFO;
 use crate::SEM_CHUNK_DONE_WAIT_DURATION;
 use crate::TRACE_DELTA_SIZE;
 use crate::TRACE_INITIAL_SIZE;
@@ -261,12 +262,11 @@ impl AsmRunnerMO {
         //   MAX_MTRACE_REGS_ACCESS_SIZE = (2 + 2 + 3) * 8 = 56
         //   MAX_BYTES_DIRECT_MTRACE = 256
         //   MAX_BYTES_MTRACE_STEP = 256 + 56 = 312
-        //   MAX_TRACE_CHUNK_INFO = (44 * 8) + 32 = 384
+        //   MAX_TRACE_CHUNK_INFO = chunk header + 3 words + 32 (asm_mt.rs)
         //   MAX_CHUNK_TRACE_SIZE = (chunk_size * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO
         const MAX_MTRACE_REGS_ACCESS_SIZE: usize = (2 + 2 + 3) * 8;
         const MAX_BYTES_DIRECT_MTRACE: usize = 256;
         const MAX_BYTES_MTRACE_STEP: usize = MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE;
-        const MAX_TRACE_CHUNK_INFO: usize = (44 * 8) + 32;
 
         let threshold_bytes = (chunk_size as usize * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO;
         let mut threshold = unsafe {

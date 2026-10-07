@@ -269,7 +269,7 @@ _pSecp256r1_rawNegLS:
         sbcs  x14, x10, xzr
         sbcs  x15, x11, xzr
 
-        cset   x2,  cs
+        cset   x2,  cc
 
         ldp    x4,  x5, [x1]
         subs  x12, x12,  x4
@@ -279,7 +279,7 @@ _pSecp256r1_rawNegLS:
         sbcs  x14, x14,  x6
         sbcs  x15, x15,  x7
 
-        cset   x3,  cs
+        cset   x3,  cc
         orr    x3,  x3,  x2
 
         cbz    x3, pSecp256r1_rawNegLS_done
@@ -1047,7 +1047,8 @@ _pSecp256r1_rawShr:
 
         lsr    x2,  x2,  #6
         adr    x5, pSecp256r1_rawShr_word_shift
-        ldr    x5, [x5, x2, lsl 3]
+        ldrsw  x2, [x5, x2, lsl 2]
+        add    x5,  x5,  x2
         br     x5
 
 pSecp256r1_rawShr_word_shift_0:
@@ -1103,10 +1104,10 @@ pSecp256r1_rawShr_word_shift_3:
         ret
 
 pSecp256r1_rawShr_word_shift:
-        .quad pSecp256r1_rawShr_word_shift_0
-        .quad pSecp256r1_rawShr_word_shift_1
-        .quad pSecp256r1_rawShr_word_shift_2
-        .quad pSecp256r1_rawShr_word_shift_3
+        .long pSecp256r1_rawShr_word_shift_0 - pSecp256r1_rawShr_word_shift
+        .long pSecp256r1_rawShr_word_shift_1 - pSecp256r1_rawShr_word_shift
+        .long pSecp256r1_rawShr_word_shift_2 - pSecp256r1_rawShr_word_shift
+        .long pSecp256r1_rawShr_word_shift_3 - pSecp256r1_rawShr_word_shift
 
 
 pSecp256r1_rawShl:
@@ -1120,7 +1121,8 @@ _pSecp256r1_rawShl:
 
         lsr    x2,  x2,  #6
         adr    x5, pSecp256r1_rawShl_word_shift
-        ldr    x5, [x5, x2, lsl 3]
+        ldrsw  x2, [x5, x2, lsl 2]
+        add    x5,  x5,  x2
         br     x5
 
 pSecp256r1_rawShl_word_shift_0:
@@ -1195,10 +1197,10 @@ pSecp256r1_rawShl_sub:
 
         ret
 pSecp256r1_rawShl_word_shift:
-        .quad pSecp256r1_rawShl_word_shift_0
-        .quad pSecp256r1_rawShl_word_shift_1
-        .quad pSecp256r1_rawShl_word_shift_2
-        .quad pSecp256r1_rawShl_word_shift_3
+        .long pSecp256r1_rawShl_word_shift_0 - pSecp256r1_rawShl_word_shift
+        .long pSecp256r1_rawShl_word_shift_1 - pSecp256r1_rawShl_word_shift
+        .long pSecp256r1_rawShl_word_shift_2 - pSecp256r1_rawShl_word_shift
+        .long pSecp256r1_rawShl_word_shift_3 - pSecp256r1_rawShl_word_shift
 
 
 

@@ -1,0 +1,2336 @@
+; ============================================================================
+; zkvm/modexp.zisk - modular exponentiation (EIP-198) for the EF zkVM
+; accelerator C ABI. Entry `ziskasm_zkvm_modexp`, zkvmcall target of `zkvm_modexp`.
+;
+;   zkvm_status zkvm_modexp(const uint8_t* base, size_t base_len,   (BE bytes, any length)
+;                           const uint8_t* exp,  size_t exp_len,    (BE bytes)
+;                           const uint8_t* mod,  size_t mod_len,    (BE bytes)
+;                           uint8_t* output)                        (mod_len BE bytes)
+;     [r10=base, r11=base_len, r12=exp, r13=exp_len, r14=mod, r15=mod_len,
+;      r16=output] -> a0 = ZKVM_EOK (0).
+;
+; The EF ABI passes arbitrary-length big-endian byte arrays. The modulus is
+; taken without its leading zero bytes, and its size picks the path:
+;   - up to 48 bytes, a direct path: one arith256_mod / arith384_mod per modular
+;     multiplication;
+;   - odd, 49..1056 bytes, Montgomery multiplication over 256-bit digits (CIOS,
+;     arith256 + add256 chains);
+;   - even, over 48 bytes, the general path (zme_legacy): each byte array
+;     marshalled to LE limbs (zkvm_be_bytes_to_limbs), the modexp dispatcher
+;     LIFTED verbatim from zisklib_modexp_u64_c (bigint/modexp.zisk; hinted
+;     division per multiplication), and the result limbs back to mod_len bytes.
+;     NOTHING here calls zisklib_modexp_u64_c itself.
+; The first two walk the exponent straight from its big-endian bytes, bit at a
+; time for short exponents and with a 4-bit fixed window from 8 significant bytes.
+; GENERATED (the direct and Montgomery paths) by scripts/modexp_gen.py +
+; scripts/modexp_mont.py from the general-path source.
+; Labels `zme_` / `zmm_`, data `ZKVM_ME_*` / `ZME*` / `ZMM_*` (BI_ZERO/BI_ONE are
+; shared consts).
+; ============================================================================
+
+; entry arg spills
+u64 ZKVM_ME_BASEP[1] = 0
+u64 ZKVM_ME_BASEB[1] = 0
+u64 ZKVM_ME_EXPP2[1] = 0
+u64 ZKVM_ME_EXPB[1]  = 0
+u64 ZKVM_ME_MODP[1]  = 0
+u64 ZKVM_ME_MODB[1]  = 0
+u64 ZKVM_ME_OUTP[1]  = 0
+u64 ZKVM_ME_BU[1]    = 0
+u64 ZKVM_ME_EU[1]    = 0
+u64 ZKVM_ME_MU[1]    = 0
+
+; marshalled limb inputs / result (max ~1056-byte operands = 132 u64)
+u64 ZKVM_ME_BASE_LIMBS[132] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_ME_EXP_LIMBS[132]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_ME_MOD_LIMBS[132]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_ME_RES_LIMBS[132]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+; dispatcher scratch (lifted from bigint/modexp.zisk BI_* -> ZKVM_ME_*)
+u64 ZKVM_ME_APTR[1]    = 0
+u64 ZKVM_ME_LEN[1]     = 0
+u64 ZKVM_ME_DP_EXP[1]  = 0
+u64 ZKVM_ME_DP_ELEN[1] = 0
+u64 ZKVM_ME_BPTR[1]    = 0
+u64 ZKVM_ME_LENB[1]    = 0
+u64 ZKVM_ME_DP_RES[1]  = 0
+u64 ZKVM_ME_DP_BLEN[1] = 0
+u64 ZKVM_ME_DP_MLEN[1] = 0
+u64 ZKVM_ME_BASEPAD[132] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_ME_MODPAD[132]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+; ---------------------------------------------------------------------------
+; Direct paths. The modulus is taken without its leading zero bytes; when that
+; leaves at most 32 bytes (48 bytes) the whole exponentiation runs on one
+; arith256_mod (arith384_mod) per modular multiplication, whose quotient witness
+; is 512 (768) bits wide, so any operands below 2^256 (2^384) are accepted:
+;   - the base is reduced with Horner over 32-byte chunks, most significant
+;     first: X = X * 2^256 + chunk (mod M), with R = 2^256 mod M;
+;   - the exponent bits are read straight from its big-endian bytes, left to
+;     right (no bit-decomposition hint): per bit X = X^2, and X = X * B if set,
+;     from an unrolled 8-bit byte body. The first byte's leading 1 bit sets
+;     X = B and enters the body just below it.
+; Each precompile call uses a preset parameter block, so it is a single step.
+; ---------------------------------------------------------------------------
+define ZME_DMA_COUNT 0xa0400f00         ; dma_memcpy reads its byte count here
+
+u64 ZME_RA[1]   = 0
+u64 ZME_BUF[6]  = 0, 0, 0, 0, 0, 0      ; a right-aligned big-endian operand
+u64 ZME_OBUF[6] = 0, 0, 0, 0, 0, 0      ; the big-endian result
+const u64 ZME_ZERO[6] = 0, 0, 0, 0, 0, 0
+const u64 ZME_ONE[6]  = 1, 0, 0, 0, 0, 0
+const u64 ZME_T128[6] = 0, 0, 1, 0, 0, 0 ; 2^128: R = 2^128 * 2^128 mod M
+
+u64 ZME4_M[4]  = 0, 0, 0, 0
+u64 ZME4_X[4]  = 0, 0, 0, 0
+u64 ZME4_T[120] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  ; T[v] = B^v at ZME4_T + (v - 1) * 64, v = 1..15 (T[1] = B)
+u64 ZME4_R[4]  = 0, 0, 0, 0
+u64 ZME4_CH[4] = 0, 0, 0, 0                 ; a 32-byte base chunk (upper limbs stay 0)
+u64 ZME4_HRED[5] = ZME4_CH, ZME_ONE, ZME_ZERO, ZME4_M, ZME4_X   ; X = chunk mod M
+u64 ZME4_HR[5]   = ZME_T128, ZME_T128, ZME_ZERO, ZME4_M, ZME4_R ; R = 2^256 mod M
+u64 ZME4_HHOR[5] = ZME4_X, ZME4_R, ZME4_CH, ZME4_M, ZME4_X        ; X = X * R + chunk
+u64 ZME4_HSQ[5]  = ZME4_X, ZME4_X, ZME_ZERO, ZME4_M, ZME4_X      ; X = X^2
+u64 ZME4_HMUL[5] = ZME4_X, ZME4_T, ZME_ZERO, ZME4_M, ZME4_X      ; X = X * B
+u64 ZME4_HONE[5] = ZME_ONE, ZME_ONE, ZME_ZERO, ZME4_M, ZME4_X  ; X = 1 mod M
+u64 ZME4_HMW[5]  = ZME4_X, ZME4_T, ZME_ZERO, ZME4_M, ZME4_X      ; X = X * T[v] (b set per nibble)
+u64 ZME4_HT2[5] = ZME4_T + 0, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 64
+u64 ZME4_HT3[5] = ZME4_T + 64, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 128
+u64 ZME4_HT4[5] = ZME4_T + 128, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 192
+u64 ZME4_HT5[5] = ZME4_T + 192, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 256
+u64 ZME4_HT6[5] = ZME4_T + 256, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 320
+u64 ZME4_HT7[5] = ZME4_T + 320, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 384
+u64 ZME4_HT8[5] = ZME4_T + 384, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 448
+u64 ZME4_HT9[5] = ZME4_T + 448, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 512
+u64 ZME4_HT10[5] = ZME4_T + 512, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 576
+u64 ZME4_HT11[5] = ZME4_T + 576, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 640
+u64 ZME4_HT12[5] = ZME4_T + 640, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 704
+u64 ZME4_HT13[5] = ZME4_T + 704, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 768
+u64 ZME4_HT14[5] = ZME4_T + 768, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 832
+u64 ZME4_HT15[5] = ZME4_T + 832, ZME4_T, ZME_ZERO, ZME4_M, ZME4_T + 896
+
+u64 ZME6_M[6]  = 0, 0, 0, 0, 0, 0
+u64 ZME6_X[6]  = 0, 0, 0, 0, 0, 0
+u64 ZME6_T[120] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  ; T[v] = B^v at ZME6_T + (v - 1) * 64, v = 1..15 (T[1] = B)
+u64 ZME6_R[6]  = 0, 0, 0, 0, 0, 0
+u64 ZME6_CH[6] = 0, 0, 0, 0, 0, 0                 ; a 32-byte base chunk (upper limbs stay 0)
+u64 ZME6_HRED[5] = ZME6_CH, ZME_ONE, ZME_ZERO, ZME6_M, ZME6_X   ; X = chunk mod M
+u64 ZME6_HR[5]   = ZME_T128, ZME_T128, ZME_ZERO, ZME6_M, ZME6_R ; R = 2^256 mod M
+u64 ZME6_HHOR[5] = ZME6_X, ZME6_R, ZME6_CH, ZME6_M, ZME6_X        ; X = X * R + chunk
+u64 ZME6_HSQ[5]  = ZME6_X, ZME6_X, ZME_ZERO, ZME6_M, ZME6_X      ; X = X^2
+u64 ZME6_HMUL[5] = ZME6_X, ZME6_T, ZME_ZERO, ZME6_M, ZME6_X      ; X = X * B
+u64 ZME6_HONE[5] = ZME_ONE, ZME_ONE, ZME_ZERO, ZME6_M, ZME6_X  ; X = 1 mod M
+u64 ZME6_HMW[5]  = ZME6_X, ZME6_T, ZME_ZERO, ZME6_M, ZME6_X      ; X = X * T[v] (b set per nibble)
+u64 ZME6_HT2[5] = ZME6_T + 0, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 64
+u64 ZME6_HT3[5] = ZME6_T + 64, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 128
+u64 ZME6_HT4[5] = ZME6_T + 128, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 192
+u64 ZME6_HT5[5] = ZME6_T + 192, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 256
+u64 ZME6_HT6[5] = ZME6_T + 256, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 320
+u64 ZME6_HT7[5] = ZME6_T + 320, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 384
+u64 ZME6_HT8[5] = ZME6_T + 384, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 448
+u64 ZME6_HT9[5] = ZME6_T + 448, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 512
+u64 ZME6_HT10[5] = ZME6_T + 512, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 576
+u64 ZME6_HT11[5] = ZME6_T + 576, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 640
+u64 ZME6_HT12[5] = ZME6_T + 640, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 704
+u64 ZME6_HT13[5] = ZME6_T + 704, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 768
+u64 ZME6_HT14[5] = ZME6_T + 768, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 832
+u64 ZME6_HT15[5] = ZME6_T + 832, ZME6_T, ZME_ZERO, ZME6_M, ZME6_T + 896
+
+ziskasm_zkvm_modexp:
+	; Length guards: base(r11)/exp(r13)/mod(r15) byte lengths must fit the 132-u64
+	; (1056-byte) limb buffers of the general path; an over-long operand returns
+	; ZKVM_EFAIL instead of overrunning them.
+	ltu(1056, r11), j(zme_toolong0)
+	ltu(1056, r13), j(zme_toolong0)
+	ltu(1056, r15), j(zme_toolong0)
+	; An empty modulus has an empty output (EIP-198), so `output` need not be valid.
+	eq(r15, 0), j(zme_eok0)
+	; --- r17 = the modulus without its leading zero bytes, r28 = its length ---
+	copyb(0, r14) -> r17
+	copyb(0, r15) -> r28
+zme_mz:
+	copyb(r17, 1[a + 0]) -> r5
+	ltu(0, r5), j(zme_mzd)
+	add(r17, 1) -> r17
+	sub(r28, 1) -> r28
+	eq(r28, 0), j(zme_mzero)
+	jump(zme_mz)
+zme_mzd:
+	copyb(0, r1) -> [ZME_RA]
+	ltu(48, r28), j(zmm)                ; above 384 bits: Montgomery or the general path
+	ltu(32, r28), j(zme6)
+	jump(zme4)
+
+; modulus == 0: the result is 0, as mod_len zero bytes
+zme_mzero:
+	dma_xmemset(r16, r15) -> r0, j(0, 4)
+zme_eok0:
+	copyb(0, 0) -> r10                  ; ZKVM_EOK
+	ret
+zme_toolong0:
+	copyb(0, 0xffffffffffffffff) -> r10 ; ZKVM_EFAIL
+	ret
+
+; zme_ld{32,48}: [r5 = src, r6 = count (0..W), r7 = dst limbs] the count-byte
+;   big-endian number at src as W/8 little-endian limbs at dst. Clobbers r28.
+
+zme_ld32:
+	dma_xmemset(ZME_BUF, 32) -> r0, j(0, 4)
+	sub(ZME_BUF + 32, r6) -> r28
+	copyb(0, r6) -> [ZME_DMA_COUNT]
+	dma_memcpy(r28, r5) -> r0
+	rev8(r7, [ZME_BUF + 24]) -> 8[a + 0]
+	rev8(r7, [ZME_BUF + 16]) -> 8[a + 8]
+	rev8(r7, [ZME_BUF + 8]) -> 8[a + 16]
+	rev8(r7, [ZME_BUF + 0]) -> 8[a + 24]
+	ret
+
+zme_ld48:
+	dma_xmemset(ZME_BUF, 48) -> r0, j(0, 4)
+	sub(ZME_BUF + 48, r6) -> r28
+	copyb(0, r6) -> [ZME_DMA_COUNT]
+	dma_memcpy(r28, r5) -> r0
+	rev8(r7, [ZME_BUF + 40]) -> 8[a + 0]
+	rev8(r7, [ZME_BUF + 32]) -> 8[a + 8]
+	rev8(r7, [ZME_BUF + 24]) -> 8[a + 16]
+	rev8(r7, [ZME_BUF + 16]) -> 8[a + 24]
+	rev8(r7, [ZME_BUF + 8]) -> 8[a + 32]
+	rev8(r7, [ZME_BUF + 0]) -> 8[a + 40]
+	ret
+
+; --- the modulus fits 256 bits: r17 = its first byte, r28 = its length ---
+zme4:
+	copyb(0, r17) -> r5
+	copyb(0, r28) -> r6
+	copyb(0, ZME4_M) -> r7
+	call zme_ld32
+	; --- X = base mod M: the top (1..32 byte) chunk, then 32-byte chunks ---
+	copyb(0, r11) -> r6
+	ltu(32, r11), j(zme4_long)
+	copyb(0, r10) -> r5
+	copyb(0, ZME4_CH) -> r7
+	call zme_ld32
+	arith256_mod(0, ZME4_HRED)
+	jump(zme4_exp)
+zme4_long:
+	sub(r11, 1) -> r6
+	and(r6, 31) -> r6
+	add(r6, 1) -> r6                    ; the top chunk's length
+	copyb(0, r10) -> r5
+	add(r10, r6) -> r10                 ; r10 = the next chunk
+	sub(r11, r6) -> r11                 ; r11 = bytes after the top chunk (a multiple of 32)
+	copyb(0, ZME4_CH) -> r7
+	call zme_ld32
+	arith256_mod(0, ZME4_HRED)
+	arith256_mod(0, ZME4_HR)
+zme4_chunk:
+	copyb(0, r10) -> r5
+	copyb(0, 32) -> r6
+	copyb(0, ZME4_CH) -> r7
+	call zme_ld32
+	arith256_mod(0, ZME4_HHOR)
+	add(r10, 32) -> r10
+	sub(r11, 32) -> r11
+	eq(r11, 0), j(zme4_exp)
+	jump(zme4_chunk)
+	; --- the exponent without its leading zero bytes: r12 = next byte, r13 = count ---
+zme4_exp:
+	eq(r13, 0), j(zme4_e0)
+	copyb(r12, 1[a + 0]) -> r6
+	add(r12, 1) -> r12
+	sub(r13, 1) -> r13
+	ltu(0, r6), j(zme4_e1)
+	jump(zme4_exp)
+zme4_e0:
+	arith256_mod(0, ZME4_HONE)                ; exp == 0: X = 1 mod M
+	jump(zme4_out)
+zme4_e1:
+	dma_xmemcpy(ZME4_T, ZME4_X) -> r0, j(32, 4)  ; B = T[1] = base
+	ltu(6, r13), j(zme4_w)               ; 8+ significant exponent bytes: 4-bit window
+	; --- bit at a time: X = B is the leading bit; enter the byte body below it ---
+	ltu(r6, 128), j(zme4_t7)
+	jump(zme4_b6)
+zme4_t7:
+	ltu(r6, 64), j(zme4_t6)
+	jump(zme4_b5)
+zme4_t6:
+	ltu(r6, 32), j(zme4_t5)
+	jump(zme4_b4)
+zme4_t5:
+	ltu(r6, 16), j(zme4_t4)
+	jump(zme4_b3)
+zme4_t4:
+	ltu(r6, 8), j(zme4_t3)
+	jump(zme4_b2)
+zme4_t3:
+	ltu(r6, 4), j(zme4_t2)
+	jump(zme4_b1)
+zme4_t2:
+	ltu(r6, 2), j(zme4_t1)
+	jump(zme4_b0)
+zme4_t1:
+	jump(zme4_next)
+zme4_b7:
+	arith256_mod(0, ZME4_HSQ)
+	and(r6, 128)
+	eq(c, 0), j(zme4_b6)
+	arith256_mod(0, ZME4_HMUL)
+zme4_b6:
+	arith256_mod(0, ZME4_HSQ)
+	and(r6, 64)
+	eq(c, 0), j(zme4_b5)
+	arith256_mod(0, ZME4_HMUL)
+zme4_b5:
+	arith256_mod(0, ZME4_HSQ)
+	and(r6, 32)
+	eq(c, 0), j(zme4_b4)
+	arith256_mod(0, ZME4_HMUL)
+zme4_b4:
+	arith256_mod(0, ZME4_HSQ)
+	and(r6, 16)
+	eq(c, 0), j(zme4_b3)
+	arith256_mod(0, ZME4_HMUL)
+zme4_b3:
+	arith256_mod(0, ZME4_HSQ)
+	and(r6, 8)
+	eq(c, 0), j(zme4_b2)
+	arith256_mod(0, ZME4_HMUL)
+zme4_b2:
+	arith256_mod(0, ZME4_HSQ)
+	and(r6, 4)
+	eq(c, 0), j(zme4_b1)
+	arith256_mod(0, ZME4_HMUL)
+zme4_b1:
+	arith256_mod(0, ZME4_HSQ)
+	and(r6, 2)
+	eq(c, 0), j(zme4_b0)
+	arith256_mod(0, ZME4_HMUL)
+zme4_b0:
+	arith256_mod(0, ZME4_HSQ)
+	and(r6, 1)
+	eq(c, 0), j(zme4_next)
+	arith256_mod(0, ZME4_HMUL)
+zme4_next:
+	eq(r13, 0), j(zme4_out)
+	copyb(r12, 1[a + 0]) -> r6
+	add(r12, 1) -> r12
+	sub(r13, 1) -> r13
+	jump(zme4_b7)
+	; --- 4-bit fixed window: T[2..15] = B^2..B^15, then X = X^16 * T[v] per nibble ---
+zme4_w:
+	arith256_mod(0, ZME4_HT2)
+	arith256_mod(0, ZME4_HT3)
+	arith256_mod(0, ZME4_HT4)
+	arith256_mod(0, ZME4_HT5)
+	arith256_mod(0, ZME4_HT6)
+	arith256_mod(0, ZME4_HT7)
+	arith256_mod(0, ZME4_HT8)
+	arith256_mod(0, ZME4_HT9)
+	arith256_mod(0, ZME4_HT10)
+	arith256_mod(0, ZME4_HT11)
+	arith256_mod(0, ZME4_HT12)
+	arith256_mod(0, ZME4_HT13)
+	arith256_mod(0, ZME4_HT14)
+	arith256_mod(0, ZME4_HT15)
+	srl(r6, 4) -> r7                    ; the first byte's top nibble
+	eq(r7, 0), j(zme4_wl0)
+	sll(r7, 6)
+	add(c, ZME4_T - 64) -> r5
+	dma_xmemcpy(ZME4_X, r5) -> r0, j(32, 4)   ; X = T[top nibble]
+	jump(zme4_wlo)
+zme4_wl0:
+	and(r6, 15) -> r7
+	sll(r7, 6)
+	add(c, ZME4_T - 64) -> r5
+	dma_xmemcpy(ZME4_X, r5) -> r0, j(32, 4)   ; X = T[low nibble]
+zme4_wnext:
+	eq(r13, 0), j(zme4_out)
+	copyb(r12, 1[a + 0]) -> r6
+	add(r12, 1) -> r12
+	sub(r13, 1) -> r13
+	arith256_mod(0, ZME4_HSQ)
+	arith256_mod(0, ZME4_HSQ)
+	arith256_mod(0, ZME4_HSQ)
+	arith256_mod(0, ZME4_HSQ)
+	srl(r6, 4) -> r7
+	eq(r7, 0), j(zme4_wlo)
+	sll(r7, 6)
+	add(c, ZME4_T - 64) -> [ZME4_HMW + 8]
+	arith256_mod(0, ZME4_HMW)
+zme4_wlo:
+	arith256_mod(0, ZME4_HSQ)
+	arith256_mod(0, ZME4_HSQ)
+	arith256_mod(0, ZME4_HSQ)
+	arith256_mod(0, ZME4_HSQ)
+	and(r6, 15) -> r7
+	eq(r7, 0), j(zme4_wnext)
+	sll(r7, 6)
+	add(c, ZME4_T - 64) -> [ZME4_HMW + 8]
+	arith256_mod(0, ZME4_HMW)
+	jump(zme4_wnext)
+	; --- output: X as mod_len big-endian bytes (X < M, so no bytes are lost) ---
+zme4_out:
+	rev8(0, [ZME4_X + 0]) -> [ZME_OBUF + 24]
+	rev8(0, [ZME4_X + 8]) -> [ZME_OBUF + 16]
+	rev8(0, [ZME4_X + 16]) -> [ZME_OBUF + 8]
+	rev8(0, [ZME4_X + 24]) -> [ZME_OBUF + 0]
+	ltu(32, r15), j(zme4_wide)
+	sub(ZME_OBUF + 32, r15) -> r5
+	copyb(0, r15) -> [ZME_DMA_COUNT]
+	dma_memcpy(r16, r5) -> r0
+	jump(zme_done)
+zme4_wide:
+	sub(r15, 32) -> r5
+	dma_xmemset(r16, r5) -> r0, j(0, 4)  ; the zero bytes above the 32-byte result
+	add(r16, r5) -> r5
+	dma_xmemcpy(r5, ZME_OBUF) -> r0, j(32, 4)
+	jump(zme_done)
+
+; --- the modulus fits 384 bits: r17 = its first byte, r28 = its length ---
+zme6:
+	copyb(0, r17) -> r5
+	copyb(0, r28) -> r6
+	copyb(0, ZME6_M) -> r7
+	call zme_ld48
+	; --- X = base mod M: the top (1..32 byte) chunk, then 32-byte chunks ---
+	copyb(0, r11) -> r6
+	ltu(32, r11), j(zme6_long)
+	copyb(0, r10) -> r5
+	copyb(0, ZME6_CH) -> r7
+	call zme_ld32
+	arith384_mod(0, ZME6_HRED)
+	jump(zme6_exp)
+zme6_long:
+	sub(r11, 1) -> r6
+	and(r6, 31) -> r6
+	add(r6, 1) -> r6                    ; the top chunk's length
+	copyb(0, r10) -> r5
+	add(r10, r6) -> r10                 ; r10 = the next chunk
+	sub(r11, r6) -> r11                 ; r11 = bytes after the top chunk (a multiple of 32)
+	copyb(0, ZME6_CH) -> r7
+	call zme_ld32
+	arith384_mod(0, ZME6_HRED)
+	arith384_mod(0, ZME6_HR)
+zme6_chunk:
+	copyb(0, r10) -> r5
+	copyb(0, 32) -> r6
+	copyb(0, ZME6_CH) -> r7
+	call zme_ld32
+	arith384_mod(0, ZME6_HHOR)
+	add(r10, 32) -> r10
+	sub(r11, 32) -> r11
+	eq(r11, 0), j(zme6_exp)
+	jump(zme6_chunk)
+	; --- the exponent without its leading zero bytes: r12 = next byte, r13 = count ---
+zme6_exp:
+	eq(r13, 0), j(zme6_e0)
+	copyb(r12, 1[a + 0]) -> r6
+	add(r12, 1) -> r12
+	sub(r13, 1) -> r13
+	ltu(0, r6), j(zme6_e1)
+	jump(zme6_exp)
+zme6_e0:
+	arith384_mod(0, ZME6_HONE)                ; exp == 0: X = 1 mod M
+	jump(zme6_out)
+zme6_e1:
+	dma_xmemcpy(ZME6_T, ZME6_X) -> r0, j(48, 4)  ; B = T[1] = base
+	ltu(6, r13), j(zme6_w)               ; 8+ significant exponent bytes: 4-bit window
+	; --- bit at a time: X = B is the leading bit; enter the byte body below it ---
+	ltu(r6, 128), j(zme6_t7)
+	jump(zme6_b6)
+zme6_t7:
+	ltu(r6, 64), j(zme6_t6)
+	jump(zme6_b5)
+zme6_t6:
+	ltu(r6, 32), j(zme6_t5)
+	jump(zme6_b4)
+zme6_t5:
+	ltu(r6, 16), j(zme6_t4)
+	jump(zme6_b3)
+zme6_t4:
+	ltu(r6, 8), j(zme6_t3)
+	jump(zme6_b2)
+zme6_t3:
+	ltu(r6, 4), j(zme6_t2)
+	jump(zme6_b1)
+zme6_t2:
+	ltu(r6, 2), j(zme6_t1)
+	jump(zme6_b0)
+zme6_t1:
+	jump(zme6_next)
+zme6_b7:
+	arith384_mod(0, ZME6_HSQ)
+	and(r6, 128)
+	eq(c, 0), j(zme6_b6)
+	arith384_mod(0, ZME6_HMUL)
+zme6_b6:
+	arith384_mod(0, ZME6_HSQ)
+	and(r6, 64)
+	eq(c, 0), j(zme6_b5)
+	arith384_mod(0, ZME6_HMUL)
+zme6_b5:
+	arith384_mod(0, ZME6_HSQ)
+	and(r6, 32)
+	eq(c, 0), j(zme6_b4)
+	arith384_mod(0, ZME6_HMUL)
+zme6_b4:
+	arith384_mod(0, ZME6_HSQ)
+	and(r6, 16)
+	eq(c, 0), j(zme6_b3)
+	arith384_mod(0, ZME6_HMUL)
+zme6_b3:
+	arith384_mod(0, ZME6_HSQ)
+	and(r6, 8)
+	eq(c, 0), j(zme6_b2)
+	arith384_mod(0, ZME6_HMUL)
+zme6_b2:
+	arith384_mod(0, ZME6_HSQ)
+	and(r6, 4)
+	eq(c, 0), j(zme6_b1)
+	arith384_mod(0, ZME6_HMUL)
+zme6_b1:
+	arith384_mod(0, ZME6_HSQ)
+	and(r6, 2)
+	eq(c, 0), j(zme6_b0)
+	arith384_mod(0, ZME6_HMUL)
+zme6_b0:
+	arith384_mod(0, ZME6_HSQ)
+	and(r6, 1)
+	eq(c, 0), j(zme6_next)
+	arith384_mod(0, ZME6_HMUL)
+zme6_next:
+	eq(r13, 0), j(zme6_out)
+	copyb(r12, 1[a + 0]) -> r6
+	add(r12, 1) -> r12
+	sub(r13, 1) -> r13
+	jump(zme6_b7)
+	; --- 4-bit fixed window: T[2..15] = B^2..B^15, then X = X^16 * T[v] per nibble ---
+zme6_w:
+	arith384_mod(0, ZME6_HT2)
+	arith384_mod(0, ZME6_HT3)
+	arith384_mod(0, ZME6_HT4)
+	arith384_mod(0, ZME6_HT5)
+	arith384_mod(0, ZME6_HT6)
+	arith384_mod(0, ZME6_HT7)
+	arith384_mod(0, ZME6_HT8)
+	arith384_mod(0, ZME6_HT9)
+	arith384_mod(0, ZME6_HT10)
+	arith384_mod(0, ZME6_HT11)
+	arith384_mod(0, ZME6_HT12)
+	arith384_mod(0, ZME6_HT13)
+	arith384_mod(0, ZME6_HT14)
+	arith384_mod(0, ZME6_HT15)
+	srl(r6, 4) -> r7                    ; the first byte's top nibble
+	eq(r7, 0), j(zme6_wl0)
+	sll(r7, 6)
+	add(c, ZME6_T - 64) -> r5
+	dma_xmemcpy(ZME6_X, r5) -> r0, j(48, 4)   ; X = T[top nibble]
+	jump(zme6_wlo)
+zme6_wl0:
+	and(r6, 15) -> r7
+	sll(r7, 6)
+	add(c, ZME6_T - 64) -> r5
+	dma_xmemcpy(ZME6_X, r5) -> r0, j(48, 4)   ; X = T[low nibble]
+zme6_wnext:
+	eq(r13, 0), j(zme6_out)
+	copyb(r12, 1[a + 0]) -> r6
+	add(r12, 1) -> r12
+	sub(r13, 1) -> r13
+	arith384_mod(0, ZME6_HSQ)
+	arith384_mod(0, ZME6_HSQ)
+	arith384_mod(0, ZME6_HSQ)
+	arith384_mod(0, ZME6_HSQ)
+	srl(r6, 4) -> r7
+	eq(r7, 0), j(zme6_wlo)
+	sll(r7, 6)
+	add(c, ZME6_T - 64) -> [ZME6_HMW + 8]
+	arith384_mod(0, ZME6_HMW)
+zme6_wlo:
+	arith384_mod(0, ZME6_HSQ)
+	arith384_mod(0, ZME6_HSQ)
+	arith384_mod(0, ZME6_HSQ)
+	arith384_mod(0, ZME6_HSQ)
+	and(r6, 15) -> r7
+	eq(r7, 0), j(zme6_wnext)
+	sll(r7, 6)
+	add(c, ZME6_T - 64) -> [ZME6_HMW + 8]
+	arith384_mod(0, ZME6_HMW)
+	jump(zme6_wnext)
+	; --- output: X as mod_len big-endian bytes (X < M, so no bytes are lost) ---
+zme6_out:
+	rev8(0, [ZME6_X + 0]) -> [ZME_OBUF + 40]
+	rev8(0, [ZME6_X + 8]) -> [ZME_OBUF + 32]
+	rev8(0, [ZME6_X + 16]) -> [ZME_OBUF + 24]
+	rev8(0, [ZME6_X + 24]) -> [ZME_OBUF + 16]
+	rev8(0, [ZME6_X + 32]) -> [ZME_OBUF + 8]
+	rev8(0, [ZME6_X + 40]) -> [ZME_OBUF + 0]
+	ltu(48, r15), j(zme6_wide)
+	sub(ZME_OBUF + 48, r15) -> r5
+	copyb(0, r15) -> [ZME_DMA_COUNT]
+	dma_memcpy(r16, r5) -> r0
+	jump(zme_done)
+zme6_wide:
+	sub(r15, 48) -> r5
+	dma_xmemset(r16, r5) -> r0, j(0, 4)  ; the zero bytes above the 48-byte result
+	add(r16, r5) -> r5
+	dma_xmemcpy(r5, ZME_OBUF) -> r0, j(48, 4)
+	jump(zme_done)
+
+; ---------------------------------------------------------------------------
+; Montgomery path: odd moduli of 49..1056 significant bytes (k = 2..33 digits
+; of 256 bits, R = 2^(256k)). X = X * Y * R^-1 mod M is CIOS: per digit y_i of Y,
+; t += X * y_i, then t = (t + m * M) / 2^256 with m = t_0 * (-M^-1) mod 2^256.
+; Each digit step is one arith256 (lo, hi = x_j * y_i + t_j) and one add256
+; (t_j = lo + hi_(j-1) + carry), whose carry is stored straight into the next
+; add256's cin. The blocks for every position are preset; buffers are
+; right-aligned (digit j at position KMAX - k + j), and each chain is entered at
+; that first position with a computed jump. A final t - M (add256 chain with ~M)
+; picks t or t - M. Setup, once per call: -M^-1 (Newton), base mod M and
+; R^2 mod M (zisklib_rem_long, hint-verified; from 32 digits on, 2^k * R mod M
+; squared 8 times), and one multiplication moves the base to Montgomery form. The
+; exponent is walked as in the direct paths; a final multiplication by 1 leaves
+; Montgomery form.
+; ---------------------------------------------------------------------------
+u64 ZMM_X[132] = 0             ; the accumulator
+u64 ZMM_M[132] = 0             ; the modulus
+u64 ZMM_NM[132] = 0            ; ~M (the digits in use)
+u64 ZMM_S[132] = 0             ; t - M
+u64 ZMM_BR[132] = 0            ; base mod M
+u64 ZMM_R2[132] = 0            ; R^2 mod M, later 1
+u64 ZMM_TT[1980] = 0      ; T[v] = B^v (Montgomery) at ZMM_TT + (v - 1) * 1056
+u64 ZMM_T[144] = 0       ; t, positions -1..34 (slot = position + 1)
+u64 ZMM_H1[136] = 0      ; row 1 high halves, positions -1..32
+u64 ZMM_H2[136] = 0      ; row 2 high halves
+u64 ZMM_BI[4] = 0                     ; the current digit y_i
+u64 ZMM_L[4] = 0                      ; a low half
+u64 ZMM_JUNK[4] = 0                   ; a discarded high half
+u64 ZMM_MM[4] = 0                     ; m
+u64 ZMM_NP[4] = 0                     ; -M^-1 mod 2^256
+u64 ZMM_M0[4] = 0                     ; M's lowest digit
+u64 ZMM_INV[4] = 0
+u64 ZMM_Y[4] = 0
+u64 ZMM_NY[4] = 0
+u64 ZMM_Z[4] = 0
+const u64 ZMM_THREE[4] = 3, 0, 0, 0
+u64 ZMM_BUFL[136] = 0    ; a big-endian operand, right-aligned
+u64 ZMM_SCARRY[1] = 0
+u64 ZMM_RA2[268] = 0  ; R^2 (or 2^k * R), up to 67 digits
+; per-call values (the hot ones live in r32..r39 instead: r32 = &t[idx0 - 1],
+; r33 = (k + 3) * 32, r34 = k, r35/r36/r37 = the row 1 / row 2 / t - M entry pcs,
+; r38 = &X[idx0], r39 = k * 32; no routine this path calls uses r32..r39)
+u64 ZMM_I32[1] = 0                    ; idx0 * 32
+u64 ZMM_TP[1] = 0                     ; &t[idx0]
+u64 ZMM_SP[1] = 0                     ; &S[idx0]
+u64 ZMM_TVM[1] = 0                    ; &T[v][idx0] - v * 1056
+u64 ZMM_A_BASE[1] = 0
+u64 ZMM_A_BLEN[1] = 0
+u64 ZMM_A_EXP[1] = 0
+u64 ZMM_A_ELEN[1] = 0
+u64 ZMM_A_MLEN[1] = 0
+u64 ZMM_A_OUT[1] = 0
+
+u64 ZMM_A1_0[5] = ZMM_X + 0, ZMM_BI, ZMM_T + 32, ZMM_L, ZMM_H1 + 32
+u64 ZMM_A1_1[5] = ZMM_X + 32, ZMM_BI, ZMM_T + 64, ZMM_L, ZMM_H1 + 64
+u64 ZMM_A1_2[5] = ZMM_X + 64, ZMM_BI, ZMM_T + 96, ZMM_L, ZMM_H1 + 96
+u64 ZMM_A1_3[5] = ZMM_X + 96, ZMM_BI, ZMM_T + 128, ZMM_L, ZMM_H1 + 128
+u64 ZMM_A1_4[5] = ZMM_X + 128, ZMM_BI, ZMM_T + 160, ZMM_L, ZMM_H1 + 160
+u64 ZMM_A1_5[5] = ZMM_X + 160, ZMM_BI, ZMM_T + 192, ZMM_L, ZMM_H1 + 192
+u64 ZMM_A1_6[5] = ZMM_X + 192, ZMM_BI, ZMM_T + 224, ZMM_L, ZMM_H1 + 224
+u64 ZMM_A1_7[5] = ZMM_X + 224, ZMM_BI, ZMM_T + 256, ZMM_L, ZMM_H1 + 256
+u64 ZMM_A1_8[5] = ZMM_X + 256, ZMM_BI, ZMM_T + 288, ZMM_L, ZMM_H1 + 288
+u64 ZMM_A1_9[5] = ZMM_X + 288, ZMM_BI, ZMM_T + 320, ZMM_L, ZMM_H1 + 320
+u64 ZMM_A1_10[5] = ZMM_X + 320, ZMM_BI, ZMM_T + 352, ZMM_L, ZMM_H1 + 352
+u64 ZMM_A1_11[5] = ZMM_X + 352, ZMM_BI, ZMM_T + 384, ZMM_L, ZMM_H1 + 384
+u64 ZMM_A1_12[5] = ZMM_X + 384, ZMM_BI, ZMM_T + 416, ZMM_L, ZMM_H1 + 416
+u64 ZMM_A1_13[5] = ZMM_X + 416, ZMM_BI, ZMM_T + 448, ZMM_L, ZMM_H1 + 448
+u64 ZMM_A1_14[5] = ZMM_X + 448, ZMM_BI, ZMM_T + 480, ZMM_L, ZMM_H1 + 480
+u64 ZMM_A1_15[5] = ZMM_X + 480, ZMM_BI, ZMM_T + 512, ZMM_L, ZMM_H1 + 512
+u64 ZMM_A1_16[5] = ZMM_X + 512, ZMM_BI, ZMM_T + 544, ZMM_L, ZMM_H1 + 544
+u64 ZMM_A1_17[5] = ZMM_X + 544, ZMM_BI, ZMM_T + 576, ZMM_L, ZMM_H1 + 576
+u64 ZMM_A1_18[5] = ZMM_X + 576, ZMM_BI, ZMM_T + 608, ZMM_L, ZMM_H1 + 608
+u64 ZMM_A1_19[5] = ZMM_X + 608, ZMM_BI, ZMM_T + 640, ZMM_L, ZMM_H1 + 640
+u64 ZMM_A1_20[5] = ZMM_X + 640, ZMM_BI, ZMM_T + 672, ZMM_L, ZMM_H1 + 672
+u64 ZMM_A1_21[5] = ZMM_X + 672, ZMM_BI, ZMM_T + 704, ZMM_L, ZMM_H1 + 704
+u64 ZMM_A1_22[5] = ZMM_X + 704, ZMM_BI, ZMM_T + 736, ZMM_L, ZMM_H1 + 736
+u64 ZMM_A1_23[5] = ZMM_X + 736, ZMM_BI, ZMM_T + 768, ZMM_L, ZMM_H1 + 768
+u64 ZMM_A1_24[5] = ZMM_X + 768, ZMM_BI, ZMM_T + 800, ZMM_L, ZMM_H1 + 800
+u64 ZMM_A1_25[5] = ZMM_X + 800, ZMM_BI, ZMM_T + 832, ZMM_L, ZMM_H1 + 832
+u64 ZMM_A1_26[5] = ZMM_X + 832, ZMM_BI, ZMM_T + 864, ZMM_L, ZMM_H1 + 864
+u64 ZMM_A1_27[5] = ZMM_X + 864, ZMM_BI, ZMM_T + 896, ZMM_L, ZMM_H1 + 896
+u64 ZMM_A1_28[5] = ZMM_X + 896, ZMM_BI, ZMM_T + 928, ZMM_L, ZMM_H1 + 928
+u64 ZMM_A1_29[5] = ZMM_X + 928, ZMM_BI, ZMM_T + 960, ZMM_L, ZMM_H1 + 960
+u64 ZMM_A1_30[5] = ZMM_X + 960, ZMM_BI, ZMM_T + 992, ZMM_L, ZMM_H1 + 992
+u64 ZMM_A1_31[5] = ZMM_X + 992, ZMM_BI, ZMM_T + 1024, ZMM_L, ZMM_H1 + 1024
+u64 ZMM_A1_32[5] = ZMM_X + 1024, ZMM_BI, ZMM_T + 1056, ZMM_L, ZMM_H1 + 1056
+u64 ZMM_A2_0[5] = ZMM_MM, ZMM_M + 0, ZMM_T + 32, ZMM_L, ZMM_H2 + 32
+u64 ZMM_A2_1[5] = ZMM_MM, ZMM_M + 32, ZMM_T + 64, ZMM_L, ZMM_H2 + 64
+u64 ZMM_A2_2[5] = ZMM_MM, ZMM_M + 64, ZMM_T + 96, ZMM_L, ZMM_H2 + 96
+u64 ZMM_A2_3[5] = ZMM_MM, ZMM_M + 96, ZMM_T + 128, ZMM_L, ZMM_H2 + 128
+u64 ZMM_A2_4[5] = ZMM_MM, ZMM_M + 128, ZMM_T + 160, ZMM_L, ZMM_H2 + 160
+u64 ZMM_A2_5[5] = ZMM_MM, ZMM_M + 160, ZMM_T + 192, ZMM_L, ZMM_H2 + 192
+u64 ZMM_A2_6[5] = ZMM_MM, ZMM_M + 192, ZMM_T + 224, ZMM_L, ZMM_H2 + 224
+u64 ZMM_A2_7[5] = ZMM_MM, ZMM_M + 224, ZMM_T + 256, ZMM_L, ZMM_H2 + 256
+u64 ZMM_A2_8[5] = ZMM_MM, ZMM_M + 256, ZMM_T + 288, ZMM_L, ZMM_H2 + 288
+u64 ZMM_A2_9[5] = ZMM_MM, ZMM_M + 288, ZMM_T + 320, ZMM_L, ZMM_H2 + 320
+u64 ZMM_A2_10[5] = ZMM_MM, ZMM_M + 320, ZMM_T + 352, ZMM_L, ZMM_H2 + 352
+u64 ZMM_A2_11[5] = ZMM_MM, ZMM_M + 352, ZMM_T + 384, ZMM_L, ZMM_H2 + 384
+u64 ZMM_A2_12[5] = ZMM_MM, ZMM_M + 384, ZMM_T + 416, ZMM_L, ZMM_H2 + 416
+u64 ZMM_A2_13[5] = ZMM_MM, ZMM_M + 416, ZMM_T + 448, ZMM_L, ZMM_H2 + 448
+u64 ZMM_A2_14[5] = ZMM_MM, ZMM_M + 448, ZMM_T + 480, ZMM_L, ZMM_H2 + 480
+u64 ZMM_A2_15[5] = ZMM_MM, ZMM_M + 480, ZMM_T + 512, ZMM_L, ZMM_H2 + 512
+u64 ZMM_A2_16[5] = ZMM_MM, ZMM_M + 512, ZMM_T + 544, ZMM_L, ZMM_H2 + 544
+u64 ZMM_A2_17[5] = ZMM_MM, ZMM_M + 544, ZMM_T + 576, ZMM_L, ZMM_H2 + 576
+u64 ZMM_A2_18[5] = ZMM_MM, ZMM_M + 576, ZMM_T + 608, ZMM_L, ZMM_H2 + 608
+u64 ZMM_A2_19[5] = ZMM_MM, ZMM_M + 608, ZMM_T + 640, ZMM_L, ZMM_H2 + 640
+u64 ZMM_A2_20[5] = ZMM_MM, ZMM_M + 640, ZMM_T + 672, ZMM_L, ZMM_H2 + 672
+u64 ZMM_A2_21[5] = ZMM_MM, ZMM_M + 672, ZMM_T + 704, ZMM_L, ZMM_H2 + 704
+u64 ZMM_A2_22[5] = ZMM_MM, ZMM_M + 704, ZMM_T + 736, ZMM_L, ZMM_H2 + 736
+u64 ZMM_A2_23[5] = ZMM_MM, ZMM_M + 736, ZMM_T + 768, ZMM_L, ZMM_H2 + 768
+u64 ZMM_A2_24[5] = ZMM_MM, ZMM_M + 768, ZMM_T + 800, ZMM_L, ZMM_H2 + 800
+u64 ZMM_A2_25[5] = ZMM_MM, ZMM_M + 800, ZMM_T + 832, ZMM_L, ZMM_H2 + 832
+u64 ZMM_A2_26[5] = ZMM_MM, ZMM_M + 832, ZMM_T + 864, ZMM_L, ZMM_H2 + 864
+u64 ZMM_A2_27[5] = ZMM_MM, ZMM_M + 864, ZMM_T + 896, ZMM_L, ZMM_H2 + 896
+u64 ZMM_A2_28[5] = ZMM_MM, ZMM_M + 896, ZMM_T + 928, ZMM_L, ZMM_H2 + 928
+u64 ZMM_A2_29[5] = ZMM_MM, ZMM_M + 928, ZMM_T + 960, ZMM_L, ZMM_H2 + 960
+u64 ZMM_A2_30[5] = ZMM_MM, ZMM_M + 960, ZMM_T + 992, ZMM_L, ZMM_H2 + 992
+u64 ZMM_A2_31[5] = ZMM_MM, ZMM_M + 992, ZMM_T + 1024, ZMM_L, ZMM_H2 + 1024
+u64 ZMM_A2_32[5] = ZMM_MM, ZMM_M + 1024, ZMM_T + 1056, ZMM_L, ZMM_H2 + 1056
+u64 ZMM_D1[136] = ZMM_L, ZMM_H1 + 0, 0, ZMM_T + 32, ZMM_L, ZMM_H1 + 32, 0, ZMM_T + 64, ZMM_L, ZMM_H1 + 64, 0, ZMM_T + 96, ZMM_L, ZMM_H1 + 96, 0, ZMM_T + 128, ZMM_L, ZMM_H1 + 128, 0, ZMM_T + 160, ZMM_L, ZMM_H1 + 160, 0, ZMM_T + 192, ZMM_L, ZMM_H1 + 192, 0, ZMM_T + 224, ZMM_L, ZMM_H1 + 224, 0, ZMM_T + 256, ZMM_L, ZMM_H1 + 256, 0, ZMM_T + 288, ZMM_L, ZMM_H1 + 288, 0, ZMM_T + 320, ZMM_L, ZMM_H1 + 320, 0, ZMM_T + 352, ZMM_L, ZMM_H1 + 352, 0, ZMM_T + 384, ZMM_L, ZMM_H1 + 384, 0, ZMM_T + 416, ZMM_L, ZMM_H1 + 416, 0, ZMM_T + 448, ZMM_L, ZMM_H1 + 448, 0, ZMM_T + 480, ZMM_L, ZMM_H1 + 480, 0, ZMM_T + 512, ZMM_L, ZMM_H1 + 512, 0, ZMM_T + 544, ZMM_L, ZMM_H1 + 544, 0, ZMM_T + 576, ZMM_L, ZMM_H1 + 576, 0, ZMM_T + 608, ZMM_L, ZMM_H1 + 608, 0, ZMM_T + 640, ZMM_L, ZMM_H1 + 640, 0, ZMM_T + 672, ZMM_L, ZMM_H1 + 672, 0, ZMM_T + 704, ZMM_L, ZMM_H1 + 704, 0, ZMM_T + 736, ZMM_L, ZMM_H1 + 736, 0, ZMM_T + 768, ZMM_L, ZMM_H1 + 768, 0, ZMM_T + 800, ZMM_L, ZMM_H1 + 800, 0, ZMM_T + 832, ZMM_L, ZMM_H1 + 832, 0, ZMM_T + 864, ZMM_L, ZMM_H1 + 864, 0, ZMM_T + 896, ZMM_L, ZMM_H1 + 896, 0, ZMM_T + 928, ZMM_L, ZMM_H1 + 928, 0, ZMM_T + 960, ZMM_L, ZMM_H1 + 960, 0, ZMM_T + 992, ZMM_L, ZMM_H1 + 992, 0, ZMM_T + 1024, ZMM_L, ZMM_H1 + 1024, 0, ZMM_T + 1056, ZMM_T + 1088, ZMM_H1 + 1056, 0, ZMM_T + 1088
+u64 ZMM_D2[136] = ZMM_L, ZMM_H2 + 0, 0, ZMM_T + 0, ZMM_L, ZMM_H2 + 32, 0, ZMM_T + 32, ZMM_L, ZMM_H2 + 64, 0, ZMM_T + 64, ZMM_L, ZMM_H2 + 96, 0, ZMM_T + 96, ZMM_L, ZMM_H2 + 128, 0, ZMM_T + 128, ZMM_L, ZMM_H2 + 160, 0, ZMM_T + 160, ZMM_L, ZMM_H2 + 192, 0, ZMM_T + 192, ZMM_L, ZMM_H2 + 224, 0, ZMM_T + 224, ZMM_L, ZMM_H2 + 256, 0, ZMM_T + 256, ZMM_L, ZMM_H2 + 288, 0, ZMM_T + 288, ZMM_L, ZMM_H2 + 320, 0, ZMM_T + 320, ZMM_L, ZMM_H2 + 352, 0, ZMM_T + 352, ZMM_L, ZMM_H2 + 384, 0, ZMM_T + 384, ZMM_L, ZMM_H2 + 416, 0, ZMM_T + 416, ZMM_L, ZMM_H2 + 448, 0, ZMM_T + 448, ZMM_L, ZMM_H2 + 480, 0, ZMM_T + 480, ZMM_L, ZMM_H2 + 512, 0, ZMM_T + 512, ZMM_L, ZMM_H2 + 544, 0, ZMM_T + 544, ZMM_L, ZMM_H2 + 576, 0, ZMM_T + 576, ZMM_L, ZMM_H2 + 608, 0, ZMM_T + 608, ZMM_L, ZMM_H2 + 640, 0, ZMM_T + 640, ZMM_L, ZMM_H2 + 672, 0, ZMM_T + 672, ZMM_L, ZMM_H2 + 704, 0, ZMM_T + 704, ZMM_L, ZMM_H2 + 736, 0, ZMM_T + 736, ZMM_L, ZMM_H2 + 768, 0, ZMM_T + 768, ZMM_L, ZMM_H2 + 800, 0, ZMM_T + 800, ZMM_L, ZMM_H2 + 832, 0, ZMM_T + 832, ZMM_L, ZMM_H2 + 864, 0, ZMM_T + 864, ZMM_L, ZMM_H2 + 896, 0, ZMM_T + 896, ZMM_L, ZMM_H2 + 928, 0, ZMM_T + 928, ZMM_L, ZMM_H2 + 960, 0, ZMM_T + 960, ZMM_L, ZMM_H2 + 992, 0, ZMM_T + 992, ZMM_L, ZMM_H2 + 1024, 0, ZMM_T + 1024, ZMM_T + 1088, ZMM_H2 + 1056, 0, ZMM_T + 1056
+u64 ZMM_D3[4] = ZMM_T + 1120, ZME_ZERO, 0, ZMM_T + 1088
+u64 ZMM_DS[132] = ZMM_T + 32, ZMM_NM + 0, 0, ZMM_S + 0, ZMM_T + 64, ZMM_NM + 32, 0, ZMM_S + 32, ZMM_T + 96, ZMM_NM + 64, 0, ZMM_S + 64, ZMM_T + 128, ZMM_NM + 96, 0, ZMM_S + 96, ZMM_T + 160, ZMM_NM + 128, 0, ZMM_S + 128, ZMM_T + 192, ZMM_NM + 160, 0, ZMM_S + 160, ZMM_T + 224, ZMM_NM + 192, 0, ZMM_S + 192, ZMM_T + 256, ZMM_NM + 224, 0, ZMM_S + 224, ZMM_T + 288, ZMM_NM + 256, 0, ZMM_S + 256, ZMM_T + 320, ZMM_NM + 288, 0, ZMM_S + 288, ZMM_T + 352, ZMM_NM + 320, 0, ZMM_S + 320, ZMM_T + 384, ZMM_NM + 352, 0, ZMM_S + 352, ZMM_T + 416, ZMM_NM + 384, 0, ZMM_S + 384, ZMM_T + 448, ZMM_NM + 416, 0, ZMM_S + 416, ZMM_T + 480, ZMM_NM + 448, 0, ZMM_S + 448, ZMM_T + 512, ZMM_NM + 480, 0, ZMM_S + 480, ZMM_T + 544, ZMM_NM + 512, 0, ZMM_S + 512, ZMM_T + 576, ZMM_NM + 544, 0, ZMM_S + 544, ZMM_T + 608, ZMM_NM + 576, 0, ZMM_S + 576, ZMM_T + 640, ZMM_NM + 608, 0, ZMM_S + 608, ZMM_T + 672, ZMM_NM + 640, 0, ZMM_S + 640, ZMM_T + 704, ZMM_NM + 672, 0, ZMM_S + 672, ZMM_T + 736, ZMM_NM + 704, 0, ZMM_S + 704, ZMM_T + 768, ZMM_NM + 736, 0, ZMM_S + 736, ZMM_T + 800, ZMM_NM + 768, 0, ZMM_S + 768, ZMM_T + 832, ZMM_NM + 800, 0, ZMM_S + 800, ZMM_T + 864, ZMM_NM + 832, 0, ZMM_S + 832, ZMM_T + 896, ZMM_NM + 864, 0, ZMM_S + 864, ZMM_T + 928, ZMM_NM + 896, 0, ZMM_S + 896, ZMM_T + 960, ZMM_NM + 928, 0, ZMM_S + 928, ZMM_T + 992, ZMM_NM + 960, 0, ZMM_S + 960, ZMM_T + 1024, ZMM_NM + 992, 0, ZMM_S + 992, ZMM_T + 1056, ZMM_NM + 1024, 0, ZMM_S + 1024
+u64 ZMM_HM[5]  = ZMM_T, ZMM_NP, ZME_ZERO, ZMM_MM, ZMM_JUNK   ; a = &t[idx0], set per call
+u64 ZMM_HN1[5] = ZMM_M0, ZMM_INV, ZME_ZERO, ZMM_Y, ZMM_JUNK  ; y = M0 * inv
+u64 ZMM_HN2[4] = ZMM_NY, ZMM_THREE, 0, ZMM_Z               ; z = ~y + 3 = 2 - y
+u64 ZMM_HN3[5] = ZMM_INV, ZMM_Z, ZME_ZERO, ZMM_INV, ZMM_JUNK ; inv = inv * z
+u64 ZMM_HN4[4] = ZMM_NY, ZME_ZERO, 1, ZMM_NP                ; np = ~inv + 1
+
+; zmm_ldl: [r5 = src, r6 = nbytes, r7 = dst limbs, r28 = digits] the nbytes-byte
+;   big-endian number at src as 4 * r28 little-endian limbs at dst.
+;   Clobbers r7, r29, r30, r31.
+zmm_ldl:
+	sll(r28, 5) -> r29
+	dma_xmemset(ZMM_BUFL, r29) -> r0, j(0, 4)
+	add(r29, ZMM_BUFL) -> r30
+	sub(r30, r6) -> r30
+	copyb(0, r6) -> [ZME_DMA_COUNT]
+	dma_memcpy(r30, r5) -> r0
+	add(r29, ZMM_BUFL - 8) -> r30      ; the last big-endian word
+	srl(r29, 3) -> r31
+zmm_ldl_w:
+	rev8(r30, 8[a + 0])
+	copyb(r7, c) -> 8[a + 0]
+	sub(r30, 8) -> r30
+	add(r7, 8) -> r7
+	sub(r31, 1) -> r31
+	ltu(0, r31), j(zmm_ldl_w)
+	ret
+
+; zmm_mul: [r10 = &Y[idx0]] X = X * Y * R^-1 mod M (Y may be X).
+;   Clobbers r10, r11. Uses the per-call registers r32..r39 (see zmm).
+; zmm_sqr: [r16 = 1 for 3 <= k <= KS] X = X^2 / R mod M: zms_go, or zmm_mul
+;   with Y = X (falls through).
+zmm_sqr:
+	ltu(0, r16), j(zms_go)
+	copyb(0, r38) -> r10
+zmm_mul:
+	dma_xmemset(r32, r33) -> r0, j(0, 4)
+	copyb(0, r34) -> r11
+zmm_row:
+	dma_xmemcpy(ZMM_BI, r10) -> r0, j(32, 4)
+	copyb(0, r35), setpc(0)
+zmm_p1:
+	arith256(0, ZMM_A1_0)
+	add256(0, ZMM_D1 + 0) -> [ZMM_D1 + 48]
+	arith256(0, ZMM_A1_1)
+	add256(0, ZMM_D1 + 32) -> [ZMM_D1 + 80]
+	arith256(0, ZMM_A1_2)
+	add256(0, ZMM_D1 + 64) -> [ZMM_D1 + 112]
+	arith256(0, ZMM_A1_3)
+	add256(0, ZMM_D1 + 96) -> [ZMM_D1 + 144]
+	arith256(0, ZMM_A1_4)
+	add256(0, ZMM_D1 + 128) -> [ZMM_D1 + 176]
+	arith256(0, ZMM_A1_5)
+	add256(0, ZMM_D1 + 160) -> [ZMM_D1 + 208]
+	arith256(0, ZMM_A1_6)
+	add256(0, ZMM_D1 + 192) -> [ZMM_D1 + 240]
+	arith256(0, ZMM_A1_7)
+	add256(0, ZMM_D1 + 224) -> [ZMM_D1 + 272]
+	arith256(0, ZMM_A1_8)
+	add256(0, ZMM_D1 + 256) -> [ZMM_D1 + 304]
+	arith256(0, ZMM_A1_9)
+	add256(0, ZMM_D1 + 288) -> [ZMM_D1 + 336]
+	arith256(0, ZMM_A1_10)
+	add256(0, ZMM_D1 + 320) -> [ZMM_D1 + 368]
+	arith256(0, ZMM_A1_11)
+	add256(0, ZMM_D1 + 352) -> [ZMM_D1 + 400]
+	arith256(0, ZMM_A1_12)
+	add256(0, ZMM_D1 + 384) -> [ZMM_D1 + 432]
+	arith256(0, ZMM_A1_13)
+	add256(0, ZMM_D1 + 416) -> [ZMM_D1 + 464]
+	arith256(0, ZMM_A1_14)
+	add256(0, ZMM_D1 + 448) -> [ZMM_D1 + 496]
+	arith256(0, ZMM_A1_15)
+	add256(0, ZMM_D1 + 480) -> [ZMM_D1 + 528]
+	arith256(0, ZMM_A1_16)
+	add256(0, ZMM_D1 + 512) -> [ZMM_D1 + 560]
+	arith256(0, ZMM_A1_17)
+	add256(0, ZMM_D1 + 544) -> [ZMM_D1 + 592]
+	arith256(0, ZMM_A1_18)
+	add256(0, ZMM_D1 + 576) -> [ZMM_D1 + 624]
+	arith256(0, ZMM_A1_19)
+	add256(0, ZMM_D1 + 608) -> [ZMM_D1 + 656]
+	arith256(0, ZMM_A1_20)
+	add256(0, ZMM_D1 + 640) -> [ZMM_D1 + 688]
+	arith256(0, ZMM_A1_21)
+	add256(0, ZMM_D1 + 672) -> [ZMM_D1 + 720]
+	arith256(0, ZMM_A1_22)
+	add256(0, ZMM_D1 + 704) -> [ZMM_D1 + 752]
+	arith256(0, ZMM_A1_23)
+	add256(0, ZMM_D1 + 736) -> [ZMM_D1 + 784]
+	arith256(0, ZMM_A1_24)
+	add256(0, ZMM_D1 + 768) -> [ZMM_D1 + 816]
+	arith256(0, ZMM_A1_25)
+	add256(0, ZMM_D1 + 800) -> [ZMM_D1 + 848]
+	arith256(0, ZMM_A1_26)
+	add256(0, ZMM_D1 + 832) -> [ZMM_D1 + 880]
+	arith256(0, ZMM_A1_27)
+	add256(0, ZMM_D1 + 864) -> [ZMM_D1 + 912]
+	arith256(0, ZMM_A1_28)
+	add256(0, ZMM_D1 + 896) -> [ZMM_D1 + 944]
+	arith256(0, ZMM_A1_29)
+	add256(0, ZMM_D1 + 928) -> [ZMM_D1 + 976]
+	arith256(0, ZMM_A1_30)
+	add256(0, ZMM_D1 + 960) -> [ZMM_D1 + 1008]
+	arith256(0, ZMM_A1_31)
+	add256(0, ZMM_D1 + 992) -> [ZMM_D1 + 1040]
+	arith256(0, ZMM_A1_32)
+	add256(0, ZMM_D1 + 1024) -> [ZMM_D1 + 1072]
+	add256(0, ZMM_D1 + 1056) -> [ZMM_T + 1120]
+	arith256(0, ZMM_HM)                 ; m = t_0 * -M^-1
+	copyb(0, r36), setpc(0)
+zmm_p2:
+	arith256(0, ZMM_A2_0)
+	add256(0, ZMM_D2 + 0) -> [ZMM_D2 + 48]
+	arith256(0, ZMM_A2_1)
+	add256(0, ZMM_D2 + 32) -> [ZMM_D2 + 80]
+	arith256(0, ZMM_A2_2)
+	add256(0, ZMM_D2 + 64) -> [ZMM_D2 + 112]
+	arith256(0, ZMM_A2_3)
+	add256(0, ZMM_D2 + 96) -> [ZMM_D2 + 144]
+	arith256(0, ZMM_A2_4)
+	add256(0, ZMM_D2 + 128) -> [ZMM_D2 + 176]
+	arith256(0, ZMM_A2_5)
+	add256(0, ZMM_D2 + 160) -> [ZMM_D2 + 208]
+	arith256(0, ZMM_A2_6)
+	add256(0, ZMM_D2 + 192) -> [ZMM_D2 + 240]
+	arith256(0, ZMM_A2_7)
+	add256(0, ZMM_D2 + 224) -> [ZMM_D2 + 272]
+	arith256(0, ZMM_A2_8)
+	add256(0, ZMM_D2 + 256) -> [ZMM_D2 + 304]
+	arith256(0, ZMM_A2_9)
+	add256(0, ZMM_D2 + 288) -> [ZMM_D2 + 336]
+	arith256(0, ZMM_A2_10)
+	add256(0, ZMM_D2 + 320) -> [ZMM_D2 + 368]
+	arith256(0, ZMM_A2_11)
+	add256(0, ZMM_D2 + 352) -> [ZMM_D2 + 400]
+	arith256(0, ZMM_A2_12)
+	add256(0, ZMM_D2 + 384) -> [ZMM_D2 + 432]
+	arith256(0, ZMM_A2_13)
+	add256(0, ZMM_D2 + 416) -> [ZMM_D2 + 464]
+	arith256(0, ZMM_A2_14)
+	add256(0, ZMM_D2 + 448) -> [ZMM_D2 + 496]
+	arith256(0, ZMM_A2_15)
+	add256(0, ZMM_D2 + 480) -> [ZMM_D2 + 528]
+	arith256(0, ZMM_A2_16)
+	add256(0, ZMM_D2 + 512) -> [ZMM_D2 + 560]
+	arith256(0, ZMM_A2_17)
+	add256(0, ZMM_D2 + 544) -> [ZMM_D2 + 592]
+	arith256(0, ZMM_A2_18)
+	add256(0, ZMM_D2 + 576) -> [ZMM_D2 + 624]
+	arith256(0, ZMM_A2_19)
+	add256(0, ZMM_D2 + 608) -> [ZMM_D2 + 656]
+	arith256(0, ZMM_A2_20)
+	add256(0, ZMM_D2 + 640) -> [ZMM_D2 + 688]
+	arith256(0, ZMM_A2_21)
+	add256(0, ZMM_D2 + 672) -> [ZMM_D2 + 720]
+	arith256(0, ZMM_A2_22)
+	add256(0, ZMM_D2 + 704) -> [ZMM_D2 + 752]
+	arith256(0, ZMM_A2_23)
+	add256(0, ZMM_D2 + 736) -> [ZMM_D2 + 784]
+	arith256(0, ZMM_A2_24)
+	add256(0, ZMM_D2 + 768) -> [ZMM_D2 + 816]
+	arith256(0, ZMM_A2_25)
+	add256(0, ZMM_D2 + 800) -> [ZMM_D2 + 848]
+	arith256(0, ZMM_A2_26)
+	add256(0, ZMM_D2 + 832) -> [ZMM_D2 + 880]
+	arith256(0, ZMM_A2_27)
+	add256(0, ZMM_D2 + 864) -> [ZMM_D2 + 912]
+	arith256(0, ZMM_A2_28)
+	add256(0, ZMM_D2 + 896) -> [ZMM_D2 + 944]
+	arith256(0, ZMM_A2_29)
+	add256(0, ZMM_D2 + 928) -> [ZMM_D2 + 976]
+	arith256(0, ZMM_A2_30)
+	add256(0, ZMM_D2 + 960) -> [ZMM_D2 + 1008]
+	arith256(0, ZMM_A2_31)
+	add256(0, ZMM_D2 + 992) -> [ZMM_D2 + 1040]
+	arith256(0, ZMM_A2_32)
+	add256(0, ZMM_D2 + 1024) -> [ZMM_D2 + 1072]
+	add256(0, ZMM_D2 + 1056) -> [ZMM_D3 + 16]
+	add256(0, ZMM_D3)
+	add(r10, 32) -> r10
+	sub(r11, 1) -> r11
+	ltu(0, r11), j(zmm_row)
+	; --- t (< 2M) or t - M ---
+zmm_sub:
+	copyb(0, r37), setpc(0)
+zmm_ps:
+	add256(0, ZMM_DS + 0) -> [ZMM_DS + 48]
+	add256(0, ZMM_DS + 32) -> [ZMM_DS + 80]
+	add256(0, ZMM_DS + 64) -> [ZMM_DS + 112]
+	add256(0, ZMM_DS + 96) -> [ZMM_DS + 144]
+	add256(0, ZMM_DS + 128) -> [ZMM_DS + 176]
+	add256(0, ZMM_DS + 160) -> [ZMM_DS + 208]
+	add256(0, ZMM_DS + 192) -> [ZMM_DS + 240]
+	add256(0, ZMM_DS + 224) -> [ZMM_DS + 272]
+	add256(0, ZMM_DS + 256) -> [ZMM_DS + 304]
+	add256(0, ZMM_DS + 288) -> [ZMM_DS + 336]
+	add256(0, ZMM_DS + 320) -> [ZMM_DS + 368]
+	add256(0, ZMM_DS + 352) -> [ZMM_DS + 400]
+	add256(0, ZMM_DS + 384) -> [ZMM_DS + 432]
+	add256(0, ZMM_DS + 416) -> [ZMM_DS + 464]
+	add256(0, ZMM_DS + 448) -> [ZMM_DS + 496]
+	add256(0, ZMM_DS + 480) -> [ZMM_DS + 528]
+	add256(0, ZMM_DS + 512) -> [ZMM_DS + 560]
+	add256(0, ZMM_DS + 544) -> [ZMM_DS + 592]
+	add256(0, ZMM_DS + 576) -> [ZMM_DS + 624]
+	add256(0, ZMM_DS + 608) -> [ZMM_DS + 656]
+	add256(0, ZMM_DS + 640) -> [ZMM_DS + 688]
+	add256(0, ZMM_DS + 672) -> [ZMM_DS + 720]
+	add256(0, ZMM_DS + 704) -> [ZMM_DS + 752]
+	add256(0, ZMM_DS + 736) -> [ZMM_DS + 784]
+	add256(0, ZMM_DS + 768) -> [ZMM_DS + 816]
+	add256(0, ZMM_DS + 800) -> [ZMM_DS + 848]
+	add256(0, ZMM_DS + 832) -> [ZMM_DS + 880]
+	add256(0, ZMM_DS + 864) -> [ZMM_DS + 912]
+	add256(0, ZMM_DS + 896) -> [ZMM_DS + 944]
+	add256(0, ZMM_DS + 928) -> [ZMM_DS + 976]
+	add256(0, ZMM_DS + 960) -> [ZMM_DS + 1008]
+	add256(0, ZMM_DS + 992) -> [ZMM_DS + 1040]
+	add256(0, ZMM_DS + 1024) -> [ZMM_SCARRY]
+	copyb(0, r39) -> [ZME_DMA_COUNT]
+	copyb(0, [ZMM_T + 1088])            ; t's top digit (0 or 1)
+	or(c, [ZMM_SCARRY])
+	eq(c, 0), j(zmm_keep)
+	dma_memcpy(r38, [ZMM_SP]) -> r0    ; t >= M: X = t - M
+	ret
+zmm_keep:
+	dma_memcpy(r38, [ZMM_TP]) -> r0    ; X = t
+	ret
+
+; ---------------------------------------------------------------------------
+; zmm_sqr: X = X^2 / R mod M (X at r38). For 3 <= k <= 16 digits: the 2k-digit square
+; as cross products x_p * x_q (p < q; row p runs to the top digit, so one
+; computed jump into row idx0 runs every row left), doubled by an add256 chain,
+; plus the diagonal squares x_p^2; then the CIOS reduction rows of zmm_mul over
+; it, bringing in one square digit per row, and zmm_mul's t - M tail. About 21%
+; fewer arith256 than zmm_mul at k = 8 (-12.5% modexp cost). k = 2 and k > 16
+; square through zmm_mul (at k = 2 the fixed overhead outweighs the saving).
+;   Clobbers r10, r11, r28..r31.
+; ---------------------------------------------------------------------------
+u64 ZMS_P[128] = 0              ; the square, positions 34..65
+u64 ZMS_G[128] = 0              ; the diagonal squares
+u64 ZMS_PLO[1] = 0                    ; per call: &P[2 * idx0]
+u64 ZMS_ER[1] = 0                     ; per call: entry pcs
+u64 ZMS_EDB[1] = 0
+u64 ZMS_EDG[1] = 0
+u64 ZMS_EDA[1] = 0
+u64 ZMS_Q0[1] = 0                     ; per call: the first reduction row's add block
+const u64 ZMS_A_17_18[5] = ZMM_X + 544, ZMM_X + 576, ZMS_P + 32, ZMM_L, ZMM_H1 + 608
+u64 ZMS_D_17_18[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 32
+const u64 ZMS_A_17_19[5] = ZMM_X + 544, ZMM_X + 608, ZMS_P + 64, ZMM_L, ZMM_H1 + 640
+u64 ZMS_D_17_19[4] = ZMM_L, ZMM_H1 + 608, 0, ZMS_P + 64
+const u64 ZMS_A_17_20[5] = ZMM_X + 544, ZMM_X + 640, ZMS_P + 96, ZMM_L, ZMM_H1 + 672
+u64 ZMS_D_17_20[4] = ZMM_L, ZMM_H1 + 640, 0, ZMS_P + 96
+const u64 ZMS_A_17_21[5] = ZMM_X + 544, ZMM_X + 672, ZMS_P + 128, ZMM_L, ZMM_H1 + 704
+u64 ZMS_D_17_21[4] = ZMM_L, ZMM_H1 + 672, 0, ZMS_P + 128
+const u64 ZMS_A_17_22[5] = ZMM_X + 544, ZMM_X + 704, ZMS_P + 160, ZMM_L, ZMM_H1 + 736
+u64 ZMS_D_17_22[4] = ZMM_L, ZMM_H1 + 704, 0, ZMS_P + 160
+const u64 ZMS_A_17_23[5] = ZMM_X + 544, ZMM_X + 736, ZMS_P + 192, ZMM_L, ZMM_H1 + 768
+u64 ZMS_D_17_23[4] = ZMM_L, ZMM_H1 + 736, 0, ZMS_P + 192
+const u64 ZMS_A_17_24[5] = ZMM_X + 544, ZMM_X + 768, ZMS_P + 224, ZMM_L, ZMM_H1 + 800
+u64 ZMS_D_17_24[4] = ZMM_L, ZMM_H1 + 768, 0, ZMS_P + 224
+const u64 ZMS_A_17_25[5] = ZMM_X + 544, ZMM_X + 800, ZMS_P + 256, ZMM_L, ZMM_H1 + 832
+u64 ZMS_D_17_25[4] = ZMM_L, ZMM_H1 + 800, 0, ZMS_P + 256
+const u64 ZMS_A_17_26[5] = ZMM_X + 544, ZMM_X + 832, ZMS_P + 288, ZMM_L, ZMM_H1 + 864
+u64 ZMS_D_17_26[4] = ZMM_L, ZMM_H1 + 832, 0, ZMS_P + 288
+const u64 ZMS_A_17_27[5] = ZMM_X + 544, ZMM_X + 864, ZMS_P + 320, ZMM_L, ZMM_H1 + 896
+u64 ZMS_D_17_27[4] = ZMM_L, ZMM_H1 + 864, 0, ZMS_P + 320
+const u64 ZMS_A_17_28[5] = ZMM_X + 544, ZMM_X + 896, ZMS_P + 352, ZMM_L, ZMM_H1 + 928
+u64 ZMS_D_17_28[4] = ZMM_L, ZMM_H1 + 896, 0, ZMS_P + 352
+const u64 ZMS_A_17_29[5] = ZMM_X + 544, ZMM_X + 928, ZMS_P + 384, ZMM_L, ZMM_H1 + 960
+u64 ZMS_D_17_29[4] = ZMM_L, ZMM_H1 + 928, 0, ZMS_P + 384
+const u64 ZMS_A_17_30[5] = ZMM_X + 544, ZMM_X + 960, ZMS_P + 416, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_17_30[4] = ZMM_L, ZMM_H1 + 960, 0, ZMS_P + 416
+const u64 ZMS_A_17_31[5] = ZMM_X + 544, ZMM_X + 992, ZMS_P + 448, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_17_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 448
+const u64 ZMS_A_17_32[5] = ZMM_X + 544, ZMM_X + 1024, ZMS_P + 480, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_17_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 480
+u64 ZMS_RE_17[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 512
+const u64 ZMS_A_18_19[5] = ZMM_X + 576, ZMM_X + 608, ZMS_P + 96, ZMM_L, ZMM_H1 + 640
+u64 ZMS_D_18_19[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 96
+const u64 ZMS_A_18_20[5] = ZMM_X + 576, ZMM_X + 640, ZMS_P + 128, ZMM_L, ZMM_H1 + 672
+u64 ZMS_D_18_20[4] = ZMM_L, ZMM_H1 + 640, 0, ZMS_P + 128
+const u64 ZMS_A_18_21[5] = ZMM_X + 576, ZMM_X + 672, ZMS_P + 160, ZMM_L, ZMM_H1 + 704
+u64 ZMS_D_18_21[4] = ZMM_L, ZMM_H1 + 672, 0, ZMS_P + 160
+const u64 ZMS_A_18_22[5] = ZMM_X + 576, ZMM_X + 704, ZMS_P + 192, ZMM_L, ZMM_H1 + 736
+u64 ZMS_D_18_22[4] = ZMM_L, ZMM_H1 + 704, 0, ZMS_P + 192
+const u64 ZMS_A_18_23[5] = ZMM_X + 576, ZMM_X + 736, ZMS_P + 224, ZMM_L, ZMM_H1 + 768
+u64 ZMS_D_18_23[4] = ZMM_L, ZMM_H1 + 736, 0, ZMS_P + 224
+const u64 ZMS_A_18_24[5] = ZMM_X + 576, ZMM_X + 768, ZMS_P + 256, ZMM_L, ZMM_H1 + 800
+u64 ZMS_D_18_24[4] = ZMM_L, ZMM_H1 + 768, 0, ZMS_P + 256
+const u64 ZMS_A_18_25[5] = ZMM_X + 576, ZMM_X + 800, ZMS_P + 288, ZMM_L, ZMM_H1 + 832
+u64 ZMS_D_18_25[4] = ZMM_L, ZMM_H1 + 800, 0, ZMS_P + 288
+const u64 ZMS_A_18_26[5] = ZMM_X + 576, ZMM_X + 832, ZMS_P + 320, ZMM_L, ZMM_H1 + 864
+u64 ZMS_D_18_26[4] = ZMM_L, ZMM_H1 + 832, 0, ZMS_P + 320
+const u64 ZMS_A_18_27[5] = ZMM_X + 576, ZMM_X + 864, ZMS_P + 352, ZMM_L, ZMM_H1 + 896
+u64 ZMS_D_18_27[4] = ZMM_L, ZMM_H1 + 864, 0, ZMS_P + 352
+const u64 ZMS_A_18_28[5] = ZMM_X + 576, ZMM_X + 896, ZMS_P + 384, ZMM_L, ZMM_H1 + 928
+u64 ZMS_D_18_28[4] = ZMM_L, ZMM_H1 + 896, 0, ZMS_P + 384
+const u64 ZMS_A_18_29[5] = ZMM_X + 576, ZMM_X + 928, ZMS_P + 416, ZMM_L, ZMM_H1 + 960
+u64 ZMS_D_18_29[4] = ZMM_L, ZMM_H1 + 928, 0, ZMS_P + 416
+const u64 ZMS_A_18_30[5] = ZMM_X + 576, ZMM_X + 960, ZMS_P + 448, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_18_30[4] = ZMM_L, ZMM_H1 + 960, 0, ZMS_P + 448
+const u64 ZMS_A_18_31[5] = ZMM_X + 576, ZMM_X + 992, ZMS_P + 480, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_18_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 480
+const u64 ZMS_A_18_32[5] = ZMM_X + 576, ZMM_X + 1024, ZMS_P + 512, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_18_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 512
+u64 ZMS_RE_18[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 544
+const u64 ZMS_A_19_20[5] = ZMM_X + 608, ZMM_X + 640, ZMS_P + 160, ZMM_L, ZMM_H1 + 672
+u64 ZMS_D_19_20[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 160
+const u64 ZMS_A_19_21[5] = ZMM_X + 608, ZMM_X + 672, ZMS_P + 192, ZMM_L, ZMM_H1 + 704
+u64 ZMS_D_19_21[4] = ZMM_L, ZMM_H1 + 672, 0, ZMS_P + 192
+const u64 ZMS_A_19_22[5] = ZMM_X + 608, ZMM_X + 704, ZMS_P + 224, ZMM_L, ZMM_H1 + 736
+u64 ZMS_D_19_22[4] = ZMM_L, ZMM_H1 + 704, 0, ZMS_P + 224
+const u64 ZMS_A_19_23[5] = ZMM_X + 608, ZMM_X + 736, ZMS_P + 256, ZMM_L, ZMM_H1 + 768
+u64 ZMS_D_19_23[4] = ZMM_L, ZMM_H1 + 736, 0, ZMS_P + 256
+const u64 ZMS_A_19_24[5] = ZMM_X + 608, ZMM_X + 768, ZMS_P + 288, ZMM_L, ZMM_H1 + 800
+u64 ZMS_D_19_24[4] = ZMM_L, ZMM_H1 + 768, 0, ZMS_P + 288
+const u64 ZMS_A_19_25[5] = ZMM_X + 608, ZMM_X + 800, ZMS_P + 320, ZMM_L, ZMM_H1 + 832
+u64 ZMS_D_19_25[4] = ZMM_L, ZMM_H1 + 800, 0, ZMS_P + 320
+const u64 ZMS_A_19_26[5] = ZMM_X + 608, ZMM_X + 832, ZMS_P + 352, ZMM_L, ZMM_H1 + 864
+u64 ZMS_D_19_26[4] = ZMM_L, ZMM_H1 + 832, 0, ZMS_P + 352
+const u64 ZMS_A_19_27[5] = ZMM_X + 608, ZMM_X + 864, ZMS_P + 384, ZMM_L, ZMM_H1 + 896
+u64 ZMS_D_19_27[4] = ZMM_L, ZMM_H1 + 864, 0, ZMS_P + 384
+const u64 ZMS_A_19_28[5] = ZMM_X + 608, ZMM_X + 896, ZMS_P + 416, ZMM_L, ZMM_H1 + 928
+u64 ZMS_D_19_28[4] = ZMM_L, ZMM_H1 + 896, 0, ZMS_P + 416
+const u64 ZMS_A_19_29[5] = ZMM_X + 608, ZMM_X + 928, ZMS_P + 448, ZMM_L, ZMM_H1 + 960
+u64 ZMS_D_19_29[4] = ZMM_L, ZMM_H1 + 928, 0, ZMS_P + 448
+const u64 ZMS_A_19_30[5] = ZMM_X + 608, ZMM_X + 960, ZMS_P + 480, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_19_30[4] = ZMM_L, ZMM_H1 + 960, 0, ZMS_P + 480
+const u64 ZMS_A_19_31[5] = ZMM_X + 608, ZMM_X + 992, ZMS_P + 512, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_19_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 512
+const u64 ZMS_A_19_32[5] = ZMM_X + 608, ZMM_X + 1024, ZMS_P + 544, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_19_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 544
+u64 ZMS_RE_19[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 576
+const u64 ZMS_A_20_21[5] = ZMM_X + 640, ZMM_X + 672, ZMS_P + 224, ZMM_L, ZMM_H1 + 704
+u64 ZMS_D_20_21[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 224
+const u64 ZMS_A_20_22[5] = ZMM_X + 640, ZMM_X + 704, ZMS_P + 256, ZMM_L, ZMM_H1 + 736
+u64 ZMS_D_20_22[4] = ZMM_L, ZMM_H1 + 704, 0, ZMS_P + 256
+const u64 ZMS_A_20_23[5] = ZMM_X + 640, ZMM_X + 736, ZMS_P + 288, ZMM_L, ZMM_H1 + 768
+u64 ZMS_D_20_23[4] = ZMM_L, ZMM_H1 + 736, 0, ZMS_P + 288
+const u64 ZMS_A_20_24[5] = ZMM_X + 640, ZMM_X + 768, ZMS_P + 320, ZMM_L, ZMM_H1 + 800
+u64 ZMS_D_20_24[4] = ZMM_L, ZMM_H1 + 768, 0, ZMS_P + 320
+const u64 ZMS_A_20_25[5] = ZMM_X + 640, ZMM_X + 800, ZMS_P + 352, ZMM_L, ZMM_H1 + 832
+u64 ZMS_D_20_25[4] = ZMM_L, ZMM_H1 + 800, 0, ZMS_P + 352
+const u64 ZMS_A_20_26[5] = ZMM_X + 640, ZMM_X + 832, ZMS_P + 384, ZMM_L, ZMM_H1 + 864
+u64 ZMS_D_20_26[4] = ZMM_L, ZMM_H1 + 832, 0, ZMS_P + 384
+const u64 ZMS_A_20_27[5] = ZMM_X + 640, ZMM_X + 864, ZMS_P + 416, ZMM_L, ZMM_H1 + 896
+u64 ZMS_D_20_27[4] = ZMM_L, ZMM_H1 + 864, 0, ZMS_P + 416
+const u64 ZMS_A_20_28[5] = ZMM_X + 640, ZMM_X + 896, ZMS_P + 448, ZMM_L, ZMM_H1 + 928
+u64 ZMS_D_20_28[4] = ZMM_L, ZMM_H1 + 896, 0, ZMS_P + 448
+const u64 ZMS_A_20_29[5] = ZMM_X + 640, ZMM_X + 928, ZMS_P + 480, ZMM_L, ZMM_H1 + 960
+u64 ZMS_D_20_29[4] = ZMM_L, ZMM_H1 + 928, 0, ZMS_P + 480
+const u64 ZMS_A_20_30[5] = ZMM_X + 640, ZMM_X + 960, ZMS_P + 512, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_20_30[4] = ZMM_L, ZMM_H1 + 960, 0, ZMS_P + 512
+const u64 ZMS_A_20_31[5] = ZMM_X + 640, ZMM_X + 992, ZMS_P + 544, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_20_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 544
+const u64 ZMS_A_20_32[5] = ZMM_X + 640, ZMM_X + 1024, ZMS_P + 576, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_20_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 576
+u64 ZMS_RE_20[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 608
+const u64 ZMS_A_21_22[5] = ZMM_X + 672, ZMM_X + 704, ZMS_P + 288, ZMM_L, ZMM_H1 + 736
+u64 ZMS_D_21_22[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 288
+const u64 ZMS_A_21_23[5] = ZMM_X + 672, ZMM_X + 736, ZMS_P + 320, ZMM_L, ZMM_H1 + 768
+u64 ZMS_D_21_23[4] = ZMM_L, ZMM_H1 + 736, 0, ZMS_P + 320
+const u64 ZMS_A_21_24[5] = ZMM_X + 672, ZMM_X + 768, ZMS_P + 352, ZMM_L, ZMM_H1 + 800
+u64 ZMS_D_21_24[4] = ZMM_L, ZMM_H1 + 768, 0, ZMS_P + 352
+const u64 ZMS_A_21_25[5] = ZMM_X + 672, ZMM_X + 800, ZMS_P + 384, ZMM_L, ZMM_H1 + 832
+u64 ZMS_D_21_25[4] = ZMM_L, ZMM_H1 + 800, 0, ZMS_P + 384
+const u64 ZMS_A_21_26[5] = ZMM_X + 672, ZMM_X + 832, ZMS_P + 416, ZMM_L, ZMM_H1 + 864
+u64 ZMS_D_21_26[4] = ZMM_L, ZMM_H1 + 832, 0, ZMS_P + 416
+const u64 ZMS_A_21_27[5] = ZMM_X + 672, ZMM_X + 864, ZMS_P + 448, ZMM_L, ZMM_H1 + 896
+u64 ZMS_D_21_27[4] = ZMM_L, ZMM_H1 + 864, 0, ZMS_P + 448
+const u64 ZMS_A_21_28[5] = ZMM_X + 672, ZMM_X + 896, ZMS_P + 480, ZMM_L, ZMM_H1 + 928
+u64 ZMS_D_21_28[4] = ZMM_L, ZMM_H1 + 896, 0, ZMS_P + 480
+const u64 ZMS_A_21_29[5] = ZMM_X + 672, ZMM_X + 928, ZMS_P + 512, ZMM_L, ZMM_H1 + 960
+u64 ZMS_D_21_29[4] = ZMM_L, ZMM_H1 + 928, 0, ZMS_P + 512
+const u64 ZMS_A_21_30[5] = ZMM_X + 672, ZMM_X + 960, ZMS_P + 544, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_21_30[4] = ZMM_L, ZMM_H1 + 960, 0, ZMS_P + 544
+const u64 ZMS_A_21_31[5] = ZMM_X + 672, ZMM_X + 992, ZMS_P + 576, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_21_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 576
+const u64 ZMS_A_21_32[5] = ZMM_X + 672, ZMM_X + 1024, ZMS_P + 608, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_21_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 608
+u64 ZMS_RE_21[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 640
+const u64 ZMS_A_22_23[5] = ZMM_X + 704, ZMM_X + 736, ZMS_P + 352, ZMM_L, ZMM_H1 + 768
+u64 ZMS_D_22_23[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 352
+const u64 ZMS_A_22_24[5] = ZMM_X + 704, ZMM_X + 768, ZMS_P + 384, ZMM_L, ZMM_H1 + 800
+u64 ZMS_D_22_24[4] = ZMM_L, ZMM_H1 + 768, 0, ZMS_P + 384
+const u64 ZMS_A_22_25[5] = ZMM_X + 704, ZMM_X + 800, ZMS_P + 416, ZMM_L, ZMM_H1 + 832
+u64 ZMS_D_22_25[4] = ZMM_L, ZMM_H1 + 800, 0, ZMS_P + 416
+const u64 ZMS_A_22_26[5] = ZMM_X + 704, ZMM_X + 832, ZMS_P + 448, ZMM_L, ZMM_H1 + 864
+u64 ZMS_D_22_26[4] = ZMM_L, ZMM_H1 + 832, 0, ZMS_P + 448
+const u64 ZMS_A_22_27[5] = ZMM_X + 704, ZMM_X + 864, ZMS_P + 480, ZMM_L, ZMM_H1 + 896
+u64 ZMS_D_22_27[4] = ZMM_L, ZMM_H1 + 864, 0, ZMS_P + 480
+const u64 ZMS_A_22_28[5] = ZMM_X + 704, ZMM_X + 896, ZMS_P + 512, ZMM_L, ZMM_H1 + 928
+u64 ZMS_D_22_28[4] = ZMM_L, ZMM_H1 + 896, 0, ZMS_P + 512
+const u64 ZMS_A_22_29[5] = ZMM_X + 704, ZMM_X + 928, ZMS_P + 544, ZMM_L, ZMM_H1 + 960
+u64 ZMS_D_22_29[4] = ZMM_L, ZMM_H1 + 928, 0, ZMS_P + 544
+const u64 ZMS_A_22_30[5] = ZMM_X + 704, ZMM_X + 960, ZMS_P + 576, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_22_30[4] = ZMM_L, ZMM_H1 + 960, 0, ZMS_P + 576
+const u64 ZMS_A_22_31[5] = ZMM_X + 704, ZMM_X + 992, ZMS_P + 608, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_22_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 608
+const u64 ZMS_A_22_32[5] = ZMM_X + 704, ZMM_X + 1024, ZMS_P + 640, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_22_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 640
+u64 ZMS_RE_22[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 672
+const u64 ZMS_A_23_24[5] = ZMM_X + 736, ZMM_X + 768, ZMS_P + 416, ZMM_L, ZMM_H1 + 800
+u64 ZMS_D_23_24[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 416
+const u64 ZMS_A_23_25[5] = ZMM_X + 736, ZMM_X + 800, ZMS_P + 448, ZMM_L, ZMM_H1 + 832
+u64 ZMS_D_23_25[4] = ZMM_L, ZMM_H1 + 800, 0, ZMS_P + 448
+const u64 ZMS_A_23_26[5] = ZMM_X + 736, ZMM_X + 832, ZMS_P + 480, ZMM_L, ZMM_H1 + 864
+u64 ZMS_D_23_26[4] = ZMM_L, ZMM_H1 + 832, 0, ZMS_P + 480
+const u64 ZMS_A_23_27[5] = ZMM_X + 736, ZMM_X + 864, ZMS_P + 512, ZMM_L, ZMM_H1 + 896
+u64 ZMS_D_23_27[4] = ZMM_L, ZMM_H1 + 864, 0, ZMS_P + 512
+const u64 ZMS_A_23_28[5] = ZMM_X + 736, ZMM_X + 896, ZMS_P + 544, ZMM_L, ZMM_H1 + 928
+u64 ZMS_D_23_28[4] = ZMM_L, ZMM_H1 + 896, 0, ZMS_P + 544
+const u64 ZMS_A_23_29[5] = ZMM_X + 736, ZMM_X + 928, ZMS_P + 576, ZMM_L, ZMM_H1 + 960
+u64 ZMS_D_23_29[4] = ZMM_L, ZMM_H1 + 928, 0, ZMS_P + 576
+const u64 ZMS_A_23_30[5] = ZMM_X + 736, ZMM_X + 960, ZMS_P + 608, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_23_30[4] = ZMM_L, ZMM_H1 + 960, 0, ZMS_P + 608
+const u64 ZMS_A_23_31[5] = ZMM_X + 736, ZMM_X + 992, ZMS_P + 640, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_23_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 640
+const u64 ZMS_A_23_32[5] = ZMM_X + 736, ZMM_X + 1024, ZMS_P + 672, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_23_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 672
+u64 ZMS_RE_23[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 704
+const u64 ZMS_A_24_25[5] = ZMM_X + 768, ZMM_X + 800, ZMS_P + 480, ZMM_L, ZMM_H1 + 832
+u64 ZMS_D_24_25[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 480
+const u64 ZMS_A_24_26[5] = ZMM_X + 768, ZMM_X + 832, ZMS_P + 512, ZMM_L, ZMM_H1 + 864
+u64 ZMS_D_24_26[4] = ZMM_L, ZMM_H1 + 832, 0, ZMS_P + 512
+const u64 ZMS_A_24_27[5] = ZMM_X + 768, ZMM_X + 864, ZMS_P + 544, ZMM_L, ZMM_H1 + 896
+u64 ZMS_D_24_27[4] = ZMM_L, ZMM_H1 + 864, 0, ZMS_P + 544
+const u64 ZMS_A_24_28[5] = ZMM_X + 768, ZMM_X + 896, ZMS_P + 576, ZMM_L, ZMM_H1 + 928
+u64 ZMS_D_24_28[4] = ZMM_L, ZMM_H1 + 896, 0, ZMS_P + 576
+const u64 ZMS_A_24_29[5] = ZMM_X + 768, ZMM_X + 928, ZMS_P + 608, ZMM_L, ZMM_H1 + 960
+u64 ZMS_D_24_29[4] = ZMM_L, ZMM_H1 + 928, 0, ZMS_P + 608
+const u64 ZMS_A_24_30[5] = ZMM_X + 768, ZMM_X + 960, ZMS_P + 640, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_24_30[4] = ZMM_L, ZMM_H1 + 960, 0, ZMS_P + 640
+const u64 ZMS_A_24_31[5] = ZMM_X + 768, ZMM_X + 992, ZMS_P + 672, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_24_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 672
+const u64 ZMS_A_24_32[5] = ZMM_X + 768, ZMM_X + 1024, ZMS_P + 704, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_24_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 704
+u64 ZMS_RE_24[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 736
+const u64 ZMS_A_25_26[5] = ZMM_X + 800, ZMM_X + 832, ZMS_P + 544, ZMM_L, ZMM_H1 + 864
+u64 ZMS_D_25_26[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 544
+const u64 ZMS_A_25_27[5] = ZMM_X + 800, ZMM_X + 864, ZMS_P + 576, ZMM_L, ZMM_H1 + 896
+u64 ZMS_D_25_27[4] = ZMM_L, ZMM_H1 + 864, 0, ZMS_P + 576
+const u64 ZMS_A_25_28[5] = ZMM_X + 800, ZMM_X + 896, ZMS_P + 608, ZMM_L, ZMM_H1 + 928
+u64 ZMS_D_25_28[4] = ZMM_L, ZMM_H1 + 896, 0, ZMS_P + 608
+const u64 ZMS_A_25_29[5] = ZMM_X + 800, ZMM_X + 928, ZMS_P + 640, ZMM_L, ZMM_H1 + 960
+u64 ZMS_D_25_29[4] = ZMM_L, ZMM_H1 + 928, 0, ZMS_P + 640
+const u64 ZMS_A_25_30[5] = ZMM_X + 800, ZMM_X + 960, ZMS_P + 672, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_25_30[4] = ZMM_L, ZMM_H1 + 960, 0, ZMS_P + 672
+const u64 ZMS_A_25_31[5] = ZMM_X + 800, ZMM_X + 992, ZMS_P + 704, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_25_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 704
+const u64 ZMS_A_25_32[5] = ZMM_X + 800, ZMM_X + 1024, ZMS_P + 736, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_25_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 736
+u64 ZMS_RE_25[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 768
+const u64 ZMS_A_26_27[5] = ZMM_X + 832, ZMM_X + 864, ZMS_P + 608, ZMM_L, ZMM_H1 + 896
+u64 ZMS_D_26_27[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 608
+const u64 ZMS_A_26_28[5] = ZMM_X + 832, ZMM_X + 896, ZMS_P + 640, ZMM_L, ZMM_H1 + 928
+u64 ZMS_D_26_28[4] = ZMM_L, ZMM_H1 + 896, 0, ZMS_P + 640
+const u64 ZMS_A_26_29[5] = ZMM_X + 832, ZMM_X + 928, ZMS_P + 672, ZMM_L, ZMM_H1 + 960
+u64 ZMS_D_26_29[4] = ZMM_L, ZMM_H1 + 928, 0, ZMS_P + 672
+const u64 ZMS_A_26_30[5] = ZMM_X + 832, ZMM_X + 960, ZMS_P + 704, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_26_30[4] = ZMM_L, ZMM_H1 + 960, 0, ZMS_P + 704
+const u64 ZMS_A_26_31[5] = ZMM_X + 832, ZMM_X + 992, ZMS_P + 736, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_26_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 736
+const u64 ZMS_A_26_32[5] = ZMM_X + 832, ZMM_X + 1024, ZMS_P + 768, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_26_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 768
+u64 ZMS_RE_26[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 800
+const u64 ZMS_A_27_28[5] = ZMM_X + 864, ZMM_X + 896, ZMS_P + 672, ZMM_L, ZMM_H1 + 928
+u64 ZMS_D_27_28[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 672
+const u64 ZMS_A_27_29[5] = ZMM_X + 864, ZMM_X + 928, ZMS_P + 704, ZMM_L, ZMM_H1 + 960
+u64 ZMS_D_27_29[4] = ZMM_L, ZMM_H1 + 928, 0, ZMS_P + 704
+const u64 ZMS_A_27_30[5] = ZMM_X + 864, ZMM_X + 960, ZMS_P + 736, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_27_30[4] = ZMM_L, ZMM_H1 + 960, 0, ZMS_P + 736
+const u64 ZMS_A_27_31[5] = ZMM_X + 864, ZMM_X + 992, ZMS_P + 768, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_27_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 768
+const u64 ZMS_A_27_32[5] = ZMM_X + 864, ZMM_X + 1024, ZMS_P + 800, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_27_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 800
+u64 ZMS_RE_27[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 832
+const u64 ZMS_A_28_29[5] = ZMM_X + 896, ZMM_X + 928, ZMS_P + 736, ZMM_L, ZMM_H1 + 960
+u64 ZMS_D_28_29[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 736
+const u64 ZMS_A_28_30[5] = ZMM_X + 896, ZMM_X + 960, ZMS_P + 768, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_28_30[4] = ZMM_L, ZMM_H1 + 960, 0, ZMS_P + 768
+const u64 ZMS_A_28_31[5] = ZMM_X + 896, ZMM_X + 992, ZMS_P + 800, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_28_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 800
+const u64 ZMS_A_28_32[5] = ZMM_X + 896, ZMM_X + 1024, ZMS_P + 832, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_28_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 832
+u64 ZMS_RE_28[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 864
+const u64 ZMS_A_29_30[5] = ZMM_X + 928, ZMM_X + 960, ZMS_P + 800, ZMM_L, ZMM_H1 + 992
+u64 ZMS_D_29_30[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 800
+const u64 ZMS_A_29_31[5] = ZMM_X + 928, ZMM_X + 992, ZMS_P + 832, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_29_31[4] = ZMM_L, ZMM_H1 + 992, 0, ZMS_P + 832
+const u64 ZMS_A_29_32[5] = ZMM_X + 928, ZMM_X + 1024, ZMS_P + 864, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_29_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 864
+u64 ZMS_RE_29[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 896
+const u64 ZMS_A_30_31[5] = ZMM_X + 960, ZMM_X + 992, ZMS_P + 864, ZMM_L, ZMM_H1 + 1024
+u64 ZMS_D_30_31[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 864
+const u64 ZMS_A_30_32[5] = ZMM_X + 960, ZMM_X + 1024, ZMS_P + 896, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_30_32[4] = ZMM_L, ZMM_H1 + 1024, 0, ZMS_P + 896
+u64 ZMS_RE_30[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 928
+const u64 ZMS_A_31_32[5] = ZMM_X + 992, ZMM_X + 1024, ZMS_P + 928, ZMM_L, ZMM_H1 + 1056
+u64 ZMS_D_31_32[4] = ZMM_L, ZME_ZERO, 0, ZMS_P + 928
+u64 ZMS_RE_31[4] = ZMM_H1 + 1056, ZME_ZERO, 0, ZMS_P + 960
+const u64 ZMS_ROWS[15] = zms_r17, zms_r18, zms_r19, zms_r20, zms_r21, zms_r22, zms_r23, zms_r24, zms_r25, zms_r26, zms_r27, zms_r28, zms_r29, zms_r30, zms_r31
+u64 ZMS_DB[128] = ZMS_P + 0, ZMS_P + 0, 0, ZMS_P + 0, ZMS_P + 32, ZMS_P + 32, 0, ZMS_P + 32, ZMS_P + 64, ZMS_P + 64, 0, ZMS_P + 64, ZMS_P + 96, ZMS_P + 96, 0, ZMS_P + 96, ZMS_P + 128, ZMS_P + 128, 0, ZMS_P + 128, ZMS_P + 160, ZMS_P + 160, 0, ZMS_P + 160, ZMS_P + 192, ZMS_P + 192, 0, ZMS_P + 192, ZMS_P + 224, ZMS_P + 224, 0, ZMS_P + 224, ZMS_P + 256, ZMS_P + 256, 0, ZMS_P + 256, ZMS_P + 288, ZMS_P + 288, 0, ZMS_P + 288, ZMS_P + 320, ZMS_P + 320, 0, ZMS_P + 320, ZMS_P + 352, ZMS_P + 352, 0, ZMS_P + 352, ZMS_P + 384, ZMS_P + 384, 0, ZMS_P + 384, ZMS_P + 416, ZMS_P + 416, 0, ZMS_P + 416, ZMS_P + 448, ZMS_P + 448, 0, ZMS_P + 448, ZMS_P + 480, ZMS_P + 480, 0, ZMS_P + 480, ZMS_P + 512, ZMS_P + 512, 0, ZMS_P + 512, ZMS_P + 544, ZMS_P + 544, 0, ZMS_P + 544, ZMS_P + 576, ZMS_P + 576, 0, ZMS_P + 576, ZMS_P + 608, ZMS_P + 608, 0, ZMS_P + 608, ZMS_P + 640, ZMS_P + 640, 0, ZMS_P + 640, ZMS_P + 672, ZMS_P + 672, 0, ZMS_P + 672, ZMS_P + 704, ZMS_P + 704, 0, ZMS_P + 704, ZMS_P + 736, ZMS_P + 736, 0, ZMS_P + 736, ZMS_P + 768, ZMS_P + 768, 0, ZMS_P + 768, ZMS_P + 800, ZMS_P + 800, 0, ZMS_P + 800, ZMS_P + 832, ZMS_P + 832, 0, ZMS_P + 832, ZMS_P + 864, ZMS_P + 864, 0, ZMS_P + 864, ZMS_P + 896, ZMS_P + 896, 0, ZMS_P + 896, ZMS_P + 928, ZMS_P + 928, 0, ZMS_P + 928, ZMS_P + 960, ZMS_P + 960, 0, ZMS_P + 960, ZMS_P + 992, ZMS_P + 992, 0, ZMS_P + 992
+u64 ZMS_DA[128] = ZMS_P + 0, ZMS_G + 0, 0, ZMS_P + 0, ZMS_P + 32, ZMS_G + 32, 0, ZMS_P + 32, ZMS_P + 64, ZMS_G + 64, 0, ZMS_P + 64, ZMS_P + 96, ZMS_G + 96, 0, ZMS_P + 96, ZMS_P + 128, ZMS_G + 128, 0, ZMS_P + 128, ZMS_P + 160, ZMS_G + 160, 0, ZMS_P + 160, ZMS_P + 192, ZMS_G + 192, 0, ZMS_P + 192, ZMS_P + 224, ZMS_G + 224, 0, ZMS_P + 224, ZMS_P + 256, ZMS_G + 256, 0, ZMS_P + 256, ZMS_P + 288, ZMS_G + 288, 0, ZMS_P + 288, ZMS_P + 320, ZMS_G + 320, 0, ZMS_P + 320, ZMS_P + 352, ZMS_G + 352, 0, ZMS_P + 352, ZMS_P + 384, ZMS_G + 384, 0, ZMS_P + 384, ZMS_P + 416, ZMS_G + 416, 0, ZMS_P + 416, ZMS_P + 448, ZMS_G + 448, 0, ZMS_P + 448, ZMS_P + 480, ZMS_G + 480, 0, ZMS_P + 480, ZMS_P + 512, ZMS_G + 512, 0, ZMS_P + 512, ZMS_P + 544, ZMS_G + 544, 0, ZMS_P + 544, ZMS_P + 576, ZMS_G + 576, 0, ZMS_P + 576, ZMS_P + 608, ZMS_G + 608, 0, ZMS_P + 608, ZMS_P + 640, ZMS_G + 640, 0, ZMS_P + 640, ZMS_P + 672, ZMS_G + 672, 0, ZMS_P + 672, ZMS_P + 704, ZMS_G + 704, 0, ZMS_P + 704, ZMS_P + 736, ZMS_G + 736, 0, ZMS_P + 736, ZMS_P + 768, ZMS_G + 768, 0, ZMS_P + 768, ZMS_P + 800, ZMS_G + 800, 0, ZMS_P + 800, ZMS_P + 832, ZMS_G + 832, 0, ZMS_P + 832, ZMS_P + 864, ZMS_G + 864, 0, ZMS_P + 864, ZMS_P + 896, ZMS_G + 896, 0, ZMS_P + 896, ZMS_P + 928, ZMS_G + 928, 0, ZMS_P + 928, ZMS_P + 960, ZMS_G + 960, 0, ZMS_P + 960, ZMS_P + 992, ZMS_G + 992, 0, ZMS_P + 992
+const u64 ZMS_DG_17[5] = ZMM_X + 544, ZMM_X + 544, ZME_ZERO, ZMS_G + 0, ZMS_G + 32
+const u64 ZMS_DG_18[5] = ZMM_X + 576, ZMM_X + 576, ZME_ZERO, ZMS_G + 64, ZMS_G + 96
+const u64 ZMS_DG_19[5] = ZMM_X + 608, ZMM_X + 608, ZME_ZERO, ZMS_G + 128, ZMS_G + 160
+const u64 ZMS_DG_20[5] = ZMM_X + 640, ZMM_X + 640, ZME_ZERO, ZMS_G + 192, ZMS_G + 224
+const u64 ZMS_DG_21[5] = ZMM_X + 672, ZMM_X + 672, ZME_ZERO, ZMS_G + 256, ZMS_G + 288
+const u64 ZMS_DG_22[5] = ZMM_X + 704, ZMM_X + 704, ZME_ZERO, ZMS_G + 320, ZMS_G + 352
+const u64 ZMS_DG_23[5] = ZMM_X + 736, ZMM_X + 736, ZME_ZERO, ZMS_G + 384, ZMS_G + 416
+const u64 ZMS_DG_24[5] = ZMM_X + 768, ZMM_X + 768, ZME_ZERO, ZMS_G + 448, ZMS_G + 480
+const u64 ZMS_DG_25[5] = ZMM_X + 800, ZMM_X + 800, ZME_ZERO, ZMS_G + 512, ZMS_G + 544
+const u64 ZMS_DG_26[5] = ZMM_X + 832, ZMM_X + 832, ZME_ZERO, ZMS_G + 576, ZMS_G + 608
+const u64 ZMS_DG_27[5] = ZMM_X + 864, ZMM_X + 864, ZME_ZERO, ZMS_G + 640, ZMS_G + 672
+const u64 ZMS_DG_28[5] = ZMM_X + 896, ZMM_X + 896, ZME_ZERO, ZMS_G + 704, ZMS_G + 736
+const u64 ZMS_DG_29[5] = ZMM_X + 928, ZMM_X + 928, ZME_ZERO, ZMS_G + 768, ZMS_G + 800
+const u64 ZMS_DG_30[5] = ZMM_X + 960, ZMM_X + 960, ZME_ZERO, ZMS_G + 832, ZMS_G + 864
+const u64 ZMS_DG_31[5] = ZMM_X + 992, ZMM_X + 992, ZME_ZERO, ZMS_G + 896, ZMS_G + 928
+const u64 ZMS_DG_32[5] = ZMM_X + 1024, ZMM_X + 1024, ZME_ZERO, ZMS_G + 960, ZMS_G + 992
+const u64 ZMS_ADDS[64] = ZMM_T + 1088, ZMS_P + 512, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 544, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 576, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 608, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 640, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 672, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 704, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 736, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 768, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 800, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 832, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 864, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 896, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 928, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 960, 0, ZMM_T + 1088, ZMM_T + 1088, ZMS_P + 992, 0, ZMM_T + 1088
+
+zms_go:
+	add(r39, r39) -> r28
+	copyb(0, [ZMS_PLO]) -> r29
+	dma_xmemset(r29, r28) -> r0, j(0, 4)  ; the 2k square digits
+	copyb(0, [ZMS_ER]), setpc(0)
+zms_r17:
+	arith256(0, ZMS_A_17_18)
+	add256(0, ZMS_D_17_18) -> [ZMS_D_17_19 + 16]
+	arith256(0, ZMS_A_17_19)
+	add256(0, ZMS_D_17_19) -> [ZMS_D_17_20 + 16]
+	arith256(0, ZMS_A_17_20)
+	add256(0, ZMS_D_17_20) -> [ZMS_D_17_21 + 16]
+	arith256(0, ZMS_A_17_21)
+	add256(0, ZMS_D_17_21) -> [ZMS_D_17_22 + 16]
+	arith256(0, ZMS_A_17_22)
+	add256(0, ZMS_D_17_22) -> [ZMS_D_17_23 + 16]
+	arith256(0, ZMS_A_17_23)
+	add256(0, ZMS_D_17_23) -> [ZMS_D_17_24 + 16]
+	arith256(0, ZMS_A_17_24)
+	add256(0, ZMS_D_17_24) -> [ZMS_D_17_25 + 16]
+	arith256(0, ZMS_A_17_25)
+	add256(0, ZMS_D_17_25) -> [ZMS_D_17_26 + 16]
+	arith256(0, ZMS_A_17_26)
+	add256(0, ZMS_D_17_26) -> [ZMS_D_17_27 + 16]
+	arith256(0, ZMS_A_17_27)
+	add256(0, ZMS_D_17_27) -> [ZMS_D_17_28 + 16]
+	arith256(0, ZMS_A_17_28)
+	add256(0, ZMS_D_17_28) -> [ZMS_D_17_29 + 16]
+	arith256(0, ZMS_A_17_29)
+	add256(0, ZMS_D_17_29) -> [ZMS_D_17_30 + 16]
+	arith256(0, ZMS_A_17_30)
+	add256(0, ZMS_D_17_30) -> [ZMS_D_17_31 + 16]
+	arith256(0, ZMS_A_17_31)
+	add256(0, ZMS_D_17_31) -> [ZMS_D_17_32 + 16]
+	arith256(0, ZMS_A_17_32)
+	add256(0, ZMS_D_17_32) -> [ZMS_RE_17 + 16]
+	add256(0, ZMS_RE_17)
+zms_r18:
+	arith256(0, ZMS_A_18_19)
+	add256(0, ZMS_D_18_19) -> [ZMS_D_18_20 + 16]
+	arith256(0, ZMS_A_18_20)
+	add256(0, ZMS_D_18_20) -> [ZMS_D_18_21 + 16]
+	arith256(0, ZMS_A_18_21)
+	add256(0, ZMS_D_18_21) -> [ZMS_D_18_22 + 16]
+	arith256(0, ZMS_A_18_22)
+	add256(0, ZMS_D_18_22) -> [ZMS_D_18_23 + 16]
+	arith256(0, ZMS_A_18_23)
+	add256(0, ZMS_D_18_23) -> [ZMS_D_18_24 + 16]
+	arith256(0, ZMS_A_18_24)
+	add256(0, ZMS_D_18_24) -> [ZMS_D_18_25 + 16]
+	arith256(0, ZMS_A_18_25)
+	add256(0, ZMS_D_18_25) -> [ZMS_D_18_26 + 16]
+	arith256(0, ZMS_A_18_26)
+	add256(0, ZMS_D_18_26) -> [ZMS_D_18_27 + 16]
+	arith256(0, ZMS_A_18_27)
+	add256(0, ZMS_D_18_27) -> [ZMS_D_18_28 + 16]
+	arith256(0, ZMS_A_18_28)
+	add256(0, ZMS_D_18_28) -> [ZMS_D_18_29 + 16]
+	arith256(0, ZMS_A_18_29)
+	add256(0, ZMS_D_18_29) -> [ZMS_D_18_30 + 16]
+	arith256(0, ZMS_A_18_30)
+	add256(0, ZMS_D_18_30) -> [ZMS_D_18_31 + 16]
+	arith256(0, ZMS_A_18_31)
+	add256(0, ZMS_D_18_31) -> [ZMS_D_18_32 + 16]
+	arith256(0, ZMS_A_18_32)
+	add256(0, ZMS_D_18_32) -> [ZMS_RE_18 + 16]
+	add256(0, ZMS_RE_18)
+zms_r19:
+	arith256(0, ZMS_A_19_20)
+	add256(0, ZMS_D_19_20) -> [ZMS_D_19_21 + 16]
+	arith256(0, ZMS_A_19_21)
+	add256(0, ZMS_D_19_21) -> [ZMS_D_19_22 + 16]
+	arith256(0, ZMS_A_19_22)
+	add256(0, ZMS_D_19_22) -> [ZMS_D_19_23 + 16]
+	arith256(0, ZMS_A_19_23)
+	add256(0, ZMS_D_19_23) -> [ZMS_D_19_24 + 16]
+	arith256(0, ZMS_A_19_24)
+	add256(0, ZMS_D_19_24) -> [ZMS_D_19_25 + 16]
+	arith256(0, ZMS_A_19_25)
+	add256(0, ZMS_D_19_25) -> [ZMS_D_19_26 + 16]
+	arith256(0, ZMS_A_19_26)
+	add256(0, ZMS_D_19_26) -> [ZMS_D_19_27 + 16]
+	arith256(0, ZMS_A_19_27)
+	add256(0, ZMS_D_19_27) -> [ZMS_D_19_28 + 16]
+	arith256(0, ZMS_A_19_28)
+	add256(0, ZMS_D_19_28) -> [ZMS_D_19_29 + 16]
+	arith256(0, ZMS_A_19_29)
+	add256(0, ZMS_D_19_29) -> [ZMS_D_19_30 + 16]
+	arith256(0, ZMS_A_19_30)
+	add256(0, ZMS_D_19_30) -> [ZMS_D_19_31 + 16]
+	arith256(0, ZMS_A_19_31)
+	add256(0, ZMS_D_19_31) -> [ZMS_D_19_32 + 16]
+	arith256(0, ZMS_A_19_32)
+	add256(0, ZMS_D_19_32) -> [ZMS_RE_19 + 16]
+	add256(0, ZMS_RE_19)
+zms_r20:
+	arith256(0, ZMS_A_20_21)
+	add256(0, ZMS_D_20_21) -> [ZMS_D_20_22 + 16]
+	arith256(0, ZMS_A_20_22)
+	add256(0, ZMS_D_20_22) -> [ZMS_D_20_23 + 16]
+	arith256(0, ZMS_A_20_23)
+	add256(0, ZMS_D_20_23) -> [ZMS_D_20_24 + 16]
+	arith256(0, ZMS_A_20_24)
+	add256(0, ZMS_D_20_24) -> [ZMS_D_20_25 + 16]
+	arith256(0, ZMS_A_20_25)
+	add256(0, ZMS_D_20_25) -> [ZMS_D_20_26 + 16]
+	arith256(0, ZMS_A_20_26)
+	add256(0, ZMS_D_20_26) -> [ZMS_D_20_27 + 16]
+	arith256(0, ZMS_A_20_27)
+	add256(0, ZMS_D_20_27) -> [ZMS_D_20_28 + 16]
+	arith256(0, ZMS_A_20_28)
+	add256(0, ZMS_D_20_28) -> [ZMS_D_20_29 + 16]
+	arith256(0, ZMS_A_20_29)
+	add256(0, ZMS_D_20_29) -> [ZMS_D_20_30 + 16]
+	arith256(0, ZMS_A_20_30)
+	add256(0, ZMS_D_20_30) -> [ZMS_D_20_31 + 16]
+	arith256(0, ZMS_A_20_31)
+	add256(0, ZMS_D_20_31) -> [ZMS_D_20_32 + 16]
+	arith256(0, ZMS_A_20_32)
+	add256(0, ZMS_D_20_32) -> [ZMS_RE_20 + 16]
+	add256(0, ZMS_RE_20)
+zms_r21:
+	arith256(0, ZMS_A_21_22)
+	add256(0, ZMS_D_21_22) -> [ZMS_D_21_23 + 16]
+	arith256(0, ZMS_A_21_23)
+	add256(0, ZMS_D_21_23) -> [ZMS_D_21_24 + 16]
+	arith256(0, ZMS_A_21_24)
+	add256(0, ZMS_D_21_24) -> [ZMS_D_21_25 + 16]
+	arith256(0, ZMS_A_21_25)
+	add256(0, ZMS_D_21_25) -> [ZMS_D_21_26 + 16]
+	arith256(0, ZMS_A_21_26)
+	add256(0, ZMS_D_21_26) -> [ZMS_D_21_27 + 16]
+	arith256(0, ZMS_A_21_27)
+	add256(0, ZMS_D_21_27) -> [ZMS_D_21_28 + 16]
+	arith256(0, ZMS_A_21_28)
+	add256(0, ZMS_D_21_28) -> [ZMS_D_21_29 + 16]
+	arith256(0, ZMS_A_21_29)
+	add256(0, ZMS_D_21_29) -> [ZMS_D_21_30 + 16]
+	arith256(0, ZMS_A_21_30)
+	add256(0, ZMS_D_21_30) -> [ZMS_D_21_31 + 16]
+	arith256(0, ZMS_A_21_31)
+	add256(0, ZMS_D_21_31) -> [ZMS_D_21_32 + 16]
+	arith256(0, ZMS_A_21_32)
+	add256(0, ZMS_D_21_32) -> [ZMS_RE_21 + 16]
+	add256(0, ZMS_RE_21)
+zms_r22:
+	arith256(0, ZMS_A_22_23)
+	add256(0, ZMS_D_22_23) -> [ZMS_D_22_24 + 16]
+	arith256(0, ZMS_A_22_24)
+	add256(0, ZMS_D_22_24) -> [ZMS_D_22_25 + 16]
+	arith256(0, ZMS_A_22_25)
+	add256(0, ZMS_D_22_25) -> [ZMS_D_22_26 + 16]
+	arith256(0, ZMS_A_22_26)
+	add256(0, ZMS_D_22_26) -> [ZMS_D_22_27 + 16]
+	arith256(0, ZMS_A_22_27)
+	add256(0, ZMS_D_22_27) -> [ZMS_D_22_28 + 16]
+	arith256(0, ZMS_A_22_28)
+	add256(0, ZMS_D_22_28) -> [ZMS_D_22_29 + 16]
+	arith256(0, ZMS_A_22_29)
+	add256(0, ZMS_D_22_29) -> [ZMS_D_22_30 + 16]
+	arith256(0, ZMS_A_22_30)
+	add256(0, ZMS_D_22_30) -> [ZMS_D_22_31 + 16]
+	arith256(0, ZMS_A_22_31)
+	add256(0, ZMS_D_22_31) -> [ZMS_D_22_32 + 16]
+	arith256(0, ZMS_A_22_32)
+	add256(0, ZMS_D_22_32) -> [ZMS_RE_22 + 16]
+	add256(0, ZMS_RE_22)
+zms_r23:
+	arith256(0, ZMS_A_23_24)
+	add256(0, ZMS_D_23_24) -> [ZMS_D_23_25 + 16]
+	arith256(0, ZMS_A_23_25)
+	add256(0, ZMS_D_23_25) -> [ZMS_D_23_26 + 16]
+	arith256(0, ZMS_A_23_26)
+	add256(0, ZMS_D_23_26) -> [ZMS_D_23_27 + 16]
+	arith256(0, ZMS_A_23_27)
+	add256(0, ZMS_D_23_27) -> [ZMS_D_23_28 + 16]
+	arith256(0, ZMS_A_23_28)
+	add256(0, ZMS_D_23_28) -> [ZMS_D_23_29 + 16]
+	arith256(0, ZMS_A_23_29)
+	add256(0, ZMS_D_23_29) -> [ZMS_D_23_30 + 16]
+	arith256(0, ZMS_A_23_30)
+	add256(0, ZMS_D_23_30) -> [ZMS_D_23_31 + 16]
+	arith256(0, ZMS_A_23_31)
+	add256(0, ZMS_D_23_31) -> [ZMS_D_23_32 + 16]
+	arith256(0, ZMS_A_23_32)
+	add256(0, ZMS_D_23_32) -> [ZMS_RE_23 + 16]
+	add256(0, ZMS_RE_23)
+zms_r24:
+	arith256(0, ZMS_A_24_25)
+	add256(0, ZMS_D_24_25) -> [ZMS_D_24_26 + 16]
+	arith256(0, ZMS_A_24_26)
+	add256(0, ZMS_D_24_26) -> [ZMS_D_24_27 + 16]
+	arith256(0, ZMS_A_24_27)
+	add256(0, ZMS_D_24_27) -> [ZMS_D_24_28 + 16]
+	arith256(0, ZMS_A_24_28)
+	add256(0, ZMS_D_24_28) -> [ZMS_D_24_29 + 16]
+	arith256(0, ZMS_A_24_29)
+	add256(0, ZMS_D_24_29) -> [ZMS_D_24_30 + 16]
+	arith256(0, ZMS_A_24_30)
+	add256(0, ZMS_D_24_30) -> [ZMS_D_24_31 + 16]
+	arith256(0, ZMS_A_24_31)
+	add256(0, ZMS_D_24_31) -> [ZMS_D_24_32 + 16]
+	arith256(0, ZMS_A_24_32)
+	add256(0, ZMS_D_24_32) -> [ZMS_RE_24 + 16]
+	add256(0, ZMS_RE_24)
+zms_r25:
+	arith256(0, ZMS_A_25_26)
+	add256(0, ZMS_D_25_26) -> [ZMS_D_25_27 + 16]
+	arith256(0, ZMS_A_25_27)
+	add256(0, ZMS_D_25_27) -> [ZMS_D_25_28 + 16]
+	arith256(0, ZMS_A_25_28)
+	add256(0, ZMS_D_25_28) -> [ZMS_D_25_29 + 16]
+	arith256(0, ZMS_A_25_29)
+	add256(0, ZMS_D_25_29) -> [ZMS_D_25_30 + 16]
+	arith256(0, ZMS_A_25_30)
+	add256(0, ZMS_D_25_30) -> [ZMS_D_25_31 + 16]
+	arith256(0, ZMS_A_25_31)
+	add256(0, ZMS_D_25_31) -> [ZMS_D_25_32 + 16]
+	arith256(0, ZMS_A_25_32)
+	add256(0, ZMS_D_25_32) -> [ZMS_RE_25 + 16]
+	add256(0, ZMS_RE_25)
+zms_r26:
+	arith256(0, ZMS_A_26_27)
+	add256(0, ZMS_D_26_27) -> [ZMS_D_26_28 + 16]
+	arith256(0, ZMS_A_26_28)
+	add256(0, ZMS_D_26_28) -> [ZMS_D_26_29 + 16]
+	arith256(0, ZMS_A_26_29)
+	add256(0, ZMS_D_26_29) -> [ZMS_D_26_30 + 16]
+	arith256(0, ZMS_A_26_30)
+	add256(0, ZMS_D_26_30) -> [ZMS_D_26_31 + 16]
+	arith256(0, ZMS_A_26_31)
+	add256(0, ZMS_D_26_31) -> [ZMS_D_26_32 + 16]
+	arith256(0, ZMS_A_26_32)
+	add256(0, ZMS_D_26_32) -> [ZMS_RE_26 + 16]
+	add256(0, ZMS_RE_26)
+zms_r27:
+	arith256(0, ZMS_A_27_28)
+	add256(0, ZMS_D_27_28) -> [ZMS_D_27_29 + 16]
+	arith256(0, ZMS_A_27_29)
+	add256(0, ZMS_D_27_29) -> [ZMS_D_27_30 + 16]
+	arith256(0, ZMS_A_27_30)
+	add256(0, ZMS_D_27_30) -> [ZMS_D_27_31 + 16]
+	arith256(0, ZMS_A_27_31)
+	add256(0, ZMS_D_27_31) -> [ZMS_D_27_32 + 16]
+	arith256(0, ZMS_A_27_32)
+	add256(0, ZMS_D_27_32) -> [ZMS_RE_27 + 16]
+	add256(0, ZMS_RE_27)
+zms_r28:
+	arith256(0, ZMS_A_28_29)
+	add256(0, ZMS_D_28_29) -> [ZMS_D_28_30 + 16]
+	arith256(0, ZMS_A_28_30)
+	add256(0, ZMS_D_28_30) -> [ZMS_D_28_31 + 16]
+	arith256(0, ZMS_A_28_31)
+	add256(0, ZMS_D_28_31) -> [ZMS_D_28_32 + 16]
+	arith256(0, ZMS_A_28_32)
+	add256(0, ZMS_D_28_32) -> [ZMS_RE_28 + 16]
+	add256(0, ZMS_RE_28)
+zms_r29:
+	arith256(0, ZMS_A_29_30)
+	add256(0, ZMS_D_29_30) -> [ZMS_D_29_31 + 16]
+	arith256(0, ZMS_A_29_31)
+	add256(0, ZMS_D_29_31) -> [ZMS_D_29_32 + 16]
+	arith256(0, ZMS_A_29_32)
+	add256(0, ZMS_D_29_32) -> [ZMS_RE_29 + 16]
+	add256(0, ZMS_RE_29)
+zms_r30:
+	arith256(0, ZMS_A_30_31)
+	add256(0, ZMS_D_30_31) -> [ZMS_D_30_32 + 16]
+	arith256(0, ZMS_A_30_32)
+	add256(0, ZMS_D_30_32) -> [ZMS_RE_30 + 16]
+	add256(0, ZMS_RE_30)
+zms_r31:
+	arith256(0, ZMS_A_31_32)
+	add256(0, ZMS_D_31_32) -> [ZMS_RE_31 + 16]
+	add256(0, ZMS_RE_31)
+	; --- double the cross products ---
+	copyb(0, [ZMS_EDB]), setpc(0)
+zms_db:
+	add256(0, ZMS_DB + 0) -> [ZMS_DB + 48]
+	add256(0, ZMS_DB + 32) -> [ZMS_DB + 80]
+	add256(0, ZMS_DB + 64) -> [ZMS_DB + 112]
+	add256(0, ZMS_DB + 96) -> [ZMS_DB + 144]
+	add256(0, ZMS_DB + 128) -> [ZMS_DB + 176]
+	add256(0, ZMS_DB + 160) -> [ZMS_DB + 208]
+	add256(0, ZMS_DB + 192) -> [ZMS_DB + 240]
+	add256(0, ZMS_DB + 224) -> [ZMS_DB + 272]
+	add256(0, ZMS_DB + 256) -> [ZMS_DB + 304]
+	add256(0, ZMS_DB + 288) -> [ZMS_DB + 336]
+	add256(0, ZMS_DB + 320) -> [ZMS_DB + 368]
+	add256(0, ZMS_DB + 352) -> [ZMS_DB + 400]
+	add256(0, ZMS_DB + 384) -> [ZMS_DB + 432]
+	add256(0, ZMS_DB + 416) -> [ZMS_DB + 464]
+	add256(0, ZMS_DB + 448) -> [ZMS_DB + 496]
+	add256(0, ZMS_DB + 480) -> [ZMS_DB + 528]
+	add256(0, ZMS_DB + 512) -> [ZMS_DB + 560]
+	add256(0, ZMS_DB + 544) -> [ZMS_DB + 592]
+	add256(0, ZMS_DB + 576) -> [ZMS_DB + 624]
+	add256(0, ZMS_DB + 608) -> [ZMS_DB + 656]
+	add256(0, ZMS_DB + 640) -> [ZMS_DB + 688]
+	add256(0, ZMS_DB + 672) -> [ZMS_DB + 720]
+	add256(0, ZMS_DB + 704) -> [ZMS_DB + 752]
+	add256(0, ZMS_DB + 736) -> [ZMS_DB + 784]
+	add256(0, ZMS_DB + 768) -> [ZMS_DB + 816]
+	add256(0, ZMS_DB + 800) -> [ZMS_DB + 848]
+	add256(0, ZMS_DB + 832) -> [ZMS_DB + 880]
+	add256(0, ZMS_DB + 864) -> [ZMS_DB + 912]
+	add256(0, ZMS_DB + 896) -> [ZMS_DB + 944]
+	add256(0, ZMS_DB + 928) -> [ZMS_DB + 976]
+	add256(0, ZMS_DB + 960) -> [ZMS_DB + 1008]
+	add256(0, ZMS_DB + 992)
+	; --- the diagonal squares, added in ---
+	copyb(0, [ZMS_EDG]), setpc(0)
+zms_dg:
+	arith256(0, ZMS_DG_17)
+	arith256(0, ZMS_DG_18)
+	arith256(0, ZMS_DG_19)
+	arith256(0, ZMS_DG_20)
+	arith256(0, ZMS_DG_21)
+	arith256(0, ZMS_DG_22)
+	arith256(0, ZMS_DG_23)
+	arith256(0, ZMS_DG_24)
+	arith256(0, ZMS_DG_25)
+	arith256(0, ZMS_DG_26)
+	arith256(0, ZMS_DG_27)
+	arith256(0, ZMS_DG_28)
+	arith256(0, ZMS_DG_29)
+	arith256(0, ZMS_DG_30)
+	arith256(0, ZMS_DG_31)
+	arith256(0, ZMS_DG_32)
+	copyb(0, [ZMS_EDA]), setpc(0)
+zms_da:
+	add256(0, ZMS_DA + 0) -> [ZMS_DA + 48]
+	add256(0, ZMS_DA + 32) -> [ZMS_DA + 80]
+	add256(0, ZMS_DA + 64) -> [ZMS_DA + 112]
+	add256(0, ZMS_DA + 96) -> [ZMS_DA + 144]
+	add256(0, ZMS_DA + 128) -> [ZMS_DA + 176]
+	add256(0, ZMS_DA + 160) -> [ZMS_DA + 208]
+	add256(0, ZMS_DA + 192) -> [ZMS_DA + 240]
+	add256(0, ZMS_DA + 224) -> [ZMS_DA + 272]
+	add256(0, ZMS_DA + 256) -> [ZMS_DA + 304]
+	add256(0, ZMS_DA + 288) -> [ZMS_DA + 336]
+	add256(0, ZMS_DA + 320) -> [ZMS_DA + 368]
+	add256(0, ZMS_DA + 352) -> [ZMS_DA + 400]
+	add256(0, ZMS_DA + 384) -> [ZMS_DA + 432]
+	add256(0, ZMS_DA + 416) -> [ZMS_DA + 464]
+	add256(0, ZMS_DA + 448) -> [ZMS_DA + 496]
+	add256(0, ZMS_DA + 480) -> [ZMS_DA + 528]
+	add256(0, ZMS_DA + 512) -> [ZMS_DA + 560]
+	add256(0, ZMS_DA + 544) -> [ZMS_DA + 592]
+	add256(0, ZMS_DA + 576) -> [ZMS_DA + 624]
+	add256(0, ZMS_DA + 608) -> [ZMS_DA + 656]
+	add256(0, ZMS_DA + 640) -> [ZMS_DA + 688]
+	add256(0, ZMS_DA + 672) -> [ZMS_DA + 720]
+	add256(0, ZMS_DA + 704) -> [ZMS_DA + 752]
+	add256(0, ZMS_DA + 736) -> [ZMS_DA + 784]
+	add256(0, ZMS_DA + 768) -> [ZMS_DA + 816]
+	add256(0, ZMS_DA + 800) -> [ZMS_DA + 848]
+	add256(0, ZMS_DA + 832) -> [ZMS_DA + 880]
+	add256(0, ZMS_DA + 864) -> [ZMS_DA + 912]
+	add256(0, ZMS_DA + 896) -> [ZMS_DA + 944]
+	add256(0, ZMS_DA + 928) -> [ZMS_DA + 976]
+	add256(0, ZMS_DA + 960) -> [ZMS_DA + 1008]
+	add256(0, ZMS_DA + 992)
+	; --- reduce: t = the low k square digits, then per row add the next one ---
+	copyb(0, r39) -> [ZME_DMA_COUNT]
+	dma_memcpy([ZMM_TP], r29) -> r0
+	dma_xmemset(ZMM_T + 1088, 64) -> r0, j(0, 4)
+	copyb(0, [ZMS_Q0]) -> r30
+	copyb(0, r34) -> r11
+	sub(r36, zmm_p2) -> r31
+	add(r31, zms_p2) -> r31             ; zms_p2's entry for idx0
+zms_row:
+	add256(0, r30) -> [ZMM_T + 1120]
+	arith256(0, ZMM_HM)                 ; m = t_0 * -M^-1
+	copyb(0, r31), setpc(0)
+zms_p2:
+	arith256(0, ZMM_A2_0)
+	add256(0, ZMM_D2 + 0) -> [ZMM_D2 + 48]
+	arith256(0, ZMM_A2_1)
+	add256(0, ZMM_D2 + 32) -> [ZMM_D2 + 80]
+	arith256(0, ZMM_A2_2)
+	add256(0, ZMM_D2 + 64) -> [ZMM_D2 + 112]
+	arith256(0, ZMM_A2_3)
+	add256(0, ZMM_D2 + 96) -> [ZMM_D2 + 144]
+	arith256(0, ZMM_A2_4)
+	add256(0, ZMM_D2 + 128) -> [ZMM_D2 + 176]
+	arith256(0, ZMM_A2_5)
+	add256(0, ZMM_D2 + 160) -> [ZMM_D2 + 208]
+	arith256(0, ZMM_A2_6)
+	add256(0, ZMM_D2 + 192) -> [ZMM_D2 + 240]
+	arith256(0, ZMM_A2_7)
+	add256(0, ZMM_D2 + 224) -> [ZMM_D2 + 272]
+	arith256(0, ZMM_A2_8)
+	add256(0, ZMM_D2 + 256) -> [ZMM_D2 + 304]
+	arith256(0, ZMM_A2_9)
+	add256(0, ZMM_D2 + 288) -> [ZMM_D2 + 336]
+	arith256(0, ZMM_A2_10)
+	add256(0, ZMM_D2 + 320) -> [ZMM_D2 + 368]
+	arith256(0, ZMM_A2_11)
+	add256(0, ZMM_D2 + 352) -> [ZMM_D2 + 400]
+	arith256(0, ZMM_A2_12)
+	add256(0, ZMM_D2 + 384) -> [ZMM_D2 + 432]
+	arith256(0, ZMM_A2_13)
+	add256(0, ZMM_D2 + 416) -> [ZMM_D2 + 464]
+	arith256(0, ZMM_A2_14)
+	add256(0, ZMM_D2 + 448) -> [ZMM_D2 + 496]
+	arith256(0, ZMM_A2_15)
+	add256(0, ZMM_D2 + 480) -> [ZMM_D2 + 528]
+	arith256(0, ZMM_A2_16)
+	add256(0, ZMM_D2 + 512) -> [ZMM_D2 + 560]
+	arith256(0, ZMM_A2_17)
+	add256(0, ZMM_D2 + 544) -> [ZMM_D2 + 592]
+	arith256(0, ZMM_A2_18)
+	add256(0, ZMM_D2 + 576) -> [ZMM_D2 + 624]
+	arith256(0, ZMM_A2_19)
+	add256(0, ZMM_D2 + 608) -> [ZMM_D2 + 656]
+	arith256(0, ZMM_A2_20)
+	add256(0, ZMM_D2 + 640) -> [ZMM_D2 + 688]
+	arith256(0, ZMM_A2_21)
+	add256(0, ZMM_D2 + 672) -> [ZMM_D2 + 720]
+	arith256(0, ZMM_A2_22)
+	add256(0, ZMM_D2 + 704) -> [ZMM_D2 + 752]
+	arith256(0, ZMM_A2_23)
+	add256(0, ZMM_D2 + 736) -> [ZMM_D2 + 784]
+	arith256(0, ZMM_A2_24)
+	add256(0, ZMM_D2 + 768) -> [ZMM_D2 + 816]
+	arith256(0, ZMM_A2_25)
+	add256(0, ZMM_D2 + 800) -> [ZMM_D2 + 848]
+	arith256(0, ZMM_A2_26)
+	add256(0, ZMM_D2 + 832) -> [ZMM_D2 + 880]
+	arith256(0, ZMM_A2_27)
+	add256(0, ZMM_D2 + 864) -> [ZMM_D2 + 912]
+	arith256(0, ZMM_A2_28)
+	add256(0, ZMM_D2 + 896) -> [ZMM_D2 + 944]
+	arith256(0, ZMM_A2_29)
+	add256(0, ZMM_D2 + 928) -> [ZMM_D2 + 976]
+	arith256(0, ZMM_A2_30)
+	add256(0, ZMM_D2 + 960) -> [ZMM_D2 + 1008]
+	arith256(0, ZMM_A2_31)
+	add256(0, ZMM_D2 + 992) -> [ZMM_D2 + 1040]
+	arith256(0, ZMM_A2_32)
+	add256(0, ZMM_D2 + 1024) -> [ZMM_D2 + 1072]
+	add256(0, ZMM_D2 + 1056) -> [ZMM_D3 + 16]
+	add256(0, ZMM_D3)
+	add(r30, 32) -> r30
+	sub(r11, 1) -> r11
+	ltu(0, r11), j(zms_row)
+	jump(zmm_sub)
+
+; --- the Montgomery path: r17 = the modulus' first nonzero byte, r28 = its length ---
+zmm:
+	add(r14, r15) -> r5
+	copyb(r5, 1[a - 1]) -> r5          ; the modulus' last byte
+	and(r5, 1) -> r5
+	eq(r5, 0), j(zme_legacy)            ; even modulus: the general path
+	ltu(1056, r28), j(zme_legacy)       ; over 33 digits: the general path
+	copyb(0, r10) -> [ZMM_A_BASE]
+	copyb(0, r11) -> [ZMM_A_BLEN]
+	copyb(0, r12) -> [ZMM_A_EXP]
+	copyb(0, r13) -> [ZMM_A_ELEN]
+	copyb(0, r15) -> [ZMM_A_MLEN]
+	copyb(0, r16) -> [ZMM_A_OUT]
+	; --- per-call values: k, idx0 = 33 - k, the addresses and entries of position idx0 ---
+	add(r28, 31) -> r5
+	srl(r5, 5) -> r5
+	copyb(0, r5) -> r34
+	sll(r5, 5) -> r39
+	add(r5, 3) -> r6
+	sll(r6, 5) -> r33
+	sub(33, r5) -> r6                ; idx0
+	sll(r6, 3) -> r7
+	add(r7, zmm_p1) -> r35         ; 2 instructions (8 bytes) per position
+	add(r7, zmm_p2) -> r36
+	sll(r6, 2) -> r7
+	add(r7, zmm_ps) -> r37         ; 1 instruction per position
+	sll(r6, 5) -> r6                    ; idx0 * 32
+	copyb(0, r6) -> [ZMM_I32]
+	add(r6, ZMM_X) -> r38
+	add(r6, ZMM_T + 32) -> [ZMM_TP]
+	add(r6, ZMM_T + 32) -> [ZMM_HM]
+	add(r6, ZMM_T) -> r32
+	add(r6, ZMM_S) -> [ZMM_SP]
+	add(r6, ZMM_TT - 1056) -> [ZMM_TVM]
+	; the chains start at idx0: no carry in (1 for t - M), no high half below
+	add(r6, ZMM_D1) -> r7
+	copyb(r7, 0) -> 8[a + 16]
+	add(r6, ZMM_D2) -> r7
+	copyb(r7, 0) -> 8[a + 16]
+	add(r6, ZMM_DS) -> r7
+	copyb(r7, 1) -> 8[a + 16]
+	add(r6, ZMM_H1) -> r7
+	dma_xmemset(r7, 32) -> r0, j(0, 4)
+	add(r6, ZMM_H2) -> r7
+	dma_xmemset(r7, 32) -> r0, j(0, 4)
+	; --- the squaring's per-call values (k <= 16); r28 = the modulus length, still needed ---
+	ltu(16, r34), j(zms_noset)
+	add(r6, r6) -> r7                   ; 2 * idx0 * 32
+	add(r7, ZMS_P - 1088) -> [ZMS_PLO]
+	add(r7, ZMS_DB - 1088) -> r29
+	copyb(r29, 0) -> 8[a + 16]
+	add(r7, ZMS_DA - 1088) -> r29
+	copyb(r29, 0) -> 8[a + 16]
+	srl(r6, 2) -> r29                   ; 2 * idx0 * 4
+	add(r29, zms_db - 136) -> [ZMS_EDB]
+	add(r29, zms_da - 136) -> [ZMS_EDA]
+	add(r29, ZMS_ROWS - 136) -> r29
+	copyb(r29, 8[a + 0]) -> [ZMS_ER]
+	srl(r6, 3) -> r29                   ; idx0 * 4
+	add(r29, zms_dg - 68) -> [ZMS_EDG]
+	add(r6, ZMS_ADDS - 544) -> [ZMS_Q0]
+zms_noset:
+	; --- M, ~M, M's lowest digit ---
+	copyb(0, r17) -> r5
+	copyb(0, r28) -> r6
+	copyb(0, [ZMM_I32])
+	add(c, ZMM_M) -> r7
+	copyb(0, r34) -> r28
+	call zmm_ldl
+	copyb(0, [ZMM_I32]) -> r6
+	add(r6, ZMM_M) -> r5
+	dma_xmemcpy(ZMM_M0, r5) -> r0, j(32, 4)
+	add(r6, ZMM_NM) -> r7
+	copyb(0, r34) -> r29
+	sll(r29, 2) -> r29                  ; limbs
+zmm_nm:
+	copyb(r5, 8[a + 0])
+	xor(c, 0xffffffffffffffff)
+	copyb(r7, c) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r7, 8) -> r7
+	sub(r29, 1) -> r29
+	ltu(0, r29), j(zmm_nm)
+	; --- np = -M^-1 mod 2^256: Newton from inv = M0 (right mod 8), 7 doublings ---
+	dma_xmemcpy(ZMM_INV, ZMM_M0) -> r0, j(32, 4)
+	arith256(0, ZMM_HN1)
+	xor([ZMM_Y + 0], 0xffffffffffffffff) -> [ZMM_NY + 0]
+	xor([ZMM_Y + 8], 0xffffffffffffffff) -> [ZMM_NY + 8]
+	xor([ZMM_Y + 16], 0xffffffffffffffff) -> [ZMM_NY + 16]
+	xor([ZMM_Y + 24], 0xffffffffffffffff) -> [ZMM_NY + 24]
+	add256(0, ZMM_HN2)
+	arith256(0, ZMM_HN3)
+	arith256(0, ZMM_HN1)
+	xor([ZMM_Y + 0], 0xffffffffffffffff) -> [ZMM_NY + 0]
+	xor([ZMM_Y + 8], 0xffffffffffffffff) -> [ZMM_NY + 8]
+	xor([ZMM_Y + 16], 0xffffffffffffffff) -> [ZMM_NY + 16]
+	xor([ZMM_Y + 24], 0xffffffffffffffff) -> [ZMM_NY + 24]
+	add256(0, ZMM_HN2)
+	arith256(0, ZMM_HN3)
+	arith256(0, ZMM_HN1)
+	xor([ZMM_Y + 0], 0xffffffffffffffff) -> [ZMM_NY + 0]
+	xor([ZMM_Y + 8], 0xffffffffffffffff) -> [ZMM_NY + 8]
+	xor([ZMM_Y + 16], 0xffffffffffffffff) -> [ZMM_NY + 16]
+	xor([ZMM_Y + 24], 0xffffffffffffffff) -> [ZMM_NY + 24]
+	add256(0, ZMM_HN2)
+	arith256(0, ZMM_HN3)
+	arith256(0, ZMM_HN1)
+	xor([ZMM_Y + 0], 0xffffffffffffffff) -> [ZMM_NY + 0]
+	xor([ZMM_Y + 8], 0xffffffffffffffff) -> [ZMM_NY + 8]
+	xor([ZMM_Y + 16], 0xffffffffffffffff) -> [ZMM_NY + 16]
+	xor([ZMM_Y + 24], 0xffffffffffffffff) -> [ZMM_NY + 24]
+	add256(0, ZMM_HN2)
+	arith256(0, ZMM_HN3)
+	arith256(0, ZMM_HN1)
+	xor([ZMM_Y + 0], 0xffffffffffffffff) -> [ZMM_NY + 0]
+	xor([ZMM_Y + 8], 0xffffffffffffffff) -> [ZMM_NY + 8]
+	xor([ZMM_Y + 16], 0xffffffffffffffff) -> [ZMM_NY + 16]
+	xor([ZMM_Y + 24], 0xffffffffffffffff) -> [ZMM_NY + 24]
+	add256(0, ZMM_HN2)
+	arith256(0, ZMM_HN3)
+	arith256(0, ZMM_HN1)
+	xor([ZMM_Y + 0], 0xffffffffffffffff) -> [ZMM_NY + 0]
+	xor([ZMM_Y + 8], 0xffffffffffffffff) -> [ZMM_NY + 8]
+	xor([ZMM_Y + 16], 0xffffffffffffffff) -> [ZMM_NY + 16]
+	xor([ZMM_Y + 24], 0xffffffffffffffff) -> [ZMM_NY + 24]
+	add256(0, ZMM_HN2)
+	arith256(0, ZMM_HN3)
+	arith256(0, ZMM_HN1)
+	xor([ZMM_Y + 0], 0xffffffffffffffff) -> [ZMM_NY + 0]
+	xor([ZMM_Y + 8], 0xffffffffffffffff) -> [ZMM_NY + 8]
+	xor([ZMM_Y + 16], 0xffffffffffffffff) -> [ZMM_NY + 16]
+	xor([ZMM_Y + 24], 0xffffffffffffffff) -> [ZMM_NY + 24]
+	add256(0, ZMM_HN2)
+	arith256(0, ZMM_HN3)
+	xor([ZMM_INV + 0], 0xffffffffffffffff) -> [ZMM_NY + 0]
+	xor([ZMM_INV + 8], 0xffffffffffffffff) -> [ZMM_NY + 8]
+	xor([ZMM_INV + 16], 0xffffffffffffffff) -> [ZMM_NY + 16]
+	xor([ZMM_INV + 24], 0xffffffffffffffff) -> [ZMM_NY + 24]
+	add256(0, ZMM_HN4)
+	; --- BR = base mod M (base without leading zero bytes, >= 1 digit) ---
+	copyb(0, [ZMM_A_BASE]) -> r5
+	copyb(0, [ZMM_A_BLEN]) -> r6
+zmm_bz:
+	eq(r6, 0), j(zmm_bzd)
+	copyb(r5, 1[a + 0])
+	ltu(0, c), j(zmm_bzd)
+	add(r5, 1) -> r5
+	sub(r6, 1) -> r6
+	jump(zmm_bz)
+zmm_bzd:
+	add(r6, 31) -> r28
+	srl(r28, 5) -> r28
+	ltu(0, r28), j(zmm_bnz)
+	copyb(0, 1) -> r28
+zmm_bnz:
+	copyb(0, r28) -> [ZKVM_ME_BU]       ; the base's digits (the general path's spill slot)
+	copyb(0, ZKVM_ME_BASE_LIMBS) -> r7
+	call zmm_ldl
+	copyb(0, [ZMM_I32]) -> r6
+	add(r6, ZMM_BR) -> r7
+	copyb(0, r39) -> r29
+	dma_xmemset(r7, r29) -> r0, j(0, 4)
+	copyb(0, ZKVM_ME_BASE_LIMBS) -> r10
+	copyb(0, [ZKVM_ME_BU]) -> r11
+	add(r6, ZMM_M) -> r12
+	copyb(0, r34) -> r13
+	copyb(0, r7) -> r14
+	call zisklib_rem_long
+	; --- X = R^2 mod M. Up to 31 digits it is one rem_long of R^2 (a 1 in digit
+	; 2k); beyond, R^2 and M overflow the division hint's 386 parameter words,
+	; so it is 2^k * R mod M squared 8 times (2^k * R -> 2^(256k) * R = R^2) ---
+	copyb(0, r34) -> r5
+	ltu(31, r5), j(zmm_r2big)
+	sll(r5, 1) -> r11
+	add(r11, 1) -> r11                  ; 2k + 1 digits
+	sll(r11, 5) -> r6
+	dma_xmemset(ZMM_RA2, r6) -> r0, j(0, 4)
+	sll(r5, 6) -> r6
+	add(r6, ZMM_RA2) -> r7
+	copyb(r7, 1) -> 8[a + 0]
+	copyb(0, r38) -> r14
+	copyb(0, r39) -> r29
+	dma_xmemset(r14, r29) -> r0, j(0, 4)
+	copyb(0, ZMM_RA2) -> r10
+	copyb(0, [ZMM_I32]) -> r6
+	add(r6, ZMM_M) -> r12
+	copyb(0, r5) -> r13
+	call zisklib_rem_long
+	jump(zmm_r2done)
+zmm_r2big:
+	add(r5, 1) -> r6
+	sll(r6, 5) -> r6
+	copyb(0, ZMM_RA2) -> r7
+	dma_xmemset(r7, r6) -> r0, j(0, 4)
+	sll(r5, 5) -> r6
+	add(r6, ZMM_RA2) -> r7
+	sll(1, r5) -> r6
+	copyb(r7, r6) -> 8[a + 0]
+	copyb(0, r38) -> r14
+	copyb(0, r39) -> r29
+	dma_xmemset(r14, r29) -> r0, j(0, 4)
+	copyb(0, ZMM_RA2) -> r10
+	add(r5, 1) -> r11
+	copyb(0, [ZMM_I32]) -> r6
+	add(r6, ZMM_M) -> r12
+	copyb(0, r5) -> r13
+	call zisklib_rem_long
+	; --- 8 squarings: 2^k * R -> 2^(256k) * R = R^2 (mod M) ---
+	copyb(0, 8) -> r12
+zmm_r2:
+	copyb(0, r38) -> r10
+	call zmm_mul
+	sub(r12, 1) -> r12
+	ltu(0, r12), j(zmm_r2)
+zmm_r2done:
+	; --- R2 = X; X = BR; X = BR * R2 / R = B * R (mod M); T[1] = X ---
+	copyb(0, r39) -> [ZME_DMA_COUNT]
+	copyb(0, [ZMM_I32]) -> r6
+	add(r6, ZMM_R2) -> r5
+	dma_memcpy(r5, r38) -> r0
+	add(r6, ZMM_BR) -> r7
+	dma_memcpy(r38, r7) -> r0
+	copyb(0, r5) -> r10
+	call zmm_mul
+	copyb(0, r39) -> [ZME_DMA_COUNT]
+	copyb(0, [ZMM_I32]) -> r6
+	add(r6, ZMM_TT) -> r5
+	dma_memcpy(r5, r38) -> r0
+	; --- the exponent without its leading zero bytes: r12 = next byte, r13 = count;
+	; r14 = &T[1][idx0], r17 = &T[v][idx0] - v * 1056, r16 = zmm_sqr's choice
+	; (zmm_mul and zmm_sqr keep all three) ---
+	copyb(0, [ZMM_I32]) -> r6
+	add(r6, ZMM_TT) -> r14
+	copyb(0, [ZMM_TVM]) -> r17
+	sub(r34, 3) -> r16
+	ltu(r16, 14) -> r16            ; r16 = 1 for 3 <= k <= 16: zmm_sqr squares with zms_go
+	copyb(0, [ZMM_A_EXP]) -> r12
+	copyb(0, [ZMM_A_ELEN]) -> r13
+zmm_exp:
+	eq(r13, 0), j(zmm_e0)
+	copyb(r12, 1[a + 0]) -> r6
+	add(r12, 1) -> r12
+	sub(r13, 1) -> r13
+	ltu(0, r6), j(zmm_e1)
+	jump(zmm_exp)
+zmm_e0:
+	; exp == 0: the result is 1 (M > 1), as mod_len bytes
+	copyb(0, [ZMM_A_OUT]) -> r16
+	copyb(0, [ZMM_A_MLEN]) -> r15
+	dma_xmemset(r16, r15) -> r0, j(0, 4)
+	add(r16, r15) -> r5
+	copyb(r5, 1) -> 1[a - 1]
+	jump(zme_done)
+zmm_e1:
+	ltu(6, r13), j(zmm_w)               ; 8+ significant exponent bytes: 4-bit window
+	; --- bit at a time: X = B is the leading bit; enter the byte body below it ---
+	ltu(r6, 128), j(zmm_t7)
+	jump(zmm_b6)
+zmm_t7:
+	ltu(r6, 64), j(zmm_t6)
+	jump(zmm_b5)
+zmm_t6:
+	ltu(r6, 32), j(zmm_t5)
+	jump(zmm_b4)
+zmm_t5:
+	ltu(r6, 16), j(zmm_t4)
+	jump(zmm_b3)
+zmm_t4:
+	ltu(r6, 8), j(zmm_t3)
+	jump(zmm_b2)
+zmm_t3:
+	ltu(r6, 4), j(zmm_t2)
+	jump(zmm_b1)
+zmm_t2:
+	ltu(r6, 2), j(zmm_t1)
+	jump(zmm_b0)
+zmm_t1:
+	jump(zmm_next)
+zmm_b7:
+	call zmm_sqr
+	and(r6, 128)
+	eq(c, 0), j(zmm_b6)
+	copyb(0, r14) -> r10
+	call zmm_mul
+zmm_b6:
+	call zmm_sqr
+	and(r6, 64)
+	eq(c, 0), j(zmm_b5)
+	copyb(0, r14) -> r10
+	call zmm_mul
+zmm_b5:
+	call zmm_sqr
+	and(r6, 32)
+	eq(c, 0), j(zmm_b4)
+	copyb(0, r14) -> r10
+	call zmm_mul
+zmm_b4:
+	call zmm_sqr
+	and(r6, 16)
+	eq(c, 0), j(zmm_b3)
+	copyb(0, r14) -> r10
+	call zmm_mul
+zmm_b3:
+	call zmm_sqr
+	and(r6, 8)
+	eq(c, 0), j(zmm_b2)
+	copyb(0, r14) -> r10
+	call zmm_mul
+zmm_b2:
+	call zmm_sqr
+	and(r6, 4)
+	eq(c, 0), j(zmm_b1)
+	copyb(0, r14) -> r10
+	call zmm_mul
+zmm_b1:
+	call zmm_sqr
+	and(r6, 2)
+	eq(c, 0), j(zmm_b0)
+	copyb(0, r14) -> r10
+	call zmm_mul
+zmm_b0:
+	call zmm_sqr
+	and(r6, 1)
+	eq(c, 0), j(zmm_next)
+	copyb(0, r14) -> r10
+	call zmm_mul
+zmm_next:
+	eq(r13, 0), j(zmm_out)
+	copyb(r12, 1[a + 0]) -> r6
+	add(r12, 1) -> r12
+	sub(r13, 1) -> r13
+	jump(zmm_b7)
+	; --- 4-bit fixed window: T[v] = T[v - 1] * B, v = 2..15 ---
+zmm_w:
+	copyb(0, 2) -> r7
+zmm_wt:
+	copyb(0, r14) -> r10
+	call zmm_mul
+	copyb(0, r39) -> [ZME_DMA_COUNT]
+	sll(r7, 10) -> r5
+	sll(r7, 5)
+	add(c, r5)
+	add(c, r17) -> r5
+	dma_memcpy(r5, r38) -> r0
+	add(r7, 1) -> r7
+	ltu(r7, 16), j(zmm_wt)
+	copyb(0, r39) -> [ZME_DMA_COUNT]
+	srl(r6, 4) -> r7                    ; the first byte's top nibble
+	eq(r7, 0), j(zmm_wl0)
+	sll(r7, 10) -> r5
+	sll(r7, 5)
+	add(c, r5)
+	add(c, r17) -> r5
+	dma_memcpy(r38, r5) -> r0      ; X = T[top nibble]
+	jump(zmm_wlo)
+zmm_wl0:
+	and(r6, 15) -> r7
+	sll(r7, 10) -> r5
+	sll(r7, 5)
+	add(c, r5)
+	add(c, r17) -> r5
+	dma_memcpy(r38, r5) -> r0      ; X = T[low nibble]
+zmm_wnext:
+	eq(r13, 0), j(zmm_out)
+	copyb(r12, 1[a + 0]) -> r6
+	add(r12, 1) -> r12
+	sub(r13, 1) -> r13
+	call zmm_sqr
+	call zmm_sqr
+	call zmm_sqr
+	call zmm_sqr
+	srl(r6, 4) -> r7
+	eq(r7, 0), j(zmm_wlo)
+	sll(r7, 10) -> r5
+	sll(r7, 5)
+	add(c, r5)
+	add(c, r17) -> r10
+	call zmm_mul
+zmm_wlo:
+	call zmm_sqr
+	call zmm_sqr
+	call zmm_sqr
+	call zmm_sqr
+	and(r6, 15) -> r7
+	eq(r7, 0), j(zmm_wnext)
+	sll(r7, 10) -> r5
+	sll(r7, 5)
+	add(c, r5)
+	add(c, r17) -> r10
+	call zmm_mul
+	jump(zmm_wnext)
+	; --- out of Montgomery form: X = X * 1 / R ---
+zmm_out:
+	copyb(0, [ZMM_I32]) -> r6
+	add(r6, ZMM_R2) -> r10
+	copyb(0, r39) -> r29
+	dma_xmemset(r10, r29) -> r0, j(0, 4)
+	copyb(r10, 1) -> 8[a + 0]
+	call zmm_mul
+	; --- X (k digits, < M) as mod_len big-endian bytes ---
+	copyb(0, r39) -> r29
+	add(r29, ZMM_BUFL - 8) -> r30      ; the last big-endian word
+	srl(r29, 3) -> r31
+	copyb(0, r38) -> r7
+zmm_st:
+	rev8(r7, 8[a + 0])
+	copyb(r30, c) -> 8[a + 0]
+	add(r7, 8) -> r7
+	sub(r30, 8) -> r30
+	sub(r31, 1) -> r31
+	ltu(0, r31), j(zmm_st)
+	copyb(0, [ZMM_A_OUT]) -> r16
+	copyb(0, [ZMM_A_MLEN]) -> r15
+	ltu(r15, r29), j(zmm_narrow)
+	sub(r15, r29) -> r5
+	dma_xmemset(r16, r5) -> r0, j(0, 4)  ; the zero bytes above the k-digit result
+	add(r16, r5) -> r5
+	copyb(0, r29) -> [ZME_DMA_COUNT]
+	dma_memcpy(r5, ZMM_BUFL) -> r0
+	jump(zme_done)
+zmm_narrow:
+	add(r29, ZMM_BUFL) -> r5
+	sub(r5, r15) -> r5
+	copyb(0, r15) -> [ZME_DMA_COUNT]
+	dma_memcpy(r16, r5) -> r0
+	jump(zme_done)
+
+zme_done:
+	copyb(0, [ZME_RA]) -> r1
+	copyb(0, 0) -> r10                  ; ZKVM_EOK
+	ret
+
+; --- moduli above 48 bytes: the general path (r10..r16 are still the arguments) ---
+zme_legacy:
+	push r1
+	; --- spill the seven EF arguments ---
+	copyb(0, ZKVM_ME_BASEP) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ZKVM_ME_BASEB) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ZKVM_ME_EXPP2) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, ZKVM_ME_EXPB) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, ZKVM_ME_MODP) -> r5
+	copyb(r5, r14) -> 8[a + 0]
+	copyb(0, ZKVM_ME_MODB) -> r5
+	copyb(r5, r15) -> 8[a + 0]
+	copyb(0, ZKVM_ME_OUTP) -> r5
+	copyb(r5, r16) -> 8[a + 0]
+
+	; --- base bytes -> LE limbs ; BU = nlimbs ---
+	copyb(0, ZKVM_ME_BASEP) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZKVM_ME_BASEB) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_BASE_LIMBS) -> r12
+	call zkvm_be_bytes_to_limbs
+	copyb(0, ZKVM_ME_BU) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	; --- exp bytes -> LE limbs ; EU = nlimbs ---
+	copyb(0, ZKVM_ME_EXPP2) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZKVM_ME_EXPB) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_EXP_LIMBS) -> r12
+	call zkvm_be_bytes_to_limbs
+	copyb(0, ZKVM_ME_EU) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	; --- mod bytes -> LE limbs ; MU = nlimbs ---
+	copyb(0, ZKVM_ME_MODP) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZKVM_ME_MODB) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_MOD_LIMBS) -> r12
+	call zkvm_be_bytes_to_limbs
+	copyb(0, ZKVM_ME_MU) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+
+	; --- zero the result limb buffer (bytes above the result read as 0) ---
+	copyb(0, ZKVM_ME_RES_LIMBS) -> r6
+	copyb(0, 132) -> r7
+zme_rz:
+	eq(r7, 0), j(zme_rzd)
+	copyb(r6, 0) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(zme_rz)
+zme_rzd:
+	; --- dispatcher args: base_limbs, BU, exp_limbs, EU, mod_limbs, MU, res_limbs ---
+	copyb(0, ZKVM_ME_BASE_LIMBS) -> r10
+	copyb(0, ZKVM_ME_BU) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_EXP_LIMBS) -> r12
+	copyb(0, ZKVM_ME_EU) -> r13
+	copyb(r13, 8[a + 0]) -> r13
+	copyb(0, ZKVM_ME_MOD_LIMBS) -> r14
+	copyb(0, ZKVM_ME_MU) -> r15
+	copyb(r15, 8[a + 0]) -> r15
+	copyb(0, ZKVM_ME_RES_LIMBS) -> r16
+	call zme_dispatch
+
+	; --- result LE limbs -> mod_len big-endian output bytes ---
+	copyb(0, ZKVM_ME_RES_LIMBS) -> r10
+	copyb(0, ZKVM_ME_OUTP) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_MODB) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zkvm_limbs_to_be_bytes
+
+	copyb(0, 0) -> r10                  ; return ZKVM_EOK
+	pop r1
+	ret
+
+; ---------------------------------------------------------------------------
+; zme_dispatch: verbatim lift of zisklib_modexp_u64_c's dispatcher body.
+;   [r10=base, r11=blen_u64, r12=exp, r13=elen_u64, r14=mod, r15=mlen_u64,
+;    r16=result] -> r10 = result_len (u64 count; unused by the caller).
+; ---------------------------------------------------------------------------
+zme_dispatch:
+	push r1
+	copyb(0, ZKVM_ME_APTR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, ZKVM_ME_LEN) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, ZKVM_ME_DP_EXP) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, ZKVM_ME_DP_ELEN) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, ZKVM_ME_BPTR) -> r5
+	copyb(r5, r14) -> 8[a + 0]
+	copyb(0, ZKVM_ME_LENB) -> r5
+	copyb(r5, r15) -> 8[a + 0]
+	copyb(0, ZKVM_ME_DP_RES) -> r5
+	copyb(r5, r16) -> 8[a + 0]
+	copyb(0, ZKVM_ME_LEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 3) -> r6
+	srl(r6, 2) -> r6
+	copyb(0, ZKVM_ME_DP_BLEN) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, ZKVM_ME_LENB) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 3) -> r6
+	srl(r6, 2) -> r6
+	copyb(0, ZKVM_ME_DP_MLEN) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, ZKVM_ME_DP_BLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	sll(r6, 5) -> r6
+	copyb(0, ZKVM_ME_BASEPAD) -> r7
+	dma_xmemset(r7, r6) -> r5, j(0, 4)
+	copyb(0, ZKVM_ME_APTR) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZKVM_ME_BASEPAD) -> r11
+	copyb(0, ZKVM_ME_LEN) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call bn254_memcpy
+	copyb(0, ZKVM_ME_DP_MLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	sll(r6, 5) -> r6
+	copyb(0, ZKVM_ME_MODPAD) -> r7
+	dma_xmemset(r7, r6) -> r5, j(0, 4)
+	copyb(0, ZKVM_ME_BPTR) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZKVM_ME_MODPAD) -> r11
+	copyb(0, ZKVM_ME_LENB) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call bn254_memcpy
+	copyb(0, ZKVM_ME_DP_MLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, 1) -> r7
+	eq(r6, r7), j(zme_dp_m1)
+	jump(zme_dp_expchk)
+zme_dp_m1:
+	copyb(0, ZKVM_ME_MODPAD) -> r10
+	copyb(0, BI_ZERO) -> r11
+	copyb(0, 4) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(zme_dp_ret0)
+	copyb(0, ZKVM_ME_MODPAD) -> r10
+	copyb(0, BI_ONE) -> r11
+	copyb(0, 4) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(zme_dp_ret0)
+zme_dp_expchk:
+	copyb(0, ZKVM_ME_DP_EXP) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, ZKVM_ME_DP_ELEN) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	call zisklib_bi_iszero
+	ltu(0, r10), j(zme_dp_ret1)
+	copyb(0, ZKVM_ME_DP_BLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, 1) -> r7
+	eq(r6, r7), j(zme_dp_b1)
+	jump(zme_dp_dispatch)
+zme_dp_b1:
+	copyb(0, ZKVM_ME_BASEPAD) -> r10
+	copyb(0, BI_ZERO) -> r11
+	copyb(0, 4) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(zme_dp_ret0)
+	copyb(0, ZKVM_ME_BASEPAD) -> r10
+	copyb(0, BI_ONE) -> r11
+	copyb(0, 4) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(zme_dp_ret1)
+zme_dp_dispatch:
+	copyb(0, ZKVM_ME_DP_MLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, 1) -> r7
+	eq(r6, r7), j(zme_dp_short)
+	copyb(0, ZKVM_ME_BASEPAD) -> r10
+	copyb(0, ZKVM_ME_DP_BLEN) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_DP_EXP) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	copyb(0, ZKVM_ME_DP_ELEN) -> r13
+	copyb(r13, 8[a + 0]) -> r13
+	copyb(0, ZKVM_ME_MODPAD) -> r14
+	copyb(0, ZKVM_ME_DP_MLEN) -> r15
+	copyb(r15, 8[a + 0]) -> r15
+	copyb(0, ZKVM_ME_DP_RES) -> r16
+	copyb(r16, 8[a + 0]) -> r16
+	call zisklib_modexp_long
+	sll(r10, 2) -> r10
+	pop r1
+	ret
+zme_dp_short:
+	copyb(0, ZKVM_ME_BASEPAD) -> r10
+	copyb(0, ZKVM_ME_DP_BLEN) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, ZKVM_ME_DP_EXP) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	copyb(0, ZKVM_ME_DP_ELEN) -> r13
+	copyb(r13, 8[a + 0]) -> r13
+	copyb(0, ZKVM_ME_MODPAD) -> r14
+	copyb(0, ZKVM_ME_DP_RES) -> r15
+	copyb(r15, 8[a + 0]) -> r15
+	call zisklib_modexp_short
+	copyb(0, 4) -> r10
+	pop r1
+	ret
+zme_dp_ret0:
+	copyb(0, ZKVM_ME_DP_RES) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(r11, 0) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(0, 4) -> r10
+	pop r1
+	ret
+zme_dp_ret1:
+	copyb(0, ZKVM_ME_DP_RES) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(r11, 1) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(0, 4) -> r10
+	pop r1
+	ret

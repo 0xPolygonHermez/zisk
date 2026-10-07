@@ -137,6 +137,15 @@ pub struct Coordinator {
     /// Concurrent storage for active jobs.
     jobs: RwLock<HashMap<JobId, Arc<RwLock<Job>>>>,
 
+    /// Aggregation arity the workers report (a proving-key constant), 0 until the first one does.
+    /// A mutex, not an atomic: adopting a value reads the pool first.
+    agg_arity: tokio::sync::Mutex<u64>,
+
+    /// Held from the arity check until the worker is in the pool, so two first registrations
+    /// cannot both see an empty fleet and adopt different arities. Taken only by the
+    /// registration handlers, so it never nests inside a job lock.
+    registration: tokio::sync::Mutex<()>,
+
     /// Number of registrations accumulated.
     registrations: AtomicU64,
 
@@ -277,6 +286,8 @@ impl Coordinator {
             start_time_utc,
             workers_pool: Arc::new(WorkersPool::new()),
             jobs: RwLock::new(HashMap::new()),
+            agg_arity: tokio::sync::Mutex::new(0),
+            registration: tokio::sync::Mutex::new(()),
             registrations: AtomicU64::new(0),
             reconnections: AtomicU64::new(0),
             job_events: RwLock::new(HashMap::new()),
@@ -417,7 +428,11 @@ impl Coordinator {
                 return Ok(None);
             }
             job.change_state(terminal_state);
-            (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions))
+            let outcome = (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions));
+            // Free the proof payloads now. A failed phase-3 job otherwise pins every
+            // retained aggregation set for the whole lifetime of the map entry.
+            job.cleanup();
+            outcome
         };
 
         let parked = self.workers_pool.mark_computing_workers_settingup(job_id, &worker_ids).await;
@@ -1405,85 +1420,53 @@ impl Coordinator {
         Ok(())
     }
 
-    /// Determines recurser assignment and manages worker state transitions for Phase 3.
-    ///
-    /// # Parameters
-    ///
-    /// * `job` - Mutable reference to job for state updates
-    /// * `candidate_worker_id` - Worker that just completed Phase 2 and could become recurser
-    ///
-    /// # Returns
-    ///
-    /// * The worker ID of the worker assigned as recurser
-    ///
-    /// # Recurser Selection Strategy
-    ///
-    /// The system uses a "first-to-complete" recurser selection approach, so the first worker
-    /// to complete Phase 2 becomes the recurser
-    async fn resolve_recurser_assignment(
+    /// Record the arity a worker reports; one that disagrees with the cluster is rejected.
+    /// Callers hold `registration` until the worker is registered.
+    pub(crate) async fn observe_agg_arity(
         &self,
-        job: &mut Job,
-        candidate_worker_id: &WorkerId,
-    ) -> CoordinatorResult<WorkerId> {
-        match job.agg_worker_id.as_ref() {
-            Some(existing_recurser_id) => {
-                // Recurser already exists - mark the candidate as idle since it's not the recurser
-                // This immediately frees up the worker's resources for other jobs
-                self.workers_pool
-                    .mark_worker_with_state(candidate_worker_id, WorkerState::Ready)
-                    .await?;
-                Ok(existing_recurser_id.clone())
-            }
-            None => {
-                // No recurser yet - assign the candidate as recurser
-                // This represents the first worker to complete Phase 2, implementing "first-wins" selection
-                job.agg_worker_id = Some(candidate_worker_id.clone());
-                job.change_state(JobState::Running(JobPhase::Recurse));
+        worker_id: &WorkerId,
+        arity: u32,
+    ) -> CoordinatorResult<()> {
+        // 0 means a worker too old to send it.
+        if arity == 0 {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Worker {worker_id} did not report an aggregation arity; it is too old for this \
+                 coordinator"
+            )));
+        }
 
-                let job_id = job.job_id.clone();
+        // An empty pool (the fleet cycled, maybe re-keyed) adopts the first value reported.
+        let mut current = self.agg_arity.lock().await;
+        let pool_empty = self.workers_pool.num_workers().await == 0;
+        if *current == 0 || pool_empty {
+            *current = arity as u64;
+            return Ok(());
+        }
+        if *current == arity as u64 {
+            return Ok(());
+        }
 
-                // Update worker state
-                self.workers_pool
-                    .mark_worker_with_state(
-                        candidate_worker_id,
-                        WorkerState::Computing((job_id.clone(), JobPhase::Recurse)),
-                    )
-                    .await?;
+        Err(CoordinatorError::InvalidRequest(format!(
+            "Worker {worker_id} reports aggregation arity {arity} but the cluster is on {}; \
+             workers must share a proving key",
+            *current
+        )))
+    }
 
-                self.fire_job_event(&job_id, CoordinatorJobEvent::Progress(JobPhase::Recurse))
-                    .await;
-
-                info!(
-                    "[Phase3] Assigned worker {} as recurser for job {}",
-                    candidate_worker_id, job_id
-                );
-
-                Ok(candidate_worker_id.clone())
-            }
+    /// Aggregation arity for scheduling. Registration rejects a worker that does
+    /// not report one, so by the time a job has workers this is always set.
+    pub(crate) async fn agg_arity(&self) -> CoordinatorResult<usize> {
+        match *self.agg_arity.lock().await {
+            0 => Err(CoordinatorError::Internal(
+                "No aggregation arity known; no worker has reported one".to_string(),
+            )),
+            n => Ok(n as usize),
         }
     }
 
-    /// Checks if all workers have completed Phase 2 proofs and validates success.
-    ///
-    /// # Parameters
-    ///
-    /// * `job` - Reference to the job to check
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(true)` - All workers completed successfully, ready for aggregation
-    /// * `Ok(false)` - Still waiting for more workers to complete
-    ///
-    /// # Completion Criteria
-    ///
-    /// Phase 2 is considered complete when:
-    /// - All assigned workers have submitted proof results
-    /// - All submitted proofs report successful generation
-    async fn check_phase2_completion(
-        &self,
-        job: &Job,
-        worker_id: &WorkerId,
-    ) -> CoordinatorResult<bool> {
+    /// Logs a worker's phase-2 completion and reports whether every assigned worker is
+    /// done. A failed response never gets here: `handle_task_failure` takes it first.
+    fn check_phase2_completion(&self, job: &Job, worker_id: &WorkerId) -> bool {
         let empty_results = HashMap::new();
         let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
 
@@ -1507,42 +1490,7 @@ impl Coordinator {
             duration_ms.as_secs_f32()
         );
 
-        // Check if all assigned workers have completed their proof generation
-        // Early return allows other workers to continue working while we wait
-        if phase2_results.len() < job.workers.len() {
-            return Ok(false);
-        }
-
-        // Validate that all completed proofs are successful
-        // Any failure triggers job-level failure to prevent invalid aggregation
-        let all_successful = phase2_results.values().all(|result| result.success);
-
-        if !all_successful {
-            // Build comprehensive failure report identifying all failed workers
-            // This detailed error context helps with debugging and system improvement
-            let failed_workers: Vec<WorkerId> = phase2_results
-                .iter()
-                .filter_map(
-                    |(worker_id, result)| {
-                        if !result.success {
-                            Some(worker_id.clone())
-                        } else {
-                            None
-                        }
-                    },
-                )
-                .collect();
-
-            // Trigger job failure with detailed context about which workers failed
-            let reason =
-                format!("Phase2 failed for workers {:?} in job {}", failed_workers, job.job_id);
-            self.fail_job(&job.job_id, reason).await?;
-
-            // Returns error to prevent further processing of this failed job
-            return Err(CoordinatorError::Internal("Phase2 failed".to_string()));
-        }
-
-        Ok(true)
+        phase2_results.len() >= job.workers.len()
     }
 
     /// Formats a number with dots as thousand separators (e.g., 12.345.567).
@@ -1652,6 +1600,12 @@ impl Coordinator {
         for (job_id, job_lock) in entries {
             let job = job_lock.read().await;
             if let JobState::Running(ref phase) = job.state {
+                // Aggregation starts on the first phase-2 result but its clock only once
+                // every leaf is in; until then the job is still bound by phase 2's.
+                let phase = match phase {
+                    JobPhase::Recurse if job.phase_start_time(phase).is_none() => &JobPhase::Prove,
+                    _ => phase,
+                };
                 let timeout_secs = self.phase_timeout_secs(phase);
                 if timeout_secs == 0 {
                     continue;
@@ -1701,16 +1655,17 @@ impl Coordinator {
         );
         let stale = self.workers_pool.get_stale_computing_workers(threshold).await;
 
-        // Deduplicate by job_id
-        let mut failed_jobs = std::collections::HashSet::new();
+        let mut handled_jobs = std::collections::HashSet::new();
         for (worker_id, job_id, _phase) in &stale {
-            if failed_jobs.insert(job_id.clone()) {
-                let reason =
-                    format!("[Monitor] Worker {} missed heartbeats for job {}", worker_id, job_id);
-                warn!("{}", reason);
-                if let Err(e) = self.fail_job(job_id, &reason).await {
-                    error!("Failed to abort job {} due to stale heartbeat: {}", job_id, e);
-                }
+            if !handled_jobs.insert(job_id.clone()) {
+                continue;
+            }
+
+            let reason =
+                format!("[Monitor] Worker {} missed heartbeats for job {}", worker_id, job_id);
+            warn!("{}", reason);
+            if let Err(e) = self.fail_job(job_id, &reason).await {
+                error!("Failed to abort job {} due to stale heartbeat: {}", job_id, e);
             }
         }
     }
@@ -2036,6 +1991,35 @@ mod tests {
         assert_eq!(entry.read().await.state, JobState::Failed);
     }
 
+    /// A job enters `Recurse` on its first phase-2 result, before the Recurse clock
+    /// starts. A prover that never answers must still time it out on phase 2's clock.
+    #[tokio::test]
+    async fn test_check_phase_timeouts_recurse_before_all_leaves() {
+        let (coordinator, _workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Recurse, |c| {
+                c.coordinator.phase2_timeout_seconds = 300;
+            })
+            .await;
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let mut job = entry.write().await;
+            job.phase_timings.remove(&JobPhase::Recurse);
+            job.phase_timings.insert(
+                JobPhase::Prove,
+                PhaseTimings {
+                    start_time: Utc::now() - chrono::Duration::seconds(600),
+                    end_time: None,
+                },
+            );
+        }
+
+        coordinator.check_phase_timeouts().await;
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
     #[tokio::test]
     async fn test_check_phase_timeouts_no_false_positive() {
         let (coordinator, _workers, job_id) =
@@ -2214,23 +2198,39 @@ mod tests {
         }
     }
 
-    /// Designates `worker_id` as the job's recurser. `inflight_all_done` arms an
-    /// in-flight aggregation task carrying that flag; `None` leaves the slot empty.
+    /// Makes `worker_id` the job's draining node: `Some(true)` the root, `Some(false)` an
+    /// intermediate node, `None` no node at all.
     async fn arm_recurser(
         coordinator: &Coordinator,
         job_id: &JobId,
         worker_id: &WorkerId,
         inflight_all_done: Option<bool>,
     ) {
+        use std::collections::BTreeSet;
+        use zisk_cluster_common::{AggScheduler, AggSet};
+
         let entry = coordinator.jobs.read().await.get(job_id).cloned().unwrap();
         let mut job = entry.write().await;
-        job.agg_worker_id = Some(worker_id.clone());
-        job.agg_task_inflight =
-            inflight_all_done.map(|all_done| zisk_cluster_common::PendingAggTask {
+
+        // Two sets close a group at arity 2; `n_leaves` decides whether that group
+        // covers the job, and so whether the node is the root.
+        let n_leaves = match inflight_all_done {
+            Some(true) => 2,
+            _ => 8,
+        };
+        let mut scheduler = AggScheduler::new(2, n_leaves, true);
+
+        if inflight_all_done.is_some() {
+            let set = |covers: [u32; 1], location: WorkerId| AggSet {
                 proofs: vec![],
-                all_done,
-                proof_type: ProofKind::VadcopFinal,
-            });
+                covers: BTreeSet::from(covers),
+                location,
+            };
+            scheduler.on_set_ready(set([0], worker_id.clone()));
+            scheduler.on_set_ready(set([1], WorkerId::new()));
+        }
+
+        job.agg = Some(scheduler);
     }
 
     /// The headline vector of audits#36: an assigned worker submitting a
@@ -2238,7 +2238,7 @@ mod tests {
     /// used to be routed on payload variant alone, so this reached
     /// `handle_recurser_completion` — which completed the job from any bytes
     /// that deserialized as a `Proof`, and panicked on
-    /// `agg_worker_id.unwrap()` when they didn't get that far.
+    /// assumed an aggregation node when they didn't get that far.
     #[tokio::test]
     async fn test_final_proof_rejected_in_contributions_phase() {
         let (coordinator, workers, job_id) =
@@ -2347,12 +2347,16 @@ mod tests {
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         let job = entry.read().await;
         assert_eq!(job.state, JobState::Running(JobPhase::Recurse));
-        assert!(job.agg_task_inflight.is_some(), "in-flight task must survive a rejected ack");
+        assert!(
+            job.agg.as_ref().unwrap().live_node(&w0_id).is_some(),
+            "the draining node must survive a rejected ack"
+        );
     }
 
     /// One sample of every `ExecuteTaskResponseResultDataDto` variant, in
-    /// declaration order: Execution, Challenges, Proofs, FinalProof, WrapResult.
-    fn sample_payloads() -> [zisk_cluster_common::ExecuteTaskResponseResultDataDto; 5] {
+    /// declaration order: Execution, Challenges, Proofs, FinalProof, WrapResult,
+    /// PartialAggProofs.
+    fn sample_payloads() -> [zisk_cluster_common::ExecuteTaskResponseResultDataDto; 6] {
         use zisk_cluster_common::{
             ChallengesDto, ContributionsResultDataDto, ExecuteTaskResponseResultDataDto as Payload,
             ExecutionResultDataDto, FinalProofDto, ProofStarkDto, WitnessInfoDto, WrapResultDto,
@@ -2392,13 +2396,22 @@ mod tests {
                 zisk_executor_time,
                 cost_per_type: StatsCostPerType::default(),
             }),
-            Payload::Proofs(vec![ProofStarkDto { airgroup_id: 0, values: vec![], worker_idx: 0 }]),
+            Payload::Proofs(vec![ProofStarkDto {
+                airgroup_id: 0,
+                values: vec![],
+                worker_indexes: vec![0],
+            }]),
             Payload::FinalProof(FinalProofDto {
                 proof_data: vec![],
                 executed_steps: 0,
                 instances: 0,
             }),
             Payload::WrapResult(WrapResultDto { proof_data: vec![] }),
+            Payload::PartialAggProofs(vec![ProofStarkDto {
+                airgroup_id: 0,
+                values: vec![],
+                worker_indexes: vec![0],
+            }]),
         ]
     }
 
@@ -2430,6 +2443,9 @@ mod tests {
                 Payload::Proofs(_) => ("Proofs", JobPhase::Contributions, false),
                 Payload::FinalProof(_) => ("FinalProof", JobPhase::Contributions, false),
                 Payload::WrapResult(_) => ("WrapResult", JobPhase::Contributions, false),
+                Payload::PartialAggProofs(_) => {
+                    ("PartialAggProofs", JobPhase::Contributions, false)
+                }
             };
 
             let (coordinator, workers, job_id) =
@@ -2472,7 +2488,7 @@ mod tests {
     /// The payload/phase mapping, including the two cases that must stay
     /// permissive:
     ///
-    /// * `Proofs` in `Recurse` — `resolve_recurser_assignment` flips the job to
+    /// * `Proofs` in `Recurse` — the aggregation scheduler flips the job to
     ///   `Recurse` when the *first* worker finishes Phase 2, so the rest report
     ///   in afterwards. Rejecting these would break every multi-worker job.
     /// * `Execution` in `Contributions` — execution-only jobs never enter
@@ -2481,7 +2497,7 @@ mod tests {
     fn test_payload_phase_mapping() {
         use zisk_cluster_common::ExecuteTaskResponseResultDataDto as Payload;
 
-        let [execution, challenges, proofs, final_proof, wrap] = sample_payloads();
+        let [execution, challenges, proofs, final_proof, wrap, partial_agg] = sample_payloads();
 
         let job_id = JobId::new();
         let worker_id = WorkerId::from("w0".to_string());
@@ -2513,6 +2529,9 @@ mod tests {
         assert!(!accepted(JobPhase::Contributions, false, &final_proof));
         assert!(accepted(JobPhase::Recurse, false, &wrap));
         assert!(!accepted(JobPhase::Contributions, false, &wrap));
+        assert!(accepted(JobPhase::Recurse, false, &partial_agg));
+        assert!(!accepted(JobPhase::Prove, false, &partial_agg));
+        assert!(!accepted(JobPhase::Contributions, false, &partial_agg));
 
         // A job that is not running accepts nothing.
         for state in [JobState::Created, JobState::Completed] {
@@ -2612,6 +2631,7 @@ mod tests {
         let (sender2, _msgs2) = MockMessageSender::new();
         let req = WorkerReconnectRequestDto {
             worker_id: w0_id.clone(),
+            aggregation_arity: 2,
             compute_capacity: 1u32.into(),
             last_known_job_id: None,
         };
@@ -3429,7 +3449,7 @@ mod tests {
             setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
         let w0_id = workers[0].0.clone();
 
-        // The aggregator path requires `agg_worker_id` to be set on the
+        // The aggregator path requires a node to be draining on the
         // job. Set it manually to match the worker we'll deliver a result
         // for.
         arm_recurser(&coordinator, &job_id, &w0_id, None).await;
@@ -3486,6 +3506,7 @@ mod tests {
         let (sender, _msgs) = MockMessageSender::new();
         let req = WorkerRegisterRequestDto {
             worker_id: worker_id.clone(),
+            aggregation_arity: 2,
             compute_capacity: 1u32.into(),
         };
         let (accepted, _msg, _setup) =
@@ -4023,7 +4044,7 @@ mod tests {
     }
 
     /// Regression: `fail_job(A)` must NOT park workers that were freed from
-    /// Job A (e.g. via `resolve_recurser_assignment` after Phase 2) and
+    /// Job A (e.g. once phase 3 starts) and
     /// subsequently reassigned to a different live Job B. Under the previous
     /// `mark_computing_workers_settingup` that ignored job_id, terminating
     /// Job A would clobber `Computing(B, _)` → `SettingUp` and add the
@@ -4038,7 +4059,7 @@ mod tests {
         let w1 = workers[1].0.clone();
 
         // Simulate w1 having been freed from Job A's Phase 2 (the
-        // non-aggregator path in `resolve_recurser_assignment` marks the
+        // released-donor path in the aggregation scheduler marks the
         // worker Ready) and then picked up by Job B's reservation.
         let job_b = JobId::new();
         coordinator
@@ -4797,6 +4818,7 @@ mod tests {
             .handle_stream_reconnection(
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
+                    aggregation_arity: 2,
                     compute_capacity: ComputeCapacity::from(1u32),
                     last_known_job_id: Some(job_id),
                 },
@@ -4824,6 +4846,7 @@ mod tests {
             .handle_stream_reconnection(
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
+                    aggregation_arity: 2,
                     compute_capacity: ComputeCapacity::from(1u32),
                     last_known_job_id: Some(job_id),
                 },
@@ -4859,6 +4882,7 @@ mod tests {
             .handle_stream_reconnection(
                 WorkerReconnectRequestDto {
                     worker_id: w0_id.clone(),
+                    aggregation_arity: 2,
                     compute_capacity: ComputeCapacity::from(1u32),
                     last_known_job_id: Some(job_id),
                 },

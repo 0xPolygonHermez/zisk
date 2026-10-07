@@ -1,0 +1,346 @@
+; ============================================================================
+; secp256k1/field.zisk - base-field (Fp) arithmetic for secp256k1. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/secp256k1/field.rs. Every op is the
+; arith256_mod precompile with the fixed modulus P (header [&a,&b,&c,&P,&d],
+; d = (a*b + c) mod P); inv/sqrt hint the result via an fcall and verify it.
+; Constants (SECP_P, SECP_ONE, …) live in constants.zisk; FREE_INPUT / the
+; FCALL_* ids are library-wide pub defines. Internal labels: `fp_`.
+;
+; All routines are leaves (no nested calls) and use caller-saved regs only, so
+; they are ABI-safe callees. 256-bit values are `[u64; 4]`, little-endian limbs.
+; ============================================================================
+
+; RAM scratch: the arith256_mod header, the precompile low output, a second
+; output (sqrt's x*NQR check), the hinted inverse/sqrt, and a 1-word parity slot.
+u64 SECP_FP_HDR[5]  = 0, 0, 0, 0, 0
+u64 SECP_FP_DL[4]   = 0, 0, 0, 0
+u64 SECP_FP_DL2[4]  = 0, 0, 0, 0
+u64 SECP_FP_INV[4]  = 0, 0, 0, 0
+
+; void zisklib_reduce_fp_secp256k1(const u64* x, u64* result)  [r10=x, r11=result]
+;   result = x mod P. Fast path: if x < P, copy x through unchanged.
+zisklib_reduce_fp_secp256k1:
+	copyb(0, r10) -> r5
+	add(r5, 24) -> r5                  ; &x[3]
+	copyb(0, SECP_P) -> r6
+	add(r6, 24) -> r6                  ; &P[3]
+	copyb(0, 4) -> r7
+fp_red_lt:
+	eq(r7, 0), j(fp_red_mod)           ; x == P -> reduce (gives 0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(fp_red_copy)      ; x < P -> already reduced
+	ltu(r15, r14), j(fp_red_mod)       ; x > P -> reduce
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(fp_red_lt)
+fp_red_copy:
+	copyb(0, r10) -> r5
+	copyb(0, 4) -> r7
+fp_red_cp:
+	eq(r7, 0), j(fp_red_done)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r11, 8) -> r11
+	sub(r7, 1) -> r7
+	jump(fp_red_cp)
+fp_red_done:
+	ret
+fp_red_mod:
+	copyb(0, SECP_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]         ; &x
+	copyb(0, SECP_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]          ; &one
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &zero
+	copyb(0, SECP_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]         ; &P
+	copyb(r5, r11) -> 8[a + 32]        ; &d = result
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_add_fp_secp256k1(const u64* x, const u64* y, u64* result)
+;   result = (x + y) mod P = (x*1 + y) mod P.  [r10=x, r11=y, r12=result]
+zisklib_add_fp_secp256k1:
+	copyb(0, SECP_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]         ; &x
+	copyb(0, SECP_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]          ; &one
+	copyb(r5, r11) -> 8[a + 16]        ; &y (c addend)
+	copyb(0, SECP_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]        ; &d = result
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_neg_fp_secp256k1(const u64* x, u64* result)
+;   result = (-x) mod P = (x*(P-1) + 0) mod P.  [r10=x, r11=result]
+zisklib_neg_fp_secp256k1:
+	copyb(0, SECP_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]         ; &x
+	copyb(0, SECP_P_MINUS_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]          ; &(P-1)
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &zero
+	copyb(0, SECP_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r11) -> 8[a + 32]        ; &d = result
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_sub_fp_secp256k1(const u64* x, const u64* y, u64* result)
+;   result = (x - y) mod P = (y*(P-1) + x) mod P.  [r10=x, r11=y, r12=result]
+zisklib_sub_fp_secp256k1:
+	copyb(0, SECP_FP_HDR) -> r5
+	copyb(r5, r11) -> 8[a + 0]         ; &y (a)
+	copyb(0, SECP_P_MINUS_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]          ; &(P-1) (b)
+	copyb(r5, r10) -> 8[a + 16]        ; &x (c addend)
+	copyb(0, SECP_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]        ; &d = result
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_mul_fp_secp256k1(const u64* x, const u64* y, u64* result)
+;   result = (x * y) mod P.  [r10=x, r11=y, r12=result]
+zisklib_mul_fp_secp256k1:
+	copyb(0, SECP_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]         ; &x
+	copyb(r5, r11) -> 8[a + 8]         ; &y
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &zero
+	copyb(0, SECP_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]        ; &d = result
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_square_fp_secp256k1(const u64* x, u64* result)
+;   result = (x * x) mod P.  [r10=x, r11=result]
+zisklib_square_fp_secp256k1:
+	copyb(0, SECP_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]         ; &x
+	copyb(r5, r10) -> 8[a + 8]         ; &x
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &zero
+	copyb(0, SECP_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r11) -> 8[a + 32]        ; &d = result
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_inv_fp_secp256k1(const u64* x, u64* result)  [r10=x, r11=result]
+;   result = x^(-1) mod P (0 if x == 0). Hints the inverse via FCALL_SECP256K1_FP_INV
+;   and verifies inv < P and x*inv == 1 (mod P); a bad hint halts.
+zisklib_inv_fp_secp256k1:
+	; --- x == 0 ? -> result = 0 ---
+	copyb(0, r10) -> r5
+	copyb(0, 4) -> r6
+fp_inv_zchk:
+	eq(r6, 0), j(fp_inv_zero)
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(fp_inv_hint)         ; nonzero word -> x != 0
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(fp_inv_zchk)
+fp_inv_zero:
+	copyb(0, r11) -> r5
+	copyb(0, 4) -> r6
+fp_inv_zl:
+	eq(r6, 0), j(fp_inv_done)
+	copyb(r5, 0) -> 8[a + 0]
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(fp_inv_zl)
+fp_inv_done:
+	ret
+fp_inv_hint:
+	fcall_param(4, r10) -> r14
+	fcall(FCALL_SECP256K1_FP_INV, 0) -> r14
+	copyb(0, SECP_FP_INV) -> r6
+	copyb(0, [FREE_INPUT]) -> r7       ; inv[0]
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	copyb(0, 3) -> r15
+fp_inv_rd:
+	eq(r15, 0), j(fp_inv_lt)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r15, 1) -> r15
+	jump(fp_inv_rd)
+fp_inv_lt:
+	; verify inv < P (MSW first)
+	copyb(0, SECP_FP_INV) -> r5
+	add(r5, 24) -> r5
+	copyb(0, SECP_P) -> r6
+	add(r6, 24) -> r6
+	copyb(0, 4) -> r7
+fp_inv_ltl:
+	eq(r7, 0), j(fp_inv_panic)         ; inv == P -> not canonical
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(fp_inv_vfy)
+	ltu(r15, r14), j(fp_inv_panic)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(fp_inv_ltl)
+fp_inv_vfy:
+	; DL = x*inv mod P ; assert DL == 1
+	copyb(0, SECP_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, SECP_FP_INV) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, SECP_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(0, SECP_FP_DL) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	copyb(0, SECP_FP_DL) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 1), j(fp_inv_hi)
+	jump(fp_inv_panic)
+fp_inv_hi:
+	copyb(0, 3) -> r7
+	add(r5, 8) -> r5
+fp_inv_hil:
+	eq(r7, 0), j(fp_inv_wr)
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 0), j(fp_inv_hin)
+	jump(fp_inv_panic)
+fp_inv_hin:
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(fp_inv_hil)
+fp_inv_wr:
+	copyb(0, SECP_FP_INV) -> r5
+	copyb(0, 4) -> r7
+fp_inv_wrl:
+	eq(r7, 0), j(fp_inv_ret)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r11, 8) -> r11
+	sub(r7, 1) -> r7
+	jump(fp_inv_wrl)
+fp_inv_ret:
+	ret
+fp_inv_panic:
+	copyb(0, 0) -> r10, end
+
+; u64 zisklib_sqrt_fp_secp256k1(const u64* x, u64 parity, u64* result)
+;   [r10=x, r11=parity, r12=result] -> r10 = is_qr (1 if x is a QR, else 0).
+;   Hints (is_qr, sqrt) via FCALL_SECP256K1_FP_SQRT, verifies sqrt < P and
+;   sqrt^2 == x (QR) or sqrt^2 == x*NQR (non-QR); a bad hint halts. is_qr is kept
+;   in r13 across the loop.
+zisklib_sqrt_fp_secp256k1:
+	fcall_param(4, r10) -> r14         ; append x[0..4] (multi-word: from memory at r10)
+	fcall_param(1, r11) -> r14         ; append parity (1-word param: the value in r11)
+	fcall(FCALL_SECP256K1_FP_SQRT, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r13      ; is_qr (result[0])
+	copyb(0, SECP_FP_INV) -> r6        ; sqrt -> SECP_FP_INV
+	copyb(0, 4) -> r15
+fp_sqrt_rd:
+	eq(r15, 0), j(fp_sqrt_lt)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r15, 1) -> r15
+	jump(fp_sqrt_rd)
+fp_sqrt_lt:
+	; verify sqrt < P
+	copyb(0, SECP_FP_INV) -> r5
+	add(r5, 24) -> r5
+	copyb(0, SECP_P) -> r6
+	add(r6, 24) -> r6
+	copyb(0, 4) -> r7
+fp_sqrt_ltl:
+	eq(r7, 0), j(fp_sqrt_panic)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(fp_sqrt_sq)
+	ltu(r15, r14), j(fp_sqrt_panic)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(fp_sqrt_ltl)
+fp_sqrt_sq:
+	; DL = sqrt*sqrt mod P
+	copyb(0, SECP_FP_HDR) -> r5
+	copyb(0, SECP_FP_INV) -> r7
+	copyb(r5, r7) -> 8[a + 0]
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, SECP_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(0, SECP_FP_DL) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	eq(r13, 0), j(fp_sqrt_nqr)
+	; is_qr: assert DL == x
+	copyb(0, SECP_FP_DL) -> r5
+	copyb(0, r10) -> r6
+	copyb(0, 4) -> r7
+fp_sqrt_eq:
+	eq(r7, 0), j(fp_sqrt_wr)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(fp_sqrt_eqn)
+	jump(fp_sqrt_panic)
+fp_sqrt_eqn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(fp_sqrt_eq)
+fp_sqrt_nqr:
+	; DL2 = x*NQR mod P ; assert DL == DL2
+	copyb(0, SECP_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, SECP_NQR) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, SECP_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(0, SECP_FP_DL2) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	copyb(0, SECP_FP_DL) -> r5
+	copyb(0, SECP_FP_DL2) -> r6
+	copyb(0, 4) -> r7
+fp_sqrt_eq2:
+	eq(r7, 0), j(fp_sqrt_wr)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(fp_sqrt_eq2n)
+	jump(fp_sqrt_panic)
+fp_sqrt_eq2n:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(fp_sqrt_eq2)
+fp_sqrt_wr:
+	copyb(0, SECP_FP_INV) -> r5
+	copyb(0, 4) -> r7
+fp_sqrt_wrl:
+	eq(r7, 0), j(fp_sqrt_ret)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r12, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r12, 8) -> r12
+	sub(r7, 1) -> r7
+	jump(fp_sqrt_wrl)
+fp_sqrt_ret:
+	copyb(0, r13) -> r10               ; return is_qr
+	ret
+fp_sqrt_panic:
+	copyb(0, 0) -> r10, end

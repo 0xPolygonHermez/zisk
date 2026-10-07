@@ -17,7 +17,11 @@
 
 .equ MAX_MTRACE_REGS_ACCESS_SIZE, (2 + 2 + 3) * 8
 .equ CHUNK_SIZE, (1 << 18)
-.equ MAX_TRACE_CHUNK_INFO, ((44*8) + 32)
+# Minimal-trace chunk header, as in constants.hpp: pc, sp, c, step, reg[1..MT_CHUNK_REGS],
+# last_c, end, steps, mem_reads_size. MT_CHUNK_REGS is the last main-trace register
+# (REGS_IN_MAIN_TO in core/src/zisk_registers.rs); asm_mt.rs checks both copies.
+.equ MT_CHUNK_REGS, 39
+.equ MAX_TRACE_CHUNK_INFO, (((4 + MT_CHUNK_REGS + 4 + 3) * 8) + 32)
 .equ MAX_BYTES_DIRECT_MTRACE, 256
 .equ MAX_BYTES_MTRACE_STEP, (MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE)
 .equ MAX_CHUNK_TRACE_SIZE, CHUNK_SIZE * MAX_BYTES_MTRACE_STEP + MAX_TRACE_CHUNK_INFO

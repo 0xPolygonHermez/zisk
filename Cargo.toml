@@ -28,7 +28,11 @@ members = [
   "transpilers/riscv",
   "transpilers/riscv2zisk",
   "transpilers/common",
+  "ziskasm",
+  "ziskasm/lang/rust",
+  "transpilers/wasm",
   "rom-setup",
+  "setup",
   "state-machines/arith",
   "state-machines/binary",
   "state-machines/frequent-ops",
@@ -76,6 +80,8 @@ members = [
   "zkvm-interface",
   "verifier",
   "recurser",
+  "cuda-build",
+  "gpu-witness",
 ]
 resolver = "2"
 exclude = ["test-artifacts"]
@@ -96,6 +102,7 @@ zisk-common = { path = "common", version = "1.4.0-alpha" }
 zisk-stream = { path = "stream", version = "1.4.0-alpha" }
 zisk-core = { path = "core", version = "1.4.0-alpha" }
 ziskemu = { path = "emulator", version = "1.4.0-alpha" }
+ziskasm = { path = "ziskasm", version = "1.4.0-alpha", package = "zisk-asm" }
 zisk-asm-runner = { path = "emulator-asm/asm-runner", version = "1.4.0-alpha" }
 zisk-executor = { path = "executor", version = "1.4.0-alpha" }
 zisk-lib-c = { path = "lib-c", version = "1.4.0-alpha" }
@@ -117,7 +124,9 @@ zisk-precomp-evm = { path = "precompiles/evm", version = "1.4.0-alpha" }
 zisk-riscv = { path = "transpilers/riscv", version = "1.4.0-alpha" }
 zisk-transpiler-common = { path = "transpilers/common", version = "1.4.0-alpha" }
 zisk-transpiler-riscv = { path = "transpilers/riscv2zisk", version = "1.4.0-alpha" }
+zisk-transpiler-wasm = { path = "transpilers/wasm", version = "1.4.0-alpha" }
 zisk-rom-setup = { path = "rom-setup", version = "1.4.0-alpha" }
+zisk-setup = { path = "setup", version = "1.4.0-alpha" }
 zisk-sm-arith = { path = "state-machines/arith", version = "1.4.0-alpha" }
 zisk-sm-binary = { path = "state-machines/binary", version = "1.4.0-alpha" }
 zisk-sm-main = { path = "state-machines/main", version = "1.4.0-alpha" }
@@ -150,11 +159,15 @@ zisk-coordinator-server = { path = "distributed/crates/coordinator-server", vers
 zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = "1.4.0-alpha" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.4.0-alpha" }
 
+# GPU witness kernels
+zisk-cuda-build = { path = "cuda-build", version = "1.4.0-alpha" }
+zisk-gpu-witness = { path = "gpu-witness", version = "1.4.0-alpha" }
+
 # Proofman git
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
 proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
 proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha", default-features = false }
 proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
 pil2-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
 proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
@@ -168,7 +181,7 @@ proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofma
 # proofman = "1.4.0-alpha"
 # proofman-common = "1.4.0-alpha"
 # proofman-macros = "1.4.0-alpha"
-# proofman-verifier = "1.4.0-alpha"
+# proofman-verifier = { version = "1.4.0-alpha", default-features = false }
 # proofman-util = "1.4.0-alpha"
 # pil2-std-lib = "1.4.0-alpha"
 # proofman-witness = "1.4.0-alpha"
@@ -182,7 +195,7 @@ proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofma
 # proofman = { path = "../pil2-proofman/proofman", version = "1.4.0-alpha" }
 # proofman-common = { path = "../pil2-proofman/common", version = "1.4.0-alpha" }
 # proofman-macros = { path = "../pil2-proofman/macros", version = "1.4.0-alpha" }
-# proofman-verifier = { path = "../pil2-proofman/verifier", version = "1.4.0-alpha" }
+# proofman-verifier = { path = "../pil2-proofman/verifier", version = "1.4.0-alpha", default-features = false }
 # proofman-util = { path = "../pil2-proofman/util", version = "1.4.0-alpha" }
 # pil2-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs", version = "1.4.0-alpha" }
 # proofman-witness = { path = "../pil2-proofman/witness", version = "1.4.0-alpha" }
@@ -195,6 +208,8 @@ proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofma
 # External dependencies
 arc-swap = "1"
 rayon = "1.10"
+wasmparser = "0.244"
+wat = "1"
 num-bigint = "0.4"
 num-traits = "0.2"
 num-integer = "0.1"
