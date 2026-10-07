@@ -57,6 +57,9 @@ pub use zisk_precompile::*;
 /// `MEM_ROWS_*` bits. Set by the memory-ops runner once each device fill succeeded, cleared when a
 /// block starts; an air whose bit is clear is collected and filled on the CPU.
 pub static MEM_ROWS_ON_DEVICE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// Whether the current job's partitions are shared with other workers: set on every partition
+/// assignment, false for a local proof.
+pub static PARTITIONS_SHARED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// `MEM_ROWS_ON_DEVICE` bit: the `Mem` (RAM) rows.
 pub const MEM_ROWS_RAM: u32 = 1;
 /// `MEM_ROWS_ON_DEVICE` bit: the `RomData` rows.

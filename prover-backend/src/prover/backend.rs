@@ -656,6 +656,14 @@ impl ProverBackend {
         allocation: Vec<u32>,
         rank_id: usize,
     ) -> Result<()> {
+        let mut mine = vec![false; total_compute_units];
+        for &id in &allocation {
+            if let Some(slot) = mine.get_mut(id as usize) {
+                *slot = true;
+            }
+        }
+        zisk_common::PARTITIONS_SHARED
+            .store(!mine.iter().all(|&m| m), std::sync::atomic::Ordering::Release);
         Ok(self.proofman.set_partition(total_compute_units, allocation, rank_id)?)
     }
 
