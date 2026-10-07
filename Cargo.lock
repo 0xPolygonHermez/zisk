@@ -3990,7 +3990,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4001,7 +4001,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -4017,7 +4017,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "anyhow",
  "clap",
@@ -4043,7 +4043,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "colored",
  "proofman-common",
@@ -4262,7 +4262,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "bincode",
  "blake3",
@@ -4294,7 +4294,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "borsh",
  "colored",
@@ -4322,7 +4322,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "proofman-fields",
 ]
@@ -4330,7 +4330,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "anyhow",
  "proofman-starks-src",
@@ -4344,7 +4344,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -4357,7 +4357,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -4369,7 +4369,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4379,7 +4379,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -4388,12 +4388,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 
 [[package]]
 name = "proofman-util"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4402,7 +4402,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4415,7 +4415,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-compressor-aggregator#33700f546f5beb2a6904ced8ec1b9509b39818af"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
 dependencies = [
  "libloading",
  "proofman-common",
