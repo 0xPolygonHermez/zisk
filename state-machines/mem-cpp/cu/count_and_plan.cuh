@@ -388,7 +388,7 @@ private:
     size_t pool_end_bytes(size_t pool_words) const { return cursor_ + pool_words * 4; }
     size_t ram_low_edge_bytes(size_t records) const { return top_bytes_ - records * RAM_RECORD_WORDS * 4; }
     std::atomic<bool>   ram_retention_enabled_{false};
-    struct RamRun { uint32_t base; uint32_t n; };               // one piece's records
+    struct RamRun { uint32_t base; uint32_t n; uint32_t chunk; };  // one piece's records, in its sorted order
     std::vector<RamRun> ram_runs_;
     std::mutex          ram_runs_mtx_;
     uint32_t            piece_potentials_ = MAX_POT_PER_PIECE;  // cut threshold (ZISK_MOPS_PIECE_POTENTIALS lowers it for tests)
