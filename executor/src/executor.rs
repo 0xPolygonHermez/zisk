@@ -334,6 +334,10 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             witness.set_frops_multiplicity_from_asm(from_asm);
         }
 
+        // A previous execution whose memory witness was never consumed (an execution-only run, no
+        // witness phase, no proof end) still holds the arena: hand it back before borrowing it again.
+        zisk_asm_runner::device_mem_witness_end();
+
         // Reserve proofman's unified GPU buffer for MO count-and-plan
         // (no-op on CPU / standalone).
         if is_asm_emulator {
@@ -368,10 +372,19 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let two_rounds = is_asm_emulator && zisk_asm_runner::device_mem_witness_requested();
         // `ZISK_EARLY_SECN=1`: the precompile instances the counted chunks already fill are
         // registered and collected while the emulation runs (two-round mode only).
-        let early_secn = two_rounds
+        // Off when the proof is distributed: the boundaries at which they are registered depend on
+        // timing, and every worker and process must register the same instances in the same order.
+        let early_requested = std::env::var("ZISK_EARLY_SECN").as_deref() == Ok("1");
+        let early_secn = early_requested
+            && two_rounds
             && self.witness.is_some()
             && proofman_extras.is_some()
-            && std::env::var("ZISK_EARLY_SECN").as_deref() == Ok("1");
+            && !registry.is_distributed();
+        if early_requested && !early_secn && registry.is_distributed() {
+            tracing::warn!(
+                "ZISK_EARLY_SECN ignored: the proof is distributed over several workers or processes"
+            );
+        }
 
         // The early collects run on a pool of their own: on the global pool they would take
         // every thread and the counting of the chunks still arriving would wait behind them,
@@ -457,6 +470,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     self.assign_secn_round(registry, global_ids, proofman_extras, planning, true)?;
                 tracing::debug!("early secondaries at chunk {idx}: {} instances", ids.len());
                 self.populate_secn_round(registry, plans, &ids)?;
+                let ids = own_instances(registry, &ids)?;
                 let pool = early_pool.as_ref();
                 let handle = early_scope.spawn(move || {
                     let collect = || {
@@ -594,6 +608,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 two_rounds,
             )?;
 
+            // Collected here, early, only where this process proves them: an instance announced
+            // ready is computed by whoever announces it, and the other workers prove theirs.
+            let first_round = own_instances(registry, &first_round)?;
             let mem_artifacts = std::thread::scope(|scope| -> ExecutorResult<MemPlanArtifacts> {
                 let collecting = match (self.witness.as_ref(), proofman_extras) {
                     (Some(witness), Some(extras)) if two_rounds && !first_round.is_empty() => {
@@ -763,6 +780,20 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         }
 
         let mut plans: Vec<Plan> = planning.into_values().flatten().collect();
+        if place_on_registration {
+            // Placed one by one as registered, so heaviest first: the greedy placement then
+            // balances the workers as the end-of-execution sort does. Stable, so the instances of
+            // one air keep their order.
+            plans.sort_by_key(|plan| {
+                (
+                    matches!(plan.instance_type, zisk_common::InstanceType::Table),
+                    std::cmp::Reverse(registry.instance_weight(crate::ports::InstanceInfo::new(
+                        plan.airgroup_id,
+                        plan.air_id,
+                    ))),
+                )
+            });
+        }
         InstanceAssigner::assign_secn_instances(
             registry,
             global_ids,
@@ -1089,4 +1120,15 @@ fn checkpoint_chunks(check_point: &zisk_common::CheckPoint) -> Vec<usize> {
     };
     chunks.sort_unstable();
     chunks
+}
+
+/// The instances of `ids` this process proves, in order.
+fn own_instances(registry: &dyn ProofRegistry, ids: &[usize]) -> ExecutorResult<Vec<usize>> {
+    let mut own = Vec::with_capacity(ids.len());
+    for &id in ids {
+        if registry.is_my_process_instance(GlobalId(id))? {
+            own.push(id);
+        }
+    }
+    Ok(own)
 }
