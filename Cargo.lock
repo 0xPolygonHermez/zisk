@@ -7375,7 +7375,6 @@ version = "1.4.0-alpha"
 dependencies = [
  "zisk-common",
  "zisk-core",
- "zisk-riscv",
  "ziskemu",
 ]
 

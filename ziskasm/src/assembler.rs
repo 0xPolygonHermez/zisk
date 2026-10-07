@@ -13,6 +13,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
+use zisk_core::rom_layout::{add_end_and_lib, add_entry_exit_jmp, InlineBody};
 use zisk_core::zisk_inst::{ZiskInst, SRC_C, SRC_IMM, SRC_REG, STORE_MEM, STORE_REG};
 use zisk_core::zisk_inst_builder::ZiskInstBuilder;
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
@@ -20,7 +21,6 @@ use zisk_core::{
     GENERAL_RAM_ADDR, RAM_ADDR, RAM_SIZE, REGS_IN_MAIN_TO, REG_FIRST, ROM_ADDR, ROM_ADDR_MAX,
     ROM_ENTRY, ROM_SIZE, SYS_ADDR,
 };
-use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, InlineBody};
 
 use crate::parser::{
     self, ASource, BSource, Control, DataDecl, Instruction, JumpTarget, Kind, Num, Op, Program,
