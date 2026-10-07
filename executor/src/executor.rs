@@ -373,6 +373,23 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             && proofman_extras.is_some()
             && std::env::var("ZISK_EARLY_SECN").as_deref() == Ok("1");
 
+        // The early collects run on a pool of their own: on the global pool they would take
+        // every thread and the counting of the chunks still arriving would wait behind them,
+        // delaying the end of the main trace. `ZISK_EARLY_SECN_THREADS`, 4 by default.
+        let early_pool = if early_secn {
+            let threads = std::env::var("ZISK_EARLY_SECN_THREADS")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .filter(|&n| n > 0)
+                .unwrap_or(4);
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .thread_name(|i| format!("early-collect-{i}"))
+                .build()
+                .ok()
+        } else {
+            None
+        };
         std::thread::scope(|early_scope| -> ExecutorResult<()> {
             // Per precompile position, the (air, chunks) of each instance registered early, in order.
             let early_done: Mutex<BTreeMap<usize, Vec<(usize, Vec<usize>)>>> =
@@ -440,8 +457,21 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     self.assign_secn_round(registry, global_ids, proofman_extras, planning, true)?;
                 tracing::debug!("early secondaries at chunk {idx}: {} instances", ids.len());
                 self.populate_secn_round(registry, plans, &ids)?;
+                let pool = early_pool.as_ref();
                 let handle = early_scope.spawn(move || {
-                    witness.pre_calculate(extras.pctx(), extras, &self.state, &ids, is_asm_emulator)
+                    let collect = || {
+                        witness.pre_calculate(
+                            extras.pctx(),
+                            extras,
+                            &self.state,
+                            &ids,
+                            is_asm_emulator,
+                        )
+                    };
+                    match pool {
+                        Some(pool) => pool.install(collect),
+                        None => collect(),
+                    }
                 });
                 early_collects.lock().unwrap_or_else(|e| e.into_inner()).push(handle);
                 Ok(())
