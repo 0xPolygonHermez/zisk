@@ -1844,7 +1844,7 @@ bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int
         } else {
             {
                 std::lock_guard<std::mutex> lk(ram_runs_mtx_);
-                other_runs_.push_back(RamRun{(uint32_t)obase, n_other});
+                other_runs_.push_back(RamRun{(uint32_t)obase, n_other, c});
             }
             size_t bytes_rank = cub_temp_bytes_;
             CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes_rank,
@@ -1882,7 +1882,7 @@ bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int
             } else {
                 {
                     std::lock_guard<std::mutex> lk(ram_runs_mtx_);
-                    ram_runs_.push_back(RamRun{(uint32_t)rbase, ram});
+                    ram_runs_.push_back(RamRun{(uint32_t)rbase, ram, c});
                 }
                 const uint32_t* d_rank = nullptr;
                 if (n_carry > 0) {
