@@ -183,6 +183,10 @@ bool count_and_plan_fill_slot(void* h, const void* d_ops, uint64_t n_ops, uint64
     return static_cast<CountAndPlan*>(h)->fill_slot(d_ops, n_ops, dst, stream, res);
 }
 
+void count_and_plan_slot_quiesce(void* h) {
+    if (h) static_cast<CountAndPlan*>(h)->slot_quiesce();
+}
+
 bool count_and_plan_instance_scalars(void* h, uint32_t family, uint32_t inst, RamFillResult* res) {
     if (!h) return false;
     return static_cast<CountAndPlan*>(h)->instance_scalars(family, inst, res);

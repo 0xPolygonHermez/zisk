@@ -670,39 +670,46 @@ pub fn gpu_slot_witness_release_now() {
         g.release.take()
     };
     if let Some(release) = release {
+        slot_quiesce();
         release();
     }
 }
 
-fn slot_fill_done() {
-    let release = {
-        let mut g = SLOT_RELEASE.lock().unwrap_or_else(|e| e.into_inner());
-        if g.pending == 0 {
-            None
-        } else {
-            g.pending -= 1;
-            if g.pending == 0 {
-                g.release.take()
-            } else {
-                None
-            }
-        }
-    };
-    if let Some(release) = release {
-        release();
+/// The release to run after this slot fill, when it was the last pending one.
+fn slot_fill_done() -> Option<Box<dyn FnOnce() + Send>> {
+    let mut g = SLOT_RELEASE.lock().unwrap_or_else(|e| e.into_inner());
+    if g.pending == 0 {
+        return None;
+    }
+    g.pending -= 1;
+    if g.pending == 0 {
+        g.release.take()
+    } else {
+        None
     }
 }
 
-/// The prover's GPU-witness kernel for the memory airs: builds the instance named by the staged
-/// `MemSlotOp` into `d_dst` (the commit slot) from the retained accesses, while the arena is still
-/// borrowed; after the last owned instance the armed release hands the arena back. The slot must
-/// be on the planner's GPU: the rows are produced there, never copied across devices.
+/// Waits for the staged images' copies still in flight on the prover's streams: the arena they
+/// read from is about to go back.
+fn slot_quiesce() {
+    let reg = registry();
+    if let Some(r) = reg.as_ref() {
+        // SAFETY: registered handle, under the lock.
+        unsafe { crate::gpu_bindings::count_and_plan_slot_quiesce(r.inner) };
+    }
+}
+
+/// The prover's GPU-witness kernel for the memory airs: copies the instance named by the staged
+/// `MemSlotOp` into `d_dst` (the commit slot) from the image the preparation built, or builds it
+/// there from the retained accesses when no image was staged, while the arena is still borrowed;
+/// after the last owned instance the armed release hands the arena back. The slot must be on the
+/// planner's GPU: the rows are produced there, never copied across devices.
 ///
 /// # Safety
 /// Called by the prover with `d_ops` a device buffer holding `num_ops` staged ops, `d_dst` the
 /// slot's packed rows, `device_id` the slot's GPU and `stream` the commit stream that uploaded
-/// them; the planner waits for that stream, serialises the fills under its lock and waits for its
-/// own stream before returning, so the commit's later work on `stream` sees the rows.
+/// them; the planner waits for that stream and serialises the fills under its lock. A staged
+/// image is copied on `stream`; a built one is complete before the call returns.
 pub unsafe extern "C" fn zisk_mem_witness_slot_kernel(
     d_ops: *const core::ffi::c_void,
     num_ops: u64,
@@ -714,7 +721,7 @@ pub unsafe extern "C" fn zisk_mem_witness_slot_kernel(
         tracing::error!("[gpu] slot fill: the block's preparation failed: {e}");
         return -4;
     }
-    let ok = {
+    let release = {
         let reg = registry();
         let Some(r) = reg.as_ref() else {
             tracing::error!("[gpu] slot fill: no GPU planner registered");
@@ -737,13 +744,17 @@ pub unsafe extern "C" fn zisk_mem_witness_slot_kernel(
         };
         if !ok {
             tracing::error!("[gpu] slot fill failed with status {}", res.status);
+            return -2;
         }
-        ok
+        let release = slot_fill_done();
+        if release.is_some() {
+            // SAFETY: registered handle, under the lock.
+            unsafe { crate::gpu_bindings::count_and_plan_slot_quiesce(r.inner) };
+        }
+        release
     };
-    if ok {
-        slot_fill_done();
-        0
-    } else {
-        -2
+    if let Some(release) = release {
+        release();
     }
+    0
 }
