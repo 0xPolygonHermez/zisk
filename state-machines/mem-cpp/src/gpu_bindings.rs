@@ -259,6 +259,12 @@ extern "C" {
         n_plans: u32,
         entries: *const AlignChunkEntry,
         n_entries: u32,
+        ram: *const u32,
+        n_ram: u32,
+        rom: *const u32,
+        n_rom: u32,
+        input: *const u32,
+        n_input: u32,
         prepared: *mut RamFillPrepared,
     ) -> bool;
     /// The device the planner holds the retained accesses on.

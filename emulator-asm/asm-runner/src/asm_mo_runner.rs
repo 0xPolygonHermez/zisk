@@ -217,11 +217,24 @@ impl DeviceMemWitness {
         let _ = (owned, d_buffers);
         #[cfg(gpu)]
         if self.async_prep {
+            // Another process proves every memory instance of this block: nothing to prepare,
+            // and the arena goes back right away.
+            if owned.ram.is_empty()
+                && owned.rom.is_empty()
+                && owned.input.is_empty()
+                && owned.align.is_empty()
+            {
+                tracing::info!("[gpu] memory witness on the device: no owned memory instance");
+                return false;
+            }
             timer_start_info!(GPU_MEM_WITNESS);
             // The preparation runs on its own thread; each instance waits for its own image.
             let prepared = input_image(&self.shm_prefix).and_then(|image| {
                 zisk_sm_mem_planner::gpu_slot_witness_prepare_async(
                     image.bytes().to_vec(),
+                    owned.ram.clone(),
+                    owned.rom.clone(),
+                    owned.input.clone(),
                     &owned.align,
                 )
             });
@@ -247,10 +260,6 @@ impl DeviceMemWitness {
                             );
                         }),
                     );
-                    if n_owned == 0 {
-                        zisk_sm_mem_planner::gpu_slot_witness_release_now();
-                        return false;
-                    }
                     zisk_common::MEM_ROWS_ON_DEVICE.store(
                         zisk_common::MEM_ROWS_RAM
                             | zisk_common::MEM_ROWS_ROM
