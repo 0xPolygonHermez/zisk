@@ -202,6 +202,8 @@ impl_public_outputs!(ExecuteOutput, publics);
 pub struct ProveOutput {
     summary: ExecutionSummary,
     proof: Proof,
+    /// Key of the setup that produced `proof`, when that was this process.
+    setup_vk: Option<Vec<u64>>,
 }
 
 impl ProveOutput {
@@ -211,7 +213,14 @@ impl ProveOutput {
         Self {
             summary: ExecutionSummary::new(proving_time, &execution),
             proof: proof.with_random_seed(execution.random_seed),
+            setup_vk: None,
         }
+    }
+
+    /// Set the key `verify` uses: that of the setup which produced the proof.
+    pub fn with_produced_under(mut self, setup_vk: Option<Vec<u64>>) -> Self {
+        self.setup_vk = setup_vk;
+        self
     }
 
     /// Construct with an empty (default) proof — used when only the execution
@@ -227,7 +236,11 @@ impl ProveOutput {
         proving_time: Duration,
         cost_per_type: StatsCostPerType,
     ) -> Self {
-        Self { summary: ExecutionSummary::from_remote(proving_time, steps, &cost_per_type), proof }
+        Self {
+            summary: ExecutionSummary::from_remote(proving_time, steps, &cost_per_type),
+            proof,
+            setup_vk: None,
+        }
     }
 
     /// Proving time, in milliseconds.
@@ -284,22 +297,30 @@ impl ProveOutput {
         Ok(self.proof.save(path)?)
     }
 
-    /// Verify the proof against its embedded public values, under the release key for its
-    /// family and stage. An aggregated proof needs its recurser's key: use
-    /// [`Proof::with_setup_vk`] through [`get_proof`](Self::get_proof).
+    /// Verify under the producing setup's key, else the release key.
     pub fn verify(&self) -> Result<()> {
-        Ok(self.proof.verify()?)
+        Ok(self.with_produced_setup_vk(self.proof.verify_builder()).verify()?)
     }
 
     /// Start a verification with the given public values (overriding the ones
     /// embedded in the proof).
     pub fn with_publics<'a>(&'a self, publics: &'a PublicValues) -> ZiskVerifyBuilder<'a> {
-        self.proof.with_publics(publics)
+        self.with_produced_setup_vk(self.proof.with_publics(publics))
     }
 
     /// Start a verification against the given program verification key.
     pub fn with_program_vk<'a>(&'a self, program_vk: &'a ProgramVK) -> ZiskVerifyBuilder<'a> {
-        self.proof.with_program_vk(program_vk)
+        self.with_produced_setup_vk(self.proof.with_program_vk(program_vk))
+    }
+
+    fn with_produced_setup_vk<'a>(
+        &'a self,
+        builder: ZiskVerifyBuilder<'a>,
+    ) -> ZiskVerifyBuilder<'a> {
+        match &self.setup_vk {
+            Some(vk) => builder.with_setup_vk(vk),
+            None => builder,
+        }
     }
 }
 

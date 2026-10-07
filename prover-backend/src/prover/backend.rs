@@ -458,11 +458,12 @@ impl ProverBackend {
                                 // `ProofBody::Plonk` producer. Storing the raw 69-word
                                 // vector here left consumers to strip the flag themselves.
                                 publics_full: program_publics(&vadcop_proof.public_values).to_vec(),
-                                rootc: vadcop_vk_u64,
+                                rootc: vadcop_vk_u64.clone(),
                             },
                             program_vk,
                         ),
-                    ))
+                    )
+                    .with_produced_under(Some(vadcop_vk_u64)))
                 } else {
                     Err(anyhow::anyhow!(
                         "Unsupported snark protocol id: {}",
@@ -470,26 +471,30 @@ impl ProverBackend {
                     ))
                 }
             }
-            (_, Some(p)) => Ok(ProveOutput::new(
-                execution_result,
-                start.elapsed(),
-                Proof::new(
-                    ProofBody::Vadcop {
-                        proof: p.proof,
-                        zisk_vk: self.get_vadcop_vk(minimal)?,
-                        // A freshly proven leaf is a raw vadcop_final proof
-                        // (Final, flag=1) or its compressed form (Minimal).
-                        // Recurser (aggregated) proofs come from the fold path.
-                        kind: if minimal { VadcopKind::Minimal } else { VadcopKind::Final },
-                        hash: self.hash()?,
-                        // Store the canonical flag-free view; proofman's raw
-                        // publics carry the is_vadcop_final_proof flag at index 0
-                        // for non-minimal proofs (captured in `kind` above).
-                        publics_full: program_publics(&p.public_values).to_vec(),
-                    },
-                    ProgramVK::new_from_publics_with_mode(&p.public_values, self.hash_mode()?),
-                ),
-            )),
+            (_, Some(p)) => {
+                let zisk_vk = self.get_vadcop_vk(minimal)?;
+                Ok(ProveOutput::new(
+                    execution_result,
+                    start.elapsed(),
+                    Proof::new(
+                        ProofBody::Vadcop {
+                            proof: p.proof,
+                            zisk_vk: zisk_vk.clone(),
+                            // A freshly proven leaf is a raw vadcop_final proof
+                            // (Final, flag=1) or its compressed form (Minimal).
+                            // Recurser (aggregated) proofs come from the fold path.
+                            kind: if minimal { VadcopKind::Minimal } else { VadcopKind::Final },
+                            hash: self.hash()?,
+                            // Store the canonical flag-free view; proofman's raw
+                            // publics carry the is_vadcop_final_proof flag at index 0
+                            // for non-minimal proofs (captured in `kind` above).
+                            publics_full: program_publics(&p.public_values).to_vec(),
+                        },
+                        ProgramVK::new_from_publics_with_mode(&p.public_values, self.hash_mode()?),
+                    ),
+                )
+                .with_produced_under(Some(zisk_vk)))
+            }
             (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
         }
     }
@@ -543,12 +548,13 @@ impl ProverBackend {
 
         let time = start.elapsed();
 
+        let zisk_vk = self.get_vadcop_vk(true)?;
         let program_vk =
             ProgramVK::new_from_publics_with_mode(&minimal_proof.public_values, self.hash_mode()?);
         let proof = Proof::new(
             ProofBody::Vadcop {
                 proof: minimal_proof.proof.clone(),
-                zisk_vk: self.get_vadcop_vk(true)?,
+                zisk_vk: zisk_vk.clone(),
                 kind: VadcopKind::Minimal,
                 hash,
                 publics_full: minimal_proof.public_values,
@@ -558,7 +564,9 @@ impl ProverBackend {
 
         // No guest runs here; the result keeps the seed of the execution the source proof
         // attests to.
-        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof).with_random_seed(seed))
+        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof)
+            .with_random_seed(seed)
+            .with_produced_under(Some(zisk_vk)))
     }
 
     /// SNARK-wrap a vadcop_final proof. `source_kind` supplies the flag `RecursiveF`
@@ -597,11 +605,17 @@ impl ProverBackend {
         // default vadcop_final setup verkey (as the fresh prove+wrap path stamps),
         // an aggregate the recurser verkey the aggregator writes into its output VK
         // slots. Reading those slots for a leaf would pick up its ROM root instead.
-        let rootc: Vec<u64> = match source_kind {
-            VadcopKind::Recurser => program_publics(publics_full)[..PROGRAM_VK_LEN].to_vec(),
-            _ => self.get_vadcop_vk(false)?,
+        // An aggregate's rootc comes from its input, so it is not this setup's key.
+        let (rootc, produced_under) = match source_kind {
+            VadcopKind::Recurser => {
+                (program_publics(publics_full)[..PROGRAM_VK_LEN].to_vec(), None)
+            }
+            _ => {
+                let vk = self.get_vadcop_vk(false)?;
+                (vk.clone(), Some(vk))
+            }
         };
-        let verkey_override = matches!(source_kind, VadcopKind::Recurser).then(|| rootc.as_slice());
+        let verkey_override = produced_under.is_none().then_some(rootc.as_slice());
 
         let snark_proof = self
             .snark_wrapper
@@ -641,7 +655,9 @@ impl ProverBackend {
 
         // No guest runs here; the result keeps the seed of the execution the source proof
         // attests to.
-        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof).with_random_seed(seed))
+        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof)
+            .with_random_seed(seed)
+            .with_produced_under(produced_under))
     }
 
     pub(crate) fn prove_phase(
