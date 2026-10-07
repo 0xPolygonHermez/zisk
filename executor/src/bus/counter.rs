@@ -77,6 +77,14 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
         }
     }
 
+    /// The counter of the precompile at bundle `position`, read in place (the bus keeps it).
+    pub fn precompile_metrics_at(
+        &self,
+        position: usize,
+    ) -> Option<&dyn zisk_common::BusDeviceMetrics> {
+        self.precompiles.metrics_at(position)
+    }
+
     /// Drains the accumulated public outputs from the embedded `PubOutsCollector`,
     /// leaving the collector with an empty Vec. Must be called BEFORE
     /// `into_devices`, which consumes the bus.

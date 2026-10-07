@@ -227,6 +227,25 @@ impl<F: PrimeField64> StaticSMBundle<F> {
 /// Plans secondary instances via static dispatch. Builtins use position
 /// constants; precompiles iterate `PRECOMPILE_AIR_IDS` and dispatch by
 /// air id. Drains `vec_counters` via `remove`.
+/// Bundle positions of the precompiles, in `plan_sec` order.
+pub fn precompile_positions() -> impl Iterator<Item = usize> {
+    (0..PRECOMPILE_AIR_IDS.len()).map(|i| BUILTIN_COUNT + i)
+}
+
+/// The instances `plan_sec` is certain to open the precompile at bundle `position` with, from the
+/// counters of the chunks counted so far (see `Planner::plan_prefix`).
+pub fn plan_sec_prefix<F: PrimeField64>(
+    position: usize,
+    is_asm_emulator: bool,
+    counters: &[(zisk_common::ChunkId, &dyn zisk_common::BusDeviceMetrics)],
+) -> Vec<Plan> {
+    let Some(&air_id) = position.checked_sub(BUILTIN_COUNT).and_then(|i| PRECOMPILE_AIR_IDS.get(i))
+    else {
+        return Vec::new();
+    };
+    Precompiles::<F>::planner_for_air_id(air_id, is_asm_emulator).plan_prefix(counters)
+}
+
 pub fn plan_sec<F: PrimeField64>(
     vec_counters: &mut crate::CountersChunkMetrics,
     num_chunks: usize,

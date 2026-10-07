@@ -104,6 +104,15 @@ pub enum ExecutorError {
     #[error("ROM not initialized")]
     RomNotInitialized,
 
+    /// An instance registered while the emulation ran is not where the block's plan puts it.
+    #[error("the early plan of bundle position {position} differs from the block's plan at instance {index}")]
+    EarlyPlanMismatch {
+        /// Bundle position of the state machine.
+        position: usize,
+        /// Index of the first differing instance among that position's plans.
+        index: usize,
+    },
+
     /// A plan keyed by `global_id` is missing during the assignment or populate phase of secondary instance handling.
     #[error("secn plan missing global_id during {phase}")]
     SecnPlanMissing {

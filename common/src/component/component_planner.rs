@@ -369,4 +369,11 @@ pub trait Planner {
     /// # Returns
     /// A vector of `Plan` instances.
     fn plan(&self, counter: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan>;
+
+    /// The instances `plan` is certain to return, unchanged and as its first instances, whatever
+    /// the chunks after `counters` hold: `counters` are the first chunks of the execution, in
+    /// order. They can be built while the execution is still running. None by default.
+    fn plan_prefix(&self, _counters: &[(ChunkId, &dyn BusDeviceMetrics)]) -> Vec<Plan> {
+        Vec::new()
+    }
 }
