@@ -72,7 +72,8 @@
 
 // Assembly service request/response types
 // Only the methods supported by the configured generation method will be implemented by the server,
-// e.g. gen_method=1 => PING, MT and SHUTDOWN; the rest will fail with an error response.
+// e.g. gen_method=1 => PING, MT, RESET and SHUTDOWN; the rest will fail with an error response.
+// PING, RESET and SHUTDOWN are served under every generation method.
 #define TYPE_PING 1 // Ping
 #define TYPE_PONG 2
 #define TYPE_MT_REQUEST 3 // Minimal trace
@@ -81,15 +82,9 @@
 #define TYPE_RH_RESPONSE 6
 #define TYPE_MO_REQUEST 7 // Memory opcode
 #define TYPE_MO_RESPONSE 8
-// Reset: re-initialize RAM and ROM from this binary's own init data, synchronously, before
-// responding.  Needed because the shared memories are keyed by pid+local_rank and are therefore
-// shared across programs: another program's server may have overwritten this server's RAM/ROM
-// since its last emulation.  The client sends this when it switches the active program, and the
-// response is the guarantee that the re-initialization has completed -- which is why this must
-// not be routed through the bReset flag, that one only fires after the response has been sent.
-// 19/20 because every lower id has served another request (9/10 was TYPE_MA), and an older
-// binary must reject this one as unknown rather than take it for something else.
-#define TYPE_RS_REQUEST 19
+// 19/20, not the next free ids: every lower id has served another request (9/10 was TYPE_MA), and
+// an older binary must reject this one as unknown rather than take it for something else
+#define TYPE_RS_REQUEST 19 // Reset RAM and ROM, see main.c
 #define TYPE_RS_RESPONSE 20
 #define TYPE_FA_REQUEST 13 // Fast mode, do not generate any trace
 #define TYPE_FA_RESPONSE 14

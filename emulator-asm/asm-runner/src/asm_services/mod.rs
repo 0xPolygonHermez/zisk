@@ -77,8 +77,8 @@ mod tests {
         let r = RomHistogramResponse::from_response_payload([CMD_RH_RESPONSE_ID, 0, 9, 3, 77]);
         assert_eq!((r.result, r.allocated_len, r.trace_len, r.last_step), (0, 9, 3, 77));
 
-        let r = ResetResponse::from_response_payload([CMD_RESET_RESPONSE_ID, 0, 4096, 0, 0]);
-        assert_eq!((r.result, r.allocated_len), (0, 4096));
+        let r = ResetResponse::from_response_payload([CMD_RESET_RESPONSE_ID, 3, 4096, 0, 0]);
+        assert_eq!(r.result, 3);
     }
 
     #[test]

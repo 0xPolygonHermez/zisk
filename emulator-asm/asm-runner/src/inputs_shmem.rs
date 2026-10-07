@@ -23,7 +23,8 @@ unsafe impl Send for InputsShmemWriter {}
 unsafe impl Sync for InputsShmemWriter {}
 
 impl InputsShmemWriter {
-    /// Create writers mapping the per-service input shmem segments.
+    /// Create the writer over the process's input segment, which every program
+    /// in a hints mode shares.
     /// Semaphores are not opened here — call `bind_semaphores` before first use.
     pub fn new(
         shm_prefix: &str,
@@ -72,11 +73,6 @@ impl InputsShmemWriter {
 
         *self.sem_avails.lock().unwrap() = Some(sems);
         Ok(())
-    }
-
-    /// Drop the semaphore handles (does not unlink — the binary owns the names).
-    pub fn unbind_semaphores(&self) {
-        *self.sem_avails.lock().unwrap() = None;
     }
 
     /// Writes inputs to the shared memory and updates the control shared memory.
@@ -186,12 +182,10 @@ mod tests {
         unsafe { libc::shm_unlink(c.as_ptr()) };
     }
 
-    /// Binding must not inherit an earlier run's unconsumed `input_avail` post.
+    /// Binding leaves no post from an earlier run on the names it takes over.
     ///
-    /// The per-job `reset()` drains whatever is bound at the time, which on a
-    /// program switch is the *outgoing* program's set — so without the sweep in
-    /// `bind_semaphores` the incoming program's stale count survives and its
-    /// servers wake on an input nobody wrote.
+    /// The C side purges before it waits, so a leftover post would only be a
+    /// spurious wake; this pins that the names start clean anyway.
     #[test]
     fn bind_semaphores_sweeps_a_stale_post_from_a_previous_run() {
         let prefix = format!("ZISK_unittest_stale_{}", std::process::id());

@@ -105,11 +105,11 @@ impl HintsShmem {
     /// reset an existing name's count, so an aborted run's unconsumed posts would
     /// survive until this program was next activated.
     ///
-    /// Sweeping is safe here because neither count is state. The authority on
-    /// progress is the pair of positions in the control segments — `submit`
-    /// re-reads them after every wake and re-decides — so these two are pure
-    /// wake-up signals, and a leftover count only buys a spurious wake and a spin
-    /// through the flow-control loop.
+    /// Sweeping is safe because nothing uses the names while they are bound: a
+    /// program's semaphores are bound only by `AsmServices::activate`, once the
+    /// services that used them have gone quiet. The authority on progress is the
+    /// pair of positions in the control segments, which `submit` re-reads after
+    /// every wake.
     pub fn bind_semaphores(&self, sem_prefix: &str) -> Result<()> {
         let mut sems = AsmServices::SERVICES
             .iter()
@@ -135,16 +135,11 @@ impl HintsShmem {
             })
             .sum();
         if swept != 0 {
-            tracing::debug!("Swept {swept} unconsumed precompile post(s) on '{sem_prefix}'");
+            debug!("Swept {swept} unconsumed precompile post(s) on '{sem_prefix}'");
         }
 
         *self.separate_sem.lock().expect("separate_sem mutex poisoned") = Some(sems);
         Ok(())
-    }
-
-    /// Drop the semaphore handles (does not unlink — the binary owns the names).
-    pub fn unbind_semaphores(&self) {
-        *self.separate_sem.lock().expect("separate_sem mutex poisoned") = None;
     }
 
     /// Update the number of active ASM services notified on each submit.
@@ -292,8 +287,8 @@ impl StreamSink for HintsShmem {
         if let Some(sems) = self.separate_sem.lock().expect("separate_sem mutex poisoned").as_mut()
         {
             for res in sems.iter_mut() {
-                while res.sem_available.try_wait().is_ok() {}
-                while res.sem_read.try_wait().is_ok() {}
+                crate::drain_semaphore(&mut res.sem_available);
+                crate::drain_semaphore(&mut res.sem_read);
             }
         }
     }

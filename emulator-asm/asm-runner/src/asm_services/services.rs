@@ -194,7 +194,10 @@ impl fmt::Display for AsmService {
     }
 }
 
-/// Handle to the ASM microservices for one `(pid, local_rank)`.
+/// Handle to one program's ASM microservices: its three service processes and
+/// its semaphores. The shared-memory segments they use belong to the prefix,
+/// `(pid, local_rank, hints mode)`, and are shared with every other program on
+/// it (see `PREFIX_LEASES`).
 ///
 /// `Clone` shares a single `AsmServicesInner` via `Arc`: the runner threads
 /// (MO/MT/RH) each hold a clone for the duration of a run. Teardown lives in
@@ -503,7 +506,7 @@ impl AsmServices {
     ///
     /// The segments serve one program at a time, so a switch takes three steps,
     /// in order: wait until the program they serve now has finished with them
-    /// ([`Self::quiesce_active`]), let the caller rebind whatever is per program
+    /// (`quiesce_active`), let the caller rebind whatever is per program
     /// (`bind`, the semaphores of the parent's shared writers), and rebuild this
     /// program's guest RAM and ROM ([`Self::reset_services`]). It is recorded as
     /// active only once all three have succeeded.
@@ -716,12 +719,6 @@ impl AsmServicesInner {
         Ok(())
     }
 
-    /// Unlink every `/dev/shm/{shm_prefix}*` shmem segment and
-    /// `/dev/shm/sem.{sem_prefix}*` semaphore. The C-side `server_cleanup`
-    /// only unlinks if `delete_input_shm`/`delete_output_shm` flags are
-    /// set — which the long-running ASM service children don't have — so
-    /// the parent has to do it. Call after `stop_asm_services` so the
-    /// children are already detached from the segments.
     /// Unlink the semaphores this program owns.
     ///
     /// Only the semaphores: they carry the program hash, so they are this
@@ -734,7 +731,9 @@ impl AsmServicesInner {
 }
 
 impl Drop for AsmServicesInner {
-    /// RAII teardown for the ASM microservices and their `/dev/shm` segments.
+    /// RAII teardown for this program's services and semaphores. The shared
+    /// segments outlive it unless this was the prefix's last program: its
+    /// lease, dropped after this body, decides.
     ///
     /// Runs exactly once: this is the sole owner behind the `Arc` in
     /// [`AsmServices`], so `drop` fires only when the last `AsmServices` clone

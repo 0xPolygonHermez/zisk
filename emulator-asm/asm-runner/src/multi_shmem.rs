@@ -53,9 +53,9 @@ impl<H: AsmShmemHeader> Drop for AsmMultiShmem<H> {
     /// so every program on this worker maps the same ones. Unlinking here would
     /// destroy a segment another program's live handle is still using, and the
     /// name would then be silently re-created by the next setup — leaving the
-    /// old inode resident and pinned with nothing able to reach it. Reaping the
-    /// names belongs to whoever owns the prefix: `cleanup_stale_shmem()` at
-    /// worker start, and the janitor.
+    /// old inode resident and pinned with nothing able to reach it. Unlinking the
+    /// names belongs to the prefix's last `PrefixLease`, and to
+    /// `cleanup_stale_shmem()` for a process that died holding one.
     fn drop(&mut self) {
         for i in 0..self.mapped_files.len() {
             unsafe { close(self.mapped_files[i].fd) };

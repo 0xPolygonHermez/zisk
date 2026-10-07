@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 ///
 /// Every program set up in a process writes its histogram to the same object, and each
 /// program's histogram has its own size. So the mapping is sized by the largest histogram read
-/// so far, and grows when a program publishes a larger one (see [`Self::fit`]).
+/// so far, and grows when a program publishes a larger one (see `fit`).
 pub struct RHShmemReader {
     pub(crate) output_shmem: AsmShmem<AsmRHHeader>,
     /// Mappings this reader has outgrown. They stay mapped for as long as the reader lives,

@@ -75,11 +75,12 @@ pub(super) fn cleanup_stale() {
 }
 
 /// Unlink every `/dev/shm/{shm_prefix}*` shmem segment and
-/// `/dev/shm/sem.{sem_prefix}*` semaphore. The C-side `server_cleanup`
-/// only unlinks if `delete_input_shm`/`delete_output_shm` flags are
-/// set — which the long-running ASM service children don't have — so
-/// the parent has to do it. Call after `stop_asm_services` so the
-/// children are already detached from the segments.
+/// `/dev/shm/sem.{sem_prefix}*` semaphore.
+///
+/// Only for rolling back a setup that failed while creating a prefix's
+/// segments: then no other program can be using them. A program's normal
+/// teardown unlinks only its semaphores, and the segments go with the
+/// prefix's last `PrefixLease`.
 pub(super) fn cleanup_prefix(shm_prefix: &str, sem_prefix: &str) {
     cleanup_shm_prefix(shm_prefix);
     cleanup_sem_prefix(sem_prefix);

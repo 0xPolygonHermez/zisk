@@ -111,8 +111,6 @@ const SEM_CHUNK_DONE_WAIT_DURATION: std::time::Duration = std::time::Duration::f
 /// semaphore's value — the initial value is ignored once the name exists — so
 /// re-opening is not enough and the count has to be swept explicitly.
 ///
-/// Used on `chunk_done` at the start of each run, and on `input_avail` when a
-/// program's semaphores are bound.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub(crate) fn drain_semaphore(sem: &mut named_sem::NamedSemaphore) -> u64 {
     let mut swept = 0;

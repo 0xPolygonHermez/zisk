@@ -29,14 +29,16 @@ impl std::fmt::Debug for AsmResourcesConfig {
     }
 }
 
-/// Output-side shmem readers for the three ASM services, mapped once at worker startup.
+/// Output-side shmem readers for the three ASM services, mapped when the first program of a
+/// hints mode is set up and shared by every program in it.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub struct AsmShmemReaders {
     /// Reader for the minimal trace shmem segment (MT).
     pub mt: Arc<Mutex<MTShmemReader>>,
     /// Reader for the memory-ops shmem segment (MO).
     pub mo: Arc<Mutex<MOShmemReader>>,
-    /// Reader for the ROM histogram shmem segment (RH).
+    /// Reader for the ROM histogram shmem segment (RH), mapped on its first read and grown
+    /// when a program with a larger histogram runs.
     pub rh: Arc<Mutex<Option<RHShmemReader>>>,
 }
 
@@ -61,7 +63,8 @@ impl AsmShmemReaders {
     }
 }
 
-/// Shmem segments mapped once at worker startup. Shared across all programs via `Arc`.
+/// The shmem mappings of one hints mode: built when its first program is set up, and shared
+/// by every program in that mode via `Arc`.
 pub struct AsmSharedResources {
     config: AsmResourcesConfig,
 
@@ -69,7 +72,7 @@ pub struct AsmSharedResources {
     /// per-program by `AsmResources::activate`).
     pub shmem_inputs: Arc<InputsShmemWriter>,
 
-    /// Hints processing pipeline — `Some` only when the program was set up with hints.
+    /// Hints processing pipeline — `Some` only in the hints mode.
     /// The precompile shmem segments are created by the C binary only in hints mode;
     /// attempting to open them without hints causes an immediate crash.
     hints_stream: Option<Arc<Mutex<ZiskStream<HintsProcessor<HintsShmem>>>>>,

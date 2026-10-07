@@ -256,27 +256,24 @@ void process_request(const uint64_t * request, uint64_t * response, bool * bRese
         }
         case TYPE_RS_REQUEST:
         {
-#ifdef DEBUG
-            if (verbose) asm_printf("RESET received\n");
-#endif
-            // Called directly, not via *bReset: that flag is honoured only after the response has
-            // been written, so the client could not tell the re-initialization apart from a
-            // pending one and could issue its next emulation request into half-reset memory.
+            if (!silent) asm_printf("RESET received\n");
+
+            // Rebuild RAM and ROM from this binary's own init data. Every program set up in a
+            // process shares those segments, so another program may have overwritten them since
+            // this server last ran; the client sends this when it switches programs.
             //
-            // RAM and ROM only. Deliberately NOT server_reset_trace(): the trace needs no
-            // re-initialization here (it is per-emulation state, and server_run() already
-            // resets its header at the start of every emulation), while calling it out of
-            // band rewrites the header and zeroes trace_used_size without touching the
-            // assembly side's write pointer or re-deriving trace_address_threshold --
-            // which set_chunk_size() does when a real request arrives. Doing it here left
-            // the two inconsistent, so the next emulation saw the threshold already
-            // crossed and mapped a fresh 2 GB chunk for practically every chunk written:
-            // 13 of them in one run, up to the 32 GB cap, then the child aborted.
+            // Called directly, not via *bReset: that flag is honoured only after the response has
+            // been written, and the response must mean the memory is ready.
+            //
+            // RAM and ROM only, not server_reset_trace(): the trace is per-emulation state that
+            // server_run() resets itself, and resetting it out of band leaves the assembly side's
+            // write pointer and trace_address_threshold inconsistent with it, which made the next
+            // emulation map a fresh 2 GB chunk for every chunk it wrote.
             server_reset_slow();
 
             response[0] = TYPE_RS_RESPONSE;
             response[1] = 0;
-            response[2] = trace_size;
+            response[2] = 0;
             response[3] = 0;
             response[4] = 0;
             break;

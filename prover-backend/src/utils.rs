@@ -1,5 +1,5 @@
 use proofman_fields::PrimeField64;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
@@ -44,16 +44,15 @@ pub fn get_rom_bin_path<F: PrimeField64>(
 
 /// Return the `(minimal-trace, rom-histogram)` ASM binary filenames for `elf`.
 ///
-/// Delegates the name to `zisk_rom_setup`, which is what generates these files.
-/// Rebuilding the name here instead would be a second definition of it, free to
-/// drift from the generator's — and it did: the protocol generation is part of
-/// the name now, and a resolver that did not know that would look for artifacts
-/// nobody writes.
+/// Named by `zisk_rom_setup`, which generates these files, so the two cannot
+/// disagree: the name carries the protocol generation as well as the ELF hash.
 pub fn get_asm_paths(elf: &GuestProgram, with_hints: bool) -> Result<(String, String)> {
     let hash = get_elf_data_hash(elf.elf());
-    let base = zisk_rom_setup::asm_file_base(&hash, with_hints);
+    let [mt, rh, _mo] =
+        zisk_rom_setup::get_assembly_file_paths_from_id(&hash, Path::new(""), with_hints);
+    let file_name = |path: PathBuf| path.to_string_lossy().into_owned();
 
-    Ok((format!("{base}-mt.bin"), format!("{base}-rh.bin")))
+    Ok((file_name(mt), file_name(rh)))
 }
 
 /// Return an error if `path` does not exist.

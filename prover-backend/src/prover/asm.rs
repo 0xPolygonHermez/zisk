@@ -276,8 +276,7 @@ impl AsmProver {
     /// One `AsmSharedResources` per hints mode for the whole worker, not one per
     /// program: the segments it maps are named per pid+rank+mode, so a second
     /// instance would be a second set of `MAP_LOCKED` mappings over the same
-    /// inodes for no gain — and, before `AsmMultiShmem`'s `Drop` stopped
-    /// unlinking, a second owner able to destroy them.
+    /// inodes for no gain.
     #[allow(clippy::too_many_arguments)]
     fn shared_resources_for(
         &self,
