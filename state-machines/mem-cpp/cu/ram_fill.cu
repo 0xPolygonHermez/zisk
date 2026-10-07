@@ -663,7 +663,7 @@ bool CountAndPlan::fill_all_ram_instances(uint32_t n_rows, const uint32_t* insts
         if (!owned[i] && !d_align_ && !resolve_all_) continue;
         uint64_t* out = owned[i] ? h_ram_rows_ + (size_t)i * stride : nullptr;
         RamFillResult* r = &ram_results_[i];
-        const bool ok = resolve_all_
+        const bool ok = resolve_all_ && stage_wanted_at_(0, i)
             ? fill_staged_(0, 0, i, n_rows, stride, r, [&](uint64_t* d_out) { return fill_ram_instance(i, out, n_rows, r, d_out); })
             : fill_ram_instance(i, out, n_rows, r);
         if (!ok) {
@@ -809,6 +809,28 @@ uint8_t* CountAndPlan::scratch_end_(size_t n_total) const {
     return stage_low_ && stage_low_ < end ? stage_low_ : end;
 }
 
+// The input image, whole words, ahead of the per-instance scratch; kept for the slot fills. Laid
+// out once per block.
+bool CountAndPlan::prepare_input_image_(const void* image, size_t image_bytes) {
+    if (d_image_) return true;
+    image_words_ = (image_bytes + 7) / 8;
+    h_image_.assign(image_words_, 0);
+    memcpy(h_image_.data(), image, image_bytes);
+    ScratchCursor sc{other_scratch_};
+    uint64_t* d_image = (uint64_t*)sc.take(image_words_ * 8);
+    if (sc.cur > arena_ + ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed))) {
+        fprintf(stderr, "input_fill: no room for the %zu MB input image below the retained accesses\n", (image_words_ * 8) >> 20);
+        return false;
+    }
+    if (cudaMemcpyAsync(d_image, h_image_.data(), image_words_ * 8, cudaMemcpyHostToDevice, fill_stream_) != cudaSuccess) {
+        cudaGetLastError();
+        return false;
+    }
+    d_image_ = d_image;
+    input_scratch_ = sc.take(0);
+    return true;
+}
+
 // A staging slot of `words` below the staged images, while the span left above the tables still
 // holds what the largest RAM instance's fill takes (the overflow retry in fill_staged_ covers the
 // estimate's slack). Null when staging is off or the span is spent.
@@ -818,10 +840,7 @@ uint64_t* CountAndPlan::stage_take_(size_t words) {
     if (other_scratch_ > base) base = other_scratch_;
     if (input_scratch_ > base) base = input_scratch_;
     if (align_scratch_ > base) base = align_scratch_;
-    size_t largest = 0;
-    for (size_t c : h_rf_inst_count_) largest = std::max(largest, c);
-    const size_t prop = std::min(RF_PROP_BLOCK, largest);
-    const size_t reserve = largest * 32 + prop * (2 * sizeof(Merge) + 4) + ((size_t)64 << 20);
+    const size_t reserve = stage_reserve_;
     uint8_t* top = scratch_end_(ram_cursor_.load(std::memory_order_relaxed));
     if (!base || top < base || (size_t)(top - base) < words * 8 + reserve) return nullptr;
     uint8_t* p = (uint8_t*)(((uintptr_t)top - words * 8) & ~(uintptr_t)255);
@@ -873,7 +892,9 @@ bool CountAndPlan::other_geometry_(int region, std::vector<uint32_t>& first, std
                                    std::vector<size_t>& skip, std::vector<size_t>& count,
                                    std::vector<uint32_t>& ext_first, std::vector<size_t>& extra) {
     const uint32_t n_inst = num_inst_[region];
-    uint32_t* d_ids = (uint32_t*)other_scratch_; uint32_t* d_first = d_ids + n_inst; uint32_t* d_last = d_first + n_inst;
+    // Scratch past every table once the slot preparation laid them out (the input image follows
+    // the access table), else just past the access table.
+    uint32_t* d_ids = (uint32_t*)(slot_scratch_ ? slot_scratch_ : other_scratch_); uint32_t* d_first = d_ids + n_inst; uint32_t* d_last = d_first + n_inst;
     std::vector<uint32_t> h_ids(n_inst);
     for (uint32_t i = 0; i < n_inst; ++i) h_ids[i] = i;
     RF_TRY(cudaMemcpyAsync(d_ids, h_ids.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice, fill_stream_));
@@ -1173,7 +1194,7 @@ bool CountAndPlan::fill_all_rom_instances(uint32_t n_rows, const uint32_t* insts
         if (!owned[i] && !d_align_ && !resolve_all_) continue;
         uint64_t* out = owned[i] && h_rom_rows_ ? h_rom_rows_ + (size_t)i * stride : nullptr;
         RamFillResult* r = &rom_results_[i];
-        const bool ok = resolve_all_
+        const bool ok = resolve_all_ && stage_wanted_at_(1, i)
             ? fill_staged_(1, 0, i, n_rows, stride, r, [&](uint64_t* d_out) { return fill_rom_instance(i, out, n_rows, r, d_out); })
             : fill_rom_instance(i, out, n_rows, r);
         if (!ok) {
@@ -1382,19 +1403,11 @@ bool CountAndPlan::fill_all_input_instances(uint32_t n_rows, const void* image, 
         prepared->status = -1;
         return false;
     }
-    // The input image, whole words, ahead of the per-instance scratch; kept for the slot fills.
-    image_words_ = (image_bytes + 7) / 8;
-    h_image_.assign(image_words_, 0);
-    memcpy(h_image_.data(), image, image_bytes);
-    ScratchCursor sc{other_scratch_};
-    d_image_ = (uint64_t*)sc.take(image_words_ * 8);
-    input_scratch_ = sc.take(0);
-    if (sc.cur > arena_ + ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed))) {
-        fprintf(stderr, "input_fill: no room for the %zu MB input image below the retained accesses\n", (image_words_ * 8) >> 20);
+    if (!prepare_input_image_(image, image_bytes)) {
         prepared->status = -3;
         return false;
     }
-    RF_TRY(cudaMemcpyAsync(d_image_, h_image_.data(), image_words_ * 8, cudaMemcpyHostToDevice, fill_stream_));
+    ScratchCursor sc{input_scratch_};
     const size_t image_words = image_words_;
     uint64_t* d_image = d_image_;
     std::vector<uint64_t>& h_image = h_image_;
@@ -1421,7 +1434,7 @@ bool CountAndPlan::fill_all_input_instances(uint32_t n_rows, const void* image, 
         auto fill = [&](uint64_t* d_out) {
             return fill_input_instance(i, d_image, h_image.data(), image_words, sc.cur, out, n_rows, r, d_out);
         };
-        const bool ok = resolve_all_ ? fill_staged_(2, 0, i, n_rows, stride, r, fill) : fill(nullptr);
+        const bool ok = resolve_all_ && stage_wanted_at_(2, i) ? fill_staged_(2, 0, i, n_rows, stride, r, fill) : fill(nullptr);
         if (!ok) {
             prepared->status = input_results_[i].status;
             return false;
@@ -1957,7 +1970,9 @@ const uint64_t* CountAndPlan::align_instance_rows(uint32_t air_id, uint32_t segm
 // ─── Slot fills: the block prepared once, each instance built into the prover's slot ───────────
 
 bool CountAndPlan::prepare_slot_fills(const void* image, size_t image_bytes, const AlignPlanDesc* plans, uint32_t n_plans,
-                                      const AlignChunkEntry* entries, uint32_t n_entries, RamFillPrepared* prepared) {
+                                      const AlignChunkEntry* entries, uint32_t n_entries, const uint32_t* ram,
+                                      uint32_t n_ram, const uint32_t* rom, uint32_t n_rom, const uint32_t* input,
+                                      uint32_t n_input, RamFillPrepared* prepared) {
     if (prepared) *prepared = RamFillPrepared{};
     if (!prepared) return false;
     cudaSetDevice(gpu_device_);
@@ -1974,6 +1989,52 @@ bool CountAndPlan::prepare_slot_fills(const void* image, size_t image_bytes, con
     } prep_done_guard{this};
     if (!ram_retention_enabled_.load(std::memory_order_relaxed) || mem_lanes_x_row_ == 0) { prepared->status = -1; return false; }
     stage_low_ = nullptr;
+    // Every table the fills read is laid out first, bottom-up, and the fills' scratch starts past
+    // all of them; the staged images go top-down from the retained accesses. Between the two stays
+    // the most scratch any one fill can take, so an instance left unstaged can still be built and
+    // no image ever covers a table.
+    slot_scratch_ = nullptr;
+    {
+        RamFillPrepared q{};
+        if (!prepare_ram_fill(&q)) { prepared->status = q.status ? q.status : -1; return false; }
+    }
+    const bool has_rom = num_inst_[RF_REGION_ROM] > 0 && rom_lanes_x_row_ > 0;
+    const bool has_input = num_inst_[RF_REGION_INPUT] > 0 && input_lanes_x_row_ > 0;
+    if ((has_rom || has_input) && (!prepare_other_index_() || other_total_ == 0)) { prepared->status = -1; return false; }
+    if (has_rom && !other_geometry_(RF_REGION_ROM, h_rom_inst_first_, h_rom_inst_last_, h_rom_inst_skip_, h_rom_inst_count_,
+                                    h_rom_inst_ext_first_, h_rom_inst_extra_)) { prepared->status = -1; return false; }
+    if (has_input && !other_geometry_(RF_REGION_INPUT, h_input_inst_first_, h_input_inst_last_, h_input_inst_skip_,
+                                      h_input_inst_count_, h_input_inst_ext_first_, h_input_inst_extra_)) {
+        prepared->status = -1;
+        return false;
+    }
+    if (has_input && !prepare_input_image_(image, image_bytes)) { prepared->status = -3; return false; }
+    if (n_plans > 0 && (!d_align_ || !prepare_align_index_())) { prepared->status = -1; return false; }
+    for (uint32_t i = 0; i < n_plans; ++i)
+        if (plans[i].air_kind >= 4 || plans[i].entry_from + plans[i].entry_n > n_entries) { prepared->status = -2; return false; }
+    {
+        uint8_t* top = rf_scratch_;
+        if (other_scratch_ > top) top = other_scratch_;
+        if (input_scratch_ > top) top = input_scratch_;
+        if (align_scratch_ > top) top = align_scratch_;
+        slot_scratch_ = top;
+    }
+    stage_reserve_ = fill_scratch_bound_(plans, n_plans, entries);
+    // ZISK_MEM_STAGE_SKIP=<family>.<inst> leaves one owned instance unstaged (test knob: its rows
+    // then come from the host fill after the preparation).
+    long skip_family = -1, skip_inst = -1;
+    if (const char* e = std::getenv("ZISK_MEM_STAGE_SKIP")) std::sscanf(e, "%ld.%ld", &skip_family, &skip_inst);
+    const uint32_t* lists[3] = {ram, rom, input};
+    const uint32_t counts[3] = {n_ram, n_rom, n_input};
+    for (uint32_t f = 0; f < 3; ++f) {
+        stage_wanted_[f].clear();
+        for (uint32_t k = 0; k < counts[f]; ++k) {
+            const uint32_t inst = lists[f][k];
+            if ((long)f == skip_family && (long)inst == skip_inst) continue;
+            if (stage_wanted_[f].size() <= inst) stage_wanted_[f].resize(inst + 1, false);
+            stage_wanted_[f][inst] = true;
+        }
+    }
     resolve_all_ = true;
     const uint32_t none = 0;
     RamFillPrepared p{};
@@ -1993,9 +2054,6 @@ bool CountAndPlan::prepare_slot_fills(const void* image, size_t image_bytes, con
         prepared->n_instances += p.n_instances;
     }
     if (n_plans > 0) {
-        if (!d_align_ || !prepare_align_index_()) { prepared->status = -1; resolve_all_ = false; return false; }
-        for (uint32_t i = 0; i < n_plans; ++i)
-            if (plans[i].air_kind >= 4 || plans[i].entry_from + plans[i].entry_n > n_entries) { prepared->status = -2; return false; }
         slot_align_plans_.assign(plans, plans + n_plans);
         slot_align_entries_.assign(entries, entries + n_entries);
         prepared->n_instances += n_plans;
@@ -2022,14 +2080,9 @@ bool CountAndPlan::prepare_slot_fills(const void* image, size_t image_bytes, con
         std::lock_guard<std::mutex> lk(staged_mtx_);
         size_t bytes = 0;
         for (const Staged& s : staged_) bytes += s.words * 8;
-        fprintf(stderr, "slot_fill: %zu of %u instances staged (%zu MB)\n", staged_.size(), prepared->n_instances, bytes >> 20);
+        fprintf(stderr, "slot_fill: %zu of %u instances staged (%zu MB), %zu MB kept for the largest fill\n", staged_.size(),
+                prepared->n_instances, bytes >> 20, stage_reserve_ >> 20);
     }
-    // Per-instance scratch for the slot fills: after every table and the image.
-    uint8_t* top = rf_scratch_;
-    if (other_scratch_ > top) top = other_scratch_;
-    if (input_scratch_ > top) top = input_scratch_;
-    if (align_scratch_ > top) top = align_scratch_;
-    slot_scratch_ = top;
     slot_prepared_ = true;
     prepared->status = 0;
     return true;
@@ -2087,6 +2140,10 @@ bool CountAndPlan::fill_slot(const void* d_ops, uint64_t n_ops, uint64_t* dst, v
             res->status = -2;
             return false;
     }
+}
+
+bool CountAndPlan::stage_wanted_at_(uint32_t family, uint32_t inst) const {
+    return family < 3 && inst < stage_wanted_[family].size() && stage_wanted_[family][inst];
 }
 
 // Under staged_mtx_.
@@ -2180,4 +2237,82 @@ bool CountAndPlan::instance_scalars(uint32_t family, uint32_t inst, RamFillResul
     if (r.status != 0 && r.status != FILL_NOT_OWNED) return false;
     *res = r;
     return true;
+}
+
+// Mirrors the scratch each fill takes (fill_ram_instance, fill_rom_instance, fill_input_instance
+// with other_sorted_, fill_align_instance), its rows included, with the alignment of every take.
+size_t CountAndPlan::fill_scratch_bound_(const AlignPlanDesc* plans, uint32_t n_plans,
+                                         const AlignChunkEntry* entries) const {
+    const size_t align_slack = 32 * 256;
+    size_t bound = 0;
+    // RAM
+    if (mem_lanes_x_row_ > 0) {
+        const size_t rows = (size_t)(instance_rows_[RF_REGION_RAM] / mem_lanes_x_row_) * mem_words_per_row_ * 8;
+        for (size_t n : h_rf_inst_count_) {
+            if (n == 0) continue;
+            const size_t prop = std::min(RF_PROP_BLOCK, n);
+            cub::DoubleBuffer<uint64_t> k(nullptr, nullptr);
+            cub::DoubleBuffer<uint32_t> v(nullptr, nullptr);
+            size_t t_sort = 0, t_max = 0, t_select = 0, t_bykey = 0;
+            cub::DeviceRadixSort::SortPairs(nullptr, t_sort, k, v, n, (int)RF_STEP_BITS, (int)(RF_STEP_BITS + RF_ADDR_BITS));
+            cub::DeviceScan::InclusiveScan(nullptr, t_max, (uint32_t*)nullptr, (uint32_t*)nullptr, MaxU32Op(), n);
+            cub::DeviceSelect::Flagged(nullptr, t_select, thrust::counting_iterator<uint32_t>(0), (uint32_t*)nullptr,
+                                       (uint32_t*)nullptr, (uint32_t*)nullptr, n);
+            cub::DeviceScan::InclusiveScanByKey(nullptr, t_bykey, (uint32_t*)nullptr, (Merge*)nullptr, (Merge*)nullptr,
+                                                MergeOp(), prop, EqU32());
+            const size_t temp = std::max(std::max(t_sort, t_max), std::max(t_select, t_bykey));
+            bound = std::max(bound, 2 * n * 8 + 2 * n * 4 + n * 4 + 4 + 2 * prop * sizeof(Merge) + prop * 4 + rows + temp
+                                        + align_slack);
+        }
+    }
+    // ROM and input: the selection over the whole access table, then the instance's own accesses
+    auto other_bound = [&](const std::vector<size_t>& count, const std::vector<size_t>& extra, size_t rows,
+                           bool values) {
+        const size_t N = other_total_;
+        size_t t_select = 0;
+        cub::DeviceSelect::Flagged(nullptr, t_select, thrust::counting_iterator<uint32_t>(0), (uint32_t*)nullptr,
+                                   (uint32_t*)nullptr, (uint32_t*)nullptr, N);
+        for (size_t i = 0; i < count.size(); ++i) {
+            const size_t n = (size_t)count[i] + (i < extra.size() ? extra[i] : 0);
+            cub::DoubleBuffer<uint32_t> k(nullptr, nullptr), v(nullptr, nullptr);
+            size_t t_sort = 0, t_bykey = 0;
+            cub::DeviceRadixSort::SortPairs(nullptr, t_sort, k, v, n, 0, 32);
+            const size_t prop = std::min(RF_PROP_BLOCK, n);
+            if (values)
+                cub::DeviceScan::InclusiveScanByKey(nullptr, t_bykey, (uint32_t*)nullptr, (Merge*)nullptr, (Merge*)nullptr,
+                                                    MergeOp(), prop, EqU32());
+            size_t b = N * 8 + 4 + t_select + 4 * n * 4 + t_sort + rows + align_slack;
+            if (values) b += n * 8 + 2 * prop * sizeof(Merge) + t_bykey;
+            bound = std::max(bound, b);
+        }
+    };
+    if (num_inst_[RF_REGION_ROM] > 0 && rom_lanes_x_row_ > 0)
+        other_bound(h_rom_inst_count_, h_rom_inst_extra_,
+                    (size_t)(instance_rows_[RF_REGION_ROM] / rom_lanes_x_row_) * rom_words_per_row_ * 8, true);
+    if (num_inst_[RF_REGION_INPUT] > 0 && input_lanes_x_row_ > 0)
+        other_bound(h_input_inst_count_, h_input_inst_extra_,
+                    (size_t)(instance_rows_[RF_REGION_INPUT] / input_lanes_x_row_) * input_words_per_row_ * 8, false);
+    // MemAlign: the accesses of the plan's chunk range
+    for (uint32_t i = 0; i < n_plans; ++i) {
+        const AlignPlanDesc& plan = plans[i];
+        uint32_t c_first = 0xFFFFFFFFu, c_last = 0;
+        for (uint32_t e = 0; e < plan.entry_n; ++e) {
+            c_first = std::min(c_first, entries[plan.entry_from + e].chunk);
+            c_last = std::max(c_last, entries[plan.entry_from + e].chunk);
+        }
+        if (plan.entry_n == 0 || c_last + 1 >= h_align_chunk_start_.size()) continue;
+        const size_t m = h_align_chunk_start_[c_last + 1] - h_align_chunk_start_[c_first];
+        const size_t n_table = c_last - c_first + 1;
+        size_t t_scan = 0, t_select = 0, t_sum = 0;
+        cub::DeviceScan::ExclusiveScanByKey(nullptr, t_scan, (uint32_t*)nullptr, (uint32_t*)nullptr, (uint32_t*)nullptr,
+                                            SumU32(), 0u, m, EqU32());
+        cub::DeviceSelect::Flagged(nullptr, t_select, thrust::counting_iterator<uint32_t>(0), (uint32_t*)nullptr,
+                                   (uint32_t*)nullptr, (uint32_t*)nullptr, m);
+        cub::DeviceScan::ExclusiveSum(nullptr, t_sum, (uint32_t*)nullptr, (uint32_t*)nullptr, m + 1);
+        const size_t rows = (size_t)plan.n_rows * align_words_per_row_[plan.air_kind] * 8;
+        bound = std::max(bound, n_table * sizeof(AlignChunkEntry) + m * 4 + m + m * 4 + ALIGN_KINDS * m * 4
+                                    + ALIGN_KINDS * sizeof(uint32_t*) + 2 * m * 4 + 4 + 2 * (m * 4 + 4) + rows
+                                    + std::max(t_scan, std::max(t_select, t_sum)) + align_slack);
+    }
+    return bound + ((size_t)64 << 20);
 }

@@ -677,6 +677,9 @@ pub fn gpu_mem_witness_rows_into(
 /// built: the retained accesses must be complete and the MemAlign tables well formed.
 pub fn gpu_slot_witness_prepare_async(
     image: Vec<u8>,
+    ram: Vec<u32>,
+    rom: Vec<u32>,
+    input: Vec<u32>,
     align_plans: &[&zisk_common::Plan],
 ) -> Result<(), String> {
     let (descs, entries) = align_tables(align_plans)?;
@@ -712,6 +715,12 @@ pub fn gpu_slot_witness_prepare_async(
                     descs.len() as u32,
                     entries.as_ptr(),
                     entries.len() as u32,
+                    ram.as_ptr(),
+                    ram.len() as u32,
+                    rom.as_ptr(),
+                    rom.len() as u32,
+                    input.as_ptr(),
+                    input.len() as u32,
                     &mut prepared,
                 )
             };
