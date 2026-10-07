@@ -27,6 +27,11 @@ pub mod poseidon2 {
     pub mod vadcop_final_compressed;
 }
 
+mod decode;
+pub mod keys;
 mod verifier;
 
+pub use decode::*;
+pub use keys::*;
+pub use proofman_verifier::VadcopFinalProof;
 pub use verifier::*;
