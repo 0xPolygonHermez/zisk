@@ -5,6 +5,7 @@
 #include "count_and_plan.cuh"
 #include "../cpp/mops_format.hpp"
 
+#include <chrono>
 #include <cub/device/device_radix_sort.cuh>
 #include <cub/device/device_run_length_encode.cuh>
 #include <cub/device/device_scan.cuh>
@@ -1532,6 +1533,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         CUDA_CHECK(cudaStreamCreateWithPriority(&streams_[s], cudaStreamDefault, greatestPrio));
     CUDA_CHECK(cudaStreamCreateWithPriority(&d2h_stream_, cudaStreamDefault, greatestPrio));
     CUDA_CHECK(cudaStreamCreateWithPriority(&meta_stream_, cudaStreamDefault, greatestPrio));
+    CUDA_CHECK(cudaStreamCreateWithPriority(&fill_stream_, cudaStreamNonBlocking, greatestPrio));
     CUDA_CHECK(cudaEventCreate(&e_after_preproc_));
     CUDA_CHECK(cudaEventCreate(&e_after_prepare_));
     CUDA_CHECK(cudaEventCreate(&e_metas_ready_));
@@ -1968,8 +1970,13 @@ void CountAndPlan::pool_stop_() {
 
 bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
     bind_device(gpu_device_);
+    using clock = std::chrono::steady_clock;
+    const auto t0 = clock::now();
+    auto ms_since = [](clock::time_point a) { return std::chrono::duration<double, std::milli>(clock::now() - a).count(); };
+    double t_drain = 0, t_sync = 0, t_counts = 0, t_global = 0, t_worker = 0, t_metas = 0;
 
     if (pool_enabled_) pool_stop_();
+    t_drain = ms_since(t0);
     if (n_chunks_ == 0) {
         fprintf(stderr, "CountAndPlan::run ERROR: no chunks added\n");
         return false;
@@ -1982,20 +1989,24 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
     }
 
     if (!preprocessed_) {
+        const auto t1 = clock::now();
         for (int s = 0; s < N_STREAMS; s++)
             CUDA_CHECK(cudaStreamSynchronize(streams_[s]));
-        CUDA_CHECK(cudaEventRecord(e_after_preproc_, 0));
+        CUDA_CHECK(cudaEventRecord(e_after_preproc_, meta_stream_));
+        t_sync = ms_since(t1);
+        const auto t2 = clock::now();
 
         // Pull per-chunk mem-align counters back to host (only the touched
         // range; max MAX_CHUNKS * sizeof(ChunkCounters), well under 1 MB).
         // Streams are already synced above, so a plain synchronous memcpy is
         // fine.
         if (h_chunk_counters_per_chunk_ && d_chunk_counters_per_chunk_) {
-            CUDA_CHECK(cudaMemcpy(
+            CUDA_CHECK(cudaMemcpyAsync(
                 h_chunk_counters_per_chunk_,
                 d_chunk_counters_per_chunk_,
                 (size_t)n_chunks_ * sizeof(ChunkCounters),
-                cudaMemcpyDeviceToHost));
+                cudaMemcpyDeviceToHost, meta_stream_));
+            CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
         }
 
         // The prefix, the pool offsets and the instance arithmetic are u32: a block with 2^32 rows
@@ -2016,16 +2027,17 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
         std::vector<uint32_t> gappy_u32(n_chunks_);
         for (uint32_t c = 0; c < n_chunks_; c++)
             gappy_u32[c] = (uint32_t)out_offsets_[c];
-        CUDA_CHECK(cudaMemcpy(d_gappy_offsets_, gappy_u32.data(),
-                              n_chunks_ * 4, cudaMemcpyHostToDevice));
-        CUDA_CHECK(cudaMemcpy(d_chunk_lens_, h_n_emits_all_,
-                              n_chunks_ * 4, cudaMemcpyHostToDevice));
-        CUDA_CHECK(cudaMemcpy(d_packed_chunk_offsets_, packed_chunk_offsets_h_.data(),
-                              (n_chunks_ + 1) * 4, cudaMemcpyHostToDevice));
-        CUDA_CHECK(cudaMemcpy(h_max_compact_, d_max_compact_, 3 * 4, cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpyAsync(d_gappy_offsets_, gappy_u32.data(),
+                                   n_chunks_ * 4, cudaMemcpyHostToDevice, meta_stream_));
+        CUDA_CHECK(cudaMemcpyAsync(d_chunk_lens_, h_n_emits_all_,
+                                   n_chunks_ * 4, cudaMemcpyHostToDevice, meta_stream_));
+        CUDA_CHECK(cudaMemcpyAsync(d_packed_chunk_offsets_, packed_chunk_offsets_h_.data(),
+                                   (n_chunks_ + 1) * 4, cudaMemcpyHostToDevice, meta_stream_));
+        CUDA_CHECK(cudaMemcpyAsync(h_max_compact_, d_max_compact_, 3 * 4, cudaMemcpyDeviceToHost, meta_stream_));
 
         uint32_t h_fault[2] = {0, 0};
-        CUDA_CHECK(cudaMemcpy(h_fault, d_invalid_mode_flag_, 8, cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpyAsync(h_fault, d_invalid_mode_flag_, 8, cudaMemcpyDeviceToHost, meta_stream_));
+        CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
         if (h_fault[0] & LIGHT_RECORD) {
             // The stream is in the light form (no values, no steps): the plan stands, the device
             // witness does not.
@@ -2045,18 +2057,27 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
             std::exit(1);
         }
 
+        t_counts = ms_since(t2);
+        const auto t3 = clock::now();
         prepare_global_();
-        CUDA_CHECK(cudaEventRecord(e_after_prepare_, 0));
+        CUDA_CHECK(cudaEventRecord(e_after_prepare_, meta_stream_));
         preprocessed_ = true;
+        t_global = ms_since(t3);
     }
 
+    const auto t4 = clock::now();
     process_worker_();
+    t_worker = ms_since(t4);
 
     if (!metas_ready_recorded_) {
-        CUDA_CHECK(cudaEventRecord(e_metas_ready_, 0));
+        const auto t5 = clock::now();
+        CUDA_CHECK(cudaEventRecord(e_metas_ready_, meta_stream_));
         CUDA_CHECK(cudaEventSynchronize(e_metas_ready_));
         metas_ready_recorded_ = true;
+        t_metas = ms_since(t5);
     }
+    fprintf(stderr, "[mops] run: %u chunks, drain %.0f ms, sync %.0f, counts %.0f, global %.0f, worker %.0f, metas %.0f, total %.0f ms\n",
+            n_chunks_, t_drain, t_sync, t_counts, t_global, t_worker, t_metas, ms_since(t0));
 
     // Hand back the internal pointer + count (no copy). The records — and
     // the pinned-host buffers their pointers reference — stay alive until
@@ -2185,6 +2206,7 @@ void CountAndPlan::free_all_() {
         if (streams_[s]) { cudaStreamDestroy(streams_[s]); streams_[s] = nullptr; }
     if (d2h_stream_)         { cudaStreamDestroy(d2h_stream_);  d2h_stream_  = nullptr; }
     if (meta_stream_)        { cudaStreamDestroy(meta_stream_); meta_stream_ = nullptr; }
+    if (fill_stream_)        { cudaStreamDestroy(fill_stream_); fill_stream_ = nullptr; }
     if (e_after_preproc_)    { cudaEventDestroy(e_after_preproc_);    e_after_preproc_    = nullptr; }
     if (e_after_prepare_)    { cudaEventDestroy(e_after_prepare_);    e_after_prepare_    = nullptr; }
     if (e_metas_ready_)      { cudaEventDestroy(e_metas_ready_);      e_metas_ready_      = nullptr; }
@@ -2221,30 +2243,31 @@ void CountAndPlan::prepare_global_() {
     {
         uint32_t n_rom = h_max_compact_[REGION_ROM] + 2;
         CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
-            d_histogram_ + 0, d_prefix_ + 0, n_rom));
+            d_histogram_ + 0, d_prefix_ + 0, n_rom, meta_stream_));
 
         uint32_t n_in = h_max_compact_[REGION_INPUT] + 2;
         CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
-            d_histogram_ + N_ADDR_ROM, d_prefix_ + N_ADDR_ROM, n_in));
-        add_const_kernel<<<(n_in + 255) / 256, 256>>>(
+            d_histogram_ + N_ADDR_ROM, d_prefix_ + N_ADDR_ROM, n_in, meta_stream_));
+        add_const_kernel<<<(n_in + 255) / 256, 256, 0, meta_stream_>>>(
             d_prefix_ + N_ADDR_ROM, d_prefix_ + h_max_compact_[REGION_ROM] + 1, n_in);
         CUDA_CHECK_LAUNCH();
 
         uint32_t n_ram = h_max_compact_[REGION_RAM] + 2;
         CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
             d_histogram_ + N_ADDR_ROM + N_ADDR_INPUT,
-            d_prefix_ + N_ADDR_ROM + N_ADDR_INPUT, n_ram));
-        add_const_kernel<<<(n_ram + 255) / 256, 256>>>(
+            d_prefix_ + N_ADDR_ROM + N_ADDR_INPUT, n_ram, meta_stream_));
+        add_const_kernel<<<(n_ram + 255) / 256, 256, 0, meta_stream_>>>(
             d_prefix_ + N_ADDR_ROM + N_ADDR_INPUT,
             d_prefix_ + N_ADDR_ROM + h_max_compact_[REGION_INPUT] + 1, n_ram);
         CUDA_CHECK_LAUNCH();
     }
 
     uint32_t h_boundary[3];
-    cudaMemcpy(&h_boundary[0],
-               d_prefix_ + h_max_compact_[REGION_ROM] + 1, 4, cudaMemcpyDeviceToHost);
-    cudaMemcpy(&h_boundary[1],
-               d_prefix_ + N_ADDR_ROM + h_max_compact_[REGION_INPUT] + 1, 4, cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpyAsync(&h_boundary[0],
+               d_prefix_ + h_max_compact_[REGION_ROM] + 1, 4, cudaMemcpyDeviceToHost, meta_stream_));
+    CUDA_CHECK(cudaMemcpyAsync(&h_boundary[1],
+               d_prefix_ + N_ADDR_ROM + h_max_compact_[REGION_INPUT] + 1, 4, cudaMemcpyDeviceToHost, meta_stream_));
+    CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
     h_boundary[2] = num_ops_;
 
     region_n_ops_[REGION_ROM]   = h_boundary[0];
@@ -2291,21 +2314,21 @@ void CountAndPlan::pick_active_instances_() {
         gid_base += num_inst_[r];
     }
     num_active_ = num_active_per_[0] + num_active_per_[1] + num_active_per_[2];
-    CUDA_CHECK(cudaMemcpy(d_active_ids_, h_active_local_ids_,
-                          num_active_ * 4, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpyAsync(d_active_ids_, h_active_local_ids_,
+                               num_active_ * 4, cudaMemcpyHostToDevice, meta_stream_));
 }
 
 void CountAndPlan::process_worker_() {
     set_active_worker_();
     pick_active_instances_();
 
-    CUDA_CHECK(cudaMemset(d_fml_, 0, (size_t)num_active_ * n_chunks_ * 3 * 4));
+    CUDA_CHECK(cudaMemsetAsync(d_fml_, 0, (size_t)num_active_ * n_chunks_ * 3 * 4, meta_stream_));
 
     for (uint8_t r = 0; r < 3; r++) {
         if (num_active_per_[r] == 0) continue;
         uint32_t na  = num_active_per_[r];
         uint32_t off = active_offset_[r];
-        instance_boundaries_kernel<<<1, na>>>(
+        instance_boundaries_kernel<<<1, na, 0, meta_stream_>>>(
             d_prefix_, REGION_ADDR_START[r], h_max_compact_[r] + 1,
             region_n_ops_[r], instance_rows_[r],
             d_active_ids_ + off, d_active_first_ + off, d_active_last_ + off,
@@ -2316,20 +2339,17 @@ void CountAndPlan::process_worker_() {
     int fml_block, fml_grid;
     cudaOccupancyMaxPotentialBlockSize(&fml_grid, &fml_block,
         chunk_fml_count_gappy_kernel, 0, 0);
-    chunk_fml_count_gappy_kernel<<<fml_grid, fml_block>>>(
+    chunk_fml_count_gappy_kernel<<<fml_grid, fml_block, 0, meta_stream_>>>(
         d_ops_pool_, d_gappy_offsets_, d_packed_chunk_offsets_,
         d_active_first_, d_active_last_,
         d_fml_, num_active_, n_chunks_, num_ops_);
     CUDA_CHECK_LAUNCH();
 
-    // Everything process_worker_ launched sits on the legacy default stream, and
-    // the sync memcpys below already order against it (and against the blocking
-    // count streams). A device-wide sync would additionally wait for FOREIGN
-    // non-blocking streams -- e.g. proofman's streaming-commit slots -- adopting
-    // their whole backlog into this critical path. Sync only our own stream.
-    CUDA_CHECK(cudaStreamSynchronize(nullptr));
-    CUDA_CHECK(cudaMemcpy(h_active_first_.data(), d_active_first_, num_active_ * 4, cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_active_last_.data(),  d_active_last_,  num_active_ * 4, cudaMemcpyDeviceToHost));
+    // The plan's final phase runs on the planner's priority stream: it neither waits for the
+    // legacy stream nor queues behind the prover's commit kernels, which share this GPU.
+    CUDA_CHECK(cudaMemcpyAsync(h_active_first_.data(), d_active_first_, num_active_ * 4, cudaMemcpyDeviceToHost, meta_stream_));
+    CUDA_CHECK(cudaMemcpyAsync(h_active_last_.data(),  d_active_last_,  num_active_ * 4, cudaMemcpyDeviceToHost, meta_stream_));
+    CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
 
     std::vector<uint32_t> h_offset_starts(num_active_);
     uint32_t total_addrs = 0;
