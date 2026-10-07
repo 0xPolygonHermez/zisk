@@ -2130,6 +2130,7 @@ void CountAndPlan::reset() {
     }
     stage_low_              = nullptr;
     stage_try_              = false;
+    stage_reserve_          = 0;
     input_scratch_          = nullptr;
     d_image_                = nullptr;
     image_words_            = 0;

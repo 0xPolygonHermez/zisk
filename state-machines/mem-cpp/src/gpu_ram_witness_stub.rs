@@ -101,6 +101,9 @@ pub struct MemSlotOp {
 
 pub fn gpu_slot_witness_prepare_async(
     _image: Vec<u8>,
+    _ram: Vec<u32>,
+    _rom: Vec<u32>,
+    _input: Vec<u32>,
     _align_plans: &[&zisk_common::Plan],
 ) -> Result<(), String> {
     Err("built without CUDA".to_string())

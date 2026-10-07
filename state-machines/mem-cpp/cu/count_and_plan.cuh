@@ -284,8 +284,12 @@ public:
     // image, the MemAlign access order and the owned MemAlign plans. `fill_slot` then builds one
     // instance's rows straight into `dst` (device) from the staged `MemSlotOp`; the arena must still
     // be borrowed. `instance_scalars` serves the air values of a resolved instance without rows.
+    // Only the instances in `ram`/`rom`/`input` (segment ids, the ones this process proves) get a
+    // staged image; the others are resolved for their scalars and the MemAlign old words only.
     bool prepare_slot_fills(const void* image, size_t image_bytes, const AlignPlanDesc* plans, uint32_t n_plans,
-                            const AlignChunkEntry* entries, uint32_t n_entries, RamFillPrepared* prepared);
+                            const AlignChunkEntry* entries, uint32_t n_entries, const uint32_t* ram, uint32_t n_ram,
+                            const uint32_t* rom, uint32_t n_rom, const uint32_t* input, uint32_t n_input,
+                            RamFillPrepared* prepared);
     bool fill_slot(const void* d_ops, uint64_t n_ops, uint64_t* dst, void* stream, RamFillResult* res);
     // Waits for the slot copies still in flight on the prover's streams: before the arena is released.
     void slot_quiesce();
@@ -491,6 +495,8 @@ private:
     // device to device. The per-instance scratch ends at `stage_low_` while any is staged.
     struct Staged { uint32_t family, air_id, segment, n_rows; uint64_t* ptr; size_t words; RamFillResult res; };
     std::vector<Staged>        staged_;              // under staged_mtx_
+    std::vector<bool>          stage_wanted_[3];     // per family (RAM, ROM, input): instances to stage
+    bool stage_wanted_at_(uint32_t family, uint32_t inst) const;
     std::mutex                 staged_mtx_;          // staged_, prep_done_, copies_in_flight_
     std::condition_variable    staged_cv_;
     bool                       prep_done_ = false;   // the preparation published its last image
@@ -504,6 +510,11 @@ private:
     std::vector<cudaEvent_t>   slot_copy_events_;      // the copies in flight on the prover's streams
     uint8_t*  scratch_end_(size_t n_total) const;
     uint64_t* stage_take_(size_t words);
+    size_t                     stage_reserve_ = 0;   // scratch kept free below the staged images
+    // The most scratch any one fill of the block can take (rows included), so that an instance
+    // left unstaged can still be built once the images are in place.
+    size_t fill_scratch_bound_(const AlignPlanDesc* plans, uint32_t n_plans, const AlignChunkEntry* entries) const;
+    bool prepare_input_image_(const void* image, size_t image_bytes);
     template <class Fill>
     bool fill_staged_(uint32_t family, uint32_t air_id, uint32_t segment, uint32_t n_rows, size_t words,
                       RamFillResult* res, Fill&& fill);
