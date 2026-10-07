@@ -1,7 +1,7 @@
 use super::stdio::StdioService;
 use crate::{
-    AsmRunError, AsmRunnerOptions, MemoryOperationsResponse, MinimalTraceResponse,
-    RomHistogramResponse, NAMESPACE,
+    sem_prefix_for, shm_prefix_for, AsmRunError, AsmRunnerOptions, MemoryOperationsResponse,
+    MinimalTraceResponse, RomHistogramResponse,
 };
 
 use anyhow::{Context, Result};
@@ -259,21 +259,14 @@ impl AsmServices {
         options: AsmRunnerOptions,
     ) -> Result<AsmServices> {
         let pid = std::process::id();
-        let hash = &hash_id[..hash_id.len().min(32)];
 
         // The hints mode belongs on both prefixes: `get_precompile_results()` comes
         // from the generated assembly, so the hints binary variant creates a
         // `_precompile` segment the non-hints one neither creates nor opens. The two
         // modes therefore do not have the same *set* of segments and cannot share one.
         // Two sets per worker at most, one per mode, each reused by every program in it.
-        //
-        // `_h1`/`_h0` rather than `_h`/`""` so that neither prefix is a prefix of the
-        // other: `janitor::cleanup_prefix` unlinks by `starts_with`, and with an empty
-        // marker a rollback in one mode would silently destroy the other mode's live
-        // segments. Keep any future marker prefix-free for the same reason.
-        let hints = if with_hints { "_h1" } else { "_h0" };
-        let shm_prefix = format!("{NAMESPACE}_{pid}_{local_rank}{hints}");
-        let sem_prefix = format!("{NAMESPACE}_{pid}_{hash}_{local_rank}{hints}");
+        let shm_prefix = shm_prefix_for(pid, local_rank, with_hints);
+        let sem_prefix = sem_prefix_for(pid, &hash_id, local_rank, with_hints);
 
         // Strip it to get the base path.
         // `ziskemuasm_path` expected format: "<base>-??.bin".
@@ -362,18 +355,6 @@ impl AsmServices {
         }
 
         Ok(PrefixLease { shm_prefix: shm_prefix.to_string() })
-    }
-
-    /// The counting half of [`Self::acquire_prefix`], without the creation.
-    /// Lets tests exercise the lease lifetime without spawning the C helpers.
-    #[cfg(test)]
-    fn acquire_prefix_uncreated(shm_prefix: &str) -> PrefixLease {
-        let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
-        leases
-            .entry(shm_prefix.to_string())
-            .or_insert(PrefixState { leases: 0, active: None })
-            .leases += 1;
-        PrefixLease { shm_prefix: shm_prefix.to_string() }
     }
 
     /// Create all of the shared-memory segments.
@@ -756,6 +737,15 @@ impl Drop for AsmServicesInner {
 mod tests {
     use super::*;
 
+    /// A lease on `shm_prefix` as the first program's setup takes it, without spawning
+    /// the C helpers that would create the segments.
+    fn first_lease(shm_prefix: &str) -> PrefixLease {
+        let mut leases = PREFIX_LEASES.lock().unwrap();
+        assert!(!leases.contains_key(shm_prefix), "{shm_prefix} is already leased");
+        leases.insert(shm_prefix.to_string(), PrefixState { leases: 1, active: None });
+        PrefixLease { shm_prefix: shm_prefix.to_string() }
+    }
+
     /// The shmem segments are shared by every program on a prefix, so a single
     /// program's teardown must not take them with it — but the last one out has
     /// to, or the worker leaves ~15 GiB of `/dev/shm` behind on exit.
@@ -782,9 +772,19 @@ mod tests {
         }
         assert!(exists());
 
-        // Two programs sharing one prefix.
-        let first = AsmServices::acquire_prefix_uncreated(&prefix);
-        let second = AsmServices::acquire_prefix_uncreated(&prefix);
+        // Two programs sharing one prefix. The second takes the lease the way a later
+        // program's setup does: through `acquire_prefix`, which finds the prefix and
+        // must neither create the segments again nor spawn anything.
+        let first = first_lease(&prefix);
+        let second = AsmServices::acquire_prefix(
+            0,
+            &prefix,
+            &format!("{prefix}_sems"),
+            "/nonexistent/ziskemuasm",
+            &AsmRunnerOptions::new(),
+        )
+        .expect("a reused prefix needs no helper");
+        assert_eq!(PREFIX_LEASES.lock().unwrap()[&prefix].leases, 2);
 
         drop(first);
         assert!(exists(), "one program's teardown must not unlink the shared segments");

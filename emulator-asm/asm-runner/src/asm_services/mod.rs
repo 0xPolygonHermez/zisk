@@ -1,3 +1,53 @@
+//! The assembly microservices, and the shared memory they use.
+//!
+//! Each program set up for the assembly executor runs three service processes, one per
+//! [`AsmService`]: memory operations (MO), minimal traces (MT) and the ROM histogram (RH). The
+//! parent talks to each over its stdin and stdout, one request at a time, and the services
+//! exchange the bulk data with it through shared-memory segments in `/dev/shm`.
+//!
+//! # One set of segments per process, shared by every program
+//!
+//! The segments are many gigabytes, locked in memory, so a process that sets up several programs
+//! (a worker, or a client proving several guests) cannot afford a set per program. There is one
+//! set per process, rank and hints mode, named by `shm_prefix_for`, and every program set up on
+//! it shares it. What is per program are the service processes and their semaphores, named by
+//! `sem_prefix_for`.
+//!
+//! Sharing rests on three rules, each enforced in one place:
+//!
+//! - **Every segment fits every program.** All are fixed-size except the ROM histogram's output,
+//!   which grows with the program's ROM. That one is created at its upper bound,
+//!   `TRACE_INITIAL_SIZE_RH`, and each service maps and zeroes only what its own program needs
+//!   (`trace.c`); the parent's reader maps again when a larger histogram arrives.
+//! - **The segments outlive every program on them, and no longer.** The first program's setup
+//!   creates them, and each holds a lease on them; the last lease released unlinks them
+//!   (`PREFIX_LEASES`). A program's own teardown removes only its semaphores.
+//! - **They serve one program at a time.** Which one is recorded beside the lease count, so every
+//!   client in the process sees the same answer. [`AsmServices::activate`] hands them to another
+//!   program: it waits until the active program's services have finished with them, rebinds the
+//!   parent's writers to the new program's semaphores, and has its services rebuild their guest
+//!   RAM and ROM (the reset request). Starting a new program's services waits the same way, since
+//!   starting writes those segments too.
+//!
+//! # Failures
+//!
+//! A service whose process exits is not restarted. The first request to find it gone reports how
+//! it exited, and every later one fails with [`AsmRunError::ServiceDied`](crate::AsmRunError),
+//! as does activating its program.
+//!
+//! # Cached binaries
+//!
+//! The services' binaries are generated from a program's ELF and cached under a name made of the
+//! ELF hash, the hints mode and `ASM_PROTOCOL_VERSION` (in `zisk-rom-setup`). Bump the version
+//! whenever a change to `emulator-asm` alters how the binaries behave, or a binary built from the
+//! old sources is reused.
+//!
+//! # Tests
+//!
+//! The unit tests here need no binaries. Running two programs in one process needs the real
+//! services: `integration-tests/tests/asm_two_programs.rs` (two programs on one client) and
+//! `asm_two_execute_clients.rs` (two clients), both ignored by default.
+
 mod codec;
 mod janitor;
 mod memory_ops;

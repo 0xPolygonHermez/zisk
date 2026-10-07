@@ -205,7 +205,29 @@ mod tests {
         assert_eq!(shm.mapped_size(), 4096);
         assert!(shm.is_mapped());
         drop(shm);
-        unlink_segment(&name); // Drop no longer unlinks — the segment is shared.
+        unlink_segment(&name);
+    }
+
+    /// Dropping a reader unmaps but leaves the segment linked: every program in a
+    /// process maps the same one, and unlinking it is the prefix lease's to do.
+    #[test]
+    fn dropping_a_reader_leaves_the_segment_linked() {
+        let name = seg_name("keep");
+        create_segment(&name, 4096);
+        {
+            let w = ShmemWriter::new(&name, 4096, true).unwrap();
+            w.write_u64_at(0, 4096).unwrap();
+        }
+        drop(AsmShmem::<TestHeader>::open_and_map(&name, true).unwrap());
+
+        let c = CString::new(name.as_str()).unwrap();
+        let fd = unsafe { libc::shm_open(c.as_ptr(), libc::O_RDONLY, 0) };
+        let still_linked = fd >= 0;
+        if still_linked {
+            unsafe { libc::close(fd) };
+        }
+        unlink_segment(&name);
+        assert!(still_linked, "dropping a reader must not unlink {name}");
     }
 
     #[test]

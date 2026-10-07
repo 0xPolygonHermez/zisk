@@ -153,17 +153,38 @@ mod tests {
         }
     }
 
-    /// `cleanup_prefix` unlinks by `starts_with`, so the hints and non-hints
-    /// prefixes must be prefix-free or a rollback in one mode would destroy the
-    /// other mode's live segments. `AsmServices::new` builds them with `_h1`/`_h0`
-    /// for exactly this reason; this pins the property at the janitor, which is
-    /// what depends on it.
+    /// Cleaning one prefix unlinks its own segments and no neighbour's: the other
+    /// hints mode, a rank whose number it begins (1 against 10), a pid whose digits
+    /// it begins (12 against 123). The janitor unlinks by `starts_with`, so this
+    /// holds only because `shm_prefix_for` keeps every prefix prefix-free.
     #[test]
-    fn hints_and_non_hints_prefixes_are_prefix_free() {
-        let hints = format!("ZISK_1_0{}", "_h1");
-        let plain = format!("ZISK_1_0{}", "_h0");
-        assert!(!hints.starts_with(&plain), "{plain} must not match {hints}");
-        assert!(!plain.starts_with(&hints), "{hints} must not match {plain}");
+    fn cleaning_a_prefix_spares_every_neighbouring_prefix() {
+        // Pids above Linux's limit, so no real process's segment is touched.
+        let base = 400_000_000 + std::process::id() % 1000;
+        let target = crate::shm_prefix_for(base, 1, false);
+        let neighbours = [
+            crate::shm_prefix_for(base, 1, true),
+            crate::shm_prefix_for(base, 10, false),
+            crate::shm_prefix_for(base * 10 + 3, 1, false),
+        ];
+        let target_seg = format!("{target}_MT_output_0");
+        let neighbour_segs: Vec<String> =
+            neighbours.iter().map(|prefix| format!("{prefix}_MT_output_0")).collect();
+        shm_create(&target_seg);
+        neighbour_segs.iter().for_each(|seg| shm_create(seg));
+
+        cleanup_shm_prefix(&target);
+
+        let survivors: Vec<bool> = neighbour_segs.iter().map(|seg| shm_exists(seg)).collect();
+        let target_gone = !shm_exists(&target_seg);
+        for seg in neighbour_segs.iter().chain([&target_seg]) {
+            unsafe { libc::shm_unlink(std::ffi::CString::new(seg.as_str()).unwrap().as_ptr()) };
+        }
+        assert!(target_gone, "{target_seg} must be unlinked");
+        assert!(
+            survivors.iter().all(|s| *s),
+            "neighbours must survive: {neighbour_segs:?} {survivors:?}"
+        );
     }
 
     #[test]
