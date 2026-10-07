@@ -72,6 +72,9 @@ jobs:
         # just expose it to subsequent steps.
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
+      - name: Install the wasm32-wasip1 target
+        run: rustup target add wasm32-wasip1
+
       - name: Show versions
         run: |
           rustc --version
@@ -88,6 +91,12 @@ jobs:
 
       - name: Run cargo test
         run: cargo test --workspace --release
+        env:
+          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
+          RUST_BACKTRACE: 1
+
+      - name: Run the wasm guest tests with the float feature
+        run: cargo test -p ziskemu --release --features float --test wasm --test wasm_float --test wasm_example
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1

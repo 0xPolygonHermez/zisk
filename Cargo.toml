@@ -30,6 +30,7 @@ members = [
   "transpilers/common",
   "ziskasm",
   "ziskasm/lang/rust",
+  "transpilers/wasm",
   "rom-setup",
   "setup",
   "state-machines/arith",
@@ -79,6 +80,8 @@ members = [
   "zkvm-interface",
   "verifier",
   "recurser",
+  "cuda-build",
+  "gpu-witness",
 ]
 resolver = "2"
 exclude = ["test-artifacts"]
@@ -121,6 +124,7 @@ zisk-precomp-evm = { path = "precompiles/evm", version = "1.4.0-alpha" }
 zisk-riscv = { path = "transpilers/riscv", version = "1.4.0-alpha" }
 zisk-transpiler-common = { path = "transpilers/common", version = "1.4.0-alpha" }
 zisk-transpiler-riscv = { path = "transpilers/riscv2zisk", version = "1.4.0-alpha" }
+zisk-transpiler-wasm = { path = "transpilers/wasm", version = "1.4.0-alpha" }
 zisk-rom-setup = { path = "rom-setup", version = "1.4.0-alpha" }
 zisk-setup = { path = "setup", version = "1.4.0-alpha" }
 zisk-sm-arith = { path = "state-machines/arith", version = "1.4.0-alpha" }
@@ -154,6 +158,10 @@ zisk-worker = { path = "distributed/crates/worker", version = "1.4.0-alpha" }
 zisk-coordinator-server = { path = "distributed/crates/coordinator-server", version = "1.4.0-alpha" }
 zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = "1.4.0-alpha" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.4.0-alpha" }
+
+# GPU witness kernels
+zisk-cuda-build = { path = "cuda-build", version = "1.4.0-alpha" }
+zisk-gpu-witness = { path = "gpu-witness", version = "1.4.0-alpha" }
 
 # Proofman git
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.4.0-alpha", version = "1.4.0-alpha" }
@@ -200,6 +208,8 @@ proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofma
 # External dependencies
 arc-swap = "1"
 rayon = "1.10"
+wasmparser = "0.244"
+wat = "1"
 num-bigint = "0.4"
 num-traits = "0.2"
 num-integer = "0.1"

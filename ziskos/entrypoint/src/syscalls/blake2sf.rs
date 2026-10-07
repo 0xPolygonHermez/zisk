@@ -14,7 +14,6 @@ use zisk_precomp_helpers::blake2s_f;
 ///
 /// `Blake2sf` operates on arrays of eight `u64` elements, each holding two little-endian `u32` words: `state` (read and
 /// overwritten with the result) and `input`, passed as two direct operands (no parameter struct).
-/// containing two values: `state` and `input`.
 /// The `state` parameter is a mutable reference to the working vector v of the Blake2s compression function, which will be updated in place.
 /// The `input` parameter is a reference to the message block being processed.
 ///

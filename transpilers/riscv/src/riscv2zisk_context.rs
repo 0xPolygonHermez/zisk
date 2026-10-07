@@ -83,7 +83,7 @@ const CSR_FCALL_PARAM_OFFSET_TO_WORDS: [u64; 16] =
 const CAUSE_EXIT: u64 = 93;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 #[cfg(feature = "float")]
-const FLOAT_HANDLER_ADDR: u64 = 0x1008;
+pub const FLOAT_HANDLER_ADDR: u64 = 0x1008;
 #[cfg(feature = "float")]
 const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 34; // 31 regs + set sp + set ra + jump to zisk_float
 
