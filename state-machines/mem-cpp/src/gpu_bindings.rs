@@ -252,6 +252,8 @@ extern "C" {
         stream: *mut core::ffi::c_void,
         res: *mut RamFillResult,
     ) -> bool;
+    /// Waits for the slot copies still in flight on the prover's streams.
+    pub fn count_and_plan_slot_quiesce(h: *mut CountAndPlanHandle);
     pub fn count_and_plan_instance_scalars(
         h: *mut CountAndPlanHandle,
         family: u32,
