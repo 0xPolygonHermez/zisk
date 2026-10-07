@@ -7512,6 +7512,7 @@ name = "zisk-coordinator-api"
 version = "1.4.0-alpha"
 dependencies = [
  "anyhow",
+ "bincode",
  "chrono",
  "prost 0.14.4",
  "prost-types 0.14.4",

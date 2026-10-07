@@ -1194,10 +1194,12 @@ impl Coordinator {
         let duration_ms = job.duration_ms.unwrap_or(0);
         let job_state = job.state.clone();
         let executed_steps = job.executed_steps;
-        let proof_data = job
-            .proof
-            .as_ref()
-            .and_then(|p| bincode::serde::encode_to_vec(p, bincode::config::standard()).ok());
+        // `Proof::to_bytes`: the same bytes `cargo-zisk prove` saves and guests verify.
+        let proof_data = job.proof.as_ref().and_then(|p| {
+            p.to_bytes()
+                .inspect_err(|e| warn!("Webhook for job {job_id} sent without its proof: {e}"))
+                .ok()
+        });
 
         tokio::spawn(async move {
             const MAX_RETRIES: usize = 10;

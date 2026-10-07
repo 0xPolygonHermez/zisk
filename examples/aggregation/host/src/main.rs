@@ -71,11 +71,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     let proof1_bytes = vadcop_result1.get_proof_bytes()?;
     let proof2_bytes = vadcop_result2.get_proof_bytes()?;
 
-    // Fed in only because this is a demo — a real guest hardcodes both. The serialized
-    // tail is [zisk_vk(4 u64)][hash tag(1 u64)], so the setup vk is the 32 bytes before
-    // the trailing tag; the program vk is fib_mod's ROM root.
-    let tail = proof1_bytes.len() - 8;
-    let expected_setup_vk = proof1_bytes[tail - 4 * 8..tail].to_vec();
+    // A real guest hardcodes both keys; this demo feeds them in. The setup key is the
+    // release constant for the proof's family and stage, picked from the crate, never
+    // the copy the proof carries. The program vk is fib_mod's ROM root.
+    let saved = zisk_verifier::decode_saved(&proof1_bytes)?;
+    let expected_setup_vk: Vec<u8> =
+        zisk_verifier::vadcop_vk(&saved.proof.hash, saved.proof.compressed)
+            .ok_or("zisk-verifier publishes no key for this proof's family and stage")?
+            .iter()
+            .flat_map(|limb| limb.to_le_bytes())
+            .collect();
     let expected_program_vk: Vec<u8> =
         vadcop_result1.get_program_vk().vk.iter().flat_map(|limb| limb.to_le_bytes()).collect();
 

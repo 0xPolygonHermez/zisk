@@ -9,8 +9,8 @@ use std::error::Error;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use recurser_hash_common::{add_vecs, field_from_limbs, hash12, secret_vectors, DIGEST, RATE};
 use zisk_sdk::{
-    load_aggregation_program, load_program, AggregationProgram, GuestProgram, ProofExt,
-    ProofKind, ProverClient, ZiskStdin,
+    load_aggregation_program, load_program, AggregationProgram, GuestProgram, ProofExt, ProofKind,
+    ProverClient, ZiskStdin,
 };
 
 static LEAF: GuestProgram = load_program!("recurser_hash_guest");
@@ -40,16 +40,10 @@ async fn prove_leaf(
 ) -> Result<zisk_sdk::Proof, Box<dyn Error>> {
     let stdin = ZiskStdin::new();
     stdin.write(secret); // one [u64; 12], matching the guest's single read
-    // Uncompressed on purpose: the client default is `VadcopFinalMinimal`, and
-    // compression strips the `is_vadcop_final_proof` flag the aggregator reads at
-    // public slot 0. A folded leaf must keep it.
-    Ok(client
-        .prove(&LEAF, stdin)
-        .wrap(ProofKind::VadcopFinal)
-        .run()?
-        .await?
-        .get_proof()
-        .clone())
+                         // Uncompressed on purpose: the client default is `VadcopFinalMinimal`, and
+                         // compression strips the `is_vadcop_final_proof` flag the aggregator reads at
+                         // public slot 0. A folded leaf must keep it.
+    Ok(client.prove(&LEAF, stdin).wrap(ProofKind::VadcopFinal).run()?.await?.get_proof().clone())
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -107,7 +101,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("AB + C folded: digest == Poseidon1(va + vb + vc).");
 
     println!("Verifying the final folded proof...");
-    abc.verify()?;
+    // An aggregate verifies under its recurser's key, which no release publishes.
+    abc.with_setup_vk(&AGG_HASH.vk()?.vk).verify()?;
     println!("Final folded proof verified successfully.");
 
     // Negative: a free vector that doesn't hash to A's digest fails the binding.

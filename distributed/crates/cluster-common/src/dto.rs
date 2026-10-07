@@ -751,7 +751,8 @@ pub struct WebhookPayloadDto {
     pub timestamp: String,
     /// Error details, present on failure.
     pub error: Option<WebhookErrorDto>,
-    /// The proof bytes, when included.
+    /// The proof, when included, as `Proof::to_bytes`: ZisK's flat layout for a Vadcop
+    /// proof (read with `zisk_verifier::decode_saved`), or a `ZISKPLNK`-headed PLONK proof.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof_data: Option<Vec<u8>>,
 }

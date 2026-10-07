@@ -15,6 +15,7 @@ dependencies = [
  "serde",
  "zisk-sdk",
  "zisk-test-artifacts",
+ "zisk-verifier",
 ]
 
 [[package]]
@@ -2311,6 +2312,7 @@ checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
  "allocator-api2",
  "foldhash 0.1.5",
+ "serde",
 ]
 
 [[package]]
@@ -6107,6 +6109,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasmparser"
+version = "0.244.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47b807c72e1bac69382b3a6fb3dbe8ea4c0ed87ff5629b8685ae6b9a611028fe"
+dependencies = [
+ "bitflags 2.13.2",
+ "hashbrown 0.15.5",
+ "indexmap 2.14.2",
+ "semver 1.0.28",
+ "serde",
+]
+
+[[package]]
 name = "web-time"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6751,6 +6766,7 @@ name = "zisk-coordinator-api"
 version = "1.4.0-alpha"
 dependencies = [
  "anyhow",
+ "bincode",
  "chrono",
  "prost 0.14.4",
  "prost-types 0.14.4",
@@ -6790,6 +6806,10 @@ dependencies = [
  "zisk-precomp-helpers",
  "ziskos",
 ]
+
+[[package]]
+name = "zisk-cuda-build"
+version = "1.4.0-alpha"
 
 [[package]]
 name = "zisk-definitions"
@@ -6837,6 +6857,13 @@ dependencies = [
  "zisk-sm-mem-common",
  "zisk-sm-rom",
  "ziskemu",
+]
+
+[[package]]
+name = "zisk-gpu-witness"
+version = "1.4.0-alpha"
+dependencies = [
+ "paste",
 ]
 
 [[package]]
@@ -7071,6 +7098,8 @@ dependencies = [
  "tracing",
  "zisk-common",
  "zisk-core",
+ "zisk-cuda-build",
+ "zisk-gpu-witness",
  "zisk-pil",
  "zisk-precomp-common",
  "zisk-precomp-helpers",
@@ -7325,6 +7354,7 @@ dependencies = [
  "proofman-util",
  "tracing",
  "zisk-common",
+ "zisk-cuda-build",
  "zisk-pil",
  "zisk-sm-mem-common",
 ]
@@ -7382,6 +7412,17 @@ name = "zisk-transpiler-riscv"
 version = "1.4.0-alpha"
 dependencies = [
  "zisk-core",
+ "zisk-transpiler-common",
+ "zisk-transpiler-wasm",
+]
+
+[[package]]
+name = "zisk-transpiler-wasm"
+version = "1.4.0-alpha"
+dependencies = [
+ "wasmparser",
+ "zisk-core",
+ "zisk-riscv",
  "zisk-transpiler-common",
 ]
 

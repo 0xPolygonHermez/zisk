@@ -255,7 +255,9 @@ impl ProveOutput {
         Ok(self.proof.save(path)?)
     }
 
-    /// Verify the proof against its embedded public values and verification key.
+    /// Verify the proof against its embedded public values, under the release key for its
+    /// family and stage. An aggregated proof needs its recurser's key: use
+    /// [`Proof::with_setup_vk`] through [`get_proof`](Self::get_proof).
     pub fn verify(&self) -> Result<()> {
         Ok(self.proof.verify()?)
     }
