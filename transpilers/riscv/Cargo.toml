@@ -1,6 +1,6 @@
 [package]
 name = "zisk-riscv"
-description = "RISC-V instruction structures and parser for the ZisK zkVM"
+description = "Transpiler from RISC-V ELF to the ZisK instruction set"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

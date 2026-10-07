@@ -4,17 +4,14 @@ The transpilers turn a guest program into a `ZiskRom`, the instruction ROM that 
 and prover execute. Two guest formats are supported, RISC-V ELF and WebAssembly, plus prebuilt
 ziskbin ELFs that already contain a ROM.
 
-> **Status:** the code is already laid out as described here, but two crates still have their
-> old names until the last step of the refactor: `riscv/` is `zisk-riscv` and `common/` is
-> `zisk-transpiler-common`.
-
 ## Layout
 
 | Folder | Crate | Responsibility | Binary |
 |---|---|---|---|
-| `riscv/` | `zisk-transpiler-riscv` | RISC-V only: decoder, interpreter, RISC-V → ZisK instruction translation, ELF extraction, `elf2rom` | — |
+| `riscv/` | `zisk-riscv` | RISC-V only: decoder, interpreter, RISC-V → ZisK instruction translation, ELF extraction, `elf2rom` | — |
 | `wasm/` | `zisk-transpiler-wasm` | WebAssembly only: module parsing, lowering, WASI, `wasm2rom` | `wasm2zisk` |
-| `common/` | `zisk-transpiler` | Entry point: detects the guest format and calls the right transpiler (`program2rom`, `program2romfile`, `ZiskTranspiler`) | `zisk-transpiler-riscv` |
+| `common/` | `zisk-transpiler-common` | Entry point: detects the guest format and calls the right transpiler (`program2rom`, `program2romfile`, `ZiskTranspiler`) | — |
+| `riscv2zisk/` | `zisk-transpiler-riscv` | Compatibility only: re-exports `common` under the dispatcher's original crate name, with its original `Riscv2zisk` API | `zisk-transpiler-riscv` |
 
 Code that only manipulates a `ZiskRom` and is not tied to any guest format (ROM entry/exit
 layout, `add_end_and_lib`, `InlineBody`, `FLOAT_HANDLER_ADDR`, `normalize_rw_data_sections`)
@@ -31,13 +28,15 @@ flowchart TD
         smrom["state-machines/rom"]
     end
 
-    common["<b>transpilers/common</b><br/>zisk-transpiler<br/>program2rom · program2romfile<br/>bin: zisk-transpiler-riscv"]
+    compat["<b>transpilers/riscv2zisk</b><br/>zisk-transpiler-riscv (compatibility)<br/>Riscv2zisk<br/>bin: zisk-transpiler-riscv"]
+    common["<b>transpilers/common</b><br/>zisk-transpiler-common<br/>program2rom · program2romfile"]
     wasm["<b>transpilers/wasm</b><br/>zisk-transpiler-wasm<br/>wasm2rom<br/>bin: wasm2zisk"]
-    riscv["<b>transpilers/riscv</b><br/>zisk-transpiler-riscv<br/>elf2rom · elf_extraction<br/>decoder · interpreter"]
+    riscv["<b>transpilers/riscv</b><br/>zisk-riscv<br/>elf2rom · elf_extraction<br/>decoder · interpreter"]
     ziskasm["<b>ziskasm</b><br/>ZisK library"]
     core["<b>zisk-core</b><br/>ZiskRom · ziskbin · ROM layout"]
 
     consumers --> common
+    compat --> common
     common --> wasm
     common --> riscv
     wasm -- "float library<br/>(RISC-V ELF)" --> riscv
@@ -65,13 +64,17 @@ Rules that keep this graph acyclic:
 |---|---|---|
 | WebAssembly | `\0asm` | `zisk_transpiler_wasm::wasm2rom` |
 | ziskbin ELF (prebuilt ROM from `ziskasm`) | ELF with `e_machine == EM_ZISK` | `zisk_core::ziskbin::try_elf_to_rom` |
-| RISC-V ELF | any other `\x7fELF` | `zisk_transpiler_riscv::elf2rom` |
+| RISC-V ELF | any other `\x7fELF` | `zisk_riscv::elf2rom` |
 
 `program2romfile` does the same and then writes the ROM as x86-64 assembly with
-`ZiskRom2Asm::save_to_asm_file`. The `zisk-transpiler-riscv` binary is a thin wrapper around it;
-its name is kept for compatibility with release bundles and install scripts, even though it now
-accepts every format.
+`ZiskRom2Asm::save_to_asm_file`.
 
-Consumers (emulator, prover, ROM setup) should depend on `zisk-transpiler` and call
+Published crate and binary names never change, so they don't all match their folders. The
+dispatcher was first published as `zisk-transpiler-riscv`, so that crate still exists in
+`riscv2zisk/`: it re-exports `common` with the original `Riscv2zisk` API and builds the
+`zisk-transpiler-riscv` binary, a thin wrapper around `program2romfile` that accepts every format
+despite its name. Nothing in this workspace depends on it.
+
+Consumers (emulator, prover, ROM setup) should depend on `zisk-transpiler-common` and call
 `program2rom` rather than a format-specific crate, so that new guest formats only need changes
 here.

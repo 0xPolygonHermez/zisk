@@ -8218,6 +8218,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-transpiler-riscv"
+version = "1.4.0-alpha"
+dependencies = [
+ "zisk-core",
+ "zisk-lib-float",
+ "zisk-transpiler-common",
+]
+
+[[package]]
 name = "zisk-transpiler-wasm"
 version = "1.4.0-alpha"
 dependencies = [

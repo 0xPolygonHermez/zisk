@@ -2,8 +2,8 @@
 //!
 //! The input is the contents (bytes) of a RISC-V ELF, a ziskbin ELF (a ROM prebuilt by
 //! `ziskasm`) or a WebAssembly binary; the format is detected from the file's magic bytes.
-//! Optionally, the Zisk ROM can also be saved in x86-64 NASM assembly format (`runfile`, the
-//! `zisk-transpiler-riscv` binary).
+//! Optionally, the Zisk ROM can also be saved in x86-64 NASM assembly format (`runfile`, used by
+//! the `zisk-transpiler-riscv` binary).
 
 use zisk_core::is_elf_file;
 use zisk_core::is_wasm_file;
@@ -58,10 +58,6 @@ pub struct ZiskTranspiler<'a> {
     /// Guest program bytes (input): a RISC-V ELF, a ziskbin ELF or a WebAssembly binary
     pub program: &'a [u8],
 }
-
-/// Former name of [`ZiskTranspiler`], from when it only accepted RISC-V ELF files.
-#[deprecated(note = "renamed to ZiskTranspiler")]
-pub type Riscv2zisk<'a> = ZiskTranspiler<'a>;
 
 impl<'a> ZiskTranspiler<'a> {
     /// Creates a new ZiskTranspiler struct with the provided program bytes

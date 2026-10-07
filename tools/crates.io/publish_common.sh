@@ -68,6 +68,7 @@ ZISK_CRATES=(
   "zisk-sm-mem"
   "zisk-sm-mem-planner"
   "zisk-transpiler-common"
+  "zisk-transpiler-riscv"
   "zisk-asm-runner"
   "zisk-frops-analyzer"
   "zisk-precomp-common"
