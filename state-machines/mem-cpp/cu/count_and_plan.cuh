@@ -278,6 +278,8 @@ public:
     bool prepare_slot_fills(const void* image, size_t image_bytes, const AlignPlanDesc* plans, uint32_t n_plans,
                             const AlignChunkEntry* entries, uint32_t n_entries, RamFillPrepared* prepared);
     bool fill_slot(const void* d_ops, uint64_t n_ops, uint64_t* dst, void* stream, RamFillResult* res);
+    // Waits for the slot copies still in flight on the prover's streams: before the arena is released.
+    void slot_quiesce();
     // The device the planner and the fills run on (`setup`'s gpu_id).
     int device() const { return gpu_device_; }
     bool instance_scalars(uint32_t family, uint32_t inst, RamFillResult* res) const;
@@ -467,6 +469,18 @@ private:
     uint8_t*                   slot_scratch_ = nullptr;
     std::vector<AlignPlanDesc>   slot_align_plans_;
     std::vector<AlignChunkEntry> slot_align_entries_;
+    // Row images the preparation built, staged below the retained accesses; `fill_slot` copies them
+    // device to device. The per-instance scratch ends at `stage_low_` while any is staged.
+    struct Staged { uint32_t family, air_id, segment, n_rows; uint64_t* ptr; size_t words; RamFillResult res; };
+    std::vector<Staged>        staged_;
+    uint8_t*                   stage_low_ = nullptr;
+    bool                       stage_try_ = false;     // staged attempt: a scratch overflow is retried, not reported
+    std::vector<cudaEvent_t>   slot_copy_events_;      // the copies in flight on the prover's streams
+    uint8_t*  scratch_end_(size_t n_total) const;
+    uint64_t* stage_take_(size_t words);
+    template <class Fill>
+    bool fill_staged_(uint32_t family, uint32_t air_id, uint32_t segment, uint32_t n_rows, size_t words,
+                      RamFillResult* res, Fill&& fill);
     // MemAlign retention (count_and_plan.cu) and fill (ram_fill.cu).
     AlignRecord*               d_align_ = nullptr;           // region at the arena top, align_cap_ records
     size_t                     align_cap_ = 0;

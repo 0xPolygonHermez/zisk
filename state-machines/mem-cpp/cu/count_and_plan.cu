@@ -2101,6 +2101,10 @@ void CountAndPlan::reset() {
     slot_prepared_          = false;
     resolve_all_            = false;
     slot_scratch_           = nullptr;
+    slot_quiesce();
+    staged_.clear();
+    stage_low_              = nullptr;
+    stage_try_              = false;
     input_scratch_          = nullptr;
     d_image_                = nullptr;
     image_words_            = 0;
