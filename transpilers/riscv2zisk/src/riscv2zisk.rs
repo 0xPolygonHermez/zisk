@@ -1,20 +1,28 @@
 //! `Riscv2zisk`, the original name of the guest-to-ZisK transpiler, with its original API.
 //!
-//! New code should use `zisk_transpiler_common::ZiskTranspiler`, which this delegates to.
+//! Deprecated: use `zisk_transpiler_common::ZiskTranspiler`, which this delegates to.
 
 use zisk_core::AsmGenerationMethod;
 use zisk_core::ZiskRom;
-pub use zisk_transpiler_common::{program2rom, program2romfile, ZiskTranspiler};
+use zisk_transpiler_common::ZiskTranspiler;
 
 use std::{error::Error, path::PathBuf};
 
+/// Transpiles a guest program (RISC-V ELF, ziskbin ELF or WebAssembly) into a Zisk ROM.
+#[deprecated(since = "1.4.0", note = "use zisk_transpiler_common::program2rom")]
+pub fn program2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
+    zisk_transpiler_common::program2rom(bytes)
+}
+
 /// RISCV-to-ZisK struct containing the input program bytes.  Despite the name, it accepts every
-/// guest format [`program2rom`] does: RISC-V ELF, ziskbin ELF and WebAssembly.
+/// guest format `program2rom` does: RISC-V ELF, ziskbin ELF and WebAssembly.
+#[deprecated(since = "1.4.0", note = "use zisk_transpiler_common::ZiskTranspiler")]
 pub struct Riscv2zisk<'a> {
     /// Guest program bytes (input)
     pub elf: &'a [u8],
 }
 
+#[allow(deprecated)]
 impl<'a> Riscv2zisk<'a> {
     /// Creates a new Riscv2zisk struct with the provided program bytes
     pub fn new(elf: &'a [u8]) -> Riscv2zisk<'a> {
@@ -41,11 +49,12 @@ impl<'a> Riscv2zisk<'a> {
 
     /// Executes the conversion process, returning the Zisk ROM
     pub fn run(&self) -> Result<ZiskRom, Box<dyn Error>> {
-        program2rom(self.elf)
+        zisk_transpiler_common::program2rom(self.elf)
     }
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 
@@ -56,5 +65,6 @@ mod tests {
         assert_eq!(rv2zk.elf, b"not a guest program");
         let Err(err) = rv2zk.run() else { panic!("garbage input must be rejected") };
         assert!(err.to_string().contains("unrecognized guest format"), "{err}");
+        assert!(program2rom(b"not a guest program").is_err());
     }
 }

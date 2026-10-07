@@ -1,6 +1,6 @@
 [package]
 name = "zisk-transpiler-riscv"
-description = "Transpiler from RISC-V to the ZisK instruction set"
+description = "Deprecated: use zisk-transpiler-common. Transpiler from RISC-V to the ZisK instruction set"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -10,9 +10,9 @@ repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
 
-# Kept under its published name for existing users: the dispatcher now lives in
-# zisk-transpiler-common (see transpilers/README.md), and this crate re-exports it with the
-# original `Riscv2zisk` API and builds the `zisk-transpiler-riscv` binary.
+# Deprecated, kept under its published name for existing users: the dispatcher now lives in
+# zisk-transpiler-common (see transpilers/README.md). This crate keeps the original, now
+# deprecated, `Riscv2zisk` API on top of it, and builds the `zisk-transpiler-riscv` binary.
 
 [[bin]]
 name = "zisk-transpiler-riscv"

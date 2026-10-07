@@ -11,7 +11,7 @@ ziskbin ELFs that already contain a ROM.
 | `riscv/` | `zisk-riscv` | RISC-V only: decoder, interpreter, RISC-V → ZisK instruction translation, ELF extraction, `elf2rom` | — |
 | `wasm/` | `zisk-transpiler-wasm` | WebAssembly only: module parsing, lowering, WASI, `wasm2rom` | `wasm2zisk` |
 | `common/` | `zisk-transpiler-common` | Entry point: detects the guest format and calls the right transpiler (`program2rom`, `program2romfile`, `ZiskTranspiler`) | — |
-| `riscv2zisk/` | `zisk-transpiler-riscv` | Compatibility only: re-exports `common` under the dispatcher's original crate name, with its original `Riscv2zisk` API | `zisk-transpiler-riscv` |
+| `riscv2zisk/` | `zisk-transpiler-riscv` | Deprecated, compatibility only: the dispatcher's original crate name and `Riscv2zisk` API, on top of `common` | `zisk-transpiler-riscv` |
 
 Code that only manipulates a `ZiskRom` and is not tied to any guest format (ROM entry/exit
 layout, `add_end_and_lib`, `InlineBody`, `FLOAT_HANDLER_ADDR`, `normalize_rw_data_sections`)
@@ -28,7 +28,7 @@ flowchart TD
         smrom["state-machines/rom"]
     end
 
-    compat["<b>transpilers/riscv2zisk</b><br/>zisk-transpiler-riscv (compatibility)<br/>Riscv2zisk<br/>bin: zisk-transpiler-riscv"]
+    compat["<b>transpilers/riscv2zisk</b><br/>zisk-transpiler-riscv (deprecated)<br/>Riscv2zisk<br/>bin: zisk-transpiler-riscv"]
     common["<b>transpilers/common</b><br/>zisk-transpiler-common<br/>program2rom · program2romfile"]
     wasm["<b>transpilers/wasm</b><br/>zisk-transpiler-wasm<br/>wasm2rom<br/>bin: wasm2zisk"]
     riscv["<b>transpilers/riscv</b><br/>zisk-riscv<br/>elf2rom · elf_extraction<br/>decoder · interpreter"]
@@ -71,9 +71,10 @@ Rules that keep this graph acyclic:
 
 Published crate and binary names never change, so they don't all match their folders. The
 dispatcher was first published as `zisk-transpiler-riscv`, so that crate still exists in
-`riscv2zisk/`: it re-exports `common` with the original `Riscv2zisk` API and builds the
-`zisk-transpiler-riscv` binary, a thin wrapper around `program2romfile` that accepts every format
-despite its name. Nothing in this workspace depends on it.
+`riscv2zisk/`, deprecated: it keeps the original `Riscv2zisk` API (marked `#[deprecated]`, on top
+of `common`) and builds the `zisk-transpiler-riscv` binary, a thin wrapper around
+`program2romfile` that accepts every format despite its name. Nothing in this workspace depends on
+the library, and the binary is not deprecated.
 
 Consumers (emulator, prover, ROM setup) should depend on `zisk-transpiler-common` and call
 `program2rom` rather than a format-specific crate, so that new guest formats only need changes
