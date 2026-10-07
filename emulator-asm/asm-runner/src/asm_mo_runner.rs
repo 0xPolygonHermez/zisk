@@ -599,32 +599,26 @@ impl AsmRunnerMO {
         // In the GPU case no-op since the GPU planner has no background threads
         mem_planner.set_completed();
 
-        // With the memory witness on the device the prover's streaming-commit slots
-        // keep running through the final GPU planning phase and the device fills:
-        // the secondaries are registered in two rounds and only the memory
-        // instances wait for the plan. The plan itself runs ~10x slower beside the
-        // commit kernels (host-paced micro-ops), so with the CPU witness, where
-        // everything waits for it, the slots are quiesced first.
-        // `ZISK_MOPS_COMMIT_PAUSE=1`/`0` forces either. Backend-dispatched in
-        // libstarks: no-op when slots are disabled or on the CPU backend.
+        // The final GPU planning phase is host-paced micro-ops that run ~10x slower
+        // beside the prover's streaming-commit kernels on the same GPU. With the
+        // CPU witness everything waits for the plan, so the first GPU's slots are
+        // quiesced for its duration and resumed right after it. With the memory
+        // witness on the device the commits keep running through the plan: on one
+        // GPU the phase is bound by the GPU's total work (commits, plan, fills), and
+        // pausing only moves 0.6 s of commits behind the fills (measured: slots
+        // 2.23 s unpaused against 2.48 s paused on 712_55). `ZISK_MOPS_COMMIT_PAUSE=1`/`0`
+        // forces either. Backend-dispatched in libstarks: no-op when slots are
+        // disabled or on the CPU backend.
         #[cfg(gpu)]
-        if gpu_count_and_plan_opt.is_some() {
-            let pause = match std::env::var("ZISK_MOPS_COMMIT_PAUSE").as_deref() {
-                // In slot mode the memory commits need the paused slots before the arena is
-                // released, so the pause would never lift.
-                Ok("1") if std::env::var("ZISK_MEM_GPU_FILL").as_deref() == Ok("slot") => {
-                    tracing::warn!(
-                        "ZISK_MOPS_COMMIT_PAUSE=1 ignored: the slot commits run through the final plan in slot mode"
-                    );
-                    false
-                }
+        let pause = gpu_count_and_plan_opt.is_some()
+            && match std::env::var("ZISK_MOPS_COMMIT_PAUSE").as_deref() {
                 Ok("1") => true,
                 Ok("0") => false,
                 _ => !device_mem_witness_requested(),
             };
-            if pause {
-                proofman_starks_lib_c::stream_commit_pause_c();
-            }
+        #[cfg(gpu)]
+        if pause {
+            proofman_starks_lib_c::stream_commit_pause_c();
         }
 
         // GPU path: evaluate metas
@@ -637,6 +631,10 @@ impl AsmRunnerMO {
             .map(|metas| (metas.as_ptr() as *const c_void, metas.len() as u32));
         #[cfg(gpu)]
         timer_stop_and_log_info!(GPU_MOPS_TIME);
+        #[cfg(gpu)]
+        if pause {
+            proofman_starks_lib_c::stream_commit_resume_c();
+        }
 
         #[cfg(gpu)]
         let gpu_mops_used_bytes: Option<u64> =
