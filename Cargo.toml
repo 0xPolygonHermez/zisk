@@ -26,7 +26,6 @@ members = [
   "prover-backend",
   "prover-backend/macros",
   "transpilers/riscv",
-  "transpilers/riscv2zisk",
   "transpilers/common",
   "ziskasm",
   "ziskasm/lang/rust",
@@ -121,7 +120,6 @@ zisk-precomp-dma = { path = "precompiles/dma", version = "1.4.0-alpha" }
 zisk-precomp-evm = { path = "precompiles/evm", version = "1.4.0-alpha" }
 zisk-riscv = { path = "transpilers/riscv", version = "1.4.0-alpha" }
 zisk-transpiler-common = { path = "transpilers/common", version = "1.4.0-alpha" }
-zisk-transpiler-riscv = { path = "transpilers/riscv2zisk", version = "1.4.0-alpha" }
 zisk-transpiler-wasm = { path = "transpilers/wasm", version = "1.4.0-alpha" }
 zisk-rom-setup = { path = "rom-setup", version = "1.4.0-alpha" }
 zisk-setup = { path = "setup", version = "1.4.0-alpha" }

@@ -1,6 +1,6 @@
 [package]
 name = "zisk-transpiler-common"
-description = "Shared ELF-to-ROM transpilation utilities for the ZisK zkVM"
+description = "Transpiles ZisK zkVM guest programs (RISC-V ELF, WebAssembly) into ZisK ROMs"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -10,9 +10,14 @@ repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
 
+[[bin]]
+name = "zisk-transpiler-riscv"
+path = "src/bin/zisk-transpiler-riscv.rs"
+
 [dependencies]
 zisk-core = { workspace = true }
 zisk-riscv = { workspace = true }
+zisk-transpiler-wasm = { workspace = true }
 
 [build-dependencies]
 zisk-lib-float = { workspace = true, optional = true }
@@ -23,7 +28,13 @@ zisk-lib-float = { workspace = true, optional = true }
 # Zbs / Zbkb extensions. Use `default-features = false` (plus `zba` for the decomposed
 # sequences) to opt out.
 default = ["zba_native"]
-float = ["dep:zisk-lib-float", "zisk-lib-float/float", "zisk-riscv/float", "zisk-core/float"]
+float = [
+    "dep:zisk-lib-float",
+    "zisk-lib-float/float",
+    "zisk-riscv/float",
+    "zisk-core/float",
+    "zisk-transpiler-wasm/float",
+]
 # RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
 compressed = ["zisk-riscv/compressed"]
 zba = ["zisk-riscv/zba", "zisk-core/zba"]

@@ -4,9 +4,9 @@ The transpilers turn a guest program into a `ZiskRom`, the instruction ROM that 
 and prover execute. Two guest formats are supported, RISC-V ELF and WebAssembly, plus prebuilt
 ziskbin ELFs that already contain a ROM.
 
-> **Status:** this describes the target layout of the transpiler refactor
-> (`feature/refactor_transpiler`). Until that work lands, the dispatcher still lives in
-> `transpilers/riscv2zisk` and the ELF code in `transpilers/common`.
+> **Status:** the code is already laid out as described here, but two crates still have their
+> old names until the last step of the refactor: `riscv/` is `zisk-riscv` and `common/` is
+> `zisk-transpiler-common`.
 
 ## Layout
 

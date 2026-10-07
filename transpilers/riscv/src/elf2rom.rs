@@ -1,29 +1,24 @@
-//! Reads RISC-V data from and ELF file and converts it to a ZiskRom
+//! Reads RISC-V data from an ELF file and converts it to a ZiskRom
 
 use crate::elf_extraction::{
     collect_elf_payload_from_bytes, merge_ro_sections, validate_entry_point, ElfPayload,
 };
 use crate::riscv2zisk_context::{add_zisk_code, zkvmcall_ids as zkvmcall_ids_in};
 use std::collections::HashMap;
-use std::{error::Error, path::Path};
+use std::error::Error;
 use zisk_core::mem::DataSection;
 use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ENTRY, ROM_SIZE};
 use zisk_core::rom_layout::{
     add_end_and_lib, add_entry_exit_jmp, normalize_rw_data_sections, InlineBody,
 };
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
-use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
 use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
 
-/// Executes the ROM transpilation process: from ELF to Zisk
+/// Executes the ROM transpilation process: from a RISC-V ELF to Zisk.
+///
+/// A ziskbin ELF (`e_machine == EM_ZISK`, a prebuilt ROM) is not RISC-V; the guest-format
+/// dispatcher (`zisk_transpiler_common::program2rom`) decodes those before calling this.
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
-    // A ziskbin ELF (e_machine == EM_ZISK) carries an already-built ZiskRom in a
-    // `.ziskrom` section instead of RISC-V code; decode it directly and skip
-    // transpilation. Any other input falls through to the RISC-V path below.
-    if let Some(rom) = zisk_core::ziskbin::try_elf_to_rom(elf)? {
-        return Ok(rom);
-    }
-
     // Load the embedded float library (enabled with the `float` feature).
     #[cfg(feature = "float")]
     const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../../lib-float/c/lib/ziskfloat.elf");
@@ -329,22 +324,6 @@ fn merge_library(rom: &mut ZiskRom, library: ziskasm::ZiskLibrary) -> Result<(),
     rom.insts.extend(library_insts);
     rom.ro_data_64.extend(library.ro_data);
     rom.rw_data_64.extend(library.rw_data);
-    Ok(())
-}
-
-/// Executes the ELF file data transpilation process into a Zisk ROM, and saves the result into a
-/// file.  The file format can be JSON, PIL-based or binary.
-pub fn elf2romfile(
-    elf: &[u8],
-    asm_file: &Path,
-    generation_method: AsmGenerationMethod,
-    log_output: bool,
-    comments: bool,
-    hints: bool,
-) -> Result<(), Box<dyn Error>> {
-    let rom = elf2rom(elf)?;
-    ZiskRom2Asm::save_to_asm_file(&rom, asm_file, generation_method, log_output, comments, hints);
-
     Ok(())
 }
 

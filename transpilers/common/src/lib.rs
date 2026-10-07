@@ -1,6 +1,7 @@
-//! The ELF-to-ROM transpilation that used to live here is RISC-V specific and now lives in
-//! `zisk-riscv`; it is re-exported so existing users keep compiling. See `transpilers/README.md`.
+//! Entry point of the ZisK transpilers: detects the guest program's format and calls the
+//! matching transpiler (`zisk-riscv` for RISC-V ELF, `zisk-transpiler-wasm` for WebAssembly).
+//! See `transpilers/README.md`.
 
-pub use zisk_riscv::{elf2rom, elf_extraction};
+pub mod transpiler;
 
-pub use zisk_riscv::elf2rom::*;
+pub use transpiler::*;

@@ -25,7 +25,7 @@ use zisk_common::{
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
 use zisk_precomp_hints::HintsProcessor;
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use anyhow::Result;
 
@@ -108,7 +108,7 @@ impl ProverEngine for EmuProver {
 
         let program_vk = ensure_program_vk(&pctx, elf)?;
 
-        let rv2zk = Riscv2zisk::new(elf.elf());
+        let rv2zk = ZiskTranspiler::new(elf.elf());
 
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
         let zisk_rom = Arc::new(zisk_rom);
