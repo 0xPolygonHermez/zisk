@@ -183,6 +183,20 @@ bool count_and_plan_fill_slot(void* h, const void* d_ops, uint64_t n_ops, uint64
     return static_cast<CountAndPlan*>(h)->fill_slot(d_ops, n_ops, dst, stream, res);
 }
 
+int count_and_plan_staged_wait(void* h, uint32_t family, uint32_t air_id, uint32_t segment, uint32_t timeout_ms,
+                               StagedRows* out) {
+    return h ? static_cast<CountAndPlan*>(h)->staged_wait(family, air_id, segment, timeout_ms, out) : -1;
+}
+
+bool count_and_plan_copy_staged(void* h, uint32_t family, uint32_t air_id, uint32_t segment, uint64_t* dst, uint64_t words) {
+    return h && static_cast<CountAndPlan*>(h)->copy_staged(family, air_id, segment, dst, words);
+}
+
+bool count_and_plan_fill_host(void* h, uint32_t family, uint32_t air_id, uint32_t segment, uint32_t n_rows,
+                              uint64_t* out_rows, RamFillResult* res) {
+    return h && static_cast<CountAndPlan*>(h)->fill_host(family, air_id, segment, n_rows, out_rows, res);
+}
+
 void count_and_plan_slot_quiesce(void* h) {
     if (h) static_cast<CountAndPlan*>(h)->slot_quiesce();
 }

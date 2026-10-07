@@ -30,6 +30,7 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 
 namespace {
@@ -840,14 +841,24 @@ bool CountAndPlan::fill_staged_(uint32_t family, uint32_t air_id, uint32_t segme
         stage_try_ = true;
         const bool ok = fill(d_out);
         stage_try_ = false;
-        if (ok) { staged_.push_back(Staged{family, air_id, segment, n_rows, d_out, words, *res}); return true; }
+        if (ok) {
+            std::lock_guard<std::mutex> lk(staged_mtx_);
+            staged_.push_back(Staged{family, air_id, segment, n_rows, d_out, words, *res});
+            staged_cv_.notify_all();
+            return true;
+        }
         if (res->status != -3) return false;
         stage_low_ = low;
     }
     if (fill(nullptr)) return true;
-    if (res->status != -3 || staged_.empty()) return false;
-    fprintf(stderr, "slot_fill: %zu staged images dropped, the fills need the room\n", staged_.size());
-    staged_.clear();
+    if (res->status != -3) return false;
+    {
+        std::unique_lock<std::mutex> lk(staged_mtx_);
+        if (staged_.empty()) return false;
+        fprintf(stderr, "slot_fill: %zu staged images dropped, the fills need the room\n", staged_.size());
+        staged_cv_.wait(lk, [&] { return copies_in_flight_ == 0; });   // no copy still reads them
+        staged_.clear();
+    }
     stage_low_ = nullptr;
     return fill(nullptr);
 }
@@ -1951,8 +1962,17 @@ bool CountAndPlan::prepare_slot_fills(const void* image, size_t image_bytes, con
     if (!prepared) return false;
     cudaSetDevice(gpu_device_);
     if (slot_prepared_) { prepared->status = 0; return true; }
+    {
+        std::lock_guard<std::mutex> lk(staged_mtx_);
+        staged_.clear();
+        prep_done_ = false;
+    }
+    // Whatever the outcome, the waiters learn the preparation is over.
+    struct PrepDone {
+        CountAndPlan* p;
+        ~PrepDone() { std::lock_guard<std::mutex> lk(p->staged_mtx_); p->prep_done_ = true; p->staged_cv_.notify_all(); }
+    } prep_done_guard{this};
     if (!ram_retention_enabled_.load(std::memory_order_relaxed) || mem_lanes_x_row_ == 0) { prepared->status = -1; return false; }
-    staged_.clear();
     stage_low_ = nullptr;
     resolve_all_ = true;
     const uint32_t none = 0;
@@ -1993,10 +2013,13 @@ bool CountAndPlan::prepare_slot_fills(const void* image, size_t image_bytes, con
                 stage_low_ = low;
                 break;
             }
+            std::lock_guard<std::mutex> lk(staged_mtx_);
             staged_.push_back(Staged{3, plan.air_id, plan.segment, plan.n_rows, d_out, words, r});
+            staged_cv_.notify_all();
         }
     }
     {
+        std::lock_guard<std::mutex> lk(staged_mtx_);
         size_t bytes = 0;
         for (const Staged& s : staged_) bytes += s.words * 8;
         fprintf(stderr, "slot_fill: %zu of %u instances staged (%zu MB)\n", staged_.size(), prepared->n_instances, bytes >> 20);
@@ -2024,8 +2047,13 @@ bool CountAndPlan::fill_slot(const void* d_ops, uint64_t n_ops, uint64_t* dst, v
     if (stream) RF_TRY(cudaStreamSynchronize((cudaStream_t)stream));
     MemSlotOp op{};
     RF_TRY(cudaMemcpy(&op, d_ops, sizeof(op), cudaMemcpyDeviceToHost));
-    for (const Staged& s : staged_) {
-        if (s.family != op.family || s.segment != op.segment || (op.family == 3 && s.air_id != op.air_id)) continue;
+    StagedRows s{};
+    bool staged;
+    {
+        std::lock_guard<std::mutex> lk(staged_mtx_);
+        staged = find_staged_(op.family, op.air_id, op.segment, &s);
+    }
+    if (staged) {
         if (s.n_rows != op.n_rows) { res->status = -2; return false; }
         RF_TRY(cudaMemcpyAsync(dst, s.ptr, s.words * 8, cudaMemcpyDeviceToDevice, (cudaStream_t)stream));
         if (stream) {
@@ -2053,6 +2081,82 @@ bool CountAndPlan::fill_slot(const void* d_ops, uint64_t n_ops, uint64_t* dst, v
                 }
             }
             fprintf(stderr, "slot_fill: MemAlign air %u segment %u is not among the prepared plans\n", op.air_id, op.segment);
+            res->status = -3;
+            return false;
+        default:
+            res->status = -2;
+            return false;
+    }
+}
+
+// Under staged_mtx_.
+bool CountAndPlan::find_staged_(uint32_t family, uint32_t air_id, uint32_t segment, StagedRows* out) const {
+    for (const Staged& s : staged_) {
+        if (s.family != family || s.segment != segment || (family == 3 && s.air_id != air_id)) continue;
+        *out = StagedRows{s.ptr, (uint64_t)s.words, s.family, s.air_id, s.segment, s.n_rows, s.res};
+        return true;
+    }
+    return false;
+}
+
+int CountAndPlan::staged_wait(uint32_t family, uint32_t air_id, uint32_t segment, uint32_t timeout_ms, StagedRows* out) {
+    if (!out) return -1;
+    std::unique_lock<std::mutex> lk(staged_mtx_);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    for (;;) {
+        if (find_staged_(family, air_id, segment, out)) return 1;
+        if (prep_done_) return 0;
+        if (staged_cv_.wait_until(lk, deadline) == std::cv_status::timeout) {
+            if (find_staged_(family, air_id, segment, out)) return 1;
+            return prep_done_ ? 0 : -1;
+        }
+    }
+}
+
+bool CountAndPlan::copy_staged(uint32_t family, uint32_t air_id, uint32_t segment, uint64_t* dst, uint64_t words) {
+    StagedRows s{};
+    {
+        std::lock_guard<std::mutex> lk(staged_mtx_);
+        if (!dst || !find_staged_(family, air_id, segment, &s) || s.words != words) return false;
+        ++copies_in_flight_;
+    }
+    cudaSetDevice(gpu_device_);
+    cudaStream_t st = nullptr;
+    cudaError_t e = cudaStreamCreateWithFlags(&st, cudaStreamNonBlocking);
+    if (e == cudaSuccess) e = cudaMemcpyAsync(dst, s.ptr, words * 8, cudaMemcpyDeviceToHost, st);
+    if (e == cudaSuccess) e = cudaStreamSynchronize(st);
+    if (st) cudaStreamDestroy(st);
+    {
+        std::lock_guard<std::mutex> lk(staged_mtx_);
+        --copies_in_flight_;
+        staged_cv_.notify_all();
+    }
+    if (e != cudaSuccess) {
+        cudaGetLastError();
+        fprintf(stderr, "copy_staged: family %u segment %u: %s\n", family, segment, cudaGetErrorString(e));
+        return false;
+    }
+    return true;
+}
+
+bool CountAndPlan::fill_host(uint32_t family, uint32_t air_id, uint32_t segment, uint32_t n_rows, uint64_t* out_rows,
+                             RamFillResult* res) {
+    if (res) *res = RamFillResult{};
+    if (!res || !out_rows) return false;
+    cudaSetDevice(gpu_device_);
+    if (!slot_prepared_) { res->status = -1; return false; }
+    switch (family) {
+        case 0: return fill_ram_instance(segment, out_rows, n_rows, res);
+        case 1: return fill_rom_instance(segment, out_rows, n_rows, res);
+        case 2: return fill_input_instance(segment, d_image_, h_image_.data(), image_words_, input_scratch_, out_rows,
+                                           n_rows, res);
+        case 3:
+            for (const AlignPlanDesc& plan : slot_align_plans_) {
+                if (plan.air_id == air_id && plan.segment == segment) {
+                    if (plan.n_rows != n_rows) { res->status = -2; return false; }
+                    return fill_align_instance(plan, slot_align_entries_.data() + plan.entry_from, align_scratch_, out_rows, res);
+                }
+            }
             res->status = -3;
             return false;
         default:

@@ -4,9 +4,10 @@
 //! block then ask for their rows. The planner object lives in the runner's preloaded state, so it
 //! outlives the witness phase; the registration is cleared when the next block starts.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
-use crate::gpu_bindings::{AlignChunkEntry, AlignPlanDesc};
+use crate::gpu_bindings::{AlignChunkEntry, AlignPlanDesc, StagedRows};
 pub use crate::gpu_bindings::{MemSlotOp, RamFillPrepared, RamFillResult};
 
 /// A registered planner. The raw handle is only ever used under [`GPU_RAM_WITNESS`]'s lock, which
@@ -245,6 +246,9 @@ pub fn gpu_rom_witness_fill(
     out_rows: &mut [u64],
     n_rows: u32,
 ) -> Result<RamFillResult, String> {
+    if ASYNC_PREP.load(Ordering::Acquire) {
+        return gpu_mem_witness_rows_into(1, 0, inst, n_rows, out_rows);
+    }
     let words = rom_layout().ok_or("RomData air is not packed")?.1;
     // SAFETY: see `instance_rows`.
     let (src, res) = unsafe {
@@ -292,6 +296,9 @@ pub fn gpu_input_witness_fill(
     out_rows: &mut [u64],
     n_rows: u32,
 ) -> Result<RamFillResult, String> {
+    if ASYNC_PREP.load(Ordering::Acquire) {
+        return gpu_mem_witness_rows_into(2, 0, inst, n_rows, out_rows);
+    }
     let words = input_layout().ok_or("InputData air is not packed")?.1;
     // SAFETY: see `instance_rows`.
     let (src, res) = unsafe {
@@ -398,6 +405,10 @@ pub fn gpu_align_witness_fill(
             n_rows * words
         ));
     }
+    if ASYNC_PREP.load(Ordering::Acquire) {
+        return gpu_mem_witness_rows_into(3, air_id as u32, segment as u32, n_rows as u32, out_rows)
+            .map(|r| r.n_lanes as usize);
+    }
     let reg = registry();
     let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
     let mut res = RamFillResult::default();
@@ -469,6 +480,7 @@ fn copy_rows(out_rows: &mut [u64], src: &[u64]) {
 /// Forgets the registered planner (the next block is starting).
 pub fn clear_gpu_ram_witness() {
     *registry() = None;
+    ASYNC_PREP.store(false, Ordering::Release);
 }
 
 /// Whether a planner is registered and retained every RAM access of the block.
@@ -507,6 +519,9 @@ pub fn gpu_ram_witness_fill_all(insts: &[u32]) -> Result<RamFillPrepared, String
 
 /// Sorts the retained accesses into lanes and resolves the read values. Idempotent per block.
 pub fn gpu_ram_witness_prepare() -> Result<RamFillPrepared, String> {
+    if ASYNC_PREP.load(Ordering::Acquire) {
+        return Ok(*PREP_INFO.lock().unwrap_or_else(|e| e.into_inner()));
+    }
     let reg = registry();
     let r = reg.as_ref().ok_or("no GPU planner registered for the RAM witness")?;
     let mut out = RamFillPrepared::default();
@@ -525,6 +540,9 @@ pub fn gpu_ram_witness_fill(
     out_rows: &mut [u64],
     n_rows: u32,
 ) -> Result<RamFillResult, String> {
+    if ASYNC_PREP.load(Ordering::Acquire) {
+        return gpu_mem_witness_rows_into(0, 0, inst, n_rows, out_rows);
+    }
     let words = mem_layout().ok_or("Mem air is not packed")?.1;
     // SAFETY: see `instance_rows`.
     let (src, res) = unsafe {
@@ -558,6 +576,98 @@ struct SlotPrepare {
     done: Option<Result<(), String>>,
 }
 static SLOT_PREPARE: Mutex<SlotPrepare> = Mutex::new(SlotPrepare { handle: None, done: None });
+/// The block's memory witness is being prepared on the device (`arena` or `slot`): the rows come
+/// from the staged images, not from the synchronous fills.
+static ASYNC_PREP: AtomicBool = AtomicBool::new(false);
+/// What the preparation reported, once done (zeros before).
+static PREP_INFO: Mutex<RamFillPrepared> = Mutex::new(RamFillPrepared {
+    status: 0,
+    n_instances: 0,
+    n_accesses: 0,
+    n_lanes: 0,
+    ms_sort: 0.0,
+    ms_lanes: 0.0,
+    ms_values: 0.0,
+    ms_total: 0.0,
+});
+
+/// The rows of one memory instance (`family` 0 Mem, 1 RomData, 2 InputData, 3 MemAlign by
+/// `air_id`) into `out_rows` (`n_rows` packed rows), from the image the preparation staged, or
+/// built from the retained accesses when it staged none; waits for the preparation only as far as
+/// this instance. Counts toward the arena's release.
+pub fn gpu_mem_witness_rows_into(
+    family: u32,
+    air_id: u32,
+    segment: u32,
+    n_rows: u32,
+    out_rows: &mut [u64],
+) -> Result<RamFillResult, String> {
+    let inner = {
+        let reg = registry();
+        reg.as_ref().ok_or("no GPU planner registered for the memory witness")?.inner as usize
+    };
+    let inner = inner as *mut crate::gpu_bindings::CountAndPlanHandle;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
+    let staged = loop {
+        let mut s = StagedRows::default();
+        // SAFETY: the planner outlives the block; the call only reads the planner's staging table
+        // under its own lock; `s` is a valid out-parameter.
+        let rc = unsafe {
+            crate::gpu_bindings::count_and_plan_staged_wait(inner, family, air_id, segment, 200, &mut s)
+        };
+        match rc {
+            1 => {
+                if s.n_rows != n_rows || s.words as usize != out_rows.len() {
+                    return Err(format!(
+                        "family {family} air {air_id} segment {segment}: staged {} rows x {} words, the trace holds {n_rows} rows, {} words",
+                        s.n_rows, s.words, out_rows.len()
+                    ));
+                }
+                // SAFETY: `out_rows` holds exactly `words` words; the copy runs on the planner's own
+                // stream and returns complete.
+                let ok = unsafe {
+                    crate::gpu_bindings::count_and_plan_copy_staged(
+                        inner, family, air_id, segment, out_rows.as_mut_ptr(), s.words,
+                    )
+                };
+                break if ok { Some(s.res) } else { None };
+            }
+            0 => break None,
+            _ if std::time::Instant::now() < deadline => continue,
+            _ => return Err("timed out waiting for the memory witness preparation".into()),
+        }
+    };
+    let res = match staged {
+        Some(res) => res,
+        None => {
+            // Not staged (no room, or the image was dropped): the preparation's outcome first, then
+            // the full fill into host memory, serialised with every other planner call.
+            slot_prepare_join()?;
+            let reg = registry();
+            let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
+            let mut res = RamFillResult::default();
+            // SAFETY: registered handle, under the lock; `out_rows` holds `n_rows` rows of the
+            // instance's layout (checked by the fill); `res` is a valid out-parameter.
+            let ok = unsafe {
+                crate::gpu_bindings::count_and_plan_fill_host(
+                    r.inner, family, air_id, segment, n_rows, out_rows.as_mut_ptr(), &mut res,
+                )
+            };
+            if !ok {
+                return Err(format!(
+                    "family {family} air {air_id} segment {segment}: the device fill failed with status {}",
+                    res.status
+                ));
+            }
+            res
+        }
+    };
+    if let Some(release) = slot_fill_done() {
+        slot_quiesce();
+        release();
+    }
+    Ok(res)
+}
 
 /// Starts the block's preparation for the slot fills (every instance resolved, scalars and
 /// MemAlign old words, the input image on the device, the owned MemAlign plans known to the
@@ -570,28 +680,32 @@ pub fn gpu_slot_witness_prepare_async(
     align_plans: &[&zisk_common::Plan],
 ) -> Result<(), String> {
     let (descs, entries) = align_tables(align_plans)?;
-    {
+    let inner = {
         let reg = registry();
         let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
         // SAFETY: registered handle, under the lock.
         if !unsafe { crate::gpu_bindings::count_and_plan_ram_retention_ok(r.inner) } {
             return Err("the retained accesses are incomplete for this block".into());
         }
-    }
+        r.inner as usize
+    };
+    ASYNC_PREP.store(true, Ordering::Release);
+    *PREP_INFO.lock().unwrap_or_else(|e| e.into_inner()) = RamFillPrepared::default();
     let handle = std::thread::Builder::new()
         .name("mem-slot-prepare".into())
         .spawn(move || {
-            let reg = registry();
-            let r = reg
-                .as_ref()
-                .ok_or_else(|| "no GPU planner registered for the memory witness".to_string())?;
+            let inner = inner as *mut crate::gpu_bindings::CountAndPlanHandle;
             let mut prepared = RamFillPrepared::default();
-            // SAFETY: registered handle, under the lock for the whole preparation so no fill runs
-            // before it; the tables and the image outlive the call, which copies what it keeps;
-            // `prepared` is a valid out-parameter.
+            // SAFETY: the planner outlives the block (the next block's runner clears the
+            // registration only after the release joined this thread). The registry lock is not
+            // held: the only other planner calls while this runs are `staged_wait` and
+            // `copy_staged`, which the planner serialises against the preparation with its own
+            // lock and run on their own streams; the fills themselves wait for the join. The
+            // tables and the image outlive the call, which copies what it keeps; `prepared` is a
+            // valid out-parameter.
             let ok = unsafe {
                 crate::gpu_bindings::count_and_plan_prepare_slot_fills(
-                    r.inner,
+                    inner,
                     image.as_ptr(),
                     image.len(),
                     descs.as_ptr(),
@@ -604,8 +718,9 @@ pub fn gpu_slot_witness_prepare_async(
             if !ok {
                 return Err(format!("prepare_slot_fills failed with status {}", prepared.status));
             }
+            *PREP_INFO.lock().unwrap_or_else(|e| e.into_inner()) = prepared;
             tracing::info!(
-                "[gpu] memory witness in the slots: {} accesses resolved, {} instances",
+                "[gpu] memory witness prepared on the device: {} accesses resolved, {} instances",
                 prepared.n_accesses,
                 prepared.n_instances
             );
@@ -673,6 +788,7 @@ pub fn gpu_slot_witness_release_now() {
         slot_quiesce();
         release();
     }
+    ASYNC_PREP.store(false, Ordering::Release);
 }
 
 /// The release to run after this slot fill, when it was the last pending one.

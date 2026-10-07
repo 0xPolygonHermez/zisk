@@ -161,6 +161,15 @@ struct RamFillResult {
 };
 static_assert(sizeof(RamFillResult) == 56, "RamFillResult layout changed: update gpu_bindings.rs");
 
+// A row image the preparation staged on the device. POD, mirrored in gpu_bindings.rs.
+struct StagedRows {
+    const uint64_t* ptr;
+    uint64_t        words;
+    uint32_t        family, air_id, segment, n_rows;
+    RamFillResult   res;
+};
+static_assert(sizeof(StagedRows) == 88, "StagedRows layout changed: update gpu_bindings.rs");
+
 // ─── Sizing constants visible to callers and to class-array bounds ──
 //     to be revised...
 constexpr int      N_STREAMS             = 4;
@@ -280,6 +289,15 @@ public:
     bool fill_slot(const void* d_ops, uint64_t n_ops, uint64_t* dst, void* stream, RamFillResult* res);
     // Waits for the slot copies still in flight on the prover's streams: before the arena is released.
     void slot_quiesce();
+    // The staged images, as the preparation publishes them (another thread may be preparing):
+    // `staged_wait` returns 1 with `out` filled, 0 when the preparation ended without that image
+    // (build it with `fill_host`), -1 after `timeout_ms`. `copy_staged` copies an image to host
+    // memory on its own stream; false when the image is gone or `words` differs. `fill_host` builds
+    // one instance's rows into host memory from the retained accesses, after the preparation.
+    int  staged_wait(uint32_t family, uint32_t air_id, uint32_t segment, uint32_t timeout_ms, StagedRows* out);
+    bool copy_staged(uint32_t family, uint32_t air_id, uint32_t segment, uint64_t* dst, uint64_t words);
+    bool fill_host(uint32_t family, uint32_t air_id, uint32_t segment, uint32_t n_rows, uint64_t* out_rows,
+                   RamFillResult* res);
     // The device the planner and the fills run on (`setup`'s gpu_id).
     int device() const { return gpu_device_; }
     bool instance_scalars(uint32_t family, uint32_t inst, RamFillResult* res) const;
@@ -472,7 +490,12 @@ private:
     // Row images the preparation built, staged below the retained accesses; `fill_slot` copies them
     // device to device. The per-instance scratch ends at `stage_low_` while any is staged.
     struct Staged { uint32_t family, air_id, segment, n_rows; uint64_t* ptr; size_t words; RamFillResult res; };
-    std::vector<Staged>        staged_;
+    std::vector<Staged>        staged_;              // under staged_mtx_
+    std::mutex                 staged_mtx_;          // staged_, prep_done_, copies_in_flight_
+    std::condition_variable    staged_cv_;
+    bool                       prep_done_ = false;   // the preparation published its last image
+    uint32_t                   copies_in_flight_ = 0; // copy_staged calls reading the images
+    bool find_staged_(uint32_t family, uint32_t air_id, uint32_t segment, StagedRows* out) const;
     uint8_t*                   stage_low_ = nullptr;
     bool                       stage_try_ = false;     // staged attempt: a scratch overflow is retried, not reported
     std::vector<cudaEvent_t>   slot_copy_events_;      // the copies in flight on the prover's streams

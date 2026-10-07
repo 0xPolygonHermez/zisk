@@ -200,6 +200,10 @@ pub struct DeviceMemWitness {
     /// `ZISK_MEM_GPU_FILL=slot`: the prover's kernel fills each instance into its slot; the arena
     /// stays borrowed until the last owned memory instance is committed.
     slot: bool,
+    /// `arena` and `slot`: the block is prepared on its own thread and each instance takes its
+    /// rows from the staged image when its witness runs; the arena stays borrowed until the last
+    /// owned instance took them (`arena-check` fills synchronously here instead).
+    async_prep: bool,
 }
 
 impl DeviceMemWitness {
@@ -212,9 +216,9 @@ impl DeviceMemWitness {
         #[cfg(not(gpu))]
         let _ = (owned, d_buffers);
         #[cfg(gpu)]
-        if self.slot {
+        if self.async_prep {
             timer_start_info!(GPU_MEM_WITNESS);
-            // The preparation runs on its own thread; the first slot fill waits for it.
+            // The preparation runs on its own thread; each instance waits for its own image.
             let prepared = input_image(&self.shm_prefix).and_then(|image| {
                 zisk_sm_mem_planner::gpu_slot_witness_prepare_async(
                     image.bytes().to_vec(),
@@ -227,14 +231,16 @@ impl DeviceMemWitness {
                     let n_owned =
                         owned.ram.len() + owned.rom.len() + owned.input.len() + owned.align.len();
                     tracing::info!(
-                        "[gpu] memory witness in the slots: {n_owned} owned instances, preparing"
+                        "[gpu] memory witness on the device ({}): {n_owned} owned instances, preparing",
+                        if self.slot { "slots" } else { "host rows" }
                     );
                     let d_buffers = d_buffers as usize;
                     zisk_sm_mem_planner::gpu_slot_witness_arm(
                         n_owned,
                         Box::new(move || {
-                            // The last owned memory instance is in its slot: the arena goes back and
-                            // the memory airs are host airs for the rest of the block (the proofs).
+                            // The last owned memory instance has its rows (in its slot, or in its
+                            // trace buffer): the arena goes back and the memory airs are host airs
+                            // for the rest of the block (the proofs reuse the buffers).
                             zisk_common::MEM_ROWS_ON_DEVICE.store(0, Ordering::Release);
                             proofman_starks_lib_c::release_first_gpu_buffer_c(
                                 d_buffers as *mut c_void,
@@ -256,7 +262,7 @@ impl DeviceMemWitness {
                 }
                 Err(e) => {
                     tracing::warn!(
-                        "[gpu] memory witness in the slots unavailable for this block ({e}); the memory instances fall back to the CPU witness"
+                        "[gpu] memory witness on the device unavailable for this block ({e}); the memory instances fall back to the CPU witness"
                     );
                     return false;
                 }
@@ -665,12 +671,14 @@ impl AsmRunnerMO {
                         shm_prefix: shm_prefix.clone(),
                         serve_rows: mode == "arena",
                         slot: false,
+                        async_prep: mode == "arena",
                     });
                 } else if mode == "slot" {
                     device_witness = Some(DeviceMemWitness {
                         shm_prefix: shm_prefix.clone(),
                         serve_rows: true,
                         slot: true,
+                        async_prep: true,
                     });
                 }
             }
