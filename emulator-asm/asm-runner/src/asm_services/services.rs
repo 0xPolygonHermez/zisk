@@ -1,7 +1,7 @@
 use super::stdio::StdioService;
 use crate::{
-    AsmRunnerOptions, MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse,
-    NAMESPACE,
+    AsmRunError, AsmRunnerOptions, MemoryOperationsResponse, MinimalTraceResponse,
+    RomHistogramResponse, NAMESPACE,
 };
 
 use anyhow::{Context, Result};
@@ -510,7 +510,13 @@ impl AsmServices {
     ///
     /// The record lives with the segments, not with the caller, so every client
     /// in the process that set up programs on them sees the same one.
+    ///
+    /// Fails with [`AsmRunError::ServiceDied`] if one of this program's services
+    /// has exited: it would fail the job anyway, later and less clearly.
     pub fn activate(&self, bind: impl FnOnce() -> Result<()>) -> Result<()> {
+        if let Some((service, how)) = self.inner.service.exited_service() {
+            return Err(AsmRunError::ServiceDied { service: service.to_string(), how }.into());
+        }
         if self.is_active() {
             return Ok(());
         }
