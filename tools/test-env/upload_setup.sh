@@ -232,7 +232,10 @@ main() {
     # One key per stage the setup builds: blake3 has no compressed stage.
     local verkeys=(provingKey/zisk/vadcop_final/vadcop_final.verkey.bin)
     local compressed_verkey=provingKey/zisk/vadcop_final_compressed/vadcop_final_compressed.verkey.bin
-    [[ -f "${compressed_verkey}" ]] && verkeys+=("${compressed_verkey}")
+    if [[ "${SETUP_MODE}" != "blake3" ]]; then
+      [[ -f "${compressed_verkey}" ]] || { err "${compressed_verkey} not found"; return 1; }
+      verkeys+=("${compressed_verkey}")
+    fi
     ensure tar -czvf "${VERIFYKEY_FILE}" "${verkeys[@]}" || return 1
     write_md5 "${VERIFYKEY_FILE}" > "${VERIFYKEY_FILE}.md5" || { err "md5 failed for ${VERIFYKEY_FILE}"; return 1; }
     ARTIFACTS+=("${VERIFYKEY_FILE}" "${VERIFYKEY_FILE}.md5")
