@@ -492,17 +492,20 @@ impl AsmServices {
         Self::SERVICES
             .par_iter()
             .try_for_each(|service| {
-                self.inner
+                let response = self
+                    .inner
                     .service
                     .send_reset_request(service)
-                    .with_context(|| format!("Service {service} failed to reset"))
-                    .map(|_| ())
+                    .with_context(|| format!("Service {service} failed to reset"))?;
+                if response.result != 0 {
+                    return Err(anyhow::anyhow!(
+                        "ASM {service} service returned non-zero result to the reset request: {}",
+                        response.result
+                    ));
+                }
+                Ok(())
             })
-            .context(
-                "Failed to reset ASM services. If the services died with \
-                 'Invalid request id', their cached binaries predate the reset request: \
-                 delete ~/.zisk/cache so they are regenerated",
-            )
+            .context("Failed to reset ASM services")
     }
 
     /// Send a minimal trace request to the MT service and return the response.

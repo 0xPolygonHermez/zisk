@@ -24,12 +24,13 @@ impl ToRequestPayload for ResetRequest {
     }
 }
 
-/// Fields mirror the on-wire reset response; they document the protocol layout.
-#[allow(dead_code)]
+/// Fields mirror the on-wire reset response.
+#[derive(Debug)]
 pub(crate) struct ResetResponse {
     /// `0` on success.
-    pub result: u64,
+    pub result: u8,
     /// The producer's currently allocated trace size, echoed back.
+    #[allow(dead_code)]
     pub allocated_len: u64,
 }
 
@@ -40,6 +41,6 @@ impl FromResponsePayload for ResetResponse {
             "Expected CMD_RESET_RESPONSE_ID but got {}",
             payload[0]
         );
-        ResetResponse { result: payload[1], allocated_len: payload[2] }
+        ResetResponse { result: payload[1] as u8, allocated_len: payload[2] }
     }
 }
