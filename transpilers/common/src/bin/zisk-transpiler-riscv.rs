@@ -2,7 +2,7 @@
 //! WebAssembly) to a Zisk ROM file.  The name is historical: it predates WebAssembly support.
 
 use std::{env, process};
-use zisk_transpiler_common::ZiskTranspiler;
+use zisk_transpiler::ZiskTranspiler;
 
 /// Performs a transpilation of a guest program to a Zisk ROM file.  
 /// The binary accepts 3 arguments (4 including the executable name):

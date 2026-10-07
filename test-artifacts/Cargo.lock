@@ -2163,6 +2163,7 @@ checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
  "allocator-api2",
  "foldhash 0.1.5",
+ "serde",
 ]
 
 [[package]]
@@ -5756,6 +5757,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasmparser"
+version = "0.244.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47b807c72e1bac69382b3a6fb3dbe8ea4c0ed87ff5629b8685ae6b9a611028fe"
+dependencies = [
+ "bitflags 2.13.2",
+ "hashbrown 0.15.5",
+ "indexmap 2.14.2",
+ "semver 1.0.28",
+ "serde",
+]
+
+[[package]]
 name = "web-time"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6308,7 +6322,6 @@ name = "zisk-asm"
 version = "1.4.0-alpha"
 dependencies = [
  "zisk-core",
- "zisk-riscv",
 ]
 
 [[package]]
@@ -6795,7 +6808,7 @@ dependencies = [
  "zisk-recurser",
  "zisk-rom-setup",
  "zisk-setup",
- "zisk-transpiler-riscv",
+ "zisk-transpiler",
  "ziskemu",
 ]
 
@@ -6821,14 +6834,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zisk-riscv"
-version = "1.4.0-alpha"
-dependencies = [
- "zisk-core",
- "zisk-definitions",
-]
-
-[[package]]
 name = "zisk-rom-setup"
 version = "1.4.0-alpha"
 dependencies = [
@@ -6841,7 +6846,7 @@ dependencies = [
  "zisk-core",
  "zisk-pil",
  "zisk-sm-rom",
- "zisk-transpiler-riscv",
+ "zisk-transpiler",
 ]
 
 [[package]]
@@ -6992,7 +6997,7 @@ dependencies = [
  "zisk-core",
  "zisk-pil",
  "zisk-sm-mem-common",
- "zisk-transpiler-riscv",
+ "zisk-transpiler",
 ]
 
 [[package]]
@@ -7016,22 +7021,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "zisk-transpiler-common"
+name = "zisk-transpiler"
 version = "1.4.0-alpha"
 dependencies = [
- "elf",
- "zisk-asm",
  "zisk-core",
- "zisk-definitions",
- "zisk-riscv",
+ "zisk-transpiler-riscv",
+ "zisk-transpiler-wasm",
 ]
 
 [[package]]
 name = "zisk-transpiler-riscv"
 version = "1.4.0-alpha"
 dependencies = [
+ "elf",
+ "zisk-asm",
  "zisk-core",
- "zisk-transpiler-common",
+ "zisk-definitions",
+]
+
+[[package]]
+name = "zisk-transpiler-wasm"
+version = "1.4.0-alpha"
+dependencies = [
+ "wasmparser",
+ "zisk-core",
+ "zisk-transpiler-riscv",
 ]
 
 [[package]]
@@ -7071,10 +7085,10 @@ dependencies = [
  "zisk-core",
  "zisk-definitions",
  "zisk-pil",
- "zisk-riscv",
  "zisk-sm-arith",
  "zisk-sm-binary",
  "zisk-sm-mem-common",
+ "zisk-transpiler",
  "zisk-transpiler-riscv",
 ]
 

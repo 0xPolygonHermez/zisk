@@ -27,8 +27,8 @@ use zisk_core::mem::DataSection;
 use zisk_core::rom_layout::{normalize_rw_data_sections, FLOAT_HANDLER_ADDR};
 use zisk_core::zisk_rom::DataSection64;
 use zisk_core::{ZiskRom, FREG_FIRST, FREG_INST, FREG_RA};
-use zisk_riscv::elf_extraction::{collect_elf_payload_from_bytes, merge_ro_sections};
-use zisk_riscv::{add_zisk_code, zkvmcall_ids};
+use zisk_transpiler_riscv::elf_extraction::{collect_elf_payload_from_bytes, merge_ro_sections};
+use zisk_transpiler_riscv::{add_zisk_code, zkvmcall_ids};
 
 const FLOAT_LIB_ELF: &[u8] = include_bytes!("../../../lib-float/c/lib/ziskfloat.elf");
 

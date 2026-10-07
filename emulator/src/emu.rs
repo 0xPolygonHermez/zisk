@@ -10,8 +10,8 @@ use zisk_common::{
 use zisk_core::mem::DataSection;
 
 use zisk_pil::{IndexedFill, MainTraceRowOps};
-use zisk_riscv::RiscVRegisters;
 use zisk_sm_mem_common::MemHelpers;
+use zisk_transpiler_riscv::RiscVRegisters;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use zisk_common::{DataBusTrait, EmuTrace, EmuTraceStart};

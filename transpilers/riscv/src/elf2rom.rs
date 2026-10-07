@@ -17,7 +17,7 @@ use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
 /// Executes the ROM transpilation process: from a RISC-V ELF to Zisk.
 ///
 /// A ziskbin ELF (`e_machine == EM_ZISK`, a prebuilt ROM) is not RISC-V; the guest-format
-/// dispatcher (`zisk_transpiler_common::program2rom`) decodes those before calling this.
+/// dispatcher (`zisk_transpiler::program2rom`) decodes those before calling this.
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Load the embedded float library (enabled with the `float` feature).
     #[cfg(feature = "float")]

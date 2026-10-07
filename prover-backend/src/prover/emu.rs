@@ -25,7 +25,7 @@ use zisk_common::{
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
 use zisk_precomp_hints::HintsProcessor;
-use zisk_transpiler_common::ZiskTranspiler;
+use zisk_transpiler::ZiskTranspiler;
 
 use anyhow::Result;
 

@@ -7,7 +7,7 @@ use proofman_fields::PrimeField64;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, SRC_IMM};
 use zisk_pil::{RomRomTrace, RomRomTraceRow, RomTrace};
 use zisk_sm_mem_common::{MEMORY_ROM_INIT_OP, MEMORY_STORE_OP};
-use zisk_transpiler_common::ZiskTranspiler;
+use zisk_transpiler::ZiskTranspiler;
 
 use crate::error::{RomError, RomResult};
 

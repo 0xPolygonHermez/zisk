@@ -11,7 +11,7 @@
 //! as overflowing when it holds at least one such distance above the limit.
 
 use zisk_core::REGS_IN_MAIN_TOTAL_NUMBER;
-use zisk_riscv::RiscVRegisters;
+use zisk_transpiler_riscv::RiscVRegisters;
 
 /// Per-register step-distance overflow counter, aggregated per instance.
 pub struct RegStepCheck {
