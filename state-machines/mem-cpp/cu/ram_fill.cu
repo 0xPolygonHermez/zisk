@@ -354,6 +354,9 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
     if (!ram_tables_ready_) {
         std::vector<RamRun> runs;
         { std::lock_guard<std::mutex> lk(ram_runs_mtx_); runs = ram_runs_; }
+        std::stable_sort(runs.begin(), runs.end(), [](const RamRun& a, const RamRun& b) {   // step order
+            return a.chunk != b.chunk ? a.chunk < b.chunk : a.base < b.base;
+        });
         const uint32_t nc = (uint32_t)runs.size();
         rf_n_runs_ = nc;
         uint8_t* cur = arena_ + cursor_;
@@ -481,7 +484,7 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     uint32_t* prop_keys = (uint32_t*)take(prop_block * 4);
     uint64_t* rows = d_out ? d_out : (uint64_t*)take((size_t)n_rows * mem_words_per_row_ * 8);
     size_t t_sort = 0, t_max = 0, t_bykey = 0, t_select = 0;
-    cub::DeviceRadixSort::SortPairs(nullptr, t_sort, dkeys, didx, n, 0, (int)(RF_STEP_BITS + RF_ADDR_BITS));
+    cub::DeviceRadixSort::SortPairs(nullptr, t_sort, dkeys, didx, n, (int)RF_STEP_BITS, (int)(RF_STEP_BITS + RF_ADDR_BITS));
     cub::DeviceScan::InclusiveScan(nullptr, t_max, (uint32_t*)nullptr, (uint32_t*)nullptr, MaxU32Op(), n);
     cub::DeviceSelect::Flagged(nullptr, t_select, thrust::counting_iterator<uint32_t>(0),
                                (uint32_t*)nullptr, (uint32_t*)nullptr, (uint32_t*)nullptr, n);
@@ -498,13 +501,14 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     }
     if (scratch_bytes > rf_scratch_peak_) rf_scratch_peak_ = scratch_bytes;
 
-    // 0. gather, 1. sort by (address, step), stable
+    // 0. gather, 1. stable sort by address: the runs come in step order and each is (address, step)
+    // sorted, so the step bits never need sorting.
     rf_gather_kernel<<<rf_grid(n), RF_BLOCK>>>(ram_records_, d_rf_chunk_base_, d_rf_pref_ + (size_t)inst * rf_n_runs_,
                                                rf_n_runs_, d_rf_bound_, 2 * n_inst, inst, n,
                                                dkeys.Current(), didx.Current());
     RF_TRY(cudaGetLastError());
     size_t tb = t_bytes;
-    RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, dkeys, didx, n, 0, (int)(RF_STEP_BITS + RF_ADDR_BITS)));
+    RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, dkeys, didx, n, (int)RF_STEP_BITS, (int)(RF_STEP_BITS + RF_ADDR_BITS)));
     uint64_t* keys_out = dkeys.Current();
     uint32_t* sidx     = didx.Current();
     RF_TRY(cudaEventRecord(ev[1]));
@@ -732,6 +736,9 @@ bool CountAndPlan::prepare_other_index_() {
     if (d_other_idx_) return true;
     std::vector<RamRun> runs;
     { std::lock_guard<std::mutex> lk(ram_runs_mtx_); runs = other_runs_; }
+    std::stable_sort(runs.begin(), runs.end(), [](const RamRun& a, const RamRun& b) {   // step order
+        return a.chunk != b.chunk ? a.chunk < b.chunk : a.base < b.base;
+    });
     size_t total = 0;
     std::vector<uint32_t> h_base(runs.size()), h_pref(runs.size() + 1);
     for (size_t r = 0; r < runs.size(); ++r) { h_base[r] = runs[r].base; h_pref[r] = (uint32_t)total; total += runs[r].n; }
@@ -777,18 +784,12 @@ __global__ void other_flag_kernel(const uint32_t* __restrict__ addr, size_t n, u
 
 // Sort keys of the selected accesses: the mem step, then (stable) the address.
 __global__ void other_keys_kernel(RamRecords rec, const uint32_t* __restrict__ sel, const uint32_t* __restrict__ other_idx,
-                                  size_t n, uint64_t* __restrict__ step_keys, uint32_t* __restrict__ idx) {
+                                  size_t n, uint32_t* __restrict__ addr_keys, uint32_t* __restrict__ idx) {
     const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (j >= n) return;
     const uint32_t k = other_idx[sel[j]];
     idx[j] = k;
-    step_keys[j] = rf_step(rec.meta(k));
-}
-__global__ void other_addr_keys_kernel(RamRecords rec, const uint32_t* __restrict__ idx, size_t n,
-                                       uint32_t* __restrict__ addr_keys) {
-    const size_t j = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-    if (j >= n) return;
-    addr_keys[j] = rec.addr(idx[j]);
+    addr_keys[j] = rec.addr(k);
 }
 
 // Bump allocator over a scratch range, 256-byte aligned.
@@ -917,22 +918,16 @@ bool CountAndPlan::other_sorted_(ScratchCursor& sc, uint32_t first, uint32_t las
         fprintf(stderr, "other_fill: %zu accesses selected in [%u, %u], the plan counted %zu\n", n, first, last, expect);
         return false;
     }
-    cub::DoubleBuffer<uint64_t> skeys((uint64_t*)sc.take(n * 8), (uint64_t*)sc.take(n * 8));
     cub::DoubleBuffer<uint32_t> didx((uint32_t*)sc.take(n * 4), (uint32_t*)sc.take(n * 4));
     cub::DoubleBuffer<uint32_t> akeys((uint32_t*)sc.take(n * 4), (uint32_t*)sc.take(n * 4));
-    size_t t_sort1 = 0, t_sort2 = 0;
-    cub::DeviceRadixSort::SortPairs(nullptr, t_sort1, skeys, didx, n, 0, (int)RF_STEP_BITS);
-    cub::DeviceRadixSort::SortPairs(nullptr, t_sort2, akeys, didx, n, 0, 32);
-    const size_t t_bytes = std::max(t_sort1, t_sort2);
+    size_t t_bytes = 0;
+    cub::DeviceRadixSort::SortPairs(nullptr, t_bytes, akeys, didx, n, 0, 32);
     void* temp = sc.take(t_bytes);
-    // Sort by step, then stable by address: (address, step) order.
-    other_keys_kernel<<<rf_grid(n), RF_BLOCK>>>(ram_records_, sel, d_other_idx_, n, skeys.Current(), didx.Current());
+    // The selection is in step order (runs in chunk order, arrival order inside); a stable sort by
+    // address gives (address, step).
+    other_keys_kernel<<<rf_grid(n), RF_BLOCK>>>(ram_records_, sel, d_other_idx_, n, akeys.Current(), didx.Current());
     RF_TRY(cudaGetLastError());
     size_t tb = t_bytes;
-    RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, skeys, didx, n, 0, (int)RF_STEP_BITS));
-    other_addr_keys_kernel<<<rf_grid(n), RF_BLOCK>>>(ram_records_, didx.Current(), n, akeys.Current());
-    RF_TRY(cudaGetLastError());
-    tb = t_bytes;
     RF_TRY(cub::DeviceRadixSort::SortPairs(temp, tb, akeys, didx, n, 0, 32));
     *addr_sorted = akeys.Current();
     *idx = didx.Current();
