@@ -97,3 +97,6 @@ To migrate, depend on `zisk-transpiler-common` instead of `zisk-transpiler-riscv
 | `program2rom(bytes)` | `program2rom(bytes)` |
 
 The replacements behave the same: they accept RISC-V ELF, ziskbin ELF and WebAssembly input.
+
+Each crate's own README (`riscv2zisk/`, `common/`, `riscv/`) lists what changed in it since 1.3,
+including items that moved to another crate, and is shown on its crates.io page.
