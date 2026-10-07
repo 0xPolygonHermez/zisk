@@ -51,11 +51,13 @@ impl AsmRHData {
     /// mapping is torn down. These two sites are a matched pair — do not change
     /// the `from_raw_parts` construction here without updating that `Drop`, and
     /// vice versa.
-    pub(crate) fn from_shared_memory(asm_shared_memory: &AsmShmem<AsmRHHeader>) -> AsmRHData {
+    pub(crate) fn from_shared_memory(
+        asm_shared_memory: &AsmShmem<AsmRHHeader>,
+    ) -> anyhow::Result<AsmRHData> {
         // SAFETY: `data_ptr` points into the live, read-only shared mapping owned by
         // `asm_shared_memory`, which the caller keeps alive across this read. The
-        // header reads and `Vec::from_raw_parts` stay in bounds — the `assert!`s below
-        // reject any length that would run past the mapped region, each one checked
+        // header reads and `Vec::from_raw_parts` stay in bounds — the checks below
+        // reject any length that would run past the mapped region, each one made
         // before the pointer it validates is dereferenced. The returned `Vec`s alias
         // the mapping and must never be freed by Rust's allocator; see the
         // `# Invariant` above and `AsmRunnerRH::drop`.
@@ -65,7 +67,7 @@ impl AsmRHData {
 
             // Instruction multiplicity: [len][counter; len]
             let len = std::ptr::read(data_ptr) as usize;
-            assert!(
+            anyhow::ensure!(
                 (len + 2) * 8 <= available,
                 "Data length {len} exceeds allocated shared memory size"
             );
@@ -74,13 +76,14 @@ impl AsmRHData {
             // FROPS multiplicity, which follows it: [frops_len][counter; frops_len]
             let frops_ptr = data_ptr.add(1 + len);
             let frops_len = std::ptr::read(frops_ptr) as usize;
-            assert!(
-                (len + frops_len + 2) * 8 <= available,
-                "FROPS length {frops_len} exceeds allocated shared memory size"
-            );
+            if (len + frops_len + 2) * 8 > available {
+                // Not dropped: it aliases the mapping (see the `# Invariant` above).
+                std::mem::forget(inst_count);
+                anyhow::bail!("FROPS length {frops_len} exceeds allocated shared memory size");
+            }
             let frops_count = Vec::from_raw_parts(frops_ptr.add(1), frops_len, frops_len);
 
-            AsmRHData { steps: asm_shared_memory.map_header().steps, inst_count, frops_count }
+            Ok(AsmRHData { steps: asm_shared_memory.map_header().steps, inst_count, frops_count })
         }
     }
 }

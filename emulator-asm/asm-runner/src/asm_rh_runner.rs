@@ -1,6 +1,6 @@
 use crate::{
     sem_chunk_done_name, shmem_output_name, AsmRHData, AsmRHHeader, AsmRunError, AsmService,
-    AsmServices, AsmShmem, SEM_CHUNK_DONE_WAIT_DURATION,
+    AsmServices, AsmShmem, AsmShmemHeader, SEM_CHUNK_DONE_WAIT_DURATION,
 };
 use named_sem::NamedSemaphore;
 use std::sync::atomic::{fence, Ordering};
@@ -10,8 +10,16 @@ use zisk_common::{stats_begin, stats_end, ExecutorStatsHandle};
 use anyhow::{Context, Result};
 
 /// This struct manages the shared memory for reading ROM histogram results from the C++ side.
+///
+/// Every program set up in a process writes its histogram to the same object, and each
+/// program's histogram has its own size. So the mapping is sized by the largest histogram read
+/// so far, and grows when a program publishes a larger one (see [`Self::fit`]).
 pub struct RHShmemReader {
     pub(crate) output_shmem: AsmShmem<AsmRHHeader>,
+    /// Mappings this reader has outgrown. They stay mapped for as long as the reader lives,
+    /// because a histogram read from one aliases it (see `AsmRHData::from_shared_memory`) and
+    /// may still be alive when the next, larger one is read.
+    outgrown: Vec<AsmShmem<AsmRHHeader>>,
 }
 
 impl RHShmemReader {
@@ -22,7 +30,18 @@ impl RHShmemReader {
         let output_shared_memory =
             AsmShmem::<AsmRHHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
 
-        Ok(Self { output_shmem: output_shared_memory })
+        Ok(Self { output_shmem: output_shared_memory, outgrown: Vec::new() })
+    }
+
+    /// Map the output again if the histogram just published is larger than the current mapping,
+    /// which happens when a program with a larger ROM runs after a smaller one.
+    fn fit(&mut self, shm_prefix: &str, unlock_mapped_memory: bool) -> Result<()> {
+        let published = self.output_shmem.map_header().allocated_size() as usize;
+        if published > self.output_shmem.mapped_size() {
+            let larger = Self::new(shm_prefix, unlock_mapped_memory)?.output_shmem;
+            self.outgrown.push(std::mem::replace(&mut self.output_shmem, larger));
+        }
+        Ok(())
     }
 }
 
@@ -105,10 +124,11 @@ impl AsmRunnerRH {
                     Some(RHShmemReader::new(asm_services.shm_prefix(), unlock_mapped_memory)?);
             }
             tracing::debug!("[RH] Shared memory mapped, processing results...");
-            let reader = asm_shared_memory.as_ref().ok_or_else(|| {
+            let reader = asm_shared_memory.as_mut().ok_or_else(|| {
                 anyhow::anyhow!("ASM_RH_RUNNER: asm_shared_memory is None after initialization")
             })?;
-            let asm_rowh_output = AsmRHData::from_shared_memory(&reader.output_shmem);
+            reader.fit(asm_services.shm_prefix(), unlock_mapped_memory)?;
+            let asm_rowh_output = AsmRHData::from_shared_memory(&reader.output_shmem)?;
             tracing::debug!("[RH] Results processed successfully.");
             stats_end!(_stats, &_runner_scope);
             Ok(AsmRunnerRH::new(asm_rowh_output))
