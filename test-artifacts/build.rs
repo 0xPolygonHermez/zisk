@@ -18,6 +18,7 @@ const PROGRAMS: &[&str] = &[
     "arith384_mod",
     "babyjubjub_add",
     "big_input",
+    "big_rom",
     "bigint",
     "blake2b",
     "blake2s",
