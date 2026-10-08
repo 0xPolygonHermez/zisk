@@ -9,14 +9,13 @@ homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
+# The generated C/PIL/asm are repo build inputs for the emulator and the constraints,
+# not part of the Rust API; only the generated Rust ships.
+exclude = ["src/generated/c", "src/generated/pil", "src/generated/asm"]
 
 [lib]
 name = "zisk_definitions"
 path = "src/lib.rs"
-
-[dependencies]
-
-# QUIC networking
 
 [features]
 default = []

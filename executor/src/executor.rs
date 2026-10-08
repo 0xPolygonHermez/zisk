@@ -57,8 +57,9 @@ pub struct PlanSummaryEntry {
     pub count: usize,
 }
 
-/// The maximum number of steps to execute in the emulator or assembly runner.
-pub(crate) const MAX_NUM_STEPS: u64 = 1 << 36;
+/// The maximum number of steps to execute in the emulator or assembly runner: the
+/// constraints' hard limit, single-sourced with PIL and the C emulator.
+pub(crate) const MAX_NUM_STEPS: u64 = zisk_definitions::execution::MAX_STEPS;
 
 /// Appends to the progressive minimal-trace store every chunk it has not seen
 /// yet, up to and including `idx`. `traces` is the emulator's own buffer, so

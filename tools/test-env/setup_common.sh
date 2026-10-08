@@ -263,7 +263,7 @@ export_proofman_paths
 VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Cargo.toml")"
 ZISK_SETUP_VERSION="$(sed -nE 's/^setup_version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$ROOT_DIR/setup/Cargo.toml")"
 [ -n "$ZISK_SETUP_VERSION" ] || { echo "could not read setup_version from setup/Cargo.toml" >&2; exit 1; }
-INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles"
+INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles,definitions/src/generated/pil"
 
 # Fixed columns that a PIL loads from disk rather than building itself, either
 # because an interpreted PIL loop would cost minutes of compile time (the
@@ -291,8 +291,11 @@ compute_input_hash() (
   # into the calling shell.
   pil_list=$(mktemp)
   trap 'rm -f "$pil_list"' EXIT
-  find pil state-machines precompiles -type f -name '*.pil' >> "$pil_list"
-  find "$PROOFMAN_DIR/pil2-components/lib/std/pil" -type f -name '*.pil' >> "$pil_list"
+  # Every .pil the compiler can see: the --include dirs themselves, so a dir added
+  # to INCLUDE_PATHS (e.g. definitions/src/generated/pil) can't miss the key.
+  local include_dirs
+  IFS=, read -r -a include_dirs <<< "$INCLUDE_PATHS"
+  find "${include_dirs[@]}" -type f -name '*.pil' >> "$pil_list"
   # LC_ALL=C: byte-ordered sort so the hash matches across machines regardless
   # of locale (en_US.UTF-8 vs C can reorder paths with punctuation).
   LC_ALL=C sort -o "$pil_list" "$pil_list"

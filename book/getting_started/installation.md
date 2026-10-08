@@ -144,6 +144,8 @@ To install the PLONK proving key (provingKeySnark), run:
     ```bash
     mkdir -p $HOME/.zisk/zisk/emulator-asm
     cp -r ./emulator-asm/src $HOME/.zisk/zisk/emulator-asm
+    mkdir -p $HOME/.zisk/zisk/emulator-asm/src/generated
+    cp ./definitions/src/generated/c/*.h $HOME/.zisk/zisk/emulator-asm/src/generated/
     cp ./emulator-asm/Makefile $HOME/.zisk/zisk/emulator-asm
     mkdir -p $HOME/.zisk/zisk/lib-c/c
     cp -r ./lib-c/c/src $HOME/.zisk/zisk/lib-c/c
@@ -207,7 +209,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
     ```bash
     cargo-zisk proofman-setup compile-pil \
         --pil pil/zisk.pil \
-        --include "pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles" \
+        --include "pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles,definitions/src/generated/pil" \
         --output pil/zisk.pilout \
         --fixed-dir tmp/fixed \
         --fixed-to-file \

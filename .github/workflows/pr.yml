@@ -62,6 +62,15 @@ jobs:
         with:
           ref: ${{ env.TEST_REF }}
 
+      - name: Snapshot committed generated constants
+        # Must precede every cargo command: zisk-definitions-sync is a workspace
+        # member, so any workspace build (e.g. `cargo check` below) runs its build.rs
+        # and rewrites definitions/src/generated in place. A later snapshot would hold
+        # the regenerated files, and the drift gate could never fail.
+        run: |
+          rm -rf "${RUNNER_TEMP:?}/generated-committed"
+          cp -a definitions/src/generated "$RUNNER_TEMP/generated-committed"
+
       - name: Install dependencies
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
@@ -88,6 +97,25 @@ jobs:
 
       - name: Run cargo check
         run: cargo check --all-targets
+
+      - name: Constants generated files up to date
+        # Building the sync crate re-renders the #[constants] definitions into
+        # definitions/src/generated (Rust at the top, C/PIL/asm in c/, pil/, asm/
+        # subdirs) via its build.rs; fail if that changed anything not committed
+        # (i.e. a constant changed without rebuilding + committing). The C header
+        # is copied next to emulator-asm at package time, so only this canonical
+        # tree is committed and gated.
+        #
+        # NOTE: this job's container has no git at checkout time, so actions/checkout
+        # downloads a source tarball (no .git) — `git diff` can't run here. Compare
+        # the committed tree, snapshotted right after checkout, against the freshly
+        # regenerated one instead.
+        run: |
+          cargo build -p zisk-definitions-sync
+          diff -ru "$RUNNER_TEMP/generated-committed" definitions/src/generated || {
+            echo "::error::definitions/src/generated is stale. Run 'cargo build -p zisk-definitions-sync' and commit the result."
+            exit 1
+          }
 
       - name: Run cargo test
         run: cargo test --workspace --release

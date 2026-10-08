@@ -6833,6 +6833,7 @@ dependencies = [
  "zisk-asm-runner",
  "zisk-common",
  "zisk-core",
+ "zisk-definitions",
  "zisk-pil",
  "zisk-precomp-arith-eq",
  "zisk-precomp-arith-eq-384",

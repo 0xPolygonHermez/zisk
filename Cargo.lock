@@ -7595,6 +7595,35 @@ name = "zisk-definitions"
 version = "1.4.0-alpha"
 
 [[package]]
+name = "zisk-definitions-generator"
+version = "1.4.0-alpha"
+
+[[package]]
+name = "zisk-definitions-macros"
+version = "1.4.0-alpha"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "zisk-definitions-source"
+version = "1.4.0-alpha"
+dependencies = [
+ "zisk-definitions-generator",
+ "zisk-definitions-macros",
+]
+
+[[package]]
+name = "zisk-definitions-sync"
+version = "1.4.0-alpha"
+dependencies = [
+ "zisk-definitions-generator",
+ "zisk-definitions-source",
+]
+
+[[package]]
 name = "zisk-executor"
 version = "1.4.0-alpha"
 dependencies = [
@@ -7615,6 +7644,7 @@ dependencies = [
  "zisk-asm-runner",
  "zisk-common",
  "zisk-core",
+ "zisk-definitions",
  "zisk-pil",
  "zisk-precomp-arith-eq",
  "zisk-precomp-arith-eq-384",

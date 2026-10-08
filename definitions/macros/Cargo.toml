@@ -1,0 +1,22 @@
+[package]
+name = "zisk-definitions-macros"
+description = "Procedural macros for zisk-definitions: #[constants]/#[emit] multi-target constant codegen"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+# Only the codegen crates (source, sync) use it, and neither is published.
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
