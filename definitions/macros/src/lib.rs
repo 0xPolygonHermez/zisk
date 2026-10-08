@@ -318,6 +318,15 @@ fn build_export(container: &Container, emit: &Emit, c: &ItemConst) -> syn::Resul
     let container_targets = container.targets.expect("`to(..)` enforced in expand");
     let mut targets = emit.targets.unwrap_or(container_targets);
     targets &= !emit.skip;
+    // `skip(..)` can subtract every target; emitting nowhere has its own explicit
+    // spelling, so an empty set here is a mistake, not a silent omission.
+    if targets == 0 {
+        return Err(syn::Error::new(
+            c.ident.span(),
+            "this const emits to no target after `skip(..)`: keep a target, or use \
+             `#[emit(internal)]` to emit nowhere",
+        ));
+    }
     // Emit the target set symbolically so `meta::Targets` remains the single
     // source of truth for the bit values (no duplicated 1/2/4 across crates).
     let mut target_parts: Vec<TokenStream2> = Vec::new();
@@ -411,7 +420,7 @@ fn classify_type(ty: &Type) -> syn::Result<(u8, Kind)> {
                 Some("isize") => Ok((64, Kind::Int)),
                 _ => Err(syn::Error::new(
                     ty.span(),
-                    "unsupported const type for #[constants]; use u8..=u128 / i8..=i128 / usize / &str",
+                    "unsupported const type for #[constants]; use u8..=u128 / i8..=i128 / usize / isize / &str",
                 )),
             }
         }
@@ -521,6 +530,27 @@ mod tests {
             }
         );
         assert!(constants(quote!(to(rust)), per_const).is_err());
+    }
+
+    #[test]
+    fn skipping_every_target_is_rejected() {
+        let item = quote!(
+            pub mod g {
+                #[emit(skip(rust))]
+                pub const X: u64 = 1;
+            }
+        );
+        let err = constants(quote!(to(rust)), item).unwrap_err().to_string();
+        assert!(err.contains("emit(internal)"), "{err}");
+
+        // Explicitly emitting nowhere stays available.
+        let item = quote!(
+            pub mod g {
+                #[emit(internal)]
+                pub const X: u64 = 1;
+            }
+        );
+        assert!(constants(quote!(to(rust)), item).is_ok());
     }
 
     #[test]

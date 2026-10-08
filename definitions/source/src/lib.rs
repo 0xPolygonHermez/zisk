@@ -5,10 +5,11 @@
 //! module per file**, and a group only starts producing generated output once it is
 //! listed in `ZISK_CONSTANTS`.
 //!
-//! The pattern each group file follows is shown by the sample groups
-//! ([`memory`]/[`opcodes`]/[`execution`], compiled under `test` only): an inline
-//! `#[constants]` module plus a `pub use <group>::{GROUP, EXPORTS};` re-export. The
-//! `tests` round-trip renders them to exercise every attribute feature: inheritance,
+//! Each group file follows one pattern: an inline `#[constants]` module plus a
+//! `pub use <group>::{GROUP, EXPORTS};` re-export. `execution` is the first real
+//! group (listed in `ZISK_CONSTANTS`, compiled always); `memory` and `opcodes` are
+//! samples compiled under `test` only. The `tests` round-trip renders all three to
+//! exercise every attribute feature: inheritance,
 //! `#[emit(internal)]`, `skip(..)`, target restriction, derived values, a per-target
 //! prefix, a radix override, and a `fits` override.
 
