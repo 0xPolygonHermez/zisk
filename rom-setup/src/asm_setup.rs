@@ -205,7 +205,8 @@ pub fn get_assembly_file_paths(
 }
 
 /// Variant of [`get_assembly_file_paths`] that takes the ELF hash directly
-/// (caller already computed it). Returns `[mt, rh, mo, mol]` (`mol`: the light memory-ops form).
+/// (caller already computed it). Returns `[mt, rh, moh, mol]`: the memory-ops emulator with
+/// values and steps (`moh`) and its light form (`mol`), named apart from a plain `-mo` build's.
 pub fn get_assembly_file_paths_from_id(
     elf_hash: &str,
     output_path: &Path,
@@ -215,7 +216,7 @@ pub fn get_assembly_file_paths_from_id(
     [
         output_path.join(format!("{base}-mt.bin")),
         output_path.join(format!("{base}-rh.bin")),
-        output_path.join(format!("{base}-mo.bin")),
+        output_path.join(format!("{base}-moh.bin")),
         output_path.join(format!("{base}-mol.bin")),
     ]
 }
@@ -273,7 +274,7 @@ pub fn generate_assembly(
 
     let bin_mt_file = output_path.join(format!("{base}-mt.bin"));
     let bin_rh_file = output_path.join(format!("{base}-rh.bin"));
-    let bin_mo_file = output_path.join(format!("{base}-mo.bin"));
+    let bin_mo_file = output_path.join(format!("{base}-moh.bin"));
     let bin_mol_file = output_path.join(format!("{base}-mol.bin"));
 
     let (emulator_asm_path, asm_source) = resolve_emulator_asm()?;

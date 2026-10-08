@@ -361,8 +361,17 @@ impl ProverEngine for AsmProver {
 
         let asm_mt_path_exists = check_paths_exist(&asm_mt_path).is_ok();
         let asm_rh_path_exists = check_paths_exist(&asm_rh_path).is_ok();
+        // The memory-ops emulators too: a cache another build filled has only its own forms.
+        let output_path = get_output_path(&None)?;
+        let asm_all_exist = zisk_rom_setup::get_assembly_file_paths_from_id(
+            &zisk_rom_setup::get_elf_data_hash(elf.elf()),
+            &output_path,
+            with_hints,
+        )
+        .iter()
+        .all(|f| f.exists());
 
-        if !asm_mt_path_exists || !asm_rh_path_exists {
+        if !asm_mt_path_exists || !asm_rh_path_exists || !asm_all_exist {
             if self.core_prover.asm_info.no_auto_setup {
                 return Err(anyhow::anyhow!(
                         "Assembly files not found for ELF {}. Force ROM setup is enabled, but assembly files are still missing. Please ensure that the assembly generation process has been completed successfully.",
@@ -376,7 +385,6 @@ impl ProverEngine for AsmProver {
                     elf.name()
                 );
                 timer_start_info!(ROM_SETUP);
-                let output_path = get_output_path(&None)?;
                 generate_assembly(
                     elf.elf(),
                     &output_path,
