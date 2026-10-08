@@ -234,8 +234,10 @@ impl AsmProver {
             with_hints,
             asm_runner_options,
         )?;
-        // Held until this program is active: mapping initializes the shared control
-        // and input segments, which a job may be using.
+        // Held until this setup returns. Mapping initializes the shared control and
+        // input segments, which a job may be using; and until the mappings are
+        // published below, a second setup would find none and build its own, while a
+        // job could register its resources only to have them replaced here.
         let claim = asm_services.claim();
 
         // Borrow proofman's already-allocated unified GPU buffer.
@@ -264,7 +266,6 @@ impl AsmProver {
 
         let resources = Arc::new(AsmResources::new(shared.clone(), asm_services)?);
         resources.activate(&claim)?;
-        drop(claim);
         self.core_prover.backend.set_asm_resources(resources.clone())?;
 
         self.shared_resources.write().unwrap().insert(with_hints, shared);
