@@ -838,6 +838,8 @@ fn c_string_literal(s: &str) -> String {
             b'\n' => out.push_str("\\n"),
             b'\t' => out.push_str("\\t"),
             b'\r' => out.push_str("\\r"),
+            // `\?` keeps a `??x` run from forming a trigraph in ISO C modes.
+            b'?' => out.push_str("\\?"),
             0x20..=0x7e => out.push(b as char),
             _ => {
                 let _ = write!(out, "\\{b:03o}");
@@ -1275,6 +1277,16 @@ mod tests {
         assert!(check(&[(&NEW, E)], &dirs, "test").is_ok());
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn c_strings_cannot_form_trigraphs() {
+        static G: GroupMeta = group("t", "t.h");
+        static E: &[Export] =
+            &[Export { ty_bits: 0, ..export("T", Value::Str("a??/b"), Targets::C, None) }];
+        let files = render(&[(&G, E)], "test").expect("render");
+        let h = &files.iter().find(|f| f.name == "t.h").expect("t.h").contents;
+        assert!(h.contains(r#""a\?\?/b""#), "{h}");
     }
 
     #[test]

@@ -144,6 +144,8 @@ To install the PLONK proving key (provingKeySnark), run:
     ```bash
     mkdir -p $HOME/.zisk/zisk/emulator-asm
     cp -r ./emulator-asm/src $HOME/.zisk/zisk/emulator-asm
+    mkdir -p $HOME/.zisk/zisk/emulator-asm/src/generated
+    cp ./definitions/src/generated/c/execution.gen.h $HOME/.zisk/zisk/emulator-asm/src/generated/
     cp ./emulator-asm/Makefile $HOME/.zisk/zisk/emulator-asm
     mkdir -p $HOME/.zisk/zisk/lib-c/c
     cp -r ./lib-c/c/src $HOME/.zisk/zisk/lib-c/c
