@@ -43,13 +43,45 @@ static PREFIX_LEASES: Mutex<BTreeMap<String, PrefixState>> = Mutex::new(BTreeMap
 struct PrefixState {
     /// How many `AsmServices` hold a [`PrefixLease`] on it.
     leases: usize,
-    /// The services whose program the shared guest RAM and ROM currently hold.
+    /// The program whose services the shared guest RAM and ROM currently hold.
     /// Taken before anything else writes those segments, and set only once
     /// that program's reset has completed, so a failure in between leaves no
     /// program recorded rather than the wrong one.
-    active: Option<Weak<AsmServicesInner>>,
+    active: Option<ActiveProgram>,
     /// Behind every [`SegmentsClaim`] on the prefix.
     claims: Arc<SegmentsLock>,
+}
+
+/// The program the shared segments serve, as `PrefixState` records it.
+///
+/// Weak, so that recording a program does not keep it alive. With the latch its
+/// teardown sets, so that an activation finding it already dropped can still
+/// wait for its services: the `Weak` stops upgrading as soon as the last
+/// reference goes, before `Drop` has stopped them.
+struct ActiveProgram {
+    services: Weak<AsmServicesInner>,
+    stopped: Arc<StoppedLatch>,
+}
+
+/// Set once a program's services have stopped.
+#[derive(Default)]
+struct StoppedLatch {
+    stopped: Mutex<bool>,
+    set: Condvar,
+}
+
+impl StoppedLatch {
+    fn set(&self) {
+        *self.stopped.lock().unwrap_or_else(|p| p.into_inner()) = true;
+        self.set.notify_all();
+    }
+
+    fn wait(&self) {
+        let mut stopped = self.stopped.lock().unwrap_or_else(|p| p.into_inner());
+        while !*stopped {
+            stopped = self.set.wait(stopped).unwrap_or_else(|p| p.into_inner());
+        }
+    }
 }
 
 /// The lock behind [`SegmentsClaim`].
@@ -264,6 +296,8 @@ struct AsmServicesInner {
     service: StdioService,
     shm_prefix: String,
     sem_prefix: String,
+    /// Set by `Drop` once the services have stopped; see [`ActiveProgram`].
+    stopped: Arc<StoppedLatch>,
     /// Keeps this prefix's shared segments alive; the last one out unlinks them.
     /// Dropped, as every field is, only after `Drop` has stopped the children.
     _prefix_lease: PrefixLease,
@@ -362,6 +396,7 @@ impl AsmServices {
             service: stdio_service,
             shm_prefix,
             sem_prefix,
+            stopped: Arc::default(),
             _prefix_lease: prefix_lease,
         };
 
@@ -579,7 +614,10 @@ impl AsmServices {
 
         let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(state) = leases.get_mut(&self.inner.shm_prefix) {
-            state.active = Some(Arc::downgrade(&self.inner));
+            state.active = Some(ActiveProgram {
+                services: Arc::downgrade(&self.inner),
+                stopped: Arc::clone(&self.inner.stopped),
+            });
         }
         Ok(())
     }
@@ -607,7 +645,7 @@ impl AsmServices {
         leases
             .get(&self.inner.shm_prefix)
             .and_then(|state| state.active.as_ref())
-            .is_some_and(|active| std::ptr::eq(active.as_ptr(), Arc::as_ptr(&self.inner)))
+            .is_some_and(|active| std::ptr::eq(active.services.as_ptr(), Arc::as_ptr(&self.inner)))
     }
 
     /// Wait until the services of the program `shm_prefix`'s segments serve
@@ -620,16 +658,20 @@ impl AsmServices {
     /// request only when it is done with the last, and a request in flight holds
     /// that service's handle until its response arrives. A request its runner has
     /// not sent yet is not waited for: see `JobClaim` in `zisk-prover-backend`. A
-    /// service whose ping fails is taken as stopped.
+    /// service whose ping fails is taken as stopped. A program already dropped is
+    /// not pinged but waited for, until its teardown has stopped its services.
     fn quiesce_active(shm_prefix: &str) {
         let outgoing = {
             let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
-            leases
-                .get_mut(shm_prefix)
-                .and_then(|state| state.active.take())
-                .and_then(|active| active.upgrade())
+            leases.get_mut(shm_prefix).and_then(|state| state.active.take())
         };
         let Some(outgoing) = outgoing else { return };
+        // Its last reference is gone, but its teardown, which holds no claim, may
+        // still be stopping services that write the segments: wait for it to finish.
+        let Some(outgoing) = outgoing.services.upgrade() else {
+            outgoing.stopped.wait();
+            return;
+        };
         for service in &Self::SERVICES {
             if let Err(e) = outgoing.service.send_status_request(service) {
                 tracing::warn!(
@@ -831,6 +873,9 @@ impl Drop for AsmServicesInner {
                 e
             );
         }
+        // `stop_asm_services` closes every service it finds running, so none is left
+        // to write the shared segments.
+        self.stopped.set();
 
         self.cleanup_my_semaphores();
     }
@@ -901,6 +946,50 @@ mod tests {
             !PREFIX_LEASES.lock().unwrap().contains_key(&prefix),
             "the prefix must be forgotten so a later setup re-creates it"
         );
+    }
+
+    /// A program's teardown holds no claim, and the activation record stops
+    /// upgrading as soon as its last reference goes, before its services are
+    /// stopped. A switch that finds it dropped must wait for that teardown rather
+    /// than reset the segments under services still writing them.
+    #[test]
+    fn a_switch_waits_for_a_dropped_program_to_stop_its_services() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let prefix = format!("ZISK_unittest_teardown_{}", std::process::id());
+        let stopped = Arc::new(StoppedLatch::default());
+        PREFIX_LEASES.lock().unwrap().insert(
+            prefix.clone(),
+            PrefixState {
+                leases: 1,
+                // A program whose last reference is gone: its `Weak` no longer upgrades.
+                active: Some(ActiveProgram {
+                    services: Weak::new(),
+                    stopped: Arc::clone(&stopped),
+                }),
+                claims: Arc::default(),
+            },
+        );
+
+        let (switched, rx) = mpsc::channel();
+        let switch = {
+            let prefix = prefix.clone();
+            std::thread::spawn(move || {
+                AsmServices::quiesce_active(&prefix);
+                switched.send(()).unwrap();
+            })
+        };
+        assert!(
+            rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a switch must wait while the dropped program's services are stopping"
+        );
+
+        stopped.set();
+        rx.recv_timeout(Duration::from_secs(10)).expect("the teardown's end must let it in");
+        switch.join().unwrap();
+        let state = PREFIX_LEASES.lock().unwrap().remove(&prefix).unwrap();
+        assert!(state.active.is_none(), "the switch must leave no program recorded");
     }
 
     /// A job holds the segments from its handoff to its last read, so a second
