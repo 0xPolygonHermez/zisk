@@ -22,6 +22,7 @@ mod late_value;
 /// Path-related utilities and types.
 pub mod paths;
 mod planner_helpers;
+mod precompile_log;
 mod profiling;
 mod proof;
 mod proof_log;
@@ -44,6 +45,7 @@ pub use instance_context::*;
 pub use late_value::*;
 pub use paths::*;
 pub use planner_helpers::*;
+pub use precompile_log::*;
 pub use profiling::*;
 pub use proof::*;
 pub use proof_log::*;

@@ -56,6 +56,7 @@ zisk_common::zisk_precompile! {
     // The packed witness is built on the device when the prover registers the
     // kernel; `GpuOp` is what it consumes, staged from `KeccakfInput`.
     gpu_witness = { op = crate::keccakf_gpu::GpuOp },
+    from_log = true,
 }
 
 #[cfg(test)]

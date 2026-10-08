@@ -65,6 +65,7 @@ impl EmulatorRust {
             min_traces,
             counters,
             pub_outs,
+            precompile_logs: Default::default(),
             steps,
             backend: BackendArtifacts::Rust,
         })

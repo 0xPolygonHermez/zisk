@@ -5106,6 +5106,10 @@ impl ZiskRom2Asm {
                     Self::mem_op_array(ctx, code, REG_ADDRESS, true, 25);
                 }
 
+                if ctx.minimal_trace() {
+                    Self::log_precompile(ctx, code, unusual_code, inst, 25);
+                }
+
                 // Get result from precompile results data
                 if ctx.precompile_results_keccak() {
                     Self::precompile_results_array(ctx, code, unusual_code, "rdi", 25);
@@ -8684,6 +8688,64 @@ impl ZiskRom2Asm {
         *code += "\tpop rbx\n";
         //*code += "\tpop rsp\n";
         *code += &format!("\tmov rsp, {} {}\n", ctx.mem_rsp, ctx.comment_str("restore rsp"));
+    }
+
+    /// Logs the operation's bus payload; its inputs are the last `input_words` memory reads.
+    /// Inline, with rsi and rcx, which the emulation does not use.
+    fn log_precompile(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        unusual_code: &mut String,
+        inst: &ZiskInst,
+        input_words: u64,
+    ) {
+        let bytes = (6 + input_words) * 8;
+        let a = if ctx.store_a_in_c { REG_C } else { ctx.a.string_value.as_str() };
+        let (full, done) =
+            (format!("pc_{:x}_prec_log_full", ctx.pc), format!("pc_{:x}_prec_log_done", ctx.pc));
+        *code += "\tmov rsi, qword ptr [prec_log_next]\n";
+        *code += &format!("\tlea rcx, [rsi + {bytes}]\n");
+        *code += "\tcmp rcx, qword ptr [prec_log_end]\n";
+        *code += &format!("\tja {full}\n");
+        *code += &format!("\tmov qword ptr [rsi], {}\n", 5 + input_words);
+        *code += &format!("\tmov qword ptr [rsi + 8], 0x{:x}\n", inst.op);
+        *code += &format!("\tmov qword ptr [rsi + 16], 0x{:x}\n", inst.op_type as u64);
+        for (offset, value) in [(24, a), (32, ctx.b.string_value.as_str())] {
+            *code += &format!("\tmov rcx, {value}\n");
+            if inst.m32 {
+                *code += "\tmov ecx, ecx\n";
+            }
+            *code += &format!("\tmov qword ptr [rsi + {offset}], rcx\n");
+        }
+        *code += &format!("\tmov rcx, {} {}\n", ctx.mem_step, ctx.comment_str("step"));
+        *code += "\tadd rcx, chunk_size\n";
+        *code += &format!("\tsub rcx, {REG_STEP}\n");
+        *code += "\tmov qword ptr [rsi + 40], rcx\n";
+        for k in 0..input_words {
+            *code += &format!(
+                "\tmov rcx, [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 - {}]\n",
+                (input_words - k) * 8
+            );
+            *code += &format!("\tmov qword ptr [rsi + {}], rcx\n", 48 + k * 8);
+        }
+        // Publish: the words used, after the record (x86 keeps store order)
+        *code += &format!("\tadd rsi, {bytes}\n");
+        *code += "\tmov qword ptr [prec_log_next], rsi\n";
+        *code += "\tsub rsi, qword ptr [prec_log_data]\n";
+        *code += "\tshr rsi, 3\n";
+        *code += "\tmov rcx, qword ptr [prec_log]\n";
+        *code += "\tmov qword ptr [rcx + 8], rsi\n";
+        *code += &format!("{done}:\n");
+
+        // Full, or not logging: stop for good, marking the header's capacity as reached
+        *unusual_code += &format!("{full}:\n");
+        *unusual_code += "\tmov qword ptr [prec_log_end], 0\n";
+        *unusual_code += "\tmov rcx, qword ptr [prec_log]\n";
+        *unusual_code += "\ttest rcx, rcx\n";
+        *unusual_code += &format!("\tjz {done}\n");
+        *unusual_code += "\tmov rsi, qword ptr [rcx + 8]\n";
+        *unusual_code += "\tmov qword ptr [rcx + 16], rsi\n";
+        *unusual_code += &format!("\tjmp {done}\n");
     }
 
     fn push_internal_registers(ctx: &mut ZiskAsmContext, code: &mut String, extra_8: bool) {

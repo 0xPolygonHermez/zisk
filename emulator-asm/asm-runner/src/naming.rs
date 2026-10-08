@@ -77,6 +77,11 @@ pub(crate) fn shmem_output_name(
     }
 }
 
+/// Shared memory name for the precompile log (MT service).
+pub(crate) fn shmem_prec_log_name(prefix: &str) -> String {
+    build_service_shmem_name(prefix, AsmService::MT, "prec")
+}
+
 /// Semaphore name for chunk completion (per service).
 pub(crate) fn sem_chunk_done_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "chunk_done")
@@ -115,6 +120,7 @@ mod tests {
         assert_eq!(shmem_control_output_name(p, AsmService::MO), "ZISK_42_0_MO_control_output");
         assert_eq!(shmem_output_name(p, AsmService::MT, None), "ZISK_42_0_MT_output");
         assert_eq!(shmem_output_name(p, AsmService::MT, Some(3)), "ZISK_42_0_MT_output_3");
+        assert_eq!(shmem_prec_log_name(p), "ZISK_42_0_MT_prec");
     }
 
     #[test]

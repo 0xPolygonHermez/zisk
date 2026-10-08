@@ -22,6 +22,22 @@ impl AsmShmemHeader for AsmMTHeader {
     }
 }
 
+/// Must match `PREC_LOG_*` in emulator-asm/src/constants.hpp.
+#[repr(C)]
+#[derive(Debug)]
+pub(crate) struct PrecLogHeader {
+    pub allocated_size: u64,
+    pub used_words: u64,
+    pub capacity_words: u64,
+    pub _reserved: [u64; 5],
+}
+
+impl AsmShmemHeader for PrecLogHeader {
+    fn allocated_size(&self) -> u64 {
+        self.allocated_size
+    }
+}
+
 /// Maximum size in bytes of a chunk's metadata: the `AsmMTChunk` header, 3 words of slack and 32
 /// bytes. Must match `MAX_TRACE_CHUNK_INFO` in emulator-asm/src/constants.hpp.
 #[cfg_attr(not(all(target_os = "linux", target_arch = "x86_64")), allow(dead_code))]

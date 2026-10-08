@@ -4,16 +4,19 @@ use zisk_common::{stats_begin, stats_end, stats_mark, AsmExecutionInfo};
 use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use std::sync::atomic::{fence, Ordering};
+use std::sync::atomic::{fence, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
 use tracing::{error, info, warn};
 
+use zisk_common::PrecompileLogs;
+
 use crate::{
-    sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmMultiShmem, AsmRunError,
-    AsmService, AsmServices, MAX_TRACE_CHUNK_INFO, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE,
-    TRACE_INITIAL_SIZE, TRACE_MAX_SIZE,
+    sem_chunk_done_name, shmem_output_name, shmem_prec_log_name, AsmMTChunk, AsmMTHeader,
+    AsmMultiShmem, AsmRunError, AsmService, AsmServices, AsmShmem, PrecLogHeader,
+    MAX_TRACE_CHUNK_INFO, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE, TRACE_INITIAL_SIZE,
+    TRACE_MAX_SIZE,
 };
 
 use anyhow::{Context, Result};
@@ -21,7 +24,25 @@ use anyhow::{Context, Result};
 /// This struct manages the shared memory and synchronization primitives for reading memory operation traces from the C++ side.
 pub struct MTShmemReader {
     pub(crate) output_shmem: AsmMultiShmem<AsmMTHeader>,
+    prec_log: PrecLogShmem,
 }
+
+/// The precompile log, as read in the current run.
+struct PrecLogShmem {
+    shmem: AsmShmem<PrecLogHeader>,
+    /// Writable, to free the pages read.
+    fd: std::os::fd::OwnedFd,
+    /// Words read.
+    read: usize,
+    /// Bytes freed.
+    freed: usize,
+    /// Inconsistent: no longer parsed.
+    broken: bool,
+    overflowed: bool,
+}
+
+/// The first page holds the header.
+const PAGE: usize = 4096;
 
 impl MTShmemReader {
     /// Creates a new `MTShmemReader` by opening and mapping the shared memory for the MT trace output.
@@ -37,7 +58,92 @@ impl MTShmemReader {
             false,
         )?;
 
-        Ok(Self { output_shmem })
+        // Sparse, so not locked. Required: every process must plan the same instances.
+        let prec_log_name = shmem_prec_log_name(shm_prefix);
+        let shmem =
+            AsmShmem::<PrecLogHeader>::open_and_map(&prec_log_name, true).with_context(|| {
+                format!("No precompile input log {prec_log_name}: rebuild the ROM's assembly")
+            })?;
+        let fd = crate::shmem_sys::open(&prec_log_name, libc::O_RDWR)?;
+        // SAFETY: just opened, owned by nothing else.
+        let fd = unsafe { <std::os::fd::OwnedFd as std::os::fd::FromRawFd>::from_raw_fd(fd) };
+        let prec_log =
+            PrecLogShmem { shmem, fd, read: 0, freed: PAGE, broken: false, overflowed: false };
+
+        Ok(Self { output_shmem, prec_log })
+    }
+
+    /// Starts reading a new run's log.
+    fn reset_precompile_log(&mut self) {
+        let log = &mut self.prec_log;
+        (log.read, log.freed, log.broken, log.overflowed) = (0, PAGE, false, false);
+    }
+
+    /// Appends the new records to `logs` and frees the pages read.
+    fn append_precompile_logs(&mut self, logs: &mut PrecompileLogs) {
+        let log = &mut self.prec_log;
+        let header_ptr = log.shmem.mapped_ptr() as *const PrecLogHeader;
+        // SAFETY: aligned header word, stored with release.
+        let used = unsafe {
+            (*(std::ptr::addr_of!((*header_ptr).used_words) as *const AtomicU64))
+                .load(Ordering::Acquire)
+        } as usize;
+        if !log.broken {
+            if let Err(e) = Self::parse(log, used, logs) {
+                error!("Precompile input log: {e}; collected by replay");
+                log.broken = true;
+                *logs = PrecompileLogs::default();
+            }
+        }
+
+        // Also when broken: the producer keeps writing.
+        let free_to = (std::mem::size_of::<PrecLogHeader>() + used * 8) / PAGE * PAGE;
+        if free_to > log.freed {
+            use std::os::fd::AsRawFd;
+            // SAFETY: pages already read.
+            let result = unsafe {
+                libc::fallocate(
+                    log.fd.as_raw_fd(),
+                    libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE,
+                    log.freed as libc::off_t,
+                    (free_to - log.freed) as libc::off_t,
+                )
+            };
+            if result != 0 {
+                warn!("Precompile input log pages not freed: {}", std::io::Error::last_os_error());
+            }
+            log.freed = free_to;
+        }
+    }
+
+    /// Parses the records up to `used` words.
+    fn parse(log: &mut PrecLogShmem, used: usize, logs: &mut PrecompileLogs) -> Result<()> {
+        // A stale chunk post can show the next run's count.
+        anyhow::ensure!(used >= log.read, "reset under its reader ({used} < {})", log.read);
+        // SAFETY: written before the count was published.
+        let words = unsafe {
+            std::slice::from_raw_parts(
+                (log.shmem.data_ptr() as *const u64).add(log.read),
+                used - log.read,
+            )
+        };
+        let mut at = 0;
+        while at < words.len() {
+            let len = words[at] as usize;
+            anyhow::ensure!(
+                len > zisk_common::STEP && at + 1 + len <= words.len(),
+                "bad record of {len} words at word {}",
+                log.read + at
+            );
+            logs.push(&words[at + 1..at + 1 + len]);
+            at += 1 + len;
+        }
+        log.read = used;
+        if !log.overflowed && log.shmem.map_header().capacity_words as usize == used {
+            log.overflowed = true;
+            warn!("Precompile input log full at {used} words; the rest is collected by replay");
+        }
+        Ok(())
     }
 }
 
@@ -68,9 +174,9 @@ impl AsmRunnerMT {
         on_runner_failure: R,
         asm_services: AsmServices,
         _stats: ExecutorStatsHandle,
-    ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)>
+    ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo, PrecompileLogs)>
     where
-        F: FnMut(usize, &[Arc<EmuTrace>], bool) -> Result<()>,
+        F: FnMut(usize, &[Arc<EmuTrace>], bool, &mut PrecompileLogs) -> Result<()>,
         R: FnOnce() -> Result<()>,
     {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
@@ -131,6 +237,8 @@ impl AsmRunnerMT {
 
         // Pre-allocate reasonable initial capacity to avoid early reallocations
         let mut emu_traces: Vec<Arc<EmuTrace>> = Vec::with_capacity(1024);
+        let mut precompile_logs = PrecompileLogs::default();
+        preloaded.reset_precompile_log();
 
         let mut on_runner_failure = Some(on_runner_failure);
         let mut signal_runner_failure = || {
@@ -175,7 +283,10 @@ impl AsmRunnerMT {
                     let should_exit = emu_trace.end;
 
                     emu_traces.push(emu_trace);
-                    if let Err(e) = on_chunk(chunk_id.0, &emu_traces, should_exit) {
+                    preloaded.append_precompile_logs(&mut precompile_logs);
+                    if let Err(e) =
+                        on_chunk(chunk_id.0, &emu_traces, should_exit, &mut precompile_logs)
+                    {
                         signal_runner_failure();
                         break Err(e.context("MT chunk callback failed"));
                     }
@@ -263,6 +374,6 @@ impl AsmRunnerMT {
         }
 
         stats_end!(_stats, &_runner_scope);
-        Ok((emu_traces, asm_execution_info))
+        Ok((emu_traces, asm_execution_info, precompile_logs))
     }
 }

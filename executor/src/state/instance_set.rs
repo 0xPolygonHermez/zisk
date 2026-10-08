@@ -16,8 +16,8 @@ pub struct InstanceSet<F: PrimeField64> {
     // blocked behind a witness computation.
     pub main_instances: RwLock<HashMap<usize, Arc<MainInstance<F>>>>,
 
-    /// Secondary state machine instances, indexed by their global ID.
-    pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
+    /// Secondary state machine instances, indexed by their global ID. `Arc` for the same reason.
+    pub secn_instances: RwLock<HashMap<usize, Arc<dyn Instance<F>>>>,
 }
 
 impl<F: PrimeField64> InstanceSet<F> {

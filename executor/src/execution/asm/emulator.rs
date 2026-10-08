@@ -17,7 +17,7 @@ use proofman_fields::PrimeField64;
 use zisk_asm_runner::{AsmRunnerMT, HintsShmem};
 use zisk_common::{
     io::StreamSource, io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, ChunkId, EmuTrace,
-    ExecutorStatsHandle, StatsScope,
+    ExecutorStatsHandle, PrecompileLogs, StatsScope,
 };
 use zisk_core::ZiskRom;
 use zisk_precomp_hints::HintsProcessor;
@@ -155,13 +155,14 @@ impl EmulatorAsm {
         let mt_result = self.run_mt_assembly::<F>(zisk_rom, stats, chunk_hook);
 
         let output = match mt_result {
-            Ok((min_traces, counters, pub_outs)) => {
+            Ok((min_traces, counters, pub_outs, precompile_logs)) => {
                 let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
                 let (handle_mo, handle_rh) = supervisor.into_handles();
                 Ok(ExecutionOutput {
                     min_traces,
                     counters,
                     pub_outs,
+                    precompile_logs,
                     steps,
                     backend: BackendArtifacts::Asm { mo: Some(handle_mo), rh: handle_rh },
                 })
@@ -187,8 +188,12 @@ impl EmulatorAsm {
         zisk_rom: &ZiskRom,
         stats: &ExecutorStatsHandle,
         chunk_hook: crate::ChunkHook<'_>,
-    ) -> ExecutorResult<(Vec<std::sync::Arc<EmuTrace>>, CountersChunkMetrics, PubOutsCollector)>
-    {
+    ) -> ExecutorResult<(
+        Vec<std::sync::Arc<EmuTrace>>,
+        CountersChunkMetrics,
+        PubOutsCollector,
+        PrecompileLogs,
+    )> {
         stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
 
         let processor: MtChunkProcessor<F> = MtChunkProcessor::new();
@@ -201,7 +206,8 @@ impl EmulatorAsm {
             let processor_ref = &processor;
             let on_chunk = |idx: usize,
                             emu_traces: &[std::sync::Arc<EmuTrace>],
-                            last: bool|
+                            last: bool,
+                            logs: &mut PrecompileLogs|
              -> anyhow::Result<()> {
                 let emu_trace = emu_traces[idx].clone();
                 let chunk_id = ChunkId(idx);
@@ -211,7 +217,7 @@ impl EmulatorAsm {
                 // Main-instance advancement: runs on the reader thread, in chunk
                 // order, once the counting task is on its way. Does real work only
                 // on the chunks that complete a Main instance (or end the run).
-                chunk_hook(idx, emu_traces, last).map_err(anyhow::Error::from)
+                chunk_hook(idx, emu_traces, last, logs).map_err(anyhow::Error::from)
             };
 
             let asm_resources = self.transport.resources()?;
@@ -234,7 +240,7 @@ impl EmulatorAsm {
             Ok(result)
         });
 
-        let (emu_traces, asm_execution_info) = scope_result?;
+        let (emu_traces, asm_execution_info, precompile_logs) = scope_result?;
 
         self.asm_execution_info.lock_or_poison("asm_execution_info")?.replace(asm_execution_info);
 
@@ -242,6 +248,6 @@ impl EmulatorAsm {
         let (counters, pub_outs) = processor.finalize()?;
 
         stats_end!(stats, &_mt_scope);
-        Ok((emu_traces, counters, pub_outs))
+        Ok((emu_traces, counters, pub_outs, precompile_logs))
     }
 }

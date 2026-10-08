@@ -24,9 +24,14 @@ impl SecondaryWitnessHandler {
         buffer_pool: &dyn BufferPool<F>,
         stats_scope_id: u64,
     ) -> ExecutorResult<()> {
-        let secn_instances = state.instance_set.secn_instances.read_or_poison("secn_instances")?;
-        let secn_instance =
-            secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
+        // Not held across the witness: the reader thread adds instances.
+        let secn_instance = state
+            .instance_set
+            .secn_instances
+            .read_or_poison("secn_instances")?
+            .get(&global_id)
+            .cloned()
+            .ok_or(ExecutorError::InstanceNotFound { global_id })?;
 
         let needs_collection = !state
             .collector_store
@@ -34,9 +39,12 @@ impl SecondaryWitnessHandler {
             .read_or_poison("collector_store")?
             .contains_key(&global_id);
 
-        let instance = &**secn_instance;
+        let instance = &*secn_instance;
         if needs_collection {
-            collector.collect_single(pctx, state, global_id, instance)?;
+            let air = pctx.dctx_get_instance_info(global_id)?;
+            if !state.register_stored_log_collectors(global_id, air, instance)? {
+                collector.collect_single(pctx, state, global_id, instance)?;
+            }
         }
 
         let collectors = state.take_collectors_for_instance(global_id, instance.instance_type())?;

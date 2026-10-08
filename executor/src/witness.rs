@@ -26,7 +26,8 @@ use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use zisk_asm_runner::AsmRunnerRH;
 use zisk_common::{
-    CheckPoint, Instance, InstanceCtx, InstanceType, LateJoinHandle, Plan, StatsScope,
+    CheckPoint, EmuTrace, Instance, InstanceCtx, InstanceType, LateJoinHandle, Plan,
+    PrecompileLogs, StatsScope,
 };
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
@@ -215,8 +216,41 @@ impl<F: PrimeField64> WitnessPhase<F> {
                 plan.global_id.ok_or(ExecutorError::SecnPlanMissing { phase: "populate" })?;
             if let Entry::Vacant(e) = secn_instances.entry(global_id) {
                 let instance = self.sm_bundle.build_instance(InstanceCtx::new(global_id, plan))?;
-                e.insert(instance);
+                e.insert(instance.into());
             }
+        }
+        Ok(())
+    }
+
+    /// Builds a precompile instance planned from the log during the run and, if it is this
+    /// process's, fills its collectors and announces it.
+    pub fn release_logged_instance(
+        &self,
+        registry: &dyn ProofRegistry,
+        state: &ExecutionState<F>,
+        plan: Plan,
+        logs: &PrecompileLogs,
+        traces: &[std::sync::Arc<EmuTrace>],
+    ) -> ExecutorResult<()> {
+        let global_id = plan.global_id.ok_or(ExecutorError::SecnPlanMissing { phase: "early" })?;
+        let air = (plan.airgroup_id, plan.air_id);
+        self.populate_secn_instances(state, vec![plan])?;
+        self.configure_checkpoints(registry, state, &[global_id])?;
+
+        let gid = GlobalId(global_id);
+        if !registry.is_my_process_instance(gid)? {
+            return Ok(());
+        }
+        let instance = state
+            .instance_set
+            .secn_instances
+            .read_or_poison("secn_instances")?
+            .get(&global_id)
+            .cloned()
+            .ok_or(ExecutorError::InstanceNotFound { global_id })?;
+        if state.register_log_collectors(global_id, air, &*instance, logs, traces)? {
+            state.early_secn.lock_or_poison("early_secn")?.announced.insert(global_id);
+            registry.announce_witness_ready(gid);
         }
         Ok(())
     }
@@ -427,6 +461,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
                     &secn_instances_guard,
                     &mut instances_to_collect,
                     global_id,
+                    (info.airgroup_id, info.air_id),
                 )?;
             }
         }
@@ -447,9 +482,15 @@ impl<F: PrimeField64> WitnessPhase<F> {
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
         global_id: usize,
+        air: (usize, usize),
     ) -> ExecutorResult<()> {
         let secn_instance =
             secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
+
+        // Already announced while the emulation ran.
+        if state.early_secn.lock_or_poison("early_secn")?.announced.remove(&global_id) {
+            return Ok(());
+        }
 
         if secn_instance.instance_type() == InstanceType::Instance
             && !state
@@ -457,6 +498,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
                 .inner
                 .read_or_poison("collector_store")?
                 .contains_key(&global_id)
+            && !state.register_stored_log_collectors(global_id, air, &**secn_instance)?
         {
             instances_to_collect.insert(global_id, &**secn_instance);
         } else {

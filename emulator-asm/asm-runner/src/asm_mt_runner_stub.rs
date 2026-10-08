@@ -38,7 +38,7 @@ impl AsmRunnerMT {
         _: ExecutorStatsHandle,
     ) -> Result<Vec<Arc<EmuTrace>>>
     where
-        F: FnMut(usize, &[Arc<EmuTrace>], bool) -> Result<()>,
+        F: FnMut(usize, &[Arc<EmuTrace>], bool, &mut zisk_common::PrecompileLogs) -> Result<()>,
         R: FnOnce() -> Result<()>,
     {
         Err(anyhow::anyhow!("AsmRunnerMT::run_and_count() is not supported on this platform. Only Linux x86_64 is supported."))

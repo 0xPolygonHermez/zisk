@@ -132,6 +132,13 @@ uint64_t trace_size = TRACE_INITIAL_SIZE;
 uint64_t trace_used_size = 0;
 uint64_t trace_address_threshold = TRACE_ADDR + TRACE_INITIAL_SIZE - MAX_CHUNK_TRACE_SIZE;
 
+// Precompile log (minimal trace); NULL when not logging. The assembly appends at prec_log_next,
+// up to prec_log_end, and publishes the words used from prec_log_data in the header.
+uint64_t * prec_log = NULL;
+uint64_t prec_log_data = 0;
+uint64_t prec_log_next = 0;
+uint64_t prec_log_end = 0;
+
 // To be used when calculating the assembly duration
 uint64_t assembly_duration;
 

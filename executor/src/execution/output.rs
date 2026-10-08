@@ -23,7 +23,7 @@
 use std::{sync::Arc, thread::JoinHandle};
 
 use zisk_asm_runner::{AsmRunnerMO, AsmRunnerRH};
-use zisk_common::{EmuTrace, LateJoinHandle, Plan};
+use zisk_common::{EmuTrace, LateJoinHandle, Plan, PrecompileLogs};
 
 use crate::error::{ExecutorError, ExecutorResult};
 use crate::pub_outs_collector::PubOutsCollector;
@@ -38,6 +38,8 @@ pub struct ExecutionOutput {
     pub counters: CountersChunkMetrics,
     /// Public outputs accumulated during execution.
     pub pub_outs: PubOutsCollector,
+    /// Precompile logs (ASM only).
+    pub precompile_logs: PrecompileLogs,
     /// Total number of steps executed by the emulator.
     pub steps: u64,
     /// Backend-specific async artifacts (ASM-only join handles, or

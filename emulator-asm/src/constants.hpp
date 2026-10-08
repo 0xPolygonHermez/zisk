@@ -120,6 +120,13 @@
 // It is a circular buffer
 #define MAX_PRECOMPILE_SIZE (uint64_t)0x8000000 // 128MB
 
+// Precompile log: header (allocated size, words used, capacity in words), then records in step
+// order, each its length and the operation's bus payload. Sparse; the reader frees what it reads.
+// Must match PrecLogHeader in asm-runner/src/asm_mt.rs.
+#define PREC_LOG_SIZE (uint64_t)0x100000000 // 4GB
+#define PREC_LOG_HEADER_WORDS 8
+#define PREC_LOG_CAPACITY_WORDS (PREC_LOG_SIZE / 8 - PREC_LOG_HEADER_WORDS)
+
 // Maximum chunk mask for zip generation method, which indicates which chunks are included in the trace,
 // and must be between 0 and 7 (inclusive), as it is used to generate a mask of 8 bits where each
 // bit indicates if the corresponding chunk is included in the trace or not.

@@ -2,10 +2,14 @@
 //! in the context of proof systems. It includes traits and macros for defining instances
 //! and integrating them with state machines and proofs.
 
-use crate::{BusDevice, CheckPoint, ChunkId, PayloadType, StatsType};
+use crate::{BusDevice, CheckPoint, ChunkId, EmuTrace, PayloadType, PrecompileLogs, StatsType};
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::any::Any;
+use std::sync::Arc;
+
+/// An instance's collectors, each with its chunk.
+pub type InstanceCollectors = Vec<(usize, Box<dyn BusDevice<PayloadType>>)>;
 
 /// Represents the type of an instance, either a standalone instance or a table.
 #[derive(Debug, PartialEq)]
@@ -70,6 +74,15 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
         &self,
         _chunk_id: ChunkId,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
+        None
+    }
+
+    /// The instance's collectors built from the precompile log, if it has one.
+    fn collectors_from_log(
+        &self,
+        _logs: &PrecompileLogs,
+        _min_traces: &[Arc<EmuTrace>],
+    ) -> Option<InstanceCollectors> {
         None
     }
 

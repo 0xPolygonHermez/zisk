@@ -153,6 +153,10 @@ extern uint64_t trace_address;
 extern uint64_t trace_size;
 extern uint64_t trace_used_size;
 extern uint64_t trace_address_threshold;
+extern uint64_t * prec_log;
+extern uint64_t prec_log_data;
+extern uint64_t prec_log_next;
+extern uint64_t prec_log_end;
 
 // To be used when calculating the assembly duration
 extern uint64_t assembly_duration;

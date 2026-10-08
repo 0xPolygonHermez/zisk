@@ -74,7 +74,7 @@ pub(crate) mod tests {
     #[test]
     fn pre_calculate_enqueues_a_rust_backend_instance() {
         let mut secn_instances: SecnInstanceMap<F> = HashMap::new();
-        secn_instances.insert(GID, make_rom_instance(None));
+        secn_instances.insert(GID, make_rom_instance(None).into());
         let mut instances_to_collect: SecnInstanceMapRef<'_, F> = HashMap::new();
 
         run_pre_calculate(&secn_instances, &mut instances_to_collect)
@@ -88,7 +88,7 @@ pub(crate) mod tests {
         // What a previous job's histogram, never drained, makes `RomSM` build.
         let rh_data = AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()));
         let mut secn_instances: SecnInstanceMap<F> = HashMap::new();
-        secn_instances.insert(GID, make_rom_instance(Some(rh_data)));
+        secn_instances.insert(GID, make_rom_instance(Some(rh_data)).into());
         let mut instances_to_collect: SecnInstanceMapRef<'_, F> = HashMap::new();
 
         let err = run_pre_calculate(&secn_instances, &mut instances_to_collect)

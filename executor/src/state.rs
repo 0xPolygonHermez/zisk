@@ -8,13 +8,14 @@ pub use instance_set::*;
 
 use arc_swap::ArcSwap;
 use proofman_fields::PrimeField64;
+use std::collections::{HashMap, HashSet};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex, PoisonError, RwLock,
 };
 use zisk_common::{
-    io::ZiskStdin, BusDevice, EmuTrace, ExecutorStatsHandle, InstanceType, Stats,
-    ZiskExecutorSummary,
+    io::ZiskStdin, BusDevice, EmuTrace, ExecutorStatsHandle, InstCount, Instance, InstanceType,
+    PrecompileLogs, Stats, ZiskExecutorSummary,
 };
 use zisk_core::ZiskRom;
 
@@ -22,6 +23,27 @@ use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 
 /// Type alias for chunk collectors: (chunk_id, collector)
 pub type ChunkCollector = (usize, Box<dyn BusDevice<u64>>);
+
+/// An instance's `(chunk, operations, skipped)`, sorted by chunk.
+pub type ChunkOps = Vec<(usize, u64, u64)>;
+
+/// One air's instances planned from the log.
+#[derive(Default)]
+pub struct EarlyAir {
+    /// Operations per chunk so far.
+    pub counts: Vec<InstCount>,
+    /// Each planned instance, in order.
+    pub planned: Vec<ChunkOps>,
+}
+
+/// The precompile instances planned from the logs during the run.
+#[derive(Default)]
+pub struct EarlySecn {
+    /// By `(airgroup_id, air_id)`.
+    pub airs: HashMap<(usize, usize), EarlyAir>,
+    /// Already announced.
+    pub announced: HashSet<usize>,
+}
 
 /// Execution state for the ZisK executor.
 ///
@@ -45,6 +67,12 @@ pub struct ExecutionState<F: PrimeField64> {
     /// emulator streams chunks (main witness advancement) and readers can clone the
     /// cheap Arc vector instead of holding the lock across a witness computation.
     pub min_traces: Arc<RwLock<Option<Vec<Arc<EmuTrace>>>>>,
+
+    /// The precompile logs of the run.
+    pub precompile_logs: RwLock<Arc<PrecompileLogs>>,
+
+    /// Precompile instances released during the run.
+    pub early_secn: Mutex<EarlySecn>,
 
     /// Main + secondary instance maps populated by `PlanPhase`.
     pub instance_set: Arc<InstanceSet<F>>,
@@ -70,6 +98,8 @@ impl<F: PrimeField64> ExecutionState<F> {
             zisk_rom: RwLock::new(None),
             stdin: ArcSwap::from_pointee(ZiskStdin::new()),
             min_traces: Arc::new(RwLock::new(None)),
+            precompile_logs: RwLock::new(Arc::default()),
+            early_secn: Mutex::new(EarlySecn::default()),
             instance_set: Arc::new(InstanceSet::new()),
             collector_store: Arc::new(ChunkCollectorStore::new()),
             execution_result: Mutex::new(ZiskExecutorSummary::default()),
@@ -117,6 +147,8 @@ impl<F: PrimeField64> ExecutionState<F> {
         *self.execution_result.lock().unwrap_or_else(PoisonError::into_inner) =
             ZiskExecutorSummary::default();
         *self.min_traces.write().unwrap_or_else(PoisonError::into_inner) = None;
+        *self.precompile_logs.write().unwrap_or_else(PoisonError::into_inner) = Arc::default();
+        *self.early_secn.lock().unwrap_or_else(PoisonError::into_inner) = EarlySecn::default();
         self.instance_set.reset();
         self.collector_store.reset();
         self.stats.reset();
@@ -174,6 +206,39 @@ impl<F: PrimeField64> ExecutionState<F> {
             }
             InstanceType::Table => Ok(vec![]),
         }
+    }
+
+    /// Fills an instance's collectors from the logs; false if it cannot be built from them.
+    pub(crate) fn register_log_collectors(
+        &self,
+        global_id: usize,
+        (airgroup_id, air_id): (usize, usize),
+        instance: &dyn Instance<F>,
+        logs: &PrecompileLogs,
+        traces: &[Arc<EmuTrace>],
+    ) -> ExecutorResult<bool> {
+        let Some(collectors) = instance.collectors_from_log(logs, traces) else {
+            return Ok(false);
+        };
+        self.collector_store
+            .inner
+            .write_or_poison("collector_store")?
+            .insert(global_id, collectors.into_iter().map(Some).collect());
+        self.stats.insert_witness_stats(global_id, Stats::new_no_collection(airgroup_id, air_id));
+        Ok(true)
+    }
+
+    /// [`Self::register_log_collectors`] from the stored logs.
+    pub(crate) fn register_stored_log_collectors(
+        &self,
+        global_id: usize,
+        air: (usize, usize),
+        instance: &dyn Instance<F>,
+    ) -> ExecutorResult<bool> {
+        let logs = self.precompile_logs.read_or_poison("precompile_logs")?.clone();
+        let min_traces = self.min_traces.read_or_poison("min_traces")?;
+        let Some(traces) = min_traces.as_ref() else { return Ok(false) };
+        self.register_log_collectors(global_id, air, instance, &logs, traces)
     }
 
     /// Records an empty per-chunk collector slot for an instance that

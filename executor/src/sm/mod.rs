@@ -257,6 +257,16 @@ pub fn plan_sec<F: PrimeField64>(
     plans
 }
 
+/// The precompiles planned from the log during the run: rank-assigned only, placed on registration.
+pub fn precompile_log_cuts<F: PrimeField64>() -> Vec<zisk_common::LogCut> {
+    PRECOMPILE_AIR_IDS
+        .iter()
+        .zip(PRECOMPILE_RANK_ASSIGN)
+        .filter(|(_, &rank_assign)| rank_assign)
+        .filter_map(|(&air_id, _)| Precompiles::<F>::planner_for_air_id(air_id, true).log_cut())
+        .collect()
+}
+
 /// Appends mem-related plans (from the ASM MO runner) into the mem slot.
 pub fn extend_mem_plans(planning: &mut BTreeMap<usize, Vec<Plan>>, plans: Vec<Plan>) {
     planning.entry(MEM_POSITION).or_default().extend(plans);

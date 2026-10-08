@@ -369,4 +369,9 @@ pub trait Planner {
     /// # Returns
     /// A vector of `Plan` instances.
     fn plan(&self, counter: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan>;
+
+    /// How the instances are cut from the precompile log, if they can be.
+    fn log_cut(&self) -> Option<crate::LogCut> {
+        None
+    }
 }

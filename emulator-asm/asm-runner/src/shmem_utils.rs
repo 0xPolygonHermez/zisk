@@ -146,6 +146,10 @@ impl<H: AsmShmemHeader> AsmShmem<H> {
         !self.mapped_ptr.is_null()
     }
 
+    pub fn mapped_ptr(&self) -> *mut c_void {
+        self.mapped_ptr
+    }
+
     pub fn data_ptr(&self) -> *mut c_void {
         // Skip the header size to get the data pointer
         unsafe { self.mapped_ptr.add(std::mem::size_of::<H>()) }

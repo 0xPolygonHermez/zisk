@@ -872,6 +872,42 @@ void server_setup (void)
     }
 
     /******************/
+    /* PRECOMPILE LOG */
+    /******************/
+
+    if (gen_method == MinimalTrace)
+    {
+        char shmem_prec_log_name[128];
+        snprintf(shmem_prec_log_name, sizeof(shmem_prec_log_name), "%s_MT_prec", shm_prefix);
+
+        // Never recreated: an earlier launch created it, and the reader may have it mapped
+        int fd = shm_open(shmem_prec_log_name, O_RDWR | O_CREAT, 0666);
+        if (fd < 0)
+        {
+            asm_printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_prec_log_name, errno, strerror(errno));
+            exit(-1);
+        }
+        if (ftruncate(fd, PREC_LOG_SIZE) != 0)
+        {
+            asm_printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_prec_log_name, errno, strerror(errno));
+            exit(-1);
+        }
+
+        // Sparse, so not locked
+        void * pLog = mmap(NULL, PREC_LOG_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_NORESERVE, fd, 0);
+        if (pLog == MAP_FAILED)
+        {
+            asm_printf("ERROR: Failed calling mmap(%s) errno=%d=%s\n", shmem_prec_log_name, errno, strerror(errno));
+            exit(-1);
+        }
+        close(fd);
+
+        // The rest is set by server_reset_trace
+        prec_log = (uint64_t *)pLog;
+        prec_log[0] = PREC_LOG_SIZE;
+    }
+
+    /******************/
     /* SEM CHUNK DONE */
     /******************/
 
@@ -1028,6 +1064,16 @@ void server_reset_trace (void)
         
         // Reset trace used size
         trace_used_size = 0;
+    }
+
+    // Reset the precompile log
+    if (prec_log != NULL)
+    {
+        prec_log[1] = 0;
+        prec_log[2] = PREC_LOG_CAPACITY_WORDS;
+        prec_log_data = (uint64_t)(prec_log + PREC_LOG_HEADER_WORDS);
+        prec_log_next = prec_log_data;
+        prec_log_end = prec_log_data + PREC_LOG_CAPACITY_WORDS * 8;
     }
 
     // Reset flags
@@ -1436,6 +1482,19 @@ void server_cleanup (void)
         }
     }
 
+    // Cleanup the precompile log
+    if (prec_log != NULL)
+    {
+        munmap((void *)prec_log, PREC_LOG_SIZE);
+        prec_log = NULL;
+        if (delete_output_shm)
+        {
+            char shmem_prec_log_name[128];
+            snprintf(shmem_prec_log_name, sizeof(shmem_prec_log_name), "%s_MT_prec", shm_prefix);
+            shm_unlink(shmem_prec_log_name);
+        }
+    }
+
     // Cleanup trace
     trace_cleanup();
 
@@ -1478,3 +1537,4 @@ void server_cleanup (void)
         }
     }
 }
+

@@ -25,6 +25,7 @@ use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use proofman_witness::{WitnessComponent, WitnessManager};
 
 use std::{
+    collections::{BTreeMap, HashMap},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, RwLock,
@@ -32,13 +33,15 @@ use std::{
     time::Instant,
 };
 use zisk_common::{
-    io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId, EmuTrace,
-    ExecutorStatsHandle, Plan, ZiskExecutorSummary, ZiskExecutorTime,
+    io::ZiskStdin, plan_ladder, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics,
+    ChunkId, CollectSkipper, EmuTrace, ExecutorStatsHandle, InstCount, InstanceType, LogCut, Plan,
+    PrecompileLog, PrecompileLogs, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
 use zisk_sm_main::{MainPlanner, MainSM};
 
-use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
+use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
+use crate::state::ChunkOps;
 
 /// `(chunk_id, metrics)` pair — the per-chunk device-metrics output
 /// produced by counter-phase processing.
@@ -76,6 +79,19 @@ fn publish_chunks(
     }
     store.extend_from_slice(&traces[store.len()..=idx]);
     Ok(())
+}
+
+/// The precompile logs are used unless ZISK_PREC_LOG=0.
+fn precompile_logs_enabled() -> bool {
+    std::env::var("ZISK_PREC_LOG").map_or(true, |v| v != "0")
+}
+
+/// An instance's operations per chunk, sorted.
+fn chunk_ops(collect_info: &HashMap<ChunkId, (u64, CollectSkipper)>) -> ChunkOps {
+    let mut ops: ChunkOps =
+        collect_info.iter().map(|(chunk, (n, skipper))| (chunk.0, *n, skipper.skip)).collect();
+    ops.sort_unstable();
+    ops
 }
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
@@ -352,22 +368,27 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // to `state.min_traces` and the instance is planned, assigned and marked
         // witness-ready, so main witness computation (and its GPU streaming-slot
         // commit) overlaps the rest of the emulation instead of waiting for the
-        // run to finish. Global-id order is unchanged: ROM (assigned above), then
-        // Main segments in order, then secondary.
+        // run to finish. Global-id order: ROM (assigned above), then Main segments
+        // interleaved with the precompile instances planned from the log, then secondary.
         //
         // No-op in standalone mode and never called by the Rust emulator; both
         // keep the post-run batch path below.
         let num_within = MainPlanner::traces_per_segment(self.plan.chunk_size())?;
-        let on_chunk =
-            |idx: usize, traces: &[Arc<EmuTrace>], is_last: bool| -> ExecutorResult<()> {
-                let Some(witness) = self.witness.as_ref() else { return Ok(()) };
+        // Precompile instances are released the same way, once the log holds them.
+        let keep_logs = self.witness.is_some() && precompile_logs_enabled();
+        let log_cuts = if keep_logs { crate::sm::precompile_log_cuts::<F>() } else { Vec::new() };
+        let on_chunk = |idx: usize,
+                        traces: &[Arc<EmuTrace>],
+                        is_last: bool,
+                        logs: &mut PrecompileLogs|
+         -> ExecutorResult<()> {
+            if !keep_logs {
+                *logs = PrecompileLogs::default();
+            }
+            let Some(witness) = self.witness.as_ref() else { return Ok(()) };
 
-                // This chunk neither completes a Main instance nor ends the execution.
-                let Some(segment) = MainPlanner::segment_completed_by(idx, num_within, is_last)
-                else {
-                    return Ok(());
-                };
-
+            // This chunk completes a Main instance or ends the execution.
+            if let Some(segment) = MainPlanner::segment_completed_by(idx, num_within, is_last) {
                 {
                     let mut guard = self.state.min_traces.write_or_poison("min_traces")?;
                     publish_chunks(guard.get_or_insert_with(Vec::new), traces, idx)?;
@@ -376,8 +397,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 let plan = MainPlanner::plan_segment(segment, is_last);
                 let assignments =
                     InstanceAssigner::assign_main_instances(registry, global_ids, vec![plan])?;
-                witness.populate_main_instances(registry, &self.state, assignments)
-            };
+                witness.populate_main_instances(registry, &self.state, assignments)?;
+            }
+
+            self.release_logged_precompiles(
+                witness, registry, global_ids, &log_cuts, idx, traces, logs,
+            )
+        };
         let chunk_hook = &on_chunk;
 
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
@@ -407,8 +433,16 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // ────────────────────────────────────────────────────────────
         let steps = output.steps;
 
-        let crate::ExecutionOutput { min_traces, mut counters, pub_outs, mut backend, .. } = output;
+        let crate::ExecutionOutput {
+            min_traces,
+            mut counters,
+            pub_outs,
+            precompile_logs,
+            mut backend,
+            ..
+        } = output;
         let num_chunks = min_traces.len();
+        *self.state.precompile_logs.write_or_poison("precompile_logs")? = Arc::new(precompile_logs);
 
         // Hand the ROM-histogram runner over without joining it: the runner outlives the
         // minimal-trace run, and the instance it feeds does not compute its witness until
@@ -479,8 +513,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             witness.configure_sm_instances(extras.pctx(), &secn_artifacts.secn_planning);
         }
 
-        let mut secn_plans: Vec<Plan> =
-            secn_artifacts.secn_planning.into_values().flatten().collect();
+        let mut secn_plans = self.drop_early_plans(secn_artifacts.secn_planning)?;
         InstanceAssigner::assign_secn_instances(registry, global_ids, &mut secn_plans)?;
         let secn_global_ids: Vec<usize> = secn_plans
             .iter()
@@ -545,6 +578,136 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.state.set_execution_result(execution_result);
 
         Ok(())
+    }
+
+    /// Plans, assigns and releases the precompile instances the log holds in full after chunk
+    /// `idx`, then drops the records no later instance reads. In chunk order on every process,
+    /// so all agree on global ids and owners.
+    #[allow(clippy::too_many_arguments)]
+    fn release_logged_precompiles(
+        &self,
+        witness: &WitnessPhase<F>,
+        registry: &dyn ProofRegistry,
+        global_ids: &RwLock<Vec<usize>>,
+        cuts: &[LogCut],
+        idx: usize,
+        traces: &[Arc<EmuTrace>],
+        logs: &mut PrecompileLogs,
+    ) -> ExecutorResult<()> {
+        let chunk_end = |c: usize| traces[c].start_state.step + traces[c].steps;
+        let lookup = |log: &PrecompileLog, step: u64| {
+            log.first_at_or_after(step)
+                .ok_or_else(|| ExecutorError::Internal(format!("log dropped past step {step}")))
+        };
+
+        for cut in cuts {
+            // Every chunk counts, even before the first record.
+            let (logged, in_chunk) = match logs.get(cut.op_type) {
+                Some(log) => {
+                    let logged = lookup(log, chunk_end(idx))?;
+                    (logged, logged - lookup(log, traces[idx].start_state.step)?)
+                }
+                None => (0, 0),
+            };
+
+            // The counters' plan of chunks 0..=idx: its first `full` instances are final.
+            let instances = {
+                let mut early = self.state.early_secn.lock_or_poison("early_secn")?;
+                let air = early.airs.entry((cut.airgroup_id, cut.air_id)).or_default();
+                air.counts.push(InstCount::new(ChunkId(idx), in_chunk as u64));
+                let full = logged / cut.capacity as usize;
+                let done = air.planned.len();
+                if full <= done {
+                    continue;
+                }
+                let instances: Vec<_> = plan_ladder(&air.counts, &vec![cut.capacity; full + 1])
+                    .into_iter()
+                    .take(full)
+                    .skip(done)
+                    .collect();
+                air.planned.extend(instances.iter().map(|(_, _, info)| chunk_ops(info)));
+                instances
+            };
+
+            {
+                let mut guard = self.state.min_traces.write_or_poison("min_traces")?;
+                let store = guard.get_or_insert_with(Vec::new);
+                if store.len() <= idx {
+                    publish_chunks(store, traces, idx)?;
+                }
+            }
+
+            for (_, check_point, collect_info) in instances {
+                let mut plan = Plan::new(
+                    cut.airgroup_id,
+                    cut.air_id,
+                    None,
+                    InstanceType::Instance,
+                    check_point,
+                    Some(Box::new(collect_info)),
+                );
+                InstanceAssigner::assign_secn_instances(
+                    registry,
+                    global_ids,
+                    std::slice::from_mut(&mut plan),
+                )?;
+                witness.release_logged_instance(registry, &self.state, plan, logs, traces)?;
+            }
+
+            // Keep from the next instance's first chunk.
+            let log = logs.get_mut(cut.op_type).expect("an instance was planned from it");
+            let next = (logged / cut.capacity as usize) * cut.capacity as usize;
+            let keep_from = if next < logged {
+                let step = log.step(next);
+                traces[traces.partition_point(|t| t.start_state.step + t.steps <= step)]
+                    .start_state
+                    .step
+            } else {
+                chunk_end(idx)
+            };
+            log.drop_before(keep_from);
+        }
+        Ok(())
+    }
+
+    /// Flattens the secondary plans without the early ones, which must lead their air unchanged.
+    fn drop_early_plans(&self, planning: BTreeMap<usize, Vec<Plan>>) -> ExecutorResult<Vec<Plan>> {
+        let early = std::mem::take(&mut self.state.early_secn.lock_or_poison("early_secn")?.airs);
+        let mut matched: HashMap<(usize, usize), usize> = HashMap::new();
+        let mut plans = Vec::new();
+        for plan in planning.into_values().flatten() {
+            let air = (plan.airgroup_id, plan.air_id);
+            if let Some(planned) = early.get(&air).map(|early| &early.planned) {
+                let k = matched.entry(air).or_default();
+                if *k < planned.len() {
+                    let ops = plan
+                        .meta
+                        .as_ref()
+                        .and_then(|m| m.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>())
+                        .map(chunk_ops);
+                    if ops.as_ref() != Some(&planned[*k]) {
+                        return Err(ExecutorError::Internal(format!(
+                            "air {air:?} instance {k}: planned from the log as {:?}, from the counters as {ops:?}",
+                            planned[*k]
+                        )));
+                    }
+                    *k += 1;
+                    continue;
+                }
+            }
+            plans.push(plan);
+        }
+        for (air, early) in &early {
+            let planned = &early.planned;
+            let k = matched.get(air).copied().unwrap_or(0);
+            if k != planned.len() {
+                return Err(ExecutorError::Internal(format!(
+                    "air {air:?}: {} instances planned from the log, only {k} in the block's plan",
+                    planned.len()
+                )));
+            }
+        }
+        Ok(plans)
     }
 
     fn witness_or_panic(&self) -> &WitnessPhase<F> {

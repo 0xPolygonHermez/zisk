@@ -76,6 +76,8 @@
 
 /// Re-export of `paste::paste!` so consumers don't need a direct dep.
 pub use paste::paste as __zisk_paste;
+#[doc(hidden)]
+pub use tracing::error as __zisk_error;
 
 /// Explicit form — generates the per-precompile shell types from
 /// spelled-out names. The [`zisk_precompile!`](crate::zisk_precompile) façade desugars to this.
@@ -144,6 +146,8 @@ macro_rules! zisk_precompile_explicit {
         ] $(,)?
         // Optional GPU witness kernel; `op` is its per-operation input, `From<&Input>`.
         $( gpu_witness = { op = $gpu_op:path $(,)? } $(,)? )?
+        // Optional: build the instances from the precompile log.
+        $( from_log = $from_log:literal $(,)? )?
     ) => {
         $crate::__zisk_paste! {
             // ============================================================
@@ -356,6 +360,22 @@ macro_rules! zisk_precompile_explicit {
 
                     plan_result
                 }
+
+                $(
+                    /// Single-air only: a ladder sizes its instances from the total.
+                    fn log_cut(&self) -> ::std::option::Option<$crate::LogCut> {
+                        if !$from_log || self.instances_info.len() != 1 {
+                            return None;
+                        }
+                        let info = &self.instances_info[0];
+                        Some($crate::LogCut {
+                            op_type: ::zisk_core::ZiskOperationType::$op_type,
+                            airgroup_id: info.airgroup_id,
+                            air_id: info.air_id,
+                            capacity: info.num_ops as u64,
+                        })
+                    }
+                )?
             }
 
             // ============================================================
@@ -506,6 +526,62 @@ macro_rules! zisk_precompile_explicit {
                         [<$name Collector>]::new(num_ops, collect_skipper),
                     ))
                 }
+
+                $(
+                    /// The inputs start `skip` records into the first chunk.
+                    fn collectors_from_log(
+                        &self,
+                        logs: &$crate::PrecompileLogs,
+                        min_traces: &[::std::sync::Arc<$crate::EmuTrace>],
+                    ) -> ::std::option::Option<$crate::InstanceCollectors> {
+                        if !$from_log {
+                            return None;
+                        }
+                        let log = logs.get(::zisk_core::ZiskOperationType::$op_type)?;
+                        let collect_info = self.ictx.plan.meta.as_ref()?.downcast_ref::<
+                            ::std::collections::HashMap<
+                                $crate::ChunkId,
+                                (u64, $crate::CollectSkipper),
+                            >,
+                        >()?;
+                        let first_chunk = *collect_info.keys().min()?;
+                        let last_chunk = *collect_info.keys().max()?;
+                        let num_ops: u64 = collect_info.values().map(|(n, _)| *n).sum();
+
+                        let first = &min_traces[first_chunk.0];
+                        let last = &min_traces[last_chunk.0];
+                        let start = log.first_at_or_after(first.start_state.step)?
+                            + collect_info[&first_chunk].1.skip as usize;
+                        let end = start + num_ops as usize;
+                        if end > log.len() {
+                            return None;
+                        }
+                        let mut collector =
+                            [<$name Collector>]::new(num_ops, $crate::CollectSkipper::new(0));
+                        for i in start..end {
+                            collector.process_data(&$crate::OPERATION_BUS_ID, log.record(i));
+                        }
+                        // A mismatch is a bug; the replay stays correct.
+                        if collector.inputs.len() != num_ops as usize
+                            || (num_ops > 0
+                                && log.step(end - 1) >= last.start_state.step + last.steps)
+                        {
+                            $crate::__zisk_error!(
+                                "{}: the input log does not match the plan (records {}..{} of {})",
+                                stringify!($name),
+                                start,
+                                end,
+                                log.len(),
+                            );
+                            return None;
+                        }
+                        Some(::std::vec![(
+                            first_chunk.0,
+                            ::std::boxed::Box::new(collector)
+                                as ::std::boxed::Box<dyn $crate::BusDevice<$crate::PayloadType>>,
+                        )])
+                    }
+                )?
 
                 fn as_any(&self) -> &dyn ::std::any::Any {
                     self
@@ -738,6 +814,8 @@ macro_rules! zisk_precompile {
             ),* $(,)?
         ] $(,)?
         $( gpu_witness = { op = $gpu_op:path $(,)? } $(,)? )?
+        // Optional: build the instances from the precompile log.
+        $( from_log = $from_log:literal $(,)? )?
     ) => {
         $crate::__zisk_paste! {
             $crate::zisk_precompile_explicit! {
@@ -764,6 +842,7 @@ macro_rules! zisk_precompile {
                     ),*
                 ],
                 $( gpu_witness = { op = $gpu_op }, )?
+                $( from_log = $from_log, )?
             }
         }
     };
@@ -785,6 +864,8 @@ macro_rules! zisk_precompile {
             ),* $(,)?
         ] $(,)?
         $( gpu_witness = { op = $gpu_op:path $(,)? } $(,)? )?
+        // Optional: build the instances from the precompile log.
+        $( from_log = $from_log:literal $(,)? )?
     ) => {
         $crate::zisk_precompile! {
             name = $name,
@@ -797,6 +878,7 @@ macro_rules! zisk_precompile {
                 ),*
             ],
             $( gpu_witness = { op = $gpu_op }, )?
+            $( from_log = $from_log, )?
         }
     };
 }

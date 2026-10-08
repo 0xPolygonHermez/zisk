@@ -23,8 +23,12 @@ use zisk_core::ZiskRom;
 /// — while the emulation is still running. Runs on the reader thread, so it
 /// does real work only on the chunks that complete an instance. Returning `Err`
 /// aborts the ASM run.
-pub type ChunkHook<'a> =
-    &'a dyn Fn(usize, &[Arc<zisk_common::EmuTrace>], bool) -> ExecutorResult<()>;
+pub type ChunkHook<'a> = &'a dyn Fn(
+    usize,
+    &[Arc<zisk_common::EmuTrace>],
+    bool,
+    &mut zisk_common::PrecompileLogs,
+) -> ExecutorResult<()>;
 
 /// Phase-1 actor: runs the chosen emulator backend, returns a  [`ExecutionOutput`]
 /// regardless of which backend ran.
