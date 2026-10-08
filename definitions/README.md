@@ -95,12 +95,12 @@ pub mod memory {
 
 | Argument | Meaning | Default |
 |---|---|---|
-| `group = "name"` | Logical group name; sets the output file base names | module ident |
+| `group = "name"` | Logical group name; sets the output file base names. Must be an identifier; groups that emit Rust need distinct, non-keyword names (each is a module) | module ident |
 | `to(rust, c, pil, asm)` | Targets to emit to | **required** |
 | `hex` / `dec` | Number base for rendered values | `hex` |
 | `fits = N` | Assert every value fits in `N` bits (a domain check) | the const's storage width |
 | `c_prefix` / `pil_prefix` / `asm_prefix = "..."` | Prefix prepended to names in that target | none |
-| `c_file` / `pil_file` / `asm_file = "..."` | Override the output file name (used verbatim) | `<group>.gen.h` / `.gen.pil` / `.gen.inc` |
+| `c_file` / `pil_file` / `asm_file = "..."` | Override the output file name: a plain file name ending in `.h` / `.pil` / `.inc` | `<group>.gen.h` / `.gen.pil` / `.gen.inc` |
 
 `to(..)` is **required**. (In the sample, `memory` uses `to(rust, c, pil, asm)` and
 produces `memory.gen.inc`; `opcodes` (`to(rust, pil)`) and `execution` (`to(rust, c, pil)`)
@@ -126,7 +126,7 @@ Overrides only the fields it names; everything else inherits the module defaults
   them); C gets octal escapes for every byte outside printable ASCII.
 - **Visibility:** every exported const must be `pub` (the generated Rust is `pub`); a
   private helper const must be `#[emit(internal)]`.
-- **Doc comments** on a const become comments in every generated target.
+- **Doc comments** on a const become one-line comments in every generated target.
 - **Derived values** (any non-literal initializer) are emitted as the computed literal,
   with the source expression carried alongside as a provenance comment.
 - Signedness comes from the value's type; the **fit check** rejects a value that

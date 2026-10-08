@@ -184,17 +184,48 @@ fn generated_note(regen_cmd: &str) -> String {
 }
 
 /// Render every group to its Rust/C/PIL files in memory (no I/O). Fails on a
-/// fit-check violation, a duplicate name within a C/PIL file, or a value not
-/// renderable for a target. `regen_cmd` is stamped into each file's banner.
+/// fit-check violation, a duplicate name within a C/PIL file, an invalid group or
+/// output file name, or a value not renderable for a target. `regen_cmd` is stamped
+/// into each file's banner.
 pub fn render(groups: &[(&GroupMeta, &[Export])], regen_cmd: &str) -> Result<Vec<GenFile>, String> {
-    for &(_, exports) in groups {
+    for &(meta, exports) in groups {
+        check_group_name(meta.name)?;
         for e in exports {
             fit_check(e)?;
         }
     }
     let mut files = render_flat(groups, regen_cmd)?;
-    files.extend(render_rust(groups, regen_cmd));
+    files.extend(render_rust(groups, regen_cmd)?);
     Ok(files)
+}
+
+/// A group name becomes the default output file names and, for Rust, a module name,
+/// so it must be an identifier: anything else could leave the output dir or fail to
+/// compile in the generated `mod.rs`.
+fn check_group_name(name: &str) -> Result<(), String> {
+    let mut chars = name.chars();
+    let ident = chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if ident {
+        Ok(())
+    } else {
+        Err(format!("group name `{name}` must be an identifier ([A-Za-z_][A-Za-z0-9_]*)"))
+    }
+}
+
+/// Strict and reserved Rust keywords (edition 2021): not usable as a `pub mod` name.
+const RUST_KEYWORDS: &[&str] = &[
+    "abstract", "as", "async", "await", "become", "box", "break", "const", "continue", "crate",
+    "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "if", "impl", "in",
+    "let", "loop", "macro", "match", "mod", "move", "mut", "override", "priv", "pub", "ref",
+    "return", "self", "Self", "static", "struct", "super", "trait", "true", "try", "type",
+    "typeof", "unsafe", "unsized", "use", "virtual", "where", "while", "yield",
+];
+
+/// Comment text on one line: a doc may hold newlines (`#[doc = "a\nb"]`), and a line
+/// comment covers only its first line.
+fn one_line(text: &str) -> String {
+    text.replace(['\r', '\n'], " ")
 }
 
 /// Render and write each target's files to its dir, skipping files whose content
@@ -376,7 +407,13 @@ fn files_on_disk(dir: &Path, ext: &str) -> Vec<String> {
 /// One `<group>.rs` per group that opts into Rust, plus a `mod.rs` declaring them.
 /// The Rust form always uses the source ident and no prefix, so consumers see the
 /// same names the author wrote. Skipped entirely if no group targets Rust.
-fn render_rust(groups: &[(&GroupMeta, &[Export])], regen_cmd: &str) -> Vec<GenFile> {
+///
+/// Unlike C/PIL/asm, groups can't share a Rust file: each is its own module, so two
+/// Rust-emitting groups with one name (or a keyword name) are rejected.
+fn render_rust(
+    groups: &[(&GroupMeta, &[Export])],
+    regen_cmd: &str,
+) -> Result<Vec<GenFile>, String> {
     let mut files = Vec::new();
     let mut modules: Vec<&str> = Vec::new();
 
@@ -386,14 +423,26 @@ fn render_rust(groups: &[(&GroupMeta, &[Export])], regen_cmd: &str) -> Vec<GenFi
         if rust.is_empty() {
             continue;
         }
+        if RUST_KEYWORDS.contains(&meta.name) {
+            return Err(format!(
+                "group `{}` emits Rust, but a keyword can't name a module",
+                meta.name
+            ));
+        }
+        if modules.contains(&meta.name) {
+            return Err(format!(
+                "two groups named `{}` emit Rust; each needs its own module name",
+                meta.name
+            ));
+        }
         let mut body = format!("// {}\n\n", generated_note(regen_cmd));
         for e in rust {
             if !e.doc.is_empty() {
-                let _ = writeln!(body, "/// {}", e.doc);
+                let _ = writeln!(body, "/// {}", one_line(e.doc));
             }
             let _ = write!(body, "pub const {}: {} = {};", e.name, rust_type(e), fmt_value_rust(e));
             if !e.expr.is_empty() {
-                let _ = write!(body, " // {}", e.expr);
+                let _ = write!(body, " // {}", one_line(e.expr));
             }
             body.push('\n');
         }
@@ -417,7 +466,7 @@ fn render_rust(groups: &[(&GroupMeta, &[Export])], regen_cmd: &str) -> Vec<GenFi
         }
     }
     files.push(GenFile { target: Target::Rust, name: "mod.rs".to_string(), contents: mod_rs });
-    files
+    Ok(files)
 }
 
 /// The Rust type of a value: signedness from the `Value` variant, width from `ty_bits`
@@ -470,10 +519,12 @@ impl Kind {
     }
 
     /// A comment in this target's syntax: `/* body */` for C, `// body` for PIL,
-    /// `# body` for asm (GAS).
+    /// `# body` for asm (GAS). `body` (a doc, often) is kept on one line, and a `*/`
+    /// in it is split so it can't close the C comment early.
     fn comment(self, body: &str) -> String {
+        let body = one_line(body);
         match self {
-            Kind::C => format!("/* {body} */"),
+            Kind::C => format!("/* {} */", body.replace("*/", "* /")),
             Kind::Pil => format!("// {body}"),
             Kind::Asm => format!("# {body}"),
         }
@@ -511,12 +562,9 @@ fn render_flat(
     let mut files: Vec<FileBuf> = Vec::new();
 
     for &(meta, exports) in groups {
-        let c_file =
-            meta.c_file.map(String::from).unwrap_or_else(|| format!("{}.gen.h", meta.name));
-        let pil_file =
-            meta.pil_file.map(String::from).unwrap_or_else(|| format!("{}.gen.pil", meta.name));
-        let asm_file =
-            meta.asm_file.map(String::from).unwrap_or_else(|| format!("{}.gen.inc", meta.name));
+        let c_file = flat_file_name(meta, meta.c_file, "c_file", "h")?;
+        let pil_file = flat_file_name(meta, meta.pil_file, "pil_file", "pil")?;
+        let asm_file = flat_file_name(meta, meta.asm_file, "asm_file", "inc")?;
         for e in exports {
             if e.targets.contains(Targets::C) {
                 push_entry(&mut files, &c_file, Kind::C, meta, e, fmt_value_c(e)?)?;
@@ -553,6 +601,31 @@ fn render_flat(
             name: fb.file_name,
         })
         .collect())
+}
+
+/// A group's output file name for one flat target: the `field` override, else
+/// `<group>.gen.<ext>`. An override must be a plain file name ending in `.<ext>`:
+/// reconciliation only scans the target dir for `*.<ext>`, so anything else (a missing
+/// suffix, a subdir) would be written once and never cleaned up or drift-checked.
+fn flat_file_name(
+    meta: &GroupMeta,
+    over: Option<&'static str>,
+    field: &str,
+    ext: &str,
+) -> Result<String, String> {
+    let Some(name) = over else {
+        return Ok(format!("{}.gen.{ext}", meta.name));
+    };
+    let plain = !name.contains(['/', '\\']);
+    let has_stem = name.strip_suffix(&format!(".{ext}")).is_some_and(|stem| !stem.is_empty());
+    if plain && has_stem {
+        Ok(name.to_string())
+    } else {
+        Err(format!(
+            "group `{}`: {field} = \"{name}\" must be a plain file name ending in `.{ext}`",
+            meta.name
+        ))
+    }
 }
 
 fn push_entry(
@@ -925,6 +998,65 @@ mod tests {
     }
 
     #[test]
+    fn override_names_must_be_plain_with_the_target_extension() {
+        static E: &[Export] =
+            &[export("X", Value::U(1), Targets(Targets::C.0 | Targets::PIL.0), None)];
+        static NO_EXT: GroupMeta = group("g", "shared");
+        static SUBDIR: GroupMeta = group("g", "sub/x.h");
+        static BARE: GroupMeta = group("g", ".h");
+        static WRONG_EXT: GroupMeta = GroupMeta { pil_file: Some("x.h"), ..group("g", "x.h") };
+        for (bad, why) in [
+            (&NO_EXT, "missing suffix"),
+            (&SUBDIR, "subdir"),
+            (&BARE, "no stem"),
+            (&WRONG_EXT, "PIL override with a C suffix"),
+        ] {
+            assert!(render(&[(bad, E)], "test").is_err(), "{why} must be rejected");
+        }
+        static OK: GroupMeta = GroupMeta { pil_file: Some("x.pil"), ..group("g", "x.h") };
+        assert!(render(&[(&OK, E)], "test").is_ok());
+    }
+
+    #[test]
+    fn group_names_must_be_valid_and_unique_rust_modules() {
+        static RUST: &[Export] = &[export("X", Value::U(1), Targets::RUST, None)];
+        static C_ONLY: &[Export] = &[export("Y", Value::U(2), Targets::C, None)];
+        static DASHED: GroupMeta = group("my-group", "a.h");
+        static KEYWORD: GroupMeta = group("type", "type.h");
+        static A: GroupMeta = group("same", "a.h");
+        static B: GroupMeta = group("same", "b.h");
+
+        assert!(render(&[(&DASHED, C_ONLY)], "test").is_err(), "not an identifier");
+        assert!(render(&[(&KEYWORD, RUST)], "test").is_err(), "keyword module");
+        assert!(render(&[(&KEYWORD, C_ONLY)], "test").is_ok(), "keywords are fine off Rust");
+        assert!(render(&[(&A, RUST), (&B, RUST)], "test").is_err(), "two `same.rs` modules");
+        assert!(render(&[(&A, C_ONLY), (&B, C_ONLY)], "test").is_ok(), "C groups may share a name");
+    }
+
+    #[test]
+    fn comments_stay_on_one_line_and_c_comments_stay_closed() {
+        static G: GroupMeta = group("d", "d.h");
+        static E: &[Export] = &[Export {
+            doc: "ends */ here\nsecond line",
+            ..export(
+                "X",
+                Value::U(1),
+                Targets(Targets::RUST.0 | Targets::C.0 | Targets::PIL.0),
+                None,
+            )
+        }];
+        let files = render(&[(&G, E)], "test").expect("render");
+        let get = |n: &str| &files.iter().find(|f| f.name == n).expect(n).contents;
+        let (h, pil, rs) = (get("d.h"), get("d.gen.pil"), get("d.rs"));
+        assert!(h.contains("/* ends * / here second line */"), "{h}");
+        assert!(pil.contains("// ends */ here second line"), "{pil}");
+        assert!(rs.contains("/// ends */ here second line"), "{rs}");
+        for out in [h, pil, rs] {
+            assert!(!out.lines().any(|l| l.starts_with("second")), "uncommented doc line:\n{out}");
+        }
+    }
+
+    #[test]
     fn banner_mention_is_not_a_banner() {
         static G: GroupMeta = group("mem", "mem.h");
         static E: &[Export] = &[export("ONE", Value::U(1), Targets::C, None)];
@@ -1001,8 +1133,11 @@ mod tests {
 
     #[test]
     fn same_override_name_stays_per_target() {
-        static G: GroupMeta =
-            GroupMeta { c_file: Some("shared"), pil_file: Some("shared"), ..group("g", "shared") };
+        static G: GroupMeta = GroupMeta {
+            c_file: Some("shared.h"),
+            pil_file: Some("shared.pil"),
+            ..group("g", "shared.h")
+        };
         static E: &[Export] =
             &[export("X", Value::U(1), Targets(Targets::C.0 | Targets::PIL.0), None)];
         let files = render(&[(&G, E)], "test").expect("render");
