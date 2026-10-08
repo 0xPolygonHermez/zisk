@@ -11,7 +11,7 @@
 //! [`write`] / [`check`] reconcile them against one output directory per target.
 //! Output is stable so a build step can gate drift.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -203,14 +203,19 @@ pub fn render(groups: &[(&GroupMeta, &[Export])], regen_cmd: &str) -> Result<Vec
 /// so it must be an identifier: anything else could leave the output dir or fail to
 /// compile in the generated `mod.rs`.
 fn check_group_name(name: &str) -> Result<(), String> {
-    let mut chars = name.chars();
-    let ident = chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_');
-    if ident {
+    if is_ident(name, &[]) {
         Ok(())
     } else {
         Err(format!("group name `{name}` must be an identifier ([A-Za-z_][A-Za-z0-9_]*)"))
     }
+}
+
+/// `[A-Za-z_][A-Za-z0-9_]*`, plus any `extra` characters anywhere (GAS symbols also
+/// take `.` and `$`).
+fn is_ident(s: &str, extra: &[char]) -> bool {
+    let mut chars = s.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || extra.contains(&c))
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || extra.contains(&c))
 }
 
 /// Strict and reserved Rust keywords (edition 2021): not usable as a `pub mod` name.
@@ -270,8 +275,12 @@ fn normalize(path: &Path) -> PathBuf {
     for part in path.components() {
         match part {
             Component::CurDir => {}
+            // `..` cancels only a real directory name; a leading `..` (or one after
+            // another `..`) has nothing to cancel and must stay.
             Component::ParentDir => {
-                if !out.pop() {
+                if matches!(out.components().next_back(), Some(Component::Normal(_))) {
+                    out.pop();
+                } else {
                     out.push(part);
                 }
             }
@@ -593,6 +602,18 @@ fn render_flat(
         }
     }
 
+    // Two distinct headers with one guard: including both would silently drop the
+    // second, so refuse to generate them.
+    let mut guards: HashMap<String, &str> = HashMap::new();
+    for fb in files.iter().filter(|f| f.kind == Kind::C) {
+        if let Some(other) = guards.insert(include_guard(&fb.file_name), &fb.file_name) {
+            return Err(format!(
+                "C headers `{other}` and `{}` get the same include guard; rename one",
+                fb.file_name
+            ));
+        }
+    }
+
     Ok(files
         .into_iter()
         .map(|fb| GenFile {
@@ -641,6 +662,16 @@ fn push_entry(
         Kind::Pil => format!("{}{}", meta.pil_prefix, e.pil_name.unwrap_or(e.name)),
         Kind::Asm => format!("{}{}", meta.asm_prefix, e.asm_name.unwrap_or(e.name)),
     };
+    // Prefixes and per-target names are free strings, so check the combined name is a
+    // symbol the target accepts instead of emitting a header/include that won't build.
+    let (extra, what): (&[char], _) = match kind {
+        Kind::C => (&[], "C macro"),
+        Kind::Pil => (&[], "PIL constant"),
+        Kind::Asm => (&['.', '$'], "GAS symbol"),
+    };
+    if !is_ident(&name, extra) {
+        return Err(format!("group `{}`: `{name}` is not a valid {what} name", meta.name));
+    }
 
     // Keyed by target too: each target writes to its own dir, so C and PIL overrides
     // may share a name without their entries landing in one file.
@@ -661,6 +692,15 @@ fn push_entry(
     Ok(())
 }
 
+/// The C include guard of a generated header. Not injective (case and punctuation are
+/// folded), so `render_flat` rejects two headers that would share one.
+fn include_guard(file_name: &str) -> String {
+    format!(
+        "ZISK_GENERATED_{}",
+        file_name.to_uppercase().replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+    )
+}
+
 fn render_file(fb: &FileBuf, regen_cmd: &str) -> String {
     let width = fb.entries.iter().map(|e| e.name.len()).max().unwrap_or(0);
     // Per-group separator lines only help when several groups share one file.
@@ -668,10 +708,7 @@ fn render_file(fb: &FileBuf, regen_cmd: &str) -> String {
 
     let kind = fb.kind;
     let banner = kind.comment(&generated_note(regen_cmd));
-    let guard = format!(
-        "ZISK_GENERATED_{}",
-        fb.file_name.to_uppercase().replace(|c: char| !c.is_ascii_alphanumeric(), "_")
-    );
+    let guard = include_guard(&fb.file_name);
 
     let mut out = String::new();
     // C wraps the body in an include guard; PIL and asm just carry the banner.
@@ -1054,6 +1091,63 @@ mod tests {
         for out in [h, pil, rs] {
             assert!(!out.lines().any(|l| l.starts_with("second")), "uncommented doc line:\n{out}");
         }
+    }
+
+    #[test]
+    fn normalize_keeps_unresolved_parent_dirs() {
+        use super::normalize;
+        assert_eq!(normalize(Path::new("../../out")), Path::new("../../out"));
+        assert_eq!(normalize(Path::new("a/../b/./c")), Path::new("b/c"));
+        assert_eq!(normalize(Path::new("a/../../c")), Path::new("../c"));
+
+        // `../../out` and `out` are different dirs, so no conflict.
+        let (r1, c1, p1, a1) =
+            (Path::new("../../out"), Path::new("g/c"), Path::new("g/pil"), Path::new("g/asm"));
+        let (r2, c2, p2, a2) =
+            (Path::new("out"), Path::new("h/c"), Path::new("h/pil"), Path::new("h/asm"));
+        let one =
+            Dirs { rust: exclusive(r1), c: exclusive(c1), pil: exclusive(p1), asm: exclusive(a1) };
+        let two =
+            Dirs { rust: exclusive(r2), c: exclusive(c2), pil: exclusive(p2), asm: exclusive(a2) };
+        assert!(super::ensure_disjoint(&[one, two]).is_ok());
+    }
+
+    #[test]
+    fn colliding_include_guards_are_rejected() {
+        static E: &[Export] = &[export("X", Value::U(1), Targets::C, None)];
+        static DASH: GroupMeta = group("a", "foo-bar.h");
+        static UNDER: GroupMeta = group("b", "foo_bar.h");
+        let err = render(&[(&DASH, E), (&UNDER, E)], "test").err().expect("guards collide");
+        assert!(err.contains("include guard"), "{err}");
+
+        // Default names differing only in case fold to one guard as well.
+        static UPPER: GroupMeta = GroupMeta { c_file: None, ..group("Foo", "") };
+        static LOWER: GroupMeta = GroupMeta { c_file: None, ..group("foo", "") };
+        assert!(render(&[(&UPPER, E), (&LOWER, E)], "test").is_err());
+
+        // Groups merged into one header share that header's single guard: fine.
+        static M1: GroupMeta = group("m1", "merged.h");
+        static M2: GroupMeta = group("m2", "merged.h");
+        static E2: &[Export] = &[export("Y", Value::U(2), Targets::C, None)];
+        assert!(render(&[(&M1, E), (&M2, E2)], "test").is_ok());
+    }
+
+    #[test]
+    fn emitted_names_must_be_valid_target_symbols() {
+        static G: GroupMeta = group("g", "g.h");
+        static BAD_C: &[Export] =
+            &[Export { c_name: Some("-"), ..export("X", Value::U(1), Targets::C, None) }];
+        static BAD_PIL_PREFIX: GroupMeta = GroupMeta { pil_prefix: "1", ..group("g", "g.h") };
+        static PIL: &[Export] = &[export("X", Value::U(1), Targets::PIL, None)];
+        static DOT_C: &[Export] =
+            &[Export { c_name: Some("a.b"), ..export("X", Value::U(1), Targets::C, None) }];
+        static DOT_ASM: &[Export] =
+            &[Export { asm_name: Some(".L$x"), ..export("X", Value::U(1), Targets::ASM, None) }];
+
+        assert!(render(&[(&G, BAD_C)], "test").is_err(), "`-` is not a C macro name");
+        assert!(render(&[(&BAD_PIL_PREFIX, PIL)], "test").is_err(), "`1X` starts with a digit");
+        assert!(render(&[(&G, DOT_C)], "test").is_err(), "`.` is not valid in a C macro");
+        assert!(render(&[(&G, DOT_ASM)], "test").is_ok(), "GAS symbols take `.` and `$`");
     }
 
     #[test]

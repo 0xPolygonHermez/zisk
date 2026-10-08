@@ -127,6 +127,10 @@ Overrides only the fields it names; everything else inherits the module defaults
 - **Visibility:** every exported const must be `pub` (the generated Rust is `pub`); a
   private helper const must be `#[emit(internal)]`.
 - **Doc comments** on a const become one-line comments in every generated target.
+- **Emitted names** (prefix + name) must be valid in their target: identifiers for C
+  and PIL, GAS symbols (which also allow `.` and `$`) for asm. Two C headers whose
+  include guards would coincide (names differing only in case or punctuation) are
+  rejected.
 - **Derived values** (any non-literal initializer) are emitted as the computed literal,
   with the source expression carried alongside as a provenance comment.
 - Signedness comes from the value's type; the **fit check** rejects a value that
