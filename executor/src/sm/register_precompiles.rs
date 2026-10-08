@@ -200,19 +200,6 @@ macro_rules! register_precompiles {
                     }
                 }
 
-                /// The counter of the precompile at bundle `position`, if any.
-                pub fn metrics_at(
-                    &self,
-                    position: ::std::primitive::usize,
-                ) -> ::std::option::Option<&dyn ::zisk_common::BusDeviceMetrics> {
-                    $(
-                        if self.[<$variant:snake>].0 == position {
-                            return ::std::option::Option::Some(&self.[<$variant:snake>].1);
-                        }
-                    )*
-                    ::std::option::Option::None
-                }
-
                 /// Consumes the slots, producing the per-precompile
                 /// entries that `StaticDataBus::into_devices` splices
                 /// into its full device list. Order matches

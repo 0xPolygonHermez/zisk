@@ -159,12 +159,6 @@ pub trait ProofRegistry: Dctx {
     fn instance_weight(&self, _info: InstanceInfo) -> u64 {
         0
     }
-
-    /// Whether more than one worker or process shares the proof. Each one places the instances
-    /// on its own, so every one must register the same instances in the same order.
-    fn is_distributed(&self) -> bool {
-        false
-    }
 }
 
 // ────────────────────────────────────────────────────────────────────

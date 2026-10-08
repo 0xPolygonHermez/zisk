@@ -161,11 +161,6 @@ impl<F: PrimeField64> ProofRegistry for ProofmanAdapter<'_, F> {
             + self.pctx.get_compressor_weight(ag, air)
     }
 
-    fn is_distributed(&self) -> bool {
-        zisk_common::PARTITIONS_SHARED.load(std::sync::atomic::Ordering::Acquire)
-            || self.pctx.mpi_ctx.n_processes > 1
-    }
-
     fn instance_counts(&self) -> std::collections::HashMap<(usize, usize), usize> {
         self.instance_counts.lock().expect("instance_counts mutex").clone()
     }
