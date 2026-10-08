@@ -24,7 +24,7 @@ fn main() {
     let elf_file = library_folder.join(format!("{library_name}.elf"));
 
     // The committed `lib/ziskfloat.elf` is the source of truth: its bytes determine the
-    // program vk (see core/src/elf2rom.rs `include_bytes!`). On Linux it is regenerated
+    // program vk (see transpilers/riscv/src/elf2rom.rs `include_bytes!`). On Linux it is regenerated
     // reproducibly from source inside the pinned Docker image (see c/docker/Dockerfile:
     // fixed Ubuntu digest + fixed riscv64 gcc/binutils versions), so any build host
     // produces the exact same bytes. Distinguish workspace dev vs cargo dep by checking

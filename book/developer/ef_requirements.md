@@ -331,7 +331,7 @@ segments only `PF_X` or `PF_X|PF_R`), and validate the entry point (aligned,
 inside a loaded executable segment). Invalid ELFs must be rejected with
 diagnostics before any state reaches the prover.
 
-**ZisK.** `transpilers/common/src/elf2rom.rs` (with the `elf_extraction` module)
+**ZisK.** `transpilers/riscv/src/elf2rom.rs` (with the `elf_extraction` module)
 builds the ROM exclusively from `PT_LOAD` segments, zero-fills BSS, checks every
 segment/address lies within the ZisK addressable space (and errors otherwise,
 e.g. the `PT_LOAD 0x0-0x0` rejection), and validates the entry point

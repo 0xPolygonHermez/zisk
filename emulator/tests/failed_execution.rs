@@ -10,7 +10,7 @@
 //! sources and `build.sh` are next to them.
 
 use zisk_common::EmuTrace;
-use zisk_transpiler_common::elf2rom::elf2rom;
+use zisk_transpiler_common::program2rom;
 use ziskemu::{EmuOptions, Emulator, FailureReason, ZiskEmulator, ZiskEmulatorErr};
 
 fn elf_path(name: &str) -> String {
@@ -24,7 +24,7 @@ fn emulate(name: &str) -> Result<Vec<u8>, ZiskEmulatorErr> {
 
 fn minimal_traces(name: &str) -> Result<Vec<EmuTrace>, ZiskEmulatorErr> {
     let elf = std::fs::read(elf_path(name)).expect("committed ELF");
-    let rom = elf2rom(&elf).expect("ELF must transpile");
+    let rom = program2rom(&elf).expect("ELF must transpile");
     let options = EmuOptions { chunk_size: Some(1 << 18), ..Default::default() };
     ZiskEmulator::compute_minimal_traces(&rom, &[], &options, 2)
 }
@@ -73,7 +73,7 @@ fn compressed_ebreak_fails() {
 #[test]
 fn compressed_ebreak_takes_its_own_path() {
     let elf = std::fs::read(elf_path("trap_c_ebreak")).expect("committed ELF");
-    let rom = elf2rom(&elf).expect("ELF must transpile");
+    let rom = program2rom(&elf).expect("ELF must transpile");
     let expected = if cfg!(feature = "compressed") { "c.ebreak" } else { "c.halt" };
     assert_eq!(rom.get_instruction(0x8000_0000).riscv_inst.as_deref(), Some(expected));
 }
