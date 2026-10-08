@@ -397,7 +397,7 @@ fn fmt_value_rust(e: &Export) -> String {
 
 // ---- C / PIL rendering ----------------------------------------------------
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
     C,
     Pil,
@@ -463,7 +463,7 @@ fn render_flat(
             meta.asm_file.map(String::from).unwrap_or_else(|| format!("{}.gen.inc", meta.name));
         for e in exports {
             if e.targets.contains(Targets::C) {
-                push_entry(&mut files, &c_file, Kind::C, meta, e, fmt_value_c(e))?;
+                push_entry(&mut files, &c_file, Kind::C, meta, e, fmt_value_c(e)?)?;
             }
             if e.targets.contains(Targets::PIL) {
                 push_entry(
@@ -476,6 +476,7 @@ fn render_flat(
                 )?;
             }
             if e.targets.contains(Targets::ASM) {
+                check_64bit_literal(e, "asm")?;
                 push_entry(
                     &mut files,
                     &asm_file,
@@ -512,7 +513,9 @@ fn push_entry(
         Kind::Asm => format!("{}{}", meta.asm_prefix, e.asm_name.unwrap_or(e.name)),
     };
 
-    let idx = match files.iter().position(|f| f.file_name == fname) {
+    // Keyed by target too: each target writes to its own dir, so C and PIL overrides
+    // may share a name without their entries landing in one file.
+    let idx = match files.iter().position(|f| f.file_name == fname && f.kind == kind) {
         Some(i) => i,
         None => {
             files.push(FileBuf { file_name: fname.to_string(), kind, entries: Vec::new() });
@@ -608,11 +611,50 @@ fn fmt_number(value: &Value, radix: Radix, upper: bool) -> String {
     }
 }
 
-fn fmt_value_c(e: &Export) -> String {
+fn fmt_value_c(e: &Export) -> Result<String, String> {
     if let Value::Str(s) = e.value {
-        return format!("{s:?}");
+        return Ok(c_string_literal(s));
     }
-    format!("(({}){})", c_type(e), fmt_number(&e.value, e.radix, false))
+    check_64bit_literal(e, "C")?;
+    Ok(format!("(({}){})", c_type(e), fmt_number(&e.value, e.radix, false)))
+}
+
+/// A C string literal for `s`. Not Rust's `{:?}`: C has no `\u{..}` escapes. Every byte
+/// outside printable ASCII is written as a 3-digit octal escape, which (unlike `\x`)
+/// can't swallow a following hex-digit character.
+fn c_string_literal(s: &str) -> String {
+    let mut out = String::from("\"");
+    for b in s.bytes() {
+        match b {
+            b'"' => out.push_str("\\\""),
+            b'\\' => out.push_str("\\\\"),
+            b'\n' => out.push_str("\\n"),
+            b'\t' => out.push_str("\\t"),
+            b'\r' => out.push_str("\\r"),
+            0x20..=0x7e => out.push(b as char),
+            _ => {
+                let _ = write!(out, "\\{b:03o}");
+            }
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// C and GAS integer literals stop at 64 bits: a wider value can't be written as one
+/// (a cast after the literal comes too late), so reject it instead of emitting a header
+/// or include that fails to assemble or silently truncates.
+fn check_64bit_literal(e: &Export, target: &str) -> Result<(), String> {
+    let fits = match e.value {
+        Value::U(v) => u64::try_from(v).is_ok(),
+        Value::I(v) => i64::try_from(v).is_ok(),
+        Value::Str(_) => true,
+    };
+    if fits {
+        Ok(())
+    } else {
+        Err(format!("`{}`: value does not fit a 64-bit {target} literal", e.name))
+    }
 }
 
 /// Uppercase bare numeric literal for the PIL and asm targets (both use `0x…`
@@ -625,13 +667,16 @@ fn fmt_numeric_upper(e: &Export, target: &str) -> Result<String, String> {
 }
 
 /// Assert the evaluated value fits the effective bit bound (explicit `fits`, else
-/// the storage width). Skipped when `no_fit` is set or the width is 128/str.
+/// the storage width). Skipped for strings, when `no_fit` is set, or at 128 bits.
 fn fit_check(e: &Export) -> Result<(), String> {
-    if e.no_fit {
+    if e.no_fit || matches!(e.value, Value::Str(_)) {
         return Ok(());
     }
     let bound = e.fits.unwrap_or(e.ty_bits);
-    if bound == 0 || bound >= 128 {
+    if bound == 0 {
+        return Err(format!("`{}`: a numeric fit bound must be at least 1 bit", e.name));
+    }
+    if bound >= 128 {
         return Ok(());
     }
     match e.value {
@@ -820,5 +865,67 @@ mod tests {
         assert!(hand.exists(), "hand-written file survives cleanup");
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn same_override_name_stays_per_target() {
+        static G: GroupMeta =
+            GroupMeta { c_file: Some("shared"), pil_file: Some("shared"), ..group("g", "shared") };
+        static E: &[Export] =
+            &[export("X", Value::U(1), Targets(Targets::C.0 | Targets::PIL.0), None)];
+        let files = render(&[(&G, E)], "test").expect("render");
+        let c = files.iter().find(|f| f.target == super::Target::C).expect("C file");
+        let pil = files.iter().find(|f| f.target == super::Target::Pil).expect("PIL file");
+        assert!(c.contents.contains("#define X"), "{}", c.contents);
+        assert!(pil.contents.contains("const int X"), "{}", pil.contents);
+        assert!(!c.contents.contains("const int"), "PIL entry leaked into the C file");
+    }
+
+    #[test]
+    fn c_strings_use_c_escapes() {
+        static G: GroupMeta = group("s", "s.h");
+        static E: &[Export] = &[Export {
+            ty_bits: 0,
+            ..export("S", Value::Str("a\"b\\c\n\u{7f}\u{e9}1"), Targets::C, None)
+        }];
+        let files = render(&[(&G, E)], "test").expect("render");
+        let h = &files.iter().find(|f| f.name == "s.h").expect("s.h").contents;
+        // DEL and the UTF-8 bytes of 'é' as octal; never Rust's `\u{..}`.
+        assert!(h.contains(r#""a\"b\\c\n\177\303\2511""#), "{h}");
+        assert!(!h.contains("\\u{"), "{h}");
+    }
+
+    #[test]
+    fn values_wider_than_64_bits_are_rejected_for_c_and_asm() {
+        static G: GroupMeta = group("w", "w.h");
+        static WIDE: Value = Value::U(1 << 64);
+        static C: &[Export] = &[Export { ty_bits: 128, ..export("W", WIDE, Targets::C, None) }];
+        static ASM: &[Export] = &[Export { ty_bits: 128, ..export("W", WIDE, Targets::ASM, None) }];
+        static PIL: &[Export] = &[Export { ty_bits: 128, ..export("W", WIDE, Targets::PIL, None) }];
+        static NEG: &[Export] = &[Export {
+            ty_bits: 128,
+            ..export("N", Value::I(i64::MIN as i128 - 1), Targets::C, None)
+        }];
+        assert!(render(&[(&G, C)], "test").is_err(), "C cannot hold a >64-bit literal");
+        assert!(render(&[(&G, ASM)], "test").is_err(), "GAS cannot hold a >64-bit literal");
+        assert!(render(&[(&G, NEG)], "test").is_err(), "below i64::MIN");
+        assert!(render(&[(&G, PIL)], "test").is_ok(), "PIL has big integers");
+
+        // A 128-bit type holding a 64-bit value is still a valid (cast) C literal.
+        static SMALL: &[Export] =
+            &[Export { ty_bits: 128, ..export("S", Value::U(5), Targets::C, None) }];
+        let files = render(&[(&G, SMALL)], "test").expect("render");
+        assert!(files[0].contents.contains("((unsigned __int128)0x5)"), "{}", files[0].contents);
+    }
+
+    #[test]
+    fn zero_fit_bound_rejects_numbers_not_strings() {
+        static G: GroupMeta = group("z", "z.h");
+        static NUM: &[Export] = &[export("N", Value::U(1), Targets::C, Some(0))];
+        assert!(render(&[(&G, NUM)], "test").is_err(), "fits = 0 must not accept a number");
+
+        static STR: &[Export] =
+            &[Export { ty_bits: 0, ..export("S", Value::Str("x"), Targets::C, None) }];
+        assert!(render(&[(&G, STR)], "test").is_ok(), "strings carry no width");
     }
 }

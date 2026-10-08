@@ -123,12 +123,16 @@ Overrides only the fields it names; everything else inherits the module defaults
 
 - Types: `u8..=u128`, `i8..=i128`, `usize`/`isize` (treated as 64-bit — ZisK is a
   fixed 64-bit target), and `&str`. Strings emit to Rust and C only (PIL/asm can't hold
-  them).
+  them); C gets octal escapes for every byte outside printable ASCII.
+- **Visibility:** every exported const must be `pub` (the generated Rust is `pub`); a
+  private helper const must be `#[emit(internal)]`.
 - **Doc comments** on a const become comments in every generated target.
 - **Derived values** (any non-literal initializer) are emitted as the computed literal,
   with the source expression carried alongside as a provenance comment.
 - Signedness comes from the value's type; the **fit check** rejects a value that
-  overflows its `fits` bound (or storage width) at generation time.
+  overflows its `fits` bound (1–128 bits; default the storage width) at generation time.
+- C and asm literals are at most 64 bits: a wider value (e.g. a `u128` above
+  `u64::MAX`) is rejected for those targets; PIL and Rust take it as is.
 
 ### Generated output per target
 

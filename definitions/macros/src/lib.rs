@@ -19,7 +19,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{
     meta::ParseNestedMeta, parse_macro_input, spanned::Spanned, Attribute, Expr, ExprLit, Item,
-    ItemConst, ItemMod, Lit, LitInt, LitStr, Meta, Type,
+    ItemConst, ItemMod, Lit, LitInt, LitStr, Meta, Type, Visibility,
 };
 
 const T_RUST: u8 = 1;
@@ -82,7 +82,7 @@ impl Container {
         } else if meta.path.is_ident("dec") {
             self.radix = Radix::Dec;
         } else if meta.path.is_ident("fits") {
-            self.fits = Some(meta.value()?.parse::<LitInt>()?.base10_parse()?);
+            self.fits = Some(parse_fits(&meta)?);
         } else if meta.path.is_ident("c_prefix") {
             self.c_prefix = meta.value()?.parse::<LitStr>()?.value();
         } else if meta.path.is_ident("pil_prefix") {
@@ -131,7 +131,7 @@ impl Emit {
         } else if meta.path.is_ident("dec") {
             self.radix = Some(Radix::Dec);
         } else if meta.path.is_ident("fits") {
-            self.fits = Some(Some(meta.value()?.parse::<LitInt>()?.base10_parse()?));
+            self.fits = Some(Some(parse_fits(&meta)?));
         } else if meta.path.is_ident("no_fits") {
             self.fits = Some(None);
         } else if meta.path.is_ident("c_name") {
@@ -145,6 +145,20 @@ impl Emit {
         }
         Ok(())
     }
+}
+
+/// Parses a `fits = N` bound. Zero would accept nothing meaningful (and the engine
+/// reserves width 0 for strings), and nothing wider than 128 bits is representable.
+fn parse_fits(meta: &ParseNestedMeta) -> syn::Result<u8> {
+    let lit = meta.value()?.parse::<LitInt>()?;
+    let bits: u8 = lit.base10_parse()?;
+    if !(1..=128).contains(&bits) {
+        return Err(syn::Error::new(
+            lit.span(),
+            "`fits` must be between 1 and 128 bits; use `no_fits` to disable the check",
+        ));
+    }
+    Ok(bits)
 }
 
 fn add_target(bits: &mut u8, m: &ParseNestedMeta) -> syn::Result<()> {
@@ -219,6 +233,17 @@ fn expand(container: Container, item_mod: ItemMod) -> syn::Result<TokenStream2> 
                     }
                 }
                 c.attrs = kept_attrs;
+
+                // Exported consts become `pub` in the generated Rust and visible to every
+                // target, so only a `pub` const may be exported; a private helper must say
+                // it stays out of the outputs.
+                if !emit.internal && !matches!(c.vis, Visibility::Public(_)) {
+                    return Err(syn::Error::new(
+                        c.ident.span(),
+                        "#[constants] exports this const: make it `pub`, or mark it \
+                         `#[emit(internal)]` to keep it out of every target",
+                    ));
+                }
 
                 // Keep the const verbatim (rustc evaluates the DAG; doc attrs stay).
                 out_items.push(quote!(#c));
@@ -401,4 +426,63 @@ fn doc_of(attrs: &[Attribute]) -> String {
         }
     }
     parts.join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use proc_macro2::TokenStream as TokenStream2;
+    use quote::quote;
+    use syn::parse::Parser;
+
+    use super::{expand, Container};
+
+    /// Runs the `#[constants(attr)]` expansion over `item`, as the attribute would.
+    fn constants(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
+        let mut container = Container::default();
+        syn::meta::parser(|meta| container.parse_meta(meta)).parse2(attr)?;
+        expand(container, syn::parse2(item)?)
+    }
+
+    #[test]
+    fn private_const_must_be_internal() {
+        let private = quote!(
+            pub mod g {
+                const HELPER: u64 = 1;
+            }
+        );
+        let err = constants(quote!(to(rust)), private).unwrap_err().to_string();
+        assert!(err.contains("make it `pub`"), "{err}");
+
+        let internal = quote!(
+            pub mod g {
+                #[emit(internal)]
+                const HELPER: u64 = 1;
+            }
+        );
+        assert!(constants(quote!(to(rust)), internal).is_ok());
+    }
+
+    #[test]
+    fn fits_must_be_1_to_128_bits() {
+        let item = || {
+            quote!(
+                pub mod g {
+                    pub const X: u64 = 1;
+                }
+            )
+        };
+        for bad in [quote!(to(c), fits = 0), quote!(to(c), fits = 129)] {
+            let err = constants(bad, item()).unwrap_err().to_string();
+            assert!(err.contains("between 1 and 128"), "{err}");
+        }
+        assert!(constants(quote!(to(c), fits = 1), item()).is_ok());
+
+        let per_const = quote!(
+            pub mod g {
+                #[emit(fits = 0)]
+                pub const X: u64 = 1;
+            }
+        );
+        assert!(constants(quote!(to(c)), per_const).is_err());
+    }
 }
