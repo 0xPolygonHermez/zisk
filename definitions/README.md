@@ -122,7 +122,7 @@ Overrides only the fields it names; everything else inherits the module defaults
 ### Supported types & behavior
 
 - Types: `u8..=u128`, `i8..=i128`, `usize`/`isize` (treated as 64-bit — ZisK is a
-  fixed 64-bit target), and `&str`. Strings emit to Rust and C only (PIL/asm can't hold
+  fixed 64-bit target — but kept as `usize`/`isize` in the generated Rust), and `&str`. Strings emit to Rust and C only (PIL/asm can't hold
   them); C gets octal escapes for every byte outside printable ASCII.
 - **Visibility:** every exported const must be `pub` (the generated Rust is `pub`); a
   private helper const must be `#[emit(internal)]`.

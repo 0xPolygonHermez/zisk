@@ -58,3 +58,23 @@ fn sample_round_trips() {
     assert!(ex_pil.contains("= 36;"));
     assert!(ex_pil.contains("= 0x1000000000;"));
 }
+
+/// `usize`/`isize` are 64-bit for C, but the generated Rust keeps the pointer-sized
+/// type so a length/index const stays usable as one.
+#[test]
+fn pointer_sized_types_survive_into_rust() {
+    use zisk_definitions_macros::constants;
+
+    #[constants(group = "sizes", to(rust, c))]
+    mod sizes {
+        pub const LEN: usize = 4;
+        pub const OFF: isize = -2;
+    }
+
+    let files = render(&[(&sizes::GROUP, sizes::EXPORTS)], "test").expect("render");
+    let rs = contents(&files, "sizes.rs").expect("sizes.rs missing");
+    assert!(rs.contains("pub const LEN: usize = 0x4;"), "{rs}");
+    assert!(rs.contains("pub const OFF: isize = -2;"), "{rs}");
+    let h = contents(&files, "sizes.gen.h").expect("sizes.gen.h missing");
+    assert!(h.contains("((uint64_t)0x4)") && h.contains("((int64_t)-2)"), "{h}");
+}

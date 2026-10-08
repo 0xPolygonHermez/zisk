@@ -288,6 +288,10 @@ fn build_export(container: &Container, emit: &Emit, c: &ItemConst) -> syn::Resul
     let name = id.to_string();
 
     let (bits, kind) = classify_type(&c.ty)?;
+    // 64 bits like u64/i64 for every other target, but the generated Rust must keep the
+    // pointer-sized type, or a `usize` length/index const comes out as `u64`.
+    let pointer_sized = matches!(&*c.ty, Type::Path(tp)
+        if tp.path.is_ident("usize") || tp.path.is_ident("isize"));
     let value = match kind {
         Kind::Uint => quote!( zisk_definitions_generator::meta::Value::U(#id as u128) ),
         Kind::Int => quote!( zisk_definitions_generator::meta::Value::I(#id as i128) ),
@@ -347,6 +351,7 @@ fn build_export(container: &Container, emit: &Emit, c: &ItemConst) -> syn::Resul
             name: #name,
             value: #value,
             ty_bits: #bits,
+            pointer_sized: #pointer_sized,
             targets: #targets_tok,
             radix: zisk_definitions_generator::meta::Radix::#radix_tok,
             fits: #fits_tok,
@@ -369,7 +374,8 @@ enum Kind {
 /// Maps a supported const type to `(storage_bits, kind)`.
 ///
 /// `usize`/`isize` map to 64 bits: ZisK targets a fixed 64-bit word, so this is an
-/// intentional target assumption, not host-dependent.
+/// intentional target assumption, not host-dependent. (The generated Rust still keeps
+/// the pointer-sized type; see `pointer_sized` in `build_export`.)
 fn classify_type(ty: &Type) -> syn::Result<(u8, Kind)> {
     match ty {
         Type::Path(tp) => {

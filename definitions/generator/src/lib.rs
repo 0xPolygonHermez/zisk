@@ -76,6 +76,10 @@ pub mod meta {
         /// Storage width in bits (8/16/32/64/128); 0 for `&str`. Signedness is
         /// read from the `Value` variant (`I` vs `U`), so it isn't stored here.
         pub ty_bits: u8,
+        /// Declared as `usize`/`isize`: 64 bits everywhere (ZisK is a fixed 64-bit
+        /// target), but the generated Rust keeps the pointer-sized type so consumers
+        /// can still use it as a length or an index.
+        pub pointer_sized: bool,
         pub targets: Targets,
         pub radix: Radix,
         /// Explicit domain bound in bits; `None` means "use `ty_bits`".
@@ -367,10 +371,13 @@ fn render_rust(groups: &[(&GroupMeta, &[Export])], regen_cmd: &str) -> Vec<GenFi
     files
 }
 
-/// The Rust type of a value: signedness from the `Value` variant, width from `ty_bits`.
+/// The Rust type of a value: signedness from the `Value` variant, width from `ty_bits`
+/// (or `usize`/`isize` when the source declared a pointer-sized type).
 fn rust_type(e: &Export) -> &'static str {
     match e.value {
         Value::Str(_) => "&str",
+        Value::I(_) if e.pointer_sized => "isize",
+        Value::U(_) if e.pointer_sized => "usize",
         Value::I(_) => match e.ty_bits {
             8 => "i8",
             16 => "i16",
@@ -722,6 +729,7 @@ mod tests {
             name,
             value,
             ty_bits: 64,
+            pointer_sized: false,
             targets,
             radix: Radix::Hex,
             fits,
@@ -916,6 +924,20 @@ mod tests {
             &[Export { ty_bits: 128, ..export("S", Value::U(5), Targets::C, None) }];
         let files = render(&[(&G, SMALL)], "test").expect("render");
         assert!(files[0].contents.contains("((unsigned __int128)0x5)"), "{}", files[0].contents);
+    }
+
+    #[test]
+    fn pointer_sized_keeps_its_rust_type() {
+        static G: GroupMeta = group("p", "p.h");
+        static E: &[Export] = &[Export {
+            pointer_sized: true,
+            ..export("LEN", Value::U(4), Targets(Targets::RUST.0 | Targets::C.0), None)
+        }];
+        let files = render(&[(&G, E)], "test").expect("render");
+        let rs = files.iter().find(|f| f.name == "p.rs").expect("p.rs");
+        assert!(rs.contents.contains("pub const LEN: usize = 0x4;"), "{}", rs.contents);
+        let h = files.iter().find(|f| f.name == "p.h").expect("p.h");
+        assert!(h.contents.contains("((uint64_t)0x4)"), "{}", h.contents);
     }
 
     #[test]
