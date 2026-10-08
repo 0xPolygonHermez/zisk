@@ -92,11 +92,15 @@ impl AsmExecClient {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program, with_hints) before execute")?;
 
-        // Before the job's input reset, which writes the shared input too. Held to the
-        // end, past the last read of the job's results.
+        // Before anything of the job touches the segments, and held to the end, past the
+        // last read of the job's results.
         let claim = setup.resources.claim();
-        self.executor.reset_for_new_job()?;
+        // Activate before the input reset. Another client's job may have returned with
+        // its ROM histogram still running on the shared input; that executor drains it
+        // only at its own next job, and activating is what waits for it here. Resetting
+        // first would clear the input under it, and the wait would never end.
         setup.resources.activate(&claim)?;
+        self.executor.reset_for_new_job()?;
 
         if let Some(stream) = hints {
             tracing::debug!("Installing hints stream source");
