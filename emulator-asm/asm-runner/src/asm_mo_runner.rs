@@ -236,6 +236,7 @@ impl DeviceMemWitness {
                     owned.rom.clone(),
                     owned.input.clone(),
                     &owned.align,
+                    self.slot,
                 )
             });
             timer_stop_and_log_info!(GPU_MEM_WITNESS);
@@ -248,12 +249,21 @@ impl DeviceMemWitness {
                         if self.slot { "slots" } else { "host rows" }
                     );
                     let d_buffers = d_buffers as usize;
+                    let slot = self.slot;
                     zisk_sm_mem_planner::gpu_slot_witness_arm(
                         n_owned,
                         Box::new(move || {
                             // The last owned memory instance has its rows (in its slot, or in its
                             // trace buffer): the arena goes back and the memory airs are host airs
-                            // for the rest of the block (the proofs reuse the buffers).
+                            // for the rest of the block. A slot instance's proof takes its rows
+                            // from the planner's host copy when every owned instance of the family
+                            // has one; the families without are rebuilt on the CPU.
+                            let on_host = if slot {
+                                zisk_sm_mem_planner::gpu_mem_witness_host_rows_mask()
+                            } else {
+                                0
+                            };
+                            zisk_common::MEM_ROWS_ON_HOST.store(on_host, Ordering::Release);
                             zisk_common::MEM_ROWS_ON_DEVICE.store(0, Ordering::Release);
                             proofman_starks_lib_c::release_first_gpu_buffer_c(
                                 d_buffers as *mut c_void,
@@ -462,6 +472,7 @@ impl AsmRunnerMO {
         #[cfg(gpu)]
         zisk_sm_mem_planner::clear_gpu_ram_witness();
         zisk_common::MEM_ROWS_ON_DEVICE.store(0, Ordering::Release);
+        zisk_common::MEM_ROWS_ON_HOST.store(0, Ordering::Release);
         static LIGHT_ARENA_WARNED: std::sync::Once = std::sync::Once::new();
         if mops_light()
             && std::env::var("ZISK_MEM_GPU_FILL").map(|v| v.starts_with("arena")).unwrap_or(false)

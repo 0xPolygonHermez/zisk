@@ -77,7 +77,11 @@ impl AirClassifier {
         } else {
             return false;
         };
-        zisk_common::MEM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire) & bit != 0
+        use std::sync::atomic::Ordering::Acquire;
+        (zisk_common::MEM_ROWS_ON_DEVICE.load(Acquire)
+            | zisk_common::MEM_ROWS_ON_HOST.load(Acquire))
+            & bit
+            != 0
     }
 
     /// The seven `MemAlign` airs.
