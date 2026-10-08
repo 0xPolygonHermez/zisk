@@ -7,7 +7,7 @@
 //! before its lib compiles, so this can't live in the source crate itself).
 //!
 //! Codegen is expressed as a list of [`Job`]s, each mapping one source constant table
-//! to its per-target output dirs. See [`jobs`] for how to add another source or route a
+//! to its per-target output dirs. See `main` for how to add another source or route a
 //! target into a folder shared with hand-written files.
 
 use std::env;

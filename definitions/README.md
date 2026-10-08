@@ -10,31 +10,34 @@ turns an annotated Rust `const` module into committed, multi-language source fil
 
 | Crate | Path | Goal |
 |---|---|---|
-| `zisk-definitions` | `.` | The leaf crate everyone depends on. `#![no_std]`, **zero deps** by default. Holds the constant *definitions* and the committed *generated* files. |
-| `zisk-definitions-macros` | `macros/` | The `#[constants]` / `#[emit]` proc-macros. Turn a normal `const` module into the verbatim consts **plus** a metadata table describing each value. |
-| `zisk-definitions-generator` | `generator/` | The rendering engine. Project-agnostic: takes metadata tables and renders/reconciles them to Rust/C/PIL/asm text on disk (`render` / `write` / `check`). |
+| `zisk-definitions` | `.` | The leaf crate everyone depends on (published). `#![no_std]`, **zero deps**. Holds the hand-written definitions (syscalls, hints, …) and the committed *generated* files. |
+| `zisk-definitions-source` | `source/` | The `#[constants]` *source*: one module per group plus the `ZISK_CONSTANTS` registry. Codegen input only (`publish = false`). |
+| `zisk-definitions-macros` | `macros/` | The `#[constants]` / `#[emit]` proc-macros. Turn a normal `const` module into the verbatim consts **plus** a metadata table describing each value (`publish = false`). |
+| `zisk-definitions-generator` | `generator/` | The rendering engine. Project-agnostic: takes metadata tables and renders/reconciles them to Rust/C/PIL/asm text on disk (`render` / `write` / `check`) (`publish = false`). |
 | `zisk-definitions-sync` | `sync/` | Build-only driver (`publish = false`). Its `build.rs` reads the *evaluated* constants and calls the generator to (re)write the committed files. |
 
-Why four crates? The engine (`generator`) is deliberately reusable and knows nothing
-about ZisK. The macros are a separate `proc-macro` crate (a Cargo requirement). And
-`sync` must be its own crate because of the **build-script phase wall**: a crate's own
-`build.rs` runs *before* its library compiles, so the code that reads the evaluated
-constants can't live in `zisk-definitions` itself — it lives in `sync`, which
-*build-depends* on `zisk-definitions` (so the constants are compiled and evaluated
-first).
+Why five crates? Each has one job, and only `zisk-definitions` is published: consumers
+get plain generated `const`s and never depend on the codegen machinery. The engine
+(`generator`) is deliberately reusable and knows nothing about ZisK. The macros are a
+separate `proc-macro` crate (a Cargo requirement). The source lives in its own crate so
+the published leaf stays dependency-free. And `sync` must be its own crate because of
+the **build-script phase wall**: a crate's own `build.rs` runs *before* its library
+compiles, so the code that reads the evaluated constants can't live in the source crate
+— it lives in `sync`, which *build-depends* on `zisk-definitions-source` (so the
+constants are compiled and evaluated first).
 
 ## Workflow
 
 ```
   #[constants] modules           #[constants] macro              generator engine
-  in src/constants/     ───────▶  keeps consts verbatim  ──────▶  renders + reconciles
+  in source/src/        ───────▶  keeps consts verbatim  ──────▶  renders + reconciles
   (source of truth)               + emits GROUP/EXPORTS            to src/generated/
                                     metadata table                 (driven by `sync`)
 ```
 
-1. **Author** a `const` module in `src/constants/` (one group per file), annotate it
+1. **Author** a `const` module in `source/src/` (one group per file), annotate it
    with `#[constants(...)]` (and per-const `#[emit(...)]`), and register it in the
-   `ZISK_CONSTANTS` table in `src/constants/mod.rs`.
+   `ZISK_CONSTANTS` table in `source/src/lib.rs`.
 2. The **`#[constants]` macro** keeps every `const` exactly as written (so `rustc`
    evaluates derived values like `SYS_ADDR = RAM_ADDR + STACK_SIZE`) and *additionally*
    emits a `GROUP` + `EXPORTS` metadata table describing each value.
@@ -42,18 +45,18 @@ first).
    `ZISK_CONSTANTS` and calls the generator, which renders and writes
    `src/generated/` — the Rust files at the top, `c/`, `pil/`, and `asm/` in subdirs.
    Only changed files are rewritten; files a group no longer produces are deleted.
-4. **Downstream consumers** build `zisk-definitions` *without* the `gen` feature, so
-   they compile only the committed plain `const`s in `src/generated/` — no macros, no
-   dependencies. The C / PIL / asm toolchains include the generated files from their
-   respective subdirs.
-5. **CI** gates drift: it runs `cargo build -p zisk-definitions-sync` then
-   `git diff --exit-code definitions/src/generated`. If a constant changed without
-   regenerating and committing, the build fails.
+4. **Downstream consumers** depend on `zisk-definitions` only, so they compile just the
+   committed plain `const`s in `src/generated/` — no macros, no dependencies. The
+   C / PIL / asm toolchains include the generated files from their respective subdirs
+   in the repo (they're excluded from the published crate).
+5. **CI** gates drift: it snapshots `definitions/src/generated`, runs
+   `cargo build -p zisk-definitions-sync`, and diffs the two. If a constant changed
+   without regenerating and committing, the build fails.
 
-> The `gen` feature selects the view: **with** `gen`, `zisk-definitions` compiles
-> `src/constants/` (source + `ZISK_CONSTANTS`); **without** it, it compiles the committed
-> `generated/`. They're mutually exclusive so the regeneration never depends on the
-> files it is about to overwrite.
+> The source and the generated output live in different crates, so regeneration never
+> compiles the files it is about to overwrite: a deleted or broken `src/generated/` can
+> always be rebuilt. The sync build only reruns when `source/src/` changes, so touch a
+> file there to force it.
 
 ### Regenerating
 
@@ -144,9 +147,10 @@ Groups that share the same `*_file` are merged into one file, separated by
 The `sync` build is a list of **jobs** (in `sync/build.rs`), each mapping one source
 constant table to its per-target output dirs. Two axes of flexibility:
 
-- **Multiple sources.** To pull constants from another crate, give that crate a
-  `#[constants]` table behind a `gen` feature (`pub const CONSTANTS: …`), add it as a
-  build-dependency of `sync`, and push a `Job`.
+- **Multiple sources.** Add another unpublished source crate exposing its
+  `#[constants]` table (`pub const CONSTANTS: …`), add it as a build-dependency of
+  `sync`, and push a `Job`. Keep sources out of published crates: a published crate
+  would have to depend on, and so publish, the macros and the engine.
 - **Multiple destinations.** Each target's dir has a mode:
   - `Exclusive` — a dedicated, generated-only dir (like `src/generated/`); files of
     that extension no longer produced are deleted.
