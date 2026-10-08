@@ -11,7 +11,8 @@ fi
 
 FROM_VERSION=$1
 TO_VERSION=$2
-ZISK_RUST_DIR="$(realpath "$3")/rust"
+WORKING_DIR="$(realpath "$3")"
+ZISK_RUST_DIR="${WORKING_DIR}/rust"
 REMOTE_NAME="upstream"
 CURRENT_FOLDER=$(pwd)
 
@@ -35,7 +36,7 @@ fi
 
 # Check if we are in ZISK_RUST_DIR directory
 if [ "$(pwd)" != "$ZISK_RUST_DIR" ]; then
-    log_err "\e[1;31mError changing directory to '${ZISK_RUST_DIR}'"
+    log_err "Error changing directory to '${ZISK_RUST_DIR}'"
     exit 1
 fi
 
@@ -70,18 +71,18 @@ exec_git \
 # Verify current branch is zisk
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 if [[ "$current_branch" != "zisk" ]]; then
-    log_err "\e[1;31mCurrent branch is not 'zisk'."
+    log_err "Current branch is not 'zisk'."
     exit 1
 fi
 
 # List cherry picks
 log_info "List of cherry picks to apply:"
 exec_git \
-    "git log --oneline --no-decorate --reverse ${FROM_VERSION}..HEAD" \
+    "git log --oneline --no-decorate --reverse --first-parent ${FROM_VERSION}..HEAD" \
     "Failed to list cherry picks"
 # Store the list of cherry-pick commits to apply in an array
 commits_array=$(exec_git \
-    "git log --oneline --no-decorate --reverse ${FROM_VERSION}..HEAD" \
+    "git log --oneline --no-decorate --reverse --first-parent ${FROM_VERSION}..HEAD" \
     "Failed to get cherry picks")
 IFS=$'\n' read -d '' -r -a commits_array <<< "$commits_array"
 log_warn "Press a key to continue..."
@@ -95,7 +96,7 @@ exec_git \
 # Verify current branch is zisk-rust-${TO_VERSION}
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 if [[ "$current_branch" != "zisk-rust-${TO_VERSION}" ]]; then
-    log_err "\e[1;31mCurrent branch is not 'zisk-rust-${TO_VERSION}'."
+    log_err "Current branch is not 'zisk-rust-${TO_VERSION}'."
     exit 1
 fi
 
@@ -104,15 +105,21 @@ for line in "${commits_array[@]}"; do
     commit=$(echo "$line" | awk '{print $1}')
     msg=$(echo "$line" | cut -d' ' -f2-)
 
+    # Merge commits need the mainline parent to be cherry picked
+    mainline=""
+    if git rev-parse --verify -q "${commit}^2" >/dev/null; then
+        mainline="-m 1"
+    fi
+
     log_info "Applying cherry pick for commit: ${msg} (${commit})"
-    output=$(git cherry-pick $commit -n 2>&1)
+    output=$(git cherry-pick -n $mainline $commit 2>&1)
     if ! [[ $? -eq 0 ]]; then
         if [[ "$output" == *"CONFLICT"* ]]; then
             printf "%s\n" "$output"
-            log_warn "\e[1;33mThe are CONFLICTS, please resolve them and after press a key to continue"
+            log_warn "The are CONFLICTS, please resolve them and after press a key to continue"
             read -n1 -s
         else
-            log_err "\e[1;31mFailed to apply cherry pick for commit: ${msg} (${commit})"
+            log_err "Failed to apply cherry pick for commit: ${msg} (${commit})"
             printf "%s\n" "$output"
             exit 1
         fi
@@ -122,7 +129,7 @@ done
 # Final instructions
 echo
 log_info "Now test build Zisk tool chain using the rust code in the directory ${ZISK_RUST_DIR} and new branch 'zisk-rust-${TO_VERSION}':"
-log "ZISK_BUILD_DIR=${ZISK_RUST_DIR} cargo-zisk sdk build-toolchain"
+log "ZISK_BUILD_DIR=${WORKING_DIR} cargo-zisk toolchain build"
 echo
 log_info "When successfully tested, execute the following command to commit/merge the changes to 'zisk' branch and generate the release:"
 echo
