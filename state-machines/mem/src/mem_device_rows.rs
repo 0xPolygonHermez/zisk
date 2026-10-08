@@ -69,6 +69,7 @@ pub fn mem_slot_witness_airs() -> Vec<proofman_common::GpuWitnessAir> {
             zisk_sm_mem_planner::zisk_mem_witness_slot_kernel,
         )
         .with_host_trace()
+        .with_planner_gpu()
     })
     .collect()
 }
