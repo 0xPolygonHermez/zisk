@@ -16,6 +16,16 @@ use proofman_fields::PrimeField64;
 use zisk_common::{io::ZiskStdin, AsmExecutionInfo, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
 
+/// Per-chunk callback invoked by the ASM MT reader thread, in chunk order, as
+/// each minimal-trace chunk is published. Receives every chunk published so far
+/// (`idx` is the last) and whether `idx` ends the execution, which is all the
+/// executor needs to release a Main instance the moment its chunks are complete
+/// — while the emulation is still running. Runs on the reader thread, so it
+/// does real work only on the chunks that complete an instance. Returning `Err`
+/// aborts the ASM run.
+pub type ChunkHook<'a> =
+    &'a dyn Fn(usize, &[Arc<zisk_common::EmuTrace>], bool) -> ExecutorResult<()>;
+
 /// Phase-1 actor: runs the chosen emulator backend, returns a  [`ExecutionOutput`]
 /// regardless of which backend ran.
 pub struct ExecutionPhase {
@@ -95,6 +105,7 @@ impl ExecutionPhase {
 
     /// Runs the active emulator and returns its [`ExecutionOutput`].
     /// `is_first_process` controls ROM-SM ownership on the ASM path.
+    #[allow(clippy::too_many_arguments)]
     pub fn run<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
@@ -103,6 +114,7 @@ impl ExecutionPhase {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
+        chunk_hook: ChunkHook<'_>,
     ) -> ExecutorResult<ExecutionOutput> {
         match self.asm_emulator() {
             Some(asm) => asm.execute::<F>(
@@ -112,7 +124,10 @@ impl ExecutionPhase {
                 use_hints,
                 stats,
                 caller_stats_scope,
+                chunk_hook,
             ),
+            // Rust emulator returns only on completion: the hook is never called;
+            // the caller's post-run batch path releases every Main instance.
             None => self.emulator_rust.execute::<F>(zisk_rom, stdin),
         }
     }

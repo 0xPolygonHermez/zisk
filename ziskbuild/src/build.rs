@@ -94,8 +94,14 @@ pub fn execute_build_program(
     // Guest rustflags + linker script; keep the temp file alive until cargo
     // finishes. Env rustflags are NOT inherited: in this build-script context
     // they are the host build's flags, injected by the outer cargo.
-    let _linker_script =
-        crate::apply_guest_rustflags(&mut cmd, Some(program_dir.as_std_path()), false)?;
+    let target_features =
+        crate::target_features_from_features(args.features.as_deref(), args.all_features);
+    let _linker_script = crate::apply_guest_rustflags(
+        &mut cmd,
+        Some(program_dir.as_std_path()),
+        false,
+        &target_features,
+    )?;
 
     let target_elf_paths = generate_elf_paths(&program_metadata, Some(args))?;
 
@@ -130,10 +136,22 @@ pub fn execute_build_program(
             std::fs::write(&hints_marker, new_value)?;
         }
 
-        // Tell cargo to rerun if any assembly file is deleted
+        // Tell cargo to rerun if any assembly file is deleted.
+        //
+        // Only paths that exist may be watched. Cargo cannot distinguish "deleted" from "never
+        // created" — both are simply a missing path, and both re-run the build script. So watching
+        // an artifact that `gen_assembly` did not produce (the default, since `asm` is off) leaves
+        // the script permanently dirty: every host `cargo check`/`test`/`clippy` re-runs it, which
+        // rebuilds every guest, which does not create these files, because that is `rom-setup`'s
+        // job. Cargo never garbage-collects `target/`, so each of those rebuilds also leaks a full
+        // generation of guest artifacts.
+        //
+        // Same reasoning as `process_aggregations`, which skips its own emit for a missing dir.
         let assembly_files = get_assembly_file_paths(elf_path_std, &output_path, hints)?;
         for asm_file in assembly_files {
-            println!("cargo:rerun-if-changed={}", asm_file.display());
+            if asm_file.exists() {
+                println!("cargo:rerun-if-changed={}", asm_file.display());
+            }
         }
     }
 

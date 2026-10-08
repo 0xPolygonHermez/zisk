@@ -92,6 +92,15 @@ impl Coordinator {
             return Ok(());
         }
 
+        // Bind the payload to the phase mutated below (see
+        // `validate_response_phase`) — ahead of the `Ready` flip, which is itself
+        // a mutation: a rejected payload must not un-mark a computing worker.
+        // Only for a success response; a failure carries no `result_data` to
+        // bind and is owned by the branch below.
+        if execute_task_response.success {
+            Self::validate_response_phase(&job, &execute_task_response)?;
+        }
+
         self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await?;
 
         if !execute_task_response.success {

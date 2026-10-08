@@ -1,5 +1,5 @@
 use crate::{
-    worker::{ComputationResult, LoopEvent, LoopEventSender},
+    worker::{CancelledWork, ComputationResult, LoopEvent, LoopEventSender},
     ProverConfig, Worker,
 };
 use anyhow::{anyhow, Context, Result};
@@ -154,6 +154,15 @@ pub struct WorkerNodeGrpc<T: ZiskBackend + 'static> {
     worker: Worker<T>,
 }
 
+/// A drain's reporting fields, and whether it was a drain and the job's final one.
+struct AggOutcome {
+    executed_steps: u64,
+    proof_type: ProofKind,
+    instances: u64,
+    is_final: bool,
+    drain: bool,
+}
+
 impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// Wrap a worker as the rank-0 gRPC node with the given config.
     pub async fn new(worker_config: WorkerServiceConfig, worker: Worker<T>) -> Result<Self> {
@@ -231,6 +240,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     worker_id: self.worker_config.worker.worker_id.as_string(),
                     compute_capacity: Some(self.worker_config.worker.compute_capacity.into()),
                     last_known_job_id: Some(job.lock().await.job_id.as_string()),
+                    aggregation_arity: self.worker.aggregation_arity() as u32,
                 })),
             }
         } else {
@@ -238,6 +248,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 payload: Some(worker_message::Payload::Register(WorkerRegisterRequest {
                     worker_id: self.worker_config.worker.worker_id.as_string(),
                     compute_capacity: Some(self.worker_config.worker.compute_capacity.into()),
+                    aggregation_arity: self.worker.aggregation_arity() as u32,
                 })),
             }
         };
@@ -432,15 +443,21 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 executed_steps,
                 proof_type,
                 instances,
+                final_proof,
+                drain,
             } => {
                 self.send_recurser(
                     job_id,
                     success,
                     result,
                     message_sender,
-                    executed_steps,
-                    proof_type,
-                    instances,
+                    AggOutcome {
+                        executed_steps,
+                        proof_type,
+                        instances,
+                        is_final: final_proof,
+                        drain,
+                    },
                 )
                 .await
             }
@@ -451,6 +468,55 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
                 self.worker.set_current_job(None);
                 self.worker.set_state(WorkerState::Ready);
+                Ok(())
+            }
+            ComputationResult::SetupProgramComplete {
+                job_id,
+                worker_id,
+                hash_id,
+                with_hints,
+                emulator_only,
+                result,
+            } => {
+                // Finish the off-loop setup: register the program (the `&mut self`
+                // map inserts that couldn't run on the blocking thread) and forward
+                // the ack. Does not touch worker state/current_job, matching the
+                // original inline SetupProgram behavior.
+                let ack = match result {
+                    Ok((program_vk, program)) => {
+                        self.worker.register_setup(
+                            &hash_id,
+                            with_hints,
+                            emulator_only,
+                            program,
+                            program_vk.clone(),
+                        );
+                        info!("[Setup] job_id {} Completed setup for hash_id {}", job_id, hash_id);
+                        Self::build_setup_program_ack(
+                            job_id.as_string(),
+                            worker_id,
+                            hash_id,
+                            Ok(&program_vk),
+                        )
+                    }
+                    Err(e) => {
+                        // A failed setup may still have replaced the prover's ASM resources.
+                        self.worker.forget_registered_program();
+                        error!(
+                            "[Setup] job_id {} Failed setup for hash_id {}: {}",
+                            job_id, hash_id, e
+                        );
+                        Self::build_setup_program_ack(
+                            job_id.as_string(),
+                            worker_id,
+                            hash_id,
+                            Err(e.to_string()),
+                        )
+                    }
+                };
+                if let Err(e) = message_sender.send(ack) {
+                    warn!("Failed to send SetupProgramAck: {}", e);
+                }
                 Ok(())
             }
         }
@@ -597,7 +663,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         if worker_in_recovery {
             // Compute task already awaited at the top of this handler; nothing
             // left to drain, so pass no handle.
-            self.spawn_post_failure_recovery(loop_tx.clone(), None);
+            self.spawn_post_failure_recovery(loop_tx.clone(), CancelledWork::default());
             // Drop `current_job` so a coordinator-originated `JobCancelled`
             // for the same job_id does not race a still-running
             // `spawn_post_failure_recovery` and emit a premature
@@ -717,7 +783,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         if worker_in_recovery {
             // Compute task already awaited at the top of this handler.
-            self.spawn_post_failure_recovery(loop_tx.clone(), None);
+            self.spawn_post_failure_recovery(loop_tx.clone(), CancelledWork::default());
             // See `send_partial_contribution`.
             self.worker.set_current_job(None);
         }
@@ -749,10 +815,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         .map(|v| ProofStark {
                             airgroup_id: v.airgroup_id,
                             values: v.proof,
-                            // NOTE: in this context we take always the first worker index
-                            // because at this time at each send_proof call we are processing
-                            // proofs for a single worker
-                            worker_idx: v.worker_indexes[0] as u32,
+                            worker_indexes: v.worker_indexes.iter().map(|&i| i as u32).collect(),
                         })
                         .collect(),
                     String::new(),
@@ -786,7 +849,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         if worker_in_recovery {
             // Compute task already awaited at the top of this handler.
-            self.spawn_post_failure_recovery(loop_tx.clone(), None);
+            self.spawn_post_failure_recovery(loop_tx.clone(), CancelledWork::default());
             // See `send_partial_contribution`.
             self.worker.set_current_job(None);
         }
@@ -794,23 +857,58 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
+    /// Return a node's folded subtree (it stays resident here).
+    async fn send_partial_agg(
+        &mut self,
+        job_id: JobId,
+        folded: Vec<AggProofs>,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+    ) -> Result<()> {
+        let proofs = folded
+            .into_iter()
+            .map(|p| ProofStark {
+                airgroup_id: p.airgroup_id,
+                values: p.proof,
+                worker_indexes: p.worker_indexes.iter().map(|&i| i as u32).collect(),
+            })
+            .collect();
+
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                worker_id: self.worker_config.worker.worker_id.as_string(),
+                job_id: job_id.as_string(),
+                task_type: TaskType::Aggregate as i32,
+                success: true,
+                result_data: Some(ResultData::PartialAggProofs(ProofList { proofs })),
+                error_message: String::new(),
+                worker_in_recovery: false,
+            })),
+        };
+        message_sender.send(message)?;
+
+        info!("Folded subtree returned for {job_id}");
+        Ok(())
+    }
+
     async fn send_recurser(
         &mut self,
         job_id: JobId,
         success: bool,
-        result: Result<Option<Vec<Vec<u64>>>>,
+        result: Result<Option<Vec<AggProofs>>>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
-        executed_steps: u64,
-        proof_type: ProofKind,
-        instances: u64,
+        outcome: AggOutcome,
     ) -> Result<()> {
+        let AggOutcome { executed_steps, proof_type, instances, is_final, drain } = outcome;
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
         }
 
         let mut error_message = String::new();
         let mut reset_current_job = false;
+        // Shadowed so a failure while building the response can flip it. An empty
+        // `proof_data` with `success` still true reads to the coordinator as an
+        // intermediate ack, which it rejects outright on the final task.
+        let mut success = success;
 
         let result_data = match result {
             Ok(data) => {
@@ -818,53 +916,96 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     return Err(anyhow!("Aggregation returned Ok result but reported failure"));
                 }
 
+                // Only the root's drain becomes a job proof.
+                if !is_final {
+                    match data {
+                        Some(folded) => {
+                            return self.send_partial_agg(job_id, folded, message_sender).await
+                        }
+                        // Sent as an absorb ack, the coordinator would wait for the drain forever.
+                        None if drain => {
+                            return Err(anyhow!("aggregation drain returned no proof"))
+                        }
+                        None => {}
+                    }
+                }
+
                 if let Some(final_proof) = data {
+                    let final_proof: Vec<Vec<u64>> =
+                        final_proof.into_iter().map(|p| p.proof).collect();
                     reset_current_job = !final_proof.is_empty();
 
                     let proof_data = if !final_proof.is_empty() {
                         let is_plonk = proof_type == ProofKind::Plonk;
                         let flat_proof: Vec<u64> = final_proof.into_iter().flatten().collect();
-                        let minimal = proof_type == ProofKind::VadcopFinalMinimal;
-                        // A missing verkey or hash family yields an unusable proof
-                        // (new_from_vadcop_proof rejects an unrecognized/empty hash).
-                        // Treat it as a hard failure rather than emitting a "success"
-                        // response carrying empty proof_data.
-                        let verkey = self
-                            .worker
-                            .get_vadcop_vk(minimal)
-                            .context("Failed to get vadcop verification key")?;
-                        let hash =
-                            self.worker.hash().context("Failed to get proving-key hash family")?;
-                        match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey, hash) {
-                            Ok(zisk_proof) => {
-                                let final_proof: Proof = if is_plonk {
-                                    match self
-                                        .worker
-                                        .prover_arc()
-                                        .wrap_proof(&zisk_proof, ProofKind::Plonk)
-                                        .run()
-                                    {
-                                        Ok(wrapped) => wrapped.get_proof().clone(),
-                                        Err(e) => {
-                                            error!(
-                                                "Failed to wrap Plonk proof for {}: {}",
-                                                job_id, e
-                                            );
-                                            zisk_proof
+                        // Compression strips the flag that marks this a fold, taking the
+                        // recursion-domain check in `Proof::verify` with it.
+                        if !fold_allows_kind(proof_type) {
+                            fail_aggregation(
+                                &mut success,
+                                &mut error_message,
+                                format!(
+                                    "refusing to return the aggregated proof for {job_id} as \
+                                     {proof_type:?}: compression drops the recursion-domain \
+                                     marker"
+                                ),
+                            )
+                        } else {
+                            // A missing verkey or hash family yields an unusable proof
+                            // (new_from_vadcop_proof rejects an unrecognized/empty hash).
+                            // Treat it as a hard failure rather than emitting a "success"
+                            // response carrying empty proof_data.
+                            // `fold_allows_kind` above leaves only uncompressed kinds here.
+                            let verkey = self
+                                .worker
+                                .get_vadcop_vk(false)
+                                .context("Failed to get vadcop verification key")?;
+                            let hash = self
+                                .worker
+                                .hash()
+                                .context("Failed to get proving-key hash family")?;
+                            match Proof::new_from_vadcop_proof(&flat_proof, false, verkey, hash) {
+                                Ok(zisk_proof) => {
+                                    // On wrap failure, emit nothing: returning the
+                                    // unwrapped Vadcop proof would answer a PLONK request
+                                    // with a different proof kind.
+                                    let final_proof: Option<Proof> = if is_plonk {
+                                        match self
+                                            .worker
+                                            .prover_arc()
+                                            .wrap_proof(&zisk_proof, ProofKind::Plonk)
+                                            .run()
+                                        {
+                                            Ok(wrapped) => Some(wrapped.get_proof().clone()),
+                                            Err(e) => {
+                                                fail_aggregation(
+                                                    &mut success,
+                                                    &mut error_message,
+                                                    format!(
+                                                        "Failed to wrap Plonk proof for \
+                                                         {job_id}: {e}"
+                                                    ),
+                                                );
+                                                None
+                                            }
                                         }
+                                    } else {
+                                        Some(zisk_proof)
+                                    };
+                                    match final_proof {
+                                        Some(p) => bincode::serde::encode_to_vec(
+                                            &p,
+                                            bincode::config::standard(),
+                                        )
+                                        .unwrap_or_default(),
+                                        None => vec![],
                                     }
-                                } else {
-                                    zisk_proof
-                                };
-                                bincode::serde::encode_to_vec(
-                                    &final_proof,
-                                    bincode::config::standard(),
-                                )
-                                .unwrap_or_default()
-                            }
-                            Err(e) => {
-                                error!("Failed to build Proof: {}", e);
-                                vec![]
+                                }
+                                Err(e) => fail_aggregation(
+                                    &mut success,
+                                    &mut error_message,
+                                    format!("Failed to build Proof: {e}"),
+                                ),
                             }
                         }
                     } else {
@@ -941,11 +1082,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// On `RECOVERY_TIMEOUT` we log loudly and drop the completion: the worker
     /// stays wedged `SettingUp` (still heartbeating, so the stale-disconnected
     /// sweep won't reap it), so operator action is required.
-    fn spawn_post_failure_recovery(
-        &self,
-        loop_tx: LoopEventSender,
-        compute_handle: Option<JoinHandle<()>>,
-    ) {
+    fn spawn_post_failure_recovery(&self, loop_tx: LoopEventSender, cancelled: CancelledWork) {
         let prover = self.worker.prover_arc();
         let worker_id = self.worker_config.worker.worker_id.as_string();
         tokio::spawn(async move {
@@ -956,7 +1093,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             // reset and stopped touching the shmem the next job reuses. Bounded
             // so a stuck task can't wedge recovery.
             let recovery_context = format!("[Recovery] {worker_id}");
-            Self::drain_cancelled_computation(compute_handle, &recovery_context).await;
+            Self::drain_cancelled_computation(cancelled.compute, &recovery_context).await;
+            // Drain the ordering-thread shutdown on the same path, so a live
+            // computation's cancel never leaves the stream half un-joined.
+            Self::drain_cancelled_computation(cancelled.stream, &recovery_context).await;
 
             let join = tokio::time::timeout(
                 Self::RECOVERY_TIMEOUT,
@@ -983,6 +1123,67 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 ),
             }
         });
+    }
+
+    /// Drain a stream-ordering shutdown task off the event loop (no-op if `None`).
+    /// Used on cancel paths with no live compute task (so no full recovery
+    /// handshake), where a stream thread may still be shutting down and must be
+    /// joined before the next job's reset.
+    fn spawn_stream_drain(&self, stream: Option<JoinHandle<()>>) {
+        if stream.is_none() {
+            return;
+        }
+        let context =
+            format!("[cancel-stream] {}", self.worker_config.worker.worker_id.as_string());
+        tokio::spawn(async move {
+            Self::drain_cancelled_computation(stream, &context).await;
+        });
+    }
+
+    /// Drain a cancelled job's in-flight work off the event loop. If a compute
+    /// task was live, run the full recovery handshake (drains compute + stream,
+    /// cluster barrier, emits `WorkerRecoveryComplete`) and return `true`.
+    /// Otherwise just drain any stream-ordering shutdown and return `false` — the
+    /// caller decides whether a completion signal still needs emitting.
+    fn drive_cancellation(&self, loop_tx: &LoopEventSender, cancelled: CancelledWork) -> bool {
+        if cancelled.compute.is_some() {
+            self.spawn_post_failure_recovery(loop_tx.clone(), cancelled);
+            true
+        } else {
+            self.spawn_stream_drain(cancelled.stream);
+            false
+        }
+    }
+
+    /// Builds a `SetupProgramAck`: `Ok(vk)` → success with the encoded VK,
+    /// `Err(msg)` → failure with the error message. Shared by the setup fast
+    /// path, the off-loop completion, and the reconnection setup path.
+    fn build_setup_program_ack(
+        job_id: String,
+        worker_id: String,
+        hash_id: String,
+        result: std::result::Result<&ProgramVK, String>,
+    ) -> WorkerMessage {
+        let (success, error_message, vk, hash_mode) = match result {
+            Ok(program_vk) => (
+                true,
+                String::new(),
+                program_vk.vk.iter().flat_map(|w| w.to_le_bytes()).collect(),
+                program_vk.hash_mode.as_str().to_string(),
+            ),
+            Err(error_message) => (false, error_message, Vec::new(), String::new()),
+        };
+        WorkerMessage {
+            payload: Some(worker_message::Payload::SetupProgramAck(SetupProgramAck {
+                job_id,
+                worker_id,
+                hash_id,
+                success,
+                error_message,
+                vk,
+                hash_mode,
+            })),
+        }
     }
 
     /// Await a compute handle (bounded) so the ASM child finishes resetting
@@ -1038,15 +1239,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 if response.accepted {
                     info!("Registration accepted: {}", response.message);
 
-                    // If we clobbered a live computation, hand its handle to the
+                    // If we clobbered a live computation, hand its work to the
                     // recovery driver so it awaits the drain before the barrier
                     // (else a new dispatch's `prover.reset()` races the unwinding
                     // task), then emits `WorkerRecoveryComplete`.
-                    let mut recovery_handle: Option<JoinHandle<()>> = None;
+                    let mut cancelled_work = CancelledWork::default();
                     match response.directive.map(|d| ReconnectionAction::try_from(d.action)) {
                         Some(Ok(ReconnectionAction::CancelStaleJob)) => {
                             info!("Coordinator directed cancellation of stale job");
-                            recovery_handle = self.worker.clear_current_job();
+                            cancelled_work = self.worker.clear_current_job();
                         }
                         Some(Ok(ReconnectionAction::KeepComputing)) => {
                             info!("Coordinator confirmed active job; keep computing");
@@ -1054,21 +1255,21 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         Some(Ok(ReconnectionAction::Idle)) | None => {
                             if self.worker.current_job().is_some() {
                                 warn!("No cancel directive but worker has stale job; clearing");
-                                recovery_handle = self.worker.clear_current_job();
+                                cancelled_work = self.worker.clear_current_job();
                             }
                         }
                         Some(Err(_)) => {
                             warn!(
                                 "Unknown reconciliation action; clearing stale state defensively"
                             );
-                            recovery_handle = self.worker.clear_current_job();
+                            cancelled_work = self.worker.clear_current_job();
                         }
                     }
-                    // Only drain when a live computation was actually clobbered —
-                    // i.e. `clear_current_job` handed back its compute handle.
-                    if recovery_handle.is_some() {
-                        self.spawn_post_failure_recovery(loop_tx.clone(), recovery_handle);
-                    }
+                    // Drain the clobbered job's work off the loop (full recovery
+                    // handshake if a compute task was live, else just the stream
+                    // shutdown). Reconnect never emits WorkerRecoveryComplete
+                    // itself, so the return is ignored.
+                    self.drive_cancellation(loop_tx, cancelled_work);
 
                     // If the coordinator attached setup info, run setup now — before entering
                     // the main event loop so no compute task can be processed without a guest program.
@@ -1077,36 +1278,25 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         let job_id = setup.job_id.clone();
                         let hash_id = setup.hash_id.clone();
 
-                        let (success, error_message, vk, hash_mode) = match self
-                            .handle_setup_program(setup)
-                        {
-                            Ok(program_vk) => (
-                                true,
-                                String::new(),
-                                program_vk.vk.iter().flat_map(|w| w.to_le_bytes()).collect(),
-                                program_vk.hash_mode.as_str().to_string(),
+                        let ack = match self.handle_setup_program(setup) {
+                            Ok(program_vk) => Self::build_setup_program_ack(
+                                job_id,
+                                worker_id,
+                                hash_id,
+                                Ok(&program_vk),
                             ),
                             Err(e) => {
                                 error!(
-                                        "[Setup] job_id {} Failed setup during reconnection for hash_id {}: {}",
-                                        job_id, hash_id, e
-                                    );
-                                (false, e.to_string(), Vec::new(), String::new())
-                            }
-                        };
-
-                        let ack = WorkerMessage {
-                            payload: Some(worker_message::Payload::SetupProgramAck(
-                                SetupProgramAck {
-                                    vk,
+                                    "[Setup] job_id {} Failed setup during reconnection for hash_id {}: {}",
+                                    job_id, hash_id, e
+                                );
+                                Self::build_setup_program_ack(
                                     job_id,
                                     worker_id,
                                     hash_id,
-                                    success,
-                                    error_message,
-                                    hash_mode,
-                                },
-                            )),
+                                    Err(e.to_string()),
+                                )
+                            }
                         };
                         if let Err(e) = message_sender.send(ack) {
                             warn!("Failed to send SetupProgramAck after reconnection: {}", e);
@@ -1170,31 +1360,22 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 info!("Job {} cancelled: {}", cancelled.job_id, cancelled.reason);
 
                 // Two outcomes once we've matched the cancelled job to ours:
-                //  - had_computation=true  → spawn ASM soft-reset so the
-                //    wedged spawn_blocking task (likely stuck in MPI/ASM sync
-                //    with peer ranks) actually unwinds.
-                //  - had_computation=false → no task to soft-reset, but the
-                //    coordinator parked us SettingUp and is waiting for a
-                //    `WorkerRecoveryComplete`.
-                let mut spawn_recovery = false;
-                let mut emit_recovery_complete_directly = false;
-                let mut recovery_handle: Option<JoinHandle<()>> = None;
+                //  - a live computation → the recovery driver does the ASM
+                //    soft-reset handshake and emits `WorkerRecoveryComplete` itself.
+                //  - no live computation → nothing to soft-reset, but the
+                //    coordinator parked us SettingUp awaiting `WorkerRecoveryComplete`,
+                //    so we emit it directly below.
+                // A returned compute handle is the authoritative "had a live
+                // computation" signal — no separate state query needed.
+                let mut matched = false;
+                let mut cancelled_work = CancelledWork::default();
                 if let Some(ref job) = self.worker.current_job() {
                     let cancelled_job_id = JobId::from(cancelled.job_id.clone());
 
                     if job.lock().await.job_id == cancelled_job_id {
-                        // Keep the detached compute handle so recovery can await
-                        // the ASM child finishing its reset before the barrier.
-                        // A returned handle is the authoritative "had a live
-                        // computation" signal — no separate state query needed.
-                        recovery_handle = self.worker.clear_current_job();
+                        cancelled_work = self.worker.clear_current_job();
                         self.worker.set_state(WorkerState::Ready);
-
-                        if recovery_handle.is_some() {
-                            spawn_recovery = true;
-                        } else {
-                            emit_recovery_complete_directly = true;
-                        }
+                        matched = true;
                     }
                 }
 
@@ -1208,9 +1389,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     warn!("Failed to send JobCancelledAck: {}", e);
                 }
 
-                if spawn_recovery {
-                    self.spawn_post_failure_recovery(loop_tx.clone(), recovery_handle);
-                } else if emit_recovery_complete_directly {
+                // Drain the clobbered work off-loop; the recovery driver emits
+                // WorkerRecoveryComplete when a compute task was live. Otherwise,
+                // if we matched the job, emit it directly (coordinator parked us
+                // SettingUp awaiting it).
+                let recovery_spawned = self.drive_cancellation(loop_tx, cancelled_work);
+                if !recovery_spawned && matched {
                     let rc = WorkerRecoveryComplete {
                         worker_id: self.worker_config.worker.worker_id.as_string(),
                     };
@@ -1225,39 +1409,66 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             }
             coordinator_message::Payload::SetupProgram(setup) => {
                 let worker_id = self.worker_config.worker.worker_id.as_string();
-                let job_id = setup.job_id.clone();
+                let job_id = JobId::from(setup.job_id.clone());
                 let hash_id = setup.hash_id.clone();
+                let with_hints = setup.with_hints;
+                let emulator_only = setup.emulator_only;
 
-                let (success, error_message, vk, hash_mode) = match self.handle_setup_program(setup)
+                // Fast path: content-addressed program already set up — ack now.
+                if let Some(program_vk) =
+                    self.worker.program_vk(&hash_id, with_hints, emulator_only)
                 {
-                    Ok(program_vk) => (
-                        true,
-                        String::new(),
-                        program_vk.vk.iter().flat_map(|w| w.to_le_bytes()).collect(),
-                        program_vk.hash_mode.as_str().to_string(),
-                    ),
-                    Err(e) => {
-                        error!(
-                            "[Setup] job_id {} Failed setup for hash_id {}: {}",
-                            job_id, hash_id, e
-                        );
-                        (false, e.to_string(), Vec::new(), String::new())
-                    }
-                };
-
-                let ack = WorkerMessage {
-                    payload: Some(worker_message::Payload::SetupProgramAck(SetupProgramAck {
-                        job_id,
+                    let ack = Self::build_setup_program_ack(
+                        job_id.as_string(),
                         worker_id,
                         hash_id,
-                        success,
-                        error_message,
-                        vk,
-                        hash_mode,
-                    })),
-                };
-                if let Err(e) = message_sender.send(ack) {
-                    warn!("Failed to send SetupProgramAck: {}", e);
+                        Ok(&program_vk),
+                    );
+                    if let Err(e) = message_sender.send(ack) {
+                        warn!("Failed to send SetupProgramAck: {}", e);
+                    }
+                } else {
+                    // Run the (potentially long) ELF write + `setup_internal` off the
+                    // message loop so heartbeats keep flowing. The `&mut self` map
+                    // inserts and the ack are finished by `handle_computation_result`
+                    // when the `SetupProgramComplete` result arrives.
+                    let prover = self.worker.prover_arc();
+                    let tx = loop_tx.clone();
+                    let handle = tokio::task::spawn_blocking(move || {
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            let guest_program = Self::stage_guest_program(
+                                &setup.hash_id,
+                                setup.program_name,
+                                setup.elf_bytes,
+                            )?;
+                            let vk = Worker::<T>::setup_compute(
+                                prover.as_ref(),
+                                &setup.hash_id,
+                                setup.with_hints,
+                                setup.emulator_only,
+                                &guest_program,
+                            )?;
+                            Ok::<_, anyhow::Error>((vk, guest_program))
+                        }))
+                        .unwrap_or_else(|_| Err(anyhow!("setup panicked")));
+
+                        if tx
+                            .send_computation(ComputationResult::SetupProgramComplete {
+                                job_id,
+                                worker_id,
+                                hash_id,
+                                with_hints,
+                                emulator_only,
+                                result,
+                            })
+                            .is_err()
+                        {
+                            warn!(
+                                "[Setup] Failed to deliver setup result: event loop channel closed"
+                            );
+                        }
+                    });
+                    self.worker.set_current_computation(handle);
                 }
             }
             coordinator_message::Payload::Shutdown(shutdown) => {
@@ -1280,10 +1491,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
                 self.worker.set_state(WorkerState::SettingUp);
                 let prover = self.worker.prover_arc();
+                let proving_key = self.worker.proving_key().to_path_buf();
 
                 let handle = tokio::task::spawn_blocking(move || {
                     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        Self::handle_setup_aggregation_program(&prover, setup)
+                        Self::handle_setup_aggregation_program(&prover, &proving_key, setup)
                     }));
                     let (success, error_message, vk, hash_mode) = match outcome {
                         Ok(Ok((vk, hash_mode))) => (true, String::new(), vk, hash_mode),
@@ -1380,29 +1592,34 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     ///
     /// Writes the ELF to a content-addressed cache path, reloads the `GuestProgram`, and runs
     /// setup (generates ROM binary files on disk).
-    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<ProgramVK> {
-        use std::sync::Arc;
-
-        info!("[Setup] job_id {} Received setup for hash_id {}", setup.job_id, setup.hash_id);
-
-        let elf_path = ZiskPaths::global().elf_cache(&setup.hash_id);
-
-        // The cache path is content-addressed (blake3 of ELF bytes), so if the file already
-        // exists it is identical to what we received — skip write and re-setup.
+    /// Writes the ELF to the content-addressed cache (idempotent) and loads the
+    /// `GuestProgram`, moving the bytes in (no clone). Shared by the off-loop
+    /// setup path and the reconnection path so the cache-write contract — which
+    /// must stay byte-identical for the content-addressed skip check — lives once.
+    fn stage_guest_program(
+        hash_id: &str,
+        program_name: String,
+        elf_bytes: Vec<u8>,
+    ) -> Result<std::sync::Arc<GuestProgram>> {
+        let elf_path = ZiskPaths::global().elf_cache(hash_id);
         if !elf_path.exists() {
             if let Some(parent) = elf_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            std::fs::write(&elf_path, &setup.elf_bytes)?;
+            std::fs::write(&elf_path, &elf_bytes)?;
         }
+        Ok(std::sync::Arc::new(GuestProgram::from_bytes(program_name, elf_bytes)))
+    }
+
+    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<ProgramVK> {
+        info!("[Setup] job_id {} Received setup for hash_id {}", setup.job_id, setup.hash_id);
 
         let guest_program =
-            Arc::new(GuestProgram::from_bytes(setup.program_name, setup.elf_bytes.clone()));
+            Self::stage_guest_program(&setup.hash_id, setup.program_name, setup.elf_bytes)?;
 
         // Broadcast ELF to secondary MPI ranks and run setup on all ranks.
         let vk = self.worker.run_setup(
             &setup.hash_id,
-            &setup.elf_bytes,
             setup.with_hints,
             setup.emulator_only,
             guest_program,
@@ -1419,6 +1636,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// returns the existing verkey if setup has already run for this `recurser_id`.
     fn handle_setup_aggregation_program(
         prover: &ZiskProver<T>,
+        proving_key: &std::path::Path,
         setup: SetupAggregationProgram,
     ) -> Result<(Vec<u8>, String)> {
         use zisk_recurser::setup::{run_setup_recurser_aggregator, SetupRecurserAggregatorOptions};
@@ -1430,10 +1648,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let spec = setup.spec.ok_or_else(|| anyhow!("SetupAggregationProgram.spec must be set"))?;
 
-        let setup_dir = ZiskPaths::global()
-            .home
+        // The key this worker's prover actually loaded, which an explicit `--proving-key`
+        // can move off the global default. Everything below -- the vadcop_final verkey the
+        // recurser id is derived from, and the setup built from it -- has to come from that
+        // one key: a recurser built against a different key produces a verkey that cannot
+        // verify the proofs this prover goes on to make.
+        let setup_key = proving_key
             .to_str()
-            .ok_or_else(|| anyhow!("~/.zisk path is not valid UTF-8"))?
+            .ok_or_else(|| anyhow!("proving key path is not valid UTF-8"))?
             .to_string();
         let output_dir = ZiskPaths::global()
             .home
@@ -1460,7 +1682,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // The artifact dir is keyed by the *claimed* id; recompute the id from
         // the spec so a mismatched claim can't be served another definition's
         // completed setup (or silently register under the wrong name).
-        let zisk_vk = zisk_recurser::setup::read_vadcop_final_verkey(&setup_dir)
+        let zisk_vk = zisk_recurser::setup::read_vadcop_final_verkey(&setup_key)
             .map_err(|e| anyhow!("failed to read local vadcop_final verkey: {e:#}"))?;
         let expected_inputs = zisk_recurser::RecurserManifestInputs::new(
             zisk_vk,
@@ -1486,7 +1708,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         if !artifacts.is_active() {
             let opts = SetupRecurserAggregatorOptions {
-                setup_dir,
+                proving_key: setup_key,
                 output_dir: output_dir.clone(),
                 templates: zisk_recurser::CircomTemplates {
                     normalize,
@@ -1525,16 +1747,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             )
         })?;
 
-        // The hash family is a property of the proving key the recurser was set
-        // up against; read it from the same globalInfo.json the setup used so it
-        // travels with the verkey for verify-time matching. Reading from disk
-        // (not the setup return) also covers the cache-hit branch above.
-        let setup_dir = ZiskPaths::global()
-            .home
-            .to_str()
-            .ok_or_else(|| anyhow!("~/.zisk path is not valid UTF-8"))?;
-        let hash_mode = zisk_recurser::setup::read_proving_key_hash(setup_dir)
-            .map_err(|e| anyhow!("failed to read recurser hash family: {e}"))?;
+        // The hash family travels with the verkey for verify-time matching. Read it from
+        // the prover's loaded key, not `ZiskPaths::global()`: an explicit `--proving-key`
+        // would otherwise advertise the global key's family. Also covers the cache-hit
+        // branch above, where no setup ran to return it.
+        let hash_mode =
+            prover.hash().map_err(|e| anyhow!("failed to read prover hash family: {e}"))?;
 
         info!(
             "[Recurser] job_id {} Completed recurser setup for recurser_id {}",
@@ -1625,6 +1843,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             zisk_vk.push(u64::from_le_bytes(chunk));
         }
 
+        // Same guard as the embedded path: compression strips the flag that marks this a
+        // fold, taking the recursion-domain check in `Proof::verify` with it.
+        if vfp.compressed {
+            return Err(anyhow!(
+                "recurser produced a compressed proof; the recursion-domain check in \
+                 Proof::verify cannot classify it"
+            ));
+        }
+
         // The proof's hash family travels on the VadcopFinalProof (stamped by
         // proofman from the recurser's proving key); carry it onto the Proof.
         let proof = Proof::new_from_vadcop_proof(
@@ -1659,7 +1886,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // live, drain it before `prepare_for_new_job`'s `prover.reset()` reuses
         // the ASM shmem the child may still be writing.
         let cancelled = self.worker.cancel_current_computation();
-        Self::drain_cancelled_computation(cancelled, "partial_contribution").await;
+        Self::drain_cancelled_computation(cancelled.compute, "partial_contribution").await;
+        // Also wait for the previous stream-ordering thread to stop before
+        // `prepare_for_new_job` resets the shared HintsProcessor, so it can't
+        // still be inside `process_hints` on the new stream.
+        Self::drain_cancelled_computation(cancelled.stream, "partial_contribution stream").await;
 
         // Proto `map<string, string>` (a HashMap); an empty map means "no metadata".
         let metadata = (!request.metadata.is_empty())
@@ -1736,7 +1967,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // Defensive drain before `prepare_for_new_job`'s `prover.reset()` reuses
         // the ASM shmem — normally a no-op (see `partial_contribution`).
         let cancelled = self.worker.cancel_current_computation();
-        Self::drain_cancelled_computation(cancelled, "execute_only").await;
+        Self::drain_cancelled_computation(cancelled.compute, "execute_only").await;
+        // See `partial_contribution`: also drain the previous stream-ordering
+        // thread before the reset in `prepare_for_new_job`.
+        Self::drain_cancelled_computation(cancelled.stream, "execute_only stream").await;
 
         // Proto `map<string, string>` (a HashMap); an empty map means "no metadata".
         let metadata = (!request.metadata.is_empty())
@@ -1904,6 +2138,19 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ));
         }
 
+        // Idempotency guard: a duplicate Prove for a job whose computation is
+        // still running must NOT spawn a second concurrent prove_phase (it would
+        // rewrite the global challenge and race the first phase over the same
+        // GPU streams -> internally inconsistent proofs). Log loudly: if this
+        // ever fires, the coordinator double-dispatched a phase task.
+        if self.worker.has_live_computation() {
+            error!(
+                "[DUPLICATE-DISPATCH] Prove for {} received while a computation is still running — ignoring",
+                job_id
+            );
+            return Ok(());
+        }
+
         info!("Starting Prove for {}", job_id);
 
         // Extract the Prove params
@@ -1939,6 +2186,20 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             return Err(anyhow!("Aggregate received without current job context"));
         }
 
+        // Idempotency guard (symmetric with `prove`): a duplicate/replayed
+        // Aggregate while the previous aggregation computation is still running
+        // must NOT spawn a second concurrent proofman task over the same GPU
+        // streams (set_current_computation overwrites the handle and a dropped
+        // JoinHandle DETACHES the running task). If this fires, the coordinator
+        // double-dispatched (a scheduler gating bug, or a reconnect replay).
+        if self.worker.has_live_computation() {
+            error!(
+                "[DUPLICATE-DISPATCH] Aggregate for {} received while a computation is still running — ignoring",
+                request.job_id
+            );
+            return Ok(());
+        }
+
         let job = self.worker.current_job().clone().unwrap().clone();
         let job_id = job.lock().await.job_id.clone();
 
@@ -1960,7 +2221,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let agg_proofs: Vec<_> = agg_proofs
             .into_iter()
             .map(|p| AggProofData {
-                worker_idx: p.worker_idx,
+                worker_indexes: p.worker_indexes,
                 airgroup_id: p.airgroup_id,
                 values: p.values,
             })
@@ -1971,6 +2232,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             last_proof: agg_params.last_proof,
             final_proof: agg_params.final_proof,
             proof_type: ProofKind::from(agg_params.proof_type),
+            keep_resident: agg_params.keep_resident,
+            reset_state: agg_params.reset_state,
         };
         self.worker.set_current_computation(self.worker.handle_aggregate_proofs(
             job,
@@ -2025,20 +2288,23 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ));
         }
 
+        if !input_data.payload.is_empty() && input_data.payload.len() % 8 != 0 {
+            return Err(anyhow!(
+                "InputStreamData payload length {} is not a multiple of 8 bytes",
+                input_data.payload.len()
+            ));
+        }
+
         // gRPC `InputStreamData` only reaches rank 0. Mirror it to peer ranks
         // via MPI so their ASM children get the same bytes — without this
         // they wait on `chunk_done` until the semaphore times out (~10 s) and
-        // every streamed-input job fails on every rank ≠ 0.
+        // every streamed-input job fails on every rank ≠ 0. Skipped when this
+        // is the only rank: the conversion and borsh pass below copy the chunk
+        // twice for nobody.
         // Wire format matches what `process_hints` broadcasts for hint-driven
         // inputs (see `precompiles/hints/src/hints_processor.rs`): tag byte
         // followed by a borsh-encoded `StreamMessage { data: Vec<u64> }`.
-        if !input_data.payload.is_empty() {
-            if input_data.payload.len() % 8 != 0 {
-                return Err(anyhow!(
-                    "InputStreamData payload length {} is not a multiple of 8 bytes",
-                    input_data.payload.len()
-                ));
-            }
+        if self.worker.n_processes() > 1 && !input_data.payload.is_empty() {
             let data_u64: Vec<u64> = input_data
                 .payload
                 .chunks_exact(8)
@@ -2104,6 +2370,52 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         message_sender.send(message)?;
         Ok(())
+    }
+}
+
+/// Whether a fold may be returned in `proof_type`.
+///
+/// `FinalCompressed` strips the `is_vadcop_final_proof` flag, and `Proof::verify` keys the
+/// recursion-domain check on it -- so a compressed fold verifies weaker than the one that
+/// was produced.
+fn fold_allows_kind(proof_type: ProofKind) -> bool {
+    proof_type != ProofKind::VadcopFinalMinimal
+}
+
+/// Record an aggregation failure and return the (empty) `proof_data` the response carries.
+///
+/// The diagnostic, the log line and the `success` flag move together: an empty
+/// `proof_data` left paired with `success` reads to the coordinator as an intermediate
+/// acknowledgement, which it rejects outright on the final task.
+fn fail_aggregation(success: &mut bool, error_message: &mut String, diagnostic: String) -> Vec<u8> {
+    error!("{diagnostic}");
+    *error_message = diagnostic;
+    *success = false;
+    Vec::new()
+}
+
+#[cfg(test)]
+mod aggregate_response_tests {
+    use super::*;
+
+    #[test]
+    fn a_fold_may_not_be_returned_compressed() {
+        assert!(!fold_allows_kind(ProofKind::VadcopFinalMinimal));
+        assert!(fold_allows_kind(ProofKind::VadcopFinal));
+        assert!(fold_allows_kind(ProofKind::Plonk));
+    }
+
+    /// The pairing the coordinator depends on: a failure never looks like an ack.
+    #[test]
+    fn a_failure_clears_success_and_carries_a_diagnostic() {
+        let mut success = true;
+        let mut error_message = String::new();
+
+        let proof_data = fail_aggregation(&mut success, &mut error_message, "boom".to_string());
+
+        assert!(!success, "an empty proof with success set reads as an intermediate ack");
+        assert_eq!(error_message, "boom");
+        assert!(proof_data.is_empty());
     }
 }
 

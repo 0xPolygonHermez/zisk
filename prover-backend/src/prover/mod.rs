@@ -26,12 +26,17 @@ use zisk_asm_runner::HintsShmem;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind,
-    StatsCostPerType, ZiskExecutorTime,
+    StatsCostPerType, VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 use zisk_precomp_hints::HintsProcessor;
 
 use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
+
+/// Virtual tables ZisK counts itself: the frops, whose collectors tally them during the witness.
+/// Mirrors `ARITH_FROPS_TABLE_ID` and friends in `pil/opids.pil`; kept here rather than imported so
+/// this file does not depend on a state-machine crate for three integers.
+const FROPS_TABLE_IDS: [u64; 3] = [5010, 5011, 5012];
 
 /// ASM-specific configuration options
 #[derive(Clone, Default)]
@@ -168,12 +173,45 @@ impl BackendProverOpts {
             options.packed();
         }
 
-        // Only call packed_info when packed or gpu is enabled
-        if self.packed || self.gpu {
+        // The three frops tables stay with the state machines: their collectors count them during
+        // the witness and hand them to `std`. Declaring them is what makes the rest the prover's --
+        // a virtual table it cannot derive now fails the setup rather than falling back to the
+        // witness, which is the same cost as counting it but with nobody asking for it.
+        options.std_owned_tables(FROPS_TABLE_IDS.to_vec());
+
+        // Airs whose witness a GPU kernel writes on the device, deleting their
+        // per-instance trace upload (Keccakf: 912 MiB packed at 2^21 rows). On by
+        // default; ZISK_GPU_WITNESS=0 takes the host path, which is the only way
+        // back if a kernel ever disagrees with the CPU.
+        //
+        // Packed GPU runs only: the kernels emit packed cm1, so proofman refuses the
+        // declaration otherwise.
+        let gpu_witness_airs = if options.gpu
+            && options.packed
+            && std::env::var("ZISK_GPU_WITNESS").map(|v| v != "0").unwrap_or(true)
+        {
+            zisk_executor::gpu_witness::gpu_witness_airs()
+        } else {
+            Vec::new()
+        };
+
+        // Packed traces need packed_info, with Main in compact (indexed) form. `options.packed`
+        // is the single source of truth, read by the executor's row-type gate too.
+        if options.packed {
             options.packed_info(get_packed_info());
         }
 
+        if !gpu_witness_airs.is_empty() {
+            options.gpu_witness_airs(gpu_witness_airs);
+        }
+
         options.verbose_mode(self.verbose.into());
+
+        // The plonk wrapper borrows the GPU unified buffer; proofman pads the arena to the
+        // snark floor only when told a final snark will run.
+        if self.plonk {
+            options.final_snark();
+        }
 
         if !self.aggregation || self.verify_constraints {
             options.no_aggregation();
@@ -364,6 +402,9 @@ pub trait ProverEngine {
     /// This rank's index in the global MPI context (`0` when MPI is unused).
     fn world_rank(&self) -> i32;
 
+    /// Number of ranks in the global MPI context (`1` when MPI is unused).
+    fn n_processes(&self) -> i32;
+
     /// This rank's index within its node (`0` when MPI is unused).
     fn local_rank(&self) -> i32;
 
@@ -438,13 +479,20 @@ pub trait ProverEngine {
     ) -> Result<ProveOutput>;
 
     /// Wrap a vadcop_final proof to `proof_kind` (Plonk or minimal).
-    /// `publics_full` is the full-width `[program_vk(4)][user(ZISK_PUBLICS)]`
-    /// blob, used verbatim — a recurser proof's publics exceed 32 bits, so the
-    /// truncated u32 view must not be used here.
+    ///
+    /// `publics_full` is the canonical flag-free, full-width
+    /// `[program_vk(4)][user(ZISK_PUBLICS)]` blob — a recurser proof's publics
+    /// exceed 32 bits, so the truncated u32 view must not be used here.
+    ///
+    /// `source_kind` is the wrapped proof's own [`VadcopKind`], and is part of the
+    /// contract rather than a hint: it carries the `is_vadcop_final_proof` flag
+    /// the recursion layer commits to, and selects the verkey the SNARK wrapper
+    /// verifies under. Callers pass the stored kind and the backend does both.
     fn wrap_proof(
         &self,
         proof: &[u64],
         publics_full: &[u64],
+        source_kind: VadcopKind,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput>;
 
@@ -476,8 +524,15 @@ pub trait ProverEngine {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>>;
+
+    /// Drop the aggregation state (keeping the contributions) to re-fold a lost node.
+    fn reset_aggregation_state(&self);
+
+    /// Aggregation arity of the loaded proving key.
+    fn aggregation_arity(&self) -> usize;
 
     /// The Vadcop verification key (`minimal` selects the minimal variant).
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>>;
@@ -617,6 +672,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// If MPI is not used, this will always return 0.
     pub fn world_rank(&self) -> i32 {
         self.prover.world_rank()
+    }
+
+    /// Number of ranks in the global MPI context (`1` when MPI is unused).
+    pub fn n_processes(&self) -> i32 {
+        self.prover.n_processes()
     }
 
     /// Get the local rank of the prover. The local rank is the rank of the prover in the local MPI context.
@@ -769,9 +829,20 @@ impl<C: ZiskBackend> ZiskProver<C> {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.prover.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
+        self.prover.join_worker_proofs(agg_proofs, last_proof, final_proof, keep_resident, options)
+    }
+
+    /// Drop this worker's outer-aggregation state (recovery path).
+    pub fn reset_aggregation_state(&self) {
+        self.prover.reset_aggregation_state()
+    }
+
+    /// Aggregation arity of the loaded proving key.
+    pub fn aggregation_arity(&self) -> usize {
+        self.prover.aggregation_arity()
     }
 
     /// Broadcast data to all MPI processes.
@@ -1032,12 +1103,16 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
 
     /// Execute the proof wrapping with the configured options.
     pub fn run(self) -> Result<ProveOutput> {
-        let (proof, publics_full) = match &self.proof.body {
-            ProofBody::Vadcop { proof, publics_full, .. } => (proof.as_slice(), publics_full),
+        // `kind` must travel with the publics — dropping it leaves the recursion
+        // layer a flag short and shifts the whole public window.
+        let (proof, source_kind, publics_full) = match &self.proof.body {
+            ProofBody::Vadcop { proof, kind, publics_full, .. } => {
+                (proof.as_slice(), *kind, publics_full)
+            }
             ProofBody::Plonk { .. } => {
                 return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
             }
         };
-        self.prover.wrap_proof(proof, publics_full, self.proof_kind)
+        self.prover.wrap_proof(proof, publics_full, source_kind, self.proof_kind)
     }
 }

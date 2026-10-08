@@ -113,3 +113,19 @@ pub fn is_power_of_two(x: &[u64]) -> bool {
 pub fn is_short(x: &[u64]) -> bool {
     x.iter().skip(1).all(|&word| word == 0)
 }
+
+/// Builds a shared slice from an FFI pointer, tolerating a null or dangling pointer
+/// when `len == 0`. `from_raw_parts` demands a valid, aligned pointer even for an
+/// empty slice, which C callers do not reliably provide: an empty buffer commonly
+/// decays to null on the C side.
+///
+/// # Safety
+/// When `len > 0`, `ptr` must be valid and aligned for reads of `len` elements.
+#[inline]
+pub(crate) unsafe fn slice_from_ffi<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
+    if len == 0 {
+        &[]
+    } else {
+        core::slice::from_raw_parts(ptr, len)
+    }
+}

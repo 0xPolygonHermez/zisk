@@ -1,0 +1,17 @@
+[package]
+name = "zisk-setup"
+description = "Version of the ZisK proving key (setup) a build proves against"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+[package.metadata.zisk]
+setup_version = "1.4.0-alpha"
+
+[dependencies]
+serde_json = { workspace = true }

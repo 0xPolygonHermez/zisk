@@ -16,7 +16,7 @@ test-artifacts/
 ├── src/lib.rs          # re-exports each compiled ELF as a constant
 └── programs/           # nested Cargo workspace with one member per guest
     ├── Cargo.toml
-    ├── blake2/
+    ├── blake2b/
     ├── ...
 ```
 
@@ -31,7 +31,7 @@ which drives `cargo-zisk` over the nested workspace and produces one ELF per
 guest. `src/lib.rs` then exposes each ELF with the `load_program!` macro:
 
 ```rust
-pub const ELF_BLAKE2: GuestProgram = load_program!("blake2");
+pub const ELF_BLAKE2B: GuestProgram = load_program!("blake2b");
 ...
 ```
 
@@ -41,12 +41,12 @@ Add `test-artifacts` as a `dev-dependency` (or regular dependency for benches)
 and pull in the constant you need:
 
 ```rust
-use test_artifacts::ELF_BLAKE2;
+use test_artifacts::ELF_BLAKE2B;
 use zisk_sdk::{EmbeddedClientBuilder, ZiskStdin, VerifyConstraintsExtension};
 
 let client  = EmbeddedClientBuilder::new().build();
 let stdin   = ZiskStdin::new();
-let outcome = client.verify_constraints(&ELF_BLAKE2, stdin).run()?;
+let outcome = client.verify_constraints(&ELF_BLAKE2B, stdin).run()?;
 ```
 
 ## Adding a new guest program

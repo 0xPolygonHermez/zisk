@@ -348,7 +348,10 @@ impl AsmResources {
 
     /// Writes input data to the inputs shared memory segment.
     pub fn write_input(&self, stdin: &ZiskStdin) -> ExecutorResult<()> {
-        self.shared.shmem_inputs.write_input(&stdin.read_data()).map_err(ExecutorError::asm_backend)
+        // Borrowed: `write_input` only reads, and inputs are tens of MB.
+        stdin
+            .with_data(|data| self.shared.shmem_inputs.write_input(data))
+            .map_err(ExecutorError::asm_backend)
     }
 
     /// Appends raw input data to the inputs shared memory segment.

@@ -11,4 +11,14 @@
 # Linux-only: macOS uses a different export model and the affected `.so`
 # files are Linux-targeted anyway.
 [target.'cfg(target_os = "linux")']
-rustflags = ["-C", "link-arg=-Wl,--export-dynamic"]
+# adx/bmi2 are what gate ark-ff's hand-written 256-bit Montgomery assembly -- the `asm` feature
+# alone is inert without them. They are requested by name rather than through `target-cpu=native`
+# on purpose: this file is tracked, so it also applies to the release build, and `release.yml`
+# publishes that binary for arbitrary machines. `native` would pin the artifact to whatever the
+# GitHub runner happened to be, which is not even stable between runs (the ubuntu-22.04 pool mixes
+# Ice Lake, which has AVX-512, with EPYC, which does not) -- an artifact built on the former
+# SIGILLs on the latter. `+bmi2,+adx` is a fixed Broadwell/Zen1 baseline instead.
+#
+# For a local benchmark, pass `native` through the environment rather than editing this file:
+#   RUSTFLAGS="-C target-cpu=native" cargo build --release
+rustflags = ["-C", "link-arg=-Wl,--export-dynamic", "-C", "target-feature=+bmi2,+adx"]

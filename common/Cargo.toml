@@ -14,10 +14,11 @@ categories = { workspace = true }
 zisk-core = { workspace = true }
 zisk-verifier = { workspace = true }
 zisk-definitions = { workspace = true }
+zisk-pil = { workspace = true }
 zisk-stream = { workspace = true, features = ["quic"] }
 
 proofman-common = { workspace = true }
-proofman-verifier = { workspace = true, features = ["parallel"] }
+proofman-verifier = { workspace = true, default-features = true, features = ["parallel"] }
 proofman = { workspace = true }
 proofman-fields = { workspace = true }
 clap = { workspace = true }
@@ -33,7 +34,11 @@ alloy-sol-types = { workspace = true }
 bincode = { workspace = true }
 paste = { workspace = true }
 crossbeam-queue = "0.3"
+tikv-jemallocator = { workspace = true, optional = true }
 
 [features]
-default = []
+default = ["jemalloc"]
+# Use jemalloc instead of the system allocator; see `src/allocator.rs`.
+jemalloc = ["dep:tikv-jemallocator"]
 stats = []
+

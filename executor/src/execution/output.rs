@@ -12,16 +12,18 @@
 //!
 //! The plan-merging callers (step 1.3 onward) drive this via:
 //! ```ignore
-//! let mem_plans = trace.backend.await_mem_plans()?;
-//! let rh_data   = trace.backend.await_rom_histogram()?;
+//! let (mem_plans, gpu_mops_used_bytes) = trace.backend.await_mem_plans()?;
+//! let rh_handle = trace.backend.take_rh_handle();
 //! ```
-//! On the Rust path the calls yield `vec![]` / `None` instantly; on
-//! the ASM path they join the corresponding runner thread.
+//! The MO plans are needed here, so `await_mem_plans` joins that runner;
+//! the ROM histogram is not, so its handle is handed over unjoined for
+//! whoever reads the histogram to join at the point of use. On the Rust
+//! path both yield empty instantly.
 
-use std::thread::JoinHandle;
+use std::{sync::Arc, thread::JoinHandle};
 
 use zisk_asm_runner::{AsmRunnerMO, AsmRunnerRH};
-use zisk_common::{EmuTrace, Plan};
+use zisk_common::{EmuTrace, LateJoinHandle, Plan};
 
 use crate::error::{ExecutorError, ExecutorResult};
 use crate::pub_outs_collector::PubOutsCollector;
@@ -29,8 +31,9 @@ use crate::CountersChunkMetrics;
 
 /// Uniform return type for all `Emulator<F>` impls.
 pub struct ExecutionOutput {
-    /// Minimal traces produced by the emulator.
-    pub min_traces: Vec<EmuTrace>,
+    /// Minimal traces produced by the emulator (shared with the progressive
+    /// main-witness advancement store, hence `Arc` elements).
+    pub min_traces: Vec<Arc<EmuTrace>>,
     /// Device metrics for secondary devices (counter-phase output).
     pub counters: CountersChunkMetrics,
     /// Public outputs accumulated during execution.
@@ -46,8 +49,8 @@ pub struct ExecutionOutput {
 ///
 /// - [`BackendArtifacts::Asm`] carries the MO + RH join handles spawned
 ///   in parallel with the MT chunk processor. The handles are wrapped in
-///   `Option` so [`Self::await_mem_plans`] / [`Self::await_rom_histogram`]
-///   can take ownership once: `Some` = not yet joined, `None` = consumed.
+///   `Option` so [`Self::await_mem_plans`] / [`Self::take_rh_handle`]
+///   can take ownership once: `Some` = not yet taken, `None` = consumed.
 /// - [`BackendArtifacts::Rust`] is a unit variant — the Rust emulator
 ///   has no async work, so the `await_*` methods return empty results
 ///   immediately.
@@ -59,21 +62,21 @@ pub enum BackendArtifacts {
         mo: Option<JoinHandle<ExecutorResult<AsmRunnerMO>>>,
         /// ROM-histogram runner handle. `Some` only on the first rank
         /// (the rank that actually runs the RH service); `None`
-        /// otherwise. Set to `None` after `await_rom_histogram` consumes
-        /// it.
-        rh: Option<JoinHandle<ExecutorResult<AsmRunnerRH>>>,
+        /// otherwise. Set to `None` after `take_rh_handle` hands it over.
+        rh: Option<LateJoinHandle<AsmRunnerRH>>,
     },
     /// Rust backend: no async artifacts. `await_*` returns empty.
     Rust,
 }
 
 impl BackendArtifacts {
-    /// Joins the memory-operations runner (ASM) and returns its plans.
-    /// Returns `Ok(vec![])` for the Rust backend.
+    /// Joins the memory-operations runner (ASM) and returns its plans plus the
+    /// GPU mem-ops planner's borrowed-buffer usage in bytes (`None` on the CPU
+    /// planner path). Returns `Ok((vec![], None))` for the Rust backend.
     ///
     /// Each call consumes the `mo` handle inside the `Asm` variant; a
     /// second call returns an error noting the handle was already taken.
-    pub fn await_mem_plans(&mut self) -> ExecutorResult<Vec<Plan>> {
+    pub fn await_mem_plans(&mut self) -> ExecutorResult<(Vec<Plan>, Option<u64>)> {
         match self {
             Self::Asm { mo, .. } => {
                 let handle = mo.take().ok_or(ExecutorError::RunnerHandleConsumed { name: "MO" })?;
@@ -84,34 +87,25 @@ impl BackendArtifacts {
                         name: "MO",
                         message: e.to_string(),
                     })?;
-                Ok(asm_runner_mo.plans)
+                Ok((asm_runner_mo.plans, asm_runner_mo.gpu_mops_used_bytes))
             }
-            Self::Rust => Ok(Vec::new()),
+            Self::Rust => Ok((Vec::new(), None)),
         }
     }
 
-    /// Joins the ROM-histogram runner (ASM, first rank only) and returns
-    /// its output. Returns `Ok(None)` for the Rust backend, or for ASM
-    /// ranks that don't run RH.
+    /// Hands over the ROM-histogram runner handle (ASM, first rank only)
+    /// **without joining it**. Returns `None` for the Rust backend, or for
+    /// ASM ranks that don't run RH.
     ///
-    /// Each call consumes the `rh` handle inside the `Asm` variant; a
-    /// second call returns `Ok(None)`.
-    pub fn await_rom_histogram(&mut self) -> ExecutorResult<Option<AsmRunnerRH>> {
+    /// Unjoined on purpose: nothing in this phase reads the histogram, so
+    /// the runner is left to finish while the phases that follow run, and
+    /// whoever does read it joins at that point. Ownership transfers here —
+    /// the caller becomes responsible for the thread, which is why a second
+    /// call returns `None`.
+    pub fn take_rh_handle(&mut self) -> Option<LateJoinHandle<AsmRunnerRH>> {
         match self {
-            Self::Asm { rh, .. } => {
-                let Some(handle) = rh.take() else {
-                    return Ok(None);
-                };
-                let rh_data = handle
-                    .join()
-                    .map_err(|_| ExecutorError::RunnerThreadPanicked { name: "RH" })?
-                    .map_err(|e| ExecutorError::RunnerFailed {
-                        name: "RH",
-                        message: e.to_string(),
-                    })?;
-                Ok(Some(rh_data))
-            }
-            Self::Rust => Ok(None),
+            Self::Asm { rh, .. } => rh.take(),
+            Self::Rust => None,
         }
     }
 }
@@ -124,28 +118,31 @@ mod tests {
     #[test]
     fn rust_await_mem_plans_yields_empty() {
         let mut backend = BackendArtifacts::Rust;
-        let plans = backend.await_mem_plans().expect("await_mem_plans on Rust");
+        let (plans, gpu_mops_used_bytes) =
+            backend.await_mem_plans().expect("await_mem_plans on Rust");
         assert!(plans.is_empty());
+        assert!(gpu_mops_used_bytes.is_none());
     }
 
     #[test]
-    fn rust_await_rom_histogram_yields_none() {
+    fn rust_take_rh_handle_yields_none() {
         let mut backend = BackendArtifacts::Rust;
-        let rh = backend.await_rom_histogram().expect("await_rom_histogram on Rust");
-        assert!(rh.is_none());
+        assert!(backend.take_rh_handle().is_none());
     }
 
     #[test]
     fn asm_await_mem_plans_returns_canned_plans_after_thread_join() {
-        // The Vec<Plan> is opaque to this test; we just need its length
-        // to match what we passed in.
+        // Plan contents are opaque here; we only verify the tuple unwraps and
+        // preserves the plan count for the canned runner output.
         let canned = Vec::<Plan>::new();
         let expected_len = canned.len();
         let mo_handle = std::thread::spawn(move || Ok(AsmRunnerMO::new(canned)));
         let mut backend = BackendArtifacts::Asm { mo: Some(mo_handle), rh: None };
 
-        let plans = backend.await_mem_plans().expect("await_mem_plans on Asm");
+        let (plans, gpu_mops_used_bytes) =
+            backend.await_mem_plans().expect("await_mem_plans on Asm");
         assert_eq!(plans.len(), expected_len);
+        assert!(gpu_mops_used_bytes.is_none());
     }
 
     #[test]
@@ -169,29 +166,29 @@ mod tests {
     }
 
     #[test]
-    fn asm_await_rom_histogram_returns_some_after_join() {
-        let rh_handle = std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new()))));
+    fn asm_take_rh_handle_hands_over_without_joining() {
+        let rh_handle =
+            std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()))));
         let mut backend = BackendArtifacts::Asm { mo: None, rh: Some(rh_handle) };
-        // `mo` is None to assert that await_rom_histogram doesn't touch the mo slot.
-        let rh = backend.await_rom_histogram().expect("await_rom_histogram on Asm");
-        assert!(rh.is_some());
+        // `mo` is None to assert that take_rh_handle doesn't touch the mo slot.
+        let handle = backend.take_rh_handle().expect("handle handed over");
+        handle.join().expect("thread joined").expect("canned runner Ok");
     }
 
     #[test]
-    fn asm_await_rom_histogram_none_when_not_present() {
+    fn asm_take_rh_handle_none_when_not_present() {
         // ASM variant with rh = None mirrors a non-first-rank execution
         // (the RH service only runs on rank 0).
         let mut backend = BackendArtifacts::Asm { mo: None, rh: None };
-        let rh = backend.await_rom_histogram().expect("await_rom_histogram with rh=None");
-        assert!(rh.is_none());
+        assert!(backend.take_rh_handle().is_none());
     }
 
     #[test]
-    fn asm_await_rom_histogram_double_take_yields_none() {
-        let rh_handle = std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new()))));
+    fn asm_take_rh_handle_twice_yields_none() {
+        let rh_handle =
+            std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()))));
         let mut backend = BackendArtifacts::Asm { mo: None, rh: Some(rh_handle) };
-        backend.await_rom_histogram().expect("first call OK");
-        let second = backend.await_rom_histogram().expect("second call OK (None)");
-        assert!(second.is_none());
+        assert!(backend.take_rh_handle().is_some(), "first call hands it over");
+        assert!(backend.take_rh_handle().is_none(), "second call has nothing left");
     }
 }

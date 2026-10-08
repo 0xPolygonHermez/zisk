@@ -1,4 +1,5 @@
 #include "fcall.hpp"
+#include "../keccakf_cache/keccakf_cache.hpp"
 #include "../common/utils.hpp"
 #include "../common/globals.hpp"
 #include "../bn254/bn254_fe.hpp"
@@ -125,6 +126,16 @@ int Fcall (
             iresult = BigIntDivCtx(ctx);
             break;
         }
+        case FCALL_SET_KECCAKF_CACHE_INDEX_ID:
+        {
+            iresult = KeccakfCacheSetIndexCtx(ctx);
+            break;
+        }
+        case FCALL_GET_KECCAKF_CACHE_INDEX_ID:
+        {
+            iresult = KeccakfCacheGetIndexCtx(ctx);
+            break;
+        }
         default:
         {
             printf("Fcall() found unsupported function_id=%lu\n", ctx->function_id);
@@ -224,25 +235,55 @@ int InverseFnEcCtx (
 /* FEC SQRT */
 /************/
 
-mpz_class n("0x3fffffffffffffffffffffffffffffffffffffffffffffffffffffffbfffff0c");
-mpz_class p("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
-
-// We use that p = 3 mod 4 => r = a^((p+1)/4) is a square root of a
-// https://www.rieselprime.de/ziki/Modular_square_root
-// n = p+1/4
-// return true if sqrt exists, false otherwise
-
-inline bool sqrtF3mod4(mpz_class &r, const mpz_class &a)
+// r = x^((p+1)/4), for the secp256k1 base field (Montgomery form in and out). Since p = 3 mod 4,
+// r is a square root of x if x has one. The exponent is computed with the addition chain of
+// libsecp256k1 (secp256k1_fe_sqrt(), MIT license): the binary representation of (p+1)/4 has 3
+// blocks of 1s, with lengths 2, 22 and 223, and 2^k - 1 is computed for each block with
+// 1, [2], 3, 6, 9, 11, [22], 44, 88, 176, 220, [223], for 253 squarings and 13 multiplications
+static void SqrtFpEcPow (RawFec::Element &r, const RawFec::Element &x)
 {
-    mpz_class auxa = a;
-    mpz_powm(r.get_mpz_t(), a.get_mpz_t(), n.get_mpz_t(), p.get_mpz_t());
-    if ((r * r) % p != auxa)
-    {
-        auxa = (auxa * 3) % p;
-        mpz_powm(r.get_mpz_t(), auxa.get_mpz_t(), n.get_mpz_t(), p.get_mpz_t());
-        return false;
-    }
-    return true;
+    RawFec::Element x2, x3, x6, x9, x11, x22, x44, x88, x176, x220, x223, t;
+
+    fec.square(x2, x);
+    fec.mul(x2, x2, x);
+    fec.square(x3, x2);
+    fec.mul(x3, x3, x);
+    fec.copy(x6, x3);
+    for (int j = 0; j < 3; j++) fec.square(x6, x6);
+    fec.mul(x6, x6, x3);
+    fec.copy(x9, x6);
+    for (int j = 0; j < 3; j++) fec.square(x9, x9);
+    fec.mul(x9, x9, x3);
+    fec.copy(x11, x9);
+    for (int j = 0; j < 2; j++) fec.square(x11, x11);
+    fec.mul(x11, x11, x2);
+    fec.copy(x22, x11);
+    for (int j = 0; j < 11; j++) fec.square(x22, x22);
+    fec.mul(x22, x22, x11);
+    fec.copy(x44, x22);
+    for (int j = 0; j < 22; j++) fec.square(x44, x44);
+    fec.mul(x44, x44, x22);
+    fec.copy(x88, x44);
+    for (int j = 0; j < 44; j++) fec.square(x88, x88);
+    fec.mul(x88, x88, x44);
+    fec.copy(x176, x88);
+    for (int j = 0; j < 88; j++) fec.square(x176, x176);
+    fec.mul(x176, x176, x88);
+    fec.copy(x220, x176);
+    for (int j = 0; j < 44; j++) fec.square(x220, x220);
+    fec.mul(x220, x220, x44);
+    fec.copy(x223, x220);
+    for (int j = 0; j < 3; j++) fec.square(x223, x223);
+    fec.mul(x223, x223, x3);
+
+    // The final result is assembled using a sliding window over the blocks
+    fec.copy(t, x223);
+    for (int j = 0; j < 23; j++) fec.square(t, t);
+    fec.mul(t, t, x22);
+    for (int j = 0; j < 6; j++) fec.square(t, t);
+    fec.mul(t, t, x2);
+    fec.square(t, t);
+    fec.square(r, t);
 }
 
 int SqrtFpEcParity (
@@ -251,35 +292,35 @@ int SqrtFpEcParity (
     uint64_t * _r  // 1 x 64 bits (sqrt exists) + 4 x 64 bits
 )
 {
-    mpz_class parity(static_cast<unsigned long>(_parity));
-    mpz_class a;
-    array2scalar(_a, a);
-
-    // Call the sqrt function
-    mpz_class r;
-    bool sqrt_exists = sqrtF3mod4(r, a);
+    // r = a^((p+1)/4) is a square root of a if a has one, since p = 3 mod 4
+    // (https://www.rieselprime.de/ziki/Modular_square_root). If r^2 != a, a has none, and the
+    // square root of 3*a, which then exists since 3 is not a square, is returned instead. r^2 is
+    // compared with a as given, so an a >= p is always reported as having no square root
+    RawFec::Element a, am, r, rm, t;
+    array2plain(_a, a);                 // a mod p
+    fec.toMontgomery(am, a);
+    SqrtFpEcPow(rm, am);
+    fec.square(t, rm);
+    fec.fromMontgomery(t, t);           // r^2 mod p
+    bool sqrt_exists = (memcmp(t.v, _a, sizeof(t.v)) == 0);
+    if (!sqrt_exists)
+    {
+        fec.add(t, a, a);
+        fec.add(t, t, a);               // 3*a mod p
+        fec.toMontgomery(am, t);
+        SqrtFpEcPow(rm, am);
+    }
+    fec.fromMontgomery(r, rm);
 
     _r[0] = sqrt_exists;
 
-    // Post-process the result
-    if (r == ScalarMask256)
+    // Return the root with the requested parity, negating it otherwise
+    if ((r.v[0] & 1) != _parity)
     {
-        // This sqrt does not have a solution
-    }
-    else if ((r & 1) == parity)
-    {
-        // Return r as it is, since it has the requested parity
-    }
-    else
-    {
-        // Negate the result
-        RawFec::Element fe;
-        fec.fromMpz(fe, r.get_mpz_t());
-        fe = fec.neg(fe);
-        fec.toMpz(r.get_mpz_t(), fe);
+        fec.neg(r, r);
     }
 
-    scalar2array(r, &_r[1]);
+    plain2array(r, &_r[1]);
 
     return 0;
 }
@@ -528,14 +569,15 @@ int BN254TwistDblLineCoeffs (
 
 
     // Compute 𝜆 = 3x²/2y
-    RawFq::Element lambda_real, lambda_imaginary, aux_real, aux_imaginary, three;
+    RawFq::Element lambda_real, lambda_imaginary, aux_real, aux_imaginary, twice_lambda;
     BN254ComplexAddFe(y_real, y_imaginary, y_real, y_imaginary, lambda_real, lambda_imaginary); // 𝜆 = 2y
     BN254ComplexInvFe(lambda_real, lambda_imaginary, lambda_real, lambda_imaginary); // 𝜆 = 1/2y
     BN254ComplexMulFe(x_real, x_imaginary, x_real, x_imaginary, aux_real, aux_imaginary); // aux = x²
     BN254ComplexMulFe(lambda_real, lambda_imaginary, aux_real, aux_imaginary, lambda_real, lambda_imaginary); // 𝜆 = x²/2y
-    bn254.fromUI(three, 3); // 𝜆 = 3x²/2y
-    bn254.mul(lambda_real, lambda_real, three);
-    bn254.mul(lambda_imaginary, lambda_imaginary, three);
+    bn254.add(twice_lambda, lambda_real, lambda_real); // 𝜆 = 3x²/2y, as 2𝜆 + 𝜆
+    bn254.add(lambda_real, twice_lambda, lambda_real);
+    bn254.add(twice_lambda, lambda_imaginary, lambda_imaginary);
+    bn254.add(lambda_imaginary, twice_lambda, lambda_imaginary);
 
     // Compute 𝜇 = y - 𝜆x
     RawFq::Element mu_real, mu_imaginary;
@@ -783,14 +825,15 @@ int BLS12_381TwistDblLineCoeffs (
 
 
     // Compute 𝜆 = 3x²/2y
-    RawBLS12_381_384::Element lambda_real, lambda_imaginary, aux_real, aux_imaginary, three;
+    RawBLS12_381_384::Element lambda_real, lambda_imaginary, aux_real, aux_imaginary, twice_lambda;
     BLS12_381ComplexAddFe(y_real, y_imaginary, y_real, y_imaginary, lambda_real, lambda_imaginary); // 𝜆 = 2y
     BLS12_381ComplexInvFe(lambda_real, lambda_imaginary, lambda_real, lambda_imaginary); // 𝜆 = 1/2y
     BLS12_381ComplexMulFe(x_real, x_imaginary, x_real, x_imaginary, aux_real, aux_imaginary); // aux = x²
     BLS12_381ComplexMulFe(lambda_real, lambda_imaginary, aux_real, aux_imaginary, lambda_real, lambda_imaginary); // 𝜆 = x²/2y
-    bls12_381.fromUI(three, 3); // 𝜆 = 3x²/2y
-    bls12_381.mul(lambda_real, lambda_real, three);
-    bls12_381.mul(lambda_imaginary, lambda_imaginary, three);
+    bls12_381.add(twice_lambda, lambda_real, lambda_real); // 𝜆 = 3x²/2y, as 2𝜆 + 𝜆
+    bls12_381.add(lambda_real, twice_lambda, lambda_real);
+    bls12_381.add(twice_lambda, lambda_imaginary, lambda_imaginary);
+    bls12_381.add(lambda_imaginary, twice_lambda, lambda_imaginary);
 
     // Compute 𝜇 = y - 𝜆x
     RawBLS12_381_384::Element mu_real, mu_imaginary;
@@ -1291,4 +1334,50 @@ int InverseFnEcR1Ctx (
         ctx->result_size = 0;
     }
     return iresult;
+}
+
+/********************/
+/* KECCAK-F CACHE   */
+/********************/
+
+// Asks the cache to register the input state of the next Keccak-f that is executed under the
+// index given as the only parameter. Returns no result
+int KeccakfCacheSetIndexCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    if (ctx->params_size != 1)
+    {
+        printf("KeccakfCacheSetIndexCtx() got params_size=%lu, expected 1\n", ctx->params_size);
+        return -1;
+    }
+    if (ctx->params[0] == KECCAKF_CACHE_INDEX_NOT_FOUND)
+    {
+        printf("KeccakfCacheSetIndexCtx() got the reserved not-found index 0x%lx\n", ctx->params[0]);
+        return -1;
+    }
+
+    keccakf_cache_pending_index = ctx->params[0];
+
+    ctx->result_size = 0;
+    return 0;
+}
+
+// Returns the index the Keccak-f input state given as parameters (25 words) was registered
+// under, or KECCAKF_CACHE_INDEX_NOT_FOUND if it has not been cached
+int KeccakfCacheGetIndexCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    if (ctx->params_size != KECCAKF_STATE_WORDS)
+    {
+        printf("KeccakfCacheGetIndexCtx() got params_size=%lu, expected %d\n",
+            ctx->params_size, KECCAKF_STATE_WORDS);
+        return -1;
+    }
+
+    ctx->result[0] = keccakf_cache_get_index(ctx->params);
+
+    ctx->result_size = 1;
+    return 1;
 }

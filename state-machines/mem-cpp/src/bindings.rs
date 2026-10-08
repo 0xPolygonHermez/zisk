@@ -260,7 +260,11 @@ pub struct MemAlignChunkCounters {
     _unused: [u8; 0],
 }
 unsafe extern "C" {
-    pub fn create_mem_count_and_plan() -> *mut MemCountAndPlan;
+    pub fn create_mem_count_and_plan(
+        rom_rows: u32,
+        input_rows: u32,
+        ram_rows: u32,
+    ) -> *mut MemCountAndPlan;
 }
 unsafe extern "C" {
     pub fn destroy_mem_count_and_plan(mcp: *mut MemCountAndPlan);

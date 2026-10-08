@@ -146,13 +146,18 @@ ctor-style crates).
 
 ### Linker script
 
-The provided [`linker_script.ld`](linker_script.ld) places `.init_array` /
-`.fini_array` (with `KEEP`) and defines `__init_array_start` / `__init_array_end`
-/ `__fini_array_start` / `__fini_array_end`. The runtime references these bounds
-as **strong** symbols, so the linker script must define them. In practice this is
+Use ZisK's own [`ziskbuild/zisk_linker_script.ld`](../ziskbuild/zisk_linker_script.ld).
+It places `.init_array` / `.fini_array` (with `KEEP`) in the read-only ROM
+segment and defines `__init_array_start` / `__init_array_end` /
+`__fini_array_start` / `__fini_array_end`. The runtime references these bounds as
+**strong** symbols, so the linker script must define them. In practice this is
 not a burden: stock GNU ld and LLD always provide these symbols automatically
 (even without explicit script lines), and when the arrays are empty the
 construction loops are no-ops.
+
+If you bring your own script, keep the ZisK memory windows (code and read-only
+data in ROM at `0x8000_0000`, writable data in RAM at `0xa000_0000`) — the ELF
+interpreter rejects loadable segments outside them.
 
 ### Building a C++ host
 
@@ -163,9 +168,27 @@ high addresses):
 riscv64-unknown-elf-g++ -march=rv64ima -mabi=lp64 -mcmodel=medany \
   -ffreestanding -fno-exceptions -fno-rtti -c main.cpp -o main.o
 riscv64-unknown-elf-g++ -march=rv64ima -mabi=lp64 -mcmodel=medany \
-  -nostdlib -nostartfiles -T linker_script.ld \
+  -nostdlib -nostartfiles -T ../ziskbuild/zisk_linker_script.ld \
   main.o target/riscv64ima-zisk-zkvm-elf/release/libziskos_staticlib.a -o guest.elf
 ```
+
+### Limitations
+
+Verified against the program-segment ELF interpreter (see the regression test at
+[`elf-regressions/cpp_static_init/`](../elf-regressions/cpp_static_init/)):
+
+- **`thread_local` is not supported.** The linker script declares no `PT_TLS`
+  segment, so any TLS symbol is a link error
+  (`has an STT_TLS symbol but doesn't have a PT_TLS segment`).
+- **`.preinit_array` is not run.** The runtime walks `.init_array` only.
+- **Legacy `.ctors` / `.dtors` are ignored.** Toolchains configured with
+  `--disable-initfini-array` emit these instead of `.init_array`, and their
+  entries are silently never executed. Modern GCC/Clang emit `.init_array`.
+- **At most 64 static destructors.** `__cxa_atexit` has a fixed-capacity table;
+  the compiler discards its return value, so registrations beyond `MAX_ATEXIT`
+  are dropped without a diagnostic.
+- **No C++ exception or RTTI runtime is provided.** Build with
+  `-fno-exceptions -fno-rtti` unless the host links its own `libsupc++`.
 
 ## Adding new functions
 

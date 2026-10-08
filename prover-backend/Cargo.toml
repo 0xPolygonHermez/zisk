@@ -15,11 +15,12 @@ categories = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
-proofman-verifier = { workspace = true, features = ["parallel"] }
+proofman-verifier = { workspace = true, default-features = true, features = ["parallel"] }
 
 # Zisk internal crates
 zisk-program-macros = { workspace = true }
 zisk-common = { workspace = true }
+zisk-setup = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
 zisk-cluster-common = { workspace = true }
@@ -45,6 +46,16 @@ alloy-sol-types = { workspace = true }
 
 [features]
 default = []
+# Cross-checks the FROPS multiplicity column the state-machine collectors build
+# against an independent reference for the same execution: the ROM-histogram
+# assembly's column on the ASM path, a Rust replay of the minimal traces on the
+# emulated one. A development aid, off by default -- compiling it out removes its
+# table, the extra replay, and the per-operation branch that feeds it. See
+# `zisk_core::frops`.
+debug_frops = ["zisk-executor/debug_frops"]
+# RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
+compressed = ["zisk-transpiler-riscv/compressed"]
+witness_timers = ["zisk-executor/witness_timers"]
 cpu-only = ["proofman-common/cpu-only", "zisk-executor/cpu-only"]
 stats = []
-diagnostic = ["proofman-common/diagnostic"]
+diagnostic = ["proofman/diagnostic"]

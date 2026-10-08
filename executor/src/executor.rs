@@ -19,22 +19,26 @@ use crate::{
     ExecutionPhase, ExecutionState, InstanceAssigner, NoopProofRegistry, PlanPhase,
     ProofmanAdapter, StaticSMBundle, WitnessPhase,
 };
-use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
+use proofman_common::{lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use proofman_witness::{WitnessComponent, WitnessManager};
+
 use std::{
-    sync::{Arc, RwLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, RwLock,
+    },
     time::Instant,
 };
 use zisk_common::{
-    io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId,
+    io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId, EmuTrace,
     ExecutorStatsHandle, Plan, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
-use zisk_sm_main::MainSM;
+use zisk_sm_main::{MainPlanner, MainSM};
 
-use crate::error::{ExecutorResult, RwLockExt};
+use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 
 /// `(chunk_id, metrics)` pair — the per-chunk device-metrics output
 /// produced by counter-phase processing.
@@ -56,6 +60,24 @@ pub struct PlanSummaryEntry {
 /// The maximum number of steps to execute in the emulator or assembly runner.
 pub(crate) const MAX_NUM_STEPS: u64 = 1 << 36;
 
+/// Appends to the progressive minimal-trace store every chunk it has not seen
+/// yet, up to and including `idx`. `traces` is the emulator's own buffer, so
+/// `traces[idx]` is its last element.
+///
+/// In-order delivery is an invariant of the ASM reader; a chunk that does not
+/// extend the store contiguously is rejected rather than silently skipped.
+fn publish_chunks(
+    store: &mut Vec<Arc<EmuTrace>>,
+    traces: &[Arc<EmuTrace>],
+    idx: usize,
+) -> ExecutorResult<()> {
+    if store.len() > idx {
+        return Err(ExecutorError::ChunkOutOfOrder { got: idx, expected: store.len() });
+    }
+    store.extend_from_slice(&traces[store.len()..=idx]);
+    Ok(())
+}
+
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
 pub struct ZiskExecutor<F: PrimeField64> {
@@ -68,6 +90,11 @@ pub struct ZiskExecutor<F: PrimeField64> {
     /// Phase-3 Witness computation. `None` on the standalone path
     /// (executor constructed without `WitnessManager` / `Std`).
     witness: Option<WitnessPhase<F>>,
+    /// Whether the FROPS multiplicity column should come from the ROM-histogram assembly when
+    /// this executor runs on the ASM path. Only a request: it is applied at the start of every
+    /// execution, together with the backend that execution actually uses. See
+    /// [`Self::set_frops_multiplicity_from_asm`].
+    frops_from_asm_requested: AtomicBool,
 }
 
 impl<F: PrimeField64> ZiskExecutor<F> {
@@ -95,7 +122,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let std = pil2_std_lib::Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
         proofman::register_std(wcm, &std);
 
-        let precompiles = crate::Precompiles::all(std.clone());
+        let precompiles = crate::Precompiles::all();
         let sm_bundle = Arc::new(StaticSMBundle::new(std, precompiles));
 
         let executor = Arc::new(Self {
@@ -103,6 +130,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             execution: ExecutionPhase::new(CHUNK_SIZE, with_asm_emulator),
             plan: PlanPhase::new(CHUNK_SIZE),
             witness: Some(WitnessPhase::new(CHUNK_SIZE, sm_bundle)),
+            frops_from_asm_requested: AtomicBool::new(false),
         });
         executor.set_packed(packed);
 
@@ -126,6 +154,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             execution: ExecutionPhase::new(CHUNK_SIZE, with_asm_emulator),
             plan: PlanPhase::new(CHUNK_SIZE),
             witness: None,
+            frops_from_asm_requested: AtomicBool::new(false),
         }))
     }
 
@@ -177,11 +206,31 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         Ok(())
     }
 
+    /// Selects where the FROPS multiplicity column comes from on the ASM path.
+    ///
+    /// With `true` it is taken from the column the ROM-histogram assembly builds, which a single
+    /// worker computes and hands over with the ROM histogram; the state-machine collectors must then
+    /// not accumulate it as well. With `false` (the default) the collectors own it. See
+    /// `executor::sm::frops`.
+    ///
+    /// This is a request, not the setting itself: the same executor can switch between the ASM and
+    /// the Rust backend from one job to the next (`set_asm_resources` / `clear_asm_resources`), and
+    /// the Rust path has no ROM-histogram assembly to take the column from. So every execution
+    /// applies it as `requested && ASM path`, just before it runs.
+    pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
+        self.frops_from_asm_requested.store(from_asm, Ordering::Relaxed);
+    }
+
     /// Sets whether to use packed representation for witness computation.
     pub fn set_packed(&self, packed: bool) {
         if let Some(witness) = self.witness.as_ref() {
             witness.set_packed(packed);
         }
+    }
+
+    /// Whether traces are built bit-packed.
+    pub fn is_packed(&self) -> bool {
+        self.witness.as_ref().map(|w| w.is_packed()).unwrap_or(false)
     }
 
     /// Sets the standard input for execution.
@@ -200,6 +249,30 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     pub fn clear_asm_resources(&self) -> ExecutorResult<()> {
         self.execution.clear_asm_resources();
         Ok(())
+    }
+
+    /// Retires whatever the previous job left behind: drains a ROM-histogram runner
+    /// nobody consumed, then clears the hints stream and the input shmem.
+    ///
+    /// This is the job boundary. Call it after the previous computation is idle and
+    /// **before** the next job's inputs or hints are written, since the reset rewinds
+    /// the input shmem and marks the hints stream uninitialised. Drain first: the reset
+    /// drains the semaphores the RH child is waiting on, so rewinding while that child
+    /// is still reading strands it, and the next job's runner then hangs behind it.
+    ///
+    /// Blocks if the runner is still going, which is why it must not run before
+    /// cancellation has been signalled on a job that failed or was cancelled.
+    pub fn reset_for_new_job(&self) -> ExecutorResult<()> {
+        self.drain_rh();
+        self.execution.reset()
+    }
+
+    /// Joins a ROM-histogram runner left unconsumed by a previous execution and releases
+    /// its histogram. Idempotent, and a no-op when nothing is parked.
+    fn drain_rh(&self) {
+        if let Some(witness) = self.witness.as_ref() {
+            witness.drain_rh();
+        }
     }
 
     /// Returns a reference to the ASM emulator if ASM execution is active.
@@ -230,6 +303,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         global_ids: &RwLock<Vec<usize>>,
     ) -> ExecutorResult<()> {
         let start_total = Instant::now();
+
+        // Debug cross-check (`debug_frops` feature): by now the previous execution has collected
+        // every instance, so this is the first point at which rows the assembly counted and no
+        // collector claimed can be told apart from rows not yet reached. Nothing is armed unless the
+        // variable is set, so this is a no-op in a normal run.
+        if let Err(problem) = zisk_core::frops::frops_check_report(true) {
+            tracing::error!("FROPS cross-check of the previous execution: {problem}");
+        }
+
         self.state.reset();
         if let Some(witness) = self.witness.as_ref() {
             witness.reset()?;
@@ -240,6 +322,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let is_asm_emulator = self.execution.is_asm_execution();
 
+        // Decide the FROPS multiplicity producer for this execution, from the backend it actually
+        // runs on. Every reader comes later: the collectors built after this execution, and the ROM
+        // witness, which publishes the column (`publish_frops_from_asm`).
+        if let Some(witness) = self.witness.as_ref() {
+            let from_asm = is_asm_emulator && self.frops_from_asm_requested.load(Ordering::Relaxed);
+            witness.set_frops_multiplicity_from_asm(from_asm);
+        }
+
         // Reserve proofman's unified GPU buffer for MO count-and-plan
         // (no-op on CPU / standalone).
         if is_asm_emulator {
@@ -249,8 +339,47 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         }
 
         // ────────────────────────────────────────────────────────────
-        // Phase 1.1: Emulate
+        // Phase 1.1: Emulate (+ incremental Main advancement)
         // ────────────────────────────────────────────────────────────
+        // ROM instance is assigned BEFORE the run so the global-id sequence
+        // (ROM, Main segments in order, secondary) is identical to the old
+        // batch path while Main segments are now assigned mid-emulation.
+        InstanceAssigner::assign_rom_instance(registry)?;
+
+        // Incremental Main-instance advancement. The ASM MT reader calls this on
+        // this thread, in chunk order: as soon as a chunk completes a Main
+        // instance — or ends the execution — that instance's chunks are published
+        // to `state.min_traces` and the instance is planned, assigned and marked
+        // witness-ready, so main witness computation (and its GPU streaming-slot
+        // commit) overlaps the rest of the emulation instead of waiting for the
+        // run to finish. Global-id order is unchanged: ROM (assigned above), then
+        // Main segments in order, then secondary.
+        //
+        // No-op in standalone mode and never called by the Rust emulator; both
+        // keep the post-run batch path below.
+        let num_within = MainPlanner::traces_per_segment(self.plan.chunk_size())?;
+        let on_chunk =
+            |idx: usize, traces: &[Arc<EmuTrace>], is_last: bool| -> ExecutorResult<()> {
+                let Some(witness) = self.witness.as_ref() else { return Ok(()) };
+
+                // This chunk neither completes a Main instance nor ends the execution.
+                let Some(segment) = MainPlanner::segment_completed_by(idx, num_within, is_last)
+                else {
+                    return Ok(());
+                };
+
+                {
+                    let mut guard = self.state.min_traces.write_or_poison("min_traces")?;
+                    publish_chunks(guard.get_or_insert_with(Vec::new), traces, idx)?;
+                }
+
+                let plan = MainPlanner::plan_segment(segment, is_last);
+                let assignments =
+                    InstanceAssigner::assign_main_instances(registry, global_ids, vec![plan])?;
+                witness.populate_main_instances(registry, &self.state, assignments)
+            };
+        let chunk_hook = &on_chunk;
+
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
         let start_partial = Instant::now();
 
@@ -259,10 +388,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let output = self.execution.run::<F>(
             &zisk_rom,
             &stdin,
-            registry.is_first_process(),
+            // The ROM-histogram runner is what asks the assembly child for a histogram,
+            // so not spawning it leaves that child idle. Skipped without a witness:
+            // there is no ROM state machine to read one, and the standalone path would
+            // pay for a full histogram pass only to drop the result.
+            self.witness.is_some() && registry.is_first_process(),
             self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
             &self.state.stats,
             &_exec_scope,
+            chunk_hook,
         )?;
 
         let execution_duration = start_partial.elapsed();
@@ -276,16 +410,44 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let crate::ExecutionOutput { min_traces, mut counters, pub_outs, mut backend, .. } = output;
         let num_chunks = min_traces.len();
 
-        InstanceAssigner::assign_rom_instance(registry)?;
-        let main_plans = self.plan.run_main(&min_traces, &self.state.stats, &_exec_scope)?;
-        *self.state.min_traces.write_or_poison("min_traces")? = Some(min_traces);
-
-        let main_assignments =
-            InstanceAssigner::assign_main_instances(registry, global_ids, main_plans)?;
-        let main_instances_count = main_assignments.len();
-        if let Some(witness) = self.witness.as_ref() {
-            witness.populate_main_instances(registry, &self.state, main_assignments)?;
+        // Hand the ROM-histogram runner over without joining it: the runner outlives the
+        // minimal-trace run, and the instance it feeds does not compute its witness until
+        // much later, so the join belongs there. Parking also selects that instance's ASM
+        // backend, so it must precede `populate_secn_instances` below.
+        //
+        // Parked here rather than after the planning phases so that an error in between
+        // still leaves the handle where the next job's drain can find it — otherwise its
+        // child could still be consuming input shmem when that job resets it.
+        if let (Some(handle), Some(witness)) = (backend.take_rh_handle(), self.witness.as_ref()) {
+            witness.park_rh_handle(handle)?;
         }
+
+        // The hook published every chunk it saw, so on the ASM path the store is
+        // already complete and a read lock is enough (an exclusive lock here would
+        // stall main witnesses that are already computing). The Rust emulator
+        // never calls the hook, so its store is still empty and gets the whole
+        // vector at once.
+        let published =
+            self.state.min_traces.read_or_poison("min_traces")?.as_ref().map_or(0, Vec::len);
+        if published != num_chunks {
+            *self.state.min_traces.write_or_poison("min_traces")? = Some(min_traces);
+        }
+
+        // ASM + witness: the hook already released every Main instance during the
+        // run (the runner only returns `Ok` after delivering the final chunk).
+        let main_instances_count = if is_asm_emulator && self.witness.is_some() {
+            num_chunks.div_ceil(num_within)
+        } else {
+            // Rust emulator / standalone: plan and release every segment now.
+            let main_plans = self.plan.run_main(num_chunks, &self.state.stats, &_exec_scope)?;
+            let main_assignments =
+                InstanceAssigner::assign_main_instances(registry, global_ids, main_plans)?;
+            let count = main_assignments.len();
+            if let Some(witness) = self.witness.as_ref() {
+                witness.populate_main_instances(registry, &self.state, main_assignments)?;
+            }
+            count
+        };
 
         // ────────────────────────────────────────────────────────────
         // Phase 1.3: Plan secondary, await async, configure + populate (witness only)
@@ -301,20 +463,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         // MO runner joined in `run_secondary`; release the buffer back to proofman.
         // Earlier error paths skip the release on purpose: the MO thread may
-        // still be using the buffer (see `release_gpu_buffer` docs).
+        // still be using the buffer.
         if is_asm_emulator {
             if let Some(extras) = proofman_extras {
+                if let Some(used) = secn_artifacts.gpu_mops_used_bytes {
+                    extras.pctx().report_first_gpu_buffer_usage(used);
+                }
                 extras.release_gpu_buffer();
             }
         }
-
-        timer_start_info!(WAIT_ASM_RH);
-        if let Some(rh_data) = backend.await_rom_histogram()? {
-            if let Some(witness) = self.witness.as_ref() {
-                witness.set_rh_data(rh_data)?;
-            }
-        }
-        timer_stop_and_log_info!(WAIT_ASM_RH);
 
         stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
 
@@ -342,9 +499,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         stats_end!(self.state.stats, &_config_scope);
 
-        // Reset hints stream and input shmem after the ASM
-        // backend-specific await calls have drained the runners.
-        self.execution.reset()?;
+        // The debug cross-check, which the collectors read when they are built, right after
+        // `execute` returns. The multiplicity column itself is published by the ROM witness,
+        // which reads the histogram anyway, so the end of execution never waits for it.
+        if let Some(witness) = self.witness.as_ref() {
+            witness.arm_frops_cross_check()?;
+        }
 
         // ────────────────────────────────────────────────────────────
         // Phase 1.4: Cost accumulation (witness only — needs sctx)
@@ -407,7 +567,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         stats_begin!(self.state.stats, 0, _witness_scope, "CALCULATE_WITNESS", 0);
 
-        let pool = create_pool(n_cores);
+        let pool = lease_pool(n_cores);
         let adapter = ProofmanAdapter::new(&pctx, &sctx);
         let is_asm_emulator = self.execution.is_asm_execution();
         let witness = self.witness_or_panic();
@@ -429,6 +589,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         stats_end!(self.state.stats, &_witness_scope);
 
+        // Debug cross-check: a row claimed beyond what the assembly counted is a disagreement as
+        // soon as it happens, so report it here without waiting for the execution to finish. The
+        // other direction needs every instance collected; see `execute_inner`.
+        if let Err(problem) = zisk_core::frops::frops_check_report(false) {
+            tracing::error!("FROPS cross-check: {problem}");
+        }
+
         Ok(())
     }
 
@@ -448,7 +615,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             return Ok(());
         }
 
-        let pool = create_pool(n_cores);
+        let pool = lease_pool(n_cores);
         let adapter = ProofmanAdapter::new(&pctx, &sctx);
         let is_asm_emulator = self.execution.is_asm_execution();
         let witness = self.witness_or_panic();
@@ -529,5 +696,130 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zisk_pil::MAIN_STEPS_PER_SEGMENT;
+
+    /// `n` distinct chunks — `steps` is used only as an identity marker here.
+    fn chunks(n: usize) -> Vec<Arc<EmuTrace>> {
+        (0..n).map(|i| Arc::new(EmuTrace { steps: i as u64 + 1, ..EmuTrace::default() })).collect()
+    }
+
+    #[test]
+    fn publish_chunks_fills_an_empty_store_up_to_idx() {
+        // First release of a 4-chunk segment: the store catches up in one call.
+        let traces = chunks(4);
+        let mut store = Vec::new();
+        publish_chunks(&mut store, &traces, 3).expect("contiguous");
+        assert_eq!(store.len(), 4);
+        assert!(
+            store.iter().zip(&traces).all(|(a, b)| Arc::ptr_eq(a, b)),
+            "chunks are published in stream order, not cloned or reordered"
+        );
+    }
+
+    #[test]
+    fn publish_chunks_appends_only_the_unseen_tail() {
+        // Segment 1 of a num_within = 2 run: chunks 0..=1 are already published.
+        let traces = chunks(4);
+        let mut store: Vec<Arc<EmuTrace>> = traces[..2].to_vec();
+        publish_chunks(&mut store, &traces, 3).expect("contiguous");
+        assert_eq!(store.len(), 4, "only chunks 2 and 3 were appended");
+        assert!(Arc::ptr_eq(&store[2], &traces[2]));
+        assert!(Arc::ptr_eq(&store[3], &traces[3]));
+    }
+
+    #[test]
+    fn publish_chunks_is_idempotent_per_chunk_index() {
+        // Re-delivering an already-published chunk must not duplicate it.
+        let traces = chunks(2);
+        let mut store = Vec::new();
+        publish_chunks(&mut store, &traces, 1).expect("contiguous");
+        let err = publish_chunks(&mut store, &traces, 1).expect_err("already published");
+        assert!(matches!(err, ExecutorError::ChunkOutOfOrder { got: 1, expected: 2 }));
+        assert_eq!(store.len(), 2, "store is left untouched on rejection");
+    }
+
+    #[test]
+    fn publish_chunks_rejects_a_gap() {
+        // A store at 0 asked to publish chunk 1 would skip chunk 0 — reject instead
+        // of leaving a hole the Main witness would read as the wrong chunk.
+        let traces = chunks(3);
+        let mut store: Vec<Arc<EmuTrace>> = traces[..2].to_vec();
+        let err = publish_chunks(&mut store, &traces, 0).expect_err("goes backwards");
+        assert!(matches!(err, ExecutorError::ChunkOutOfOrder { got: 0, expected: 2 }));
+    }
+
+    /// Replays the hook's decisions over a whole run: for each streamed chunk,
+    /// publish + release when `segment_completed_by` says so. Returns the
+    /// released `(segment, is_last_segment)` pairs and the final store length.
+    fn replay(num_chunks: usize, num_within: usize) -> (Vec<(usize, bool)>, usize) {
+        let traces = chunks(num_chunks);
+        let mut store = Vec::new();
+        let mut released = Vec::new();
+
+        for idx in 0..num_chunks {
+            let is_last = idx == num_chunks - 1;
+            if let Some(segment) = MainPlanner::segment_completed_by(idx, num_within, is_last) {
+                publish_chunks(&mut store, &traces, idx).expect("in-order stream");
+                released.push((segment, is_last));
+            }
+        }
+        (released, store.len())
+    }
+
+    #[test]
+    fn replay_releases_every_segment_exactly_once_and_publishes_every_chunk() {
+        let num_within = MainPlanner::traces_per_segment(CHUNK_SIZE).expect("valid chunk size");
+        assert_eq!(num_within, MAIN_STEPS_PER_SEGMENT / CHUNK_SIZE as usize);
+
+        for num_chunks in 1..=(2 * num_within + 1) {
+            let (released, published) = replay(num_chunks, num_within);
+
+            let expected: Vec<usize> = (0..num_chunks.div_ceil(num_within)).collect();
+            assert_eq!(
+                released.iter().map(|(s, _)| *s).collect::<Vec<_>>(),
+                expected,
+                "segments released in order, once each ({num_chunks} chunks)"
+            );
+            assert!(
+                released.iter().rev().skip(1).all(|(_, is_last)| !is_last),
+                "only the final release is flagged as the last segment"
+            );
+            assert_eq!(
+                released.last().map(|(_, is_last)| *is_last),
+                Some(true),
+                "the final segment is always released, partial or not"
+            );
+            assert_eq!(
+                published, num_chunks,
+                "every chunk reaches the store before its segment is released"
+            );
+        }
+    }
+
+    #[test]
+    fn replay_publishes_a_segments_chunks_before_releasing_it() {
+        // The Main witness for segment `s` reads store[s * num_within ..], so the
+        // store must already cover that range at release time.
+        let num_within = 4;
+        let num_chunks = 10;
+        let traces = chunks(num_chunks);
+        let mut store = Vec::new();
+
+        for idx in 0..num_chunks {
+            let is_last = idx == num_chunks - 1;
+            if let Some(segment) = MainPlanner::segment_completed_by(idx, num_within, is_last) {
+                publish_chunks(&mut store, &traces, idx).expect("in-order stream");
+                let start = segment * num_within;
+                let end = if is_last { store.len() } else { start + num_within };
+                assert!(store.len() >= end, "segment {segment} released with a short store");
+                assert!(start < store.len(), "segment {segment} released empty");
+            }
+        }
     }
 }

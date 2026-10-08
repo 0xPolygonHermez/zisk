@@ -16,6 +16,7 @@ name = "zisk-coordinator"
 path = "src/cli/main.rs"
 
 [dependencies]
+bytes = { workspace = true }
 zisk-coordinator-api = { workspace = true }
 zisk-cluster-common = { workspace = true }
 zisk-cluster-api = { workspace = true }

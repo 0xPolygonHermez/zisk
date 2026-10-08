@@ -4,3 +4,7 @@ pub const DMA_ROM_ID: usize = 8001;
 pub const DMA_PRE_POST_TABLE_ID: usize = 8002;
 pub const DMA_PRE_POST_TABLE_SIZE: usize = 1152;
 pub const DMA_BYTE_CMP_TABLE_ID: usize = 8003;
+
+// EVM — mirrors pil/opids.pil
+pub const JUMP_DEST_COMPRESSOR_TABLE_ID: usize = 8101;
+pub const JUMP_DEST_BITMAP_TABLE_ID: usize = 8102;

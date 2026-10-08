@@ -85,6 +85,7 @@ impl EmulatorAsm {
         _use_hints: bool,
         _stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
+        _chunk_hook: crate::ChunkHook<'_>,
     ) -> ExecutorResult<ExecutionOutput> {
         unsupported()
     }

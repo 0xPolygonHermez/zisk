@@ -26,6 +26,18 @@ mkdir -p "$OUTDIR"
 REPO="${BENCH_REPO_DIR:-${GITHUB_WORKSPACE:-$(git rev-parse --show-toplevel)}}"
 cd "$REPO"
 
+# Record the commit this tree is at, so the report can show what was compared. For pull requests
+# also record its parents: the PR side is GitHub's test merge of the PR head into the base. Other
+# runs (e.g. manual ones) check out a branch, whose tip may be an unrelated merge, so its parents
+# are not recorded. The file name has no .txt extension, since zisk_cycle_diff.py takes every
+# .txt file in OUTDIR as a guest report.
+{
+  git rev-parse HEAD
+  if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+    git log -1 --format=%P HEAD
+  fi
+} > "$OUTDIR/commit"
+
 # If the expected guest ELF directory doesn't exist, skip the benchmarks.
 if [[ ! -d "$REPO/test-artifacts/programs" ]]; then
   echo "WARNING: '$REPO/test-artifacts/programs' not found; skipping benchmarks (no reports produced)." >&2

@@ -17,3 +17,6 @@ libziskos:
 clean:
 	cargo clean
 	$(MAKE) -C lib-c/c clean
+	rm -rf test-artifacts/programs/diagnostic/target
+	rm -rf test-artifacts/programs/target
+	rm -rf test-artifacts/target

@@ -26,7 +26,7 @@ use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, SetupKey, StatsCostPerType,
-    ZiskExecutorTime, ZiskPaths,
+    VadcopKind, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
@@ -416,6 +416,10 @@ impl ProverEngine for AsmProver {
         self.core_prover.rank_info.world_rank
     }
 
+    fn n_processes(&self) -> i32 {
+        self.core_prover.rank_info.n_processes
+    }
+
     fn local_rank(&self) -> i32 {
         self.core_prover.rank_info.local_rank
     }
@@ -574,11 +578,14 @@ impl ProverEngine for AsmProver {
         &self,
         proof: &[u64],
         publics_full: &[u64],
+        source_kind: VadcopKind,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics_full),
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full),
+            ProofKind::VadcopFinalMinimal => {
+                self.core_prover.backend.minimal(proof, publics_full, source_kind)
+            }
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full, source_kind),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
@@ -610,9 +617,24 @@ impl ProverEngine for AsmProver {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.core_prover.backend.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
+        self.core_prover.backend.join_worker_proofs(
+            agg_proofs,
+            last_proof,
+            final_proof,
+            keep_resident,
+            options,
+        )
+    }
+
+    fn reset_aggregation_state(&self) {
+        self.core_prover.backend.reset_aggregation_state()
+    }
+
+    fn aggregation_arity(&self) -> usize {
+        self.core_prover.backend.aggregation_arity()
     }
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
@@ -752,6 +774,7 @@ impl AsmCoreProver {
         cpu_mops: bool,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
+        zisk_setup::check_setup_version(&proving_key)?;
         let proofman = ProofMan::new(proving_key.clone(), options.clone())
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
@@ -787,6 +810,15 @@ impl AsmCoreProver {
             true,
             options.packed,
         )?;
+
+        // The ROM-histogram assembly counts every frequent operation of the whole execution in one
+        // pass, so on this path it owns the multiplicity column and the collectors stand down. The
+        // choice has to hold for every rank: only the first process runs the histogram, and its
+        // column already covers the others' share, so a rank that kept accumulating would count
+        // those operations twice. The executor applies it only to executions that run on the ASM
+        // backend; `execute_emulator` and friends switch this same executor to the Rust path, where
+        // the collectors own the column again.
+        executor.set_frops_multiplicity_from_asm(zisk_executor::frops_from_asm_requested());
 
         let core = ProverBackend::new(
             proofman,
@@ -825,6 +857,9 @@ impl ExecuteClient for ZiskProver<Asm> {
         stdin: ZiskStdin,
         hints: Option<StreamSource>,
     ) -> Result<ExecuteOutput> {
+        // Every call is a job boundary for this client, which executes many times after
+        // one setup. Before the hints below — see `ZiskExecutor::reset_for_new_job`.
+        ZiskProver::<Asm>::reset(self)?;
         if let Some(stream) = hints {
             ZiskProver::<Asm>::register_hints_stream(self, stream)?;
         }

@@ -2,12 +2,17 @@
 //!
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
-use crate::{BinaryBasicFrops, BinaryInput};
-use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
-    OPERATION_BUS_ID,
+use crate::{
+    add_family_kind, BinaryBasicFrops, BinaryCollectCursor, BinaryInput, ChunkCollect,
+    CollectAction, ADD_KINDS,
 };
-use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
+use zisk_common::{
+    BusDevice, BusId, ExtOperationData, OperationBusData, A, B, OP, OPERATION_BUS_ID,
+};
+use zisk_core::frops::frops_multiplicity_from_asm;
+#[cfg(feature = "debug_frops")]
+use zisk_core::frops::{frops_check_claim_row, frops_check_enabled, FROPS_BINARY_BASIC_BASE};
+use zisk_core::ZiskOperationType;
 
 use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
@@ -18,18 +23,24 @@ pub struct BinaryBasicCollector<F: PrimeField64> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
 
-    pub num_operations: usize,
-
-    pub collect_skipper: CollectSkipper,
-
-    /// Flag to indicate that this instance comute add operations
-    with_adds: bool,
-
-    /// Flag to indicate that force to execute to end of chunk
-    force_execute_to_end: bool,
+    /// Decides, operation by operation, what belongs to this instance.
+    cursor: BinaryCollectCursor<ADD_KINDS>,
 
     /// The table ID for the Binary FROPS
     frops_table_id: usize,
+
+    /// Whether this collector publishes the FROPS multiplicity column. False when the column comes
+    /// from the ROM-histogram assembly instead, in which case publishing here as well would count
+    /// every multiplicity twice. Read once, at construction: it is process state for the whole
+    /// execution.
+    publish_frops: bool,
+
+    /// Whether to cross-check the reference column against the rows this collector would have
+    /// published (`zisk_core::frops`): the assembly's on the ASM path, a Rust replay of the
+    /// minimal traces on the emulated one. Debug only, and compiled out without the `debug_frops`
+    /// feature so that neither the field nor the per-operation test below it survives.
+    #[cfg(feature = "debug_frops")]
+    check_frops: bool,
 
     /// Standard library instance, providing common functionalities.
     std: Arc<Std<F>>,
@@ -39,30 +50,46 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
     /// Creates a new `BinaryBasicCollector`.
     ///
     /// # Arguments
-    /// * `num_operations` - The number of operations to collect.
-    /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
+    /// * `collect` - What this instance takes from the chunk: a `(count, skip)` per kind of
+    ///   operation, plus which of the chunk's frequent operations it accounts for.
+    /// * `std` - PIL2 standard library utilities.
     ///
     /// # Returns
-    /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
-    pub fn new(
-        num_operations: usize,
-        collect_skipper: CollectSkipper,
-        with_adds: bool,
-        force_execute_to_end: bool,
-        std: Arc<Std<F>>,
-    ) -> Self {
+    /// A new `BinaryBasicCollector` ready to replay the chunk.
+    pub fn new(collect: ChunkCollect<ADD_KINDS>, std: Arc<Std<F>>) -> Self {
         let frops_table_id = std
             .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
             .expect("Failed to get FROPS table ID");
 
+        // Where the FROPS multiplicity column comes from is fixed for the whole execution, so it is
+        // resolved once here rather than per operation.
+        let publish_frops = !frops_multiplicity_from_asm();
+        #[cfg(feature = "debug_frops")]
+        let check_frops = frops_check_enabled();
+
         Self {
-            inputs: Vec::with_capacity(num_operations),
-            num_operations,
-            collect_skipper,
-            with_adds,
-            force_execute_to_end,
+            inputs: Vec::new(),
+            cursor: BinaryCollectCursor::new(collect),
             frops_table_id,
+            publish_frops,
+            #[cfg(feature = "debug_frops")]
+            check_frops,
             std,
+        }
+    }
+
+    /// Whether the FROPS table row of an operation is needed, rather than just whether the operation
+    /// is a frequent one: to publish the multiplicity, or to cross-check the assembly's column when
+    /// the `debug_frops` feature is on.
+    #[inline]
+    fn needs_frops_row(&self) -> bool {
+        #[cfg(feature = "debug_frops")]
+        {
+            self.publish_frops || self.check_frops
+        }
+        #[cfg(not(feature = "debug_frops"))]
+        {
+            self.publish_frops
         }
     }
 
@@ -79,43 +106,50 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
     #[inline(always)]
     pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
-        let instance_complete = self.inputs.len() == self.num_operations;
-
-        if instance_complete && !self.force_execute_to_end {
-            return false;
-        }
-
-        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
 
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
-        let op_type = OperationBusData::get_op_type(&op_data);
-
-        if op_type as u32 != ZiskOperationType::Binary as u32 {
+        // Cheapest test first: every operation on the bus reaches here, and most are not this air's.
+        if OperationBusData::get_op_type(&op_data) as u32 != ZiskOperationType::Binary as u32 {
             return true;
         }
 
-        if !self.with_adds && OperationBusData::get_op(&op_data) == ZiskOp::Add.code() {
-            return true;
-        }
+        // One classifier for the whole family, shared with the counter, so this air never collects
+        // an operation the plan counted somewhere else.
+        let kind = add_family_kind(OperationBusData::get_op(&op_data), data[A], data[B]);
 
-        if self.collect_skipper.should_skip_query(frops_row == BinaryBasicFrops::NO_FROPS) {
-            return true;
-        }
+        // The table row is only needed to publish the multiplicity or to cross-check the
+        // assembly's column. Otherwise all the cursor needs is whether the operation is a frequent
+        // one, which is the same test without the row arithmetic.
+        let (is_frop, frops_row) = if self.needs_frops_row() {
+            let row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
+            (row != BinaryBasicFrops::NO_FROPS, row)
+        } else {
+            (
+                BinaryBasicFrops::is_frequent_op(data[OP] as u8, data[A], data[B]),
+                BinaryBasicFrops::NO_FROPS,
+            )
+        };
 
-        if frops_row != BinaryBasicFrops::NO_FROPS {
-            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
-            return true;
+        match self.cursor.next(kind, is_frop) {
+            CollectAction::Stop => false,
+            CollectAction::Pass => true,
+            CollectAction::CountFrop => {
+                if self.publish_frops {
+                    self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
+                }
+                #[cfg(feature = "debug_frops")]
+                if self.check_frops {
+                    frops_check_claim_row(FROPS_BINARY_BASIC_BASE + frops_row as u64);
+                }
+                true
+            }
+            CollectAction::Collect => {
+                self.inputs.push(BinaryInput::from(&op_data));
+                !self.cursor.is_done()
+            }
         }
-
-        if instance_complete {
-            // instance complete => no FROPS operation => discard, inputs complete
-            return true;
-        }
-        self.inputs.push(BinaryInput::from(&op_data));
-
-        self.inputs.len() < self.num_operations || self.force_execute_to_end
     }
 }
 

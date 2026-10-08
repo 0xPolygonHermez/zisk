@@ -1,15 +1,16 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use proofman_fields::PrimeField64;
 
-use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::SegmentId;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
-    Dma64AlignedMemAirValues, Dma64AlignedMemTrace, Dma64AlignedMemTraceRow,
-    Dma64AlignedMemTraceRowOps, Dma64AlignedMemTraceRowPacked,
+    Dma64AlignedMemAirValues, Dma64AlignedMemLargeTrace, Dma64AlignedMemTrace,
+    Dma64AlignedMemTraceRow, Dma64AlignedMemTraceRowOps, Dma64AlignedMemTraceRowPacked,
+    ZISK_AIRGROUP_ID,
 };
 
 use crate::{
@@ -18,29 +19,36 @@ use crate::{
 };
 use zisk_precomp_helpers::DmaInfo;
 
-/// The `Dma64AlignedMemSM` struct encapsulates the logic of the Dma64Aligned State Machine.
-pub struct Dma64AlignedMemSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+/// Height and air id of each `Dma64AlignedMem` air, as const-generic arguments for the witness
+/// computation. The two commit the same columns and differ only in height.
+const ROWS: usize = Dma64AlignedMemTrace::<()>::NUM_ROWS;
+const AIR_ID: usize = Dma64AlignedMemTrace::<()>::AIR_ID;
+const LARGE_ROWS: usize = Dma64AlignedMemLargeTrace::<()>::NUM_ROWS;
+const LARGE_AIR_ID: usize = Dma64AlignedMemLargeTrace::<()>::AIR_ID;
 
-    /// Range checks ID's
-    range_16_bits_id: usize,
+/// The `Dma64AlignedMemSM` struct encapsulates the logic of the Dma64Aligned State Machine.
+///
+/// One instance of it serves one air: `air_id` says which of the two heights this one builds.
+pub struct Dma64AlignedMemSM<F: PrimeField64> {
     op_x_rows: usize,
+
+    _phantom: PhantomData<F>,
+
+    /// The air this state machine builds traces for: [`AIR_ID`] or [`LARGE_AIR_ID`].
+    air_id: usize,
 }
 
 impl<F: PrimeField64> Dma64AlignedMemSM<F> {
-    /// Creates a new Dma State Machine instance.
+    /// Creates a new Dma State Machine instance for the air `air_id`.
     ///
     /// # Returns
     /// A new `Dma64AlignedMemSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        Arc::new(Self {
-            std: std.clone(),
-            range_16_bits_id: std
-                .get_range_id(0, 0xFFFF, None)
-                .expect("Failed to get 16b table ID"),
-            op_x_rows: DMA_64_ALIGNED_MEM_OPS_BY_ROW,
-        })
+    pub fn new(air_id: usize) -> Arc<Self> {
+        assert!(
+            air_id == AIR_ID || air_id == LARGE_AIR_ID,
+            "Dma64AlignedMemSM: unsupported air_id {air_id}"
+        );
+        Arc::new(Self { air_id, op_x_rows: DMA_64_ALIGNED_MEM_OPS_BY_ROW, _phantom: PhantomData })
     }
 
     /// Processes a slice of operation data, updating the trace.
@@ -53,7 +61,6 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         &self,
         input: &Dma64AlignedInput,
         trace: &mut [R],
-        _local_16_bits_table: &mut [u32],
         air_values: &mut Dma64AlignedMemAirValues<F>,
     ) -> usize {
         let rows = input.rows as usize;
@@ -177,14 +184,21 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         trace.set_previous_seq_end(true);
     }
 
-    fn compute_witness_inner<R: Dma64AlignedMemTraceRowOps<F>>(
+    fn compute_witness_inner<
+        R: Dma64AlignedMemTraceRowOps<F>,
+        const NUM_ROWS: usize,
+        const TRACE_AIR_ID: usize,
+    >(
         &self,
         inputs: &[Vec<Dma64AlignedInput>],
         segment_id: SegmentId,
         is_last_segment: bool,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = Dma64AlignedMemTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace =
+            GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, TRACE_AIR_ID>::new_from_vec_zeroes(
+                trace_buffer,
+            )?;
         let num_rows = trace.num_rows();
 
         let total_inputs: usize = inputs
@@ -207,18 +221,13 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         let flat_inputs = crate::flatten_and_reorder_inputs(inputs);
         let trace_rows = trace.buffer.as_mut_slice();
 
-        let mut local_16_bits_table = vec![0u32; 1 << 16];
         let mut air_values = Dma64AlignedMemAirValues::<F>::new();
 
         // TODO: inputs between instances
         let mut row_offset = 0;
         for input in flat_inputs.iter() {
-            let rows_used = self.process_input(
-                input,
-                &mut trace_rows[row_offset..],
-                &mut local_16_bits_table,
-                &mut air_values,
-            );
+            let rows_used =
+                self.process_input(input, &mut trace_rows[row_offset..], &mut air_values);
             row_offset += rows_used;
         }
 
@@ -243,11 +252,6 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         }
 
         // add range check of count to check that it's a positive 32-bits number
-        let last_count = air_values.segment_last_count64.as_canonical_u64();
-        local_16_bits_table[(last_count & 0xFFFF) as usize] += 1;
-        local_16_bits_table[((last_count >> 16) & 0xFFFF) as usize] += 1;
-
-        self.std.range_check_ranged(self.range_16_bits_id, None, &local_16_bits_table);
 
         let segment_id = segment_id.into();
         air_values.segment_id = F::from_usize(segment_id);
@@ -298,20 +302,33 @@ impl<F: PrimeField64> Dma64AlignedModule<F> for Dma64AlignedMemSM<F> {
         trace_buffer: Vec<F>,
         packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
-        if packed {
-            self.compute_witness_inner::<Dma64AlignedMemTraceRowPacked<F>>(
-                inputs,
-                segment_id,
-                is_last_segment,
-                trace_buffer,
-            )
-        } else {
-            self.compute_witness_inner::<Dma64AlignedMemTraceRow<F>>(
-                inputs,
-                segment_id,
-                is_last_segment,
-                trace_buffer,
-            )
+        match (self.air_id == LARGE_AIR_ID, packed) {
+            (false, true) => self
+                .compute_witness_inner::<Dma64AlignedMemTraceRowPacked<F>, ROWS, AIR_ID>(
+                    inputs,
+                    segment_id,
+                    is_last_segment,
+                    trace_buffer,
+                ),
+            (false, false) => self
+                .compute_witness_inner::<Dma64AlignedMemTraceRow<F>, ROWS, AIR_ID>(
+                    inputs,
+                    segment_id,
+                    is_last_segment,
+                    trace_buffer,
+                ),
+            (true, true) => self.compute_witness_inner::<
+                Dma64AlignedMemTraceRowPacked<F>,
+                LARGE_ROWS,
+                LARGE_AIR_ID,
+            >(inputs, segment_id, is_last_segment, trace_buffer),
+            (true, false) => self
+                .compute_witness_inner::<Dma64AlignedMemTraceRow<F>, LARGE_ROWS, LARGE_AIR_ID>(
+                    inputs,
+                    segment_id,
+                    is_last_segment,
+                    trace_buffer,
+                ),
         }
     }
 }

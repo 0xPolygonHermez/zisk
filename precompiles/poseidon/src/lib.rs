@@ -10,6 +10,7 @@ zisk_common::zisk_precompile! {
     num_available = {
         ::zisk_pil::PoseidonTrace::<::zisk_pil::PoseidonTraceRow<F>>::NUM_ROWS / CLOCKS - 1
     },
+    cost = ::zisk_pil::POSEIDON_INSTANCE_COST,
     ops = [
         (OperationPoseidonData, PoseidonInput),
     ],

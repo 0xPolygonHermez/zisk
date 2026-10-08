@@ -11,6 +11,7 @@ use super::sw_impl::{
     blake2, bls12 as bls12_sw, bn254 as bn254_sw, modexp as modexp_sw, ripemd160 as ripemd160_sw,
     secp256k1 as secp256k1_sw, sha256 as sha256_sw,
 };
+use super::utils::slice_from_ffi;
 use super::{bls12_381, bn254};
 use zisk_zkvm_interface::{
     zkvm_blake2f_message, zkvm_blake2f_offset, zkvm_blake2f_state, zkvm_bls12_381_fp,
@@ -139,6 +140,11 @@ pub unsafe extern "C" fn zkvm_modexp(
     output: *mut u8,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> zkvm_status {
+    // An empty modulus has an empty output, so `output` need not be valid.
+    if mod_len == 0 {
+        return ZKVM_EOK;
+    }
+
     #[cfg(feature = "hints")]
     {
         super::modexp_bytes_c(base, base_len, exp, exp_len, modulus, mod_len, output, hints);
@@ -170,12 +176,19 @@ pub unsafe extern "C" fn zkvm_modexp(
         #[cfg(not(zisk_guest))]
         {
             let result = modexp_sw::modexp(
-                std::slice::from_raw_parts(base, base_len),
-                std::slice::from_raw_parts(exp, exp_len),
-                std::slice::from_raw_parts(modulus, mod_len),
+                slice_from_ffi(base, base_len),
+                slice_from_ffi(exp, exp_len),
+                slice_from_ffi(modulus, mod_len),
             );
-            let offset = mod_len - result.len();
-            std::ptr::copy_nonoverlapping(result.as_ptr(), output.add(offset), result.len());
+
+            // `modexp` returns a minimal-length big-endian encoding, so it is normally
+            // shorter than `mod_len`. Right-align it in a zeroed buffer, matching EIP-198
+            // and the guest path.
+            let out = std::slice::from_raw_parts_mut(output, mod_len);
+            out.fill(0);
+            let n = result.len().min(mod_len);
+            out[mod_len - n..].copy_from_slice(&result[result.len() - n..]);
+
             ZKVM_EOK
         }
     }
@@ -614,6 +627,10 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
     result: *mut zkvm_bls12_381_g1_point,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> zkvm_status {
+    if num_pairs == 0 {
+        return ZKVM_EFAIL;
+    }
+
     #[cfg(feature = "hints")]
     {
         let ret = super::msm_safe_bls12_381_c(
@@ -759,6 +776,10 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
     result: *mut zkvm_bls12_381_g2_point,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> zkvm_status {
+    if num_pairs == 0 {
+        return ZKVM_EFAIL;
+    }
+
     #[cfg(feature = "hints")]
     {
         let ret = super::msm_safe_twist_bls12_381_c(
@@ -828,6 +849,10 @@ pub unsafe extern "C" fn zkvm_bls12_pairing(
     verified: *mut bool,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> zkvm_status {
+    if num_pairs == 0 {
+        return ZKVM_EFAIL;
+    }
+
     #[cfg(feature = "hints")]
     {
         let ret = super::pairing_check_safe_bls12_381_c(pairs as *const u8, num_pairs, hints);

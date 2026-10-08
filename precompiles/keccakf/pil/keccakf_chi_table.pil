@@ -1,0 +1,95 @@
+require "std_lookup.pil"
+require "opids.pil"
+
+// χ-row S-box table for the sliced Keccak-f precompile.
+//
+// The main AIR runs TWO independent keccak-f instances per cell: every sliced
+// cell holds v = a + 8·b, where a and b are the same-position values of
+// instance A and instance B.
+//
+// One row per (rc, t) where t = (t_0,...,t_4) are the five θ-outputs of a
+// χ-row for BOTH instances: t_x = tA_x + 8·tB_x with tA, tB ∈ [0,3].
+// 
+// The packed input is
+//      A = rc·28⁵ + Σ_x t_x·28ˣ,
+// which decodes uniquely since t_x <= 27 < 28. 
+// 
+// The table extracts the per-slot
+// parities pA_x = tA_x mod 2, pB_x = tB_x mod 2, applies χ per instance,
+//      out_x = p_x ⊕ (¬p_{x+1} ∧ p_{x+2}),
+// XORs rc into both slots of out_0 (ι; both instances of a slot share the
+// round), and returns the sliced outputs OUT_x = outA_x + 8·outB_x.
+
+const int KECCAKF_SLOT = 8;             // instance B lives 3 bits up
+const int KECCAKF_CHI_ROW_SIZE = 5;     // χ maps 5-bit rows to 5-bit rows
+const int KECCAKF_CHI_BASE = 28;        // sliced θ-outputs live in [0, 3 + 8·3]
+const int KECCAKF_CHI_SPAN = KECCAKF_CHI_BASE ** KECCAKF_CHI_ROW_SIZE; // 28⁵, the rc offset
+
+const int KECCAKF_CHI_TABLE_ROWS = 2 * 16 ** KECCAKF_CHI_ROW_SIZE; // 2·16⁵ = 2²¹ = 2_097_152
+const int KECCAKF_CHI_TABLE_SIZE = KECCAKF_CHI_TABLE_ROWS;
+
+airtemplate KeccakfChiTable(const int N) {
+    // Ensure that the chosen size fits
+    if (N < KECCAKF_CHI_TABLE_ROWS) {
+        error(`N must be at least ${KECCAKF_CHI_TABLE_ROWS}, but N=${N} was provided`);
+    }
+    println(`The Keccak-f's Table size is ${KECCAKF_CHI_TABLE_ROWS}`);
+
+    // Row index i = rc·16⁵ + Σ_x d_x·16ˣ with d_x = tA_x + 4·tB_x
+    col fixed A;
+    col fixed OUT[KECCAKF_CHI_ROW_SIZE];
+    #pragma transpile
+    for (int i = 0; i < N; i++) {
+        const int idx = i % KECCAKF_CHI_TABLE_ROWS;
+        const int rc = idx / (16 ** 5); // 0 or 1, the round constant bit
+
+        // Decode the five digits d_x = tA_x + 4·tB_x
+        const int d0 = idx % 16;
+        const int d1 = (idx / 16) % 16;
+        const int d2 = (idx / (16 ** 2)) % 16;
+        const int d3 = (idx / (16 ** 3)) % 16;
+        const int d4 = (idx / (16 ** 4)) % 16;
+
+        // Per-instance θ-outputs
+        const int ta0 = d0 % 4;
+        const int ta1 = d1 % 4;
+        const int ta2 = d2 % 4;
+        const int ta3 = d3 % 4;
+        const int ta4 = d4 % 4;
+        const int tb0 = d0 / 4;
+        const int tb1 = d1 / 4;
+        const int tb2 = d2 / 4;
+        const int tb3 = d3 / 4;
+        const int tb4 = d4 / 4;
+
+        // The packed input
+        A[i] = rc * KECCAKF_CHI_SPAN
+             + (ta0 + KECCAKF_SLOT * tb0)
+             + (ta1 + KECCAKF_SLOT * tb1) * KECCAKF_CHI_BASE
+             + (ta2 + KECCAKF_SLOT * tb2) * (KECCAKF_CHI_BASE ** 2)
+             + (ta3 + KECCAKF_SLOT * tb3) * (KECCAKF_CHI_BASE ** 3)
+             + (ta4 + KECCAKF_SLOT * tb4) * (KECCAKF_CHI_BASE ** 4);
+
+        // Per-instance parities
+        const int pa0 = ta0 % 2;
+        const int pa1 = ta1 % 2;
+        const int pa2 = ta2 % 2;
+        const int pa3 = ta3 % 2;
+        const int pa4 = ta4 % 2;
+        const int pb0 = tb0 % 2;
+        const int pb1 = tb1 % 2;
+        const int pb2 = tb2 % 2;
+        const int pb3 = tb3 % 2;
+        const int pb4 = tb4 % 2;
+
+        // χ on the parities, out_x = p_x ⊕ (¬p_{x+1} ∧ p_{x+2}), with ι on x = 0
+        OUT[0][i] = (pa0 + (1 - pa1) * pa2 + rc) % 2 + KECCAKF_SLOT * ((pb0 + (1 - pb1) * pb2 + rc) % 2);
+        OUT[1][i] = (pa1 + (1 - pa2) * pa3) % 2      + KECCAKF_SLOT * ((pb1 + (1 - pb2) * pb3) % 2);
+        OUT[2][i] = (pa2 + (1 - pa3) * pa4) % 2      + KECCAKF_SLOT * ((pb2 + (1 - pb3) * pb4) % 2);
+        OUT[3][i] = (pa3 + (1 - pa4) * pa0) % 2      + KECCAKF_SLOT * ((pb3 + (1 - pb4) * pb0) % 2);
+        OUT[4][i] = (pa4 + (1 - pa0) * pa1) % 2      + KECCAKF_SLOT * ((pb4 + (1 - pb0) * pb1) % 2);
+    }
+
+    col witness multiplicity;
+    lookup_proves(KECCAKF_CHI_TABLE_ID, [A, ...OUT], multiplicity);
+}

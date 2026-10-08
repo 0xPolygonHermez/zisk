@@ -12,6 +12,10 @@ use crate::ux::{print_banner, print_banner_command};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Export the four ABI fields of a wrapped PLONK proof as JSON for the Solidity verifier.
+///
+/// Test fixture only: `programVK` and `rootCVadcopFinal` are read out of the proof
+/// itself. A production integration must hold both as contract constants, or
+/// verification is self-keyed.
 pub(crate) struct ExportSolidityCalldataCmd {
     /// Path to the wrapped PLONK proof file (output of `cargo-zisk wrap-proof --plonk`)
     #[arg(short = 'p', long)]
@@ -60,10 +64,11 @@ impl ExportSolidityCalldataCmd {
                 ));
             }
         };
-        if proof.program_vk.vk.len() != 4 {
+        let program_vk = proof.get_program_vk();
+        if program_vk.vk.len() != 4 {
             return Err(anyhow!(
                 "program_vk has unexpected length {} (expected 4 u64s)",
-                proof.program_vk.vk.len()
+                program_vk.vk.len()
             ));
         }
 
@@ -81,7 +86,9 @@ impl ExportSolidityCalldataCmd {
         //                              4×u64 big-endian (32 bytes)
         // The publicValues encoding comes straight from `snark_inputs_bytes` so it stays in
         // lockstep with `snark_publics_hash` (the off-chain/snarkjs path).
-        let program_vk_bytes = u64_chunks_to_be(&proof.program_vk.vk);
+        // The committed identity, not the untrusted outer copy: a relabelled proof
+        // would otherwise export calldata the proof does not commit to.
+        let program_vk_bytes = u64_chunks_to_be(&program_vk.vk);
         let publics_bytes = zisk_common::snark_inputs_bytes(publics_full);
         let root_c_bytes = u64_chunks_to_be(rootc);
 

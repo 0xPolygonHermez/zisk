@@ -11,7 +11,7 @@
 // terms_by_clock: 2
 
 
-const expr eq_bn254_curve_y3_chunks[32];
+const expr air.eq_bn254_curve_y3_chunks[32];
 
 // clock #0
 

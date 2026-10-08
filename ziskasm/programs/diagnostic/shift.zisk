@@ -1,0 +1,89 @@
+; ============================================================================
+; shift.zisk - diagnostic for the ZisK shift instructions.
+;
+;   sll   srl   sra          (64-bit; amount = b & 0x3f)
+;   sll_w srl_w sra_w         (32-bit; amount = b & 0x1f; result sign-extended)
+;
+; Pure-constant style (see minmax.zisk). Corner cases include amount masking
+; (shift by 64 == shift by 0; 65 == 1; _w by 32 == 0) and arithmetic vs logical
+; shifts of negative values. Expected values generated from core/src/ops_core.rs.
+;
+; SHIFT_TABLE columns: a b sll srl sra sll_w srl_w sra_w
+; First mismatch returns 0x05CC (01=sll 02=srl 03=sra 04=sll_w 05=srl_w 06=sra_w).
+;
+; Registers: r5 row ptr  r6 row index  r7 a(value)  r8 b(amount)  r12 exp  r13 res.
+; ============================================================================
+
+define ROWS      14
+define ROW_BYTES 64      ; 8 u64 columns * 8 bytes
+
+; a, b, sll, srl, sra, sll_w, srl_w, sra_w
+const u64 SHIFT_TABLE =
+	0x0000000000000001, 0x0000000000000000, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001,
+	0x0000000000000001, 0x0000000000000001, 0x0000000000000002, 0x0000000000000000, 0x0000000000000000, 0x0000000000000002, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000001, 0x000000000000003f, 0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0xffffffff80000000, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000001, 0x0000000000000040, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001,
+	0x0000000000000001, 0x0000000000000041, 0x0000000000000002, 0x0000000000000000, 0x0000000000000000, 0x0000000000000002, 0x0000000000000000, 0x0000000000000000,
+	0x8000000000000000, 0x0000000000000001, 0x0000000000000000, 0x4000000000000000, 0xc000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0xffffffffffffffff, 0x0000000000000004, 0xfffffffffffffff0, 0x0fffffffffffffff, 0xffffffffffffffff, 0xfffffffffffffff0, 0x000000000fffffff, 0xffffffffffffffff,
+	0xffffffff00000000, 0x0000000000000008, 0xffffff0000000000, 0x00ffffffff000000, 0xffffffffff000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x00000000ffffffff, 0x0000000000000004, 0x0000000ffffffff0, 0x000000000fffffff, 0x000000000fffffff, 0xfffffffffffffff0, 0x000000000fffffff, 0xffffffffffffffff,
+	0x0000000080000000, 0x0000000000000001, 0x0000000100000000, 0x0000000040000000, 0x0000000040000000, 0x0000000000000000, 0x0000000040000000, 0xffffffffc0000000,
+	0xdeadbeefcafebabe, 0x000000000000000c, 0xdbeefcafebabe000, 0x000deadbeefcafeb, 0xfffdeadbeefcafeb, 0xffffffffebabe000, 0x00000000000cafeb, 0xfffffffffffcafeb,
+	0x0000000000000001, 0x000000000000001f, 0x0000000080000000, 0x0000000000000000, 0x0000000000000000, 0xffffffff80000000, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000001, 0x0000000000000020, 0x0000000100000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001,
+	0x00000000ffffffff, 0x0000000000000021, 0xfffffffe00000000, 0x0000000000000000, 0x0000000000000000, 0xfffffffffffffffe, 0x000000007fffffff, 0xffffffffffffffff
+
+shift:
+	copyb(0, SHIFT_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+sh_loop:
+	eq(r6, ROWS), j(sh_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	sll(r7, r8) -> r13
+	eq(r13, r12), j(sh_c1)
+	copyb(0, 0x0501) -> r10
+	ret
+sh_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	srl(r7, r8) -> r13
+	eq(r13, r12), j(sh_c2)
+	copyb(0, 0x0502) -> r10
+	ret
+sh_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	sra(r7, r8) -> r13
+	eq(r13, r12), j(sh_c3)
+	copyb(0, 0x0503) -> r10
+	ret
+sh_c3:
+	copyb(r5, 8[a + 40]) -> r12
+	sll_w(r7, r8) -> r13
+	eq(r13, r12), j(sh_c4)
+	copyb(0, 0x0504) -> r10
+	ret
+sh_c4:
+	copyb(r5, 8[a + 48]) -> r12
+	srl_w(r7, r8) -> r13
+	eq(r13, r12), j(sh_c5)
+	copyb(0, 0x0505) -> r10
+	ret
+sh_c5:
+	copyb(r5, 8[a + 56]) -> r12
+	sra_w(r7, r8) -> r13
+	eq(r13, r12), j(sh_next)
+	copyb(0, 0x0506) -> r10
+	ret
+
+sh_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(sh_loop)
+
+sh_ok:
+	copyb(0, 0) -> r10
+	ret

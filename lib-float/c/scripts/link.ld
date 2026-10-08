@@ -8,7 +8,7 @@ MEMORY {
 }
 
 PHDRS {
-  text PT_LOAD FLAGS(5);
+  text PT_LOAD FLAGS(1);
   rodata PT_LOAD FLAGS(4);
   data PT_LOAD FLAGS(6);
   bss PT_LOAD FLAGS(6);

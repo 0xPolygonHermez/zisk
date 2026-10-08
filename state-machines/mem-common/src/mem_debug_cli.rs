@@ -5,7 +5,7 @@ use zisk_common::ChunkId;
 use zisk_common::MemBusData;
 use zisk_pil::MemTrace;
 use zisk_sm_mem_common::MemHelpers;
-use zisk_sm_mem_common::{MemCounters, MemDebug};
+use zisk_sm_mem_common::{mem_lanes_x_row, MemCounters, MemDebug};
 
 /// Inspect mem_{chunk}.bin files produced with feature save_mem_bus_data
 #[derive(Parser, Debug)]
@@ -83,10 +83,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ((area_wo_duals - area_w_duals) as f32 * 100.0) / area_wo_duals as f32,
             (dual as f32 * 100.0) / count as f32
     );
-    let num_rows = MemTrace::<Goldilocks>::NUM_ROWS;
-    debug.info_instances(num_rows);
-    debug.info_chunks(num_rows);
-    debug.dump_to_file(num_rows, "tmp/mem_debug_cli_ops.txt");
-    // debug.save_to_file(num_rows, "tmp/debug_mem.txt");
+    // These take memory operations per Mem instance, and a row holds `lanes_x_row` of them.
+    let ops_per_instance = MemTrace::<Goldilocks>::NUM_ROWS * mem_lanes_x_row();
+    debug.info_instances(ops_per_instance);
+    debug.info_chunks(ops_per_instance);
+    debug.dump_to_file(ops_per_instance, "tmp/mem_debug_cli_ops.txt");
+    // debug.save_to_file(ops_per_instance, "tmp/debug_mem.txt");
     Ok(())
 }

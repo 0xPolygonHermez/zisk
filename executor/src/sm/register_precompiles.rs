@@ -67,7 +67,7 @@ macro_rules! register_precompiles {
             ) -> ::std::boxed::Box<dyn ::zisk_common::Planner> {
                 match air_id {
                     $(
-                        id if id == $air[0] => <$mgr as
+                        id if $air.contains(&id) => <$mgr as
                             ::zisk_common::ComponentPlanBuilder<F>>::planner(is_asm_emulator),
                     )*
                     _ => panic!("planner_for_air_id: unknown precompile air_id {air_id}"),
@@ -102,12 +102,10 @@ macro_rules! register_precompiles {
             /// Canonical default precompile set — one entry per registered
             /// variant. Macro-generated from the registration list; mirrors
             /// `BuiltinSMs::all` on the built-in side.
-            pub(crate) fn all(
-                std: ::std::sync::Arc<::pil2_std_lib::Std<F>>,
-            ) -> ::std::vec::Vec<(::std::primitive::usize, Self)> {
+            pub(crate) fn all() -> ::std::vec::Vec<(&'static [::std::primitive::usize], Self)> {
                 ::std::vec![
                     $(
-                        ($air[0], Self::$variant(<$mgr>::new(std.clone()))),
+                        ($air, Self::$variant(<$mgr>::new())),
                     )*
                 ]
             }
@@ -286,7 +284,7 @@ macro_rules! register_precompiles {
                     global_idx: ::std::primitive::usize,
                 ) -> $crate::error::ExecutorResult<::std::primitive::bool> {
                     $(
-                        if air_id == $air[0] {
+                        if $air.contains(&air_id) {
                             let inst = secn_instance
                                 .as_any()
                                 .downcast_ref::<[<$variant Instance>]<F>>()

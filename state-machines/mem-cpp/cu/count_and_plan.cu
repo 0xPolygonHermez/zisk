@@ -438,8 +438,6 @@ constexpr uint32_t N_ADDR_INPUT = 1u << 30;   // 1G
 constexpr uint32_t N_ADDR_RAM   = 1u << 29;   // 512M
 constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;
 
-constexpr uint32_t INSTANCE_SIZE[3]  = {1u << 21, 1u << 21, 1u << 22};
-constexpr uint32_t INSTANCE_SIZE_MAX = 1u << 22;
 
 constexpr uint8_t REGION_ROM            = 0;
 constexpr uint8_t REGION_INPUT          = 1;
@@ -1074,7 +1072,7 @@ CountAndPlan::~CountAndPlan() { free_all_bound_(); }
 
 bool CountAndPlan::setup(void* d_buf, size_t bytes,
                          uint32_t n_workers, uint32_t worker_id,
-                         int gpu_id) {
+                         int gpu_id, const uint32_t instance_rows[3]) {
     free_all_bound_();
 
     if (n_workers == 0 || worker_id >= n_workers) {
@@ -1082,6 +1080,21 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
                 "CountAndPlan::setup ERROR: invalid n_workers=%u worker_id=%u\n",
                 n_workers, worker_id);
         return false;
+    }
+
+    if (instance_rows == nullptr) {
+        fprintf(stderr, "CountAndPlan::setup ERROR: instance_rows is null\n");
+        return false;
+    }
+    for (int r = 0; r < 3; r++) {
+        const uint32_t rows = instance_rows[r];
+        if (rows == 0 || (rows & (rows - 1)) != 0) {
+            fprintf(stderr,
+                    "CountAndPlan::setup ERROR: instance_rows[%d]=%u is not a "
+                    "non-zero power of two\n", r, rows);
+            return false;
+        }
+        instance_rows_[r] = rows;
     }
 
     // gpu_id = proofman's my_gpu_ids[0], the GPU our buffer/kernels must use
@@ -1267,10 +1280,15 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     d_ops_pool_cap_u32_  = (arena_bytes_ - cursor_) / 4;
     d_ops_pool_used_u32_ = 0;
 
+    // Highest device priority: the count/plan pipeline is the executor's critical
+    // path, and proofman's streaming-commit slots (priority 0) may run concurrently
+    // on this GPU.
+    int leastPrio = 0, greatestPrio = 0;
+    CUDA_CHECK(cudaDeviceGetStreamPriorityRange(&leastPrio, &greatestPrio));
     for (int s = 0; s < N_STREAMS; s++)
-        CUDA_CHECK(cudaStreamCreate(&streams_[s]));
-    CUDA_CHECK(cudaStreamCreate(&d2h_stream_));
-    CUDA_CHECK(cudaStreamCreate(&meta_stream_));
+        CUDA_CHECK(cudaStreamCreateWithPriority(&streams_[s], cudaStreamDefault, greatestPrio));
+    CUDA_CHECK(cudaStreamCreateWithPriority(&d2h_stream_, cudaStreamDefault, greatestPrio));
+    CUDA_CHECK(cudaStreamCreateWithPriority(&meta_stream_, cudaStreamDefault, greatestPrio));
     CUDA_CHECK(cudaEventCreate(&e_after_preproc_));
     CUDA_CHECK(cudaEventCreate(&e_after_prepare_));
     CUDA_CHECK(cudaEventCreate(&e_metas_ready_));
@@ -1732,7 +1750,7 @@ void CountAndPlan::prepare_global_() {
 
     num_instances_ = 0;
     for (uint8_t r = 0; r < 3; r++) {
-        num_inst_[r] = region_n_ops_[r] ? (region_n_ops_[r] + INSTANCE_SIZE[r] - 1) / INSTANCE_SIZE[r] : 0;
+        num_inst_[r] = region_n_ops_[r] ? (region_n_ops_[r] + instance_rows_[r] - 1) / instance_rows_[r] : 0;
         num_instances_ += num_inst_[r];
     }
     if (num_instances_ > MAX_INSTANCES) {
@@ -1786,7 +1804,7 @@ void CountAndPlan::process_worker_() {
         uint32_t off = active_offset_[r];
         instance_boundaries_kernel<<<1, na>>>(
             d_prefix_, REGION_ADDR_START[r], h_max_compact_[r] + 1,
-            region_n_ops_[r], INSTANCE_SIZE[r],
+            region_n_ops_[r], instance_rows_[r],
             d_active_ids_ + off, d_active_first_ + off, d_active_last_ + off,
             na);
         CUDA_CHECK_LAUNCH();
@@ -1801,7 +1819,12 @@ void CountAndPlan::process_worker_() {
         d_fml_, num_active_, n_chunks_, num_ops_);
     CUDA_CHECK_LAUNCH();
 
-    CUDA_CHECK(cudaDeviceSynchronize());
+    // Everything process_worker_ launched sits on the legacy default stream, and
+    // the sync memcpys below already order against it (and against the blocking
+    // count streams). A device-wide sync would additionally wait for FOREIGN
+    // non-blocking streams -- e.g. proofman's streaming-commit slots -- adopting
+    // their whole backlog into this critical path. Sync only our own stream.
+    CUDA_CHECK(cudaStreamSynchronize(nullptr));
     CUDA_CHECK(cudaMemcpy(h_active_first_.data(), d_active_first_, num_active_ * 4, cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_active_last_.data(),  d_active_last_,  num_active_ * 4, cudaMemcpyDeviceToHost));
 
@@ -1842,7 +1865,7 @@ void CountAndPlan::process_worker_() {
         for (uint8_t r = 0; r < 3; r++)
             for (uint32_t j = 0; j < num_active_per_[r]; j++, ai++)
                 h_inst_base_pos[ai] = region_ops_start_[r]
-                    + h_active_local_ids_[active_offset_[r] + j] * INSTANCE_SIZE[r];
+                    + h_active_local_ids_[active_offset_[r] + j] * instance_rows_[r];
     }
     CUDA_CHECK(cudaMemcpyAsync(d_inst_base_pos_, h_inst_base_pos.data(),
                                num_active_ * 4, cudaMemcpyHostToDevice, d2h_stream_));
@@ -1854,7 +1877,7 @@ void CountAndPlan::process_worker_() {
 
         build_metas_kernel<<<na, 256, 0, meta_stream_>>>(
             d_fml_ + (size_t)off * n_chunks_ * 3, d_prefix_,
-            REGION_ADDR_START[r], region_n_ops_[r], INSTANCE_SIZE[r],
+            REGION_ADDR_START[r], region_n_ops_[r], instance_rows_[r],
             d_active_ids_ + off, d_active_first_ + off, d_active_last_ + off,
             d_result_nops_ + (size_t)off * n_chunks_,
             d_meta_scalars_ + off * 4, na, n_chunks_);

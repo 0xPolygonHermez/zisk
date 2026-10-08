@@ -34,6 +34,7 @@ impl Display for Environment {
 
 /// Logging configuration for a cluster service.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LoggingConfig {
     /// Log level filter (e.g. `"info"`, `"debug"`, `"trace"`).
     pub level: String,

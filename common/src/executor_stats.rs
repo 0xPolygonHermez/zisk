@@ -270,6 +270,8 @@ pub struct ExecutorStats {
     finalized: Mutex<Vec<ExecutorStatsEntry>>,
     /// A mapping of witness statistics, where the key is an airgroup ID and the value is a `Stats` struct containing relevant metrics.
     witness_stats: Mutex<HashMap<usize, Stats>>,
+    /// Wall-clock milliseconds spent in `ChunkDataCollector::collect`.
+    collect_phase_wall_ms: AtomicU64,
 }
 
 impl ExecutorStats {
@@ -289,6 +291,7 @@ impl ExecutorStats {
         while self.pending.pop().is_some() {}
         self.finalized.lock().unwrap_or_else(|e| e.into_inner()).clear();
         self.witness_stats.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.collect_phase_wall_ms.store(0, Ordering::Relaxed);
     }
 
     /// Adds a new statistic entry to the executor stats. Lock-free.
@@ -332,6 +335,17 @@ impl ExecutorStats {
         {
             stats.witness_duration = duration;
         }
+    }
+
+    /// Adds the wall time of one `collect` call. Accumulates because `collect`
+    /// may run more than once per proof, and those calls are sequential.
+    pub fn add_collect_phase_wall_ms(&self, ms: u64) {
+        self.collect_phase_wall_ms.fetch_add(ms, Ordering::Relaxed);
+    }
+
+    /// Total wall time spent in `collect`, in milliseconds.
+    pub fn collect_phase_wall_ms(&self) -> u64 {
+        self.collect_phase_wall_ms.load(Ordering::Relaxed)
     }
 
     /// Returns a snapshot of the witness statistics collected so far.
@@ -518,5 +532,15 @@ impl ExecutorStatsHandle {
     /// Sets the witness duration for a specific airgroup ID.
     pub fn set_witness_duration(&self, airgroup_id: usize, duration: u128) {
         self.inner.set_witness_duration(airgroup_id, duration);
+    }
+
+    /// Adds the wall time of one `collect` call.
+    pub fn add_collect_phase_wall_ms(&self, ms: u64) {
+        self.inner.add_collect_phase_wall_ms(ms);
+    }
+
+    /// Total wall time spent in `collect`, in milliseconds.
+    pub fn collect_phase_wall_ms(&self) -> u64 {
+        self.inner.collect_phase_wall_ms()
     }
 }

@@ -6,21 +6,36 @@
 
 use crate::{ComputeCapacity, DataId, JobId, WorkerId};
 use borsh::{BorshDeserialize, BorshSerialize};
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// How a job's inputs are supplied to the cluster.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum InputsModeDto {
     /// No inputs are provided.
     InputsNone,
     /// Inputs are provided as a complete payload referenced by a URI.
     InputsPath(String),
-    /// Inputs are provided directly as data.
-    InputsData(String),
+    /// Inputs are provided directly as data: raw bytes exactly as they arrived
+    /// on the API, handed to the transport unmodified.
+    InputsData(Bytes),
     /// Inputs will be streamed from the given URI (QUIC, Unix socket).
     /// The coordinator reads from this URI and relays data to workers.
     InputsStream(String),
+}
+
+/// Hand-written so a multi-MB payload can never reach a log line — `Job`
+/// derives `Debug`.
+impl std::fmt::Debug for InputsModeDto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InputsModeDto::InputsNone => write!(f, "InputsNone"),
+            InputsModeDto::InputsPath(path) => write!(f, "InputsPath({path})"),
+            InputsModeDto::InputsData(data) => write!(f, "InputsData({} bytes)", data.len()),
+            InputsModeDto::InputsStream(uri) => write!(f, "InputsStream({uri})"),
+        }
+    }
 }
 
 pub use zisk_common::AirInstanceCount;
@@ -28,16 +43,28 @@ pub use zisk_common::ProofKind;
 pub use zisk_common::StatsCostPerType;
 
 /// How a job's precompile hints are supplied to the cluster.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum HintsModeDto {
     /// No hints are provided.
     HintsNone,
     /// Hints are provided as a complete payload referenced by a URI.
     HintsPath(String),
-    /// Hints are provided directly as data (hex-encoded).
-    HintsData(String),
+    /// Hints are provided directly as data; see [`InputsModeDto::InputsData`].
+    HintsData(Bytes),
     /// Hints will be streamed from the given URI endpoint.
     HintsStream(String),
+}
+
+/// See [`InputsModeDto`]'s.
+impl std::fmt::Debug for HintsModeDto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HintsModeDto::HintsNone => write!(f, "HintsNone"),
+            HintsModeDto::HintsPath(path) => write!(f, "HintsPath({path})"),
+            HintsModeDto::HintsData(data) => write!(f, "HintsData({} bytes)", data.len()),
+            HintsModeDto::HintsStream(uri) => write!(f, "HintsStream({uri})"),
+        }
+    }
 }
 
 /// Request to launch a proof/execute job on the cluster.
@@ -84,6 +111,8 @@ pub struct WorkerRegisterRequestDto {
     pub worker_id: WorkerId,
     /// The worker's advertised compute capacity.
     pub compute_capacity: ComputeCapacity,
+    /// Aggregation arity of the worker's proving key.
+    pub aggregation_arity: u32,
 }
 
 /// Request from a worker to reconnect after a disconnect.
@@ -94,6 +123,8 @@ pub struct WorkerReconnectRequestDto {
     pub compute_capacity: ComputeCapacity,
     /// The job the worker believes it was running, if any.
     pub last_known_job_id: Option<JobId>,
+    /// Aggregation arity of the worker's proving key.
+    pub aggregation_arity: u32,
 }
 
 /// Reconciliation directive sent by the coordinator in the registration response.
@@ -222,8 +253,8 @@ pub struct RunAggregateProofsAckDto {
 pub struct InputStreamDataDto {
     /// The target job.
     pub job_id: JobId,
-    /// The input bytes.
-    pub payload: Vec<u8>,
+    /// The input bytes. `Bytes` so the relay's per-worker clones are refcounts.
+    pub payload: Bytes,
 }
 
 /// Coordinator → worker request to set up a guest program.
@@ -269,8 +300,8 @@ pub struct StreamDataDto {
 pub struct StreamPayloadDto {
     /// Monotonic sequence number for reordering.
     pub sequence_number: u32,
-    /// The chunk bytes.
-    pub payload: Vec<u8>,
+    /// The chunk bytes; see [`InputStreamDataDto::payload`].
+    pub payload: Bytes,
 }
 
 /// Liveness heartbeat from the coordinator.
@@ -362,27 +393,143 @@ pub struct ContributionParamsDto {
 }
 
 /// Where a task's input is read from (borsh-encoded on the wire).
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Clone)]
 pub enum InputSourceDto {
     /// Read from a file/URI path.
     InputPath(String),
-    /// Inline input data.
-    InputData(Vec<u8>),
+    /// Inline input data. `Bytes` so per-worker clones don't copy the payload.
+    InputData(Bytes),
     /// No input.
     InputNull,
 }
 
+/// See [`InputsModeDto`]'s.
+impl std::fmt::Debug for InputSourceDto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InputSourceDto::InputPath(path) => write!(f, "InputPath({path})"),
+            InputSourceDto::InputData(data) => write!(f, "InputData({} bytes)", data.len()),
+            InputSourceDto::InputNull => write!(f, "InputNull"),
+        }
+    }
+}
+
+/// Hand-written because `Bytes` has no Borsh impl. Encodes as borsh does a
+/// `Vec<u8>` variant — u8 variant index, u32-LE length, then the payload — which
+/// is what MPI peers decode.
+impl BorshSerialize for InputSourceDto {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        // Fully qualified: `serde::Serialize` is also in scope.
+        match self {
+            InputSourceDto::InputPath(path) => {
+                BorshSerialize::serialize(&0u8, writer)?;
+                BorshSerialize::serialize(path, writer)
+            }
+            InputSourceDto::InputData(data) => {
+                BorshSerialize::serialize(&1u8, writer)?;
+                let len = u32::try_from(data.len()).map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "InputSourceDto::InputData payload exceeds the u32 borsh length prefix",
+                    )
+                })?;
+                BorshSerialize::serialize(&len, writer)?;
+                writer.write_all(data)
+            }
+            InputSourceDto::InputNull => BorshSerialize::serialize(&2u8, writer),
+        }
+    }
+}
+
+impl BorshDeserialize for InputSourceDto {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        match u8::deserialize_reader(reader)? {
+            0 => Ok(InputSourceDto::InputPath(String::deserialize_reader(reader)?)),
+            1 => {
+                let len = u32::deserialize_reader(reader)? as usize;
+                let mut buf = vec![0u8; len];
+                reader.read_exact(&mut buf)?;
+                Ok(InputSourceDto::InputData(Bytes::from(buf)))
+            }
+            2 => Ok(InputSourceDto::InputNull),
+            other => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid InputSourceDto variant {other}"),
+            )),
+        }
+    }
+}
+
 /// Where a task's hints are read from (borsh-encoded on the wire).
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Clone)]
 pub enum HintsSourceDto {
     /// Read from a file/URI path.
     HintsPath(String),
-    /// Inline hint data.
-    HintsData(Vec<u8>),
+    /// Inline hint data; see [`InputSourceDto::InputData`].
+    HintsData(Bytes),
     /// Streamed from a URI.
     HintsStream(String),
     /// No hints.
     HintsNull,
+}
+
+impl std::fmt::Debug for HintsSourceDto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HintsSourceDto::HintsPath(path) => write!(f, "HintsPath({path})"),
+            HintsSourceDto::HintsData(data) => write!(f, "HintsData({} bytes)", data.len()),
+            HintsSourceDto::HintsStream(uri) => write!(f, "HintsStream({uri})"),
+            HintsSourceDto::HintsNull => write!(f, "HintsNull"),
+        }
+    }
+}
+
+/// See [`InputSourceDto`]'s impls.
+impl BorshSerialize for HintsSourceDto {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        match self {
+            HintsSourceDto::HintsPath(path) => {
+                BorshSerialize::serialize(&0u8, writer)?;
+                BorshSerialize::serialize(path, writer)
+            }
+            HintsSourceDto::HintsData(data) => {
+                BorshSerialize::serialize(&1u8, writer)?;
+                let len = u32::try_from(data.len()).map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "HintsSourceDto::HintsData payload exceeds the u32 borsh length prefix",
+                    )
+                })?;
+                BorshSerialize::serialize(&len, writer)?;
+                writer.write_all(data)
+            }
+            HintsSourceDto::HintsStream(uri) => {
+                BorshSerialize::serialize(&2u8, writer)?;
+                BorshSerialize::serialize(uri, writer)
+            }
+            HintsSourceDto::HintsNull => BorshSerialize::serialize(&3u8, writer),
+        }
+    }
+}
+
+impl BorshDeserialize for HintsSourceDto {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        match u8::deserialize_reader(reader)? {
+            0 => Ok(HintsSourceDto::HintsPath(String::deserialize_reader(reader)?)),
+            1 => {
+                let len = u32::deserialize_reader(reader)? as usize;
+                let mut buf = vec![0u8; len];
+                reader.read_exact(&mut buf)?;
+                Ok(HintsSourceDto::HintsData(Bytes::from(buf)))
+            }
+            2 => Ok(HintsSourceDto::HintsStream(String::deserialize_reader(reader)?)),
+            3 => Ok(HintsSourceDto::HintsNull),
+            other => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid HintsSourceDto variant {other}"),
+            )),
+        }
+    }
 }
 
 /// Parameters for a prove task.
@@ -469,12 +616,16 @@ pub struct AggParamsDto {
     pub final_proof: bool,
     /// The kind of proof being produced.
     pub proof_type: ProofKind,
+    /// Keep the folded proof resident for a further level (ignored when final).
+    pub keep_resident: bool,
+    /// Drop any resident aggregation state first. Recovery only.
+    pub reset_state: bool,
 }
 
 /// A worker's partial STARK proof for an airgroup.
 pub struct ProofStarkDto {
-    /// Index of the producing worker.
-    pub worker_idx: u32,
+    /// Leaf workers this proof covers.
+    pub worker_indexes: Vec<u32>,
     /// The airgroup this proof belongs to.
     pub airgroup_id: u64,
     /// The proof field-element values.
@@ -532,6 +683,8 @@ pub enum ExecuteTaskResponseResultDataDto {
     FinalProof(FinalProofDto),
     /// A wrapped proof.
     WrapResult(WrapResultDto),
+    /// A node's folded subtree, not yet the final proof.
+    PartialAggProofs(Vec<ProofStarkDto>),
 }
 
 /// Result payload of a wrap task.
@@ -633,5 +786,76 @@ impl WebhookPayloadDto {
             error: Some(error),
             proof_data: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The layout is u8 variant index, u32-LE length, then raw bytes. It travels
+    /// over MPI, so a slip corrupts peer ranks rather than failing to compile.
+    #[test]
+    fn input_source_borsh_layout_matches_derived_vec_encoding() {
+        let encoded = borsh::to_vec(&InputSourceDto::InputData(Bytes::from_static(&[7, 8, 9])))
+            .expect("serialize");
+        assert_eq!(encoded, vec![1, 3, 0, 0, 0, 7, 8, 9]);
+    }
+
+    #[test]
+    fn hints_source_borsh_layout_matches_derived_vec_encoding() {
+        let encoded =
+            borsh::to_vec(&HintsSourceDto::HintsData(Bytes::from_static(&[1, 2]))).expect("ser");
+        assert_eq!(encoded, vec![1, 2, 0, 0, 0, 1, 2]);
+    }
+
+    #[test]
+    fn input_source_round_trips_every_variant() {
+        let cases = [
+            InputSourceDto::InputPath("/tmp/in".to_string()),
+            InputSourceDto::InputData(Bytes::from_static(&[0, 255, 128])),
+            InputSourceDto::InputData(Bytes::new()),
+            InputSourceDto::InputNull,
+        ];
+        for case in cases {
+            let bytes = borsh::to_vec(&case).expect("serialize");
+            let back: InputSourceDto = borsh::from_slice(&bytes).expect("deserialize");
+            assert_eq!(format!("{case:?}"), format!("{back:?}"));
+            if let (InputSourceDto::InputData(a), InputSourceDto::InputData(b)) = (&case, &back) {
+                assert_eq!(a, b);
+            }
+        }
+    }
+
+    #[test]
+    fn hints_source_round_trips_every_variant() {
+        let cases = [
+            HintsSourceDto::HintsPath("/tmp/h".to_string()),
+            HintsSourceDto::HintsData(Bytes::from_static(&[3, 4, 5])),
+            HintsSourceDto::HintsStream("quic://127.0.0.1:9".to_string()),
+            HintsSourceDto::HintsNull,
+        ];
+        for case in cases {
+            let bytes = borsh::to_vec(&case).expect("serialize");
+            let back: HintsSourceDto = borsh::from_slice(&bytes).expect("deserialize");
+            assert_eq!(format!("{case:?}"), format!("{back:?}"));
+            if let (HintsSourceDto::HintsData(a), HintsSourceDto::HintsData(b)) = (&case, &back) {
+                assert_eq!(a, b);
+            }
+        }
+    }
+
+    #[test]
+    fn payload_debug_does_not_dump_bytes() {
+        let big = InputsModeDto::InputsData(Bytes::from(vec![0u8; 4096]));
+        assert_eq!(format!("{big:?}"), "InputsData(4096 bytes)");
+        let src = InputSourceDto::InputData(Bytes::from(vec![0u8; 4096]));
+        assert_eq!(format!("{src:?}"), "InputData(4096 bytes)");
+    }
+
+    #[test]
+    fn invalid_variant_index_is_an_error_not_a_panic() {
+        assert!(borsh::from_slice::<InputSourceDto>(&[9]).is_err());
+        assert!(borsh::from_slice::<HintsSourceDto>(&[9]).is_err());
     }
 }

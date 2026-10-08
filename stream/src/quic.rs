@@ -452,11 +452,33 @@ impl Drop for QuicStreamWriter {
     }
 }
 
-/// Certificate verifier that accepts any certificate (for development only!)
+/// Certificate verifier that accepts any server certificate.
 ///
-/// ⚠️ WARNING: This is INSECURE and should NEVER be used in production.
-/// It accepts all certificates without validation, making you vulnerable to MITM attacks.
-/// For production use, implement proper certificate validation.
+/// The writer generates a fresh self-signed certificate per endpoint
+/// ([`QuicStreamWriter::configure_server`]), so there is no identity for a
+/// reader to pin and nothing for this verifier to check. Peer authentication is
+/// deliberately delegated to network isolation, consistent with the gRPC
+/// control plane between the coordinator and its workers, which is likewise
+/// unauthenticated.
+///
+/// The assumption this rests on: the stream producer runs inside the cluster
+/// network on a port that is not reachable from outside it — the same
+/// co-location requirement that `file://` and `unix://` stream URIs impose by
+/// construction. Callers should bind loopback (`quic://127.0.0.1:0`); binding a
+/// routable interface without a network-layer restriction breaks the
+/// assumption, and QUIC's encryption alone will not hold the boundary:
+///
+/// - The writer promotes the first peer to complete the handshake and drains
+///   the buffered payload to it, so any reachable client can race the intended
+///   consumer for the stream contents.
+/// - This verifier accepts any certificate, so an on-path attacker can
+///   impersonate the producer and substitute the stream data.
+///
+/// Authenticating the transport (pinning the writer's SPKI and requiring a
+/// job-bound client credential, both distributable via the per-job stream URI)
+/// is tracked as part of cluster-wide transport security rather than here —
+/// securing this hop alone would not move the boundary while the control plane
+/// stays in the clear.
 #[derive(Debug)]
 struct SkipServerVerification;
 

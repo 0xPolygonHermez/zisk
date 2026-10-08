@@ -3,6 +3,9 @@
 mod syscall;
 pub use syscall::*;
 
+mod zkvmcall;
+pub use zkvmcall::*;
+
 mod profile;
 pub use profile::*;
 
@@ -11,6 +14,9 @@ pub use labels::*;
 
 pub mod hints;
 pub use hints::*;
+
+mod precompile_results;
+pub use precompile_results::*;
 
 // Constants, in two feature-gated views: without `gen`, consumers compile the
 // generated plain `pub const`s (`generated`, zero-dep); with `gen`, the sync build

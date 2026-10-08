@@ -1,0 +1,15 @@
+[package]
+name = "ruint-bench-guest"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone: not part of any workspace.
+[workspace]
+
+[dependencies]
+ziskos = { path = "../../../../../ziskos/entrypoint" }
+ruint = "1.20"
+
+[profile.release]
+opt-level = 3

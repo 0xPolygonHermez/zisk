@@ -1,0 +1,151 @@
+# ArithTable decoded to a canonical form. GENERATED - do not edit.
+#
+#   cargo run --release --bin arith_table_decode_gen
+#
+# The raw table stores [op, flags, range_ab, range_cd]. The flag bit layout and the range id
+# numbering are implementation details, so this file decodes them away: flags are named and the range
+# ids are expanded into the range TYPE of each of the eight constrained chunks. Two tables decoded
+# this way are directly comparable with diff, which is the point: the semantic delta of a change to
+# the table shows up here as a diff.
+#
+# Columns
+#   m32, div            operation width and family
+#   na, nb, np, nr      sign of a / b / (product | dividend) / remainder
+#   sext                the 32-bit result drives sign extension
+#   dbz                 div_by_zero
+#   dov                 div_overflow
+#   rz                  result_is_zero      (the product for mul, the quotient for div)
+#   remz                remainder_is_zero
+#   mul, dv, sg         main_mul, main_div, signed
+#   a3 a1 b3 b1 c3 c1 d3 d1   range type of each constrained chunk:
+#                             F = any 16 bits, + = [0, 0x7FFF], - = [0x8000, 0xFFFF]
+#
+# '?' marks a fact the encoding being decoded cannot express.
+#
+# Sorted canonically, not in table order: row indices are an implementation detail.
+# rows: 124
+
+div     m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=1 | a3=+ a1=F b3=+ b1=F  c3=+ c1=F d3=+ d1=F
+div     m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=1 | a3=+ a1=F b3=+ b1=F  c3=+ c1=F d3=+ d1=F
+div     m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=1 sg=1 | a3=+ a1=F b3=+ b1=F  c3=+ c1=F d3=+ d1=F
+div     m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=1 | mul=0 dv=1 sg=1 | a3=+ a1=F b3=+ b1=F  c3=+ c1=F d3=+ d1=F
+div     m32=0 div=1 | na=0 nb=0 np=1 nr=1 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=1 sg=1 | a3=+ a1=F b3=+ b1=F  c3=- c1=F d3=- d1=F
+div     m32=0 div=1 | na=0 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=1 sg=1 | a3=+ a1=F b3=- b1=F  c3=+ c1=F d3=+ d1=F
+div     m32=0 div=1 | na=0 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=1 | mul=0 dv=1 sg=1 | a3=+ a1=F b3=- b1=F  c3=+ c1=F d3=+ d1=F
+div     m32=0 div=1 | na=0 nb=1 np=1 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=1 | a3=+ a1=F b3=- b1=F  c3=- c1=F d3=+ d1=F
+div     m32=0 div=1 | na=0 nb=1 np=1 nr=1 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=1 | a3=+ a1=F b3=- b1=F  c3=- c1=F d3=- d1=F
+div     m32=0 div=1 | na=0 nb=1 np=1 nr=1 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=1 sg=1 | a3=+ a1=F b3=- b1=F  c3=- c1=F d3=- d1=F
+div     m32=0 div=1 | na=1 nb=0 np=0 nr=0 | sext=0 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=1 | a3=- a1=F b3=+ b1=F  c3=+ c1=F d3=+ d1=F
+div     m32=0 div=1 | na=1 nb=0 np=0 nr=0 | sext=0 dbz=1 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=1 | a3=- a1=F b3=+ b1=F  c3=+ c1=F d3=+ d1=F
+div     m32=0 div=1 | na=1 nb=0 np=1 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=1 | a3=- a1=F b3=+ b1=F  c3=- c1=F d3=+ d1=F
+div     m32=0 div=1 | na=1 nb=0 np=1 nr=1 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=1 | a3=- a1=F b3=+ b1=F  c3=- c1=F d3=- d1=F
+div     m32=0 div=1 | na=1 nb=0 np=1 nr=1 | sext=0 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=1 | a3=- a1=F b3=+ b1=F  c3=- c1=F d3=- d1=F
+div     m32=0 div=1 | na=1 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=1 | a3=- a1=F b3=- b1=F  c3=+ c1=F d3=+ d1=F
+div     m32=0 div=1 | na=1 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=1 | a3=- a1=F b3=- b1=F  c3=+ c1=F d3=+ d1=F
+div     m32=0 div=1 | na=1 nb=1 np=1 nr=0 | sext=0 dbz=0 dov=1 rz=0 remz=1 | mul=0 dv=1 sg=1 | a3=- a1=F b3=- b1=F  c3=- c1=F d3=+ d1=F
+div_w   m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=1 | a3=F a1=+ b3=F b1=+  c3=F c1=+ d3=F d1=+
+div_w   m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=1 | a3=F a1=+ b3=F b1=+  c3=F c1=+ d3=F d1=+
+div_w   m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=1 sg=1 | a3=F a1=+ b3=F b1=+  c3=F c1=+ d3=F d1=+
+div_w   m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=1 | mul=0 dv=1 sg=1 | a3=F a1=+ b3=F b1=+  c3=F c1=+ d3=F d1=+
+div_w   m32=1 div=1 | na=0 nb=0 np=1 nr=1 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=1 sg=1 | a3=F a1=+ b3=F b1=+  c3=F c1=- d3=F d1=-
+div_w   m32=1 div=1 | na=0 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=1 sg=1 | a3=F a1=+ b3=F b1=-  c3=F c1=+ d3=F d1=+
+div_w   m32=1 div=1 | na=0 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=1 | mul=0 dv=1 sg=1 | a3=F a1=+ b3=F b1=-  c3=F c1=+ d3=F d1=+
+div_w   m32=1 div=1 | na=0 nb=1 np=1 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=1 | a3=F a1=+ b3=F b1=-  c3=F c1=- d3=F d1=+
+div_w   m32=1 div=1 | na=0 nb=1 np=1 nr=1 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=1 | a3=F a1=+ b3=F b1=-  c3=F c1=- d3=F d1=-
+div_w   m32=1 div=1 | na=0 nb=1 np=1 nr=1 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=1 sg=1 | a3=F a1=+ b3=F b1=-  c3=F c1=- d3=F d1=-
+div_w   m32=1 div=1 | na=1 nb=0 np=0 nr=0 | sext=1 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=1 | a3=F a1=- b3=F b1=+  c3=F c1=+ d3=F d1=+
+div_w   m32=1 div=1 | na=1 nb=0 np=0 nr=0 | sext=1 dbz=1 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=1 | a3=F a1=- b3=F b1=+  c3=F c1=+ d3=F d1=+
+div_w   m32=1 div=1 | na=1 nb=0 np=1 nr=0 | sext=1 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=1 | a3=F a1=- b3=F b1=+  c3=F c1=- d3=F d1=+
+div_w   m32=1 div=1 | na=1 nb=0 np=1 nr=1 | sext=1 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=1 | a3=F a1=- b3=F b1=+  c3=F c1=- d3=F d1=-
+div_w   m32=1 div=1 | na=1 nb=0 np=1 nr=1 | sext=1 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=1 | a3=F a1=- b3=F b1=+  c3=F c1=- d3=F d1=-
+div_w   m32=1 div=1 | na=1 nb=1 np=0 nr=0 | sext=1 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=1 | a3=F a1=- b3=F b1=-  c3=F c1=+ d3=F d1=+
+div_w   m32=1 div=1 | na=1 nb=1 np=0 nr=0 | sext=1 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=1 | a3=F a1=- b3=F b1=-  c3=F c1=+ d3=F d1=+
+div_w   m32=1 div=1 | na=1 nb=1 np=1 nr=0 | sext=1 dbz=0 dov=1 rz=0 remz=1 | mul=0 dv=1 sg=1 | a3=F a1=- b3=F b1=-  c3=F c1=- d3=F d1=+
+divu    m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+divu    m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+divu    m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=1 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+divu    m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=1 | mul=0 dv=1 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+divu    m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+divu    m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=1 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+divu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=0 | a3=F a1=+ b3=F b1=F  c3=F c1=F d3=F d1=F
+divu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=0 | a3=F a1=+ b3=F b1=F  c3=F c1=F d3=F d1=F
+divu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=1 sg=0 | a3=F a1=+ b3=F b1=F  c3=F c1=F d3=F d1=F
+divu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=1 | mul=0 dv=1 sg=0 | a3=F a1=+ b3=F b1=F  c3=F c1=F d3=F d1=F
+divu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=1 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=0 | a3=F a1=- b3=F b1=F  c3=F c1=F d3=F d1=F
+divu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=1 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=1 sg=0 | a3=F a1=- b3=F b1=F  c3=F c1=F d3=F d1=F
+divu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=1 dbz=1 dov=0 rz=0 remz=1 | mul=0 dv=1 sg=0 | a3=F a1=- b3=F b1=F  c3=F c1=F d3=F d1=F
+mul     m32=0 div=0 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=1 dv=0 sg=1 | a3=+ a1=F b3=+ b1=F  c3=F c1=F d3=+ d1=F
+mul     m32=0 div=0 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=1 dv=0 sg=1 | a3=+ a1=F b3=+ b1=F  c3=F c1=F d3=+ d1=F
+mul     m32=0 div=0 | na=0 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=1 dv=0 sg=1 | a3=+ a1=F b3=- b1=F  c3=F c1=F d3=+ d1=F
+mul     m32=0 div=0 | na=0 nb=1 np=1 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=1 dv=0 sg=1 | a3=+ a1=F b3=- b1=F  c3=F c1=F d3=- d1=F
+mul     m32=0 div=0 | na=1 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=1 dv=0 sg=1 | a3=- a1=F b3=+ b1=F  c3=F c1=F d3=+ d1=F
+mul     m32=0 div=0 | na=1 nb=0 np=1 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=1 dv=0 sg=1 | a3=- a1=F b3=+ b1=F  c3=F c1=F d3=- d1=F
+mul     m32=0 div=0 | na=1 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=1 dv=0 sg=1 | a3=- a1=F b3=- b1=F  c3=F c1=F d3=+ d1=F
+mul_w   m32=1 div=0 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=1 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=+ d3=F d1=F
+mul_w   m32=1 div=0 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=1 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=+ d3=F d1=F
+mul_w   m32=1 div=0 | na=0 nb=0 np=0 nr=0 | sext=1 dbz=0 dov=0 rz=0 remz=0 | mul=1 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=- d3=F d1=F
+mulh    m32=0 div=0 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=+ b1=F  c3=F c1=F d3=+ d1=F
+mulh    m32=0 div=0 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=+ b1=F  c3=F c1=F d3=+ d1=F
+mulh    m32=0 div=0 | na=0 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=- b1=F  c3=F c1=F d3=+ d1=F
+mulh    m32=0 div=0 | na=0 nb=1 np=1 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=- b1=F  c3=F c1=F d3=- d1=F
+mulh    m32=0 div=0 | na=1 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=- a1=F b3=+ b1=F  c3=F c1=F d3=+ d1=F
+mulh    m32=0 div=0 | na=1 nb=0 np=1 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=- a1=F b3=+ b1=F  c3=F c1=F d3=- d1=F
+mulh    m32=0 div=0 | na=1 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=- a1=F b3=- b1=F  c3=F c1=F d3=+ d1=F
+mulsuh  m32=0 div=0 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=F b1=F  c3=F c1=F d3=+ d1=F
+mulsuh  m32=0 div=0 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=F b1=F  c3=F c1=F d3=+ d1=F
+mulsuh  m32=0 div=0 | na=1 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=- a1=F b3=F b1=F  c3=F c1=F d3=+ d1=F
+mulsuh  m32=0 div=0 | na=1 nb=0 np=1 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=- a1=F b3=F b1=F  c3=F c1=F d3=- d1=F
+mulu    m32=0 div=0 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=1 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+mulu    m32=0 div=0 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=1 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+muluh   m32=0 div=0 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+muluh   m32=0 div=0 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+rem     m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=+ b1=F  c3=+ c1=F d3=+ d1=F
+rem     m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=+ b1=F  c3=+ c1=F d3=+ d1=F
+rem     m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=+ b1=F  c3=+ c1=F d3=+ d1=F
+rem     m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=1 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=+ b1=F  c3=+ c1=F d3=+ d1=F
+rem     m32=0 div=1 | na=0 nb=0 np=1 nr=1 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=+ b1=F  c3=- c1=F d3=- d1=F
+rem     m32=0 div=1 | na=0 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=- b1=F  c3=+ c1=F d3=+ d1=F
+rem     m32=0 div=1 | na=0 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=1 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=- b1=F  c3=+ c1=F d3=+ d1=F
+rem     m32=0 div=1 | na=0 nb=1 np=1 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=- b1=F  c3=- c1=F d3=+ d1=F
+rem     m32=0 div=1 | na=0 nb=1 np=1 nr=1 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=- b1=F  c3=- c1=F d3=- d1=F
+rem     m32=0 div=1 | na=0 nb=1 np=1 nr=1 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=+ a1=F b3=- b1=F  c3=- c1=F d3=- d1=F
+rem     m32=0 div=1 | na=1 nb=0 np=0 nr=0 | sext=0 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=- a1=F b3=+ b1=F  c3=+ c1=F d3=+ d1=F
+rem     m32=0 div=1 | na=1 nb=0 np=0 nr=0 | sext=0 dbz=1 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=1 | a3=- a1=F b3=+ b1=F  c3=+ c1=F d3=+ d1=F
+rem     m32=0 div=1 | na=1 nb=0 np=1 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=1 | a3=- a1=F b3=+ b1=F  c3=- c1=F d3=+ d1=F
+rem     m32=0 div=1 | na=1 nb=0 np=1 nr=1 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=- a1=F b3=+ b1=F  c3=- c1=F d3=- d1=F
+rem     m32=0 div=1 | na=1 nb=0 np=1 nr=1 | sext=0 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=- a1=F b3=+ b1=F  c3=- c1=F d3=- d1=F
+rem     m32=0 div=1 | na=1 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=- a1=F b3=- b1=F  c3=+ c1=F d3=+ d1=F
+rem     m32=0 div=1 | na=1 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=1 | a3=- a1=F b3=- b1=F  c3=+ c1=F d3=+ d1=F
+rem     m32=0 div=1 | na=1 nb=1 np=1 nr=0 | sext=0 dbz=0 dov=1 rz=0 remz=1 | mul=0 dv=0 sg=1 | a3=- a1=F b3=- b1=F  c3=- c1=F d3=+ d1=F
+rem_w   m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=F a1=+ b3=F b1=+  c3=F c1=+ d3=F d1=+
+rem_w   m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=1 | a3=F a1=+ b3=F b1=+  c3=F c1=+ d3=F d1=+
+rem_w   m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=F a1=+ b3=F b1=+  c3=F c1=+ d3=F d1=+
+rem_w   m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=1 | mul=0 dv=0 sg=1 | a3=F a1=+ b3=F b1=+  c3=F c1=+ d3=F d1=+
+rem_w   m32=1 div=1 | na=0 nb=0 np=1 nr=1 | sext=1 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=F a1=+ b3=F b1=+  c3=F c1=- d3=F d1=-
+rem_w   m32=1 div=1 | na=0 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=F a1=+ b3=F b1=-  c3=F c1=+ d3=F d1=+
+rem_w   m32=1 div=1 | na=0 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=1 | mul=0 dv=0 sg=1 | a3=F a1=+ b3=F b1=-  c3=F c1=+ d3=F d1=+
+rem_w   m32=1 div=1 | na=0 nb=1 np=1 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=1 | a3=F a1=+ b3=F b1=-  c3=F c1=- d3=F d1=+
+rem_w   m32=1 div=1 | na=0 nb=1 np=1 nr=1 | sext=1 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=F a1=+ b3=F b1=-  c3=F c1=- d3=F d1=-
+rem_w   m32=1 div=1 | na=0 nb=1 np=1 nr=1 | sext=1 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=1 | a3=F a1=+ b3=F b1=-  c3=F c1=- d3=F d1=-
+rem_w   m32=1 div=1 | na=1 nb=0 np=0 nr=0 | sext=0 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=F a1=- b3=F b1=+  c3=F c1=+ d3=F d1=+
+rem_w   m32=1 div=1 | na=1 nb=0 np=0 nr=0 | sext=0 dbz=1 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=1 | a3=F a1=- b3=F b1=+  c3=F c1=+ d3=F d1=+
+rem_w   m32=1 div=1 | na=1 nb=0 np=1 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=1 | a3=F a1=- b3=F b1=+  c3=F c1=- d3=F d1=+
+rem_w   m32=1 div=1 | na=1 nb=0 np=1 nr=1 | sext=1 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=F a1=- b3=F b1=+  c3=F c1=- d3=F d1=-
+rem_w   m32=1 div=1 | na=1 nb=0 np=1 nr=1 | sext=1 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=F a1=- b3=F b1=+  c3=F c1=- d3=F d1=-
+rem_w   m32=1 div=1 | na=1 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=1 | a3=F a1=- b3=F b1=-  c3=F c1=+ d3=F d1=+
+rem_w   m32=1 div=1 | na=1 nb=1 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=1 | a3=F a1=- b3=F b1=-  c3=F c1=+ d3=F d1=+
+rem_w   m32=1 div=1 | na=1 nb=1 np=1 nr=0 | sext=0 dbz=0 dov=1 rz=0 remz=1 | mul=0 dv=0 sg=1 | a3=F a1=- b3=F b1=-  c3=F c1=- d3=F d1=+
+remu    m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+remu    m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+remu    m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+remu    m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=1 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+remu    m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+remu    m32=0 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=1 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=F
+remu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=+
+remu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=+
+remu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=+
+remu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=0 dov=0 rz=1 remz=1 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=+
+remu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=+
+remu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=0 dbz=1 dov=0 rz=0 remz=1 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=+
+remu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=1 dbz=0 dov=0 rz=1 remz=0 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=-
+remu_w  m32=1 div=1 | na=0 nb=0 np=0 nr=0 | sext=1 dbz=1 dov=0 rz=0 remz=0 | mul=0 dv=0 sg=0 | a3=F a1=F b3=F b1=F  c3=F c1=F d3=F d1=-

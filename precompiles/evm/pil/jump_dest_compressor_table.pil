@@ -1,0 +1,130 @@
+require "std_lookup.pil"
+require "opids.pil"
+
+// JumpDestCompressorTable
+// ─────────────────────────────────────────────────────────────────────────────
+// Certifies the compression of one 2-byte bytecode chunk into `cdata`.
+//
+// This is a RELATION, not a function: the same DATA appears in several rows,
+// one per way the walk can have entered the chunk. An honest prover picks the
+// row matching what it actually did; a lying one is caught downstream, because
+// JumpDestBitmapTable checks that the four chunks of a word chain coherently
+// with state_in / state_out / bytes_used.
+//
+// BYTE STATES
+//   I = 0  ignored       PUSH immediate data, or past the end of the bytecode
+//   N = 1  not relevant  a width-1 instruction that is not a JUMPDEST
+//   J = 2  jumpdest      0x5b
+//   P = 3  push          PUSHn opcode, n in 1..32 (PUSH0 carries no data, so it
+//                        is just an N)
+//
+// CDATA LAYOUT (8 bits, values 0..136, every value valid and decodable)
+//   bit 7 = 0  the chunk contains a push
+//              bits 6..5 = the state of byte 0. Two bits are enough: if byte 0
+//                          is P the pair can only be (P,I) because byte 1 is its
+//                          data; otherwise the push must be byte 1, so the pair
+//                          is (bs0, P).
+//              bits 4..0 = n - 1, the push length minus one
+//   bit 7 = 1  no push, 9 combinations of (bs0, bs1) over {I, N, J}
+//              value = 128 + bs0 * 3 + bs1
+//
+// Only 13 of the 16 (bs0,bs1) pairs are reachable — (P,N), (P,J) and (P,P) are
+// not, since byte 1 after a PUSHn is always its data. Four of the 13 carry a
+// push, so the table holds 4*32 + 9 = 137 distinct cdata values.
+//
+// LAYOUT — four rows per DATA value, one per combination of "byte 0 ignored"
+// and "byte 1 ignored", so the row index is simply
+//
+//     row = DATA * 4 + IGNORE          IGNORE = ignore_b0 * 2 + ignore_b1
+//
+// 4 * 2^16 = 262144 rows, a power of two, no padding needed. A few rows come
+// out duplicated — when byte 0 opens a PUSH, byte 1 is its data whatever the
+// combination says — and that is deliberate: a repeated legal row costs one
+// slot and keeps the index a multiplication instead of a search.
+
+const int JD_I = 0;
+const int JD_N = 1;
+const int JD_J = 2;
+const int JD_P = 3;
+
+const int JD_OPCODE_JUMPDEST = 0x5b;
+const int JD_OPCODE_PUSH1 = 0x60;
+const int JD_OPCODE_PUSH32 = 0x7f;
+
+const int JUMP_DEST_COMPRESSOR_TABLE_ROWS = 4 * P2_16;
+
+// Packs a chunk classification. `push_len` is the length of whichever byte is a
+// push and must be 0 when neither is.
+function jd_cdata(int bs0, int bs1, int push_len): int {
+    if (bs0 == JD_P || bs1 == JD_P) {
+        return bs0 * 32 + push_len - 1;
+    }
+    return 128 + bs0 * 3 + bs1;
+}
+
+// State of a byte that starts an instruction.
+function jd_byte_state(int byte): int {
+    if (byte == JD_OPCODE_JUMPDEST) {
+        return JD_J;
+    }
+    if (byte >= JD_OPCODE_PUSH1 && byte <= JD_OPCODE_PUSH32) {
+        return JD_P;
+    }
+    return JD_N;
+}
+
+// Immediate length of a byte that starts an instruction, 0 when it is not a push.
+function jd_push_len(int byte): int {
+    if (byte >= JD_OPCODE_PUSH1 && byte <= JD_OPCODE_PUSH32) {
+        return byte - JD_OPCODE_PUSH1 + 1;
+    }
+    return 0;
+}
+
+airtemplate JumpDestCompressorTable(int N = JUMP_DEST_COMPRESSOR_TABLE_ROWS) {
+
+    col fixed DATA;    // b0 + 256 * b1, the chunk as read from memory
+    col fixed CDATA;   // its compression under the claimed ignore combination
+
+    int index = 0;
+
+    for (int b1 = 0; b1 < 256; ++b1) {
+        for (int b0 = 0; b0 < 256; ++b0) {
+            const int data = b0 + 256 * b1;
+            const int s0 = jd_byte_state(b0);
+            const int s1 = jd_byte_state(b1);
+            const int n0 = jd_push_len(b0);
+            const int n1 = jd_push_len(b1);
+
+            // A push at byte 0 always claims byte 1 as its data, so both
+            // combinations that keep byte 0 give the same row.
+            for (int ignore = 0; ignore < 4; ++ignore) {
+                const int ignore_b0 = ignore / 2;
+                const int ignore_b1 = ignore % 2;
+
+                DATA[index] = data;
+                if (ignore_b0 == 1) {
+                    // Byte 0 is data of a push started earlier, or past the end.
+                    if (ignore_b1 == 1) {
+                        CDATA[index] = jd_cdata(JD_I, JD_I, 0);
+                    } else {
+                        CDATA[index] = jd_cdata(JD_I, s1, n1);
+                    }
+                } else if (s0 == JD_P) {
+                    CDATA[index] = jd_cdata(JD_P, JD_I, n0);
+                } else if (ignore_b1 == 1) {
+                    CDATA[index] = jd_cdata(s0, JD_I, 0);
+                } else {
+                    CDATA[index] = jd_cdata(s0, s1, n1);
+                }
+                ++index;
+            }
+        }
+    }
+
+    assert_eq(index, JUMP_DEST_COMPRESSOR_TABLE_ROWS);
+    assert_eq(N, JUMP_DEST_COMPRESSOR_TABLE_ROWS);
+
+    col witness multiplicity;
+    lookup_proves(JUMP_DEST_COMPRESSOR_TABLE_ID, mul: multiplicity, expressions: [DATA, CDATA]);
+}

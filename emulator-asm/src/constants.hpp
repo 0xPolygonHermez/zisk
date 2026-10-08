@@ -21,6 +21,16 @@
 #define RAM_ADDR          (uint64_t)0xA0000000
 #define RAM_SIZE          (uint64_t)0x20000000 // 512MB
 #define SYS_ADDR          (uint64_t)0xA0400000
+// Guard span between the top of ROM and the bottom of the stack (= RAM_ADDR).
+// EF zkVM standard 6 requires a >=4 kB region immediately below the stack bottom that
+// is not mapped readable or writable and whose access aborts; see STACK_GUARD_ADDR in
+// core/src/mem.rs, which names that 4 kB minimum. This span COVERS it and is much
+// larger. Unlike the Rust emulator, the assembly emulator has no software bounds
+// check -- an out-of-range guest access faults only because the host has nothing
+// mapped there -- so server_setup() reserves the whole span PROT_NONE to stop a
+// casual mmap(NULL, ...) or large malloc from being placed inside it.
+#define GUARD_ADDR        (ROM_ADDR + ROM_SIZE)   // 0x88000000
+#define GUARD_SIZE        (RAM_ADDR - GUARD_ADDR) // 0x18000000 = 384MB
 #define SYS_SIZE          (uint64_t)0x10000
 #define OUTPUT_ADDR       (SYS_ADDR + SYS_SIZE)
 
@@ -35,7 +45,10 @@
     #define TRACE_DELTA_SIZE   (uint64_t)0x080000000 /* 2GB */
 #endif
 
-#define TRACE_INITIAL_SIZE_RH (uint64_t)(0x02000000 + 0x1000) /* 32MB (ROM histogram) + 4kB (header) */
+/* Upper bound for the ROM histogram output: the instruction multiplicity table (one u64 per ROM
+   instruction) plus the FROPS multiplicity table (one u64 per FROPS table row, ~24M rows today).
+   Only the size actually needed is allocated and zeroed, see trace_get_chunk_size(). */
+#define TRACE_INITIAL_SIZE_RH (uint64_t)(0x20000000 + 0x1000) /* 512MB + 4kB (header) */
 
 #define TRACE_ADDR         (uint64_t)0xd0000000
 #define TRACE_MAX_SIZE     (uint64_t)0x800000000 // 32GB
@@ -90,7 +103,14 @@
 // instruction, according to the ZisK assembly code generation configuration.
 
 #define MAX_MTRACE_REGS_ACCESS_SIZE ((2 + 2 + 3) * 8)
-#define MAX_TRACE_CHUNK_INFO ((44*8) + 32)
+// Minimal-trace chunk header: pc, sp, c, step, reg[1..MT_CHUNK_REGS], last_c, end, steps,
+// mem_reads_size. MT_CHUNK_REGS is the last main-trace register, REGS_IN_MAIN_TO in
+// core/src/zisk_registers.rs; the layout must match the generated asm (zisk_rom_2_asm.rs) and
+// AsmMTChunk in asm-runner/src/asm_mt.rs.
+#define MT_CHUNK_REGS 39
+#define MT_CHUNK_HEADER_WORDS (4 + MT_CHUNK_REGS + 4)
+#define MT_CHUNK_END_INDEX (4 + MT_CHUNK_REGS + 1)
+#define MAX_TRACE_CHUNK_INFO (((MT_CHUNK_HEADER_WORDS + 3)*8) + 32)
 #define MAX_BYTES_DIRECT_MTRACE 256
 #define MAX_BYTES_MTRACE_STEP (MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE)
 #define MAX_CHUNK_TRACE_SIZE ((CHUNK_SIZE * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO)

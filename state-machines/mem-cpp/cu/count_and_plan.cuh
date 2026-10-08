@@ -79,9 +79,12 @@ public:
     // Each CountAndPlan object computes metas for its slice only.
     // gpu_id: device the buffer lives on (proofman's my_gpu_ids[0]); negative
     // keeps the current device (self-allocated path).
+    // instance_rows[3]: rows per instance for {ROM, INPUT, RAM}, taken from
+    // the PIL trace sizes (RomDataTrace / InputDataTrace / MemTrace
+    // NUM_ROWS). Each must be a non-zero power of two.
     bool setup(void* d_buf, size_t bytes,
                uint32_t n_workers, uint32_t worker_id,
-               int gpu_id);
+               int gpu_id, const uint32_t instance_rows[3]);
 
     // Submit one chunk's memops.
     bool add_chunk(const MemOp* memops, uint32_t n);
@@ -107,6 +110,12 @@ public:
 
     const InstanceMeta* metas_data()             const { return metas_.data(); }
     uint32_t            num_active_instances()   const { return num_active_; }
+
+    // Arena usage of the CURRENT block in BYTES: fixed carve end + ops-pool cursor.
+    // Valid between run() and the next reset() (reset zeroes the pool cursor). 
+    size_t max_used_bytes() const {
+        return cursor_ + pool_cursor_u32_.load(std::memory_order_relaxed) * 4;
+    }
 
     // Per-chunk mem-align counters, valid after `run()`. Length == n_chunks().
     const ChunkCounters* align_counters_data()   const { return h_chunk_counters_per_chunk_; }
@@ -236,6 +245,7 @@ private:
 
     // ─── add_chunk concurrency (ZISK_MOPS_POOL) ───────────────────────
     int                     gpu_device_           = 0;     // captured in setup()
+    uint32_t                instance_rows_[3]     = {0, 0, 0};  // rows per instance {ROM, INPUT, RAM}, captured in setup()
     bool                    pool_enabled_         = false; // ZISK_MOPS_POOL
 
     struct ChunkJob { const MemOp* memops; uint32_t n; uint32_t c; };

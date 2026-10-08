@@ -89,6 +89,8 @@ impl AsmExecClient {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program, with_hints) before execute")?;
 
+        self.executor.reset_for_new_job()?;
+
         if let Some(stream) = hints {
             tracing::debug!("Installing hints stream source");
             if let Some(asm) = self.executor.asm_emulator() {

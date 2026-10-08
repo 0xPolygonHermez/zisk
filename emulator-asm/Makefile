@@ -10,6 +10,11 @@ else
 	ASMFLAGS = --noexecstack
 endif
 
+# Precompile call metrics: per-call TSC cycles and retired x86 instructions
+ifeq ($(metrics),1)
+	CFLAGS += -DASM_CALL_METRICS
+endif
+
 ifeq ($(TRACE_TARGET),MT)
     CFLAGS += -DTRACE_TARGET_MT
     ASMFLAGS += --defsym TRACE_TARGET=1
@@ -36,7 +41,13 @@ DMA_OBJS = build/dma/fast_dma_encode.o \
 		   build/dma/fast_memset.o \
 		   build/dma/fast_inputcpy.o \
 		   build/dma/memcpy_fast.o \
-		   build/dma/check_dynamic_mtrace.o 
+		   build/dma/check_dynamic_mtrace.o
+
+ARITH_EQ_OBJS = build/arith_eq/arith256_mod.o
+
+EVM_OBJS = build/evm/jump_dest_fast.o \
+		   build/evm/direct_jump_dest_mtrace.o \
+		   build/evm/direct_jump_dest_mops.o
 
 # Ensure the output directory exists
 OUT_DIR := $(dir $(OUT_PATH))
@@ -71,6 +82,22 @@ build/dma/%.o: src/dma/%.asm src/dma/dma_constants.inc
 build/dma.o: $(DMA_OBJS)
 	ld -r $(DMA_OBJS) -o $@
 
+build/arith_eq/%.o: src/arith_eq/%.asm
+	mkdir -p build/arith_eq
+	as $(ASMFLAGS) -I./src/arith_eq -o $@ $<
+
+build/arith_eq.o: $(ARITH_EQ_OBJS)
+	ld -r $(ARITH_EQ_OBJS) -o $@
+
+# The EVM routines share dma_constants.inc (mops encoding, ALIGN_MASK, the
+# mtrace thresholds) with the DMA ones, hence the second include path.
+build/evm/%.o: src/evm/%.asm src/evm/jump_dest_macro.inc src/dma/dma_constants.inc
+	mkdir -p build/evm
+	as $(ASMFLAGS) -I./src/evm -I./src/dma -o $@ $<
+
+build/evm.o: $(EVM_OBJS)
+	ld -r $(EVM_OBJS) -o $@
+
 build/zisk.ld:
 	mkdir -p build
 	ld --verbose 2>/dev/null | \
@@ -79,9 +106,9 @@ build/zisk.ld:
 	    > build/zisk.ld
 
 # Compile the final executable
-$(OUT_PATH): build/zisk.ld build/emu.o $(GEN_HEADER) src/main.c src/constants.hpp src/globals.c src/globals.hpp src/configuration.c src/configuration.hpp src/trace_logs.c src/trace_logs.hpp src/server.c src/server.hpp src/client.c src/client.hpp src/c_provided.c src/c_provided.hpp src/asm_provided.hpp src/trace.c src/trace.hpp src/log.c src/log.hpp src/emu.c src/emu.hpp build/dma.o
+$(OUT_PATH): build/zisk.ld build/emu.o $(GEN_HEADER) src/main.c src/constants.hpp src/globals.c src/globals.hpp src/configuration.c src/configuration.hpp src/trace_logs.c src/trace_logs.hpp src/server.c src/server.hpp src/client.c src/client.hpp src/c_provided.c src/c_provided.hpp src/asm_provided.hpp src/trace.c src/trace.hpp src/log.c src/log.hpp src/emu.c src/emu.hpp build/dma.o build/arith_eq.o build/evm.o
 	mkdir -p $(OUT_DIR)
-	gcc $(CFLAGS)  -Wl,-T,build/zisk.ld src/main.c src/globals.c src/configuration.c src/trace_logs.c src/server.c src/client.c src/c_provided.c src/trace.c src/log.c src/emu.c -L../target/zisk-libs -L../target/release -L../target/debug -L../../bin -lc build/emu.o -lc build/dma.o -lziskc -lziskclib -lgmp -lstdc++ -lgmpxx -o $@
+	gcc $(CFLAGS)  -Wl,-T,build/zisk.ld src/main.c src/globals.c src/configuration.c src/trace_logs.c src/server.c src/client.c src/c_provided.c src/trace.c src/log.c src/emu.c -L../target/zisk-libs -L../target/release -L../target/debug -L../../bin -lc build/emu.o -lc build/dma.o build/arith_eq.o build/evm.o -lziskc -lziskclib -lgmp -lstdc++ -lgmpxx -o $@
 
 clean:
 	rm -rf build

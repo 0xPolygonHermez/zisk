@@ -14,11 +14,14 @@ pub struct MOShmemReader {}
 #[derive(Debug)]
 pub struct AsmRunnerMO {
     pub plans: Vec<Plan>,
+    /// Bytes of the proofman-owned GPU buffer consumed by the GPU mem-ops
+    /// planner; always `None` on this stub (no GPU planner on unsupported targets).
+    pub gpu_mops_used_bytes: Option<u64>,
 }
 
 impl AsmRunnerMO {
     pub fn new(plans: Vec<Plan>) -> Self {
-        AsmRunnerMO { plans }
+        AsmRunnerMO { plans, gpu_mops_used_bytes: None }
     }
 
     pub fn run(

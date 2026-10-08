@@ -244,9 +244,10 @@ impl ProveOutput {
         Ok(self.proof.get_proof_bytes()?)
     }
 
-    /// The program verification key this proof was produced against.
-    pub fn get_program_vk(&self) -> &ProgramVK {
-        &self.proof.program_vk
+    /// The program verification key committed by this proof (derived from the
+    /// committed publics, not the untrusted stored copy).
+    pub fn get_program_vk(&self) -> ProgramVK {
+        self.proof.get_program_vk()
     }
 
     /// Write the proof to `path`.

@@ -4,8 +4,8 @@ use zisk_precomp_helpers::DmaInfo;
 
 #[derive(Debug)]
 pub struct DmaInput {
-    pub src: u32,
-    pub dst: u32,
+    pub src: u64,
+    pub dst: u64,
     pub op: u8,
     pub encoded: u64,
     pub count_bus: u32,
@@ -15,8 +15,8 @@ pub struct DmaInput {
 impl DmaInput {
     pub fn from(encoded: u64, op: u8, data: &[u64], _data_ext: &[u64]) -> Self {
         Self {
-            dst: data[A] as u32,
-            src: data[B] as u32,
+            dst: data[A],
+            src: data[B],
             step: data[STEP],
             encoded,
             op,
@@ -29,7 +29,7 @@ impl DmaInput {
     }
     pub fn from_memset(encoded: u64, op: u8, data: &[u64], _data_ext: &[u64]) -> Self {
         Self {
-            dst: data[A] as u32,
+            dst: data[A],
             // src: (data[A] & 0x7) as u32,
             src: 0,
             step: data[STEP],

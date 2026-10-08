@@ -19,7 +19,7 @@ pub(crate) struct ZiskProofmanGenExps {
     arch: String,
 
     /// Skip an AIR whose Q has more than N ops (stays on the interpreter).
-    #[arg(long, default_value_t = 40000)]
+    #[arg(long, default_value_t = 60000)]
     cap: usize,
 
     /// Fixed ops/chunk for every AIR; omit to auto-tune the largest no-spill size.

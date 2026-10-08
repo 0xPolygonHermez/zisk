@@ -127,6 +127,7 @@ impl EmulatorAsm {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
+        chunk_hook: crate::ChunkHook<'_>,
     ) -> ExecutorResult<ExecutionOutput> {
         let asm_resources = self.transport.resources()?;
 
@@ -151,7 +152,7 @@ impl EmulatorAsm {
         let supervisor =
             AsmRunnerSupervisor::spawn_on(&asm_resources, self.chunk_size, has_rom_sm, stats);
 
-        let mt_result = self.run_mt_assembly::<F>(zisk_rom, stats);
+        let mt_result = self.run_mt_assembly::<F>(zisk_rom, stats, chunk_hook);
 
         let output = match mt_result {
             Ok((min_traces, counters, pub_outs)) => {
@@ -185,7 +186,9 @@ impl EmulatorAsm {
         &self,
         zisk_rom: &ZiskRom,
         stats: &ExecutorStatsHandle,
-    ) -> ExecutorResult<(Vec<EmuTrace>, CountersChunkMetrics, PubOutsCollector)> {
+        chunk_hook: crate::ChunkHook<'_>,
+    ) -> ExecutorResult<(Vec<std::sync::Arc<EmuTrace>>, CountersChunkMetrics, PubOutsCollector)>
+    {
         stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
 
         let processor: MtChunkProcessor<F> = MtChunkProcessor::new();
@@ -196,11 +199,19 @@ impl EmulatorAsm {
 
         let scope_result: ExecutorResult<_> = rayon::in_place_scope(|scope| {
             let processor_ref = &processor;
-            let on_chunk = |idx: usize, emu_trace: std::sync::Arc<EmuTrace>| {
+            let on_chunk = |idx: usize,
+                            emu_traces: &[std::sync::Arc<EmuTrace>],
+                            last: bool|
+             -> anyhow::Result<()> {
+                let emu_trace = emu_traces[idx].clone();
                 let chunk_id = ChunkId(idx);
                 scope.spawn(move |_| {
                     processor_ref.process_chunk(chunk_id, &emu_trace, zisk_rom, stats, mt_scope_id);
                 });
+                // Main-instance advancement: runs on the reader thread, in chunk
+                // order, once the counting task is on its way. Does real work only
+                // on the chunks that complete a Main instance (or end the run).
+                chunk_hook(idx, emu_traces, last).map_err(anyhow::Error::from)
             };
 
             let asm_resources = self.transport.resources()?;
@@ -227,16 +238,7 @@ impl EmulatorAsm {
 
         self.asm_execution_info.lock_or_poison("asm_execution_info")?.replace(asm_execution_info);
 
-        // Unwrap the Arc pointers now that all rayon tasks have completed.
-        let emu_traces = emu_traces
-            .into_iter()
-            .map(|arc| {
-                Arc::try_unwrap(arc).map_err(|_| ExecutorError::ArcStillReferenced {
-                    what: "EmuTrace after rayon scope",
-                })
-            })
-            .collect::<ExecutorResult<Vec<_>>>()?;
-
+        // Kept as `Arc`s: the progressive main-witness store shares them.
         let (counters, pub_outs) = processor.finalize()?;
 
         stats_end!(stats, &_mt_scope);

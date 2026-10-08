@@ -96,31 +96,31 @@ impl Bls12_381Complex {
         let (q1, q2) = match op {
             OpType::Add => {
                 let _q1 = &x1 + &x2 - &x3;
-                assert!((&_q1 % &*BLS12_381_COMPLEX_PRIME).is_zero());
+                debug_assert!((&_q1 % &*BLS12_381_COMPLEX_PRIME).is_zero());
                 let q1 = (&_q1 / &*BLS12_381_COMPLEX_PRIME) + &*BLS12_381_COMPLEX_ADD_Q1_OFFSET;
 
                 let _q2 = &y1 + &y2 - &y3;
-                assert!((&_q2 % &*BLS12_381_COMPLEX_PRIME).is_zero());
+                debug_assert!((&_q2 % &*BLS12_381_COMPLEX_PRIME).is_zero());
                 let q2 = (&_q2 / &*BLS12_381_COMPLEX_PRIME) + &*BLS12_381_COMPLEX_ADD_Q2_OFFSET;
                 (q1, q2)
             }
             OpType::Sub => {
                 let _q1 = &x1 - &x2 - &x3;
-                assert!((&_q1 % &*BLS12_381_COMPLEX_PRIME).is_zero());
+                debug_assert!((&_q1 % &*BLS12_381_COMPLEX_PRIME).is_zero());
                 let q1 = &*BLS12_381_COMPLEX_SUB_Q1_OFFSET - (&_q1 / &*BLS12_381_COMPLEX_PRIME);
 
                 let _q2 = &y1 - &y2 - &y3;
-                assert!((&_q2 % &*BLS12_381_COMPLEX_PRIME).is_zero());
+                debug_assert!((&_q2 % &*BLS12_381_COMPLEX_PRIME).is_zero());
                 let q2 = &*BLS12_381_COMPLEX_SUB_Q2_OFFSET - (&_q2 / &*BLS12_381_COMPLEX_PRIME);
                 (q1, q2)
             }
             OpType::Mul => {
                 let _q1 = &x1 * &x2 - &y1 * &y2 - &x3;
-                assert!((&_q1 % &*BLS12_381_COMPLEX_PRIME).is_zero());
+                debug_assert!((&_q1 % &*BLS12_381_COMPLEX_PRIME).is_zero());
                 let q1 = &*BLS12_381_COMPLEX_MUL_Q1_OFFSET - (&_q1 / &*BLS12_381_COMPLEX_PRIME);
 
                 let _q2 = &y1 * &x2 + &x1 * &y2 - &y3;
-                assert!((&_q2 % &*BLS12_381_COMPLEX_PRIME).is_zero());
+                debug_assert!((&_q2 % &*BLS12_381_COMPLEX_PRIME).is_zero());
                 let q2 = (&_q2 / &*BLS12_381_COMPLEX_PRIME) + &*BLS12_381_COMPLEX_MUL_Q2_OFFSET;
                 (q1, q2)
             }

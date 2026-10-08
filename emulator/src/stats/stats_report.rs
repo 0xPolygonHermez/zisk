@@ -68,7 +68,7 @@ impl StatsReport {
         }
     }
 
-    fn format_number(&self, num: u64) -> String {
+    pub fn format_number(&self, num: u64) -> String {
         if self.use_thousands_sep {
             num.to_formatted_string(&Locale::en)
         } else {
@@ -88,6 +88,32 @@ impl StatsReport {
             label_width = self.label_width
         );
     }
+
+    /// Appends a line with `label` followed by each value in `values`, formatted with
+    /// `format_number` and right-aligned to `col_width` (the same width for every column),
+    /// separated by single spaces.
+    pub fn add_values(&mut self, label: &str, values: &[u64], col_width: usize) {
+        let mut line =
+            format!("{}{:<label_width$}", self.identation, label, label_width = self.label_width);
+        for &value in values {
+            line += &format!(" {:>col_width$}", self.format_number(value));
+        }
+        line.push('\n');
+        self.output += &line;
+    }
+    /// Appends a line with `label` followed by each pre-formatted cell in `cells`, right-aligned to
+    /// `col_width` (the same width for every column). Unlike `add_values`, cells are arbitrary
+    /// strings, so a row can mix numbers and text (e.g. a header row ending in "total").
+    pub fn add_str_cells(&mut self, label: &str, cells: &[String], col_width: usize) {
+        let mut line =
+            format!("{}{:<label_width$}", self.identation, label, label_width = self.label_width);
+        for cell in cells {
+            line += &format!(" {cell:>col_width$}");
+        }
+        line.push('\n');
+        self.output += &line;
+    }
+
     pub fn title(&mut self, label: &str) {
         self.output += &format!("\n{}{label}\n{}\n", self.identation, "-".repeat(label.len()));
     }
@@ -227,6 +253,96 @@ impl StatsReport {
 
     pub fn add_top_cost_calls_perc(&mut self, label: &str, cost: u64, calls: usize) {
         self.add_top_calls_perc(label, cost, calls, self.cost_divisor)
+    }
+
+    /// Formats a cost value: in millions with two decimals when `millions` is set
+    /// (readable for the large memory-cost totals), otherwise as a plain integer.
+    fn fmt_cost(&self, value: u64, millions: bool) -> String {
+        if millions {
+            // Two decimals of millions, with the thousands separator on the integer
+            // part (honoring `use_thousands_sep`).
+            let hundredths = (value + 5_000) / 10_000; // round(value / 1e6 * 100)
+            format!("{}.{:02}", self.format_number(hundredths / 100), hundredths % 100)
+        } else {
+            self.format_number(value)
+        }
+    }
+
+    /// Row for the "top functions by memory cost" ranking: total memory cost, its
+    /// share of the global memory cost, calls, and cost per call. Cost columns are
+    /// shown in millions when `millions` is set.
+    pub fn add_top_mem_cost_calls(
+        &mut self,
+        label: &str,
+        cost: u64,
+        divisor: f64,
+        calls: usize,
+        millions: bool,
+    ) {
+        let per_call = if calls > 0 { cost / calls as u64 } else { 0 };
+        let w = if millions { 12 } else { 15 };
+        self.output += &format!(
+            "{}{:>w$} {:6.2}% {:>10} {:>w$} {label}\n",
+            self.identation,
+            self.fmt_cost(cost, millions),
+            cost as f64 / divisor,
+            self.format_number(calls as u64),
+            self.fmt_cost(per_call, millions),
+            w = w,
+        );
+    }
+
+    /// Row for the "unaligned cost per step vs global average" ranking: how many
+    /// times the function's unaligned-cost-per-step exceeds the global average, its
+    /// total unaligned cost, that cost as a share of the global unaligned cost, the
+    /// unaligned accesses performed per call, and calls. The unaligned *cost* is
+    /// shown in millions when `millions` is set (the accesses/call count is not).
+    pub fn add_top_mem_ratio(
+        &mut self,
+        label: &str,
+        ratio: f64,
+        unaligned: u64,
+        unaligned_perc: f64,
+        unaligned_per_call: u64,
+        calls: usize,
+        millions: bool,
+    ) {
+        let w = if millions { 12 } else { 15 };
+        self.output += &format!(
+            "{}{:>6.2} {:>w$} {:6.2}% {:>12} {:>10} {label}\n",
+            self.identation,
+            ratio,
+            self.fmt_cost(unaligned, millions),
+            unaligned_perc,
+            self.format_number(unaligned_per_call),
+            self.format_number(calls as u64),
+            w = w,
+        );
+    }
+
+    /// Row for the "unaligned vs aligned" memory ranking: unaligned cost, aligned
+    /// cost, the share of this function's memory cost that is unaligned, and calls.
+    /// The cost columns are shown in millions when `millions` is set.
+    pub fn add_top_mem_align_calls(
+        &mut self,
+        label: &str,
+        unaligned: u64,
+        aligned: u64,
+        calls: usize,
+        millions: bool,
+    ) {
+        let total = unaligned + aligned;
+        let unaligned_perc = if total > 0 { unaligned as f64 * 100.0 / total as f64 } else { 0.0 };
+        let w = if millions { 12 } else { 15 };
+        self.output += &format!(
+            "{}{:>w$} {:>w$} {:6.2}% {:>10} {label}\n",
+            self.identation,
+            self.fmt_cost(unaligned, millions),
+            self.fmt_cost(aligned, millions),
+            unaligned_perc,
+            self.format_number(calls as u64),
+            w = w,
+        );
     }
 
     pub fn add_top_step_calls_perc(&mut self, label: &str, steps: u64, calls: usize) {

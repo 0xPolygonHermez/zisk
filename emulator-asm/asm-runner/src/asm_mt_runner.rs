@@ -12,8 +12,8 @@ use tracing::{error, info, warn};
 
 use crate::{
     sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmMultiShmem, AsmRunError,
-    AsmService, AsmServices, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE, TRACE_INITIAL_SIZE,
-    TRACE_MAX_SIZE,
+    AsmService, AsmServices, MAX_TRACE_CHUNK_INFO, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE,
+    TRACE_INITIAL_SIZE, TRACE_MAX_SIZE,
 };
 
 use anyhow::{Context, Result};
@@ -54,6 +54,11 @@ impl AsmRunnerMT {
     }
 
     /// Runs the assembly code in a separate process, collects the MT trace chunks, and generates execution info.
+    ///
+    /// `on_chunk` is called on this thread once per published chunk, in chunk
+    /// order, with every chunk published so far (`idx` is the last) and whether
+    /// `idx` ends the execution. Returning `Err` aborts the run: the ASM
+    /// children are signalled and the error is propagated to the caller.
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<F, R>(
         preloaded: &mut MTShmemReader,
@@ -65,7 +70,7 @@ impl AsmRunnerMT {
         _stats: ExecutorStatsHandle,
     ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)>
     where
-        F: FnMut(usize, Arc<EmuTrace>),
+        F: FnMut(usize, &[Arc<EmuTrace>], bool) -> Result<()>,
         R: FnOnce() -> Result<()>,
     {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
@@ -110,11 +115,10 @@ impl AsmRunnerMT {
         //   MAX_MTRACE_REGS_ACCESS_SIZE = (2 + 2 + 3) * 8    // Register access overhead per step
         //   MAX_BYTES_DIRECT_MTRACE     = 256                // Direct memory trace data per step
         //   MAX_BYTES_MTRACE_STEP       = 256 + 56 = 312     // Total per-step overhead
-        //   MAX_TRACE_CHUNK_INFO        = (44 * 8) + 32      // Chunk metadata size
+        //   MAX_TRACE_CHUNK_INFO        = chunk header + 3 words + 32 (asm_mt.rs)
         const MAX_MTRACE_REGS_ACCESS_SIZE: usize = (2 + 2 + 3) * 8; // 56 bytes
         const MAX_BYTES_DIRECT_MTRACE: usize = 256;
         const MAX_BYTES_MTRACE_STEP: usize = MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE;
-        const MAX_TRACE_CHUNK_INFO: usize = (44 * 8) + 32; // 384 bytes
 
         let threshold_bytes = (chunk_size as usize * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO;
         let mut threshold = unsafe {
@@ -170,8 +174,11 @@ impl AsmRunnerMT {
                     let emu_trace = Arc::new(AsmMTChunk::to_emu_trace(&mut data_ptr));
                     let should_exit = emu_trace.end;
 
-                    on_chunk(chunk_id.0, emu_trace.clone());
                     emu_traces.push(emu_trace);
+                    if let Err(e) = on_chunk(chunk_id.0, &emu_traces, should_exit) {
+                        signal_runner_failure();
+                        break Err(e.context("MT chunk callback failed"));
+                    }
 
                     if should_exit {
                         break Ok(0);
@@ -188,11 +195,15 @@ impl AsmRunnerMT {
 
                     signal_runner_failure();
 
-                    if chunk_id.0 == 0 {
-                        break Ok(1);
-                    }
-
-                    break Ok(preloaded.output_shmem.map_header().exit_code);
+                    // The loop only ends cleanly on the chunk flagged `end`, so
+                    // reaching here means the chunk stream was truncated: never
+                    // report success. The header's code is preferred when it says
+                    // the child failed, but an unpopulated (or "fine") header must
+                    // not turn a truncated run into `Ok`.
+                    break Ok(match preloaded.output_shmem.map_header().exit_code {
+                        0 => 1,
+                        exit_code => exit_code,
+                    });
                 }
             }
         };
@@ -207,6 +218,24 @@ impl AsmRunnerMT {
         if exit_code != 0 {
             return Err(AsmRunError::ExitCode(exit_code as u32))
                 .context("Child process returned error");
+        }
+
+        // Cross-run chunk-stream desync detector: the `chunk_done` semaphore
+        // carries no run epoch, so a stale post left by a prior aborted run can
+        // shift THIS run's chunk stream (consumer reads leftover bytes), silently
+        // producing a wrong minimal trace -> wrong instance plan ->
+        // VerifyGlobalConstraints. The header's `num_chunks` is authoritative for
+        // this run; if populated and it disagrees with what we consumed, a desync
+        // occurred. Log-only and guarded by `!= 0` so an unpopulated header can
+        // never false-fire.
+        {
+            let header_chunks = preloaded.output_shmem.map_header().num_chunks;
+            let consumed = chunk_id.0 as u64 + 1;
+            if header_chunks != 0 && header_chunks != consumed {
+                error!(
+                    "[CHUNK-DESYNC] MT consumed {consumed} chunks but header reports {header_chunks} — likely a stale chunk_done post from a prior run shifted the stream (wrong minimal trace)"
+                );
+            }
         }
 
         let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();

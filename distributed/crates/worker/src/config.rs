@@ -6,6 +6,7 @@ use zisk_cluster_common::{ComputeCapacity, LoggingConfig, WorkerId};
 
 /// Worker Service Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkerServiceConfig {
     /// Worker configuration
     pub worker: WorkerConfig,
@@ -23,6 +24,7 @@ pub struct WorkerServiceConfig {
 
 /// Worker identity and capacity settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkerConfig {
     /// Worker ID (optional, will auto-generate if not provided)
     pub worker_id: WorkerId,
@@ -39,6 +41,7 @@ pub struct WorkerConfig {
 
 /// Which coordinator the worker connects to.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CoordinatorConfig {
     /// Coordinator URL to connect to
     pub url: String,
@@ -46,6 +49,7 @@ pub struct CoordinatorConfig {
 
 /// Connection resilience settings (reconnect interval, heartbeat timeout).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConnectionConfig {
     /// Reconnection interval in seconds
     #[serde(default = "ConnectionConfig::default_reconnect_interval")]

@@ -20,7 +20,7 @@ use zisk_cluster_common::LoggingConfig;
 use zisk_common::io::StreamSource;
 use zisk_common::{
     io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, StatsCostPerType,
-    ZiskExecutorTime,
+    VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
@@ -119,6 +119,10 @@ impl ProverEngine for EmuProver {
 
     fn world_rank(&self) -> i32 {
         self.core_prover.rank_info.world_rank
+    }
+
+    fn n_processes(&self) -> i32 {
+        self.core_prover.rank_info.n_processes
     }
 
     fn local_rank(&self) -> i32 {
@@ -237,11 +241,14 @@ impl ProverEngine for EmuProver {
         &self,
         proof: &[u64],
         publics_full: &[u64],
+        source_kind: VadcopKind,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics_full),
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full),
+            ProofKind::VadcopFinalMinimal => {
+                self.core_prover.backend.minimal(proof, publics_full, source_kind)
+            }
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full, source_kind),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
@@ -273,9 +280,24 @@ impl ProverEngine for EmuProver {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.core_prover.backend.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
+        self.core_prover.backend.join_worker_proofs(
+            agg_proofs,
+            last_proof,
+            final_proof,
+            keep_resident,
+            options,
+        )
+    }
+
+    fn reset_aggregation_state(&self) {
+        self.core_prover.backend.reset_aggregation_state()
+    }
+
+    fn aggregation_arity(&self) -> usize {
+        self.core_prover.backend.aggregation_arity()
     }
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
@@ -357,6 +379,7 @@ impl EmuCoreProver {
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
+        zisk_setup::check_setup_version(&proving_key)?;
 
         let proofman = ProofMan::new(proving_key.clone(), options.clone())
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
@@ -393,6 +416,10 @@ impl EmuCoreProver {
             false,
             options.packed,
         )?;
+
+        // No ROM-histogram assembly here, so the collectors own the column. The executor would
+        // apply this anyway, since it never runs on the ASM backend; stated for clarity.
+        executor.set_frops_multiplicity_from_asm(false);
 
         let core = ProverBackend::new(
             proofman,

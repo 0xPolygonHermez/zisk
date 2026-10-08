@@ -16,6 +16,7 @@ fn main() {
         chunks: ARITH_EQ_CHUNKS,
         chunk_bits: ARITH_EQ_CHUNK_BITS,
         terms_by_clock: 2,
+        clocks: 16,
         ..Default::default()
     };
 
@@ -31,7 +32,8 @@ fn main() {
     let pil_file = pil_code_path.join("arith256.pil");
     eq.generate_pil_code_to_file("eq_arith256", pil_file.to_str().unwrap());
 
-    let mut eq = Equation::new(&config);
+    let arith_256_mod_config = EquationConfig { force_extra_clocks_zero: true, ..config };
+    let mut eq = Equation::new(&arith_256_mod_config);
     eq.parse(
         "x1*y1+x2-x3-q0*y2-q1*y2*p2_256",
         &[("p2_256", "0x10000000000000000000000000000000000000000000000000000000000000000")],

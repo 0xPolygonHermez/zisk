@@ -48,9 +48,9 @@ install_dependencies_linux() {
     done
 
     if [[ "$INSTALL_CUDA" == true ]]; then
-        total_steps=5
+        total_steps=6
     else
-        total_steps=4
+        total_steps=5
     fi
 
     step "Installing package dependencies for linux x86_64..."
@@ -63,9 +63,17 @@ install_dependencies_linux() {
         libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common \
         sudo ca-certificates gnupg lsb-release wget libclang-dev clang gcc-riscv64-unknown-elf llvm || return 1
 
+    ensure_sudo apt-get install -y cmake || return 1
+
     step "Installing Node.js 20.x..."
     curl -fsSL https://deb.nodesource.com/setup_20.x | ( [[ "$(id -u)" -ne 0 ]] && sudo -E bash || bash )
     ensure_sudo apt-get install -y nodejs || return 1
+
+    step "Installing snarkjs..."
+    ensure_sudo npm install -g snarkjs@latest || return 1
+    # `snarkjs --version` prints the version but exits 99, so the installed
+    # package is checked through npm instead.
+    ensure npm ls -g --depth=0 snarkjs || return 1
 
     step "Installing Rust..."
     # Create the profile file if it doesn't exist
@@ -93,6 +101,8 @@ install_dependencies_darwin() {
 
     step "Installing package dependencies for macOS..."
     ensure brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium || return 1
+    # cmake is for the ziskethone C++ guest cross-compile (REBUILD_ZISKETHONE_GUEST=1).
+    ensure brew reinstall cmake || return 1
 }
 
 main() {

@@ -1,15 +1,15 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 #[cfg(feature = "debug_mem_align")]
 use std::sync::Mutex;
 
-use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult};
 use rayon::prelude::*;
-use zisk_pil::{MemAlignTrace, MemAlignTraceRowOps};
+use zisk_pil::{MemAlignTraceRowOps, ZISK_AIRGROUP_ID};
 
 const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
@@ -37,17 +37,10 @@ const DEFAULT_OFFSET: u8 = 0;
 const DEFAULT_WIDTH: u8 = 8;
 
 pub struct MemAlignSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
-
     #[cfg(feature = "debug_mem_align")]
     num_computed_rows: Mutex<usize>,
 
-    /// The table ID for the Mem Align ROM State Machine
-    table_id: usize,
-
-    /// The range ID for the byte range check
-    range_id: usize,
+    _phantom: PhantomData<F>,
 }
 
 macro_rules! debug_info {
@@ -60,19 +53,11 @@ macro_rules! debug_info {
 }
 
 impl<F: PrimeField64> MemAlignSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Get the table ID
-        let table_id =
-            std.get_virtual_table_id(MemAlignRomSM::TABLE_ID).expect("Failed to get table ID");
-        let range_id =
-            std.get_range_id(0, CHUNK_BITS_MASK as i64, None).expect("Failed to get range ID");
-
+    pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            std: std.clone(),
             #[cfg(feature = "debug_mem_align")]
             num_computed_rows: Mutex::new(0),
-            table_id,
-            range_id,
+            _phantom: PhantomData,
         })
     }
 
@@ -124,11 +109,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_read = input.mem_values[0];
 
                 // Get the next pc and op size
-                let (next_pc, op_size) =
+                let (next_pc, _op_size) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneRead, offset, width);
-
-                // Update the row multiplicity of the operation
-                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 let mut read_row: R = Default::default();
                 read_row.set_step(step);
@@ -145,6 +127,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_width(width as u8);
                 value_row.set_pc(next_pc as u8);
                 value_row.set_is_non_aligned_op(true);
+                value_row.set_sel_w_lt8(width < 8);
+                value_row.set_sel_w_lt4(width < 4);
+                value_row.set_sel_w_lt2(width < 2);
 
                 // Compute reg and sel arrays for read_row
                 let mut read_reg_values = [0u8; CHUNK_NUM];
@@ -243,11 +228,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_read = input.mem_values[0];
 
                 // Get the next pc
-                let (next_pc, op_size) =
+                let (next_pc, _op_size) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneWrite, offset, width);
-
-                // Update the row multiplicity of the operation
-                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 // Compute the write value
                 let value_write = {
@@ -422,11 +404,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_second_read = input.mem_values[1];
 
                 // Get the next pc
-                let (next_pc, op_size) =
+                let (next_pc, _op_size) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoReads, offset, width);
-
-                // Update the row multiplicity of the operation
-                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 let mut first_read_row: R = Default::default();
                 first_read_row.set_step(step);
@@ -443,6 +422,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_width(width as u8);
                 value_row.set_pc(next_pc as u8);
                 value_row.set_is_non_aligned_op(true);
+                value_row.set_sel_w_lt8(width < 8);
+                value_row.set_sel_w_lt4(width < 4);
+                value_row.set_sel_w_lt2(width < 2);
 
                 let mut second_read_row: R = Default::default();
                 second_read_row.set_step(step);
@@ -621,11 +603,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 };
 
                 // Get the next pc
-                let (next_pc, op_size) =
+                let (next_pc, _op_size) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoWrites, offset, width);
-
-                // Update the row multiplicity of the operation
-                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 // RWVWR
                 let mut first_read_row: R = Default::default();
@@ -835,14 +814,21 @@ impl<F: PrimeField64> MemAlignSM<F> {
         ((value >> (chunk * CHUNK_BITS)) & CHUNK_BITS_MASK) as u8
     }
 
-    pub fn compute_witness<R: MemAlignTraceRowOps<F>>(
+    /// `MemAlign` and `MemAlignLarge` commit the same columns and differ only in height, so the row
+    /// type `R` serves both and the air is picked by the `NUM_ROWS` / `AIR_ID` consts of the trace
+    /// this builds.
+    pub fn compute_witness<
+        R: MemAlignTraceRowOps<F>,
+        const NUM_ROWS: usize,
+        const AIR_ID: usize,
+    >(
         &self,
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = MemAlignTrace::<R>::new_from_vec(trace_buffer)?;
-        let mut reg_range_check = vec![0u32; 1 << CHUNK_BITS];
+        let mut trace =
+            GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec(trace_buffer)?;
 
         let num_rows = trace.num_rows();
 
@@ -883,32 +869,12 @@ impl<F: PrimeField64> MemAlignSM<F> {
             self.prove_mem_align_op(input, trace);
         });
 
-        // Iterate over all traces to set range checks
-        trace.buffer[0..total_index].iter_mut().for_each(|row| {
-            let reg_values = row.get_all_reg();
-            for i in 0..CHUNK_NUM {
-                reg_range_check[reg_values[i] as usize] += 1;
-            }
-        });
-
-        let padding_size = num_rows - total_index;
         let mut padding_row: R = Default::default();
         padding_row.set_reset(true);
 
         // Store the padding rows
         trace.buffer[total_index..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 
-        // Compute the program multiplicity
-        self.std.inc_virtual_row(self.table_id, MemAlignRomSM::PADDING_ROW, padding_size as u64);
-
-        reg_range_check[0] += CHUNK_NUM as u32 * padding_size as u32;
-        self.update_std_range_check(reg_range_check);
-
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
-    }
-
-    fn update_std_range_check(&self, reg_range_check: Vec<u32>) {
-        // Perform the range checks
-        self.std.range_check_ranged(self.range_id, None, &reg_range_check);
     }
 }

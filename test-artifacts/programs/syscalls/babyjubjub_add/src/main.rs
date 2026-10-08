@@ -1,0 +1,59 @@
+#![no_main]
+ziskos::entrypoint!(main);
+
+use ziskos::syscalls::{syscall_babyjubjub_add, SyscallBabyJubJubAddParams, SyscallPoint256};
+
+fn main() {
+    // Test #0: add two distinct points (circomlib test/babyjub.js "Should add two points").
+    let mut p1 = SyscallPoint256 {
+        x: [7699839232871213100, 11377594457309997372, 11223204053576433119, 2832127448816122262],
+        y: [5014193860014684243, 12891415696119316661, 16351138293120604662, 418439792016356479],
+    };
+    let p2 = SyscallPoint256 {
+        x: [8787143617238384983, 14452031502512802791, 7941460534247489132, 2635075998581887399],
+        y: [3786921421244027607, 17990144301093405137, 1791269356123149699, 3316665278388780408],
+    };
+    let mut params = SyscallBabyJubJubAddParams { p1: &mut p1, p2: &p2 };
+    syscall_babyjubjub_add(&mut params);
+    let p3 = SyscallPoint256 {
+        x: [10405464339497284449, 8277032624866824417, 12950120428123253884, 1261101424013096072],
+        y: [11601515926616747027, 759323840248000415, 18014248375850445194, 2235942773966081583],
+    };
+    assert_eq!(params.p1.x, p3.x);
+    assert_eq!(params.p1.y, p3.y);
+
+    // Test #1: doubling (same point twice — the complete law doubles): 2*p1.
+    let mut p1 = SyscallPoint256 {
+        x: [7699839232871213100, 11377594457309997372, 11223204053576433119, 2832127448816122262],
+        y: [5014193860014684243, 12891415696119316661, 16351138293120604662, 418439792016356479],
+    };
+    let p2 = SyscallPoint256 {
+        x: [7699839232871213100, 11377594457309997372, 11223204053576433119, 2832127448816122262],
+        y: [5014193860014684243, 12891415696119316661, 16351138293120604662, 418439792016356479],
+    };
+    let mut params = SyscallBabyJubJubAddParams { p1: &mut p1, p2: &p2 };
+    syscall_babyjubjub_add(&mut params);
+    let p3 = SyscallPoint256 {
+        x: [6573998244250000053, 15447716325968879609, 5178469352008426472, 1097776659210999491],
+        y: [5726854610579821793, 16363202296762874374, 6162349764539256418, 691182090570128499],
+    };
+    assert_eq!(params.p1.x, p3.x);
+    assert_eq!(params.p1.y, p3.y);
+
+    // Test #2: identity (0, 1) is the neutral element: P + O == P.
+    let mut p1 = SyscallPoint256 {
+        x: [7699839232871213100, 11377594457309997372, 11223204053576433119, 2832127448816122262],
+        y: [5014193860014684243, 12891415696119316661, 16351138293120604662, 418439792016356479],
+    };
+    let o = SyscallPoint256 { x: [0, 0, 0, 0], y: [1, 0, 0, 0] };
+    let mut params = SyscallBabyJubJubAddParams { p1: &mut p1, p2: &o };
+    syscall_babyjubjub_add(&mut params);
+    assert_eq!(
+        params.p1.x,
+        [7699839232871213100, 11377594457309997372, 11223204053576433119, 2832127448816122262]
+    );
+    assert_eq!(
+        params.p1.y,
+        [5014193860014684243, 12891415696119316661, 16351138293120604662, 418439792016356479]
+    );
+}

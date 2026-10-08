@@ -8,6 +8,17 @@ use thiserror::Error;
 /// Crate-wide error type for the executor.
 #[derive(Debug, Error)]
 pub enum ExecutorError {
+    /// The ASM MT reader delivered a chunk whose index does not extend the
+    /// progressive minimal-trace store contiguously (main-witness advancement
+    /// relies on in-order delivery).
+    #[error("main advancement: expected next chunk index {expected}, got {got}")]
+    ChunkOutOfOrder {
+        /// Index the reader delivered.
+        got: usize,
+        /// Store length (the only index that extends it contiguously).
+        expected: usize,
+    },
+
     /// The `global_id` referenced by the chunk's plan is missing from the supplied `instances` map.
     #[error("instance not found for global_id={global_id}")]
     InstanceNotFound {
@@ -63,6 +74,30 @@ pub enum ExecutorError {
         air_id: usize,
         /// The concrete `*Instance<F>` type that was expected.
         expected: &'static str,
+    },
+
+    /// An ASM execution reached a ROM instance built for the Rust backend.
+    ///
+    /// The ASM path takes its ROM witness from the assembly histogram and never
+    /// fills the instance's collector, so such an instance would compute an
+    /// all-zero ROM trace and prove it without complaint. It means the histogram
+    /// was unavailable when the instance was built — a lifecycle bug, not a mode.
+    #[error("ASM execution reached a Rust-backend ROM instance for global_id={global_id}: no ROM histogram was available when the instance was built")]
+    RomBackendDowngrade {
+        /// The global instance id of the ROM instance.
+        global_id: usize,
+    },
+
+    /// A Rust execution reached a ROM instance built for the ASM backend.
+    ///
+    /// The Rust emulator produces no ROM histogram, so the one that selected this
+    /// instance's backend was left armed by a previous job, and the ROM witness would
+    /// be that job's rather than this one's. It means a job boundary was skipped — a
+    /// lifecycle bug, not a mode.
+    #[error("Rust execution reached an ASM-backend ROM instance for global_id={global_id}: a previous job's ROM histogram was never retired")]
+    RomBackendStale {
+        /// The global instance id of the ROM instance.
+        global_id: usize,
     },
 
     /// The parsed ZisK ROM has not been installed yet via `ZiskExecutor::set_rom`.

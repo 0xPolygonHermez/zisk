@@ -9,9 +9,8 @@ use crate::save_dma_collectors;
 #[cfg(feature = "save_dma_inputs")]
 use crate::Dma64AlignedInput;
 use crate::{
-    Dma64AlignedCollector, Dma64AlignedModule, DmaCheckPoint, DMA_64_ALIGNED_INPUTCPY_OPS_BY_ROW,
-    DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW, DMA_64_ALIGNED_MEMSET_OPS_BY_ROW,
-    DMA_64_ALIGNED_MEM_OPS_BY_ROW, DMA_64_ALIGNED_OPS_BY_ROW,
+    Dma64AlignedCollector, Dma64AlignedModule, DmaCheckPoint, DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW,
+    DMA_64_ALIGNED_MEMSET_OPS_BY_ROW, DMA_64_ALIGNED_MEM_OPS_BY_ROW, DMA_64_ALIGNED_OPS_BY_ROW,
 };
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
@@ -20,8 +19,8 @@ use zisk_common::ChunkId;
 use zisk_common::StatsType;
 use zisk_common::{BusDevice, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType};
 use zisk_pil::{
-    Dma64AlignedInputCpyTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemSetTrace,
-    Dma64AlignedMemTrace, Dma64AlignedTrace,
+    Dma64AlignedLargeTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemLargeTrace,
+    Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace,
 };
 
 pub const F_SEL_MEMCPY: u64 = 1;
@@ -69,12 +68,16 @@ impl<F: PrimeField64> Dma64AlignedInstance<F> {
     }
 
     fn _build_dma_collector(&self, chunk_id: ChunkId) -> Dma64AlignedCollector {
+        // A `Large` sibling packs its operations exactly as the air it is a taller copy of does.
         let ops_by_row = match self.ictx.plan.air_id {
-            Dma64AlignedTrace::<()>::AIR_ID => DMA_64_ALIGNED_OPS_BY_ROW,
+            Dma64AlignedTrace::<()>::AIR_ID | Dma64AlignedLargeTrace::<()>::AIR_ID => {
+                DMA_64_ALIGNED_OPS_BY_ROW
+            }
             Dma64AlignedMemCpyTrace::<()>::AIR_ID => DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW,
-            Dma64AlignedInputCpyTrace::<()>::AIR_ID => DMA_64_ALIGNED_INPUTCPY_OPS_BY_ROW,
             Dma64AlignedMemSetTrace::<()>::AIR_ID => DMA_64_ALIGNED_MEMSET_OPS_BY_ROW,
-            Dma64AlignedMemTrace::<()>::AIR_ID => DMA_64_ALIGNED_MEM_OPS_BY_ROW,
+            Dma64AlignedMemTrace::<()>::AIR_ID | Dma64AlignedMemLargeTrace::<()>::AIR_ID => {
+                DMA_64_ALIGNED_MEM_OPS_BY_ROW
+            }
             _ => panic!("Dma64AlignedInstance: Unsupported air_id: {:?}", self.ictx.plan.air_id),
         };
 

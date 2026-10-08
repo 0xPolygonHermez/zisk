@@ -18,6 +18,22 @@ zisk-core = { workspace = true }
 zisk-lib-float = { workspace = true, optional = true }
 
 [features]
-default = []
+# Zba is proven natively by ZisK (sh<n>add and slli.uw in the binary state machines, add.uw
+# and the .uw shift-and-adds by transpilation), so it is enabled by default like the Zbb /
+# Zbs / Zbkb extensions. Use `default-features = false` (plus `zba` for the decomposed
+# sequences) to opt out.
+default = ["zba_native"]
 float = ["dep:zisk-lib-float", "zisk-lib-float/float"]
-bit_manipulation_extensions = []
+# Enable decoding of the RISC-V C (compressed, 16-bit) extension in the decoder
+# and transpiler. OFF by default: without it a 2-byte parcel is an illegal
+# instruction (IALIGN = 32), matching the EF RISC-V-target standard.
+compressed = []
+zba = []
+zbc = []
+zbkc = []
+zbkx = []
+zba_native = []
+zbc_native = []
+zbkc_native = []
+zbkx_native = []
+zicond_native = []

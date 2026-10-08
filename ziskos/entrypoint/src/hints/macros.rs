@@ -1,4 +1,5 @@
 macro_rules! define_hint {
+    // No `enabled:` — the hint is always on.
     (
         $name:ident => {
             hint_id: $hint_id:expr,
@@ -6,9 +7,32 @@ macro_rules! define_hint {
             is_result: $is_result:expr,
         }
     ) => {
+        $crate::hints::macros::define_hint! {
+            $name => {
+                hint_id: $hint_id,
+                params: ( $( $arg : $len ),+ ),
+                is_result: $is_result,
+                enabled: true,
+            }
+        }
+    };
+    // `enabled:` is a const bool; when false the body folds away, leaving the
+    // `hint_<name>` symbol as an empty function.
+    (
+        $name:ident => {
+            hint_id: $hint_id:expr,
+            params: ( $( $arg:ident : $len:literal ),+ $(,)? ),
+            is_result: $is_result:expr,
+            enabled: $enabled:expr,
+        }
+    ) => {
         paste::paste! {
             #[no_mangle]
             pub unsafe extern "C" fn [<hint_ $name>]($( $arg: *const u8 ),+) {
+                if !$enabled {
+                    return;
+                }
+
                 if !$crate::hints::HINT_BUFFER.is_enabled() {
                     return;
                 }
@@ -79,6 +103,7 @@ macro_rules! define_hint_pairs {
 }
 
 macro_rules! define_hint_ptr {
+    // No `enabled:` — the hint is always on.
     (
         $name:ident => {
             hint_id: $hint_id:expr,
@@ -86,9 +111,31 @@ macro_rules! define_hint_ptr {
             is_result: $is_result:expr,
         }
     ) => {
+        $crate::hints::macros::define_hint_ptr! {
+            $name => {
+                hint_id: $hint_id,
+                param: $arg,
+                is_result: $is_result,
+                enabled: true,
+            }
+        }
+    };
+    // `enabled:` is a const bool; when false the body folds away.
+    (
+        $name:ident => {
+            hint_id: $hint_id:expr,
+            param: $arg:ident,
+            is_result: $is_result:expr,
+            enabled: $enabled:expr,
+        }
+    ) => {
         paste::paste! {
             #[no_mangle]
             pub unsafe extern "C" fn [<hint_ $name>]([<$arg _ptr>]: *const u8, [<$arg _len>]: usize) {
+                if !$enabled {
+                    return;
+                }
+
                 if !$crate::hints::HINT_BUFFER.is_enabled() {
                     return;
                 }

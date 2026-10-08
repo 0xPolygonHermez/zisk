@@ -6,6 +6,7 @@ use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
 use tracing::{error, warn};
 
+use crate::MAX_TRACE_CHUNK_INFO;
 use crate::SEM_CHUNK_DONE_WAIT_DURATION;
 use crate::TRACE_DELTA_SIZE;
 use crate::TRACE_INITIAL_SIZE;
@@ -168,12 +169,15 @@ impl Drop for MOShmemReader {
 pub struct AsmRunnerMO {
     /// The generated plans from the MO trace.
     pub plans: Vec<Plan>,
+    /// Bytes of the proofman-owned GPU buffer consumed by the GPU mem-ops
+    /// planner; `None` on the CPU planner path.
+    pub gpu_mops_used_bytes: Option<u64>,
 }
 
 impl AsmRunnerMO {
-    /// Creates a new `AsmRunnerMO` with the given plans.
+    /// Creates a new `AsmRunnerMO` with the given plans (no GPU planner usage).
     pub fn new(plans: Vec<Plan>) -> Self {
-        Self { plans }
+        Self { plans, gpu_mops_used_bytes: None }
     }
 
     /// Runs the assembly code in a separate process, collects the MO trace, and generates plans.
@@ -258,12 +262,11 @@ impl AsmRunnerMO {
         //   MAX_MTRACE_REGS_ACCESS_SIZE = (2 + 2 + 3) * 8 = 56
         //   MAX_BYTES_DIRECT_MTRACE = 256
         //   MAX_BYTES_MTRACE_STEP = 256 + 56 = 312
-        //   MAX_TRACE_CHUNK_INFO = (44 * 8) + 32 = 384
+        //   MAX_TRACE_CHUNK_INFO = chunk header + 3 words + 32 (asm_mt.rs)
         //   MAX_CHUNK_TRACE_SIZE = (chunk_size * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO
         const MAX_MTRACE_REGS_ACCESS_SIZE: usize = (2 + 2 + 3) * 8;
         const MAX_BYTES_DIRECT_MTRACE: usize = 256;
         const MAX_BYTES_MTRACE_STEP: usize = MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE;
-        const MAX_TRACE_CHUNK_INFO: usize = (44 * 8) + 32;
 
         let threshold_bytes = (chunk_size as usize * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO;
         let mut threshold = unsafe {
@@ -369,6 +372,17 @@ impl AsmRunnerMO {
         // In the GPU case no-op since the GPU planner has no background threads
         mem_planner.set_completed();
 
+        // Quiesce the prover's streaming-commit slots before the final GPU
+        // planning phase: that phase is host-paced micro-ops whose latency
+        // amplifies ~40x under concurrent commit kernels, delaying the buffer
+        // release (and everything mem-plan dependent with it). Backend-
+        // dispatched in libstarks: no-op when slots are disabled or on the
+        // CPU backend.
+        #[cfg(gpu)]
+        if gpu_count_and_plan_opt.is_some() {
+            proofman_starks_lib_c::stream_commit_pause_c();
+        }
+
         // GPU path: evaluate metas
         #[cfg(gpu)]
         timer_start_info!(GPU_MOPS_TIME);
@@ -379,6 +393,12 @@ impl AsmRunnerMO {
             .map(|metas| (metas.as_ptr() as *const c_void, metas.len() as u32));
         #[cfg(gpu)]
         timer_stop_and_log_info!(GPU_MOPS_TIME);
+
+        #[cfg(gpu)]
+        let gpu_mops_used_bytes: Option<u64> =
+            gpu_count_and_plan_opt.as_ref().map(|gcp| gcp.max_used_bytes() as u64);
+        #[cfg(not(gpu))]
+        let gpu_mops_used_bytes: Option<u64> = None;
 
         // owner: join CPU workers; no-op in GPU mode (null-guarded)
         mem_planner.wait();
@@ -471,6 +491,6 @@ impl AsmRunnerMO {
         save_plans(&plans, "mem_plans_cpp.txt");
 
         stats_end!(_stats, &_runner_scope);
-        Ok(AsmRunnerMO::new(plans))
+        Ok(AsmRunnerMO { plans, gpu_mops_used_bytes })
     }
 }
