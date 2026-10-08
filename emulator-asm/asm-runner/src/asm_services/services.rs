@@ -652,11 +652,26 @@ impl AsmServices {
         Self::SERVICES
             .par_iter()
             .try_for_each(|service| {
-                let response = self
-                    .inner
-                    .service
-                    .send_reset_request(service)
-                    .with_context(|| format!("Service {service} failed to reset"))?;
+                let response = self.inner.service.send_reset_request(service).map_err(|e| {
+                    // A binary generated before the reset request existed exits on
+                    // it, and its own message is lost with its stderr. The cache names
+                    // binaries by ELF hash alone, so say what fixes it.
+                    let died = e.chain().any(|cause| {
+                        matches!(
+                            cause.downcast_ref::<AsmRunError>(),
+                            Some(AsmRunError::ServiceDied { .. })
+                        )
+                    });
+                    if died {
+                        e.context(format!(
+                            "Service {service} exited on the reset request, as a binary \
+                                 cached before that request existed does. Clear the cached ASM \
+                                 binaries (~/.zisk/cache by default) to regenerate them"
+                        ))
+                    } else {
+                        e.context(format!("Service {service} failed to reset"))
+                    }
+                })?;
                 if response.result != 0 {
                     return Err(anyhow::anyhow!(
                         "ASM {service} service returned non-zero result to the reset request: {}",
