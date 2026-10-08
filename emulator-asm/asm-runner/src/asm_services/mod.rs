@@ -38,9 +38,9 @@
 //! # Cached binaries
 //!
 //! The services' binaries are generated from a program's ELF and cached under a name made of the
-//! ELF hash, the hints mode and `ASM_PROTOCOL_VERSION` (in `zisk-rom-setup`). Bump the version
-//! whenever a change to `emulator-asm` alters how the binaries behave, or a binary built from the
-//! old sources is reused.
+//! ELF hash and the hints mode (in `zisk-rom-setup`). Clear the cache after a change to
+//! `emulator-asm` that alters how the binaries behave, or a binary built from the old sources is
+//! reused.
 //!
 //! # Tests
 //!

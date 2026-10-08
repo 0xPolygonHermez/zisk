@@ -182,34 +182,22 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
     Ok(())
 }
 
-/// Protocol generation of the ASM binaries this build produces and talks to.
-///
-/// Part of the artifact filename, so a cached binary built from different
-/// `emulator-asm` sources is never reused. The ELF hash alone says nothing about
-/// which sources compiled the binary: after a change the old artifact keeps its
-/// name, is reused, and fails far from the cause.
-///
-/// Bump it whenever a change to `emulator-asm` alters how the generated binaries
-/// behave: the request set, the shared-memory layout, or a fix inside a handler.
-/// Bumping costs one regeneration per program.
-///
-/// - `4`: the reset request (`TYPE_RS`, ids 19/20), sent when the active program
-///   changes, and the ROM histogram object sized for any program. Names without a
-///   suffix predate both; `-p2` and `-p3` are earlier generations of the reset.
-pub const ASM_PROTOCOL_VERSION: u32 = 4;
-
 /// Base filename for a program's ASM artifacts.
 ///
-/// Content-addressed by the ELF hash plus [`ASM_PROTOCOL_VERSION`]: the same ELF
-/// maps to the same artifacts regardless of the program name, so a given hash is
-/// generated once per protocol generation.
+/// Content-addressed by the ELF hash only — the same ELF always maps to the same
+/// artifacts regardless of the program name, so a given hash is generated once. The
+/// name says nothing about which `emulator-asm` sources built the binary, so a
+/// change to those sources needs the cache cleared.
 ///
 /// The single definition of this name: every resolver goes through
 /// [`get_assembly_file_paths_from_id`], so the generator and the resolvers cannot
 /// disagree about it.
 fn asm_file_base(hash: &str, hints: bool) -> String {
-    let hints = if hints { "-hints" } else { "" };
-    format!("{hash}{hints}-p{ASM_PROTOCOL_VERSION}")
+    if hints {
+        format!("{hash}-hints")
+    } else {
+        hash.to_string()
+    }
 }
 
 /// Get the paths to all assembly binary files for a given ELF and output path
