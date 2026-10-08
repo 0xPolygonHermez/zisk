@@ -1100,7 +1100,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-mem-witness-1.4#2cd7f3ef6a572a7fe5ede64eb410a000ca32bab1"
 dependencies = [
  "blake3 1.8.7",
  "cfg-if",
@@ -1113,7 +1113,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-mem-witness-1.4#2cd7f3ef6a572a7fe5ede64eb410a000ca32bab1"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -1122,12 +1122,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-mem-witness-1.4#2cd7f3ef6a572a7fe5ede64eb410a000ca32bab1"
 
 [[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fgpu-mem-witness-1.4#2cd7f3ef6a572a7fe5ede64eb410a000ca32bab1"
 dependencies = [
  "num-traits",
  "proofman-fields",
