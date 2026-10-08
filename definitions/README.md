@@ -100,10 +100,10 @@ pub mod memory {
 | `hex` / `dec` | Number base for rendered values | `hex` |
 | `fits = N` | Assert every value fits in `N` bits (a domain check) | the const's storage width |
 | `c_prefix` / `pil_prefix` / `asm_prefix = "..."` | Prefix prepended to names in that target | none |
-| `c_file` / `pil_file` / `asm_file = "..."` | Override output file base name | `<group>.h` / `.pil` / `.inc` |
+| `c_file` / `pil_file` / `asm_file = "..."` | Override the output file name (used verbatim) | `<group>.gen.h` / `.gen.pil` / `.gen.inc` |
 
 `to(..)` is **required**. (In the sample, `memory` uses `to(rust, c, pil, asm)` and
-produces `memory.inc`; `opcodes` (`to(rust, pil)`) and `execution` (`to(rust, c, pil)`)
+produces `memory.gen.inc`; `opcodes` (`to(rust, pil)`) and `execution` (`to(rust, c, pil)`)
 name no asm, so they produce none.)
 
 ### `#[emit(..)]` — per-const overrides
@@ -135,9 +135,9 @@ Overrides only the fields it names; everything else inherits the module defaults
 | Target | File | Form |
 |---|---|---|
 | Rust | `<group>.rs` (+ a `mod.rs` aggregator) | `pub const NAME: ty = value;` — original ident, no prefix |
-| C | `<group>.h` | include-guarded `#define NAME ((type)value)` (`#include <stdint.h>`) |
-| PIL | `<group>.pil` | `const int NAME = value;` |
-| asm | `<group>.inc` | GAS `.equ NAME, value` |
+| C | `<group>.gen.h` | include-guarded `#define NAME ((type)value)` (`#include <stdint.h>`) |
+| PIL | `<group>.gen.pil` | `const int NAME = value;` |
+| asm | `<group>.gen.inc` | GAS `.equ NAME, value` |
 
 Groups that share the same `*_file` are merged into one file, separated by
 `--- group ---` comment headers.

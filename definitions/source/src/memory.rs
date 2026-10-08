@@ -14,7 +14,7 @@ pub mod memory {
     /// First system RW memory address.
     pub const SYS_ADDR: u64 = RAM_ADDR + STACK_SIZE;
 
-    /// Extra precompile parameters (256 B → 32 params). Rust + PIL only.
+    /// Extra precompile parameters (256 B → 32 params). Every target but C.
     #[emit(skip(c))]
     pub const EXTRA_PARAMS_ADDR: u64 = SYS_ADDR + 0x0F00;
 }

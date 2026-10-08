@@ -44,6 +44,9 @@ fn sample_round_trips() {
     assert!(mem_inc.contains(".equ SYS_ADDR, 0xA0400000"));
     assert!(mem_inc.contains("# RAM_ADDR + STACK_SIZE")); // provenance comment
 
+    // `skip(c)` only drops C: EXTRA_PARAMS_ADDR still inherits asm.
+    assert!(mem_inc.contains(".equ EXTRA_PARAMS_ADDR, 0xA0400F00"));
+
     // Opcodes: PIL-only, with the `OP_` prefix.
     assert!(contents(&files, "opcodes.gen.h").is_none());
     let op_pil = contents(&files, "opcodes.gen.pil").expect("opcodes.gen.pil missing");
