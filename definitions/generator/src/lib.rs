@@ -327,18 +327,10 @@ fn write_dir(files: &[GenFile], target: Target, out: Out, ext: &str) -> Result<(
     fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
     let expected: HashSet<&str> = mine.iter().map(|f| f.name.as_str()).collect();
 
-    // Remove files we no longer produce (e.g. after a group rename/drop). An Exclusive
-    // dir is generated-only, so every stale file of this extension goes; a Shared dir
-    // may hold hand-written files, so only stale *generated* ones (banner-marked) go.
-    for name in files_on_disk(dir, ext) {
-        if expected.contains(name.as_str()) {
-            continue;
-        }
-        let path = dir.join(&name);
-        if out.reconciles(&path) {
-            fs::remove_file(&path).map_err(|e| format!("removing {}: {e}", path.display()))?;
-        }
-    }
+    // Write everything first and remove orphans last: a concurrent rustc then never sees
+    // a `mod.rs` that names a module file already deleted (e.g. mid group rename). Rust
+    // module files come before `mod.rs` in `files`, so the new tree is complete by the
+    // time the new `mod.rs` lands.
     for f in mine {
         let path = dir.join(&f.name);
         if fs::read_to_string(&path).is_ok_and(|on_disk| on_disk == f.contents) {
@@ -351,6 +343,19 @@ fn write_dir(files: &[GenFile], target: Target, out: Out, ext: &str) -> Result<(
         let tmp = dir.join(format!(".{}.tmp", f.name));
         fs::write(&tmp, &f.contents).map_err(|e| format!("writing {}: {e}", tmp.display()))?;
         fs::rename(&tmp, &path).map_err(|e| format!("replacing {}: {e}", path.display()))?;
+    }
+
+    // Remove files we no longer produce (e.g. after a group rename/drop). An Exclusive
+    // dir is generated-only, so every stale file of this extension goes; a Shared dir
+    // may hold hand-written files, so only stale *generated* ones (banner-marked) go.
+    for name in files_on_disk(dir, ext) {
+        if expected.contains(name.as_str()) {
+            continue;
+        }
+        let path = dir.join(&name);
+        if out.reconciles(&path) {
+            fs::remove_file(&path).map_err(|e| format!("removing {}: {e}", path.display()))?;
+        }
     }
     Ok(())
 }
@@ -439,9 +444,15 @@ fn render_rust(
                 meta.name
             ));
         }
-        if modules.contains(&meta.name) {
+        // Compared ignoring case: on a case-insensitive filesystem (macOS by default)
+        // `Foo.rs`/`foo.rs` are one file, and a `MOD` group would be `mod.rs` itself.
+        if meta.name.eq_ignore_ascii_case("mod") {
+            return Err(format!("group `{}` emits Rust, but `mod.rs` is reserved", meta.name));
+        }
+        if let Some(other) = modules.iter().find(|m| m.eq_ignore_ascii_case(meta.name)) {
             return Err(format!(
-                "two groups named `{}` emit Rust; each needs its own module name",
+                "groups `{other}` and `{}` emit Rust to the same module file (names compare \
+                 ignoring case); each needs its own module name",
                 meta.name
             ));
         }
@@ -512,7 +523,7 @@ fn fmt_value_rust(e: &Export) -> String {
 
 // ---- C / PIL rendering ----------------------------------------------------
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Kind {
     C,
     Pil,
@@ -600,6 +611,21 @@ fn render_flat(
                     fmt_numeric_upper(e, "asm")?,
                 )?;
             }
+        }
+    }
+
+    // Two distinct files whose names differ only in case are one file on a
+    // case-insensitive filesystem (macOS by default): the later write would silently
+    // replace the earlier one. Groups sharing an exact name merge into one file instead.
+    let mut names: HashMap<(Kind, String), &str> = HashMap::new();
+    for fb in &files {
+        if let Some(other) =
+            names.insert((fb.kind, fb.file_name.to_ascii_lowercase()), &fb.file_name)
+        {
+            return Err(format!(
+                "generated files `{other}` and `{}` differ only in case; rename one",
+                fb.file_name
+            ));
         }
     }
 
@@ -1206,6 +1232,49 @@ mod tests {
         assert!(h.contains("((int64_t)(-9223372036854775807LL - 1))"), "{h}");
         // Below the boundary nothing changes: the bare literal stays.
         assert!(h.contains("((int64_t)0x7fffffffffffffff)"), "{h}");
+    }
+
+    #[test]
+    fn names_differing_only_in_case_are_rejected() {
+        static RUST: &[Export] = &[export("X", Value::U(1), Targets::RUST, None)];
+        static UPPER: GroupMeta = group("Foo", "a.h");
+        static LOWER: GroupMeta = group("foo", "b.h");
+        static MOD: GroupMeta = group("MOD", "m.h");
+        assert!(render(&[(&UPPER, RUST), (&LOWER, RUST)], "test").is_err(), "Foo.rs/foo.rs");
+        assert!(render(&[(&MOD, RUST)], "test").is_err(), "MOD.rs is mod.rs");
+
+        static PIL: &[Export] = &[export("Y", Value::U(2), Targets::PIL, None)];
+        static P1: GroupMeta = GroupMeta { pil_file: Some("constants.pil"), ..group("p1", "p1.h") };
+        static P2: GroupMeta = GroupMeta { pil_file: Some("Constants.pil"), ..group("p2", "p2.h") };
+        let err = render(&[(&P1, PIL), (&P2, PIL)], "test").err().expect("case-only clash");
+        assert!(err.contains("differ only in case"), "{err}");
+
+        // The exact same name still merges into one file.
+        static Q1: GroupMeta = GroupMeta { pil_file: Some("shared.pil"), ..group("q1", "q1.h") };
+        static Q2: GroupMeta = GroupMeta { pil_file: Some("shared.pil"), ..group("q2", "q2.h") };
+        static PIL2: &[Export] = &[export("Z", Value::U(3), Targets::PIL, None)];
+        assert!(render(&[(&Q1, PIL), (&Q2, PIL2)], "test").is_ok());
+    }
+
+    #[test]
+    fn renaming_a_rust_group_replaces_its_module() {
+        static OLD: GroupMeta = group("old_name", "o.h");
+        static NEW: GroupMeta = group("new_name", "n.h");
+        static E: &[Export] = &[export("X", Value::U(1), Targets::RUST, None)];
+        let base = std::env::temp_dir().join(format!("zisk-gen-rename-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (r, c, p, a) = (base.join("rs"), base.join("c"), base.join("pil"), base.join("asm"));
+        let dirs =
+            Dirs { rust: exclusive(&r), c: exclusive(&c), pil: exclusive(&p), asm: exclusive(&a) };
+
+        write(&[(&OLD, E)], &dirs, "test").expect("write old");
+        write(&[(&NEW, E)], &dirs, "test").expect("write new");
+        assert!(r.join("new_name.rs").exists() && !r.join("old_name.rs").exists());
+        let mod_rs = std::fs::read_to_string(r.join("mod.rs")).unwrap();
+        assert!(mod_rs.contains("pub mod new_name;") && !mod_rs.contains("old_name"), "{mod_rs}");
+        assert!(check(&[(&NEW, E)], &dirs, "test").is_ok());
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

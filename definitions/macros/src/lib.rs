@@ -503,6 +503,27 @@ mod tests {
     }
 
     #[test]
+    fn empty_target_lists_are_rejected() {
+        // syn already rejects an empty nested list ("expected nested attribute"), so an
+        // empty `to()` can neither pass the required-`to(..)` check nor silently emit a
+        // const nowhere. Pinned here so a syn upgrade can't quietly change it.
+        let item = quote!(
+            pub mod g {
+                pub const X: u64 = 1;
+            }
+        );
+        assert!(constants(quote!(to()), item).is_err());
+
+        let per_const = quote!(
+            pub mod g {
+                #[emit(to())]
+                pub const X: u64 = 1;
+            }
+        );
+        assert!(constants(quote!(to(rust)), per_const).is_err());
+    }
+
+    #[test]
     fn fits_must_be_1_to_128_bits() {
         let item = || {
             quote!(

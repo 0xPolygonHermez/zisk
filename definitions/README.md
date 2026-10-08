@@ -95,12 +95,12 @@ pub mod memory {
 
 | Argument | Meaning | Default |
 |---|---|---|
-| `group = "name"` | Logical group name; sets the output file base names. Must be an identifier; groups that emit Rust need distinct, non-keyword names (each is a module) | module ident |
+| `group = "name"` | Logical group name; sets the output file base names. Must be an identifier; groups that emit Rust need names that are distinct ignoring case, not keywords and not `mod` (each is a module file) | module ident |
 | `to(rust, c, pil, asm)` | Targets to emit to | **required** |
 | `hex` / `dec` | Number base for rendered values | `hex` |
 | `fits = N` | Assert every value fits in `N` bits (a domain check) | the const's storage width |
 | `c_prefix` / `pil_prefix` / `asm_prefix = "..."` | Prefix prepended to names in that target | none |
-| `c_file` / `pil_file` / `asm_file = "..."` | Override the output file name: a plain file name ending in `.h` / `.pil` / `.inc` | `<group>.gen.h` / `.gen.pil` / `.gen.inc` |
+| `c_file` / `pil_file` / `asm_file = "..."` | Override the output file name: a plain file name ending in `.h` / `.pil` / `.inc`, distinct from the target's other files ignoring case (an exact match merges groups) | `<group>.gen.h` / `.gen.pil` / `.gen.inc` |
 
 `to(..)` is **required**. (In the sample, `memory` uses `to(rust, c, pil, asm)` and
 produces `memory.gen.inc`; `opcodes` (`to(rust, pil)`) and `execution` (`to(rust, c, pil)`)
