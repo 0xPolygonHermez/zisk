@@ -65,3 +65,7 @@ pub const MEM_ROWS_ROM: u32 = 2;
 pub const MEM_ROWS_INPUT: u32 = 4;
 /// `MEM_ROWS_ON_DEVICE` bit: the rows of the `MemAlign` airs.
 pub const MEM_ROWS_ALIGN: u32 = 8;
+/// `MEM_ROWS_*` bits of the memory airs whose owned instances have their rows in the planner's
+/// pinned host memory once the device fill ended (slot mode): the proofs copy them instead of
+/// rebuilding them. Cleared when a block starts.
+pub static MEM_ROWS_ON_HOST: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);

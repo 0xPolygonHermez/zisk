@@ -117,7 +117,15 @@ pub struct StagedRows {
 }
 impl Default for StagedRows {
     fn default() -> Self {
-        Self { ptr: std::ptr::null(), words: 0, family: 0, air_id: 0, segment: 0, n_rows: 0, res: RamFillResult::default() }
+        Self {
+            ptr: std::ptr::null(),
+            words: 0,
+            family: 0,
+            air_id: 0,
+            segment: 0,
+            n_rows: 0,
+            res: RamFillResult::default(),
+        }
     }
 }
 const _: () = assert!(std::mem::size_of::<StagedRows>() == 88);
@@ -265,8 +273,12 @@ extern "C" {
         n_rom: u32,
         input: *const u32,
         n_input: u32,
+        host_rows: bool,
         prepared: *mut RamFillPrepared,
     ) -> bool;
+    /// After the preparation: bit `family` set when every owned instance of that family has its
+    /// rows in pinned host memory, for the proofs after the arena's release.
+    pub fn count_and_plan_host_rows_mask(h: *mut CountAndPlanHandle) -> u32;
     /// The device the planner holds the retained accesses on.
     pub fn count_and_plan_device(h: *mut CountAndPlanHandle) -> i32;
     pub fn count_and_plan_fill_slot(
