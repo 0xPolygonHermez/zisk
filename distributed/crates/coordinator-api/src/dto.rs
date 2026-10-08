@@ -143,6 +143,14 @@ pub struct DomainProof {
     pub completed_at: Option<DateTime<Utc>>,
 }
 
+impl DomainProof {
+    /// The proof in `data`, which the coordinator sends as its internal bincode `Proof`.
+    /// To store or forward it, use `Proof::to_bytes`/`Proof::save`, ZisK's one format.
+    pub fn decode_proof(&self) -> Result<zisk_common::Proof, bincode::error::DecodeError> {
+        bincode::serde::decode_from_slice(&self.data, bincode::config::standard()).map(|(p, _)| p)
+    }
+}
+
 /// The kind of job being submitted.
 #[derive(Debug, Clone)]
 pub enum DomainJobKind {

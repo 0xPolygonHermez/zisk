@@ -15,6 +15,7 @@ dependencies = [
  "serde",
  "zisk-sdk",
  "zisk-test-artifacts",
+ "zisk-verifier",
 ]
 
 [[package]]
@@ -6766,6 +6767,7 @@ name = "zisk-coordinator-api"
 version = "1.4.0-alpha"
 dependencies = [
  "anyhow",
+ "bincode",
  "chrono",
  "prost 0.14.4",
  "prost-types 0.14.4",

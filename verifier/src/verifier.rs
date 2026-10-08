@@ -1,3 +1,5 @@
+use alloc::string::String;
+
 use proofman_verifier::VadcopFinalProof;
 
 /// Length, in u64 words, of the Vadcop final verification key appended to a serialized proof.
@@ -54,7 +56,12 @@ pub const GOLDILOCKS_ORDER: u64 = 0xFFFF_FFFF_0000_0001;
 /// application outputs (low 32 bits). Canonical encodings are what keep the verified
 /// statement and the reported outputs the same thing.
 pub fn publics_are_canonical(publics: &[u64]) -> bool {
-    publics.iter().all(|&w| w < GOLDILOCKS_ORDER)
+    first_non_canonical(publics).is_none()
+}
+
+/// Index of the first word that is not a canonical Goldilocks element.
+pub(crate) fn first_non_canonical(words: &[u64]) -> Option<usize> {
+    words.iter().position(|&w| w >= GOLDILOCKS_ORDER)
 }
 
 /// Expected `n_publics` header for a NON-minimal vadcop_final proof:
@@ -79,38 +86,9 @@ pub const fn expected_n_publics(minimal: bool) -> usize {
     }
 }
 
-/// The `minimal` marker a serialized proof carries, or `None` if it is not a boolean.
-///
-/// The marker sits outside the STARK payload, so nothing downstream would catch a
-/// garbage value: without this, a valid 69-public proof passes carrying marker `2`.
-fn minimal_marker(zisk_proof: &[u64]) -> Option<bool> {
-    match *zisk_proof.first()? {
-        0 => Some(false),
-        1 => Some(true),
-        _ => None,
-    }
-}
-
-/// Whether a serialized proof is an aggregated fold rather than a leaf, from the
-/// `is_vadcop_final_proof` public. A compressed proof no longer carries it: `None`.
-pub fn committed_is_aggregate(zisk_proof: &[u64]) -> Option<bool> {
-    if zisk_proof.len() < 2 || minimal_marker(zisk_proof)? {
-        return None;
-    }
-    if zisk_proof[1] != EXPECTED_N_PUBLICS_FINAL {
-        return None;
-    }
-    if zisk_proof.len() < 2 + EXPECTED_N_PUBLICS_FINAL as usize {
-        return None;
-    }
-    // Strictly 0 or 1. `!= IS_VADCOP_FINAL_PROOF` would report a malformed flag such as
-    // 2 as a fold, which is a classification the circuit never produces.
-    is_aggregate_flag(zisk_proof[2])
-}
-
 /// The flagged stage's slot-0 value as a classification: 1 = leaf, 0 = fold. The circuit
 /// emits only those two, so anything else is malformed rather than a third kind.
-fn is_aggregate_flag(flag: u64) -> Option<bool> {
+pub(crate) fn is_aggregate_flag(flag: u64) -> Option<bool> {
     match flag {
         IS_VADCOP_FINAL_PROOF => Some(false),
         0 => Some(true),
@@ -118,84 +96,17 @@ fn is_aggregate_flag(flag: u64) -> Option<bool> {
     }
 }
 
-/// The program VK limbs a serialized proof commits to, or `None` if malformed.
-///
-/// This is the identity the proof claims (ROM root for a leaf, recursion domain for an
-/// aggregate), orthogonal to the `vadcop_final_vk` the STARK is checked against.
-pub fn committed_program_vk(zisk_proof: &[u64]) -> Option<&[u64]> {
-    if zisk_proof.len() < 2 {
-        return None;
-    }
-    let minimal = minimal_marker(zisk_proof)?;
-    let expected_n_publics =
-        if minimal { EXPECTED_N_PUBLICS_COMPRESSED } else { EXPECTED_N_PUBLICS_FINAL };
-    if zisk_proof[1] != expected_n_publics {
-        return None;
-    }
-    let n = expected_n_publics as usize;
-    if zisk_proof.len() < 2 + n {
-        return None;
-    }
-    Some(&program_publics(&zisk_proof[2..2 + n])[..PROGRAM_VK_LEN])
-}
-
-pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64], hash: &str) -> bool {
-    // Format: [minimal(1)][n_publics(1)][publics(n_publics)][proof]
-    // n_publics is 69 for a full vadcop_final proof (flag @0) and 68 for a
-    // minimal/compressed one (flag stripped by the FinalCompressed circuit).
-
-    if zisk_proof.len() < 2 {
-        return false;
-    }
-
-    if vadcop_final_vk.len() != PROGRAM_VK_LEN {
-        return false;
-    }
-
-    // Strictly boolean: the marker is outside the STARK payload, so a garbage value
-    // would otherwise select the full-proof path and verify.
-    let Some(minimal) = minimal_marker(zisk_proof) else {
-        return false;
-    };
-    let vadcop_proof = &zisk_proof[1..];
-
-    let expected_n_publics = expected_n_publics(minimal);
-    if zisk_proof.len() < 2 + expected_n_publics {
-        return false;
-    }
-    if vadcop_proof[0] != expected_n_publics as u64 {
-        return false;
-    }
-
-    if !publics_are_canonical(&vadcop_proof[1..1 + expected_n_publics]) {
-        return false;
-    }
-
-    // The flagged stage commits slot 0 as the leaf/fold flag; only 0 and 1 exist.
-    if !minimal && is_aggregate_flag(vadcop_proof[1]).is_none() {
-        return false;
-    }
-
-    // Pin the trailing STARK payload too, so this path stands on its own rather than on
-    // the downstream verifier's own length check: `[n_publics(1)][publics][proof]`.
-    let Some(expected_bytes) = expected_proof_bytes(hash, minimal) else {
-        return false;
-    };
-    if vadcop_proof.len() != 1 + expected_n_publics + expected_bytes / 8 {
-        return false;
-    }
-
-    verify_by_family(hash, minimal, vadcop_proof, vadcop_final_vk)
-}
-
 /// The generated entry points for one (family, stage) pair.
 ///
 /// Function pointers rather than a trait: each stage is its own generated module, so
 /// there is no shared type to implement one on.
 struct StageVerifier {
-    verify_u64: fn(&[u64], &[u64]) -> bool,
     verify: fn(&VadcopFinalProof, &[u64]) -> bool,
+    /// The same check over `[n_publics][publics][proof]` in place, without a copy.
+    verify_u64: fn(&[u64], &[u64]) -> bool,
     expected_proof_bytes: fn() -> usize,
+    /// The setup's key for this stage, from [`crate::keys`].
+    vk: [u64; PROGRAM_VK_LEN],
 }
 
 /// The single routing table. Every dispatch below goes through it, so adding a family
@@ -207,58 +118,242 @@ struct StageVerifier {
 /// verifiers rather than using proofman's.
 fn stage_verifier(hash: &str, minimal: bool) -> Option<StageVerifier> {
     macro_rules! stage {
-        ($module:path) => {{
+        ($module:path, $vk:expr) => {{
             use $module as m;
             StageVerifier {
-                verify_u64: m::verify_u64,
                 verify: m::verify,
+                verify_u64: m::verify_u64,
                 expected_proof_bytes: m::expected_proof_bytes,
+                vk: $vk,
             }
         }};
     }
+    use crate::keys::*;
 
     Some(match (hash, minimal) {
-        ("blake3", false) => stage!(crate::blake3::vadcop_final),
-        ("Poseidon1", false) => stage!(crate::poseidon1::vadcop_final),
-        ("Poseidon1", true) => stage!(crate::poseidon1::vadcop_final_compressed),
-        ("Poseidon2", false) => stage!(crate::poseidon2::vadcop_final),
-        ("Poseidon2", true) => stage!(crate::poseidon2::vadcop_final_compressed),
+        ("blake3", false) => stage!(crate::blake3::vadcop_final, VADCOP_FINAL_VK_BLAKE3),
+        ("Poseidon1", false) => {
+            stage!(crate::poseidon1::vadcop_final, VADCOP_FINAL_VK_POSEIDON1)
+        }
+        ("Poseidon1", true) => {
+            stage!(crate::poseidon1::vadcop_final_compressed, VADCOP_FINAL_COMPRESSED_VK_POSEIDON1)
+        }
+        ("Poseidon2", false) => {
+            stage!(crate::poseidon2::vadcop_final, VADCOP_FINAL_VK_POSEIDON2)
+        }
+        ("Poseidon2", true) => {
+            stage!(crate::poseidon2::vadcop_final_compressed, VADCOP_FINAL_COMPRESSED_VK_POSEIDON2)
+        }
         _ => return None,
     })
 }
 
-fn verify_by_family(hash: &str, minimal: bool, vadcop_proof: &[u64], vk: &[u64]) -> bool {
-    stage_verifier(hash, minimal).is_some_and(|s| (s.verify_u64)(vadcop_proof, vk))
-}
-
-/// Host-side counterpart to [`verify_vadcop_final_proof`], dispatching on the
-/// family and stage the proof declares.
+/// [`verify`] as a bool, for callers that only need yes or no.
 pub fn verify_vadcop_final(proof: &VadcopFinalProof, vk: &[u64]) -> bool {
     // `stark_verify` reads exactly `vk[0..4]`, so a longer key would be silently
     // truncated to one the caller never pinned. Exact, not `>=`.
-    if vk.len() != PROGRAM_VK_LEN {
-        return false;
+    <&[u64; PROGRAM_VK_LEN]>::try_from(vk).is_ok_and(|vk| verify(proof, vk).is_ok())
+}
+
+/// What a verified proof proves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Verified {
+    /// The program identity: ROM root for a leaf, recursion domain for an aggregate.
+    pub program_vk: [u64; PROGRAM_VK_LEN],
+    /// The 64 public outputs, as canonical field elements.
+    pub outputs: [u64; ZISK_PUBLICS],
+    /// `Some(true)` for a recurser fold, `Some(false)` for a leaf, `None` for a compressed
+    /// proof, whose stage strips the flag. Producers refuse to compress an aggregate.
+    pub is_aggregate: Option<bool>,
+}
+
+impl Verified {
+    /// The outputs as the guest committed them. Always `Some` unless `is_aggregate` is
+    /// `Some(true)`: [`verify`] checks every leaf, compressed ones included.
+    pub fn outputs_u32(&self) -> Option<[u32; ZISK_PUBLICS]> {
+        let mut out = [0u32; ZISK_PUBLICS];
+        for (o, &w) in out.iter_mut().zip(&self.outputs) {
+            *o = u32::try_from(w).ok()?;
+        }
+        Some(out)
     }
-    if proof.public_values.len() != expected_n_publics(proof.compressed) {
-        return false;
+}
+
+/// Why [`verify`] rejected a proof.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VerifyError {
+    /// No verifier for this family and stage (unknown family, or blake3 compressed).
+    UnsupportedStage { hash: String, compressed: bool },
+    /// The publics vector is not the width this stage carries.
+    PublicCount { expected: usize, got: usize },
+    /// A public is not a canonical Goldilocks element.
+    NonCanonicalPublic { index: usize },
+    /// The leaf/fold flag is neither 1 (leaf) nor 0 (fold).
+    InvalidLeafFlag(u64),
+    /// The STARK payload is not the length this stage's proofs have.
+    ProofLength { expected_bytes: usize, got_bytes: usize },
+    /// A leaf output does not fit in u32, which a ZisK guest cannot commit.
+    OutputNotU32 { index: usize },
+    /// An aggregate whose committed domain is not the key it verifies under: a subtree
+    /// folded by a different recurser.
+    AggregateDomainMismatch { declared: [u64; PROGRAM_VK_LEN] },
+    /// The proof is for a different program than the caller expects.
+    ProgramMismatch { committed: [u64; PROGRAM_VK_LEN] },
+    /// The STARK itself does not verify against the given key.
+    InvalidProof,
+    /// The bytes are not a well-formed flat proof ([`verify_saved_words`] only).
+    Malformed(crate::DecodeError),
+}
+
+impl core::fmt::Display for VerifyError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnsupportedStage { hash, compressed } => {
+                write!(f, "no verifier for hash family {hash:?} (compressed: {compressed})")
+            }
+            Self::PublicCount { expected, got } => {
+                write!(f, "{got} publics, the stage carries {expected}")
+            }
+            Self::NonCanonicalPublic { index } => {
+                write!(f, "public {index} is not a canonical Goldilocks element")
+            }
+            Self::InvalidLeafFlag(v) => write!(f, "leaf flag {v} is not 0 or 1"),
+            Self::ProofLength { expected_bytes, got_bytes } => {
+                write!(f, "proof is {got_bytes} bytes, the stage's proofs are {expected_bytes}")
+            }
+            Self::OutputNotU32 { index } => write!(f, "leaf output {index} does not fit in u32"),
+            Self::AggregateDomainMismatch { declared } => write!(
+                f,
+                "aggregate declares recursion domain {declared:?} but verifies under another \
+                 key; its subtree was not produced by this recurser"
+            ),
+            Self::ProgramMismatch { committed } => {
+                write!(f, "proof is for program {committed:?}, not the expected one")
+            }
+            Self::InvalidProof => write!(f, "STARK verification failed"),
+            Self::Malformed(e) => write!(f, "malformed proof: {e}"),
+        }
     }
-    if !publics_are_canonical(&proof.public_values) {
-        return false;
+}
+
+impl core::error::Error for VerifyError {}
+
+/// Verify a vadcop_final proof against `vadcop_vk` and return what it proves.
+///
+/// `vadcop_vk` must be a key the caller trusts (a release constant from [`vadcop_vk`], or
+/// the recurser's own key for an aggregate), never one read off the proof. Callers still
+/// check [`Verified::program_vk`] against the program they expect.
+pub fn verify(
+    proof: &VadcopFinalProof,
+    vadcop_vk: &[u64; PROGRAM_VK_LEN],
+) -> Result<Verified, VerifyError> {
+    let shape = Shape {
+        hash: &proof.hash,
+        compressed: proof.compressed,
+        publics: &proof.public_values,
+        proof_words: proof.proof.len(),
+    };
+    let (stage, verified) = check_shape(&shape, vadcop_vk, None)?;
+    if !(stage.verify)(proof, vadcop_vk) {
+        return Err(VerifyError::InvalidProof);
+    }
+    Ok(verified)
+}
+
+/// [`verify`] over the flat layout in place, as a guest receives it: no copy of the proof.
+///
+/// With `expected_program_vk`, a proof for any other program is refused before the STARK
+/// runs, so a guest pays a few comparisons, not a full verification, for it.
+pub fn verify_saved_words(
+    words: &[u64],
+    vadcop_vk: &[u64; PROGRAM_VK_LEN],
+    expected_program_vk: Option<&[u64; PROGRAM_VK_LEN]>,
+) -> Result<Verified, VerifyError> {
+    let view = crate::decode::split_saved(words).map_err(VerifyError::Malformed)?;
+    let shape = Shape {
+        hash: view.hash,
+        compressed: view.compressed,
+        publics: view.publics,
+        proof_words: view.proof.len(),
+    };
+    let (stage, verified) = check_shape(&shape, vadcop_vk, expected_program_vk)?;
+    if !(stage.verify_u64)(view.stark_body, vadcop_vk) {
+        return Err(VerifyError::InvalidProof);
+    }
+    Ok(verified)
+}
+
+/// What every check reads, borrowed from wherever the proof lives.
+struct Shape<'a> {
+    hash: &'a str,
+    compressed: bool,
+    publics: &'a [u64],
+    proof_words: usize,
+}
+
+/// Every check before the STARK, cheapest first, and the statement the proof makes if
+/// the STARK then holds.
+fn check_shape(
+    s: &Shape,
+    vadcop_vk: &[u64; PROGRAM_VK_LEN],
+    expected_program_vk: Option<&[u64; PROGRAM_VK_LEN]>,
+) -> Result<(StageVerifier, Verified), VerifyError> {
+    let stage = stage_verifier(s.hash, s.compressed).ok_or_else(|| {
+        VerifyError::UnsupportedStage { hash: s.hash.into(), compressed: s.compressed }
+    })?;
+    let expected = expected_n_publics(s.compressed);
+    if s.publics.len() != expected {
+        return Err(VerifyError::PublicCount { expected, got: s.publics.len() });
+    }
+    if let Some(index) = first_non_canonical(s.publics) {
+        return Err(VerifyError::NonCanonicalPublic { index });
     }
     // `VadcopFinalProof` is public, so a caller can hand us a flagged proof that never
     // went through `new_from_vadcop_proof`'s strict flag check.
-    if !proof.compressed && is_aggregate_flag(proof.public_values[0]).is_none() {
-        return false;
+    let is_aggregate = if s.compressed {
+        None
+    } else {
+        let flag = s.publics[0];
+        Some(is_aggregate_flag(flag).ok_or(VerifyError::InvalidLeafFlag(flag))?)
+    };
+    let publics = program_publics(s.publics);
+    let verified = Verified {
+        program_vk: publics[..PROGRAM_VK_LEN].try_into().unwrap(),
+        outputs: publics[PROGRAM_VK_LEN..].try_into().unwrap(),
+        is_aggregate,
+    };
+    if expected_program_vk.is_some_and(|vk| *vk != verified.program_vk) {
+        return Err(VerifyError::ProgramMismatch { committed: verified.program_vk });
     }
-    stage_verifier(&proof.hash, proof.compressed).is_some_and(|s| {
-        proof.proof.len() * 8 == (s.expected_proof_bytes)() && (s.verify)(proof, vk)
-    })
+    if is_aggregate == Some(true) {
+        // An aggregate's declared domain must be the key it verifies under, or a subtree
+        // from another recurser rides through.
+        if verified.program_vk != *vadcop_vk {
+            return Err(VerifyError::AggregateDomainMismatch { declared: verified.program_vk });
+        }
+    } else if let Some(index) = verified.outputs.iter().position(|&w| w > u32::MAX as u64) {
+        // A leaf, compressed ones included: aggregates are never compressed.
+        return Err(VerifyError::OutputNotU32 { index });
+    }
+    let expected_bytes = (stage.expected_proof_bytes)();
+    if s.proof_words * 8 != expected_bytes {
+        return Err(VerifyError::ProofLength { expected_bytes, got_bytes: s.proof_words * 8 });
+    }
+    Ok((stage, verified))
 }
 
 /// Serialized length in bytes a proof of this family and stage must have, or `None` if
 /// no such stage exists — see [`stage_verifier`].
 pub fn expected_proof_bytes(hash: &str, minimal: bool) -> Option<usize> {
     stage_verifier(hash, minimal).map(|s| (s.expected_proof_bytes)())
+}
+
+/// The setup's vadcop_final key for this family and stage, or `None` if this crate has
+/// none for it. Selecting by a proof's own `hash`/`compressed` is safe: the key comes
+/// from the crate, the proof only picks which. Leaf proofs only; a recurser proof
+/// verifies under its recurser's key.
+pub fn vadcop_vk(hash: &str, compressed: bool) -> Option<[u64; PROGRAM_VK_LEN]> {
+    stage_verifier(hash, compressed).map(|s| s.vk)
 }
 
 /// Return the program-level publics `[program VK | inputs]` from a vadcop_final
@@ -282,50 +377,6 @@ mod tests {
     use alloc::string::ToString;
     use alloc::vec;
     use alloc::vec::Vec;
-
-    const HDR: usize = 2;
-    const LEAF_LEN: usize = HDR + EXPECTED_N_PUBLICS_FINAL as usize;
-
-    /// `[minimal][n_publics][flag | vk(4) | inputs]`, the prefix the classifiers read.
-    fn leaf(flag: u64, vk: [u64; PROGRAM_VK_LEN]) -> [u64; LEAF_LEN] {
-        let mut v = [7u64; LEAF_LEN];
-        v[0] = 0;
-        v[1] = EXPECTED_N_PUBLICS_FINAL;
-        v[2] = flag;
-        v[3..3 + PROGRAM_VK_LEN].copy_from_slice(&vk);
-        v
-    }
-
-    #[test]
-    fn a_leaf_is_not_an_aggregate() {
-        let p = leaf(IS_VADCOP_FINAL_PROOF, [1, 2, 3, 4]);
-        assert_eq!(committed_is_aggregate(&p), Some(false));
-        assert_eq!(committed_program_vk(&p), Some(&[1u64, 2, 3, 4][..]));
-    }
-
-    #[test]
-    fn a_flag_zero_proof_is_an_aggregate() {
-        let p = leaf(0, [9, 9, 9, 9]);
-        assert_eq!(committed_is_aggregate(&p), Some(true));
-        assert_eq!(committed_program_vk(&p), Some(&[9u64, 9, 9, 9][..]));
-    }
-
-    /// Compression strips the flag, which is why an aggregate is refused compression.
-    #[test]
-    fn a_minimal_proof_cannot_be_classified() {
-        let mut p = leaf(0, [1, 2, 3, 4]);
-        p[0] = 1;
-        p[1] = EXPECTED_N_PUBLICS_COMPRESSED;
-        assert_eq!(committed_is_aggregate(&p), None);
-    }
-
-    #[test]
-    fn a_truncated_proof_classifies_as_nothing() {
-        assert_eq!(committed_is_aggregate(&[]), None);
-        assert_eq!(committed_is_aggregate(&[0]), None);
-        assert_eq!(committed_is_aggregate(&[0, EXPECTED_N_PUBLICS_FINAL]), None);
-        assert_eq!(committed_is_aggregate(&[0, 12, 0, 1, 2, 3, 4]), None);
-    }
 
     /// Every family the enum knows must round-trip through its wire tag.
     #[test]
@@ -369,17 +420,6 @@ mod tests {
         assert!(!verify_vadcop_final(&final_proof(publics, false), &[1, 2, 3, 4]));
     }
 
-    /// The marker sits outside the STARK payload, so a garbage value must be refused
-    /// here or an otherwise valid full proof verifies while declaring nonsense.
-    #[test]
-    fn a_non_boolean_minimal_marker_is_refused() {
-        let mut p = leaf(IS_VADCOP_FINAL_PROOF, [1, 2, 3, 4]).to_vec();
-        p[0] = 2;
-        assert!(!verify_vadcop_final_proof(&p, &[1, 2, 3, 4], "Poseidon2"));
-        assert_eq!(committed_program_vk(&p), None);
-        assert_eq!(committed_is_aggregate(&p), None);
-    }
-
     /// The `/8` word conversion in the length gate assumes a byte count that is a whole
     /// number of u64 words; pin that for every stage the keys actually build.
     #[test]
@@ -401,55 +441,36 @@ mod tests {
         assert_eq!(expected_proof_bytes("poseidon3", false), None);
     }
 
-    /// A body whose publics prefix is right but whose STARK payload is the wrong length
-    /// must be refused here, not handed to fixed-layout generated code.
-    #[test]
-    fn a_wrong_length_stark_payload_is_refused() {
-        let words = 1
-            + EXPECTED_N_PUBLICS_FINAL as usize
-            + expected_proof_bytes("Poseidon2", false).unwrap() / 8;
-
-        let mut exact = vec![0u64; 1 + words];
-        exact[0] = 0;
-        exact[1] = EXPECTED_N_PUBLICS_FINAL;
-        exact[2] = IS_VADCOP_FINAL_PROOF;
-
-        let mut short = exact.clone();
-        short.pop();
-        let mut long = exact.clone();
-        long.push(0);
-
-        // All three fail (the payload is zeros), but the two mis-sized ones must be
-        // rejected by the length gate rather than reaching the verifier at all.
-        assert!(!verify_vadcop_final_proof(&short, &[1, 2, 3, 4], "Poseidon2"));
-        assert!(!verify_vadcop_final_proof(&long, &[1, 2, 3, 4], "Poseidon2"));
-        assert!(!verify_vadcop_final_proof(&exact, &[1, 2, 3, 4], "Poseidon2"));
-    }
-
     /// The circuit emits slot 0 as 1 (leaf) or 0 (fold) and nothing else, so a third
     /// value is malformed, not a third classification.
     #[test]
-    fn an_out_of_range_leaf_flag_is_refused_everywhere() {
-        let mut p = leaf(2, [1, 2, 3, 4]).to_vec();
-        assert_eq!(committed_is_aggregate(&p), None, "flag 2 is not a fold");
-        assert!(!verify_vadcop_final_proof(&p, &[1, 2, 3, 4], "Poseidon2"));
+    fn the_leaf_flag_is_strictly_boolean() {
+        assert_eq!(is_aggregate_flag(IS_VADCOP_FINAL_PROOF), Some(false));
+        assert_eq!(is_aggregate_flag(0), Some(true));
+        assert_eq!(is_aggregate_flag(2), None);
 
         let mut publics = vec![0u64; EXPECTED_N_PUBLICS_FINAL as usize];
         publics[0] = 2;
         assert!(!verify_vadcop_final(&final_proof(publics, false), &[1, 2, 3, 4]));
-
-        // 0 and 1 still classify, and in the right direction.
-        p[2] = IS_VADCOP_FINAL_PROOF;
-        assert_eq!(committed_is_aggregate(&p), Some(false));
-        p[2] = 0;
-        assert_eq!(committed_is_aggregate(&p), Some(true));
     }
 
-    /// A non-canonical public must be refused before it reaches the STARK verifier.
+    /// Every published key is a canonical field element per limb, and no two stages share
+    /// one (a copy-paste between stages would otherwise go unnoticed).
     #[test]
-    fn a_non_canonical_public_is_refused() {
-        let mut p = leaf(IS_VADCOP_FINAL_PROOF, [1, 2, 3, 4]).to_vec();
-        p[2 + VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN] = GOLDILOCKS_ORDER;
-        assert!(!verify_vadcop_final_proof(&p, &[1, 2, 3, 4], "Poseidon2"));
+    fn every_published_key_is_canonical_and_distinct() {
+        let stages = [
+            ("blake3", false),
+            ("Poseidon1", false),
+            ("Poseidon1", true),
+            ("Poseidon2", false),
+            ("Poseidon2", true),
+        ];
+        let keys: Vec<_> = stages.iter().filter_map(|&(h, c)| vadcop_vk(h, c)).collect();
+        assert!(!keys.is_empty());
+        for (i, k) in keys.iter().enumerate() {
+            assert!(publics_are_canonical(k), "{k:?}");
+            assert!(!keys[..i].contains(k), "{k:?} appears twice");
+        }
+        assert_eq!(vadcop_vk("blake3", true), None);
     }
 }

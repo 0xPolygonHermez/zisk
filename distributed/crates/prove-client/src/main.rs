@@ -255,8 +255,22 @@ fn run_prove(
 
             let out_path =
                 output.cloned().unwrap_or_else(|| PathBuf::from(format!("{job_id}.proof.bin")));
-            std::fs::write(&out_path, &p.data)
-                .with_context(|| format!("Cannot write proof to {}", out_path.display()))?;
+            // Saved as the file `cargo-zisk` writes and `verify`/`wrap`/`aggregate` read. If
+            // that fails, the coordinator's raw bytes are kept rather than losing the proof.
+            if let Err(e) = p
+                .decode_proof()
+                .map_err(anyhow::Error::from)
+                .and_then(|proof| proof.save(&out_path).map_err(anyhow::Error::from))
+            {
+                let raw = out_path.with_extension("coordinator.bin");
+                std::fs::write(&raw, &p.data)
+                    .with_context(|| format!("Cannot write proof to {}", raw.display()))?;
+                anyhow::bail!(
+                    "Cannot save the proof as {}: {e:#}. The coordinator's bytes are in {}",
+                    out_path.display(),
+                    raw.display()
+                );
+            }
             println!("Proof saved to {}", out_path.display());
 
             if !p.public_inputs.is_empty() {
