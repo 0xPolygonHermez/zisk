@@ -55,16 +55,6 @@ pub struct MtChunkProcessor<F: PrimeField64> {
     errors: Mutex<Vec<String>>,
 }
 
-impl<F: PrimeField64> crate::CountedPrefix for MtChunkProcessor<F> {
-    fn visit(
-        &self,
-        position: usize,
-        f: &mut dyn FnMut(&[(ChunkId, &dyn zisk_common::BusDeviceMetrics)]),
-    ) {
-        self.visit_counted(position, f);
-    }
-}
-
 impl<F: PrimeField64> MtChunkProcessor<F> {
     /// Fresh processor with no recorded chunks or errors.
     pub fn new() -> Self {
@@ -110,28 +100,6 @@ impl<F: PrimeField64> MtChunkProcessor<F> {
     /// Returns the combined error log if any chunk task recorded a
     /// failure; otherwise returns sorted-by-chunk counters and the
     /// concatenated `pub_outs`.
-    /// See [`crate::CountedPrefix::visit`]. The counting tasks wait on the lock while `f` runs.
-    pub fn visit_counted(
-        &self,
-        position: usize,
-        f: &mut dyn FnMut(&[(ChunkId, &dyn zisk_common::BusDeviceMetrics)]),
-    ) {
-        let Ok(results) = self.results.lock() else { return };
-        let mut by_chunk: Vec<Option<&StaticDataBus<PayloadType, F>>> = vec![None; results.len()];
-        for (chunk_id, bus) in results.iter() {
-            if let Some(slot) = by_chunk.get_mut(chunk_id.0) {
-                *slot = Some(bus);
-            }
-        }
-        let mut prefix = Vec::with_capacity(by_chunk.len());
-        for (idx, bus) in by_chunk.iter().enumerate() {
-            let Some(bus) = bus else { break };
-            let Some(metrics) = bus.precompile_metrics_at(position) else { return };
-            prefix.push((ChunkId(idx), metrics));
-        }
-        f(&prefix);
-    }
-
     pub fn finalize(self) -> ExecutorResult<(CountersChunkMetrics, PubOutsCollector)> {
         let err_vec = self
             .errors

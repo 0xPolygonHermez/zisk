@@ -23,23 +23,8 @@ use zisk_core::ZiskRom;
 /// — while the emulation is still running. Runs on the reader thread, so it
 /// does real work only on the chunks that complete an instance. Returning `Err`
 /// aborts the ASM run.
-pub type ChunkHook<'a> = &'a dyn Fn(
-    usize,
-    &[Arc<zisk_common::EmuTrace>],
-    bool,
-    &dyn CountedPrefix,
-) -> ExecutorResult<()>;
-
-/// The counters of the chunks counted so far, as the hook sees them mid-run.
-pub trait CountedPrefix {
-    /// Runs `f` over the precompile counters at bundle `position` of the longest run of chunks,
-    /// from the first, whose counting has finished.
-    fn visit(
-        &self,
-        position: usize,
-        f: &mut dyn FnMut(&[(zisk_common::ChunkId, &dyn zisk_common::BusDeviceMetrics)]),
-    );
-}
+pub type ChunkHook<'a> =
+    &'a dyn Fn(usize, &[Arc<zisk_common::EmuTrace>], bool) -> ExecutorResult<()>;
 
 /// Phase-1 actor: runs the chosen emulator backend, returns a  [`ExecutionOutput`]
 /// regardless of which backend ran.
