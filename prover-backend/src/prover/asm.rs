@@ -1,6 +1,6 @@
 use crate::execute_client::ExecuteClient;
 use crate::{
-    check_paths_exist, ensure_program_vk, get_asm_paths, get_rom_bin_path,
+    check_paths_exist, ensure_program_vk, get_rom_bin_path,
     guest::ProgramId,
     prover::{ProverBackend, ProverEngine, ZiskBackend, ZiskProver},
     BackendProverOpts, ExecuteOutput, GuestProgram, ProveOutput, VerifyConstraintsOutput,
@@ -30,7 +30,7 @@ use zisk_common::{
 };
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
-use zisk_precomp_hints::{HintsProcessor, MpiBroadcastFn};
+use zisk_precomp_hints::HintsProcessor;
 use zisk_rom_setup::{generate_assembly, get_output_path};
 use zisk_transpiler_riscv::Riscv2zisk;
 
@@ -154,10 +154,12 @@ impl AsmProver {
         elf: &GuestProgram,
         with_hints: bool,
     ) -> Result<(PathBuf, PathBuf), anyhow::Error> {
-        let default_cache_path = &ZiskPaths::global().cache;
-        let (asm_mt_filename, asm_rh_filename) = get_asm_paths(elf, with_hints)?;
-        let asm_mt_path = default_cache_path.join(asm_mt_filename);
-        let asm_rh_path = default_cache_path.join(asm_rh_filename);
+        let hash = zisk_rom_setup::get_elf_data_hash(elf.elf());
+        let [asm_mt_path, asm_rh_path, _] = zisk_rom_setup::get_assembly_file_paths_from_id(
+            &hash,
+            &ZiskPaths::global().cache,
+            with_hints,
+        );
 
         Ok((asm_mt_path, asm_rh_path))
     }
@@ -226,7 +228,13 @@ impl AsmProver {
         // and the mapping side is the single `AsmSharedResources` looked up
         // below. Each program owns only its three server processes and its
         // semaphores.
-        let asm_services = AsmServices::new(
+        //
+        // The claim that started the services is held until this setup returns.
+        // Mapping initializes the shared control and input segments, which a job may
+        // be using; and until the mappings are published below, a second setup would
+        // find none and build its own, while a job could register its resources only
+        // to have them replaced here.
+        let (asm_services, claim) = AsmServices::new(
             world_rank,
             local_rank,
             elf.program_id.hash_id.as_ref().to_string(),
@@ -234,11 +242,6 @@ impl AsmProver {
             with_hints,
             asm_runner_options,
         )?;
-        // Held until this setup returns. Mapping initializes the shared control and
-        // input segments, which a job may be using; and until the mappings are
-        // published below, a second setup would find none and build its own, while a
-        // job could register its resources only to have them replaced here.
-        let claim = asm_services.claim();
 
         // Borrow proofman's already-allocated unified GPU buffer.
         // Zero values when CUDA is unavailable; downstream consumers no-op on (0, 0).
@@ -252,19 +255,27 @@ impl AsmProver {
             GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize, gpu_id }
         };
 
-        let shared = self.shared_resources_for(
-            with_hints,
-            local_rank,
-            unlock_mapped_memory,
-            verbose_mode,
-            mpi_broadcast_fn,
-            init_rom,
-            asm_services.shm_prefix(),
-            gpu_buffer_source,
-        )?;
+        // One set of mappings per hints mode for the whole prover: a second over the
+        // same segments would be another set of `MAP_LOCKED` mappings for no gain. Built
+        // here on first use and published below only once the setup has succeeded,
+        // since until then the lease that keeps the segments alive can still drop.
+        let cached = self.shared_resources.read().unwrap().get(&with_hints).cloned();
+        let shared = match cached {
+            Some(shared) => shared,
+            None => Arc::new(AsmSharedResources::new(
+                local_rank,
+                unlock_mapped_memory,
+                verbose_mode,
+                mpi_broadcast_fn,
+                init_rom,
+                with_hints,
+                asm_services.shm_prefix(),
+                gpu_buffer_source,
+            )?),
+        };
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
-        let resources = Arc::new(AsmResources::new(shared.clone(), asm_services)?);
+        let resources = Arc::new(AsmResources::new(shared.clone(), asm_services));
         resources.activate(&claim)?;
         self.core_prover.backend.set_asm_resources(resources.clone())?;
 
@@ -276,44 +287,6 @@ impl AsmProver {
         );
 
         Ok(())
-    }
-
-    /// The worker's shmem mappings for `with_hints`, building them on first use.
-    ///
-    /// Building, not caching: publishing them is the caller's to do once its
-    /// setup has succeeded, since until then the lease that keeps the segments
-    /// alive can still be dropped.
-    ///
-    /// One `AsmSharedResources` per hints mode for the whole worker, not one per
-    /// program: the segments it maps are named per pid+rank+mode, so a second
-    /// instance would be a second set of `MAP_LOCKED` mappings over the same
-    /// inodes for no gain.
-    #[allow(clippy::too_many_arguments)]
-    fn shared_resources_for(
-        &self,
-        with_hints: bool,
-        local_rank: i32,
-        unlock_mapped_memory: bool,
-        verbose_mode: VerboseMode,
-        mpi_broadcast_fn: Option<MpiBroadcastFn>,
-        init_rom: bool,
-        shm_prefix: &str,
-        gpu_buffer_source: GpuBufferSource,
-    ) -> Result<Arc<AsmSharedResources>> {
-        if let Some(shared) = self.shared_resources.read().unwrap().get(&with_hints) {
-            return Ok(shared.clone());
-        }
-
-        Ok(Arc::new(AsmSharedResources::new(
-            local_rank,
-            unlock_mapped_memory,
-            verbose_mode,
-            mpi_broadcast_fn,
-            init_rom,
-            with_hints,
-            shm_prefix,
-            gpu_buffer_source,
-        )?))
     }
 
     /// [`register_program`](ProverEngine::register_program), holding the shared

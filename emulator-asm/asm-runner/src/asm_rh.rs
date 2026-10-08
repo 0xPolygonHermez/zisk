@@ -71,16 +71,16 @@ impl AsmRHData {
                 (len + 2) * 8 <= available,
                 "Data length {len} exceeds allocated shared memory size"
             );
-            let inst_count = Vec::from_raw_parts(data_ptr.add(1), len, len);
 
             // FROPS multiplicity, which follows it: [frops_len][counter; frops_len]
             let frops_ptr = data_ptr.add(1 + len);
             let frops_len = std::ptr::read(frops_ptr) as usize;
-            if (len + frops_len + 2) * 8 > available {
-                // Not dropped: it aliases the mapping (see the `# Invariant` above).
-                std::mem::forget(inst_count);
-                anyhow::bail!("FROPS length {frops_len} exceeds allocated shared memory size");
-            }
+            anyhow::ensure!(
+                (len + frops_len + 2) * 8 <= available,
+                "FROPS length {frops_len} exceeds allocated shared memory size"
+            );
+
+            let inst_count = Vec::from_raw_parts(data_ptr.add(1), len, len);
             let frops_count = Vec::from_raw_parts(frops_ptr.add(1), frops_len, frops_len);
 
             Ok(AsmRHData { steps: asm_shared_memory.map_header().steps, inst_count, frops_count })

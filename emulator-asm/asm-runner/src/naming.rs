@@ -25,8 +25,7 @@ pub(crate) const NAMESPACE: &str = "ZISK";
 /// would destroy the other's live segments. The same holds across ranks and pids, since the
 /// marker ends every prefix. Keep any future marker prefix-free for the same reason.
 pub(crate) fn shm_prefix_for(pid: u32, local_rank: i32, with_hints: bool) -> String {
-    let hints = if with_hints { "_h1" } else { "_h0" };
-    format!("{NAMESPACE}_{pid}_{local_rank}{hints}")
+    format!("{NAMESPACE}_{pid}_{local_rank}{}", hints_marker(with_hints))
 }
 
 /// Prefix of one program's semaphores: as [`shm_prefix_for`], with the first 32 characters of
@@ -39,8 +38,16 @@ pub(crate) fn sem_prefix_for(
     with_hints: bool,
 ) -> String {
     let hash = &program_hash[..program_hash.len().min(32)];
-    let hints = if with_hints { "_h1" } else { "_h0" };
-    format!("{NAMESPACE}_{pid}_{hash}_{local_rank}{hints}")
+    format!("{NAMESPACE}_{pid}_{hash}_{local_rank}{}", hints_marker(with_hints))
+}
+
+/// The marker that ends every prefix; see [`shm_prefix_for`] for why it is never empty.
+fn hints_marker(with_hints: bool) -> &'static str {
+    if with_hints {
+        "_h1"
+    } else {
+        "_h0"
+    }
 }
 
 fn build_service_shmem_name(prefix: &str, asm_service: AsmService, suffix: &str) -> String {

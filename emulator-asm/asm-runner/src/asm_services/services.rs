@@ -81,7 +81,8 @@ impl SegmentsLock {
 /// outputs, so only one may use them at a time: from the handoff that makes its
 /// program active ([`AsmServices::activate`], which requires a claim) through
 /// the last read of its job's results. Starting a program's services takes one
-/// too, since starting writes the guest RAM and ROM.
+/// too, since starting writes the guest RAM and ROM, and [`AsmServices::new`]
+/// returns it so the setup keeps it until its program is active.
 ///
 /// Take it with [`AsmServices::claim`] before anything of the job touches the
 /// segments, and hold it until the job's results have been read. Not reentrant:
@@ -299,7 +300,11 @@ impl AsmServices {
         self.inner.service.world_rank
     }
 
-    /// Wrapper used by the CLI and the first worker setup.
+    /// Start a program's services on this process's segments for its rank and
+    /// hints mode, creating the segments if no program holds them yet.
+    ///
+    /// Returns them with the claim taken to start them: keep it until the program
+    /// is active ([`Self::activate`]), so no other setup or job gets in between.
     pub fn new(
         world_rank: i32,
         local_rank: i32,
@@ -307,7 +312,7 @@ impl AsmServices {
         ziskemuasm_path: &Path,
         with_hints: bool,
         options: AsmRunnerOptions,
-    ) -> Result<AsmServices> {
+    ) -> Result<(AsmServices, SegmentsClaim)> {
         let pid = std::process::id();
 
         // The hints mode belongs on both prefixes: `get_precompile_results()` comes
@@ -340,7 +345,7 @@ impl AsmServices {
         // Starting services writes the shared guest RAM and ROM, so no job may be
         // using the segments, and the program they serve must have finished with
         // them first.
-        let _claim = Self::claim_prefix(&shm_prefix);
+        let claim = Self::claim_prefix(&shm_prefix);
         Self::quiesce_active(&shm_prefix);
 
         // Phase 2: start services and wait for them to be ready.
@@ -367,7 +372,7 @@ impl AsmServices {
                 .with_context(|| format!("Service {service} failed to respond to ping"))?;
         }
 
-        Ok(AsmServices { inner: Arc::new(inner) })
+        Ok((AsmServices { inner: Arc::new(inner) }, claim))
     }
 
     /// Clean up all shared memory and semaphores for currently running services.
@@ -544,7 +549,7 @@ impl AsmServices {
     /// in order: wait until the program they serve now has finished with them
     /// (`quiesce_active`), let the caller rebind whatever is per program
     /// (`bind`, the semaphores of the parent's shared writers), and rebuild this
-    /// program's guest RAM and ROM ([`Self::reset_services`]). It is recorded as
+    /// program's guest RAM and ROM ((`reset_services`)). It is recorded as
     /// active only once all three have succeeded.
     ///
     /// The record lives with the segments, not with the caller, so every client
@@ -564,9 +569,7 @@ impl AsmServices {
                 claim.shm_prefix
             ));
         }
-        if let Some((service, how)) = self.inner.service.exited_service() {
-            return Err(AsmRunError::ServiceDied { service: service.to_string(), how }.into());
-        }
+        self.inner.service.check_alive()?;
         if self.is_active() {
             return Ok(());
         }
@@ -599,7 +602,7 @@ impl AsmServices {
     }
 
     /// Whether the shared segments currently serve this program.
-    pub fn is_active(&self) -> bool {
+    fn is_active(&self) -> bool {
         let leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
         leases
             .get(&self.inner.shm_prefix)
@@ -649,40 +652,40 @@ impl AsmServices {
     ///
     /// Runs the three in parallel: each is a 512 MiB memset plus a ROM rewrite,
     /// and they are separate processes with independent stdio state.
-    pub fn reset_services(&self) -> Result<()> {
+    fn reset_services(&self) -> Result<()> {
         Self::SERVICES
             .par_iter()
-            .try_for_each(|service| {
-                let response = self.inner.service.send_reset_request(service).map_err(|e| {
-                    // A binary generated before the reset request existed exits on
-                    // it, and its own message is lost with its stderr. The cache names
-                    // binaries by ELF hash and hints mode only, so say what fixes it.
-                    let died = e.chain().any(|cause| {
-                        matches!(
-                            cause.downcast_ref::<AsmRunError>(),
-                            Some(AsmRunError::ServiceDied { .. })
-                        )
-                    });
-                    if died {
-                        e.context(format!(
-                            "Service {service} exited on the reset request. A binary cached \
-                                 before that request existed exits on it with status 255; if \
-                                 that is the status reported, clear the cached ASM binaries \
-                                 (~/.zisk/cache by default) to regenerate them"
-                        ))
-                    } else {
-                        e.context(format!("Service {service} failed to reset"))
-                    }
-                })?;
-                if response.result != 0 {
-                    return Err(anyhow::anyhow!(
-                        "ASM {service} service returned non-zero result to the reset request: {}",
-                        response.result
-                    ));
-                }
-                Ok(())
-            })
+            .try_for_each(|service| self.reset_service(service))
             .context("Failed to reset ASM services")
+    }
+
+    /// One service's part of [`reset_services`](Self::reset_services).
+    fn reset_service(&self, service: &AsmService) -> Result<()> {
+        let response = self.inner.service.send_reset_request(service).map_err(|e| {
+            // A binary generated before the reset request existed exits on
+            // it, and its own message is lost with its stderr. The cache names
+            // binaries by ELF hash and hints mode only, so say what fixes it.
+            let died = e.chain().any(|cause| {
+                matches!(cause.downcast_ref::<AsmRunError>(), Some(AsmRunError::ServiceDied { .. }))
+            });
+            if died {
+                e.context(format!(
+                    "Service {service} exited on the reset request. A binary cached \
+                         before that request existed exits on it with status 255; if \
+                         that is the status reported, clear the cached ASM binaries \
+                         (~/.zisk/cache by default) to regenerate them"
+                ))
+            } else {
+                e.context(format!("Service {service} failed to reset"))
+            }
+        })?;
+        if response.result != 0 {
+            return Err(anyhow::anyhow!(
+                "ASM {service} service returned non-zero result to the reset request: {}",
+                response.result
+            ));
+        }
+        Ok(())
     }
 
     /// Send a minimal trace request to the MT service and return the response.

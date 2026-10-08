@@ -110,7 +110,6 @@ const SEM_CHUNK_DONE_WAIT_DURATION: std::time::Duration = std::time::Duration::f
 /// be miscounted as a fresh signal. `sem_open` does not reset an existing
 /// semaphore's value — the initial value is ignored once the name exists — so
 /// re-opening is not enough and the count has to be swept explicitly.
-///
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub(crate) fn drain_semaphore(sem: &mut named_sem::NamedSemaphore) -> u64 {
     let mut swept = 0;

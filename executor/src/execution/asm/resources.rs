@@ -190,8 +190,8 @@ impl AsmResources {
     ///
     /// Does *not* bind semaphores — [`Self::activate`] does, because the shared
     /// segments serve one program at a time and binding is what picks which.
-    pub fn new(shared: Arc<AsmSharedResources>, asm_services: AsmServices) -> ExecutorResult<Self> {
-        Ok(Self { shared, asm_services })
+    pub fn new(shared: Arc<AsmSharedResources>, asm_services: AsmServices) -> Self {
+        Self { shared, asm_services }
     }
 
     /// Wait until no setup or job is using the shared segments, and hold them
@@ -243,11 +243,11 @@ impl AsmResources {
         gpu: bool,
     ) -> ExecutorResult<Self> {
         let options = AsmRunnerOptions::new().with_local_rank(0);
-        let services = AsmServices::new(0, 0, elf_hash, asm_mt_path, with_hints, options)
-            .map_err(ExecutorError::asm_backend)?;
-        // Mapping initializes the shared control and input segments, which another
+        // The claim that started the services is kept until the program is active:
+        // mapping initializes the shared control and input segments, which another
         // client's job in this process may be using.
-        let claim = services.claim();
+        let (services, claim) = AsmServices::new(0, 0, elf_hash, asm_mt_path, with_hints, options)
+            .map_err(ExecutorError::asm_backend)?;
         let gpu_buffer_src =
             if gpu { GpuBufferSource::SelfAllocated } else { GpuBufferSource::Cpu };
         let shared = Arc::new(AsmSharedResources::new(
@@ -260,7 +260,7 @@ impl AsmResources {
             services.shm_prefix(),
             gpu_buffer_src,
         )?);
-        let resources = Self::new(shared, services)?;
+        let resources = Self::new(shared, services);
         resources.activate(&claim)?;
         Ok(resources)
     }

@@ -99,6 +99,12 @@ impl StdioHandle {
         AsmRunError::ServiceDied { service: service.to_string(), how: how.to_string() }.into()
     }
 
+    /// Kill the process and reap it; one already gone is only reaped.
+    fn kill_and_reap(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+
     /// Whether the process has exited. A handle that is busy with a request is alive by
     /// definition, and is not waited for.
     fn has_exited(handle: &Mutex<Self>) -> Option<String> {
@@ -155,8 +161,7 @@ impl StdioService {
         // segments ends with this error, so stop every service that did start first.
         if let Some(e) = failure {
             for mut handle in handles {
-                let _ = handle.child.kill();
-                let _ = handle.child.wait();
+                handle.kill_and_reap();
             }
             return Err(e);
         }
@@ -200,9 +205,7 @@ impl StdioService {
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub(super) fn close(&self, service: &AsmService) {
-        let mut guard = self.state[service.as_index()].lock().unwrap();
-        let _ = guard.child.kill();
-        let _ = guard.child.wait();
+        self.state[service.as_index()].lock().unwrap().kill_and_reap();
     }
 
     pub(super) fn running_services(&self) -> Vec<AsmService> {
@@ -216,12 +219,15 @@ impl StdioService {
             .collect()
     }
 
-    /// The first service found to have exited, with how it exited. Busy services count as
-    /// alive and are not waited for.
-    pub(super) fn exited_service(&self) -> Option<(AsmService, String)> {
-        AsmServices::SERVICES.iter().find_map(|service| {
-            StdioHandle::has_exited(&self.state[service.as_index()]).map(|how| (*service, how))
-        })
+    /// Fails with [`AsmRunError::ServiceDied`] for the first service found to have exited.
+    /// Busy services count as alive and are not waited for.
+    pub(super) fn check_alive(&self) -> Result<()> {
+        for service in &AsmServices::SERVICES {
+            if let Some(how) = StdioHandle::has_exited(&self.state[service.as_index()]) {
+                return Err(StdioHandle::died(service, &how));
+            }
+        }
+        Ok(())
     }
 
     pub(super) fn send_status_request(&self, service: &AsmService) -> Result<PingResponse> {

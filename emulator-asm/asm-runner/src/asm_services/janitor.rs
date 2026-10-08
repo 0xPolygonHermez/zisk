@@ -178,7 +178,7 @@ mod tests {
         let survivors: Vec<bool> = neighbour_segs.iter().map(|seg| shm_exists(seg)).collect();
         let target_gone = !shm_exists(&target_seg);
         for seg in neighbour_segs.iter().chain([&target_seg]) {
-            unsafe { libc::shm_unlink(std::ffi::CString::new(seg.as_str()).unwrap().as_ptr()) };
+            let _ = unlink_shmem(seg);
         }
         assert!(target_gone, "{target_seg} must be unlinked");
         assert!(
