@@ -782,7 +782,21 @@ fn fmt_value_c(e: &Export) -> Result<String, String> {
         return Ok(c_string_literal(s));
     }
     check_64bit_literal(e, "C")?;
-    Ok(format!("(({}){})", c_type(e), fmt_number(&e.value, e.radix, false)))
+    Ok(format!("(({}){})", c_type(e), c_int_literal(e)))
+}
+
+/// The C integer literal for a value in the 64-bit range. A bare literal is fine up to
+/// `i64::MAX`; past that an unsuffixed decimal has no standard type (strict C11 rejects
+/// it), so unsigned values get `ULL`. `i64::MIN` has no literal at all (its magnitude
+/// overflows), so it is written as an expression.
+fn c_int_literal(e: &Export) -> String {
+    match e.value {
+        Value::I(v) if v == i128::from(i64::MIN) => "(-9223372036854775807LL - 1)".to_string(),
+        Value::U(v) if v > i64::MAX as u128 => {
+            format!("{}ULL", fmt_number(&e.value, e.radix, false))
+        }
+        _ => fmt_number(&e.value, e.radix, false),
+    }
 }
 
 /// A C string literal for `s`. Not Rust's `{:?}`: C has no `\u{..}` escapes. Every byte
@@ -1148,6 +1162,28 @@ mod tests {
         assert!(render(&[(&BAD_PIL_PREFIX, PIL)], "test").is_err(), "`1X` starts with a digit");
         assert!(render(&[(&G, DOT_C)], "test").is_err(), "`.` is not valid in a C macro");
         assert!(render(&[(&G, DOT_ASM)], "test").is_ok(), "GAS symbols take `.` and `$`");
+    }
+
+    #[test]
+    fn c_literals_are_valid_at_the_64_bit_boundaries() {
+        static G: GroupMeta = group("b", "b.h");
+        static E: &[Export] = &[
+            Export {
+                radix: Radix::Dec,
+                ..export("UMAX", Value::U(u64::MAX as u128), Targets::C, None)
+            },
+            Export {
+                radix: Radix::Dec,
+                ..export("IMIN", Value::I(i64::MIN as i128), Targets::C, None)
+            },
+            export("IMAX", Value::I(i64::MAX as i128), Targets::C, None),
+        ];
+        let files = render(&[(&G, E)], "test").expect("render");
+        let h = &files.iter().find(|f| f.name == "b.h").expect("b.h").contents;
+        assert!(h.contains("((uint64_t)18446744073709551615ULL)"), "{h}");
+        assert!(h.contains("((int64_t)(-9223372036854775807LL - 1))"), "{h}");
+        // Below the boundary nothing changes: the bare literal stays.
+        assert!(h.contains("((int64_t)0x7fffffffffffffff)"), "{h}");
     }
 
     #[test]

@@ -10,6 +10,10 @@ on:
     paths:
       - 'lib-c/**'
       - 'emulator-asm/Makefile'
+      # The packaged emulator builds from the generated constants header that
+      # release.yml stages from here, included by constants.hpp.
+      - 'definitions/src/generated/c/**'
+      - 'emulator-asm/src/constants.hpp'
       - 'rom-setup/src/asm_setup.rs'
       - '.github/workflows/release.yml'
       - 'tools/test-env/test_emulator_asm_packaging.sh'
