@@ -79,6 +79,7 @@ members = [
   "definitions",
   "definitions/macros",
   "definitions/generator",
+  "definitions/source",
   "definitions/sync",
   "zkvm-interface",
   "verifier",
@@ -153,6 +154,7 @@ zisk-verifier = { path = "verifier", version = "1.4.0-alpha" }
 zisk-definitions = { path = "definitions", version = "1.4.0-alpha" }
 zisk-definitions-macros = { path = "definitions/macros", version = "1.4.0-alpha" }
 zisk-definitions-generator = { path = "definitions/generator", version = "1.4.0-alpha" }
+zisk-definitions-source = { path = "definitions/source" }
 zisk-recurser = { path = "recurser", version = "1.4.0-alpha" }
 
 # Distributed crates

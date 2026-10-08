@@ -18,19 +18,7 @@ pub use hints::*;
 mod precompile_results;
 pub use precompile_results::*;
 
-// Constants, in two feature-gated views: without `gen`, consumers compile the
-// generated plain `pub const`s (`generated`, zero-dep); with `gen`, the sync build
-// compiles the `#[constants]` source (`constants`, `ZISK_CONSTANTS`). Mutually
-// exclusive so the `gen` build never depends on files it is about to regenerate.
-#[cfg(not(feature = "gen"))]
+// Constants generated from `zisk-definitions-source` by `cargo build -p
+// zisk-definitions-sync`: plain `pub const`s, one module per group.
 mod generated;
-// The glob re-exports nothing while `generated` is an empty stub; the allow is a
-// no-op once real constants populate it.
-#[cfg(not(feature = "gen"))]
-#[allow(unused_imports)]
 pub use generated::*;
-
-#[cfg(feature = "gen")]
-mod constants;
-#[cfg(feature = "gen")]
-pub use constants::ZISK_CONSTANTS;

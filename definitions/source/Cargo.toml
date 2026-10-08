@@ -1,0 +1,19 @@
+[package]
+name = "zisk-definitions-source"
+description = "The #[constants] source of zisk-definitions' generated constants (input to zisk-definitions-sync)"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+# Codegen input only; never published. Consumers use the plain `pub const`s generated
+# from it into zisk-definitions, so they never depend on the macros or the engine.
+publish = false
+
+[dependencies]
+zisk-definitions-macros = { workspace = true }
+zisk-definitions-generator = { workspace = true }

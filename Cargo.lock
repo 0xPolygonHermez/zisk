@@ -7594,10 +7594,6 @@ version = "1.4.0-alpha"
 [[package]]
 name = "zisk-definitions"
 version = "1.4.0-alpha"
-dependencies = [
- "zisk-definitions-generator",
- "zisk-definitions-macros",
-]
 
 [[package]]
 name = "zisk-definitions-generator"
@@ -7613,11 +7609,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-definitions-source"
+version = "1.4.0-alpha"
+dependencies = [
+ "zisk-definitions-generator",
+ "zisk-definitions-macros",
+]
+
+[[package]]
 name = "zisk-definitions-sync"
 version = "1.4.0-alpha"
 dependencies = [
- "zisk-definitions",
  "zisk-definitions-generator",
+ "zisk-definitions-source",
 ]
 
 [[package]]

@@ -1,10 +1,10 @@
 //! Regenerates the committed generated files from `#[constants]` definitions, and only
 //! when those sources change.
 //!
-//! A source crate (with `gen`) is a build-dependency, so it is compiled before this
-//! script runs — which is how we read the *evaluated* constant tables without tripping
-//! the build-script phase wall (a crate's own build.rs runs before its lib compiles, so
-//! this can't live in the source crate itself).
+//! Each source crate (e.g. `zisk-definitions-source`) is a build-dependency, so it is
+//! compiled before this script runs — which is how we read the *evaluated* constant
+//! tables without tripping the build-script phase wall (a crate's own build.rs runs
+//! before its lib compiles, so this can't live in the source crate itself).
 //!
 //! Codegen is expressed as a list of [`Job`]s, each mapping one source constant table
 //! to its per-target output dirs. See [`jobs`] for how to add another source or route a
@@ -47,8 +47,8 @@ impl Job {
 }
 
 fn main() {
-    // Job 1: generated constants for the `zisk-definitions` crate itself. The source is in
-    // definitions/sync/src/constants.
+    // Job 1: generated constants for the `zisk-definitions` crate. The source is the
+    // `zisk-definitions-source` crate (definitions/source).
     let defs = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("..");
 
     use DirMode::Exclusive;
@@ -60,11 +60,11 @@ fn main() {
     // (emulator-asm in an installed/packaged tree) get the C header copied to them at
     // package time — see release.yml / build_zisk.sh and emulator-asm/Makefile.
     let generated_folder = defs.join("src/generated");
-    let source_folder = defs.join("src/constants");
+    let source_folder = defs.join("source/src");
 
     let job1 = Job {
         watch: source_folder,
-        constants: zisk_definitions::ZISK_CONSTANTS,
+        constants: zisk_definitions_source::ZISK_CONSTANTS,
         rust: (generated_folder.clone(), Exclusive),
         c: (generated_folder.join("c"), Exclusive),
         pil: (generated_folder.join("pil"), Exclusive),
