@@ -1274,6 +1274,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     // If the coordinator attached setup info, run setup now — before entering
                     // the main event loop so no compute task can be processed without a guest program.
                     if let Some(setup) = response.setup_program {
+                        // The cancelled job may still be draining, since `drive_cancellation`
+                        // does not wait, and setting up a new program starts services that
+                        // rewrite the guest memory it may be using. The coordinator never sends
+                        // a setup to a computing worker, so this is the one path that needs
+                        // the gate `prepare_for_new_job` waits on.
+                        self.worker.prover_arc().wait_until_proofman_ready();
+
                         let worker_id = self.worker_config.worker.worker_id.as_string();
                         let job_id = setup.job_id.clone();
                         let hash_id = setup.hash_id.clone();
