@@ -44,12 +44,15 @@ file, while the transpiler recognizes it and loads the ROM directly.
 - **Header.** A valid `EI_MAG`/`EI_CLASS`/`EI_DATA`/`EI_VERSION` `e_ident`, a
   nonzero `e_entry` (any value; the real entry is inside the instruction stream —
   see §3.1), and one section header for `.ziskrom`. Nothing else is required.
-- **Detection & branch.** At the top of `elf2rom`
-  ([transpilers/riscv/src/elf2rom.rs](../transpilers/riscv/src/elf2rom.rs)) — before the
-  RISC-V `e_entry`/payload logic — check for the marker. If present, read
-  `.ziskrom` and hand it to the ROM-container decoder (§3), returning the
-  `ZiskRom`. Otherwise fall through to the existing RISC-V path. Every caller
-  (`Riscv2zisk::run`/`runfile`, `CustomRom::parse_rom`) inherits this for free.
+- **Detection & branch.** The guest-format dispatcher `program2rom`
+  ([transpilers/common/src/transpiler.rs](../transpilers/common/src/transpiler.rs))
+  checks every ELF input for the marker via `ziskbin2rom`
+  ([core/src/ziskbin.rs](../core/src/ziskbin.rs)). If present, it reads `.ziskrom`
+  and hands it to the ROM-container decoder (§3), returning the `ZiskRom`;
+  otherwise it falls through to the RISC-V transpiler `zisk_riscv::elf2rom`, which
+  itself rejects `EM_ZISK` inputs. Prebuilt ROMs must therefore go through
+  `program2rom`; every caller of it (`ZiskTranspiler::run`/`runfile`,
+  `CustomRom::parse_rom`) inherits this for free.
 
 ---
 
