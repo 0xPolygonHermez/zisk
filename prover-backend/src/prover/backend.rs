@@ -159,6 +159,11 @@ impl ProverBackend {
         self.executor.reset_for_new_job().map_err(Into::into)
     }
 
+    /// Joins the ROM-histogram runner the last job left parked, if any.
+    pub(crate) fn drain_rh(&self) {
+        self.executor.drain_rh();
+    }
+
     pub(crate) fn cancel(&self) {
         self.proofman.cancel();
     }

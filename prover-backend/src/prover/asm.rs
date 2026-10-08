@@ -318,12 +318,8 @@ impl AsmProver {
 
     /// [`register_program`](ProverEngine::register_program), holding the shared
     /// segments for the job that follows: drop the claim once its results have
-    /// been read. `None` for an emulator-only program, which uses none.
-    fn register_for_job(
-        &self,
-        program_id: &ProgramId,
-        with_hints: bool,
-    ) -> Result<Option<SegmentsClaim>> {
+    /// been read. It holds none for an emulator-only program, which uses none.
+    fn register_for_job(&self, program_id: &ProgramId, with_hints: bool) -> Result<JobClaim<'_>> {
         // Required when multiple programs have been set up: setup() activates each program's
         // services in turn, so the last setup wins. register_program restores the right services.
         // Prefer a full-ASM entry; fall back to an emulator-only entry for the same key.
@@ -368,7 +364,7 @@ impl AsmProver {
         let pctx = self.core_prover.backend.get_pctx()?;
         let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
         self.core_prover.backend.register_program(rom, &rom_bin_path, with_hints)?;
-        Ok(claim)
+        Ok(JobClaim { backend: &self.core_prover.backend, claim })
     }
 
     fn register_program_for_emulator(&self, program_id: &ProgramId) -> Result<()> {
@@ -584,8 +580,10 @@ impl ProverEngine for AsmProver {
 
     fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
-        let _claim = self.register_for_job(&program.program_id, with_hints)?;
-        self.core_prover.backend.execute(stdin)
+        let claim = self.register_for_job(&program.program_id, with_hints)?;
+        let output = self.core_prover.backend.execute(stdin)?;
+        claim.finish();
+        Ok(output)
     }
 
     fn stats(
@@ -597,14 +595,16 @@ impl ProverEngine for AsmProver {
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
-        let _claim = self.register_for_job(&program.program_id, with_hints)?;
+        let claim = self.register_for_job(&program.program_id, with_hints)?;
         if self.current_emulator_only.load(Ordering::SeqCst) {
             return Err(anyhow::anyhow!(
                 "Program '{}' was set up emulator_only — stats not supported. Re-run setup without --emulator-only.",
                 program.program_id.name
             ));
         }
-        self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
+        let output = self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)?;
+        claim.finish();
+        Ok(output)
     }
 
     fn get_instance_trace(
@@ -638,14 +638,16 @@ impl ProverEngine for AsmProver {
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
-        let _claim = self.register_for_job(&program.program_id, with_hints)?;
+        let claim = self.register_for_job(&program.program_id, with_hints)?;
         if self.current_emulator_only.load(Ordering::SeqCst) {
             return Err(anyhow::anyhow!(
                 "Program '{}' was set up emulator_only — verify_constraints not supported. Re-run setup without --emulator-only.",
                 program.program_id.name
             ));
         }
-        self.core_prover.backend.verify_constraints(stdin, debug_info)
+        let output = self.core_prover.backend.verify_constraints(stdin, debug_info)?;
+        claim.finish();
+        Ok(output)
     }
 
     fn prove(
@@ -656,14 +658,16 @@ impl ProverEngine for AsmProver {
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
-        let _claim = self.register_for_job(&program.program_id, with_hints)?;
+        let claim = self.register_for_job(&program.program_id, with_hints)?;
         if self.current_emulator_only.load(Ordering::SeqCst) {
             return Err(anyhow::anyhow!(
                 "Program '{}' was set up emulator_only — prove not supported. Re-run setup without --emulator-only.",
                 program.program_id.name
             ));
         }
-        self.core_prover.backend.prove(stdin, proof_kind, prover_options)
+        let output = self.core_prover.backend.prove(stdin, proof_kind, prover_options)?;
+        claim.finish();
+        Ok(output)
     }
 
     fn wrap_proof(
@@ -820,6 +824,33 @@ impl ProverEngine for AsmProver {
     }
 }
 
+/// The shared segments' claim for one job.
+///
+/// A job can succeed with its ROM-histogram runner still parked: `execute` never
+/// consumes the histogram, and the executor joins the runner only at its next
+/// job. The next program's activation waits for the outgoing services with a
+/// ping, which queues behind a request already sent but not behind one the
+/// runner has yet to send. So a job that succeeded releases its claim through
+/// [`finish`](Self::finish), which joins the runner first.
+struct JobClaim<'a> {
+    backend: &'a ProverBackend,
+    /// `None` for an emulator-only program, which uses no segments.
+    claim: Option<SegmentsClaim>,
+}
+
+impl JobClaim<'_> {
+    /// Join the job's parked ROM-histogram runner, if any, then release the
+    /// segments. For a job that succeeded only: a failed job's runner may be
+    /// waiting for input that will never come, and joining it could hang, so
+    /// dropping the claim leaves that runner to the executor's next job, as
+    /// before.
+    fn finish(self) {
+        if self.claim.is_some() {
+            self.backend.drain_rh();
+        }
+    }
+}
+
 /// ASM-backend configuration and runtime counters carried by the core prover.
 pub struct AsmInfo {
     /// Whether proving is distributed across multiple processes.
@@ -954,7 +985,7 @@ impl ExecuteClient for ZiskProver<Asm> {
         // comes first too, since it is what waits for that job's services; the worker
         // registers before resetting in the same way (`prepare_for_new_job`).
         let with_hints = self.prover.current_with_hints.load(Ordering::SeqCst);
-        let _claim = self.prover.register_for_job(&program.program_id, with_hints)?;
+        let claim = self.prover.register_for_job(&program.program_id, with_hints)?;
 
         // Every call is a job boundary for this client, which executes many times after
         // one setup. Before the hints below — see `ZiskExecutor::reset_for_new_job`.
@@ -964,6 +995,8 @@ impl ExecuteClient for ZiskProver<Asm> {
         }
         // Not `ZiskProver::execute`: that registers the program again, under a claim
         // of its own, and this one is not reentrant.
-        self.prover.core_prover.backend.execute(stdin)
+        let output = self.prover.core_prover.backend.execute(stdin)?;
+        claim.finish();
+        Ok(output)
     }
 }

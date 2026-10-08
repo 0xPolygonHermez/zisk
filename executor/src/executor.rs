@@ -269,7 +269,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
     /// Joins a ROM-histogram runner left unconsumed by a previous execution and releases
     /// its histogram. Idempotent, and a no-op when nothing is parked.
-    fn drain_rh(&self) {
+    pub fn drain_rh(&self) {
         if let Some(witness) = self.witness.as_ref() {
             witness.drain_rh();
         }
