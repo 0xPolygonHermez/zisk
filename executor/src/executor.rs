@@ -19,7 +19,9 @@ use crate::{
     ExecutionPhase, ExecutionState, InstanceAssigner, NoopProofRegistry, PlanPhase,
     ProofmanAdapter, StaticSMBundle, WitnessPhase,
 };
-use proofman_common::{lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
+use proofman_common::{
+    lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx, WitnessPriority,
+};
 use proofman_fields::PrimeField64;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use proofman_witness::{WitnessComponent, WitnessManager};
@@ -41,6 +43,7 @@ use zisk_core::{ZiskRom, CHUNK_SIZE};
 use zisk_sm_main::{MainPlanner, MainSM};
 
 use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
+use crate::ports::InstanceInfo;
 use crate::state::ChunkOps;
 
 /// `(chunk_id, metrics)` pair — the per-chunk device-metrics output
@@ -637,7 +640,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 }
             }
 
-            for (_, check_point, collect_info) in instances {
+            // Dealt round-robin: placed by weight among the Mains, they would gather on a few
+            // partitions and leave the others with the Mains.
+            for (k, check_point, collect_info) in instances {
                 let mut plan = Plan::new(
                     cut.airgroup_id,
                     cut.air_id,
@@ -646,11 +651,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     check_point,
                     Some(Box::new(collect_info)),
                 );
-                InstanceAssigner::assign_secn_instances(
-                    registry,
-                    global_ids,
-                    std::slice::from_mut(&mut plan),
-                )?;
+                let info = InstanceInfo::with_priority(
+                    cut.airgroup_id,
+                    cut.air_id,
+                    WitnessPriority::First,
+                );
+                let gid = registry.add_instance_assign_to(info, k % registry.n_partitions())?;
+                plan.set_global_id(gid.0);
+                global_ids.write_or_poison("global_ids")?.push(gid.0);
                 witness.release_logged_instance(registry, &self.state, plan, logs, traces)?;
             }
 

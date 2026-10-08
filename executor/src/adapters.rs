@@ -144,6 +144,24 @@ impl<F: PrimeField64> ProofRegistry for ProofmanAdapter<'_, F> {
         Ok(GlobalId(self.pctx.add_instance_assign(info.airgroup_id, info.air_id, info.priority)?))
     }
 
+    fn add_instance_assign_to(
+        &self,
+        info: InstanceInfo,
+        partition: usize,
+    ) -> ExecutorResult<GlobalId> {
+        self.track(&info);
+        Ok(GlobalId(self.pctx.add_instance_assign_to(
+            info.airgroup_id,
+            info.air_id,
+            info.priority,
+            partition,
+        )?))
+    }
+
+    fn n_partitions(&self) -> usize {
+        self.pctx.get_n_partitions()
+    }
+
     fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         self.track(&info);
         Ok(GlobalId(self.pctx.add_table(info.airgroup_id, info.air_id)?))

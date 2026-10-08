@@ -127,6 +127,20 @@ pub trait ProofRegistry: Dctx {
     /// precompiles (today: only Keccakf).
     fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
 
+    /// [`Self::add_instance_assign`] on a chosen partition.
+    fn add_instance_assign_to(
+        &self,
+        info: InstanceInfo,
+        _partition: usize,
+    ) -> ExecutorResult<GlobalId> {
+        self.add_instance_assign(info)
+    }
+
+    /// The number of partitions instances are assigned to.
+    fn n_partitions(&self) -> usize {
+        1
+    }
+
     /// Registers a table instance. Returns the assigned global id.
     fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
 
