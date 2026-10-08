@@ -8,7 +8,7 @@
 //!
 //! [`render`] validates (each value fits its width; no duplicate names within a
 //! file) and returns the files in memory, each tagged with its [`Target`];
-//! [`write`] / [`check`] reconcile them against one output directory per target.
+//! [`write()`] / [`check`] reconcile them against one output directory per target.
 //! Output is stable so a build step can gate drift.
 
 use std::collections::{HashMap, HashSet};
@@ -109,6 +109,19 @@ pub enum Target {
     Asm,
 }
 
+impl Target {
+    /// Extension of this target's files: reconciliation scans its dir for `*.<ext>`, so
+    /// file names are built from it too and the two can't disagree.
+    fn ext(self) -> &'static str {
+        match self {
+            Target::Rust => "rs",
+            Target::C => "h",
+            Target::Pil => "pil",
+            Target::Asm => "inc",
+        }
+    }
+}
+
 /// A rendered output file: its target, base name, and full contents.
 pub struct GenFile {
     pub target: Target,
@@ -136,22 +149,9 @@ pub struct Out<'a> {
     pub mode: DirMode,
 }
 
-impl Out<'_> {
-    /// Whether a stale file at `path` (of this target's extension, no longer produced)
-    /// is ours to reconcile — removed by `write`, flagged by `check`. An `Exclusive`
-    /// dir reclaims every such file; a `Shared` dir only its own `@generated` files, so
-    /// hand-written siblings are left untouched. `write` and `check` both route through
-    /// this, so the removal and drift decisions can never drift apart.
-    fn reconciles(&self, path: &Path) -> bool {
-        match self.mode {
-            DirMode::Exclusive => true,
-            DirMode::Shared => is_generated(path),
-        }
-    }
-}
-
 /// One output per target. Each [`Out`] names a dir and how it may be reconciled; a
 /// dir may be shared with hand-written files by using [`DirMode::Shared`].
+#[derive(Clone, Copy)]
 pub struct Dirs<'a> {
     pub rust: Out<'a>,
     pub c: Out<'a>,
@@ -160,14 +160,13 @@ pub struct Dirs<'a> {
 }
 
 impl<'a> Dirs<'a> {
-    /// Each target with its output and file extension — the single source of the
-    /// target↔dir↔ext mapping that `write` and `check` iterate.
-    fn each(&self) -> [(Target, Out<'a>, &'static str); 4] {
+    /// Each target with its output: the target↔dir mapping `write` and `check` iterate.
+    fn each(&self) -> [(Target, Out<'a>); 4] {
         [
-            (Target::Rust, self.rust, "rs"),
-            (Target::C, self.c, "h"),
-            (Target::Pil, self.pil, "pil"),
-            (Target::Asm, self.asm, "inc"),
+            (Target::Rust, self.rust),
+            (Target::C, self.c),
+            (Target::Pil, self.pil),
+            (Target::Asm, self.asm),
         ]
     }
 }
@@ -196,7 +195,32 @@ pub fn render(groups: &[(&GroupMeta, &[Export])], regen_cmd: &str) -> Result<Vec
     }
     let mut files = render_flat(groups, regen_cmd)?;
     files.extend(render_rust(groups, regen_cmd)?);
+    ensure_distinct(&files)?;
     Ok(files)
+}
+
+/// Errors if two outputs of one target would land in the same file. Names compare
+/// ignoring case: on a case-insensitive filesystem (macOS by default) `Foo.rs`/`foo.rs`
+/// are one file, and a `MOD` group's module would be `mod.rs` itself. C headers compare
+/// by include guard, which also folds punctuation: two headers sharing a guard would
+/// silently skip the second `#include`. Groups sharing an exact C/PIL/asm file name
+/// merge into one file, so they never show up here.
+fn ensure_distinct(files: &[GenFile]) -> Result<(), String> {
+    let mut seen: HashMap<(Target, String), &str> = HashMap::new();
+    for f in files {
+        let key = match f.target {
+            Target::C => include_guard(&f.name),
+            _ => f.name.to_ascii_lowercase(),
+        };
+        if let Some(other) = seen.insert((f.target, key), &f.name) {
+            return Err(format!(
+                "generated files `{other}` and `{}` collide (names compare ignoring case; C \
+                 headers by include guard); rename one",
+                f.name
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// A group name becomes the default output file names and, for Rust, a module name,
@@ -218,11 +242,12 @@ fn is_ident(s: &str, extra: &[char]) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || extra.contains(&c))
 }
 
-/// Strict and reserved Rust keywords (edition 2021): not usable as a `pub mod` name.
-const RUST_KEYWORDS: &[&str] = &[
-    "abstract", "as", "async", "await", "become", "box", "break", "const", "continue", "crate",
-    "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "if", "impl", "in",
-    "let", "loop", "macro", "match", "mod", "move", "mut", "override", "priv", "pub", "ref",
+/// Identifiers that can't name a `pub mod`: the strict and reserved Rust keywords
+/// (edition 2021), and `_`.
+const NOT_MODULE_NAMES: &[&str] = &[
+    "_", "abstract", "as", "async", "await", "become", "box", "break", "const", "continue",
+    "crate", "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "if", "impl",
+    "in", "let", "loop", "macro", "match", "mod", "move", "mut", "override", "priv", "pub", "ref",
     "return", "self", "Self", "static", "struct", "super", "trait", "true", "try", "type",
     "typeof", "unsafe", "unsized", "use", "virtual", "where", "while", "yield",
 ];
@@ -242,13 +267,13 @@ pub fn write(
     regen_cmd: &str,
 ) -> Result<(), String> {
     let files = render(groups, regen_cmd)?;
-    for (target, out, ext) in dirs.each() {
-        write_dir(&files, target, out, ext)?;
+    for (target, out) in dirs.each() {
+        write_dir(&files, target, out)?;
     }
     Ok(())
 }
 
-/// Errors if two of `all` write the same target into the same dir. Each [`write`]
+/// Errors if two of `all` write the same target into the same dir. Each [`write()`]
 /// reconciles a dir against only its own groups' files, so a second writer would delete
 /// the first one's outputs (and, for Rust, replace its `mod.rs`). Call it once over
 /// every job's [`Dirs`] before writing any of them. Paths are compared lexically, with
@@ -256,10 +281,11 @@ pub fn write(
 pub fn ensure_disjoint(all: &[Dirs]) -> Result<(), String> {
     let mut seen: HashSet<(Target, PathBuf)> = HashSet::new();
     for dirs in all {
-        for (target, out, ext) in dirs.each() {
+        for (target, out) in dirs.each() {
             if !seen.insert((target, normalize(out.path))) {
                 return Err(format!(
-                    "two jobs write `.{ext}` files into {}; give each job its own output dir",
+                    "two jobs write `.{}` files into {}; give each job its own output dir",
+                    target.ext(),
                     out.path.display()
                 ));
             }
@@ -299,8 +325,8 @@ pub fn check(
 ) -> Result<(), String> {
     let files = render(groups, regen_cmd)?;
     let mut problems: Vec<String> = Vec::new();
-    for (target, out, ext) in dirs.each() {
-        check_dir(&files, target, out, ext, &mut problems);
+    for (target, out) in dirs.each() {
+        check_dir(&files, target, out, &mut problems);
     }
 
     if problems.is_empty() {
@@ -316,7 +342,7 @@ pub fn check(
 
 // ---- writing / checking one target's dir ----------------------------------
 
-fn write_dir(files: &[GenFile], target: Target, out: Out, ext: &str) -> Result<(), String> {
+fn write_dir(files: &[GenFile], target: Target, out: Out) -> Result<(), String> {
     let dir = out.path;
     let mine: Vec<&GenFile> = files.iter().filter(|f| f.target == target).collect();
     // Nothing to write and no existing dir to clean → leave the filesystem untouched
@@ -339,49 +365,53 @@ fn write_dir(files: &[GenFile], target: Target, out: Out, ext: &str) -> Result<(
         // Write beside the target and rename over it, so a concurrent reader (rustc
         // compiling the generated Rust in the same workspace build) sees the old file or
         // the new one, never a partly written one. The `.tmp` extension keeps the
-        // scratch file out of the per-extension reconcile above.
+        // scratch file out of the per-extension orphan scan below.
         let tmp = dir.join(format!(".{}.tmp", f.name));
         fs::write(&tmp, &f.contents).map_err(|e| format!("writing {}: {e}", tmp.display()))?;
         fs::rename(&tmp, &path).map_err(|e| format!("replacing {}: {e}", path.display()))?;
     }
 
-    // Remove files we no longer produce (e.g. after a group rename/drop). An Exclusive
-    // dir is generated-only, so every stale file of this extension goes; a Shared dir
-    // may hold hand-written files, so only stale *generated* ones (banner-marked) go.
-    for name in files_on_disk(dir, ext) {
-        if expected.contains(name.as_str()) {
-            continue;
-        }
-        let path = dir.join(&name);
-        if out.reconciles(&path) {
-            fs::remove_file(&path).map_err(|e| format!("removing {}: {e}", path.display()))?;
-        }
+    for path in orphans(out, target, &expected) {
+        fs::remove_file(&path).map_err(|e| format!("removing {}: {e}", path.display()))?;
     }
     Ok(())
 }
 
-fn check_dir(files: &[GenFile], target: Target, out: Out, ext: &str, problems: &mut Vec<String>) {
-    let dir = out.path;
+fn check_dir(files: &[GenFile], target: Target, out: Out, problems: &mut Vec<String>) {
     let mine: Vec<&GenFile> = files.iter().filter(|f| f.target == target).collect();
     let expected: HashSet<&str> = mine.iter().map(|f| f.name.as_str()).collect();
 
     for f in &mine {
-        let path = dir.join(&f.name);
+        let path = out.path.join(&f.name);
         match fs::read_to_string(&path) {
             Ok(on_disk) if on_disk == f.contents => {}
             Ok(_) => problems.push(format!("out of date: {}", path.display())),
             Err(_) => problems.push(format!("missing:     {}", path.display())),
         }
     }
-    for name in files_on_disk(dir, ext) {
-        if expected.contains(name.as_str()) {
-            continue;
-        }
-        let path = dir.join(&name);
-        if out.reconciles(&path) {
-            problems.push(format!("orphaned:    {}", path.display()));
-        }
+    for path in orphans(out, target, &expected) {
+        problems.push(format!("orphaned:    {}", path.display()));
     }
+}
+
+/// Stale files in `out`'s dir: `target`'s extension, no longer produced (not in
+/// `expected`, e.g. after a group rename/drop), and ours to reconcile. An `Exclusive`
+/// dir is generated-only, so every such file is ours; a `Shared` dir only its
+/// banner-marked generated ones. `write` removes exactly what `check` reports.
+fn orphans(out: Out, target: Target, expected: &HashSet<&str>) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(out.path) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == target.ext()))
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| !expected.contains(n)))
+        .filter(|p| match out.mode {
+            DirMode::Exclusive => true,
+            DirMode::Shared => is_generated(p),
+        })
+        .collect()
 }
 
 /// True if `path` is a file this engine generated, detected by the [`GENERATED_MARKER`]
@@ -391,30 +421,11 @@ fn check_dir(files: &[GenFile], target: Target, out: Out, ext: &str, problems: &
 /// The marker must open the line, right after the comment opener (`//`, `/*` or `#`):
 /// a hand-written file whose first comment merely mentions it stays hand-written.
 fn is_generated(path: &Path) -> bool {
-    match fs::read_to_string(path) {
-        Ok(s) => s.lines().next().is_some_and(|first| {
+    fs::read_to_string(path).is_ok_and(|s| {
+        s.lines().next().is_some_and(|first| {
             first.trim_start_matches(['/', '*', '#', ' ']).starts_with(GENERATED_MARKER)
-        }),
-        Err(_) => false,
-    }
-}
-
-/// Base names of `*.{ext}` files currently in `dir`.
-fn files_on_disk(dir: &Path, ext: &str) -> Vec<String> {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    entries
-        .flatten()
-        .filter_map(|e| {
-            let path = e.path();
-            if path.extension().is_some_and(|x| x == ext) {
-                path.file_name().and_then(|n| n.to_str()).map(String::from)
-            } else {
-                None
-            }
         })
-        .collect()
+    })
 }
 
 // ---- Rust rendering -------------------------------------------------------
@@ -425,8 +436,9 @@ fn files_on_disk(dir: &Path, ext: &str) -> Vec<String> {
 /// targets Rust, so the consumer's `mod generated;` stays valid and the Rust dir is
 /// always reconciled.
 ///
-/// Unlike C/PIL/asm, groups can't share a Rust file: each is its own module, so two
-/// Rust-emitting groups with one name (or a keyword name) are rejected.
+/// Unlike C/PIL/asm, groups can't share a Rust file: each is its own module, so a
+/// Rust-emitting group needs a name that can be a module ([`NOT_MODULE_NAMES`]), and
+/// two with one name collide in `ensure_distinct`.
 fn render_rust(
     groups: &[(&GroupMeta, &[Export])],
     regen_cmd: &str,
@@ -440,22 +452,9 @@ fn render_rust(
         if rust.is_empty() {
             continue;
         }
-        // `_` passes the identifier check but, like a keyword, can't name a module.
-        if RUST_KEYWORDS.contains(&meta.name) || meta.name == "_" {
+        if NOT_MODULE_NAMES.contains(&meta.name) {
             return Err(format!(
-                "group `{}` emits Rust, but `{}` can't name a module",
-                meta.name, meta.name
-            ));
-        }
-        // Compared ignoring case: on a case-insensitive filesystem (macOS by default)
-        // `Foo.rs`/`foo.rs` are one file, and a `MOD` group would be `mod.rs` itself.
-        if meta.name.eq_ignore_ascii_case("mod") {
-            return Err(format!("group `{}` emits Rust, but `mod.rs` is reserved", meta.name));
-        }
-        if let Some(other) = modules.iter().find(|m| m.eq_ignore_ascii_case(meta.name)) {
-            return Err(format!(
-                "groups `{other}` and `{}` emit Rust to the same module file (names compare \
-                 ignoring case); each needs its own module name",
+                "group `{0}` emits Rust, but `{0}` can't name a module",
                 meta.name
             ));
         }
@@ -534,11 +533,77 @@ enum Kind {
 }
 
 impl Kind {
+    /// Every flat target, in the order their entries are pushed and validated.
+    const ALL: [Kind; 3] = [Kind::C, Kind::Pil, Kind::Asm];
+
     fn target(self) -> Target {
         match self {
             Kind::C => Target::C,
             Kind::Pil => Target::Pil,
             Kind::Asm => Target::Asm,
+        }
+    }
+
+    fn flag(self) -> Targets {
+        match self {
+            Kind::C => Targets::C,
+            Kind::Pil => Targets::PIL,
+            Kind::Asm => Targets::ASM,
+        }
+    }
+
+    /// The group's output file for this target: its override, else `<group>.gen.<ext>`.
+    /// An override must be a plain file name ending in `.<ext>`: reconciliation only
+    /// scans the target dir for `*.<ext>`, so anything else (a missing suffix, a subdir)
+    /// would be written once and never cleaned up or drift-checked.
+    fn file_name(self, meta: &GroupMeta) -> Result<String, String> {
+        let ext = self.target().ext();
+        let (over, field) = match self {
+            Kind::C => (meta.c_file, "c_file"),
+            Kind::Pil => (meta.pil_file, "pil_file"),
+            Kind::Asm => (meta.asm_file, "asm_file"),
+        };
+        let Some(name) = over else {
+            return Ok(format!("{}.gen.{ext}", meta.name));
+        };
+        let plain = !name.contains(['/', '\\']);
+        let has_stem = name.strip_suffix(&format!(".{ext}")).is_some_and(|stem| !stem.is_empty());
+        if plain && has_stem {
+            Ok(name.to_string())
+        } else {
+            Err(format!(
+                "group `{}`: {field} = \"{name}\" must be a plain file name ending in `.{ext}`",
+                meta.name
+            ))
+        }
+    }
+
+    /// The emitted name, checked against the target's symbol syntax: prefixes and
+    /// per-target names are free strings, so a bad combination is an error here rather
+    /// than a header/include that won't build. GAS symbols also take `.` and `$`.
+    fn symbol(self, meta: &GroupMeta, e: &Export) -> Result<String, String> {
+        let (prefix, over, extra, what): (_, _, &[char], _) = match self {
+            Kind::C => (meta.c_prefix, e.c_name, &[], "C macro"),
+            Kind::Pil => (meta.pil_prefix, e.pil_name, &[], "PIL constant"),
+            Kind::Asm => (meta.asm_prefix, e.asm_name, &['.', '$'], "GAS symbol"),
+        };
+        let name = format!("{prefix}{}", over.unwrap_or(e.name));
+        if is_ident(&name, extra) {
+            Ok(name)
+        } else {
+            Err(format!("group `{}`: `{name}` is not a valid {what} name", meta.name))
+        }
+    }
+
+    /// The rendered value. C and GAS literals stop at 64 bits; only C holds strings.
+    fn value(self, e: &Export) -> Result<String, String> {
+        match self {
+            Kind::C => fmt_value_c(e),
+            Kind::Pil => fmt_numeric_upper(e, "PIL"),
+            Kind::Asm => {
+                check_64bit_literal(e, "asm")?;
+                fmt_numeric_upper(e, "asm")
+            }
         }
     }
 
@@ -586,61 +651,14 @@ fn render_flat(
     let mut files: Vec<FileBuf> = Vec::new();
 
     for &(meta, exports) in groups {
-        let c_file = flat_file_name(meta, meta.c_file, "c_file", "h")?;
-        let pil_file = flat_file_name(meta, meta.pil_file, "pil_file", "pil")?;
-        let asm_file = flat_file_name(meta, meta.asm_file, "asm_file", "inc")?;
+        let names: Vec<String> =
+            Kind::ALL.iter().map(|k| k.file_name(meta)).collect::<Result<_, _>>()?;
         for e in exports {
-            if e.targets.contains(Targets::C) {
-                push_entry(&mut files, &c_file, Kind::C, meta, e, fmt_value_c(e)?)?;
+            for (kind, file) in Kind::ALL.into_iter().zip(&names) {
+                if e.targets.contains(kind.flag()) {
+                    push_entry(&mut files, file, kind, meta, e, kind.value(e)?)?;
+                }
             }
-            if e.targets.contains(Targets::PIL) {
-                push_entry(
-                    &mut files,
-                    &pil_file,
-                    Kind::Pil,
-                    meta,
-                    e,
-                    fmt_numeric_upper(e, "PIL")?,
-                )?;
-            }
-            if e.targets.contains(Targets::ASM) {
-                check_64bit_literal(e, "asm")?;
-                push_entry(
-                    &mut files,
-                    &asm_file,
-                    Kind::Asm,
-                    meta,
-                    e,
-                    fmt_numeric_upper(e, "asm")?,
-                )?;
-            }
-        }
-    }
-
-    // Two distinct files whose names differ only in case are one file on a
-    // case-insensitive filesystem (macOS by default): the later write would silently
-    // replace the earlier one. Groups sharing an exact name merge into one file instead.
-    let mut names: HashMap<(Kind, String), &str> = HashMap::new();
-    for fb in &files {
-        if let Some(other) =
-            names.insert((fb.kind, fb.file_name.to_ascii_lowercase()), &fb.file_name)
-        {
-            return Err(format!(
-                "generated files `{other}` and `{}` differ only in case; rename one",
-                fb.file_name
-            ));
-        }
-    }
-
-    // Two distinct headers with one guard: including both would silently drop the
-    // second, so refuse to generate them.
-    let mut guards: HashMap<String, &str> = HashMap::new();
-    for fb in files.iter().filter(|f| f.kind == Kind::C) {
-        if let Some(other) = guards.insert(include_guard(&fb.file_name), &fb.file_name) {
-            return Err(format!(
-                "C headers `{other}` and `{}` get the same include guard; rename one",
-                fb.file_name
-            ));
         }
     }
 
@@ -654,31 +672,6 @@ fn render_flat(
         .collect())
 }
 
-/// A group's output file name for one flat target: the `field` override, else
-/// `<group>.gen.<ext>`. An override must be a plain file name ending in `.<ext>`:
-/// reconciliation only scans the target dir for `*.<ext>`, so anything else (a missing
-/// suffix, a subdir) would be written once and never cleaned up or drift-checked.
-fn flat_file_name(
-    meta: &GroupMeta,
-    over: Option<&'static str>,
-    field: &str,
-    ext: &str,
-) -> Result<String, String> {
-    let Some(name) = over else {
-        return Ok(format!("{}.gen.{ext}", meta.name));
-    };
-    let plain = !name.contains(['/', '\\']);
-    let has_stem = name.strip_suffix(&format!(".{ext}")).is_some_and(|stem| !stem.is_empty());
-    if plain && has_stem {
-        Ok(name.to_string())
-    } else {
-        Err(format!(
-            "group `{}`: {field} = \"{name}\" must be a plain file name ending in `.{ext}`",
-            meta.name
-        ))
-    }
-}
-
 fn push_entry(
     files: &mut Vec<FileBuf>,
     fname: &str,
@@ -687,21 +680,7 @@ fn push_entry(
     e: &Export,
     value: String,
 ) -> Result<(), String> {
-    let name = match kind {
-        Kind::C => format!("{}{}", meta.c_prefix, e.c_name.unwrap_or(e.name)),
-        Kind::Pil => format!("{}{}", meta.pil_prefix, e.pil_name.unwrap_or(e.name)),
-        Kind::Asm => format!("{}{}", meta.asm_prefix, e.asm_name.unwrap_or(e.name)),
-    };
-    // Prefixes and per-target names are free strings, so check the combined name is a
-    // symbol the target accepts instead of emitting a header/include that won't build.
-    let (extra, what): (&[char], _) = match kind {
-        Kind::C => (&[], "C macro"),
-        Kind::Pil => (&[], "PIL constant"),
-        Kind::Asm => (&['.', '$'], "GAS symbol"),
-    };
-    if !is_ident(&name, extra) {
-        return Err(format!("group `{}`: `{name}` is not a valid {what} name", meta.name));
-    }
+    let name = kind.symbol(meta, e)?;
 
     // Keyed by target too: each target writes to its own dir, so C and PIL overrides
     // may share a name without their entries landing in one file.
@@ -723,7 +702,7 @@ fn push_entry(
 }
 
 /// The C include guard of a generated header. Not injective (case and punctuation are
-/// folded), so `render_flat` rejects two headers that would share one.
+/// folded), so `ensure_distinct` rejects two headers that would share one.
 fn include_guard(file_name: &str) -> String {
     format!(
         "ZISK_GENERATED_{}",
@@ -789,21 +768,17 @@ fn c_type(e: &Export) -> String {
 /// Render a numeric value as a bare literal, honoring radix and hex case. Only
 /// called for `U`/`I`; `Str` is handled by the callers.
 fn fmt_number(value: &Value, radix: Radix, upper: bool) -> String {
-    match *value {
-        Value::U(v) => match radix {
-            Radix::Hex if upper => format!("{v:#X}"),
-            Radix::Hex => format!("{v:#x}"),
-            Radix::Dec => format!("{v}"),
-        },
-        Value::I(v) if matches!(radix, Radix::Hex) && v >= 0 => {
-            if upper {
-                format!("{v:#X}")
-            } else {
-                format!("{v:#x}")
-            }
-        }
-        Value::I(v) => format!("{v}"),
+    let v = match *value {
+        Value::U(v) => v,
+        Value::I(v) if v >= 0 => v as u128,
+        // Hex has no sign, so a negative value is always decimal.
+        Value::I(v) => return v.to_string(),
         Value::Str(_) => unreachable!("fmt_number is numeric-only; callers handle Str"),
+    };
+    match radix {
+        Radix::Hex if upper => format!("{v:#X}"),
+        Radix::Hex => format!("{v:#x}"),
+        Radix::Dec => v.to_string(),
     }
 }
 
@@ -857,15 +832,21 @@ fn c_string_literal(s: &str) -> String {
 /// (a cast after the literal comes too late), so reject it instead of emitting a header
 /// or include that fails to assemble or silently truncates.
 fn check_64bit_literal(e: &Export, target: &str) -> Result<(), String> {
-    let fits = match e.value {
-        Value::U(v) => u64::try_from(v).is_ok(),
-        Value::I(v) => i64::try_from(v).is_ok(),
-        Value::Str(_) => true,
-    };
-    if fits {
+    if fits_in(e.value, 64) {
         Ok(())
     } else {
         Err(format!("`{}`: value does not fit a 64-bit {target} literal", e.name))
+    }
+}
+
+/// Whether a value fits in `bits` (1..=128) bits, as unsigned for `U` and two's
+/// complement for `I`. Strings carry no width, so they always fit.
+fn fits_in(value: Value, bits: u8) -> bool {
+    match value {
+        _ if bits >= 128 => true,
+        Value::U(v) => v < 1u128 << bits,
+        Value::I(v) => (-(1i128 << (bits - 1))..1i128 << (bits - 1)).contains(&v),
+        Value::Str(_) => true,
     }
 }
 
@@ -888,48 +869,79 @@ fn fit_check(e: &Export) -> Result<(), String> {
     if bound == 0 {
         return Err(format!("`{}`: a numeric fit bound must be at least 1 bit", e.name));
     }
-    if bound >= 128 {
+    if fits_in(e.value, bound) {
         return Ok(());
     }
-    match e.value {
-        Value::U(v) => {
-            if v >= (1u128 << bound) {
-                return Err(format!("`{}` = {v} does not fit in {bound} bits", e.name));
-            }
-        }
-        Value::I(v) => {
-            let lo = -(1i128 << (bound - 1));
-            let hi = (1i128 << (bound - 1)) - 1;
-            if v < lo || v > hi {
-                return Err(format!("`{}` = {v} does not fit in signed {bound} bits", e.name));
-            }
-        }
-        Value::Str(_) => {}
-    }
-    Ok(())
+    let signed = if matches!(e.value, Value::I(_)) { "signed " } else { "" };
+    let shown = fmt_number(&e.value, Radix::Dec, false);
+    Err(format!("`{}` = {shown} does not fit in {signed}{bound} bits", e.name))
 }
 
 // ---- tests ----------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use super::meta::{Export, GroupMeta, Radix, Targets, Value};
-    use super::{check, render, write, DirMode, Dirs, Out};
+    use super::{check, render, write, DirMode, Dirs, GenFile, Out};
 
     /// A dedicated, generated-only output dir (the common test case).
     fn exclusive(path: &Path) -> Out<'_> {
         Out { path, mode: DirMode::Exclusive }
     }
 
+    /// Exclusive rust/c/pil/asm dirs at the given paths (nothing touches the disk).
+    fn dirs_at([rust, c, pil, asm]: [&str; 4]) -> Dirs<'_> {
+        Dirs {
+            rust: exclusive(Path::new(rust)),
+            c: exclusive(Path::new(c)),
+            pil: exclusive(Path::new(pil)),
+            asm: exclusive(Path::new(asm)),
+        }
+    }
+
+    /// A per-test temp tree with an exclusive dir per target, removed on drop (also
+    /// when the test fails).
+    struct Scratch {
+        base: PathBuf,
+        rs: PathBuf,
+        c: PathBuf,
+        pil: PathBuf,
+        asm: PathBuf,
+    }
+
+    impl Scratch {
+        fn new(tag: &str) -> Self {
+            let base = std::env::temp_dir().join(format!("zisk-gen-{tag}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&base);
+            let [rs, c, pil, asm] = ["rs", "c", "pil", "asm"].map(|d| base.join(d));
+            Scratch { base, rs, c, pil, asm }
+        }
+
+        fn dirs(&self) -> Dirs<'_> {
+            Dirs {
+                rust: exclusive(&self.rs),
+                c: exclusive(&self.c),
+                pil: exclusive(&self.pil),
+                asm: exclusive(&self.asm),
+            }
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.base);
+        }
+    }
+
+    /// The contents of the rendered file `name`.
+    fn file<'a>(files: &'a [GenFile], name: &str) -> &'a str {
+        &files.iter().find(|f| f.name == name).unwrap_or_else(|| panic!("{name} missing")).contents
+    }
+
     // Minimal hand-built fixtures for the engine paths (no external definitions).
-    const fn export(
-        name: &'static str,
-        value: Value,
-        targets: Targets,
-        fits: Option<u8>,
-    ) -> Export {
+    const fn export(name: &'static str, value: Value, targets: Targets) -> Export {
         Export {
             name,
             value,
@@ -937,7 +949,7 @@ mod tests {
             pointer_sized: false,
             targets,
             radix: Radix::Hex,
-            fits,
+            fits: None,
             no_fit: false,
             c_name: None,
             pil_name: None,
@@ -962,7 +974,8 @@ mod tests {
     #[test]
     fn fit_check_rejects_overflow() {
         static G: GroupMeta = group("t", "t.h");
-        static E: &[Export] = &[export("X", Value::U(0x1_0000_0000), Targets::C, Some(32))]; // 33 bits
+        static E: &[Export] =
+            &[Export { fits: Some(32), ..export("X", Value::U(0x1_0000_0000), Targets::C) }]; // 33 bits
         assert!(render(&[(&G, E)], "test").is_err(), "fits=32 must reject a 33-bit value");
     }
 
@@ -970,10 +983,10 @@ mod tests {
     fn merges_two_groups_into_one_file() {
         static A: GroupMeta = group("a", "shared.h");
         static B: GroupMeta = group("b", "shared.h");
-        static EA: &[Export] = &[export("A_ONE", Value::U(1), Targets::C, None)];
-        static EB: &[Export] = &[export("B_ONE", Value::U(2), Targets::C, None)];
+        static EA: &[Export] = &[export("A_ONE", Value::U(1), Targets::C)];
+        static EB: &[Export] = &[export("B_ONE", Value::U(2), Targets::C)];
         let files = render(&[(&A, EA), (&B, EB)], "test").expect("render");
-        let c: Vec<_> = files.iter().filter(|f| matches!(f.target, super::Target::C)).collect();
+        let c: Vec<_> = files.iter().filter(|f| f.target == super::Target::C).collect();
         assert_eq!(c.len(), 1, "both C groups merge into shared.h");
         let h = &c[0].contents;
         assert!(h.contains("/* --- a --- */") && h.contains("/* --- b --- */"));
@@ -984,7 +997,7 @@ mod tests {
     fn rejects_duplicate_name_in_file() {
         static A: GroupMeta = group("a", "dup.h");
         static B: GroupMeta = group("b", "dup.h");
-        static E: &[Export] = &[export("DUP", Value::U(1), Targets::C, None)];
+        static E: &[Export] = &[export("DUP", Value::U(1), Targets::C)];
         assert!(render(&[(&A, E), (&B, E)], "test").is_err(), "same name in one file must error");
     }
 
@@ -992,14 +1005,11 @@ mod tests {
     fn rust_target_emits_typed_consts_and_mod() {
         static G: GroupMeta = group("mem", "mem.h");
         static E: &[Export] =
-            &[export("RAM", Value::U(0xa000_0000), Targets(Targets::RUST.0 | Targets::C.0), None)];
+            &[export("RAM", Value::U(0xa000_0000), Targets(Targets::RUST.0 | Targets::C.0))];
         let files = render(&[(&G, E)], "test").expect("render");
 
-        let rs = files.iter().find(|f| f.name == "mem.rs").expect("mem.rs missing");
-        assert!(rs.contents.contains("pub const RAM: u64 = 0xa0000000;"));
-
-        let mod_rs = files.iter().find(|f| f.name == "mod.rs").expect("mod.rs missing");
-        assert!(mod_rs.contents.contains("pub mod mem;"));
+        assert!(file(&files, "mem.rs").contains("pub const RAM: u64 = 0xa0000000;"));
+        assert!(file(&files, "mod.rs").contains("pub mod mem;"));
 
         // The same constant also reaches the C header (different target/name).
         assert!(files.iter().any(|f| f.name == "mem.h"));
@@ -1008,62 +1018,50 @@ mod tests {
     #[test]
     fn asm_target_emits_equ_include() {
         static G: GroupMeta = group("mem", "mem.h");
-        static E: &[Export] =
-            &[export("RAM", Value::U(0xa000_0000), Targets(Targets::ASM.0), None)];
+        static E: &[Export] = &[export("RAM", Value::U(0xa000_0000), Targets::ASM)];
         let files = render(&[(&G, E)], "test").expect("render");
         let inc = files.iter().find(|f| f.name == "mem.gen.inc").expect("mem.gen.inc missing");
-        assert!(matches!(inc.target, super::Target::Asm));
+        assert!(inc.target == super::Target::Asm);
         assert!(inc.contents.contains(".equ RAM, 0xA0000000"), "{}", inc.contents);
     }
 
     #[test]
     fn check_flags_and_write_removes_orphans() {
         static G: GroupMeta = group("mem", "mem.h");
-        static E: &[Export] = &[export("ONE", Value::U(1), Targets::C, None)];
+        static E: &[Export] = &[export("ONE", Value::U(1), Targets::C)];
         let groups: &[(&GroupMeta, &[Export])] = &[(&G, E)];
 
-        let base = std::env::temp_dir().join(format!("zisk-gen-orphan-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        let (r, c, p, a) = (base.join("rs"), base.join("c"), base.join("pil"), base.join("asm"));
-        let dirs =
-            Dirs { rust: exclusive(&r), c: exclusive(&c), pil: exclusive(&p), asm: exclusive(&a) };
+        let s = Scratch::new("orphan");
+        let dirs = s.dirs();
 
         write(groups, &dirs, "test").expect("write");
         assert!(check(groups, &dirs, "test").is_ok(), "fresh write is up to date");
 
         // A stale C file the definitions no longer produce.
-        std::fs::write(c.join("stale.h"), "orphan").unwrap();
+        std::fs::write(s.c.join("stale.h"), "orphan").unwrap();
         assert!(check(groups, &dirs, "test").is_err(), "check must flag an orphaned file");
 
         write(groups, &dirs, "test").expect("rewrite");
-        assert!(!c.join("stale.h").exists(), "write must remove the orphan");
+        assert!(!s.c.join("stale.h").exists(), "write must remove the orphan");
         assert!(check(groups, &dirs, "test").is_ok(), "clean again after rewrite");
-
-        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
     fn shared_dir_preserves_handwritten_and_cleans_generated_orphans() {
         static G: GroupMeta = group("mem", "mem.h");
-        static E: &[Export] = &[export("ONE", Value::U(1), Targets::C, None)];
+        static E: &[Export] = &[export("ONE", Value::U(1), Targets::C)];
         let groups: &[(&GroupMeta, &[Export])] = &[(&G, E)];
 
-        let base = std::env::temp_dir().join(format!("zisk-gen-shared-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(&base).unwrap();
+        let s = Scratch::new("shared");
+        let base = &s.base;
+        std::fs::create_dir_all(base).unwrap();
 
         // A hand-written header of the SAME extension living alongside generated output.
         let hand = base.join("handwritten.h");
         std::fs::write(&hand, "/* hand-written, keep me */\n#define KEEP 1\n").unwrap();
 
         // Route C into the shared dir; unused targets get throwaway exclusive dirs.
-        let (r, p, a) = (base.join("rs"), base.join("pil"), base.join("asm"));
-        let dirs = Dirs {
-            rust: exclusive(&r),
-            c: Out { path: &base, mode: DirMode::Shared },
-            pil: exclusive(&p),
-            asm: exclusive(&a),
-        };
+        let dirs = Dirs { c: Out { path: base, mode: DirMode::Shared }, ..s.dirs() };
 
         write(groups, &dirs, "test").expect("write");
         assert!(base.join("mem.h").exists(), "generated header written into shared dir");
@@ -1076,14 +1074,11 @@ mod tests {
         write(empty, &dirs, "test").expect("rewrite");
         assert!(!base.join("mem.h").exists(), "stale generated file removed in shared dir");
         assert!(hand.exists(), "hand-written file survives cleanup");
-
-        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
     fn override_names_must_be_plain_with_the_target_extension() {
-        static E: &[Export] =
-            &[export("X", Value::U(1), Targets(Targets::C.0 | Targets::PIL.0), None)];
+        static E: &[Export] = &[export("X", Value::U(1), Targets(Targets::C.0 | Targets::PIL.0))];
         static NO_EXT: GroupMeta = group("g", "shared");
         static SUBDIR: GroupMeta = group("g", "sub/x.h");
         static BARE: GroupMeta = group("g", ".h");
@@ -1102,8 +1097,8 @@ mod tests {
 
     #[test]
     fn group_names_must_be_valid_and_unique_rust_modules() {
-        static RUST: &[Export] = &[export("X", Value::U(1), Targets::RUST, None)];
-        static C_ONLY: &[Export] = &[export("Y", Value::U(2), Targets::C, None)];
+        static RUST: &[Export] = &[export("X", Value::U(1), Targets::RUST)];
+        static C_ONLY: &[Export] = &[export("Y", Value::U(2), Targets::C)];
         static DASHED: GroupMeta = group("my-group", "a.h");
         static KEYWORD: GroupMeta = group("type", "type.h");
         static A: GroupMeta = group("same", "a.h");
@@ -1124,16 +1119,10 @@ mod tests {
         static G: GroupMeta = group("d", "d.h");
         static E: &[Export] = &[Export {
             doc: "ends */ here\nsecond line",
-            ..export(
-                "X",
-                Value::U(1),
-                Targets(Targets::RUST.0 | Targets::C.0 | Targets::PIL.0),
-                None,
-            )
+            ..export("X", Value::U(1), Targets(Targets::RUST.0 | Targets::C.0 | Targets::PIL.0))
         }];
         let files = render(&[(&G, E)], "test").expect("render");
-        let get = |n: &str| &files.iter().find(|f| f.name == n).expect(n).contents;
-        let (h, pil, rs) = (get("d.h"), get("d.gen.pil"), get("d.rs"));
+        let (h, pil, rs) = (file(&files, "d.h"), file(&files, "d.gen.pil"), file(&files, "d.rs"));
         assert!(h.contains("/* ends * / here second line */"), "{h}");
         assert!(pil.contains("// ends */ here second line"), "{pil}");
         assert!(rs.contains("/// ends */ here second line"), "{rs}");
@@ -1145,18 +1134,8 @@ mod tests {
     #[test]
     fn absolute_aliases_above_the_root_still_overlap() {
         // `/tmp/../../out` is `/out`, so a second job writing there must be refused.
-        let (r1, c1, p1, a1) =
-            (Path::new("/out"), Path::new("/g/c"), Path::new("/g/pil"), Path::new("/g/asm"));
-        let (r2, c2, p2, a2) = (
-            Path::new("/tmp/../../out"),
-            Path::new("/h/c"),
-            Path::new("/h/pil"),
-            Path::new("/h/asm"),
-        );
-        let one =
-            Dirs { rust: exclusive(r1), c: exclusive(c1), pil: exclusive(p1), asm: exclusive(a1) };
-        let two =
-            Dirs { rust: exclusive(r2), c: exclusive(c2), pil: exclusive(p2), asm: exclusive(a2) };
+        let one = dirs_at(["/out", "/g/c", "/g/pil", "/g/asm"]);
+        let two = dirs_at(["/tmp/../../out", "/h/c", "/h/pil", "/h/asm"]);
         assert!(super::ensure_disjoint(&[one, two]).is_err());
     }
 
@@ -1171,20 +1150,14 @@ mod tests {
         assert_eq!(normalize(Path::new("/..")), Path::new("/"));
 
         // `../../out` and `out` are different dirs, so no conflict.
-        let (r1, c1, p1, a1) =
-            (Path::new("../../out"), Path::new("g/c"), Path::new("g/pil"), Path::new("g/asm"));
-        let (r2, c2, p2, a2) =
-            (Path::new("out"), Path::new("h/c"), Path::new("h/pil"), Path::new("h/asm"));
-        let one =
-            Dirs { rust: exclusive(r1), c: exclusive(c1), pil: exclusive(p1), asm: exclusive(a1) };
-        let two =
-            Dirs { rust: exclusive(r2), c: exclusive(c2), pil: exclusive(p2), asm: exclusive(a2) };
+        let one = dirs_at(["../../out", "g/c", "g/pil", "g/asm"]);
+        let two = dirs_at(["out", "h/c", "h/pil", "h/asm"]);
         assert!(super::ensure_disjoint(&[one, two]).is_ok());
     }
 
     #[test]
     fn colliding_include_guards_are_rejected() {
-        static E: &[Export] = &[export("X", Value::U(1), Targets::C, None)];
+        static E: &[Export] = &[export("X", Value::U(1), Targets::C)];
         static DASH: GroupMeta = group("a", "foo-bar.h");
         static UNDER: GroupMeta = group("b", "foo_bar.h");
         let err = render(&[(&DASH, E), (&UNDER, E)], "test").err().expect("guards collide");
@@ -1198,7 +1171,7 @@ mod tests {
         // Groups merged into one header share that header's single guard: fine.
         static M1: GroupMeta = group("m1", "merged.h");
         static M2: GroupMeta = group("m2", "merged.h");
-        static E2: &[Export] = &[export("Y", Value::U(2), Targets::C, None)];
+        static E2: &[Export] = &[export("Y", Value::U(2), Targets::C)];
         assert!(render(&[(&M1, E), (&M2, E2)], "test").is_ok());
     }
 
@@ -1206,13 +1179,13 @@ mod tests {
     fn emitted_names_must_be_valid_target_symbols() {
         static G: GroupMeta = group("g", "g.h");
         static BAD_C: &[Export] =
-            &[Export { c_name: Some("-"), ..export("X", Value::U(1), Targets::C, None) }];
+            &[Export { c_name: Some("-"), ..export("X", Value::U(1), Targets::C) }];
         static BAD_PIL_PREFIX: GroupMeta = GroupMeta { pil_prefix: "1", ..group("g", "g.h") };
-        static PIL: &[Export] = &[export("X", Value::U(1), Targets::PIL, None)];
+        static PIL: &[Export] = &[export("X", Value::U(1), Targets::PIL)];
         static DOT_C: &[Export] =
-            &[Export { c_name: Some("a.b"), ..export("X", Value::U(1), Targets::C, None) }];
+            &[Export { c_name: Some("a.b"), ..export("X", Value::U(1), Targets::C) }];
         static DOT_ASM: &[Export] =
-            &[Export { asm_name: Some(".L$x"), ..export("X", Value::U(1), Targets::ASM, None) }];
+            &[Export { asm_name: Some(".L$x"), ..export("X", Value::U(1), Targets::ASM) }];
 
         assert!(render(&[(&G, BAD_C)], "test").is_err(), "`-` is not a C macro name");
         assert!(render(&[(&BAD_PIL_PREFIX, PIL)], "test").is_err(), "`1X` starts with a digit");
@@ -1224,18 +1197,12 @@ mod tests {
     fn c_literals_are_valid_at_the_64_bit_boundaries() {
         static G: GroupMeta = group("b", "b.h");
         static E: &[Export] = &[
-            Export {
-                radix: Radix::Dec,
-                ..export("UMAX", Value::U(u64::MAX as u128), Targets::C, None)
-            },
-            Export {
-                radix: Radix::Dec,
-                ..export("IMIN", Value::I(i64::MIN as i128), Targets::C, None)
-            },
-            export("IMAX", Value::I(i64::MAX as i128), Targets::C, None),
+            Export { radix: Radix::Dec, ..export("UMAX", Value::U(u64::MAX as u128), Targets::C) },
+            Export { radix: Radix::Dec, ..export("IMIN", Value::I(i64::MIN as i128), Targets::C) },
+            export("IMAX", Value::I(i64::MAX as i128), Targets::C),
         ];
         let files = render(&[(&G, E)], "test").expect("render");
-        let h = &files.iter().find(|f| f.name == "b.h").expect("b.h").contents;
+        let h = file(&files, "b.h");
         assert!(h.contains("((uint64_t)18446744073709551615ULL)"), "{h}");
         assert!(h.contains("((int64_t)(-9223372036854775807LL - 1))"), "{h}");
         // Below the boundary nothing changes: the bare literal stays.
@@ -1244,23 +1211,23 @@ mod tests {
 
     #[test]
     fn names_differing_only_in_case_are_rejected() {
-        static RUST: &[Export] = &[export("X", Value::U(1), Targets::RUST, None)];
+        static RUST: &[Export] = &[export("X", Value::U(1), Targets::RUST)];
         static UPPER: GroupMeta = group("Foo", "a.h");
         static LOWER: GroupMeta = group("foo", "b.h");
         static MOD: GroupMeta = group("MOD", "m.h");
         assert!(render(&[(&UPPER, RUST), (&LOWER, RUST)], "test").is_err(), "Foo.rs/foo.rs");
         assert!(render(&[(&MOD, RUST)], "test").is_err(), "MOD.rs is mod.rs");
 
-        static PIL: &[Export] = &[export("Y", Value::U(2), Targets::PIL, None)];
+        static PIL: &[Export] = &[export("Y", Value::U(2), Targets::PIL)];
         static P1: GroupMeta = GroupMeta { pil_file: Some("constants.pil"), ..group("p1", "p1.h") };
         static P2: GroupMeta = GroupMeta { pil_file: Some("Constants.pil"), ..group("p2", "p2.h") };
         let err = render(&[(&P1, PIL), (&P2, PIL)], "test").err().expect("case-only clash");
-        assert!(err.contains("differ only in case"), "{err}");
+        assert!(err.contains("collide"), "{err}");
 
         // The exact same name still merges into one file.
         static Q1: GroupMeta = GroupMeta { pil_file: Some("shared.pil"), ..group("q1", "q1.h") };
         static Q2: GroupMeta = GroupMeta { pil_file: Some("shared.pil"), ..group("q2", "q2.h") };
-        static PIL2: &[Export] = &[export("Z", Value::U(3), Targets::PIL, None)];
+        static PIL2: &[Export] = &[export("Z", Value::U(3), Targets::PIL)];
         assert!(render(&[(&Q1, PIL), (&Q2, PIL2)], "test").is_ok());
     }
 
@@ -1268,73 +1235,57 @@ mod tests {
     fn renaming_a_rust_group_replaces_its_module() {
         static OLD: GroupMeta = group("old_name", "o.h");
         static NEW: GroupMeta = group("new_name", "n.h");
-        static E: &[Export] = &[export("X", Value::U(1), Targets::RUST, None)];
-        let base = std::env::temp_dir().join(format!("zisk-gen-rename-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        let (r, c, p, a) = (base.join("rs"), base.join("c"), base.join("pil"), base.join("asm"));
-        let dirs =
-            Dirs { rust: exclusive(&r), c: exclusive(&c), pil: exclusive(&p), asm: exclusive(&a) };
+        static E: &[Export] = &[export("X", Value::U(1), Targets::RUST)];
+        let s = Scratch::new("rename");
+        let dirs = s.dirs();
 
         write(&[(&OLD, E)], &dirs, "test").expect("write old");
         write(&[(&NEW, E)], &dirs, "test").expect("write new");
-        assert!(r.join("new_name.rs").exists() && !r.join("old_name.rs").exists());
-        let mod_rs = std::fs::read_to_string(r.join("mod.rs")).unwrap();
+        assert!(s.rs.join("new_name.rs").exists() && !s.rs.join("old_name.rs").exists());
+        let mod_rs = std::fs::read_to_string(s.rs.join("mod.rs")).unwrap();
         assert!(mod_rs.contains("pub mod new_name;") && !mod_rs.contains("old_name"), "{mod_rs}");
         assert!(check(&[(&NEW, E)], &dirs, "test").is_ok());
-
-        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
     fn c_strings_cannot_form_trigraphs() {
         static G: GroupMeta = group("t", "t.h");
         static E: &[Export] =
-            &[Export { ty_bits: 0, ..export("T", Value::Str("a??/b"), Targets::C, None) }];
+            &[Export { ty_bits: 0, ..export("T", Value::Str("a??/b"), Targets::C) }];
         let files = render(&[(&G, E)], "test").expect("render");
-        let h = &files.iter().find(|f| f.name == "t.h").expect("t.h").contents;
+        let h = file(&files, "t.h");
         assert!(h.contains(r#""a\?\?/b""#), "{h}");
     }
 
     #[test]
     fn banner_mention_is_not_a_banner() {
         static G: GroupMeta = group("mem", "mem.h");
-        static E: &[Export] = &[export("ONE", Value::U(1), Targets::C, None)];
-        let base = std::env::temp_dir().join(format!("zisk-gen-mention-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(&base).unwrap();
+        static E: &[Export] = &[export("ONE", Value::U(1), Targets::C)];
+        let s = Scratch::new("mention");
+        let base = &s.base;
+        std::fs::create_dir_all(base).unwrap();
         // Hand-written, but its first comment mentions the marker.
         let hand = base.join("notes.h");
         std::fs::write(&hand, "/* not @generated by any tool, keep me */\n").unwrap();
 
-        let (r, p, a) = (base.join("rs"), base.join("pil"), base.join("asm"));
-        let dirs = Dirs {
-            rust: exclusive(&r),
-            c: Out { path: &base, mode: DirMode::Shared },
-            pil: exclusive(&p),
-            asm: exclusive(&a),
-        };
+        let dirs = Dirs { c: Out { path: base, mode: DirMode::Shared }, ..s.dirs() };
         write(&[(&G, E)], &dirs, "test").expect("write");
         let empty: &[(&GroupMeta, &[Export])] = &[];
         write(empty, &dirs, "test").expect("rewrite");
         assert!(hand.exists(), "a mention of the marker is not a generated banner");
         assert!(!base.join("mem.h").exists(), "the real generated file is still cleaned up");
-
-        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
     fn write_leaves_no_scratch_files() {
         static G: GroupMeta = group("mem", "mem.h");
         static E: &[Export] =
-            &[export("ONE", Value::U(1), Targets(Targets::RUST.0 | Targets::C.0), None)];
-        let base = std::env::temp_dir().join(format!("zisk-gen-atomic-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        let (r, c, p, a) = (base.join("rs"), base.join("c"), base.join("pil"), base.join("asm"));
-        let dirs =
-            Dirs { rust: exclusive(&r), c: exclusive(&c), pil: exclusive(&p), asm: exclusive(&a) };
+            &[export("ONE", Value::U(1), Targets(Targets::RUST.0 | Targets::C.0))];
+        let s = Scratch::new("atomic");
+        let dirs = s.dirs();
 
         write(&[(&G, E)], &dirs, "test").expect("write");
-        for dir in [&r, &c] {
+        for dir in [&s.rs, &s.c] {
             let names: Vec<String> = std::fs::read_dir(dir)
                 .unwrap()
                 .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
@@ -1342,31 +1293,19 @@ mod tests {
             assert!(names.iter().all(|n| !n.ends_with(".tmp")), "scratch file left: {names:?}");
         }
         assert!(check(&[(&G, E)], &dirs, "test").is_ok(), "renamed files hold the content");
-
-        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
     fn jobs_must_not_share_a_target_dir() {
-        let (r1, c1, p1, a1) =
-            (Path::new("g/rs"), Path::new("g/c"), Path::new("g/pil"), Path::new("g/asm"));
-        let job1 =
-            Dirs { rust: exclusive(r1), c: exclusive(c1), pil: exclusive(p1), asm: exclusive(a1) };
+        let job1 = dirs_at(["g/rs", "g/c", "g/pil", "g/asm"]);
 
         // Same C dir spelled differently: rejected.
-        let c2 = Path::new("g/x/../c");
-        let (r2, p2, a2) = (Path::new("h/rs"), Path::new("h/pil"), Path::new("h/asm"));
-        let clash =
-            Dirs { rust: exclusive(r2), c: exclusive(c2), pil: exclusive(p2), asm: exclusive(a2) };
+        let clash = dirs_at(["h/rs", "g/x/../c", "h/pil", "h/asm"]);
         let err = super::ensure_disjoint(&[job1, clash]).unwrap_err();
         assert!(err.contains(".h"), "{err}");
 
         // Different targets may share a dir (each reconciles only its own extension).
-        let job1 =
-            Dirs { rust: exclusive(r1), c: exclusive(c1), pil: exclusive(p1), asm: exclusive(a1) };
-        let h_c = Path::new("h/c");
-        let ok =
-            Dirs { rust: exclusive(r2), c: exclusive(h_c), pil: exclusive(p2), asm: exclusive(c1) };
+        let ok = dirs_at(["h/rs", "h/c", "h/pil", "g/c"]);
         assert!(super::ensure_disjoint(&[job1, ok]).is_ok());
     }
 
@@ -1377,8 +1316,7 @@ mod tests {
             pil_file: Some("shared.pil"),
             ..group("g", "shared.h")
         };
-        static E: &[Export] =
-            &[export("X", Value::U(1), Targets(Targets::C.0 | Targets::PIL.0), None)];
+        static E: &[Export] = &[export("X", Value::U(1), Targets(Targets::C.0 | Targets::PIL.0))];
         let files = render(&[(&G, E)], "test").expect("render");
         let c = files.iter().find(|f| f.target == super::Target::C).expect("C file");
         let pil = files.iter().find(|f| f.target == super::Target::Pil).expect("PIL file");
@@ -1392,10 +1330,10 @@ mod tests {
         static G: GroupMeta = group("s", "s.h");
         static E: &[Export] = &[Export {
             ty_bits: 0,
-            ..export("S", Value::Str("a\"b\\c\n\u{7f}\u{e9}1"), Targets::C, None)
+            ..export("S", Value::Str("a\"b\\c\n\u{7f}\u{e9}1"), Targets::C)
         }];
         let files = render(&[(&G, E)], "test").expect("render");
-        let h = &files.iter().find(|f| f.name == "s.h").expect("s.h").contents;
+        let h = file(&files, "s.h");
         // DEL and the UTF-8 bytes of 'é' as octal; never Rust's `\u{..}`.
         assert!(h.contains(r#""a\"b\\c\n\177\303\2511""#), "{h}");
         assert!(!h.contains("\\u{"), "{h}");
@@ -1405,13 +1343,11 @@ mod tests {
     fn values_wider_than_64_bits_are_rejected_for_c_and_asm() {
         static G: GroupMeta = group("w", "w.h");
         static WIDE: Value = Value::U(1 << 64);
-        static C: &[Export] = &[Export { ty_bits: 128, ..export("W", WIDE, Targets::C, None) }];
-        static ASM: &[Export] = &[Export { ty_bits: 128, ..export("W", WIDE, Targets::ASM, None) }];
-        static PIL: &[Export] = &[Export { ty_bits: 128, ..export("W", WIDE, Targets::PIL, None) }];
-        static NEG: &[Export] = &[Export {
-            ty_bits: 128,
-            ..export("N", Value::I(i64::MIN as i128 - 1), Targets::C, None)
-        }];
+        static C: &[Export] = &[Export { ty_bits: 128, ..export("W", WIDE, Targets::C) }];
+        static ASM: &[Export] = &[Export { ty_bits: 128, ..export("W", WIDE, Targets::ASM) }];
+        static PIL: &[Export] = &[Export { ty_bits: 128, ..export("W", WIDE, Targets::PIL) }];
+        static NEG: &[Export] =
+            &[Export { ty_bits: 128, ..export("N", Value::I(i64::MIN as i128 - 1), Targets::C) }];
         assert!(render(&[(&G, C)], "test").is_err(), "C cannot hold a >64-bit literal");
         assert!(render(&[(&G, ASM)], "test").is_err(), "GAS cannot hold a >64-bit literal");
         assert!(render(&[(&G, NEG)], "test").is_err(), "below i64::MIN");
@@ -1419,7 +1355,7 @@ mod tests {
 
         // A 128-bit type holding a 64-bit value is still a valid (cast) C literal.
         static SMALL: &[Export] =
-            &[Export { ty_bits: 128, ..export("S", Value::U(5), Targets::C, None) }];
+            &[Export { ty_bits: 128, ..export("S", Value::U(5), Targets::C) }];
         let files = render(&[(&G, SMALL)], "test").expect("render");
         assert!(files[0].contents.contains("((unsigned __int128)0x5)"), "{}", files[0].contents);
     }
@@ -1429,23 +1365,22 @@ mod tests {
         static G: GroupMeta = group("p", "p.h");
         static E: &[Export] = &[Export {
             pointer_sized: true,
-            ..export("LEN", Value::U(4), Targets(Targets::RUST.0 | Targets::C.0), None)
+            ..export("LEN", Value::U(4), Targets(Targets::RUST.0 | Targets::C.0))
         }];
         let files = render(&[(&G, E)], "test").expect("render");
-        let rs = files.iter().find(|f| f.name == "p.rs").expect("p.rs");
-        assert!(rs.contents.contains("pub const LEN: usize = 0x4;"), "{}", rs.contents);
-        let h = files.iter().find(|f| f.name == "p.h").expect("p.h");
-        assert!(h.contents.contains("((uint64_t)0x4)"), "{}", h.contents);
+        let (rs, h) = (file(&files, "p.rs"), file(&files, "p.h"));
+        assert!(rs.contains("pub const LEN: usize = 0x4;"), "{rs}");
+        assert!(h.contains("((uint64_t)0x4)"), "{h}");
     }
 
     #[test]
     fn zero_fit_bound_rejects_numbers_not_strings() {
         static G: GroupMeta = group("z", "z.h");
-        static NUM: &[Export] = &[export("N", Value::U(1), Targets::C, Some(0))];
+        static NUM: &[Export] = &[Export { fits: Some(0), ..export("N", Value::U(1), Targets::C) }];
         assert!(render(&[(&G, NUM)], "test").is_err(), "fits = 0 must not accept a number");
 
         static STR: &[Export] =
-            &[Export { ty_bits: 0, ..export("S", Value::Str("x"), Targets::C, None) }];
+            &[Export { ty_bits: 0, ..export("S", Value::Str("x"), Targets::C) }];
         assert!(render(&[(&G, STR)], "test").is_ok(), "strings carry no width");
     }
 }

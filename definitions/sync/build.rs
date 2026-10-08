@@ -22,28 +22,14 @@ const REGEN_CMD: &str = "cargo build -p zisk-definitions-sync";
 type Groups = &'static [(&'static GroupMeta, &'static [Export])];
 
 /// One codegen job: a source constant table and where each target's files are written.
-struct Job {
+struct Job<'a> {
     /// Source dir watched for changes (`cargo:rerun-if-changed`, scanned recursively).
     watch: PathBuf,
     /// The constant groups to render.
     constants: Groups,
     /// Per-target output dir + reconcile mode. Use [`DirMode::Shared`] for a dir that
     /// also holds hand-written files of the same extension.
-    rust: (PathBuf, DirMode),
-    c: (PathBuf, DirMode),
-    pil: (PathBuf, DirMode),
-    asm: (PathBuf, DirMode),
-}
-
-impl Job {
-    fn dirs(&self) -> Dirs<'_> {
-        Dirs {
-            rust: Out { path: &self.rust.0, mode: self.rust.1 },
-            c: Out { path: &self.c.0, mode: self.c.1 },
-            pil: Out { path: &self.pil.0, mode: self.pil.1 },
-            asm: Out { path: &self.asm.0, mode: self.asm.1 },
-        }
-    }
+    dirs: Dirs<'a>,
 }
 
 fn main() {
@@ -57,18 +43,20 @@ fn main() {
     // (compiled by consumers), C/PIL/asm in dedicated subdirs on the toolchains' include
     // paths. All `Exclusive`: these dirs hold only generated files. This is the single
     // canonical location for every generated form; consumers that build outside the repo
-    // (emulator-asm in an installed/packaged tree) get the C header copied to them at
-    // package time — see release.yml / build_zisk.sh and emulator-asm/Makefile.
+    // (emulator-asm in an installed/packaged tree) get the C headers copied to them at
+    // package time — see emulator-asm/Makefile.
     let generated_folder = defs.join("src/generated");
-    let source_folder = defs.join("source/src");
+    let [c_dir, pil_dir, asm_dir] = ["c", "pil", "asm"].map(|d| generated_folder.join(d));
 
     let job1 = Job {
-        watch: source_folder,
+        watch: defs.join("source/src"),
         constants: zisk_definitions_source::ZISK_CONSTANTS,
-        rust: (generated_folder.clone(), Exclusive),
-        c: (generated_folder.join("c"), Exclusive),
-        pil: (generated_folder.join("pil"), Exclusive),
-        asm: (generated_folder.join("asm"), Exclusive),
+        dirs: Dirs {
+            rust: Out { path: &generated_folder, mode: Exclusive },
+            c: Out { path: &c_dir, mode: Exclusive },
+            pil: Out { path: &pil_dir, mode: Exclusive },
+            asm: Out { path: &asm_dir, mode: Exclusive },
+        },
     };
 
     // Process each job: write the generated files, and tell Cargo to re-run this build script
@@ -76,14 +64,14 @@ fn main() {
     let jobs = [job1];
     // Each write reconciles a dir against only its own job's files, so two jobs sharing
     // a target dir would delete each other's outputs: refuse that before writing any.
-    let all_dirs: Vec<Dirs> = jobs.iter().map(Job::dirs).collect();
+    let all_dirs: Vec<Dirs> = jobs.iter().map(|job| job.dirs).collect();
     if let Err(e) = zisk_definitions_generator::ensure_disjoint(&all_dirs) {
         panic!("conflicting codegen jobs: {e}");
     }
     for job in &jobs {
         // Re-run whenever a source module changes (cargo scans the dir recursively).
         println!("cargo:rerun-if-changed={}", job.watch.display());
-        zisk_definitions_generator::write(job.constants, &job.dirs(), REGEN_CMD)
+        zisk_definitions_generator::write(job.constants, &job.dirs, REGEN_CMD)
             .expect("regenerating constants");
     }
 }

@@ -16,24 +16,26 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{
     meta::ParseNestedMeta, parse_macro_input, spanned::Spanned, Attribute, Expr, ExprLit, Item,
     ItemConst, ItemMod, Lit, LitInt, LitStr, Meta, Type, Visibility,
 };
 
-const T_RUST: u8 = 1;
-const T_C: u8 = 2;
-const T_PIL: u8 = 4;
-const T_ASM: u8 = 8;
+/// The targets `to(..)`/`skip(..)` accept: the keyword and its `meta::Targets` const.
+/// Inside the macro a target set is a `u8` with bit `1 << index`; the emitted code names
+/// the consts, so their values stay defined only in `meta::Targets`.
+const TARGETS: [(&str, &str); 4] = [("rust", "RUST"), ("c", "C"), ("pil", "PIL"), ("asm", "ASM")];
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum Radix {
+    #[default]
     Hex,
     Dec,
 }
 
 /// Module-level defaults parsed from `#[constants(..)]`.
+#[derive(Default)]
 struct Container {
     group: Option<String>,
     /// Targets the group emits to. `None` until `to(..)` is parsed; `to(..)` is required
@@ -49,54 +51,21 @@ struct Container {
     asm_file: Option<String>,
 }
 
-impl Default for Container {
-    fn default() -> Self {
-        // `to(..)` has no default: every group lists its targets explicitly (enforced in
-        // `expand`), so a group's fan-out — including whether it reaches asm — is always
-        // visible at the definition site.
-        Container {
-            group: None,
-            targets: None,
-            radix: Radix::Hex,
-            fits: None,
-            c_prefix: String::new(),
-            pil_prefix: String::new(),
-            asm_prefix: String::new(),
-            c_file: None,
-            pil_file: None,
-            asm_file: None,
-        }
-    }
-}
-
 impl Container {
     fn parse_meta(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
-        if meta.path.is_ident("group") {
-            self.group = Some(meta.value()?.parse::<LitStr>()?.value());
-        } else if meta.path.is_ident("to") {
-            let mut bits = 0u8;
-            meta.parse_nested_meta(|m| add_target(&mut bits, &m))?;
-            self.targets = Some(bits);
-        } else if meta.path.is_ident("hex") {
-            self.radix = Radix::Hex;
-        } else if meta.path.is_ident("dec") {
-            self.radix = Radix::Dec;
-        } else if meta.path.is_ident("fits") {
-            self.fits = Some(parse_fits(&meta)?);
-        } else if meta.path.is_ident("c_prefix") {
-            self.c_prefix = meta.value()?.parse::<LitStr>()?.value();
-        } else if meta.path.is_ident("pil_prefix") {
-            self.pil_prefix = meta.value()?.parse::<LitStr>()?.value();
-        } else if meta.path.is_ident("asm_prefix") {
-            self.asm_prefix = meta.value()?.parse::<LitStr>()?.value();
-        } else if meta.path.is_ident("c_file") {
-            self.c_file = Some(meta.value()?.parse::<LitStr>()?.value());
-        } else if meta.path.is_ident("pil_file") {
-            self.pil_file = Some(meta.value()?.parse::<LitStr>()?.value());
-        } else if meta.path.is_ident("asm_file") {
-            self.asm_file = Some(meta.value()?.parse::<LitStr>()?.value());
-        } else {
-            return Err(meta.error("unknown #[constants] argument"));
+        match ident_of(&meta).as_str() {
+            "group" => self.group = Some(lit_str(&meta)?),
+            "to" => self.targets = Some(parse_targets(&meta)?),
+            "hex" => self.radix = Radix::Hex,
+            "dec" => self.radix = Radix::Dec,
+            "fits" => self.fits = Some(parse_fits(&meta)?),
+            "c_prefix" => self.c_prefix = lit_str(&meta)?,
+            "pil_prefix" => self.pil_prefix = lit_str(&meta)?,
+            "asm_prefix" => self.asm_prefix = lit_str(&meta)?,
+            "c_file" => self.c_file = Some(lit_str(&meta)?),
+            "pil_file" => self.pil_file = Some(lit_str(&meta)?),
+            "asm_file" => self.asm_file = Some(lit_str(&meta)?),
+            _ => return Err(meta.error("unknown #[constants] argument")),
         }
         Ok(())
     }
@@ -118,30 +87,18 @@ struct Emit {
 
 impl Emit {
     fn parse_meta(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
-        if meta.path.is_ident("internal") {
-            self.internal = true;
-        } else if meta.path.is_ident("to") {
-            let mut t = 0u8;
-            meta.parse_nested_meta(|m| add_target(&mut t, &m))?;
-            self.targets = Some(t);
-        } else if meta.path.is_ident("skip") {
-            meta.parse_nested_meta(|m| add_target(&mut self.skip, &m))?;
-        } else if meta.path.is_ident("hex") {
-            self.radix = Some(Radix::Hex);
-        } else if meta.path.is_ident("dec") {
-            self.radix = Some(Radix::Dec);
-        } else if meta.path.is_ident("fits") {
-            self.fits = Some(Some(parse_fits(&meta)?));
-        } else if meta.path.is_ident("no_fits") {
-            self.fits = Some(None);
-        } else if meta.path.is_ident("c_name") {
-            self.c_name = Some(meta.value()?.parse::<LitStr>()?.value());
-        } else if meta.path.is_ident("pil_name") {
-            self.pil_name = Some(meta.value()?.parse::<LitStr>()?.value());
-        } else if meta.path.is_ident("asm_name") {
-            self.asm_name = Some(meta.value()?.parse::<LitStr>()?.value());
-        } else {
-            return Err(meta.error("unknown #[emit] argument"));
+        match ident_of(&meta).as_str() {
+            "internal" => self.internal = true,
+            "to" => self.targets = Some(parse_targets(&meta)?),
+            "skip" => self.skip |= parse_targets(&meta)?,
+            "hex" => self.radix = Some(Radix::Hex),
+            "dec" => self.radix = Some(Radix::Dec),
+            "fits" => self.fits = Some(Some(parse_fits(&meta)?)),
+            "no_fits" => self.fits = Some(None),
+            "c_name" => self.c_name = Some(lit_str(&meta)?),
+            "pil_name" => self.pil_name = Some(lit_str(&meta)?),
+            "asm_name" => self.asm_name = Some(lit_str(&meta)?),
+            _ => return Err(meta.error("unknown #[emit] argument")),
         }
         Ok(())
     }
@@ -161,19 +118,28 @@ fn parse_fits(meta: &ParseNestedMeta) -> syn::Result<u8> {
     Ok(bits)
 }
 
-fn add_target(bits: &mut u8, m: &ParseNestedMeta) -> syn::Result<()> {
-    if m.path.is_ident("rust") {
-        *bits |= T_RUST;
-    } else if m.path.is_ident("c") {
-        *bits |= T_C;
-    } else if m.path.is_ident("pil") {
-        *bits |= T_PIL;
-    } else if m.path.is_ident("asm") {
-        *bits |= T_ASM;
-    } else {
-        return Err(m.error("expected `rust`, `c`, `pil`, or `asm`"));
-    }
-    Ok(())
+/// The argument's name, or `""` for a multi-segment path (which no argument matches).
+fn ident_of(meta: &ParseNestedMeta) -> String {
+    meta.path.get_ident().map(ToString::to_string).unwrap_or_default()
+}
+
+/// The string literal of a `key = "value"` argument.
+fn lit_str(meta: &ParseNestedMeta) -> syn::Result<String> {
+    Ok(meta.value()?.parse::<LitStr>()?.value())
+}
+
+/// The target set of a `to(..)`/`skip(..)` list.
+fn parse_targets(meta: &ParseNestedMeta) -> syn::Result<u8> {
+    let mut bits = 0u8;
+    meta.parse_nested_meta(|m| {
+        let i = TARGETS
+            .iter()
+            .position(|(kw, _)| m.path.is_ident(kw))
+            .ok_or_else(|| m.error("expected `rust`, `c`, `pil`, or `asm`"))?;
+        bits |= 1 << i;
+        Ok(())
+    })?;
+    Ok(bits)
 }
 
 #[proc_macro_attribute]
@@ -207,13 +173,13 @@ fn expand(container: Container, item_mod: ItemMod) -> syn::Result<TokenStream2> 
 
     // `to(..)` is mandatory: a group must state every target it emits to, so its fan-out
     // is explicit at the definition site (no default set to memorize, no asm asymmetry).
-    if container.targets.is_none() {
+    let Some(group_targets) = container.targets else {
         return Err(syn::Error::new(
             ident_span,
             "#[constants] requires `to(..)`: list every target the group emits to, \
              e.g. `to(rust, c, pil)`",
         ));
-    }
+    };
 
     let group_name = container.group.clone().unwrap_or_else(|| ident.to_string());
 
@@ -240,15 +206,10 @@ fn expand(container: Container, item_mod: ItemMod) -> syn::Result<TokenStream2> 
                 }
 
                 let mut emit = Emit::default();
-                let mut kept_attrs: Vec<Attribute> = Vec::new();
-                for a in std::mem::take(&mut c.attrs) {
-                    if a.path().is_ident("emit") {
-                        a.parse_nested_meta(|m| emit.parse_meta(m))?;
-                    } else {
-                        kept_attrs.push(a);
-                    }
+                for a in c.attrs.iter().filter(|a| a.path().is_ident("emit")) {
+                    a.parse_nested_meta(|m| emit.parse_meta(m))?;
                 }
-                c.attrs = kept_attrs;
+                c.attrs.retain(|a| !a.path().is_ident("emit"));
 
                 // Exported consts become `pub` in the generated Rust and visible to every
                 // target, so only a `pub` const may be exported; a private helper must say
@@ -265,7 +226,7 @@ fn expand(container: Container, item_mod: ItemMod) -> syn::Result<TokenStream2> 
                 out_items.push(quote!(#c));
 
                 if !emit.internal {
-                    exports.push(build_export(&container, &emit, &c)?);
+                    exports.push(build_export(&container, group_targets, &emit, &c)?);
                 }
             }
             other => out_items.push(quote!(#other)),
@@ -299,7 +260,12 @@ fn expand(container: Container, item_mod: ItemMod) -> syn::Result<TokenStream2> 
     })
 }
 
-fn build_export(container: &Container, emit: &Emit, c: &ItemConst) -> syn::Result<TokenStream2> {
+fn build_export(
+    container: &Container,
+    group_targets: u8,
+    emit: &Emit,
+    c: &ItemConst,
+) -> syn::Result<TokenStream2> {
     let id = &c.ident;
     let name = id.to_string();
 
@@ -314,10 +280,7 @@ fn build_export(container: &Container, emit: &Emit, c: &ItemConst) -> syn::Resul
         Kind::Str => quote!( zisk_definitions_generator::meta::Value::Str(#id) ),
     };
 
-    // `expand` rejected a group with no `to(..)`, so the container set is always present.
-    let container_targets = container.targets.expect("`to(..)` enforced in expand");
-    let mut targets = emit.targets.unwrap_or(container_targets);
-    targets &= !emit.skip;
+    let targets = emit.targets.unwrap_or(group_targets) & !emit.skip;
     // `skip(..)` can subtract every target; emitting nowhere has its own explicit
     // spelling, so an empty set here is a mistake, not a silent omission.
     if targets == 0 {
@@ -327,26 +290,13 @@ fn build_export(container: &Container, emit: &Emit, c: &ItemConst) -> syn::Resul
              `#[emit(internal)]` to emit nowhere",
         ));
     }
-    // Emit the target set symbolically so `meta::Targets` remains the single
-    // source of truth for the bit values (no duplicated 1/2/4 across crates).
-    let mut target_parts: Vec<TokenStream2> = Vec::new();
-    if targets & T_RUST != 0 {
-        target_parts.push(quote!(zisk_definitions_generator::meta::Targets::RUST.0));
-    }
-    if targets & T_C != 0 {
-        target_parts.push(quote!(zisk_definitions_generator::meta::Targets::C.0));
-    }
-    if targets & T_PIL != 0 {
-        target_parts.push(quote!(zisk_definitions_generator::meta::Targets::PIL.0));
-    }
-    if targets & T_ASM != 0 {
-        target_parts.push(quote!(zisk_definitions_generator::meta::Targets::ASM.0));
-    }
-    let targets_tok = if target_parts.is_empty() {
-        quote!(zisk_definitions_generator::meta::Targets(0))
-    } else {
-        quote!(zisk_definitions_generator::meta::Targets( #(#target_parts)|* ))
-    };
+    let target_parts = TARGETS.iter().enumerate().filter(|(i, _)| targets & (1 << i) != 0).map(
+        |(_, (_, name))| {
+            let name = format_ident!("{name}");
+            quote!(zisk_definitions_generator::meta::Targets::#name.0)
+        },
+    );
+    let targets_tok = quote!(zisk_definitions_generator::meta::Targets( #(#target_parts)|* ));
 
     let radix = emit.radix.unwrap_or(container.radix);
     let radix_tok = match radix {
@@ -474,6 +424,11 @@ mod tests {
         expand(container, syn::parse2(item)?)
     }
 
+    /// `pub mod g` holding one `pub const X: u64`, with `attrs` on the const.
+    fn module(attrs: TokenStream2) -> TokenStream2 {
+        quote!(pub mod g { #attrs pub const X: u64 = 1; })
+    }
+
     #[test]
     fn private_const_must_be_internal() {
         let private = quote!(
@@ -496,8 +451,7 @@ mod tests {
     #[test]
     fn conditional_consts_are_rejected() {
         for attr in [quote!(#[cfg(test)]), quote!(#[cfg_attr(test, emit(internal))])] {
-            let item = quote!(pub mod g { #attr pub const X: u64 = 1; });
-            let err = constants(quote!(to(rust)), item).unwrap_err().to_string();
+            let err = constants(quote!(to(rust)), module(attr)).unwrap_err().to_string();
             assert!(err.contains("build configuration"), "{err}");
         }
         // Conditional non-const items (e.g. a test module) are left to the compiler.
@@ -516,64 +470,27 @@ mod tests {
         // syn already rejects an empty nested list ("expected nested attribute"), so an
         // empty `to()` can neither pass the required-`to(..)` check nor silently emit a
         // const nowhere. Pinned here so a syn upgrade can't quietly change it.
-        let item = quote!(
-            pub mod g {
-                pub const X: u64 = 1;
-            }
-        );
-        assert!(constants(quote!(to()), item).is_err());
-
-        let per_const = quote!(
-            pub mod g {
-                #[emit(to())]
-                pub const X: u64 = 1;
-            }
-        );
-        assert!(constants(quote!(to(rust)), per_const).is_err());
+        assert!(constants(quote!(to()), module(quote!())).is_err());
+        assert!(constants(quote!(to(rust)), module(quote!(#[emit(to())]))).is_err());
     }
 
     #[test]
     fn skipping_every_target_is_rejected() {
-        let item = quote!(
-            pub mod g {
-                #[emit(skip(rust))]
-                pub const X: u64 = 1;
-            }
-        );
-        let err = constants(quote!(to(rust)), item).unwrap_err().to_string();
+        let skip_all = module(quote!(#[emit(skip(rust))]));
+        let err = constants(quote!(to(rust)), skip_all).unwrap_err().to_string();
         assert!(err.contains("emit(internal)"), "{err}");
 
         // Explicitly emitting nowhere stays available.
-        let item = quote!(
-            pub mod g {
-                #[emit(internal)]
-                pub const X: u64 = 1;
-            }
-        );
-        assert!(constants(quote!(to(rust)), item).is_ok());
+        assert!(constants(quote!(to(rust)), module(quote!(#[emit(internal)]))).is_ok());
     }
 
     #[test]
     fn fits_must_be_1_to_128_bits() {
-        let item = || {
-            quote!(
-                pub mod g {
-                    pub const X: u64 = 1;
-                }
-            )
-        };
         for bad in [quote!(to(c), fits = 0), quote!(to(c), fits = 129)] {
-            let err = constants(bad, item()).unwrap_err().to_string();
+            let err = constants(bad, module(quote!())).unwrap_err().to_string();
             assert!(err.contains("between 1 and 128"), "{err}");
         }
-        assert!(constants(quote!(to(c), fits = 1), item()).is_ok());
-
-        let per_const = quote!(
-            pub mod g {
-                #[emit(fits = 0)]
-                pub const X: u64 = 1;
-            }
-        );
-        assert!(constants(quote!(to(c)), per_const).is_err());
+        assert!(constants(quote!(to(c), fits = 1), module(quote!())).is_ok());
+        assert!(constants(quote!(to(c)), module(quote!(#[emit(fits = 0)]))).is_err());
     }
 }
