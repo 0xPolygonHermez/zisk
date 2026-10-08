@@ -3,24 +3,37 @@
 
 use crate::mem_gpu_fill::{compare_rows_masked, gpu_fill_mode, packed_used_bits, GpuFillMode};
 
-/// Whether this block's rows of the memory air family `name` ("ram", "rom", "input", "align") are
-/// served from the device: arena mode and a device fill that succeeded for the block; otherwise
-/// the instances are collected and filled on the CPU.
-pub(crate) fn rows_on_device(name: &str) -> bool {
-    let bit = match name {
+fn family_bit(name: &str) -> u32 {
+    match name {
         "ram" => zisk_common::MEM_ROWS_RAM,
         "rom" => zisk_common::MEM_ROWS_ROM,
         "input" => zisk_common::MEM_ROWS_INPUT,
         "align" => zisk_common::MEM_ROWS_ALIGN,
-        _ => return false,
-    };
-    matches!(gpu_fill_mode(), GpuFillMode::Arena | GpuFillMode::Slot)
-        && zisk_common::MEM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire) & bit != 0
+        _ => 0,
+    }
 }
 
-/// `ZISK_MEM_GPU_FILL=slot`: the memory instances are committed by the prover's kernel.
-pub(crate) fn slot_mode() -> bool {
+/// Whether this block's rows of the memory air family `name` ("ram", "rom", "input", "align") come
+/// from the GPU planner: arena or slot mode and a device fill that succeeded for the block (the
+/// rows still on the device, or already in the planner's host memory for the proofs); otherwise
+/// the instances are collected and filled on the CPU.
+pub(crate) fn rows_on_device(name: &str) -> bool {
+    use std::sync::atomic::Ordering::Acquire;
+    let bit = family_bit(name);
+    matches!(gpu_fill_mode(), GpuFillMode::Arena | GpuFillMode::Slot)
+        && (zisk_common::MEM_ROWS_ON_DEVICE.load(Acquire)
+            | zisk_common::MEM_ROWS_ON_HOST.load(Acquire))
+            & bit
+            != 0
+}
+
+/// `ZISK_MEM_GPU_FILL=slot` while the family's rows are still on the device: the instance is
+/// committed by the prover's kernel. Once the arena went back, the rows come from the host copy.
+pub(crate) fn slot_pending(name: &str) -> bool {
     gpu_fill_mode() == GpuFillMode::Slot
+        && zisk_common::MEM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire)
+            & family_bit(name)
+            != 0
 }
 
 /// The kernel-input family of the MemAlign airs (the other three live with the staging helpers).
