@@ -421,7 +421,9 @@ fn files_on_disk(dir: &Path, ext: &str) -> Vec<String> {
 
 /// One `<group>.rs` per group that opts into Rust, plus a `mod.rs` declaring them.
 /// The Rust form always uses the source ident and no prefix, so consumers see the
-/// same names the author wrote. Skipped entirely if no group targets Rust.
+/// same names the author wrote. `mod.rs` is always emitted, even empty when no group
+/// targets Rust, so the consumer's `mod generated;` stays valid and the Rust dir is
+/// always reconciled.
 ///
 /// Unlike C/PIL/asm, groups can't share a Rust file: each is its own module, so two
 /// Rust-emitting groups with one name (or a keyword name) are rejected.
