@@ -207,7 +207,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
     ```bash
     cargo-zisk proofman-setup compile-pil \
         --pil pil/zisk.pil \
-        --include "pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles" \
+        --include "pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles,definitions/src/generated/pil" \
         --output pil/zisk.pilout \
         --fixed-dir tmp/fixed \
         --fixed-to-file \

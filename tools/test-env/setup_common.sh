@@ -291,8 +291,11 @@ compute_input_hash() (
   # into the calling shell.
   pil_list=$(mktemp)
   trap 'rm -f "$pil_list"' EXIT
-  find pil state-machines precompiles -type f -name '*.pil' >> "$pil_list"
-  find "$PROOFMAN_DIR/pil2-components/lib/std/pil" -type f -name '*.pil' >> "$pil_list"
+  # Every .pil the compiler can see: the --include dirs themselves, so a dir added
+  # to INCLUDE_PATHS (e.g. definitions/src/generated/pil) can't miss the key.
+  local include_dirs
+  IFS=, read -r -a include_dirs <<< "$INCLUDE_PATHS"
+  find "${include_dirs[@]}" -type f -name '*.pil' >> "$pil_list"
   # LC_ALL=C: byte-ordered sort so the hash matches across machines regardless
   # of locale (en_US.UTF-8 vs C can reorder paths with punctuation).
   LC_ALL=C sort -o "$pil_list" "$pil_list"
