@@ -56,8 +56,9 @@ OUT_DIR := $(dir $(OUT_PATH))
 # Its single canonical source is definitions/src/generated/c, produced from the #[constants]
 # definitions by `cargo build -p zisk-definitions-sync`.
 #   - Repo build: definitions/ is a sibling, so copy it in (and refresh when it changes).
-#   - Installed/packaged build: no sibling exists, but the header was staged into
-#     src/generated at package time (release.yml / build_zisk.sh), so this copy is skipped.
+#   - Installed/packaged build: no sibling exists, but the generated headers were staged
+#     into src/generated at package time (release.yml, build_zisk.sh, and the manual
+#     install in book/getting_started/installation.md), so this copy is skipped.
 # Either way the compile below finds src/generated/execution.gen.h.
 GEN_HEADER := src/generated/execution.gen.h
 DEFS_GEN_HEADER := ../definitions/src/generated/c/execution.gen.h

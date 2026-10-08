@@ -32,9 +32,8 @@
 # Input hash (the --cache-dir cache key)
 # --------------------------------------
 # An input-side sha256 over:
-#   - every *.pil under the compile-pil --include dirs (INCLUDE_PATHS):
-#     pil/ state-machines/ precompiles/ definitions/src/generated/pil/
-#     and ${PROOFMAN_DIR}/pil2-components/lib/std/pil
+#   - every *.pil under the compile-pil --include dirs (INCLUDE_PATHS in
+#     setup_common.sh)
 #   - setup/starkstructs.<mode>.json (picked by $HASH_MODE)
 #   - the *_fixed.bin files written by the fixed-data generators
 #   - pil2-compiler ref: the branch override if set, else the dep ref from
