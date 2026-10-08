@@ -104,14 +104,6 @@ pub enum ExecutorError {
     #[error("ROM not initialized")]
     RomNotInitialized,
 
-    /// An instance registered while the emulation ran is not where the block's plan puts it.
-    #[error("the early plan of bundle position {position} differs from the block's plan at instance {index}")]
-    EarlyPlanMismatch {
-        /// Bundle position of the state machine.
-        position: usize,
-        /// Index of the first differing instance among that position's plans.
-        index: usize,
-    },
     /// No random seed has been installed yet via `ZiskExecutor::set_stdin_and_random_seed`.
     #[error("random seed not set")]
     RandomSeedNotSet,
