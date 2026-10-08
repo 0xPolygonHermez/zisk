@@ -92,8 +92,11 @@ impl AsmExecClient {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program, with_hints) before execute")?;
 
+        // Before the job's input reset, which writes the shared input too. Held to the
+        // end, past the last read of the job's results.
+        let claim = setup.resources.claim();
         self.executor.reset_for_new_job()?;
-        setup.resources.activate()?;
+        setup.resources.activate(&claim)?;
 
         if let Some(stream) = hints {
             tracing::debug!("Installing hints stream source");

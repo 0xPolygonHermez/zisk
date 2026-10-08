@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use zisk_asm_runner::{
     AsmRunnerOptions, AsmServices, ControlShmem, GpuBufferSource, HintsShmem, InputsShmemWriter,
+    SegmentsClaim,
 };
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_asm_runner::{MOShmemReader, MTShmemReader, RHShmemReader};
@@ -192,9 +193,17 @@ impl AsmResources {
         Ok(Self { shared, asm_services })
     }
 
+    /// Wait until no setup or job is using the shared segments, and hold them
+    /// until the returned claim is dropped. Take it before a job touches them,
+    /// input included, and keep it until the job's results have been read; see
+    /// [`SegmentsClaim`].
+    pub fn claim(&self) -> SegmentsClaim {
+        self.asm_services.claim()
+    }
+
     /// Make this program the one the shared segments and semaphores serve, unless
-    /// it already is. Call it before every job: it costs a lock when nothing
-    /// changed.
+    /// it already is. Call it before every job, under that job's `claim`: it
+    /// costs a lock when nothing changed.
     ///
     /// On a switch, [`AsmServices::activate`] waits for the outgoing program's
     /// services to finish with the shared segments, then this binds the shared
@@ -202,7 +211,7 @@ impl AsmResources {
     /// and shared; only the semaphores are per-program), then this program's
     /// services rebuild their guest RAM and ROM, which another program's
     /// services may have overwritten since this program last ran.
-    pub fn activate(&self) -> ExecutorResult<()> {
+    pub fn activate(&self, claim: &SegmentsClaim) -> ExecutorResult<()> {
         let hints_processor = match &self.shared.hints_stream {
             Some(hints_stream) => {
                 Some(hints_stream.lock_or_poison("hints_stream")?.get_processor())
@@ -212,7 +221,7 @@ impl AsmResources {
         let sem_prefix = self.asm_services.sem_prefix();
 
         self.asm_services
-            .activate(|| {
+            .activate(claim, || {
                 self.shared.shmem_inputs.bind_semaphores(sem_prefix)?;
                 if let Some(processor) = &hints_processor {
                     processor.hints_sink().bind_semaphores(sem_prefix)?;
@@ -225,9 +234,7 @@ impl AsmResources {
     /// Convenience constructor for the standalone path: spawns the ASM
     /// services and maps shmem segments without MPI/distributed/caching
     /// plumbing. Single process (`world_rank` / `local_rank` = 0), no MPI
-    /// broadcast, owns ROM init. Caller must serialize calls when multiple
-    /// standalone executors run in the same OS process — the shmem prefix
-    /// is per-process, not per-thread.
+    /// broadcast, owns ROM init.
     pub fn new_standalone(
         elf_hash: String,
         asm_mt_path: &Path,
@@ -238,6 +245,9 @@ impl AsmResources {
         let options = AsmRunnerOptions::new().with_local_rank(0);
         let services = AsmServices::new(0, 0, elf_hash, asm_mt_path, with_hints, options)
             .map_err(ExecutorError::asm_backend)?;
+        // Mapping initializes the shared control and input segments, which another
+        // client's job in this process may be using.
+        let claim = services.claim();
         let gpu_buffer_src =
             if gpu { GpuBufferSource::SelfAllocated } else { GpuBufferSource::Cpu };
         let shared = Arc::new(AsmSharedResources::new(
@@ -251,7 +261,7 @@ impl AsmResources {
             gpu_buffer_src,
         )?);
         let resources = Self::new(shared, services)?;
-        resources.activate()?;
+        resources.activate(&claim)?;
         Ok(resources)
     }
 

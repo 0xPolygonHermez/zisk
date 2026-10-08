@@ -27,7 +27,10 @@
 //!   program: it waits until the active program's services have finished with them, rebinds the
 //!   parent's writers to the new program's semaphores, and has its services rebuild their guest
 //!   RAM and ROM (the reset request). Starting a new program's services waits the same way, since
-//!   starting writes those segments too.
+//!   starting writes those segments too. Only one setup or job may use them at a time: each holds
+//!   a [`SegmentsClaim`] from before it touches them to the last read of its results, and
+//!   `activate` requires one. A job split across calls, as the distributed worker's phases are,
+//!   holds one only for its handoff.
 //!
 //! # Failures
 //!

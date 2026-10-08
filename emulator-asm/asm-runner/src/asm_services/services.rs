@@ -9,7 +9,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use std::collections::BTreeMap;
 use std::process::Stdio;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Condvar, Mutex, Weak};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::time::Duration;
 use std::{fmt, path::Path, process::Command};
@@ -34,8 +34,9 @@ use std::{fmt, path::Path, process::Command};
 /// setup creates them again.
 ///
 /// The entry also records which program the shared segments currently serve
-/// (see [`AsmServices::activate`]), since that is a fact about the segments, not
-/// about any one caller that set up programs on them.
+/// (see [`AsmServices::activate`]), and holds the lock that gives one setup or
+/// job at a time the use of them ([`SegmentsClaim`]), since both are facts about
+/// the segments, not about any one caller that set up programs on them.
 static PREFIX_LEASES: Mutex<BTreeMap<String, PrefixState>> = Mutex::new(BTreeMap::new());
 
 /// One shmem prefix in use.
@@ -47,6 +48,55 @@ struct PrefixState {
     /// that program's reset has completed, so a failure in between leaves no
     /// program recorded rather than the wrong one.
     active: Option<Weak<AsmServicesInner>>,
+    /// Behind every [`SegmentsClaim`] on the prefix.
+    claims: Arc<SegmentsLock>,
+}
+
+/// The lock behind [`SegmentsClaim`].
+///
+/// Not `PREFIX_LEASES`' own mutex: a job holds this for minutes, and leases,
+/// activation checks and teardowns need the map meanwhile. A `std` guard cannot
+/// outlive the call that took it, hence the flag and the condition variable.
+#[derive(Default)]
+struct SegmentsLock {
+    held: Mutex<bool>,
+    released: Condvar,
+}
+
+impl SegmentsLock {
+    /// Wait until no one holds the segments, then hold them.
+    fn claim(self: &Arc<Self>, shm_prefix: &str) -> SegmentsClaim {
+        let mut held = self.held.lock().unwrap_or_else(|p| p.into_inner());
+        while *held {
+            held = self.released.wait(held).unwrap_or_else(|p| p.into_inner());
+        }
+        *held = true;
+        SegmentsClaim { lock: Arc::clone(self), shm_prefix: shm_prefix.to_string() }
+    }
+}
+
+/// The use of a prefix's shared segments, by one setup or one job, until dropped.
+///
+/// Every program on a prefix shares its guest RAM and ROM, its input and its
+/// outputs, so only one may use them at a time: from the handoff that makes its
+/// program active ([`AsmServices::activate`], which requires a claim) through
+/// the last read of its job's results. Starting a program's services takes one
+/// too, since starting writes the guest RAM and ROM.
+///
+/// Take it with [`AsmServices::claim`] before anything of the job touches the
+/// segments, and hold it until the job's results have been read. Not reentrant:
+/// a thread holding one that asks for another on the same prefix, including by
+/// setting up a program on it, waits for ever.
+pub struct SegmentsClaim {
+    lock: Arc<SegmentsLock>,
+    shm_prefix: String,
+}
+
+impl Drop for SegmentsClaim {
+    fn drop(&mut self) {
+        *self.lock.held.lock().unwrap_or_else(|p| p.into_inner()) = false;
+        self.lock.released.notify_one();
+    }
 }
 
 /// Proof that this `AsmServices` may use `shm_prefix`'s segments, and that they
@@ -287,8 +337,10 @@ impl AsmServices {
         let prefix_lease =
             Self::acquire_prefix(world_rank, &shm_prefix, &sem_prefix, stripped_path, &options)?;
 
-        // Starting services writes the shared guest RAM and ROM, so the program
-        // those segments serve must have finished with them first.
+        // Starting services writes the shared guest RAM and ROM, so no job may be
+        // using the segments, and the program they serve must have finished with
+        // them first.
+        let _claim = Self::claim_prefix(&shm_prefix);
         Self::quiesce_active(&shm_prefix);
 
         // Phase 2: start services and wait for them to be ready.
@@ -350,7 +402,10 @@ impl AsmServices {
             }
             None => {
                 Self::create_shmem(world_rank, shm_prefix, sem_prefix, trimmed_path, options)?;
-                leases.insert(shm_prefix.to_string(), PrefixState { leases: 1, active: None });
+                leases.insert(
+                    shm_prefix.to_string(),
+                    PrefixState { leases: 1, active: None, claims: Arc::default() },
+                );
             }
         }
 
@@ -495,9 +550,20 @@ impl AsmServices {
     /// The record lives with the segments, not with the caller, so every client
     /// in the process that set up programs on them sees the same one.
     ///
+    /// `claim` must be this prefix's, held for the job that follows: without it,
+    /// a second handoff could find no program recorded while the first waits for
+    /// the outgoing one, skip that wait, and reset the guest memory under it.
+    ///
     /// Fails with [`AsmRunError::ServiceDied`] if one of this program's services
     /// has exited: it would fail the job anyway, later and less clearly.
-    pub fn activate(&self, bind: impl FnOnce() -> Result<()>) -> Result<()> {
+    pub fn activate(&self, claim: &SegmentsClaim, bind: impl FnOnce() -> Result<()>) -> Result<()> {
+        if claim.shm_prefix != self.inner.shm_prefix {
+            return Err(anyhow::anyhow!(
+                "activating a program on {} under a claim on {}",
+                self.inner.shm_prefix,
+                claim.shm_prefix
+            ));
+        }
         if let Some((service, how)) = self.inner.service.exited_service() {
             return Err(AsmRunError::ServiceDied { service: service.to_string(), how }.into());
         }
@@ -513,6 +579,23 @@ impl AsmServices {
             state.active = Some(Arc::downgrade(&self.inner));
         }
         Ok(())
+    }
+
+    /// Wait until no setup or job is using this program's shared segments, and
+    /// hold them until the returned claim is dropped. See [`SegmentsClaim`].
+    pub fn claim(&self) -> SegmentsClaim {
+        Self::claim_prefix(&self.inner.shm_prefix)
+    }
+
+    /// [`claim`](Self::claim), for a prefix this process holds a lease on.
+    fn claim_prefix(shm_prefix: &str) -> SegmentsClaim {
+        // Cloned out so the map is not locked while waiting.
+        let claims = {
+            let leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
+            let state = leases.get(shm_prefix).expect("a prefix is claimed only under a lease");
+            Arc::clone(&state.claims)
+        };
+        claims.claim(shm_prefix)
     }
 
     /// Whether the shared segments currently serve this program.
@@ -742,7 +825,10 @@ mod tests {
     fn first_lease(shm_prefix: &str) -> PrefixLease {
         let mut leases = PREFIX_LEASES.lock().unwrap();
         assert!(!leases.contains_key(shm_prefix), "{shm_prefix} is already leased");
-        leases.insert(shm_prefix.to_string(), PrefixState { leases: 1, active: None });
+        leases.insert(
+            shm_prefix.to_string(),
+            PrefixState { leases: 1, active: None, claims: Arc::default() },
+        );
         PrefixLease { shm_prefix: shm_prefix.to_string() }
     }
 
@@ -795,6 +881,35 @@ mod tests {
             !PREFIX_LEASES.lock().unwrap().contains_key(&prefix),
             "the prefix must be forgotten so a later setup re-creates it"
         );
+    }
+
+    /// A job holds the segments from its handoff to its last read, so a second
+    /// claim on the prefix waits for the first to be dropped, and then gets in.
+    #[test]
+    fn a_claim_waits_until_the_one_before_it_is_dropped() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let lock = Arc::new(SegmentsLock::default());
+        let first = lock.claim("ZISK_unittest_claim");
+
+        let (claimed, rx) = mpsc::channel();
+        let second = {
+            let lock = Arc::clone(&lock);
+            std::thread::spawn(move || {
+                let _claim = lock.claim("ZISK_unittest_claim");
+                claimed.send(()).unwrap();
+            })
+        };
+        assert!(
+            rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a second claim must wait while the first is held"
+        );
+
+        drop(first);
+        rx.recv_timeout(Duration::from_secs(10)).expect("dropping a claim must let the next in");
+        second.join().unwrap();
+        assert!(!*lock.held.lock().unwrap(), "the last claim dropped must release the segments");
     }
 
     #[test]
