@@ -10,4 +10,7 @@ repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
 
+# Only the codegen crates (source, sync) use it, and neither is published.
+publish = false
+
 [dependencies]
