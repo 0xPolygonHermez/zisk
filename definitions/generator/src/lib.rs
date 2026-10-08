@@ -275,15 +275,16 @@ fn normalize(path: &Path) -> PathBuf {
     for part in path.components() {
         match part {
             Component::CurDir => {}
-            // `..` cancels only a real directory name; a leading `..` (or one after
-            // another `..`) has nothing to cancel and must stay.
-            Component::ParentDir => {
-                if matches!(out.components().next_back(), Some(Component::Normal(_))) {
+            // `..` cancels a real directory name and is a no-op at the root (`/..` is
+            // `/`); in a relative path, a leading `..` (or one after another `..`) has
+            // nothing to cancel and must stay.
+            Component::ParentDir => match out.components().next_back() {
+                Some(Component::Normal(_)) => {
                     out.pop();
-                } else {
-                    out.push(part);
                 }
-            }
+                Some(Component::RootDir) => {}
+                _ => out.push(part),
+            },
             other => out.push(other),
         }
     }
@@ -1108,11 +1109,32 @@ mod tests {
     }
 
     #[test]
+    fn absolute_aliases_above_the_root_still_overlap() {
+        // `/tmp/../../out` is `/out`, so a second job writing there must be refused.
+        let (r1, c1, p1, a1) =
+            (Path::new("/out"), Path::new("/g/c"), Path::new("/g/pil"), Path::new("/g/asm"));
+        let (r2, c2, p2, a2) = (
+            Path::new("/tmp/../../out"),
+            Path::new("/h/c"),
+            Path::new("/h/pil"),
+            Path::new("/h/asm"),
+        );
+        let one =
+            Dirs { rust: exclusive(r1), c: exclusive(c1), pil: exclusive(p1), asm: exclusive(a1) };
+        let two =
+            Dirs { rust: exclusive(r2), c: exclusive(c2), pil: exclusive(p2), asm: exclusive(a2) };
+        assert!(super::ensure_disjoint(&[one, two]).is_err());
+    }
+
+    #[test]
     fn normalize_keeps_unresolved_parent_dirs() {
         use super::normalize;
         assert_eq!(normalize(Path::new("../../out")), Path::new("../../out"));
         assert_eq!(normalize(Path::new("a/../b/./c")), Path::new("b/c"));
         assert_eq!(normalize(Path::new("a/../../c")), Path::new("../c"));
+        // At the root `..` has nothing above it: `/..` is `/`.
+        assert_eq!(normalize(Path::new("/tmp/../../out")), Path::new("/out"));
+        assert_eq!(normalize(Path::new("/..")), Path::new("/"));
 
         // `../../out` and `out` are different dirs, so no conflict.
         let (r1, c1, p1, a1) =
