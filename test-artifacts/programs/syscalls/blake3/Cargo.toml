@@ -8,6 +8,3 @@ ziskos.workspace = true
 zisk-precomp-helpers.workspace = true
 
 rand.workspace = true
-
-[build-dependencies]
-zisk-sdk.workspace = true
