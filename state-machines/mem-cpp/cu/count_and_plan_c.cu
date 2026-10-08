@@ -170,10 +170,15 @@ const uint64_t* count_and_plan_align_instance_rows(void* h, uint32_t air_id, uin
 bool count_and_plan_prepare_slot_fills(void* h, const void* image, size_t image_bytes, const AlignPlanDesc* plans,
                                        uint32_t n_plans, const AlignChunkEntry* entries, uint32_t n_entries,
                                        const uint32_t* ram, uint32_t n_ram, const uint32_t* rom, uint32_t n_rom,
-                                       const uint32_t* input, uint32_t n_input, RamFillPrepared* prepared) {
+                                       const uint32_t* input, uint32_t n_input, bool host_rows,
+                                       RamFillPrepared* prepared) {
     if (!h) return false;
     return static_cast<CountAndPlan*>(h)->prepare_slot_fills(image, image_bytes, plans, n_plans, entries, n_entries,
-                                                             ram, n_ram, rom, n_rom, input, n_input, prepared);
+                                                             ram, n_ram, rom, n_rom, input, n_input, host_rows, prepared);
+}
+
+uint32_t count_and_plan_host_rows_mask(void* h) {
+    return h ? static_cast<CountAndPlan*>(h)->host_rows_mask() : 0;
 }
 
 int count_and_plan_device(void* h) {

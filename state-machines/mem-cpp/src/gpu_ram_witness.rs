@@ -406,8 +406,14 @@ pub fn gpu_align_witness_fill(
         ));
     }
     if ASYNC_PREP.load(Ordering::Acquire) {
-        return gpu_mem_witness_rows_into(3, air_id as u32, segment as u32, n_rows as u32, out_rows)
-            .map(|r| r.n_lanes as usize);
+        return gpu_mem_witness_rows_into(
+            3,
+            air_id as u32,
+            segment as u32,
+            n_rows as u32,
+            out_rows,
+        )
+        .map(|r| r.n_lanes as usize);
     }
     let reg = registry();
     let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
@@ -613,7 +619,9 @@ pub fn gpu_mem_witness_rows_into(
         // SAFETY: the planner outlives the block; the call only reads the planner's staging table
         // under its own lock; `s` is a valid out-parameter.
         let rc = unsafe {
-            crate::gpu_bindings::count_and_plan_staged_wait(inner, family, air_id, segment, 200, &mut s)
+            crate::gpu_bindings::count_and_plan_staged_wait(
+                inner, family, air_id, segment, 200, &mut s,
+            )
         };
         match rc {
             1 => {
@@ -627,7 +635,12 @@ pub fn gpu_mem_witness_rows_into(
                 // stream and returns complete.
                 let ok = unsafe {
                     crate::gpu_bindings::count_and_plan_copy_staged(
-                        inner, family, air_id, segment, out_rows.as_mut_ptr(), s.words,
+                        inner,
+                        family,
+                        air_id,
+                        segment,
+                        out_rows.as_mut_ptr(),
+                        s.words,
                     )
                 };
                 break if ok { Some(s.res) } else { None };
@@ -650,7 +663,13 @@ pub fn gpu_mem_witness_rows_into(
             // instance's layout (checked by the fill); `res` is a valid out-parameter.
             let ok = unsafe {
                 crate::gpu_bindings::count_and_plan_fill_host(
-                    r.inner, family, air_id, segment, n_rows, out_rows.as_mut_ptr(), &mut res,
+                    r.inner,
+                    family,
+                    air_id,
+                    segment,
+                    n_rows,
+                    out_rows.as_mut_ptr(),
+                    &mut res,
                 )
             };
             if !ok {
@@ -664,6 +683,7 @@ pub fn gpu_mem_witness_rows_into(
     };
     if let Some(release) = slot_fill_done() {
         slot_quiesce();
+        ASYNC_PREP.store(false, Ordering::Release);
         release();
     }
     Ok(res)
@@ -675,12 +695,18 @@ pub fn gpu_mem_witness_rows_into(
 /// secondaries and the first commits, and the first slot fill waits for it. The host-side checks
 /// stay synchronous, so a block the device cannot serve still falls back before any instance is
 /// built: the retained accesses must be complete and the MemAlign tables well formed.
+///
+/// With `host_rows`, the owned instances' rows are also copied to pinned host memory behind the
+/// preparation, and [`gpu_mem_witness_host_rows_mask`] tells which families have every owned
+/// instance there: once the arena is released, the proofs take the rows through the
+/// `gpu_*_witness_fill` copies instead of rebuilding them on the CPU.
 pub fn gpu_slot_witness_prepare_async(
     image: Vec<u8>,
     ram: Vec<u32>,
     rom: Vec<u32>,
     input: Vec<u32>,
     align_plans: &[&zisk_common::Plan],
+    host_rows: bool,
 ) -> Result<(), String> {
     let (descs, entries) = align_tables(align_plans)?;
     let inner = {
@@ -721,6 +747,7 @@ pub fn gpu_slot_witness_prepare_async(
                     rom.len() as u32,
                     input.as_ptr(),
                     input.len() as u32,
+                    host_rows,
                     &mut prepared,
                 )
             };
@@ -776,6 +803,20 @@ pub fn gpu_mem_witness_scalars(family: u32, inst: u32) -> Result<RamFillResult, 
     Ok(res)
 }
 
+/// `MEM_ROWS_*` bits of the families whose owned instances all have their rows in pinned host
+/// memory (zero before the preparation ends, or without host rows).
+pub fn gpu_mem_witness_host_rows_mask() -> u32 {
+    if slot_prepare_join().is_err() {
+        return 0;
+    }
+    let reg = registry();
+    match reg.as_ref() {
+        // SAFETY: registered handle, under the lock.
+        Some(r) => unsafe { crate::gpu_bindings::count_and_plan_host_rows_mask(r.inner) },
+        None => 0,
+    }
+}
+
 /// Arms the release that follows the last of `n_pending` slot fills.
 pub fn gpu_slot_witness_arm(n_pending: usize, release: Box<dyn FnOnce() + Send>) {
     let mut g = SLOT_RELEASE.lock().unwrap_or_else(|e| e.into_inner());
@@ -793,11 +834,11 @@ pub fn gpu_slot_witness_release_now() {
         g.pending = 0;
         g.release.take()
     };
+    ASYNC_PREP.store(false, Ordering::Release);
     if let Some(release) = release {
         slot_quiesce();
         release();
     }
-    ASYNC_PREP.store(false, Ordering::Release);
 }
 
 /// The release to run after this slot fill, when it was the last pending one.
@@ -875,6 +916,7 @@ pub unsafe extern "C" fn zisk_mem_witness_slot_kernel(
         if release.is_some() {
             // SAFETY: registered handle, under the lock.
             unsafe { crate::gpu_bindings::count_and_plan_slot_quiesce(r.inner) };
+            ASYNC_PREP.store(false, Ordering::Release);
         }
         release
     };

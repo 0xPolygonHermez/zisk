@@ -1534,6 +1534,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     CUDA_CHECK(cudaStreamCreateWithPriority(&d2h_stream_, cudaStreamDefault, greatestPrio));
     CUDA_CHECK(cudaStreamCreateWithPriority(&meta_stream_, cudaStreamDefault, greatestPrio));
     CUDA_CHECK(cudaStreamCreateWithPriority(&fill_stream_, cudaStreamNonBlocking, greatestPrio));
+    CUDA_CHECK(cudaStreamCreateWithPriority(&copy_stream_, cudaStreamNonBlocking, leastPrio));
     CUDA_CHECK(cudaEventCreate(&e_after_preproc_));
     CUDA_CHECK(cudaEventCreate(&e_after_prepare_));
     CUDA_CHECK(cudaEventCreate(&e_metas_ready_));
@@ -2122,6 +2123,8 @@ void CountAndPlan::reset() {
     slot_prepared_          = false;
     resolve_all_            = false;
     slot_scratch_           = nullptr;
+    slot_host_rows_         = false;
+    host_rows_mask_         = 0;
     slot_quiesce();
     {
         std::lock_guard<std::mutex> lk(staged_mtx_);
@@ -2208,6 +2211,7 @@ void CountAndPlan::free_all_() {
     if (d2h_stream_)         { cudaStreamDestroy(d2h_stream_);  d2h_stream_  = nullptr; }
     if (meta_stream_)        { cudaStreamDestroy(meta_stream_); meta_stream_ = nullptr; }
     if (fill_stream_)        { cudaStreamDestroy(fill_stream_); fill_stream_ = nullptr; }
+    if (copy_stream_)        { cudaStreamDestroy(copy_stream_); copy_stream_ = nullptr; }
     if (e_after_preproc_)    { cudaEventDestroy(e_after_preproc_);    e_after_preproc_    = nullptr; }
     if (e_after_prepare_)    { cudaEventDestroy(e_after_prepare_);    e_after_prepare_    = nullptr; }
     if (e_metas_ready_)      { cudaEventDestroy(e_metas_ready_);      e_metas_ready_      = nullptr; }

@@ -105,8 +105,13 @@ pub fn gpu_slot_witness_prepare_async(
     _rom: Vec<u32>,
     _input: Vec<u32>,
     _align_plans: &[&zisk_common::Plan],
+    _host_rows: bool,
 ) -> Result<(), String> {
     Err("built without CUDA".to_string())
+}
+
+pub fn gpu_mem_witness_host_rows_mask() -> u32 {
+    0
 }
 
 pub fn gpu_mem_witness_scalars(_family: u32, _inst: u32) -> Result<RamFillResult, String> {

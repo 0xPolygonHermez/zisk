@@ -147,7 +147,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         let segment =
             usize::from(self.ictx.plan.segment_id.expect("MemAlign plan without segment"));
         if crate::mem_device_rows::rows_on_device("align") {
-            if crate::mem_device_rows::slot_mode() {
+            if crate::mem_device_rows::slot_pending("align") {
                 return self.slot_witness(_pctx, air_id, segment, trace_buffer, packed).map(Some);
             }
             return self.device_witness(air_id, segment, trace_buffer, packed).map(Some);

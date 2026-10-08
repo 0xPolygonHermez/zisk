@@ -107,7 +107,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         // destination is grown and recopied as it goes.
         if crate::mem_device_rows::rows_on_device(self.module.get_mem_name()) {
             let segment_id = self.ictx.plan.segment_id.unwrap();
-            if crate::mem_device_rows::slot_mode() {
+            if crate::mem_device_rows::slot_pending(self.module.get_mem_name()) {
                 let decl = _pctx
                     .gpu_witness_airs
                     .get(self.ictx.plan.airgroup_id, self.ictx.plan.air_id)

@@ -286,13 +286,19 @@ public:
     // be borrowed. `instance_scalars` serves the air values of a resolved instance without rows.
     // Only the instances in `ram`/`rom`/`input` (segment ids, the ones this process proves) get a
     // staged image; the others are resolved for their scalars and the MemAlign old words only.
+    // With `host_rows`, the owned instances' images are also copied to pinned host memory while
+    // the preparation runs, so the proofs can take the rows once the arena is released.
     bool prepare_slot_fills(const void* image, size_t image_bytes, const AlignPlanDesc* plans, uint32_t n_plans,
                             const AlignChunkEntry* entries, uint32_t n_entries, const uint32_t* ram, uint32_t n_ram,
                             const uint32_t* rom, uint32_t n_rom, const uint32_t* input, uint32_t n_input,
-                            RamFillPrepared* prepared);
+                            bool host_rows, RamFillPrepared* prepared);
     bool fill_slot(const void* d_ops, uint64_t n_ops, uint64_t* dst, void* stream, RamFillResult* res);
-    // Waits for the slot copies still in flight on the prover's streams: before the arena is released.
+    // Waits for the slot copies still in flight on the prover's streams and for the host copies of
+    // the owned images: before the arena is released.
     void slot_quiesce();
+    // After the preparation: bit `family` set when every owned instance of that family has its
+    // rows in pinned host memory (`*_instance_rows`), for the proofs after the arena is released.
+    uint32_t host_rows_mask() const { return host_rows_mask_; }
     // The staged images, as the preparation publishes them (another thread may be preparing):
     // `staged_wait` returns 1 with `out` filled, 0 when the preparation ended without that image
     // (build it with `fill_host`), -1 after `timeout_ms`. `copy_staged` copies an image to host
@@ -508,6 +514,15 @@ private:
     cudaStream_t               fill_stream_ = nullptr;
     bool                       stage_try_ = false;     // staged attempt: a scratch overflow is retried, not reported
     std::vector<cudaEvent_t>   slot_copy_events_;      // the copies in flight on the prover's streams
+    // The host copies of the staged images (slot mode): behind the fills, at the lowest priority.
+    cudaStream_t               copy_stream_ = nullptr;
+    bool                       slot_host_rows_ = false;
+    uint32_t                   host_rows_mask_ = 0;
+    // Copies `words` words of a staged image `d_rows` to the pinned `out_rows` behind the fill on
+    // `fill_stream_`, without waiting for it.
+    bool stage_copy_out_(uint64_t* out_rows, const uint64_t* d_rows, size_t words);
+    // The pinned rows of an instance, by family (see `fill_slot`); null when it has none.
+    const uint64_t* host_rows_(uint32_t family, uint32_t air_id, uint32_t segment, size_t* words, RamFillResult* res) const;
     uint8_t*  scratch_end_(size_t n_total) const;
     uint64_t* stage_take_(size_t words);
     size_t                     stage_reserve_ = 0;   // scratch kept free below the staged images
