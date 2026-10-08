@@ -132,15 +132,39 @@ impl StdioService {
         shm_prefix: &str,
         sem_prefix: &str,
     ) -> Result<Self> {
-        let handles: [Mutex<StdioHandle>; 3] = AsmServices::SERVICES
+        let started: Vec<Result<StdioHandle>> = AsmServices::SERVICES
             .par_iter()
             .map(|service| {
                 debug!(">>> [{}] Starting ASM service (stdio): {}", world_rank, service);
-                let handle =
-                    Self::start_service(service, trimmed_path, options, shm_prefix, sem_prefix)?;
-                Ok(Mutex::new(handle))
+                Self::start_service(service, trimmed_path, options, shm_prefix, sem_prefix)
             })
-            .collect::<Result<Vec<_>>>()?
+            .collect();
+
+        let mut handles = Vec::with_capacity(started.len());
+        let mut failure = None;
+        for result in started {
+            match result {
+                Ok(handle) => handles.push(handle),
+                Err(e) => {
+                    failure.get_or_insert(e);
+                }
+            }
+        }
+        // A service writes the shared guest RAM and ROM as it starts, before it reads its
+        // stdin, so dropping its pipes would not stop it. And the caller's claim on the
+        // segments ends with this error, so stop every service that did start first.
+        if let Some(e) = failure {
+            for mut handle in handles {
+                let _ = handle.child.kill();
+                let _ = handle.child.wait();
+            }
+            return Err(e);
+        }
+
+        let handles: [Mutex<StdioHandle>; 3] = handles
+            .into_iter()
+            .map(Mutex::new)
+            .collect::<Vec<_>>()
             .try_into()
             .expect("expected exactly 3 services");
 
