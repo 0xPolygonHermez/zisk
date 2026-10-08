@@ -949,12 +949,21 @@ impl ExecuteClient for ZiskProver<Asm> {
         stdin: ZiskStdin,
         hints: Option<StreamSource>,
     ) -> Result<ExecuteOutput> {
+        // One claim for the whole job, taken before the reset: the reset writes the
+        // shared input and control, which another client's job may be using. Activating
+        // comes first too, since it is what waits for that job's services; the worker
+        // registers before resetting in the same way (`prepare_for_new_job`).
+        let with_hints = self.prover.current_with_hints.load(Ordering::SeqCst);
+        let _claim = self.prover.register_for_job(&program.program_id, with_hints)?;
+
         // Every call is a job boundary for this client, which executes many times after
         // one setup. Before the hints below — see `ZiskExecutor::reset_for_new_job`.
         ZiskProver::<Asm>::reset(self)?;
         if let Some(stream) = hints {
             ZiskProver::<Asm>::register_hints_stream(self, stream)?;
         }
-        ZiskProver::<Asm>::execute(self, program, stdin)
+        // Not `ZiskProver::execute`: that registers the program again, under a claim
+        // of its own, and this one is not reentrant.
+        self.prover.core_prover.backend.execute(stdin)
     }
 }
