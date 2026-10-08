@@ -95,10 +95,10 @@ impl AsmExecClient {
         // Before anything of the job touches the segments, and held to the end, past the
         // last read of the job's results.
         let claim = setup.resources.claim();
-        // Activate before the input reset. Another client's job may have returned with
-        // its ROM histogram still running on the shared input; that executor drains it
-        // only at its own next job, and activating is what waits for it here. Resetting
-        // first would clear the input under it, and the wait would never end.
+        // Activate before the input reset. Another client's job may have left its ROM
+        // histogram running on the shared input (a full prover's job with hints does), and
+        // activating is what waits for its request. Resetting first would clear the input
+        // under it, and the wait would never end.
         setup.resources.activate(&claim)?;
         self.executor.reset_for_new_job()?;
 
