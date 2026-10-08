@@ -201,14 +201,20 @@ impl AsmProver {
 
         let setup_key = SetupKey::new(&*elf.program_id.hash_id, with_hints, false);
 
-        if let Some(entry) = self.program_cache.read().unwrap().get(&setup_key) {
+        // The cache guard is released before claiming: a setup holding the claim
+        // writes this cache, so waiting for the claim while reading it could deadlock.
+        let cached = self.program_cache.read().unwrap().get(&setup_key).map(|entry| {
+            entry.resources.clone().expect("full-asm cache entry must have ASM resources")
+        });
+        if let Some(resources) = cached {
             timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
-            let resources =
-                entry.resources.clone().expect("full-asm cache entry must have ASM resources");
             // This program's services are still running from its own setup, but the
             // shared `_ram`/`_rom` may have been overwritten by another program
-            // since. `activate` rebuilds them before anything runs.
-            resources.activate(&resources.claim())?;
+            // since. `activate` rebuilds them before anything runs. The claim is held
+            // until the backend uses these resources, so no job can register its own
+            // in between and then have them replaced while it runs.
+            let claim = resources.claim();
+            resources.activate(&claim)?;
             self.core_prover.backend.set_asm_resources(resources)?;
             return Ok(());
         }
