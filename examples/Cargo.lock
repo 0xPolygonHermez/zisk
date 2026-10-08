@@ -3584,7 +3584,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -3595,7 +3595,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -3611,7 +3611,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "anyhow",
  "clap",
@@ -3637,13 +3637,12 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "colored",
  "proofman-common",
  "proofman-fields",
  "proofman-hints",
- "proofman-starks-lib-c",
  "proofman-util",
  "proofman-witness",
  "rayon",
@@ -3824,7 +3823,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "bincode",
  "blake3",
@@ -3856,7 +3855,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "borsh",
  "colored",
@@ -3884,7 +3883,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "proofman-fields",
 ]
@@ -3892,7 +3891,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "anyhow",
  "proofman-starks-src",
@@ -3906,7 +3905,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -3919,7 +3918,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -3931,7 +3930,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3941,7 +3940,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -3950,12 +3949,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 
 [[package]]
 name = "proofman-util"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -3964,7 +3963,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "bincode",
  "num-traits",
@@ -3977,7 +3976,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#23eaf736806875aec8ac2ff0f1a47659e458a481"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#4e34b5f391130c13d722f3b627d99049ad3126b3"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -6674,7 +6673,6 @@ name = "zisk-asm"
 version = "1.4.0-alpha"
 dependencies = [
  "zisk-core",
- "zisk-riscv",
 ]
 
 [[package]]
@@ -7174,7 +7172,7 @@ dependencies = [
  "zisk-recurser",
  "zisk-rom-setup",
  "zisk-setup",
- "zisk-transpiler-riscv",
+ "zisk-transpiler-common",
  "ziskemu",
 ]
 
@@ -7203,6 +7201,8 @@ dependencies = [
 name = "zisk-riscv"
 version = "1.4.0-alpha"
 dependencies = [
+ "elf",
+ "zisk-asm",
  "zisk-core",
  "zisk-definitions",
 ]
@@ -7220,7 +7220,7 @@ dependencies = [
  "zisk-core",
  "zisk-pil",
  "zisk-sm-rom",
- "zisk-transpiler-riscv",
+ "zisk-transpiler-common",
 ]
 
 [[package]]
@@ -7372,7 +7372,7 @@ dependencies = [
  "zisk-core",
  "zisk-pil",
  "zisk-sm-mem-common",
- "zisk-transpiler-riscv",
+ "zisk-transpiler-common",
 ]
 
 [[package]]
@@ -7399,19 +7399,8 @@ dependencies = [
 name = "zisk-transpiler-common"
 version = "1.4.0-alpha"
 dependencies = [
- "elf",
- "zisk-asm",
  "zisk-core",
- "zisk-definitions",
  "zisk-riscv",
-]
-
-[[package]]
-name = "zisk-transpiler-riscv"
-version = "1.4.0-alpha"
-dependencies = [
- "zisk-core",
- "zisk-transpiler-common",
  "zisk-transpiler-wasm",
 ]
 
@@ -7422,7 +7411,6 @@ dependencies = [
  "wasmparser",
  "zisk-core",
  "zisk-riscv",
- "zisk-transpiler-common",
 ]
 
 [[package]]
@@ -7466,7 +7454,7 @@ dependencies = [
  "zisk-sm-arith",
  "zisk-sm-binary",
  "zisk-sm-mem-common",
- "zisk-transpiler-riscv",
+ "zisk-transpiler-common",
 ]
 
 [[package]]

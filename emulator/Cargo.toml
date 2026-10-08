@@ -27,7 +27,7 @@ zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
 zisk-riscv = { workspace = true }
-zisk-transpiler-riscv = { workspace = true }
+zisk-transpiler-common = { workspace = true }
 ziskasm = { workspace = true }
 rayon = { workspace = true }
 zisk-sm-mem-common = { workspace = true }
@@ -59,7 +59,6 @@ criterion = { workspace = true, features = ["html_reports"] }
 # ELF-payload assertions need are repeated here.
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
-zisk-transpiler-common = { workspace = true }
 zisk-transpiler-wasm = { workspace = true }
 wat = { workspace = true }
 
@@ -71,8 +70,8 @@ harness = false
 default = []
 # Enable RISC-V C (compressed) extension decoding in the transpiler (see
 # zisk-riscv's `compressed`). OFF by default, matching IALIGN = 32.
-compressed = ["zisk-transpiler-riscv/compressed"]
-float = ["zisk-transpiler-riscv/float", "zisk-transpiler-wasm/float"]
+compressed = ["zisk-transpiler-common/compressed"]
+float = ["zisk-transpiler-common/float", "zisk-transpiler-wasm/float"]
 debug_stats_trace = []
 minimal_trace_index_debug = []
 handle_stdout = []

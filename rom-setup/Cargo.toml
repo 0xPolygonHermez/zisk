@@ -15,7 +15,7 @@ zisk-sm-rom = { workspace = true }
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
-zisk-transpiler-riscv = { workspace = true }
+zisk-transpiler-common = { workspace = true }
 
 tracing = { workspace = true }
 proofman-fields = { workspace = true }
@@ -26,4 +26,4 @@ blake3 = { workspace = true }
 [features]
 default = []
 # RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
-compressed = ["zisk-transpiler-riscv/compressed", "zisk-sm-rom/compressed"]
+compressed = ["zisk-transpiler-common/compressed", "zisk-sm-rom/compressed"]

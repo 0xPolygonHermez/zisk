@@ -20,16 +20,20 @@ use zisk_definitions::{
     ZKVMCALL_ARG_ADDR_START,
 };
 
-use zisk_core::zisk_inst::{ZiskInst, SRC_IMM, SRC_REG};
+use zisk_core::rom_layout::InlineBody;
+use zisk_core::zisk_inst::{SRC_IMM, SRC_REG};
 use zisk_core::zisk_rom::ZiskRom;
 use zisk_core::{
-    convert_vector, ZiskInstBuilder, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR, EXTRA_PARAMS_ADDR,
-    INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
-    ROM_EXIT,
+    convert_vector, ZiskInstBuilder, CSR_ADDR, EXTRA_PARAMS_ADDR, INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR,
+    ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
 
+#[cfg(not(feature = "float"))]
+use zisk_core::rom_layout::ECALL_HANDLER_ADDR;
 #[cfg(feature = "float")]
-use zisk_core::{FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, FREG_X0, REG_X0};
+use zisk_core::rom_layout::FLOAT_HANDLER_ADDR;
+#[cfg(feature = "float")]
+use zisk_core::{FREG_F0, FREG_INST, FREG_RA, MTVEC, REG_X0};
 
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
@@ -80,18 +84,10 @@ const CSR_FCALL_PARAM_ADDR_END: u16 = 0x8FF;
 const CSR_FCALL_PARAM_OFFSET_TO_WORDS: [u64; 16] =
     [1, 2, 4, 8, 12, 16, 20, 24, 25, 32, 48, 64, 80, 96, 128, 256];
 
-const CAUSE_EXIT: u64 = 93;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
-#[cfg(feature = "float")]
-pub const FLOAT_HANDLER_ADDR: u64 = 0x1008;
-#[cfg(feature = "float")]
-const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 34; // 31 regs + set sp + set ra + jump to zisk_float
 
 /// Mask to apply to the target address of JALR instructions, to ensure the least significant bit is 0
 const JALR_MASK: u64 = 0xfffffffffffffffe;
-
-#[cfg(not(feature = "float"))]
-const NO_FLOAT_ECALL_ADDR: u64 = ROM_EXIT + 4 + 0x54; // must match add_entry_exit_jmp's trap_handler offset
 
 /// Context to store the list of converted ZisK instructions, including their program address and a
 /// map to store the instructions
@@ -1675,14 +1671,14 @@ impl<'a> Riscv2ZiskContext<'a> {
         // If the float feature is enabled, we use the MTVEC register as the address to jump to for
         // the ecall.
         //
-        // If the float feature is disabled, we jump to a fixed BIOS address (NO_FLOAT_ECALL_ADDR)
+        // If the float feature is disabled, we jump to a fixed BIOS address (ECALL_HANDLER_ADDR)
         // and intentionally ignore the MTVEC CSR value. This avoids the only dynamic jump to the
         // lower address space, improving the performance of dynamic jumps in general.
 
         #[cfg(feature = "float")]
         zib.src_b("mem", MTVEC, false);
         #[cfg(not(feature = "float"))]
-        zib.src_b("imm", NO_FLOAT_ECALL_ADDR, false);
+        zib.src_b("imm", ECALL_HANDLER_ADDR, false);
         zib.op("copyb").unwrap();
         zib.store_pc("reg", 1, false);
         zib.set_pc();
@@ -2832,17 +2828,6 @@ impl<'a> Riscv2ZiskContext<'a> {
 /// Riscv2ZiskContext to perform the instruction transpilation
 /// Transpiles a RISC-V code section into ZisK instructions.
 ///
-/// A library routine's body for an inline zkvmcall (see `ZiskLibrary::inline_body`),
-/// as a small control-flow graph: the instructions, entry first, and for each one
-/// the index of the instruction it continues to when its flag is set
-/// (`jmp_offset1`) and when it is not (`jmp_offset2`), `None` being the end of the
-/// call site. A precompile's first target is unused: its `jmp_offset1` is a
-/// parameter.
-pub struct InlineBody {
-    pub insts: Vec<ZiskInst>,
-    pub next: Vec<[Option<usize>; 2]>,
-}
-
 /// `zkvmcalls` maps a zkvmcall ID (see `zisk_definitions::ZKVMCALLS`) to its library
 /// entry address. Each `csrs <id>, x0` zkvmcall is replaced by a tail-jump to that
 /// entry. Every zkvmcall in the section must be in the map; [`zkvmcall_ids`] finds
@@ -3136,448 +3121,6 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
     if rom.next_init_inst_addr > MAX_ZISK_OS_ROM_ADDR {
         panic!(
             "add_zisk_init_data() exceeded max rom address: next_init_inst_addr={:#x} max={:#x}",
-            rom.next_init_inst_addr, MAX_ZISK_OS_ROM_ADDR
-        );
-    }
-}
-
-/// Add the entry/exit jump program section to the rom instruction set.
-pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
-    //print!("add_entry_exit_jmp() rom.next_init_inst_addr={}\n", rom.next_init_inst_addr);
-
-    // Calculate the trap handler rom pc address as an offset from the current instruction address
-    // to the beginning of the ecall section
-    #[cfg(not(feature = "float"))]
-    assert!(rom.next_init_inst_addr == ROM_EXIT + 4);
-    let trap_handler: u64 = rom.next_init_inst_addr + 0x54;
-    #[cfg(not(feature = "float"))]
-    assert!(trap_handler == NO_FLOAT_ECALL_ADDR);
-
-    // :0000 we note the rom pc address offset from the first address for each instruction
-    // Store the Zisk architecture ID into memory
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", ARCH_ID_ZISK, false);
-    zib.op("copyb").unwrap();
-    zib.store("mem", ARCH_ID_CSR_ADDR as i64, false, false);
-    zib.j(4, 4);
-    zib.verbose(&format!("Set marchid: {ARCH_ID_ZISK:x}"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0004
-    // Store the trap handler address into memory
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", trap_handler, false);
-    zib.op("copyb").unwrap();
-    zib.store("mem", MTVEC as i64, false, false);
-    zib.j(4, 4);
-    zib.verbose(&format!("Set mtvec: {trap_handler}"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0008
-    // Store the input data address into register #10
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", INPUT_ADDR, false);
-    zib.op("copyb").unwrap();
-    zib.store("reg", 10, false, false);
-    zib.j(0, 4);
-    zib.verbose(&format!("Set 1st Param (pInput): 0x{INPUT_ADDR:08x}"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :000c
-    // Store the output data address into register #11
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", OUTPUT_ADDR, false);
-    zib.op("copyb").unwrap();
-    zib.store("reg", 11, false, false);
-    zib.j(0, 4);
-    zib.verbose(&format!("Set 2nd Param (pOutput): 0x{OUTPUT_ADDR:08x}"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0010
-    // Call to the program rom pc address, i.e. call the program
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", addr, false);
-    zib.op("copyb").unwrap();
-    zib.set_pc();
-    zib.store_pc("reg", 1, false);
-    zib.j(0, 4);
-    zib.verbose(&format!("CALL to entry: 0x{addr:08x}"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0014
-    // Returns from the program execution.
-    // Reads output data using the specific pubout operation in 32 chunks of 64 bits:
-    //
-    // loadw: c(reg11) = b(32), a=0
-    // copyb: c(reg12)=b=0, a=0
-    // copyb: c(reg13)=b=OUTPUT_ADDR, a=0
-    //
-    // eq: if reg12==reg11 jump to end
-    // pubout: c=b.mem(reg13), a = reg12
-    // add: reg13 = reg13 + 8 // Increment memory address
-    // add: reg12 = reg12 + 1, jump -12 // Increment index, goto eq
-    //
-    // end
-    //
-    // Copy output data address into register #1
-    // copyb: reg11 = c = b = mem(OUTPUT_ADDR,4), a=0
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", 32, false);
-    zib.ind_width(4);
-    zib.op("copyb").unwrap();
-    zib.store("reg", 11, false, false);
-    zib.j(0, 4);
-    zib.verbose("Set reg11 to output data length = 32");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0018 -> copyb: copyb: c(reg12)=b=0, a=0
-    // Set register #12 to zero
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", 0, false);
-    zib.op("copyb").unwrap();
-    zib.store("reg", 12, false, false);
-    zib.j(0, 4);
-    zib.verbose("Set reg12 to 0");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :001c -> copyb: c(reg13)=b=OUTPUT_ADDR, a=0
-    // Set register #13 to OUTPUT_ADDR, i.e. to the beginning of the actual data after skipping
-    // the data length value
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", OUTPUT_ADDR, false);
-    zib.op("copyb").unwrap();
-    zib.store("reg", 13, false, false);
-    zib.j(0, 4);
-    zib.verbose("Set reg13 to OUTPUT_ADDR");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0020 -> eq: if reg12==reg11 jump to end
-    // Jump to end if registers #11 and #12 are equal, to break the data copy loop
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 11, false);
-    zib.src_b("reg", 12, false);
-    zib.op("eq").unwrap();
-    zib.store("none", 0, false, false);
-    zib.j(20, 4);
-    zib.verbose("If reg11==reg12 jump to end");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0024 -> copyb: c = b = mem(reg13, 8)
-    // Copy the contents of memory at address set by register #13 into c, i.e. copy output data chunk
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 13, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.store("none", 0, false, false);
-    zib.j(0, 4);
-    zib.verbose("Set c to mem(output_data[index]), a=index");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0028 -> pubout: c = last_c = mem(reg13, 8), a = reg12 = index
-    // Call the special operation pubout with this data, being a the data chunk index
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 12, false);
-    zib.src_b("lastc", 0, false);
-    zib.op("pubout").unwrap();
-    zib.store("none", 0, false, false);
-    zib.j(0, 4);
-    zib.verbose("Public output, set c to output_data[index], a=index");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :002c -> add: reg13 = reg13 + 8
-    // Increase the register #13, i.e. the data address, in 8 units
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 13, false);
-    zib.src_b("imm", 8, false);
-    zib.op("add").unwrap();
-    zib.store("reg", 13, false, false);
-    zib.j(0, 4);
-    zib.verbose("Set reg13 to reg13 + 8");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0030 -> add: reg12 = reg12 + 1, jump -16
-    // Increase the register #12, i.e. the data chunk index, in 1 unit.
-    // Jump to the beginning of the output data read loop
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 12, false);
-    zib.src_b("imm", 1, false);
-    zib.op("add").unwrap();
-    zib.store("reg", 12, false, false);
-    zib.j(4, -16);
-    zib.verbose("Set reg12 to reg12 + 1");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // We read the input data boundaries of 128MB chunks to make sure we can prove large input data
-    // sizes that are not continuous, i.e. when the program reads 2 input data chunks distant more
-    // than 128MB, we can still prove the program by reading the input data in 128MB steps
-
-    // :0034 -> read input[128M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[128M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0038 -> read input[256M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 2 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[256M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :003c -> read input[384M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 3 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[384M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0040 -> read input[512M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 4 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[512M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0044 -> read input[640M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 5 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[640M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0048 -> read input[768M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 6 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[768M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :004c -> read input[896M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 7 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[896M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0050 jump to end (success)
-    // Jump to the last instruction (ROM_EXIT) to properly finish the program execution
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", ROM_EXIT, false);
-    zib.op("copyb").unwrap();
-    zib.set_pc();
-    zib.j(0, 0);
-    zib.verbose("jump to end successfully");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0054 trap_handle -> This is the address offset we use at the beginning of the function
-    // This code is executed when the program makes an ecall (system call).
-    // The pc is set to this address, and after the system call, it returns to the pc next to the
-    // one that made the ecall
-    // If register a7==CAUSE_EXIT, then execute the next instruction to end the program;
-    // otherwise jump to the one after the next one
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 17, false);
-    zib.src_b("imm", CAUSE_EXIT, false);
-    zib.op("eq").unwrap();
-    zib.j(-64, 4);
-    zib.verbose(&format!("beq r17, {CAUSE_EXIT} # Check if is exit, jump to output, then end"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0058
-    // Return to the instruction next to the one that made this ecall
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("reg", 1, false);
-    zib.op("copyb").unwrap();
-    zib.set_pc();
-    zib.j(0, 4);
-    zib.verbose("ret");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // Check resulting rom address does not exceed max
-    if rom.next_init_inst_addr > MAX_ZISK_OS_ROM_ADDR {
-        panic!(
-            "add_entry_exit_jmp() exceeded max rom address: next_init_inst_addr={:#x} max={:#x}",
-            rom.next_init_inst_addr, MAX_ZISK_OS_ROM_ADDR
-        );
-    }
-}
-
-/// Add the end jump program section to the rom instruction set.
-pub fn add_end_and_lib(rom: &mut ZiskRom) {
-    //print!("add_entry_exit_jmp() rom.next_init_inst_addr={}\n", rom.next_init_inst_addr);
-
-    // :0000 we jump to the third instruction, leaving room for the end instruction
-    assert!(rom.next_init_inst_addr == ROM_ENTRY);
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", 0, false);
-    zib.op("copyb").unwrap();
-    #[cfg(feature = "float")]
-    zib.j(4 * 68, 4 * 68);
-    #[cfg(not(feature = "float"))]
-    zib.j(4 * 2, 4 * 2);
-    #[cfg(feature = "float")]
-    zib.verbose("Jump over end instruction and float handler");
-    #[cfg(not(feature = "float"))]
-    zib.verbose("Jump over end instruction");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0004 END: all programs should exit here, regardless of the execution result
-    // This is the last instruction to be executed.  The emulator must stop after the instruction
-    // end flag is found to be true
-    assert!(rom.next_init_inst_addr == ROM_EXIT);
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", 0, false);
-    zib.op("copyb").unwrap();
-    zib.end();
-    zib.j(0, 0);
-    zib.verbose("end");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    #[cfg(feature = "float")]
-    {
-        // Float handler
-        // RISC-V float instructions are handled here
-        // The instruction to be handled is in register FREG_INST
-        // The return address is in register FREG_RA
-        // We must save integer registers before calling the zisk_float function
-        assert!(rom.next_init_inst_addr == FLOAT_HANDLER_ADDR);
-        for i in 1..32 {
-            let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-            zib.src_a("imm", 0, false);
-            zib.src_b("reg", i, false);
-            zib.op("copyb").unwrap();
-            zib.store("mem", FREG_X0 as i64 + (i * 8) as i64, false, false);
-            zib.j(4, 4);
-            zib.verbose(&format!("Float: save r{i} into freg_x{i}"));
-            zib.build(rom);
-            rom.next_init_inst_addr += 4;
-        }
-
-        // Set sp to the top of the float library stack
-        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-        zib.src_a("imm", 0, false);
-        zib.src_b("imm", FLOAT_LIB_SP, false);
-        zib.op("copyb").unwrap();
-        zib.store("reg", 2, false, false);
-        zib.j(4, 4);
-        zib.verbose(&format!("Float: save FLOAT_LIB_SP={FLOAT_LIB_SP:x} into reg[2]"));
-        zib.build(rom);
-        rom.next_init_inst_addr += 4;
-
-        // Set the return address to the FLOAT_HANDLER_RETURN_ADDR
-        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-        zib.src_a("imm", 0, false);
-        zib.src_b("imm", FLOAT_HANDLER_RETURN_ADDR, false);
-        zib.op("copyb").unwrap();
-        zib.store("reg", 1, false, false);
-        zib.j(4, 4);
-        zib.verbose(&format!(
-            "Float: save FLOAT_HANDLER_RETURN_ADDR={FLOAT_HANDLER_RETURN_ADDR:x} into reg[1]"
-        ));
-        zib.build(rom);
-        rom.next_init_inst_addr += 4;
-
-        // Jump back to the zisk_float function address
-        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-        zib.src_a("imm", 0, false);
-        zib.src_b("imm", FLOAT_LIB_ROM_ADDR, false);
-        zib.op("copyb").unwrap();
-        zib.set_pc();
-        zib.j(0, 4);
-        zib.verbose(&format!("Float: jump to FLOAT_LIB_ROM_ADDR={FLOAT_LIB_ROM_ADDR:x}"));
-        zib.build(rom);
-        rom.next_init_inst_addr += 4;
-
-        // We must retrieve integer registers after calling the zisk_float function
-        assert!(rom.next_init_inst_addr == FLOAT_HANDLER_RETURN_ADDR);
-        for i in 1..32 {
-            let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-            zib.src_a("imm", 0, false);
-            zib.src_b("mem", FREG_X0 + (i * 8), false);
-            zib.op("copyb").unwrap();
-            zib.store("reg", i as i64, false, false);
-            zib.j(4, 4);
-            zib.verbose(&format!("Float: restore r{i} from freg_x{i}"));
-            zib.build(rom);
-            rom.next_init_inst_addr += 4;
-        }
-
-        // Jump back to the address previously stored in FREG_RA
-        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-        zib.src_a("imm", 0, false);
-        zib.src_b("mem", FREG_RA, false);
-        zib.op("copyb").unwrap();
-        zib.set_pc();
-        zib.j(0, 4);
-        zib.verbose("Float: jump to FREG_RA");
-        zib.build(rom);
-        rom.next_init_inst_addr += 4;
-    }
-
-    // Check resulting rom address does not exceed max
-    if rom.next_init_inst_addr > MAX_ZISK_OS_ROM_ADDR {
-        panic!(
-            "add_end_and_lib() exceeded max rom address: next_init_inst_addr={:#x} max={:#x}",
             rom.next_init_inst_addr, MAX_ZISK_OS_ROM_ADDR
         );
     }
