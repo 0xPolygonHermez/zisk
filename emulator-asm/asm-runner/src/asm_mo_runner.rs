@@ -466,8 +466,6 @@ impl AsmRunnerMO {
                 .join()
                 .map_err(|_| anyhow::anyhow!("MO preload background thread panicked"))?,
         };
-        // Take the optional GPU planner for this block.
-        #[cfg(gpu)]
         // A new block: the previous block's RAM witness source is gone.
         #[cfg(gpu)]
         zisk_sm_mem_planner::clear_gpu_ram_witness();
@@ -483,6 +481,8 @@ impl AsmRunnerMO {
                 )
             });
         }
+        // Take the optional GPU planner for this block.
+        #[cfg(gpu)]
         let gpu_count_and_plan_opt: Option<GpuCountAndPlan> = preloaded.gpu_count_and_plan.take();
 
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
