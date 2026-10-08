@@ -45,7 +45,7 @@ pub fn get_rom_bin_path<F: PrimeField64>(
 /// Return the `(minimal-trace, rom-histogram)` ASM binary filenames for `elf`.
 ///
 /// Named by `zisk_rom_setup`, which generates these files, so the two cannot
-/// disagree: the name carries the protocol generation as well as the ELF hash.
+/// disagree: the name is the ELF hash and the hints mode.
 pub fn get_asm_paths(elf: &GuestProgram, with_hints: bool) -> Result<(String, String)> {
     let hash = get_elf_data_hash(elf.elf());
     let [mt, rh, _mo] =

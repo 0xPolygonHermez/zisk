@@ -264,7 +264,7 @@ struct AsmServicesInner {
     shm_prefix: String,
     sem_prefix: String,
     /// Keeps this prefix's shared segments alive; the last one out unlinks them.
-    /// Declared last so it is released only after `Drop` has stopped the children.
+    /// Dropped, as every field is, only after `Drop` has stopped the children.
     _prefix_lease: PrefixLease,
 }
 
@@ -607,16 +607,17 @@ impl AsmServices {
             .is_some_and(|active| std::ptr::eq(active.as_ptr(), Arc::as_ptr(&self.inner)))
     }
 
-    /// Wait until the program `shm_prefix`'s segments serve has finished with
-    /// them, and record that they serve none.
+    /// Wait until the services of the program `shm_prefix`'s segments serve
+    /// have finished every request already sent, and record that they serve none.
     ///
     /// A service keeps writing the shared guest RAM and ROM after it has
     /// answered: its request may still be in flight (the ROM histogram's is
     /// parked until a job reads it), and its own reset runs after the response.
     /// A ping is answered only after both, since each service reads its next
     /// request only when it is done with the last, and a request in flight holds
-    /// that service's handle until its response arrives. A service that does not
-    /// answer has stopped, and writes nothing more.
+    /// that service's handle until its response arrives. A request its runner has
+    /// not sent yet is not waited for: see `JobClaim` in `zisk-prover-backend`. A
+    /// service whose ping fails is taken as stopped.
     fn quiesce_active(shm_prefix: &str) {
         let outgoing = {
             let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
@@ -655,7 +656,7 @@ impl AsmServices {
                 let response = self.inner.service.send_reset_request(service).map_err(|e| {
                     // A binary generated before the reset request existed exits on
                     // it, and its own message is lost with its stderr. The cache names
-                    // binaries by ELF hash alone, so say what fixes it.
+                    // binaries by ELF hash and hints mode only, so say what fixes it.
                     let died = e.chain().any(|cause| {
                         matches!(
                             cause.downcast_ref::<AsmRunError>(),
@@ -664,9 +665,10 @@ impl AsmServices {
                     });
                     if died {
                         e.context(format!(
-                            "Service {service} exited on the reset request, as a binary \
-                                 cached before that request existed does. Clear the cached ASM \
-                                 binaries (~/.zisk/cache by default) to regenerate them"
+                            "Service {service} exited on the reset request. A binary cached \
+                                 before that request existed exits on it with status 255; if \
+                                 that is the status reported, clear the cached ASM binaries \
+                                 (~/.zisk/cache by default) to regenerate them"
                         ))
                     } else {
                         e.context(format!("Service {service} failed to reset"))

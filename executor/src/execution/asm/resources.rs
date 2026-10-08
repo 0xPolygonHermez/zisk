@@ -30,8 +30,8 @@ impl std::fmt::Debug for AsmResourcesConfig {
     }
 }
 
-/// Output-side shmem readers for the three ASM services, mapped when the first program of a
-/// hints mode is set up and shared by every program in it.
+/// Output-side shmem readers for the three ASM services, mapped when a prover's first program
+/// of a hints mode is set up and shared by every program it sets up in that mode.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub struct AsmShmemReaders {
     /// Reader for the minimal trace shmem segment (MT).
@@ -64,8 +64,9 @@ impl AsmShmemReaders {
     }
 }
 
-/// The shmem mappings of one hints mode: built when its first program is set up, and shared
-/// by every program in that mode via `Arc`.
+/// The shmem mappings of one hints mode: built when a prover's first program in it is set up,
+/// and shared via `Arc` by every program that prover sets up in that mode. A standalone client
+/// builds its own.
 pub struct AsmSharedResources {
     config: AsmResourcesConfig,
 
@@ -202,8 +203,7 @@ impl AsmResources {
     }
 
     /// Make this program the one the shared segments and semaphores serve, unless
-    /// it already is. Call it before every job, under that job's `claim`: it
-    /// costs a lock when nothing changed.
+    /// it already is. Call it before every job, under that job's `claim`.
     ///
     /// On a switch, [`AsmServices::activate`] waits for the outgoing program's
     /// services to finish with the shared segments, then this binds the shared

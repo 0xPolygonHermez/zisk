@@ -13,7 +13,7 @@
 //! it shares it. What is per program are the service processes and their semaphores, named by
 //! `sem_prefix_for`.
 //!
-//! Sharing rests on three rules, each enforced in one place:
+//! Sharing rests on three rules:
 //!
 //! - **Every segment fits every program.** All are fixed-size except the ROM histogram's output,
 //!   which grows with the program's ROM. That one is created at its upper bound,
@@ -27,10 +27,11 @@
 //!   program: it waits until the active program's services have finished with them, rebinds the
 //!   parent's writers to the new program's semaphores, and has its services rebuild their guest
 //!   RAM and ROM (the reset request). Starting a new program's services waits the same way, since
-//!   starting writes those segments too. Only one setup or job may use them at a time: each holds
-//!   a [`SegmentsClaim`] from before it touches them to the last read of its results, and
-//!   `activate` requires one. A job split across calls, as the distributed worker's phases are,
-//!   holds one only for its handoff.
+//!   starting writes those segments too. Only one setup or job may use them at a time: a setup,
+//!   and a job that runs as one call, holds a [`SegmentsClaim`] throughout, and `activate`
+//!   requires one. A job split across calls, as the distributed worker's phases are, holds one
+//!   only for its handoff; the SDK resets a job's input before its claim, which one client per
+//!   process makes safe.
 //!
 //! # Failures
 //!

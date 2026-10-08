@@ -184,14 +184,13 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
 
 /// Base filename for a program's ASM artifacts.
 ///
-/// Content-addressed by the ELF hash only — the same ELF always maps to the same
+/// Content-addressed by the ELF hash and the hints mode — the same ELF always maps to the same
 /// artifacts regardless of the program name, so a given hash is generated once. The
 /// name says nothing about which `emulator-asm` sources built the binary, so a
 /// change to those sources needs the cache cleared.
 ///
-/// The single definition of this name: every resolver goes through
-/// [`get_assembly_file_paths_from_id`], so the generator and the resolvers cannot
-/// disagree about it.
+/// The single definition of the base name. The `-mt`/`-rh`/`-mo` suffixes are added
+/// where the files are generated and resolved.
 fn asm_file_base(hash: &str, hints: bool) -> String {
     if hints {
         format!("{hash}-hints")
