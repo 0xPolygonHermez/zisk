@@ -74,7 +74,13 @@ fn main() {
     // Process each job: write the generated files, and tell Cargo to re-run this build script
     // whenever the source folder changes.
     let jobs = [job1];
-    for job in jobs {
+    // Each write reconciles a dir against only its own job's files, so two jobs sharing
+    // a target dir would delete each other's outputs: refuse that before writing any.
+    let all_dirs: Vec<Dirs> = jobs.iter().map(Job::dirs).collect();
+    if let Err(e) = zisk_definitions_generator::ensure_disjoint(&all_dirs) {
+        panic!("conflicting codegen jobs: {e}");
+    }
+    for job in &jobs {
         // Re-run whenever a source module changes (cargo scans the dir recursively).
         println!("cargo:rerun-if-changed={}", job.watch.display());
         zisk_definitions_generator::write(job.constants, &job.dirs(), REGEN_CMD)
