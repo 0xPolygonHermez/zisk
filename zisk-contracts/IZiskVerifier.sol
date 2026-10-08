@@ -4,10 +4,10 @@ pragma solidity ^0.8.20;
 /// @title Zisk Verifier Interface
 /// @author SilentSig
 /// @notice This contract is the interface for the Zisk Verifier.
-/// @dev `verifySnarkProof` is the only ZisK-binding entry point. The deployed
+/// @dev `verifySnarkProof` is the only Zisk-binding entry point. The deployed
 /// `ZiskVerifier` also carries `verifyProof`, the inherited raw PLONK verifier -- public
 /// because its assembly reads arguments at fixed calldata offsets -- which proves only
-/// that some proof satisfies some digest, with no ZisK statement attached. Note the names
+/// that some proof satisfies some digest, with no Zisk statement attached. Note the names
 /// invert the usual convention: the raw one is the shorter.
 interface IZiskVerifier {
     /// @notice Verifies a proof with given public values and vkey.

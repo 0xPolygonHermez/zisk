@@ -815,68 +815,38 @@ dependencies = [
 
 [[package]]
 name = "proofman-fields"
-version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "288f1cfadffdd60f4297428d41fa27dbae9837a63c89f77ba3e9ce8f5e03f987"
+version = "1.3.2-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.2-alpha#80914c90895cf601874580a5fd8f3d4c394b47af"
 dependencies = [
  "blake3",
  "cfg-if",
  "num-bigint",
  "paste",
- "proofman-starks-lib-c 1.3.1-alpha (registry+https://github.com/rust-lang/crates.io-index)",
- "serde",
-]
-
-[[package]]
-name = "proofman-fields"
-version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
-dependencies = [
- "blake3",
- "cfg-if",
- "num-bigint",
- "paste",
- "proofman-starks-lib-c 1.3.1-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha)",
+ "proofman-starks-lib-c",
  "serde",
 ]
 
 [[package]]
 name = "proofman-starks-lib-c"
-version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71fbc5a3cbea8630ccc96c4373ee45c8f63f5ac243f9b9456026773e30ab130e"
+version = "1.3.2-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.2-alpha#80914c90895cf601874580a5fd8f3d4c394b47af"
 dependencies = [
  "crossbeam-channel",
- "proofman-starks-src 1.3.1-alpha (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "proofman-starks-lib-c"
-version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
-dependencies = [
- "crossbeam-channel",
- "proofman-starks-src 1.3.1-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha)",
+ "proofman-starks-src",
 ]
 
 [[package]]
 name = "proofman-starks-src"
-version = "1.3.1-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec72725ea4f99741a95b52edc3290d5b9fe904762b6991b14aedb399ce43e86a"
-
-[[package]]
-name = "proofman-starks-src"
-version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+version = "1.3.2-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.2-alpha#80914c90895cf601874580a5fd8f3d4c394b47af"
 
 [[package]]
 name = "proofman-verifier"
-version = "1.3.1-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha#8db05c95d94d40ddb08547afc6b96d36a541a869"
+version = "1.3.2-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.2-alpha#80914c90895cf601874580a5fd8f3d4c394b47af"
 dependencies = [
  "num-traits",
- "proofman-fields 1.3.1-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha)",
+ "proofman-fields",
  "serde",
 ]
 
@@ -958,7 +928,7 @@ dependencies = [
 name = "recurser-hash-common"
 version = "0.1.0"
 dependencies = [
- "proofman-fields 1.3.1-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
 ]
 
 [[package]]
@@ -1388,7 +1358,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.3.2-alpha"
 dependencies = [
- "proofman-fields 1.3.1-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha)",
+ "proofman-fields",
  "proofman-verifier",
 ]
 
@@ -1422,7 +1392,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "paste",
- "proofman-fields 1.3.1-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.1-alpha)",
+ "proofman-fields",
  "rand 0.8.8",
  "ripemd",
  "secp256k1",
