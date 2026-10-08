@@ -1,6 +1,6 @@
 [package]
-name = "zisk-setup"
-description = "Version of the ZisK proving key (setup) a build proves against"
+name = "zisk-gpu-witness"
+description = "Rust half of the ZisK GPU witness-kernel contract"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -10,8 +10,5 @@ repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
 
-[package.metadata.zisk]
-setup_version = "1.4.0-alpha"
-
 [dependencies]
-serde_json = { workspace = true }
+paste = { workspace = true }
