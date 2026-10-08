@@ -1,6 +1,6 @@
 [package]
-name = "zisk-setup"
-description = "Version of the ZisK proving key (setup) a build proves against"
+name = "zisk-cuda-build"
+description = "Build-script support for ZisK crates that ship CUDA kernels"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -10,8 +10,6 @@ repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
 
-[package.metadata.zisk]
-setup_version = "1.4.0-alpha"
-
+# Build-script support for crates that ship CUDA kernels. Used from `build.rs`
+# as a `[build-dependencies]` entry; see `compile`.
 [dependencies]
-serde_json = { workspace = true }

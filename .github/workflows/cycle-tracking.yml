@@ -46,6 +46,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Pin the base commit now. For pull requests, the PR side is refs/pull/<n>/merge, the PR
+      # merged into the base branch as it was when the event fired, and its first parent is that
+      # exact base commit. Checking out the base branch by name later in the job would instead
+      # get whatever it points to then, so commits merged into it while the PR side is being
+      # benchmarked would show up as differences caused by the PR.
+      - name: "Resolve base commit"
+        id: base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_BASE_REF: ${{ inputs.base_ref }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base_ref=$(git rev-parse HEAD^1)
+          else
+            base_ref="$INPUT_BASE_REF"
+          fi
+          echo "Base commit: $base_ref"
+          echo "ref=$base_ref" >> "$GITHUB_OUTPUT"
+
       - name: "Install dependencies"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
@@ -57,7 +76,7 @@ jobs:
       - name: "Checkout base branch"
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.ref || inputs.base_ref }}
+          ref: ${{ steps.base.outputs.ref }}
           path: base-tree
 
       - name: "Benchmark base branch"

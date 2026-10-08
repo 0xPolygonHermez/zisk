@@ -6805,6 +6805,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-cuda-build"
+version = "1.4.0-alpha"
+
+[[package]]
 name = "zisk-definitions"
 version = "1.4.0-alpha"
 
@@ -6850,6 +6854,13 @@ dependencies = [
  "zisk-sm-mem-common",
  "zisk-sm-rom",
  "ziskemu",
+]
+
+[[package]]
+name = "zisk-gpu-witness"
+version = "1.4.0-alpha"
+dependencies = [
+ "paste",
 ]
 
 [[package]]
@@ -7084,6 +7095,8 @@ dependencies = [
  "tracing",
  "zisk-common",
  "zisk-core",
+ "zisk-cuda-build",
+ "zisk-gpu-witness",
  "zisk-pil",
  "zisk-precomp-common",
  "zisk-precomp-helpers",
@@ -7340,6 +7353,7 @@ dependencies = [
  "proofman-util",
  "tracing",
  "zisk-common",
+ "zisk-cuda-build",
  "zisk-pil",
  "zisk-sm-mem-common",
 ]
