@@ -95,7 +95,7 @@ pub mod memory {
 
 | Argument | Meaning | Default |
 |---|---|---|
-| `group = "name"` | Logical group name; sets the output file base names. Must be an identifier; groups that emit Rust need names that are distinct ignoring case, not keywords and not `mod` (each is a module file) | module ident |
+| `group = "name"` | Logical group name; sets the output file base names. Must be an identifier; groups that emit Rust need names that are distinct ignoring case, not keywords, `_` or `mod` (each is a module file) | module ident |
 | `to(rust, c, pil, asm)` | Targets to emit to | **required** |
 | `hex` / `dec` | Number base for rendered values | `hex` |
 | `fits = N` | Assert every value fits in `N` bits (a domain check) | the const's storage width |

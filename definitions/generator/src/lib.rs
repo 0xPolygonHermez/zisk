@@ -438,10 +438,11 @@ fn render_rust(
         if rust.is_empty() {
             continue;
         }
-        if RUST_KEYWORDS.contains(&meta.name) {
+        // `_` passes the identifier check but, like a keyword, can't name a module.
+        if RUST_KEYWORDS.contains(&meta.name) || meta.name == "_" {
             return Err(format!(
-                "group `{}` emits Rust, but a keyword can't name a module",
-                meta.name
+                "group `{}` emits Rust, but `{}` can't name a module",
+                meta.name, meta.name
             ));
         }
         // Compared ignoring case: on a case-insensitive filesystem (macOS by default)
@@ -1108,6 +1109,9 @@ mod tests {
 
         assert!(render(&[(&DASHED, C_ONLY)], "test").is_err(), "not an identifier");
         assert!(render(&[(&KEYWORD, RUST)], "test").is_err(), "keyword module");
+        static UNDERSCORE: GroupMeta = group("_", "u.h");
+        assert!(render(&[(&UNDERSCORE, RUST)], "test").is_err(), "`pub mod _;` is invalid");
+        assert!(render(&[(&UNDERSCORE, C_ONLY)], "test").is_ok(), "`_` is fine off Rust");
         assert!(render(&[(&KEYWORD, C_ONLY)], "test").is_ok(), "keywords are fine off Rust");
         assert!(render(&[(&A, RUST), (&B, RUST)], "test").is_err(), "two `same.rs` modules");
         assert!(render(&[(&A, C_ONLY), (&B, C_ONLY)], "test").is_ok(), "C groups may share a name");
