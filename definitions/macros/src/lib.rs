@@ -223,6 +223,22 @@ fn expand(container: Container, item_mod: ItemMod) -> syn::Result<TokenStream2> 
     for it in content {
         match it {
             Item::Const(mut c) => {
+                // The generated files are committed and drift-checked, so they must not
+                // depend on the build that renders them, which a conditional const (and
+                // anything derived from it) would. It would also leave an EXPORTS entry
+                // naming a const the cfg removed.
+                if let Some(a) = c
+                    .attrs
+                    .iter()
+                    .find(|a| a.path().is_ident("cfg") || a.path().is_ident("cfg_attr"))
+                {
+                    return Err(syn::Error::new(
+                        a.span(),
+                        "#[constants] does not allow `#[cfg]`/`#[cfg_attr]` on a const: \
+                         generated output must not depend on the build configuration",
+                    ));
+                }
+
                 let mut emit = Emit::default();
                 let mut kept_attrs: Vec<Attribute> = Vec::new();
                 for a in std::mem::take(&mut c.attrs) {
@@ -466,6 +482,24 @@ mod tests {
             }
         );
         assert!(constants(quote!(to(rust)), internal).is_ok());
+    }
+
+    #[test]
+    fn conditional_consts_are_rejected() {
+        for attr in [quote!(#[cfg(test)]), quote!(#[cfg_attr(test, emit(internal))])] {
+            let item = quote!(pub mod g { #attr pub const X: u64 = 1; });
+            let err = constants(quote!(to(rust)), item).unwrap_err().to_string();
+            assert!(err.contains("build configuration"), "{err}");
+        }
+        // Conditional non-const items (e.g. a test module) are left to the compiler.
+        let item = quote!(
+            pub mod g {
+                pub const X: u64 = 1;
+                #[cfg(test)]
+                mod t {}
+            }
+        );
+        assert!(constants(quote!(to(rust)), item).is_ok());
     }
 
     #[test]

@@ -126,6 +126,8 @@ Overrides only the fields it names; everything else inherits the module defaults
   them); C gets octal escapes for every byte outside printable ASCII.
 - **Visibility:** every exported const must be `pub` (the generated Rust is `pub`); a
   private helper const must be `#[emit(internal)]`.
+- **No conditional consts:** `#[cfg]`/`#[cfg_attr]` on a const is rejected, since the
+  committed output must not depend on the build configuration that renders it.
 - **Doc comments** on a const become one-line comments in every generated target.
 - **Emitted names** (prefix + name) must be valid in their target: identifiers for C
   and PIL, GAS symbols (which also allow `.` and `$`) for asm. Two C headers whose
