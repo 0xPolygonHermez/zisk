@@ -179,9 +179,6 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     in_use_latched * (in_use_a - 'in_use_a) === 0;
     in_use_latched * (in_use_b - 'in_use_b) === 0;
 
-    const expr in_use_a_clk_0 = CLK_0 * in_use_a; // 1 at the first clock of a slot whose op A is in use
-    const expr in_use_b_clk_0 = CLK_0 * in_use_b; // 1 at the first clock of a slot whose op B is in use
-
     // ═══════════════════════════════════════════════════════════════════════════
     // STATE COLUMNS
     // ═══════════════════════════════════════════════════════════════════════════
@@ -443,84 +440,66 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // MEMORY INTERFACE
+    // KECCAKF BUS: ONE (INPUT, OUTPUT) TUPLE PER OP
     // ═══════════════════════════════════════════════════════════════════════════
 
     /*
-        MEMORY ACCESS MAP (per op; A and B have independent step/addr)
-        ===============================================================================================================
-          0 | STEP_MAIN     | R | ADDR_STATE       |  input_state[0]
-          . |    ...        | . |    ...           |     ...
-         24 | STEP_MAIN     | R | ADDR_STATE + 192 |  input_state[24]
-         25 | STEP_MAIN + 1 | W | ADDR_STATE       |  output_state[0]
-          . |    ...        | . |    ...           |     ...
-         49 | STEP_MAIN + 1 | W | ADDR_STATE + 192 |  output_state[24]
-        ===============================================================================================================
+        Each op publishes its permutation on the KECCAKF_ID bus as ONE tuple of
+        2·50 field elements: the 25 input lanes followed by the 25 output lanes,
+        every lane as two 32-bit little-endian limbs, proven exactly once. Memory
+        and the main-processor operation live in KeccakfProxy, which assumes one
+        tuple per invocation and republishes it (KECCAKF_REPLICA_ID) for the
+        invocations that repeat a permutation, so those never reach this air.
 
-        Memory Access Schedule (100 total operations, lanes_per_row in parallel):
-            Group GROUP_IN_A:        Read op A input_state[0..24]    (lanes_per_row per clock)
-            Group GROUP_ROUND_0:     Read op B input_state[0..24]    (bits (v - a) / 8)
-            Group GROUP_ROUND_LAST:  Write op B output_state[0..24]  (bits (v - a) / 8)
-            Group GROUP_OUT_A:       Write op A output_state[0..24]
+        LIMB SCHEDULE (per op; lanes_per_row lanes packed per row)
+            Group GROUP_IN_A:        op A input lanes   (plain bits)
+            Group GROUP_ROUND_0:     op B input lanes   (bits (v - a) / 8)
+            Group GROUP_ROUND_LAST:  op B output lanes  (bits (v - a) / 8)
+            Group GROUP_OUT_A:       op A output lanes  (plain bits)
+
+        The limbs are committed (2·lanes_per_row columns) and the tuple fires at the
+        last row of the slot, reading them at 4·ROWS_PER_STATE past rotations that the
+        clock selectors already open. Building the tuple from the state bits instead
+        would open every bit column at every one of those rotations.
     */
 
-    col witness bits(40) step_addr;
-
-    const int STEP_A = 0;
-    const int ADDR_A = 1;
-    const int STEP_B = 2;
-    const int ADDR_B = 3;
-
     const int BITS_PER_LIMB = 32;
-    const int WORD_SIZE = 64 / 8; // bytes per 64-bit word
-    const int MEM_OPS_IN_PARALLEL = lanes_per_row;
+    const int LIMBS_PER_LANE = LANE_BITS / BITS_PER_LIMB;
+    const int LIMBS_PER_ROW = lanes_per_row * LIMBS_PER_LANE;
+    const int LIMBS_PER_STATE = LANES * LIMBS_PER_LANE;
 
-    const expr mem_sel = clock_set(in_use_a, start: GROUP_IN_A, end: GROUP_IN_A + ROWS_PER_STATE) +
-                         clock_set(in_use_b, start: GROUP_ROUND_0, end: GROUP_ROUND_0 + ROWS_PER_STATE) +
-                         clock_set(in_use_a, start: GROUP_OUT_A, end: GROUP_OUT_A + ROWS_PER_STATE) +
-                         clock_set(in_use_b, start: GROUP_ROUND_LAST, end: GROUP_ROUND_LAST + ROWS_PER_STATE);
-
-    const expr mem_is_write = clock_set(start: GROUP_ROUND_LAST, end: CLOCKS);
-
-    const expr main_step = clock_shift(step_addr, STEP_A, start: GROUP_IN_A, end: GROUP_IN_A + ROWS_PER_STATE) +
-                           clock_shift(step_addr, STEP_B, start: GROUP_ROUND_0, end: GROUP_ROUND_0 + ROWS_PER_STATE) +
-                           clock_shift(step_addr, STEP_A, start: GROUP_OUT_A, end: GROUP_OUT_A + ROWS_PER_STATE) +
-                           clock_shift(step_addr, STEP_B, start: GROUP_ROUND_LAST, end: GROUP_ROUND_LAST + ROWS_PER_STATE);
-
-    for (int i = 0; i < MEM_OPS_IN_PARALLEL; i++) {
-        // Address: ADDR + WORD_SIZE*(k*lanes_per_row + i) at group-row k of the op
-        // whose bits live at the firing clock, i.e. the word address advances by
-        // WORD_SIZE*lanes_per_row per clock within each window
-        const expr mem_addr = clock_shift(step_addr, ADDR_A, start: GROUP_IN_A, end: GROUP_IN_A + ROWS_PER_STATE, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row) +
-                              clock_shift(step_addr, ADDR_B, start: GROUP_ROUND_0, end: GROUP_ROUND_0 + ROWS_PER_STATE, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row) +
-                              clock_shift(step_addr, ADDR_A, start: GROUP_OUT_A, end: GROUP_OUT_A + ROWS_PER_STATE, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row) +
-                              clock_shift(step_addr, ADDR_B, start: GROUP_ROUND_LAST, end: GROUP_ROUND_LAST + ROWS_PER_STATE, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row);
-
-        // Pack this row's op bits into two 32-bit limbs: op A's plain bits, or op B's (v - a) / 8
-        const int base = i * 64;
-        const expr bits[64];
-        for (int j = 0; j < 64; j++) {
+    // Limbs of this row's lanes: op A's plain bits, or op B's (v - a) / 8; 0 outside the four groups
+    col witness bits(BITS_PER_LIMB) limbs[LIMBS_PER_ROW];
+    for (int i = 0; i < lanes_per_row; i++) {
+        const int base = i * LANE_BITS;
+        const expr bits[LANE_BITS];
+        for (int j = 0; j < LANE_BITS; j++) {
             bits[j] = (IN_A_CLK + OUT_A_CLK) * state[base + j] +
                       INV8 * (ROUND_0_CLK * b_in8[base + j] + ROUND_LAST_CLK * b_out8[base + j]);
         }
-        const expr mem_value[2];
-        mem_value[0] = pack(bits, offset: 0, len: BITS_PER_LIMB);
-        mem_value[1] = pack(bits, offset: BITS_PER_LIMB, len: BITS_PER_LIMB);
-
-        precompiled_mem_op(
-            sel: mem_sel,
-            is_write: mem_is_write,
-            main_step: main_step,
-            addr: mem_addr,
-            value: mem_value
-        );
+        for (int l = 0; l < LIMBS_PER_LANE; l++) {
+            limbs[i * LIMBS_PER_LANE + l] === pack(bits, offset: l * BITS_PER_LIMB, len: BITS_PER_LIMB);
+        }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // MAIN PROCESSOR INTEGRATION
-    // ═══════════════════════════════════════════════════════════════════════════
-    proves_operation(op: OP_KECCAK, b: [step_addr'(ADDR_A), 0], main_step: step_addr'(STEP_A), mul: in_use_a_clk_0);
-    proves_operation(op: OP_KECCAK, b: [step_addr'(ADDR_B), 0], main_step: step_addr'(STEP_B), mul: in_use_b_clk_0);
+    // The tuples fire once per op in use, at the last row of the slot
+    const expr CLK_LAST = CLK[CLOCKS - 1];
+
+    // Tuples as seen from the last row of the slot: group-row k of group g is CLOCKS-1-(g+k) rows back
+    const expr tuple_a[2 * LIMBS_PER_STATE];
+    const expr tuple_b[2 * LIMBS_PER_STATE];
+    for (int k = 0; k < ROWS_PER_STATE; k++) {
+        for (int j = 0; j < LIMBS_PER_ROW; j++) {
+            const int idx = k * LIMBS_PER_ROW + j;
+            tuple_a[idx] = (CLOCKS - 1 - (GROUP_IN_A + k))'limbs[j];
+            tuple_a[LIMBS_PER_STATE + idx] = (CLOCKS - 1 - (GROUP_OUT_A + k))'limbs[j];
+            tuple_b[idx] = (CLOCKS - 1 - (GROUP_ROUND_0 + k))'limbs[j];
+            tuple_b[LIMBS_PER_STATE + idx] = (CLOCKS - 1 - (GROUP_ROUND_LAST + k))'limbs[j];
+        }
+    }
+
+    lookup_proves(KECCAKF_ID, tuple_a, mul: CLK_LAST * in_use_a);
+    lookup_proves(KECCAKF_ID, tuple_b, mul: CLK_LAST * in_use_b);
 
     function rho(const expr a[]): const expr[] {
         const int len = length(a);

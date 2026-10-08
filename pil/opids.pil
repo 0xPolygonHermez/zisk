@@ -34,6 +34,8 @@ const int BLAKE2BR_PERMUTATION_ID = 128;
 const int BLAKE_TABLE_ID = 129;
 const int BLAKE3F_MSG_ID = 130;
 const int BLAKE2S_MSG_ID = 131;
+const int KECCAKF_ID = 132;
+const int KECCAKF_REPLICA_ID = 134;
 
 // DMA
 const int DMA_BUS_ID = 8000;

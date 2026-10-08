@@ -1,0 +1,78 @@
+require "std_lookup.pil"
+require "std_range_check.pil"
+require "operations.pil"
+require "opids.pil"
+
+// Memory and main-processor side of the Keccak-f[1600] precompile.
+//
+// Keccakf proves every permutation it computes exactly once, as one KECCAKF_ID tuple of 100 field
+// elements: the 25 input lanes then the 25 output lanes, two 32-bit little-endian limbs per lane.
+// This air handles the invocations, one per row: it reads the 25 input words of the state at the
+// main step, writes the 25 output words back to the same address and proves the OP_KECCAK
+// operation to the main processor.
+//
+// A row is either an ORIGINAL or a REPLICA of the permutation it carries:
+//   - an original assumes its tuple from Keccakf (KECCAKF_ID) and republishes it on the
+//     KECCAKF_REPLICA_ID bus with multiplicity `replicas`, the number of replica rows that repeat
+//     the same permutation (0 when there are none);
+//   - a replica assumes its tuple from KECCAKF_REPLICA_ID, i.e. from an original of the proof.
+// So a repeated permutation costs a Keccakf slot once and a row here per invocation, and the
+// Keccakf instances can be generated as the permutations are computed: only this air has to wait
+// for the whole execution to know the multiplicities. A replica cannot republish (its `replicas`
+// is 0), so every tuple on the replica bus descends from a permutation proven by Keccakf.
+
+airtemplate KeccakfProxy(const int N = 2**19) {
+    const int LANES = 25;
+    const int LIMBS_PER_LANE = 2;
+    const int LIMBS_PER_STATE = LANES * LIMBS_PER_LANE;
+    const int WORD_SIZE = 8; // bytes per lane
+    const int MAX_REPLICAS = 2**24 - 1;
+
+    col witness bits(1) in_use;                        // 1 when the row holds an invocation
+    col witness bits(1) is_replica;                    // 1 when the permutation was proven for an earlier row
+    col witness bits(24) replicas;                     // originals only: number of replica rows of this permutation
+    col witness bits(40) step;                         // main step of the invocation
+    col witness bits(32) addr;                         // address of the state (read, then overwritten)
+    col witness bits(32) state_in[LIMBS_PER_STATE];    // input lanes, as 32-bit limbs
+    col witness bits(32) state_out[LIMBS_PER_STATE];   // output lanes, as 32-bit limbs
+
+    in_use * (1 - in_use) === 0;
+    is_replica * (1 - is_replica) === 0;
+    is_replica * (1 - in_use) === 0;
+
+    // Only an original in use may republish: replicas = 0 on replica rows and on unused rows
+    replicas * (1 - in_use + is_replica) === 0;
+    range_check(expression: replicas, min: 0, max: MAX_REPLICAS, sel: in_use);
+
+    // (input, output) is a Keccak-f permutation: proven by Keccakf for an original, republished by
+    // an original for a replica
+    const expr tuple[2 * LIMBS_PER_STATE];
+    for (int i = 0; i < LIMBS_PER_STATE; i++) {
+        tuple[i] = state_in[i];
+        tuple[LIMBS_PER_STATE + i] = state_out[i];
+    }
+    const expr bus_id = KECCAKF_ID + is_replica * (KECCAKF_REPLICA_ID - KECCAKF_ID);
+    lookup_assumes_dynamic([KECCAKF_ID, KECCAKF_REPLICA_ID], bus_id, tuple, sel: in_use);
+    lookup_proves(KECCAKF_REPLICA_ID, tuple, mul: replicas);
+
+    /*
+        MEMORY ACCESS MAP
+        ======================================================
+          0 | STEP_MAIN     | R | ADDR       |  state_in[0..1]
+          . |    ...        | . |    ...     |     ...
+         24 | STEP_MAIN     | R | ADDR + 192 |  state_in[48..49]
+         25 | STEP_MAIN + 1 | W | ADDR       |  state_out[0..1]
+          . |    ...        | . |    ...     |     ...
+         49 | STEP_MAIN + 1 | W | ADDR + 192 |  state_out[48..49]
+        ======================================================
+    */
+    for (int i = 0; i < LANES; i++) {
+        precompiled_mem_load(addr: addr + WORD_SIZE * i, main_step: step,
+                             value: [state_in[LIMBS_PER_LANE * i], state_in[LIMBS_PER_LANE * i + 1]], sel: in_use);
+        precompiled_mem_store(addr: addr + WORD_SIZE * i, main_step: step,
+                              value: [state_out[LIMBS_PER_LANE * i], state_out[LIMBS_PER_LANE * i + 1]], sel: in_use);
+    }
+
+    // The operation carries the state address as its b operand
+    proves_operation(op: OP_KECCAK, b: [addr, 0], main_step: step, mul: in_use);
+}
