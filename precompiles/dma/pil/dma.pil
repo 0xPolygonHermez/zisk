@@ -11,6 +11,9 @@ const int E_DMA_ALL = E_DMA_MEMCPY | E_DMA_MEMCMP | E_DMA_INPUTCPY | E_DMA_MEMSE
 
 const int DMA_64_ALIGNED_CONT_ID = 8200;
 const int DMA_UNALIGNED_CONT_ID = 8201;
+// DmaLoop, and the loop block of CompactDma: each instantiation takes a cont_subid of its own from
+// the `proof.dma_loop` container, so their chains never mix.
+const int DMA_LOOP_CONT_ID = 8202;
 
 const int OP_DMA_PRE_XMEMCPY = 1;
 const int OP_DMA_PRE_INPUTCPY = 2;

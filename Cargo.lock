@@ -7829,6 +7829,7 @@ dependencies = [
 name = "zisk-precomp-dma"
 version = "1.4.0-alpha"
 dependencies = [
+ "paste",
  "pil2-std-lib",
  "proofman-common",
  "proofman-fields",

@@ -185,11 +185,31 @@ pub const DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST: usize = 6031;
 /// `Dma64AlignedMemCpy`: 3.48 GB.
 pub const DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST: usize = 3564;
 
-/// `DmaUnaligned`: 2.69 GB.
-pub const DMA_UNALIGNED_INSTANCE_COST: usize = 2755;
+/// `DmaUnaligned`: 2.43 GB at `2**20` rows and 4 words per row.
+///
+/// The four DMA airs below were measured on a non-aggregated setup (2026-10-09) whose figures read
+/// about 23% below the ones the rest of this table was taken from (`Dma` 2.73 GB there against the
+/// 3.29 GB above, and the same gap on every other DMA air), so they are scaled by that ratio to
+/// stay comparable with their neighbours: 1.97 GB measured. Refresh them all together from the
+/// next full setup. The air was shrunk to `2**20` because over 779 mainnet blocks its fill never
+/// went past 19% of `2**22` rows, so at `2**20` the same traffic tops out near 77% and still fits
+/// in one instance.
+pub const DMA_UNALIGNED_INSTANCE_COST: usize = 2488;
 
 /// `DmaPrePost`: 4.63 GB.
 pub const DMA_PRE_POST_INSTANCE_COST: usize = 4741;
+
+/// `DmaWithPrePost`: 6.70 GB at `2**21` rows (5.44 GB measured, scaled as `DmaUnaligned`).
+pub const DMA_WITH_PRE_POST_INSTANCE_COST: usize = 6861;
+
+/// `DmaLoop`: 5.63 GB at `2**21` rows and 4 words per row (4.57 GB measured, scaled as
+/// `DmaUnaligned`).
+pub const DMA_LOOP_INSTANCE_COST: usize = 5765;
+
+/// `CompactDma`: 5.53 GB at `2**20` rows (4.49 GB measured, scaled as `DmaUnaligned`). It is
+/// `DmaWithPrePost` and `DmaLoop` side by side at half their height, and it measures below the two
+/// halves added up because the blocks share one gsum and one instance's fixed overhead.
+pub const COMPACT_DMA_INSTANCE_COST: usize = 5663;
 
 /// `JumpDest`: 3.40 GB.
 pub const JUMP_DEST_INSTANCE_COST: usize = 3482;
@@ -301,6 +321,9 @@ mod tests {
                     Dma64AlignedMemCpyTrace: Dma64AlignedMemCpyTraceRow: DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST,
                     DmaUnalignedTrace: DmaUnalignedTraceRow: DMA_UNALIGNED_INSTANCE_COST,
                     DmaPrePostTrace: DmaPrePostTraceRow: DMA_PRE_POST_INSTANCE_COST,
+                    DmaWithPrePostTrace: DmaWithPrePostTraceRow: DMA_WITH_PRE_POST_INSTANCE_COST,
+                    DmaLoopTrace: DmaLoopTraceRow: DMA_LOOP_INSTANCE_COST,
+                    CompactDmaTrace: CompactDmaTraceRow: COMPACT_DMA_INSTANCE_COST,
                     JumpDestTrace: JumpDestTraceRow: JUMP_DEST_INSTANCE_COST,
                 );
     }

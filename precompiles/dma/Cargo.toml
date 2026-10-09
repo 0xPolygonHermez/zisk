@@ -23,6 +23,7 @@ pil2-std-lib = { workspace = true }
 proofman-fields = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
+paste = { workspace = true }
 
 [features]
 default = []

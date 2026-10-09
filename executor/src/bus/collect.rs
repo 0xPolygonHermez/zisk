@@ -14,8 +14,9 @@ use zisk_precomp_common::{MemCollectorProcessor, MemProcessor};
 use zisk_precomp_dma::Dma64AlignedCollector;
 use zisk_precomp_dma::DmaCollector;
 use zisk_precomp_dma::DmaCounterInputGen;
-use zisk_precomp_dma::DmaPrePostCollector;
 use zisk_precomp_dma::DmaUnalignedCollector;
+use zisk_precomp_dma::{CompactDmaCollector, DmaLoopCollector};
+use zisk_precomp_dma::{DmaPrePostCollector, DmaWithPrePostCollector};
 use zisk_precomp_evm::{JumpDestCollector, JumpDestCounterInputGen};
 use zisk_sm_arith::ArithCounterInputGen;
 use zisk_sm_arith::ArithInstanceCollector;
@@ -68,10 +69,16 @@ pub struct StaticDataBusCollect<D, F: PrimeField64> {
     dma_collector: Vec<(usize, DmaCollector)>,
     /// Dma pre/post collectors.
     dma_pre_post_collector: Vec<(usize, DmaPrePostCollector)>,
+    /// Collectors of the fused `DmaWithPrePost` air.
+    dma_with_pre_post_collector: Vec<(usize, DmaWithPrePostCollector)>,
     /// Dma 64-aligned collectors.
     dma_64_aligned_collector: Vec<(usize, Dma64AlignedCollector)>,
     /// Dma unaligned collectors.
     dma_unaligned_collector: Vec<(usize, DmaUnalignedCollector)>,
+    /// `DmaLoop` collectors.
+    dma_loop_collector: Vec<(usize, DmaLoopCollector)>,
+    /// Collectors of the fused `CompactDma` air: one device per instance, carrying its two blocks.
+    compact_dma_collector: Vec<(usize, CompactDmaCollector)>,
     /// Dma inputs generator.
     dma_inputs_generator: DmaCounterInputGen,
 
@@ -145,8 +152,11 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
             binary_extension_collector: builtins.binary_extension,
             dma_collector: builtins.dma,
             dma_pre_post_collector: builtins.dma_pre_post,
+            dma_with_pre_post_collector: builtins.dma_with_pre_post,
             dma_64_aligned_collector: builtins.dma_64_aligned,
             dma_unaligned_collector: builtins.dma_unaligned,
+            dma_loop_collector: builtins.dma_loop,
+            compact_dma_collector: builtins.compact_dma,
             dma_inputs_generator: builtins.dma_inputs_generator,
             jump_dest_collector: builtins.jump_dest,
             jump_dest_inputs_generator: builtins.jump_dest_inputs_generator,
@@ -213,11 +223,20 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                     for (_, dma_pre_post_collector) in &mut self.dma_pre_post_collector {
                         dma_pre_post_collector.process_data(&bus_id, data, data_ext);
                     }
+                    for (_, dma_with_pre_post_collector) in &mut self.dma_with_pre_post_collector {
+                        dma_with_pre_post_collector.process_data(&bus_id, data, data_ext);
+                    }
                     for (_, dma_64_aligned_collector) in &mut self.dma_64_aligned_collector {
                         dma_64_aligned_collector.process_data(&bus_id, data, data_ext);
                     }
                     for (_, dma_unaligned_collector) in &mut self.dma_unaligned_collector {
                         dma_unaligned_collector.process_data(&bus_id, data, data_ext);
+                    }
+                    for (_, dma_loop_collector) in &mut self.dma_loop_collector {
+                        dma_loop_collector.process_data(&bus_id, data, data_ext);
+                    }
+                    for (_, compact_dma_collector) in &mut self.compact_dma_collector {
+                        compact_dma_collector.process_data(&bus_id, data, data_ext);
                     }
 
                     self.dma_inputs_generator.process_data(
@@ -334,11 +353,23 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
             result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
+        for (id, collector) in self.dma_with_pre_post_collector {
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
+        }
+
         for (id, collector) in self.dma_64_aligned_collector {
             result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
         for (id, collector) in self.dma_unaligned_collector {
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
+        }
+
+        for (id, collector) in self.dma_loop_collector {
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
+        }
+
+        for (id, collector) in self.compact_dma_collector {
             result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 

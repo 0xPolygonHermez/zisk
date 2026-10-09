@@ -8,7 +8,7 @@ use crate::DmaStrategy;
 
 use proofman_fields::PrimeField64;
 use zisk_common::{BusDeviceMetrics, ChunkId, InstanceType, Plan, Planner, SegmentId};
-use zisk_pil::ZISK_AIRGROUP_ID;
+use zisk_pil::{CompactDmaTrace, DmaLoopTrace, DmaWithPrePostTrace, ZISK_AIRGROUP_ID};
 
 /// The `DmaPlanner` struct organizes execution plans for arithmetic instances and tables.
 ///
@@ -57,6 +57,44 @@ impl<F: PrimeField64> Planner for DmaPlanner<F> {
                     Some(Box::new(collect_info)),
                 ));
             }
+        }
+        // The airs with a checkpoint type of their own come back apart from the rest; each one is
+        // empty when the strategy gave that air nothing.
+        for (segment_id, (check_point, collect_info)) in
+            std::mem::take(&mut dma_strategy.dma_with_pre_post_plan).into_iter().enumerate()
+        {
+            plans.push(Plan::new(
+                ZISK_AIRGROUP_ID,
+                DmaWithPrePostTrace::<F>::AIR_ID,
+                Some(SegmentId(segment_id)),
+                InstanceType::Instance,
+                check_point,
+                Some(Box::new(collect_info)),
+            ));
+        }
+        for (segment_id, (check_point, collect_info)) in
+            std::mem::take(&mut dma_strategy.dma_loop_plan).into_iter().enumerate()
+        {
+            plans.push(Plan::new(
+                ZISK_AIRGROUP_ID,
+                DmaLoopTrace::<F>::AIR_ID,
+                Some(SegmentId(segment_id)),
+                InstanceType::Instance,
+                check_point,
+                Some(Box::new(collect_info)),
+            ));
+        }
+        for (segment_id, (check_point, collect_info)) in
+            std::mem::take(&mut dma_strategy.compact_dma_plan).into_iter().enumerate()
+        {
+            plans.push(Plan::new(
+                ZISK_AIRGROUP_ID,
+                CompactDmaTrace::<F>::AIR_ID,
+                Some(SegmentId(segment_id)),
+                InstanceType::Instance,
+                check_point,
+                Some(Box::new(collect_info)),
+            ));
         }
         plans
     }

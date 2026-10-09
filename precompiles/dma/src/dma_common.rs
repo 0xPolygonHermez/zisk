@@ -1,14 +1,15 @@
 use proofman_fields::PrimeField64;
 use zisk_pil::{
-    Dma64AlignedLargeTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemLargeTrace,
-    Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace, DmaPrePostTrace, DmaTrace,
-    DmaUnalignedTrace,
+    CompactDmaTrace, Dma64AlignedLargeTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemLargeTrace,
+    Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace, DmaLoopTrace,
+    DmaPrePostTrace, DmaTrace, DmaUnalignedTrace, DmaWithPrePostTrace,
 };
 
 pub fn get_dma_air_name<F: PrimeField64>(air_id: usize) -> &'static str {
     match air_id {
         DmaTrace::<()>::AIR_ID => "Dma",
         DmaPrePostTrace::<()>::AIR_ID => "DmaPrePost",
+        DmaWithPrePostTrace::<()>::AIR_ID => "DmaWithPrePost",
         Dma64AlignedTrace::<()>::AIR_ID => "Dma64Aligned",
         Dma64AlignedLargeTrace::<()>::AIR_ID => "Dma64AlignedLarge",
         Dma64AlignedMemSetTrace::<()>::AIR_ID => "Dma64AlignedMemSet",
@@ -16,6 +17,8 @@ pub fn get_dma_air_name<F: PrimeField64>(air_id: usize) -> &'static str {
         Dma64AlignedMemTrace::<()>::AIR_ID => "Dma64AlignedMem",
         Dma64AlignedMemLargeTrace::<()>::AIR_ID => "Dma64AlignedMemLarge",
         DmaUnalignedTrace::<()>::AIR_ID => "DmaUnaligned",
+        DmaLoopTrace::<()>::AIR_ID => "DmaLoop",
+        CompactDmaTrace::<()>::AIR_ID => "CompactDma",
         _ => "Unknown",
     }
 }

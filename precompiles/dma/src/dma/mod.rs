@@ -11,3 +11,4 @@ pub use dma_collector::*;
 pub use dma_input::*;
 pub use dma_instance::*;
 pub use dma_module::*;
+pub use dma_rom::*;
