@@ -17,6 +17,39 @@ use crate::AsmService;
 /// `AsmServices::new`); the `/dev/shm` cleanup scanners match on it.
 pub(crate) const NAMESPACE: &str = "ZISK";
 
+/// Prefix of the shared-memory segments one process holds for a rank and hints mode:
+/// `{NAMESPACE}_{pid}_{local_rank}_h{0,1}`. Every program set up on them shares them.
+///
+/// The hints marker is `_h1`/`_h0` rather than `_h`/`""` so that no prefix is a prefix of
+/// another: the janitor unlinks by `starts_with`, and with an empty marker cleaning one mode
+/// would destroy the other's live segments. The same holds across ranks and pids, since the
+/// marker ends every prefix. Keep any future marker prefix-free for the same reason.
+pub(crate) fn shm_prefix_for(pid: u32, local_rank: i32, with_hints: bool) -> String {
+    format!("{NAMESPACE}_{pid}_{local_rank}{}", hints_marker(with_hints))
+}
+
+/// Prefix of one program's semaphores: as [`shm_prefix_for`], with the first 32 characters of
+/// the program's hash, since each program owns its own semaphores. The C side refuses a prefix of
+/// `MAX_SHM_PREFIX_LENGTH` (64) bytes or more.
+pub(crate) fn sem_prefix_for(
+    pid: u32,
+    program_hash: &str,
+    local_rank: i32,
+    with_hints: bool,
+) -> String {
+    let hash = &program_hash[..program_hash.len().min(32)];
+    format!("{NAMESPACE}_{pid}_{hash}_{local_rank}{}", hints_marker(with_hints))
+}
+
+/// The marker that ends every prefix; see [`shm_prefix_for`] for why it is never empty.
+fn hints_marker(with_hints: bool) -> &'static str {
+    if with_hints {
+        "_h1"
+    } else {
+        "_h0"
+    }
+}
+
 fn build_service_shmem_name(prefix: &str, asm_service: AsmService, suffix: &str) -> String {
     format!("{}_{}_{}", prefix, asm_service.as_str(), suffix)
 }
@@ -105,6 +138,21 @@ pub(crate) fn sem_file_to_posix_name(file_name: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::AsmService;
+
+    #[test]
+    fn prefixes_have_the_shape_the_c_side_and_the_janitor_expect() {
+        assert_eq!(shm_prefix_for(123, 0, false), "ZISK_123_0_h0");
+        assert_eq!(shm_prefix_for(123, 2, true), "ZISK_123_2_h1");
+        let hash = "0123456789abcdef".repeat(4);
+        assert_eq!(sem_prefix_for(123, &hash, 0, false), format!("ZISK_123_{}_0_h0", &hash[..32]));
+    }
+
+    /// The C side refuses a prefix of `MAX_SHM_PREFIX_LENGTH` (64) bytes or more.
+    #[test]
+    fn the_longest_semaphore_prefix_fits_the_c_buffer() {
+        let longest = sem_prefix_for(u32::MAX, &"f".repeat(64), i32::MAX, true);
+        assert!(longest.len() < 64, "{longest} is {} bytes", longest.len());
+    }
 
     #[test]
     fn shmem_names_match_dev_shm_suffixes() {

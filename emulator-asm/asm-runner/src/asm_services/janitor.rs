@@ -75,27 +75,53 @@ pub(super) fn cleanup_stale() {
 }
 
 /// Unlink every `/dev/shm/{shm_prefix}*` shmem segment and
-/// `/dev/shm/sem.{sem_prefix}*` semaphore. The C-side `server_cleanup`
-/// only unlinks if `delete_input_shm`/`delete_output_shm` flags are
-/// set — which the long-running ASM service children don't have — so
-/// the parent has to do it. Call after `stop_asm_services` so the
-/// children are already detached from the segments.
+/// `/dev/shm/sem.{sem_prefix}*` semaphore.
+///
+/// Only for rolling back a setup that failed while creating a prefix's
+/// segments: then no other program can be using them. A program's normal
+/// teardown unlinks only its semaphores, and the segments go with the
+/// prefix's last `PrefixLease`.
 pub(super) fn cleanup_prefix(shm_prefix: &str, sem_prefix: &str) {
-    let dev_shm = std::path::Path::new("/dev/shm");
-    let entries = match std::fs::read_dir(dev_shm) {
+    cleanup_shm_prefix(shm_prefix);
+    cleanup_sem_prefix(sem_prefix);
+}
+
+/// Unlink every `/dev/shm/{shm_prefix}*` shmem segment.
+///
+/// Split from the semaphore sweep because the two have different owners: the
+/// segments are keyed by pid+rank+hints mode and shared by every program on the
+/// worker, so only the *last* live `AsmServices` on a prefix may unlink them
+/// (see `PrefixLease`). The semaphores carry the program hash and belong to one
+/// program, so that program unlinks its own on the way out.
+pub(super) fn cleanup_shm_prefix(shm_prefix: &str) {
+    for_each_dev_shm_entry(|name| {
+        if name.starts_with(shm_prefix) {
+            let _ = unlink_shmem(name);
+        }
+    });
+}
+
+/// Unlink every `/dev/shm/sem.{sem_prefix}*` semaphore.
+pub(super) fn cleanup_sem_prefix(sem_prefix: &str) {
+    let sem_marker = format!("sem.{sem_prefix}");
+    for_each_dev_shm_entry(|name| {
+        if name.starts_with(&sem_marker) {
+            unlink_sem_file(name);
+        }
+    });
+}
+
+fn for_each_dev_shm_entry(mut f: impl FnMut(&str)) {
+    let entries = match std::fs::read_dir(std::path::Path::new("/dev/shm")) {
         Ok(e) => e,
         Err(e) => {
             tracing::warn!("Cannot scan /dev/shm for cleanup: {e}");
             return;
         }
     };
-    let sem_marker = format!("sem.{}", sem_prefix);
     for entry in entries.flatten() {
-        let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
-        if name.starts_with(shm_prefix) {
-            let _ = unlink_shmem(&name);
-        } else if name.starts_with(&sem_marker) {
-            unlink_sem_file(&name);
+        if let Some(name) = entry.file_name().to_str() {
+            f(name);
         }
     }
 }
@@ -125,6 +151,40 @@ mod tests {
                 false
             }
         }
+    }
+
+    /// Cleaning one prefix unlinks its own segments and no neighbour's: the other
+    /// hints mode, a rank whose number it begins (1 against 10), a pid whose digits
+    /// it begins (12 against 123). The janitor unlinks by `starts_with`, so this
+    /// holds only because `shm_prefix_for` keeps every prefix prefix-free.
+    #[test]
+    fn cleaning_a_prefix_spares_every_neighbouring_prefix() {
+        // Pids above Linux's limit, so no real process's segment is touched.
+        let base = 400_000_000 + std::process::id() % 1000;
+        let target = crate::shm_prefix_for(base, 1, false);
+        let neighbours = [
+            crate::shm_prefix_for(base, 1, true),
+            crate::shm_prefix_for(base, 10, false),
+            crate::shm_prefix_for(base * 10 + 3, 1, false),
+        ];
+        let target_seg = format!("{target}_MT_output_0");
+        let neighbour_segs: Vec<String> =
+            neighbours.iter().map(|prefix| format!("{prefix}_MT_output_0")).collect();
+        shm_create(&target_seg);
+        neighbour_segs.iter().for_each(|seg| shm_create(seg));
+
+        cleanup_shm_prefix(&target);
+
+        let survivors: Vec<bool> = neighbour_segs.iter().map(|seg| shm_exists(seg)).collect();
+        let target_gone = !shm_exists(&target_seg);
+        for seg in neighbour_segs.iter().chain([&target_seg]) {
+            let _ = unlink_shmem(seg);
+        }
+        assert!(target_gone, "{target_seg} must be unlinked");
+        assert!(
+            survivors.iter().all(|s| *s),
+            "neighbours must survive: {neighbour_segs:?} {survivors:?}"
+        );
     }
 
     #[test]

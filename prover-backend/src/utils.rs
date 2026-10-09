@@ -1,5 +1,5 @@
 use proofman_fields::PrimeField64;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
@@ -43,15 +43,16 @@ pub fn get_rom_bin_path<F: PrimeField64>(
 }
 
 /// Return the `(minimal-trace, rom-histogram)` ASM binary filenames for `elf`.
-/// Names are content-addressed by the ELF hash (with a `-hints` marker when
-/// `with_hints` is set), so a given ELF always maps to the same artifacts.
+///
+/// Named by `zisk_rom_setup`, which generates these files, so the two cannot
+/// disagree: the name is the ELF hash and the hints mode.
 pub fn get_asm_paths(elf: &GuestProgram, with_hints: bool) -> Result<(String, String)> {
-    // Content-addressed by the ELF hash only — the same ELF maps to the same artifacts
-    // regardless of the program name, so a given hash is generated once.
     let hash = get_elf_data_hash(elf.elf());
-    let base = if with_hints { format!("{hash}-hints") } else { hash };
+    let [mt, rh, _mo] =
+        zisk_rom_setup::get_assembly_file_paths_from_id(&hash, Path::new(""), with_hints);
+    let file_name = |path: PathBuf| path.to_string_lossy().into_owned();
 
-    Ok((format!("{base}-mt.bin"), format!("{base}-rh.bin")))
+    Ok((file_name(mt), file_name(rh)))
 }
 
 /// Return an error if `path` does not exist.

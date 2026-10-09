@@ -254,6 +254,30 @@ void process_request(const uint64_t * request, uint64_t * response, bool * bRese
             }
             break;
         }
+        case TYPE_RS_REQUEST:
+        {
+            if (!silent) asm_printf("RESET received\n");
+
+            // Rebuild RAM and ROM from this binary's own init data. Every program set up in a
+            // process shares those segments, so another program may have overwritten them since
+            // this server last ran; the client sends this when it switches programs.
+            //
+            // Called directly, not via *bReset: that flag is honoured only after the response has
+            // been written, and the response must mean the memory is ready.
+            //
+            // RAM and ROM only, not server_reset_trace(): the trace is per-emulation state that
+            // server_run() resets itself, and resetting it out of band leaves the assembly side's
+            // write pointer and trace_address_threshold inconsistent with it, which made the next
+            // emulation map a fresh 2 GB chunk for every chunk it wrote.
+            server_reset_slow();
+
+            response[0] = TYPE_RS_RESPONSE;
+            response[1] = 0;
+            response[2] = 0;
+            response[3] = 0;
+            response[4] = 0;
+            break;
+        }
         case TYPE_SD_REQUEST:
         {
             if (!silent) asm_printf("SHUTDOWN received\n");

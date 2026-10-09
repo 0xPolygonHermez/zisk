@@ -1,15 +1,165 @@
 use super::stdio::StdioService;
 use crate::{
-    AsmRunnerOptions, MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse,
-    NAMESPACE,
+    sem_prefix_for, shm_prefix_for, AsmRunError, AsmRunnerOptions, MemoryOperationsResponse,
+    MinimalTraceResponse, RomHistogramResponse,
 };
-use anyhow::{Context, Result};
 
+use anyhow::{Context, Result};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+
+use std::collections::BTreeMap;
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex, Weak};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::time::Duration;
 use std::{fmt, path::Path, process::Command};
+
+/// Live `AsmServices` per shmem prefix — the refcount behind [`PrefixLease`].
+///
+/// The segments are keyed by `pid` + `local_rank` + hints mode, *not* by
+/// program, so one set serves every program set up on this worker. That makes
+/// both ends of their lifetime shared, and each end has a way to go wrong:
+///
+/// - **Creating twice.** Re-running the creation helpers for a second program
+///   would `shm_unlink` the segments out from under the services already
+///   mapping them and create fresh inodes under the same names. `/dev/shm`
+///   would look unchanged while every earlier generation stayed resident and
+///   pinned with nothing able to reach it again — 14.9 GiB per program.
+/// - **Destroying too early.** `cleanup_shm_prefix` unlinks by prefix, so one
+///   program's teardown would take the whole set with it while other programs
+///   were still using it.
+///
+/// An entry exists exactly while at least one `AsmServices` holds the prefix;
+/// the last lease out unlinks the segments and removes the entry, so a later
+/// setup creates them again.
+///
+/// The entry also records which program the shared segments currently serve
+/// (see [`AsmServices::activate`]), and holds the lock that gives one setup or
+/// job at a time the use of them ([`SegmentsClaim`]), since both are facts about
+/// the segments, not about any one caller that set up programs on them.
+static PREFIX_LEASES: Mutex<BTreeMap<String, PrefixState>> = Mutex::new(BTreeMap::new());
+
+/// One shmem prefix in use.
+struct PrefixState {
+    /// How many `AsmServices` hold a [`PrefixLease`] on it.
+    leases: usize,
+    /// The program whose services the shared guest RAM and ROM currently hold.
+    /// Taken before anything else writes those segments, and set only once
+    /// that program's reset has completed, so a failure in between leaves no
+    /// program recorded rather than the wrong one.
+    active: Option<ActiveProgram>,
+    /// Behind every [`SegmentsClaim`] on the prefix.
+    claims: Arc<SegmentsLock>,
+}
+
+/// The program the shared segments serve, as `PrefixState` records it.
+///
+/// Weak, so that recording a program does not keep it alive. With the latch its
+/// teardown sets, so that an activation finding it already dropped can still
+/// wait for its services: the `Weak` stops upgrading as soon as the last
+/// reference goes, before `Drop` has stopped them.
+struct ActiveProgram {
+    services: Weak<AsmServicesInner>,
+    stopped: Arc<StoppedLatch>,
+}
+
+/// Set once a program's services have stopped.
+#[derive(Default)]
+struct StoppedLatch {
+    stopped: Mutex<bool>,
+    set: Condvar,
+}
+
+impl StoppedLatch {
+    fn set(&self) {
+        *self.stopped.lock().unwrap_or_else(|p| p.into_inner()) = true;
+        self.set.notify_all();
+    }
+
+    fn wait(&self) {
+        let mut stopped = self.stopped.lock().unwrap_or_else(|p| p.into_inner());
+        while !*stopped {
+            stopped = self.set.wait(stopped).unwrap_or_else(|p| p.into_inner());
+        }
+    }
+}
+
+/// The lock behind [`SegmentsClaim`].
+///
+/// Not `PREFIX_LEASES`' own mutex: a job holds this for minutes, and leases,
+/// activation checks and teardowns need the map meanwhile. A `std` guard cannot
+/// outlive the call that took it, hence the flag and the condition variable.
+#[derive(Default)]
+struct SegmentsLock {
+    held: Mutex<bool>,
+    released: Condvar,
+}
+
+impl SegmentsLock {
+    /// Wait until no one holds the segments, then hold them.
+    fn claim(self: &Arc<Self>, shm_prefix: &str) -> SegmentsClaim {
+        let mut held = self.held.lock().unwrap_or_else(|p| p.into_inner());
+        while *held {
+            held = self.released.wait(held).unwrap_or_else(|p| p.into_inner());
+        }
+        *held = true;
+        SegmentsClaim { lock: Arc::clone(self), shm_prefix: shm_prefix.to_string() }
+    }
+}
+
+/// The use of a prefix's shared segments, by one setup or one job, until dropped.
+///
+/// Every program on a prefix shares its guest RAM and ROM, its input and its
+/// outputs, so only one may use them at a time: from the handoff that makes its
+/// program active ([`AsmServices::activate`], which requires a claim) through
+/// the last read of its job's results. Starting a program's services takes one
+/// too, since starting writes the guest RAM and ROM, and [`AsmServices::new`]
+/// returns it so the setup keeps it until its program is active.
+///
+/// Take it with [`AsmServices::claim`] before anything of the job touches the
+/// segments, and hold it until the job's results have been read. Not reentrant:
+/// a thread holding one that asks for another on the same prefix, including by
+/// setting up a program on it, waits for ever.
+pub struct SegmentsClaim {
+    lock: Arc<SegmentsLock>,
+    shm_prefix: String,
+}
+
+impl Drop for SegmentsClaim {
+    fn drop(&mut self) {
+        *self.lock.held.lock().unwrap_or_else(|p| p.into_inner()) = false;
+        self.lock.released.notify_one();
+    }
+}
+
+/// Proof that this `AsmServices` may use `shm_prefix`'s segments, and that they
+/// will outlive it.
+///
+/// Exists as a guard rather than a pair of bookkeeping calls so the count cannot
+/// drift: `AsmServices::new` can fail at several points after the segments are
+/// in place, and every one of those paths drops the lease on the way out.
+struct PrefixLease {
+    shm_prefix: String,
+}
+
+impl Drop for PrefixLease {
+    fn drop(&mut self) {
+        let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(state) = leases.get_mut(&self.shm_prefix) else {
+            tracing::error!("Prefix lease for '{}' released twice", self.shm_prefix);
+            return;
+        };
+        state.leases -= 1;
+        if state.leases > 0 {
+            return;
+        }
+        // Last user out: the segments are now unreachable, so unlink them and
+        // forget the prefix. A later setup will create a fresh set.
+        leases.remove(&self.shm_prefix);
+        tracing::debug!("Last user of shmem prefix {} — unlinking its segments", self.shm_prefix);
+        super::janitor::cleanup_shm_prefix(&self.shm_prefix);
+    }
+}
 
 /// This enum represents the different assembly services (MO, MT, RH) that can be run as separate processes. It provides methods to get the command path for each service, build the command to run the service with the appropriate options and shared memory/semaphore prefixes, and handle shutdown and cleanup of resources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,7 +277,10 @@ impl fmt::Display for AsmService {
     }
 }
 
-/// Handle to the ASM microservices for one `(pid, local_rank)`.
+/// Handle to one program's ASM microservices: its three service processes and
+/// its semaphores. The shared-memory segments they use belong to the prefix,
+/// `(pid, local_rank, hints mode)`, and are shared with every other program on
+/// it (see `PREFIX_LEASES`).
 ///
 /// `Clone` shares a single `AsmServicesInner` via `Arc`: the runner threads
 /// (MO/MT/RH) each hold a clone for the duration of a run. Teardown lives in
@@ -143,18 +296,30 @@ struct AsmServicesInner {
     service: StdioService,
     shm_prefix: String,
     sem_prefix: String,
+    /// Set by `Drop` once the services have stopped; see [`ActiveProgram`].
+    stopped: Arc<StoppedLatch>,
+    /// Keeps this prefix's shared segments alive; the last one out unlinks them.
+    /// Dropped, as every field is, only after `Drop` has stopped the children.
+    _prefix_lease: PrefixLease,
 }
 
 impl AsmServices {
     /// Array of all services, used for iteration in setup and cleanup.
     pub const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
-    /// Returns the shared memory prefix  `ZISK_{pid}_{rank}`.
+    /// Returns the shared memory prefix `ZISK_{pid}_{rank}_h{0,1}`, where the
+    /// trailing marker is the hints mode.
+    ///
+    /// Shared by every program set up on this worker in that mode; the segments
+    /// behind it live as long as one `PrefixLease` on it is held.
     pub fn shm_prefix(&self) -> &str {
         &self.inner.shm_prefix
     }
 
-    /// Returns the semaphore prefix `ZISK_{pid}_{hash}_{rank}`.
+    /// Returns the semaphore prefix `ZISK_{pid}_{hash}_{rank}_h{0,1}`, where
+    /// `hash` is the first 32 characters of the program hash.
+    ///
+    /// Per-program, unlike the shmem prefix.
     pub fn sem_prefix(&self) -> &str {
         &self.inner.sem_prefix
     }
@@ -169,7 +334,11 @@ impl AsmServices {
         self.inner.service.world_rank
     }
 
-    /// Wrapper used by the CLI and the first worker setup.
+    /// Start a program's services on this process's segments for its rank and
+    /// hints mode, creating the segments if no program holds them yet.
+    ///
+    /// Returns them with the claim taken to start them: keep it until the program
+    /// is active ([`Self::activate`]), so no other setup or job gets in between.
     pub fn new(
         world_rank: i32,
         local_rank: i32,
@@ -177,15 +346,16 @@ impl AsmServices {
         ziskemuasm_path: &Path,
         with_hints: bool,
         options: AsmRunnerOptions,
-    ) -> Result<AsmServices> {
+    ) -> Result<(AsmServices, SegmentsClaim)> {
         let pid = std::process::id();
-        let hash8 = &hash_id[..hash_id.len().min(8)];
 
-        let shm_prefix = format!("{NAMESPACE}_{pid}_{local_rank}");
-        let sem_prefix = format!(
-            "{NAMESPACE}_{pid}_{hash8}_{local_rank}{hints}",
-            hints = if with_hints { "_h" } else { "" }
-        );
+        // The hints mode belongs on both prefixes: `get_precompile_results()` comes
+        // from the generated assembly, so the hints binary variant creates a
+        // `_precompile` segment the non-hints one neither creates nor opens. The two
+        // modes therefore do not have the same *set* of segments and cannot share one.
+        // Two sets per worker at most, one per mode, each reused by every program in it.
+        let shm_prefix = shm_prefix_for(pid, local_rank, with_hints);
+        let sem_prefix = sem_prefix_for(pid, &hash_id, local_rank, with_hints);
 
         // Strip it to get the base path.
         // `ziskemuasm_path` expected format: "<base>-??.bin".
@@ -200,8 +370,17 @@ impl AsmServices {
             } else {
                 return Err(anyhow::anyhow!("invalid path format: expected '-??.bin' suffix"));
             };
-        // Phase 1: create shmem segments for this process.
-        Self::create_shmem(world_rank, &shm_prefix, &sem_prefix, stripped_path, &options)?;
+        // Phase 1: create the shmem segments — once per prefix, not once per program.
+        // The lease keeps them alive for as long as any program is using them; every
+        // failure path below drops it, so a failed setup cannot strand the prefix.
+        let prefix_lease =
+            Self::acquire_prefix(world_rank, &shm_prefix, &sem_prefix, stripped_path, &options)?;
+
+        // Starting services writes the shared guest RAM and ROM, so no job may be
+        // using the segments, and the program they serve must have finished with
+        // them first.
+        let claim = Self::claim_prefix(&shm_prefix);
+        Self::quiesce_active(&shm_prefix);
 
         // Phase 2: start services and wait for them to be ready.
         let stdio_service = StdioService::start_services(
@@ -213,7 +392,13 @@ impl AsmServices {
             &sem_prefix,
         )?;
 
-        let inner = AsmServicesInner { service: stdio_service, shm_prefix, sem_prefix };
+        let inner = AsmServicesInner {
+            service: stdio_service,
+            shm_prefix,
+            sem_prefix,
+            stopped: Arc::default(),
+            _prefix_lease: prefix_lease,
+        };
 
         for service in &Self::SERVICES {
             inner
@@ -222,7 +407,7 @@ impl AsmServices {
                 .with_context(|| format!("Service {service} failed to respond to ping"))?;
         }
 
-        Ok(AsmServices { inner: Arc::new(inner) })
+        Ok((AsmServices { inner: Arc::new(inner) }, claim))
     }
 
     /// Clean up all shared memory and semaphores for currently running services.
@@ -230,6 +415,41 @@ impl AsmServices {
     /// left by dead processes and unlink them.
     pub fn cleanup_stale_shmem() {
         super::janitor::cleanup_stale();
+    }
+
+    /// Take a lease on `shm_prefix`, creating its segments if this is the first.
+    ///
+    /// Creation and the refcount are decided under one lock, so two concurrent
+    /// setups for the same prefix cannot both run the helpers, and a lease can
+    /// never be granted on segments that a concurrent teardown is unlinking.
+    fn acquire_prefix(
+        world_rank: i32,
+        shm_prefix: &str,
+        sem_prefix: &str,
+        trimmed_path: &str,
+        options: &AsmRunnerOptions,
+    ) -> Result<PrefixLease> {
+        let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        match leases.get_mut(shm_prefix) {
+            Some(state) => {
+                tracing::debug!(
+                    ">>> [{world_rank}] Reusing existing shmem for prefix {shm_prefix} \
+                     ({} user(s) before this one); skipping creation",
+                    state.leases
+                );
+                state.leases += 1;
+            }
+            None => {
+                Self::create_shmem(world_rank, shm_prefix, sem_prefix, trimmed_path, options)?;
+                leases.insert(
+                    shm_prefix.to_string(),
+                    PrefixState { leases: 1, active: None, claims: Arc::default() },
+                );
+            }
+        }
+
+        Ok(PrefixLease { shm_prefix: shm_prefix.to_string() })
     }
 
     /// Create all of the shared-memory segments.
@@ -358,6 +578,158 @@ impl AsmServices {
         Ok(())
     }
 
+    /// Make the shared segments serve this program, unless they already do.
+    ///
+    /// The segments serve one program at a time, so a switch takes three steps,
+    /// in order: wait until the program they serve now has finished with them
+    /// (`quiesce_active`), let the caller rebind whatever is per program
+    /// (`bind`, the semaphores of the parent's shared writers), and rebuild this
+    /// program's guest RAM and ROM ((`reset_services`)). It is recorded as
+    /// active only once all three have succeeded.
+    ///
+    /// The record lives with the segments, not with the caller, so every client
+    /// in the process that set up programs on them sees the same one.
+    ///
+    /// `claim` must be this prefix's, held for the job that follows: without it,
+    /// a second handoff could find no program recorded while the first waits for
+    /// the outgoing one, skip that wait, and reset the guest memory under it.
+    ///
+    /// Fails with [`AsmRunError::ServiceDied`] if one of this program's services
+    /// has exited: it would fail the job anyway, later and less clearly.
+    pub fn activate(&self, claim: &SegmentsClaim, bind: impl FnOnce() -> Result<()>) -> Result<()> {
+        if claim.shm_prefix != self.inner.shm_prefix {
+            return Err(anyhow::anyhow!(
+                "activating a program on {} under a claim on {}",
+                self.inner.shm_prefix,
+                claim.shm_prefix
+            ));
+        }
+        self.inner.service.check_alive()?;
+        if self.is_active() {
+            return Ok(());
+        }
+        Self::quiesce_active(&self.inner.shm_prefix);
+        bind()?;
+        self.reset_services()?;
+
+        let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(state) = leases.get_mut(&self.inner.shm_prefix) {
+            state.active = Some(ActiveProgram {
+                services: Arc::downgrade(&self.inner),
+                stopped: Arc::clone(&self.inner.stopped),
+            });
+        }
+        Ok(())
+    }
+
+    /// Wait until no setup or job is using this program's shared segments, and
+    /// hold them until the returned claim is dropped. See [`SegmentsClaim`].
+    pub fn claim(&self) -> SegmentsClaim {
+        Self::claim_prefix(&self.inner.shm_prefix)
+    }
+
+    /// [`claim`](Self::claim), for a prefix this process holds a lease on.
+    fn claim_prefix(shm_prefix: &str) -> SegmentsClaim {
+        // Cloned out so the map is not locked while waiting.
+        let claims = {
+            let leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
+            let state = leases.get(shm_prefix).expect("a prefix is claimed only under a lease");
+            Arc::clone(&state.claims)
+        };
+        claims.claim(shm_prefix)
+    }
+
+    /// Whether the shared segments currently serve this program.
+    fn is_active(&self) -> bool {
+        let leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
+        leases
+            .get(&self.inner.shm_prefix)
+            .and_then(|state| state.active.as_ref())
+            .is_some_and(|active| std::ptr::eq(active.services.as_ptr(), Arc::as_ptr(&self.inner)))
+    }
+
+    /// Wait until the services of the program `shm_prefix`'s segments serve
+    /// have finished every request already sent, and record that they serve none.
+    ///
+    /// A service keeps writing the shared guest RAM and ROM after it has
+    /// answered: its request may still be in flight (the ROM histogram's is
+    /// parked until a job reads it), and its own reset runs after the response.
+    /// A ping is answered only after both, since each service reads its next
+    /// request only when it is done with the last, and a request in flight holds
+    /// that service's handle until its response arrives. A request its runner has
+    /// not sent yet is not waited for: see `JobClaim` in `zisk-prover-backend`. A
+    /// service whose ping fails is taken as stopped. A program already dropped is
+    /// not pinged but waited for, until its teardown has stopped its services.
+    fn quiesce_active(shm_prefix: &str) {
+        let outgoing = {
+            let mut leases = PREFIX_LEASES.lock().unwrap_or_else(|p| p.into_inner());
+            leases.get_mut(shm_prefix).and_then(|state| state.active.take())
+        };
+        let Some(outgoing) = outgoing else { return };
+        // Its last reference is gone, but its teardown, which holds no claim, may
+        // still be stopping services that write the segments: wait for it to finish.
+        let Some(outgoing) = outgoing.services.upgrade() else {
+            outgoing.stopped.wait();
+            return;
+        };
+        for service in &Self::SERVICES {
+            if let Err(e) = outgoing.service.send_status_request(service) {
+                tracing::warn!(
+                    "Service {service} of the outgoing program did not answer before a switch; \
+                     taking it as stopped: {e:#}"
+                );
+            }
+        }
+    }
+
+    /// Re-initialize every service's guest RAM and ROM, and wait for all three
+    /// to confirm.
+    ///
+    /// Call this before the first emulation after the active program changes.
+    /// The `_ram`/`_rom` segments are shared across programs, and a service's
+    /// own post-emulation `server_reset_slow` only leaves them correct for its
+    /// own next run — it says nothing about what another program's services
+    /// wrote there in between. The C side services the request synchronously,
+    /// so a response means that service's memory is ready.
+    ///
+    /// Runs the three in parallel: each is a 512 MiB memset plus a ROM rewrite,
+    /// and they are separate processes with independent stdio state.
+    fn reset_services(&self) -> Result<()> {
+        Self::SERVICES
+            .par_iter()
+            .try_for_each(|service| self.reset_service(service))
+            .context("Failed to reset ASM services")
+    }
+
+    /// One service's part of [`reset_services`](Self::reset_services).
+    fn reset_service(&self, service: &AsmService) -> Result<()> {
+        let response = self.inner.service.send_reset_request(service).map_err(|e| {
+            // A binary generated before the reset request existed exits on
+            // it, and its own message is lost with its stderr. The cache names
+            // binaries by ELF hash and hints mode only, so say what fixes it.
+            let died = e.chain().any(|cause| {
+                matches!(cause.downcast_ref::<AsmRunError>(), Some(AsmRunError::ServiceDied { .. }))
+            });
+            if died {
+                e.context(format!(
+                    "Service {service} exited on the reset request. A binary cached \
+                         before that request existed exits on it with status 255; if \
+                         that is the status reported, clear the cached ASM binaries \
+                         (~/.zisk/cache by default) to regenerate them"
+                ))
+            } else {
+                e.context(format!("Service {service} failed to reset"))
+            }
+        })?;
+        if response.result != 0 {
+            return Err(anyhow::anyhow!(
+                "ASM {service} service returned non-zero result to the reset request: {}",
+                response.result
+            ));
+        }
+        Ok(())
+    }
+
     /// Send a minimal trace request to the MT service and return the response.
     pub(crate) fn send_minimal_trace_request(
         &self,
@@ -473,19 +845,21 @@ impl AsmServicesInner {
         Ok(())
     }
 
-    /// Unlink every `/dev/shm/{shm_prefix}*` shmem segment and
-    /// `/dev/shm/sem.{sem_prefix}*` semaphore. The C-side `server_cleanup`
-    /// only unlinks if `delete_input_shm`/`delete_output_shm` flags are
-    /// set — which the long-running ASM service children don't have — so
-    /// the parent has to do it. Call after `stop_asm_services` so the
-    /// children are already detached from the segments.
-    fn cleanup_my_shmem(&self) {
-        super::janitor::cleanup_prefix(&self.shm_prefix, &self.sem_prefix);
+    /// Unlink the semaphores this program owns.
+    ///
+    /// Only the semaphores: they carry the program hash, so they are this
+    /// program's to remove. The shmem segments are shared with every other
+    /// program on the same prefix, and unlinking those is `PrefixLease`'s job
+    /// once the last of them is gone.
+    fn cleanup_my_semaphores(&self) {
+        super::janitor::cleanup_sem_prefix(&self.sem_prefix);
     }
 }
 
 impl Drop for AsmServicesInner {
-    /// RAII teardown for the ASM microservices and their `/dev/shm` segments.
+    /// RAII teardown for this program's services and semaphores. The shared
+    /// segments outlive it unless this was the prefix's last program: its
+    /// lease, dropped after this body, decides.
     ///
     /// Runs exactly once: this is the sole owner behind the `Arc` in
     /// [`AsmServices`], so `drop` fires only when the last `AsmServices` clone
@@ -499,14 +873,153 @@ impl Drop for AsmServicesInner {
                 e
             );
         }
+        // `stop_asm_services` closes every service it finds running, so none is left
+        // to write the shared segments.
+        self.stopped.set();
 
-        self.cleanup_my_shmem();
+        self.cleanup_my_semaphores();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A lease on `shm_prefix` as the first program's setup takes it, without spawning
+    /// the C helpers that would create the segments.
+    fn first_lease(shm_prefix: &str) -> PrefixLease {
+        let mut leases = PREFIX_LEASES.lock().unwrap();
+        assert!(!leases.contains_key(shm_prefix), "{shm_prefix} is already leased");
+        leases.insert(
+            shm_prefix.to_string(),
+            PrefixState { leases: 1, active: None, claims: Arc::default() },
+        );
+        PrefixLease { shm_prefix: shm_prefix.to_string() }
+    }
+
+    /// The shmem segments are shared by every program on a prefix, so a single
+    /// program's teardown must not take them with it — but the last one out has
+    /// to, or the worker leaves ~15 GiB of `/dev/shm` behind on exit.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn prefix_segments_are_unlinked_only_when_the_last_program_releases() {
+        let prefix = format!("ZISK_unittest_lease_{}", std::process::id());
+        let seg = format!("{prefix}_MT_output_0");
+
+        let c = std::ffi::CString::new(seg.clone()).unwrap();
+        let exists = || unsafe {
+            let fd = libc::shm_open(c.as_ptr(), libc::O_RDONLY, 0);
+            if fd >= 0 {
+                libc::close(fd);
+                true
+            } else {
+                false
+            }
+        };
+        unsafe {
+            let fd = libc::shm_open(c.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+            assert!(fd >= 0, "could not create the stand-in segment");
+            libc::close(fd);
+        }
+        assert!(exists());
+
+        // Two programs sharing one prefix. The second takes the lease the way a later
+        // program's setup does: through `acquire_prefix`, which finds the prefix and
+        // must neither create the segments again nor spawn anything.
+        let first = first_lease(&prefix);
+        let second = AsmServices::acquire_prefix(
+            0,
+            &prefix,
+            &format!("{prefix}_sems"),
+            "/nonexistent/ziskemuasm",
+            &AsmRunnerOptions::new(),
+        )
+        .expect("a reused prefix needs no helper");
+        assert_eq!(PREFIX_LEASES.lock().unwrap()[&prefix].leases, 2);
+
+        drop(first);
+        assert!(exists(), "one program's teardown must not unlink the shared segments");
+
+        drop(second);
+        assert!(!exists(), "the last program out must unlink them");
+        assert!(
+            !PREFIX_LEASES.lock().unwrap().contains_key(&prefix),
+            "the prefix must be forgotten so a later setup re-creates it"
+        );
+    }
+
+    /// A program's teardown holds no claim, and the activation record stops
+    /// upgrading as soon as its last reference goes, before its services are
+    /// stopped. A switch that finds it dropped must wait for that teardown rather
+    /// than reset the segments under services still writing them.
+    #[test]
+    fn a_switch_waits_for_a_dropped_program_to_stop_its_services() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let prefix = format!("ZISK_unittest_teardown_{}", std::process::id());
+        let stopped = Arc::new(StoppedLatch::default());
+        PREFIX_LEASES.lock().unwrap().insert(
+            prefix.clone(),
+            PrefixState {
+                leases: 1,
+                // A program whose last reference is gone: its `Weak` no longer upgrades.
+                active: Some(ActiveProgram {
+                    services: Weak::new(),
+                    stopped: Arc::clone(&stopped),
+                }),
+                claims: Arc::default(),
+            },
+        );
+
+        let (switched, rx) = mpsc::channel();
+        let switch = {
+            let prefix = prefix.clone();
+            std::thread::spawn(move || {
+                AsmServices::quiesce_active(&prefix);
+                switched.send(()).unwrap();
+            })
+        };
+        assert!(
+            rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a switch must wait while the dropped program's services are stopping"
+        );
+
+        stopped.set();
+        rx.recv_timeout(Duration::from_secs(10)).expect("the teardown's end must let it in");
+        switch.join().unwrap();
+        let state = PREFIX_LEASES.lock().unwrap().remove(&prefix).unwrap();
+        assert!(state.active.is_none(), "the switch must leave no program recorded");
+    }
+
+    /// A job holds the segments from its handoff to its last read, so a second
+    /// claim on the prefix waits for the first to be dropped, and then gets in.
+    #[test]
+    fn a_claim_waits_until_the_one_before_it_is_dropped() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let lock = Arc::new(SegmentsLock::default());
+        let first = lock.claim("ZISK_unittest_claim");
+
+        let (claimed, rx) = mpsc::channel();
+        let second = {
+            let lock = Arc::clone(&lock);
+            std::thread::spawn(move || {
+                let _claim = lock.claim("ZISK_unittest_claim");
+                claimed.send(()).unwrap();
+            })
+        };
+        assert!(
+            rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a second claim must wait while the first is held"
+        );
+
+        drop(first);
+        rx.recv_timeout(Duration::from_secs(10)).expect("dropping a claim must let the next in");
+        second.join().unwrap();
+        assert!(!*lock.held.lock().unwrap(), "the last claim dropped must release the segments");
+    }
 
     #[test]
     fn gen_index_matches_c_binary_contract() {

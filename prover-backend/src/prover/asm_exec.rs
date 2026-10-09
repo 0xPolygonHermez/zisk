@@ -24,6 +24,9 @@ use crate::output::ExecuteOutput;
 struct AsmSetupState {
     zisk_rom: Arc<ZiskRom>,
     with_hints: bool,
+    /// Kept to activate before every run: another client in this process may
+    /// have run another program on the shared segments since.
+    resources: Arc<AsmResources>,
 }
 
 /// Execute-only client backed by the ASM emulator.
@@ -69,14 +72,14 @@ impl AsmExecClient {
             )
             .context("AsmResources::new_standalone failed")?,
         );
-        self.executor.set_asm_resources(resources)?;
+        self.executor.set_asm_resources(resources.clone())?;
 
         tracing::debug!("Parsing ELF into ZiskRom");
         let zisk_rom = ZiskTranspiler::new(program.elf())
             .run()
             .map_err(|e| anyhow::anyhow!("failed to parse ELF: {e}"))?;
         *self.program.lock().expect("program mutex") =
-            Some(AsmSetupState { zisk_rom: Arc::new(zisk_rom), with_hints });
+            Some(AsmSetupState { zisk_rom: Arc::new(zisk_rom), with_hints, resources });
         tracing::info!("AsmExecClient ready");
         Ok(())
     }
@@ -89,6 +92,14 @@ impl AsmExecClient {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program, with_hints) before execute")?;
 
+        // Before anything of the job touches the segments, and held to the end, past the
+        // last read of the job's results.
+        let claim = setup.resources.claim();
+        // Activate before the input reset. Another client's job may have left its ROM
+        // histogram running on the shared input (a full prover's job with hints does), and
+        // activating is what waits for its request. Resetting first would clear the input
+        // under it, and the wait would never end.
+        setup.resources.activate(&claim)?;
         self.executor.reset_for_new_job()?;
 
         if let Some(stream) = hints {

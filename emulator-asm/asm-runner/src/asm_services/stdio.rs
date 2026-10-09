@@ -1,6 +1,6 @@
 use std::{
     io::{Read, Write},
-    process::{Child, ChildStdin, ChildStdout, Stdio},
+    process::{Child, ChildStdin, ChildStdout, ExitStatus, Stdio},
     sync::Mutex,
     thread,
 };
@@ -10,10 +10,13 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tracing::{debug, error};
 
 use super::services::AsmServices;
-use super::{AsmService, FromResponsePayload, PingRequest, PingResponse, ToRequestPayload};
+use super::{
+    AsmService, FromResponsePayload, PingRequest, PingResponse, ResetRequest, ResetResponse,
+    ToRequestPayload,
+};
 use crate::{
-    AsmRunnerOptions, MemoryOperationsRequest, MemoryOperationsResponse, MinimalTraceRequest,
-    MinimalTraceResponse, RomHistogramRequest, RomHistogramResponse,
+    AsmRunError, AsmRunnerOptions, MemoryOperationsRequest, MemoryOperationsResponse,
+    MinimalTraceRequest, MinimalTraceResponse, RomHistogramRequest, RomHistogramResponse,
 };
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crate::{ShutdownRequest, ShutdownResponse};
@@ -23,6 +26,9 @@ pub(super) struct StdioHandle {
     stdout: ChildStdout,
     _stderr_drain: thread::JoinHandle<()>,
     child: Child,
+    /// How the process exited, once a request has found it gone. Kept so every later request
+    /// fails with the cause, instead of with a broken pipe.
+    exited: Option<String>,
 }
 
 impl std::fmt::Debug for StdioHandle {
@@ -37,12 +43,19 @@ impl StdioHandle {
         Req: ToRequestPayload,
         Res: FromResponsePayload,
     {
+        if let Some(how) = &self.exited {
+            return Err(Self::died(service, how));
+        }
         debug!("Sending request to stdio service {}", service);
         let out_buffer = super::codec::encode_request(req.to_request_payload());
         debug!("Encoded request for service {}: {} bytes", service, out_buffer.len());
-        self.stdin
-            .write_all(&out_buffer)
-            .with_context(|| format!("Failed to write request to stdio service {service}"))?;
+        if let Err(e) = self.stdin.write_all(&out_buffer) {
+            if let Ok(Some(status)) = self.child.try_wait() {
+                return Err(self.record_exit(service, status));
+            }
+            return Err(e)
+                .with_context(|| format!("Failed to write request to stdio service {service}"));
+        }
 
         debug!("Request sent to stdio service {}, waiting for response...", service);
         let mut in_buffer = [0u8; 40];
@@ -60,10 +73,7 @@ impl StdioHandle {
             );
 
             if let Some(status) = status {
-                error!("Service {service} process crashed with {status}");
-                return Err(anyhow::anyhow!(
-                    "Service {service} process exited with {status} before responding"
-                ));
+                return Err(self.record_exit(service, status));
             }
             error!("Service {service} process status unknown after read failure.");
             return Err(e)
@@ -73,6 +83,43 @@ impl StdioHandle {
         debug!("Received response from stdio service {}: {} bytes", service, in_buffer.len());
         debug!("Raw response bytes from service {}: {:?}", service, &in_buffer);
         Ok(Res::from_response_payload(super::codec::decode_response(&in_buffer)?))
+    }
+
+    /// Remember that the process has exited, report it once, and return the error every request
+    /// to it will now get.
+    fn record_exit(&mut self, service: &AsmService, status: ExitStatus) -> anyhow::Error {
+        let how = status.to_string();
+        error!("Service {service} process crashed with {how}");
+        let error = Self::died(service, &how);
+        self.exited = Some(how);
+        error
+    }
+
+    fn died(service: &AsmService, how: &str) -> anyhow::Error {
+        AsmRunError::ServiceDied { service: service.to_string(), how: how.to_string() }.into()
+    }
+
+    /// Kill the process and reap it; one already gone is only reaped.
+    fn kill_and_reap(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+
+    /// Whether the process has exited. A handle that is busy with a request is alive by
+    /// definition, and is not waited for.
+    fn has_exited(handle: &Mutex<Self>) -> Option<String> {
+        let mut handle = handle.try_lock().ok()?;
+        if let Some(how) = &handle.exited {
+            return Some(how.clone());
+        }
+        match handle.child.try_wait() {
+            Ok(Some(status)) => {
+                let how = status.to_string();
+                handle.exited = Some(how.clone());
+                Some(how)
+            }
+            _ => None,
+        }
     }
 }
 
@@ -91,15 +138,38 @@ impl StdioService {
         shm_prefix: &str,
         sem_prefix: &str,
     ) -> Result<Self> {
-        let handles: [Mutex<StdioHandle>; 3] = AsmServices::SERVICES
+        let started: Vec<Result<StdioHandle>> = AsmServices::SERVICES
             .par_iter()
             .map(|service| {
                 debug!(">>> [{}] Starting ASM service (stdio): {}", world_rank, service);
-                let handle =
-                    Self::start_service(service, trimmed_path, options, shm_prefix, sem_prefix)?;
-                Ok(Mutex::new(handle))
+                Self::start_service(service, trimmed_path, options, shm_prefix, sem_prefix)
             })
-            .collect::<Result<Vec<_>>>()?
+            .collect();
+
+        let mut handles = Vec::with_capacity(started.len());
+        let mut failure = None;
+        for result in started {
+            match result {
+                Ok(handle) => handles.push(handle),
+                Err(e) => {
+                    failure.get_or_insert(e);
+                }
+            }
+        }
+        // A service writes the shared guest RAM and ROM as it starts, before it reads its
+        // stdin, so dropping its pipes would not stop it. And the caller's claim on the
+        // segments ends with this error, so stop every service that did start first.
+        if let Some(e) = failure {
+            for mut handle in handles {
+                handle.kill_and_reap();
+            }
+            return Err(e);
+        }
+
+        let handles: [Mutex<StdioHandle>; 3] = handles
+            .into_iter()
+            .map(Mutex::new)
+            .collect::<Vec<_>>()
             .try_into()
             .expect("expected exactly 3 services");
 
@@ -130,14 +200,12 @@ impl StdioService {
             while matches!(stderr.read(&mut chunk), Ok(n) if n > 0) {}
         });
 
-        Ok(StdioHandle { stdin, stdout, _stderr_drain: stderr_drain, child })
+        Ok(StdioHandle { stdin, stdout, _stderr_drain: stderr_drain, child, exited: None })
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub(super) fn close(&self, service: &AsmService) {
-        let mut guard = self.state[service.as_index()].lock().unwrap();
-        let _ = guard.child.kill();
-        let _ = guard.child.wait();
+        self.state[service.as_index()].lock().unwrap().kill_and_reap();
     }
 
     pub(super) fn running_services(&self) -> Vec<AsmService> {
@@ -151,8 +219,23 @@ impl StdioService {
             .collect()
     }
 
+    /// Fails with [`AsmRunError::ServiceDied`] for the first service found to have exited.
+    /// Busy services count as alive and are not waited for.
+    pub(super) fn check_alive(&self) -> Result<()> {
+        for service in &AsmServices::SERVICES {
+            if let Some(how) = StdioHandle::has_exited(&self.state[service.as_index()]) {
+                return Err(StdioHandle::died(service, &how));
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn send_status_request(&self, service: &AsmService) -> Result<PingResponse> {
         self.send_request(service, &PingRequest {})
+    }
+
+    pub(super) fn send_reset_request(&self, service: &AsmService) -> Result<ResetResponse> {
+        self.send_request(service, &ResetRequest {})
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -194,5 +277,64 @@ impl StdioService {
             .unwrap()
             .send_request(service, req)
             .with_context(|| format!("Failed to send request to stdio service {service}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+
+    /// A handle over a process that exits at once, standing in for a service that crashed.
+    fn handle_of_an_exited_process() -> StdioHandle {
+        let mut child = Command::new("sh")
+            .args(["-c", "exit 3"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn sh");
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let mut stderr = child.stderr.take().unwrap();
+        let stderr_drain = thread::spawn(move || {
+            let mut chunk = [0u8; 64];
+            while matches!(stderr.read(&mut chunk), Ok(n) if n > 0) {}
+        });
+        StdioHandle { stdin, stdout, _stderr_drain: stderr_drain, child, exited: None }
+    }
+
+    fn died(error: &anyhow::Error) -> bool {
+        matches!(error.downcast_ref::<AsmRunError>(), Some(AsmRunError::ServiceDied { .. }))
+    }
+
+    #[test]
+    fn a_service_that_exited_fails_every_request_with_service_died() {
+        let mut handle = handle_of_an_exited_process();
+
+        let Err(first) = handle.send_request::<_, PingResponse>(&AsmService::RH, &PingRequest {})
+        else {
+            panic!("a request to an exited process must fail");
+        };
+        assert!(died(&first), "the first failure names the exit: {first:#}");
+
+        // The exit is remembered: the second request fails the same way, without touching the
+        // pipe the dead process left behind.
+        let Err(second) = handle.send_request::<_, PingResponse>(&AsmService::RH, &PingRequest {})
+        else {
+            panic!("a later request must fail too");
+        };
+        assert!(died(&second), "a later failure names the exit too: {second:#}");
+    }
+
+    #[test]
+    fn has_exited_reports_an_exited_process_and_not_a_busy_one() {
+        let handle = Mutex::new(handle_of_an_exited_process());
+        handle.lock().unwrap().child.wait().unwrap();
+        assert!(StdioHandle::has_exited(&handle).is_some());
+
+        let busy = Mutex::new(handle_of_an_exited_process());
+        let _request_in_flight = busy.lock().unwrap();
+        assert!(StdioHandle::has_exited(&busy).is_none(), "a busy handle is not waited for");
     }
 }

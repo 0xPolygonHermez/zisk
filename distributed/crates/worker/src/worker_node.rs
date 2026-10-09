@@ -1268,12 +1268,28 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     // Drain the clobbered job's work off the loop (full recovery
                     // handshake if a compute task was live, else just the stream
                     // shutdown). Reconnect never emits WorkerRecoveryComplete
-                    // itself, so the return is ignored.
-                    self.drive_cancellation(loop_tx, cancelled_work);
+                    // itself; the return says whether a compute task was cancelled.
+                    let cancelled_compute = self.drive_cancellation(loop_tx, cancelled_work);
 
                     // If the coordinator attached setup info, run setup now — before entering
                     // the main event loop so no compute task can be processed without a guest program.
                     if let Some(setup) = response.setup_program {
+                        // Setting up a program this worker lacks starts services that rewrite
+                        // the shared guest memory, which a job cancelled just above may still
+                        // be using: `drive_cancellation` does not wait for it. So wait on the
+                        // gate `prepare_for_new_job` waits on, but only then. The coordinator
+                        // attaches a setup to every reconnection, `KeepComputing` included, and
+                        // waiting here for a job that is still live would block the event loop,
+                        // heartbeats and stream routing with it, until the job ends.
+                        if cancelled_compute
+                            && self
+                                .worker
+                                .program_vk(&setup.hash_id, setup.with_hints, setup.emulator_only)
+                                .is_none()
+                        {
+                            self.worker.prover_arc().wait_until_proofman_ready();
+                        }
+
                         let worker_id = self.worker_config.worker.worker_id.as_string();
                         let job_id = setup.job_id.clone();
                         let hash_id = setup.hash_id.clone();

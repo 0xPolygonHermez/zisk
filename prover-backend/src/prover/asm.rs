@@ -1,6 +1,6 @@
 use crate::execute_client::ExecuteClient;
 use crate::{
-    check_paths_exist, ensure_program_vk, get_asm_paths, get_rom_bin_path,
+    check_paths_exist, ensure_program_vk, get_rom_bin_path,
     guest::ProgramId,
     prover::{ProverBackend, ProverEngine, ZiskBackend, ZiskProver},
     BackendProverOpts, ExecuteOutput, GuestProgram, ProveOutput, VerifyConstraintsOutput,
@@ -21,7 +21,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     {Arc, RwLock},
 };
-use zisk_asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
+use zisk_asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem, SegmentsClaim};
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
@@ -91,6 +91,14 @@ struct ProgramEntry {
 pub struct AsmProver {
     core_prover: AsmCoreProver,
     program_cache: RwLock<HashMap<SetupKey, ProgramEntry>>,
+    /// The worker's shmem mappings, keyed on hints mode and shared by every
+    /// program in that mode.
+    ///
+    /// Keyed rather than single because the C binary only creates the
+    /// `_precompile` segment when precompile results are enabled, so a hints and
+    /// a non-hints program do not have the same set of segments to map. Two
+    /// entries at most.
+    shared_resources: RwLock<HashMap<bool, Arc<AsmSharedResources>>>,
     /// Tracks whether the currently registered program was set up with hints.
     current_with_hints: AtomicBool,
     /// Tracks whether the currently registered program was set up emulator-only.
@@ -136,6 +144,7 @@ impl AsmProver {
         Ok(Self {
             core_prover,
             program_cache: RwLock::new(HashMap::new()),
+            shared_resources: RwLock::new(HashMap::new()),
             current_with_hints: AtomicBool::new(false),
             current_emulator_only: AtomicBool::new(false),
         })
@@ -145,10 +154,12 @@ impl AsmProver {
         elf: &GuestProgram,
         with_hints: bool,
     ) -> Result<(PathBuf, PathBuf), anyhow::Error> {
-        let default_cache_path = &ZiskPaths::global().cache;
-        let (asm_mt_filename, asm_rh_filename) = get_asm_paths(elf, with_hints)?;
-        let asm_mt_path = default_cache_path.join(asm_mt_filename);
-        let asm_rh_path = default_cache_path.join(asm_rh_filename);
+        let hash = zisk_rom_setup::get_elf_data_hash(elf.elf());
+        let [asm_mt_path, asm_rh_path, _] = zisk_rom_setup::get_assembly_file_paths_from_id(
+            &hash,
+            &ZiskPaths::global().cache,
+            with_hints,
+        );
 
         Ok((asm_mt_path, asm_rh_path))
     }
@@ -190,24 +201,40 @@ impl AsmProver {
 
         let init_rom = !is_distributed && world_rank == 0;
 
-        if let Some(entry) = self.program_cache.read().unwrap().get(&SetupKey::new(
-            &*elf.program_id.hash_id,
-            with_hints,
-            false,
-        )) {
+        let setup_key = SetupKey::new(&*elf.program_id.hash_id, with_hints, false);
+
+        // The cache guard is released before claiming: a setup holding the claim
+        // writes this cache, so waiting for the claim while reading it could deadlock.
+        let cached = self.program_cache.read().unwrap().get(&setup_key).map(|entry| {
+            entry.resources.clone().expect("full-asm cache entry must have ASM resources")
+        });
+        if let Some(resources) = cached {
             timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
-            let resources =
-                entry.resources.clone().expect("full-asm cache entry must have ASM resources");
+            // This program's services are still running from its own setup, but the
+            // shared `_ram`/`_rom` may have been overwritten by another program
+            // since. `activate` rebuilds them before anything runs. The claim is held
+            // until the backend uses these resources, so no job can register its own
+            // in between and then have them replaced while it runs.
+            let claim = resources.claim();
+            resources.activate(&claim)?;
             self.core_prover.backend.set_asm_resources(resources)?;
             return Ok(());
         }
 
-        // The program hash is carried in the sem_prefix (so the semaphores are
-        // per-program), while the shmem segments are keyed by pid+local_rank only
-        // and are shared/reused across program hashes. Each program still gets its
-        // own AsmSharedResources; previous programs' resources stay alive in the
-        // pool via Arc.
-        let asm_services = AsmServices::new(
+        // The sem_prefix carries the program hash (so the semaphores are
+        // per-program), while the shmem segments are keyed by
+        // pid+local_rank+hints and are genuinely shared across program hashes:
+        // `AsmServices::new` creates them only the first time a prefix is seen,
+        // and the mapping side is the single `AsmSharedResources` looked up
+        // below. Each program owns only its three server processes and its
+        // semaphores.
+        //
+        // The claim that started the services is held until this setup returns.
+        // Mapping initializes the shared control and input segments, which a job may
+        // be using; and until the mappings are published below, a second setup would
+        // find none and build its own, while a job could register its resources only
+        // to have them replaced here.
+        let (asm_services, claim) = AsmServices::new(
             world_rank,
             local_rank,
             elf.program_id.hash_id.as_ref().to_string(),
@@ -228,27 +255,90 @@ impl AsmProver {
             GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize, gpu_id }
         };
 
-        let shared = Arc::new(AsmSharedResources::new(
-            local_rank,
-            unlock_mapped_memory,
-            verbose_mode,
-            mpi_broadcast_fn,
-            init_rom,
-            with_hints,
-            asm_services.shm_prefix(),
-            gpu_buffer_source,
-        )?);
+        // One set of mappings per hints mode for the whole prover: a second over the
+        // same segments would be another set of `MAP_LOCKED` mappings for no gain. Built
+        // here on first use and published below only once the setup has succeeded,
+        // since until then the lease that keeps the segments alive can still drop.
+        let cached = self.shared_resources.read().unwrap().get(&with_hints).cloned();
+        let shared = match cached {
+            Some(shared) => shared,
+            None => Arc::new(AsmSharedResources::new(
+                local_rank,
+                unlock_mapped_memory,
+                verbose_mode,
+                mpi_broadcast_fn,
+                init_rom,
+                with_hints,
+                asm_services.shm_prefix(),
+                gpu_buffer_source,
+            )?),
+        };
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
-        let resources = Arc::new(AsmResources::new(shared, asm_services)?);
+        let resources = Arc::new(AsmResources::new(shared.clone(), asm_services));
+        resources.activate(&claim)?;
         self.core_prover.backend.set_asm_resources(resources.clone())?;
+
+        self.shared_resources.write().unwrap().insert(with_hints, shared);
         self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
         self.program_cache.write().unwrap().insert(
-            SetupKey::new(&*elf.program_id.hash_id, with_hints, false),
+            setup_key,
             ProgramEntry { zisk_rom, resources: Some(resources), program_vk: program_vk.clone() },
         );
 
         Ok(())
+    }
+
+    /// [`register_program`](ProverEngine::register_program), holding the shared
+    /// segments for the job that follows: keep the returned claim until the job's
+    /// results have been read. It holds none for an emulator-only program, which
+    /// uses none. See [`JobClaim`] for what dropping it waits for.
+    fn register_for_job(&self, program_id: &ProgramId, with_hints: bool) -> Result<JobClaim<'_>> {
+        // Required when multiple programs have been set up: setup() activates each program's
+        // services in turn, so the last setup wins. register_program restores the right services.
+        // Prefer a full-ASM entry; fall back to an emulator-only entry for the same key.
+        let guard = self.program_cache.read().unwrap();
+        let (resources, rom, emulator_only) = {
+            let full_key = SetupKey::new(&*program_id.hash_id, with_hints, false);
+            let emu_key = SetupKey::new(&*program_id.hash_id, with_hints, true);
+            if let Some(entry) = guard.get(&full_key) {
+                (entry.resources.clone(), entry.zisk_rom.clone(), false)
+            } else if let Some(entry) = guard.get(&emu_key) {
+                (entry.resources.clone(), entry.zisk_rom.clone(), true)
+            } else {
+                return Err(anyhow::anyhow!(
+                    "Program '{}' (with_hints={}) not found in cache. Call setup() first.",
+                    program_id.name,
+                    with_hints
+                ));
+            }
+        };
+        drop(guard);
+
+        let claim = match resources {
+            Some(r) => {
+                // The shmem is shared across programs, so restoring the right
+                // services is not enough on its own: this program's guest RAM and
+                // ROM have to be rebuilt too, since another program's services may
+                // have overwritten those segments since it last ran. No-op when
+                // this program is already the active one.
+                let claim = r.claim();
+                r.activate(&claim)?;
+                self.core_prover.backend.set_asm_resources(r)?;
+                Some(claim)
+            }
+            None => {
+                self.core_prover.backend.clear_asm_resources()?;
+                None
+            }
+        };
+
+        self.current_with_hints.store(with_hints, Ordering::SeqCst);
+        self.current_emulator_only.store(emulator_only, Ordering::SeqCst);
+        let pctx = self.core_prover.backend.get_pctx()?;
+        let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
+        self.core_prover.backend.register_program(rom, &rom_bin_path, with_hints)?;
+        Ok(JobClaim { backend: &self.core_prover.backend, claim, with_hints })
     }
 
     fn register_program_for_emulator(&self, program_id: &ProgramId) -> Result<()> {
@@ -429,37 +519,9 @@ impl ProverEngine for AsmProver {
     }
 
     fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()> {
-        // Required when multiple programs have been set up: setup() activates each program's
-        // services in turn, so the last setup wins. register_program restores the right services.
-        // Prefer a full-ASM entry; fall back to an emulator-only entry for the same key.
-        let guard = self.program_cache.read().unwrap();
-        let (resources, rom, emulator_only) = {
-            let full_key = SetupKey::new(&*program_id.hash_id, with_hints, false);
-            let emu_key = SetupKey::new(&*program_id.hash_id, with_hints, true);
-            if let Some(entry) = guard.get(&full_key) {
-                (entry.resources.clone(), entry.zisk_rom.clone(), false)
-            } else if let Some(entry) = guard.get(&emu_key) {
-                (entry.resources.clone(), entry.zisk_rom.clone(), true)
-            } else {
-                return Err(anyhow::anyhow!(
-                    "Program '{}' (with_hints={}) not found in cache. Call setup() first.",
-                    program_id.name,
-                    with_hints
-                ));
-            }
-        };
-        drop(guard);
-
-        match resources {
-            Some(r) => self.core_prover.backend.set_asm_resources(r)?,
-            None => self.core_prover.backend.clear_asm_resources()?,
-        }
-
-        self.current_with_hints.store(with_hints, Ordering::SeqCst);
-        self.current_emulator_only.store(emulator_only, Ordering::SeqCst);
-        let pctx = self.core_prover.backend.get_pctx()?;
-        let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
-        self.core_prover.backend.register_program(rom, &rom_bin_path, with_hints)
+        // A job split across calls cannot hold the segments from here to its end, so
+        // this holds them for the handoff only.
+        self.register_for_job(program_id, with_hints).map(drop)
     }
 
     fn executed_steps(&self) -> u64 {
@@ -492,7 +554,7 @@ impl ProverEngine for AsmProver {
 
     fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
-        self.register_program(&program.program_id, with_hints)?;
+        let _claim = self.register_for_job(&program.program_id, with_hints)?;
         self.core_prover.backend.execute(stdin)
     }
 
@@ -505,7 +567,7 @@ impl ProverEngine for AsmProver {
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
-        self.register_program(&program.program_id, with_hints)?;
+        let _claim = self.register_for_job(&program.program_id, with_hints)?;
         if self.current_emulator_only.load(Ordering::SeqCst) {
             return Err(anyhow::anyhow!(
                 "Program '{}' was set up emulator_only — stats not supported. Re-run setup without --emulator-only.",
@@ -546,7 +608,7 @@ impl ProverEngine for AsmProver {
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
-        self.register_program(&program.program_id, with_hints)?;
+        let _claim = self.register_for_job(&program.program_id, with_hints)?;
         if self.current_emulator_only.load(Ordering::SeqCst) {
             return Err(anyhow::anyhow!(
                 "Program '{}' was set up emulator_only — verify_constraints not supported. Re-run setup without --emulator-only.",
@@ -564,7 +626,7 @@ impl ProverEngine for AsmProver {
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
-        self.register_program(&program.program_id, with_hints)?;
+        let _claim = self.register_for_job(&program.program_id, with_hints)?;
         if self.current_emulator_only.load(Ordering::SeqCst) {
             return Err(anyhow::anyhow!(
                 "Program '{}' was set up emulator_only — prove not supported. Re-run setup without --emulator-only.",
@@ -728,6 +790,38 @@ impl ProverEngine for AsmProver {
     }
 }
 
+/// The shared segments' claim for one job, which joins the job's parked
+/// ROM-histogram runner before it is released.
+///
+/// A job can end with that runner still going: the executor parks it once the
+/// minimal trace has run and joins it only where the histogram is consumed, or
+/// at its own next job. The next program's activation waits for the outgoing
+/// services with a ping, which queues behind a request already sent but not
+/// behind one the runner has yet to send. Joining it here closes that gap on
+/// every path, failed jobs included: a runner is parked only after the minimal
+/// trace succeeded, so it has all the input it needs and finishes.
+///
+/// Except with hints. The ROM histogram service consumes the hints only when the
+/// process is the first of its job (`set_active_services`), while the executor
+/// may run it regardless, as on a distributed worker's execute-only task; then
+/// it is never woken for new hints, and joining it could stall or hang. A job
+/// with hints is left as before, its runner joined at the executor's next job.
+struct JobClaim<'a> {
+    backend: &'a ProverBackend,
+    /// `None` for an emulator-only program, which uses no segments.
+    claim: Option<SegmentsClaim>,
+    with_hints: bool,
+}
+
+impl Drop for JobClaim<'_> {
+    fn drop(&mut self) {
+        if self.claim.is_some() && !self.with_hints {
+            self.backend.drain_rh();
+        }
+        // `claim` is dropped after this body, releasing the segments.
+    }
+}
+
 /// ASM-backend configuration and runtime counters carried by the core prover.
 pub struct AsmInfo {
     /// Whether proving is distributed across multiple processes.
@@ -857,12 +951,21 @@ impl ExecuteClient for ZiskProver<Asm> {
         stdin: ZiskStdin,
         hints: Option<StreamSource>,
     ) -> Result<ExecuteOutput> {
+        // One claim for the whole job, taken before the reset: the reset writes the
+        // shared input and control, which another client's job may be using. Activating
+        // comes first too, since it is what waits for that job's services; the worker
+        // registers before resetting in the same way (`prepare_for_new_job`).
+        let with_hints = self.prover.current_with_hints.load(Ordering::SeqCst);
+        let _claim = self.prover.register_for_job(&program.program_id, with_hints)?;
+
         // Every call is a job boundary for this client, which executes many times after
         // one setup. Before the hints below — see `ZiskExecutor::reset_for_new_job`.
         ZiskProver::<Asm>::reset(self)?;
         if let Some(stream) = hints {
             ZiskProver::<Asm>::register_hints_stream(self, stream)?;
         }
-        ZiskProver::<Asm>::execute(self, program, stdin)
+        // Not `ZiskProver::execute`: that registers the program again, under a claim
+        // of its own, and this one is not reentrant.
+        self.prover.core_prover.backend.execute(stdin)
     }
 }

@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use zisk_asm_runner::{
     AsmRunnerOptions, AsmServices, ControlShmem, GpuBufferSource, HintsShmem, InputsShmemWriter,
+    SegmentsClaim,
 };
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_asm_runner::{MOShmemReader, MTShmemReader, RHShmemReader};
@@ -29,14 +30,16 @@ impl std::fmt::Debug for AsmResourcesConfig {
     }
 }
 
-/// Output-side shmem readers for the three ASM services, mapped once at worker startup.
+/// Output-side shmem readers for the three ASM services, mapped when a prover's first program
+/// of a hints mode is set up and shared by every program it sets up in that mode.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub struct AsmShmemReaders {
     /// Reader for the minimal trace shmem segment (MT).
     pub mt: Arc<Mutex<MTShmemReader>>,
     /// Reader for the memory-ops shmem segment (MO).
     pub mo: Arc<Mutex<MOShmemReader>>,
-    /// Reader for the ROM histogram shmem segment (RH).
+    /// Reader for the ROM histogram shmem segment (RH), mapped on its first read and grown
+    /// when a program with a larger histogram runs.
     pub rh: Arc<Mutex<Option<RHShmemReader>>>,
 }
 
@@ -61,14 +64,17 @@ impl AsmShmemReaders {
     }
 }
 
-/// Shmem segments mapped once at worker startup. Shared across all programs via `Arc`.
+/// The shmem mappings of one hints mode: built when a prover's first program in it is set up,
+/// and shared via `Arc` by every program that prover sets up in that mode. A standalone client
+/// builds its own.
 pub struct AsmSharedResources {
     config: AsmResourcesConfig,
 
-    /// Shared memory writer for inputs (shmem mapped once; semaphores bound per-program).
+    /// Shared memory writer for inputs (shmem mapped once; semaphores bound
+    /// per-program by `AsmResources::activate`).
     pub shmem_inputs: Arc<InputsShmemWriter>,
 
-    /// Hints processing pipeline — `Some` only when the program was set up with hints.
+    /// Hints processing pipeline — `Some` only in the hints mode.
     /// The precompile shmem segments are created by the C binary only in hints mode;
     /// attempting to open them without hints causes an immediate crash.
     hints_stream: Option<Arc<Mutex<ZiskStream<HintsProcessor<HintsShmem>>>>>,
@@ -94,7 +100,7 @@ impl std::fmt::Debug for AsmSharedResources {
 
 impl AsmSharedResources {
     /// Map all shmem segments. `shm_prefix` must already have been created via Phase 1.
-    /// Semaphores are NOT opened here — call `bind_semaphores` on `AsmResources` before use.
+    /// Semaphores are NOT opened here — call `AsmResources::activate` before use.
     ///
     /// `with_hints` must match the value used during setup: the C binary only creates the
     /// per-service precompile shmem segments when hints are enabled, so passing `true` here without
@@ -164,9 +170,10 @@ impl AsmSharedResources {
     }
 }
 
-/// Per-program assembly resources. Wraps `Arc<AsmSharedResources>` (shmem) and
-/// `AsmServices` (process handles + sem_prefix). Semaphores are bound at construction
-/// and unbound on drop.
+/// Per-program assembly resources. Wraps `Arc<AsmSharedResources>` (shmem, shared
+/// across every program on the worker) and `AsmServices` (this program's three
+/// process handles + its `sem_prefix`). Call [`AsmResources::activate`] to make
+/// this the program the shared state serves.
 pub struct AsmResources {
     shared: Arc<AsmSharedResources>,
     asm_services: AsmServices,
@@ -179,28 +186,55 @@ impl std::fmt::Debug for AsmResources {
 }
 
 impl AsmResources {
-    /// Create per-program resources by binding semaphores on the shared shmem.
-    pub fn new(shared: Arc<AsmSharedResources>, asm_services: AsmServices) -> ExecutorResult<Self> {
-        let sem_prefix = asm_services.sem_prefix();
-        shared.shmem_inputs.bind_semaphores(sem_prefix).map_err(ExecutorError::asm_backend)?;
+    /// Create per-program resources over the worker's shared shmem.
+    ///
+    /// Does *not* bind semaphores — [`Self::activate`] does, because the shared
+    /// segments serve one program at a time and binding is what picks which.
+    pub fn new(shared: Arc<AsmSharedResources>, asm_services: AsmServices) -> Self {
+        Self { shared, asm_services }
+    }
 
-        if let Some(hints_stream) = &shared.hints_stream {
-            let processor = hints_stream.lock_or_poison("hints_stream")?.get_processor();
-            processor
-                .hints_sink()
-                .bind_semaphores(sem_prefix)
-                .map_err(ExecutorError::asm_backend)?;
-        }
+    /// Wait until no setup or job is using the shared segments, and hold them
+    /// until the returned claim is dropped. Take it before a job touches them,
+    /// input included, and keep it until the job's results have been read; see
+    /// [`SegmentsClaim`].
+    pub fn claim(&self) -> SegmentsClaim {
+        self.asm_services.claim()
+    }
 
-        Ok(Self { shared, asm_services })
+    /// Make this program the one the shared segments and semaphores serve, unless
+    /// it already is. Call it before every job, under that job's `claim`.
+    ///
+    /// On a switch, [`AsmServices::activate`] waits for the outgoing program's
+    /// services to finish with the shared segments, then this binds the shared
+    /// writers to *this* program's `sem_prefix` (the shmem is keyed by pid+rank
+    /// and shared; only the semaphores are per-program), then this program's
+    /// services rebuild their guest RAM and ROM, which another program's
+    /// services may have overwritten since this program last ran.
+    pub fn activate(&self, claim: &SegmentsClaim) -> ExecutorResult<()> {
+        let hints_processor = match &self.shared.hints_stream {
+            Some(hints_stream) => {
+                Some(hints_stream.lock_or_poison("hints_stream")?.get_processor())
+            }
+            None => None,
+        };
+        let sem_prefix = self.asm_services.sem_prefix();
+
+        self.asm_services
+            .activate(claim, || {
+                self.shared.shmem_inputs.bind_semaphores(sem_prefix)?;
+                if let Some(processor) = &hints_processor {
+                    processor.hints_sink().bind_semaphores(sem_prefix)?;
+                }
+                Ok(())
+            })
+            .map_err(ExecutorError::asm_backend)
     }
 
     /// Convenience constructor for the standalone path: spawns the ASM
     /// services and maps shmem segments without MPI/distributed/caching
     /// plumbing. Single process (`world_rank` / `local_rank` = 0), no MPI
-    /// broadcast, owns ROM init. Caller must serialize calls when multiple
-    /// standalone executors run in the same OS process — the shmem prefix
-    /// is per-process, not per-thread.
+    /// broadcast, owns ROM init.
     pub fn new_standalone(
         elf_hash: String,
         asm_mt_path: &Path,
@@ -209,7 +243,10 @@ impl AsmResources {
         gpu: bool,
     ) -> ExecutorResult<Self> {
         let options = AsmRunnerOptions::new().with_local_rank(0);
-        let services = AsmServices::new(0, 0, elf_hash, asm_mt_path, with_hints, options)
+        // The claim that started the services is kept until the program is active:
+        // mapping initializes the shared control and input segments, which another
+        // client's job in this process may be using.
+        let (services, claim) = AsmServices::new(0, 0, elf_hash, asm_mt_path, with_hints, options)
             .map_err(ExecutorError::asm_backend)?;
         let gpu_buffer_src =
             if gpu { GpuBufferSource::SelfAllocated } else { GpuBufferSource::Cpu };
@@ -223,7 +260,9 @@ impl AsmResources {
             services.shm_prefix(),
             gpu_buffer_src,
         )?);
-        Self::new(shared, services)
+        let resources = Self::new(shared, services);
+        resources.activate(&claim)?;
+        Ok(resources)
     }
 
     /// Returns the concrete hints processor, or `Err` if not set up with hints.
@@ -363,19 +402,5 @@ impl AsmResources {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub fn readers(&self) -> &AsmShmemReaders {
         &self.shared.readers
-    }
-}
-
-impl Drop for AsmResources {
-    fn drop(&mut self) {
-        // Unbind this process's semaphores. Shutting down the ASM microservices
-        // and unlinking their /dev/shm segments is handled by the `asm_services`
-        // field's own `Drop` (see `Drop for AsmServicesInner`).
-        self.shared.shmem_inputs.unbind_semaphores();
-        if let Some(hints_stream) = &self.shared.hints_stream {
-            if let Ok(g) = hints_stream.lock() {
-                g.get_processor().hints_sink().unbind_semaphores();
-            }
-        }
     }
 }
