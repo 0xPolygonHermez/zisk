@@ -45,6 +45,13 @@ pub mod lanes_x_row {
     /// The widest packing any add-hi air uses, so one row can be built through a fixed-size buffer
     /// whatever air is being filled.
     pub const MAX_ADD_HI: usize = ADD_HI_HUGE;
+
+    /// The blocks of `CompactBinary`: lanes of the four airs side by side on one row, i.e. the
+    /// `*_lanes_x_row` arguments of its instantiation in `pil/zisk.pil`.
+    pub const COMPACT_BASIC: usize = 1;
+    pub const COMPACT_ADD: usize = 1;
+    pub const COMPACT_ADD_HI: usize = 2;
+    pub const COMPACT_EXT: usize = 1;
 }
 
 /// Maps slots to `(row, lane)` pairs for one air.
@@ -115,6 +122,11 @@ mod tests {
         check!(BinaryLargeTraceRow, get_all_b_op, lanes_x_row::BASIC_LARGE);
         check!(BinaryHugeTraceRow, get_all_b_op, lanes_x_row::BASIC_HUGE);
 
+        check!(CompactBinaryTraceRow, get_all_basic_b_op, lanes_x_row::COMPACT_BASIC);
+        check!(CompactBinaryTraceRow, get_all_add_a, lanes_x_row::COMPACT_ADD);
+        check!(CompactBinaryTraceRow, get_all_add_hi_a, lanes_x_row::COMPACT_ADD_HI);
+        check!(CompactBinaryTraceRow, get_all_ext_op, lanes_x_row::COMPACT_EXT);
+
         check!(BinaryAddTraceRow, get_all_a, lanes_x_row::ADD);
         check!(BinaryAddLargeTraceRow, get_all_a, lanes_x_row::ADD_LARGE);
         check!(BinaryAddHugeTraceRow, get_all_a, lanes_x_row::ADD_HUGE);
@@ -143,7 +155,9 @@ mod tests {
     /// a panic deep inside witness computation.
     #[test]
     fn the_state_machines_pack_what_their_air_holds() {
-        use crate::{BinaryAddHiRow, BinaryAddRow, BinaryBasicRow, BinaryExtensionRow};
+        use crate::{
+            BinaryAddHiLaneRow, BinaryAddLaneRow, BinaryBasicLaneRow, BinaryExtensionLaneRow,
+        };
         use proofman_fields::Goldilocks;
         use zisk_pil::*;
 
@@ -152,44 +166,44 @@ mod tests {
         macro_rules! check {
             ($trait:ident, $row:ident, $trace:ident, $probe:ident, $konst:path) => {
                 assert_eq!(
-                    <$row<F> as $trait<F, $trace<$row<F>>>>::LANES_X_ROW,
+                    <$row<F> as $trait<F>>::LANES_X_ROW,
                     $row::<F>::default().$probe().len(),
                     concat!(stringify!($row), " packs a different width than its air"),
                 );
                 assert_eq!(
-                    <$row<F> as $trait<F, $trace<$row<F>>>>::LANES_X_ROW,
+                    <$row<F> as $trait<F>>::LANES_X_ROW,
                     $konst,
                     concat!(stringify!($row), " does not use ", stringify!($konst)),
                 );
             };
         }
 
-        check!(BinaryBasicRow, BinaryTraceRow, BinaryTrace, get_all_b_op, lanes_x_row::BASIC);
+        check!(BinaryBasicLaneRow, BinaryTraceRow, BinaryTrace, get_all_b_op, lanes_x_row::BASIC);
         check!(
-            BinaryBasicRow,
+            BinaryBasicLaneRow,
             BinaryLargeTraceRow,
             BinaryLargeTrace,
             get_all_b_op,
             lanes_x_row::BASIC_LARGE
         );
         check!(
-            BinaryBasicRow,
+            BinaryBasicLaneRow,
             BinaryHugeTraceRow,
             BinaryHugeTrace,
             get_all_b_op,
             lanes_x_row::BASIC_HUGE
         );
 
-        check!(BinaryAddRow, BinaryAddTraceRow, BinaryAddTrace, get_all_a, lanes_x_row::ADD);
+        check!(BinaryAddLaneRow, BinaryAddTraceRow, BinaryAddTrace, get_all_a, lanes_x_row::ADD);
         check!(
-            BinaryAddRow,
+            BinaryAddLaneRow,
             BinaryAddLargeTraceRow,
             BinaryAddLargeTrace,
             get_all_a,
             lanes_x_row::ADD_LARGE
         );
         check!(
-            BinaryAddRow,
+            BinaryAddLaneRow,
             BinaryAddHugeTraceRow,
             BinaryAddHugeTrace,
             get_all_a,
@@ -197,21 +211,21 @@ mod tests {
         );
 
         check!(
-            BinaryAddHiRow,
+            BinaryAddHiLaneRow,
             BinaryAddHiTraceRow,
             BinaryAddHiTrace,
             get_all_a,
             lanes_x_row::ADD_HI
         );
         check!(
-            BinaryAddHiRow,
+            BinaryAddHiLaneRow,
             BinaryAddHiLargeTraceRow,
             BinaryAddHiLargeTrace,
             get_all_a,
             lanes_x_row::ADD_HI_LARGE
         );
         check!(
-            BinaryAddHiRow,
+            BinaryAddHiLaneRow,
             BinaryAddHiHugeTraceRow,
             BinaryAddHiHugeTrace,
             get_all_a,
@@ -219,18 +233,48 @@ mod tests {
         );
 
         check!(
-            BinaryExtensionRow,
+            BinaryExtensionLaneRow,
             BinaryExtensionTraceRow,
             BinaryExtensionTrace,
             get_all_op,
             lanes_x_row::EXT
         );
         check!(
-            BinaryExtensionRow,
+            BinaryExtensionLaneRow,
             BinaryExtensionLargeTraceRow,
             BinaryExtensionLargeTrace,
             get_all_op,
             lanes_x_row::EXT_LARGE
+        );
+
+        // The fused row, block by block.
+        check!(
+            BinaryBasicLaneRow,
+            CompactBinaryTraceRow,
+            CompactBinaryTrace,
+            get_all_basic_b_op,
+            lanes_x_row::COMPACT_BASIC
+        );
+        check!(
+            BinaryAddLaneRow,
+            CompactBinaryTraceRow,
+            CompactBinaryTrace,
+            get_all_add_a,
+            lanes_x_row::COMPACT_ADD
+        );
+        check!(
+            BinaryAddHiLaneRow,
+            CompactBinaryTraceRow,
+            CompactBinaryTrace,
+            get_all_add_hi_a,
+            lanes_x_row::COMPACT_ADD_HI
+        );
+        check!(
+            BinaryExtensionLaneRow,
+            CompactBinaryTraceRow,
+            CompactBinaryTrace,
+            get_all_ext_op,
+            lanes_x_row::COMPACT_EXT
         );
     }
 

@@ -12,6 +12,7 @@ use std::sync::Arc;
 use crate::{
     BinaryAddHiInstance, BinaryAddHiSM, BinaryAddInstance, BinaryAddSM, BinaryBasicInstance,
     BinaryBasicSM, BinaryCounter, BinaryExtensionInstance, BinaryExtensionSM, BinaryPlanner,
+    CompactBinaryInstance, CompactBinarySM,
 };
 use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
@@ -19,7 +20,7 @@ use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx,
 use zisk_pil::{
     BinaryAddHiHugeTrace, BinaryAddHiLargeTrace, BinaryAddHiTrace, BinaryAddHugeTrace,
     BinaryAddLargeTrace, BinaryAddTrace, BinaryExtensionLargeTrace, BinaryExtensionTrace,
-    BinaryHugeTrace, BinaryLargeTrace, BinaryTrace,
+    BinaryHugeTrace, BinaryLargeTrace, BinaryTrace, CompactBinaryTrace,
 };
 
 /// The `BinarySM` struct represents the Binary State Machine,
@@ -37,6 +38,10 @@ pub struct BinarySM<F: PrimeField64> {
 
     /// Binary Add Hi state machine (packs the additions that fit in the low 32-bit limb)
     binary_add_hi_sm: Arc<BinaryAddHiSM<F>>,
+
+    /// The fused air, lanes of the four above on one row. It shares the four state machines, so
+    /// each block is filled by the code of the air it comes from.
+    compact_binary_sm: Arc<CompactBinarySM<F>>,
 
     std: Arc<Std<F>>,
 }
@@ -58,11 +63,19 @@ impl<F: PrimeField64> BinarySM<F> {
 
         let binary_add_hi_sm = BinaryAddHiSM::new();
 
+        let compact_binary_sm = CompactBinarySM::new(
+            binary_basic_sm.clone(),
+            binary_add_sm.clone(),
+            binary_add_hi_sm.clone(),
+            binary_extension_sm.clone(),
+        );
+
         Arc::new(Self {
             binary_basic_sm,
             binary_extension_sm,
             binary_add_sm,
             binary_add_hi_sm,
+            compact_binary_sm,
             std,
         })
     }
@@ -116,6 +129,11 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
             | BinaryAddHiLargeTrace::<()>::AIR_ID
             | BinaryAddHiHugeTrace::<()>::AIR_ID => Box::new(BinaryAddHiInstance::new(
                 self.binary_add_hi_sm.clone(),
+                ictx,
+                self.std.clone(),
+            )),
+            CompactBinaryTrace::<()>::AIR_ID => Box::new(CompactBinaryInstance::new(
+                self.compact_binary_sm.clone(),
                 ictx,
                 self.std.clone(),
             )),

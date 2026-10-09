@@ -14,9 +14,12 @@ use rayon::prelude::*;
 use std::sync::Arc;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
-    BinaryAddAirValues, BinaryAddHugeAirValues, BinaryAddHugeTrace, BinaryAddHugeTraceRowOps,
-    BinaryAddLargeAirValues, BinaryAddLargeTrace, BinaryAddLargeTraceRowOps, BinaryAddTrace,
-    BinaryAddTraceRowOps,
+    BinaryAddAirValues, BinaryAddHugeAirValues, BinaryAddHugeTrace, BinaryAddLargeAirValues,
+    BinaryAddLargeTrace, BinaryAddTrace,
+};
+use zisk_pil::{
+    BinaryAddHugeTraceRow, BinaryAddHugeTraceRowPacked, BinaryAddLargeTraceRow,
+    BinaryAddLargeTraceRowPacked, BinaryAddTraceRow, BinaryAddTraceRowPacked,
 };
 
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
@@ -30,12 +33,14 @@ pub const LIMBS_X_ADD: usize = 2;
 /// low limb, so a name shared between the two would be a trap for anything importing both.
 pub const CHUNKS_X_FULL_ADD: usize = LIMBS_X_ADD * 2;
 
-/// Ties an add row type to the trace of the air it fills and to that air's packing width.
+/// The columns of a `BinaryAdd` lane, as the `BinaryAdd` fill writes them, on whichever row holds
+/// them: a row of one of the three add airs, or the `add_` block of the fused `CompactBinary` row
+/// (see `compact_binary_rows.rs`).
 ///
 /// The three airs commit the same columns at different widths (`a[1]` vs `a[3]` vs `a[6]`), so they
 /// cannot share a row type: each has its own, and `Self::LANES_X_ROW` is what tells the shared fill
 /// logic how many slots to write.
-pub trait BinaryAddRow<F: PrimeField64, T>: Default + Copy + Send + Sync {
+pub trait BinaryAddLaneRow<F: PrimeField64>: Default + Copy + Send + Sync {
     /// Operations this air packs into one row.
     const LANES_X_ROW: usize;
 
@@ -54,22 +59,34 @@ pub trait BinaryAddRow<F: PrimeField64, T>: Default + Copy + Send + Sync {
         sh3add: bool,
     );
 
+    /// Overwrites this block of the row with `src`'s, leaving every other block untouched. The
+    /// padding of an instance is one row repeated, built once and copied: on a standalone row the
+    /// block IS the row, on a fused row the copy must not take the other blocks with it.
+    #[inline(always)]
+    fn copy_block_from(&mut self, src: &Self) {
+        *self = *src;
+    }
+}
+
+/// Ties an add row type to the trace of the air it fills.
+pub trait BinaryAddRow<F: PrimeField64, T>: BinaryAddLaneRow<F> {
     fn new_trace(trace_buffer: Vec<F>) -> ProofmanResult<T>;
     fn trace_num_rows(trace: &T) -> usize;
     fn trace_buffer_mut(trace: &mut T) -> &mut [Self];
 
-    /// Fills the padding rows and wraps the trace into an `AirInstance`.
+    /// Wraps the filled trace into an `AirInstance`.
     ///
     /// `padding_size` is counted in *slots*, not rows: the bus sees one operation per slot, so what
     /// has to be cancelled is the number of empty slots.
-    fn into_air_instance(trace: &mut T, rows_used: usize, padding_size: usize) -> AirInstance<F>;
+    fn into_air_instance(trace: &mut T, padding_size: usize) -> AirInstance<F>;
 }
 
 /// Emits the row-to-trace binding for one add air. The bodies only differ in the widths the
 /// generated setters take.
 macro_rules! impl_binary_add_row {
-    ($row_ops:ident, $trace:ident, $air_values:ident, $lanes:expr) => {
-        impl<F: PrimeField64, R: $row_ops<F>> BinaryAddRow<F, $trace<R>> for R {
+    ($row_ops:ident, $trace:ident, $air_values:ident, $lanes:expr, [$($row:ident),+]) => {
+        $(
+        impl<F: PrimeField64> BinaryAddLaneRow<F> for $row<F> {
             const LANES_X_ROW: usize = $lanes;
 
             #[inline(always)]
@@ -92,38 +109,30 @@ macro_rules! impl_binary_add_row {
                 }
                 self.set_sel_sh3add(lane, sh3add);
             }
+        }
+        )+
 
-            fn new_trace(trace_buffer: Vec<F>) -> ProofmanResult<$trace<R>> {
-                $trace::<R>::new_from_vec(trace_buffer)
+        $(
+        impl<F: PrimeField64> BinaryAddRow<F, $trace<$row<F>>> for $row<F> {
+            fn new_trace(trace_buffer: Vec<F>) -> ProofmanResult<$trace<$row<F>>> {
+                $trace::<$row<F>>::new_from_vec(trace_buffer)
             }
 
-            fn trace_num_rows(trace: &$trace<R>) -> usize {
+            fn trace_num_rows(trace: &$trace<$row<F>>) -> usize {
                 trace.num_rows()
             }
 
-            fn trace_buffer_mut(trace: &mut $trace<R>) -> &mut [Self] {
+            fn trace_buffer_mut(trace: &mut $trace<$row<F>>) -> &mut [Self] {
                 &mut trace.buffer
             }
 
-            fn into_air_instance(
-                trace: &mut $trace<R>,
-                rows_used: usize,
-                padding_size: usize,
-            ) -> AirInstance<F> {
-                // Rows past the filled ones are all zeros: LANES_X_ROW additions of 0 + 0 = 0 each.
-                let num_rows = trace.num_rows();
-                if rows_used < num_rows {
-                    let padding_row = R::default();
-                    trace.buffer[rows_used..num_rows]
-                        .par_iter_mut()
-                        .for_each(|slot| *slot = padding_row);
-                }
-
+            fn into_air_instance(trace: &mut $trace<$row<F>>, padding_size: usize) -> AirInstance<F> {
                 let mut air_values = $air_values::<F>::new();
                 air_values.padding_size = F::from_usize(padding_size);
                 AirInstance::new_from_trace(FromTrace::new(trace).with_air_values(&mut air_values))
             }
         }
+        )+
     };
 }
 
@@ -131,19 +140,22 @@ impl_binary_add_row!(
     BinaryAddTraceRowOps,
     BinaryAddTrace,
     BinaryAddAirValues,
-    crate::lanes_x_row::ADD
+    crate::lanes_x_row::ADD,
+    [BinaryAddTraceRow, BinaryAddTraceRowPacked]
 );
 impl_binary_add_row!(
     BinaryAddLargeTraceRowOps,
     BinaryAddLargeTrace,
     BinaryAddLargeAirValues,
-    crate::lanes_x_row::ADD_LARGE
+    crate::lanes_x_row::ADD_LARGE,
+    [BinaryAddLargeTraceRow, BinaryAddLargeTraceRowPacked]
 );
 impl_binary_add_row!(
     BinaryAddHugeTraceRowOps,
     BinaryAddHugeTrace,
     BinaryAddHugeAirValues,
-    crate::lanes_x_row::ADD_HUGE
+    crate::lanes_x_row::ADD_HUGE,
+    [BinaryAddHugeTraceRow, BinaryAddHugeTraceRowPacked]
 );
 
 /// The `BinaryAddSM` struct encapsulates the logic of the Binary Add State Machine.
@@ -165,7 +177,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// operand is a clean 32-bit value and that the low limb carries at most once, which is what
     /// keeps every `cout` a bit.
     #[inline(always)]
-    pub fn process_slice<T, R: BinaryAddRow<F, T>>(
+    pub fn process_slice<R: BinaryAddLaneRow<F>>(
         &self,
         row: &mut R,
         lane: usize,
@@ -235,10 +247,21 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         inputs: &[Vec<BinaryInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let lanes = BinaryLanes::new(R::LANES_X_ROW);
         let mut add_trace = R::new_trace(trace_buffer)?;
+        let padding_size = self.fill_rows(R::trace_buffer_mut(&mut add_trace), inputs);
+        Ok(R::into_air_instance(&mut add_trace, padding_size))
+    }
 
-        let num_rows = R::trace_num_rows(&add_trace);
+    /// Fills `rows` -- a whole instance, or the `add_` block of one -- with `inputs` in order and
+    /// pads the rest, returning the padding in slots. Takes `rows` rather than a trace because the
+    /// fused `CompactBinary` air carries this block inside a wider row (see [`BinaryAddLaneRow`]).
+    pub(crate) fn fill_rows<R: BinaryAddLaneRow<F>>(
+        &self,
+        rows: &mut [R],
+        inputs: &[Vec<BinaryInput>],
+    ) -> usize {
+        let lanes = BinaryLanes::new(R::LANES_X_ROW);
+        let num_rows = rows.len();
         let num_slots = lanes.slots(num_rows);
 
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
@@ -267,33 +290,32 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         // Rows are filled LANES_X_ROW operations at a time.
         let rows_used = lanes.rows_for(total_inputs);
-        fill_rows(
-            &mut R::trace_buffer_mut(&mut add_trace)[..rows_used],
-            &flat_inputs,
-            R::LANES_X_ROW,
-            |trace_row, row_inputs| {
-                for (lane, input) in row_inputs.iter().enumerate() {
-                    self.process_slice::<T, R>(trace_row, lane, input);
-                }
-                // Only the last row can be short. Its leftover lanes are not covered by the padding
-                // rows written afterwards, so they are zeroed here: 0 + 0 = 0, the padding operation.
-                // The trace buffer comes from a pool and is not zeroed, so leaving them would put
-                // stale values on the bus.
-                for lane in row_inputs.len()..R::LANES_X_ROW {
-                    trace_row.set_slot(
-                        lane,
-                        &[0; LIMBS_X_ADD],
-                        &[0; LIMBS_X_ADD],
-                        &[0; CHUNKS_X_FULL_ADD],
-                        &[false; LIMBS_X_ADD],
-                        false,
-                    );
-                }
-            },
-        );
+        fill_rows(&mut rows[..rows_used], &flat_inputs, R::LANES_X_ROW, |trace_row, row_inputs| {
+            for (lane, input) in row_inputs.iter().enumerate() {
+                self.process_slice::<R>(trace_row, lane, input);
+            }
+            // Only the last row can be short. Its leftover lanes are not covered by the padding
+            // rows written afterwards, so they are zeroed here: 0 + 0 = 0, the padding operation.
+            // The trace buffer comes from a pool and is not zeroed, so leaving them would put
+            // stale values on the bus.
+            for lane in row_inputs.len()..R::LANES_X_ROW {
+                trace_row.set_slot(
+                    lane,
+                    &[0; LIMBS_X_ADD],
+                    &[0; LIMBS_X_ADD],
+                    &[0; CHUNKS_X_FULL_ADD],
+                    &[false; LIMBS_X_ADD],
+                    false,
+                );
+            }
+        });
 
-        let padding_size = num_slots - total_inputs;
+        // Rows past the filled ones are all zeros: LANES_X_ROW additions of 0 + 0 = 0 each.
+        if rows_used < num_rows {
+            let padding_row = R::default();
+            rows[rows_used..].par_iter_mut().for_each(|row| row.copy_block_from(&padding_row));
+        }
 
-        Ok(R::into_air_instance(&mut add_trace, rows_used, padding_size))
+        num_slots - total_inputs
     }
 }

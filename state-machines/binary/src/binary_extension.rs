@@ -17,7 +17,11 @@ use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
     BinaryExtensionAirValues, BinaryExtensionLargeAirValues, BinaryExtensionLargeTrace,
-    BinaryExtensionLargeTraceRowOps, BinaryExtensionTrace, BinaryExtensionTraceRowOps,
+    BinaryExtensionTrace,
+};
+use zisk_pil::{
+    BinaryExtensionLargeTraceRow, BinaryExtensionLargeTraceRowPacked, BinaryExtensionTraceRow,
+    BinaryExtensionTraceRowPacked,
 };
 
 use crate::BinaryLanes;
@@ -51,7 +55,10 @@ const LS_6_BITS: u64 = 0x3F;
 /// `lanes_x_row::the_constants_match_the_generated_rows` is what holds that: it checks the
 /// full-only columns are as wide as the lane count, so a `full` below `lanes_x_row` in `zisk.pil`
 /// fails there rather than silently writing past the end of a shorter array here.
-pub trait BinaryExtensionRow<F: PrimeField64, T>: Default + Copy + Send + Sync {
+/// The columns of a `BinaryExtension` lane, as its fill writes them, on whichever row holds them:
+/// a row of one of the two extension airs, or the `ext_` block of the fused `CompactBinary` row
+/// (see `compact_binary_rows.rs`).
+pub trait BinaryExtensionLaneRow<F: PrimeField64>: Default + Copy + Send + Sync {
     /// Operations this air packs into one row.
     const LANES_X_ROW: usize;
 
@@ -73,27 +80,34 @@ pub trait BinaryExtensionRow<F: PrimeField64, T>: Default + Copy + Send + Sync {
         b: &[u32; 2],
     );
 
+    /// Overwrites this block of the row with `src`'s, leaving every other block untouched. The
+    /// padding of an instance is one row repeated, built once and copied: on a standalone row the
+    /// block IS the row, on a fused row the copy must not take the other blocks with it.
+    #[inline(always)]
+    fn copy_block_from(&mut self, src: &Self) {
+        *self = *src;
+    }
+}
+
+/// Ties an extension row type to the trace of the air it fills.
+pub trait BinaryExtensionRow<F: PrimeField64, T>: BinaryExtensionLaneRow<F> {
     fn new_trace(trace_buffer: Vec<F>) -> ProofmanResult<T>;
     fn trace_num_rows(trace: &T) -> usize;
     fn trace_buffer_mut(trace: &mut T) -> &mut [Self];
 
-    /// Fills the padding rows and wraps the trace into an `AirInstance`.
+    /// Wraps the filled trace into an `AirInstance`.
     ///
     /// `padding_size` is counted in *slots*, not rows: the bus sees one operation per slot, so what
     /// has to be cancelled is the number of empty slots.
-    fn into_air_instance(
-        trace: &mut T,
-        padding_row: Self,
-        rows_used: usize,
-        padding_size: usize,
-    ) -> AirInstance<F>;
+    fn into_air_instance(trace: &mut T, padding_size: usize) -> AirInstance<F>;
 }
 
 /// Emits the row-to-trace binding for one extension air. Both airs commit the same columns, so the
 /// body is identical and only the trace alias and its air values change.
 macro_rules! impl_binary_extension_row {
-    ($row_ops:ident, $trace:ident, $air_values:ident, $lanes:expr) => {
-        impl<F: PrimeField64, R: $row_ops<F>> BinaryExtensionRow<F, $trace<R>> for R {
+    ($row_ops:ident, $trace:ident, $air_values:ident, $lanes:expr, [$($row:ident),+]) => {
+        $(
+        impl<F: PrimeField64> BinaryExtensionLaneRow<F> for $row<F> {
             const LANES_X_ROW: usize = $lanes;
 
             #[inline(always)]
@@ -129,35 +143,30 @@ macro_rules! impl_binary_extension_row {
                 self.set_b(lane, 0, b[0]);
                 self.set_b(lane, 1, b[1]);
             }
+        }
+        )+
 
-            fn new_trace(trace_buffer: Vec<F>) -> ProofmanResult<$trace<R>> {
-                $trace::<R>::new_from_vec(trace_buffer)
+        $(
+        impl<F: PrimeField64> BinaryExtensionRow<F, $trace<$row<F>>> for $row<F> {
+            fn new_trace(trace_buffer: Vec<F>) -> ProofmanResult<$trace<$row<F>>> {
+                $trace::<$row<F>>::new_from_vec(trace_buffer)
             }
 
-            fn trace_num_rows(trace: &$trace<R>) -> usize {
+            fn trace_num_rows(trace: &$trace<$row<F>>) -> usize {
                 trace.num_rows()
             }
 
-            fn trace_buffer_mut(trace: &mut $trace<R>) -> &mut [Self] {
+            fn trace_buffer_mut(trace: &mut $trace<$row<F>>) -> &mut [Self] {
                 &mut trace.buffer
             }
 
-            fn into_air_instance(
-                trace: &mut $trace<R>,
-                padding_row: Self,
-                rows_used: usize,
-                padding_size: usize,
-            ) -> AirInstance<F> {
-                let num_rows = trace.num_rows();
-                trace.buffer[rows_used..num_rows]
-                    .par_iter_mut()
-                    .for_each(|slot| *slot = padding_row);
-
+            fn into_air_instance(trace: &mut $trace<$row<F>>, padding_size: usize) -> AirInstance<F> {
                 let mut air_values = $air_values::<F>::new();
                 air_values.padding_size = F::from_usize(padding_size);
                 AirInstance::new_from_trace(FromTrace::new(trace).with_air_values(&mut air_values))
             }
         }
+        )+
     };
 }
 
@@ -165,13 +174,15 @@ impl_binary_extension_row!(
     BinaryExtensionTraceRowOps,
     BinaryExtensionTrace,
     BinaryExtensionAirValues,
-    crate::lanes_x_row::EXT
+    crate::lanes_x_row::EXT,
+    [BinaryExtensionTraceRow, BinaryExtensionTraceRowPacked]
 );
 impl_binary_extension_row!(
     BinaryExtensionLargeTraceRowOps,
     BinaryExtensionLargeTrace,
     BinaryExtensionLargeAirValues,
-    crate::lanes_x_row::EXT_LARGE
+    crate::lanes_x_row::EXT_LARGE,
+    [BinaryExtensionLargeTraceRow, BinaryExtensionLargeTraceRowPacked]
 );
 
 /// The `BinaryExtensionSM` struct defines the Binary Extension State Machine.
@@ -193,7 +204,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
     /// Writes SEXT_B(0) into one slot: the operation the air's `padding_size` cancels on the bus.
     #[inline(always)]
-    fn set_padding_slot<T, R: BinaryExtensionRow<F, T>>(row: &mut R, lane: usize) {
+    fn set_padding_slot<R: BinaryExtensionLaneRow<F>>(row: &mut R, lane: usize) {
         row.set_fields(
             lane,
             ZiskOp::SignExtendB.code(),
@@ -211,7 +222,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     }
 
     /// Fills one slot of a row from one operation.
-    pub fn process_slice<T, R: BinaryExtensionRow<F, T>>(
+    pub fn process_slice<R: BinaryExtensionLaneRow<F>>(
         &self,
         row: &mut R,
         lane: usize,
@@ -654,10 +665,22 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         inputs: &[Vec<BinaryInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let lanes = BinaryLanes::new(R::LANES_X_ROW);
         let mut binary_e_trace = R::new_trace(trace_buffer)?;
+        let padding_size = self.fill_rows(R::trace_buffer_mut(&mut binary_e_trace), inputs);
+        Ok(R::into_air_instance(&mut binary_e_trace, padding_size))
+    }
 
-        let num_rows = R::trace_num_rows(&binary_e_trace);
+    /// Fills `rows` -- a whole instance, or the `ext_` block of one -- with `inputs` in order and
+    /// pads the rest, returning the padding in slots. Takes `rows` rather than a trace because the
+    /// fused `CompactBinary` air carries this block inside a wider row (see
+    /// [`BinaryExtensionLaneRow`]).
+    pub(crate) fn fill_rows<R: BinaryExtensionLaneRow<F>>(
+        &self,
+        rows: &mut [R],
+        inputs: &[Vec<BinaryInput>],
+    ) -> usize {
+        let lanes = BinaryLanes::new(R::LANES_X_ROW);
+        let num_rows = rows.len();
         let num_slots = lanes.slots(num_rows);
 
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
@@ -687,20 +710,20 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // where its own run of rows starts, so the operations are read in place.
         //
         fill_slots(
-            &mut R::trace_buffer_mut(&mut binary_e_trace)[..rows_used],
+            &mut rows[..rows_used],
             inputs,
             total_inputs,
             lanes_x_row,
-            |trace_row, lane, input| self.process_slice::<T, R>(trace_row, lane, input),
+            |trace_row, lane, input| self.process_slice::<R>(trace_row, lane, input),
             // Only the last row can be short. Its leftover lanes are not covered by the padding
             // rows written afterwards, and the trace buffer comes from a pool and is not zeroed,
             // so they get the padding operation here.
             |trace_row, lane| Self::set_padding_slot(trace_row, lane),
         );
 
-        // One padded slot is one SEXT_B(0) operation on the bus, and each takes eight table rows.
-        let padding_size = num_slots - total_inputs;
+        rows[rows_used..].par_iter_mut().for_each(|row| row.copy_block_from(&padding_slot));
 
-        Ok(R::into_air_instance(&mut binary_e_trace, padding_slot, rows_used, padding_size))
+        // One padded slot is one SEXT_B(0) operation on the bus, and each takes eight table rows.
+        num_slots - total_inputs
     }
 }

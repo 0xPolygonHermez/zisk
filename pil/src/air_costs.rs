@@ -109,6 +109,12 @@ pub const BINARY_EXTENSION_INSTANCE_COST: usize = 6543;
 /// `BinaryExtensionLarge`: 9.64 GB.
 pub const BINARY_EXTENSION_LARGE_INSTANCE_COST: usize = 9871;
 
+/// `CompactBinary`: 6.74 GB. Lanes of the four binary airs side by side at `2**21` rows: measured
+/// at 5.44 GB on a non-aggregated setup (2026-10-09) where `Binary` read 5.26 GB against the 6.51 GB
+/// above, so it is scaled by that ratio to stay comparable with its neighbours. Refresh together
+/// with the four on the next full setup.
+pub const COMPACT_BINARY_INSTANCE_COST: usize = 6902;
+
 /// `Add256`: 2.32 GB.
 pub const ADD_256_INSTANCE_COST: usize = 2376;
 
@@ -274,6 +280,7 @@ mod tests {
                     BinaryAddHiHugeTrace: BinaryAddHiHugeTraceRow: BINARY_ADD_HI_HUGE_INSTANCE_COST,
                     BinaryExtensionTrace: BinaryExtensionTraceRow: BINARY_EXTENSION_INSTANCE_COST,
                     BinaryExtensionLargeTrace: BinaryExtensionLargeTraceRow: BINARY_EXTENSION_LARGE_INSTANCE_COST,
+                    CompactBinaryTrace: CompactBinaryTraceRow: COMPACT_BINARY_INSTANCE_COST,
                     Add256Trace: Add256TraceRow: ADD_256_INSTANCE_COST,
                     ArithEqTrace: ArithEqTraceRow: ARITH_EQ_INSTANCE_COST,
                     ArithEqLargeTrace: ArithEqLargeTraceRow: ARITH_EQ_LARGE_INSTANCE_COST,

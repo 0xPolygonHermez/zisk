@@ -9,12 +9,13 @@ use zisk_pil::{
     ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_ADD_HI_AIR_IDS, BINARY_ADD_HI_HUGE_AIR_IDS,
     BINARY_ADD_HI_LARGE_AIR_IDS, BINARY_ADD_HUGE_AIR_IDS, BINARY_ADD_LARGE_AIR_IDS, BINARY_AIR_IDS,
     BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_LARGE_AIR_IDS, BINARY_HUGE_AIR_IDS,
-    BINARY_LARGE_AIR_IDS, DMA_64_ALIGNED_AIR_IDS, DMA_64_ALIGNED_LARGE_AIR_IDS,
-    DMA_64_ALIGNED_MEM_AIR_IDS, DMA_64_ALIGNED_MEM_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_LARGE_AIR_IDS,
-    DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS, DMA_PRE_POST_AIR_IDS, DMA_UNALIGNED_AIR_IDS,
-    INPUT_DATA_AIR_IDS, JUMP_DEST_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS,
-    MEM_ALIGN_BYTE_LARGE_AIR_IDS, MEM_ALIGN_LARGE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS,
-    MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
+    BINARY_LARGE_AIR_IDS, COMPACT_BINARY_AIR_IDS, DMA_64_ALIGNED_AIR_IDS,
+    DMA_64_ALIGNED_LARGE_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS, DMA_64_ALIGNED_MEM_CPY_AIR_IDS,
+    DMA_64_ALIGNED_MEM_LARGE_AIR_IDS, DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS,
+    DMA_PRE_POST_AIR_IDS, DMA_UNALIGNED_AIR_IDS, INPUT_DATA_AIR_IDS, JUMP_DEST_AIR_IDS,
+    MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_BYTE_LARGE_AIR_IDS,
+    MEM_ALIGN_LARGE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS,
+    MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
 };
 use zisk_precomp_dma::{
     Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCounterInputGen, DmaInstance,
@@ -25,6 +26,7 @@ use zisk_sm_arith::{ArithCounterInputGen, ArithFullInstance, ArithInstanceCollec
 use zisk_sm_binary::{
     BinaryAddCollector, BinaryAddHiCollector, BinaryAddHiInstance, BinaryAddInstance,
     BinaryBasicCollector, BinaryBasicInstance, BinaryExtensionCollector, BinaryExtensionInstance,
+    CompactBinaryCollector, CompactBinaryInstance,
 };
 use zisk_sm_mem::{
     MemAlignByteInstance, MemAlignCollector, MemAlignInstance, MemAlignReadByteInstance,
@@ -51,6 +53,8 @@ pub struct BuiltinCollectors<F: PrimeField64> {
     pub binary_add_hi: Vec<(usize, BinaryAddHiCollector<F>)>,
     /// Binary extension operation collectors.
     pub binary_extension: Vec<(usize, BinaryExtensionCollector<F>)>,
+    /// Collectors of the fused `CompactBinary` air, each carrying the four blocks of one instance.
+    pub compact_binary: Vec<(usize, CompactBinaryCollector<F>)>,
 
     /// Arithmetic operation collectors.
     pub arith: Vec<(usize, ArithInstanceCollector<F>)>,
@@ -85,6 +89,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             binary_add: Vec::new(),
             binary_add_hi: Vec::new(),
             binary_extension: Vec::new(),
+            compact_binary: Vec::new(),
             arith: Vec::new(),
             arith_inputs_generator: ArithCounterInputGen::new(BusDeviceMode::InputGenerator),
             dma: Vec::new(),
@@ -253,6 +258,16 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                     "BinaryAddHiInstance",
                 )?;
                 self.binary_add_hi.push((gid, inst.build_binary_add_hi_collector(chunk)));
+                Ok(true)
+            }
+            id if id == COMPACT_BINARY_AIR_IDS[0] => {
+                let inst = downcast::<F, CompactBinaryInstance<F>>(
+                    secn,
+                    air_id,
+                    gid,
+                    "CompactBinaryInstance",
+                )?;
+                self.compact_binary.push((gid, inst.build_compact_binary_collector(chunk)));
                 Ok(true)
             }
             id if id == BINARY_EXTENSION_AIR_IDS[0] || id == BINARY_EXTENSION_LARGE_AIR_IDS[0] => {

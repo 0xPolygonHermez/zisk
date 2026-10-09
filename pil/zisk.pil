@@ -17,6 +17,7 @@ require "main/pil/main.pil"
 require "frequent-ops/pil/frequent_ops.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_extension.pil"
+require "binary/pil/compact_binary.pil"
 require "binary/pil/binary_add.pil"
 require "binary/pil/binary_add_hi.pil"
 require "arith/pil/arith.pil"
@@ -126,6 +127,12 @@ airgroup Zisk {
 
     BinaryExtension(N: 2**22);
     BinaryExtension(N: 2**22, lanes_x_row: 2) alias BinaryExtensionLarge;
+
+    // Lanes of the four binary airs side by side in one air (inline instances of their templates):
+    // an execution that uses the binary airs lightly pays one instance instead of four. Small on
+    // purpose; the standalone airs take what does not fit.
+    CompactBinary(N: 2**21, basic_lanes_x_row: 1, add_lanes_x_row: 1, add_hi_lanes_x_row: 2,
+                  ext_lanes_x_row: 1);
 
     virtual BinaryTable();
     virtual BinaryExtensionTable();

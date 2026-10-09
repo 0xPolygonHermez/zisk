@@ -12,7 +12,7 @@ use crate::{lanes_x_row, AirSlot};
 use zisk_pil::{
     BinaryAddHiHugeTrace, BinaryAddHiLargeTrace, BinaryAddHiTrace, BinaryAddHugeTrace,
     BinaryAddLargeTrace, BinaryAddTrace, BinaryExtensionLargeTrace, BinaryExtensionTrace,
-    BinaryHugeTrace, BinaryLargeTrace, BinaryTrace,
+    BinaryHugeTrace, BinaryLargeTrace, BinaryTrace, CompactBinaryTrace,
 };
 
 /// Kinds of the basic/add family, in the order the distributor sees them.
@@ -41,6 +41,79 @@ pub const KIND_EXT: usize = 0;
 pub const ADD_AIRS: usize = 9;
 /// Airs of the extension family, in hand-out order.
 pub const EXT_AIRS: usize = 2;
+
+/// Blocks of `CompactBinary` that take part in the add family's hand-out, ahead of its airs: the
+/// `add_hi_`, `add_` and `basic_` blocks, in that order.
+pub const COMPACT_ADD_BLOCKS: usize = 3;
+/// Slot of each block within [`compact_add_blocks`].
+pub const COMPACT_BLOCK_ADD_HI: usize = 0;
+pub const COMPACT_BLOCK_ADD: usize = 1;
+pub const COMPACT_BLOCK_BASIC: usize = 2;
+
+/// Operations each block of one `CompactBinary` instance holds, i.e. its rows times the lanes the
+/// block packs.
+pub mod compact_capacity {
+    use super::*;
+    pub fn basic() -> u64 {
+        (CompactBinaryTrace::<()>::NUM_ROWS * lanes_x_row::COMPACT_BASIC) as u64
+    }
+    pub fn add() -> u64 {
+        (CompactBinaryTrace::<()>::NUM_ROWS * lanes_x_row::COMPACT_ADD) as u64
+    }
+    pub fn add_hi() -> u64 {
+        (CompactBinaryTrace::<()>::NUM_ROWS * lanes_x_row::COMPACT_ADD_HI) as u64
+    }
+    pub fn ext() -> u64 {
+        (CompactBinaryTrace::<()>::NUM_ROWS * lanes_x_row::COMPACT_EXT) as u64
+    }
+}
+
+/// The three add-family blocks of `CompactBinary`, as the slots that go FIRST in the hand-out, so
+/// the fused instance takes what fits in each block and the rest flows on to the standalone airs.
+/// Every block names the fused air: the plans the hand-out gives them are merged into one.
+///
+/// Each block takes only the kinds its own air is the specialist of -- the `add_` block does not
+/// take the low-limb additions the `add_hi_` block could not hold, nor the `basic_` block any
+/// addition -- so what the fused instance ends up holding is exactly the share the strategy sized
+/// it with: the minimum of each family and its block. `instances` is 1 when the strategy uses the
+/// fused air and 0 otherwise, for the three blocks alike.
+pub fn compact_add_blocks(instances: u64) -> [AirSlot<ADD_KINDS>; COMPACT_ADD_BLOCKS] {
+    let block = |ops_per_instance, proves, sees| AirSlot {
+        airgroup_id: CompactBinaryTrace::<()>::AIRGROUP_ID,
+        air_id: CompactBinaryTrace::<()>::AIR_ID,
+        ops_per_instance,
+        proves,
+        sees,
+        instances,
+    };
+    // Kind order: [BASIC, ADD_HI, ADD_FULL, SH3ADD_HI, SH3ADD_ADD]. What each block sees is what
+    // the collector of its air sees, since the fused instance collects through those collectors.
+    [
+        block(
+            compact_capacity::add_hi(),
+            [false, true, false, true, false],
+            [false, true, true, true, true],
+        ),
+        block(
+            compact_capacity::add(),
+            [false, false, true, false, true],
+            [false, true, true, true, true],
+        ),
+        block(compact_capacity::basic(), [true, false, false, false, false], [true; ADD_KINDS]),
+    ]
+}
+
+/// The `ext_` block of `CompactBinary`, the slot that goes first in the extension family's hand-out.
+pub fn compact_ext_block(instances: u64) -> AirSlot<EXT_KINDS> {
+    AirSlot {
+        airgroup_id: CompactBinaryTrace::<()>::AIRGROUP_ID,
+        air_id: CompactBinaryTrace::<()>::AIR_ID,
+        ops_per_instance: compact_capacity::ext(),
+        proves: [true],
+        sees: [true],
+        instances,
+    }
+}
 
 /// The add-family airs, most specific and tallest first, so each takes what it can and the rest flows
 /// on. Within a specialisation the tall air goes first because filling it is what spares the family an

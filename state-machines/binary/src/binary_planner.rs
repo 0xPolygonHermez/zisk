@@ -44,10 +44,21 @@
 //! know, having only counts — because each kind's boundary is expressed in that kind's own terms.
 //! `SH3ADD` is split into its own kinds alongside the additions it shares an air with, since which
 //! air can fold its shift into an addition depends on the operands (see [`crate::sh3add_shape`]).
+//!
+//! **The fused air.** `CompactBinary` carries lanes of the four airs side by side on one row (see
+//! `pil/compact_binary.pil`), so one instance of it can hold a slice of every family at once: what
+//! an execution that uses the binary airs lightly needs, instead of one instance per family. It is
+//! priced under the same criterion: the layout with it -- the fused instance takes the minimum of
+//! each family and its block, the rest is laid out as above -- against the layout without it, and
+//! the one with fewer instances wins. When it is used, its blocks go FIRST in the hand-out, each
+//! taking only the kinds its own air is the specialist of, so what the instance collects is exactly
+//! the share it was sized with (see [`crate::compact_add_blocks`]).
 
 use crate::{
-    add_family, distribute, ext_family, lanes_x_row, AirSlot, BinaryCounter, ChunkCollect,
-    ADD_AIRS, ADD_KINDS, EXT_AIRS, EXT_KINDS, KIND_ADD_FULL, KIND_ADD_HI, KIND_BASIC, KIND_EXT,
+    add_family, compact_add_blocks, compact_capacity, compact_ext_block, distribute, ext_family,
+    lanes_x_row, AirSlot, BinaryCounter, ChunkCollect, CompactBinaryCollectInfo, InstancePlan,
+    ADD_AIRS, ADD_KINDS, COMPACT_ADD_BLOCKS, COMPACT_BLOCK_ADD, COMPACT_BLOCK_ADD_HI,
+    COMPACT_BLOCK_BASIC, EXT_AIRS, EXT_KINDS, KIND_ADD_FULL, KIND_ADD_HI, KIND_BASIC, KIND_EXT,
     KIND_SH3ADD_ADD, KIND_SH3ADD_HI,
 };
 use proofman_fields::PrimeField64;
@@ -59,11 +70,12 @@ use zisk_common::{
 use zisk_pil::{
     BinaryAddHiHugeTrace, BinaryAddHiLargeTrace, BinaryAddHiTrace, BinaryAddHugeTrace,
     BinaryAddLargeTrace, BinaryAddTrace, BinaryExtensionLargeTrace, BinaryExtensionTrace,
-    BinaryHugeTrace, BinaryLargeTrace, BinaryTrace, BINARY_ADD_HI_HUGE_INSTANCE_COST,
-    BINARY_ADD_HI_INSTANCE_COST, BINARY_ADD_HI_LARGE_INSTANCE_COST, BINARY_ADD_HUGE_INSTANCE_COST,
-    BINARY_ADD_INSTANCE_COST, BINARY_ADD_LARGE_INSTANCE_COST, BINARY_EXTENSION_INSTANCE_COST,
+    BinaryHugeTrace, BinaryLargeTrace, BinaryTrace, CompactBinaryTrace,
+    BINARY_ADD_HI_HUGE_INSTANCE_COST, BINARY_ADD_HI_INSTANCE_COST,
+    BINARY_ADD_HI_LARGE_INSTANCE_COST, BINARY_ADD_HUGE_INSTANCE_COST, BINARY_ADD_INSTANCE_COST,
+    BINARY_ADD_LARGE_INSTANCE_COST, BINARY_EXTENSION_INSTANCE_COST,
     BINARY_EXTENSION_LARGE_INSTANCE_COST, BINARY_HUGE_INSTANCE_COST, BINARY_INSTANCE_COST,
-    BINARY_LARGE_INSTANCE_COST,
+    BINARY_LARGE_INSTANCE_COST, COMPACT_BINARY_INSTANCE_COST,
 };
 
 /// Slot of each air within [`add_family`] / [`InstanceCounts`], in hand-out order.
@@ -99,6 +111,52 @@ struct Totals {
 
 /// How many instances of each add-family air to create, in [`slot`] order.
 type InstanceCounts = [u64; ADD_AIRS];
+
+/// What the fused `CompactBinary` instance takes of each family: the minimum of the family and
+/// its block, in the row cost of that block. The additions are the ones the packed airs would take
+/// (`add_hi` with its SH3ADD shape) and the full ones (`add_full` with its SH3ADD shape), exactly
+/// as [`Totals`] sizes them.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+struct CompactShare {
+    basic: u64,
+    add_hi: u64,
+    add_full: u64,
+    ext: u64,
+}
+
+impl CompactShare {
+    fn of(totals: &Totals) -> Self {
+        Self {
+            basic: totals.basic.min(compact_capacity::basic()),
+            add_hi: totals.add_hi.min(compact_capacity::add_hi()),
+            add_full: totals.add_full.min(compact_capacity::add()),
+            ext: totals.ext.min(compact_capacity::ext()),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// What is left for the standalone airs once the fused instance took its share.
+    fn remaining(&self, totals: &Totals) -> Totals {
+        Totals {
+            basic: totals.basic - self.basic,
+            add_hi: totals.add_hi - self.add_hi,
+            add_full: totals.add_full - self.add_full,
+            ext: totals.ext - self.ext,
+        }
+    }
+}
+
+/// The instances a workload is laid out in: the add-family airs, the extension airs, and whether
+/// one fused `CompactBinary` instance goes ahead of them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Layout {
+    compact: bool,
+    add: InstanceCounts,
+    ext: [u64; EXT_AIRS],
+}
 
 /// Operations one instance of each add-family air holds, in [`slot`] order.
 fn add_capacities() -> InstanceCounts {
@@ -171,6 +229,49 @@ impl<F: PrimeField64> BinaryPlanner<F> {
         Cost {
             instances: counts.iter().sum(),
             memory: counts.iter().zip(memories).map(|(&n, memory)| n * memory).sum(),
+        }
+    }
+
+    /// What a whole layout costs: both families, the fused instance included when it is used.
+    fn layout_cost(layout: &Layout) -> Cost {
+        let mut cost = Self::cost_of(&layout.add);
+        for (&n, air) in layout.ext.iter().zip(ext_ladder()) {
+            cost.instances += n;
+            cost.memory += n * air.memory;
+        }
+        if layout.compact {
+            cost.instances += 1;
+            cost.memory += COMPACT_BINARY_INSTANCE_COST as u64;
+        }
+        cost
+    }
+
+    /// Lays `totals` out without the fused air: the add family by [`best_add_counts`], the
+    /// extension one by size.
+    fn standalone_layout(totals: &Totals) -> Layout {
+        let ext = select_sizes(totals.ext, &ext_ladder());
+        Layout { compact: false, add: Self::best_add_counts(totals), ext: [ext[0], ext[1]] }
+    }
+
+    /// Picks between laying the workload out over the standalone airs alone and putting one fused
+    /// `CompactBinary` instance ahead of them, which takes the minimum of each family and its
+    /// block and leaves the rest to the standalone airs: fewest instances, then least memory.
+    ///
+    /// The fused air only ever pays off on a light workload -- several families with less than an
+    /// instance each -- and this is what tells: a family big enough to fill its own instances
+    /// loses nothing to the fused one, and gains an instance.
+    fn best_layout(totals: &Totals) -> Layout {
+        let without = Self::standalone_layout(totals);
+        let share = CompactShare::of(totals);
+        if share.is_empty() {
+            return without;
+        }
+        let rest = Self::standalone_layout(&share.remaining(totals));
+        let with = Layout { compact: true, ..rest };
+        if Self::layout_cost(&with) < Self::layout_cost(&without) {
+            with
+        } else {
+            without
         }
     }
 
@@ -322,15 +423,23 @@ impl<F: PrimeField64> BinaryPlanner<F> {
     }
 
     /// Turns the distribution of one family into plans.
+    ///
+    /// The first `compact_blocks` airs are the blocks of the fused `CompactBinary` air: what the
+    /// hand-out gave them is returned apart, for the caller to merge into the one plan of the
+    /// fused instance, since a block is not an air of its own.
     fn plans_of<const K: usize>(
         ops: &[[u64; K]],
         frops: &[[u64; K]],
         airs: &[AirSlot<K>],
-    ) -> Vec<Plan>
+        compact_blocks: usize,
+    ) -> (Vec<Plan>, Vec<InstancePlan<K>>)
     where
         ChunkCollect<K>: Send + Sync + 'static,
     {
-        distribute(ops, frops, airs)
+        let (compact, standalone): (Vec<_>, Vec<_>) = distribute(ops, frops, airs)
+            .into_iter()
+            .partition(|instance| instance.air < compact_blocks);
+        let plans = standalone
             .into_iter()
             .map(|instance| {
                 let air = &airs[instance.air];
@@ -345,7 +454,43 @@ impl<F: PrimeField64> BinaryPlanner<F> {
                     Some(meta),
                 )
             })
-            .collect()
+            .collect();
+        (plans, compact)
+    }
+
+    /// The one plan of the fused instance, from what the hand-out gave each of its blocks. `None`
+    /// when no block got anything.
+    fn compact_plan(
+        add_blocks: Vec<InstancePlan<ADD_KINDS>>,
+        ext_blocks: Vec<InstancePlan<EXT_KINDS>>,
+    ) -> Option<Plan> {
+        let mut info = CompactBinaryCollectInfo::default();
+        for instance in add_blocks {
+            let block = match instance.air {
+                COMPACT_BLOCK_ADD_HI => &mut info.add_hi,
+                COMPACT_BLOCK_ADD => &mut info.add,
+                COMPACT_BLOCK_BASIC => &mut info.basic,
+                air => unreachable!("air {air} is not a block of CompactBinary"),
+            };
+            // One instance per block at most: the strategy grants it one.
+            block.extend(instance.chunks);
+        }
+        for instance in ext_blocks {
+            debug_assert_eq!(instance.air, 0, "the ext block is the first air of its family");
+            info.ext.extend(instance.chunks);
+        }
+        if info.is_empty() {
+            return None;
+        }
+        let chunks = info.chunks();
+        Some(Plan::new(
+            CompactBinaryTrace::<()>::AIRGROUP_ID,
+            CompactBinaryTrace::<()>::AIR_ID,
+            None,
+            InstanceType::Instance,
+            CheckPoint::Multiple(chunks),
+            Some(Box::new(info)),
+        ))
     }
 }
 
@@ -403,11 +548,19 @@ impl<F: PrimeField64> Planner for BinaryPlanner<F> {
             ext_frops.push(efr);
         }
 
-        let add_counts = Self::best_add_counts(&totals);
-        let ext_counts = select_sizes(totals.ext, &ext_ladder());
+        let layout = Self::best_layout(&totals);
+        let compact_instances = layout.compact as u64;
 
-        let mut add_airs = add_family(add_counts);
-        let mut ext_airs = ext_family([ext_counts[0], ext_counts[1]]);
+        // The blocks of the fused air go first in each family's hand-out, so they take their
+        // share and the standalone airs get what the strategy laid out for them.
+        let mut add_airs: Vec<AirSlot<ADD_KINDS>> = compact_add_blocks(compact_instances)
+            .into_iter()
+            .chain(add_family(layout.add))
+            .collect();
+        let mut ext_airs: Vec<AirSlot<EXT_KINDS>> =
+            std::iter::once(compact_ext_block(compact_instances))
+                .chain(ext_family(layout.ext))
+                .collect();
 
         // The sizing above only saw operations. A kind whose operations are all frequent would be left
         // with no air to account for them, so coverage is topped up here.
@@ -423,25 +576,32 @@ impl<F: PrimeField64> Planner for BinaryPlanner<F> {
                 *total += count;
             }
         }
-        let ext_areas: Vec<u64> = ext_ladder().iter().map(|air| air.memory).collect();
-        Self::cover_frops(&add_frops_total, &mut add_airs, &add_memories());
+        // A block of the fused air costs the whole air, so it is never the smallest air to open
+        // for coverage; and it needs no opening, it is there whenever the layout uses it.
+        let add_areas: Vec<u64> = std::iter::repeat(COMPACT_BINARY_INSTANCE_COST as u64)
+            .take(COMPACT_ADD_BLOCKS)
+            .chain(add_memories())
+            .collect();
+        let ext_areas: Vec<u64> = std::iter::once(COMPACT_BINARY_INSTANCE_COST as u64)
+            .chain(ext_ladder().iter().map(|air| air.memory))
+            .collect();
+        Self::cover_frops(&add_frops_total, &mut add_airs, &add_areas);
         Self::cover_frops(&ext_frops_total, &mut ext_airs, &ext_areas);
 
         tracing::debug!(
-            "··· Binary instances: add_hi_large={} add_hi={} add_large={} add={} basic_large={} \
-             basic={} ext_large={} ext={}",
-            add_airs[0].instances,
-            add_airs[1].instances,
-            add_airs[2].instances,
-            add_airs[3].instances,
-            add_airs[4].instances,
-            add_airs[5].instances,
-            ext_airs[0].instances,
-            ext_airs[1].instances,
+            "··· Binary instances: compact={} add_family={:?} ext={:?}",
+            compact_instances,
+            add_airs[COMPACT_ADD_BLOCKS..].iter().map(|a| a.instances).collect::<Vec<_>>(),
+            ext_airs[1..].iter().map(|a| a.instances).collect::<Vec<_>>(),
         );
 
-        let mut plans = Self::plans_of(&add_ops, &add_frops, &add_airs);
-        plans.append(&mut Self::plans_of(&ext_ops, &ext_frops, &ext_airs));
+        let (mut plans, compact_add) =
+            Self::plans_of(&add_ops, &add_frops, &add_airs, COMPACT_ADD_BLOCKS);
+        let (mut ext_plans, compact_ext) = Self::plans_of(&ext_ops, &ext_frops, &ext_airs, 1);
+        plans.append(&mut ext_plans);
+        if let Some(plan) = Self::compact_plan(compact_add, compact_ext) {
+            plans.push(plan);
+        }
         plans
     }
 }
@@ -457,6 +617,106 @@ mod tests {
 
     fn cap(slot: usize) -> u64 {
         add_capacities()[slot]
+    }
+
+    /// The collects a plan carries: one add-family map and/or one extension map for a standalone
+    /// air, the four blocks for the fused one.
+    #[allow(clippy::type_complexity)]
+    fn collects_of(
+        meta: &Box<dyn Any + Send + Sync>,
+    ) -> (
+        Vec<&HashMap<ChunkId, ChunkCollect<ADD_KINDS>>>,
+        Vec<&HashMap<ChunkId, ChunkCollect<EXT_KINDS>>>,
+    ) {
+        if let Some(cs) = meta.downcast_ref::<HashMap<ChunkId, ChunkCollect<ADD_KINDS>>>() {
+            (vec![cs], vec![])
+        } else if let Some(cs) = meta.downcast_ref::<HashMap<ChunkId, ChunkCollect<EXT_KINDS>>>() {
+            (vec![], vec![cs])
+        } else if let Some(info) = meta.downcast_ref::<CompactBinaryCollectInfo>() {
+            (vec![&info.basic, &info.add, &info.add_hi], vec![&info.ext])
+        } else {
+            panic!("unexpected plan meta");
+        }
+    }
+
+    fn totals(basic: u64, add_hi: u64, add_full: u64, ext: u64) -> Totals {
+        Totals { basic, add_hi, add_full, ext }
+    }
+
+    /// The whole point of the fused air: a few operations of every family cost one instance
+    /// instead of one per family.
+    #[test]
+    fn a_light_workload_takes_one_fused_instance() {
+        let layout = TestPlanner::best_layout(&totals(10, 10, 10, 10));
+        assert!(layout.compact);
+        assert_eq!(layout.add, InstanceCounts::default(), "nothing is left for the add airs");
+        assert_eq!(layout.ext, [0, 0], "nothing is left for the extension airs");
+        assert_eq!(TestPlanner::layout_cost(&layout).instances, 1);
+
+        // Without it the two families would need an instance each.
+        let without = TestPlanner::standalone_layout(&totals(10, 10, 10, 10));
+        assert_eq!(TestPlanner::layout_cost(&without).instances, 2);
+    }
+
+    /// A family that fills its own instances gains nothing from the fused air: it would still need
+    /// those instances for what the block cannot hold, plus the fused one.
+    #[test]
+    fn a_heavy_family_keeps_its_own_airs() {
+        let layout = TestPlanner::best_layout(&totals(cap(slot::BASIC_HUGE), 0, 0, 0));
+        assert!(!layout.compact);
+        assert_eq!(layout.add[slot::BASIC_HUGE], 1);
+
+        let layout = TestPlanner::best_layout(&totals(0, 0, 0, 0));
+        assert!(!layout.compact, "nothing to fuse");
+    }
+
+    /// The fused instance takes the minimum of each family and its block, and the rest is laid
+    /// out as if the fused air did not exist.
+    #[test]
+    fn the_fused_instance_takes_its_share_and_the_rest_flows_on() {
+        let totals = totals(compact_capacity::basic() + 5, 3, 0, compact_capacity::ext() + 1);
+        let share = CompactShare::of(&totals);
+        assert_eq!(share.basic, compact_capacity::basic());
+        assert_eq!(share.add_hi, 3);
+        assert_eq!(share.ext, compact_capacity::ext());
+        assert_eq!(share.remaining(&totals), Totals { basic: 5, add_hi: 0, add_full: 0, ext: 1 });
+    }
+
+    /// The blocks of the fused air go first in the hand-out and every block keeps to its own
+    /// kinds, so what the fused plan collects is exactly the share, chunk by chunk, and the
+    /// standalone plans the rest.
+    #[test]
+    fn the_fused_plan_collects_exactly_the_share() {
+        let boxed: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)> = (0..2)
+            .map(|i| {
+                let c = BinaryCounter {
+                    counter_basic_wo_add: Counter { inst_count: 7, frops_count: 0 },
+                    counter_sh3add_hi: Counter { inst_count: 1, frops_count: 0 },
+                    counter_sh3add_add: Counter { inst_count: 2, frops_count: 0 },
+                    counter_add_hi: Counter { inst_count: 4, frops_count: 0 },
+                    counter_add: Counter { inst_count: 3, frops_count: 0 },
+                    counter_extension: Counter { inst_count: 5, frops_count: 0 },
+                };
+                (ChunkId(i), Box::new(c) as Box<dyn BusDeviceMetrics>)
+            })
+            .collect();
+
+        let plans = TestPlanner::new().plan(boxed);
+        assert_eq!(plans.len(), 1, "a light workload is one fused instance: {plans:?}");
+        let plan = &plans[0];
+        assert_eq!(plan.air_id, CompactBinaryTrace::<()>::AIR_ID);
+        let info = plan.meta.as_ref().unwrap().downcast_ref::<CompactBinaryCollectInfo>().unwrap();
+        for chunk in 0..2 {
+            let chunk = ChunkId(chunk);
+            let kinds =
+                |m: &HashMap<ChunkId, ChunkCollect<ADD_KINDS>>| m[&chunk].kinds.map(|k| k.count);
+            assert_eq!(kinds(&info.basic), [7, 0, 0, 0, 0], "the basic block takes basic ops only");
+            assert_eq!(kinds(&info.add_hi), [0, 4, 0, 1, 0], "the add_hi block, the low-limb ones");
+            assert_eq!(kinds(&info.add), [0, 0, 3, 0, 2], "the add block, the full ones");
+            assert_eq!(info.ext[&chunk].kinds.map(|k| k.count), [5]);
+        }
+        let CheckPoint::Multiple(chunks) = &plan.check_point else { panic!("multi-chunk") };
+        assert_eq!(chunks, &[ChunkId(0), ChunkId(1)]);
     }
 
     /// The candidate set — keep the whole instances of the widest packed air, or one more — is only
@@ -631,7 +891,8 @@ mod tests {
             };
             assert!(!chunks.is_empty(), "an instance with no chunk would never run");
 
-            if let Some(cs) = meta.downcast_ref::<HashMap<ChunkId, ChunkCollect<ADD_KINDS>>>() {
+            let (add_blocks, ext_blocks) = collects_of(meta);
+            for cs in add_blocks {
                 for (chunk, c) in cs {
                     assert!(chunks.contains(chunk));
                     for (k, kind) in c.kinds.iter().enumerate() {
@@ -641,9 +902,8 @@ mod tests {
                         }
                     }
                 }
-            } else if let Some(cs) =
-                meta.downcast_ref::<HashMap<ChunkId, ChunkCollect<EXT_KINDS>>>()
-            {
+            }
+            for cs in ext_blocks {
                 for (chunk, c) in cs {
                     assert!(chunks.contains(chunk));
                     for (k, kind) in c.kinds.iter().enumerate() {
@@ -706,7 +966,8 @@ mod tests {
 
         for plan in &plans {
             let meta = plan.meta.as_ref().expect("every plan carries its collects");
-            if let Some(chunks) = meta.downcast_ref::<HashMap<ChunkId, ChunkCollect<ADD_KINDS>>>() {
+            let (add_blocks, ext_blocks) = collects_of(meta);
+            for chunks in add_blocks {
                 for (chunk, c) in chunks {
                     for (k, kind) in c.kinds.iter().enumerate() {
                         add_seen[chunk.0][k] += kind.count;
@@ -715,9 +976,8 @@ mod tests {
                         }
                     }
                 }
-            } else if let Some(chunks) =
-                meta.downcast_ref::<HashMap<ChunkId, ChunkCollect<EXT_KINDS>>>()
-            {
+            }
+            for chunks in ext_blocks {
                 for (chunk, c) in chunks {
                     for (k, kind) in c.kinds.iter().enumerate() {
                         ext_seen[chunk.0][k] += kind.count;
@@ -726,8 +986,6 @@ mod tests {
                         }
                     }
                 }
-            } else {
-                panic!("unexpected plan meta");
             }
         }
 

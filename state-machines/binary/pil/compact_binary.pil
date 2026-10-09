@@ -1,0 +1,49 @@
+require "binary/pil/binary.pil"
+require "binary/pil/binary_add.pil"
+require "binary/pil/binary_add_hi.pil"
+require "binary/pil/binary_extension.pil"
+
+/*
+    Compact Binary (CompactBinary)
+    ==============================
+
+    One air carrying lanes of the four binary airs side by side:
+
+      · `Binary`          -- the basic operations, `basic_lanes_x_row` lanes per row
+      · `BinaryAdd`       -- full 64-bit additions, `add_lanes_x_row` lanes per row
+      · `BinaryAddHi`     -- low-limb additions, `add_hi_lanes_x_row` lanes per row
+      · `BinaryExtension` -- the extension operations, `ext_lanes_x_row` lanes per row
+
+    Nothing is transcribed: each block is the airtemplate of the standalone air, instanced INLINE
+    (see the pil2-compiler's inline instances). The instance expands the template inside this air,
+    on its rows, with every name it declares prefixed by the block -- `basic_b_op`, `add_a`,
+    `add_hi_c_chunks`, `ext_op`, the `*_padding_size` air values -- and its constraints, lookups and
+    bus terms are the template's own, so a block proves exactly what its air proves. The four share
+    nothing but the row index.
+
+    Why
+    ───
+
+    Every execution has some operations of every family, and an execution that uses the binary
+    airs lightly pays one instance per family for a few rows each. What costs is not the basic
+    proof but the recursion over the number of instances, so one instance holding a slice of each
+    family instead of four is what this air is for. The strategy routes to it first, up to what each
+    block holds, and the standalone airs take the rest (see `binary_planner.rs`).
+
+    The lane counts are small on purpose: this air is meant for the light case, and the standalone
+    airs take over when the work does not fit.
+*/
+
+airtemplate CompactBinary(const int N = 2**21,
+                          const int basic_lanes_x_row = 1,
+                          const int add_lanes_x_row = 1,
+                          const int add_hi_lanes_x_row = 2,
+                          const int ext_lanes_x_row = 1,
+                          int ext_full = -1) {
+
+    // The templates take N as an argument; an inline instance inherits the N of this air instead.
+    inline Binary(lanes_x_row: basic_lanes_x_row) alias basic_;
+    inline BinaryAdd(lanes_x_row: add_lanes_x_row) alias add_;
+    inline BinaryAddHi(lanes_x_row: add_hi_lanes_x_row) alias add_hi_;
+    inline BinaryExtension(lanes_x_row: ext_lanes_x_row, full: ext_full) alias ext_;
+}
