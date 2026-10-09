@@ -1,9 +1,9 @@
 use zisk_precomp_helpers::DmaInfo;
 
 use crate::{
-    zisk_ops::OpStats, EmulationMode, InstContext, DMA_64_ALIGNED_MEMCPY_COST,
-    DMA_64_ALIGNED_MEMCPY_DIVISOR, DMA_PRE_POST_MEMCPY_COST, DMA_UNALIGNED_MEMCPY_COST,
-    EXTRA_PARAMS_ADDR,
+    zisk_ops::{OpStats, DMA_LOOP_MEMCPY},
+    EmulationMode, InstContext, DMA_64_ALIGNED_MEMCPY_COST, DMA_64_ALIGNED_MEMCPY_DIVISOR,
+    DMA_PRE_POST_MEMCPY_COST, DMA_UNALIGNED_MEMCPY_COST, EXTRA_PARAMS_ADDR,
 };
 
 pub fn opc_dma_memcpy(ctx: &mut InstContext) {
@@ -170,7 +170,9 @@ fn ops_dma_memcpys(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
         let first_loop_src64 = (addr_b + pre_count) >> 3;
 
         // same alignment
-        if addr_a & 0x07 == addr_b & 0x07 {
+        let aligned = addr_a & 0x07 == addr_b & 0x07;
+        stats.dma_loop(DMA_LOOP_MEMCPY, loop_count, aligned);
+        if aligned {
             stats.mem_align_read(first_loop_src64 * 8, loop_count);
             stats.mem_align_write(first_loop_dst64 * 8, loop_count);
             // add information about other machines to demostrate operation

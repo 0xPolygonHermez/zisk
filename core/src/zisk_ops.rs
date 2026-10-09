@@ -182,11 +182,25 @@ impl Display for InvalidCodeError {
         write!(f, "invalid op code")
     }
 }
+// DMA operation kinds reported through [`OpStats::dma_loop`]. They mirror the order of the
+// `DMA_COUNTER_*` constants of the DMA precompile, which groups the operations the same way (the
+// extended variants share the machine of their base operation).
+pub const DMA_LOOP_MEMCPY: u8 = 0;
+pub const DMA_LOOP_MEMSET: u8 = 1;
+pub const DMA_LOOP_MEMCMP: u8 = 2;
+pub const DMA_LOOP_INPUTCPY: u8 = 3;
+
 /// Trait for gathering operation statistics
 pub trait OpStats {
     fn mem_align_read(&mut self, addr: u64, count: usize);
     fn mem_align_write(&mut self, addr: u64, count: usize);
     fn set_variable_cost(&mut self, cost: u64);
+    /// Reports the 64-bit loop of one DMA operation, the part between the unaligned head and tail:
+    /// `kind` is one of the `DMA_LOOP_*` constants, `loop_count` the number of whole 64-bit words
+    /// the loop copies, sets or compares, and `aligned` whether destination and source share the
+    /// same 8-byte offset — `memset` and `inputcpy` have no source, so they are always aligned.
+    /// Not called when the operation has no loop.
+    fn dma_loop(&mut self, kind: u8, loop_count: usize, aligned: bool);
 }
 
 /// Stats gathering function that does nothing (used as default)

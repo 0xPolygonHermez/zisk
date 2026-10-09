@@ -1,5 +1,6 @@
 //! Zisk emulator options
 
+use crate::DEFAULT_DMA_OPS_X_ROW;
 use clap::Parser;
 use std::fmt;
 use zisk_common::ProfilingMode;
@@ -227,6 +228,35 @@ pub struct EmuOptions {
     /// in the ACCESSES column, they only feed the MAX FDIST / FRATIO columns. Default 22.
     #[clap(long, value_name = "BITS", default_value = "22")]
     pub reg_step_flush_bits: u32,
+    /// Analyze the DMA operations. The current analysis covers the 64-bit loop of every DMA
+    /// operation (the part between the unaligned head and tail): per operation kind and per
+    /// alignment — aligned and unaligned loops are proven by different machines — it reports, for
+    /// each candidate row width (`--dma-ops-x-row`), the rows the loops would need, the slots those
+    /// rows offer, how full they are and how the loop lengths are distributed, so the most
+    /// efficient number of operations per row can be chosen from measurements. Requires option: -X
+    #[clap(long, value_name = "DMA_STATS", default_value = "false")]
+    pub dma_stats: bool,
+    /// Row widths, in operations per row, measured by the DMA loop analysis: a comma-separated
+    /// list, e.g. `2,4,8,12,16,24,32` (the default). Today the DMA machines use 4 or 8 operations
+    /// per row for the aligned loop and 1 for the unaligned one; add 1 to the list to see the
+    /// latter as the baseline. Requires option: --dma-stats
+    #[clap(long, value_name = "LIST", default_value = DEFAULT_DMA_OPS_X_ROW)]
+    pub dma_ops_x_row: String,
+    /// Analyze the occupancy of the memory dual rows: a dual row holds, in a single memory row,
+    /// one read/write plus up to N reads on the same address (same value, only the step differs).
+    /// Takes the number of duals per row: 0 disables the mechanism (one operation per row), 1 is
+    /// the standard dual, and larger values measure how much a wider row would buy. Reports, per
+    /// memory zone (input, ROM data, RAM), the rows needed, their occupancy and the distribution of
+    /// the rows by the number of duals they hold. Defaults to 1 when the flag is given with no
+    /// value. Requires option: -X
+    #[clap(long, value_name = "DUALS", num_args = 0..=1, default_missing_value = "1")]
+    pub mem_duals: Option<u32>,
+    /// Reset period, in bits, of the dual rows (`--mem-duals`): a row cannot span two chunks of
+    /// 2^bits steps, since the count-and-plan phase works per chunk, so every 2^bits steps the open
+    /// rows are dropped. Default 18, i.e. the current chunk size of 262144 steps.
+    /// Requires option: --mem-duals
+    #[clap(long, value_name = "BITS", default_value = "18")]
+    pub mem_dual_reset_bits: u32,
     /// Fast one-line check of the register step distances, so a whole program can be simulated
     /// quickly just to see this. Splits the execution in instances of 2^bits steps
     /// (`--reg-step-flush-bits`), each one starting with a flush that accesses every register, and
@@ -375,6 +405,10 @@ impl Default for EmuOptions {
             reg_step_limit_bits: 22,
             reg_step_flush_bits: 22,
             reg_step_check: false,
+            mem_duals: None,
+            mem_dual_reset_bits: 18,
+            dma_stats: false,
+            dma_ops_x_row: DEFAULT_DMA_OPS_X_ROW.to_string(),
             read_symbols: false,
             roi_callers: 10,
             top_roi: 25,
