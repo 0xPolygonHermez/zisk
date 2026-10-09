@@ -274,12 +274,12 @@ impl StatsCmd {
             prover.setup(&guest_program).run()?;
         }
 
+        let job = prover.begin_job(&guest_program)?;
         if let Some(hints_stream) = hints_stream {
-            prover.register_hints_stream(hints_stream)?;
+            job.register_hints_stream(hints_stream)?;
         }
         let mpi_node = self.mpi_node.map(|n| n as u32);
-        prover.stats(
-            &guest_program,
+        job.stats(
             stdin,
             self.random_seed.provided(),
             self.debug.clone(),
