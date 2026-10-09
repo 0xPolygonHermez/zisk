@@ -19,6 +19,12 @@ use zisk_precomp_helpers::blake2b_round;
 /// ### Safety
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
+///
+/// ### Panics
+///
+/// Instantiating this function with `INDEX >= 10` is a compile-time error: the BLAKE2b AIR only
+/// accepts round indices in [0,10), so such a call could never be proved even though the host
+/// implementation would silently reduce the index modulo 10.
 #[allow(unused_variables)]
 #[inline(always)]
 pub fn syscall_blake2b_round_const<const INDEX: u64>(
@@ -26,6 +32,10 @@ pub fn syscall_blake2b_round_const<const INDEX: u64>(
     input: &[u64; 16],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    const {
+        assert!(INDEX < 10, "syscall_blake2b_round_const: round index must be in [0,10)");
+    }
+
     #[cfg(zisk_guest)]
     ziskos_syscall!(zisk_definitions::SYSCALL_BLAKE2B_ROUND_ID, a: state, b: input, imm: INDEX);
 
