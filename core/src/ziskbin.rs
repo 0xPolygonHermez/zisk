@@ -557,7 +557,7 @@ pub fn rom_to_elf(rom: &ZiskRom) -> Vec<u8> {
 /// If `elf` is a ziskbin ELF (`e_machine == EM_ZISK`), extracts and decodes the
 /// `.ziskrom` section into a [`ZiskRom`]. Returns `Ok(None)` for a non-ziskbin
 /// input, so a caller can fall through to RISC-V transpilation.
-pub fn try_elf_to_rom(elf: &[u8]) -> Result<Option<ZiskRom>, String> {
+pub fn ziskbin2rom(elf: &[u8]) -> Result<Option<ZiskRom>, String> {
     if elf.len() < 20 || elf[0..4] != [0x7f, b'E', b'L', b'F'] {
         return Ok(None);
     }
@@ -817,10 +817,10 @@ mod tests {
         assert_eq!(&elf[0..4], b"\x7fELF");
         assert_eq!(u16::from_le_bytes([elf[18], elf[19]]), EM_ZISK);
 
-        let decoded = try_elf_to_rom(&elf).unwrap().expect("should be a ziskbin ELF");
+        let decoded = ziskbin2rom(&elf).unwrap().expect("should be a ziskbin ELF");
         assert_eq!(decoded.insts.len(), rom.insts.len());
 
         // A non-ziskbin buffer yields None (fall through to RISC-V).
-        assert!(try_elf_to_rom(b"not an elf").unwrap().is_none());
+        assert!(ziskbin2rom(b"not an elf").unwrap().is_none());
     }
 }

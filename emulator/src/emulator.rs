@@ -9,7 +9,7 @@
 //!      \
 //!       process_elf_file()
 //!        \
-//!         - Riscv2zisk::run()
+//!         - ZiskTranspiler::run()
 //!         - process_rom()
 //!            \
 //!             Emu::run()
@@ -26,7 +26,7 @@ use std::{
 use sysinfo::System;
 use zisk_common::{DataBusTrait, EmuTrace};
 use zisk_core::ZiskRom;
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 pub trait Emulator {
     fn emulate(
@@ -79,13 +79,12 @@ impl ZiskEmulator {
         let elf = fs::read(&elf_filename)
             .map_err(|e| ZiskEmulatorErr::Unknown(format!("Error reading ELF file: {e}")))?;
 
-        // Create an instance of the RISC-V -> ZisK program transpiler (Riscv2zisk) with the ELF
-        // file name
-        let zisk_transpiler_riscv = Riscv2zisk::new(&elf);
+        // Create an instance of the guest -> ZisK program transpiler (ZiskTranspiler) with the ELF
+        // file contents
+        let transpiler = ZiskTranspiler::new(&elf);
 
         // Convert the ELF file to ZisK ROM calling the transpiler run() method
-        let zisk_rom =
-            zisk_transpiler_riscv.run().map_err(|err| ZiskEmulatorErr::Unknown(err.to_string()))?;
+        let zisk_rom = transpiler.run().map_err(|err| ZiskEmulatorErr::Unknown(err.to_string()))?;
 
         // Process the Zisk rom with the provided inputs, according to the configured options
         Self::process_rom(&zisk_rom, inputs, options, callback)

@@ -8,7 +8,7 @@
 use proofman_fields::Goldilocks;
 use zisk_core::InstContext;
 use zisk_pil::{MainTraceRowInstrTable, MainTraceRowPacked, MainTraceRowPackedIndexed, MAIN_LANES};
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 use ziskemu::{Emu, EmuRegTrace};
 
 #[test]
@@ -18,7 +18,7 @@ fn indexed_reconstruction_matches_full_packing() {
         concat!(env!("CARGO_MANIFEST_DIR"), "/benches/data/my.elf").to_string()
     });
     let elf = std::fs::read(&elf_path).expect("read test elf");
-    let rom = Riscv2zisk::new(&elf).run().expect("build rom");
+    let rom = ZiskTranspiler::new(&elf).run().expect("build rom");
 
     // Instruction table, entry i at [i*wpe .. (i+1)*wpe], indexed by sorted_pc_list_index.
     let table = Emu::build_main_instr_table::<Goldilocks>(&rom);

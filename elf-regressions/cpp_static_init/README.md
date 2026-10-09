@@ -2,7 +2,7 @@
 
 A C++ guest whose globals have non-trivial constructors and destructors, used to
 pin down how the program-segment based ELF interpreter
-([`transpilers/common/src/elf_extraction.rs`](../../transpilers/common/src/elf_extraction.rs))
+([`transpilers/riscv/src/elf_extraction.rs`](../../transpilers/riscv/src/elf_extraction.rs))
 handles the structures that C++ static initialization produces — and that the
 constructors actually run, in the right order.
 
