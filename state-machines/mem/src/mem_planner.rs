@@ -19,8 +19,8 @@ use crate::{
 };
 
 use zisk_sm_mem_common::{
-    input_data_lanes_x_row, mem_lanes_x_row, rom_data_lanes_x_row, MemAlignPlanner, MemCounters,
-    RAM_W_ADDR_INIT,
+    fuse_first_segments, input_data_lanes_x_row, mem_lanes_x_row, rom_data_lanes_x_row,
+    MemAlignPlanner, MemCounters, RAM_W_ADDR_INIT,
 };
 
 #[cfg(feature = "save_mem_counters")]
@@ -158,10 +158,14 @@ impl MemPlanner {
         });
         mem_align_planner.plan();
 
-        let mut plans: Vec<Plan> = Vec::new();
-        plans.append(&mut mem_planner.lock().unwrap().collect_plans());
-        plans.append(&mut rom_data_planner.lock().unwrap().collect_plans());
-        plans.append(&mut input_data_planner.lock().unwrap().collect_plans());
+        // Segment 0 of the three areas is proved by one `CompactMem` instance instead of three,
+        // see `fuse_first_segments`. Nothing above this line knows about it: the segmentation is
+        // the same either way.
+        let mut plans: Vec<Plan> = fuse_first_segments(
+            mem_planner.lock().unwrap().collect_plans(),
+            input_data_planner.lock().unwrap().collect_plans(),
+            rom_data_planner.lock().unwrap().collect_plans(),
+        );
         plans.append(&mut mem_align_planner.collect_plans());
 
         #[cfg(any(feature = "save_mem_plans", feature = "save_mem_bus_data"))]

@@ -20,6 +20,7 @@ zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
 tracing = { workspace = true }
 
+proofman-common = { workspace = true }
 proofman-fields = { workspace = true }
 rayon = { workspace = true }
 clap = { version = "4", features = ["derive"] }

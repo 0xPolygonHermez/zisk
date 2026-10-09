@@ -11,7 +11,8 @@ use zisk_sm_mem_common::MemHelpers;
 
 use crate::{MemModule, MemOps, MemPreviousSegment};
 use zisk_sm_mem_common::{
-    MemLanes, MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_DISTANCE,
+    InputDataLaneRow, MemLanes, MemModuleSegmentCheckPoint, MEM_BYTES_BITS,
+    SEGMENT_ADDR_MAX_DISTANCE,
 };
 
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
@@ -49,13 +50,32 @@ fn lanes_of<F: PrimeField64, R: InputDataTraceRowOps<F>>() -> MemLanes {
     MemLanes::new(R::default().get_all_addr().len())
 }
 
+/// Same, for a row seen through [`InputDataLaneRow`]: the `InputData` row answers its own
+/// `lanes_x_row`, the fused `CompactMem` row answers the one of its `input_` block.
+#[inline]
+pub(crate) fn input_data_lanes_of<F: PrimeField64, R: InputDataLaneRow<F>>() -> MemLanes {
+    MemLanes::new(R::input_data_lanes_x_row())
+}
+
+/// What the `InputData` fill produces besides the rows: the scalars its air values are built from.
+pub(crate) struct InputDataFillOutput {
+    /// Address, step and value of the last filled slot: what the padding repeats and what the
+    /// segment hands to the next one.
+    pub last_addr: u32,
+    pub last_step: u64,
+    pub last_value: [u32; 2],
+    /// Distance from the area's base / to its end, split in 16-bit halves.
+    pub distance_base: [u16; 2],
+    pub distance_end: [u16; 2],
+}
+
 /// One padding lane: the last lane repeated, not selected and with no address change. Kept in one
 /// place so the partial row and the whole rows cannot drift apart.
 ///
 /// Every column of the row is written here, which is what lets the whole rows be filled by copying
 /// one built row rather than by setting each column of each lane.
 #[inline]
-fn set_input_data_padding_lane<F: PrimeField64, R: InputDataTraceRowOps<F>>(
+fn set_input_data_padding_lane<F: PrimeField64, R: InputDataLaneRow<F>>(
     row: &mut R,
     lane: usize,
     addr: u32,
@@ -429,20 +449,23 @@ impl<F: PrimeField64> InputDataSM<F> {
     ///   index order, the first absent address is the one where
     ///   `offsets[i] == offsets[i + 1]` (no increment between consecutive
     ///   slots).
-    #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets_inner<R: InputDataTraceRowOps<F>>(
+    ///
+    /// Fills an `InputData` segment's rows, whichever air is holding them.
+    ///
+    /// Takes `rows` rather than an `InputDataTrace` for two reasons: the fused `CompactMem` air
+    /// carries this block inside a wider row (see [`InputDataLaneRow`]), and the generated
+    /// `InputDataTrace` fixes 2^22 rows, which is unusable from a test.
+    pub(crate) fn fill_trace<R: InputDataLaneRow<F>>(
         &self,
+        rows: &mut [R],
         mem_ops: MemOps<'_>,
-        segment_id: SegmentId,
-        is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
-        trace_buffer: Vec<F>,
+        is_last_segment: bool,
         seg: &MemModuleSegmentCheckPoint,
-    ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = InputDataTrace::<R>::new_from_vec(trace_buffer)?;
-
-        let lanes = lanes_of::<F, R>();
-        let num_slots = lanes.slots(InputDataTrace::<R>::NUM_ROWS);
+    ) -> InputDataFillOutput {
+        let trace = rows;
+        let lanes = input_data_lanes_of::<F, R>();
+        let num_slots = lanes.slots(trace.len());
         debug_assert!(
             !mem_ops.is_empty() && mem_ops.len() <= num_slots,
             "InputDataSM: mem_ops.len()={} out of range {}",
@@ -565,7 +588,7 @@ impl<F: PrimeField64> InputDataSM<F> {
                 );
             }
             let from_row = partial_end / lanes_x_row;
-            if from_row < InputDataTrace::<R>::NUM_ROWS {
+            if from_row < trace.len() {
                 let mut pad_row = R::default();
                 for lane in 0..lanes_x_row {
                     set_input_data_padding_lane::<F, R>(
@@ -577,36 +600,46 @@ impl<F: PrimeField64> InputDataSM<F> {
                         &value_words,
                     );
                 }
-                trace.buffer[from_row..].par_iter_mut().for_each(|row| *row = pad_row);
+                // The block only: on a fused row the other blocks belong to other fills.
+                trace[from_row..]
+                    .par_iter_mut()
+                    .for_each(|row| row.copy_input_block_from(&pad_row));
             }
         }
-
-        let mut air_values = InputDataAirValues::<F>::new();
-        air_values.segment_id = F::from_usize(segment_id.into());
-        air_values.is_first_segment = F::from_bool(segment_id == 0);
-        air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_step = F::from_u64(previous_segment.step);
-        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
-        air_values.segment_last_addr = F::from_u32(last_addr);
-        air_values.segment_last_step = F::from_u64(last_step);
-
-        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
-
-        air_values.segment_last_value[0] = F::from_u32(value_0 as u32 + ((value_1 as u32) << 16));
-        air_values.segment_last_value[1] = F::from_u32(value_2 as u32 + ((value_3 as u32) << 16));
+        let _ = (padding_size, is_last_segment);
 
         let distance_end = (INPUT_DATA_W_ADDR_END - last_addr) as i64;
         let distance_base = previous_segment.addr - INPUT_DATA_W_ADDR_INIT;
 
-        let distance_base_chunks = [distance_base as u16, (distance_base >> 16) as u16];
-        let distance_end_chunks = [distance_end as u16, (distance_end >> 16) as u16];
+        InputDataFillOutput {
+            last_addr,
+            last_step,
+            last_value: [
+                value_0 as u32 + ((value_1 as u32) << 16),
+                value_2 as u32 + ((value_3 as u32) << 16),
+            ],
+            distance_base: [distance_base as u16, (distance_base >> 16) as u16],
+            distance_end: [distance_end as u16, (distance_end >> 16) as u16],
+        }
+    }
 
-        air_values.distance_base[0] = F::from_u16(distance_base_chunks[0]);
-        air_values.distance_base[1] = F::from_u16(distance_base_chunks[1]);
+    #[allow(clippy::too_many_arguments)]
+    fn compute_witness_with_offsets_inner<R: InputDataTraceRowOps<F> + InputDataLaneRow<F>>(
+        &self,
+        mem_ops: MemOps<'_>,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
+        seg: &MemModuleSegmentCheckPoint,
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = InputDataTrace::<R>::new_from_vec(trace_buffer)?;
 
-        air_values.distance_end[0] = F::from_u16(distance_end_chunks[0]);
-        air_values.distance_end[1] = F::from_u16(distance_end_chunks[1]);
+        let out =
+            self.fill_trace(&mut trace.buffer, mem_ops, previous_segment, is_last_segment, seg);
+
+        let mut air_values = InputDataAirValues::<F>::new();
+        Self::set_air_values(&mut air_values, segment_id, is_last_segment, previous_segment, &out);
 
         #[cfg(feature = "debug_mem")]
         {
@@ -614,10 +647,39 @@ impl<F: PrimeField64> InputDataSM<F> {
             let filename = format!("{path}/input_data_trace_{segment_id:04}.txt");
             println!("Saving {filename}");
             Self::save_to_file(&trace, &filename);
-            println!("[Mem:{}] mem_ops:{} padding:{}", segment_id, mem_ops.len(), padding_size);
         }
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
+    }
+
+    /// The air values of an `InputData` segment. Shared with the fused `CompactMem` air, whose
+    /// own air values carry the same fields under their `input_` names.
+    pub(crate) fn set_air_values(
+        air_values: &mut InputDataAirValues<F>,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        out: &InputDataFillOutput,
+    ) {
+        air_values.segment_id = F::from_usize(segment_id.into());
+        air_values.is_first_segment = F::from_bool(segment_id == 0);
+        air_values.is_last_segment = F::from_bool(is_last_segment);
+        air_values.previous_segment_step = F::from_u64(previous_segment.step);
+        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
+        air_values.segment_last_addr = F::from_u32(out.last_addr);
+        air_values.segment_last_step = F::from_u64(out.last_step);
+
+        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
+        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
+
+        air_values.segment_last_value[0] = F::from_u32(out.last_value[0]);
+        air_values.segment_last_value[1] = F::from_u32(out.last_value[1]);
+
+        air_values.distance_base[0] = F::from_u16(out.distance_base[0]);
+        air_values.distance_base[1] = F::from_u16(out.distance_base[1]);
+
+        air_values.distance_end[0] = F::from_u16(out.distance_end[0]);
+        air_values.distance_end[1] = F::from_u16(out.distance_end[1]);
     }
 }
 

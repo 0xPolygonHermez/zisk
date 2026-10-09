@@ -52,6 +52,13 @@ pub const INPUT_DATA_INSTANCE_COST: usize = 4690;
 /// `RomData`: 4.14 GB.
 pub const ROM_DATA_INSTANCE_COST: usize = 4239;
 
+/// `CompactMem`: 11.72 GB. The three airs above fused into one: measured at 9.01 GB on a
+/// non-aggregated setup (2026-10-09) where `Mem`, `InputData` and `RomData` read 6.95, 3.33 and
+/// 2.89 GB -- about 30% below the figures above, which come from a fuller setup -- so it is scaled
+/// by that ratio to stay comparable with its neighbours. It costs about two thirds of the three
+/// apart, which is what the fusion is for. Refresh together with the three on the next full setup.
+pub const COMPACT_MEM_INSTANCE_COST: usize = 12001;
+
 /// `MemAlign`: 2.94 GB.
 pub const MEM_ALIGN_INSTANCE_COST: usize = 3011;
 
@@ -255,6 +262,7 @@ mod tests {
                     MemTrace: MemTraceRow: MEM_INSTANCE_COST,
                     InputDataTrace: InputDataTraceRow: INPUT_DATA_INSTANCE_COST,
                     RomDataTrace: RomDataTraceRow: ROM_DATA_INSTANCE_COST,
+                    CompactMemTrace: CompactMemTraceRow: COMPACT_MEM_INSTANCE_COST,
                     MemAlignTrace: MemAlignTraceRow: MEM_ALIGN_INSTANCE_COST,
                     MemAlignLargeTrace: MemAlignLargeTraceRow: MEM_ALIGN_LARGE_INSTANCE_COST,
                     MemAlignByteTrace: MemAlignByteTraceRow: MEM_ALIGN_BYTE_INSTANCE_COST,

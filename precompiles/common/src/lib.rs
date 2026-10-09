@@ -6,7 +6,7 @@ pub use goldilocks_constants::{get_ks, GOLDILOCKS_GEN, GOLDILOCKS_K};
 
 use zisk_common::MEM_BUS_ID;
 use zisk_core::InstContext;
-use zisk_sm_mem::{MemAlignCollector, MemModuleCollector};
+use zisk_sm_mem::{CompactMemCollector, MemAlignCollector, MemModuleCollector};
 use zisk_sm_mem_common::MemCounters;
 
 /// Represents a precompile operation code.
@@ -98,8 +98,14 @@ pub trait PrecompileMemInputs {
 }
 
 /// Collector-based memory mem_processor
+///
+/// `compact` is the fused `CompactMem` air, which carries three memory areas at once and therefore
+/// three `MemModuleCollector`s inside a single device -- the collect phase keeps one device per
+/// instance and chunk. It is a separate list rather than more entries in `mem` for that reason
+/// alone; each area filters the bus by its own address range exactly as it does on its own air.
 pub struct MemCollectorProcessor<'a> {
     pub mem: &'a mut [(usize, MemModuleCollector)],
+    pub compact: &'a mut [(usize, CompactMemCollector)],
     pub align: &'a mut [(usize, MemAlignCollector)],
 }
 
@@ -107,9 +113,10 @@ impl<'a> MemCollectorProcessor<'a> {
     #[inline(always)]
     pub fn new(
         mem: &'a mut [(usize, MemModuleCollector)],
+        compact: &'a mut [(usize, CompactMemCollector)],
         align: &'a mut [(usize, MemAlignCollector)],
     ) -> Self {
-        Self { mem, align }
+        Self { mem, compact, align }
     }
 }
 
@@ -117,6 +124,9 @@ impl MemProcessor for MemCollectorProcessor<'_> {
     #[inline(always)]
     fn process_mem_data(&mut self, data: &[u64; 7]) {
         for collector in self.mem.iter_mut() {
+            collector.1.process_data(&MEM_BUS_ID, data);
+        }
+        for collector in self.compact.iter_mut() {
             collector.1.process_data(&MEM_BUS_ID, data);
         }
         for collector in self.align.iter_mut() {
@@ -131,12 +141,22 @@ impl MemProcessor for MemCollectorProcessor<'_> {
                 return false;
             }
         }
+        for collector in self.compact.iter_mut() {
+            if !collector.1.skip_addr(addr) {
+                return false;
+            }
+        }
         true
     }
 
     #[inline(always)]
     fn skip_addr_range(&mut self, addr_from: u32, addr_to: u32) -> bool {
         for collector in self.mem.iter_mut() {
+            if !collector.1.skip_addr_range(addr_from, addr_to) {
+                return false;
+            }
+        }
+        for collector in self.compact.iter_mut() {
             if !collector.1.skip_addr_range(addr_from, addr_to) {
                 return false;
             }

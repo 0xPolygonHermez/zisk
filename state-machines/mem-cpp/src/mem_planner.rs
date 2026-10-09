@@ -7,8 +7,8 @@ use crate::*;
 use zisk_sm_mem_common::save_plans;
 use zisk_sm_mem_common::MEM_OFFSETS_PAGE_SIZE;
 use zisk_sm_mem_common::{
-    input_data_lanes_x_row, mem_lanes_x_row, rom_data_lanes_x_row, MemAlignCounters,
-    MemAlignPlanner, MemModuleCheckPoint, MemModuleSegmentCheckPoint,
+    fuse_first_segments, input_data_lanes_x_row, mem_lanes_x_row, rom_data_lanes_x_row,
+    MemAlignCounters, MemAlignPlanner, MemModuleCheckPoint, MemModuleSegmentCheckPoint,
 };
 
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
@@ -170,11 +170,14 @@ impl MemPlanner {
     /// This function assumes the underlying C++ memory is valid and the pointer returned
     /// is safe to read for `count` elements.
     pub fn collect_plans(&self, mem_align_plans: &mut Vec<Plan>) -> Vec<Plan> {
-        let mut plans = std::mem::take(mem_align_plans);
         timer_start_info!(COLLECT_MEM_PLANS);
+        // One vector per area, in segment order, so the first segment of each can be fused into a
+        // single `CompactMem` plan exactly as the Rust planner does (see `fuse_first_segments`).
+        let mut area_plans: [Vec<Plan>; 3] = [Vec::new(), Vec::new(), Vec::new()];
         for (mem_id, air_id) in
             [ROM_DATA_AIR_IDS[0], INPUT_DATA_AIR_IDS[0], MEM_AIR_IDS[0]].iter().enumerate()
         {
+            let plans = &mut area_plans[mem_id];
             let mem_segments_count: u32 =
                 unsafe { bindings::get_mem_segment_count(self.inner, mem_id as u32) };
             for segment_id in 0..mem_segments_count {
@@ -242,6 +245,9 @@ impl MemPlanner {
                 ));
             }
         }
+        let [rom_data, input_data, mem] = area_plans;
+        let mut plans = std::mem::take(mem_align_plans);
+        plans.append(&mut fuse_first_segments(mem, input_data, rom_data));
 
         #[cfg(feature = "save_mem_plans")]
         save_plans(&plans, "asm_plans.txt");

@@ -1,3 +1,6 @@
+mod compact_mem_collector;
+mod compact_mem_instance;
+mod compact_mem_sm;
 mod input_data_sm;
 mod mem;
 mod mem_align_byte_instance;
@@ -20,6 +23,9 @@ mod mem_test;
 mod mem_witness_split;
 mod rom_data_sm;
 
+pub use compact_mem_collector::*;
+pub use compact_mem_instance::*;
+pub use compact_mem_sm::*;
 use input_data_sm::*;
 pub use mem::*;
 pub use mem_align_byte_instance::*;

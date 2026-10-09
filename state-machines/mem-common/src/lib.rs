@@ -1,7 +1,10 @@
+mod compact_mem_check_point;
+mod compact_mem_planner;
 mod mem_align_check_point;
 mod mem_align_counters;
 mod mem_align_instance_counter;
 mod mem_align_planner;
+mod mem_block_rows;
 mod mem_constants;
 mod mem_counters;
 // pub mod mem_debug_cli;
@@ -12,6 +15,8 @@ mod mem_module_check_point;
 mod mem_module_segment_check_point;
 mod mem_plans;
 
+pub use compact_mem_check_point::*;
+pub use compact_mem_planner::*;
 pub use mem_align_check_point::*;
 pub use mem_module_check_point::*;
 pub use mem_module_segment_check_point::*;
@@ -19,6 +24,7 @@ pub use mem_module_segment_check_point::*;
 pub use mem_align_counters::*;
 pub use mem_align_instance_counter::*;
 pub use mem_align_planner::*;
+pub use mem_block_rows::*;
 pub use mem_constants::*;
 pub use mem_counters::*;
 pub use mem_debug::*;

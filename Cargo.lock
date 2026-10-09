@@ -8163,6 +8163,7 @@ name = "zisk-sm-mem-common"
 version = "1.4.0-alpha"
 dependencies = [
  "clap",
+ "proofman-common",
  "proofman-fields",
  "rayon",
  "static_assertions",

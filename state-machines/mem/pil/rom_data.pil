@@ -151,12 +151,35 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
     // must be a boolean value. The constraint on this boolean should be defined outside of memory
     // to prevent redundant constraints.This flag is used to handle cases where a memory area is not
     // used during a given execution.
+    //
+    // This update OPENS the continuation cycle of the rom-data area, and a global update is emitted
+    // once per air, statically, regardless of whether the air gets any instance. The cycle is
+    // walked only once, so a second air emitting it would leave the global sum unable to balance --
+    // and reported without a bus id to point at, because a direct update contributes through air
+    // values instead of a column-based lookup.
+    //
+    // More than one air can prove segments of this cycle: `CompactMem` proves its segment 0. The
+    // airs are built independently and cannot see one another, so they share a `proof` container,
+    // which lives for the whole proof: the first air of the area records itself there and its
+    // siblings find it already recorded and stay quiet. `CompactMem` does not open the cycle at
+    // all; it only checks the container to make sure somebody did.
 
-    direct_global_update_proves(ROM_DATA_CONTINUATION_ID, [ 0,         // segment_id
-                                                            1,         // is_first_segment
-                                                            0,         // previous_segment_addr
-                                                            ...zeros], // value
-                                                            sel: enable_flag);
+    container proof.rom_data {
+        int seeded = 0;
+        string seeded_by = "";
+    }
+    use proof.rom_data;
+    if (!seeded) {
+        seeded = 1;
+        seeded_by = AIR_NAME;
+        direct_global_update_proves(ROM_DATA_CONTINUATION_ID, [ 0,         // segment_id
+                                                                1,         // is_first_segment
+                                                                0,         // previous_segment_addr
+                                                                ...zeros], // value
+                                                                sel: enable_flag);
+    } else {
+        println(`Ignoring direct global for rom data, was defined at: ${seeded_by}`);
+    }
   
     // PADDING
     // 
