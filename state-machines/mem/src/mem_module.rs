@@ -50,8 +50,13 @@ impl<'a> MemOps<'a> {
     }
 
     /// One contiguous copy, for the paths that need random access. Only the legacy fill does --
-    /// it reads `mem_ops[index - 1]` -- and it also sorts, so it needs ownership anyway. The
-    /// offsets path never calls this, which is the whole point.
+    /// it reads `mem_ops[index - 1]`. The offsets path never calls this, which is the whole point.
+    ///
+    /// The copy is redundant on that legacy path: `MemModuleInstance` gets there having already
+    /// flattened and sorted the chunks, so it hands over a single chunk that is contiguous and in
+    /// order, and this copies it a second time. Lending that one chunk out instead of copying it
+    /// would save a full pass; it is left alone because `legacy_mem_count_and_plan` is opt-in and
+    /// nothing in the tree enables it.
     pub fn to_flat_vec(self) -> Vec<MemInput> {
         let mut out = Vec::with_capacity(self.len);
         for chunk in self.chunks {

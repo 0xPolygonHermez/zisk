@@ -166,12 +166,8 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            BinaryAddTrace::<()>::AIR_ID,
-            "BinaryAddInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
+        // The collector is the same for the three airs -- they differ in how many operations a row
+        // packs, not in what is collected -- and `new` has already rejected any other air id.
         Some(Box::new(BinaryAddCollector::new(self.collect_info[&chunk_id], self.std.clone())))
     }
 
