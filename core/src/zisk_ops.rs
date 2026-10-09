@@ -581,7 +581,9 @@ define_ops! {
     (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, 64, opc_bn254_complex_add, op_bn254_complex_add, ops_bn254_complex_add),
     (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, 64, opc_bn254_complex_sub, op_bn254_complex_sub, ops_bn254_complex_sub),
     (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, 64, opc_bn254_complex_mul, op_bn254_complex_mul, ops_bn254_complex_mul),
-    (Halt, "halt", Internal, INTERNAL_COST, 0xff, 144, 0, opc_halt, op_halt, ops_none),
+    // halt reads no memory: input_size 0, so it is not a precompile and the minimal
+    // trace replay of a failed execution consumes no memory reads for it
+    (Halt, "halt", Internal, INTERNAL_COST, 0xff, 0, 0, opc_halt, op_halt, ops_none),
 }
 
 /* PRECOMPILED operations */
@@ -2223,6 +2225,11 @@ pub fn op_halt(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_halt(ctx: &mut InstContext) {
     ctx.error = true;
+    // Record where: the emulator advances step and pc after the operation
+    ctx.error_step = ctx.step;
+    ctx.error_pc = ctx.pc;
+    // A nonzero exit halts with a = the exit code; a trap halts with a = 0
+    ctx.error_code = ctx.a;
     ctx.c = 0;
     ctx.flag = false;
 }

@@ -1,7 +1,10 @@
 use std::borrow::Cow;
 use std::mem;
 
-use crate::{ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions, RegStepCheck};
+use crate::{
+    ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, FailureReason, ParEmuOptions,
+    RegStepCheck,
+};
 use proofman_fields::PrimeField64;
 use zisk_common::{
     OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID,
@@ -1564,7 +1567,7 @@ impl<'a> Emu<'a> {
         if self.ctx.inst_ctx.error {
             eprintln!(
                 "Emu::run_fast() finished with error at step={} pc=0x{:x}",
-                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+                self.ctx.inst_ctx.error_step, self.ctx.inst_ctx.error_pc
             );
         }
     }
@@ -1999,7 +2002,7 @@ impl<'a> Emu<'a> {
         if self.ctx.inst_ctx.error {
             eprintln!(
                 "Emu::run() finished with error at step={} pc=0x{:x}",
-                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+                self.ctx.inst_ctx.error_step, self.ctx.inst_ctx.error_pc
             );
         }
 
@@ -2151,7 +2154,7 @@ impl<'a> Emu<'a> {
         if self.ctx.inst_ctx.error {
             eprintln!(
                 "Emu::par_run() finished with error at step={} pc=0x{:x}",
-                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+                self.ctx.inst_ctx.error_step, self.ctx.inst_ctx.error_pc
             );
         }
 
@@ -2985,6 +2988,17 @@ impl<'a> Emu<'a> {
     /// Returns if the emulation ended
     pub fn terminated(&self) -> bool {
         self.ctx.inst_ctx.end
+    }
+
+    /// Returns why the execution failed and the step and pc of the failing instruction, or
+    /// None if it did not fail
+    pub fn failure(&self) -> Option<(FailureReason, u64, u64)> {
+        let ctx = &self.ctx.inst_ctx;
+        let reason = match ctx.error_code {
+            0 => FailureReason::Trap,
+            code => FailureReason::ExitCode(code),
+        };
+        ctx.error.then_some((reason, ctx.error_step, ctx.error_pc))
     }
 
     /// Returns the number of executed steps

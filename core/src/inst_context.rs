@@ -107,6 +107,13 @@ pub struct InstContext {
     /// a 0x0000 instruction
     pub error: bool,
 
+    /// Step and pc of the instruction that set `error`; `step` and `pc` have moved on by the
+    /// time the execution stops
+    pub error_step: u64,
+    pub error_pc: u64,
+    /// The halt's `a` operand: the exit code for a nonzero exit, 0 for a trap
+    pub error_code: u64,
+
     /// Registers
     pub regs: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
 
@@ -151,6 +158,9 @@ impl InstContext {
             step: 0,
             end: false,
             error: false,
+            error_step: 0,
+            error_pc: 0,
+            error_code: 0,
             regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
             emulation_mode: EmulationMode::default(),
             precompiled: PrecompiledInstContext::default(),
