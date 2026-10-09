@@ -37,6 +37,9 @@ zisk_common::zisk_precompile! {
 }
 
 #[cfg(test)]
+mod blake2b_mem_inputs_tests;
+
+#[cfg(test)]
 mod blake2b_tests {
     use zisk_common::io::ZiskStdin;
     use zisk_test_artifacts::ELF_BLAKE2B;

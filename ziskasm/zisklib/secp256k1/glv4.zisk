@@ -25,8 +25,6 @@
 u64 SECP_G4_T[128]   = 0
 u64 SECP_G4_NIB[8]   = 0
 u64 SECP_G4_RES[8]   = 0
-u64 SECP_G4_HDR[2]   = 0
-u64 SECP_G4_HDRB[2]  = 0
 u64 SECP_G4_ARGS[4]  = 0
 u64 SECP_G4_SC[16]   = 0
 u64 SECP_G4_SIG[2]   = 0
@@ -243,63 +241,43 @@ g4_sums:
 	dma_xmemcpy(SECP_G4_T + 320, SECP_G4_T + 64) -> r6, j(64, 4)
 	copyb(0, [SECP_G4_T + 320])
 	eq(c, [SECP_G4_T + 256]), j(g4_general)
-	copyb(0, SECP_G4_T + 320) -> [SECP_G4_HDRB + 0]
-	copyb(0, SECP_G4_T + 256) -> [SECP_G4_HDRB + 8]
-	secp256k1_add(0, SECP_G4_HDRB)
+	secp256k1_add(SECP_G4_T + 320, SECP_G4_T + 256)
 	dma_xmemcpy(SECP_G4_T + 384, SECP_G4_T + 128) -> r6, j(64, 4)
 	copyb(0, [SECP_G4_T + 384])
 	eq(c, [SECP_G4_T + 256]), j(g4_general)
-	copyb(0, SECP_G4_T + 384) -> [SECP_G4_HDRB + 0]
-	copyb(0, SECP_G4_T + 256) -> [SECP_G4_HDRB + 8]
-	secp256k1_add(0, SECP_G4_HDRB)
+	secp256k1_add(SECP_G4_T + 384, SECP_G4_T + 256)
 	dma_xmemcpy(SECP_G4_T + 448, SECP_G4_T + 192) -> r6, j(64, 4)
 	copyb(0, [SECP_G4_T + 448])
 	eq(c, [SECP_G4_T + 256]), j(g4_general)
-	copyb(0, SECP_G4_T + 448) -> [SECP_G4_HDRB + 0]
-	copyb(0, SECP_G4_T + 256) -> [SECP_G4_HDRB + 8]
-	secp256k1_add(0, SECP_G4_HDRB)
+	secp256k1_add(SECP_G4_T + 448, SECP_G4_T + 256)
 	dma_xmemcpy(SECP_G4_T + 576, SECP_G4_T + 64) -> r6, j(64, 4)
 	copyb(0, [SECP_G4_T + 576])
 	eq(c, [SECP_G4_T + 512]), j(g4_general)
-	copyb(0, SECP_G4_T + 576) -> [SECP_G4_HDRB + 0]
-	copyb(0, SECP_G4_T + 512) -> [SECP_G4_HDRB + 8]
-	secp256k1_add(0, SECP_G4_HDRB)
+	secp256k1_add(SECP_G4_T + 576, SECP_G4_T + 512)
 	dma_xmemcpy(SECP_G4_T + 640, SECP_G4_T + 128) -> r6, j(64, 4)
 	copyb(0, [SECP_G4_T + 640])
 	eq(c, [SECP_G4_T + 512]), j(g4_general)
-	copyb(0, SECP_G4_T + 640) -> [SECP_G4_HDRB + 0]
-	copyb(0, SECP_G4_T + 512) -> [SECP_G4_HDRB + 8]
-	secp256k1_add(0, SECP_G4_HDRB)
+	secp256k1_add(SECP_G4_T + 640, SECP_G4_T + 512)
 	dma_xmemcpy(SECP_G4_T + 704, SECP_G4_T + 192) -> r6, j(64, 4)
 	copyb(0, [SECP_G4_T + 704])
 	eq(c, [SECP_G4_T + 512]), j(g4_general)
-	copyb(0, SECP_G4_T + 704) -> [SECP_G4_HDRB + 0]
-	copyb(0, SECP_G4_T + 512) -> [SECP_G4_HDRB + 8]
-	secp256k1_add(0, SECP_G4_HDRB)
+	secp256k1_add(SECP_G4_T + 704, SECP_G4_T + 512)
 	dma_xmemcpy(SECP_G4_T + 768, SECP_G4_T + 256) -> r6, j(64, 4)
 	copyb(0, [SECP_G4_T + 768])
 	eq(c, [SECP_G4_T + 512]), j(g4_general)
-	copyb(0, SECP_G4_T + 768) -> [SECP_G4_HDRB + 0]
-	copyb(0, SECP_G4_T + 512) -> [SECP_G4_HDRB + 8]
-	secp256k1_add(0, SECP_G4_HDRB)
+	secp256k1_add(SECP_G4_T + 768, SECP_G4_T + 512)
 	dma_xmemcpy(SECP_G4_T + 832, SECP_G4_T + 320) -> r6, j(64, 4)
 	copyb(0, [SECP_G4_T + 832])
 	eq(c, [SECP_G4_T + 512]), j(g4_general)
-	copyb(0, SECP_G4_T + 832) -> [SECP_G4_HDRB + 0]
-	copyb(0, SECP_G4_T + 512) -> [SECP_G4_HDRB + 8]
-	secp256k1_add(0, SECP_G4_HDRB)
+	secp256k1_add(SECP_G4_T + 832, SECP_G4_T + 512)
 	dma_xmemcpy(SECP_G4_T + 896, SECP_G4_T + 384) -> r6, j(64, 4)
 	copyb(0, [SECP_G4_T + 896])
 	eq(c, [SECP_G4_T + 512]), j(g4_general)
-	copyb(0, SECP_G4_T + 896) -> [SECP_G4_HDRB + 0]
-	copyb(0, SECP_G4_T + 512) -> [SECP_G4_HDRB + 8]
-	secp256k1_add(0, SECP_G4_HDRB)
+	secp256k1_add(SECP_G4_T + 896, SECP_G4_T + 512)
 	dma_xmemcpy(SECP_G4_T + 960, SECP_G4_T + 448) -> r6, j(64, 4)
 	copyb(0, [SECP_G4_T + 960])
 	eq(c, [SECP_G4_T + 512]), j(g4_general)
-	copyb(0, SECP_G4_T + 960) -> [SECP_G4_HDRB + 0]
-	copyb(0, SECP_G4_T + 512) -> [SECP_G4_HDRB + 8]
-	secp256k1_add(0, SECP_G4_HDRB)
+	secp256k1_add(SECP_G4_T + 960, SECP_G4_T + 512)
 
 	; ---- indexes: NIB[w] nibble j = bit (16w + j) of a1 | a2 << 1 | b1 << 2 | b2 << 3 ----
 	copyb(0, [SECP_G4_SC + 0]) -> r10
@@ -652,7 +630,6 @@ g4_sums:
 	; ---- ladder over bits 127..0: word NIB[7] first, its top nibble first ----
 	copyb(0, SECP_G4_NIB + 56) -> r7
 	copyb(0, [SECP_G4_NIB + 56]) -> r5
-	copyb(0, SECP_G4_RES) -> [SECP_G4_HDR + 0]
 g4_a0:
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
@@ -792,160 +769,160 @@ g4_b0:
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b1)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s0)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b1:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b2)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s1)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b2:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b3)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s2)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b3:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b4)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s3)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b4:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b5)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s4)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b5:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b6)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s5)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b6:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b7)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s6)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b7:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b8)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s7)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b8:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b9)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s8)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b9:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b10)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s9)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b10:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b11)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s10)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b11:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b12)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s11)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b12:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b13)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s12)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b13:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b14)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s13)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b14:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b15)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s14)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b15:
 	secp256k1_dbl(0, SECP_G4_RES)
 	srl(r5, 54)
 	and(c, 0x3C0) -> r6
 	sll(r5, 4) -> r5
 	eq(r6, 0), j(g4_b16)
-	add(r6, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add(r6, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s15)
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 g4_b16:
 	eq(r7, SECP_G4_NIB), j(g4_done)
 	sub(r7, 8) -> r7
@@ -1017,11 +994,10 @@ g4_general:
 	pop r1
 	jump(secp_glv_dsm_general)
 
-; secp_g4_slow_add [leaf]: RES += T (T = [SECP_G4_HDR + 8]) when x limb 0 matched.
+; secp_g4_slow_add [leaf]: RES += T (r11 = &T) when x limb 0 matched.
 ;   Different x: add. Same point: double. Opposite points: r10 = 1 (infinity).
-;   Else r10 = 0. Uses r10, r11.
+;   Else r10 = 0. Uses r10; keeps r11.
 secp_g4_slow_add:
-	copyb(0, [SECP_G4_HDR + 8]) -> r11
 	copyb(r11, 8[a + 8])
 	eq(c, [SECP_G4_RES + 8]), j(g4_sx1)
 	jump(g4_sadd)
@@ -1058,6 +1034,6 @@ g4_sy3:
 	copyb(0, 0) -> r10
 	ret
 g4_sadd:
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 	copyb(0, 0) -> r10
 	ret

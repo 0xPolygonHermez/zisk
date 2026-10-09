@@ -4,43 +4,6 @@
 ; [a2,a3,a4,a5]; Fp12 = 48 u64. Prefixes cy_/dec_/expx_.
 ; ============================================================================
 
-; inline-op headers (zopt): precompile parameter blocks
-const u64 ZBN2_CYCLOTOMIC_H0[2] = CY_T1, CY_A3
-const u64 ZBN2_CYCLOTOMIC_H1[2] = CY_T2, CY_A5
-const u64 ZBN2_CYCLOTOMIC_H2[2] = CY_T3, BN_XI
-const u64 ZBN2_CYCLOTOMIC_H3[2] = CY_T4, CY_A3
-const u64 ZBN2_CYCLOTOMIC_H4[2] = CY_T5, CY_T3
-const u64 ZBN2_CYCLOTOMIC_H5[2] = CY_T6, CY_T5
-const u64 ZBN2_CYCLOTOMIC_H6[2] = CY_T4, CY_A5
-const u64 ZBN2_CYCLOTOMIC_H7[2] = CY_T7, CY_T5
-const u64 ZBN2_CYCLOTOMIC_H8[2] = CY_T3, BN_F2_SB
-const u64 ZBN2_CYCLOTOMIC_H9[2] = CY_B2, CY_A2
-const u64 ZBN2_CYCLOTOMIC_H10[2] = CY_B2, CY_B2
-const u64 ZBN2_CYCLOTOMIC_H11[2] = CY_T3, BN_XI10
-const u64 ZBN2_CYCLOTOMIC_H12[2] = CY_T4, CY_T3
-const u64 ZBN2_CYCLOTOMIC_H13[2] = CY_T4, BN_F2_SB
-const u64 ZBN2_CYCLOTOMIC_H14[2] = CY_T5, CY_A3
-const u64 ZBN2_CYCLOTOMIC_H15[2] = CY_B3, CY_T5
-const u64 ZBN2_CYCLOTOMIC_H16[2] = CY_T5, CY_A4
-const u64 ZBN2_CYCLOTOMIC_H17[2] = CY_B4, CY_T5
-const u64 ZBN2_CYCLOTOMIC_H18[2] = CY_B5, CY_A5
-const u64 ZBN2_CYCLOTOMIC_H19[2] = CY_B5, CY_B5
-const u64 ZBN2_CYCLOTOMIC_H20[2] = CY_A1, CY_A5
-const u64 ZBN2_CYCLOTOMIC_H21[2] = CY_A1, CY_A1
-const u64 ZBN2_CYCLOTOMIC_H22[2] = CY_A1, CY_T1
-const u64 ZBN2_CYCLOTOMIC_H23[2] = CY_T2, CY_A4
-const u64 ZBN2_CYCLOTOMIC_H24[2] = CY_A0, CY_A1
-const u64 ZBN2_CYCLOTOMIC_H25[2] = CY_A0, CY_A0
-const u64 ZBN2_CYCLOTOMIC_H26[2] = CY_A0, CY_T3
-const u64 ZBN2_CYCLOTOMIC_H27[2] = CY_A0, BN_XI
-const u64 ZBN2_CYCLOTOMIC_H28[2] = CY_A0, BN_FP2_ONE
-const u64 ZBN2_CYCLOTOMIC_H29[2] = CY_T1, BN_F2_SB
-const u64 ZBN2_CYCLOTOMIC_H30[2] = CY_A1, BN_XI
-const u64 ZBN2_CYCLOTOMIC_H31[2] = CY_A1, CY_T3
-const u64 ZBN2_CYCLOTOMIC_H32[2] = CY_A1, CY_T4
-const u64 ZBN2_CYCLOTOMIC_H33[2] = CY_T3, CY_A5
-const u64 ZBN2_CYCLOTOMIC_H34[2] = CY_A0, CY_T4
-
 const u64 BN_XI10[8] = 10, 0, 0, 0, 1, 0, 0, 0
 const u64 BN_THREE[4] = 3, 0, 0, 0
 const u64 BN_FOUR[4] = 4, 0, 0, 0
@@ -119,20 +82,20 @@ zisklib_decompress_cyclo_bn254:
 	copyb(0, CY_T1) -> r11
 	call zisklib_inv_fp2_bn254
 	dma_xmemcpy(CY_A1, CY_A4) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H20)
-	bn254_complex_add(0, ZBN2_CYCLOTOMIC_H21)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H22)
+	bn254_complex_mul(CY_A1, CY_A5)
+	bn254_complex_add(CY_A1, CY_A1)
+	bn254_complex_mul(CY_A1, CY_T1)
 	dma_xmemcpy(CY_T2, CY_A3) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H23)
+	bn254_complex_mul(CY_T2, CY_A4)
 	dma_xmemcpy(CY_A0, CY_A1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H24)
-	bn254_complex_add(0, ZBN2_CYCLOTOMIC_H25)
+	bn254_complex_mul(CY_A0, CY_A1)
+	bn254_complex_add(CY_A0, CY_A0)
 	dma_xmemcpy(BN_F2_SB, BN_THREE) -> r5, j(32, 4)
 	dma_xmemcpy(CY_T3, CY_T2) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H8)
-	bn254_complex_sub(0, ZBN2_CYCLOTOMIC_H26)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H27)
-	bn254_complex_add(0, ZBN2_CYCLOTOMIC_H28)
+	bn254_complex_mul(CY_T3, BN_F2_SB)
+	bn254_complex_sub(CY_A0, CY_T3)
+	bn254_complex_mul(CY_A0, BN_XI)
+	bn254_complex_add(CY_A0, BN_FP2_ONE)
 	copyb(0, CY_A0) -> r10
 	copyb(0, BN_FP2_ONE) -> r11
 	copyb(0, CY_A0) -> r12
@@ -140,38 +103,38 @@ zisklib_decompress_cyclo_bn254:
 dec_gen:
 	dma_xmemcpy(BN_F2_SB, BN_FOUR) -> r5, j(32, 4)
 	dma_xmemcpy(CY_T1, CY_A2) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H29)
+	bn254_complex_mul(CY_T1, BN_F2_SB)
 	copyb(0, CY_T1) -> r10
 	copyb(0, CY_T1) -> r11
 	copyb(0, CY_T1) -> r12
 	call zisklib_inv_fp2_bn254
 	dma_xmemcpy(CY_T2, CY_A4) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H23)
+	bn254_complex_mul(CY_T2, CY_A4)
 	dma_xmemcpy(CY_A1, CY_A5) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H20)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H30)
+	bn254_complex_mul(CY_A1, CY_A5)
+	bn254_complex_mul(CY_A1, BN_XI)
 	dma_xmemcpy(BN_F2_SB, BN_THREE) -> r5, j(32, 4)
 	dma_xmemcpy(CY_T3, CY_T2) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H8)
-	bn254_complex_add(0, ZBN2_CYCLOTOMIC_H31)
+	bn254_complex_mul(CY_T3, BN_F2_SB)
+	bn254_complex_add(CY_A1, CY_T3)
 	dma_xmemcpy(CY_T4, CY_A3) -> r5, j(64, 4)
-	bn254_complex_add(0, ZBN2_CYCLOTOMIC_H3)
-	bn254_complex_sub(0, ZBN2_CYCLOTOMIC_H32)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H22)
+	bn254_complex_add(CY_T4, CY_A3)
+	bn254_complex_sub(CY_A1, CY_T4)
+	bn254_complex_mul(CY_A1, CY_T1)
 	dma_xmemcpy(CY_T2, CY_A3) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H23)
+	bn254_complex_mul(CY_T2, CY_A4)
 	dma_xmemcpy(CY_T3, CY_A2) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H33)
+	bn254_complex_mul(CY_T3, CY_A5)
 	dma_xmemcpy(CY_A0, CY_A1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H24)
-	bn254_complex_add(0, ZBN2_CYCLOTOMIC_H25)
-	bn254_complex_add(0, ZBN2_CYCLOTOMIC_H26)
+	bn254_complex_mul(CY_A0, CY_A1)
+	bn254_complex_add(CY_A0, CY_A0)
+	bn254_complex_add(CY_A0, CY_T3)
 	dma_xmemcpy(BN_F2_SB, BN_THREE) -> r5, j(32, 4)
 	dma_xmemcpy(CY_T4, CY_T2) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H13)
-	bn254_complex_sub(0, ZBN2_CYCLOTOMIC_H34)
-	bn254_complex_mul(0, ZBN2_CYCLOTOMIC_H27)
-	bn254_complex_add(0, ZBN2_CYCLOTOMIC_H28)
+	bn254_complex_mul(CY_T4, BN_F2_SB)
+	bn254_complex_sub(CY_A0, CY_T4)
+	bn254_complex_mul(CY_A0, BN_XI)
+	bn254_complex_add(CY_A0, BN_FP2_ONE)
 	copyb(0, CY_A0) -> r10
 	copyb(0, BN_FP2_ONE) -> r11
 	copyb(0, CY_A0) -> r12

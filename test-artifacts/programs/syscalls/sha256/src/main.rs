@@ -1,7 +1,7 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use ziskos::syscalls::{syscall_sha256_f, SyscallSha256Params};
+use ziskos::syscalls::syscall_sha256_f;
 
 #[allow(deprecated)]
 use generic_array::{typenum::U64, GenericArray};
@@ -48,8 +48,7 @@ fn sha256f_apply(rng: &mut rand::rngs::ThreadRng) {
 
     let state: &mut [u64; 4] = unsafe { &mut *(state_u32.as_mut_ptr() as *mut [u64; 4]) };
     let input: &[u64; 8] = unsafe { &*(input_u8.as_ptr() as *const [u64; 8]) };
-    let mut params = SyscallSha256Params { state, input };
-    syscall_sha256_f(&mut params);
+    syscall_sha256_f(state, input);
 
     // Compare against an audited sha256f implementation
     let input_ga: GenericArray<u8, U64> = GenericArray::clone_from_slice(&input_u8);
@@ -78,8 +77,7 @@ fn run_consistency_test() {
     let mut state: [u64; 4] = unsafe { *(SHA256F_INITIAL_HASH_STATE.as_ptr() as *const [u64; 4]) };
     let input: [u64; 8] = unsafe { *(SHA256F_INPUT.as_ptr() as *const [u64; 8]) };
 
-    let mut params = SyscallSha256Params { state: &mut state, input: &input };
-    syscall_sha256_f(&mut params);
+    syscall_sha256_f(&mut state, &input);
 
     const EXPECTED_RESULT: [u32; 8] = [
         0xe3b0c442, 0x98fc1c14, 0x9afbf4c8, 0x996fb924, 0x27ae41e4, 0x649b934c, 0xa495991b,

@@ -16,21 +16,12 @@ const u64 ZKVM_BLK_IV[8] =
 	0x6A09E667F3BCC908, 0xBB67AE8584CAA73B, 0x3C6EF372FE94F82B, 0xA54FF53A5F1D36F1,
 	0x510E527FADE682D1, 0x9B05688C2B3E6C1F, 0x1F83D9ABFB41BD6B, 0x5BE0CD19137E2179
 
-; The work vector v, a private copy of the message, and one blake2b precompile
-; header [round index, &v, &m] per index 0..9 (round r uses index r % 10), all
-; preset so a round is a single step.
+; The work vector v and a private copy of the message. The blake2b precompile
+; takes a = &v (updated in place) and b = &m directly, and the round index
+; 0..9 (round r uses index r % 10) as its static argument, j(index, 4), so a
+; round is a single step.
 u64 ZKVM_BLK_V[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 u64 ZKVM_BLK_M[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-u64 ZKVM_BLK_HDR0[3] = 0, ZKVM_BLK_V, ZKVM_BLK_M
-u64 ZKVM_BLK_HDR1[3] = 1, ZKVM_BLK_V, ZKVM_BLK_M
-u64 ZKVM_BLK_HDR2[3] = 2, ZKVM_BLK_V, ZKVM_BLK_M
-u64 ZKVM_BLK_HDR3[3] = 3, ZKVM_BLK_V, ZKVM_BLK_M
-u64 ZKVM_BLK_HDR4[3] = 4, ZKVM_BLK_V, ZKVM_BLK_M
-u64 ZKVM_BLK_HDR5[3] = 5, ZKVM_BLK_V, ZKVM_BLK_M
-u64 ZKVM_BLK_HDR6[3] = 6, ZKVM_BLK_V, ZKVM_BLK_M
-u64 ZKVM_BLK_HDR7[3] = 7, ZKVM_BLK_V, ZKVM_BLK_M
-u64 ZKVM_BLK_HDR8[3] = 8, ZKVM_BLK_V, ZKVM_BLK_M
-u64 ZKVM_BLK_HDR9[3] = 9, ZKVM_BLK_V, ZKVM_BLK_M
 
 ziskasm_zkvm_blake2f:
 	; --- v[0..8] = h, v[8..16] = IV, m copied (DMA) ---
@@ -49,37 +40,37 @@ zb2_rounds:
 	; --- 10 rounds per pass (indexes 0..9), then the r10 = 0..9 left over ---
 zb2_ten:
 	ltu(r10, 10), j(zb2_tail)
-	blake2b(0, ZKVM_BLK_HDR0)
-	blake2b(0, ZKVM_BLK_HDR1)
-	blake2b(0, ZKVM_BLK_HDR2)
-	blake2b(0, ZKVM_BLK_HDR3)
-	blake2b(0, ZKVM_BLK_HDR4)
-	blake2b(0, ZKVM_BLK_HDR5)
-	blake2b(0, ZKVM_BLK_HDR6)
-	blake2b(0, ZKVM_BLK_HDR7)
-	blake2b(0, ZKVM_BLK_HDR8)
-	blake2b(0, ZKVM_BLK_HDR9)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(0, 4)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(1, 4)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(2, 4)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(3, 4)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(4, 4)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(5, 4)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(6, 4)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(7, 4)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(8, 4)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(9, 4)
 	sub(r10, 10) -> r10
 	jump(zb2_ten)
 zb2_tail:
 	eq(r10, 0), j(zb2_finalize)
-	blake2b(0, ZKVM_BLK_HDR0)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(0, 4)
 	eq(r10, 1), j(zb2_finalize)
-	blake2b(0, ZKVM_BLK_HDR1)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(1, 4)
 	eq(r10, 2), j(zb2_finalize)
-	blake2b(0, ZKVM_BLK_HDR2)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(2, 4)
 	eq(r10, 3), j(zb2_finalize)
-	blake2b(0, ZKVM_BLK_HDR3)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(3, 4)
 	eq(r10, 4), j(zb2_finalize)
-	blake2b(0, ZKVM_BLK_HDR4)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(4, 4)
 	eq(r10, 5), j(zb2_finalize)
-	blake2b(0, ZKVM_BLK_HDR5)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(5, 4)
 	eq(r10, 6), j(zb2_finalize)
-	blake2b(0, ZKVM_BLK_HDR6)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(6, 4)
 	eq(r10, 7), j(zb2_finalize)
-	blake2b(0, ZKVM_BLK_HDR7)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(7, 4)
 	eq(r10, 8), j(zb2_finalize)
-	blake2b(0, ZKVM_BLK_HDR8)
+	blake2b(ZKVM_BLK_V, ZKVM_BLK_M), j(8, 4)
 
 zb2_finalize:
 	; --- h[i] ^= v[i] ^ v[i+8]: built in v[0..8], then copied to h (DMA) ---

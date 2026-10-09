@@ -51,7 +51,6 @@ impl Arith384ModInput {
 
 #[derive(Debug)]
 pub struct Bls12_381CurveAddInput {
-    pub addr: u32,
     pub p1_addr: u32,
     pub p2_addr: u32,
     pub step: u64,
@@ -62,12 +61,11 @@ pub struct Bls12_381CurveAddInput {
 impl Bls12_381CurveAddInput {
     pub fn from(values: &OperationBls12_381CurveAddData<u64>) -> Self {
         Self {
-            addr: values[3] as u32,
-            p1_addr: values[5] as u32,
-            p2_addr: values[6] as u32,
+            p1_addr: values[2] as u32,
+            p2_addr: values[3] as u32,
             step: values[4],
-            p1: values[7..19].try_into().unwrap(),
-            p2: values[19..31].try_into().unwrap(),
+            p1: values[5..17].try_into().unwrap(),
+            p2: values[17..29].try_into().unwrap(),
         }
     }
 }
@@ -87,7 +85,6 @@ impl Bls12_381CurveDblInput {
 
 #[derive(Debug)]
 pub struct Bls12_381ComplexAddInput {
-    pub addr: u32,
     pub f1_addr: u32,
     pub f2_addr: u32,
     pub step: u64,
@@ -98,19 +95,17 @@ pub struct Bls12_381ComplexAddInput {
 impl Bls12_381ComplexAddInput {
     pub fn from(values: &OperationBls12_381ComplexAddData<u64>) -> Self {
         Self {
-            addr: values[3] as u32,
-            f1_addr: values[5] as u32,
-            f2_addr: values[6] as u32,
+            f1_addr: values[2] as u32,
+            f2_addr: values[3] as u32,
             step: values[4],
-            f1: values[7..19].try_into().unwrap(),
-            f2: values[19..31].try_into().unwrap(),
+            f1: values[5..17].try_into().unwrap(),
+            f2: values[17..29].try_into().unwrap(),
         }
     }
 }
 
 #[derive(Debug)]
 pub struct Bls12_381ComplexSubInput {
-    pub addr: u32,
     pub f1_addr: u32,
     pub f2_addr: u32,
     pub step: u64,
@@ -121,19 +116,17 @@ pub struct Bls12_381ComplexSubInput {
 impl Bls12_381ComplexSubInput {
     pub fn from(values: &OperationBls12_381ComplexSubData<u64>) -> Self {
         Self {
-            addr: values[3] as u32,
-            f1_addr: values[5] as u32,
-            f2_addr: values[6] as u32,
+            f1_addr: values[2] as u32,
+            f2_addr: values[3] as u32,
             step: values[4],
-            f1: values[7..19].try_into().unwrap(),
-            f2: values[19..31].try_into().unwrap(),
+            f1: values[5..17].try_into().unwrap(),
+            f2: values[17..29].try_into().unwrap(),
         }
     }
 }
 
 #[derive(Debug)]
 pub struct Bls12_381ComplexMulInput {
-    pub addr: u32,
     pub f1_addr: u32,
     pub f2_addr: u32,
     pub step: u64,
@@ -144,12 +137,11 @@ pub struct Bls12_381ComplexMulInput {
 impl Bls12_381ComplexMulInput {
     pub fn from(values: &OperationBls12_381ComplexMulData<u64>) -> Self {
         Self {
-            addr: values[3] as u32,
-            f1_addr: values[5] as u32,
-            f2_addr: values[6] as u32,
+            f1_addr: values[2] as u32,
+            f2_addr: values[3] as u32,
             step: values[4],
-            f1: values[7..19].try_into().unwrap(),
-            f2: values[19..31].try_into().unwrap(),
+            f1: values[5..17].try_into().unwrap(),
+            f2: values[17..29].try_into().unwrap(),
         }
     }
 }

@@ -1,15 +1,9 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use ziskos::syscalls::{
-    syscall_bn254_complex_sub, SyscallBn254ComplexSubParams, SyscallComplex256,
-};
+use ziskos::syscalls::{syscall_bn254_complex_sub, SyscallComplex256};
 
 fn main() {
-    let mut f1 = SyscallComplex256 { x: [0, 0, 0, 0], y: [0, 0, 0, 0] };
-    let f2 = SyscallComplex256 { x: [0, 0, 0, 0], y: [0, 0, 0, 0] };
-    let mut params = SyscallBn254ComplexSubParams { f1: &mut f1, f2: &f2 };
-
     // Test #0: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
         x: [9819458333704307595, 11176360309338589902, 1111937373424751652, 477786268695237371],
@@ -19,15 +13,13 @@ fn main() {
         x: [4616769939934698446, 11233501844785449581, 15435476716815871205, 257386334936440478],
         y: [16619467820888189833, 10877150673258265262, 10728815452881265760, 216848425711951146],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [5202688393769609149, 18389602538262691937, 4123204730318432062, 220399933758796892],
         y: [15011216300614059499, 17570565543316824550, 16204867346724928536, 2190606067421542457],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #1: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -38,15 +30,13 @@ fn main() {
         x: [10680278636993256106, 4812199420528396217, 9545827554963751537, 1694214479444147175],
         y: [14290265255325312041, 3221449844989985051, 14117926452509689807, 1705773849242759208],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [7503368038244741752, 1101022233607329049, 7458865070248063054, 1341640726654127200],
         y: [7972345142759795007, 11441058498735333517, 16585377138163222389, 1626061436889325906],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #2: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -57,15 +47,13 @@ fn main() {
         x: [4417907801686297355, 4846544247752331473, 6679274100623874803, 456596546189276312],
         y: [17554725009932780152, 4603450452032535347, 15021622684256251808, 2789050017287097416],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [10281614207489169005, 6445680983507748445, 5903543253994194669, 2321643616967225392],
         y: [1257924372132910837, 13793676764766451897, 18180190682535552269, 2828469990747400651],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #3: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -76,15 +64,13 @@ fn main() {
         x: [15029516448026007800, 17584874768126114656, 15015380991638676598, 1031683227781833221],
         y: [16986943764165354890, 14412505814284476410, 16592960690212983967, 972386731777229000],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [4241766517881564232, 2145053472943265496, 6734013394690935202, 636924703164933143],
         y: [17452070634810848897, 4279113934388824563, 18117149041946549833, 37344784961823560],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #4: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -95,15 +81,13 @@ fn main() {
         x: [4444768305875197474, 1939922989497411867, 4214143816538787860, 199856975344428270],
         y: [15690993799012359266, 13925548266012435130, 3272366628288741674, 3483440725996556673],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [6471164381437059545, 12294023175541044368, 16109357333636995897, 1876842568283735178],
         y: [5502100771791564354, 13331046410544061677, 9824119011363569074, 2282397561808551156],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #5: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -114,15 +98,13 @@ fn main() {
         x: [6330576003640702598, 10187177508499355552, 2162002880016689336, 1701055434502454977],
         y: [6042457498590366555, 3929315885146284526, 11720228675087261929, 960276666354821767],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [14311206951780811117, 10539186504551098604, 10471034999116043192, 2178077073276686641],
         y: [18025950406501955488, 13201521332654765960, 3451102648656746887, 1314635849818155795],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #6: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -133,15 +115,13 @@ fn main() {
         x: [8463282738341103067, 2967457933044332033, 4676291696582175467, 3288997381478435379],
         y: [14517856955707246743, 6909717146772162154, 4225348332245104118, 251109779456144592],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [10402515102246848500, 4624118705669332434, 12726992557038715458, 220117224552962235],
         y: [1965467850194470460, 11484235680375935535, 4006020176100711248, 1356291433188126582],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #7: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -152,15 +132,13 @@ fn main() {
         x: [8577567489996952073, 1415993803136667909, 5856414073842050221, 2600260715055878473],
         y: [6213571909784689117, 6086935747297776195, 589455143744304937, 1339041837956071838],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [11421617860298132908, 12964994077957816674, 11292019852337438228, 503087562507022003],
         y: [15840807550476615630, 5986506462402854689, 620689025256075978, 2106886809946532562],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #8: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -171,15 +149,13 @@ fn main() {
         x: [2439604640165946174, 8802471795462665784, 16196845910038099790, 2650363650529992213],
         y: [3592895757868207738, 11105631678955540198, 9197205780301054125, 3418225828951993858],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [15978319541182763473, 3427975928766421822, 17761159641036087804, 2155583517729361479],
         y: [16486670276961888176, 11280599583124750168, 8352284971401806422, 1560302586297038154],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #9: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -190,15 +166,13 @@ fn main() {
         x: [6550702927005300678, 5200508652508272258, 14628177090059000521, 818099213527558581],
         y: [7054306415440348267, 14567819963952156007, 4465768169752394732, 1228538945855076105],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [1343712398512100951, 1008424706790930669, 9129104735471714410, 2529491255157948990],
         y: [11113267957366149520, 7261666366771872183, 9636258734222449686, 2021138685720245057],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #10: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -209,15 +183,13 @@ fn main() {
         x: [8484639459381010211, 7011310773972233473, 16158615368361125457, 1177999319848184147],
         y: [7304236200783344061, 5292418479036885921, 6694470597827982082, 916507037960048990],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [5497012488188212489, 14976333921112420161, 15575782363531712129, 65050383204412240],
         y: [15664587447483304758, 9930667484976433614, 15915657556914282497, 980617102142189730],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #11: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -228,15 +200,13 @@ fn main() {
         x: [16528603495754341937, 8893271371239080203, 9406449307822347647, 250213327518958686],
         y: [17875918351627132749, 3264646250175604994, 4721293699900829255, 482440734473027493],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [15888369591106714420, 18029769455033418725, 2404001231065016294, 261777224346522712],
         y: [12561675966798900663, 11293542421787790332, 4703094355515269227, 976730976800440439],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #12: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -247,15 +217,13 @@ fn main() {
         x: [2042438716905720142, 2988730285248943925, 4435704583584765532, 1114014320886393554],
         y: [2760980708294393707, 372860918073165892, 9122612075875888799, 219633912322601253],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [2290178154373936121, 7928393859228939096, 8845487367689929217, 2372983945916577111],
         y: [2880063032155231263, 17562704737824094938, 1796946157611353239, 3040094488596558409],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #13: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -266,15 +234,13 @@ fn main() {
         x: [8758098300086079933, 8458090185970427871, 5608800379645947347, 3254741872956128470],
         y: [17860359904402995876, 210711486840455477, 13545863734865992770, 478428012731885078],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [10118344851708172355, 12384343109532927092, 4919604847310422218, 1536249023522873460],
         y: [4919001040586212003, 10706412657637427543, 18182072290118253595, 3008570254071085586],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #14: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -285,15 +251,13 @@ fn main() {
         x: [0, 0, 0, 0],
         y: [8023954341856169226, 7388703250239832174, 14581628861610779812, 1463541573151624535],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [16263600177686926934, 1070520514103037330, 3378925449179257950, 3052531337687770504],
         y: [17626000414822379982, 12741794906597001779, 9409201923321172270, 705493389038771262],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #15: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -304,15 +268,13 @@ fn main() {
         x: [18333499169494873014, 11639475012973159166, 11629272760731921316, 2867130213923064265],
         y: [0, 0, 0, 0],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [14736142284558234399, 11973124699094767600, 17451680983871529053, 403582524351883130],
         y: [11805571479997144868, 1873240993939869089, 2536953398218471227, 2201196215210731682],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #16: bn254_complex_sub
     let mut f1 = SyscallComplex256 {
@@ -323,33 +285,27 @@ fn main() {
         x: [4332616871279656262, 10917124144477883021, 13281191951274694749, 3486998266802970665],
         y: [4332616871279656262, 10917124144477883021, 13281191951274694749, 3486998266802970665],
     };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 { x: [0, 0, 0, 0], y: [0, 0, 0, 0] };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #17: bn254_complex_sub
     let mut f1 = SyscallComplex256 { x: [0, 0, 0, 0], y: [0, 0, 0, 0] };
     let f2 = SyscallComplex256 { x: [0, 0, 0, 0], y: [0, 0, 0, 0] };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 { x: [0, 0, 0, 0], y: [0, 0, 0, 0] };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 
     // Test #18: bn254_complex_sub
     let mut f1 = SyscallComplex256 { x: [0, 0, 0, 0], y: [0, 0, 0, 0] };
     let f2 = SyscallComplex256 { x: [1, 0, 0, 0], y: [0, 0, 0, 0] };
-    params.f1 = &mut f1;
-    params.f2 = &f2;
-    syscall_bn254_complex_sub(&mut params);
+    syscall_bn254_complex_sub(&mut f1, &f2);
     let f3 = SyscallComplex256 {
         x: [4332616871279656262, 10917124144477883021, 13281191951274694749, 3486998266802970665],
         y: [0, 0, 0, 0],
     };
-    assert_eq!(params.f1.x, f3.x);
-    assert_eq!(params.f1.y, f3.y);
+    assert_eq!(f1.x, f3.x);
+    assert_eq!(f1.y, f3.y);
 }

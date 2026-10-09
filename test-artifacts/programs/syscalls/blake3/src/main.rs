@@ -4,7 +4,7 @@ ziskos::entrypoint!(main);
 use rand::Rng;
 
 use zisk_precomp_helpers::blake3_f;
-use ziskos::syscalls::{syscall_blake3f, SyscallBlake3fParams};
+use ziskos::syscalls::syscall_blake3f;
 
 const ACTIVATE_CONSISTENCY_TEST: bool = false;
 
@@ -43,8 +43,7 @@ fn blake3_apply(rng: &mut rand::rngs::ThreadRng) {
 
     let state_copy = state.clone();
 
-    let mut params = SyscallBlake3fParams { state: &mut state, input: &input };
-    syscall_blake3f(&mut params);
+    syscall_blake3f(&mut state, &input);
 
     // Compare against the reference blake3 implementation
     let mut expected = state_copy;
@@ -79,8 +78,7 @@ fn run_consistency_test() {
     ];
     let input: [u64; 8] = [0x636261, 0, 0, 0, 0, 0, 0, 0];
 
-    let mut params = SyscallBlake3fParams { state: &mut state, input: &input };
-    syscall_blake3f(&mut params);
+    syscall_blake3f(&mut state, &input);
 
     const EXPECTED_RESULT: [u64; 8] = [
         0x58c37bce68ea631c,

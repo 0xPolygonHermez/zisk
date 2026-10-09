@@ -24,7 +24,7 @@ def patch(text):
             c += [f'\tltu(0, r15), j(lsx_i{t})',
                   f'\tdma_xmemcmp({R}, {PS}) -> r5, j(48, 4)',
                   f'\teq(r5, 0), j(lsx_x{t})',
-                  '\tbls12_381_curve_add(0, BLS_SG1_HRP)',
+                  f'\tbls12_381_curve_add({R}, {PS})',
                   f'lsx_n{t}:']
             rare += [f'lsx_i{t}:', f'\tdma_xmemcpy({R}, {PS}) -> r5, j(96, 4)', '\tcopyb(0, 0) -> r15', f'\tjump(lsx_n{t})',
                      f'lsx_x{t}:', f'\tdma_xmemcmp({R} + 48, {PS} + 48) -> r5, j(48, 4)', f'\teq(r5, 0), j(lsx_y{t})',
@@ -36,5 +36,5 @@ def patch(text):
     e = text.index('\tret\n', d) + len('\tret\n')
     text = text[:a] + '\n'.join(c) + '\n' + text[e:]
     f = text.index('zisklib_scalar_mul_by_x2div3_complete_bls12_381:\n')
-    data = [f'u64 {PS}[12] = ' + ', '.join(['0'] * 12), f'const u64 BLS_SG1_HRP[2] = {R}, {PS}', '']
+    data = [f'u64 {PS}[12] = ' + ', '.join(['0'] * 12), '']
     return text[:f] + '\n'.join(data) + text[f:]

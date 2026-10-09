@@ -4,6 +4,7 @@ use zisk_precomp_common::MemProcessor;
 
 pub const ARITH_256_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 5,
+    direct_ab: false,
     rewrite_params: false,
     read_params: 3,
     write_params: 2,

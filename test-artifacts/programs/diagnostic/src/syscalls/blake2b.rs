@@ -5,11 +5,6 @@ pub fn diagnostic_blake2b() {
     // Blake2b Tests
     //////////////
 
-    let index: u64 = 0;
-    let mut state: [u64; 16] = [0; 16];
-    let input: [u64; 16] = [0; 16];
-    let mut params = SyscallBlake2bRoundParams { index, state: &mut state, input: &input };
-
     // Test #0: blake2b
     let index: u64 = 0;
     let mut state: [u64; 16] = [
@@ -31,10 +26,7 @@ pub fn diagnostic_blake2b() {
         6620516959819538809,
     ];
     let input: [u64; 16] = [6513249, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    params.index = index;
-    params.state = &mut state;
-    params.input = &input;
-    syscall_blake2b_round(&mut params);
+    syscall_blake2b_round(index, &mut state, &input);
     let expected_out: [u64; 16] = [
         9707440099081960313,
         13919708115642571251,
@@ -53,5 +45,5 @@ pub fn diagnostic_blake2b() {
         10342616010177476862,
         2528949647217589348,
     ];
-    assert_eq!(params.state, &expected_out);
+    assert_eq!(state, expected_out);
 }

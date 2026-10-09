@@ -21,7 +21,6 @@ u64 SECP_GLV_P2[8]     = 0, 0, 0, 0, 0, 0, 0, 0
 u64 SECP_GLV_T[8]      = 0, 0, 0, 0, 0, 0, 0, 0
 u64 SECP_GLV_TINF[1]   = 0
 u64 SECP_GLV_RES[8]    = 0, 0, 0, 0, 0, 0, 0, 0
-u64 SECP_GLV_HDR[2]    = 0, 0
 u64 SECP_GLV_PPTR[1]   = 0
 u64 SECP_GLV_RESPTR[1] = 0
 u64 SECP_GLV_PTPTR[1]  = 0
@@ -224,13 +223,10 @@ gsm_yn:
 	sub(r7, 1) -> r7
 	jump(gsm_yl)
 gsm_doadd:
-	copyb(0, SECP_GLV_HDR) -> r5
-	copyb(0, SECP_GLV_RES) -> r6
-	copyb(r5, r6) -> 8[a + 0]          ; &res
+	copyb(0, SECP_GLV_RES) -> r5
 	copyb(0, SECP_GLV_PTPTR) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 8]          ; &pt
-	secp256k1_add(0, r5)
+	secp256k1_add(r5, r6)
 	jump(gsm_next)
 gsm_dodbl:
 	copyb(0, SECP_GLV_RES) -> r5
@@ -274,7 +270,6 @@ u64 SECP_D4_PPAIR[34] = 0
 u64 SECP_D4_RES[8]    = 0
 u64 SECP_D4_RESPTR[1] = 0
 u64 SECP_D4_PTPTR[1]  = 0
-u64 SECP_D4_HDR[2]    = 0
 u64 SECP_D4_SAVE[2]   = 0
 u64 SECP_PB_BASE[1]   = 0
 u64 SECP_PB_REGION[1] = 0
@@ -455,13 +450,10 @@ sa_yn:
 	sub(r7, 1) -> r7
 	jump(sa_yl)
 sa_doadd:
-	copyb(0, SECP_D4_HDR) -> r5
-	copyb(0, SECP_D4_RES) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, SECP_D4_RES) -> r5
 	copyb(0, SECP_D4_PTPTR) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	secp256k1_add(0, r5)
+	secp256k1_add(r5, r6)
 	ret
 sa_dodbl:
 	copyb(0, SECP_D4_RES) -> r5

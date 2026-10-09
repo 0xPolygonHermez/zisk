@@ -3,7 +3,7 @@
 ; SSWU_RO_). GENERATED (scripts/legacy/gen_bls_hash.py). Prefix lh_.
 ; ============================================================================
 
-; inline-op headers (zopt): precompile parameter blocks
+; inline-op headers (zopt): arith256_mod / arith384_mod parameter blocks
 const u64 ZBLS_HASH_H0[5] = BLS_H_DHI, BLS_R256_FP, BLS_ZERO, BLS_P, BLS_H_EJ
 const u64 ZBLS_HASH_H1[5] = BLS_H_EJ, BLS_ONE, BLS_H_DLO, BLS_P, BLS_H_EJ
 

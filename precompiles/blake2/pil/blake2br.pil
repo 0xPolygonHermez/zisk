@@ -330,19 +330,20 @@ airtemplate Blake2br(const int N = 2**20) {
     //  32 | STEP_MAIN + 1 | W | ADDR_STATE       |  state[0]
     //     | ...           |   | ...              |  ...    
     //  47 | STEP_MAIN + 1 | W | ADDR_STATE + 120 |  state[15]
-    //  48 | STEP_MAIN     | R | ADDR_OP          |  index
-    //  49 | STEP_MAIN     | R | ADDR_OP + 8      |  ADDR_IND_0
-    //  50 | STEP_MAIN     | R | ADDR_OP + 16     |  ADDR_IND_1
     // =========================================================
     //
-    // Memory Access Schedule (51 memory ops, 7 ports):
+    // The op is called with two direct operands, main operand a = state address (the result
+    // overwrites it) and b = input address, plus the round index as the static argument of the
+    // instruction (extended_arg). There is no parameter struct: nothing is read for the index or
+    // the addresses, they are pinned by proves_operation.
+    //
+    // Memory Access Schedule (48 memory ops, 6 ports):
     //   Read state[0..7]     (8 ops)
     //   Read state[8..15]    (8 ops)
     //   Read input[0..7]     (8 ops)
     //   Read input[8..15]    (8 ops)
     //   Write state[0..7]    (8 ops)
     //   Write state[8..15]   (8 ops)
-    //   Read index, addr_ind_0, addr_ind_1 (3 ops)
     //
     //         clock:        0      1       2       3      4       5       6       7
     //   port 0 (va):      R v0   R v1    R v2    R v3   W v'0   W v'1   W v'2   W v'3
@@ -351,29 +352,15 @@ airtemplate Blake2br(const int N = 2**20) {
     //   port 3 (vd):      R v12  R v13   R v14   R v15  W v'15  W v'12  W v'13  W v'14
     //   port 4 (x):       R m0   R m2    R m4    R m6   R m8    R m10   R m12   R m14
     //   port 5 (y):       R m1   R m3    R m5    R m7   R m9    R m11   R m13   R m15
-    //   port 6 (params):  R idx  R ptr0  R ptr1
-    //
-    // Address indirection:
-    //   - addr_state is read from addr_op + 8
-    //   - addr_input is read from addr_op + 16
-    //   - Both must match the actual memory addresses used
 
-    const int ADDR_OP = STEP_MAIN + 1;
-    const int ADDR_STATE = ADDR_OP + 1;
-    const int ADDR_INPUT = ADDR_STATE + 1;
-    const int ADDR_IND_0 = ADDR_INPUT + 1;
-    const int ADDR_IND_1 = ADDR_IND_0 + 1;
-
-    // Verify address indirections match
-    clock_eq(step_addr, ADDR_STATE, ADDR_IND_0) === 0;
-    clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
+    const int ADDR_STATE = STEP_MAIN + 1;   // main operand a
+    const int ADDR_INPUT = ADDR_STATE + 1;  // main operand b
 
     // Memory operation counts
     const int NUM_STATE_WORDS = 16;
     const int NUM_INPUT_WORDS = 16;
     const int NUM_STATE_PORTS = 4;   // va, vb, vc, vd
     const int NUM_MSG_PORTS = 2;     // x, y
-    const int NUM_PARAMS = 3;        // index, state ptr, input ptr
     const int WORD_SIZE = 8;         // bytes per u64
     
     const int CLOCKS_READ_STATE = NUM_STATE_WORDS / NUM_STATE_PORTS;  // 4
@@ -384,7 +371,6 @@ airtemplate Blake2br(const int N = 2**20) {
     const expr clks_read_state = clock_set(start: 0, end: CLOCKS_READ_STATE);
     const expr clks_write_state = clock_set(start: WRITE_START, end: CLOCKS);
     const expr clks_read_input = clock_set(start: 0, end: CLOCKS_READ_INPUT);
-    const expr clks_read_params = clock_set(start: 0, end: NUM_PARAMS);
 
     // ── State ports ──
     for (int port = 0; port < NUM_STATE_PORTS; port++) {
@@ -465,26 +451,16 @@ airtemplate Blake2br(const int N = 2**20) {
         );
     }
 
-    // ── Param port ──
-    // Index at ADDR_OP, then the two pointers
-    const expr mem_addr = clock_shift(step_addr, ADDR_OP, start: 0, end: NUM_PARAMS, delta: WORD_SIZE);
-    const expr mem_value = CLK[0] * round_idx + clock_shift(step_addr, ADDR_IND_0, 1) + clock_shift(step_addr, ADDR_IND_1, 2);
-    precompiled_mem_op(
-        is_write: 0,
-        sel: clks_read_params * in_use,
-        main_step: op_step,
-        addr: mem_addr,
-        value: [mem_value, 0]
-    );
-
     // ═══════════════════════════════════════════════════════════════════════════
     // MAIN PROCESSOR INTEGRATION
     // ═══════════════════════════════════════════════════════════════════════════
     col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Blake2br operation, 0 otherwise
     in_use_clk_0 <== CLK_0 * in_use;
 
-    proves_operation(op: OP_BLAKE2B, b: [step_addr'(ADDR_OP), 0], main_step: step_addr'(STEP_MAIN), 
-                     mul: in_use_clk_0);
+    // The round index is the static argument of the instruction (extended_arg); round_idx is
+    // latched over the cycle, so its value at the first clock is the one the main processor sent.
+    proves_operation(op: OP_BLAKE2B, a: [step_addr'(ADDR_STATE), 0], b: [step_addr'(ADDR_INPUT), 0],
+                     main_step: step_addr'(STEP_MAIN), extended_arg: round_idx, mul: in_use_clk_0);
 
     function pack(const expr a[], const int s): expr {
         const int len = length(a);

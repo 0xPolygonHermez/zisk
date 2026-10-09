@@ -23,14 +23,16 @@ pub struct BabyJubJubSM<F: PrimeField64> {
 #[derive(Debug, Default)]
 struct BabyJubJubStepAddr {
     main_step: u64,
+    /// Main operand b: the p2 address.
     addr_op: u32,
+    /// Main operand a: the p1 address (the result overwrites p1).
+    addr_a: u32,
     addr_x1: u32,
     addr_y1: u32,
     addr_x2: u32,
     addr_y2: u32,
     addr_x3: u32,
     addr_y3: u32,
-    addr_ind: [u32; 2],
 }
 
 impl<F: PrimeField64> BabyJubJubSM<F> {
@@ -51,11 +53,9 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
         trace[5].set_step_addr(data.addr_y2 as u64);
         trace[6].set_step_addr(data.addr_x3 as u64);
         trace[7].set_step_addr(data.addr_y3 as u64);
-        for (i, addr_ind) in data.addr_ind.iter().enumerate() {
-            trace[i + 8].set_step_addr(*addr_ind as u64);
-        }
-        for i in 0..(BABYJUBJUB_ROWS_BY_OP - 8 - data.addr_ind.len()) {
-            trace[i + 8 + data.addr_ind.len()].set_step_addr(0);
+        trace[8].set_step_addr(data.addr_a as u64);
+        for row in trace.iter_mut().take(BABYJUBJUB_ROWS_BY_OP).skip(9) {
+            row.set_step_addr(0);
         }
     }
 
@@ -67,18 +67,18 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
     ) {
         let data = executors::BabyJubJub::execute_add(&input.p1, &input.p2);
         self.expand_data_on_trace(&data, trace, SEL_OP_BABYJUBJUB_ADD, previous_lt_flags);
-        // Result overwrites p1 (same memory map as bn254 curve add).
+        // Result overwrites p1 (same memory map as bn254 curve add): a = p1 address, b = p2 address.
         Self::expand_addr_step_on_trace(
             &BabyJubJubStepAddr {
                 main_step: input.step,
-                addr_op: input.addr,
+                addr_op: input.p2_addr,
+                addr_a: input.p1_addr,
                 addr_x1: input.p1_addr,
                 addr_y1: input.p1_addr + 32,
                 addr_x2: input.p2_addr,
                 addr_y2: input.p2_addr + 32,
                 addr_x3: input.p1_addr,
                 addr_y3: input.p1_addr + 32,
-                addr_ind: [input.p1_addr, input.p2_addr],
             },
             trace,
         );
