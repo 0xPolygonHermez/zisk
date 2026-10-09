@@ -2,7 +2,15 @@
 
 ## Scope
 
-A ZisK guest reaches every EF accelerator and U256 function with a CSR instruction sequence that the transpiler recognises and rewrites; no C marshalling layer runs. This spec gives the exact instruction sequences, for guest authors writing C, C++ or assembly against `zkvm_accelerators.h`, `zkvm_u256.h` and `zkvm_u256_le.h`.
+In the default configuration, a ZisK guest reaches every EF accelerator and U256 function with a CSR instruction sequence that the transpiler recognises and rewrites; no C marshalling layer runs. This spec gives the exact instruction sequences, for guest authors writing C, C++ or assembly against `zkvm_accelerators.h`, `zkvm_u256.h` and `zkvm_u256_le.h`.
+
+The default configuration is a RISC-V build with none of the macros below defined. The U256 headers offer alternatives, chosen by defining a macro before including the header:
+
+- **`ZKVM_U256_CALLS`** (`zkvm_u256.h`). Every EF U256 function is only declared, as in the EF standard header, and is called through its thunk. Non-RISC-V builds always behave this way, and `zkvm_u256_le.h` does the same off RISC-V.
+- **`ZKVM_U256_INLINE`** (`zkvm_u256.h`, RISC-V only). Every function except the division family is a `static inline` C definition from `zkvm_u256_inline.h`. It converts the operands to limbs and computes in plain C or with the `arith256` / `arith256_mod` precompiles. No zkvmcall is involved, and some functions use no CSR at all.
+- **`ZKVM_U256_LE_INLINE`** (`zkvm_u256_le.h`, RISC-V only). The same approach for the little-endian ABI: plain C, or a precompile (`add256` `0x811`, `arith256` `0x801`, `arith256_mod` `0x802`) applied to the operands in place.
+
+In both inline modes, the division family (div, mod, divmod, sdiv, smod, sdivmod) remains a thunk call. Guest source code does not change between configurations; only the emitted code and its cost do. Except where it says otherwise, the rest of this spec describes the default configuration.
 
 There are two call forms:
 
@@ -11,7 +19,7 @@ There are two call forms:
 
 The choice is a trade-off between size and overhead. Inline suits short functions: a call costs no argument moves, call or return, and the extra ROM per call site is small. Thunk suits long functions: one shared copy of the routine serves every call site, so a long body is not duplicated in ROM, and the call overhead is small next to the work.
 
-The sequences only have meaning under the ZisK transpiler. On any other RISC-V target a `csrs` to these addresses is an ordinary CSR write and the call computes nothing.
+The sequences only have meaning under the ZisK transpiler. These addresses fall in the custom user-level CSR range (`0x800`..`0x8FF`), so on any other RISC-V target the behaviour is implementation-specific. A hart that does not implement the CSR raises an illegal-instruction exception. One that does may give the access some unrelated effect. In neither case does the call compute its result. Do not run a guest built from these sequences outside ZisK.
 
 ## Inline form
 
@@ -32,7 +40,7 @@ The transpiler replaces the whole sequence with the `.zisk` routine's body, read
 To the guest program, an inline zkvmcall behaves like one more instruction: it reads its operands, writes its result, and leaves everything else as it was. The inlined code has its own resources, separate from the program's:
 
 - **ROM.** Only the body's first instruction takes the address of the `csrs`. The rest are placed at internal (odd) ROM addresses that RISC-V code never uses, so the program's own code layout is unchanged. Read-only constants live in the ZisK library ROM (`ZISKLIB_ROM_ADDR`, 1 MB).
-- **RAM.** Scratch variables live in the ZisK library RAM (`ZISKLIB_RAM_ADDR`, 192 KB). The guest linker scripts reserve that range, so the guest's own data and heap never reach it.
+- **RAM.** Scratch variables live in the ZisK library RAM (`ZISKLIB_RAM_ADDR`, 192 KB). The guest linker script (`ziskbuild/zisk_linker_script.ld`) reserves that range, so the guest's own data and heap never reach it.
 - **Registers.** The body uses only `r32`..`r39`. These are main-trace registers that RISC-V code cannot name, so no guest register is spilled, saved or clobbered.
 
 The only memory the program sees change is the result buffer.
@@ -52,15 +60,17 @@ The transpiler places the body's first ZisK instruction at the address of the fi
 
 ### Precompile
 
-One instruction; the register holds a pointer.
+A precompile call is a special, simplified case of the inline zkvmcall in which only one argument is needed. The sequence is a single `csrs`: its register carries argument 0 on the function's own CSR, and there are no argument carriers (`0x8E0`..). The transpiler also has less to do. It does not expand a `.zisk` routine body but emits one ZisK precompile instruction at the address of the `csrs`, so no internal addresses are used, and execution continues at the next instruction.
 
 ```asm
 csrs 0x800, rS          # keccak-f[1600] on the 25-word state at rS, in place
 ```
 
-### Marker pair
+The register holds a pointer to the operand, here the state. A precompile that works on several operands still takes one argument: the pointer to a parameter block in memory that lists the operand pointers.
 
-A `csrs` (or `csrrs`) followed immediately by an `add` or `addi` with `rd = x0`. The transpiler folds the pair into one DMA or EVM operation. A size that is a constant up to 2047 rides as the `addi` immediate and makes the operation one ZisK instruction; a size in a register costs one more.
+### Marker sequence
+
+A CSR instruction (`csrs`, `csrrs` or `csrsi`) followed immediately by one or two `add`/`addi` instructions with `rd = x0`. The transpiler folds the whole sequence into one DMA or EVM operation. Most sequences are two instructions. The constant-size memset is three: `csrsi 0x816, 2` selects that form, and two `addi` instructions follow, carrying the size and the fill byte. The transpiler rejects a sequence whose trailing instructions are missing or of the wrong kind. A size that is a constant up to 2047 rides as an `addi` immediate and makes the operation one ZisK instruction; a size in a register costs one more.
 
 | Operation | Constant size | Size in a register |
 | --- | --- | --- |
@@ -88,16 +98,18 @@ Unlike the inline form, a thunk does not copy the routine into the program. An i
 The contract:
 
 1. **Arguments.** The caller follows the RISC-V calling convention: arguments in `a0`..`a7` (pointers, lengths, counts), return address in `ra`. The C prototypes in the headers are the signatures.
-2. **Transpilation.** A `csrs <id>, x0` with `id` in `0x850`..`0x8BF` is a zkvmcall. The transpiler replaces it with a jump, without link, to the matching `ziskasm_zkvm_*` routine. The rest of the thunk is never reached; the `ret` only makes the stub look like a normal function to tools.
-3. **Return.** The routine reads its arguments from `a0`..`a7`, returns a `zkvm_status` in `a0` (`ZKVM_EOK` = 0 on success) and `ret`s straight to the caller through `ra`.
-4. **Clobbers.** As any call: caller-saved registers are clobbered, callee-saved ones survive. Memory is read and written only through the argument pointers.
+2. **Transpilation.** A `csrs <id>, x0` with `id` in `0x850`..`0x8BF` is a zkvmcall. If `id` is assigned (see the table below), the transpiler replaces the instruction with a jump, without link, to the matching `ziskasm_zkvm_*` routine. An unassigned `id` in the range has no routine, and the transpile fails with `unknown zkvmcall`. The rest of the thunk is never reached; the `ret` only makes the stub look like a normal function to tools.
+3. **Return.** The routine reads its arguments from `a0`..`a7`, returns the result its C prototype declares and `ret`s straight to the caller through `ra`. Accelerator and U256 routines return a `zkvm_status` in `a0` (`ZKVM_EOK` = 0 on success). `read_input` and `write_output` return nothing. The ZisK library functions return what their prototypes in `zkvm_zisklib.h` declare: a `uint64_t` or `size_t` in `a0`, or nothing.
+4. **Clobbers.** As any call: caller-saved registers are clobbered, callee-saved ones survive. Of the guest's own memory, a routine reads and writes only what its argument pointers reach. It may also touch memory outside the guest's own data:
+   - **Library scratch.** Hashes, curves, modexp and U256 arithmetic keep mutable scratch variables in the ZisK library RAM (`ZISKLIB_RAM_ADDR`). The guest linker script reserves that range, so guest data never overlaps it. The scratch holds no state between calls that the guest can observe.
+   - **I/O regions.** `read_input` writes a pointer into the fixed, read-only input region to `*buf_ptr`. `write_output` appends to the public-output region, and that region keeps state across calls: a partial trailing word is carried over to the next call.
 5. **Identification.** The transpiler matches the instruction, not the symbol name, so a stripped ELF works and any function containing that `csrs` is a thunk.
 
 In C or C++ there is nothing special to write: include the header, link `zisklib_c` (which assembles `zkvm_calls.s`), and call the function.
 
 ## CSR addresses
 
-The function ID is the CSR address. zkvmcalls occupy `0x850`..`0x8BF`; IDs are never reused or renumbered. The source of truth is `definitions/src/zkvmcall.rs`, which a transpiler test checks against `zkvm_calls.s`.
+The function ID is the CSR address. The range `0x850`..`0x8BF` is reserved for zkvmcalls, but only the IDs in the table are assigned; the rest (currently `0x8B3`..`0x8BF`) are free for future functions, and using one fails the transpile. IDs are never reused or renumbered. The source of truth is `definitions/src/zkvmcall.rs`, which a transpiler test checks against `zkvm_calls.s`.
 
 | CSR | Function | Form |
 | --- | --- | --- |
@@ -118,8 +130,8 @@ The function ID is the CSR address. zkvmcalls occupy `0x850`..`0x8BF`; IDs are n
 | `0x85B` | `zkvm_kzg_point_eval` | thunk |
 | `0x85C`..`0x862` | `zkvm_bls12_g1_add`, `_g1_msm`, `_g2_add`, `_g2_msm`, `_pairing`, `_map_fp_to_g1`, `_map_fp2_to_g2` | thunk |
 | `0x863`, `0x864` | `read_input`, `write_output` (`zkvm_io.h`) | thunk |
-| `0x865`..`0x87F` | EF big-endian U256 (`zkvm_u256.h`): add, sub, mul, div, mod, divmod, addmod, mulmod, exp, sdiv, smod, sdivmod, lt, gt, slt, sgt, eq, iszero, and, or, xor, not, byte, shl, shr, sar, signextend | inline zkvmcall, except the division family and exp (thunk) |
-| `0x880`..`0x89A` | ZisK little-endian U256 (`zkvm_u256_le.h`): div, mod, divmod, sdiv, smod, sdivmod, add, sub, mul, addmod, mulmod, exp, lt, gt, slt, sgt, eq, iszero, and, or, xor, not, byte, shl, shr, sar, signextend | inline zkvmcall, except the division family (`0x880`..`0x885`) and exp (`0x88B`) (thunk) |
+| `0x865`..`0x87F` | EF big-endian U256 (`zkvm_u256.h`): add, sub, mul, div, mod, divmod, addmod, mulmod, exp, sdiv, smod, sdivmod, lt, gt, slt, sgt, eq, iszero, and, or, xor, not, byte, shl, shr, sar, signextend | default: inline zkvmcall, except the division family and exp (thunk) |
+| `0x880`..`0x89A` | ZisK little-endian U256 (`zkvm_u256_le.h`): div, mod, divmod, sdiv, smod, sdivmod, add, sub, mul, addmod, mulmod, exp, lt, gt, slt, sgt, eq, iszero, and, or, xor, not, byte, shl, shr, sar, signextend | default: inline zkvmcall, except the division family (`0x880`..`0x885`) and exp (`0x88B`) (thunk) |
 | `0x89B`..`0x8B2` | ZisK library functions (`zkvm_zisklib.h`) | thunk |
 | `0x8E0`..`0x8E7` | arguments 1..8 of an inline zkvmcall | argument carrier |
 
@@ -184,12 +196,12 @@ zkvm_status st = zkvm_sha256(msg, msg_len, &h);   /* st == ZKVM_EOK */
 
 ## Rules
 
-- **Alignment.** Pass 8-byte-aligned buffers to the accelerator and U256 functions; the header types carry `ALIGN8`. The JUMPDEST bitmap requires `code` and `bitmap` 8-byte aligned and `size > 0`, otherwise `zkvm_evm_jumpdest_bitmap` returns `ZKVM_EFAIL` without writing.
+- **Alignment.** The fixed-size typed values (hashes, points, scalars, field elements, U256 words, the blake2f state) must be 8-byte aligned. Their header types carry `ALIGN8`, so declaring them with those types is enough. The raw `uint8_t*` byte buffers have no alignment requirement: the `data` input of `zkvm_keccak256`, `zkvm_sha256` and `zkvm_ripemd160`, and the `base`, `exp`, `mod` and `output` arrays of `zkvm_modexp`. The routines copy them with DMA or marshal them byte by byte. The JUMPDEST bitmap requires `code` and `bitmap` 8-byte aligned and `size > 0`, otherwise `zkvm_evm_jumpdest_bitmap` returns `ZKVM_EFAIL` without writing.
 - **Aliasing.** U256 results may alias their inputs. `zkvm_memcpy` is overlap-safe, so it is also a memmove.
 - **Immediates.** An `addi` immediate is at most 2047. Larger or run-time sizes use the register form.
-- **Status.** Thunk routines return a real `zkvm_status` in `a0`. Inline U256 and keccak-f always return `ZKVM_EOK`.
-- **Adjacency.** Nothing may be scheduled between the instructions of a marker pair or an inline zkvmcall. One `asm` statement per sequence guarantees it.
-- **Other targets.** Off ZisK the headers only declare the functions, and host builds must supply their own implementations.
+- **Status.** Accelerator and U256 thunk routines return a real `zkvm_status` in `a0`. Inline U256 and keccak-f always return `ZKVM_EOK`. The I/O and ZisK-library thunks return their prototype's type instead (see the return step of the thunk form).
+- **Adjacency.** Nothing may be scheduled between the instructions of a marker sequence or an inline zkvmcall. One `asm` statement per sequence guarantees it.
+- **Other targets.** Off RISC-V (e.g. host-side tests) the headers only declare the functions, and the build must supply its own implementations. On a RISC-V target other than ZisK the headers still emit the CSR sequences. Those trap or misbehave there (see Scope), so such a build must not use these headers.
 
 ## Reference sources
 
