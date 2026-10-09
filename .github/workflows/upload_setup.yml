@@ -38,7 +38,7 @@ on:
         default: true
 
 concurrency:
-  group: upload-setup
+  group: upload-setup-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -47,7 +47,9 @@ permissions:
 
 env:
   BUCKET: gs://zisk-setup
-  TEST_CONTAINER: zisk-gha-upload-setup
+  # Per run: a run from another branch may start its build-setup while this
+  # run waits for upload-setup, and that must not replace this run's container.
+  TEST_CONTAINER: zisk-gha-upload-setup-${{ github.run_id }}
   SETUP_STAGE_ROOT: /home/gha/cache-setup/staging
 
 jobs:
@@ -490,3 +492,7 @@ jobs:
     steps:
       - name: Remove staging directory
         run: sudo rm -rf "${SETUP_STAGE_ROOT}/${{ github.run_id }}"
+
+      - name: Remove container
+        # Left behind when the run never reaches upload-setup's stop step.
+        run: docker rm -f "${TEST_CONTAINER}" || true
