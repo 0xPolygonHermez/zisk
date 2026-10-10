@@ -1148,9 +1148,14 @@ impl Proof {
                 path.display()
             ))
         })?;
-        bincode::serde::encode_into_std_write(self, &mut file, bincode::config::standard())
-            .map(|_| ())
-            .map_err(|e| CommonError::Io(format!("Failed to save proof: {}", e)))
+        // Fixed-width ints: a Goldilocks element takes 8 bytes, where the default varint spends 9.
+        bincode::serde::encode_into_std_write(
+            self,
+            &mut file,
+            bincode::config::standard().with_fixed_int_encoding(),
+        )
+        .map(|_| ())
+        .map_err(|e| CommonError::Io(format!("Failed to save proof: {}", e)))
     }
 
     /// Load a proof from a file using bincode deserialization.
@@ -1166,9 +1171,11 @@ impl Proof {
                 path.as_ref().display()
             ))
         })?;
-        let proof: Proof =
-            bincode::serde::decode_from_std_read(&mut file, bincode::config::standard())
-                .map_err(|e| CommonError::Io(format!("Failed to load proof: {}", e)))?;
+        let proof: Proof = bincode::serde::decode_from_std_read(
+            &mut file,
+            bincode::config::standard().with_fixed_int_encoding(),
+        )
+        .map_err(|e| CommonError::Io(format!("Failed to load proof: {}", e)))?;
         // bincode will happily decode a non-canonical or misshapen `publics_full`.
         ensure_stored_publics(&proof.body)?;
         Ok(proof)
@@ -1952,6 +1959,31 @@ mod tests {
             ProofBody::Plonk { .. } => panic!("expected Vadcop body after roundtrip"),
         }
         assert_eq!(loaded.program_vk.vk, vec![7, 8, 9, 10]);
+    }
+
+    /// Field elements are stored at 8 bytes each, where bincode's default varint spends 9.
+    #[test]
+    fn proof_save_stores_field_elements_at_eight_bytes() {
+        let tmp = std::env::temp_dir().join(format!("proof_fixed_int_{}.bin", std::process::id()));
+        let words: Vec<u64> =
+            (0..1000u64).map(|i| 0xFFFF_FFFF_0000_0000 - i * 0x1234_5678_9abc).collect();
+        let mut original =
+            vadcop_proof(VadcopKind::Final, vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS]);
+        if let ProofBody::Vadcop { proof, .. } = &mut original.body {
+            *proof = words.clone();
+        }
+
+        original.save(&tmp).unwrap();
+        let size = std::fs::metadata(&tmp).unwrap().len() as usize;
+        let loaded = Proof::load(&tmp).unwrap();
+        std::fs::remove_file(&tmp).ok();
+
+        // ~8.7 KB with fixed-width ints (publics and vk included); varint would be ~9.15 KB.
+        assert!(size < words.len() * 8 + 1024, "{size} bytes");
+        match loaded.body {
+            ProofBody::Vadcop { proof, .. } => assert_eq!(proof, words),
+            ProofBody::Plonk { .. } => panic!("expected Vadcop body after roundtrip"),
+        }
     }
 
     #[test]
