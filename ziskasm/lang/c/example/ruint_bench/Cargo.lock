@@ -1560,7 +1560,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#2a85963422f71d2c94f1d30ccaf99196ae6fff50"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#b4e94d57b20dbf68b32028896c1d26739db476de"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -1573,7 +1573,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#2a85963422f71d2c94f1d30ccaf99196ae6fff50"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#b4e94d57b20dbf68b32028896c1d26739db476de"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -1582,12 +1582,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#2a85963422f71d2c94f1d30ccaf99196ae6fff50"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#b4e94d57b20dbf68b32028896c1d26739db476de"
 
 [[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#2a85963422f71d2c94f1d30ccaf99196ae6fff50"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#b4e94d57b20dbf68b32028896c1d26739db476de"
 dependencies = [
  "num-traits",
  "proofman-fields",
