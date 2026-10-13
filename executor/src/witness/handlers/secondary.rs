@@ -7,6 +7,10 @@ use proofman_fields::PrimeField64;
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::state::ExecutionState;
 use crate::{ChunkDataCollector, WitnessGenerator};
+use zisk_common::{BusDevice, PayloadType};
+
+/// The collectors of one instance, as `collect_instance` returns them.
+type Collectors = Vec<(usize, Box<dyn BusDevice<PayloadType>>)>;
 
 /// Secondary handler witness computation for non-ROM `InstanceType::Instance` secondaries.
 pub struct SecondaryWitnessHandler;
@@ -30,9 +34,7 @@ impl SecondaryWitnessHandler {
             secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
 
         let instance = &**secn_instance;
-        // An instance whose inputs do not come from the replay (the Mem instances when the GPU
-        // planner retained the accesses) gets no collectors at all.
-        let collectors = if collect {
+        let collect_now = || -> ExecutorResult<Collectors> {
             let needs_collection = !state
                 .collector_store
                 .inner
@@ -41,10 +43,27 @@ impl SecondaryWitnessHandler {
             if needs_collection {
                 collector.collect_single(pctx, state, global_id, instance)?;
             }
-            state.take_collectors_for_instance(global_id, instance.instance_type())?
-        } else {
-            Vec::new()
+            state.take_collectors_for_instance(global_id, instance.instance_type())
         };
+        // An instance whose rows come from the GPU planner gets no collectors; should the device
+        // fail it after all, it is collected here and computed on the CPU like any other.
+        if !collect {
+            let trace_buffer = buffer_pool.take_buffer();
+            match generator.compute_secn_witness(
+                pctx,
+                sctx,
+                state,
+                global_id,
+                instance,
+                Vec::new(),
+                trace_buffer,
+                stats_scope_id,
+            ) {
+                Ok(()) => return Ok(()),
+                Err(e) => zisk_asm_runner::device_mem_witness_failed(&e.to_string()),
+            }
+        }
+        let collectors = collect_now()?;
         let trace_buffer = buffer_pool.take_buffer();
 
         generator.compute_secn_witness(

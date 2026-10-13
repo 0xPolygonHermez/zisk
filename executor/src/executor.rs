@@ -481,7 +481,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // Two rounds, with the first collected early and every secondary placed on registration,
         // only when the memory airs come from the device: with the CPU witness the memory
         // instances would need a second collect pass of their own, which costs more than the
-        // overlap gains (641_54, 24 cores: +0.7 s), so that path keeps the one-round flow.
+        // overlap gains, so that path keeps the one-round flow.
         let two_rounds = is_asm_emulator && zisk_asm_runner::device_mem_witness_requested();
         let first_round = self.register_secn_round(
             registry,
@@ -526,22 +526,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             )?;
             let mut release_deferred = false;
             if let Some(device_witness) = mem_artifacts.device_witness.as_ref() {
-                let mut owned = OwnedMemInstances::default();
-                for (plan, &gid) in plans.iter().zip(ids.iter()) {
-                    if !registry.is_my_process_instance(GlobalId(gid))? {
-                        continue;
-                    }
-                    let segment = plan.segment_id.map(|s| usize::from(s) as u32);
-                    if plan.air_id == MEM_AIR_IDS[0] {
-                        owned.ram.extend(segment);
-                    } else if plan.air_id == ROM_DATA_AIR_IDS[0] {
-                        owned.rom.extend(segment);
-                    } else if plan.air_id == INPUT_DATA_AIR_IDS[0] {
-                        owned.input.extend(segment);
-                    } else if AirClassifier::is_mem_align(plan.air_id) {
-                        owned.align.push(plan);
-                    }
-                }
+                let owned = owned_mem_instances(registry, &plans, &ids)?;
                 let d_buffers = proofman_extras
                     .map(|extras| extras.pctx().get_device_buffers_ptr())
                     .unwrap_or(std::ptr::null_mut());
@@ -860,6 +845,31 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         }
         Ok(())
     }
+}
+
+/// The memory instances this process proves, by family, out of the round's plans.
+fn owned_mem_instances<'a>(
+    registry: &dyn ProofRegistry,
+    plans: &'a [Plan],
+    ids: &[usize],
+) -> ExecutorResult<OwnedMemInstances<'a>> {
+    let mut owned = OwnedMemInstances::default();
+    for (plan, &gid) in plans.iter().zip(ids.iter()) {
+        if !registry.is_my_process_instance(GlobalId(gid))? {
+            continue;
+        }
+        let segment = plan.segment_id.map(|s| usize::from(s) as u32);
+        if plan.air_id == MEM_AIR_IDS[0] {
+            owned.ram.extend(segment);
+        } else if plan.air_id == ROM_DATA_AIR_IDS[0] {
+            owned.rom.extend(segment);
+        } else if plan.air_id == INPUT_DATA_AIR_IDS[0] {
+            owned.input.extend(segment);
+        } else if AirClassifier::is_mem_align(plan.air_id) {
+            owned.align.push(plan);
+        }
+    }
+    Ok(owned)
 }
 
 /// The instances of `ids` this process proves, in order.
