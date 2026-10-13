@@ -454,7 +454,11 @@ void decode_count_kernel(const uint64_t* __restrict__ words,
     if (i < n_memops && i >= *n_records) { d_counts[i] = 0; d_align_flag[i] = 0; }   // beyond the records: the scans see zeros
     if (i < *n_records) {
         MemOp op = load_record(words, rec_start[i]);
-        if (mops_record_is_light(words[rec_start[i]])) atomicOr(d_invalid_mode_flag, LIGHT_RECORD);
+        // A record without values (the light form, or a block write without its value block)
+        // leaves the device witness without the values it needs.
+        if (mops_record_is_light(words[rec_start[i]]) || ((op.flags & 0x0Fu) == MOPS_BLOCK_WRITE)
+            || ((op.flags & 0x0Fu) == MOPS_ALIGNED_BLOCK_WRITE))
+            atomicOr(d_invalid_mode_flag, LIGHT_RECORD);
         const bool ok = decode(op, &d_counts[i], my, d_invalid_mode_flag);
         // The MemAlign kind of a single access, from the counters the decode set (one at most).
         const uint32_t ak = my.full_5 ? 0u : my.full_3 ? 1u : my.full_2 ? 2u : my.read_byte ? 3u : my.write_byte ? 4u : ALIGN_KIND_NONE;
@@ -780,7 +784,7 @@ void state_machine_by_run_with_hist_kernel(const uint32_t* __restrict__ d_run_of
             hist_add(&d_histogram[compact], n_emit, compact, d_invalid_flag);
             local_max_ram = compact_ram;
         }
-        if (d_carry) d_carry[t] = ((uint64_t)compact_ram << COMPACT_ADDR_SHIFT) | (state ? 1ull : 0ull);
+        if (d_carry && t < MAX_POT_PER_PIECE) d_carry[t] = ((uint64_t)compact_ram << COMPACT_ADDR_SHIFT) | (state ? 1ull : 0ull);
     }
 
     __shared__ uint32_t s_max_ram;
@@ -1481,6 +1485,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     d_ram_nwrites_ = (unsigned long long*)take(8);
     d_align_cursor_   = (uint32_t*)take(4);
     d_align_overflow_ = (uint32_t*)take(4);
+    d_fill_fault_     = (uint32_t*)take(4);
     d_align_runs_     = (AlignRun*)take((size_t)MAX_ALIGN_RUNS * sizeof(AlignRun));
 
     cursor_ = (cursor_ + 255) & ~(size_t)255;
@@ -1517,7 +1522,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     d_ops_pool_used_u32_ = 0;
     ram_retention_enabled_.store(retain_rows_ && top_bytes_ > cursor_, std::memory_order_relaxed);
     piece_potentials_ = MAX_POT_PER_PIECE;
-    if (const char* e = std::getenv("ZISK_MOPS_PIECE_POTENTIALS")) {   // test knob: force small pieces
+    if (const char* e = std::getenv("ZISK_MEM_TEST_PIECE_POTENTIALS")) {   // tests: pieces of fewer potentials
         const long v = std::atol(e);
         if (v > 0 && (uint32_t)v < MAX_POT_PER_PIECE) piece_potentials_ = (uint32_t)v;
     }
@@ -1535,11 +1540,10 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     CUDA_CHECK(cudaStreamCreateWithPriority(&meta_stream_, cudaStreamDefault, greatestPrio));
     CUDA_CHECK(cudaStreamCreateWithPriority(&fill_stream_, cudaStreamNonBlocking, greatestPrio));
     CUDA_CHECK(cudaStreamCreateWithPriority(&copy_stream_, cudaStreamNonBlocking, leastPrio));
-    CUDA_CHECK(cudaEventCreate(&e_after_preproc_));
-    CUDA_CHECK(cudaEventCreate(&e_after_prepare_));
     CUDA_CHECK(cudaEventCreate(&e_metas_ready_));
 
     CUDA_CHECK(cudaMallocHost(&h_n_emits_all_, (size_t)MAX_CHUNKS * 4));
+    CUDA_CHECK(cudaMallocHost(&h_pot_device_, (size_t)MAX_CHUNKS * 4));
     CUDA_CHECK(cudaMallocHost(&h_result_nops_, (size_t)max_active_ * MAX_CHUNKS * 4));
     CUDA_CHECK(cudaMallocHost(&h_meta_scalars_, (size_t)max_active_ * 4 * 4));
     CUDA_CHECK(cudaMallocHost(&h_chunk_counters_per_chunk_,
@@ -1559,6 +1563,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     for (int s = 0; s < N_STREAMS; s++) {
         CUDA_CHECK(cudaMallocHost(&h_n_emits_[s], sizeof(uint32_t)));
         CUDA_CHECK(cudaMallocHost(&h_n_carry_[s], sizeof(uint32_t)));
+        CUDA_CHECK(cudaMallocHost(&h_pot_piece_[s], sizeof(uint32_t)));
     }
 
     pool_enabled_ = (ZISK_MOPS_POOL != 0);
@@ -1605,9 +1610,9 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
 
 bool CountAndPlan::add_chunk(const uint64_t* words, uint32_t n) {
     if (n_chunks_ >= MAX_CHUNKS) {
-        fprintf(stderr,
-                "CountAndPlan::add_chunk ERROR: MAX_CHUNKS=%u exceeded\n", MAX_CHUNKS);
-        std::abort();
+        fprintf(stderr, "CountAndPlan::add_chunk ERROR: MAX_CHUNKS=%u exceeded\n", MAX_CHUNKS);
+        add_error_.store(true, std::memory_order_relaxed);
+        return false;
     }
     const uint32_t c = n_chunks_++;
     if (pool_enabled_) {
@@ -1623,52 +1628,29 @@ bool CountAndPlan::add_chunk(const uint64_t* words, uint32_t n) {
     return add_chunk_core_(words, n, c);
 }
 
-// The chunk rewritten in the light form, one word per record: steps zeroed, writes without
-// values, block records without payload, value blocks as block writes. Test support
-// (ZISK_MOPS_TEST_LIGHT_STREAM) for the form the light emulator emits.
-static std::vector<uint64_t> strip_values(const uint64_t* words, uint32_t n) {
-    std::vector<uint64_t> out;
-    out.reserve(n);
-    const uint64_t step_bits = 0xFFFFFull << 38;
-    for (uint32_t k = 0; k < n;) {
-        const uint64_t hdr = words[k];
-        const uint32_t len = mops_record_len(hdr);
-        const uint32_t mode = (uint32_t)(hdr >> 32) & 0x3Fu, low = mode & 0x0Fu;
-        const bool single = (low == 1 || low == 2 || low == 4 || low == 8);
-        if (low == MOPS_BLOCK_VALUES) {
-            const uint64_t count = (hdr >> 36) & 63u;
-            out.push_back((hdr & 0xFFFFFFFFull) | ((uint64_t)MOPS_ALIGNED_BLOCK_WRITE << 32) | (count << 36)
-                          | (1ull << MOPS_NO_PAYLOAD_BIT) | (1ull << 63));
-        } else if (low == MOPS_ALIGNED_READ || (mode != MOPS_READ_8_VALUE && single && (mode & MOPS_WRITE_FLAG) == 0)) {
-            out.push_back(hdr & ~step_bits);                                                      // read
-        } else if (single || low == MOPS_ALIGNED_WRITE) {
-            out.push_back(((hdr | (1ull << MOPS_NO_VALUE_BIT)) & ~(1ull << 62)) & ~step_bits);    // write
-        } else {
-            out.push_back(hdr | (1ull << MOPS_NO_PAYLOAD_BIT));                                  // block read or write
-        }
-        k += len;
-    }
-    return out;
-}
-
 bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c) {
     const int s = c % N_STREAMS;
-    static const bool light_stream = std::getenv("ZISK_MOPS_TEST_LIGHT_STREAM") != nullptr;
-    std::vector<uint64_t> light;
-    if (light_stream) {
-        light = strip_values(words, n);
-        words = light.data();
-        n = (uint32_t)light.size();
-    }
 
     // Host walk: potentials and RAM accesses per record, and the cuts into pieces of whole records.
-    struct Piece { uint32_t w0, nw, pot, ram; };
+    // The stream is checked as it is walked: every record starts with a tagged header and ends
+    // inside the chunk. A block record wider than a piece (a copy of more than piece_potentials_
+    // words from one source) is replaced by sub-records of the same kind, each a piece of its own.
+    struct Piece { uint32_t w0, nw, pot, ram; uint32_t sub_nw; uint64_t sub[2]; };
     std::vector<Piece> pieces;
-    Piece cur{0, 0, 0, 0};
+    Piece cur{0, 0, 0, 0, 0, {0, 0}};
     size_t   pot_total = 0;
     uint32_t ram_total = 0;
+    auto malformed = [&](uint32_t k, const char* why) {
+        fprintf(stderr, "CountAndPlan::add_chunk ERROR: chunk %u, word %u: %s\n", c, k, why);
+        add_error_.store(true, std::memory_order_relaxed);
+        return false;
+    };
     for (uint32_t k = 0; k < n;) {
-        const uint32_t len = mops_record_len(words[k]);
+        const uint64_t hdr = words[k];
+        if (!(hdr >> 63)) return malformed(k, "record header without the tag bit");
+        const uint32_t len = mops_record_len(hdr);
+        if (k + len > n) return malformed(k, "record past the end of the chunk");
+        if (len == 2 && (words[k + 1] >> 63)) return malformed(k, "payload word with the tag bit");
         const MemOp op = load_record(words, k);
         const uint32_t addr    = op.addr;
         const uint32_t aligned = addr & ZISK_ALIGN_MASK;
@@ -1697,29 +1679,48 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
                 add_pot(addr, (op.flags >> MOPS_BLOCK_COUNT_SBITS) & 63u); break;
             default: add_pot(addr, op.flags >> MOPS_BLOCK_COUNT_SBITS); break;
         }
+        if (dp > piece_potentials_) {
+            // A block record wider than a piece: sub-records of up to piece_potentials_ words, the
+            // address advanced, the step and the payload kept.
+            const uint32_t count = op.flags >> MOPS_BLOCK_COUNT_SBITS;
+            if (dp != count) return malformed(k, "record wider than a piece");
+            if (cur.nw > 0) pieces.push_back(cur);
+            const uint64_t count_mask = (uint64_t)((1u << 26) - 1) << 36;
+            for (uint32_t done = 0; done < count;) {
+                const uint32_t part = std::min(count - done, piece_potentials_);
+                Piece sp{k, len, part, is_ram_addr(addr) ? part : 0u, len, {0, 0}};
+                sp.sub[0] = (hdr & ~count_mask & ~0xFFFFFFFFull) | ((uint64_t)part << 36) | (uint64_t)(addr + done * 8u);
+                if (len == 2) sp.sub[1] = words[k + 1];
+                pieces.push_back(sp);
+                pot_total += part; ram_total += sp.ram;
+                done += part;
+            }
+            cur = Piece{k + len, 0, 0, 0, 0, {0, 0}};
+            k += len;
+            continue;
+        }
         if (cur.nw > 0 && (cur.pot + dp > piece_potentials_ || cur.nw + len > MAX_WORDS_PER_PIECE)) {
             pieces.push_back(cur);
-            cur = Piece{k, 0, 0, 0};
+            cur = Piece{k, 0, 0, 0, 0, {0, 0}};
         }
         cur.nw += len; cur.pot += dp; cur.ram += dr;
         pot_total += dp; ram_total += dr;
         k += len;
     }
     if (cur.nw > 0) pieces.push_back(cur);
-    {
-        uint32_t np = (uint32_t)pieces.size(), seen = max_pieces_.load(std::memory_order_relaxed);
-        while (np > seen && !max_pieces_.compare_exchange_weak(seen, np, std::memory_order_relaxed)) {}
-    }
 
     // Reserve this chunk's compacted-output region in the device ops pool. Each stack bumps its
     // own cursor before reading the other's, so two concurrent reservations cannot both miss the
     // crossing. Meeting the retained accesses drops the device witness first; only a pool that
     // does not fit the region on its own is an error.
     const size_t base = pool_cursor_u32_.fetch_add(pot_total, std::memory_order_seq_cst);
-    if (pool_end_bytes(base + pot_total) > ram_low_edge_bytes(ram_cursor_.load(std::memory_order_seq_cst))
-        && ram_retention_enabled_.exchange(false)) {
-        fprintf(stderr, "CountAndPlan: the ops pool meets the retained RAM accesses at chunk %u; "
-                        "no device RAM witness for this block\n", c);
+    // The pool may not grow into accesses already reserved above it: a retain kernel may still be
+    // writing them. (The record side drops the retention instead when it meets the pool.)
+    if (pool_end_bytes(base + pot_total) > ram_low_edge_bytes(ram_cursor_.load(std::memory_order_seq_cst))) {
+        fprintf(stderr, "CountAndPlan::add_chunk ERROR: the ops pool meets the retained accesses at chunk %u; "
+                        "no device plan for this block\n", c);
+        add_error_.store(true, std::memory_order_relaxed);
+        return false;
     }
     if (pool_end_bytes(base + pot_total) > top_bytes_) {
         fprintf(stderr,
@@ -1732,7 +1733,6 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
     }
     out_offsets_[c]            = base;
     n_potentials_per_chunk_[c] = (uint32_t)pot_total;
-    n_words_per_chunk_[c]      = n;
     n_ram_per_chunk_[c]        = ram_total;
 
     if (n == 0) {
@@ -1741,10 +1741,10 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
         return true;
     }
     uint32_t* d_chunk_out = d_ops_pool_ + base;
-    if (pieces.size() == 1) {
-        const bool ok = add_piece_(words, n, c, s, (uint32_t)pot_total, ram_total, d_chunk_out, 0, false, &h_n_emits_all_[c]);
-        if (light_stream) CUDA_CHECK(cudaStreamSynchronize(streams_[s]));   // the rewritten words die here
-        return ok;
+    if (pieces.size() == 1 && pieces[0].sub_nw == 0) {
+        // One piece: its device potential count is checked against the walk's in run().
+        return add_piece_(words, n, c, s, (uint32_t)pot_total, ram_total, d_chunk_out, 0, false, &h_n_emits_all_[c],
+                          &h_pot_device_[c]);
     }
 
     // Pieces run in order on the chunk's stream; each hands its emit count and the pairing state
@@ -1753,19 +1753,34 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
     for (size_t p = 0; p < pieces.size(); ++p) {
         const Piece& pc = pieces[p];
         const bool last = p + 1 == pieces.size();
-        if (!add_piece_(words + pc.w0, pc.nw, c, s, pc.pot, pc.ram, d_chunk_out + emits, n_carry, !last, h_n_emits_[s]))
+        const uint64_t* pw = pc.sub_nw ? pc.sub : words + pc.w0;
+        const uint32_t  pn = pc.sub_nw ? pc.sub_nw : pc.nw;
+        if (!add_piece_(pw, pn, c, s, pc.pot, pc.ram, d_chunk_out + emits, n_carry, !last, h_n_emits_[s], h_pot_piece_[s]))
             return false;
-        CUDA_CHECK(cudaStreamSynchronize(streams_[s]));
+        CUDA_CHECK(cudaStreamSynchronize(streams_[s]));   // the sub-record's words may leave scope
+        if (*h_pot_piece_[s] != pc.pot) {
+            fprintf(stderr, "CountAndPlan::add_chunk ERROR: chunk %u piece %zu: the device found %u potentials, "
+                            "the walk %u\n", c, p, *h_pot_piece_[s], pc.pot);
+            add_error_.store(true, std::memory_order_relaxed);
+            return false;
+        }
         emits += *h_n_emits_[s];
         n_carry = (!last && pc.ram + n_carry > 0) ? *h_n_carry_[s] : 0;
+        if (n_carry > MAX_POT_PER_PIECE) {   // more distinct RAM words in one chunk than a piece carries
+            fprintf(stderr, "CountAndPlan::add_chunk ERROR: chunk %u touches more than %u distinct RAM words; "
+                            "no device plan for this block\n", c, MAX_POT_PER_PIECE);
+            add_error_.store(true, std::memory_order_relaxed);
+            return false;
+        }
     }
     h_n_emits_all_[c] = emits;
+    h_pot_device_[c] = (uint32_t)pot_total;   // every piece checked above
     return true;
 }
 
 // One piece of a chunk through the device pipeline: decode, expand, count, pair, retain, compact.
 bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int s, uint32_t pot, uint32_t ram,
-                              uint32_t* d_out, uint32_t n_carry, bool carry_out, uint32_t* h_emits) {
+                              uint32_t* d_out, uint32_t n_carry, bool carry_out, uint32_t* h_emits, uint32_t* h_pot) {
     cudaStream_t st = streams_[s];
     constexpr int BLOCK = 256;
     const int g_memops = (n + BLOCK - 1) / BLOCK;
@@ -1927,6 +1942,7 @@ bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int
     }
 
     CUDA_CHECK(cudaMemcpyAsync(h_emits, d_final_offsets_[s] + pot, 4, cudaMemcpyDeviceToHost, st));
+    CUDA_CHECK(cudaMemcpyAsync(h_pot, d_potential_offsets_[s] + n, 4, cudaMemcpyDeviceToHost, st));
 
     compact_kernel_with_shift<<<g_pot, BLOCK, 0, st>>>(
         d_potentials_[s], d_emit_bits_[s], d_final_offsets_[s],
@@ -1969,33 +1985,36 @@ void CountAndPlan::pool_stop_() {
         if (pool_threads_[s].joinable()) pool_threads_[s].join();
 }
 
+// A block the planner cannot plan (a malformed stream, a capacity exceeded) returns false after
+// its reason went to stderr: the caller plans it on the CPU instead.
 bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
     bind_device(gpu_device_);
-    using clock = std::chrono::steady_clock;
-    const auto t0 = clock::now();
-    auto ms_since = [](clock::time_point a) { return std::chrono::duration<double, std::milli>(clock::now() - a).count(); };
-    double t_drain = 0, t_sync = 0, t_counts = 0, t_global = 0, t_worker = 0, t_metas = 0;
-
     if (pool_enabled_) pool_stop_();
-    t_drain = ms_since(t0);
     if (n_chunks_ == 0) {
         fprintf(stderr, "CountAndPlan::run ERROR: no chunks added\n");
         return false;
     }
-
     if (add_error_.load(std::memory_order_relaxed)) {
-        fprintf(stderr, "CountAndPlan::run FATAL: add_chunk reported an error "
-                        "(potentials or ops-pool capacity exceeded) — aborting\n");
-        std::exit(1);
+        fprintf(stderr, "CountAndPlan::run ERROR: a chunk was rejected (see above); no device plan for this block\n");
+        return false;
+    }
+    if (std::getenv("ZISK_MEM_TEST_PLAN_FAIL")) {   // tests: the block is planned on the CPU
+        fprintf(stderr, "CountAndPlan::run ERROR: ZISK_MEM_TEST_PLAN_FAIL set; no device plan for this block\n");
+        return false;
     }
 
     if (!preprocessed_) {
-        const auto t1 = clock::now();
         for (int s = 0; s < N_STREAMS; s++)
             CUDA_CHECK(cudaStreamSynchronize(streams_[s]));
-        CUDA_CHECK(cudaEventRecord(e_after_preproc_, meta_stream_));
-        t_sync = ms_since(t1);
-        const auto t2 = clock::now();
+        // The device found the records by their tag bits, the host walk by their lengths: both
+        // must agree on every chunk's potentials, else the plan is not the stream's.
+        for (uint32_t c = 0; c < n_chunks_; c++) {
+            if (h_pot_device_[c] != n_potentials_per_chunk_[c]) {
+                fprintf(stderr, "CountAndPlan::run ERROR: chunk %u: the device found %u potentials, the walk %u; "
+                                "no device plan for this block\n", c, h_pot_device_[c], n_potentials_per_chunk_[c]);
+                return false;
+            }
+        }
 
         // Pull per-chunk mem-align counters back to host (only the touched
         // range; max MAX_CHUNKS * sizeof(ChunkCounters), well under 1 MB).
@@ -2017,9 +2036,9 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
         for (uint32_t c = 0; c < n_chunks_; c++) {
             total_rows += h_n_emits_all_[c];
             if (total_rows > 0xFFFFFFFFull) {
-                fprintf(stderr, "CountAndPlan::run FATAL: the block has more than 2^32 - 1 memory rows "
-                                "(reached at chunk %u of %u)\n", c, n_chunks_);
-                std::exit(1);
+                fprintf(stderr, "CountAndPlan::run ERROR: the block has more than 2^32 - 1 memory rows "
+                                "(reached at chunk %u of %u); no device plan for this block\n", c, n_chunks_);
+                return false;
             }
             packed_chunk_offsets_h_[c + 1] = (uint32_t)total_rows;
         }
@@ -2048,38 +2067,25 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
             h_fault[0] &= ~LIGHT_RECORD;
         }
         if (h_fault[0] & COUNTER_OVERFLOW) {
-            fprintf(stderr, "CountAndPlan::run FATAL: more than 2^32 - 1 rows at address 0x%08x\n",
-                    expand_addr(h_fault[1]));
-            std::exit(1);
+            fprintf(stderr, "CountAndPlan::run ERROR: more than 2^32 - 1 rows at address 0x%08x; no device plan "
+                            "for this block\n", expand_addr(h_fault[1]));
+            return false;
         }
         if (h_fault[0] != 0) {
-            fprintf(stderr, "CountAndPlan::run FATAL: %s in the memory-ops stream\n",
+            fprintf(stderr, "CountAndPlan::run ERROR: %s in the memory-ops stream; no device plan for this block\n",
                     (h_fault[0] & INVALID_ADDRESS) ? "access outside the memory map" : "unrecognised record mode");
-            std::exit(1);
+            return false;
         }
-
-        t_counts = ms_since(t2);
-        const auto t3 = clock::now();
-        prepare_global_();
-        CUDA_CHECK(cudaEventRecord(e_after_prepare_, meta_stream_));
+        if (!prepare_global_()) return false;
         preprocessed_ = true;
-        t_global = ms_since(t3);
     }
-
-    const auto t4 = clock::now();
-    process_worker_();
-    t_worker = ms_since(t4);
+    if (!process_worker_()) return false;
 
     if (!metas_ready_recorded_) {
-        const auto t5 = clock::now();
         CUDA_CHECK(cudaEventRecord(e_metas_ready_, meta_stream_));
         CUDA_CHECK(cudaEventSynchronize(e_metas_ready_));
         metas_ready_recorded_ = true;
-        t_metas = ms_since(t5);
     }
-    fprintf(stderr, "[mops] run: %u chunks, drain %.0f ms, sync %.0f, counts %.0f, global %.0f, worker %.0f, metas %.0f, total %.0f ms\n",
-            n_chunks_, t_drain, t_sync, t_counts, t_global, t_worker, t_metas, ms_since(t0));
-
     // Hand back the internal pointer + count (no copy). The records — and
     // the pinned-host buffers their pointers reference — stay alive until
     // the next run/reset on this instance.
@@ -2097,9 +2103,7 @@ void CountAndPlan::reset() {
     out_offsets_.assign(MAX_CHUNKS, 0);
     n_potentials_per_chunk_.assign(MAX_CHUNKS, 0);
     n_ram_per_chunk_.assign(MAX_CHUNKS, 0);
-    n_words_per_chunk_.assign(MAX_CHUNKS, 0);
     { std::lock_guard<std::mutex> lk(ram_runs_mtx_); ram_runs_.clear(); }
-    max_pieces_.store(0, std::memory_order_relaxed);
     packed_chunk_offsets_h_.clear();
     pool_cursor_u32_.store(0, std::memory_order_relaxed);
     add_error_.store(false, std::memory_order_relaxed);
@@ -2123,7 +2127,9 @@ void CountAndPlan::reset() {
     slot_prepared_          = false;
     resolve_all_            = false;
     slot_scratch_           = nullptr;
-    slot_host_rows_         = false;
+    rf_scratch_             = nullptr;
+    other_scratch_          = nullptr;
+    align_scratch_          = nullptr;
     host_rows_mask_         = 0;
     slot_quiesce();
     {
@@ -2191,6 +2197,7 @@ void CountAndPlan::free_pinned_() {
     if (h_input_rows_)               { cudaFreeHost(h_input_rows_);               h_input_rows_               = nullptr; h_input_rows_cap_ = 0; }
     if (h_align_rows_)               { cudaFreeHost(h_align_rows_);               h_align_rows_               = nullptr; h_align_rows_cap_ = 0; }
     if (h_n_emits_all_)              { cudaFreeHost(h_n_emits_all_);              h_n_emits_all_              = nullptr; }
+    if (h_pot_device_)               { cudaFreeHost(h_pot_device_);               h_pot_device_               = nullptr; }
     if (h_page_starts_buf_)          { cudaFreeHost(h_page_starts_buf_);          h_page_starts_buf_          = nullptr; }
     if (h_page_single_buf_)           { cudaFreeHost(h_page_single_buf_);           h_page_single_buf_           = nullptr; }
     if (h_pages_dense_buf_)          { cudaFreeHost(h_pages_dense_buf_);          h_pages_dense_buf_          = nullptr; }
@@ -2201,6 +2208,7 @@ void CountAndPlan::free_pinned_() {
     for (int s = 0; s < N_STREAMS; s++) {
         if (h_n_emits_[s]) { cudaFreeHost(h_n_emits_[s]); h_n_emits_[s] = nullptr; }
         if (h_n_carry_[s]) { cudaFreeHost(h_n_carry_[s]); h_n_carry_[s] = nullptr; }
+        if (h_pot_piece_[s]) { cudaFreeHost(h_pot_piece_[s]); h_pot_piece_[s] = nullptr; }
     }
 }
 
@@ -2212,8 +2220,6 @@ void CountAndPlan::free_all_() {
     if (meta_stream_)        { cudaStreamDestroy(meta_stream_); meta_stream_ = nullptr; }
     if (fill_stream_)        { cudaStreamDestroy(fill_stream_); fill_stream_ = nullptr; }
     if (copy_stream_)        { cudaStreamDestroy(copy_stream_); copy_stream_ = nullptr; }
-    if (e_after_preproc_)    { cudaEventDestroy(e_after_preproc_);    e_after_preproc_    = nullptr; }
-    if (e_after_prepare_)    { cudaEventDestroy(e_after_prepare_);    e_after_prepare_    = nullptr; }
     if (e_metas_ready_)      { cudaEventDestroy(e_metas_ready_);      e_metas_ready_      = nullptr; }
     free_pinned_();
     if (arena_owned_ && arena_) cudaFree(arena_);
@@ -2243,8 +2249,8 @@ void CountAndPlan::query_cub_sizes_(size_t& scan_counts_b, size_t& scan_emit_b,
         (uint32_t*)nullptr, (uint32_t*)nullptr, N_ADDR);
 }
 
-void CountAndPlan::prepare_global_() {
-    if (prepared_) return;
+bool CountAndPlan::prepare_global_() {
+    if (prepared_) return true;
     {
         uint32_t n_rom = h_max_compact_[REGION_ROM] + 2;
         CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
@@ -2285,17 +2291,18 @@ void CountAndPlan::prepare_global_() {
         num_instances_ += num_inst_[r];
     }
     if (num_instances_ > MAX_INSTANCES) {
-        std::cerr << "CountAndPlan: too many instances ("
+        std::cerr << "CountAndPlan ERROR: too many instances ("
                   << num_instances_ << " > " << MAX_INSTANCES
                   << " ROM=" << num_inst_[0]
                   << " INPUT=" << num_inst_[1]
-                  << " RAM=" << num_inst_[2] << ")" << std::endl;
-        std::exit(1);
+                  << " RAM=" << num_inst_[2] << "); no device plan for this block" << std::endl;
+        return false;
     }
     region_ops_start_[REGION_ROM]   = 0;
     region_ops_start_[REGION_INPUT] = h_boundary[0];
     region_ops_start_[REGION_RAM]   = h_boundary[1];
     prepared_ = true;
+    return true;
 }
 
 void CountAndPlan::set_active_worker_() {
@@ -2323,7 +2330,7 @@ void CountAndPlan::pick_active_instances_() {
                                num_active_ * 4, cudaMemcpyHostToDevice, meta_stream_));
 }
 
-void CountAndPlan::process_worker_() {
+bool CountAndPlan::process_worker_() {
     set_active_worker_();
     pick_active_instances_();
 
@@ -2344,6 +2351,7 @@ void CountAndPlan::process_worker_() {
     int fml_block, fml_grid;
     cudaOccupancyMaxPotentialBlockSize(&fml_grid, &fml_block,
         chunk_fml_count_gappy_kernel, 0, 0);
+    if (fml_block < (int)num_active_) fml_block = (int)num_active_;   // the kernel loads one instance per thread
     chunk_fml_count_gappy_kernel<<<fml_grid, fml_block, 0, meta_stream_>>>(
         d_ops_pool_, d_gappy_offsets_, d_packed_chunk_offsets_,
         d_active_first_, d_active_last_,
@@ -2442,22 +2450,11 @@ void CountAndPlan::process_worker_() {
         const size_t pages_off =
             (pool_end_bytes(pool_cursor_u32_.load(std::memory_order_relaxed)) + 255) & ~(size_t)255;
         if (pages_off + pages_bytes > ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed))) {
-            fprintf(stderr, "CountAndPlan FATAL: no room for %zu MB of offset pages between the ops pool "
-                            "and the retained RAM accesses\n", pages_bytes >> 20);
-            std::exit(1);
+            fprintf(stderr, "CountAndPlan ERROR: no room for %zu MB of offset pages between the ops pool "
+                            "and the retained RAM accesses; no device plan for this block\n", pages_bytes >> 20);
+            return false;
         }
         d_pages_dense_ = (uint32_t*)(arena_ + pages_off);
-        uint32_t max_words = 0, max_pot = 0;
-        for (uint32_t ch = 0; ch < n_chunks_; ++ch) {
-            max_words = std::max(max_words, n_words_per_chunk_[ch]);
-            max_pot = std::max(max_pot, n_potentials_per_chunk_[ch]);
-        }
-        fprintf(stderr, "[mops] block: %u chunks, largest %u words and %u potentials, up to %u pieces per chunk "
-                        "(%u potentials each), ops pool %zu MB, retained %zu accesses (%zu MB), offset pages %zu MB\n",
-                n_chunks_, max_words, max_pot, max_pieces_.load(std::memory_order_relaxed), piece_potentials_,
-                pool_end_bytes(pool_cursor_u32_.load(std::memory_order_relaxed)) - cursor_ >> 20,
-                ram_cursor_.load(std::memory_order_relaxed),
-                ram_cursor_.load(std::memory_order_relaxed) * RAM_RECORD_WORDS * 4 >> 20, pages_bytes >> 20);
     }
 
     // Push prefix sums to device, zero the per-instance present counters.
@@ -2538,4 +2535,5 @@ void CountAndPlan::process_worker_() {
                                            + (size_t)h_pages_dense_host_prefix[ai] * MEM_OFFSETS_PAGE_SIZE;
         }
     }
+    return true;
 }

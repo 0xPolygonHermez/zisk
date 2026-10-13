@@ -124,6 +124,11 @@ const F_MOPS_STEP_SHIFT: u64 = 38;
 /// Trace space the memory-ops runner keeps for the initialised-data records at the ROM entry,
 /// two words per data word (constants.hpp MAX_MO_INIT_DATA_MARGIN).
 pub const MAX_MO_INIT_DATA_MARGIN: u64 = 64 << 20;
+/// The most memory-ops bytes one step can write (constants.hpp TRACE_TARGET_MO mirrors it): the
+/// runner keeps that much room before the end of the mapped stream.
+pub const MAX_MO_BYTES_PER_STEP: u64 = 1024;
+// The step field of a record holds the step in its chunk and 2 slot bits in 20 bits.
+const _: () = assert!(crate::CHUNK_SIZE_BITS + 2 <= 20);
 
 // const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x100000; // 1MB
 const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x8000000; // 128MB

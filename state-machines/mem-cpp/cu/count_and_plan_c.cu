@@ -99,12 +99,6 @@ bool count_and_plan_prepare_ram_fill(void* h, RamFillPrepared* out) {
     return static_cast<CountAndPlan*>(h)->prepare_ram_fill(out);
 }
 
-bool count_and_plan_fill_ram_instance(void* h, uint32_t inst, uint64_t* out_rows, uint32_t n_rows,
-                                      RamFillResult* res) {
-    if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->fill_ram_instance(inst, out_rows, n_rows, res);
-}
-
 bool count_and_plan_fill_all_ram_instances(void* h, uint32_t n_rows, const uint32_t* insts, uint32_t n_insts,
                                            RamFillPrepared* prepared) {
     if (!h) return false;
@@ -211,6 +205,11 @@ void count_and_plan_slot_quiesce(void* h) {
 bool count_and_plan_instance_scalars(void* h, uint32_t family, uint32_t inst, RamFillResult* res) {
     if (!h) return false;
     return static_cast<CountAndPlan*>(h)->instance_scalars(family, inst, res);
+}
+
+bool count_and_plan_align_used(void* h, uint32_t air_id, uint32_t segment, uint32_t* used) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->align_used(air_id, segment, used);
 }
 
 }  // extern "C"
