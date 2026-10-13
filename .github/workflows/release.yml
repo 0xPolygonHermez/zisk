@@ -105,11 +105,15 @@ jobs:
       # Steps run as root. Use the rustup binary of ziskuser, but install a new
       # toolchain: updating the one from the image fails on overlayfs.
       # There is no Docker daemon in the container.
+      # The workspace is owned by the host runner user. actions/checkout adds
+      # safe.directory only to a temporary config, so libgit2 (vergen) needs it
+      # again or VERGEN_GIT_SHA falls back to VERGEN_IDEMPOTENT_OUTPUT.
       - name: Configure container environment
         if: matrix.platform == 'linux'
         run: |
           echo "ZISK_CI_NO_DOCKER_REBUILD=1" >> "$GITHUB_ENV"
           echo "/home/ziskuser/.cargo/bin" >> "$GITHUB_PATH"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Install dependencies
         if: matrix.platform == 'darwin'
