@@ -20,7 +20,7 @@ use zisk_cluster_common::{
     StreamDataDto, WorkerState,
 };
 use zisk_cluster_common::{DataId, JobId};
-use zisk_common::{ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{ExecutionSeed, ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
 use zisk_prover_backend::{Asm, Emu, GuestProgram, ZiskBackend, ZiskProver};
 
 use crate::config::WorkerServiceConfig;
@@ -1938,6 +1938,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             job_id.clone(),
             params.hash_id,
             data_ctx,
+            ExecutionSeed::random()?,
             params.rank_id,
             params.total_workers,
             params.worker_allocation,
@@ -2018,6 +2019,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             job_id.clone(),
             params.hash_id,
             data_ctx,
+            ExecutionSeed::random()?,
             params.rank_id,
             params.total_workers,
             params.worker_allocation,

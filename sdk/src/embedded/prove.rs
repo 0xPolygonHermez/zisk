@@ -102,7 +102,8 @@ impl EmbeddedClient {
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Emulator) => {
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                p.prove_emulator(program, s.into_inner(), proof_kind).map_err(SdkError::backend)?
+                p.prove_emulator(program, s.into_inner(), None, proof_kind)
+                    .map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
                 if let Some(hints) = hints {

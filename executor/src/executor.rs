@@ -33,7 +33,7 @@ use std::{
 };
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId, EmuTrace,
-    ExecutorStatsHandle, Plan, ZiskExecutorSummary, ZiskExecutorTime,
+    ExecutionSeed, ExecutorStatsHandle, Plan, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
 use zisk_sm_main::{MainPlanner, MainSM};
@@ -168,10 +168,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         &self,
         zisk_rom: Arc<ZiskRom>,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         use_hints: bool,
     ) -> ExecutorResult<(ZiskExecutorSummary, Vec<(u64, u32)>, Vec<PlanSummaryEntry>)> {
         self.state.set_rom(zisk_rom, use_hints);
-        self.state.set_stdin(stdin);
+        self.state.set_job_inputs(stdin, seed);
         let registry = NoopProofRegistry::default();
         let global_ids = RwLock::new(Vec::new());
         self.execute_inner(&registry, None, &global_ids)?;
@@ -233,9 +234,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.witness.as_ref().map(|w| w.is_packed()).unwrap_or(false)
     }
 
-    /// Sets the standard input for execution.
-    pub fn set_stdin(&self, stdin: ZiskStdin) -> ExecutorResult<()> {
-        self.state.set_stdin(stdin);
+    /// Sets the standard input and seed for the next execution.
+    pub fn set_job_inputs(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> ExecutorResult<()> {
+        self.state.set_job_inputs(stdin, seed);
         Ok(())
     }
 
@@ -385,6 +386,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let zisk_rom = self.state.get_rom()?;
         let stdin = self.state.get_stdin();
+        let seed = self.state.get_seed()?;
+        tracing::info!("Execution seed: {seed}");
         let output = self.execution.run::<F>(
             &zisk_rom,
             &stdin,
@@ -526,6 +529,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         };
         let mut execution_result =
             ZiskExecutorSummary::new(steps, zisk_execution_time, cost_per_type);
+        execution_result.seed = Some(seed);
         // Per-AIR instance plan, captured from the registry's planning counts. Only the
         // full (proofman) path exposes this via the summary; the standalone path returns
         // its own (named) plan directly, so skip the work when there's no `SetupCtx`.

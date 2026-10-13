@@ -19,8 +19,8 @@ use zisk_asm_runner::HintsShmem;
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::io::StreamSource;
 use zisk_common::{
-    io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, StatsCostPerType,
-    VadcopKind, ZiskExecutorTime,
+    io::ZiskStdin, AirInstanceCount, ExecutionSeed, ExecutorStatsHandle, ProgramVK, ProofKind,
+    StatsCostPerType, VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
@@ -129,8 +129,8 @@ impl ProverEngine for EmuProver {
         self.core_prover.rank_info.local_rank
     }
 
-    fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.core_prover.backend.set_stdin(stdin)
+    fn set_job_inputs(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
+        self.core_prover.backend.set_job_inputs(stdin, seed)
     }
 
     fn register_program(&self, program_id: &ProgramId, _with_hints: bool) -> Result<()> {
@@ -175,21 +175,27 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.get_execution_info()
     }
 
-    fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
+    fn execute(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        seed: ExecutionSeed,
+    ) -> Result<ExecuteOutput> {
         self.register_program(&program.program_id, false)?;
-        self.core_prover.backend.execute(stdin)
+        self.core_prover.backend.execute(stdin, seed)
     }
 
     fn stats(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         self.register_program(&program.program_id, false)?;
-        self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
+        self.core_prover.backend.stats(stdin, seed, debug_info, minimal_memory, mpi_node)
     }
 
     fn get_instance_trace(
@@ -220,21 +226,23 @@ impl ProverEngine for EmuProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         self.register_program(&program.program_id, false)?;
-        self.core_prover.backend.verify_constraints(stdin, debug_info)
+        self.core_prover.backend.verify_constraints(stdin, seed, debug_info)
     }
 
     fn prove(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
         self.register_program(&program.program_id, false)?;
-        self.core_prover.backend.prove(stdin, proof_kind, prover_options)
+        self.core_prover.backend.prove(stdin, seed, proof_kind, prover_options)
     }
 
     fn wrap_proof(
@@ -442,8 +450,9 @@ impl ExecuteClient for ZiskProver<Emu> {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: Option<ExecutionSeed>,
         _hints: Option<StreamSource>,
     ) -> Result<ExecuteOutput> {
-        ZiskProver::<Emu>::execute(self, program, stdin)
+        ZiskProver::<Emu>::execute(self, program, stdin, seed)
     }
 }

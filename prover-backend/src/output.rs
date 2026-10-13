@@ -2,8 +2,8 @@ use anyhow::Result;
 use std::path::Path;
 use std::time::Duration;
 use zisk_common::{
-    ProgramVK, PublicValues, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
-    ZiskVerifyBuilder, ZISK_PUBLICS,
+    ExecutionSeed, ProgramVK, PublicValues, StatsCostPerType, ZiskExecutorSummary,
+    ZiskExecutorTime, ZiskVerifyBuilder, ZISK_PUBLICS,
 };
 use zisk_executor::{AirClassifier, PlanSummaryEntry};
 
@@ -26,6 +26,7 @@ pub(crate) struct ExecutionSummary {
     time: u64,
     steps: u64,
     cost: u64,
+    seed: Option<ExecutionSeed>,
 }
 
 impl ExecutionSummary {
@@ -34,11 +35,12 @@ impl ExecutionSummary {
             time: time.as_millis() as u64,
             steps: executor_summary.steps,
             cost: executor_summary.cost_per_type.total_cost(),
+            seed: executor_summary.seed,
         }
     }
 
     pub fn from_remote(time: Duration, steps: u64, cost_per_type: &StatsCostPerType) -> Self {
-        Self { time: time.as_millis() as u64, steps, cost: cost_per_type.total_cost() }
+        Self { time: time.as_millis() as u64, steps, cost: cost_per_type.total_cost(), seed: None }
     }
 }
 
@@ -83,6 +85,7 @@ pub struct ExecuteOutput {
     executor_time: ZiskExecutorTime,
     publics: PublicValues,
     plan: Option<Vec<PlanSummaryEntry>>,
+    seed: Option<ExecutionSeed>,
 }
 
 impl ExecuteOutput {
@@ -100,6 +103,7 @@ impl ExecuteOutput {
             executor_time: executor_summary.executor_time,
             publics: PublicValues::new(publics),
             plan: None,
+            seed: executor_summary.seed,
         }
     }
 
@@ -119,6 +123,7 @@ impl ExecuteOutput {
             executor_time: executor_summary.executor_time,
             publics: pairs_to_publics(pub_outs),
             plan: Some(plan),
+            seed: executor_summary.seed,
         }
     }
 
@@ -147,6 +152,12 @@ impl ExecuteOutput {
     /// proofman path emits its own plan via tracing.
     pub fn get_plan(&self) -> Option<&[PlanSummaryEntry]> {
         self.plan.as_deref()
+    }
+
+    /// Seed the execution ran with, needed to replay it. `None` when the coordinator that ran it
+    /// does not report it.
+    pub fn get_seed(&self) -> Option<ExecutionSeed> {
+        self.seed
     }
 
     /// Construct a result from a remote coordinator response.
@@ -179,6 +190,7 @@ impl ExecuteOutput {
             executor_time,
             publics: PublicValues::new(publics),
             plan: (!plan.is_empty()).then_some(plan),
+            seed: None,
         }
     }
 }
@@ -227,6 +239,13 @@ impl ProveOutput {
     /// Total execution cost.
     pub fn get_execution_cost(&self) -> u64 {
         self.summary.cost
+    }
+
+    /// Seed the proven execution ran with, needed to replay it. `None` for outputs that do not
+    /// come from an execution (wrapping an existing proof) or when the coordinator that ran it does
+    /// not report it.
+    pub fn get_seed(&self) -> Option<ExecutionSeed> {
+        self.summary.seed
     }
 
     /// The generated proof.
@@ -346,6 +365,11 @@ impl VerifyConstraintsOutput {
     /// Run duration, in milliseconds.
     pub fn get_duration(&self) -> u64 {
         self.summary.time
+    }
+
+    /// Seed the execution ran with, needed to replay it.
+    pub fn get_seed(&self) -> Option<ExecutionSeed> {
+        self.summary.seed
     }
 }
 

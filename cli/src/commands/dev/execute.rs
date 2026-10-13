@@ -203,7 +203,7 @@ impl ExecuteCmd {
 
         let start = std::time::Instant::now();
         prover.setup(&guest_program, with_hints)?;
-        let result: ExecuteOutput = prover.execute(&guest_program, stdin, hints_stream)?;
+        let result: ExecuteOutput = prover.execute(&guest_program, stdin, None, hints_stream)?;
         let total_duration = start.elapsed().as_millis() as u64;
 
         if rank_zero {

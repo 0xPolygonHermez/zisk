@@ -25,7 +25,7 @@ use std::{
 use zisk_asm_runner::HintsShmem;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind,
+    AirInstanceCount, ExecutionSeed, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind,
     StatsCostPerType, VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
@@ -408,8 +408,8 @@ pub trait ProverEngine {
     /// This rank's index within its node (`0` when MPI is unused).
     fn local_rank(&self) -> i32;
 
-    /// Set the standard input for the next execution or proof.
-    fn set_stdin(&self, stdin: ZiskStdin) -> Result<()>;
+    /// Set the standard input and seed for the next execution or proof.
+    fn set_job_inputs(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()>;
 
     /// Register a previously set-up program as the active one.
     fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()>;
@@ -448,7 +448,12 @@ pub trait ProverEngine {
     ) -> Result<Vec<RowInfo>>;
 
     /// Run the program without proving and return its output.
-    fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput>;
+    fn execute(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        seed: ExecutionSeed,
+    ) -> Result<ExecuteOutput>;
 
     /// Collect execution statistics (optionally with debug info); returns the
     /// world/local ranks and an optional stats handle.
@@ -456,6 +461,7 @@ pub trait ProverEngine {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
@@ -466,6 +472,7 @@ pub trait ProverEngine {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput>;
 
@@ -474,6 +481,7 @@ pub trait ProverEngine {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput>;
@@ -658,9 +666,31 @@ impl<C: ZiskBackend> ZiskProver<C> {
         cache.get(program_id).cloned().ok_or_else(|| anyhow!("Program not found: {:?}", program_id))
     }
 
-    /// Set the standard input for the current proof.
-    pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.prover.set_stdin(stdin)
+    /// Set the standard input and seed for the current proof.
+    ///
+    /// Low-level counterpart of the `seed` argument of [`execute`](Self::execute) and friends,
+    /// for callers driving the phases themselves (distributed workers): the seed must already be
+    /// the one every rank and worker of the task shares.
+    pub fn set_job_inputs(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
+        self.prover.set_job_inputs(stdin, seed)
+    }
+
+    /// Returns `seed`, or a fresh one drawn on rank 0 and broadcast to every rank.
+    ///
+    /// All emulations of a task must run with the same seed, so ranks never draw their own. When
+    /// `seed` is `None` this is a collective MPI operation: every rank must call it at the same
+    /// point, which holds because every rank runs the same execute/prove call.
+    fn resolve_seed(&self, seed: Option<ExecutionSeed>) -> Result<ExecutionSeed> {
+        if let Some(seed) = seed {
+            return Ok(seed);
+        }
+        let mut bytes = if self.world_rank() == 0 {
+            ExecutionSeed::random()?.as_bytes().to_vec()
+        } else {
+            Vec::new()
+        };
+        self.mpi_broadcast(&mut bytes)?;
+        Ok(ExecutionSeed::try_from(bytes.as_slice())?)
     }
 
     /// Make a previously set-up program the active one for the next run.
@@ -712,22 +742,32 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     /// Execute the prover with the given standard input and output path.
     /// It only runs the execution without generating a proof.
+    /// A `None` seed draws a fresh one (see [`resolve_seed`](Self::resolve_seed)).
     /// The program must have been setup previously using `.setup()`.
-    pub fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
-        self.prover.execute(program, stdin)
+    pub fn execute(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        seed: Option<ExecutionSeed>,
+    ) -> Result<ExecuteOutput> {
+        let seed = self.resolve_seed(seed)?;
+        self.prover.execute(program, stdin, seed)
     }
 
     /// Get the execution statistics with the given standard input and debug information.
+    /// A `None` seed draws a fresh one (see [`resolve_seed`](Self::resolve_seed)).
     /// The program must have been setup previously using `.setup()`.
     pub fn stats(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: Option<ExecutionSeed>,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        self.prover.stats(program, stdin, debug_info, minimal_memory, mpi_node)
+        let seed = self.resolve_seed(seed)?;
+        self.prover.stats(program, stdin, seed, debug_info, minimal_memory, mpi_node)
     }
 
     /// Get the instance trace for a given instance ID and row range.
@@ -757,16 +797,18 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.get_instance_fixed(instance_id, first_row, num_rows, offset)
     }
 
-    /// Verify the constraints with the given standard input and debug information.
     /// Verify the constraints with the given standard input and optional debug information.
+    /// A `None` seed draws a fresh one (see [`resolve_seed`](Self::resolve_seed)).
     /// The program must have been setup previously using `.setup()`.
     pub fn verify_constraints(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: Option<ExecutionSeed>,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
-        self.prover.verify_constraints(program, stdin, debug_info)
+        let seed = self.resolve_seed(seed)?;
+        self.prover.verify_constraints(program, stdin, seed, debug_info)
     }
 
     /// Generate a proof with the given standard input.
@@ -983,8 +1025,10 @@ impl ZiskProver<Asm> {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: Option<ExecutionSeed>,
     ) -> Result<ExecuteOutput> {
-        self.prover.execute_emulator(program, stdin)
+        let seed = self.resolve_seed(seed)?;
+        self.prover.execute_emulator(program, stdin, seed)
     }
 
     /// Generate a proof via the Rust emulator path, regardless of how the program was set up.
@@ -994,9 +1038,11 @@ impl ZiskProver<Asm> {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: Option<ExecutionSeed>,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
-        self.prover.prove_emulator(program, stdin, proof_kind, self.prover_options.clone())
+        let seed = self.resolve_seed(seed)?;
+        self.prover.prove_emulator(program, stdin, seed, proof_kind, self.prover_options.clone())
     }
 
     /// Verify constraints via the Rust emulator path, regardless of how the program was set up.
@@ -1004,9 +1050,11 @@ impl ZiskProver<Asm> {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: Option<ExecutionSeed>,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
-        self.prover.verify_constraints_emulator(program, stdin, debug_info)
+        let seed = self.resolve_seed(seed)?;
+        self.prover.verify_constraints_emulator(program, stdin, seed, debug_info)
     }
 }
 
@@ -1040,6 +1088,7 @@ pub struct ProveBuilder<'a, C: ZiskBackend> {
     zisk_prover: &'a ZiskProver<C>,
     guest_program: &'a GuestProgram,
     stdin: ZiskStdin,
+    seed: Option<ExecutionSeed>,
     proof_kind: ProofKind,
 }
 
@@ -1050,7 +1099,20 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
         guest_program: &'a GuestProgram,
         stdin: ZiskStdin,
     ) -> Self {
-        Self { prover, zisk_prover, guest_program, stdin, proof_kind: ProofKind::VadcopFinal }
+        Self {
+            prover,
+            zisk_prover,
+            guest_program,
+            stdin,
+            seed: None,
+            proof_kind: ProofKind::VadcopFinal,
+        }
+    }
+
+    /// Force the execution seed instead of drawing a fresh one (replays, tests).
+    pub fn seed(mut self, seed: ExecutionSeed) -> Self {
+        self.seed = Some(seed);
+        self
     }
 
     /// Enable minimal/compressed/SNARK proof generation.
@@ -1066,9 +1128,11 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
 
     /// Execute the proof generation with the configured options.
     pub fn run(self) -> Result<ProveOutput> {
+        let seed = self.zisk_prover.resolve_seed(self.seed)?;
         self.prover.prove(
             self.guest_program,
             self.stdin,
+            seed,
             self.proof_kind,
             self.zisk_prover.prover_options.clone(),
         )

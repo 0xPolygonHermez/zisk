@@ -170,7 +170,7 @@ impl EmbeddedExecuteOnlyClient {
             ));
         }
         self.prover
-            .execute(program, stdin.into_inner(), hints.map(ZiskHints::into_inner))
+            .execute(program, stdin.into_inner(), None, hints.map(ZiskHints::into_inner))
             .map_err(SdkError::backend)
     }
 }

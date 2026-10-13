@@ -21,7 +21,7 @@ use zisk_cluster_common::StreamMessage;
 use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
-use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
+use zisk_common::{io::ZiskStdin, ExecutionSeed, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_common::{
     program_publics, HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind,
     PublicValues, VadcopKind, PROGRAM_VK_LEN,
@@ -229,16 +229,16 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!(e.to_string()))
     }
 
-    pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.executor.set_stdin(stdin).map_err(Into::into)
+    pub fn set_job_inputs(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
+        self.executor.set_job_inputs(stdin, seed).map_err(Into::into)
     }
 
     pub fn execution_result(&self) -> Result<(ZiskExecutorSummary, ExecutorStatsHandle)> {
         Ok(self.executor.get_execution_result())
     }
 
-    pub(crate) fn execute(&self, stdin: ZiskStdin) -> Result<ExecuteOutput> {
-        self.executor.set_stdin(stdin)?;
+    pub(crate) fn execute(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<ExecuteOutput> {
+        self.executor.set_job_inputs(stdin, seed)?;
 
         let start = std::time::Instant::now();
 
@@ -258,13 +258,14 @@ impl ProverBackend {
     pub(crate) fn stats(
         &self,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         _mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        self.executor.set_stdin(stdin)?;
+        self.executor.set_job_inputs(stdin, seed)?;
 
         let rank_info = self.proofman.get_rank_info();
 
@@ -334,13 +335,14 @@ impl ProverBackend {
     pub(crate) fn verify_constraints(
         &self,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         let start = std::time::Instant::now();
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        self.executor.set_stdin(stdin)?;
+        self.executor.set_job_inputs(stdin, seed)?;
 
         self.proofman
             .verify_proof_constraints_from_lib(&debug_info)
@@ -362,6 +364,7 @@ impl ProverBackend {
     pub(crate) fn prove(
         &self,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
@@ -373,7 +376,7 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        self.executor.set_stdin(stdin)?;
+        self.executor.set_job_inputs(stdin, seed)?;
 
         let minimal = matches!(proof_kind, ProofKind::VadcopFinalMinimal);
 

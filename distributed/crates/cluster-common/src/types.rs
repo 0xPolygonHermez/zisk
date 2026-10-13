@@ -685,6 +685,8 @@ pub struct ContributionsMessage {
     pub hints_source: HintsSourceDto,
     /// This rank's partition.
     pub partition_info: PartitionInfo,
+    /// The job's execution seed, shared by every rank.
+    pub seed: [u8; zisk_common::ExecutionSeed::LEN],
 }
 
 /// MPI broadcast message carrying a prove task to peer ranks.

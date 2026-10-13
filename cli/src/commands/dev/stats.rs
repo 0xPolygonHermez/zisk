@@ -206,6 +206,7 @@ impl StatsCmd {
         prover.stats(
             &guest_program,
             stdin,
+            None,
             self.debug.clone(),
             self.minimal_memory,
             self.mpi_node.map(|n| n as u32),
@@ -273,7 +274,7 @@ impl StatsCmd {
             prover.register_hints_stream(hints_stream)?;
         }
         let mpi_node = self.mpi_node.map(|n| n as u32);
-        prover.stats(&guest_program, stdin, self.debug.clone(), self.minimal_memory, mpi_node)
+        prover.stats(&guest_program, stdin, None, self.debug.clone(), self.minimal_memory, mpi_node)
     }
 
     /// Prints stats individually and grouped, with aligned columns.

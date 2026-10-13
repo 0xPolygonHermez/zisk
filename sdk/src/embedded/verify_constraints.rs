@@ -72,7 +72,7 @@ impl EmbeddedClient {
                         "Hints require Assembly executor".to_string(),
                     ));
                 }
-                p.verify_constraints(&program, stdin.into_inner(), debug_info)
+                p.verify_constraints(&program, stdin.into_inner(), None, debug_info)
                     .map_err(SdkError::backend)
             }
             EmbeddedProver::Asm(p) => {
@@ -84,7 +84,7 @@ impl EmbeddedClient {
                         ));
                     }
                     return p
-                        .verify_constraints_emulator(&program, stdin.into_inner(), debug_info)
+                        .verify_constraints_emulator(&program, stdin.into_inner(), None, debug_info)
                         .map_err(SdkError::backend);
                 }
 
@@ -122,7 +122,7 @@ impl EmbeddedClient {
                         }
                     }
                 }
-                p.verify_constraints(&program, stdin.into_inner(), debug_info)
+                p.verify_constraints(&program, stdin.into_inner(), None, debug_info)
                     .map_err(SdkError::backend)
             }
         }

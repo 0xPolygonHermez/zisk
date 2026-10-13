@@ -80,11 +80,11 @@ impl EmbeddedClient {
         let output = match (prover.as_ref(), executor) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => {
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                p.execute(program, s.into_inner()).map_err(SdkError::backend)?
+                p.execute(program, s.into_inner(), None).map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Emulator) => {
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                p.execute_emulator(program, s.into_inner()).map_err(SdkError::backend)?
+                p.execute_emulator(program, s.into_inner(), None).map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
                 if let Some(hints) = hints {
@@ -99,7 +99,7 @@ impl EmbeddedClient {
                             p.register_hints_stream(source).map_err(SdkError::backend)?;
                         }
                     }
-                    p.execute(program, zisk_common::io::ZiskStdin::new())
+                    p.execute(program, zisk_common::io::ZiskStdin::new(), None)
                         .map_err(SdkError::backend)?
                 } else {
                     match stdin {
@@ -108,11 +108,11 @@ impl EmbeddedClient {
                             let uri = stream.uri().to_string();
                             let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
                             p.register_inputs_stream(source).map_err(SdkError::backend)?;
-                            p.execute(program, zisk_common::io::ZiskStdin::new())
+                            p.execute(program, zisk_common::io::ZiskStdin::new(), None)
                                 .map_err(SdkError::backend)?
                         }
                         InputSource::Stdin(s) => {
-                            p.execute(program, s.into_inner()).map_err(SdkError::backend)?
+                            p.execute(program, s.into_inner(), None).map_err(SdkError::backend)?
                         }
                     }
                 }
