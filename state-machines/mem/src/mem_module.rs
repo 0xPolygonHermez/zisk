@@ -64,20 +64,9 @@ impl<'a> MemOps<'a> {
 }
 
 pub trait MemModule<F: Clone>: Send + Sync {
-    /// The instance from the rows the GPU planner built (`ZISK_MEM_GPU_FILL=arena`, and the
-    /// proofs in slot mode).
+    /// The instance from the rows the GPU planner built (`ZISK_MEM_GPU_FILL`).
     fn compute_witness_gpu_arena(
         &self,
-        segment_id: SegmentId,
-        is_last_segment: bool,
-        trace_buffer: Vec<F>,
-        packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>>;
-    /// The instance the prover's kernel fills into its slot (`ZISK_MEM_GPU_FILL=slot`): its staged
-    /// op and its air values, from the scalars the device resolved.
-    fn compute_witness_gpu_slot(
-        &self,
-        decl: &proofman_common::GpuWitnessAir,
         segment_id: SegmentId,
         is_last_segment: bool,
         trace_buffer: Vec<F>,

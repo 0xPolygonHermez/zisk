@@ -128,11 +128,6 @@ struct AlignPlanDesc { uint32_t air_kind, air_id, segment, n_rows, entry_from, e
 struct AlignChunkEntry { uint32_t chunk; uint32_t skip[ALIGN_KINDS]; uint32_t count[ALIGN_KINDS]; };
 static_assert(sizeof(AlignPlanDesc) == 24 && sizeof(AlignChunkEntry) == 44, "align plan layout changed: update gpu_bindings.rs");
 
-// One memory instance to fill into a prover slot: the kernel input the witness stages. POD,
-// mirrored in gpu_bindings.rs. `family`: 0 Mem, 1 RomData, 2 InputData, 3 MemAlign.
-struct MemSlotOp { uint32_t family, air_id, segment, n_rows; };
-static_assert(sizeof(MemSlotOp) == 16, "MemSlotOp layout changed: update gpu_bindings.rs");
-
 // Word index of the first and last RAM addresses.
 constexpr uint32_t RAM_W_ADDR_BASE = ZISK_RAM_ADDR_BASE >> 3;
 constexpr uint32_t RAM_W_ADDR_LAST = (ZISK_RAM_ADDR_END - 8u) >> 3;
@@ -233,76 +228,32 @@ public:
     // Reset for the next block.
     void reset();
 
-    // ─── RAM witness from the retained accesses (after run()) ─────────
+    // ─── The memory witness from the retained accesses (after run()) ─────────
     // Every RAM access of the block is retained as it arrives (compact address, mem step, kind,
-    // value). After the plan is closed, `prepare_ram_fill` sorts them by (address, time), pairs
-    // dual lanes and resolves every read's value from the writes before it; `fill_ram_instance`
-    // then packs one Mem instance's rows exactly as the CPU fill does.
+    // value); ROM, input and MemAlign accesses likewise, in arrival order. The packed layouts of
+    // the airs come from `set_*_layout`; a family without one stays on the CPU witness.
     void set_chunk_size_bits(uint32_t bits) { chunk_size_bits_ = bits; }
     bool set_mem_layout(const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row,
                         uint32_t lanes_x_row);
+    bool set_rom_layout(const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row,
+                        uint32_t lanes_x_row);
+    bool set_input_layout(const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row,
+                          uint32_t lanes_x_row);
+    bool set_align_layout(uint32_t air_kind, const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row);
     // The block's accesses can still be retained and fit the arrival index of the fills.
     bool ram_retention_ok() const {
         return ram_retention_enabled_.load(std::memory_order_relaxed) && ram_cursor_.load(std::memory_order_relaxed) <= MAX_RETAINED_ACCESSES;
     }
-    bool prepare_ram_fill(RamFillPrepared* out);
-    bool fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res,
-                           uint64_t* d_out = nullptr);
-    // Packs every RAM instance into pinned host memory while the arena is still borrowed; the
-    // witness phase then copies rows out with `ram_instance_rows`. Prepares if needed.
-    // `insts` (n_insts of them; null = all): the instances this process owns; the others are
-    // not filled and have no rows.
-    bool fill_all_ram_instances(uint32_t n_rows, const uint32_t* insts, uint32_t n_insts, RamFillPrepared* prepared);
-    const uint64_t* ram_instance_rows(uint32_t inst, RamFillResult* res) const;
-
-    // ─── RomData witness from the retained ROM accesses (after the RAM fill) ─────────
-    // ROM and input accesses are retained as they arrive, in arrival order. `fill_all_rom_instances`
-    // sorts each RomData instance's accesses by (address, step), resolves every read from the init
-    // write of its word and packs the rows as the CPU fill does.
-    bool set_rom_layout(const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row,
-                        uint32_t lanes_x_row);
-    bool fill_all_rom_instances(uint32_t n_rows, const uint32_t* insts, uint32_t n_insts, RamFillPrepared* prepared);
-    const uint64_t* rom_instance_rows(uint32_t inst, RamFillResult* res) const;
-
-    // ─── InputData witness from the retained input accesses (after the RomData fill) ─────────
-    // `image` is the input region as the guest sees it (the input shared memory from its start,
-    // `image_bytes` of it); every read resolves to its word, the free-input word to its record.
-    bool set_input_layout(const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row,
-                          uint32_t lanes_x_row);
-    bool fill_all_input_instances(uint32_t n_rows, const void* image, size_t image_bytes, const uint32_t* insts,
-                                  uint32_t n_insts, RamFillPrepared* prepared);
-    const uint64_t* input_instance_rows(uint32_t inst, RamFillResult* res) const;
-
-    // ─── MemAlign witness from the retained align accesses (after the three memory fills) ─────
-    // The fills leave every access's old words in its record; each instance of the host plan then
-    // selects its accesses (per chunk, per kind, skip/count), builds its rows in arrival order and
-    // packs them into pinned memory, served by (air id, segment).
-    bool set_align_layout(uint32_t air_kind, const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row);
-    bool fill_all_align_instances(const AlignPlanDesc* plans, uint32_t n_plans, const AlignChunkEntry* entries,
-                                  uint32_t n_entries, RamFillPrepared* prepared);
-    const uint64_t* align_instance_rows(uint32_t air_id, uint32_t segment, RamFillResult* res) const;
-
-    // ─── Memory instances filled into the prover's slots (ZISK_MEM_GPU_FILL=slot) ─────────
-    // `prepare_slot_fills` does the block's work once: RAM tables, the resolve pass over every
+    // `prepare_fills` does the block's work once: the RAM tables, the resolve pass over every
     // instance (its scalars, and the old words the MemAlign records need), the ROM/input index and
-    // image, the MemAlign access order and the owned MemAlign plans. `fill_slot` then builds one
-    // instance's rows straight into `dst` (device) from the staged `MemSlotOp`; the arena must still
-    // be borrowed. `instance_scalars` serves the air values of a resolved instance without rows.
-    // Only the instances in `ram`/`rom`/`input` (segment ids, the ones this process proves) get a
-    // staged image; the others are resolved for their scalars and the MemAlign old words only.
-    // With `host_rows`, the owned instances' images are also copied to pinned host memory while
-    // the preparation runs, so the proofs can take the rows once the arena is released.
-    bool prepare_slot_fills(const void* image, size_t image_bytes, const AlignPlanDesc* plans, uint32_t n_plans,
-                            const AlignChunkEntry* entries, uint32_t n_entries, const uint32_t* ram, uint32_t n_ram,
-                            const uint32_t* rom, uint32_t n_rom, const uint32_t* input, uint32_t n_input,
-                            bool host_rows, RamFillPrepared* prepared);
-    bool fill_slot(const void* d_ops, uint64_t n_ops, uint64_t* dst, void* stream, RamFillResult* res);
-    // Waits for the slot copies still in flight on the prover's streams and for the host copies of
-    // the owned images: before the arena is released.
-    void slot_quiesce();
-    // After the preparation: bit `family` set when every owned instance of that family has its
-    // rows in pinned host memory (`*_instance_rows`), for the proofs after the arena is released.
-    uint32_t host_rows_mask() const { return host_rows_mask_; }
+    // image (`image` is the input region as the guest sees it, `image_bytes` of it), the MemAlign
+    // access order and the owned MemAlign plans. Only the instances in `ram`/`rom`/`input` (segment
+    // ids, the ones this process proves) and the plans get a staged row image, while they fit; the
+    // others are resolved for their scalars and the MemAlign old words only.
+    bool prepare_fills(const void* image, size_t image_bytes, const AlignPlanDesc* plans, uint32_t n_plans,
+                       const AlignChunkEntry* entries, uint32_t n_entries, const uint32_t* ram, uint32_t n_ram,
+                       const uint32_t* rom, uint32_t n_rom, const uint32_t* input, uint32_t n_input,
+                       RamFillPrepared* prepared);
     // The staged images, as the preparation publishes them (another thread may be preparing):
     // `staged_wait` returns 1 with `out` filled, 0 when the preparation ended without that image
     // (build it with `fill_host`), -1 after `timeout_ms`. `copy_staged` copies an image to host
@@ -312,10 +263,9 @@ public:
     bool copy_staged(uint32_t family, uint32_t air_id, uint32_t segment, uint64_t* dst, uint64_t words);
     bool fill_host(uint32_t family, uint32_t air_id, uint32_t segment, uint32_t n_rows, uint64_t* out_rows,
                    RamFillResult* res);
-    // The device the planner and the fills run on (`setup`'s gpu_id).
-    int device() const { return gpu_device_; }
-    bool instance_scalars(uint32_t family, uint32_t inst, RamFillResult* res) const;
-    bool align_used(uint32_t air_id, uint32_t segment, uint32_t* used) const;
+    // Marks the arena released and waits for the copies still reading its images: no fill or copy
+    // touches it afterwards.
+    void quiesce();
 
 
     bool register_input_pinned(void* ptr, size_t bytes);
@@ -430,7 +380,11 @@ private:
     uint64_t           ram_writes_     = 0;                   // read back by prepare_ram_fill
     uint32_t           chunk_size_bits_ = 18;
     // Prepared lane table (see ram_fill.cu).
-    bool               ram_prepared_    = false;    // every instance filled; totals valid
+    bool prepare_ram_fill(RamFillPrepared* out);
+    bool fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res,
+                           uint64_t* d_out = nullptr);
+    bool fill_all_ram_instances(uint32_t n_rows, RamFillPrepared* prepared);
+    bool               ram_prepared_    = false;    // every instance resolved; totals valid
     bool               ram_tables_ready_ = false;   // per-instance fill tables built
     uint32_t*          d_rf_chunk_base_ = nullptr;  // chunk -> first record index
     uint32_t*          d_rf_chunk_n_    = nullptr;  // chunk -> record count
@@ -444,13 +398,6 @@ private:
     std::vector<size_t> h_rf_inst_skip_;            // instance -> lanes of the range before its window
     std::vector<size_t> h_rf_inst_lanes_;           // instance -> lanes of its whole address range
     size_t             ram_n_lanes_     = 0;
-    uint64_t*                  h_ram_rows_       = nullptr;   // pinned, n_instances x rows x words
-    size_t                     h_ram_rows_cap_   = 0;         // u64 words
-    std::thread                h_ram_rows_prealloc_;          // allocates the default capacity at setup
-    void join_rows_prealloc_() { if (h_ram_rows_prealloc_.joinable()) h_ram_rows_prealloc_.join(); }
-    size_t                     ram_rows_stride_  = 0;         // u64 words per instance
-    std::vector<int32_t>       ram_rows_slot_;                // instance -> pinned slot, -1 when not owned
-    std::vector<RamFillResult> ram_results_;
 
     // Retained ROM and input accesses: records of the same stack, one run per piece in arrival order.
     std::vector<RamRun>        other_runs_;
@@ -465,11 +412,6 @@ private:
     uint8_t*                   other_scratch_ = nullptr;    // per-instance scratch starts here
     std::vector<size_t>        h_rom_inst_skip_, h_rom_inst_count_, h_rom_inst_extra_;
     std::vector<uint32_t>      h_rom_inst_first_, h_rom_inst_last_, h_rom_inst_ext_first_;
-    uint64_t*                  h_rom_rows_ = nullptr;       // pinned, n_instances x rows x words
-    size_t                     h_rom_rows_cap_ = 0;
-    size_t                     rom_rows_stride_ = 0;
-    std::vector<int32_t>       rom_rows_slot_;
-    std::vector<RamFillResult> rom_results_;
     bool prepare_other_index_();
     bool other_geometry_(int region, std::vector<uint32_t>& first, std::vector<uint32_t>& last,
                          std::vector<size_t>& skip, std::vector<size_t>& count,
@@ -478,33 +420,29 @@ private:
                        uint32_t** addr_sorted, uint32_t** idx, size_t* n_out);
     bool fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res,
                            uint64_t* d_out = nullptr);
+    bool fill_all_rom_instances(uint32_t n_rows, RamFillPrepared* prepared);
     // InputData fill (see ram_fill.cu).
     uint32_t                   input_col_widths_[64] = {0};
     uint32_t                   input_n_cols_ = 0, input_words_per_row_ = 0, input_lanes_x_row_ = 0;
     bool                       input_prepared_ = false;
     std::vector<size_t>        h_input_inst_skip_, h_input_inst_count_, h_input_inst_extra_;
     std::vector<uint32_t>      h_input_inst_first_, h_input_inst_last_, h_input_inst_ext_first_;
-    uint64_t*                  h_input_rows_ = nullptr;     // pinned, n_instances x rows x words
-    size_t                     h_input_rows_cap_ = 0;
-    size_t                     input_rows_stride_ = 0;
-    std::vector<int32_t>       input_rows_slot_;
-    std::vector<RamFillResult> input_results_;
     bool fill_input_instance(uint32_t inst, const uint64_t* d_image, const uint64_t* h_image, size_t image_words,
                              uint8_t* scratch, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res,
                              uint64_t* d_out = nullptr);
+    bool fill_all_input_instances(uint32_t n_rows, const void* image, size_t image_bytes, RamFillPrepared* prepared);
     // The input image on the device, and the per-instance scratch after it.
     uint64_t*                  d_image_ = nullptr;
     std::vector<uint64_t>      h_image_;
     size_t                     image_words_ = 0;
     uint8_t*                   input_scratch_ = nullptr;
-    // Slot fills: every instance resolved, per-instance scratch after all the block's tables.
-    bool                       slot_prepared_ = false;
-    bool                       resolve_all_ = false;
-    uint8_t*                   slot_scratch_ = nullptr;
-    std::vector<AlignPlanDesc>   slot_align_plans_;
-    std::vector<AlignChunkEntry> slot_align_entries_;
-    // Row images the preparation built, staged below the retained accesses; `fill_slot` copies them
-    // device to device. The per-instance scratch ends at `stage_low_` while any is staged.
+    // The fills: every instance resolved, per-instance scratch after all the block's tables.
+    bool                       fills_prepared_ = false;
+    uint8_t*                   fill_scratch_ = nullptr;
+    std::vector<AlignPlanDesc>   fill_align_plans_;
+    std::vector<AlignChunkEntry> fill_align_entries_;
+    // Row images the preparation built, staged below the retained accesses; `copy_staged` copies
+    // them to the host. The per-instance scratch ends at `stage_low_` while any is staged.
     struct Staged { uint32_t family, air_id, segment, n_rows; uint64_t* ptr; size_t words; RamFillResult res; };
     std::vector<Staged>        staged_;              // under staged_mtx_
     std::vector<bool>          stage_wanted_[3];     // per family (RAM, ROM, input): instances to stage
@@ -521,19 +459,8 @@ private:
     // neither wait for the legacy stream nor queue behind the prover's commit kernels.
     cudaStream_t               fill_stream_ = nullptr;
     bool                       stage_try_ = false;     // staged attempt: a scratch overflow is retried, not reported
-    std::vector<cudaEvent_t>   slot_copy_events_;      // the copies in flight on the prover's streams
-    // The host copies of the staged images (slot mode): behind the fills, at the lowest priority.
-    cudaStream_t               copy_stream_ = nullptr;
     bool                       arena_released_ = false;   // under staged_mtx_: the arena went back to the prover
-    uint32_t                   host_rows_mask_ = 0;
-    // Copies `words` words of a staged image `d_rows` to the pinned `out_rows` behind the fill on
-    // `fill_stream_`, without waiting for it.
-    bool stage_copy_out_(uint64_t* out_rows, const uint64_t* d_rows, size_t words);
-    uint32_t family_words_per_row_(uint32_t family, uint32_t air_id) const;
-    bool grow_pinned_(uint64_t** rows, size_t* cap, size_t need, const char* who);
     uint32_t*                  d_fill_fault_ = nullptr;      // a fill's fault word (fixed region)
-    // The pinned rows of an instance, by family (see `fill_slot`); null when it has none.
-    const uint64_t* host_rows_(uint32_t family, uint32_t air_id, uint32_t segment, size_t* words, RamFillResult* res) const;
     uint8_t*  scratch_end_(size_t n_total) const;
     uint64_t* stage_take_(size_t words);
     size_t                     stage_reserve_ = 0;   // scratch kept free below the staged images
@@ -559,15 +486,10 @@ private:
     uint32_t*                  d_align_rank_[N_STREAMS] = {nullptr};
     uint32_t                   align_col_widths_[4][64] = {{0}};
     uint32_t                   align_n_cols_[4] = {0}, align_words_per_row_[4] = {0};
-    bool                       align_prepared_ = false;
     size_t                     align_total_ = 0;
     uint32_t*                  d_align_order_ = nullptr;     // access -> record index, in (chunk, arrival) order
     std::vector<size_t>        h_align_chunk_start_;         // first access of each chunk in that order
     uint8_t*                   align_scratch_ = nullptr;
-    uint64_t*                  h_align_rows_ = nullptr;      // pinned
-    size_t                     h_align_rows_cap_ = 0;
-    struct AlignFilled { uint32_t air_id, segment; size_t offset; RamFillResult res; };
-    std::vector<AlignFilled>   align_results_;
     bool prepare_align_index_();
     bool fill_align_instance(const AlignPlanDesc& plan, const AlignChunkEntry* entries, uint8_t* scratch,
                              uint64_t* out_rows, RamFillResult* res, uint64_t* d_out = nullptr);

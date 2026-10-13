@@ -40,7 +40,7 @@ pub struct RamFillResult {
 }
 const _: () = assert!(core::mem::size_of::<RamFillResult>() == 48);
 
-/// `families` bits of [`RamFillPrepared`] and the family numbering of the planner's slot ops.
+/// `families` bits of [`RamFillPrepared`] and the family numbering of the planner's fills.
 pub const MEM_FAMILY_RAM: u32 = 0;
 pub const MEM_FAMILY_ROM: u32 = 1;
 pub const MEM_FAMILY_INPUT: u32 = 2;
