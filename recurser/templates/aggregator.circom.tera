@@ -9,6 +9,9 @@ include "mux1.circom";
 include "iszero.circom";
 {% endif %}
 include "publics_helpers.circom";
+{% for inc in circuit_includes %}
+{{ inc }}
+{%- endfor %}
 
 // Shared named constant (circom has no const/global): AggregatePublics sizes
 // its publics arrays as `[ZISK_PUBLICS()]`.

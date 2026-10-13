@@ -12,9 +12,9 @@
 // The generated verifiers allocate and this crate is no_std.
 extern crate alloc;
 
-/// blake3 keys. No compressed stage: blake3 does not build one.
 pub mod blake3 {
     pub mod vadcop_final;
+    pub mod vadcop_final_compressed;
 }
 
 pub mod poseidon1 {
