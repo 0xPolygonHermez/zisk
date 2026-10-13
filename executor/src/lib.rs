@@ -9,6 +9,7 @@ mod bus;
 mod error;
 mod execution;
 mod executor;
+pub mod gpu_witness;
 mod plan;
 mod ports;
 mod sm;
@@ -18,6 +19,7 @@ mod witness;
 // External API
 pub use execution::asm::{AsmResources, AsmSharedResources, EmulatorAsm}; // (Linux x86_64) / stub elsewhere
 pub use executor::*; // ZiskExecutor
+pub use sm::frops::{from_asm_requested as frops_from_asm_requested, FROM_ASM_ENV};
 pub use witness::AirClassifier;
 pub use zisk_asm_runner::GpuBufferSource; // AIR id → display name (used to label remote execution plans)
 

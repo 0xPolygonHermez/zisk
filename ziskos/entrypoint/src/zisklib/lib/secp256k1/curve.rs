@@ -3,9 +3,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::{
-    syscalls::{
-        syscall_secp256k1_add, syscall_secp256k1_dbl, SyscallPoint256, SyscallSecp256k1AddParams,
-    },
+    syscalls::{syscall_secp256k1_add, syscall_secp256k1_dbl, SyscallPoint256},
     zisklib::{
         be_bytes_to_u64_4, eq, fcall_msb_pos_256, fcall_msb_pos_256_2, is_one, is_two, is_zero,
         ONE_256, TWO_256, ZERO_256,
@@ -177,9 +175,9 @@ pub(crate) fn add_non_infinity_points_secp256k1(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     if p1.x != p2.x {
-        let mut params = SyscallSecp256k1AddParams { p1, p2 };
         syscall_secp256k1_add(
-            &mut params,
+            p1,
+            p2,
             #[cfg(feature = "hints")]
             hints,
         );

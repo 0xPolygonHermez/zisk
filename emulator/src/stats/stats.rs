@@ -16,6 +16,7 @@ use zisk_core::{
     InstContext, ZiskInst, ZiskOperationType, ZiskRom, RAM_ADDR, REGS_IN_MAIN_TOTAL_NUMBER,
     ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, STORE_NONE, SYS_ADDR,
 };
+use zisk_core::{FLOAT_LIB_ROM_ADDR, ZISKLIB_ROM_ADDR};
 use zisk_pil::RomRomTrace;
 use zisk_riscv::RiscVRegisters;
 use zisk_sm_arith::{ArithFrops, ArithLegacyFrops};
@@ -2875,6 +2876,16 @@ impl Stats {
         let rom_size = RomRomTrace::<Goldilocks>::NUM_ROWS;
         report.add_perc("ROM USAGE", rom_used_rows as u64, rom_size as u64);
 
+        // Executed instructions by ROM address range
+        report.title_cost_perc("ROM REGIONS", "STEPS");
+        let regions = self.steps_by_rom_region();
+        let region_steps: u64 = regions.iter().map(|(_, n)| n).sum();
+        for (label, steps) in regions {
+            if steps > 0 || label != "OTHER" {
+                report.add_perc(label, steps, region_steps.max(1));
+            }
+        }
+
         if self.mem_stats || self.mem_full_stats {
             report.title_count_cost_perc2("MEM COST BY TYPE", "COUNT", "COST", "");
             self.report_mem(&mut report, &self.costs.mops, false);
@@ -3239,6 +3250,33 @@ impl Stats {
         }
 
         report.output
+    }
+
+    /// Executed instructions (the PC histogram) by ROM address range: below the ROM (the
+    /// BIOS entry and exit code), the program, the ZisK library and the float library.
+    pub fn steps_by_rom_region(&self) -> [(&'static str, u64); 5] {
+        let mut steps = [0u64; 5];
+        for (&pc, &count) in &self.pc_histogram {
+            let region = if pc < ROM_ADDR {
+                0
+            } else if pc < ZISKLIB_ROM_ADDR {
+                1
+            } else if pc < FLOAT_LIB_ROM_ADDR {
+                2
+            } else if pc < ROM_ADDR + ROM_SIZE {
+                3
+            } else {
+                4
+            };
+            steps[region] += count;
+        }
+        [
+            ("LOW (< ROM)", steps[0]),
+            ("PROGRAM ROM", steps[1]),
+            ("ZISKLIB ROM", steps[2]),
+            ("FLOAT ROM", steps[3]),
+            ("OTHER", steps[4]),
+        ]
     }
 
     pub fn add_roi(&mut self, from_pc: u32, to_pc: u32, name: &str) {

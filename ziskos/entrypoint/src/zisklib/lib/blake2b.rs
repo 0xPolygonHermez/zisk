@@ -1,6 +1,6 @@
 //! BLAKE2b hash function.
 
-use crate::syscalls::{syscall_blake2b_round, SyscallBlake2bRoundParams};
+use crate::syscalls::syscall_blake2b_round_const;
 
 /// BLAKE2b initialization vectors
 const IV: [u64; 8] = [
@@ -35,15 +35,52 @@ pub fn blake2b_compress(
     v[14] = IV[6] ^ if f { u64::MAX } else { 0 };
     v[15] = IV[7];
 
-    for r in 0..rounds {
-        let mut params =
-            SyscallBlake2bRoundParams { index: (r % 10) as u64, state: &mut v, input: m };
-        syscall_blake2b_round(
-            &mut params,
-            #[cfg(feature = "hints")]
-            hints,
-        );
+    // The round index is a static immediate of the precompiled instruction, so every call site
+    // names it at compile time: whole blocks of ten rounds are unrolled over the constant round
+    // functions, and the (at most nine) rounds left over are selected with a chain of compares.
+    // Dispatching a runtime `r % 10` through `syscall_blake2b_round` instead costs about nine
+    // extra steps per round (measured on the `hashes` guest).
+    macro_rules! round {
+        ($i:literal) => {
+            syscall_blake2b_round_const::<$i>(
+                &mut v,
+                m,
+                #[cfg(feature = "hints")]
+                hints,
+            )
+        };
     }
+    macro_rules! tail_round {
+        ($tail:ident, $i:literal) => {
+            if $tail > $i {
+                round!($i);
+            }
+        };
+    }
+    let mut r = 0;
+    while rounds - r >= 10 {
+        round!(0);
+        round!(1);
+        round!(2);
+        round!(3);
+        round!(4);
+        round!(5);
+        round!(6);
+        round!(7);
+        round!(8);
+        round!(9);
+        r += 10;
+    }
+    let tail = rounds - r;
+    tail_round!(tail, 0);
+    tail_round!(tail, 1);
+    tail_round!(tail, 2);
+    tail_round!(tail, 3);
+    tail_round!(tail, 4);
+    tail_round!(tail, 5);
+    tail_round!(tail, 6);
+    tail_round!(tail, 7);
+    tail_round!(tail, 8);
 
     for i in 0..8 {
         h[i] ^= v[i] ^ v[i + 8];

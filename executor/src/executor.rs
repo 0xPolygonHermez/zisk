@@ -25,7 +25,10 @@ use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use proofman_witness::{WitnessComponent, WitnessManager};
 
 use std::{
-    sync::{Arc, RwLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, RwLock,
+    },
     time::Instant,
 };
 use zisk_common::{
@@ -87,6 +90,11 @@ pub struct ZiskExecutor<F: PrimeField64> {
     /// Phase-3 Witness computation. `None` on the standalone path
     /// (executor constructed without `WitnessManager` / `Std`).
     witness: Option<WitnessPhase<F>>,
+    /// Whether the FROPS multiplicity column should come from the ROM-histogram assembly when
+    /// this executor runs on the ASM path. Only a request: it is applied at the start of every
+    /// execution, together with the backend that execution actually uses. See
+    /// [`Self::set_frops_multiplicity_from_asm`].
+    frops_from_asm_requested: AtomicBool,
 }
 
 impl<F: PrimeField64> ZiskExecutor<F> {
@@ -114,7 +122,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let std = pil2_std_lib::Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
         proofman::register_std(wcm, &std);
 
-        let precompiles = crate::Precompiles::all(std.clone());
+        let precompiles = crate::Precompiles::all();
         let sm_bundle = Arc::new(StaticSMBundle::new(std, precompiles));
 
         let executor = Arc::new(Self {
@@ -122,6 +130,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             execution: ExecutionPhase::new(CHUNK_SIZE, with_asm_emulator),
             plan: PlanPhase::new(CHUNK_SIZE),
             witness: Some(WitnessPhase::new(CHUNK_SIZE, sm_bundle)),
+            frops_from_asm_requested: AtomicBool::new(false),
         });
         executor.set_packed(packed);
 
@@ -145,6 +154,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             execution: ExecutionPhase::new(CHUNK_SIZE, with_asm_emulator),
             plan: PlanPhase::new(CHUNK_SIZE),
             witness: None,
+            frops_from_asm_requested: AtomicBool::new(false),
         }))
     }
 
@@ -196,6 +206,21 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         Ok(())
     }
 
+    /// Selects where the FROPS multiplicity column comes from on the ASM path.
+    ///
+    /// With `true` it is taken from the column the ROM-histogram assembly builds, which a single
+    /// worker computes and hands over with the ROM histogram; the state-machine collectors must then
+    /// not accumulate it as well. With `false` (the default) the collectors own it. See
+    /// `executor::sm::frops`.
+    ///
+    /// This is a request, not the setting itself: the same executor can switch between the ASM and
+    /// the Rust backend from one job to the next (`set_asm_resources` / `clear_asm_resources`), and
+    /// the Rust path has no ROM-histogram assembly to take the column from. So every execution
+    /// applies it as `requested && ASM path`, just before it runs.
+    pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
+        self.frops_from_asm_requested.store(from_asm, Ordering::Relaxed);
+    }
+
     /// Sets whether to use packed representation for witness computation.
     pub fn set_packed(&self, packed: bool) {
         if let Some(witness) = self.witness.as_ref() {
@@ -226,6 +251,30 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         Ok(())
     }
 
+    /// Retires whatever the previous job left behind: drains a ROM-histogram runner
+    /// nobody consumed, then clears the hints stream and the input shmem.
+    ///
+    /// This is the job boundary. Call it after the previous computation is idle and
+    /// **before** the next job's inputs or hints are written, since the reset rewinds
+    /// the input shmem and marks the hints stream uninitialised. Drain first: the reset
+    /// drains the semaphores the RH child is waiting on, so rewinding while that child
+    /// is still reading strands it, and the next job's runner then hangs behind it.
+    ///
+    /// Blocks if the runner is still going, which is why it must not run before
+    /// cancellation has been signalled on a job that failed or was cancelled.
+    pub fn reset_for_new_job(&self) -> ExecutorResult<()> {
+        self.drain_rh();
+        self.execution.reset()
+    }
+
+    /// Joins a ROM-histogram runner left unconsumed by a previous execution and releases
+    /// its histogram. Idempotent, and a no-op when nothing is parked.
+    fn drain_rh(&self) {
+        if let Some(witness) = self.witness.as_ref() {
+            witness.drain_rh();
+        }
+    }
+
     /// Returns a reference to the ASM emulator if ASM execution is active.
     pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
         self.execution.asm_emulator()
@@ -254,6 +303,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         global_ids: &RwLock<Vec<usize>>,
     ) -> ExecutorResult<()> {
         let start_total = Instant::now();
+
+        // Debug cross-check (`debug_frops` feature): by now the previous execution has collected
+        // every instance, so this is the first point at which rows the assembly counted and no
+        // collector claimed can be told apart from rows not yet reached. Nothing is armed unless the
+        // variable is set, so this is a no-op in a normal run.
+        if let Err(problem) = zisk_core::frops::frops_check_report(true) {
+            tracing::error!("FROPS cross-check of the previous execution: {problem}");
+        }
+
         self.state.reset();
         if let Some(witness) = self.witness.as_ref() {
             witness.reset()?;
@@ -263,6 +321,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.state.stats.set_start_time(Instant::now());
 
         let is_asm_emulator = self.execution.is_asm_execution();
+
+        // Decide the FROPS multiplicity producer for this execution, from the backend it actually
+        // runs on. Every reader comes later: the collectors built after this execution, and the ROM
+        // witness, which publishes the column (`publish_frops_from_asm`).
+        if let Some(witness) = self.witness.as_ref() {
+            let from_asm = is_asm_emulator && self.frops_from_asm_requested.load(Ordering::Relaxed);
+            witness.set_frops_multiplicity_from_asm(from_asm);
+        }
 
         // Reserve proofman's unified GPU buffer for MO count-and-plan
         // (no-op on CPU / standalone).
@@ -322,7 +388,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let output = self.execution.run::<F>(
             &zisk_rom,
             &stdin,
-            registry.is_first_process(),
+            // The ROM-histogram runner is what asks the assembly child for a histogram,
+            // so not spawning it leaves that child idle. Skipped without a witness:
+            // there is no ROM state machine to read one, and the standalone path would
+            // pay for a full histogram pass only to drop the result.
+            self.witness.is_some() && registry.is_first_process(),
             self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
             &self.state.stats,
             &_exec_scope,
@@ -339,6 +409,18 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let crate::ExecutionOutput { min_traces, mut counters, pub_outs, mut backend, .. } = output;
         let num_chunks = min_traces.len();
+
+        // Hand the ROM-histogram runner over without joining it: the runner outlives the
+        // minimal-trace run, and the instance it feeds does not compute its witness until
+        // much later, so the join belongs there. Parking also selects that instance's ASM
+        // backend, so it must precede `populate_secn_instances` below.
+        //
+        // Parked here rather than after the planning phases so that an error in between
+        // still leaves the handle where the next job's drain can find it — otherwise its
+        // child could still be consuming input shmem when that job resets it.
+        if let (Some(handle), Some(witness)) = (backend.take_rh_handle(), self.witness.as_ref()) {
+            witness.park_rh_handle(handle)?;
+        }
 
         // The hook published every chunk it saw, so on the ASM path the store is
         // already complete and a read lock is enough (an exclusive lock here would
@@ -391,14 +473,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             }
         }
 
-        timer_start_info!(WAIT_ASM_RH);
-        if let Some(rh_data) = backend.await_rom_histogram()? {
-            if let Some(witness) = self.witness.as_ref() {
-                witness.set_rh_data(rh_data)?;
-            }
-        }
-        timer_stop_and_log_info!(WAIT_ASM_RH);
-
         stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
 
         if let (Some(witness), Some(extras)) = (self.witness.as_ref(), proofman_extras) {
@@ -425,9 +499,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         stats_end!(self.state.stats, &_config_scope);
 
-        // Reset hints stream and input shmem after the ASM
-        // backend-specific await calls have drained the runners.
-        self.execution.reset()?;
+        // The debug cross-check, which the collectors read when they are built, right after
+        // `execute` returns. The multiplicity column itself is published by the ROM witness,
+        // which reads the histogram anyway, so the end of execution never waits for it.
+        if let Some(witness) = self.witness.as_ref() {
+            witness.arm_frops_cross_check()?;
+        }
 
         // ────────────────────────────────────────────────────────────
         // Phase 1.4: Cost accumulation (witness only — needs sctx)
@@ -511,6 +588,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         })?;
 
         stats_end!(self.state.stats, &_witness_scope);
+
+        // Debug cross-check: a row claimed beyond what the assembly counted is a disagreement as
+        // soon as it happens, so report it here without waiting for the execution to finish. The
+        // other direction needs every instance collected; see `execute_inner`.
+        if let Err(problem) = zisk_core::frops::frops_check_report(false) {
+            tracing::error!("FROPS cross-check: {problem}");
+        }
 
         Ok(())
     }

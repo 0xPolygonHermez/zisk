@@ -6,9 +6,7 @@ mod arith_full_instance;
 mod arith_legacy_frops;
 mod arith_operation;
 mod arith_planner;
-mod arith_range_table;
 mod arith_range_table_helpers;
-mod arith_table;
 mod arith_table_data;
 mod arith_table_helpers;
 mod tools;
@@ -21,12 +19,10 @@ pub use arith_full_instance::*;
 pub use arith_legacy_frops::*;
 use arith_operation::*;
 use arith_planner::*;
-use arith_range_table::*;
-use arith_range_table_helpers::*;
-use arith_table::*;
+pub use arith_range_table_helpers::*;
 use arith_table_data::*;
 
-use arith_table_helpers::*;
+pub use arith_table_helpers::*;
 pub use tools::*;
 
 #[cfg(test)]

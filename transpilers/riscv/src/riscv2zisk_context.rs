@@ -2,29 +2,38 @@
 //! instances of ZiskInstBuilder, and accumulates these instances in a hash map as a public
 //! attribute.
 
+use std::collections::BTreeSet;
+
 use crate::{riscv_interpreter, RiscvInst, RiscvInstName};
 use zisk_definitions::{
-    SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID, SYSCALL_ARITH384_MOD_ID,
-    SYSCALL_BABYJUBJUB_ADD_ID, SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLAKE2SF_ID, SYSCALL_BLAKE3F_ID,
-    SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_BLS12_381_COMPLEX_MUL_ID,
-    SYSCALL_BLS12_381_COMPLEX_SUB_ID, SYSCALL_BLS12_381_CURVE_ADD_ID,
-    SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID, SYSCALL_BN254_COMPLEX_MUL_ID,
-    SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID, SYSCALL_BN254_CURVE_DBL_ID,
-    SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID,
-    SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID,
-    SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID,
-    SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID,
+    zkvmcall_by_id, SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID,
+    SYSCALL_ARITH384_MOD_ID, SYSCALL_BABYJUBJUB_ADD_ID, SYSCALL_BLAKE2B_ROUND_ID,
+    SYSCALL_BLAKE2SF_ID, SYSCALL_BLAKE3F_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID,
+    SYSCALL_BLS12_381_COMPLEX_MUL_ID, SYSCALL_BLS12_381_COMPLEX_SUB_ID,
+    SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
+    SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
+    SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
+    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID,
+    SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
+    SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
+    SYSCALL_SHA256F_ID, ZKVMCALL_ADDR_END, ZKVMCALL_ADDR_START, ZKVMCALL_ARG_ADDR_END,
+    ZKVMCALL_ARG_ADDR_START,
 };
 
+use zisk_core::rom_layout::InlineBody;
+use zisk_core::zisk_inst::{SRC_IMM, SRC_REG};
 use zisk_core::zisk_rom::ZiskRom;
 use zisk_core::{
-    convert_vector, ZiskInstBuilder, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR, EXTRA_PARAMS_ADDR,
-    INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
-    ROM_EXIT,
+    convert_vector, ZiskInstBuilder, CSR_ADDR, EXTRA_PARAMS_ADDR, INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR,
+    ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
 
+#[cfg(not(feature = "float"))]
+use zisk_core::rom_layout::ECALL_HANDLER_ADDR;
 #[cfg(feature = "float")]
-use zisk_core::{FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, FREG_X0, REG_X0};
+use zisk_core::rom_layout::FLOAT_HANDLER_ADDR;
+#[cfg(feature = "float")]
+use zisk_core::{FREG_F0, FREG_INST, FREG_RA, MTVEC, REG_X0};
 
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
@@ -75,18 +84,10 @@ const CSR_FCALL_PARAM_ADDR_END: u16 = 0x8FF;
 const CSR_FCALL_PARAM_OFFSET_TO_WORDS: [u64; 16] =
     [1, 2, 4, 8, 12, 16, 20, 24, 25, 32, 48, 64, 80, 96, 128, 256];
 
-const CAUSE_EXIT: u64 = 93;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
-#[cfg(feature = "float")]
-const FLOAT_HANDLER_ADDR: u64 = 0x1008;
-#[cfg(feature = "float")]
-const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 34; // 31 regs + set sp + set ra + jump to zisk_float
 
 /// Mask to apply to the target address of JALR instructions, to ensure the least significant bit is 0
 const JALR_MASK: u64 = 0xfffffffffffffffe;
-
-#[cfg(not(feature = "float"))]
-const NO_FLOAT_ECALL_ADDR: u64 = ROM_EXIT + 4 + 0x54; // must match add_entry_exit_jmp's trap_handler offset
 
 /// Context to store the list of converted ZisK instructions, including their program address and a
 /// map to store the instructions
@@ -240,7 +241,15 @@ impl<'a> Riscv2ZiskContext<'a> {
 
             // I.6 Privileged & System Instructions (Part of I Base)
             RiscvInstName::Ecall => self.ecall(riscv_instruction),
-            RiscvInstName::Ebreak => self.nop(riscv_instruction, 4),
+            // ebreak raises a breakpoint exception: the execution fails there. GCC emits it
+            // for __builtin_trap, which C's abort() reaches.
+            RiscvInstName::Ebreak => self.halt_with_error(riscv_instruction, 4),
+            // A write to a read-only CSR is an illegal instruction, so the execution
+            // fails there. `unimp` (`csrrw x0, cycle, x0`) is one: compilers emit it
+            // for every trap (core::intrinsics::abort, Rust's __rust_abort, llvm.trap).
+            _ if writes_read_only_csr(riscv_instruction) => {
+                self.halt_with_error(riscv_instruction, 4)
+            }
             RiscvInstName::Csrrw => self.csrrw(riscv_instruction),
             RiscvInstName::Csrrs => self.csrrs(riscv_instruction, next_instructions),
             RiscvInstName::Csrrc => self.csrrc(riscv_instruction),
@@ -325,17 +334,25 @@ impl<'a> Riscv2ZiskContext<'a> {
             //////////////////////////////////////
 
             // C.I.1. Integer Computational (Register-Register)
+            #[cfg(feature = "compressed")]
             RiscvInstName::CMv | RiscvInstName::CAdd => {
                 self.create_register_op(riscv_instruction, "add", 2)
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSub => self.create_register_op(riscv_instruction, "sub", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CXor => self.create_register_op(riscv_instruction, "xor", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::COr => self.create_register_op(riscv_instruction, "or", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAnd => self.create_register_op(riscv_instruction, "and", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAddw => self.create_register_op(riscv_instruction, "add_w", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSubw => self.create_register_op(riscv_instruction, "sub_w", 2),
 
             // C.I.2. Integer Computational (Register-Immediate)
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAddi => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
@@ -349,13 +366,19 @@ impl<'a> Riscv2ZiskContext<'a> {
                     self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
                 }
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAddi4spn | RiscvInstName::CLi | RiscvInstName::CAddi16sp => {
                 self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSlli => self.immediate_op(riscv_instruction, "sll", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSrli => self.immediate_op(riscv_instruction, "srl", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSrai => self.immediate_op(riscv_instruction, "sra", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAndi => self.immediate_op(riscv_instruction, "and", 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CAddiw => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
@@ -369,41 +392,53 @@ impl<'a> Riscv2ZiskContext<'a> {
             }
 
             // C.I.3. Control Transfer Instructions
+            #[cfg(feature = "compressed")]
             RiscvInstName::CJr | RiscvInstName::CJalr => self.jalr(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CJ => self.jal(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CBeqz => self.create_branch_op(riscv_instruction, "eq", false, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CBnez => self.create_branch_op(riscv_instruction, "eq", true, 2),
 
             // C.I.4. Load and Store Instructions
+            #[cfg(feature = "compressed")]
             RiscvInstName::CLw | RiscvInstName::CLwsp => {
                 self.load_op(riscv_instruction, "signextend_w", 4, 2)
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CLd | RiscvInstName::CLdsp => {
                 self.load_op(riscv_instruction, "copyb", 8, 2)
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CLui => self.lui(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSw | RiscvInstName::CSwsp => {
                 self.store_op(riscv_instruction, "copyb", 4, 2)
             }
+            #[cfg(feature = "compressed")]
             RiscvInstName::CSd | RiscvInstName::CSdsp => {
                 self.store_op(riscv_instruction, "copyb", 8, 2)
             }
 
             // C.I.6.Privileged & System Instructions
-            RiscvInstName::CEbreak => self.nop(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
+            RiscvInstName::CEbreak => self.halt_with_error(riscv_instruction, 2),
 
-            // C.D: Double-Precision Floating-Point:
-            #[cfg(feature = "float")]
+            // C.D: Double-Precision Floating-Point (needs both `float` and `compressed`):
+            #[cfg(all(feature = "float", feature = "compressed"))]
             RiscvInstName::CFld => self.load_op(riscv_instruction, "copyb", 8, 2),
-            #[cfg(feature = "float")]
+            #[cfg(all(feature = "float", feature = "compressed"))]
             RiscvInstName::CFsd => self.store_op(riscv_instruction, "copyb", 8, 2),
-            #[cfg(feature = "float")]
+            #[cfg(all(feature = "float", feature = "compressed"))]
             RiscvInstName::CFldsp => self.load_op(riscv_instruction, "copyb", 8, 2),
-            #[cfg(feature = "float")]
+            #[cfg(all(feature = "float", feature = "compressed"))]
             RiscvInstName::CFsdsp => self.store_op(riscv_instruction, "copyb", 8, 2),
 
             // C. Other
+            #[cfg(feature = "compressed")]
             RiscvInstName::CNop => self.nop(riscv_instruction, 2),
+            #[cfg(feature = "compressed")]
             RiscvInstName::CReserved => self.halt_with_error(riscv_instruction, 2),
 
             // F: Single-Precision Floating-Point
@@ -716,7 +751,8 @@ impl<'a> Riscv2ZiskContext<'a> {
                 any(feature = "zbkc", feature = "zbkc_native"),
                 any(feature = "zbkx", feature = "zbkx_native"),
                 feature = "float",
-                feature = "zicond_native"
+                feature = "zicond_native",
+                feature = "compressed"
             )))]
             _ => {
                 panic!(
@@ -1540,7 +1576,89 @@ impl<'a> Riscv2ZiskContext<'a> {
 
     //    jal rd, label
     //          flag(0,0), j(pc + imm) -> [rd]
-    /// Implements the RISC-V jump-and-link inconditional jump instruction
+    /// Implements the RISC-V jump-and-link unconditional jump instruction
+    /// Emits, in place of a zkvmcall's `csrs`, a tail-jump to its ZisK library
+    /// routine. A *static* jump to a constant address (`copyb` imm + `set_pc`), so
+    /// `ra`/`r1` is untouched and the routine's `ret` returns to the guest caller —
+    /// the same shape as ziskasm's `jump()`. Compiles to a direct `jmp` on x86.
+    pub fn emit_zkvmcall_jump(&mut self, at_addr: u64, lib_addr: u64) {
+        let mut zib = ZiskInstBuilder::new_from_riscv(at_addr, "zkvmcall".to_string());
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", lib_addr, false);
+        zib.op("copyb").unwrap();
+        zib.set_pc();
+        zib.j(0, 4);
+        zib.verbose(&format!("zkvmcall -> 0x{lib_addr:x}"));
+        zib.build(self.rom);
+    }
+
+    /// An inline zkvmcall: the library routine's `body` (see `InlineBody`) in place
+    /// of its `csrs` sequence, which starts at `at_addr` and ends before `next_addr`.
+    /// The body reads `regs[k]` where it reads r(10 + k); its scratch registers
+    /// (r32..r39) are kept as they are. Its first instruction takes
+    /// the RISC-V address and the rest take internal ones, chained in body order;
+    /// every jump is explicit, and an exit goes to `next_addr`, or, with `status`
+    /// (a thunk), to a last instruction that sets a0 = ZKVM_EOK (0) first.
+    pub fn emit_inline_zkvmcall(
+        &mut self,
+        at_addr: u64,
+        next_addr: u64,
+        regs: &[u32],
+        body: &InlineBody,
+        status: bool,
+    ) {
+        let addrs: Vec<u64> = (0..body.insts.len())
+            .map(|k| if k == 0 { at_addr } else { self.rom.get_internal_address() })
+            .collect();
+        let status_addr = status.then(|| self.rom.get_internal_address());
+        let exit = status_addr.unwrap_or(next_addr);
+        for (k, template) in body.insts.iter().enumerate() {
+            let mut zib = if k == 0 {
+                ZiskInstBuilder::new_from_riscv(at_addr, "zkvmcall".to_string())
+            } else {
+                ZiskInstBuilder::new_internal(addrs[k], at_addr)
+            };
+            let (paddr0, riscv_inst, external_ref_addr) =
+                (zib.i.paddr, zib.i.riscv_inst.take(), zib.i.external_ref_addr);
+            zib.i = template.clone();
+            zib.i.paddr = paddr0;
+            zib.i.riscv_inst = riscv_inst;
+            zib.i.external_ref_addr = external_ref_addr;
+            zib.i.next_internal_inst = addrs.get(k + 1).copied().or(status_addr);
+            zib.i.meta_rs1 = None;
+            zib.i.meta_rd = None;
+            for (src, reg) in [
+                (&mut zib.i.a_src, &mut zib.i.a_offset_imm0),
+                (&mut zib.i.b_src, &mut zib.i.b_offset_imm0),
+            ] {
+                // Only the arguments are renamed; the scratch registers stay.
+                if *src == SRC_REG && (10..10 + regs.len() as u64).contains(reg) {
+                    let r = regs[(*reg - 10) as usize] as u64;
+                    // x0 is not a main-trace register: read it as the immediate 0.
+                    (*src, *reg) = if r == 0 { (SRC_IMM, 0) } else { (SRC_REG, r) };
+                }
+            }
+            let jmp =
+                |next: Option<usize>| next.map_or(exit, |n| addrs[n]) as i64 - addrs[k] as i64;
+            let [next1, next2] = body.next[k];
+            // A precompile's jmp_offset1 is a parameter (its flag is always 0).
+            let jmp1 = if template.is_precompiled { template.jmp_offset1 } else { jmp(next1) };
+            zib.j(jmp1, jmp(next2));
+            zib.build(self.rom);
+        }
+        if let Some(addr) = status_addr {
+            let mut zib = ZiskInstBuilder::new_internal(addr, at_addr);
+            zib.src_a("imm", 0, false);
+            zib.src_b("imm", 0, false);
+            zib.op("copyb").unwrap();
+            zib.store("reg", 10, false, false);
+            let jmp = next_addr as i64 - addr as i64;
+            zib.j(jmp, jmp);
+            zib.verbose("zkvmcall thunk: a0 = ZKVM_EOK");
+            zib.build(self.rom);
+        }
+    }
+
     pub fn jal(&mut self, i: &RiscvInst, inst_size: u64) {
         assert!(inst_size == 4 || inst_size == 2);
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
@@ -1561,14 +1679,14 @@ impl<'a> Riscv2ZiskContext<'a> {
         // If the float feature is enabled, we use the MTVEC register as the address to jump to for
         // the ecall.
         //
-        // If the float feature is disabled, we jump to a fixed BIOS address (NO_FLOAT_ECALL_ADDR)
+        // If the float feature is disabled, we jump to a fixed BIOS address (ECALL_HANDLER_ADDR)
         // and intentionally ignore the MTVEC CSR value. This avoids the only dynamic jump to the
         // lower address space, improving the performance of dynamic jumps in general.
 
         #[cfg(feature = "float")]
         zib.src_b("mem", MTVEC, false);
         #[cfg(not(feature = "float"))]
-        zib.src_b("imm", NO_FLOAT_ECALL_ADDR, false);
+        zib.src_b("imm", ECALL_HANDLER_ADDR, false);
         zib.op("copyb").unwrap();
         zib.store_pc("reg", 1, false);
         zib.set_pc();
@@ -1811,31 +1929,39 @@ impl<'a> Riscv2ZiskContext<'a> {
                     assert!(!next_instructions.is_empty());
                     self.transpile_profile_pattern(i, next_instructions);
                 }
-                SYSCALL_KECCAKF_ID
-                | SYSCALL_ARITH256_ID
-                | SYSCALL_ARITH256_MOD_ID
-                | SYSCALL_SECP256K1_ADD_ID
-                | SYSCALL_SECP256K1_DBL_ID
-                | SYSCALL_SHA256F_ID
+                // Precompiles called with two direct operands (see transpile_precompiled_ab_pattern)
+                SYSCALL_SECP256K1_ADD_ID
+                | SYSCALL_SECP256R1_ADD_ID
                 | SYSCALL_BN254_CURVE_ADD_ID
-                | SYSCALL_BN254_CURVE_DBL_ID
                 | SYSCALL_BN254_COMPLEX_ADD_ID
                 | SYSCALL_BN254_COMPLEX_SUB_ID
                 | SYSCALL_BN254_COMPLEX_MUL_ID
-                | SYSCALL_ARITH384_MOD_ID
                 | SYSCALL_BLS12_381_CURVE_ADD_ID
-                | SYSCALL_BLS12_381_CURVE_DBL_ID
                 | SYSCALL_BLS12_381_COMPLEX_ADD_ID
                 | SYSCALL_BLS12_381_COMPLEX_SUB_ID
                 | SYSCALL_BLS12_381_COMPLEX_MUL_ID
-                | SYSCALL_POSEIDON2_ID
-                | SYSCALL_POSEIDON1_ID
-                | SYSCALL_SECP256R1_ADD_ID
-                | SYSCALL_SECP256R1_DBL_ID
-                | SYSCALL_BLAKE2B_ROUND_ID
                 | SYSCALL_BABYJUBJUB_ADD_ID
+                | SYSCALL_SHA256F_ID
                 | SYSCALL_BLAKE3F_ID
                 | SYSCALL_BLAKE2SF_ID => {
+                    let precompiled =
+                        CSR_PRECOMPILED[i.csr as usize - CSR_PRECOMPILED_ADDR_START as usize];
+                    self.transpile_precompiled_ab_pattern(i, next_instructions, precompiled);
+                }
+                // Two direct operands plus a static argument (the round index)
+                SYSCALL_BLAKE2B_ROUND_ID => {
+                    self.transpile_precompiled_abx_pattern(i, next_instructions, "blake2b");
+                }
+                SYSCALL_KECCAKF_ID
+                | SYSCALL_ARITH256_ID
+                | SYSCALL_ARITH256_MOD_ID
+                | SYSCALL_SECP256K1_DBL_ID
+                | SYSCALL_BN254_CURVE_DBL_ID
+                | SYSCALL_ARITH384_MOD_ID
+                | SYSCALL_BLS12_381_CURVE_DBL_ID
+                | SYSCALL_POSEIDON2_ID
+                | SYSCALL_POSEIDON1_ID
+                | SYSCALL_SECP256R1_DBL_ID => {
                     let mut zib =
                         ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                     zib.src_b("reg", i.rs1 as u64, false);
@@ -2042,7 +2168,7 @@ impl<'a> Riscv2ZiskContext<'a> {
                 }
                 {
                     let mut zib = ZiskInstBuilder::new_internal(internal_address_3, rom_address);
-                    zib.src_a("mem", 0, false);
+                    zib.src_a("imm", 0, false);
                     zib.src_b("reg", 33, false);
                     zib.op("copyb").unwrap();
                     zib.store("reg", i.rd as i64, false, false);
@@ -2096,7 +2222,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             let internal_address_2 = self.rom.get_internal_address();
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
-                zib.src_a("mem", 0, false);
+                zib.src_a("imm", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
@@ -2180,7 +2306,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             let internal_address_1 = self.rom.get_internal_address();
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
-                zib.src_a("mem", 0, false);
+                zib.src_a("imm", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
@@ -2195,7 +2321,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             }
             {
                 let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
-                zib.src_a("mem", 0, false);
+                zib.src_a("imm", 0, false);
                 zib.src_b("imm", i.imme as u64, false);
                 zib.op("copyb").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
@@ -2269,7 +2395,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             let internal_address_1 = self.rom.get_internal_address();
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
-                zib.src_a("mem", 0, false);
+                zib.src_a("imm", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
@@ -2356,7 +2482,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             let internal_address_1 = self.rom.get_internal_address();
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
-                zib.src_a("mem", 0, false);
+                zib.src_a("imm", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
@@ -2619,6 +2745,75 @@ impl<'a> Riscv2ZiskContext<'a> {
         );
     }
 
+    /// Precompiles that take two operands directly in registers (no parameter struct in memory):
+    /// the first one is the operand that receives the result. The guest emits `csrs port, reg(p1)`
+    /// followed by `add x0, reg(p2), x0`, and both are folded into a single precompiled instruction
+    /// with a = reg(p1) and b = reg(p2), skipping the `add`.
+    fn transpile_precompiled_ab_pattern(
+        &mut self,
+        i: &RiscvInst,
+        next_instructions: &[RiscvInst],
+        op: &str,
+    ) {
+        if i.imme == 0
+            && next_instructions.len() > 1
+            && next_instructions[0].inst_name == RiscvInstName::Add
+            && next_instructions[0].rd == 0
+            && next_instructions[0].rs2 == 0
+        {
+            // precompiled a,b transpilation pattern:
+            //
+            //  csrs  0x81x, reg(p1)          ===>  precompiled reg(p1), reg(p2) ─┐
+            //  add   x0, reg(p2), x0               add x0, reg(p2), x0           │ jmp+8
+            //  ..........                          ..........   <───────────────┘
+            let p1 = i.rs1;
+            let p2 = next_instructions[0].rs1;
+            let next_pc = next_instructions[1].rom_address;
+            self.create_extended_precompiles_op(i, op, p1, p2 as u64, 0, 0, false, next_pc);
+            return;
+        }
+        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
+        panic!(
+            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as {op} with a \
+                        consecutive add x0, reg, x0 (next[0]:{})",
+            i.csr, i.rom_address, next_0
+        );
+    }
+
+    /// Like `transpile_precompiled_ab_pattern` with a static argument on top: the guest emits
+    /// `csrs port, reg(p1)` followed by `addi x0, reg(p2), imm`, folded into one precompiled
+    /// instruction with a = reg(p1), b = reg(p2) and extended_arg = imm.
+    fn transpile_precompiled_abx_pattern(
+        &mut self,
+        i: &RiscvInst,
+        next_instructions: &[RiscvInst],
+        op: &str,
+    ) {
+        if i.imme == 0
+            && next_instructions.len() > 1
+            && next_instructions[0].inst_name == RiscvInstName::Addi
+            && next_instructions[0].rd == 0
+        {
+            // precompiled a,b,x transpilation pattern:
+            //
+            //  csrs  0x81x, reg(p1)          ===>  precompiled reg(p1), reg(p2), imm ─┐
+            //  addi  x0, reg(p2), imm              addi x0, reg(p2), imm              │ jmp+8
+            //  ..........                          ..........   <────────────────────┘
+            let p1 = i.rs1;
+            let p2 = next_instructions[0].rs1;
+            let imm = next_instructions[0].imm as i64;
+            let next_pc = next_instructions[1].rom_address;
+            self.create_extended_precompiles_op(i, op, p1, p2 as u64, 0, imm, false, next_pc);
+            return;
+        }
+        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
+        panic!(
+            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as {op} with a \
+                        consecutive addi x0, reg, imm (next[0]:{})",
+            i.csr, i.rom_address, next_0
+        );
+    }
+
     fn transpile_dma_inputcpy_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
         if i.imme == 0 && next_instructions.len() > 1 {
             let next_pc = next_instructions[1].rom_address;
@@ -2716,10 +2911,22 @@ impl<'a> Riscv2ZiskContext<'a> {
 
 /// Converts a buffer with RISC-V data into a vector of Zisk instructions, using the
 /// Riscv2ZiskContext to perform the instruction transpilation
-/// dma_addrs: (memcpy, memcmp, memset, memmove) addresses, 0 if not present
-pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8], _dma_addrs: (u64, u64, u64, u64)) {
-    //print!("add_zisk_code() addr={}\n", addr);
-
+/// Transpiles a RISC-V code section into ZisK instructions.
+///
+/// `zkvmcalls` maps a zkvmcall ID (see `zisk_definitions::ZKVMCALLS`) to its library
+/// entry address. Each `csrs <id>, x0` zkvmcall is replaced by a tail-jump to that
+/// entry. Every zkvmcall in the section must be in the map; [`zkvmcall_ids`] finds
+/// them beforehand (and checks their form).
+///
+/// `inline_zkvmcalls` maps the ID of an inline zkvmcall to its routine's body, which
+/// replaces each of its `csrs` sequences.
+pub fn add_zisk_code(
+    rom: &mut ZiskRom,
+    addr: u64,
+    data: &[u8],
+    zkvmcalls: &std::collections::HashMap<u16, u64>,
+    inline_zkvmcalls: &std::collections::HashMap<u16, InlineBody>,
+) {
     // Convert input data to a u32 vector
     let code_vector: Vec<u16> = convert_vector(data);
 
@@ -2730,17 +2937,150 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8], _dma_addrs: (u64
     let mut ctx = Riscv2ZiskContext::new(rom);
 
     // For all RISCV instructions
+    let mut skip_until: u64 = 0;
     for (i, riscv_instruction) in riscv_instructions.iter().enumerate() {
-        //print!("add_zisk_code() converting RISCV instruction={}\n",
-        // riscv_instruction.to_string());
+        let inst_addr = riscv_instruction.rom_address;
+
+        // Inside an inline zkvmcall sequence, already replaced by the routine's body.
+        if inst_addr < skip_until {
+            continue;
+        }
+
+        // An inline zkvmcall: the library routine's body, on the caller's registers.
+        // Any other zkvmcall: tail-jump to the library routine, which returns to our
+        // caller.
+        if let Some(id) = zkvmcall_id(riscv_instruction) {
+            if let Some(body) = inline_zkvmcalls.get(&id) {
+                let site = inline_zkvmcall_site(&riscv_instructions[i..])
+                    .unwrap_or_else(|e| panic!("{e}"));
+                let next_addr = inst_addr + 4 * site.len as u64;
+                ctx.emit_inline_zkvmcall(inst_addr, next_addr, &site.regs, body, site.thunk);
+                skip_until = next_addr;
+                continue;
+            }
+            let lib_addr = *zkvmcalls.get(&id).unwrap_or_else(|| {
+                panic!("zkvmcall 0x{id:X} at 0x{inst_addr:x} has no library entry")
+            });
+            ctx.emit_zkvmcall_jump(inst_addr, lib_addr);
+            continue;
+        }
 
         // Get slice of remaining instructions after current one
         let next_instructions = &riscv_instructions[(i + 1)..];
 
-        // Convert RICV instruction to ZisK instruction and store it in rom.insts
+        // Convert RISC-V instruction to ZisK instruction and store it in rom.insts
         ctx.convert(riscv_instruction, next_instructions);
-        //print!("   to: {}", ctx.insts.iter().last().)
     }
+}
+
+/// Returns the zkvmcall ID of `inst` if it is a zkvmcall (`csrs <id>, rs` with `id`
+/// in the zkvmcall CSR range; `rs` is x0 but for an inline one).
+fn zkvmcall_id(inst: &RiscvInst) -> Option<u16> {
+    let csr = inst.csr as u16;
+    (inst.inst_name == RiscvInstName::Csrrs
+        && inst.rd == 0
+        && (ZKVMCALL_ADDR_START..=ZKVMCALL_ADDR_END).contains(&csr))
+    .then_some(csr)
+}
+
+/// Where an inline zkvmcall takes its arguments from, and how long its call site is.
+struct InlineSite {
+    /// The register holding each argument: what the body reads for r10, r11, ...
+    regs: Vec<u32>,
+    /// The number of `csrs` the site takes.
+    len: usize,
+    /// A thunk (`csrs <id>, x0` then `ret`): the arguments are in a0, a1, ... as in
+    /// any call, and a0 must return the status, ZKVM_EOK (0).
+    thunk: bool,
+}
+
+/// The inline zkvmcall that starts `insts`. Its sequence form is the zkvmcall with
+/// argument 0's register, followed, in order and contiguous, by a
+/// `csrs <ZKVMCALL_ARG_ADDR_START + k - 1>, rs` for each argument k. Its thunk form is
+/// a lone `csrs <id>, x0`, as in a zkvmcall thunk (`zkvm_calls.s`, the Rust
+/// binding, or a vendored copy of either): an inline zkvmcall can still be called.
+fn inline_zkvmcall_site(insts: &[RiscvInst]) -> Result<InlineSite, String> {
+    let (id, addr) = (insts[0].csr as u16, insts[0].rom_address);
+    let args = zkvmcall_by_id(id).map_or(0, |c| c.inline_args) as usize;
+    let is_arg = |a: &RiscvInst, k: usize| {
+        a.inst_name == RiscvInstName::Csrrs
+            && a.rd == 0
+            && a.csr as u16 == ZKVMCALL_ARG_ADDR_START + k as u16 - 1
+            && a.rom_address == addr + 4 * k as u64
+    };
+    if insts[0].rs1 == 0 && !insts.get(1).is_some_and(|a| is_arg(a, 1)) {
+        let regs = (0..args as u32).map(|k| 10 + k).collect();
+        return Ok(InlineSite { regs, len: 1, thunk: true });
+    }
+    let mut regs = vec![insts[0].rs1];
+    for k in 1..args {
+        let Some(arg) = insts.get(k).filter(|a| is_arg(a, k)) else {
+            return Err(format!(
+                "inline zkvmcall 0x{id:X} at 0x{addr:x}: argument {k} must follow as \
+                 `csrs 0x{:X}, <reg>`",
+                ZKVMCALL_ARG_ADDR_START + k as u16 - 1
+            ));
+        };
+        regs.push(arg.rs1);
+    }
+    Ok(InlineSite { regs, len: args, thunk: false })
+}
+
+/// Returns the IDs of all the zkvmcalls in a RISC-V code section, so the caller can
+/// decide whether to link the ZisK library before transpiling it.
+///
+/// Any instruction that touches a zkvmcall CSR must be exactly `csrs <id>, x0` with a
+/// known `id` (the thunk form, also for an inline zkvmcall), or for an inline zkvmcall
+/// its whole `csrs` sequence; and an argument
+/// CSR may only appear inside such a sequence. Anything else is an error, since it
+/// can only come from a guest built against a different set of zkvmcalls.
+pub fn zkvmcall_ids(addr: u64, data: &[u8]) -> Result<BTreeSet<u16>, String> {
+    let code_vector: Vec<u16> = convert_vector(data);
+    let insts = riscv_interpreter(addr, &code_vector);
+    let mut ids = BTreeSet::new();
+    let mut i = 0;
+    while i < insts.len() {
+        let inst = &insts[i];
+        i += 1;
+        let csr = inst.csr as u16;
+        let is_csr_inst = matches!(
+            inst.inst_name,
+            RiscvInstName::Csrrw
+                | RiscvInstName::Csrrs
+                | RiscvInstName::Csrrc
+                | RiscvInstName::Csrrwi
+                | RiscvInstName::Csrrsi
+                | RiscvInstName::Csrrci
+        );
+        if !is_csr_inst {
+            continue;
+        }
+        if (ZKVMCALL_ARG_ADDR_START..=ZKVMCALL_ARG_ADDR_END).contains(&csr) {
+            return Err(format!(
+                "zkvmcall argument CSR 0x{csr:X} at 0x{:x} outside an inline zkvmcall",
+                inst.rom_address
+            ));
+        }
+        if !(ZKVMCALL_ADDR_START..=ZKVMCALL_ADDR_END).contains(&csr) {
+            continue;
+        }
+        let malformed = || {
+            format!(
+                "malformed zkvmcall at 0x{:x}: expected `csrs 0x{csr:X}, x0`, found {:?} rd=x{} rs1=x{}",
+                inst.rom_address, inst.inst_name, inst.rd, inst.rs1
+            )
+        };
+        let id = zkvmcall_id(inst).ok_or_else(malformed)?;
+        let call = zkvmcall_by_id(id)
+            .ok_or_else(|| format!("unknown zkvmcall 0x{id:X} at 0x{:x}", inst.rom_address))?;
+        if call.inline_args > 0 {
+            i += inline_zkvmcall_site(&insts[i - 1..])?.len - 1;
+        } else if inst.rs1 != 0 {
+            return Err(malformed());
+        }
+        ids.insert(csr);
+    }
+    Ok(ids)
 }
 
 /// Add initial data to ZisK rom.
@@ -2871,444 +3211,17 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
     }
 }
 
-/// Add the entry/exit jump program section to the rom instruction set.
-pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
-    //print!("add_entry_exit_jmp() rom.next_init_inst_addr={}\n", rom.next_init_inst_addr);
-
-    // Calculate the trap handler rom pc address as an offset from the current instruction address
-    // to the beginning of the ecall section
-    #[cfg(not(feature = "float"))]
-    assert!(rom.next_init_inst_addr == ROM_EXIT + 4);
-    let trap_handler: u64 = rom.next_init_inst_addr + 0x54;
-    #[cfg(not(feature = "float"))]
-    assert!(trap_handler == NO_FLOAT_ECALL_ADDR);
-
-    // :0000 we note the rom pc address offset from the first address for each instruction
-    // Store the Zisk architecture ID into memory
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", ARCH_ID_ZISK, false);
-    zib.op("copyb").unwrap();
-    zib.store("mem", ARCH_ID_CSR_ADDR as i64, false, false);
-    zib.j(4, 4);
-    zib.verbose(&format!("Set marchid: {ARCH_ID_ZISK:x}"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0004
-    // Store the trap handler address into memory
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", trap_handler, false);
-    zib.op("copyb").unwrap();
-    zib.store("mem", MTVEC as i64, false, false);
-    zib.j(4, 4);
-    zib.verbose(&format!("Set mtvec: {trap_handler}"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0008
-    // Store the input data address into register #10
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", INPUT_ADDR, false);
-    zib.op("copyb").unwrap();
-    zib.store("reg", 10, false, false);
-    zib.j(0, 4);
-    zib.verbose(&format!("Set 1st Param (pInput): 0x{INPUT_ADDR:08x}"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :000c
-    // Store the output data address into register #11
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", OUTPUT_ADDR, false);
-    zib.op("copyb").unwrap();
-    zib.store("reg", 11, false, false);
-    zib.j(0, 4);
-    zib.verbose(&format!("Set 2nd Param (pOutput): 0x{OUTPUT_ADDR:08x}"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0010
-    // Call to the program rom pc address, i.e. call the program
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", addr, false);
-    zib.op("copyb").unwrap();
-    zib.set_pc();
-    zib.store_pc("reg", 1, false);
-    zib.j(0, 4);
-    zib.verbose(&format!("CALL to entry: 0x{addr:08x}"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0014
-    // Returns from the program execution.
-    // Reads output data using the specific pubout operation in 32 chunks of 64 bits:
-    //
-    // loadw: c(reg11) = b(32), a=0
-    // copyb: c(reg12)=b=0, a=0
-    // copyb: c(reg13)=b=OUTPUT_ADDR, a=0
-    //
-    // eq: if reg12==reg11 jump to end
-    // pubout: c=b.mem(reg13), a = reg12
-    // add: reg13 = reg13 + 8 // Increment memory address
-    // add: reg12 = reg12 + 1, jump -12 // Increment index, goto eq
-    //
-    // end
-    //
-    // Copy output data address into register #1
-    // copyb: reg11 = c = b = mem(OUTPUT_ADDR,4), a=0
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", 32, false);
-    zib.ind_width(4);
-    zib.op("copyb").unwrap();
-    zib.store("reg", 11, false, false);
-    zib.j(0, 4);
-    zib.verbose("Set reg11 to output data length = 32");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0018 -> copyb: copyb: c(reg12)=b=0, a=0
-    // Set register #12 to zero
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", 0, false);
-    zib.op("copyb").unwrap();
-    zib.store("reg", 12, false, false);
-    zib.j(0, 4);
-    zib.verbose("Set reg12 to 0");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :001c -> copyb: c(reg13)=b=OUTPUT_ADDR, a=0
-    // Set register #13 to OUTPUT_ADDR, i.e. to the beginning of the actual data after skipping
-    // the data length value
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", OUTPUT_ADDR, false);
-    zib.op("copyb").unwrap();
-    zib.store("reg", 13, false, false);
-    zib.j(0, 4);
-    zib.verbose("Set reg13 to OUTPUT_ADDR");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0020 -> eq: if reg12==reg11 jump to end
-    // Jump to end if registers #11 and #12 are equal, to break the data copy loop
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 11, false);
-    zib.src_b("reg", 12, false);
-    zib.op("eq").unwrap();
-    zib.store("none", 0, false, false);
-    zib.j(20, 4);
-    zib.verbose("If reg11==reg12 jump to end");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0024 -> copyb: c = b = mem(reg13, 8)
-    // Copy the contents of memory at address set by register #13 into c, i.e. copy output data chunk
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 13, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.store("none", 0, false, false);
-    zib.j(0, 4);
-    zib.verbose("Set c to mem(output_data[index]), a=index");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0028 -> pubout: c = last_c = mem(reg13, 8), a = reg12 = index
-    // Call the special operation pubout with this data, being a the data chunk index
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 12, false);
-    zib.src_b("lastc", 0, false);
-    zib.op("pubout").unwrap();
-    zib.store("none", 0, false, false);
-    zib.j(0, 4);
-    zib.verbose("Public output, set c to output_data[index], a=index");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :002c -> add: reg13 = reg13 + 8
-    // Increase the register #13, i.e. the data address, in 8 units
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 13, false);
-    zib.src_b("imm", 8, false);
-    zib.op("add").unwrap();
-    zib.store("reg", 13, false, false);
-    zib.j(0, 4);
-    zib.verbose("Set reg13 to reg13 + 8");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0030 -> add: reg12 = reg12 + 1, jump -16
-    // Increase the register #12, i.e. the data chunk index, in 1 unit.
-    // Jump to the beginning of the output data read loop
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 12, false);
-    zib.src_b("imm", 1, false);
-    zib.op("add").unwrap();
-    zib.store("reg", 12, false, false);
-    zib.j(4, -16);
-    zib.verbose("Set reg12 to reg12 + 1");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // We read the input data boundaries of 128MB chunks to make sure we can prove large input data
-    // sizes that are not continuous, i.e. when the program reads 2 input data chunks distant more
-    // than 128MB, we can still prove the program by reading the input data in 128MB steps
-
-    // :0034 -> read input[128M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[128M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0038 -> read input[256M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 2 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[256M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :003c -> read input[384M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 3 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[384M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0040 -> read input[512M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 4 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[512M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0044 -> read input[640M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 5 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[640M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0048 -> read input[768M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 6 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[768M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :004c -> read input[896M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 7 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[896M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0050 jump to end (success)
-    // Jump to the last instruction (ROM_EXIT) to properly finish the program execution
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", ROM_EXIT, false);
-    zib.op("copyb").unwrap();
-    zib.set_pc();
-    zib.j(0, 0);
-    zib.verbose("jump to end successfully");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0054 trap_handle -> This is the address offset we use at the beginning of the function
-    // This code is executed when the program makes an ecall (system call).
-    // The pc is set to this address, and after the system call, it returns to the pc next to the
-    // one that made the ecall
-    // If register a7==CAUSE_EXIT, then execute the next instruction to end the program;
-    // otherwise jump to the one after the next one
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 17, false);
-    zib.src_b("imm", CAUSE_EXIT, false);
-    zib.op("eq").unwrap();
-    zib.j(-64, 4);
-    zib.verbose(&format!("beq r17, {CAUSE_EXIT} # Check if is exit, jump to output, then end"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0058
-    // Return to the instruction next to the one that made this ecall
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("reg", 1, false);
-    zib.op("copyb").unwrap();
-    zib.set_pc();
-    zib.j(0, 4);
-    zib.verbose("ret");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // Check resulting rom address does not exceed max
-    if rom.next_init_inst_addr > MAX_ZISK_OS_ROM_ADDR {
-        panic!(
-            "add_entry_exit_jmp() exceeded max rom address: next_init_inst_addr={:#x} max={:#x}",
-            rom.next_init_inst_addr, MAX_ZISK_OS_ROM_ADDR
-        );
-    }
-}
-
-/// Add the end jump program section to the rom instruction set.
-pub fn add_end_and_lib(rom: &mut ZiskRom) {
-    //print!("add_entry_exit_jmp() rom.next_init_inst_addr={}\n", rom.next_init_inst_addr);
-
-    // :0000 we jump to the third instruction, leaving room for the end instruction
-    assert!(rom.next_init_inst_addr == ROM_ENTRY);
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", 0, false);
-    zib.op("copyb").unwrap();
-    #[cfg(feature = "float")]
-    zib.j(4 * 68, 4 * 68);
-    #[cfg(not(feature = "float"))]
-    zib.j(4 * 2, 4 * 2);
-    #[cfg(feature = "float")]
-    zib.verbose("Jump over end instruction and float handler");
-    #[cfg(not(feature = "float"))]
-    zib.verbose("Jump over end instruction");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0004 END: all programs should exit here, regardless of the execution result
-    // This is the last instruction to be executed.  The emulator must stop after the instruction
-    // end flag is found to be true
-    assert!(rom.next_init_inst_addr == ROM_EXIT);
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", 0, false);
-    zib.op("copyb").unwrap();
-    zib.end();
-    zib.j(0, 0);
-    zib.verbose("end");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    #[cfg(feature = "float")]
-    {
-        // Float handler
-        // RISC-V float instructions are handled here
-        // The instruction to be handled is in register FREG_INST
-        // The return address is in register FREG_RA
-        // We must save integer registers before calling the zisk_float function
-        assert!(rom.next_init_inst_addr == FLOAT_HANDLER_ADDR);
-        for i in 1..32 {
-            let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-            zib.src_a("imm", 0, false);
-            zib.src_b("reg", i, false);
-            zib.op("copyb").unwrap();
-            zib.store("mem", FREG_X0 as i64 + (i * 8) as i64, false, false);
-            zib.j(4, 4);
-            zib.verbose(&format!("Float: save r{i} into freg_x{i}"));
-            zib.build(rom);
-            rom.next_init_inst_addr += 4;
-        }
-
-        // Set sp to the top of the float library stack
-        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-        zib.src_a("imm", 0, false);
-        zib.src_b("imm", FLOAT_LIB_SP, false);
-        zib.op("copyb").unwrap();
-        zib.store("reg", 2, false, false);
-        zib.j(4, 4);
-        zib.verbose(&format!("Float: save FLOAT_LIB_SP={FLOAT_LIB_SP:x} into reg[2]"));
-        zib.build(rom);
-        rom.next_init_inst_addr += 4;
-
-        // Set the return address to the FLOAT_HANDLER_RETURN_ADDR
-        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-        zib.src_a("imm", 0, false);
-        zib.src_b("imm", FLOAT_HANDLER_RETURN_ADDR, false);
-        zib.op("copyb").unwrap();
-        zib.store("reg", 1, false, false);
-        zib.j(4, 4);
-        zib.verbose(&format!(
-            "Float: save FLOAT_HANDLER_RETURN_ADDR={FLOAT_HANDLER_RETURN_ADDR:x} into reg[1]"
-        ));
-        zib.build(rom);
-        rom.next_init_inst_addr += 4;
-
-        // Jump back to the zisk_float function address
-        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-        zib.src_a("imm", 0, false);
-        zib.src_b("imm", FLOAT_LIB_ROM_ADDR, false);
-        zib.op("copyb").unwrap();
-        zib.set_pc();
-        zib.j(0, 4);
-        zib.verbose(&format!("Float: jump to FLOAT_LIB_ROM_ADDR={FLOAT_LIB_ROM_ADDR:x}"));
-        zib.build(rom);
-        rom.next_init_inst_addr += 4;
-
-        // We must retrieve integer registers after calling the zisk_float function
-        assert!(rom.next_init_inst_addr == FLOAT_HANDLER_RETURN_ADDR);
-        for i in 1..32 {
-            let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-            zib.src_a("imm", 0, false);
-            zib.src_b("mem", FREG_X0 + (i * 8), false);
-            zib.op("copyb").unwrap();
-            zib.store("reg", i as i64, false, false);
-            zib.j(4, 4);
-            zib.verbose(&format!("Float: restore r{i} from freg_x{i}"));
-            zib.build(rom);
-            rom.next_init_inst_addr += 4;
-        }
-
-        // Jump back to the address previously stored in FREG_RA
-        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-        zib.src_a("imm", 0, false);
-        zib.src_b("mem", FREG_RA, false);
-        zib.op("copyb").unwrap();
-        zib.set_pc();
-        zib.j(0, 4);
-        zib.verbose("Float: jump to FREG_RA");
-        zib.build(rom);
-        rom.next_init_inst_addr += 4;
-    }
-
-    // Check resulting rom address does not exceed max
-    if rom.next_init_inst_addr > MAX_ZISK_OS_ROM_ADDR {
-        panic!(
-            "add_end_and_lib() exceeded max rom address: next_init_inst_addr={:#x} max={:#x}",
-            rom.next_init_inst_addr, MAX_ZISK_OS_ROM_ADDR
-        );
-    }
+/// Whether `i` is a CSR instruction that writes a read-only CSR (address bits 11:10 =
+/// 0b11), which RISC-V defines as an illegal instruction. CSRRW/CSRRWI always write;
+/// CSRRS/CSRRC write only when rs1 != x0, and CSRRSI/CSRRCI only when uimm != 0, so
+/// a plain read (`csrr`) of a read-only CSR, such as marchid or the fcall result
+/// 0xFFE, stays legal.
+fn writes_read_only_csr(i: &RiscvInst) -> bool {
+    let writes = match i.inst_name {
+        RiscvInstName::Csrrw | RiscvInstName::Csrrwi => true,
+        RiscvInstName::Csrrs | RiscvInstName::Csrrc => i.rs1 != 0,
+        RiscvInstName::Csrrsi | RiscvInstName::Csrrci => i.imme != 0,
+        _ => false,
+    };
+    writes && (i.csr >> 10) & 0b11 == 0b11
 }

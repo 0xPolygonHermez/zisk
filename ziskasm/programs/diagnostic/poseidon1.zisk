@@ -1,0 +1,57 @@
+; ============================================================================
+; poseidon1.zisk - diagnostic for the ZisK poseidon1 precompile.
+;
+; The `poseidon1` op reads 16 u64 (Goldilocks field elements) from the address in
+; its `b` operand, applies the Poseidon1 permutation, and writes the 16 results
+; back in place (like poseidon2/keccak; c = 0).
+;
+; Reference note: like poseidon2 there is no public Poseidon1-over-Goldilocks
+; (width 16) test vector, so P1_EXPECT is a golden vector produced by calling the
+; same library function (fields::poseidon1_hash::<Goldilocks, Poseidon1_16, 16>)
+; directly - outside the emulator. This checks the .zisk encoding, the in-place
+; memory ABI, and the emulator's dispatch/writeback; the permutation math itself
+; is covered by that library's own tests. Input state = element[i] = i (0..15).
+;
+; Returns r10 = 0 on success, or 0x3101 on the first mismatching word.
+; ============================================================================
+
+define WORDS 16
+
+; Poseidon1 input state (RAM, permuted in place): element[i] = i
+u64 P1_STATE[16] =
+	0x0000000000000000, 0x0000000000000001, 0x0000000000000002, 0x0000000000000003,
+	0x0000000000000004, 0x0000000000000005, 0x0000000000000006, 0x0000000000000007,
+	0x0000000000000008, 0x0000000000000009, 0x000000000000000a, 0x000000000000000b,
+	0x000000000000000c, 0x000000000000000d, 0x000000000000000e, 0x000000000000000f
+
+; Expected Poseidon1 permutation output (golden vector, see header)
+const u64 P1_EXPECT[16] =
+	0x81c2ff551d3dd1a3, 0xa6f3ddabab7998e2, 0x4372186243233825, 0xd2bd8442c6cc6df7,
+	0x051a796f67578f23, 0x3b597e26481062ca, 0x19c3c48645baaabb, 0x7e142fc8bf48c2ce,
+	0x599ca659bfbf033f, 0x84e132ca4afd703d, 0xb758d5776f5185c3, 0xaf58bfc9cb74204e,
+	0x7015309157ec7e9c, 0xe57e7f42acfff2e0, 0x57043250e11a11bb, 0x656c21727540ab90
+
+poseidon1:
+	copyb(0, P1_STATE) -> r8          ; r8 = &state
+	poseidon1(0, r8) -> r13           ; permute the 16-element state in place
+
+	copyb(0, P1_STATE) -> r7          ; result pointer
+	copyb(0, P1_EXPECT) -> r5         ; expected pointer
+	copyb(0, WORDS) -> r6
+
+p1_loop:
+	eq(r6, 0), j(p1_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(p1_next)
+	copyb(0, 0x3101) -> r10
+	ret
+p1_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(p1_loop)
+
+p1_ok:
+	copyb(0, 0) -> r10
+	ret

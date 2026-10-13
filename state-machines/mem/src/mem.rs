@@ -5,7 +5,6 @@ use crate::{
     MemAlignReadByteInstance, MemAlignSM, MemAlignWriteByteInstance, MemModuleInstance, MemPlanner,
     MemSM, RomDataSM,
 };
-use pil2_std_lib::Std;
 use proofman_common::ProofCtx;
 use proofman_fields::PrimeField64;
 use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner};
@@ -26,12 +25,12 @@ pub struct Mem<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> Mem<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let mem_align_sm = MemAlignSM::new(std.clone());
-        let mem_sm = MemSM::new(std.clone());
-        let input_data_sm = InputDataSM::new(std.clone());
-        let rom_data_sm = RomDataSM::new(std.clone());
-        let mem_align_byte_sm = MemAlignByteSM::new(std.clone());
+    pub fn new() -> Arc<Self> {
+        let mem_align_sm = MemAlignSM::new();
+        let mem_sm = MemSM::new();
+        let input_data_sm = InputDataSM::new();
+        let rom_data_sm = RomDataSM::new();
+        let mem_align_byte_sm = MemAlignByteSM::new();
 
         Arc::new(Self { mem_align_sm, mem_sm, input_data_sm, rom_data_sm, mem_align_byte_sm })
     }

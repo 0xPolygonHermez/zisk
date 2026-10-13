@@ -65,6 +65,9 @@ pub use mem_inputs::*;
 
 use zisk_common::zisk_precompile;
 
+#[cfg(test)]
+mod babyjubjub_mem_inputs_tests;
+
 zisk_precompile! {
     name = BabyJubJub,
     op_type = BabyJubJub,

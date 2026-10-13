@@ -1,51 +1,11 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
-/// Locate an `nvcc` binary. Probe order:
-/// 1. `nvcc` on `PATH`
-/// 2. `/usr/local/cuda/bin/nvcc`
-/// 3. `/opt/cuda/bin/nvcc`
-///
-/// Returns `None` on macOS (no CUDA), under the `cpu-only` feature, or
-/// when no candidate is found.
-fn find_nvcc() -> Option<PathBuf> {
-    if cfg!(feature = "cpu-only") {
-        return None;
-    }
-    if cfg!(target_os = "macos") {
-        return None;
-    }
-    if Command::new("nvcc").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
-        return Some(PathBuf::from("nvcc"));
-    }
-    for candidate in ["/usr/local/cuda/bin/nvcc", "/opt/cuda/bin/nvcc"] {
-        if Path::new(candidate).exists() {
-            return Some(PathBuf::from(candidate));
-        }
-    }
-    None
-}
-
-/// Derive the CUDA library directory from a discovered `nvcc` path
-/// (`<prefix>/bin/nvcc` → `<prefix>/lib64`). Falls back to
-/// `/usr/local/cuda/lib64` when nvcc was found via `PATH` only.
-fn cuda_lib_dir(nvcc: &Path) -> PathBuf {
-    if let Ok(abs) = nvcc.canonicalize() {
-        if let Some(parent) = abs.parent().and_then(|p| p.parent()) {
-            return parent.join("lib64");
-        }
-    }
-    PathBuf::from("/usr/local/cuda/lib64")
-}
-
 fn main() {
-    println!("cargo:rerun-if-env-changed=CUDA_ARCHS");
-    println!("cargo:rerun-if-env-changed=CUDA_ARCH");
-    println!("cargo:rerun-if-env-changed=CUDA_GENCODE_FLAGS");
-    println!("cargo::rustc-check-cfg=cfg(gpu)");
-
+    // The CUDA env vars, `cfg(gpu)`'s check-cfg and the GPU rebuild triggers are
+    // all emitted by `zisk_cuda_build::compile` at the end of this function.
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let is_macos = target_os == "macos";
 
@@ -97,57 +57,18 @@ fn main() {
 
     watch_dir_recursive("cpp", &["cpp", "hpp"]);
 
-    // GPU library — Linux only, requires nvcc.
-    let nvcc = find_nvcc();
-    let use_gpu = match (&nvcc, cfg!(feature = "cpu-only"), is_macos) {
-        (_, true, _) => {
-            println!("cargo:warning=[BUILD INFO] mem-planner-cpp compiled with CPU-only support (feature enabled)");
-            false
-        }
-        (_, _, true) => {
-            println!("cargo:warning=[BUILD INFO] mem-planner-cpp compiled with CPU-only support (macOS — no CUDA)");
-            false
-        }
-        (None, _, _) => {
-            println!("cargo:warning=[BUILD INFO] mem-planner-cpp compiled with CPU-only support (CUDA not detected)");
-            false
-        }
-        (Some(_), _, _) => {
-            println!("cargo:warning=[BUILD INFO] mem-planner-cpp compiled with GPU support");
-            true
-        }
-    };
-
-    if !use_gpu {
-        return;
-    }
-    let nvcc = nvcc.unwrap();
-
-    let gpu_build_dir = Path::new(&out_dir).join("memcpp_cu");
-    fs::create_dir_all(&gpu_build_dir).unwrap();
-
-    // Invoke the cu/Makefile, which owns all CUDA arch resolution (CUDA_ARCHS
-    // et al. reach it via the process environment).
-    let status = Command::new("make")
-        .arg("all")
-        .env("OUT_DIR", &gpu_build_dir)
-        .env("NVCC", &nvcc)
-        .current_dir("cu")
-        .status()
-        .expect("Failed to run make for cu/");
-    assert!(status.success(), "GPU Makefile build failed");
-
-    println!("cargo:rustc-link-search=native={}", gpu_build_dir.display());
-    println!("cargo:rustc-link-lib=static=memcpp_cu");
-
-    let cuda_lib = cuda_lib_dir(&nvcc);
-    println!("cargo:rustc-link-search=native={}", cuda_lib.display());
-    println!("cargo:rustc-link-lib=dylib=cudart");
-
-    watch_dir_recursive("cu", &["cu", "cuh"]);
-    println!("cargo:rerun-if-changed=cu/Makefile");
-    println!("cargo:rerun-if-changed=cu/detect_cuda_arch.sh");
-    println!("cargo:rustc-cfg=gpu");
+    // GPU library — Linux only, requires nvcc. Arch resolution, the link mode
+    // and cfg(gpu) all live in zisk-cuda-build so every kernel-bearing crate
+    // shares one copy; see that crate's docs for why the runtime link mode in
+    // particular must not be decided per crate.
+    zisk_cuda_build::compile(&zisk_cuda_build::CudaLib {
+        name: "memcpp_cu",
+        dir: "cu",
+        sources: &["count_and_plan.cu", "count_and_plan_c.cu"],
+        // The kernels include the CPU side's headers.
+        extra_header_dirs: &["cpp"],
+        ..Default::default()
+    });
 }
 
 fn watch_dir_recursive<P: AsRef<Path>>(dir: P, exts: &[&str]) {

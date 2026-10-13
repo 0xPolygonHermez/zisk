@@ -120,8 +120,8 @@ impl<F: PrimeField64> Dctx for ProofmanAdapter<'_, F> {
         Ok(self.pctx.dctx_is_my_process_instance(gid.0)?)
     }
 
-    fn set_witness_ready(&self, gid: GlobalId, ready: bool) {
-        self.pctx.set_witness_ready(gid.0, ready);
+    fn announce_witness_ready(&self, gid: GlobalId) {
+        self.pctx.announce_witness_ready(gid.0);
     }
 
     fn is_first_process(&self) -> bool {
@@ -132,17 +132,26 @@ impl<F: PrimeField64> Dctx for ProofmanAdapter<'_, F> {
 impl<F: PrimeField64> ProofRegistry for ProofmanAdapter<'_, F> {
     fn add_instance(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         self.track(&info);
-        Ok(GlobalId(self.pctx.add_instance(info.airgroup_id, info.air_id)?))
+        Ok(GlobalId(self.pctx.add_instance_with_priority(
+            info.airgroup_id,
+            info.air_id,
+            info.priority,
+        )?))
     }
 
     fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         self.track(&info);
-        Ok(GlobalId(self.pctx.add_instance_assign(info.airgroup_id, info.air_id)?))
+        Ok(GlobalId(self.pctx.add_instance_assign(info.airgroup_id, info.air_id, info.priority)?))
     }
 
     fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         self.track(&info);
         Ok(GlobalId(self.pctx.add_table(info.airgroup_id, info.air_id)?))
+    }
+
+    fn assign_table_to(&self, info: InstanceInfo, gid: GlobalId) -> ExecutorResult<()> {
+        self.track(&info);
+        Ok(self.pctx.assign_table_to(info.airgroup_id, info.air_id, gid.0)?)
     }
 
     fn instance_counts(&self) -> std::collections::HashMap<(usize, usize), usize> {
@@ -207,7 +216,7 @@ impl Dctx for NoopProofRegistry {
     fn is_my_process_instance(&self, _gid: GlobalId) -> ExecutorResult<bool> {
         Ok(true)
     }
-    fn set_witness_ready(&self, _gid: GlobalId, _ready: bool) {}
+    fn announce_witness_ready(&self, _gid: GlobalId) {}
     fn is_first_process(&self) -> bool {
         true
     }
@@ -221,6 +230,10 @@ impl ProofRegistry for NoopProofRegistry {
     fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         self.track(info);
         Ok(GlobalId(0))
+    }
+    fn assign_table_to(&self, info: InstanceInfo, _gid: GlobalId) -> ExecutorResult<()> {
+        self.track(info);
+        Ok(())
     }
     fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         self.track(info);
