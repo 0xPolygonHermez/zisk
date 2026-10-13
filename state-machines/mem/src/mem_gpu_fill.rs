@@ -1,5 +1,4 @@
-//! The `Mem` witness from the accesses the GPU planner retained (`ZISK_MEM_GPU_FILL`), and the
-//! op the prover's kernel takes in slot mode.
+//! The `Mem` witness from the accesses the GPU planner retained (`ZISK_MEM_GPU_FILL`).
 
 use zisk_common::SegmentId;
 use zisk_pil::PACKED_INFO;
@@ -74,52 +73,4 @@ pub(crate) fn packed_used_bits(airgroup_id: usize, air_id: usize) -> Option<usiz
         .find(|(ag, a, _)| *ag == airgroup_id && *a == air_id)
         .filter(|(_, _, c)| c.is_packed)
         .map(|(_, _, c)| c.unpack_info.iter().map(|&w| w as usize).sum())
-}
-
-/// The kernel input of one memory instance (`MemSlotOp` of the planner, byte for byte).
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct MemSlotOp {
-    pub family: u32,
-    pub air_id: u32,
-    pub segment: u32,
-    pub n_rows: u32,
-}
-// SAFETY: `#[repr(C)]`, four `u32` fields, no padding, no pointers: the planner's `MemSlotOp`.
-unsafe impl proofman_common::GpuWitnessOp for MemSlotOp {}
-impl From<&MemSlotOp> for MemSlotOp {
-    fn from(op: &MemSlotOp) -> Self {
-        *op
-    }
-}
-
-/// The families the kernel input names.
-pub(crate) const SLOT_FAMILY_RAM: u32 = 0;
-pub(crate) const SLOT_FAMILY_ROM: u32 = 1;
-pub(crate) const SLOT_FAMILY_INPUT: u32 = 2;
-
-/// An instance the prover's kernel fills into its slot: the staged op in the trace buffer and the
-/// air values, which the device resolved ahead. `decl` is the prover's declaration of the air.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn slot_instance<F: proofman_fields::PrimeField64>(
-    decl: &proofman_common::GpuWitnessAir,
-    family: u32,
-    air_id: usize,
-    segment: usize,
-    n_rows: usize,
-    n_cols: usize,
-    trace_buffer: Vec<F>,
-    air_values: Vec<F>,
-) -> proofman_common::ProofmanResult<proofman_common::AirInstance<F>> {
-    let op =
-        MemSlotOp { family, air_id: air_id as u32, segment: segment as u32, n_rows: n_rows as u32 };
-    let (mut instance, _) = proofman_common::stage_gpu_witness::<F, MemSlotOp, MemSlotOp>(
-        decl,
-        n_rows,
-        n_cols,
-        trace_buffer,
-        &[vec![op]],
-    )?;
-    instance.airvalues = air_values;
-    Ok(instance)
 }

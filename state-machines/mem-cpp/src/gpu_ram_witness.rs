@@ -2,8 +2,8 @@
 //!
 //! The runner registers its planner here once the plan is closed and starts the block's
 //! preparation on its own thread; the memory instances of the block then take their rows
-//! (`gpu_*_witness_fill`), in the witness phase from the images the preparation staged on the
-//! device, in the proof phase from the pinned host copy. The planner object lives in the runner's
+//! (`gpu_*_witness_fill`) from the images the preparation staged on the device, or have them
+//! built on demand, into their host trace buffers. The planner object lives in the runner's
 //! preloaded state, so it outlives the witness phase; the registration is cleared when the next
 //! block starts.
 //!
@@ -31,8 +31,8 @@ unsafe impl Send for Registered {}
 
 static GPU_RAM_WITNESS: Mutex<Option<Registered>> = Mutex::new(None);
 
-/// Calls inside [`rows_into`] or the slot kernel: the registration waits for them to end before
-/// it is cleared (`clear_gpu_ram_witness`).
+/// Calls inside [`rows_into`]: the registration waits for them to end before it is cleared
+/// (`clear_gpu_ram_witness`).
 static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
 
 fn registry() -> MutexGuard<'static, Option<Registered>> {
@@ -231,7 +231,7 @@ pub fn clear_gpu_ram_witness() {
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
     *registry() = None;
-    ASYNC_PREP.store(false, Ordering::Release);
+    ROWS_ON_DEVICE.store(false, Ordering::Release);
 }
 
 // ─── The block's preparation ─────────────────────────────────────────────────────────────────
@@ -288,29 +288,27 @@ fn align_tables(
 
 /// The block's preparation, running on its own thread; joined by the first consumer that needs
 /// it complete, or by the arena's release.
-struct SlotPrepare {
+struct Prepare {
     handle: Option<std::thread::JoinHandle<Result<RamFillPrepared, String>>>,
     done: Option<Result<RamFillPrepared, String>>,
 }
-static SLOT_PREPARE: Mutex<SlotPrepare> = Mutex::new(SlotPrepare { handle: None, done: None });
+static PREPARE: Mutex<Prepare> = Mutex::new(Prepare { handle: None, done: None });
 
-/// The block's rows are still on the device (the preparation runs or its images stand): the
-/// fills take them from there. Cleared when the arena goes back; the fills then take the pinned
-/// host copy.
-static ASYNC_PREP: AtomicBool = AtomicBool::new(false);
+/// The block's rows are on the device (the preparation runs or its images stand): the fills take
+/// them from there. Cleared when the arena goes back; a fill after that fails.
+static ROWS_ON_DEVICE: AtomicBool = AtomicBool::new(false);
 
 /// Starts the block's preparation on its own thread, off the executor's path: it runs beside the
 /// registration of the secondaries and the first commits, and each instance waits only for its
 /// own image. The host-side checks stay synchronous, so a block the device cannot serve at all
-/// falls back before any instance is built. With `host_rows` (slot mode) the owned instances'
-/// rows are also copied to pinned host memory for the proofs.
-pub fn gpu_slot_witness_prepare_async(
+/// falls back before any instance is built. `ram`, `rom` and `input` (segment ids) and
+/// `align_plans` are the owned instances, the ones that get a staged image.
+pub fn gpu_mem_witness_prepare_async(
     image: Vec<u8>,
     ram: Vec<u32>,
     rom: Vec<u32>,
     input: Vec<u32>,
     align_plans: &[&zisk_common::Plan],
-    host_rows: bool,
 ) -> Result<(), String> {
     let (descs, entries) = align_tables(align_plans)?;
     let inner = {
@@ -325,15 +323,15 @@ pub fn gpu_slot_witness_prepare_async(
     // A preparation still running (a block that ended early) is joined before a new one starts:
     // two never run on one planner.
     {
-        let mut g = SLOT_PREPARE.lock().unwrap_or_else(|e| e.into_inner());
+        let mut g = PREPARE.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(stale) = g.handle.take() {
             let _ = stale.join();
         }
         g.done = None;
     }
-    ASYNC_PREP.store(true, Ordering::Release);
+    ROWS_ON_DEVICE.store(true, Ordering::Release);
     let handle = std::thread::Builder::new()
-        .name("mem-slot-prepare".into())
+        .name("mem-witness-prepare".into())
         .spawn(move || {
             let inner = inner as *mut crate::gpu_bindings::CountAndPlanHandle;
             let mut prepared = RamFillPrepared::default();
@@ -345,7 +343,7 @@ pub fn gpu_slot_witness_prepare_async(
             // tables and the image outlive the call, which copies what it keeps; `prepared` is a
             // valid out-parameter.
             let ok = unsafe {
-                crate::gpu_bindings::count_and_plan_prepare_slot_fills(
+                crate::gpu_bindings::count_and_plan_prepare_fills(
                     inner,
                     image.as_ptr(),
                     image.len(),
@@ -359,12 +357,11 @@ pub fn gpu_slot_witness_prepare_async(
                     rom.len() as u32,
                     input.as_ptr(),
                     input.len() as u32,
-                    host_rows,
                     &mut prepared,
                 )
             };
             if !ok {
-                return Err(format!("prepare_slot_fills failed with status {}", prepared.status));
+                return Err(format!("prepare_fills failed with status {}", prepared.status));
             }
             tracing::debug!(
                 "[gpu] memory witness prepared on the device: {} accesses resolved, {} instances, families {:#x}",
@@ -375,64 +372,46 @@ pub fn gpu_slot_witness_prepare_async(
             Ok(prepared)
         })
         .map_err(|e| {
-            ASYNC_PREP.store(false, Ordering::Release);
-            format!("cannot start the slot preparation thread: {e}")
+            ROWS_ON_DEVICE.store(false, Ordering::Release);
+            format!("cannot start the memory witness preparation thread: {e}")
         })?;
-    SLOT_PREPARE.lock().unwrap_or_else(|e| e.into_inner()).handle = Some(handle);
+    PREPARE.lock().unwrap_or_else(|e| e.into_inner()).handle = Some(handle);
     Ok(())
 }
 
 /// Waits for the block's preparation; its failure is every fill's failure. The lock is held
 /// through the join, so a second waiter blocks until the result is known.
-fn slot_prepare_join() -> Result<RamFillPrepared, String> {
-    let mut g = SLOT_PREPARE.lock().unwrap_or_else(|e| e.into_inner());
+fn prepare_join() -> Result<RamFillPrepared, String> {
+    let mut g = PREPARE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(h) = g.handle.take() {
         g.done = Some(match h.join() {
             Ok(r) => r,
-            Err(_) => Err("the slot preparation thread panicked".into()),
+            Err(_) => Err("the memory witness preparation thread panicked".into()),
         });
     }
     g.done.clone().unwrap_or(Err("no memory witness preparation for this block".into()))
-}
-
-/// The families the preparation serves (`MEM_ROWS_*` bits), once it ended; 0 when it failed.
-pub fn gpu_mem_witness_families() -> u32 {
-    slot_prepare_join().map(|p| p.families).unwrap_or(0)
-}
-
-/// `MEM_ROWS_*` bits of the families whose owned instances all have their rows in pinned host
-/// memory (zero before the preparation ends, or without host rows).
-pub fn gpu_mem_witness_host_rows_mask() -> u32 {
-    if slot_prepare_join().is_err() {
-        return 0;
-    }
-    match planner() {
-        // SAFETY: registered handle; the mask is a plain read of the planner's state.
-        Ok(inner) => unsafe { crate::gpu_bindings::count_and_plan_host_rows_mask(inner) },
-        Err(_) => 0,
-    }
 }
 
 // ─── The arena's release ─────────────────────────────────────────────────────────────────────
 
 /// What runs when the last owned memory instance took its rows: the arena goes back to the
 /// prover, and the memory airs leave the device for the rest of the block.
-struct SlotRelease {
+struct Release {
     pending: usize,
     release: Option<Box<dyn FnOnce() + Send>>,
 }
-static SLOT_RELEASE: Mutex<SlotRelease> = Mutex::new(SlotRelease { pending: 0, release: None });
+static RELEASE: Mutex<Release> = Mutex::new(Release { pending: 0, release: None });
 
 /// Arms the release that follows the last of `n_pending` fills.
-pub fn gpu_slot_witness_arm(n_pending: usize, release: Box<dyn FnOnce() + Send>) {
-    let mut g = SLOT_RELEASE.lock().unwrap_or_else(|e| e.into_inner());
+pub fn gpu_mem_witness_arm(n_pending: usize, release: Box<dyn FnOnce() + Send>) {
+    let mut g = RELEASE.lock().unwrap_or_else(|e| e.into_inner());
     g.pending = n_pending;
     g.release = Some(release);
 }
 
 /// One fill ended (with rows or not): the release to run when it was the last pending one.
-fn slot_fill_done() -> Option<Box<dyn FnOnce() + Send>> {
-    let mut g = SLOT_RELEASE.lock().unwrap_or_else(|e| e.into_inner());
+fn fill_done() -> Option<Box<dyn FnOnce() + Send>> {
+    let mut g = RELEASE.lock().unwrap_or_else(|e| e.into_inner());
     if g.pending == 0 {
         return None;
     }
@@ -444,29 +423,28 @@ fn slot_fill_done() -> Option<Box<dyn FnOnce() + Send>> {
     }
 }
 
-/// Runs `release` after the preparation ended and every copy out of the arena landed; the rows
-/// then come from the host.
+/// Runs `release` after the preparation ended and every copy out of the arena landed.
 fn run_release(release: Box<dyn FnOnce() + Send>) {
-    let _ = slot_prepare_join();
+    let _ = prepare_join();
     if let Ok(inner) = planner() {
-        // SAFETY: registered handle; the planner waits for its own streams.
-        unsafe { crate::gpu_bindings::count_and_plan_slot_quiesce(inner) };
+        // SAFETY: registered handle; the planner waits for the copies still reading its images.
+        unsafe { crate::gpu_bindings::count_and_plan_quiesce(inner) };
     }
-    ASYNC_PREP.store(false, Ordering::Release);
+    ROWS_ON_DEVICE.store(false, Ordering::Release);
     release();
 }
 
 /// Runs the armed release now, if it has not run: the end of the proof, a block whose memory
 /// instances were not all computed here, or a failure that sends the block to the CPU witness.
-pub fn gpu_slot_witness_release_now() {
+pub fn gpu_mem_witness_release_now() {
     let release = {
-        let mut g = SLOT_RELEASE.lock().unwrap_or_else(|e| e.into_inner());
+        let mut g = RELEASE.lock().unwrap_or_else(|e| e.into_inner());
         g.pending = 0;
         g.release.take()
     };
     match release {
         Some(release) => run_release(release),
-        None => ASYNC_PREP.store(false, Ordering::Release),
+        None => ROWS_ON_DEVICE.store(false, Ordering::Release),
     }
 }
 
@@ -481,7 +459,7 @@ impl FillGuard {
 }
 impl Drop for FillGuard {
     fn drop(&mut self) {
-        if let Some(release) = slot_fill_done() {
+        if let Some(release) = fill_done() {
             run_release(release);
         }
         IN_FLIGHT.fetch_sub(1, Ordering::AcqRel);
@@ -490,56 +468,9 @@ impl Drop for FillGuard {
 
 // ─── Rows ────────────────────────────────────────────────────────────────────────────────────
 
-/// Copies the rows out with several threads: the copy is the only remaining work, and it is large.
-fn copy_rows(out_rows: &mut [u64], src: &[u64]) {
-    let threads = 8usize;
-    let per = src.len().div_ceil(threads);
-    std::thread::scope(|sc| {
-        for (d, s) in out_rows.chunks_mut(per).zip(src.chunks(per)) {
-            sc.spawn(move || d.copy_from_slice(s));
-        }
-    });
-}
-
-/// The pinned host rows of an instance and its scalars, once the preparation wrote them.
-///
-/// # Safety
-/// `inner` must be the registered planner, held under the registry lock by the caller; the
-/// returned slice points into the planner's pinned buffer, valid until the next block (reset),
-/// which cannot start before this witness phase ends.
-unsafe fn pinned_rows(
-    inner: *mut crate::gpu_bindings::CountAndPlanHandle,
-    family: u32,
-    air_id: u32,
-    segment: u32,
-    len: usize,
-) -> Option<(&'static [u64], RamFillResult)> {
-    use crate::gpu_bindings as b;
-    let mut res = RamFillResult::default();
-    // SAFETY: registered handle under the caller's lock; `res` is a valid out-parameter.
-    let p = unsafe {
-        match family {
-            MEM_FAMILY_RAM => b::count_and_plan_ram_instance_rows(inner, segment, &mut res),
-            MEM_FAMILY_ROM => b::count_and_plan_rom_instance_rows(inner, segment, &mut res),
-            MEM_FAMILY_INPUT => b::count_and_plan_input_instance_rows(inner, segment, &mut res),
-            MEM_FAMILY_ALIGN => {
-                b::count_and_plan_align_instance_rows(inner, air_id, segment, &mut res)
-            }
-            _ => std::ptr::null(),
-        }
-    };
-    if p.is_null() {
-        return None;
-    }
-    // SAFETY: the buffer holds `len` words for this instance (the planner sized it from the same
-    // layout the caller checked the length against).
-    Some((unsafe { std::slice::from_raw_parts(p, len) }, res))
-}
-
 /// The rows of one memory instance (`family` 0 Mem, 1 RomData, 2 InputData, 3 MemAlign by
-/// `air_id`) into `out_rows` (`n_rows` packed rows). While the block's rows are on the device the
-/// instance waits for its own staged image and copies it, or has its rows built from the retained
-/// accesses when none was staged; once the arena went back it copies the pinned host rows. Counts
+/// `air_id`) into `out_rows` (`n_rows` packed rows): the instance waits for its own staged image
+/// and copies it, or has its rows built from the retained accesses when none was staged. Counts
 /// toward the arena's release either way.
 fn rows_into(
     family: u32,
@@ -550,19 +481,10 @@ fn rows_into(
 ) -> Result<RamFillResult, String> {
     let _guard = FillGuard::enter();
     let inner = planner()?;
-    if !ASYNC_PREP.load(Ordering::Acquire) {
-        // The proofs: the pinned copy the preparation left for this instance.
-        let reg = registry();
-        reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
-        // SAFETY: registered handle, under the lock; the length is the caller's buffer.
-        let (src, res) = unsafe { pinned_rows(inner, family, air_id, segment, out_rows.len()) }
-            .ok_or_else(|| {
-                format!(
-                    "family {family} air {air_id} segment {segment}: no host rows for the proof"
-                )
-            })?;
-        copy_rows(out_rows, src);
-        return Ok(res);
+    if !ROWS_ON_DEVICE.load(Ordering::Acquire) {
+        return Err(format!(
+            "family {family} air {air_id} segment {segment}: the block's rows are not on the device"
+        ));
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
     let staged = loop {
@@ -605,9 +527,8 @@ fn rows_into(
         Some(res) => Ok(res),
         None => {
             // Not staged (no room, or the image was dropped): the preparation's outcome first, then
-            // the rows from the host copy or built into host memory, serialised with every other
-            // planner call.
-            slot_prepare_join()?;
+            // the rows built into host memory, serialised with every other planner call.
+            prepare_join()?;
             let reg = registry();
             let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
             let mut res = RamFillResult::default();
@@ -689,98 +610,6 @@ pub fn gpu_align_witness_fill(
         .map(|r| r.n_lanes as usize)
 }
 
-/// The scalars of a resolved instance (`family` 0 Mem, 1 RomData, 2 InputData), for its air
-/// values; valid after the preparation, with or without rows.
-pub fn gpu_mem_witness_scalars(family: u32, inst: u32) -> Result<RamFillResult, String> {
-    slot_prepare_join()?;
-    let reg = registry();
-    let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
-    let mut res = RamFillResult::default();
-    // SAFETY: registered handle, under the lock; `res` is a valid out-parameter.
-    let ok = unsafe {
-        crate::gpu_bindings::count_and_plan_instance_scalars(r.inner, family, inst, &mut res)
-    };
-    if !ok {
-        return Err(format!("instance {inst} of family {family} was not resolved on the device"));
-    }
-    Ok(res)
-}
-
-/// The rows a prepared MemAlign instance's accesses use, as the device built them.
-pub fn gpu_mem_witness_align_used(air_id: usize, segment: usize) -> Result<u32, String> {
-    slot_prepare_join()?;
-    let reg = registry();
-    let r = reg.as_ref().ok_or("no GPU planner registered for the memory witness")?;
-    let mut used = 0u32;
-    // SAFETY: registered handle, under the lock; `used` is a valid out-parameter.
-    let ok = unsafe {
-        crate::gpu_bindings::count_and_plan_align_used(
-            r.inner,
-            air_id as u32,
-            segment as u32,
-            &mut used,
-        )
-    };
-    if !ok {
-        return Err(format!(
-            "MemAlign air {air_id} segment {segment} was not prepared on the device"
-        ));
-    }
-    Ok(used)
-}
-
-// ─── The prover's kernel (slot mode) ─────────────────────────────────────────────────────────
-
-/// The prover's GPU-witness kernel for the memory airs: copies the instance named by the staged
-/// `MemSlotOp` into `d_dst` (the commit slot) from the image the preparation built, or builds it
-/// there from the retained accesses when no image was staged, while the arena is still borrowed;
-/// after the last owned instance the armed release hands the arena back. The slot must be on the
-/// planner's GPU: the rows are produced there, never copied across devices.
-///
-/// # Safety
-/// Called by the prover with `d_ops` a device buffer holding `num_ops` staged ops, `d_dst` the
-/// slot's packed rows, `device_id` the slot's GPU and `stream` the commit stream that uploaded
-/// them; the planner waits for that stream and serialises the fills under its lock. A staged
-/// image is copied on `stream`; a built one is complete before the call returns.
-pub unsafe extern "C" fn zisk_mem_witness_slot_kernel(
-    d_ops: *const core::ffi::c_void,
-    num_ops: u64,
-    d_dst: *mut u64,
-    device_id: i32,
-    stream: *mut core::ffi::c_void,
-) -> i32 {
-    let _guard = FillGuard::enter();
-    if let Err(e) = slot_prepare_join() {
-        tracing::error!("[gpu] slot fill: the block's preparation failed: {e}");
-        return -4;
-    }
-    let reg = registry();
-    let Some(r) = reg.as_ref() else {
-        tracing::error!("[gpu] slot fill: no GPU planner registered");
-        return -1;
-    };
-    // SAFETY: registered handle, under the lock.
-    let planner_device = unsafe { crate::gpu_bindings::count_and_plan_device(r.inner) };
-    if device_id != planner_device {
-        tracing::error!(
-            "[gpu] slot fill: the slot is on GPU {device_id} but the planner holds the accesses on GPU {planner_device}; the memory airs must commit on the planner's GPU"
-        );
-        return -3;
-    }
-    let mut res = RamFillResult::default();
-    // SAFETY: registered handle, under the lock; the prover's pointers are valid for the call.
-    let ok = unsafe {
-        crate::gpu_bindings::count_and_plan_fill_slot(
-            r.inner, d_ops, num_ops, d_dst, stream, &mut res,
-        )
-    };
-    if !ok {
-        tracing::error!("[gpu] slot fill failed with status {}", res.status);
-        return -2;
-    }
-    0
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -796,7 +625,7 @@ mod tests {
         let _serial = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let fired = Arc::new(AtomicUsize::new(0));
         let f = fired.clone();
-        gpu_slot_witness_arm(
+        gpu_mem_witness_arm(
             3,
             Box::new(move || {
                 f.fetch_add(1, Ordering::SeqCst);
@@ -809,7 +638,7 @@ mod tests {
         drop(FillGuard::enter());
         assert_eq!(fired.load(Ordering::SeqCst), 1);
         drop(FillGuard::enter());
-        gpu_slot_witness_release_now();
+        gpu_mem_witness_release_now();
         assert_eq!(fired.load(Ordering::SeqCst), 1);
         assert_eq!(IN_FLIGHT.load(Ordering::SeqCst), 0);
     }
@@ -820,14 +649,14 @@ mod tests {
         let _serial = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let fired = Arc::new(AtomicUsize::new(0));
         let f = fired.clone();
-        gpu_slot_witness_arm(
+        gpu_mem_witness_arm(
             2,
             Box::new(move || {
                 f.fetch_add(1, Ordering::SeqCst);
             }),
         );
         drop(FillGuard::enter());
-        gpu_slot_witness_release_now();
+        gpu_mem_witness_release_now();
         assert_eq!(fired.load(Ordering::SeqCst), 1);
         drop(FillGuard::enter());
         assert_eq!(fired.load(Ordering::SeqCst), 1);

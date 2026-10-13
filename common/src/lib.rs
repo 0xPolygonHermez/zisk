@@ -65,50 +65,24 @@ pub const MEM_ROWS_ROM: u32 = 2;
 pub const MEM_ROWS_INPUT: u32 = 4;
 /// `MEM_ROWS_ON_DEVICE` bit: the rows of the `MemAlign` airs.
 pub const MEM_ROWS_ALIGN: u32 = 8;
-/// `MEM_ROWS_*` bits of the memory airs whose owned instances have their rows in the planner's
-/// pinned host memory once the device fill ended (slot mode): the proofs copy them instead of
-/// rebuilding them. Cleared when a block starts.
-pub static MEM_ROWS_ON_HOST: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-
-/// Whether the block's rows of a memory air family (`MEM_ROWS_*` bit) come from the GPU planner,
-/// on the device or already in its host memory; otherwise the instances are collected and filled
-/// on the CPU.
+/// Whether the block's rows of a memory air family (`MEM_ROWS_*` bit) come from the GPU planner;
+/// otherwise the instances are collected and filled on the CPU.
 pub fn mem_rows_served(bit: u32) -> bool {
-    use std::sync::atomic::Ordering::Acquire;
-    (MEM_ROWS_ON_DEVICE.load(Acquire) | MEM_ROWS_ON_HOST.load(Acquire)) & bit != 0
+    MEM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire) & bit != 0
 }
 
-/// Where the memory witness is built when the assembly emulator runs with the GPU planner
-/// (`ZISK_MEM_GPU_FILL`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GpuFillMode {
-    /// On the CPU, as without the planner; the emulator writes the light memory-ops stream.
-    Off,
-    /// On the device; each instance copies its rows into its host trace buffer and is committed
-    /// and proved as a host trace, on any GPU. The default.
-    Arena,
-    /// On the device; the prover's kernel commits each instance from the staged image on the
-    /// planner's GPU, and the proofs take the pinned host copy of the rows.
-    Slot,
-}
-
-impl GpuFillMode {
-    /// Whether the planner must retain the block's accesses (any device mode).
-    pub fn on_device(self) -> bool {
-        self != GpuFillMode::Off
-    }
-}
-
-/// `ZISK_MEM_GPU_FILL`: `off` (or `cpu`), `arena`, `slot`; unset means `arena`. Read once.
-pub fn gpu_fill_mode() -> GpuFillMode {
-    static MODE: std::sync::OnceLock<GpuFillMode> = std::sync::OnceLock::new();
-    *MODE.get_or_init(|| match std::env::var("ZISK_MEM_GPU_FILL").as_deref() {
-        Ok("off") | Ok("cpu") => GpuFillMode::Off,
-        Ok("slot") => GpuFillMode::Slot,
-        Ok("arena") | Err(_) => GpuFillMode::Arena,
+/// Whether the memory witness is built on the GPU planner when the assembly emulator runs with
+/// it: every owned memory instance takes its rows from the planner's staged image (or is built on
+/// demand) into its host trace buffer. `ZISK_MEM_GPU_FILL=off` (or `cpu`) keeps the CPU witness;
+/// unset, empty or `on` means on, as does an unknown value (with a warning). Read once.
+pub fn device_mem_witness() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| match std::env::var("ZISK_MEM_GPU_FILL").as_deref() {
+        Ok("off") | Ok("cpu") => false,
+        Ok("") | Ok("on") | Err(_) => true,
         Ok(other) => {
-            tracing::warn!("ZISK_MEM_GPU_FILL={other}: unknown mode, using arena");
-            GpuFillMode::Arena
+            tracing::warn!("ZISK_MEM_GPU_FILL={other}: unknown value, the device witness is on");
+            true
         }
     })
 }

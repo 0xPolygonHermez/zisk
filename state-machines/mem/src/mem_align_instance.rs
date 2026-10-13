@@ -47,30 +47,7 @@ impl<F: PrimeField64> MemAlignInstance<F> {
         MemAlignCollector::new(&self.checkpoint[&chunk_id])
     }
 
-    /// The instance the prover's kernel fills into its slot (`ZISK_MEM_GPU_FILL=slot`).
-    fn slot_witness(
-        &self,
-        pctx: &ProofCtx<F>,
-        air_id: usize,
-        segment: usize,
-        trace_buffer: Vec<F>,
-        packed: bool,
-    ) -> ProofmanResult<AirInstance<F>> {
-        use proofman_common::trace::TraceRow;
-        crate::mem_device_rows::align_slot_instance(
-            pctx,
-            self.ictx.plan.airgroup_id,
-            air_id,
-            segment,
-            MemAlignTraceRow::<F>::ROW_SIZE,
-            trace_buffer,
-            packed,
-            None,
-            |_| Vec::new(),
-        )
-    }
-
-    /// The instance from the rows the GPU planner built (`ZISK_MEM_GPU_FILL=arena`).
+    /// The instance from the rows the GPU planner built (`ZISK_MEM_GPU_FILL`).
     fn device_witness(
         &self,
         air_id: usize,
@@ -115,9 +92,6 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         let segment =
             usize::from(self.ictx.plan.segment_id.expect("MemAlign plan without segment"));
         if crate::mem_device_rows::rows_on_device("align") {
-            if crate::mem_device_rows::slot_pending("align") {
-                return self.slot_witness(_pctx, air_id, segment, trace_buffer, packed).map(Some);
-            }
             return self.device_witness(air_id, segment, trace_buffer, packed).map(Some);
         }
         let mut total_rows = 0;

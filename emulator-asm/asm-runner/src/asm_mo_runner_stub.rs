@@ -63,7 +63,7 @@ pub fn device_mem_witness_failed(_reason: &str) {}
 
 /// No device witness on this platform.
 pub fn device_mem_witness_requested() -> bool {
-    zisk_common::gpu_fill_mode().on_device()
+    zisk_common::device_mem_witness()
 }
 
 /// The light memory-ops emulator only on request (`ZISK_MOPS_LIGHT=1`).

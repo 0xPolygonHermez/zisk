@@ -201,19 +201,6 @@ impl BackendProverOpts {
             options.packed_info(get_packed_info());
         }
 
-        // `ZISK_MEM_GPU_FILL=slot`: the memory airs' contributions are committed by the planner's
-        // kernel straight from the prover's slots (packed GPU runs only); their proofs take the
-        // planner's host copy of the rows. One declaration carries the kernel airs and the memory
-        // airs together. With several GPUs the planner's GPU takes only those commits: sharing it
-        // with the host-trace commits measured slower.
-        let mut gpu_witness_airs = gpu_witness_airs;
-        if options.gpu
-            && options.packed
-            && zisk_common::gpu_fill_mode() == zisk_common::GpuFillMode::Slot
-        {
-            gpu_witness_airs.extend(zisk_executor::mem_slot_witness_airs());
-            options.planner_gpu_dedicated(true);
-        }
         if !gpu_witness_airs.is_empty() {
             options.gpu_witness_airs(gpu_witness_airs);
         }

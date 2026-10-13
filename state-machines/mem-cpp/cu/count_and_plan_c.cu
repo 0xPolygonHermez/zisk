@@ -79,7 +79,7 @@ bool count_and_plan_save_metas(const InstanceMeta* metas, uint32_t n,
     return true;
 }
 
-// ─── RAM witness from the retained accesses ───────────────────────────
+// ─── The memory witness from the retained accesses ─────────────────────
 void count_and_plan_set_chunk_size_bits(void* h, uint32_t bits) {
     if (h) static_cast<CountAndPlan*>(h)->set_chunk_size_bits(bits);
 }
@@ -94,37 +94,10 @@ bool count_and_plan_ram_retention_ok(void* h) {
     return h && static_cast<CountAndPlan*>(h)->ram_retention_ok();
 }
 
-bool count_and_plan_prepare_ram_fill(void* h, RamFillPrepared* out) {
-    if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->prepare_ram_fill(out);
-}
-
-bool count_and_plan_fill_all_ram_instances(void* h, uint32_t n_rows, const uint32_t* insts, uint32_t n_insts,
-                                           RamFillPrepared* prepared) {
-    if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->fill_all_ram_instances(n_rows, insts, n_insts, prepared);
-}
-
-const uint64_t* count_and_plan_ram_instance_rows(void* h, uint32_t inst, RamFillResult* res) {
-    if (!h) return nullptr;
-    return static_cast<CountAndPlan*>(h)->ram_instance_rows(inst, res);
-}
-
 bool count_and_plan_set_rom_layout(void* h, const uint32_t* col_widths, uint32_t n_cols,
                                    uint32_t words_per_row, uint32_t lanes_x_row) {
     if (!h) return false;
     return static_cast<CountAndPlan*>(h)->set_rom_layout(col_widths, n_cols, words_per_row, lanes_x_row);
-}
-
-bool count_and_plan_fill_all_rom_instances(void* h, uint32_t n_rows, const uint32_t* insts, uint32_t n_insts,
-                                           RamFillPrepared* prepared) {
-    if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->fill_all_rom_instances(n_rows, insts, n_insts, prepared);
-}
-
-const uint64_t* count_and_plan_rom_instance_rows(void* h, uint32_t inst, RamFillResult* res) {
-    if (!h) return nullptr;
-    return static_cast<CountAndPlan*>(h)->rom_instance_rows(inst, res);
 }
 
 bool count_and_plan_set_input_layout(void* h, const uint32_t* col_widths, uint32_t n_cols,
@@ -133,55 +106,19 @@ bool count_and_plan_set_input_layout(void* h, const uint32_t* col_widths, uint32
     return static_cast<CountAndPlan*>(h)->set_input_layout(col_widths, n_cols, words_per_row, lanes_x_row);
 }
 
-bool count_and_plan_fill_all_input_instances(void* h, uint32_t n_rows, const void* image, size_t image_bytes,
-                                             const uint32_t* insts, uint32_t n_insts, RamFillPrepared* prepared) {
-    if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->fill_all_input_instances(n_rows, image, image_bytes, insts, n_insts, prepared);
-}
-
-const uint64_t* count_and_plan_input_instance_rows(void* h, uint32_t inst, RamFillResult* res) {
-    if (!h) return nullptr;
-    return static_cast<CountAndPlan*>(h)->input_instance_rows(inst, res);
-}
-
 bool count_and_plan_set_align_layout(void* h, uint32_t air_kind, const uint32_t* col_widths, uint32_t n_cols,
                                      uint32_t words_per_row) {
     if (!h) return false;
     return static_cast<CountAndPlan*>(h)->set_align_layout(air_kind, col_widths, n_cols, words_per_row);
 }
 
-bool count_and_plan_fill_all_align_instances(void* h, const AlignPlanDesc* plans, uint32_t n_plans,
-                                             const AlignChunkEntry* entries, uint32_t n_entries, RamFillPrepared* prepared) {
+bool count_and_plan_prepare_fills(void* h, const void* image, size_t image_bytes, const AlignPlanDesc* plans,
+                                  uint32_t n_plans, const AlignChunkEntry* entries, uint32_t n_entries,
+                                  const uint32_t* ram, uint32_t n_ram, const uint32_t* rom, uint32_t n_rom,
+                                  const uint32_t* input, uint32_t n_input, RamFillPrepared* prepared) {
     if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->fill_all_align_instances(plans, n_plans, entries, n_entries, prepared);
-}
-
-const uint64_t* count_and_plan_align_instance_rows(void* h, uint32_t air_id, uint32_t segment, RamFillResult* res) {
-    if (!h) return nullptr;
-    return static_cast<CountAndPlan*>(h)->align_instance_rows(air_id, segment, res);
-}
-
-bool count_and_plan_prepare_slot_fills(void* h, const void* image, size_t image_bytes, const AlignPlanDesc* plans,
-                                       uint32_t n_plans, const AlignChunkEntry* entries, uint32_t n_entries,
-                                       const uint32_t* ram, uint32_t n_ram, const uint32_t* rom, uint32_t n_rom,
-                                       const uint32_t* input, uint32_t n_input, bool host_rows,
-                                       RamFillPrepared* prepared) {
-    if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->prepare_slot_fills(image, image_bytes, plans, n_plans, entries, n_entries,
-                                                             ram, n_ram, rom, n_rom, input, n_input, host_rows, prepared);
-}
-
-uint32_t count_and_plan_host_rows_mask(void* h) {
-    return h ? static_cast<CountAndPlan*>(h)->host_rows_mask() : 0;
-}
-
-int count_and_plan_device(void* h) {
-    return h ? static_cast<CountAndPlan*>(h)->device() : -1;
-}
-
-bool count_and_plan_fill_slot(void* h, const void* d_ops, uint64_t n_ops, uint64_t* dst, void* stream, RamFillResult* res) {
-    if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->fill_slot(d_ops, n_ops, dst, stream, res);
+    return static_cast<CountAndPlan*>(h)->prepare_fills(image, image_bytes, plans, n_plans, entries, n_entries,
+                                                        ram, n_ram, rom, n_rom, input, n_input, prepared);
 }
 
 int count_and_plan_staged_wait(void* h, uint32_t family, uint32_t air_id, uint32_t segment, uint32_t timeout_ms,
@@ -198,18 +135,8 @@ bool count_and_plan_fill_host(void* h, uint32_t family, uint32_t air_id, uint32_
     return h && static_cast<CountAndPlan*>(h)->fill_host(family, air_id, segment, n_rows, out_rows, res);
 }
 
-void count_and_plan_slot_quiesce(void* h) {
-    if (h) static_cast<CountAndPlan*>(h)->slot_quiesce();
-}
-
-bool count_and_plan_instance_scalars(void* h, uint32_t family, uint32_t inst, RamFillResult* res) {
-    if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->instance_scalars(family, inst, res);
-}
-
-bool count_and_plan_align_used(void* h, uint32_t air_id, uint32_t segment, uint32_t* used) {
-    if (!h) return false;
-    return static_cast<CountAndPlan*>(h)->align_used(air_id, segment, used);
+void count_and_plan_quiesce(void* h) {
+    if (h) static_cast<CountAndPlan*>(h)->quiesce();
 }
 
 }  // extern "C"
