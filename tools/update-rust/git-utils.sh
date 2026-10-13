@@ -7,13 +7,14 @@ log_level() {
     local color=""
 
     case $level in
-        info) color="\e[1;32m" ;;  # Green
-        warn) color="\e[1;33m" ;;  # Yellow
-        err)  color="\e[1;31m" ;;  # Red
-        *) color="\e[1;m" ;;       # Default
+        info) color="\033[1;32m" ;;  # Green
+        warn) color="\033[1;33m" ;;  # Yellow
+        err)  color="\033[1;31m" ;;  # Red
+        *) color="\033[1m" ;;        # Default
     esac
 
-    echo -e "${color}$message\e[0m"
+    # printf is used because macOS bash 3.2 does not understand \e in echo -e
+    printf "${color}%s\033[0m\n" "$message"
 }
 
 # Log a message with info level
@@ -48,7 +49,7 @@ exec_git() {
         # Print the error output
         echo "$output"
         # Print the error message
-        log_err ${error_message}
+        log_err "${error_message}"
         
         exit 1
     fi
