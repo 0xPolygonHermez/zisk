@@ -152,11 +152,6 @@ extern "C" {
         words_per_row: u32,
         lanes_x_row: u32,
     ) -> bool;
-    pub fn count_and_plan_rom_instance_rows(
-        h: *mut CountAndPlanHandle,
-        inst: u32,
-        res: *mut RamFillResult,
-    ) -> *const u64;
     pub fn count_and_plan_set_input_layout(
         h: *mut CountAndPlanHandle,
         col_widths: *const u32,
@@ -164,11 +159,6 @@ extern "C" {
         words_per_row: u32,
         lanes_x_row: u32,
     ) -> bool;
-    pub fn count_and_plan_input_instance_rows(
-        h: *mut CountAndPlanHandle,
-        inst: u32,
-        res: *mut RamFillResult,
-    ) -> *const u64;
     pub fn count_and_plan_set_align_layout(
         h: *mut CountAndPlanHandle,
         air_kind: u32,
@@ -176,13 +166,9 @@ extern "C" {
         n_cols: u32,
         words_per_row: u32,
     ) -> bool;
-    pub fn count_and_plan_align_instance_rows(
-        h: *mut CountAndPlanHandle,
-        air_id: u32,
-        segment: u32,
-        res: *mut RamFillResult,
-    ) -> *const u64;
-    pub fn count_and_plan_prepare_slot_fills(
+    /// The block's preparation: every instance resolved, the owned ones (`ram`, `rom`, `input`
+    /// segment ids and the MemAlign `plans`) staged as row images on the device while they fit.
+    pub fn count_and_plan_prepare_fills(
         h: *mut CountAndPlanHandle,
         image: *const u8,
         image_bytes: usize,
@@ -196,24 +182,10 @@ extern "C" {
         n_rom: u32,
         input: *const u32,
         n_input: u32,
-        host_rows: bool,
         prepared: *mut RamFillPrepared,
     ) -> bool;
-    /// After the preparation: bit `family` set when every owned instance of that family has its
-    /// rows in pinned host memory, for the proofs after the arena's release.
-    pub fn count_and_plan_host_rows_mask(h: *mut CountAndPlanHandle) -> u32;
-    /// The device the planner holds the retained accesses on.
-    pub fn count_and_plan_device(h: *mut CountAndPlanHandle) -> i32;
-    pub fn count_and_plan_fill_slot(
-        h: *mut CountAndPlanHandle,
-        d_ops: *const core::ffi::c_void,
-        n_ops: u64,
-        dst: *mut u64,
-        stream: *mut core::ffi::c_void,
-        res: *mut RamFillResult,
-    ) -> bool;
-    /// Waits for the slot copies still in flight on the prover's streams.
-    pub fn count_and_plan_slot_quiesce(h: *mut CountAndPlanHandle);
+    /// Marks the arena released and waits for the copies still reading the staged images.
+    pub fn count_and_plan_quiesce(h: *mut CountAndPlanHandle);
     /// 1 staged (`out` filled), 0 the preparation ended without it, -1 timeout. Safe to call while
     /// the preparation runs on another thread.
     pub fn count_and_plan_staged_wait(
@@ -233,7 +205,8 @@ extern "C" {
         dst: *mut u64,
         words: u64,
     ) -> bool;
-    /// Builds one instance's rows into host memory after the preparation (the registry lock).
+    /// Builds one instance's rows into host memory after the preparation (the registry lock);
+    /// refused once the arena is released.
     pub fn count_and_plan_fill_host(
         h: *mut CountAndPlanHandle,
         family: u32,
@@ -243,24 +216,6 @@ extern "C" {
         out_rows: *mut u64,
         res: *mut RamFillResult,
     ) -> bool;
-    /// The rows a prepared MemAlign instance uses (its image or host rows).
-    pub fn count_and_plan_align_used(
-        h: *mut CountAndPlanHandle,
-        air_id: u32,
-        segment: u32,
-        used: *mut u32,
-    ) -> bool;
-    pub fn count_and_plan_instance_scalars(
-        h: *mut CountAndPlanHandle,
-        family: u32,
-        inst: u32,
-        res: *mut RamFillResult,
-    ) -> bool;
-    pub fn count_and_plan_ram_instance_rows(
-        h: *mut CountAndPlanHandle,
-        inst: u32,
-        res: *mut RamFillResult,
-    ) -> *const u64;
     pub fn count_and_plan_max_used_bytes(h: *mut CountAndPlanHandle) -> usize;
     pub fn count_and_plan_register_input_pinned(
         h: *mut CountAndPlanHandle,

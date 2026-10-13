@@ -543,7 +543,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
             // MO runner joined and the fills are done; release the buffer back to proofman.
             // Earlier error paths skip the release on purpose: the MO thread may still be using
-            // the buffer. In slot mode the release follows the last memory instance's commit.
+            // the buffer. With the device witness the release follows the last owned memory
+            // instance's fill.
             if is_asm_emulator {
                 if let Some(extras) = proofman_extras {
                     if let Some(used) = mem_artifacts.gpu_mops_used_bytes {
@@ -776,7 +777,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 }
 
 impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
-    /// The proof's end: a slot-mode block that still holds the arena hands it back.
+    /// The proof's end: a block that still holds the arena hands it back.
     fn end(
         &self,
         _pctx: Arc<ProofCtx<F>>,

@@ -111,24 +111,6 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
             && collectors.is_empty()
         {
             let segment_id = self.ictx.plan.segment_id.unwrap();
-            if crate::mem_device_rows::slot_pending(self.module.get_mem_name()) {
-                let decl = _pctx
-                    .gpu_witness_airs
-                    .get(self.ictx.plan.airgroup_id, self.ictx.plan.air_id)
-                    .ok_or_else(|| {
-                        proofman_common::ProofmanError::InvalidParameters(format!(
-                            "ZISK_MEM_GPU_FILL=slot: air {} has no GPU witness declaration",
-                            self.ictx.plan.air_id
-                        ))
-                    })?;
-                return self.module.compute_witness_gpu_slot(
-                    decl,
-                    segment_id,
-                    self.check_point.is_last_segment,
-                    trace_buffer,
-                    packed,
-                );
-            }
             return self.module.compute_witness_gpu_arena(
                 segment_id,
                 self.check_point.is_last_segment,

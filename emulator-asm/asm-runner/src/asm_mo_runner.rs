@@ -1,6 +1,8 @@
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use named_sem::NamedSemaphore;
-use zisk_common::{gpu_fill_mode, stats_begin, stats_end, stats_mark, ExecutorStatsHandle, Plan};
+use zisk_common::{
+    device_mem_witness, stats_begin, stats_end, stats_mark, ExecutorStatsHandle, Plan,
+};
 
 use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
@@ -168,7 +170,7 @@ impl Drop for MOShmemReader {
         // planner (a field of this reader) is destroyed.
         #[cfg(gpu)]
         {
-            zisk_sm_mem_planner::gpu_slot_witness_release_now();
+            zisk_sm_mem_planner::gpu_mem_witness_release_now();
             zisk_sm_mem_planner::clear_gpu_ram_witness();
         }
         if let Some(handle_mo) = self.handle_mo.take() {
@@ -186,15 +188,13 @@ impl Drop for MOShmemReader {
 }
 
 /// The block's device memory witness: the GPU planner retained the block's accesses and builds
-/// the memory instances' rows while its arena is still borrowed. The executor calls `fill_owned`
-/// once the memory instances are registered and placed, before it releases the arena.
+/// the memory instances' rows while its arena is still borrowed; each owned instance copies its
+/// rows into its host trace buffer. The executor calls `fill_owned` once the memory instances
+/// are registered and placed, before it releases the arena.
 #[derive(Debug)]
 pub struct DeviceMemWitness {
     #[cfg(gpu)]
     shm_prefix: String,
-    /// `arena` or `slot` (see `GpuFillMode`).
-    #[cfg(gpu)]
-    mode: zisk_common::GpuFillMode,
     /// The families (`MEM_ROWS_*` bits) whose layout the planner took at registration.
     #[cfg(gpu)]
     families: u32,
@@ -228,39 +228,28 @@ impl DeviceMemWitness {
                 return false;
             }
             timer_start_info!(GPU_MEM_WITNESS_PREPARE);
-            let slot = self.mode == zisk_common::GpuFillMode::Slot;
             let prepared = input_image(&self.shm_prefix).and_then(|image| {
-                zisk_sm_mem_planner::gpu_slot_witness_prepare_async(
+                zisk_sm_mem_planner::gpu_mem_witness_prepare_async(
                     image.bytes().to_vec(),
                     ram,
                     rom,
                     input,
                     &align,
-                    slot,
                 )
             });
             timer_stop_and_log_info!(GPU_MEM_WITNESS_PREPARE);
             match prepared {
                 Ok(()) => {
                     tracing::info!(
-                        "[gpu] memory witness on the device ({}): {n_owned} owned instances, preparing",
-                        if slot { "slots" } else { "host rows" }
+                        "[gpu] memory witness on the device: {n_owned} owned instances, preparing"
                     );
                     let d_buffers = d_buffers as usize;
-                    zisk_sm_mem_planner::gpu_slot_witness_arm(
+                    zisk_sm_mem_planner::gpu_mem_witness_arm(
                         n_owned,
                         Box::new(move || {
-                            // The last owned memory instance has its rows (in its slot, or in its
-                            // trace buffer): the arena goes back and the memory airs are host airs
-                            // for the rest of the block. A slot instance's proof takes its rows
-                            // from the planner's host copy when every owned instance of the family
-                            // has one; the families without are rebuilt on the CPU.
-                            let on_host = if slot {
-                                zisk_sm_mem_planner::gpu_mem_witness_host_rows_mask()
-                            } else {
-                                0
-                            };
-                            zisk_common::MEM_ROWS_ON_HOST.store(on_host, Ordering::Release);
+                            // The last owned memory instance has its rows in its trace buffer: the
+                            // arena goes back and the memory airs leave the device for the rest
+                            // of the block.
                             zisk_common::MEM_ROWS_ON_DEVICE.store(0, Ordering::Release);
                             proofman_starks_lib_c::release_first_gpu_buffer_c(
                                 d_buffers as *mut c_void,
@@ -289,19 +278,16 @@ pub fn device_mem_witness_failed(reason: &str) {
         "[gpu] memory witness on the device failed ({reason}); the memory instances fall back to the CPU witness"
     );
     zisk_common::MEM_ROWS_ON_DEVICE.store(0, Ordering::Release);
-    zisk_common::MEM_ROWS_ON_HOST.store(0, Ordering::Release);
     #[cfg(gpu)]
-    zisk_sm_mem_planner::gpu_slot_witness_release_now();
+    zisk_sm_mem_planner::gpu_mem_witness_release_now();
 }
 
 /// Whether the memory witness is built on the device (`ZISK_MEM_GPU_FILL`): the planner then
 /// retains the block's accesses and the executor registers the secondaries in two rounds.
 pub fn device_mem_witness_requested() -> bool {
-    gpu_fill_mode().on_device()
+    device_mem_witness()
 }
 
-/// Whether the memory-ops emulator runs in its light form (no values, no steps): the default
-/// unless a device fill mode needs them; `ZISK_MOPS_LIGHT=1`/`0` forces either.
 /// Whether the memory-ops emulator runs in its light form (no values, no steps): the default
 /// unless the device witness needs them; `ZISK_MOPS_LIGHT=1`/`0` forces either.
 pub fn mops_light() -> bool {
@@ -312,11 +298,11 @@ pub fn mops_light() -> bool {
     }
 }
 
-/// Releases the arena a slot-mode block still holds (its memory instances were not all
-/// committed) and clears the device flags: the proof's end.
+/// Releases the arena a block still holds (its memory instances were not all computed here):
+/// the proof's end.
 pub fn device_mem_witness_end() {
     #[cfg(gpu)]
-    zisk_sm_mem_planner::gpu_slot_witness_release_now();
+    zisk_sm_mem_planner::gpu_mem_witness_release_now();
 }
 
 /// This struct is used to run the assembly code in a separate process and generate minimal traces.
@@ -396,11 +382,9 @@ impl AsmRunnerMO {
         #[cfg(gpu)]
         zisk_sm_mem_planner::clear_gpu_ram_witness();
         zisk_common::MEM_ROWS_ON_DEVICE.store(0, Ordering::Release);
-        zisk_common::MEM_ROWS_ON_HOST.store(0, Ordering::Release);
         if mops_light() && device_mem_witness_requested() {
             return Err(anyhow::anyhow!(
-                "ZISK_MOPS_LIGHT=1 with ZISK_MEM_GPU_FILL={:?}: the light memory-ops stream carries no values, the device witness needs them",
-                gpu_fill_mode()
+                "ZISK_MOPS_LIGHT=1 with the device witness on: the light memory-ops stream carries no values, the device witness needs them"
             ));
         }
         // Take the optional GPU planner for this block.
@@ -570,10 +554,6 @@ impl AsmRunnerMO {
             .map(|metas| (metas.as_ptr() as *const c_void, metas.len() as u32));
         #[cfg(gpu)]
         timer_stop_and_log_info!(GPU_MOPS_TIME);
-        #[cfg(gpu)]
-        if pause {
-            proofman_starks_lib_c::stream_commit_resume_c();
-        }
         // The device could not plan the block (its reason went to stderr): the CPU planner takes
         // the same chunks, still in the shared memory, and the block keeps the CPU witness.
         #[cfg(gpu)]
@@ -615,11 +595,7 @@ impl AsmRunnerMO {
             }
             let families =
                 zisk_sm_mem_planner::register_gpu_ram_witness(gpu_count_and_plan, chunk_size);
-            (families != 0).then(|| DeviceMemWitness {
-                shm_prefix: shm_prefix.clone(),
-                mode: gpu_fill_mode(),
-                families,
-            })
+            (families != 0).then(|| DeviceMemWitness { shm_prefix: shm_prefix.clone(), families })
         });
         #[cfg(gpu)]
         let inject_ok = match gpu_metas_view {

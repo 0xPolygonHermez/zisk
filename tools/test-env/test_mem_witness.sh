@@ -3,7 +3,8 @@
 # (the first of BLOCK_INPUTS_SINGLE) with the assembly emulator on the GPU in every configuration
 # below. Each proof must verify, and the memory airs' row hashes (ZISK_MEM_TRACE_HASH_DIR) must
 # equal those of the CPU path (ZISK_MEM_GPU_FILL=off). The fallback cases must also log the
-# fallback they exercise.
+# fallback they exercise. ZISK_MEM_GPU_FILL is unset for every case but "off" (the device witness
+# is the default).
 
 source "./test_elf.sh"
 
@@ -16,7 +17,7 @@ run_case() {
     rm -rf "${hash_dir}"
     mkdir -p "${hash_dir}"
     info "Case ${name}: $*"
-    env "$@" ZISK_MEM_TRACE_HASH_DIR="${hash_dir}" cargo-zisk-dev prove \
+    env -u ZISK_MEM_GPU_FILL "$@" ZISK_MEM_TRACE_HASH_DIR="${hash_dir}" cargo-zisk-dev prove \
         -e "${ZEC_ELF}" -i "${ZEC_INPUTS}/${INPUT_FILE}" -o "${LOGS_DIR}/mem_witness/${name}.bin" \
         --asm --gpu -y $PROVE_FLAGS > "${log}" 2>&1
     local rc=$?
@@ -82,22 +83,16 @@ main() {
     local plan_fail="no device plan for this block; planning it on the CPU"
     # The CPU path: its hashes are the reference.
     run_case off 0 "" ZISK_MEM_GPU_FILL=off || return 1
-    # The two device modes.
-    run_case arena 0 "" ZISK_MEM_GPU_FILL=arena || return 1
-    run_case slot 0 "" ZISK_MEM_GPU_FILL=slot || return 1
+    # The device witness (the default).
+    run_case arena 0 "" || return 1
     # One owned instance without a staged image: its rows are built on demand.
-    run_case unstaged 0 "" ZISK_MEM_GPU_FILL=slot ZISK_MEM_TEST_UNSTAGED=0.1 || return 1
-    # One RAM instance without pinned host rows: the family's host copy is off (mask 14 of 15),
-    # the proofs collect its instances and fill them on the CPU.
-    run_case unowned 0 "host rows on (mask 14)" \
-        ZISK_MEM_GPU_FILL=slot ZISK_MEM_TEST_UNOWNED=1 || return 1
+    run_case unstaged 0 "" ZISK_MEM_TEST_UNSTAGED=0.1 || return 1
     # Pieces of fewer potentials: block records get split into sub-records.
-    run_case split_records 0 "" ZISK_MEM_GPU_FILL=arena ZISK_MEM_TEST_PIECE_POTENTIALS=65536 || return 1
+    run_case split_records 0 "" ZISK_MEM_TEST_PIECE_POTENTIALS=65536 || return 1
     # A planner fault: the CPU planner replays the chunks, the CPU witness follows.
-    run_case plan_fail_arena 0 "${plan_fail}" ZISK_MEM_GPU_FILL=arena ZISK_MEM_TEST_PLAN_FAIL=1 || return 1
-    run_case plan_fail_slot 0 "${plan_fail}" ZISK_MEM_GPU_FILL=slot ZISK_MEM_TEST_PLAN_FAIL=1 || return 1
-    # The light memory-ops stream has no values: a device mode is refused before proving.
-    run_case light_refused 1 "the device witness needs them" ZISK_MEM_GPU_FILL=arena ZISK_MOPS_LIGHT=1 || return 1
+    run_case plan_fail 0 "${plan_fail}" ZISK_MEM_TEST_PLAN_FAIL=1 || return 1
+    # The light memory-ops stream has no values: the device witness is refused before proving.
+    run_case light_refused 1 "the device witness needs them" ZISK_MOPS_LIGHT=1 || return 1
 
     success "Device memory witness: every configuration proved, verified and matched the CPU rows"
 }

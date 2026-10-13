@@ -1538,7 +1538,6 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     CUDA_CHECK(cudaStreamCreateWithPriority(&d2h_stream_, cudaStreamDefault, greatestPrio));
     CUDA_CHECK(cudaStreamCreateWithPriority(&meta_stream_, cudaStreamDefault, greatestPrio));
     CUDA_CHECK(cudaStreamCreateWithPriority(&fill_stream_, cudaStreamNonBlocking, greatestPrio));
-    CUDA_CHECK(cudaStreamCreateWithPriority(&copy_stream_, cudaStreamNonBlocking, leastPrio));
     CUDA_CHECK(cudaEventCreate(&e_metas_ready_));
 
     CUDA_CHECK(cudaMallocHost(&h_n_emits_all_, (size_t)MAX_CHUNKS * 4));
@@ -1569,38 +1568,6 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     if (pool_enabled_) {
         fprintf(stderr, "[mops-pool] enabled (%d stream workers, device %d)\n",
                 N_STREAMS, gpu_device_);
-    }
-
-    // The pinned buffers the RAM and MemAlign fills pack rows into: pinning gigabytes takes
-    // hundreds of milliseconds, so the default capacities (ZISK_MEM_GPU_ROWS_MB 4096,
-    // ZISK_MEM_ALIGN_ROWS_MB 2560) are allocated now, off the block path; a block that needs more
-    // grows them.
-    {
-        auto mb_of = [](const char* name, size_t dflt) {
-            if (const char* e = std::getenv(name)) {
-                const long v = std::atol(e);
-                if (v >= 0) return (size_t)v;
-            }
-            return dflt;
-        };
-        const size_t rows_mb = mb_of("ZISK_MEM_GPU_ROWS_MB", 4096);
-        const size_t align_mb = mb_of("ZISK_MEM_ALIGN_ROWS_MB", 2560);
-        if (rows_mb > 0 || align_mb > 0) {
-            const int dev = gpu_device_;
-            h_ram_rows_prealloc_ = std::thread([this, dev, rows_mb, align_mb] {
-                cudaSetDevice(dev);
-                void* p = nullptr;
-                if (rows_mb > 0 && cudaMallocHost(&p, rows_mb << 20) == cudaSuccess) {
-                    h_ram_rows_ = (uint64_t*)p;
-                    h_ram_rows_cap_ = (rows_mb << 20) / 8;
-                }
-                p = nullptr;
-                if (align_mb > 0 && cudaMallocHost(&p, align_mb << 20) == cudaSuccess) {
-                    h_align_rows_ = (uint64_t*)p;
-                    h_align_rows_cap_ = (align_mb << 20) / 8;
-                }
-            });
-        }
     }
 
     reset();
@@ -2116,23 +2083,16 @@ void CountAndPlan::reset() {
     ram_retention_enabled_.store(retain_rows_ && top_bytes_ > cursor_, std::memory_order_relaxed);
     ram_prepared_           = false;
     ram_tables_ready_       = false;
-    ram_results_.clear();
     ram_n_lanes_            = 0;
     { std::lock_guard<std::mutex> lk(ram_runs_mtx_); other_runs_.clear(); }
     rom_prepared_           = false;
-    rom_results_.clear();
     input_prepared_         = false;
-    input_results_.clear();
-    align_prepared_         = false;
-    align_results_.clear();
-    slot_prepared_          = false;
-    resolve_all_            = false;
-    slot_scratch_           = nullptr;
+    fills_prepared_         = false;
+    fill_scratch_           = nullptr;
     rf_scratch_             = nullptr;
     other_scratch_          = nullptr;
     align_scratch_          = nullptr;
-    host_rows_mask_         = 0;
-    slot_quiesce();
+    quiesce();
     {
         std::lock_guard<std::mutex> lk(staged_mtx_);
         staged_.clear();
@@ -2144,8 +2104,8 @@ void CountAndPlan::reset() {
     input_scratch_          = nullptr;
     d_image_                = nullptr;
     image_words_            = 0;
-    slot_align_plans_.clear();
-    slot_align_entries_.clear();
+    fill_align_plans_.clear();
+    fill_align_entries_.clear();
     align_total_            = 0;
     d_align_order_          = nullptr;
     align_runs_.clear();
@@ -2192,11 +2152,6 @@ void CountAndPlan::unregister_input_pinned(void* ptr) {
 }
 
 void CountAndPlan::free_pinned_() {
-    join_rows_prealloc_();
-    if (h_ram_rows_)                 { cudaFreeHost(h_ram_rows_);                 h_ram_rows_                 = nullptr; h_ram_rows_cap_ = 0; }
-    if (h_rom_rows_)                 { cudaFreeHost(h_rom_rows_);                 h_rom_rows_                 = nullptr; h_rom_rows_cap_ = 0; }
-    if (h_input_rows_)               { cudaFreeHost(h_input_rows_);               h_input_rows_               = nullptr; h_input_rows_cap_ = 0; }
-    if (h_align_rows_)               { cudaFreeHost(h_align_rows_);               h_align_rows_               = nullptr; h_align_rows_cap_ = 0; }
     if (h_n_emits_all_)              { cudaFreeHost(h_n_emits_all_);              h_n_emits_all_              = nullptr; }
     if (h_pot_device_)               { cudaFreeHost(h_pot_device_);               h_pot_device_               = nullptr; }
     if (h_page_starts_buf_)          { cudaFreeHost(h_page_starts_buf_);          h_page_starts_buf_          = nullptr; }
@@ -2220,7 +2175,6 @@ void CountAndPlan::free_all_() {
     if (d2h_stream_)         { cudaStreamDestroy(d2h_stream_);  d2h_stream_  = nullptr; }
     if (meta_stream_)        { cudaStreamDestroy(meta_stream_); meta_stream_ = nullptr; }
     if (fill_stream_)        { cudaStreamDestroy(fill_stream_); fill_stream_ = nullptr; }
-    if (copy_stream_)        { cudaStreamDestroy(copy_stream_); copy_stream_ = nullptr; }
     if (e_metas_ready_)      { cudaEventDestroy(e_metas_ready_);      e_metas_ready_      = nullptr; }
     free_pinned_();
     if (arena_owned_ && arena_) cudaFree(arena_);
