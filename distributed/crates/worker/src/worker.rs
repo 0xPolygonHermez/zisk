@@ -1361,10 +1361,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             _ => anyhow::bail!("Unsupported proof_dest for wrap: {}", proof_dest),
         };
 
-        let proof: Proof =
-            bincode::serde::decode_from_slice(&proof_data, bincode::config::standard())
-                .map(|(v, _)| v)
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize proof for wrap: {}", e))?;
+        let proof = Proof::from_bytes(&proof_data)
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize proof for wrap: {}", e))?;
 
         let result = prover.wrap_proof(&proof, proof_kind).run()?;
 

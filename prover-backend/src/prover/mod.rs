@@ -1178,6 +1178,7 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
                 return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
             }
         };
-        self.prover.wrap_proof(proof, publics_full, source_kind, self.proof_kind)
+        let output = self.prover.wrap_proof(proof, publics_full, source_kind, self.proof_kind)?;
+        Ok(output.with_seed(self.proof.seed))
     }
 }

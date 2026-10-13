@@ -405,6 +405,7 @@ impl ProverBackend {
         };
 
         let (execution_result, _stats) = self.executor.get_execution_result();
+        let seed = execution_result.seed;
 
         // Store the stats in stats.json
         stats_mark!(_stats, 0, "END", 0);
@@ -461,6 +462,7 @@ impl ProverBackend {
                                 rootc: vadcop_vk_u64,
                             },
                             program_vk,
+                            seed,
                         },
                     ))
                 } else {
@@ -491,6 +493,7 @@ impl ProverBackend {
                         // for non-minimal proofs (captured in `kind` above).
                         publics_full: program_publics(&p.public_values).to_vec(),
                     },
+                    seed,
                 },
             )),
             (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
@@ -557,6 +560,7 @@ impl ProverBackend {
                 hash,
                 publics_full: minimal_proof.public_values,
             },
+            seed: None,
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
@@ -637,6 +641,7 @@ impl ProverBackend {
                 &vadcop_final_proof.public_values,
                 self.hash_mode()?,
             ),
+            seed: None,
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))

@@ -382,11 +382,8 @@ impl Coordinator {
             // The ack carries a bincode-encoded `Proof` (see the worker's
             // handle_run_aggregate_proofs); decode it so the completed job owns
             // its proof like every other completion path does.
-            match bincode::serde::decode_from_slice::<Proof, _>(
-                &ack.proof,
-                bincode::config::standard(),
-            ) {
-                Ok((proof, _)) => job.proof = Some(proof),
+            match Proof::from_bytes(&ack.proof) {
+                Ok(proof) => job.proof = Some(proof),
                 Err(e) => warn!(
                     "[Recurser] Failed to deserialize aggregate proof for job {}: {}",
                     job_id, e

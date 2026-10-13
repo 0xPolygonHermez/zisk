@@ -120,12 +120,7 @@ impl Coordinator {
             ));
         };
 
-        let zisk_proof = bincode::serde::decode_from_slice::<Proof, _>(
-            &wrap_result.proof_data,
-            bincode::config::standard(),
-        )
-        .map(|(v, _)| v)
-        .map_err(|e| {
+        let zisk_proof = Proof::from_bytes(&wrap_result.proof_data).map_err(|e| {
             CoordinatorError::Internal(format!("Failed to deserialize wrap proof: {}", e))
         })?;
         job.proof = Some(zisk_proof);

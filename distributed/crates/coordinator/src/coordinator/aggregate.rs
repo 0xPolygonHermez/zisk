@@ -126,12 +126,9 @@ impl Coordinator {
         let agg_worker_id = worker_id;
 
         // Decode before changing any state.
-        let zisk_proof = bincode::serde::decode_from_slice::<Proof, _>(
-            &proof_data.proof_data,
-            bincode::config::standard(),
-        )
-        .map(|(v, _)| v)
-        .map_err(|e| CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e)))?;
+        let zisk_proof = Proof::from_bytes(&proof_data.proof_data).map_err(|e| {
+            CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e))
+        })?;
 
         let scheduler = job.agg.as_mut().expect("checked above");
         scheduler.take_live(&agg_worker_id);

@@ -241,11 +241,18 @@ impl ProveOutput {
         self.summary.cost
     }
 
-    /// Seed the proven execution ran with, needed to replay it. `None` for outputs that do not
-    /// come from an execution (wrapping an existing proof) or when the coordinator that ran it does
-    /// not report it.
+    /// Seed the proven execution ran with, needed to replay it: the one the proof carries, or the
+    /// execution's when there is no final proof on this rank. `None` for proofs that do not come
+    /// from a single execution (aggregates) or when the coordinator that ran it does not report it.
     pub fn get_seed(&self) -> Option<ExecutionSeed> {
-        self.summary.seed
+        self.proof.seed.or(self.summary.seed)
+    }
+
+    /// Stamp the seed of the execution the proof attests to. Wrapping a proof re-proves its
+    /// statement without running the guest, so the result keeps the source proof's seed.
+    pub(crate) fn with_seed(mut self, seed: Option<ExecutionSeed>) -> Self {
+        self.proof.seed = seed;
+        self
     }
 
     /// The generated proof.
