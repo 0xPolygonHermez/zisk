@@ -65,6 +65,10 @@ impl Coordinator {
             HintsModeDto::HintsNone => HintsSourceDto::HintsNull,
         };
 
+        let seed = job.seed.ok_or_else(|| {
+            CoordinatorError::Internal(format!("job {} has no execution seed", job.job_id))
+        })?;
+
         // Use Arc to avoid expensive clones
         let active_workers = active_workers.to_vec();
         let total_workers = active_workers.len() as u32;
@@ -98,6 +102,7 @@ impl Coordinator {
                     total_workers,
                     worker_allocation,
                     job_compute_units: job_compute_capacity,
+                    seed,
                 };
 
                 let params = if execution_only {

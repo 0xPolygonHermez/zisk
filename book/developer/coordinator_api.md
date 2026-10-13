@@ -76,6 +76,7 @@ struct ExecutionStats {
     steps:          u64,         // number of execution steps
     duration_nanos: u64,         // wall-clock execution duration in nanoseconds
     cost_per_type:  CostPerType, // AIR witness area breakdown by state machine type
+    seed:           Option<[u8; 32]>, // execution seed the job ran with; pass it back as `seed` to replay
 }
 
 // RPC-level errors (method cannot complete)
@@ -331,6 +332,7 @@ struct ProveRequest {
     hash_id:       String,           // Elf hash id
     input:         InputKind,
     proof_timeout: Option<DateTime<Utc>>, // proof generation timeout; server default if omitted
+    seed:          Option<[u8; 32]>, // force the execution seed (replays); see below
 }
 
 struct ProveResponse {
@@ -379,6 +381,7 @@ struct ExecuteRequest {
     hash_id:         String,           // Elf hash id
     input:           InputKind,
     execute_timeout: Option<DateTime<Utc>>, // execution timeout; server default if omitted
+    seed:            Option<[u8; 32]>, // force the execution seed (replays); see below
 }
 
 struct ExecuteResponse {
@@ -386,6 +389,18 @@ struct ExecuteResponse {
     public_outputs: Vec<u8>,        // serialized public outputs produced by the program
 }
 ```
+
+### Execution seed
+
+Every prove and execute job runs with a 256-bit execution seed, from which the emulators derive the
+values the guest reads through `zkvm_random_u64`. The coordinator draws a fresh one per job and
+returns it in `ExecutionStats.seed`; a proof also carries it in its serialized `Proof`. Passing that
+seed back in the request's `seed` field replays the run.
+
+A forced seed is accepted only when the coordinator config sets `coordinator.allow_client_seed =
+true`; otherwise the job is rejected with `CLIENT_SEED_NOT_ALLOWED`. The seed must be unpredictable
+to whoever writes the guest input, who could otherwise craft inputs that are expensive under that
+seed (for example hash-map collisions), so keep the option off when clients are not trusted.
 
 ## Error Handling
 
@@ -398,6 +413,7 @@ All RPC methods may return `ApiError`. Common error codes:
 | 1003 | `PROGRAM_NOT_SETUP` | Program exists but setup not completed |
 | 1004 | `INVALID_JOB_STATE` | Operation not valid for current job state (e.g., `PushJobInput` on non-input job) |
 | 1005 | `INVALID_PROOF_CONVERSION` | Unsupported `proof_dest` for given `proof_kind` |
+| 1006 | `CLIENT_SEED_NOT_ALLOWED` | Request forced an execution seed and the coordinator does not allow client seeds |
 | 2001 | `CLUSTER_UNAVAILABLE` | No coordinator available |
 | 3001 | `INTERNAL` | Unexpected server error; include `trace_id` in support requests |
 

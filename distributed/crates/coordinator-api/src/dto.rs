@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
+use zisk_common::ExecutionSeed;
 
 /// Convert a [`Duration`] into a future deadline.
 ///
@@ -192,6 +193,8 @@ pub struct DomainProveRequest {
     pub input: DomainInputKind,
     /// Optional precompile hints input.
     pub hints: Option<DomainInputKind>,
+    /// Execution seed to force instead of drawing a fresh one (replays).
+    pub seed: Option<ExecutionSeed>,
     /// Optional deadline for the proof.
     pub proof_timeout: Option<DateTime<Utc>>,
     /// The desired output proof kind.
@@ -218,6 +221,8 @@ pub struct DomainExecuteRequest {
     pub input: DomainInputKind,
     /// Optional precompile hints input.
     pub hints: Option<DomainInputKind>,
+    /// Execution seed to force instead of drawing a fresh one (replays).
+    pub seed: Option<ExecutionSeed>,
     /// Optional deadline for the execution.
     pub execute_timeout: Option<DateTime<Utc>>,
 }
@@ -269,6 +274,8 @@ pub struct DomainExecutionStats {
     pub executor_time: DomainExecutorTime,
     /// Per-AIR instance plan (execute jobs only; empty otherwise).
     pub plan: Vec<DomainAirInstanceCount>,
+    /// Seed the execution ran with. `None` when the coordinator does not report it.
+    pub seed: Option<ExecutionSeed>,
 }
 
 /// Per-AIR planned instance count; the AIR name is derived from the ids by the consumer.

@@ -39,8 +39,13 @@ impl ExecutionSummary {
         }
     }
 
-    pub fn from_remote(time: Duration, steps: u64, cost_per_type: &StatsCostPerType) -> Self {
-        Self { time: time.as_millis() as u64, steps, cost: cost_per_type.total_cost(), seed: None }
+    pub fn from_remote(
+        time: Duration,
+        steps: u64,
+        cost_per_type: &StatsCostPerType,
+        seed: Option<ExecutionSeed>,
+    ) -> Self {
+        Self { time: time.as_millis() as u64, steps, cost: cost_per_type.total_cost(), seed }
     }
 }
 
@@ -173,6 +178,7 @@ impl ExecuteOutput {
         executor_time: ZiskExecutorTime,
         plan: &[(usize, usize, u64)],
         publics: &[u8],
+        seed: Option<ExecutionSeed>,
     ) -> Self {
         let plan: Vec<PlanSummaryEntry> = plan
             .iter()
@@ -190,7 +196,7 @@ impl ExecuteOutput {
             executor_time,
             publics: PublicValues::new(publics),
             plan: (!plan.is_empty()).then_some(plan),
-            seed: None,
+            seed,
         }
     }
 }
@@ -222,8 +228,12 @@ impl ProveOutput {
         steps: u64,
         proving_time: Duration,
         cost_per_type: StatsCostPerType,
+        seed: Option<ExecutionSeed>,
     ) -> Self {
-        Self { summary: ExecutionSummary::from_remote(proving_time, steps, &cost_per_type), proof }
+        Self {
+            summary: ExecutionSummary::from_remote(proving_time, steps, &cost_per_type, seed),
+            proof,
+        }
     }
 
     /// Proving time, in milliseconds.

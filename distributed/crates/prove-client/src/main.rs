@@ -11,6 +11,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tracing::info;
+use zisk_common::ExecutionSeed;
 use zisk_coordinator_api::dto::{
     deadline_from_now, DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
     DomainJobKindResponse, DomainProofKind, DomainProveRequest, DomainSetupRequest, TerminalStatus,
@@ -83,6 +84,11 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
+        /// Force the execution seed (64 hex characters) instead of drawing a fresh one, to
+        /// replay a run. The coordinator rejects it unless configured to allow client seeds
+        #[arg(long, env = "ZISK_SEED", value_name = "HEX")]
+        seed: Option<ExecutionSeed>,
+
         /// Proof timeout in seconds (0 = no timeout)
         #[arg(long, default_value_t = 0)]
         timeout: u64,
@@ -105,6 +111,11 @@ enum Commands {
         /// Save the public outputs to this file
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Force the execution seed (64 hex characters) instead of drawing a fresh one, to
+        /// replay a run. The coordinator rejects it unless configured to allow client seeds
+        #[arg(long, env = "ZISK_SEED", value_name = "HEX")]
+        seed: Option<ExecutionSeed>,
 
         /// Execute timeout in seconds (0 = no timeout)
         #[arg(long, default_value_t = 0)]
@@ -177,6 +188,13 @@ fn run_setup(
     }
 }
 
+/// Report the seed a job ran with, so it can be replayed with `--seed`.
+fn print_seed(seed: Option<ExecutionSeed>) {
+    if let Some(seed) = seed {
+        println!("Execution seed: {seed}");
+    }
+}
+
 fn read_input(path: &PathBuf) -> Result<DomainInputKind> {
     let data =
         std::fs::read(path).with_context(|| format!("Cannot read input: {}", path.display()))?;
@@ -206,6 +224,7 @@ fn spawn_watch(job: &zisk_coordinator_client::Job) -> zisk_coordinator_client::W
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_prove(
     client: &CoordinatorClient,
     hash_id: &str,
@@ -213,6 +232,7 @@ fn run_prove(
     hints: Option<&PathBuf>,
     proof: &DomainProofKind,
     output: Option<&PathBuf>,
+    seed: Option<ExecutionSeed>,
     timeout: u64,
 ) -> Result<()> {
     let input_kind = match input {
@@ -233,6 +253,7 @@ fn run_prove(
         hash_id: hash_id.to_string(),
         input: input_kind,
         hints: hints_kind,
+        seed,
         proof_dest: proof.clone(),
         proof_timeout: timeout_opt,
     }))?;
@@ -252,6 +273,7 @@ fn run_prove(
                 bytes = p.data.len(),
                 "Prove completed."
             );
+            print_seed(stats.seed);
 
             let out_path =
                 output.cloned().unwrap_or_else(|| PathBuf::from(format!("{job_id}.proof.bin")));
@@ -283,6 +305,7 @@ fn run_execute(
     input: Option<&PathBuf>,
     hints: Option<&PathBuf>,
     output: Option<&PathBuf>,
+    seed: Option<ExecutionSeed>,
     timeout: u64,
 ) -> Result<()> {
     let input_kind = match input {
@@ -303,6 +326,7 @@ fn run_execute(
         hash_id: hash_id.to_string(),
         input: input_kind,
         hints: hints_kind,
+        seed,
         execute_timeout: timeout_opt,
     }))?;
     let job_id = job.job_id();
@@ -318,6 +342,7 @@ fn run_execute(
                 duration_ms = stats.duration_nanos / 1_000_000,
                 "Execute completed."
             );
+            print_seed(stats.seed);
 
             if !public_outputs.is_empty() {
                 let out_path = output
@@ -365,7 +390,7 @@ async fn main() -> Result<()> {
             println!("Setup completed for Hash ID: {hash_id}");
         }
 
-        Commands::Prove { hash_id, input, hints, proof, output, timeout } => {
+        Commands::Prove { hash_id, input, hints, proof, output, seed, timeout } => {
             run_prove(
                 &client,
                 hash_id,
@@ -373,17 +398,19 @@ async fn main() -> Result<()> {
                 hints.as_ref(),
                 proof,
                 output.as_ref(),
+                *seed,
                 *timeout,
             )?;
         }
 
-        Commands::Execute { hash_id, input, hints, output, timeout } => {
+        Commands::Execute { hash_id, input, hints, output, seed, timeout } => {
             run_execute(
                 &client,
                 hash_id,
                 input.as_ref(),
                 hints.as_ref(),
                 output.as_ref(),
+                *seed,
                 *timeout,
             )?;
         }

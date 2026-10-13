@@ -113,7 +113,8 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     }
 
     /// Force the execution seed instead of drawing a fresh one, to replay a previous run (its
-    /// seed is reported in the result) or pin it in tests.
+    /// seed is reported in the result) or pin it in tests. A remote coordinator rejects it unless
+    /// it is configured to allow client seeds.
     #[must_use]
     pub fn seed(mut self, seed: ExecutionSeed) -> Self {
         self.seed = Some(seed);
@@ -243,7 +244,8 @@ impl<'a> ProveRequestExt<'a> {
     }
 
     /// Force the execution seed instead of drawing a fresh one, to replay a previous run (its
-    /// seed is reported in the result) or pin it in tests.
+    /// seed is reported in the result) or pin it in tests. A remote coordinator rejects it unless
+    /// it is configured to allow client seeds.
     #[must_use]
     pub fn seed(mut self, seed: ExecutionSeed) -> Self {
         self.seed = Some(seed);

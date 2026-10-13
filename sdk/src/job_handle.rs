@@ -405,6 +405,7 @@ impl FromWaitResult for crate::prove::ProveResult {
                     stats.steps,
                     Duration::from_nanos(stats.duration_nanos),
                     domain_stats_to_cost(&stats),
+                    stats.seed,
                 );
                 Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
@@ -418,6 +419,7 @@ impl FromWaitResult for crate::prove::ProveResult {
                     0,
                     Duration::ZERO,
                     zisk_common::StatsCostPerType::default(),
+                    None,
                 );
                 Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
@@ -453,6 +455,7 @@ impl FromWaitResult for crate::execute::ExecuteResult {
                     domain_stats_to_executor_time(&stats),
                     &plan,
                     &public_outputs,
+                    stats.seed,
                 );
                 Ok(crate::execute::ExecuteResult::new(output, Some(job_id)))
             }

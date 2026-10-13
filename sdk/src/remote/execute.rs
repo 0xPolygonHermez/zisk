@@ -62,11 +62,6 @@ impl RemoteClient {
         subs: SubscriberList,
         metadata: Option<BTreeMap<String, String>>,
     ) -> Result<JobHandle<ExecuteResult>> {
-        if seed.is_some() {
-            return Err(SdkError::InvalidConfig(
-                "forcing the execution seed is not supported by remote clients yet".to_string(),
-            ));
-        }
         let metadata = metadata.filter(|m| !m.is_empty());
         let (hints, maybe_hints_stream) = hints_to_input_kind(hints)?;
 
@@ -82,8 +77,13 @@ impl RemoteClient {
             stream.start()?;
         }
 
-        let job_kind =
-            DomainJobKind::Execute(DomainExecuteRequest { hash_id, input, hints, execute_timeout });
+        let job_kind = DomainJobKind::Execute(DomainExecuteRequest {
+            hash_id,
+            input,
+            hints,
+            seed,
+            execute_timeout,
+        });
 
         let remote_job = match metadata {
             Some(metadata) => self.gw.submit_job_ext(job_kind, metadata),

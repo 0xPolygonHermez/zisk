@@ -60,7 +60,7 @@ use zisk_cluster_common::{
     LaunchProofRequestDto, LaunchProofResponseDto, PhaseTimings, ProofKind,
     SetupAggregationProgramDto, SetupProgramDto, StatsCostPerType, WorkerId, WorkerState,
 };
-use zisk_common::{AirInstanceCount, SetupKey, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{AirInstanceCount, ExecutionSeed, SetupKey, ZiskExecutorTime, ZiskPaths};
 
 struct SetupPendingState {
     pending: HashSet<WorkerId>,
@@ -221,6 +221,7 @@ fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
         other_cost: cost.other_cost,
         executor_time: executor_time_from_job(job),
         plan: plan_from_job(job),
+        seed: job.seed,
     }
 }
 
@@ -960,6 +961,7 @@ impl Coordinator {
         self: &Arc<Self>,
         request: LaunchProofRequestDto,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
+        let seed = self.resolve_seed(request.seed)?;
         let (requested, minimum) = self.resolve_capacity(&request).await?;
 
         // Generate job_id up-front so we can atomically reserve workers
@@ -986,12 +988,14 @@ impl Coordinator {
                 request.proof_type,
             )
             .await?;
+        job.seed = Some(seed);
 
         info!(
-            "[Job] Started {} successfully Capacity: {} Workers: {}",
+            "[Job] Started {} successfully Capacity: {} Workers: {} Seed: {}",
             job.job_id,
             job.compute_capacity,
             job.workers.len(),
+            seed,
         );
 
         // Initialize job state
@@ -1194,6 +1198,7 @@ impl Coordinator {
         let duration_ms = job.duration_ms.unwrap_or(0);
         let job_state = job.state.clone();
         let executed_steps = job.executed_steps;
+        let seed = job.seed;
         let proof_data = job
             .proof
             .as_ref()
@@ -1214,6 +1219,7 @@ impl Coordinator {
                         duration_ms,
                         "JOB_FAILED".to_string(),
                         "The job has failed during execution.".to_string(),
+                        seed,
                     )
                     .await
                 } else {
@@ -1223,6 +1229,7 @@ impl Coordinator {
                         duration_ms,
                         executed_steps,
                         proof_data.clone(),
+                        seed,
                     )
                     .await
                 };
@@ -1257,6 +1264,21 @@ impl Coordinator {
                 }
             }
         });
+    }
+
+    /// The job's execution seed: the client's when the coordinator allows client seeds, a fresh
+    /// one otherwise. Decided here, once per job, because every worker must run with it.
+    fn resolve_seed(&self, requested: Option<ExecutionSeed>) -> CoordinatorResult<ExecutionSeed> {
+        match requested {
+            Some(_) if !self.config.coordinator.allow_client_seed => {
+                Err(CoordinatorError::ClientSeedNotAllowed)
+            }
+            Some(seed) => {
+                warn!("[Job] Using a client-supplied execution seed: {seed}");
+                Ok(seed)
+            }
+            None => ExecutionSeed::random().map_err(|e| CoordinatorError::Internal(e.to_string())),
+        }
     }
 
     /// Creates a new proof generation job with allocated resources.
@@ -3219,6 +3241,7 @@ mod tests {
             metadata: None,
             execution_only: false,
             proof_type: zisk_cluster_common::ProofKind::VadcopFinal,
+            seed: None,
         };
 
         let setup_task = tokio::spawn(async move {
@@ -4914,6 +4937,66 @@ mod tests {
         assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
     }
 
+    // --- resolve_seed --------------------------------------------------------
+
+    const CLIENT_SEED: ExecutionSeed = ExecutionSeed::new([7; ExecutionSeed::LEN]);
+
+    #[tokio::test]
+    async fn resolve_seed_rejects_a_client_seed_by_default() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert!(matches!(
+            coordinator.resolve_seed(Some(CLIENT_SEED)),
+            Err(CoordinatorError::ClientSeedNotAllowed)
+        ));
+    }
+
+    #[tokio::test]
+    async fn resolve_seed_honours_a_client_seed_when_allowed() {
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.allow_client_seed = true));
+        assert_eq!(coordinator.resolve_seed(Some(CLIENT_SEED)).unwrap(), CLIENT_SEED);
+    }
+
+    #[tokio::test]
+    async fn resolve_seed_draws_a_fresh_seed_per_job() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        assert_ne!(
+            coordinator.resolve_seed(None).unwrap(),
+            coordinator.resolve_seed(None).unwrap()
+        );
+    }
+
+    /// Every worker re-executes the whole program, so all must get the job's one seed.
+    #[tokio::test]
+    async fn contributions_carry_the_job_seed_to_every_worker() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+        let coordinator = Arc::new(coordinator);
+        let job_entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        job_entry.write().await.seed = Some(CLIENT_SEED);
+        let worker_ids: Vec<_> = workers.iter().map(|(id, _)| id.clone()).collect();
+
+        let job = job_entry.read().await;
+        coordinator.dispatch_contributions_messages(&job, &worker_ids).await.unwrap();
+
+        for (worker_id, messages) in &workers {
+            let messages = messages.lock().unwrap();
+            let seeds: Vec<_> = messages
+                .iter()
+                .filter_map(|m| match m {
+                    CoordinatorMessageDto::ExecuteTaskRequest(req) => match &req.params {
+                        zisk_cluster_common::ExecuteTaskRequestTypeDto::ContributionParams(p) => {
+                            Some(p.seed)
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(seeds, vec![CLIENT_SEED], "worker {worker_id}");
+        }
+    }
+
     // --- resolve_capacity ----------------------------------------------------
 
     fn capacity_request(
@@ -4931,6 +5014,7 @@ mod tests {
             metadata: None,
             execution_only: false,
             proof_type: ProofKind::VadcopFinal,
+            seed: None,
         }
     }
 

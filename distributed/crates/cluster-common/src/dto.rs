@@ -9,6 +9,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use zisk_common::ExecutionSeed;
 
 /// How a job's inputs are supplied to the cluster.
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -89,6 +90,9 @@ pub struct LaunchProofRequestDto {
     pub execution_only: bool,
     /// The kind of proof requested.
     pub proof_type: ProofKind,
+    /// Client-forced execution seed; `None` draws a fresh one. Honoured only when the
+    /// coordinator allows client seeds.
+    pub seed: Option<ExecutionSeed>,
 }
 
 /// Response to a launch request.
@@ -390,6 +394,8 @@ pub struct ContributionParamsDto {
     pub worker_allocation: Vec<u32>,
     /// Total compute units for the job.
     pub job_compute_units: ComputeCapacity,
+    /// The job's execution seed, the same for every worker.
+    pub seed: ExecutionSeed,
 }
 
 /// Where a task's input is read from (borsh-encoded on the wire).
@@ -754,6 +760,9 @@ pub struct WebhookPayloadDto {
     /// The proof bytes, when included.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof_data: Option<Vec<u8>>,
+    /// The job's execution seed (hex), to replay it. Absent for jobs that run no execution.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<String>,
 }
 
 impl WebhookPayloadDto {
@@ -763,6 +772,7 @@ impl WebhookPayloadDto {
         duration_ms: u64,
         executed_steps: Option<u64>,
         proof_data: Option<Vec<u8>>,
+        seed: Option<ExecutionSeed>,
     ) -> Self {
         Self {
             job_id,
@@ -772,11 +782,17 @@ impl WebhookPayloadDto {
             timestamp: chrono::Utc::now().to_rfc3339(),
             error: None,
             proof_data,
+            seed: seed.map(|s| s.to_string()),
         }
     }
 
     /// Creates a failed webhook payload with error details
-    pub fn failure(job_id: String, duration_ms: u64, error: WebhookErrorDto) -> Self {
+    pub fn failure(
+        job_id: String,
+        duration_ms: u64,
+        error: WebhookErrorDto,
+        seed: Option<ExecutionSeed>,
+    ) -> Self {
         Self {
             job_id,
             success: false,
@@ -785,6 +801,7 @@ impl WebhookPayloadDto {
             timestamp: chrono::Utc::now().to_rfc3339(),
             error: Some(error),
             proof_data: None,
+            seed: seed.map(|s| s.to_string()),
         }
     }
 }

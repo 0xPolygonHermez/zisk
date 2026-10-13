@@ -75,6 +75,8 @@ message ExecutionStats {
   CostPerType  cost_per_type  = 3;
   ExecutorTime executor_time  = 4;
   repeated AirInstanceCount plan = 5;
+  // 32-byte seed the execution ran with; replays it when passed back as a request `seed`.
+  optional bytes seed         = 6;
 }
 
 // Per-AIR planned instance count (the AIR name is derived from the ids by the consumer).
@@ -261,6 +263,9 @@ message ProveRequest {
   optional google.protobuf.Timestamp proof_timeout = 3;
   ProofKind                 proof_dest    = 4;
   optional InputKind        hints         = 5;
+  // Forces the 32-byte execution seed instead of drawing a fresh one. Rejected unless the
+  // coordinator is configured to allow client seeds.
+  optional bytes            seed          = 6;
 }
 
 message ProveResponse {
@@ -305,6 +310,9 @@ message ExecuteRequest {
   InputKind                 input           = 2;
   optional google.protobuf.Timestamp execute_timeout = 3;
   optional InputKind        hints           = 4;
+  // Forces the 32-byte execution seed instead of drawing a fresh one. Rejected unless the
+  // coordinator is configured to allow client seeds.
+  optional bytes            seed            = 5;
 }
 
 message ExecuteResponse {

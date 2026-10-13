@@ -773,6 +773,7 @@ mod tests {
                 hash_id,
                 input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
                 hints: None,
+                seed: None,
                 proof_timeout: None,
                 proof_dest: DomainProofKind::Stark,
             }))
@@ -798,6 +799,7 @@ mod tests {
                 hash_id,
                 input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
                 hints: None,
+                seed: None,
                 execute_timeout: None,
             }))
             .await

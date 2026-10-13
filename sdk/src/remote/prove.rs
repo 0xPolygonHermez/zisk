@@ -75,11 +75,6 @@ impl RemoteClient {
         subs: SubscriberList,
         metadata: Option<BTreeMap<String, String>>,
     ) -> Result<JobHandle<ProveResult>> {
-        if seed.is_some() {
-            return Err(SdkError::InvalidConfig(
-                "forcing the execution seed is not supported by remote clients yet".to_string(),
-            ));
-        }
         let metadata = metadata.filter(|m| !m.is_empty());
         let (hints, maybe_hints_stream) = hints_to_input_kind(hints)?;
 
@@ -100,6 +95,7 @@ impl RemoteClient {
             hash_id,
             input,
             hints,
+            seed,
             proof_timeout,
             proof_dest,
         });

@@ -1931,6 +1931,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.worker_allocation.contains(&0) && self.worker.world_rank() == 0;
         self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_process)?;
 
+        let seed = ExecutionSeed::try_from(params.seed.as_slice())
+            .context("coordinator sent no valid execution seed for the job")?;
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
 
@@ -1938,7 +1940,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             job_id.clone(),
             params.hash_id,
             data_ctx,
-            ExecutionSeed::random()?,
+            seed,
             params.rank_id,
             params.total_workers,
             params.worker_allocation,
@@ -2012,6 +2014,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.worker_allocation.contains(&0) && self.worker.world_rank() == 0;
         self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_process)?;
 
+        let seed = ExecutionSeed::try_from(params.seed.as_slice())
+            .context("coordinator sent no valid execution seed for the job")?;
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
 
@@ -2019,7 +2023,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             job_id.clone(),
             params.hash_id,
             data_ctx,
-            ExecutionSeed::random()?,
+            seed,
             params.rank_id,
             params.total_workers,
             params.worker_allocation,

@@ -203,11 +203,13 @@ fn run_aggregate_proofs_blocking(
     )
     .map_err(SdkError::backend)?;
 
+    // An aggregate attests no single execution, so it carries no seed.
     Ok(ProveResult::from(ProveOutput::from_remote(
         proof,
         0,
         Duration::from_secs(0),
         StatsCostPerType::default(),
+        None,
     )))
 }
 

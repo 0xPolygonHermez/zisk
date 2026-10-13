@@ -90,6 +90,7 @@ fn coord_stats_to_domain(s: CoordinatorExecutionStats) -> DomainExecutionStats {
                 count: p.count,
             })
             .collect(),
+        seed: s.seed,
     }
 }
 
@@ -210,6 +211,7 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
         CoordinatorError::InvalidArgument(msg) | CoordinatorError::InvalidRequest(msg) => {
             ApiError::InvalidJobState { reason: msg }
         }
+        CoordinatorError::ClientSeedNotAllowed => ApiError::ClientSeedNotAllowed,
         CoordinatorError::WorkerError(msg) | CoordinatorError::Internal(msg) => {
             ApiError::Internal(msg)
         }
@@ -354,6 +356,7 @@ impl BackendService for CoordinatorBackend {
                         metadata,
                         execution_only: false,
                         proof_type,
+                        seed: r.seed,
                     })
                     .await
                     .map_err(coord_err_to_api)?;
@@ -378,6 +381,7 @@ impl BackendService for CoordinatorBackend {
                         metadata,
                         execution_only: true,
                         proof_type: ProofKind::VadcopFinal,
+                        seed: r.seed,
                     })
                     .await
                     .map_err(coord_err_to_api)?;
