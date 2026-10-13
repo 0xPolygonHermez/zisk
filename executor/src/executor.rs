@@ -871,6 +871,17 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     }
 }
 
+/// The instances of `ids` this process proves, in order.
+fn own_instances(registry: &dyn ProofRegistry, ids: &[usize]) -> ExecutorResult<Vec<usize>> {
+    let mut own = Vec::with_capacity(ids.len());
+    for &id in ids {
+        if registry.is_my_process_instance(GlobalId(id))? {
+            own.push(id);
+        }
+    }
+    Ok(own)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -994,15 +1005,4 @@ mod tests {
             }
         }
     }
-}
-
-/// The instances of `ids` this process proves, in order.
-fn own_instances(registry: &dyn ProofRegistry, ids: &[usize]) -> ExecutorResult<Vec<usize>> {
-    let mut own = Vec::with_capacity(ids.len());
-    for &id in ids {
-        if registry.is_my_process_instance(GlobalId(id))? {
-            own.push(id);
-        }
-    }
-    Ok(own)
 }
