@@ -25,6 +25,7 @@ impl ShmemReader {
     }
 
     /// Like [`new`](Self::new), without locking the pages: for a large region read once.
+    #[cfg(gpu)]
     pub fn new_unlocked(name: &str, size: usize) -> Result<Self> {
         Self::open(name, size, false)
     }
@@ -36,6 +37,7 @@ impl ShmemReader {
     }
 
     /// The whole mapped region.
+    #[cfg(gpu)]
     pub fn bytes(&self) -> &[u8] {
         // SAFETY: `ptr` maps `size` readable bytes for the handle's lifetime; the writer side may
         // change them, which a shared-memory reader accepts as it does in `read_u64_at`.
