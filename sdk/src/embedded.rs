@@ -15,6 +15,7 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use zisk_common::ExecutionSeed;
 
 use crate::setup::SetupResult;
 use crate::{Result, SdkError};
@@ -525,12 +526,13 @@ impl Client for EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
-        self.do_prove(program, stdin, hints, executor, proof_kind, timeout, subs)
+        self.do_prove(program, stdin, hints, seed, executor, proof_kind, timeout, subs)
     }
 
     fn run_execute(
@@ -538,11 +540,12 @@ impl Client for EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ExecuteResult>> {
-        self.do_execute(program, stdin, hints, executor, timeout, subs)
+        self.do_execute(program, stdin, hints, seed, executor, timeout, subs)
     }
 
     fn run_wrap(
@@ -618,11 +621,12 @@ impl ClientSync for EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         subs: SubscriberList,
     ) -> Result<crate::prove::ProveResult> {
-        self.do_prove_sync(program, stdin, hints, executor, proof_kind, subs)
+        self.do_prove_sync(program, stdin, hints, seed, executor, proof_kind, subs)
     }
 
     fn run_execute_sync(
@@ -630,10 +634,11 @@ impl ClientSync for EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         subs: SubscriberList,
     ) -> Result<ExecuteResult> {
-        self.do_execute_sync(program, stdin, hints, executor, subs)
+        self.do_execute_sync(program, stdin, hints, seed, executor, subs)
     }
 
     fn run_wrap_sync(

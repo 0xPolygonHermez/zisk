@@ -1,3 +1,4 @@
+use crate::common::SeedArgs;
 use anyhow::Result;
 use colored::Colorize;
 use std::path::PathBuf;
@@ -32,6 +33,9 @@ pub(crate) struct VerifyConstraintsCmd {
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
     hints: Option<String>,
+
+    #[command(flatten)]
+    seed: SeedArgs,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
@@ -148,6 +152,7 @@ impl VerifyConstraintsCmd {
             result.get_executor_time(),
             result.get_duration(),
             result.get_execution_steps(),
+            result.get_seed(),
             "Proofman",
         );
 
@@ -178,7 +183,7 @@ impl VerifyConstraintsCmd {
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
-        prover.verify_constraints(&guest_program, stdin, None, self.debug.clone())
+        prover.verify_constraints(&guest_program, stdin, self.seed.forced(), self.debug.clone())
     }
 
     pub(crate) fn run_asm(
@@ -232,6 +237,6 @@ impl VerifyConstraintsCmd {
         if let Some(hints_stream) = hints_stream {
             prover.register_hints_stream(hints_stream)?;
         }
-        prover.verify_constraints(&guest_program, stdin, None, self.debug.clone())
+        prover.verify_constraints(&guest_program, stdin, self.seed.forced(), self.debug.clone())
     }
 }

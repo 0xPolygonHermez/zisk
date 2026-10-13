@@ -8,6 +8,7 @@ use crate::{ExecutorKind, JobEvent, Result, SdkError};
 use std::sync::Arc;
 use std::time::Duration;
 use zisk_common::io::StreamSource;
+use zisk_common::ExecutionSeed;
 use zisk_common::ProofKind;
 use zisk_prover_backend::GuestProgram;
 
@@ -18,6 +19,7 @@ impl EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
@@ -30,7 +32,8 @@ impl EmbeddedClient {
         let handle = tokio::task::spawn_blocking(move || {
             fire_event(&subs_cloned, JobEvent::Started);
 
-            let result = Self::do_prove_inner(prover, &program, stdin, hints, executor, proof_kind);
+            let result =
+                Self::do_prove_inner(prover, &program, stdin, hints, seed, executor, proof_kind);
 
             fire_result_event(&subs_cloned, &result);
 
@@ -45,18 +48,27 @@ impl EmbeddedClient {
     /// Unlike [`do_prove`](Self::do_prove), this performs no `spawn_blocking`
     /// and returns the result directly, so it requires no async runtime.
     /// Registered event callbacks fire synchronously during the call.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn do_prove_sync(
         &self,
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         subs: SubscriberList,
     ) -> Result<ProveResult> {
         fire_event(&subs, JobEvent::Started);
-        let result =
-            Self::do_prove_inner(self.prover.clone(), program, stdin, hints, executor, proof_kind);
+        let result = Self::do_prove_inner(
+            self.prover.clone(),
+            program,
+            stdin,
+            hints,
+            seed,
+            executor,
+            proof_kind,
+        );
         fire_result_event(&subs, &result);
         result
     }
@@ -66,6 +78,7 @@ impl EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
     ) -> Result<ProveResult> {
@@ -98,11 +111,13 @@ impl EmbeddedClient {
         let result = match (prover.as_ref(), executor) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => {
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                apply_mode!(p.prove(program, s.into_inner())).run().map_err(SdkError::backend)?
+                apply_mode!(p.prove(program, s.into_inner()).seed(seed))
+                    .run()
+                    .map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Emulator) => {
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                p.prove_emulator(program, s.into_inner(), None, proof_kind)
+                p.prove_emulator(program, s.into_inner(), seed, proof_kind)
                     .map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
@@ -118,7 +133,7 @@ impl EmbeddedClient {
                             p.register_hints_stream(source).map_err(SdkError::backend)?;
                         }
                     }
-                    apply_mode!(p.prove(program, zisk_common::io::ZiskStdin::new()))
+                    apply_mode!(p.prove(program, zisk_common::io::ZiskStdin::new()).seed(seed))
                         .run()
                         .map_err(SdkError::backend)?
                 } else {
@@ -128,13 +143,17 @@ impl EmbeddedClient {
                             let uri = stream.uri().to_string();
                             let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
                             p.register_inputs_stream(source).map_err(SdkError::backend)?;
-                            apply_mode!(p.prove(program, zisk_common::io::ZiskStdin::new()))
+                            apply_mode!(p
+                                .prove(program, zisk_common::io::ZiskStdin::new())
+                                .seed(seed))
+                            .run()
+                            .map_err(SdkError::backend)?
+                        }
+                        InputSource::Stdin(s) => {
+                            apply_mode!(p.prove(program, s.into_inner()).seed(seed))
                                 .run()
                                 .map_err(SdkError::backend)?
                         }
-                        InputSource::Stdin(s) => apply_mode!(p.prove(program, s.into_inner()))
-                            .run()
-                            .map_err(SdkError::backend)?,
                     }
                 }
             }

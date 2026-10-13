@@ -1109,9 +1109,10 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
         }
     }
 
-    /// Force the execution seed instead of drawing a fresh one (replays, tests).
-    pub fn seed(mut self, seed: ExecutionSeed) -> Self {
-        self.seed = Some(seed);
+    /// Force the execution seed instead of drawing a fresh one (replays, tests). Takes an
+    /// `Option` too, so callers can pass through a seed they may not have.
+    pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
+        self.seed = seed.into();
         self
     }
 

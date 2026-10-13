@@ -9,9 +9,9 @@ use zisk_sdk::{
 };
 
 use super::validate_asm_hints;
-use crate::common::{resolve_elf, resolve_output_path, ElfSelectorArgs};
+use crate::common::{resolve_elf, resolve_output_path, ElfSelectorArgs, SeedArgs};
 use crate::proof::select_prove_kind;
-use crate::ux::print_job_banner;
+use crate::ux::{print_execution_seed, print_job_banner};
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -41,6 +41,9 @@ pub(crate) struct ZiskEmbeddedProve {
     /// - `unix://path/to/socket` → Unix domain socket stream
     #[arg(long)]
     hints: Option<String>,
+
+    #[command(flatten)]
+    seed: SeedArgs,
 
     /// Use the ASM emulator instead of the default Rust emulator
     #[arg(short = 'a', long)]
@@ -167,6 +170,9 @@ impl ZiskEmbeddedProve {
         if let Some(hints) = hints {
             request = request.hints(hints);
         }
+        if let Some(seed) = self.seed.forced() {
+            request = request.seed(seed);
+        }
         if proof_kind != ProofKind::VadcopFinal {
             request = request.wrap(proof_kind);
         }
@@ -188,6 +194,7 @@ impl ZiskEmbeddedProve {
             result.get_proving_time() as f64 / 1000.0,
             result.get_execution_steps()
         );
+        print_execution_seed(result.get_seed());
         info!("Proof saved to {}", output_file.display());
 
         Ok(())

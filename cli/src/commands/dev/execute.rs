@@ -1,3 +1,4 @@
+use crate::common::SeedArgs;
 use anyhow::Result;
 use colored::Colorize;
 use std::path::PathBuf;
@@ -67,6 +68,9 @@ pub(crate) struct ExecuteCmd {
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
     hints: Option<String>,
+
+    #[command(flatten)]
+    seed: SeedArgs,
 
     /// Path to the proving key. Defaults to the standard install location.
     /// Ignored under `--standalone`.
@@ -203,7 +207,8 @@ impl ExecuteCmd {
 
         let start = std::time::Instant::now();
         prover.setup(&guest_program, with_hints)?;
-        let result: ExecuteOutput = prover.execute(&guest_program, stdin, None, hints_stream)?;
+        let result: ExecuteOutput =
+            prover.execute(&guest_program, stdin, self.seed.forced(), hints_stream)?;
         let total_duration = start.elapsed().as_millis() as u64;
 
         if rank_zero {
@@ -234,6 +239,7 @@ impl ExecuteCmd {
                 result.get_executor_time(),
                 total_duration,
                 result.get_execution_steps(),
+                result.get_seed(),
                 if self.standalone { "Setup" } else { "Proofman" },
             );
         }

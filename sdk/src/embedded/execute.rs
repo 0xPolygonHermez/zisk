@@ -8,14 +8,17 @@ use crate::{ExecutorKind, JobEvent, Result, SdkError};
 use std::sync::Arc;
 use std::time::Duration;
 use zisk_common::io::StreamSource;
+use zisk_common::ExecutionSeed;
 use zisk_prover_backend::GuestProgram;
 
 impl EmbeddedClient {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn do_execute(
         &self,
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -27,7 +30,7 @@ impl EmbeddedClient {
         let handle = tokio::task::spawn_blocking(move || {
             fire_event(&subs_cloned, JobEvent::Started);
 
-            let result = Self::do_execute_inner(stdin, hints, executor, &program, prover);
+            let result = Self::do_execute_inner(stdin, hints, seed, executor, &program, prover);
 
             fire_result_event(&subs_cloned, &result);
 
@@ -46,11 +49,13 @@ impl EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         subs: SubscriberList,
     ) -> Result<ExecuteResult> {
         fire_event(&subs, JobEvent::Started);
-        let result = Self::do_execute_inner(stdin, hints, executor, program, self.prover.clone());
+        let result =
+            Self::do_execute_inner(stdin, hints, seed, executor, program, self.prover.clone());
         fire_result_event(&subs, &result);
         result
     }
@@ -58,6 +63,7 @@ impl EmbeddedClient {
     fn do_execute_inner(
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         program: &GuestProgram,
         prover: Arc<EmbeddedProver>,
@@ -80,11 +86,11 @@ impl EmbeddedClient {
         let output = match (prover.as_ref(), executor) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => {
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                p.execute(program, s.into_inner(), None).map_err(SdkError::backend)?
+                p.execute(program, s.into_inner(), seed).map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Emulator) => {
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                p.execute_emulator(program, s.into_inner(), None).map_err(SdkError::backend)?
+                p.execute_emulator(program, s.into_inner(), seed).map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
                 if let Some(hints) = hints {
@@ -99,7 +105,7 @@ impl EmbeddedClient {
                             p.register_hints_stream(source).map_err(SdkError::backend)?;
                         }
                     }
-                    p.execute(program, zisk_common::io::ZiskStdin::new(), None)
+                    p.execute(program, zisk_common::io::ZiskStdin::new(), seed)
                         .map_err(SdkError::backend)?
                 } else {
                     match stdin {
@@ -108,11 +114,11 @@ impl EmbeddedClient {
                             let uri = stream.uri().to_string();
                             let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
                             p.register_inputs_stream(source).map_err(SdkError::backend)?;
-                            p.execute(program, zisk_common::io::ZiskStdin::new(), None)
+                            p.execute(program, zisk_common::io::ZiskStdin::new(), seed)
                                 .map_err(SdkError::backend)?
                         }
                         InputSource::Stdin(s) => {
-                            p.execute(program, s.into_inner(), None).map_err(SdkError::backend)?
+                            p.execute(program, s.into_inner(), seed).map_err(SdkError::backend)?
                         }
                     }
                 }

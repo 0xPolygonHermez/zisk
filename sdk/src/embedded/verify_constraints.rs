@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
+use zisk_common::ExecutionSeed;
 
 use zisk_common::io::StreamSource;
 use zisk_prover_backend::{GuestProgram, VerifyConstraintsOutput};
@@ -20,6 +21,7 @@ impl RunVerifyConstraints for EmbeddedClient {
         program: &GuestProgram,
         stdin: ZiskStdin,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         debug_info: Option<Option<String>>,
         executor: Option<ExecutorKind>,
         timeout: Option<Duration>,
@@ -35,7 +37,7 @@ impl RunVerifyConstraints for EmbeddedClient {
             fire_event(&subs_cloned, JobEvent::Started);
 
             let result = Self::do_verify_constraints_inner(
-                program, stdin, hints, debug_info, executor, prover,
+                program, stdin, hints, seed, debug_info, executor, prover,
             )
             .map(VerifyConstraintsResult::from);
 
@@ -53,6 +55,7 @@ impl EmbeddedClient {
         program: GuestProgram,
         stdin: ZiskStdin,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         debug_info: Option<Option<String>>,
         executor: ExecutorKind,
         prover: Arc<EmbeddedProver>,
@@ -72,7 +75,7 @@ impl EmbeddedClient {
                         "Hints require Assembly executor".to_string(),
                     ));
                 }
-                p.verify_constraints(&program, stdin.into_inner(), None, debug_info)
+                p.verify_constraints(&program, stdin.into_inner(), seed, debug_info)
                     .map_err(SdkError::backend)
             }
             EmbeddedProver::Asm(p) => {
@@ -84,7 +87,7 @@ impl EmbeddedClient {
                         ));
                     }
                     return p
-                        .verify_constraints_emulator(&program, stdin.into_inner(), None, debug_info)
+                        .verify_constraints_emulator(&program, stdin.into_inner(), seed, debug_info)
                         .map_err(SdkError::backend);
                 }
 
@@ -122,7 +125,7 @@ impl EmbeddedClient {
                         }
                     }
                 }
-                p.verify_constraints(&program, stdin.into_inner(), None, debug_info)
+                p.verify_constraints(&program, stdin.into_inner(), seed, debug_info)
                     .map_err(SdkError::backend)
             }
         }

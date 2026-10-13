@@ -1,4 +1,5 @@
 use super::{hints_to_input_kind, stdin_to_input_kind, RemoteClient};
+use zisk_common::ExecutionSeed;
 
 use crate::execute::ExecuteResult;
 use crate::hints::HintsSource;
@@ -16,16 +17,18 @@ use crate::Result;
 
 impl RemoteClient {
     /// Submit an execute job over the standard coordinator API.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn do_execute(
         &self,
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ExecuteResult>> {
-        self.submit_execute(program, stdin, hints, executor, timeout, subs, None)
+        self.submit_execute(program, stdin, hints, seed, executor, timeout, subs, None)
     }
 
     /// Submit an execute job over the extended coordinator API, attaching
@@ -36,12 +39,13 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
         metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ExecuteResult>> {
-        self.submit_execute(program, stdin, hints, executor, timeout, subs, Some(metadata))
+        self.submit_execute(program, stdin, hints, seed, executor, timeout, subs, Some(metadata))
     }
 
     /// Shared execute submission. `metadata` selects the transport: `Some` routes
@@ -52,11 +56,17 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         _executor: ExecutorKind, // remote: coordinator uses its configured executor; hint ignored
         timeout: Option<Duration>,
         subs: SubscriberList,
         metadata: Option<BTreeMap<String, String>>,
     ) -> Result<JobHandle<ExecuteResult>> {
+        if seed.is_some() {
+            return Err(SdkError::InvalidConfig(
+                "forcing the execution seed is not supported by remote clients yet".to_string(),
+            ));
+        }
         let metadata = metadata.filter(|m| !m.is_empty());
         let (hints, maybe_hints_stream) = hints_to_input_kind(hints)?;
 

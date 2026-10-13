@@ -7,7 +7,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{AsmOptions, EmbeddedClientBuilder, GuestProgram, ZiskHints, ZiskStdin};
 
 use super::validate_asm_hints;
-use crate::common::{resolve_elf, ElfSelectorArgs};
+use crate::common::{resolve_elf, ElfSelectorArgs, SeedArgs};
 use crate::ux::{print_execute_output, print_job_banner};
 
 #[derive(clap::Args, Debug)]
@@ -38,6 +38,9 @@ pub(crate) struct ZiskEmbeddedExecute {
     /// - `unix://path/to/socket` → Unix domain socket stream
     #[arg(long)]
     hints: Option<String>,
+
+    #[command(flatten)]
+    seed: SeedArgs,
 
     /// Use the ASM emulator instead of the default Rust emulator
     #[arg(short = 'a', long)]
@@ -91,7 +94,7 @@ impl ZiskEmbeddedExecute {
 
         client.setup(&program, hints.is_some())?;
 
-        let result = client.execute(&program, stdin, hints)?;
+        let result = client.execute(&program, stdin, self.seed.forced(), hints)?;
 
         info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
         print_execute_output(&result);

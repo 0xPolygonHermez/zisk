@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::ops::Deref;
 use std::time::Duration;
+use zisk_common::ExecutionSeed;
 
 use crate::Result;
 use zisk_prover_backend::{ExecuteOutput, GuestProgram};
@@ -54,6 +55,7 @@ pub struct ExecuteRequest<'a, C> {
     program: &'a GuestProgram,
     stdin: InputSource,
     hints: Option<HintsSource>,
+    seed: Option<ExecutionSeed>,
     executor: ExecutorKind,
     timeout: Option<Duration>,
 }
@@ -66,7 +68,15 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
         stdin: impl Into<InputSource>,
         executor: ExecutorKind,
     ) -> Self {
-        Self { client, program, stdin: stdin.into(), hints: None, executor, timeout: None }
+        Self {
+            client,
+            program,
+            stdin: stdin.into(),
+            hints: None,
+            seed: None,
+            executor,
+            timeout: None,
+        }
     }
 
     /// Attach a hints stream to this execute request.
@@ -77,6 +87,14 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
     #[must_use]
     pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
         self.hints = Some(hints.into());
+        self
+    }
+
+    /// Force the execution seed instead of drawing a fresh one, to replay a previous run (its
+    /// seed is reported in the result) or pin it in tests.
+    #[must_use]
+    pub fn seed(mut self, seed: ExecutionSeed) -> Self {
+        self.seed = Some(seed);
         self
     }
 
@@ -101,6 +119,7 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
             self.program,
             self.stdin,
             self.hints,
+            self.seed,
             self.executor,
             self.timeout,
             subs,
@@ -118,7 +137,14 @@ impl<'a, C: ClientSync> ExecuteRequest<'a, C> {
     /// ([`EmbeddedClient`](crate::EmbeddedClient)).
     pub fn run_sync(self) -> Result<ExecuteResult> {
         let subs = new_subscriber_list();
-        self.client.run_execute_sync(self.program, self.stdin, self.hints, self.executor, subs)
+        self.client.run_execute_sync(
+            self.program,
+            self.stdin,
+            self.hints,
+            self.seed,
+            self.executor,
+            subs,
+        )
     }
 }
 
@@ -132,6 +158,7 @@ pub struct ExecuteRequestExt<'a> {
     program: &'a GuestProgram,
     stdin: InputSource,
     hints: Option<HintsSource>,
+    seed: Option<ExecutionSeed>,
     executor: ExecutorKind,
     timeout: Option<Duration>,
     metadata: BTreeMap<String, String>,
@@ -148,6 +175,7 @@ impl<'a> ExecuteRequestExt<'a> {
             program,
             stdin: stdin.into(),
             hints: None,
+            seed: None,
             executor: ExecutorKind::default(),
             timeout: None,
             metadata: BTreeMap::new(),
@@ -166,6 +194,14 @@ impl<'a> ExecuteRequestExt<'a> {
     #[must_use]
     pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
         self.hints = Some(hints.into());
+        self
+    }
+
+    /// Force the execution seed instead of drawing a fresh one, to replay a previous run (its
+    /// seed is reported in the result) or pin it in tests.
+    #[must_use]
+    pub fn seed(mut self, seed: ExecutionSeed) -> Self {
+        self.seed = Some(seed);
         self
     }
 
@@ -190,6 +226,7 @@ impl<'a> ExecuteRequestExt<'a> {
             self.program,
             self.stdin,
             self.hints,
+            self.seed,
             self.executor,
             self.timeout,
             subs,
