@@ -143,9 +143,10 @@ struct RamFillPrepared {
     uint32_t n_instances;        // RAM instances (lanes / instance_rows, rounded up)
     uint64_t n_accesses;         // retained RAM accesses
     uint64_t n_lanes;            // lanes after dual pairing
-    float    ms_sort, ms_lanes, ms_values, ms_total;
+    uint32_t families;           // bit per family served (1 Mem, 2 RomData, 4 InputData, 8 MemAlign)
+    uint32_t reserved;
 };
-static_assert(sizeof(RamFillPrepared) == 40, "RamFillPrepared layout changed: update gpu_bindings.rs");
+static_assert(sizeof(RamFillPrepared) == 32, "RamFillPrepared layout changed: update gpu_bindings.rs");
 
 // One filled RAM instance. POD, mirrored in gpu_bindings.rs.
 struct RamFillResult {
@@ -157,9 +158,8 @@ struct RamFillResult {
     uint64_t prev_value;
     uint64_t last_step;
     uint64_t last_value;
-    float    ms_rows, ms_d2h;
 };
-static_assert(sizeof(RamFillResult) == 56, "RamFillResult layout changed: update gpu_bindings.rs");
+static_assert(sizeof(RamFillResult) == 48, "RamFillResult layout changed: update gpu_bindings.rs");
 
 // A row image the preparation staged on the device. POD, mirrored in gpu_bindings.rs.
 struct StagedRows {
@@ -168,7 +168,7 @@ struct StagedRows {
     uint32_t        family, air_id, segment, n_rows;
     RamFillResult   res;
 };
-static_assert(sizeof(StagedRows) == 88, "StagedRows layout changed: update gpu_bindings.rs");
+static_assert(sizeof(StagedRows) == 80, "StagedRows layout changed: update gpu_bindings.rs");
 
 // ─── Sizing constants visible to callers and to class-array bounds ──
 //     to be revised...
@@ -184,6 +184,8 @@ constexpr uint32_t MAX_CHUNKS            = MEM_GPU_MAX_META_CHUNKS; // 16384
 constexpr uint32_t MAX_POT_PER_PIECE   = 1u << 20;
 constexpr uint32_t MAX_WORDS_PER_PIECE = MAX_POT_PER_PIECE + 128;
 constexpr uint32_t MAX_SORT_PER_PIECE  = 2 * MAX_POT_PER_PIECE;
+// Accesses the fills can retain per block: the arrival index of a sort key (ram_fill.cu).
+constexpr uint64_t MAX_RETAINED_ACCESSES = 1ull << 30;
 
 // Internal compile-time toggle for the add_chunk worker pool 
 #define ZISK_MOPS_POOL 1
@@ -239,8 +241,10 @@ public:
     void set_chunk_size_bits(uint32_t bits) { chunk_size_bits_ = bits; }
     bool set_mem_layout(const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row,
                         uint32_t lanes_x_row);
-    bool ram_retention_ok() const { return ram_retention_enabled_.load(std::memory_order_relaxed); }
-    size_t ram_accesses() const { return ram_cursor_.load(std::memory_order_relaxed); }
+    // The block's accesses can still be retained and fit the arrival index of the fills.
+    bool ram_retention_ok() const {
+        return ram_retention_enabled_.load(std::memory_order_relaxed) && ram_cursor_.load(std::memory_order_relaxed) <= MAX_RETAINED_ACCESSES;
+    }
     bool prepare_ram_fill(RamFillPrepared* out);
     bool fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res,
                            uint64_t* d_out = nullptr);
@@ -311,6 +315,7 @@ public:
     // The device the planner and the fills run on (`setup`'s gpu_id).
     int device() const { return gpu_device_; }
     bool instance_scalars(uint32_t family, uint32_t inst, RamFillResult* res) const;
+    bool align_used(uint32_t air_id, uint32_t segment, uint32_t* used) const;
 
 
     bool register_input_pinned(void* ptr, size_t bytes);
@@ -399,6 +404,7 @@ private:
     uint64_t*      d_carry_[N_STREAMS]             = {nullptr};   // pairing state per address, as sort keys
     uint32_t*      d_carry_rank_[N_STREAMS]        = {nullptr};   // sorted position -> real entries before it
     uint32_t*      h_n_carry_[N_STREAMS]           = {nullptr};
+    uint32_t*      h_pot_piece_[N_STREAMS]         = {nullptr};   // a piece's device potential count
 
     // ─── Ops pool (bump-allocated by add_chunk) ──────────────────────
 
@@ -419,8 +425,7 @@ private:
     struct RamRun { uint32_t base; uint32_t n; uint32_t chunk; };  // one piece's records, in its sorted order
     std::vector<RamRun> ram_runs_;
     std::mutex          ram_runs_mtx_;
-    uint32_t            piece_potentials_ = MAX_POT_PER_PIECE;  // cut threshold (ZISK_MOPS_PIECE_POTENTIALS lowers it for tests)
-    std::atomic<uint32_t> max_pieces_{0};
+    uint32_t            piece_potentials_ = MAX_POT_PER_PIECE;  // cut threshold (ZISK_MEM_TEST_PIECE_POTENTIALS lowers it)
     unsigned long long* d_ram_nwrites_ = nullptr;             // writes among the retained accesses
     uint64_t           ram_writes_     = 0;                   // read back by prepare_ram_fill
     uint32_t           chunk_size_bits_ = 18;
@@ -435,17 +440,16 @@ private:
     uint32_t*          d_rf_bound_      = nullptr;  // (chunk, instance) -> rank where the range starts
     uint32_t*          d_rf_pref_       = nullptr;  // (instance, chunk) -> exclusive prefix of slice sizes
     uint8_t*           rf_scratch_      = nullptr;  // per-instance scratch starts here
-    size_t             rf_scratch_peak_ = 0;
     std::vector<size_t> h_rf_inst_count_;           // instance -> accesses of its address range
     std::vector<size_t> h_rf_inst_skip_;            // instance -> lanes of the range before its window
     std::vector<size_t> h_rf_inst_lanes_;           // instance -> lanes of its whole address range
-    float              ram_ms_[4]       = {0, 0, 0, 0};  // sort, lanes, values, total over the instances
     size_t             ram_n_lanes_     = 0;
     uint64_t*                  h_ram_rows_       = nullptr;   // pinned, n_instances x rows x words
     size_t                     h_ram_rows_cap_   = 0;         // u64 words
     std::thread                h_ram_rows_prealloc_;          // allocates the default capacity at setup
     void join_rows_prealloc_() { if (h_ram_rows_prealloc_.joinable()) h_ram_rows_prealloc_.join(); }
     size_t                     ram_rows_stride_  = 0;         // u64 words per instance
+    std::vector<int32_t>       ram_rows_slot_;                // instance -> pinned slot, -1 when not owned
     std::vector<RamFillResult> ram_results_;
 
     // Retained ROM and input accesses: records of the same stack, one run per piece in arrival order.
@@ -464,6 +468,7 @@ private:
     uint64_t*                  h_rom_rows_ = nullptr;       // pinned, n_instances x rows x words
     size_t                     h_rom_rows_cap_ = 0;
     size_t                     rom_rows_stride_ = 0;
+    std::vector<int32_t>       rom_rows_slot_;
     std::vector<RamFillResult> rom_results_;
     bool prepare_other_index_();
     bool other_geometry_(int region, std::vector<uint32_t>& first, std::vector<uint32_t>& last,
@@ -482,6 +487,7 @@ private:
     uint64_t*                  h_input_rows_ = nullptr;     // pinned, n_instances x rows x words
     size_t                     h_input_rows_cap_ = 0;
     size_t                     input_rows_stride_ = 0;
+    std::vector<int32_t>       input_rows_slot_;
     std::vector<RamFillResult> input_results_;
     bool fill_input_instance(uint32_t inst, const uint64_t* d_image, const uint64_t* h_image, size_t image_words,
                              uint8_t* scratch, uint64_t* out_rows, uint32_t n_rows, RamFillResult* res,
@@ -503,9 +509,11 @@ private:
     std::vector<Staged>        staged_;              // under staged_mtx_
     std::vector<bool>          stage_wanted_[3];     // per family (RAM, ROM, input): instances to stage
     bool stage_wanted_at_(uint32_t family, uint32_t inst) const;
-    std::mutex                 staged_mtx_;          // staged_, prep_done_, copies_in_flight_
+    mutable std::mutex         staged_mtx_;          // staged_, prep_done_, copies_in_flight_
     std::condition_variable    staged_cv_;
     bool                       prep_done_ = false;   // the preparation published its last image
+    bool                       prep_failed_ = false; // ... and failed: no image is served
+    RamFillPrepared            prepared_info_{};     // what the preparation reported
     uint32_t                   copies_in_flight_ = 0; // copy_staged calls reading the images
     bool find_staged_(uint32_t family, uint32_t air_id, uint32_t segment, StagedRows* out) const;
     uint8_t*                   stage_low_ = nullptr;
@@ -516,11 +524,14 @@ private:
     std::vector<cudaEvent_t>   slot_copy_events_;      // the copies in flight on the prover's streams
     // The host copies of the staged images (slot mode): behind the fills, at the lowest priority.
     cudaStream_t               copy_stream_ = nullptr;
-    bool                       slot_host_rows_ = false;
+    bool                       arena_released_ = false;   // under staged_mtx_: the arena went back to the prover
     uint32_t                   host_rows_mask_ = 0;
     // Copies `words` words of a staged image `d_rows` to the pinned `out_rows` behind the fill on
     // `fill_stream_`, without waiting for it.
     bool stage_copy_out_(uint64_t* out_rows, const uint64_t* d_rows, size_t words);
+    uint32_t family_words_per_row_(uint32_t family, uint32_t air_id) const;
+    bool grow_pinned_(uint64_t** rows, size_t* cap, size_t need, const char* who);
+    uint32_t*                  d_fill_fault_ = nullptr;      // a fill's fault word (fixed region)
     // The pinned rows of an instance, by family (see `fill_slot`); null when it has none.
     const uint64_t* host_rows_(uint32_t family, uint32_t air_id, uint32_t segment, size_t* words, RamFillResult* res) const;
     uint8_t*  scratch_end_(size_t n_total) const;
@@ -566,6 +577,7 @@ private:
     // ─── Pinned host buffers ─────────────────────────────────────────
 
     uint32_t*      h_n_emits_all_              = nullptr;
+    uint32_t*      h_pot_device_               = nullptr;   // per chunk: the device's potential count
     // Pinned destinations for the compacted paged-offsets output.
     //   - h_page_starts_buf_ / h_page_single_buf_ are sized in pages
     //     (1 entry per page); cumulative across the active instances.
@@ -584,8 +596,6 @@ private:
 
     cudaStream_t  d2h_stream_         = nullptr;
     cudaStream_t  meta_stream_        = nullptr;
-    cudaEvent_t   e_after_preproc_    = nullptr;
-    cudaEvent_t   e_after_prepare_    = nullptr;
     cudaEvent_t   e_metas_ready_      = nullptr;
 
     // ─── Per-block state ────────────────────────────────────────────
@@ -599,7 +609,6 @@ private:
     std::vector<uint32_t> n_potentials_per_chunk_;
     std::vector<uint32_t> n_ram_per_chunk_;
     uint32_t              rf_n_runs_ = 0;
-    std::vector<uint32_t> n_words_per_chunk_;
     std::vector<uint32_t> packed_chunk_offsets_h_;
     bool                  preprocessed_            = false;
     bool                  prepared_                = false;
@@ -647,14 +656,14 @@ private:
     void   query_cub_sizes_(size_t& scan_counts_b, size_t& scan_emit_b,
                             size_t& scan_runs_b,   size_t& sort_b,
                             size_t& rle_b,         size_t& hist_scan_b);
-    void   prepare_global_();
-    void   process_worker_();
+    bool   prepare_global_();
+    bool   process_worker_();
     void   set_active_worker_();
     void   pick_active_instances_();
 
     bool   add_chunk_core_(const uint64_t* words, uint32_t n_words, uint32_t c);
     bool   add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int s, uint32_t pot, uint32_t ram,
-                      uint32_t* d_out, uint32_t n_carry, bool carry_out, uint32_t* h_emits);
+                      uint32_t* d_out, uint32_t n_carry, bool carry_out, uint32_t* h_emits, uint32_t* h_pot);
     void   pool_start_();
     void   pool_stop_();
     void   pool_thread_loop_(int s);

@@ -39,13 +39,8 @@ pub trait MemAlignByteRow<F: PrimeField64, T> {
     fn create_trace(trace_buffer: Vec<F>) -> ProofmanResult<T>;
     fn get_num_rows(trace: &T) -> usize;
     fn name() -> &'static str;
-    /// Replicates the padding row written at `padding_row` over the rows after it.
-    fn pad(trace: &mut T, padding_row: usize);
     fn create_instance_from_trace(trace: &mut T, padding_row: usize) -> AirInstance<F>;
     fn get_row_mut(trace: &mut T, index: usize) -> &mut Self;
-    fn rows(trace: &T) -> &[Self]
-    where
-        Self: Sized;
 }
 
 // Helper function to avoid code duplication in create_instance_from_trace
@@ -92,21 +87,17 @@ macro_rules! impl_trace_lifecycle {
         fn get_row_mut(trace: &mut $trace<R>, index: usize) -> &mut Self {
             &mut trace[index]
         }
-        fn rows(trace: &$trace<R>) -> &[Self] {
-            &trace.buffer
-        }
-        fn pad(trace: &mut $trace<R>, padding_row: usize) {
+        fn create_instance_from_trace(trace: &mut $trace<R>, padding_row: usize) -> AirInstance<F> {
             let num_rows = trace.num_rows();
-            if num_rows > padding_row {
+            let padding_size = num_rows - padding_row;
+            if padding_size > 0 {
                 let padding = trace[padding_row];
                 trace.buffer[padding_row + 1..num_rows]
                     .par_iter_mut()
                     .for_each(|slot| *slot = padding);
             }
-        }
-        fn create_instance_from_trace(trace: &mut $trace<R>, padding_row: usize) -> AirInstance<F> {
             let mut air_values = $air_values::<F>::new();
-            air_values.padding_size = F::from_usize(trace.num_rows() - padding_row);
+            air_values.padding_size = F::from_usize(padding_size);
             AirInstance::new_from_trace(FromTrace::new(trace).with_air_values(&mut air_values))
         }
     };
@@ -273,7 +264,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,
         trace_buffer: Vec<F>,
-        on_filled: crate::mem_gpu_fill::OnFilled<'_, crate::mem_gpu_fill::RowsFilled>,
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace = R::create_trace(trace_buffer)?;
         let num_rows = R::get_num_rows(&trace);
@@ -311,17 +301,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
             );
         }
 
-        R::pad(&mut trace, irow);
-        if let Some(hook) = on_filled {
-            let words = crate::mem_trace_hash::rows_as_words(R::rows(&trace));
-            hook(
-                words,
-                &crate::mem_gpu_fill::RowsFilled {
-                    used: irow,
-                    words_per_row: std::mem::size_of::<R>() / 8,
-                },
-            );
-        }
         Ok(R::create_instance_from_trace(&mut trace, irow))
     }
 

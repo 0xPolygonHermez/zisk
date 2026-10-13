@@ -64,30 +64,25 @@ impl<'a> MemOps<'a> {
 }
 
 pub trait MemModule<F: Clone>: Send + Sync {
-    /// The witness from the accesses the GPU planner retained, with no collectors at all. `None`
-    /// when this module has no such path.
+    /// The instance from the rows the GPU planner built (`ZISK_MEM_GPU_FILL=arena`, and the
+    /// proofs in slot mode).
     fn compute_witness_gpu_arena(
         &self,
-        _segment_id: SegmentId,
-        _is_last_segment: bool,
-        _trace_buffer: Vec<F>,
-        _packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
-        Ok(None)
-    }
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<Option<AirInstance<F>>>;
     /// The instance the prover's kernel fills into its slot (`ZISK_MEM_GPU_FILL=slot`): its staged
-    /// op and its air values, from the scalars the device resolved. `None` when this module has no
-    /// such path.
+    /// op and its air values, from the scalars the device resolved.
     fn compute_witness_gpu_slot(
         &self,
-        _decl: &proofman_common::GpuWitnessAir,
-        _segment_id: SegmentId,
-        _is_last_segment: bool,
-        _trace_buffer: Vec<F>,
-        _packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
-        Ok(None)
-    }
+        decl: &proofman_common::GpuWitnessAir,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<Option<AirInstance<F>>>;
     #[allow(clippy::too_many_arguments)]
     fn compute_witness(
         &self,

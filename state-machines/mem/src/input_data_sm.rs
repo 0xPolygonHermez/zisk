@@ -9,7 +9,6 @@ use std::{
 #[cfg(feature = "debug_mem")]
 use zisk_sm_mem_common::MemHelpers;
 
-use crate::mem_gpu_fill::{gpu_fill_mode, GpuFillMode};
 use crate::{MemModule, MemOps, MemPreviousSegment};
 use zisk_sm_mem_common::{
     MemLanes, MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_DISTANCE,
@@ -441,48 +440,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            // `ZISK_MEM_GPU_FILL=arena-check`: the device rows against the CPU rows, every word
-            // and scalar; the CPU rows are proved.
-            let seg_idx = usize::from(segment_id);
-            let check = gpu_fill_mode() == GpuFillMode::ArenaCheck;
             let used_bits = Self::packed_used_bits();
-            let mut hook = move |cpu: &[u64], out: &InputDataFillOutput| {
-                let n_rows = InputDataTrace::<InputDataTraceRowPacked<F>>::NUM_ROWS;
-                let words_per_row = InputDataTraceRowPacked::<F>::PACKED_WORDS;
-                let mut gpu = vec![0u64; n_rows * words_per_row];
-                match Self::device_rows(&mut gpu, n_rows, segment_id) {
-                    Ok((report, prev)) => {
-                        let (count, first) = crate::mem_gpu_fill::compare_rows_masked(
-                            cpu,
-                            &gpu,
-                            words_per_row,
-                            used_bits,
-                        );
-                        let scalars_ok = report == *out
-                            && prev.addr == previous_segment.addr
-                            && prev.step == previous_segment.step
-                            && prev.value == previous_segment.value;
-                        tracing::info!(
-                            "InputData[{seg_idx}] arena CHECK: {} words differ{} | scalars {}{}",
-                            count,
-                            first
-                                .map(|(row, w, c, g)| format!(
-                                    ", first row {row} word {w}: cpu {c:#x} gpu {g:#x}"
-                                ))
-                                .unwrap_or_default(),
-                            if scalars_ok { "match" } else { "DIFFER" },
-                            if scalars_ok {
-                                String::new()
-                            } else {
-                                format!(
-                                    " (cpu prev {previous_segment:?} {out:?}; gpu prev {prev:?} {report:?})"
-                                )
-                            }
-                        );
-                    }
-                    Err(e) => tracing::warn!("InputData[{seg_idx}] arena CHECK unavailable: {e}"),
-                }
-            };
             self.compute_witness_with_offsets_inner::<InputDataTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
@@ -490,7 +448,6 @@ impl<F: PrimeField64> InputDataSM<F> {
                 previous_segment,
                 trace_buffer,
                 seg,
-                if check { Some(&mut hook) } else { None },
                 used_bits,
             )
         } else {
@@ -501,7 +458,6 @@ impl<F: PrimeField64> InputDataSM<F> {
                 previous_segment,
                 trace_buffer,
                 seg,
-                None,
                 std::mem::size_of::<InputDataTraceRow<F>>() * 8,
             )
         }
@@ -518,16 +474,11 @@ impl<F: PrimeField64> InputDataSM<F> {
 
     /// The rows of InputData instance `segment_id` from the GPU planner, with the fill's scalars
     /// and the lane before the instance.
-    fn device_rows(
-        rows: &mut [u64],
+    /// The device's scalars of an instance as its fill output and continuation.
+    fn from_result(
+        res: &zisk_sm_mem_planner::RamFillResult,
         n_rows: usize,
-        segment_id: SegmentId,
-    ) -> Result<(InputDataFillOutput, MemPreviousSegment), String> {
-        let res = zisk_sm_mem_planner::gpu_input_witness_fill(
-            usize::from(segment_id) as u32,
-            rows,
-            n_rows as u32,
-        )?;
+    ) -> (InputDataFillOutput, MemPreviousSegment) {
         let num_slots = n_rows * zisk_sm_mem_common::input_data_lanes_x_row();
         let out = InputDataFillOutput {
             last_addr: res.last_addr_w,
@@ -540,7 +491,20 @@ impl<F: PrimeField64> InputDataSM<F> {
             step: res.prev_step,
             value: res.prev_value,
         };
-        Ok((out, prev))
+        (out, prev)
+    }
+
+    fn device_rows(
+        rows: &mut [u64],
+        n_rows: usize,
+        segment_id: SegmentId,
+    ) -> Result<(InputDataFillOutput, MemPreviousSegment), String> {
+        let res = zisk_sm_mem_planner::gpu_input_witness_fill(
+            usize::from(segment_id) as u32,
+            rows,
+            n_rows as u32,
+        )?;
+        Ok(Self::from_result(&res, n_rows))
     }
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
     ///
@@ -569,9 +533,6 @@ impl<F: PrimeField64> InputDataSM<F> {
     ///   index order, the first absent address is the one where
     ///   `offsets[i] == offsets[i + 1]` (no increment between consecutive
     ///   slots).
-    ///
-    /// `on_filled` sees the filled rows (as words) and the fill's scalars before the air instance
-    /// is built: the arena check compares them with the device rows.
     #[allow(clippy::too_many_arguments)]
     fn compute_witness_with_offsets_inner<R: InputDataTraceRowOps<F>>(
         &self,
@@ -581,7 +542,6 @@ impl<F: PrimeField64> InputDataSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
         seg: &MemModuleSegmentCheckPoint,
-        on_filled: crate::mem_gpu_fill::OnFilled<'_, InputDataFillOutput>,
         used_bits: usize,
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace = InputDataTrace::<R>::new_from_vec(trace_buffer)?;
@@ -737,9 +697,6 @@ impl<F: PrimeField64> InputDataSM<F> {
         };
         {
             let words = crate::mem_trace_hash::rows_as_words(&trace.buffer);
-            if let Some(hook) = on_filled {
-                hook(words, &out);
-            }
             crate::mem_trace_hash::dump_scalars(
                 self.get_mem_name(),
                 usize::from(segment_id),
@@ -829,18 +786,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
                 "InputData[{seg_idx}] scalars from the GPU planner failed: {e}"
             ))
         })?;
-        let num_slots = n_rows * zisk_sm_mem_common::input_data_lanes_x_row();
-        let out = InputDataFillOutput {
-            last_addr: res.last_addr_w,
-            last_step: res.last_step,
-            last_value: res.last_value,
-            padding_size: (num_slots - res.n_lanes as usize) as u32,
-        };
-        let previous_segment = MemPreviousSegment {
-            addr: res.prev_addr_w,
-            step: res.prev_step,
-            value: res.prev_value,
-        };
+        let (out, previous_segment) = Self::from_result(&res, n_rows);
         let mut air_values = out.air_values::<F>(segment_id, is_last_segment, &previous_segment);
         crate::mem_gpu_fill::slot_instance(
             decl,

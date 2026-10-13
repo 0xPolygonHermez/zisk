@@ -1,55 +1,18 @@
-//! Without CUDA there is no planner to register: every query says the RAM witness is unavailable.
+//! Without CUDA there is no planner: every query says the device memory witness is unavailable,
+//! with the same surface as `gpu_ram_witness.rs`.
+
+use crate::mem_witness_types::RamFillResult;
+
+const UNAVAILABLE: &str = "built without CUDA";
 
 pub fn clear_gpu_ram_witness() {}
-
-pub fn gpu_ram_witness_available() -> bool {
-    false
-}
-
-#[derive(Copy, Clone, Debug, Default)]
-pub struct RamFillPrepared {
-    pub status: i32,
-    pub n_instances: u32,
-    pub n_accesses: u64,
-    pub n_lanes: u64,
-    pub ms_sort: f32,
-    pub ms_lanes: f32,
-    pub ms_values: f32,
-    pub ms_total: f32,
-}
-
-#[derive(Copy, Clone, Debug, Default)]
-pub struct RamFillResult {
-    pub status: i32,
-    pub n_lanes: u32,
-    pub prev_addr_w: u32,
-    pub last_addr_w: u32,
-    pub prev_step: u64,
-    pub prev_value: u64,
-    pub last_step: u64,
-    pub last_value: u64,
-    pub ms_rows: f32,
-    pub ms_d2h: f32,
-}
-
-pub fn gpu_ram_witness_prepare() -> Result<RamFillPrepared, String> {
-    Err("built without CUDA".to_string())
-}
 
 pub fn gpu_ram_witness_fill(
     _inst: u32,
     _out_rows: &mut [u64],
     _n_rows: u32,
 ) -> Result<RamFillResult, String> {
-    Err("built without CUDA".to_string())
-}
-
-pub fn gpu_ram_witness_fill_all(_insts: &[u32]) -> Result<RamFillPrepared, String> {
-    Err("built without CUDA".to_string())
-}
-
-pub fn gpu_rom_witness_fill_all(_insts: &[u32]) -> Result<RamFillPrepared, String> {
-    Err("built without CUDA".to_string())
+    Err(UNAVAILABLE.to_string())
 }
 
 pub fn gpu_rom_witness_fill(
@@ -57,14 +20,7 @@ pub fn gpu_rom_witness_fill(
     _out_rows: &mut [u64],
     _n_rows: u32,
 ) -> Result<RamFillResult, String> {
-    Err("built without CUDA".to_string())
-}
-
-pub fn gpu_input_witness_fill_all(
-    _image: &[u8],
-    _insts: &[u32],
-) -> Result<RamFillPrepared, String> {
-    Err("built without CUDA".to_string())
+    Err(UNAVAILABLE.to_string())
 }
 
 pub fn gpu_input_witness_fill(
@@ -72,13 +28,7 @@ pub fn gpu_input_witness_fill(
     _out_rows: &mut [u64],
     _n_rows: u32,
 ) -> Result<RamFillResult, String> {
-    Err("built without CUDA".to_string())
-}
-
-pub fn gpu_align_witness_fill_all(
-    _plans: &[&zisk_common::Plan],
-) -> Result<RamFillPrepared, String> {
-    Err("built without CUDA".to_string())
+    Err(UNAVAILABLE.to_string())
 }
 
 pub fn gpu_align_witness_fill(
@@ -86,17 +36,7 @@ pub fn gpu_align_witness_fill(
     _segment: usize,
     _out_rows: &mut [u64],
 ) -> Result<usize, String> {
-    Err("built without CUDA".to_string())
-}
-
-/// Mirrors the CUDA side's kernel input; unused without CUDA.
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Default)]
-pub struct MemSlotOp {
-    pub family: u32,
-    pub air_id: u32,
-    pub segment: u32,
-    pub n_rows: u32,
+    Err(UNAVAILABLE.to_string())
 }
 
 pub fn gpu_slot_witness_prepare_async(
@@ -107,7 +47,11 @@ pub fn gpu_slot_witness_prepare_async(
     _align_plans: &[&zisk_common::Plan],
     _host_rows: bool,
 ) -> Result<(), String> {
-    Err("built without CUDA".to_string())
+    Err(UNAVAILABLE.to_string())
+}
+
+pub fn gpu_mem_witness_families() -> u32 {
+    0
 }
 
 pub fn gpu_mem_witness_host_rows_mask() -> u32 {
@@ -115,7 +59,11 @@ pub fn gpu_mem_witness_host_rows_mask() -> u32 {
 }
 
 pub fn gpu_mem_witness_scalars(_family: u32, _inst: u32) -> Result<RamFillResult, String> {
-    Err("built without CUDA".to_string())
+    Err(UNAVAILABLE.to_string())
+}
+
+pub fn gpu_mem_witness_align_used(_air_id: usize, _segment: usize) -> Result<u32, String> {
+    Err(UNAVAILABLE.to_string())
 }
 
 pub fn gpu_slot_witness_arm(_n_pending: usize, _release: Box<dyn FnOnce() + Send>) {}
@@ -123,7 +71,7 @@ pub fn gpu_slot_witness_arm(_n_pending: usize, _release: Box<dyn FnOnce() + Send
 pub fn gpu_slot_witness_release_now() {}
 
 /// # Safety
-/// Never invoked without CUDA; the prover declares no kernel airs then.
+/// Never called: the prover only takes this kernel from a GPU build.
 pub unsafe extern "C" fn zisk_mem_witness_slot_kernel(
     _d_ops: *const core::ffi::c_void,
     _num_ops: u64,
