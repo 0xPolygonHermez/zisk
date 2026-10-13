@@ -242,7 +242,7 @@ public:
     bool set_align_layout(uint32_t air_kind, const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row);
     // The block's accesses can still be retained and fit the arrival index of the fills.
     bool ram_retention_ok() const {
-        return ram_retention_enabled_.load(std::memory_order_relaxed) && ram_cursor_.load(std::memory_order_relaxed) <= MAX_RETAINED_ACCESSES;
+        return ram_retention_enabled_.load(std::memory_order_relaxed) && ram_cursor_.load(std::memory_order_relaxed) <= retained_cap_;
     }
     // `prepare_fills` does the block's work once: the RAM tables, the resolve pass over every
     // instance (its scalars, and the old words the MemAlign records need), the ROM/input index and
@@ -376,6 +376,8 @@ private:
     std::vector<RamRun> ram_runs_;
     std::mutex          ram_runs_mtx_;
     uint32_t            piece_potentials_ = MAX_POT_PER_PIECE;  // cut threshold (ZISK_MEM_TEST_PIECE_POTENTIALS lowers it)
+    uint64_t            retained_cap_ = MAX_RETAINED_ACCESSES;  // ZISK_MEM_TEST_RETENTION lowers it
+    int64_t             test_chunk_reject_ = -1;                // ZISK_MEM_TEST_CHUNK_REJECT: the chunk add_chunk rejects
     unsigned long long* d_ram_nwrites_ = nullptr;             // writes among the retained accesses
     uint64_t           ram_writes_     = 0;                   // read back by prepare_ram_fill
     uint32_t           chunk_size_bits_ = 18;
@@ -459,6 +461,17 @@ private:
     // neither wait for the legacy stream nor queue behind the prover's commit kernels.
     cudaStream_t               fill_stream_ = nullptr;
     bool                       stage_try_ = false;     // staged attempt: a scratch overflow is retried, not reported
+    // Test knobs of the fills, read once per block by prepare_fills: ZISK_MEM_TEST_PREP_FAIL (the family whose
+    // preparation finds no room: 1 ram, 2 rom, 3 input, 4 align), ZISK_MEM_TEST_FILL_FAIL (the instance whose
+    // fill faults) and ZISK_MEM_TEST_SCRATCH_OVERFLOW (one fill's staged attempt and its retry overflow).
+    int                        test_prep_fail_ = 0;
+    long                       test_fill_fail_family_ = -1, test_fill_fail_inst_ = -1;
+    bool                       test_overflow_armed_ = false;
+    int                        test_overflow_left_ = 0;
+    bool test_fill_fail_(uint32_t family, size_t inst) const {
+        return (long)family == test_fill_fail_family_ && (long)inst == test_fill_fail_inst_;
+    }
+    bool test_scratch_overflow_();
     bool                       arena_released_ = false;   // under staged_mtx_: the arena went back to the prover
     uint32_t*                  d_fill_fault_ = nullptr;      // a fill's fault word (fixed region)
     uint8_t*  scratch_end_(size_t n_total) const;

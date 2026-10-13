@@ -426,9 +426,14 @@ fn fill_done() -> Option<Box<dyn FnOnce() + Send>> {
 /// Runs `release` after the preparation ended and every copy out of the arena landed.
 fn run_release(release: Box<dyn FnOnce() + Send>) {
     let _ = prepare_join();
-    if let Ok(inner) = planner() {
-        // SAFETY: registered handle; the planner waits for the copies still reading its images.
-        unsafe { crate::gpu_bindings::count_and_plan_quiesce(inner) };
+    {
+        // Under the registry lock: a fill building rows from the arena holds it, so none is in
+        // flight when the arena goes back.
+        let reg = registry();
+        if let Some(r) = reg.as_ref() {
+            // SAFETY: registered handle; the planner waits for the copies still reading its images.
+            unsafe { crate::gpu_bindings::count_and_plan_quiesce(r.inner) };
+        }
     }
     ROWS_ON_DEVICE.store(false, Ordering::Release);
     release();
