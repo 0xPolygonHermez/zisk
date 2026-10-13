@@ -327,14 +327,14 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     // This code is executed when the program makes an ecall (system call).
     // The pc is set to this address, and after the system call, it returns to the pc next to the
     // one that made the ecall
-    // If register a7==CAUSE_EXIT, then execute the next instruction to end the program;
-    // otherwise jump to the one after the next one
+    // If register a7==CAUSE_EXIT, jump to the exit code check (:005c); otherwise
+    // return to the caller (:0058)
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 17, false);
     zib.src_b("imm", CAUSE_EXIT, false);
     zib.op("eq").unwrap();
-    zib.j(-64, 4);
-    zib.verbose(&format!("beq r17, {CAUSE_EXIT} # Check if is exit, jump to output, then end"));
+    zib.j(8, 4);
+    zib.verbose(&format!("beq r17, {CAUSE_EXIT} # Check if is exit, jump to the exit code check"));
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
@@ -347,6 +347,32 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.set_pc();
     zib.j(0, 4);
     zib.verbose("ret");
+    zib.build(rom);
+    rom.next_init_inst_addr += 4;
+
+    // :005c
+    // Exit: the exit code is in a0 (register #10). 0 means success: publish the output
+    // and end (:0014); anything else is a failed execution (:0060), which must not be
+    // proven
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("reg", 10, false);
+    zib.src_b("imm", 0, false);
+    zib.op("eq").unwrap();
+    zib.j(-72, 4);
+    zib.verbose("beq r10, 0 # Exit code 0: jump to output, then end");
+    zib.build(rom);
+    rom.next_init_inst_addr += 4;
+
+    // :0060
+    // Nonzero exit code: end the execution with an error. The halt reads a0 as its `a`
+    // operand, so the error carries the exit code (a trap's halt has a = 0)
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("reg", 10, false);
+    zib.src_b("imm", 0, false);
+    zib.op("halt").unwrap();
+    zib.j(0, 0);
+    zib.end();
+    zib.verbose("halt # Nonzero exit code: failed execution");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
