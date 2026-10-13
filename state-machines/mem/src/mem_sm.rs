@@ -558,27 +558,14 @@ impl<F: PrimeField64> MemSM<F> {
         seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            match crate::mem_gpu_fill::gpu_fill_mode() {
-                crate::mem_gpu_fill::GpuFillMode::Off
-                | crate::mem_gpu_fill::GpuFillMode::Arena
-                | crate::mem_gpu_fill::GpuFillMode::Slot => self
-                    .compute_witness_with_offsets_inner::<MemTraceRowPacked<F>>(
-                        mem_ops,
-                        segment_id,
-                        is_last_segment,
-                        previous_segment,
-                        trace_buffer,
-                        seg,
-                    ),
-                crate::mem_gpu_fill::GpuFillMode::ArenaCheck => self.compute_witness_arena_check(
-                    mem_ops,
-                    segment_id,
-                    is_last_segment,
-                    previous_segment,
-                    trace_buffer,
-                    seg,
-                ),
-            }
+            self.compute_witness_with_offsets_inner::<MemTraceRowPacked<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+                seg,
+            )
         } else {
             self.compute_witness_with_offsets_inner::<MemTraceRow<F>>(
                 mem_ops,
@@ -626,106 +613,6 @@ impl<F: PrimeField64> MemSM<F> {
         // @[mem_padding], see `split_padding_size`.
         air_values.padding_size_chunks = out.padding_size_chunks.map(F::from_u16);
         air_values.padding_size_to_max_chunks = out.padding_size_to_max_chunks.map(F::from_u16);
-    }
-
-    /// `ZISK_MEM_GPU_FILL=arena-check`: fills the instance both ways, compares every word and
-    /// scalar, proves the CPU rows.
-    #[allow(clippy::too_many_arguments)]
-    fn compute_witness_arena_check(
-        &self,
-        mem_ops: MemOps<'_>,
-        segment_id: SegmentId,
-        is_last_segment: bool,
-        previous_segment: &MemPreviousSegment,
-        trace_buffer: Vec<F>,
-        seg: &MemModuleSegmentCheckPoint,
-    ) -> ProofmanResult<AirInstance<F>> {
-        use crate::mem_gpu_fill::{arena_fill_packed_rows, compare_rows, packed_rows_as_words};
-        type Row<F> = MemTraceRowPacked<F>;
-        let seg_idx = usize::from(segment_id);
-        let mut trace = MemTrace::<Row<F>>::new_from_vec_zeroes(trace_buffer)?;
-        let n_rows = trace.num_rows();
-        let words_per_row = Row::<F>::PACKED_WORDS;
-        {
-            let mut scratch = vec![0u64; n_rows * words_per_row];
-            let arena = arena_fill_packed_rows(&mut scratch, n_rows, segment_id);
-            let n_ranges = rayon::current_num_threads();
-            let t_cpu = std::time::Instant::now();
-            let out = fill_mem_trace::<F, Row<F>>(
-                &mut trace.buffer,
-                mem_ops,
-                seg,
-                previous_segment,
-                segment_id,
-                is_last_segment,
-                n_ranges,
-            );
-            let cpu_ms = t_cpu.elapsed().as_secs_f64() * 1e3;
-            match &arena {
-                Ok(report) => {
-                    let cpu_words = packed_rows_as_words(&mut trace.buffer);
-                    let (count, first) = compare_rows(cpu_words, &scratch, words_per_row);
-                    let scalars_ok = report.out == out
-                        && report.previous_segment.addr == previous_segment.addr
-                        && report.previous_segment.step == previous_segment.step
-                        && report.previous_segment.value == previous_segment.value;
-                    if count > 0 {
-                        let lanes = zisk_sm_mem_common::mem_lanes_x_row();
-                        let by_col = crate::mem_gpu_fill::compare_rows_by_column(
-                            cpu_words,
-                            &scratch,
-                            words_per_row,
-                            lanes,
-                        );
-                        let summary: Vec<String> = by_col
-                            .iter()
-                            .filter(|(_, n, _)| *n > 0)
-                            .map(|(g, n, first)| match first {
-                                Some((row, lane, c, gv)) => format!("{g}: {n} lanes (first row {row} lane {lane}: cpu {c:#x} gpu {gv:#x})"),
-                                None => format!("{g}: {n}"),
-                            })
-                            .collect();
-                        tracing::info!(
-                            "Mem[{seg_idx}] arena CHECK columns: {}",
-                            summary.join(" | ")
-                        );
-                    }
-                    let p = &report.prepared;
-                    tracing::info!(
-                        "Mem[{seg_idx}] arena CHECK: block {} accesses -> {} lanes ({} instances) prepare sort {:.0} lanes {:.0} values {:.0} total {:.0}ms | instance {} lanes rows {:.1}ms d2h {:.1}ms | cpu fill {cpu_ms:.0}ms ({n_ranges} ranges, {} ops) | {} words differ{} | scalars {}{}",
-                        p.n_accesses, p.n_lanes, p.n_instances, p.ms_sort, p.ms_lanes, p.ms_values, p.ms_total,
-                        report.res.n_lanes, report.res.ms_rows, report.res.ms_d2h,
-                        mem_ops.len(),
-                        count,
-                        first.map(|(row, w, c, g)| format!(", first row {row} word {w}: cpu {c:#x} gpu {g:#x}")).unwrap_or_default(),
-                        if scalars_ok { "match" } else { "DIFFER" },
-                        if scalars_ok { String::new() } else { format!(" (cpu prev {:#x}/{}/{:#x} {:?}; gpu prev {:#x}/{}/{:#x} {:?})",
-                            previous_segment.addr, previous_segment.step, previous_segment.value, out,
-                            report.previous_segment.addr, report.previous_segment.step, report.previous_segment.value, report.out) }
-                    );
-                }
-                Err(e) => tracing::warn!("Mem[{seg_idx}] arena CHECK unavailable: {e}"),
-            }
-            crate::mem_trace_hash::dump(
-                self.get_mem_name(),
-                seg_idx,
-                is_last_segment,
-                crate::mem_trace_hash::rows_as_words(&trace.buffer),
-                previous_segment,
-                &out,
-            );
-            let mut air_values = MemAirValues::<F>::new();
-            Self::set_mem_air_values(
-                &mut air_values,
-                segment_id,
-                is_last_segment,
-                previous_segment,
-                &out,
-            );
-            Ok(AirInstance::new_from_trace(
-                FromTrace::new(&mut trace).with_air_values(&mut air_values),
-            ))
-        }
     }
 
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
@@ -847,7 +734,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         trace_buffer: Vec<F>,
         packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
-        use crate::mem_gpu_fill::{arena_fill_packed_rows, packed_rows_as_words};
+        use crate::mem_gpu_fill::arena_fill_packed_rows;
         if !packed {
             return Err(proofman_common::ProofmanError::InvalidParameters(
                 "ZISK_MEM_GPU_FILL=arena needs the packed Mem trace".to_string(),
@@ -858,7 +745,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         let mut trace = MemTrace::<MemTraceRowPacked<F>>::new_from_vec(trace_buffer)?;
         let n_rows = trace.num_rows();
         let report = {
-            let words = packed_rows_as_words(&mut trace.buffer);
+            let words = crate::mem_trace_hash::rows_as_words_mut(&mut trace.buffer);
             arena_fill_packed_rows(words, n_rows, segment_id)
         }
         .map_err(|e| {
@@ -872,11 +759,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             "MemSM: padding_size must be 0 for non last segment, but got {}",
             report.out.padding_size
         );
-        let p = &report.prepared;
-        tracing::info!(
-            "Mem[{seg_idx}] arena fill: block {} accesses -> {} lanes, prepare {:.0}ms | instance {} lanes: rows {:.1}ms d2h {:.1}ms",
-            p.n_accesses, p.n_lanes, p.ms_total, report.res.n_lanes, report.res.ms_rows, report.res.ms_d2h
-        );
+        tracing::debug!("Mem[{seg_idx}] rows from the device: {} lanes", report.res.n_lanes);
         crate::mem_trace_hash::dump(
             self.get_mem_name(),
             seg_idx,

@@ -2,6 +2,7 @@
 //! supported platform these are never exercised, so they carry no docs.
 #![allow(missing_docs)]
 
+use crate::OwnedMemInstances;
 use zisk_common::{ExecutorStatsHandle, Plan};
 
 use std::fmt::Debug;
@@ -41,18 +42,6 @@ impl AsmRunnerMO {
 }
 
 /// The memory instances this process owns, by family (no device witness on this platform).
-#[derive(Default)]
-pub struct OwnedMemInstances<'a> {
-    /// Segment ids of the owned `Mem` instances.
-    pub ram: Vec<u32>,
-    /// Segment ids of the owned `RomData` instances.
-    pub rom: Vec<u32>,
-    /// Segment ids of the owned `InputData` instances.
-    pub input: Vec<u32>,
-    /// The owned MemAlign plans, with their checkpoints.
-    pub align: Vec<&'a Plan>,
-}
-
 /// Never built on this platform.
 #[derive(Debug)]
 pub struct DeviceMemWitness;
@@ -70,12 +59,18 @@ impl DeviceMemWitness {
 /// No device witness on this platform.
 pub fn device_mem_witness_end() {}
 
+pub fn device_mem_witness_failed(_reason: &str) {}
+
 /// No device witness on this platform.
 pub fn device_mem_witness_requested() -> bool {
-    false
+    zisk_common::gpu_fill_mode().on_device()
 }
 
 /// The light memory-ops emulator only on request (`ZISK_MOPS_LIGHT=1`).
 pub fn mops_light() -> bool {
-    std::env::var("ZISK_MOPS_LIGHT").as_deref() == Ok("1")
+    match std::env::var("ZISK_MOPS_LIGHT").as_deref() {
+        Ok("1") => true,
+        Ok("0") => false,
+        _ => !device_mem_witness_requested(),
+    }
 }

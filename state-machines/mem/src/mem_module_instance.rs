@@ -105,7 +105,11 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         // Timed apart: flattening the per-chunk input vectors into one is a full copy of every
         // operation, and `Iterator::flatten` gives `collect` no usable size hint, so the
         // destination is grown and recopied as it goes.
-        if crate::mem_device_rows::rows_on_device(self.module.get_mem_name()) {
+        // The rows come from the device unless this instance was collected after all (the
+        // device could not serve it and the executor collected it for the CPU witness).
+        if crate::mem_device_rows::rows_on_device(self.module.get_mem_name())
+            && collectors.is_empty()
+        {
             let segment_id = self.ictx.plan.segment_id.unwrap();
             if crate::mem_device_rows::slot_pending(self.module.get_mem_name()) {
                 let decl = _pctx

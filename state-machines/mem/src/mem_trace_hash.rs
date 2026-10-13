@@ -14,16 +14,6 @@ fn mix(mut h: u64, v: u64) -> u64 {
     h
 }
 
-/// FNV-style hash over words, in 1M-word chunks hashed in parallel and folded in order.
-fn hash_words(words: &[u64]) -> u64 {
-    let chunk = 1 << 20;
-    let partials: Vec<u64> = words
-        .par_chunks(chunk)
-        .map(|c| c.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &w| mix(h, w)))
-        .collect();
-    partials.iter().fold(0x9E37_79B9_7F4A_7C15u64, |h, &p| mix(h, p))
-}
-
 /// Writes `<dir>/<name>_<segment>.hash` when the env var is set. `rows` is the trace as raw words.
 pub(crate) fn dump(
     name: &str,
@@ -33,10 +23,6 @@ pub(crate) fn dump(
     previous_segment: &MemPreviousSegment,
     out: &MemFillOutput,
 ) {
-    let Ok(dir) = std::env::var("ZISK_MEM_TRACE_HASH_DIR") else {
-        return;
-    };
-    let h_rows = hash_words(rows);
     let scalars = [
         segment as u64,
         is_last_segment as u64,
@@ -53,14 +39,8 @@ pub(crate) fn dump(
         out.distance_end[1] as u64,
         out.padding_size as u64,
     ];
-    let h_scalars = scalars.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &w| mix(h, w));
-    let path = format!("{dir}/{name}_{segment}.hash");
-    match std::fs::File::create(&path) {
-        Ok(mut f) => {
-            let _ = writeln!(f, "rows {h_rows:016x} scalars {h_scalars:016x} words {}", rows.len());
-        }
-        Err(e) => tracing::warn!("cannot write {path}: {e}"),
-    }
+    let words_per_row = zisk_pil::MemTraceRowPacked::<proofman_fields::Goldilocks>::PACKED_WORDS;
+    dump_scalars(name, segment, rows, &scalars, words_per_row, words_per_row * 64);
 }
 
 /// The rows of a trace as raw words. Row types are `#[repr(C)]` and made of `u64` words (packed)

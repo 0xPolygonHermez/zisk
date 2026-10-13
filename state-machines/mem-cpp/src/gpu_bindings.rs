@@ -45,39 +45,9 @@ pub struct InstanceMeta {
 
 pub enum CountAndPlanHandle {}
 
-/// Mirrors `RamFillPrepared` in `cu/count_and_plan.cuh`.
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Default)]
-pub struct RamFillPrepared {
-    pub status: i32,
-    pub n_instances: u32,
-    pub n_accesses: u64,
-    pub n_lanes: u64,
-    pub ms_sort: f32,
-    pub ms_lanes: f32,
-    pub ms_values: f32,
-    pub ms_total: f32,
-}
-const _: () = assert!(core::mem::size_of::<RamFillPrepared>() == 40);
+// The result structs live with the plain data in mem_witness_types.rs.
+pub use crate::mem_witness_types::{RamFillPrepared, RamFillResult};
 
-/// Mirrors `RamFillResult` in `cu/count_and_plan.cuh`.
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Default)]
-pub struct RamFillResult {
-    pub status: i32,
-    pub n_lanes: u32,
-    pub prev_addr_w: u32,
-    pub last_addr_w: u32,
-    pub prev_step: u64,
-    pub prev_value: u64,
-    pub last_step: u64,
-    pub last_value: u64,
-    pub ms_rows: f32,
-    pub ms_d2h: f32,
-}
-const _: () = assert!(core::mem::size_of::<RamFillResult>() == 56);
-
-/// Mirrors `AlignPlanDesc` in `cu/count_and_plan.cuh`: one MemAlign instance of the host plan.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct AlignPlanDesc {
@@ -101,8 +71,6 @@ pub struct AlignChunkEntry {
 }
 const _: () = assert!(core::mem::size_of::<AlignChunkEntry>() == 44);
 
-/// Mirrors `MemSlotOp` in `cu/count_and_plan.cuh`: the kernel input of one memory instance filled
-/// into a prover slot. `family`: 0 Mem, 1 RomData, 2 InputData, 3 MemAlign.
 /// A row image the preparation staged on the device (mirrors `StagedRows` in count_and_plan.cuh).
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -128,17 +96,7 @@ impl Default for StagedRows {
         }
     }
 }
-const _: () = assert!(std::mem::size_of::<StagedRows>() == 88);
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Default)]
-pub struct MemSlotOp {
-    pub family: u32,
-    pub air_id: u32,
-    pub segment: u32,
-    pub n_rows: u32,
-}
-const _: () = assert!(core::mem::size_of::<MemSlotOp>() == 16);
+const _: () = assert!(std::mem::size_of::<StagedRows>() == 80);
 
 /// Per-chunk mem-align counters produced by the GPU kernel. Same five u32
 /// fields the CPU planner's `MemAlignCounters` uses (without `chunk_id` —
@@ -187,30 +145,12 @@ extern "C" {
         lanes_x_row: u32,
     ) -> bool;
     pub fn count_and_plan_ram_retention_ok(h: *mut CountAndPlanHandle) -> bool;
-    pub fn count_and_plan_prepare_ram_fill(
-        h: *mut CountAndPlanHandle,
-        out: *mut RamFillPrepared,
-    ) -> bool;
-    pub fn count_and_plan_fill_all_ram_instances(
-        h: *mut CountAndPlanHandle,
-        n_rows: u32,
-        insts: *const u32,
-        n_insts: u32,
-        prepared: *mut RamFillPrepared,
-    ) -> bool;
     pub fn count_and_plan_set_rom_layout(
         h: *mut CountAndPlanHandle,
         col_widths: *const u32,
         n_cols: u32,
         words_per_row: u32,
         lanes_x_row: u32,
-    ) -> bool;
-    pub fn count_and_plan_fill_all_rom_instances(
-        h: *mut CountAndPlanHandle,
-        n_rows: u32,
-        insts: *const u32,
-        n_insts: u32,
-        prepared: *mut RamFillPrepared,
     ) -> bool;
     pub fn count_and_plan_rom_instance_rows(
         h: *mut CountAndPlanHandle,
@@ -224,15 +164,6 @@ extern "C" {
         words_per_row: u32,
         lanes_x_row: u32,
     ) -> bool;
-    pub fn count_and_plan_fill_all_input_instances(
-        h: *mut CountAndPlanHandle,
-        n_rows: u32,
-        image: *const u8,
-        image_bytes: usize,
-        insts: *const u32,
-        n_insts: u32,
-        prepared: *mut RamFillPrepared,
-    ) -> bool;
     pub fn count_and_plan_input_instance_rows(
         h: *mut CountAndPlanHandle,
         inst: u32,
@@ -244,14 +175,6 @@ extern "C" {
         col_widths: *const u32,
         n_cols: u32,
         words_per_row: u32,
-    ) -> bool;
-    pub fn count_and_plan_fill_all_align_instances(
-        h: *mut CountAndPlanHandle,
-        plans: *const AlignPlanDesc,
-        n_plans: u32,
-        entries: *const AlignChunkEntry,
-        n_entries: u32,
-        prepared: *mut RamFillPrepared,
     ) -> bool;
     pub fn count_and_plan_align_instance_rows(
         h: *mut CountAndPlanHandle,
@@ -319,6 +242,13 @@ extern "C" {
         n_rows: u32,
         out_rows: *mut u64,
         res: *mut RamFillResult,
+    ) -> bool;
+    /// The rows a prepared MemAlign instance uses (its image or host rows).
+    pub fn count_and_plan_align_used(
+        h: *mut CountAndPlanHandle,
+        air_id: u32,
+        segment: u32,
+        used: *mut u32,
     ) -> bool;
     pub fn count_and_plan_instance_scalars(
         h: *mut CountAndPlanHandle,
