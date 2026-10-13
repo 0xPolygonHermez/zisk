@@ -49,6 +49,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if plonk {
         builder = builder.plonk();
     }
+    #[cfg(feature = "gpu")]
+    {
+        builder = builder.gpu();
+    }
     let client = builder.build()?;
 
     client.setup(&LEAF).run()?.await?;

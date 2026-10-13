@@ -1,6 +1,6 @@
 //! Recurser example — folding private-vector hash proofs. Each leaf proves only
-//! `Poseidon1(secret)`; the fold sums the secret vectors (via free inputs) and
-//! exposes `Poseidon1(sum)`. See the crate README.
+//! `BLAKE3(secret)`; the fold sums the secret vectors (via free inputs) and
+//! exposes `BLAKE3(sum)`. See the crate README.
 //!
 //! Run: `cargo run --release -p recurser-hash-host`
 
@@ -54,7 +54,10 @@ async fn prove_leaf(
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let client = ProverClient::embedded().build()?;
+    let builder = ProverClient::embedded();
+    #[cfg(feature = "gpu")]
+    let builder = builder.gpu();
+    let client = builder.build()?;
 
     client.setup(&LEAF).run()?.await?;
     client.setup(&*AGG_HASH).run()?.await?;
@@ -68,7 +71,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     assert_eq!(leaf_digest(&pa), hash12(&va), "leaf A digest");
     assert_eq!(leaf_digest(&pb), hash12(&vb), "leaf B digest");
-    println!("Leaf digests match Poseidon1(secret).");
+    println!("Leaf digests match BLAKE3(secret).");
 
     // Fold A + B: each side's own vector is its free input; output = H(va + vb).
     timer_start_info!(AGGREGATE_A_B);
@@ -85,8 +88,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     timer_stop_and_log_info!(AGGREGATE_A_B);
 
     let sum_ab = add_vecs(&va, &vb);
-    assert_eq!(folded_digest(&ab), hash12(&sum_ab), "A+B digest == Poseidon1(va+vb)");
-    println!("A + B folded: digest == Poseidon1(va + vb).");
+    assert_eq!(folded_digest(&ab), hash12(&sum_ab), "A+B digest == BLAKE3(va+vb)");
+    println!("A + B folded: digest == BLAKE3(va + vb).");
 
     // Fold AB + C: AB's free input is the running sum (va+vb), C's is vc.
     timer_start_info!(AGGREGATE_AB_C);
@@ -103,8 +106,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     timer_stop_and_log_info!(AGGREGATE_AB_C);
 
     let sum_abc = add_vecs(&sum_ab, &vc);
-    assert_eq!(folded_digest(&abc), hash12(&sum_abc), "A+B+C digest == Poseidon1(sum)");
-    println!("AB + C folded: digest == Poseidon1(va + vb + vc).");
+    assert_eq!(folded_digest(&abc), hash12(&sum_abc), "A+B+C digest == BLAKE3(sum)");
+    println!("AB + C folded: digest == BLAKE3(va + vb + vc).");
 
     println!("Verifying the final folded proof...");
     abc.verify()?;

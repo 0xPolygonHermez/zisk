@@ -120,6 +120,24 @@ fn declares_free_outputs(body: &str) -> bool {
     })
 }
 
+/// Split a circuit body's `include` lines from the rest. The body is spliced after the template's
+/// own definitions and circom only accepts `include` before any, so they move to the file header:
+/// a circuit names what it calls (e.g. `hash/poseidon1/poseidon.circom`) instead of relying on the
+/// verifier of whichever hash family the key was built with to pull it in.
+fn split_includes(body: &str) -> (Vec<String>, String) {
+    let mut includes = Vec::new();
+    let mut rest = String::with_capacity(body.len());
+    for line in body.lines() {
+        if line.trim_start().starts_with("include ") {
+            includes.push(line.trim().to_string());
+        } else {
+            rest.push_str(line);
+            rest.push('\n');
+        }
+    }
+    (includes, rest)
+}
+
 pub fn gen_recurser(
     verifier_filename: &str,
     zisk_vk: &[String],
@@ -140,20 +158,29 @@ pub fn gen_recurser(
         expect_template_arity(&norm.body, "NormalizePublics", n_free)?;
     }
 
+    let (mut includes, aggregate_body) = split_includes(&templates.aggregate_publics);
+    let normalize_body = templates.normalize.as_ref().map(|norm| {
+        let (inc, body) = split_includes(&norm.body);
+        includes.extend(inc);
+        body
+    });
+    includes.dedup();
+
     let mut ctx = Context::new();
     ctx.insert("verifier_filename", verifier_filename);
+    ctx.insert("circuit_includes", &includes);
     ctx.insert("is_vadcop_final_slot", &IS_VADCOP_FINAL_SLOT);
     ctx.insert("root_c_vadcop_final_zisk", &zisk_vk);
-    ctx.insert("aggregate_publics_template", &templates.aggregate_publics);
+    ctx.insert("aggregate_publics_template", &aggregate_body);
     ctx.insert("n_free", &n_free);
     ctx.insert("zisk_publics", &ZISK_PUBLICS);
     ctx.insert("n_publics_agg", &n_publics_agg);
     ctx.insert("n_programs", &templates.program_vks.len());
     ctx.insert("program_vks", &templates.program_vks);
-    match &templates.normalize {
-        Some(norm) => {
+    match &normalize_body {
+        Some(body) => {
             ctx.insert("normalize", &true);
-            ctx.insert("normalize_body", &norm.body);
+            ctx.insert("normalize_body", body);
         }
         None => ctx.insert("normalize", &false),
     }
@@ -163,4 +190,19 @@ pub fn gen_recurser(
     ctx.insert("assign_stark_inputs_b", stark_inputs.assign_b);
 
     render(RECURSER_TMPL, &ctx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_includes;
+
+    #[test]
+    fn body_includes_are_split_off_for_the_header() {
+        let (inc, rest) = split_includes(
+            "include \"hash/poseidon1/poseidon.circom\";\n\ntemplate T() {\n    signal input a;\n}\n",
+        );
+        assert_eq!(inc, vec!["include \"hash/poseidon1/poseidon.circom\";".to_string()]);
+        assert!(!rest.contains("include"), "{rest}");
+        assert!(rest.contains("template T()"), "{rest}");
+    }
 }
