@@ -5,6 +5,20 @@
 # equal those of the CPU path (ZISK_MEM_GPU_FILL=off). The fallback cases must also log the
 # fallback they exercise. ZISK_MEM_GPU_FILL is unset for every case but "off" (the device witness
 # is the default).
+#
+# Fallbacks, each forced by a test knob at the point the planner detects the real condition:
+#   ZISK_MEM_TEST_PLAN_FAIL        the device has no plan: the CPU planner replays the chunks
+#   ZISK_MEM_TEST_CHUNK_REJECT=<k> the planner rejects chunk k: same
+#   ZISK_MEM_TEST_RETENTION=<n>    the block exceeds the retention cap: GPU plan, CPU witness
+#   ZISK_MEM_TEST_LIGHT_RECORD=1   a light-form record in the stream: same
+#   ZISK_MEM_TEST_PREP_FAIL=<fam>  a family's preparation has no room: the family stays on the CPU
+#                                  (rom takes input along, both take MemAlign; ram: the whole
+#                                  preparation fails) and its first instance sends the block there
+#   ZISK_MEM_TEST_FILL_FAIL=<f>.<i> an instance the device cannot fill: it and the rest of the
+#                                  block's memory instances are collected on the CPU
+#   ZISK_MEM_TEST_SCRATCH_OVERFLOW=1 a fill retried without its image, then with the images dropped
+#   ZISK_MEM_TEST_UNSTAGED=<f>.<i> an owned instance without an image: built on demand
+#   ZISK_MEM_TEST_PIECE_POTENTIALS=<n> smaller pieces: block records split into sub-records
 
 source "./test_elf.sh"
 
@@ -91,6 +105,25 @@ main() {
     run_case split_records 0 "" ZISK_MEM_TEST_PIECE_POTENTIALS=65536 || return 1
     # A planner fault: the CPU planner replays the chunks, the CPU witness follows.
     run_case plan_fail 0 "${plan_fail}" ZISK_MEM_TEST_PLAN_FAIL=1 || return 1
+    # A chunk the planner rejects: the block is planned on the CPU.
+    run_case chunk_reject 0 "a chunk was rejected (see above); no device plan for this block" ZISK_MEM_TEST_CHUNK_REJECT=3 || return 1
+    # The block exceeds the retention cap: the GPU plan stands, the CPU witness follows.
+    run_case retention 0 "the retained accesses are incomplete for this block" ZISK_MEM_TEST_RETENTION=1000000 || return 1
+    # A light-form record seen in the stream: the GPU plan stands, no device witness.
+    run_case light_record 0 "the stream is in the light form" ZISK_MEM_TEST_LIGHT_RECORD=1 || return 1
+    # A family's preparation without room: ram fails the whole preparation, the others leave their family on the CPU.
+    run_case prep_fail_ram 0 "the arrival index can address; RAM witness off" ZISK_MEM_TEST_PREP_FAIL=ram || return 1
+    run_case prep_fail_rom 0 "RomData and InputData stays on the CPU for this block (no room for the access index)" ZISK_MEM_TEST_PREP_FAIL=rom || return 1
+    run_case prep_fail_input 0 "InputData stays on the CPU for this block (no room for the input image)" ZISK_MEM_TEST_PREP_FAIL=input || return 1
+    run_case prep_fail_align 0 "MemAlign stays on the CPU for this block (no region or index)" ZISK_MEM_TEST_PREP_FAIL=align || return 1
+    # An instance the device cannot fill: it and the remaining memory instances are collected on the CPU.
+    local fill_fail="memory witness on the device failed"
+    run_case fill_fail_ram 0 "${fill_fail}" ZISK_MEM_TEST_FILL_FAIL=0.1 || return 1
+    run_case fill_fail_rom 0 "${fill_fail}" ZISK_MEM_TEST_FILL_FAIL=1.0 || return 1
+    run_case fill_fail_input 0 "${fill_fail}" ZISK_MEM_TEST_FILL_FAIL=2.0 || return 1
+    run_case fill_fail_align 0 "${fill_fail}" ZISK_MEM_TEST_FILL_FAIL=3.1 || return 1
+    # A fill whose scratch overflows beside the staged images: retried without its image, then with every image dropped.
+    run_case scratch_overflow 0 "staged images dropped, the fills need the room" ZISK_MEM_TEST_SCRATCH_OVERFLOW=1 || return 1
     # The light memory-ops stream has no values: the device witness is refused before proving.
     run_case light_refused 1 "the device witness needs them" ZISK_MOPS_LIGHT=1 || return 1
 
