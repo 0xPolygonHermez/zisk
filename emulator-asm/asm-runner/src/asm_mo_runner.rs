@@ -193,16 +193,20 @@ pub struct OwnedMemInstances<'a> {
 /// once the memory instances are registered and placed, before it releases the arena.
 #[derive(Debug)]
 pub struct DeviceMemWitness {
+    #[cfg(gpu)]
     shm_prefix: String,
     /// `ZISK_MEM_GPU_FILL=arena`: the rows are served from the device (`arena-check` fills and
     /// compares, the CPU rows are proved).
+    #[cfg(gpu)]
     serve_rows: bool,
     /// `ZISK_MEM_GPU_FILL=slot`: the prover's kernel fills each instance into its slot; the arena
     /// stays borrowed until the last owned memory instance is committed.
+    #[cfg(gpu)]
     slot: bool,
     /// `arena` and `slot`: the block is prepared on its own thread and each instance takes its
     /// rows from the staged image when its witness runs; the arena stays borrowed until the last
     /// owned instance took them (`arena-check` fills synchronously here instead).
+    #[cfg(gpu)]
     async_prep: bool,
 }
 
@@ -680,6 +684,9 @@ impl AsmRunnerMO {
         // The plan is closed: the planner can serve the block's memory witness. The fills run
         // from the executor once the memory instances are registered and placed, so only the
         // owned ones are filled; the arena stays borrowed until then.
+        #[cfg(not(gpu))]
+        let device_witness: Option<DeviceMemWitness> = None;
+        #[cfg(gpu)]
         let mut device_witness = None;
         #[cfg(gpu)]
         if let Some(gpu_count_and_plan) = gpu_count_and_plan_opt.as_ref() {

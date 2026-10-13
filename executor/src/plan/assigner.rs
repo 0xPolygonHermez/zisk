@@ -199,7 +199,7 @@ mod tests {
 
         // Plain Instance → add_instance (batch placement) or add_instance_assign (placed on
         // registration), Table → add_table.
-        let mut plans = vec![
+        let mut plans = [
             Plan::new(7, 200, None, InstanceType::Instance, zisk_common::CheckPoint::None, None),
             Plan::new(7, 201, None, InstanceType::Table, zisk_common::CheckPoint::None, None),
             Plan::new(7, 202, None, InstanceType::Instance, zisk_common::CheckPoint::None, None),
