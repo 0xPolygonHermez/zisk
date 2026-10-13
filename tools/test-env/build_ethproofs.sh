@@ -76,6 +76,7 @@ main() {
     # ELF both deserialize the same pre-generated input files, and a third-party
     # dependency drifting between them desyncs those formats.
     cargo_locked_flags
+    ensure cargo update -p zisk-sdk -p input || return 1
     if [[ "${ENABLE_HINTS:-}" == "1" ]]; then
         ensure env RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread' cargo build --release ${CARGO_LOCKED_FLAGS[@]+"${CARGO_LOCKED_FLAGS[@]}"} || return 1
     else

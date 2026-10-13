@@ -42,8 +42,7 @@ impl ZiskProofmanSetupSnark {
             final_snark: self.final_snark.clone(),
             publics_info: self.publics_info.clone(),
             only_recursive_final: self.only_recursive_final,
-            // The contract is bound to this setup's keys, so it carries the setup version.
-            contract_version: Some(format!("v{}", zisk_setup::ZISK_SETUP_VERSION)),
+            contract_version: Some(format!("v{}", env!("CARGO_PKG_VERSION"))),
         };
         run_setup_snark(&opts)
     }
