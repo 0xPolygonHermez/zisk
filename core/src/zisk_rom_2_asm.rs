@@ -9187,6 +9187,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn unal8_tests_the_low_bits_of_a_or_b() {
+        // c = a | b is computed in place over a (REG_C), masked to its 3 low bits, and both c and
+        // the flag are set to 1 iff some of those bits is set
+        let tail = format!(
+            "\tand {REG_C}, 7\n\tjnz pc_0_unal8_true\n\txor {REG_FLAG}, {REG_FLAG}\n\
+             \tjmp pc_0_unal8_done\npc_0_unal8_true:\n\tmov {REG_C}, 1\n\tmov {REG_FLAG}, 1\n\
+             pc_0_unal8_done:\n"
+        );
+
+        // b in a register
+        let (ctx, code) = operation_asm(ZiskOp::Unal8, None);
+        assert!(ctx.store_a_in_c, "Unal8 works in place on REG_C");
+        assert_eq!(code, format!("\tor {REG_C}, {REG_B}\n{tail}"));
+        assert!(ctx.c.is_saved);
+        assert!(!ctx.flag_is_always_zero, "the flag is the result of the test");
+
+        // A constant b that fits a sign-extended imm32 is used as an immediate
+        let (ctx, code) = operation_asm(ZiskOp::Unal8, Some(0x18));
+        assert_eq!(code, format!("\tor {REG_C}, 0x18\n{tail}"));
+        assert!(!ctx.b.is_saved);
+
+        // A larger constant b has to go through REG_B first
+        let (ctx, code) = operation_asm(ZiskOp::Unal8, Some(0x1_0000_0008));
+        assert_eq!(code, format!("\tmov {REG_B}, 0x100000008\n\tor {REG_C}, {REG_B}\n{tail}"));
+        assert!(ctx.b.is_saved);
+    }
+
     /// The reserved ZisK-library window [ZISKLIB_ROM_ADDR, FLOAT_LIB_ROM_ADDR) gets its own
     /// `map_pc_*` table based at ZISKLIB_ROM_ADDR (library code `ret`s to library callers),
     /// never the guest table: mapping it there would pad the ~126 MB gap between the guest

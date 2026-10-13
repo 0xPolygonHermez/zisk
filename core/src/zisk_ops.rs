@@ -502,8 +502,8 @@ define_ops! {
     // Opcodes 0x5b-0x5f are reserved for binary
     // Opcodes 0x60-0x6a are the m32 shadows of 0x50-0x5a and must stay empty. Only 0x62-0x6a come
     // from ops with no m32 variant: shxadd_w does not exist in RISC-V, brev8_w / andn_w / orn_w /
-    // xnor_w are not opcodes either, and unal8 has no 32-bit meaning
-    // Opcodes 0x69-0x6f are the shadows of the reserved 0x59-0x5f
+    // xnor_w are not opcodes either, unal8 has no 32-bit meaning, and 0x69 shadows the LTU_DIV tag
+    // Opcodes 0x6b-0x6f are the shadows of the reserved 0x5b-0x5f
 
     // "Software" opcodes (0x90 - 0x9F): these are not proved by any air. They are either never
     // emitted as a single instruction (the transpiler decomposes them, and the opcode only exists
