@@ -58,12 +58,13 @@ static void on_emulation_signal(int sig)
 // avoid the parent's 10 s chunk-wait timeout. Layouts must match AsmMOChunk
 // / AsmMTChunk in emulator-asm/asm-runner/src/asm_mo.rs and asm_mt.rs:
 //   MemOp: { end, mem_ops_size }                                — 2 u64s, end @ 0
-//   MT-style: pc,sp,c,step, regs[33], last_c,end,steps,mem_reads_size — 41 u64s, end @ 38
+//   MT-style: pc,sp,c,step, regs[MT_CHUNK_REGS], last_c,end,steps,mem_reads_size
+//             — MT_CHUNK_HEADER_WORDS u64s, end @ MT_CHUNK_END_INDEX (constants.hpp)
 static void write_abort_chunk(void)
 {
     bool is_mo = (gen_method == MemOp);
-    size_t n_words = is_mo ? 2 : 41;
-    size_t end_idx = is_mo ? 0 : 38;
+    size_t n_words = is_mo ? 2 : MT_CHUNK_HEADER_WORDS;
+    size_t end_idx = is_mo ? 0 : MT_CHUNK_END_INDEX;
 
     uint64_t * chunk = (uint64_t *)MEM_CHUNK_ADDRESS;
     memset(chunk, 0, n_words * sizeof(uint64_t));
@@ -117,8 +118,10 @@ void server_signal_handler(void)
 //#define USE_HUGE_PAGES
 
 // ROM histogram
+static void save_rom_histogram_to_file (void);
 uint64_t histogram_size = 0;
 uint64_t rom_length = 0;
+uint64_t frops_length = 0;
 
 // Shutdown done semaphore: notifies the caller when a shutdown has been processed
 sem_t * sem_shutdown_done = NULL;
@@ -796,6 +799,39 @@ void server_setup (void)
         }
         shmem_ram_fd = -1;
 
+        /****************/
+        /* GUARD REGION */
+        /****************/
+
+        // Reserve the span between the top of ROM and the bottom of the stack
+        // (GUARD_ADDR..RAM_ADDR) as PROT_NONE. This is the guard region EF zkVM
+        // standard 6 requires below the stack, and it must stay inaccessible.
+        //
+        // Leaving it simply unmapped is not enough here. The assembly emulator does no
+        // software bounds checking: a guest access outside the mapped regions faults
+        // only because the host has nothing mapped at that address. An unmapped hole
+        // is exactly where the kernel may satisfy a later mmap(NULL, ...) or a large
+        // malloc in this same process, and if anything lands there a guest access into
+        // the guard would silently SUCCEED instead of aborting.
+        //
+        // MAP_FIXED claims the range, PROT_NONE makes any access fault, and
+        // MAP_NORESERVE keeps the 384MB off the commit charge -- no pages are backed,
+        // only a VMA is taken, so the cost is one kernel bookkeeping entry.
+        void * pGuard = mmap((void *)GUARD_ADDR, GUARD_SIZE, PROT_NONE,
+                             MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_NORESERVE, -1, 0);
+        if (pGuard == MAP_FAILED)
+        {
+            asm_printf("ERROR: Failed calling mmap(guard) errno=%d=%s\n", errno, strerror(errno));
+            exit(-1);
+        }
+        if ((uint64_t)pGuard != GUARD_ADDR)
+        {
+            asm_printf("ERROR: Called mmap(guard) but returned address = %p != 0x%08lx\n", pGuard, GUARD_ADDR);
+            exit(-1);
+        }
+        if (verbose) asm_printf("Reserved guard region 0x%08lx-0x%08lx (%lu MB) as PROT_NONE\n",
+                                GUARD_ADDR, GUARD_ADDR + GUARD_SIZE - 1, GUARD_SIZE >> 20);
+
         // Report duration
         if (verbose)
         {
@@ -813,11 +849,13 @@ void server_setup (void)
     // If ROM histogram, configure trace size
     if (gen_method == RomHistogram)
     {
-        // Get rom length, i.e. number of instructions
+        // Get rom length, i.e. number of instructions, and the number of FROPS table rows
         rom_length = get_rom_length();
+        frops_length = get_frops_length();
 
-        // Calculate histogram size
-        histogram_size = (4 + 1 + rom_length)*8;
+        // Calculate histogram size: control header (4) + [size + one counter per ROM instruction]
+        // + [size + one counter per FROPS table row]
+        histogram_size = (4 + 1 + rom_length + 1 + frops_length)*8;
         if (histogram_size > TRACE_INITIAL_SIZE_RH)
         {
             asm_printf("ERROR: ROM histogram size %lu is larger than the trace initial size RH %lu\n", histogram_size, TRACE_INITIAL_SIZE_RH);
@@ -1184,6 +1222,8 @@ void server_run (void)
         {
             pOutput[3] = MEM_STEP;
             pOutput[4] = rom_length;
+            // The FROPS multiplicity table follows the instruction multiplicity table
+            pOutput[5 + rom_length] = frops_length;
         }
         else
         {
@@ -1247,6 +1287,33 @@ void server_run (void)
     {
         save_mem_op_to_files();
     }
+    if ((gen_method == RomHistogram) && save_to_file)
+    {
+        save_rom_histogram_to_file();
+    }
+}
+
+// Dumps the whole ROM histogram output region (control header, instruction multiplicity and FROPS
+// multiplicity, see get_rom_histogram_trace_address() in core/src/zisk_rom_2_asm.rs) to
+// /tmp/<shm_prefix>_RH_output.bin, so it can be compared against the same tables computed in Rust.
+static void save_rom_histogram_to_file (void)
+{
+    char file_name[256];
+    snprintf(file_name, sizeof(file_name), "/tmp/%s_RH_output.bin", shm_prefix);
+    FILE * f = fopen(file_name, "wb");
+    if (f == NULL)
+    {
+        asm_printf("ERROR: save_rom_histogram_to_file() failed calling fopen(%s) errno=%d=%s\n", file_name, errno, strerror(errno));
+        return;
+    }
+    size_t written = fwrite((const void *)trace_address, 1, histogram_size, f);
+    fclose(f);
+    if (written != histogram_size)
+    {
+        asm_printf("ERROR: save_rom_histogram_to_file() wrote %zu of %lu B to %s\n", written, histogram_size, file_name);
+        return;
+    }
+    if (!silent) asm_printf("Saved ROM histogram output (%lu B) to %s\n", histogram_size, file_name);
 }
 
 void server_cleanup (void)

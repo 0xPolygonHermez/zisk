@@ -10,6 +10,11 @@ else
 	ASMFLAGS = --noexecstack
 endif
 
+# Precompile call metrics: per-call TSC cycles and retired x86 instructions
+ifeq ($(metrics),1)
+	CFLAGS += -DASM_CALL_METRICS
+endif
+
 ifeq ($(TRACE_TARGET),MT)
     CFLAGS += -DTRACE_TARGET_MT
     ASMFLAGS += --defsym TRACE_TARGET=1

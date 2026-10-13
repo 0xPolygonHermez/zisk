@@ -71,8 +71,3 @@ pub fn commit_slice(buf: &[u8]) {
     // SAFETY: buf.as_ptr() is valid for buf.len() bytes by construction of &[u8].
     unsafe { crate::zisklib::zkvm_io::write_output(buf.as_ptr(), buf.len()) };
 }
-
-/// Reset the output cursor to slot 0.
-pub fn write_output_reset() {
-    crate::zisklib::zkvm_io::reset_output();
-}

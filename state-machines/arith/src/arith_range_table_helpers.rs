@@ -1,40 +1,16 @@
-//! The `ArithRangeTableHelpers` and `ArithRangeTableInputs` modules define utilities and data
-//! structures for managing and validating arithmetic range tables.
+//! The `ArithRangeTableHelpers` module defines utilities for managing and validating
+//! arithmetic range tables.
 //!
 //! ## Key Features
 //!
-//! ### `ArithRangeTableHelpers`
 //! - Provides utilities for working with arithmetic range tables, including:
 //!   - Translating range indices to human-readable names.
 //!   - Calculating row indices for range and carry checks based on input values.
 //!   - Ensures values adhere to their defined ranges, distinguishing between full, positive, and
 //!     negative ranges.
 //!
-//! ### `ArithRangeTableInputs`
-//! - Maintains and manages multiplicity data for range checks, including:
-//!   - Tracking the frequency of range and carry checks.
-//!   - Efficiently handling large tables using overflow storage for high-frequency rows.
-//!   - Supports merging multiple `ArithRangeTableInputs` instances to aggregate data.
-//! - Implements iterators to traverse all rows with non-zero multiplicity, enabling efficient
-//!   processing.
-//!
-//! ## Key Components
-//!
-//! - **Range Definitions**: Defines constants (`FULL`, `POS`, `NEG`) and preconfigured range
-//!   patterns for validating inputs.
-//! - **Row Calculations**: Functions like `get_row_chunk_range_check` and
-//!   `get_row_carry_range_check` calculate table rows based on inputs and ensure they comply with
-//!   range constraints.
-//! - **Multiplicity Tracking**: The `ArithRangeTableInputs` struct manages row-specific
-//!   multiplicity data, supporting both direct and overflow storage for high-frequency updates.
-//! - **Iterators**: Enable sequential access to multiplicity data, including rows with overflow
-//!   values.
-//!
-//! These modules are critical for verifying range constraints in arithmetic operations, ensuring
-//! correctness in high-assurance applications such as cryptographic proofs and hardware
-//! simulations.
-
-use std::collections::HashMap;
+//! Row-multiplicity counting for the range table is no longer done here: the prover derives it
+//! directly from the committed trace.
 
 const FULL: u8 = 0x00;
 const POS: u8 = 0x01;
@@ -158,190 +134,6 @@ impl ArithRangeTableHelpers {
         assert!(value >= MIN_CARRY, "carry {value} below MIN_CARRY {MIN_CARRY}");
         assert!(value <= MAX_CARRY, "carry {value} above MAX_CARRY {MAX_CARRY}");
         (CARRY_BASE - MIN_CARRY + value) as usize
-    }
-}
-
-/// The `ArithRangeTableInputs` struct manages row-specific multiplicity data for range checks.
-/// It includes both direct storage and overflow handling for high-frequency rows.
-pub struct ArithRangeTableInputs {
-    // TODO: check improvement of multiplicity[64] to reserv only chunks used
-    // with this 16 bits version, this table has aprox 8MB.
-    updated: u64,
-    multiplicity_overflow: HashMap<u32, u32>,
-    multiplicity: Vec<u16>,
-}
-
-/// Provides a default implementation for `ArithRangeTableInputs`.
-impl Default for ArithRangeTableInputs {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ArithRangeTableInputs {
-    /// Creates a new `ArithRangeTableInputs` instance.
-    pub fn new() -> Self {
-        ArithRangeTableInputs {
-            updated: 0,
-            multiplicity_overflow: HashMap::new(),
-            multiplicity: vec![0u16; ROWS],
-        }
-    }
-
-    /// Increments the multiplicity for a single row by one, handling overflow if needed.
-    ///
-    /// # Arguments
-    /// * `row` - The row index to increment.
-    fn incr_row_one(&mut self, row: usize) {
-        if self.multiplicity[row] > u16::MAX - 1 {
-            let count = self.multiplicity_overflow.entry(row as u32).or_insert(0);
-            *count += 1;
-            self.multiplicity[row] = 0;
-        } else {
-            self.multiplicity[row] += 1;
-        }
-        self.updated |= 1 << (row >> (ROWS_BITS - 6));
-    }
-
-    /// Increments the multiplicity for a row by a specified number of times.
-    ///
-    /// # Arguments
-    /// * `row` - The row index to increment.
-    /// * `times` - The number of times to increment.
-    fn incr_row(&mut self, row: usize, times: usize) {
-        self.incr_row_without_update(row, times);
-        self.updated |= 1 << (row >> (ROWS_BITS - 6));
-    }
-
-    /// Increments the multiplicity for a row without updating the `updated` bitmask.
-    ///
-    /// # Arguments
-    /// * `row` - The row index to increment.
-    /// * `times` - The number of times to increment.
-    fn incr_row_without_update(&mut self, row: usize, times: usize) {
-        if (u16::MAX - self.multiplicity[row]) as usize <= times {
-            let count = self.multiplicity_overflow.entry(row as u32).or_insert(0);
-            let new_count = self.multiplicity[row] as u64 + times as u64;
-            *count += (new_count >> 16) as u32;
-            self.multiplicity[row] = (new_count & 0xFFFF) as u16;
-        } else {
-            self.multiplicity[row] += times as u16;
-        }
-    }
-
-    /// Uses a chunk range check by incrementing the multiplicity for the calculated row.
-    ///
-    /// # Arguments
-    /// * `range_id` - The range index to use.
-    /// * `value` - The value to validate and use.
-    pub fn use_chunk_range_check(&mut self, range_id: u8, value: u64) {
-        let row = ArithRangeTableHelpers::get_row_chunk_range_check(range_id, value);
-        self.incr_row_one(row);
-    }
-
-    /// Uses a carry range check by incrementing the multiplicity for the calculated row.
-    ///
-    /// # Arguments
-    /// * `value` - The carry value to validate and use.
-    pub fn use_carry_range_check(&mut self, value: i64) {
-        let row = ArithRangeTableHelpers::get_row_carry_range_check(value);
-        self.incr_row_one(row);
-    }
-
-    /// Uses a chunk range check multiple times by incrementing the multiplicity.
-    ///
-    /// # Arguments
-    /// * `times` - The number of times to increment.
-    /// * `range_id` - The range index to use.
-    /// * `value` - The value to validate and use.
-    pub fn multi_use_chunk_range_check(&mut self, times: usize, range_id: u8, value: u64) {
-        let row = ArithRangeTableHelpers::get_row_chunk_range_check(range_id, value);
-        self.incr_row(row, times);
-    }
-
-    /// Uses a carry range check multiple times by incrementing the multiplicity.
-    ///
-    /// # Arguments
-    /// * `times` - The number of times to increment.
-    /// * `value` - The carry value to validate and use.
-    pub fn multi_use_carry_range_check(&mut self, times: usize, value: i64) {
-        let row = ArithRangeTableHelpers::get_row_carry_range_check(value);
-        self.incr_row(row, times);
-    }
-
-    /// Updates the current inputs with data from another `ArithRangeTableInputs`.
-    ///
-    /// # Arguments
-    /// * `other` - The other `ArithRangeTableInputs` instance to merge.
-    pub fn update_with(&mut self, other: &Self) {
-        let chunk_size = 1 << (ROWS_BITS - 6);
-        for i_chunk in 0..64 {
-            if (other.updated & (1 << i_chunk)) == 0 {
-                continue;
-            }
-            let from = chunk_size * i_chunk;
-            // ROWS is not a multiple of chunk_size, so the last chunk runs past the end of the
-            // vector; clamp it. (This only became reachable once `updated` was fixed to `|=`: while
-            // the bitmask stayed 0 the loop always skipped and never indexed.)
-            let to = (from + chunk_size).min(ROWS);
-            for row in from..to {
-                let count = other.multiplicity[row];
-                if count > 0 {
-                    self.incr_row_without_update(row, count as usize);
-                }
-            }
-        }
-        for (row, value) in other.multiplicity_overflow.iter() {
-            let count = self.multiplicity_overflow.entry(*row).or_insert(0);
-            *count += (*value) << 16;
-        }
-        self.updated |= other.updated;
-    }
-}
-
-/// Iterator for traversing rows in `ArithRangeTableInputs`.
-pub struct ArithRangeTableInputsIterator<'a> {
-    iter_row: u32,
-    iter_hash: bool,
-    inputs: &'a ArithRangeTableInputs,
-}
-
-impl Iterator for ArithRangeTableInputsIterator<'_> {
-    type Item = (usize, u64);
-
-    /// Retrieves the next row with non-zero multiplicity.
-    fn next(&mut self) -> Option<Self::Item> {
-        if !self.iter_hash {
-            while self.iter_row < ROWS as u32
-                && self.inputs.multiplicity[self.iter_row as usize] == 0
-            {
-                self.iter_row += 1;
-            }
-            let row = self.iter_row as usize;
-            if row < ROWS {
-                self.iter_row += 1;
-                return Some((row, self.inputs.multiplicity[row] as u64));
-            }
-            self.iter_hash = true;
-            self.iter_row = 0;
-        }
-        let res = self.inputs.multiplicity_overflow.iter().nth(self.iter_row as usize);
-        match res {
-            Some((row, value)) => {
-                self.iter_row += 1;
-                Some((*row as usize, (*value as u64) << 16))
-            }
-            None => None,
-        }
-    }
-}
-
-impl<'a> IntoIterator for &'a ArithRangeTableInputs {
-    type Item = (usize, u64);
-    type IntoIter = ArithRangeTableInputsIterator<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        ArithRangeTableInputsIterator { iter_row: 0, iter_hash: false, inputs: self }
     }
 }
 
@@ -550,28 +342,5 @@ mod range_layout_tests {
             CARRY_BASE as usize
         );
         assert_eq!(ArithRangeTableHelpers::get_row_carry_range_check(MAX_CARRY), last as usize);
-    }
-}
-
-#[cfg(test)]
-mod merge_tests {
-    use super::*;
-
-    #[test]
-    fn update_with_merges_multiplicities() {
-        let mut dst = ArithRangeTableInputs::new();
-        let mut src = ArithRangeTableInputs::new();
-
-        // a chunk-range row, and a carry row at the very top of the table: the last row lands in the
-        // last chunk of the `updated` bitmask, which is the one whose bounds are easy to get wrong
-        src.use_chunk_range_check(ARITH_RANGE_16_BITS, 0x1234);
-        src.multi_use_carry_range_check(3, MAX_CARRY);
-
-        let expected: Vec<(usize, u64)> = (&src).into_iter().collect();
-        assert_eq!(expected.len(), 2, "the source should hold exactly two rows");
-
-        dst.update_with(&src);
-        let got: Vec<(usize, u64)> = (&dst).into_iter().collect();
-        assert_eq!(got, expected, "update_with dropped multiplicities");
     }
 }

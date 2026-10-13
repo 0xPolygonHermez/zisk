@@ -15,7 +15,7 @@ use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, ZiskExecutor};
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;
@@ -72,7 +72,7 @@ impl AsmExecClient {
         self.executor.set_asm_resources(resources)?;
 
         tracing::debug!("Parsing ELF into ZiskRom");
-        let zisk_rom = Riscv2zisk::new(program.elf())
+        let zisk_rom = ZiskTranspiler::new(program.elf())
             .run()
             .map_err(|e| anyhow::anyhow!("failed to parse ELF: {e}"))?;
         *self.program.lock().expect("program mutex") =
@@ -88,6 +88,8 @@ impl AsmExecClient {
     pub fn execute(&self, stdin: ZiskStdin, hints: Option<StreamSource>) -> Result<ExecuteOutput> {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program, with_hints) before execute")?;
+
+        self.executor.reset_for_new_job()?;
 
         if let Some(stream) = hints {
             tracing::debug!("Installing hints stream source");

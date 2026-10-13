@@ -1,0 +1,15 @@
+[package]
+name = "zisk-cuda-build"
+description = "Build-script support for ZisK crates that ship CUDA kernels"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+# Build-script support for crates that ship CUDA kernels. Used from `build.rs`
+# as a `[build-dependencies]` entry; see `compile`.
+[dependencies]

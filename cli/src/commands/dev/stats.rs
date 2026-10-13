@@ -160,7 +160,7 @@ impl StatsCmd {
         );
 
         if let Some(stats) = &stats {
-            Self::print_stats(&stats.witness_stats());
+            Self::print_stats(&stats.witness_stats(), stats.collect_phase_wall_ms());
             stats.print_stats();
         }
 
@@ -280,13 +280,13 @@ impl StatsCmd {
     ///
     /// # Arguments
     /// * `stats_mutex` - A reference to the Mutex holding the stats vector.
-    pub(crate) fn print_stats(air_stats: &HashMap<usize, Stats>) {
+    pub(crate) fn print_stats(air_stats: &HashMap<usize, Stats>, collect_wall_ms: u64) {
         println!("    Number of airs: {}", air_stats.len());
         println!();
         println!("    Stats by Air:");
         println!(
             "    {:<8} {:<25} {:<8} {:<12} {:<12}",
-            "air id", "Name", "chunks", "collect (ms)", "witness (ms)",
+            "air id", "Name", "chunks", "collect span", "witness (ms)",
         );
         println!("    {}", "-".repeat(70));
 
@@ -294,7 +294,6 @@ impl StatsCmd {
         let mut sorted_stats: Vec<&Stats> = air_stats.values().collect();
         sorted_stats.sort_by_key(|stat| (stat.airgroup_id, stat.air_id));
 
-        let mut total_collect_time = 0;
         let mut total_witness_time = 0;
         for stat in sorted_stats.iter() {
             let collect_ms = stat.collect_duration;
@@ -308,8 +307,6 @@ impl StatsCmd {
                 collect_ms,
                 witness_ms,
             );
-            // Accumulate total times
-            total_collect_time += collect_ms;
             total_witness_time += witness_ms;
         }
 
@@ -323,7 +320,7 @@ impl StatsCmd {
         println!("    Grouped Stats:");
         println!(
             "    {:<8} {:<25}   {:<6}   {:<20}   {:<20}   {:<20}",
-            "Air id", "Name", "Count", "Chunks", "Collect (ms)", "Witness (ms)",
+            "Air id", "Name", "Count", "Chunks", "Collect span", "Witness (ms)",
         );
         println!(
             "    {:<8} {:<25}   {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}",
@@ -376,11 +373,10 @@ impl StatsCmd {
         }
         println!();
         println!("    Total Stats:");
+        // 'collect span' is per-instance and overlaps across instances, so it is
+        // not summable; the phase wall is measured once around collect() itself.
         println!(
-            "    Collect: {:10}ms Witness: {:10}ms Total: {:10}ms",
-            total_collect_time,
-            total_witness_time,
-            total_collect_time + total_witness_time
+            "    Collect (phase wall): {collect_wall_ms:6}ms   Witness (sum): {total_witness_time:6}ms"
         );
     }
 

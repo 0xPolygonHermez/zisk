@@ -2,7 +2,7 @@
 //! the corresponding output data, according to the configured options.
 //!
 //! ```text
-//! ELF file --> zisk_transpiler_riscv --> ZiskRom    \
+//! ELF file --> ZiskTranspiler ---------> ZiskRom    \
 //!                                         |
 //! ZiskRom ------------------> ZiskInst's  |
 //!     \--> RO data                         > Emu --> Output data, statistics, metrics, logs...

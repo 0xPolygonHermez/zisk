@@ -14,7 +14,7 @@ use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;
@@ -42,7 +42,7 @@ impl EmuExecClient {
     pub fn setup(&self, program: &GuestProgram) -> Result<()> {
         tracing::info!("Setting up EmuExecClient for ELF '{}'", program.name());
         tracing::debug!("Parsing ELF into ZiskRom");
-        let zisk_rom = Riscv2zisk::new(program.elf())
+        let zisk_rom = ZiskTranspiler::new(program.elf())
             .run()
             .map_err(|e| anyhow::anyhow!("failed to parse ELF: {e}"))?;
         *self.program.lock().expect("program mutex") =

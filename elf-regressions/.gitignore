@@ -1,9 +1,10 @@
 # Compiled ELF files
 elf-output/
 
-# Ignore all .elf files except those in prebuilt-elfs
+# Ignore all .elf files except the committed ones (prebuilt-elfs, failed_execution)
 *.elf
 !prebuilt-elfs/*.elf
+!failed_execution/*.elf
 
 # Object files
 *.o

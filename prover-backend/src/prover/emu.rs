@@ -25,7 +25,7 @@ use zisk_common::{
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
 use zisk_precomp_hints::HintsProcessor;
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use anyhow::Result;
 
@@ -108,7 +108,7 @@ impl ProverEngine for EmuProver {
 
         let program_vk = ensure_program_vk(&pctx, elf)?;
 
-        let rv2zk = Riscv2zisk::new(elf.elf());
+        let rv2zk = ZiskTranspiler::new(elf.elf());
 
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
         let zisk_rom = Arc::new(zisk_rom);
@@ -280,9 +280,24 @@ impl ProverEngine for EmuProver {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.core_prover.backend.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
+        self.core_prover.backend.join_worker_proofs(
+            agg_proofs,
+            last_proof,
+            final_proof,
+            keep_resident,
+            options,
+        )
+    }
+
+    fn reset_aggregation_state(&self) {
+        self.core_prover.backend.reset_aggregation_state()
+    }
+
+    fn aggregation_arity(&self) -> usize {
+        self.core_prover.backend.aggregation_arity()
     }
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
@@ -401,6 +416,10 @@ impl EmuCoreProver {
             false,
             options.packed,
         )?;
+
+        // No ROM-histogram assembly here, so the collectors own the column. The executor would
+        // apply this anyway, since it never runs on the ASM backend; stated for clarity.
+        executor.set_frops_multiplicity_from_asm(false);
 
         let core = ProverBackend::new(
             proofman,

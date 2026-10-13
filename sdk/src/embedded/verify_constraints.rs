@@ -57,6 +57,8 @@ impl EmbeddedClient {
         executor: ExecutorKind,
         prover: Arc<EmbeddedProver>,
     ) -> Result<VerifyConstraintsOutput> {
+        prover.begin_job()?;
+
         match prover.as_ref() {
             EmbeddedProver::Emu(p) => {
                 // The Emu prover has no assembly backend to switch to.

@@ -50,13 +50,13 @@ impl<F: PrimeField64> BinarySM<F> {
     /// # Returns
     /// An `Arc`-wrapped instance of `BinarySM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let binary_basic_sm = BinaryBasicSM::new(std.clone());
+        let binary_basic_sm = BinaryBasicSM::new();
 
-        let binary_extension_sm = BinaryExtensionSM::new(std.clone());
+        let binary_extension_sm = BinaryExtensionSM::new();
 
-        let binary_add_sm = BinaryAddSM::new(std.clone());
+        let binary_add_sm = BinaryAddSM::new();
 
-        let binary_add_hi_sm = BinaryAddHiSM::new(std.clone());
+        let binary_add_hi_sm = BinaryAddHiSM::new();
 
         Arc::new(Self {
             binary_basic_sm,

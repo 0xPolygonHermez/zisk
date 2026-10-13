@@ -1,0 +1,827 @@
+; ============================================================================
+; zkvm/bls12_381.zisk - BLS12-381 (EIP-2537 + EIP-4844 KZG) for the EF zkVM
+; accelerator C ABI. Entrypoints ziskasm_zkvm_bls12_{g1_add,g2_add,g1_msm,g2_msm,
+; pairing,map_fp_to_g1,map_fp2_to_g2} and ziskasm_zkvm_kzg_point_eval; zkvmcall
+; targets of zkvm_bls12_*/zkvm_kzg_point_eval.
+;
+; EF encodings are PACKED big-endian (no 16-byte pad): Fp=48B, scalar=32B,
+; G1=96B (x48‖y48), Fp2=96B (c0‖c1, REAL first), G2=192B (x_r‖x_i‖y_r‖y_i).
+; UNLIKE bn254 EIP-197 there is NO Fp2 half-swap: every 48B chunk is a straight
+; full byte-reversal (zkvm_be_to_limbs nlimbs=6) in natural coordinate order.
+; Internal limbs: Fp=6, scalar=4, G1=12 (x6‖y6), Fp2=12 (c0 6‖c1 6),
+; G2=24 (x_r6‖x_i6‖y_r6‖y_i6). Identity = all-zero.
+;
+; Validation mirrors the reference *_safe_bls12_381_c: add = identity-aware +
+; canonical(x,y<P)+on-curve; MSM = additionally subgroup, per-pair skip identity,
+; scalar reduced mod R by zisklib_scalar_mul (k=0 -> identity, skipped); pairing/
+; map/kzg validate INTERNALLY (the .zisk entrypoint) so we just map status.
+; Reuses zisklib_add_complete_{,twist_}bls12_381 / zisklib_scalar_mul_{,twist_}
+; bls12_381 / zisklib_pairing_check_bls12_381 / zisklib_map_to_curve_g{1,2}_
+; bls12_381 / zisklib_verify_kzg_proof_bls12_381 (+ bn254_ltn/eqn/memcpy,
+; is_on_curve/subgroup). Labels `zbl_`, data `ZBL_*`, shared EFAIL exit zbl_fail.
+; MAX_PAIRS=32 for pairing buffers (n>32 or n==0 -> EFAIL; MSM needs no big buffer).
+; ============================================================================
+
+u64 ZBL_TP0[1]    = 0
+u64 ZBL_TP1[1]    = 0
+u64 ZBL_VP[1]     = 0
+u64 ZBL_AP1[1]    = 0
+u64 ZBL_AP2[1]    = 0
+u64 ZBL_RESP[1]   = 0
+u64 ZBL_F1[1]     = 0
+u64 ZBL_PAIRSP[1] = 0
+u64 ZBL_N[1]      = 0
+u64 ZBL_VERP[1]   = 0
+u64 ZBL_PI[1]     = 0
+u64 ZBL_K[4]      = 0, 0, 0, 0
+u64 ZBL_P1[24]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZBL_P2[24]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZBL_RES[24]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZBL_ACC[24]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZBL_PROD[24]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZBL_TMP[24]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZBL_PG1[384]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZBL_PG2[768]  = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+; --- zbl_zero(ptr=r10, nwords=r11): zero n u64 ---
+zbl_zero:
+	copyb(0, r10) -> r5
+	copyb(0, r11) -> r6
+zbl_z_l:
+	eq(r6, 0), j(zbl_z_d)
+	copyb(r5, 0) -> 8[a + 0]
+	sub(r6, 1) -> r6
+	add(r5, 8) -> r5
+	jump(zbl_z_l)
+zbl_z_d:
+	ret
+
+; --- zbl_g1_in(be=r10, limbs=r11): 96B BE -> 12 u64 (x‖y) ---
+zbl_g1_in:
+	push r1
+	copyb(0, r10) -> [ZBL_TP0]
+	copyb(0, r11) -> [ZBL_TP1]
+	rev8(r10, 8[a + 40]) -> r7
+	copyb(r11, r7) -> 8[a + 0]
+	rev8(r10, 8[a + 32]) -> r7
+	copyb(r11, r7) -> 8[a + 8]
+	rev8(r10, 8[a + 24]) -> r7
+	copyb(r11, r7) -> 8[a + 16]
+	rev8(r10, 8[a + 16]) -> r7
+	copyb(r11, r7) -> 8[a + 24]
+	rev8(r10, 8[a + 8]) -> r7
+	copyb(r11, r7) -> 8[a + 32]
+	rev8(r10, 8[a + 0]) -> r7
+	copyb(r11, r7) -> 8[a + 40]
+	add(r10, 48) -> r5
+	add(r11, 48) -> r14
+	rev8(r5, 8[a + 40]) -> r7
+	copyb(r14, r7) -> 8[a + 0]
+	rev8(r5, 8[a + 32]) -> r7
+	copyb(r14, r7) -> 8[a + 8]
+	rev8(r5, 8[a + 24]) -> r7
+	copyb(r14, r7) -> 8[a + 16]
+	rev8(r5, 8[a + 16]) -> r7
+	copyb(r14, r7) -> 8[a + 24]
+	rev8(r5, 8[a + 8]) -> r7
+	copyb(r14, r7) -> 8[a + 32]
+	rev8(r5, 8[a + 0]) -> r7
+	copyb(r14, r7) -> 8[a + 40]
+	add(r10, 48) -> r10
+	add(r11, 48) -> r11
+	copyb(0, 6) -> r12
+	pop r1
+	ret
+
+; --- zbl_g1_out(limbs=r10, be=r11): 12 u64 -> 96B BE ---
+zbl_g1_out:
+	push r1
+	copyb(0, r10) -> [ZBL_TP0]
+	copyb(0, r11) -> [ZBL_TP1]
+	rev8(r10, 8[a + 0]) -> r7
+	copyb(r11, r7) -> 8[a + 40]
+	rev8(r10, 8[a + 8]) -> r7
+	copyb(r11, r7) -> 8[a + 32]
+	rev8(r10, 8[a + 16]) -> r7
+	copyb(r11, r7) -> 8[a + 24]
+	rev8(r10, 8[a + 24]) -> r7
+	copyb(r11, r7) -> 8[a + 16]
+	rev8(r10, 8[a + 32]) -> r7
+	copyb(r11, r7) -> 8[a + 8]
+	rev8(r10, 8[a + 40]) -> r7
+	copyb(r11, r7) -> 8[a + 0]
+	add(r10, 48) -> r5
+	add(r11, 48) -> r14
+	rev8(r5, 8[a + 0]) -> r7
+	copyb(r14, r7) -> 8[a + 40]
+	rev8(r5, 8[a + 8]) -> r7
+	copyb(r14, r7) -> 8[a + 32]
+	rev8(r5, 8[a + 16]) -> r7
+	copyb(r14, r7) -> 8[a + 24]
+	rev8(r5, 8[a + 24]) -> r7
+	copyb(r14, r7) -> 8[a + 16]
+	rev8(r5, 8[a + 32]) -> r7
+	copyb(r14, r7) -> 8[a + 8]
+	rev8(r5, 8[a + 40]) -> r7
+	copyb(r14, r7) -> 8[a + 0]
+	add(r10, 48) -> r10
+	add(r11, 48) -> r11
+	copyb(0, 6) -> r12
+	pop r1
+	ret
+
+; --- zbl_g2_in(be=r10, limbs=r11): 192B BE -> 24 u64 (x_r‖x_i‖y_r‖y_i, natural) ---
+zbl_g2_in:
+	push r1
+	copyb(0, r10) -> [ZBL_TP0]
+	copyb(0, r11) -> [ZBL_TP1]
+	rev8(r10, 8[a + 40]) -> r7
+	copyb(r11, r7) -> 8[a + 0]
+	rev8(r10, 8[a + 32]) -> r7
+	copyb(r11, r7) -> 8[a + 8]
+	rev8(r10, 8[a + 24]) -> r7
+	copyb(r11, r7) -> 8[a + 16]
+	rev8(r10, 8[a + 16]) -> r7
+	copyb(r11, r7) -> 8[a + 24]
+	rev8(r10, 8[a + 8]) -> r7
+	copyb(r11, r7) -> 8[a + 32]
+	rev8(r10, 8[a + 0]) -> r7
+	copyb(r11, r7) -> 8[a + 40]
+	add(r10, 48) -> r5
+	add(r11, 48) -> r14
+	rev8(r5, 8[a + 40]) -> r7
+	copyb(r14, r7) -> 8[a + 0]
+	rev8(r5, 8[a + 32]) -> r7
+	copyb(r14, r7) -> 8[a + 8]
+	rev8(r5, 8[a + 24]) -> r7
+	copyb(r14, r7) -> 8[a + 16]
+	rev8(r5, 8[a + 16]) -> r7
+	copyb(r14, r7) -> 8[a + 24]
+	rev8(r5, 8[a + 8]) -> r7
+	copyb(r14, r7) -> 8[a + 32]
+	rev8(r5, 8[a + 0]) -> r7
+	copyb(r14, r7) -> 8[a + 40]
+	add(r10, 96) -> r5
+	add(r11, 96) -> r14
+	rev8(r5, 8[a + 40]) -> r7
+	copyb(r14, r7) -> 8[a + 0]
+	rev8(r5, 8[a + 32]) -> r7
+	copyb(r14, r7) -> 8[a + 8]
+	rev8(r5, 8[a + 24]) -> r7
+	copyb(r14, r7) -> 8[a + 16]
+	rev8(r5, 8[a + 16]) -> r7
+	copyb(r14, r7) -> 8[a + 24]
+	rev8(r5, 8[a + 8]) -> r7
+	copyb(r14, r7) -> 8[a + 32]
+	rev8(r5, 8[a + 0]) -> r7
+	copyb(r14, r7) -> 8[a + 40]
+	add(r10, 144) -> r5
+	add(r11, 144) -> r14
+	rev8(r5, 8[a + 40]) -> r7
+	copyb(r14, r7) -> 8[a + 0]
+	rev8(r5, 8[a + 32]) -> r7
+	copyb(r14, r7) -> 8[a + 8]
+	rev8(r5, 8[a + 24]) -> r7
+	copyb(r14, r7) -> 8[a + 16]
+	rev8(r5, 8[a + 16]) -> r7
+	copyb(r14, r7) -> 8[a + 24]
+	rev8(r5, 8[a + 8]) -> r7
+	copyb(r14, r7) -> 8[a + 32]
+	rev8(r5, 8[a + 0]) -> r7
+	copyb(r14, r7) -> 8[a + 40]
+	add(r10, 144) -> r10
+	add(r11, 144) -> r11
+	copyb(0, 6) -> r12
+	pop r1
+	ret
+
+; --- zbl_g2_out(limbs=r10, be=r11): 24 u64 -> 192B BE ---
+zbl_g2_out:
+	push r1
+	copyb(0, r10) -> [ZBL_TP0]
+	copyb(0, r11) -> [ZBL_TP1]
+	rev8(r10, 8[a + 0]) -> r7
+	copyb(r11, r7) -> 8[a + 40]
+	rev8(r10, 8[a + 8]) -> r7
+	copyb(r11, r7) -> 8[a + 32]
+	rev8(r10, 8[a + 16]) -> r7
+	copyb(r11, r7) -> 8[a + 24]
+	rev8(r10, 8[a + 24]) -> r7
+	copyb(r11, r7) -> 8[a + 16]
+	rev8(r10, 8[a + 32]) -> r7
+	copyb(r11, r7) -> 8[a + 8]
+	rev8(r10, 8[a + 40]) -> r7
+	copyb(r11, r7) -> 8[a + 0]
+	add(r10, 48) -> r5
+	add(r11, 48) -> r14
+	rev8(r5, 8[a + 0]) -> r7
+	copyb(r14, r7) -> 8[a + 40]
+	rev8(r5, 8[a + 8]) -> r7
+	copyb(r14, r7) -> 8[a + 32]
+	rev8(r5, 8[a + 16]) -> r7
+	copyb(r14, r7) -> 8[a + 24]
+	rev8(r5, 8[a + 24]) -> r7
+	copyb(r14, r7) -> 8[a + 16]
+	rev8(r5, 8[a + 32]) -> r7
+	copyb(r14, r7) -> 8[a + 8]
+	rev8(r5, 8[a + 40]) -> r7
+	copyb(r14, r7) -> 8[a + 0]
+	add(r10, 96) -> r5
+	add(r11, 96) -> r14
+	rev8(r5, 8[a + 0]) -> r7
+	copyb(r14, r7) -> 8[a + 40]
+	rev8(r5, 8[a + 8]) -> r7
+	copyb(r14, r7) -> 8[a + 32]
+	rev8(r5, 8[a + 16]) -> r7
+	copyb(r14, r7) -> 8[a + 24]
+	rev8(r5, 8[a + 24]) -> r7
+	copyb(r14, r7) -> 8[a + 16]
+	rev8(r5, 8[a + 32]) -> r7
+	copyb(r14, r7) -> 8[a + 8]
+	rev8(r5, 8[a + 40]) -> r7
+	copyb(r14, r7) -> 8[a + 0]
+	add(r10, 144) -> r5
+	add(r11, 144) -> r14
+	rev8(r5, 8[a + 0]) -> r7
+	copyb(r14, r7) -> 8[a + 40]
+	rev8(r5, 8[a + 8]) -> r7
+	copyb(r14, r7) -> 8[a + 32]
+	rev8(r5, 8[a + 16]) -> r7
+	copyb(r14, r7) -> 8[a + 24]
+	rev8(r5, 8[a + 24]) -> r7
+	copyb(r14, r7) -> 8[a + 16]
+	rev8(r5, 8[a + 32]) -> r7
+	copyb(r14, r7) -> 8[a + 8]
+	rev8(r5, 8[a + 40]) -> r7
+	copyb(r14, r7) -> 8[a + 0]
+	add(r10, 144) -> r10
+	add(r11, 144) -> r11
+	copyb(0, 6) -> r12
+	pop r1
+	ret
+
+; --- zbl_g1_fc(p=r10) -> r10 = 1 if x<P, y<P, on-curve (field+curve, no subgroup) ---
+zbl_g1_fc:
+	push r1
+	copyb(0, r10) -> [ZBL_VP]
+	copyb(0, ZBL_VP) -> r5
+	copyb(0, BLS_P) -> r11
+	copyb(0, 6) -> r12
+	call bn254_ltn                      ; x < P
+	eq(r10, 0), j(zbl_fc_bad)
+	copyb(0, ZBL_VP) -> r5
+	add([ZBL_VP], 48) -> r10
+	copyb(0, BLS_P) -> r11
+	copyb(0, 6) -> r12
+	call bn254_ltn                      ; y < P
+	eq(r10, 0), j(zbl_fc_bad)
+	copyb(0, ZBL_VP) -> r5
+	copyb(0, [ZBL_VP]) -> r10
+	call zisklib_is_on_curve_bls12_381
+	eq(r10, 0), j(zbl_fc_bad)
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+zbl_fc_bad:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; --- zbl_g2_fc(p=r10) -> r10 = 1 if 4 comps < P and on-curve-twist ---
+zbl_g2_fc:
+	push r1
+	copyb(0, r10) -> [ZBL_VP]
+	copyb(0, ZBL_VP) -> r5
+	copyb(0, BLS_P) -> r11
+	copyb(0, 6) -> r12
+	call bn254_ltn                      ; comp0 (x_r)
+	eq(r10, 0), j(zbl_fc2_bad)
+	copyb(0, ZBL_VP) -> r5
+	add([ZBL_VP], 48) -> r10
+	copyb(0, BLS_P) -> r11
+	copyb(0, 6) -> r12
+	call bn254_ltn                      ; comp1 (x_i)
+	eq(r10, 0), j(zbl_fc2_bad)
+	copyb(0, ZBL_VP) -> r5
+	add([ZBL_VP], 96) -> r10
+	copyb(0, BLS_P) -> r11
+	copyb(0, 6) -> r12
+	call bn254_ltn                      ; comp2 (y_r)
+	eq(r10, 0), j(zbl_fc2_bad)
+	copyb(0, ZBL_VP) -> r5
+	add([ZBL_VP], 144) -> r10
+	copyb(0, BLS_P) -> r11
+	copyb(0, 6) -> r12
+	call bn254_ltn                      ; comp3 (y_i)
+	eq(r10, 0), j(zbl_fc2_bad)
+	copyb(0, ZBL_VP) -> r5
+	copyb(0, [ZBL_VP]) -> r10
+	call zisklib_is_on_curve_twist_bls12_381
+	eq(r10, 0), j(zbl_fc2_bad)
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+zbl_fc2_bad:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; --- shared EFAIL exit (each entry pushed r1 once) ---
+zbl_fail:
+	copyb(0, 18446744073709551615) -> r10
+	pop r1
+	ret
+
+; ============================================================================
+; zkvm_status zkvm_bls12_g1_add(const g1* p1, const g1* p2, g1* result)  [96B each]
+;   Mirrors add_complete_safe_bls12_381: identity-aware + canonical + on-curve.
+; ============================================================================
+ziskasm_zkvm_bls12_g1_add:
+	push r1
+	copyb(0, r10) -> [ZBL_AP1]
+	copyb(0, r11) -> [ZBL_AP2]
+	copyb(0, r12) -> [ZBL_RESP]
+	copyb(0, ZBL_RESP) -> r5
+	copyb(0, ZBL_P1) -> r11
+	call zbl_g1_in
+	copyb(0, [ZBL_AP2]) -> r10
+	copyb(0, ZBL_P2) -> r11
+	call zbl_g1_in
+	dma_xmemcmp(ZBL_P1, BLS_G1_IDENTITY) -> r5, j(96, 4)
+	eq(r5, 0) -> r10
+	copyb(0, r10) -> [ZBL_F1]
+	dma_xmemcmp(ZBL_P2, BLS_G1_IDENTITY) -> r5, j(96, 4)
+	eq(r5, 0) -> r10
+	copyb(0, ZBL_F1) -> r5
+	copyb(0, [ZBL_F1]) -> r6
+	copyb(0, BLS_G1_IDENTITY) -> r11
+	copyb(0, 12) -> r12
+	ltu(0, r6), j(zbl_add1_p1inf)
+	ltu(0, r10), j(zbl_add1_p2inf)
+	copyb(0, ZBL_P1) -> r10
+	call zbl_g1_fc
+	eq(r10, 0), j(zbl_fail)
+	copyb(0, ZBL_P2) -> r10
+	call zbl_g1_fc
+	eq(r10, 0), j(zbl_fail)
+	copyb(0, ZBL_P1) -> r10
+	copyb(0, ZBL_P2) -> r11
+	copyb(0, ZBL_RES) -> r12
+	call zisklib_add_complete_bls12_381
+	jump(zbl_g1_encode)
+zbl_add1_p2inf:
+	copyb(0, ZBL_P1) -> r10
+	call zbl_g1_fc
+	eq(r10, 0), j(zbl_fail)
+	dma_xmemcpy(ZBL_RES, ZBL_P1) -> r5, j(96, 4)
+	copyb(0, ZBL_P1) -> r10
+	copyb(0, ZBL_RES) -> r11
+	copyb(0, 12) -> r12
+	jump(zbl_g1_encode)
+zbl_add1_p1inf:
+	ltu(0, r10), j(zbl_add1_bothinf)
+	copyb(0, ZBL_P2) -> r10
+	call zbl_g1_fc
+	eq(r10, 0), j(zbl_fail)
+	dma_xmemcpy(ZBL_RES, ZBL_P2) -> r5, j(96, 4)
+	copyb(0, ZBL_P2) -> r10
+	copyb(0, ZBL_RES) -> r11
+	copyb(0, 12) -> r12
+	jump(zbl_g1_encode)
+zbl_add1_bothinf:
+	copyb(0, ZBL_RES) -> r10
+	copyb(0, 12) -> r11
+	call zbl_zero
+	jump(zbl_g1_encode)
+zbl_g1_encode:
+	copyb(0, ZBL_RES) -> r10
+	copyb(0, [ZBL_RESP]) -> r11
+	call zbl_g1_out
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; ============================================================================
+; zkvm_status zkvm_bls12_g2_add(const g2* p1, const g2* p2, g2* result)  [192B each]
+; ============================================================================
+ziskasm_zkvm_bls12_g2_add:
+	push r1
+	copyb(0, r10) -> [ZBL_AP1]
+	copyb(0, r11) -> [ZBL_AP2]
+	copyb(0, r12) -> [ZBL_RESP]
+	copyb(0, ZBL_RESP) -> r5
+	copyb(0, ZBL_P1) -> r11
+	call zbl_g2_in
+	copyb(0, [ZBL_AP2]) -> r10
+	copyb(0, ZBL_P2) -> r11
+	call zbl_g2_in
+	dma_xmemcmp(ZBL_P1, BLS_G2_IDENTITY) -> r5, j(192, 4)
+	eq(r5, 0) -> r10
+	copyb(0, r10) -> [ZBL_F1]
+	dma_xmemcmp(ZBL_P2, BLS_G2_IDENTITY) -> r5, j(192, 4)
+	eq(r5, 0) -> r10
+	copyb(0, ZBL_F1) -> r5
+	copyb(0, [ZBL_F1]) -> r6
+	copyb(0, BLS_G2_IDENTITY) -> r11
+	copyb(0, 24) -> r12
+	ltu(0, r6), j(zbl_add2_p1inf)
+	ltu(0, r10), j(zbl_add2_p2inf)
+	copyb(0, ZBL_P1) -> r10
+	call zbl_g2_fc
+	eq(r10, 0), j(zbl_fail)
+	copyb(0, ZBL_P2) -> r10
+	call zbl_g2_fc
+	eq(r10, 0), j(zbl_fail)
+	copyb(0, ZBL_P1) -> r10
+	copyb(0, ZBL_P2) -> r11
+	copyb(0, ZBL_RES) -> r12
+	call zisklib_add_complete_twist_bls12_381
+	jump(zbl_g2_encode)
+zbl_add2_p2inf:
+	copyb(0, ZBL_P1) -> r10
+	call zbl_g2_fc
+	eq(r10, 0), j(zbl_fail)
+	dma_xmemcpy(ZBL_RES, ZBL_P1) -> r5, j(192, 4)
+	copyb(0, ZBL_P1) -> r10
+	copyb(0, ZBL_RES) -> r11
+	copyb(0, 24) -> r12
+	jump(zbl_g2_encode)
+zbl_add2_p1inf:
+	ltu(0, r10), j(zbl_add2_bothinf)
+	copyb(0, ZBL_P2) -> r10
+	call zbl_g2_fc
+	eq(r10, 0), j(zbl_fail)
+	dma_xmemcpy(ZBL_RES, ZBL_P2) -> r5, j(192, 4)
+	copyb(0, ZBL_P2) -> r10
+	copyb(0, ZBL_RES) -> r11
+	copyb(0, 24) -> r12
+	jump(zbl_g2_encode)
+zbl_add2_bothinf:
+	copyb(0, ZBL_RES) -> r10
+	copyb(0, 24) -> r11
+	call zbl_zero
+	jump(zbl_g2_encode)
+zbl_g2_encode:
+	copyb(0, ZBL_RES) -> r10
+	copyb(0, [ZBL_RESP]) -> r11
+	call zbl_g2_out
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; ============================================================================
+; zkvm_status zkvm_bls12_g1_msm(const g1_msm_pair* pairs, size_t n, g1* result)
+;   pair = point(96B) ‖ scalar(32B) = 128B. Mirrors msm_complete_safe_bls12_381:
+;   per pair skip identity, validate (field+curve+subgroup), scalar_mul (reduces
+;   k mod R; k=0 -> identity skipped), accumulate. n==0 -> EFAIL.
+; ============================================================================
+ziskasm_zkvm_bls12_g1_msm:
+	push r1
+	copyb(0, r10) -> [ZBL_PAIRSP]
+	copyb(0, r11) -> [ZBL_N]
+	copyb(0, r12) -> [ZBL_RESP]
+	copyb(0, ZBL_RESP) -> r5
+	eq(r11, 0), j(zbl_fail)             ; n==0 -> EFAIL
+	copyb(0, ZBL_ACC) -> r10
+	copyb(0, 12) -> r11
+	call zbl_zero                       ; acc = identity
+	copyb(0, 1) -> [ZBL_F1]
+	copyb(0, 0) -> [ZBL_PI]
+	copyb(0, ZBL_PI) -> r5
+zbl_msm1_loop:
+	copyb(0, ZBL_N) -> r5
+	copyb(0, [ZBL_PI]) -> r13
+	copyb(0, [ZBL_N]) -> r14
+	ltu(r13, r14), j(zbl_msm1_body)
+	jump(zbl_msm1_done)
+zbl_msm1_body:
+	; point = pairs + i*128 -> ZBL_P1
+	sll(r13, 7) -> r6
+	copyb(0, [ZBL_PAIRSP]) -> r10
+	add(r10, r6) -> r10
+	copyb(0, ZBL_PAIRSP) -> r5
+	copyb(0, ZBL_P1) -> r11
+	call zbl_g1_in
+	; skip if point == identity
+	dma_xmemcmp(ZBL_P1, BLS_G1_IDENTITY) -> r5, j(96, 4)
+	eq(r5, 0) -> r10
+	copyb(0, BLS_G1_IDENTITY) -> r11
+	copyb(0, 12) -> r12
+	ltu(0, r10), j(zbl_msm1_next)
+	; validate field+curve, then subgroup
+	copyb(0, ZBL_P1) -> r10
+	call zbl_g1_fc
+	eq(r10, 0), j(zbl_fail)
+	copyb(0, ZBL_P1) -> r10
+	call zisklib_is_on_subgroup_bls12_381
+	eq(r10, 0), j(zbl_fail)
+	; scalar = pairs + i*128 + 96 -> ZBL_K (4 limbs)
+	copyb(0, [ZBL_PI]) -> r13
+	sll(r13, 7) -> r6
+	copyb(0, [ZBL_PAIRSP]) -> r10
+	add(r10, r6) -> r10
+	add(r10, 96) -> r5
+	rev8(r5, 8[a + 24]) -> [ZBL_K]
+	rev8(r5, 8[a + 16]) -> [ZBL_K + 8]
+	rev8(r5, 8[a + 8]) -> [ZBL_K + 16]
+	rev8(r5, 8[a + 0]) -> [ZBL_K + 24]
+	; product = k · point
+	copyb(0, ZBL_P1) -> r10
+	copyb(0, ZBL_K) -> r11
+	copyb(0, ZBL_PROD) -> r12
+	call zisklib_scalar_mul_bls12_381
+	; skip if product == identity
+	dma_xmemcmp(ZBL_PROD, BLS_G1_IDENTITY) -> r5, j(96, 4)
+	eq(r5, 0) -> r10
+	copyb(0, BLS_G1_IDENTITY) -> r11
+	copyb(0, 12) -> r12
+	ltu(0, r10), j(zbl_msm1_next)
+	; accumulate
+	copyb(0, ZBL_F1) -> r5
+	copyb(0, [ZBL_F1]) -> r6
+	ltu(0, r6), j(zbl_msm1_setacc)
+	copyb(0, ZBL_ACC) -> r10
+	copyb(0, ZBL_PROD) -> r11
+	copyb(0, ZBL_TMP) -> r12
+	call zisklib_add_complete_bls12_381
+	dma_xmemcpy(ZBL_ACC, ZBL_TMP) -> r5, j(96, 4)
+	copyb(0, ZBL_TMP) -> r10
+	copyb(0, ZBL_ACC) -> r11
+	copyb(0, 12) -> r12
+	jump(zbl_msm1_next)
+zbl_msm1_setacc:
+	dma_xmemcpy(ZBL_ACC, ZBL_PROD) -> r5, j(96, 4)
+	copyb(0, 0) -> [ZBL_F1]
+	copyb(0, ZBL_F1) -> r5
+	copyb(0, ZBL_PROD) -> r10
+	copyb(0, ZBL_ACC) -> r11
+	copyb(0, 12) -> r12
+zbl_msm1_next:
+	add([ZBL_PI], 1) -> r6
+	copyb(0, r6) -> [ZBL_PI]
+	copyb(0, ZBL_PI) -> r5
+	jump(zbl_msm1_loop)
+zbl_msm1_done:
+	copyb(0, ZBL_ACC) -> r10
+	copyb(0, [ZBL_RESP]) -> r11
+	call zbl_g1_out
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; ============================================================================
+; zkvm_status zkvm_bls12_g2_msm(const g2_msm_pair* pairs, size_t n, g2* result)
+;   pair = point(192B) ‖ scalar(32B) = 224B.
+; ============================================================================
+ziskasm_zkvm_bls12_g2_msm:
+	push r1
+	copyb(0, r10) -> [ZBL_PAIRSP]
+	copyb(0, r11) -> [ZBL_N]
+	copyb(0, r12) -> [ZBL_RESP]
+	copyb(0, ZBL_RESP) -> r5
+	eq(r11, 0), j(zbl_fail)
+	copyb(0, ZBL_ACC) -> r10
+	copyb(0, 24) -> r11
+	call zbl_zero
+	copyb(0, 1) -> [ZBL_F1]
+	copyb(0, 0) -> [ZBL_PI]
+	copyb(0, ZBL_PI) -> r5
+zbl_msm2_loop:
+	copyb(0, ZBL_N) -> r5
+	copyb(0, [ZBL_PI]) -> r13
+	copyb(0, [ZBL_N]) -> r14
+	ltu(r13, r14), j(zbl_msm2_body)
+	jump(zbl_msm2_done)
+zbl_msm2_body:
+	; point = pairs + i*224 -> ZBL_P1 ; i*224 = i*128 + i*64 + i*32
+	sll(r13, 7) -> r6
+	sll(r13, 6) -> r7
+	add(r6, r7) -> r6
+	sll(r13, 5) -> r7
+	add(r6, r7) -> r6
+	copyb(0, [ZBL_PAIRSP]) -> r10
+	add(r10, r6) -> r10
+	copyb(0, ZBL_PAIRSP) -> r5
+	copyb(0, ZBL_P1) -> r11
+	call zbl_g2_in
+	dma_xmemcmp(ZBL_P1, BLS_G2_IDENTITY) -> r5, j(192, 4)
+	eq(r5, 0) -> r10
+	copyb(0, BLS_G2_IDENTITY) -> r11
+	copyb(0, 24) -> r12
+	ltu(0, r10), j(zbl_msm2_next)
+	copyb(0, ZBL_P1) -> r10
+	call zbl_g2_fc
+	eq(r10, 0), j(zbl_fail)
+	copyb(0, ZBL_P1) -> r10
+	call zisklib_is_on_subgroup_twist_bls12_381
+	eq(r10, 0), j(zbl_fail)
+	; scalar = pairs + i*224 + 192 -> ZBL_K
+	copyb(0, [ZBL_PI]) -> r13
+	sll(r13, 7) -> r6
+	sll(r13, 6) -> r7
+	add(r6, r7) -> r6
+	sll(r13, 5) -> r7
+	add(r6, r7) -> r6
+	copyb(0, [ZBL_PAIRSP]) -> r10
+	add(r10, r6) -> r10
+	add(r10, 192) -> r5
+	rev8(r5, 8[a + 24]) -> [ZBL_K]
+	rev8(r5, 8[a + 16]) -> [ZBL_K + 8]
+	rev8(r5, 8[a + 8]) -> [ZBL_K + 16]
+	rev8(r5, 8[a + 0]) -> [ZBL_K + 24]
+	copyb(0, ZBL_P1) -> r10
+	copyb(0, ZBL_K) -> r11
+	copyb(0, ZBL_PROD) -> r12
+	call zisklib_scalar_mul_twist_bls12_381
+	dma_xmemcmp(ZBL_PROD, BLS_G2_IDENTITY) -> r5, j(192, 4)
+	eq(r5, 0) -> r10
+	copyb(0, BLS_G2_IDENTITY) -> r11
+	copyb(0, 24) -> r12
+	ltu(0, r10), j(zbl_msm2_next)
+	copyb(0, ZBL_F1) -> r5
+	copyb(0, [ZBL_F1]) -> r6
+	ltu(0, r6), j(zbl_msm2_setacc)
+	copyb(0, ZBL_ACC) -> r10
+	copyb(0, ZBL_PROD) -> r11
+	copyb(0, ZBL_TMP) -> r12
+	call zisklib_add_complete_twist_bls12_381
+	dma_xmemcpy(ZBL_ACC, ZBL_TMP) -> r5, j(192, 4)
+	copyb(0, ZBL_TMP) -> r10
+	copyb(0, ZBL_ACC) -> r11
+	copyb(0, 24) -> r12
+	jump(zbl_msm2_next)
+zbl_msm2_setacc:
+	dma_xmemcpy(ZBL_ACC, ZBL_PROD) -> r5, j(192, 4)
+	copyb(0, 0) -> [ZBL_F1]
+	copyb(0, ZBL_F1) -> r5
+	copyb(0, ZBL_PROD) -> r10
+	copyb(0, ZBL_ACC) -> r11
+	copyb(0, 24) -> r12
+zbl_msm2_next:
+	add([ZBL_PI], 1) -> r6
+	copyb(0, r6) -> [ZBL_PI]
+	copyb(0, ZBL_PI) -> r5
+	jump(zbl_msm2_loop)
+zbl_msm2_done:
+	copyb(0, ZBL_ACC) -> r10
+	copyb(0, [ZBL_RESP]) -> r11
+	call zbl_g2_out
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; ============================================================================
+; zkvm_status zkvm_bls12_pairing(const pairing_pair* pairs, size_t n, bool* ok)
+;   pair = G1(96B) ‖ G2(192B) = 288B. De-interleave into ZBL_PG1(12n)/ZBL_PG2(24n),
+;   then zisklib_pairing_check_bls12_381 (validates canonical/on-curve/subgroup).
+;   n==0 or n>32 -> EFAIL; status 0=accept,1=reject,>=2=EFAIL.
+; ============================================================================
+ziskasm_zkvm_bls12_pairing:
+	push r1
+	copyb(0, r10) -> [ZBL_PAIRSP]
+	copyb(0, r11) -> [ZBL_N]
+	copyb(0, r12) -> [ZBL_VERP]
+	copyb(0, ZBL_VERP) -> r5
+	eq(r11, 0), j(zbl_fail)             ; n==0 -> EFAIL
+	copyb(0, 32) -> r7
+	ltu(r7, r11), j(zbl_fail)           ; n>32 -> EFAIL
+	copyb(0, 0) -> [ZBL_PI]
+	copyb(0, ZBL_PI) -> r5
+zbl_pair_loop:
+	copyb(0, ZBL_N) -> r5
+	copyb(0, [ZBL_PI]) -> r13
+	copyb(0, [ZBL_N]) -> r14
+	ltu(r13, r14), j(zbl_pair_body)
+	jump(zbl_pair_done)
+zbl_pair_body:
+	; G1: g1_in(pairs + i*288, ZBL_PG1 + i*96) ; i*288 = i*256 + i*32
+	sll(r13, 8) -> r6
+	sll(r13, 5) -> r7
+	add(r6, r7) -> r6
+	copyb(0, [ZBL_PAIRSP]) -> r10
+	add(r10, r6) -> r10
+	sll(r13, 6) -> r6
+	sll(r13, 5) -> r7
+	add(r6, r7) -> r6
+	copyb(0, ZBL_PG1) -> r11
+	add(r11, r6) -> r11                 ; PG1 + i*96
+	copyb(0, ZBL_PAIRSP) -> r5
+	call zbl_g1_in
+	; G2: g2_in(pairs + i*288 + 96, ZBL_PG2 + i*192)
+	copyb(0, [ZBL_PI]) -> r13
+	sll(r13, 8) -> r6
+	sll(r13, 5) -> r7
+	add(r6, r7) -> r6
+	copyb(0, [ZBL_PAIRSP]) -> r10
+	add(r10, r6) -> r10
+	sll(r13, 7) -> r6
+	sll(r13, 6) -> r7
+	add(r6, r7) -> r6
+	copyb(0, ZBL_PG2) -> r11
+	add(r11, r6) -> r11                 ; PG2 + i*192
+	copyb(0, ZBL_PAIRSP) -> r5
+	add(r10, 96) -> r10
+	call zbl_g2_in
+	add([ZBL_PI], 1) -> r6
+	copyb(0, r6) -> [ZBL_PI]
+	copyb(0, ZBL_PI) -> r5
+	jump(zbl_pair_loop)
+zbl_pair_done:
+	copyb(0, ZBL_PG1) -> r10
+	copyb(0, ZBL_PG2) -> r11
+	copyb(0, [ZBL_N]) -> r12
+	call zisklib_pairing_check_bls12_381    ; r10 = status
+	eq(r10, 0), j(zbl_pair_accept)
+	copyb(0, 1) -> r6
+	eq(r10, r6), j(zbl_pair_reject)
+	jump(zbl_fail)
+zbl_pair_accept:
+	copyb(0, [ZBL_VERP]) -> r5
+	copyb(r5, 1) -> 1[a + 0]
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+zbl_pair_reject:
+	copyb(0, [ZBL_VERP]) -> r5
+	copyb(r5, 0) -> 1[a + 0]
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; ============================================================================
+; zkvm_status zkvm_bls12_map_fp_to_g1(const fp* u, g1* result)  [48B -> 96B]
+; ============================================================================
+ziskasm_zkvm_bls12_map_fp_to_g1:
+	push r1
+	copyb(0, r11) -> [ZBL_RESP]
+	rev8(r10, 8[a + 40]) -> [ZBL_P1]
+	rev8(r10, 8[a + 32]) -> [ZBL_P1 + 8]
+	rev8(r10, 8[a + 24]) -> [ZBL_P1 + 16]
+	rev8(r10, 8[a + 16]) -> [ZBL_P1 + 24]
+	rev8(r10, 8[a + 8]) -> [ZBL_P1 + 32]
+	rev8(r10, 8[a + 0]) -> [ZBL_P1 + 40]
+	copyb(0, ZBL_P1) -> r10
+	copyb(0, ZBL_RES) -> r11
+	copyb(0, 6) -> r12
+	call zisklib_map_to_curve_g1_bls12_381  ; r10 = 0 ok / 1 err
+	ltu(0, r10), j(zbl_fail)
+	copyb(0, ZBL_RES) -> r10
+	copyb(0, [ZBL_RESP]) -> r11
+	call zbl_g1_out
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; ============================================================================
+; zkvm_status zkvm_bls12_map_fp2_to_g2(const fp2* u, g2* result)  [96B -> 192B]
+;   fp2 bytes = c0(48)‖c1(48) -> ZBL_P1 limbs [c0 6 ‖ c1 6].
+; ============================================================================
+ziskasm_zkvm_bls12_map_fp2_to_g2:
+	push r1
+	copyb(0, r10) -> [ZBL_AP1]
+	copyb(0, r11) -> [ZBL_RESP]
+	rev8(r10, 8[a + 40]) -> [ZBL_P1]
+	rev8(r10, 8[a + 32]) -> [ZBL_P1 + 8]
+	rev8(r10, 8[a + 24]) -> [ZBL_P1 + 16]
+	rev8(r10, 8[a + 16]) -> [ZBL_P1 + 24]
+	rev8(r10, 8[a + 8]) -> [ZBL_P1 + 32]
+	rev8(r10, 8[a + 0]) -> [ZBL_P1 + 40]
+	add(r10, 48) -> r5
+	rev8(r5, 8[a + 40]) -> [ZBL_P1 + 48]
+	rev8(r5, 8[a + 32]) -> [ZBL_P1 + 56]
+	rev8(r5, 8[a + 24]) -> [ZBL_P1 + 64]
+	rev8(r5, 8[a + 16]) -> [ZBL_P1 + 72]
+	rev8(r5, 8[a + 8]) -> [ZBL_P1 + 80]
+	rev8(r5, 8[a + 0]) -> [ZBL_P1 + 88]
+	copyb(0, ZBL_P1) -> r10
+	copyb(0, ZBL_RES) -> r11
+	copyb(0, 6) -> r12
+	call zisklib_map_to_curve_g2_bls12_381
+	ltu(0, r10), j(zbl_fail)
+	copyb(0, ZBL_RES) -> r10
+	copyb(0, [ZBL_RESP]) -> r11
+	call zbl_g2_out
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; ============================================================================
+; zkvm_status zkvm_kzg_point_eval(const commitment* c(48), const field* z(32),
+;                                 const field* y(32), const proof* p(48), bool* ok)
+;   Reorder to zisklib_verify_kzg_proof_bls12_381(z, y, commitment, proof) which
+;   takes byte pointers directly (decompress + canonical checks internal).
+;   Always EOK; *ok = validity (1/0).
+; ============================================================================
+ziskasm_zkvm_kzg_point_eval:
+	push r1
+	copyb(0, r14) -> [ZBL_VERP]
+	copyb(0, r10) -> r5
+	copyb(0, r11) -> r10
+	copyb(0, r12) -> r11
+	copyb(0, r5) -> r12
+	call zisklib_verify_kzg_proof_bls12_381   ; r13 = proof (unchanged); r10 = 1/0
+	copyb(0, [ZBL_VERP]) -> r5
+	copyb(r5, r10) -> 1[a + 0]          ; *verified = result
+	copyb(0, 0) -> r10
+	pop r1
+	ret
