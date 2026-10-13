@@ -80,10 +80,6 @@ fn main() {
         index += 1;
     }
 
-    code += "\tlet mut p1 = SyscallPoint256 { x: [0,0,0,0], y: [0,0,0,0] };\n";
-    code += "\tlet p2 = SyscallPoint256 { x: [0,0,0,0], y: [0,0,0,0] };\n";
-    code += "\tlet mut params = SyscallSecp256k1AddParams { p1: &mut p1, p2: &p2 };\n";
-
     let initial_index = index;
     while let Some((p1, p2, p3)) = get_secp256k1_add_test_data(index - initial_index) {
         code += &format!(
@@ -100,16 +96,14 @@ fn main() {
         let p2_y: [u64; 4] = p2[4..8].try_into().unwrap();
         code +=
             &format!("\tlet p2 = SyscallPoint256 {{\n\t\tx: {p2_x:?},\n\t\ty: {p2_y:?}\n\t}};\n");
-        code += "\tparams.p1 = &mut p1;\n";
-        code += "\tparams.p2 = &p2;\n";
-        code += "\tsyscall_secp256k1_add(&mut params);\n";
+        code += "\tsyscall_secp256k1_add(&mut p1, &p2);\n";
 
         let p3_x: [u64; 4] = p3[0..4].try_into().unwrap();
         let p3_y: [u64; 4] = p3[4..8].try_into().unwrap();
         code +=
             &format!("\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n");
-        code += "\tassert_eq!(params.p1.x, p3.x);\n";
-        code += "\tassert_eq!(params.p1.y, p3.y);\n\n";
+        code += "\tassert_eq!(p1.x, p3.x);\n";
+        code += "\tassert_eq!(p1.y, p3.y);\n\n";
         index += 1;
     }
 
@@ -135,8 +129,6 @@ fn main() {
         index += 1;
     }
 
-    code += "\tlet mut params = SyscallSecp256r1AddParams { p1: &mut p1, p2: &p2 };\n";
-
     let initial_index = index;
     while let Some((p1, p2, p3)) = get_secp256r1_add_test_data(index - initial_index) {
         code += &format!(
@@ -153,16 +145,14 @@ fn main() {
         let p2_y: [u64; 4] = p2[4..8].try_into().unwrap();
         code +=
             &format!("\tlet p2 = SyscallPoint256 {{\n\t\tx: {p2_x:?},\n\t\ty: {p2_y:?}\n\t}};\n");
-        code += "\tparams.p1 = &mut p1;\n";
-        code += "\tparams.p2 = &p2;\n";
-        code += "\tsyscall_secp256r1_add(&mut params);\n";
+        code += "\tsyscall_secp256r1_add(&mut p1, &p2);\n";
 
         let p3_x: [u64; 4] = p3[0..4].try_into().unwrap();
         let p3_y: [u64; 4] = p3[4..8].try_into().unwrap();
         code +=
             &format!("\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n");
-        code += "\tassert_eq!(params.p1.x, p3.x);\n";
-        code += "\tassert_eq!(params.p1.y, p3.y);\n\n";
+        code += "\tassert_eq!(p1.x, p3.x);\n";
+        code += "\tassert_eq!(p1.y, p3.y);\n\n";
         index += 1;
     }
 
@@ -188,7 +178,6 @@ fn main() {
         index += 1;
     }
 
-    code += "\tlet mut params = SyscallBn254CurveAddParams { p1: &mut p1, p2: &p2 };\n";
     let initial_index = index;
     while let Some((p1, p2, p3)) = get_bn254_curve_add_test_data(index - initial_index) {
         code += &format!(
@@ -205,16 +194,14 @@ fn main() {
         let p2_y: [u64; 4] = p2[4..8].try_into().unwrap();
         code +=
             &format!("\tlet p2 = SyscallPoint256 {{\n\t\tx: {p2_x:?},\n\t\ty: {p2_y:?}\n\t}};\n");
-        code += "\tparams.p1 = &mut p1;\n";
-        code += "\tparams.p2 = &p2;\n";
-        code += "\tsyscall_bn254_curve_add(&mut params);\n";
+        code += "\tsyscall_bn254_curve_add(&mut p1, &p2);\n";
 
         let p3_x: [u64; 4] = p3[0..4].try_into().unwrap();
         let p3_y: [u64; 4] = p3[4..8].try_into().unwrap();
         code +=
             &format!("\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n");
-        code += "\tassert_eq!(params.p1.x, p3.x);\n";
-        code += "\tassert_eq!(params.p1.y, p3.y);\n\n";
+        code += "\tassert_eq!(p1.x, p3.x);\n";
+        code += "\tassert_eq!(p1.y, p3.y);\n\n";
         index += 1;
     }
 
@@ -240,9 +227,6 @@ fn main() {
         index += 1;
     }
 
-    code += "\tlet mut f1 = SyscallComplex256 { x: [0,0,0,0], y: [0,0,0,0] };\n";
-    code += "\tlet f2 = SyscallComplex256 { x: [0,0,0,0], y: [0,0,0,0] };\n";
-    code += "\tlet mut params = SyscallBn254ComplexAddParams { f1: &mut f1, f2: &f2 };\n";
     let initial_index = index;
     while let Some((f1, f2, f3)) = get_bn254_complex_add_test_data(index - initial_index) {
         code += &format!(
@@ -259,20 +243,17 @@ fn main() {
         let f2_y: [u64; 4] = f2[4..8].try_into().unwrap();
         code +=
             &format!("\tlet f2 = SyscallComplex256 {{\n\t\tx: {f2_x:?},\n\t\ty: {f2_y:?}\n\t}};\n");
-        code += "\tparams.f1 = &mut f1;\n";
-        code += "\tparams.f2 = &f2;\n";
-        code += "\tsyscall_bn254_complex_add(&mut params);\n";
+        code += "\tsyscall_bn254_complex_add(&mut f1, &f2);\n";
 
         let f3_x: [u64; 4] = f3[0..4].try_into().unwrap();
         let f3_y: [u64; 4] = f3[4..8].try_into().unwrap();
         code +=
             &format!("\tlet f3 = SyscallComplex256 {{\n\t\tx: {f3_x:?},\n\t\ty: {f3_y:?}\n\t}};\n");
-        code += "\tassert_eq!(params.f1.x, f3.x);\n";
-        code += "\tassert_eq!(params.f1.y, f3.y);\n\n";
+        code += "\tassert_eq!(f1.x, f3.x);\n";
+        code += "\tassert_eq!(f1.y, f3.y);\n\n";
         index += 1;
     }
 
-    code += "\tlet mut params = SyscallBn254ComplexSubParams { f1: &mut f1, f2: &f2 };\n";
     let initial_index = index;
     while let Some((f1, f2, f3)) = get_bn254_complex_sub_test_data(index - initial_index) {
         code += &format!(
@@ -289,20 +270,17 @@ fn main() {
         let f2_y: [u64; 4] = f2[4..8].try_into().unwrap();
         code +=
             &format!("\tlet f2 = SyscallComplex256 {{\n\t\tx: {f2_x:?},\n\t\ty: {f2_y:?}\n\t}};\n");
-        code += "\tparams.f1 = &mut f1;\n";
-        code += "\tparams.f2 = &f2;\n";
-        code += "\tsyscall_bn254_complex_sub(&mut params);\n";
+        code += "\tsyscall_bn254_complex_sub(&mut f1, &f2);\n";
 
         let f3_x: [u64; 4] = f3[0..4].try_into().unwrap();
         let f3_y: [u64; 4] = f3[4..8].try_into().unwrap();
         code +=
             &format!("\tlet f3 = SyscallComplex256 {{\n\t\tx: {f3_x:?},\n\t\ty: {f3_y:?}\n\t}};\n");
-        code += "\tassert_eq!(params.f1.x, f3.x);\n";
-        code += "\tassert_eq!(params.f1.y, f3.y);\n\n";
+        code += "\tassert_eq!(f1.x, f3.x);\n";
+        code += "\tassert_eq!(f1.y, f3.y);\n\n";
         index += 1;
     }
 
-    code += "\tlet mut params = SyscallBn254ComplexMulParams { f1: &mut f1, f2: &f2 };\n";
     let initial_index = index;
     while let Some((f1, f2, f3)) = get_bn254_complex_mul_test_data(index - initial_index) {
         code += &format!(
@@ -319,16 +297,14 @@ fn main() {
         let f2_y: [u64; 4] = f2[4..8].try_into().unwrap();
         code +=
             &format!("\tlet f2 = SyscallComplex256 {{\n\t\tx: {f2_x:?},\n\t\ty: {f2_y:?}\n\t}};\n");
-        code += "\tparams.f1 = &mut f1;\n";
-        code += "\tparams.f2 = &f2;\n";
-        code += "\tsyscall_bn254_complex_mul(&mut params);\n";
+        code += "\tsyscall_bn254_complex_mul(&mut f1, &f2);\n";
 
         let f3_x: [u64; 4] = f3[0..4].try_into().unwrap();
         let f3_y: [u64; 4] = f3[4..8].try_into().unwrap();
         code +=
             &format!("\tlet f3 = SyscallComplex256 {{\n\t\tx: {f3_x:?},\n\t\ty: {f3_y:?}\n\t}};\n");
-        code += "\tassert_eq!(params.f1.x, f3.x);\n";
-        code += "\tassert_eq!(params.f1.y, f3.y);\n\n";
+        code += "\tassert_eq!(f1.x, f3.x);\n";
+        code += "\tassert_eq!(f1.y, f3.y);\n\n";
         index += 1;
     }
 

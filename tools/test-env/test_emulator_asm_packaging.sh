@@ -78,7 +78,7 @@ ln -s "$REPO/emulator-asm" "$SANDBOX/emulator-asm"
 ln -s "$REPO/lib-c"        "$SANDBOX/lib-c"
 ln -s "$REPO/ziskup"       "$SANDBOX/ziskup"
 
-( cd "$SANDBOX" && export TARGET="" PLATFORM_NAME="linux" ARCH="amd64" && eval "$SCRIPT" ) \
+( cd "$SANDBOX" && export TARGET="" PLATFORM_NAME="linux" ARCH="amd64" SETUP_VERSION="test" && eval "$SCRIPT" ) \
   || fail "release.yml 'Copy binaries' step failed to execute"
 DIST="$SANDBOX/zisk-dist"
 [[ -f "$DIST/bin/libziskc.a" ]] \

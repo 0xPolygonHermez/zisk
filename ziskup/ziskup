@@ -439,6 +439,8 @@ main() {
 
       step "Downloading ZisK ${ZISK_VERSION} version..."
       ensure download "${BIN_ARCHIVE_URL}" "${tmp}"
+      # Written by releases that name their keys after setup/Cargo.toml's setup_version.
+      rm -f "${ZISK_DIR}/setup_version"
 
       step "Installing ZisK ${ZISK_VERSION} version..."
       # --no-same-owner: tar(1) honors the archive's UID/GID when extractor is
@@ -516,7 +518,7 @@ EOF
   # Install the proving/verify key setup. Strip any leading 'v' — ZISK_VERSION
   # carries the tag form (e.g. "v0.17.0") but key tarballs are named with the
   # bare semver ("zisk-provingkey-0.17.0.tar.gz").
-  SETUP_VERSION="${ZISK_VERSION#v}"
+  SETUP_VERSION="$(cat "${ZISK_DIR}/setup_version" 2>/dev/null || echo "${ZISK_VERSION#v}")"
   case "${SETUP_KEY}" in
     proving)
       install_setup "proving" 1
@@ -1088,6 +1090,7 @@ uninstall_command() {
     esac
   fi
 
+  rm -f "$ZISK_DIR/setup_version"
   rm -f "$(bundle_path)"
 
   # Try rmdir — succeeds only if dir is empty. If operator put extra files
@@ -1144,7 +1147,7 @@ setup_snark_command() {
   ZISK_VERSION=$("${CARGO_ZISK}" --version | awk '{print $2}')
 
   # Parse version to get setup version
-  SETUP_VERSION="${ZISK_VERSION#v}"
+  SETUP_VERSION="$(cat "${ZISK_DIR}/setup_version" 2>/dev/null || echo "${ZISK_VERSION#v}")"
 
   step "Installing SNARK proving key for ZisK version ${ZISK_VERSION}..."
 

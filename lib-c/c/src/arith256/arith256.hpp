@@ -32,6 +32,18 @@ int Arith256Mod (
     uint64_t * d // 4 x 64 bits
 );
 
+// Computes d = (a * b + c) mod module like Arith256Mod(), but only for the moduli it has
+// precomputed constants for (the secp256k1 and BN254 base and scalar fields, and the Starknet
+// field) and a, b, c < module, which covers almost all calls; returns 0 if it computed d, or -1,
+// leaving d untouched, otherwise
+int Arith256ModFast (
+    const uint64_t * a,  // 4 x 64 bits
+    const uint64_t * b,  // 4 x 64 bits
+    const uint64_t * c,  // 4 x 64 bits
+    const uint64_t * module,  // 4 x 64 bits
+    uint64_t * d // 4 x 64 bits
+);
+
 int FastArith256(
     const uint64_t * _a,  // 4 x 64 bits (input: a)
     const uint64_t * _b,  // 4 x 64 bits (input: b)

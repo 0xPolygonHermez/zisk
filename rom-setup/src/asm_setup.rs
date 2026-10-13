@@ -6,7 +6,7 @@ use std::{
 };
 use zisk_common::ZiskPaths;
 use zisk_core::{is_elf_file, AsmGenerationMethod};
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use crate::get_elf_data_hash;
 use crate::get_elf_data_hash_from_path;
@@ -287,7 +287,7 @@ pub fn generate_assembly(
     ] {
         let asm_file = file.with_extension("asm");
         // Convert the ELF file to Zisk format and generates an assembly file
-        let rv2zk = Riscv2zisk::new(elf);
+        let rv2zk = ZiskTranspiler::new(elf);
         let asm_file_str =
             asm_file.to_str().context("Failed to convert asm_file path to string")?;
         rv2zk

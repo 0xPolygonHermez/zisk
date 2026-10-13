@@ -32,7 +32,7 @@ use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
 use zisk_precomp_hints::HintsProcessor;
 use zisk_rom_setup::{generate_assembly, get_output_path};
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use anyhow::Result;
 
@@ -342,7 +342,7 @@ impl ProverEngine for AsmProver {
         let program_vk = ensure_program_vk(&pctx, elf)?;
 
         // Generate Zisk ROM from ELF
-        let rv2zk = Riscv2zisk::new(elf.elf());
+        let rv2zk = ZiskTranspiler::new(elf.elf());
         let zisk_rom = rv2zk.run().map_err(|e| anyhow::anyhow!(e.to_string()))?;
         let zisk_rom = Arc::new(zisk_rom);
 
@@ -774,6 +774,7 @@ impl AsmCoreProver {
         cpu_mops: bool,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
+        zisk_setup::check_setup_version(&proving_key)?;
         let proofman = ProofMan::new(proving_key.clone(), options.clone())
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 

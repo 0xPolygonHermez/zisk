@@ -33,6 +33,11 @@ use zisk_precomp_hints::HintsProcessor;
 
 use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
 
+/// Virtual tables ZisK counts itself: the frops, whose collectors tally them during the witness.
+/// Mirrors `ARITH_FROPS_TABLE_ID` and friends in `pil/opids.pil`; kept here rather than imported so
+/// this file does not depend on a state-machine crate for three integers.
+const FROPS_TABLE_IDS: [u64; 3] = [5010, 5011, 5012];
+
 /// ASM-specific configuration options
 #[derive(Clone, Default)]
 pub struct AsmOptions {
@@ -168,10 +173,36 @@ impl BackendProverOpts {
             options.packed();
         }
 
+        // The three frops tables stay with the state machines: their collectors count them during
+        // the witness and hand them to `std`. Declaring them is what makes the rest the prover's --
+        // a virtual table it cannot derive now fails the setup rather than falling back to the
+        // witness, which is the same cost as counting it but with nobody asking for it.
+        options.std_owned_tables(FROPS_TABLE_IDS.to_vec());
+
+        // Airs whose witness a GPU kernel writes on the device, deleting their
+        // per-instance trace upload (Keccakf: 912 MiB packed at 2^21 rows). On by
+        // default; ZISK_GPU_WITNESS=0 takes the host path, which is the only way
+        // back if a kernel ever disagrees with the CPU.
+        //
+        // Packed GPU runs only: the kernels emit packed cm1, so proofman refuses the
+        // declaration otherwise.
+        let gpu_witness_airs = if options.gpu
+            && options.packed
+            && std::env::var("ZISK_GPU_WITNESS").map(|v| v != "0").unwrap_or(true)
+        {
+            zisk_executor::gpu_witness::gpu_witness_airs()
+        } else {
+            Vec::new()
+        };
+
         // Packed traces need packed_info, with Main in compact (indexed) form. `options.packed`
         // is the single source of truth, read by the executor's row-type gate too.
         if options.packed {
             options.packed_info(get_packed_info());
+        }
+
+        if !gpu_witness_airs.is_empty() {
+            options.gpu_witness_airs(gpu_witness_airs);
         }
 
         options.verbose_mode(self.verbose.into());

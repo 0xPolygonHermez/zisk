@@ -53,5 +53,41 @@
   },
   "Main": {
     "hasCompressor": true
+  },
+  "BinaryLarge": {
+    "hasCompressor": true
+  },
+  "Arith256XLarge": {
+    "hasCompressor": true
+  },
+  "BinaryHuge": {
+    "hasCompressor": true
+  },
+  "MemAlignLarge": {
+    "hasCompressor": true
+  },
+  "Dma64AlignedLarge": {
+    "hasCompressor": true
+  },
+  "ArithSecp256K1Large": {
+    "hasCompressor": true
+  },
+  "ArithBn254": {
+    "hasCompressor": true
+  },
+  "BinaryAddHiHuge": {
+    "hasCompressor": true
+  },
+  "ArithBn254Large": {
+    "hasCompressor": true
+  },
+  "BinaryExtensionLarge": {
+    "hasCompressor": true
+  },
+  "ArithEq384Large": {
+    "hasCompressor": true
+  },
+  "ArithEqLarge": {
+    "hasCompressor": true
   }
 }

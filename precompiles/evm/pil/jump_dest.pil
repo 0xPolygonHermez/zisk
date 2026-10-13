@@ -197,8 +197,9 @@ airtemplate JumpDest(int N = 2**21,                         // Rows of instance
     // ─────────────────────────────────────────────────────────────────────────────────────────────
     // sel                          1 → the block is active. Latched for the whole block
     //                                  @[sel_latch], can only go off right after a sequence closed
-    //                                  @[sel_fall] and never comes back @[sel_prefix]. While off
-    //                                  the row touches no bus @[sel_binary]
+    //                                  @[sel_fall] and never comes back @[sel_prefix]. Only the
+    //                                  last segment may end idle @[sel_last]. While off the row
+    //                                  touches no bus @[sel_binary]
     // ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
     // seq_end                      1 → last row of a sequence, only on LAST_CLOCK, and only on a
     //                                  row in use. Past it the continuation values are zeroed
@@ -290,22 +291,33 @@ airtemplate JumpDest(int N = 2**21,                         // Rows of instance
     (1 - FIRST_CLOCK) * (sel - 'sel) === 0;                      // latched inside the block @[sel_latch]
 
     // sel is a non-empty prefix of the instance: it starts on, can only go off right after a
-    // sequence closed, and never comes back.
+    // sequence closed, and never comes back. On every segment but the last the prefix is the whole
+    // instance.
     //
     // The first row must be active. The transitions below are NOT gated by sel, so an all-idle
-    // instance would still run them, and with its lookups gone bytes_used would be free up to the
-    // bits(4) bound — it would forward an arbitrarily decremented count to the next segment and
-    // truncate a sequence in it. @[sel_l1]
+    // instance would still run them, and with its lookups gone bytes_used would be free (bits(4) is
+    // a witness hint, not a constraint) — it would forward an arbitrarily decremented count to the
+    // next segment and truncate a sequence in it. @[sel_l1]
     //
     // Without @[sel_fall] a block could drop out mid sequence, and with its lookups gone bytes_used,
     // state and bitmap_byte would be free. Without @[sel_prefix] a sequence could start on an idle
     // predecessor, leaving seq_start at 0: no EXTRA_PARAMS read and no proves_operation, yet the
     // mstore of every block still firing.
     //
+    // Without @[sel_last] an idle tail on a segment that is not the last would put seq_end = 0 on
+    // the continuation bus together with the values of its idle LAST row, where count, src64,
+    // main_step, state and dst64 are all free: the transitions run on idle rows but nothing pins
+    // their start, and dst64 is not chained there at all. The next segment has sel forced on by
+    // @[sel_l1] and seq_start = 0, so it would continue a sequence that never started: no
+    // EXTRA_PARAMS read, no proves_operation, and one mstore per block at a prover-chosen address
+    // and step. The planner cuts segments at the full AIR size, so only the last one has idle rows
+    // and the honest witness always satisfies this.
+    //
     // seq_end is contained in sel, so ('sel - 'seq_end) is binary and both stay at degree 2.
     L1 * (1 - sel) === 0;                                        // @[sel_l1]
     (1 - L1) * (1 - sel) * ('sel - 'seq_end) === 0;              // @[sel_fall]
     (1 - L1) * sel * (1 - 'sel) === 0;                           // @[sel_prefix]
+    (1 - is_last_segment) * LAST * (1 - sel) === 0;              // @[sel_last]
 
     // First row of an active sequence: the seq_end carried from the previous row (from the previous
     // segment on L1), gated by sel so an idle block starts nothing. Note this is not simply the
@@ -502,6 +514,26 @@ airtemplate JumpDest(int N = 2**21,                         // Rows of instance
     // at end of sequence the number the count must be zero.
     seq_end * (count - total_bytes_used) === 0;
 
+    // Every active block consumes at least one byte: its first op cannot claim bytes_used = 0.
+    // @[block_not_empty]
+    //
+    // The two constraints above make a sequence consume exactly count bytes, but they never force
+    // it to close when count reaches zero on a block boundary. With count a multiple of 64 the last
+    // full word may take the (8 -> 33) reading of the bitmap table and leave seq_end at 0, and one
+    // more block follows: every op in state 33, nothing loaded, nothing consumed, and the LAST_CLOCK
+    // constraint then forces seq_end with count = 0 = total_bytes_used. That block still fires its
+    // mstore and writes a zero word one past the bitmap buffer. The same tail can be built from a
+    // pending state through the bytes_used = 0 rows of the table. Only the first op of the block
+    // needs checking: once an op consumes less than 8 the state is 33 and the rest consume 0, so a
+    // block whose first op consumes nothing consumes nothing at all.
+    //
+    // count > 0 is a precondition of the call, so every block of an honest sequence opens with at
+    // least one byte left and the check never rejects a valid witness. bytes_used[0] is already
+    // bound to [0, 8] by the bitmap lookup on the same rows, so checking bytes_used[0] - 1 against
+    // [0, 255] excludes exactly zero; that range is the one mem_align_byte already uses, cheaper
+    // than a dedicated [0, 7] one. FIRST_CLOCK * sel is binary.
+    range_check(expression: bytes_used[0] - 1, min: 0, max: 0xFF, sel: FIRST_CLOCK * sel);
+
     // If previous row was a seq_end, start with new dst/src addresses, else increment by ops_selected
     assert(ROWS_X_BLOCK > 1);
 
@@ -538,8 +570,10 @@ airtemplate JumpDest(int N = 2**21,                         // Rows of instance
     // sequence could run past the end of its bytecode: once state reaches 33 every bytes_used is 0,
     // count would stop moving and never go negative, and each extra block would keep writing its
     // bitmap word further into memory. With it, such a block has total_bytes_used = 0 and no seq_end,
-    // which is exactly what that constraint forbids; the other way out, claiming 8 bytes for words
-    // past the end, drives count negative and lands here.
+    // which is exactly what that constraint forbids — except when count reached zero on the block
+    // boundary, where seq_end is allowed and one empty block would pass; @[block_not_empty] closes
+    // that. The other way out, claiming 8 bytes for words past the end, drives count negative and
+    // lands here.
 
     airval last_count_chunk[2];
     range_check(expression: last_count_chunk[0], min: 0, max: 2**16-1);
@@ -548,13 +582,17 @@ airtemplate JumpDest(int N = 2**21,                         // Rows of instance
 
     // The chain has to end with every sequence closed. On the last segment nothing is sent to the
     // continuation bus, so an instance that simply runs out of rows mid sequence would leave the
-    // bitmap half written with nothing to notice. The three legal endings all have count at zero:
-    // LAST is the seq_end row (segment_last_count is zeroed by the constraint above), LAST belongs
-    // to an inactive block (count reached zero at the seq_end and stays), or there is no last
-    // segment to check.
-    // An open sequence cannot fake it: count is chained from the EXTRA_PARAMS read, and the block
-    // where it would reach zero is already forced to close.
-    is_last_segment * segment_last_count === 0;
+    // bitmap half written with nothing to notice. So the LAST row of the last segment is either
+    // idle or the seq_end row of the last sequence. The other segments need no check: their LAST
+    // row is active by @[sel_last] and hands whatever is open to the next one. seq_end is
+    // contained in sel, so (sel - seq_end) is binary. @[last_closed]
+    //
+    // Checking segment_last_count === 0 here instead is not enough, because count is what remains
+    // *before* the row runs: an active LAST row without seq_end may hold count = 0 and still
+    // consume 8 * op_x_row bytes, as the LAST_CLOCK constraint forces on it. That is a sequence
+    // one row short of a full last block landing on the last block of the instance, and the words
+    // it claims past the end of its bytecode feed the bitmap word it writes.
+    is_last_segment * LAST * (sel - seq_end) === 0;
 
     proves_operation(op: OP_JUMP_DEST,
                      a: [dst64 * 8, 0],

@@ -23,7 +23,7 @@ pil2-pilout = { workspace = true }
 pil2-stark-recurser = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-proofman-verifier = { workspace = true }
+proofman-verifier = { workspace = true, default-features = true }
 proofman-fields = { workspace = true }
 zisk-verifier = { workspace = true }
 tracing = { workspace = true }

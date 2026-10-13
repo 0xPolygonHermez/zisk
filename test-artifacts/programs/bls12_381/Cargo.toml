@@ -6,8 +6,8 @@ edition.workspace = true
 [dependencies]
 ziskos.workspace = true
 
-# The ziskasm zisklib bindings (flat ABI, redirected to hand-written .zisk
-# routines at transpile time). Only linked for the `ziskasm` backend build.
+# The ziskasm zisklib bindings (zkvmcall thunks to the hand-written .zisk
+# routines). Only linked for the `ziskasm` backend build.
 zisklib = { path = "../../../ziskasm/lang/rust", optional = true }
 
 [features]

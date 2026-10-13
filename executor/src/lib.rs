@@ -9,6 +9,7 @@ mod bus;
 mod error;
 mod execution;
 mod executor;
+pub mod gpu_witness;
 mod plan;
 mod ports;
 mod sm;

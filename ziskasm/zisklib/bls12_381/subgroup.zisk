@@ -1,6 +1,6 @@
 ; ============================================================================
 ; bls12_381/subgroup.zisk - G1/G2 subgroup membership (EIP-2537). GENERATED
-; (scratchpad/gen_bls_subgroup.py). G1: ((x^2-1)/3)(2σP-P-σ^2P)==σ^2P.
+; (scripts/legacy/gen_bls_subgroup.py). G1: ((x^2-1)/3)(2σP-P-σ^2P)==σ^2P.
 ; G2: x·ψ^3(P)+P==ψ^2(P).  Prefix lsg_.
 ; ============================================================================
 
@@ -32,96 +32,1184 @@ u64 BLS_SG2_LHS[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 ; void zisklib_sub_complete_bls12_381(const u64* p1, const u64* p2, u64* result)  [12,12,12]
 zisklib_sub_complete_bls12_381:
 	push r1
-	copyb(0, BLS_SGP) -> r5
-	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, r10) -> [BLS_SGP]
+	copyb(0, r12) -> [BLS_SGR]
 	copyb(0, BLS_SGR) -> r5
-	copyb(r5, r12) -> 8[a + 0]
 	copyb(0, r11) -> r10
 	copyb(0, BLS_SG1_NEG) -> r11
 	call zisklib_neg_bls12_381
-	copyb(0, BLS_SGP) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [BLS_SGP]) -> r10
 	copyb(0, BLS_SG1_NEG) -> r11
-	copyb(0, BLS_SGR) -> r12
-	copyb(r12, 8[a + 0]) -> r12
+	copyb(0, [BLS_SGR]) -> r12
 	call zisklib_add_complete_bls12_381
 	pop r1
 	ret
 
 ; void zisklib_scalar_mul_by_x2div3_complete_bls12_381(const u64* p, u64* result)  [12,12]
+u64 BLS_SG1_PS[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 zisklib_scalar_mul_by_x2div3_complete_bls12_381:
 	push r1
-	copyb(0, BLS_SGP) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_SGR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, BLS_SGP) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, r10) -> [BLS_SGP]
+	copyb(0, r11) -> [BLS_SGR]
+	dma_xmemcmp(r10, BLS_G1_IDENTITY) -> r5, j(96, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BLS_G1_IDENTITY) -> r11
 	copyb(0, 12) -> r12
-	call bn254_eqn
 	eq(r10, 0), j(lsg_x2_go)
-	copyb(0, BLS_SGP) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_SG1_T) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
+	copyb(0, [BLS_SGP]) -> r5
+	dma_xmemcpy(BLS_SG1_T, r5) -> r5, j(96, 4)
+	copyb(0, [BLS_SGR]) -> r5
+	dma_xmemcpy(r5, BLS_SG1_T) -> r5, j(96, 4)
 	copyb(0, BLS_SG1_T) -> r10
-	copyb(0, BLS_SGR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
+	copyb(0, [BLS_SGR]) -> r11
 	pop r1
 	ret
 lsg_x2_go:
-	copyb(0, BLS_SGP) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_SG1_R) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
-	copyb(0, 1) -> r13
-lsg_x2_loop:
-	eq(r13, 126), j(lsg_x2_done)
-	copyb(0, BLS_SG1_R) -> r10
-	copyb(0, BLS_SG1_R2) -> r11
-	call zisklib_dbl_complete_bls12_381
-	copyb(0, BLS_SG1_R2) -> r10
-	copyb(0, BLS_SG1_R) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_X2DIV3_BE) -> r5
-	sll(r13, 3) -> r6
-	add(r5, r6) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	eq(r6, 0), j(lsg_x2_next)
-	copyb(0, BLS_SG1_R) -> r10
-	copyb(0, BLS_SGP) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, BLS_SG1_R2) -> r12
-	call zisklib_add_complete_bls12_381
-	copyb(0, BLS_SG1_R2) -> r10
-	copyb(0, BLS_SG1_R) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
-lsg_x2_next:
-	add(r13, 1) -> r13
-	jump(lsg_x2_loop)
-lsg_x2_done:
-	copyb(0, BLS_SG1_R) -> r10
-	copyb(0, BLS_SGR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
+	copyb(0, [BLS_SGP]) -> r5
+	dma_xmemcpy(BLS_SG1_PS, r5) -> r5, j(96, 4)
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	ltu(0, r15), j(lsx_d1)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d1:
+	ltu(0, r15), j(lsx_i1)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x1)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n1:
+	ltu(0, r15), j(lsx_d2)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d2:
+	ltu(0, r15), j(lsx_i2)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x2)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n2:
+	ltu(0, r15), j(lsx_d3)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d3:
+	ltu(0, r15), j(lsx_d4)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d4:
+	ltu(0, r15), j(lsx_d5)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d5:
+	ltu(0, r15), j(lsx_i5)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x5)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n5:
+	ltu(0, r15), j(lsx_d6)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d6:
+	ltu(0, r15), j(lsx_d7)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d7:
+	ltu(0, r15), j(lsx_i7)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x7)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n7:
+	ltu(0, r15), j(lsx_d8)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d8:
+	ltu(0, r15), j(lsx_i8)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x8)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n8:
+	ltu(0, r15), j(lsx_d9)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d9:
+	ltu(0, r15), j(lsx_d10)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d10:
+	ltu(0, r15), j(lsx_i10)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x10)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n10:
+	ltu(0, r15), j(lsx_d11)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d11:
+	ltu(0, r15), j(lsx_i11)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x11)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n11:
+	ltu(0, r15), j(lsx_d12)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d12:
+	ltu(0, r15), j(lsx_d13)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d13:
+	ltu(0, r15), j(lsx_d14)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d14:
+	ltu(0, r15), j(lsx_i14)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x14)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n14:
+	ltu(0, r15), j(lsx_d15)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d15:
+	ltu(0, r15), j(lsx_d16)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d16:
+	ltu(0, r15), j(lsx_d17)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d17:
+	ltu(0, r15), j(lsx_d18)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d18:
+	ltu(0, r15), j(lsx_i18)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x18)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n18:
+	ltu(0, r15), j(lsx_d19)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d19:
+	ltu(0, r15), j(lsx_i19)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x19)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n19:
+	ltu(0, r15), j(lsx_d20)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d20:
+	ltu(0, r15), j(lsx_d21)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d21:
+	ltu(0, r15), j(lsx_d22)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d22:
+	ltu(0, r15), j(lsx_d23)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d23:
+	ltu(0, r15), j(lsx_d24)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d24:
+	ltu(0, r15), j(lsx_d25)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d25:
+	ltu(0, r15), j(lsx_d26)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d26:
+	ltu(0, r15), j(lsx_d27)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d27:
+	ltu(0, r15), j(lsx_d28)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d28:
+	ltu(0, r15), j(lsx_d29)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d29:
+	ltu(0, r15), j(lsx_d30)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d30:
+	ltu(0, r15), j(lsx_d31)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d31:
+	ltu(0, r15), j(lsx_i31)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x31)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n31:
+	ltu(0, r15), j(lsx_d32)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d32:
+	ltu(0, r15), j(lsx_d33)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d33:
+	ltu(0, r15), j(lsx_i33)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x33)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n33:
+	ltu(0, r15), j(lsx_d34)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d34:
+	ltu(0, r15), j(lsx_d35)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d35:
+	ltu(0, r15), j(lsx_i35)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x35)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n35:
+	ltu(0, r15), j(lsx_d36)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d36:
+	ltu(0, r15), j(lsx_d37)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d37:
+	ltu(0, r15), j(lsx_i37)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x37)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n37:
+	ltu(0, r15), j(lsx_d38)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d38:
+	ltu(0, r15), j(lsx_d39)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d39:
+	ltu(0, r15), j(lsx_i39)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x39)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n39:
+	ltu(0, r15), j(lsx_d40)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d40:
+	ltu(0, r15), j(lsx_d41)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d41:
+	ltu(0, r15), j(lsx_i41)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x41)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n41:
+	ltu(0, r15), j(lsx_d42)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d42:
+	ltu(0, r15), j(lsx_d43)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d43:
+	ltu(0, r15), j(lsx_i43)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x43)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n43:
+	ltu(0, r15), j(lsx_d44)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d44:
+	ltu(0, r15), j(lsx_d45)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d45:
+	ltu(0, r15), j(lsx_i45)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x45)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n45:
+	ltu(0, r15), j(lsx_d46)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d46:
+	ltu(0, r15), j(lsx_i46)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x46)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n46:
+	ltu(0, r15), j(lsx_d47)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d47:
+	ltu(0, r15), j(lsx_i47)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x47)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n47:
+	ltu(0, r15), j(lsx_d48)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d48:
+	ltu(0, r15), j(lsx_i48)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x48)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n48:
+	ltu(0, r15), j(lsx_d49)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d49:
+	ltu(0, r15), j(lsx_d50)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d50:
+	ltu(0, r15), j(lsx_d51)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d51:
+	ltu(0, r15), j(lsx_d52)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d52:
+	ltu(0, r15), j(lsx_d53)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d53:
+	ltu(0, r15), j(lsx_i53)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x53)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n53:
+	ltu(0, r15), j(lsx_d54)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d54:
+	ltu(0, r15), j(lsx_d55)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d55:
+	ltu(0, r15), j(lsx_i55)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x55)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n55:
+	ltu(0, r15), j(lsx_d56)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d56:
+	ltu(0, r15), j(lsx_d57)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d57:
+	ltu(0, r15), j(lsx_i57)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x57)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n57:
+	ltu(0, r15), j(lsx_d58)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d58:
+	ltu(0, r15), j(lsx_d59)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d59:
+	ltu(0, r15), j(lsx_i59)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x59)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n59:
+	ltu(0, r15), j(lsx_d60)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d60:
+	ltu(0, r15), j(lsx_i60)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x60)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n60:
+	ltu(0, r15), j(lsx_d61)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d61:
+	ltu(0, r15), j(lsx_d62)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d62:
+	ltu(0, r15), j(lsx_d63)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d63:
+	ltu(0, r15), j(lsx_d64)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d64:
+	ltu(0, r15), j(lsx_d65)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d65:
+	ltu(0, r15), j(lsx_d66)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d66:
+	ltu(0, r15), j(lsx_d67)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d67:
+	ltu(0, r15), j(lsx_d68)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d68:
+	ltu(0, r15), j(lsx_d69)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d69:
+	ltu(0, r15), j(lsx_d70)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d70:
+	ltu(0, r15), j(lsx_d71)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d71:
+	ltu(0, r15), j(lsx_d72)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d72:
+	ltu(0, r15), j(lsx_d73)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d73:
+	ltu(0, r15), j(lsx_d74)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d74:
+	ltu(0, r15), j(lsx_d75)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d75:
+	ltu(0, r15), j(lsx_d76)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d76:
+	ltu(0, r15), j(lsx_d77)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d77:
+	ltu(0, r15), j(lsx_d78)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d78:
+	ltu(0, r15), j(lsx_d79)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d79:
+	ltu(0, r15), j(lsx_d80)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d80:
+	ltu(0, r15), j(lsx_d81)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d81:
+	ltu(0, r15), j(lsx_d82)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d82:
+	ltu(0, r15), j(lsx_d83)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d83:
+	ltu(0, r15), j(lsx_d84)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d84:
+	ltu(0, r15), j(lsx_d85)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d85:
+	ltu(0, r15), j(lsx_d86)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d86:
+	ltu(0, r15), j(lsx_d87)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d87:
+	ltu(0, r15), j(lsx_d88)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d88:
+	ltu(0, r15), j(lsx_d89)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d89:
+	ltu(0, r15), j(lsx_d90)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d90:
+	ltu(0, r15), j(lsx_d91)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d91:
+	ltu(0, r15), j(lsx_d92)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d92:
+	ltu(0, r15), j(lsx_d93)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d93:
+	ltu(0, r15), j(lsx_d94)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d94:
+	ltu(0, r15), j(lsx_d95)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d95:
+	ltu(0, r15), j(lsx_i95)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x95)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n95:
+	ltu(0, r15), j(lsx_d96)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d96:
+	ltu(0, r15), j(lsx_d97)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d97:
+	ltu(0, r15), j(lsx_i97)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x97)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n97:
+	ltu(0, r15), j(lsx_d98)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d98:
+	ltu(0, r15), j(lsx_d99)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d99:
+	ltu(0, r15), j(lsx_i99)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x99)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n99:
+	ltu(0, r15), j(lsx_d100)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d100:
+	ltu(0, r15), j(lsx_d101)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d101:
+	ltu(0, r15), j(lsx_i101)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x101)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n101:
+	ltu(0, r15), j(lsx_d102)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d102:
+	ltu(0, r15), j(lsx_d103)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d103:
+	ltu(0, r15), j(lsx_i103)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x103)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n103:
+	ltu(0, r15), j(lsx_d104)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d104:
+	ltu(0, r15), j(lsx_d105)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d105:
+	ltu(0, r15), j(lsx_i105)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x105)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n105:
+	ltu(0, r15), j(lsx_d106)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d106:
+	ltu(0, r15), j(lsx_d107)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d107:
+	ltu(0, r15), j(lsx_i107)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x107)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n107:
+	ltu(0, r15), j(lsx_d108)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d108:
+	ltu(0, r15), j(lsx_d109)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d109:
+	ltu(0, r15), j(lsx_i109)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x109)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n109:
+	ltu(0, r15), j(lsx_d110)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d110:
+	ltu(0, r15), j(lsx_d111)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d111:
+	ltu(0, r15), j(lsx_i111)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x111)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n111:
+	ltu(0, r15), j(lsx_d112)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d112:
+	ltu(0, r15), j(lsx_d113)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d113:
+	ltu(0, r15), j(lsx_i113)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x113)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n113:
+	ltu(0, r15), j(lsx_d114)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d114:
+	ltu(0, r15), j(lsx_d115)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d115:
+	ltu(0, r15), j(lsx_i115)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x115)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n115:
+	ltu(0, r15), j(lsx_d116)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d116:
+	ltu(0, r15), j(lsx_d117)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d117:
+	ltu(0, r15), j(lsx_i117)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x117)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n117:
+	ltu(0, r15), j(lsx_d118)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d118:
+	ltu(0, r15), j(lsx_d119)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d119:
+	ltu(0, r15), j(lsx_i119)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x119)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n119:
+	ltu(0, r15), j(lsx_d120)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d120:
+	ltu(0, r15), j(lsx_d121)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d121:
+	ltu(0, r15), j(lsx_i121)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x121)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n121:
+	ltu(0, r15), j(lsx_d122)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d122:
+	ltu(0, r15), j(lsx_d123)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d123:
+	ltu(0, r15), j(lsx_i123)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x123)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n123:
+	ltu(0, r15), j(lsx_d124)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d124:
+	ltu(0, r15), j(lsx_d125)
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+lsx_d125:
+	ltu(0, r15), j(lsx_i125)
+	dma_xmemcmp(BLS_SG1_R, BLS_SG1_PS) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_x125)
+	bls12_381_curve_add(BLS_SG1_R, BLS_SG1_PS)
+lsx_n125:
+	copyb(0, [BLS_SGR]) -> r5
+	dma_xmemcpy(r5, BLS_SG1_R) -> r5, j(96, 4)
 	pop r1
 	ret
+lsx_i1:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n1)
+lsx_x1:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y1)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n1)
+lsx_y1:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n1)
+lsx_i2:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n2)
+lsx_x2:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y2)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n2)
+lsx_y2:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n2)
+lsx_i5:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n5)
+lsx_x5:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y5)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n5)
+lsx_y5:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n5)
+lsx_i7:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n7)
+lsx_x7:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y7)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n7)
+lsx_y7:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n7)
+lsx_i8:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n8)
+lsx_x8:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y8)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n8)
+lsx_y8:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n8)
+lsx_i10:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n10)
+lsx_x10:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y10)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n10)
+lsx_y10:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n10)
+lsx_i11:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n11)
+lsx_x11:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y11)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n11)
+lsx_y11:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n11)
+lsx_i14:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n14)
+lsx_x14:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y14)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n14)
+lsx_y14:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n14)
+lsx_i18:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n18)
+lsx_x18:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y18)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n18)
+lsx_y18:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n18)
+lsx_i19:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n19)
+lsx_x19:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y19)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n19)
+lsx_y19:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n19)
+lsx_i31:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n31)
+lsx_x31:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y31)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n31)
+lsx_y31:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n31)
+lsx_i33:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n33)
+lsx_x33:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y33)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n33)
+lsx_y33:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n33)
+lsx_i35:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n35)
+lsx_x35:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y35)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n35)
+lsx_y35:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n35)
+lsx_i37:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n37)
+lsx_x37:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y37)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n37)
+lsx_y37:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n37)
+lsx_i39:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n39)
+lsx_x39:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y39)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n39)
+lsx_y39:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n39)
+lsx_i41:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n41)
+lsx_x41:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y41)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n41)
+lsx_y41:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n41)
+lsx_i43:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n43)
+lsx_x43:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y43)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n43)
+lsx_y43:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n43)
+lsx_i45:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n45)
+lsx_x45:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y45)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n45)
+lsx_y45:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n45)
+lsx_i46:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n46)
+lsx_x46:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y46)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n46)
+lsx_y46:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n46)
+lsx_i47:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n47)
+lsx_x47:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y47)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n47)
+lsx_y47:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n47)
+lsx_i48:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n48)
+lsx_x48:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y48)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n48)
+lsx_y48:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n48)
+lsx_i53:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n53)
+lsx_x53:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y53)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n53)
+lsx_y53:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n53)
+lsx_i55:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n55)
+lsx_x55:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y55)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n55)
+lsx_y55:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n55)
+lsx_i57:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n57)
+lsx_x57:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y57)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n57)
+lsx_y57:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n57)
+lsx_i59:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n59)
+lsx_x59:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y59)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n59)
+lsx_y59:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n59)
+lsx_i60:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n60)
+lsx_x60:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y60)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n60)
+lsx_y60:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n60)
+lsx_i95:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n95)
+lsx_x95:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y95)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n95)
+lsx_y95:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n95)
+lsx_i97:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n97)
+lsx_x97:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y97)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n97)
+lsx_y97:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n97)
+lsx_i99:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n99)
+lsx_x99:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y99)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n99)
+lsx_y99:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n99)
+lsx_i101:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n101)
+lsx_x101:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y101)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n101)
+lsx_y101:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n101)
+lsx_i103:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n103)
+lsx_x103:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y103)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n103)
+lsx_y103:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n103)
+lsx_i105:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n105)
+lsx_x105:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y105)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n105)
+lsx_y105:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n105)
+lsx_i107:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n107)
+lsx_x107:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y107)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n107)
+lsx_y107:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n107)
+lsx_i109:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n109)
+lsx_x109:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y109)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n109)
+lsx_y109:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n109)
+lsx_i111:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n111)
+lsx_x111:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y111)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n111)
+lsx_y111:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n111)
+lsx_i113:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n113)
+lsx_x113:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y113)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n113)
+lsx_y113:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n113)
+lsx_i115:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n115)
+lsx_x115:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y115)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n115)
+lsx_y115:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n115)
+lsx_i117:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n117)
+lsx_x117:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y117)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n117)
+lsx_y117:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n117)
+lsx_i119:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n119)
+lsx_x119:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y119)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n119)
+lsx_y119:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n119)
+lsx_i121:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n121)
+lsx_x121:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y121)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n121)
+lsx_y121:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n121)
+lsx_i123:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n123)
+lsx_x123:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y123)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n123)
+lsx_y123:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n123)
+lsx_i125:
+	dma_xmemcpy(BLS_SG1_R, BLS_SG1_PS) -> r5, j(96, 4)
+	copyb(0, 0) -> r15
+	jump(lsx_n125)
+lsx_x125:
+	dma_xmemcmp(BLS_SG1_R + 48, BLS_SG1_PS + 48) -> r5, j(48, 4)
+	eq(r5, 0), j(lsx_y125)
+	copyb(0, 1) -> r15
+	dma_xmemset(BLS_SG1_R, 96) -> r5, j(0, 4)
+	jump(lsx_n125)
+lsx_y125:
+	bls12_381_curve_dbl(0, BLS_SG1_R)
+	jump(lsx_n125)
 
 ; u64 zisklib_is_on_subgroup_bls12_381(const u64* p)  [r10=p] -> r10 (1/0)
 zisklib_is_on_subgroup_bls12_381:
 	push r1
+	copyb(0, r10) -> [BLS_SGP]
 	copyb(0, BLS_SGP) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_SGP) -> r10
-	copyb(r10, 8[a + 0]) -> r10
 	copyb(0, BLS_SG1_S1) -> r11
 	call zisklib_sigma_endomorphism_bls12_381
 	copyb(0, BLS_SG1_S1) -> r10
@@ -131,169 +1219,129 @@ zisklib_is_on_subgroup_bls12_381:
 	copyb(0, BLS_SG1_LHS) -> r11
 	call zisklib_dbl_complete_bls12_381
 	copyb(0, BLS_SG1_LHS) -> r10
-	copyb(0, BLS_SGP) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [BLS_SGP]) -> r11
 	copyb(0, BLS_SG1_T) -> r12
 	call zisklib_sub_complete_bls12_381
-	copyb(0, BLS_SG1_T) -> r10
-	copyb(0, BLS_SG1_LHS) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(BLS_SG1_LHS, BLS_SG1_T) -> r5, j(96, 4)
 	copyb(0, BLS_SG1_LHS) -> r10
 	copyb(0, BLS_SG1_S2) -> r11
 	copyb(0, BLS_SG1_T) -> r12
 	call zisklib_sub_complete_bls12_381
-	copyb(0, BLS_SG1_T) -> r10
-	copyb(0, BLS_SG1_LHS) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
+	dma_xmemcpy(BLS_SG1_LHS, BLS_SG1_T) -> r5, j(96, 4)
 	copyb(0, BLS_SG1_LHS) -> r10
 	copyb(0, BLS_SG1_T) -> r11
+	copyb(0, 12) -> r12
 	call zisklib_scalar_mul_by_x2div3_complete_bls12_381
-	copyb(0, BLS_SG1_T) -> r10
+	dma_xmemcmp(BLS_SG1_T, BLS_SG1_S2) -> r5, j(96, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BLS_SG1_S2) -> r11
 	copyb(0, 12) -> r12
-	call bn254_eqn
 	pop r1
 	ret
 
 ; void zisklib_utf_endomorphism_twist_bls12_381(const u64* p, u64* result)  [24,24]
 zisklib_utf_endomorphism_twist_bls12_381:
 	push r1
-	copyb(0, BLS_SGR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, r10) -> r5
-	copyb(0, BLS_SGP) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_SGP) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_SG2_XA) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_SGP) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 96) -> r10
-	copyb(0, BLS_SG2_YA) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_SG2_XA) -> r10
-	copyb(0, BLS_EXT_U_INV) -> r11
-	copyb(0, BLS_SG2_XB) -> r12
-	call zisklib_mul_fp2_bls12_381
-	copyb(0, BLS_SG2_YA) -> r10
-	copyb(0, BLS_EXT_U_INV) -> r11
-	copyb(0, BLS_SG2_YB) -> r12
-	call zisklib_mul_fp2_bls12_381
+	copyb(0, r11) -> [BLS_SGR]
+	copyb(0, r10) -> [BLS_SGP]
+	dma_xmemcpy(BLS_SG2_XA, r10) -> r5, j(96, 4)
+	add(r10, 96) -> r5
+	dma_xmemcpy(BLS_SG2_YA, r5) -> r5, j(96, 4)
+	dma_xmemcpy(BLS_SG2_XB, BLS_SG2_XA) -> r5, j(96, 4)
+	bls12_381_complex_mul(BLS_SG2_XB, BLS_EXT_U_INV)
+	dma_xmemcpy(BLS_SG2_YB, BLS_SG2_YA) -> r5, j(96, 4)
+	bls12_381_complex_mul(BLS_SG2_YB, BLS_EXT_U_INV)
 	copyb(0, BLS_SG2_XB) -> r10
 	copyb(0, BLS_SG2_XA) -> r11
+	copyb(0, BLS_SG2_YB) -> r12
 	call zisklib_conjugate_fp2_bls12_381
-	copyb(0, BLS_SG2_XA) -> r10
-	copyb(0, BLS_FROBENIUS_GAMMA14) -> r11
-	copyb(0, BLS_SG2_XB) -> r12
-	call zisklib_scalar_mul_fp2_bls12_381
+	dma_xmemcpy(BLS_F2_SB, BLS_FROBENIUS_GAMMA14) -> r5, j(48, 4)
+	dma_xmemcpy(BLS_SG2_XB, BLS_SG2_XA) -> r5, j(96, 4)
+	bls12_381_complex_mul(BLS_SG2_XB, BLS_F2_SB)
 	copyb(0, BLS_SG2_YB) -> r10
 	copyb(0, BLS_SG2_YA) -> r11
+	copyb(0, BLS_SG2_XB) -> r12
 	call zisklib_conjugate_fp2_bls12_381
+	dma_xmemcpy(BLS_SG2_YB, BLS_SG2_YA) -> r5, j(96, 4)
+	bls12_381_complex_mul(BLS_SG2_YB, BLS_FROBENIUS_GAMMA13)
+	dma_xmemcpy(BLS_SG2_XA, BLS_SG2_XB) -> r5, j(96, 4)
+	bls12_381_complex_mul(BLS_SG2_XA, BLS_XI)
+	dma_xmemcpy(BLS_SG2_YA, BLS_SG2_YB) -> r5, j(96, 4)
+	bls12_381_complex_mul(BLS_SG2_YA, BLS_XI)
+	copyb(0, [BLS_SGR]) -> r5
+	dma_xmemcpy(r5, BLS_SG2_XA) -> r5, j(96, 4)
+	add([BLS_SGR], 96) -> r5
+	dma_xmemcpy(r5, BLS_SG2_YA) -> r5, j(96, 4)
 	copyb(0, BLS_SG2_YA) -> r10
-	copyb(0, BLS_FROBENIUS_GAMMA13) -> r11
-	copyb(0, BLS_SG2_YB) -> r12
-	call zisklib_mul_fp2_bls12_381
-	copyb(0, BLS_SG2_XB) -> r10
-	copyb(0, BLS_XI) -> r11
-	copyb(0, BLS_SG2_XA) -> r12
-	call zisklib_mul_fp2_bls12_381
-	copyb(0, BLS_SG2_YB) -> r10
-	copyb(0, BLS_XI) -> r11
-	copyb(0, BLS_SG2_YA) -> r12
-	call zisklib_mul_fp2_bls12_381
-	copyb(0, BLS_SG2_XA) -> r10
-	copyb(0, BLS_SGR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	add([BLS_SGR], 96) -> r11
 	copyb(0, 12) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_SG2_YA) -> r10
-	copyb(0, BLS_SGR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	add(r11, 96) -> r11
-	copyb(0, 12) -> r12
-	call bn254_memcpy
 	pop r1
 	ret
 
 ; void zisklib_scalar_mul_by_abs_x_complete_twist_bls12_381(const u64* p, u64* result)  [24,24]
 zisklib_scalar_mul_by_abs_x_complete_twist_bls12_381:
 	push r1
-	copyb(0, BLS_SGP) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_SGR) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, BLS_SGP) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, r10) -> [BLS_SGP]
+	copyb(0, r11) -> [BLS_SGR]
+	dma_xmemcmp(r10, BLS_G2_IDENTITY) -> r5, j(192, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BLS_G2_IDENTITY) -> r11
 	copyb(0, 24) -> r12
-	call bn254_eqn
 	eq(r10, 0), j(lsg_ax_go)
-	copyb(0, BLS_SGP) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_SG2_R) -> r11
-	copyb(0, 24) -> r12
-	call bn254_memcpy
+	copyb(0, [BLS_SGP]) -> r5
+	dma_xmemcpy(BLS_SG2_R, r5) -> r5, j(192, 4)
+	copyb(0, [BLS_SGR]) -> r5
+	dma_xmemcpy(r5, BLS_SG2_R) -> r5, j(192, 4)
 	copyb(0, BLS_SG2_R) -> r10
-	copyb(0, BLS_SGR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, 24) -> r12
-	call bn254_memcpy
+	copyb(0, [BLS_SGR]) -> r11
 	pop r1
 	ret
 lsg_ax_go:
-	copyb(0, BLS_SGP) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [BLS_SGP]) -> r5
+	dma_xmemcpy(BLS_SG2_R, r5) -> r5, j(192, 4)
+	copyb(0, [BLS_SGP]) -> r10
 	copyb(0, BLS_SG2_R) -> r11
 	copyb(0, 24) -> r12
-	call bn254_memcpy
 	copyb(0, 1) -> r13
 lsg_ax_loop:
 	eq(r13, 64), j(lsg_ax_done)
 	copyb(0, BLS_SG2_R) -> r10
 	copyb(0, BLS_SG2_R2) -> r11
 	call zisklib_dbl_complete_twist_bls12_381
-	copyb(0, BLS_SG2_R2) -> r10
-	copyb(0, BLS_SG2_R) -> r11
-	copyb(0, 24) -> r12
-	call bn254_memcpy
-	copyb(0, BLS_XABS_BE) -> r5
+	dma_xmemcpy(BLS_SG2_R, BLS_SG2_R2) -> r5, j(192, 4)
 	sll(r13, 3) -> r6
+	copyb(0, BLS_XABS_BE) -> r5
 	add(r5, r6) -> r5
 	copyb(r5, 8[a + 0]) -> r6
-	eq(r6, 0), j(lsg_ax_next)
-	copyb(0, BLS_SG2_R) -> r10
-	copyb(0, BLS_SGP) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, BLS_SG2_R2) -> r12
-	call zisklib_add_complete_twist_bls12_381
 	copyb(0, BLS_SG2_R2) -> r10
 	copyb(0, BLS_SG2_R) -> r11
 	copyb(0, 24) -> r12
-	call bn254_memcpy
+	eq(r6, 0), j(lsg_ax_next)
+	copyb(0, BLS_SG2_R) -> r10
+	copyb(0, [BLS_SGP]) -> r11
+	copyb(0, BLS_SG2_R2) -> r12
+	call zisklib_add_complete_twist_bls12_381
+	dma_xmemcpy(BLS_SG2_R, BLS_SG2_R2) -> r5, j(192, 4)
+	copyb(0, BLS_SG2_R2) -> r10
+	copyb(0, BLS_SG2_R) -> r11
+	copyb(0, 24) -> r12
 lsg_ax_next:
 	add(r13, 1) -> r13
 	jump(lsg_ax_loop)
 lsg_ax_done:
+	copyb(0, [BLS_SGR]) -> r5
+	dma_xmemcpy(r5, BLS_SG2_R) -> r5, j(192, 4)
 	copyb(0, BLS_SG2_R) -> r10
-	copyb(0, BLS_SGR) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [BLS_SGR]) -> r11
 	copyb(0, 24) -> r12
-	call bn254_memcpy
 	pop r1
 	ret
 
 ; u64 zisklib_is_on_subgroup_twist_bls12_381(const u64* p)  [r10=p] -> r10 (1/0)
 zisklib_is_on_subgroup_twist_bls12_381:
 	push r1
+	copyb(0, r10) -> [BLS_SGP2]
 	copyb(0, BLS_SGP2) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BLS_SGP2) -> r10
-	copyb(r10, 8[a + 0]) -> r10
 	copyb(0, BLS_SG2_U1) -> r11
 	call zisklib_utf_endomorphism_twist_bls12_381
 	copyb(0, BLS_SG2_U1) -> r10
@@ -309,14 +1357,13 @@ zisklib_is_on_subgroup_twist_bls12_381:
 	copyb(0, BLS_SG2_LHS) -> r11
 	call zisklib_neg_twist_bls12_381
 	copyb(0, BLS_SG2_LHS) -> r10
-	copyb(0, BLS_SGP2) -> r11
-	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, [BLS_SGP2]) -> r11
 	copyb(0, BLS_SG2_R) -> r12
 	call zisklib_add_complete_twist_bls12_381
-	copyb(0, BLS_SG2_R) -> r10
+	dma_xmemcmp(BLS_SG2_R, BLS_SG2_U2) -> r5, j(192, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BLS_SG2_U2) -> r11
 	copyb(0, 24) -> r12
-	call bn254_eqn
 	pop r1
 	ret
 

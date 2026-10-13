@@ -29,15 +29,12 @@ u64 PC_RES[48]= 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 ;   [r10=g1 (8·n u64), r11=g2 (16·n u64), r12=n] -> r10 = status code.
 zisklib_pairing_check_bn254:
 	push r1
-	copyb(0, PC_G1) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, PC_G2) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, PC_N) -> r5
-	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, r10) -> [PC_G1]
+	copyb(0, r11) -> [PC_G2]
+	copyb(0, r12) -> [PC_N]
 	; f = 1
+	copyb(0, 1) -> [PC_F]
 	copyb(0, PC_F) -> r5
-	copyb(r5, 1) -> 8[a + 0]
 	copyb(0, 1) -> r6
 pc_finit:
 	eq(r6, 48), j(pc_finit_done)
@@ -47,42 +44,35 @@ pc_finit:
 	add(r6, 1) -> r6
 	jump(pc_finit)
 pc_finit_done:
-	copyb(0, PC_CONTRIB) -> r5
-	copyb(r5, 0) -> 8[a + 0]
+	call zisklib_ml_batch_reset_bn254
+	copyb(0, 0) -> [PC_CONTRIB]
+	copyb(0, 0) -> [PC_I]
 	copyb(0, PC_I) -> r5
-	copyb(r5, 0) -> 8[a + 0]
 pc_loop:
 	; i < n ?
-	copyb(0, PC_I) -> r5
-	copyb(r5, 8[a + 0]) -> r13
 	copyb(0, PC_N) -> r5
-	copyb(r5, 8[a + 0]) -> r14
+	copyb(0, [PC_I]) -> r13
+	copyb(0, [PC_N]) -> r14
 	ltu(r13, r14), j(pc_body)
 	jump(pc_finish)
 pc_body:
 	; p_i = g1 + i*64 ; q_i = g2 + i*128
-	copyb(0, PC_G1) -> r5
-	copyb(r5, 8[a + 0]) -> r5
 	sll(r13, 6) -> r6
+	copyb(0, [PC_G1]) -> r5
 	add(r5, r6) -> r5
-	copyb(0, PC_PI) -> r6
-	copyb(r6, r5) -> 8[a + 0]
-	copyb(0, PC_G2) -> r5
-	copyb(r5, 8[a + 0]) -> r5
+	copyb(0, r5) -> [PC_PI]
 	sll(r13, 7) -> r6
+	copyb(0, [PC_G2]) -> r5
 	add(r5, r6) -> r5
-	copyb(0, PC_QI) -> r6
-	copyb(r6, r5) -> 8[a + 0]
+	copyb(0, r5) -> [PC_QI]
 	; --- canonical G1: x<P and y<P ---
-	copyb(0, PC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, PC_QI) -> r6
+	copyb(0, [PC_PI]) -> r10
 	copyb(0, BN_P) -> r11
 	copyb(0, 4) -> r12
 	call bn254_ltn
 	eq(r10, 0), j(pc_err_g1canon)
-	copyb(0, PC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 32) -> r10
+	add([PC_PI], 32) -> r10
 	copyb(0, BN_P) -> r11
 	copyb(0, 4) -> r12
 	call bn254_ltn
@@ -91,9 +81,8 @@ pc_body:
 	copyb(0, 0) -> r13
 pc_g2canon:
 	eq(r13, 4), j(pc_g2canon_ok)
-	copyb(0, PC_QI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
 	sll(r13, 5) -> r6
+	copyb(0, [PC_QI]) -> r10
 	add(r10, r6) -> r10
 	copyb(0, BN_P) -> r11
 	copyb(0, 4) -> r12
@@ -107,85 +96,71 @@ pc_g2canon_ok:
 	;     Canonical checks above run unconditionally (as in the reference); the
 	;     non-identity point's curve/subgroup checks must still run when the other
 	;     point is the identity, so guard each point's checks by its OWN flag. ---
-	copyb(0, PC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BN_G1_IDENTITY) -> r11
-	copyb(0, 8) -> r12
-	call bn254_eqn
-	copyb(0, PC_G1INF) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, PC_QI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BN_G2_IDENTITY) -> r11
-	copyb(0, 16) -> r12
-	call bn254_eqn
-	copyb(0, PC_G2INF) -> r5
-	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, [PC_PI]) -> r5
+	dma_xmemcmp(r5, BN_G1_IDENTITY) -> r5, j(64, 4)
+	eq(r5, 0) -> r10
+	copyb(0, r10) -> [PC_G1INF]
+	copyb(0, [PC_QI]) -> r5
+	dma_xmemcmp(r5, BN_G2_IDENTITY) -> r5, j(128, 4)
+	eq(r5, 0) -> r10
+	copyb(0, r10) -> [PC_G2INF]
 	; --- on-curve G1 unless P_i is the identity ---
 	copyb(0, PC_G1INF) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [PC_G1INF]) -> r6
+	copyb(0, BN_G2_IDENTITY) -> r11
+	copyb(0, 16) -> r12
 	ltu(0, r6), j(pc_after_g1)
-	copyb(0, PC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [PC_PI]) -> r10
 	call zisklib_is_on_curve_bn254
 	eq(r10, 0), j(pc_err_g1curve)
 pc_after_g1:
 	; --- on-curve twist G2 + subgroup G2 unless Q_i is the identity ---
 	copyb(0, PC_G2INF) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [PC_G2INF]) -> r6
 	ltu(0, r6), j(pc_after_g2)
-	copyb(0, PC_QI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [PC_QI]) -> r10
 	call zisklib_is_on_curve_twist_bn254
 	eq(r10, 0), j(pc_err_g2curve)
-	copyb(0, PC_QI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [PC_QI]) -> r10
 	call zisklib_is_on_subgroup_twist_bn254
 	eq(r10, 0), j(pc_err_g2sub)
 pc_after_g2:
 	; --- Miller loop only when BOTH points are non-identity ---
 	copyb(0, PC_G1INF) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [PC_G1INF]) -> r6
 	ltu(0, r6), j(pc_next)
 	copyb(0, PC_G2INF) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [PC_G2INF]) -> r6
 	ltu(0, r6), j(pc_next)
 	; mi = miller(p_i, q_i) ; f = f * mi
-	copyb(0, PC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, PC_QI) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, PC_MI) -> r12
-	call zisklib_miller_loop_bn254
-	copyb(0, PC_F) -> r10
-	copyb(0, PC_MI) -> r11
-	copyb(0, PC_F) -> r12
-	call zisklib_mul_fp12_bn254
+	copyb(0, [PC_PI]) -> r10
+	copyb(0, [PC_QI]) -> r11
+	call zisklib_ml_batch_push_bn254
 	; contrib++
+	add([PC_CONTRIB], 1) -> r6
+	copyb(0, r6) -> [PC_CONTRIB]
 	copyb(0, PC_CONTRIB) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	add(r6, 1) -> r6
-	copyb(r5, r6) -> 8[a + 0]
 pc_next:
+	add([PC_I], 1) -> r6
+	copyb(0, r6) -> [PC_I]
 	copyb(0, PC_I) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	add(r6, 1) -> r6
-	copyb(r5, r6) -> 8[a + 0]
 	jump(pc_loop)
 pc_finish:
 	; if contrib == 0 -> product is 1 -> accept
 	copyb(0, PC_CONTRIB) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [PC_CONTRIB]) -> r6
 	eq(r6, 0), j(pc_accept)
-	; res = final_exp(f)
+	; f = product of the batched Miller loops ; res = final_exp(f)
+	copyb(0, PC_F) -> r10
+	call zisklib_ml_batch_finish_bn254
 	copyb(0, PC_F) -> r10
 	copyb(0, PC_RES) -> r11
 	call zisklib_final_exp_bn254
 	; is_one(res) ?
-	copyb(0, PC_RES) -> r10
+	dma_xmemcmp(PC_RES, BN_ONE12) -> r5, j(384, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BN_ONE12) -> r11
 	copyb(0, 48) -> r12
-	call bn254_eqn
 	ltu(0, r10), j(pc_accept)
 	copyb(0, 1) -> r10
 	pop r1

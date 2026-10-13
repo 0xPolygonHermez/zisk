@@ -30,15 +30,12 @@ u64 LPC_RES[72]= 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
 ;   [r10=g1 (12·n u64), r11=g2 (24·n u64), r12=n] -> r10 = status code.
 zisklib_pairing_check_bls12_381:
 	push r1
-	copyb(0, LPC_G1) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, LPC_G2) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, LPC_N) -> r5
-	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, r10) -> [LPC_G1]
+	copyb(0, r11) -> [LPC_G2]
+	copyb(0, r12) -> [LPC_N]
 	; f = 1
+	copyb(0, 1) -> [LPC_F]
 	copyb(0, LPC_F) -> r5
-	copyb(r5, 1) -> 8[a + 0]
 	copyb(0, 1) -> r6
 lpc_finit:
 	eq(r6, 72), j(lpc_finit_done)
@@ -48,94 +45,79 @@ lpc_finit:
 	add(r6, 1) -> r6
 	jump(lpc_finit)
 lpc_finit_done:
-	copyb(0, LPC_CONTRIB) -> r5
-	copyb(r5, 0) -> 8[a + 0]
+	call zisklib_ml_batch_reset_bls12_381
+	copyb(0, 0) -> [LPC_CONTRIB]
+	copyb(0, 0) -> [LPC_I]
 	copyb(0, LPC_I) -> r5
-	copyb(r5, 0) -> 8[a + 0]
 lpc_loop:
-	copyb(0, LPC_I) -> r5
-	copyb(r5, 8[a + 0]) -> r13
 	copyb(0, LPC_N) -> r5
-	copyb(r5, 8[a + 0]) -> r14
+	copyb(0, [LPC_I]) -> r13
+	copyb(0, [LPC_N]) -> r14
 	ltu(r13, r14), j(lpc_body)
 	jump(lpc_finish)
 lpc_body:
 	; p_i = g1 + i*96 ; q_i = g2 + i*192
-	copyb(0, LPC_G1) -> r5
-	copyb(r5, 8[a + 0]) -> r5
 	sll(r13, 6) -> r6
 	sll(r13, 5) -> r7
 	add(r6, r7) -> r6
+	copyb(0, [LPC_G1]) -> r5
 	add(r5, r6) -> r5
-	copyb(0, LPC_PI) -> r6
-	copyb(r6, r5) -> 8[a + 0]
-	copyb(0, LPC_G2) -> r5
-	copyb(r5, 8[a + 0]) -> r5
+	copyb(0, r5) -> [LPC_PI]
 	sll(r13, 7) -> r6
 	sll(r13, 6) -> r7
 	add(r6, r7) -> r6
+	copyb(0, [LPC_G2]) -> r5
 	add(r5, r6) -> r5
-	copyb(0, LPC_QI) -> r6
-	copyb(r6, r5) -> 8[a + 0]
+	copyb(0, r5) -> [LPC_QI]
 	; --- identity flags: g1inf = (P_i == G1_IDENTITY), g2inf = (Q_i == G2_IDENTITY) ---
-	copyb(0, LPC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_G1_IDENTITY) -> r11
-	copyb(0, 12) -> r12
-	call bn254_eqn
-	copyb(0, LPC_G1INF) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, LPC_QI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, BLS_G2_IDENTITY) -> r11
-	copyb(0, 24) -> r12
-	call bn254_eqn
-	copyb(0, LPC_G2INF) -> r5
-	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, [LPC_PI]) -> r5
+	dma_xmemcmp(r5, BLS_G1_IDENTITY) -> r5, j(96, 4)
+	eq(r5, 0) -> r10
+	copyb(0, r10) -> [LPC_G1INF]
+	copyb(0, [LPC_QI]) -> r5
+	dma_xmemcmp(r5, BLS_G2_IDENTITY) -> r5, j(192, 4)
+	eq(r5, 0) -> r10
+	copyb(0, r10) -> [LPC_G2INF]
 	; --- validate G1 (canonical, on-curve, subgroup) UNLESS P_i is the identity. The
 	;     reference validates the non-identity point even when the other is identity,
 	;     so e.g. a malformed G2 paired with G1=identity must still be rejected. ---
 	copyb(0, LPC_G1INF) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [LPC_G1INF]) -> r6
+	copyb(0, BLS_G2_IDENTITY) -> r11
+	copyb(0, 24) -> r12
 	ltu(0, r6), j(lpc_after_g1)
 	; canonical G1: x<P and y<P (6 limbs each)
-	copyb(0, LPC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [LPC_PI]) -> r10
 	copyb(0, BLS_P) -> r11
 	copyb(0, 6) -> r12
 	call bn254_ltn
 	eq(r10, 0), j(lpc_err_g1canon)
-	copyb(0, LPC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	add(r10, 48) -> r10
+	add([LPC_PI], 48) -> r10
 	copyb(0, BLS_P) -> r11
 	copyb(0, 6) -> r12
 	call bn254_ltn
 	eq(r10, 0), j(lpc_err_g1canon)
 	; on-curve G1
-	copyb(0, LPC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [LPC_PI]) -> r10
 	call zisklib_is_on_curve_bls12_381
 	eq(r10, 0), j(lpc_err_g1curve)
 	; subgroup G1
-	copyb(0, LPC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [LPC_PI]) -> r10
 	call zisklib_is_on_subgroup_bls12_381
 	eq(r10, 0), j(lpc_err_g1sub)
 lpc_after_g1:
 	; --- validate G2 (canonical, on-curve twist, subgroup) UNLESS Q_i is the identity ---
 	copyb(0, LPC_G2INF) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [LPC_G2INF]) -> r6
 	ltu(0, r6), j(lpc_after_g2)
 	; canonical G2: 4 coords < P
 	copyb(0, 0) -> r13
 lpc_g2canon:
 	eq(r13, 4), j(lpc_g2canon_ok)
-	copyb(0, LPC_QI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
 	sll(r13, 5) -> r6
 	sll(r13, 4) -> r7
 	add(r6, r7) -> r6
+	copyb(0, [LPC_QI]) -> r10
 	add(r10, r6) -> r10
 	copyb(0, BLS_P) -> r11
 	copyb(0, 6) -> r12
@@ -145,60 +127,51 @@ lpc_g2canon:
 	jump(lpc_g2canon)
 lpc_g2canon_ok:
 	; on-curve twist G2
-	copyb(0, LPC_QI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [LPC_QI]) -> r10
 	call zisklib_is_on_curve_twist_bls12_381
 	eq(r10, 0), j(lpc_err_g2curve)
 	; subgroup G2
-	copyb(0, LPC_QI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, [LPC_QI]) -> r10
 	call zisklib_is_on_subgroup_twist_bls12_381
 	eq(r10, 0), j(lpc_err_g2sub)
 lpc_after_g2:
 	; --- Miller loop only when BOTH points are non-identity (else the pair
 	;     contributes 1 and is skipped) ---
 	copyb(0, LPC_G1INF) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [LPC_G1INF]) -> r6
 	ltu(0, r6), j(lpc_next)
 	copyb(0, LPC_G2INF) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [LPC_G2INF]) -> r6
 	ltu(0, r6), j(lpc_next)
 	; mi = miller(p_i, q_i) ; f = f * mi
-	copyb(0, LPC_PI) -> r10
-	copyb(r10, 8[a + 0]) -> r10
-	copyb(0, LPC_QI) -> r11
-	copyb(r11, 8[a + 0]) -> r11
-	copyb(0, LPC_MI) -> r12
-	call zisklib_miller_loop_bls12_381
-	copyb(0, LPC_F) -> r10
-	copyb(0, LPC_MI) -> r11
-	copyb(0, LPC_F) -> r12
-	call zisklib_mul_fp12_bls12_381
+	copyb(0, [LPC_PI]) -> r10
+	copyb(0, [LPC_QI]) -> r11
+	call zisklib_ml_batch_push_bls12_381
 	; contrib++
+	add([LPC_CONTRIB], 1) -> r6
+	copyb(0, r6) -> [LPC_CONTRIB]
 	copyb(0, LPC_CONTRIB) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	add(r6, 1) -> r6
-	copyb(r5, r6) -> 8[a + 0]
 lpc_next:
+	add([LPC_I], 1) -> r6
+	copyb(0, r6) -> [LPC_I]
 	copyb(0, LPC_I) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	add(r6, 1) -> r6
-	copyb(r5, r6) -> 8[a + 0]
 	jump(lpc_loop)
 lpc_finish:
 	; if contrib == 0 -> product is 1 -> accept
 	copyb(0, LPC_CONTRIB) -> r5
-	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, [LPC_CONTRIB]) -> r6
 	eq(r6, 0), j(lpc_accept)
-	; res = final_exp(f)
+	; f = product of the batched Miller loops ; res = final_exp(f)
+	copyb(0, LPC_F) -> r10
+	call zisklib_ml_batch_finish_bls12_381
 	copyb(0, LPC_F) -> r10
 	copyb(0, LPC_RES) -> r11
 	call zisklib_final_exp_bls12_381
 	; is_one(res) ?
-	copyb(0, LPC_RES) -> r10
+	dma_xmemcmp(LPC_RES, BLS_ONE72) -> r5, j(576, 4)
+	eq(r5, 0) -> r10
 	copyb(0, BLS_ONE72) -> r11
 	copyb(0, 72) -> r12
-	call bn254_eqn
 	ltu(0, r10), j(lpc_accept)
 	copyb(0, 1) -> r10
 	pop r1

@@ -25,8 +25,9 @@ const INST_SIZE: i64 = 4;
 
 /// Container magic tag.
 const MAGIC: &[u8; 4] = b"ZKRM";
-/// Container format version.
-const VERSION: u8 = 1;
+/// Container format version. 2: r32..r39 are main-trace registers (`SRC_REG` /
+/// `STORE_REG`), where version 1 ROMs address them as RAM; see ziskbin.md §8.
+const VERSION: u8 = 2;
 /// Private ELF machine id marking a ziskbin ELF ("ZK").
 pub const EM_ZISK: u16 = 0x5a4b;
 /// Section name holding the ROM container blob.
@@ -437,7 +438,10 @@ pub fn decode_rom(blob: &[u8]) -> Result<ZiskRom, String> {
     }
     let version = r.u8()?;
     if version != VERSION {
-        return Err(format!("ziskbin: unsupported version {version}"));
+        return Err(format!(
+            "ziskbin: unsupported version {version} (this build reads version {VERSION}); \
+             rebuild the program with `zisk2zisk --elf`"
+        ));
     }
     let _profile = r.u8()?;
     let inst_count = r.uvarint()?;
@@ -553,7 +557,7 @@ pub fn rom_to_elf(rom: &ZiskRom) -> Vec<u8> {
 /// If `elf` is a ziskbin ELF (`e_machine == EM_ZISK`), extracts and decodes the
 /// `.ziskrom` section into a [`ZiskRom`]. Returns `Ok(None)` for a non-ziskbin
 /// input, so a caller can fall through to RISC-V transpilation.
-pub fn try_elf_to_rom(elf: &[u8]) -> Result<Option<ZiskRom>, String> {
+pub fn ziskbin2rom(elf: &[u8]) -> Result<Option<ZiskRom>, String> {
     if elf.len() < 20 || elf[0..4] != [0x7f, b'E', b'L', b'F'] {
         return Ok(None);
     }
@@ -677,6 +681,15 @@ mod tests {
         let first = encode_rom(&rom);
         let second = encode_rom(&decode_rom(&first).unwrap());
         assert_eq!(first, second, "re-encoding a decoded ROM must be byte-identical");
+    }
+
+    /// A blob of an older version is refused (version 1 addressed r32..r39 as RAM).
+    #[test]
+    fn rejects_other_versions() {
+        let mut blob = encode_rom(&sample_rom());
+        blob[MAGIC.len()] = 1;
+        let err = decode_rom(&blob).unwrap_err();
+        assert!(err.contains("unsupported version 1"), "{err}");
     }
 
     /// Header for a hand-built blob with the given section/instruction counts.
@@ -804,10 +817,10 @@ mod tests {
         assert_eq!(&elf[0..4], b"\x7fELF");
         assert_eq!(u16::from_le_bytes([elf[18], elf[19]]), EM_ZISK);
 
-        let decoded = try_elf_to_rom(&elf).unwrap().expect("should be a ziskbin ELF");
+        let decoded = ziskbin2rom(&elf).unwrap().expect("should be a ziskbin ELF");
         assert_eq!(decoded.insts.len(), rom.insts.len());
 
         // A non-ziskbin buffer yields None (fall through to RISC-V).
-        assert!(try_elf_to_rom(b"not an elf").unwrap().is_none());
+        assert!(ziskbin2rom(b"not an elf").unwrap().is_none());
     }
 }

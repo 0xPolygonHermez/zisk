@@ -5,7 +5,7 @@ pub const BINARY_ADD_COST: u64 = 25;
 pub const BINARY_E_COST: u64 = 56;
 pub const ARITHA32_COST: u64 = 97;
 pub const ARITHAM32_COST: u64 = 97;
-pub const KECCAK_COST: u64 = 2652 * 29 / 2;
+pub const KECCAK_COST: u64 = 615 * 135 / 2;
 pub const SHA256_COST: u64 = 72 * 122;
 pub const POSEIDON_COST: u64 = 14 * 392;
 pub const ARITH_EQ_COST: u64 = 90 * 16;
@@ -13,9 +13,9 @@ pub const FCALL_COST: u64 = INTERNAL_COST;
 pub const ARITH_EQ_384_COST: u64 = 80 * 24;
 pub const ADD256_COST: u64 = 104;
 pub const BABYJUBJUB_COST: u64 = 107 * 16;
-pub const BLAKE2B_COST: u64 = 8 * 234;
-pub const BLAKE3_COST: u64 = 56 * 218 / 2;
-pub const BLAKE2S_COST: u64 = 80 * 112;
+pub const BLAKE2B_COST: u64 = 8 * 237;
+pub const BLAKE3_COST: u64 = 56 * 221 / 2;
+pub const BLAKE2S_COST: u64 = 80 * 115;
 pub const MAIN_COST: u64 = 68;
 
 // Zba costs. sh<n>add and slli.uw are proven natively (a single Binary / BinaryExtension

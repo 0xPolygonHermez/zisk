@@ -44,21 +44,21 @@ In some cases a general-purpose register is used to load or to store data.
 
 A register will be noted as `rN`, where N is the register number in decimal format.
 
-The maximum value of N is 31, i.e. the general-purpose registers are `r0` to `r31` (the RISC-V `x0` to `x31`).
+The general-purpose registers are `r0` to `r39`: `r0` to `r31` are the RISC-V `x0` to `x31`, and `r32` to `r39` are 8 extra registers that RISC-V code never uses.
 
 The register `r0` is always read as zero, regardless of any previous value written to it, and a store to `r0` is discarded.  This is the same behavior as RISC-V.  Note that the assembler encodes `r0` as an immediate value of 0 (`SRC_IMM`), not as `SRC_REG`.
 
-The registers `r1` to `r31` are the same as the RISC-V registers, and they are kept in the main execution trace (not in memory) in order to increase performance.
+The registers `r1` to `r39` are kept in the main execution trace (not in memory) in order to increase performance.  `r1` to `r31` are the RISC-V registers.  `r32` to `r39` are free for ZisK code: the RISC-V transpiler uses `r32` and `r33` as scratch within the expansion of one RISC-V instruction, and hand-written routines use all eight (an inline zkvmcall body may write only these, see `inline_body`).
 
 ## Virtual registers
 
-ZisK supports 32 extra virtual registers, meaning that they are transpiled as memory reads and writes into the registers area.  They are slower than regular, RISC-V-based registers, but convenient when you need temporary storage.  In oher words, `rN` with 32 <= `N` <= 63 will be interpreted as memory accesses to a system memory region dedicated to this purpose.
+ZisK supports 24 extra virtual registers, meaning that they are transpiled as memory reads and writes into the registers area.  They are slower than the main-trace registers, but convenient when you need temporary storage.  In other words, `rN` with 40 <= `N` <= 63 will be interpreted as memory accesses to a system memory region dedicated to this purpose.
 
 ## Memory format
 
 In some cases memory must be used to load or to store data.  There are several ways to specify how this memory operation is performed.
 
-The format `[N]`, where N is a literal number either in decimal format or in hexadecimal format, refers to the memory value addressed by N.
+The format `[N]`, where N is a literal number either in decimal format or in hexadecimal format, refers to the memory value addressed by N.  N can also be a symbol (a data name or a label), optionally followed by one or more `+ M` / `- M` byte offsets: `[BLOCK + 8]` is the second u64 of the data block `BLOCK`.  The same `SYMBOL ± M` form is accepted wherever a number is, e.g. as an immediate operand or a `u64` data initializer.
 
 The formats `[a + N]` and `[a - N]`, where N is a literal number in decimal format or hexadecimal format, refers to the memory value addressed by the value of the `a` register plus/minus the value of N.  The value of N is stored in the corresponding ZiskInst instance field with sign.
 
@@ -358,7 +358,7 @@ push rN
 pop rN
 ```
 
-`push`/`pop` maintain a downward-growing software stack on the stack pointer `sp` (`r2`), which the launcher (and, for a redirected library routine, the guest) initialises to a valid stack region.  Each expands to **two** ZisK instructions:
+`push`/`pop` maintain a downward-growing software stack on the stack pointer `sp` (`r2`), which the launcher (and, for a library routine called from a guest, the guest) initialises to a valid stack region.  Each expands to **two** ZisK instructions:
 
 - `push rN` → `sub(r2, 8) -> r2` then `copyb(r2, rN) -> 8[a + 0]` (decrement `sp`, store `rN` at `[sp]`).
 - `pop rN` → `copyb(r2, 8[a + 0]) -> rN` then `add(r2, 8) -> r2` (load `rN` from `[sp]`, increment `sp`).

@@ -8,8 +8,8 @@ use ziskos::zisklib::U256;
 #[cfg(not(feature = "ziskasm"))]
 use ziskos::zisklib::modexp;
 
-// `ziskasm`: call the flat binding, whose stub is redirected to the hand-written
-// `.zisk` routine during transpilation.
+// `ziskasm`: call the flat binding, a zkvmcall to the hand-written `.zisk`
+// routine.
 #[cfg(feature = "ziskasm")]
 fn modexp(base: &[U256], exp: &[u64], modulus: &[U256]) -> Vec<U256> {
     let mut out = vec![0u64; modulus.len() * 4];

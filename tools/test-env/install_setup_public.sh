@@ -10,13 +10,15 @@ main () {
 
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_SETUP_FILE || return 1
+    load_env ZISK_REPO_DIR ZISK_SETUP_FILE || return 1
 
-    # If ZISK_SETUP_FILE is not set or empty, define it using version from cargo-zisk
+    # If ZISK_SETUP_FILE is not set or empty, define it using setup_version from setup/Cargo.toml
     if [[ -z "$ZISK_SETUP_FILE" ]]; then
-        ZISK_VERSION=$(echo "$(ensure cargo-zisk --version)" | awk '{print $2}')
-        IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
-        ZISK_SETUP_FILE="zisk-provingkey-pre-${major}.${minor}.0.tar.gz"
+        SETUP_VERSION="$(sed -nE 's/^setup_version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$(get_zisk_repo_dir)/setup/Cargo.toml")"
+        [[ -n "$SETUP_VERSION" ]] || { err "could not read setup_version from setup/Cargo.toml"; return 1; }
+        # upload_setup.yml publishes "pre-$SETUP_VERSION" outside develop.
+        ZISK_SETUP_FILE="zisk-provingkey-${SETUP_VERSION}.tar.gz"
+        curl -sfI "https://storage.googleapis.com/zisk-setup/${ZISK_SETUP_FILE}" > /dev/null || ZISK_SETUP_FILE="zisk-provingkey-pre-${SETUP_VERSION}.tar.gz"
     fi
 
     info "Using setup file: ${ZISK_SETUP_FILE}"
