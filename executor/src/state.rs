@@ -42,7 +42,7 @@ pub struct ExecutionState<F: PrimeField64> {
 
     /// Seed for the next run, set together with `stdin`. `None` until the first job's
     /// inputs are set.
-    pub seed: Mutex<Option<ExecutionSeed>>,
+    seed: Mutex<Option<ExecutionSeed>>,
 
     /// Planning information for main state machines (minimal traces from emulation).
     /// `Arc<EmuTrace>` elements so the store can be filled progressively while the

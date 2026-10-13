@@ -26,7 +26,6 @@ pub(crate) struct ExecutionSummary {
     time: u64,
     steps: u64,
     cost: u64,
-    seed: Option<ExecutionSeed>,
 }
 
 impl ExecutionSummary {
@@ -35,17 +34,11 @@ impl ExecutionSummary {
             time: time.as_millis() as u64,
             steps: executor_summary.steps,
             cost: executor_summary.cost_per_type.total_cost(),
-            seed: executor_summary.seed,
         }
     }
 
-    pub fn from_remote(
-        time: Duration,
-        steps: u64,
-        cost_per_type: &StatsCostPerType,
-        seed: Option<ExecutionSeed>,
-    ) -> Self {
-        Self { time: time.as_millis() as u64, steps, cost: cost_per_type.total_cost(), seed }
+    pub fn from_remote(time: Duration, steps: u64, cost_per_type: &StatsCostPerType) -> Self {
+        Self { time: time.as_millis() as u64, steps, cost: cost_per_type.total_cost() }
     }
 }
 
@@ -211,15 +204,19 @@ pub struct ProveOutput {
 }
 
 impl ProveOutput {
-    /// Construct from a completed proof and its execution summary.
+    /// Construct from a completed proof and the execution it attests to, whose seed the proof
+    /// takes.
     pub fn new(execution: ZiskExecutorSummary, proving_time: Duration, proof: Proof) -> Self {
-        Self { summary: ExecutionSummary::new(proving_time, &execution), proof }
+        Self {
+            summary: ExecutionSummary::new(proving_time, &execution),
+            proof: proof.with_seed(execution.seed),
+        }
     }
 
     /// Construct with an empty (default) proof — used when only the execution
-    /// statistics are wanted, not a real proof.
+    /// statistics are wanted, not a real proof. The proof still carries the execution's seed.
     pub fn new_null(execution: ZiskExecutorSummary, proving_time: Duration) -> Self {
-        Self { summary: ExecutionSummary::new(proving_time, &execution), proof: Proof::default() }
+        Self::new(execution, proving_time, Proof::default())
     }
 
     /// Construct a result from a remote coordinator response (no ExecutorStatsHandle).
@@ -228,12 +225,8 @@ impl ProveOutput {
         steps: u64,
         proving_time: Duration,
         cost_per_type: StatsCostPerType,
-        seed: Option<ExecutionSeed>,
     ) -> Self {
-        Self {
-            summary: ExecutionSummary::from_remote(proving_time, steps, &cost_per_type, seed),
-            proof,
-        }
+        Self { summary: ExecutionSummary::from_remote(proving_time, steps, &cost_per_type), proof }
     }
 
     /// Proving time, in milliseconds.
@@ -251,18 +244,17 @@ impl ProveOutput {
         self.summary.cost
     }
 
-    /// Seed the proven execution ran with, needed to replay it: the one the proof carries, or the
-    /// execution's when there is no final proof on this rank. `None` for proofs that do not come
-    /// from a single execution (aggregates) or when the coordinator that ran it does not report it.
+    /// Seed the proven execution ran with, needed to replay it. `None` for proofs that do not
+    /// come from a single execution (aggregates) or when the coordinator that ran it does not
+    /// report it.
     pub fn get_seed(&self) -> Option<ExecutionSeed> {
-        self.proof.seed.or(self.summary.seed)
+        self.proof.seed
     }
 
     /// Stamp the seed of the execution the proof attests to. Wrapping a proof re-proves its
     /// statement without running the guest, so the result keeps the source proof's seed.
-    pub(crate) fn with_seed(mut self, seed: Option<ExecutionSeed>) -> Self {
-        self.proof.seed = seed;
-        self
+    pub(crate) fn with_seed(self, seed: Option<ExecutionSeed>) -> Self {
+        Self { proof: self.proof.with_seed(seed), ..self }
     }
 
     /// The generated proof.
@@ -345,6 +337,7 @@ pub struct VerifyConstraintsOutput {
     executor_time: ZiskExecutorTime,
     cost_per_type: StatsCostPerType,
     publics: PublicValues,
+    seed: Option<ExecutionSeed>,
 }
 
 impl VerifyConstraintsOutput {
@@ -356,6 +349,7 @@ impl VerifyConstraintsOutput {
             executor_time: executor_summary.executor_time,
             cost_per_type: executor_summary.cost_per_type,
             publics: PublicValues::new(publics),
+            seed: executor_summary.seed,
         }
     }
 
@@ -386,7 +380,7 @@ impl VerifyConstraintsOutput {
 
     /// Seed the execution ran with, needed to replay it.
     pub fn get_seed(&self) -> Option<ExecutionSeed> {
-        self.summary.seed
+        self.seed
     }
 }
 

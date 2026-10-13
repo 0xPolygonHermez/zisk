@@ -742,14 +742,6 @@ pub struct Proof {
     pub seed: Option<ExecutionSeed>,
 }
 
-/// The fields every serialized [`Proof`] starts with, including those written before
-/// [`Proof::seed`] existed. Must mirror the head of [`Proof`] field for field.
-#[derive(Deserialize)]
-struct ProofHead {
-    body: ProofBody,
-    program_vk: ProgramVK,
-}
-
 /// Builder for customizing verification parameters before calling verify.
 ///
 /// This builder allows you to override the publics or program VK
@@ -1213,8 +1205,11 @@ impl Proof {
         let decode_err =
             |e: bincode::error::DecodeError| CommonError::Deserialization(e.to_string());
 
-        let (ProofHead { body, program_vk }, head_len) =
-            bincode::serde::decode_from_slice::<ProofHead, _>(bytes, config).map_err(decode_err)?;
+        // bincode encodes a struct as the tuple of its fields, so this reads the fields every
+        // serialized proof starts with, including those written before `seed` existed.
+        let ((body, program_vk), head_len) =
+            bincode::serde::decode_from_slice::<(ProofBody, ProgramVK), _>(bytes, config)
+                .map_err(decode_err)?;
         let tail = &bytes[head_len..];
         let seed = if tail.is_empty() {
             None
@@ -2032,14 +2027,9 @@ mod tests {
     /// A file written before `Proof::seed` existed ends right after `program_vk`.
     #[test]
     fn from_bytes_reads_a_proof_serialized_before_the_seed() {
-        #[derive(Serialize)]
-        struct LegacyProof<'a> {
-            body: &'a ProofBody,
-            program_vk: &'a ProgramVK,
-        }
         let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
         let legacy = bincode::serde::encode_to_vec(
-            LegacyProof { body: &proof.body, program_vk: &proof.program_vk },
+            (&proof.body, &proof.program_vk),
             bincode::config::standard(),
         )
         .unwrap();

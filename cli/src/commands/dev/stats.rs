@@ -1,10 +1,10 @@
-use crate::common::SeedArgs;
 use anyhow::Result;
 use colored::Colorize;
 use std::{collections::HashMap, path::PathBuf};
 use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::SeedArgs;
 use zisk_common::{ExecutorStatsHandle, Stats};
 use zisk_pil::*;
 use zisk_prover_backend::GuestProgram;

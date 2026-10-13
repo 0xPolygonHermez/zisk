@@ -1,9 +1,9 @@
-use crate::common::SeedArgs;
 use anyhow::Result;
 use colored::Colorize;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::SeedArgs;
 use zisk_prover_backend::{
     AsmOptions, BackendProverOpts, ExecuteClient, ExecuteOutput, GuestProgram, ProverClientBuilder,
 };

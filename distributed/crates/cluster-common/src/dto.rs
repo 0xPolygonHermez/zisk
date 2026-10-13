@@ -772,7 +772,6 @@ impl WebhookPayloadDto {
         duration_ms: u64,
         executed_steps: Option<u64>,
         proof_data: Option<Vec<u8>>,
-        seed: Option<ExecutionSeed>,
     ) -> Self {
         Self {
             job_id,
@@ -782,17 +781,12 @@ impl WebhookPayloadDto {
             timestamp: chrono::Utc::now().to_rfc3339(),
             error: None,
             proof_data,
-            seed: seed.map(|s| s.to_string()),
+            seed: None,
         }
     }
 
     /// Creates a failed webhook payload with error details
-    pub fn failure(
-        job_id: String,
-        duration_ms: u64,
-        error: WebhookErrorDto,
-        seed: Option<ExecutionSeed>,
-    ) -> Self {
+    pub fn failure(job_id: String, duration_ms: u64, error: WebhookErrorDto) -> Self {
         Self {
             job_id,
             success: false,
@@ -801,7 +795,7 @@ impl WebhookPayloadDto {
             timestamp: chrono::Utc::now().to_rfc3339(),
             error: Some(error),
             proof_data: None,
-            seed: seed.map(|s| s.to_string()),
+            seed: None,
         }
     }
 }

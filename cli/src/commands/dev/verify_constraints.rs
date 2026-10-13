@@ -1,10 +1,10 @@
-use crate::common::SeedArgs;
 use anyhow::Result;
 use colored::Colorize;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::SeedArgs;
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
     AsmOptions, BackendProverOpts, ProverClientBuilder, VerifyConstraintsOutput,

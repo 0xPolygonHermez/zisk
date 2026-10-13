@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tracing::info;
-use zisk_common::ExecutionSeed;
+use zisk_common::{ExecutionSeed, SeedArgs};
 use zisk_coordinator_api::dto::{
     deadline_from_now, DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
     DomainJobKindResponse, DomainProofKind, DomainProveRequest, DomainSetupRequest, TerminalStatus,
@@ -84,11 +84,8 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// Force the execution seed (up to 64 hex characters, zero-padded on the left) instead of
-        /// drawing a fresh one, to replay a run. The coordinator rejects it unless configured to
-        /// allow client seeds
-        #[arg(long, env = "ZISK_SEED", value_name = "HEX")]
-        seed: Option<ExecutionSeed>,
+        #[command(flatten)]
+        seed: SeedArgs,
 
         /// Proof timeout in seconds (0 = no timeout)
         #[arg(long, default_value_t = 0)]
@@ -113,11 +110,8 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// Force the execution seed (up to 64 hex characters, zero-padded on the left) instead of
-        /// drawing a fresh one, to replay a run. The coordinator rejects it unless configured to
-        /// allow client seeds
-        #[arg(long, env = "ZISK_SEED", value_name = "HEX")]
-        seed: Option<ExecutionSeed>,
+        #[command(flatten)]
+        seed: SeedArgs,
 
         /// Execute timeout in seconds (0 = no timeout)
         #[arg(long, default_value_t = 0)]
@@ -400,7 +394,7 @@ async fn main() -> Result<()> {
                 hints.as_ref(),
                 proof,
                 output.as_ref(),
-                *seed,
+                seed.forced(),
                 *timeout,
             )?;
         }
@@ -412,7 +406,7 @@ async fn main() -> Result<()> {
                 input.as_ref(),
                 hints.as_ref(),
                 output.as_ref(),
-                *seed,
+                seed.forced(),
                 *timeout,
             )?;
         }

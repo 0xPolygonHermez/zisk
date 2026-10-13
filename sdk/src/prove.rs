@@ -116,8 +116,8 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     /// seed is reported in the result) or pin it in tests. A remote coordinator rejects it unless
     /// it is configured to allow client seeds.
     #[must_use]
-    pub fn seed(mut self, seed: ExecutionSeed) -> Self {
-        self.seed = Some(seed);
+    pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
+        self.seed = seed.into();
         self
     }
 
@@ -247,8 +247,8 @@ impl<'a> ProveRequestExt<'a> {
     /// seed is reported in the result) or pin it in tests. A remote coordinator rejects it unless
     /// it is configured to allow client seeds.
     #[must_use]
-    pub fn seed(mut self, seed: ExecutionSeed) -> Self {
-        self.seed = Some(seed);
+    pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
+        self.seed = seed.into();
         self
     }
 

@@ -110,8 +110,8 @@ impl<'a, C> VerifyConstraintsRequest<'a, C> {
     /// Force the execution seed instead of drawing a fresh one, to replay a previous run (its
     /// seed is reported in the result) or pin it in tests.
     #[must_use]
-    pub fn seed(mut self, seed: ExecutionSeed) -> Self {
-        self.seed = Some(seed);
+    pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
+        self.seed = seed.into();
         self
     }
 

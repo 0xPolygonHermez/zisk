@@ -1,7 +1,7 @@
-use crate::common::SeedArgs;
 use crate::common::{detect_current_project_elf, resolve_output_path};
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use anyhow::Result;
+use zisk_common::SeedArgs;
 
 use colored::Colorize;
 use std::path::PathBuf;

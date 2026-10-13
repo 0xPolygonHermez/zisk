@@ -7,11 +7,10 @@ use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{setup_logger, GuestProgram, ProofKind, RemoteClient, ZiskHints, ZiskStdin};
 
-use crate::common::{
-    reject_quic_hints, resolve_elf, resolve_output_path, ElfSelectorArgs, SeedArgs,
-};
+use crate::common::{reject_quic_hints, resolve_elf, resolve_output_path, ElfSelectorArgs};
 use crate::proof::select_prove_kind;
 use crate::ux::{print_execution_seed, print_job_banner};
+use zisk_common::SeedArgs;
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -85,9 +84,7 @@ impl ZiskRemoteProve {
         if let Some(hints) = hints {
             request = request.hints(hints);
         }
-        if let Some(seed) = self.seed.forced() {
-            request = request.seed(seed);
-        }
+        request = request.seed(self.seed.forced());
         if proof_kind != ProofKind::VadcopFinal {
             request = request.wrap(proof_kind);
         }

@@ -650,7 +650,7 @@ impl From<ExecutionStats> for DomainExecutionStats {
                 })
                 .collect(),
             // Stats are informational: a malformed seed reads as "not reported".
-            seed: stats.seed.and_then(|bytes| ExecutionSeed::try_from(bytes.as_slice()).ok()),
+            seed: seed_from_wire(stats.seed).ok().flatten(),
         }
     }
 }

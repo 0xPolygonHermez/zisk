@@ -405,7 +405,6 @@ impl ProverBackend {
         };
 
         let (execution_result, _stats) = self.executor.get_execution_result();
-        let seed = execution_result.seed;
 
         // Store the stats in stats.json
         stats_mark!(_stats, 0, "END", 0);
@@ -462,7 +461,8 @@ impl ProverBackend {
                                 rootc: vadcop_vk_u64,
                             },
                             program_vk,
-                            seed,
+                            // Stamped by `ProveOutput::new` from `execution_result`.
+                            seed: None,
                         },
                     ))
                 } else {
@@ -493,7 +493,8 @@ impl ProverBackend {
                         // for non-minimal proofs (captured in `kind` above).
                         publics_full: program_publics(&p.public_values).to_vec(),
                     },
-                    seed,
+                    // Stamped by `ProveOutput::new` from `execution_result`.
+                    seed: None,
                 },
             )),
             (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),

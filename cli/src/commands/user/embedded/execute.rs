@@ -7,8 +7,9 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{AsmOptions, EmbeddedClientBuilder, GuestProgram, ZiskHints, ZiskStdin};
 
 use super::validate_asm_hints;
-use crate::common::{resolve_elf, ElfSelectorArgs, SeedArgs};
+use crate::common::{resolve_elf, ElfSelectorArgs};
 use crate::ux::{print_execute_output, print_job_banner};
+use zisk_common::SeedArgs;
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]

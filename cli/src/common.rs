@@ -4,9 +4,7 @@ use anyhow::Result;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use tracing::warn;
 use zisk_build::ZISK_TARGET;
-use zisk_common::ExecutionSeed;
 
 /// Build the default proof output filename when the user passes no `--output`.
 ///
@@ -130,27 +128,6 @@ impl ElfSelectorArgs {
     }
 }
 
-/// `--seed` / `ZISK_SEED`, shared by every command that runs the guest.
-#[derive(clap::Args, Debug, Default)]
-pub(crate) struct SeedArgs {
-    /// Force the execution seed (up to 64 hex characters, zero-padded on the left) instead of
-    /// drawing a fresh one, to replay a previous run. Every run reports the seed it used
-    #[arg(long, env = "ZISK_SEED", value_name = "HEX")]
-    seed: Option<ExecutionSeed>,
-}
-
-impl SeedArgs {
-    /// The forced seed, if any. Warns when there is one, so a `ZISK_SEED` left in the
-    /// environment cannot silently pin every run to the same seed. Call it once per run, after
-    /// the logger is up.
-    pub(crate) fn forced(&self) -> Option<ExecutionSeed> {
-        if let Some(seed) = self.seed {
-            warn!("Using a forced execution seed: {seed}");
-        }
-        self.seed
-    }
-}
-
 /// Reject a `quic://` hints URI — the CLI has no event loop to host a live QUIC
 /// stream, so it cannot serve QUIC hints to either the embedded or remote backend.
 pub(crate) fn reject_quic_hints(hints: Option<&str>) -> Result<()> {
@@ -239,35 +216,6 @@ fn parse_toml_string_value(line: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
-
-    #[derive(Parser)]
-    struct SeedCli {
-        #[command(flatten)]
-        seed: SeedArgs,
-    }
-
-    #[test]
-    fn seed_flag_parses_hex_with_or_without_prefix() {
-        let hex = "ab".repeat(ExecutionSeed::LEN);
-        let expected = Some(ExecutionSeed::new([0xab; ExecutionSeed::LEN]));
-        for arg in [hex.clone(), format!("0x{hex}")] {
-            let cli = SeedCli::try_parse_from(["cmd", "--seed", &arg]).unwrap();
-            assert_eq!(cli.seed.seed, expected);
-        }
-    }
-
-    #[test]
-    fn seed_flag_accepts_a_short_seed() {
-        let cli = SeedCli::try_parse_from(["cmd", "--seed", "10"]).unwrap();
-        assert_eq!(cli.seed.seed, Some("10".parse().unwrap()));
-    }
-
-    #[test]
-    fn seed_flag_rejects_a_seed_over_64_hex_characters() {
-        let too_long = "1".repeat(2 * ExecutionSeed::LEN + 1);
-        assert!(SeedCli::try_parse_from(["cmd", "--seed", &too_long]).is_err());
-    }
 
     #[test]
     fn default_proof_filename_without_job_id() {

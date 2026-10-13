@@ -46,9 +46,25 @@ impl ExecutionSeed {
     }
 }
 
-impl From<[u8; ExecutionSeed::LEN]> for ExecutionSeed {
-    fn from(bytes: [u8; ExecutionSeed::LEN]) -> Self {
-        Self(bytes)
+/// `--seed` / `ZISK_SEED`, for every command that runs a guest (cargo-zisk, zisk-prove-client).
+#[derive(clap::Args, Debug, Clone, Default)]
+pub struct SeedArgs {
+    /// Force the execution seed (up to 64 hex characters, zero-padded on the left) instead of
+    /// drawing a fresh one, to replay a previous run. Every run reports the seed it used. A remote
+    /// coordinator accepts it only if configured to allow client seeds
+    #[arg(long, env = "ZISK_SEED", value_name = "HEX")]
+    seed: Option<ExecutionSeed>,
+}
+
+impl SeedArgs {
+    /// The forced seed, if any. Warns when there is one, so a `ZISK_SEED` left in the
+    /// environment cannot silently pin every run to the same seed. Call it once per run, after
+    /// the logger is up.
+    pub fn forced(&self) -> Option<ExecutionSeed> {
+        if let Some(seed) = self.seed {
+            tracing::warn!("Using a forced execution seed: {seed}");
+        }
+        self.seed
     }
 }
 
@@ -141,6 +157,18 @@ mod tests {
         assert!("0x".parse::<ExecutionSeed>().is_err());
         assert!(format!("{HEX}0").parse::<ExecutionSeed>().is_err());
         assert!("1g".parse::<ExecutionSeed>().is_err());
+    }
+
+    #[test]
+    fn seed_flag_parses_through_from_str() {
+        #[derive(clap::Parser)]
+        struct Cli {
+            #[command(flatten)]
+            seed: SeedArgs,
+        }
+        let cli = <Cli as clap::Parser>::try_parse_from(["cmd", "--seed", "0x10"]).unwrap();
+        assert_eq!(cli.seed.seed, Some("10".parse().unwrap()));
+        assert!(<Cli as clap::Parser>::try_parse_from(["cmd", "--seed", "1g"]).is_err());
     }
 
     #[test]

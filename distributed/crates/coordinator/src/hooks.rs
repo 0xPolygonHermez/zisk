@@ -71,17 +71,12 @@ async fn send_webhook(
         format!("{}/{}", webhook_url, job_id.as_str())
     };
 
-    let payload = if let Some(error) = error {
-        WebhookPayloadDto::failure(job_id.as_string(), duration_ms, error, seed)
+    let mut payload = if let Some(error) = error {
+        WebhookPayloadDto::failure(job_id.as_string(), duration_ms, error)
     } else {
-        WebhookPayloadDto::success(
-            job_id.as_string(),
-            duration_ms,
-            executed_steps,
-            proof_data,
-            seed,
-        )
+        WebhookPayloadDto::success(job_id.as_string(), duration_ms, executed_steps, proof_data)
     };
+    payload.seed = seed.map(|s| s.to_string());
 
     let response = client
         .post(&webhook_url)
