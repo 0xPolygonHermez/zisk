@@ -14,7 +14,8 @@ use std::str::FromStr;
 
 /// The 256-bit seed of one execution.
 ///
-/// Parsed from and displayed as 64 hex characters; [`FromStr`] also accepts a `0x` prefix.
+/// Displayed as 64 hex characters. [`FromStr`] takes 1 to 64 hex characters, optionally `0x`
+/// prefixed, and left-pads shorter ones with zeros, so `10` is the seed `00…0010`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExecutionSeed([u8; ExecutionSeed::LEN]);
 
@@ -71,15 +72,16 @@ impl FromStr for ExecutionSeed {
 
     fn from_str(s: &str) -> Result<Self> {
         let digits = s.strip_prefix("0x").unwrap_or(s);
-        if digits.len() != 2 * Self::LEN {
+        if digits.is_empty() || digits.len() > 2 * Self::LEN {
             return Err(CommonError::Invalid(format!(
-                "execution seed must be {} hex characters, got {}",
+                "execution seed must be 1 to {} hex characters, got {}",
                 2 * Self::LEN,
                 digits.len()
             )));
         }
+        let padded = format!("{digits:0>width$}", width = 2 * Self::LEN);
         let mut bytes = [0u8; Self::LEN];
-        hex::decode_to_slice(digits, &mut bytes)
+        hex::decode_to_slice(&padded, &mut bytes)
             .map_err(|e| CommonError::Invalid(format!("invalid execution seed: {e}")))?;
         Ok(Self(bytes))
     }
@@ -121,11 +123,24 @@ mod tests {
     }
 
     #[test]
-    fn from_str_rejects_wrong_length_and_non_hex() {
-        assert!(HEX[..62].parse::<ExecutionSeed>().is_err());
-        assert!(format!("{HEX}00").parse::<ExecutionSeed>().is_err());
-        assert!(HEX.replace('0', "g").parse::<ExecutionSeed>().is_err());
+    fn from_str_left_pads_short_seeds_with_zeros() {
+        let mut ten = [0u8; ExecutionSeed::LEN];
+        ten[ExecutionSeed::LEN - 1] = 0x10;
+        assert_eq!("10".parse::<ExecutionSeed>().unwrap(), ExecutionSeed::new(ten));
+        assert_eq!("0x10".parse::<ExecutionSeed>().unwrap(), ExecutionSeed::new(ten));
+        assert_eq!(ExecutionSeed::new(ten).to_string(), format!("{}10", "0".repeat(62)));
+
+        let mut odd = [0u8; ExecutionSeed::LEN];
+        odd[ExecutionSeed::LEN - 2..].copy_from_slice(&[0x0a, 0xbc]);
+        assert_eq!("abc".parse::<ExecutionSeed>().unwrap(), ExecutionSeed::new(odd));
+    }
+
+    #[test]
+    fn from_str_rejects_empty_too_long_and_non_hex() {
         assert!("".parse::<ExecutionSeed>().is_err());
+        assert!("0x".parse::<ExecutionSeed>().is_err());
+        assert!(format!("{HEX}0").parse::<ExecutionSeed>().is_err());
+        assert!("1g".parse::<ExecutionSeed>().is_err());
     }
 
     #[test]

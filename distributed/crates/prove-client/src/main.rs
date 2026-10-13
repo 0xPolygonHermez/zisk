@@ -84,8 +84,9 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// Force the execution seed (64 hex characters) instead of drawing a fresh one, to
-        /// replay a run. The coordinator rejects it unless configured to allow client seeds
+        /// Force the execution seed (up to 64 hex characters, zero-padded on the left) instead of
+        /// drawing a fresh one, to replay a run. The coordinator rejects it unless configured to
+        /// allow client seeds
         #[arg(long, env = "ZISK_SEED", value_name = "HEX")]
         seed: Option<ExecutionSeed>,
 
@@ -112,8 +113,9 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// Force the execution seed (64 hex characters) instead of drawing a fresh one, to
-        /// replay a run. The coordinator rejects it unless configured to allow client seeds
+        /// Force the execution seed (up to 64 hex characters, zero-padded on the left) instead of
+        /// drawing a fresh one, to replay a run. The coordinator rejects it unless configured to
+        /// allow client seeds
         #[arg(long, env = "ZISK_SEED", value_name = "HEX")]
         seed: Option<ExecutionSeed>,
 

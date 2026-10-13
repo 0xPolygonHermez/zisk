@@ -133,8 +133,8 @@ impl ElfSelectorArgs {
 /// `--seed` / `ZISK_SEED`, shared by every command that runs the guest.
 #[derive(clap::Args, Debug, Default)]
 pub(crate) struct SeedArgs {
-    /// Force the execution seed (64 hex characters) instead of drawing a fresh one, to replay a
-    /// previous run. Every run reports the seed it used
+    /// Force the execution seed (up to 64 hex characters, zero-padded on the left) instead of
+    /// drawing a fresh one, to replay a previous run. Every run reports the seed it used
     #[arg(long, env = "ZISK_SEED", value_name = "HEX")]
     seed: Option<ExecutionSeed>,
 }
@@ -258,8 +258,15 @@ mod tests {
     }
 
     #[test]
-    fn seed_flag_rejects_a_short_seed() {
-        assert!(SeedCli::try_parse_from(["cmd", "--seed", "1234"]).is_err());
+    fn seed_flag_accepts_a_short_seed() {
+        let cli = SeedCli::try_parse_from(["cmd", "--seed", "10"]).unwrap();
+        assert_eq!(cli.seed.seed, Some("10".parse().unwrap()));
+    }
+
+    #[test]
+    fn seed_flag_rejects_a_seed_over_64_hex_characters() {
+        let too_long = "1".repeat(2 * ExecutionSeed::LEN + 1);
+        assert!(SeedCli::try_parse_from(["cmd", "--seed", &too_long]).is_err());
     }
 
     #[test]
