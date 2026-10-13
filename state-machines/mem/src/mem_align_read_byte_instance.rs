@@ -101,7 +101,9 @@ impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
         let air_id = self.ictx.plan.air_id;
         let segment =
             usize::from(self.ictx.plan.segment_id.expect("MemAlign plan without segment"));
-        if crate::mem_device_rows::rows_on_device("align") {
+        // No collectors: the executor left the rows to the device (a device failure here makes
+        // it collect the instance and come back with collectors for the CPU witness).
+        if collectors.is_empty() {
             return self.device_witness(air_id, segment, trace_buffer, packed).map(Some);
         }
         let mut total_rows = 0;

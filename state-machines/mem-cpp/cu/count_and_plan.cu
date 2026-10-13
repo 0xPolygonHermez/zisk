@@ -1526,6 +1526,13 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         const long v = std::atol(e);
         if (v > 0 && (uint32_t)v < MAX_POT_PER_PIECE) piece_potentials_ = (uint32_t)v;
     }
+    retained_cap_ = MAX_RETAINED_ACCESSES;
+    if (const char* e = std::getenv("ZISK_MEM_TEST_RETENTION")) {   // tests: a block that exceeds the retention cap
+        const long long v = std::atoll(e);
+        if (v > 0 && (uint64_t)v < MAX_RETAINED_ACCESSES) retained_cap_ = (uint64_t)v;
+    }
+    test_chunk_reject_ = -1;
+    if (const char* e = std::getenv("ZISK_MEM_TEST_CHUNK_REJECT")) test_chunk_reject_ = std::atoll(e);   // tests: a rejected chunk
     fprintf(stderr, "[mops] arena %zu MB: fixed %zu MB, %zu MB shared by the ops pool and the retained RAM accesses\n",
             arena_bytes_ >> 20, cursor_ >> 20, (top_bytes_ - cursor_) >> 20);
 
@@ -1695,6 +1702,11 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
                 "(base %zu + need %zu > capacity %zu u32 entries). "
                 "Increase the buffer size passed to setup().\n",
                 c, base, pot_total, d_ops_pool_cap_u32_);
+        add_error_.store(true, std::memory_order_relaxed);
+        return false;
+    }
+    if ((int64_t)c == test_chunk_reject_) {   // tests: this chunk is rejected like one the pool cannot hold
+        fprintf(stderr, "CountAndPlan::add_chunk ERROR: ZISK_MEM_TEST_CHUNK_REJECT set; chunk %u rejected\n", c);
         add_error_.store(true, std::memory_order_relaxed);
         return false;
     }
@@ -2025,6 +2037,7 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
         uint32_t h_fault[2] = {0, 0};
         CUDA_CHECK(cudaMemcpyAsync(h_fault, d_invalid_mode_flag_, 8, cudaMemcpyDeviceToHost, meta_stream_));
         CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
+        if (std::getenv("ZISK_MEM_TEST_LIGHT_RECORD")) h_fault[0] |= LIGHT_RECORD;   // tests: a light-form record seen
         if (h_fault[0] & LIGHT_RECORD) {
             // The stream is in the light form (no values, no steps): the plan stands, the device
             // witness does not.
