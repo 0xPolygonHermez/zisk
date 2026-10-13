@@ -3,14 +3,11 @@
 ; (scripts/legacy/gen_bls_verify.py). Mirrors bls.rs. Prefix lv_.
 ; ============================================================================
 
-; inline-op headers (zopt): precompile parameter blocks
+; inline-op headers (zopt): arith256_mod / arith384_mod parameter blocks
 const u64 ZBLS_VERIFY_H0[5] = BLS_V_X, BLS_V_X, BLS_ZERO, BLS_P, BLS_V_Y
 const u64 ZBLS_VERIFY_H1[5] = BLS_V_Y, BLS_V_X, BLS_ZERO, BLS_P, BLS_V_Y
 const u64 ZBLS_VERIFY_H2[5] = BLS_V_Y, BLS_ONE, BLS_E_B, BLS_P, BLS_V_Y
 const u64 ZBLS_VERIFY_H3[5] = BLS_V_Y, BLS_P_MINUS_ONE, BLS_ZERO, BLS_P, BLS_V_YN
-const u64 ZBLS_VERIFY_H4[2] = BLS_V_YF, BLS_V_XF
-const u64 ZBLS_VERIFY_H5[2] = BLS_V_YF, BLS_ETWISTED_B
-const u64 ZBLS_VERIFY_H6[2] = BLS_V_MILL, BLS_F2_NEGMUL
 
 const u64 BLS_DST_STR[6] = 0x5f4749535f534c42, 0x3138333231534c42, 0x533a444d585f3247, 0x535f3635322d4148, 0x4e5f4f525f555753, 0x00000000005f4c55
 define BLS_DST_LEN 43
@@ -309,9 +306,9 @@ zbls_verify_le3:
 	dma_xmemcpy(BLS_V_XF, BLS_V_XR) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_V_XF + 48, BLS_V_XI) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_V_YF, BLS_V_XF) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_VERIFY_H4)
-	bls12_381_complex_mul(0, ZBLS_VERIFY_H4)
-	bls12_381_complex_add(0, ZBLS_VERIFY_H5)
+	bls12_381_complex_mul(BLS_V_YF, BLS_V_XF)
+	bls12_381_complex_mul(BLS_V_YF, BLS_V_XF)
+	bls12_381_complex_add(BLS_V_YF, BLS_ETWISTED_B)
 	copyb(0, BLS_V_YF) -> r10
 	copyb(0, BLS_V_MILL) -> r11
 	copyb(0, BLS_V_YF) -> r12
@@ -319,7 +316,7 @@ zbls_verify_le3:
 	eq(r10, 0), j(lv_dg2_err)
 	dma_xmemcpy(BLS_V_YF, BLS_V_MILL) -> r5, j(96, 4)
 	dma_xmemcpy(BLS_V_MILL, BLS_V_YF) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_VERIFY_H6)
+	bls12_381_complex_mul(BLS_V_MILL, BLS_F2_NEGMUL)
 	dma_xmemcpy(BLS_V_YR, BLS_V_YF) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_V_YI, BLS_V_YF + 48) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_V_YNR, BLS_V_MILL) -> r5, j(48, 4)

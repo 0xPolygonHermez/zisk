@@ -100,8 +100,6 @@ def gen():
 u64 SECP_G4_T[128]   = 0
 u64 SECP_G4_NIB[8]   = 0
 u64 SECP_G4_RES[8]   = 0
-u64 SECP_G4_HDR[2]   = 0
-u64 SECP_G4_HDRB[2]  = 0
 u64 SECP_G4_ARGS[4]  = 0
 u64 SECP_G4_SC[16]   = 0
 u64 SECP_G4_SIG[2]   = 0
@@ -181,9 +179,7 @@ g4_sums:
         w(f"""	dma_xmemcpy(SECP_G4_T + {64 * m}, SECP_G4_T + {64 * lo}) -> r6, j(64, 4)
 	copyb(0, [SECP_G4_T + {64 * m}])
 	eq(c, [SECP_G4_T + {64 * hi}]), j(g4_general)
-	copyb(0, SECP_G4_T + {64 * m}) -> [SECP_G4_HDRB + 0]
-	copyb(0, SECP_G4_T + {64 * hi}) -> [SECP_G4_HDRB + 8]
-	secp256k1_add(0, SECP_G4_HDRB)""")
+	secp256k1_add(SECP_G4_T + {64 * m}, SECP_G4_T + {64 * hi})""")
 
     # ---- the 128 indexes, 16 per word: NIB[w] holds bits 16w..16w+15 ----------
     w("""
@@ -220,8 +216,7 @@ g4_sums:
     w(f"""
 	; ---- ladder over bits 127..0: word NIB[7] first, its top nibble first ----
 	copyb(0, SECP_G4_NIB + 56) -> {NPTR}
-	copyb(0, [SECP_G4_NIB + 56]) -> {NIB}
-	copyb(0, SECP_G4_RES) -> [SECP_G4_HDR + 0]""")
+	copyb(0, [SECP_G4_NIB + 56]) -> {NIB}""")
     # Phase A: the result is still infinity; the first nonzero index copies T[m].
     for i in range(16):
         w(f"""g4_a{i}:
@@ -237,7 +232,8 @@ g4_sums:
 	sub({NPTR}, 8) -> {NPTR}
 	copyb({NPTR}, 8[a + 0]) -> {NIB}
 	jump(g4_a0)""")
-    # Phase B: double, then add T[m] (m != 0) after a limb-0 x check.
+    # Phase B: double, then add T[m] (m != 0) after a limb-0 x check. r11 = &T[m]
+    # (the b operand of the add, and the input of secp_g4_slow_add).
     for i in range(16):
         w(f"""g4_b{i}:
 	secp256k1_dbl(0, SECP_G4_RES)
@@ -245,10 +241,10 @@ g4_sums:
 	and(c, 0x3C0) -> {OFF}
 	sll({NIB}, 4) -> {NIB}
 	eq({OFF}, 0), j(g4_b{i + 1})
-	add({OFF}, SECP_G4_T) -> [SECP_G4_HDR + 8]
-	copyb(c, 8[a + 0])
+	add({OFF}, SECP_G4_T) -> r11
+	copyb(r11, 8[a + 0])
 	eq(c, [SECP_G4_RES]), j(g4_s{i})
-	secp256k1_add(0, SECP_G4_HDR)""")
+	secp256k1_add(SECP_G4_RES, r11)""")
     w(f"""g4_b16:
 	eq({NPTR}, SECP_G4_NIB), j(g4_done)
 	sub({NPTR}, 8) -> {NPTR}
@@ -277,11 +273,10 @@ g4_general:
 	pop r1
 	jump(secp_glv_dsm_general)
 
-; secp_g4_slow_add [leaf]: RES += T (T = [SECP_G4_HDR + 8]) when x limb 0 matched.
+; secp_g4_slow_add [leaf]: RES += T (r11 = &T) when x limb 0 matched.
 ;   Different x: add. Same point: double. Opposite points: r10 = 1 (infinity).
-;   Else r10 = 0. Uses r10, r11.
-secp_g4_slow_add:
-	copyb(0, [SECP_G4_HDR + 8]) -> r11""")
+;   Else r10 = 0. Uses r10; keeps r11.
+secp_g4_slow_add:""")
     for i in (1, 2, 3):
         w(f"""	copyb(r11, 8[a + {8 * i}])
 	eq(c, [SECP_G4_RES + {8 * i}]), j(g4_sx{i})
@@ -297,7 +292,7 @@ g4_sy{i}:""")
 	copyb(0, 0) -> r10
 	ret
 g4_sadd:
-	secp256k1_add(0, SECP_G4_HDR)
+	secp256k1_add(SECP_G4_RES, r11)
 	copyb(0, 0) -> r10
 	ret""")
     return "\n".join(o) + "\n"

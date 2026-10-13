@@ -1,6 +1,6 @@
 //! SHA2-256 hash function (FIPS 180-4).
 
-use crate::syscalls::{syscall_sha256_f, SyscallSha256Params};
+use crate::syscalls::syscall_sha256_f;
 
 use super::is_aligned_8;
 
@@ -104,9 +104,9 @@ fn compress_block(
 ) {
     let state_64: &mut [u64; 4] = unsafe { &mut *(state.as_mut_ptr() as *mut [u64; 4]) };
     let input_u64: &[u64; 8] = unsafe { &*(block.as_ptr() as *const [u64; 8]) };
-    let mut sha256_params = SyscallSha256Params { state: state_64, input: input_u64 };
     syscall_sha256_f(
-        &mut sha256_params,
+        state_64,
+        input_u64,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -134,9 +134,9 @@ pub unsafe extern "C" fn sha256f_compress_c(
         let block: &[u8; 64] = &*(blocks_ptr.add(i * 64) as *const [u8; 64]);
         let input_u64 = convert_bytes_to_u64(block);
 
-        let mut sha256_params = SyscallSha256Params { state: &mut state_64, input: &input_u64 };
         syscall_sha256_f(
-            &mut sha256_params,
+            &mut state_64,
+            &input_u64,
             #[cfg(feature = "hints")]
             hints,
         );

@@ -5,7 +5,8 @@ use zisk_precomp_common::MemProcessor;
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 
 pub const BABYJUBJUB_ADD_MEM_CONFIG: BabyJubJubMemInputConfig = BabyJubJubMemInputConfig {
-    indirect_params: 2,
+    indirect_params: 0,
+    direct_ab: true,
     rewrite_params: true,
     read_params: 2,
     write_params: 1,
@@ -19,7 +20,7 @@ pub fn generate_babyjubjub_add_mem_inputs<P: MemProcessor>(
     only_counters: bool,
     mem_processors: &mut P,
 ) {
-    // op,op_type,a,b,addr[2],...
+    // op,op_type,a,b,step,p1[8],p2[8] (a = p1 address, b = p2 address)
     let p1_start = OPERATION_PRECOMPILED_BUS_DATA_SIZE + BABYJUBJUB_ADD_MEM_CONFIG.indirect_params;
     let p1: &[u64; 8] =
         &data[p1_start..p1_start + BABYJUBJUB_ADD_MEM_CONFIG.chunks_per_param].try_into().unwrap();

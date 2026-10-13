@@ -217,21 +217,21 @@ airtemplate BabyJubJub (const int N = 2**18) {
 
     // 2 reads   256-bit points  (x1||y1) and (x2||y2)  = 2 * 4 = 8 reads 64-bit (x col + y col)
     // 1 write   256-bit point   (x3||y3)               = 1 * 4 = 4 writes 64-bit
-    // 2 indirect 64-bit pointers (p1_addr, p2_addr)    = 2 reads 64-bit
     //
-    //            READ        WRITE   INDIRECT
-    // bjj_add    x1,y1,x2,y2  x3,y3  x1,y1,x2,y2   (result overwrites p1)
+    // The op is called with two direct operands: main sends a = p1 address and b = p2 address
+    // (no parameter struct, no indirections); the result overwrites p1.
+    //
+    //            READ        WRITE   CALL
+    // bjj_add    x1,y1,x2,y2  x3,y3  direct a/b   (result overwrites p1)
 
-    const int ADDR_OP = MAIN_STEP + 1;
+    const int ADDR_OP = MAIN_STEP + 1;   // main operand b: p2 address
     const int ADDR_X1 = ADDR_OP + 1;
     const int ADDR_Y1 = ADDR_X1 + 1;
     const int ADDR_X2 = ADDR_X1 + 2;
     const int ADDR_Y2 = ADDR_X1 + 3;
     const int ADDR_X3 = ADDR_X1 + 4;
     const int ADDR_Y3 = ADDR_X1 + 5;
-
-    const int ADDR_IND_0 = ADDR_Y3 + 1;
-    const int ADDR_IND_1 = ADDR_IND_0 + 1;
+    const int ADDR_A = ADDR_Y3 + 1;      // main operand a: p1 address
 
     // MEMORY ACCESS MAP
     //
@@ -247,7 +247,7 @@ airtemplate BabyJubJub (const int N = 2**18) {
     //  9  STEP + 1 | W | ADDR_X3 + 8   x3[4..7]    | ADDR_Y3 + 8   y3[4..7]
     // 10  STEP + 1 | W | ADDR_X3 + 16  x3[8..11]   | ADDR_Y3 + 16  y3[8..11]
     // 11  STEP + 1 | W | ADDR_X3 + 24  x3[12..15]  | ADDR_Y3 + 24  y3[12..15]
-    // 12  STEP     | R | ADDR_OP + 0   ADDR_IND_0  | ADDR_OP + 8   ADDR_IND_1
+    // 12  ---
     // 13  ---
     // 14  ---
     // 15  ---
@@ -255,32 +255,28 @@ airtemplate BabyJubJub (const int N = 2**18) {
     const expr use_x2 = in_use;
     const expr use_y2 = in_use;
     const expr use_y3 = in_use;
-    const expr use_ind_0 = in_use;
-    const expr use_ind_1 = in_use;
 
-    // [bjj_add] ADDR_X1 === ADDR_IND_0,  ADDR_Y1 === ADDR_IND_0 + 32
-    //           ADDR_X2 === ADDR_IND_1,  ADDR_Y2 === ADDR_IND_1 + 32
-    //           ADDR_X3 === ADDR_X1,     ADDR_Y3 === ADDR_Y1   (result overwrites p1)
+    // [bjj_add] ADDR_X1 === ADDR_A,   ADDR_Y1 === ADDR_A + 32
+    //           ADDR_X2 === ADDR_OP,  ADDR_Y2 === ADDR_OP + 32
+    //           ADDR_X3 === ADDR_X1,  ADDR_Y3 === ADDR_Y1   (result overwrites p1)
 
-    in_use * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
-    in_use * clock_eq(step_addr, ADDR_Y1, ADDR_IND_0, 32) === 0;
-    in_use * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
-    in_use * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 32) === 0;
+    in_use * clock_eq(step_addr, ADDR_X1, ADDR_A) === 0;
+    in_use * clock_eq(step_addr, ADDR_Y1, ADDR_A, 32) === 0;
+    in_use * clock_eq(step_addr, ADDR_X2, ADDR_OP) === 0;
+    in_use * clock_eq(step_addr, ADDR_Y2, ADDR_OP, 32) === 0;
     in_use * clock_eq(step_addr, ADDR_X1, ADDR_X3) === 0;
     in_use * clock_eq(step_addr, ADDR_Y1, ADDR_Y3) === 0;
 
     const expr mem_addr[2];
     mem_addr[0] = clock_map(step_addr, ADDR_X1, start: 0, end: 3, delta: 8) +
                   clock_map(step_addr, ADDR_X2, start: 4, end: 7, delta: 8) +
-                  clock_map(step_addr, ADDR_X3, start: 8, end: 11, delta: 8) +
-                  clock_map(step_addr, ADDR_OP, start: 12, end: 12, delta: 16);
+                  clock_map(step_addr, ADDR_X3, start: 8, end: 11, delta: 8);
 
     mem_addr[1] = clock_map(step_addr, ADDR_Y1, start: 0, end: 3, delta: 8) +
                   clock_map(step_addr, ADDR_Y2, start: 4, end: 7, delta: 8) +
-                  clock_map(step_addr, ADDR_Y3, start: 8, end: 11, delta: 8) +
-                  clock_map(step_addr, ADDR_OP, start: 12, end: 12, delta: 16, offset: 8);
+                  clock_map(step_addr, ADDR_Y3, start: 8, end: 11, delta: 8);
 
-    const expr main_step = clock_map(step_addr, MAIN_STEP, start: 0, end: 12);
+    const expr main_step = clock_map(step_addr, MAIN_STEP, start: 0, end: 11);
 
     const expr mem_is_write = CLK[8] + CLK[9] + CLK[10] + CLK[11];
 
@@ -288,35 +284,29 @@ airtemplate BabyJubJub (const int N = 2**18) {
 
     mem_value[0][0] =   map_chunks_to_m32(x1, start: 0, end: 3) +
                         map_chunks_to_m32(x2, start: 4, end: 7) +
-                        map_chunks_to_m32(x3, start: 8, end: 11) +
-                        clock_map(step_addr, ADDR_IND_0, 12);
+                        map_chunks_to_m32(x3, start: 8, end: 11);
 
     mem_value[0][1] =   map_chunks_to_m32(x1, index: 2, start:0, end: 3) +
                         map_chunks_to_m32(x2, index: 2, start:4, end: 7) +
                         map_chunks_to_m32(x3, index: 2, start:8, end: 11);
-                        // high bits of indirect addresses are 0.
 
     mem_value[1][0] =   map_chunks_to_m32(y1, start: 0, end: 3) +
                         map_chunks_to_m32(y2, start: 4, end: 7) +
-                        map_chunks_to_m32(y3, start: 8, end: 11) +
-                        clock_map(step_addr, ADDR_IND_1, 12);
+                        map_chunks_to_m32(y3, start: 8, end: 11);
 
     mem_value[1][1] =   map_chunks_to_m32(y1, index: 2, start:0, end: 3) +
                         map_chunks_to_m32(y2, index: 2, start:4, end: 7) +
                         map_chunks_to_m32(y3, index: 2, start:8, end: 11);
-                        // high bits of indirect addresses are 0.
 
     const expr mem_sel[2];
 
     mem_sel[0] = clock_set(in_use, start:0, end: 3) +
                  clock_set(use_x2, start:4, end: 7) +
-                 clock_set(in_use, start:8, end: 11) +
-                 clock_set(use_ind_0, 12);
+                 clock_set(in_use, start:8, end: 11);
 
     mem_sel[1] = clock_set(in_use, start:0, end: 3) +
                  clock_set(use_y2, start:4, end: 7) +
-                 clock_set(use_y3, start:8, end: 11) +
-                 clock_set(use_ind_1, 12);
+                 clock_set(use_y3, start:8, end: 11);
 
     precompiled_mem_op(
             is_write: mem_is_write,
@@ -336,7 +326,8 @@ airtemplate BabyJubJub (const int N = 2**18) {
 
     const expr bus_op = sel_babyjubjub_add * OP_BABYJUBJUB_ADD;
 
-    proves_operation(op: bus_op, a:[0, 0], b:[step_addr'(ADDR_OP), 0], c:[0, 0], flag:0,
+    // a = p1 address, b = p2 address
+    proves_operation(op: bus_op, a:[step_addr'(ADDR_A), 0], b:[step_addr'(ADDR_OP), 0], c:[0, 0], flag:0,
                      main_step: step_addr'(MAIN_STEP), mul: in_use_clk0);
 
     // selclk0 is the clock 0 dedicated to one operation

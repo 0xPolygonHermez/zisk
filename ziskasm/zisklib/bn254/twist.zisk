@@ -4,26 +4,6 @@
 ; x(Fp2)‖y(Fp2). Identity = all-zero. Affine add/dbl via inv_fp2.
 ; ============================================================================
 
-; inline-op headers (zopt): precompile parameter blocks
-const u64 ZBN2_TWIST_H0[2] = TW_Y3, BN_F2_NEGMUL
-const u64 ZBN2_TWIST_H1[2] = TW_X3, TW_X2
-const u64 ZBN2_TWIST_H2[2] = TW_Y3, TW_Y2
-const u64 ZBN2_TWIST_H3[2] = TW_T1, TW_X1
-const u64 ZBN2_TWIST_H4[2] = TW_T2, TW_X1
-const u64 ZBN2_TWIST_H5[2] = TW_X3, BN_ETWISTED_B
-const u64 ZBN2_TWIST_H6[2] = TW_Y3, TW_Y1
-const u64 ZBN2_TWIST_H7[2] = TW_L, TW_Y1
-const u64 ZBN2_TWIST_H8[2] = TW_L, BN_F2_SB
-const u64 ZBN2_TWIST_H9[2] = TW_L, TW_X1
-const u64 ZBN2_TWIST_H10[2] = TW_X3, TW_L
-const u64 ZBN2_TWIST_H11[2] = TW_X3, TW_X1
-const u64 ZBN2_TWIST_H12[2] = TW_Y3, TW_X3
-const u64 ZBN2_TWIST_H13[2] = TW_T2, TW_Y3
-const u64 ZBN2_TWIST_H14[2] = TW_DEN, TW_X1
-const u64 ZBN2_TWIST_H15[2] = TW_L, TW_DEN
-const u64 ZBN2_TWIST_H16[2] = TW_Y3, TW_L
-const u64 ZBN2_TWIST_H17[2] = TW_Y3, TW_DEN
-
 u64 TW_X1[8] = 0, 0, 0, 0, 0, 0, 0, 0
 u64 TW_Y1[8] = 0, 0, 0, 0, 0, 0, 0, 0
 u64 TW_X2[8] = 0, 0, 0, 0, 0, 0, 0, 0
@@ -64,7 +44,7 @@ zisklib_neg_twist_bn254:
 	add(r10, 64) -> r5
 	dma_xmemcpy(TW_Y1, r5) -> r5, j(64, 4)
 	dma_xmemcpy(TW_Y3, TW_Y1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H0)
+	bn254_complex_mul(TW_Y3, BN_F2_NEGMUL)
 	dma_xmemcpy(r11, TW_X1) -> r5, j(64, 4)
 	add(r11, 64) -> r5
 	dma_xmemcpy(r5, TW_Y3) -> r5, j(64, 4)
@@ -90,9 +70,9 @@ zisklib_utf_endomorphism_twist_bn254:
 	copyb(0, TW_Y2) -> r11
 	call zisklib_conjugate_fp2_bn254
 	dma_xmemcpy(TW_X3, BN_FROBENIUS_GAMMA12) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H1)
+	bn254_complex_mul(TW_X3, TW_X2)
 	dma_xmemcpy(TW_Y3, BN_FROBENIUS_GAMMA13) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H2)
+	bn254_complex_mul(TW_Y3, TW_Y2)
 	copyb(0, [TW_PR]) -> r5
 	dma_xmemcpy(r5, TW_X3) -> r5, j(64, 4)
 	add([TW_PR], 64) -> r5
@@ -111,13 +91,13 @@ zisklib_is_on_curve_twist_bn254:
 	add(r10, 64) -> r5
 	dma_xmemcpy(TW_Y1, r5) -> r5, j(64, 4)
 	dma_xmemcpy(TW_T1, TW_X1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H3)
+	bn254_complex_mul(TW_T1, TW_X1)
 	dma_xmemcpy(TW_T2, TW_T1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H4)
+	bn254_complex_mul(TW_T2, TW_X1)
 	dma_xmemcpy(TW_X3, TW_T2) -> r5, j(64, 4)
-	bn254_complex_add(0, ZBN2_TWIST_H5)
+	bn254_complex_add(TW_X3, BN_ETWISTED_B)
 	dma_xmemcpy(TW_Y3, TW_Y1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H6)
+	bn254_complex_mul(TW_Y3, TW_Y1)
 	dma_xmemcmp(TW_X3, TW_Y3) -> r5, j(64, 4)
 	eq(r5, 0) -> r10
 	copyb(0, TW_Y3) -> r11
@@ -144,25 +124,25 @@ zisklib_dbl_twist_bn254:
 	add(r10, 64) -> r5
 	dma_xmemcpy(TW_Y1, r5) -> r5, j(64, 4)
 	dma_xmemcpy(TW_L, TW_Y1) -> r5, j(64, 4)
-	bn254_complex_add(0, ZBN2_TWIST_H7)
+	bn254_complex_add(TW_L, TW_Y1)
 	copyb(0, TW_L) -> r10
 	copyb(0, TW_L) -> r11
 	copyb(0, 8) -> r12
 	call zisklib_inv_fp2_bn254
 	dma_xmemcpy(BN_F2_SB, BN_E_B) -> r5, j(32, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H8)
-	bn254_complex_mul(0, ZBN2_TWIST_H9)
-	bn254_complex_mul(0, ZBN2_TWIST_H9)
+	bn254_complex_mul(TW_L, BN_F2_SB)
+	bn254_complex_mul(TW_L, TW_X1)
+	bn254_complex_mul(TW_L, TW_X1)
 	dma_xmemcpy(TW_X3, TW_L) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H10)
-	bn254_complex_sub(0, ZBN2_TWIST_H11)
-	bn254_complex_sub(0, ZBN2_TWIST_H11)
+	bn254_complex_mul(TW_X3, TW_L)
+	bn254_complex_sub(TW_X3, TW_X1)
+	bn254_complex_sub(TW_X3, TW_X1)
 	dma_xmemcpy(TW_Y3, TW_X1) -> r5, j(64, 4)
-	bn254_complex_sub(0, ZBN2_TWIST_H12)
+	bn254_complex_sub(TW_Y3, TW_X3)
 	dma_xmemcpy(TW_T2, TW_L) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H13)
+	bn254_complex_mul(TW_T2, TW_Y3)
 	dma_xmemcpy(TW_Y3, TW_T2) -> r5, j(64, 4)
-	bn254_complex_sub(0, ZBN2_TWIST_H6)
+	bn254_complex_sub(TW_Y3, TW_Y1)
 	copyb(0, [TW_PR]) -> r5
 	dma_xmemcpy(r5, TW_X3) -> r5, j(64, 4)
 	add([TW_PR], 64) -> r5
@@ -224,24 +204,24 @@ twadd_generic:
 	add([TW_P2], 64) -> r5
 	dma_xmemcpy(TW_Y2, r5) -> r5, j(64, 4)
 	dma_xmemcpy(TW_DEN, TW_X2) -> r5, j(64, 4)
-	bn254_complex_sub(0, ZBN2_TWIST_H14)
+	bn254_complex_sub(TW_DEN, TW_X1)
 	copyb(0, TW_DEN) -> r10
 	copyb(0, TW_DEN) -> r11
 	copyb(0, TW_DEN) -> r12
 	call zisklib_inv_fp2_bn254
 	dma_xmemcpy(TW_L, TW_Y2) -> r5, j(64, 4)
-	bn254_complex_sub(0, ZBN2_TWIST_H7)
-	bn254_complex_mul(0, ZBN2_TWIST_H15)
+	bn254_complex_sub(TW_L, TW_Y1)
+	bn254_complex_mul(TW_L, TW_DEN)
 	dma_xmemcpy(TW_X3, TW_L) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H10)
-	bn254_complex_sub(0, ZBN2_TWIST_H11)
-	bn254_complex_sub(0, ZBN2_TWIST_H1)
+	bn254_complex_mul(TW_X3, TW_L)
+	bn254_complex_sub(TW_X3, TW_X1)
+	bn254_complex_sub(TW_X3, TW_X2)
 	dma_xmemcpy(TW_Y3, TW_X1) -> r5, j(64, 4)
-	bn254_complex_sub(0, ZBN2_TWIST_H12)
+	bn254_complex_sub(TW_Y3, TW_X3)
 	dma_xmemcpy(TW_T2, TW_L) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H13)
+	bn254_complex_mul(TW_T2, TW_Y3)
 	dma_xmemcpy(TW_Y3, TW_T2) -> r5, j(64, 4)
-	bn254_complex_sub(0, ZBN2_TWIST_H6)
+	bn254_complex_sub(TW_Y3, TW_Y1)
 	copyb(0, [TW_PR]) -> r5
 	dma_xmemcpy(r5, TW_X3) -> r5, j(64, 4)
 	add([TW_PR], 64) -> r5
@@ -480,12 +460,12 @@ j2at_nz:
 	copyb(0, 8) -> r12
 	call zisklib_inv_fp2_bn254
 	dma_xmemcpy(TW_L, TW_DEN) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H15)
+	bn254_complex_mul(TW_L, TW_DEN)
 	dma_xmemcpy(TW_X3, TW_X1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H10)
+	bn254_complex_mul(TW_X3, TW_L)
 	dma_xmemcpy(TW_Y3, TW_Y1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_TWIST_H16)
-	bn254_complex_mul(0, ZBN2_TWIST_H17)
+	bn254_complex_mul(TW_Y3, TW_L)
+	bn254_complex_mul(TW_Y3, TW_DEN)
 	copyb(0, [TW_PR]) -> r5
 	dma_xmemcpy(r5, TW_X3) -> r5, j(64, 4)
 	add([TW_PR], 64) -> r5

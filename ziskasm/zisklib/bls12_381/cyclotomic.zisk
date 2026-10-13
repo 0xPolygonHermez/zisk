@@ -4,43 +4,6 @@
 ; ξ=1+u=BLS_XI, (2+u)=BLS_XI2. Prefix lcy_.
 ; ============================================================================
 
-; inline-op headers (zopt): precompile parameter blocks
-const u64 ZBLS_CYCLOTOMIC_H0[2] = BLS_CY_T1, BLS_CY_A3
-const u64 ZBLS_CYCLOTOMIC_H1[2] = BLS_CY_T2, BLS_CY_A5
-const u64 ZBLS_CYCLOTOMIC_H2[2] = BLS_CY_T3, BLS_XI
-const u64 ZBLS_CYCLOTOMIC_H3[2] = BLS_CY_T4, BLS_CY_A3
-const u64 ZBLS_CYCLOTOMIC_H4[2] = BLS_CY_T5, BLS_CY_T3
-const u64 ZBLS_CYCLOTOMIC_H5[2] = BLS_CY_T6, BLS_CY_T5
-const u64 ZBLS_CYCLOTOMIC_H6[2] = BLS_CY_T4, BLS_CY_A5
-const u64 ZBLS_CYCLOTOMIC_H7[2] = BLS_CY_T7, BLS_CY_T5
-const u64 ZBLS_CYCLOTOMIC_H8[2] = BLS_CY_T3, BLS_F2_SB
-const u64 ZBLS_CYCLOTOMIC_H9[2] = BLS_CY_B2, BLS_CY_A2
-const u64 ZBLS_CYCLOTOMIC_H10[2] = BLS_CY_B2, BLS_CY_B2
-const u64 ZBLS_CYCLOTOMIC_H11[2] = BLS_CY_T3, BLS_XI2
-const u64 ZBLS_CYCLOTOMIC_H12[2] = BLS_CY_T4, BLS_CY_T3
-const u64 ZBLS_CYCLOTOMIC_H13[2] = BLS_CY_T4, BLS_F2_SB
-const u64 ZBLS_CYCLOTOMIC_H14[2] = BLS_CY_T5, BLS_CY_A3
-const u64 ZBLS_CYCLOTOMIC_H15[2] = BLS_CY_B3, BLS_CY_T5
-const u64 ZBLS_CYCLOTOMIC_H16[2] = BLS_CY_T5, BLS_CY_A4
-const u64 ZBLS_CYCLOTOMIC_H17[2] = BLS_CY_B4, BLS_CY_T5
-const u64 ZBLS_CYCLOTOMIC_H18[2] = BLS_CY_B5, BLS_CY_A5
-const u64 ZBLS_CYCLOTOMIC_H19[2] = BLS_CY_B5, BLS_CY_B5
-const u64 ZBLS_CYCLOTOMIC_H20[2] = BLS_CY_A1, BLS_CY_A5
-const u64 ZBLS_CYCLOTOMIC_H21[2] = BLS_CY_A1, BLS_CY_A1
-const u64 ZBLS_CYCLOTOMIC_H22[2] = BLS_CY_A1, BLS_CY_T1
-const u64 ZBLS_CYCLOTOMIC_H23[2] = BLS_CY_T2, BLS_CY_A4
-const u64 ZBLS_CYCLOTOMIC_H24[2] = BLS_CY_A0, BLS_CY_A1
-const u64 ZBLS_CYCLOTOMIC_H25[2] = BLS_CY_A0, BLS_CY_A0
-const u64 ZBLS_CYCLOTOMIC_H26[2] = BLS_CY_A0, BLS_CY_T3
-const u64 ZBLS_CYCLOTOMIC_H27[2] = BLS_CY_A0, BLS_XI
-const u64 ZBLS_CYCLOTOMIC_H28[2] = BLS_CY_A0, BLS_F2_ONE
-const u64 ZBLS_CYCLOTOMIC_H29[2] = BLS_CY_T1, BLS_F2_SB
-const u64 ZBLS_CYCLOTOMIC_H30[2] = BLS_CY_A1, BLS_XI
-const u64 ZBLS_CYCLOTOMIC_H31[2] = BLS_CY_A1, BLS_CY_T3
-const u64 ZBLS_CYCLOTOMIC_H32[2] = BLS_CY_A1, BLS_CY_T4
-const u64 ZBLS_CYCLOTOMIC_H33[2] = BLS_CY_T3, BLS_CY_A5
-const u64 ZBLS_CYCLOTOMIC_H34[2] = BLS_CY_A0, BLS_CY_T4
-
 const u64 BLS_XI2[12] = 2, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0
 const u64 BLS_FOUR[6] = 4, 0, 0, 0, 0, 0
 const u8 BLS_X_ABS_BIN[64] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1
@@ -121,20 +84,20 @@ zisklib_decompress_cyclo_bls12_381:
 	copyb(0, BLS_CY_T1) -> r11
 	call zisklib_inv_fp2_bls12_381
 	dma_xmemcpy(BLS_CY_A1, BLS_CY_A4) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H20)
-	bls12_381_complex_add(0, ZBLS_CYCLOTOMIC_H21)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H22)
+	bls12_381_complex_mul(BLS_CY_A1, BLS_CY_A5)
+	bls12_381_complex_add(BLS_CY_A1, BLS_CY_A1)
+	bls12_381_complex_mul(BLS_CY_A1, BLS_CY_T1)
 	dma_xmemcpy(BLS_CY_T2, BLS_CY_A3) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H23)
+	bls12_381_complex_mul(BLS_CY_T2, BLS_CY_A4)
 	dma_xmemcpy(BLS_CY_A0, BLS_CY_A1) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H24)
-	bls12_381_complex_add(0, ZBLS_CYCLOTOMIC_H25)
+	bls12_381_complex_mul(BLS_CY_A0, BLS_CY_A1)
+	bls12_381_complex_add(BLS_CY_A0, BLS_CY_A0)
 	dma_xmemcpy(BLS_F2_SB, BLS_THREE) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_CY_T3, BLS_CY_T2) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H8)
-	bls12_381_complex_sub(0, ZBLS_CYCLOTOMIC_H26)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H27)
-	bls12_381_complex_add(0, ZBLS_CYCLOTOMIC_H28)
+	bls12_381_complex_mul(BLS_CY_T3, BLS_F2_SB)
+	bls12_381_complex_sub(BLS_CY_A0, BLS_CY_T3)
+	bls12_381_complex_mul(BLS_CY_A0, BLS_XI)
+	bls12_381_complex_add(BLS_CY_A0, BLS_F2_ONE)
 	copyb(0, BLS_CY_A0) -> r10
 	copyb(0, BLS_F2_ONE) -> r11
 	copyb(0, BLS_CY_A0) -> r12
@@ -142,38 +105,38 @@ zisklib_decompress_cyclo_bls12_381:
 lcy_dec_gen:
 	dma_xmemcpy(BLS_F2_SB, BLS_FOUR) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_CY_T1, BLS_CY_A2) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H29)
+	bls12_381_complex_mul(BLS_CY_T1, BLS_F2_SB)
 	copyb(0, BLS_CY_T1) -> r10
 	copyb(0, BLS_CY_T1) -> r11
 	copyb(0, BLS_CY_T1) -> r12
 	call zisklib_inv_fp2_bls12_381
 	dma_xmemcpy(BLS_CY_T2, BLS_CY_A4) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H23)
+	bls12_381_complex_mul(BLS_CY_T2, BLS_CY_A4)
 	dma_xmemcpy(BLS_CY_A1, BLS_CY_A5) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H20)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H30)
+	bls12_381_complex_mul(BLS_CY_A1, BLS_CY_A5)
+	bls12_381_complex_mul(BLS_CY_A1, BLS_XI)
 	dma_xmemcpy(BLS_F2_SB, BLS_THREE) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_CY_T3, BLS_CY_T2) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H8)
-	bls12_381_complex_add(0, ZBLS_CYCLOTOMIC_H31)
+	bls12_381_complex_mul(BLS_CY_T3, BLS_F2_SB)
+	bls12_381_complex_add(BLS_CY_A1, BLS_CY_T3)
 	dma_xmemcpy(BLS_CY_T4, BLS_CY_A3) -> r5, j(96, 4)
-	bls12_381_complex_add(0, ZBLS_CYCLOTOMIC_H3)
-	bls12_381_complex_sub(0, ZBLS_CYCLOTOMIC_H32)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H22)
+	bls12_381_complex_add(BLS_CY_T4, BLS_CY_A3)
+	bls12_381_complex_sub(BLS_CY_A1, BLS_CY_T4)
+	bls12_381_complex_mul(BLS_CY_A1, BLS_CY_T1)
 	dma_xmemcpy(BLS_CY_T2, BLS_CY_A3) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H23)
+	bls12_381_complex_mul(BLS_CY_T2, BLS_CY_A4)
 	dma_xmemcpy(BLS_CY_T3, BLS_CY_A2) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H33)
+	bls12_381_complex_mul(BLS_CY_T3, BLS_CY_A5)
 	dma_xmemcpy(BLS_CY_A0, BLS_CY_A1) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H24)
-	bls12_381_complex_add(0, ZBLS_CYCLOTOMIC_H25)
-	bls12_381_complex_add(0, ZBLS_CYCLOTOMIC_H26)
+	bls12_381_complex_mul(BLS_CY_A0, BLS_CY_A1)
+	bls12_381_complex_add(BLS_CY_A0, BLS_CY_A0)
+	bls12_381_complex_add(BLS_CY_A0, BLS_CY_T3)
 	dma_xmemcpy(BLS_F2_SB, BLS_THREE) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_CY_T4, BLS_CY_T2) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H13)
-	bls12_381_complex_sub(0, ZBLS_CYCLOTOMIC_H34)
-	bls12_381_complex_mul(0, ZBLS_CYCLOTOMIC_H27)
-	bls12_381_complex_add(0, ZBLS_CYCLOTOMIC_H28)
+	bls12_381_complex_mul(BLS_CY_T4, BLS_F2_SB)
+	bls12_381_complex_sub(BLS_CY_A0, BLS_CY_T4)
+	bls12_381_complex_mul(BLS_CY_A0, BLS_XI)
+	bls12_381_complex_add(BLS_CY_A0, BLS_F2_ONE)
 	copyb(0, BLS_CY_A0) -> r10
 	copyb(0, BLS_F2_ONE) -> r11
 	copyb(0, BLS_CY_A0) -> r12

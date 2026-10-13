@@ -13,17 +13,11 @@ use sha2::compress256;
 #[allow(deprecated)]
 use sha2::digest::generic_array::{typenum::U64, GenericArray};
 
-#[derive(Debug)]
-#[repr(C)]
-pub struct SyscallSha256Params<'a> {
-    pub state: &'a mut [u64; 4],
-    pub input: &'a [u64; 8],
-}
-
 /// Executes the SHA-256 extend and compress function on the given state and input.
 ///
 /// The SHA-256 compression function operates on a state of four `u64` elements (representing the internal state of the hash function)
-/// and an input of eight `u64` elements (representing a 512-bit message block).
+/// and an input of eight `u64` elements (representing a 512-bit message block). Both are passed as
+/// two direct operands (no parameter struct); the new state overwrites `state`.
 ///
 /// ### Safety
 ///
@@ -32,18 +26,19 @@ pub struct SyscallSha256Params<'a> {
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_sha256_f")]
 pub extern "C" fn syscall_sha256_f(
-    params: &mut SyscallSha256Params,
+    state: &mut [u64; 4],
+    input: &[u64; 8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     #[cfg(zisk_guest)]
-    ziskos_syscall!(zisk_definitions::SYSCALL_SHA256F_ID, params);
+    ziskos_syscall!(zisk_definitions::SYSCALL_SHA256F_ID, a: state, b: input);
     #[cfg(not(zisk_guest))]
     {
-        sha256f(params.state, params.input);
+        sha256f(state, input);
 
         #[cfg(feature = "hints")]
         if zisk_definitions::SHA256_RESULTS {
-            hints.extend_from_slice(params.state);
+            hints.extend_from_slice(state);
         }
     }
 }

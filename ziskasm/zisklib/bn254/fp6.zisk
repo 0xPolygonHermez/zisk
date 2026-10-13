@@ -6,78 +6,6 @@
 ; fp6 routine, so sharing is safe). Prefix `f6_`.
 ; ============================================================================
 
-; inline-op headers (zopt): precompile parameter blocks
-const u64 ZBN2_FP6_H12[2] = F6_T1, F6_B1
-const u64 ZBN2_FP6_H13[2] = F6_T2, F6_B2
-const u64 ZBN2_FP6_H14[2] = F6_T3, F6_B3
-const u64 ZBN2_FP6_H15[2] = F6_T4, BN_XI
-const u64 ZBN2_FP6_H16[2] = F6_T5, F6_A3
-const u64 ZBN2_FP6_H17[2] = F6_T6, F6_B3
-const u64 ZBN2_FP6_H18[2] = F6_T7, F6_A2
-const u64 ZBN2_FP6_H19[2] = F6_T8, F6_B2
-const u64 ZBN2_FP6_H20[2] = F6_T9, F6_A3
-const u64 ZBN2_FP6_H21[2] = F6_T10, F6_B3
-const u64 ZBN2_FP6_H22[2] = F6_C1, F6_T6
-const u64 ZBN2_FP6_H23[2] = F6_C1, F6_T2
-const u64 ZBN2_FP6_H24[2] = F6_C1, F6_T3
-const u64 ZBN2_FP6_H25[2] = F6_C1, BN_XI
-const u64 ZBN2_FP6_H26[2] = F6_C1, F6_T1
-const u64 ZBN2_FP6_H27[2] = F6_C2, F6_T8
-const u64 ZBN2_FP6_H28[2] = F6_C2, F6_T1
-const u64 ZBN2_FP6_H29[2] = F6_C2, F6_T2
-const u64 ZBN2_FP6_H30[2] = F6_C2, F6_T4
-const u64 ZBN2_FP6_H31[2] = F6_C3, F6_T10
-const u64 ZBN2_FP6_H32[2] = F6_C3, F6_T1
-const u64 ZBN2_FP6_H33[2] = F6_C3, F6_T2
-const u64 ZBN2_FP6_H34[2] = F6_C3, F6_T3
-const u64 ZBN2_FP6_H35[2] = F6_T1, F6_A2
-const u64 ZBN2_FP6_H36[2] = F6_T1, F6_T1
-const u64 ZBN2_FP6_H37[2] = F6_T2, F6_A3
-const u64 ZBN2_FP6_H38[2] = F6_C2, BN_XI
-const u64 ZBN2_FP6_H39[2] = F6_T3, F6_A1
-const u64 ZBN2_FP6_H40[2] = F6_T4, F6_A2
-const u64 ZBN2_FP6_H41[2] = F6_T4, F6_A3
-const u64 ZBN2_FP6_H42[2] = F6_T4, F6_T4
-const u64 ZBN2_FP6_H43[2] = F6_T5, F6_T5
-const u64 ZBN2_FP6_H44[2] = F6_C3, F6_T4
-const u64 ZBN2_FP6_H45[2] = F6_C3, F6_T5
-const u64 ZBN2_FP6_H46[2] = F6_T1, F6_A1
-const u64 ZBN2_FP6_H47[2] = F6_T2, F6_A2
-const u64 ZBN2_FP6_H48[2] = F6_T3, F6_A3
-const u64 ZBN2_FP6_H49[2] = F6_T6, F6_A3
-const u64 ZBN2_FP6_H50[2] = F6_T7, BN_XI
-const u64 ZBN2_FP6_H51[2] = F6_C1, F6_T7
-const u64 ZBN2_FP6_H52[2] = F6_T8, F6_C1
-const u64 ZBN2_FP6_H53[2] = F6_T9, F6_C2
-const u64 ZBN2_FP6_H54[2] = F6_T10, F6_C3
-const u64 ZBN2_FP6_H55[2] = F6_T9, F6_T10
-const u64 ZBN2_FP6_H56[2] = F6_T9, BN_XI
-const u64 ZBN2_FP6_H57[2] = F6_T9, F6_T8
-const u64 ZBN2_FP6_H58[2] = F6_C1, F6_T9
-const u64 ZBN2_FP6_H59[2] = F6_C2, F6_T9
-const u64 ZBN2_FP6_H60[2] = F6_C3, F6_T9
-const u64 ZBN2_FP6_H61[2] = F6_C1, F6_A3
-const u64 ZBN2_FP6_H62[2] = F6_C2, F6_A1
-const u64 ZBN2_FP6_H63[2] = F6_C3, F6_A2
-const u64 ZBN2_FP6_H64[2] = F6_T2, BN_XI
-const u64 ZBN2_FP6_H65[2] = F6_T1, F6_T2
-const u64 ZBN2_FP6_H66[2] = F6_C1, F6_B1
-const u64 ZBN2_FP6_H67[2] = F6_C2, F6_B2
-const u64 ZBN2_FP6_H68[2] = F6_C3, F6_B2
-const u64 ZBN2_FP6_H69[2] = F6_C1, F6_B2
-u64 ZBN2_FP6_H0[2] = 0, 0
-u64 ZBN2_FP6_H1[2] = 0, 0
-u64 ZBN2_FP6_H2[2] = 0, 0
-u64 ZBN2_FP6_H3[2] = 0, 0
-u64 ZBN2_FP6_H4[2] = 0, 0
-u64 ZBN2_FP6_H5[2] = 0, 0
-u64 ZBN2_FP6_H6[2] = 0, 0
-u64 ZBN2_FP6_H7[2] = 0, 0
-u64 ZBN2_FP6_H8[2] = 0, 0
-u64 ZBN2_FP6_H9[2] = 0, BN_F2_NEGMUL
-u64 ZBN2_FP6_H10[2] = 0, BN_F2_NEGMUL
-u64 ZBN2_FP6_H11[2] = 0, BN_F2_NEGMUL
-
 const u64 BN_XI[8] = 9, 0, 0, 0, 1, 0, 0, 0
 
 u64 F6_PA[1] = 0
@@ -109,22 +37,18 @@ zisklib_add_fp6_bn254:
 	copyb(0, r10) -> [F6_PA]
 	copyb(0, r11) -> [F6_PB]
 	copyb(0, r12) -> [F6_PR]
-	copyb(0, r12) -> [ZBN2_FP6_H0]
-	copyb(0, r11) -> [ZBN2_FP6_H0 + 8]
 	dma_xmemcpy(r12, r10) -> r5, j(64, 4)
-	bn254_complex_add(0, ZBN2_FP6_H0)
-	add(r12, 64) -> [ZBN2_FP6_H1]
-	add(r11, 64) -> [ZBN2_FP6_H1 + 8]
+	bn254_complex_add(r12, r11)
 	add(r12, 64) -> r14
 	add(r10, 64) -> r5
 	dma_xmemcpy(r14, r5) -> r5, j(64, 4)
-	bn254_complex_add(0, ZBN2_FP6_H1)
-	add(r12, 128) -> [ZBN2_FP6_H2]
-	add(r11, 128) -> [ZBN2_FP6_H2 + 8]
+	add(r11, 64) -> r5
+	bn254_complex_add(r14, r5)
 	add(r12, 128) -> r14
 	add(r10, 128) -> r5
 	dma_xmemcpy(r14, r5) -> r5, j(64, 4)
-	bn254_complex_add(0, ZBN2_FP6_H2)
+	add(r11, 128) -> r5
+	bn254_complex_add(r14, r5)
 	add(r10, 128) -> r10
 	add(r11, 128) -> r11
 	add(r12, 128) -> r12
@@ -137,22 +61,18 @@ zisklib_sub_fp6_bn254:
 	copyb(0, r10) -> [F6_PA]
 	copyb(0, r11) -> [F6_PB]
 	copyb(0, r12) -> [F6_PR]
-	copyb(0, r12) -> [ZBN2_FP6_H3]
-	copyb(0, r11) -> [ZBN2_FP6_H3 + 8]
 	dma_xmemcpy(r12, r10) -> r5, j(64, 4)
-	bn254_complex_sub(0, ZBN2_FP6_H3)
-	add(r12, 64) -> [ZBN2_FP6_H4]
-	add(r11, 64) -> [ZBN2_FP6_H4 + 8]
+	bn254_complex_sub(r12, r11)
 	add(r12, 64) -> r14
 	add(r10, 64) -> r5
 	dma_xmemcpy(r14, r5) -> r5, j(64, 4)
-	bn254_complex_sub(0, ZBN2_FP6_H4)
-	add(r12, 128) -> [ZBN2_FP6_H5]
-	add(r11, 128) -> [ZBN2_FP6_H5 + 8]
+	add(r11, 64) -> r5
+	bn254_complex_sub(r14, r5)
 	add(r12, 128) -> r14
 	add(r10, 128) -> r5
 	dma_xmemcpy(r14, r5) -> r5, j(64, 4)
-	bn254_complex_sub(0, ZBN2_FP6_H5)
+	add(r11, 128) -> r5
+	bn254_complex_sub(r14, r5)
 	add(r10, 128) -> r10
 	add(r11, 128) -> r11
 	add(r12, 128) -> r12
@@ -164,22 +84,18 @@ zisklib_dbl_fp6_bn254:
 	push r1
 	copyb(0, r10) -> [F6_PA]
 	copyb(0, r11) -> [F6_PR]
-	copyb(0, r11) -> [ZBN2_FP6_H6]
-	copyb(0, r10) -> [ZBN2_FP6_H6 + 8]
 	dma_xmemcpy(r11, r10) -> r5, j(64, 4)
-	bn254_complex_add(0, ZBN2_FP6_H6)
-	add(r11, 64) -> [ZBN2_FP6_H7]
-	add(r10, 64) -> [ZBN2_FP6_H7 + 8]
+	bn254_complex_add(r11, r10)
 	add(r11, 64) -> r14
 	add(r10, 64) -> r5
 	dma_xmemcpy(r14, r5) -> r5, j(64, 4)
-	bn254_complex_add(0, ZBN2_FP6_H7)
-	add(r11, 128) -> [ZBN2_FP6_H8]
-	add(r10, 128) -> [ZBN2_FP6_H8 + 8]
+	add(r10, 64) -> r5
+	bn254_complex_add(r14, r5)
 	add(r11, 128) -> r14
 	add(r10, 128) -> r5
 	dma_xmemcpy(r14, r5) -> r5, j(64, 4)
-	bn254_complex_add(0, ZBN2_FP6_H8)
+	add(r10, 128) -> r5
+	bn254_complex_add(r14, r5)
 	add(r10, 128) -> r10
 	add(r11, 128) -> r11
 	pop r1
@@ -190,19 +106,16 @@ zisklib_neg_fp6_bn254:
 	push r1
 	copyb(0, r10) -> [F6_PA]
 	copyb(0, r11) -> [F6_PR]
-	copyb(0, r11) -> [ZBN2_FP6_H9]
 	dma_xmemcpy(r11, r10) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H9)
-	add(r11, 64) -> [ZBN2_FP6_H10]
+	bn254_complex_mul(r11, BN_F2_NEGMUL)
 	add(r11, 64) -> r14
 	add(r10, 64) -> r5
 	dma_xmemcpy(r14, r5) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H10)
-	add(r11, 128) -> [ZBN2_FP6_H11]
+	bn254_complex_mul(r14, BN_F2_NEGMUL)
 	add(r11, 128) -> r14
 	add(r10, 128) -> r5
 	dma_xmemcpy(r14, r5) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H11)
+	bn254_complex_mul(r14, BN_F2_NEGMUL)
 	add(r10, 128) -> r10
 	add(r11, 128) -> r11
 	pop r1
@@ -218,43 +131,43 @@ zisklib_inv_fp6_bn254:
 	add(r10, 128) -> r5
 	dma_xmemcpy(F6_A3, r5) -> r5, j(64, 4)
 	dma_xmemcpy(F6_T1, F6_A1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H46)
+	bn254_complex_mul(F6_T1, F6_A1)
 	dma_xmemcpy(F6_T2, F6_A2) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H47)
+	bn254_complex_mul(F6_T2, F6_A2)
 	dma_xmemcpy(F6_T3, F6_A3) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H48)
+	bn254_complex_mul(F6_T3, F6_A3)
 	dma_xmemcpy(F6_T4, F6_A1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H40)
+	bn254_complex_mul(F6_T4, F6_A2)
 	dma_xmemcpy(F6_T5, F6_A1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H16)
+	bn254_complex_mul(F6_T5, F6_A3)
 	dma_xmemcpy(F6_T6, F6_A2) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H49)
+	bn254_complex_mul(F6_T6, F6_A3)
 	dma_xmemcpy(F6_T7, F6_T6) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H50)
+	bn254_complex_mul(F6_T7, BN_XI)
 	dma_xmemcpy(F6_C1, F6_T1) -> r5, j(64, 4)
-	bn254_complex_sub(0, ZBN2_FP6_H51)
+	bn254_complex_sub(F6_C1, F6_T7)
 	dma_xmemcpy(F6_T7, F6_T3) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H50)
+	bn254_complex_mul(F6_T7, BN_XI)
 	dma_xmemcpy(F6_C2, F6_T7) -> r5, j(64, 4)
-	bn254_complex_sub(0, ZBN2_FP6_H30)
+	bn254_complex_sub(F6_C2, F6_T4)
 	dma_xmemcpy(F6_C3, F6_T2) -> r5, j(64, 4)
-	bn254_complex_sub(0, ZBN2_FP6_H45)
+	bn254_complex_sub(F6_C3, F6_T5)
 	dma_xmemcpy(F6_T8, F6_A1) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H52)
+	bn254_complex_mul(F6_T8, F6_C1)
 	dma_xmemcpy(F6_T9, F6_A3) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H53)
+	bn254_complex_mul(F6_T9, F6_C2)
 	dma_xmemcpy(F6_T10, F6_A2) -> r5, j(64, 4)
-	bn254_complex_mul(0, ZBN2_FP6_H54)
-	bn254_complex_add(0, ZBN2_FP6_H55)
-	bn254_complex_mul(0, ZBN2_FP6_H56)
-	bn254_complex_add(0, ZBN2_FP6_H57)
+	bn254_complex_mul(F6_T10, F6_C3)
+	bn254_complex_add(F6_T9, F6_T10)
+	bn254_complex_mul(F6_T9, BN_XI)
+	bn254_complex_add(F6_T9, F6_T8)
 	copyb(0, F6_T9) -> r10
 	copyb(0, F6_T9) -> r11
 	copyb(0, F6_T9) -> r12
 	call zisklib_inv_fp2_bn254
-	bn254_complex_mul(0, ZBN2_FP6_H58)
-	bn254_complex_mul(0, ZBN2_FP6_H59)
-	bn254_complex_mul(0, ZBN2_FP6_H60)
+	bn254_complex_mul(F6_C1, F6_T9)
+	bn254_complex_mul(F6_C2, F6_T9)
+	bn254_complex_mul(F6_C3, F6_T9)
 	copyb(0, [F6_PR]) -> r5
 	dma_xmemcpy(r5, F6_C1) -> r5, j(64, 4)
 	add([F6_PR], 64) -> r5
