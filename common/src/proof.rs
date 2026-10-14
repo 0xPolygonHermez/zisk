@@ -1060,6 +1060,9 @@ impl<'a> ZiskVerifyBuilder<'a> {
 
 impl Proof {
     /// Creates a new `Proof` from a body and program verification key, with no seed.
+    ///
+    /// When the proof attests an execution, chain [`Proof::with_seed`] to keep its seed;
+    /// otherwise a proof saved from it cannot be replayed.
     pub fn new(body: ProofBody, program_vk: ProgramVK) -> Self {
         Self { body, program_vk, seed: None }
     }
@@ -1400,7 +1403,10 @@ impl Proof {
     ///
     /// # Returns
     ///
-    /// A Proof containing the parsed proof, publics, and program VK
+    /// A Proof containing the parsed proof, publics, and program VK, with no seed: the flat
+    /// u64 form (as produced by [`Proof::get_proof_u64`]) does not carry one. When the proof
+    /// attests an execution, chain [`Proof::with_seed`] to keep its seed; otherwise a proof
+    /// saved from it cannot be replayed.
     ///
     /// # Errors
     ///
