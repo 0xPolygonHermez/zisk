@@ -6839,7 +6839,6 @@ dependencies = [
  "dirs",
  "getrandom 0.2.17",
  "hex",
- "num-bigint",
  "paste",
  "proofman",
  "proofman-common",
@@ -6863,7 +6862,6 @@ name = "zisk-coordinator-api"
 version = "1.4.0-alpha"
 dependencies = [
  "anyhow",
- "bincode",
  "chrono",
  "prost 0.14.4",
  "prost-types 0.14.4",

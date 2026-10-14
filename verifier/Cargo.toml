@@ -9,6 +9,7 @@ homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
+exclude = ["tests/fixtures"]
 
 [dependencies]
 proofman-verifier = { workspace = true }

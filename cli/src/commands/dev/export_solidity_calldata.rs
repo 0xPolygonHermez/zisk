@@ -92,8 +92,7 @@ impl ExportSolidityCalldataCmd {
         //   - rootCVadcopFinal       = the STAMPED verkey (`rootc`): vadcop_final for a plain
         //                              proof, the recurser's own verkey for an aggregated one;
         //                              4×u64 big-endian (32 bytes)
-        // The publicValues encoding comes straight from `snark_inputs_bytes` so it stays in
-        // lockstep with `snark_publics_hash` (the off-chain/snarkjs path).
+        // `snark_inputs_bytes` and `snark_publics_hash` share proofman's circuit layout.
         // The committed identity, not the untrusted outer copy: a relabelled proof
         // would otherwise export calldata the proof does not commit to.
         let program_vk_bytes = u64_chunks_to_be(&program_vk.vk);

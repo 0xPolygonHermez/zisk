@@ -23,7 +23,7 @@ pub fn hash_tag(hash_id: &str) -> Option<u64> {
 /// choice fails against the caller's expected verification key, whose const-tree root is
 /// computed under the real family's own hash.
 pub fn hash_id_from_tag(tag: u64) -> Option<&'static str> {
-    HASH_TAGS.get(tag as usize).copied()
+    HASH_TAGS.get(usize::try_from(tag).ok()?).copied()
 }
 
 /// Number of public values in a Zisk proof.

@@ -1247,11 +1247,12 @@ impl Coordinator {
         let job_state = job.state.clone();
         let executed_steps = job.executed_steps;
         let seed = job.random_seed;
-        // `Proof::to_bytes`: the same bytes `cargo-zisk prove` saves and guests verify.
-        let proof_data = job.proof.as_ref().and_then(|p| {
-            p.to_bytes()
-                .inspect_err(|e| warn!("Webhook for job {job_id} sent without its proof: {e}"))
-                .ok()
+        // `Proof::to_bytes`: the same bytes `cargo-zisk prove` saves and guests verify. A
+        // proof that cannot be encoded fails the job for the consumer, rather than
+        // reporting a completed job with no proof.
+        let proof_data = job.proof.as_ref().map(|p| p.to_bytes()).transpose().map_err(|e| {
+            warn!("Proof of job {job_id} could not be encoded for its webhook: {e}");
+            format!("The proof could not be encoded: {e}")
         });
 
         tokio::spawn(async move {
@@ -1262,26 +1263,40 @@ impl Coordinator {
             let mut attempt = 0;
 
             while attempt < MAX_RETRIES {
-                let result = if job_state == JobState::Failed {
-                    hooks::send_failure_webhook(
-                        webhook_url.clone(),
-                        job_id.clone(),
-                        duration_ms,
-                        "JOB_FAILED".to_string(),
-                        "The job has failed during execution.".to_string(),
-                        seed,
-                    )
-                    .await
-                } else {
-                    hooks::send_completion_webhook(
-                        webhook_url.clone(),
-                        job_id.clone(),
-                        duration_ms,
-                        executed_steps,
-                        proof_data.clone(),
-                        seed,
-                    )
-                    .await
+                let result = match (&job_state, &proof_data) {
+                    (JobState::Failed, _) => {
+                        hooks::send_failure_webhook(
+                            webhook_url.clone(),
+                            job_id.clone(),
+                            duration_ms,
+                            "JOB_FAILED".to_string(),
+                            "The job has failed during execution.".to_string(),
+                            seed,
+                        )
+                        .await
+                    }
+                    (_, Err(message)) => {
+                        hooks::send_failure_webhook(
+                            webhook_url.clone(),
+                            job_id.clone(),
+                            duration_ms,
+                            "PROOF_ENCODING_FAILED".to_string(),
+                            message.clone(),
+                            seed,
+                        )
+                        .await
+                    }
+                    (_, Ok(proof_data)) => {
+                        hooks::send_completion_webhook(
+                            webhook_url.clone(),
+                            job_id.clone(),
+                            duration_ms,
+                            executed_steps,
+                            proof_data.clone(),
+                            seed,
+                        )
+                        .await
+                    }
                 };
 
                 match result {

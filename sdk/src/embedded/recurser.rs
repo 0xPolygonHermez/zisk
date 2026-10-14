@@ -205,7 +205,7 @@ fn run_aggregate_proofs_blocking(
 
     Ok(ProveResult::from(
         ProveOutput::from_remote(proof, 0, Duration::from_secs(0), StatsCostPerType::default())
-            .with_produced_under(Some(zisk_vk)),
+            .with_setup_vk(zisk_vk),
     ))
 }
 

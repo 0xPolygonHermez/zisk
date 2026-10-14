@@ -475,7 +475,8 @@ impl ProverBackend {
                     start.elapsed(),
                     Proof::new(body, program_vk),
                 )
-                .with_produced_under(Some(vadcop_vk_u64)))
+                .with_produced_under(Some(vadcop_vk_u64))
+                .with_produced_snark_vkey())
             }
             (_, Some(p)) => {
                 let zisk_vk = self.get_vadcop_vk(minimal)?;
@@ -640,7 +641,8 @@ impl ProverBackend {
         // attests to.
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof)
             .with_random_seed(seed)
-            .with_produced_under(produced_under))
+            .with_produced_under(produced_under)
+            .with_produced_snark_vkey())
     }
 
     /// The proof body of a final SNARK proof, by the protocol that proved it: the key sets the

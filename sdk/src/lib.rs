@@ -24,7 +24,6 @@ mod remote;
 mod setup;
 mod stdin;
 mod upload;
-mod verify;
 mod verify_constraints;
 mod wrap;
 mod zisk_client;
@@ -52,11 +51,11 @@ pub use remote::{RemoteClient, RemoteClientBuilder, RemoteClientExt};
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
 pub use upload::UploadRequest;
-pub use verify::VerifyBuilder;
 pub use verify_constraints::{
     VerifyConstraintsExtension, VerifyConstraintsRequest, VerifyConstraintsResult,
 };
 pub use wrap::WrapRequest;
+pub use zisk_common::ZiskVerifyBuilder as VerifyBuilder;
 
 // Re-export guest types from backend (public API for loading programs)
 pub use zisk_prover_backend::{
