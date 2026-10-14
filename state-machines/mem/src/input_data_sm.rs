@@ -83,6 +83,8 @@ struct InputDataFillOutput {
 }
 
 impl InputDataFillOutput {
+    /// The scalars of the row-hash dump (`mem-witness-test`).
+    #[cfg(feature = "mem-witness-test")]
     fn scalars(
         &self,
         segment_id: SegmentId,
@@ -440,7 +442,6 @@ impl<F: PrimeField64> InputDataSM<F> {
         seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            let used_bits = Self::packed_used_bits();
             self.compute_witness_with_offsets_inner::<InputDataTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
@@ -448,7 +449,6 @@ impl<F: PrimeField64> InputDataSM<F> {
                 previous_segment,
                 trace_buffer,
                 seg,
-                used_bits,
             )
         } else {
             self.compute_witness_with_offsets_inner::<InputDataTraceRow<F>>(
@@ -458,12 +458,12 @@ impl<F: PrimeField64> InputDataSM<F> {
                 previous_segment,
                 trace_buffer,
                 seg,
-                std::mem::size_of::<InputDataTraceRow<F>>() * 8,
             )
         }
     }
 
     /// The bits a packed InputData row uses.
+    #[cfg(feature = "mem-witness-test")]
     fn packed_used_bits() -> usize {
         crate::mem_gpu_fill::packed_used_bits(
             InputDataTrace::<()>::AIRGROUP_ID,
@@ -542,7 +542,6 @@ impl<F: PrimeField64> InputDataSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
         seg: &MemModuleSegmentCheckPoint,
-        used_bits: usize,
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace = InputDataTrace::<R>::new_from_vec(trace_buffer)?;
 
@@ -695,12 +694,15 @@ impl<F: PrimeField64> InputDataSM<F> {
                 | ((value_3 as u64) << 48),
             padding_size: padding_size as u32,
         };
+        #[cfg(feature = "mem-witness-test")]
         {
-            let words = crate::mem_trace_hash::rows_as_words(&trace.buffer);
+            use proofman_common::trace::TraceRow;
+            let used_bits =
+                if R::IS_PACKED { Self::packed_used_bits() } else { std::mem::size_of::<R>() * 8 };
             crate::mem_trace_hash::dump_scalars(
                 self.get_mem_name(),
                 usize::from(segment_id),
-                words,
+                crate::mem_gpu_fill::rows_as_words(&trace.buffer),
                 &out.scalars(segment_id, is_last_segment, previous_segment),
                 std::mem::size_of::<R>() / 8,
                 used_bits,
@@ -739,7 +741,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         let mut trace = InputDataTrace::<InputDataTraceRowPacked<F>>::new_from_vec(trace_buffer)?;
         let n_rows = trace.num_rows();
         let (out, previous_segment) = {
-            let words = crate::mem_trace_hash::rows_as_words_mut(&mut trace.buffer);
+            let words = crate::mem_gpu_fill::rows_as_words_mut(&mut trace.buffer);
             Self::device_rows(words, n_rows, segment_id)
         }
         .map_err(|e| {
@@ -747,10 +749,11 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
                 "InputData[{seg_idx}] witness from the GPU planner failed: {e}"
             ))
         })?;
+        #[cfg(feature = "mem-witness-test")]
         crate::mem_trace_hash::dump_scalars(
             self.get_mem_name(),
             seg_idx,
-            crate::mem_trace_hash::rows_as_words(&trace.buffer),
+            crate::mem_gpu_fill::rows_as_words(&trace.buffer),
             &out.scalars(segment_id, is_last_segment, &previous_segment),
             InputDataTraceRowPacked::<F>::PACKED_WORDS,
             Self::packed_used_bits(),

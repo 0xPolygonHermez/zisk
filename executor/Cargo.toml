@@ -77,3 +77,4 @@ witness_timers = [
     "zisk-precomp-arith-eq-384/witness_timers",
 ]
 cpu-only = ["zisk-asm-runner/cpu-only", "zisk-precomp-keccakf/cpu-only"]
+mem-witness-test = ["zisk-sm-mem/mem-witness-test"]

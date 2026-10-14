@@ -67,7 +67,7 @@ fn main() {
         sources: &["count_and_plan.cu", "count_and_plan_c.cu", "ram_fill.cu"],
         // The kernels include the CPU side's headers.
         extra_header_dirs: &["cpp"],
-        ..Default::default()
+        extra_nvcc_flags: if cfg!(feature = "mem-witness-test") { "-DZISK_MEM_TEST=1" } else { "" },
     });
 }
 

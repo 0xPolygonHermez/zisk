@@ -1,6 +1,7 @@
-//! Content hash of a `Mem` instance, written per segment when `ZISK_MEM_TRACE_HASH_DIR` is set.
-//! Two runs of the same block (CPU fill, device fill) can then be compared bit for bit: the hash
-//! covers every word of the trace rows and the scalars the air values are built from.
+//! Content hash of a memory instance, written per segment when `ZISK_MEM_TRACE_HASH_DIR` is set
+//! (`mem-witness-test` builds only). Two runs of the same block (CPU fill, device fill) can then
+//! be compared bit for bit: the hash covers every word of the trace rows and the scalars the air
+//! values are built from.
 
 use rayon::prelude::*;
 use std::io::Write;
@@ -85,23 +86,4 @@ pub(crate) fn dump_scalars(
         }
         Err(e) => tracing::warn!("mem trace hash: cannot write {path}: {e}"),
     }
-}
-
-/// The rows' memory as words, for a packed row type the device writes directly.
-pub(crate) fn rows_as_words_mut<R>(rows: &mut [R]) -> &mut [u64] {
-    let bytes = std::mem::size_of_val(rows);
-    assert_eq!(bytes % 8, 0);
-    assert_eq!(std::mem::align_of::<R>() % 8, 0);
-    // SAFETY: `rows` is a contiguous, 8-byte-aligned slice of `#[repr(C)]` packed rows whose fields
-    // are all 8-byte words; the slice covers precisely the rows' memory and inherits their
-    // exclusive borrow.
-    unsafe { std::slice::from_raw_parts_mut(rows.as_mut_ptr() as *mut u64, bytes / 8) }
-}
-
-pub(crate) fn rows_as_words<R>(rows: &[R]) -> &[u64] {
-    let bytes = std::mem::size_of_val(rows);
-    assert_eq!(bytes % 8, 0);
-    // SAFETY: `rows` is a contiguous, initialised, 8-byte-aligned slice of `#[repr(C)]` rows whose
-    // fields are all 8-byte words; reinterpreting its bytes as `u64` reads no padding.
-    unsafe { std::slice::from_raw_parts(rows.as_ptr() as *const u64, bytes / 8) }
 }

@@ -6,6 +6,10 @@
 # fallback they exercise. ZISK_MEM_GPU_FILL is unset for every case but "off" (the device witness
 # is the default).
 #
+# Needs cargo-zisk built with `--features mem-witness-test`: the knobs below and the row-hash dump
+# exist in that build only. The planner of such a build logs "[mops] test knobs enabled" at its
+# setup; the first device case checks for that line and fails otherwise.
+#
 # Fallbacks, each forced by a test knob at the point the planner detects the real condition:
 #   ZISK_MEM_TEST_PLAN_FAIL        the device has no plan: the CPU planner replays the chunks
 #   ZISK_MEM_TEST_CHUNK_REJECT=<k> the planner rejects chunk k: same
@@ -97,8 +101,12 @@ main() {
     local plan_fail="no device plan for this block; planning it on the CPU"
     # The CPU path: its hashes are the reference.
     run_case off 0 "" ZISK_MEM_GPU_FILL=off || return 1
-    # The device witness (the default).
+    # The device witness (the default), with the build checked for the test knobs.
     run_case arena 0 "" || return 1
+    if ! grep -qF "[mops] test knobs enabled" "${LOGS_DIR}/mem_witness/arena.log"; then
+        err "build cargo-zisk with --features mem-witness-test (the test knobs and the row-hash dump are off)"
+        return 1
+    fi
     # One owned instance without a staged image: its rows are built on demand.
     run_case unstaged 0 "" ZISK_MEM_TEST_UNSTAGED=0.1 || return 1
     # Pieces of fewer potentials: block records get split into sub-records.

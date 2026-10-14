@@ -58,14 +58,12 @@ impl<F: PrimeField64> MemAlignByteInstance<F> {
         packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
         use crate::mem_device_rows::align_device_instance;
-        let words = MemAlignByteTraceRowPacked::<F>::PACKED_WORDS;
         if self.is_large() {
             align_device_instance::<F, MemAlignByteTraceRowPacked<F>, LARGE_ROWS, LARGE_AIR_ID>(
                 air_id,
                 segment,
                 trace_buffer,
                 packed,
-                words,
                 |t, used| {
                     let mut v = MemAlignByteLargeAirValues::<F>::new();
                     v.padding_size = F::from_usize(t.num_rows() - used);
@@ -78,7 +76,6 @@ impl<F: PrimeField64> MemAlignByteInstance<F> {
                 segment,
                 trace_buffer,
                 packed,
-                words,
                 |t, used| {
                     let mut v = MemAlignByteAirValues::<F>::new();
                     v.padding_size = F::from_usize(t.num_rows() - used);
@@ -137,12 +134,13 @@ impl<F: PrimeField64> Instance<F> for MemAlignByteInstance<F> {
                 MemAlignByteTraceRow<F>,
             >(&inputs, used_rows, trace_buffer)?,
         };
+        #[cfg(feature = "mem-witness-test")]
         if packed {
             let words = MemAlignByteTraceRowPacked::<F>::PACKED_WORDS;
             crate::mem_device_rows::align_dump(
                 air_id,
                 segment,
-                &crate::mem_trace_hash::rows_as_words(&instance.trace)[..instance.num_rows * words],
+                &crate::mem_gpu_fill::rows_as_words(&instance.trace)[..instance.num_rows * words],
                 words,
             );
         }
