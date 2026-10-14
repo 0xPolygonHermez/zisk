@@ -6836,14 +6836,11 @@ fn verifier_info() -> VerifierInfo {
         n_fri_queries: 51,
         n_fri_steps: 5,
         n_challenges: 6,
-        n_challenges_total: 12,
+        n_challenges_total: 11,
         fri_steps: vec![22, 18, 14, 10, 7],
         hash_commits: true,
         last_level_verification: 5,
         pow_bits: 27,
-        num_vals: vec![236, 60, 21],
-        opening_points: vec![-55, -54, -53, -52, -51, -50, -49, -48, -47, -46, -45, -44, -43, -42, -41, -40, -39, -38, -37, -36, -35, -34, -33, -32, -31, -30, -29, -28, -27, -26, -25, -24, -23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 8, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30],
-        boundaries: vec![Boundary { name: "everyRow".to_string(), offset_min: None, offset_max: None }],
         fri_ev_groups: vec![
             FriEvalGroup { opening: 0, refs: vec![FriEvalRef::new(0, 23, 1, 0)] },
             FriEvalGroup { opening: 1, refs: vec![FriEvalRef::new(0, 23, 1, 0)] },
@@ -6917,6 +6914,9 @@ fn verifier_info() -> VerifierInfo {
             FriEvalGroup { opening: 69, refs: vec![FriEvalRef::new(1, 166, 1, 93), FriEvalRef::new(1, 167, 1, 94), FriEvalRef::new(1, 170, 1, 97), FriEvalRef::new(1, 171, 1, 98), FriEvalRef::new(1, 174, 1, 101), FriEvalRef::new(1, 175, 1, 102), FriEvalRef::new(1, 178, 1, 105), FriEvalRef::new(1, 179, 1, 106)] },
             FriEvalGroup { opening: 70, refs: vec![FriEvalRef::new(1, 198, 1, 70), FriEvalRef::new(1, 199, 1, 71), FriEvalRef::new(1, 202, 1, 74), FriEvalRef::new(1, 203, 1, 75), FriEvalRef::new(1, 206, 1, 78), FriEvalRef::new(1, 207, 1, 79), FriEvalRef::new(1, 210, 1, 82), FriEvalRef::new(1, 211, 1, 83)] }
         ],
+        num_vals: vec![236, 60, 21],
+        opening_points: vec![-55, -54, -53, -52, -51, -50, -49, -48, -47, -46, -45, -44, -43, -42, -41, -40, -39, -38, -37, -36, -35, -34, -33, -32, -31, -30, -29, -28, -27, -26, -25, -24, -23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 8, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30],
+        boundaries: vec![Boundary { name: "everyRow".to_string(), offset_min: None, offset_max: None }],
         q_deg: 7,
         q_index: 934,
     }
