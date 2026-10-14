@@ -8,7 +8,9 @@
    emitted at the call site with no library routine to test the pointer.
    Output: per case, one byte with bit `o` set when offset `o` is right (0xff when
    all eight are). check.sh compares it with a golden snapshot.
-   Build with -DONLY=n to run case n alone (to find the one that halts). */
+   Build with -DONLY=n to run case n alone (to find the one that halts), and with
+   -DTRAP_ON_FAIL to halt on a wrong case (for runners that do not show the
+   output, such as the assembly emulator). */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -223,7 +225,12 @@ int main(void) {
 #ifdef ONLY
     O[0] = check(ONLY);
 #else
-    for (size_t c = 0; c < NCASES; c++) O[c] = check(c);
+    for (size_t c = 0; c < NCASES; c++) {
+        O[c] = check(c);
+#ifdef TRAP_ON_FAIL
+        if (O[c] != 0xff) __builtin_trap();
+#endif
+    }
 #endif
     return 0;
 }
