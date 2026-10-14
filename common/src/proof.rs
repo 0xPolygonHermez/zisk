@@ -738,7 +738,7 @@ pub struct Proof {
     ///
     /// Unauthenticated metadata: verification ignores it, as the values derived from it are
     /// free witness values. `None` for proofs that do not come from a single execution
-    /// (aggregates) and for proofs serialized before the field existed.
+    /// (aggregates) and for proofs written by ZisK versions that predate this field.
     pub seed: Option<ExecutionSeed>,
 }
 
@@ -1191,8 +1191,8 @@ impl Proof {
         Ok(proof)
     }
 
-    /// Decode a bincode-serialized proof, including ones serialized before [`Proof::seed`]
-    /// existed (they decode with `seed: None`).
+    /// Decode a bincode-serialized proof, including ones written by ZisK versions that predate
+    /// [`Proof::seed`] (they decode with `seed: None`).
     ///
     /// Bytes past the last known field are ignored, so proofs from later versions that append
     /// fields still decode. Unlike [`Proof::load`] this does not check the publics' shape.
