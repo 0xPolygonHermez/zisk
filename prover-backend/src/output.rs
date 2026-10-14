@@ -241,11 +241,19 @@ impl ProveOutput {
     }
 
     /// Set the key `verify` uses: a recurser's verkey for an aggregate, as for
-    /// [`Proof::with_setup_vk`]. Needed for a remote proof from a non-release setup.
+    /// [`Proof::with_setup_vk`]. For a leaf from a non-release setup, use
+    /// [`with_leaf_setup_vk`](Self::with_leaf_setup_vk).
     pub fn with_setup_vk(mut self, setup_vk: Vec<u64>) -> Self {
         self.setup_vk = Some(setup_vk);
         self.leaf_setup_vk = false;
         self
+    }
+
+    /// Set the key `verify` uses to a non-release setup's leaf key, as for
+    /// [`Proof::with_leaf_setup_vk`]: its `vadcop_final.verkey.json`, or
+    /// `vadcop_final_compressed.verkey.json` for a minimal proof.
+    pub fn with_leaf_setup_vk(self, setup_vk: Vec<u64>) -> Self {
+        self.with_produced_under(Some(setup_vk))
     }
 
     /// Set the PLONK key `verify` uses, as for [`Proof::with_plonk_vk`].

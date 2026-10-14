@@ -37,11 +37,11 @@ impl ProveResult {
         self
     }
 
-    /// A non-release setup's leaf key for [`verify`](ProveOutput::verify), e.g. the
-    /// cluster's `vadcop_final.verkey.json`.
+    /// A non-release setup's leaf key for [`verify`](ProveOutput::verify): the cluster's
+    /// `vadcop_final.verkey.json`, or `vadcop_final_compressed.verkey.json` for a minimal proof.
     #[must_use]
     pub fn with_leaf_setup_vk(mut self, setup_vk: Vec<u64>) -> Self {
-        self.output = self.output.with_produced_under(Some(setup_vk));
+        self.output = self.output.with_leaf_setup_vk(setup_vk);
         self
     }
 

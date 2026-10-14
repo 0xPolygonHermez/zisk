@@ -41,8 +41,8 @@ async fn prove_leaf(
     let stdin = ZiskStdin::new();
     // One [u64; 12], matching the guest's single read.
     stdin.write(secret);
-    // Uncompressed on purpose: the client default is `VadcopFinalMinimal`, and compression
-    // strips the `is_vadcop_final_proof` flag the aggregator reads at public slot 0.
+    // Uncompressed on purpose: compression strips the `is_vadcop_final_proof` flag the
+    // aggregator reads at public slot 0.
     Ok(client.prove(&LEAF, stdin).wrap(ProofKind::VadcopFinal).run()?.await?.get_proof().clone())
 }
 

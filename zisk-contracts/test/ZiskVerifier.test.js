@@ -12,7 +12,7 @@ describe("ZiskVerifier", function () {
     if (!fs.existsSync(fxPath)) {
       throw new Error(
         `Fixture not found at ${fxPath}. ` +
-          `Generate one with: cargo zisk export-solidity-calldata -p <plonk.bin> -o ${fxPath}`
+          `Generate one with: cargo-zisk-dev export-solidity-calldata -p <plonk.bin> -o ${fxPath}`
       );
     }
 

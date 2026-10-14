@@ -149,7 +149,9 @@ fn stage_verifier(hash: &str, minimal: bool) -> Option<StageVerifier> {
     })
 }
 
-/// [`verify`] as a bool, for callers that only need yes or no.
+/// [`verify`] as a bool. It does not say which program the proof is for: any program's proof
+/// under `vk` returns `true`. Use [`verify`] and check [`Verified::program_vk`], or
+/// [`verify_saved_words`] with an expected program VK.
 pub fn verify_vadcop_final(proof: &VadcopFinalProof, vk: &[u64]) -> bool {
     // `stark_verify` reads exactly `vk[0..4]`, so a longer key would be silently
     // truncated to one the caller never pinned. Exact, not `>=`.

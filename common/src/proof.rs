@@ -4,7 +4,6 @@ use proofman_common::ProofmanError;
 use proofman_common::{PublicDefinition, PublicsInfo};
 use proofman_verifier::VadcopFinalProof;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -27,6 +26,14 @@ const PLONK_FILE_MAX_BYTES: usize = 1 << 20;
 /// A BN254 PLONK proof: 9 G1 points (64 bytes each) and 6 field evaluations (32 each).
 /// The native verifier aborts the process on any other length rather than failing.
 pub const PLONK_PROOF_BYTES: usize = 9 * 64 + 6 * 32;
+
+/// The BN254 scalar order `r`, big-endian. `PlonkVerifier.sol`'s `checkField` requires all
+/// 24 proof words to be below it, and proofman's parser reads every word mod `r`, so a word
+/// at or above it is another encoding of the same proof.
+const BN254_R_BE: [u8; 32] = [
+    0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+    0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
+];
 
 /// The PLONK circuit key the release's `PlonkVerifier.sol` was generated from, for the
 /// families that have a PLONK wrap. `rootc` is a public input of that circuit, so one key
@@ -67,6 +74,12 @@ fn ensure_stored_body(body: &ProofBody) -> Result<()> {
             return Err(CommonError::InvalidProof(format!(
                 "PLONK proof is {} bytes, expected {PLONK_PROOF_BYTES}",
                 proof_bytes.len()
+            )));
+        }
+        // Big-endian words of equal length compare as numbers.
+        if let Some(i) = proof_bytes.chunks_exact(32).position(|w| w >= &BN254_R_BE[..]) {
+            return Err(CommonError::InvalidProof(format!(
+                "PLONK proof word {i} is not below the BN254 scalar order"
             )));
         }
     }
@@ -600,32 +613,42 @@ impl PublicValues {
             .collect()
     }
 
-    /// Hash the public values using Solidity-compatible encoding.
+    /// The public input `ZiskVerifier.hashPublicValues` computes on-chain, as 32 big-endian
+    /// bytes: see [`snark_publics_hash`]. `vadcop_verkey` is the `rootCVadcopFinal`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `program_vk` or `vadcop_verkey` is not `PROGRAM_VK_LEN` limbs.
     pub fn hash_solidity(&self, program_vk: &ProgramVK, vadcop_verkey: &[u64]) -> Vec<u8> {
-        let bytes = self.bytes_solidity(program_vk, vadcop_verkey);
+        snark_publics_hash(&self.publics_full(program_vk), vadcop_verkey)
+    }
 
-        // SHA-256
-        let hash = Sha256::digest(&bytes);
-
-        hash.to_vec()
+    /// `[program_vk | outputs]` at u64 width, which a leaf's u32 outputs fill exactly.
+    fn publics_full(&self, program_vk: &ProgramVK) -> Vec<u64> {
+        assert_eq!(
+            program_vk.vk.len(),
+            PROGRAM_VK_LEN,
+            "program vk must be {PROGRAM_VK_LEN} limbs"
+        );
+        let mut publics = program_vk.vk.clone();
+        publics.extend(self.public_u64());
+        publics
     }
 }
 
 impl PublicValues {
-    /// Convert the public values into a byte vector formatted for Solidity hashing.
+    /// The bytes [`hash_solidity`](Self::hash_solidity) hashes, as `ZiskVerifier` lays
+    /// them out: `programVK` big-endian, `publicValues` ([`snark_inputs_bytes`]), then
+    /// `rootCVadcopFinal` big-endian.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `program_vk` or `vadcop_verkey` is not `PROGRAM_VK_LEN` limbs.
     pub fn bytes_solidity(&self, program_vk: &ProgramVK, vadcop_verkey: &[u64]) -> Vec<u8> {
-        let mut prefix = [0u8; PROGRAM_VK_LEN * 8];
-        for (i, val) in program_vk.vk.iter().enumerate() {
-            prefix[i * 8..(i + 1) * 8].copy_from_slice(&val.to_be_bytes());
-        }
-
-        let mut bytes = prefix.to_vec();
-        bytes.extend_from_slice(&self.data);
-        let mut suffix = [0u8; PROGRAM_VK_LEN * 8];
-        for (i, val) in vadcop_verkey.iter().enumerate() {
-            suffix[i * 8..(i + 1) * 8].copy_from_slice(&val.to_be_bytes());
-        }
-        bytes.extend(&suffix);
+        assert_eq!(vadcop_verkey.len(), PROGRAM_VK_LEN, "rootC must be {PROGRAM_VK_LEN} limbs");
+        let mut bytes: Vec<u8> = program_vk.vk.iter().flat_map(|w| w.to_be_bytes()).collect();
+        bytes.extend(snark_inputs_bytes(&self.publics_full(program_vk)));
+        bytes.extend(vadcop_verkey.iter().flat_map(|w| w.to_be_bytes()));
         bytes
     }
 }
@@ -892,11 +915,12 @@ impl<'a> ZiskVerifyBuilder<'a> {
     ) -> Result<Vec<u8>> {
         // The family only picks the release keys; an override's mode is irrelevant.
         let hash = self.proof_with_values.program_vk.hash_mode.as_str();
-        // A recurser stores its own key in the program VK slots, so an unpinned
-        // proof stamped with its own domain claims to be an aggregate.
-        let committed = &program_publics(publics_full)[..PROGRAM_VK_LEN];
-        let aggregate = stored_rootc == committed;
-        let rootc = self.setup_vk_to_verify_under(hash, false, aggregate.then_some(committed))?;
+        // A recurser stores its own key in the program VK slots, so a proof stamped
+        // with the domain its verified statement declares is an aggregate.
+        let statement = self.statement(publics_full);
+        let declared = &statement[..PROGRAM_VK_LEN];
+        let aggregate = stored_rootc == declared;
+        let rootc = self.setup_vk_to_verify_under(hash, false, aggregate.then_some(declared))?;
         let rootc: &[u64] = &rootc;
         // export-solidity-calldata reads the stored copy.
         if stored_rootc != rootc {
@@ -912,8 +936,6 @@ impl<'a> ZiskVerifyBuilder<'a> {
         // leaf key, the statement's domain must be the key, as for a Vadcop fold.
         let leaf_key =
             self.leaf_setup_vk || zisk_verifier::vadcop_vk(hash, false).is_some_and(|k| k == rootc);
-        let statement = self.statement(publics_full);
-        let declared = &statement[..PROGRAM_VK_LEN];
         if !leaf_key && declared != rootc {
             return Err(CommonError::InvalidProof(format!(
                 "{name} proof declares recursion domain {declared:?} but verifies under \
@@ -1020,7 +1042,9 @@ impl<'a> ZiskVerifyBuilder<'a> {
         }
 
         match &self.proof_with_values.body {
-            ProofBody::Plonk { proof_bytes, publics_full, rootc: stored_rootc, .. } => {
+            ProofBody::Plonk {
+                proof_bytes, plonk_vk, publics_full, rootc: stored_rootc, ..
+            } => {
                 if self.trusted_pilfflonk_vkey.is_some() {
                     return Err(CommonError::InvalidProof(
                         "a pilfflonk verification key was pinned (with_pilfflonk_vkey) for a PLONK proof"
@@ -1059,7 +1083,8 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     // The proof was checked and rejected.
                     ProofmanError::InvalidProof(reason) => {
                         tracing::warn!("PLONK proof not verified: {reason}");
-                        if self.trusted_plonk_vk.is_none() {
+                        // Only a proof wrapped under another key can be helped by passing it.
+                        if self.trusted_plonk_vk.is_none() && plonk_vk.plonk_vkey != *plonk_vkey {
                             tracing::warn!(
                                 "a PLONK proof from a non-release setup verifies under that \
                                  setup's final.verkey.json (`--plonk-vk`)"
@@ -1097,9 +1122,15 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 };
                 // The digest is the statement recomputed above, so pin it.
                 verify_snark_proof_with_vkey(&snark_proof, vkey_json, Some(&public_snark_bytes))
-                    .map_err(|e| {
-                        tracing::debug!("snark proof verification failed: {e}");
-                        CommonError::NotVerified
+                    .map_err(|e| match e {
+                        // The proof was checked and rejected.
+                        ProofmanError::InvalidProof(reason) => {
+                            tracing::warn!("pilfflonk proof not verified: {reason}");
+                            CommonError::NotVerified
+                        }
+                        e => CommonError::Invalid(format!(
+                            "pilfflonk verification could not run: {e}"
+                        )),
                     })
             }
             ProofBody::Vadcop { proof, kind, hash, publics_full, zisk_vk } => {
@@ -1468,8 +1499,7 @@ impl Proof {
                     "a compressed (minimal) proof cannot be aggregated: compression strips \
                      the is_vadcop_final_proof flag the aggregator reads at public slot 0, \
                      and it cannot be recovered. Produce the leaf uncompressed \
-                     (ProofKind::VadcopFinal) if you intend to fold it — note the embedded \
-                     client defaults to ProofKind::VadcopFinalMinimal"
+                     (ProofKind::VadcopFinal) if you intend to fold it"
                         .to_string(),
                 ));
             }
@@ -2343,6 +2373,49 @@ mod tests {
         // A leaf key never verifies an aggregate.
         let own = plonk_proof(flag_free_publics(recurser), recurser.to_vec(), HashMode::Poseidon1);
         let err = own.verify_builder().with_leaf_setup_vk(&recurser).verify().unwrap_err();
+        assert!(err.to_string().contains("leaf setup key"), "got: {err}");
+    }
+
+    /// Every proof word must be below the BN254 scalar order, as `PlonkVerifier.sol` requires:
+    /// adding `r` gives another encoding the native parser reads back as the same proof.
+    #[test]
+    fn a_plonk_proof_word_at_or_above_r_is_refused() {
+        let bytes = include_bytes!("../../zisk-contracts/test/plonk_proof.bin");
+        let mut proof = Proof::from_bytes(bytes).unwrap();
+        let r = num_bigint::BigUint::from_bytes_be(&BN254_R_BE);
+        if let ProofBody::Plonk { proof_bytes, .. } = &mut proof.body {
+            let word = num_bigint::BigUint::from_bytes_be(&proof_bytes[..32]) + &r;
+            let be = word.to_bytes_be();
+            proof_bytes[..32].fill(0);
+            proof_bytes[32 - be.len()..32].copy_from_slice(&be);
+        }
+        let err = proof.verify().unwrap_err();
+        assert!(err.to_string().contains("word 0"), "got: {err}");
+        assert!(proof.to_bytes().is_err());
+    }
+
+    /// The Solidity helpers compute what `ZiskVerifier.hashPublicValues` does.
+    #[test]
+    fn hash_solidity_is_the_on_chain_public_input() {
+        let mut publics_full = flag_free_publics([1, 2, 3, 4]);
+        publics_full[PROGRAM_VK_LEN] = 0xAABB_CCDD;
+        let publics = PublicValues::new_from_u64(&publics_full);
+        let vk = ProgramVK { vk: vec![1, 2, 3, 4], hash_mode: HashMode::Poseidon1 };
+        let rootc = [5, 6, 7, 8];
+        assert_eq!(publics.hash_solidity(&vk, &rootc), snark_publics_hash(&publics_full, &rootc));
+        let bytes = publics.bytes_solidity(&vk, &rootc);
+        assert_eq!(bytes.len(), (2 * PROGRAM_VK_LEN + ZISK_PUBLICS) * 8);
+        assert_eq!(&bytes[32..40], &0xAABB_CCDDu64.to_le_bytes());
+    }
+
+    /// A program VK override that names the stamped key makes the proof an aggregate, so a
+    /// leaf key still refuses it.
+    #[test]
+    fn a_leaf_key_refuses_a_plonk_aggregate_declared_through_an_override() {
+        let r = [7u64; 4];
+        let proof = plonk_proof(flag_free_publics([3; 4]), r.to_vec(), HashMode::Poseidon1);
+        let vk = ProgramVK { vk: r.to_vec(), hash_mode: HashMode::Poseidon1 };
+        let err = proof.with_program_vk(&vk).with_leaf_setup_vk(&r).verify().unwrap_err();
         assert!(err.to_string().contains("leaf setup key"), "got: {err}");
     }
 
