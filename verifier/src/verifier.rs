@@ -164,7 +164,9 @@ pub struct Verified {
     /// The 64 public outputs, as canonical field elements.
     pub outputs: [u64; ZISK_PUBLICS],
     /// `Some(true)` for a recurser fold, `Some(false)` for a leaf, `None` for a compressed
-    /// proof, whose stage strips the flag. Producers refuse to compress an aggregate.
+    /// proof, whose stage strips the flag. Producers refuse to compress an aggregate, but the
+    /// `final_compressed` circuit does not enforce it: a compressed fold verifies only under
+    /// its recurser's own key, never a release leaf key, so pin the key you expect.
     pub is_aggregate: Option<bool>,
 }
 
