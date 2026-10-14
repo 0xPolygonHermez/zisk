@@ -27,7 +27,6 @@ pub(crate) fn align_device_instance<
     segment: usize,
     trace_buffer: Vec<F>,
     packed: bool,
-    words_per_row: usize,
     make: impl FnOnce(&mut GenericTrace<Row, N, ZISK_AIRGROUP_ID, A>, usize) -> AirInstance<F>,
 ) -> ProofmanResult<AirInstance<F>> {
     if !packed {
@@ -37,19 +36,26 @@ pub(crate) fn align_device_instance<
     let used = zisk_sm_mem_planner::gpu_align_witness_fill(
         air_id,
         segment,
-        crate::mem_trace_hash::rows_as_words_mut(&mut trace.buffer),
+        crate::mem_gpu_fill::rows_as_words_mut(&mut trace.buffer),
     )
     .map_err(|e| {
         invalid(format!(
             "MemAlign air {air_id}[{segment}] witness from the GPU planner failed: {e}"
         ))
     })?;
-    align_dump(air_id, segment, crate::mem_trace_hash::rows_as_words(&trace.buffer), words_per_row);
+    #[cfg(feature = "mem-witness-test")]
+    align_dump(
+        air_id,
+        segment,
+        crate::mem_gpu_fill::rows_as_words(&trace.buffer),
+        std::mem::size_of::<Row>() / 8,
+    );
     Ok(make(&mut trace, used))
 }
 
 /// The hash dump of a MemAlign instance's packed rows (`ZISK_MEM_TRACE_HASH_DIR`); the instance
 /// has no air values.
+#[cfg(feature = "mem-witness-test")]
 pub(crate) fn align_dump(air_id: usize, segment: usize, rows: &[u64], words_per_row: usize) {
     let used_bits = crate::mem_gpu_fill::packed_used_bits(ZISK_AIRGROUP_ID, air_id)
         .unwrap_or(words_per_row * 64);

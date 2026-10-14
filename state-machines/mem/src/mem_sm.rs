@@ -684,11 +684,12 @@ impl<F: PrimeField64> MemSM<F> {
             out.padding_size
         );
 
+        #[cfg(feature = "mem-witness-test")]
         crate::mem_trace_hash::dump(
             self.get_mem_name(),
             usize::from(segment_id),
             is_last_segment,
-            crate::mem_trace_hash::rows_as_words(&trace.buffer),
+            crate::mem_gpu_fill::rows_as_words(&trace.buffer),
             previous_segment,
             &out,
         );
@@ -745,7 +746,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         let mut trace = MemTrace::<MemTraceRowPacked<F>>::new_from_vec(trace_buffer)?;
         let n_rows = trace.num_rows();
         let report = {
-            let words = crate::mem_trace_hash::rows_as_words_mut(&mut trace.buffer);
+            let words = crate::mem_gpu_fill::rows_as_words_mut(&mut trace.buffer);
             arena_fill_packed_rows(words, n_rows, segment_id)
         }
         .map_err(|e| {
@@ -760,11 +761,12 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             report.out.padding_size
         );
         tracing::debug!("Mem[{seg_idx}] rows from the device: {} lanes", report.res.n_lanes);
+        #[cfg(feature = "mem-witness-test")]
         crate::mem_trace_hash::dump(
             self.get_mem_name(),
             seg_idx,
             is_last_segment,
-            crate::mem_trace_hash::rows_as_words(&trace.buffer),
+            crate::mem_gpu_fill::rows_as_words(&trace.buffer),
             &report.previous_segment,
             &report.out,
         );

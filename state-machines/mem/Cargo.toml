@@ -34,6 +34,9 @@ env = { workspace = true }
 # Per-phase timings inside the witness computation, at `info`. Off by default: see
 # `zisk_common::witness_timers`.
 witness_timers = []
+# The row-hash dump (`ZISK_MEM_TRACE_HASH_DIR`) and the planner's test knobs, for
+# tools/test-env/test_mem_witness.sh. Off by default.
+mem-witness-test = ["zisk-sm-mem-planner/mem-witness-test"]
 default = []
 debug_mem = ["zisk-sm-mem-common/debug_mem"]
 debug_mem_align = []

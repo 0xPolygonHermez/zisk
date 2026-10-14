@@ -340,8 +340,8 @@ bool CountAndPlan::prepare_ram_fill(RamFillPrepared* out) {
         out->status = -1;
         return false;
     }
-    const size_t index_cap = test_prep_fail_ == 1 ? 0 : (size_t)RF_IDX_MASK + 1;   // ZISK_MEM_TEST_PREP_FAIL=ram: no room
-    if (n > index_cap) {
+    const size_t index_cap = (size_t)RF_IDX_MASK + 1;
+    if (n > index_cap || ZISK_MEM_TEST_KNOB(test_prep_fail_ == 1)) {   // ZISK_MEM_TEST_PREP_FAIL=ram: no room
         fprintf(stderr, "ram_fill: %zu accesses exceed the %zu the arrival index can address; RAM witness off\n",
                 n, index_cap);
         out->status = -3;
@@ -493,7 +493,7 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     const size_t t_bytes = std::max(std::max(t_sort, t_max), std::max(t_bykey, t_select));
     void* temp = take(t_bytes);
     const size_t scratch_bytes = (size_t)(cur - rf_scratch_);
-    if (cur > end || test_scratch_overflow_()) {
+    if (cur > end || ZISK_MEM_TEST_KNOB(test_scratch_overflow_())) {
         if (!stage_try_) fprintf(stderr, "ram_fill: instance %u needs %zu MB of scratch, the arena has %zu MB below the retained "
                         "accesses; RAM witness off\n", inst, scratch_bytes >> 20, (size_t)(end - rf_scratch_) >> 20);
         res->status = -3;
@@ -532,11 +532,13 @@ bool CountAndPlan::fill_ram_instance(uint32_t inst, uint64_t* out_rows, uint32_t
         res->status = -4;
         return false;
     }
+#ifdef ZISK_MEM_TEST
     if (test_fill_fail_(0, inst)) {   // tests: the instance faults
         fprintf(stderr, "ram_fill: instance %u: ZISK_MEM_TEST_FILL_FAIL set\n", inst);
         res->status = -4;
         return false;
     }
+#endif
 
     // 3. values, in blocks with a carry. The free key buffer takes the resolved values. Instances
     // split at addresses, so no state carries in from the previous one.
@@ -708,7 +710,7 @@ bool CountAndPlan::prepare_other_index_() {
     d_other_idx_  = (uint32_t*)take(total * 4);
     d_other_addr_ = (uint32_t*)take(total * 4);
     other_scratch_ = (uint8_t*)take(0);
-    if (other_scratch_ > arena_ + ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed)) || test_prep_fail_ == 2) {
+    if (other_scratch_ > arena_ + ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed)) || ZISK_MEM_TEST_KNOB(test_prep_fail_ == 2)) {
         fprintf(stderr, "rom_fill: no room for the access table below the retained accesses; witness off\n");
         d_other_idx_ = nullptr;
         return false;
@@ -765,7 +767,7 @@ bool CountAndPlan::prepare_input_image_(const void* image, size_t image_bytes) {
     memcpy(h_image_.data(), image, image_bytes);
     ScratchCursor sc{other_scratch_};
     uint64_t* d_image = (uint64_t*)sc.take(image_words_ * 8);
-    if (sc.cur > arena_ + ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed)) || test_prep_fail_ == 3) {
+    if (sc.cur > arena_ + ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed)) || ZISK_MEM_TEST_KNOB(test_prep_fail_ == 3)) {
         fprintf(stderr, "input_fill: no room for the %zu MB input image below the retained accesses\n", (image_words_ * 8) >> 20);
         return false;
     }
@@ -804,10 +806,12 @@ bool CountAndPlan::fill_staged_(uint32_t family, uint32_t air_id, uint32_t segme
                                 RamFillResult* res, Fill&& fill) {
     uint8_t* const low = stage_low_;
     if (uint64_t* d_out = stage_take_(words)) {
+#ifdef ZISK_MEM_TEST
         if (test_overflow_armed_) {   // tests: this fill's staged attempt and its retry overflow, the images get dropped
             std::lock_guard<std::mutex> lk(staged_mtx_);
             if (!staged_.empty()) { test_overflow_armed_ = false; test_overflow_left_ = 2; }
         }
+#endif
         stage_try_ = true;
         const bool ok = fill(d_out);
         stage_try_ = false;
@@ -833,6 +837,7 @@ bool CountAndPlan::fill_staged_(uint32_t family, uint32_t air_id, uint32_t segme
     return fill(nullptr);
 }
 
+#ifdef ZISK_MEM_TEST
 // ZISK_MEM_TEST_SCRATCH_OVERFLOW: the scratch check of the armed fill fails on its staged attempt and its retry.
 bool CountAndPlan::test_scratch_overflow_() {
     if (test_overflow_left_ <= 0) return false;
@@ -840,6 +845,7 @@ bool CountAndPlan::test_scratch_overflow_() {
     fprintf(stderr, "mem_fill: ZISK_MEM_TEST_SCRATCH_OVERFLOW set; the scratch check fails\n");
     return true;
 }
+#endif
 
 // Address range and lane window of every instance of a ROM or input region, from the prefix the
 // plan left in place: `skip` lanes of the instance's address range belong to the instance before
@@ -1025,11 +1031,13 @@ bool CountAndPlan::fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t
         res->status = -4;
         return false;
     }
+#ifdef ZISK_MEM_TEST
     if (test_fill_fail_(1, inst)) {   // tests: the instance faults
         fprintf(stderr, "rom_fill: instance %u: ZISK_MEM_TEST_FILL_FAIL set\n", inst);
         res->status = -4;
         return false;
     }
+#endif
     uint64_t* resolved = (uint64_t*)sc.take(n * 8);
     const size_t prop_block = std::min(RF_PROP_BLOCK, n);
     Merge* prop_in = (Merge*)sc.take(prop_block * sizeof(Merge));
@@ -1038,7 +1046,7 @@ bool CountAndPlan::fill_rom_instance(uint32_t inst, uint64_t* out_rows, uint32_t
     size_t t_bytes = 0;
     cub::DeviceScan::InclusiveScanByKey(nullptr, t_bytes, addr_sorted, prop_in, prop_out, MergeOp(), prop_block, EqU32(), fill_stream_);
     void* temp = sc.take(t_bytes);
-    if (sc.cur > end || test_scratch_overflow_()) {
+    if (sc.cur > end || ZISK_MEM_TEST_KNOB(test_scratch_overflow_())) {
         if (!stage_try_) fprintf(stderr, "rom_fill: instance %u needs %zu MB of scratch, %zu MB free below the retained accesses\n",
                 inst, (size_t)(sc.cur - other_scratch_) >> 20, (size_t)(end - other_scratch_) >> 20);
         res->status = -3;
@@ -1256,7 +1264,7 @@ bool CountAndPlan::fill_input_instance(uint32_t inst, const uint64_t* d_image, c
         return false;
     }
     uint64_t* rows = d_out ? d_out : (uint64_t*)sc.take((size_t)n_rows * input_words_per_row_ * 8);
-    if (sc.cur > end || test_scratch_overflow_()) {
+    if (sc.cur > end || ZISK_MEM_TEST_KNOB(test_scratch_overflow_())) {
         if (!stage_try_) fprintf(stderr, "input_fill: instance %u needs %zu MB of scratch, %zu MB free below the retained accesses\n",
                 inst, (size_t)(sc.cur - scratch) >> 20, (size_t)(end - scratch) >> 20);
         res->status = -3;
@@ -1288,11 +1296,13 @@ bool CountAndPlan::fill_input_instance(uint32_t inst, const uint64_t* d_image, c
             res->status = -4;
             return false;
         }
+#ifdef ZISK_MEM_TEST
         if (test_fill_fail_(2, inst)) {   // tests: the instance faults
             fprintf(stderr, "input_fill: instance %u: ZISK_MEM_TEST_FILL_FAIL set\n", inst);
             res->status = -4;
             return false;
         }
+#endif
     }
 
     // The last lane, and the lane before the window (the selection holds it for every instance but the first).
@@ -1690,7 +1700,7 @@ bool CountAndPlan::prepare_align_index_() {
     uint32_t* d_pref = (uint32_t*)sc.take(h_pref.size() * 4);
     d_align_order_ = (uint32_t*)sc.take(total * 4);
     align_scratch_ = sc.take(0);
-    if (align_scratch_ > arena_ + ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed)) || test_prep_fail_ == 4) {
+    if (align_scratch_ > arena_ + ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed)) || ZISK_MEM_TEST_KNOB(test_prep_fail_ == 4)) {
         fprintf(stderr, "align_fill: no room for the access order below the retained accesses; witness off\n");
         d_align_order_ = nullptr;
         return false;
@@ -1750,7 +1760,7 @@ bool CountAndPlan::fill_align_instance(const AlignPlanDesc& plan, const AlignChu
     cub::DeviceScan::ExclusiveSum(nullptr, t_sum, rows_per, row_off, m + 1, fill_stream_);
     const size_t t_bytes = std::max(t_scan, std::max(t_select, t_sum));
     void* temp = sc.take(t_bytes);
-    if (sc.cur > end || test_scratch_overflow_()) {
+    if (sc.cur > end || ZISK_MEM_TEST_KNOB(test_scratch_overflow_())) {
         if (!stage_try_) fprintf(stderr, "align_fill: air %u segment %u needs %zu MB of scratch, %zu MB free below the retained accesses\n",
                 plan.air_id, plan.segment, (size_t)(sc.cur - scratch) >> 20, (size_t)(end - scratch) >> 20);
         res->status = -3;
@@ -1784,11 +1794,13 @@ bool CountAndPlan::fill_align_instance(const AlignPlanDesc& plan, const AlignChu
         res->status = -4;
         return false;
     }
+#ifdef ZISK_MEM_TEST
     if (test_fill_fail_(3, (size_t)(&plan - fill_align_plans_.data()))) {   // tests: the plan faults
         fprintf(stderr, "align_fill: air %u segment %u: ZISK_MEM_TEST_FILL_FAIL set\n", plan.air_id, plan.segment);
         res->status = -4;
         return false;
     }
+#endif
 
     // 2. rows: the accesses' rows in order, then the padding.
     uint32_t used = 0;
@@ -1859,6 +1871,7 @@ bool CountAndPlan::prepare_fills(const void* image, size_t image_bytes, const Al
         fprintf(stderr, "mem_fill: %s: %s; the memory witness stays on the CPU for this block\n", who, why);
     };
     if (!ram_retention_enabled_.load(std::memory_order_relaxed) || mem_lanes_x_row_ == 0) { prepared->status = -1; return false; }
+#ifdef ZISK_MEM_TEST
     // Test knobs (tests: the fallbacks of the fills). ZISK_MEM_TEST_PREP_FAIL=ram|rom|input|align: that step of
     // the preparation finds no room. ZISK_MEM_TEST_FILL_FAIL=<family>.<inst> (0 ram, 1 rom, 2 input, 3 align; inst:
     // the segment, or the plan's position in the block's MemAlign list): that instance's fill faults (status -4).
@@ -1873,6 +1886,7 @@ bool CountAndPlan::prepare_fills(const void* image, size_t image_bytes, const Al
     if (const char* e = std::getenv("ZISK_MEM_TEST_FILL_FAIL")) std::sscanf(e, "%ld.%ld", &test_fill_fail_family_, &test_fill_fail_inst_);
     test_overflow_armed_ = std::getenv("ZISK_MEM_TEST_SCRATCH_OVERFLOW") != nullptr;
     test_overflow_left_ = 0;
+#endif
     stage_low_ = nullptr;
     // Every table the fills read is laid out first, bottom-up, and the fills' scratch starts past
     // all of them; the staged images go top-down from the retained accesses. Between the two stays
@@ -1935,7 +1949,9 @@ bool CountAndPlan::prepare_fills(const void* image, size_t image_bytes, const Al
     // ZISK_MEM_TEST_UNSTAGED=<family>.<inst> leaves one owned instance without an image (tests:
     // its rows are then built on demand).
     long skip_family = -1, skip_inst = -1;
+#ifdef ZISK_MEM_TEST
     if (const char* e = std::getenv("ZISK_MEM_TEST_UNSTAGED")) std::sscanf(e, "%ld.%ld", &skip_family, &skip_inst);
+#endif
     const uint32_t* lists[3] = {ram, rom, input};
     const uint32_t counts[3] = {n_ram, n_rom, n_input};
     for (uint32_t f = 0; f < 3; ++f) {

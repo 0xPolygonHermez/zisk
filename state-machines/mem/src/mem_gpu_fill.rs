@@ -1,7 +1,6 @@
 //! The `Mem` witness from the accesses the GPU planner retained (`ZISK_MEM_GPU_FILL`).
 
 use zisk_common::SegmentId;
-use zisk_pil::PACKED_INFO;
 use zisk_sm_mem_common::{RAM_W_ADDR_END, RAM_W_ADDR_INIT};
 
 use crate::mem_sm::{split_last_step, split_padding_size, MemFillOutput, MemPreviousSegment};
@@ -66,9 +65,30 @@ pub(crate) fn mem_report(
     (previous_segment, out)
 }
 
+/// The rows' memory as words, for a packed row type the device writes directly.
+pub(crate) fn rows_as_words_mut<R>(rows: &mut [R]) -> &mut [u64] {
+    let bytes = std::mem::size_of_val(rows);
+    assert_eq!(bytes % 8, 0);
+    assert_eq!(std::mem::align_of::<R>() % 8, 0);
+    // SAFETY: `rows` is a contiguous, 8-byte-aligned slice of `#[repr(C)]` packed rows whose fields
+    // are all 8-byte words; the slice covers precisely the rows' memory and inherits their
+    // exclusive borrow.
+    unsafe { std::slice::from_raw_parts_mut(rows.as_mut_ptr() as *mut u64, bytes / 8) }
+}
+
+#[cfg(feature = "mem-witness-test")]
+pub(crate) fn rows_as_words<R>(rows: &[R]) -> &[u64] {
+    let bytes = std::mem::size_of_val(rows);
+    assert_eq!(bytes % 8, 0);
+    // SAFETY: `rows` is a contiguous, initialised, 8-byte-aligned slice of `#[repr(C)]` rows whose
+    // fields are all 8-byte words; reinterpreting its bytes as `u64` reads no padding.
+    unsafe { std::slice::from_raw_parts(rows.as_ptr() as *const u64, bytes / 8) }
+}
+
 /// The bits a packed row of the air uses, counted from its first word; `None` when not packed.
+#[cfg(feature = "mem-witness-test")]
 pub(crate) fn packed_used_bits(airgroup_id: usize, air_id: usize) -> Option<usize> {
-    PACKED_INFO
+    zisk_pil::PACKED_INFO
         .iter()
         .find(|(ag, a, _)| *ag == airgroup_id && *a == air_id)
         .filter(|(_, _, c)| c.is_packed)

@@ -24,6 +24,14 @@
 // pulling in any CUDA-only types.
 #include "../cpp/instance_meta.hpp"
 
+// The test knobs (ZISK_MEM_TEST_*, read by the `mem-witness-test` build only): a check they drive
+// is written `... || ZISK_MEM_TEST_KNOB(expr)`, which the release build compiles to `false`.
+#ifdef ZISK_MEM_TEST
+#define ZISK_MEM_TEST_KNOB(expr) (expr)
+#else
+#define ZISK_MEM_TEST_KNOB(expr) false
+#endif
+
 // ─── Public input type ──────────────────────────────────────────────
 
 // One memory-ops record. `flags` holds the mode in bits 0-5; for non-block modes bits 6-25 hold
@@ -379,7 +387,9 @@ private:
     std::mutex          ram_runs_mtx_;
     uint32_t            piece_potentials_ = MAX_POT_PER_PIECE;  // cut threshold (ZISK_MEM_TEST_PIECE_POTENTIALS lowers it)
     uint64_t            retained_cap_ = MAX_RETAINED_ACCESSES;  // ZISK_MEM_TEST_RETENTION lowers it
+#ifdef ZISK_MEM_TEST
     int64_t             test_chunk_reject_ = -1;                // ZISK_MEM_TEST_CHUNK_REJECT: the chunk add_chunk rejects
+#endif
     unsigned long long* d_ram_nwrites_ = nullptr;             // writes among the retained accesses
     uint64_t           ram_writes_     = 0;                   // read back by prepare_ram_fill
     uint32_t           chunk_size_bits_ = 18;
@@ -463,6 +473,7 @@ private:
     // neither wait for the legacy stream nor queue behind the prover's commit kernels.
     cudaStream_t               fill_stream_ = nullptr;
     bool                       stage_try_ = false;     // staged attempt: a scratch overflow is retried, not reported
+#ifdef ZISK_MEM_TEST
     // Test knobs of the fills, read once per block by prepare_fills: ZISK_MEM_TEST_PREP_FAIL (the step of the
     // preparation that finds no room: 1 ram, 2 rom, 3 input, 4 align), ZISK_MEM_TEST_FILL_FAIL (the instance whose
     // fill faults) and ZISK_MEM_TEST_SCRATCH_OVERFLOW (one fill's staged attempt and its retry overflow).
@@ -474,6 +485,7 @@ private:
         return (long)family == test_fill_fail_family_ && (long)inst == test_fill_fail_inst_;
     }
     bool test_scratch_overflow_();
+#endif
     bool                       arena_released_ = false;   // under staged_mtx_: the arena went back to the prover
     uint32_t*                  d_fill_fault_ = nullptr;      // a fill's fault word (fixed region)
     uint8_t*  scratch_end_(size_t n_total) const;

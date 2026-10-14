@@ -81,3 +81,5 @@ custom_rust_llvm = []
 stats = []
 # Per-phase timings inside the witness computations (memory and the arith precompiles).
 witness_timers = ["zisk-sdk/witness_timers", "zisk-prover-backend/witness_timers"]
+# The memory witness test knobs and row-hash dump (tools/test-env/test_mem_witness.sh).
+mem-witness-test = ["zisk-sdk/mem-witness-test", "zisk-prover-backend/mem-witness-test"]

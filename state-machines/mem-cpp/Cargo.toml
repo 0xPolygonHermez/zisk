@@ -23,6 +23,9 @@ tracing = { workspace = true }
 [features]
 default = []
 cpu-only = []
+# The planner's test knobs (`ZISK_MEM_TEST_*`, see tools/test-env/test_mem_witness.sh): the
+# release build reads none of them.
+mem-witness-test = []
 save_mem_bus_data = []
 save_mem_plans = []
 save_mem_align_counters = []
