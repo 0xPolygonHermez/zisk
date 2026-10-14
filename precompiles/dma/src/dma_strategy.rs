@@ -3,16 +3,41 @@
 //!
 //! It organizes execution plans for DMA instance types (full, memcpy, memset, inputcpy, mem),
 //! leveraging operation counters to select the assignment that minimises total proving cost.
+//!
+//! Two alternatives are evaluated:
+//!
+//! - the big machines (`Dma`, `DmaPrePost`, `Dma64Aligned`, `DmaUnaligned` and their variants),
+//!   each with its own instances, continuations and minimum size;
+//! - `DmaCompact`, a single small AIR that proves every operation by itself, meant for executions
+//!   that use the DMA lightly.
+//!
+//! The choice is all or nothing: `DmaCompact` either proves every DMA operation of the execution
+//! or none, because the memory accesses are generated before planning and the routing of an
+//! operation must be known by every collector. `DmaCompact` never splits an operation, so it is
+//! only possible when every operation fits in one instance, and it is taken (in the default
+//! `auto` mode) when its estimated cost is not larger than the one of the big machines. The
+//! environment variable `ZISK_DMA_COMPACT` (`auto`, `always`, `never`) overrides the decision,
+//! which is useful to evaluate the machine.
+//!
+//! # Cost of an instance
+//!
+//! Every decision of this module (the `Dma64Aligned` variant of each operation type and
+//! `DmaCompact` against the big machines) compares costs computed by [`DmaStrategy::instance_cost`]:
+//!
+//! - by default the goal is to reduce the NUMBER of instances: every instance costs the same
+//!   (a weight larger than any area), and the area only breaks ties;
+//! - with the `strategy_area` feature the cost is the proving area of the instance, its columns
+//!   times its rows (plus a small per instance aggregation cost).
 
 use core::panic;
 use std::fmt;
 
 use crate::{
-    DmaCheckPoint, DmaCounterInputGen, DmaInstancesBuilder, DMA_64_ALIGNED_INPUTS_OFFSET,
-    DMA_64_ALIGNED_OFFSET, DMA_COUNTER_INPUTCPY, DMA_COUNTER_MEMCMP, DMA_COUNTER_MEMCPY,
-    DMA_COUNTER_MEMCPY_8, DMA_COUNTER_MEMSET, DMA_COUNTER_MEMSET_8, DMA_COUNTER_OPS,
-    DMA_COUNTER_OPS_EXT, DMA_INPUT_GEN_COUNTERS, DMA_OFFSET, DMA_PRE_POST_OFFSET,
-    DMA_UNALIGNED_INPUTS_OFFSET, DMA_UNALIGNED_OFFSET,
+    DmaCheckPoint, DmaCompactCheckPoint, DmaCompactInstancesBuilder, DmaCounterInputGen,
+    DmaInstancesBuilder, DMA_64_ALIGNED_INPUTS_OFFSET, DMA_64_ALIGNED_OFFSET, DMA_COUNTER_INPUTCPY,
+    DMA_COUNTER_MEMCMP, DMA_COUNTER_MEMCPY, DMA_COUNTER_MEMCPY_8, DMA_COUNTER_MEMSET,
+    DMA_COUNTER_MEMSET_8, DMA_COUNTER_OPS, DMA_COUNTER_OPS_EXT, DMA_INPUT_GEN_COUNTERS, DMA_OFFSET,
+    DMA_PRE_POST_OFFSET, DMA_UNALIGNED_INPUTS_OFFSET, DMA_UNALIGNED_OFFSET,
 };
 
 #[cfg(feature = "save_dma_plans")]
@@ -22,14 +47,60 @@ use fields::PrimeField64;
 use zisk_common::{BusDeviceMetrics, BusDeviceMode, CheckPoint, ChunkId};
 use zisk_core::{
     DMA_64_ALIGNED_COST, DMA_64_ALIGNED_INPUTCPY_COST, DMA_64_ALIGNED_MEMCPY_COST,
-    DMA_64_ALIGNED_MEMSET_COST, DMA_64_ALIGNED_MEM_COST,
+    DMA_64_ALIGNED_MEMSET_COST, DMA_64_ALIGNED_MEM_COST, DMA_COMPACT_COST, DMA_COST,
+    DMA_INPUTCPY_COST, DMA_MEMCPY_COST, DMA_PRE_POST_COST, DMA_PRE_POST_INPUTCPY_COST,
+    DMA_PRE_POST_MEMCPY_COST, DMA_UNALIGNED_COST,
 };
 
 use zisk_pil::{
     Dma64AlignedInputCpyTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemSetTrace,
-    Dma64AlignedMemTrace, Dma64AlignedTrace, DmaInputCpyTrace, DmaMemCpyTrace,
+    Dma64AlignedMemTrace, Dma64AlignedTrace, DmaCompactTrace, DmaInputCpyTrace, DmaMemCpyTrace,
     DmaPrePostInputCpyTrace, DmaPrePostMemCpyTrace, DmaPrePostTrace, DmaTrace, DmaUnalignedTrace,
 };
+
+/// How the planner decides between `DmaCompact` and the big machines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DmaCompactMode {
+    /// `DmaCompact` when every operation fits and it is not more expensive.
+    #[default]
+    Auto,
+    /// `DmaCompact` whenever every operation fits (panics otherwise).
+    Always,
+    /// Never `DmaCompact`.
+    Never,
+}
+
+impl DmaCompactMode {
+    pub const ENV_VAR: &'static str = "ZISK_DMA_COMPACT";
+
+    /// Reads the mode from the `ZISK_DMA_COMPACT` environment variable (`auto` when unset).
+    pub fn from_env() -> Self {
+        match std::env::var(Self::ENV_VAR) {
+            Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+                "" | "auto" => Self::Auto,
+                "always" | "1" | "true" | "on" => Self::Always,
+                "never" | "0" | "false" | "off" => Self::Never,
+                other => {
+                    tracing::warn!(
+                        "{}={other} is not auto, always or never, using auto",
+                        Self::ENV_VAR
+                    );
+                    Self::Auto
+                }
+            },
+            Err(_) => Self::Auto,
+        }
+    }
+}
+
+/// The plans of the DMA machines: either the big machines or `DmaCompact`, never both.
+#[derive(Debug, Default)]
+pub struct DmaPlans {
+    /// Plans of the big machines, per AIR id.
+    pub big: Vec<(usize, Vec<(CheckPoint, DmaCheckPoint)>)>,
+    /// Plans of the `DmaCompact` instances.
+    pub compact: Vec<(CheckPoint, DmaCompactCheckPoint)>,
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct DmaInstances {
@@ -113,6 +184,11 @@ pub struct DmaStrategy<F> {
     pub dma_pre_post: DmaInstances,
     pub dma_64_aligned: Dma64AlignedInstances,
     pub dma_unaligned: usize,
+    /// `DmaCompact` instances the execution would need, `None` when some operation does not fit.
+    pub dma_compact: Option<usize>,
+    /// Whether the plans route every operation to `DmaCompact`.
+    pub use_compact: bool,
+    pub compact_mode: DmaCompactMode,
     _marker: std::marker::PhantomData<F>,
 }
 
@@ -127,8 +203,16 @@ impl<F> fmt::Display for DmaStrategy<F> {
              ─────────────────────────────── DMA_64_ALIGNED\n\
              {}\
              ──────────────────────────────── DMA_UNALIGNED\n  \
-             full      {:>3}\n\n",
-            self.dma, self.dma_pre_post, self.dma_64_aligned, self.dma_unaligned,
+             full      {:>3}\n\
+             ────────────────────────────────── DMA_COMPACT\n  \
+             full      {:>3} mode: {:?} selected: {}\n\n",
+            self.dma,
+            self.dma_pre_post,
+            self.dma_64_aligned,
+            self.dma_unaligned,
+            self.dma_compact.map(|n| n as i64).unwrap_or(-1),
+            self.compact_mode,
+            self.use_compact,
         )
     }
 }
@@ -188,6 +272,71 @@ impl<F: PrimeField64> DmaStrategy<F> {
     const DMA_64_ALIGNED_INPUTCPY_ROWS: usize = Dma64AlignedInputCpyTrace::<()>::NUM_ROWS;
     const DMA_64_ALIGNED_MEM_ROWS: usize = Dma64AlignedMemTrace::<()>::NUM_ROWS;
     const DMA_UNALIGNED_ROWS: usize = DmaUnalignedTrace::<()>::NUM_ROWS;
+    const DMA_COMPACT_ROWS: usize = DmaCompactTrace::<()>::NUM_ROWS;
+
+    /// Estimated cost of the big machines with the instances already decided (see
+    /// [`Self::instance_cost`]).
+    fn big_machines_cost(&self) -> usize {
+        let cost = |instances: usize, cost_x_row: u64, rows: usize| {
+            instances * Self::instance_cost(cost_x_row, rows)
+        };
+        cost(self.dma.full, DMA_COST, Self::DMA_ROWS)
+            + cost(self.dma.memcpy, DMA_MEMCPY_COST, Self::DMA_MEMCPY_ROWS)
+            + cost(self.dma.inputcpy, DMA_INPUTCPY_COST, Self::DMA_INPUTCPY_ROWS)
+            + cost(self.dma_pre_post.full, DMA_PRE_POST_COST, Self::DMA_PRE_POST_ROWS)
+            + cost(
+                self.dma_pre_post.memcpy,
+                DMA_PRE_POST_MEMCPY_COST,
+                Self::DMA_PRE_POST_MEMCPY_ROWS,
+            )
+            + cost(
+                self.dma_pre_post.inputcpy,
+                DMA_PRE_POST_INPUTCPY_COST,
+                Self::DMA_PRE_POST_INPUTCPY_ROWS,
+            )
+            + cost(self.dma_64_aligned.full, DMA_64_ALIGNED_COST, Self::DMA_64_ALIGNED_ROWS)
+            + cost(
+                self.dma_64_aligned.memcpy,
+                DMA_64_ALIGNED_MEMCPY_COST,
+                Self::DMA_64_ALIGNED_MEMCPY_ROWS,
+            )
+            + cost(
+                self.dma_64_aligned.memset,
+                DMA_64_ALIGNED_MEMSET_COST,
+                Self::DMA_64_ALIGNED_MEMSET_ROWS,
+            )
+            + cost(
+                self.dma_64_aligned.inputcpy,
+                DMA_64_ALIGNED_INPUTCPY_COST,
+                Self::DMA_64_ALIGNED_INPUTCPY_ROWS,
+            )
+            + cost(self.dma_64_aligned.mem, DMA_64_ALIGNED_MEM_COST, Self::DMA_64_ALIGNED_MEM_ROWS)
+            + cost(self.dma_unaligned, DMA_UNALIGNED_COST, Self::DMA_UNALIGNED_ROWS)
+    }
+
+    /// Estimated cost of `instances` instances of `DmaCompact` (see [`Self::instance_cost`]).
+    fn compact_cost(instances: usize) -> usize {
+        instances * Self::instance_cost(DMA_COMPACT_COST, Self::DMA_COMPACT_ROWS)
+    }
+
+    /// Packs every DMA operation into `DmaCompact` instances, in bus order and without splitting
+    /// any. `None` when some operation does not fit in an instance.
+    fn plan_compact(
+        counters: &[(ChunkId, Box<dyn BusDeviceMetrics>)],
+    ) -> Option<Vec<(CheckPoint, DmaCompactCheckPoint)>> {
+        let mut builder = DmaCompactInstancesBuilder::new(Self::DMA_COMPACT_ROWS);
+        for (chunk_id, dyn_counter) in counters.iter() {
+            let counter = (**dyn_counter).as_any().downcast_ref::<DmaCounterInputGen>().unwrap();
+            if counter.compact_max_rows > Self::DMA_COMPACT_ROWS {
+                return None;
+            }
+            for rows in counter.compact_rows.iter() {
+                builder.add_op(*chunk_id, *rows as usize);
+            }
+        }
+        Some(builder.get_plan())
+    }
+
     // Dma
     // DmaMemCpy
     // DmaInputCpy
@@ -337,32 +486,48 @@ impl<F: PrimeField64> DmaStrategy<F> {
         }
     }
 
-    const DMA_64_ALIGNED_AGGREGATE_COST: usize = 100;
+    /// Cost added to every instance when the strategy is by area, to prefer fewer instances
+    /// among equal areas.
+    const AGGREGATE_COST: usize = 100;
+
+    /// Cost of every instance when the strategy is by number of instances: larger than any area,
+    /// so the area only breaks ties.
+    const INSTANCE_WEIGHT: usize = 1 << 48;
+
+    /// Cost of one instance of an AIR with `cost_x_row` (its columns) and `rows`, in the units
+    /// every decision of the strategy compares. See the module documentation.
+    pub const fn instance_cost(cost_x_row: u64, rows: usize) -> usize {
+        let area = cost_x_row as usize * rows;
+        if cfg!(feature = "strategy_area") {
+            area + Self::AGGREGATE_COST
+        } else {
+            Self::INSTANCE_WEIGHT + area
+        }
+    }
+
     const DMA_64_ALIGNED_INSTANCE_INFO: [AlignmentInstanceInfo; 5] = [
         AlignmentInstanceInfo {
             rows: Self::DMA_64_ALIGNED_ROWS,
-            cost: DMA_64_ALIGNED_COST as usize * Self::DMA_64_ALIGNED_ROWS
-                + Self::DMA_64_ALIGNED_AGGREGATE_COST,
+            cost: Self::instance_cost(DMA_64_ALIGNED_COST, Self::DMA_64_ALIGNED_ROWS),
         }, // full
         AlignmentInstanceInfo {
             rows: Self::DMA_64_ALIGNED_MEMCPY_ROWS,
-            cost: DMA_64_ALIGNED_MEMCPY_COST as usize * Self::DMA_64_ALIGNED_MEMCPY_ROWS
-                + Self::DMA_64_ALIGNED_AGGREGATE_COST,
+            cost: Self::instance_cost(DMA_64_ALIGNED_MEMCPY_COST, Self::DMA_64_ALIGNED_MEMCPY_ROWS),
         }, // memcpy
         AlignmentInstanceInfo {
             rows: Self::DMA_64_ALIGNED_MEMSET_ROWS,
-            cost: DMA_64_ALIGNED_MEMSET_COST as usize * Self::DMA_64_ALIGNED_MEMSET_ROWS
-                + Self::DMA_64_ALIGNED_AGGREGATE_COST,
+            cost: Self::instance_cost(DMA_64_ALIGNED_MEMSET_COST, Self::DMA_64_ALIGNED_MEMSET_ROWS),
         }, // memset
         AlignmentInstanceInfo {
             rows: Self::DMA_64_ALIGNED_INPUTCPY_ROWS,
-            cost: DMA_64_ALIGNED_INPUTCPY_COST as usize * Self::DMA_64_ALIGNED_INPUTCPY_ROWS
-                + Self::DMA_64_ALIGNED_AGGREGATE_COST,
+            cost: Self::instance_cost(
+                DMA_64_ALIGNED_INPUTCPY_COST,
+                Self::DMA_64_ALIGNED_INPUTCPY_ROWS,
+            ),
         }, // inputcpy
         AlignmentInstanceInfo {
             rows: Self::DMA_64_ALIGNED_MEM_ROWS,
-            cost: DMA_64_ALIGNED_MEM_COST as usize * Self::DMA_64_ALIGNED_MEM_ROWS
-                + Self::DMA_64_ALIGNED_AGGREGATE_COST,
+            cost: Self::instance_cost(DMA_64_ALIGNED_MEM_COST, Self::DMA_64_ALIGNED_MEM_ROWS),
         }, // memcmp
     ];
 
@@ -453,15 +618,48 @@ impl<F: PrimeField64> DmaStrategy<F> {
     // pub rows_memcpy_to_full: usize,
     // pub rows_inputcpy_to_full: usize,
 
-    pub fn calculate(
-        &mut self,
-        counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>,
-    ) -> Vec<(usize, Vec<(CheckPoint, DmaCheckPoint)>)> {
+    pub fn calculate(&mut self, counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> DmaPlans {
         let totals: DmaCounterInputGen = self.calculate_totals(&counters);
         #[cfg(feature = "save_dma_plans")]
         let totals_debug_info = format!("{}", totals);
 
         self.calculate_strategy(&totals);
+
+        // DMA_COMPACT: all or nothing, see the module documentation
+        self.compact_mode = DmaCompactMode::from_env();
+        let compact_plans = if self.compact_mode == DmaCompactMode::Never {
+            None
+        } else {
+            Self::plan_compact(&counters)
+        };
+        self.dma_compact = compact_plans.as_ref().map(|plans| plans.len());
+        self.use_compact = match (self.compact_mode, &compact_plans) {
+            (DmaCompactMode::Never, _) | (_, None) => {
+                assert!(
+                    self.compact_mode != DmaCompactMode::Always,
+                    "{}=always but a DMA operation does not fit in a DmaCompact instance",
+                    DmaCompactMode::ENV_VAR
+                );
+                false
+            }
+            (DmaCompactMode::Always, Some(_)) => true,
+            (DmaCompactMode::Auto, Some(plans)) => {
+                let big_cost = self.big_machines_cost();
+                let compact_cost = Self::compact_cost(plans.len());
+                tracing::debug!(
+                    "··· DMA strategy ({}): compact {} instances cost {compact_cost} vs big machines cost {big_cost}",
+                    if cfg!(feature = "strategy_area") { "area" } else { "instances" },
+                    plans.len()
+                );
+                compact_cost <= big_cost
+            }
+        };
+        if self.use_compact {
+            let plans = DmaPlans { big: Vec::new(), compact: compact_plans.unwrap() };
+            #[cfg(feature = "save_dma_plans")]
+            self.save_plans("dma_plans.txt", totals_debug_info, &plans).unwrap();
+            return plans;
+        }
 
         let mut dma_pre_post_full = DmaInstancesBuilder::new(
             "dma_pre_post_full",
@@ -724,20 +922,23 @@ impl<F: PrimeField64> DmaStrategy<F> {
             }
         }
 
-        let plans = vec![
-            (DmaTrace::<F>::AIR_ID, dma_full.get_plan()),
-            (DmaMemCpyTrace::<F>::AIR_ID, dma_memcpy.get_plan()),
-            (DmaInputCpyTrace::<F>::AIR_ID, dma_inputcpy.get_plan()),
-            (DmaPrePostTrace::<F>::AIR_ID, dma_pre_post_full.get_plan()),
-            (DmaPrePostMemCpyTrace::<F>::AIR_ID, dma_pre_post_memcpy.get_plan()),
-            (DmaPrePostInputCpyTrace::<F>::AIR_ID, dma_pre_post_inputcpy.get_plan()),
-            (Dma64AlignedTrace::<F>::AIR_ID, dma_64_aligned_full.get_plan()),
-            (Dma64AlignedMemSetTrace::<F>::AIR_ID, dma_64_aligned_memset.get_plan()),
-            (Dma64AlignedMemCpyTrace::<F>::AIR_ID, dma_64_aligned_memcpy.get_plan()),
-            (Dma64AlignedInputCpyTrace::<F>::AIR_ID, dma_64_aligned_inputcpy.get_plan()),
-            (Dma64AlignedMemTrace::<F>::AIR_ID, dma_64_aligned_mem.get_plan()),
-            (DmaUnalignedTrace::<F>::AIR_ID, dma_unaligned.get_plan()),
-        ];
+        let plans = DmaPlans {
+            big: vec![
+                (DmaTrace::<F>::AIR_ID, dma_full.get_plan()),
+                (DmaMemCpyTrace::<F>::AIR_ID, dma_memcpy.get_plan()),
+                (DmaInputCpyTrace::<F>::AIR_ID, dma_inputcpy.get_plan()),
+                (DmaPrePostTrace::<F>::AIR_ID, dma_pre_post_full.get_plan()),
+                (DmaPrePostMemCpyTrace::<F>::AIR_ID, dma_pre_post_memcpy.get_plan()),
+                (DmaPrePostInputCpyTrace::<F>::AIR_ID, dma_pre_post_inputcpy.get_plan()),
+                (Dma64AlignedTrace::<F>::AIR_ID, dma_64_aligned_full.get_plan()),
+                (Dma64AlignedMemSetTrace::<F>::AIR_ID, dma_64_aligned_memset.get_plan()),
+                (Dma64AlignedMemCpyTrace::<F>::AIR_ID, dma_64_aligned_memcpy.get_plan()),
+                (Dma64AlignedInputCpyTrace::<F>::AIR_ID, dma_64_aligned_inputcpy.get_plan()),
+                (Dma64AlignedMemTrace::<F>::AIR_ID, dma_64_aligned_mem.get_plan()),
+                (DmaUnalignedTrace::<F>::AIR_ID, dma_unaligned.get_plan()),
+            ],
+            compact: Vec::new(),
+        };
 
         #[cfg(feature = "save_dma_plans")]
         self.save_plans("dma_plans.txt", totals_debug_info, &plans).unwrap();
@@ -750,13 +951,13 @@ impl<F: PrimeField64> DmaStrategy<F> {
         &self,
         filename: &str,
         totals_debug_info: String,
-        plans: &Vec<(usize, Vec<(CheckPoint, DmaCheckPoint)>)>,
+        plans: &DmaPlans,
     ) -> std::io::Result<()> {
         let mut debug_info = format!(
             "───────────────────────────────────────────────────── TOTALS\n{}\n{}",
             totals_debug_info, self
         );
-        for (air_id, plan) in plans {
+        for (air_id, plan) in &plans.big {
             if plan.is_empty() {
                 continue;
             }
@@ -766,6 +967,19 @@ impl<F: PrimeField64> DmaStrategy<F> {
                 .enumerate()
                 .map(|(segment_id, (_checkpoint, dma_checkpoint))| {
                     dma_checkpoint.get_debug_info(title, segment_id as u64)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            debug_info += "\n";
+        }
+        if !plans.compact.is_empty() {
+            let title = get_dma_air_name::<F>(DmaCompactTrace::<F>::AIR_ID);
+            debug_info += &plans
+                .compact
+                .iter()
+                .enumerate()
+                .map(|(segment_id, (_checkpoint, checkpoint))| {
+                    checkpoint.get_debug_info(title, segment_id as u64)
                 })
                 .collect::<Vec<_>>()
                 .join("\n");

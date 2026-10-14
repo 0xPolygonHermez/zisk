@@ -371,6 +371,7 @@ impl StatsCmd {
             val if val == DMA_64_ALIGNED_MEM_AIR_IDS[0] => "DMA_64_ALIGNED_MEM".to_string(),
             val if val == DMA_64_ALIGNED_MEM_CPY_AIR_IDS[0] => "DMA_64_ALIGNED_MEM_CPY".to_string(),
             val if val == DMA_UNALIGNED_AIR_IDS[0] => "DMA_UNALIGNED".to_string(),
+            val if val == DMA_COMPACT_AIR_IDS[0] => "DMA_COMPACT".to_string(),
             val if val == DMA_PRE_POST_AIR_IDS[0] => "DMA_PRE_POST".to_string(),
             val if val == DMA_PRE_POST_MEM_CPY_AIR_IDS[0] => "DMA_PRE_POST_MEM_CPY".to_string(),
             val if val == DMA_PRE_POST_INPUT_CPY_AIR_IDS[0] => "DMA_PRE_POST_INPUT_CPY".to_string(),

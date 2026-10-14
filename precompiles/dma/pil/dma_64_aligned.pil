@@ -145,6 +145,11 @@ airtemplate Dma64Aligned(int N = 2**21,                   // Rows of instance
     airval is_last_segment;            // 1 if this is the last segment, 0 otherwise.
     is_last_segment * (1 - is_last_segment) === 0;
 
+    // The last segment closes the chain of continuations (nothing is proved after it), so it must
+    // end with a finished operation; otherwise the remaining words of an operation that Main took
+    // as done would never be written.
+    is_last_segment * (1 - segment_last_seq_end) === 0;
+
     // the inputcpy or memset doesn't has source, they don't use it
 
     if (has_src) {

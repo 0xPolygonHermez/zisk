@@ -4,8 +4,9 @@ use crate::error::{ExecutorError, ExecutorResult};
 
 use fields::PrimeField64;
 use precomp_dma::{
-    Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCounterInputGen, DmaInstance,
-    DmaPrePostCollector, DmaPrePostInstance, DmaUnalignedCollector, DmaUnalignedInstance,
+    Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCompactCollector,
+    DmaCompactInstance, DmaCounterInputGen, DmaInstance, DmaPrePostCollector, DmaPrePostInstance,
+    DmaUnalignedCollector, DmaUnalignedInstance,
 };
 use sm_arith::{ArithCounterInputGen, ArithFullInstance, ArithInstanceCollector};
 use sm_binary::{
@@ -23,7 +24,7 @@ use zisk_pil::{
     ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
     DMA_64_ALIGNED_AIR_IDS, DMA_64_ALIGNED_INPUT_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS,
     DMA_64_ALIGNED_MEM_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS,
-    DMA_INPUT_CPY_AIR_IDS, DMA_MEM_CPY_AIR_IDS, DMA_PRE_POST_AIR_IDS,
+    DMA_COMPACT_AIR_IDS, DMA_INPUT_CPY_AIR_IDS, DMA_MEM_CPY_AIR_IDS, DMA_PRE_POST_AIR_IDS,
     DMA_PRE_POST_INPUT_CPY_AIR_IDS, DMA_PRE_POST_MEM_CPY_AIR_IDS, DMA_UNALIGNED_AIR_IDS,
     INPUT_DATA_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS,
     MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
@@ -59,6 +60,8 @@ pub struct BuiltinCollectors<F: PrimeField64> {
     pub dma_64_aligned: Vec<(usize, Dma64AlignedCollector)>,
     /// DMA unaligned operation collectors.
     pub dma_unaligned: Vec<(usize, DmaUnalignedCollector)>,
+    /// DMA compact (whole operation) collectors.
+    pub dma_compact: Vec<(usize, DmaCompactCollector)>,
     /// DMA input generator.
     pub dma_inputs_generator: DmaCounterInputGen,
 }
@@ -79,6 +82,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             dma_pre_post: Vec::new(),
             dma_64_aligned: Vec::new(),
             dma_unaligned: Vec::new(),
+            dma_compact: Vec::new(),
             dma_inputs_generator: DmaCounterInputGen::new(BusDeviceMode::InputGenerator),
         }
     }
@@ -296,6 +300,12 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                     "DmaUnalignedInstance",
                 )?;
                 self.dma_unaligned.push((gid, inst.build_dma_collector(chunk)));
+                Ok(true)
+            }
+            id if id == DMA_COMPACT_AIR_IDS[0] => {
+                let inst =
+                    downcast::<F, DmaCompactInstance<F>>(secn, air_id, gid, "DmaCompactInstance")?;
+                self.dma_compact.push((gid, inst.build_dma_collector(chunk)));
                 Ok(true)
             }
             _ => Ok(false),

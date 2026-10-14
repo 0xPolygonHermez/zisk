@@ -61,6 +61,8 @@ predicates = "3"
 default = []
 cpu-only = ["zisk-build/cpu-only", "zisk-prover-backend/cpu-only"]
 diagnostic = ["zisk-prover-backend/diagnostic"]
+# DMA plans decided by proving area instead of by number of instances
+strategy_area = ["zisk-prover-backend/strategy_area"]
 custom_rust_llvm = []
 stats = []
 verify = ["fields/verify"]

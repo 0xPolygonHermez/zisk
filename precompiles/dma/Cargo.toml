@@ -28,4 +28,6 @@ debug_dma = []
 save_dma_collectors = []
 save_dma_inputs = []
 save_dma_plans = []
+# Decide the DMA plans by proving area (columns x rows) instead of by number of instances.
+strategy_area = []
 debug_dma_gen_mem_inputs = []

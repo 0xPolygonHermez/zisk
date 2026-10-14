@@ -75,6 +75,11 @@ pub const DMA_64_ALIGNED_MEMCPY_DIVISOR: u64 = 8;
 pub const DMA_64_ALIGNED_MEMSET_COST: u64 = 35;
 pub const DMA_64_ALIGNED_MEMSET_DIVISOR: u64 = 8;
 
+// Cost for DMA compact (the whole operation in one small AIR): 87 stage 1 columns, 16 extension
+// columns and the 6 columns of the quotient, as the other costs are computed.
+
+pub const DMA_COMPACT_COST: u64 = 141;
+
 // Costs for DMA unaligned loops
 
 pub const DMA_UNALIGNED_COST: u64 = 42;

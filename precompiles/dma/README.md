@@ -45,6 +45,15 @@ in both directions.
    the unaligned path, and partial head/tail words — so arbitrary alignments are
    handled without falling back to byte loops.
 
+   Executions that use the DMA lightly are routed instead to `DmaCompact`
+   ([`pil/dma_compact.pil`](pil/dma_compact.pil)): a single small AIR (2^18 rows,
+   no compressor) that proves whole operations by itself, controller, partial
+   writes and loop. The planner picks it, for every DMA operation or for none,
+   when all of them fit in an instance and it is not more expensive than the
+   big machines: by default the cost is the number of instances (the area only
+   breaks ties), with the `strategy_area` cargo feature it is the proving area
+   (columns x rows). `ZISK_DMA_COMPACT=always|never|auto` overrides the choice.
+
 ## Linking guarantee
 
 The `memcpy`/`memmove`/`memset`/`memcmp` symbols are **strong** definitions in

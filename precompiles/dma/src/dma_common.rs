@@ -1,7 +1,7 @@
 use fields::PrimeField64;
 use zisk_pil::{
     Dma64AlignedInputCpyTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemSetTrace,
-    Dma64AlignedMemTrace, Dma64AlignedTrace, DmaInputCpyTrace, DmaMemCpyTrace,
+    Dma64AlignedMemTrace, Dma64AlignedTrace, DmaCompactTrace, DmaInputCpyTrace, DmaMemCpyTrace,
     DmaPrePostInputCpyTrace, DmaPrePostMemCpyTrace, DmaPrePostTrace, DmaTrace, DmaUnalignedTrace,
 };
 
@@ -19,6 +19,7 @@ pub fn get_dma_air_name<F: PrimeField64>(air_id: usize) -> &'static str {
         Dma64AlignedInputCpyTrace::<()>::AIR_ID => "Dma64AlignedInputCpy",
         Dma64AlignedMemTrace::<()>::AIR_ID => "Dma64AlignedMem",
         DmaUnalignedTrace::<()>::AIR_ID => "DmaUnaligned",
+        DmaCompactTrace::<()>::AIR_ID => "DmaCompact",
         _ => "Unknown",
     }
 }

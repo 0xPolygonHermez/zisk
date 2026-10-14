@@ -8,7 +8,7 @@ use crate::DmaStrategy;
 
 use fields::PrimeField64;
 use zisk_common::{BusDeviceMetrics, ChunkId, InstanceType, Plan, Planner, SegmentId};
-use zisk_pil::ZISK_AIRGROUP_ID;
+use zisk_pil::{DmaCompactTrace, ZISK_AIRGROUP_ID};
 
 /// The `DmaPlanner` struct organizes execution plans for arithmetic instances and tables.
 ///
@@ -44,9 +44,9 @@ impl<F: PrimeField64> Planner for DmaPlanner<F> {
     fn plan(&self, counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
         // Calculate total counters by summing all DmaCounterInputGen instances
         let mut dma_strategy = DmaStrategy::<F>::default();
-        let _plans = dma_strategy.calculate(counters);
+        let dma_plans = dma_strategy.calculate(counters);
         let mut plans: Vec<Plan> = Vec::new();
-        for (air_id, segments) in _plans.into_iter() {
+        for (air_id, segments) in dma_plans.big.into_iter() {
             for (segment_id, (check_point, collect_info)) in segments.into_iter().enumerate() {
                 plans.push(Plan::new(
                     ZISK_AIRGROUP_ID,
@@ -57,6 +57,16 @@ impl<F: PrimeField64> Planner for DmaPlanner<F> {
                     Some(Box::new(collect_info)),
                 ));
             }
+        }
+        for (segment_id, (check_point, collect_info)) in dma_plans.compact.into_iter().enumerate() {
+            plans.push(Plan::new(
+                ZISK_AIRGROUP_ID,
+                DmaCompactTrace::<F>::AIR_ID,
+                Some(SegmentId(segment_id)),
+                InstanceType::Instance,
+                check_point,
+                Some(Box::new(collect_info)),
+            ));
         }
         plans
     }

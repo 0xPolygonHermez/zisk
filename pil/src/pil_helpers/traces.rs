@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "54d493d34a9609006b522be1386f8e35c30f15bc59ee4039b0ab79d54d44fb9e";
+pub const PILOUT_HASH: &str = "0990a423f17d8a1632113ff1333f95089de9a89c6407077f75d0c0f01ae76016";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -100,9 +100,11 @@ pub const DMA_PRE_POST_MEM_CPY_AIR_IDS: &[usize] = &[35];
 
 pub const DMA_PRE_POST_INPUT_CPY_AIR_IDS: &[usize] = &[36];
 
-pub const VIRTUAL_TABLE_ZISK_0_AIR_IDS: &[usize] = &[37];
+pub const DMA_COMPACT_AIR_IDS: &[usize] = &[37];
 
-pub const VIRTUAL_TABLE_ZISK_1_AIR_IDS: &[usize] = &[38];
+pub const VIRTUAL_TABLE_ZISK_0_AIR_IDS: &[usize] = &[38];
+
+pub const VIRTUAL_TABLE_ZISK_1_AIR_IDS: &[usize] = &[39];
 
 
 //PUBLICS
@@ -553,27 +555,38 @@ trace_row!(DmaPrePostInputCpyTraceRow<F> {
 
 pub type DmaPrePostInputCpyTrace<R> = GenericTrace<R, 2097152, 0, 36>;
 
+trace_row!(DmaCompactFixedRow<F> {
+ __L1__: F,
+});
+pub type DmaCompactFixed<F> = GenericTrace<DmaCompactFixedRow<F>, 262144, 0, 37>;
+
+trace_row!(DmaCompactTraceRow<F> {
+ is_ctrl:bit, is_pp:bit, is_loop:bit, sel_memcpy:bit, sel_memcmp:bit, sel_inputcpy:bit, sel_memset:bit, rb:[u8; 16], pb:[u8; 8], abs_diff:u8, sb:[bit; 8], sr:[bit; 7], pp_flag_a:bit, borrow:bit, read_lo:bit, read_hi:bit, memcmp_nz:bit, memcmp_neg:bit, load_count:bit, main_step:ubit(36), dst64:ubit(29), src64:ubit(29), dst_offset:ubit(3), src_offset:ubit(3), fill_byte:u8, wv:[u32; 2], cnt_small:ubit(4), op_col:u8, b0_col:u32, c0_col:u32, ext_col:u32, xa_col:ubit(3), b0_loop:u32, ext_loop:u32, x_count:u32, count:u32, rom_l_count64:ubit(9), pp_cmp:bit, sel_w2:bit, sel_w34:bit, rd_34:bit, loop_end:bit, wr_loop:bit, v3:[u32; 2], v4:[u32; 2], rv:[u32; 2], pw:[u64; 2],
+});
+
+pub type DmaCompactTrace<R> = GenericTrace<R, 262144, 0, 37>;
+
 trace_row!(VirtualTableZisk0FixedRow<F> {
  COL_0_0_0: F, COL_0_0_1: F, COL_0_0_2: F, COL_0_0_3: F, COL_0_0_5: F, COL_0_0_7: F, COL_1_8_0: F, COL_1_8_1: F, COL_1_8_2: F, COL_1_8_3: F, COL_1_8_5: F, COL_1_8_7: F, COL_2_16_1: F, COL_2_16_3: F, COL_2_16_5: F, COL_5_40_0: F, COL_5_40_1: F, COL_5_40_2: F, COL_5_40_3: F, COL_5_40_5: F, COL_5_40_6: F, COL_6_48_0: F, COL_6_48_1: F, COL_6_48_2: F, COL_6_48_3: F, COL_6_48_5: F, COL_7_56_1: F, COL_7_56_3: F, COL_7_56_5: F, COL_8_64_0: F, COL_8_64_1: F, COL_8_64_2: F, COL_8_64_3: F, COL_8_64_5: F, COL_8_64_6: F, COL_9_72_1: F, COL_9_72_3: F, COL_9_72_5: F, COL_9_72_6: F, COL_10_80_0: F, COL_10_80_1: F, COL_10_80_2: F, COL_10_80_3: F, COL_10_80_5: F, COL_10_80_6: F, COL_11_88_0: F, COL_11_88_1: F, COL_11_88_2: F, COL_11_88_3: F, COL_11_88_5: F, COL_11_88_6: F, COL_11_88_7: F, UID_11: F, __L1__: F,
 });
-pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 37>;
+pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 38>;
 
 trace_row!(VirtualTableZisk0TraceRow<F> {
  multiplicity:[F; 12],
 });
 
-pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 37>;
+pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 38>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
  __ROW_INDEX__: F, COL_9_9_0: F, COL_14_14_0: F, COL_14_14_1: F, UID_14: F, COL_15_16_0: F, COL_15_16_1: F, COL_15_16_2: F, COL_15_16_3: F, UID_15: F, COL_16_20_0: F, COL_16_20_1: F, COL_16_20_2: F, COL_16_20_3: F, COL_16_20_4: F, COL_16_20_5: F, UID_16: F, COL_17_26_0: F, COL_17_26_1: F, COL_17_26_2: F, COL_17_26_3: F, COL_17_26_4: F, COL_17_26_5: F, COL_18_32_0: F, COL_18_32_1: F, COL_18_32_3: F, COL_18_32_4: F, COL_18_32_5: F, COL_19_38_0: F, COL_19_38_1: F, COL_19_38_3: F, COL_19_38_4: F, COL_19_38_5: F, COL_20_44_0: F, COL_20_44_1: F, COL_20_44_2: F, COL_20_44_3: F, COL_20_44_4: F, COL_20_44_5: F, COL_20_44_6: F, UID_20: F, COL_21_51_0: F, COL_21_51_1: F, COL_21_51_3: F, COL_21_51_4: F, COL_21_51_5: F, COL_21_51_6: F, COL_22_58_0: F, COL_22_58_1: F, COL_22_58_4: F, COL_22_58_5: F, COL_22_58_6: F, COL_23_65_0: F, COL_23_65_1: F, COL_23_65_2: F, COL_23_65_3: F, COL_23_65_4: F, COL_23_65_5: F, COL_23_65_6: F, UID_23: F, __L1__: F,
 });
-pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 38>;
+pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 39>;
 
 trace_row!(VirtualTableZisk1TraceRow<F> {
  multiplicity:[F; 24],
 });
 
-pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 38>;
+pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 39>;
 
 trace_row!(RomRomTraceRow<F> {
  is_data: F, line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -797,6 +810,10 @@ values!(DmaPrePostInputCpyAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
+values!(DmaCompactAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
 values!(VirtualTableZisk0AirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
@@ -986,6 +1003,11 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
         num_packed_words: 5,
         unpack_info: &[36, 29, 3, 4, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 32, 32],
     }),
+    (0, 37, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 16,
+        unpack_info: &[1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 36, 29, 29, 3, 3, 8, 32, 32, 4, 8, 32, 32, 32, 3, 32, 32, 32, 32, 9, 1, 1, 1, 1, 1, 1, 32, 32, 32, 32, 32, 32, 64, 64],
+    }),
 ];
 
 /// Display name for every `(airgroup_id, air_id)` pair, derived directly from the
@@ -1028,6 +1050,7 @@ pub const AIR_NAMES: &[(usize, usize, &str)] = &[
     (0, 34, "DmaPrePost"),
     (0, 35, "DmaPrePostMemCpy"),
     (0, 36, "DmaPrePostInputCpy"),
-    (0, 37, "VirtualTableZisk0"),
-    (0, 38, "VirtualTableZisk1"),
+    (0, 37, "DmaCompact"),
+    (0, 38, "VirtualTableZisk0"),
+    (0, 39, "VirtualTableZisk1"),
 ];

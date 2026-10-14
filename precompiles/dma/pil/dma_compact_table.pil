@@ -1,0 +1,163 @@
+require "std_lookup.pil"
+
+// DmaCompactTable
+//
+// Control table used by the DmaCompact "partial write" rows (pre and post rows). It plays the
+// same role that DmaPrePostTable plays for DmaPrePost, but the derived data is expressed in the
+// "window" form that DmaCompact uses to share columns between the pre/post rows and the loop rows:
+//
+//   Every row that writes a 64-bit word (pre, post or loop) reads a 16-byte window formed by the
+//   two consecutive 64-bit words at (src64, src64 + 8), keeps it in rb[0..15], and takes the
+//   source byte of the destination byte position p from the window index (delta + p).
+//
+//   That single rule covers the three kinds of rows, so a unique write value expression can be
+//   used for all of them (see @[wv] in dma_compact.pil). To make it also valid when
+//   dst_offset > src_offset (where the source byte of the first written position lives in the
+//   previous 64-bit word) the window base is moved one word backwards, which is what @[borrow]
+//   indicates.
+//
+//        dst = 8 * D + dst_offset            src = 8 * S + src_offset
+//
+//        delta  = (src_offset - dst_offset) mod 8
+//        borrow = dst_offset > src_offset          => window base src64 = S - borrow
+//
+//   Example: dst_offset = 3, src_offset = 1, count = 5 (a PRE row)
+//
+//        delta = (1 - 3) mod 8 = 6, borrow = 1, window base = S - 1
+//
+//        window index    0 .. 7   8  9 10 11 12 13 14 15
+//                       └ word S-1 ┘ └───── word S ─────┘
+//        dst position             .  0  1  2  3  4  5  .
+//                                 ^delta+0     ^delta+7
+//        mask (positions 3..7)          ✓  ✓  ✓  ✓  ✓
+//
+//   The lowest window index that a written position can use is delta + first_masked_position,
+//   which is exactly src_offset when borrow = 0 (so the first word is always needed) and is >= 8
+//   when borrow = 1 (so the first word is never needed and must not be read: it may not even be
+//   a mapped address). Hence read_lo = 1 - borrow, and read_hi is 1 when the highest used index
+//   delta + last_masked_position is >= 8.
+//
+// Table layout (same shape as DmaPrePostTable):
+//
+//   IN : DST_OFFSET, SRC_OFFSET, COUNT and the FLAGS bits @[load_src], @[memcmp_result_nz],
+//        @[memcmp_result_is_negative]
+//   OUT: the FLAGS bits @[mask], @[delta], @[borrow], @[read_lo], @[read_hi] and L_FACTOR, H_FACTOR
+//
+// A row with dst_offset = 0 is a post row and one with dst_offset > 0 is a pre row, and the mask
+// already tells them apart (bit 7, the byte position 0, is set exactly on a post row), which is
+// what dma_compact.pil uses as @[is_post]; no separate flag is needed.
+//
+// L_FACTOR/H_FACTOR place the memcmp byte difference at the last compared byte, exactly as in
+// DmaPrePostTable: the factor is +/- 2**(8 * last_masked_position), split in the low and the high
+// 32-bit chunk of the 64-bit word.
+
+//  post rows : dst_offset = 0, src_offset 0..7, count 1..8           ->   8 * 8 = 64
+//  pre rows  : dst_offset 1..7, src_offset 0..7, count 1..8-dst_offset -> 8 * 28 = 224
+//  memcmp variants: no difference, positive difference, negative difference, no source   ->  * 4
+const int DMA_COMPACT_TABLE_SIZE = 288 * 4;
+
+// FLAGS packing
+const int DMA_COMPACT_MASK_F     = 1;       // bits 0..7  @[mask]      written byte positions, sb[i] weights 2**(7-i)
+const int DMA_COMPACT_DELTA_F    = P2_8;    // bits 8..10 @[delta]     window index of the first destination byte
+const int DMA_COMPACT_BORROW_F   = P2_11;   // bit 11     @[borrow]    window base is src64 - 1 (first word unused)
+const int DMA_COMPACT_READ_LO_F  = P2_12;   // bit 12     @[read_lo]   first word of the window is read
+const int DMA_COMPACT_READ_HI_F  = P2_13;   // bit 13     @[read_hi]   second word of the window is read
+const int DMA_COMPACT_RES_NEG_F  = P2_14;   // bit 14     @[memcmp_result_is_negative]
+const int DMA_COMPACT_RES_NZ_F   = P2_15;   // bit 15     @[memcmp_result_nz]
+const int DMA_COMPACT_LOAD_SRC_F = P2_16;   // bit 16     @[load_src]  source bytes come from memory
+
+// @[read_lo] and @[read_hi] already include @[load_src], so they can be used directly as the
+// selector of the two memory reads (a degree-1 selector, which keeps both bus terms shareable).
+
+airtemplate DmaCompactTable(int N = DMA_COMPACT_TABLE_SIZE) {
+    col fixed FLAGS;
+    col fixed DST_OFFSET;
+    col fixed SRC_OFFSET;
+    col fixed COUNT;
+    col fixed L_FACTOR;
+    col fixed H_FACTOR;
+
+    const int l_factors[8] = [ 1,  P2_8,  P2_16,  P2_24,   0,     0,     0,       0];
+    const int h_factors[8] = [ 0,     0,      0,      0,   1,  P2_8,  P2_16,  P2_24];
+
+    const int flags_res_positive = DMA_COMPACT_RES_NZ_F;
+    const int flags_res_negative = DMA_COMPACT_RES_NZ_F + DMA_COMPACT_RES_NEG_F;
+
+    int index = 0;
+
+    // dst_offset = 0 is a POST row (the pre row is the one that aligns the destination, so a row
+    // with dst_offset = 0 can only be a post row). count can reach 8 because of the memcmp edge
+    // case where dst_offset = 0 and count is a multiple of 8: the last 64-bit word is delegated
+    // to the post row so it can resolve the first different byte.
+    //
+    // dst_offset > 0 is a PRE row, it writes from dst_offset up to, at most, the end of the word.
+
+    for (int dst_offset = 0; dst_offset < 8; ++dst_offset) {
+        const int is_post = dst_offset == 0 ? 1 : 0;
+        const int max_count = is_post ? 8 : (8 - dst_offset);
+        // the mask of a post row always has bit 7 set and the one of a pre row never does
+        for (int src_offset = 0; src_offset < 8; ++src_offset) {
+            for (int count = 1; count <= max_count; ++count) {
+                for (int k = 0; k < 4; ++k) {
+                    DST_OFFSET[index + k] = dst_offset;
+                    SRC_OFFSET[index + k] = src_offset;
+                    COUNT[index + k] = count;
+                }
+
+                // written positions are dst_offset .. dst_offset + count - 1, and sb[i] weights
+                // 2**(7-i), so the mask is a run of `count` ones starting at bit 7 - dst_offset
+                const int mask = (0xFF >> dst_offset) & (0xFF << (8 - (dst_offset + count)));
+                assert(mask != 0);
+                assert(mask <= 0xFF);
+
+                const int borrow = dst_offset > src_offset ? 1 : 0;
+                const int delta = borrow ? (src_offset - dst_offset + 8) : (src_offset - dst_offset);
+                const int last_position = dst_offset + count - 1;
+                const int read_hi = (delta + last_position) > 7 ? 1 : 0;
+
+                assert(delta >= 0 && delta < 8);
+                assert((delta + last_position) < 16);
+
+                // variants with source read from memory (memcpy, memcmp)
+                const int flags_load_src = mask
+                                         + DMA_COMPACT_DELTA_F * delta
+                                         + DMA_COMPACT_BORROW_F * borrow
+                                         + DMA_COMPACT_READ_LO_F * (1 - borrow)
+                                         + DMA_COMPACT_READ_HI_F * read_hi
+                                         + DMA_COMPACT_LOAD_SRC_F;
+
+                // variant without source read (inputcpy, memset): the "source" bytes are the free
+                // input bytes / the fill byte held in rb[0..7], they are taken in place (delta = 0)
+                // and no memory word is read
+                const int flags_no_load_src = mask;
+
+                FLAGS[index]     = flags_load_src;
+                FLAGS[index + 1] = flags_load_src + flags_res_positive;
+                FLAGS[index + 2] = flags_load_src + flags_res_negative;
+                FLAGS[index + 3] = flags_no_load_src;
+
+                L_FACTOR[index]     = 0;
+                L_FACTOR[index + 1] = l_factors[last_position];
+                L_FACTOR[index + 2] = -l_factors[last_position];
+                L_FACTOR[index + 3] = 0;
+
+                H_FACTOR[index]     = 0;
+                H_FACTOR[index + 1] = h_factors[last_position];
+                H_FACTOR[index + 2] = -h_factors[last_position];
+                H_FACTOR[index + 3] = 0;
+
+                index += 4;
+            }
+        }
+    }
+
+    assert_eq(index, DMA_COMPACT_TABLE_SIZE);
+
+    col witness multiplicity;
+    lookup_proves(DMA_COMPACT_TABLE_ID, expressions: [FLAGS,
+                                                      DST_OFFSET,
+                                                      SRC_OFFSET,
+                                                      COUNT,
+                                                      L_FACTOR,
+                                                      H_FACTOR], mul: multiplicity);
+}

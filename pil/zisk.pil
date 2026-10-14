@@ -28,6 +28,8 @@ require "dma/pil/dma_pre_post_table.pil"
 require "dma/pil/dma_byte_cmp_table.pil"
 require "dma/pil/dma_64_aligned.pil"
 require "dma/pil/dma_unaligned.pil"
+require "dma/pil/dma_compact.pil"
+require "dma/pil/dma_compact_table.pil"
 require "poseidon/pil/poseidon.pil"
 require "blake2/pil/blake2br.pil"
 
@@ -138,9 +140,12 @@ airgroup Zisk {
     DmaPrePost(enable: E_DMA_MEMCPY) alias DmaPrePostMemCpy;
     DmaPrePost(enable: E_DMA_INPUTCPY) alias DmaPrePostInputCpy;
 
+    DmaCompact(N: 2**18);
+
     virtual DmaByteCmpTable();
     virtual DmaRom();
     virtual DmaPrePostTable();
+    virtual DmaCompactTable();
     virtual DualRange(id: DUAL_RANGE_7_BITS_ID, min1: 0, max1: P2_7-1, min2: 0, max2: P2_7-1) alias DualRange7Bits;
     virtual DualRange(id: DUAL_RANGE_BYTE_ID, min1: 0, max1: P2_8-1, min2: 0, max2: P2_8-1) alias DualByte;
 

@@ -12,7 +12,7 @@ use zisk_common::{OP, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::ZiskOperationType;
 
-use crate::{generate_dma_mem_inputs, skip_dma_mem_inputs};
+use crate::{generate_dma_mem_inputs, skip_dma_mem_inputs, DmaCompactLayout};
 
 // The `DmaOpMultiCounter` struct represents a counter that monitors and measures
 // dma specific operation on the data bus.
@@ -68,6 +68,18 @@ pub const DMA_COUNTER_OPS_EXT: usize = 6;
 pub struct DmaCounterInputGen {
     pub counters: [usize; DMA_INPUT_GEN_COUNTERS],
 
+    /// Rows that every DMA operation of the chunk would take in a `DmaCompact` instance, in bus
+    /// order. `DmaCompact` never splits an operation, so its planner needs the individual sizes
+    /// and not only a total (see `DmaCompactInstancesBuilder`).
+    pub compact_rows: Vec<u32>,
+
+    /// Sum of `compact_rows`.
+    pub compact_total_rows: usize,
+
+    /// Largest value of `compact_rows`: an operation that does not fit in an instance rules the
+    /// compact machine out.
+    pub compact_max_rows: usize,
+
     mode: BusDeviceMode,
 }
 
@@ -84,7 +96,8 @@ impl fmt::Display for DmaCounterInputGen {
              INPUTS\n                   \
                               memcpy4  memcpy8   memcmp inputcpy  memset4  memset8\n  \
              dma_64_aligned  {:>8}          {:>8} {:>8} {:>8}         \n  \
-             dma_unaligned   {:>8}          {:>8} {:>8} {:>8}         \n\n",
+             dma_unaligned   {:>8}          {:>8} {:>8} {:>8}         \n\n  \
+             DMA_COMPACT  ops:{} rows:{} max_rows:{}\n\n",
             self.counters[DMA_OFFSET + DMA_COUNTER_MEMCPY],
             self.counters[DMA_OFFSET + DMA_COUNTER_MEMCMP],
             self.counters[DMA_OFFSET + DMA_COUNTER_INPUTCPY],
@@ -111,6 +124,9 @@ impl fmt::Display for DmaCounterInputGen {
             self.counters[DMA_UNALIGNED_INPUTS_OFFSET + DMA_COUNTER_MEMCMP],
             self.counters[DMA_UNALIGNED_INPUTS_OFFSET + DMA_COUNTER_INPUTCPY],
             self.counters[DMA_UNALIGNED_INPUTS_OFFSET + DMA_COUNTER_MEMSET],
+            self.compact_rows.len(),
+            self.compact_total_rows,
+            self.compact_max_rows,
         )
     }
 }
@@ -124,7 +140,13 @@ impl DmaCounterInputGen {
     /// # Returns
     /// A new `DmaCounter` instance.
     pub fn new(mode: BusDeviceMode) -> Self {
-        Self { counters: [0; DMA_INPUT_GEN_COUNTERS], mode }
+        Self {
+            counters: [0; DMA_INPUT_GEN_COUNTERS],
+            compact_rows: Vec::new(),
+            compact_total_rows: 0,
+            compact_max_rows: 0,
+            mode,
+        }
     }
     const OPS_X_ROW: [usize; 6] = [
         4, // MEMCPY_4
@@ -184,6 +206,15 @@ impl DmaCounterInputGen {
         // count and plan no need the count, need the effective count:
         // effective_count = if is_equal { count } else { count_eq + 1 }
         // the count encoded was effective
+
+        // the alternative: the whole operation on DmaCompact
+        if DmaCompactLayout::is_dma_op(op) {
+            let rows = DmaCompactLayout::rows_of(op, encoded);
+            self.compact_rows.push(rows as u32);
+            self.compact_total_rows += rows;
+            self.compact_max_rows = self.compact_max_rows.max(rows);
+        }
+
         match op {
             ZiskOp::DMA_MEMCPY | ZiskOp::DMA_XMEMCPY => {
                 // if DmaInfo::dst_is_aligned_with_src(encoded) {
@@ -283,10 +314,7 @@ impl Add for DmaCounterInputGen {
     /// # Returns
     /// A new `DmaCounter` with combined counters.
     fn add(self, other: Self) -> DmaCounterInputGen {
-        DmaCounterInputGen {
-            counters: std::array::from_fn(|i| self.counters[i] + other.counters[i]),
-            mode: self.mode.clone(),
-        }
+        &self + &other
     }
 }
 
@@ -302,8 +330,15 @@ impl Add<&DmaCounterInputGen> for &DmaCounterInputGen {
     /// # Returns
     /// A new `DmaCounter` with combined counters.
     fn add(self, other: &DmaCounterInputGen) -> DmaCounterInputGen {
+        let mut compact_rows =
+            Vec::with_capacity(self.compact_rows.len() + other.compact_rows.len());
+        compact_rows.extend_from_slice(&self.compact_rows);
+        compact_rows.extend_from_slice(&other.compact_rows);
         DmaCounterInputGen {
             counters: std::array::from_fn(|i| self.counters[i] + other.counters[i]),
+            compact_rows,
+            compact_total_rows: self.compact_total_rows + other.compact_total_rows,
+            compact_max_rows: self.compact_max_rows.max(other.compact_max_rows),
             mode: self.mode.clone(),
         }
     }

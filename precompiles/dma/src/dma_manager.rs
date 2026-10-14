@@ -8,16 +8,16 @@ use zisk_common::{
 };
 use zisk_pil::{
     Dma64AlignedInputCpyTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemSetTrace,
-    Dma64AlignedMemTrace, Dma64AlignedTrace, DmaInputCpyTrace, DmaMemCpyTrace,
+    Dma64AlignedMemTrace, Dma64AlignedTrace, DmaCompactTrace, DmaInputCpyTrace, DmaMemCpyTrace,
     DmaPrePostInputCpyTrace, DmaPrePostMemCpyTrace, DmaPrePostTrace, DmaTrace, DmaUnalignedTrace,
     ZiskProofValues,
 };
 
 use crate::{
     Dma64AlignedInputCpySM, Dma64AlignedInstance, Dma64AlignedMemCpySM, Dma64AlignedMemSM,
-    Dma64AlignedMemSetSM, Dma64AlignedSM, DmaCounterInputGen, DmaInputCpySM, DmaInstance,
-    DmaMemCpySM, DmaPlanner, DmaPrePostInputCpySM, DmaPrePostInstance, DmaPrePostMemCpySM,
-    DmaPrePostSM, DmaSM, DmaUnalignedInstance, DmaUnalignedSM,
+    Dma64AlignedMemSetSM, Dma64AlignedSM, DmaCompactInstance, DmaCompactSM, DmaCounterInputGen,
+    DmaInputCpySM, DmaInstance, DmaMemCpySM, DmaPlanner, DmaPrePostInputCpySM, DmaPrePostInstance,
+    DmaPrePostMemCpySM, DmaPrePostSM, DmaSM, DmaUnalignedInstance, DmaUnalignedSM,
 };
 
 /// The `DmaManager` struct represents the Dma manager,
@@ -37,6 +37,7 @@ pub struct DmaManager<F: PrimeField64> {
     dma_64_aligned_memset_sm: Arc<Dma64AlignedMemSetSM<F>>,
     dma_64_aligned_inputcpy_sm: Arc<Dma64AlignedInputCpySM<F>>,
     dma_unaligned_sm: Arc<DmaUnalignedSM<F>>,
+    dma_compact_sm: Arc<DmaCompactSM<F>>,
 }
 
 impl<F: PrimeField64> DmaManager<F> {
@@ -56,7 +57,8 @@ impl<F: PrimeField64> DmaManager<F> {
         let dma_64_aligned_memcpy_sm = Dma64AlignedMemCpySM::new(std.clone());
         let dma_64_aligned_memset_sm = Dma64AlignedMemSetSM::new(std.clone());
         let dma_64_aligned_inputcpy_sm = Dma64AlignedInputCpySM::new(std.clone());
-        let dma_unaligned_sm = DmaUnalignedSM::new(std);
+        let dma_unaligned_sm = DmaUnalignedSM::new(std.clone());
+        let dma_compact_sm = DmaCompactSM::new(std);
 
         Arc::new(Self {
             dma_sm,
@@ -71,6 +73,7 @@ impl<F: PrimeField64> DmaManager<F> {
             dma_64_aligned_memset_sm,
             dma_64_aligned_inputcpy_sm,
             dma_unaligned_sm,
+            dma_compact_sm,
         })
     }
 }
@@ -139,6 +142,10 @@ impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
             // DMA unaligned instances
             DmaUnalignedTrace::<()>::AIR_ID => {
                 Box::new(DmaUnalignedInstance::new(self.dma_unaligned_sm.clone(), ictx))
+            }
+            // DMA compact instances (a whole operation per instance kind)
+            DmaCompactTrace::<()>::AIR_ID => {
+                Box::new(DmaCompactInstance::new(self.dma_compact_sm.clone(), ictx))
             }
             _ => {
                 panic!("DmaBuilder::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id)

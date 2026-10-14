@@ -1,0 +1,1020 @@
+// DmaCompact
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// PURPOSE
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// A single small AIR that performs a whole DMA operation by itself: memcpy, memcmp, inputcpy and
+// memset, extended (static count) or not. It is meant for executions that use the DMA lightly:
+// instead of paying the fixed cost of four different AIRs (Dma, DmaPrePost, Dma64Aligned and
+// DmaUnaligned), each one with its own minimum instance size, one instance of this machine covers
+// the controller, the pre/post partial writes and the aligned and unaligned loops.
+//
+// It has no configuration on purpose: it always supports every operation, so there is a unique
+// AIR to instantiate and a unique witness computation.
+//
+// It must be provable WITHOUT a compressor, so the number of columns and the number of openings
+// are the driving constraint of the design (see the ACCOUNTING section) and every constraint is
+// kept at degree <= 3.
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// ROW KINDS
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// Each used row is one of three kinds, selected by @[is_ctrl], @[is_pp] and @[is_loop]:
+//
+//   @[is_ctrl]  controller row. One per DMA operation coming from Main. It proves the operation to
+//               Main, reads the count from memory when it is not an extended operation, resolves
+//               the operation layout with DmaRom and delegates the work: the pre and post partial
+//               writes through DMA_BUS and the 64-bit loop through the operation bus.
+//
+//   @[is_pp]    pre/post row. Writes ONE 64-bit word partially (a run of bytes inside the word),
+//               taking the source bytes from memory (memcpy/memcmp), from the free input
+//               (inputcpy) or from the fill byte (memset). It is the counterpart of DmaPrePost and
+//               it speaks the same DMA_BUS protocol, so a compact controller row and a DmaPrePost
+//               row (or vice versa) interoperate.
+//
+//   @[is_loop]  loop row. Copies/compares/sets 64-bit words: ONE word when the operation is
+//               unaligned (window offset 1..7), and 1, 2 or 4 words when it is aligned (offset 0).
+//               Both cases share the same columns, they only differ in @[sr] (see WINDOW below),
+//               so this single row kind replaces both Dma64Aligned and DmaUnaligned.
+//               inputcpy is limited to 1 or 2 words, see @[sel_w2].
+//
+// A row that is not used has the three selectors at 0 (padding), and all the bus selectors of the
+// machine include one of them, so padding rows send nothing and need no padding airval.
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// THE MEMORY ACCESSES MUST BE THE ONES OF THE BIG MACHINES
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// This is the constraint that shapes the loop. The accesses that the Mem state machine will see are
+// generated per operation (see generate_dma_mem_inputs) during the COUNTING phase, before the
+// planner decides whether the operation goes to a compact instance or to the big machines. So this
+// AIR must do, for every operation, exactly the same reads and writes as Dma + DmaPrePost +
+// Dma64Aligned + DmaUnaligned would: not one more, not one less.
+//
+//   pre/post           read S (and S+8 when needed), read the destination word, write it
+//   aligned loop       one read and one write per 64-bit word, however the rows split them
+//   unaligned loop     one read per row plus a final read only row, and one write per word
+//   memset / inputcpy  no source read
+//
+// The aligned loop is free to do 1, 2 or 4 words per row because the set of accesses does not
+// change. The unaligned one is not: it must reuse the read of the previous row, which is why the
+// loop rows of an operation are a CONTIGUOUS SEQUENCE and the high half of the window comes from the
+// next row (see @[window_from_next]) instead of from a second read.
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// THE LOOP IS A PREDEFINED SEQUENCE (still without continuations)
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// The rows of one operation are laid out in logical order and are never mixed with the rows of
+// another operation:
+//
+//      ctrl row | pre row | loop row | loop row | ... | loop row | post row
+//
+// The loop rows form a sequence with row transitions, as in Dma64Aligned and DmaUnaligned: only the
+// FIRST row of the sequence proves the loop operation that the controller delegated (the
+// multiplicity of the operation bus term is @[seq_end] of the previous row), and from there on the
+// state moves with the transitions, count going down and the addresses going up by the words each
+// row does.
+//
+// What it does NOT have is continuations: there is no segment state, no airval and no proofval. Two
+// constraints replace them:
+//
+//   (1 - is_loop) * (1 - seq_end) === 0      every row that is not a loop row "has ended", so the
+//                                            first row of a sequence always sees a finished one
+//   LAST * (1 - seq_end) === 0               a sequence cannot wrap around the end of the instance
+//
+// The consequence is the limitation this design accepts: an operation whose rows do not fit in the
+// instance is not proved here, the planner sends it to the big machines. Nothing is ever split.
+//
+// Note that no padding mechanism is needed (DmaUnaligned needs one): a padding row has is_loop = 0,
+// so the multiplicity of its operation bus term is zero by itself.
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// THE WINDOW: ONE BYTE SELECTION RULE FOR THE THREE ROW KINDS
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// Every row that writes a 64-bit word sees the source as a 16-byte window @[rb], made of the two
+// consecutive 64-bit words at (src64, src64 + 8), and takes the source byte of the destination
+// byte position p from the window index (delta + p), where delta comes from the one-hot @[sr]:
+//
+//      source_byte(p) = rb[delta + p],   delta = SUM(j * sr[j]) in 0..7
+//
+//      write_byte(p)  = sb[p] ? source_byte(p) : pb[p]
+//
+// where @[sb] is the mask of written positions and @[pb] are the bytes of the previous value of
+// the destination word. A loop row has the mask at all ones (it writes the whole word and needs no
+// previous value); a pre/post row gets the mask from DmaCompactTable.
+//
+// delta and the window base are chosen by DmaCompactTable so that the rule also holds when
+// dst_offset > src_offset, see dma_compact_table.pil. For a loop row delta is just the unaligned
+// offset of the operation, and for a controller row the same one-hot @[sr] holds
+// src_offset_after_pre (the offset the loop will use), which is what makes it shareable.
+//
+// Note that the highest window index that can be used is delta + 7 <= 14, so rb[15] is never used
+// as a source byte (it only takes part in the value of the second window word). It still needs its
+// byte range check: Mem does not range check the value chunks it receives, so an unchecked rb[15]
+// could absorb, as a non-integer field element, the difference introduced by corrupting a byte that
+// IS used, keeping the read payload equal to the stored value.
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// WITNESS REUSE
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// The three row kinds are mutually exclusive, so they share the physical columns and each kind
+// gives them its own meaning through const expr aliases. The pools are grouped by the constraint
+// the pool itself carries (a byte range check, a binary constraint or nothing), because that is
+// what a value must be compatible with to be able to live in a given pool.
+//
+// @[rb] / @[pb] / @[abs_diff]  -- byte pool, dual byte range checked on EVERY row
+//
+//   index     ctrl                     pp                        loop
+//   ────────────────────────────────────────────────────────────────────────────────────
+//   rb[0..3]  count bytes              window word 0 (src64)     window word 0 (src64)
+//   rb[4..7]  count_diff bytes         ...                       ...
+//   rb[8..15] -                        window word 1 (src64 + 8) window word 1 (src64 + 8)
+//   pb[0..3]  dst address bytes        previous value of dst64   -
+//   pb[4..7]  src address bytes        ...                       -
+//   abs_diff  -                        |dst byte - src byte|     -
+//
+//   The values that a controller row byte decomposes here (count, count_diff and the two
+//   addresses) are only READ inside constraints and payloads that are multiplied by @[is_ctrl], so
+//   a loop row can keep its source window in the same columns. What crosses the row kinds is the
+//   shared @[count] / @[dst64] / @[src64] columns, tied to the bytes on a controller row.
+//
+//   rb[15] is the only byte of the pool that is not range checked: it is never used as a source
+//   byte and its range is implied by the 32-bit range check that the Mem state machine applies to
+//   the value chunks of the read.
+//
+// @[sb] -- 8 binary columns
+//
+//   ctrl: use_pre, use_loop, use_post, count_lt_256, src64_inc_by_pre, pre_result_nz,
+//         post_result_nz, sel_extended
+//   pp:   mask of written byte positions (from DmaCompactTable); sb[0] doubles as @[is_post]
+//   loop: all ones (the whole word is written)
+//
+//   The aliasing is not arbitrary: @[use_pre] shares the column with sb[0] and
+//   @[src64_inc_by_pre] with sb[4], both 1 on a loop row, which is exactly what makes the
+//   delegation payload of the controller and the remainder payload of a loop row the same
+//   degree-1 expression, (dst64 + use_pre) * 8 and (src64 + src64_inc_by_pre) * 8.
+//
+// @[sr] -- 7 binary columns, at most one active, the window offset (see WINDOW)
+//
+//   ctrl: src_offset_after_pre   pp: delta from DmaCompactTable   loop: unaligned offset
+//
+// The rest of the columns are named individually; the ones that hold different things per row kind
+// are documented where they are declared (see @[pp_flag_a], @[cnt_small], @[count], @[x_count],
+// @[rv], @[pw] and the bus payload columns).
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// WHAT THE OVERLAP SAVES, AND WHAT IT COSTS
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// Live columns per row kind (a column is "live" when that kind really uses its value):
+//
+//   ctrl  59    pp  66    loop  56          all three: 78
+//
+// Without any overlap the three kinds would need 167 columns (the sum, discounting the row and
+// operation selectors, which are shared by definition), so the pooling removes 89 of them, and the
+// same idea applied to the bus removes 8 extension columns (39 terms if each kind had its own,
+// 25 merged), that is another 24 base field columns.
+//
+// Measured against the machines it replaces (which are cheaper per AIR than a row kind of this one,
+// because each one only carries its own baggage): 187 base field columns for Dma + DmaPrePost +
+// DmaUnaligned (124 stage 1 + 21 extension), or 258 with Dma64Aligned, against 117 here.
+//
+// The floor of the pooling is the widest row kind, 66 columns, so 12 of the 78 are slack: columns
+// that a pre/post row does not use and that could host something else. Getting them is NOT free,
+// and these are the four things that block it:
+//
+//   1. Gating costs one degree. A constraint that belongs to one kind has to be multiplied by its
+//      row selector, so it must be of degree <= 2 before that. The write value @[wv] is already of
+//      degree 3, so it CANNOT be gated; the way out is the opposite one: leave the constraint
+//      ungated and make sure its target column is NOT shared, so on the other kinds the constraint
+//      merely defines a value nobody reads. That is why @[wv], @[op_col], @[b0_col], @[c0_col],
+//      @[ext_col], @[b0_loop], @[ext_loop] and @[x_count] are dedicated: a column defined by an
+//      ungated degree-3 constraint is exactly the one that cannot be reused.
+//
+//   2. A pool carries its own constraint. Whatever lands in the byte pool is byte range checked on
+//      every row, and whatever lands in @[sb] is binary on every row. That is what forced the
+//      controller row to byte decompose its count and its addresses instead of keeping the
+//      h_count|l_count / h_dst64|l_dst64 splits of Dma... and it turned out to be a win: it also
+//      removed the 22/24/16-bit range checks, six bus terms, at the price of zero extra columns.
+//      Moving a value into a pool of another class means gating the pool constraint, and gating a
+//      range check costs a bus term (1.5 base field columns), more than the column it saves.
+//
+//   3. The bus payloads must stay of degree 1. Two kinds sharing a column that feeds the same slot
+//      only works if the payload is still a single degree-1 expression; otherwise the term becomes
+//      premium (a whole extension column, 3 base field columns) or needs an intermediate column.
+//      This is what drove the aliasing: @[use_pre] on sb[0] and @[src64_inc_by_pre] on sb[4] (both
+//      1 on a loop row) make one expression serve the delegation of the controller and the
+//      remainder of the chain, and dst_offset/src_offset forced to 0 on a loop row make
+//      dst64 * 8 + dst_offset and (src64 * 8 + src_offset) * load_src serve both kinds.
+//
+//   4. The width of a pool column is the widest of its users, which costs packed trace memory in
+//      the witness computation (not proving time). @[pw] is signed 64-bit because of the memcmp
+//      factor even though a controller row only puts a 32-bit result there.
+//
+// So the remaining 12 slack columns would cost, one by one, a gated constraint of degree 3 plus
+// tighter coupling between the row kinds. The three that were free have already been taken:
+// @[pw] holds the post result and the memcmp factor, and the "the byte difference is not zero"
+// check uses a range check (one bus term, which was free because the machine had an odd number of
+// terms) instead of an inverse column.
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// BUS SLOTS
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// Every bus term costs stage-2 columns: two terms of degree 1 share one extension column (3 base
+// field columns), and a term whose payload is of degree 2 needs a whole extension column for
+// itself. So the terms of the different row kinds are MERGED into shared slots, choosing the
+// aliases (and adding "must be zero/one on this row kind" constraints) so that a single degree-1
+// expression serves every kind:
+//
+//   #   bus              ctrl                        pp                loop
+//   ────────────────────────────────────────────────────────────────────────────────────────
+//   1   OPERATION proves operation to Main           -                 loop op (first row only)
+//   2   OPERATION assumes loop operation            -                 -
+//   3   DMA_BUS   assumes pre operation             -                 -
+//   4   DMA_BUS   assumes post operation            -                 -
+//   5   DMA_BUS   proves  -                         pre/post operation-
+//   6   MEMORY    load    -                         window word 0     window word 0
+//   7   MEMORY    load    -                         window word 1     window word 1 / word 2
+//   8   MEMORY    load    -                         previous dst word -
+//   9   MEMORY    op      -                         write dst word    write/compare word 1
+//   9b  MEMORY    op      -                         -                 write/compare word 2
+//   9c  MEMORY    op      -                         -                 write/compare word 3
+//   9d  MEMORY    op      -                         -                 write/compare word 4
+//   6b  MEMORY    load    -                         -                 source of word 3
+//   6c  MEMORY    load    -                         -                 source of word 4
+//   10  MEMORY    load    count (EXTRA_PARAMS_ADDR) -                 -
+//   11  DMA_ROM   lookup  operation layout          -                 -
+//   12  COMPACT_T lookup  -                         row layout        -
+//   13  RANGE     lookup  -                         abs_diff - 1 in [0,254]
+//   14..26 DUAL_RANGE_BYTE 13 dual byte range checks of the byte pool (all rows)
+//
+// Every payload is of degree 1, so the 31 terms pair up: 15 intermediate extension columns plus the
+// gsum column itself. A selector of degree 2 is fine (the std library groups on the degree of the
+// payload), which is used by the terms whose activation needs a row kind.
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// ACCOUNTING (measured with pil2-compiler)
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+//   stage 1: 87 columns
+//   stage 2: 16 extension columns = 48 base field columns
+//   stage Q: 6 base field columns (added by the setup)
+//   total  : 141 base field columns, 158 constraints, max constraint degree 3
+//   openings: 28 shifted references in stage 1 (the 8 window bytes taken from the next row, the
+//   transitions and the latches), against 27 of DmaUnaligned alone
+//
+// For reference, the four AIRs it replaces add up to 258 base field columns in four instances:
+// Dma 34+7, Dma64Aligned 35+12, DmaUnaligned 24+4 and DmaPrePost 66+10 (stage 1 + stage 2
+// extension columns).
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// DIFFERENCES WITH THE BIG MACHINES
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+//  - One 64-bit word per loop row (Dma64AlignedMemCpy does 8), so it is much slower per byte. It
+//    is the intended trade: fewer columns, more rows.
+//  - No direct (controller-less) operations: every operation goes through a controller row.
+//  - DMA_BYTE_CMP_TABLE is not used. Its purpose was to check that the memcmp byte difference is
+//    a difference of two real bytes: not zero, and without overflow. The overflow part is already
+//    implied here because @[pb] and the source bytes are range checked bytes, and the 64-bit
+//    equation @[memcmp_diff] then has a unique signed base-256 solution; the "not zero" part is
+//    checked with a range check of abs_diff - 1. See @[memcmp_diff].
+//  - It needs its own control table, DmaCompactTable, because DmaPrePostTable describes the byte
+//    selection the way DmaPrePost does it (two variants, one per sign of dst_offset - src_offset)
+//    and that form is of degree 3 before being restricted to a row kind. DmaRom is reused as is.
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// NOTES FOR THE WITNESS COMPUTATION
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+//  - The rows of an operation go in logical order and contiguously: ctrl, pre, the loop sequence,
+//    post. Rows of different operations are never interleaved, and an operation is never split: if
+//    it does not fit in the instance the planner sends it to the big machines.
+//  - A loop row picks its number of words in @[sel_w2] / @[sel_w34]; the natural policy is the greedy
+//    one (4 while at least 4 aligned words are left, then 2, then 1), 1 always when the operation is
+//    unaligned, and at most 2 for an inputcpy.
+//  - An unaligned sequence has one extra row at the end (count = 0) that only reads the source word
+//    whose bytes the previous row needs, exactly as the last row of a DmaUnaligned sequence.
+//  - @[wv], @[b0_col], @[c0_col], @[ext_col], @[x_count], @[b0_loop], @[ext_loop], @[xa_col] and
+//    @[op_col] are defined by ungated constraints, so they must be filled on EVERY row, including
+//    controller rows and padding rows (on a padding row every column is 0 and all of them are 0).
+//  - On a controller row the byte pool holds: rb[0..3] count, rb[4..7] count_diff, pb[0..3] the
+//    destination address as (dst >> 3) & 0x1F | bytes 1..3, pb[4..7] the same for the source.
+//  - On a loop row the mask @[sb] is all ones, so @[use_pre] and @[src64_inc_by_pre] read as 1.
+//  - A pre/post row must fill rb[0..7] with the first word of the window only when @[read_lo] is
+//    set (otherwise they are free and can be 0); the same for rb[8..15] and @[read_hi].
+//
+airtemplate DmaCompact(int N = 2**18) {
+
+    const int RC = 2;                   // chunks of a native (64-bit) value
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // ROW KIND AND OPERATION SELECTORS
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    col witness bits(1) is_ctrl;
+    col witness bits(1) is_pp;
+    col witness bits(1) is_loop;
+
+    is_ctrl * (1 - is_ctrl) === 0;
+    is_pp * (1 - is_pp) === 0;
+    is_loop * (1 - is_loop) === 0;
+
+    // @[sel_row] is 1 on a used row and 0 on a padding row. Being binary with the three selectors
+    // binary forces at most one row kind per row.
+    const expr sel_row = is_ctrl + is_pp + is_loop;
+    sel_row * (1 - sel_row) === 0;
+
+    col witness bits(1) sel_memcpy;
+    col witness bits(1) sel_memcmp;
+    col witness bits(1) sel_inputcpy;
+    col witness bits(1) sel_memset;
+
+    sel_memcpy * (1 - sel_memcpy) === 0;
+    sel_memcmp * (1 - sel_memcmp) === 0;
+    sel_inputcpy * (1 - sel_inputcpy) === 0;
+    sel_memset * (1 - sel_memset) === 0;
+
+    // exactly one operation selector on a used row, none on a padding row
+    sel_memcpy + sel_memcmp + sel_inputcpy + sel_memset === sel_row;
+
+    // the source bytes come from memory only for memcpy and memcmp
+    const expr load_src = sel_memcpy + sel_memcmp;
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // WITNESS POOLS
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    // ── byte pool ──────────────────────────────────────────────────────────────────────────────
+
+    col witness bits(8) rb[16];         // source window / controller counts
+    col witness bits(8) pb[8];          // previous destination bytes / controller addresses
+    col witness bits(8) abs_diff;       // |dst byte - src byte| of the first different byte
+
+    // Dual byte range checks of the pool. EVERY byte of the window needs one, including rb[15],
+    // which is never used as a source byte: Mem does NOT range check the value chunks it receives
+    // (see @[value] in mem.pil), so without its own check a prover could corrupt a byte that IS
+    // used (say rb[12] = real + 1) and let rb[15] absorb the difference as a non-integer field
+    // element, keeping the read payload equal to the stored value while copying a wrong byte.
+    //
+    // The pair (high byte, low byte) is the one DmaPrePost uses, so the table row of a pair is the
+    // 16-bit little endian value it forms.
+    for (int i = 0; i < 16; i += 2) {
+        range_dual_byte(rb[i+1], rb[i]);
+    }
+    for (int i = 0; i < 8; i += 2) {
+        range_dual_byte(pb[i+1], pb[i]);
+    }
+    range_dual_byte(0, abs_diff);
+
+    // ── binary pool @[sb] ──────────────────────────────────────────────────────────────────────
+
+    col witness bits(1) sb[8];
+    for (int i = 0; i < 8; ++i) {
+        sb[i] * (1 - sb[i]) === 0;
+    }
+
+    // ── one-hot window offset @[sr] ────────────────────────────────────────────────────────────
+
+    col witness bits(1) sr[7];
+
+    const expr srx[8];                  // srx[j] = 1 <=> delta = j
+    expr _sr_sum = 0;
+    expr _delta = 0;
+    for (int j = 1; j < 8; ++j) {
+        sr[j-1] * (1 - sr[j-1]) === 0;
+        srx[j] = sr[j-1];
+        _sr_sum += sr[j-1];
+        _delta += j * sr[j-1];
+    }
+    const expr sr_sum = _sr_sum;        // 1 <=> delta != 0
+    const expr delta = _delta;
+    srx[0] = 1 - sr_sum;
+
+    // at most one active, so delta is in 0..7
+    sr_sum * (1 - sr_sum) === 0;
+
+    // ── binary flags ───────────────────────────────────────────────────────────────────────────
+    //
+    //   column        ctrl                      pp                          loop
+    //   ─────────────────────────────────────────────────────────────────────────────────────────
+    //   pp_flag_a     1                         1                           seq_end (is_last)
+    //   borrow        -                         window base is src64 - 1    0
+    //   read_lo       0                         first window word is read   idem
+    //   read_hi       0                         second window word is read  idem
+    //   memcmp_nz     -                         the row holds the result    -
+    //   memcmp_neg    -                         the result is negative      -
+    //   load_count    the count is in memory    0                           0
+    //
+    // @[read_lo], @[read_hi], @[load_count] and @[is_pp] are selectors of memory bus terms, and the
+    // std library already constrains a non constant selector to be binary, so they are not
+    // constrained here again.
+
+    col witness bits(1) pp_flag_a;
+    col witness bits(1) borrow;
+    col witness bits(1) read_lo;
+    col witness bits(1) read_hi;
+    col witness bits(1) memcmp_nz;
+    col witness bits(1) memcmp_neg;
+    col witness bits(1) load_count;
+
+    pp_flag_a * (1 - pp_flag_a) === 0;
+    borrow * (1 - borrow) === 0;
+    memcmp_nz * (1 - memcmp_nz) === 0;
+    memcmp_neg * (1 - memcmp_neg) === 0;
+
+    // @[seq_end] is 1 on every row that is not a loop row (see THE LOOP IS A PREDEFINED SEQUENCE),
+    // so it cannot also hold is_post. A pre/post row tells pre from post with the mask instead:
+    // a post row has dst_offset = 0 and count >= 1, so it always writes the byte position 0, and
+    // a pre row has dst_offset > 0, so it never does. Hence is_post = sb[0] on a pre/post row.
+    const expr seq_end = pp_flag_a;     // loop row: last row of the sequence
+    const expr is_post = sb[0];         // pre/post row
+
+    // L1 is only used to forbid a loop sequence from wrapping around the last row of the instance
+    const expr L1 = get_L1();
+    const expr LAST = L1';
+
+    // ── individual columns ─────────────────────────────────────────────────────────────────────
+
+    col witness bits(MAIN_STEP_BITS) main_step;
+    col witness bits(ADDR_W_BITS) dst64;        // destination 64-bit word (ctrl: dst >> 3)
+    col witness bits(ADDR_W_BITS) src64;        // window base word
+    col witness bits(3) dst_offset;             // ctrl/pp: byte offset inside dst64, loop: 0
+    col witness bits(3) src_offset;             // ctrl/pp: byte offset inside src64, loop: 0
+    col witness bits(8) fill_byte;              // memset fill byte (static, given by Main)
+    col witness bits(32) wv[RC];                // value written to dst64
+    col witness bits(4) cnt_small;              // ctrl: pre_count, pp: byte count of the row
+    col witness bits(8) op_col;                 // op of bus slot 1
+    col witness bits(32) b0_col;                // b[0] of bus slot 1
+    col witness bits(32) c0_col;                // c[0] of bus slot 1
+    col witness bits(32) ext_col;               // extended_arg of bus slot 1
+    col witness bits(3) xa_col;                 // extra_args[0] of bus slot 1
+    col witness bits(32) b0_loop;               // b[0] of bus slot 2
+    col witness bits(32) ext_loop;              // extended_arg of bus slot 2
+    col witness bits(32) x_count;               // ctrl: static count, loop: remaining byte count
+    col witness bits(32) count;                 // ctrl: bytes of the operation, loop: bytes left
+    col witness bits(9) rom_l_count64;          // 64-bit words of the loop part, given by DmaRom
+    col witness bits(1) pp_cmp;                 // is_pp AND sel_memcmp
+
+    // ── loop row: words per row ────────────────────────────────────────────────────────────────
+    //
+    // A loop row copies ONE 64-bit word when the operation is unaligned (the window offset is not
+    // 0), and 1, 2 or 4 words when it is aligned: an aligned word is written with the very same
+    // value it was read with, so it needs no byte decomposition and no range check, just its two
+    // chunks. Words per row = 1 + @[sel_w2] + 2 * @[sel_w34].
+    //
+    //   @[sel_w2]   word 2 of the row is active
+    //   @[sel_w34]  words 3 and 4 are active (implies @[sel_w2])
+    //   @[rd_34]    load_src AND sel_w34, the degree-1 selector of the two extra source reads
+    //
+    // inputcpy is limited to 1 or 2 words: its values are free input, so they must be range
+    // checked, and the only ones that come for free are the window bytes (word 1 in rb[0..7], word
+    // 2 in rb[8..15], both already byte range checked). Words 3 and 4 live in @[v3] / @[v4], which
+    // are either read from memory (memcpy, memcmp) or forced to the fill word (memset), so they
+    // never need a check.
+    //
+    // @[sel_w2], @[sel_w34] and @[rd_34] are selectors of memory bus terms, so the std library
+    // already constrains them to be binary.
+
+    col witness bits(1) sel_w2;
+    col witness bits(1) sel_w34;
+    col witness bits(1) rd_34;
+    col witness bits(1) loop_end;               // is_loop AND seq_end
+    col witness bits(1) wr_loop;                // a loop row that writes (not an unaligned tail)
+    col witness bits(32) v3[RC];                // word 3 of a 4-word aligned loop row
+    col witness bits(32) v4[RC];                // word 4 of a 4-word aligned loop row
+
+    // ── pooled results ─────────────────────────────────────────────────────────────────────────
+    //
+    //   column   ctrl                    pp
+    //   ──────────────────────────────────────────────────────────────────────
+    //   rv[0..1] result of the pre phase  rv[0] is the memcmp result of the row
+    //   pw[0..1] result of the post phase memcmp byte factor from DmaCompactTable
+    //
+    // The post result and the byte factor never live on the same row: the controller reads the
+    // results from the bus and the pre/post row produces them, so they can share the columns. The
+    // pool takes the widest type of the two (a factor is signed).
+
+    col witness bits(32) rv[RC];
+    col witness bits(64, signed) pw[RC];
+
+    const expr pre_result[RC];
+    const expr post_result[RC];
+    const expr diff_factor[RC];
+    for (int i = 0; i < RC; ++i) {
+        pre_result[i] = rv[i];
+        post_result[i] = pw[i];
+        diff_factor[i] = pw[i];
+    }
+
+    // The fill byte is a static argument of the operation, given by Main in extended_arg, so it
+    // does not need a range check. It travels in the DMA_BUS payload, where DmaPrePost forces it to
+    // zero for the operations that do not use it, so the same is done here to interoperate.
+    (1 - sel_memset) * fill_byte === 0;
+
+    // ── aliases: controller row ────────────────────────────────────────────────────────────────
+
+    const expr use_pre = sb[0];
+    const expr use_loop = sb[1];
+    const expr use_post = sb[2];
+    const expr count_lt_256 = sb[3];
+    const expr src64_inc_by_pre = sb[4];
+    const expr pre_result_nz = sb[5];
+    const expr post_result_nz = sb[6];
+    const expr sel_extended = sb[7];
+
+    // The count of the operation and the difference between the requested count and the compared
+    // one (memcmp), byte decomposed in the pool. Being range checked bytes gives, for free, that
+    // count and count_bus are 32-bit values (which bounds the number of loop rows) and that
+    // count_diff >= 0, that is, that the compared prefix of a memcmp never exceeds the requested
+    // length.
+    //
+    // The byte decomposition is only meaningful on a controller row (a loop row keeps its source
+    // window in the same columns), so the shared @[count] column is what carries the value to the
+    // payloads, and here it is tied to the bytes.
+    const expr ctrl_count = rb[0] + rb[1] * P2_8 + rb[2] * P2_16 + rb[3] * P2_24;
+    is_ctrl * (count - ctrl_count) === 0;
+
+    const expr count_diff = rb[4] + rb[5] * P2_8 + rb[6] * P2_16 + rb[7] * P2_24;
+    const expr count_bus = count + count_diff;
+
+    // DmaRom needs to know whether count is small, and the traditional h_count|l_count split
+    // cannot tell count = 0 from count = 1024. As in Dma, l_count carries 9 bits: when count is
+    // not smaller than 256 one unit is moved from h_count to l_count, so l_count > k => count > k
+    // for every k < 512. @[count_lt_256] is checked against l_count by DmaRom, and the constraint
+    // below is what forbids claiming count_lt_256 with a non zero h_count.
+    const expr count_ge_256 = 1 - count_lt_256;
+    const expr l_count = rb[0] + P2_8 * count_ge_256;
+    const expr h_count = rb[1] + rb[2] * P2_8 + rb[3] * P2_16 - count_ge_256;
+
+    is_ctrl * count_lt_256 * h_count === 0;
+
+    // Addresses of the controller row, byte decomposed as well, and tied to the shared @[dst64] /
+    // @[src64] columns so that every payload can use the same degree-1 expression for the three
+    // row kinds.
+    //
+    // dst = dst_offset + 8 * dst64 holds by construction, hence dst64 * 8 = dst - dst_offset as
+    // field elements: a dst_offset that is not dst mod 8 can only produce a memory address that is
+    // not 8-aligned, and the Mem state machine cannot match it.
+    const expr ctrl_dst64 = pb[0] + pb[1] * P2_5 + pb[2] * P2_13 + pb[3] * P2_21;
+    const expr ctrl_src64 = pb[4] + pb[5] * P2_5 + pb[6] * P2_13 + pb[7] * P2_21;
+
+    is_ctrl * (dst64 - ctrl_dst64) === 0;
+    is_ctrl * (src64 - ctrl_src64) === 0;
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // ROW KIND NORMALIZATION
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    // A loop row writes the whole word, has no destination/source offset and reads the first word
+    // of the window whenever the source comes from memory. @[read_hi] must be active exactly when
+    // the window offset is not 0.
+    for (int i = 0; i < 8; ++i) {
+        is_loop * (1 - sb[i]) === 0;
+    }
+    is_loop * dst_offset === 0;
+    is_loop * src_offset === 0;
+    is_loop * borrow === 0;
+    is_loop * (read_lo - load_src) === 0;
+
+    // The second word of the window is read from memory ONLY for word 2 of a multi word aligned
+    // row. On an unaligned row those bytes are the ones of the next row (see @[window_from_next]),
+    // which is what keeps the memory accesses identical to the ones of DmaUnaligned.
+    is_loop * (read_hi - load_src * sel_w2) === 0;
+
+    // @[window_from_next]
+    //
+    // An unaligned loop row takes the high half of its window from the row that follows it, exactly
+    // as DmaUnaligned does, so every source word is read ONCE. This is a hard requirement, not an
+    // optimization: the memory accesses that the Mem state machine will see are generated per
+    // operation before it is known whether the operation will be proved here or by the big
+    // machines, so they must match to the access.
+    // Gated with @[wr_loop] and not with @[is_loop] on purpose: the extra read only row that closes
+    // an unaligned sequence has no next loop row, and it does not use the high half either.
+    for (int i = 0; i < 8; ++i) {
+        wr_loop * sr_sum * (rb[8 + i] - rb[i]') === 0;
+    }
+
+    // Words per row: 1 + sel_w2 + 2 * sel_w34, only on aligned loop rows, and never 3.
+    sel_w34 * (1 - sel_w2) === 0;
+    (1 - is_loop) * sel_w2 === 0;
+    (1 - is_loop) * sel_w34 === 0;
+    (sel_w2 + sel_w34) * sr_sum === 0;
+    sel_inputcpy * sel_w34 === 0;
+    rd_34 <== load_src * sel_w34;
+
+    const expr row_extra_words = sel_w2 + 2 * sel_w34;
+
+    // A controller row does not touch the window.
+    is_ctrl * read_lo === 0;
+    is_ctrl * read_hi === 0;
+
+    // inputcpy and memset take their bytes in place, with window offset 0
+    (sel_inputcpy + sel_memset) * delta === 0;
+
+    // Only a controller row can read the count from memory, and it does it for every operation that
+    // is not extended (memset is always extended, inputcpy gets its count from Main).
+    is_ctrl * (load_count - (sel_memcpy + sel_memcmp + sel_memset - sel_extended)) === 0;
+    (1 - is_ctrl) * load_count === 0;
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // THE WRITTEN VALUE
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    // write_byte(p) = sb[p] ? rb[delta + p] : pb[p]
+    //
+    // This is the only place where the byte selection happens, and it is shared by the pre/post
+    // rows and by the loop rows (aligned and unaligned). It is of degree 3 (sb * sr * rb) so it
+    // CANNOT be multiplied by a row kind selector; instead @[wv] is a column that no row kind
+    // aliases, so on a controller or padding row the constraint just defines its value and does
+    // not restrict anything else.
+    for (int irc = 0; irc < RC; ++irc) {
+        expr _wv = 0;
+        for (int i = 0; i < 4; ++i) {
+            const int p = irc * 4 + i;
+            const int factor = 1 << (i * 8);
+            expr _source_byte = 0;
+            for (int j = 0; j < 8; ++j) {
+                if ((p + j) > 14) continue;             // rb[15] is never a source byte
+                _source_byte += srx[j] * rb[p + j];
+            }
+            _wv += factor * ((1 - sb[p]) * pb[p] + sb[p] * _source_byte);
+        }
+        wv[irc] <== _wv;
+    }
+
+    // memset writes the fill byte everywhere, so every source byte of the window is the fill byte
+    // (rb[8..15] matter for word 2 of a multi word row; on a pre/post row they are unused and the
+    // constraint is harmless) and so are the words 3 and 4 of a 4-word row.
+    const expr fill_dword = fill_byte * (1 + P2_8 + P2_16 + P2_24);
+
+    for (int i = 0; i < 16; ++i) {
+        (is_pp + is_loop) * sel_memset * (rb[i] - fill_byte) === 0;
+    }
+    for (int i = 0; i < RC; ++i) {
+        is_loop * sel_memset * (v3[i] - fill_dword) === 0;
+        is_loop * sel_memset * (v4[i] - fill_dword) === 0;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // MEMORY (bus slots 6 to 10)
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    const expr r_value[RC];
+    r_value[0] = rb[0] + rb[1] * P2_8 + rb[2] * P2_16 + rb[3] * P2_24;
+    r_value[1] = rb[4] + rb[5] * P2_8 + rb[6] * P2_16 + rb[7] * P2_24;
+
+    const expr r_value_hi[RC];
+    r_value_hi[0] = rb[8] + rb[9] * P2_8 + rb[10] * P2_16 + rb[11] * P2_24;
+    r_value_hi[1] = rb[12] + rb[13] * P2_8 + rb[14] * P2_16 + rb[15] * P2_24;
+
+    const expr p_value[RC];
+    p_value[0] = pb[0] + pb[1] * P2_8 + pb[2] * P2_16 + pb[3] * P2_24;
+    p_value[1] = pb[4] + pb[5] * P2_8 + pb[6] * P2_16 + pb[7] * P2_24;
+
+    // slot 6: first word of the window (a controller row never reads it, @[read_lo] is 0 there)
+    precompiled_mem_load(sel: read_lo, main_step:, addr: src64 * 8, value: r_value);
+
+    // slot 7: second word of the window
+    precompiled_mem_load(sel: read_hi, main_step:, addr: src64 * 8 + 8, value: r_value_hi);
+
+    // slot 8: previous value of the destination word, only the partial writes need it
+    precompiled_mem_load(sel: is_pp, main_step:, addr: dst64 * 8, value: p_value);
+
+    // slot 9: the destination word. It is a write for memcpy/inputcpy/memset and, on a loop row of
+    // a memcmp, a read of the same value (which is what proves dst == src). A pre/post row of a
+    // memcmp does not use this slot: it already read the destination word in slot 8 and the
+    // comparison is resolved by @[memcmp_diff].
+    pp_cmp <== is_pp * sel_memcmp;
+
+    const expr is_write = sel_memcpy + sel_inputcpy + sel_memset;
+
+    precompiled_mem_op(is_write:,
+                       sel: is_pp - pp_cmp + wr_loop,
+                       main_step:,
+                       addr: dst64 * 8,
+                       value: wv);
+
+    // slots 9b, 9c, 9d: words 2, 3 and 4 of a multi word aligned loop row. Word 2 reuses the value
+    // of the second window word (read by slot 7 for memcpy/memcmp, the free input bytes for
+    // inputcpy, the fill byte for memset), words 3 and 4 have their own columns.
+    precompiled_mem_op(is_write:, sel: sel_w2, main_step:, addr: dst64 * 8 + 8, value: r_value_hi);
+    precompiled_mem_op(is_write:, sel: sel_w34, main_step:, addr: dst64 * 8 + 16, value: v3);
+    precompiled_mem_op(is_write:, sel: sel_w34, main_step:, addr: dst64 * 8 + 24, value: v4);
+
+    // slots 6b, 6c: the source of words 3 and 4 (memcpy and memcmp only)
+    precompiled_mem_load(sel: rd_34, main_step:, addr: src64 * 8 + 16, value: v3);
+    precompiled_mem_load(sel: rd_34, main_step:, addr: src64 * 8 + 24, value: v4);
+
+    // slot 10: count of a non extended operation, written by Main at EXTRA_PARAMS_ADDR
+    precompiled_mem_load(sel: load_count, main_step:, addr: EXTRA_PARAMS_ADDR, value: [count_bus, 0]);
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // CONTROLLER ROW
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    const expr result_nz = pre_result_nz + post_result_nz;
+
+    const expr rom_flags = use_pre * DMA_ROM_USE_PRE_F +
+                           use_loop * DMA_ROM_LOOP_F +
+                           use_post * DMA_ROM_USE_POST_F +
+                           src64_inc_by_pre * DMA_ROM_SRC64_INC_BY_PRE_F +
+                           count_lt_256 * DMA_ROM_COUNT_LT_256_F +
+                           result_nz * DMA_ROM_NEQ_F +
+                           load_src * DMA_ROM_USE_SRC_F;
+
+    // slot 11: DmaRom resolves the layout of the operation (which phases are used, how many bytes
+    // the pre writes, how many 64-bit words the loop copies, ...) and range checks dst_offset,
+    // src_offset, pre_count and l_count64.
+    lookup_assumes(DMA_ROM_ID, expressions: [dst_offset,
+                                             src_offset,
+                                             l_count,
+                                             rom_flags,
+                                             cnt_small,
+                                             delta,
+                                             rom_l_count64], sel: is_ctrl, sel_is_binary: 1);
+
+    // bytes of the loop part and of the post part
+    const expr loop_count = h_count * P2_8 + rom_l_count64 * 8;
+    const expr post_count = count - cnt_small - h_count * P2_8 - rom_l_count64 * 8;
+
+    // words to add to reach the post phase
+    const expr post_words = rom_l_count64 + h_count * 32;
+
+    // ── memcmp bookkeeping of the controller row ───────────────────────────────────────────────
+
+    const expr pre_res_sum = pre_result[0] + pre_result[1];
+    const expr post_res_sum = post_result[0] + post_result[1];
+
+    // only one of the two phases can hold the result
+    is_ctrl * pre_result_nz * post_result_nz === 0;
+    is_ctrl * pre_res_sum * post_res_sum === 0;
+
+    // a phase that is not used, or a phase that is not the one holding the result, is zero
+    is_ctrl * (1 - use_pre) * (pre_res_sum + pre_result_nz) === 0;
+    is_ctrl * (1 - use_post) * (post_res_sum + post_result_nz) === 0;
+    is_ctrl * use_post * (pre_res_sum + pre_result_nz) === 0;
+
+    // results only exist for memcmp, and a zero flag means a zero result
+    is_ctrl * (1 - sel_memcmp) * (pre_result_nz + post_result_nz) === 0;
+    is_ctrl * (1 - pre_result_nz) * pre_res_sum === 0;
+    is_ctrl * (1 - post_result_nz) * post_res_sum === 0;
+
+    // count_diff only makes sense for memcmp, and if the result is zero every requested byte was
+    // compared
+    is_ctrl * (sel_memcpy + sel_inputcpy + sel_memset) * count_diff === 0;
+    is_ctrl * (1 - result_nz) * count_diff === 0;
+
+    // a loop row returns the destination address, so it needs the result part at zero
+    is_loop * (pre_result[0] + post_result[0]) === 0;
+    is_loop * (pre_result[1] + post_result[1]) === 0;
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // PRE/POST ROW
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    // @[memcmp_nz] only makes sense on a pre/post row, and the byte difference must be zero when no
+    // difference is claimed and NOT zero when it is (@[abs_diff] is already a range checked byte,
+    // so this range check only adds "not zero"). It is a single bus term and it happens to be free:
+    // with it the 25 terms of the machine pair up exactly.
+    (1 - is_pp) * memcmp_nz === 0;
+    (1 - memcmp_nz) * memcmp_neg === 0;
+    is_pp * (1 - memcmp_nz) * abs_diff === 0;
+    range_check(expression: abs_diff - 1, min: 0, max: 254, sel: memcmp_nz);
+
+    // @[memcmp_diff]
+    //
+    // The value that a memcmp row "writes" is the value it read from the destination, except at
+    // the first different byte. DmaCompactTable gives the factor of that byte position, so the
+    // difference of the two 32-bit chunks must be exactly diff_factor * abs_diff.
+    //
+    // Both sides are sums of at most 4 signed base-256 digits in [-255, 255] (every byte involved
+    // is range checked) and such a representation is unique, so this equation forces ALL the other
+    // compared bytes to be equal and the different one to differ by abs_diff.
+    for (int i = 0; i < RC; ++i) {
+        pp_cmp * (p_value[i] - wv[i] - diff_factor[i] * abs_diff) === 0;
+    }
+
+    // the memcmp result of the row, as a 64-bit signed value. rv[0] is the column of the pre
+    // result on a controller row and the result of the row here.
+    is_pp * (pre_result[0] - (0x1_0000_0000 * memcmp_neg + (1 - 2 * memcmp_neg) * abs_diff)) === 0;
+
+    const expr memcmp_result[RC];
+    memcmp_result[0] = pre_result[0];
+    memcmp_result[1] = 0xFFFF_FFFF * memcmp_neg;
+
+    const expr pp_flags = sb[0] * 0x80 + sb[1] * 0x40 + sb[2] * 0x20 + sb[3] * 0x10 +
+                          sb[4] * 0x08 + sb[5] * 0x04 + sb[6] * 0x02 + sb[7] +
+                          DMA_COMPACT_DELTA_F * delta +
+                          DMA_COMPACT_BORROW_F * borrow +
+                          DMA_COMPACT_READ_LO_F * read_lo +
+                          DMA_COMPACT_READ_HI_F * read_hi +
+                          DMA_COMPACT_RES_NEG_F * memcmp_neg +
+                          DMA_COMPACT_RES_NZ_F * memcmp_nz +
+                          DMA_COMPACT_LOAD_SRC_F * load_src;
+
+    // slot 12: DmaCompactTable resolves the mask, the window offset and the window base of the
+    // partial write, and range checks dst_offset, src_offset and the byte count of the row.
+    lookup_assumes(DMA_COMPACT_TABLE_ID, expressions: [pp_flags,
+                                                       dst_offset,
+                                                       src_offset,
+                                                       cnt_small,
+                                                       ...diff_factor], sel: is_pp, sel_is_binary: 1);
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // LOOP ROW
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    // ── the loop is a contiguous sequence of rows, without continuations ───────────────────────
+    //
+    // Rows of a sequence are consecutive, so the state travels through the row transition and not
+    // through the bus: only the FIRST row of the sequence proves the loop operation. Every row that
+    // is not a loop row has @[seq_end] at 1, so the first row of a sequence always sees "the
+    // previous one ended", and the last row of the instance must also have it, which is what
+    // forbids a sequence from wrapping around (the role continuations play in the big machines).
+    (1 - is_loop) * (1 - seq_end) === 0;
+    LAST * (1 - seq_end) === 0;
+
+    loop_end <== is_loop * seq_end;
+
+    // an unaligned sequence ends with a row that only reads (the source word of the shift), so it
+    // does not write; an aligned one writes in every row
+    wr_loop <== is_loop * (1 - seq_end * sr_sum);
+
+    // this row continues the sequence of the previous one ('x is x on the previous row)
+    const expr cont = is_loop * (1 - 'seq_end);
+
+    // TRANSITIONS: the previous row did prev_words words
+    const expr prev_words = 1 + 'sel_w2 + 2 * 'sel_w34;
+
+    cont * (count - ('count - 8 * prev_words)) === 0;
+    cont * (dst64 - ('dst64 + prev_words)) === 0;
+    cont * (src64 - ('src64 + prev_words)) === 0;
+
+    // LATCHES: the operation, its step, its window offset and its fill byte
+    cont * (main_step - 'main_step) === 0;
+    cont * (delta - 'delta) === 0;
+    cont * (fill_byte - 'fill_byte) === 0;
+    cont * (sel_memcpy - 'sel_memcpy) === 0;
+    cont * (sel_memcmp - 'sel_memcmp) === 0;
+    cont * (sel_inputcpy - 'sel_inputcpy) === 0;
+    cont * (sel_memset - 'sel_memset) === 0;
+
+    // CLOSURE: an aligned sequence ends when the words of the row are the ones that were left; an
+    // unaligned one ends with the extra read only row, where nothing is left
+    loop_end * sr_sum * count === 0;
+    loop_end * (1 - sr_sum) * (count - 8 * (1 + sel_w2 + 2 * sel_w34)) === 0;
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // BUS SLOT 1: OPERATION BUS (proves)
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // ctrl: the operation requested by Main
+    //   OP_DMA_MEMCPY   (dst, 0, src,   0, 0,  0,  0, main_step) + MEM(count)
+    //   OP_DMA_XMEMCPY  (dst, 0, src,   0, 0,  0,  0, main_step, count)
+    //   OP_DMA_INPUTCPY (dst, 0, count, 0, 0,  0,  0, main_step)
+    //   OP_DMA_MEMCMP   (dst, 0, src,   0, 0, R0, R1, main_step) + MEM(count)
+    //   OP_DMA_XMEMCMP  (dst, 0, src,   0, 0, R0, R1, main_step, count)
+    //   OP_DMA_XMEMSET  (dst, 0, count, 0, 0,  0,  0, main_step, value)
+    //
+    // loop: the 64-bit loop operation of this row
+    //   OP_DMA_XMEMCPY  (dst64, 0, src64, 0, 0, 0, 0, main_step, count, offset)
+    //   OP_DMA_XMEMEQ   (dst64, 0, src64, 0, 0, 0, 0, main_step, count, offset)
+    //   OP_DMA_INPUTCPY (dst64, 0, count, 0, 0, 0, 0, main_step, 0,     0)
+    //   OP_DMA_XMEMSET  (dst64, 0, count, 0, 0, 0, 0, main_step, value, 0)
+
+    const expr main_op = sel_memcpy * OP_DMA_MEMCPY +
+                         sel_memcmp * OP_DMA_MEMCMP +
+                         sel_inputcpy * OP_DMA_INPUTCPY +
+                         sel_memset * __OP_DMA_MEMSET__ +
+                         sel_extended * OP_DMA_X_OFFSET;
+
+    const expr loop_op = sel_memcpy * OP_DMA_XMEMCPY +
+                         sel_memcmp * OP_DMA_XMEMEQ +
+                         sel_inputcpy * OP_DMA_INPUTCPY +
+                         sel_memset * OP_DMA_XMEMSET;
+
+    op_col <== is_ctrl * main_op + is_loop * loop_op;
+
+    // ctrl: src or count, loop: window base or remaining bytes (src_offset is 0 on a loop row)
+    b0_col <== (src64 * 8 + src_offset) * load_src + count * (sel_inputcpy + sel_memset);
+
+    // ctrl: the static count of an extended operation, loop: the remaining bytes
+    x_count <== is_ctrl * sel_extended * count_bus + is_loop * count;
+
+    ext_col <== x_count * load_src + fill_byte * sel_memset;
+
+    // ctrl: the result of the operation (the destination address, or the memcmp result),
+    // loop: the destination address of the row
+    // @[post_result] shares its columns with @[diff_factor], which is signed, so it is excluded
+    // here: on a pre/post row this column is unused (the multiplicity of the term is 0) and it must
+    // stay inside the 32 bits of its packed representation.
+    c0_col <== pre_result[0] + post_result[0] * (1 - is_pp) +
+               is_ctrl * (1 - sel_memcmp) * (dst64 * 8 + dst_offset) +
+               is_loop * dst64 * 8;
+
+    // only a loop row carries the unaligned offset
+    xa_col <== is_loop * delta;
+
+    proves_operation(op: op_col,
+                     a: [dst64 * 8 + dst_offset, 0],
+                     b: [b0_col, 0],
+                     c: [c0_col, pre_result[1] + post_result[1]],
+                     flag: 0,
+                     main_step:,
+                     extended_arg: ext_col,
+                     extra_args: [xa_col],
+                     mul: is_ctrl + is_loop * 'seq_end);
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // BUS SLOT 2: OPERATION BUS (assumes)
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // ctrl: the 64-bit loop of the operation, delegated to loop rows (of this or another instance)
+    //       or to Dma64Aligned/DmaUnaligned
+    // loop: the remainder of the loop operation of this row
+    //
+    // Note that @[use_pre] and @[src64_inc_by_pre] are 1 on a loop row (they share the columns
+    // with sb[0] and sb[4]), so the same expression is the delegated destination/source of the
+    // controller and the next destination/source of the chain.
+
+    const expr next_dst = (dst64 + use_pre) * 8;
+    const expr next_src = (src64 + src64_inc_by_pre) * 8;
+    const expr next_count = is_ctrl * loop_count;
+
+    b0_loop <== next_src * load_src + next_count * (sel_inputcpy + sel_memset);
+    ext_loop <== next_count * load_src + fill_byte * sel_memset;
+
+    assumes_operation(op: loop_op,
+                      a: [next_dst, 0],
+                      b: [b0_loop, 0],
+                      c: [next_dst, 0],
+                      flag: 0,
+                      main_step:,
+                      extended_arg: ext_loop,
+                      extra_args: [delta],
+                      sel: is_ctrl * use_loop,
+                      sel_is_binary: 1);
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // BUS SLOTS 3, 4 and 5: DMA_BUS
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // OP_DMA_PRE_XMEMCPY   (dst, src, dst_offset, src_offset,  pre_count, main_step)
+    // OP_DMA_PRE_INPUTCPY  (dst, 0,   dst_offset,          0,  pre_count, main_step)
+    // OP_DMA_PRE_XMEMEQ    (dst, src, dst_offset, src_offset,  pre_count, main_step)
+    // OP_DMA_PRE_XMEMCMP   (dst, src, dst_offset, src_offset,  pre_count, main_step, 0, r_nz, R0, R1)
+    // OP_DMA_PRE_XMEMSET   (dst, 0,   dst_offset,          0,  pre_count, main_step, value)
+    //
+    // the post operations are the same with OP_DMA_POST_OFFSET added to the operation code
+
+    const expr pre_op = sel_memcpy * OP_DMA_PRE_XMEMCPY +
+                        sel_memcmp * OP_DMA_PRE_XMEMCMP +
+                        sel_inputcpy * OP_DMA_PRE_INPUTCPY +
+                        sel_memset * OP_DMA_PRE_XMEMSET;
+
+    // slot 3: the pre partial write
+    permutation_assumes(DMA_BUS_ID, [pre_op,
+                                     dst64 * 8,
+                                     src64 * 8,
+                                     dst_offset,
+                                     src_offset,
+                                     cnt_small,
+                                     main_step,
+                                     fill_byte,
+                                     pre_result_nz,
+                                     pre_result[0],
+                                     pre_result[1]], sel: is_ctrl * use_pre, sel_is_binary: 1);
+
+    // slot 4: the post partial write
+    permutation_assumes(DMA_BUS_ID, [pre_op + OP_DMA_POST_OFFSET,
+                                     (dst64 + use_pre + post_words) * 8,
+                                     (src64 + src64_inc_by_pre + post_words) * 8,
+                                     0,
+                                     delta,
+                                     post_count,
+                                     main_step,
+                                     fill_byte,
+                                     post_result_nz,
+                                     post_result[0],
+                                     post_result[1]], sel: is_ctrl * use_post, sel_is_binary: 1);
+
+    // slot 5: what a pre/post row proves. @[borrow] corrects the window base back to the source
+    // word the controller sent.
+    permutation_proves(DMA_BUS_ID, [pre_op + is_post * OP_DMA_POST_OFFSET,
+                                    dst64 * 8,
+                                    (src64 + borrow) * 8,
+                                    dst_offset,
+                                    src_offset,
+                                    cnt_small,
+                                    main_step,
+                                    fill_byte,
+                                    memcmp_nz,
+                                    ...memcmp_result], sel: is_pp, sel_is_binary: 1);
+}
