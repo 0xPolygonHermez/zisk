@@ -74,6 +74,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     // A real guest hardcodes both keys; this demo feeds them in. The setup key is the
     // release constant for the proof's family and stage, picked from the crate, never
     // the copy the proof carries. The program vk is fib_mod's ROM root.
+    // The guest pins that release key, so a proof from a local or dev setup fails it: say
+    // so here rather than as a failed aggregation.
+    vadcop_result1.get_proof().verify().map_err(|e| {
+        format!(
+            "the guest verifies under the release key, which this proof does not verify \
+             under ({e}); with a non-release setup, feed that setup's \
+             vadcop_final.verkey.json as expected_setup_vk instead"
+        )
+    })?;
     let saved = zisk_verifier::decode_saved(&proof1_bytes)?;
     let expected_setup_vk: Vec<u8> =
         zisk_verifier::vadcop_vk(&saved.proof.hash, saved.proof.compressed)

@@ -28,6 +28,29 @@ impl ProveResult {
     pub fn job_id(&self) -> Option<&JobId> {
         self.job_id.as_ref()
     }
+
+    /// The trusted key [`verify`](ProveOutput::verify) uses: a recurser's verkey for an
+    /// aggregate. A remote result has no producing setup to fall back on.
+    #[must_use]
+    pub fn with_setup_vk(mut self, setup_vk: Vec<u64>) -> Self {
+        self.output = self.output.with_setup_vk(setup_vk);
+        self
+    }
+
+    /// A non-release setup's leaf key for [`verify`](ProveOutput::verify), e.g. the
+    /// cluster's `vadcop_final.verkey.json`.
+    #[must_use]
+    pub fn with_leaf_setup_vk(mut self, setup_vk: Vec<u64>) -> Self {
+        self.output = self.output.with_produced_under(Some(setup_vk));
+        self
+    }
+
+    /// The trusted PLONK key [`verify`](ProveOutput::verify) uses.
+    #[must_use]
+    pub fn with_plonk_vk(mut self, plonk_vk: zisk_common::PlonkVkey) -> Self {
+        self.output = self.output.with_plonk_vk(plonk_vk);
+        self
+    }
 }
 
 impl Deref for ProveResult {

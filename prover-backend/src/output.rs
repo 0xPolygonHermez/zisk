@@ -2,7 +2,8 @@ use anyhow::Result;
 use std::path::Path;
 use std::time::Duration;
 use zisk_common::{
-    ProgramVK, PublicValues, RandomSeed, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
+    PlonkVkey, ProgramVK, PublicValues, RandomSeed, StatsCostPerType, ZiskExecutorSummary,
+    ZiskExecutorTime,
     ZiskVerifyBuilder, ZISK_PUBLICS,
 };
 use zisk_executor::{AirClassifier, PlanSummaryEntry};
@@ -202,24 +203,46 @@ impl_public_outputs!(ExecuteOutput, publics);
 pub struct ProveOutput {
     summary: ExecutionSummary,
     proof: Proof,
-    /// Key of the setup that produced `proof`, when that was this process.
+    /// Trusted key `verify` uses: the producing setup's, or one the caller supplied.
     setup_vk: Option<Vec<u64>>,
+    /// `setup_vk` is a setup's leaf key rather than a recurser's.
+    leaf_setup_vk: bool,
+    /// Trusted PLONK key: the producing setup's, or one the caller supplied.
+    plonk_vk: Option<PlonkVkey>,
 }
 
 impl ProveOutput {
     /// Construct from a completed proof and the execution it attests to, whose seed the proof
     /// takes.
     pub fn new(execution: ZiskExecutorSummary, proving_time: Duration, proof: Proof) -> Self {
-        Self {
-            summary: ExecutionSummary::new(proving_time, &execution),
-            proof: proof.with_random_seed(execution.random_seed),
-            setup_vk: None,
-        }
+        Self::with_summary(
+            ExecutionSummary::new(proving_time, &execution),
+            proof.with_random_seed(execution.random_seed),
+        )
     }
 
-    /// Set the key `verify` uses: that of the setup which produced the proof.
+    fn with_summary(summary: ExecutionSummary, proof: Proof) -> Self {
+        Self { summary, proof, setup_vk: None, leaf_setup_vk: false, plonk_vk: None }
+    }
+
+    /// Set the key `verify` uses to the leaf key of the setup which produced the proof.
     pub fn with_produced_under(mut self, setup_vk: Option<Vec<u64>>) -> Self {
+        self.leaf_setup_vk = setup_vk.is_some();
         self.setup_vk = setup_vk;
+        self
+    }
+
+    /// Set the key `verify` uses: a recurser's verkey for an aggregate, as for
+    /// [`Proof::with_setup_vk`]. Needed for a remote proof from a non-release setup.
+    pub fn with_setup_vk(mut self, setup_vk: Vec<u64>) -> Self {
+        self.setup_vk = Some(setup_vk);
+        self.leaf_setup_vk = false;
+        self
+    }
+
+    /// Set the PLONK key `verify` uses, as for [`Proof::with_plonk_vk`].
+    pub fn with_plonk_vk(mut self, plonk_vk: PlonkVkey) -> Self {
+        self.plonk_vk = Some(plonk_vk);
         self
     }
 
@@ -236,11 +259,10 @@ impl ProveOutput {
         proving_time: Duration,
         cost_per_type: StatsCostPerType,
     ) -> Self {
-        Self {
-            summary: ExecutionSummary::from_remote(proving_time, steps, &cost_per_type),
+        Self::with_summary(
+            ExecutionSummary::from_remote(proving_time, steps, &cost_per_type),
             proof,
-            setup_vk: None,
-        }
+        )
     }
 
     /// Proving time, in milliseconds.
@@ -297,7 +319,7 @@ impl ProveOutput {
         Ok(self.proof.save(path)?)
     }
 
-    /// Verify under the producing setup's key, else the release key.
+    /// Verify under the producing setup's keys or those passed in, else the release keys.
     pub fn verify(&self) -> Result<()> {
         Ok(self.with_produced_setup_vk(self.proof.verify_builder()).verify()?)
     }
@@ -317,8 +339,13 @@ impl ProveOutput {
         &'a self,
         builder: ZiskVerifyBuilder<'a>,
     ) -> ZiskVerifyBuilder<'a> {
-        match &self.setup_vk {
+        let builder = match &self.setup_vk {
+            Some(vk) if self.leaf_setup_vk => builder.with_leaf_setup_vk(vk),
             Some(vk) => builder.with_setup_vk(vk),
+            None => builder,
+        };
+        match &self.plonk_vk {
+            Some(vkey) => builder.with_plonk_vk(vkey),
             None => builder,
         }
     }

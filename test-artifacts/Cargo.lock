@@ -6424,7 +6424,6 @@ dependencies = [
  "clap",
  "crossbeam-queue",
  "dirs",
- "num-bigint",
  "paste",
  "proofman",
  "proofman-common",

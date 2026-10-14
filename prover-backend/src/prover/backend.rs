@@ -451,7 +451,7 @@ impl ProverBackend {
                                 proof_bytes: snark_proof.proof_bytes,
                                 plonk_vk: Box::new(PlonkVkBlob {
                                     vadcop_vk: vadcop_vk_u64.clone(),
-                                    plonk_vkey,
+                                    plonk_vkey: plonk_vkey.clone(),
                                 }),
                                 publics,
                                 // Canonical flag-free view, matching every other
@@ -463,7 +463,8 @@ impl ProverBackend {
                             program_vk,
                         ),
                     )
-                    .with_produced_under(Some(vadcop_vk_u64)))
+                    .with_produced_under(Some(vadcop_vk_u64))
+                    .with_plonk_vk(plonk_vkey))
                 } else {
                     Err(anyhow::anyhow!(
                         "Unsupported snark protocol id: {}",
@@ -639,7 +640,10 @@ impl ProverBackend {
         let proof = Proof::new(
             ProofBody::Plonk {
                 proof_bytes: snark_proof.proof_bytes.clone(),
-                plonk_vk: Box::new(PlonkVkBlob { vadcop_vk: rootc.clone(), plonk_vkey }),
+                plonk_vk: Box::new(PlonkVkBlob {
+                    vadcop_vk: rootc.clone(),
+                    plonk_vkey: plonk_vkey.clone(),
+                }),
                 publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
                 // Store the canonical flag-free view.
                 publics_full: program_publics(&vadcop_final_proof.public_values).to_vec(),
@@ -657,7 +661,8 @@ impl ProverBackend {
         // attests to.
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof)
             .with_random_seed(seed)
-            .with_produced_under(produced_under))
+            .with_produced_under(produced_under)
+            .with_plonk_vk(plonk_vkey))
     }
 
     pub(crate) fn prove_phase(

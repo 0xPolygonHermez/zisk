@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tracing::info;
-use zisk_common::{RandomSeed, RandomSeedArgs};
+use zisk_common::{Proof, RandomSeed, RandomSeedArgs};
 use zisk_coordinator_api::dto::{
     deadline_from_now, DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
     DomainJobKindResponse, DomainProofKind, DomainProveRequest, DomainSetupRequest, TerminalStatus,
@@ -273,22 +273,14 @@ fn run_prove(
 
             let out_path =
                 output.cloned().unwrap_or_else(|| PathBuf::from(format!("{job_id}.proof.bin")));
-            // Saved as the file `cargo-zisk` writes and `verify`/`wrap`/`aggregate` read. If
-            // that fails, the coordinator's raw bytes are kept rather than losing the proof.
-            if let Err(e) = p
-                .decode_proof()
-                .map_err(anyhow::Error::from)
-                .and_then(|proof| proof.save(&out_path).map_err(anyhow::Error::from))
-            {
-                let raw = out_path.with_extension("coordinator.bin");
-                std::fs::write(&raw, &p.data)
-                    .with_context(|| format!("Cannot write proof to {}", raw.display()))?;
-                anyhow::bail!(
-                    "Cannot save the proof as {}: {e:#}. The coordinator's bytes are in {}",
-                    out_path.display(),
-                    raw.display()
-                );
-            }
+            // The coordinator sends its internal bincode `Proof`; save it as the file
+            // `cargo-zisk` writes and `verify`/`wrap`/`aggregate` read.
+            let (proof, _): (Proof, _) =
+                bincode::serde::decode_from_slice(&p.data, bincode::config::standard())
+                    .context("Cannot decode the coordinator's proof")?;
+            proof
+                .save(&out_path)
+                .with_context(|| format!("Cannot write proof to {}", out_path.display()))?;
             println!("Proof saved to {}", out_path.display());
 
             if !p.public_inputs.is_empty() {

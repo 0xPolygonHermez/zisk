@@ -743,6 +743,10 @@ pub struct WebhookErrorDto {
     pub message: String,
 }
 
+/// `WebhookPayloadDto::proof_format` of a `Proof::to_bytes` proof. Bincode-encoded proofs
+/// from earlier coordinators carry no format field.
+pub const WEBHOOK_PROOF_FORMAT: &str = "zisk-proof-v1";
+
 /// Webhook payload for job completion notifications
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebhookPayloadDto {
@@ -765,6 +769,9 @@ pub struct WebhookPayloadDto {
     /// The job's host randomness seed (hex), to replay it. Absent for jobs that run no execution.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub random_seed: Option<String>,
+    /// [`WEBHOOK_PROOF_FORMAT`] when `proof_data` is present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof_format: Option<String>,
 }
 
 impl WebhookPayloadDto {
@@ -782,6 +789,7 @@ impl WebhookPayloadDto {
             executed_steps,
             timestamp: chrono::Utc::now().to_rfc3339(),
             error: None,
+            proof_format: proof_data.as_ref().map(|_| WEBHOOK_PROOF_FORMAT.to_string()),
             proof_data,
             random_seed: None,
         }
@@ -798,6 +806,7 @@ impl WebhookPayloadDto {
             error: Some(error),
             proof_data: None,
             random_seed: None,
+            proof_format: None,
         }
     }
 }

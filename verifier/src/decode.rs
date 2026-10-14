@@ -66,9 +66,20 @@ pub fn decode_saved(bytes: &[u8]) -> Result<SavedProof, DecodeError> {
     if bytes.len() % 8 != 0 {
         return Err(DecodeError::NotWordAligned(bytes.len()));
     }
-    let words: Vec<u64> =
+    let mut words: Vec<u64> =
         bytes.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect();
-    decode_saved_words(&words)
+    let v = split_saved(&words)?;
+    let (compressed, hash, claimed_vadcop_vk) = (v.compressed, v.hash, v.claimed_vadcop_vk);
+    let public_values = v.publics.to_vec();
+    // The proof is one contiguous run of `words`: keep it in place rather than copy it.
+    let start = 2 + public_values.len();
+    let end = start + v.proof.len();
+    words.truncate(end);
+    words.drain(..start);
+    Ok(SavedProof {
+        proof: VadcopFinalProof::new(words, public_values, compressed, String::from(hash)),
+        claimed_vadcop_vk,
+    })
 }
 
 /// [`decode_saved`] over words already in memory. To verify them, prefer
