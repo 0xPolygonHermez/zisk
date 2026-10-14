@@ -1,0 +1,10 @@
+[package]
+name = "ed25519"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true
+ed25519-dalek.workspace = true
+curve25519-dalek.workspace = true
+sha2.workspace = true
