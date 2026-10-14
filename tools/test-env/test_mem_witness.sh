@@ -132,6 +132,9 @@ main() {
     run_case fill_fail_align 0 "${fill_fail}" ZISK_MEM_TEST_FILL_FAIL=3.1 || return 1
     # A fill whose scratch overflows beside the staged images: retried without its image, then with every image dropped.
     run_case scratch_overflow 0 "staged images dropped, the fills need the room" ZISK_MEM_TEST_SCRATCH_OVERFLOW=1 || return 1
+    # The MemAlign region too small for the block's unaligned accesses (a 16 MB region instead of 2560):
+    # the overflow is detected and the block's memory instances go to the CPU. No test build needed.
+    run_case align_region_overflow 0 "overflowed; witness off" ZISK_MEM_ALIGN_MB=16 || return 1
     # The light memory-ops stream has no values: the device witness is refused before proving.
     run_case light_refused 1 "the device witness needs them" ZISK_MOPS_LIGHT=1 || return 1
 
