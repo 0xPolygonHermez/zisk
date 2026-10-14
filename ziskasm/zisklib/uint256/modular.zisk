@@ -3,14 +3,23 @@
 ; ziskos/entrypoint/src/zisklib/lib/uint256/modular.rs: reduce_mod256,
 ; add_mod256, mul_mod256, pow_mod256, inv_mod256 (square_mod256 is a Rust wrapper
 ; over mul_mod256). Shared data lives in common.zisk. Internal
-; labels: `pm_` (pow_mod), `im_` (inv_mod).
+; labels: `md_` (unaligned result), `pm_` (pow_mod), `im_` (inv_mod).
 ;
 ; reduce/add/mul use the arith256_mod precompile: d = (a*b + c) mod module,
 ; header [&a, &b, &c, &module, &d]. The precompile requires module != 0, so the
 ; Rust wrappers short-circuit module in {0,1} and never call these with such a
 ; modulus. Inputs need not be canonical (< module); the result is always reduced.
 ; FREE_INPUT / FCALL_UINT256_INV_MOD are `pub define`s in mem/fcall.
+;
+; The precompile needs &d 8-byte aligned, but a C caller may pass any result
+; pointer. reduce/add/mul test it with one `unal8` right before storing &d: an
+; aligned result costs that one step; an unaligned one jumps to md_unal, which
+; computes into U256_UNAL and copies it out. pow/inv already compute into
+; scratch and write the result with plain stores, which accept any address.
 ; ============================================================================
+
+; RAM scratch for an unaligned reduce/add/mul result (see md_unal).
+u64 U256_UNAL[4] = 0, 0, 0, 0
 
 ; RAM scratch for inv_mod's no-inverse witness, stored contiguously:
 ; gcd (words 0..4), qa (words 4..8), qm (words 8..12).
@@ -26,6 +35,7 @@ zisklib_reduce_mod256:
 	copyb(0, U256_ZERO) -> r7
 	copyb(r5, r7) -> 8[a + 16]         ; &zero (c addend)
 	copyb(r5, r11) -> 8[a + 24]        ; &module
+	unal8(r12, 0), j(md_unal_r12)      ; result not 8-aligned -> via scratch
 	copyb(r5, r12) -> 8[a + 32]        ; &d = result
 	arith256_mod(0, r5) -> r14
 	ret
@@ -40,6 +50,7 @@ zisklib_add_mod256:
 	copyb(r5, r7) -> 8[a + 8]          ; &one
 	copyb(r5, r11) -> 8[a + 16]        ; &b (c addend)
 	copyb(r5, r12) -> 8[a + 24]        ; &module
+	unal8(r13, 0), j(md_unal)          ; result not 8-aligned -> via scratch
 	copyb(r5, r13) -> 8[a + 32]        ; &d = result
 	arith256_mod(0, r5) -> r14
 	ret
@@ -54,8 +65,21 @@ zisklib_mul_mod256:
 	copyb(0, U256_ZERO) -> r7
 	copyb(r5, r7) -> 8[a + 16]         ; &zero (c addend)
 	copyb(r5, r12) -> 8[a + 24]        ; &module
+	unal8(r13, 0), j(md_unal)          ; result not 8-aligned -> via scratch
 	copyb(r5, r13) -> 8[a + 32]        ; &d = result
 	arith256_mod(0, r5) -> r14
+	ret
+
+; Unaligned result of reduce/add/mul: r5 = the header with every field but &d
+; set, r13 = the caller's result pointer (reduce enters at md_unal_r12, its
+; result being in r12). Computes into U256_UNAL, then DMA-copies the 32 bytes out.
+md_unal_r12:
+	copyb(0, r12) -> r13
+md_unal:
+	copyb(0, U256_UNAL) -> r7
+	copyb(r5, r7) -> 8[a + 32]         ; &d = U256_UNAL
+	arith256_mod(0, r5) -> r14
+	dma_xmemcpy(r13, U256_UNAL) -> r7, j(32, 4)
 	ret
 
 ; ----------------------------------------------------------------------------
