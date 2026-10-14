@@ -8,7 +8,7 @@ use crate::{riscv_interpreter, RiscvInst, RiscvInstName};
 use zisk_definitions::{
     zkvmcall_by_id, SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID,
     SYSCALL_ARITH384_MOD_ID, SYSCALL_BABYJUBJUB_ADD_ID, SYSCALL_BLAKE2B_ROUND_ID,
-    SYSCALL_BLAKE2SF_ID, SYSCALL_BLAKE3F_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID,
+    SYSCALL_BLAKE2SF_ID, SYSCALL_BLAKE3F_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_ED25519_ADD_ID,
     SYSCALL_BLS12_381_COMPLEX_MUL_ID, SYSCALL_BLS12_381_COMPLEX_SUB_ID,
     SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
     SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
@@ -38,7 +38,7 @@ use zisk_core::{FREG_F0, FREG_INST, FREG_RA, MTVEC, REG_X0};
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 32] = [
+const CSR_PRECOMPILED: [&str; 33] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -71,6 +71,7 @@ const CSR_PRECOMPILED: [&str; 32] = [
     "babyjubjub_add",
     "blake3",
     "blake2s",
+    "ed25519_add",
 ];
 const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
 const CSR_FCALL_ADDR_START: u16 = 0x8C0;
@@ -1943,7 +1944,8 @@ impl<'a> Riscv2ZiskContext<'a> {
                 | SYSCALL_BABYJUBJUB_ADD_ID
                 | SYSCALL_SHA256F_ID
                 | SYSCALL_BLAKE3F_ID
-                | SYSCALL_BLAKE2SF_ID => {
+                | SYSCALL_BLAKE2SF_ID
+                | SYSCALL_ED25519_ADD_ID => {
                     let precompiled =
                         CSR_PRECOMPILED[i.csr as usize - CSR_PRECOMPILED_ADDR_START as usize];
                     self.transpile_precompiled_ab_pattern(i, next_instructions, precompiled);

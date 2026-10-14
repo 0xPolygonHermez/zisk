@@ -281,6 +281,7 @@ impl ZiskAsmContext {
                 | ZiskOp::Secp256r1Dbl
                 | ZiskOp::Blake2b
                 | ZiskOp::BabyJubJubAdd
+                | ZiskOp::Ed25519Add
                 | ZiskOp::Blake3
                 | ZiskOp::Blake2s
         )
@@ -314,6 +315,9 @@ impl ZiskAsmContext {
         self.precompile_results()
     }
     pub fn precompile_results_babyjubjubadd(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_ed25519add(&self) -> bool {
         self.precompile_results()
     }
     pub fn precompile_results_fcall(&self) -> bool {
@@ -666,6 +670,7 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_secp256r1_add\n";
         *code += ".extern opcode_secp256r1_dbl\n";
         *code += ".extern opcode_babyjubjub_add\n";
+        *code += ".extern opcode_ed25519_add\n";
         *code += ".extern opcode_fcall\n";
         *code += ".extern opcode_bn254_curve_add\n";
         *code += ".extern opcode_bn254_curve_dbl\n";
@@ -6521,6 +6526,48 @@ impl ZiskRom2Asm {
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                     *code += "\tcall _opcode_babyjubjub_add\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Ed25519Add => {
+                *code += &ctx.full_line_comment("Ed25519Add".to_string());
+
+                // Two direct operands: a = first operand address (receives the result), b = second
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rsi = b = second operand address")
+                );
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() {
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
+                }
+
+                // Get result from precompile results data
+                if ctx.precompile_results_ed25519add() {
+                    Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                } else {
+                    // Call the ed25519_add function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_ed25519_add\n";
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }

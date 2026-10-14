@@ -106,6 +106,9 @@ pub const OPERATION_BUS_BLAKE2S_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 16 * DATA_64_BITS_SIZE;
 /// BabyJubJub point-add operation data size (2 points; their addresses travel in a and b).
 pub const OPERATION_BUS_BABYJUBJUB_ADD_DATA_SIZE: usize =
+    OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * POINT_256_BITS_SIZE;
+/// Ed25519 point-add operation data size (2 points; their addresses travel in a and b).
+pub const OPERATION_BUS_ED25519_ADD_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * POINT_256_BITS_SIZE;
 /// Addition operation data size for 256-bit operations.
 pub const OPERATION_BUS_ADD_256_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE
@@ -214,6 +217,8 @@ pub type OperationBlake3Data<D> = [D; OPERATION_BUS_BLAKE3_DATA_SIZE];
 pub type OperationBlake2sData<D> = [D; OPERATION_BUS_BLAKE2S_DATA_SIZE];
 /// BabyJubJub point-add operation data type alias.
 pub type OperationBabyJubJubAddData<D> = [D; OPERATION_BUS_BABYJUBJUB_ADD_DATA_SIZE];
+/// Ed25519 point-add operation data type alias.
+pub type OperationEd25519AddData<D> = [D; OPERATION_BUS_ED25519_ADD_DATA_SIZE];
 
 /// The `ExtOperationData` enum encapsulates the various types of operation data that can be transmitted over the operation bus.
 pub enum ExtOperationData<D> {
@@ -281,6 +286,8 @@ pub enum ExtOperationData<D> {
     OperationBlake2sData(OperationBlake2sData<D>),
     /// BabyJubJub point-add operation data.
     OperationBabyJubJubAddData(OperationBabyJubJubAddData<D>),
+    /// Ed25519 point-add operation data.
+    OperationEd25519AddData(OperationEd25519AddData<D>),
 }
 
 // impl<D: Copy + Into<u8>> TryFrom<&[D]> for ExtOperationData<D> {
@@ -447,6 +454,11 @@ impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
                 let array: OperationBabyJubJubAddData<D> =
                     data.try_into().map_err(|_| "Invalid OperationBabyJubJubAddData size")?;
                 Ok(ExtOperationData::OperationBabyJubJubAddData(array))
+            }
+            ZiskOp::ED25519_ADD => {
+                let array: OperationEd25519AddData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationEd25519AddData size")?;
+                Ok(ExtOperationData::OperationEd25519AddData(array))
             }
             _ => {
                 let array: OperationData<D> =
@@ -713,7 +725,7 @@ impl OperationBusData<u64> {
                 _ => ExtOperationData::OperationData([op, op_type, a, b]),
             },
 
-            ZiskOperationType::BabyJubJub => match inst.op {
+            ZiskOperationType::TwistedEdwards => match inst.op {
                 ZiskOp::BABYJUBJUB_ADD => {
                     let mut data = [0u64; OPERATION_BUS_BABYJUBJUB_ADD_DATA_SIZE];
                     data[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
@@ -721,6 +733,14 @@ impl OperationBusData<u64> {
                     data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
                         .copy_from_slice(&ctx.precompiled.input_data);
                     ExtOperationData::OperationBabyJubJubAddData(data)
+                }
+                ZiskOp::ED25519_ADD => {
+                    let mut data = [0u64; OPERATION_BUS_ED25519_ADD_DATA_SIZE];
+                    data[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
+                        .copy_from_slice(&[op, op_type, a, b, step]);
+                    data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
+                        .copy_from_slice(&ctx.precompiled.input_data);
+                    ExtOperationData::OperationEd25519AddData(data)
                 }
                 _ => ExtOperationData::OperationData([op, op_type, a, b]),
             },
@@ -1032,8 +1052,8 @@ impl OperationBusData<u64> {
                 }
             },
 
-            ZiskOperationType::BabyJubJub => match inst.op {
-                ZiskOp::BABYJUBJUB_ADD => {
+            ZiskOperationType::TwistedEdwards => match inst.op {
+                ZiskOp::BABYJUBJUB_ADD | ZiskOp::ED25519_ADD => {
                     let len =
                         OPERATION_PRECOMPILED_BUS_DATA_SIZE + ctx.precompiled.input_data.len();
                     buffer[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
@@ -1136,6 +1156,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBlake3Data(d) => d[OP] as u8,
             ExtOperationData::OperationBlake2sData(d) => d[OP] as u8,
             ExtOperationData::OperationBabyJubJubAddData(d) => d[OP] as u8,
+            ExtOperationData::OperationEd25519AddData(d) => d[OP] as u8,
         }
     }
 
@@ -1181,6 +1202,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBlake3Data(d) => d[OP_TYPE],
             ExtOperationData::OperationBlake2sData(d) => d[OP_TYPE],
             ExtOperationData::OperationBabyJubJubAddData(d) => d[OP_TYPE],
+            ExtOperationData::OperationEd25519AddData(d) => d[OP_TYPE],
         }
     }
 
@@ -1226,6 +1248,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBlake3Data(d) => d[A],
             ExtOperationData::OperationBlake2sData(d) => d[A],
             ExtOperationData::OperationBabyJubJubAddData(d) => d[A],
+            ExtOperationData::OperationEd25519AddData(d) => d[A],
         }
     }
 
@@ -1271,6 +1294,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBlake3Data(d) => d[B],
             ExtOperationData::OperationBlake2sData(d) => d[B],
             ExtOperationData::OperationBabyJubJubAddData(d) => d[B],
+            ExtOperationData::OperationEd25519AddData(d) => d[B],
         }
     }
 }

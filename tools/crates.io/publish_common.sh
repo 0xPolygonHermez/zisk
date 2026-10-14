@@ -87,7 +87,7 @@ ZISK_CRATES=(
   "zisk-sm-main"
   "zisk-sm-rom"
   "zisk-precomp-arith-eq-384"
-  "zisk-precomp-babyjubjub"
+  "zisk-precomp-twisted-edwards"
   "zisk-rom-setup"
   "zisk-build"
   "zisk-executor"
