@@ -13,7 +13,9 @@ use std::sync::Arc;
 
 use crate::error::{ExecutorError, ExecutorResult};
 use proofman_fields::PrimeField64;
-use zisk_common::{io::ZiskStdin, AsmExecutionInfo, ExecutorStatsHandle, StatsScope};
+use zisk_common::{
+    io::ZiskStdin, AsmExecutionInfo, ExecutionSeed, ExecutorStatsHandle, StatsScope,
+};
 use zisk_core::ZiskRom;
 
 /// Per-chunk callback invoked by the ASM MT reader thread, in chunk order, as
@@ -110,6 +112,7 @@ impl ExecutionPhase {
         &self,
         zisk_rom: &ZiskRom,
         stdin: &ZiskStdin,
+        seed: &ExecutionSeed,
         is_first_process: bool,
         use_hints: bool,
         stats: &ExecutorStatsHandle,
@@ -120,6 +123,7 @@ impl ExecutionPhase {
             Some(asm) => asm.execute::<F>(
                 zisk_rom,
                 stdin,
+                seed,
                 is_first_process,
                 use_hints,
                 stats,
@@ -128,7 +132,7 @@ impl ExecutionPhase {
             ),
             // Rust emulator returns only on completion: the hook is never called;
             // the caller's post-run batch path releases every Main instance.
-            None => self.emulator_rust.execute::<F>(zisk_rom, stdin),
+            None => self.emulator_rust.execute::<F>(zisk_rom, stdin, seed),
         }
     }
 }

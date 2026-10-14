@@ -391,6 +391,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let output = self.execution.run::<F>(
             &zisk_rom,
             &stdin,
+            &seed,
             // The ROM-histogram runner is what asks the assembly child for a histogram,
             // so not spawning it leaves that child idle. Skipped without a witness:
             // there is no ROM state machine to read one, and the standalone path would

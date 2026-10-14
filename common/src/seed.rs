@@ -44,6 +44,12 @@ impl ExecutionSeed {
     pub const fn as_bytes(&self) -> &[u8; Self::LEN] {
         &self.0
     }
+
+    /// The seed as the emulators pass it to the guest: its bytes in order, as 4 little-endian
+    /// u64 words (the `zkvm_random_u64` fcall result and the ASM control-input slots).
+    pub fn to_le_words(&self) -> [u64; Self::LEN / 8] {
+        std::array::from_fn(|i| u64::from_le_bytes(self.0[8 * i..8 * i + 8].try_into().unwrap()))
+    }
 }
 
 /// `--seed` / `ZISK_SEED`, for every command that runs a guest (cargo-zisk, zisk-prove-client).
@@ -130,6 +136,15 @@ mod tests {
         let seed = counting_seed();
         assert_eq!(seed.to_string(), HEX);
         assert_eq!(HEX.parse::<ExecutionSeed>().unwrap(), seed);
+    }
+
+    #[test]
+    fn to_le_words_packs_the_bytes_in_order() {
+        // The words the guest reads: the same as `ziskemu --random-seed <HEX>`
+        assert_eq!(
+            counting_seed().to_le_words(),
+            [0x0706050403020100, 0x0f0e0d0c0b0a0908, 0x1716151413121110, 0x1f1e1d1c1b1a1918]
+        );
     }
 
     #[test]
