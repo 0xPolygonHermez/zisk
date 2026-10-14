@@ -25,6 +25,7 @@ path = "src/report/main.rs"
 [dependencies]
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
+ziskos = { workspace = true }
 zisk-pil = { workspace = true }
 zisk-riscv = { workspace = true }
 zisk-transpiler-common = { workspace = true }
@@ -45,6 +46,7 @@ memmap2 = "0.9.8"
 num-format = "0.4"
 symbolic-demangle = { version = "12.16", features = ["rust", "cpp"] }
 regex = { workspace = true }
+rand = { workspace = true }
 
 # Not used directly; pins the transitive `time` to =0.3.47 (workspace dep) to
 # avoid the rcgen 0.14.x E0119 coherence bug triggered by time 0.3.48.

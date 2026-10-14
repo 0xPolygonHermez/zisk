@@ -131,6 +131,13 @@ mod exports {
     wrap_export!(fn write_output(output: *const u8, size: usize)
         => ziskos::zisklib::zkvm_io::write_output);
 
+    // --- Host randomness (zkvm_random.rs) ------------------------------------
+    // No heap reset: the library routine allocates nothing on ziskos's heap
+    #[no_mangle]
+    pub unsafe extern "C" fn zkvm_random_u64() -> u64 {
+        ziskos::zisklib::zkvm_random::zkvm_random_u64()
+    }
+
     // --- Lifecycle (lib.rs) --------------------------------------------------
     wrap_export!(fn zkvm_init() => ziskos::zkvm_init);
     wrap_export!(fn zkvm_deinit() => ziskos::zkvm_deinit);

@@ -173,6 +173,8 @@ pub const ZKVMCALLS: &[ZkvmCall] = &[
     zc(0x8B0, "zkvm_zisklib_bls_verify_bls12_381", "zisklib_bls_verify_bls12_381"),
     zc(0x8B1, "zkvm_zisklib_verify_kzg_proof_bls12_381", "zisklib_verify_kzg_proof_bls12_381"),
     zc(0x8B2, "zkvm_zisklib_modexp_u64_c", "zisklib_modexp_u64_c"),
+    // EF host randomness (zkvm_random.h)
+    zc(0x8B3, "zkvm_random_u64", "ziskasm_zkvm_random_u64"),
 ];
 
 /// Returns the zkvmcall with CSR number `id`, if any.

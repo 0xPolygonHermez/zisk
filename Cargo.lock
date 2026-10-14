@@ -8226,6 +8226,7 @@ name = "zisk-transpiler-common"
 version = "1.4.0-alpha"
 dependencies = [
  "zisk-core",
+ "zisk-definitions",
  "zisk-lib-float",
  "zisk-riscv",
  "zisk-transpiler-wasm",
@@ -8316,6 +8317,7 @@ dependencies = [
  "num-format",
  "object",
  "proofman-fields",
+ "rand 0.8.8",
  "rayon",
  "regex",
  "serde_json",
@@ -8335,6 +8337,7 @@ dependencies = [
  "zisk-sm-mem-common",
  "zisk-transpiler-common",
  "zisk-transpiler-wasm",
+ "ziskos",
 ]
 
 [[package]]

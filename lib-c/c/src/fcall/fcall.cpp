@@ -6,6 +6,7 @@
 #include "../bls12_381/bls12_381_fe.hpp"
 #include "../bls12_381/bls12_381.hpp"
 #include <stdint.h>
+#include <string.h>
 #include <assert.h>
 
 int Fcall (
@@ -134,6 +135,11 @@ int Fcall (
         case FCALL_GET_KECCAKF_CACHE_INDEX_ID:
         {
             iresult = KeccakfCacheGetIndexCtx(ctx);
+            break;
+        }
+        case FCALL_RANDOM_SEED_ID:
+        {
+            iresult = RandomSeedCtx(ctx);
             break;
         }
         default:
@@ -1380,4 +1386,47 @@ int KeccakfCacheGetIndexCtx (
 
     ctx->result_size = 1;
     return 1;
+}
+
+/***************/
+/* RANDOM SEED */
+/***************/
+
+// Seed of the host randomness generator, provided with each execution
+static uint64_t random_seed[RANDOM_SEED_WORDS] = {0};
+static bool random_seed_set = false;
+
+void fcall_set_random_seed (const uint64_t seed[RANDOM_SEED_WORDS])
+{
+    memcpy(random_seed, seed, sizeof(random_seed));
+    random_seed_set = true;
+}
+
+void fcall_clear_random_seed (void)
+{
+    memset(random_seed, 0, sizeof(random_seed));
+    random_seed_set = false;
+}
+
+// Returns the seed of the host randomness generator. Fails if none was provided, since there is
+// no safe default to fall back to
+int RandomSeedCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    if (ctx->params_size != 0)
+    {
+        printf("RandomSeedCtx() got params_size=%lu, expected 0\n", ctx->params_size);
+        return -1;
+    }
+    if (!random_seed_set)
+    {
+        printf("RandomSeedCtx() called but no random seed was provided\n");
+        return -1;
+    }
+
+    memcpy(ctx->result, random_seed, sizeof(random_seed));
+
+    ctx->result_size = RANDOM_SEED_WORDS;
+    return RANDOM_SEED_WORDS;
 }

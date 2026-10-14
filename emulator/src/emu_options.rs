@@ -4,6 +4,7 @@ use clap::Parser;
 use std::fmt;
 use zisk_common::ProfilingMode;
 use zisk_core::{DEFAULT_MAX_STEPS, DEFAULT_MAX_STEPS_STR, MAX_INPUT_SIZE};
+use ziskos::zisklib::RANDOM_SEED_WORDS;
 
 pub const ZISK_VERSION_MESSAGE: &str = concat!(
     env!("CARGO_PKG_VERSION"),
@@ -13,6 +14,36 @@ pub const ZISK_VERSION_MESSAGE: &str = concat!(
     env!("VERGEN_BUILD_TIMESTAMP"),
     ")"
 );
+
+/// Size of the host randomness seed in bytes (256 bits)
+pub const RANDOM_SEED_BYTES: usize = RANDOM_SEED_WORDS * 8;
+
+/// Parses a host randomness seed: its 32 bytes in order as 64 hex digits, optionally
+/// 0x-prefixed. Returns them as the little-endian words the guest reads
+pub fn parse_random_seed(s: &str) -> Result<[u64; RANDOM_SEED_WORDS], String> {
+    let hex = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
+    if hex.len() != 2 * RANDOM_SEED_BYTES || !hex.bytes().all(|c| c.is_ascii_hexdigit()) {
+        return Err(format!(
+            "`{s}` is not {RANDOM_SEED_BYTES} bytes as {} hex digits",
+            2 * RANDOM_SEED_BYTES
+        ));
+    }
+    let mut seed = [0u64; RANDOM_SEED_WORDS];
+    for (i, word) in seed.iter_mut().enumerate() {
+        let mut bytes = [0u8; 8];
+        for (j, byte) in bytes.iter_mut().enumerate() {
+            let k = 2 * (8 * i + j);
+            *byte = u8::from_str_radix(&hex[k..k + 2], 16).unwrap();
+        }
+        *word = u64::from_le_bytes(bytes);
+    }
+    Ok(seed)
+}
+
+/// Formats a host randomness seed as `parse_random_seed` reads it
+pub fn format_random_seed(seed: &[u64; RANDOM_SEED_WORDS]) -> String {
+    seed.iter().flat_map(|w| w.to_le_bytes()).map(|b| format!("{b:02x}")).collect()
+}
 
 /// ZisK emulator options structure
 #[derive(Parser, Debug, Clone)]
@@ -291,6 +322,10 @@ pub struct EmuOptions {
     pub disasm: Option<String>,
     #[clap(long, value_name = "MAX_INPUT_MEM", default_value = "134217728")] // 128 MiB
     pub max_input_mem: u64,
+    /// Seed of the host randomness generator (`zkvm_random_u64`): 32 bytes as 64 hex digits.
+    /// If not provided, a new random seed is generated
+    #[clap(long, value_name = "RANDOM_SEED", value_parser = parse_random_seed)]
+    pub random_seed: Option<[u64; RANDOM_SEED_WORDS]>,
     /// In mode fast, without stats, show coverage steps consumed without stats.
     #[clap(long, default_value = "false")]
     pub steps: bool,
@@ -397,6 +432,7 @@ impl Default for EmuOptions {
             top_roi_filter: false,
             disasm: None,
             max_input_mem: MAX_INPUT_SIZE,
+            random_seed: None,
             steps: false,
             with_progress: false,
             legacy_inputs: None,
@@ -447,6 +483,7 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "TOP_ROI_FILTER: {:?}", self.top_roi_filter)?;
         writeln!(f, "DISASM: {:?}", self.disasm)?;
         writeln!(f, "MAX_INPUT_MEM: {:?}", self.max_input_mem)?;
+        writeln!(f, "RANDOM_SEED: {:?}", self.random_seed)?;
         writeln!(f, "STEPS: {:?}", self.steps)?;
         writeln!(f, "WITH_PROGRESS: {:?}", self.with_progress)?;
         Ok(())

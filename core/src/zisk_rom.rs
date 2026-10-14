@@ -55,7 +55,7 @@ use crate::{
 };
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 
 // #[cfg(feature = "sp")]
@@ -111,6 +111,9 @@ pub struct ZiskRom {
 
     /// Maximum entry/bios ROM instruction PC
     pub max_bios_pc: u64,
+
+    /// IDs of the zkvmcalls the guest uses (see zisk_definitions::ZKVMCALLS)
+    pub zkvmcalls: BTreeSet<u16>,
 
     /// Maximum program ROM instruction PC
     pub max_program_pc: u64,

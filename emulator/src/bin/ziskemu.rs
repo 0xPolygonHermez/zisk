@@ -2,13 +2,13 @@ use clap::Parser;
 use std::{fmt::Write, fs, process};
 use zisk_common::EmuTrace;
 use ziskemu::{
-    diff_stats_files, report, resolve_color, EmuOptions, Emulator, FailureReason, ZiskEmulator,
-    ZiskEmulatorErr,
+    diff_stats_files, format_random_seed, report, resolve_color, EmuOptions, Emulator,
+    FailureReason, ZiskEmulator, ZiskEmulatorErr,
 };
 
 fn main() {
     // Create a emulator options instance based on arguments or default values
-    let options: EmuOptions = EmuOptions::parse();
+    let mut options: EmuOptions = EmuOptions::parse();
 
     // Compare two saved stats snapshots without running the emulator.
     if let Some(files) = &options.diff_stats {
@@ -51,6 +51,13 @@ fn main() {
     // Log the emulator options if requested
     if options.verbose {
         println!("ziskemu converts an ELF RISCV file into a ZISK rom or loads a ZISK rom file, emulates it with the provided input, and copies the output to console or a file");
+    }
+
+    // Each execution gets a fresh seed for the host randomness generator, unless one is given
+    // to replay a run
+    let random_seed = *options.random_seed.get_or_insert_with(rand::random);
+    if options.verbose {
+        println!("Random seed: {}", format_random_seed(&random_seed));
     }
 
     // Call emulate, with these options

@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ziskos::zisklib::FCALL_INPUT_READY_ID;
+use ziskos::zisklib::{FCALL_INPUT_READY_ID, FCALL_RANDOM_SEED_ID};
 
 use crate::{
     frops_asm::{self, FropsCallSite, FropsOperand, FropsSpec},
@@ -5793,8 +5793,11 @@ impl ZiskRom2Asm {
                         ctx.fcall_ctx,
                         ctx.comment_str("rdi = fcall context")
                     );
-                    // Get result from precompile results data
-                    if ctx.precompile_results_fcall() {
+                    // Get result from precompile results data, except the random seed, which
+                    // is not part of the hints: the emulator always provides it itself
+                    if ctx.precompile_results_fcall()
+                        && ctx.a.constant_value != FCALL_RANDOM_SEED_ID as u64
+                    {
                         Self::precompile_results_fcall(ctx, code, unusual_code, "rdi");
                     } else {
                         // Call the fcall function

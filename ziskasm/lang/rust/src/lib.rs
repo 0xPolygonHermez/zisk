@@ -1083,6 +1083,23 @@ zkvmcall! {
     )
 }
 
+// EF host randomness (zkvm_random.h)
+zkvmcall! {
+    /// `zkvm_random_u64()` — calls `ziskasm_zkvm_random_u64`: 64 random bits, the next
+    /// word of the SHAKE256 stream of the 256-bit seed the host provides with each execution.
+    /// Cannot fail.
+    ///
+    /// # Safety
+    /// Always safe; `unsafe` only because every zkvmcall thunk is.
+    fn zkvm_random_u64() -> u64
+}
+
+/// Safe wrapper over [`zkvm_random_u64`]: 64 random bits from the host.
+pub fn random_u64() -> u64 {
+    // SAFETY: takes no arguments and touches only the library's own state.
+    unsafe { zkvm_random_u64() }
+}
+
 zkvmcall! {
     /// `zkvm_ripemd160(data, len, output)` — calls `ziskasm_zkvm_ripemd160`.
     /// Writes 32 bytes: [0..12]=0, [12..32]=the 20-byte digest (each word LE). 0=EOK.

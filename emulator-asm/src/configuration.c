@@ -3,10 +3,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <ctype.h>
+#include <stdbool.h>
 #include "configuration.hpp"
 #include "globals.hpp"
 #include "asm_provided.hpp"
 #include "log.hpp"
+#include "../../lib-c/c/src/fcall/fcall.hpp"
 
 /*******************************/
 /* ARGUMENTS AND CONFIGURATION */
@@ -32,6 +35,7 @@ void print_usage (void)
     asm_printf("\t-o output on\n");
     asm_printf("\t--output_riscof output riscof on\n");
     asm_printf("\t--silent silent on\n");
+    asm_printf("\t--random_seed <seed> (seed of zkvm_random_u64: 32 bytes as 64 hex digits; default: none)\n");
     asm_printf("\t--shm_prefix <prefix> (default: \"ZISK\")\n");
     asm_printf("\t--sem_prefix <prefix> (default: shm_prefix)\n");
     asm_printf("\t-m metrics on\n");
@@ -173,6 +177,36 @@ void parse_arguments(int argc, char *argv[])
                     exit(-1);
                 }
                 strcpy(input_file, argv[i]);
+                continue;
+            }
+            if (strcmp(argv[i], "--random_seed") == 0)
+            {
+                i++;
+                if (i >= argc)
+                {
+                    asm_printf("ERROR: Detected argument --random_seed in the last position; please provide the seed after it\n");
+                    print_usage();
+                    exit(-1);
+                }
+                // The 32 seed bytes in order, as hex digits, optionally 0x-prefixed; the guest
+                // reads them as little-endian words
+                const char * hex = argv[i];
+                if ((hex[0] == '0') && ((hex[1] == 'x') || (hex[1] == 'X'))) hex += 2;
+                uint64_t seed[RANDOM_SEED_WORDS] = {0};
+                bool valid = (strlen(hex) == RANDOM_SEED_WORDS * 16);
+                for (uint64_t k = 0; valid && (k < RANDOM_SEED_WORDS * 8); k++)
+                {
+                    char byte_hex[3] = { hex[2*k], hex[2*k + 1], 0 };
+                    valid = isxdigit((unsigned char)byte_hex[0]) && isxdigit((unsigned char)byte_hex[1]);
+                    seed[k / 8] |= strtoull(byte_hex, NULL, 16) << (8 * (k % 8));
+                }
+                if (!valid)
+                {
+                    asm_printf("ERROR: Detected argument --random_seed but next argument is not 32 bytes as 64 hex digits\n");
+                    print_usage();
+                    exit(-1);
+                }
+                fcall_set_random_seed(seed);
                 continue;
             }
             if (strcmp(argv[i], "--shm_prefix") == 0)
