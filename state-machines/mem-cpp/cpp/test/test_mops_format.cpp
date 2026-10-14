@@ -1,6 +1,5 @@
 // The record-length and header decoding of the memory-ops stream on a synthetic chunk with one
-// record of every kind of both forms, heavy and light. The same words and expectations are in
-// tools/mops (Rust).
+// record of every kind of both forms, heavy and light.
 #include <stdio.h>
 #include <stdint.h>
 #include "../mem_types.hpp"
