@@ -56,8 +56,10 @@ fn register_mo_shmem_pinned(
     }
 }
 
+/// The planner, and whether the setup gave the device memory witness its room (the planner then
+/// retains every block's accesses); without it the run keeps the CPU witness, logged once here.
 #[cfg(gpu)]
-fn setup_gpu_count_and_plan(gpu_buffer: GpuBufferSource) -> Option<GpuCountAndPlan> {
+fn setup_gpu_count_and_plan(gpu_buffer: GpuBufferSource) -> Option<(GpuCountAndPlan, bool)> {
     // gpu_id: device to bind; negative = keep current device (self-allocated).
     let (d_buf, bytes, gpu_id): (*mut c_void, usize, i32) = match gpu_buffer {
         GpuBufferSource::Cpu => {
@@ -102,7 +104,13 @@ fn setup_gpu_count_and_plan(gpu_buffer: GpuBufferSource) -> Option<GpuCountAndPl
             );
         }
     }
-    Some(gpu_count_and_plan)
+    let device_witness = device_mem_witness_requested() && gpu_count_and_plan.retains_rows();
+    if device_mem_witness_requested() && !device_witness {
+        tracing::warn!(
+            "[gpu] memory witness on the device unavailable for this run (see above); the memory instances take the CPU witness"
+        );
+    }
+    Some((gpu_count_and_plan, device_witness))
 }
 
 /// The block's input region as the guest sees it: the input shared memory up to the bytes written.
@@ -123,6 +131,9 @@ pub struct MOShmemReader {
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
     #[cfg(gpu)]
     gpu_count_and_plan: Option<GpuCountAndPlan>,
+    /// The planner serves the memory witness (its setup gave it the room).
+    #[cfg(gpu)]
+    device_witness: bool,
     #[cfg(gpu)]
     registered_bytes: usize,
 }
@@ -146,7 +157,10 @@ impl MOShmemReader {
         )?;
 
         #[cfg(gpu)]
-        let gpu_count_and_plan = setup_gpu_count_and_plan(buffer_source);
+        let (gpu_count_and_plan, device_witness) = match setup_gpu_count_and_plan(buffer_source) {
+            Some((planner, device_witness)) => (Some(planner), device_witness),
+            None => (None, false),
+        };
         #[cfg(not(gpu))]
         let _ = buffer_source;
 
@@ -156,6 +170,8 @@ impl MOShmemReader {
             handle_mo: None,
             #[cfg(gpu)]
             gpu_count_and_plan,
+            #[cfg(gpu)]
+            device_witness,
             // Pinned pages disabled: no measured benefit and not supported on all devices.
             // `usize::MAX` is the "give up" sentinel in `register_mo_shmem_pinned`.
             #[cfg(gpu)]
@@ -195,16 +211,13 @@ impl Drop for MOShmemReader {
 pub struct DeviceMemWitness {
     #[cfg(gpu)]
     shm_prefix: String,
-    /// The families (`MEM_ROWS_*` bits) whose layout the planner took at registration.
-    #[cfg(gpu)]
-    families: u32,
 }
 
 impl DeviceMemWitness {
-    /// Starts the block's preparation for the owned instances of the served families, on its own
-    /// thread, and arms the arena's release (`d_buffers` is the prover's device buffers) for the
-    /// last owned instance's fill. Returns whether the release is deferred that way; otherwise
-    /// the block takes the CPU witness and the caller releases the arena now.
+    /// Starts the block's preparation for the owned instances, on its own thread, and arms the
+    /// arena's release (`d_buffers` is the prover's device buffers) for the last owned instance's
+    /// fill. Returns whether the release is deferred that way; otherwise the block takes the CPU
+    /// witness and the caller releases the arena now.
     pub fn fill_owned(&self, owned: &OwnedMemInstances<'_>, d_buffers: *mut c_void) -> bool {
         #[cfg(not(gpu))]
         {
@@ -213,16 +226,7 @@ impl DeviceMemWitness {
         }
         #[cfg(gpu)]
         {
-            let served = |bit: u32| self.families & bit != 0;
-            let ram =
-                if served(zisk_common::MEM_ROWS_RAM) { owned.ram.clone() } else { Vec::new() };
-            let rom =
-                if served(zisk_common::MEM_ROWS_ROM) { owned.rom.clone() } else { Vec::new() };
-            let input =
-                if served(zisk_common::MEM_ROWS_INPUT) { owned.input.clone() } else { Vec::new() };
-            let align: Vec<&Plan> =
-                if served(zisk_common::MEM_ROWS_ALIGN) { owned.align.clone() } else { Vec::new() };
-            let n_owned = ram.len() + rom.len() + input.len() + align.len();
+            let n_owned = owned.ram.len() + owned.rom.len() + owned.input.len() + owned.align.len();
             if n_owned == 0 {
                 tracing::debug!("[gpu] memory witness on the device: no owned memory instance");
                 return false;
@@ -231,10 +235,10 @@ impl DeviceMemWitness {
             let prepared = input_image(&self.shm_prefix).and_then(|image| {
                 zisk_sm_mem_planner::gpu_mem_witness_prepare_async(
                     image.bytes().to_vec(),
-                    ram,
-                    rom,
-                    input,
-                    &align,
+                    owned.ram.clone(),
+                    owned.rom.clone(),
+                    owned.input.clone(),
+                    &owned.align,
                 )
             });
             timer_stop_and_log_info!(GPU_MEM_WITNESS_PREPARE);
@@ -250,13 +254,13 @@ impl DeviceMemWitness {
                             // The last owned memory instance has its rows in its trace buffer: the
                             // arena goes back and the memory airs leave the device for the rest
                             // of the block.
-                            zisk_common::MEM_ROWS_ON_DEVICE.store(0, Ordering::Release);
+                            zisk_common::MEM_ROWS_ON_DEVICE.store(false, Ordering::Release);
                             proofman_starks_lib_c::release_first_gpu_buffer_c(
                                 d_buffers as *mut c_void,
                             );
                         }),
                     );
-                    zisk_common::MEM_ROWS_ON_DEVICE.store(self.families, Ordering::Release);
+                    zisk_common::MEM_ROWS_ON_DEVICE.store(true, Ordering::Release);
                     true
                 }
                 Err(e) => {
@@ -270,14 +274,14 @@ impl DeviceMemWitness {
     }
 }
 
-/// A memory instance the device could not serve after all (its preparation failed, or its family
-/// was left out): every memory instance of the block takes the CPU witness from here on, and the
-/// arena goes back now. The caller collects the instance it was computing.
+/// A memory instance the device could not serve after all (its preparation failed, or its fill):
+/// every memory instance of the block takes the CPU witness from here on, and the arena goes back
+/// now. The caller collects the instances it still has to compute.
 pub fn device_mem_witness_failed(reason: &str) {
     tracing::warn!(
         "[gpu] memory witness on the device failed ({reason}); the memory instances fall back to the CPU witness"
     );
-    zisk_common::MEM_ROWS_ON_DEVICE.store(0, Ordering::Release);
+    zisk_common::MEM_ROWS_ON_DEVICE.store(false, Ordering::Release);
     #[cfg(gpu)]
     zisk_sm_mem_planner::gpu_mem_witness_release_now();
 }
@@ -381,7 +385,7 @@ impl AsmRunnerMO {
         // A new block: the previous block's RAM witness source is gone.
         #[cfg(gpu)]
         zisk_sm_mem_planner::clear_gpu_ram_witness();
-        zisk_common::MEM_ROWS_ON_DEVICE.store(0, Ordering::Release);
+        zisk_common::MEM_ROWS_ON_DEVICE.store(false, Ordering::Release);
         if mops_light() && device_mem_witness_requested() {
             return Err(anyhow::anyhow!(
                 "ZISK_MOPS_LIGHT=1 with the device witness on: the light memory-ops stream carries no values, the device witness needs them"
@@ -390,6 +394,8 @@ impl AsmRunnerMO {
         // Take the optional GPU planner for this block.
         #[cfg(gpu)]
         let gpu_count_and_plan_opt: Option<GpuCountAndPlan> = preloaded.gpu_count_and_plan.take();
+        #[cfg(gpu)]
+        let device_witness_available = preloaded.device_witness;
 
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
         // The chunks handed to the GPU planner, for the CPU planner should the device plan fail.
@@ -590,12 +596,11 @@ impl AsmRunnerMO {
         let device_witness: Option<DeviceMemWitness> = None;
         #[cfg(gpu)]
         let device_witness = gpu_count_and_plan_opt.as_ref().and_then(|gpu_count_and_plan| {
-            if gpu_metas_view.is_none() || !device_mem_witness_requested() {
+            if gpu_metas_view.is_none() || !device_witness_available {
                 return None;
             }
-            let families =
-                zisk_sm_mem_planner::register_gpu_ram_witness(gpu_count_and_plan, chunk_size);
-            (families != 0).then(|| DeviceMemWitness { shm_prefix: shm_prefix.clone(), families })
+            zisk_sm_mem_planner::register_gpu_ram_witness(gpu_count_and_plan, chunk_size)
+                .then(|| DeviceMemWitness { shm_prefix: shm_prefix.clone() })
         });
         #[cfg(gpu)]
         let inject_ok = match gpu_metas_view {

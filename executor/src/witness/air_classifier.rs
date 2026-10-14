@@ -35,21 +35,11 @@ impl AirClassifier {
                 .any(|(&id, &assigned)| id == air_id && assigned)
     }
 
-    /// A memory instance needs no collection from the replay when this block's rows of its air come
-    /// from the GPU planner (on the device, or already in its host memory for the proofs).
+    /// A memory instance needs no collection from the replay when this block's rows of the memory
+    /// airs come from the GPU planner (on the device, or already in its host memory for the proofs).
     pub fn mem_collected_on_device(air_id: usize) -> bool {
-        let bit = if air_id == MEM_AIR_IDS[0] {
-            zisk_common::MEM_ROWS_RAM
-        } else if air_id == ROM_DATA_AIR_IDS[0] {
-            zisk_common::MEM_ROWS_ROM
-        } else if air_id == INPUT_DATA_AIR_IDS[0] {
-            zisk_common::MEM_ROWS_INPUT
-        } else if Self::is_mem_align(air_id) {
-            zisk_common::MEM_ROWS_ALIGN
-        } else {
-            return false;
-        };
-        zisk_common::mem_rows_served(bit)
+        (Self::is_memory_related(air_id) || Self::is_mem_align(air_id))
+            && zisk_common::mem_rows_on_device()
     }
 
     /// The seven `MemAlign` airs.

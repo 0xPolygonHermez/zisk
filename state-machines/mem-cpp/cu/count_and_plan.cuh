@@ -138,8 +138,7 @@ struct RamFillPrepared {
     uint32_t n_instances;        // RAM instances (lanes / instance_rows, rounded up)
     uint64_t n_accesses;         // retained RAM accesses
     uint64_t n_lanes;            // lanes after dual pairing
-    uint32_t families;           // bit per family served (1 Mem, 2 RomData, 4 InputData, 8 MemAlign)
-    uint32_t reserved;
+    uint32_t reserved[2];
 };
 static_assert(sizeof(RamFillPrepared) == 32, "RamFillPrepared layout changed: update gpu_bindings.rs");
 
@@ -240,6 +239,8 @@ public:
     bool set_input_layout(const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row,
                           uint32_t lanes_x_row);
     bool set_align_layout(uint32_t air_kind, const uint32_t* col_widths, uint32_t n_cols, uint32_t words_per_row);
+    // The setup gave the device witness its room (the retained accesses and the MemAlign region).
+    bool retains_rows() const { return retain_rows_; }
     // The block's accesses can still be retained and fit the arrival index of the fills.
     bool ram_retention_ok() const {
         return ram_retention_enabled_.load(std::memory_order_relaxed) && ram_cursor_.load(std::memory_order_relaxed) <= retained_cap_;
@@ -249,7 +250,8 @@ public:
     // image (`image` is the input region as the guest sees it, `image_bytes` of it), the MemAlign
     // access order and the owned MemAlign plans. Only the instances in `ram`/`rom`/`input` (segment
     // ids, the ones this process proves) and the plans get a staged row image, while they fit; the
-    // others are resolved for their scalars and the MemAlign old words only.
+    // others are resolved for their scalars and the MemAlign old words only. Any step that fails
+    // fails the preparation: no image is served and every fill of the block fails.
     bool prepare_fills(const void* image, size_t image_bytes, const AlignPlanDesc* plans, uint32_t n_plans,
                        const AlignChunkEntry* entries, uint32_t n_entries, const uint32_t* ram, uint32_t n_ram,
                        const uint32_t* rom, uint32_t n_rom, const uint32_t* input, uint32_t n_input,
@@ -461,8 +463,8 @@ private:
     // neither wait for the legacy stream nor queue behind the prover's commit kernels.
     cudaStream_t               fill_stream_ = nullptr;
     bool                       stage_try_ = false;     // staged attempt: a scratch overflow is retried, not reported
-    // Test knobs of the fills, read once per block by prepare_fills: ZISK_MEM_TEST_PREP_FAIL (the family whose
-    // preparation finds no room: 1 ram, 2 rom, 3 input, 4 align), ZISK_MEM_TEST_FILL_FAIL (the instance whose
+    // Test knobs of the fills, read once per block by prepare_fills: ZISK_MEM_TEST_PREP_FAIL (the step of the
+    // preparation that finds no room: 1 ram, 2 rom, 3 input, 4 align), ZISK_MEM_TEST_FILL_FAIL (the instance whose
     // fill faults) and ZISK_MEM_TEST_SCRATCH_OVERFLOW (one fill's staged attempt and its retry overflow).
     int                        test_prep_fail_ = 0;
     long                       test_fill_fail_family_ = -1, test_fill_fail_inst_ = -1;

@@ -100,6 +100,12 @@ impl GpuCountAndPlan {
         }
     }
 
+    /// Whether the setup gave the device memory witness its room: the planner retains the block's
+    /// accesses and holds the MemAlign region. False after a setup without that room, for the run.
+    pub fn retains_rows(&self) -> bool {
+        unsafe { gpu_bindings::count_and_plan_retains_rows(self.inner) }
+    }
+
     pub fn add_chunk(&self, len: u64, data: *const c_void) -> bool {
         unsafe {
             gpu_bindings::count_and_plan_add_chunk(self.inner, data as *const u64, len as u32)

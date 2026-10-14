@@ -131,13 +131,13 @@ fn align_layout(kind: u32) -> Option<(Vec<u32>, u32)> {
 }
 
 /// Registers the runner's planner for the block and hands it the packed layouts of the memory
-/// airs. Returns the families whose layout the planner took (`MEM_ROWS_*` bits); a family left
-/// out keeps the CPU witness.
-pub fn register_gpu_ram_witness(planner: &crate::GpuCountAndPlan, chunk_size: u64) -> u32 {
+/// airs. False (with the reason logged) when the planner takes none of them or a layout is
+/// rejected: the block keeps the CPU witness.
+pub fn register_gpu_ram_witness(planner: &crate::GpuCountAndPlan, chunk_size: u64) -> bool {
     let inner = planner.raw_handle();
     let Some((widths, words, lanes)) = mem_layout() else {
         tracing::warn!("[gpu] Mem air is not packed; the memory witness stays on the CPU");
-        return 0;
+        return false;
     };
     // SAFETY: `inner` is the live planner the caller holds; the slices outlive the calls.
     let ok = unsafe {
@@ -154,9 +154,8 @@ pub fn register_gpu_ram_witness(planner: &crate::GpuCountAndPlan, chunk_size: u6
         tracing::warn!(
             "[gpu] Mem layout rejected by the planner; the memory witness stays on the CPU"
         );
-        return 0;
+        return false;
     }
-    let mut families = zisk_common::MEM_ROWS_RAM;
     // SAFETY: as above.
     let rom_ok = match rom_layout() {
         Some((widths, words, lanes)) => unsafe {
@@ -170,12 +169,11 @@ pub fn register_gpu_ram_witness(planner: &crate::GpuCountAndPlan, chunk_size: u6
         },
         None => false,
     };
-    if rom_ok {
-        families |= zisk_common::MEM_ROWS_ROM;
-    } else {
+    if !rom_ok {
         tracing::warn!(
-            "[gpu] RomData layout rejected by the planner; its witness stays on the CPU"
+            "[gpu] RomData layout rejected by the planner; the memory witness stays on the CPU"
         );
+        return false;
     }
     // SAFETY: as above.
     let input_ok = match input_layout() {
@@ -190,14 +188,12 @@ pub fn register_gpu_ram_witness(planner: &crate::GpuCountAndPlan, chunk_size: u6
         },
         None => false,
     };
-    if input_ok {
-        families |= zisk_common::MEM_ROWS_INPUT;
-    } else {
+    if !input_ok {
         tracing::warn!(
-            "[gpu] InputData layout rejected by the planner; its witness stays on the CPU"
+            "[gpu] InputData layout rejected by the planner; the memory witness stays on the CPU"
         );
+        return false;
     }
-    let mut align_ok = true;
     for kind in 0..4u32 {
         // SAFETY: as above.
         let ok = match align_layout(kind) {
@@ -212,17 +208,15 @@ pub fn register_gpu_ram_witness(planner: &crate::GpuCountAndPlan, chunk_size: u6
             },
             None => false,
         };
-        align_ok &= ok;
-    }
-    if align_ok {
-        families |= zisk_common::MEM_ROWS_ALIGN;
-    } else {
-        tracing::warn!(
-            "[gpu] a MemAlign layout was rejected by the planner; those airs stay on the CPU"
-        );
+        if !ok {
+            tracing::warn!(
+                "[gpu] a MemAlign layout was rejected by the planner; the memory witness stays on the CPU"
+            );
+            return false;
+        }
     }
     *registry() = Some(Registered { inner });
-    families
+    true
 }
 
 /// Forgets the registered planner (the next block is starting), once no call still uses it.
@@ -301,7 +295,8 @@ static ROWS_ON_DEVICE: AtomicBool = AtomicBool::new(false);
 /// Starts the block's preparation on its own thread, off the executor's path: it runs beside the
 /// registration of the secondaries and the first commits, and each instance waits only for its
 /// own image. The host-side checks stay synchronous, so a block the device cannot serve at all
-/// falls back before any instance is built. `ram`, `rom` and `input` (segment ids) and
+/// falls back before any instance is built; a preparation that fails on its thread fails every
+/// fill, and the first one sends the block's memory instances to the CPU witness. `ram`, `rom` and `input` (segment ids) and
 /// `align_plans` are the owned instances, the ones that get a staged image.
 pub fn gpu_mem_witness_prepare_async(
     image: Vec<u8>,
@@ -364,10 +359,9 @@ pub fn gpu_mem_witness_prepare_async(
                 return Err(format!("prepare_fills failed with status {}", prepared.status));
             }
             tracing::debug!(
-                "[gpu] memory witness prepared on the device: {} accesses resolved, {} instances, families {:#x}",
+                "[gpu] memory witness prepared on the device: {} accesses resolved, {} instances",
                 prepared.n_accesses,
-                prepared.n_instances,
-                prepared.families
+                prepared.n_instances
             );
             Ok(prepared)
         })

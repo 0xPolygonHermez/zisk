@@ -1498,21 +1498,22 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     top_bytes_           = arena_bytes_ & ~(size_t)255;
     // The MemAlign records take a fixed region at the very top (ZISK_MEM_ALIGN_MB, 2560): the
     // reservations are made on the device, so they cannot share the host-reserved record stack.
-    {
+    // Without the region there is no device witness for the run: no record is kept, the whole
+    // dynamic region is the ops pool.
+    if (retain_rows_) {
         size_t align_mb = 2560;
         if (const char* e = std::getenv("ZISK_MEM_ALIGN_MB")) {
             const long v = std::atol(e);
             if (v >= 0) align_mb = (size_t)v;
         }
         const size_t align_bytes = (align_mb << 20) & ~(size_t)255;
-        if (!retain_rows_) {
-            // CPU witness: no records are kept, the whole dynamic region is the ops pool.
-        } else if (align_bytes > 0 && top_bytes_ > cursor_ + align_bytes + ((size_t)1 << 30)) {
+        if (align_bytes > 0 && top_bytes_ > cursor_ + align_bytes + ((size_t)1 << 30)) {
             top_bytes_ -= align_bytes;
             d_align_    = (AlignRecord*)(arena_ + top_bytes_);
             align_cap_  = align_bytes / sizeof(AlignRecord);
-        } else if (align_bytes > 0) {
-            fprintf(stderr, "CountAndPlan: no room for a %zu MB MemAlign region; its witness stays on the CPU\n", align_mb);
+        } else {
+            fprintf(stderr, "CountAndPlan: no room for a %zu MB MemAlign region; the memory witness stays on the CPU for this run\n", align_mb);
+            retain_rows_ = false;
         }
     }
     ram_records_.top     = (uint32_t*)(arena_ + top_bytes_);

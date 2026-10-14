@@ -90,6 +90,10 @@ bool count_and_plan_set_mem_layout(void* h, const uint32_t* col_widths, uint32_t
     return static_cast<CountAndPlan*>(h)->set_mem_layout(col_widths, n_cols, words_per_row, lanes_x_row);
 }
 
+bool count_and_plan_retains_rows(void* h) {
+    return h && static_cast<CountAndPlan*>(h)->retains_rows();
+}
+
 bool count_and_plan_ram_retention_ok(void* h) {
     return h && static_cast<CountAndPlan*>(h)->ram_retention_ok();
 }
