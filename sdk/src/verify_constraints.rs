@@ -1,5 +1,6 @@
 use std::ops::Deref;
 use std::time::Duration;
+use zisk_common::ExecutionSeed;
 
 use crate::Result;
 use zisk_prover_backend::{GuestProgram, VerifyConstraintsOutput};
@@ -46,6 +47,7 @@ pub(crate) trait RunVerifyConstraints {
         program: &GuestProgram,
         stdin: ZiskStdin,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         debug_info: Option<Option<String>>,
         executor: Option<ExecutorKind>,
         timeout: Option<Duration>,
@@ -62,6 +64,7 @@ pub struct VerifyConstraintsRequest<'a, C> {
     program: &'a GuestProgram,
     stdin: ZiskStdin,
     hints: Option<HintsSource>,
+    seed: Option<ExecutionSeed>,
     /// `None` = no debug info; `Some(None)` = enable with default path;
     /// `Some(Some(path))` = enable with explicit output path.
     debug_info: Option<Option<String>>,
@@ -78,6 +81,7 @@ impl<'a, C> VerifyConstraintsRequest<'a, C> {
             program,
             stdin,
             hints: None,
+            seed: None,
             debug_info: None,
             executor: None,
             timeout: None,
@@ -100,6 +104,14 @@ impl<'a, C> VerifyConstraintsRequest<'a, C> {
     #[must_use]
     pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
         self.hints = Some(hints.into());
+        self
+    }
+
+    /// Force the execution seed instead of drawing a fresh one, to replay a previous run (its
+    /// seed is reported in the result) or pin it in tests.
+    #[must_use]
+    pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
+        self.seed = seed.into();
         self
     }
 
@@ -129,6 +141,7 @@ impl<'a, C: RunVerifyConstraints> VerifyConstraintsRequest<'a, C> {
             self.program,
             self.stdin,
             self.hints,
+            self.seed,
             self.debug_info,
             self.executor,
             self.timeout,

@@ -2,8 +2,8 @@ use anyhow::Result;
 use std::path::Path;
 use std::time::Duration;
 use zisk_common::{
-    ProgramVK, PublicValues, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
-    ZiskVerifyBuilder, ZISK_PUBLICS,
+    ExecutionSeed, ProgramVK, PublicValues, StatsCostPerType, ZiskExecutorSummary,
+    ZiskExecutorTime, ZiskVerifyBuilder, ZISK_PUBLICS,
 };
 use zisk_executor::{AirClassifier, PlanSummaryEntry};
 
@@ -83,6 +83,7 @@ pub struct ExecuteOutput {
     executor_time: ZiskExecutorTime,
     publics: PublicValues,
     plan: Option<Vec<PlanSummaryEntry>>,
+    seed: Option<ExecutionSeed>,
 }
 
 impl ExecuteOutput {
@@ -100,6 +101,7 @@ impl ExecuteOutput {
             executor_time: executor_summary.executor_time,
             publics: PublicValues::new(publics),
             plan: None,
+            seed: executor_summary.seed,
         }
     }
 
@@ -119,6 +121,7 @@ impl ExecuteOutput {
             executor_time: executor_summary.executor_time,
             publics: pairs_to_publics(pub_outs),
             plan: Some(plan),
+            seed: executor_summary.seed,
         }
     }
 
@@ -149,6 +152,12 @@ impl ExecuteOutput {
         self.plan.as_deref()
     }
 
+    /// Seed the execution ran with, needed to replay it. `None` when the coordinator that ran it
+    /// does not report it.
+    pub fn get_seed(&self) -> Option<ExecutionSeed> {
+        self.seed
+    }
+
     /// Construct a result from a remote coordinator response.
     ///
     /// `plan` carries raw `(airgroup_id, air_id, count)` triples from the wire; the
@@ -162,6 +171,7 @@ impl ExecuteOutput {
         executor_time: ZiskExecutorTime,
         plan: &[(usize, usize, u64)],
         publics: &[u8],
+        seed: Option<ExecutionSeed>,
     ) -> Self {
         let plan: Vec<PlanSummaryEntry> = plan
             .iter()
@@ -179,6 +189,7 @@ impl ExecuteOutput {
             executor_time,
             publics: PublicValues::new(publics),
             plan: (!plan.is_empty()).then_some(plan),
+            seed,
         }
     }
 }
@@ -193,15 +204,19 @@ pub struct ProveOutput {
 }
 
 impl ProveOutput {
-    /// Construct from a completed proof and its execution summary.
+    /// Construct from a completed proof and the execution it attests to, whose seed the proof
+    /// takes.
     pub fn new(execution: ZiskExecutorSummary, proving_time: Duration, proof: Proof) -> Self {
-        Self { summary: ExecutionSummary::new(proving_time, &execution), proof }
+        Self {
+            summary: ExecutionSummary::new(proving_time, &execution),
+            proof: proof.with_seed(execution.seed),
+        }
     }
 
     /// Construct with an empty (default) proof — used when only the execution
-    /// statistics are wanted, not a real proof.
+    /// statistics are wanted, not a real proof. The proof still carries the execution's seed.
     pub fn new_null(execution: ZiskExecutorSummary, proving_time: Duration) -> Self {
-        Self { summary: ExecutionSummary::new(proving_time, &execution), proof: Proof::default() }
+        Self::new(execution, proving_time, Proof::default())
     }
 
     /// Construct a result from a remote coordinator response (no ExecutorStatsHandle).
@@ -227,6 +242,19 @@ impl ProveOutput {
     /// Total execution cost.
     pub fn get_execution_cost(&self) -> u64 {
         self.summary.cost
+    }
+
+    /// Seed the proven execution ran with, needed to replay it. `None` for proofs that do not
+    /// come from a single execution (aggregates) or when the coordinator that ran it does not
+    /// report it.
+    pub fn get_seed(&self) -> Option<ExecutionSeed> {
+        self.proof.seed
+    }
+
+    /// Stamp the seed of the execution the proof attests to. Wrapping a proof re-proves its
+    /// statement without running the guest, so the result keeps the source proof's seed.
+    pub(crate) fn with_seed(self, seed: Option<ExecutionSeed>) -> Self {
+        Self { proof: self.proof.with_seed(seed), ..self }
     }
 
     /// The generated proof.
@@ -309,6 +337,7 @@ pub struct VerifyConstraintsOutput {
     executor_time: ZiskExecutorTime,
     cost_per_type: StatsCostPerType,
     publics: PublicValues,
+    seed: Option<ExecutionSeed>,
 }
 
 impl VerifyConstraintsOutput {
@@ -320,6 +349,7 @@ impl VerifyConstraintsOutput {
             executor_time: executor_summary.executor_time,
             cost_per_type: executor_summary.cost_per_type,
             publics: PublicValues::new(publics),
+            seed: executor_summary.seed,
         }
     }
 
@@ -346,6 +376,11 @@ impl VerifyConstraintsOutput {
     /// Run duration, in milliseconds.
     pub fn get_duration(&self) -> u64 {
         self.summary.time
+    }
+
+    /// Seed the execution ran with, needed to replay it.
+    pub fn get_seed(&self) -> Option<ExecutionSeed> {
+        self.seed
     }
 }
 

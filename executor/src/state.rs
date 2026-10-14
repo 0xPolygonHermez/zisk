@@ -13,7 +13,7 @@ use std::sync::{
     Arc, Mutex, PoisonError, RwLock,
 };
 use zisk_common::{
-    io::ZiskStdin, BusDevice, EmuTrace, ExecutorStatsHandle, InstanceType, Stats,
+    io::ZiskStdin, BusDevice, EmuTrace, ExecutionSeed, ExecutorStatsHandle, InstanceType, Stats,
     ZiskExecutorSummary,
 };
 use zisk_core::ZiskRom;
@@ -39,6 +39,10 @@ pub struct ExecutionState<F: PrimeField64> {
     /// the framework-driven `WitnessComponent::execute` (whose trait
     /// signature has no stdin slot).
     pub stdin: ArcSwap<ZiskStdin>,
+
+    /// Seed for the next run, set together with `stdin` by `set_stdin_and_seed`. `None` until
+    /// the first call.
+    seed: Mutex<Option<ExecutionSeed>>,
 
     /// Planning information for main state machines (minimal traces from emulation).
     /// `Arc<EmuTrace>` elements so the store can be filled progressively while the
@@ -69,6 +73,7 @@ impl<F: PrimeField64> ExecutionState<F> {
         Self {
             zisk_rom: RwLock::new(None),
             stdin: ArcSwap::from_pointee(ZiskStdin::new()),
+            seed: Mutex::new(None),
             min_traces: Arc::new(RwLock::new(None)),
             instance_set: Arc::new(InstanceSet::new()),
             collector_store: Arc::new(ChunkCollectorStore::new()),
@@ -96,14 +101,23 @@ impl<F: PrimeField64> ExecutionState<F> {
         guard.as_ref().cloned().ok_or(ExecutorError::RomNotInitialized)
     }
 
-    /// Sets the standard input for the next execution.
-    pub fn set_stdin(&self, stdin: ZiskStdin) {
+    /// Sets the standard input and seed for the next execution.
+    pub fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) {
         self.stdin.store(Arc::new(stdin));
+        *self.seed.lock().unwrap_or_else(PoisonError::into_inner) = Some(seed);
     }
 
     /// Gets a snapshot of the current standard input.
     pub fn get_stdin(&self) -> Arc<ZiskStdin> {
         self.stdin.load_full()
+    }
+
+    /// Gets the seed for the current execution.
+    ///
+    /// # Errors
+    /// Returns [`ExecutorError::SeedNotSet`] if `set_stdin_and_seed` has not been called yet.
+    pub fn get_seed(&self) -> ExecutorResult<ExecutionSeed> {
+        self.seed.lock().unwrap_or_else(PoisonError::into_inner).ok_or(ExecutorError::SeedNotSet)
     }
 
     /// Resets all internal state to default values.

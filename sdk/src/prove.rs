@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
+use zisk_common::ExecutionSeed;
 
 use crate::Result;
 use zisk_common::ProofKind;
@@ -72,6 +73,7 @@ pub struct ProveRequest<'a, C> {
     program: &'a GuestProgram,
     stdin: InputSource,
     hints: Option<HintsSource>,
+    seed: Option<ExecutionSeed>,
     executor: ExecutorKind,
     timeout: Option<Duration>,
     proof_kind: ProofKind,
@@ -91,6 +93,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
             program,
             stdin: stdin.into(),
             hints: None,
+            seed: None,
             executor,
             timeout: None,
             proof_kind: ProofKind::default(),
@@ -106,6 +109,15 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     #[must_use]
     pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
         self.hints = Some(hints.into());
+        self
+    }
+
+    /// Force the execution seed instead of drawing a fresh one, to replay a previous run (its
+    /// seed is reported in the result) or pin it in tests. A remote coordinator rejects it unless
+    /// it is configured to allow client seeds.
+    #[must_use]
+    pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
+        self.seed = seed.into();
         self
     }
 
@@ -146,6 +158,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
             self.program,
             self.stdin,
             self.hints,
+            self.seed,
             self.executor,
             self.proof_kind,
             self.timeout,
@@ -169,6 +182,7 @@ impl<'a, C: ClientSync> ProveRequest<'a, C> {
             self.program,
             self.stdin,
             self.hints,
+            self.seed,
             self.executor,
             self.proof_kind,
             subs,
@@ -186,6 +200,7 @@ pub struct ProveRequestExt<'a> {
     program: &'a GuestProgram,
     stdin: InputSource,
     hints: Option<HintsSource>,
+    seed: Option<ExecutionSeed>,
     executor: ExecutorKind,
     timeout: Option<Duration>,
     proof_kind: ProofKind,
@@ -204,6 +219,7 @@ impl<'a> ProveRequestExt<'a> {
             program,
             stdin: stdin.into(),
             hints: None,
+            seed: None,
             executor: ExecutorKind::default(),
             timeout: None,
             proof_kind: ProofKind::default(),
@@ -224,6 +240,15 @@ impl<'a> ProveRequestExt<'a> {
     #[must_use]
     pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
         self.hints = Some(hints.into());
+        self
+    }
+
+    /// Force the execution seed instead of drawing a fresh one, to replay a previous run (its
+    /// seed is reported in the result) or pin it in tests. A remote coordinator rejects it unless
+    /// it is configured to allow client seeds.
+    #[must_use]
+    pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
+        self.seed = seed.into();
         self
     }
 
@@ -264,6 +289,7 @@ impl<'a> ProveRequestExt<'a> {
             self.program,
             self.stdin,
             self.hints,
+            self.seed,
             self.executor,
             self.proof_kind,
             self.timeout,

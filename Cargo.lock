@@ -7455,6 +7455,8 @@ dependencies = [
  "clap",
  "crossbeam-queue",
  "dirs",
+ "getrandom 0.2.17",
+ "hex",
  "num-bigint",
  "paste",
  "proofman",
@@ -7965,6 +7967,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "zisk-common",
  "zisk-coordinator-api",
  "zisk-coordinator-client",
 ]

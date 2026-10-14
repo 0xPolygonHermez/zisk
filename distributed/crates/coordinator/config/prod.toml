@@ -18,3 +18,4 @@ max_total_workers = 5000        # Maximum total registered workers
 phase1_timeout_seconds = 600    # 10 minutes for phase 1
 phase2_timeout_seconds = 1200   # 20 minutes for phase 2
 reconnect_grace_period_ms = 500 # Grace period before failing a disconnected computing worker's job
+allow_client_seed = false       # Accept client-forced execution seeds (replays/CI); keep off for untrusted clients

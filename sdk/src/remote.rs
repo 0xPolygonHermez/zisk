@@ -10,6 +10,7 @@ pub(crate) mod wrap;
 use crate::{Result, SdkError};
 use std::time::Duration;
 use zisk_common::io::StreamRead;
+use zisk_common::ExecutionSeed;
 use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
 use zisk_coordinator_api::dto::DomainInputKind;
 use zisk_coordinator_client::CoordinatorClient;
@@ -135,12 +136,13 @@ impl Client for RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
-        self.do_prove(program, stdin, hints, executor, proof_kind, timeout, subs)
+        self.do_prove(program, stdin, hints, seed, executor, proof_kind, timeout, subs)
     }
 
     fn run_execute(
@@ -148,11 +150,12 @@ impl Client for RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<ExecutionSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ExecuteResult>> {
-        self.do_execute(program, stdin, hints, executor, timeout, subs)
+        self.do_execute(program, stdin, hints, seed, executor, timeout, subs)
     }
 
     fn run_wrap(

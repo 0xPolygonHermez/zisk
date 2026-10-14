@@ -21,7 +21,7 @@ use zisk_cluster_common::StreamMessage;
 use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
-use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
+use zisk_common::{io::ZiskStdin, ExecutionSeed, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_common::{
     program_publics, HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind,
     PublicValues, VadcopKind, PROGRAM_VK_LEN,
@@ -229,16 +229,16 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!(e.to_string()))
     }
 
-    pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.executor.set_stdin(stdin).map_err(Into::into)
+    pub fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
+        self.executor.set_stdin_and_seed(stdin, seed).map_err(Into::into)
     }
 
     pub fn execution_result(&self) -> Result<(ZiskExecutorSummary, ExecutorStatsHandle)> {
         Ok(self.executor.get_execution_result())
     }
 
-    pub(crate) fn execute(&self, stdin: ZiskStdin) -> Result<ExecuteOutput> {
-        self.executor.set_stdin(stdin)?;
+    pub(crate) fn execute(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<ExecuteOutput> {
+        self.executor.set_stdin_and_seed(stdin, seed)?;
 
         let start = std::time::Instant::now();
 
@@ -258,13 +258,14 @@ impl ProverBackend {
     pub(crate) fn stats(
         &self,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         _mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        self.executor.set_stdin(stdin)?;
+        self.executor.set_stdin_and_seed(stdin, seed)?;
 
         let rank_info = self.proofman.get_rank_info();
 
@@ -334,13 +335,14 @@ impl ProverBackend {
     pub(crate) fn verify_constraints(
         &self,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         let start = std::time::Instant::now();
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        self.executor.set_stdin(stdin)?;
+        self.executor.set_stdin_and_seed(stdin, seed)?;
 
         self.proofman
             .verify_proof_constraints_from_lib(&debug_info)
@@ -362,6 +364,7 @@ impl ProverBackend {
     pub(crate) fn prove(
         &self,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
@@ -373,7 +376,7 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        self.executor.set_stdin(stdin)?;
+        self.executor.set_stdin_and_seed(stdin, seed)?;
 
         let minimal = matches!(proof_kind, ProofKind::VadcopFinalMinimal);
 
@@ -443,8 +446,8 @@ impl ProverBackend {
                     Ok(ProveOutput::new(
                         execution_result,
                         start.elapsed(),
-                        Proof {
-                            body: ProofBody::Plonk {
+                        Proof::new(
+                            ProofBody::Plonk {
                                 proof_bytes: snark_proof.proof_bytes,
                                 plonk_vk: Box::new(PlonkVkBlob {
                                     vadcop_vk: vadcop_vk_u64.clone(),
@@ -458,7 +461,7 @@ impl ProverBackend {
                                 rootc: vadcop_vk_u64,
                             },
                             program_vk,
-                        },
+                        ),
                     ))
                 } else {
                     Err(anyhow::anyhow!(
@@ -470,12 +473,8 @@ impl ProverBackend {
             (_, Some(p)) => Ok(ProveOutput::new(
                 execution_result,
                 start.elapsed(),
-                Proof {
-                    program_vk: ProgramVK::new_from_publics_with_mode(
-                        &p.public_values,
-                        self.hash_mode()?,
-                    ),
-                    body: ProofBody::Vadcop {
+                Proof::new(
+                    ProofBody::Vadcop {
                         proof: p.proof,
                         zisk_vk: self.get_vadcop_vk(minimal)?,
                         // A freshly proven leaf is a raw vadcop_final proof
@@ -488,7 +487,8 @@ impl ProverBackend {
                         // for non-minimal proofs (captured in `kind` above).
                         publics_full: program_publics(&p.public_values).to_vec(),
                     },
-                },
+                    ProgramVK::new_from_publics_with_mode(&p.public_values, self.hash_mode()?),
+                ),
             )),
             (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
         }
@@ -542,19 +542,18 @@ impl ProverBackend {
 
         let time = start.elapsed();
 
-        let proof = Proof {
-            program_vk: ProgramVK::new_from_publics_with_mode(
-                &minimal_proof.public_values,
-                self.hash_mode()?,
-            ),
-            body: ProofBody::Vadcop {
+        let program_vk =
+            ProgramVK::new_from_publics_with_mode(&minimal_proof.public_values, self.hash_mode()?);
+        let proof = Proof::new(
+            ProofBody::Vadcop {
                 proof: minimal_proof.proof.clone(),
                 zisk_vk: self.get_vadcop_vk(true)?,
                 kind: VadcopKind::Minimal,
                 hash,
                 publics_full: minimal_proof.public_values,
             },
-        };
+            program_vk,
+        );
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
     }
@@ -619,8 +618,8 @@ impl ProverBackend {
         ));
         let plonk_vkey = PlonkVkey::load(&verkey_path)?;
 
-        let proof = Proof {
-            body: ProofBody::Plonk {
+        let proof = Proof::new(
+            ProofBody::Plonk {
                 proof_bytes: snark_proof.proof_bytes.clone(),
                 plonk_vk: Box::new(PlonkVkBlob { vadcop_vk: rootc.clone(), plonk_vkey }),
                 publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
@@ -630,11 +629,11 @@ impl ProverBackend {
                 // the circuit's `publicsHash` preimage.
                 rootc,
             },
-            program_vk: ProgramVK::new_from_publics_with_mode(
+            ProgramVK::new_from_publics_with_mode(
                 &vadcop_final_proof.public_values,
                 self.hash_mode()?,
             ),
-        };
+        );
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
     }

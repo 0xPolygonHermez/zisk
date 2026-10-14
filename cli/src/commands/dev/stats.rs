@@ -4,6 +4,7 @@ use std::{collections::HashMap, path::PathBuf};
 use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::SeedArgs;
 use zisk_common::{ExecutorStatsHandle, Stats};
 use zisk_pil::*;
 use zisk_prover_backend::GuestProgram;
@@ -32,6 +33,9 @@ pub(crate) struct StatsCmd {
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
     hints: Option<String>,
+
+    #[command(flatten)]
+    seed: SeedArgs,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
@@ -206,6 +210,7 @@ impl StatsCmd {
         prover.stats(
             &guest_program,
             stdin,
+            self.seed.forced(),
             self.debug.clone(),
             self.minimal_memory,
             self.mpi_node.map(|n| n as u32),
@@ -273,7 +278,14 @@ impl StatsCmd {
             prover.register_hints_stream(hints_stream)?;
         }
         let mpi_node = self.mpi_node.map(|n| n as u32);
-        prover.stats(&guest_program, stdin, self.debug.clone(), self.minimal_memory, mpi_node)
+        prover.stats(
+            &guest_program,
+            stdin,
+            self.seed.forced(),
+            self.debug.clone(),
+            self.minimal_memory,
+            mpi_node,
+        )
     }
 
     /// Prints stats individually and grouped, with aligned columns.

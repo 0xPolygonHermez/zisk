@@ -3,6 +3,7 @@ use zisk_cluster_common::{
     dto::{WebhookErrorDto, WebhookPayloadDto},
     JobId,
 };
+use zisk_common::ExecutionSeed;
 
 /// Sends a webhook notification upon job completion
 ///
@@ -14,14 +15,16 @@ use zisk_cluster_common::{
 /// * `job_id` - The ID of the job that has completed or failed.
 /// * `duration_ms` - Duration of the job in milliseconds.
 /// * `proof_data` - Optional bincode-encoded `Proof` to include in the payload.
+/// * `seed` - The job's execution seed, if it ran one.
 pub async fn send_completion_webhook(
     webhook_url: String,
     job_id: JobId,
     duration_ms: u64,
     executed_steps: Option<u64>,
     proof_data: Option<Vec<u8>>,
+    seed: Option<ExecutionSeed>,
 ) -> Result<()> {
-    send_webhook(webhook_url, job_id, duration_ms, executed_steps, proof_data, None).await
+    send_webhook(webhook_url, job_id, duration_ms, executed_steps, proof_data, seed, None).await
 }
 
 /// Sends a webhook notification upon job failure with error details.
@@ -33,15 +36,17 @@ pub async fn send_completion_webhook(
 /// * `duration_ms` - Duration of the job in milliseconds.
 /// * `error_code` - Error code representing the type of failure.
 /// * `error_message` - Human-readable error message.
+/// * `seed` - The job's execution seed, if it ran one, to replay the failure.
 pub async fn send_failure_webhook(
     webhook_url: String,
     job_id: JobId,
     duration_ms: u64,
     error_code: String,
     error_message: String,
+    seed: Option<ExecutionSeed>,
 ) -> Result<()> {
     let error = WebhookErrorDto { code: error_code, message: error_message };
-    send_webhook(webhook_url, job_id, duration_ms, Some(0), None, Some(error)).await
+    send_webhook(webhook_url, job_id, duration_ms, Some(0), None, seed, Some(error)).await
 }
 
 /// Internal function to send webhook notifications with optional error details.
@@ -51,6 +56,7 @@ async fn send_webhook(
     duration_ms: u64,
     executed_steps: Option<u64>,
     proof_data: Option<Vec<u8>>,
+    seed: Option<ExecutionSeed>,
     error: Option<WebhookErrorDto>,
 ) -> Result<()> {
     let client = reqwest::Client::new();
@@ -65,11 +71,12 @@ async fn send_webhook(
         format!("{}/{}", webhook_url, job_id.as_str())
     };
 
-    let payload = if let Some(error) = error {
+    let mut payload = if let Some(error) = error {
         WebhookPayloadDto::failure(job_id.as_string(), duration_ms, error)
     } else {
         WebhookPayloadDto::success(job_id.as_string(), duration_ms, executed_steps, proof_data)
     };
+    payload.seed = seed.map(|s| s.to_string());
 
     let response = client
         .post(&webhook_url)

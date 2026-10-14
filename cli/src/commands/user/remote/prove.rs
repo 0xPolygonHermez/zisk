@@ -9,7 +9,8 @@ use zisk_sdk::{setup_logger, GuestProgram, ProofKind, RemoteClient, ZiskHints, Z
 
 use crate::common::{reject_quic_hints, resolve_elf, resolve_output_path, ElfSelectorArgs};
 use crate::proof::select_prove_kind;
-use crate::ux::print_job_banner;
+use crate::ux::{print_execution_seed, print_job_banner};
+use zisk_common::SeedArgs;
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -35,6 +36,9 @@ pub(crate) struct ZiskRemoteProve {
     /// supported from the CLI.
     #[arg(long)]
     hints: Option<String>,
+
+    #[command(flatten)]
+    seed: SeedArgs,
 
     /// Save the generated proof to the specified file path
     #[arg(short = 'o', long)]
@@ -80,6 +84,7 @@ impl ZiskRemoteProve {
         if let Some(hints) = hints {
             request = request.hints(hints);
         }
+        request = request.seed(self.seed.forced());
         if proof_kind != ProofKind::VadcopFinal {
             request = request.wrap(proof_kind);
         }
@@ -99,6 +104,7 @@ impl ZiskRemoteProve {
             result.get_proving_time() as f64 / 1000.0,
             result.get_execution_steps()
         );
+        print_execution_seed(result.get_seed());
         info!("Proof saved to {}", output_file.display());
 
         Ok(())

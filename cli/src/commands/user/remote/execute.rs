@@ -9,6 +9,7 @@ use zisk_sdk::{setup_logger, GuestProgram, RemoteClient, ZiskHints, ZiskStdin};
 
 use crate::common::{reject_quic_hints, resolve_elf, ElfSelectorArgs};
 use crate::ux::{print_execute_output, print_job_banner};
+use zisk_common::SeedArgs;
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -34,6 +35,9 @@ pub(crate) struct ZiskRemoteExecute {
     /// supported from the CLI.
     #[arg(long)]
     hints: Option<String>,
+
+    #[command(flatten)]
+    seed: SeedArgs,
 
     /// Execute timeout in seconds (0 = no timeout)
     #[arg(long, default_value_t = 0)]
@@ -63,6 +67,7 @@ impl ZiskRemoteExecute {
         if let Some(hints) = hints {
             request = request.hints(hints);
         }
+        request = request.seed(self.seed.forced());
         if self.timeout != 0 {
             request = request.timeout(Duration::from_secs(self.timeout));
         }

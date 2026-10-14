@@ -34,6 +34,7 @@ use anyhow::Result;
 use prost_types::Timestamp;
 use proto::*;
 use uuid::Uuid;
+use zisk_common::ExecutionSeed;
 
 impl From<RegisterGuestProgramRequestDto> for RegisterGuestProgramRequest {
     fn from(dto: RegisterGuestProgramRequestDto) -> Self {
@@ -256,6 +257,7 @@ impl From<DomainProof> for Proof {
             public_inputs: proof.public_inputs,
             started_at: proof.started_at.map(datetime_to_ts),
             completed_at: proof.completed_at.map(datetime_to_ts),
+            seed: proof.seed.map(|s| s.as_bytes().to_vec()),
         }
     }
 }
@@ -274,6 +276,7 @@ impl TryFrom<Proof> for DomainProof {
             public_inputs: p.public_inputs,
             started_at: p.started_at.and_then(ts_to_datetime),
             completed_at: p.completed_at.and_then(ts_to_datetime),
+            seed: seed_from_wire(p.seed)?,
         })
     }
 }
@@ -372,6 +375,12 @@ impl From<DomainJobKind> for JobKind {
     }
 }
 
+/// Decodes an optional wire seed, rejecting any length other than 32 bytes.
+fn seed_from_wire(seed: Option<Vec<u8>>) -> std::result::Result<Option<ExecutionSeed>, String> {
+    seed.map(|bytes| ExecutionSeed::try_from(bytes.as_slice()).map_err(|e| e.to_string()))
+        .transpose()
+}
+
 impl From<DomainProveRequest> for ProveRequest {
     fn from(r: DomainProveRequest) -> Self {
         ProveRequest {
@@ -380,6 +389,7 @@ impl From<DomainProveRequest> for ProveRequest {
             proof_timeout: r.proof_timeout.map(datetime_to_ts),
             proof_dest: ProofKind::from(r.proof_dest).into(),
             hints: r.hints.map(InputKind::from),
+            seed: r.seed.map(|s| s.as_bytes().to_vec()),
         }
     }
 }
@@ -392,7 +402,8 @@ impl TryFrom<ProveRequest> for DomainProveRequest {
         let proof_timeout = r.proof_timeout.and_then(ts_to_datetime);
         let proof_dest = DomainProofKind::try_from(r.proof_dest).unwrap_or(DomainProofKind::Stark);
         let hints = r.hints.map(|h| h.try_into()).transpose()?;
-        Ok(DomainProveRequest { hash_id: r.hash_id, input, hints, proof_timeout, proof_dest })
+        let seed = seed_from_wire(r.seed)?;
+        Ok(DomainProveRequest { hash_id: r.hash_id, input, hints, seed, proof_timeout, proof_dest })
     }
 }
 
@@ -403,6 +414,7 @@ impl From<DomainExecuteRequest> for ExecuteRequest {
             input: Some(InputKind::from(r.input)),
             execute_timeout: r.execute_timeout.map(datetime_to_ts),
             hints: r.hints.map(InputKind::from),
+            seed: r.seed.map(|s| s.as_bytes().to_vec()),
         }
     }
 }
@@ -414,7 +426,8 @@ impl TryFrom<ExecuteRequest> for DomainExecuteRequest {
         let input = r.input.ok_or_else(|| "input must be set".to_string())?.try_into()?;
         let execute_timeout = r.execute_timeout.and_then(ts_to_datetime);
         let hints = r.hints.map(|h| h.try_into()).transpose()?;
-        Ok(DomainExecuteRequest { hash_id: r.hash_id, input, hints, execute_timeout })
+        let seed = seed_from_wire(r.seed)?;
+        Ok(DomainExecuteRequest { hash_id: r.hash_id, input, hints, seed, execute_timeout })
     }
 }
 
@@ -490,8 +503,12 @@ impl From<DomainJobKindResponse> for JobKindResponse {
             DomainJobKindResponse::Wrap(proof) => {
                 Kind::Wrap(WrapResponse { proof: Some(proof.into()) })
             }
-            DomainJobKindResponse::Execute { stats, public_outputs } => {
-                Kind::Execute(ExecuteResponse { stats: Some(stats.into()), public_outputs })
+            DomainJobKindResponse::Execute { stats, public_outputs, seed } => {
+                Kind::Execute(ExecuteResponse {
+                    stats: Some(stats.into()),
+                    public_outputs,
+                    seed: seed.map(|s| s.as_bytes().to_vec()),
+                })
             }
             DomainJobKindResponse::SetupAggregationProgram { vk, hash_mode } => {
                 Kind::SetupAggregationProgram(SetupAggregationProgramResponse { vk, hash_mode })
@@ -734,7 +751,8 @@ impl TryFrom<JobKindResponse> for DomainJobKindResponse {
             }
             Kind::Execute(r) => {
                 let stats = r.stats.map(DomainExecutionStats::from).unwrap_or_default();
-                Ok(DomainJobKindResponse::Execute { stats, public_outputs: r.public_outputs })
+                let seed = seed_from_wire(r.seed)?;
+                Ok(DomainJobKindResponse::Execute { stats, public_outputs: r.public_outputs, seed })
             }
             Kind::SetupAggregationProgram(r) => {
                 Ok(DomainJobKindResponse::SetupAggregationProgram {
@@ -814,5 +832,68 @@ impl TryFrom<JobEvent> for DomainJobEvent {
                 }))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn prove_request(seed: Option<ExecutionSeed>) -> DomainProveRequest {
+        DomainProveRequest {
+            hash_id: "hash".to_string(),
+            input: DomainInputKind::Inline(DomainInputChunk { data: vec![1, 2, 3] }),
+            hints: None,
+            seed,
+            proof_timeout: None,
+            proof_dest: DomainProofKind::Stark,
+        }
+    }
+
+    #[test]
+    fn prove_request_seed_round_trips() {
+        let seed = ExecutionSeed::new([5; ExecutionSeed::LEN]);
+        for seed in [Some(seed), None] {
+            let wire = ProveRequest::from(prove_request(seed));
+            assert_eq!(DomainProveRequest::try_from(wire).unwrap().seed, seed);
+        }
+    }
+
+    #[test]
+    fn proof_envelope_seed_round_trips() {
+        let seed = Some(ExecutionSeed::new([6; ExecutionSeed::LEN]));
+        let proof = DomainProof {
+            proof_id: Uuid::nil(),
+            hash_id: "hash".to_string(),
+            verification_key: vec![],
+            proof_kind: DomainProofKind::Stark,
+            data: vec![1, 2, 3],
+            public_inputs: vec![],
+            started_at: None,
+            completed_at: None,
+            seed,
+        };
+        assert_eq!(DomainProof::try_from(Proof::from(proof)).unwrap().seed, seed);
+    }
+
+    #[test]
+    fn execute_response_seed_round_trips() {
+        let seed = Some(ExecutionSeed::new([8; ExecutionSeed::LEN]));
+        let response = DomainJobKindResponse::Execute {
+            stats: DomainExecutionStats::default(),
+            public_outputs: vec![],
+            seed,
+        };
+        match DomainJobKindResponse::try_from(JobKindResponse::from(response)).unwrap() {
+            DomainJobKindResponse::Execute { seed: decoded, .. } => assert_eq!(decoded, seed),
+            other => panic!("expected an execute response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prove_request_rejects_a_seed_of_the_wrong_length() {
+        let mut wire = ProveRequest::from(prove_request(None));
+        wire.seed = Some(vec![0; ExecutionSeed::LEN - 1]);
+        assert!(DomainProveRequest::try_from(wire).is_err());
     }
 }

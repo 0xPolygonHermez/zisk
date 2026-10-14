@@ -10,6 +10,7 @@
 
 use anyhow::Result;
 use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::ExecutionSeed;
 
 use crate::{ExecuteOutput, GuestProgram};
 
@@ -23,13 +24,15 @@ pub trait ExecuteClient {
     fn setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()>;
 
     /// Run a single execution of the already-setup program with the
-    /// given stdin and optional hints stream. The program reference
-    /// must match the one passed to `setup`. `hints` is ignored by
-    /// backends that don't support precompile hints.
+    /// given stdin, seed and optional hints stream. The program reference
+    /// must match the one passed to `setup`. A `None` seed draws a fresh
+    /// one. `hints` is ignored by backends that don't support precompile
+    /// hints.
     fn execute(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: Option<ExecutionSeed>,
         hints: Option<StreamSource>,
     ) -> Result<ExecuteOutput>;
 }

@@ -1,6 +1,7 @@
 use crate::common::{detect_current_project_elf, resolve_output_path};
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use anyhow::Result;
+use zisk_common::SeedArgs;
 
 use colored::Colorize;
 use std::path::PathBuf;
@@ -36,6 +37,9 @@ pub(crate) struct ProveCmd {
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
     hints: Option<String>,
+
+    #[command(flatten)]
+    seed: SeedArgs,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
@@ -264,6 +268,7 @@ impl ProveCmd {
             &executor_time,
             result.get_proving_time(),
             result.get_execution_steps(),
+            result.get_seed(),
             "Proofman",
         );
 
@@ -281,7 +286,7 @@ impl ProveCmd {
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
-        let mut builder = prover.prove(&guest_program, stdin);
+        let mut builder = prover.prove(&guest_program, stdin).seed(self.seed.forced());
         if self.plonk {
             builder = builder.wrap_proof(ProofKind::Plonk);
         }
@@ -314,7 +319,7 @@ impl ProveCmd {
             prover.register_hints_stream(hints_stream)?;
         }
 
-        let mut builder = prover.prove(&guest_program, stdin);
+        let mut builder = prover.prove(&guest_program, stdin).seed(self.seed.forced());
         if self.plonk {
             builder = builder.wrap_proof(ProofKind::Plonk);
         }

@@ -397,12 +397,9 @@ impl FromWaitResult for crate::prove::ProveResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {
             TerminalStatus::Completed(DomainJobKindResponse::Prove { proof, stats }) => {
-                let proof_with_pv: zisk_common::Proof =
-                    bincode::serde::decode_from_slice(&proof.data, bincode::config::standard())
-                        .map(|(v, _)| v)
-                        .map_err(|e| {
-                            SdkError::Serialization(format!("failed to deserialize proof: {e}"))
-                        })?;
+                let proof_with_pv = zisk_common::Proof::from_bytes(&proof.data).map_err(|e| {
+                    SdkError::Serialization(format!("failed to deserialize proof: {e}"))
+                })?;
                 let output = zisk_prover_backend::ProveOutput::from_remote(
                     proof_with_pv,
                     stats.steps,
@@ -413,14 +410,9 @@ impl FromWaitResult for crate::prove::ProveResult {
             }
             TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof))
             | TerminalStatus::Completed(DomainJobKindResponse::AggregateProofs(proof)) => {
-                let proof_with_pv: zisk_common::Proof =
-                    bincode::serde::decode_from_slice(&proof.data, bincode::config::standard())
-                        .map(|(v, _)| v)
-                        .map_err(|e| {
-                            SdkError::Serialization(format!(
-                                "failed to deserialize remote proof: {e}"
-                            ))
-                        })?;
+                let proof_with_pv = zisk_common::Proof::from_bytes(&proof.data).map_err(|e| {
+                    SdkError::Serialization(format!("failed to deserialize remote proof: {e}"))
+                })?;
                 let output = zisk_prover_backend::ProveOutput::from_remote(
                     proof_with_pv,
                     0,
@@ -451,7 +443,11 @@ impl FromWaitResult for crate::verify_constraints::VerifyConstraintsResult {
 impl FromWaitResult for crate::execute::ExecuteResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {
-            TerminalStatus::Completed(DomainJobKindResponse::Execute { stats, public_outputs }) => {
+            TerminalStatus::Completed(DomainJobKindResponse::Execute {
+                stats,
+                public_outputs,
+                seed,
+            }) => {
                 let plan: Vec<(usize, usize, u64)> =
                     stats.plan.iter().map(|p| (p.airgroup_id, p.air_id, p.count)).collect();
                 let output = zisk_prover_backend::ExecuteOutput::from_remote(
@@ -461,6 +457,7 @@ impl FromWaitResult for crate::execute::ExecuteResult {
                     domain_stats_to_executor_time(&stats),
                     &plan,
                     &public_outputs,
+                    seed,
                 );
                 Ok(crate::execute::ExecuteResult::new(output, Some(job_id)))
             }

@@ -12,7 +12,7 @@ pub use zisk_verifier::{
     VADCOP_FINAL_FLAG_LEN, ZISK_PUBLICS,
 };
 
-use crate::HashMode;
+use crate::{ExecutionSeed, HashMode};
 
 /// The canonical representative of a Goldilocks element: the unique value in
 /// `[0, p)` congruent to `word`. One subtraction suffices — `p > 2^63`, so every
@@ -723,12 +723,23 @@ impl Default for ProofBody {
 }
 
 /// A struct representing a proof.
+///
+/// Serialized with bincode, which records no field names, lengths or version: fields decode
+/// positionally. New fields therefore only go at the end, and [`Proof::from_bytes`] is the one
+/// decoder that knows which trailing fields a file may lack. Decode through it, never with
+/// `bincode` directly.
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Proof {
     /// The data of the proof.
     pub body: ProofBody,
     /// The program verification key.
     pub program_vk: ProgramVK,
+    /// Seed of the execution this proof attests to, needed to replay it.
+    ///
+    /// Unauthenticated metadata: verification ignores it, as the values derived from it are
+    /// free witness values. `None` for proofs that do not come from a single execution
+    /// (aggregates) and for proofs written by ZisK versions that predate this field.
+    pub seed: Option<ExecutionSeed>,
 }
 
 /// Builder for customizing verification parameters before calling verify.
@@ -1048,9 +1059,18 @@ impl<'a> ZiskVerifyBuilder<'a> {
 }
 
 impl Proof {
-    /// Creates a new `Proof` from a body and program verification key.
+    /// Creates a new `Proof` from a body and program verification key, with no seed.
+    ///
+    /// When the proof attests an execution, chain [`Proof::with_seed`] to keep its seed;
+    /// otherwise a proof saved from it cannot be replayed.
     pub fn new(body: ProofBody, program_vk: ProgramVK) -> Self {
-        Self { body, program_vk }
+        Self { body, program_vk, seed: None }
+    }
+
+    /// Sets the seed of the execution this proof attests to.
+    pub fn with_seed(mut self, seed: Option<ExecutionSeed>) -> Self {
+        self.seed = seed;
+        self
     }
 
     /// The u32 `PublicValues` view, derived from the body's native publics.
@@ -1153,25 +1173,55 @@ impl Proof {
             .map_err(|e| CommonError::Io(format!("Failed to save proof: {}", e)))
     }
 
-    /// Load a proof from a file using bincode deserialization.
+    /// Load a proof from a file written by [`Proof::save`] (or by an older version, see
+    /// [`Proof::from_bytes`]).
     ///
     /// # Errors
     ///
-    /// Returns [`CommonError::Io`] if the file cannot be opened or its contents
+    /// Returns [`CommonError::Io`] if the file cannot be read or its contents
     /// cannot be deserialized into a [`Proof`].
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
-        let mut file = File::open(path.as_ref()).map_err(|e| {
+        let bytes = std::fs::read(path.as_ref()).map_err(|e| {
             CommonError::Io(format!(
                 "failed to open file for loading proof: {}: {e}",
                 path.as_ref().display()
             ))
         })?;
-        let proof: Proof =
-            bincode::serde::decode_from_std_read(&mut file, bincode::config::standard())
-                .map_err(|e| CommonError::Io(format!("Failed to load proof: {}", e)))?;
+        let proof = Self::from_bytes(&bytes)
+            .map_err(|e| CommonError::Io(format!("Failed to load proof: {}", e)))?;
         // bincode will happily decode a non-canonical or misshapen `publics_full`.
         ensure_stored_publics(&proof.body)?;
         Ok(proof)
+    }
+
+    /// Decode a bincode-serialized proof, including ones written by ZisK versions that predate
+    /// [`Proof::seed`] (they decode with `seed: None`).
+    ///
+    /// Bytes past the last known field are ignored, so proofs from later versions that append
+    /// fields still decode. Unlike [`Proof::load`] this does not check the publics' shape.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Deserialization`] if the bytes do not hold a proof.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        let config = bincode::config::standard();
+        let decode_err =
+            |e: bincode::error::DecodeError| CommonError::Deserialization(e.to_string());
+
+        // bincode encodes a struct as the tuple of its fields, so this reads the fields every
+        // serialized proof starts with, including those written before `seed` existed.
+        let ((body, program_vk), head_len) =
+            bincode::serde::decode_from_slice::<(ProofBody, ProgramVK), _>(bytes, config)
+                .map_err(decode_err)?;
+        let tail = &bytes[head_len..];
+        let seed = if tail.is_empty() {
+            None
+        } else {
+            bincode::serde::decode_from_slice::<Option<ExecutionSeed>, _>(tail, config)
+                .map_err(decode_err)?
+                .0
+        };
+        Ok(Self { body, program_vk, seed })
     }
 
     /// The committed `publics_full` (`[program_vk | inputs]`) for either flavor —
@@ -1353,7 +1403,10 @@ impl Proof {
     ///
     /// # Returns
     ///
-    /// A Proof containing the parsed proof, publics, and program VK
+    /// A Proof containing the parsed proof, publics, and program VK, with no seed: the flat
+    /// u64 form (as produced by [`Proof::get_proof_u64`]) does not carry one. When the proof
+    /// attests an execution, chain [`Proof::with_seed`] to keep its seed; otherwise a proof
+    /// saved from it cannot be replayed.
     ///
     /// # Errors
     ///
@@ -1442,6 +1495,7 @@ impl Proof {
                 publics_full,
             },
             program_vk,
+            seed: None,
         })
     }
 
@@ -1952,6 +2006,75 @@ mod tests {
             ProofBody::Plonk { .. } => panic!("expected Vadcop body after roundtrip"),
         }
         assert_eq!(loaded.program_vk.vk, vec![7, 8, 9, 10]);
+    }
+
+    fn test_seed() -> ExecutionSeed {
+        ExecutionSeed::new(std::array::from_fn(|i| i as u8))
+    }
+
+    fn encode(proof: &Proof) -> Vec<u8> {
+        bincode::serde::encode_to_vec(proof, bincode::config::standard()).unwrap()
+    }
+
+    #[test]
+    fn proof_save_load_roundtrip_keeps_the_seed() {
+        let tmp = std::env::temp_dir().join(format!("proof_seed_{}.bin", std::process::id()));
+        let original = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
+            .with_seed(Some(test_seed()));
+
+        original.save(&tmp).unwrap();
+        let loaded = Proof::load(&tmp).unwrap();
+        std::fs::remove_file(&tmp).ok();
+
+        assert_eq!(loaded.seed, Some(test_seed()));
+        assert_eq!(encode(&loaded), encode(&original));
+    }
+
+    /// A file written before `Proof::seed` existed ends right after `program_vk`.
+    #[test]
+    fn from_bytes_reads_a_proof_serialized_before_the_seed() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        let legacy = bincode::serde::encode_to_vec(
+            (&proof.body, &proof.program_vk),
+            bincode::config::standard(),
+        )
+        .unwrap();
+
+        let decoded = Proof::from_bytes(&legacy).unwrap();
+
+        assert_eq!(decoded.seed, None);
+        assert_eq!(encode(&decoded), encode(&proof));
+    }
+
+    /// Fields a later version appends must not stop this version from reading the file.
+    #[test]
+    fn from_bytes_ignores_fields_appended_after_the_seed() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
+            .with_seed(Some(test_seed()));
+        let mut bytes = encode(&proof);
+        bytes.extend_from_slice(&[1, 2, 3]);
+
+        assert_eq!(Proof::from_bytes(&bytes).unwrap().seed, Some(test_seed()));
+    }
+
+    #[test]
+    fn from_bytes_rejects_a_truncated_seed() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
+            .with_seed(Some(test_seed()));
+        let bytes = encode(&proof);
+
+        assert!(Proof::from_bytes(&bytes[..bytes.len() - 1]).is_err());
+    }
+
+    /// The committed PLONK fixture predates `Proof::seed`; CI exports Solidity calldata from it.
+    #[test]
+    fn load_reads_the_committed_plonk_fixture() {
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../zisk-contracts/test/plonk_proof.bin");
+        let proof = Proof::load(fixture).unwrap();
+
+        assert_eq!(proof.kind(), ProofKind::Plonk);
+        assert_eq!(proof.seed, None);
     }
 
     #[test]

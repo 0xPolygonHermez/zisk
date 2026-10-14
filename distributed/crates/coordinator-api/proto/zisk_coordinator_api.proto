@@ -132,6 +132,9 @@ message Proof {
   bytes                     public_inputs    = 6;
   google.protobuf.Timestamp started_at       = 7;
   google.protobuf.Timestamp completed_at     = 8;
+  // 32-byte seed of the execution the proof attests to, also kept inside `data`. Set in
+  // responses (absent for aggregates); ignored in requests.
+  optional bytes            seed             = 9;
 }
 
 // RPC-level error — returned in Status details for programmatic inspection.
@@ -261,6 +264,9 @@ message ProveRequest {
   optional google.protobuf.Timestamp proof_timeout = 3;
   ProofKind                 proof_dest    = 4;
   optional InputKind        hints         = 5;
+  // Forces the 32-byte execution seed instead of drawing a fresh one. Rejected unless the
+  // coordinator is configured to allow client seeds.
+  optional bytes            seed          = 6;
 }
 
 message ProveResponse {
@@ -305,11 +311,16 @@ message ExecuteRequest {
   InputKind                 input           = 2;
   optional google.protobuf.Timestamp execute_timeout = 3;
   optional InputKind        hints           = 4;
+  // Forces the 32-byte execution seed instead of drawing a fresh one. Rejected unless the
+  // coordinator is configured to allow client seeds.
+  optional bytes            seed            = 5;
 }
 
 message ExecuteResponse {
   ExecutionStats stats          = 1;
   bytes          public_outputs = 2;
+  // 32-byte seed the execution ran with; replays it when passed back as the request `seed`.
+  optional bytes seed           = 3;
 }
 
 message JobKindResponse {

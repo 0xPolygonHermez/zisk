@@ -126,12 +126,9 @@ impl Coordinator {
         let agg_worker_id = worker_id;
 
         // Decode before changing any state.
-        let zisk_proof = bincode::serde::decode_from_slice::<Proof, _>(
-            &proof_data.proof_data,
-            bincode::config::standard(),
-        )
-        .map(|(v, _)| v)
-        .map_err(|e| CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e)))?;
+        let zisk_proof = Proof::from_bytes(&proof_data.proof_data).map_err(|e| {
+            CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e))
+        })?;
 
         let scheduler = job.agg.as_mut().expect("checked above");
         scheduler.take_live(&agg_worker_id);
@@ -143,7 +140,8 @@ impl Coordinator {
         }
 
         self.workers_pool.release_computing_to_ready(&agg_worker_id, job_id).await;
-        job.proof = Some(zisk_proof);
+        // Workers assemble the final proof from proof words alone; it attests the job's execution.
+        job.proof = Some(zisk_proof.with_seed(job.seed));
         job.executed_steps = Some(proof_data.executed_steps);
         job.instances = Some(proof_data.instances);
 
@@ -421,7 +419,11 @@ impl Coordinator {
                 None => vec![],
             };
             let stats = exec_stats_from_job(&job);
-            CoordinatorJobEvent::Completed(CoordinatorJobResult::Prove { proof_bytes, stats })
+            CoordinatorJobEvent::Completed(CoordinatorJobResult::Prove {
+                proof_bytes,
+                stats,
+                seed: job.seed,
+            })
         };
 
         // Release job lock before calling post_launch_proof

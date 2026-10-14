@@ -15,7 +15,7 @@ use std::{
     ops::Range,
 };
 use tracing::error;
-use zisk_common::{Proof, StatsCostPerType, ZiskExecutorTime};
+use zisk_common::{ExecutionSeed, Proof, StatsCostPerType, ZiskExecutorTime};
 
 use crate::{HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, ProofKind};
 
@@ -343,6 +343,9 @@ pub struct Job {
     pub execution_only: bool,
     /// The kind of proof requested.
     pub proof_type: ProofKind,
+    /// Seed every emulation of the job runs with. Set for prove and execute jobs; `None` for
+    /// jobs that run no guest (wrap, recurser).
+    pub seed: Option<ExecutionSeed>,
 }
 
 impl Job {
@@ -389,6 +392,7 @@ impl Job {
             metadata,
             execution_only,
             proof_type,
+            seed: None,
         }
     }
 
@@ -685,6 +689,8 @@ pub struct ContributionsMessage {
     pub hints_source: HintsSourceDto,
     /// This rank's partition.
     pub partition_info: PartitionInfo,
+    /// The job's execution seed, shared by every rank.
+    pub seed: [u8; zisk_common::ExecutionSeed::LEN],
 }
 
 /// MPI broadcast message carrying a prove task to peer ranks.

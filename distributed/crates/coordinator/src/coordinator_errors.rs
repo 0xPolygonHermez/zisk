@@ -37,6 +37,10 @@ pub enum CoordinatorError {
     WorkersNotSetup,
 
     // Internal errors - logged but not exposed to clients
+    /// The request forced an execution seed but the coordinator does not accept client seeds.
+    #[error("Client-supplied execution seeds are not allowed by this coordinator")]
+    ClientSeedNotAllowed,
+
     /// An unexpected internal error (logged, not exposed to clients).
     #[error("Internal service error: {0}")]
     Internal(String),
@@ -72,6 +76,10 @@ impl From<CoordinatorError> for Status {
             CoordinatorError::WorkersNotSetup => Status::new(
                 Code::FailedPrecondition,
                 "Workers connected but setup not done; call setup() first",
+            ),
+            CoordinatorError::ClientSeedNotAllowed => Status::new(
+                Code::PermissionDenied,
+                "Client-supplied execution seeds are not allowed by this coordinator",
             ),
             // All internal errors return generic messages
             CoordinatorError::Internal(_) => {

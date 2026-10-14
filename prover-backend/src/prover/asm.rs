@@ -25,8 +25,8 @@ use zisk_asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, SetupKey, StatsCostPerType,
-    VadcopKind, ZiskExecutorTime, ZiskPaths,
+    AirInstanceCount, ExecutionSeed, ExecutorStatsHandle, ProgramVK, ProofKind, SetupKey,
+    StatsCostPerType, VadcopKind, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
@@ -282,9 +282,10 @@ impl AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
     ) -> Result<ExecuteOutput> {
         self.register_program_for_emulator(&program.program_id)?;
-        self.core_prover.backend.execute(stdin)
+        self.core_prover.backend.execute(stdin, seed)
     }
 
     /// Generate a proof via the Rust emulator path, regardless of how the program was set up.
@@ -293,11 +294,12 @@ impl AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
         self.register_program_for_emulator(&program.program_id)?;
-        self.core_prover.backend.prove(stdin, proof_kind, prover_options)
+        self.core_prover.backend.prove(stdin, seed, proof_kind, prover_options)
     }
 
     /// Verify constraints via the Rust emulator path, regardless of how the program was set up.
@@ -305,10 +307,11 @@ impl AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         self.register_program_for_emulator(&program.program_id)?;
-        self.core_prover.backend.verify_constraints(stdin, debug_info)
+        self.core_prover.backend.verify_constraints(stdin, seed, debug_info)
     }
 }
 
@@ -424,8 +427,8 @@ impl ProverEngine for AsmProver {
         self.core_prover.rank_info.local_rank
     }
 
-    fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.core_prover.backend.set_stdin(stdin)
+    fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
+        self.core_prover.backend.set_stdin_and_seed(stdin, seed)
     }
 
     fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()> {
@@ -490,16 +493,22 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.get_execution_info()
     }
 
-    fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
+    fn execute(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        seed: ExecutionSeed,
+    ) -> Result<ExecuteOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
         self.register_program(&program.program_id, with_hints)?;
-        self.core_prover.backend.execute(stdin)
+        self.core_prover.backend.execute(stdin, seed)
     }
 
     fn stats(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
@@ -512,7 +521,7 @@ impl ProverEngine for AsmProver {
                 program.program_id.name
             ));
         }
-        self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
+        self.core_prover.backend.stats(stdin, seed, debug_info, minimal_memory, mpi_node)
     }
 
     fn get_instance_trace(
@@ -543,6 +552,7 @@ impl ProverEngine for AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
@@ -553,13 +563,14 @@ impl ProverEngine for AsmProver {
                 program.program_id.name
             ));
         }
-        self.core_prover.backend.verify_constraints(stdin, debug_info)
+        self.core_prover.backend.verify_constraints(stdin, seed, debug_info)
     }
 
     fn prove(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: ExecutionSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
@@ -571,7 +582,7 @@ impl ProverEngine for AsmProver {
                 program.program_id.name
             ));
         }
-        self.core_prover.backend.prove(stdin, proof_kind, prover_options)
+        self.core_prover.backend.prove(stdin, seed, proof_kind, prover_options)
     }
 
     fn wrap_proof(
@@ -855,6 +866,7 @@ impl ExecuteClient for ZiskProver<Asm> {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: Option<ExecutionSeed>,
         hints: Option<StreamSource>,
     ) -> Result<ExecuteOutput> {
         // Every call is a job boundary for this client, which executes many times after
@@ -863,6 +875,6 @@ impl ExecuteClient for ZiskProver<Asm> {
         if let Some(stream) = hints {
             ZiskProver::<Asm>::register_hints_stream(self, stream)?;
         }
-        ZiskProver::<Asm>::execute(self, program, stdin)
+        ZiskProver::<Asm>::execute(self, program, stdin, seed)
     }
 }

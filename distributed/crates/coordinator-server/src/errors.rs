@@ -26,6 +26,8 @@ pub mod codes {
     pub const INVALID_JOB_STATE: u32 = 1004;
     /// The requested proof-kind conversion is not allowed.
     pub const INVALID_PROOF_CONVERSION: u32 = 1005;
+    /// The request forced an execution seed and the coordinator does not accept client seeds.
+    pub const CLIENT_SEED_NOT_ALLOWED: u32 = 1006;
     /// No cluster is available to service the request.
     pub const CLUSTER_UNAVAILABLE: u32 = 2001;
     /// An unexpected internal error.
@@ -63,6 +65,10 @@ pub enum ApiError {
         to: DomainProofKind,
     },
 
+    /// The request forced an execution seed and the coordinator does not accept client seeds.
+    #[error("Client-supplied execution seeds are not allowed by this coordinator")]
+    ClientSeedNotAllowed,
+
     /// No cluster is available to service the request.
     #[error("Cluster unavailable: {reason}")]
     ClusterUnavailable {
@@ -84,6 +90,7 @@ impl ApiError {
             Self::ProgramNotSetup(_) => codes::PROGRAM_NOT_SETUP,
             Self::InvalidJobState { .. } => codes::INVALID_JOB_STATE,
             Self::InvalidProofConversion { .. } => codes::INVALID_PROOF_CONVERSION,
+            Self::ClientSeedNotAllowed => codes::CLIENT_SEED_NOT_ALLOWED,
             Self::ClusterUnavailable { .. } => codes::CLUSTER_UNAVAILABLE,
             Self::Internal(_) => codes::INTERNAL,
         }
@@ -97,6 +104,7 @@ impl ApiError {
             Self::ProgramNotSetup(_) => "PROGRAM_NOT_SETUP",
             Self::InvalidJobState { .. } => "INVALID_JOB_STATE",
             Self::InvalidProofConversion { .. } => "INVALID_PROOF_CONVERSION",
+            Self::ClientSeedNotAllowed => "CLIENT_SEED_NOT_ALLOWED",
             Self::ClusterUnavailable { .. } => "CLUSTER_UNAVAILABLE",
             Self::Internal(_) => "INTERNAL",
         }
@@ -110,6 +118,7 @@ impl ApiError {
             Self::InvalidJobState { .. } | Self::InvalidProofConversion { .. } => {
                 Code::InvalidArgument
             }
+            Self::ClientSeedNotAllowed => Code::PermissionDenied,
             Self::ClusterUnavailable { .. } => Code::Unavailable,
             Self::Internal(_) => Code::Internal,
         }
@@ -157,6 +166,7 @@ mod tests {
         assert_eq!(ApiError::ProgramNotFound("x".into()).code(), 1002);
         assert_eq!(ApiError::ProgramNotSetup("x".into()).code(), 1003);
         assert_eq!(ApiError::InvalidJobState { reason: "x".into() }.code(), 1004);
+        assert_eq!(ApiError::ClientSeedNotAllowed.code(), 1006);
         assert_eq!(ApiError::ClusterUnavailable { reason: "test" }.code(), 2001);
         assert_eq!(ApiError::Internal("x".into()).code(), 3001);
     }
@@ -166,6 +176,11 @@ mod tests {
         let status = Status::from(ApiError::Internal("secret detail".into()));
         assert_eq!(status.code(), Code::Internal);
         assert!(!status.message().contains("secret detail"));
+    }
+
+    #[test]
+    fn client_seed_not_allowed_maps_to_permission_denied() {
+        assert_eq!(Status::from(ApiError::ClientSeedNotAllowed).code(), Code::PermissionDenied);
     }
 
     #[test]
