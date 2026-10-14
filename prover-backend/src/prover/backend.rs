@@ -446,8 +446,8 @@ impl ProverBackend {
                     Ok(ProveOutput::new(
                         execution_result,
                         start.elapsed(),
-                        Proof {
-                            body: ProofBody::Plonk {
+                        Proof::new(
+                            ProofBody::Plonk {
                                 proof_bytes: snark_proof.proof_bytes,
                                 plonk_vk: Box::new(PlonkVkBlob {
                                     vadcop_vk: vadcop_vk_u64.clone(),
@@ -461,9 +461,7 @@ impl ProverBackend {
                                 rootc: vadcop_vk_u64,
                             },
                             program_vk,
-                            // Stamped by `ProveOutput::new` from `execution_result`.
-                            seed: None,
-                        },
+                        ),
                     ))
                 } else {
                     Err(anyhow::anyhow!(
@@ -475,12 +473,8 @@ impl ProverBackend {
             (_, Some(p)) => Ok(ProveOutput::new(
                 execution_result,
                 start.elapsed(),
-                Proof {
-                    program_vk: ProgramVK::new_from_publics_with_mode(
-                        &p.public_values,
-                        self.hash_mode()?,
-                    ),
-                    body: ProofBody::Vadcop {
+                Proof::new(
+                    ProofBody::Vadcop {
                         proof: p.proof,
                         zisk_vk: self.get_vadcop_vk(minimal)?,
                         // A freshly proven leaf is a raw vadcop_final proof
@@ -493,9 +487,8 @@ impl ProverBackend {
                         // for non-minimal proofs (captured in `kind` above).
                         publics_full: program_publics(&p.public_values).to_vec(),
                     },
-                    // Stamped by `ProveOutput::new` from `execution_result`.
-                    seed: None,
-                },
+                    ProgramVK::new_from_publics_with_mode(&p.public_values, self.hash_mode()?),
+                ),
             )),
             (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
         }
@@ -549,20 +542,18 @@ impl ProverBackend {
 
         let time = start.elapsed();
 
-        let proof = Proof {
-            program_vk: ProgramVK::new_from_publics_with_mode(
-                &minimal_proof.public_values,
-                self.hash_mode()?,
-            ),
-            body: ProofBody::Vadcop {
+        let program_vk =
+            ProgramVK::new_from_publics_with_mode(&minimal_proof.public_values, self.hash_mode()?);
+        let proof = Proof::new(
+            ProofBody::Vadcop {
                 proof: minimal_proof.proof.clone(),
                 zisk_vk: self.get_vadcop_vk(true)?,
                 kind: VadcopKind::Minimal,
                 hash,
                 publics_full: minimal_proof.public_values,
             },
-            seed: None,
-        };
+            program_vk,
+        );
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
     }
@@ -627,8 +618,8 @@ impl ProverBackend {
         ));
         let plonk_vkey = PlonkVkey::load(&verkey_path)?;
 
-        let proof = Proof {
-            body: ProofBody::Plonk {
+        let proof = Proof::new(
+            ProofBody::Plonk {
                 proof_bytes: snark_proof.proof_bytes.clone(),
                 plonk_vk: Box::new(PlonkVkBlob { vadcop_vk: rootc.clone(), plonk_vkey }),
                 publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
@@ -638,12 +629,11 @@ impl ProverBackend {
                 // the circuit's `publicsHash` preimage.
                 rootc,
             },
-            program_vk: ProgramVK::new_from_publics_with_mode(
+            ProgramVK::new_from_publics_with_mode(
                 &vadcop_final_proof.public_values,
                 self.hash_mode()?,
             ),
-            seed: None,
-        };
+        );
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
     }
