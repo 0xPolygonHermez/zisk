@@ -80,7 +80,6 @@ pub fn gen_recurser_setup(
             enable_input: false,
             input_challenges: false,
             fri_queries_batch_size: None,
-            multi_fri: false,
             hash: config.hash.to_string(),
         };
         let circom_src = gen_stark_verifier(

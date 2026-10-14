@@ -723,21 +723,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crossbeam-channel"
-version = "0.5.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98b0cc327b5bc766e7fda9c9260cc0fa81b43a8e240440422dff70788e3f9ef1"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.8.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
-
-[[package]]
 name = "crunchy"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1560,34 +1545,19 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#b4e94d57b20dbf68b32028896c1d26739db476de"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#728084df29e5e68d66db93a96bfb421e3f40c635"
 dependencies = [
  "blake3",
  "cfg-if",
  "num-bigint",
  "paste",
- "proofman-starks-lib-c",
  "serde",
 ]
 
 [[package]]
-name = "proofman-starks-lib-c"
-version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#b4e94d57b20dbf68b32028896c1d26739db476de"
-dependencies = [
- "crossbeam-channel",
- "proofman-starks-src",
-]
-
-[[package]]
-name = "proofman-starks-src"
-version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#b4e94d57b20dbf68b32028896c1d26739db476de"
-
-[[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#b4e94d57b20dbf68b32028896c1d26739db476de"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.4.0-alpha#728084df29e5e68d66db93a96bfb421e3f40c635"
 dependencies = [
  "num-traits",
  "proofman-fields",

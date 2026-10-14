@@ -81,4 +81,3 @@ custom_rust_llvm = []
 stats = []
 # Per-phase timings inside the witness computations (memory and the arith precompiles).
 witness_timers = ["zisk-sdk/witness_timers", "zisk-prover-backend/witness_timers"]
-verify = ["proofman-fields/verify"]
