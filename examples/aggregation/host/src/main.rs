@@ -79,8 +79,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     vadcop_result1.get_proof().verify().map_err(|e| {
         format!(
             "the guest verifies under the release key, which this proof does not verify \
-             under ({e}); with a non-release setup, feed that setup's \
-             vadcop_final.verkey.json as expected_setup_vk instead"
+             under ({e}); this example needs a release setup"
         )
     })?;
     let saved = zisk_verifier::decode_saved(&proof1_bytes)?;

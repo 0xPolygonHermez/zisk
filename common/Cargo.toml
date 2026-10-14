@@ -26,7 +26,6 @@ tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-sha2 = { workspace = true }
 dirs = "6"
 getrandom = { workspace = true }
 hex = { workspace = true }
@@ -43,3 +42,6 @@ default = ["jemalloc"]
 jemalloc = ["dep:tikv-jemallocator"]
 stats = []
 
+
+[dev-dependencies]
+num-bigint = { workspace = true }
