@@ -138,8 +138,6 @@ main() {
     # The MemAlign region too small for the block's unaligned accesses (a 16 MB region instead of 2560):
     # the overflow is detected and the block's memory instances go to the CPU. No test build needed.
     run_case align_region_overflow 0 "overflowed; witness off" ZISK_MEM_ALIGN_MB=16 || return 1
-    # The light memory-ops stream has no values: the device witness is refused before proving.
-    run_case light_refused 1 "the device witness needs them" ZISK_MOPS_LIGHT=1 || return 1
 
     success "Device memory witness: every configuration proved, verified and matched the CPU rows"
 }

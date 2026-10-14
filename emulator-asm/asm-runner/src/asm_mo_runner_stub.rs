@@ -66,11 +66,7 @@ pub fn device_mem_witness_requested() -> bool {
     zisk_common::device_mem_witness()
 }
 
-/// The light memory-ops emulator only on request (`ZISK_MOPS_LIGHT=1`).
+/// The light memory-ops emulator whenever the device witness is off.
 pub fn mops_light() -> bool {
-    match std::env::var("ZISK_MOPS_LIGHT").as_deref() {
-        Ok("1") => true,
-        Ok("0") => false,
-        _ => !device_mem_witness_requested(),
-    }
+    !device_mem_witness_requested()
 }
