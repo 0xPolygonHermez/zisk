@@ -61,6 +61,12 @@
 // number of read fields plus the available precompile shared memory size, which is a circular buffer
 #define CONTROL_INPUT_ADDR (uint64_t)0x70000000
 #define CONTROL_INPUT_SIZE (uint64_t)0x1000 // 4kB
+
+// Control input u64 slots carrying the seed of zkvm_random_u64 for the next execution: the
+// seed's 4 little-endian words, and a flag set to 1 once they are written (0 = no seed). Must
+// match ControlShmemOffsets in asm-runner/src/control_shmem.rs
+#define CONTROL_INPUT_RANDOM_SEED_INDEX 4
+#define CONTROL_INPUT_RANDOM_SEED_SET_INDEX 8
 #define CONTROL_OUTPUT_ADDR (uint64_t)0x70001000
 #define CONTROL_OUTPUT_SIZE (uint64_t)0x1000 // 4kB
 #define CONTROL_RETRY_DELAY_US 1000 // 1ms

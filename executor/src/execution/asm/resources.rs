@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use zisk_asm_runner::{
     AsmRunnerOptions, AsmServices, ControlShmem, GpuBufferSource, HintsShmem, InputsShmemWriter,
+    RANDOM_SEED_WORDS,
 };
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_asm_runner::{MOShmemReader, MTShmemReader, RHShmemReader};
@@ -352,6 +353,13 @@ impl AsmResources {
         stdin
             .with_data(|data| self.shared.shmem_inputs.write_input(data))
             .map_err(ExecutorError::asm_backend)
+    }
+
+    /// Sets the seed of `zkvm_random_u64` for the next execution (its 4 little-endian
+    /// words), which the ASM services read from the control shared memory when they start
+    /// it. Call it before `execute` spawns them, like `write_input`.
+    pub fn write_random_seed(&self, seed: &[u64; RANDOM_SEED_WORDS]) -> ExecutorResult<()> {
+        self.shared.shmem_inputs.set_random_seed(seed).map_err(ExecutorError::asm_backend)
     }
 
     /// Appends raw input data to the inputs shared memory segment.

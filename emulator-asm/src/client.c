@@ -841,6 +841,18 @@ void client_run (void)
             exit(-1);
         }
 
+        // Pass the seed of zkvm_random_u64 through the control input, flag last; without
+        // one, clear the flag so a previous run's seed is not reused
+        if (random_seed_argument_set)
+        {
+            memcpy(&shmem_control_input_address[CONTROL_INPUT_RANDOM_SEED_INDEX], random_seed_argument, sizeof(random_seed_argument));
+            shmem_control_input_address[CONTROL_INPUT_RANDOM_SEED_SET_INDEX] = 1;
+        }
+        else
+        {
+            shmem_control_input_address[CONTROL_INPUT_RANDOM_SEED_SET_INDEX] = 0;
+        }
+
         // Set written counter
         *input_written_address = input_data_size; // in bytes
 

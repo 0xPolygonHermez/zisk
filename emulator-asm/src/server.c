@@ -24,6 +24,7 @@
 #include "c_provided.hpp"
 #include "log.hpp"
 #include "../../lib-c/c/src/keccakf_cache/keccakf_cache.hpp"
+#include "../../lib-c/c/src/fcall/fcall.hpp"
 
 /****************************/
 /* EMULATION FAULT RECOVERY */
@@ -1069,14 +1070,29 @@ void server_run (void)
         exit(-1);
     }
 
+    // Sync control input shared memory
+    if (msync((void *)shmem_control_input_address, CONTROL_INPUT_SIZE, MS_SYNC) != 0) {
+        asm_printf("ERROR: msync failed for shmem_control_input_address errno=%d=%s\n", errno, strerror(errno));
+        exit(-1);
+    }
+
+    // Seed of zkvm_random_u64 for this execution: the control input's, else --random_seed's,
+    // else none, so that the guest fails if it asks for one. Never a previous execution's
+    if (shmem_control_input_address[CONTROL_INPUT_RANDOM_SEED_SET_INDEX] != 0)
+    {
+        fcall_set_random_seed(&shmem_control_input_address[CONTROL_INPUT_RANDOM_SEED_INDEX]);
+    }
+    else if (random_seed_argument_set)
+    {
+        fcall_set_random_seed(random_seed_argument);
+    }
+    else
+    {
+        fcall_clear_random_seed();
+    }
+
     if (precompile_results_enabled)
     {
-        // Sync control input shared memory
-        if (msync((void *)shmem_control_input_address, CONTROL_INPUT_SIZE, MS_SYNC) != 0) {
-            asm_printf("ERROR: msync failed for shmem_control_input_address errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-
         // Sync precompile shared memory
         if (msync((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE, MS_SYNC) != 0) {
             asm_printf("ERROR: msync failed for shmem_precompile_address errno=%d=%s\n", errno, strerror(errno));

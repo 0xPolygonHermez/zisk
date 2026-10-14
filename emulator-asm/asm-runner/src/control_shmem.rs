@@ -15,7 +15,14 @@ enum ControlShmemOffsets {
     ShutdownFlag = 8,
     InputsSize = 16,
     ResetFlag = 24,
+    /// The seed of `zkvm_random_u64` for the next execution: 4 little-endian u64 words
+    RandomSeed = 32,
+    /// 1 once `RandomSeed` holds the seed, 0 for none (the guest then fails if it asks)
+    RandomSeedSet = 64,
 }
+
+/// Size of the `zkvm_random_u64` seed in u64 words (256 bits)
+pub const RANDOM_SEED_WORDS: usize = 4;
 
 impl ControlShmem {
     /// The total size of the control shared memory region, in bytes.
@@ -36,6 +43,26 @@ impl ControlShmem {
         self.writer.write_u64_at(ControlShmemOffsets::ShutdownFlag as usize, 0)?;
         self.writer.write_u64_at(ControlShmemOffsets::InputsSize as usize, 0)?;
         self.writer.write_u64_at(ControlShmemOffsets::ResetFlag as usize, 0)?;
+        self.clear_random_seed()?;
+        Ok(())
+    }
+
+    /// Sets the seed of `zkvm_random_u64` that the ASM services read when they start the next
+    /// execution. Write it before they start: the words first, then the flag
+    pub fn set_random_seed(&self, seed: &[u64; RANDOM_SEED_WORDS]) -> Result<()> {
+        for (i, word) in seed.iter().enumerate() {
+            self.writer.write_u64_at(ControlShmemOffsets::RandomSeed as usize + 8 * i, *word)?;
+        }
+        self.writer.write_u64_at(ControlShmemOffsets::RandomSeedSet as usize, 1)?;
+        Ok(())
+    }
+
+    /// Clears the seed of `zkvm_random_u64`, so that a guest that asks for one fails
+    pub fn clear_random_seed(&self) -> Result<()> {
+        self.writer.write_u64_at(ControlShmemOffsets::RandomSeedSet as usize, 0)?;
+        for i in 0..RANDOM_SEED_WORDS {
+            self.writer.write_u64_at(ControlShmemOffsets::RandomSeed as usize + 8 * i, 0)?;
+        }
         Ok(())
     }
 
@@ -111,11 +138,18 @@ mod tests {
         c.set_reset_flag().unwrap();
         assert_eq!(r.read_u64_at(24), 1);
 
+        // RandomSeed @ offsets 32..64 (words 4..7), RandomSeedSet @ offset 64 (word 8), as
+        // the C side reads them (CONTROL_INPUT_RANDOM_SEED_INDEX / _SET_INDEX)
+        c.set_random_seed(&[1, 2, 3, 4]).unwrap();
+        assert_eq!([32, 40, 48, 56].map(|o| r.read_u64_at(o)), [1, 2, 3, 4]);
+        assert_eq!(r.read_u64_at(64), 1);
+
         // reset() clears every slot
         c.reset().unwrap();
         assert_eq!(c.prec_hints_size(), 0);
         assert_eq!(r.read_u64_at(16), 0);
         assert_eq!(r.read_u64_at(24), 0);
+        assert_eq!([32, 40, 48, 56, 64].map(|o| r.read_u64_at(o)), [0; 5]);
 
         drop(r);
         unlink_segment(&seg);
