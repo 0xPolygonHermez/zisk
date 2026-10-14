@@ -240,6 +240,15 @@ Rebuild the guest and it can call `zisklib::foo(...)`.
   would silently call a different routine.
 - **Respect the callee-saved contract.** A routine that clobbers `s0..s11`,
   `sp`, `gp`, or `tp` will corrupt the guest after it returns.
+- **Guard result pointers handed to a precompile.** The precompiles halt on a
+  pointer that is not 8-byte aligned, and a C caller may pass any result buffer.
+  A routine that puts the caller's result pointer into a precompile's parameters
+  must test it first with `unal8(rRESULT, 0), j(xx_unal)` (one step when aligned)
+  and, when unaligned, compute into `U256_UNAL` (or its own scratch) and copy
+  out with `dma_xmemcpy`, which accepts any address. Results computed in
+  scratch and written with plain stores or DMA need no guard.
+  `scripts/benchmark/guests/unaligned_out.c` checks every library function at
+  result offsets 0..7.
 - **Thunks only run under ZisK.** On a host build a thunk panics. If you also want
   the program to run natively, give the wrapper a real fallback behind
   `#[cfg(not(zisk_guest))]`.
