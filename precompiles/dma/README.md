@@ -45,6 +45,17 @@ in both directions.
    the unaligned path, and partial head/tail words — so arbitrary alignments are
    handled without falling back to byte loops.
 
+   Three fused airs let the planner spend fewer instances: `DmaWithPrePost`
+   ([`pil/dma_with_pre_post.pil`](pil/dma_with_pre_post.pil)) is the controller
+   with its partial writes in one air, `DmaLoop` ([`pil/dma_loop.pil`](pil/dma_loop.pil))
+   is the aligned and the unaligned loop in one air, and `DmaCompact`
+   ([`pil/dma_compact.pil`](pil/dma_compact.pil)) inlines the two side by side on
+   the same rows (pil2-compiler `inline`), so an execution that uses the DMA
+   lightly pays a single instance. The strategy offers them to the shared
+   selection criterion (fewest instances, least prover memory); for a run,
+   `ZISK_DMA_COMPACT=never`, `ZISK_DMA_LOOP=never` or `ZISK_DMA_WITH_PRE_POST=never`
+   take an air out of the selection.
+
 ## Linking guarantee
 
 The `memcpy`/`memmove`/`memset`/`memcmp` symbols are **strong** definitions in

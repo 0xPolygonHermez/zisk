@@ -292,6 +292,35 @@ pub enum CheckPoint {
     Multiple(Vec<ChunkId>),
 }
 
+/// How much of an instance the planner expects to be filled.
+///
+/// The planner is the only place that knows this before the witness runs: deciding it *is* what
+/// planning does. Carrying it on the plan is what lets the witness phase report an instance's
+/// occupancy without every state machine having to report it for itself.
+///
+/// Both figures are in whatever unit the family plans in — rows for the airs that take one
+/// operation per row, slots for the packed ones — so a ratio is meaningful but a comparison
+/// across families is not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Occupancy {
+    /// Units the instance is expected to hold.
+    pub used: u64,
+
+    /// Units the instance could hold.
+    pub capacity: u64,
+}
+
+impl Occupancy {
+    /// Fraction of the instance that is used, as a percentage. Zero for a zero-capacity instance.
+    pub fn percent(&self) -> f64 {
+        if self.capacity == 0 {
+            0.0
+        } else {
+            100.0 * self.used as f64 / self.capacity as f64
+        }
+    }
+}
+
 /// The `Plan` struct represents a single execution plan.
 #[derive(Debug)]
 pub struct Plan {
@@ -320,6 +349,12 @@ pub struct Plan {
 
     /// The global instance ID associated with this plan.
     pub global_id: Option<usize>,
+
+    /// What the planner expects this instance to hold, when the planner knows it.
+    ///
+    /// `None` means the planner does not report it, not that the instance is empty: the witness
+    /// phase reports the occupancy as unknown rather than as zero.
+    pub occupancy: Option<Occupancy>,
 }
 
 impl Plan {
@@ -343,7 +378,24 @@ impl Plan {
         check_point: CheckPoint,
         meta: Option<Box<dyn Any + Send + Sync>>,
     ) -> Self {
-        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta, global_id: None }
+        Plan {
+            airgroup_id,
+            air_id,
+            segment_id,
+            instance_type,
+            check_point,
+            meta,
+            global_id: None,
+            occupancy: None,
+        }
+    }
+
+    /// Records what this instance is expected to hold, of what it could hold.
+    ///
+    /// Planners that know both figures call this; the rest leave the occupancy unknown.
+    pub fn with_occupancy(mut self, used: u64, capacity: u64) -> Self {
+        self.occupancy = Some(Occupancy { used, capacity });
+        self
     }
 
     /// Sets the global instance ID for the plan.

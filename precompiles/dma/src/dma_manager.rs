@@ -7,14 +7,16 @@ use zisk_common::{
 };
 use zisk_pil::{
     Dma64AlignedLargeTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemLargeTrace,
-    Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace, DmaPrePostTrace, DmaTrace,
-    DmaUnalignedTrace, ZiskProofValues,
+    Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace, DmaCompactTrace,
+    DmaLoopTrace, DmaPrePostTrace, DmaTrace, DmaUnalignedTrace, DmaWithPrePostTrace,
+    ZiskProofValues,
 };
 
 use crate::{
     Dma64AlignedInstance, Dma64AlignedMemCpySM, Dma64AlignedMemSM, Dma64AlignedMemSetSM,
-    Dma64AlignedSM, DmaCounterInputGen, DmaInstance, DmaPlanner, DmaPrePostInstance, DmaPrePostSM,
-    DmaSM, DmaUnalignedInstance, DmaUnalignedSM,
+    Dma64AlignedSM, DmaCompactInstance, DmaCompactSM, DmaCounterInputGen, DmaInstance,
+    DmaLoopInstance, DmaLoopSM, DmaPlanner, DmaPrePostInstance, DmaPrePostSM, DmaSM,
+    DmaUnalignedInstance, DmaUnalignedSM, DmaWithPrePostInstance, DmaWithPrePostSM,
 };
 
 /// The `DmaManager` struct represents the Dma manager,
@@ -24,6 +26,8 @@ pub struct DmaManager<F: PrimeField64> {
     /// Dma state machine
     dma_sm: Arc<DmaSM<F>>,
     dma_pre_post_sm: Arc<DmaPrePostSM<F>>,
+    /// `Dma` and `DmaPrePost` fused into a single air.
+    dma_with_pre_post_sm: Arc<DmaWithPrePostSM<F>>,
     /// One state machine per height of the `Dma64Aligned` air.
     dma_64_aligned_sm: Arc<Dma64AlignedSM<F>>,
     dma_64_aligned_large_sm: Arc<Dma64AlignedSM<F>>,
@@ -33,6 +37,10 @@ pub struct DmaManager<F: PrimeField64> {
     dma_64_aligned_memcpy_sm: Arc<Dma64AlignedMemCpySM<F>>,
     dma_64_aligned_memset_sm: Arc<Dma64AlignedMemSetSM<F>>,
     dma_unaligned_sm: Arc<DmaUnalignedSM<F>>,
+    /// `Dma64Aligned` and `DmaUnaligned` fused into a single air.
+    dma_loop_sm: Arc<DmaLoopSM<F>>,
+    /// `DmaWithPrePost` and `DmaLoop` side by side in a single air.
+    dma_compact_sm: Arc<DmaCompactSM<F>>,
 }
 
 impl<F: PrimeField64> DmaManager<F> {
@@ -43,6 +51,7 @@ impl<F: PrimeField64> DmaManager<F> {
     pub fn new() -> Arc<Self> {
         let dma_sm = DmaSM::new();
         let dma_pre_post_sm = DmaPrePostSM::new();
+        let dma_with_pre_post_sm = DmaWithPrePostSM::new();
         let dma_64_aligned_sm = Dma64AlignedSM::new(Dma64AlignedTrace::<()>::AIR_ID);
         let dma_64_aligned_large_sm = Dma64AlignedSM::new(Dma64AlignedLargeTrace::<()>::AIR_ID);
         let dma_64_aligned_mem_sm = Dma64AlignedMemSM::new(Dma64AlignedMemTrace::<()>::AIR_ID);
@@ -51,10 +60,13 @@ impl<F: PrimeField64> DmaManager<F> {
         let dma_64_aligned_memcpy_sm = Dma64AlignedMemCpySM::new();
         let dma_64_aligned_memset_sm = Dma64AlignedMemSetSM::new();
         let dma_unaligned_sm = DmaUnalignedSM::new();
+        let dma_loop_sm = DmaLoopSM::new();
+        let dma_compact_sm = DmaCompactSM::new();
 
         Arc::new(Self {
             dma_sm,
             dma_pre_post_sm,
+            dma_with_pre_post_sm,
             dma_64_aligned_sm,
             dma_64_aligned_large_sm,
             dma_64_aligned_mem_sm,
@@ -62,6 +74,8 @@ impl<F: PrimeField64> DmaManager<F> {
             dma_64_aligned_memcpy_sm,
             dma_64_aligned_memset_sm,
             dma_unaligned_sm,
+            dma_loop_sm,
+            dma_compact_sm,
         })
     }
 }
@@ -99,6 +113,10 @@ impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
             DmaPrePostTrace::<()>::AIR_ID => {
                 Box::new(DmaPrePostInstance::new(self.dma_pre_post_sm.clone(), ictx))
             }
+            // DMA controller fused with its pre/post sub-operations
+            DmaWithPrePostTrace::<()>::AIR_ID => {
+                Box::new(DmaWithPrePostInstance::new(self.dma_with_pre_post_sm.clone(), ictx))
+            }
             // DMA 64 aligned instances
             Dma64AlignedTrace::<()>::AIR_ID => {
                 Box::new(Dma64AlignedInstance::new(self.dma_64_aligned_sm.clone(), ictx))
@@ -121,6 +139,14 @@ impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
             // DMA unaligned instances
             DmaUnalignedTrace::<()>::AIR_ID => {
                 Box::new(DmaUnalignedInstance::new(self.dma_unaligned_sm.clone(), ictx))
+            }
+            // DMA loop instances, aligned or not
+            DmaLoopTrace::<()>::AIR_ID => {
+                Box::new(DmaLoopInstance::new(self.dma_loop_sm.clone(), ictx))
+            }
+            // The controller and the loop fused side by side
+            DmaCompactTrace::<()>::AIR_ID => {
+                Box::new(DmaCompactInstance::new(self.dma_compact_sm.clone(), ictx))
             }
             _ => {
                 panic!("DmaBuilder::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id)
@@ -148,6 +174,10 @@ impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
         proof_values.enable_dma_64_aligned_memset =
             F::from_bool(planned(Dma64AlignedMemSetTrace::<()>::AIR_ID));
         proof_values.enable_dma_unaligned = F::from_bool(planned(DmaUnalignedTrace::<()>::AIR_ID));
+        proof_values.enable_dma_loop = F::from_bool(planned(DmaLoopTrace::<()>::AIR_ID));
+        // The loop block of the fused air walks a chain of its own, whose segments are the
+        // instances of the air -- even the ones whose loop block got nothing to prove.
+        proof_values.enable_dma_compact = F::from_bool(planned(DmaCompactTrace::<()>::AIR_ID));
         // No air is instantiated for the dedicated inputcpy variant any more.
         proof_values.enable_dma_64_aligned_inputcpy = F::ZERO;
     }

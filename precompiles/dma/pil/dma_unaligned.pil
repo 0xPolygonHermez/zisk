@@ -38,14 +38,36 @@
 // to decompose into bytes since the chunks would be taken directly. It has been seen
 // that these operations are not the most frequent.
 
+//
+// PACKING (`op_x_row`)
+// -------------------
+// A row proves `op_x_row` consecutive words of ONE sequence, not `op_x_row` independent operations:
+// the words of a row are linked, so everything that describes the sequence stays a single column
+// per row — @[offset], @[main_step], @[is_memeq], @[count] and the base addresses. Lane j works on
+// @[src64] + j and @[dst64] + j, and only the per-word data (the read bytes and the value written)
+// is an array.
+//
+// A sequence of `count` words needs `count + 1` reads, because every write borrows the bytes the
+// offset leaves over from the FOLLOWING read. The extra read is the last slot of the sequence: it
+// reads and does not write, which is what @[seq_end] marks. So lane j writes exactly when a
+// following slot exists — lane j+1 of the same row, or lane 0 of the next row for the last lane.
+//
+// @[sel_op] marks how many lanes a row uses, as in `Dma64Aligned`: all of them except on the row
+// that ends the sequence. `op_x_row = 1` is exactly the unpacked air.
 airtemplate DmaUnaligned(int N = 2**21,                // Rows of instance  
                          const int RC = 2,             // Number of chunks for native value
+                         const int op_x_row = 1,       // Words of the sequence proved on each row
                          const expr enable_flag = 1,   // Expression to active the beggining of
                                                        // continuations, used for executions that
                                                        // not generates instances.
                                                        //
                          const int enable = E_DMA_ALL, // Enable operations
                          int cont_subid = 0) {         // Force subid used in continuations
+
+    assert(op_x_row >= 1, `op_x_row must be at least 1 but it's ${op_x_row}`);
+
+    // The lane whose following slot lives on the next row. Every other lane finds it beside it.
+    const int LAST_LANE = op_x_row - 1;
 
     const int enable_memcpy = (enable & E_DMA_MEMCPY) ? 1 : 0;
     const int enable_memcmp = (enable & E_DMA_MEMCMP) ? 1 : 0; 
@@ -131,6 +153,26 @@ airtemplate DmaUnaligned(int N = 2**21,                // Rows of instance
     col witness bits(1) seq_end;
     seq_end * (1 - seq_end) === 0;
 
+    // Lanes a row uses. Lane 0 is always used — a row with no word at all is a padding row, which
+    // @[seq_end] already marks — so only the lanes above it need a column, as in `Dma64Aligned`.
+    // Selected lanes are a prefix: once a lane is unused the rest are too.
+    const expr sel_op[op_x_row];
+    sel_op[0] = 1;
+
+    if (op_x_row > 1) {
+        col witness bits(1) air.sel_op_from_1[op_x_row - 1];
+        expr _ops_selected = sel_op[0];
+        for (int i = 1; i < op_x_row; ++i) {
+            sel_op_from_1[i - 1] * (1 - sel_op_from_1[i - 1]) === 0;
+            sel_op[i] = sel_op_from_1[i - 1];
+            (1 - sel_op[i - 1]) * sel_op[i] === 0;
+            _ops_selected += sel_op[i];
+        }
+        const expr air.ops_selected = _ops_selected;
+    } else {
+        const expr air.ops_selected = 1;
+    }
+
     col witness bits(1) previous_seq_end;
     previous_seq_end <== L1 * (segment_previous_seq_end - 'seq_end) + 'seq_end;
 
@@ -173,39 +215,47 @@ airtemplate DmaUnaligned(int N = 2**21,                // Rows of instance
     const expr previous_offset = L1 * (segment_previous_offset - 'offset) + 'offset;
     LAST * (1 - seq_end) * (offset - segment_last_offset) === 0;
 
-    col witness bits(8) read_bytes[8];
+    col witness bits(8) read_bytes[op_x_row][8];
 
-    range_dual_byte(read_bytes[1], read_bytes[0]);
-    range_dual_byte(read_bytes[3], read_bytes[2]);
-    range_dual_byte(read_bytes[5], read_bytes[4]);
-    range_dual_byte(read_bytes[7], read_bytes[6]);
-    
-    const expr read_value[2];
+    const expr read_value[op_x_row][2];
 
-    read_value[0] = read_bytes[0] + P2_8 * read_bytes[1]  + P2_16 * read_bytes[2]  + P2_24 * read_bytes[3];
-    read_value[1] = read_bytes[4] + P2_8 * read_bytes[5]  + P2_16 * read_bytes[6]  + P2_24 * read_bytes[7];
+    for (int j = 0; j < op_x_row; ++j) {
+        range_dual_byte(read_bytes[j][1], read_bytes[j][0]);
+        range_dual_byte(read_bytes[j][3], read_bytes[j][2]);
+        range_dual_byte(read_bytes[j][5], read_bytes[j][4]);
+        range_dual_byte(read_bytes[j][7], read_bytes[j][6]);
+
+        read_value[j][0] = read_bytes[j][0] + P2_8 * read_bytes[j][1] + P2_16 * read_bytes[j][2] + P2_24 * read_bytes[j][3];
+        read_value[j][1] = read_bytes[j][4] + P2_8 * read_bytes[j][5] + P2_16 * read_bytes[j][6] + P2_24 * read_bytes[j][7];
+    }
 
     // byte_0, byte_1, byte_2, byte_3, byte_4, byte_5, byte_6, byte_7, byte_0', byte_1' ...
+    //
+    // The bytes lane j's write borrows are the ones its FOLLOWING slot reads: lane j+1 of this row,
+    // and for the last lane the first read of the next row.
 
-    const expr next_bytes[8];
+    const expr next_bytes[op_x_row][8];
 
     // when an instance last row has seq_end = 1, means that next_bytes don't need to match
     // with first read_bytes, because it's new dma operation, in this situation set value
     // of segment_next_bytes to 0.
-
     col witness bits(1) no_last_no_seq_end;
     no_last_no_seq_end <== (1 - LAST) * (1 - seq_end);
 
     for (int i = 0; i < 8; ++i) {
+        for (int j = 0; j < LAST_LANE; ++j) {
+            next_bytes[j][i] = read_bytes[j + 1][i];
+        }
+
         // if LAST next_bytes are bytes sent to bus, if no LAST but is a seq_end, no sense
         // use bytes of the next input, in this case next_bytes = 0, otherwise next_bytes are
-        // the next read (src64 + 1) * 8
-        next_bytes[i] = LAST * segment_next_bytes[i] + no_last_no_seq_end * read_bytes[i]';
+        // the next read (src64 + op_x_row) * 8, which is lane 0 of the next row.
+        next_bytes[LAST_LANE][i] = LAST * segment_next_bytes[i] + no_last_no_seq_end * read_bytes[0][i]';
 
         // if last row of previous instance aren't the the last row of an input, segment_first_bytes
         // must match with bytes "received" from bus. Otherwise, zeros was sent to bus and them not
         // need to match with read_bytes because are bytes of other input.
-        (1 - segment_previous_seq_end) * L1 * (segment_first_bytes[i] - read_bytes[i]) === 0;
+        (1 - segment_previous_seq_end) * L1 * (segment_first_bytes[i] - read_bytes[0][i]) === 0;
 
         // force segment_next_bytes to zero, when it's finish of input
         segment_last_seq_end * segment_next_bytes[i] === 0;
@@ -215,23 +265,25 @@ airtemplate DmaUnaligned(int N = 2**21,                // Rows of instance
         segment_previous_seq_end * L1 * segment_first_bytes[i] === 0;
     }
 
-    col witness bits(32) write_value[2];
-    
-    write_value[0] <== offset_1 * (read_bytes[1] + P2_8 * read_bytes[2] + P2_16 * read_bytes[3] + P2_24 * read_bytes[4]) +
-                       offset_2 * (read_bytes[2] + P2_8 * read_bytes[3] + P2_16 * read_bytes[4] + P2_24 * read_bytes[5]) +
-                       offset_3 * (read_bytes[3] + P2_8 * read_bytes[4] + P2_16 * read_bytes[5] + P2_24 * read_bytes[6]) +
-                       offset_4 * (read_bytes[4] + P2_8 * read_bytes[5] + P2_16 * read_bytes[6] + P2_24 * read_bytes[7]) +
-                       offset_5 * (read_bytes[5] + P2_8 * read_bytes[6] + P2_16 * read_bytes[7] + P2_24 * next_bytes[0]) +
-                       offset_6 * (read_bytes[6] + P2_8 * read_bytes[7] + P2_16 * next_bytes[0] + P2_24 * next_bytes[1]) +
-                       offset_7 * (read_bytes[7] + P2_8 * next_bytes[0] + P2_16 * next_bytes[1] + P2_24 * next_bytes[2]);
-               
-    write_value[1] <== offset_1 * (read_bytes[5] + P2_8 * read_bytes[6] + P2_16 * read_bytes[7] + P2_24 * next_bytes[0]) +
-                       offset_2 * (read_bytes[6] + P2_8 * read_bytes[7] + P2_16 * next_bytes[0] + P2_24 * next_bytes[1]) +
-                       offset_3 * (read_bytes[7] + P2_8 * next_bytes[0] + P2_16 * next_bytes[1] + P2_24 * next_bytes[2]) +
-                       offset_4 * (next_bytes[0] + P2_8 * next_bytes[1] + P2_16 * next_bytes[2] + P2_24 * next_bytes[3]) +
-                       offset_5 * (next_bytes[1] + P2_8 * next_bytes[2] + P2_16 * next_bytes[3] + P2_24 * next_bytes[4]) +
-                       offset_6 * (next_bytes[2] + P2_8 * next_bytes[3] + P2_16 * next_bytes[4] + P2_24 * next_bytes[5]) +
-                       offset_7 * (next_bytes[3] + P2_8 * next_bytes[4] + P2_16 * next_bytes[5] + P2_24 * next_bytes[6]);
+    col witness bits(32) write_value[op_x_row][2];
+
+    for (int j = 0; j < op_x_row; ++j) {
+        write_value[j][0] <== offset_1 * (read_bytes[j][1] + P2_8 * read_bytes[j][2] + P2_16 * read_bytes[j][3] + P2_24 * read_bytes[j][4]) +
+                              offset_2 * (read_bytes[j][2] + P2_8 * read_bytes[j][3] + P2_16 * read_bytes[j][4] + P2_24 * read_bytes[j][5]) +
+                              offset_3 * (read_bytes[j][3] + P2_8 * read_bytes[j][4] + P2_16 * read_bytes[j][5] + P2_24 * read_bytes[j][6]) +
+                              offset_4 * (read_bytes[j][4] + P2_8 * read_bytes[j][5] + P2_16 * read_bytes[j][6] + P2_24 * read_bytes[j][7]) +
+                              offset_5 * (read_bytes[j][5] + P2_8 * read_bytes[j][6] + P2_16 * read_bytes[j][7] + P2_24 * next_bytes[j][0]) +
+                              offset_6 * (read_bytes[j][6] + P2_8 * read_bytes[j][7] + P2_16 * next_bytes[j][0] + P2_24 * next_bytes[j][1]) +
+                              offset_7 * (read_bytes[j][7] + P2_8 * next_bytes[j][0] + P2_16 * next_bytes[j][1] + P2_24 * next_bytes[j][2]);
+
+        write_value[j][1] <== offset_1 * (read_bytes[j][5] + P2_8 * read_bytes[j][6] + P2_16 * read_bytes[j][7] + P2_24 * next_bytes[j][0]) +
+                              offset_2 * (read_bytes[j][6] + P2_8 * read_bytes[j][7] + P2_16 * next_bytes[j][0] + P2_24 * next_bytes[j][1]) +
+                              offset_3 * (read_bytes[j][7] + P2_8 * next_bytes[j][0] + P2_16 * next_bytes[j][1] + P2_24 * next_bytes[j][2]) +
+                              offset_4 * (next_bytes[j][0] + P2_8 * next_bytes[j][1] + P2_16 * next_bytes[j][2] + P2_24 * next_bytes[j][3]) +
+                              offset_5 * (next_bytes[j][1] + P2_8 * next_bytes[j][2] + P2_16 * next_bytes[j][3] + P2_24 * next_bytes[j][4]) +
+                              offset_6 * (next_bytes[j][2] + P2_8 * next_bytes[j][3] + P2_16 * next_bytes[j][4] + P2_24 * next_bytes[j][5]) +
+                              offset_7 * (next_bytes[j][3] + P2_8 * next_bytes[j][4] + P2_16 * next_bytes[j][5] + P2_24 * next_bytes[j][6]);
+    }
 
     // At begining of sequence    
     // DMA BUS [op, dst64, src64, dst_offset, src_offset, bytes, main_step]
@@ -259,6 +311,8 @@ airtemplate DmaUnaligned(int N = 2**21,                // Rows of instance
     // OP_DMA_XMEMCPY  (dst, 0, src, 0, 0, 0, 0, main_step, count, src_offset)
     // OP_DMA_XMEMEQ   (dst, 0, src, 0, 0, 0, 0, main_step, count, src_offset)
 
+    // One operation per row whatever the packing: the words of a row belong to the same sequence,
+    // and the sequence is announced once, on the row where it starts.
     proves_operation(op:, 
                      a: [dst64 * 8, 0], 
                      b: [src64 * 8, 0], 
@@ -268,21 +322,32 @@ airtemplate DmaUnaligned(int N = 2**21,                // Rows of instance
                      extra_args: [offset], 
                      mul: previous_seq_end);
 
-    // memory access
-    precompiled_mem_load(
-        sel: 1,
-        main_step: ,
-        addr: src64 * 8,
-        value: read_value
-    );
+    // Lane j writes only if a following slot exists to lend it the bytes the offset leaves over:
+    // lane j+1 of this row, or lane 0 of the next row for the last lane. The slot with no follower
+    // is the sequence's extra read, which reads and does not write.
+    const expr write_sel[op_x_row];
+    for (int j = 0; j < LAST_LANE; ++j) {
+        write_sel[j] = sel_op[j + 1];
+    }
+    write_sel[LAST_LANE] = (1 - seq_end);
 
-    precompiled_mem_op(
-        is_write:,
-        sel: (1 - seq_end),
-        main_step:,
-        addr: dst64 * 8,
-        value: write_value
-    );
+    // memory access
+    for (int j = 0; j < op_x_row; ++j) {
+        precompiled_mem_load(
+            sel: sel_op[j],
+            main_step: ,
+            addr: (src64 + j) * 8,
+            value: read_value[j]
+        );
+
+        precompiled_mem_op(
+            is_write:,
+            sel: write_sel[j],
+            main_step:,
+            addr: (dst64 + j) * 8,
+            value: write_value[j]
+        );
+    }
 
 
     // PADDING
@@ -309,14 +374,14 @@ airtemplate DmaUnaligned(int N = 2**21,                // Rows of instance
     //   src64 = 'src64 + 1
     //   dst64 = 'dst64 + 1
 
-    continue_seq_on_l1 * (count - (segment_previous_count - 1)) === 0;
-    continue_seq_on_no_l1 * (count - ('count - 1)) === 0;
+    continue_seq_on_l1 * (count - (segment_previous_count - op_x_row)) === 0;
+    continue_seq_on_no_l1 * (count - ('count - op_x_row)) === 0;
 
-    continue_seq_on_l1 * (src64 - (segment_previous_src64 + 1)) === 0;
-    continue_seq_on_no_l1 * (src64 - ('src64 + 1)) === 0;
+    continue_seq_on_l1 * (src64 - (segment_previous_src64 + op_x_row)) === 0;
+    continue_seq_on_no_l1 * (src64 - ('src64 + op_x_row)) === 0;
 
-    continue_seq_on_l1 * (dst64 - (segment_previous_dst64 + 1)) === 0;
-    continue_seq_on_no_l1 * (dst64 - ('dst64 + 1)) === 0;    
+    continue_seq_on_l1 * (dst64 - (segment_previous_dst64 + op_x_row)) === 0;
+    continue_seq_on_no_l1 * (dst64 - ('dst64 + op_x_row)) === 0;    
 
     // LATCHS:
     //
@@ -334,8 +399,10 @@ airtemplate DmaUnaligned(int N = 2**21,                // Rows of instance
     continue_seq_on_no_l1 * (main_step - 'main_step) === 0;    
 
     // At end of sequence
-    //    count must be 0 at end of sequence
-    count * seq_end === 0;
+    //    A row that does not end the sequence uses every lane; the row that ends it uses as many as
+    //    the sequence has left, plus the extra read that writes nothing — hence the minus one.
+    seq_end * (count - (ops_selected - 1)) === 0;
+    (1 - seq_end) * (ops_selected - op_x_row) === 0;
 
     // SECURITY: control count no negative
     //

@@ -1,0 +1,77 @@
+require "dma/pil/dma.pil"
+require "dma/pil/dma_loop.pil"
+require "dma/pil/dma_with_pre_post.pil"
+
+/*
+    DmaCompact
+    ==========
+
+    Two DMA airs inlined into a single one:
+
+      · the controller with its PRE/POST sub-operations -- `DmaWithPrePost`
+                                                            (precompiles/dma/pil/dma_with_pre_post.pil)
+      · the 64-bit loop, aligned or not                  -- `DmaLoop`
+                                                            (precompiles/dma/pil/dma_loop.pil)
+
+    EVERY row carries the two of them at once: the `wpp_` block is one row of the `DmaWithPrePost`
+    sequence and the `loop_` block one row of the `DmaLoop` sequence. Each block keeps its own
+    columns and its own buses, the blocks share nothing but the row index, and no constraint
+    crosses from one block to the other. Read this air as the two of them stacked side by side.
+
+        ROW i   ┌──────────────────────────────────────────────────────────────────┐
+                │ wpp_*   : one row of the `DmaWithPrePost` sequence               │
+                │ loop_*  : one row of the `DmaLoop` sequence (loop_op_x_row words) │
+                └──────────────────────────────────────────────────────────────────┘
+
+    Why
+    ───
+
+    Every DMA operation that is not direct needs a controller row, and every operation with at least
+    one whole 64-bit word needs loop rows, so an execution that uses the DMA at all opens a
+    `DmaWithPrePost` instance plus one loop instance (a `Dma64Aligned*` one, a `DmaUnaligned` one, or
+    both). When the DMA is used lightly all of them are far from full, and what costs is not the basic
+    proof but the recursion over the number of instances. One instance of this air does the work of
+    two or three.
+
+    How
+    ───
+
+    The two airtemplates are expanded here with `inline`, which declares their columns, air values
+    and constraints on this air with the alias as prefix. Nothing is transcribed: the constraints
+    and the bus interactions of each block ARE the ones of the airtemplate it comes from, so the
+    soundness argument is theirs (see the two files above) and the witness is computed by their own
+    code, through the row adapters of `precompiles/dma/src/dma_block_rows.rs`.
+
+    The bus interactions differ in shape but not in content: the two blocks share one gsum
+    accumulator, so the standard library packs their terms into different clusters than it does when
+    each air accumulates on its own.
+
+    Operations do not cross the blocks: the controller of the `wpp_` block delegates its loop on the
+    operation bus exactly as `DmaWithPrePost` does, and whichever loop air the planner routed that
+    loop to proves it -- the `loop_` block of this same instance, or any other.
+
+    Continuations
+    ─────────────
+
+    The `wpp_` block has none: an operation is atomic there (its extra PRE row must follow its DMA
+    row), so every instance proves whole operations and nothing flows from one to the next.
+
+    The `loop_` block keeps the continuation chain of `DmaLoop` on DMA_LOOP_CONT_ID, with a
+    `cont_subid` of its own taken from the same `proof.dma_loop` container, so its chain never mixes
+    with the one of a standalone `DmaLoop`. The instances of this air are the segments of that chain,
+    and `loop_enable_flag` gates its global seed exactly as `enable_flag` does in `DmaLoop`: it has to
+    be on whenever this air has an instance, even when its `loop_` block is only padding.
+*/
+
+airtemplate DmaCompact(int N = 2**20,
+                       const expr loop_enable_flag = 1,   // gates the global seed of the loop chain
+                       const int loop_op_x_row = 4,       // 64-bit words per row of the loop block
+                       int loop_cont_subid = 0) {         // subid of the loop chain, 0 = auto
+
+    // BLOCK 1 of 2 -- the controller with its PRE/POST sub-operations
+    inline DmaWithPrePost(N: N) alias wpp_;
+
+    // BLOCK 2 of 2 -- the loop, aligned or not
+    inline DmaLoop(N: N, enable_flag: loop_enable_flag, op_x_row: loop_op_x_row,
+                   cont_subid: loop_cont_subid) alias loop_;
+}

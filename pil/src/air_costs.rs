@@ -185,11 +185,26 @@ pub const DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST: usize = 6031;
 /// `Dma64AlignedMemCpy`: 3.48 GB.
 pub const DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST: usize = 3564;
 
-/// `DmaUnaligned`: 2.69 GB.
-pub const DMA_UNALIGNED_INSTANCE_COST: usize = 2755;
+/// `DmaUnaligned`: 2.29 GB at `2**20` and four words per row, ESTIMATED -- refresh from
+/// `build/setup.log` on the next setup. Scaled from the 9.14 GB it measured at `2**22`: the
+/// prover's peak is linear in the rows.
+pub const DMA_UNALIGNED_INSTANCE_COST: usize = 2340;
 
 /// `DmaPrePost`: 4.63 GB.
 pub const DMA_PRE_POST_INSTANCE_COST: usize = 4741;
+
+/// `DmaWithPrePost`: 6.07 GB.
+pub const DMA_WITH_PRE_POST_INSTANCE_COST: usize = 6216;
+
+/// `DmaLoop`: 5.20 GB at `2**21` rows and 4 words per row. Measured 4.57 GB on a setup without
+/// aggregation, plus the 0.63 GB per `2**21` rows the aggregated setup adds on every air above.
+pub const DMA_LOOP_INSTANCE_COST: usize = 5325;
+
+/// `DmaCompact`: 4.81 GB at `2**20` rows. It is `DmaWithPrePost` and `DmaLoop` inlined side by
+/// side (263 columns): measured 4.49 GB on a setup without aggregation, plus the 0.32 GB per `2**20`
+/// rows the aggregated setup adds. Cheaper than the two blocks apart at its height (3.04 + 2.60
+/// GB), since they share one gsum and one instance's fixed overhead.
+pub const DMA_COMPACT_INSTANCE_COST: usize = 4920;
 
 /// `JumpDest`: 3.40 GB.
 pub const JUMP_DEST_INSTANCE_COST: usize = 3482;
@@ -301,6 +316,9 @@ mod tests {
                     Dma64AlignedMemCpyTrace: Dma64AlignedMemCpyTraceRow: DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST,
                     DmaUnalignedTrace: DmaUnalignedTraceRow: DMA_UNALIGNED_INSTANCE_COST,
                     DmaPrePostTrace: DmaPrePostTraceRow: DMA_PRE_POST_INSTANCE_COST,
+                    DmaWithPrePostTrace: DmaWithPrePostTraceRow: DMA_WITH_PRE_POST_INSTANCE_COST,
+                    DmaLoopTrace: DmaLoopTraceRow: DMA_LOOP_INSTANCE_COST,
+                    DmaCompactTrace: DmaCompactTraceRow: DMA_COMPACT_INSTANCE_COST,
                     JumpDestTrace: JumpDestTraceRow: JUMP_DEST_INSTANCE_COST,
                 );
     }

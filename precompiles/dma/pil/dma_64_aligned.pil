@@ -30,7 +30,8 @@ airtemplate Dma64Aligned(int N = 2**21,                   // Rows of instance
                                                           // Not extendend memcpy where need load count
                                                           // From memory position
                                                           //
-                         int cont_subid = 0)  {           // Force subid used in continuations
+                         int cont_subid = 0,             // Force subid used in continuations
+                         int lanes_x_row = 4)  {
 
     const int enable_memcpy = (enable & E_DMA_MEMCPY) ? 1 : 0;
     const int enable_memcmp = (enable & E_DMA_MEMCMP) ? 1 : 0; 
