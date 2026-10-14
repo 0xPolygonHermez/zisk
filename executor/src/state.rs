@@ -40,8 +40,8 @@ pub struct ExecutionState<F: PrimeField64> {
     /// signature has no stdin slot).
     pub stdin: ArcSwap<ZiskStdin>,
 
-    /// Seed for the next run, set together with `stdin`. `None` until the first job's
-    /// inputs are set.
+    /// Seed for the next run, set together with `stdin` by `set_stdin_and_seed`. `None` until
+    /// the first call.
     seed: Mutex<Option<ExecutionSeed>>,
 
     /// Planning information for main state machines (minimal traces from emulation).
@@ -102,7 +102,7 @@ impl<F: PrimeField64> ExecutionState<F> {
     }
 
     /// Sets the standard input and seed for the next execution.
-    pub fn set_job_inputs(&self, stdin: ZiskStdin, seed: ExecutionSeed) {
+    pub fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) {
         self.stdin.store(Arc::new(stdin));
         *self.seed.lock().unwrap_or_else(PoisonError::into_inner) = Some(seed);
     }
@@ -115,7 +115,7 @@ impl<F: PrimeField64> ExecutionState<F> {
     /// Gets the seed for the current execution.
     ///
     /// # Errors
-    /// Returns [`ExecutorError::SeedNotSet`] if no job inputs have been set yet.
+    /// Returns [`ExecutorError::SeedNotSet`] if `set_stdin_and_seed` has not been called yet.
     pub fn get_seed(&self) -> ExecutorResult<ExecutionSeed> {
         self.seed.lock().unwrap_or_else(PoisonError::into_inner).ok_or(ExecutorError::SeedNotSet)
     }

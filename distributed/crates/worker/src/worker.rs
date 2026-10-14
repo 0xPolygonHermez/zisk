@@ -1258,7 +1258,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
         }
 
-        prover.set_job_inputs(stdin, seed)?;
+        prover.set_stdin_and_seed(stdin, seed)?;
 
         if matches!(phase_inputs, ProvePhaseInputs::Contributions()) {
             prover.set_partition(
@@ -1324,7 +1324,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
         }
 
-        prover.set_job_inputs(stdin.clone(), seed)?;
+        prover.set_stdin_and_seed(stdin.clone(), seed)?;
 
         prover.set_partition(
             partition_info.total_compute_units,

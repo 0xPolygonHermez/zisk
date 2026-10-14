@@ -129,8 +129,8 @@ impl ProverEngine for EmuProver {
         self.core_prover.rank_info.local_rank
     }
 
-    fn set_job_inputs(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
-        self.core_prover.backend.set_job_inputs(stdin, seed)
+    fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
+        self.core_prover.backend.set_stdin_and_seed(stdin, seed)
     }
 
     fn register_program(&self, program_id: &ProgramId, _with_hints: bool) -> Result<()> {

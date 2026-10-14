@@ -172,7 +172,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         use_hints: bool,
     ) -> ExecutorResult<(ZiskExecutorSummary, Vec<(u64, u32)>, Vec<PlanSummaryEntry>)> {
         self.state.set_rom(zisk_rom, use_hints);
-        self.state.set_job_inputs(stdin, seed);
+        self.state.set_stdin_and_seed(stdin, seed);
         let registry = NoopProofRegistry::default();
         let global_ids = RwLock::new(Vec::new());
         self.execute_inner(&registry, None, &global_ids)?;
@@ -235,8 +235,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     }
 
     /// Sets the standard input and seed for the next execution.
-    pub fn set_job_inputs(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> ExecutorResult<()> {
-        self.state.set_job_inputs(stdin, seed);
+    pub fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> ExecutorResult<()> {
+        self.state.set_stdin_and_seed(stdin, seed);
         Ok(())
     }
 

@@ -409,7 +409,7 @@ pub trait ProverEngine {
     fn local_rank(&self) -> i32;
 
     /// Set the standard input and seed for the next execution or proof.
-    fn set_job_inputs(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()>;
+    fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()>;
 
     /// Register a previously set-up program as the active one.
     fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()>;
@@ -671,8 +671,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Low-level counterpart of the `seed` argument of [`execute`](Self::execute) and friends,
     /// for callers driving the phases themselves (distributed workers): the seed must already be
     /// the one every rank and worker of the task shares.
-    pub fn set_job_inputs(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
-        self.prover.set_job_inputs(stdin, seed)
+    pub fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
+        self.prover.set_stdin_and_seed(stdin, seed)
     }
 
     /// Returns `seed`, or a fresh one drawn on rank 0 and broadcast to every rank.

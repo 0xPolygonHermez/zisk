@@ -229,8 +229,8 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!(e.to_string()))
     }
 
-    pub fn set_job_inputs(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
-        self.executor.set_job_inputs(stdin, seed).map_err(Into::into)
+    pub fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
+        self.executor.set_stdin_and_seed(stdin, seed).map_err(Into::into)
     }
 
     pub fn execution_result(&self) -> Result<(ZiskExecutorSummary, ExecutorStatsHandle)> {
@@ -238,7 +238,7 @@ impl ProverBackend {
     }
 
     pub(crate) fn execute(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<ExecuteOutput> {
-        self.executor.set_job_inputs(stdin, seed)?;
+        self.executor.set_stdin_and_seed(stdin, seed)?;
 
         let start = std::time::Instant::now();
 
@@ -265,7 +265,7 @@ impl ProverBackend {
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        self.executor.set_job_inputs(stdin, seed)?;
+        self.executor.set_stdin_and_seed(stdin, seed)?;
 
         let rank_info = self.proofman.get_rank_info();
 
@@ -342,7 +342,7 @@ impl ProverBackend {
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        self.executor.set_job_inputs(stdin, seed)?;
+        self.executor.set_stdin_and_seed(stdin, seed)?;
 
         self.proofman
             .verify_proof_constraints_from_lib(&debug_info)
@@ -376,7 +376,7 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        self.executor.set_job_inputs(stdin, seed)?;
+        self.executor.set_stdin_and_seed(stdin, seed)?;
 
         let minimal = matches!(proof_kind, ProofKind::VadcopFinalMinimal);
 

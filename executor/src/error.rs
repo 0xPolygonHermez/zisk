@@ -104,7 +104,7 @@ pub enum ExecutorError {
     #[error("ROM not initialized")]
     RomNotInitialized,
 
-    /// No execution seed has been installed yet via `ZiskExecutor::set_job_inputs`.
+    /// No execution seed has been installed yet via `ZiskExecutor::set_stdin_and_seed`.
     #[error("execution seed not set")]
     SeedNotSet,
 
