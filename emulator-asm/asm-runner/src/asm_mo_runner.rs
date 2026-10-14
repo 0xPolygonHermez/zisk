@@ -292,14 +292,10 @@ pub fn device_mem_witness_requested() -> bool {
     device_mem_witness()
 }
 
-/// Whether the memory-ops emulator runs in its light form (no values, no steps): the default
-/// unless the device witness needs them; `ZISK_MOPS_LIGHT=1`/`0` forces either.
+/// Whether the memory-ops emulator runs in its light form (no values, no steps): whenever the
+/// device witness, which needs them, is off.
 pub fn mops_light() -> bool {
-    match std::env::var("ZISK_MOPS_LIGHT").as_deref() {
-        Ok("1") => true,
-        Ok("0") => false,
-        _ => !device_mem_witness_requested(),
-    }
+    !device_mem_witness_requested()
 }
 
 /// Releases the arena a block still holds (its memory instances were not all computed here):
@@ -386,11 +382,6 @@ impl AsmRunnerMO {
         #[cfg(gpu)]
         zisk_sm_mem_planner::clear_gpu_ram_witness();
         zisk_common::MEM_ROWS_ON_DEVICE.store(false, Ordering::Release);
-        if mops_light() && device_mem_witness_requested() {
-            return Err(anyhow::anyhow!(
-                "ZISK_MOPS_LIGHT=1 with the device witness on: the light memory-ops stream carries no values, the device witness needs them"
-            ));
-        }
         // Take the optional GPU planner for this block.
         #[cfg(gpu)]
         let gpu_count_and_plan_opt: Option<GpuCountAndPlan> = preloaded.gpu_count_and_plan.take();
