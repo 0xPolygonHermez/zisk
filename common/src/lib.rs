@@ -70,15 +70,15 @@ pub fn mem_rows_on_device() -> bool {
 
 /// Whether the memory witness is built on the GPU planner when the assembly emulator runs with
 /// it: every owned memory instance takes its rows from the planner's staged image (or is built on
-/// demand) into its host trace buffer. `ZISK_MEM_GPU_FILL=off` (or `cpu`) keeps the CPU witness;
-/// unset, empty or `on` means on, as does an unknown value (with a warning). Read once.
+/// demand) into its host trace buffer. `ZISK_MEM_GPU_FILL=0` keeps the CPU witness; unset or `1`
+/// means on, as does any other value (with a warning). Read once, at the worker's start.
 pub fn device_mem_witness() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| match std::env::var("ZISK_MEM_GPU_FILL").as_deref() {
-        Ok("off") | Ok("cpu") => false,
-        Ok("") | Ok("on") | Err(_) => true,
+        Ok("0") => false,
+        Ok("1") | Err(_) => true,
         Ok(other) => {
-            tracing::warn!("ZISK_MEM_GPU_FILL={other}: unknown value, the device witness is on");
+            tracing::warn!("ZISK_MEM_GPU_FILL={other}: expected 0 or 1, the device witness is on");
             true
         }
     })

@@ -2,8 +2,8 @@
 # The device memory witness against the CPU rows, with its fallbacks: proves one Ethereum block
 # (the first of BLOCK_INPUTS_SINGLE) with the assembly emulator on the GPU in every configuration
 # below. Each proof must verify, and the memory airs' row hashes (ZISK_MEM_TRACE_HASH_DIR) must
-# equal those of the CPU path (ZISK_MEM_GPU_FILL=off). The fallback cases must also log the
-# fallback they exercise. ZISK_MEM_GPU_FILL is unset for every case but "off" (the device witness
+# equal those of the CPU path (ZISK_MEM_GPU_FILL=0). The fallback cases must also log the
+# fallback they exercise. ZISK_MEM_GPU_FILL is unset for every case but "off" (ZISK_MEM_GPU_FILL=0, the device witness
 # is the default).
 #
 # Needs cargo-zisk built with `--features mem-witness-test`: the knobs below and the row-hash dump
@@ -100,7 +100,7 @@ main() {
 
     local plan_fail="no device plan for this block; planning it on the CPU"
     # The CPU path: its hashes are the reference.
-    run_case off 0 "" ZISK_MEM_GPU_FILL=off || return 1
+    run_case off 0 "" ZISK_MEM_GPU_FILL=0 || return 1
     # The device witness (the default), with the build checked for the test knobs.
     run_case arena 0 "" || return 1
     if ! grep -qF "[mops] test knobs enabled" "${LOGS_DIR}/mem_witness/arena.log"; then
