@@ -3,9 +3,7 @@
    routine that hands the caller's result pointer to one must detect an unaligned
    result (`unal8`) and compute into aligned scratch instead. Each call must write
    the same bytes as a call with an aligned result, and touch nothing around them.
-   Functions whose result is only a bool or a return value are left out, and so
-   is zkvm_keccak_f1600: it is the bare keccakf precompile on the caller's state,
-   emitted at the call site with no library routine to test the pointer.
+   Functions whose result is only a bool or a return value are left out.
    Output: per case, one byte with bit `o` set when offset `o` is right (0xff when
    all eight are). check.sh compares it with a golden snapshot.
    Build with -DONLY=n to run case n alone (to find the one that halts), and with
@@ -142,6 +140,10 @@ static void c_be_not(uint8_t* o) { zkvm_u256_not(&BA, (zkvm_u256*)o); }
 
 /* zkvm_accelerators.h */
 static void c_keccak(uint8_t* o) { zkvm_keccak256(HB, 300, (zkvm_keccak256_hash*)o); }
+static void c_keccakf(uint8_t* o) {
+    for (int i = 0; i < 200; i++) o[i] = HB[i];
+    zkvm_keccak_f1600((uint64_t*)o);
+}
 static void c_sha256(uint8_t* o) { zkvm_sha256(HB, 300, (zkvm_sha256_hash*)o); }
 static void c_ripemd160(uint8_t* o) { zkvm_ripemd160(HB, 300, (zkvm_ripemd160_hash*)o); }
 static void c_ecrecover(uint8_t* o) { zkvm_secp256k1_ecrecover(&RMSG, &RSIG, 1, (zkvm_secp256k1_pubkey*)o); }
@@ -187,11 +189,11 @@ static const struct {
     /* 77 */ C(c_blake2f, 64), C(c_bl_g1add, 96), C(c_bl_g1msm, 96), C(c_bl_g2add, 192),
     /* 81 */ C(c_bl_g2msm, 192), C(c_bl_map1, 96), C(c_bl_map2, 192),
     /* 84 */ C(c_le_sdiv_neg, 32), C(c_le_smod_neg, 32), C(c_le_sdivmod_negb, 64), C(c_be_sdiv_neg, 32),
-    /* 88 */ C(c_be_smod_neg, 32), C(c_modexp_u64_long, 64),
+    /* 88 */ C(c_be_smod_neg, 32), C(c_modexp_u64_long, 64), C(c_keccakf, 200),
 };
 #define NCASES (sizeof(CASES) / sizeof(CASES[0]))
 
-#define MAX_LEN 192
+#define MAX_LEN 200
 #define GUARD 8
 #define FILL 0xA5
 
