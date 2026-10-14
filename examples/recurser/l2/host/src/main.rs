@@ -105,10 +105,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Optional (ZISK_L2_PLONK=1): wrap the folded proof into a PLONK/SNARK.
     if plonk {
         timer_start_info!(WRAP_PLONK);
-        let plonk = client.wrap_proof(&abc, ProofKind::Plonk).run()?.await?;
+        let wrapped = client.wrap_proof(&abc, ProofKind::Plonk).run()?.await?;
         timer_stop_and_log_info!(WRAP_PLONK);
         // On the result, not a copy of its proof: it carries the PLONK key it was wrapped under.
-        plonk.with_setup_vk(agg_vk).verify()?;
+        wrapped.with_setup_vk(agg_vk).verify()?;
         println!("PLONK proof verified.");
     }
 
