@@ -63,7 +63,7 @@ pub fn device_mem_witness_failed(_reason: &str) {}
 
 /// No device witness on this platform.
 pub fn device_mem_witness_requested() -> bool {
-    zisk_common::device_mem_witness()
+    zisk_common::device_mem_witness_active()
 }
 
 /// The light memory-ops emulator whenever the device witness is off.
