@@ -11,11 +11,11 @@
 #   ZISK_MEM_TEST_CHUNK_REJECT=<k> the planner rejects chunk k: same
 #   ZISK_MEM_TEST_RETENTION=<n>    the block exceeds the retention cap: GPU plan, CPU witness
 #   ZISK_MEM_TEST_LIGHT_RECORD=1   a light-form record in the stream: same
-#   ZISK_MEM_TEST_PREP_FAIL=<fam>  a family's preparation has no room: the family stays on the CPU
-#                                  (rom takes input along, both take MemAlign; ram: the whole
-#                                  preparation fails) and its first instance sends the block there
+#   ZISK_MEM_TEST_PREP_FAIL=<step> a step of the preparation (ram, rom, input, align) has no room:
+#                                  the preparation fails and the first memory instance sends the
+#                                  block's memory instances to the CPU, collected in one pass
 #   ZISK_MEM_TEST_FILL_FAIL=<f>.<i> an instance the device cannot fill: it and the rest of the
-#                                  block's memory instances are collected on the CPU
+#                                  block's memory instances are collected on the CPU in one pass
 #   ZISK_MEM_TEST_SCRATCH_OVERFLOW=1 a fill retried without its image, then with the images dropped
 #   ZISK_MEM_TEST_UNSTAGED=<f>.<i> an owned instance without an image: built on demand
 #   ZISK_MEM_TEST_PIECE_POTENTIALS=<n> smaller pieces: block records split into sub-records
@@ -111,12 +111,12 @@ main() {
     run_case retention 0 "the retained accesses are incomplete for this block" ZISK_MEM_TEST_RETENTION=1000000 || return 1
     # A light-form record seen in the stream: the GPU plan stands, no device witness.
     run_case light_record 0 "the stream is in the light form" ZISK_MEM_TEST_LIGHT_RECORD=1 || return 1
-    # A family's preparation without room: ram fails the whole preparation, the others leave their family on the CPU.
+    # A step of the preparation without room: the preparation fails, the block's memory instances go to the CPU.
     run_case prep_fail_ram 0 "the arrival index can address; RAM witness off" ZISK_MEM_TEST_PREP_FAIL=ram || return 1
-    run_case prep_fail_rom 0 "RomData and InputData stays on the CPU for this block (no room for the access index)" ZISK_MEM_TEST_PREP_FAIL=rom || return 1
-    run_case prep_fail_input 0 "InputData stays on the CPU for this block (no room for the input image)" ZISK_MEM_TEST_PREP_FAIL=input || return 1
-    run_case prep_fail_align 0 "MemAlign stays on the CPU for this block (no region or index)" ZISK_MEM_TEST_PREP_FAIL=align || return 1
-    # An instance the device cannot fill: it and the remaining memory instances are collected on the CPU.
+    run_case prep_fail_rom 0 "no room for the access table below the retained accesses" ZISK_MEM_TEST_PREP_FAIL=rom || return 1
+    run_case prep_fail_input 0 "input image below the retained accesses" ZISK_MEM_TEST_PREP_FAIL=input || return 1
+    run_case prep_fail_align 0 "no room for the access order below the retained accesses" ZISK_MEM_TEST_PREP_FAIL=align || return 1
+    # An instance the device cannot fill: it and the remaining memory instances are collected on the CPU in one pass.
     local fill_fail="memory witness on the device failed"
     run_case fill_fail_ram 0 "${fill_fail}" ZISK_MEM_TEST_FILL_FAIL=0.1 || return 1
     run_case fill_fail_rom 0 "${fill_fail}" ZISK_MEM_TEST_FILL_FAIL=1.0 || return 1

@@ -144,6 +144,7 @@ extern "C" {
         words_per_row: u32,
         lanes_x_row: u32,
     ) -> bool;
+    pub fn count_and_plan_retains_rows(h: *mut CountAndPlanHandle) -> bool;
     pub fn count_and_plan_ram_retention_ok(h: *mut CountAndPlanHandle) -> bool;
     pub fn count_and_plan_set_rom_layout(
         h: *mut CountAndPlanHandle,

@@ -1855,15 +1855,15 @@ bool CountAndPlan::prepare_fills(const void* image, size_t image_bytes, const Al
     };
     bool prep_ok = false;
     PrepDone prep_done_guard{this, &prep_ok};
-    auto family_off = [&](const char* who, const char* why) {
-        fprintf(stderr, "mem_fill: %s stays on the CPU for this block (%s)\n", who, why);
+    auto prep_off = [&](const char* who, const char* why) {
+        fprintf(stderr, "mem_fill: %s: %s; the memory witness stays on the CPU for this block\n", who, why);
     };
     if (!ram_retention_enabled_.load(std::memory_order_relaxed) || mem_lanes_x_row_ == 0) { prepared->status = -1; return false; }
-    // Test knobs (tests: the fallbacks of the fills). ZISK_MEM_TEST_PREP_FAIL=ram|rom|input|align: that family's
-    // preparation finds no room (ram: the whole preparation fails). ZISK_MEM_TEST_FILL_FAIL=<family>.<inst>
-    // (0 ram, 1 rom, 2 input, 3 align; inst: the segment, or the plan's position in the block's MemAlign list):
-    // that instance's fill faults (status -4). ZISK_MEM_TEST_SCRATCH_OVERFLOW=1: once an image is staged, the next
-    // fill's staged attempt and its retry report a scratch overflow, so the images are dropped.
+    // Test knobs (tests: the fallbacks of the fills). ZISK_MEM_TEST_PREP_FAIL=ram|rom|input|align: that step of
+    // the preparation finds no room. ZISK_MEM_TEST_FILL_FAIL=<family>.<inst> (0 ram, 1 rom, 2 input, 3 align; inst:
+    // the segment, or the plan's position in the block's MemAlign list): that instance's fill faults (status -4).
+    // ZISK_MEM_TEST_SCRATCH_OVERFLOW=1: once an image is staged, the next fill's staged attempt and its retry
+    // report a scratch overflow, so the images are dropped.
     test_prep_fail_ = 0;
     if (const char* e = std::getenv("ZISK_MEM_TEST_PREP_FAIL")) {
         const char* names[] = {"ram", "rom", "input", "align"};
@@ -1883,27 +1883,47 @@ bool CountAndPlan::prepare_fills(const void* image, size_t image_bytes, const Al
         RamFillPrepared q{};
         if (!prepare_ram_fill(&q)) { prepared->status = q.status ? q.status : -1; return false; }
     }
-    // RomData, InputData and MemAlign are served when their tables fit; a family that does not
-    // is left to the CPU witness, the others go on.
-    bool rom_ok = num_inst_[RF_REGION_ROM] > 0 && rom_lanes_x_row_ > 0;
-    bool input_ok = num_inst_[RF_REGION_INPUT] > 0 && input_lanes_x_row_ > 0;
-    bool align_ok = n_plans > 0;
-    if ((rom_ok || input_ok) && (!prepare_other_index_() || other_total_ == 0)) {
-        rom_ok = input_ok = false;
-        family_off("RomData and InputData", "no room for the access index");
+    // The ROM, input and MemAlign tables, for the families with instances.
+    const bool rom_any = num_inst_[RF_REGION_ROM] > 0;
+    const bool input_any = num_inst_[RF_REGION_INPUT] > 0;
+    if ((rom_any && rom_lanes_x_row_ == 0) || (input_any && input_lanes_x_row_ == 0)) {
+        prep_off("RomData or InputData", "no layout");
+        prepared->status = -1;
+        return false;
     }
-    if (rom_ok && !other_geometry_(RF_REGION_ROM, h_rom_inst_first_, h_rom_inst_last_, h_rom_inst_skip_, h_rom_inst_count_,
-                                   h_rom_inst_ext_first_, h_rom_inst_extra_)) { rom_ok = false; family_off("RomData", "instance geometry"); }
-    if (input_ok && !other_geometry_(RF_REGION_INPUT, h_input_inst_first_, h_input_inst_last_, h_input_inst_skip_,
-                                     h_input_inst_count_, h_input_inst_ext_first_, h_input_inst_extra_)) {
-        input_ok = false;
-        family_off("InputData", "instance geometry");
+    if ((rom_any || input_any) && (!prepare_other_index_() || other_total_ == 0)) {
+        prep_off("RomData and InputData", "no room for the access index");
+        prepared->status = -3;
+        return false;
     }
-    if (input_ok && !prepare_input_image_(image, image_bytes)) { input_ok = false; family_off("InputData", "no room for the input image"); }
-    if (align_ok && (!d_align_ || !prepare_align_index_())) { align_ok = false; family_off("MemAlign", "no region or index"); }
-    for (uint32_t i = 0; align_ok && i < n_plans; ++i)
-        if (plans[i].air_kind >= 4 || plans[i].entry_from + plans[i].entry_n > n_entries) { align_ok = false; family_off("MemAlign", "malformed plan"); }
-    if (!align_ok) n_plans = 0;
+    if (rom_any && !other_geometry_(RF_REGION_ROM, h_rom_inst_first_, h_rom_inst_last_, h_rom_inst_skip_, h_rom_inst_count_,
+                                    h_rom_inst_ext_first_, h_rom_inst_extra_)) {
+        prep_off("RomData", "instance geometry");
+        prepared->status = -4;
+        return false;
+    }
+    if (input_any && !other_geometry_(RF_REGION_INPUT, h_input_inst_first_, h_input_inst_last_, h_input_inst_skip_,
+                                      h_input_inst_count_, h_input_inst_ext_first_, h_input_inst_extra_)) {
+        prep_off("InputData", "instance geometry");
+        prepared->status = -4;
+        return false;
+    }
+    if (input_any && !prepare_input_image_(image, image_bytes)) {
+        prep_off("InputData", "no room for the input image");
+        prepared->status = -3;
+        return false;
+    }
+    if (n_plans > 0 && (!d_align_ || !prepare_align_index_())) {
+        prep_off("MemAlign", "no region or index");
+        prepared->status = -3;
+        return false;
+    }
+    for (uint32_t i = 0; i < n_plans; ++i)
+        if (plans[i].air_kind >= 4 || plans[i].entry_from + plans[i].entry_n > n_entries) {
+            prep_off("MemAlign", "malformed plan");
+            prepared->status = -2;
+            return false;
+        }
     {
         uint8_t* top = rf_scratch_;
         if (other_scratch_ > top) top = other_scratch_;
@@ -1933,23 +1953,19 @@ bool CountAndPlan::prepare_fills(const void* image, size_t image_bytes, const Al
     prepared->n_accesses = p.n_accesses;
     prepared->n_lanes = p.n_lanes;
     prepared->n_instances = p.n_instances;
-    prepared->families = 1u;
-    if (rom_ok) {
+    if (rom_any) {
         const uint32_t rows = (uint32_t)(instance_rows_[RF_REGION_ROM] / rom_lanes_x_row_);
-        if (fill_all_rom_instances(rows, &p)) { prepared->n_instances += p.n_instances; prepared->families |= 2u; }
-        else family_off("RomData", "fill failed");
+        if (!fill_all_rom_instances(rows, &p)) { prep_off("RomData", "fill failed"); prepared->status = p.status; return false; }
+        prepared->n_instances += p.n_instances;
     }
-    if (input_ok) {
+    if (input_any) {
         const uint32_t rows = (uint32_t)(instance_rows_[RF_REGION_INPUT] / input_lanes_x_row_);
-        if (fill_all_input_instances(rows, image, image_bytes, &p)) { prepared->n_instances += p.n_instances; prepared->families |= 4u; }
-        else family_off("InputData", "fill failed");
-    }
-    // The MemAlign old words come from the resolve passes of every family with instances.
-    const bool rom_resolved   = num_inst_[RF_REGION_ROM] == 0 || (prepared->families & 2u);
-    const bool input_resolved = num_inst_[RF_REGION_INPUT] == 0 || (prepared->families & 4u);
-    if (n_plans > 0 && !(rom_resolved && input_resolved)) {
-        family_off("MemAlign", "RomData or InputData old words unresolved");
-        n_plans = 0;
+        if (!fill_all_input_instances(rows, image, image_bytes, &p)) {
+            prep_off("InputData", "fill failed");
+            prepared->status = p.status;
+            return false;
+        }
+        prepared->n_instances += p.n_instances;
     }
     if (n_plans > 0) {
         fill_align_plans_.assign(plans, plans + n_plans);
@@ -1972,13 +1988,13 @@ bool CountAndPlan::prepare_fills(const void* image, size_t image_bytes, const Al
                 continue;
             }
             if (r.status != -3) {
-                family_off("MemAlign", "fill failed");
-                align_ok = false;
+                prep_off("MemAlign", "fill failed");
+                prepared->status = r.status;
+                return false;
             }
             stage_low_ = low;
             break;
         }
-        if (align_ok) prepared->families |= 8u;
     }
     {
         std::lock_guard<std::mutex> lk(staged_mtx_);
@@ -2055,7 +2071,7 @@ bool CountAndPlan::fill_host(uint32_t family, uint32_t air_id, uint32_t segment,
     cudaSetDevice(gpu_device_);
     if (!fills_prepared_) { res->status = -1; return false; }
     if (arena_released_) { res->status = -1; return false; }   // the accesses to build from are gone
-    if (family > 3 || !(prepared_info_.families & (1u << family))) { res->status = -1; return false; }   // family on the CPU
+    if (family > 3) { res->status = -2; return false; }
     switch (family) {
         case 0: return fill_ram_instance(segment, out_rows, n_rows, res);
         case 1: return fill_rom_instance(segment, out_rows, n_rows, res);

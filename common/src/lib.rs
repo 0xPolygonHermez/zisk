@@ -55,22 +55,17 @@ pub use types::*;
 pub use utils::*;
 pub use zisk_precompile::*;
 
-/// Which memory airs' witness rows come from the GPU planner for the current block, as a mask of
-/// `MEM_ROWS_*` bits. Set by the memory-ops runner once each device fill succeeded, cleared when a
-/// block starts; an air whose bit is clear is collected and filled on the CPU.
-pub static MEM_ROWS_ON_DEVICE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-/// `MEM_ROWS_ON_DEVICE` bit: the `Mem` (RAM) rows.
-pub const MEM_ROWS_RAM: u32 = 1;
-/// `MEM_ROWS_ON_DEVICE` bit: the `RomData` rows.
-pub const MEM_ROWS_ROM: u32 = 2;
-/// `MEM_ROWS_ON_DEVICE` bit: the `InputData` rows.
-pub const MEM_ROWS_INPUT: u32 = 4;
-/// `MEM_ROWS_ON_DEVICE` bit: the rows of the `MemAlign` airs.
-pub const MEM_ROWS_ALIGN: u32 = 8;
-/// Whether the block's rows of a memory air family (`MEM_ROWS_*` bit) come from the GPU planner;
-/// otherwise the instances are collected and filled on the CPU.
-pub fn mem_rows_served(bit: u32) -> bool {
-    MEM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire) & bit != 0
+/// Whether the memory airs' witness rows (Mem, RomData, InputData, MemAlign) come from the GPU
+/// planner for the current block. Set by the memory-ops runner once the block's preparation
+/// started, cleared when a block starts, when the last owned instance took its rows, and when the
+/// preparation or an instance fails: from then on the block's memory instances are collected and
+/// filled on the CPU.
+pub static MEM_ROWS_ON_DEVICE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+/// Whether this block's rows of the memory airs come from the GPU planner (see
+/// [`MEM_ROWS_ON_DEVICE`]).
+pub fn mem_rows_on_device() -> bool {
+    MEM_ROWS_ON_DEVICE.load(std::sync::atomic::Ordering::Acquire)
 }
 
 /// Whether the memory witness is built on the GPU planner when the assembly emulator runs with

@@ -193,7 +193,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         // The device built this block's rows of this memory from the planner's retained accesses:
         // nothing to collect from the replay.
-        if crate::mem_device_rows::rows_on_device(self.module.get_mem_name()) {
+        if crate::mem_device_rows::rows_on_device() {
             return None;
         }
         let chunk_check_point = self.check_point.chunks.get(&chunk_id).unwrap();

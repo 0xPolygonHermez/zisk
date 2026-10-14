@@ -1,24 +1,14 @@
-//! Which memory airs' rows this block takes from the GPU planner, and the MemAlign instances'
-//! device path (`ZISK_MEM_GPU_FILL`, see `mem_gpu_fill`).
+//! Whether this block's memory rows come from the GPU planner, and the MemAlign instances' device
+//! path (`ZISK_MEM_GPU_FILL`, see `mem_gpu_fill`).
 
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanError, ProofmanResult};
 use proofman_fields::PrimeField64;
 use zisk_pil::ZISK_AIRGROUP_ID;
 
-fn family_bit(name: &str) -> u32 {
-    match name {
-        "ram" => zisk_common::MEM_ROWS_RAM,
-        "rom" => zisk_common::MEM_ROWS_ROM,
-        "input" => zisk_common::MEM_ROWS_INPUT,
-        "align" => zisk_common::MEM_ROWS_ALIGN,
-        _ => 0,
-    }
-}
-
-/// Whether this block's rows of the memory air family `name` ("ram", "rom", "input", "align") come
-/// from the GPU planner; otherwise the instances are collected and filled on the CPU.
-pub(crate) fn rows_on_device(name: &str) -> bool {
-    zisk_common::device_mem_witness() && zisk_common::mem_rows_served(family_bit(name))
+/// Whether this block's rows of the memory airs come from the GPU planner; otherwise the
+/// instances are collected and filled on the CPU.
+pub(crate) fn rows_on_device() -> bool {
+    zisk_common::device_mem_witness() && zisk_common::mem_rows_on_device()
 }
 
 fn invalid(msg: String) -> ProofmanError {
