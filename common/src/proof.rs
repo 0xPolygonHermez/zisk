@@ -1,5 +1,6 @@
 use crate::error::{CommonError, Result};
 use proofman::{verify_snark_proof_with_vkey, SnarkProof, SnarkProtocol};
+use proofman_common::ProofmanError;
 use proofman_common::{PublicDefinition, PublicsInfo};
 use proofman_verifier::VadcopFinalProof;
 use serde::{Deserialize, Serialize};
@@ -1008,9 +1009,20 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     &plonk_vkey_json,
                     Some(&public_snark_bytes),
                 )
-                .map_err(|e| {
-                    tracing::debug!("snark proof verification failed: {e}");
-                    CommonError::NotVerified
+                .map_err(|e| match e {
+                    // The proof was checked and rejected.
+                    ProofmanError::InvalidProof(reason) => {
+                        tracing::warn!("PLONK proof not verified: {reason}");
+                        if self.trusted_plonk_vk.is_none() {
+                            tracing::warn!(
+                                "a PLONK proof from a non-release setup verifies under that \
+                                 setup's final.verkey.json (`--plonk-vk`)"
+                            );
+                        }
+                        CommonError::NotVerified
+                    }
+                    // snarkjs could not run (missing, no temp dir, ...): nothing was checked.
+                    e => CommonError::Invalid(format!("PLONK verification could not run: {e}")),
                 })
             }
             ProofBody::Vadcop { proof, kind, hash, publics_full, zisk_vk } => {
@@ -1176,15 +1188,14 @@ impl Proof {
     /// [`get_proof_u64`](Self::get_proof_u64).
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         match &self.body {
-            ProofBody::Vadcop { publics_full, hash, .. } => {
+            ProofBody::Vadcop { hash, .. } => {
                 // A flagged or non-canonical vector would be written as a file `load` refuses.
                 ensure_stored_body(&self.body)?;
-                if self.program_vk.vk.as_slice() != &publics_full[..PROGRAM_VK_LEN]
-                    || self.program_vk.hash_mode.as_str() != hash
-                {
+                self.ensure_program_vk_committed()?;
+                if self.program_vk.hash_mode.as_str() != hash {
                     return Err(CommonError::InvalidProof(
-                        "program_vk differs from the one the publics and hash family commit \
-                         to, which the saved form cannot carry"
+                        "program_vk's hash mode differs from the proof's hash family, which the \
+                         saved form cannot carry"
                             .to_string(),
                     ));
                 }
@@ -1192,6 +1203,7 @@ impl Proof {
             }
             ProofBody::Plonk { .. } => {
                 ensure_stored_body(&self.body)?;
+                self.ensure_program_vk_committed()?;
                 let mut bytes = PLONK_FILE_MAGIC.to_vec();
                 bytes.extend(
                     bincode::serde::encode_to_vec(self, bincode::config::standard())
@@ -1200,6 +1212,19 @@ impl Proof {
                 Ok(bytes)
             }
         }
+    }
+
+    /// `program_vk` is a public field; a saved proof must not carry one that differs from the
+    /// program VK its publics commit to.
+    fn ensure_program_vk_committed(&self) -> Result<()> {
+        if self.program_vk.vk.as_slice()
+            != &program_publics(self.committed_publics())[..PROGRAM_VK_LEN]
+        {
+            return Err(CommonError::InvalidProof(
+                "program_vk differs from the one the publics commit to".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     /// Decode [`to_bytes`](Self::to_bytes) output.
@@ -1229,6 +1254,7 @@ impl Proof {
             }
             // bincode will happily decode a non-canonical or misshapen `publics_full`.
             ensure_stored_body(&proof.body)?;
+            proof.ensure_program_vk_committed()?;
             return Ok(proof);
         }
 
@@ -2163,6 +2189,22 @@ mod tests {
     fn the_contract_fixture_verifies_under_the_release_plonk_key() {
         let bytes = include_bytes!("../../zisk-contracts/test/plonk_proof.bin");
         Proof::from_bytes(bytes).unwrap().verify().unwrap();
+    }
+
+    /// `program_vk` is public, so a PLONK file is bound to its publics like a Vadcop one.
+    #[test]
+    fn a_plonk_program_vk_must_match_its_publics() {
+        let mut proof =
+            plonk_proof(flag_free_publics([1, 2, 3, 4]), vec![9; 4], HashMode::Poseidon1);
+        proof.program_vk.vk = vec![1, 2, 3, 4];
+        let bytes = proof.to_bytes().unwrap();
+        assert!(Proof::from_bytes(&bytes).is_ok());
+
+        proof.program_vk.vk = vec![7, 7, 7, 7];
+        assert!(proof.to_bytes().unwrap_err().to_string().contains("program_vk"));
+        let mut forged = PLONK_FILE_MAGIC.to_vec();
+        forged.extend(bincode::serde::encode_to_vec(&proof, bincode::config::standard()).unwrap());
+        assert!(Proof::from_bytes(&forged).unwrap_err().to_string().contains("program_vk"));
     }
 
     #[test]

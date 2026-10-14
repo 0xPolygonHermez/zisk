@@ -496,7 +496,14 @@ impl ProverBackend {
                 )
                 .with_produced_under(Some(zisk_vk)))
             }
-            (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
+            // proofman returns a final proof only when aggregating, and then on rank 0 only;
+            // elsewhere there is none to return.
+            (_, None)
+                if !prover_options.aggregation || self.proofman.get_rank_info().world_rank != 0 =>
+            {
+                Ok(ProveOutput::new_null(execution_result, start.elapsed()))
+            }
+            (_, None) => Err(anyhow::anyhow!("proving finished without a final proof on rank 0")),
         }
     }
 
