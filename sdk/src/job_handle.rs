@@ -443,7 +443,11 @@ impl FromWaitResult for crate::verify_constraints::VerifyConstraintsResult {
 impl FromWaitResult for crate::execute::ExecuteResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {
-            TerminalStatus::Completed(DomainJobKindResponse::Execute { stats, public_outputs }) => {
+            TerminalStatus::Completed(DomainJobKindResponse::Execute {
+                stats,
+                public_outputs,
+                seed,
+            }) => {
                 let plan: Vec<(usize, usize, u64)> =
                     stats.plan.iter().map(|p| (p.airgroup_id, p.air_id, p.count)).collect();
                 let output = zisk_prover_backend::ExecuteOutput::from_remote(
@@ -453,7 +457,7 @@ impl FromWaitResult for crate::execute::ExecuteResult {
                     domain_stats_to_executor_time(&stats),
                     &plan,
                     &public_outputs,
-                    stats.seed,
+                    seed,
                 );
                 Ok(crate::execute::ExecuteResult::new(output, Some(job_id)))
             }

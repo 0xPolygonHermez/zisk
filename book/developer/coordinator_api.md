@@ -61,6 +61,7 @@ struct Proof {
     public_inputs:    Vec<u8>,       // serialized public inputs committed to by the proof
     started_at:       DateTime<Utc>, // when the job started executing
     completed_at:     DateTime<Utc>, // when the proof was finalized
+    seed:             Option<[u8; 32]>, // execution seed the proof attests to (also inside `data`); absent for aggregates
 }
 
 struct CostPerType {
@@ -76,7 +77,6 @@ struct ExecutionStats {
     steps:          u64,         // number of execution steps
     duration_nanos: u64,         // wall-clock execution duration in nanoseconds
     cost_per_type:  CostPerType, // AIR witness area breakdown by state machine type
-    seed:           Option<[u8; 32]>, // execution seed the job ran with; pass it back as `seed` to replay
 }
 
 // RPC-level errors (method cannot complete)
@@ -387,6 +387,7 @@ struct ExecuteRequest {
 struct ExecuteResponse {
     stats:          ExecutionStats, // execution statistics (steps, duration, cost breakdown)
     public_outputs: Vec<u8>,        // serialized public outputs produced by the program
+    seed:           Option<[u8; 32]>, // execution seed the job ran with; pass it back as `seed` to replay
 }
 ```
 
@@ -394,8 +395,10 @@ struct ExecuteResponse {
 
 Every prove and execute job runs with a 256-bit execution seed, from which the emulators derive the
 values the guest reads through `zkvm_random_u64`. The coordinator draws a fresh one per job and
-returns it in `ExecutionStats.seed`; a proof also carries it in its serialized `Proof`. Passing that
-seed back in the request's `seed` field replays the run.
+returns it with the job's result: in `Proof.seed` for prove (and wrap, which keeps the source proof's
+seed) and in `ExecuteResponse.seed` for execute. The serialized ZisK proof in `Proof.data` carries the
+same seed as its last field, so it survives once the proof is saved. Passing that seed back in the
+request's `seed` field replays the run.
 
 A forced seed is accepted only when the coordinator config sets `coordinator.allow_client_seed =
 true`; otherwise the job is rejected with `CLIENT_SEED_NOT_ALLOWED`. The seed must be unpredictable

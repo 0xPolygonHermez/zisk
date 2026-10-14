@@ -257,6 +257,7 @@ impl From<DomainProof> for Proof {
             public_inputs: proof.public_inputs,
             started_at: proof.started_at.map(datetime_to_ts),
             completed_at: proof.completed_at.map(datetime_to_ts),
+            seed: proof.seed.map(|s| s.as_bytes().to_vec()),
         }
     }
 }
@@ -275,6 +276,7 @@ impl TryFrom<Proof> for DomainProof {
             public_inputs: p.public_inputs,
             started_at: p.started_at.and_then(ts_to_datetime),
             completed_at: p.completed_at.and_then(ts_to_datetime),
+            seed: seed_from_wire(p.seed)?,
         })
     }
 }
@@ -484,7 +486,6 @@ impl From<DomainExecutionStats> for ExecutionStats {
                     count: p.count,
                 })
                 .collect(),
-            seed: stats.seed.map(|s| s.as_bytes().to_vec()),
         }
     }
 }
@@ -502,8 +503,12 @@ impl From<DomainJobKindResponse> for JobKindResponse {
             DomainJobKindResponse::Wrap(proof) => {
                 Kind::Wrap(WrapResponse { proof: Some(proof.into()) })
             }
-            DomainJobKindResponse::Execute { stats, public_outputs } => {
-                Kind::Execute(ExecuteResponse { stats: Some(stats.into()), public_outputs })
+            DomainJobKindResponse::Execute { stats, public_outputs, seed } => {
+                Kind::Execute(ExecuteResponse {
+                    stats: Some(stats.into()),
+                    public_outputs,
+                    seed: seed.map(|s| s.as_bytes().to_vec()),
+                })
             }
             DomainJobKindResponse::SetupAggregationProgram { vk, hash_mode } => {
                 Kind::SetupAggregationProgram(SetupAggregationProgramResponse { vk, hash_mode })
@@ -649,8 +654,6 @@ impl From<ExecutionStats> for DomainExecutionStats {
                     count: p.count,
                 })
                 .collect(),
-            // Stats are informational: a malformed seed reads as "not reported".
-            seed: seed_from_wire(stats.seed).ok().flatten(),
         }
     }
 }
@@ -748,7 +751,8 @@ impl TryFrom<JobKindResponse> for DomainJobKindResponse {
             }
             Kind::Execute(r) => {
                 let stats = r.stats.map(DomainExecutionStats::from).unwrap_or_default();
-                Ok(DomainJobKindResponse::Execute { stats, public_outputs: r.public_outputs })
+                let seed = seed_from_wire(r.seed)?;
+                Ok(DomainJobKindResponse::Execute { stats, public_outputs: r.public_outputs, seed })
             }
             Kind::SetupAggregationProgram(r) => {
                 Ok(DomainJobKindResponse::SetupAggregationProgram {
@@ -852,6 +856,37 @@ mod tests {
         for seed in [Some(seed), None] {
             let wire = ProveRequest::from(prove_request(seed));
             assert_eq!(DomainProveRequest::try_from(wire).unwrap().seed, seed);
+        }
+    }
+
+    #[test]
+    fn proof_envelope_seed_round_trips() {
+        let seed = Some(ExecutionSeed::new([6; ExecutionSeed::LEN]));
+        let proof = DomainProof {
+            proof_id: Uuid::nil(),
+            hash_id: "hash".to_string(),
+            verification_key: vec![],
+            proof_kind: DomainProofKind::Stark,
+            data: vec![1, 2, 3],
+            public_inputs: vec![],
+            started_at: None,
+            completed_at: None,
+            seed,
+        };
+        assert_eq!(DomainProof::try_from(Proof::from(proof)).unwrap().seed, seed);
+    }
+
+    #[test]
+    fn execute_response_seed_round_trips() {
+        let seed = Some(ExecutionSeed::new([8; ExecutionSeed::LEN]));
+        let response = DomainJobKindResponse::Execute {
+            stats: DomainExecutionStats::default(),
+            public_outputs: vec![],
+            seed,
+        };
+        match DomainJobKindResponse::try_from(JobKindResponse::from(response)).unwrap() {
+            DomainJobKindResponse::Execute { seed: decoded, .. } => assert_eq!(decoded, seed),
+            other => panic!("expected an execute response, got {other:?}"),
         }
     }
 

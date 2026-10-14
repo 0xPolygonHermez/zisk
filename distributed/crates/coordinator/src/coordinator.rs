@@ -221,7 +221,6 @@ fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
         other_cost: cost.other_cost,
         executor_time: executor_time_from_job(job),
         plan: plan_from_job(job),
-        seed: job.seed,
     }
 }
 

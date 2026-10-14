@@ -600,6 +600,7 @@ fn synthesize_result(kind: &DomainJobKind) -> DomainJobKindResponse {
         DomainJobKind::Execute(_) => DomainJobKindResponse::Execute {
             stats: DomainExecutionStats::default(),
             public_outputs: vec![],
+            seed: None,
         },
         DomainJobKind::Prove(req) => DomainJobKindResponse::Prove {
             proof: DomainProof {
@@ -611,6 +612,7 @@ fn synthesize_result(kind: &DomainJobKind) -> DomainJobKindResponse {
                 public_inputs: vec![2u8; 32],
                 started_at: Some(Utc::now()),
                 completed_at: Some(Utc::now()),
+                seed: None,
             },
             stats: DomainExecutionStats::default(),
         },
@@ -636,6 +638,7 @@ fn synthesize_result(kind: &DomainJobKind) -> DomainJobKindResponse {
             public_inputs: vec![],
             started_at: Some(Utc::now()),
             completed_at: Some(Utc::now()),
+            seed: None,
         }),
     }
 }
@@ -652,6 +655,7 @@ fn synthesize_terminal_event(
             result: result.unwrap_or(DomainJobKindResponse::Execute {
                 stats: DomainExecutionStats::default(),
                 public_outputs: vec![],
+                seed: None,
             }),
             timestamp: now,
         }),
@@ -849,6 +853,7 @@ mod tests {
             public_inputs: vec![],
             started_at: Some(Utc::now()),
             completed_at: Some(Utc::now()),
+            seed: None,
         };
         let job_id = b
             .submit_job(DomainJobKind::Wrap(DomainWrapRequest {

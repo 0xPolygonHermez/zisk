@@ -419,7 +419,11 @@ impl Coordinator {
                 None => vec![],
             };
             let stats = exec_stats_from_job(&job);
-            CoordinatorJobEvent::Completed(CoordinatorJobResult::Prove { proof_bytes, stats })
+            CoordinatorJobEvent::Completed(CoordinatorJobResult::Prove {
+                proof_bytes,
+                stats,
+                seed: job.seed,
+            })
         };
 
         // Release job lock before calling post_launch_proof

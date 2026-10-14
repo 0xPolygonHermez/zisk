@@ -647,6 +647,7 @@ impl Coordinator {
         }
 
         let exec_stats = exec_stats_from_job(&job);
+        let seed = job.seed;
 
         // Pairs with launch_proof's record_job_started (execution-only path).
         crate::metrics::record_job_terminal(
@@ -663,6 +664,7 @@ impl Coordinator {
             CoordinatorJobEvent::Completed(CoordinatorJobResult::Execute {
                 stats: exec_stats,
                 public_outputs,
+                seed,
             }),
         )
         .await;

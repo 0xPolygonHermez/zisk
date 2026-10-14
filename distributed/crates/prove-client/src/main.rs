@@ -269,7 +269,7 @@ fn run_prove(
                 bytes = p.data.len(),
                 "Prove completed."
             );
-            print_seed(stats.seed);
+            print_seed(p.seed);
 
             let out_path =
                 output.cloned().unwrap_or_else(|| PathBuf::from(format!("{job_id}.proof.bin")));
@@ -332,13 +332,17 @@ fn run_execute(
 
     info!("Waiting for execution …");
     match job.wait(None)? {
-        TerminalStatus::Completed(DomainJobKindResponse::Execute { stats, public_outputs }) => {
+        TerminalStatus::Completed(DomainJobKindResponse::Execute {
+            stats,
+            public_outputs,
+            seed,
+        }) => {
             info!(
                 steps = stats.steps,
                 duration_ms = stats.duration_nanos / 1_000_000,
                 "Execute completed."
             );
-            print_seed(stats.seed);
+            print_seed(seed);
 
             if !public_outputs.is_empty() {
                 let out_path = output

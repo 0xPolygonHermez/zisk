@@ -31,6 +31,7 @@ impl RemoteClient {
             public_inputs: Vec::new(), // coordinator fills this on wrap
             started_at: None,
             completed_at: None,
+            seed: proof.seed,
         };
         let proof_dest = proof.proof_kind.clone();
         let wrap_timeout = timeout.map(deadline_from_now);

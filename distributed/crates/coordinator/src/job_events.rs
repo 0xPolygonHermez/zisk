@@ -36,6 +36,8 @@ pub enum CoordinatorJobResult {
         proof_bytes: Vec<u8>,
         /// Execution statistics.
         stats: CoordinatorExecutionStats,
+        /// Seed of the execution the proof attests to.
+        seed: Option<ExecutionSeed>,
     },
     /// Execute-only result (no proof).
     Execute {
@@ -43,11 +45,15 @@ pub enum CoordinatorJobResult {
         stats: CoordinatorExecutionStats,
         /// The program's public outputs.
         public_outputs: Vec<u8>,
+        /// Seed the execution ran with.
+        seed: Option<ExecutionSeed>,
     },
     /// Proof-wrapping result.
     Wrap {
         /// The wrapped proof.
         proof_bytes: Vec<u8>,
+        /// Seed of the execution the source proof attests to.
+        seed: Option<ExecutionSeed>,
     },
     /// Aggregation-program setup result.
     SetupAggregationProgram {
@@ -86,6 +92,4 @@ pub struct CoordinatorExecutionStats {
     pub executor_time: ZiskExecutorTime,
     /// Per-AIR instance plan.
     pub plan: Vec<AirInstanceCount>,
-    /// Seed the job's execution ran with.
-    pub seed: Option<ExecutionSeed>,
 }

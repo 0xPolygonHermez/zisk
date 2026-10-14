@@ -142,6 +142,9 @@ pub struct DomainProof {
     pub started_at: Option<DateTime<Utc>>,
     /// When proving completed, if known.
     pub completed_at: Option<DateTime<Utc>>,
+    /// Seed of the execution the proof attests to, the same one `data` carries. Set in
+    /// responses (`None` for aggregates); ignored in requests.
+    pub seed: Option<ExecutionSeed>,
 }
 
 /// The kind of job being submitted.
@@ -274,8 +277,6 @@ pub struct DomainExecutionStats {
     pub executor_time: DomainExecutorTime,
     /// Per-AIR instance plan (execute jobs only; empty otherwise).
     pub plan: Vec<DomainAirInstanceCount>,
-    /// Seed the execution ran with. `None` when the coordinator does not report it.
-    pub seed: Option<ExecutionSeed>,
 }
 
 /// Per-AIR planned instance count; the AIR name is derived from the ids by the consumer.
@@ -338,6 +339,8 @@ pub enum DomainJobKindResponse {
         stats: DomainExecutionStats,
         /// The program's public outputs.
         public_outputs: Vec<u8>,
+        /// Seed the execution ran with. `None` when the coordinator does not report it.
+        seed: Option<ExecutionSeed>,
     },
     /// Aggregation-program setup result.
     SetupAggregationProgram {

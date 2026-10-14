@@ -75,8 +75,6 @@ message ExecutionStats {
   CostPerType  cost_per_type  = 3;
   ExecutorTime executor_time  = 4;
   repeated AirInstanceCount plan = 5;
-  // 32-byte seed the execution ran with; replays it when passed back as a request `seed`.
-  optional bytes seed         = 6;
 }
 
 // Per-AIR planned instance count (the AIR name is derived from the ids by the consumer).
@@ -134,6 +132,9 @@ message Proof {
   bytes                     public_inputs    = 6;
   google.protobuf.Timestamp started_at       = 7;
   google.protobuf.Timestamp completed_at     = 8;
+  // 32-byte seed of the execution the proof attests to, also kept inside `data`. Set in
+  // responses (absent for aggregates); ignored in requests.
+  optional bytes            seed             = 9;
 }
 
 // RPC-level error — returned in Status details for programmatic inspection.
@@ -318,6 +319,8 @@ message ExecuteRequest {
 message ExecuteResponse {
   ExecutionStats stats          = 1;
   bytes          public_outputs = 2;
+  // 32-byte seed the execution ran with; replays it when passed back as the request `seed`.
+  optional bytes seed           = 3;
 }
 
 message JobKindResponse {

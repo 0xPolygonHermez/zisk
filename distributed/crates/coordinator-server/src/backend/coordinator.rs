@@ -14,6 +14,7 @@ use tokio_stream::StreamExt as _;
 use tracing::warn;
 use uuid::Uuid;
 use zisk_cluster_common::{JobPhase, JobState};
+use zisk_common::ExecutionSeed;
 use zisk_coordinator::{
     job_events::{CoordinatorExecutionStats, CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator,
@@ -50,7 +51,7 @@ impl CoordinatorBackend {
 
 // ── Type mapping helpers ─────────────────────────────────────────────────────
 
-fn make_proof(hash_id: String, data: Vec<u8>) -> DomainProof {
+fn make_proof(hash_id: String, data: Vec<u8>, seed: Option<ExecutionSeed>) -> DomainProof {
     DomainProof {
         proof_id: Uuid::new_v4(),
         hash_id,
@@ -60,6 +61,7 @@ fn make_proof(hash_id: String, data: Vec<u8>) -> DomainProof {
         public_inputs: vec![],
         started_at: Some(Utc::now()),
         completed_at: Some(Utc::now()),
+        seed,
     }
 }
 
@@ -90,7 +92,6 @@ fn coord_stats_to_domain(s: CoordinatorExecutionStats) -> DomainExecutionStats {
                 count: p.count,
             })
             .collect(),
-        seed: s.seed,
     }
 }
 
@@ -99,21 +100,29 @@ fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> Domain
         CoordinatorJobResult::Setup { vk, hash_mode } => {
             DomainJobKindResponse::Setup { vk, hash_mode }
         }
-        CoordinatorJobResult::Prove { proof_bytes, stats } => DomainJobKindResponse::Prove {
-            proof: make_proof(hash_id.to_string(), proof_bytes),
+        CoordinatorJobResult::Prove { proof_bytes, stats, seed } => DomainJobKindResponse::Prove {
+            proof: make_proof(hash_id.to_string(), proof_bytes, seed),
             stats: coord_stats_to_domain(stats),
         },
-        CoordinatorJobResult::Execute { stats, public_outputs } => {
-            DomainJobKindResponse::Execute { stats: coord_stats_to_domain(stats), public_outputs }
+        CoordinatorJobResult::Execute { stats, public_outputs, seed } => {
+            DomainJobKindResponse::Execute {
+                stats: coord_stats_to_domain(stats),
+                public_outputs,
+                seed,
+            }
         }
-        CoordinatorJobResult::Wrap { proof_bytes } => {
-            DomainJobKindResponse::Wrap(make_proof(hash_id.to_string(), proof_bytes))
+        CoordinatorJobResult::Wrap { proof_bytes, seed } => {
+            DomainJobKindResponse::Wrap(make_proof(hash_id.to_string(), proof_bytes, seed))
         }
         CoordinatorJobResult::SetupAggregationProgram { vk, hash_mode } => {
             DomainJobKindResponse::SetupAggregationProgram { vk, hash_mode }
         }
         CoordinatorJobResult::AggregateProofs { proof_bytes } => {
-            DomainJobKindResponse::AggregateProofs(make_proof(hash_id.to_string(), proof_bytes))
+            DomainJobKindResponse::AggregateProofs(make_proof(
+                hash_id.to_string(),
+                proof_bytes,
+                None,
+            ))
         }
     }
 }
