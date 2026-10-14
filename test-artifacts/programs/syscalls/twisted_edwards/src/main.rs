@@ -1,10 +1,7 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use ziskos::syscalls::{
-    syscall_babyjubjub_add, syscall_ed25519_add, SyscallBabyJubJubAddParams,
-    SyscallEd25519AddParams, SyscallPoint256,
-};
+use ziskos::syscalls::{syscall_babyjubjub_add, syscall_ed25519_add, SyscallPoint256};
 
 fn main() {
     babyjubjub_tests();
@@ -80,8 +77,7 @@ const ED_IDENTITY: SyscallPoint256 = SyscallPoint256 { x: [0, 0, 0, 0], y: [1, 0
 
 fn ed25519_add(p1: &SyscallPoint256, p2: &SyscallPoint256) -> SyscallPoint256 {
     let mut p3 = SyscallPoint256 { x: p1.x, y: p1.y };
-    let mut params = SyscallEd25519AddParams { p1: &mut p3, p2 };
-    syscall_ed25519_add(&mut params);
+    syscall_ed25519_add(&mut p3, p2);
     p3
 }
 

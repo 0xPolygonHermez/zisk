@@ -16,7 +16,7 @@ members = [
   "examples/*",
   "diagnostic",
   "diagnostic_hints",
-  "ed25519",
+  "ed25519_verify",
   "hashes",
   "secp256k1",
   "secp256r1",

@@ -7,15 +7,15 @@ use crate::zisklib::{
     FCALL_BLS12_381_FP2_SQRT_ID, FCALL_BLS12_381_FP_INV_ID, FCALL_BLS12_381_FP_SQRT_ID,
     FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS_ID, FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS_ID,
     FCALL_BN254_FP2_INV_ID, FCALL_BN254_FP_INV_ID, FCALL_BN254_TWIST_ADD_LINE_COEFFS_ID,
-    FCALL_BN254_TWIST_DBL_LINE_COEFFS_ID, FCALL_MSB_POS_256_ID, FCALL_MSB_POS_384_ID,
-    FCALL_SECP256K1_FN_INV_ID, FCALL_SECP256K1_FP_INV_ID, FCALL_SECP256K1_FP_SQRT_ID,
-    FCALL_SECP256K1_GLV_DECOMPOSE_ID, FCALL_SECP256R1_FN_INV_ID, FCALL_UINT256_DIV_ID,
-    FCALL_UINT256_INV_ID, FCALL_UINT256_INV_MOD_ID,
+    FCALL_BN254_TWIST_DBL_LINE_COEFFS_ID, FCALL_ED25519_FP_SQRT_RATIO_ID, FCALL_MSB_POS_256_ID,
+    FCALL_MSB_POS_384_ID, FCALL_SECP256K1_FN_INV_ID, FCALL_SECP256K1_FP_INV_ID,
+    FCALL_SECP256K1_FP_SQRT_ID, FCALL_SECP256K1_GLV_DECOMPOSE_ID, FCALL_SECP256R1_FN_INV_ID,
+    FCALL_UINT256_DIV_ID, FCALL_UINT256_INV_ID, FCALL_UINT256_INV_MOD_ID,
 };
 
 use super::{
-    bigint_div::*, bin_decomp::*, bls12_381::*, bn254::*, msb_pos_256::*, msb_pos_384::*,
-    secp256k1::*, secp256r1::*, uint256::*,
+    bigint_div::*, bin_decomp::*, bls12_381::*, bn254::*, ed25519::*, msb_pos_256::*,
+    msb_pos_384::*, secp256k1::*, secp256r1::*, uint256::*,
 };
 
 /// Dispatches an fcall by `id`, forwarding `params` to the matching implementation and
@@ -49,6 +49,7 @@ pub fn fcall_proxy(id: u64, params: &[u64], results: &mut [u64]) -> i64 {
         FCALL_UINT256_INV_ID => fcall_uint256_inv(params, results),
         FCALL_UINT256_INV_MOD_ID => fcall_uint256_inv_mod(params, results),
         FCALL_BIGINT_DIV_ID => fcall_bigint_div(params, results),
+        FCALL_ED25519_FP_SQRT_RATIO_ID => fcall_ed25519_fp_sqrt_ratio(params, results),
 
         _ => panic!("Unsupported fcall ID {id}"),
     }

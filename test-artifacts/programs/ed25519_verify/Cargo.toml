@@ -1,5 +1,5 @@
 [package]
-name = "ed25519"
+name = "ed25519_verify"
 version.workspace = true
 edition.workspace = true
 
@@ -8,3 +8,7 @@ ziskos.workspace = true
 ed25519-dalek.workspace = true
 curve25519-dalek.workspace = true
 sha2.workspace = true
+
+[features]
+# Per-region profile tags (`ziskemu -X` prints `[tag] cost`).
+profile = []

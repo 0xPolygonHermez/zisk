@@ -20,20 +20,18 @@ pub fn diagnostic_ed25519() {
     //////////////
 
     let mut p1 = SyscallPoint256 { x: b.x, y: b.y };
-    let mut params = SyscallEd25519AddParams { p1: &mut p1, p2: &b };
-    syscall_ed25519_add(&mut params);
-    assert_eq!(params.p1.x, b2.x);
-    assert_eq!(params.p1.y, b2.y);
+    syscall_ed25519_add(&mut p1, &b);
+    assert_eq!(p1.x, b2.x);
+    assert_eq!(p1.y, b2.y);
 
     //////////////
     // Ed25519 Add: 2B + B = 3B
     //////////////
 
     let mut p1 = SyscallPoint256 { x: b2.x, y: b2.y };
-    let mut params = SyscallEd25519AddParams { p1: &mut p1, p2: &b };
-    syscall_ed25519_add(&mut params);
-    assert_eq!(params.p1.x, b3.x);
-    assert_eq!(params.p1.y, b3.y);
+    syscall_ed25519_add(&mut p1, &b);
+    assert_eq!(p1.x, b3.x);
+    assert_eq!(p1.y, b3.y);
 
     //////////////
     // Inverse: B + (-B) == O = (0, 1), with -B = (p - x, y)
@@ -44,8 +42,7 @@ pub fn diagnostic_ed25519() {
         y: b.y,
     };
     let mut p1 = SyscallPoint256 { x: b.x, y: b.y };
-    let mut params = SyscallEd25519AddParams { p1: &mut p1, p2: &neg_b };
-    syscall_ed25519_add(&mut params);
-    assert_eq!(params.p1.x, [0, 0, 0, 0]);
-    assert_eq!(params.p1.y, [1, 0, 0, 0]);
+    syscall_ed25519_add(&mut p1, &neg_b);
+    assert_eq!(p1.x, [0, 0, 0, 0]);
+    assert_eq!(p1.y, [1, 0, 0, 0]);
 }

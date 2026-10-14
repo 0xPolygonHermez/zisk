@@ -60,6 +60,7 @@ int BLS12_381ComplexAddP(const uint64_t *p1, const uint64_t *p2, uint64_t *p3);
 int BLS12_381ComplexSubP(const uint64_t *p1, const uint64_t *p2, uint64_t *p3);
 int BLS12_381ComplexMulP(const uint64_t *p1, const uint64_t *p2, uint64_t *p3);
 int BabyJubJubAddP(const uint64_t *p1, const uint64_t *p2, uint64_t *p3);
+int Ed25519AddP(const uint64_t *p1, const uint64_t *p2, uint64_t *p3);
 }
 
 /**********/
@@ -137,6 +138,7 @@ static const mpz_class P_SECP256R1("ffffffff00000001000000000000000000000000ffff
 static const mpz_class N_SECP256R1("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551", 16);
 static const mpz_class P_BN254("30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47", 16);
 static const mpz_class R_BN254("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001", 16);
+static const mpz_class P_ED25519("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed", 16);
 static const mpz_class P_BLS12_381("1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab", 16);
 static const mpz_class P_GOLDILOCKS("ffffffff00000001", 16);
 static const mpz_class P_STARKNET("0800000000000011000000000000000000000000000000000000000000000001", 16);
@@ -398,6 +400,7 @@ static void register_ops() {
     add_point_op("bls12_381_complex_sub", P_BLS12_381, 6, true, [](uint64_t *p1, uint64_t *p2) { return BLS12_381ComplexSubP(p1, p2, p1); });
     add_point_op("bls12_381_complex_mul", P_BLS12_381, 6, true, [](uint64_t *p1, uint64_t *p2) { return BLS12_381ComplexMulP(p1, p2, p1); });
     add_point_op("babyjubjub_add", R_BN254, 4, true, [](uint64_t *p1, uint64_t *p2) { return BabyJubJubAddP(p1, p2, p1); });
+    add_point_op("ed25519_add", P_ED25519, 4, true, [](uint64_t *p1, uint64_t *p2) { return Ed25519AddP(p1, p2, p1); });
 
     auto fe = [](const mpz_class &p, int limbs, int count, bool nonzero) {
         return [=](Rng &r, bool canon, uint64_t *params) -> uint64_t {
@@ -453,6 +456,12 @@ static void register_ops() {
     add_fcall_op("uint256_inv_mod", FCALL_UINT256_INV_MOD_ID, 20000, [](Rng &r, bool, uint64_t *params) -> uint64_t {
         rand_fe(r, mpz_class(1) << 256, 4, params, true);
         rand_fe(r, mpz_class(1) << 256, 4, params + 4, true, true);
+        return 8;
+    });
+    // u any, v != 0 (as in decompression, where v = d*y^2 + 1 never vanishes)
+    add_fcall_op("ed25519_fp_sqrt_ratio", FCALL_ED25519_FP_SQRT_RATIO_ID, 5000, [](Rng &r, bool canon, uint64_t *params) -> uint64_t {
+        rand_fe(r, P_ED25519, 4, params, canon);
+        rand_fe(r, P_ED25519, 4, params + 4, canon, true);
         return 8;
     });
     add_fcall_op("bigint_div", FCALL_BIGINT_DIV_ID, 20000, [](Rng &r, bool, uint64_t *params) -> uint64_t {

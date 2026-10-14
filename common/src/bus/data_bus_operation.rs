@@ -106,7 +106,7 @@ pub const OPERATION_BUS_BLAKE2S_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 16 * DATA_64_BITS_SIZE;
 /// BabyJubJub point-add operation data size (2 points; their addresses travel in a and b).
 pub const OPERATION_BUS_BABYJUBJUB_ADD_DATA_SIZE: usize =
-    OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * POINT_256_BITS_SIZE;
+    OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * POINT_256_BITS_SIZE;
 /// Ed25519 point-add operation data size (2 points; their addresses travel in a and b).
 pub const OPERATION_BUS_ED25519_ADD_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * POINT_256_BITS_SIZE;

@@ -35,7 +35,7 @@ const PROGRAMS: &[&str] = &[
     "bn254_dbl",
     "diagnostic",
     "diagnostic-hints",
-    "ed25519",
+    "ed25519_verify",
     "fib_mod",
     "hashes",
     "keccak",

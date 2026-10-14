@@ -99,6 +99,7 @@ static const char * asm_call_fcall_names[ASM_CALL_FCALL_IDS] = {
     [FCALL_BIGINT_DIV_ID] = "bigint_div",
     [FCALL_SET_KECCAKF_CACHE_INDEX_ID] = "set_keccakf_cache_index",
     [FCALL_GET_KECCAKF_CACHE_INDEX_ID] = "get_keccakf_cache_index",
+    [FCALL_ED25519_FP_SQRT_RATIO_ID] = "ed25519_fp_sqrt_ratio",
 };
 
 // Mean cost of an empty start/stop measurement, subtracted from the recorded calls when printing
