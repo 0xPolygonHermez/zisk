@@ -116,6 +116,9 @@ main() {
     # A chunk the planner rejects: the block is planned on the CPU.
     run_case chunk_reject 0 "a chunk was rejected (see above); no device plan for this block" ZISK_MEM_TEST_CHUNK_REJECT=3 || return 1
     # The block exceeds the retention cap: the GPU plan stands, the CPU witness follows.
+    # The ops pool's reservation meets the retained accesses: the retention is dropped, the retain kernels
+    # are waited out, the pool grows on; the GPU plan stands, the witness is on the CPU.
+    run_case pool_cross 0 "the ops pool meets the retained accesses" ZISK_MEM_TEST_POOL_CROSS=3 || return 1
     run_case retention 0 "the retained accesses are incomplete for this block" ZISK_MEM_TEST_RETENTION=1000000 || return 1
     # A light-form record seen in the stream: the GPU plan stands, no device witness.
     run_case light_record 0 "the stream is in the light form" ZISK_MEM_TEST_LIGHT_RECORD=1 || return 1

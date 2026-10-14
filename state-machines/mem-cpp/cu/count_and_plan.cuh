@@ -382,6 +382,10 @@ private:
     size_t pool_end_bytes(size_t pool_words) const { return cursor_ + pool_words * 4; }
     size_t ram_low_edge_bytes(size_t records) const { return top_bytes_ - records * RAM_RECORD_WORDS * 4; }
     std::atomic<bool>   ram_retention_enabled_{false};
+    // Held by a retain reservation from its cursor bump through its kernel launches, and by the
+    // pool side when it meets the records: the pool then waits out the retain kernels under it.
+    std::mutex          cross_mtx_;
+    std::atomic<size_t> pool_margin_bytes_{0};   // the largest pool reservation of one chunk so far
     struct RamRun { uint32_t base; uint32_t n; uint32_t chunk; };  // one piece's records, in its sorted order
     std::vector<RamRun> ram_runs_;
     std::mutex          ram_runs_mtx_;
@@ -389,6 +393,7 @@ private:
     uint64_t            retained_cap_ = MAX_RETAINED_ACCESSES;  // ZISK_MEM_TEST_RETENTION lowers it
 #ifdef ZISK_MEM_TEST
     int64_t             test_chunk_reject_ = -1;                // ZISK_MEM_TEST_CHUNK_REJECT: the chunk add_chunk rejects
+    int64_t             test_pool_cross_   = -1;                // ZISK_MEM_TEST_POOL_CROSS: the chunk whose pool reservation meets the records
 #endif
     unsigned long long* d_ram_nwrites_ = nullptr;             // writes among the retained accesses
     uint64_t           ram_writes_     = 0;                   // read back by prepare_ram_fill

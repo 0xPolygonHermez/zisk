@@ -1535,6 +1535,8 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     }
     test_chunk_reject_ = -1;
     if (const char* e = std::getenv("ZISK_MEM_TEST_CHUNK_REJECT")) test_chunk_reject_ = std::atoll(e);   // tests: a rejected chunk
+    test_pool_cross_ = -1;
+    if (const char* e = std::getenv("ZISK_MEM_TEST_POOL_CROSS")) test_pool_cross_ = std::atoll(e);   // tests: the pool meets the records
 #endif
     fprintf(stderr, "[mops] arena %zu MB: fixed %zu MB, %zu MB shared by the ops pool and the retained RAM accesses\n",
             arena_bytes_ >> 20, cursor_ >> 20, (top_bytes_ - cursor_) >> 20);
@@ -1691,13 +1693,24 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
     // crossing. Meeting the retained accesses drops the device witness first; only a pool that
     // does not fit the region on its own is an error.
     const size_t base = pool_cursor_u32_.fetch_add(pot_total, std::memory_order_seq_cst);
-    // The pool may not grow into accesses already reserved above it: a retain kernel may still be
-    // writing them. (The record side drops the retention instead when it meets the pool.)
-    if (pool_end_bytes(base + pot_total) > ram_low_edge_bytes(ram_cursor_.load(std::memory_order_seq_cst))) {
-        fprintf(stderr, "CountAndPlan::add_chunk ERROR: the ops pool meets the retained accesses at chunk %u; "
-                        "no device plan for this block\n", c);
-        add_error_.store(true, std::memory_order_relaxed);
-        return false;
+    for (size_t m = pot_total * 4, prev = pool_margin_bytes_.load(std::memory_order_relaxed);
+         m > prev && !pool_margin_bytes_.compare_exchange_weak(prev, m);) {}
+    // The pool may not grow into accesses a retain kernel may still be writing: meeting them drops
+    // the retention (as the record side does when it meets the pool), waits out the retain kernels
+    // in flight, and the pool grows over the dead records. The plan stands.
+    bool pool_meets_records = ram_retention_enabled_.load(std::memory_order_seq_cst) &&
+        pool_end_bytes(base + pot_total) > ram_low_edge_bytes(ram_cursor_.load(std::memory_order_seq_cst));
+#ifdef ZISK_MEM_TEST
+    if ((int64_t)c == test_pool_cross_) pool_meets_records = true;   // tests: the pool side meets the records here
+#endif
+    if (pool_meets_records) {
+        std::lock_guard<std::mutex> lk(cross_mtx_);
+        if (ram_retention_enabled_.exchange(false)) {
+            fprintf(stderr, "CountAndPlan: the ops pool meets the retained accesses at chunk %u; "
+                            "no device memory witness for this block\n", c);
+            for (int i = 0; i < N_STREAMS; ++i)
+                if (streams_[i]) CUDA_CHECK(cudaStreamSynchronize(streams_[i]));
+        }
     }
     if (pool_end_bytes(base + pot_total) > top_bytes_) {
         fprintf(stderr,
@@ -1836,9 +1849,11 @@ bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int
 
     // Retain the piece's ROM and input accesses, in arrival order.
     if (pot > ram && ram_retention_enabled_.load(std::memory_order_relaxed)) {
+        std::lock_guard<std::mutex> lk(cross_mtx_);
         const uint32_t n_other = pot - ram;
         const size_t obase = ram_cursor_.fetch_add(n_other, std::memory_order_seq_cst);
-        if (ram_low_edge_bytes(obase + n_other) < pool_end_bytes(pool_cursor_u32_.load(std::memory_order_seq_cst))) {
+        if (ram_low_edge_bytes(obase + n_other) <
+            pool_end_bytes(pool_cursor_u32_.load(std::memory_order_seq_cst)) + pool_margin_bytes_.load(std::memory_order_relaxed)) {
             if (ram_retention_enabled_.exchange(false)) {
                 fprintf(stderr, "CountAndPlan: the retained accesses meet the ops pool at chunk %u "
                                 "(%zu accesses so far); no device memory witness for this block\n", c, obase + n_other);
@@ -1875,8 +1890,10 @@ bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int
 
         // Retain the piece's RAM accesses for the witness, in the sorted order.
         if (ram > 0 && ram_retention_enabled_.load(std::memory_order_relaxed)) {
+            std::lock_guard<std::mutex> lk(cross_mtx_);
             const size_t rbase = ram_cursor_.fetch_add(ram, std::memory_order_seq_cst);
-            if (ram_low_edge_bytes(rbase + ram) < pool_end_bytes(pool_cursor_u32_.load(std::memory_order_seq_cst))) {
+            if (ram_low_edge_bytes(rbase + ram) <
+                pool_end_bytes(pool_cursor_u32_.load(std::memory_order_seq_cst)) + pool_margin_bytes_.load(std::memory_order_relaxed)) {
                 if (ram_retention_enabled_.exchange(false)) {
                     fprintf(stderr, "CountAndPlan: the retained RAM accesses meet the ops pool at chunk %u "
                                     "(%zu accesses so far); no device RAM witness for this block\n", c, rbase + ram);
@@ -2097,6 +2114,7 @@ void CountAndPlan::reset() {
     { std::lock_guard<std::mutex> lk(ram_runs_mtx_); ram_runs_.clear(); }
     packed_chunk_offsets_h_.clear();
     pool_cursor_u32_.store(0, std::memory_order_relaxed);
+    pool_margin_bytes_.store(0, std::memory_order_relaxed);
     add_error_.store(false, std::memory_order_relaxed);
     metas_.assign(MAX_INSTANCES, InstanceMeta{});
     metas_ready_recorded_   = false;
@@ -2422,12 +2440,15 @@ bool CountAndPlan::process_worker_() {
     }
 
     // The dense pages take the dynamic region above the ops pool, which the counting kernel
-    // above was the last to read, up to the retained accesses.
+    // above was the last to read, up to the retained accesses (up to the top once the retention
+    // was dropped: the records are dead and their kernels done).
     {
         const size_t pages_bytes = (size_t)total_pages * MEM_OFFSETS_PAGE_SIZE * 4;
         const size_t pages_off =
             (pool_end_bytes(pool_cursor_u32_.load(std::memory_order_relaxed)) + 255) & ~(size_t)255;
-        if (pages_off + pages_bytes > ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed))) {
+        const size_t pages_end = ram_retention_enabled_.load(std::memory_order_relaxed)
+            ? ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed)) : top_bytes_;
+        if (pages_off + pages_bytes > pages_end) {
             fprintf(stderr, "CountAndPlan ERROR: no room for %zu MB of offset pages between the ops pool "
                             "and the retained RAM accesses; no device plan for this block\n", pages_bytes >> 20);
             return false;
