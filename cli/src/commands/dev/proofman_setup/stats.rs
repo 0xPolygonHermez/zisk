@@ -13,10 +13,9 @@ pub(crate) struct ZiskProofmanSetupStats {
         short = 'a',
         long,
         required_unless_present = "proving_key",
-        conflicts_with = "proving_key",
-        default_value = ""
+        conflicts_with = "proving_key"
     )]
-    airout: String,
+    airout: Option<String>,
 
     /// A built proving key to read as-built circuit stats from (uses the key's own hash
     /// family and the solved query counts, and can include the recursion circuits).
@@ -79,7 +78,7 @@ impl ZiskProofmanSetupStats {
         let opts = StatsOptions {
             proving_key_path: self.proving_key.clone(),
             aggregation: self.aggregation,
-            airout_path: self.airout.clone(),
+            airout_path: self.airout.clone().unwrap_or_default(),
             hash: self.hash.clone(),
             output_path: self.output.clone(),
             stark_structs_path: self.starkstructs.clone(),
