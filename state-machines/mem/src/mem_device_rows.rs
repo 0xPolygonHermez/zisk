@@ -8,7 +8,7 @@ use zisk_pil::ZISK_AIRGROUP_ID;
 /// Whether this block's rows of the memory airs come from the GPU planner; otherwise the
 /// instances are collected and filled on the CPU.
 pub(crate) fn rows_on_device() -> bool {
-    zisk_common::device_mem_witness() && zisk_common::mem_rows_on_device()
+    zisk_common::device_mem_witness_active() && zisk_common::mem_rows_on_device()
 }
 
 fn invalid(msg: String) -> ProofmanError {

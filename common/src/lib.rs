@@ -71,7 +71,8 @@ pub fn mem_rows_on_device() -> bool {
 /// Whether the memory witness is built on the GPU planner when the assembly emulator runs with
 /// it: every owned memory instance takes its rows from the planner's staged image (or is built on
 /// demand) into its host trace buffer. `ZISK_MEM_GPU_FILL=0` keeps the CPU witness; unset or `1`
-/// means on, as does any other value (with a warning). Read once, at the worker's start.
+/// means on, as does any other value (with a warning). Read once, at the worker's start. The
+/// switch alone: whether the run can honour it is [`device_mem_witness_active`].
 pub fn device_mem_witness() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| match std::env::var("ZISK_MEM_GPU_FILL").as_deref() {
@@ -82,4 +83,21 @@ pub fn device_mem_witness() -> bool {
             true
         }
     })
+}
+
+static DEVICE_MEM_WITNESS_ACTIVE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// Decides, once per process and before the assembly services start, whether the device memory
+/// witness is in use: the switch is on and the run has the GPU planner (a GPU proof with the
+/// planner's buffer). The first call wins.
+pub fn enable_device_mem_witness(gpu_planner: bool) -> bool {
+    *DEVICE_MEM_WITNESS_ACTIVE.get_or_init(|| gpu_planner && device_mem_witness())
+}
+
+/// Whether the device memory witness is in use for this process (false until
+/// [`enable_device_mem_witness`] decided it): the emulator writes the heavy memory-ops stream,
+/// the planner retains the block's accesses and the executor registers the secondaries in two
+/// rounds.
+pub fn device_mem_witness_active() -> bool {
+    *DEVICE_MEM_WITNESS_ACTIVE.get().unwrap_or(&false)
 }

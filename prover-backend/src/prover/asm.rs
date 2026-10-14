@@ -207,15 +207,6 @@ impl AsmProver {
         // and are shared/reused across program hashes. Each program still gets its
         // own AsmSharedResources; previous programs' resources stay alive in the
         // pool via Arc.
-        let asm_services = AsmServices::new(
-            world_rank,
-            local_rank,
-            elf.program_id.hash_id.as_ref().to_string(),
-            &asm_mt_path,
-            with_hints,
-            asm_runner_options,
-        )?;
-
         // Borrow proofman's already-allocated unified GPU buffer.
         // Zero values when CUDA is unavailable; downstream consumers no-op on (0, 0).
         // When --cpu-mops is set, force the planner onto CPU regardless of buffer
@@ -227,6 +218,19 @@ impl AsmProver {
             let gpu_id = pctx.first_gpu_id();
             GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize, gpu_id }
         };
+        // The device memory witness needs the GPU planner; decided before the memory-ops
+        // emulator starts, since its stream form follows.
+        let gpu_planner = matches!(gpu_buffer_source, GpuBufferSource::Borrowed { ptr, size, .. } if ptr != 0 && size > 0);
+        zisk_common::enable_device_mem_witness(gpu_planner);
+
+        let asm_services = AsmServices::new(
+            world_rank,
+            local_rank,
+            elf.program_id.hash_id.as_ref().to_string(),
+            &asm_mt_path,
+            with_hints,
+            asm_runner_options,
+        )?;
 
         let shared = Arc::new(AsmSharedResources::new(
             local_rank,

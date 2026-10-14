@@ -1,8 +1,6 @@
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use named_sem::NamedSemaphore;
-use zisk_common::{
-    device_mem_witness, stats_begin, stats_end, stats_mark, ExecutorStatsHandle, Plan,
-};
+use zisk_common::{stats_begin, stats_end, stats_mark, ExecutorStatsHandle, Plan};
 
 use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
@@ -289,7 +287,7 @@ pub fn device_mem_witness_failed(reason: &str) {
 /// Whether the memory witness is built on the device (`ZISK_MEM_GPU_FILL`): the planner then
 /// retains the block's accesses and the executor registers the secondaries in two rounds.
 pub fn device_mem_witness_requested() -> bool {
-    device_mem_witness()
+    zisk_common::device_mem_witness_active()
 }
 
 /// Whether the memory-ops emulator runs in its light form (no values, no steps): whenever the
