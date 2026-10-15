@@ -103,8 +103,8 @@ pub(crate) fn print_execution_summary(
     /*●⎿✔◼✽*/
 }
 
-/// Report the seed a run used, so it can be replayed with `--seed`. Silent when the backend did
-/// not report one.
+/// Report the seed a run used, so it can be replayed with `--random-seed`. Silent when the
+/// backend did not report one.
 pub(crate) fn print_execution_seed(seed: Option<ExecutionSeed>) {
     if let Some(seed) = seed {
         info!("Execution seed: {seed}");

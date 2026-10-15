@@ -208,7 +208,7 @@ impl ExecuteCmd {
         let start = std::time::Instant::now();
         prover.setup(&guest_program, with_hints)?;
         let result: ExecuteOutput =
-            prover.execute(&guest_program, stdin, hints_stream, self.seed.forced())?;
+            prover.execute(&guest_program, stdin, hints_stream, self.seed.provided())?;
         let total_duration = start.elapsed().as_millis() as u64;
 
         if rank_zero {

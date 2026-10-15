@@ -90,7 +90,7 @@ pub struct LaunchProofRequestDto {
     pub execution_only: bool,
     /// The kind of proof requested.
     pub proof_type: ProofKind,
-    /// Execution seed forced by the client; `None` draws a fresh one. If the coordinator does
+    /// Execution seed provided by the client; `None` draws a fresh one. If the coordinator does
     /// not allow client seeds, the job is rejected (`ClientSeedNotAllowed`) rather than run
     /// with a different seed.
     pub seed: Option<ExecutionSeed>,

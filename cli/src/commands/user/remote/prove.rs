@@ -84,7 +84,7 @@ impl ZiskRemoteProve {
         if let Some(hints) = hints {
             request = request.hints(hints);
         }
-        request = request.seed(self.seed.forced());
+        request = request.seed(self.seed.provided());
         if proof_kind != ProofKind::VadcopFinal {
             request = request.wrap(proof_kind);
         }

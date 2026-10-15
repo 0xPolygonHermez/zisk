@@ -264,7 +264,7 @@ message ProveRequest {
   optional google.protobuf.Timestamp proof_timeout = 3;
   ProofKind                 proof_dest    = 4;
   optional InputKind        hints         = 5;
-  // Forces the 32-byte execution seed instead of drawing a fresh one. Rejected unless the
+  // Uses this 32-byte execution seed instead of drawing a fresh one. Rejected unless the
   // coordinator is configured to allow client seeds.
   optional bytes            seed          = 6;
 }
@@ -311,7 +311,7 @@ message ExecuteRequest {
   InputKind                 input           = 2;
   optional google.protobuf.Timestamp execute_timeout = 3;
   optional InputKind        hints           = 4;
-  // Forces the 32-byte execution seed instead of drawing a fresh one. Rejected unless the
+  // Uses this 32-byte execution seed instead of drawing a fresh one. Rejected unless the
   // coordinator is configured to allow client seeds.
   optional bytes            seed            = 5;
 }

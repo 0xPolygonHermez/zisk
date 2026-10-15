@@ -125,7 +125,7 @@ pub struct CoordinatorConfig {
     /// transient network blip and computation continues uninterrupted.
     /// Default: 500 ms (suitable for same-datacenter clusters; increase for cross-DC).
     pub reconnect_grace_period_ms: u64,
-    /// Accept execution seeds forced by clients (replays, CI). The seed decides the values the
+    /// Accept execution seeds provided by clients (replays, CI). The seed decides the values the
     /// guest gets from `zkvm_random_u64`, so a client that also writes the input could pick it to
     /// craft worst-case inputs (e.g. hash collisions). Keep it off when clients are not trusted;
     /// jobs that carry a seed are then rejected. Default: false.

@@ -111,7 +111,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         self
     }
 
-    /// Fix the execution seed instead of drawing a fresh one. Every result reports the seed it
+    /// Use this execution seed instead of drawing a fresh one. Every result reports the seed it
     /// ran with. A remote coordinator rejects it unless it is configured to allow client seeds.
     #[must_use]
     pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
@@ -241,7 +241,7 @@ impl<'a> ProveRequestExt<'a> {
         self
     }
 
-    /// Fix the execution seed instead of drawing a fresh one. Every result reports the seed it
+    /// Use this execution seed instead of drawing a fresh one. Every result reports the seed it
     /// ran with. A remote coordinator rejects it unless it is configured to allow client seeds.
     #[must_use]
     pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {

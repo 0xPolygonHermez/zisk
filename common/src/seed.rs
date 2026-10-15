@@ -3,7 +3,7 @@
 //! Every execution of a guest runs with a 256-bit seed from which the emulators derive the values
 //! returned to the guest by `zkvm_random_u64`. Those values are free witness values: they are not
 //! proven, so the seed only matters for reproducing a run. A seed is drawn from the OS CSPRNG for
-//! every task unless the host forces one (replays, tests, CI). It is decided once per task, before
+//! every task unless one is provided (replays, tests, CI). It is decided once per task, before
 //! any emulator runs, because every emulation of the task (parallel emulator threads, MPI ranks,
 //! distributed workers) must see the same values.
 
@@ -14,8 +14,8 @@ use std::str::FromStr;
 
 /// The 256-bit seed of one execution.
 ///
-/// Displayed as 64 hex characters. [`FromStr`] takes 1 to 64 hex characters, optionally `0x`
-/// prefixed, and left-pads shorter ones with zeros, so `10` is the seed `00…0010`.
+/// Displayed as 64 hex characters. [`FromStr`] takes 1 to 64 hex characters, optionally `0x` or
+/// `0X` prefixed, and left-pads shorter ones with zeros, so `10` is the seed `00…0010`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExecutionSeed([u8; ExecutionSeed::LEN]);
 
@@ -71,7 +71,7 @@ impl FromStr for ExecutionSeed {
     type Err = CommonError;
 
     fn from_str(s: &str) -> Result<Self> {
-        let digits = s.strip_prefix("0x").unwrap_or(s);
+        let digits = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
         if digits.is_empty() || digits.len() > 2 * Self::LEN {
             return Err(CommonError::Invalid(format!(
                 "execution seed must be 1 to {} hex characters, got {}",
@@ -109,30 +109,30 @@ impl fmt::Debug for ExecutionSeed {
     }
 }
 
-/// `--seed` / `ZISK_SEED`, for the commands that execute through the executor: execute, prove,
-/// stats and verify-constraints (cargo-zisk, cargo-zisk-dev, zisk-prove-client).
+/// `--random-seed` / `ZISK_RANDOM_SEED`, for every command that runs a guest (ziskemu, cargo-zisk,
+/// cargo-zisk-dev, zisk-prove-client).
 ///
 /// Under `mpirun` every rank parses its own arguments and environment, so all of them must see
-/// the same value: prefer `--seed`, or export the variable to every rank (Open MPI:
-/// `-x ZISK_SEED`).
+/// the same value: prefer `--random-seed`, or export the variable to every rank (Open MPI:
+/// `-x ZISK_RANDOM_SEED`).
 #[derive(clap::Args, Debug)]
 pub struct SeedArgs {
-    /// Fix the execution seed (up to 64 hex characters, zero-padded on the left) instead of
+    /// Use this execution seed (up to 64 hex characters, zero-padded on the left) instead of
     /// drawing a fresh one. Every run reports the seed it used. A remote coordinator accepts it
     /// only if configured to allow client seeds
-    #[arg(long, env = "ZISK_SEED", value_name = "HEX")]
-    seed: Option<ExecutionSeed>,
+    #[arg(long, env = "ZISK_RANDOM_SEED", value_name = "HEX")]
+    random_seed: Option<ExecutionSeed>,
 }
 
 impl SeedArgs {
-    /// The forced seed, if any. Warns when there is one, so a `ZISK_SEED` left in the
+    /// The provided seed, if any. Warns when there is one, so a `ZISK_RANDOM_SEED` left in the
     /// environment cannot silently pin every run to the same seed. Call it once per run, after
-    /// the logger is up.
-    pub fn forced(&self) -> Option<ExecutionSeed> {
-        if let Some(seed) = self.seed {
-            tracing::warn!("Using a forced execution seed: {seed}");
+    /// the logger is up; commands without a logger must say it themselves.
+    pub fn provided(&self) -> Option<ExecutionSeed> {
+        if let Some(seed) = self.random_seed {
+            tracing::warn!("Using a provided execution seed: {seed}");
         }
-        self.seed
+        self.random_seed
     }
 }
 
@@ -164,8 +164,10 @@ mod tests {
 
     #[test]
     fn from_str_accepts_0x_prefix_and_uppercase() {
-        let upper = format!("0x{}", HEX.to_uppercase());
-        assert_eq!(upper.parse::<ExecutionSeed>().unwrap(), counting_seed());
+        for prefix in ["0x", "0X"] {
+            let upper = format!("{prefix}{}", HEX.to_uppercase());
+            assert_eq!(upper.parse::<ExecutionSeed>().unwrap(), counting_seed());
+        }
     }
 
     #[test]
@@ -205,9 +207,9 @@ mod tests {
             #[command(flatten)]
             seed: SeedArgs,
         }
-        let cli = <Cli as clap::Parser>::try_parse_from(["cmd", "--seed", "0x10"]).unwrap();
-        assert_eq!(cli.seed.seed, Some("10".parse().unwrap()));
-        assert!(<Cli as clap::Parser>::try_parse_from(["cmd", "--seed", "1g"]).is_err());
+        let cli = <Cli as clap::Parser>::try_parse_from(["cmd", "--random-seed", "0x10"]).unwrap();
+        assert_eq!(cli.seed.random_seed, Some("10".parse().unwrap()));
+        assert!(<Cli as clap::Parser>::try_parse_from(["cmd", "--random-seed", "1g"]).is_err());
     }
 
     #[test]

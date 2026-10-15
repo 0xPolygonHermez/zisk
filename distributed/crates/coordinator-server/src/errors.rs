@@ -26,7 +26,7 @@ pub mod codes {
     pub const INVALID_JOB_STATE: u32 = 1004;
     /// The requested proof-kind conversion is not allowed.
     pub const INVALID_PROOF_CONVERSION: u32 = 1005;
-    /// The request forced an execution seed and the coordinator does not accept client seeds.
+    /// The request provided an execution seed and the coordinator does not accept client seeds.
     pub const CLIENT_SEED_NOT_ALLOWED: u32 = 1006;
     /// No cluster is available to service the request.
     pub const CLUSTER_UNAVAILABLE: u32 = 2001;
@@ -65,7 +65,7 @@ pub enum ApiError {
         to: DomainProofKind,
     },
 
-    /// The request forced an execution seed and the coordinator does not accept client seeds.
+    /// The request provided an execution seed and the coordinator does not accept client seeds.
     #[error("Client-supplied execution seeds are not allowed by this coordinator")]
     ClientSeedNotAllowed,
 

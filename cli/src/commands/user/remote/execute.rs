@@ -67,7 +67,7 @@ impl ZiskRemoteExecute {
         if let Some(hints) = hints {
             request = request.hints(hints);
         }
-        request = request.seed(self.seed.forced());
+        request = request.seed(self.seed.provided());
         if self.timeout != 0 {
             request = request.timeout(Duration::from_secs(self.timeout));
         }

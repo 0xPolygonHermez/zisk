@@ -190,7 +190,7 @@ conform but not yet audited against the spec.
 | 8 | [Standard termination semantics](#8-standard-termination-semantics) | **To verify** | `main` return maps to halt + host report; exact exit-code propagation to confirm. |
 | 9 | [Static library and linker script](#9-static-library-and-linker-script) | **Conformant** | `package.sh` stages `libzisklib_c.a` (`_start` incl. C++ ctors/dtors, I/O, all accelerators) + headers + the W^X linker script exporting `_heap_start`/`_heap_end`; verified by linking C and C++ guests against the installed artifacts alone. |
 | 10 | [Instruction-address-misaligned semantics](#10-instruction-address-misaligned-exception-semantics) | **Conformant** | At the default `IALIGN=32` (`compressed` off): misaligned entry points and executable-segment starts rejected at load; a misaligned computed jump hits its own `emu_end` slot in the per-byte jump map (rounding impossible by construction) and exits with `end=0`; the Rust emulator panics. |
-| 11 | [Host randomness](#11-host-randomness) | **Conformant** | `zkvm_random_u64` returns the SHAKE256 stream of a 256-bit seed drawn per execution from the OS CSPRNG (or forced with `--seed` to replay a run); the guest cannot set or observe it. Not available with hints. Standard still a draft (eth-act PR #42). |
+| 11 | [Host randomness](#11-host-randomness) | **Conformant** | `zkvm_random_u64` returns the SHAKE256 stream of a 256-bit seed drawn per execution from the OS CSPRNG (or provided with `--random-seed` to replay a run); the guest cannot set or observe it. Not available with hints. Standard still a draft (eth-act PR #42). |
 
 ---
 
@@ -815,9 +815,10 @@ prover running the same guest.
 - **The seed.** It is decided once per task, before any emulator runs, because every
   emulation of the task (emulator threads, the ASM services, MPI ranks, distributed
   workers) must see the same values. It is drawn from the OS CSPRNG unless the host
-  forces one with `--seed` / `ZISK_SEED` (cargo-zisk, zisk-prove-client) to replay a
-  run; every run reports the seed it used, and a remote coordinator accepts a client
-  seed only if configured to allow it (`common/src/seed.rs`, `ExecutionSeed`).
+  provides one with `--random-seed` / `ZISK_RANDOM_SEED` (ziskemu, cargo-zisk,
+  zisk-prove-client) to replay a run; every run reports the seed it used, and a remote
+  coordinator accepts a client seed only if configured to allow it (`common/src/seed.rs`,
+  `ExecutionSeed`).
 - **Reaching the emulators.** The executor hands the seed to the active emulator: the
   Rust emulator in `EmuOptions.random_seed`, the ASM services through the control-input
   shared memory (words 4..7 hold the seed, word 8 is set once it is written), read when
@@ -848,7 +849,7 @@ native `zkvm_random_u64` panics.
 that draws 500 values and checks in the guest that they are distinct and that every
 bit varies. The test compares the output with SHAKE256 of the seed computed by Python's
 `hashlib`, covers the minimal-trace path and the hints rejection, and checks that a
-missing seed fails. The same guest was run through the SDK with forced seeds on both
+missing seed fails. The same guest was run through the SDK with provided seeds on both
 the Rust and the ASM emulator, and through the ASM server/client with the seed passed
 in the control input.
 

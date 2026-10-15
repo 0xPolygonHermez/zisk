@@ -687,7 +687,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// All emulations of a task must run with the same seed, so ranks never draw their own. When
     /// `seed` is `None` this is a collective MPI operation: every rank must call it at the same
     /// point, which holds because every rank runs the same execute/prove call. Every rank must
-    /// also agree on whether a seed was forced: a rank that got one skips the broadcast the
+    /// also agree on whether a seed was provided: a rank that got one skips the broadcast the
     /// others wait on.
     fn resolve_seed(&self, seed: Option<ExecutionSeed>) -> Result<ExecutionSeed> {
         if let Some(seed) = seed {
@@ -1133,7 +1133,7 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
         }
     }
 
-    /// Fix the execution seed instead of drawing a fresh one. Takes an `Option` too, so callers
+    /// Use this execution seed instead of drawing a fresh one. Takes an `Option` too, so callers
     /// can pass through a seed they may not have.
     pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
         self.seed = seed.into();

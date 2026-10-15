@@ -107,7 +107,7 @@ impl<'a, C> VerifyConstraintsRequest<'a, C> {
         self
     }
 
-    /// Fix the execution seed instead of drawing a fresh one. Every result reports the seed it
+    /// Use this execution seed instead of drawing a fresh one. Every result reports the seed it
     /// ran with.
     #[must_use]
     pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {

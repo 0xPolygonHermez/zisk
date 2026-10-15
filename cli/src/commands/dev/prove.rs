@@ -285,7 +285,7 @@ impl ProveCmd {
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
-        let mut builder = prover.prove(&guest_program, stdin).seed(self.seed.forced());
+        let mut builder = prover.prove(&guest_program, stdin).seed(self.seed.provided());
         if self.plonk {
             builder = builder.wrap_proof(ProofKind::Plonk);
         }
@@ -318,7 +318,7 @@ impl ProveCmd {
             prover.register_hints_stream(hints_stream)?;
         }
 
-        let mut builder = prover.prove(&guest_program, stdin).seed(self.seed.forced());
+        let mut builder = prover.prove(&guest_program, stdin).seed(self.seed.provided());
         if self.plonk {
             builder = builder.wrap_proof(ProofKind::Plonk);
         }

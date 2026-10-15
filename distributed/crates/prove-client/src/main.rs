@@ -184,7 +184,7 @@ fn run_setup(
     }
 }
 
-/// Report the seed a job ran with, so it can be replayed with `--seed`.
+/// Report the seed a job ran with, so it can be replayed with `--random-seed`.
 fn print_seed(seed: Option<ExecutionSeed>) {
     if let Some(seed) = seed {
         println!("Execution seed: {seed}");
@@ -398,7 +398,7 @@ async fn main() -> Result<()> {
                 hints.as_ref(),
                 proof,
                 output.as_ref(),
-                seed.forced(),
+                seed.provided(),
                 *timeout,
             )?;
         }
@@ -410,7 +410,7 @@ async fn main() -> Result<()> {
                 input.as_ref(),
                 hints.as_ref(),
                 output.as_ref(),
-                seed.forced(),
+                seed.provided(),
                 *timeout,
             )?;
         }

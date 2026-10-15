@@ -36,7 +36,7 @@ pub enum CoordinatorError {
     #[error("Workers are connected but setup has not been done; call setup() first")]
     WorkersNotSetup,
 
-    /// The request forced an execution seed but the coordinator does not accept client seeds.
+    /// The request provided an execution seed but the coordinator does not accept client seeds.
     #[error("Client-supplied execution seeds are not allowed by this coordinator")]
     ClientSeedNotAllowed,
 

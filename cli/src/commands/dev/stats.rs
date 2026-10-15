@@ -211,7 +211,7 @@ impl StatsCmd {
         let (world_rank, n_processes, stats) = prover.stats(
             &guest_program,
             stdin,
-            self.seed.forced(),
+            self.seed.provided(),
             self.debug.clone(),
             self.minimal_memory,
             self.mpi_node.map(|n| n as u32),
@@ -283,7 +283,7 @@ impl StatsCmd {
         let (world_rank, n_processes, stats) = prover.stats(
             &guest_program,
             stdin,
-            self.seed.forced(),
+            self.seed.provided(),
             self.debug.clone(),
             self.minimal_memory,
             mpi_node,

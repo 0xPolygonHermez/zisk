@@ -183,7 +183,7 @@ impl VerifyConstraintsCmd {
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
-        prover.verify_constraints(&guest_program, stdin, self.seed.forced(), self.debug.clone())
+        prover.verify_constraints(&guest_program, stdin, self.seed.provided(), self.debug.clone())
     }
 
     pub(crate) fn run_asm(
@@ -237,6 +237,6 @@ impl VerifyConstraintsCmd {
         if let Some(hints_stream) = hints_stream {
             prover.register_hints_stream(hints_stream)?;
         }
-        prover.verify_constraints(&guest_program, stdin, self.seed.forced(), self.debug.clone())
+        prover.verify_constraints(&guest_program, stdin, self.seed.provided(), self.debug.clone())
     }
 }

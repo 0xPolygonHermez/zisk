@@ -116,7 +116,7 @@ impl EmulatorRust {
         let emu_options = EmuOptions {
             chunk_size: Some(self.chunk_size),
             max_steps: MAX_NUM_STEPS,
-            random_seed: Some(seed.to_le_words()),
+            random_seed: Some(*seed),
             ..EmuOptions::default()
         };
 

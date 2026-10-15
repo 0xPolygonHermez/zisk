@@ -196,7 +196,7 @@ pub struct DomainProveRequest {
     pub input: DomainInputKind,
     /// Optional precompile hints input.
     pub hints: Option<DomainInputKind>,
-    /// Execution seed to force instead of drawing a fresh one (replays). A coordinator that
+    /// Execution seed to use instead of drawing a fresh one (replays). A coordinator that
     /// does not allow client seeds rejects the job rather than run it with a different seed.
     pub seed: Option<ExecutionSeed>,
     /// Optional deadline for the proof.
@@ -225,7 +225,7 @@ pub struct DomainExecuteRequest {
     pub input: DomainInputKind,
     /// Optional precompile hints input.
     pub hints: Option<DomainInputKind>,
-    /// Execution seed to force instead of drawing a fresh one (replays). A coordinator that
+    /// Execution seed to use instead of drawing a fresh one (replays). A coordinator that
     /// does not allow client seeds rejects the job rather than run it with a different seed.
     pub seed: Option<ExecutionSeed>,
     /// Optional deadline for the execution.

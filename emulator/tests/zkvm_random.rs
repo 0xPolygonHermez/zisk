@@ -6,10 +6,10 @@
 //! `ziskasm/lang/c/example/zkvm_random_guest.c`) draws 500 values and outputs the first
 //! 20, the XOR of all of them and its own checks (0 = all distinct, every bit varies).
 
-use zisk_common::EmuTrace;
+use zisk_common::{EmuTrace, ExecutionSeed};
 use zisk_core::{AsmGenerationMethod, ZiskRom2Asm};
 use zisk_transpiler_common::{program2rom, program2romfile, HINTS_WITH_RANDOM_ERROR};
-use ziskemu::{parse_random_seed, EmuOptions, Emulator, ZiskEmulator};
+use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
 
 /// The 32 seed bytes 00 01 .. 1f: all distinct, so a byte or word order slip shows
 const SEED: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
@@ -46,12 +46,12 @@ fn elf_path() -> String {
     format!("{}/../elf-regressions/zkvm_random/zkvm_random.elf", env!("CARGO_MANIFEST_DIR"))
 }
 
-fn seed() -> [u64; 4] {
-    parse_random_seed(SEED).unwrap()
+fn seed() -> ExecutionSeed {
+    SEED.parse().unwrap()
 }
 
 /// Runs the guest with `random_seed`, returning its 22 output words
-fn emulate(random_seed: Option<[u64; 4]>) -> Vec<u64> {
+fn emulate(random_seed: Option<ExecutionSeed>) -> Vec<u64> {
     let options = EmuOptions { elf: Some(elf_path()), random_seed, ..Default::default() };
     let output = ZiskEmulator
         .emulate(&options, None::<Box<dyn Fn(EmuTrace)>>)
@@ -69,9 +69,9 @@ fn returns_the_shake256_stream_of_the_seed() {
 
 #[test]
 fn another_seed_gives_another_stream() {
-    let mut other = seed();
-    other[3] ^= 1 << 63;
-    let output = emulate(Some(other));
+    let mut other = *seed().as_bytes();
+    other[31] ^= 0x80; // the top bit of the last word
+    let output = emulate(Some(ExecutionSeed::new(other)));
     assert_ne!(output[..20], STREAM);
     assert_eq!(output[21], 0, "in-guest checks: values not distinct (1) or a bit never varies (2)");
 }
@@ -90,13 +90,9 @@ fn minimal_traces_read_the_seed() {
 #[test]
 fn the_seed_is_read_as_its_bytes_in_order() {
     assert_eq!(
-        seed(),
+        seed().to_le_words(),
         [0x0706050403020100, 0x0f0e0d0c0b0a0908, 0x1716151413121110, 0x1f1e1d1c1b1a1918]
     );
-    assert_eq!(parse_random_seed(&format!("0x{SEED}")), Ok(seed()));
-    assert!(parse_random_seed(&SEED[2..]).is_err(), "31 bytes");
-    assert!(parse_random_seed(&format!("{SEED}00")).is_err(), "33 bytes");
-    assert!(parse_random_seed(&SEED.replace('a', "g")).is_err(), "not hex");
 }
 
 #[test]
