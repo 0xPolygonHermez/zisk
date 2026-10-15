@@ -1324,8 +1324,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
         }
 
-        prover.set_stdin_and_random_seed(stdin.clone(), seed)?;
-
         prover.set_partition(
             partition_info.total_compute_units,
             partition_info.allocation.clone(),
