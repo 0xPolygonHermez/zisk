@@ -507,6 +507,7 @@ impl ProverBackend {
         proof: &[u64],
         publics_full: &[u64],
         source_kind: VadcopKind,
+        seed: Option<ExecutionSeed>,
     ) -> Result<ProveOutput> {
         match source_kind {
             VadcopKind::Minimal => {
@@ -555,7 +556,8 @@ impl ProverBackend {
             program_vk,
         );
 
-        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
+        // No guest runs here; the result keeps the seed of the execution the source proof attests.
+        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof).with_seed(seed))
     }
 
     /// SNARK-wrap a vadcop_final proof. `source_kind` supplies the flag `RecursiveF`
@@ -565,6 +567,7 @@ impl ProverBackend {
         proof: &[u64],
         publics_full: &[u64],
         source_kind: VadcopKind,
+        seed: Option<ExecutionSeed>,
     ) -> Result<ProveOutput> {
         if self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
@@ -635,7 +638,8 @@ impl ProverBackend {
             ),
         );
 
-        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
+        // No guest runs here; the result keeps the seed of the execution the source proof attests.
+        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof).with_seed(seed))
     }
 
     pub(crate) fn prove_phase(

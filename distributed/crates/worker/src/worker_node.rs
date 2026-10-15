@@ -1900,6 +1900,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
             return Err(anyhow!("Expected ContributionParams for Partial Contribution task"));
         };
+        let seed = Self::job_seed(&params.seed)?;
 
         let job_id = JobId::from(request.job_id);
         let input_source = Self::resolve_input_source(
@@ -1931,8 +1932,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.worker_allocation.contains(&0) && self.worker.world_rank() == 0;
         self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_process)?;
 
-        let seed = ExecutionSeed::try_from(params.seed.as_slice())
-            .context("coordinator sent no valid execution seed for the job")?;
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
 
@@ -1983,6 +1982,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
             return Err(anyhow!("Expected ExecutionParams for Execution-only task"));
         };
+        let seed = Self::job_seed(&params.seed)?;
 
         let job_id = JobId::from(request.job_id);
         let input_source = Self::resolve_input_source(
@@ -2014,8 +2014,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.worker_allocation.contains(&0) && self.worker.world_rank() == 0;
         self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_process)?;
 
-        let seed = ExecutionSeed::try_from(params.seed.as_slice())
-            .context("coordinator sent no valid execution seed for the job")?;
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
 
@@ -2060,6 +2058,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// Resolve `InputSource` from a gRPC request into `InputSourceDto`.
     ///
     /// File paths are validated under `inputs_folder` with a 60 s timeout.
+    /// The job's execution seed from its task params. Every task that executes carries one, so a
+    /// missing or malformed seed fails the task before it touches the prover.
+    fn job_seed(bytes: &[u8]) -> Result<ExecutionSeed> {
+        ExecutionSeed::try_from(bytes)
+            .context("coordinator sent no valid execution seed for the job")
+    }
+
     async fn resolve_input_source(
         inputs_folder: &Path,
         source: Option<InputSource>,

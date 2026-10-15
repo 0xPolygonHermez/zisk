@@ -591,12 +591,15 @@ impl ProverEngine for AsmProver {
         publics_full: &[u64],
         source_kind: VadcopKind,
         proof_kind: ProofKind,
+        seed: Option<ExecutionSeed>,
     ) -> Result<ProveOutput> {
         match proof_kind {
             ProofKind::VadcopFinalMinimal => {
-                self.core_prover.backend.minimal(proof, publics_full, source_kind)
+                self.core_prover.backend.minimal(proof, publics_full, source_kind, seed)
             }
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full, source_kind),
+            ProofKind::Plonk => {
+                self.core_prover.backend.plonk(proof, publics_full, source_kind, seed)
+            }
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }

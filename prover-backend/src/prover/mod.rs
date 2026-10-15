@@ -496,12 +496,16 @@ pub trait ProverEngine {
     /// contract rather than a hint: it carries the `is_vadcop_final_proof` flag
     /// the recursion layer commits to, and selects the verkey the SNARK wrapper
     /// verifies under. Callers pass the stored kind and the backend does both.
+    ///
+    /// `seed` is the wrapped proof's own seed: wrapping re-proves its statement without running
+    /// the guest, so the result attests the same execution and keeps it.
     fn wrap_proof(
         &self,
         proof: &[u64],
         publics_full: &[u64],
         source_kind: VadcopKind,
         proof_kind: ProofKind,
+        seed: Option<ExecutionSeed>,
     ) -> Result<ProveOutput>;
 
     /// Run a single proving phase (distributed pipeline).
@@ -684,12 +688,17 @@ impl<C: ZiskBackend> ZiskProver<C> {
         if let Some(seed) = seed {
             return Ok(seed);
         }
-        let mut bytes = if self.world_rank() == 0 {
-            ExecutionSeed::random()?.as_bytes().to_vec()
-        } else {
-            Vec::new()
+        let drawn = (self.world_rank() == 0).then(ExecutionSeed::random);
+        // Rank 0 broadcasts even if drawing failed, so no rank is left waiting: the empty message
+        // fails their decode instead.
+        let mut bytes = match &drawn {
+            Some(Ok(seed)) => seed.as_bytes().to_vec(),
+            _ => Vec::new(),
         };
         self.mpi_broadcast(&mut bytes)?;
+        if let Some(Err(e)) = drawn {
+            return Err(e.into());
+        }
         Ok(ExecutionSeed::try_from(bytes.as_slice())?)
     }
 
@@ -1178,7 +1187,6 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
                 return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
             }
         };
-        let output = self.prover.wrap_proof(proof, publics_full, source_kind, self.proof_kind)?;
-        Ok(output.with_seed(self.proof.seed))
+        self.prover.wrap_proof(proof, publics_full, source_kind, self.proof_kind, self.proof.seed)
     }
 }
