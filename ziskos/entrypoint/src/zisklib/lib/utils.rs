@@ -32,6 +32,27 @@ pub fn u64_4_to_be_bytes(limbs: &[u64; 4]) -> [u8; 32] {
     ]
 }
 
+/// Convert a little-endian byte array to an array of 4 u64 limbs (little-endian order).
+#[inline]
+pub fn le_bytes_to_u64_4(bytes: &[u8; 32]) -> [u64; 4] {
+    [
+        u64::from_le_bytes(bytes[0..8].try_into().unwrap()),
+        u64::from_le_bytes(bytes[8..16].try_into().unwrap()),
+        u64::from_le_bytes(bytes[16..24].try_into().unwrap()),
+        u64::from_le_bytes(bytes[24..32].try_into().unwrap()),
+    ]
+}
+
+/// Convert an array of 4 u64 limbs (little-endian order) to a little-endian byte array.
+#[inline]
+pub fn u64_4_to_le_bytes(limbs: &[u64; 4]) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    for (chunk, limb) in out.chunks_mut(8).zip(limbs) {
+        chunk.copy_from_slice(&limb.to_le_bytes());
+    }
+    out
+}
+
 /// Given two n-bit number `x` and `y`, compares them and returns true if `x > y`; otherwise, false.
 pub fn gt(x: &[u64], y: &[u64]) -> bool {
     debug_assert_eq!(x.len(), y.len(), "x and y must have the same length");

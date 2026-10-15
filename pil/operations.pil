@@ -161,6 +161,8 @@ const int OP_DMA_XMEMCMP = OP_DMA_MEMCMP + OP_DMA_X_OFFSET;     // 0xD7
 const int OP_DMA_XMEMSET = __OP_DMA_MEMSET__ + OP_DMA_X_OFFSET; // 0xD9
 const int OP_DMA_XMEMEQ = __OP_DMA_MEMEQ__ + OP_DMA_X_OFFSET;   // 0xDA
 
+const int OP_ED25519_ADD = 0xE1;
+
 const int OP_ARITH384_MOD = 0xE2;
 const int OP_BLS12_381_CURVE_ADD = 0xE3;
 const int OP_BLS12_381_CURVE_DBL = 0xE4;

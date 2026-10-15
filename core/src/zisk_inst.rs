@@ -84,7 +84,7 @@ pub enum ZiskOperationType {
     ArithEq,
     ArithEq384,
     BigInt,
-    BabyJubJub,
+    TwistedEdwards,
     Blake3,
     Blake2s, // Note: Add new core operations here
     Evm,
@@ -113,7 +113,7 @@ pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
 pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
 pub const DMA_OP_TYPE_ID: u32 = ZiskOperationType::Dma as u32;
 pub const BLAKE2B_OP_TYPE_ID: u32 = ZiskOperationType::Blake2b as u32;
-pub const BABYJUBJUB_OP_TYPE_ID: u32 = ZiskOperationType::BabyJubJub as u32;
+pub const TWISTED_EDWARDS_OP_TYPE_ID: u32 = ZiskOperationType::TwistedEdwards as u32;
 pub const BLAKE3_OP_TYPE_ID: u32 = ZiskOperationType::Blake3 as u32;
 pub const BLAKE2S_OP_TYPE_ID: u32 = ZiskOperationType::Blake2s as u32;
 

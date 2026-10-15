@@ -6,6 +6,7 @@ mod blake2s;
 mod blake3;
 mod bls12_381;
 mod bn254;
+mod ed25519;
 mod keccakf;
 mod poseidon1;
 mod poseidon2;
@@ -21,6 +22,7 @@ pub fn diagnostic_syscalls() {
     blake2s::diagnostic_blake2s();
     bls12_381::diagnostic_bls12_381();
     bn254::diagnostic_bn254();
+    ed25519::diagnostic_ed25519();
     keccakf::diagnostic_keccakf();
     poseidon1::diagnostic_poseidon1();
     poseidon2::diagnostic_poseidon2();

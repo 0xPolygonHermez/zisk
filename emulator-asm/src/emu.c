@@ -18,6 +18,7 @@
 #include "../../lib-c/c/src/arith384/arith384.hpp"
 #include "../../lib-c/c/src/bn254/bn254.hpp"
 #include "../../lib-c/c/src/babyjubjub/babyjubjub.hpp"
+#include "../../lib-c/c/src/ed25519/ed25519.hpp"
 #include "../../lib-c/c/src/bls12_381/bls12_381.hpp"
 #include "../../lib-c/c/src/poseidon2/poseidon2_goldilocks.hpp"
 #include "../../lib-c/c/src/poseidon1/poseidon1_goldilocks.hpp"
@@ -68,6 +69,7 @@ static const char * asm_call_names[ASM_CALL_COUNT] = {
     [ASM_CALL_BLS12_381_COMPLEX_SUB] = "bls12_381_complex_sub",
     [ASM_CALL_BLS12_381_COMPLEX_MUL] = "bls12_381_complex_mul",
     [ASM_CALL_BABYJUBJUB_ADD] = "babyjubjub_add",
+    [ASM_CALL_ED25519_ADD] = "ed25519_add",
     [ASM_CALL_ADD256] = "add256",
 };
 
@@ -97,6 +99,7 @@ static const char * asm_call_fcall_names[ASM_CALL_FCALL_IDS] = {
     [FCALL_BIGINT_DIV_ID] = "bigint_div",
     [FCALL_SET_KECCAKF_CACHE_INDEX_ID] = "set_keccakf_cache_index",
     [FCALL_GET_KECCAKF_CACHE_INDEX_ID] = "get_keccakf_cache_index",
+    [FCALL_ED25519_FP_SQRT_RATIO_ID] = "ed25519_fp_sqrt_ratio",
 };
 
 // Mean cost of an empty start/stop measurement, subtracted from the recorded calls when printing
@@ -1363,6 +1366,63 @@ extern int _opcode_babyjubjub_add(uint64_t * p1, uint64_t * p2)
     }
 #endif
     ASM_CALL_METRICS_STOP(ASM_CALL_BABYJUBJUB_ADD);
+    return 0;
+}
+
+extern int _opcode_ed25519_add(uint64_t * p1, uint64_t * p2)
+{
+    ASM_CALL_METRICS_START();
+
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+#ifdef ASM_CALL_METRICS
+        asm_printf("_opcode_ed25519_add() calling Ed25519AddP() counter=%lu p1_address=%p p2_address=%p\n", asm_call_metrics.call[ASM_CALL_ED25519_ADD].counter, p1, p2);
+#else
+        asm_printf("_opcode_ed25519_add() calling Ed25519AddP() p1_address=%p p2_address=%p\n", p1, p2);
+#endif
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
+    }
+#endif
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        // Call point addition function
+        int result = Ed25519AddP (
+            p1, // p1 = [x1, y1] = 8x64bits
+            p2, // p2 = [x2, y2] = 8x64bits
+            p1 // p3 = [x3, y3] = 8x64bits
+        );
+        if (result != 0)
+        {
+            asm_printf("_opcode_ed25519_add() failed calling Ed25519AddP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 8*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 8*8);
+    }
+#endif
+
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+    }
+#endif
+    ASM_CALL_METRICS_STOP(ASM_CALL_ED25519_ADD);
     return 0;
 }
 

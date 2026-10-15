@@ -36,6 +36,10 @@
 //! ### Elliptic curve (BLS12-381)
 //! - [`syscall_bls12_381_curve_add`] / [`syscall_bls12_381_curve_dbl`] — Curve operations
 //! - [`syscall_bls12_381_complex_add`] / [`syscall_bls12_381_complex_mul`] / [`syscall_bls12_381_complex_sub`] — Fp2 arithmetic
+//!
+//! ### Elliptic curve (twisted Edwards, complete addition: also doubles)
+//! - [`syscall_babyjubjub_add`] — Point addition on BabyJubJub (circomlib)
+//! - [`syscall_ed25519_add`] — Point addition on Ed25519 (edwards25519)
 
 mod add256;
 mod arith256;
@@ -56,6 +60,7 @@ mod bn254_complex_sub;
 mod bn254_curve_add;
 mod bn254_curve_dbl;
 mod complex;
+mod ed25519_add;
 mod keccakf;
 mod point;
 mod poseidon1;
@@ -85,6 +90,7 @@ pub use bn254_complex_sub::*;
 pub use bn254_curve_add::*;
 pub use bn254_curve_dbl::*;
 pub use complex::*;
+pub use ed25519_add::*;
 pub use keccakf::*;
 pub use point::*;
 pub use poseidon1::*;
