@@ -6,9 +6,15 @@ use ziskemu::{
     ZiskEmulatorErr, ZISK_VERSION_MESSAGE,
 };
 
+/// `--random-seed` help for ziskemu, which, unlike the other commands, prints the seed only with
+/// -v.
+const RANDOM_SEED_HELP: &str = "Seed of the host randomness generator (`zkvm_random_u64`): up to \
+    64 hex characters, zero-padded on the left. If not provided, a new random seed is generated";
+
 /// ziskemu's command line: the emulator options plus the host randomness seed.
 #[derive(Parser)]
 #[command(version = ZISK_VERSION_MESSAGE, about, long_about = None)]
+#[command(mut_arg("random_seed", |arg| arg.help(RANDOM_SEED_HELP)))]
 struct Cli {
     #[command(flatten)]
     options: EmuOptions,
@@ -64,18 +70,19 @@ fn main() {
         println!("ziskemu converts an ELF RISCV file into a ZISK rom or loads a ZISK rom file, emulates it with the provided input, and copies the output to console or a file");
     }
 
-    // Each execution gets a fresh host randomness seed, unless one is given.
-    // Reported on stderr: stdout may carry the guest output (--log-output, --log-output-riscof).
-    let provided = seed.provided();
-    let random_seed = match provided.map_or_else(RandomSeed::random, Ok) {
+    // Each execution gets a fresh host randomness seed, unless one is given. Printed only with
+    // -v, so that by default the output is the guest's alone (scripts such as the riscof ones
+    // capture all of it).
+    let random_seed = match seed.provided().map_or_else(RandomSeed::random, Ok) {
         Ok(random_seed) => random_seed,
         Err(e) => {
             eprintln!("Error drawing a random seed: {e}");
             process::exit(1);
         }
     };
-    let note = if provided.is_some() { " (provided)" } else { "" };
-    eprintln!("Random seed: {random_seed}{note}");
+    if options.verbose {
+        println!("Random seed: {random_seed}");
+    }
     options.random_seed = Some(random_seed);
 
     // Call emulate, with these options

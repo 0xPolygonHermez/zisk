@@ -822,8 +822,8 @@ prover running the same guest.
 - **Reaching the emulators.** The executor hands the seed to the active emulator: the
   Rust emulator in `EmuOptions.random_seed`, the ASM services through the control-input
   shared memory (words 4..7 hold the seed, word 8 is set once it is written), read when
-  each execution starts. Standalone, `ziskemu` takes or draws the seed itself and prints
-  it on stderr.
+  each execution starts. Standalone, `ziskemu` takes or draws the seed itself (`-v`
+  prints it).
 - **The guest side.** `zkvm_random_u64` is a zkvmcall thunk (`0x8B3`) to
   `ziskasm_zkvm_random_u64` (`ziskasm/zisklib/zkvm/random.zisk`). On the first call it
   reads the seed with the `FCALL_RANDOM_SEED` fcall (26) and absorbs it as SHAKE256 does;
