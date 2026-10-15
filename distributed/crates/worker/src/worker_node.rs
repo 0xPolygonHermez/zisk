@@ -2038,6 +2038,29 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    /// Resolve `InputSource` from a gRPC request into `InputSourceDto`.
+    ///
+    /// File paths are validated under `inputs_folder` with a 60 s timeout.
+    async fn resolve_input_source(
+        inputs_folder: &Path,
+        source: Option<InputSource>,
+    ) -> Result<InputSourceDto> {
+        match source {
+            Some(InputSource::InputPath(ref path)) => {
+                let validated = Self::validate_subdir(inputs_folder, &PathBuf::from(path)).await?;
+                Ok(InputSourceDto::InputPath(validated.to_string_lossy().to_string()))
+            }
+            Some(InputSource::InputData(data)) => Ok(InputSourceDto::InputData(data)),
+            None => Ok(InputSourceDto::InputNull),
+        }
+    }
+
+    /// The job's host randomness seed from its task params. Every task that executes carries one,
+    /// so a missing or malformed seed fails the task before it touches the prover.
+    fn job_random_seed(bytes: &[u8]) -> Result<RandomSeed> {
+        RandomSeed::try_from(bytes).context("coordinator sent no valid random seed for the job")
+    }
+
     /// Validates that a subpath is within the base directory and waits for it to exist.
     ///
     /// This function joins the base directory with the provided subpath, waits for the
@@ -2054,30 +2077,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// # Arguments
     /// * `base_dir` - The base directory that must contain the subpath
     /// * `subpath` - The relative path within base_dir (can include subdirectories)
-    ///
-    /// Resolve `InputSource` from a gRPC request into `InputSourceDto`.
-    ///
-    /// File paths are validated under `inputs_folder` with a 60 s timeout.
-    /// The job's random seed from its task params. Every task that executes carries one, so a
-    /// missing or malformed seed fails the task before it touches the prover.
-    fn job_random_seed(bytes: &[u8]) -> Result<RandomSeed> {
-        RandomSeed::try_from(bytes).context("coordinator sent no valid random seed for the job")
-    }
-
-    async fn resolve_input_source(
-        inputs_folder: &Path,
-        source: Option<InputSource>,
-    ) -> Result<InputSourceDto> {
-        match source {
-            Some(InputSource::InputPath(ref path)) => {
-                let validated = Self::validate_subdir(inputs_folder, &PathBuf::from(path)).await?;
-                Ok(InputSourceDto::InputPath(validated.to_string_lossy().to_string()))
-            }
-            Some(InputSource::InputData(data)) => Ok(InputSourceDto::InputData(data)),
-            None => Ok(InputSourceDto::InputNull),
-        }
-    }
-
     ///
     /// # Returns
     /// * `Ok(PathBuf)` - The validated, canonicalized full path
