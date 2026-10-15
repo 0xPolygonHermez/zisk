@@ -489,14 +489,6 @@ impl ProverEngine for AsmProver {
             .unwrap_or_default()
     }
 
-    fn random_seed(&self) -> Option<RandomSeed> {
-        self.core_prover
-            .backend
-            .execution_result()
-            .map(|(exec_result, _)| exec_result.random_seed)
-            .unwrap_or_default()
-    }
-
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
         self.core_prover.backend.get_execution_info()
     }

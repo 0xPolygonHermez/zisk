@@ -423,9 +423,6 @@ pub trait ProverEngine {
     /// Per-AIR instance plan from the last execution or proof run.
     fn execution_plan(&self) -> Vec<AirInstanceCount>;
 
-    /// Seed of the last execution or proof run; `None` before the first one.
-    fn random_seed(&self) -> Option<RandomSeed>;
-
     /// Witness metadata and executor timing from the last run.
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)>;
 
@@ -744,13 +741,6 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.execution_plan()
     }
 
-    /// Get the seed of the last execution or proof run; `None` before the first one.
-    ///
-    /// For runs whose output does not carry the seed, such as [`stats`](Self::stats).
-    pub fn random_seed(&self) -> Option<RandomSeed> {
-        self.prover.random_seed()
-    }
-
     /// Get the executor time from the last execution or proof run.
     pub fn get_executor_time(&self) -> Result<ZiskExecutorTime> {
         Ok(self.prover.get_execution_info()?.1)
@@ -778,6 +768,9 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Get the execution statistics with the given standard input and debug information.
     /// A `None` seed draws a fresh one on rank 0 and broadcasts it to every MPI rank.
     /// The program must have been setup previously using `.setup()`.
+    ///
+    /// Returns the world rank, the number of processes, the stats (`None` on inactive ranks) and
+    /// the seed the execution ran with, which the stats do not carry.
     pub fn stats(
         &self,
         program: &GuestProgram,
@@ -786,9 +779,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>, RandomSeed)> {
         let seed = self.resolve_random_seed(seed)?;
-        self.prover.stats(program, stdin, seed, debug_info, minimal_memory, mpi_node)
+        let (world_rank, n_processes, stats) =
+            self.prover.stats(program, stdin, seed, debug_info, minimal_memory, mpi_node)?;
+        Ok((world_rank, n_processes, stats, seed))
     }
 
     /// Get the instance trace for a given instance ID and row range.

@@ -81,16 +81,18 @@ impl EmbeddedClient {
         executor: ExecutorKind,
         proof_kind: ProofKind,
     ) -> Result<ProveResult> {
-        macro_rules! apply_mode {
-            ($builder:expr) => {
+        // Sets the seed and the proof kind on every prove builder below, so neither can be missed.
+        macro_rules! configure {
+            ($builder:expr) => {{
+                let builder = $builder.random_seed(seed);
                 match proof_kind {
-                    ProofKind::VadcopFinal => $builder,
+                    ProofKind::VadcopFinal => builder,
                     ProofKind::VadcopFinalMinimal => {
-                        $builder.wrap_proof(ProofKind::VadcopFinalMinimal)
+                        builder.wrap_proof(ProofKind::VadcopFinalMinimal)
                     }
-                    ProofKind::Plonk => $builder.wrap_proof(ProofKind::Plonk),
+                    ProofKind::Plonk => builder.wrap_proof(ProofKind::Plonk),
                 }
-            };
+            }};
         }
         let (prover_is_asm, was_setup_with_hints) = match prover.as_ref() {
             EmbeddedProver::Asm(p) => (true, p.was_setup_with_hints()),
@@ -110,9 +112,7 @@ impl EmbeddedClient {
         let result = match (prover.as_ref(), executor) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => {
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                apply_mode!(p.prove(program, s.into_inner()).random_seed(seed))
-                    .run()
-                    .map_err(SdkError::backend)?
+                configure!(p.prove(program, s.into_inner())).run().map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Emulator) => {
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
@@ -132,11 +132,9 @@ impl EmbeddedClient {
                             p.register_hints_stream(source).map_err(SdkError::backend)?;
                         }
                     }
-                    apply_mode!(p
-                        .prove(program, zisk_common::io::ZiskStdin::new())
-                        .random_seed(seed))
-                    .run()
-                    .map_err(SdkError::backend)?
+                    configure!(p.prove(program, zisk_common::io::ZiskStdin::new()))
+                        .run()
+                        .map_err(SdkError::backend)?
                 } else {
                     match stdin {
                         InputSource::Stream(stream) => {
@@ -144,17 +142,13 @@ impl EmbeddedClient {
                             let uri = stream.uri().to_string();
                             let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
                             p.register_inputs_stream(source).map_err(SdkError::backend)?;
-                            apply_mode!(p
-                                .prove(program, zisk_common::io::ZiskStdin::new())
-                                .random_seed(seed))
-                            .run()
-                            .map_err(SdkError::backend)?
-                        }
-                        InputSource::Stdin(s) => {
-                            apply_mode!(p.prove(program, s.into_inner()).random_seed(seed))
+                            configure!(p.prove(program, zisk_common::io::ZiskStdin::new()))
                                 .run()
                                 .map_err(SdkError::backend)?
                         }
+                        InputSource::Stdin(s) => configure!(p.prove(program, s.into_inner()))
+                            .run()
+                            .map_err(SdkError::backend)?,
                     }
                 }
             }

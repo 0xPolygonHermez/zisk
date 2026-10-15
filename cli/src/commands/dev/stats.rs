@@ -13,8 +13,8 @@ use crate::common::detect_current_project_elf;
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_random_seed};
 
 /// What a stats run reports: world rank, number of processes, the stats (`None` on inactive
-/// ranks) and the host randomness seed (`None` where nothing ran).
-type StatsRun = (i32, i32, Option<ExecutorStatsHandle>, Option<RandomSeed>);
+/// ranks) and the host randomness seed.
+type StatsRun = (i32, i32, Option<ExecutorStatsHandle>, RandomSeed);
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -165,9 +165,8 @@ impl StatsCmd {
             format!("--- STATS SUMMARY RANK {}/{}", world_rank, n_processes),
             "-".repeat(55)
         );
-        print_random_seed(seed);
-
         if let Some(stats) = &stats {
+            print_random_seed(Some(seed));
             Self::print_stats(&stats.witness_stats(), stats.collect_phase_wall_ms());
             stats.print_stats();
         }
@@ -208,15 +207,14 @@ impl StatsCmd {
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
-        let (world_rank, n_processes, stats) = prover.stats(
+        prover.stats(
             &guest_program,
             stdin,
             self.random_seed.provided(),
             self.debug.clone(),
             self.minimal_memory,
             self.mpi_node.map(|n| n as u32),
-        )?;
-        Ok((world_rank, n_processes, stats, prover.random_seed()))
+        )
     }
 
     pub(crate) fn run_asm(
@@ -280,15 +278,14 @@ impl StatsCmd {
             prover.register_hints_stream(hints_stream)?;
         }
         let mpi_node = self.mpi_node.map(|n| n as u32);
-        let (world_rank, n_processes, stats) = prover.stats(
+        prover.stats(
             &guest_program,
             stdin,
             self.random_seed.provided(),
             self.debug.clone(),
             self.minimal_memory,
             mpi_node,
-        )?;
-        Ok((world_rank, n_processes, stats, prover.random_seed()))
+        )
     }
 
     /// Prints stats individually and grouped, with aligned columns.
