@@ -34,6 +34,8 @@ require "dma/pil/dma_byte_cmp_table.pil"
 require "dma/pil/dma_64_aligned.pil"
 require "dma/pil/dma_unaligned.pil"
 require "poseidon/pil/poseidon.pil"
+require "poseidon/pil/poseidon2_non_native.pil"
+require "poseidon/pil/poseidon2_koalabear_sp1.pil"
 require "blake2/pil/blake2br.pil"
 require "blake2/pil/blake2s.pil"
 require "blake3/pil/blake3f.pil"
@@ -159,6 +161,9 @@ airgroup Zisk {
     Sha256f(N: 2**18);
 
     Poseidon(N: 2**17);
+    Poseidon2NonNative(N: 2**20, OP: OP_POSEIDON2_KOALABEAR, P: KB_SP1_P, n: 16, SBOX_DEG: 3, RF: 8, RP: 20,
+                       M4: KB_SP1_M4, INT_SCALE: KB_SP1_INT_SCALE, D: KB_SP1_D_16, RC: KB_SP1_RC_16)
+        alias Poseidon2KoalaBear;
 
     Blake2br(N: 2**18);
     Blake3f(N: 2**20, LANES: 2);

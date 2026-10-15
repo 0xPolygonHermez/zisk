@@ -261,6 +261,7 @@ impl ZiskAsmContext {
                 | ZiskOp::Sha256
                 | ZiskOp::Poseidon2
                 | ZiskOp::Poseidon1
+                | ZiskOp::Poseidon2KoalaBear
                 | ZiskOp::Arith256
                 | ZiskOp::Arith256Mod
                 | ZiskOp::Secp256k1Add
@@ -5344,9 +5345,10 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Poseidon2 | ZiskOp::Poseidon1 => {
-                let pname =
-                    if matches!(zisk_op, ZiskOp::Poseidon1) { "poseidon1" } else { "poseidon2" };
+            ZiskOp::Poseidon2 | ZiskOp::Poseidon1 | ZiskOp::Poseidon2KoalaBear => {
+                // In-place state of input_size bytes, handled by _opcode_<name>
+                let pname = zisk_op.name();
+                let words = zisk_op.input_size() / 8;
                 *code += &ctx.full_line_comment(format!("{pname}: rdi = A0"));
 
                 // Generate mem reads
@@ -5361,7 +5363,7 @@ impl ZiskRom2Asm {
                 // Copy read data into mem_reads_address and advance it
                 if ctx.minimal_trace() {
                     *code += &format!("\tmov {REG_ADDRESS}, rdi\n");
-                    for k in 0..16 {
+                    for k in 0..words {
                         *code += &format!(
                             "\tmov {}, [{} + {}] {}\n",
                             REG_VALUE,
@@ -5379,19 +5381,20 @@ impl ZiskRom2Asm {
                         );
                     }
 
-                    // Increment chunk.steps.mem_reads_size in 16 units
+                    // Increment chunk.steps.mem_reads_size in `words` units
                     *code += &format!(
-                        "\tadd {}, 16 {}\n",
+                        "\tadd {}, {} {}\n",
                         REG_MEM_READS_SIZE,
-                        ctx.comment_str("mem_reads_size += 16")
+                        words,
+                        ctx.comment(format!("mem_reads_size += {words}"))
                     );
                 }
 
-                // Trace 16 memory read operations
+                // Trace the memory read and write operations
                 if ctx.mem_op() {
                     *code += &format!("\tmov {REG_ADDRESS}, rdi\n");
-                    Self::mem_op_array(ctx, code, REG_ADDRESS, false, 16);
-                    Self::mem_op_array(ctx, code, REG_ADDRESS, true, 16);
+                    Self::mem_op_array(ctx, code, REG_ADDRESS, false, words);
+                    Self::mem_op_array(ctx, code, REG_ADDRESS, true, words);
                 }
 
                 // Call the poseidon function for the selected family

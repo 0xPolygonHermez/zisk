@@ -94,6 +94,7 @@ OTHER_OBJS = $(BUILD_DIR)/alt_bn128.o \
              $(BUILD_DIR)/globals.o \
              $(BUILD_DIR)/goldilocks_base_field.o \
              $(BUILD_DIR)/poseidon2_goldilocks.o \
+             $(BUILD_DIR)/poseidon2_non_native.o \
              $(BUILD_DIR)/poseidon1_goldilocks.o \
              $(BUILD_DIR)/blake2.o \
              $(BUILD_DIR)/blake3.o \
@@ -248,6 +249,9 @@ $(BUILD_DIR)/goldilocks_base_field.o: $(SRC_DIR)/poseidon2/goldilocks_base_field
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/poseidon2_goldilocks.o: $(SRC_DIR)/poseidon2/poseidon2_goldilocks.cpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks.hpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks_constants.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/poseidon2_non_native.o: $(SRC_DIR)/poseidon2/poseidon2_non_native.cpp $(SRC_DIR)/poseidon2/poseidon2_non_native.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/poseidon1_goldilocks.o: $(SRC_DIR)/poseidon1/poseidon1_goldilocks.cpp $(SRC_DIR)/poseidon1/poseidon1_goldilocks.hpp $(SRC_DIR)/poseidon1/poseidon1_goldilocks_constants.hpp | $(BUILD_DIR)
