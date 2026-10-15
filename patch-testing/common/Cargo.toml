@@ -1,0 +1,8 @@
+[package]
+name = "patch-test-common"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Tiny no-deps check harness shared by the patch-testing guests."
+
+[dependencies]
