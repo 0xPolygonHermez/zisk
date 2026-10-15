@@ -1,0 +1,3 @@
+# Not committed on purpose: the nightly run should pick up new upstream
+# releases of the patches' own dependencies, like a user's fresh build would.
+Cargo.lock
