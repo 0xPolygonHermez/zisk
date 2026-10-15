@@ -21,6 +21,7 @@ members = [
   "secp256r1",
   "syscalls/*",
   "uint256",
+  "unaligned_out",
 ]
 resolver = "2"
 

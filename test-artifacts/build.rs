@@ -53,6 +53,7 @@ const PROGRAMS: &[&str] = &[
     "secp256r1_dbl",
     "sha256",
     "uint256",
+    "unaligned_out",
 ];
 
 /// Whether the Cargo feature matching `program` (its package name) is enabled.

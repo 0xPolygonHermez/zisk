@@ -103,3 +103,5 @@ pub const ELF_SECP256R1_DBL: GuestProgram = load_program!("secp256r1_dbl");
 pub const ELF_SHA256: GuestProgram = load_program!("sha256");
 #[cfg(feature = "uint256")]
 pub const ELF_UINT256: GuestProgram = load_program!("uint256");
+#[cfg(feature = "unaligned_out")]
+pub const ELF_UNALIGNED_OUT: GuestProgram = load_program!("unaligned_out");

@@ -1,0 +1,12 @@
+[package]
+name = "unaligned_out"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true
+# ziskos_jump_dest! names zisk_definitions::SYSCALL_JUMP_DEST_ID
+zisk-definitions = { path = "../../../definitions" }
+
+[lints]
+workspace = true
