@@ -152,11 +152,18 @@ static inline __attribute__((always_inline)) zkvm_status zkvm_u256_le_mul(
 }
 ```
 
-**Inline precompile: keccak-f[1600].**
+**Inline precompile: keccak-f[1600].** The precompile needs an 8-byte aligned state, so an unaligned one is permuted in an aligned copy (DMA in and out); an aligned one costs one test, or none when the compiler can see its alignment.
 
 ```c
 static inline zkvm_status zkvm_keccak_f1600(uint64_t* state) {
-    __asm__ volatile("csrs 0x800, %0" : : "r"(state) : "memory");
+    if (__builtin_expect(((uintptr_t)state & 7) == 0, 1)) {
+        __asm__ volatile("csrs 0x800, %0" : : "r"(state) : "memory");
+    } else {
+        uint64_t s[25];
+        __asm__ volatile("csrs 0x813, %1\n\taddi x0, %0, 200" : : "r"(s), "r"(state) : "memory");
+        __asm__ volatile("csrs 0x800, %0" : : "r"(s) : "memory");
+        __asm__ volatile("csrs 0x813, %1\n\taddi x0, %0, 200" : : "r"(state), "r"(s) : "memory");
+    }
     return ZKVM_EOK;
 }
 ```

@@ -13,6 +13,10 @@
 ; The division family checks the FCALL_UINT256_DIV hint with one arith256.
 ; Every routine reads all of its inputs before writing its output, so results
 ; may alias inputs. Labels `zul*`.
+;
+; The precompiles need every pointer 8-byte aligned. A routine that hands one
+; the caller's result pointer tests it first with one `unal8`; an unaligned
+; result is computed into U256_UNAL (uint256/common.zisk) and DMA-copied out.
 ; ============================================================================
 
 ; ============================================================================
@@ -377,8 +381,14 @@ zulsdiv_ok:
 	xor(c, 0xffffffffffffffff) -> [ZULN_X2]
 	copyb(0, [ZULD_Q3])
 	xor(c, 0xffffffffffffffff) -> [ZULN_X3]
+	unal8(r12, 0), j(zulsdiv_qunal)          ; result not 8-aligned -> via scratch
 	copyb(0, r12) -> [ZULN_C]
 	add256(0, ZULN_A)                   ; -x = ~x + 1
+	jump(zulsdiv_qdone)
+zulsdiv_qunal:
+	copyb(0, U256_UNAL) -> [ZULN_C]
+	add256(0, ZULN_A)                   ; -x = ~x + 1
+	dma_xmemcpy(r12, U256_UNAL) -> r5, j(32, 4)
 	jump(zulsdiv_qdone)
 zulsdiv_qpos:
 	copyb(r12, [ZULD_Q0]) -> 8[a + 0]
@@ -504,8 +514,14 @@ zulsmod_ok:
 	xor(c, 0xffffffffffffffff) -> [ZULN_X2]
 	copyb(0, [ZULD_R3])
 	xor(c, 0xffffffffffffffff) -> [ZULN_X3]
+	unal8(r12, 0), j(zulsmod_runal)          ; result not 8-aligned -> via scratch
 	copyb(0, r12) -> [ZULN_C]
 	add256(0, ZULN_A)                   ; -x = ~x + 1
+	jump(zulsmod_rdone)
+zulsmod_runal:
+	copyb(0, U256_UNAL) -> [ZULN_C]
+	add256(0, ZULN_A)                   ; -x = ~x + 1
+	dma_xmemcpy(r12, U256_UNAL) -> r5, j(32, 4)
 	jump(zulsmod_rdone)
 zulsmod_rpos:
 	copyb(r12, [ZULD_R0]) -> 8[a + 0]
@@ -635,8 +651,14 @@ zulsdivmod_ok:
 	xor(c, 0xffffffffffffffff) -> [ZULN_X2]
 	copyb(0, [ZULD_Q3])
 	xor(c, 0xffffffffffffffff) -> [ZULN_X3]
+	unal8(r12, 0), j(zulsdivmod_qunal)          ; result not 8-aligned -> via scratch
 	copyb(0, r12) -> [ZULN_C]
 	add256(0, ZULN_A)                   ; -x = ~x + 1
+	jump(zulsdivmod_qdone)
+zulsdivmod_qunal:
+	copyb(0, U256_UNAL) -> [ZULN_C]
+	add256(0, ZULN_A)                   ; -x = ~x + 1
+	dma_xmemcpy(r12, U256_UNAL) -> r5, j(32, 4)
 	jump(zulsdivmod_qdone)
 zulsdivmod_qpos:
 	copyb(r12, [ZULD_Q0]) -> 8[a + 0]
@@ -654,8 +676,14 @@ zulsdivmod_qdone:
 	xor(c, 0xffffffffffffffff) -> [ZULN_X2]
 	copyb(0, [ZULD_R3])
 	xor(c, 0xffffffffffffffff) -> [ZULN_X3]
+	unal8(r13, 0), j(zulsdivmod_runal)          ; result not 8-aligned -> via scratch
 	copyb(0, r13) -> [ZULN_C]
 	add256(0, ZULN_A)                   ; -x = ~x + 1
+	jump(zulsdivmod_rdone)
+zulsdivmod_runal:
+	copyb(0, U256_UNAL) -> [ZULN_C]
+	add256(0, ZULN_A)                   ; -x = ~x + 1
+	dma_xmemcpy(r13, U256_UNAL) -> r5, j(32, 4)
 	jump(zulsdivmod_rdone)
 zulsdivmod_rpos:
 	copyb(r13, [ZULD_R0]) -> 8[a + 0]
@@ -855,8 +883,14 @@ u64 ZULE_P15_DH[1] = ZUL_HI
 ziskasm_zkvm_u256_le_add:
 	copyb(0, r10) -> [ZULA_A]
 	copyb(0, r11) -> [ZULA_B]
+	unal8(r12, 0), j(zuladd_unal)       ; result not 8-aligned -> via scratch
 	copyb(0, r12) -> [ZULA_C]
 	add256(0, ZULA_A)                   ; carry out ignored (wrapping)
+	ret
+zuladd_unal:
+	copyb(0, U256_UNAL) -> [ZULA_C]
+	add256(0, ZULA_A)
+	dma_xmemcpy(r12, U256_UNAL) -> r32, j(32, 4)
 	ret
 
 ; zkvm_status zkvm_u256_le_sub(a, b, result) : (a - b) mod 2^256 = a + ~b + 1.
@@ -871,8 +905,14 @@ ziskasm_zkvm_u256_le_sub:
 	copyb(r11, 8[a + 24])
 	xor(c, 0xffffffffffffffff) -> [ZUL_NB3]
 	copyb(0, r10) -> [ZULS_A]
+	unal8(r12, 0), j(zulsub_unal)       ; result not 8-aligned -> via scratch
 	copyb(0, r12) -> [ZULS_C]
 	add256(0, ZULS_A)
+	ret
+zulsub_unal:
+	copyb(0, U256_UNAL) -> [ZULS_C]
+	add256(0, ZULS_A)
+	dma_xmemcpy(r12, U256_UNAL) -> r32, j(32, 4)
 	ret
 
 ; zkvm_status zkvm_u256_le_mul(a, b, result) : (a * b) mod 2^256. Inline
@@ -880,8 +920,14 @@ ziskasm_zkvm_u256_le_sub:
 ziskasm_zkvm_u256_le_mul:
 	copyb(0, r10) -> [ZULM_A]
 	copyb(0, r11) -> [ZULM_B]
+	unal8(r12, 0), j(zulmul_unal)       ; result not 8-aligned -> via scratch
 	copyb(0, r12) -> [ZULM_DL]
 	arith256(0, ZULM_A)                 ; high 256 bits discarded (wrapping)
+	ret
+zulmul_unal:
+	copyb(0, U256_UNAL) -> [ZULM_DL]
+	arith256(0, ZULM_A)
+	dma_xmemcpy(r12, U256_UNAL) -> r32, j(32, 4)
 	ret
 
 ; zkvm_status zkvm_u256_le_addmod(a, b, n, result) : (a * 1 + b) mod n; n == 0
@@ -894,8 +940,14 @@ zuladdmod_go:
 	copyb(0, r10) -> [ZULAM_A]
 	copyb(0, r11) -> [ZULAM_C]
 	copyb(0, r12) -> [ZULAM_N]
+	unal8(r13, 0), j(zuladdmod_unal)     ; result not 8-aligned -> via scratch
 	copyb(0, r13) -> [ZULAM_D]
 	arith256_mod(0, ZULAM_A)
+	ret
+zuladdmod_unal:
+	copyb(0, U256_UNAL) -> [ZULAM_D]
+	arith256_mod(0, ZULAM_A)
+	dma_xmemcpy(r13, U256_UNAL) -> r32, j(32, 4)
 	ret
 zuladdmod_2:
 	copyb(r12, 8[a + 16])
@@ -926,8 +978,14 @@ zulmulmod_go:
 	copyb(0, r10) -> [ZULMU_A]
 	copyb(0, r11) -> [ZULMU_B]
 	copyb(0, r12) -> [ZULMU_N]
+	unal8(r13, 0), j(zulmulmod_unal)     ; result not 8-aligned -> via scratch
 	copyb(0, r13) -> [ZULMU_D]
 	arith256_mod(0, ZULMU_A)
+	ret
+zulmulmod_unal:
+	copyb(0, U256_UNAL) -> [ZULMU_D]
+	arith256_mod(0, ZULMU_A)
+	dma_xmemcpy(r13, U256_UNAL) -> r32, j(32, 4)
 	ret
 zulmulmod_2:
 	copyb(r12, 8[a + 16])
