@@ -686,7 +686,9 @@ impl<C: ZiskBackend> ZiskProver<C> {
     ///
     /// All emulations of a task must run with the same seed, so ranks never draw their own. When
     /// `seed` is `None` this is a collective MPI operation: every rank must call it at the same
-    /// point, which holds because every rank runs the same execute/prove call.
+    /// point, which holds because every rank runs the same execute/prove call. Every rank must
+    /// also agree on whether a seed was forced: a rank that got one skips the broadcast the
+    /// others wait on.
     fn resolve_seed(&self, seed: Option<ExecutionSeed>) -> Result<ExecutionSeed> {
         if let Some(seed) = seed {
             return Ok(seed);
@@ -761,7 +763,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     /// Execute the prover with the given standard input and output path.
     /// It only runs the execution without generating a proof.
-    /// A `None` seed draws a fresh one (see [`resolve_seed`](Self::resolve_seed)).
+    /// A `None` seed draws a fresh one on rank 0 and broadcasts it to every MPI rank.
     /// The program must have been setup previously using `.setup()`.
     pub fn execute(
         &self,
@@ -774,7 +776,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
     }
 
     /// Get the execution statistics with the given standard input and debug information.
-    /// A `None` seed draws a fresh one (see [`resolve_seed`](Self::resolve_seed)).
+    /// A `None` seed draws a fresh one on rank 0 and broadcasts it to every MPI rank.
     /// The program must have been setup previously using `.setup()`.
     pub fn stats(
         &self,
@@ -817,7 +819,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
     }
 
     /// Verify the constraints with the given standard input and optional debug information.
-    /// A `None` seed draws a fresh one (see [`resolve_seed`](Self::resolve_seed)).
+    /// A `None` seed draws a fresh one on rank 0 and broadcasts it to every MPI rank.
     /// The program must have been setup previously using `.setup()`.
     pub fn verify_constraints(
         &self,
@@ -1040,6 +1042,7 @@ impl ZiskProver<Asm> {
 
     /// Execute via the Rust emulator path, regardless of how the program was set up.
     /// Lets callers run the AsmProver in emulator mode without spinning up ASM children.
+    /// A `None` seed draws a fresh one on rank 0 and broadcasts it to every MPI rank.
     pub fn execute_emulator(
         &self,
         program: &GuestProgram,
@@ -1053,6 +1056,7 @@ impl ZiskProver<Asm> {
     /// Generate a proof via the Rust emulator path, regardless of how the program was set up.
     /// Bypasses the `emulator_only` guard on the regular `prove()` method — this is the
     /// supported way to do emulator-mode proving with the ASM backend.
+    /// A `None` seed draws a fresh one on rank 0 and broadcasts it to every MPI rank.
     pub fn prove_emulator(
         &self,
         program: &GuestProgram,
@@ -1065,6 +1069,7 @@ impl ZiskProver<Asm> {
     }
 
     /// Verify constraints via the Rust emulator path, regardless of how the program was set up.
+    /// A `None` seed draws a fresh one on rank 0 and broadcasts it to every MPI rank.
     pub fn verify_constraints_emulator(
         &self,
         program: &GuestProgram,
@@ -1128,8 +1133,8 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
         }
     }
 
-    /// Force the execution seed instead of drawing a fresh one (replays, tests). Takes an
-    /// `Option` too, so callers can pass through a seed they may not have.
+    /// Fix the execution seed instead of drawing a fresh one. Takes an `Option` too, so callers
+    /// can pass through a seed they may not have.
     pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
         self.seed = seed.into();
         self

@@ -8,8 +8,7 @@ use crate::{
 };
 use std::collections::BTreeMap;
 use std::time::Duration;
-use zisk_common::ExecutionSeed;
-use zisk_common::ProofKind;
+use zisk_common::{ExecutionSeed, ProofKind};
 use zisk_coordinator_api::dto::{deadline_from_now, DomainJobKind, DomainProveRequest};
 use zisk_prover_backend::GuestProgram;
 

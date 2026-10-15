@@ -9,8 +9,8 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use zisk_common::ExecutionSeed;
 
+use zisk_common::ExecutionSeed;
 use zisk_prover_backend::{
     AsmOptions, BackendProverOpts, ExecuteClient, ExecuteOutput, GuestProgram, ProverClientBuilder,
 };

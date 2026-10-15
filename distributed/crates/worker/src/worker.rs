@@ -1727,6 +1727,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 let guest_programs = self.guest_programs.clone();
                 let is_execution = matches!(tag, WorkerMpiTag::Execution);
                 let world_rank = self.world_rank();
+                let seed = ExecutionSeed::new(message.seed);
                 let handle = tokio::task::spawn_blocking(move || {
                     let run = || -> Result<()> {
                         if is_execution {
@@ -1743,7 +1744,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 &prover,
                                 message.input_source,
                                 message.hints_source,
-                                ExecutionSeed::new(message.seed),
+                                seed,
                                 message.partition_info,
                                 &guest_program,
                             )?;
@@ -1754,7 +1755,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 message.phase_inputs,
                                 message.input_source,
                                 message.hints_source,
-                                ExecutionSeed::new(message.seed),
+                                seed,
                                 message.partition_info,
                                 message.options,
                             )?;

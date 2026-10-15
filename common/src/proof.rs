@@ -734,7 +734,7 @@ pub struct Proof {
     pub body: ProofBody,
     /// The program verification key.
     pub program_vk: ProgramVK,
-    /// Seed of the execution this proof attests to, needed to replay it.
+    /// Seed of the execution this proof attests to.
     ///
     /// Unauthenticated metadata: verification ignores it, as the values derived from it are
     /// free witness values. `None` for proofs that do not come from a single execution

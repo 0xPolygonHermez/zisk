@@ -257,7 +257,7 @@ impl From<DomainProof> for Proof {
             public_inputs: proof.public_inputs,
             started_at: proof.started_at.map(datetime_to_ts),
             completed_at: proof.completed_at.map(datetime_to_ts),
-            seed: proof.seed.map(|s| s.as_bytes().to_vec()),
+            seed: seed_to_wire(proof.seed),
         }
     }
 }
@@ -375,6 +375,11 @@ impl From<DomainJobKind> for JobKind {
     }
 }
 
+/// Encodes an optional seed for the wire.
+fn seed_to_wire(seed: Option<ExecutionSeed>) -> Option<Vec<u8>> {
+    seed.map(|s| s.as_bytes().to_vec())
+}
+
 /// Decodes an optional wire seed, rejecting any length other than 32 bytes.
 fn seed_from_wire(seed: Option<Vec<u8>>) -> std::result::Result<Option<ExecutionSeed>, String> {
     seed.map(|bytes| ExecutionSeed::try_from(bytes.as_slice()).map_err(|e| e.to_string()))
@@ -389,7 +394,7 @@ impl From<DomainProveRequest> for ProveRequest {
             proof_timeout: r.proof_timeout.map(datetime_to_ts),
             proof_dest: ProofKind::from(r.proof_dest).into(),
             hints: r.hints.map(InputKind::from),
-            seed: r.seed.map(|s| s.as_bytes().to_vec()),
+            seed: seed_to_wire(r.seed),
         }
     }
 }
@@ -414,7 +419,7 @@ impl From<DomainExecuteRequest> for ExecuteRequest {
             input: Some(InputKind::from(r.input)),
             execute_timeout: r.execute_timeout.map(datetime_to_ts),
             hints: r.hints.map(InputKind::from),
-            seed: r.seed.map(|s| s.as_bytes().to_vec()),
+            seed: seed_to_wire(r.seed),
         }
     }
 }
@@ -507,7 +512,7 @@ impl From<DomainJobKindResponse> for JobKindResponse {
                 Kind::Execute(ExecuteResponse {
                     stats: Some(stats.into()),
                     public_outputs,
-                    seed: seed.map(|s| s.as_bytes().to_vec()),
+                    seed: seed_to_wire(seed),
                 })
             }
             DomainJobKindResponse::SetupAggregationProgram { vk, hash_mode } => {

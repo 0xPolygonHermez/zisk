@@ -52,28 +52,6 @@ impl ExecutionSeed {
     }
 }
 
-/// `--seed` / `ZISK_SEED`, for every command that runs a guest (cargo-zisk, zisk-prove-client).
-#[derive(clap::Args, Debug, Clone, Default)]
-pub struct SeedArgs {
-    /// Force the execution seed (up to 64 hex characters, zero-padded on the left) instead of
-    /// drawing a fresh one, to replay a previous run. Every run reports the seed it used. A remote
-    /// coordinator accepts it only if configured to allow client seeds
-    #[arg(long, env = "ZISK_SEED", value_name = "HEX")]
-    seed: Option<ExecutionSeed>,
-}
-
-impl SeedArgs {
-    /// The forced seed, if any. Warns when there is one, so a `ZISK_SEED` left in the
-    /// environment cannot silently pin every run to the same seed. Call it once per run, after
-    /// the logger is up.
-    pub fn forced(&self) -> Option<ExecutionSeed> {
-        if let Some(seed) = self.seed {
-            tracing::warn!("Using a forced execution seed: {seed}");
-        }
-        self.seed
-    }
-}
-
 impl TryFrom<&[u8]> for ExecutionSeed {
     type Error = CommonError;
 
@@ -128,6 +106,33 @@ impl fmt::Display for ExecutionSeed {
 impl fmt::Debug for ExecutionSeed {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ExecutionSeed({self})")
+    }
+}
+
+/// `--seed` / `ZISK_SEED`, for the commands that execute through the executor: execute, prove,
+/// stats and verify-constraints (cargo-zisk, cargo-zisk-dev, zisk-prove-client).
+///
+/// Under `mpirun` every rank parses its own arguments and environment, so all of them must see
+/// the same value: prefer `--seed`, or export the variable to every rank (Open MPI:
+/// `-x ZISK_SEED`).
+#[derive(clap::Args, Debug)]
+pub struct SeedArgs {
+    /// Fix the execution seed (up to 64 hex characters, zero-padded on the left) instead of
+    /// drawing a fresh one. Every run reports the seed it used. A remote coordinator accepts it
+    /// only if configured to allow client seeds
+    #[arg(long, env = "ZISK_SEED", value_name = "HEX")]
+    seed: Option<ExecutionSeed>,
+}
+
+impl SeedArgs {
+    /// The forced seed, if any. Warns when there is one, so a `ZISK_SEED` left in the
+    /// environment cannot silently pin every run to the same seed. Call it once per run, after
+    /// the logger is up.
+    pub fn forced(&self) -> Option<ExecutionSeed> {
+        if let Some(seed) = self.seed {
+            tracing::warn!("Using a forced execution seed: {seed}");
+        }
+        self.seed
     }
 }
 

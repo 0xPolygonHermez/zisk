@@ -5,11 +5,11 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::SeedArgs;
 use zisk_sdk::{setup_logger, GuestProgram, RemoteClient, ZiskHints, ZiskStdin};
 
 use crate::common::{reject_quic_hints, resolve_elf, ElfSelectorArgs};
 use crate::ux::{print_execute_output, print_job_banner};
-use zisk_common::SeedArgs;
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]

@@ -394,11 +394,11 @@ struct ExecuteResponse {
 ### Execution seed
 
 Every prove and execute job runs with a 256-bit execution seed, from which the emulators derive the
-values the guest reads through `zkvm_random_u64`. The coordinator draws a fresh one per job and
-returns it with the job's result: in `Proof.seed` for prove (and wrap, which keeps the source proof's
-seed) and in `ExecuteResponse.seed` for execute. The serialized ZisK proof in `Proof.data` carries the
-same seed as its last field, so it survives once the proof is saved. Passing that seed back in the
-request's `seed` field replays the run.
+values the guest reads through `zkvm_random_u64`. The coordinator draws a fresh one per job, unless
+the request forces one (see below), and returns it with the job's result: in `Proof.seed` for prove
+(and wrap, which keeps the source proof's seed) and in `ExecuteResponse.seed` for execute. The
+serialized ZisK proof in `Proof.data` carries the same seed as its last field, so it survives once
+the proof is saved. Passing that seed back in the request's `seed` field replays the run.
 
 A forced seed is accepted only when the coordinator config sets `coordinator.allow_client_seed =
 true`; otherwise the job is rejected with `CLIENT_SEED_NOT_ALLOWED`. The seed must be unpredictable

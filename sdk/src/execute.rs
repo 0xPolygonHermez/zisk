@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 use std::ops::Deref;
 use std::time::Duration;
-use zisk_common::ExecutionSeed;
 
 use crate::Result;
+use zisk_common::ExecutionSeed;
 use zisk_prover_backend::{ExecuteOutput, GuestProgram};
 
 use crate::hints::HintsSource;
@@ -90,9 +90,8 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
         self
     }
 
-    /// Force the execution seed instead of drawing a fresh one, to replay a previous run (its
-    /// seed is reported in the result) or pin it in tests. A remote coordinator rejects it unless
-    /// it is configured to allow client seeds.
+    /// Fix the execution seed instead of drawing a fresh one. Every result reports the seed it
+    /// ran with. A remote coordinator rejects it unless it is configured to allow client seeds.
     #[must_use]
     pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
         self.seed = seed.into();
@@ -198,9 +197,8 @@ impl<'a> ExecuteRequestExt<'a> {
         self
     }
 
-    /// Force the execution seed instead of drawing a fresh one, to replay a previous run (its
-    /// seed is reported in the result) or pin it in tests. A remote coordinator rejects it unless
-    /// it is configured to allow client seeds.
+    /// Fix the execution seed instead of drawing a fresh one. Every result reports the seed it
+    /// ran with. A remote coordinator rejects it unless it is configured to allow client seeds.
     #[must_use]
     pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
         self.seed = seed.into();

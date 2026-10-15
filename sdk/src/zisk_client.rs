@@ -46,10 +46,9 @@
 //! ```
 
 use std::time::Duration;
-use zisk_common::ExecutionSeed;
 
 use crate::Result;
-use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
+use zisk_common::{ExecutionSeed, ProgramVK, Proof, ProofKind, PublicValues};
 use zisk_prover_backend::GuestProgram;
 
 use crate::{

@@ -217,3 +217,33 @@ impl<F: PrimeField64> Default for ExecutionState<F> {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proofman_fields::Goldilocks;
+
+    type F = Goldilocks;
+
+    const SEED: ExecutionSeed = ExecutionSeed::new([3; ExecutionSeed::LEN]);
+
+    #[test]
+    fn get_seed_fails_until_stdin_and_seed_are_set() {
+        let state = ExecutionState::<F>::new();
+        assert!(matches!(state.get_seed(), Err(ExecutorError::SeedNotSet)));
+
+        state.set_stdin_and_seed(ZiskStdin::new(), SEED);
+        assert_eq!(state.get_seed().unwrap(), SEED);
+    }
+
+    /// `execute_inner` resets the state after the caller has set the job's stdin and seed, so
+    /// the reset must leave the seed alone.
+    #[test]
+    fn reset_keeps_the_seed() {
+        let state = ExecutionState::<F>::new();
+        state.set_stdin_and_seed(ZiskStdin::new(), SEED);
+
+        state.reset();
+        assert_eq!(state.get_seed().unwrap(), SEED);
+    }
+}

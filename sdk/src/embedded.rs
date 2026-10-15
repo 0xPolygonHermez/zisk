@@ -15,12 +15,11 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use zisk_common::ExecutionSeed;
 
 use crate::setup::SetupResult;
 use crate::{Result, SdkError};
 use zisk_common::ProofKind;
-use zisk_common::{ProgramVK, Proof, PublicValues, ZiskPaths};
+use zisk_common::{ExecutionSeed, ProgramVK, Proof, PublicValues, ZiskPaths};
 use zisk_prover_backend::{Asm, AsmOptions, AsmProver, Emu, EmuProver, GuestProgram, ZiskProver};
 
 use crate::aggregate_proofs::{AggregateProofsRequest, AggregationInput};

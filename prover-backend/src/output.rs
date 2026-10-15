@@ -162,7 +162,7 @@ impl ExecuteOutput {
     ///
     /// `plan` carries raw `(airgroup_id, air_id, count)` triples from the wire; the
     /// AIR display name is resolved here via [`AirClassifier`] so remote output matches
-    /// the embedded plan.
+    /// the embedded plan. `seed` is the one the coordinator reported, if any.
     #[allow(clippy::too_many_arguments)]
     pub fn from_remote(
         steps: u64,
@@ -384,3 +384,56 @@ impl VerifyConstraintsOutput {
 }
 
 impl_public_outputs!(VerifyConstraintsOutput, publics);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SEED: ExecutionSeed = ExecutionSeed::new([4; ExecutionSeed::LEN]);
+
+    fn executed() -> ZiskExecutorSummary {
+        ZiskExecutorSummary { seed: Some(SEED), ..Default::default() }
+    }
+
+    fn publics() -> Vec<u8> {
+        vec![0u8; 32 + ZISK_PUBLICS * 8]
+    }
+
+    #[test]
+    fn prove_output_takes_the_seed_of_the_execution_it_attests() {
+        let other = ExecutionSeed::new([5; ExecutionSeed::LEN]);
+        let output =
+            ProveOutput::new(executed(), Duration::ZERO, Proof::default().with_seed(other));
+        assert_eq!(output.get_execution_seed(), Some(SEED));
+        assert_eq!(output.get_proof().seed, Some(SEED));
+    }
+
+    /// Ranks that end a prove without the final proof still report what they ran with.
+    #[test]
+    fn prove_output_without_a_final_proof_reports_the_seed() {
+        let output = ProveOutput::new_null(executed(), Duration::ZERO);
+        assert_eq!(output.get_execution_seed(), Some(SEED));
+    }
+
+    /// A wrap runs no execution, so its output keeps the source proof's seed.
+    #[test]
+    fn wrap_output_keeps_the_source_seed() {
+        let output =
+            ProveOutput::new(ZiskExecutorSummary::default(), Duration::ZERO, Proof::default())
+                .with_seed(Some(SEED));
+        assert_eq!(output.get_execution_seed(), Some(SEED));
+        assert_eq!(output.get_proof().seed, Some(SEED));
+    }
+
+    #[test]
+    fn execute_and_verify_constraints_outputs_report_the_execution_seed() {
+        let execute = ExecuteOutput::new(Duration::ZERO, executed(), &publics());
+        assert_eq!(execute.get_execution_seed(), Some(SEED));
+
+        let standalone = ExecuteOutput::new_standalone(Duration::ZERO, executed(), &[], Vec::new());
+        assert_eq!(standalone.get_execution_seed(), Some(SEED));
+
+        let verify = VerifyConstraintsOutput::new(executed(), 0, &publics());
+        assert_eq!(verify.get_execution_seed(), Some(SEED));
+    }
+}

@@ -1265,8 +1265,9 @@ impl Coordinator {
         });
     }
 
-    /// The job's execution seed: the client's when the coordinator allows client seeds, a fresh
-    /// one otherwise. Decided here, once per job, because every worker must run with it.
+    /// The job's execution seed: a fresh one, or the client's when it sent one and
+    /// `allow_client_seed` is set; a client seed is otherwise rejected (`ClientSeedNotAllowed`).
+    /// Decided here, once per job, because every worker must run with it.
     fn resolve_seed(&self, requested: Option<ExecutionSeed>) -> CoordinatorResult<ExecutionSeed> {
         match requested {
             Some(_) if !self.config.coordinator.allow_client_seed => {
@@ -4993,6 +4994,71 @@ mod tests {
                 })
                 .collect();
             assert_eq!(seeds, vec![CLIENT_SEED], "worker {worker_id}");
+        }
+    }
+
+    /// The policy check runs before capacity is reserved, so a rejected job leaves no trace.
+    #[tokio::test]
+    async fn launch_proof_rejects_a_client_seed_before_reserving_workers() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        let mut request = capacity_request(None, None);
+        request.seed = Some(CLIENT_SEED);
+
+        let result = coordinator.launch_proof(request).await;
+
+        assert!(matches!(result, Err(CoordinatorError::ClientSeedNotAllowed)));
+        let w0 = WorkerId::from("w0".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn contributions_are_not_dispatched_without_a_job_seed() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let coordinator = Arc::new(coordinator);
+        let job_entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        let worker_ids: Vec<_> = workers.iter().map(|(id, _)| id.clone()).collect();
+
+        let job = job_entry.read().await;
+        let err = coordinator.dispatch_contributions_messages(&job, &worker_ids).await.unwrap_err();
+
+        assert!(matches!(err, CoordinatorError::Internal(_)), "got {err:?}");
+        assert!(workers[0].1.lock().unwrap().is_empty(), "no task may reach a worker");
+    }
+
+    /// Workers assemble the final proof from proof words alone; the coordinator is the one place
+    /// that gives it the job's seed, and every copy it hands out must carry it.
+    #[tokio::test]
+    async fn final_proof_carries_the_job_seed() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+        arm_recurser(&coordinator, &job_id, &w0_id, Some(true)).await;
+        let job_entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        job_entry.write().await.seed = Some(CLIENT_SEED);
+        coordinator.alloc_job_events(&job_id).await;
+        let mut events = coordinator.subscribe_job_events(&job_id).await.unwrap();
+        let seedless =
+            bincode::serde::encode_to_vec(Proof::default(), bincode::config::standard()).unwrap();
+
+        coordinator
+            .handle_stream_execute_task_response(final_proof_response(&job_id, &w0_id, seedless))
+            .await
+            .unwrap();
+
+        assert_eq!(job_entry.read().await.proof.as_ref().unwrap().seed, Some(CLIENT_SEED));
+        match events.recv().await.unwrap() {
+            CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Prove {
+                proof_bytes,
+                seed,
+                ..
+            }) => {
+                assert_eq!(seed, Some(CLIENT_SEED));
+                assert_eq!(Proof::from_bytes(&proof_bytes).unwrap().seed, Some(CLIENT_SEED));
+            }
+            other => panic!("expected a completed prove, got {other:?}"),
         }
     }
 

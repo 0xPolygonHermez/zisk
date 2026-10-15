@@ -36,11 +36,11 @@ pub enum CoordinatorError {
     #[error("Workers are connected but setup has not been done; call setup() first")]
     WorkersNotSetup,
 
-    // Internal errors - logged but not exposed to clients
     /// The request forced an execution seed but the coordinator does not accept client seeds.
     #[error("Client-supplied execution seeds are not allowed by this coordinator")]
     ClientSeedNotAllowed,
 
+    // Internal errors - logged but not exposed to clients
     /// An unexpected internal error (logged, not exposed to clients).
     #[error("Internal service error: {0}")]
     Internal(String),

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
-use zisk_common::ExecutionSeed;
 
 use zisk_common::io::StreamSource;
+use zisk_common::ExecutionSeed;
 use zisk_prover_backend::{GuestProgram, VerifyConstraintsOutput};
 
 use super::{EmbeddedClient, EmbeddedProver, ERR_ASSEMBLY_NOT_ENABLED};

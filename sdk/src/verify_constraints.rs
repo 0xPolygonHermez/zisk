@@ -1,8 +1,8 @@
 use std::ops::Deref;
 use std::time::Duration;
-use zisk_common::ExecutionSeed;
 
 use crate::Result;
+use zisk_common::ExecutionSeed;
 use zisk_prover_backend::{GuestProgram, VerifyConstraintsOutput};
 
 use crate::hints::HintsSource;
@@ -107,8 +107,8 @@ impl<'a, C> VerifyConstraintsRequest<'a, C> {
         self
     }
 
-    /// Force the execution seed instead of drawing a fresh one, to replay a previous run (its
-    /// seed is reported in the result) or pin it in tests.
+    /// Fix the execution seed instead of drawing a fresh one. Every result reports the seed it
+    /// ran with.
     #[must_use]
     pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
         self.seed = seed.into();

@@ -8,8 +8,7 @@ use crate::{ExecutorKind, JobEvent, Result, SdkError};
 use std::sync::Arc;
 use std::time::Duration;
 use zisk_common::io::StreamSource;
-use zisk_common::ExecutionSeed;
-use zisk_common::ProofKind;
+use zisk_common::{ExecutionSeed, ProofKind};
 use zisk_prover_backend::GuestProgram;
 
 impl EmbeddedClient {

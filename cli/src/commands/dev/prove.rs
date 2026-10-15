@@ -1,14 +1,13 @@
 use crate::common::{detect_current_project_elf, resolve_output_path};
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use anyhow::Result;
-use zisk_common::SeedArgs;
 
 use colored::Colorize;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ProofKind, ZiskExecutorTime};
+use zisk_common::{ProofKind, SeedArgs, ZiskExecutorTime};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProveOutput, ProverClientBuilder};
 

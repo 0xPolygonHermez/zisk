@@ -4,6 +4,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::SeedArgs;
 use zisk_sdk::{
     AsmOptions, EmbeddedClientBuilder, EmbeddedOpts, GuestProgram, ProofKind, ZiskHints, ZiskStdin,
 };
@@ -12,7 +13,6 @@ use super::validate_asm_hints;
 use crate::common::{resolve_elf, resolve_output_path, ElfSelectorArgs};
 use crate::proof::select_prove_kind;
 use crate::ux::{print_execution_seed, print_job_banner};
-use zisk_common::SeedArgs;
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]

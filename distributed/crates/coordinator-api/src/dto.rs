@@ -143,7 +143,7 @@ pub struct DomainProof {
     /// When proving completed, if known.
     pub completed_at: Option<DateTime<Utc>>,
     /// Seed of the execution the proof attests to, the same one `data` carries. Set in
-    /// responses (`None` for aggregates); ignored in requests.
+    /// responses (`None` for aggregates); not used in requests.
     pub seed: Option<ExecutionSeed>,
 }
 

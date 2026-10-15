@@ -133,7 +133,7 @@ message Proof {
   google.protobuf.Timestamp started_at       = 7;
   google.protobuf.Timestamp completed_at     = 8;
   // 32-byte seed of the execution the proof attests to, also kept inside `data`. Set in
-  // responses (absent for aggregates); ignored in requests.
+  // responses (absent for aggregates). Not used in requests, where it must be absent or 32 bytes.
   optional bytes            seed             = 9;
 }
 
