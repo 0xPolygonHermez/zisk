@@ -13,6 +13,9 @@ const int KB_SP1_M4[16] = [
 // Internal matrix KB_SP1_INT_SCALE·(J + diag(KB_SP1_D_16)), with KB_SP1_INT_SCALE = 2^-32 mod P
 const int KB_SP1_INT_SCALE = 1057030144;
 
+// Lanes in memory are in Montgomery form, as Plonky3 stores KoalaBear: IO_SCALE = 2^32 mod P
+const int KB_SP1_IO_SCALE = 33554430;
+
 const int KB_SP1_D_16[16] = [
     2130706431,
     1,

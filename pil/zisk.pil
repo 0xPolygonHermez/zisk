@@ -162,7 +162,8 @@ airgroup Zisk {
 
     Poseidon(N: 2**17);
     Poseidon2NonNative(N: 2**20, OP: OP_POSEIDON2_KOALABEAR, P: KB_SP1_P, n: 16, SBOX_DEG: 3, RF: 8, RP: 20,
-                       M4: KB_SP1_M4, INT_SCALE: KB_SP1_INT_SCALE, D: KB_SP1_D_16, RC: KB_SP1_RC_16)
+                       M4: KB_SP1_M4, INT_SCALE: KB_SP1_INT_SCALE, D: KB_SP1_D_16, RC: KB_SP1_RC_16,
+                       IO_SCALE: KB_SP1_IO_SCALE)
         alias Poseidon2KoalaBear;
 
     Blake2br(N: 2**18);

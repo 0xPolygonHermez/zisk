@@ -11,25 +11,32 @@ require "opids.pil"
 // value and quotient is two range-checked 16-bit limbs, i.e. an integer in [0, 2^32), and each
 // relation is written with non-negative terms on both sides:
 //
+//     input        m·IO_INV                        = x + P·q
 //     S-box step   a·b                             = x + P·q
 //     external     Σ M_E[i][j]·y[j] + rc[i]        = next[i] + P·q
 //     internal     S·next[i] + K[i] + d⁻[i]·y[i]   = Σy + d⁺[i]·y[i] + P·q
-//     canonical    x + gap                         = P - 1
+//     output       y·IO_SCALE                      = m + P·q
+//     canonical    m + gap                         = P - 1
 //
 // checkInstance() asserts that both sides stay below PRIME for this instance, so an equality in
 // Goldilocks is an equality of integers, hence the intended congruence mod P. Values only need to
 // be canonical (< P) where they meet memory, which the last relation enforces.
+//
+// In memory each lane x is stored as m = IO_SCALE·x: IO_SCALE = 2^32 mod P is the Montgomery form
+// in which Plonky3 keeps KoalaBear and BabyBear, so guests pass their elements as they are; 1 is the
+// canonical form. The input and output rows convert between both forms.
 //
 // Parameters (canonical field elements):
 //   P, n, SBOX_DEG, RF, RP  field, width, S-box degree, full and partial rounds
 //   M4[16]                  4x4 block of the external matrix circ(2·M4, M4, ..., M4), row-major
 //   INT_SCALE, D[n]         internal matrix INT_SCALE·(J + diag(D))
 //   RC                      round constants: RF/2·n | RP | RF/2·n
+//   IO_SCALE                lanes in memory are IO_SCALE·x
 
 
 airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int n, const int SBOX_DEG,
                                const int RF, const int RP, const int M4[], const int INT_SCALE,
-                               const int D[], const int RC[]) {
+                               const int D[], const int RC[], const int IO_SCALE) {
     // Compute some stats
     const int CLOCKS = RF + RP + 2;
 
@@ -60,11 +67,11 @@ airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int
     }
 
     // Row layout, one round per row:
-    //   clock 0                    : input state (canonical), initial external layer
+    //   clock 0                    : input state, read from memory, initial external layer
     //   clocks 1..RF/2             : first full rounds
     //   clocks RF/2+1..RF/2+RP     : partial rounds
     //   clocks RF/2+RP+1..RF+RP    : last full rounds
-    //   clock RF+RP+1              : output state (canonical)
+    //   clock RF+RP+1              : output state, written to memory
     const int HALF = RF / 2;
     const int FIRST_PARTIAL = HALF + 1;
     const int FIRST_END = HALF + RP + 1;
@@ -137,6 +144,7 @@ airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int
     // Internal layer as S·next = Σy + d·y (mod P), with S = 1/INT_SCALE (P is prime) and d centred
     // in (-P/2, P/2): d⁺ = max(d, 0) and d⁻ = max(-d, 0) in the relation above
     const int S = pow_mod(INT_SCALE, P - 2, P);
+    const int IO_INV = pow_mod(IO_SCALE, P - 2, P);
     int d[n];
     int d_pos = 0;
     int d_neg = 0;
@@ -190,9 +198,15 @@ airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int
     }
     poseidon2InternalLayer(partial_in, partial_round);
 
-    // Input and output lanes are canonical: state + gap = P - 1, with the gap in sbox[i][0]
+    // Memory form of the input and output lanes. Those rows have no S-box, so lane i keeps the
+    // memory value in sbox[i][1], the quotient of its conversion in sbox_q[i][0] and its canonical
+    // gap in sbox[i][0]
+    const expr io_value[n];
     for (int i = 0; i < n; i++) {
-        (CLK[0] + CLK[LAST]) * (state[i] + sbox_out[i][0] - (P - 1)) === 0;
+        io_value[i] = sbox_out[i][1];
+        (CLK[0] + CLK[LAST]) * (io_value[i] + sbox_out[i][0] - (P - 1)) === 0; // canonical
+        CLK[0] * (io_value[i] * IO_INV - state[i] - P * sbox_quo[i][0]) === 0;  // x = m / IO_SCALE
+        CLK[LAST] * (state[i] * IO_SCALE - io_value[i] - P * sbox_quo[i][0]) === 0; // m = y·IO_SCALE
     }
 
     // --> Constraints to read inputs from memory and write outputs to memory
@@ -228,18 +242,18 @@ airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int
         mem_value[0] = 0;
         mem_value[1] = 0;
 
-        // Reads
+        // Reads (the memory form of the input lanes, io_value at clock 0)
         for(int j = 0; j < 4; j++) {
             const int word = MEM_OPS_PARALLEL*j + i;
-            mem_value[0] += (j)'CLK_0 * ((j)'chunks[2*word][1] * P2_16 + (j)'chunks[2*word][0]);
-            mem_value[1] += (j)'CLK_0 * ((j)'chunks[2*word + 1][1] * P2_16 + (j)'chunks[2*word + 1][0]);
+            mem_value[0] += (j)'CLK_0 * ((j)'sbox[2*word][1][1] * P2_16 + (j)'sbox[2*word][1][0]);
+            mem_value[1] += (j)'CLK_0 * ((j)'sbox[2*word + 1][1][1] * P2_16 + (j)'sbox[2*word + 1][1][0]);
         }
 
-        // Writes
+        // Writes (the memory form of the output lanes, io_value at the last clock)
         for(int j = 0; j < 4; j++) {
             const int word = MEM_OPS_PARALLEL*j + i;
-            mem_value[0] += (CLOCKS - 4 + j)'CLK_0 * (chunks[2*word][1]'(3 - j) * P2_16 + chunks[2*word][0]'(3 - j));
-            mem_value[1] += (CLOCKS - 4 + j)'CLK_0 * (chunks[2*word + 1][1]'(3 - j) * P2_16 + chunks[2*word + 1][0]'(3 - j));
+            mem_value[0] += (CLOCKS - 4 + j)'CLK_0 * (sbox[2*word][1][1]'(3 - j) * P2_16 + sbox[2*word][1][0]'(3 - j));
+            mem_value[1] += (CLOCKS - 4 + j)'CLK_0 * (sbox[2*word + 1][1][1]'(3 - j) * P2_16 + sbox[2*word + 1][1][0]'(3 - j));
         }
 
         precompiled_mem_op(
@@ -354,6 +368,10 @@ airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int
         for (int i = 0; i < 16; i++) {
             assertCanonical(air.M4[i], "M4");
         }
+        assertCanonical(air.IO_SCALE, "IO_SCALE");
+        if ((air.IO_INV * air.IO_SCALE) % air.P != 1) {
+            error("Poseidon2NonNative: IO_SCALE has no inverse mod P");
+        }
 
         // S-box: a·b <= VMAX^2 < PRIME for any P, and x + P·q is below the internal rhs bound
         int ext_sum = 0;
@@ -367,6 +385,7 @@ airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int
         assertBelowPrime(ext_sum * VMAX + air.P, "external layer lhs");
         assertBelowPrime(air.S * VMAX + air.P + air.BIAS + air.d_neg * VMAX, "internal layer lhs");
         assertBelowPrime(air.n * VMAX + air.d_pos * VMAX + air.P * VMAX, "internal layer rhs");
+        assertBelowPrime(VMAX * (air.IO_INV > air.IO_SCALE ? air.IO_INV : air.IO_SCALE), "input/output conversion lhs");
 
         // Completeness: an honest (canonical) witness has internal quotients below 2^32
         if ((air.S * (air.P - 1) + air.P + air.BIAS + air.d_neg * (air.P - 1)) / air.P > VMAX) {

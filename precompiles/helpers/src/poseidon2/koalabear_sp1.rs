@@ -67,4 +67,6 @@ pub const POSEIDON2_KOALABEAR_SP1: Poseidon2Params<16> = Poseidon2Params {
             867006515, 879151050,
         ],
     ],
+    // 2^32 mod P: guests pass the lanes in Montgomery form, as Plonky3 stores them
+    io_scale: 33554430,
 };

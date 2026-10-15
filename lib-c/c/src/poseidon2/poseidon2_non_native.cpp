@@ -13,6 +13,8 @@ struct Poseidon2Params
     uint64_t m4[4][4];
     // Internal matrix internal_scale * (J + diag(internal_diag))
     uint64_t internal_scale;
+    // Lanes in memory are io_scale * x (2^32 mod P: Montgomery form)
+    uint64_t io_scale;
     const uint64_t *internal_diag;
     // n_begin and n_end full rounds of `width` constants, n_partial partial rounds
     const uint64_t *rc_begin;
@@ -79,16 +81,34 @@ static void full_round(const Poseidon2Params &pp, uint64_t *s, const uint64_t *r
     external_layer(pp, s);
 }
 
+static uint64_t pow_mod(uint64_t base, uint64_t exp, uint64_t p)
+{
+    uint64_t result = 1;
+    base %= p;
+    while (exp > 0)
+    {
+        if (exp & 1)
+        {
+            result = result * base % p;
+        }
+        base = base * base % p;
+        exp >>= 1;
+    }
+    return result;
+}
+
 static int permute_words(const Poseidon2Params &pp, uint64_t *words)
 {
     uint64_t s[MAX_WIDTH];
+    const uint64_t io_inv = pow_mod(pp.io_scale, pp.p - 2, pp.p);
     for (int i = 0; i < pp.width; i++)
     {
-        s[i] = (words[i / 2] >> (32 * (i % 2))) & 0xFFFFFFFF;
-        if (s[i] >= pp.p)
+        uint64_t m = (words[i / 2] >> (32 * (i % 2))) & 0xFFFFFFFF;
+        if (m >= pp.p)
         {
             return -1;
         }
+        s[i] = m * io_inv % pp.p;
     }
 
     external_layer(pp, s);
@@ -108,7 +128,7 @@ static int permute_words(const Poseidon2Params &pp, uint64_t *words)
 
     for (int i = 0; i < pp.width / 2; i++)
     {
-        words[i] = s[2 * i] | (s[2 * i + 1] << 32);
+        words[i] = (s[2 * i] * pp.io_scale % pp.p) | ((s[2 * i + 1] * pp.io_scale % pp.p) << 32);
     }
     return 0;
 }
@@ -136,7 +156,7 @@ static const uint64_t KB_SP1_RC_END[4][16] = {
 static const Poseidon2Params KOALABEAR_SP1 = {
     2130706433, 16, 3,
     {{2, 3, 1, 1}, {1, 2, 3, 1}, {1, 1, 2, 3}, {3, 1, 1, 2}},
-    1057030144, KB_SP1_INTERNAL_DIAG,
+    1057030144, 33554430, KB_SP1_INTERNAL_DIAG,
     &KB_SP1_RC_BEGIN[0][0], N_ROUNDS(KB_SP1_RC_BEGIN),
     KB_SP1_RC_PARTIAL, N_ROUNDS(KB_SP1_RC_PARTIAL),
     &KB_SP1_RC_END[0][0], N_ROUNDS(KB_SP1_RC_END),
