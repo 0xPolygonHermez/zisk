@@ -164,6 +164,9 @@ pub const BLAKE_3_F_INSTANCE_COST: usize = 4219;
 /// `Blake2s`: 2.46 GB.
 pub const BLAKE_2_S_INSTANCE_COST: usize = 2519;
 
+/// `Poseidon2KoalaBear`: 8.04 GB.
+pub const POSEIDON_2_KOALA_BEAR_INSTANCE_COST: usize = 8233;
+
 /// `Dma`: 3.29 GB.
 pub const DMA_INSTANCE_COST: usize = 3369;
 
@@ -292,6 +295,7 @@ mod tests {
                     Blake2brTrace: Blake2brTraceRow: BLAKE_2_BR_INSTANCE_COST,
                     Blake3fTrace: Blake3fTraceRow: BLAKE_3_F_INSTANCE_COST,
                     Blake2sTrace: Blake2sTraceRow: BLAKE_2_S_INSTANCE_COST,
+                    Poseidon2KoalaBearTrace: Poseidon2KoalaBearTraceRow: POSEIDON_2_KOALA_BEAR_INSTANCE_COST,
                     DmaTrace: DmaTraceRow: DMA_INSTANCE_COST,
                     Dma64AlignedTrace: Dma64AlignedTraceRow: DMA_64_ALIGNED_INSTANCE_COST,
                     Dma64AlignedLargeTrace: Dma64AlignedLargeTraceRow: DMA_64_ALIGNED_LARGE_INSTANCE_COST,

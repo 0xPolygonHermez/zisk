@@ -19,6 +19,7 @@
 //! - [`syscall_keccak_f`] — Keccak-f\[1600\] permutation
 //! - [`syscall_poseidon1`] — Poseidon1 hash function
 //! - [`syscall_poseidon2`] — Poseidon2 hash function
+//! - [`syscall_poseidon2_koalabear`] — Poseidon2 permutation over KoalaBear (SP1 parameters)
 //! - [`syscall_sha256_f`] — SHA-256 compression function
 //!
 //! ### Elliptic curve (secp256k1)
@@ -65,6 +66,7 @@ mod keccakf;
 mod point;
 mod poseidon1;
 mod poseidon2;
+mod poseidon2_koalabear;
 mod secp256k1_add;
 mod secp256k1_dbl;
 mod secp256r1_add;
@@ -95,6 +97,7 @@ pub use keccakf::*;
 pub use point::*;
 pub use poseidon1::*;
 pub use poseidon2::*;
+pub use poseidon2_koalabear::*;
 pub use secp256k1_add::*;
 pub use secp256k1_dbl::*;
 pub use secp256r1_add::*;

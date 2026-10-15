@@ -1,0 +1,402 @@
+require "std_lookup.pil"
+require "std_range_check.pil"
+require "operations.pil"
+require "opids.pil"
+
+// Precompile in charge of performing the Poseidon2 permutation over a 31-bit prime field
+// (KoalaBear, BabyBear, ...), arithmetized over Goldilocks.
+// For reference: https://eprint.iacr.org/2023/323.pdf
+//
+// The field is not native, so every operation mod P is proven as an integer relation. Every
+// value and quotient is two range-checked 16-bit limbs, i.e. an integer in [0, 2^32), and each
+// relation is written with non-negative terms on both sides:
+//
+//     S-box step   a·b                             = x + P·q
+//     external     Σ M_E[i][j]·y[j] + rc[i]        = next[i] + P·q
+//     internal     S·next[i] + K[i] + d⁻[i]·y[i]   = Σy + d⁺[i]·y[i] + P·q
+//     canonical    x + gap                         = P - 1
+//
+// checkInstance() asserts that both sides stay below PRIME for this instance, so an equality in
+// Goldilocks is an equality of integers, hence the intended congruence mod P. Values only need to
+// be canonical (< P) where they meet memory, which the last relation enforces.
+//
+// Parameters (canonical field elements):
+//   P, n, SBOX_DEG, RF, RP  field, width, S-box degree, full and partial rounds
+//   M4[16]                  4x4 block of the external matrix circ(2·M4, M4, ..., M4), row-major
+//   INT_SCALE, D[n]         internal matrix INT_SCALE·(J + diag(D))
+//   RC                      round constants: RF/2·n | RP | RF/2·n
+
+
+airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int n, const int SBOX_DEG,
+                               const int RF, const int RP, const int M4[], const int INT_SCALE,
+                               const int D[], const int RC[]) {
+    // Compute some stats
+    const int CLOCKS = RF + RP + 2;
+
+    const int NUM_NON_USABLE_ROWS = N % CLOCKS;
+    const int NUM_POSEIDON;
+    if (NUM_NON_USABLE_ROWS == 0) {
+        // N is perfectly divisible by CLOCKS
+        if (N < CLOCKS) {
+            error(`N must be at least ${CLOCKS} to fit the Poseidon2 arithmetization, but received N=${N}`);
+        }
+
+        NUM_POSEIDON = N / CLOCKS;
+    } else {
+        // N is not divisible by CLOCKS
+        if (N < 2*CLOCKS) {
+            error(`N must be at least ${2*CLOCKS} to fit the Poseidon2 arithmetization, but received N=${N}`);
+        }
+
+        // Subtract 1 because we can't fit a complete cycle in the remaining rows
+        NUM_POSEIDON = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1;
+    }
+
+    col fixed CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_POSEIDON, 0...];
+
+    const expr CLK[CLOCKS];
+    for (int i = 0; i < CLOCKS; i++) {
+        CLK[i] = (i)'CLK_0;
+    }
+
+    // Row layout, one round per row:
+    //   clock 0                    : input state (canonical), initial external layer
+    //   clocks 1..RF/2             : first full rounds
+    //   clocks RF/2+1..RF/2+RP     : partial rounds
+    //   clocks RF/2+RP+1..RF+RP    : last full rounds
+    //   clock RF+RP+1              : output state (canonical)
+    const int HALF = RF / 2;
+    const int FIRST_PARTIAL = HALF + 1;
+    const int FIRST_END = HALF + RP + 1;
+    const int LAST = CLOCKS - 1;
+
+    const expr full_round = clock_set(start: 1, end: FIRST_PARTIAL) + clock_set(start: FIRST_END, end: LAST);
+    const expr partial_round = clock_set(start: FIRST_PARTIAL, end: FIRST_END);
+
+    // Define the clock selectors
+    col witness bits(1) in_use;       // 1 when the Poseidon2 operation is in use, 0 otherwise
+    in_use * (1 - in_use) === 0;
+
+    col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Poseidon2 operation, 0 otherwise
+    in_use_clk_0 <== CLK_0 * in_use;
+
+    const expr in_use_active = clock_set(start: 1, end: CLOCKS);
+    in_use_active * (in_use - 'in_use) === 0; // selector latching
+
+    // --> Constraints to assert the Poseidon2 permutation
+
+    // S-box as an addition chain: sbox[i][k] = v[CHAIN[k][0]] * v[CHAIN[k][1]], v = [state[i], sbox[i][0], ...]
+    const int NS;
+    int CHAIN[4][2];
+    switch (SBOX_DEG) {
+        case 3:
+            NS = 2;
+            CHAIN[0] = [0, 0]; CHAIN[1] = [1, 0];                                       // x², x³
+        case 5:
+            NS = 3;
+            CHAIN[0] = [0, 0]; CHAIN[1] = [1, 1]; CHAIN[2] = [2, 0];                    // x², x⁴, x⁵
+        case 7:
+            NS = 4;
+            CHAIN[0] = [0, 0]; CHAIN[1] = [1, 0]; CHAIN[2] = [2, 2]; CHAIN[3] = [3, 0]; // x², x³, x⁶, x⁷
+        default:
+            error(`Unsupported S-box degree ${SBOX_DEG}`);
+    }
+
+    // Poseidon2 state: n elements, each as two 16-bit limbs, least-significant first.
+    // Each S-box step and each linear layer gets a reduced value and a quotient, also two limbs.
+    col witness bits(16) chunks[n][2];
+    col witness bits(16) sbox[n][NS][2];
+    col witness bits(16) sbox_q[n][NS][2];
+    col witness bits(16) linear_q[n][2];
+
+    const expr state[n];
+    const expr next_state[n];
+    const expr sbox_out[n][NS];
+    const expr sbox_quo[n][NS];
+    const expr linear_quo[n];
+    for (int i = 0; i < n; i++) {
+        state[i] = chunks[i][1] * P2_16 + chunks[i][0];
+        next_state[i] = chunks[i][1]' * P2_16 + chunks[i][0]';
+        linear_quo[i] = linear_q[i][1] * P2_16 + linear_q[i][0];
+        for (int k = 0; k < NS; k++) {
+            sbox_out[i][k] = sbox[i][k][1] * P2_16 + sbox[i][k][0];
+            sbox_quo[i][k] = sbox_q[i][k][1] * P2_16 + sbox_q[i][k][0];
+        }
+
+        // Every limb is used in a relation, so all of them are range checked on every row
+        for (int j = 0; j < 2; j++) {
+            range_check(expression: chunks[i][j], min: 0, max: MASK_16);
+            range_check(expression: linear_q[i][j], min: 0, max: MASK_16);
+            for (int k = 0; k < NS; k++) {
+                range_check(expression: sbox[i][k][j], min: 0, max: MASK_16);
+                range_check(expression: sbox_q[i][k][j], min: 0, max: MASK_16);
+            }
+        }
+    }
+
+    // Internal layer as S·next = Σy + d·y (mod P), with S = 1/INT_SCALE (P is prime) and d centred
+    // in (-P/2, P/2): d⁺ = max(d, 0) and d⁻ = max(-d, 0) in the relation above
+    const int S = pow_mod(INT_SCALE, P - 2, P);
+    int d[n];
+    int d_pos = 0;
+    int d_neg = 0;
+    for (int i = 0; i < n; i++) {
+        d[i] = D[i] > P / 2 ? D[i] - P : D[i];
+        d_pos = d[i] > d_pos ? d[i] : d_pos;
+        d_neg = -d[i] > d_neg ? -d[i] : d_neg;
+    }
+    const int BIAS = (n + d_pos) * P; // keeps the internal quotient non-negative
+
+    checkInstance();
+
+    // The linear layer of the row at clock k adds the constant of the round fed by the next row:
+    // rc[i] on the initial and full rounds, K[i] = BIAS + (-S·rc mod P) on partial rounds
+    expr rc[n];
+    expr internal_k[n];
+    for (int i = 0; i < n; i++) {
+        rc[i] = 0;
+        internal_k[i] = BIAS;
+        for (int k = 0; k < LAST; k++) {
+            const int c = next_rc(k, i);
+            if (c == 0) {
+                continue;
+            }
+            if (k >= FIRST_PARTIAL && k < FIRST_END) {
+                internal_k[i] += CLK[k] * (P - (S * c) % P);
+            } else {
+                rc[i] += CLK[k] * c;
+            }
+        }
+    }
+
+    // S-box on every lane on full rounds, on lane 0 only on partial rounds
+    for (int i = 0; i < n; i++) {
+        sboxChain(state[i], sbox_out[i], sbox_quo[i], i == 0 ? full_round + partial_round : full_round);
+    }
+
+    // External layer: initial (y = state) and full rounds (y = S-box output)
+    const expr sbox_last[n];
+    for (int i = 0; i < n; i++) {
+        sbox_last[i] = sbox_out[i][NS - 1];
+    }
+    poseidon2ExternalLayer(state, CLK[0]);
+    poseidon2ExternalLayer(sbox_last, full_round);
+
+    // Internal layer: y = (S-box output of lane 0, state[1], ..., state[n-1])
+    const expr partial_in[n];
+    partial_in[0] = sbox_last[0];
+    for (int i = 1; i < n; i++) {
+        partial_in[i] = state[i];
+    }
+    poseidon2InternalLayer(partial_in, partial_round);
+
+    // Input and output lanes are canonical: state + gap = P - 1, with the gap in sbox[i][0]
+    for (int i = 0; i < n; i++) {
+        (CLK[0] + CLK[LAST]) * (state[i] + sbox_out[i][0] - (P - 1)) === 0;
+    }
+
+    // --> Constraints to read inputs from memory and write outputs to memory
+    /*
+        MEMORY ACCESS MAP (two lanes per 64-bit word)
+        =====================================================================================
+            0      | STEP_MAIN | R | ADDR_STATE                 |  input_state[0..1]
+            1      | STEP_MAIN | R | ADDR_STATE + 8             |  input_state[2..3]
+            .      |    ...    | . |    ...                     |     ...
+         n/2 - 1   | STEP_MAIN | R | ADDR_STATE + (n/2 - 1)*8   |  input_state[n-2..n-1]
+           n/2     | STEP_MAIN | W | ADDR_STATE                 |  output_state[0..1]
+            .      |    ...    | . |    ...                     |     ...
+          n - 1    | STEP_MAIN | W | ADDR_STATE + (n/2 - 1)*8   |  output_state[n-2..n-1]
+        =====================================================================================
+    */
+    col witness bits(40) step_addr;
+
+    const int STEP_MAIN = 0;
+    const int ADDR_STATE = STEP_MAIN + 1;
+
+    const int MEM_OPS_PARALLEL = n / 8;
+
+    const expr mem_sel = clock_set(in_use, start: 0, end: 4) + clock_set(in_use, start: CLOCKS - 4, end: CLOCKS);
+
+    const expr mem_is_write = clock_set(start: CLOCKS - 4, end: CLOCKS);
+
+    const expr main_step = clock_shift(step_addr, STEP_MAIN, start: 0, end: 4) + clock_shift(step_addr, STEP_MAIN, start: CLOCKS - 4, end: CLOCKS);
+
+    for (int i = 0; i < MEM_OPS_PARALLEL; i++) {
+        const expr mem_addr = clock_shift(step_addr, ADDR_STATE, start: 0, end: 4, offset: 8*i, delta: 8 * MEM_OPS_PARALLEL) + clock_shift(step_addr, ADDR_STATE, start: CLOCKS - 4, end: CLOCKS, offset: 8*i, delta: 8 * MEM_OPS_PARALLEL);
+
+        expr mem_value[2];
+        mem_value[0] = 0;
+        mem_value[1] = 0;
+
+        // Reads
+        for(int j = 0; j < 4; j++) {
+            const int word = MEM_OPS_PARALLEL*j + i;
+            mem_value[0] += (j)'CLK_0 * ((j)'chunks[2*word][1] * P2_16 + (j)'chunks[2*word][0]);
+            mem_value[1] += (j)'CLK_0 * ((j)'chunks[2*word + 1][1] * P2_16 + (j)'chunks[2*word + 1][0]);
+        }
+
+        // Writes
+        for(int j = 0; j < 4; j++) {
+            const int word = MEM_OPS_PARALLEL*j + i;
+            mem_value[0] += (CLOCKS - 4 + j)'CLK_0 * (chunks[2*word][1]'(3 - j) * P2_16 + chunks[2*word][0]'(3 - j));
+            mem_value[1] += (CLOCKS - 4 + j)'CLK_0 * (chunks[2*word + 1][1]'(3 - j) * P2_16 + chunks[2*word + 1][0]'(3 - j));
+        }
+
+        precompiled_mem_op(
+            sel: mem_sel,
+            is_write: mem_is_write,
+            main_step: main_step,
+            addr: mem_addr,
+            value: mem_value
+        );
+    }
+
+    // --> Constraints to make sure that this coprocessor is called from the main processor
+    proves_operation(op: OP, b: [step_addr'(ADDR_STATE), 0], main_step: step_addr'(STEP_MAIN), mul: in_use_clk_0);
+
+    function clock_set(const expr mvcol = 1, const int start = 0, int end = -1): const expr {
+        expr result = 0;
+        if (end == -1) {
+            end = start;
+        }
+        for (int i = start; i < end; i++) {
+            result += air.CLK[i];
+        }
+        return result * mvcol;
+    }
+
+    function clock_shift(const expr mvcol, const int pos, const int start = 0, int end = -1, int offset = 0,  const int delta = 0): const expr {
+        expr result = 0;
+        if (end == -1) {
+            end = start + 1;
+        }
+        for (int i = start; i < end; i++) {
+            const int iclock = (pos - i) % air.CLOCKS;
+            if (offset != 0) {
+                result += air.CLK[i] * (mvcol'(iclock) + offset);
+            } else {
+                result += air.CLK[i] * mvcol'(iclock);
+            }
+            offset += delta;
+        }
+        return result;
+    }
+
+    // Constant of lane i in round r, rounds numbered 0..RF+RP-1 from the first full round; the
+    // row at clock r computes the input of round r. 0 past the last round (the output)
+    function next_rc(const int r, const int i): int {
+        if (r < air.HALF) {
+            return air.RC[r * air.n + i];
+        } else if (r < air.HALF + air.RP) {
+            return i == 0 ? air.RC[air.HALF * air.n + r - air.HALF] : 0;
+        } else if (r < air.RF + air.RP) {
+            return air.RC[air.HALF * air.n + air.RP + (r - air.HALF - air.RP) * air.n + i];
+        }
+        return 0;
+    }
+
+    // v[k + 1] = v[CHAIN[k][0]] * v[CHAIN[k][1]] mod P, with v[0] = input
+    function sboxChain(const expr input, const expr output[], const expr quotient[], const expr sel) {
+        expr v[air.NS + 1];
+        v[0] = input;
+        for (int k = 0; k < air.NS; k++) {
+            v[k + 1] = output[k];
+        }
+        for (int k = 0; k < air.NS; k++) {
+            sel * (v[air.CHAIN[k][0]] * v[air.CHAIN[k][1]] - output[k] - air.P * quotient[k]) === 0;
+        }
+    }
+
+    // next_state = circ(2·M4, M4, ..., M4)·input + rc  (mod P)
+    function poseidon2ExternalLayer(const expr input[], const expr sel) {
+        for (int i = 0; i < air.n; i++) {
+            expr mat = 0;
+            for (int j = 0; j < air.n; j++) {
+                mat += air.M4[(i % 4) * 4 + j % 4] * (i / 4 == j / 4 ? 2 : 1) * input[j];
+            }
+            sel * (mat + air.rc[i] - air.next_state[i] - air.P * air.linear_quo[i]) === 0;
+        }
+    }
+
+    // S·next_state + K = Σinput + d·input  (mod P), i.e. next_state = INT_SCALE·(Σinput + d·input) + rc
+    function poseidon2InternalLayer(const expr input[], const expr sel) {
+        expr sum = 0;
+        for (int i = 0; i < air.n; i++) {
+            sum += input[i];
+        }
+        for (int i = 0; i < air.n; i++) {
+            sel * (air.S * air.next_state[i] + air.internal_k[i] - sum - air.d[i] * input[i] - air.P * air.linear_quo[i]) === 0;
+        }
+    }
+
+    // The parameters describe a valid instance, and both sides of every relation (see the header)
+    // stay below PRIME for any witness that passes the range checks
+    function checkInstance() {
+        const int VMAX = P2_32 - 1; // any value or quotient (two 16-bit limbs)
+
+        // Instance: lanes fit in the 31-bit limbs pair and the memory layout (4 clocks of n/8
+        // words each way), full rounds split in two halves, S invertible, constants canonical
+        if (air.P >= P2_31 || air.n % 8 != 0 || air.RF % 2 != 0 || air.CLOCKS < 8) {
+            error(`Poseidon2NonNative: unsupported instance P=${air.P} n=${air.n} RF=${air.RF} RP=${air.RP}`);
+        }
+        if (length(air.RC) != air.RF * air.n + air.RP) {
+            error(`Poseidon2NonNative: RC has ${length(air.RC)} constants, expected RF·n + RP`);
+        }
+        if ((air.S * air.INT_SCALE) % air.P != 1) {
+            error("Poseidon2NonNative: INT_SCALE has no inverse mod P (is P prime?)");
+        }
+        for (int i = 0; i < length(air.RC); i++) {
+            assertCanonical(air.RC[i], "RC");
+        }
+        for (int i = 0; i < air.n; i++) {
+            assertCanonical(air.D[i], "D");
+        }
+        for (int i = 0; i < 16; i++) {
+            assertCanonical(air.M4[i], "M4");
+        }
+
+        // S-box: a·b <= VMAX^2 < PRIME for any P, and x + P·q is below the internal rhs bound
+        int ext_sum = 0;
+        for (int r = 0; r < 4; r++) {
+            int row_sum = 0;
+            for (int j = 0; j < air.n; j++) {
+                row_sum += air.M4[r * 4 + j % 4] * (j < 4 ? 2 : 1);
+            }
+            ext_sum = row_sum > ext_sum ? row_sum : ext_sum;
+        }
+        assertBelowPrime(ext_sum * VMAX + air.P, "external layer lhs");
+        assertBelowPrime(air.S * VMAX + air.P + air.BIAS + air.d_neg * VMAX, "internal layer lhs");
+        assertBelowPrime(air.n * VMAX + air.d_pos * VMAX + air.P * VMAX, "internal layer rhs");
+
+        // Completeness: an honest (canonical) witness has internal quotients below 2^32
+        if ((air.S * (air.P - 1) + air.P + air.BIAS + air.d_neg * (air.P - 1)) / air.P > VMAX) {
+            error("Poseidon2NonNative: internal layer quotient does not fit in 32 bits");
+        }
+    }
+
+    function assertCanonical(const int value, const string what) {
+        if (value < 0 || value >= air.P) {
+            error(`Poseidon2NonNative: ${what} constant ${value} is not a canonical element mod P`);
+        }
+    }
+
+    function assertBelowPrime(const int value, const string what) {
+        if (value >= PRIME) {
+            error(`Poseidon2NonNative: ${what} can reach ${value} >= PRIME and wrap`);
+        }
+    }
+
+    function pow_mod(const int base, const int exp, const int m): int {
+        int result = 1;
+        int b = base % m;
+        int e = exp;
+        while (e > 0) {
+            if (e % 2 == 1) {
+                result = (result * b) % m;
+            }
+            b = (b * b) % m;
+            e = e / 2;
+        }
+        return result;
+    }
+}

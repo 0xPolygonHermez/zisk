@@ -15,12 +15,14 @@
 use zisk_common::ComponentBuilder;
 use zisk_core::{
     ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, BIG_INT_OP_TYPE_ID, BLAKE2B_OP_TYPE_ID,
-    BLAKE2S_OP_TYPE_ID, BLAKE3_OP_TYPE_ID, KECCAK_OP_TYPE_ID, POSEIDON_OP_TYPE_ID,
+    BLAKE2S_OP_TYPE_ID, BLAKE3_OP_TYPE_ID, KECCAK_OP_TYPE_ID, POSEIDON2_KOALABEAR_OP_TYPE_ID,
+    POSEIDON_OP_TYPE_ID,
     SHA256_OP_TYPE_ID, TWISTED_EDWARDS_OP_TYPE_ID,
 };
 use zisk_pil::{
     ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_384_LARGE_AIR_IDS, BLAKE_2_BR_AIR_IDS,
-    BLAKE_2_S_AIR_IDS, BLAKE_3_F_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS,
+    BLAKE_2_S_AIR_IDS, BLAKE_3_F_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_2_KOALA_BEAR_AIR_IDS,
+    POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS,
     TWISTED_EDWARDS_AIR_IDS,
 };
 
@@ -46,7 +48,9 @@ use zisk_precomp_keccakf::{
     KeccakfCollector, KeccakfCounterInputGen, KeccakfInstance, KeccakfManager,
 };
 use zisk_precomp_poseidon::{
-    PoseidonCollector, PoseidonCounterInputGen, PoseidonInstance, PoseidonManager,
+    Poseidon2KoalaBearCollector, Poseidon2KoalaBearCounterInputGen, Poseidon2KoalaBearInstance,
+    Poseidon2KoalaBearManager, PoseidonCollector, PoseidonCounterInputGen, PoseidonInstance,
+    PoseidonManager,
 };
 use zisk_precomp_sha256f::{
     Sha256fCollector, Sha256fCounterInputGen, Sha256fInstance, Sha256fManager,
@@ -87,6 +91,11 @@ crate::register_precompiles! {
         air: BLAKE_2_S_AIR_IDS,
         rank_assign: false,
     ] => Blake2sManager<F>,
+    Poseidon2KoalaBear [
+        op: POSEIDON2_KOALABEAR_OP_TYPE_ID,
+        air: POSEIDON_2_KOALA_BEAR_AIR_IDS,
+        rank_assign: false,
+    ] => Poseidon2KoalaBearManager<F>,
     ArithEq [
         op: ARITH_EQ_OP_TYPE_ID,
         air: ARITH_EQ_CONFIG_AIR_IDS,
