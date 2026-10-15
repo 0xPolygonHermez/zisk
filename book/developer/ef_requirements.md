@@ -815,15 +815,15 @@ prover running the same guest.
 - **The seed.** It is decided once per task, before any emulator runs, because every
   emulation of the task (emulator threads, the ASM services, MPI ranks, distributed
   workers) must see the same values. It is drawn from the OS CSPRNG unless the host
-  provides one with `--random-seed` / `ZISK_RANDOM_SEED` (ziskemu, cargo-zisk,
-  zisk-prove-client) to replay a run; every run reports the seed it used, and a remote
-  coordinator accepts a client random seed only if configured to allow it
-  (`common/src/seed.rs`, `RandomSeed`).
+  provides one with `--random-seed` / `ZISK_RANDOM_SEED` (every command that runs a
+  guest) to replay a run; every run reports the seed it used, and a remote coordinator
+  accepts a client random seed only if configured to allow it (`common/src/seed.rs`,
+  `RandomSeed`).
 - **Reaching the emulators.** The executor hands the seed to the active emulator: the
   Rust emulator in `EmuOptions.random_seed`, the ASM services through the control-input
   shared memory (words 4..7 hold the seed, word 8 is set once it is written), read when
-  each execution starts. Standalone, `ziskemu --random-seed <64 hex digits>` takes one,
-  or draws a fresh one per run (`-v` prints it).
+  each execution starts. Standalone, `ziskemu` takes or draws the seed itself and prints
+  it on stderr.
 - **The guest side.** `zkvm_random_u64` is a zkvmcall thunk (`0x8B3`) to
   `ziskasm_zkvm_random_u64` (`ziskasm/zisklib/zkvm/random.zisk`). On the first call it
   reads the seed with the `FCALL_RANDOM_SEED` fcall (26) and absorbs it as SHAKE256 does;

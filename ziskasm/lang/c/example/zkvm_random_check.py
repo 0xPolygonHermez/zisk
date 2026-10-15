@@ -3,8 +3,8 @@
 
 usage: zkvm_random_check.py <seed> <out.bin>
 
-<seed> is the 32 seed bytes as 64 hex digits (optionally 0x-prefixed), as given to
-ziskemu --random-seed.
+<seed> is the 32 seed bytes as all 64 hex digits (optionally 0x-prefixed), as ziskemu
+prints them.
 """
 import hashlib
 import struct
