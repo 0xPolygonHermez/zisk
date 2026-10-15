@@ -3,7 +3,9 @@
 //! One `Poseidon2Params` value describes an instance; the permutation is generic over it:
 //! - external layer: `circ(2*M4, M4, ..., M4)` (Plonky3 layout), also applied before round 1;
 //! - internal layer: `internal_scale * (J + diag(internal_diag))`;
-//! - `rc_begin.len()` full rounds, `rc_partial.len()` partial rounds, `rc_end.len()` full rounds.
+//! - `rc_begin.len()` full rounds, `rc_partial.len()` partial rounds, `rc_end.len()` full rounds;
+//! - in memory each lane x is stored as `io_scale * x`: `2^32 mod P` is the Montgomery form in
+//!   which Plonky3 keeps KoalaBear and BabyBear, so guests pass their elements as they are.
 
 mod koalabear_sp1;
 #[cfg(test)]
@@ -21,6 +23,7 @@ pub struct Poseidon2Params<const W: usize> {
     pub rc_begin: &'static [[u32; W]],
     pub rc_partial: &'static [u32],
     pub rc_end: &'static [[u32; W]],
+    pub io_scale: u32,
 }
 
 impl<const W: usize> Poseidon2Params<W> {
@@ -40,16 +43,25 @@ impl<const W: usize> Poseidon2Params<W> {
         std::array::from_fn(|i| (words[i / 2] >> (32 * (i % 2))) as u32)
     }
 
-    /// Permutes a state stored two lanes per word (see `lanes`). On a non-canonical lane returns its
-    /// index and leaves `words` untouched.
+    /// `1 / io_scale mod P`: the factor from the memory form of a lane to its canonical value.
+    pub fn io_scale_inv(&self) -> u32 {
+        pow_mod(self.io_scale, self.p - 2, self.p)
+    }
+
+    /// Permutes a state as it is in memory: two lanes per word (see `lanes`), each in the form
+    /// `io_scale * x`. On a lane that is not canonical returns its index and leaves `words`
+    /// untouched.
     pub fn permute_words(&self, words: &mut [u64]) -> Result<(), usize> {
-        let mut state = Self::lanes(words);
-        if let Some(i) = self.first_noncanonical(&state) {
+        let lanes = Self::lanes(words);
+        if let Some(i) = self.first_noncanonical(&lanes) {
             return Err(i);
         }
+        let inv = self.io_scale_inv();
+        let mut state = lanes.map(|m| self.mul(m, inv));
         self.permute(&mut state);
         for (word, pair) in words.iter_mut().zip(state.chunks_exact(2)) {
-            *word = u64::from(pair[0]) | (u64::from(pair[1]) << 32);
+            let [lo, hi] = [pair[0], pair[1]].map(|y| self.mul(y, self.io_scale));
+            *word = u64::from(lo) | (u64::from(hi) << 32);
         }
         Ok(())
     }
@@ -117,6 +129,20 @@ impl<const W: usize> Poseidon2Params<W> {
     }
 }
 
+pub(crate) fn pow_mod(base: u32, mut exp: u32, m: u32) -> u32 {
+    let m = u64::from(m);
+    let mut b = u64::from(base) % m;
+    let mut result = 1u64;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            result = result * b % m;
+        }
+        b = b * b % m;
+        exp >>= 1;
+    }
+    result as u32
+}
+
 #[cfg(test)]
 mod tests {
     use super::test_vectors::KOALABEAR_SP1_VECTORS;
@@ -161,16 +187,23 @@ mod tests {
             numbers(pil, "const int KB_SP1_INT_SCALE =", ' ', ';'),
             [u64::from(kb.internal_scale)]
         );
+        assert_eq!(numbers(pil, "const int KB_SP1_IO_SCALE =", ' ', ';'), [u64::from(kb.io_scale)]);
         assert_eq!(numbers(pil, "const int KB_SP1_M4[16] =", '[', ']'), m4);
         assert_eq!(numbers(pil, "const int KB_SP1_D_16[16] =", '[', ']'), diag);
         assert_eq!(numbers(pil, "const int KB_SP1_RC_16[148] =", '[', ']'), rc);
 
         let cpp = include_str!("../../../../lib-c/c/src/poseidon2/poseidon2_non_native.cpp");
         let params = numbers(cpp, "Poseidon2Params KOALABEAR_SP1 =", '{', '&');
-        let [p, width, degree, m4_cpp @ .., scale] = params.as_slice() else { panic!() };
+        let [p, width, degree, m4_cpp @ .., scale, io_scale] = params.as_slice() else { panic!() };
         assert_eq!(
-            (*p, *width, *degree, *scale),
-            (u64::from(kb.p), 16, u64::from(kb.sbox_degree), u64::from(kb.internal_scale))
+            (*p, *width, *degree, *scale, *io_scale),
+            (
+                u64::from(kb.p),
+                16,
+                u64::from(kb.sbox_degree),
+                u64::from(kb.internal_scale),
+                u64::from(kb.io_scale)
+            )
         );
         assert_eq!(m4_cpp, m4);
         assert_eq!(numbers(cpp, "KB_SP1_INTERNAL_DIAG[16] =", '{', ';'), diag);
@@ -180,6 +213,23 @@ mod tests {
                 .flat_map(|name| numbers(cpp, name, '{', ';'))
                 .collect();
         assert_eq!(rc_cpp, rc);
+    }
+
+    /// permute_words takes and returns the lanes in memory form (Montgomery for KoalaBear SP1).
+    #[test]
+    fn koalabear_sp1_permute_words_is_in_montgomery_form() {
+        let kb = &POSEIDON2_KOALABEAR_SP1;
+        let p = u64::from(kb.p);
+        assert_eq!(u64::from(kb.io_scale), (1u64 << 32) % p);
+        let mont = |x: u32| (u64::from(x) << 32) % p;
+        for (input, expected) in KOALABEAR_SP1_VECTORS {
+            let pack = |v: [u32; 16]| -> Vec<u64> {
+                v.chunks_exact(2).map(|c| mont(c[0]) | (mont(c[1]) << 32)).collect()
+            };
+            let mut words = pack(input);
+            kb.permute_words(&mut words).unwrap();
+            assert_eq!(words, pack(expected));
+        }
     }
 
     #[test]

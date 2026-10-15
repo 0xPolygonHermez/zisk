@@ -12,8 +12,9 @@ use zisk_precomp_helpers::POSEIDON2_KOALABEAR_SP1;
 /// Executes the width-16 Poseidon2 permutation over KoalaBear, with SP1's parameters
 /// (`my_kb_16_perm`), on the given state.
 ///
-/// The state is sixteen canonical KoalaBear elements packed two per `u64` (little-endian), and is
-/// modified in place. A non-canonical element makes the execution fail.
+/// The state is sixteen KoalaBear elements in Montgomery form (`x * 2^32 mod P`, the
+/// representation Plonky3 keeps them in), packed two per `u64` (little-endian), and is modified in
+/// place. A lane that is not below P makes the execution fail.
 ///
 /// ### Safety
 ///
@@ -31,7 +32,7 @@ pub unsafe extern "C" fn syscall_poseidon2_koalabear(
     {
         let state: &mut [u64; 8] = unsafe { &mut *(state) };
         if let Err(lane) = POSEIDON2_KOALABEAR_SP1.permute_words(state) {
-            panic!("syscall_poseidon2_koalabear: lane {lane} is not a canonical KoalaBear element");
+            panic!("syscall_poseidon2_koalabear: lane {lane} is not below the KoalaBear modulus");
         }
 
         #[cfg(feature = "hints")]

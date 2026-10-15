@@ -2,7 +2,7 @@
 //! (precompiles/poseidon/pil/poseidon2_non_native.pil). Every value is below 2^32, as the AIR
 //! stores each one in two 16-bit limbs.
 
-use super::Poseidon2Params;
+use super::{pow_mod, Poseidon2Params};
 
 /// Longest S-box addition chain (degree 7: x², x³, x⁶, x⁷).
 pub const MAX_SBOX_STEPS: usize = 4;
@@ -67,10 +67,17 @@ impl<const W: usize> Poseidon2Params<W> {
         }
     }
 
-    /// Values of the `clocks()` rows proving the permutation of `input`, which must be canonical.
-    /// Every intermediate fits in 63 bits: values are below 2^31 and quotients below 2^32.
+    /// Values of the `clocks()` rows proving the permutation of `input`, the lanes as they are in
+    /// memory (`io_scale * x`, canonical). Every intermediate fits in 63 bits: values are below
+    /// 2^31 and quotients below 2^32.
+    ///
+    /// On the input and output rows, which have no S-box, lane i keeps the memory value in
+    /// `sbox[i][1]`, the quotient of its conversion in `sbox_q[i][0]` and its canonical gap in
+    /// `sbox[i][0]`.
     pub fn trace_rows(&self, input: &[u32; W]) -> Vec<Poseidon2Row<W>> {
         let p = u64::from(self.p);
+        let io_scale = u64::from(self.io_scale);
+        let io_inv = u64::from(self.io_scale_inv());
         let half = self.rc_begin.len();
         let first_partial = half + 1;
         let first_end = half + self.rc_partial.len() + 1;
@@ -90,16 +97,28 @@ impl<const W: usize> Poseidon2Params<W> {
         let bias = (W as u64 + d.iter().copied().max().unwrap().max(0) as u64) * p;
 
         let mut rows = vec![Poseidon2Row::<W>::default(); last + 1];
-        let mut state = input.map(u64::from);
+
+        // Memory value m of lane i on the input or output row, with its gap and conversion quotient
+        let set_io = |row: &mut Poseidon2Row<W>, i: usize, m: u64, q: u64| {
+            row.sbox[i] = [(p - 1 - m) as u32, m as u32, 0, 0];
+            row.sbox_q[i][0] = q as u32;
+        };
+
+        // Input: m·io_inv = x + P·q
+        let mut state = [0u64; W];
+        for (i, &m) in input.iter().enumerate() {
+            let m = u64::from(m);
+            state[i] = m * io_inv % p;
+            set_io(&mut rows[0], i, m, m * io_inv / p);
+        }
+
         for (k, row) in rows.iter_mut().enumerate() {
             row.chunks = state.map(|x| x as u32);
-            if k == 0 || k == last {
-                // Canonical check: state + gap = P - 1
-                for (sbox, &x) in row.sbox.iter_mut().zip(&state) {
-                    sbox[0] = (p - 1 - x) as u32;
-                }
-            }
             if k == last {
+                // Output: y·io_scale = m + P·q
+                for (i, &y) in state.iter().enumerate() {
+                    set_io(row, i, y * io_scale % p, y * io_scale / p);
+                }
                 break;
             }
 
@@ -156,20 +175,6 @@ impl<const W: usize> Poseidon2Params<W> {
     }
 }
 
-fn pow_mod(base: u32, mut exp: u32, m: u32) -> u32 {
-    let m = u64::from(m);
-    let mut b = u64::from(base) % m;
-    let mut result = 1u64;
-    while exp > 0 {
-        if exp & 1 == 1 {
-            result = result * b % m;
-        }
-        b = b * b % m;
-        exp >>= 1;
-    }
-    result as u32
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::test_vectors::KOALABEAR_SP1_VECTORS;
@@ -179,10 +184,14 @@ mod tests {
     fn trace_rows_end_in_the_permutation_output() {
         let params = &POSEIDON2_KOALABEAR_SP1;
         assert_eq!(params.clocks(), 30);
+        let mont = |v: [u32; 16]| v.map(|x| ((u64::from(x) << 32) % u64::from(params.p)) as u32);
         for (input, expected) in KOALABEAR_SP1_VECTORS {
-            let rows = params.trace_rows(&input);
+            let rows = params.trace_rows(&mont(input));
+            let last = rows.last().unwrap();
             assert_eq!(rows[0].chunks, input);
-            assert_eq!(rows.last().unwrap().chunks, expected);
+            assert_eq!(last.chunks, expected);
+            assert_eq!(rows[0].sbox.map(|s| s[1]), mont(input));
+            assert_eq!(last.sbox.map(|s| s[1]), mont(expected));
         }
     }
 }

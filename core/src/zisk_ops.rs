@@ -19,8 +19,8 @@ use crate::{
     BLAKE2B_COST, BLAKE2S_COST, BLAKE3_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST,
     DMA_MEMCMP_COST, DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST,
     EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64,
-    MAX_INPUT_SIZE, POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST,
-    SYS_ADDR, TWISTED_EDWARDS_COST,
+    MAX_INPUT_SIZE, POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST,
+    SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
 };
 use paste::paste;
 use proofman_fields::{
@@ -832,8 +832,8 @@ pub fn ops_poseidon2(ctx: &InstContext, stats: &mut dyn OpStats) {
 }
 
 /// Poseidon2 over a 31-bit field (see `Poseidon2Params`): permutes the `W / 2` u64 words at the
-/// address in b in place, two field elements per word. A non-canonical element is not a valid
-/// input: the execution fails.
+/// address in b in place, two lanes per word in the instance's memory form (`io_scale * x`). A lane
+/// that is not below P is not a valid input: the execution fails.
 #[inline(always)]
 fn opc_poseidon2_non_native<const W: usize>(
     ctx: &mut InstContext,
