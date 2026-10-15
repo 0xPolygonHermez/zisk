@@ -25,7 +25,7 @@ use zisk_asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    AirInstanceCount, ExecutionSeed, ExecutorStatsHandle, ProgramVK, ProofKind, SetupKey,
+    AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, RandomSeed, SetupKey,
     StatsCostPerType, VadcopKind, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_core::ZiskRom;
@@ -282,7 +282,7 @@ impl AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
     ) -> Result<ExecuteOutput> {
         self.register_program_for_emulator(&program.program_id)?;
         self.core_prover.backend.execute(stdin, seed)
@@ -294,7 +294,7 @@ impl AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
@@ -307,7 +307,7 @@ impl AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         self.register_program_for_emulator(&program.program_id)?;
@@ -427,8 +427,8 @@ impl ProverEngine for AsmProver {
         self.core_prover.rank_info.local_rank
     }
 
-    fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
-        self.core_prover.backend.set_stdin_and_seed(stdin, seed)
+    fn set_stdin_and_random_seed(&self, stdin: ZiskStdin, seed: RandomSeed) -> Result<()> {
+        self.core_prover.backend.set_stdin_and_random_seed(stdin, seed)
     }
 
     fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()> {
@@ -489,11 +489,11 @@ impl ProverEngine for AsmProver {
             .unwrap_or_default()
     }
 
-    fn execution_seed(&self) -> Option<ExecutionSeed> {
+    fn random_seed(&self) -> Option<RandomSeed> {
         self.core_prover
             .backend
             .execution_result()
-            .map(|(exec_result, _)| exec_result.seed)
+            .map(|(exec_result, _)| exec_result.random_seed)
             .unwrap_or_default()
     }
 
@@ -505,7 +505,7 @@ impl ProverEngine for AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
     ) -> Result<ExecuteOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
         self.register_program(&program.program_id, with_hints)?;
@@ -516,7 +516,7 @@ impl ProverEngine for AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
@@ -560,7 +560,7 @@ impl ProverEngine for AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
@@ -578,7 +578,7 @@ impl ProverEngine for AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
@@ -599,7 +599,7 @@ impl ProverEngine for AsmProver {
         publics_full: &[u64],
         source_kind: VadcopKind,
         proof_kind: ProofKind,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
     ) -> Result<ProveOutput> {
         match proof_kind {
             ProofKind::VadcopFinalMinimal => {
@@ -878,7 +878,7 @@ impl ExecuteClient for ZiskProver<Asm> {
         program: &GuestProgram,
         stdin: ZiskStdin,
         hints: Option<StreamSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
         // Every call is a job boundary for this client, which executes many times after
         // one setup. Before the hints below — see `ZiskExecutor::reset_for_new_job`.

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
-use zisk_common::ExecutionSeed;
+use zisk_common::RandomSeed;
 
 /// Convert a [`Duration`] into a future deadline.
 ///
@@ -144,7 +144,7 @@ pub struct DomainProof {
     pub completed_at: Option<DateTime<Utc>>,
     /// Seed of the execution the proof attests to, the same one `data` carries. Set in
     /// responses (`None` for aggregates); not used in requests.
-    pub seed: Option<ExecutionSeed>,
+    pub random_seed: Option<RandomSeed>,
 }
 
 /// The kind of job being submitted.
@@ -196,9 +196,9 @@ pub struct DomainProveRequest {
     pub input: DomainInputKind,
     /// Optional precompile hints input.
     pub hints: Option<DomainInputKind>,
-    /// Execution seed to use instead of drawing a fresh one (replays). A coordinator that
-    /// does not allow client seeds rejects the job rather than run it with a different seed.
-    pub seed: Option<ExecutionSeed>,
+    /// Random seed to use instead of drawing a fresh one (replays). A coordinator that
+    /// does not allow client random seeds rejects the job rather than run it with a different seed.
+    pub random_seed: Option<RandomSeed>,
     /// Optional deadline for the proof.
     pub proof_timeout: Option<DateTime<Utc>>,
     /// The desired output proof kind.
@@ -225,9 +225,9 @@ pub struct DomainExecuteRequest {
     pub input: DomainInputKind,
     /// Optional precompile hints input.
     pub hints: Option<DomainInputKind>,
-    /// Execution seed to use instead of drawing a fresh one (replays). A coordinator that
-    /// does not allow client seeds rejects the job rather than run it with a different seed.
-    pub seed: Option<ExecutionSeed>,
+    /// Random seed to use instead of drawing a fresh one (replays). A coordinator that
+    /// does not allow client random seeds rejects the job rather than run it with a different seed.
+    pub random_seed: Option<RandomSeed>,
     /// Optional deadline for the execution.
     pub execute_timeout: Option<DateTime<Utc>>,
 }
@@ -342,7 +342,7 @@ pub enum DomainJobKindResponse {
         /// The program's public outputs.
         public_outputs: Vec<u8>,
         /// Seed the execution ran with. `None` when the coordinator does not report it.
-        seed: Option<ExecutionSeed>,
+        random_seed: Option<RandomSeed>,
     },
     /// Aggregation-program setup result.
     SetupAggregationProgram {

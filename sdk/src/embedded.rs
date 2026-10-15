@@ -19,7 +19,7 @@ use std::time::Duration;
 use crate::setup::SetupResult;
 use crate::{Result, SdkError};
 use zisk_common::ProofKind;
-use zisk_common::{ExecutionSeed, ProgramVK, Proof, PublicValues, ZiskPaths};
+use zisk_common::{ProgramVK, Proof, PublicValues, RandomSeed, ZiskPaths};
 use zisk_prover_backend::{Asm, AsmOptions, AsmProver, Emu, EmuProver, GuestProgram, ZiskProver};
 
 use crate::aggregate_proofs::{AggregateProofsRequest, AggregationInput};
@@ -525,7 +525,7 @@ impl Client for EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
@@ -539,7 +539,7 @@ impl Client for EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -620,7 +620,7 @@ impl ClientSync for EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         subs: SubscriberList,
@@ -633,7 +633,7 @@ impl ClientSync for EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         subs: SubscriberList,
     ) -> Result<ExecuteResult> {

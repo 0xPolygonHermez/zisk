@@ -8,7 +8,7 @@ use proofman_fields::PrimeField64;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::prelude::*;
 use zisk_common::DataBusTrait;
-use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace, ExecutionSeed};
+use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace, RandomSeed};
 use zisk_core::{MemDataSection, ZiskRom};
 use ziskemu::{EmuOptions, ZiskEmulator};
 
@@ -42,7 +42,7 @@ impl EmulatorRust {
         &self,
         zisk_rom: &ZiskRom,
         stdin: &ZiskStdin,
-        seed: &ExecutionSeed,
+        seed: &RandomSeed,
     ) -> ExecutorResult<ExecutionOutput> {
         let min_traces = self.run_emulator(zisk_rom, Self::NUM_THREADS, stdin, seed)?;
 
@@ -107,7 +107,7 @@ impl EmulatorRust {
         zisk_rom: &ZiskRom,
         num_threads: usize,
         stdin: &ZiskStdin,
-        seed: &ExecutionSeed,
+        seed: &RandomSeed,
     ) -> ExecutorResult<Vec<EmuTrace>> {
         // Call emulate with these options
         let input_data = stdin.read_data();

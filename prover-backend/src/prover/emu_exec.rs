@@ -12,7 +12,7 @@ use proofman_fields::Goldilocks;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ExecutionSeed;
+use zisk_common::RandomSeed;
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
 use zisk_transpiler_common::ZiskTranspiler;
@@ -55,10 +55,10 @@ impl EmuExecClient {
     /// Run the program set up by [`setup`](Self::setup) once with the given
     /// stdin and seed (`None` draws a fresh one). Returns an error if `setup`
     /// has not been called.
-    pub fn execute(&self, stdin: ZiskStdin, seed: Option<ExecutionSeed>) -> Result<ExecuteOutput> {
+    pub fn execute(&self, stdin: ZiskStdin, seed: Option<RandomSeed>) -> Result<ExecuteOutput> {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program) before execute(stdin)")?;
-        let seed = seed.map_or_else(ExecutionSeed::random, Ok)?;
+        let seed = seed.map_or_else(RandomSeed::random, Ok)?;
         tracing::info!("Running Emu execute");
         let started = Instant::now();
         let (summary, pub_outs, plan) = self.executor.execute_standalone(
@@ -81,7 +81,7 @@ impl ExecuteClient for EmuExecClient {
         _program: &GuestProgram,
         stdin: ZiskStdin,
         _hints: Option<StreamSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
         EmuExecClient::execute(self, stdin, seed)
     }

@@ -19,7 +19,7 @@ use zisk_asm_runner::HintsShmem;
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::io::StreamSource;
 use zisk_common::{
-    io::ZiskStdin, AirInstanceCount, ExecutionSeed, ExecutorStatsHandle, ProgramVK, ProofKind,
+    io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, RandomSeed,
     StatsCostPerType, VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
@@ -129,8 +129,8 @@ impl ProverEngine for EmuProver {
         self.core_prover.rank_info.local_rank
     }
 
-    fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
-        self.core_prover.backend.set_stdin_and_seed(stdin, seed)
+    fn set_stdin_and_random_seed(&self, stdin: ZiskStdin, seed: RandomSeed) -> Result<()> {
+        self.core_prover.backend.set_stdin_and_random_seed(stdin, seed)
     }
 
     fn register_program(&self, program_id: &ProgramId, _with_hints: bool) -> Result<()> {
@@ -171,11 +171,11 @@ impl ProverEngine for EmuProver {
             .unwrap_or_default()
     }
 
-    fn execution_seed(&self) -> Option<ExecutionSeed> {
+    fn random_seed(&self) -> Option<RandomSeed> {
         self.core_prover
             .backend
             .execution_result()
-            .map(|(exec_result, _)| exec_result.seed)
+            .map(|(exec_result, _)| exec_result.random_seed)
             .unwrap_or_default()
     }
 
@@ -187,7 +187,7 @@ impl ProverEngine for EmuProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
     ) -> Result<ExecuteOutput> {
         self.register_program(&program.program_id, false)?;
         self.core_prover.backend.execute(stdin, seed)
@@ -197,7 +197,7 @@ impl ProverEngine for EmuProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
@@ -234,7 +234,7 @@ impl ProverEngine for EmuProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         self.register_program(&program.program_id, false)?;
@@ -245,7 +245,7 @@ impl ProverEngine for EmuProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
@@ -259,7 +259,7 @@ impl ProverEngine for EmuProver {
         publics_full: &[u64],
         source_kind: VadcopKind,
         proof_kind: ProofKind,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
     ) -> Result<ProveOutput> {
         match proof_kind {
             ProofKind::VadcopFinalMinimal => {
@@ -462,7 +462,7 @@ impl ExecuteClient for ZiskProver<Emu> {
         program: &GuestProgram,
         stdin: ZiskStdin,
         _hints: Option<StreamSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
         ZiskProver::<Emu>::execute(self, program, stdin, seed)
     }

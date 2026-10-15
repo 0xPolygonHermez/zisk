@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use std::fmt;
-use zisk_common::{ExecutionSeed, ProfilingMode};
+use zisk_common::{ProfilingMode, RandomSeed};
 use zisk_core::{DEFAULT_MAX_STEPS, DEFAULT_MAX_STEPS_STR, MAX_INPUT_SIZE};
 
 pub const ZISK_VERSION_MESSAGE: &str = concat!(
@@ -295,7 +295,7 @@ pub struct EmuOptions {
     /// it through `--random-seed` and fills it in. A full emulation needs one, as there is no safe
     /// default; replays from minimal traces do not read it.
     #[clap(skip)]
-    pub random_seed: Option<ExecutionSeed>,
+    pub random_seed: Option<RandomSeed>,
     /// In mode fast, without stats, show coverage steps consumed without stats.
     #[clap(long, default_value = "false")]
     pub steps: bool,

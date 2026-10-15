@@ -446,7 +446,7 @@ impl FromWaitResult for crate::execute::ExecuteResult {
             TerminalStatus::Completed(DomainJobKindResponse::Execute {
                 stats,
                 public_outputs,
-                seed,
+                random_seed: seed,
             }) => {
                 let plan: Vec<(usize, usize, u64)> =
                     stats.plan.iter().map(|p| (p.airgroup_id, p.air_id, p.count)).collect();

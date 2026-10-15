@@ -1,7 +1,7 @@
 use std::fmt;
 use std::time::Instant;
 
-use crate::ExecutionSeed;
+use crate::RandomSeed;
 
 /// Type representing a chunk identifier.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -201,7 +201,7 @@ pub struct ZiskExecutorSummary {
     /// Per-AIR instance plan. Empty unless produced by a planning executor run.
     pub plan: Vec<AirInstanceCount>,
     /// Seed the execution ran with. `None` only for summaries that do not come from an execution.
-    pub seed: Option<ExecutionSeed>,
+    pub random_seed: Option<RandomSeed>,
 }
 
 impl ZiskExecutorSummary {

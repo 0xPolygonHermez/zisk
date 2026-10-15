@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::Result;
-use zisk_common::{ExecutionSeed, ProofKind};
+use zisk_common::{ProofKind, RandomSeed};
 use zisk_prover_backend::{GuestProgram, ProveOutput};
 
 use crate::hints::HintsSource;
@@ -72,7 +72,7 @@ pub struct ProveRequest<'a, C> {
     program: &'a GuestProgram,
     stdin: InputSource,
     hints: Option<HintsSource>,
-    seed: Option<ExecutionSeed>,
+    random_seed: Option<RandomSeed>,
     executor: ExecutorKind,
     timeout: Option<Duration>,
     proof_kind: ProofKind,
@@ -92,7 +92,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
             program,
             stdin: stdin.into(),
             hints: None,
-            seed: None,
+            random_seed: None,
             executor,
             timeout: None,
             proof_kind: ProofKind::default(),
@@ -111,11 +111,11 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         self
     }
 
-    /// Use this execution seed instead of drawing a fresh one. Every result reports the seed it
-    /// ran with. A remote coordinator rejects it unless it is configured to allow client seeds.
+    /// Use this random seed instead of drawing a fresh one. Every result reports the seed it ran
+    /// with. A remote coordinator rejects it unless it is configured to allow client random seeds.
     #[must_use]
-    pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
-        self.seed = seed.into();
+    pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
+        self.random_seed = seed.into();
         self
     }
 
@@ -156,7 +156,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
             self.program,
             self.stdin,
             self.hints,
-            self.seed,
+            self.random_seed,
             self.executor,
             self.proof_kind,
             self.timeout,
@@ -180,7 +180,7 @@ impl<'a, C: ClientSync> ProveRequest<'a, C> {
             self.program,
             self.stdin,
             self.hints,
-            self.seed,
+            self.random_seed,
             self.executor,
             self.proof_kind,
             subs,
@@ -198,7 +198,7 @@ pub struct ProveRequestExt<'a> {
     program: &'a GuestProgram,
     stdin: InputSource,
     hints: Option<HintsSource>,
-    seed: Option<ExecutionSeed>,
+    random_seed: Option<RandomSeed>,
     executor: ExecutorKind,
     timeout: Option<Duration>,
     proof_kind: ProofKind,
@@ -217,7 +217,7 @@ impl<'a> ProveRequestExt<'a> {
             program,
             stdin: stdin.into(),
             hints: None,
-            seed: None,
+            random_seed: None,
             executor: ExecutorKind::default(),
             timeout: None,
             proof_kind: ProofKind::default(),
@@ -241,11 +241,11 @@ impl<'a> ProveRequestExt<'a> {
         self
     }
 
-    /// Use this execution seed instead of drawing a fresh one. Every result reports the seed it
-    /// ran with. A remote coordinator rejects it unless it is configured to allow client seeds.
+    /// Use this random seed instead of drawing a fresh one. Every result reports the seed it ran
+    /// with. A remote coordinator rejects it unless it is configured to allow client random seeds.
     #[must_use]
-    pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
-        self.seed = seed.into();
+    pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
+        self.random_seed = seed.into();
         self
     }
 
@@ -286,7 +286,7 @@ impl<'a> ProveRequestExt<'a> {
             self.program,
             self.stdin,
             self.hints,
-            self.seed,
+            self.random_seed,
             self.executor,
             self.proof_kind,
             self.timeout,

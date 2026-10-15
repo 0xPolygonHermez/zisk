@@ -8,7 +8,7 @@ use crate::{
 };
 use std::collections::BTreeMap;
 use std::time::Duration;
-use zisk_common::{ExecutionSeed, ProofKind};
+use zisk_common::{ProofKind, RandomSeed};
 use zisk_coordinator_api::dto::{deadline_from_now, DomainJobKind, DomainProveRequest};
 use zisk_prover_backend::GuestProgram;
 
@@ -22,7 +22,7 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
@@ -39,7 +39,7 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
@@ -67,7 +67,7 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         _executor: ExecutorKind, // remote: coordinator uses its configured executor; hint ignored
         proof_kind: ProofKind,
         timeout: Option<Duration>,
@@ -94,7 +94,7 @@ impl RemoteClient {
             hash_id,
             input,
             hints,
-            seed,
+            random_seed: seed,
             proof_timeout,
             proof_dest,
         });

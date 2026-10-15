@@ -104,9 +104,9 @@ pub enum ExecutorError {
     #[error("ROM not initialized")]
     RomNotInitialized,
 
-    /// No execution seed has been installed yet via `ZiskExecutor::set_stdin_and_seed`.
-    #[error("execution seed not set")]
-    SeedNotSet,
+    /// No random seed has been installed yet via `ZiskExecutor::set_stdin_and_random_seed`.
+    #[error("random seed not set")]
+    RandomSeedNotSet,
 
     /// A plan keyed by `global_id` is missing during the assignment or populate phase of secondary instance handling.
     #[error("secn plan missing global_id during {phase}")]

@@ -141,7 +141,7 @@ impl Coordinator {
 
         self.workers_pool.release_computing_to_ready(&agg_worker_id, job_id).await;
         // Workers assemble the final proof from proof words alone; it attests the job's execution.
-        job.proof = Some(zisk_proof.with_seed(job.seed));
+        job.proof = Some(zisk_proof.with_random_seed(job.random_seed));
         job.executed_steps = Some(proof_data.executed_steps);
         job.instances = Some(proof_data.instances);
 
@@ -422,7 +422,7 @@ impl Coordinator {
             CoordinatorJobEvent::Completed(CoordinatorJobResult::Prove {
                 proof_bytes,
                 stats,
-                seed: job.seed,
+                random_seed: job.random_seed,
             })
         };
 

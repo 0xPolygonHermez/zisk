@@ -8,7 +8,7 @@ use crate::{ExecutorKind, JobEvent, Result, SdkError};
 use std::sync::Arc;
 use std::time::Duration;
 use zisk_common::io::StreamSource;
-use zisk_common::ExecutionSeed;
+use zisk_common::RandomSeed;
 use zisk_prover_backend::GuestProgram;
 
 impl EmbeddedClient {
@@ -18,7 +18,7 @@ impl EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -49,7 +49,7 @@ impl EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         subs: SubscriberList,
     ) -> Result<ExecuteResult> {
@@ -63,7 +63,7 @@ impl EmbeddedClient {
     fn do_execute_inner(
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         program: &GuestProgram,
         prover: Arc<EmbeddedProver>,

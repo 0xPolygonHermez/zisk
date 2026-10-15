@@ -36,9 +36,9 @@ pub enum CoordinatorError {
     #[error("Workers are connected but setup has not been done; call setup() first")]
     WorkersNotSetup,
 
-    /// The request provided an execution seed but the coordinator does not accept client seeds.
-    #[error("Client-supplied execution seeds are not allowed by this coordinator")]
-    ClientSeedNotAllowed,
+    /// The request provided a random seed but the coordinator does not accept client random seeds.
+    #[error("Client-supplied random seeds are not allowed by this coordinator")]
+    ClientRandomSeedNotAllowed,
 
     // Internal errors - logged but not exposed to clients
     /// An unexpected internal error (logged, not exposed to clients).
@@ -77,9 +77,9 @@ impl From<CoordinatorError> for Status {
                 Code::FailedPrecondition,
                 "Workers connected but setup not done; call setup() first",
             ),
-            CoordinatorError::ClientSeedNotAllowed => Status::new(
+            CoordinatorError::ClientRandomSeedNotAllowed => Status::new(
                 Code::PermissionDenied,
-                "Client-supplied execution seeds are not allowed by this coordinator",
+                "Client-supplied random seeds are not allowed by this coordinator",
             ),
             // All internal errors return generic messages
             CoordinatorError::Internal(_) => {

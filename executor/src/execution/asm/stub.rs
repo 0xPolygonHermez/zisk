@@ -15,7 +15,7 @@ use proofman_fields::PrimeField64;
 use zisk_asm_runner::HintsShmem;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    AsmExecutionInfo, ExecutionSeed, ExecutorStatsHandle, StatsScope,
+    AsmExecutionInfo, ExecutorStatsHandle, RandomSeed, StatsScope,
 };
 use zisk_core::ZiskRom;
 use zisk_precomp_hints::HintsProcessor;
@@ -81,7 +81,7 @@ impl EmulatorAsm {
         &self,
         _zisk_rom: &ZiskRom,
         _stdin: &ZiskStdin,
-        _seed: &ExecutionSeed,
+        _seed: &RandomSeed,
         _is_first_process: bool,
         _use_hints: bool,
         _stats: &ExecutorStatsHandle,

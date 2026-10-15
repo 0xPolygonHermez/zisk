@@ -10,7 +10,7 @@
 
 use anyhow::Result;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ExecutionSeed;
+use zisk_common::RandomSeed;
 
 use crate::{ExecuteOutput, GuestProgram};
 
@@ -32,6 +32,6 @@ pub trait ExecuteClient {
         program: &GuestProgram,
         stdin: ZiskStdin,
         hints: Option<StreamSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput>;
 }

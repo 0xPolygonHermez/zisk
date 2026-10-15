@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 use zisk_common::io::ZiskStdin;
-use zisk_common::{ExecutionSeed, ProgramVK};
+use zisk_common::{ProgramVK, RandomSeed};
 use zisk_rom_setup::{rom_merkle_setup_verkey, rom_merkle_setup_verkey_opt, HashMode};
 use zisk_transpiler_common::ZiskTranspiler;
 use ziskemu::ZiskEmulator;
@@ -194,18 +194,18 @@ impl GuestProgram {
     ///
     /// Pass `Some(ProfilingMode)` to enable profiling output, or `None` for a plain run.
     pub fn run_emulation(&self, stdin: ZiskStdin, profiling: Option<ProfilingMode>) -> Result<()> {
-        self.run_emulation_with_seed(stdin, profiling, None).map(|_| ())
+        self.run_emulation_with_random_seed(stdin, profiling, None).map(|_| ())
     }
 
-    /// [`run_emulation`](Self::run_emulation) with the execution seed fixed; `None` draws a fresh
+    /// [`run_emulation`](Self::run_emulation) with a provided random seed; `None` draws a fresh
     /// one. Returns the seed the run used.
-    pub fn run_emulation_with_seed(
+    pub fn run_emulation_with_random_seed(
         &self,
         stdin: ZiskStdin,
         profiling: Option<ProfilingMode>,
-        seed: Option<ExecutionSeed>,
-    ) -> Result<ExecutionSeed> {
-        let seed = seed.map_or_else(ExecutionSeed::random, Ok)?;
+        seed: Option<RandomSeed>,
+    ) -> Result<RandomSeed> {
+        let seed = seed.map_or_else(RandomSeed::random, Ok)?;
         let transpiler = ZiskTranspiler::new(self.elf());
 
         let zisk_rom = transpiler
@@ -278,16 +278,17 @@ mod tests {
     }
 
     #[test]
-    fn run_emulation_with_seed_uses_the_provided_seed_or_draws_one() {
+    fn run_emulation_with_random_seed_uses_the_provided_seed_or_draws_one() {
         let guest = zkvm_random_guest();
-        let provided = ExecutionSeed::new([7; ExecutionSeed::LEN]);
+        let provided = RandomSeed::new([7; RandomSeed::LEN]);
         assert_eq!(
-            guest.run_emulation_with_seed(ZiskStdin::new(), None, Some(provided)).unwrap(),
+            guest.run_emulation_with_random_seed(ZiskStdin::new(), None, Some(provided)).unwrap(),
             provided
         );
 
-        let drawn = guest.run_emulation_with_seed(ZiskStdin::new(), None, None).unwrap();
-        let drawn_again = guest.run_emulation_with_seed(ZiskStdin::new(), None, None).unwrap();
+        let drawn = guest.run_emulation_with_random_seed(ZiskStdin::new(), None, None).unwrap();
+        let drawn_again =
+            guest.run_emulation_with_random_seed(ZiskStdin::new(), None, None).unwrap();
         assert_ne!(drawn, drawn_again);
     }
 }

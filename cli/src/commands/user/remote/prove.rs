@@ -5,12 +5,12 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::SeedArgs;
+use zisk_common::RandomSeedArgs;
 use zisk_sdk::{setup_logger, GuestProgram, ProofKind, RemoteClient, ZiskHints, ZiskStdin};
 
 use crate::common::{reject_quic_hints, resolve_elf, resolve_output_path, ElfSelectorArgs};
 use crate::proof::select_prove_kind;
-use crate::ux::{print_execution_seed, print_job_banner};
+use crate::ux::{print_job_banner, print_random_seed};
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -38,7 +38,7 @@ pub(crate) struct ZiskRemoteProve {
     hints: Option<String>,
 
     #[command(flatten)]
-    seed: SeedArgs,
+    random_seed: RandomSeedArgs,
 
     /// Save the generated proof to the specified file path
     #[arg(short = 'o', long)]
@@ -84,7 +84,7 @@ impl ZiskRemoteProve {
         if let Some(hints) = hints {
             request = request.hints(hints);
         }
-        request = request.seed(self.seed.provided());
+        request = request.random_seed(self.random_seed.provided());
         if proof_kind != ProofKind::VadcopFinal {
             request = request.wrap(proof_kind);
         }
@@ -104,7 +104,7 @@ impl ZiskRemoteProve {
             result.get_proving_time() as f64 / 1000.0,
             result.get_execution_steps()
         );
-        print_execution_seed(result.get_execution_seed());
+        print_random_seed(result.get_random_seed());
         info!("Proof saved to {}", output_file.display());
 
         Ok(())

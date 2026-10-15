@@ -10,7 +10,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use zisk_common::ExecutionSeed;
+use zisk_common::RandomSeed;
 use zisk_prover_backend::{
     AsmOptions, BackendProverOpts, ExecuteClient, ExecuteOutput, GuestProgram, ProverClientBuilder,
 };
@@ -165,7 +165,7 @@ impl EmbeddedExecuteOnlyClient {
         program: &GuestProgram,
         stdin: ZiskStdin,
         hints: Option<ZiskHints>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
         if hints.is_some() && self.executor == ExecutorKind::Emulator {
             return Err(SdkError::UnsupportedExecutor(

@@ -104,12 +104,12 @@ impl EmbeddedClient {
         match prover.as_ref() {
             EmbeddedProver::Emu(p) => p
                 .prover
-                .wrap_proof(proof_words, program_publics, kind, proof_kind, proof.seed)
+                .wrap_proof(proof_words, program_publics, kind, proof_kind, proof.random_seed)
                 .map(ProveResult::from)
                 .map_err(SdkError::backend),
             EmbeddedProver::Asm(p) => p
                 .prover
-                .wrap_proof(proof_words, program_publics, kind, proof_kind, proof.seed)
+                .wrap_proof(proof_words, program_publics, kind, proof_kind, proof.random_seed)
                 .map(ProveResult::from)
                 .map_err(SdkError::backend),
         }

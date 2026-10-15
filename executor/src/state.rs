@@ -13,7 +13,7 @@ use std::sync::{
     Arc, Mutex, PoisonError, RwLock,
 };
 use zisk_common::{
-    io::ZiskStdin, BusDevice, EmuTrace, ExecutionSeed, ExecutorStatsHandle, InstanceType, Stats,
+    io::ZiskStdin, BusDevice, EmuTrace, ExecutorStatsHandle, InstanceType, RandomSeed, Stats,
     ZiskExecutorSummary,
 };
 use zisk_core::ZiskRom;
@@ -40,9 +40,9 @@ pub struct ExecutionState<F: PrimeField64> {
     /// signature has no stdin slot).
     pub stdin: ArcSwap<ZiskStdin>,
 
-    /// Seed for the next run, set together with `stdin` by `set_stdin_and_seed`. `None` until
-    /// the first call.
-    seed: Mutex<Option<ExecutionSeed>>,
+    /// Seed for the next run, set together with `stdin` by `set_stdin_and_random_seed`. `None`
+    /// until the first call.
+    random_seed: Mutex<Option<RandomSeed>>,
 
     /// Planning information for main state machines (minimal traces from emulation).
     /// `Arc<EmuTrace>` elements so the store can be filled progressively while the
@@ -73,7 +73,7 @@ impl<F: PrimeField64> ExecutionState<F> {
         Self {
             zisk_rom: RwLock::new(None),
             stdin: ArcSwap::from_pointee(ZiskStdin::new()),
-            seed: Mutex::new(None),
+            random_seed: Mutex::new(None),
             min_traces: Arc::new(RwLock::new(None)),
             instance_set: Arc::new(InstanceSet::new()),
             collector_store: Arc::new(ChunkCollectorStore::new()),
@@ -102,9 +102,9 @@ impl<F: PrimeField64> ExecutionState<F> {
     }
 
     /// Sets the standard input and seed for the next execution.
-    pub fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) {
+    pub fn set_stdin_and_random_seed(&self, stdin: ZiskStdin, seed: RandomSeed) {
         self.stdin.store(Arc::new(stdin));
-        *self.seed.lock().unwrap_or_else(PoisonError::into_inner) = Some(seed);
+        *self.random_seed.lock().unwrap_or_else(PoisonError::into_inner) = Some(seed);
     }
 
     /// Gets a snapshot of the current standard input.
@@ -115,9 +115,13 @@ impl<F: PrimeField64> ExecutionState<F> {
     /// Gets the seed for the current execution.
     ///
     /// # Errors
-    /// Returns [`ExecutorError::SeedNotSet`] if `set_stdin_and_seed` has not been called yet.
-    pub fn get_seed(&self) -> ExecutorResult<ExecutionSeed> {
-        self.seed.lock().unwrap_or_else(PoisonError::into_inner).ok_or(ExecutorError::SeedNotSet)
+    /// Returns [`ExecutorError::RandomSeedNotSet`] if `set_stdin_and_random_seed` has not been
+    /// called yet.
+    pub fn get_random_seed(&self) -> ExecutorResult<RandomSeed> {
+        self.random_seed
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .ok_or(ExecutorError::RandomSeedNotSet)
     }
 
     /// Resets all internal state to default values.
@@ -225,15 +229,15 @@ mod tests {
 
     type F = Goldilocks;
 
-    const SEED: ExecutionSeed = ExecutionSeed::new([3; ExecutionSeed::LEN]);
+    const SEED: RandomSeed = RandomSeed::new([3; RandomSeed::LEN]);
 
     #[test]
-    fn get_seed_fails_until_stdin_and_seed_are_set() {
+    fn get_random_seed_fails_until_stdin_and_random_seed_are_set() {
         let state = ExecutionState::<F>::new();
-        assert!(matches!(state.get_seed(), Err(ExecutorError::SeedNotSet)));
+        assert!(matches!(state.get_random_seed(), Err(ExecutorError::RandomSeedNotSet)));
 
-        state.set_stdin_and_seed(ZiskStdin::new(), SEED);
-        assert_eq!(state.get_seed().unwrap(), SEED);
+        state.set_stdin_and_random_seed(ZiskStdin::new(), SEED);
+        assert_eq!(state.get_random_seed().unwrap(), SEED);
     }
 
     /// `execute_inner` resets the state after the caller has set the job's stdin and seed, so
@@ -241,9 +245,9 @@ mod tests {
     #[test]
     fn reset_keeps_the_seed() {
         let state = ExecutionState::<F>::new();
-        state.set_stdin_and_seed(ZiskStdin::new(), SEED);
+        state.set_stdin_and_random_seed(ZiskStdin::new(), SEED);
 
         state.reset();
-        assert_eq!(state.get_seed().unwrap(), SEED);
+        assert_eq!(state.get_random_seed().unwrap(), SEED);
     }
 }

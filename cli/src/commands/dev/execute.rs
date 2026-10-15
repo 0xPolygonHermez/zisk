@@ -3,7 +3,7 @@ use colored::Colorize;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::SeedArgs;
+use zisk_common::RandomSeedArgs;
 use zisk_prover_backend::{
     AsmOptions, BackendProverOpts, ExecuteClient, ExecuteOutput, GuestProgram, ProverClientBuilder,
 };
@@ -70,7 +70,7 @@ pub(crate) struct ExecuteCmd {
     hints: Option<String>,
 
     #[command(flatten)]
-    seed: SeedArgs,
+    random_seed: RandomSeedArgs,
 
     /// Path to the proving key. Defaults to the standard install location.
     /// Ignored under `--standalone`.
@@ -208,7 +208,7 @@ impl ExecuteCmd {
         let start = std::time::Instant::now();
         prover.setup(&guest_program, with_hints)?;
         let result: ExecuteOutput =
-            prover.execute(&guest_program, stdin, hints_stream, self.seed.provided())?;
+            prover.execute(&guest_program, stdin, hints_stream, self.random_seed.provided())?;
         let total_duration = start.elapsed().as_millis() as u64;
 
         if rank_zero {
@@ -239,7 +239,7 @@ impl ExecuteCmd {
                 result.get_executor_time(),
                 total_duration,
                 result.get_execution_steps(),
-                result.get_execution_seed(),
+                result.get_random_seed(),
                 if self.standalone { "Setup" } else { "Proofman" },
             );
         }

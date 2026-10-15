@@ -8,7 +8,7 @@ use crate::{ExecutorKind, JobEvent, Result, SdkError};
 use std::sync::Arc;
 use std::time::Duration;
 use zisk_common::io::StreamSource;
-use zisk_common::{ExecutionSeed, ProofKind};
+use zisk_common::{ProofKind, RandomSeed};
 use zisk_prover_backend::GuestProgram;
 
 impl EmbeddedClient {
@@ -18,7 +18,7 @@ impl EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
@@ -53,7 +53,7 @@ impl EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         subs: SubscriberList,
@@ -77,7 +77,7 @@ impl EmbeddedClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
     ) -> Result<ProveResult> {
@@ -110,7 +110,7 @@ impl EmbeddedClient {
         let result = match (prover.as_ref(), executor) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => {
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                apply_mode!(p.prove(program, s.into_inner()).seed(seed))
+                apply_mode!(p.prove(program, s.into_inner()).random_seed(seed))
                     .run()
                     .map_err(SdkError::backend)?
             }
@@ -132,9 +132,11 @@ impl EmbeddedClient {
                             p.register_hints_stream(source).map_err(SdkError::backend)?;
                         }
                     }
-                    apply_mode!(p.prove(program, zisk_common::io::ZiskStdin::new()).seed(seed))
-                        .run()
-                        .map_err(SdkError::backend)?
+                    apply_mode!(p
+                        .prove(program, zisk_common::io::ZiskStdin::new())
+                        .random_seed(seed))
+                    .run()
+                    .map_err(SdkError::backend)?
                 } else {
                     match stdin {
                         InputSource::Stream(stream) => {
@@ -144,12 +146,12 @@ impl EmbeddedClient {
                             p.register_inputs_stream(source).map_err(SdkError::backend)?;
                             apply_mode!(p
                                 .prove(program, zisk_common::io::ZiskStdin::new())
-                                .seed(seed))
+                                .random_seed(seed))
                             .run()
                             .map_err(SdkError::backend)?
                         }
                         InputSource::Stdin(s) => {
-                            apply_mode!(p.prove(program, s.into_inner()).seed(seed))
+                            apply_mode!(p.prove(program, s.into_inner()).random_seed(seed))
                                 .run()
                                 .map_err(SdkError::backend)?
                         }

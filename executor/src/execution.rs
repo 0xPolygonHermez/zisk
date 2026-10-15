@@ -13,9 +13,7 @@ use std::sync::Arc;
 
 use crate::error::{ExecutorError, ExecutorResult};
 use proofman_fields::PrimeField64;
-use zisk_common::{
-    io::ZiskStdin, AsmExecutionInfo, ExecutionSeed, ExecutorStatsHandle, StatsScope,
-};
+use zisk_common::{io::ZiskStdin, AsmExecutionInfo, ExecutorStatsHandle, RandomSeed, StatsScope};
 use zisk_core::ZiskRom;
 
 /// Per-chunk callback invoked by the ASM MT reader thread, in chunk order, as
@@ -112,7 +110,7 @@ impl ExecutionPhase {
         &self,
         zisk_rom: &ZiskRom,
         stdin: &ZiskStdin,
-        seed: &ExecutionSeed,
+        seed: &RandomSeed,
         is_first_process: bool,
         use_hints: bool,
         stats: &ExecutorStatsHandle,

@@ -14,7 +14,7 @@ use tokio_stream::StreamExt as _;
 use tracing::warn;
 use uuid::Uuid;
 use zisk_cluster_common::{JobPhase, JobState};
-use zisk_common::ExecutionSeed;
+use zisk_common::RandomSeed;
 use zisk_coordinator::{
     job_events::{CoordinatorExecutionStats, CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator,
@@ -51,7 +51,7 @@ impl CoordinatorBackend {
 
 // ── Type mapping helpers ─────────────────────────────────────────────────────
 
-fn make_proof(hash_id: String, data: Vec<u8>, seed: Option<ExecutionSeed>) -> DomainProof {
+fn make_proof(hash_id: String, data: Vec<u8>, seed: Option<RandomSeed>) -> DomainProof {
     DomainProof {
         proof_id: Uuid::new_v4(),
         hash_id,
@@ -61,7 +61,7 @@ fn make_proof(hash_id: String, data: Vec<u8>, seed: Option<ExecutionSeed>) -> Do
         public_inputs: vec![],
         started_at: Some(Utc::now()),
         completed_at: Some(Utc::now()),
-        seed,
+        random_seed: seed,
     }
 }
 
@@ -100,18 +100,20 @@ fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> Domain
         CoordinatorJobResult::Setup { vk, hash_mode } => {
             DomainJobKindResponse::Setup { vk, hash_mode }
         }
-        CoordinatorJobResult::Prove { proof_bytes, stats, seed } => DomainJobKindResponse::Prove {
-            proof: make_proof(hash_id.to_string(), proof_bytes, seed),
-            stats: coord_stats_to_domain(stats),
-        },
-        CoordinatorJobResult::Execute { stats, public_outputs, seed } => {
+        CoordinatorJobResult::Prove { proof_bytes, stats, random_seed: seed } => {
+            DomainJobKindResponse::Prove {
+                proof: make_proof(hash_id.to_string(), proof_bytes, seed),
+                stats: coord_stats_to_domain(stats),
+            }
+        }
+        CoordinatorJobResult::Execute { stats, public_outputs, random_seed: seed } => {
             DomainJobKindResponse::Execute {
                 stats: coord_stats_to_domain(stats),
                 public_outputs,
-                seed,
+                random_seed: seed,
             }
         }
-        CoordinatorJobResult::Wrap { proof_bytes, seed } => {
+        CoordinatorJobResult::Wrap { proof_bytes, random_seed: seed } => {
             DomainJobKindResponse::Wrap(make_proof(hash_id.to_string(), proof_bytes, seed))
         }
         CoordinatorJobResult::SetupAggregationProgram { vk, hash_mode } => {
@@ -220,7 +222,7 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
         CoordinatorError::InvalidArgument(msg) | CoordinatorError::InvalidRequest(msg) => {
             ApiError::InvalidJobState { reason: msg }
         }
-        CoordinatorError::ClientSeedNotAllowed => ApiError::ClientSeedNotAllowed,
+        CoordinatorError::ClientRandomSeedNotAllowed => ApiError::ClientRandomSeedNotAllowed,
         CoordinatorError::WorkerError(msg) | CoordinatorError::Internal(msg) => {
             ApiError::Internal(msg)
         }
@@ -365,7 +367,7 @@ impl BackendService for CoordinatorBackend {
                         metadata,
                         execution_only: false,
                         proof_type,
-                        seed: r.seed,
+                        random_seed: r.random_seed,
                     })
                     .await
                     .map_err(coord_err_to_api)?;
@@ -390,7 +392,7 @@ impl BackendService for CoordinatorBackend {
                         metadata,
                         execution_only: true,
                         proof_type: ProofKind::VadcopFinal,
-                        seed: r.seed,
+                        random_seed: r.random_seed,
                     })
                     .await
                     .map_err(coord_err_to_api)?;

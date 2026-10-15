@@ -20,7 +20,7 @@ use zisk_cluster_common::{
     StreamDataDto, WorkerState,
 };
 use zisk_cluster_common::{DataId, JobId};
-use zisk_common::{ExecutionSeed, ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{ProgramVK, Proof, RandomSeed, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
 use zisk_prover_backend::{Asm, Emu, GuestProgram, ZiskBackend, ZiskProver};
 
 use crate::config::WorkerServiceConfig;
@@ -1900,7 +1900,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
             return Err(anyhow!("Expected ContributionParams for Partial Contribution task"));
         };
-        let seed = Self::job_seed(&params.seed)?;
+        let seed = Self::job_random_seed(&params.random_seed)?;
 
         let job_id = JobId::from(request.job_id);
         let input_source = Self::resolve_input_source(
@@ -1982,7 +1982,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
             return Err(anyhow!("Expected ExecutionParams for Execution-only task"));
         };
-        let seed = Self::job_seed(&params.seed)?;
+        let seed = Self::job_random_seed(&params.random_seed)?;
 
         let job_id = JobId::from(request.job_id);
         let input_source = Self::resolve_input_source(
@@ -2058,11 +2058,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// Resolve `InputSource` from a gRPC request into `InputSourceDto`.
     ///
     /// File paths are validated under `inputs_folder` with a 60 s timeout.
-    /// The job's execution seed from its task params. Every task that executes carries one, so a
+    /// The job's random seed from its task params. Every task that executes carries one, so a
     /// missing or malformed seed fails the task before it touches the prover.
-    fn job_seed(bytes: &[u8]) -> Result<ExecutionSeed> {
-        ExecutionSeed::try_from(bytes)
-            .context("coordinator sent no valid execution seed for the job")
+    fn job_random_seed(bytes: &[u8]) -> Result<RandomSeed> {
+        RandomSeed::try_from(bytes).context("coordinator sent no valid random seed for the job")
     }
 
     async fn resolve_input_source(

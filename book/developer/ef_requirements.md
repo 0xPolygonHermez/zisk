@@ -817,8 +817,8 @@ prover running the same guest.
   workers) must see the same values. It is drawn from the OS CSPRNG unless the host
   provides one with `--random-seed` / `ZISK_RANDOM_SEED` (ziskemu, cargo-zisk,
   zisk-prove-client) to replay a run; every run reports the seed it used, and a remote
-  coordinator accepts a client seed only if configured to allow it (`common/src/seed.rs`,
-  `ExecutionSeed`).
+  coordinator accepts a client random seed only if configured to allow it
+  (`common/src/seed.rs`, `RandomSeed`).
 - **Reaching the emulators.** The executor hands the seed to the active emulator: the
   Rust emulator in `EmuOptions.random_seed`, the ASM services through the control-input
   shared memory (words 4..7 hold the seed, word 8 is set once it is written), read when

@@ -48,7 +48,7 @@
 use std::time::Duration;
 
 use crate::Result;
-use zisk_common::{ExecutionSeed, ProgramVK, Proof, ProofKind, PublicValues};
+use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues, RandomSeed};
 use zisk_prover_backend::GuestProgram;
 
 use crate::{
@@ -127,7 +127,7 @@ impl Client for ZiskClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
@@ -148,7 +148,7 @@ impl Client for ZiskClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,

@@ -2,7 +2,7 @@ use std::ops::Deref;
 use std::time::Duration;
 
 use crate::Result;
-use zisk_common::ExecutionSeed;
+use zisk_common::RandomSeed;
 use zisk_prover_backend::{GuestProgram, VerifyConstraintsOutput};
 
 use crate::hints::HintsSource;
@@ -47,7 +47,7 @@ pub(crate) trait RunVerifyConstraints {
         program: &GuestProgram,
         stdin: ZiskStdin,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         debug_info: Option<Option<String>>,
         executor: Option<ExecutorKind>,
         timeout: Option<Duration>,
@@ -64,7 +64,7 @@ pub struct VerifyConstraintsRequest<'a, C> {
     program: &'a GuestProgram,
     stdin: ZiskStdin,
     hints: Option<HintsSource>,
-    seed: Option<ExecutionSeed>,
+    random_seed: Option<RandomSeed>,
     /// `None` = no debug info; `Some(None)` = enable with default path;
     /// `Some(Some(path))` = enable with explicit output path.
     debug_info: Option<Option<String>>,
@@ -81,7 +81,7 @@ impl<'a, C> VerifyConstraintsRequest<'a, C> {
             program,
             stdin,
             hints: None,
-            seed: None,
+            random_seed: None,
             debug_info: None,
             executor: None,
             timeout: None,
@@ -107,11 +107,11 @@ impl<'a, C> VerifyConstraintsRequest<'a, C> {
         self
     }
 
-    /// Use this execution seed instead of drawing a fresh one. Every result reports the seed it
+    /// Use this random seed instead of drawing a fresh one. Every result reports the seed it
     /// ran with.
     #[must_use]
-    pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
-        self.seed = seed.into();
+    pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
+        self.random_seed = seed.into();
         self
     }
 
@@ -141,7 +141,7 @@ impl<'a, C: RunVerifyConstraints> VerifyConstraintsRequest<'a, C> {
             self.program,
             self.stdin,
             self.hints,
-            self.seed,
+            self.random_seed,
             self.debug_info,
             self.executor,
             self.timeout,

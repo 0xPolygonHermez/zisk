@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use zisk_common::io::StreamSource;
-use zisk_common::ExecutionSeed;
+use zisk_common::RandomSeed;
 use zisk_prover_backend::{GuestProgram, VerifyConstraintsOutput};
 
 use super::{EmbeddedClient, EmbeddedProver, ERR_ASSEMBLY_NOT_ENABLED};
@@ -21,7 +21,7 @@ impl RunVerifyConstraints for EmbeddedClient {
         program: &GuestProgram,
         stdin: ZiskStdin,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         debug_info: Option<Option<String>>,
         executor: Option<ExecutorKind>,
         timeout: Option<Duration>,
@@ -55,7 +55,7 @@ impl EmbeddedClient {
         program: GuestProgram,
         stdin: ZiskStdin,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         debug_info: Option<Option<String>>,
         executor: ExecutorKind,
         prover: Arc<EmbeddedProver>,

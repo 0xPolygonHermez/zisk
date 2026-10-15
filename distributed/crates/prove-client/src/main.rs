@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tracing::info;
-use zisk_common::{ExecutionSeed, SeedArgs};
+use zisk_common::{RandomSeed, RandomSeedArgs};
 use zisk_coordinator_api::dto::{
     deadline_from_now, DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobKind,
     DomainJobKindResponse, DomainProofKind, DomainProveRequest, DomainSetupRequest, TerminalStatus,
@@ -85,7 +85,7 @@ enum Commands {
         output: Option<PathBuf>,
 
         #[command(flatten)]
-        seed: SeedArgs,
+        random_seed: RandomSeedArgs,
 
         /// Proof timeout in seconds (0 = no timeout)
         #[arg(long, default_value_t = 0)]
@@ -111,7 +111,7 @@ enum Commands {
         output: Option<PathBuf>,
 
         #[command(flatten)]
-        seed: SeedArgs,
+        random_seed: RandomSeedArgs,
 
         /// Execute timeout in seconds (0 = no timeout)
         #[arg(long, default_value_t = 0)]
@@ -185,9 +185,9 @@ fn run_setup(
 }
 
 /// Report the seed a job ran with, so it can be replayed with `--random-seed`.
-fn print_seed(seed: Option<ExecutionSeed>) {
+fn print_random_seed(seed: Option<RandomSeed>) {
     if let Some(seed) = seed {
-        println!("Execution seed: {seed}");
+        println!("Random seed: {seed}");
     }
 }
 
@@ -228,7 +228,7 @@ fn run_prove(
     hints: Option<&PathBuf>,
     proof: &DomainProofKind,
     output: Option<&PathBuf>,
-    seed: Option<ExecutionSeed>,
+    seed: Option<RandomSeed>,
     timeout: u64,
 ) -> Result<()> {
     let input_kind = match input {
@@ -249,7 +249,7 @@ fn run_prove(
         hash_id: hash_id.to_string(),
         input: input_kind,
         hints: hints_kind,
-        seed,
+        random_seed: seed,
         proof_dest: proof.clone(),
         proof_timeout: timeout_opt,
     }))?;
@@ -269,7 +269,7 @@ fn run_prove(
                 bytes = p.data.len(),
                 "Prove completed."
             );
-            print_seed(p.seed);
+            print_random_seed(p.random_seed);
 
             let out_path =
                 output.cloned().unwrap_or_else(|| PathBuf::from(format!("{job_id}.proof.bin")));
@@ -301,7 +301,7 @@ fn run_execute(
     input: Option<&PathBuf>,
     hints: Option<&PathBuf>,
     output: Option<&PathBuf>,
-    seed: Option<ExecutionSeed>,
+    seed: Option<RandomSeed>,
     timeout: u64,
 ) -> Result<()> {
     let input_kind = match input {
@@ -322,7 +322,7 @@ fn run_execute(
         hash_id: hash_id.to_string(),
         input: input_kind,
         hints: hints_kind,
-        seed,
+        random_seed: seed,
         execute_timeout: timeout_opt,
     }))?;
     let job_id = job.job_id();
@@ -335,14 +335,14 @@ fn run_execute(
         TerminalStatus::Completed(DomainJobKindResponse::Execute {
             stats,
             public_outputs,
-            seed,
+            random_seed: seed,
         }) => {
             info!(
                 steps = stats.steps,
                 duration_ms = stats.duration_nanos / 1_000_000,
                 "Execute completed."
             );
-            print_seed(seed);
+            print_random_seed(seed);
 
             if !public_outputs.is_empty() {
                 let out_path = output
@@ -390,7 +390,7 @@ async fn main() -> Result<()> {
             println!("Setup completed for Hash ID: {hash_id}");
         }
 
-        Commands::Prove { hash_id, input, hints, proof, output, seed, timeout } => {
+        Commands::Prove { hash_id, input, hints, proof, output, random_seed: seed, timeout } => {
             run_prove(
                 &client,
                 hash_id,
@@ -403,7 +403,7 @@ async fn main() -> Result<()> {
             )?;
         }
 
-        Commands::Execute { hash_id, input, hints, output, seed, timeout } => {
+        Commands::Execute { hash_id, input, hints, output, random_seed: seed, timeout } => {
             run_execute(
                 &client,
                 hash_id,

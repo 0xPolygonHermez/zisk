@@ -25,7 +25,7 @@ use std::{
 use zisk_asm_runner::HintsShmem;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    AirInstanceCount, ExecutionSeed, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind,
+    AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind, RandomSeed,
     StatsCostPerType, VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
@@ -409,7 +409,7 @@ pub trait ProverEngine {
     fn local_rank(&self) -> i32;
 
     /// Set the standard input and seed for the next execution or proof.
-    fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()>;
+    fn set_stdin_and_random_seed(&self, stdin: ZiskStdin, seed: RandomSeed) -> Result<()>;
 
     /// Register a previously set-up program as the active one.
     fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()>;
@@ -424,7 +424,7 @@ pub trait ProverEngine {
     fn execution_plan(&self) -> Vec<AirInstanceCount>;
 
     /// Seed of the last execution or proof run; `None` before the first one.
-    fn execution_seed(&self) -> Option<ExecutionSeed>;
+    fn random_seed(&self) -> Option<RandomSeed>;
 
     /// Witness metadata and executor timing from the last run.
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)>;
@@ -455,7 +455,7 @@ pub trait ProverEngine {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
     ) -> Result<ExecuteOutput>;
 
     /// Collect execution statistics (optionally with debug info); returns the
@@ -464,7 +464,7 @@ pub trait ProverEngine {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
@@ -475,7 +475,7 @@ pub trait ProverEngine {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput>;
 
@@ -484,7 +484,7 @@ pub trait ProverEngine {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: ExecutionSeed,
+        seed: RandomSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput>;
@@ -508,7 +508,7 @@ pub trait ProverEngine {
         publics_full: &[u64],
         source_kind: VadcopKind,
         proof_kind: ProofKind,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
     ) -> Result<ProveOutput>;
 
     /// Run a single proving phase (distributed pipeline).
@@ -678,8 +678,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Low-level counterpart of the `seed` argument of [`execute`](Self::execute) and friends,
     /// for callers driving the phases themselves (distributed workers): the seed must already be
     /// the one every rank and worker of the task shares.
-    pub fn set_stdin_and_seed(&self, stdin: ZiskStdin, seed: ExecutionSeed) -> Result<()> {
-        self.prover.set_stdin_and_seed(stdin, seed)
+    pub fn set_stdin_and_random_seed(&self, stdin: ZiskStdin, seed: RandomSeed) -> Result<()> {
+        self.prover.set_stdin_and_random_seed(stdin, seed)
     }
 
     /// Returns `seed`, or a fresh one drawn on rank 0 and broadcast to every rank.
@@ -689,11 +689,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// point, which holds because every rank runs the same execute/prove call. Every rank must
     /// also agree on whether a seed was provided: a rank that got one skips the broadcast the
     /// others wait on.
-    fn resolve_seed(&self, seed: Option<ExecutionSeed>) -> Result<ExecutionSeed> {
+    fn resolve_random_seed(&self, seed: Option<RandomSeed>) -> Result<RandomSeed> {
         if let Some(seed) = seed {
             return Ok(seed);
         }
-        let drawn = (self.world_rank() == 0).then(ExecutionSeed::random);
+        let drawn = (self.world_rank() == 0).then(RandomSeed::random);
         // Rank 0 broadcasts even if drawing failed, so no rank is left waiting: the empty message
         // fails their decode instead.
         let mut bytes = match &drawn {
@@ -704,7 +704,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         if let Some(Err(e)) = drawn {
             return Err(e.into());
         }
-        Ok(ExecutionSeed::try_from(bytes.as_slice())?)
+        Ok(RandomSeed::try_from(bytes.as_slice())?)
     }
 
     /// Make a previously set-up program the active one for the next run.
@@ -747,8 +747,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Get the seed of the last execution or proof run; `None` before the first one.
     ///
     /// For runs whose output does not carry the seed, such as [`stats`](Self::stats).
-    pub fn execution_seed(&self) -> Option<ExecutionSeed> {
-        self.prover.execution_seed()
+    pub fn random_seed(&self) -> Option<RandomSeed> {
+        self.prover.random_seed()
     }
 
     /// Get the executor time from the last execution or proof run.
@@ -769,9 +769,9 @@ impl<C: ZiskBackend> ZiskProver<C> {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
-        let seed = self.resolve_seed(seed)?;
+        let seed = self.resolve_random_seed(seed)?;
         self.prover.execute(program, stdin, seed)
     }
 
@@ -782,12 +782,12 @@ impl<C: ZiskBackend> ZiskProver<C> {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        let seed = self.resolve_seed(seed)?;
+        let seed = self.resolve_random_seed(seed)?;
         self.prover.stats(program, stdin, seed, debug_info, minimal_memory, mpi_node)
     }
 
@@ -825,10 +825,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
-        let seed = self.resolve_seed(seed)?;
+        let seed = self.resolve_random_seed(seed)?;
         self.prover.verify_constraints(program, stdin, seed, debug_info)
     }
 
@@ -1047,9 +1047,9 @@ impl ZiskProver<Asm> {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
-        let seed = self.resolve_seed(seed)?;
+        let seed = self.resolve_random_seed(seed)?;
         self.prover.execute_emulator(program, stdin, seed)
     }
 
@@ -1061,10 +1061,10 @@ impl ZiskProver<Asm> {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
-        let seed = self.resolve_seed(seed)?;
+        let seed = self.resolve_random_seed(seed)?;
         self.prover.prove_emulator(program, stdin, seed, proof_kind, self.prover_options.clone())
     }
 
@@ -1074,10 +1074,10 @@ impl ZiskProver<Asm> {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
-        let seed = self.resolve_seed(seed)?;
+        let seed = self.resolve_random_seed(seed)?;
         self.prover.verify_constraints_emulator(program, stdin, seed, debug_info)
     }
 }
@@ -1112,7 +1112,7 @@ pub struct ProveBuilder<'a, C: ZiskBackend> {
     zisk_prover: &'a ZiskProver<C>,
     guest_program: &'a GuestProgram,
     stdin: ZiskStdin,
-    seed: Option<ExecutionSeed>,
+    random_seed: Option<RandomSeed>,
     proof_kind: ProofKind,
 }
 
@@ -1128,15 +1128,15 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
             zisk_prover,
             guest_program,
             stdin,
-            seed: None,
+            random_seed: None,
             proof_kind: ProofKind::VadcopFinal,
         }
     }
 
-    /// Use this execution seed instead of drawing a fresh one. Takes an `Option` too, so callers
+    /// Use this random seed instead of drawing a fresh one. Takes an `Option` too, so callers
     /// can pass through a seed they may not have.
-    pub fn seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
-        self.seed = seed.into();
+    pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
+        self.random_seed = seed.into();
         self
     }
 
@@ -1153,7 +1153,7 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
 
     /// Execute the proof generation with the configured options.
     pub fn run(self) -> Result<ProveOutput> {
-        let seed = self.zisk_prover.resolve_seed(self.seed)?;
+        let seed = self.zisk_prover.resolve_random_seed(self.random_seed)?;
         self.prover.prove(
             self.guest_program,
             self.stdin,
@@ -1202,6 +1202,12 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
                 return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
             }
         };
-        self.prover.wrap_proof(proof, publics_full, source_kind, self.proof_kind, self.proof.seed)
+        self.prover.wrap_proof(
+            proof,
+            publics_full,
+            source_kind,
+            self.proof_kind,
+            self.proof.random_seed,
+        )
     }
 }

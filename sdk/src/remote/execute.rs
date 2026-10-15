@@ -9,7 +9,7 @@ use crate::SdkError;
 
 use std::collections::BTreeMap;
 use std::time::Duration;
-use zisk_common::ExecutionSeed;
+use zisk_common::RandomSeed;
 use zisk_coordinator_api::dto::{deadline_from_now, DomainExecuteRequest, DomainJobKind};
 use zisk_prover_backend::GuestProgram;
 
@@ -23,7 +23,7 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -39,7 +39,7 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -56,7 +56,7 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         _executor: ExecutorKind, // remote: coordinator uses its configured executor; hint ignored
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -81,7 +81,7 @@ impl RemoteClient {
             hash_id,
             input,
             hints,
-            seed,
+            random_seed: seed,
             execute_timeout,
         });
 

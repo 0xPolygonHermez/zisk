@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::SeedArgs;
+use zisk_common::RandomSeedArgs;
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
     AsmOptions, BackendProverOpts, ProverClientBuilder, VerifyConstraintsOutput,
@@ -35,7 +35,7 @@ pub(crate) struct VerifyConstraintsCmd {
     hints: Option<String>,
 
     #[command(flatten)]
-    seed: SeedArgs,
+    random_seed: RandomSeedArgs,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
@@ -152,7 +152,7 @@ impl VerifyConstraintsCmd {
             result.get_executor_time(),
             result.get_duration(),
             result.get_execution_steps(),
-            result.get_execution_seed(),
+            result.get_random_seed(),
             "Proofman",
         );
 
@@ -183,7 +183,12 @@ impl VerifyConstraintsCmd {
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
-        prover.verify_constraints(&guest_program, stdin, self.seed.provided(), self.debug.clone())
+        prover.verify_constraints(
+            &guest_program,
+            stdin,
+            self.random_seed.provided(),
+            self.debug.clone(),
+        )
     }
 
     pub(crate) fn run_asm(
@@ -237,6 +242,11 @@ impl VerifyConstraintsCmd {
         if let Some(hints_stream) = hints_stream {
             prover.register_hints_stream(hints_stream)?;
         }
-        prover.verify_constraints(&guest_program, stdin, self.seed.provided(), self.debug.clone())
+        prover.verify_constraints(
+            &guest_program,
+            stdin,
+            self.random_seed.provided(),
+            self.debug.clone(),
+        )
     }
 }

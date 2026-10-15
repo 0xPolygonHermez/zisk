@@ -1,12 +1,12 @@
 use clap::Parser;
 use std::{fmt::Write, fs, process};
-use zisk_common::{EmuTrace, ExecutionSeed, SeedArgs};
+use zisk_common::{EmuTrace, RandomSeed, RandomSeedArgs};
 use ziskemu::{
     diff_stats_files, report, resolve_color, EmuOptions, Emulator, FailureReason, ZiskEmulator,
     ZiskEmulatorErr, ZISK_VERSION_MESSAGE,
 };
 
-/// ziskemu's command line: the emulator options plus the execution seed.
+/// ziskemu's command line: the emulator options plus the random seed.
 #[derive(Parser)]
 #[command(version = ZISK_VERSION_MESSAGE, about, long_about = None)]
 struct Cli {
@@ -14,12 +14,12 @@ struct Cli {
     options: EmuOptions,
 
     #[command(flatten)]
-    seed: SeedArgs,
+    random_seed: RandomSeedArgs,
 }
 
 fn main() {
     // Create a emulator options instance based on arguments or default values
-    let Cli { mut options, seed } = Cli::parse();
+    let Cli { mut options, random_seed: seed } = Cli::parse();
 
     // Compare two saved stats snapshots without running the emulator.
     if let Some(files) = &options.diff_stats {
@@ -67,15 +67,15 @@ fn main() {
     // Each execution gets a fresh seed for the host randomness generator, unless one is given.
     // Reported on stderr: stdout may carry the guest output (--log-output, --log-output-riscof).
     let provided = seed.provided();
-    let random_seed = match provided.map_or_else(ExecutionSeed::random, Ok) {
+    let random_seed = match provided.map_or_else(RandomSeed::random, Ok) {
         Ok(random_seed) => random_seed,
         Err(e) => {
-            eprintln!("Error drawing an execution seed: {e}");
+            eprintln!("Error drawing a random seed: {e}");
             process::exit(1);
         }
     };
     let note = if provided.is_some() { " (provided)" } else { "" };
-    eprintln!("Execution seed: {random_seed}{note}");
+    eprintln!("Random seed: {random_seed}{note}");
     options.random_seed = Some(random_seed);
 
     // Call emulate, with these options
@@ -112,7 +112,7 @@ mod tests {
     use super::*;
     use clap::CommandFactory;
 
-    /// `EmuOptions` and `SeedArgs` are flattened together: no clashing names or short flags.
+    /// `EmuOptions` and `RandomSeedArgs` are flattened together: no clashing names or short flags.
     #[test]
     fn cli_is_well_formed() {
         Cli::command().debug_assert();
@@ -122,7 +122,7 @@ mod tests {
     fn random_seed_flag_reaches_the_cli() {
         let cli =
             Cli::try_parse_from(["ziskemu", "-e", "guest.elf", "--random-seed", "2a"]).unwrap();
-        assert_eq!(cli.seed.provided(), Some("2a".parse().unwrap()));
+        assert_eq!(cli.random_seed.provided(), Some("2a".parse().unwrap()));
         assert_eq!(cli.options.elf.as_deref(), Some("guest.elf"));
     }
 }

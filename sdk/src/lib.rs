@@ -74,7 +74,7 @@ pub use proofman_common::VerboseMode;
 
 // Re-export types from zisk_common
 pub use zisk_common::{
-    ExecutionSeed, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
+    PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues, RandomSeed,
 };
 
 pub use zisk_build::*;
@@ -118,7 +118,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<std::time::Duration>,
@@ -130,7 +130,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
@@ -207,7 +207,7 @@ pub(crate) trait ClientSync {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         subs: job_handle::SubscriberList,
@@ -218,7 +218,7 @@ pub(crate) trait ClientSync {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         subs: job_handle::SubscriberList,
     ) -> Result<ExecuteResult>;

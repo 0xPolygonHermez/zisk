@@ -10,7 +10,7 @@ pub(crate) mod wrap;
 use crate::{Result, SdkError};
 use std::time::Duration;
 use zisk_common::io::StreamRead;
-use zisk_common::{ExecutionSeed, ProgramVK, Proof, ProofKind, PublicValues};
+use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues, RandomSeed};
 use zisk_coordinator_api::dto::DomainInputKind;
 use zisk_coordinator_client::CoordinatorClient;
 use zisk_prover_backend::GuestProgram;
@@ -135,7 +135,7 @@ impl Client for RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
@@ -149,7 +149,7 @@ impl Client for RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,

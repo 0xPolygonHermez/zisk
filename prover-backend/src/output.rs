@@ -2,8 +2,8 @@ use anyhow::Result;
 use std::path::Path;
 use std::time::Duration;
 use zisk_common::{
-    ExecutionSeed, ProgramVK, PublicValues, StatsCostPerType, ZiskExecutorSummary,
-    ZiskExecutorTime, ZiskVerifyBuilder, ZISK_PUBLICS,
+    ProgramVK, PublicValues, RandomSeed, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
+    ZiskVerifyBuilder, ZISK_PUBLICS,
 };
 use zisk_executor::{AirClassifier, PlanSummaryEntry};
 
@@ -83,7 +83,7 @@ pub struct ExecuteOutput {
     executor_time: ZiskExecutorTime,
     publics: PublicValues,
     plan: Option<Vec<PlanSummaryEntry>>,
-    seed: Option<ExecutionSeed>,
+    random_seed: Option<RandomSeed>,
 }
 
 impl ExecuteOutput {
@@ -101,7 +101,7 @@ impl ExecuteOutput {
             executor_time: executor_summary.executor_time,
             publics: PublicValues::new(publics),
             plan: None,
-            seed: executor_summary.seed,
+            random_seed: executor_summary.random_seed,
         }
     }
 
@@ -121,7 +121,7 @@ impl ExecuteOutput {
             executor_time: executor_summary.executor_time,
             publics: pairs_to_publics(pub_outs),
             plan: Some(plan),
-            seed: executor_summary.seed,
+            random_seed: executor_summary.random_seed,
         }
     }
 
@@ -154,8 +154,8 @@ impl ExecuteOutput {
 
     /// Seed the execution ran with. `None` only when the coordinator that ran it does not report
     /// one.
-    pub fn get_execution_seed(&self) -> Option<ExecutionSeed> {
-        self.seed
+    pub fn get_random_seed(&self) -> Option<RandomSeed> {
+        self.random_seed
     }
 
     /// Construct a result from a remote coordinator response.
@@ -171,7 +171,7 @@ impl ExecuteOutput {
         executor_time: ZiskExecutorTime,
         plan: &[(usize, usize, u64)],
         publics: &[u8],
-        seed: Option<ExecutionSeed>,
+        seed: Option<RandomSeed>,
     ) -> Self {
         let plan: Vec<PlanSummaryEntry> = plan
             .iter()
@@ -189,7 +189,7 @@ impl ExecuteOutput {
             executor_time,
             publics: PublicValues::new(publics),
             plan: (!plan.is_empty()).then_some(plan),
-            seed,
+            random_seed: seed,
         }
     }
 }
@@ -209,7 +209,7 @@ impl ProveOutput {
     pub fn new(execution: ZiskExecutorSummary, proving_time: Duration, proof: Proof) -> Self {
         Self {
             summary: ExecutionSummary::new(proving_time, &execution),
-            proof: proof.with_seed(execution.seed),
+            proof: proof.with_random_seed(execution.random_seed),
         }
     }
 
@@ -246,14 +246,14 @@ impl ProveOutput {
 
     /// Seed the proven execution ran with. `None` for proofs that do not come from a single
     /// execution (aggregates) or when the coordinator that ran it does not report one.
-    pub fn get_execution_seed(&self) -> Option<ExecutionSeed> {
-        self.proof.seed
+    pub fn get_random_seed(&self) -> Option<RandomSeed> {
+        self.proof.random_seed
     }
 
     /// Stamp the seed of the execution the proof attests to. Wrapping a proof re-proves its
     /// statement without running the guest, so the result keeps the source proof's seed.
-    pub(crate) fn with_seed(self, seed: Option<ExecutionSeed>) -> Self {
-        Self { proof: self.proof.with_seed(seed), ..self }
+    pub(crate) fn with_random_seed(self, seed: Option<RandomSeed>) -> Self {
+        Self { proof: self.proof.with_random_seed(seed), ..self }
     }
 
     /// The generated proof.
@@ -336,7 +336,7 @@ pub struct VerifyConstraintsOutput {
     executor_time: ZiskExecutorTime,
     cost_per_type: StatsCostPerType,
     publics: PublicValues,
-    seed: Option<ExecutionSeed>,
+    random_seed: Option<RandomSeed>,
 }
 
 impl VerifyConstraintsOutput {
@@ -348,7 +348,7 @@ impl VerifyConstraintsOutput {
             executor_time: executor_summary.executor_time,
             cost_per_type: executor_summary.cost_per_type,
             publics: PublicValues::new(publics),
-            seed: executor_summary.seed,
+            random_seed: executor_summary.random_seed,
         }
     }
 
@@ -378,8 +378,8 @@ impl VerifyConstraintsOutput {
     }
 
     /// Seed the execution ran with. Always set for outputs built from an execution.
-    pub fn get_execution_seed(&self) -> Option<ExecutionSeed> {
-        self.seed
+    pub fn get_random_seed(&self) -> Option<RandomSeed> {
+        self.random_seed
     }
 }
 
@@ -389,10 +389,10 @@ impl_public_outputs!(VerifyConstraintsOutput, publics);
 mod tests {
     use super::*;
 
-    const SEED: ExecutionSeed = ExecutionSeed::new([4; ExecutionSeed::LEN]);
+    const SEED: RandomSeed = RandomSeed::new([4; RandomSeed::LEN]);
 
     fn executed() -> ZiskExecutorSummary {
-        ZiskExecutorSummary { seed: Some(SEED), ..Default::default() }
+        ZiskExecutorSummary { random_seed: Some(SEED), ..Default::default() }
     }
 
     fn publics() -> Vec<u8> {
@@ -401,18 +401,18 @@ mod tests {
 
     #[test]
     fn prove_output_takes_the_seed_of_the_execution_it_attests() {
-        let other = ExecutionSeed::new([5; ExecutionSeed::LEN]);
+        let other = RandomSeed::new([5; RandomSeed::LEN]);
         let output =
-            ProveOutput::new(executed(), Duration::ZERO, Proof::default().with_seed(other));
-        assert_eq!(output.get_execution_seed(), Some(SEED));
-        assert_eq!(output.get_proof().seed, Some(SEED));
+            ProveOutput::new(executed(), Duration::ZERO, Proof::default().with_random_seed(other));
+        assert_eq!(output.get_random_seed(), Some(SEED));
+        assert_eq!(output.get_proof().random_seed, Some(SEED));
     }
 
     /// Ranks that end a prove without the final proof still report what they ran with.
     #[test]
     fn prove_output_without_a_final_proof_reports_the_seed() {
         let output = ProveOutput::new_null(executed(), Duration::ZERO);
-        assert_eq!(output.get_execution_seed(), Some(SEED));
+        assert_eq!(output.get_random_seed(), Some(SEED));
     }
 
     /// A wrap runs no execution, so its output keeps the source proof's seed.
@@ -420,20 +420,20 @@ mod tests {
     fn wrap_output_keeps_the_source_seed() {
         let output =
             ProveOutput::new(ZiskExecutorSummary::default(), Duration::ZERO, Proof::default())
-                .with_seed(Some(SEED));
-        assert_eq!(output.get_execution_seed(), Some(SEED));
-        assert_eq!(output.get_proof().seed, Some(SEED));
+                .with_random_seed(Some(SEED));
+        assert_eq!(output.get_random_seed(), Some(SEED));
+        assert_eq!(output.get_proof().random_seed, Some(SEED));
     }
 
     #[test]
-    fn execute_and_verify_constraints_outputs_report_the_execution_seed() {
+    fn execute_and_verify_constraints_outputs_report_the_random_seed() {
         let execute = ExecuteOutput::new(Duration::ZERO, executed(), &publics());
-        assert_eq!(execute.get_execution_seed(), Some(SEED));
+        assert_eq!(execute.get_random_seed(), Some(SEED));
 
         let standalone = ExecuteOutput::new_standalone(Duration::ZERO, executed(), &[], Vec::new());
-        assert_eq!(standalone.get_execution_seed(), Some(SEED));
+        assert_eq!(standalone.get_random_seed(), Some(SEED));
 
         let verify = VerifyConstraintsOutput::new(executed(), 0, &publics());
-        assert_eq!(verify.get_execution_seed(), Some(SEED));
+        assert_eq!(verify.get_random_seed(), Some(SEED));
     }
 }

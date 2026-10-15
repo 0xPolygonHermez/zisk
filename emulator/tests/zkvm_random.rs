@@ -6,7 +6,7 @@
 //! `ziskasm/lang/c/example/zkvm_random_guest.c`) draws 500 values and outputs the first
 //! 20, the XOR of all of them and its own checks (0 = all distinct, every bit varies).
 
-use zisk_common::{EmuTrace, ExecutionSeed};
+use zisk_common::{EmuTrace, RandomSeed};
 use zisk_core::{AsmGenerationMethod, ZiskRom2Asm};
 use zisk_transpiler_common::{program2rom, program2romfile, HINTS_WITH_RANDOM_ERROR};
 use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
@@ -46,12 +46,12 @@ fn elf_path() -> String {
     format!("{}/../elf-regressions/zkvm_random/zkvm_random.elf", env!("CARGO_MANIFEST_DIR"))
 }
 
-fn seed() -> ExecutionSeed {
+fn seed() -> RandomSeed {
     SEED.parse().unwrap()
 }
 
 /// Runs the guest with `random_seed`, returning its 22 output words
-fn emulate(random_seed: Option<ExecutionSeed>) -> Vec<u64> {
+fn emulate(random_seed: Option<RandomSeed>) -> Vec<u64> {
     let options = EmuOptions { elf: Some(elf_path()), random_seed, ..Default::default() };
     let output = ZiskEmulator
         .emulate(&options, None::<Box<dyn Fn(EmuTrace)>>)
@@ -71,7 +71,7 @@ fn returns_the_shake256_stream_of_the_seed() {
 fn another_seed_gives_another_stream() {
     let mut other = *seed().as_bytes();
     other[31] ^= 0x80; // the top bit of the last word
-    let output = emulate(Some(ExecutionSeed::new(other)));
+    let output = emulate(Some(RandomSeed::new(other)));
     assert_ne!(output[..20], STREAM);
     assert_eq!(output[21], 0, "in-guest checks: values not distinct (1) or a bit never varies (2)");
 }

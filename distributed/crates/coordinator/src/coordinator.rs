@@ -60,7 +60,7 @@ use zisk_cluster_common::{
     LaunchProofRequestDto, LaunchProofResponseDto, PhaseTimings, ProofKind,
     SetupAggregationProgramDto, SetupProgramDto, StatsCostPerType, WorkerId, WorkerState,
 };
-use zisk_common::{AirInstanceCount, ExecutionSeed, SetupKey, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{AirInstanceCount, RandomSeed, SetupKey, ZiskExecutorTime, ZiskPaths};
 
 struct SetupPendingState {
     pending: HashSet<WorkerId>,
@@ -960,7 +960,7 @@ impl Coordinator {
         self: &Arc<Self>,
         request: LaunchProofRequestDto,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
-        let seed = self.resolve_seed(request.seed)?;
+        let seed = self.resolve_random_seed(request.random_seed)?;
         let (requested, minimum) = self.resolve_capacity(&request).await?;
 
         // Generate job_id up-front so we can atomically reserve workers
@@ -987,10 +987,10 @@ impl Coordinator {
                 request.proof_type,
             )
             .await?;
-        job.seed = Some(seed);
+        job.random_seed = Some(seed);
 
         info!(
-            "[Job] Started {} successfully Capacity: {} Workers: {} Seed: {}",
+            "[Job] Started {} successfully Capacity: {} Workers: {} Random seed: {}",
             job.job_id,
             job.compute_capacity,
             job.workers.len(),
@@ -1197,7 +1197,7 @@ impl Coordinator {
         let duration_ms = job.duration_ms.unwrap_or(0);
         let job_state = job.state.clone();
         let executed_steps = job.executed_steps;
-        let seed = job.seed;
+        let seed = job.random_seed;
         let proof_data = job
             .proof
             .as_ref()
@@ -1265,19 +1265,20 @@ impl Coordinator {
         });
     }
 
-    /// The job's execution seed: a fresh one, or the client's when it sent one and
-    /// `allow_client_seed` is set; a client seed is otherwise rejected (`ClientSeedNotAllowed`).
-    /// Decided here, once per job, because every worker must run with it.
-    fn resolve_seed(&self, requested: Option<ExecutionSeed>) -> CoordinatorResult<ExecutionSeed> {
+    /// The job's random seed: a fresh one, or the client's when it sent one and
+    /// `allow_client_random_seed` is set; a client random seed is otherwise rejected
+    /// (`ClientRandomSeedNotAllowed`). Decided here, once per job, because every worker must run
+    /// with it.
+    fn resolve_random_seed(&self, requested: Option<RandomSeed>) -> CoordinatorResult<RandomSeed> {
         match requested {
-            Some(_) if !self.config.coordinator.allow_client_seed => {
-                Err(CoordinatorError::ClientSeedNotAllowed)
+            Some(_) if !self.config.coordinator.allow_client_random_seed => {
+                Err(CoordinatorError::ClientRandomSeedNotAllowed)
             }
             Some(seed) => {
-                warn!("[Job] Using a client-supplied execution seed: {seed}");
+                warn!("[Job] Using a client-supplied random seed: {seed}");
                 Ok(seed)
             }
-            None => ExecutionSeed::random().map_err(|e| CoordinatorError::Internal(e.to_string())),
+            None => RandomSeed::random().map_err(|e| CoordinatorError::Internal(e.to_string())),
         }
     }
 
@@ -3241,7 +3242,7 @@ mod tests {
             metadata: None,
             execution_only: false,
             proof_type: zisk_cluster_common::ProofKind::VadcopFinal,
-            seed: None,
+            random_seed: None,
         };
 
         let setup_task = tokio::spawn(async move {
@@ -4937,32 +4938,35 @@ mod tests {
         assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
     }
 
-    // --- resolve_seed --------------------------------------------------------
+    // --- resolve_random_seed --------------------------------------------------------
 
-    const CLIENT_SEED: ExecutionSeed = ExecutionSeed::new([7; ExecutionSeed::LEN]);
+    const CLIENT_RANDOM_SEED: RandomSeed = RandomSeed::new([7; RandomSeed::LEN]);
 
     #[tokio::test]
-    async fn resolve_seed_rejects_a_client_seed_by_default() {
+    async fn resolve_random_seed_rejects_a_client_random_seed_by_default() {
         let coordinator = Coordinator::new(test_config_with(|_| {}));
         assert!(matches!(
-            coordinator.resolve_seed(Some(CLIENT_SEED)),
-            Err(CoordinatorError::ClientSeedNotAllowed)
+            coordinator.resolve_random_seed(Some(CLIENT_RANDOM_SEED)),
+            Err(CoordinatorError::ClientRandomSeedNotAllowed)
         ));
     }
 
     #[tokio::test]
-    async fn resolve_seed_honours_a_client_seed_when_allowed() {
+    async fn resolve_random_seed_honours_a_client_random_seed_when_allowed() {
         let coordinator =
-            Coordinator::new(test_config_with(|c| c.coordinator.allow_client_seed = true));
-        assert_eq!(coordinator.resolve_seed(Some(CLIENT_SEED)).unwrap(), CLIENT_SEED);
+            Coordinator::new(test_config_with(|c| c.coordinator.allow_client_random_seed = true));
+        assert_eq!(
+            coordinator.resolve_random_seed(Some(CLIENT_RANDOM_SEED)).unwrap(),
+            CLIENT_RANDOM_SEED
+        );
     }
 
     #[tokio::test]
-    async fn resolve_seed_draws_a_fresh_seed_per_job() {
+    async fn resolve_random_seed_draws_a_fresh_seed_per_job() {
         let coordinator = Coordinator::new(test_config_with(|_| {}));
         assert_ne!(
-            coordinator.resolve_seed(None).unwrap(),
-            coordinator.resolve_seed(None).unwrap()
+            coordinator.resolve_random_seed(None).unwrap(),
+            coordinator.resolve_random_seed(None).unwrap()
         );
     }
 
@@ -4973,7 +4977,7 @@ mod tests {
             setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
         let coordinator = Arc::new(coordinator);
         let job_entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
-        job_entry.write().await.seed = Some(CLIENT_SEED);
+        job_entry.write().await.random_seed = Some(CLIENT_RANDOM_SEED);
         let worker_ids: Vec<_> = workers.iter().map(|(id, _)| id.clone()).collect();
 
         let job = job_entry.read().await;
@@ -4986,28 +4990,28 @@ mod tests {
                 .filter_map(|m| match m {
                     CoordinatorMessageDto::ExecuteTaskRequest(req) => match &req.params {
                         zisk_cluster_common::ExecuteTaskRequestTypeDto::ContributionParams(p) => {
-                            Some(p.seed)
+                            Some(p.random_seed)
                         }
                         _ => None,
                     },
                     _ => None,
                 })
                 .collect();
-            assert_eq!(seeds, vec![CLIENT_SEED], "worker {worker_id}");
+            assert_eq!(seeds, vec![CLIENT_RANDOM_SEED], "worker {worker_id}");
         }
     }
 
     /// The policy check runs before capacity is reserved, so a rejected job leaves no trace.
     #[tokio::test]
-    async fn launch_proof_rejects_a_client_seed_before_reserving_workers() {
+    async fn launch_proof_rejects_a_client_random_seed_before_reserving_workers() {
         let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
         add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
         let mut request = capacity_request(None, None);
-        request.seed = Some(CLIENT_SEED);
+        request.random_seed = Some(CLIENT_RANDOM_SEED);
 
         let result = coordinator.launch_proof(request).await;
 
-        assert!(matches!(result, Err(CoordinatorError::ClientSeedNotAllowed)));
+        assert!(matches!(result, Err(CoordinatorError::ClientRandomSeedNotAllowed)));
         let w0 = WorkerId::from("w0".to_string());
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
         assert!(coordinator.jobs.read().await.is_empty());
@@ -5037,7 +5041,7 @@ mod tests {
         let w0_id = workers[0].0.clone();
         arm_recurser(&coordinator, &job_id, &w0_id, Some(true)).await;
         let job_entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
-        job_entry.write().await.seed = Some(CLIENT_SEED);
+        job_entry.write().await.random_seed = Some(CLIENT_RANDOM_SEED);
         coordinator.alloc_job_events(&job_id).await;
         let mut events = coordinator.subscribe_job_events(&job_id).await.unwrap();
         let seedless =
@@ -5048,15 +5052,21 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(job_entry.read().await.proof.as_ref().unwrap().seed, Some(CLIENT_SEED));
+        assert_eq!(
+            job_entry.read().await.proof.as_ref().unwrap().random_seed,
+            Some(CLIENT_RANDOM_SEED)
+        );
         match events.recv().await.unwrap() {
             CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Prove {
                 proof_bytes,
-                seed,
+                random_seed: seed,
                 ..
             }) => {
-                assert_eq!(seed, Some(CLIENT_SEED));
-                assert_eq!(Proof::from_bytes(&proof_bytes).unwrap().seed, Some(CLIENT_SEED));
+                assert_eq!(seed, Some(CLIENT_RANDOM_SEED));
+                assert_eq!(
+                    Proof::from_bytes(&proof_bytes).unwrap().random_seed,
+                    Some(CLIENT_RANDOM_SEED)
+                );
             }
             other => panic!("expected a completed prove, got {other:?}"),
         }
@@ -5079,7 +5089,7 @@ mod tests {
             metadata: None,
             execution_only: false,
             proof_type: ProofKind::VadcopFinal,
-            seed: None,
+            random_seed: None,
         }
     }
 

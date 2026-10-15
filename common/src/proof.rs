@@ -12,7 +12,7 @@ pub use zisk_verifier::{
     VADCOP_FINAL_FLAG_LEN, ZISK_PUBLICS,
 };
 
-use crate::{ExecutionSeed, HashMode};
+use crate::{HashMode, RandomSeed};
 
 /// The canonical representative of a Goldilocks element: the unique value in
 /// `[0, p)` congruent to `word`. One subtraction suffices — `p > 2^63`, so every
@@ -739,7 +739,7 @@ pub struct Proof {
     /// Unauthenticated metadata: verification ignores it, as the values derived from it are
     /// free witness values. `None` for proofs that do not come from a single execution
     /// (aggregates) and for proofs written by ZisK versions that predate this field.
-    pub seed: Option<ExecutionSeed>,
+    pub random_seed: Option<RandomSeed>,
 }
 
 /// Builder for customizing verification parameters before calling verify.
@@ -1061,16 +1061,16 @@ impl<'a> ZiskVerifyBuilder<'a> {
 impl Proof {
     /// Creates a new `Proof` from a body and program verification key, with no seed.
     ///
-    /// When the proof attests an execution, chain [`Proof::with_seed`] to keep its seed;
+    /// When the proof attests an execution, chain [`Proof::with_random_seed`] to keep its seed;
     /// otherwise a proof saved from it cannot be replayed.
     pub fn new(body: ProofBody, program_vk: ProgramVK) -> Self {
-        Self { body, program_vk, seed: None }
+        Self { body, program_vk, random_seed: None }
     }
 
     /// Sets the seed of the execution this proof attests to. Takes an `Option` too, so callers
     /// can pass through a seed they may not have.
-    pub fn with_seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
-        self.seed = seed.into();
+    pub fn with_random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
+        self.random_seed = seed.into();
         self
     }
 
@@ -1196,7 +1196,7 @@ impl Proof {
     }
 
     /// Decode a bincode-serialized proof, including ones written by ZisK versions that predate
-    /// [`Proof::seed`] (they decode with `seed: None`).
+    /// [`Proof::random_seed`] (they decode with `random_seed: None`).
     ///
     /// Bytes past the last known field are ignored, so proofs from later versions that append
     /// fields still decode. Unlike [`Proof::load`] this does not check the publics' shape.
@@ -1218,11 +1218,11 @@ impl Proof {
         let seed = if tail.is_empty() {
             None
         } else {
-            bincode::serde::decode_from_slice::<Option<ExecutionSeed>, _>(tail, config)
+            bincode::serde::decode_from_slice::<Option<RandomSeed>, _>(tail, config)
                 .map_err(decode_err)?
                 .0
         };
-        Ok(Self { body, program_vk, seed })
+        Ok(Self { body, program_vk, random_seed: seed })
     }
 
     /// The committed `publics_full` (`[program_vk | inputs]`) for either flavor —
@@ -1406,7 +1406,7 @@ impl Proof {
     ///
     /// A Proof containing the parsed proof, publics, and program VK, with no seed: the flat
     /// u64 form (as produced by [`Proof::get_proof_u64`]) does not carry one. When the proof
-    /// attests an execution, chain [`Proof::with_seed`] to keep its seed; otherwise a proof
+    /// attests an execution, chain [`Proof::with_random_seed`] to keep its seed; otherwise a proof
     /// saved from it cannot be replayed.
     ///
     /// # Errors
@@ -1496,7 +1496,7 @@ impl Proof {
                 publics_full,
             },
             program_vk,
-            seed: None,
+            random_seed: None,
         })
     }
 
@@ -2009,8 +2009,8 @@ mod tests {
         assert_eq!(loaded.program_vk.vk, vec![7, 8, 9, 10]);
     }
 
-    fn test_seed() -> ExecutionSeed {
-        ExecutionSeed::new(std::array::from_fn(|i| i as u8))
+    fn test_seed() -> RandomSeed {
+        RandomSeed::new(std::array::from_fn(|i| i as u8))
     }
 
     fn encode(proof: &Proof) -> Vec<u8> {
@@ -2020,18 +2020,18 @@ mod tests {
     #[test]
     fn proof_save_load_roundtrip_keeps_the_seed() {
         let tmp = std::env::temp_dir().join(format!("proof_seed_{}.bin", std::process::id()));
-        let original =
-            vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4])).with_seed(test_seed());
+        let original = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
+            .with_random_seed(test_seed());
 
         original.save(&tmp).unwrap();
         let loaded = Proof::load(&tmp).unwrap();
         std::fs::remove_file(&tmp).ok();
 
-        assert_eq!(loaded.seed, Some(test_seed()));
+        assert_eq!(loaded.random_seed, Some(test_seed()));
         assert_eq!(encode(&loaded), encode(&original));
     }
 
-    /// A file written before `Proof::seed` existed ends right after `program_vk`.
+    /// A file written before `Proof::random_seed` existed ends right after `program_vk`.
     #[test]
     fn from_bytes_reads_a_proof_serialized_before_the_seed() {
         let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
@@ -2043,31 +2043,32 @@ mod tests {
 
         let decoded = Proof::from_bytes(&legacy).unwrap();
 
-        assert_eq!(decoded.seed, None);
+        assert_eq!(decoded.random_seed, None);
         assert_eq!(encode(&decoded), encode(&proof));
     }
 
     /// Fields a later version appends must not stop this version from reading the file.
     #[test]
     fn from_bytes_ignores_fields_appended_after_the_seed() {
-        let proof =
-            vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4])).with_seed(test_seed());
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
+            .with_random_seed(test_seed());
         let mut bytes = encode(&proof);
         bytes.extend_from_slice(&[1, 2, 3]);
 
-        assert_eq!(Proof::from_bytes(&bytes).unwrap().seed, Some(test_seed()));
+        assert_eq!(Proof::from_bytes(&bytes).unwrap().random_seed, Some(test_seed()));
     }
 
     #[test]
     fn from_bytes_rejects_a_truncated_seed() {
-        let proof =
-            vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4])).with_seed(test_seed());
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
+            .with_random_seed(test_seed());
         let bytes = encode(&proof);
 
         assert!(Proof::from_bytes(&bytes[..bytes.len() - 1]).is_err());
     }
 
-    /// The committed PLONK fixture predates `Proof::seed`; CI exports Solidity calldata from it.
+    /// The committed PLONK fixture predates `Proof::random_seed`; CI exports Solidity calldata
+    /// from it.
     #[test]
     fn load_reads_the_committed_plonk_fixture() {
         let fixture =
@@ -2075,7 +2076,7 @@ mod tests {
         let proof = Proof::load(fixture).unwrap();
 
         assert_eq!(proof.kind(), ProofKind::Plonk);
-        assert_eq!(proof.seed, None);
+        assert_eq!(proof.random_seed, None);
     }
 
     #[test]
