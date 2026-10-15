@@ -7,6 +7,12 @@ pub fn is_aligned_8(ptr: *const u8) -> bool {
     (ptr as usize) & 0x7 == 0
 }
 
+/// A value placed on an 8-byte boundary, for a local the precompiles read or write
+/// as u64 words (their pointers must be 8-byte aligned) while its own type, e.g.
+/// `[u32; N]` or `[u8; N]`, would only guarantee 4- or 1-byte alignment.
+#[repr(C, align(8))]
+pub(crate) struct Align8<T>(pub(crate) T);
+
 /// Writes `value` to a C caller's buffer `dst`, which need not be aligned for `T`.
 /// An aligned `dst` gets the plain typed store; an unaligned one, which a reference
 /// or a typed store must never see, gets `write_unaligned`. The target has no fast

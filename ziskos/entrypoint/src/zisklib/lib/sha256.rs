@@ -2,7 +2,7 @@
 
 use crate::syscalls::syscall_sha256_f;
 
-use super::{is_aligned_8, read_maybe_unaligned, write_maybe_unaligned};
+use super::{is_aligned_8, read_maybe_unaligned, write_maybe_unaligned, Align8};
 
 /// SHA-256 initial hash values
 const SHA256_INIT: [u32; 8] = [
@@ -11,7 +11,10 @@ const SHA256_INIT: [u32; 8] = [
 
 /// SHA-256 hash function. For reference: https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf
 pub fn sha256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u8; 32] {
-    let mut state = SHA256_INIT;
+    // The precompile works on the state and the block as u64 words, so both must
+    // be 8-byte aligned: the locals are Align8, and input blocks are used in place
+    // only when the input is aligned.
+    let mut state = Align8(SHA256_INIT);
     let input_len = input.len();
 
     // Process complete 64-byte blocks
@@ -19,7 +22,9 @@ pub fn sha256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [
     if is_aligned_8(input.as_ptr()) {
         // Fast path: input is aligned, use directly
         while offset + 64 <= input_len {
-            let block: &[u8; 64] = input[offset..offset + 64].try_into().unwrap();
+            // SAFETY: the input is 8-byte aligned and `offset` is a multiple of 64,
+            // and the 64 bytes are in bounds.
+            let block = unsafe { &*(input.as_ptr().add(offset) as *const Align8<[u8; 64]>) };
             compress_block(
                 &mut state,
                 block,
@@ -30,9 +35,9 @@ pub fn sha256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [
         }
     } else {
         // Slow path: input is unaligned, copy each block
-        let mut aligned_block = [0u8; 64];
+        let mut aligned_block = Align8([0u8; 64]);
         while offset + 64 <= input_len {
-            aligned_block.copy_from_slice(&input[offset..offset + 64]);
+            aligned_block.0.copy_from_slice(&input[offset..offset + 64]);
             compress_block(
                 &mut state,
                 &aligned_block,
@@ -48,13 +53,13 @@ pub fn sha256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [
     let bit_len = (input_len as u64) * 8;
 
     // We need: remaining bytes + 1 (0x80) + padding + 8 (length)
-    let mut final_block = [0u8; 64];
+    let mut final_block = Align8([0u8; 64]);
 
     // Copy remaining bytes
-    final_block[..remaining].copy_from_slice(&input[offset..]);
+    final_block.0[..remaining].copy_from_slice(&input[offset..]);
 
     // Append 0x80
-    final_block[remaining] = 0x80;
+    final_block.0[remaining] = 0x80;
 
     // If remaining + 9 > 64, we need 2 blocks
     if remaining + 9 > 64 {
@@ -67,8 +72,8 @@ pub fn sha256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [
         );
 
         // Second block
-        final_block = [0u8; 64];
-        final_block[56..64].copy_from_slice(&bit_len.to_be_bytes());
+        final_block.0 = [0u8; 64];
+        final_block.0[56..64].copy_from_slice(&bit_len.to_be_bytes());
         compress_block(
             &mut state,
             &final_block,
@@ -77,7 +82,7 @@ pub fn sha256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [
         );
     } else {
         // Single final block
-        final_block[56..64].copy_from_slice(&bit_len.to_be_bytes());
+        final_block.0[56..64].copy_from_slice(&bit_len.to_be_bytes());
         compress_block(
             &mut state,
             &final_block,
@@ -88,7 +93,7 @@ pub fn sha256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [
 
     // Convert state to big-endian bytes
     let mut result = [0u8; 32];
-    for (i, &word) in state.iter().enumerate() {
+    for (i, &word) in state.0.iter().enumerate() {
         result[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
     }
 
@@ -98,12 +103,13 @@ pub fn sha256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [
 /// Compress a single 64-byte block into the state
 #[inline]
 fn compress_block(
-    state: &mut [u32; 8],
-    block: &[u8; 64],
+    state: &mut Align8<[u32; 8]>,
+    block: &Align8<[u8; 64]>,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    let state_64: &mut [u64; 4] = unsafe { &mut *(state.as_mut_ptr() as *mut [u64; 4]) };
-    let input_u64: &[u64; 8] = unsafe { &*(block.as_ptr() as *const [u64; 8]) };
+    // SAFETY: Align8 places both on an 8-byte boundary, and the sizes match.
+    let state_64: &mut [u64; 4] = unsafe { &mut *(state.0.as_mut_ptr() as *mut [u64; 4]) };
+    let input_u64: &[u64; 8] = unsafe { &*(block.0.as_ptr() as *const [u64; 8]) };
     syscall_sha256_f(
         state_64,
         input_u64,
@@ -148,9 +154,11 @@ pub unsafe extern "C" fn sha256f_compress_c(
     write_maybe_unaligned(state_ptr, state);
 }
 
+/// The state's u32 words as the u64 words the precompile takes. `state` is only
+/// 4-byte aligned, so it is read without assuming more.
 #[inline]
 fn convert_u32_to_u64(state: &[u32; 8]) -> [u64; 4] {
-    unsafe { *(state.as_ptr() as *const [u64; 4]) }
+    unsafe { read_maybe_unaligned(state.as_ptr() as *const [u64; 4]) }
 }
 
 #[inline]
@@ -158,9 +166,10 @@ fn convert_u64_to_u32(state: &[u64; 4]) -> [u32; 8] {
     unsafe { *(state.as_ptr() as *const [u32; 8]) }
 }
 
+/// A block's bytes as u64 words. `block` may be at any address.
 #[inline]
 fn convert_bytes_to_u64(block: &[u8; 64]) -> [u64; 8] {
-    unsafe { *(block.as_ptr() as *const [u64; 8]) }
+    unsafe { read_maybe_unaligned(block.as_ptr() as *const [u64; 8]) }
 }
 
 /// C-compatible wrapper for full SHA-256 hash

@@ -542,11 +542,49 @@ fn check(x: &Inputs, f: CaseFn, len: usize) -> (u8, u64) {
     (mask, r0)
 }
 
+/// Library functions whose internal buffers the precompiles see: their result must
+/// not depend on where the caller's input happens to sit. `sha256` over the same
+/// bytes at input offsets 0..7 (the aligned path and the copying one), and
+/// `blake3_compress` with its message 8-byte aligned and only 4-byte aligned.
+fn check_internal_buffers(x: &Inputs) -> bool {
+    let mut ok = true;
+    let mut buf = [0u64; 40];
+    let want = ziskos::zisklib::sha256(&x.hb[..300]);
+    for o in 0..8 {
+        let b =
+            unsafe { core::slice::from_raw_parts_mut((buf.as_mut_ptr() as *mut u8).add(o), 300) };
+        b.copy_from_slice(&x.hb[..300]);
+        let got = ziskos::zisklib::sha256(black_box(b));
+        println!("sha256 input offset {o}: {}", if got == want { "ok" } else { "WRONG" });
+        ok &= got == want;
+    }
+    let mut words = [0u32; 18];
+    for (i, w) in words.iter_mut().enumerate() {
+        *w = (i as u32).wrapping_mul(0x9E37_79B9);
+    }
+    let blake3 = |m: &[u32; 16]| {
+        let mut h = [1u32, 2, 3, 4, 5, 6, 7, 8];
+        ziskos::zisklib::blake3_compress(&mut h, black_box(m), &[0, 0], 64, 0x0b);
+        h
+    };
+    // `words` is 4-byte aligned: exactly one of the two windows is 8-byte aligned.
+    let m0: [u32; 16] = words[..16].try_into().unwrap();
+    let want = blake3(&m0);
+    for start in 0..2 {
+        words[start..start + 16].copy_from_slice(&m0);
+        let window: &[u32; 16] = words[start..start + 16].try_into().unwrap();
+        let got = blake3(window);
+        println!("blake3 message at word {start}: {}", if got == want { "ok" } else { "WRONG" });
+        ok &= got == want;
+    }
+    ok
+}
+
 fn main() {
     let first: u64 = ziskos::io::read();
     let last: u64 = ziskos::io::read();
     let x = setup();
-    let mut all_ok = true;
+    let mut all_ok = check_internal_buffers(&x);
     for (n, &(name, len, f)) in CASES.iter().enumerate() {
         if (n as u64) < first || (n as u64) > last {
             continue;
