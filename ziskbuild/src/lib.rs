@@ -380,7 +380,8 @@ mod tests {
         assert_eq!(std::fs::read(script.path()).unwrap(), ZISK_LINKER_SCRIPT);
     }
 
-    /// The default target features come first, so the program's config (or env) can override them.
+    /// The default rustflag comes first, so the program's config (or env) can override it. rustc
+    /// accumulates repeated `-C target-feature`s, so the later feature-derived `+zba` adds to it.
     #[test]
     fn guest_rustflags_prepends_default_target_features() {
         let dir = tempfile::tempdir().unwrap();
@@ -394,10 +395,12 @@ mod tests {
         )
         .unwrap();
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), false, &[]).unwrap();
+        let features = target_features_from_features(None, false);
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), false, &features).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
 
         assert_eq!(flags[..2], ["-C", GUEST_DEFAULT_RUSTFLAG]);
+        assert!(encoded.contains(&features[1]), "feature-derived flags dropped: {encoded:?}");
         let config_flag = flags
             .iter()
             .position(|f| *f == "target-feature=-unaligned-scalar-mem")
