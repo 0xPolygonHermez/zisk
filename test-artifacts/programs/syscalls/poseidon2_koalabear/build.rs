@@ -5,7 +5,8 @@ use std::path::Path;
 const INPUT_DIR: &str = "./inputs";
 
 fn main() -> io::Result<()> {
-    let num_perms: u64 = 1;
+    // Three permutations: the all-zero and all-(P - 1) boundaries, then a random state
+    let num_perms: u64 = 3;
 
     // Ensure the input directory exists
     let input_dir = Path::new(INPUT_DIR);
