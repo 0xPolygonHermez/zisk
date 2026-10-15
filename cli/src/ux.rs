@@ -119,7 +119,7 @@ pub(crate) fn print_execute_output(output: &ExecuteOutput) {
     let time = output.get_execution_time();
     let cost = format_cost(output.get_execution_cost());
     info!("Execution completed in {}ms, steps: {}, cost: {}", time, steps, cost);
-    print_execution_seed(output.get_seed());
+    print_execution_seed(output.get_execution_seed());
 
     let sep2 = " [ ".dimmed();
     let sep3 = " ] ".dimmed();

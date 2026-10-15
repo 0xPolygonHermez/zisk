@@ -83,14 +83,14 @@ impl AsmExecClient {
     }
 
     /// Run the program set up by [`setup`](Self::setup) once with the given
-    /// stdin and seed (`None` draws a fresh one). `hints` installs a precompile
-    /// hints stream (only effective when the client was set up with
-    /// `with_hints = true`). Returns an error if `setup` has not been called.
+    /// stdin. `hints` installs a precompile hints stream (only effective when
+    /// the client was set up with `with_hints = true`). A `None` seed draws a
+    /// fresh one. Returns an error if `setup` has not been called.
     pub fn execute(
         &self,
         stdin: ZiskStdin,
-        seed: Option<ExecutionSeed>,
         hints: Option<StreamSource>,
+        seed: Option<ExecutionSeed>,
     ) -> Result<ExecuteOutput> {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program, with_hints) before execute")?;
@@ -164,9 +164,9 @@ impl ExecuteClient for AsmExecClient {
         &self,
         _program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: Option<ExecutionSeed>,
         hints: Option<StreamSource>,
+        seed: Option<ExecutionSeed>,
     ) -> Result<ExecuteOutput> {
-        AsmExecClient::execute(self, stdin, seed, hints)
+        AsmExecClient::execute(self, stdin, hints, seed)
     }
 }

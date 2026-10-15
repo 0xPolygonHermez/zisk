@@ -489,6 +489,14 @@ impl ProverEngine for AsmProver {
             .unwrap_or_default()
     }
 
+    fn execution_seed(&self) -> Option<ExecutionSeed> {
+        self.core_prover
+            .backend
+            .execution_result()
+            .map(|(exec_result, _)| exec_result.seed)
+            .unwrap_or_default()
+    }
+
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
         self.core_prover.backend.get_execution_info()
     }
@@ -869,8 +877,8 @@ impl ExecuteClient for ZiskProver<Asm> {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: Option<ExecutionSeed>,
         hints: Option<StreamSource>,
+        seed: Option<ExecutionSeed>,
     ) -> Result<ExecuteOutput> {
         // Every call is a job boundary for this client, which executes many times after
         // one setup. Before the hints below — see `ZiskExecutor::reset_for_new_job`.

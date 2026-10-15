@@ -423,6 +423,9 @@ pub trait ProverEngine {
     /// Per-AIR instance plan from the last execution or proof run.
     fn execution_plan(&self) -> Vec<AirInstanceCount>;
 
+    /// Seed of the last execution or proof run; `None` before the first one.
+    fn execution_seed(&self) -> Option<ExecutionSeed>;
+
     /// Witness metadata and executor timing from the last run.
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)>;
 
@@ -737,6 +740,13 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Get the per-AIR instance plan from the last execution or proof run.
     pub fn execution_plan(&self) -> Vec<AirInstanceCount> {
         self.prover.execution_plan()
+    }
+
+    /// Get the seed of the last execution or proof run; `None` before the first one.
+    ///
+    /// For runs whose output does not carry the seed, such as [`stats`](Self::stats).
+    pub fn execution_seed(&self) -> Option<ExecutionSeed> {
+        self.prover.execution_seed()
     }
 
     /// Get the executor time from the last execution or proof run.

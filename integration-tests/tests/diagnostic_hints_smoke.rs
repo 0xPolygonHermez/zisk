@@ -54,7 +54,7 @@ fn execute_diagnostic_hints() {
 
     // Execute, streaming the hints in.
     let result = client
-        .execute(&ELF_DIAGNOSTIC_HINTS, ZiskStdin::new(), None, Some(hints))
+        .execute(&ELF_DIAGNOSTIC_HINTS, ZiskStdin::new(), Some(hints), None)
         .expect("execute failed");
 
     assert!(result.get_execution_steps() > 0, "execution did no work");

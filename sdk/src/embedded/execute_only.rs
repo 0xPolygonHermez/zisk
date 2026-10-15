@@ -157,14 +157,15 @@ impl EmbeddedExecuteOnlyClient {
     }
 
     /// Run a single execution. `program` must match the one passed to
-    /// `setup()`. A `None` seed draws a fresh one. Errors if `hints` is set
-    /// with the Emulator backend — mirroring the full embedded path's behavior.
+    /// `setup()`. Errors if `hints` is set with the Emulator backend —
+    /// mirroring the full embedded path's behavior. A `None` seed draws a
+    /// fresh one.
     pub fn execute(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: Option<ExecutionSeed>,
         hints: Option<ZiskHints>,
+        seed: Option<ExecutionSeed>,
     ) -> Result<ExecuteOutput> {
         if hints.is_some() && self.executor == ExecutorKind::Emulator {
             return Err(SdkError::UnsupportedExecutor(
@@ -172,7 +173,7 @@ impl EmbeddedExecuteOnlyClient {
             ));
         }
         self.prover
-            .execute(program, stdin.into_inner(), seed, hints.map(ZiskHints::into_inner))
+            .execute(program, stdin.into_inner(), hints.map(ZiskHints::into_inner), seed)
             .map_err(SdkError::backend)
     }
 }

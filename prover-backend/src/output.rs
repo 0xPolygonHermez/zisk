@@ -152,9 +152,9 @@ impl ExecuteOutput {
         self.plan.as_deref()
     }
 
-    /// Seed the execution ran with, needed to replay it. `None` when the coordinator that ran it
-    /// does not report it.
-    pub fn get_seed(&self) -> Option<ExecutionSeed> {
+    /// Seed the execution ran with. `None` only when the coordinator that ran it does not report
+    /// one.
+    pub fn get_execution_seed(&self) -> Option<ExecutionSeed> {
         self.seed
     }
 
@@ -244,10 +244,9 @@ impl ProveOutput {
         self.summary.cost
     }
 
-    /// Seed the proven execution ran with, needed to replay it. `None` for proofs that do not
-    /// come from a single execution (aggregates) or when the coordinator that ran it does not
-    /// report it.
-    pub fn get_seed(&self) -> Option<ExecutionSeed> {
+    /// Seed the proven execution ran with. `None` for proofs that do not come from a single
+    /// execution (aggregates) or when the coordinator that ran it does not report one.
+    pub fn get_execution_seed(&self) -> Option<ExecutionSeed> {
         self.proof.seed
     }
 
@@ -378,8 +377,8 @@ impl VerifyConstraintsOutput {
         self.summary.time
     }
 
-    /// Seed the execution ran with, needed to replay it.
-    pub fn get_seed(&self) -> Option<ExecutionSeed> {
+    /// Seed the execution ran with. Always set for outputs built from an execution.
+    pub fn get_execution_seed(&self) -> Option<ExecutionSeed> {
         self.seed
     }
 }

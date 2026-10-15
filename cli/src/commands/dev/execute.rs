@@ -208,7 +208,7 @@ impl ExecuteCmd {
         let start = std::time::Instant::now();
         prover.setup(&guest_program, with_hints)?;
         let result: ExecuteOutput =
-            prover.execute(&guest_program, stdin, self.seed.forced(), hints_stream)?;
+            prover.execute(&guest_program, stdin, hints_stream, self.seed.forced())?;
         let total_duration = start.elapsed().as_millis() as u64;
 
         if rank_zero {
@@ -239,7 +239,7 @@ impl ExecuteCmd {
                 result.get_executor_time(),
                 total_duration,
                 result.get_execution_steps(),
-                result.get_seed(),
+                result.get_execution_seed(),
                 if self.standalone { "Setup" } else { "Proofman" },
             );
         }

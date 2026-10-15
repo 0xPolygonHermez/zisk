@@ -95,7 +95,7 @@ impl ZiskEmbeddedExecute {
 
         client.setup(&program, hints.is_some())?;
 
-        let result = client.execute(&program, stdin, self.seed.forced(), hints)?;
+        let result = client.execute(&program, stdin, hints, self.seed.forced())?;
 
         info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
         print_execute_output(&result);

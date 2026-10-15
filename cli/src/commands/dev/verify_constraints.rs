@@ -152,7 +152,7 @@ impl VerifyConstraintsCmd {
             result.get_executor_time(),
             result.get_duration(),
             result.get_execution_steps(),
-            result.get_seed(),
+            result.get_execution_seed(),
             "Proofman",
         );
 

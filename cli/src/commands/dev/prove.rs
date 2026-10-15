@@ -268,7 +268,7 @@ impl ProveCmd {
             &executor_time,
             result.get_proving_time(),
             result.get_execution_steps(),
-            result.get_seed(),
+            result.get_execution_seed(),
             "Proofman",
         );
 

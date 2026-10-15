@@ -80,8 +80,8 @@ impl ExecuteClient for EmuExecClient {
         &self,
         _program: &GuestProgram,
         stdin: ZiskStdin,
-        seed: Option<ExecutionSeed>,
         _hints: Option<StreamSource>,
+        seed: Option<ExecutionSeed>,
     ) -> Result<ExecuteOutput> {
         EmuExecClient::execute(self, stdin, seed)
     }

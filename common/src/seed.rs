@@ -101,10 +101,20 @@ impl FromStr for ExecutionSeed {
                 digits.len()
             )));
         }
-        let padded = format!("{digits:0>width$}", width = 2 * Self::LEN);
+        let padding = 2 * Self::LEN - digits.len();
+        let padded = format!("{}{digits}", "0".repeat(padding));
         let mut bytes = [0u8; Self::LEN];
-        hex::decode_to_slice(&padded, &mut bytes)
-            .map_err(|e| CommonError::Invalid(format!("invalid execution seed: {e}")))?;
+        hex::decode_to_slice(&padded, &mut bytes).map_err(|e| {
+            let detail = match e {
+                // Point into the caller's string, not into the zero-padded one.
+                hex::FromHexError::InvalidHexCharacter { c, index } => {
+                    let position = s.len() - digits.len() + index - padding;
+                    format!("invalid character {c:?} at position {position}")
+                }
+                other => other.to_string(),
+            };
+            CommonError::Invalid(format!("invalid execution seed: {detail}"))
+        })?;
         Ok(Self(bytes))
     }
 }
@@ -172,6 +182,15 @@ mod tests {
         assert!("0x".parse::<ExecutionSeed>().is_err());
         assert!(format!("{HEX}0").parse::<ExecutionSeed>().is_err());
         assert!("1g".parse::<ExecutionSeed>().is_err());
+    }
+
+    /// The position must point into what the user typed, not into the zero-padded form.
+    #[test]
+    fn from_str_reports_the_bad_character_at_its_position_in_the_input() {
+        let err = "xyz".parse::<ExecutionSeed>().unwrap_err().to_string();
+        assert!(err.contains("'x' at position 0"), "{err}");
+        let err = "0x1g".parse::<ExecutionSeed>().unwrap_err().to_string();
+        assert!(err.contains("'g' at position 3"), "{err}");
     }
 
     #[test]

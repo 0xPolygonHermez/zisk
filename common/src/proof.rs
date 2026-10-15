@@ -1067,9 +1067,10 @@ impl Proof {
         Self { body, program_vk, seed: None }
     }
 
-    /// Sets the seed of the execution this proof attests to.
-    pub fn with_seed(mut self, seed: Option<ExecutionSeed>) -> Self {
-        self.seed = seed;
+    /// Sets the seed of the execution this proof attests to. Takes an `Option` too, so callers
+    /// can pass through a seed they may not have.
+    pub fn with_seed(mut self, seed: impl Into<Option<ExecutionSeed>>) -> Self {
+        self.seed = seed.into();
         self
     }
 
@@ -2019,8 +2020,8 @@ mod tests {
     #[test]
     fn proof_save_load_roundtrip_keeps_the_seed() {
         let tmp = std::env::temp_dir().join(format!("proof_seed_{}.bin", std::process::id()));
-        let original = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
-            .with_seed(Some(test_seed()));
+        let original =
+            vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4])).with_seed(test_seed());
 
         original.save(&tmp).unwrap();
         let loaded = Proof::load(&tmp).unwrap();
@@ -2049,8 +2050,8 @@ mod tests {
     /// Fields a later version appends must not stop this version from reading the file.
     #[test]
     fn from_bytes_ignores_fields_appended_after_the_seed() {
-        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
-            .with_seed(Some(test_seed()));
+        let proof =
+            vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4])).with_seed(test_seed());
         let mut bytes = encode(&proof);
         bytes.extend_from_slice(&[1, 2, 3]);
 
@@ -2059,8 +2060,8 @@ mod tests {
 
     #[test]
     fn from_bytes_rejects_a_truncated_seed() {
-        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
-            .with_seed(Some(test_seed()));
+        let proof =
+            vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4])).with_seed(test_seed());
         let bytes = encode(&proof);
 
         assert!(Proof::from_bytes(&bytes[..bytes.len() - 1]).is_err());

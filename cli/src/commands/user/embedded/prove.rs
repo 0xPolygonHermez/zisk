@@ -193,7 +193,7 @@ impl ZiskEmbeddedProve {
             result.get_proving_time() as f64 / 1000.0,
             result.get_execution_steps()
         );
-        print_execution_seed(result.get_seed());
+        print_execution_seed(result.get_execution_seed());
         info!("Proof saved to {}", output_file.display());
 
         Ok(())
