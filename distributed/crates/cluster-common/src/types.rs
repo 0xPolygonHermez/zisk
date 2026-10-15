@@ -689,7 +689,7 @@ pub struct ContributionsMessage {
     pub hints_source: HintsSourceDto,
     /// This rank's partition.
     pub partition_info: PartitionInfo,
-    /// The job's random seed, shared by every rank.
+    /// The job's host randomness seed, shared by every rank.
     pub random_seed: [u8; RandomSeed::LEN],
 }
 

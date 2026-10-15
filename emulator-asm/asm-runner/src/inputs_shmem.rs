@@ -82,9 +82,8 @@ impl InputsShmemWriter {
         Ok(())
     }
 
-    /// Sets the seed of `zkvm_random_u64` for the next execution in the control shared
-    /// memory. Call it before the ASM services start that execution; the next `reset()`
-    /// clears it.
+    /// Sets the host randomness seed for the next execution in the control shared memory. Call it
+    /// before the ASM services start that execution; the next `reset()` clears it.
     pub fn set_random_seed(&self, seed: &[u64; RANDOM_SEED_WORDS]) -> Result<()> {
         self.control_writer.set_random_seed(seed)
     }

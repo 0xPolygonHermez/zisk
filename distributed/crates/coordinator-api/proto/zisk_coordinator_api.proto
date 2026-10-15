@@ -132,9 +132,9 @@ message Proof {
   bytes                     public_inputs    = 6;
   google.protobuf.Timestamp started_at       = 7;
   google.protobuf.Timestamp completed_at     = 8;
-  // 32-byte seed of the execution the proof attests to, also kept inside `data`. Set in
-  // responses (absent for aggregates). Not used in requests, where it must be absent or 32 bytes.
-  optional bytes            random_seed             = 9;
+  // 32-byte host randomness seed of the execution the proof attests to, also kept inside `data`.
+  // Set in responses (absent for aggregates); ignored in requests, but must be absent or 32 bytes.
+  optional bytes            random_seed      = 9;
 }
 
 // RPC-level error — returned in Status details for programmatic inspection.
@@ -264,9 +264,9 @@ message ProveRequest {
   optional google.protobuf.Timestamp proof_timeout = 3;
   ProofKind                 proof_dest    = 4;
   optional InputKind        hints         = 5;
-  // Uses this 32-byte random seed instead of drawing a fresh one. Rejected unless the
+  // Uses this 32-byte host randomness seed instead of drawing a fresh one. Rejected unless the
   // coordinator is configured to allow client random seeds.
-  optional bytes            random_seed          = 6;
+  optional bytes            random_seed   = 6;
 }
 
 message ProveResponse {
@@ -311,16 +311,17 @@ message ExecuteRequest {
   InputKind                 input           = 2;
   optional google.protobuf.Timestamp execute_timeout = 3;
   optional InputKind        hints           = 4;
-  // Uses this 32-byte random seed instead of drawing a fresh one. Rejected unless the
+  // Uses this 32-byte host randomness seed instead of drawing a fresh one. Rejected unless the
   // coordinator is configured to allow client random seeds.
-  optional bytes            random_seed            = 5;
+  optional bytes            random_seed     = 5;
 }
 
 message ExecuteResponse {
   ExecutionStats stats          = 1;
   bytes          public_outputs = 2;
-  // 32-byte seed the execution ran with; replays it when passed back as the request `seed`.
-  optional bytes random_seed           = 3;
+  // 32-byte host randomness seed the execution ran with; passing it back as the request's
+  // `random_seed` reproduces the run.
+  optional bytes random_seed    = 3;
 }
 
 message JobKindResponse {

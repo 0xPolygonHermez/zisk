@@ -6,7 +6,7 @@ use ziskemu::{
     ZiskEmulatorErr, ZISK_VERSION_MESSAGE,
 };
 
-/// ziskemu's command line: the emulator options plus the random seed.
+/// ziskemu's command line: the emulator options plus the host randomness seed.
 #[derive(Parser)]
 #[command(version = ZISK_VERSION_MESSAGE, about, long_about = None)]
 struct Cli {
@@ -64,7 +64,7 @@ fn main() {
         println!("ziskemu converts an ELF RISCV file into a ZISK rom or loads a ZISK rom file, emulates it with the provided input, and copies the output to console or a file");
     }
 
-    // Each execution gets a fresh seed for the host randomness generator, unless one is given.
+    // Each execution gets a fresh host randomness seed, unless one is given.
     // Reported on stderr: stdout may carry the guest output (--log-output, --log-output-riscof).
     let provided = seed.provided();
     let random_seed = match provided.map_or_else(RandomSeed::random, Ok) {

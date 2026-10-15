@@ -355,9 +355,9 @@ impl AsmResources {
             .map_err(ExecutorError::asm_backend)
     }
 
-    /// Sets the seed of `zkvm_random_u64` for the next execution, which the ASM services
-    /// read from the control shared memory when they start it. Call it before `execute`
-    /// spawns them, like `write_input`.
+    /// Sets the host randomness seed for the next execution, which the ASM services read from the
+    /// control shared memory when they start it. Call it before `execute` spawns them, like
+    /// `write_input`.
     pub fn write_random_seed(&self, seed: &RandomSeed) -> ExecutorResult<()> {
         self.shared
             .shmem_inputs

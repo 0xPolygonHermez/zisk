@@ -556,7 +556,8 @@ impl ProverBackend {
             program_vk,
         );
 
-        // No guest runs here; the result keeps the seed of the execution the source proof attests.
+        // No guest runs here; the result keeps the seed of the execution the source proof
+        // attests to.
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof).with_random_seed(seed))
     }
 
@@ -638,7 +639,8 @@ impl ProverBackend {
             ),
         );
 
-        // No guest runs here; the result keeps the seed of the execution the source proof attests.
+        // No guest runs here; the result keeps the seed of the execution the source proof
+        // attests to.
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof).with_random_seed(seed))
     }
 

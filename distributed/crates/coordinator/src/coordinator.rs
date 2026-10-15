@@ -1265,7 +1265,7 @@ impl Coordinator {
         });
     }
 
-    /// The job's random seed: a fresh one, or the client's when it sent one and
+    /// The job's host randomness seed: a fresh one, or the client's when it sent one and
     /// `allow_client_random_seed` is set; a client random seed is otherwise rejected
     /// (`ClientRandomSeedNotAllowed`). Decided here, once per job, because every worker must run
     /// with it.

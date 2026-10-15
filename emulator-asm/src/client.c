@@ -841,7 +841,7 @@ void client_run (void)
             exit(-1);
         }
 
-        // Pass the seed of zkvm_random_u64 through the control input, flag last; without
+        // Pass the host randomness seed through the control input, flag last; without
         // one, clear the flag so a previous run's seed is not reused
         if (random_seed_argument_set)
         {

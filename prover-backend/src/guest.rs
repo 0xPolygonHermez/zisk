@@ -197,8 +197,8 @@ impl GuestProgram {
         self.run_emulation_with_random_seed(stdin, profiling, None).map(|_| ())
     }
 
-    /// [`run_emulation`](Self::run_emulation) with a provided random seed; `None` draws a fresh
-    /// one. Returns the seed the run used.
+    /// [`run_emulation`](Self::run_emulation) with a provided host randomness seed; `None` draws a
+    /// fresh one. Returns the seed the run used.
     pub fn run_emulation_with_random_seed(
         &self,
         stdin: ZiskStdin,

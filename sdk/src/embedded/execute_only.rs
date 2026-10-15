@@ -129,7 +129,7 @@ impl EmbeddedExecuteOnlyBuilder {
 /// let program = GuestProgram::from_uri("path/to/elf")?;
 ///
 /// client.setup(&program, false)?;
-/// let out = client.execute(&program, ZiskStdin::new(), None, None)?;
+/// let out = client.execute(&program, ZiskStdin::new(), /* hints */ None, /* seed */ None)?;
 /// assert!(out.get_execution_steps() > 0);
 /// ```
 pub struct EmbeddedExecuteOnlyClient {

@@ -35,7 +35,7 @@ void print_usage (void)
     asm_printf("\t-o output on\n");
     asm_printf("\t--output_riscof output riscof on\n");
     asm_printf("\t--silent silent on\n");
-    asm_printf("\t--random_seed <seed> (seed of zkvm_random_u64: 32 bytes as 64 hex digits; client: sent through the control input; server: used when the control input carries none)\n");
+    asm_printf("\t--random_seed <seed> (host randomness seed: 32 bytes as 64 hex digits; client: sent through the control input; server: used when the control input carries none)\n");
     asm_printf("\t--shm_prefix <prefix> (default: \"ZISK\")\n");
     asm_printf("\t--sem_prefix <prefix> (default: shm_prefix)\n");
     asm_printf("\t-m metrics on\n");

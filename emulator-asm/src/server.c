@@ -1076,7 +1076,7 @@ void server_run (void)
         exit(-1);
     }
 
-    // Seed of zkvm_random_u64 for this execution: the control input's, else --random_seed's,
+    // Host randomness seed for this execution: the control input's, else --random_seed's,
     // else none, so that the guest fails if it asks for one. Never a previous execution's
     if (shmem_control_input_address[CONTROL_INPUT_RANDOM_SEED_SET_INDEX] != 0)
     {

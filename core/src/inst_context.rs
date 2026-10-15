@@ -142,8 +142,8 @@ pub struct InstContext {
     /// Input data length, stored in the context to be used by the FCALL_INPUT_READY_ID fcall
     pub input_len: u64,
 
-    /// Seed of the host randomness generator (256 bits, as little-endian words), returned by
-    /// the FCALL_RANDOM_SEED_ID fcall. Provided with each execution; `None` makes that fcall fail
+    /// Host randomness seed (256 bits, as little-endian words), returned by the
+    /// FCALL_RANDOM_SEED_ID fcall. Provided with each execution; `None` makes that fcall fail
     pub random_seed: Option<[u64; RANDOM_SEED_WORDS]>,
 }
 

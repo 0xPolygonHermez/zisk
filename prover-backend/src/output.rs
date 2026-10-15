@@ -152,8 +152,9 @@ impl ExecuteOutput {
         self.plan.as_deref()
     }
 
-    /// Seed the execution ran with. `None` only when the coordinator that ran it does not report
-    /// one.
+    /// The host randomness seed the execution ran with, which decided the values the guest got from
+    /// `zkvm_random_u64`. Passing it to `.random_seed()` on a new request reproduces the run.
+    /// `None` only when a remote coordinator that predates this field ran it.
     pub fn get_random_seed(&self) -> Option<RandomSeed> {
         self.random_seed
     }
@@ -244,8 +245,9 @@ impl ProveOutput {
         self.summary.cost
     }
 
-    /// Seed the proven execution ran with. `None` for proofs that do not come from a single
-    /// execution (aggregates) or when the coordinator that ran it does not report one.
+    /// The host randomness seed the proven execution ran with (see
+    /// [`ExecuteOutput::get_random_seed`]). `None` for proofs that do not come from a single
+    /// execution (aggregates), or when a remote coordinator that predates this field ran it.
     pub fn get_random_seed(&self) -> Option<RandomSeed> {
         self.proof.random_seed
     }
@@ -377,7 +379,8 @@ impl VerifyConstraintsOutput {
         self.summary.time
     }
 
-    /// Seed the execution ran with. Always set for outputs built from an execution.
+    /// Host randomness seed the execution ran with. Always set for outputs built from an
+    /// execution.
     pub fn get_random_seed(&self) -> Option<RandomSeed> {
         self.random_seed
     }

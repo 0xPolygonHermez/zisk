@@ -501,7 +501,7 @@ pub trait ProverEngine {
     /// verifies under. Callers pass the stored kind and the backend does both.
     ///
     /// `seed` is the wrapped proof's own seed: wrapping re-proves its statement without running
-    /// the guest, so the result attests the same execution and keeps it.
+    /// the guest, so the result attests to the same execution and keeps its seed.
     fn wrap_proof(
         &self,
         proof: &[u64],
@@ -1133,8 +1133,8 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
         }
     }
 
-    /// Use this random seed instead of drawing a fresh one. Takes an `Option` too, so callers
-    /// can pass through a seed they may not have.
+    /// Use this host randomness seed instead of drawing a fresh one. Takes an `Option` too, so
+    /// callers can pass through a seed they may not have.
     pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
         self.random_seed = seed.into();
         self

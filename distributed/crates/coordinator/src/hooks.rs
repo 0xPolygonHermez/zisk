@@ -15,7 +15,7 @@ use zisk_common::RandomSeed;
 /// * `job_id` - The ID of the job that has completed or failed.
 /// * `duration_ms` - Duration of the job in milliseconds.
 /// * `proof_data` - Optional bincode-encoded `Proof` to include in the payload.
-/// * `seed` - The job's random seed, if it ran one.
+/// * `seed` - The job's host randomness seed, if it ran one.
 pub async fn send_completion_webhook(
     webhook_url: String,
     job_id: JobId,
@@ -36,7 +36,7 @@ pub async fn send_completion_webhook(
 /// * `duration_ms` - Duration of the job in milliseconds.
 /// * `error_code` - Error code representing the type of failure.
 /// * `error_message` - Human-readable error message.
-/// * `seed` - The job's random seed, if it ran one, to replay the failure.
+/// * `seed` - The job's host randomness seed, if it ran one, to replay the failure.
 pub async fn send_failure_webhook(
     webhook_url: String,
     job_id: JobId,

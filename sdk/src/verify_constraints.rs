@@ -107,8 +107,8 @@ impl<'a, C> VerifyConstraintsRequest<'a, C> {
         self
     }
 
-    /// Use this random seed instead of drawing a fresh one. Every result reports the seed it
-    /// ran with.
+    /// Use this host randomness seed instead of drawing a fresh one. Every result reports the seed
+    /// it ran with.
     #[must_use]
     pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
         self.random_seed = seed.into();

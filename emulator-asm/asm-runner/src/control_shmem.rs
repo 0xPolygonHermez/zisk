@@ -15,13 +15,13 @@ enum ControlShmemOffsets {
     ShutdownFlag = 8,
     InputsSize = 16,
     ResetFlag = 24,
-    /// The seed of `zkvm_random_u64` for the next execution: 4 little-endian u64 words
+    /// The host randomness seed for the next execution: 4 little-endian u64 words.
     RandomSeed = 32,
-    /// 1 once `RandomSeed` holds the seed, 0 for none (the guest then fails if it asks)
+    /// 1 once the `RandomSeed` slot holds the seed, 0 for none (the guest then fails if it asks).
     RandomSeedSet = 64,
 }
 
-/// Size of the `zkvm_random_u64` seed in u64 words (256 bits)
+/// Size of the host randomness seed in u64 words (256 bits).
 pub const RANDOM_SEED_WORDS: usize = 4;
 
 impl ControlShmem {
@@ -47,8 +47,8 @@ impl ControlShmem {
         Ok(())
     }
 
-    /// Sets the seed of `zkvm_random_u64` that the ASM services read when they start the next
-    /// execution. Write it before they start: the words first, then the flag
+    /// Sets the host randomness seed that the ASM services read when they start the next execution.
+    /// Write it before they start: the words first, then the flag.
     pub fn set_random_seed(&self, seed: &[u64; RANDOM_SEED_WORDS]) -> Result<()> {
         for (i, word) in seed.iter().enumerate() {
             self.writer.write_u64_at(ControlShmemOffsets::RandomSeed as usize + 8 * i, *word)?;
@@ -57,7 +57,7 @@ impl ControlShmem {
         Ok(())
     }
 
-    /// Clears the seed of `zkvm_random_u64`, so that a guest that asks for one fails
+    /// Clears the host randomness seed, so that a guest that asks for one fails.
     pub fn clear_random_seed(&self) -> Result<()> {
         self.writer.write_u64_at(ControlShmemOffsets::RandomSeedSet as usize, 0)?;
         for i in 0..RANDOM_SEED_WORDS {

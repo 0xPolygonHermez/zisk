@@ -13,7 +13,7 @@ use crate::common::detect_current_project_elf;
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_random_seed};
 
 /// What a stats run reports: world rank, number of processes, the stats (`None` on inactive
-/// ranks) and the random seed (`None` where nothing ran).
+/// ranks) and the host randomness seed (`None` where nothing ran).
 type StatsRun = (i32, i32, Option<ExecutorStatsHandle>, Option<RandomSeed>);
 
 #[derive(clap::Args)]

@@ -5793,8 +5793,8 @@ impl ZiskRom2Asm {
                         ctx.fcall_ctx,
                         ctx.comment_str("rdi = fcall context")
                     );
-                    // Get result from precompile results data, except the random seed, which
-                    // is not part of the hints: the emulator always provides it itself
+                    // Get result from precompile results data, except the host randomness seed,
+                    // which is not part of the hints: the emulator always provides it itself
                     if ctx.precompile_results_fcall()
                         && ctx.a.constant_value != FCALL_RANDOM_SEED_ID as u64
                     {

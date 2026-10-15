@@ -200,7 +200,8 @@ pub struct ZiskExecutorSummary {
     pub cost_per_type: StatsCostPerType,
     /// Per-AIR instance plan. Empty unless produced by a planning executor run.
     pub plan: Vec<AirInstanceCount>,
-    /// Seed the execution ran with. `None` only for summaries that do not come from an execution.
+    /// Host randomness seed the execution ran with. `None` only for summaries that do not come
+    /// from an execution.
     pub random_seed: Option<RandomSeed>,
 }
 

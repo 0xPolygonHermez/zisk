@@ -734,7 +734,7 @@ pub struct Proof {
     pub body: ProofBody,
     /// The program verification key.
     pub program_vk: ProgramVK,
-    /// Seed of the execution this proof attests to.
+    /// Host randomness seed of the execution this proof attests to.
     ///
     /// Unauthenticated metadata: verification ignores it, as the values derived from it are
     /// free witness values. `None` for proofs that do not come from a single execution
@@ -1061,8 +1061,8 @@ impl<'a> ZiskVerifyBuilder<'a> {
 impl Proof {
     /// Creates a new `Proof` from a body and program verification key, with no seed.
     ///
-    /// When the proof attests an execution, chain [`Proof::with_random_seed`] to keep its seed;
-    /// otherwise a proof saved from it cannot be replayed.
+    /// When the proof attests to an execution, chain [`Proof::with_random_seed`] to keep its
+    /// seed; otherwise a proof saved from it cannot be replayed.
     pub fn new(body: ProofBody, program_vk: ProgramVK) -> Self {
         Self { body, program_vk, random_seed: None }
     }
@@ -1210,7 +1210,7 @@ impl Proof {
             |e: bincode::error::DecodeError| CommonError::Deserialization(e.to_string());
 
         // bincode encodes a struct as the tuple of its fields, so this reads the fields every
-        // serialized proof starts with, including those written before `seed` existed.
+        // serialized proof starts with, including those written before `random_seed` existed.
         let ((body, program_vk), head_len) =
             bincode::serde::decode_from_slice::<(ProofBody, ProgramVK), _>(bytes, config)
                 .map_err(decode_err)?;
@@ -1406,8 +1406,8 @@ impl Proof {
     ///
     /// A Proof containing the parsed proof, publics, and program VK, with no seed: the flat
     /// u64 form (as produced by [`Proof::get_proof_u64`]) does not carry one. When the proof
-    /// attests an execution, chain [`Proof::with_random_seed`] to keep its seed; otherwise a proof
-    /// saved from it cannot be replayed.
+    /// attests to an execution, chain [`Proof::with_random_seed`] to keep its seed; otherwise a
+    /// proof saved from it cannot be replayed.
     ///
     /// # Errors
     ///

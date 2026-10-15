@@ -111,8 +111,9 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         self
     }
 
-    /// Use this random seed instead of drawing a fresh one. Every result reports the seed it ran
-    /// with. A remote coordinator rejects it unless it is configured to allow client random seeds.
+    /// Use this host randomness seed instead of drawing a fresh one. Every result reports the seed
+    /// it ran with. A remote coordinator rejects it unless it is configured to allow client random
+    /// seeds.
     #[must_use]
     pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
         self.random_seed = seed.into();
@@ -241,8 +242,9 @@ impl<'a> ProveRequestExt<'a> {
         self
     }
 
-    /// Use this random seed instead of drawing a fresh one. Every result reports the seed it ran
-    /// with. A remote coordinator rejects it unless it is configured to allow client random seeds.
+    /// Use this host randomness seed instead of drawing a fresh one. Every result reports the seed
+    /// it ran with. A remote coordinator rejects it unless it is configured to allow client random
+    /// seeds.
     #[must_use]
     pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
         self.random_seed = seed.into();

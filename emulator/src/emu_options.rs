@@ -291,9 +291,10 @@ pub struct EmuOptions {
     pub disasm: Option<String>,
     #[clap(long, value_name = "MAX_INPUT_MEM", default_value = "134217728")] // 128 MiB
     pub max_input_mem: u64,
-    /// Seed of the host randomness generator (`zkvm_random_u64`). Not a flag here: ziskemu takes
-    /// it through `--random-seed` and fills it in. A full emulation needs one, as there is no safe
-    /// default; replays from minimal traces do not read it.
+    /// Host randomness seed (`zkvm_random_u64`). Not a flag here: ziskemu takes it through
+    /// `--random-seed` and fills it in. A full emulation needs one, as there is no safe default;
+    /// re-emulating chunks from minimal traces does not read it (the fcall results come from the
+    /// traces).
     #[clap(skip)]
     pub random_seed: Option<RandomSeed>,
     /// In mode fast, without stats, show coverage steps consumed without stats.

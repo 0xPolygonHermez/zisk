@@ -1,18 +1,20 @@
-//! Per-execution random seed.
+//! Per-execution host randomness seed.
 //!
 //! Every execution of a guest runs with a 256-bit seed from which the emulators derive the values
-//! returned to the guest by `zkvm_random_u64`. Those values are free witness values: they are not
-//! proven, so the seed only matters for reproducing a run. A seed is drawn from the OS CSPRNG for
-//! every task unless one is provided (replays, tests, CI). It is decided once per task, before
-//! any emulator runs, because every emulation of the task (parallel emulator threads, MPI ranks,
-//! distributed workers) must see the same values.
+//! returned to the guest by `zkvm_random_u64`. Those values are free witness values: the proof
+//! does not constrain them, so the seed is not part of what it attests to. It must be fresh, so
+//! whoever writes the input cannot predict the values, and it is kept, so the run can be
+//! reproduced. A seed is drawn from the OS CSPRNG for every task unless one is provided (tests,
+//! CI, reproducing a run). It is decided once per task, before any emulator runs, because every
+//! emulation of the task (parallel emulator threads, MPI ranks, distributed workers) must see the
+//! same values.
 
 use crate::error::{CommonError, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-/// The 256-bit seed of one execution.
+/// The 256-bit host randomness seed of one execution.
 ///
 /// Displayed as 64 hex characters. [`FromStr`] takes 1 to 64 hex characters, optionally `0x` or
 /// `0X` prefixed, and left-pads shorter ones with zeros, so `10` is the seed `00…0010`.
@@ -109,8 +111,7 @@ impl fmt::Debug for RandomSeed {
     }
 }
 
-/// `--random-seed` / `ZISK_RANDOM_SEED`, for every command that runs a guest (ziskemu, cargo-zisk,
-/// cargo-zisk-dev, zisk-prove-client).
+/// `--random-seed` / `ZISK_RANDOM_SEED`, for every command that runs a guest.
 ///
 /// Under `mpirun` every rank parses its own arguments and environment, so all of them must see
 /// the same value: prefer `--random-seed`, or export the variable to every rank (Open MPI:
@@ -155,7 +156,7 @@ mod tests {
 
     #[test]
     fn to_le_words_packs_the_bytes_in_order() {
-        // The words the guest reads: the same as `ziskemu --random-seed <HEX>`
+        // The words the guest reads through `zkvm_random_u64`: the seed's bytes in order.
         assert_eq!(
             counting_seed().to_le_words(),
             [0x0706050403020100, 0x0f0e0d0c0b0a0908, 0x1716151413121110, 0x1f1e1d1c1b1a1918]

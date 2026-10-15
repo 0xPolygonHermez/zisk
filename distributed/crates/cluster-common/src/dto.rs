@@ -90,9 +90,9 @@ pub struct LaunchProofRequestDto {
     pub execution_only: bool,
     /// The kind of proof requested.
     pub proof_type: ProofKind,
-    /// Random seed provided by the client; `None` draws a fresh one. If the coordinator does not
-    /// allow client random seeds, the job is rejected (`ClientRandomSeedNotAllowed`) rather than
-    /// run with a different seed.
+    /// Host randomness seed provided by the client; `None` draws a fresh one. If the coordinator
+    /// does not allow client random seeds, the job is rejected (`ClientRandomSeedNotAllowed`)
+    /// rather than run with a different seed.
     pub random_seed: Option<RandomSeed>,
 }
 
@@ -395,7 +395,7 @@ pub struct ContributionParamsDto {
     pub worker_allocation: Vec<u32>,
     /// Total compute units for the job.
     pub job_compute_units: ComputeCapacity,
-    /// The job's random seed, the same for every worker.
+    /// The job's host randomness seed, the same for every worker.
     pub random_seed: RandomSeed,
 }
 
@@ -761,7 +761,7 @@ pub struct WebhookPayloadDto {
     /// The proof bytes, when included.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof_data: Option<Vec<u8>>,
-    /// The job's random seed (hex), to replay it. Absent for jobs that run no execution.
+    /// The job's host randomness seed (hex), to replay it. Absent for jobs that run no execution.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub random_seed: Option<String>,
 }

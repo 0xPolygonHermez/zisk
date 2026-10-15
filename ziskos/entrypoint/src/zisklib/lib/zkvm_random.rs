@@ -1,6 +1,6 @@
 //! Standard zkVM host randomness implementing the C interface from zkvm_random.h.
 //!
-//! This function implements the standard interface defined in:
+//! This module implements the standard interface defined in:
 //! https://github.com/eth-act/zkvm-standards/tree/main/standards/host-randomness
 //!
 //! The values are the SHAKE256 output stream of a 256-bit seed (its 32 bytes), read as
@@ -45,7 +45,7 @@ struct Shake256Stream {
 
 #[cfg(all(not(zisk_guest), not(any(feature = "hints", zisk_hints, zisk_hints_debug))))]
 impl Shake256Stream {
-    /// SHAKE256 rate in 64-bit words (136 bytes)
+    /// SHAKE256 rate in 64-bit words (136 bytes).
     const RATE: usize = 17;
 
     fn new(seed: [u64; RANDOM_SEED_WORDS]) -> Self {

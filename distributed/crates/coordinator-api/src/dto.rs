@@ -142,8 +142,8 @@ pub struct DomainProof {
     pub started_at: Option<DateTime<Utc>>,
     /// When proving completed, if known.
     pub completed_at: Option<DateTime<Utc>>,
-    /// Seed of the execution the proof attests to, the same one `data` carries. Set in
-    /// responses (`None` for aggregates); not used in requests.
+    /// Host randomness seed of the execution the proof attests to, the same one `data` carries.
+    /// Set in responses (`None` for aggregates); not used in requests.
     pub random_seed: Option<RandomSeed>,
 }
 
@@ -196,7 +196,7 @@ pub struct DomainProveRequest {
     pub input: DomainInputKind,
     /// Optional precompile hints input.
     pub hints: Option<DomainInputKind>,
-    /// Random seed to use instead of drawing a fresh one (replays). A coordinator that
+    /// Host randomness seed to use instead of drawing a fresh one (replays). A coordinator that
     /// does not allow client random seeds rejects the job rather than run it with a different seed.
     pub random_seed: Option<RandomSeed>,
     /// Optional deadline for the proof.
@@ -225,7 +225,7 @@ pub struct DomainExecuteRequest {
     pub input: DomainInputKind,
     /// Optional precompile hints input.
     pub hints: Option<DomainInputKind>,
-    /// Random seed to use instead of drawing a fresh one (replays). A coordinator that
+    /// Host randomness seed to use instead of drawing a fresh one (replays). A coordinator that
     /// does not allow client random seeds rejects the job rather than run it with a different seed.
     pub random_seed: Option<RandomSeed>,
     /// Optional deadline for the execution.
@@ -341,7 +341,10 @@ pub enum DomainJobKindResponse {
         stats: DomainExecutionStats,
         /// The program's public outputs.
         public_outputs: Vec<u8>,
-        /// Seed the execution ran with. `None` when the coordinator does not report it.
+        /// The host randomness seed the execution ran with, which decided the values the guest got
+        /// from `zkvm_random_u64`. Sending it back as the request's `random_seed` reproduces the
+        /// run, if the coordinator accepts client random seeds. `None` only in a response from a
+        /// coordinator that predates this field.
         random_seed: Option<RandomSeed>,
     },
     /// Aggregation-program setup result.
