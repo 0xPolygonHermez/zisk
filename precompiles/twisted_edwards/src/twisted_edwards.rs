@@ -8,7 +8,8 @@ use zisk_pil::{TwistedEdwardsTraceRowOps, ZISK_AIRGROUP_ID};
 
 use crate::{
     executors::{self, TwistedEdwardsCurve},
-    TwistedEdwardsAddInput, TwistedEdwardsInput, TWISTED_EDWARDS_OP_NUM, TWISTED_EDWARDS_ROWS_BY_OP,
+    TwistedEdwardsAddInput, TwistedEdwardsInput, TWISTED_EDWARDS_OP_NUM,
+    TWISTED_EDWARDS_ROWS_BY_OP,
 };
 use rayon::prelude::*;
 

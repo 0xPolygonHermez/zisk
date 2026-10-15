@@ -2,10 +2,10 @@
 //!
 //! Two variants:
 //! - [`ed25519_verify`]: Cofactorless check `[s]B - [k]A == R`, done by recomputing `R` and
-//!    comparing its canonical encoding with the signature bytes; `s >= L` is rejected; `A`
-//!    is decompressed as `curve25519-dalek` does.
+//!   comparing its canonical encoding with the signature bytes; `s >= L` is rejected; `A`
+//!   is decompressed as `curve25519-dalek` does.
 //! - [`ed25519_verify_strict`]: Additionally requires `R` to decompress and rejects a small-order
-//!    `A` or `R` (weak keys and their forgeries).
+//!   `A` or `R` (weak keys and their forgeries).
 //!
 //! `k = SHA-512(R ‖ A ‖ M) mod L` hashes the encodings exactly as given.
 

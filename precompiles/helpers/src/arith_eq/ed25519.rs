@@ -23,12 +23,8 @@ pub struct Ed25519FieldConfig;
 pub type Ed25519Field = Fp256<MontBackend<Ed25519FieldConfig, 4>>;
 
 /// d = −121665/121666 mod p
-const ED25519_D: BigInt<4> = BigInt([
-    0x75EB4DCA135978A3,
-    0x00700A4D4141D8AB,
-    0x8CC740797779E898,
-    0x52036CEE2B6FFE73,
-]);
+const ED25519_D: BigInt<4> =
+    BigInt([0x75EB4DCA135978A3, 0x00700A4D4141D8AB, 0x8CC740797779E898, 0x52036CEE2B6FFE73]);
 
 #[inline(always)]
 pub fn ed25519_d() -> Ed25519Field {

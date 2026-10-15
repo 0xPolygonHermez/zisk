@@ -114,9 +114,7 @@ impl TwistedEdwardsCurve {
                     equations::$t::calculate(icol, &data.a, &data.b, &data.t, &data.qt),
                     equations::$dt::calculate(icol, &data.t, &data.dt, &data.qdt),
                     equations::$x3::calculate(icol, &data.x3, &data.dt, &data.n, &data.qx),
-                    equations::$y3::calculate(
-                        icol, &data.y3, &data.dt, &data.b, &data.a, &data.qy,
-                    ),
+                    equations::$y3::calculate(icol, &data.y3, &data.dt, &data.b, &data.a, &data.qy),
                 ]
             };
         }
@@ -273,13 +271,7 @@ impl TwistedEdwards {
                 y3 += data.y3[offset - j] as u64;
             }
             assert!(p[i] == x3, "{curve:?} p[{}]:{} not match with x3:{}", i, p[i], x3);
-            assert!(
-                p[i + 4] == y3,
-                "{curve:?} p[{}]:{} not match with y3:{}",
-                i + 4,
-                p[i + 4],
-                y3
-            );
+            assert!(p[i + 4] == y3, "{curve:?} p[{}]:{} not match with y3:{}", i + 4, p[i + 4], y3);
         }
     }
 }
