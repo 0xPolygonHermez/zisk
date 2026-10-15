@@ -1,5 +1,6 @@
 //! Operations in the base field Fp of the secp256k1 curve
 
+use crate::zisklib::write_u64s;
 use crate::{
     syscalls::{syscall_arith256_mod, SyscallArith256ModParams},
     zisklib::{eq, fcall_secp256k1_fp_inv, fcall_secp256k1_fp_sqrt, is_one, is_zero, lt},
@@ -224,11 +225,13 @@ pub unsafe extern "C" fn reduce_fp_secp256k1_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = reduce_fp_secp256k1(
-        x,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        reduce_fp_secp256k1(
+            x,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -248,12 +251,14 @@ pub unsafe extern "C" fn add_fp_secp256k1_c(
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
     let y = &*(y_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = add_fp_secp256k1(
-        x,
-        y,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        add_fp_secp256k1(
+            x,
+            y,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -270,11 +275,13 @@ pub unsafe extern "C" fn neg_fp_secp256k1_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = neg_fp_secp256k1(
-        x,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        neg_fp_secp256k1(
+            x,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -294,12 +301,14 @@ pub unsafe extern "C" fn sub_fp_secp256k1_c(
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
     let y = &*(y_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = sub_fp_secp256k1(
-        x,
-        y,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        sub_fp_secp256k1(
+            x,
+            y,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -319,12 +328,14 @@ pub unsafe extern "C" fn mul_fp_secp256k1_c(
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
     let y = &*(y_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = mul_fp_secp256k1(
-        x,
-        y,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        mul_fp_secp256k1(
+            x,
+            y,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -341,11 +352,13 @@ pub unsafe extern "C" fn square_fp_secp256k1_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = square_fp_secp256k1(
-        x,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        square_fp_secp256k1(
+            x,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -364,14 +377,13 @@ pub unsafe extern "C" fn sqrt_fp_secp256k1_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
     let (sqrt, is_qr) = sqrt_fp_secp256k1(
         x,
         parity,
         #[cfg(feature = "hints")]
         hints,
     );
-    *result = sqrt;
+    write_u64s(result_ptr, sqrt);
     is_qr as u8
 }
 
@@ -388,10 +400,12 @@ pub unsafe extern "C" fn inv_fp_secp256k1_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = inv_fp_secp256k1(
-        x,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        inv_fp_secp256k1(
+            x,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }

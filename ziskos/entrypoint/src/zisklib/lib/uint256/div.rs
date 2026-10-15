@@ -6,6 +6,7 @@ use crate::zisklib::lib::{
     constants::ZERO_256 as ZERO,
     utils::{eq, is_zero, lt},
 };
+use crate::zisklib::write_u64s;
 
 /// Given 256-bit integers `a,b`, it computes `a / b`.
 /// Returns `None` if `b == 0`.
@@ -171,8 +172,7 @@ pub unsafe extern "C" fn checked_div256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            write_u64s(result_ptr, res);
             1 // Success
         }
         None => 0, // Division by zero
@@ -203,8 +203,7 @@ pub unsafe extern "C" fn checked_rem256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            write_u64s(result_ptr, res);
             1 // Success
         }
         None => 0, // Division by zero
@@ -238,11 +237,8 @@ pub unsafe extern "C" fn div_rem256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let quo = &mut *(quo_ptr as *mut [u64; 4]);
-    *quo = q;
-    let rem = &mut *(rem_ptr as *mut [u64; 4]);
-    *rem = r;
+    write_u64s(quo_ptr, q);
+    write_u64s(rem_ptr, r);
 }
 
 /// 256-bit ceiling division.
@@ -263,13 +259,14 @@ pub unsafe extern "C" fn div_ceil256_c(
 ) {
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = div_ceil256(
-        a,
-        b,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        div_ceil256(
+            a,
+            b,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -291,13 +288,14 @@ pub unsafe extern "C" fn wrapping_div256_c(
 ) {
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = wrapping_div256(
-        a,
-        b,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        wrapping_div256(
+            a,
+            b,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -319,12 +317,13 @@ pub unsafe extern "C" fn wrapping_rem256_c(
 ) {
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = wrapping_rem256(
-        a,
-        b,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        wrapping_rem256(
+            a,
+            b,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }

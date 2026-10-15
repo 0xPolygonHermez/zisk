@@ -2,6 +2,7 @@ use crate::zisklib::lib::{
     constants::{MAX_256 as MAX, ONE_256 as ONE, ZERO_256 as ZERO},
     utils::{is_one, is_zero},
 };
+use crate::zisklib::write_u64s;
 use crate::zisklib::{fcall_bin_decomp, fcall_msb_pos_256, is_power_of_two};
 
 use super::mul::{overflowing_mul256, overflowing_square256, wrapping_mul256, wrapping_square256};
@@ -282,8 +283,7 @@ pub unsafe extern "C" fn checked_pow256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            write_u64s(result_ptr, res);
             1
         }
         None => 0,
@@ -313,9 +313,7 @@ pub unsafe extern "C" fn overflowing_pow256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    write_u64s(result_ptr, res);
 
     overflow as u8
 }
@@ -336,13 +334,14 @@ pub unsafe extern "C" fn wrapping_pow256_c(
 ) {
     let base = &*(base_ptr as *const [u64; 4]);
     let exp = &*(exp_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = wrapping_pow256(
-        base,
-        exp,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        wrapping_pow256(
+            base,
+            exp,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -362,12 +361,13 @@ pub unsafe extern "C" fn saturating_pow256_c(
 ) {
     let base = &*(base_ptr as *const [u64; 4]);
     let exp = &*(exp_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = saturating_pow256(
-        base,
-        exp,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        saturating_pow256(
+            base,
+            exp,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }

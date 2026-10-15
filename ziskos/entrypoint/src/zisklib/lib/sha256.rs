@@ -2,7 +2,7 @@
 
 use crate::syscalls::syscall_sha256_f;
 
-use super::is_aligned_8;
+use super::{is_aligned_8, read_maybe_unaligned, write_maybe_unaligned};
 
 /// SHA-256 initial hash values
 const SHA256_INIT: [u32; 8] = [
@@ -127,8 +127,10 @@ pub unsafe extern "C" fn sha256f_compress_c(
     num_blocks: usize,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    let state: &mut [u32; 8] = &mut *(state_ptr as *mut [u32; 8]);
-    let mut state_64 = convert_u32_to_u64(state);
+    // The caller's state need not be 4-byte aligned: work on a local copy.
+    let state_ptr = state_ptr as *mut [u32; 8];
+    let mut state = read_maybe_unaligned(state_ptr);
+    let mut state_64 = convert_u32_to_u64(&state);
 
     for i in 0..num_blocks {
         let block: &[u8; 64] = &*(blocks_ptr.add(i * 64) as *const [u8; 64]);
@@ -142,7 +144,8 @@ pub unsafe extern "C" fn sha256f_compress_c(
         );
     }
 
-    *state = convert_u64_to_u32(&state_64);
+    state = convert_u64_to_u32(&state_64);
+    write_maybe_unaligned(state_ptr, state);
 }
 
 #[inline]

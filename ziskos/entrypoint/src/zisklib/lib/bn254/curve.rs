@@ -2,6 +2,7 @@
 
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
+use crate::zisklib::write_u64s;
 
 use crate::{
     syscalls::{syscall_bn254_curve_add, syscall_bn254_curve_dbl, SyscallPoint256},
@@ -441,18 +442,17 @@ pub unsafe extern "C" fn jacobian_to_affine_bn254_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
     let p = &*(p_ptr as *const [u64; 12]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
     match jacobian_to_affine_bn254(
         p,
         #[cfg(feature = "hints")]
         hints,
     ) {
         G1_IDENTITY => {
-            *result = G1_IDENTITY;
+            write_u64s(result_ptr, G1_IDENTITY);
             1
         }
         affine => {
-            *result = affine;
+            write_u64s(result_ptr, affine);
             0
         }
     }
@@ -497,16 +497,16 @@ pub unsafe extern "C" fn add_bn254_c(
 ) -> u8 {
     let p1 = &*(p1_ptr as *const [u64; 8]);
     let p2 = &*(p2_ptr as *const [u64; 8]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
 
-    *result = add_bn254(
+    let result = add_bn254(
         p1,
         p2,
         #[cfg(feature = "hints")]
         hints,
     );
+    write_u64s(result_ptr, result);
 
-    if eq(result, &G1_IDENTITY) {
+    if eq(&result, &G1_IDENTITY) {
         G1_ADD_SUCCESS_INFINITY
     } else {
         G1_ADD_SUCCESS
@@ -581,7 +581,6 @@ pub unsafe extern "C" fn scalar_mul_bn254_c(
 ) -> u8 {
     let p = &*(p_ptr as *const [u64; 8]);
     let k = &*(k_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
     match scalar_mul_bn254(
         p,
         k,
@@ -589,11 +588,11 @@ pub unsafe extern "C" fn scalar_mul_bn254_c(
         hints,
     ) {
         G1_IDENTITY => {
-            *result = G1_IDENTITY;
+            write_u64s(result_ptr, G1_IDENTITY);
             1
         }
         product => {
-            *result = product;
+            write_u64s(result_ptr, product);
             0
         }
     }

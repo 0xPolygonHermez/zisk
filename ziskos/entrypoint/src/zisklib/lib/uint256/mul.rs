@@ -4,6 +4,7 @@ use crate::zisklib::lib::{
     constants::{MAX_256 as MAX, ONE_256 as ONE, ZERO_256 as ZERO},
     utils::is_one,
 };
+use crate::zisklib::write_u64s;
 
 /// Given 256-bit integers `a,b`, it computes `a * b (mod 2^256)`.
 /// Returns `None` if overflow occurs.
@@ -193,8 +194,7 @@ pub unsafe extern "C" fn checked_mul256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            write_u64s(result_ptr, res);
             1 // Success
         }
         None => 0, // Overflow
@@ -221,8 +221,7 @@ pub unsafe extern "C" fn checked_square256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            write_u64s(result_ptr, res);
             1 // Success
         }
         None => 0, // Overflow
@@ -252,9 +251,7 @@ pub unsafe extern "C" fn overflowing_mul256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    write_u64s(result_ptr, res);
 
     overflow as u8
 }
@@ -278,9 +275,7 @@ pub unsafe extern "C" fn overflowing_square256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    write_u64s(result_ptr, res);
 
     overflow as u8
 }
@@ -301,13 +296,14 @@ pub unsafe extern "C" fn saturating_mul256_c(
 ) {
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = saturating_mul256(
-        a,
-        b,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        saturating_mul256(
+            a,
+            b,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -324,12 +320,13 @@ pub unsafe extern "C" fn saturating_square256_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let a = &*(a_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = saturating_square256(
-        a,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        saturating_square256(
+            a,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -349,13 +346,14 @@ pub unsafe extern "C" fn wrapping_mul256_c(
 ) {
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = wrapping_mul256(
-        a,
-        b,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        wrapping_mul256(
+            a,
+            b,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -372,12 +370,13 @@ pub unsafe extern "C" fn wrapping_square256_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let a = &*(a_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = wrapping_square256(
-        a,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        wrapping_square256(
+            a,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -401,8 +400,7 @@ pub unsafe extern "C" fn inv256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            write_u64s(result_ptr, res);
             1
         }
         None => 0,

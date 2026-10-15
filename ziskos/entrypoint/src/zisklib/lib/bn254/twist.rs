@@ -1,5 +1,6 @@
 //! Operations on the twist E': y² = x³ + 3 / (9 + u) of the BN254 curve
 
+use crate::zisklib::write_u64s;
 use crate::zisklib::{eq, is_one, is_zero};
 
 use super::{
@@ -497,11 +498,13 @@ pub unsafe extern "C" fn jacobian_to_affine_twist_bn254_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let p = &*(p_ptr as *const [u64; 24]);
-    let result = &mut *(result_ptr as *mut [u64; 16]);
-    *result = jacobian_to_affine_twist_bn254(
-        p,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        jacobian_to_affine_twist_bn254(
+            p,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 

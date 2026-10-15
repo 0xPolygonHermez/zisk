@@ -7,6 +7,47 @@ pub fn is_aligned_8(ptr: *const u8) -> bool {
     (ptr as usize) & 0x7 == 0
 }
 
+/// Writes `value` to a C caller's buffer `dst`, which need not be aligned for `T`.
+/// An aligned `dst` gets the plain typed store; an unaligned one, which a reference
+/// or a typed store must never see, gets `write_unaligned`. The target has no fast
+/// unaligned access, so that path is byte stores, and the test keeps it off the
+/// common aligned path.
+///
+/// # Safety
+/// `dst` must be valid for writing a `T`.
+#[inline(always)]
+pub(crate) unsafe fn write_maybe_unaligned<T>(dst: *mut T, value: T) {
+    if (dst as usize) % core::mem::align_of::<T>() == 0 {
+        dst.write(value);
+    } else {
+        dst.write_unaligned(value);
+    }
+}
+
+/// Reads a `T` from a C caller's buffer `src`, which need not be aligned for `T`
+/// (the counterpart of [`write_maybe_unaligned`], for in/out buffers).
+///
+/// # Safety
+/// `src` must be valid for reading a `T`.
+#[inline(always)]
+pub(crate) unsafe fn read_maybe_unaligned<T>(src: *const T) -> T {
+    if (src as usize) % core::mem::align_of::<T>() == 0 {
+        src.read()
+    } else {
+        src.read_unaligned()
+    }
+}
+
+/// Writes `N` u64 limbs to a C caller's result buffer `dst`, which need not be
+/// 8-byte aligned (see [`write_maybe_unaligned`]).
+///
+/// # Safety
+/// `dst` must be valid for writing `N` u64s (`8 * N` bytes).
+#[inline(always)]
+pub(crate) unsafe fn write_u64s<const N: usize>(dst: *mut u64, value: [u64; N]) {
+    write_maybe_unaligned(dst as *mut [u64; N], value);
+}
+
 /// Convert a big-endian byte array to an array of 4 u64 limbs (little-endian order).
 #[inline]
 pub fn be_bytes_to_u64_4(bytes: &[u8; 32]) -> [u64; 4] {

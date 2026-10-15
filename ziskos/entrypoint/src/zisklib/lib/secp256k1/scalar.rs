@@ -1,5 +1,6 @@
 //! Operations in the scalar field Fn of the secp256k1 curve
 
+use crate::zisklib::write_u64s;
 use crate::{
     syscalls::{syscall_arith256_mod, SyscallArith256ModParams},
     zisklib::{eq, fcall_secp256k1_fn_inv, fcall_secp256k1_glv_decompose, is_zero, lt},
@@ -243,11 +244,13 @@ pub unsafe extern "C" fn reduce_fn_secp256k1_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = reduce_fn_secp256k1(
-        x,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        reduce_fn_secp256k1(
+            x,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -267,12 +270,14 @@ pub unsafe extern "C" fn add_fn_secp256k1_c(
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
     let y = &*(y_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = add_fn_secp256k1(
-        x,
-        y,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        add_fn_secp256k1(
+            x,
+            y,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -289,11 +294,13 @@ pub unsafe extern "C" fn neg_fn_secp256k1_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = neg_fn_secp256k1(
-        x,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        neg_fn_secp256k1(
+            x,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -313,12 +320,14 @@ pub unsafe extern "C" fn sub_fn_secp256k1_c(
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
     let y = &*(y_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = sub_fn_secp256k1(
-        x,
-        y,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        sub_fn_secp256k1(
+            x,
+            y,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -338,12 +347,14 @@ pub unsafe extern "C" fn mul_fn_secp256k1_c(
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
     let y = &*(y_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = mul_fn_secp256k1(
-        x,
-        y,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        mul_fn_secp256k1(
+            x,
+            y,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -360,11 +371,13 @@ pub unsafe extern "C" fn square_fn_secp256k1_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = square_fn_secp256k1(
-        x,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        square_fn_secp256k1(
+            x,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
 
@@ -381,10 +394,12 @@ pub unsafe extern "C" fn inv_fn_secp256k1_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = inv_fn_secp256k1(
-        x,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        inv_fn_secp256k1(
+            x,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }

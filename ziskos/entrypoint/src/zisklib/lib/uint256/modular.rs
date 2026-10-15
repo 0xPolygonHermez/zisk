@@ -6,6 +6,7 @@ use crate::zisklib::lib::{
     constants::{ONE_256 as ONE, ZERO_256 as ZERO},
     utils::{be_bytes_to_u64_4, gt, is_one, is_zero, lt, u64_4_to_be_bytes},
 };
+use crate::zisklib::write_u64s;
 use crate::zisklib::{fcall_uint256_inv_mod, ModInvResult};
 
 /// Given 256-bit integers `a` and `modulus`, it computes `a (mod modulus)`.
@@ -280,9 +281,7 @@ pub unsafe extern "C" fn reduce_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    write_u64s(result_ptr, res);
 }
 
 /// 256-bit modular addition.
@@ -312,9 +311,7 @@ pub unsafe extern "C" fn add_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    write_u64s(result_ptr, res);
 }
 
 /// 256-bit modular multiplication.
@@ -344,9 +341,7 @@ pub unsafe extern "C" fn mul_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    write_u64s(result_ptr, res);
 }
 
 /// 256-bit modular multiplication.
@@ -542,9 +537,7 @@ pub unsafe extern "C" fn square_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    write_u64s(result_ptr, res);
 }
 
 /// 256-bit modular exponentiation.
@@ -574,9 +567,7 @@ pub unsafe extern "C" fn pow_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    write_u64s(result_ptr, res);
 }
 
 /// 256-bit modular inverse. Returns 1 if the inverse exists, 0 otherwise.
@@ -603,8 +594,7 @@ pub unsafe extern "C" fn inv_mod256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            write_u64s(result_ptr, res);
             1
         }
         None => 0,

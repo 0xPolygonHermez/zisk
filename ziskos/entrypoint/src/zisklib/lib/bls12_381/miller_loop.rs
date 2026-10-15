@@ -2,6 +2,7 @@
 
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
+use crate::zisklib::write_u64s;
 
 use crate::zisklib::{
     eq, fcall_bls12_381_twist_add_line_coeffs, fcall_bls12_381_twist_dbl_line_coeffs, is_zero,
@@ -630,11 +631,13 @@ pub unsafe extern "C" fn miller_loop_bls12_381_c(
 ) {
     let p = &*(p_ptr as *const [u64; 12]);
     let q = &*(q_ptr as *const [u64; 24]);
-    let result = &mut *(result_ptr as *mut [u64; 72]);
-    *result = miller_loop_bls12_381(
-        p,
-        q,
-        #[cfg(feature = "hints")]
-        hints,
+    write_u64s(
+        result_ptr,
+        miller_loop_bls12_381(
+            p,
+            q,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
     );
 }
