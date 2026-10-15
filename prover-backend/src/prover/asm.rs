@@ -373,23 +373,35 @@ impl ProverEngine for AsmProver {
                     ));
             }
 
-            if pctx.mpi_ctx.rank == 0 {
+            // Only rank 0 generates the files, but every rank learns whether it did: a rank 0 that
+            // returned an error on its own would leave the other ranks waiting for it.
+            let generated = if pctx.mpi_ctx.rank == 0 {
                 tracing::info!(
                     ">>> ROM SETUP (one time only) - Generating assembly files for ELF: {}",
                     elf.name()
                 );
                 timer_start_info!(ROM_SETUP);
-                let output_path = get_output_path(&None)?;
-                generate_assembly(
-                    elf.elf(),
-                    &output_path,
-                    with_hints,
-                    self.core_prover.asm_info.verbose != VerboseMode::Info,
-                )?;
+                let generated = get_output_path(&None).and_then(|output_path| {
+                    generate_assembly(
+                        elf.elf(),
+                        &output_path,
+                        with_hints,
+                        self.core_prover.asm_info.verbose != VerboseMode::Info,
+                    )
+                });
                 timer_stop_and_log_info!(ROM_SETUP);
-                tracing::info!("<<< ROM SETUP complete - Assembly files cached for future use");
+                if generated.is_ok() {
+                    tracing::info!("<<< ROM SETUP complete - Assembly files cached for future use");
+                }
+                generated
+            } else {
+                Ok(())
+            };
+            let all_ok = pctx.mpi_ctx.all_finished_ok(generated.is_ok());
+            generated?;
+            if !all_ok {
+                return Err(anyhow::anyhow!("ROM setup failed on MPI rank 0"));
             }
-            pctx.mpi_ctx.barrier();
         }
 
         // Sync all ranks.
