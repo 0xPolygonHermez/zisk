@@ -115,6 +115,9 @@ impl BuildArgs {
     }
 }
 
+/// LLVM target feature every guest is built with, ahead of any program or env rustflags.
+pub(crate) const GUEST_DEFAULT_RUSTFLAG: &str = "target-feature=+unaligned-scalar-mem";
+
 /// RISC-V extensions whose LLVM `target-feature` can be enabled for guest builds.
 /// The base guest target (`riscv64ima-...`) omits these; enabling `ext` or `ext_native`
 /// as a Cargo feature makes `target_features_from_features` emit `-C target-feature=+ext`.
@@ -236,6 +239,10 @@ pub fn guest_rustflags(
     // Drop empty elements: encoded, they decode to an empty rustc argument,
     // which rustc rejects as an extra input filename.
     flags.retain(|f| !f.is_empty());
+    // ZisK runs unaligned loads and stores as single instructions, so let LLVM emit them instead of
+    // splitting each unaligned access into byte loads and shifts. First, so the program's config or
+    // env can still turn it off (`-C target-feature=-unaligned-scalar-mem`).
+    flags.splice(0..0, ["-C".to_string(), GUEST_DEFAULT_RUSTFLAG.to_string()]);
     // Append env rustflags after config so env wins (later rustc args win).
     if inherit_env_rustflags {
         flags.extend(env_rustflags());
@@ -371,6 +378,31 @@ mod tests {
         assert!(config_flag < cfg_flag);
         // The temp file holds the Zisk linker script.
         assert_eq!(std::fs::read(script.path()).unwrap(), ZISK_LINKER_SCRIPT);
+    }
+
+    /// The default target features come first, so the program's config (or env) can override them.
+    #[test]
+    fn guest_rustflags_prepends_default_target_features() {
+        let dir = tempfile::tempdir().unwrap();
+        let _env = EnvVarGuard::hermetic(dir.path());
+        std::fs::create_dir(dir.path().join(".cargo")).unwrap();
+        std::fs::write(
+            dir.path().join(".cargo/config.toml"),
+            format!(
+                "[target.{ZISK_TARGET}]\nrustflags = [\"-C\", \"target-feature=-unaligned-scalar-mem\"]\n"
+            ),
+        )
+        .unwrap();
+
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), false, &[]).unwrap();
+        let flags: Vec<&str> = encoded.split('\u{1f}').collect();
+
+        assert_eq!(flags[..2], ["-C", GUEST_DEFAULT_RUSTFLAG]);
+        let config_flag = flags
+            .iter()
+            .position(|f| *f == "target-feature=-unaligned-scalar-mem")
+            .expect("config rustflags dropped");
+        assert!(config_flag > 1, "the program's config must follow the defaults: {encoded:?}");
     }
 
     /// An empty encoded-rustflags element decodes to an empty rustc argument,
