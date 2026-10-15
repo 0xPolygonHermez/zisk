@@ -113,10 +113,9 @@ impl fmt::Debug for RandomSeed {
 
 /// `--random-seed` / `ZISK_RANDOM_SEED`, for every command that runs a guest.
 ///
-/// Under `mpirun` every rank parses its own arguments and environment, and the task runs with the
-/// seed rank 0 sees: every other rank follows it, warning if it saw a different one.
-/// `--random-seed` reaches every rank; the variable reaches a remote node only if exported to it
-/// (Open MPI: `-x ZISK_RANDOM_SEED`).
+/// Under `mpirun` every rank parses its own arguments and environment, so all of them must see
+/// the same value: prefer `--random-seed`, or export the variable to every rank (Open MPI:
+/// `-x ZISK_RANDOM_SEED`).
 #[derive(clap::Args, Debug)]
 pub struct RandomSeedArgs {
     /// Use this random seed (up to 64 hex characters, zero-padded on the left) instead of

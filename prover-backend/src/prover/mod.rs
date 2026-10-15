@@ -682,27 +682,29 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_stdin_and_random_seed(stdin, seed)
     }
 
-    /// Returns rank 0's seed, `seed` there or a fresh one, broadcast to every rank.
+    /// Returns `seed`, or a fresh one drawn on rank 0 and broadcast to every rank.
     ///
-    /// All emulations of a task must run with the same seed, so only rank 0 decides it. This is a
-    /// collective MPI operation even when `seed` is provided: every rank must call it at the same
-    /// point, which holds because every rank runs the same execute/prove call. Broadcasting
-    /// unconditionally means the ranks need not agree on whether a seed was provided (each one
-    /// reads its own arguments and environment): every rank follows rank 0 (see
-    /// [`rank_random_seed`]).
+    /// All emulations of a task must run with the same seed, so ranks never draw their own. When
+    /// `seed` is `None` this is a collective MPI operation: every rank must call it at the same
+    /// point, which holds because every rank runs the same execute/prove call. Every rank must
+    /// also agree on whether a seed was provided: a rank that got one skips the broadcast the
+    /// others wait on.
     fn resolve_random_seed(&self, seed: Option<RandomSeed>) -> Result<RandomSeed> {
-        let decided = (self.world_rank() == 0).then(|| seed.map_or_else(RandomSeed::random, Ok));
+        if let Some(seed) = seed {
+            return Ok(seed);
+        }
+        let drawn = (self.world_rank() == 0).then(RandomSeed::random);
         // Rank 0 broadcasts even if drawing failed, so no rank is left waiting: the empty message
         // fails their decode instead.
-        let mut bytes = match &decided {
+        let mut bytes = match &drawn {
             Some(Ok(seed)) => seed.as_bytes().to_vec(),
             _ => Vec::new(),
         };
         self.mpi_broadcast(&mut bytes)?;
-        if let Some(Err(e)) = decided {
+        if let Some(Err(e)) = drawn {
             return Err(e.into());
         }
-        rank_random_seed(seed, &bytes)
+        Ok(RandomSeed::try_from(bytes.as_slice())?)
     }
 
     /// Make a previously set-up program the active one for the next run.
@@ -1207,50 +1209,5 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
             self.proof_kind,
             self.proof.random_seed,
         )
-    }
-}
-
-/// The seed a rank runs with: rank 0's, as broadcast in `root`. A rank given another seed (its
-/// node sees a different `ZISK_RANDOM_SEED`) warns and follows rank 0 too: failing on that rank
-/// alone would leave the other ranks waiting on it.
-fn rank_random_seed(provided: Option<RandomSeed>, root: &[u8]) -> Result<RandomSeed> {
-    let root = RandomSeed::try_from(root)?;
-    if let Some(seed) = provided.filter(|seed| *seed != root) {
-        tracing::warn!(
-            "Ignoring the random seed {seed} this rank was given: every rank runs with rank 0's, \
-             {root}"
-        );
-    }
-    Ok(root)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const ROOT: RandomSeed = RandomSeed::new([7; RandomSeed::LEN]);
-
-    #[test]
-    fn a_rank_without_a_seed_follows_rank_0() {
-        assert_eq!(rank_random_seed(None, ROOT.as_bytes()).unwrap(), ROOT);
-    }
-
-    #[test]
-    fn a_rank_given_rank_0s_seed_runs_with_it() {
-        assert_eq!(rank_random_seed(Some(ROOT), ROOT.as_bytes()).unwrap(), ROOT);
-    }
-
-    /// e.g. `ZISK_RANDOM_SEED` set differently on another node.
-    #[test]
-    fn a_rank_given_another_seed_follows_rank_0() {
-        let other = RandomSeed::new([8; RandomSeed::LEN]);
-        assert_eq!(rank_random_seed(Some(other), ROOT.as_bytes()).unwrap(), ROOT);
-    }
-
-    /// Rank 0 broadcasts an empty message when it fails to draw a seed.
-    #[test]
-    fn an_empty_broadcast_fails() {
-        assert!(rank_random_seed(None, &[]).is_err());
-        assert!(rank_random_seed(Some(ROOT), &[]).is_err());
     }
 }
