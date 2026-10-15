@@ -5,6 +5,7 @@
 #include "../bn254/bn254_fe.hpp"
 #include "../bls12_381/bls12_381_fe.hpp"
 #include "../bls12_381/bls12_381.hpp"
+#include "../ed25519/ed25519.hpp"
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
@@ -135,6 +136,11 @@ int Fcall (
         case FCALL_GET_KECCAKF_CACHE_INDEX_ID:
         {
             iresult = KeccakfCacheGetIndexCtx(ctx);
+            break;
+        }
+        case FCALL_ED25519_FP_SQRT_RATIO_ID:
+        {
+            iresult = Ed25519FpSqrtRatioCtx(ctx);
             break;
         }
         case FCALL_RANDOM_SEED_ID:
@@ -1063,6 +1069,27 @@ int Uint256InvModCtx (
     {
         iresult = 13;
         ctx->result_size = 13;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
+}
+
+/****************************/
+/* ED25519 SQRT RATIO (u/v) */
+/****************************/
+
+int Ed25519FpSqrtRatioCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = Ed25519FpSqrtRatio(&ctx->params[0], &ctx->params[4], ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 5;
+        ctx->result_size = 5;
     }
     else
     {

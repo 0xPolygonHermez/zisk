@@ -5,7 +5,7 @@
 //! ## Why this exists
 //!
 //! ZisK's uniform precompiles (`blake2b`, `blake2s`, `blake3`, `keccakf`, `sha256f`,
-//! `poseidon2`, `add256`, `arith_eq`, `arith_eq_384`, `babyjubjub`) share
+//! `poseidon2`, `add256`, `arith_eq`, `arith_eq_384`, `twisted_edwards`) share
 //! byte-isomorphic shell code. This module generates that boilerplate from
 //! a small declarative invocation.
 //!
@@ -70,7 +70,7 @@
 //! ## Usage
 //!
 //! See `precompiles/blake2/src/lib.rs` (mono-op, one air),
-//! `precompiles/babyjubjub/src/lib.rs` (multi-op) and
+//! `precompiles/twisted_edwards/src/lib.rs` (multi-op) and
 //! `precompiles/arith_eq_384/src/lib.rs` (multi-op over a size ladder) for
 //! canonical invocations.
 

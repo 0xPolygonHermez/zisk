@@ -1,16 +1,16 @@
 {
   "Keccakf": {
-    "powBits": 21,
+    "grindingBits": 21,
     "hasCompressor": true
   },
   "VirtualTableZisk0": {
-    "powBits": 20
+    "grindingBits": 20
   },
   "VirtualTableZisk1": {
-    "powBits": 23
+    "grindingBits": 23
   },
   "Rom": {
-    "powBits": 20
+    "grindingBits": 20
   },
   "Sha256f": {
     "hasCompressor": true
@@ -48,7 +48,7 @@
   "ArithBn254Complex": {
     "hasCompressor": true
   },
-  "BabyJubJub": {
+  "TwistedEdwards": {
     "hasCompressor": true
   },
   "Main": {

@@ -281,6 +281,7 @@ impl ZiskAsmContext {
                 | ZiskOp::Secp256r1Dbl
                 | ZiskOp::Blake2b
                 | ZiskOp::BabyJubJubAdd
+                | ZiskOp::Ed25519Add
                 | ZiskOp::Blake3
                 | ZiskOp::Blake2s
         )
@@ -314,6 +315,9 @@ impl ZiskAsmContext {
         self.precompile_results()
     }
     pub fn precompile_results_babyjubjubadd(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_ed25519add(&self) -> bool {
         self.precompile_results()
     }
     pub fn precompile_results_fcall(&self) -> bool {
@@ -666,6 +670,7 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_secp256r1_add\n";
         *code += ".extern opcode_secp256r1_dbl\n";
         *code += ".extern opcode_babyjubjub_add\n";
+        *code += ".extern opcode_ed25519_add\n";
         *code += ".extern opcode_fcall\n";
         *code += ".extern opcode_bn254_curve_add\n";
         *code += ".extern opcode_bn254_curve_dbl\n";
@@ -2750,6 +2755,8 @@ impl ZiskRom2Asm {
             | ZiskOp::Ror
             | ZiskOp::RorW
             | ZiskOp::SllUW => ctx.store_a_in_c = true,
+            // c = (a | b) & 7 is computed in place over a
+            ZiskOp::Unal8 => ctx.store_a_in_c = true,
             // lea c, [b + a*scale] needs both operands in a register
             ZiskOp::Sh1add | ZiskOp::Sh2add | ZiskOp::Sh3add => {
                 ctx.store_a_in_a = true;
@@ -2962,6 +2969,39 @@ impl ZiskRom2Asm {
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Unal8 => {
+                // c = flag = ((a | b) & 7 != 0): 1 iff a or b is not a multiple of 8
+                assert!(ctx.store_a_in_c);
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Unal8: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
+                *code += &format!(
+                    "\tor {}, {} {}\n",
+                    REG_C,
+                    ctx.b.string_value,
+                    ctx.comment_str("Unal8: c = a | b")
+                );
+                *code += &format!("\tand {}, 7 {}\n", REG_C, ctx.comment_str("Unal8: c = c & 7"));
+                *code += &format!("\tjnz pc_{:x}_unal8_true\n", ctx.pc);
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\tjmp pc_{:x}_unal8_done\n", ctx.pc);
+                *code += &format!("pc_{:x}_unal8_true:\n", ctx.pc);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("pc_{:x}_unal8_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
             }
             ZiskOp::Sub => {
                 assert!(ctx.store_a_in_c);
@@ -6498,6 +6538,48 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::Ed25519Add => {
+                *code += &ctx.full_line_comment("Ed25519Add".to_string());
+
+                // Two direct operands: a = first operand address (receives the result), b = second
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = first operand address")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rsi = b = second operand address")
+                );
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() {
+                    Self::precompiled_save_ab_mem_reads(ctx, code, 8, 8);
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_ab_read_and_write(ctx, code, 8, 8, 8);
+                }
+
+                // Get result from precompile results data
+                if ctx.precompile_results_ed25519add() {
+                    Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                } else {
+                    // Call the ed25519_add function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_ed25519_add\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
             ZiskOp::DmaMemCpy | ZiskOp::DmaXMemCpy => {
                 // Use the memory address as the first and unique parameter
                 *code += &ctx.full_line_comment("DmaMemCpy".to_string());
@@ -9153,6 +9235,34 @@ mod tests {
             code,
             format!("\tmov {REG_C_W}, {REG_C_W}\n\tmov rcx, {REG_B}\n\tshl {REG_C}, cl\n")
         );
+    }
+
+    #[test]
+    fn unal8_tests_the_low_bits_of_a_or_b() {
+        // c = a | b is computed in place over a (REG_C), masked to its 3 low bits, and both c and
+        // the flag are set to 1 iff some of those bits is set
+        let tail = format!(
+            "\tand {REG_C}, 7\n\tjnz pc_0_unal8_true\n\txor {REG_FLAG}, {REG_FLAG}\n\
+             \tjmp pc_0_unal8_done\npc_0_unal8_true:\n\tmov {REG_C}, 1\n\tmov {REG_FLAG}, 1\n\
+             pc_0_unal8_done:\n"
+        );
+
+        // b in a register
+        let (ctx, code) = operation_asm(ZiskOp::Unal8, None);
+        assert!(ctx.store_a_in_c, "Unal8 works in place on REG_C");
+        assert_eq!(code, format!("\tor {REG_C}, {REG_B}\n{tail}"));
+        assert!(ctx.c.is_saved);
+        assert!(!ctx.flag_is_always_zero, "the flag is the result of the test");
+
+        // A constant b that fits a sign-extended imm32 is used as an immediate
+        let (ctx, code) = operation_asm(ZiskOp::Unal8, Some(0x18));
+        assert_eq!(code, format!("\tor {REG_C}, 0x18\n{tail}"));
+        assert!(!ctx.b.is_saved);
+
+        // A larger constant b has to go through REG_B first
+        let (ctx, code) = operation_asm(ZiskOp::Unal8, Some(0x1_0000_0008));
+        assert_eq!(code, format!("\tmov {REG_B}, 0x100000008\n\tor {REG_C}, {REG_B}\n{tail}"));
+        assert!(ctx.b.is_saved);
     }
 
     /// The reserved ZisK-library window [ZISKLIB_ROM_ADDR, FLOAT_LIB_ROM_ADDR) gets its own

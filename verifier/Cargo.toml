@@ -11,8 +11,8 @@ documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-proofman-verifier = { workspace = true, features = ["verify"] }
-proofman-fields = { workspace = true, features = ["verify"] }
+proofman-verifier = { workspace = true }
+proofman-fields = { workspace = true }
 
 [features]
 default = []

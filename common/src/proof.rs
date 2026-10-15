@@ -991,8 +991,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     }
                 }
 
-                // `None` means no such (family, stage) exists — an unknown family, or a
-                // compressed blake3 proof, whose proving keys never build that stage.
+                // `None` means no such (family, stage) exists — an unknown family.
                 // That is a malformed shape, not an unverifiable statement, so it must
                 // not fall through to the verifier and come back as `NotVerified`.
                 let Some(expected_len) =
@@ -1746,10 +1745,10 @@ mod tests {
         assert_eq!(ok.try_publics().unwrap().data, ok.publics().data);
     }
 
-    /// A stage the proving key never builds is a malformed shape, not a failed
-    /// statement, so it must not come back as `NotVerified`.
+    /// A compressed blake3 proof of the wrong size is a malformed shape, not a
+    /// failed statement, so it must not come back as `NotVerified`.
     #[test]
-    fn verify_reports_a_nonexistent_stage_as_malformed() {
+    fn verify_reports_a_misshapen_blake3_compressed_proof_as_malformed() {
         let mut proof = vadcop_proof(VadcopKind::Minimal, flag_free_publics([1, 2, 3, 4]));
         if let ProofBody::Vadcop { hash, .. } = &mut proof.body {
             *hash = "blake3".to_string();
@@ -1758,7 +1757,7 @@ mod tests {
 
         let err = proof.verify().unwrap_err();
         assert!(matches!(err, CommonError::InvalidProof(_)), "got: {err:?}");
-        assert!(err.to_string().contains("no "), "got: {err}");
+        assert!(err.to_string().contains("Malformed proof"), "got: {err}");
     }
 
     /// `stark_publics` re-adds the flag, so a stored vector that already carries one

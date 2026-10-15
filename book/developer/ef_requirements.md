@@ -826,7 +826,7 @@ prover running the same guest.
   prints it).
 - **The guest side.** `zkvm_random_u64` is a zkvmcall thunk (`0x8B3`) to
   `ziskasm_zkvm_random_u64` (`ziskasm/zisklib/zkvm/random.zisk`). On the first call it
-  reads the seed with the `FCALL_RANDOM_SEED` fcall (26) and absorbs it as SHAKE256 does;
+  reads the seed with the `FCALL_RANDOM_SEED` fcall (27) and absorbs it as SHAKE256 does;
   then each call returns the next word, and every 17 words one keccak-f precompile
   squeezes the next block. The common case costs 5 steps. Rust guests get the same
   routine through `ziskos` (`zkvm_random_u64`) or `zisklib::random_u64()`; it is also

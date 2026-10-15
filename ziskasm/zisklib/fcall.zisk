@@ -35,4 +35,4 @@ pub define FCALL_MSB_POS_256             17 ; hints most-significant set-bit pos
 pub define FCALL_BIGINT_DIV             22 ; hints quotient + remainder of an arbitrary-precision division
 
 pub define FCALL_INPUT_READY             23 ; asserts standard input is available at a given address
-pub define FCALL_RANDOM_SEED             26 ; returns the 256-bit seed of zkvm_random_u64 (4 words)
+pub define FCALL_RANDOM_SEED             27 ; returns the 256-bit seed of zkvm_random_u64 (4 words)

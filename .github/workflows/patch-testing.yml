@@ -1,0 +1,91 @@
+name: "Patch Testing"
+
+# Builds every guest under patch-testing/ (one per published zisk-patch-* crate,
+# pinned to the tag/branch users are told to use) against the ziskos of this
+# tree, and runs it in ziskemu. Catches patches that stop linking (a symbol
+# removed or renamed in ziskos) or that compute wrong results.
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
+    paths:
+      - "ziskos/**"
+      - "zkvm-interface/**"
+      - "precompiles/**"
+      - "cli/**"
+      - "patch-testing/**"
+      - ".github/workflows/patch-testing.yml"
+  push:
+    tags:
+      - "v*"
+  schedule:
+    # Weekly (Mondays 03:00 UTC): the guests have no lockfiles, so this catches
+    # the patches' own dependencies and the toolchain moving upstream.
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  patch-testing:
+    name: "Build and emulate patch guests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      # Known-broken patches, space-separated guest names; the run reports XPASS
+      # when one of them starts passing. Keep a reason next to each entry.
+      XFAIL: ""
+    steps:
+      - name: "Free disk space"
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: "Checkout sources"
+        uses: actions/checkout@v4
+
+      - name: "Install dependencies"
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          sudo ./install_deps.sh
+
+      - name: "Build cargo-zisk and ziskemu"
+        run: cargo build --release -p cargo-zisk -p ziskemu --bin cargo-zisk --bin ziskemu
+
+      - name: "Install ZisK rust toolchain"
+        run: ./target/release/cargo-zisk toolchain install
+
+      - name: "Run patch guests"
+        env:
+          CARGO_ZISK: ${{ github.workspace }}/target/release/cargo-zisk
+          ZISKEMU: ${{ github.workspace }}/target/release/ziskemu
+          REPORT_MD: ${{ runner.temp }}/patch-testing.md
+        run: |
+          set +e
+          patch-testing/run.sh
+          status=$?
+          cat "$REPORT_MD" >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: "Upload logs"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: patch-testing-logs
+          path: patch-testing/target/logs
+          retention-days: 7

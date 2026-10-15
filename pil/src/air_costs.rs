@@ -143,8 +143,8 @@ pub const ARITH_EQ_384_INSTANCE_COST: usize = 2007;
 /// had before `zisk.pil` moved it to `2**21`; re-read it from `build/setup.log` on the next setup.
 pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 4025;
 
-/// `BabyJubJub`: 0.60 GB.
-pub const BABY_JUB_JUB_INSTANCE_COST: usize = 614;
+/// `TwistedEdwards`: 0.53 GB.
+pub const TWISTED_EDWARDS_INSTANCE_COST: usize = 543;
 
 /// `Keccakf`: 20.08 GB.
 pub const KECCAKF_INSTANCE_COST: usize = 20562;
@@ -285,7 +285,7 @@ mod tests {
                     ArithBn254LargeTrace: ArithBn254LargeTraceRow: ARITH_BN_254_LARGE_INSTANCE_COST,
                     ArithEq384Trace: ArithEq384TraceRow: ARITH_EQ_384_INSTANCE_COST,
                     ArithEq384LargeTrace: ArithEq384LargeTraceRow: ARITH_EQ_384_LARGE_INSTANCE_COST,
-                    BabyJubJubTrace: BabyJubJubTraceRow: BABY_JUB_JUB_INSTANCE_COST,
+                    TwistedEdwardsTrace: TwistedEdwardsTraceRow: TWISTED_EDWARDS_INSTANCE_COST,
                     KeccakfTrace: KeccakfTraceRow: KECCAKF_INSTANCE_COST,
                     Sha256fTrace: Sha256fTraceRow: SHA_256_F_INSTANCE_COST,
                     PoseidonTrace: PoseidonTraceRow: POSEIDON_INSTANCE_COST,

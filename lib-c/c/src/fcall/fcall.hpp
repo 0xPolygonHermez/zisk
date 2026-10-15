@@ -33,7 +33,8 @@ extern "C" {
 // 23 = FCALL_INPUT_READY_ID, resolved at transpilation time, never reaches Fcall()
 #define FCALL_SET_KECCAKF_CACHE_INDEX_ID 24
 #define FCALL_GET_KECCAKF_CACHE_INDEX_ID 25
-#define FCALL_RANDOM_SEED_ID 26
+#define FCALL_ED25519_FP_SQRT_RATIO_ID 26
+#define FCALL_RANDOM_SEED_ID 27
 
 // Size of the host randomness seed in 64-bit words (256 bits)
 #define RANDOM_SEED_WORDS 4
@@ -142,6 +143,10 @@ int KeccakfCacheSetIndexCtx (
 int KeccakfCacheGetIndexCtx (
     struct FcallContext * ctx  // fcall context
 );
+int Ed25519FpSqrtRatioCtx (
+    struct FcallContext * ctx  // fcall context
+);
+
 int RandomSeedCtx (
     struct FcallContext * ctx  // fcall context
 );

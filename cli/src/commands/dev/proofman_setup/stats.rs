@@ -9,8 +9,22 @@ use zisk_prover_backend::setup_logger;
 /// Compute per-AIR statistics (constraints, intermediate polynomials, etc.).
 pub(crate) struct ZiskProofmanSetupStats {
     /// Path to compiled .pilout file
-    #[arg(short = 'a', long)]
-    airout: String,
+    #[arg(
+        short = 'a',
+        long,
+        required_unless_present = "proving_key",
+        conflicts_with = "proving_key"
+    )]
+    airout: Option<String>,
+
+    /// A built proving key to read as-built circuit stats from (uses the key's own hash
+    /// family and the solved query counts, and can include the recursion circuits).
+    #[arg(short = 'k', long)]
+    proving_key: Option<String>,
+
+    /// Include the recursion circuits (compressor/recursive/final) of the proving key.
+    #[arg(long, requires = "proving_key")]
+    aggregation: bool,
 
     /// Output file for detailed stats (default: tmp/stats.txt)
     #[arg(short = 'o', long)]
@@ -62,7 +76,9 @@ impl ZiskProofmanSetupStats {
         }
 
         let opts = StatsOptions {
-            airout_path: self.airout.clone(),
+            proving_key_path: self.proving_key.clone(),
+            aggregation: self.aggregation,
+            airout_path: self.airout.clone().unwrap_or_default(),
             hash: self.hash.clone(),
             output_path: self.output.clone(),
             stark_structs_path: self.starkstructs.clone(),
