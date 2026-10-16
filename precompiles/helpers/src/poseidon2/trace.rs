@@ -4,8 +4,15 @@
 
 use super::{pow_mod, Poseidon2Params};
 
-/// Longest S-box addition chain (degree 7: x², x³, x⁶, x⁷).
+/// Most S-box steps (degree 7: x², x³, x⁶, x⁷).
 pub const MAX_SBOX_STEPS: usize = 4;
+
+/// One step of the S-box: it squares the previous value or multiplies it by x.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SboxStep {
+    Square,
+    TimesX,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Poseidon2Row<const W: usize> {
@@ -38,12 +45,13 @@ impl<const W: usize> Poseidon2Params<W> {
         num_rows / clocks - (num_rows % clocks != 0) as usize
     }
 
-    /// S-box addition chain, matching CHAIN in the PIL.
-    pub fn sbox_chain(&self) -> &'static [(usize, usize)] {
+    /// Steps computing x^sbox_degree, matching STEP in the PIL.
+    pub fn sbox_steps(&self) -> &'static [SboxStep] {
+        use SboxStep::*;
         match self.sbox_degree {
-            3 => &[(0, 0), (1, 0)],
-            5 => &[(0, 0), (1, 1), (2, 0)],
-            7 => &[(0, 0), (1, 0), (2, 2), (3, 0)],
+            3 => &[Square, TimesX],                 // x², x³
+            5 => &[Square, Square, TimesX],         // x², x⁴, x⁵
+            7 => &[Square, TimesX, Square, TimesX], // x², x³, x⁶, x⁷
             d => panic!("unsupported S-box degree {d}"),
         }
     }
@@ -82,7 +90,7 @@ impl<const W: usize> Poseidon2Params<W> {
         let first_partial = half + 1;
         let first_end = half + self.rc_partial.len() + 1;
         let last = self.clocks() - 1;
-        let chain = self.sbox_chain();
+        let sbox_steps = self.sbox_steps();
 
         // Internal layer as S·a' + K = Σy + d·y + P·q (see the PIL)
         let s = u64::from(pow_mod(self.internal_scale, self.p - 2, self.p));
@@ -131,14 +139,15 @@ impl<const W: usize> Poseidon2Params<W> {
                 if !(full || (partial && i == 0)) {
                     continue;
                 }
-                let mut v = [state[i]; MAX_SBOX_STEPS + 1];
-                for (step, &(l, r)) in chain.iter().enumerate() {
-                    let prod = v[l] * v[r];
-                    v[step + 1] = prod % p;
-                    row.sbox[i][step] = v[step + 1] as u32;
-                    row.sbox_q[i][step] = (prod / p) as u32;
+                let x = state[i];
+                let mut v = x;
+                for (k, step) in sbox_steps.iter().enumerate() {
+                    let prod = v * if *step == SboxStep::Square { v } else { x };
+                    v = prod % p;
+                    row.sbox[i][k] = v as u32;
+                    row.sbox_q[i][k] = (prod / p) as u32;
                 }
-                y[i] = v[chain.len()];
+                y[i] = v;
             }
 
             // Linear layer, plus the next round's constant

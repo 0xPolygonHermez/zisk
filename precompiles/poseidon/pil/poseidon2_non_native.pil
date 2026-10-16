@@ -26,14 +26,17 @@ require "opids.pil"
 // in which Plonky3 keeps KoalaBear and BabyBear, so guests pass their elements as they are; 1 is the
 // canonical form. The input and output rows convert between both forms.
 //
-// Parameters (canonical field elements):
-//   P, n, SBOX_DEG, RF, RP  field, width, S-box degree, full and partial rounds
-//   M4[16]                  4x4 block of the external matrix circ(2·M4, M4, ..., M4), row-major
-//   INT_SCALE, D[n]         internal matrix INT_SCALE·(J + diag(D))
-//   RC                      round constants: RF/2·n | RP | RF/2·n
-//   IO_SCALE                lanes in memory are IO_SCALE·x
-
-
+// Parameters (the field constants as canonical elements mod P):
+//   N          rows of the air
+//   OP         operation code on the operation bus
+//   P          prime of the field (KoalaBear: 2^31 - 2^24 + 1)
+//   n          width: number of field elements (lanes) in the state
+//   SBOX_DEG   S-box degree: the S-box is x^SBOX_DEG
+//   RF, RP     number of full and partial rounds
+//   M4[16]     4x4 block of the external matrix circ(2·M4, M4, ..., M4), row-major
+//   INT_SCALE  with D[n], the internal matrix INT_SCALE·(J + diag(D)), J the all-ones matrix
+//   RC         round constants: RF/2·n (first full rounds) | RP (partial) | RF/2·n (last full)
+//   IO_SCALE   lanes in memory are IO_SCALE·x
 airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int n, const int SBOX_DEG,
                                const int RF, const int RP, const int M4[], const int INT_SCALE,
                                const int D[], const int RC[], const int IO_SCALE) {
@@ -92,25 +95,38 @@ airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int
 
     // --> Constraints to assert the Poseidon2 permutation
 
-    // S-box as an addition chain: sbox[i][k] = v[CHAIN[k][0]] * v[CHAIN[k][1]], v = [state[i], sbox[i][0], ...]
+    // The S-box x^SBOX_DEG is computed in NS steps, one product (and one value and one quotient
+    // column) each: every step either squares the previous value or multiplies it by x. The witness
+    // uses the same steps (Poseidon2Params::sbox_steps).
+    const int SQUARE = 1;
+    const int TIMES_X = 0;
     const int NS;
-    int CHAIN[4][2];
+    int STEP[4];
     switch (SBOX_DEG) {
         case 3:
             NS = 2;
-            CHAIN[0] = [0, 0]; CHAIN[1] = [1, 0];                                       // x², x³
+            STEP[0] = SQUARE; STEP[1] = TIMES_X;                                        // x², x³
         case 5:
             NS = 3;
-            CHAIN[0] = [0, 0]; CHAIN[1] = [1, 1]; CHAIN[2] = [2, 0];                    // x², x⁴, x⁵
+            STEP[0] = SQUARE; STEP[1] = SQUARE; STEP[2] = TIMES_X;                      // x², x⁴, x⁵
         case 7:
             NS = 4;
-            CHAIN[0] = [0, 0]; CHAIN[1] = [1, 0]; CHAIN[2] = [2, 2]; CHAIN[3] = [3, 0]; // x², x³, x⁶, x⁷
+            STEP[0] = SQUARE; STEP[1] = TIMES_X; STEP[2] = SQUARE; STEP[3] = TIMES_X;   // x², x³, x⁶, x⁷
         default:
             error(`Unsupported S-box degree ${SBOX_DEG}`);
     }
 
-    // Poseidon2 state: n elements, each as two 16-bit limbs, least-significant first.
-    // Each S-box step and each linear layer gets a reduced value and a quotient, also two limbs.
+    // Witness columns, every value as two 16-bit limbs (least-significant first), so an integer in
+    // [0, 2^32). Values are not required to be below P here: each relation is an integer equality
+    // that holds mod P whatever representative is used, and only the values that meet memory must
+    // be canonical (see the canonical relation above).
+    //   chunks[i]      lane i of the state entering this row's round
+    //   sbox[i][k]     result of S-box step k on lane i, reduced mod P
+    //   sbox_q[i][k]   its quotient: (operands product) = sbox[i][k] + P·sbox_q[i][k]
+    //   linear_q[i]    quotient of the linear layer on lane i; its reduced result is the next row's
+    //                  chunks[i], so it needs no column of its own
+    // The input and output rows have no S-box and reuse sbox[i][0], sbox[i][1] and sbox_q[i][0]
+    // for the memory conversion (see "Memory form" below).
     col witness bits(16) chunks[n][2];
     col witness bits(16) sbox[n][NS][2];
     col witness bits(16) sbox_q[n][NS][2];
@@ -179,16 +195,18 @@ airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int
 
     // S-box on every lane on full rounds, on lane 0 only on partial rounds
     for (int i = 0; i < n; i++) {
-        sboxChain(state[i], sbox_out[i], sbox_quo[i], i == 0 ? full_round + partial_round : full_round);
+        sboxSteps(state[i], sbox_out[i], sbox_quo[i], i == 0 ? full_round + partial_round : full_round);
     }
 
-    // External layer: initial (y = state) and full rounds (y = S-box output)
+    // External layer, one set of constraints for the initial layer (y = state) and the full rounds
+    // (y = S-box output), with y picked by the clock
     const expr sbox_last[n];
+    const expr external_in[n];
     for (int i = 0; i < n; i++) {
         sbox_last[i] = sbox_out[i][NS - 1];
+        external_in[i] = CLK[0] * state[i] + full_round * sbox_last[i];
     }
-    poseidon2ExternalLayer(state, CLK[0]);
-    poseidon2ExternalLayer(sbox_last, full_round);
+    poseidon2ExternalLayer(external_in, CLK[0] + full_round);
 
     // Internal layer: y = (S-box output of lane 0, state[1], ..., state[n-1])
     const expr partial_in[n];
@@ -309,30 +327,51 @@ airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int
         return 0;
     }
 
-    // v[k + 1] = v[CHAIN[k][0]] * v[CHAIN[k][1]] mod P, with v[0] = input
-    function sboxChain(const expr input, const expr output[], const expr quotient[], const expr sel) {
-        expr v[air.NS + 1];
-        v[0] = input;
+    // output[k] = prev · prev or prev · input (mod P), as STEP[k] says, where prev is output[k - 1]
+    // (input for the first step)
+    function sboxSteps(const expr input, const expr output[], const expr quotient[], const expr sel) {
         for (int k = 0; k < air.NS; k++) {
-            v[k + 1] = output[k];
-        }
-        for (int k = 0; k < air.NS; k++) {
-            sel * (v[air.CHAIN[k][0]] * v[air.CHAIN[k][1]] - output[k] - air.P * quotient[k]) === 0;
+            const expr prev = k == 0 ? input : output[k - 1];
+            const expr other = air.STEP[k] == air.SQUARE ? prev : input;
+            sel * (prev * other - output[k] - air.P * quotient[k]) === 0;
         }
     }
 
     // next_state = circ(2·M4, M4, ..., M4)·input + rc  (mod P)
+    //
+    // The matrix is M4 on each block of 4, plus the sum of all the blocks. With two blocks A and B
+    // (n = 8):
+    //     [2·M4   M4 ] [A]   =   [M4·A + (M4·A + M4·B)]
+    //     [ M4   2·M4] [B]       [M4·B + (M4·A + M4·B)]
+    // so the block products and their sum are built once and shared by every lane.
     function poseidon2ExternalLayer(const expr input[], const expr sel) {
+        expr block[air.n];
+        expr block_sum[4];
+        for (int r = 0; r < 4; r++) {
+            block_sum[r] = 0;
+        }
         for (int i = 0; i < air.n; i++) {
-            expr mat = 0;
-            for (int j = 0; j < air.n; j++) {
-                mat += air.M4[(i % 4) * 4 + j % 4] * (i / 4 == j / 4 ? 2 : 1) * input[j];
+            const int r = i % 4;
+            const int base = i - r;
+            block[i] = 0;
+            for (int c = 0; c < 4; c++) {
+                block[i] += air.M4[r * 4 + c] * input[base + c];
             }
-            sel * (mat + air.rc[i] - air.next_state[i] - air.P * air.linear_quo[i]) === 0;
+            block_sum[r] += block[i];
+        }
+        for (int i = 0; i < air.n; i++) {
+            sel * (block[i] + block_sum[i % 4] + air.rc[i] - air.next_state[i] - air.P * air.linear_quo[i]) === 0;
         }
     }
 
-    // S·next_state + K = Σinput + d·input  (mod P), i.e. next_state = INT_SCALE·(Σinput + d·input) + rc
+    // next_state = INT_SCALE·(Σinput + d·input) + rc  (mod P), written so that it does not wrap:
+    //  1. times S = 1/INT_SCALE, so the sum is not multiplied by a large constant:
+    //         S·next_state = Σinput + d·input + S·rc
+    //  2. -S·rc moved to the left as K = BIAS + (-S·rc mod P), non-negative and equal mod P (BIAS,
+    //     a multiple of P, keeps the quotient non-negative):
+    //         S·next_state + K = Σinput + d·input + P·q
+    //  3. d is centred in (-P/2, P/2): a negative d·input ends up on the left side (d⁻), a
+    //     positive one on the right (d⁺), as checkInstance() bounds them.
     function poseidon2InternalLayer(const expr input[], const expr sel) {
         expr sum = 0;
         for (int i = 0; i < air.n; i++) {
@@ -373,7 +412,9 @@ airtemplate Poseidon2NonNative(const int N, const int OP, const int P, const int
             error("Poseidon2NonNative: IO_SCALE has no inverse mod P");
         }
 
-        // S-box: a·b <= VMAX^2 < PRIME for any P, and x + P·q is below the internal rhs bound
+        // Every relation, both sides, with every value and quotient at VMAX
+        assertBelowPrime(VMAX * VMAX, "S-box lhs");
+        assertBelowPrime(VMAX + air.P * VMAX, "x + P·q (S-box, external and input/output rhs)");
         int ext_sum = 0;
         for (int r = 0; r < 4; r++) {
             int row_sum = 0;

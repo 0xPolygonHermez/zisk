@@ -70,7 +70,7 @@ macro_rules! poseidon2_non_native_sm {
                     active: Option<(u64, u32)>,
                 ) {
                     let rows = $params.trace_rows(&zisk_precomp_helpers::Poseidon2Params::lanes(state));
-                    let num_steps = $params.sbox_chain().len();
+                    let num_steps = $params.sbox_steps().len();
                     // Each value is two 16-bit limbs
                     let limbs = |v: u32| [(0, v as u16), (1, (v >> 16) as u16)];
                     for (t, row) in trace.iter_mut().zip(rows.iter()) {
