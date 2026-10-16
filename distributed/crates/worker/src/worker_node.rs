@@ -4,9 +4,10 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Result};
 use proofman::{AggProofs, ContributionsInfo, WitnessInfo};
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Instant;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -27,51 +28,94 @@ use zisk_prover_backend::{Asm, Emu, GuestProgram, ZiskBackend, ZiskProver};
 
 use crate::config::WorkerServiceConfig;
 
+/// The MPI tag of a peer rank's reply that it has stopped a cancelled job's work.
+/// Apart from proofman's own: 999996 to 999999, and air group ids for proofs.
+pub(crate) const CANCEL_DONE_TAG: i32 = 999_900;
+
+/// What rank 0's recovery does to the cluster, apart from the prover's own state.
 pub(crate) trait RecoveryActions {
+    fn n_processes(&self) -> i32;
     fn notify_cluster_cancellation(&self);
-    fn cluster_barrier(&self);
+    /// Tell every peer rank to stop `job_id`'s work and reply once it has.
+    fn broadcast_cancel(&self, job_id: &str) -> Result<()>;
     fn wait_until_proofman_ready(&self);
+    /// The rank of a peer that has replied it stopped, if a reply has arrived.
+    fn try_receive_cancel_done(&self) -> Option<i32>;
 }
 
 impl<T: ZiskBackend + 'static> RecoveryActions for ZiskProver<T> {
+    fn n_processes(&self) -> i32 {
+        ZiskProver::n_processes(self)
+    }
     fn notify_cluster_cancellation(&self) {
         ZiskProver::notify_cluster_cancellation(self)
     }
-    fn cluster_barrier(&self) {
-        ZiskProver::cluster_barrier(self)
+    fn broadcast_cancel(&self, job_id: &str) -> Result<()> {
+        let mut message = crate::worker::cancel_broadcast(job_id)?;
+        self.mpi_broadcast(&mut message)
     }
     fn wait_until_proofman_ready(&self) {
         ZiskProver::wait_until_proofman_ready(self)
     }
+    fn try_receive_cancel_done(&self) -> Option<i32> {
+        self.mpi_try_receive(CANCEL_DONE_TAG).map(|(rank, _)| rank)
+    }
 }
 
-// notify_cluster_cancellation is P2P; rank 0 reaches the trailing barrier
-// quickly while peer ranks only get there once their stuck task unwinds (the
-// ASM semaphore times out after a few seconds). Rank 0 waits at the barrier
-// so the coordinator can't observe a "Ready" worker until the whole cluster
-// has resynchronised — otherwise a follow-up dispatch races stale broadcasts
-// queued behind the cancelled task.
-//
-pub(crate) fn run_recovery<R: RecoveryActions + ?Sized>(prover: &R) -> Result<()> {
-    // ASM cleanup runs inside `executor::execute`'s Err arm; the wake-up signal
-    // is sent from `worker::cancel_current_computation`. A caller that clobbered a
-    // live compute task should await its handle (so the ASM child has finished +
-    // reset) before invoking this; callers with nothing in flight can call it
-    // directly. All this task does is notify peers, drain any zombie proofman
-    // thread, and barrier with the cluster before advertising `Ready`.
+/// Rank 0's first step in a recovery: tell every peer rank to stop `job_id`'s
+/// work, before waiting on anything, so that they stop while this rank does.
+///
+/// Each peer then cancels its prover, waits for its task, ends the job, and replies
+/// once its prover is idle; see `Worker::stop_cancelled_job`. A peer does not
+/// recover on its own: a failure on one rank reaches rank 0 through the job's
+/// collectives, and rank 0's recovery is what stops them all.
+pub(crate) fn begin_cluster_recovery<R: RecoveryActions + ?Sized>(
+    prover: &R,
+    job_id: &str,
+) -> Result<()> {
     prover.notify_cluster_cancellation();
-    prover.wait_until_proofman_ready();
-    prover.cluster_barrier();
+    if prover.n_processes() > 1 {
+        prover.broadcast_cancel(job_id)?;
+    }
     Ok(())
 }
 
-/// Run [`run_recovery`] off the async runtime, giving up after `timeout`, and say
-/// why it failed if it did. A handshake that gives up leaves its thread in MPI.
+/// The rest of rank 0's recovery: wait until this rank's prover is idle and every
+/// peer rank has replied that it has stopped, giving up at `deadline`.
+///
+/// The replies stand in for a barrier: a barrier could meet one a peer was still
+/// waiting in for the job, leaving the ranks out of step for every job after.
+pub(crate) fn finish_cluster_recovery<R: RecoveryActions + ?Sized>(
+    prover: &R,
+    deadline: Instant,
+) -> Result<()> {
+    prover.wait_until_proofman_ready();
+    let mut waiting: BTreeSet<i32> = (1..prover.n_processes()).collect();
+    while !waiting.is_empty() {
+        match prover.try_receive_cancel_done() {
+            Some(rank) => {
+                waiting.remove(&rank);
+            }
+            None if Instant::now() >= deadline => {
+                let waiting: Vec<_> = waiting.into_iter().collect();
+                return Err(anyhow!("ranks {waiting:?} did not stop the cancelled job's work"));
+            }
+            None => std::thread::sleep(Duration::from_millis(10)),
+        }
+    }
+    Ok(())
+}
+
+/// Run [`finish_cluster_recovery`] off the async runtime, giving up after
+/// `timeout`, and say why it failed if it did. A handshake that gives up may leave
+/// its thread waiting for the prover.
 async fn run_recovery_within<R: RecoveryActions + Send + Sync + 'static>(
     prover: Arc<R>,
     timeout: Duration,
 ) -> std::result::Result<(), String> {
-    let handshake = tokio::task::spawn_blocking(move || run_recovery(&*prover));
+    let deadline = Instant::now() + timeout;
+    let handshake =
+        tokio::task::spawn_blocking(move || finish_cluster_recovery(&*prover, deadline));
     match tokio::time::timeout(timeout, handshake).await {
         Ok(Ok(Ok(()))) => Ok(()),
         Ok(Ok(Err(e))) => Err(format!("cluster handshake failed: {e:#}")),
@@ -781,7 +825,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         if worker_in_recovery {
             // Compute task already awaited at the top of this handler; nothing
             // left to drain, so pass no handle.
-            self.spawn_post_failure_recovery(loop_tx.clone(), CancelledWork::default());
+            self.spawn_post_failure_recovery(
+                loop_tx.clone(),
+                CancelledWork::default(),
+                job_id.as_string(),
+            );
             // Drop `current_job` so a coordinator-originated `JobCancelled`
             // for the same job_id does not race a still-running
             // `spawn_post_failure_recovery` and emit a premature
@@ -903,7 +951,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         if worker_in_recovery {
             // Compute task already awaited at the top of this handler.
-            self.spawn_post_failure_recovery(loop_tx.clone(), CancelledWork::default());
+            self.spawn_post_failure_recovery(
+                loop_tx.clone(),
+                CancelledWork::default(),
+                job_id.as_string(),
+            );
             // See `send_partial_contribution`.
             self.worker.set_current_job(None);
         }
@@ -972,7 +1024,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         if worker_in_recovery {
             // Compute task already awaited at the top of this handler.
-            self.spawn_post_failure_recovery(loop_tx.clone(), CancelledWork::default());
+            self.spawn_post_failure_recovery(
+                loop_tx.clone(),
+                CancelledWork::default(),
+                job_id.as_string(),
+            );
             // See `send_partial_contribution`.
             self.worker.set_current_job(None);
         }
@@ -1188,9 +1244,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// `true` when this failure should drive recovery for `job_id`. Returns
     /// `false` if a `JobCancelled` handler has already cleared `current_job`
     /// (recovery is in flight there) or if the worker has already moved on
-    /// to another job. Without this guard, rank 0 fires `run_recovery` twice
-    /// for the same cancelled job and its second `cluster_barrier` hangs
-    /// against rank 1, which only ever calls `cluster_barrier` once.
+    /// to another job. Without this guard, rank 0 recovers twice from the same
+    /// cancelled job, and its second recovery waits for replies the peer ranks,
+    /// told to stop once, never send.
     async fn owns_recovery_for(&self, job_id: &JobId) -> bool {
         match self.worker.current_job() {
             Some(job) => job.lock().await.job_id == *job_id,
@@ -1198,17 +1254,42 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
     }
 
-    /// Drive the cluster recovery handshake (notify peer-rank cancellation,
-    /// wait for the proofman thread to drain, cluster_barrier), then signal
-    /// `WorkerRecoveryComplete`. The ASM soft reset itself runs inside
-    /// `executor::execute`'s Err arm — this task is only the post-cancel sync.
-    /// A handshake that fails, or does not complete within `RECOVERY_TIMEOUT`,
-    /// aborts the worker; see [`abort_wedged_worker`].
-    fn spawn_post_failure_recovery(&mut self, loop_tx: LoopEventSender, cancelled: CancelledWork) {
+    /// Drive the cluster recovery handshake for `job_id` (tell the peer ranks to
+    /// stop its work, wait for this rank's computation and prover to drain, then for
+    /// every peer's reply), then signal `WorkerRecoveryComplete`. The ASM soft reset
+    /// itself runs inside `executor::execute`'s Err arm — this task is only the
+    /// post-cancel sync. A handshake that fails, or does not complete within
+    /// `RECOVERY_TIMEOUT`, aborts the worker; see [`abort_wedged_worker`].
+    fn spawn_post_failure_recovery(
+        &mut self,
+        loop_tx: LoopEventSender,
+        cancelled: CancelledWork,
+        job_id: String,
+    ) {
         let prover = self.worker.prover_arc();
         let worker_id = self.worker_config.worker.worker_id.as_string();
         self.recovery = Some(tokio::spawn(async move {
-            warn!("[Recovery] {worker_id}: running cluster cancellation handshake");
+            warn!("[Recovery] {worker_id}: running cluster cancellation handshake for {job_id}");
+
+            let begun = {
+                let prover = Arc::clone(&prover);
+                tokio::task::spawn_blocking(move || begin_cluster_recovery(&*prover, &job_id)).await
+            };
+            match begun {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => abort_wedged_worker(
+                    &prover,
+                    &format!(
+                        "[Recovery] {worker_id}: telling the peer ranks to stop failed: {e:#}"
+                    ),
+                ),
+                Err(e) => abort_wedged_worker(
+                    &prover,
+                    &format!(
+                        "[Recovery] {worker_id}: telling the peer ranks to stop panicked: {e}"
+                    ),
+                ),
+            }
 
             // Await the in-flight compute task before the barrier: its ASM MO
             // run is a synchronous round-trip, so when it returns the child has
@@ -1248,14 +1329,19 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         });
     }
 
-    /// Drain a cancelled job's in-flight work off the event loop. If a compute
-    /// task was live, run the full recovery handshake (drains compute + stream,
-    /// cluster barrier, emits `WorkerRecoveryComplete`) and return `true`.
-    /// Otherwise just drain any stream-ordering shutdown and return `false` — the
-    /// caller decides whether a completion signal still needs emitting.
-    fn drive_cancellation(&mut self, loop_tx: &LoopEventSender, cancelled: CancelledWork) -> bool {
+    /// Drain cancelled job `job_id`'s in-flight work off the event loop. If a
+    /// compute task was live, run the full recovery handshake (stops the peer
+    /// ranks, drains compute + stream, emits `WorkerRecoveryComplete`) and return
+    /// `true`. Otherwise just drain any stream-ordering shutdown and return `false`
+    /// — the caller decides whether a completion signal still needs emitting.
+    fn drive_cancellation(
+        &mut self,
+        loop_tx: &LoopEventSender,
+        cancelled: CancelledWork,
+        job_id: String,
+    ) -> bool {
         if cancelled.compute.is_some() {
-            self.spawn_post_failure_recovery(loop_tx.clone(), cancelled);
+            self.spawn_post_failure_recovery(loop_tx.clone(), cancelled, job_id);
             true
         } else {
             self.spawn_stream_drain(cancelled.stream);
@@ -1352,6 +1438,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     // (else a new dispatch's `prover.reset()` races the unwinding
                     // task), then emits `WorkerRecoveryComplete`.
                     let mut cancelled_work = CancelledWork::default();
+                    let stale_job_id = match self.worker.current_job() {
+                        Some(job) => job.lock().await.job_id.as_string(),
+                        None => String::new(),
+                    };
                     match response.directive.map(|d| ReconnectionAction::try_from(d.action)) {
                         Some(Ok(ReconnectionAction::CancelStaleJob)) => {
                             info!("Coordinator directed cancellation of stale job");
@@ -1376,7 +1466,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     // Drain the clobbered job's work off the loop (full recovery
                     // handshake if a compute task was live, else just the stream
                     // shutdown). Reconnect never emits WorkerRecoveryComplete itself.
-                    self.drive_cancellation(loop_tx, cancelled_work);
+                    self.drive_cancellation(loop_tx, cancelled_work, stale_job_id);
 
                     // The coordinator attaches a setup to every reconnection. It goes
                     // the way of any other: off the loop, once no job, computation or
@@ -1454,7 +1544,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 let ack = WorkerMessage {
                     payload: Some(worker_message::Payload::JobCancelledAck(JobCancelledAck {
                         worker_id: self.worker_config.worker.worker_id.as_string(),
-                        job_id: cancelled.job_id,
+                        job_id: cancelled.job_id.clone(),
                     })),
                 };
                 if let Err(e) = message_sender.send(ack) {
@@ -1465,7 +1555,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 // WorkerRecoveryComplete when a compute task was live. Otherwise,
                 // if we matched the job, emit it directly (coordinator parked us
                 // SettingUp awaiting it).
-                let recovery_spawned = self.drive_cancellation(loop_tx, cancelled_work);
+                let recovery_spawned =
+                    self.drive_cancellation(loop_tx, cancelled_work, cancelled.job_id);
                 if !recovery_spawned && matched {
                     let rc = WorkerRecoveryComplete {
                         worker_id: self.worker_config.worker.worker_id.as_string(),
@@ -2637,86 +2728,154 @@ mod recovery_tests {
     use super::*;
     use std::sync::Mutex;
 
+    /// A cluster of `n_processes` ranks whose peers reply in the order of
+    /// `replies`, recording what rank 0's recovery does to it.
     struct RecordingProver {
-        calls: Mutex<Vec<&'static str>>,
+        n_processes: i32,
+        calls: Mutex<Vec<String>>,
+        replies: Mutex<VecDeque<i32>>,
     }
 
     impl RecordingProver {
-        fn new() -> Self {
-            Self { calls: Mutex::new(Vec::new()) }
+        fn new(n_processes: i32, replies: &[i32]) -> Self {
+            Self {
+                n_processes,
+                calls: Mutex::new(Vec::new()),
+                replies: Mutex::new(replies.iter().copied().collect()),
+            }
         }
 
-        fn calls(&self) -> Vec<&'static str> {
+        fn calls(&self) -> Vec<String> {
             self.calls.lock().unwrap().clone()
+        }
+
+        fn record(&self, call: impl Into<String>) {
+            self.calls.lock().unwrap().push(call.into());
         }
     }
 
     impl RecoveryActions for RecordingProver {
-        fn notify_cluster_cancellation(&self) {
-            self.calls.lock().unwrap().push("notify");
+        fn n_processes(&self) -> i32 {
+            self.n_processes
         }
 
-        fn cluster_barrier(&self) {
-            self.calls.lock().unwrap().push("barrier");
+        fn notify_cluster_cancellation(&self) {
+            self.record("notify");
+        }
+
+        fn broadcast_cancel(&self, job_id: &str) -> Result<()> {
+            self.record(format!("cancel {job_id}"));
+            Ok(())
         }
 
         fn wait_until_proofman_ready(&self) {
-            self.calls.lock().unwrap().push("wait_until_proofman_ready");
+            self.record("wait_until_proofman_ready");
+        }
+
+        fn try_receive_cancel_done(&self) -> Option<i32> {
+            self.replies.lock().unwrap().pop_front()
         }
     }
 
-    /// Notify must precede the proofman drain so peers blocked in MPI
-    /// collectives unwind first. The trailing barrier is what keeps rank 0
-    /// from racing ahead of peer ranks before advertising Ready.
-    #[test]
-    fn run_recovery_calls_notify_drain_barrier() {
-        let prover = RecordingProver::new();
-        run_recovery(&prover).unwrap();
-        assert_eq!(prover.calls(), vec!["notify", "wait_until_proofman_ready", "barrier"]);
+    fn in_a_second() -> Instant {
+        Instant::now() + Duration::from_secs(1)
     }
 
-    /// A barrier that waits until the test lets it go, as it does on rank 0 while a
-    /// peer rank sits in another collective.
-    struct StuckBarrier {
+    /// The peers are told to stop before rank 0 waits on anything, so that they
+    /// stop while it does.
+    #[test]
+    fn a_recovery_tells_the_peer_ranks_to_stop_first() {
+        let prover = RecordingProver::new(3, &[]);
+        begin_cluster_recovery(&prover, "job-1").unwrap();
+        assert_eq!(prover.calls(), ["notify", "cancel job-1"]);
+    }
+
+    #[test]
+    fn a_recovery_on_one_rank_waits_for_no_peer() {
+        let prover = RecordingProver::new(1, &[]);
+        begin_cluster_recovery(&prover, "job-1").unwrap();
+        finish_cluster_recovery(&prover, in_a_second()).unwrap();
+        assert_eq!(prover.calls(), ["notify", "wait_until_proofman_ready"]);
+    }
+
+    #[test]
+    fn a_recovery_ends_once_every_peer_rank_has_replied() {
+        // In any order; a reply already counted counts once.
+        let prover = RecordingProver::new(4, &[3, 1, 3, 2]);
+        finish_cluster_recovery(&prover, in_a_second()).unwrap();
+        assert_eq!(prover.calls(), ["wait_until_proofman_ready"]);
+    }
+
+    #[test]
+    fn a_recovery_names_the_peer_ranks_that_never_replied() {
+        let prover = RecordingProver::new(4, &[2]);
+        let deadline = Instant::now() + Duration::from_millis(50);
+        let error = finish_cluster_recovery(&prover, deadline).unwrap_err();
+        assert!(error.to_string().contains("[1, 3]"), "{error:#}");
+    }
+
+    /// A prover that stays busy until the test lets it go, as one does while its
+    /// rank's work waits in a collective nothing will complete.
+    struct StuckProver {
         release: Mutex<std::sync::mpsc::Receiver<()>>,
     }
 
-    impl RecoveryActions for StuckBarrier {
+    impl RecoveryActions for StuckProver {
+        fn n_processes(&self) -> i32 {
+            1
+        }
+
         fn notify_cluster_cancellation(&self) {}
 
-        fn cluster_barrier(&self) {
+        fn broadcast_cancel(&self, _job_id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn wait_until_proofman_ready(&self) {
             let _ = self.release.lock().unwrap().recv();
         }
 
-        fn wait_until_proofman_ready(&self) {}
+        fn try_receive_cancel_done(&self) -> Option<i32> {
+            None
+        }
     }
 
-    struct PanickingBarrier;
+    struct PanickingProver;
 
-    impl RecoveryActions for PanickingBarrier {
-        fn notify_cluster_cancellation(&self) {}
-
-        fn cluster_barrier(&self) {
-            panic!("a barrier that panics");
+    impl RecoveryActions for PanickingProver {
+        fn n_processes(&self) -> i32 {
+            1
         }
 
-        fn wait_until_proofman_ready(&self) {}
+        fn notify_cluster_cancellation(&self) {}
+
+        fn broadcast_cancel(&self, _job_id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn wait_until_proofman_ready(&self) {
+            panic!("a prover that panics");
+        }
+
+        fn try_receive_cancel_done(&self) -> Option<i32> {
+            None
+        }
     }
 
     #[tokio::test]
     async fn a_handshake_that_completes_succeeds() {
-        let prover = Arc::new(RecordingProver::new());
+        let prover = Arc::new(RecordingProver::new(2, &[1]));
         run_recovery_within(Arc::clone(&prover), Duration::from_secs(5)).await.unwrap();
-        assert_eq!(prover.calls(), vec!["notify", "wait_until_proofman_ready", "barrier"]);
+        assert_eq!(prover.calls(), ["wait_until_proofman_ready"]);
     }
 
     #[tokio::test]
     async fn a_handshake_that_does_not_complete_in_time_fails() {
         let (release, stuck) = std::sync::mpsc::channel();
-        let prover = Arc::new(StuckBarrier { release: Mutex::new(stuck) });
+        let prover = Arc::new(StuckProver { release: Mutex::new(stuck) });
 
         let outcome = run_recovery_within(prover, Duration::from_millis(50)).await;
-        // Let the barrier go, so the runtime's shutdown does not wait for it.
+        // Let the prover go, so the runtime's shutdown does not wait for it.
         release.send(()).unwrap();
 
         assert!(matches!(&outcome, Err(why) if why.contains("timed out")), "{outcome:?}");
@@ -2724,7 +2883,7 @@ mod recovery_tests {
 
     #[tokio::test]
     async fn a_handshake_that_panics_fails() {
-        let outcome = run_recovery_within(Arc::new(PanickingBarrier), Duration::from_secs(5)).await;
+        let outcome = run_recovery_within(Arc::new(PanickingProver), Duration::from_secs(5)).await;
         assert!(matches!(&outcome, Err(why) if why.contains("panicked")), "{outcome:?}");
     }
 
