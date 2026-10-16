@@ -28,16 +28,10 @@ async fn prove_segment(
 ) -> Result<zisk_sdk::Proof, Box<dyn Error>> {
     let stdin = ZiskStdin::new();
     stdin.write_slice(&seg.abi_encode());
-    // Uncompressed on purpose: the client default is `VadcopFinalMinimal`, and
-    // compression strips the `is_vadcop_final_proof` flag the aggregator reads at
-    // public slot 0. A folded leaf must keep it.
-    let proof = client
-        .prove(&LEAF, stdin)
-        .wrap(ProofKind::VadcopFinal)
-        .run()?
-        .await?
-        .get_proof()
-        .clone();
+    // Uncompressed on purpose: compression strips the `is_vadcop_final_proof` flag the
+    // aggregator reads at public slot 0. A folded leaf must keep it.
+    let proof =
+        client.prove(&LEAF, stdin).wrap(ProofKind::VadcopFinal).run()?.await?.get_proof().clone();
     Ok(proof)
 }
 
@@ -82,7 +76,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     timer_stop_and_log_info!(AGG_L2_ABC);
 
     println!("Verifying the final folded proof...");
-    abc.verify()?;
+    // An aggregate verifies under its recurser's key, which no release publishes.
+    let agg_vk = AGG_L2.vk()?.vk;
+    abc.with_setup_vk(&agg_vk).verify()?;
     println!("Final folded proof verified successfully.");
     println!("Testing invalid folds...");
     // Non-contiguous fold (A then C, skipping B) must fail the stitch.
@@ -109,10 +105,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Optional (ZISK_L2_PLONK=1): wrap the folded proof into a PLONK/SNARK.
     if plonk {
         timer_start_info!(WRAP_PLONK);
-        let plonk_proof =
-            client.wrap_proof(&abc, ProofKind::Plonk).run()?.await?.get_proof().clone();
+        let wrapped = client.wrap_proof(&abc, ProofKind::Plonk).run()?.await?;
         timer_stop_and_log_info!(WRAP_PLONK);
-        plonk_proof.verify()?;
+        // On the result, not a copy of its proof: it carries the PLONK key it was wrapped under.
+        wrapped.with_setup_vk(agg_vk).verify()?;
         println!("PLONK proof verified.");
     }
 

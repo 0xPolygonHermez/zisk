@@ -52,6 +52,15 @@ impl RandomSeed {
     pub fn to_le_words(&self) -> [u64; Self::LEN / 8] {
         std::array::from_fn(|i| u64::from_le_bytes(self.0[8 * i..8 * i + 8].try_into().unwrap()))
     }
+
+    /// The inverse of [`to_le_words`](Self::to_le_words).
+    pub fn from_le_words(words: [u64; Self::LEN / 8]) -> Self {
+        let mut bytes = [0u8; Self::LEN];
+        for (chunk, w) in bytes.chunks_exact_mut(8).zip(words) {
+            chunk.copy_from_slice(&w.to_le_bytes());
+        }
+        Self(bytes)
+    }
 }
 
 impl TryFrom<&[u8]> for RandomSeed {
