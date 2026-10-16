@@ -52,6 +52,11 @@ impl EmulatorRust {
         let (counters, pub_outs) = self.count::<F>(zisk_rom, &min_traces)?;
         timer_stop_and_log_info!(COUNT);
 
+        // There is no ROM-histogram assembly on this path, so the reference the collectors are
+        // checked against is built here instead. Compiled out without `debug_frops`.
+        #[cfg(feature = "debug_frops")]
+        self.arm_frops_reference::<F>(zisk_rom, &min_traces)?;
+
         // Wrap once at the boundary: downstream (planning, witness, the
         // progressive main store) shares chunks as Arcs.
         let min_traces = min_traces.into_iter().map(Arc::new).collect();
@@ -63,6 +68,37 @@ impl EmulatorRust {
             steps,
             backend: BackendArtifacts::Rust,
         })
+    }
+
+    /// Builds the FROPS multiplicity column a second time, straight from `zisk_core::frops`, and
+    /// arms the cross-check with it.
+    ///
+    /// This is the emulated path's stand-in for the ROM-histogram assembly: an independent producer
+    /// of the same column over the same execution, so what the collectors go on to claim can be
+    /// checked row by row. It replays the minimal traces once more rather than riding along with
+    /// the counting pass, which keeps it entirely out of the way of the code it is checking.
+    ///
+    /// Sequential on purpose: the column is one counter per table row, tens of millions of them,
+    /// and one per thread would cost more memory than the check is worth.
+    #[cfg(feature = "debug_frops")]
+    fn arm_frops_reference<F: PrimeField64>(
+        &self,
+        zisk_rom: &ZiskRom,
+        min_traces: &[EmuTrace],
+    ) -> ExecutorResult<()> {
+        use crate::error::ExecutorError;
+
+        let mut bus = FropsReferenceBus { mult: zisk_core::frops::FropsMultiplicity::new() };
+        for minimal_trace in min_traces {
+            ZiskEmulator::process_emu_trace::<F, _, _>(zisk_rom, minimal_trace, &mut bus, true);
+        }
+        tracing::info!(
+            "FROPS reference column built in Rust ({} counted over {} chunk(s))",
+            bus.mult.counted(),
+            min_traces.len(),
+        );
+        zisk_core::frops::load_frops_reference(bus.mult.rows()).map_err(ExecutorError::Internal)?;
+        Ok(())
     }
 
     fn run_emulator(
@@ -141,5 +177,31 @@ impl EmulatorRust {
         }
 
         Ok((counters, pub_outs))
+    }
+}
+
+/// A data bus that does nothing but count frequent operations, for [`EmulatorRust::arm_frops_reference`].
+///
+/// It ignores every bus but the operation one and keeps no devices, so the replay costs the
+/// emulation plus one table lookup per operation.
+#[cfg(feature = "debug_frops")]
+struct FropsReferenceBus {
+    mult: zisk_core::frops::FropsMultiplicity,
+}
+
+#[cfg(feature = "debug_frops")]
+impl DataBusTrait<u64, ()> for FropsReferenceBus {
+    fn write_to_bus(&mut self, bus_id: zisk_common::BusId, data: &[u64], _ext: &[u64]) -> bool {
+        use zisk_common::{A, B, OP, OPERATION_BUS_ID};
+        if bus_id == OPERATION_BUS_ID {
+            self.mult.count(data[OP] as u8, data[A], data[B]);
+        }
+        true
+    }
+
+    fn on_close(&mut self) {}
+
+    fn into_devices(self, _execute_on_close: bool) -> Vec<(usize, ())> {
+        Vec::new()
     }
 }

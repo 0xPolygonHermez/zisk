@@ -276,23 +276,24 @@ airtemplate Blake2br(const int N = 2**20) {
     const expr vd_prime_prime_packed[2] = pack_u64(vd_prime_prime);
     add2_check(vc_prime_packed, vd_prime_prime_packed, vc_prime_prime_packed);
 
-    // vb'' === (vb' ^ vc'') >>> 63 = (vb' ^ vc'') <<< 1 = 2·(vb' ^ vc'') with wraparound
+    // vb'' === (vb' ^ vc'') >>> 63 = (vb' ^ vc'') <<< 1 = 2·(vb' ^ vc'') mod 2^64
     col witness bits(8) vb_pp_xor[8];   // z = vb' ^ vc''
-    col witness bits(1) vb_pp_t[2];     // top bits of z_lo, z_hi
     for (int i = 0; i < 8; i++) {
         xor_rotr_check(a: vb_prime[i], b: vc_prime_prime[i], rot: 0, c0: vb_pp_xor[i], c1: 0);
     }
+
+    const expr z[2] = pack_u64(vb_pp_xor); // [z_lo, z_hi]
+
+    // For a byte b, 2b - 256t lies in [0, 255] exactly when t = floor(2b / 256) = bit 7 of b.
+    // If b < 128 only t = 0 fits; if b >= 128 only t = 1 fits; any other t gives a negative or >= 256 value.
+    col witness bits(1) vb_pp_t[2]; // top bits of z_lo, z_hi
     vb_pp_t[0] * (1 - vb_pp_t[0]) === 0;
     vb_pp_t[1] * (1 - vb_pp_t[1]) === 0;
+    range_dual_byte(2 * vb_pp_xor[3] - P2_8 * vb_pp_t[0], 2 * vb_pp_xor[7] - P2_8 * vb_pp_t[1]);
 
-    const expr z[2] = pack_u64(vb_pp_xor); // [lo, hi]
     const expr vb_pp_packed[2];
     vb_pp_packed[0] = 2*z[0] - P2_32*vb_pp_t[0] + vb_pp_t[1]; // rotl1: lo' = 2·z_lo mod 2³² + top(z_hi)
     vb_pp_packed[1] = 2*z[1] - P2_32*vb_pp_t[1] + vb_pp_t[0]; // rotl1: hi' = 2·z_hi mod 2³² + top(z_lo)
-    // The carry bits are sound with just booleanity: z limbs are byte-bound to [0, 2³²) by the table, and 
-    // the transition constraint equates vb_pp_packed[j] to a future vb_packed[j] which is also < 2³². 
-    // If the prover lies about a t bit, the expression lands outside [0, 2³²) as a field element (off by ±2³²), 
-    // so the equality can never hold.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // TRANSITION CONSTRAINTS

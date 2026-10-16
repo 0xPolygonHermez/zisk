@@ -1,4 +1,8 @@
+#[cfg(not(feature = "ziskasm"))]
 use ziskos::zisklib::ecdsa_verify_secp256r1;
+// ziskasm backend: same signature, different name -> plain rename, no glue needed.
+#[cfg(feature = "ziskasm")]
+use zisklib::secp256r1_ecdsa_verify as ecdsa_verify_secp256r1;
 
 use crate::constants::{G_X, G_Y};
 

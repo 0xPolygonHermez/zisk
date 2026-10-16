@@ -1,0 +1,784 @@
+//! Assembles parsed `.zisk` instructions into a `ZiskRom`.
+//!
+//! This mirrors `transpilers/common/src/elf2rom.rs`, but the program instructions
+//! come from the `.zisk` parser instead of the RISC-V transpiler:
+//!   1. start an empty ROM and add the BIOS end/lib block (`add_end_and_lib`),
+//!   2. place each assembled instruction at `ROM_ADDR + 4*index`,
+//!   3. wire the BIOS entry/exit around the `_start` label (`add_entry_exit_jmp`),
+//!   4. build the pc→instruction lookup (`optimize_instruction_lookup`).
+//!
+//! Input memory is populated by the emulator; the program reads it and writes its
+//! output to `OUTPUT_ADDR`, which the BIOS finalization reads back on return.
+
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::Path;
+
+use zisk_core::zisk_inst::{ZiskInst, SRC_C, SRC_IMM, SRC_REG, STORE_MEM, STORE_REG};
+use zisk_core::zisk_inst_builder::ZiskInstBuilder;
+use zisk_core::zisk_rom::{DataSection64, ZiskRom};
+use zisk_core::{
+    GENERAL_RAM_ADDR, RAM_ADDR, RAM_SIZE, REGS_IN_MAIN_TO, REG_FIRST, ROM_ADDR, ROM_ADDR_MAX,
+    ROM_ENTRY, ROM_SIZE, SYS_ADDR,
+};
+use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, InlineBody};
+
+use crate::parser::{
+    self, ASource, BSource, Control, DataDecl, Instruction, JumpTarget, Kind, Num, Op, Program,
+    Store, Target,
+};
+
+/// Bytes between two consecutive program instructions (the `.zisk` convention).
+const INST_SIZE: i64 = 4;
+
+/// Offset from the start of the BIOS entry/exit block (`add_entry_exit_jmp`) to
+/// its output-finalization code (its `:0014` instruction — 5 instructions in).
+/// The BIOS "CALL to entry" leaves this address in `r1`; `ret_to_bios` jumps here
+/// so the BIOS reads `OUTPUT_ADDR` and ends. Kept in sync with `add_entry_exit_jmp`
+/// in `transpilers/riscv/src/riscv2zisk_context.rs`.
+const BIOS_FINALIZE_OFFSET: u64 = 0x14;
+
+/// RISC-V JALR target mask: clears bit 0 (2-byte instruction alignment). Used by
+/// `ret` and by any `setpc`-based indirect jump through a register.
+const JALR_MASK: u64 = 0xffff_ffff_ffff_fffe;
+
+/// Reads and assembles the given `.zisk` source files (in order) into a `ZiskRom`.
+/// The first file must contain the `_start` entry label (typically `ziskos.zisk`),
+/// unless the program instead defines `main` / `_zisk_main` (auto-launcher).
+pub fn assemble_files<P: AsRef<Path>>(paths: &[P]) -> Result<ZiskRom, String> {
+    assemble_files_with_defines(paths, &[])
+}
+
+/// Like [`assemble_files`], but with a set of externally predefined symbols that
+/// the source can test with `ifdef`/`ifndef`. For example, passing `["ASM"]`
+/// selects the x86-assembly target so a program can exclude ops that generator
+/// cannot emit.
+pub fn assemble_files_with_defines<P: AsRef<Path>>(
+    paths: &[P],
+    defines: &[&str],
+) -> Result<ZiskRom, String> {
+    let predefined: HashSet<String> = defines.iter().map(|s| s.to_string()).collect();
+    let srcs = read_sources(paths)?;
+    let seed = merge_public_defines(srcs.iter().map(|(_, s)| s.as_str()))?;
+    let mut program = Program::default();
+    for (name, src) in &srcs {
+        let parsed = parser::parse_program_seeded(src, name, &predefined, &seed)?;
+        program.instructions.extend(parsed.instructions);
+        program.data.extend(parsed.data);
+    }
+    assemble(&program)
+}
+
+/// Like [`assemble_files_with_defines`], but also returns the symbol table
+/// (see [`assemble_with_symbols`]).
+pub fn assemble_files_with_symbols<P: AsRef<Path>>(
+    paths: &[P],
+    defines: &[&str],
+) -> Result<(ZiskRom, HashMap<String, u64>), String> {
+    let predefined: HashSet<String> = defines.iter().map(|s| s.to_string()).collect();
+    let srcs = read_sources(paths)?;
+    let seed = merge_public_defines(srcs.iter().map(|(_, s)| s.as_str()))?;
+    let mut program = Program::default();
+    for (name, src) in &srcs {
+        let parsed = parser::parse_program_seeded(src, name, &predefined, &seed)?;
+        program.instructions.extend(parsed.instructions);
+        program.data.extend(parsed.data);
+    }
+    assemble_with_symbols(&program)
+}
+
+/// Reads several `.zisk` files into `(name, source)` pairs (used so a multi-file
+/// assembly can gather `pub define`s before parsing any file).
+fn read_sources<P: AsRef<Path>>(paths: &[P]) -> Result<Vec<(String, String)>, String> {
+    paths
+        .iter()
+        .map(|path| {
+            let path = path.as_ref();
+            let name = path.to_string_lossy().to_string();
+            let src =
+                std::fs::read_to_string(path).map_err(|e| format!("cannot read `{name}`: {e}"))?;
+            Ok((name, src))
+        })
+        .collect()
+}
+
+/// Gathers every `pub define` across the given sources into one value map that
+/// seeds each file's parse (so a public define is visible assembly-wide). Errors
+/// if a name is publicly defined twice with different values.
+fn merge_public_defines<'a>(
+    sources: impl Iterator<Item = &'a str>,
+) -> Result<HashMap<String, String>, String> {
+    let mut map: HashMap<String, String> = HashMap::new();
+    for src in sources {
+        for (name, value) in parser::collect_public_defines(src) {
+            if let Some(prev) = map.get(&name) {
+                if *prev != value {
+                    return Err(format!(
+                        "conflicting `pub define {name}` values: `{prev}` and `{value}`"
+                    ));
+                }
+            } else {
+                map.insert(name, value);
+            }
+        }
+    }
+    Ok(map)
+}
+
+/// A hand-written `.zisk` library assembled for merging into a program ROM. Unlike
+/// [`assemble`], there is no launcher / `_start` / BIOS: it is a set of callable
+/// functions placed at a fixed base, plus the exported symbol table (label / data
+/// name → address) used to resolve calls into it (see the zkvmcalls in
+/// `transpilers/common/src/elf2rom.rs`).
+pub struct ZiskLibrary {
+    /// Assembled instructions keyed by ROM address (`rom_base + 4*i`, file order).
+    pub insts: BTreeMap<u64, ZiskInstBuilder>,
+    /// Read-only (`const`) data sections, placed right after the code.
+    pub ro_data: Vec<DataSection64>,
+    /// Read-write (non-`const`) data sections, placed at `ram_base`.
+    pub rw_data: Vec<DataSection64>,
+    /// Exported symbols: every label and data name → its address.
+    pub symbols: HashMap<String, u64>,
+}
+
+impl ZiskLibrary {
+    /// Footprint in bytes: `(rom_bytes, ram_bytes)`, measured from each region's
+    /// base (the lowest address used). ROM covers the code and the `const`/ro data
+    /// that follows it; RAM covers the non-`const` data. Callers compare these
+    /// against the reserved `ZISKLIB_ROM_SIZE` / `ZISKLIB_RAM_SIZE` budgets.
+    pub fn footprint(&self) -> (u64, u64) {
+        // ROM: from the first instruction to the end of the code and ro data.
+        let rom_start = self.insts.keys().next().copied().unwrap_or(0);
+        let mut rom_end =
+            self.insts.keys().next_back().map(|&addr| addr + INST_SIZE as u64).unwrap_or(rom_start);
+        for section in &self.ro_data {
+            rom_end = rom_end.max(section.addr + (section.data.len() as u64) * 8);
+        }
+        let rom_bytes = rom_end.saturating_sub(rom_start);
+
+        // RAM: from the first to the last rw-data byte (0 when there is no rw data).
+        let ram_start = self.rw_data.iter().map(|s| s.addr).min().unwrap_or(0);
+        let mut ram_end = ram_start;
+        for section in &self.rw_data {
+            ram_end = ram_end.max(section.addr + (section.data.len() as u64) * 8);
+        }
+        let ram_bytes = ram_end.saturating_sub(ram_start);
+
+        (rom_bytes, ram_bytes)
+    }
+
+    /// The body of the routine at `name`, for the transpiler to expand at an inline
+    /// zkvmcall with `args` pointer arguments: every instruction reachable from its
+    /// entry, following branches (possibly into other routines' code), as a small
+    /// control-flow graph (see [`InlineBody`]). A `ret` becomes the end of the call
+    /// site and a `jump(label)` is followed to its target, so neither costs a step.
+    ///
+    /// The body reads no RISC-V register but its arguments (r10, r11, ..., which the
+    /// transpiler replaces by the caller's registers) and the scratch registers
+    /// r32..r39, and writes only memory and r32..r39, so it clobbers nothing the
+    /// compiler can see (r32..r39 are main-trace registers RISC-V code never uses). It
+    /// has no calls, and neither its entry nor a `jump` target reads `c` (a skipped
+    /// `jump` would have set it).
+    pub fn inline_body(&self, name: &str, args: u8) -> Result<InlineBody, String> {
+        let entry = *self.symbols.get(name).ok_or_else(|| format!("no routine `{name}`"))?;
+        let at = |addr: u64| format!("`{name}` + {}", addr as i64 - entry as i64);
+        let inst = |addr: u64| {
+            self.insts.get(&addr).map(|b| &b.i).ok_or_else(|| format!("{}: no code", at(addr)))
+        };
+        let reads_c = |i: &ZiskInst| i.a_src == SRC_C || i.b_src == SRC_C;
+
+        // Where control goes from `addr`: the first instruction that is neither a
+        // `jump` (followed) nor a `ret` (None: the end of the call site).
+        let resolve = |mut addr: u64| -> Result<Option<u64>, String> {
+            for jumps in 0..=self.insts.len() {
+                let i = inst(addr)?;
+                if !i.set_pc {
+                    if jumps > 0 && reads_c(i) {
+                        return Err(format!("{}: a jump target reads c", at(addr)));
+                    }
+                    return Ok(Some(addr));
+                }
+                if i.op_str == "and" && i.b_src == SRC_REG && i.b_offset_imm0 == 1 {
+                    return Ok(None); // ret
+                }
+                if i.op_str == "copyb" && i.a_src == SRC_IMM && i.b_src == SRC_IMM {
+                    addr = i.b_offset_imm0 | (i.b_use_sp_imm1 << 32); // jump(label)
+                    continue;
+                }
+                return Err(format!("{}: indirect jump", at(addr)));
+            }
+            Err(format!("{}: a loop of jumps", at(addr)))
+        };
+
+        let first = resolve(entry)?.ok_or_else(|| format!("`{name}` is empty"))?;
+        if reads_c(inst(first)?) {
+            return Err(format!("{}: starts by reading c", at(first)));
+        }
+
+        // Every reachable instruction, and where each one continues to.
+        let arg_regs = 10..10 + args as u64;
+        let scratch_regs = 32..=REGS_IN_MAIN_TO as u64;
+        let reg_area = REG_FIRST..REG_FIRST + 64 * 8;
+        let mut succ: BTreeMap<u64, [Option<u64>; 2]> = BTreeMap::new();
+        let mut todo = vec![first];
+        while let Some(addr) = todo.pop() {
+            if succ.contains_key(&addr) {
+                continue;
+            }
+            let i = inst(addr)?;
+            if i.store_pc || i.end {
+                return Err(format!("{}: a call or an end", at(addr)));
+            }
+            for (src, reg) in [(i.a_src, i.a_offset_imm0), (i.b_src, i.b_offset_imm0)] {
+                if src == SRC_REG && !arg_regs.contains(&reg) && !scratch_regs.contains(&reg) {
+                    return Err(format!("{}: reads r{reg}", at(addr)));
+                }
+            }
+            let dst = i.store_offset as u64;
+            if (i.store == STORE_REG && !scratch_regs.contains(&dst))
+                || (i.store == STORE_MEM && reg_area.contains(&dst))
+            {
+                return Err(format!("{}: writes a register outside r32..r39", at(addr)));
+            }
+            let target = |off: i64| resolve((addr as i64 + off) as u64);
+            // A precompile's flag is always 0, and its jmp_offset1 may be a parameter.
+            let next2 = target(i.jmp_offset2)?;
+            let next1 = if i.is_precompiled { next2 } else { target(i.jmp_offset1)? };
+            todo.extend(next1.into_iter().chain(next2));
+            succ.insert(addr, [next1, next2]);
+        }
+
+        // Entry first, then the rest in address order.
+        let order: Vec<u64> =
+            std::iter::once(first).chain(succ.keys().copied().filter(|&a| a != first)).collect();
+        let index: HashMap<u64, usize> = order.iter().enumerate().map(|(k, &a)| (a, k)).collect();
+        Ok(InlineBody {
+            insts: order.iter().map(|a| self.insts[a].i.clone()).collect(),
+            next: order.iter().map(|a| succ[a].map(|n| n.map(|n| index[&n]))).collect(),
+        })
+    }
+}
+
+/// Reads and assembles `.zisk` source files as a [`ZiskLibrary`] (library mode:
+/// no launcher, code at `rom_base`, non-`const` data at `ram_base`).
+pub fn assemble_library_files<P: AsRef<Path>>(
+    paths: &[P],
+    rom_base: u64,
+    ram_base: u64,
+) -> Result<ZiskLibrary, String> {
+    let srcs = read_sources(paths)?;
+    let seed = merge_public_defines(srcs.iter().map(|(_, s)| s.as_str()))?;
+    let mut program = Program::default();
+    for (name, src) in &srcs {
+        let parsed = parser::parse_program_seeded(src, name, &HashSet::new(), &seed)?;
+        program.instructions.extend(parsed.instructions);
+        program.data.extend(parsed.data);
+    }
+    assemble_library(&program, rom_base, ram_base)
+}
+
+/// Assembles several in-memory `.zisk` sources as one [`ZiskLibrary`] (library
+/// mode). Each entry is `(name, source)`; the sources are concatenated in order
+/// (functions placed in that order). Use this to build the library from files
+/// embedded at compile time (`include_str!`), one per precompile family, without
+/// touching the filesystem. Symbol names (labels + data) must be unique across
+/// all sources.
+pub fn assemble_library_sources(
+    sources: &[(&str, &str)],
+    rom_base: u64,
+    ram_base: u64,
+) -> Result<ZiskLibrary, String> {
+    let seed = merge_public_defines(sources.iter().map(|(_, s)| *s))?;
+    let mut program = Program::default();
+    for (name, src) in sources {
+        let parsed = parser::parse_program_seeded(src, name, &HashSet::new(), &seed)?;
+        program.instructions.extend(parsed.instructions);
+        program.data.extend(parsed.data);
+    }
+    assemble_library(&program, rom_base, ram_base)
+}
+
+/// Assembles an already-parsed program as a [`ZiskLibrary`] at the given bases.
+/// Functions are placed in file order at `rom_base + 4*i`; `const` data follows the
+/// code (32-byte aligned), non-`const` data goes to `ram_base`. No BIOS / launcher /
+/// entry point is added, and the pc→instruction lookup is left for the host ROM to
+/// rebuild after the merge.
+pub fn assemble_library(
+    program: &Program,
+    rom_base: u64,
+    ram_base: u64,
+) -> Result<ZiskLibrary, String> {
+    // Reject bases outside the mapped regions before laying anything out. The span
+    // below RAM_ADDR is the EF standard 6 stack guard (see `zisk_core::mem`
+    // STACK_GUARD_ADDR): it is unmapped precisely so a stack overflow traps, and a
+    // library placed there would both fault on first access and silently defeat the
+    // guard. The bases are caller-supplied, so check rather than assume.
+    if !(ROM_ADDR..=ROM_ADDR_MAX).contains(&rom_base) {
+        return Err(format!(
+            "library rom_base 0x{rom_base:x} is outside the ROM region \
+             (0x{ROM_ADDR:x}..=0x{ROM_ADDR_MAX:x})"
+        ));
+    }
+    if ram_base < RAM_ADDR {
+        return Err(format!(
+            "library ram_base 0x{ram_base:x} is below RAM_ADDR (0x{RAM_ADDR:x}); it would land \
+             in the unmapped stack guard region reserved by EF standard 6"
+        ));
+    }
+
+    let instructions = &program.instructions;
+    let addr_of = |i: usize| rom_base + INST_SIZE as u64 * i as u64;
+
+    // `const` data right after the code (32-byte aligned, as the ROM-init trace
+    // requires); non-`const` data at `ram_base`.
+    let rom_data_base = addr_of(instructions.len()).next_multiple_of(32);
+    let mut layout = layout_data(&program.data, rom_data_base, ram_base);
+
+    // The layout must also stay inside its region at the far end: ROM for the code
+    // and the `const` data after it, RAM for the rest.
+    let section_end = |sec: &DataSection64| {
+        (sec.data.len() as u64).checked_mul(8).and_then(|n| sec.addr.checked_add(n))
+    };
+    let code_end = (instructions.len() as u64)
+        .checked_mul(INST_SIZE as u64)
+        .and_then(|n| rom_base.checked_add(n));
+    let rom_end = match (code_end, layout.ro.as_ref()) {
+        (Some(end), Some(sec)) => section_end(sec).map(|ro_end| ro_end.max(end)),
+        (end, None) => end,
+        (None, Some(_)) => None,
+    };
+    match rom_end {
+        Some(end) if end <= ROM_ADDR + ROM_SIZE => {}
+        Some(end) => {
+            return Err(format!(
+                "library code and const data end at 0x{end:x}, past the end of ROM (0x{:x})",
+                ROM_ADDR + ROM_SIZE
+            ));
+        }
+        None => return Err("library code and const data overflow the address space".into()),
+    }
+    if let Some(sec) = layout.rw.as_ref() {
+        let end = section_end(sec).ok_or("library RW data overflows the address space")?;
+        if end > RAM_ADDR + RAM_SIZE {
+            return Err(format!(
+                "library RW data ends at 0x{end:x}, past the end of RAM (0x{:x})",
+                RAM_ADDR + RAM_SIZE
+            ));
+        }
+    }
+
+    // Symbol table: every label (function/local) and data name → address.
+    let mut sym_ref: HashMap<&str, u64> = HashMap::new();
+    for (i, inst) in instructions.iter().enumerate() {
+        if let Some(label) = &inst.label {
+            if sym_ref.insert(label.as_str(), addr_of(i)).is_some() {
+                return Err(format!("duplicate symbol `{label}`"));
+            }
+        }
+    }
+    for &(name, addr) in &layout.syms {
+        if sym_ref.insert(name, addr).is_some() {
+            return Err(format!("duplicate symbol `{name}`"));
+        }
+    }
+    layout.resolve(&sym_ref)?;
+
+    // Encode into a throwaway ROM (no BIOS / launcher / optimize); `bios_finalize`
+    // is unused because library code returns via `ret`, never `ret_to_bios`.
+    let mut rom = ZiskRom::default();
+    rom.ro_data_64.extend(layout.ro);
+    rom.rw_data_64.extend(layout.rw);
+    for (i, inst) in instructions.iter().enumerate() {
+        encode(&mut rom, addr_of(i), inst, &sym_ref, 0)?;
+    }
+
+    let symbols = sym_ref.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+    Ok(ZiskLibrary { insts: rom.insts, ro_data: rom.ro_data_64, rw_data: rom.rw_data_64, symbols })
+}
+
+/// Assembles an already-parsed program (instructions + data) into a `ZiskRom`.
+pub fn assemble(program: &Program) -> Result<ZiskRom, String> {
+    Ok(assemble_with_symbols(program)?.0)
+}
+
+/// Like [`assemble`], but also returns the symbol table (every label and data
+/// name → its address) — the same table used internally to resolve jumps and
+/// symbolic operands.
+pub fn assemble_with_symbols(program: &Program) -> Result<(ZiskRom, HashMap<String, u64>), String> {
+    if program.instructions.is_empty() {
+        return Err("empty program: no instructions".into());
+    }
+
+    // If the program has no explicit `_start`, synthesize a launcher around its
+    // entry label (`main` or `_zisk_main`): set gp/sp, `call` the entry, and
+    // `ret_to_bios`. This lets a program be just its own code plus a `main:` label,
+    // with no hand-written boot file.
+    let with_launcher: Vec<Instruction>;
+    let instructions: &[Instruction] = if has_label(&program.instructions, "_start") {
+        &program.instructions
+    } else {
+        let entry = program_entry(&program.instructions)?;
+        let mut v = synth_launcher(entry)?;
+        v.extend_from_slice(&program.instructions);
+        with_launcher = v;
+        &with_launcher
+    };
+
+    // The entry point (`_start`) must be the program's first instruction, so it
+    // lands at ROM_ADDR. This matches the ELF convention (the entry point is the
+    // program base) and the fast emulator's expectations. Source files may be
+    // supplied in any order — a `-z <dir>` run collects them sorted by name — so
+    // move the file that defines `_start` to the front, keeping every file's own
+    // instruction order (like a linker placing the entry section first).
+    let start_file = instructions
+        .iter()
+        .find(|i| i.label.as_deref() == Some("_start"))
+        .map(|i| i.file.clone())
+        .ok_or("missing `_start` label: the program has no entry point")?;
+
+    let mut ordered: Vec<&Instruction> = Vec::with_capacity(instructions.len());
+    ordered.extend(instructions.iter().filter(|i| i.file == start_file));
+    ordered.extend(instructions.iter().filter(|i| i.file != start_file));
+
+    if ordered[0].label.as_deref() != Some("_start") {
+        return Err(format!(
+            "the file `{start_file}` that defines `_start` must begin with it, \
+             so the entry point is placed at ROM_ADDR"
+        ));
+    }
+
+    let addr_of = |i: usize| (ROM_ADDR as i64 + INST_SIZE * i as i64) as u64;
+
+    // Lay out data: `const` goes in ROM right after the code, non-`const` in RAM
+    // at GENERAL_RAM_ADDR. This yields the initialized sections and each data
+    // symbol's address; symbol initializers are filled once all symbols are known.
+    // 32-byte align the ROM data base: the ROM-init trace commits data in 4-u64
+    // (32-byte) rows anchored at the section address (state-machines/rom), matching
+    // the RISC-V transpiler's aligned section starts, so proving works.
+    let rom_data_base = addr_of(ordered.len()).next_multiple_of(32);
+    let mut layout = layout_data(&program.data, rom_data_base, GENERAL_RAM_ADDR);
+
+    // Symbol table: labels (code addresses) + data names. Used to resolve jump
+    // targets and symbolic operands. Names must be unique across both.
+    let mut symbols: HashMap<&str, u64> = HashMap::new();
+    for (i, inst) in ordered.iter().enumerate() {
+        if let Some(label) = &inst.label {
+            if symbols.insert(label.as_str(), addr_of(i)).is_some() {
+                return Err(format!("duplicate symbol `{label}`"));
+            }
+        }
+    }
+    for &(name, addr) in &layout.syms {
+        if symbols.insert(name, addr).is_some() {
+            return Err(format!("duplicate symbol `{name}`"));
+        }
+    }
+    layout.resolve(&symbols)?;
+
+    // `_start` is now instruction 0, i.e. ROM_ADDR.
+    let entry =
+        *symbols.get("_start").ok_or("missing `_start` label: the program has no entry point")?;
+
+    // Build the ROM the same way elf2rom does.
+    let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
+    add_end_and_lib(&mut rom);
+
+    // After `add_end_and_lib`, `next_init_inst_addr` points at the start of the
+    // BIOS entry/exit block that `add_entry_exit_jmp` (called below) will emit, so
+    // we can derive the BIOS finalization address that `ret_to_bios` jumps to —
+    // no hard-coded constant.
+    let bios_finalize = rom.next_init_inst_addr + BIOS_FINALIZE_OFFSET;
+
+    // Initialized data sections (read by the emulator at startup).
+    rom.ro_data_64.extend(layout.ro);
+    rom.rw_data_64.extend(layout.rw);
+
+    // Pass 2: encode each instruction at its address, resolving symbols.
+    for (i, inst) in ordered.iter().enumerate() {
+        encode(&mut rom, addr_of(i), inst, &symbols, bios_finalize)?;
+    }
+
+    // BIOS entry/exit: jumps to `entry`, leaving the return address (the output
+    // finalization) in r1, so the program returns to the BIOS with `ret`.
+    add_entry_exit_jmp(&mut rom, entry);
+
+    rom.optimize_instruction_lookup().map_err(|e| e.to_string())?;
+    let symbols = symbols.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+    Ok((rom, symbols))
+}
+
+/// The data layout: the `const` (ROM) and non-`const` (RAM) sections, each
+/// symbol's address, and the slots whose initializer is a symbol, still to be
+/// filled by [`DataLayout::resolve`] once every address is known.
+struct DataLayout<'a> {
+    ro: Option<DataSection64>,
+    rw: Option<DataSection64>,
+    syms: Vec<(&'a str, u64)>,
+    /// `(is_const, slot index, symbol, offset)` for each symbol initializer.
+    fixups: Vec<(bool, usize, &'a str, i64)>,
+}
+
+impl DataLayout<'_> {
+    /// Fills each symbol initializer with its symbol's address.
+    fn resolve(&mut self, symbols: &HashMap<&str, u64>) -> Result<(), String> {
+        for &(is_const, k, name, off) in &self.fixups {
+            let addr = symbols
+                .get(name)
+                .ok_or_else(|| format!("undefined symbol `{name}` in a data initializer"))?
+                .wrapping_add_signed(off);
+            let section = if is_const { &mut self.ro } else { &mut self.rw };
+            section.as_mut().expect("a fixup lies in a non-empty section").data[k] = addr;
+        }
+        Ok(())
+    }
+}
+
+/// Lays out the `const` (ROM, at `rom_data_base`) and non-`const` (RAM, at
+/// `GENERAL_RAM_ADDR`) data declarations, packing each element into one 8-byte
+/// slot in declaration order. Symbol initializers are left as 0 and recorded as
+/// fixups (see [`DataLayout::resolve`]).
+fn layout_data(data: &[DataDecl], rom_data_base: u64, ram_data_base: u64) -> DataLayout<'_> {
+    let mut ro: Vec<u64> = Vec::new();
+    let mut rw: Vec<u64> = Vec::new();
+    let mut syms: Vec<(&str, u64)> = Vec::new();
+    let mut fixups = Vec::new();
+    for d in data {
+        let base = if d.is_const { rom_data_base } else { ram_data_base };
+        let buf = if d.is_const { &mut ro } else { &mut rw };
+        syms.push((d.name.as_str(), base + buf.len() as u64 * 8));
+        for k in 0..d.count {
+            buf.push(match d.values.get(k) {
+                Some(Num::Lit(v)) => *v,
+                Some(Num::Sym(name, off)) => {
+                    fixups.push((d.is_const, buf.len(), name.as_str(), *off));
+                    0
+                }
+                None => 0,
+            });
+        }
+    }
+    // Pad each section to a multiple of 4 u64s (32 bytes). The ROM-init trace packs
+    // data into 4-u64 rows (state-machines/rom/src/custom_rom.rs), so a section's
+    // length must be a multiple of 4 for the ROM to be provable — mirroring the
+    // RISC-V transpiler's `RO_SECTION_ALIGN`. Padding appends zeros after all
+    // symbols, so it does not shift any data address. (Harmless for emulation.)
+    ro.resize(ro.len().next_multiple_of(4), 0);
+    rw.resize(rw.len().next_multiple_of(4), 0);
+
+    DataLayout {
+        ro: (!ro.is_empty()).then_some(DataSection64 { addr: rom_data_base, data: ro }),
+        rw: (!rw.is_empty()).then_some(DataSection64 { addr: ram_data_base, data: rw }),
+        syms,
+        fixups,
+    }
+}
+
+/// Whether any instruction carries the given label.
+fn has_label(instructions: &[Instruction], label: &str) -> bool {
+    instructions.iter().any(|i| i.label.as_deref() == Some(label))
+}
+
+/// Finds the program entry label when there is no explicit `_start`.
+fn program_entry(instructions: &[Instruction]) -> Result<&'static str, String> {
+    ["main", "_zisk_main"]
+        .into_iter()
+        .find(|name| has_label(instructions, name))
+        .ok_or_else(|| "program has no `_start`, `main` or `_zisk_main` entry label".to_string())
+}
+
+/// Builds the launcher (`_start`) a program without an explicit `_start` gets
+/// automatically: set gp (r3) and sp (r2), `call` the entry, then `ret_to_bios`.
+/// Mirrors `ziskos::_start`.
+fn synth_launcher(entry: &str) -> Result<Vec<Instruction>, String> {
+    let src = format!(
+        "_start:\n\
+         \tcopyb(0, 0) -> r3\n\
+         \tcopyb(0, 0x{sys:x}) -> r2\n\
+         \tcall {entry}\n\
+         \tret_to_bios\n",
+        sys = SYS_ADDR,
+    );
+    Ok(parser::parse_program(&src, "<launcher>")?.instructions)
+}
+
+/// Emits an unconditional static jump to an absolute address: `copyb(0, addr)`
+/// puts the constant target in `c`, and `setpc(0)` sets the next pc to `c`.
+/// Because `c` is a constant, the x86 generator compiles this to a direct `jmp`,
+/// which works for any address (unlike a register-based dynamic jump).
+fn emit_static_jump(zib: &mut ZiskInstBuilder, addr: u64) {
+    zib.src_a("imm", 0, false);
+    zib.src_b("imm", addr, false);
+    zib.op("copyb").unwrap();
+    zib.set_pc();
+    zib.j(0, INST_SIZE);
+}
+
+/// Resolves a jump/call target to a pc-relative offset from the instruction at `pc`.
+fn resolve(target: &Target, pc: u64, symbols: &HashMap<&str, u64>) -> Result<i64, String> {
+    match target {
+        Target::Offset(o) => Ok(*o),
+        Target::Label(l) => {
+            let dst = *symbols.get(l.as_str()).ok_or_else(|| format!("undefined label `{l}`"))?;
+            Ok(dst as i64 - pc as i64)
+        }
+    }
+}
+
+/// Resolves a number operand to its `u64` value: a literal as-is, a symbol to its
+/// address.
+fn resolve_num(n: &Num, symbols: &HashMap<&str, u64>) -> Result<u64, String> {
+    match n {
+        Num::Lit(v) => Ok(*v),
+        Num::Sym(name, off) => symbols
+            .get(name.as_str())
+            .map(|a| a.wrapping_add_signed(*off))
+            .ok_or_else(|| format!("undefined symbol `{name}`")),
+    }
+}
+
+fn encode(
+    rom: &mut ZiskRom,
+    pc: u64,
+    inst: &Instruction,
+    symbols: &HashMap<&str, u64>,
+    bios_finalize: u64,
+) -> Result<(), String> {
+    let mut zib = ZiskInstBuilder::new(pc);
+    let loc = || format!("{}:{}", inst.file, inst.line);
+
+    match &inst.kind {
+        Kind::Ret => {
+            // ret == jalr r0, r1, 0 : next pc = (r1 & ~1) via setpc; no store.
+            zib.src_a("imm", JALR_MASK, false);
+            zib.src_b("reg", 1, false);
+            zib.op("and").unwrap();
+            zib.set_pc();
+            zib.j(0, INST_SIZE);
+        }
+        Kind::Jump(target) => {
+            // jump(target) : unconditional static jump to an absolute address.
+            let addr = match target {
+                JumpTarget::Addr(a) => *a,
+                JumpTarget::Label(l) => *symbols
+                    .get(l.as_str())
+                    .ok_or_else(|| format!("{}: undefined label `{l}`", loc()))?,
+            };
+            emit_static_jump(&mut zib, addr);
+        }
+        Kind::RetToBios => {
+            // ret_to_bios : static jump to the BIOS output-finalization address.
+            // A dynamic `ret` cannot be used: the x86 asm generator's dynamic-jump
+            // path assumes high (>= ROM_ADDR) targets, and this is a low address.
+            emit_static_jump(&mut zib, bios_finalize);
+        }
+        Kind::Call(target) => {
+            // call LABEL == jal r1, LABEL : flag=1 forces the jump to jmp_offset1,
+            // and store_pc writes the return address (pc + jmp_offset2) into r1.
+            let off = resolve(target, pc, symbols).map_err(|e| format!("{}: {e}", loc()))?;
+            zib.src_a("imm", 0, false);
+            zib.src_b("imm", 0, false);
+            zib.op("flag").unwrap();
+            zib.store_pc("reg", 1, false);
+            zib.j(off, INST_SIZE);
+        }
+        Kind::Op(op) => {
+            encode_op(&mut zib, pc, op, symbols).map_err(|e| format!("{}: {e}", loc()))?
+        }
+    }
+
+    zib.verbose(&inst.verbose);
+    zib.build(rom);
+    Ok(())
+}
+
+fn encode_op(
+    zib: &mut ZiskInstBuilder,
+    pc: u64,
+    op: &Op,
+    symbols: &HashMap<&str, u64>,
+) -> Result<(), String> {
+    encode_a(zib, &op.a, symbols)?;
+    encode_b(zib, &op.b, symbols)?;
+    zib.op(&op.op).map_err(|_| format!("unknown operation `{}`", op.op))?;
+    if let Some(store) = &op.store {
+        encode_store(zib, store, symbols)?;
+    }
+
+    match &op.control {
+        // Fall-through: pc advances by jmp_offset2 (flag is false). For a regular op
+        // jmp_offset1 is also the instruction size, but precompiles must have
+        // jmp_offset1 == 0 for proof generation: they never raise the register flag,
+        // so jmp_offset1 carries no control flow, and the constraint system requires
+        // it to be 0. (DMA precompiles that pass a third parameter in jmp_offset1 are
+        // written with an explicit `j(...)`, i.e. the `Control::Jump` arm below.)
+        Control::Fallthrough => {
+            let jmp1 = if zib.i.is_precompiled { 0 } else { INST_SIZE };
+            zib.j(jmp1, INST_SIZE);
+        }
+        Control::Jump(j1, j2) => {
+            let o1 = resolve(j1, pc, symbols)?;
+            let o2 = match j2 {
+                Some(t) => resolve(t, pc, symbols)?,
+                None => INST_SIZE, // omitted jump2 == the next instruction
+            };
+            zib.j(o1, o2);
+        }
+        Control::SetPc(off) => {
+            zib.set_pc();
+            zib.j(*off, INST_SIZE);
+        }
+    }
+
+    if op.end {
+        zib.end();
+    }
+    Ok(())
+}
+
+fn encode_a(
+    zib: &mut ZiskInstBuilder,
+    a: &ASource,
+    symbols: &HashMap<&str, u64>,
+) -> Result<(), String> {
+    match a {
+        ASource::C => zib.src_a("lastc", 0, false),
+        ASource::Reg(n) => zib.src_a("reg", *n, false),
+        ASource::Mem(n) => zib.src_a("mem", resolve_num(n, symbols)?, false),
+        ASource::Imm(n) => zib.src_a("imm", resolve_num(n, symbols)?, false),
+        ASource::Step => zib.src_a("step", 0, false),
+    }
+    Ok(())
+}
+
+fn encode_b(
+    zib: &mut ZiskInstBuilder,
+    b: &BSource,
+    symbols: &HashMap<&str, u64>,
+) -> Result<(), String> {
+    match b {
+        BSource::C => zib.src_b("lastc", 0, false),
+        BSource::Reg(n) => zib.src_b("reg", *n, false),
+        BSource::Mem(n) => zib.src_b("mem", resolve_num(n, symbols)?, false),
+        BSource::Imm(n) => zib.src_b("imm", resolve_num(n, symbols)?, false),
+        BSource::Ind { width, offset } => {
+            zib.ind_width(*width);
+            zib.src_b("ind", *offset as u64, false);
+        }
+    }
+    Ok(())
+}
+
+fn encode_store(
+    zib: &mut ZiskInstBuilder,
+    store: &Store,
+    symbols: &HashMap<&str, u64>,
+) -> Result<(), String> {
+    match store {
+        Store::Reg(n) => zib.store("reg", *n as i64, false, false),
+        Store::Mem(n) => zib.store("mem", resolve_num(n, symbols)? as i64, false, false),
+        Store::Ind { width, offset } => {
+            zib.ind_width(*width);
+            zib.store("ind", *offset, false, false);
+        }
+    }
+    Ok(())
+}

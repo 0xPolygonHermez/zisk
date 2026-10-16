@@ -24,3 +24,8 @@ proofman-common = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 thiserror = { workspace = true }
+
+[features]
+default = []
+# RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
+compressed = ["zisk-transpiler-riscv/compressed"]

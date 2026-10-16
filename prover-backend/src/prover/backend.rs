@@ -149,11 +149,14 @@ impl ProverBackend {
         Ok(())
     }
 
+    /// Retires the previous job's ASM state.
+    ///
+    /// Goes through the executor rather than straight to the ASM emulator: the executor
+    /// owns the producers still reading that shared memory, so only it can retire them
+    /// before the rewind. `ZiskExecutor::reset_for_new_job` documents the ordering
+    /// callers must respect.
     pub(crate) fn reset(&self) -> Result<()> {
-        if let Some(asm) = self.asm_emulator() {
-            asm.reset()?;
-        }
-        Ok(())
+        self.executor.reset_for_new_job().map_err(Into::into)
     }
 
     pub(crate) fn cancel(&self) {
@@ -662,6 +665,14 @@ impl ProverBackend {
         Ok((witness_info, execution_result.executor_time))
     }
 
+    pub(crate) fn aggregation_arity(&self) -> usize {
+        self.proofman.aggregation_arity()
+    }
+
+    pub(crate) fn reset_aggregation_state(&self) {
+        self.proofman.reset_aggregation_state()
+    }
+
     pub(crate) fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
         self.proofman
             .register_aggregated_proofs(agg_proofs)
@@ -673,11 +684,12 @@ impl ProverBackend {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
         let result = self
             .proofman
-            .receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
+            .receive_aggregated_proofs(agg_proofs, last_proof, final_proof, keep_resident, options)
             .map_err(|e| anyhow::anyhow!("Error aggregating proofs: {}", e))?;
 
         Ok(result.map(|agg| ZiskAggPhaseResult { agg_proofs: agg }))

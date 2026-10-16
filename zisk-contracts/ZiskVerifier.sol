@@ -11,7 +11,7 @@ contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
     error InvalidProof();
 
     function VERSION() external pure returns (string memory) {
-        return "v1.3.0-alpha";
+        return "v1.4.0-alpha";
     }
 
     /// @notice Root constant as bytes32 (pre-packed to match the original uint64[4] layout)
@@ -22,10 +22,10 @@ contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
     function getRootCVadcopFinal() external pure returns (bytes32) {
         return bytes32(
             abi.encodePacked(
-                uint64(6218392583875695404),
-                uint64(9353885302538021251),
-                uint64(8280779842059074605),
-                uint64(10684020678174455855)));
+                uint64(14119114270948443809),
+                uint64(16820367087179580139),
+                uint64(16121478031581406534),
+                uint64(4945938373577087684)));
     }
 
     uint256 internal constant _RFIELD =

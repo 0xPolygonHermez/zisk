@@ -1,0 +1,91 @@
+; ============================================================================
+; zkvm/sha256.zisk - SHA2-256 (FIPS 180-4). The single canonical SHA-256 routine
+; in the library: entry `ziskasm_zkvm_sha256`, presenting the EF zkVM accelerator
+; C ABI (zkvmcall target of `zkvm_sha256`). It is also called internally by
+; secp256k1/schnorr and the BLS12-381 hash-to-curve — all share the same
+; (input, len, output) ABI.
+;
+; Mirrors ziskos `sha256`: absorb 64-byte (512-bit) blocks with the `sha256`
+; precompile, then a padded final block (0x80, zero fill, 64-bit big-endian bit
+; length in the last 8 bytes; two blocks when the remainder leaves < 9 bytes).
+; The precompile takes a 2-pointer header [&state, &input]: `state` = 8 u32 packed
+; as 4 u64 (updated in place), `input` = one 64-byte block as 8 u64. Input bytes
+; and the length field are consumed verbatim; the precompile does SHA-256's
+; big-endian message schedule internally.
+;
+; Internal labels are prefixed `sh_`.
+; ============================================================================
+
+; SHA-256 initial hash values [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+; 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19] as 8 u32 packed little-endian
+; into 4 u64 (word 2i in the low half, word 2i+1 in the high half).
+const u64 SHA_STATE_INIT[4] =
+	0xbb67ae856a09e667, 0xa54ff53a3c6ef372, 0x9b05688c510e527f, 0x5be0cd191f83d9ab
+
+; RAM scratch: the running state (updated in place by the precompile), one
+; 64-byte input block, and the 2-pointer precompile header [&state, &input],
+; preset since both pointers are fixed.
+u64 SHA_STATE[4] = 0, 0, 0, 0
+u64 SHA_INPUT[8] = 0, 0, 0, 0, 0, 0, 0, 0
+u64 SHA_HDR[2]   = SHA_STATE, SHA_INPUT
+
+define SH_DMA_COUNT 0xa0400f00          ; dma_memcpy reads its byte count here
+
+; ----------------------------------------------------------------------------
+; zkvm_status ziskasm_zkvm_sha256(const u8* input, u64 len, u8* output) -> r10 = 0
+;   output[0..32] = SHA-256(input[0..len]). Args: r10=input, r11=len, r12=output.
+;   The single SHA-256 body in the library; `zkvm_sha256` and the internal
+;   secp256k1/schnorr + BLS12-381 hash-to-curve callers all reach it.
+;   Returns r10 = 0 (ZKVM_EOK for the zkvm_sha256 zkvmcall; the void callers ignore
+;   it — r10 is caller-saved and clobbered by the call anyway).
+;   Caller-saved regs only: r13 = remaining bytes, r5/r6 scratch. The state and
+;   the blocks are set up with the DMA precompiles (one step each, much cheaper
+;   than a main step per word).
+; ----------------------------------------------------------------------------
+ziskasm_zkvm_sha256:
+	dma_xmemcpy(SHA_STATE, SHA_STATE_INIT) -> r5, j(32, 4)
+	copyb(0, r11) -> r13                ; remaining; r11 keeps len (for bit length)
+
+	; --- absorb complete 64-byte blocks ---
+sh_full:
+	ltu(r13, 64), j(sh_final)
+	dma_xmemcpy(SHA_INPUT, r10) -> r5, j(64, 4)
+	sha256(0, SHA_HDR)                  ; state <- compress(state, block), in place
+	add(r10, 64) -> r10
+	sub(r13, 64) -> r13
+	jump(sh_full)
+
+sh_final:
+	; --- final block(s): the r13 = 0..63 tail bytes, 0x80, zero fill ---
+	dma_xmemset(SHA_INPUT, 64) -> r5, j(0, 4)
+	copyb(0, r13) -> [SH_DMA_COUNT]
+	dma_memcpy(SHA_INPUT, r10) -> r5
+	add(r13, SHA_INPUT) -> r6
+	copyb(r6, 0x80) -> 1[a + 0]         ; the terminator after the tail
+	ltu(r13, 56), j(sh_len)             ; remaining < 56 -> length fits in this block
+	; remaining >= 56: compress this block, then put the length in a fresh block
+	sha256(0, SHA_HDR)
+	dma_xmemset(SHA_INPUT, 64) -> r5, j(0, 4)
+sh_len:
+	; bit_len = len*8 as 8 big-endian bytes at block offsets 56..63
+	sll(r11, 3)
+	rev8(0, c) -> [SHA_INPUT + 56]
+	sha256(0, SHA_HDR)
+
+	; --- the 8 state words as 32 big-endian bytes. A state u64 holds word 2k in
+	; its low half and 2k+1 in its high half: rev8 byte-swaps both words but also
+	; swaps the halves, and ror 32 puts them back. ---
+	rev8(0, [SHA_STATE + 0])
+	ror(c, 32)
+	copyb(r12, c) -> 8[a + 0]
+	rev8(0, [SHA_STATE + 8])
+	ror(c, 32)
+	copyb(r12, c) -> 8[a + 8]
+	rev8(0, [SHA_STATE + 16])
+	ror(c, 32)
+	copyb(r12, c) -> 8[a + 16]
+	rev8(0, [SHA_STATE + 24])
+	ror(c, 32)
+	copyb(r12, c) -> 8[a + 24]
+	copyb(0, 0) -> r10                  ; 0 = success; doubles as ZKVM_EOK for zkvm_sha256
+	ret

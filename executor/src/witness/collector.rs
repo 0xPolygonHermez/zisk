@@ -30,7 +30,6 @@ use ziskemu::ZiskEmulator;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::{state::ChunkCollector, ExecutionState, StaticDataBusCollect, StaticSMBundle};
-use zisk_asm_runner::AsmRunnerRH;
 
 /// Per-instance chunk-collector slot map. Same shape as
 /// [`crate::ChunkCollectorStore::inner`].
@@ -93,8 +92,10 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         self.sm_bundle.set_rom(zisk_rom)
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
-        self.sm_bundle.set_rh_data(rh_data)
+    /// Selects where the FROPS multiplicity column comes from; see
+    /// `StaticSMBundle::set_frops_multiplicity_from_asm`.
+    pub fn set_frops_multiplicity_from_asm(&self, from_asm: bool) {
+        self.sm_bundle.set_frops_multiplicity_from_asm(from_asm)
     }
 
     /// Computes which chunks need to be executed for each instance.
@@ -230,6 +231,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         state: &ExecutionState<F>,
         secn_instances: HashMap<usize, &dyn Instance<F>>,
     ) -> ExecutorResult<()> {
+        let phase_start = Instant::now();
         let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
         let min_traces = min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?;
 
@@ -332,6 +334,8 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 scope.spawn(move |_| Self::worker_loop(ctx));
             }
         });
+
+        state.stats.add_collect_phase_wall_ms(phase_start.elapsed().as_millis() as u64);
 
         // Collect any errors from parallel execution.
         // Use unwrap_or_else to handle poisoned mutex (e.g., if a worker thread panicked).
@@ -467,11 +471,11 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             }
         }
 
-        // Advance counters; on the last chunk for an instance, flip its
-        // witness-ready flag and record completion stats.
+        // Advance counters; on the last chunk for an instance, announce it
+        // ready and record completion stats.
         for (global_id, global_id_idx) in affected_globals {
             if ctx.n_chunks_left[global_id_idx].fetch_sub(1, Ordering::SeqCst) == 1 {
-                ctx.pctx.set_witness_ready(global_id, true);
+                ctx.pctx.announce_witness_ready(global_id);
                 Self::record_completion_stats(global_id, global_id_idx, ctx);
             }
         }

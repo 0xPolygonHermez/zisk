@@ -12,8 +12,8 @@ use tracing::{error, info, warn};
 
 use crate::{
     sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmMultiShmem, AsmRunError,
-    AsmService, AsmServices, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE, TRACE_INITIAL_SIZE,
-    TRACE_MAX_SIZE,
+    AsmService, AsmServices, MAX_TRACE_CHUNK_INFO, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE,
+    TRACE_INITIAL_SIZE, TRACE_MAX_SIZE,
 };
 
 use anyhow::{Context, Result};
@@ -115,11 +115,10 @@ impl AsmRunnerMT {
         //   MAX_MTRACE_REGS_ACCESS_SIZE = (2 + 2 + 3) * 8    // Register access overhead per step
         //   MAX_BYTES_DIRECT_MTRACE     = 256                // Direct memory trace data per step
         //   MAX_BYTES_MTRACE_STEP       = 256 + 56 = 312     // Total per-step overhead
-        //   MAX_TRACE_CHUNK_INFO        = (44 * 8) + 32      // Chunk metadata size
+        //   MAX_TRACE_CHUNK_INFO        = chunk header + 3 words + 32 (asm_mt.rs)
         const MAX_MTRACE_REGS_ACCESS_SIZE: usize = (2 + 2 + 3) * 8; // 56 bytes
         const MAX_BYTES_DIRECT_MTRACE: usize = 256;
         const MAX_BYTES_MTRACE_STEP: usize = MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE;
-        const MAX_TRACE_CHUNK_INFO: usize = (44 * 8) + 32; // 384 bytes
 
         let threshold_bytes = (chunk_size as usize * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO;
         let mut threshold = unsafe {

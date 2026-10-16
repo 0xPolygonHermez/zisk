@@ -10,6 +10,7 @@ mod ops;
 mod optimize;
 mod region;
 mod report;
+mod verify;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -47,8 +48,10 @@ struct CommonArgs {
     /// Upper bound (exclusive) for the "low value" region of a and b.
     #[arg(long, default_value_t = 1024)]
     low_cap: u64,
-    /// Maximum FROPS regions per opcode (bounds the cost of the membership test).
-    #[arg(long, default_value_t = 16)]
+    /// Maximum FROPS regions per opcode (bounds the cost of the membership test). See the README:
+    /// coverage saturates around 4, and every extra region is paid on every executed operation of
+    /// that opcode in the ROM-histogram assembly.
+    #[arg(long, default_value_t = 4)]
     max_regions_per_op: usize,
     /// Table partition bits: each family's table is padded to a multiple of 2^partition_bits rows.
     /// `max-table` bounds the total paid (padded) rows.
@@ -122,12 +125,15 @@ enum Command {
         #[arg(long, default_value_t = 21)]
         r: u32,
     },
-    /// Emit x86-64 macros for the ORIGINAL hand-tuned FROPS (no input needed) to compare cycle costs
-    /// against the generated ones. Writes emulator-asm/src/frops/frops_original.s.
-    AsmOriginal {
-        /// Output path for the generated assembly.
-        #[arg(long, default_value = "emulator-asm/src/frops/frops_original.s")]
-        output: PathBuf,
+    /// Cross-check the FROPS multiplicity column the ROM-histogram assembly builds against the same
+    /// column computed in Rust from an operation trace of the same execution.
+    VerifyAsm {
+        /// The assembly dump, from `ziskemuasm -s -f --gen=2` (/tmp/<shm_prefix>_RH_output.bin).
+        #[arg(long)]
+        asm_dump: PathBuf,
+        /// Operation trace file(s) of the same ELF and input, from `ziskemu --store-op-output`.
+        #[arg(long, num_args = 1..)]
+        trace: Vec<PathBuf>,
     },
     /// Per-file high-half classification of every op: Hi0 (a,b,c hi=0), Hi0+ (a,b hi=0),
     /// HiFFA (hi32(a)=0xFFFFFFFF), HiFFB (hi32(b)=0xFFFFFFFF), HiFF0 (a=FF,b=0), Hi0FF (a=0,b=FF).
@@ -166,12 +172,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 println!("  {path}{note}");
             }
             println!("\nNext steps:");
-            println!("  1. Review the diff of the generated *_frops.rs files.");
-            println!("  2. Regenerate the .bin tables, e.g.:");
-            println!("       cargo run -p sm-arith  --bin arith_frops_fixed_gen");
-            println!("       cargo run -p sm-binary --bin binary_basic_frops_fixed_gen");
-            println!("       cargo run -p sm-binary --bin binary_extension_frops_fixed_gen");
-            println!("  3. cargo test -p sm-arith -p sm-binary  # offset/accessibility tests");
+            println!("  1. cargo fmt --all   # the emitted sources are not rustfmt-clean");
+            println!("  2. Review the diff of the generated *_frops.rs files.");
+            println!("  3. Regenerate the .bin tables, e.g.:");
+            println!(
+                "       cargo run --release -p zisk-sm-arith  --bin zisk-arith-frops-fixed-gen"
+            );
+            println!("       cargo run --release -p zisk-sm-binary --bin zisk-binary-basic-frops-fixed-gen");
+            println!("       cargo run --release -p zisk-sm-binary --bin zisk-binary-extension-frops-fixed-gen");
+            println!(
+                "  3. cargo test -p zisk-sm-arith -p zisk-sm-binary  # offset/accessibility tests"
+            );
         }
         Command::AddHi0 { input } => {
             addstats::run(&input)?;
@@ -185,10 +196,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Command::HiClass { input, include_frops } => {
             addstats::run_hiclass(&input, !include_frops)?;
         }
-        Command::AsmOriginal { output } => {
-            codegen::generate_original_asm(&output)?;
-            println!("Wrote original-FROPS macros to {}", output.display());
-        }
         Command::TableHi => {
             addstats::run_table_hi();
         }
@@ -197,6 +204,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::TablePartition { r } => {
             addstats::run_table_partition(r);
+        }
+        Command::VerifyAsm { asm_dump, trace } => {
+            if !verify::verify(&asm_dump, &trace)? {
+                return Err("the assembly and the reference FROPS columns disagree".into());
+            }
         }
     }
     Ok(())

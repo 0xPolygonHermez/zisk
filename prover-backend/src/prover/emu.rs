@@ -280,9 +280,24 @@ impl ProverEngine for EmuProver {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.core_prover.backend.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
+        self.core_prover.backend.join_worker_proofs(
+            agg_proofs,
+            last_proof,
+            final_proof,
+            keep_resident,
+            options,
+        )
+    }
+
+    fn reset_aggregation_state(&self) {
+        self.core_prover.backend.reset_aggregation_state()
+    }
+
+    fn aggregation_arity(&self) -> usize {
+        self.core_prover.backend.aggregation_arity()
     }
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
@@ -364,6 +379,7 @@ impl EmuCoreProver {
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
+        zisk_setup::check_setup_version(&proving_key)?;
 
         let proofman = ProofMan::new(proving_key.clone(), options.clone())
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
@@ -400,6 +416,10 @@ impl EmuCoreProver {
             false,
             options.packed,
         )?;
+
+        // No ROM-histogram assembly here, so the collectors own the column. The executor would
+        // apply this anyway, since it never runs on the ASM backend; stated for clarity.
+        executor.set_frops_multiplicity_from_asm(false);
 
         let core = ProverBackend::new(
             proofman,

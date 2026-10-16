@@ -1,0 +1,44 @@
+; ============================================================================
+; secp256k1/constants.zisk - curve constants shared across the secp256k1 family.
+; Mirrors ziskos/entrypoint/src/zisklib/lib/secp256k1/constants.rs. Const data
+; only (no routines); referenced cross-file via the library's global symbol table.
+; ============================================================================
+
+; Small constants for the arith256_mod headers (b = 1 multiplier, c = 0 addend).
+const u64 SECP_ONE[4]  = 1, 0, 0, 0
+const u64 SECP_ZERO[4] = 0, 0, 0, 0
+
+; B parameter of E: y^2 = x^3 + 7
+const u64 SECP_E_B[4] = 0x0000000000000007, 0, 0, 0
+
+; Base field size P and P-1.
+const u64 SECP_P[4] =
+	0xFFFFFFFEFFFFFC2F, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF
+const u64 SECP_P_MINUS_ONE[4] =
+	0xFFFFFFFEFFFFFC2E, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF
+
+; A known non-quadratic residue in Fp.
+const u64 SECP_NQR[4] = 0x0000000000000003, 0, 0, 0
+
+; Scalar field size N and N-1.
+const u64 SECP_N[4] =
+	0xBFD25E8CD0364141, 0xBAAEDCE6AF48A03B, 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFF
+const u64 SECP_N_MINUS_ONE[4] =
+	0xBFD25E8CD0364140, 0xBAAEDCE6AF48A03B, 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFF
+
+; Generator G = (G_X, G_Y) and -G_Y.
+const u64 SECP_G_X[4] =
+	0x59F2815B16F81798, 0x029BFCDB2DCE28D9, 0x55A06295CE870B07, 0x79BE667EF9DCBBAC
+const u64 SECP_G_Y[4] =
+	0x9C47D08FFB10D4B8, 0xFD17B448A6855419, 0x5DA4FBFC0E1108A8, 0x483ADA7726A3C465
+const u64 SECP_G_NEG_Y[4] =
+	0x63B82F6F04EF2777, 0x02E84BB7597AABE6, 0xA25B0403F1EEF757, 0xB7C52588D95C3B9A
+
+; GLV endomorphism constants: beta (cube root of unity in Fp), lambda (in Fn),
+; and phi(G) = (beta*Gx, Gy).
+const u64 SECP_BETA[4] =
+	0xC1396C28719501EE, 0x9CF0497512F58995, 0x6E64479EAC3434E9, 0x7AE96A2B657C0710
+const u64 SECP_LAMBDA[4] =
+	0xDF02967C1B23BD72, 0x122E22EA20816678, 0xA5261C028812645A, 0x5363AD4CC05C30E0
+const u64 SECP_G_PHI_X[4] =
+	0xA7BBA04400B88FCB, 0x872844067F15E98D, 0xAB0102B696902325, 0xBCACE2E99DA01887

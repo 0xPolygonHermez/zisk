@@ -4,11 +4,9 @@ mod blake2b_mem_inputs;
 mod blake2s;
 pub mod blake2s_constants;
 mod blake2s_mem_inputs;
-mod blake_table;
 
 pub use blake2b::*;
 pub use blake2s::*;
-pub use blake_table::*;
 
 zisk_common::zisk_precompile! {
     name = Blake2b,

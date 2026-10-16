@@ -7,7 +7,7 @@ mod keccakf_xor5_table;
 pub use keccakf::*;
 use keccakf_chi_table::*;
 use keccakf_constants::*;
-use keccakf_xor5_table::*;
+pub use keccakf_xor5_table::*;
 
 zisk_common::zisk_precompile! {
     name = Keccakf,

@@ -33,6 +33,11 @@ use zisk_precomp_hints::HintsProcessor;
 
 use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
 
+/// Virtual tables ZisK counts itself: the frops, whose collectors tally them during the witness.
+/// Mirrors `ARITH_FROPS_TABLE_ID` and friends in `pil/opids.pil`; kept here rather than imported so
+/// this file does not depend on a state-machine crate for three integers.
+const FROPS_TABLE_IDS: [u64; 3] = [5010, 5011, 5012];
+
 /// ASM-specific configuration options
 #[derive(Clone, Default)]
 pub struct AsmOptions {
@@ -167,6 +172,12 @@ impl BackendProverOpts {
         if self.packed {
             options.packed();
         }
+
+        // The three frops tables stay with the state machines: their collectors count them during
+        // the witness and hand them to `std`. Declaring them is what makes the rest the prover's --
+        // a virtual table it cannot derive now fails the setup rather than falling back to the
+        // witness, which is the same cost as counting it but with nobody asking for it.
+        options.std_owned_tables(FROPS_TABLE_IDS.to_vec());
 
         // Packed traces need packed_info, with Main in compact (indexed) form. `options.packed`
         // is the single source of truth, read by the executor's row-type gate too.
@@ -493,8 +504,15 @@ pub trait ProverEngine {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>>;
+
+    /// Drop the aggregation state (keeping the contributions) to re-fold a lost node.
+    fn reset_aggregation_state(&self);
+
+    /// Aggregation arity of the loaded proving key.
+    fn aggregation_arity(&self) -> usize;
 
     /// The Vadcop verification key (`minimal` selects the minimal variant).
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>>;
@@ -791,9 +809,20 @@ impl<C: ZiskBackend> ZiskProver<C> {
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
+        keep_resident: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.prover.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
+        self.prover.join_worker_proofs(agg_proofs, last_proof, final_proof, keep_resident, options)
+    }
+
+    /// Drop this worker's outer-aggregation state (recovery path).
+    pub fn reset_aggregation_state(&self) {
+        self.prover.reset_aggregation_state()
+    }
+
+    /// Aggregation arity of the loaded proving key.
+    pub fn aggregation_arity(&self) -> usize {
+        self.prover.aggregation_arity()
     }
 
     /// Broadcast data to all MPI processes.

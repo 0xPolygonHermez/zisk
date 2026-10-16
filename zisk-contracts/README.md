@@ -11,10 +11,12 @@ All commands below are run from this directory:
 cd zisk-contracts
 ```
 
-Export the four ABI fields the on-chain verifier expects:
+Export the four ABI fields the on-chain verifier expects. The subcommand is
+developer-facing, so it lives in `cargo-zisk-dev` rather than `cargo zisk`:
 
 ```bash
-cargo zisk export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
+cargo build --release -p cargo-zisk --bin cargo-zisk-dev
+../target/release/cargo-zisk-dev export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
 ```
 
 Install Hardhat deps (first run only) and run the test:

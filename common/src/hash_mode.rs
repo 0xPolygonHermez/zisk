@@ -16,7 +16,7 @@ pub enum HashMode {
     Poseidon1,
     /// Poseidon2 hashing.
     Poseidon2,
-    /// Blake hashing
+    /// Blake3 hashing.
     // The default tracks proofman's `hash_family::DEFAULT_HASH_ID`; a test below pins the two
     // together, since an enum variant cannot be derived from that const.
     #[default]

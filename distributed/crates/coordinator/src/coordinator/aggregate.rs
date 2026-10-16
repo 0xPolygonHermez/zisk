@@ -5,14 +5,16 @@ use crate::{
 };
 use chrono::Utc;
 use colored::Colorize;
+use std::collections::{BTreeMap, BTreeSet};
 use std::{sync::atomic::Ordering, time::Duration};
 use tracing::{error, info, warn};
 use zisk_cluster_common::{
-    AggParamsDto, AggProofData, CoordinatorMessageDto, ExecuteTaskRequestDto,
-    ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, Job,
-    JobId, JobPhase, JobResultData, JobState, ProofStarkDto, WorkerId, WorkerState,
+    AggDispatch, AggNode, AggParamsDto, AggProofData, AggSet, AggTaskKind, CoordinatorMessageDto,
+    ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto,
+    ExecuteTaskResponseResultDataDto, Job, JobId, JobPhase, JobResultData, JobState, ProofStarkDto,
+    WorkerId,
 };
-use zisk_common::{Proof, ProofKind};
+use zisk_common::Proof;
 
 use crate::Coordinator;
 
@@ -56,85 +58,91 @@ impl Coordinator {
         // response carries no `result_data` to bind.
         Self::validate_response_phase(&job, &execute_task_response)?;
 
-        // Extract the proof data
-        let proof_data = match execute_task_response.result_data {
-            Some(ExecuteTaskResponseResultDataDto::FinalProof(final_proof)) => final_proof,
-            _ => {
-                return Err(CoordinatorError::InvalidRequest(
-                    "Expected FinalProof result data for Aggregation".to_string(),
-                ));
+        // Checked against the task sent: an absorb's ack can arrive after its node has closed.
+        let worker_id = execute_task_response.worker_id.clone();
+
+        let Some(scheduler) = job.agg.as_ref() else {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Worker {worker_id} sent an aggregation result for {job_id} before aggregation \
+                 started"
+            )));
+        };
+        // Nothing outstanding: a duplicate, or a result for a task never given.
+        let Some(expected) = scheduler.outstanding(&worker_id) else {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Worker {worker_id} sent an aggregation result for {job_id} with no task \
+                 outstanding"
+            )));
+        };
+
+        let proof_data = match (expected, execute_task_response.result_data) {
+            // Absorb-only: acks with no proof, and that ack releases the next task.
+            (AggTaskKind::Absorb, Some(ExecuteTaskResponseResultDataDto::FinalProof(ack)))
+                if ack.proof_data.is_empty() =>
+            {
+                let scheduler = job.agg.as_mut().expect("checked above");
+                let next = scheduler.on_ack(&worker_id);
+                let freed = scheduler.take_released();
+                drop(job);
+
+                self.release_donors(job_id, &freed).await;
+                if let Some(next) = next {
+                    self.dispatch_agg(job_id, next).await?;
+                }
+                return Ok(());
+            }
+
+            // An intermediate node's folded subtree.
+            (
+                AggTaskKind::Drain,
+                Some(ExecuteTaskResponseResultDataDto::PartialAggProofs(proofs)),
+            ) => {
+                let node =
+                    job.agg.as_ref().and_then(|s| s.live_node(&worker_id)).ok_or_else(|| {
+                        CoordinatorError::Internal(format!(
+                            "Node {worker_id} owes {job_id} a subtree but is not live"
+                        ))
+                    })?;
+                // Per airgroup: a leaf only contributes to the airgroups it had instances in.
+                let per_airgroup = Self::airgroup_coverage(node);
+                drop(job);
+                return self.absorb_node_export(job_id, &worker_id, proofs, per_airgroup).await;
+            }
+
+            // The job's final proof. An empty one would complete the job from nothing.
+            (AggTaskKind::DrainFinal, Some(ExecuteTaskResponseResultDataDto::FinalProof(p)))
+                if !p.proof_data.is_empty() =>
+            {
+                p
+            }
+            (expected, _) => {
+                return Err(CoordinatorError::InvalidRequest(format!(
+                    "Worker {worker_id} sent a response for {job_id} that does not answer the \
+                     {expected:?} task it was given"
+                )))
             }
         };
 
-        // Workers are untrusted, so bind the response to the dispatched task
-        // before acting on it. Every check below must run before the
-        // intermediate-step branch: without the identity check any assigned
-        // worker can complete the job outright (non-empty proof) or
-        // desynchronise the aggregation queue (empty proof, which pops the next
-        // queued task); without the in-flight check the designated recurser can
-        // replay a result for a task that is no longer outstanding.
-        //
-        // A `None` here is also the panic that `agg_worker_id.unwrap()` used to
-        // take: `agg_worker_id` is set in `resolve_recurser_assignment` during
-        // Phase 2, so a `FinalProof` arriving before that — from a malicious or
-        // merely out-of-order worker — found it unset.
-        let Some(agg_worker_id) = job.agg_worker_id.clone() else {
-            return Err(CoordinatorError::InvalidRequest(format!(
-                "Worker {} sent a FinalProof for job {} before a recurser was assigned",
-                execute_task_response.worker_id, job_id
-            )));
-        };
-        if execute_task_response.worker_id != agg_worker_id {
-            return Err(CoordinatorError::InvalidRequest(format!(
-                "Worker {} sent a FinalProof for job {} but the assigned recurser is {}",
-                execute_task_response.worker_id, job_id, agg_worker_id
-            )));
-        }
-        let Some(inflight_all_done) = job.agg_task_inflight.as_ref().map(|task| task.all_done)
-        else {
-            return Err(CoordinatorError::InvalidRequest(format!(
-                "Recurser {} sent a FinalProof for job {} with no aggregation task in flight",
-                agg_worker_id, job_id
-            )));
-        };
+        let agg_worker_id = worker_id;
 
-        // The response shape must match the task that was dispatched: an
-        // intermediate step acks with empty proof bytes, the final task returns
-        // the proof. Both mismatches are acted on destructively if let through —
-        // a proof for an intermediate task completes the job from a partial
-        // aggregation, and an empty ack for the final task is taken as an
-        // intermediate step below, clearing the in-flight slot and popping the
-        // queue so nothing outstanding remains to complete the job.
-        let is_intermediate_ack = proof_data.proof_data.is_empty();
-        if is_intermediate_ack && inflight_all_done {
-            return Err(CoordinatorError::InvalidRequest(format!(
-                "Recurser {agg_worker_id} sent an empty ack for job {job_id} while the in-flight \
-                 aggregation task is the final one"
-            )));
-        }
-        if !is_intermediate_ack && !inflight_all_done {
-            return Err(CoordinatorError::InvalidRequest(format!(
-                "Recurser {agg_worker_id} sent a final proof for job {job_id} while the in-flight \
-                 aggregation task is an intermediate step"
-            )));
-        }
-
-        // Clear the in-flight slot and dispatch the next queued task, if any.
-        if is_intermediate_ack {
-            drop(job);
-            self.dispatch_next_agg_task(job_id).await?;
-            return Ok(());
-        }
-
-        self.workers_pool.mark_worker_with_state(&agg_worker_id, WorkerState::Ready).await?;
-
-        // Finalize completed job
+        // Decode before changing any state.
         let zisk_proof = bincode::serde::decode_from_slice::<Proof, _>(
             &proof_data.proof_data,
             bincode::config::standard(),
         )
         .map(|(v, _)| v)
         .map_err(|e| CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e)))?;
+
+        let scheduler = job.agg.as_mut().expect("checked above");
+        scheduler.take_live(&agg_worker_id);
+        if let Some(stray) = scheduler.on_ack(&agg_worker_id) {
+            warn!(
+                "Discarding aggregation task queued for {} after {} completed",
+                stray.worker, job_id
+            );
+        }
+
+        self.workers_pool.release_computing_to_ready(&agg_worker_id, job_id).await;
         job.proof = Some(zisk_proof);
         job.executed_steps = Some(proof_data.executed_steps);
         job.instances = Some(proof_data.instances);
@@ -235,16 +243,16 @@ impl Coordinator {
                             };
 
                             info!(
-                                "[Job] {:?} Performance for {} - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
-                                phase,
-                                job_id,
-                                avg_duration / 1000.0,
-                                best_worker,
-                                *best_duration as f64 / 1000.0,
-                                worst_worker,
-                                *worst_duration as f64 / 1000.0,
-                                diff_percentage
-                            );
+                        "[Job] {:?} Performance for {} - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                        phase,
+                        job_id,
+                        avg_duration / 1000.0,
+                        best_worker,
+                        *best_duration as f64 / 1000.0,
+                        worst_worker,
+                        *worst_duration as f64 / 1000.0,
+                        diff_percentage
+                    );
                         }
 
                         // For Phase 1, also show delay, witness, and ASM execution statistics
@@ -281,15 +289,15 @@ impl Coordinator {
                                 };
 
                                 info!(
-                                    "[Job] Contributions Delay for {} - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
-                                    job_id,
-                                    avg_delay / 1000.0,
-                                    best_delay_worker,
-                                    *best_delay as f64 / 1000.0,
-                                    worst_delay_worker,
-                                    *worst_delay as f64 / 1000.0,
-                                    delay_diff_percentage
-                                );
+                            "[Job] Contributions Delay for {} - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                            job_id,
+                            avg_delay / 1000.0,
+                            best_delay_worker,
+                            *best_delay as f64 / 1000.0,
+                            worst_delay_worker,
+                            *worst_delay as f64 / 1000.0,
+                            delay_diff_percentage
+                        );
                             }
 
                             // Extract witness times
@@ -323,15 +331,15 @@ impl Coordinator {
                                 };
 
                                 info!(
-                                    "[Job] Contributions Witness for {} - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
-                                    job_id,
-                                    avg_witness / 1000.0,
-                                    best_witness_worker,
-                                    *best_witness as f64 / 1000.0,
-                                    worst_witness_worker,
-                                    *worst_witness as f64 / 1000.0,
-                                    witness_diff_percentage
-                                );
+                            "[Job] Contributions Witness for {} - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                            job_id,
+                            avg_witness / 1000.0,
+                            best_witness_worker,
+                            *best_witness as f64 / 1000.0,
+                            worst_witness_worker,
+                            *worst_witness as f64 / 1000.0,
+                            witness_diff_percentage
+                        );
                             }
 
                             // Extract ASM execution times
@@ -368,17 +376,17 @@ impl Coordinator {
                                 };
 
                                 info!(
-                                    "[Job] Contributions ASM for {} - Avg: {:.3}s, Best: {} ({:.3}s @ {:.1}MHz), Worst: {} ({:.3}s @ {:.1}MHz), Diff: {:.1}%",
-                                    job_id,
-                                    avg_asm,
-                                    best_asm_worker,
-                                    *best_asm,
-                                    *best_mhz,
-                                    worst_asm_worker,
-                                    *worst_asm,
-                                    *worst_mhz,
-                                    asm_diff_percentage
-                                );
+                            "[Job] Contributions ASM for {} - Avg: {:.3}s, Best: {} ({:.3}s @ {:.1}MHz), Worst: {} ({:.3}s @ {:.1}MHz), Diff: {:.1}%",
+                            job_id,
+                            avg_asm,
+                            best_asm_worker,
+                            *best_asm,
+                            *best_mhz,
+                            worst_asm_worker,
+                            *worst_asm,
+                            *worst_mhz,
+                            asm_diff_percentage
+                        );
                             }
                         }
                     }
@@ -426,134 +434,251 @@ impl Coordinator {
         Ok(())
     }
 
-    /// Collects the proofs stored from a worker for aggregation.
-    ///     
-    /// # Parameters
-    ///
-    /// * `job` - Reference to the job containing proof results
-    /// * `agg_worker_id` - Worker ID assigned as the aggregator
-    /// * `worker_id` - Worker ID whose proofs are being collected
-    pub(super) fn collect_worker_proofs(
-        &self,
-        job: &Job,
-        agg_worker_id: &WorkerId,
-        worker_id: &WorkerId,
-    ) -> CoordinatorResult<Vec<AggProofData>> {
-        Ok(if worker_id == agg_worker_id {
-            vec![]
-        } else {
-            let job_results = job.results.get(&JobPhase::Prove).unwrap();
+    /// The set a worker's phase-2 result represents, resident on it. The proofs are moved out
+    /// of the stored result, not cloned: the node keeps them for the rest of phase 3.
+    pub(super) fn worker_agg_set(job: &mut Job, worker_id: &WorkerId) -> CoordinatorResult<AggSet> {
+        let worker_index = job.workers.iter().position(|w| w == worker_id).ok_or_else(|| {
+            CoordinatorError::InvalidRequest(format!(
+                "Worker {worker_id} is not assigned to {}",
+                job.job_id
+            ))
+        })? as u32;
 
-            let job_result = job_results.get(worker_id).ok_or(CoordinatorError::InvalidRequest(
-                format!("Worker {worker_id} has not completed Phase2 for {}", job.job_id),
-            ))?;
+        let job_id = job.job_id.clone();
+        let results = job.results.get_mut(&JobPhase::Prove).ok_or_else(|| {
+            CoordinatorError::InvalidRequest(format!("No Phase2 results for {job_id}"))
+        })?;
+        let result = results.get_mut(worker_id).ok_or_else(|| {
+            CoordinatorError::InvalidRequest(format!(
+                "Worker {worker_id} has not completed Phase2 for {job_id}"
+            ))
+        })?;
+        let JobResultData::AggProofs(proofs) = &mut result.data else {
+            return Err(CoordinatorError::InvalidRequest(
+                "Expected AggProofs data for Phase2".to_string(),
+            ));
+        };
 
-            match &job_result.data {
-                JobResultData::AggProofs(values) => values.clone(),
-                _ => {
-                    return Err(CoordinatorError::InvalidRequest(
-                        "Expected AggProofs data for Phase2".to_string(),
-                    ));
-                }
-            }
-        })
+        // A partition with no instances returns no proofs. proofman cannot finish such a
+        // job (its final drain requires every worker's contribution to be aggregated), so
+        // fail here rather than at the root.
+        if proofs.is_empty() {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Worker {worker_id} returned no Phase2 proofs for {job_id}: partitions without \
+                 instances are not supported"
+            )));
+        }
+
+        // Coverage tells the scheduler the job is done, so it comes from the assignment,
+        // not the untrusted payload. A leaf covers its own index and nothing else.
+        if let Some(p) = proofs.iter().find(|p| p.worker_indexes != [worker_index]) {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Worker {worker_id} claims its Phase2 proof for airgroup {} covers {:?}, \
+                 expected only {worker_index}",
+                p.airgroup_id, p.worker_indexes
+            )));
+        }
+        let covers = BTreeSet::from([worker_index]);
+
+        // Only now: taking first would destroy the leaf on a rejected payload, and
+        // the duplicate guard blocks any resubmission.
+        Ok(AggSet { covers, proofs: std::mem::take(proofs), location: worker_id.clone() })
     }
 
-    /// Re-sends the in-flight aggregation task to a reconnecting aggregator.
-    /// No-op if the worker is not the aggregator for this job, or if no task is in-flight.
+    /// Which leaf workers each airgroup's proofs actually cover, from the sets this
+    /// node absorbed.
+    fn airgroup_coverage(node: &AggNode) -> BTreeMap<u64, BTreeSet<u32>> {
+        let mut per_airgroup: BTreeMap<u64, BTreeSet<u32>> = BTreeMap::new();
+        for input in &node.inputs {
+            for proof in &input.proofs {
+                per_airgroup
+                    .entry(proof.airgroup_id)
+                    .or_default()
+                    .extend(proof.worker_indexes.iter().copied());
+            }
+        }
+        per_airgroup
+    }
+
+    /// Feed a node's folded subtree back into the scheduler; it stays resident on that node.
+    async fn absorb_node_export(
+        &self,
+        job_id: &JobId,
+        worker_id: &WorkerId,
+        proofs: Vec<ProofStarkDto>,
+        per_airgroup: BTreeMap<u64, BTreeSet<u32>>,
+    ) -> CoordinatorResult<()> {
+        // Untrusted airgroup ids index a Vec on the next worker: keep only this node's, once each.
+        let mut seen = BTreeSet::new();
+        let mut folded = Vec::with_capacity(proofs.len());
+        for proof in proofs {
+            let Some(covers) = per_airgroup.get(&proof.airgroup_id) else {
+                // proofman drains one proof per airgroup, including ones this node
+                // never absorbed; those carry nothing to account for.
+                continue;
+            };
+            if !seen.insert(proof.airgroup_id) {
+                return Err(CoordinatorError::InvalidRequest(format!(
+                    "Node {worker_id} returned airgroup {} twice for {job_id}",
+                    proof.airgroup_id
+                )));
+            }
+            folded.push(AggProofData {
+                airgroup_id: proof.airgroup_id,
+                values: proof.values,
+                worker_indexes: covers.iter().copied().collect(),
+            });
+        }
+
+        if folded.len() != per_airgroup.len() {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Node {worker_id} returned {} of {} airgroups for {job_id}",
+                folded.len(),
+                per_airgroup.len()
+            )));
+        }
+        let (dispatches, freed) = {
+            let jobs_map = self.jobs.read().await;
+            let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+            let mut job = job_entry.write().await;
+
+            // The lock was released in between, so the job may have been failed.
+            if job.state().is_resolved() {
+                return Ok(());
+            }
+
+            let scheduler = job
+                .agg
+                .as_mut()
+                .ok_or_else(|| CoordinatorError::Internal("No scheduler".into()))?;
+
+            // A replay finds nothing to consume; folding it again would trip
+            // proofman's duplicate-index check.
+            let Some(node) = scheduler.take_live(worker_id) else {
+                return Ok(());
+            };
+            let released = scheduler.on_ack(worker_id);
+
+            info!("[Phase3] {job_id} {worker_id} returned a subtree covering {:?}", node.covers);
+
+            // The scheduler's own record, not the proofs': those only list the leaves that
+            // had instances in each airgroup.
+            let set = AggSet { covers: node.covers, proofs: folded, location: worker_id.clone() };
+            // One export can yield both: what the ack released, and the new fold.
+            let dispatches: Vec<_> =
+                released.into_iter().chain(scheduler.on_set_ready(set)).collect();
+            (dispatches, scheduler.take_released())
+        };
+
+        self.release_donors(job_id, &freed).await;
+
+        self.dispatch_all(job_id, dispatches).await
+    }
+
+    /// Send every dispatch before reporting the first failure: the scheduler already
+    /// marked them all in flight, so one skipped after an error would never be retried.
+    /// A failed send needs no requeue: its worker's stream is gone, so either the
+    /// disconnect fails the job or a reconnect replays the node.
+    pub(super) async fn dispatch_all(
+        &self,
+        job_id: &JobId,
+        dispatches: Vec<AggDispatch>,
+    ) -> CoordinatorResult<()> {
+        let mut first_error = None;
+        for dispatch in dispatches {
+            if let Err(e) = self.dispatch_agg(job_id, dispatch).await {
+                first_error.get_or_insert(e);
+            }
+        }
+        first_error.map_or(Ok(()), Err)
+    }
+
+    /// Return donors to the pool. Guarded: one may have disconnected or been parked
+    /// awaiting recovery, and an unconditional write would resurrect it.
+    pub(super) async fn release_donors(&self, job_id: &JobId, donors: &[WorkerId]) {
+        for donor in donors {
+            self.workers_pool.release_computing_to_ready(donor, job_id).await;
+        }
+    }
+
+    /// Send a scheduled fold.
+    pub(super) async fn dispatch_agg(
+        &self,
+        job_id: &JobId,
+        dispatch: AggDispatch,
+    ) -> CoordinatorResult<()> {
+        let step = match (dispatch.last_proof, dispatch.final_proof) {
+            (false, _) => "absorb",
+            (true, false) => "fold",
+            (true, true) => "fold+final",
+        };
+        info!(
+            "[Phase3] {job_id} {} {step}: {} proof(s) in, now covers {:?}",
+            dispatch.worker,
+            dispatch.proofs.len(),
+            dispatch.covers
+        );
+
+        self.send_agg_task(job_id, &dispatch).await
+    }
+
+    /// Re-sends a node's retained inputs to a reconnecting worker. The inputs are
+    /// kept until the node exports, so replay is idempotent.
     pub(super) async fn replay_inflight_agg_task_if_recurser(
         &self,
         worker_id: &WorkerId,
         job_id: &JobId,
     ) -> CoordinatorResult<()> {
-        let inflight = {
-            let jobs_map = self.jobs.read().await;
-            let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
-            let job = job_entry.read().await;
-
-            // Only replay for the designated aggregator
-            if job.agg_worker_id.as_ref() != Some(worker_id) {
-                return Ok(());
-            }
-
-            job.agg_task_inflight.clone()
-        };
-
-        if let Some(task) = inflight {
-            info!("Replaying in-flight agg task to reconnected aggregator {worker_id}");
-            self.send_recurser_task(job_id, worker_id, task.proofs, task.all_done, task.proof_type)
-                .await?;
-        }
-
-        Ok(())
-    }
-
-    /// Clears the in-flight slot and dispatches the next queued aggregation task, if any.
-    /// Called after the aggregator acknowledges an intermediate step.
-    async fn dispatch_next_agg_task(&self, job_id: &JobId) -> CoordinatorResult<()> {
-        let (task, agg_worker_id) = {
+        let dispatch = {
             let jobs_map = self.jobs.read().await;
             let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
             let mut job = job_entry.write().await;
-
-            job.agg_task_inflight = None;
-
-            let Some(task) = job.agg_task_queue.pop_front() else {
+            // Open nodes too: an undistributed aggregator never becomes live.
+            let Some(dispatch) = job.agg.as_mut().and_then(|s| s.replay_for(worker_id)) else {
                 return Ok(());
             };
-            job.agg_task_inflight = Some(task.clone());
-            let agg_worker_id = job
-                .agg_worker_id
-                .clone()
-                .ok_or_else(|| CoordinatorError::Internal("No aggregator assigned".into()))?;
-            (task, agg_worker_id)
+            dispatch
         };
 
-        self.send_recurser_task(job_id, &agg_worker_id, task.proofs, task.all_done, task.proof_type)
-            .await
+        info!("Replaying aggregation inputs to reconnected node {worker_id}");
+        self.send_agg_task(job_id, &dispatch).await
     }
 
-    /// Sends an aggregation task to the designated aggregator worker.
-    ///
-    /// # Parameters
-    ///
-    /// * `job_id` - Identifier of the job being processed
-    /// * `agg_worker_id` - Worker ID assigned as the aggregator
-    /// * `proofs` - List of proofs to aggregate
-    /// * `all_done` - Indicates if this is the final aggregation step
-    pub(super) async fn send_recurser_task(
-        &self,
-        job_id: &JobId,
-        agg_worker_id: &WorkerId,
-        proofs: Vec<AggProofData>,
-        all_done: bool,
-        proof_type: ProofKind,
-    ) -> CoordinatorResult<()> {
-        let proofs: Vec<ProofStarkDto> = proofs
-            .into_iter()
+    /// Sends an aggregation task to a node.
+    async fn send_agg_task(&self, job_id: &JobId, dispatch: &AggDispatch) -> CoordinatorResult<()> {
+        let proof_type = {
+            let jobs_map = self.jobs.read().await;
+            let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+            let proof_type = job_entry.read().await.proof_type;
+            proof_type
+        };
+
+        let agg_proofs: Vec<ProofStarkDto> = dispatch
+            .proofs
+            .iter()
             .map(|p| ProofStarkDto {
                 airgroup_id: p.airgroup_id,
-                values: p.values,
-                worker_idx: p.worker_idx,
+                values: p.values.clone(),
+                worker_indexes: p.worker_indexes.clone(),
             })
             .collect();
 
         let req = ExecuteTaskRequestDto {
-            worker_id: agg_worker_id.clone(),
+            worker_id: dispatch.worker.clone(),
             job_id: job_id.clone(),
             params: ExecuteTaskRequestTypeDto::AggParams(AggParamsDto {
-                agg_proofs: proofs,
-                last_proof: all_done,
-                final_proof: all_done,
+                agg_proofs,
+                last_proof: dispatch.last_proof,
+                final_proof: dispatch.final_proof,
                 proof_type,
+                keep_resident: dispatch.keep_resident,
+                reset_state: dispatch.reset_state,
             }),
             metadata: None,
         };
 
-        let message = CoordinatorMessageDto::ExecuteTaskRequest(req);
-
-        self.workers_pool.send_message(agg_worker_id, message).await?;
-
-        Ok(())
+        self.workers_pool
+            .send_message(&dispatch.worker, CoordinatorMessageDto::ExecuteTaskRequest(req))
+            .await
     }
 }

@@ -444,6 +444,19 @@ enum EmbeddedProver {
 }
 
 impl EmbeddedProver {
+    /// This client's job boundary: retires the previous job's state before this one
+    /// writes anything. A no-op on backends with nothing to retire.
+    ///
+    /// Must come before this job's hints registration and its input: retiring rewinds
+    /// both, so a stream registered ahead of it would never be started.
+    fn begin_job(&self) -> Result<()> {
+        match self {
+            EmbeddedProver::Emu(p) => p.reset(),
+            EmbeddedProver::Asm(p) => p.reset(),
+        }
+        .map_err(SdkError::backend)
+    }
+
     fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
         match self {
             EmbeddedProver::Emu(p) => p.register_recurser(output_dir, recurser_id),
