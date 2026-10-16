@@ -126,7 +126,7 @@ impl Coordinator {
         let agg_worker_id = worker_id;
 
         // Decode before changing any state.
-        let zisk_proof = Proof::from_bytes(&proof_data.proof_data).map_err(|e| {
+        let zisk_proof = Proof::from_bincode(&proof_data.proof_data).map_err(|e| {
             CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e))
         })?;
 
@@ -436,11 +436,10 @@ impl Coordinator {
         // Build proof bytes and stats for the event before releasing the lock
         let prove_event = {
             let proof_bytes = match job.proof.as_ref() {
-                Some(p) => bincode::serde::encode_to_vec(p, bincode::config::standard())
-                    .unwrap_or_else(|e| {
-                        warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
-                        vec![]
-                    }),
+                Some(p) => p.to_bincode().unwrap_or_else(|e| {
+                    warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
+                    vec![]
+                }),
                 None => vec![],
             };
             let stats = exec_stats_from_job(&job);

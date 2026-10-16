@@ -388,10 +388,10 @@ impl Coordinator {
         {
             let mut job = job_entry.write().await;
             job.change_state(JobState::Completed);
-            // The ack carries a bincode-encoded `Proof` (see the worker's
+            // The ack carries `Proof::to_bincode` (see the worker's
             // handle_run_aggregate_proofs); decode it so the completed job owns
             // its proof like every other completion path does.
-            match Proof::from_bytes(&ack.proof) {
+            match Proof::from_bincode(&ack.proof) {
                 Ok(proof) => job.proof = Some(proof),
                 Err(e) => warn!(
                     "[Recurser] Failed to deserialize aggregate proof for job {}: {}",

@@ -4,8 +4,13 @@
 //! table below whenever the setup changes.
 
 use zisk_verifier::{
-    decode_saved, vadcop_vk, verify, verify_saved_words, VadcopFinalProof, VerifyError,
+    decode_saved, decode_saved_words, seed_trailer, vadcop_vk, verify, verify_saved_words,
+    VadcopFinalProof, VerifyError,
 };
+
+fn words(bytes: &[u8]) -> Vec<u64> {
+    bytes.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect()
+}
 
 struct Fixture {
     name: &'static str,
@@ -155,8 +160,7 @@ fn no_fixture_verifies_under_another_published_key() {
 #[test]
 fn verifying_in_place_matches_decode_then_verify() {
     for f in FIXTURES {
-        let words: Vec<u64> =
-            f.bytes.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect();
+        let words = words(f.bytes);
         assert_eq!(
             verify_saved_words(&words, &f.key(), None),
             verify(&f.proof(), &f.key()),
@@ -180,13 +184,28 @@ fn verifying_in_place_matches_decode_then_verify() {
     }
 }
 
+/// A saved file's seed trailer is for hosts: they decode it, a guest refuses it.
+#[test]
+fn a_seed_trailer_is_decoded_but_not_verified_in_place() {
+    for f in FIXTURES {
+        let mut words = words(f.bytes);
+        words.extend(seed_trailer([1, 2, 3, 4]));
+        assert!(matches!(
+            verify_saved_words(&words, &f.key(), Some(&f.program_vk)).unwrap_err(),
+            VerifyError::Malformed(_)
+        ));
+        let saved = decode_saved_words(&words).unwrap();
+        assert_eq!(saved.random_seed, Some([1, 2, 3, 4]), "{}", f.name);
+        assert_eq!(saved.proof.proof, f.proof().proof, "{}", f.name);
+    }
+}
+
 /// A guest pinning the program refuses another program's proof before the STARK, and
 /// accepts its own.
 #[test]
 fn verifying_in_place_pins_the_program() {
     for f in FIXTURES {
-        let words: Vec<u64> =
-            f.bytes.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect();
+        let words = words(f.bytes);
         assert!(verify_saved_words(&words, &f.key(), Some(&f.program_vk)).is_ok(), "{}", f.name);
 
         let mut other = f.program_vk;

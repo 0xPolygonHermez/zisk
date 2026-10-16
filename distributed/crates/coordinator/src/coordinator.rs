@@ -3576,8 +3576,7 @@ mod tests {
             worker_id: w0.clone(),
             success: true,
             error_message: None,
-            proof: bincode::serde::encode_to_vec(Proof::default(), bincode::config::standard())
-                .unwrap(),
+            proof: Proof::default().to_bincode().unwrap(),
         };
         coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
 
@@ -5231,8 +5230,7 @@ mod tests {
         job_entry.write().await.random_seed = Some(CLIENT_RANDOM_SEED);
         coordinator.alloc_job_events(&job_id).await;
         let mut events = coordinator.subscribe_job_events(&job_id).await.unwrap();
-        let seedless =
-            bincode::serde::encode_to_vec(Proof::default(), bincode::config::standard()).unwrap();
+        let seedless = Proof::default().to_bincode().unwrap();
 
         coordinator
             .handle_stream_execute_task_response(final_proof_response(&job_id, &w0_id, seedless))
@@ -5251,7 +5249,7 @@ mod tests {
             }) => {
                 assert_eq!(seed, Some(CLIENT_RANDOM_SEED));
                 assert_eq!(
-                    Proof::from_bytes(&proof_bytes).unwrap().random_seed,
+                    Proof::from_bincode(&proof_bytes).unwrap().random_seed,
                     Some(CLIENT_RANDOM_SEED)
                 );
             }

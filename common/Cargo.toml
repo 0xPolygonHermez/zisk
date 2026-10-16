@@ -9,6 +9,8 @@ homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
+# Reads fixtures from sibling crates, which are not packaged.
+exclude = ["tests/repo_fixtures.rs"]
 
 [dependencies]
 zisk-core = { workspace = true }

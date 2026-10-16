@@ -844,7 +844,8 @@ pub struct WebhookPayloadDto {
     /// Error details, present on failure.
     pub error: Option<WebhookErrorDto>,
     /// The proof, when included, as `Proof::to_bytes`: ZisK's flat layout for a Vadcop
-    /// proof (read with `zisk_verifier::decode_saved`), or a `ZISKPLNK`-headed PLONK proof.
+    /// proof (read with `zisk_verifier::decode_saved`), ending with the seed trailer when the
+    /// proof has a seed, or a `ZISKPLNK`-headed PLONK proof.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof_data: Option<Vec<u8>>,
     /// The job's host randomness seed (hex), to replay it. Absent for jobs that run no execution.

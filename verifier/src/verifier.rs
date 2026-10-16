@@ -391,6 +391,8 @@ mod tests {
             assert_eq!(hash_id_from_tag(i as u64), Some(*f));
         }
         assert_eq!(hash_id_from_tag(HASH_TAGS.len() as u64), None);
+        // Would truncate to tag 0 if cast to a 32-bit usize.
+        assert_eq!(hash_id_from_tag(1 << 32), None);
         assert_eq!(hash_tag("poseidon3"), None);
     }
 

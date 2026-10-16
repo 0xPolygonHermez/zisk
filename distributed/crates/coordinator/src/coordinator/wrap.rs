@@ -16,7 +16,7 @@ impl Coordinator {
     /// Launch a wrap job: compress/reduce an existing vadcop proof to minimal or SNARK format.
     ///
     /// Selects any single idle worker, sends a WRAP task to it, and returns the job ID.
-    /// The proof data must be a bincode-encoded `Proof`.
+    /// The proof data must be `Proof::to_bincode`.
     pub async fn launch_wrap(
         &self,
         request: LaunchWrapRequestDto,
@@ -121,7 +121,7 @@ impl Coordinator {
             ));
         };
 
-        let zisk_proof = Proof::from_bytes(&wrap_result.proof_data).map_err(|e| {
+        let zisk_proof = Proof::from_bincode(&wrap_result.proof_data).map_err(|e| {
             CoordinatorError::Internal(format!("Failed to deserialize wrap proof: {}", e))
         })?;
         let seed = zisk_proof.random_seed;

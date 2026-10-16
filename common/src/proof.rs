@@ -9,8 +9,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub use zisk_verifier::{
-    program_publics, GOLDILOCKS_ORDER, IS_VADCOP_FINAL_PROOF, PROGRAM_VK_LEN,
-    VADCOP_FINAL_FLAG_LEN, ZISK_PUBLICS,
+    program_publics, seed_trailer, GOLDILOCKS_ORDER, IS_VADCOP_FINAL_PROOF, PROGRAM_VK_LEN,
+    SEED_TRAILER_TAG, VADCOP_FINAL_FLAG_LEN, ZISK_PUBLICS,
 };
 
 use crate::{HashMode, RandomSeed};
@@ -779,10 +779,9 @@ impl Default for ProofBody {
 
 /// A struct representing a proof.
 ///
-/// Serialized with bincode, which records no field names, lengths or version: fields decode
-/// positionally. New fields therefore only go at the end, and [`Proof::from_bytes`] is the one
-/// decoder that knows which trailing fields a file may lack. Decode through it, never with
-/// `bincode` directly.
+/// Files and webhooks use [`Proof::to_bytes`]; the coordinator, workers and clients exchange
+/// [`Proof::to_bincode`]. bincode decodes fields positionally, so new fields go at the end and
+/// decoding goes through [`Proof::from_bincode`], never `bincode` directly.
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Proof {
     /// The data of the proof.
@@ -1293,9 +1292,11 @@ impl Proof {
 
     /// The bytes [`save`](Self::save) writes.
     ///
-    /// A Vadcop proof is ZisK's flat layout, [`get_proof_bytes`](Self::get_proof_bytes):
-    /// the same bytes guests, `zisk_verifier::decode_saved` and ethproofs take. A PLONK
-    /// proof is [`PLONK_FILE_MAGIC`] followed by the bincode `Proof`.
+    /// A Vadcop proof is ZisK's flat layout, [`get_proof_bytes`](Self::get_proof_bytes),
+    /// which guests and ethproofs take. A proof with a [`random_seed`](Self::random_seed)
+    /// ends with it as the verifier's seed trailer ([`SEED_TRAILER_TAG`]), which
+    /// `zisk_verifier::decode_saved` reads and guests refuse. A PLONK proof is
+    /// [`PLONK_FILE_MAGIC`] followed by the bincode `Proof`, seed included.
     ///
     /// # Errors
     ///
@@ -1316,16 +1317,21 @@ impl Proof {
                             .to_string(),
                     ));
                 }
-                self.get_proof_bytes()
+                let mut words = self.get_proof_u64()?;
+                if let Some(seed) = &self.random_seed {
+                    words.extend(seed_trailer(seed.to_le_words()));
+                }
+                let mut bytes = Vec::with_capacity(words.len() * 8);
+                for w in &words {
+                    bytes.extend_from_slice(&w.to_le_bytes());
+                }
+                Ok(bytes)
             }
             ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => {
                 ensure_stored_body(&self.body)?;
                 self.ensure_program_vk_committed()?;
                 let mut bytes = PLONK_FILE_MAGIC.to_vec();
-                bytes.extend(
-                    bincode::serde::encode_to_vec(self, bincode::config::standard())
-                        .map_err(|e| CommonError::Io(format!("Failed to encode proof: {e}")))?,
-                );
+                bytes.extend(self.to_bincode()?);
                 Ok(bytes)
             }
         }
@@ -1377,6 +1383,7 @@ impl Proof {
 
         let saved = zisk_verifier::decode_saved(bytes)
             .map_err(|e| CommonError::InvalidProof(format!("Malformed proof: {e}")))?;
+        let random_seed = saved.random_seed.map(RandomSeed::from_le_words);
         let VadcopFinalProof { proof, public_values, compressed, hash } = saved.proof;
         // `decode_saved` pins the flag to 0 or 1.
         let kind = match (compressed, public_values.first()) {
@@ -1396,7 +1403,44 @@ impl Proof {
                 publics_full,
             },
             program_vk,
-        ))
+        )
+        .with_random_seed(random_seed))
+    }
+
+    /// The bincode encoding the coordinator, workers and clients exchange; not a file format
+    /// (see [`to_bytes`](Self::to_bytes)).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Serialization`] if bincode fails.
+    pub fn to_bincode(&self) -> Result<Vec<u8>> {
+        bincode::serde::encode_to_vec(self, bincode::config::standard())
+            .map_err(|e| CommonError::Serialization(e.to_string()))
+    }
+
+    /// Decode [`to_bincode`](Self::to_bincode) output, including that of ZisK versions that
+    /// predate [`Proof::random_seed`] (they decode with `random_seed: None`).
+    ///
+    /// Bytes past the last known field are ignored, so encodings from later versions that
+    /// append fields still decode. Unlike [`from_bytes`](Self::from_bytes) this does not
+    /// check the publics' shape.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Deserialization`] if the bytes do not hold a proof.
+    pub fn from_bincode(bytes: &[u8]) -> Result<Self> {
+        let config = bincode::config::standard();
+        let err = |e: bincode::error::DecodeError| CommonError::Deserialization(e.to_string());
+        // bincode encodes a struct as the tuple of its fields, so this reads the fields every
+        // encoding starts with, including those written before `random_seed` existed.
+        let ((body, program_vk), head_len) =
+            bincode::serde::decode_from_slice::<(ProofBody, ProgramVK), _>(bytes, config)
+                .map_err(err)?;
+        let random_seed = match &bytes[head_len..] {
+            [] => None,
+            tail => bincode::serde::decode_from_slice(tail, config).map_err(err)?.0,
+        };
+        Ok(Self { body, program_vk, random_seed })
     }
 
     /// Save the proof to a file: [`to_bytes`](Self::to_bytes).
@@ -2146,11 +2190,13 @@ mod tests {
     }
 
     fn save_and_load(proof: &Proof) -> (Vec<u8>, Result<Proof>) {
-        // Pilfflonk and PLONK share a kind, so the kind alone would race parallel tests.
-        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let tmp =
-            std::env::temp_dir().join(format!("proof_roundtrip_{}_{n}.bin", std::process::id()));
+        // Tests run in parallel: each call needs its own file.
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let tmp = std::env::temp_dir().join(format!(
+            "proof_roundtrip_{}_{}.bin",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
         proof.save(&tmp).unwrap();
         let bytes = std::fs::read(&tmp).unwrap();
         let loaded = Proof::load(&tmp);
@@ -2282,23 +2328,6 @@ mod tests {
         assert!(err.to_string().contains("program_vk"), "got: {err}");
     }
 
-    /// With no key passed, a leaf verifies under the release key, never the one it carries:
-    /// a real proof whose claimed key is garbage still verifies, and a tampered one fails.
-    #[test]
-    fn verify_defaults_to_the_release_key_not_the_proofs_own() {
-        let bytes = include_bytes!("../../verifier/tests/fixtures/poseidon2_compressed.bin");
-        let mut proof = Proof::from_bytes(bytes).unwrap();
-        if let ProofBody::Vadcop { zisk_vk, .. } = &mut proof.body {
-            *zisk_vk = vec![1, 2, 3, 4];
-        }
-        proof.verify().unwrap();
-
-        if let ProofBody::Vadcop { proof: words, .. } = &mut proof.body {
-            words[7] ^= 1;
-        }
-        assert!(matches!(proof.verify().unwrap_err(), CommonError::NotVerified));
-    }
-
     /// No release publishes a recurser's key, so an aggregate must be given one.
     #[test]
     fn verify_requires_a_key_for_a_recurser_proof() {
@@ -2376,24 +2405,6 @@ mod tests {
         assert!(err.to_string().contains("leaf setup key"), "got: {err}");
     }
 
-    /// Every proof word must be below the BN254 scalar order, as `PlonkVerifier.sol` requires:
-    /// adding `r` gives another encoding the native parser reads back as the same proof.
-    #[test]
-    fn a_plonk_proof_word_at_or_above_r_is_refused() {
-        let bytes = include_bytes!("../../zisk-contracts/test/plonk_proof.bin");
-        let mut proof = Proof::from_bytes(bytes).unwrap();
-        let r = num_bigint::BigUint::from_bytes_be(&BN254_R_BE);
-        if let ProofBody::Plonk { proof_bytes, .. } = &mut proof.body {
-            let word = num_bigint::BigUint::from_bytes_be(&proof_bytes[..32]) + &r;
-            let be = word.to_bytes_be();
-            proof_bytes[..32].fill(0);
-            proof_bytes[32 - be.len()..32].copy_from_slice(&be);
-        }
-        let err = proof.verify().unwrap_err();
-        assert!(err.to_string().contains("word 0"), "got: {err}");
-        assert!(proof.to_bytes().is_err());
-    }
-
     /// The Solidity helpers compute what `ZiskVerifier.hashPublicValues` does.
     #[test]
     fn hash_solidity_is_the_on_chain_public_input() {
@@ -2417,13 +2428,6 @@ mod tests {
         let vk = ProgramVK { vk: r.to_vec(), hash_mode: HashMode::Poseidon1 };
         let err = proof.with_program_vk(&vk).with_leaf_setup_vk(&r).verify().unwrap_err();
         assert!(err.to_string().contains("leaf setup key"), "got: {err}");
-    }
-
-    /// The contract's fixture verifies with no key passed, under the release PLONK key.
-    #[test]
-    fn the_contract_fixture_verifies_under_the_release_plonk_key() {
-        let bytes = include_bytes!("../../zisk-contracts/test/plonk_proof.bin");
-        Proof::from_bytes(bytes).unwrap().verify().unwrap();
     }
 
     /// `program_vk` is public, so a PLONK file is bound to its publics like a Vadcop one.
@@ -2471,6 +2475,65 @@ mod tests {
         smuggled
             .extend(bincode::serde::encode_to_vec(&vadcop, bincode::config::standard()).unwrap());
         assert!(Proof::from_bytes(&smuggled).is_err());
+    }
+
+    fn test_seed() -> RandomSeed {
+        RandomSeed::new(std::array::from_fn(|i| i as u8))
+    }
+
+    /// A saved Vadcop proof keeps its seed as the verifier's trailer: the proof bytes are
+    /// unchanged, and `decode_saved` reads both.
+    #[test]
+    fn a_saved_vadcop_proof_keeps_its_seed_in_the_trailer() {
+        let original = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
+            .with_random_seed(test_seed());
+        let (bytes, loaded) = save_and_load(&original);
+
+        let flat = original.get_proof_bytes().unwrap();
+        assert_eq!(&bytes[..flat.len()], &flat[..]);
+        assert_eq!(&bytes[bytes.len() - 8..], &SEED_TRAILER_TAG.to_le_bytes());
+        let saved = zisk_verifier::decode_saved(&bytes).unwrap();
+        assert_eq!(saved.random_seed, Some(test_seed().to_le_words()));
+
+        let loaded = loaded.unwrap();
+        assert_eq!(loaded.random_seed, Some(test_seed()));
+        assert_eq!(loaded.to_bytes().unwrap(), bytes);
+    }
+
+    #[test]
+    fn a_saved_plonk_proof_keeps_its_seed() {
+        let original = plonk_proof(flag_free_publics([0; 4]), vec![9; 4], HashMode::Poseidon1)
+            .with_random_seed(test_seed());
+        let (_, loaded) = save_and_load(&original);
+        assert_eq!(loaded.unwrap().random_seed, Some(test_seed()));
+    }
+
+    #[test]
+    fn bincode_round_trips_the_seed() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]))
+            .with_random_seed(test_seed());
+        let bytes = proof.to_bincode().unwrap();
+        assert_eq!(Proof::from_bincode(&bytes).unwrap().random_seed, Some(test_seed()));
+        assert!(Proof::from_bincode(&bytes[..bytes.len() - 1]).is_err());
+
+        // Fields a later version appends must not stop this version from reading it.
+        let mut appended = bytes.clone();
+        appended.extend_from_slice(&[1, 2, 3]);
+        assert_eq!(Proof::from_bincode(&appended).unwrap().random_seed, Some(test_seed()));
+    }
+
+    /// An encoding written before `Proof::random_seed` existed ends right after `program_vk`.
+    #[test]
+    fn bincode_reads_a_proof_encoded_before_the_seed() {
+        let proof = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        let legacy = bincode::serde::encode_to_vec(
+            (&proof.body, &proof.program_vk),
+            bincode::config::standard(),
+        )
+        .unwrap();
+        let decoded = Proof::from_bincode(&legacy).unwrap();
+        assert_eq!(decoded.random_seed, None);
+        assert_eq!(decoded.to_bincode().unwrap(), proof.to_bincode().unwrap());
     }
 
     #[test]

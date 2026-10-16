@@ -2,6 +2,9 @@
 //!
 //! ZisK proofs have one byte format, the flat layout read by [`decode_saved`]: what
 //! `cargo-zisk prove` saves, what `Proof::get_proof_bytes` returns and what guests verify.
+//! A saved file may end with a [seed trailer](SEED_TRAILER_TAG), which the decoders here
+//! strip; [`crate::verify_saved_words`], what guests call, refuses it, so a guest takes one
+//! encoding per proof.
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -11,6 +14,20 @@ use proofman_verifier::VadcopFinalProof;
 
 use crate::verifier::{first_non_canonical, is_aggregate_flag};
 use crate::{expected_n_publics, hash_id_from_tag, HASH_TAG_LEN_WORDS, VADCOP_VK_LEN_WORDS};
+
+/// Ends a flat proof followed by the host randomness seed of the execution it attests to:
+/// `[flat proof][seed(4)][SEED_TRAILER_TAG]`. No hash tag takes this value, so a file
+/// without the trailer is never read as one with it. The seed is unauthenticated metadata.
+pub const SEED_TRAILER_TAG: u64 = u64::from_le_bytes(*b"ZISKSEED");
+
+/// Words in a seed: 256 bits.
+pub const SEED_LEN_WORDS: usize = 4;
+
+/// The trailer that appends `seed` to a flat proof.
+pub fn seed_trailer(seed: [u64; SEED_LEN_WORDS]) -> [u64; SEED_LEN_WORDS + 1] {
+    let [a, b, c, d] = seed;
+    [a, b, c, d, SEED_TRAILER_TAG]
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecodeError {
@@ -58,17 +75,21 @@ pub struct SavedProof {
     /// among keys you already trust or to explain a mismatch, never as the key to verify
     /// against. A proof checked against the key it ships with proves nothing.
     pub claimed_vadcop_vk: [u64; VADCOP_VK_LEN_WORDS],
+    /// The seed trailer's words, if the file has one.
+    pub random_seed: Option<[u64; SEED_LEN_WORDS]>,
 }
 
 /// Decode the flat layout:
-/// `[minimal][n_publics][publics][proof][vadcop_final_vk(4)][hash tag]`, u64 LE words.
+/// `[minimal][n_publics][publics][proof][vadcop_final_vk(4)][hash tag]`, u64 LE words,
+/// optionally followed by the [seed trailer](SEED_TRAILER_TAG).
 pub fn decode_saved(bytes: &[u8]) -> Result<SavedProof, DecodeError> {
     if bytes.len() % 8 != 0 {
         return Err(DecodeError::NotWordAligned(bytes.len()));
     }
     let mut words: Vec<u64> =
         bytes.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect();
-    let v = split_saved(&words)?;
+    let (flat, random_seed) = strip_seed_trailer(&words)?;
+    let v = split_saved(flat)?;
     let (compressed, hash, claimed_vadcop_vk) = (v.compressed, v.hash, v.claimed_vadcop_vk);
     let public_values = v.publics.to_vec();
     // The proof is one contiguous run of `words`: keep it in place rather than copy it.
@@ -79,13 +100,15 @@ pub fn decode_saved(bytes: &[u8]) -> Result<SavedProof, DecodeError> {
     Ok(SavedProof {
         proof: VadcopFinalProof::new(words, public_values, compressed, String::from(hash)),
         claimed_vadcop_vk,
+        random_seed,
     })
 }
 
 /// [`decode_saved`] over words already in memory. To verify them, prefer
 /// [`crate::verify_saved_words`], which does not copy the proof.
 pub fn decode_saved_words(words: &[u64]) -> Result<SavedProof, DecodeError> {
-    let v = split_saved(words)?;
+    let (flat, random_seed) = strip_seed_trailer(words)?;
+    let v = split_saved(flat)?;
     Ok(SavedProof {
         proof: VadcopFinalProof::new(
             v.proof.to_vec(),
@@ -94,6 +117,7 @@ pub fn decode_saved_words(words: &[u64]) -> Result<SavedProof, DecodeError> {
             String::from(v.hash),
         ),
         claimed_vadcop_vk: v.claimed_vadcop_vk,
+        random_seed,
     })
 }
 
@@ -108,6 +132,18 @@ pub(crate) struct SavedView<'a> {
     pub claimed_vadcop_vk: [u64; VADCOP_VK_LEN_WORDS],
 }
 
+/// Split off the [seed trailer](SEED_TRAILER_TAG), if `words` end with one.
+fn strip_seed_trailer(
+    words: &[u64],
+) -> Result<(&[u64], Option<[u64; SEED_LEN_WORDS]>), DecodeError> {
+    match words {
+        [flat @ .., a, b, c, d, SEED_TRAILER_TAG] => Ok((flat, Some([*a, *b, *c, *d]))),
+        [.., SEED_TRAILER_TAG] => Err(DecodeError::Truncated),
+        _ => Ok((words, None)),
+    }
+}
+
+/// The bare flat layout; a seed trailer reads as an unknown hash tag.
 pub(crate) fn split_saved(words: &[u64]) -> Result<SavedView<'_>, DecodeError> {
     const TAIL: usize = VADCOP_VK_LEN_WORDS + HASH_TAG_LEN_WORDS;
     if words.len() < 2 + TAIL {
@@ -222,6 +258,30 @@ mod tests {
         let short: Vec<u8> =
             [0u64, n as u64, 1, 2, 7, 7, 7, 7, tag].iter().flat_map(|w| w.to_le_bytes()).collect();
         assert_eq!(err(&short), DecodeError::Truncated);
+    }
+
+    #[test]
+    fn decode_saved_reads_the_seed_trailer() {
+        let tag = hash_tag("Poseidon2").unwrap();
+        let plain = saved(false, expected_n_publics(false), 5, tag);
+        let mut with_seed = plain.clone();
+        for w in seed_trailer([1, 2, 3, 4]) {
+            with_seed.extend_from_slice(&w.to_le_bytes());
+        }
+
+        let s = decode_saved(&with_seed).unwrap();
+        assert_eq!(s.random_seed, Some([1, 2, 3, 4]));
+        assert_eq!(s.proof.proof, decode_saved(&plain).unwrap().proof.proof);
+        assert_eq!(decode_saved(&plain).unwrap().random_seed, None);
+
+        // The in-place path a guest takes reads only the bare layout.
+        let words: Vec<u64> =
+            with_seed.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect();
+        assert_eq!(split_saved(&words).err(), Some(DecodeError::UnknownHashTag(SEED_TRAILER_TAG)));
+
+        // A trailer tag with no room for a seed.
+        let short: Vec<u8> = SEED_TRAILER_TAG.to_le_bytes().to_vec();
+        assert_eq!(decode_saved(&short).unwrap_err(), DecodeError::Truncated);
     }
 
     fn leaf_proof(flag: u64) -> VadcopFinalProof {

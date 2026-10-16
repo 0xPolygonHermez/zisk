@@ -341,7 +341,7 @@ impl ProveOutput {
         Ok(self.proof.get_proof_u64()?)
     }
 
-    /// The proof serialized as raw bytes.
+    /// The proof's flat layout, without the seed trailer [`Proof::to_bytes`] adds.
     pub fn get_proof_bytes(&self) -> Result<Vec<u8>> {
         Ok(self.proof.get_proof_bytes()?)
     }
