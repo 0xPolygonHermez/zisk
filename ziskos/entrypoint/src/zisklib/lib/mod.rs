@@ -31,6 +31,7 @@ mod zisk_verifier;
 pub mod zkvm_accelerators;
 pub mod zkvm_accelerators_ext;
 pub mod zkvm_io;
+pub mod zkvm_random;
 
 // For public consumption
 pub use bigint::*;

@@ -7,6 +7,7 @@ use zisk_asm_runner::{
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_asm_runner::{MOShmemReader, MTShmemReader, RHShmemReader};
 use zisk_common::io::{StreamSink, StreamSource, ZiskStdin, ZiskStream};
+use zisk_common::RandomSeed;
 use zisk_precomp_hints::{HintsProcessor, MpiBroadcastFn};
 
 use crate::error::{ExecutorError, ExecutorResult, MutexExt};
@@ -351,6 +352,16 @@ impl AsmResources {
         // Borrowed: `write_input` only reads, and inputs are tens of MB.
         stdin
             .with_data(|data| self.shared.shmem_inputs.write_input(data))
+            .map_err(ExecutorError::asm_backend)
+    }
+
+    /// Sets the host randomness seed for the next execution, which the ASM services read from the
+    /// control shared memory when they start it. Call it before `execute` spawns them, like
+    /// `write_input`.
+    pub fn write_random_seed(&self, seed: &RandomSeed) -> ExecutorResult<()> {
+        self.shared
+            .shmem_inputs
+            .set_random_seed(&seed.to_le_words())
             .map_err(ExecutorError::asm_backend)
     }
 

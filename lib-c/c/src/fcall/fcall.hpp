@@ -34,6 +34,10 @@ extern "C" {
 #define FCALL_SET_KECCAKF_CACHE_INDEX_ID 24
 #define FCALL_GET_KECCAKF_CACHE_INDEX_ID 25
 #define FCALL_ED25519_FP_SQRT_RATIO_ID 26
+#define FCALL_RANDOM_SEED_ID 27
+
+// Size of the host randomness seed in 64-bit words (256 bits)
+#define RANDOM_SEED_WORDS 4
 
 #define FCALL_PARAMS_MAX_SIZE 386
 #define FCALL_RESULT_MAX_SIZE 8193
@@ -54,6 +58,14 @@ struct FcallContext
 int Fcall (
     struct FcallContext * ctx  // fcall context
 );
+
+// Sets the seed of the host randomness generator (zkvm_random_u64) returned by the
+// FCALL_RANDOM_SEED_ID fcall: RANDOM_SEED_WORDS little-endian words. It must be set before
+// every execution that may call it
+void fcall_set_random_seed (const uint64_t seed[RANDOM_SEED_WORDS]);
+
+// Forgets the seed, so that FCALL_RANDOM_SEED_ID fails until a new one is set
+void fcall_clear_random_seed (void);
 
 // Functions supported by fcall, in fcall context format
 int InverseFpEcCtx (
@@ -132,6 +144,10 @@ int KeccakfCacheGetIndexCtx (
     struct FcallContext * ctx  // fcall context
 );
 int Ed25519FpSqrtRatioCtx (
+    struct FcallContext * ctx  // fcall context
+);
+
+int RandomSeedCtx (
     struct FcallContext * ctx  // fcall context
 );
 

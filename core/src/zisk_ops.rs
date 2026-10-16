@@ -35,7 +35,7 @@ use std::{
 use tiny_keccak::keccakf;
 use ziskos::zisklib::{
     keccakf_cache::KECCAKF_STATE_WORDS, FCALL_GET_KECCAKF_CACHE_INDEX_ID, FCALL_INPUT_READY_ID,
-    FCALL_SET_KECCAKF_CACHE_INDEX_ID,
+    FCALL_RANDOM_SEED_ID, FCALL_SET_KECCAKF_CACHE_INDEX_ID, RANDOM_SEED_WORDS,
 };
 
 use crate::ops_core::*;
@@ -2243,6 +2243,20 @@ pub fn opc_fcall(ctx: &mut InstContext) {
         let index = ctx.keccakf_cache.get(&ctx.fcall.parameters[..KECCAKF_STATE_WORDS]);
         ctx.fcall.result[0] = index;
         1
+    } else if function_id == FCALL_RANDOM_SEED_ID as u64 {
+        if ctx.fcall.parameters_size != 0 {
+            panic!(
+                "opc_fcall() FCALL_RANDOM_SEED_ID called with parameters_size={} != 0",
+                ctx.fcall.parameters_size
+            );
+        }
+
+        // The seed comes with the execution; there is no safe default to fall back to
+        let Some(seed) = ctx.random_seed else {
+            panic!("opc_fcall() FCALL_RANDOM_SEED_ID called but no random seed was provided");
+        };
+        ctx.fcall.result[..RANDOM_SEED_WORDS].copy_from_slice(&seed);
+        RANDOM_SEED_WORDS as i64
     } else {
         fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result)
     };

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ProofKind, ZiskExecutorTime};
+use zisk_common::{ProofKind, RandomSeedArgs, ZiskExecutorTime};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProveOutput, ProverClientBuilder};
 
@@ -36,6 +36,9 @@ pub(crate) struct ProveCmd {
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
     hints: Option<String>,
+
+    #[command(flatten)]
+    random_seed: RandomSeedArgs,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
@@ -264,6 +267,7 @@ impl ProveCmd {
             &executor_time,
             result.get_proving_time(),
             result.get_execution_steps(),
+            result.get_random_seed(),
             "Proofman",
         );
 
@@ -281,7 +285,8 @@ impl ProveCmd {
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
-        let mut builder = prover.prove(&guest_program, stdin);
+        let mut builder =
+            prover.prove(&guest_program, stdin).random_seed(self.random_seed.provided());
         if self.plonk {
             builder = builder.wrap_proof(ProofKind::Plonk);
         }
@@ -314,7 +319,8 @@ impl ProveCmd {
             prover.register_hints_stream(hints_stream)?;
         }
 
-        let mut builder = prover.prove(&guest_program, stdin);
+        let mut builder =
+            prover.prove(&guest_program, stdin).random_seed(self.random_seed.provided());
         if self.plonk {
             builder = builder.wrap_proof(ProofKind::Plonk);
         }

@@ -13,7 +13,7 @@ use std::sync::{
     Arc, Mutex, PoisonError, RwLock,
 };
 use zisk_common::{
-    io::ZiskStdin, BusDevice, EmuTrace, ExecutorStatsHandle, InstanceType, Stats,
+    io::ZiskStdin, BusDevice, EmuTrace, ExecutorStatsHandle, InstanceType, RandomSeed, Stats,
     ZiskExecutorSummary,
 };
 use zisk_core::ZiskRom;
@@ -39,6 +39,10 @@ pub struct ExecutionState<F: PrimeField64> {
     /// the framework-driven `WitnessComponent::execute` (whose trait
     /// signature has no stdin slot).
     pub stdin: ArcSwap<ZiskStdin>,
+
+    /// Seed for the next run, set together with `stdin` by `set_stdin_and_random_seed`. `None`
+    /// until the first call.
+    random_seed: Mutex<Option<RandomSeed>>,
 
     /// Planning information for main state machines (minimal traces from emulation).
     /// `Arc<EmuTrace>` elements so the store can be filled progressively while the
@@ -69,6 +73,7 @@ impl<F: PrimeField64> ExecutionState<F> {
         Self {
             zisk_rom: RwLock::new(None),
             stdin: ArcSwap::from_pointee(ZiskStdin::new()),
+            random_seed: Mutex::new(None),
             min_traces: Arc::new(RwLock::new(None)),
             instance_set: Arc::new(InstanceSet::new()),
             collector_store: Arc::new(ChunkCollectorStore::new()),
@@ -96,14 +101,27 @@ impl<F: PrimeField64> ExecutionState<F> {
         guard.as_ref().cloned().ok_or(ExecutorError::RomNotInitialized)
     }
 
-    /// Sets the standard input for the next execution.
-    pub fn set_stdin(&self, stdin: ZiskStdin) {
+    /// Sets the standard input and seed for the next execution.
+    pub fn set_stdin_and_random_seed(&self, stdin: ZiskStdin, seed: RandomSeed) {
         self.stdin.store(Arc::new(stdin));
+        *self.random_seed.lock().unwrap_or_else(PoisonError::into_inner) = Some(seed);
     }
 
     /// Gets a snapshot of the current standard input.
     pub fn get_stdin(&self) -> Arc<ZiskStdin> {
         self.stdin.load_full()
+    }
+
+    /// Gets the seed for the current execution.
+    ///
+    /// # Errors
+    /// Returns [`ExecutorError::RandomSeedNotSet`] if `set_stdin_and_random_seed` has not been
+    /// called yet.
+    pub fn get_random_seed(&self) -> ExecutorResult<RandomSeed> {
+        self.random_seed
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .ok_or(ExecutorError::RandomSeedNotSet)
     }
 
     /// Resets all internal state to default values.
@@ -201,5 +219,35 @@ impl<F: PrimeField64> ExecutionState<F> {
 impl<F: PrimeField64> Default for ExecutionState<F> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proofman_fields::Goldilocks;
+
+    type F = Goldilocks;
+
+    const SEED: RandomSeed = RandomSeed::new([3; RandomSeed::LEN]);
+
+    #[test]
+    fn get_random_seed_fails_until_stdin_and_random_seed_are_set() {
+        let state = ExecutionState::<F>::new();
+        assert!(matches!(state.get_random_seed(), Err(ExecutorError::RandomSeedNotSet)));
+
+        state.set_stdin_and_random_seed(ZiskStdin::new(), SEED);
+        assert_eq!(state.get_random_seed().unwrap(), SEED);
+    }
+
+    /// `execute_inner` resets the state after the caller has set the job's stdin and seed, so
+    /// the reset must leave the seed alone.
+    #[test]
+    fn reset_keeps_the_seed() {
+        let state = ExecutionState::<F>::new();
+        state.set_stdin_and_random_seed(ZiskStdin::new(), SEED);
+
+        state.reset();
+        assert_eq!(state.get_random_seed().unwrap(), SEED);
     }
 }

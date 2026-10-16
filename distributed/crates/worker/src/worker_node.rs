@@ -20,7 +20,7 @@ use zisk_cluster_common::{
     StreamDataDto, WorkerState,
 };
 use zisk_cluster_common::{DataId, JobId};
-use zisk_common::{ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{ProgramVK, Proof, RandomSeed, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
 use zisk_prover_backend::{Asm, Emu, GuestProgram, ZiskBackend, ZiskProver};
 
 use crate::config::WorkerServiceConfig;
@@ -1900,6 +1900,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
             return Err(anyhow!("Expected ContributionParams for Partial Contribution task"));
         };
+        let seed = Self::job_random_seed(&params.random_seed)?;
 
         let job_id = JobId::from(request.job_id);
         let input_source = Self::resolve_input_source(
@@ -1938,6 +1939,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             job_id.clone(),
             params.hash_id,
             data_ctx,
+            seed,
             params.rank_id,
             params.total_workers,
             params.worker_allocation,
@@ -1980,6 +1982,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
             return Err(anyhow!("Expected ExecutionParams for Execution-only task"));
         };
+        let seed = Self::job_random_seed(&params.random_seed)?;
 
         let job_id = JobId::from(request.job_id);
         let input_source = Self::resolve_input_source(
@@ -2018,6 +2021,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             job_id.clone(),
             params.hash_id,
             data_ctx,
+            seed,
             params.rank_id,
             params.total_workers,
             params.worker_allocation,
@@ -2032,6 +2036,29 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         );
 
         Ok(())
+    }
+
+    /// Resolve `InputSource` from a gRPC request into `InputSourceDto`.
+    ///
+    /// File paths are validated under `inputs_folder` with a 60 s timeout.
+    async fn resolve_input_source(
+        inputs_folder: &Path,
+        source: Option<InputSource>,
+    ) -> Result<InputSourceDto> {
+        match source {
+            Some(InputSource::InputPath(ref path)) => {
+                let validated = Self::validate_subdir(inputs_folder, &PathBuf::from(path)).await?;
+                Ok(InputSourceDto::InputPath(validated.to_string_lossy().to_string()))
+            }
+            Some(InputSource::InputData(data)) => Ok(InputSourceDto::InputData(data)),
+            None => Ok(InputSourceDto::InputNull),
+        }
+    }
+
+    /// The job's host randomness seed from its task params. Every task that executes carries one,
+    /// so a missing or malformed seed fails the task before it touches the prover.
+    fn job_random_seed(bytes: &[u8]) -> Result<RandomSeed> {
+        RandomSeed::try_from(bytes).context("coordinator sent no valid random seed for the job")
     }
 
     /// Validates that a subpath is within the base directory and waits for it to exist.
@@ -2050,24 +2077,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// # Arguments
     /// * `base_dir` - The base directory that must contain the subpath
     /// * `subpath` - The relative path within base_dir (can include subdirectories)
-    ///
-    /// Resolve `InputSource` from a gRPC request into `InputSourceDto`.
-    ///
-    /// File paths are validated under `inputs_folder` with a 60 s timeout.
-    async fn resolve_input_source(
-        inputs_folder: &Path,
-        source: Option<InputSource>,
-    ) -> Result<InputSourceDto> {
-        match source {
-            Some(InputSource::InputPath(ref path)) => {
-                let validated = Self::validate_subdir(inputs_folder, &PathBuf::from(path)).await?;
-                Ok(InputSourceDto::InputPath(validated.to_string_lossy().to_string()))
-            }
-            Some(InputSource::InputData(data)) => Ok(InputSourceDto::InputData(data)),
-            None => Ok(InputSourceDto::InputNull),
-        }
-    }
-
     ///
     /// # Returns
     /// * `Ok(PathBuf)` - The validated, canonicalized full path

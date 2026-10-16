@@ -139,3 +139,6 @@ ZKVMCALL zkvm_zisklib_hash_to_curve_g2_bls12_381, 0x8AF
 ZKVMCALL zkvm_zisklib_bls_verify_bls12_381, 0x8B0
 ZKVMCALL zkvm_zisklib_verify_kzg_proof_bls12_381, 0x8B1
 ZKVMCALL zkvm_zisklib_modexp_u64_c, 0x8B2
+
+/* ---- host randomness (zkvm_random.h) ---- */
+ZKVMCALL zkvm_random_u64, 0x8B3

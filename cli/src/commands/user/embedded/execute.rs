@@ -4,6 +4,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::RandomSeedArgs;
 use zisk_sdk::{AsmOptions, EmbeddedClientBuilder, GuestProgram, ZiskHints, ZiskStdin};
 
 use super::validate_asm_hints;
@@ -38,6 +39,9 @@ pub(crate) struct ZiskEmbeddedExecute {
     /// - `unix://path/to/socket` → Unix domain socket stream
     #[arg(long)]
     hints: Option<String>,
+
+    #[command(flatten)]
+    random_seed: RandomSeedArgs,
 
     /// Use the ASM emulator instead of the default Rust emulator
     #[arg(short = 'a', long)]
@@ -91,7 +95,7 @@ impl ZiskEmbeddedExecute {
 
         client.setup(&program, hints.is_some())?;
 
-        let result = client.execute(&program, stdin, hints)?;
+        let result = client.execute(&program, stdin, hints, self.random_seed.provided())?;
 
         info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
         print_execute_output(&result);

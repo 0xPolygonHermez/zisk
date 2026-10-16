@@ -81,3 +81,29 @@ arithmetic, memory operations and I/O through this binding. Its
 [`cpp-guest/zisk/README.md`](../../../../../ziskethone/cpp-guest/zisk/README.md)
 explains how to build it and run a block through `ziskemu`; the public output (the
 block hash) must match the native guest's.
+
+## Host randomness
+
+[`zkvm_random_guest.c`](zkvm_random_guest.c) calls `zkvm_random_u64` (`zkvm_random.h`)
+500 times. It checks in the guest that the values are all distinct and that every bit
+varies, and it outputs the first 20 values (crossing the 17-word SHAKE256 block
+boundary), the XOR of all 500, and the result of those checks. The values are the
+SHAKE256 stream of the 256-bit seed, so pass the same seed (its 32 bytes as 64 hex
+digits) to the emulator and to
+[`zkvm_random_check.py`](zkvm_random_check.py), which compares the output with Python's
+`hashlib.shake_256`:
+
+```bash
+riscv64-unknown-elf-gcc -march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany -nostdlib \
+    -ffreestanding -O2 -I../include -T ../../../../ziskbuild/zisk_linker_script.ld -o /tmp/random.elf \
+    ../src/_start.s zkvm_random_guest.c ../src/zkvm_calls.s
+: > /tmp/empty.bin
+SEED=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+../../../../target/release/ziskemu -e /tmp/random.elf -i /tmp/empty.bin -o /tmp/random.bin \
+    --random-seed $SEED
+./zkvm_random_check.py $SEED /tmp/random.bin
+```
+
+Without `--random-seed`, ziskemu draws a fresh seed for each run (`-v` prints it, so
+the run can be replayed). The committed copy of this guest in
+`elf-regressions/zkvm_random/` is checked by `emulator/tests/zkvm_random.rs`.

@@ -21,6 +21,7 @@ are not stored. A typical instruction costs a handful of bytes instead of its
 │  │  instruction stream   (addr-delta + instruction) ×N   │  │  §3.2, §5
 │  │  RO data sections     (DataSection64) ×R              │  │  §4
 │  │  RW data sections     (DataSection64) ×W              │  │  §4
+│  │  zkvmcall IDs         (uvarint) ×Z                    │  │  §4.1
 │  └───────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -59,7 +60,7 @@ file, while the transpiler recognizes it and loads the ROM directly.
 ## 3. ROM container
 
 ```
-container := header  instruction_stream  ro_sections  rw_sections
+container := header  instruction_stream  ro_sections  rw_sections  zkvmcalls
 ```
 
 ### 3.1 Header
@@ -163,6 +164,24 @@ Notes:
 - `word` uses raw 8 bytes (not varint): data words are arbitrary and often large,
   and large all-zero runs are already carved out upstream. (A future version may
   add a varint-per-word or RLE profile bit if a workload benefits.)
+
+### 4.1 zkvmcall IDs
+
+The IDs of the zkvmcalls the guest uses (`ZiskRom::zkvmcalls`, the
+`zisk_definitions::ZKVMCALLS` CSR numbers its code calls), recorded by the RISC-V
+transpiler. They are metadata rather than code — the zkvmcalls themselves are already
+jumps into the ZisK library — but tools act on them: a guest that uses
+`zkvm_random_u64` is refused the hints setup, so losing them in a round trip would
+let it through.
+
+```
+zkvmcalls := count(uvarint)  id(uvarint)[count]
+```
+
+IDs are strictly ascending (so each appears once) and fit in 16 bits; a decoder
+rejects anything else. A ROM assembled from `.zisk` source records none (`count`
+= 0). The zkvmcall IDs end the container: a decoder rejects trailing bytes, so a
+field a future version appends is refused by an older decoder rather than dropped.
 
 ---
 
@@ -363,3 +382,4 @@ Selected by header `profile` bit0:
 |---------|--------|
 | 1 | Initial format. |
 | 2 | r32..r39 are main-trace registers: the assembler encodes them as `SRC_REG` / `STORE_REG`, where version 1 ROMs address them as RAM at `0xA0400100..`. The layout is unchanged, but a version 1 ROM's RAM accesses to that register area are now treated as a bug (the emulator's `Mem` debug-asserts against them), so it is rejected: rebuild it with `zisk2zisk --elf`. |
+| 3 | The zkvmcall IDs the guest uses follow the data sections (§4.1), and nothing may follow them. A version 2 ROM carries no zkvmcall IDs, so one built from a guest that uses `zkvm_random_u64` would pass the hints setup it must be refused; it is rejected: rebuild it with `zisk2zisk --elf`. |
