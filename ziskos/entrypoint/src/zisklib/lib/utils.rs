@@ -1,6 +1,9 @@
 //! Comparison helpers, alignment checks, and byte-order conversion utilities
 //! for `[u64]` slices and raw byte buffers.
 
+#[cfg(zisk_guest)]
+use crate::alloc_extern::vec::Vec;
+
 /// Check if a pointer is 8-byte aligned.
 #[inline(always)]
 pub fn is_aligned_8(ptr: *const u8) -> bool {
@@ -12,6 +15,28 @@ pub fn is_aligned_8(ptr: *const u8) -> bool {
 /// `[u32; N]` or `[u8; N]`, would only guarantee 4- or 1-byte alignment.
 #[repr(C, align(8))]
 pub(crate) struct Align8<T>(pub(crate) T);
+
+/// The unaligned paths of the helpers below, kept out of line: inlined, their byte
+/// loads and stores raise the register pressure of the whole function, and the
+/// common aligned path then pays for extra callee-saved registers on every call.
+///
+/// # Safety
+/// `src` must be valid for reading a `T`.
+#[cold]
+#[inline(never)]
+pub(crate) unsafe fn read_unaligned_cold<T>(src: *const T) -> T {
+    src.read_unaligned()
+}
+
+/// See [`read_unaligned_cold`].
+///
+/// # Safety
+/// `dst` must be valid for writing a `T`.
+#[cold]
+#[inline(never)]
+pub(crate) unsafe fn write_unaligned_cold<T>(dst: *mut T, value: T) {
+    dst.write_unaligned(value)
+}
 
 /// Writes `value` to a C caller's buffer `dst`, which need not be aligned for `T`.
 /// An aligned `dst` gets the plain typed store; an unaligned one, which a reference
@@ -26,7 +51,7 @@ pub(crate) unsafe fn write_maybe_unaligned<T>(dst: *mut T, value: T) {
     if (dst as usize) % core::mem::align_of::<T>() == 0 {
         dst.write(value);
     } else {
-        dst.write_unaligned(value);
+        write_unaligned_cold(dst, value);
     }
 }
 
@@ -40,18 +65,112 @@ pub(crate) unsafe fn read_maybe_unaligned<T>(src: *const T) -> T {
     if (src as usize) % core::mem::align_of::<T>() == 0 {
         src.read()
     } else {
-        src.read_unaligned()
+        read_unaligned_cold(src)
     }
 }
 
-/// Writes `N` u64 limbs to a C caller's result buffer `dst`, which need not be
-/// 8-byte aligned (see [`write_maybe_unaligned`]).
+/// `let_input!(name = ptr; [u64; N])` binds `name: &[u64; N]` to a C caller's input
+/// at `ptr`, which need not be 8-byte aligned: in place when it is (a reference to
+/// it is then sound, and the precompiles may take it), else to an aligned copy
+/// that lives in the caller's scope. The test costs a couple of steps; copying
+/// every input would cost far more.
+///
+/// Must be used in an `unsafe` context, with `ptr` valid for reading the type.
+macro_rules! let_input {
+    ($name:ident = $ptr:expr; $ty:ty) => {
+        let copy: $ty;
+        let ptr = $ptr as *const $ty;
+        let $name: &$ty = if (ptr as usize) % core::mem::align_of::<$ty>() == 0 {
+            &*ptr
+        } else {
+            copy = $crate::zisklib::read_unaligned_cold(ptr);
+            &copy
+        };
+    };
+}
+pub(crate) use let_input;
+
+/// The first statement of a C-ABI function whose u64 buffers may be unaligned:
+/// `unaligned_redirect!([a_ptr: 4, ...], [result_ptr: 4, ...], |ins, outs| f(...),
+/// |ins, outs| f(..., hints))`, listing each `*const u64` input and `*mut u64` output
+/// with its length in u64 words, and the call to the function itself, without and
+/// with the `hints` argument.
+///
+/// One test covers every pointer. When all are 8-byte aligned (the normal case) it
+/// falls through to the body, which runs as written: its references, and the
+/// precompiles they reach, are then sound. Otherwise [`ffi_unaligned`] calls the
+/// function again on aligned copies of the inputs and outputs, and writes the
+/// outputs back. The body stays the only caller of what it calls, so the compiler
+/// inlines it as before.
+///
+/// Must be used in an `unsafe` context, with every pointer valid for its length.
+macro_rules! unaligned_redirect {
+    ([$($i:ident: $ni:literal),*], [$($o:ident: $no:literal),*],
+     |$ins:ident, $outs:ident| $call:expr, |$hins:ident, $houts:ident| $call_hints:expr) => {
+        if (0usize $(| $i as usize)* $(| $o as usize)*) & 0x7 != 0 {
+            #[cfg(not(feature = "hints"))]
+            return $crate::zisklib::ffi_unaligned(
+                &[$(($i, $ni)),*],
+                &[$(($o, $no)),*],
+                &mut |$ins: &[*const u64], $outs: &[*mut u64]| $call,
+            );
+            #[cfg(feature = "hints")]
+            return $crate::zisklib::ffi_unaligned(
+                &[$(($i, $ni)),*],
+                &[$(($o, $no)),*],
+                &mut |$hins: &[*const u64], $houts: &[*mut u64]| $call_hints,
+            );
+        }
+    };
+}
+pub(crate) use unaligned_redirect;
+
+/// The unaligned path of [`unaligned_redirect!`]: copies each input `(ptr, len)` and
+/// each output (its current contents, so words the call leaves alone stay as they
+/// were) into aligned buffers, runs `run` on those, and writes the outputs back. Kept out
+/// of line so that it adds nothing to the aligned path.
 ///
 /// # Safety
-/// `dst` must be valid for writing `N` u64s (`8 * N` bytes).
-#[inline(always)]
-pub(crate) unsafe fn write_u64s<const N: usize>(dst: *mut u64, value: [u64; N]) {
-    write_maybe_unaligned(dst as *mut [u64; N], value);
+/// Every pointer must be valid for reading (and, for outputs, writing) its `len`
+/// u64 words.
+#[cold]
+#[inline(never)]
+pub(crate) unsafe fn ffi_unaligned<R>(
+    ins: &[(*const u64, usize)],
+    outs: &[(*mut u64, usize)],
+    run: &mut dyn FnMut(&[*const u64], &[*mut u64]) -> R,
+) -> R {
+    let read = |p: *const u64, n: usize| -> Vec<u64> {
+        (0..n).map(|k| p.add(k).read_unaligned()).collect()
+    };
+    let in_copies: Vec<Vec<u64>> = ins.iter().map(|&(p, n)| read(p, n)).collect();
+    let mut out_copies: Vec<Vec<u64>> = outs.iter().map(|&(p, n)| read(p, n)).collect();
+    let in_ptrs: Vec<*const u64> = in_copies.iter().map(|v| v.as_ptr()).collect();
+    let out_ptrs: Vec<*mut u64> = out_copies.iter_mut().map(|v| v.as_mut_ptr()).collect();
+    let result = run(&in_ptrs, &out_ptrs);
+    for (&(p, n), v) in outs.iter().zip(&out_copies) {
+        for (k, &w) in v.iter().enumerate().take(n) {
+            p.add(k).write_unaligned(w);
+        }
+    }
+    result
+}
+
+/// `len` u64s from a C caller's buffer at `ptr`, which need not be 8-byte aligned:
+/// the caller's memory when it is, else a copy in `copy`. Null or dangling is fine
+/// when `len` is 0 (see [`slice_from_ffi`]).
+///
+/// # Safety
+/// When `len > 0`, `ptr` must be valid for reading `len` u64s.
+#[inline]
+pub(crate) unsafe fn u64s_from_ffi(ptr: *const u64, len: usize, copy: &mut Vec<u64>) -> &[u64] {
+    if len == 0 || (ptr as usize) & 0x7 == 0 {
+        slice_from_ffi(ptr, len)
+    } else {
+        copy.clear();
+        copy.extend((0..len).map(|i| ptr.add(i).read_unaligned()));
+        copy
+    }
 }
 
 /// Convert a big-endian byte array to an array of 4 u64 limbs (little-endian order).

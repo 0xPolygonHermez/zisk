@@ -9,13 +9,13 @@
 ///
 /// # Preconditions
 ///
-/// The precompile can only be proven for calls that meet all three. The first two
-/// are the caller's to check; the third this macro handles.
+/// The precompile can only be proven for calls that meet all three. The second is
+/// the caller's to check; the macro handles the other two.
 ///
-/// * `bytecode` is 8-byte aligned. The machine reads whole aligned 64-bit words; an
-///   unaligned run is not arithmetizable. Check it and use a software walk
-///   otherwise. `bitmap` may be unaligned: the macro then builds the bitmap in an
-///   aligned buffer and copies it out.
+/// * `bitmap` and `bytecode` are 8-byte aligned. The machine reads and writes whole
+///   aligned 64-bit words; an unaligned run is not arithmetizable. The macro checks
+///   it, and otherwise runs the precompile on aligned copies (a heap allocation and
+///   a copy of each unaligned operand).
 /// * `bitmap` holds at least `size.div_ceil(64)` words. The last word is written in
 ///   full even when the bytecode ends part way into it.
 /// * `size > 0`. An empty call spans no bitmap word, so it occupies no row in the
@@ -41,7 +41,7 @@ macro_rules! ziskos_jump_dest {
         if size != 0 {
             let dst = $bitmap;
             let src = $bytecode;
-            if (dst as usize) & 7 == 0 {
+            if ((dst as usize) | (src as usize)) & 7 == 0 {
                 unsafe {
                     core::arch::asm!(
                         "csrs {port}, {src}",
@@ -54,29 +54,44 @@ macro_rules! ziskos_jump_dest {
                     );
                 }
             } else {
-                // The precompile writes the bitmap in whole aligned words: build it
-                // in an aligned buffer and copy it to the caller's.
+                // The precompile reads the bytecode and writes the bitmap in whole
+                // aligned words: run it on aligned copies.
                 unsafe { $crate::jump_dest_bitmap_unaligned(dst as *mut u8, src as *const u8, size) };
             }
         }
     }};
 }
 
-/// The JUMPDEST bitmap of `size` (> 0) bytes at `bytecode`, written to a `bitmap`
-/// that is not 8-byte aligned: the precompile can only be proven writing aligned
-/// words, so it runs on an aligned heap buffer of `size.div_ceil(64)` words, which
-/// is then copied to `bitmap`. Called by [`ziskos_jump_dest!`]; not for direct use.
+/// The JUMPDEST bitmap of `size` (> 0) bytes at `bytecode`, written to `bitmap`,
+/// when either is not 8-byte aligned: the precompile can only be proven reading and
+/// writing aligned words, so an unaligned bytecode is first copied to an aligned
+/// heap buffer, and an unaligned bitmap is built in one of `size.div_ceil(64)` words
+/// and then copied out. Called by [`ziskos_jump_dest!`]; not for direct use.
 ///
 /// # Safety
 /// `bitmap` must be valid for writing `size.div_ceil(64) * 8` bytes, and `bytecode`
-/// for reading `size` bytes and 8-byte aligned.
+/// for reading `size` bytes.
 #[cfg(zisk_guest)]
 #[doc(hidden)]
 #[inline(never)]
 pub unsafe fn jump_dest_bitmap_unaligned(bitmap: *mut u8, bytecode: *const u8, size: usize) {
+    let code_copy;
+    let bytecode = if (bytecode as usize) & 7 == 0 {
+        bytecode
+    } else {
+        let mut copy = crate::alloc_extern::vec![0u64; size.div_ceil(8)];
+        core::ptr::copy_nonoverlapping(bytecode, copy.as_mut_ptr() as *mut u8, size);
+        code_copy = copy;
+        code_copy.as_ptr() as *const u8
+    };
     let words = size.div_ceil(64);
-    let mut tmp = crate::alloc_extern::vec![0u64; words];
-    let tmp_ptr = tmp.as_mut_ptr();
+    let mut out_copy;
+    let tmp_ptr = if (bitmap as usize) & 7 == 0 {
+        bitmap as *mut u64
+    } else {
+        out_copy = crate::alloc_extern::vec![0u64; words];
+        out_copy.as_mut_ptr()
+    };
     core::arch::asm!(
         "csrs {port}, {src}",
         "add x0, {dst}, {size}",
@@ -86,5 +101,7 @@ pub unsafe fn jump_dest_bitmap_unaligned(bitmap: *mut u8, bytecode: *const u8, s
         src = in(reg) bytecode,
         options(nostack, preserves_flags),
     );
-    core::ptr::copy_nonoverlapping(tmp_ptr as *const u8, bitmap, words * 8);
+    if tmp_ptr as *mut u8 != bitmap {
+        core::ptr::copy_nonoverlapping(tmp_ptr as *const u8, bitmap, words * 8);
+    }
 }

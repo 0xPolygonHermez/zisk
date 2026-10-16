@@ -394,122 +394,152 @@ macro_rules! cases {
 
 cases! {
     // uint256
-    checked_add256, 32, |x, o| checked_add256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    checked_neg256, 32, |x, o| checked_neg256_c([0u64; 4].as_ptr(), u64p!(o));
-    checked_sub256, 32, |x, o| checked_sub256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    overflowing_add256, 32, |x, o| overflowing_add256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    overflowing_neg256, 32, |x, o| overflowing_neg256_c(A.as_ptr(), u64p!(o));
-    overflowing_sub256, 32, |x, o| overflowing_sub256_c(B.as_ptr(), A.as_ptr(), u64p!(o));
-    saturating_add256, 32, |x, o| saturating_add256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    saturating_sub256, 32, |x, o| saturating_sub256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    wrapping_add256, 32, |x, o| wrapping_add256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    wrapping_sub256, 32, |x, o| wrapping_sub256_c(B.as_ptr(), A.as_ptr(), u64p!(o));
-    wrapping_neg256, 32, |x, o| wrapping_neg256_c(A.as_ptr(), u64p!(o));
-    checked_div256, 32, |x, o| checked_div256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    checked_rem256, 32, |x, o| checked_rem256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    div_rem256, 64, |x, o| div_rem256_c(A.as_ptr(), B.as_ptr(), u64p!(o), u64p!(o.add(32)));
-    div_ceil256, 32, |x, o| div_ceil256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    wrapping_div256, 32, |x, o| wrapping_div256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    wrapping_rem256, 32, |x, o| wrapping_rem256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    reduce_mod256, 32, |x, o| reduce_mod256_c(A.as_ptr(), M.as_ptr(), u64p!(o));
-    add_mod256, 32, |x, o| add_mod256_c(A.as_ptr(), B.as_ptr(), M.as_ptr(), u64p!(o));
-    mul_mod256, 32, |x, o| mul_mod256_c(A.as_ptr(), B.as_ptr(), M.as_ptr(), u64p!(o));
-    square_mod256, 32, |x, o| square_mod256_c(A.as_ptr(), M.as_ptr(), u64p!(o));
-    pow_mod256, 32, |x, o| pow_mod256_c(A.as_ptr(), E.as_ptr(), M.as_ptr(), u64p!(o));
-    inv_mod256, 32, |x, o| inv_mod256_c(B.as_ptr(), M.as_ptr(), u64p!(o));
-    mul_mod_bytes256, 32, |x, o| mul_mod_bytes256_c(x.ba.as_ptr(), x.bb.as_ptr(), x.bm.as_ptr(), o);
-    reduce_mod_bytes256, 32, |x, o| reduce_mod_bytes256_c(x.ba.as_ptr(), x.bm.as_ptr(), o);
-    add_mod_bytes256, 32, |x, o| add_mod_bytes256_c(x.ba.as_ptr(), x.bb.as_ptr(), x.bm.as_ptr(), o);
-    square_mod_bytes256, 32, |x, o| square_mod_bytes256_c(x.ba.as_ptr(), x.bm.as_ptr(), o);
-    pow_mod_bytes256, 32, |x, o| pow_mod_bytes256_c(x.ba.as_ptr(), x.be.as_ptr(), x.bm.as_ptr(), o);
-    inv_mod_bytes256, 32, |x, o| inv_mod_bytes256_c(x.bb.as_ptr(), x.bm.as_ptr(), o);
-    checked_mul256, 32, |x, o| checked_mul256_c(SMALL.as_ptr(), B.as_ptr(), u64p!(o));
-    checked_square256, 32, |x, o| checked_square256_c(SMALL.as_ptr(), u64p!(o));
-    overflowing_mul256, 32, |x, o| overflowing_mul256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    overflowing_square256, 32, |x, o| overflowing_square256_c(A.as_ptr(), u64p!(o));
-    saturating_mul256, 32, |x, o| saturating_mul256_c(SMALL.as_ptr(), B.as_ptr(), u64p!(o));
-    saturating_square256, 32, |x, o| saturating_square256_c(SMALL.as_ptr(), u64p!(o));
-    wrapping_mul256, 32, |x, o| wrapping_mul256_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    wrapping_square256, 32, |x, o| wrapping_square256_c(A.as_ptr(), u64p!(o));
-    inv256, 32, |x, o| inv256_c(A.as_ptr(), u64p!(o));
-    checked_pow256, 32, |x, o| checked_pow256_c(SMALL.as_ptr(), E3.as_ptr(), u64p!(o));
-    overflowing_pow256, 32, |x, o| overflowing_pow256_c(B.as_ptr(), E.as_ptr(), u64p!(o));
-    wrapping_pow256, 32, |x, o| wrapping_pow256_c(B.as_ptr(), E.as_ptr(), u64p!(o));
-    saturating_pow256, 32, |x, o| saturating_pow256_c(SMALL.as_ptr(), E3.as_ptr(), u64p!(o));
+    checked_add256, 32, |x, o| checked_add256_c(ip(&A), ip(&B), u64p!(o));
+    checked_neg256, 32, |x, o| checked_neg256_c(ip(&[0u64; 4]), u64p!(o));
+    checked_sub256, 32, |x, o| checked_sub256_c(ip(&A), ip(&B), u64p!(o));
+    overflowing_add256, 32, |x, o| overflowing_add256_c(ip(&A), ip(&B), u64p!(o));
+    overflowing_neg256, 32, |x, o| overflowing_neg256_c(ip(&A), u64p!(o));
+    overflowing_sub256, 32, |x, o| overflowing_sub256_c(ip(&B), ip(&A), u64p!(o));
+    saturating_add256, 32, |x, o| saturating_add256_c(ip(&A), ip(&B), u64p!(o));
+    saturating_sub256, 32, |x, o| saturating_sub256_c(ip(&A), ip(&B), u64p!(o));
+    wrapping_add256, 32, |x, o| wrapping_add256_c(ip(&A), ip(&B), u64p!(o));
+    wrapping_sub256, 32, |x, o| wrapping_sub256_c(ip(&B), ip(&A), u64p!(o));
+    wrapping_neg256, 32, |x, o| wrapping_neg256_c(ip(&A), u64p!(o));
+    checked_div256, 32, |x, o| checked_div256_c(ip(&A), ip(&B), u64p!(o));
+    checked_rem256, 32, |x, o| checked_rem256_c(ip(&A), ip(&B), u64p!(o));
+    div_rem256, 64, |x, o| div_rem256_c(ip(&A), ip(&B), u64p!(o), u64p!(o.add(32)));
+    div_ceil256, 32, |x, o| div_ceil256_c(ip(&A), ip(&B), u64p!(o));
+    wrapping_div256, 32, |x, o| wrapping_div256_c(ip(&A), ip(&B), u64p!(o));
+    wrapping_rem256, 32, |x, o| wrapping_rem256_c(ip(&A), ip(&B), u64p!(o));
+    reduce_mod256, 32, |x, o| reduce_mod256_c(ip(&A), ip(&M), u64p!(o));
+    add_mod256, 32, |x, o| add_mod256_c(ip(&A), ip(&B), ip(&M), u64p!(o));
+    mul_mod256, 32, |x, o| mul_mod256_c(ip(&A), ip(&B), ip(&M), u64p!(o));
+    square_mod256, 32, |x, o| square_mod256_c(ip(&A), ip(&M), u64p!(o));
+    pow_mod256, 32, |x, o| pow_mod256_c(ip(&A), ip(&E), ip(&M), u64p!(o));
+    inv_mod256, 32, |x, o| inv_mod256_c(ip(&B), ip(&M), u64p!(o));
+    mul_mod_bytes256, 32, |x, o| mul_mod_bytes256_c(ip(&x.ba), ip(&x.bb), ip(&x.bm), o);
+    reduce_mod_bytes256, 32, |x, o| reduce_mod_bytes256_c(ip(&x.ba), ip(&x.bm), o);
+    add_mod_bytes256, 32, |x, o| add_mod_bytes256_c(ip(&x.ba), ip(&x.bb), ip(&x.bm), o);
+    square_mod_bytes256, 32, |x, o| square_mod_bytes256_c(ip(&x.ba), ip(&x.bm), o);
+    pow_mod_bytes256, 32, |x, o| pow_mod_bytes256_c(ip(&x.ba), ip(&x.be), ip(&x.bm), o);
+    inv_mod_bytes256, 32, |x, o| inv_mod_bytes256_c(ip(&x.bb), ip(&x.bm), o);
+    checked_mul256, 32, |x, o| checked_mul256_c(ip(&SMALL), ip(&B), u64p!(o));
+    checked_square256, 32, |x, o| checked_square256_c(ip(&SMALL), u64p!(o));
+    overflowing_mul256, 32, |x, o| overflowing_mul256_c(ip(&A), ip(&B), u64p!(o));
+    overflowing_square256, 32, |x, o| overflowing_square256_c(ip(&A), u64p!(o));
+    saturating_mul256, 32, |x, o| saturating_mul256_c(ip(&SMALL), ip(&B), u64p!(o));
+    saturating_square256, 32, |x, o| saturating_square256_c(ip(&SMALL), u64p!(o));
+    wrapping_mul256, 32, |x, o| wrapping_mul256_c(ip(&A), ip(&B), u64p!(o));
+    wrapping_square256, 32, |x, o| wrapping_square256_c(ip(&A), u64p!(o));
+    inv256, 32, |x, o| inv256_c(ip(&A), u64p!(o));
+    checked_pow256, 32, |x, o| checked_pow256_c(ip(&SMALL), ip(&E3), u64p!(o));
+    overflowing_pow256, 32, |x, o| overflowing_pow256_c(ip(&B), ip(&E), u64p!(o));
+    wrapping_pow256, 32, |x, o| wrapping_pow256_c(ip(&B), ip(&E), u64p!(o));
+    saturating_pow256, 32, |x, o| saturating_pow256_c(ip(&SMALL), ip(&E3), u64p!(o));
     // bigint
-    modexp_u64, 32, |x, o| modexp_u64_c(A.as_ptr(), 4, E.as_ptr(), 1, M.as_ptr(), 4, u64p!(o));
-    modexp_u64_long, 64, |x, o| modexp_u64_c(A.as_ptr(), 4, E.as_ptr(), 1, M8.as_ptr(), 8, u64p!(o));
+    modexp_u64, 32, |x, o| modexp_u64_c(ip(&A), 4, ip(&E), 1, ip(&M), 4, u64p!(o));
+    modexp_u64_long, 64, |x, o| modexp_u64_c(ip(&A), 4, ip(&E), 1, ip(&M8), 8, u64p!(o));
     // secp256k1
-    jacobian_to_affine_secp256k1, 64, |x, o| jacobian_to_affine_secp256k1_c(x.secp_jac.as_ptr(), u64p!(o));
-    lift_x_secp256k1, 64, |x, o| lift_x_secp256k1_c(x.secp_gx_be.as_ptr(), 0, u64p!(o));
+    jacobian_to_affine_secp256k1, 64, |x, o| jacobian_to_affine_secp256k1_c(ip(&x.secp_jac), u64p!(o));
+    lift_x_secp256k1, 64, |x, o| lift_x_secp256k1_c(ip(&x.secp_gx_be), 0, u64p!(o));
     double_scalar_mul_with_g_secp256k1, 64, |x, o|
-        double_scalar_mul_with_g_secp256k1_c(A.as_ptr(), B.as_ptr(), SECP_G.as_ptr(), u64p!(o));
-    reduce_fp_secp256k1, 32, |x, o| reduce_fp_secp256k1_c(A.as_ptr(), u64p!(o));
-    add_fp_secp256k1, 32, |x, o| add_fp_secp256k1_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    neg_fp_secp256k1, 32, |x, o| neg_fp_secp256k1_c(A.as_ptr(), u64p!(o));
-    sub_fp_secp256k1, 32, |x, o| sub_fp_secp256k1_c(B.as_ptr(), A.as_ptr(), u64p!(o));
-    mul_fp_secp256k1, 32, |x, o| mul_fp_secp256k1_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    square_fp_secp256k1, 32, |x, o| square_fp_secp256k1_c(A.as_ptr(), u64p!(o));
-    sqrt_fp_secp256k1, 32, |x, o| sqrt_fp_secp256k1_c(x.secp_y2.as_ptr(), 0, u64p!(o));
-    inv_fp_secp256k1, 32, |x, o| inv_fp_secp256k1_c(A.as_ptr(), u64p!(o));
-    reduce_fn_secp256k1, 32, |x, o| reduce_fn_secp256k1_c(A.as_ptr(), u64p!(o));
-    add_fn_secp256k1, 32, |x, o| add_fn_secp256k1_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    neg_fn_secp256k1, 32, |x, o| neg_fn_secp256k1_c(A.as_ptr(), u64p!(o));
-    sub_fn_secp256k1, 32, |x, o| sub_fn_secp256k1_c(B.as_ptr(), A.as_ptr(), u64p!(o));
-    mul_fn_secp256k1, 32, |x, o| mul_fn_secp256k1_c(A.as_ptr(), B.as_ptr(), u64p!(o));
-    square_fn_secp256k1, 32, |x, o| square_fn_secp256k1_c(A.as_ptr(), u64p!(o));
-    inv_fn_secp256k1, 32, |x, o| inv_fn_secp256k1_c(A.as_ptr(), u64p!(o));
+        double_scalar_mul_with_g_secp256k1_c(ip(&A), ip(&B), ip(&SECP_G), u64p!(o));
+    reduce_fp_secp256k1, 32, |x, o| reduce_fp_secp256k1_c(ip(&A), u64p!(o));
+    add_fp_secp256k1, 32, |x, o| add_fp_secp256k1_c(ip(&A), ip(&B), u64p!(o));
+    neg_fp_secp256k1, 32, |x, o| neg_fp_secp256k1_c(ip(&A), u64p!(o));
+    sub_fp_secp256k1, 32, |x, o| sub_fp_secp256k1_c(ip(&B), ip(&A), u64p!(o));
+    mul_fp_secp256k1, 32, |x, o| mul_fp_secp256k1_c(ip(&A), ip(&B), u64p!(o));
+    square_fp_secp256k1, 32, |x, o| square_fp_secp256k1_c(ip(&A), u64p!(o));
+    sqrt_fp_secp256k1, 32, |x, o| sqrt_fp_secp256k1_c(ip(&x.secp_y2), 0, u64p!(o));
+    inv_fp_secp256k1, 32, |x, o| inv_fp_secp256k1_c(ip(&A), u64p!(o));
+    reduce_fn_secp256k1, 32, |x, o| reduce_fn_secp256k1_c(ip(&A), u64p!(o));
+    add_fn_secp256k1, 32, |x, o| add_fn_secp256k1_c(ip(&A), ip(&B), u64p!(o));
+    neg_fn_secp256k1, 32, |x, o| neg_fn_secp256k1_c(ip(&A), u64p!(o));
+    sub_fn_secp256k1, 32, |x, o| sub_fn_secp256k1_c(ip(&B), ip(&A), u64p!(o));
+    mul_fn_secp256k1, 32, |x, o| mul_fn_secp256k1_c(ip(&A), ip(&B), u64p!(o));
+    square_fn_secp256k1, 32, |x, o| square_fn_secp256k1_c(ip(&A), u64p!(o));
+    inv_fn_secp256k1, 32, |x, o| inv_fn_secp256k1_c(ip(&A), u64p!(o));
     // bn254
-    jacobian_to_affine_bn254, 64, |x, o| jacobian_to_affine_bn254_c(x.bn_jac.as_ptr(), u64p!(o));
-    add_bn254, 64, |x, o| add_bn254_c(x.bn_g1.as_ptr(), x.bn_g1.as_ptr(), u64p!(o));
-    scalar_mul_bn254, 64, |x, o| scalar_mul_bn254_c(x.bn_g1.as_ptr(), A.as_ptr(), u64p!(o));
-    jacobian_to_affine_twist_bn254, 128, |x, o| jacobian_to_affine_twist_bn254_c(x.bn_twist_jac.as_ptr(), u64p!(o));
+    jacobian_to_affine_bn254, 64, |x, o| jacobian_to_affine_bn254_c(ip(&x.bn_jac), u64p!(o));
+    add_bn254, 64, |x, o| add_bn254_c(ip(&x.bn_g1), ip(&x.bn_g1), u64p!(o));
+    scalar_mul_bn254, 64, |x, o| scalar_mul_bn254_c(ip(&x.bn_g1), ip(&A), u64p!(o));
+    jacobian_to_affine_twist_bn254, 128, |x, o| jacobian_to_affine_twist_bn254_c(ip(&x.bn_twist_jac), u64p!(o));
     // bls12-381
-    decompress_bls12_381, 96, |x, o| decompress_bls12_381_c(x.bls_g1_comp.as_ptr(), u64p!(o));
-    add_bls12_381, 96, |x, o| add_bls12_381_c(BLS_G1.as_ptr(), BLS_G1.as_ptr(), u64p!(o));
-    scalar_mul_bls12_381, 96, |x, o| scalar_mul_bls12_381_c(BLS_G1.as_ptr(), B.as_ptr(), u64p!(o));
-    final_exp_bls12_381, 576, |x, o| final_exp_bls12_381_c(x.fp12.as_ptr(), u64p!(o));
-    mul_fp12_bls12_381, 576, |x, o| mul_fp12_bls12_381_c(x.fp12.as_ptr(), x.fp12.as_ptr(), u64p!(o));
-    miller_loop_bls12_381, 576, |x, o| miller_loop_bls12_381_c(BLS_G1.as_ptr(), BLS_G2.as_ptr(), u64p!(o));
-    decompress_twist_bls12_381, 192, |x, o| decompress_twist_bls12_381_c(x.bls_g2_comp.as_ptr(), u64p!(o));
-    add_twist_bls12_381, 192, |x, o| add_twist_bls12_381_c(BLS_G2.as_ptr(), BLS_G2.as_ptr(), u64p!(o));
-    scalar_mul_twist_bls12_381, 192, |x, o| scalar_mul_twist_bls12_381_c(BLS_G2.as_ptr(), B.as_ptr(), u64p!(o));
+    decompress_bls12_381, 96, |x, o| decompress_bls12_381_c(ip(&x.bls_g1_comp), u64p!(o));
+    add_bls12_381, 96, |x, o| add_bls12_381_c(ip(&BLS_G1), ip(&BLS_G1), u64p!(o));
+    scalar_mul_bls12_381, 96, |x, o| scalar_mul_bls12_381_c(ip(&BLS_G1), ip(&B), u64p!(o));
+    final_exp_bls12_381, 576, |x, o| final_exp_bls12_381_c(ip(&x.fp12), u64p!(o));
+    mul_fp12_bls12_381, 576, |x, o| mul_fp12_bls12_381_c(ip(&x.fp12), ip(&x.fp12), u64p!(o));
+    miller_loop_bls12_381, 576, |x, o| miller_loop_bls12_381_c(ip(&BLS_G1), ip(&BLS_G2), u64p!(o));
+    decompress_twist_bls12_381, 192, |x, o| decompress_twist_bls12_381_c(ip(&x.bls_g2_comp), u64p!(o));
+    add_twist_bls12_381, 192, |x, o| add_twist_bls12_381_c(ip(&BLS_G2), ip(&BLS_G2), u64p!(o));
+    scalar_mul_twist_bls12_381, 192, |x, o| scalar_mul_twist_bls12_381_c(ip(&BLS_G2), ip(&B), u64p!(o));
     // hashes
-    keccak256_native, 32, |x, o| native_keccak256(x.hb.as_ptr(), 300, o);
+    keccak256_native, 32, |x, o| native_keccak256(ip(&x.hb), 300, o);
     sha256f_compress, 32, |x, o| {
-        core::ptr::copy_nonoverlapping(x.hb.as_ptr(), o, 32);
-        sha256f_compress_c(o as *mut u32, x.blocks.as_ptr(), 2)
+        core::ptr::copy_nonoverlapping(ip(&x.hb), o, 32);
+        sha256f_compress_c(o as *mut u32, ip(&x.blocks), 2)
     };
     // EF zkVM accelerator ABI
-    ef_keccak256, 32, |x, o| zkvm_keccak256(x.hb.as_ptr(), 300, o);
-    ef_sha256, 32, |x, o| zkvm_sha256(x.hb.as_ptr(), 300, o);
-    ef_ripemd160, 32, |x, o| zkvm_ripemd160(x.hb.as_ptr(), 300, o);
-    ef_modexp, 48, |x, o| zkvm_modexp(x.hb.as_ptr(), 37, x.hb.as_ptr().add(40), 19, x.hb.as_ptr().add(64), 48, o);
-    ef_bn254_g1_add, 64, |x, o| zkvm_bn254_g1_add(x.ef_bn_g1.as_ptr(), x.ef_bn_g1.as_ptr(), o);
-    ef_bn254_g1_mul, 64, |x, o| zkvm_bn254_g1_mul(x.ef_bn_g1.as_ptr(), x.ef_bn_k.as_ptr(), o);
+    ef_keccak256, 32, |x, o| zkvm_keccak256(ip(&x.hb), 300, o);
+    ef_sha256, 32, |x, o| zkvm_sha256(ip(&x.hb), 300, o);
+    ef_ripemd160, 32, |x, o| zkvm_ripemd160(ip(&x.hb), 300, o);
+    ef_modexp, 48, |x, o| zkvm_modexp(ip(&x.hb), 37, ip(&x.hb).add(40), 19, ip(&x.hb).add(64), 48, o);
+    ef_bn254_g1_add, 64, |x, o| zkvm_bn254_g1_add(ip(&x.ef_bn_g1), ip(&x.ef_bn_g1), o);
+    ef_bn254_g1_mul, 64, |x, o| zkvm_bn254_g1_mul(ip(&x.ef_bn_g1), ip(&x.ef_bn_k), o);
     ef_blake2f, 64, |x, o| {
-        core::ptr::copy_nonoverlapping(x.hb.as_ptr(), o, 64);
-        zkvm_blake2f(12, o, x.ef_bm.as_ptr(), x.ef_bt.as_ptr(), 1)
+        core::ptr::copy_nonoverlapping(ip(&x.hb), o, 64);
+        zkvm_blake2f(12, o, ip(&x.ef_bm), ip(&x.ef_bt), 1)
     };
-    ef_bls12_g1_add, 96, |x, o| zkvm_bls12_g1_add(x.ef_g1.as_ptr(), x.ef_g1.as_ptr(), o);
-    ef_bls12_g1_msm, 96, |x, o| zkvm_bls12_g1_msm(x.ef_g1_pair.as_ptr(), 1, o);
-    ef_bls12_g2_add, 192, |x, o| zkvm_bls12_g2_add(x.ef_g2.as_ptr(), x.ef_g2.as_ptr(), o);
-    ef_bls12_g2_msm, 192, |x, o| zkvm_bls12_g2_msm(x.ef_g2_pair.as_ptr(), 1, o);
-    ef_bls12_map_fp_to_g1, 96, |x, o| zkvm_bls12_map_fp_to_g1(x.ef_fp.as_ptr(), o);
-    ef_bls12_map_fp2_to_g2, 192, |x, o| zkvm_bls12_map_fp2_to_g2(x.ef_fp2.as_ptr(), o);
-    ef_secp256k1_ecrecover, 64, |x, o| zkvm_secp256k1_ecrecover(x.ef_rmsg.as_ptr(), x.ef_rsig.as_ptr(), 1, o);
-    ef_mulmod256, 32, |x, o| zkvm_mulmod256(x.ba.as_ptr(), x.bb.as_ptr(), x.bm.as_ptr(), o);
-    ef_reduce_mod256, 32, |x, o| zkvm_reduce_mod256(x.ba.as_ptr(), x.bm.as_ptr(), o);
-    ef_add_mod256, 32, |x, o| zkvm_add_mod256(x.ba.as_ptr(), x.bb.as_ptr(), x.bm.as_ptr(), o);
-    ef_square_mod256, 32, |x, o| zkvm_square_mod256(x.ba.as_ptr(), x.bm.as_ptr(), o);
-    ef_pow_mod256, 32, |x, o| zkvm_pow_mod256(x.ba.as_ptr(), x.be.as_ptr(), x.bm.as_ptr(), o);
-    ef_inv_mod256, 32, |x, o| zkvm_inv_mod256(x.bb.as_ptr(), x.bm.as_ptr(), o);
+    ef_bls12_g1_add, 96, |x, o| zkvm_bls12_g1_add(ip(&x.ef_g1), ip(&x.ef_g1), o);
+    ef_bls12_g1_msm, 96, |x, o| zkvm_bls12_g1_msm(ip(&x.ef_g1_pair), 1, o);
+    ef_bls12_g2_add, 192, |x, o| zkvm_bls12_g2_add(ip(&x.ef_g2), ip(&x.ef_g2), o);
+    ef_bls12_g2_msm, 192, |x, o| zkvm_bls12_g2_msm(ip(&x.ef_g2_pair), 1, o);
+    ef_bls12_map_fp_to_g1, 96, |x, o| zkvm_bls12_map_fp_to_g1(ip(&x.ef_fp), o);
+    ef_bls12_map_fp2_to_g2, 192, |x, o| zkvm_bls12_map_fp2_to_g2(ip(&x.ef_fp2), o);
+    ef_secp256k1_ecrecover, 64, |x, o| zkvm_secp256k1_ecrecover(ip(&x.ef_rmsg), ip(&x.ef_rsig), 1, o);
+    ef_mulmod256, 32, |x, o| zkvm_mulmod256(ip(&x.ba), ip(&x.bb), ip(&x.bm), o);
+    ef_reduce_mod256, 32, |x, o| zkvm_reduce_mod256(ip(&x.ba), ip(&x.bm), o);
+    ef_add_mod256, 32, |x, o| zkvm_add_mod256(ip(&x.ba), ip(&x.bb), ip(&x.bm), o);
+    ef_square_mod256, 32, |x, o| zkvm_square_mod256(ip(&x.ba), ip(&x.bm), o);
+    ef_pow_mod256, 32, |x, o| zkvm_pow_mod256(ip(&x.ba), ip(&x.be), ip(&x.bm), o);
+    ef_inv_mod256, 32, |x, o| zkvm_inv_mod256(ip(&x.bb), ip(&x.bm), o);
     // EVM: the JUMPDEST bitmap of 100 bytecode bytes, 2 words (raw-pointer forms)
-    jump_dest_ptr, 16, |x, o| ziskos::ziskos_jump_dest!(ptr: o as *mut u64, x.code.as_ptr() as *const u8, 100usize);
+    jump_dest_ptr, 16, |x, o| ziskos::ziskos_jump_dest!(ptr: o as *mut u64, ip(&x.code) as *const u8, 100usize);
     jump_dest_dst_ptr, 16, |x, o| {
-        let code = core::slice::from_raw_parts(x.code.as_ptr() as *const u8, 128);
+        let code = core::slice::from_raw_parts(ip(&x.code) as *const u8, 128);
         ziskos::ziskos_jump_dest!(dst_ptr: o as *mut u64, code, 100usize)
     };
+}
+
+// ---- input relocation ----------------------------------------------------------
+/// Scratch for the relocated inputs of one call, and the byte offset they go at.
+static mut ARENA: [u64; 1024] = [0; 1024];
+static mut ARENA_POS: usize = 0;
+static mut IN_OFF: usize = 0;
+
+/// The case bodies take every input through `ip`: a copy of `v` placed at byte
+/// offset IN_OFF (0..7) past an 8-byte boundary of the arena, so a call can be
+/// repeated with all its inputs misaligned by the same amount.
+fn ip<E: Copy, const N: usize>(v: &[E; N]) -> *const E {
+    unsafe {
+        let arena = core::ptr::addr_of_mut!(ARENA) as *mut u8;
+        let size = core::mem::size_of_val(v);
+        let pos = ARENA_POS;
+        assert!(pos + size + 8 <= 8 * 1024, "input arena too small");
+        let dst = arena.add(pos + IN_OFF);
+        core::ptr::copy_nonoverlapping(v.as_ptr() as *const u8, dst, size);
+        ARENA_POS = (pos + size + 8 + 7) & !7;
+        dst as *const E
+    }
+}
+
+/// Starts a call: inputs at byte offset `off`.
+fn inputs_at(off: usize) {
+    unsafe {
+        ARENA_POS = 0;
+        IN_OFF = off;
+    }
 }
 
 // ---- the check -----------------------------------------------------------------
@@ -517,10 +547,12 @@ const MAX_LEN: usize = 576;
 const GUARD: usize = 8;
 const FILL: u8 = 0xA5;
 
-/// (bit `o` set when offset `o` wrote the aligned result's bytes and nothing else,
-/// the aligned call's return value)
-fn check(x: &Inputs, f: CaseFn, len: usize) -> (u8, u64) {
+/// (bit `o` set when the output at offset `o` got the aligned result's bytes and
+/// nothing else, bit `o` set when the inputs at offset `o` gave the aligned
+/// result, the aligned call's return value)
+fn check(x: &Inputs, f: CaseFn, len: usize) -> (u8, u8, u64) {
     let mut reference = [0u64; MAX_LEN / 8];
+    inputs_at(0);
     let r0 = unsafe { f(x, reference.as_mut_ptr() as *mut u8) };
     let e = unsafe { core::slice::from_raw_parts(reference.as_ptr() as *const u8, len) };
     let mut buf = [0u64; (MAX_LEN + 2 * GUARD) / 8];
@@ -529,6 +561,7 @@ fn check(x: &Inputs, f: CaseFn, len: usize) -> (u8, u64) {
         let b = buf.as_mut_ptr() as *mut u8;
         let n = core::mem::size_of_val(&buf);
         unsafe { core::ptr::write_bytes(b, FILL, n) };
+        inputs_at(0);
         let r = unsafe { f(x, black_box(b.add(GUARD + o))) };
         let got = unsafe { core::slice::from_raw_parts(b, n) };
         let lo = GUARD + o;
@@ -539,7 +572,17 @@ fn check(x: &Inputs, f: CaseFn, len: usize) -> (u8, u64) {
             });
         mask |= (ok as u8) << o;
     }
-    (mask, r0)
+    // the same call with every input at offset o, the output aligned
+    let mut imask = 0u8;
+    let e = e.to_vec();
+    for o in 0..8 {
+        let mut got = [0u64; MAX_LEN / 8];
+        inputs_at(o);
+        let r = unsafe { f(x, black_box(got.as_mut_ptr() as *mut u8)) };
+        let got = unsafe { core::slice::from_raw_parts(got.as_ptr() as *const u8, len) };
+        imask |= ((r == r0 && got == &e[..]) as u8) << o;
+    }
+    (mask, imask, r0)
 }
 
 /// Library functions whose internal buffers the precompiles see: their result must
@@ -589,10 +632,10 @@ fn main() {
         if (n as u64) < first || (n as u64) > last {
             continue;
         }
-        let (mask, r0) = check(&x, f, len);
-        println!("case {n} {name} ret={r0} mask={mask:#04x}");
-        all_ok &= mask == 0xff;
+        let (mask, imask, r0) = check(&x, f, len);
+        println!("case {n} {name} ret={r0} mask={mask:#04x} imask={imask:#04x}");
+        all_ok &= mask == 0xff && imask == 0xff;
     }
     ziskos::io::commit(&(all_ok as u64));
-    assert!(all_ok, "an unaligned output was written wrong (see the case lines above)");
+    assert!(all_ok, "an unaligned input or output gave a wrong result (see the case lines above)");
 }

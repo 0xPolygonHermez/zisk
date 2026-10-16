@@ -1,5 +1,5 @@
 extern crate alloc;
-use crate::zisklib::write_u64s;
+use crate::zisklib::unaligned_redirect;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -815,14 +815,28 @@ pub unsafe extern "C" fn jacobian_to_affine_secp256k1_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [p_ptr: 12],
+        [result_ptr: 8],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) = jacobian_to_affine_secp256k1_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = jacobian_to_affine_secp256k1_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let p = &*(p_ptr as *const [u64; 12]);
-    write_u64s(
-        result_ptr,
-        jacobian_to_affine_secp256k1(
-            p,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
+    let result = &mut *(result_ptr as *mut [u64; 8]);
+    *result = jacobian_to_affine_secp256k1(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
     );
 }
 
@@ -844,6 +858,23 @@ pub unsafe extern "C" fn lift_x_secp256k1_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [],
+        [result_ptr: 8],
+        |_ins, outs| {
+            let f: unsafe extern "C" fn(*const u8, u8, *mut u64) -> u8 = lift_x_secp256k1_c;
+            core::hint::black_box(f)(x_ptr, y_is_odd, outs[0])
+        },
+        |_ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u8,
+                u8,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = lift_x_secp256k1_c;
+            core::hint::black_box(f)(x_ptr, y_is_odd, outs[0], &mut *hints)
+        }
+    );
     let x_bytes: &[u8; 32] = &*(x_ptr as *const [u8; 32]);
     let x = be_bytes_to_u64_4(x_bytes);
 
@@ -855,7 +886,8 @@ pub unsafe extern "C" fn lift_x_secp256k1_c(
     ) {
         Err(_) => 0,
         Ok(point) => {
-            write_u64s(result_ptr, point);
+            let result = &mut *(result_ptr as *mut [u64; 8]);
+            *result = point;
             1
         }
     }
@@ -882,6 +914,29 @@ pub unsafe extern "C" fn double_scalar_mul_with_g_secp256k1_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [k1_ptr: 4, k2_ptr: 4, p_ptr: 8],
+        [result_ptr: 8],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *const u64,
+                *mut u64,
+            ) -> u8 = double_scalar_mul_with_g_secp256k1_c;
+            core::hint::black_box(f)(ins[0], ins[1], ins[2], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = double_scalar_mul_with_g_secp256k1_c;
+            core::hint::black_box(f)(ins[0], ins[1], ins[2], outs[0], &mut *hints)
+        }
+    );
     let k1 = &*(k1_ptr as *const [u64; 4]);
     let k2 = &*(k2_ptr as *const [u64; 4]);
     let p = &*(p_ptr as *const [u64; 8]);
@@ -895,7 +950,8 @@ pub unsafe extern "C" fn double_scalar_mul_with_g_secp256k1_c(
     ) {
         None => 0,
         Some(point) => {
-            write_u64s(result_ptr, point);
+            let result = &mut *(result_ptr as *mut [u64; 8]);
+            *result = point;
             1
         }
     }

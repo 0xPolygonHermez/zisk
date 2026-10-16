@@ -467,8 +467,8 @@ pub unsafe extern "C" fn zkvm_blake2f(
         {
             let h_ptr = (*h).data.as_mut_ptr() as *mut [u64; 8];
             let mut h_arr = super::read_maybe_unaligned(h_ptr);
-            let m_arr: [u64; 16] = *((*m).data.as_ptr() as *const [u64; 16]);
-            let t_arr: [u64; 2] = *((*t).data.as_ptr() as *const [u64; 2]);
+            let m_arr = super::read_maybe_unaligned((*m).data.as_ptr() as *const [u64; 16]);
+            let t_arr = super::read_maybe_unaligned((*t).data.as_ptr() as *const [u64; 2]);
             blake2::compress(rounds, &mut h_arr, m_arr, t_arr, f != 0);
             super::write_maybe_unaligned(h_ptr, h_arr);
             ZKVM_EOK

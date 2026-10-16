@@ -2,7 +2,7 @@
 
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
-use crate::zisklib::write_u64s;
+use crate::zisklib::unaligned_redirect;
 
 use crate::zisklib::{eq, fcall_msb_pos_256, is_one, is_two, is_zero, lt};
 
@@ -1114,6 +1114,22 @@ pub unsafe extern "C" fn decompress_twist_bls12_381_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [],
+        [result_ptr: 24],
+        |_ins, outs| {
+            let f: unsafe extern "C" fn(*const u8, *mut u64) -> u8 = decompress_twist_bls12_381_c;
+            core::hint::black_box(f)(input_ptr, outs[0])
+        },
+        |_ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u8,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = decompress_twist_bls12_381_c;
+            core::hint::black_box(f)(input_ptr, outs[0], &mut *hints)
+        }
+    );
     let input = &*(input_ptr as *const [u8; 96]);
     match decompress_twist_bls12_381(
         input,
@@ -1121,7 +1137,8 @@ pub unsafe extern "C" fn decompress_twist_bls12_381_c(
         hints,
     ) {
         Ok((p, is_infinity)) => {
-            write_u64s(result_ptr, p);
+            let result = &mut *(result_ptr as *mut [u64; 24]);
+            *result = p;
             if is_infinity {
                 1
             } else {
@@ -1143,6 +1160,21 @@ pub unsafe extern "C" fn is_on_curve_twist_bls12_381_c(
     p_ptr: *const u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [p_ptr: 24],
+        [],
+        |ins, _outs| {
+            let f: unsafe extern "C" fn(*const u64) -> u8 = is_on_curve_twist_bls12_381_c;
+            core::hint::black_box(f)(ins[0])
+        },
+        |ins, _outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                &mut Vec<u64>,
+            ) -> u8 = is_on_curve_twist_bls12_381_c;
+            core::hint::black_box(f)(ins[0], &mut *hints)
+        }
+    );
     let p = &*(p_ptr as *const [u64; 24]);
     is_on_curve_twist_bls12_381(
         p,
@@ -1166,6 +1198,21 @@ pub unsafe extern "C" fn is_on_subgroup_twist_bls12_381_c(
     p_ptr: *const u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [p_ptr: 24],
+        [],
+        |ins, _outs| {
+            let f: unsafe extern "C" fn(*const u64) -> u8 = is_on_subgroup_twist_bls12_381_c;
+            core::hint::black_box(f)(ins[0])
+        },
+        |ins, _outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                &mut Vec<u64>,
+            ) -> u8 = is_on_subgroup_twist_bls12_381_c;
+            core::hint::black_box(f)(ins[0], &mut *hints)
+        }
+    );
     let p = &*(p_ptr as *const [u64; 24]);
     is_on_subgroup_twist_bls12_381(
         p,
@@ -1199,17 +1246,38 @@ pub unsafe extern "C" fn add_twist_bls12_381_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [p1_ptr: 24, p2_ptr: 24],
+        [result_ptr: 24],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+            ) -> u8 = add_twist_bls12_381_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = add_twist_bls12_381_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let p1 = &*(p1_ptr as *const [u64; 24]);
     let p2 = &*(p2_ptr as *const [u64; 24]);
-    let result = add_twist_bls12_381(
+    let result = &mut *(result_ptr as *mut [u64; 24]);
+    *result = add_twist_bls12_381(
         p1,
         p2,
         #[cfg(feature = "hints")]
         hints,
     );
-    write_u64s(result_ptr, result);
 
-    if eq(&result, &G2_IDENTITY) {
+    if eq(result, &G2_IDENTITY) {
         1
     } else {
         0
@@ -1286,17 +1354,38 @@ pub unsafe extern "C" fn scalar_mul_twist_bls12_381_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [p_ptr: 24, k_ptr: 4],
+        [result_ptr: 24],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+            ) -> u8 = scalar_mul_twist_bls12_381_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = scalar_mul_twist_bls12_381_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let p = &*(p_ptr as *const [u64; 24]);
     let k = &*(k_ptr as *const [u64; 4]);
-    let result = scalar_mul_twist_bls12_381(
+    let result = &mut *(result_ptr as *mut [u64; 24]);
+    *result = scalar_mul_twist_bls12_381(
         p,
         k,
         #[cfg(feature = "hints")]
         hints,
     );
-    write_u64s(result_ptr, result);
 
-    if eq(&result, &G2_IDENTITY) {
+    if eq(result, &G2_IDENTITY) {
         1
     } else {
         0

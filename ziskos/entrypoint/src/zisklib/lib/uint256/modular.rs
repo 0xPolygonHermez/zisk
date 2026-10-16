@@ -6,7 +6,7 @@ use crate::zisklib::lib::{
     constants::{ONE_256 as ONE, ZERO_256 as ZERO},
     utils::{be_bytes_to_u64_4, gt, is_one, is_zero, lt, u64_4_to_be_bytes},
 };
-use crate::zisklib::write_u64s;
+use crate::zisklib::unaligned_redirect;
 use crate::zisklib::{fcall_uint256_inv_mod, ModInvResult};
 
 /// Given 256-bit integers `a` and `modulus`, it computes `a (mod modulus)`.
@@ -272,6 +272,23 @@ pub unsafe extern "C" fn reduce_mod256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 4, modulus_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = reduce_mod256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = reduce_mod256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let modulus = &*(modulus_ptr as *const [u64; 4]);
 
@@ -281,7 +298,9 @@ pub unsafe extern "C" fn reduce_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-    write_u64s(result_ptr, res);
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
 }
 
 /// 256-bit modular addition.
@@ -300,6 +319,29 @@ pub unsafe extern "C" fn add_mod256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 4, b_ptr: 4, modulus_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *const u64,
+                *mut u64,
+            ) = add_mod256_c;
+            core::hint::black_box(f)(ins[0], ins[1], ins[2], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = add_mod256_c;
+            core::hint::black_box(f)(ins[0], ins[1], ins[2], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
     let modulus = &*(modulus_ptr as *const [u64; 4]);
@@ -311,7 +353,9 @@ pub unsafe extern "C" fn add_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-    write_u64s(result_ptr, res);
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
 }
 
 /// 256-bit modular multiplication.
@@ -330,6 +374,29 @@ pub unsafe extern "C" fn mul_mod256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 4, b_ptr: 4, modulus_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *const u64,
+                *mut u64,
+            ) = mul_mod256_c;
+            core::hint::black_box(f)(ins[0], ins[1], ins[2], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = mul_mod256_c;
+            core::hint::black_box(f)(ins[0], ins[1], ins[2], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
     let modulus = &*(modulus_ptr as *const [u64; 4]);
@@ -341,7 +408,9 @@ pub unsafe extern "C" fn mul_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-    write_u64s(result_ptr, res);
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
 }
 
 /// 256-bit modular multiplication.
@@ -528,6 +597,23 @@ pub unsafe extern "C" fn square_mod256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 4, modulus_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = square_mod256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = square_mod256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let modulus = &*(modulus_ptr as *const [u64; 4]);
 
@@ -537,7 +623,9 @@ pub unsafe extern "C" fn square_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-    write_u64s(result_ptr, res);
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
 }
 
 /// 256-bit modular exponentiation.
@@ -556,6 +644,29 @@ pub unsafe extern "C" fn pow_mod256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [base_ptr: 4, exp_ptr: 4, modulus_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *const u64,
+                *mut u64,
+            ) = pow_mod256_c;
+            core::hint::black_box(f)(ins[0], ins[1], ins[2], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = pow_mod256_c;
+            core::hint::black_box(f)(ins[0], ins[1], ins[2], outs[0], &mut *hints)
+        }
+    );
     let base = &*(base_ptr as *const [u64; 4]);
     let exp = &*(exp_ptr as *const [u64; 4]);
     let modulus = &*(modulus_ptr as *const [u64; 4]);
@@ -567,7 +678,9 @@ pub unsafe extern "C" fn pow_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-    write_u64s(result_ptr, res);
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
 }
 
 /// 256-bit modular inverse. Returns 1 if the inverse exists, 0 otherwise.
@@ -584,6 +697,23 @@ pub unsafe extern "C" fn inv_mod256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [a_ptr: 4, modulus_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) -> u8 = inv_mod256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = inv_mod256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let modulus = &*(modulus_ptr as *const [u64; 4]);
 
@@ -594,7 +724,8 @@ pub unsafe extern "C" fn inv_mod256_c(
         hints,
     ) {
         Some(res) => {
-            write_u64s(result_ptr, res);
+            let result = &mut *(result_ptr as *mut [u64; 4]);
+            *result = res;
             1
         }
         None => 0,

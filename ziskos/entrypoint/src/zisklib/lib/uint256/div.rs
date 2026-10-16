@@ -6,7 +6,7 @@ use crate::zisklib::lib::{
     constants::ZERO_256 as ZERO,
     utils::{eq, is_zero, lt},
 };
-use crate::zisklib::write_u64s;
+use crate::zisklib::unaligned_redirect;
 
 /// Given 256-bit integers `a,b`, it computes `a / b`.
 /// Returns `None` if `b == 0`.
@@ -162,6 +162,23 @@ pub unsafe extern "C" fn checked_div256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [a_ptr: 4, b_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) -> u8 = checked_div256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = checked_div256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
 
@@ -172,7 +189,8 @@ pub unsafe extern "C" fn checked_div256_c(
         hints,
     ) {
         Some(res) => {
-            write_u64s(result_ptr, res);
+            let result = &mut *(result_ptr as *mut [u64; 4]);
+            *result = res;
             1 // Success
         }
         None => 0, // Division by zero
@@ -193,6 +211,23 @@ pub unsafe extern "C" fn checked_rem256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [a_ptr: 4, b_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) -> u8 = checked_rem256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = checked_rem256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
 
@@ -203,7 +238,8 @@ pub unsafe extern "C" fn checked_rem256_c(
         hints,
     ) {
         Some(res) => {
-            write_u64s(result_ptr, res);
+            let result = &mut *(result_ptr as *mut [u64; 4]);
+            *result = res;
             1 // Success
         }
         None => 0, // Division by zero
@@ -228,6 +264,24 @@ pub unsafe extern "C" fn div_rem256_c(
     rem_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 4, b_ptr: 4],
+        [quo_ptr: 4, rem_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64, *mut u64) = div_rem256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], outs[1])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = div_rem256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], outs[1], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
 
@@ -237,8 +291,11 @@ pub unsafe extern "C" fn div_rem256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-    write_u64s(quo_ptr, q);
-    write_u64s(rem_ptr, r);
+
+    let quo = &mut *(quo_ptr as *mut [u64; 4]);
+    *quo = q;
+    let rem = &mut *(rem_ptr as *mut [u64; 4]);
+    *rem = r;
 }
 
 /// 256-bit ceiling division.
@@ -257,16 +314,32 @@ pub unsafe extern "C" fn div_ceil256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 4, b_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = div_ceil256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = div_ceil256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-    write_u64s(
-        result_ptr,
-        div_ceil256(
-            a,
-            b,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = div_ceil256(
+        a,
+        b,
+        #[cfg(feature = "hints")]
+        hints,
     );
 }
 
@@ -286,16 +359,32 @@ pub unsafe extern "C" fn wrapping_div256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 4, b_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = wrapping_div256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = wrapping_div256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-    write_u64s(
-        result_ptr,
-        wrapping_div256(
-            a,
-            b,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = wrapping_div256(
+        a,
+        b,
+        #[cfg(feature = "hints")]
+        hints,
     );
 }
 
@@ -315,15 +404,31 @@ pub unsafe extern "C" fn wrapping_rem256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 4, b_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = wrapping_rem256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = wrapping_rem256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-    write_u64s(
-        result_ptr,
-        wrapping_rem256(
-            a,
-            b,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = wrapping_rem256(
+        a,
+        b,
+        #[cfg(feature = "hints")]
+        hints,
     );
 }

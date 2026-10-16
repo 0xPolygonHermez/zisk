@@ -2,7 +2,7 @@ use crate::zisklib::lib::{
     constants::{MAX_256 as MAX, ONE_256 as ONE, ZERO_256 as ZERO},
     utils::{is_one, is_zero},
 };
-use crate::zisklib::write_u64s;
+use crate::zisklib::unaligned_redirect;
 use crate::zisklib::{fcall_bin_decomp, fcall_msb_pos_256, is_power_of_two};
 
 use super::mul::{overflowing_mul256, overflowing_square256, wrapping_mul256, wrapping_square256};
@@ -273,6 +273,23 @@ pub unsafe extern "C" fn checked_pow256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [base_ptr: 4, exp_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) -> u8 = checked_pow256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = checked_pow256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let base = &*(base_ptr as *const [u64; 4]);
     let exp = &*(exp_ptr as *const [u64; 4]);
 
@@ -283,7 +300,8 @@ pub unsafe extern "C" fn checked_pow256_c(
         hints,
     ) {
         Some(res) => {
-            write_u64s(result_ptr, res);
+            let result = &mut *(result_ptr as *mut [u64; 4]);
+            *result = res;
             1
         }
         None => 0,
@@ -304,6 +322,27 @@ pub unsafe extern "C" fn overflowing_pow256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [base_ptr: 4, exp_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+            ) -> u8 = overflowing_pow256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = overflowing_pow256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let base = &*(base_ptr as *const [u64; 4]);
     let exp = &*(exp_ptr as *const [u64; 4]);
 
@@ -313,7 +352,9 @@ pub unsafe extern "C" fn overflowing_pow256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-    write_u64s(result_ptr, res);
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
 
     overflow as u8
 }
@@ -332,16 +373,32 @@ pub unsafe extern "C" fn wrapping_pow256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [base_ptr: 4, exp_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = wrapping_pow256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = wrapping_pow256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let base = &*(base_ptr as *const [u64; 4]);
     let exp = &*(exp_ptr as *const [u64; 4]);
-    write_u64s(
-        result_ptr,
-        wrapping_pow256(
-            base,
-            exp,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = wrapping_pow256(
+        base,
+        exp,
+        #[cfg(feature = "hints")]
+        hints,
     );
 }
 
@@ -359,15 +416,31 @@ pub unsafe extern "C" fn saturating_pow256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [base_ptr: 4, exp_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = saturating_pow256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = saturating_pow256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let base = &*(base_ptr as *const [u64; 4]);
     let exp = &*(exp_ptr as *const [u64; 4]);
-    write_u64s(
-        result_ptr,
-        saturating_pow256(
-            base,
-            exp,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = saturating_pow256(
+        base,
+        exp,
+        #[cfg(feature = "hints")]
+        hints,
     );
 }

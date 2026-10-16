@@ -1,6 +1,6 @@
 //! Operations on the twist E': y² = x³ + 3 / (9 + u) of the BN254 curve
 
-use crate::zisklib::write_u64s;
+use crate::zisklib::unaligned_redirect;
 use crate::zisklib::{eq, is_one, is_zero};
 
 use super::{
@@ -497,14 +497,28 @@ pub unsafe extern "C" fn jacobian_to_affine_twist_bn254_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [p_ptr: 24],
+        [result_ptr: 16],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) = jacobian_to_affine_twist_bn254_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = jacobian_to_affine_twist_bn254_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let p = &*(p_ptr as *const [u64; 24]);
-    write_u64s(
-        result_ptr,
-        jacobian_to_affine_twist_bn254(
-            p,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
+    let result = &mut *(result_ptr as *mut [u64; 16]);
+    *result = jacobian_to_affine_twist_bn254(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
     );
 }
 
@@ -519,6 +533,21 @@ pub unsafe extern "C" fn is_on_curve_twist_bn254_c(
     p_ptr: *const u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [p_ptr: 16],
+        [],
+        |ins, _outs| {
+            let f: unsafe extern "C" fn(*const u64) -> u8 = is_on_curve_twist_bn254_c;
+            core::hint::black_box(f)(ins[0])
+        },
+        |ins, _outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                &mut Vec<u64>,
+            ) -> u8 = is_on_curve_twist_bn254_c;
+            core::hint::black_box(f)(ins[0], &mut *hints)
+        }
+    );
     let p = &*(p_ptr as *const [u64; 16]);
     is_on_curve_twist_bn254(
         p,
@@ -542,6 +571,21 @@ pub unsafe extern "C" fn is_on_subgroup_twist_bn254_c(
     p_ptr: *const u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [p_ptr: 16],
+        [],
+        |ins, _outs| {
+            let f: unsafe extern "C" fn(*const u64) -> u8 = is_on_subgroup_twist_bn254_c;
+            core::hint::black_box(f)(ins[0])
+        },
+        |ins, _outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                &mut Vec<u64>,
+            ) -> u8 = is_on_subgroup_twist_bn254_c;
+            core::hint::black_box(f)(ins[0], &mut *hints)
+        }
+    );
     let p = &*(p_ptr as *const [u64; 16]);
     is_on_subgroup_twist_bn254(
         p,

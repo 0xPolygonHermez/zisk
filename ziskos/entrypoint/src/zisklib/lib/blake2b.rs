@@ -3,6 +3,7 @@
 use crate::syscalls::syscall_blake2b_round_const;
 
 use super::{read_maybe_unaligned, write_maybe_unaligned};
+use crate::zisklib::let_input;
 
 /// BLAKE2b initialization vectors
 const IV: [u64; 8] = [
@@ -110,13 +111,9 @@ pub(crate) unsafe fn blake2b_compress_c(
     let state = state as *mut [u64; 8];
     let mut state_array = read_maybe_unaligned(state);
 
-    // Parse message
-    let message_slice = core::slice::from_raw_parts(message, 16);
-    let message_array: &[u64; 16] = &*(message_slice.as_ptr() as *const [u64; 16]);
-
-    // Parse offset
-    let offset_slice = core::slice::from_raw_parts(offset, 2);
-    let offset_array: &[u64; 2] = &*(offset_slice.as_ptr() as *const [u64; 2]);
+    // Parse message and offset (in place when 8-byte aligned, else copied)
+    let_input!(message_array = message; [u64; 16]);
+    let_input!(offset_array = offset; [u64; 2]);
 
     blake2b_compress(
         rounds,

@@ -4,7 +4,7 @@ use crate::zisklib::lib::{
     constants::{MAX_256 as MAX, ONE_256 as ONE, ZERO_256 as ZERO},
     utils::is_one,
 };
-use crate::zisklib::write_u64s;
+use crate::zisklib::unaligned_redirect;
 
 /// Given 256-bit integers `a,b`, it computes `a * b (mod 2^256)`.
 /// Returns `None` if overflow occurs.
@@ -184,6 +184,23 @@ pub unsafe extern "C" fn checked_mul256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [a_ptr: 4, b_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) -> u8 = checked_mul256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = checked_mul256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
 
@@ -194,7 +211,8 @@ pub unsafe extern "C" fn checked_mul256_c(
         hints,
     ) {
         Some(res) => {
-            write_u64s(result_ptr, res);
+            let result = &mut *(result_ptr as *mut [u64; 4]);
+            *result = res;
             1 // Success
         }
         None => 0, // Overflow
@@ -213,6 +231,22 @@ pub unsafe extern "C" fn checked_square256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [a_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) -> u8 = checked_square256_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = checked_square256_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
 
     match checked_square256(
@@ -221,7 +255,8 @@ pub unsafe extern "C" fn checked_square256_c(
         hints,
     ) {
         Some(res) => {
-            write_u64s(result_ptr, res);
+            let result = &mut *(result_ptr as *mut [u64; 4]);
+            *result = res;
             1 // Success
         }
         None => 0, // Overflow
@@ -242,6 +277,27 @@ pub unsafe extern "C" fn overflowing_mul256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [a_ptr: 4, b_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+            ) -> u8 = overflowing_mul256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = overflowing_mul256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
 
@@ -251,7 +307,9 @@ pub unsafe extern "C" fn overflowing_mul256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-    write_u64s(result_ptr, res);
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
 
     overflow as u8
 }
@@ -268,6 +326,22 @@ pub unsafe extern "C" fn overflowing_square256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [a_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) -> u8 = overflowing_square256_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = overflowing_square256_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
 
     let (res, overflow) = overflowing_square256(
@@ -275,7 +349,9 @@ pub unsafe extern "C" fn overflowing_square256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-    write_u64s(result_ptr, res);
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
 
     overflow as u8
 }
@@ -294,16 +370,32 @@ pub unsafe extern "C" fn saturating_mul256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 4, b_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = saturating_mul256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = saturating_mul256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-    write_u64s(
-        result_ptr,
-        saturating_mul256(
-            a,
-            b,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = saturating_mul256(
+        a,
+        b,
+        #[cfg(feature = "hints")]
+        hints,
     );
 }
 
@@ -319,14 +411,29 @@ pub unsafe extern "C" fn saturating_square256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) = saturating_square256_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = saturating_square256_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
-    write_u64s(
-        result_ptr,
-        saturating_square256(
-            a,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = saturating_square256(
+        a,
+        #[cfg(feature = "hints")]
+        hints,
     );
 }
 
@@ -344,16 +451,32 @@ pub unsafe extern "C" fn wrapping_mul256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 4, b_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = wrapping_mul256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = wrapping_mul256_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-    write_u64s(
-        result_ptr,
-        wrapping_mul256(
-            a,
-            b,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = wrapping_mul256(
+        a,
+        b,
+        #[cfg(feature = "hints")]
+        hints,
     );
 }
 
@@ -369,14 +492,25 @@ pub unsafe extern "C" fn wrapping_square256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) = wrapping_square256_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64, &mut Vec<u64>) = wrapping_square256_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
-    write_u64s(
-        result_ptr,
-        wrapping_square256(
-            a,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = wrapping_square256(
+        a,
+        #[cfg(feature = "hints")]
+        hints,
     );
 }
 
@@ -392,6 +526,18 @@ pub unsafe extern "C" fn inv256_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [a_ptr: 4],
+        [result_ptr: 4],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64) -> u8 = inv256_c;
+            core::hint::black_box(f)(ins[0], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *mut u64, &mut Vec<u64>) -> u8 = inv256_c;
+            core::hint::black_box(f)(ins[0], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 4]);
 
     match inv256(
@@ -400,7 +546,8 @@ pub unsafe extern "C" fn inv256_c(
         hints,
     ) {
         Some(res) => {
-            write_u64s(result_ptr, res);
+            let result = &mut *(result_ptr as *mut [u64; 4]);
+            *result = res;
             1
         }
         None => 0,

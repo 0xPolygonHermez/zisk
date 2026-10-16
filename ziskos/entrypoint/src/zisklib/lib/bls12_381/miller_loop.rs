@@ -2,7 +2,7 @@
 
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
-use crate::zisklib::write_u64s;
+use crate::zisklib::unaligned_redirect;
 
 use crate::zisklib::{
     eq, fcall_bls12_381_twist_add_line_coeffs, fcall_bls12_381_twist_dbl_line_coeffs, is_zero,
@@ -629,15 +629,30 @@ pub unsafe extern "C" fn miller_loop_bls12_381_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [p_ptr: 12, q_ptr: 24],
+        [result_ptr: 72],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = miller_loop_bls12_381_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = miller_loop_bls12_381_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let p = &*(p_ptr as *const [u64; 12]);
     let q = &*(q_ptr as *const [u64; 24]);
-    write_u64s(
-        result_ptr,
-        miller_loop_bls12_381(
-            p,
-            q,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
+    let result = &mut *(result_ptr as *mut [u64; 72]);
+    *result = miller_loop_bls12_381(
+        p,
+        q,
+        #[cfg(feature = "hints")]
+        hints,
     );
 }
