@@ -127,9 +127,14 @@ macro_rules! unaligned_redirect {
 pub(crate) use unaligned_redirect;
 
 /// The unaligned path of [`unaligned_redirect!`]: copies each input `(ptr, len)` and
-/// each output (its current contents, so words the call leaves alone stay as they
-/// were) into aligned buffers, runs `run` on those, and writes the outputs back. Kept out
-/// of line so that it adds nothing to the aligned path.
+/// each output into aligned buffers, runs `run` on those, and copies the outputs back.
+/// Kept out of line so that it adds nothing to the aligned path.
+///
+/// The copies are bytewise into `MaybeUninit<u64>` storage, never reads of `u64`
+/// values: an output buffer need not be initialized (a C caller may pass fresh
+/// storage, and some functions leave it untouched on failure), and its bytes are
+/// carried over as they are. So whatever the call does not write comes back to the
+/// caller exactly as it was, initialized or not.
 ///
 /// # Safety
 /// Every pointer must be valid for reading (and, for outputs, writing) its `len`
@@ -141,18 +146,23 @@ pub(crate) unsafe fn ffi_unaligned<R>(
     outs: &[(*mut u64, usize)],
     run: &mut dyn FnMut(&[*const u64], &[*mut u64]) -> R,
 ) -> R {
-    let read = |p: *const u64, n: usize| -> Vec<u64> {
-        (0..n).map(|k| p.add(k).read_unaligned()).collect()
+    use core::mem::MaybeUninit;
+    // An aligned copy of the `n` u64 words at `p`, byte for byte.
+    let copy = |p: *const u64, n: usize| -> Vec<MaybeUninit<u64>> {
+        let mut v: Vec<MaybeUninit<u64>> = Vec::with_capacity(n);
+        core::ptr::copy_nonoverlapping(p as *const u8, v.as_mut_ptr() as *mut u8, n * 8);
+        v.set_len(n);
+        v
     };
-    let in_copies: Vec<Vec<u64>> = ins.iter().map(|&(p, n)| read(p, n)).collect();
-    let mut out_copies: Vec<Vec<u64>> = outs.iter().map(|&(p, n)| read(p, n)).collect();
-    let in_ptrs: Vec<*const u64> = in_copies.iter().map(|v| v.as_ptr()).collect();
-    let out_ptrs: Vec<*mut u64> = out_copies.iter_mut().map(|v| v.as_mut_ptr()).collect();
+    let in_copies: Vec<Vec<MaybeUninit<u64>>> = ins.iter().map(|&(p, n)| copy(p, n)).collect();
+    let mut out_copies: Vec<Vec<MaybeUninit<u64>>> =
+        outs.iter().map(|&(p, n)| copy(p, n)).collect();
+    let in_ptrs: Vec<*const u64> = in_copies.iter().map(|v| v.as_ptr() as *const u64).collect();
+    let out_ptrs: Vec<*mut u64> =
+        out_copies.iter_mut().map(|v| v.as_mut_ptr() as *mut u64).collect();
     let result = run(&in_ptrs, &out_ptrs);
     for (&(p, n), v) in outs.iter().zip(&out_copies) {
-        for (k, &w) in v.iter().enumerate().take(n) {
-            p.add(k).write_unaligned(w);
-        }
+        core::ptr::copy_nonoverlapping(v.as_ptr() as *const u8, p as *mut u8, n * 8);
     }
     result
 }
