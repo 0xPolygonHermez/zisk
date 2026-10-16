@@ -127,3 +127,30 @@ fn verify(
     );
     compress_ed25519(&expected_r) == *r_bytes
 }
+
+/// Pointer-based [`ed25519_verify`] / [`ed25519_verify_strict`] for the C accelerator interface.
+///
+/// # Safety
+/// - `pk` must point to 32 bytes, `sig` to 64 bytes
+/// - `msg` must point to `msg_len` bytes (it may be dangling when `msg_len == 0`)
+#[inline]
+pub(crate) unsafe fn ed25519_verify_c(
+    pk: *const u8,
+    msg: *const u8,
+    msg_len: usize,
+    sig: *const u8,
+    strict: bool,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
+    let pk: &[u8; 32] = &*(pk as *const [u8; 32]);
+    let sig: &[u8; 64] = &*(sig as *const [u8; 64]);
+    let msg: &[u8] = if msg_len == 0 { &[] } else { core::slice::from_raw_parts(msg, msg_len) };
+    verify(
+        pk,
+        msg,
+        sig,
+        strict,
+        #[cfg(feature = "hints")]
+        hints,
+    )
+}
