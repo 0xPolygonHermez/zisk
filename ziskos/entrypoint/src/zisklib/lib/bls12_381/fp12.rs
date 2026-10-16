@@ -1,5 +1,6 @@
 //! Finite field Fp12 operations for BLS12-381
 
+use crate::zisklib::unaligned_redirect;
 use crate::zisklib::{eq, fcall_msb_pos_384};
 
 use super::{
@@ -566,13 +567,29 @@ pub unsafe extern "C" fn mul_fp12_bls12_381_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
+    unaligned_redirect!(
+        [a_ptr: 72, b_ptr: 72],
+        [result_ptr: 72],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, *mut u64) = mul_fp12_bls12_381_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                *mut u64,
+                &mut Vec<u64>,
+            ) = mul_fp12_bls12_381_c;
+            core::hint::black_box(f)(ins[0], ins[1], outs[0], &mut *hints)
+        }
+    );
     let a = &*(a_ptr as *const [u64; 72]);
     let b = &*(b_ptr as *const [u64; 72]);
-    let result = &mut *(result_ptr as *mut [u64; 72]);
-    *result = mul_fp12_bls12_381(
+    (result_ptr as *mut [u64; 72]).write(mul_fp12_bls12_381(
         a,
         b,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }

@@ -31,7 +31,7 @@ all = [
   "diagnostic-hints", "ed25519_verify", "fib_mod", "hashes", "keccak", "keccakf_cache", "liveness",
   "missing_entrypoint", "panic_modes", "poseidon1", "poseidon2", "secp256k1",
   "secp256k1_add", "secp256k1_dbl", "secp256r1", "secp256r1_add",
-  "secp256r1_dbl", "sha256", "twisted_edwards", "uint256",
+  "secp256r1_dbl", "sha256", "twisted_edwards", "uint256", "unaligned_out",
 ]
 
 # One feature per guest program. Enabling a feature makes `build.rs` compile that
@@ -80,6 +80,7 @@ secp256r1_dbl = []
 sha256 = []
 twisted_edwards = []
 uint256 = []
+unaligned_out = []
 zba = []
 zbc = []
 zbkc = []

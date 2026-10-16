@@ -16,6 +16,9 @@ mod dma;
 #[cfg(zisk_guest)]
 mod evm;
 #[cfg(zisk_guest)]
+#[doc(hidden)]
+pub use evm::jump_dest_bitmap_unaligned;
+#[cfg(zisk_guest)]
 mod fcall;
 
 #[cfg(zisk_guest)]

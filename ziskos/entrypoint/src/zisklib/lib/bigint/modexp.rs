@@ -8,7 +8,7 @@ use crate::alloc_extern::vec::Vec;
 
 use crate::zisklib::fcall_bin_decomp;
 
-use super::super::utils::slice_from_ffi;
+use super::super::utils::{slice_from_ffi, u64s_from_ffi};
 
 use super::{
     mul_and_reduce_long, mulmod_short, rem_long_init, rem_short_init, square_and_reduce_long,
@@ -326,9 +326,11 @@ pub unsafe extern "C" fn modexp_u64_c(
         return 0;
     }
 
-    let base_flat = slice_from_ffi(base_ptr, base_len);
-    let exp = slice_from_ffi(exp_ptr, exp_len);
-    let modulus_flat = slice_from_ffi(modulus_ptr, modulus_len);
+    // The caller's operands need not be 8-byte aligned: unaligned ones are copied.
+    let (mut base_copy, mut exp_copy, mut modulus_copy) = (Vec::new(), Vec::new(), Vec::new());
+    let base_flat = u64s_from_ffi(base_ptr, base_len, &mut base_copy);
+    let exp = u64s_from_ffi(exp_ptr, exp_len, &mut exp_copy);
+    let modulus_flat = u64s_from_ffi(modulus_ptr, modulus_len, &mut modulus_copy);
 
     // Pad the operands up to whole U256 limbs for the arithmetic. These are local
     // buffers: the caller's lengths keep their meaning, so the rounding cannot leak
@@ -356,10 +358,18 @@ pub unsafe extern "C" fn modexp_u64_c(
     // than the modulus, so every word from index `modulus_len` on is zero and
     // dropping them is lossless. It may also be shorter, since `modexp` returns a
     // single limb for its early exits, so the high words are zero-filled.
-    let result = core::slice::from_raw_parts_mut(result_ptr, modulus_len);
     let written = result_slice.len().min(modulus_len);
-    result[..written].copy_from_slice(&result_slice[..written]);
-    result[written..].fill(0);
+    if (result_ptr as usize) & 0x7 == 0 {
+        let result = core::slice::from_raw_parts_mut(result_ptr, modulus_len);
+        result[..written].copy_from_slice(&result_slice[..written]);
+        result[written..].fill(0);
+    } else {
+        // An unaligned result buffer can't be a `&mut [u64]`: store word by word.
+        let words = result_slice[..written].iter().copied().chain(core::iter::repeat(0));
+        for (i, word) in words.take(modulus_len).enumerate() {
+            result_ptr.add(i).write_unaligned(word);
+        }
+    }
 
     modulus_len
 }
