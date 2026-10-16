@@ -23,7 +23,7 @@ require "arith/pil/arith.pil"
 require "big_int/pil/big_int_add.pil"
 require "arith_eq/pil/arith_eq.pil"
 require "arith_eq_384/pil/arith_eq_384.pil"
-require "babyjubjub/pil/babyjubjub.pil"
+require "twisted_edwards/pil/twisted_edwards.pil"
 require "keccakf/pil/keccakf.pil"
 require "sha256f/pil/sha256f.pil"
 require "dma/pil/dma.pil"
@@ -149,7 +149,7 @@ airgroup Zisk {
     ArithEq384(N: 2**20);
     ArithEq384(N: 2**21) alias ArithEq384Large;
 
-    BabyJubJub(N: 2**18);
+    TwistedEdwards(N: 2**18);
     virtual ArithEqLtTable(ARITH_EQ_LT_TABLE_SIZE);
 
     Keccakf(N: 2**21, lanes_per_row: 5);

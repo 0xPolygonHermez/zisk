@@ -12,8 +12,8 @@ use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_cluster_common::{JobId, PartitionInfo};
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{
-    AirInstanceCount, ProgramVK, Proof, ProofKind, SetupKey, StatsCostPerType, ZiskExecutorTime,
-    ZiskPaths,
+    AirInstanceCount, ProgramVK, Proof, ProofKind, RandomSeed, SetupKey, StatsCostPerType,
+    ZiskExecutorTime, ZiskPaths,
 };
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
@@ -343,6 +343,8 @@ pub struct JobContext {
     pub hash_id: String,
     /// Input/hints data context for the job.
     pub data_ctx: DataCtx,
+    /// Seed every emulation of the job runs with.
+    pub random_seed: RandomSeed,
     /// This worker's rank within the job.
     pub rank_id: u32,
     /// Total number of workers assigned to the job.
@@ -823,6 +825,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         job_id: JobId,
         hash_id: String,
         data_ctx: DataCtx,
+        seed: RandomSeed,
         rank_id: u32,
         total_workers: u32,
         allocation: Vec<u32>,
@@ -834,6 +837,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             job_id: job_id.clone(),
             hash_id,
             data_ctx,
+            random_seed: seed,
             rank_id,
             total_workers,
             allocation,
@@ -890,6 +894,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     allocation: job.allocation.clone(),
                     worker_idx: job.rank_id as usize,
                 },
+                random_seed: *job.random_seed.as_bytes(),
             };
 
             borsh::to_vec(&(WorkerMpiTag::Contributions, message)).map_err(|e| {
@@ -941,6 +946,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     allocation: job.allocation.clone(),
                     worker_idx: job.rank_id as usize,
                 },
+                random_seed: *job.random_seed.as_bytes(),
             };
 
             borsh::to_vec(&(WorkerMpiTag::Execution, message)).map_err(|e| {
@@ -1032,6 +1038,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     let phase_inputs = proofman::ProvePhaseInputs::Contributions();
                     let inputs_source = guard.data_ctx.input_source.clone();
                     let hints_source = guard.data_ctx.hints_source.clone();
+                    let seed = guard.random_seed;
                     let partition_info = PartitionInfo {
                         total_compute_units: guard.total_compute_units as usize,
                         allocation: guard.allocation.clone(),
@@ -1044,6 +1051,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         phase_inputs,
                         inputs_source,
                         hints_source,
+                        seed,
                         partition_info,
                         options,
                     );
@@ -1131,6 +1139,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
                     let inputs_source = guard.data_ctx.input_source.clone();
                     let hints_source = guard.data_ctx.hints_source.clone();
+                    let seed = guard.random_seed;
                     let partition_info = PartitionInfo {
                         total_compute_units: guard.total_compute_units as usize,
                         allocation: guard.allocation.clone(),
@@ -1143,6 +1152,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         &prover,
                         inputs_source,
                         hints_source,
+                        seed,
                         partition_info,
                         &guest_program,
                     );
@@ -1218,6 +1228,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         phase_inputs: ProvePhaseInputs,
         input_source: InputSourceDto,
         hints_source: HintsSourceDto,
+        seed: RandomSeed,
         partition_info: PartitionInfo,
         options: ProofOptions,
     ) -> Result<Vec<ContributionsInfo>> {
@@ -1247,7 +1258,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
         }
 
-        prover.set_stdin(stdin)?;
+        prover.set_stdin_and_random_seed(stdin, seed)?;
 
         if matches!(phase_inputs, ProvePhaseInputs::Contributions()) {
             prover.set_partition(
@@ -1285,6 +1296,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         prover: &ZiskProver<T>,
         input_source: InputSourceDto,
         hints_source: HintsSourceDto,
+        seed: RandomSeed,
         partition_info: PartitionInfo,
         guest_program: &GuestProgram,
     ) -> Result<(usize, Vec<u64>)> {
@@ -1312,15 +1324,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
         }
 
-        prover.set_stdin(stdin.clone())?;
-
         prover.set_partition(
             partition_info.total_compute_units,
             partition_info.allocation.clone(),
             partition_info.worker_idx,
         )?;
 
-        let result = prover.execute(guest_program, stdin)?;
+        let result = prover.execute(guest_program, stdin, Some(seed))?;
 
         let num_instances = prover.get_execution_info()?.0.total_instances;
 
@@ -1349,10 +1359,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             _ => anyhow::bail!("Unsupported proof_dest for wrap: {}", proof_dest),
         };
 
-        let proof: Proof =
-            bincode::serde::decode_from_slice(&proof_data, bincode::config::standard())
-                .map(|(v, _)| v)
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize proof for wrap: {}", e))?;
+        let proof = Proof::from_bytes(&proof_data)
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize proof for wrap: {}", e))?;
 
         let result = prover.wrap_proof(&proof, proof_kind).run()?;
 
@@ -1717,6 +1725,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 let guest_programs = self.guest_programs.clone();
                 let is_execution = matches!(tag, WorkerMpiTag::Execution);
                 let world_rank = self.world_rank();
+                let seed = RandomSeed::new(message.random_seed);
                 let handle = tokio::task::spawn_blocking(move || {
                     let run = || -> Result<()> {
                         if is_execution {
@@ -1733,6 +1742,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 &prover,
                                 message.input_source,
                                 message.hints_source,
+                                seed,
                                 message.partition_info,
                                 &guest_program,
                             )?;
@@ -1743,6 +1753,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 message.phase_inputs,
                                 message.input_source,
                                 message.hints_source,
+                                seed,
                                 message.partition_info,
                                 message.options,
                             )?;

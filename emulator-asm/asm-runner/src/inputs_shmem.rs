@@ -4,7 +4,10 @@ use named_sem::NamedSemaphore;
 use zisk_common::io::{StreamError, StreamProcessor, StreamSink};
 use zisk_core::MAX_INPUT_SIZE;
 
-use crate::{sem_input_avail_name, shmem_input_name, AsmServices, ControlShmem, ShmemWriter};
+use crate::{
+    sem_input_avail_name, shmem_input_name, AsmServices, ControlShmem, ShmemWriter,
+    RANDOM_SEED_WORDS,
+};
 
 use anyhow::Result;
 
@@ -77,6 +80,12 @@ impl InputsShmemWriter {
         self.control_writer.inc_inputs_size(inputs.len())?;
         self.notify_all_services()?;
         Ok(())
+    }
+
+    /// Sets the host randomness seed for the next execution in the control shared memory. Call it
+    /// before the ASM services start that execution; the next `reset()` clears it.
+    pub fn set_random_seed(&self, seed: &[u64; RANDOM_SEED_WORDS]) -> Result<()> {
+        self.control_writer.set_random_seed(seed)
     }
 
     fn notify_all_services(&self) -> Result<()> {

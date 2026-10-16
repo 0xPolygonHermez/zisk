@@ -16,7 +16,6 @@ const PROGRAMS: &[&str] = &[
     "arith256",
     "arith256_mod",
     "arith384_mod",
-    "babyjubjub_add",
     "big_input",
     "bigint",
     "blake2b",
@@ -36,6 +35,7 @@ const PROGRAMS: &[&str] = &[
     "bn254_dbl",
     "diagnostic",
     "diagnostic-hints",
+    "ed25519_verify",
     "fib_mod",
     "hashes",
     "keccak",
@@ -52,6 +52,7 @@ const PROGRAMS: &[&str] = &[
     "secp256r1_add",
     "secp256r1_dbl",
     "sha256",
+    "twisted_edwards",
     "uint256",
     "unaligned_out",
 ];

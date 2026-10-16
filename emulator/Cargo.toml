@@ -25,6 +25,7 @@ path = "src/report/main.rs"
 [dependencies]
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
+ziskos = { workspace = true }
 zisk-pil = { workspace = true }
 zisk-riscv = { workspace = true }
 zisk-transpiler-common = { workspace = true }

@@ -33,7 +33,7 @@ use std::{
 };
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId, EmuTrace,
-    ExecutorStatsHandle, Plan, ZiskExecutorSummary, ZiskExecutorTime,
+    ExecutorStatsHandle, Plan, RandomSeed, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
 use zisk_sm_main::{MainPlanner, MainSM};
@@ -168,10 +168,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         &self,
         zisk_rom: Arc<ZiskRom>,
         stdin: ZiskStdin,
+        seed: RandomSeed,
         use_hints: bool,
     ) -> ExecutorResult<(ZiskExecutorSummary, Vec<(u64, u32)>, Vec<PlanSummaryEntry>)> {
         self.state.set_rom(zisk_rom, use_hints);
-        self.state.set_stdin(stdin);
+        self.state.set_stdin_and_random_seed(stdin, seed);
         let registry = NoopProofRegistry::default();
         let global_ids = RwLock::new(Vec::new());
         self.execute_inner(&registry, None, &global_ids)?;
@@ -233,9 +234,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.witness.as_ref().map(|w| w.is_packed()).unwrap_or(false)
     }
 
-    /// Sets the standard input for execution.
-    pub fn set_stdin(&self, stdin: ZiskStdin) -> ExecutorResult<()> {
-        self.state.set_stdin(stdin);
+    /// Sets the standard input and seed for the next execution.
+    pub fn set_stdin_and_random_seed(
+        &self,
+        stdin: ZiskStdin,
+        seed: RandomSeed,
+    ) -> ExecutorResult<()> {
+        self.state.set_stdin_and_random_seed(stdin, seed);
         Ok(())
     }
 
@@ -385,9 +390,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let zisk_rom = self.state.get_rom()?;
         let stdin = self.state.get_stdin();
+        let seed = self.state.get_random_seed()?;
+        tracing::info!("Random seed: {seed}");
         let output = self.execution.run::<F>(
             &zisk_rom,
             &stdin,
+            &seed,
             // The ROM-histogram runner is what asks the assembly child for a histogram,
             // so not spawning it leaves that child idle. Skipped without a witness:
             // there is no ROM state machine to read one, and the standalone path would
@@ -526,6 +534,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         };
         let mut execution_result =
             ZiskExecutorSummary::new(steps, zisk_execution_time, cost_per_type);
+        execution_result.random_seed = Some(seed);
         // Per-AIR instance plan, captured from the registry's planning counts. Only the
         // full (proofman) path exposes this via the summary; the standalone path returns
         // its own (named) plan directly, so skip the work when there's no `SetupCtx`.

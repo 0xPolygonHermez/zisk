@@ -48,7 +48,7 @@
 use std::time::Duration;
 
 use crate::Result;
-use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
+use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues, RandomSeed};
 use zisk_prover_backend::GuestProgram;
 
 use crate::{
@@ -127,6 +127,7 @@ impl Client for ZiskClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
@@ -134,10 +135,10 @@ impl Client for ZiskClient {
     ) -> Result<JobHandle<ProveResult>> {
         match &self.inner {
             Inner::Embedded(c) => {
-                c.run_prove(program, stdin, hints, executor, proof_kind, timeout, subs)
+                c.run_prove(program, stdin, hints, seed, executor, proof_kind, timeout, subs)
             }
             Inner::Remote(c) => {
-                c.run_prove(program, stdin, hints, executor, proof_kind, timeout, subs)
+                c.run_prove(program, stdin, hints, seed, executor, proof_kind, timeout, subs)
             }
         }
     }
@@ -147,13 +148,16 @@ impl Client for ZiskClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ExecuteResult>> {
         match &self.inner {
-            Inner::Embedded(c) => c.run_execute(program, stdin, hints, executor, timeout, subs),
-            Inner::Remote(c) => c.run_execute(program, stdin, hints, executor, timeout, subs),
+            Inner::Embedded(c) => {
+                c.run_execute(program, stdin, hints, seed, executor, timeout, subs)
+            }
+            Inner::Remote(c) => c.run_execute(program, stdin, hints, seed, executor, timeout, subs),
         }
     }
 

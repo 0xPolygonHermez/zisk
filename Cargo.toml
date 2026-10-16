@@ -54,7 +54,7 @@ members = [
   "precompiles/blake2",
   "precompiles/blake3",
   "precompiles/big_int",
-  "precompiles/babyjubjub",
+  "precompiles/twisted_edwards",
   "precompiles/dma",
   "precompiles/evm",
   "precompiles/poseidon",
@@ -118,7 +118,7 @@ zisk-precomp-blake2 = { path = "precompiles/blake2", version = "1.4.0-alpha" }
 zisk-precomp-blake3 = { path = "precompiles/blake3", version = "1.4.0-alpha" }
 zisk-precomp-poseidon = { path = "precompiles/poseidon", version = "1.4.0-alpha" }
 zisk-precomp-big-int = { path = "precompiles/big_int", version = "1.4.0-alpha" }
-zisk-precomp-babyjubjub = { path = "precompiles/babyjubjub", version = "1.4.0-alpha" }
+zisk-precomp-twisted-edwards = { path = "precompiles/twisted_edwards", version = "1.4.0-alpha" }
 zisk-precomp-dma = { path = "precompiles/dma", version = "1.4.0-alpha" }
 zisk-precomp-evm = { path = "precompiles/evm", version = "1.4.0-alpha" }
 zisk-riscv = { path = "transpilers/riscv", version = "1.4.0-alpha" }

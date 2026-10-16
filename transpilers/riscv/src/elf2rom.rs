@@ -111,6 +111,8 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
+    rom.zkvmcalls = zkvmcall_ids.clone();
+
     // Add the end instruction, jumping over it
     add_end_and_lib(&mut rom);
 

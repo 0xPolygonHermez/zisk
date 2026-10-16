@@ -65,6 +65,10 @@ impl Coordinator {
             HintsModeDto::HintsNone => HintsSourceDto::HintsNull,
         };
 
+        let seed = job.random_seed.ok_or_else(|| {
+            CoordinatorError::Internal(format!("job {} has no random seed", job.job_id))
+        })?;
+
         // Use Arc to avoid expensive clones
         let active_workers = active_workers.to_vec();
         let total_workers = active_workers.len() as u32;
@@ -98,6 +102,7 @@ impl Coordinator {
                     total_workers,
                     worker_allocation,
                     job_compute_units: job_compute_capacity,
+                    random_seed: seed,
                 };
 
                 let params = if execution_only {
@@ -642,6 +647,7 @@ impl Coordinator {
         }
 
         let exec_stats = exec_stats_from_job(&job);
+        let seed = job.random_seed;
 
         // Pairs with launch_proof's record_job_started (execution-only path).
         crate::metrics::record_job_terminal(
@@ -658,6 +664,7 @@ impl Coordinator {
             CoordinatorJobEvent::Completed(CoordinatorJobResult::Execute {
                 stats: exec_stats,
                 public_outputs,
+                random_seed: seed,
             }),
         )
         .await;

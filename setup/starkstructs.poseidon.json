@@ -48,7 +48,7 @@
   "ArithBn254Complex": {
     "hasCompressor": true
   },
-  "BabyJubJub": {
+  "TwistedEdwards": {
     "hasCompressor": true
   },
   "Main": {

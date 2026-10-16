@@ -61,6 +61,7 @@ struct Proof {
     public_inputs:    Vec<u8>,       // serialized public inputs committed to by the proof
     started_at:       DateTime<Utc>, // when the job started executing
     completed_at:     DateTime<Utc>, // when the proof was finalized
+    random_seed:      Option<[u8; 32]>, // host randomness seed of the attested execution (also inside `data`); absent for aggregates
 }
 
 struct CostPerType {
@@ -331,6 +332,7 @@ struct ProveRequest {
     hash_id:       String,           // Elf hash id
     input:         InputKind,
     proof_timeout: Option<DateTime<Utc>>, // proof generation timeout; server default if omitted
+    random_seed:   Option<[u8; 32]>, // provide the host randomness seed (replays); see below
 }
 
 struct ProveResponse {
@@ -379,13 +381,31 @@ struct ExecuteRequest {
     hash_id:         String,           // Elf hash id
     input:           InputKind,
     execute_timeout: Option<DateTime<Utc>>, // execution timeout; server default if omitted
+    random_seed:     Option<[u8; 32]>, // provide the host randomness seed (replays); see below
 }
 
 struct ExecuteResponse {
     stats:          ExecutionStats, // execution statistics (steps, duration, cost breakdown)
     public_outputs: Vec<u8>,        // serialized public outputs produced by the program
+    random_seed:    Option<[u8; 32]>, // host randomness seed the job ran with; pass it back as `random_seed` to replay
 }
 ```
+
+### Host randomness seed
+
+Every prove and execute job runs with a 256-bit host randomness seed, from which the emulators
+derive the values the guest reads through `zkvm_random_u64`. The coordinator draws a fresh one per
+job, unless the request provides one (see below), and returns it with the job's result: in
+`Proof.random_seed` for prove (and wrap, which keeps the source proof's seed) and in
+`ExecuteResponse.random_seed` for execute. The serialized ZisK proof in `Proof.data` carries the
+same seed as its last field, so it survives once the proof is saved. Passing that seed back in the
+request's `random_seed` field replays the run.
+
+A provided seed is accepted only when the coordinator config sets
+`coordinator.allow_client_random_seed = true`; otherwise the job is rejected with
+`CLIENT_RANDOM_SEED_NOT_ALLOWED`. The seed must be unpredictable to whoever writes the guest input,
+who could otherwise craft inputs that are expensive under that seed (for example hash-map
+collisions), so keep the option off when clients are not trusted.
 
 ## Error Handling
 
@@ -398,6 +418,7 @@ All RPC methods may return `ApiError`. Common error codes:
 | 1003 | `PROGRAM_NOT_SETUP` | Program exists but setup not completed |
 | 1004 | `INVALID_JOB_STATE` | Operation not valid for current job state (e.g., `PushJobInput` on non-input job) |
 | 1005 | `INVALID_PROOF_CONVERSION` | Unsupported `proof_dest` for given `proof_kind` |
+| 1006 | `CLIENT_RANDOM_SEED_NOT_ALLOWED` | Request provided a random seed and the coordinator does not allow client random seeds |
 | 2001 | `CLUSTER_UNAVAILABLE` | No coordinator available |
 | 3001 | `INTERNAL` | Unexpected server error; include `trace_id` in support requests |
 

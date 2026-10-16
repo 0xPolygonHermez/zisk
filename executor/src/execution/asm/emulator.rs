@@ -17,7 +17,7 @@ use proofman_fields::PrimeField64;
 use zisk_asm_runner::{AsmRunnerMT, HintsShmem};
 use zisk_common::{
     io::StreamSource, io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, ChunkId, EmuTrace,
-    ExecutorStatsHandle, StatsScope,
+    ExecutorStatsHandle, RandomSeed, StatsScope,
 };
 use zisk_core::ZiskRom;
 use zisk_precomp_hints::HintsProcessor;
@@ -123,6 +123,7 @@ impl EmulatorAsm {
         &self,
         zisk_rom: &ZiskRom,
         stdin: &ZiskStdin,
+        seed: &RandomSeed,
         has_rom_sm: bool,
         use_hints: bool,
         stats: &ExecutorStatsHandle,
@@ -144,6 +145,8 @@ impl EmulatorAsm {
 
         stats_begin!(stats, &_exec_scope, _write_scope, "ASM_WRITE_INPUT", 0);
 
+        // The seed first: the ASM services read it when they start the execution below
+        asm_resources.write_random_seed(seed)?;
         asm_resources.write_input(stdin)?;
 
         stats_end!(stats, &_write_scope);

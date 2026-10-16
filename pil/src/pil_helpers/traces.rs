@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "f7d315c0515d4fe0386cba541381f3beb749b967f367fda5a8c08f2a11ff1787";
+pub const PILOUT_HASH: &str = "3df3a91972bffd6890bc0fa68fb5798840ea0b8e230ad5e523bf9fb6757dfc16";
 
 //AIRGROUP CONSTANTS
 
@@ -94,7 +94,7 @@ pub const ARITH_EQ_384_AIR_IDS: &[usize] = &[33];
 
 pub const ARITH_EQ_384_LARGE_AIR_IDS: &[usize] = &[34];
 
-pub const BABY_JUB_JUB_AIR_IDS: &[usize] = &[35];
+pub const TWISTED_EDWARDS_AIR_IDS: &[usize] = &[35];
 
 pub const KECCAKF_AIR_IDS: &[usize] = &[36];
 
@@ -559,16 +559,16 @@ trace_row!(ArithEq384LargeTraceRow<F> {
 
 pub type ArithEq384LargeTrace<R> = GenericTrace<R, 2097152, 0, 34>;
 
-trace_row!(BabyJubJubFixedRow<F> {
+trace_row!(TwistedEdwardsFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type BabyJubJubFixed<F> = GenericTrace<BabyJubJubFixedRow<F>, 262144, 0, 35>;
+pub type TwistedEdwardsFixed<F> = GenericTrace<TwistedEdwardsFixedRow<F>, 262144, 0, 35>;
 
-trace_row!(BabyJubJubTraceRow<F> {
- x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, A:u16, B:u16, Nx:u16, T:u16, DT:u16, qa:ubit(22), qb:ubit(22), qn:ubit(22), qt:ubit(22), qdt:ubit(22), qx:ubit(22), qy:ubit(22), sel_op:[bit; 1], sel_op_clk0:[bit; 1], x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 7], step_addr:ubit(40),
+trace_row!(TwistedEdwardsTraceRow<F> {
+ x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, A:u16, B:u16, Nx:u16, T:u16, DT:u16, qa:ubit(22), qb:ubit(22), qn:ubit(22), qt:ubit(22), qdt:ubit(22), qx:ubit(22), qy:ubit(22), sel_op:[bit; 2], sel_op_clk0:[bit; 2], x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 7], step_addr:ubit(40),
 });
 
-pub type BabyJubJubTrace<R> = GenericTrace<R, 262144, 0, 35>;
+pub type TwistedEdwardsTrace<R> = GenericTrace<R, 262144, 0, 35>;
 
 trace_row!(KeccakfFixedRow<F> {
  CLK_0: F, ROUND_CLK_0: F, __L1__: F,
@@ -1030,7 +1030,7 @@ values!(ArithEq384LargeAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(BabyJubJubAirGroupValues<F> {
+values!(TwistedEdwardsAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
@@ -1280,7 +1280,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 35, PackedInfoConst {
         is_packed: true,
         num_packed_words: 22,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 22, 22, 22, 1, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 40],
+        unpack_info: &[16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 40],
     }),
     (0, 36, PackedInfoConst {
         is_packed: true,
@@ -1402,7 +1402,7 @@ pub const AIR_NAMES: &[(usize, usize, &str)] = &[
     (0, 32, "ArithBn254Large"),
     (0, 33, "ArithEq384"),
     (0, 34, "ArithEq384Large"),
-    (0, 35, "BabyJubJub"),
+    (0, 35, "TwistedEdwards"),
     (0, 36, "Keccakf"),
     (0, 37, "Sha256f"),
     (0, 38, "Poseidon"),

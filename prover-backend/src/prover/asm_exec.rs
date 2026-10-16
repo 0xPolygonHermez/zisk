@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::RandomSeed;
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, ZiskExecutor};
 use zisk_transpiler_common::ZiskTranspiler;
@@ -83,9 +84,14 @@ impl AsmExecClient {
 
     /// Run the program set up by [`setup`](Self::setup) once with the given
     /// stdin. `hints` installs a precompile hints stream (only effective when
-    /// the client was set up with `with_hints = true`). Returns an error if
-    /// `setup` has not been called.
-    pub fn execute(&self, stdin: ZiskStdin, hints: Option<StreamSource>) -> Result<ExecuteOutput> {
+    /// the client was set up with `with_hints = true`). A `None` seed draws a
+    /// fresh one. Returns an error if `setup` has not been called.
+    pub fn execute(
+        &self,
+        stdin: ZiskStdin,
+        hints: Option<StreamSource>,
+        seed: Option<RandomSeed>,
+    ) -> Result<ExecuteOutput> {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program, with_hints) before execute")?;
 
@@ -100,10 +106,15 @@ impl AsmExecClient {
             }
         }
 
+        let seed = seed.map_or_else(RandomSeed::random, Ok)?;
         tracing::info!("Running ASM execute (with_hints={})", setup.with_hints);
         let started = Instant::now();
-        let (summary, pub_outs, plan) =
-            self.executor.execute_standalone(setup.zisk_rom.clone(), stdin, setup.with_hints)?;
+        let (summary, pub_outs, plan) = self.executor.execute_standalone(
+            setup.zisk_rom.clone(),
+            stdin,
+            seed,
+            setup.with_hints,
+        )?;
         Ok(ExecuteOutput::new_standalone(started.elapsed(), summary, &pub_outs, plan))
     }
 
@@ -154,7 +165,8 @@ impl ExecuteClient for AsmExecClient {
         _program: &GuestProgram,
         stdin: ZiskStdin,
         hints: Option<StreamSource>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
-        AsmExecClient::execute(self, stdin, hints)
+        AsmExecClient::execute(self, stdin, hints, seed)
     }
 }

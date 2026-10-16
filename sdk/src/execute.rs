@@ -3,6 +3,7 @@ use std::ops::Deref;
 use std::time::Duration;
 
 use crate::Result;
+use zisk_common::RandomSeed;
 use zisk_prover_backend::{ExecuteOutput, GuestProgram};
 
 use crate::hints::HintsSource;
@@ -54,6 +55,7 @@ pub struct ExecuteRequest<'a, C> {
     program: &'a GuestProgram,
     stdin: InputSource,
     hints: Option<HintsSource>,
+    random_seed: Option<RandomSeed>,
     executor: ExecutorKind,
     timeout: Option<Duration>,
 }
@@ -66,7 +68,15 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
         stdin: impl Into<InputSource>,
         executor: ExecutorKind,
     ) -> Self {
-        Self { client, program, stdin: stdin.into(), hints: None, executor, timeout: None }
+        Self {
+            client,
+            program,
+            stdin: stdin.into(),
+            hints: None,
+            random_seed: None,
+            executor,
+            timeout: None,
+        }
     }
 
     /// Attach a hints stream to this execute request.
@@ -77,6 +87,15 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
     #[must_use]
     pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
         self.hints = Some(hints.into());
+        self
+    }
+
+    /// Use this host randomness seed instead of drawing a fresh one. Every result reports the seed
+    /// it ran with. A remote coordinator rejects it unless it is configured to allow client random
+    /// seeds.
+    #[must_use]
+    pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
+        self.random_seed = seed.into();
         self
     }
 
@@ -101,6 +120,7 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
             self.program,
             self.stdin,
             self.hints,
+            self.random_seed,
             self.executor,
             self.timeout,
             subs,
@@ -118,7 +138,14 @@ impl<'a, C: ClientSync> ExecuteRequest<'a, C> {
     /// ([`EmbeddedClient`](crate::EmbeddedClient)).
     pub fn run_sync(self) -> Result<ExecuteResult> {
         let subs = new_subscriber_list();
-        self.client.run_execute_sync(self.program, self.stdin, self.hints, self.executor, subs)
+        self.client.run_execute_sync(
+            self.program,
+            self.stdin,
+            self.hints,
+            self.random_seed,
+            self.executor,
+            subs,
+        )
     }
 }
 
@@ -132,6 +159,7 @@ pub struct ExecuteRequestExt<'a> {
     program: &'a GuestProgram,
     stdin: InputSource,
     hints: Option<HintsSource>,
+    random_seed: Option<RandomSeed>,
     executor: ExecutorKind,
     timeout: Option<Duration>,
     metadata: BTreeMap<String, String>,
@@ -148,6 +176,7 @@ impl<'a> ExecuteRequestExt<'a> {
             program,
             stdin: stdin.into(),
             hints: None,
+            random_seed: None,
             executor: ExecutorKind::default(),
             timeout: None,
             metadata: BTreeMap::new(),
@@ -166,6 +195,15 @@ impl<'a> ExecuteRequestExt<'a> {
     #[must_use]
     pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
         self.hints = Some(hints.into());
+        self
+    }
+
+    /// Use this host randomness seed instead of drawing a fresh one. Every result reports the seed
+    /// it ran with. A remote coordinator rejects it unless it is configured to allow client random
+    /// seeds.
+    #[must_use]
+    pub fn random_seed(mut self, seed: impl Into<Option<RandomSeed>>) -> Self {
+        self.random_seed = seed.into();
         self
     }
 
@@ -190,6 +228,7 @@ impl<'a> ExecuteRequestExt<'a> {
             self.program,
             self.stdin,
             self.hints,
+            self.random_seed,
             self.executor,
             self.timeout,
             subs,

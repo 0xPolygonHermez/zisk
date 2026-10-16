@@ -15,12 +15,12 @@ use ziskos::zisklib::fcall_proxy;
 use crate::{
     blake2br, blake2sf, blake3f, operations::*, sha256f, EmulationMode, InstContext, Mem,
     ZiskOperationType, ZiskRequiredOperation, ADD256_COST, ADD_U_W_COST, ARITHA32_COST,
-    ARITHAM32_COST, ARITH_EQ_384_COST, ARITH_EQ_COST, BABYJUBJUB_COST, BINARY_ADD_COST,
-    BINARY_COST, BINARY_E_COST, BLAKE2B_COST, BLAKE2S_COST, BLAKE3_COST, DMA_64_ALIGNED_COST,
-    DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST, DMA_MEMSET_COST,
-    DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR,
-    INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST, REG_A0,
-    SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
+    ARITHAM32_COST, ARITH_EQ_384_COST, ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST,
+    BLAKE2B_COST, BLAKE2S_COST, BLAKE3_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST,
+    DMA_MEMCMP_COST, DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST,
+    EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64,
+    MAX_INPUT_SIZE, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST,
+    SYS_ADDR, TWISTED_EDWARDS_COST,
 };
 use paste::paste;
 use proofman_fields::{
@@ -35,7 +35,7 @@ use std::{
 use tiny_keccak::keccakf;
 use ziskos::zisklib::{
     keccakf_cache::KECCAKF_STATE_WORDS, FCALL_GET_KECCAKF_CACHE_INDEX_ID, FCALL_INPUT_READY_ID,
-    FCALL_SET_KECCAKF_CACHE_INDEX_ID,
+    FCALL_RANDOM_SEED_ID, FCALL_SET_KECCAKF_CACHE_INDEX_ID, RANDOM_SEED_WORDS,
 };
 
 use crate::ops_core::*;
@@ -67,7 +67,7 @@ pub enum OpType {
     Dma,
     Blake2b,
     Profile,
-    BabyJubJub,
+    TwistedEdwards,
     Blake3,
     Blake2s,
 }
@@ -91,7 +91,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::Dma => ZiskOperationType::Dma,
             OpType::Blake2b => ZiskOperationType::Blake2b,
             OpType::Profile => ZiskOperationType::Profile,
-            OpType::BabyJubJub => ZiskOperationType::BabyJubJub,
+            OpType::TwistedEdwards => ZiskOperationType::TwistedEdwards,
             OpType::Blake3 => ZiskOperationType::Blake3,
             OpType::Blake2s => ZiskOperationType::Blake2s,
         }
@@ -119,7 +119,7 @@ impl Display for OpType {
             Self::Dma => write!(f, "Dma"),
             Self::Blake2b => write!(f, "Blake2b"),
             Self::Profile => write!(f, "Profile"),
-            Self::BabyJubJub => write!(f, "BabyJubJub"),
+            Self::TwistedEdwards => write!(f, "TwistedEdwards"),
             Self::Blake3 => write!(f, "Blake3"),
             Self::Blake2s => write!(f, "Blake2s"),
         }
@@ -148,7 +148,7 @@ impl FromStr for OpType {
             "dma" => Ok(Self::Dma),
             "b2b" => Ok(Self::Blake2b),
             "profile" => Ok(Self::Profile),
-            "babyjubjub" => Ok(Self::BabyJubJub),
+            "twisted_edwards" => Ok(Self::TwistedEdwards),
             "b3" => Ok(Self::Blake3),
             "b2s" => Ok(Self::Blake2s),
             _ => Err(InvalidOpTypeError),
@@ -566,7 +566,8 @@ define_ops! {
     (Bls12_381ComplexSub, "bls12_381_complex_sub", ArithEq384, ARITH_EQ_384_COST, 0xe6, 192, 96, opc_bls12_381_complex_sub, op_bls12_381_complex_sub, ops_bls12_381_complex_sub),
     (Bls12_381ComplexMul, "bls12_381_complex_mul", ArithEq384, ARITH_EQ_384_COST, 0xe7, 192, 96, opc_bls12_381_complex_mul, op_bls12_381_complex_mul, ops_bls12_381_complex_mul),
     (Add256, "add256", BigInt, ADD256_COST, 0xf0, 104, 32, opc_add256, op_add256, ops_add256),
-    (BabyJubJubAdd, "babyjubjub_add", BabyJubJub, BABYJUBJUB_COST, 0xed, 128, 64, opc_babyjubjub_add, op_babyjubjub_add, ops_babyjubjub_add),
+    (BabyJubJubAdd, "babyjubjub_add", TwistedEdwards, TWISTED_EDWARDS_COST, 0xed, 128, 64, opc_babyjubjub_add, op_babyjubjub_add, ops_babyjubjub_add),
+    (Ed25519Add, "ed25519_add", TwistedEdwards, TWISTED_EDWARDS_COST, 0xe1, 128, 64, opc_ed25519_add, op_ed25519_add, ops_ed25519_add),
     (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, 200, opc_keccak, op_keccak, ops_none),
     (Arith256, "arith256", ArithEq, ARITH_EQ_COST, 0xf2, 136, 64, opc_arith256, op_arith256, ops_arith256),
     (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, 32, opc_arith256_mod, op_arith256_mod, ops_arith256_mod),
@@ -1688,6 +1689,44 @@ pub fn ops_babyjubjub_add(ctx: &InstContext, stats: &mut dyn OpStats) {
 }
 
 #[inline(always)]
+pub fn opc_ed25519_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_ab_data(ctx, 8, 8, &mut data, "ed25519_add");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        let (p1, p2) = data.split_at(8);
+
+        let p1: &[u64; 8] = p1.try_into().expect("opc_ed25519_add: p1.len != 8");
+        let p2: &[u64; 8] = p2.try_into().expect("opc_ed25519_add: p2.len != 8");
+        let mut p3 = [0u64; 8];
+
+        zisk_precomp_helpers::ed25519_add(p1, p2, &mut p3);
+
+        // the result overwrites p1 (address a)
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(ctx.a + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Ed25519Add can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_ed25519_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_ed25519_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_ed25519_add(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_ab_data(ctx, stats, 8, 8, 8);
+}
+
+#[inline(always)]
 pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
@@ -2204,6 +2243,20 @@ pub fn opc_fcall(ctx: &mut InstContext) {
         let index = ctx.keccakf_cache.get(&ctx.fcall.parameters[..KECCAKF_STATE_WORDS]);
         ctx.fcall.result[0] = index;
         1
+    } else if function_id == FCALL_RANDOM_SEED_ID as u64 {
+        if ctx.fcall.parameters_size != 0 {
+            panic!(
+                "opc_fcall() FCALL_RANDOM_SEED_ID called with parameters_size={} != 0",
+                ctx.fcall.parameters_size
+            );
+        }
+
+        // The seed comes with the execution; there is no safe default to fall back to
+        let Some(seed) = ctx.random_seed else {
+            panic!("opc_fcall() FCALL_RANDOM_SEED_ID called but no random seed was provided");
+        };
+        ctx.fcall.result[..RANDOM_SEED_WORDS].copy_from_slice(&seed);
+        RANDOM_SEED_WORDS as i64
     } else {
         fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result)
     };

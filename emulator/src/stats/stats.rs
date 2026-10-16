@@ -3567,6 +3567,7 @@ impl Stats {
             ZiskOp::Secp256k1Add
             | ZiskOp::Secp256r1Add
             | ZiskOp::BabyJubJubAdd
+            | ZiskOp::Ed25519Add
             | ZiskOp::Bn254CurveAdd
             | ZiskOp::Bn254ComplexAdd
             | ZiskOp::Bn254ComplexSub

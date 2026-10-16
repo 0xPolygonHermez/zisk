@@ -25,8 +25,8 @@ use zisk_asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, SetupKey, StatsCostPerType,
-    VadcopKind, ZiskExecutorTime, ZiskPaths,
+    AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, RandomSeed, SetupKey,
+    StatsCostPerType, VadcopKind, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
@@ -282,9 +282,10 @@ impl AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: RandomSeed,
     ) -> Result<ExecuteOutput> {
         self.register_program_for_emulator(&program.program_id)?;
-        self.core_prover.backend.execute(stdin)
+        self.core_prover.backend.execute(stdin, seed)
     }
 
     /// Generate a proof via the Rust emulator path, regardless of how the program was set up.
@@ -293,11 +294,12 @@ impl AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: RandomSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
         self.register_program_for_emulator(&program.program_id)?;
-        self.core_prover.backend.prove(stdin, proof_kind, prover_options)
+        self.core_prover.backend.prove(stdin, seed, proof_kind, prover_options)
     }
 
     /// Verify constraints via the Rust emulator path, regardless of how the program was set up.
@@ -305,10 +307,11 @@ impl AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         self.register_program_for_emulator(&program.program_id)?;
-        self.core_prover.backend.verify_constraints(stdin, debug_info)
+        self.core_prover.backend.verify_constraints(stdin, seed, debug_info)
     }
 }
 
@@ -370,23 +373,35 @@ impl ProverEngine for AsmProver {
                     ));
             }
 
-            if pctx.mpi_ctx.rank == 0 {
+            // Only rank 0 generates the files, but every rank learns whether it did: a rank 0 that
+            // returned an error on its own would leave the other ranks waiting for it.
+            let generated = if pctx.mpi_ctx.rank == 0 {
                 tracing::info!(
                     ">>> ROM SETUP (one time only) - Generating assembly files for ELF: {}",
                     elf.name()
                 );
                 timer_start_info!(ROM_SETUP);
-                let output_path = get_output_path(&None)?;
-                generate_assembly(
-                    elf.elf(),
-                    &output_path,
-                    with_hints,
-                    self.core_prover.asm_info.verbose != VerboseMode::Info,
-                )?;
+                let generated = get_output_path(&None).and_then(|output_path| {
+                    generate_assembly(
+                        elf.elf(),
+                        &output_path,
+                        with_hints,
+                        self.core_prover.asm_info.verbose != VerboseMode::Info,
+                    )
+                });
                 timer_stop_and_log_info!(ROM_SETUP);
-                tracing::info!("<<< ROM SETUP complete - Assembly files cached for future use");
+                if generated.is_ok() {
+                    tracing::info!("<<< ROM SETUP complete - Assembly files cached for future use");
+                }
+                generated
+            } else {
+                Ok(())
+            };
+            let all_ok = pctx.mpi_ctx.all_finished_ok(generated.is_ok());
+            generated?;
+            if !all_ok {
+                return Err(anyhow::anyhow!("ROM setup failed on MPI rank 0"));
             }
-            pctx.mpi_ctx.barrier();
         }
 
         // Sync all ranks.
@@ -424,8 +439,8 @@ impl ProverEngine for AsmProver {
         self.core_prover.rank_info.local_rank
     }
 
-    fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.core_prover.backend.set_stdin(stdin)
+    fn set_stdin_and_random_seed(&self, stdin: ZiskStdin, seed: RandomSeed) -> Result<()> {
+        self.core_prover.backend.set_stdin_and_random_seed(stdin, seed)
     }
 
     fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()> {
@@ -490,16 +505,22 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.get_execution_info()
     }
 
-    fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
+    fn execute(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        seed: RandomSeed,
+    ) -> Result<ExecuteOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
         self.register_program(&program.program_id, with_hints)?;
-        self.core_prover.backend.execute(stdin)
+        self.core_prover.backend.execute(stdin, seed)
     }
 
     fn stats(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
@@ -512,7 +533,7 @@ impl ProverEngine for AsmProver {
                 program.program_id.name
             ));
         }
-        self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
+        self.core_prover.backend.stats(stdin, seed, debug_info, minimal_memory, mpi_node)
     }
 
     fn get_instance_trace(
@@ -543,6 +564,7 @@ impl ProverEngine for AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
@@ -553,13 +575,14 @@ impl ProverEngine for AsmProver {
                 program.program_id.name
             ));
         }
-        self.core_prover.backend.verify_constraints(stdin, debug_info)
+        self.core_prover.backend.verify_constraints(stdin, seed, debug_info)
     }
 
     fn prove(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: RandomSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
@@ -571,7 +594,7 @@ impl ProverEngine for AsmProver {
                 program.program_id.name
             ));
         }
-        self.core_prover.backend.prove(stdin, proof_kind, prover_options)
+        self.core_prover.backend.prove(stdin, seed, proof_kind, prover_options)
     }
 
     fn wrap_proof(
@@ -580,12 +603,15 @@ impl ProverEngine for AsmProver {
         publics_full: &[u64],
         source_kind: VadcopKind,
         proof_kind: ProofKind,
+        seed: Option<RandomSeed>,
     ) -> Result<ProveOutput> {
         match proof_kind {
             ProofKind::VadcopFinalMinimal => {
-                self.core_prover.backend.minimal(proof, publics_full, source_kind)
+                self.core_prover.backend.minimal(proof, publics_full, source_kind, seed)
             }
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full, source_kind),
+            ProofKind::Plonk => {
+                self.core_prover.backend.plonk(proof, publics_full, source_kind, seed)
+            }
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
@@ -856,6 +882,7 @@ impl ExecuteClient for ZiskProver<Asm> {
         program: &GuestProgram,
         stdin: ZiskStdin,
         hints: Option<StreamSource>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
         // Every call is a job boundary for this client, which executes many times after
         // one setup. Before the hints below — see `ZiskExecutor::reset_for_new_job`.
@@ -863,6 +890,6 @@ impl ExecuteClient for ZiskProver<Asm> {
         if let Some(stream) = hints {
             ZiskProver::<Asm>::register_hints_stream(self, stream)?;
         }
-        ZiskProver::<Asm>::execute(self, program, stdin)
+        ZiskProver::<Asm>::execute(self, program, stdin, seed)
     }
 }
