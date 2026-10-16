@@ -369,6 +369,10 @@ sudo systemctl enable --now zisk-worker@2
 - Verify the worker's `compute_capacity` is sufficient for queued jobs
 - Ensure no two workers share the same `worker_id`
 
+**Worker exits with status 75:**
+- A worker that cannot recover in-process aborts every one of its MPI ranks with status 75 (`EX_TEMPFAIL`), so that its service manager restarts it. That happens when a cancelled or failed job's recovery fails or does not complete within 300 s, which a rank left in another MPI collective causes, and on any panic in a worker of several ranks. The worker's log says why, followed by `aborting the worker so that it restarts`.
+- The provided systemd unit (`Restart=on-failure`) and launchd job (`KeepAlive`) restart it with no action needed; elsewhere, restart it yourself.
+
 **Debug logging:**
 
 ```bash

@@ -632,6 +632,28 @@ pub trait ProverEngine {
     /// Block until any in-flight proofman entry point has returned. Called
     /// in recovery before advertising `Ready`. Default no-op.
     fn wait_until_proofman_ready(&self) {}
+
+    /// End every rank of the cluster, this one included, with exit `code`: the way
+    /// out once ranks may be in different MPI collectives, which nothing resumes.
+    /// The default, for an engine without MPI, exits this process.
+    fn abort_cluster(&self, code: i32) -> ! {
+        std::process::exit(code)
+    }
+
+    /// Whether every rank succeeded, from each one's `ok`. A collective MPI
+    /// operation: every rank must call it. The default, without MPI, is `ok`.
+    fn cluster_all_ok(&self, ok: bool) -> bool {
+        ok
+    }
+
+    /// Send `data` to MPI rank `dest`, tagged `tag`. A no-op without MPI.
+    fn mpi_send(&self, _dest: i32, _tag: i32, _data: &[u8]) {}
+
+    /// A message tagged `tag` from any rank, if one has arrived: its source rank
+    /// and its data. Never one without MPI.
+    fn mpi_try_receive(&self, _tag: i32) -> Option<(i32, Vec<u8>)> {
+        None
+    }
 }
 
 /// One job on a prover: one operation (execute, stats, verify_constraints or prove)
@@ -1075,6 +1097,29 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Block until any in-flight proofman entry point has returned.
     pub fn wait_until_proofman_ready(&self) {
         self.prover.wait_until_proofman_ready()
+    }
+
+    /// End every MPI rank of the prover, this one included, with exit `code`. See
+    /// [`ProverEngine::abort_cluster`].
+    pub fn abort_cluster(&self, code: i32) -> ! {
+        self.prover.abort_cluster(code)
+    }
+
+    /// Whether every MPI rank succeeded, from each one's `ok`. A collective: every
+    /// rank must call it.
+    pub fn cluster_all_ok(&self, ok: bool) -> bool {
+        self.prover.cluster_all_ok(ok)
+    }
+
+    /// Send `data` to MPI rank `dest`, tagged `tag`.
+    pub fn mpi_send(&self, dest: i32, tag: i32, data: &[u8]) {
+        self.prover.mpi_send(dest, tag, data)
+    }
+
+    /// A message tagged `tag` from any MPI rank, if one has arrived: its source
+    /// rank and its data.
+    pub fn mpi_try_receive(&self, tag: i32) -> Option<(i32, Vec<u8>)> {
+        self.prover.mpi_try_receive(tag)
     }
 }
 
