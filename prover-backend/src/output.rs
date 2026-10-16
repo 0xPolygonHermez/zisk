@@ -3,8 +3,7 @@ use std::path::Path;
 use std::time::Duration;
 use zisk_common::{
     PlonkVkey, ProgramVK, PublicValues, RandomSeed, StatsCostPerType, ZiskExecutorSummary,
-    ZiskExecutorTime,
-    ZiskVerifyBuilder, ZISK_PUBLICS,
+    ZiskExecutorTime, ZiskVerifyBuilder, ZISK_PUBLICS,
 };
 use zisk_executor::{AirClassifier, PlanSummaryEntry};
 
@@ -311,7 +310,7 @@ impl ProveOutput {
         Ok(self.proof.get_proof_u64()?)
     }
 
-    /// The proof serialized as raw bytes.
+    /// The proof's flat layout, without the seed trailer [`Proof::to_bytes`] adds.
     pub fn get_proof_bytes(&self) -> Result<Vec<u8>> {
         Ok(self.proof.get_proof_bytes()?)
     }

@@ -273,11 +273,10 @@ fn run_prove(
 
             let out_path =
                 output.cloned().unwrap_or_else(|| PathBuf::from(format!("{job_id}.proof.bin")));
-            // The coordinator sends its internal bincode `Proof`; save it as the file
-            // `cargo-zisk` writes and `verify`/`wrap`/`aggregate` read.
-            let (proof, _): (Proof, _) =
-                bincode::serde::decode_from_slice(&p.data, bincode::config::standard())
-                    .context("Cannot decode the coordinator's proof")?;
+            // The coordinator sends `Proof::to_bincode`; save it as the file `cargo-zisk`
+            // writes and `verify`/`wrap`/`aggregate` read.
+            let proof =
+                Proof::from_bincode(&p.data).context("Cannot decode the coordinator's proof")?;
             proof
                 .save(&out_path)
                 .with_context(|| format!("Cannot write proof to {}", out_path.display()))?;

@@ -15,7 +15,8 @@ impl RemoteClient {
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ProveResult>> {
-        let data = bincode::serde::encode_to_vec(proof, bincode::config::standard())
+        let data = proof
+            .to_bincode()
             .map_err(|e| SdkError::Serialization(format!("failed to serialize proof: {e}")))?;
 
         // Derive a deterministic UUID from the serialized proof bytes so that retrying
