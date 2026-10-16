@@ -5,8 +5,8 @@ use zisk_sm_mem_common::{RAM_W_ADDR_END, RAM_W_ADDR_INIT};
 
 use crate::mem_sm::{split_last_step, split_padding_size, MemFillOutput, MemPreviousSegment};
 
-/// A fill's observer: the filled rows as words and the fill's scalars, before the air instance is
-/// built. The arena check compares them with the device rows.
+/// What a device fill of a Mem instance returned: the planner's scalars and their translation into
+/// the air values' inputs, before the air instance is built.
 pub(crate) struct ArenaFillReport {
     pub res: zisk_sm_mem_planner::RamFillResult,
     pub previous_segment: MemPreviousSegment,

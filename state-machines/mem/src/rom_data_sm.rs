@@ -301,8 +301,6 @@ impl<F: PrimeField64> RomDataSM<F> {
         .unwrap_or(RomDataTraceRowPacked::<F>::PACKED_WORDS * 64)
     }
 
-    /// The rows of RomData instance `segment_id` from the GPU planner, with the fill's scalars and
-    /// the lane before the instance.
     /// The device's scalars of an instance as its fill output and continuation.
     fn from_result(
         res: &zisk_sm_mem_planner::RamFillResult,

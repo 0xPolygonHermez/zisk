@@ -120,10 +120,14 @@
 #define MAX_TRACE_CHUNK_INFO (((MT_CHUNK_HEADER_WORDS + 3)*8) + 32)
 #define MAX_BYTES_DIRECT_MTRACE 256
 #ifdef TRACE_TARGET_MO
-// Memory-ops records are tagged 8-byte words (one per read, two per write) and a precompile's
-// outputs are recorded per word: a keccak step is one read block plus 25 writes, 416 bytes. The
-// data sections are recorded per word once, at the ROM entry, hence the fixed margin. Mirrored
-// by the runner (asm_mo_runner.rs).
+// The memory-ops emulators (TRACE_TARGET=MO in the Makefile, both the heavy and the light form).
+// The room the chunk loop keeps before the end of the trace mapping, checked at every chunk end
+// (trace_address_threshold): one chunk's worst case. A heavy-form step can write far more than
+// a main-trace step (a write is two 8-byte words, a precompile's outputs are one write per word:
+// keccak is one block read plus 25 writes, 416 bytes), hence 1024 bytes per step instead of the
+// 312 of the other targets. The initialised data of the ELF is written once, one record per
+// word, at the ROM entry inside chunk 0 and before the first check, hence the fixed margin on
+// top. The runner keeps the same threshold (asm_mo_runner.rs, from zisk_core::MAX_MO_*).
 #define MAX_BYTES_MTRACE_STEP 1024
 #define MAX_MO_INIT_DATA_MARGIN (64ull << 20)
 #define MAX_CHUNK_TRACE_SIZE ((CHUNK_SIZE * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO + MAX_MO_INIT_DATA_MARGIN)

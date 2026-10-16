@@ -252,8 +252,8 @@ pub fn gen_assembly(
     Ok(())
 }
 
-/// Generate the three ASM binaries — minimal traces (`-mt`), ROM histogram
-/// (`-rh`), memory ops (`-mo`) and light memory ops (`-mol`) — for `elf` into `output_path`.
+/// Generate the four ASM binaries — minimal traces (`-mt`), ROM histogram (`-rh`), memory ops
+/// (`-moh`) and light memory ops (`-mol`) — for `elf` into `output_path`.
 ///
 /// Resolves and prepares the `emulator-asm` toolchain, transpiles the ELF to
 /// assembly for each trace target, and builds each binary via `make`. `hints`

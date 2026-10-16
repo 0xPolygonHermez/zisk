@@ -129,14 +129,6 @@ __global__ void other_scatter_align_kernel(const uint32_t* __restrict__ idx, con
     align_scatter(align, rec.value(k), word);
 }
 
-__global__ void rf_keys_kernel(RamRecords rec, size_t n, uint64_t* __restrict__ keys, uint32_t* __restrict__ idx) {
-    const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    const uint64_t m = rec.meta(i);
-    keys[i] = ((uint64_t)rec.addr(i) << RF_STEP_BITS) | (rf_step(m) & RF_STEP_MASK);
-    idx[i] = (uint32_t)i | (rf_kind(m) << RF_IDX_KIND_SHIFT);
-}
-
 // sidx and the lane anchors from the sorted keys.
 __device__ __forceinline__ uint64_t rf_key_chunk(uint64_t key, uint32_t chunk_bits) {
     return ((key & RF_STEP_MASK) - 1) >> (chunk_bits + 2);

@@ -118,7 +118,7 @@ impl AsmExecClient {
         Ok(ExecuteOutput::new_standalone(started.elapsed(), summary, &pub_outs, plan))
     }
 
-    /// Resolves cached `<base>-mt.bin` path. Generates all 3 ASM binaries
+    /// Resolves cached `<base>-mt.bin` path. Generates the four ASM binaries
     /// via `zisk_rom_setup::generate_assembly` if any are missing.
     fn ensure_asm_binaries(&self, program: &GuestProgram, with_hints: bool) -> Result<PathBuf> {
         let [mt, rh, mo, mol] = zisk_rom_setup::get_assembly_file_paths_from_id(
