@@ -10,6 +10,7 @@
 #include <semaphore.h>
 #include <fcntl.h>
 #include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include "trace.hpp"
 #include "server.hpp"
@@ -56,9 +57,10 @@ uint64_t trace_get_chunk_size (uint64_t chunk_id)
 {
     if (gen_method == RomHistogram) {
         assert(chunk_id == 0);
-        // The whole output is a fixed size known before the emulation starts, and it is both the
-        // shared memory size and the area zeroed at every run (the multiplicity counters must start
-        // at zero), so allocate exactly what is needed instead of the upper bound
+        // The whole output is a fixed size known before the emulation starts, and it is the area
+        // mapped and zeroed at every run (the multiplicity counters must start at zero), so map
+        // exactly what is needed instead of the upper bound. The shared memory object behind it
+        // is created at the upper bound instead: see trace_map_next_chunk()
         uint64_t size = ((histogram_size + TRACE_SIZE_GRANULARITY - 1) / TRACE_SIZE_GRANULARITY) * TRACE_SIZE_GRANULARITY;
         if (size > TRACE_INITIAL_SIZE_RH)
         {
@@ -228,6 +230,7 @@ void trace_map_next_chunk (void)
         // Open the chunk shared memory as read-write
         trace_chunk_fd[chunk_id] = shm_open(shmem_chunk_name, O_RDWR, 0666);
     }
+    bool opened_existing = !create_output_shm && open_output_shm && (trace_chunk_fd[chunk_id] >= 0);
 
     // If we failed opening the existing shared memory, create it now
     if (create_output_shm || (trace_chunk_fd[chunk_id] < 0))
@@ -243,8 +246,12 @@ void trace_map_next_chunk (void)
             exit(-1);
         }
 
-        // Size it
-        int result = ftruncate(trace_chunk_fd[chunk_id], chunk_size);
+        // Size it. The ROM histogram object is sized at the upper bound rather than at this
+        // program's histogram: every program set up in a process opens the one its first program
+        // created, and a larger program maps more of it. It costs nothing until written, since
+        // only the pages a program maps and zeroes are ever allocated
+        uint64_t object_size = (gen_method == RomHistogram) ? TRACE_INITIAL_SIZE_RH : chunk_size;
+        int result = ftruncate(trace_chunk_fd[chunk_id], object_size);
         if (result != 0)
         {
             asm_printf("ERROR: trace_map_next_chunk() failed calling ftruncate(%s) errno=%d=%s\n", shmem_chunk_name, errno, strerror(errno));
@@ -253,6 +260,23 @@ void trace_map_next_chunk (void)
 
         // Sync
         fsync(trace_chunk_fd[chunk_id]);
+    }
+
+    // An object opened rather than created was sized by whoever created it. Mapping past its end
+    // does not fail here but at the first write there, as SIGBUS, so check it now
+    if (opened_existing)
+    {
+        struct stat object_stat;
+        if (fstat(trace_chunk_fd[chunk_id], &object_stat) != 0)
+        {
+            asm_printf("ERROR: trace_map_next_chunk() failed calling fstat(%s) errno=%d=%s\n", shmem_chunk_name, errno, strerror(errno));
+            exit(-1);
+        }
+        if ((uint64_t)object_stat.st_size < chunk_size)
+        {
+            asm_printf("ERROR: trace_map_next_chunk() shared memory %s holds %lu B but this program needs %lu B\n", shmem_chunk_name, (uint64_t)object_stat.st_size, chunk_size);
+            exit(-1);
+        }
     }
 
     if (open_output_shm)

@@ -4,6 +4,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Result};
 use proofman::{AggProofs, ContributionsInfo, WitnessInfo};
+use std::collections::VecDeque;
 use std::path::Path;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
@@ -152,6 +153,41 @@ impl<T: ZiskBackend + 'static> WorkerNodeMpi<T> {
 pub struct WorkerNodeGrpc<T: ZiskBackend + 'static> {
     worker_config: WorkerServiceConfig,
     worker: Worker<T>,
+    /// Setups and tasks held back, in arrival order, so that a setup never runs
+    /// during a job and no task runs during a setup: a setup starts a program's
+    /// services, which rewrite the guest memory every program in the process shares,
+    /// and broadcasts to the peer ranks a job is using. A held-back task's stream data
+    /// is held back with it. See [`Self::run_deferred`].
+    deferred: VecDeque<DeferredWork>,
+    /// The setup running off the loop, until its `SetupProgramComplete` is handled.
+    /// Kept apart from the job's computation, which it must neither replace nor be
+    /// cancelled with.
+    setup_in_flight: Option<JoinHandle<()>>,
+    /// The recovery draining a cancelled job, which a setup waits for.
+    recovery: Option<JoinHandle<()>>,
+}
+
+/// Work [`WorkerNodeGrpc`] holds back until the worker can take it.
+enum DeferredWork {
+    Setup(SetupProgram),
+    /// Boxed: a task request is several times the size of the other variants.
+    Task(Box<ExecuteTaskRequest>),
+    /// Stream data for a task held back, which the coordinator relays from the moment it
+    /// sends the task: it follows the task in.
+    Stream(StreamData),
+    Input(InputStreamData),
+}
+
+impl DeferredWork {
+    /// The job a held-back task or its stream data belongs to.
+    fn job_id(&self) -> Option<&str> {
+        match self {
+            DeferredWork::Setup(_) => None,
+            DeferredWork::Task(task) => Some(&task.job_id),
+            DeferredWork::Stream(data) => Some(&data.job_id),
+            DeferredWork::Input(data) => Some(&data.job_id),
+        }
+    }
 }
 
 /// A drain's reporting fields, and whether it was a drain and the job's final one.
@@ -166,7 +202,13 @@ struct AggOutcome {
 impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// Wrap a worker as the rank-0 gRPC node with the given config.
     pub async fn new(worker_config: WorkerServiceConfig, worker: Worker<T>) -> Result<Self> {
-        Ok(Self { worker_config, worker })
+        Ok(Self {
+            worker_config,
+            worker,
+            deferred: VecDeque::new(),
+            setup_in_flight: None,
+            recovery: None,
+        })
     }
 
     /// This node's global MPI rank.
@@ -255,6 +297,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         message_sender.send(connect_message)?;
         self.worker.set_state(WorkerState::Connecting);
+        // Tasks held back on the previous stream go: the coordinator settles any it had
+        // dispatched. Setups stay, since it sends again only the setups it has finished,
+        // and acking one twice is harmless.
+        self.deferred.retain(|work| matches!(work, DeferredWork::Setup(_)));
 
         let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));
 
@@ -274,9 +320,16 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 Some(event) = loop_rx.recv() => {
                     match event {
                         LoopEvent::Computation(result) => {
-                            // Happy path: task completed and sent its result.
-                            // Drop the handle — no need to await it, the task already finished.
-                            drop(computation_handle.take());
+                            if matches!(*result, ComputationResult::SetupProgramComplete { .. }) {
+                                // A setup runs apart from the computation, which goes on.
+                                if let Some(h) = computation_handle.take() {
+                                    self.worker.set_current_computation(h);
+                                }
+                            } else {
+                                // Happy path: task completed and sent its result.
+                                // Drop the handle — no need to await it, the task already finished.
+                                drop(computation_handle.take());
+                            }
                             if let Err(e) = self.handle_computation_result(*result, &message_sender, loop_tx).await {
                                 error!("Error handling computation result: {}", e);
                                 self.report_computation_error(&message_sender, &e.to_string()).await;
@@ -284,6 +337,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             }
                         }
                         LoopEvent::RecoveryComplete(rc) => {
+                            // Its last act: setups held back for it may start.
+                            self.recovery = None;
                             // Every site that schedules the recovery driver
                             // clears `current_computation` first, so the handle
                             // is None here and `current_job`/`state` were
@@ -358,6 +413,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                     }
                                 }
                                 Ok(LoopEvent::RecoveryComplete(rc)) => {
+                                    self.recovery = None;
                                     let rc_for_requeue = rc.clone();
                                     let msg = WorkerMessage {
                                         payload: Some(worker_message::Payload::RecoveryComplete(rc)),
@@ -396,6 +452,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     break;
                 }
             }
+
+            self.run_deferred(&message_sender, loop_tx).await;
         }
 
         self.worker.set_state(WorkerState::Disconnected);
@@ -480,8 +538,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             } => {
                 // Finish the off-loop setup: register the program (the `&mut self`
                 // map inserts that couldn't run on the blocking thread) and forward
-                // the ack. Does not touch worker state/current_job, matching the
-                // original inline SetupProgram behavior.
+                // the ack. Does not touch worker state/current_job.
+                self.setup_in_flight = None;
                 let ack = match result {
                     Ok((program_vk, program)) => {
                         self.worker.register_setup(
@@ -500,8 +558,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         )
                     }
                     Err(e) => {
-                        // A failed setup may still have replaced the prover's ASM resources.
-                        self.worker.forget_registered_program();
                         error!(
                             "[Setup] job_id {} Failed setup for hash_id {}: {}",
                             job_id, hash_id, e
@@ -780,6 +836,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         message_sender.send(message)?;
+        // Its results are out: the execution was the job's only phase.
+        self.worker.end_job();
 
         if worker_in_recovery {
             // Compute task already awaited at the top of this handler.
@@ -846,6 +904,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         message_sender.send(message)?;
+        // The proofs are out, and what may follow, aggregation, does not use the
+        // prover's shared memory.
+        self.worker.end_job();
 
         if worker_in_recovery {
             // Compute task already awaited at the top of this handler.
@@ -1082,10 +1143,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// On `RECOVERY_TIMEOUT` we log loudly and drop the completion: the worker
     /// stays wedged `SettingUp` (still heartbeating, so the stale-disconnected
     /// sweep won't reap it), so operator action is required.
-    fn spawn_post_failure_recovery(&self, loop_tx: LoopEventSender, cancelled: CancelledWork) {
+    fn spawn_post_failure_recovery(&mut self, loop_tx: LoopEventSender, cancelled: CancelledWork) {
         let prover = self.worker.prover_arc();
         let worker_id = self.worker_config.worker.worker_id.as_string();
-        tokio::spawn(async move {
+        self.recovery = Some(tokio::spawn(async move {
             warn!("[Recovery] {worker_id}: running cluster cancellation handshake");
 
             // Await the in-flight compute task before the barrier: its ASM MO
@@ -1122,7 +1183,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     Self::RECOVERY_TIMEOUT
                 ),
             }
-        });
+        }));
     }
 
     /// Drain a stream-ordering shutdown task off the event loop (no-op if `None`).
@@ -1145,7 +1206,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// cluster barrier, emits `WorkerRecoveryComplete`) and return `true`.
     /// Otherwise just drain any stream-ordering shutdown and return `false` — the
     /// caller decides whether a completion signal still needs emitting.
-    fn drive_cancellation(&self, loop_tx: &LoopEventSender, cancelled: CancelledWork) -> bool {
+    fn drive_cancellation(&mut self, loop_tx: &LoopEventSender, cancelled: CancelledWork) -> bool {
         if cancelled.compute.is_some() {
             self.spawn_post_failure_recovery(loop_tx.clone(), cancelled);
             true
@@ -1267,40 +1328,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     }
                     // Drain the clobbered job's work off the loop (full recovery
                     // handshake if a compute task was live, else just the stream
-                    // shutdown). Reconnect never emits WorkerRecoveryComplete
-                    // itself, so the return is ignored.
+                    // shutdown). Reconnect never emits WorkerRecoveryComplete itself.
                     self.drive_cancellation(loop_tx, cancelled_work);
 
-                    // If the coordinator attached setup info, run setup now — before entering
-                    // the main event loop so no compute task can be processed without a guest program.
+                    // The coordinator attaches a setup to every reconnection. It goes
+                    // the way of any other: off the loop, once no job, computation or
+                    // recovery is left, and ahead of any task that arrives meanwhile.
                     if let Some(setup) = response.setup_program {
-                        let worker_id = self.worker_config.worker.worker_id.as_string();
-                        let job_id = setup.job_id.clone();
-                        let hash_id = setup.hash_id.clone();
-
-                        let ack = match self.handle_setup_program(setup) {
-                            Ok(program_vk) => Self::build_setup_program_ack(
-                                job_id,
-                                worker_id,
-                                hash_id,
-                                Ok(&program_vk),
-                            ),
-                            Err(e) => {
-                                error!(
-                                    "[Setup] job_id {} Failed setup during reconnection for hash_id {}: {}",
-                                    job_id, hash_id, e
-                                );
-                                Self::build_setup_program_ack(
-                                    job_id,
-                                    worker_id,
-                                    hash_id,
-                                    Err(e.to_string()),
-                                )
-                            }
-                        };
-                        if let Err(e) = message_sender.send(ack) {
-                            warn!("Failed to send SetupProgramAck after reconnection: {}", e);
-                        }
+                        self.handle_setup_request(setup, message_sender, loop_tx);
                     }
 
                     self.worker.set_state(WorkerState::Ready);
@@ -1311,50 +1346,34 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
             }
             coordinator_message::Payload::ExecuteTask(request) => {
-                let job_id = request.job_id.clone();
-                let task_type_int = request.task_type;
-                let dispatch = match TaskType::try_from(task_type_int) {
-                    Ok(TaskType::Execution) => self.execute_only(request, loop_tx).await,
-                    Ok(TaskType::PartialContribution) => {
-                        self.partial_contribution(request, loop_tx).await
-                    }
-                    Ok(TaskType::Prove) => self.prove(request, loop_tx).await,
-                    Ok(TaskType::Aggregate) => self.aggregate(request, loop_tx).await,
-                    Ok(TaskType::Wrap) => self.handle_wrap_task(request, message_sender).await,
-                    Err(_) => Err(anyhow!("Unknown task type: {task_type_int}")),
+                // A task waits for a setup in flight, and for whatever was held back before
+                // it, unless it continues the current job, which setups wait for.
+                let continues_current_job = match self.worker.current_job() {
+                    Some(job) => job.lock().await.job_id.as_string() == request.job_id,
+                    None => false,
                 };
-
-                // Dispatch can fail before any computation starts (cache miss,
-                // unknown task type), so `current_job` may not be set and
-                // `report_computation_error` would silently drop the report.
-                // Send an explicit failure using the request's `job_id`.
-                if let Err(e) = dispatch {
-                    error!("Failed to dispatch task {job_id}: {e:#}");
-                    let response = WorkerMessage {
-                        payload: Some(worker_message::Payload::ExecuteTaskResponse(
-                            ExecuteTaskResponse {
-                                worker_id: self.worker_config.worker.worker_id.as_string(),
-                                job_id,
-                                task_type: task_type_int,
-                                success: false,
-                                result_data: None,
-                                error_message: e.to_string(),
-                                worker_in_recovery: false,
-                            },
-                        )),
-                    };
-                    if let Err(send_err) = message_sender.send(response) {
-                        warn!("Failed to send dispatch-failure response: {send_err}");
-                    }
-                    self.worker.set_current_job(None);
-                    self.worker.set_state(WorkerState::Ready);
+                if self.setup_in_flight.is_some()
+                    || (!self.deferred.is_empty() && !continues_current_job)
+                {
+                    info!("Deferring task {} until the setup in flight completes", request.job_id);
+                    self.deferred.push_back(DeferredWork::Task(Box::new(request)));
+                } else {
+                    self.dispatch_task(request, message_sender, loop_tx).await;
                 }
             }
             coordinator_message::Payload::StreamData(stream_data) => {
-                self.handle_stream_data(stream_data).await?;
+                if self.holds_back_job(&stream_data.job_id) {
+                    self.deferred.push_back(DeferredWork::Stream(stream_data));
+                } else {
+                    self.handle_stream_data(stream_data).await?;
+                }
             }
             coordinator_message::Payload::InputStreamData(input_data) => {
-                self.handle_input_stream_data(input_data).await?;
+                if self.holds_back_job(&input_data.job_id) {
+                    self.deferred.push_back(DeferredWork::Input(input_data));
+                } else {
+                    self.handle_input_stream_data(input_data).await?;
+                }
             }
             coordinator_message::Payload::JobCancelled(cancelled) => {
                 info!("Job {} cancelled: {}", cancelled.job_id, cancelled.reason);
@@ -1369,6 +1388,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 // computation" signal — no separate state query needed.
                 let mut matched = false;
                 let mut cancelled_work = CancelledWork::default();
+                // A task held back for the job never started: it, and its stream data, are
+                // the job's to drop.
+                if self.holds_back_job(&cancelled.job_id) {
+                    matched = true;
+                }
+                self.deferred.retain(|work| work.job_id() != Some(cancelled.job_id.as_str()));
                 if let Some(ref job) = self.worker.current_job() {
                     let cancelled_job_id = JobId::from(cancelled.job_id.clone());
 
@@ -1408,68 +1433,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 self.send_heartbeat_ack(message_sender).await?;
             }
             coordinator_message::Payload::SetupProgram(setup) => {
-                let worker_id = self.worker_config.worker.worker_id.as_string();
-                let job_id = JobId::from(setup.job_id.clone());
-                let hash_id = setup.hash_id.clone();
-                let with_hints = setup.with_hints;
-                let emulator_only = setup.emulator_only;
-
-                // Fast path: content-addressed program already set up — ack now.
-                if let Some(program_vk) =
-                    self.worker.program_vk(&hash_id, with_hints, emulator_only)
-                {
-                    let ack = Self::build_setup_program_ack(
-                        job_id.as_string(),
-                        worker_id,
-                        hash_id,
-                        Ok(&program_vk),
-                    );
-                    if let Err(e) = message_sender.send(ack) {
-                        warn!("Failed to send SetupProgramAck: {}", e);
-                    }
-                } else {
-                    // Run the (potentially long) ELF write + `setup_internal` off the
-                    // message loop so heartbeats keep flowing. The `&mut self` map
-                    // inserts and the ack are finished by `handle_computation_result`
-                    // when the `SetupProgramComplete` result arrives.
-                    let prover = self.worker.prover_arc();
-                    let tx = loop_tx.clone();
-                    let handle = tokio::task::spawn_blocking(move || {
-                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            let guest_program = Self::stage_guest_program(
-                                &setup.hash_id,
-                                setup.program_name,
-                                setup.elf_bytes,
-                            )?;
-                            let vk = Worker::<T>::setup_compute(
-                                prover.as_ref(),
-                                &setup.hash_id,
-                                setup.with_hints,
-                                setup.emulator_only,
-                                &guest_program,
-                            )?;
-                            Ok::<_, anyhow::Error>((vk, guest_program))
-                        }))
-                        .unwrap_or_else(|_| Err(anyhow!("setup panicked")));
-
-                        if tx
-                            .send_computation(ComputationResult::SetupProgramComplete {
-                                job_id,
-                                worker_id,
-                                hash_id,
-                                with_hints,
-                                emulator_only,
-                                result,
-                            })
-                            .is_err()
-                        {
-                            warn!(
-                                "[Setup] Failed to deliver setup result: event loop channel closed"
-                            );
-                        }
-                    });
-                    self.worker.set_current_computation(handle);
-                }
+                self.handle_setup_request(setup, message_sender, loop_tx);
             }
             coordinator_message::Payload::Shutdown(shutdown) => {
                 info!(
@@ -1588,14 +1552,225 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
-    /// Handles a `SetupProgram` message from the coordinator.
-    ///
-    /// Writes the ELF to a content-addressed cache path, reloads the `GuestProgram`, and runs
-    /// setup (generates ROM binary files on disk).
+    /// Handles a setup the coordinator sent: acks one already done at once, and
+    /// otherwise starts it, unless the worker cannot take it yet or something is held
+    /// back before it; then it waits its turn ([`Self::run_deferred`]).
+    fn handle_setup_request(
+        &mut self,
+        setup: SetupProgram,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        loop_tx: &LoopEventSender,
+    ) {
+        if self.ack_if_set_up(&setup, message_sender) {
+            return;
+        }
+        if self.deferred.is_empty() && self.may_start_setup() {
+            self.start_setup(setup, loop_tx);
+        } else {
+            info!(
+                "[Setup] job_id {} Deferring setup for hash_id {} until the worker is idle",
+                setup.job_id, setup.hash_id
+            );
+            self.deferred.push_back(DeferredWork::Setup(setup));
+        }
+    }
+
+    /// Acks `setup` if its program is already set up in its mode; returns whether it did.
+    fn ack_if_set_up(
+        &self,
+        setup: &SetupProgram,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+    ) -> bool {
+        let Some(program_vk) =
+            self.worker.program_vk(&setup.hash_id, setup.with_hints, setup.emulator_only)
+        else {
+            return false;
+        };
+        let ack = Self::build_setup_program_ack(
+            setup.job_id.clone(),
+            self.worker_config.worker.worker_id.as_string(),
+            setup.hash_id.clone(),
+            Ok(&program_vk),
+        );
+        if let Err(e) = message_sender.send(ack) {
+            warn!("Failed to send SetupProgramAck: {}", e);
+        }
+        true
+    }
+
+    /// Whether a setup may start: no job, computation, recovery or other setup is
+    /// under way.
+    fn may_start_setup(&self) -> bool {
+        !self.worker.has_job()
+            && !self.worker.has_live_computation()
+            && !self.recovery.as_ref().is_some_and(|recovery| !recovery.is_finished())
+            && self.setup_in_flight.is_none()
+    }
+
+    /// Runs `setup` off the message loop, so heartbeats keep flowing while it
+    /// writes the ELF and runs `setup_internal`. The `&mut self` map inserts and the
+    /// ack are finished by `handle_computation_result` when its
+    /// `SetupProgramComplete` arrives.
+    fn start_setup(&mut self, setup: SetupProgram, loop_tx: &LoopEventSender) {
+        info!("[Setup] job_id {} Starting setup for hash_id {}", setup.job_id, setup.hash_id);
+        let worker_id = self.worker_config.worker.worker_id.as_string();
+        let job_id = JobId::from(setup.job_id.clone());
+        let hash_id = setup.hash_id.clone();
+        let with_hints = setup.with_hints;
+        let emulator_only = setup.emulator_only;
+        let prover = self.worker.prover_arc();
+        let tx = loop_tx.clone();
+        self.setup_in_flight = Some(tokio::task::spawn_blocking(move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let guest_program =
+                    Self::stage_guest_program(&setup.hash_id, setup.program_name, setup.elf_bytes)?;
+                let vk = Worker::<T>::setup_compute(
+                    prover.as_ref(),
+                    &setup.hash_id,
+                    setup.with_hints,
+                    setup.emulator_only,
+                    &guest_program,
+                )?;
+                Ok::<_, anyhow::Error>((vk, guest_program))
+            }))
+            .unwrap_or_else(|_| Err(anyhow!("setup panicked")));
+
+            if tx
+                .send_computation(ComputationResult::SetupProgramComplete {
+                    job_id,
+                    worker_id,
+                    hash_id,
+                    with_hints,
+                    emulator_only,
+                    result,
+                })
+                .is_err()
+            {
+                warn!("[Setup] Failed to deliver setup result: event loop channel closed");
+            }
+        }));
+    }
+
+    /// Starts what was held back, in order, as far as the worker can take it: a
+    /// setup once no job, computation, recovery or other setup is under way, and a
+    /// task once no setup is.
+    async fn run_deferred(
+        &mut self,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        loop_tx: &LoopEventSender,
+    ) {
+        loop {
+            let ready = match self.deferred.front() {
+                Some(DeferredWork::Setup(_)) => self.may_start_setup(),
+                Some(_) => self.setup_in_flight.is_none(),
+                None => false,
+            };
+            if !ready {
+                return;
+            }
+            match self.deferred.pop_front() {
+                Some(DeferredWork::Setup(setup)) => {
+                    if !self.ack_if_set_up(&setup, message_sender) {
+                        self.start_setup(setup, loop_tx);
+                    }
+                }
+                Some(DeferredWork::Task(request)) => {
+                    let job_id = request.job_id.clone();
+                    self.dispatch_task(*request, message_sender, loop_tx).await;
+                    // Its stream data goes in now, ahead of a setup held back meanwhile,
+                    // which waits for this job to end.
+                    let (data, rest) = std::mem::take(&mut self.deferred)
+                        .into_iter()
+                        .partition::<VecDeque<_>, _>(|work| {
+                            !matches!(work, DeferredWork::Setup(_) | DeferredWork::Task(_))
+                                && work.job_id() == Some(job_id.as_str())
+                        });
+                    self.deferred = rest;
+                    for work in data {
+                        self.replay(work, message_sender).await;
+                    }
+                }
+                Some(work) => self.replay(work, message_sender).await,
+                None => return,
+            }
+        }
+    }
+
+    /// Hands held-back stream data in, and handles its failure as the loop handles that
+    /// of a message.
+    async fn replay(
+        &mut self,
+        work: DeferredWork,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+    ) {
+        let result = match work {
+            DeferredWork::Stream(data) => self.handle_stream_data(data).await,
+            DeferredWork::Input(data) => self.handle_input_stream_data(data).await,
+            DeferredWork::Setup(_) | DeferredWork::Task(_) => {
+                unreachable!("only stream data is replayed")
+            }
+        };
+        if let Err(e) = result {
+            error!("Error handling held-back stream data: {e}");
+            self.report_computation_error(message_sender, &e.to_string()).await;
+            self.worker.set_current_job(None);
+            self.worker.set_state(WorkerState::Ready);
+        }
+    }
+
+    /// Whether a task of `job_id` is held back, so that its stream data must be too.
+    fn holds_back_job(&self, job_id: &str) -> bool {
+        self.deferred
+            .iter()
+            .any(|work| matches!(work, DeferredWork::Task(task) if task.job_id == job_id))
+    }
+
+    /// Dispatches a task the coordinator sent.
+    async fn dispatch_task(
+        &mut self,
+        request: ExecuteTaskRequest,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        loop_tx: &LoopEventSender,
+    ) {
+        let job_id = request.job_id.clone();
+        let task_type_int = request.task_type;
+        let dispatch = match TaskType::try_from(task_type_int) {
+            Ok(TaskType::Execution) => self.execute_only(request, loop_tx).await,
+            Ok(TaskType::PartialContribution) => self.partial_contribution(request, loop_tx).await,
+            Ok(TaskType::Prove) => self.prove(request, loop_tx).await,
+            Ok(TaskType::Aggregate) => self.aggregate(request, loop_tx).await,
+            Ok(TaskType::Wrap) => self.handle_wrap_task(request, message_sender).await,
+            Err(_) => Err(anyhow!("Unknown task type: {task_type_int}")),
+        };
+
+        // Dispatch can fail before any computation starts (cache miss,
+        // unknown task type), so `current_job` may not be set and
+        // `report_computation_error` would silently drop the report.
+        // Send an explicit failure using the request's `job_id`.
+        if let Err(e) = dispatch {
+            error!("Failed to dispatch task {job_id}: {e:#}");
+            let response = WorkerMessage {
+                payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                    worker_id: self.worker_config.worker.worker_id.as_string(),
+                    job_id,
+                    task_type: task_type_int,
+                    success: false,
+                    result_data: None,
+                    error_message: e.to_string(),
+                    worker_in_recovery: false,
+                })),
+            };
+            if let Err(send_err) = message_sender.send(response) {
+                warn!("Failed to send dispatch-failure response: {send_err}");
+            }
+            self.worker.set_current_job(None);
+            self.worker.set_state(WorkerState::Ready);
+        }
+    }
+
     /// Writes the ELF to the content-addressed cache (idempotent) and loads the
-    /// `GuestProgram`, moving the bytes in (no clone). Shared by the off-loop
-    /// setup path and the reconnection path so the cache-write contract — which
-    /// must stay byte-identical for the content-addressed skip check — lives once.
+    /// `GuestProgram`, moving the bytes in (no clone). The cache-write contract
+    /// must stay byte-identical for the content-addressed skip check.
     fn stage_guest_program(
         hash_id: &str,
         program_name: String,
@@ -1609,24 +1784,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             std::fs::write(&elf_path, &elf_bytes)?;
         }
         Ok(std::sync::Arc::new(GuestProgram::from_bytes(program_name, elf_bytes)))
-    }
-
-    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<ProgramVK> {
-        info!("[Setup] job_id {} Received setup for hash_id {}", setup.job_id, setup.hash_id);
-
-        let guest_program =
-            Self::stage_guest_program(&setup.hash_id, setup.program_name, setup.elf_bytes)?;
-
-        // Broadcast ELF to secondary MPI ranks and run setup on all ranks.
-        let vk = self.worker.run_setup(
-            &setup.hash_id,
-            setup.with_hints,
-            setup.emulator_only,
-            guest_program,
-        )?;
-
-        info!("[Setup] job_id {} Completed setup for hash_id {}", setup.job_id, setup.hash_id);
-        Ok(vk)
     }
 
     /// Handles a `SetupAggregationProgram` message from the coordinator.

@@ -11,11 +11,13 @@
 //! uniformly so [`crate::execution::ExecutionPhase`] stays
 //! platform-agnostic.
 
+pub mod job;
 pub mod mt_chunk;
 pub mod resources;
 pub mod supervisor;
 pub mod transport;
 
+pub use job::*;
 pub use resources::*;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

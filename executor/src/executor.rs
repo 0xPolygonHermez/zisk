@@ -15,8 +15,8 @@
 //! maintaining clarity and modularity in the computation process.
 
 use crate::{
-    ports::ProofRegistry, witness::WitnessContext, AirClassifier, AsmResources, EmulatorAsm,
-    ExecutionPhase, ExecutionState, InstanceAssigner, NoopProofRegistry, PlanPhase,
+    ports::ProofRegistry, witness::WitnessContext, AirClassifier, AsmJob, AsmResources,
+    EmulatorAsm, ExecutionPhase, ExecutionState, InstanceAssigner, NoopProofRegistry, PlanPhase,
     ProofmanAdapter, StaticSMBundle, WitnessPhase,
 };
 use proofman_common::{lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
@@ -31,9 +31,10 @@ use std::{
     },
     time::Instant,
 };
+use zisk_asm_runner::AsmRunnerRH;
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId, EmuTrace,
-    ExecutorStatsHandle, Plan, RandomSeed, ZiskExecutorSummary, ZiskExecutorTime,
+    ExecutorStatsHandle, LateValue, Plan, RandomSeed, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
 use zisk_sm_main::{MainPlanner, MainSM};
@@ -256,14 +257,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         Ok(())
     }
 
-    /// Retires whatever the previous job left behind: drains a ROM-histogram runner
+    /// Retires whatever the previous run left behind: drains a ROM-histogram runner
     /// nobody consumed, then clears the hints stream and the input shmem.
     ///
-    /// This is the job boundary. Call it after the previous computation is idle and
-    /// **before** the next job's inputs or hints are written, since the reset rewinds
-    /// the input shmem and marks the hints stream uninitialised. Drain first: the reset
-    /// drains the semaphores the RH child is waiting on, so rewinding while that child
-    /// is still reading strands it, and the next job's runner then hangs behind it.
+    /// For a run without an [`AsmJob`], whose drop does the same: the Rust emulator's.
+    /// Call it after the previous computation is idle and **before** the next run's
+    /// inputs or hints are written. Drain first: the reset drains the semaphores the RH
+    /// child is waiting on, so rewinding while that child is still reading strands it.
     ///
     /// Blocks if the runner is still going, which is why it must not run before
     /// cancellation has been signalled on a job that failed or was cancelled.
@@ -272,12 +272,34 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.execution.reset()
     }
 
+    /// Begins a job on the assembly backend for `resources`' program, in the one order
+    /// that is safe: wait until no other job uses the shared segments; join a runner left
+    /// parked outside a job, which may still have a request to send to its program's
+    /// services; make the segments serve this program, which waits for the outgoing
+    /// program's services; and run on its resources.
+    ///
+    /// Nothing is rewound here: the previous job's end did that ([`AsmJob`]), so what a
+    /// caller registered or streamed for this job since is kept. Register the job's
+    /// streams and run it while the returned job is alive.
+    pub fn begin_asm_job(&self, resources: Arc<AsmResources>) -> ExecutorResult<AsmJob> {
+        let claim = resources.claim();
+        self.drain_rh();
+        resources.activate(&claim)?;
+        self.set_asm_resources(Arc::clone(&resources))?;
+        Ok(AsmJob::new(resources, self.rom_histogram(), claim))
+    }
+
     /// Joins a ROM-histogram runner left unconsumed by a previous execution and releases
     /// its histogram. Idempotent, and a no-op when nothing is parked.
     fn drain_rh(&self) {
-        if let Some(witness) = self.witness.as_ref() {
-            witness.drain_rh();
+        if let Some(rom_histogram) = self.rom_histogram() {
+            rom_histogram.drain();
         }
+    }
+
+    /// The cell the ROM-histogram runner is parked in; `None` without a witness.
+    fn rom_histogram(&self) -> Option<Arc<LateValue<AsmRunnerRH>>> {
+        self.witness.as_ref().and_then(|witness| witness.rom_histogram())
     }
 
     /// Returns a reference to the ASM emulator if ASM execution is active.
