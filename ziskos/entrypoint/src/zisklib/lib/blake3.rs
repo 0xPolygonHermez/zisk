@@ -15,7 +15,7 @@ pub fn blake3_compress(
     flags: u32,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    // Initilize local state. The precompile works on it as u64 words, so it must be
+    // Initialize local state. The precompile works on it as u64 words, so it must be
     // 8-byte aligned, which a [u32; 16] alone is not.
     let mut state = Align8([
         h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], IV[0], IV[1], IV[2], IV[3], t[0], t[1],
