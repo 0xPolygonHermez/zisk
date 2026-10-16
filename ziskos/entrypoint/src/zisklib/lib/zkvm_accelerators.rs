@@ -122,7 +122,8 @@ pub unsafe extern "C" fn zkvm_ripemd160(
 
         #[cfg(not(zisk_guest))]
         {
-            (*output).data = ripemd160_sw::hash(std::slice::from_raw_parts(data, len));
+            std::ptr::addr_of_mut!((*output).data)
+                .write_unaligned(ripemd160_sw::hash(std::slice::from_raw_parts(data, len)));
             ZKVM_EOK
         }
     }
@@ -258,7 +259,7 @@ pub unsafe extern "C" fn zkvm_bn254_g1_add(
                 &std::ptr::read_unaligned(std::ptr::addr_of!((*p2).data)),
             ) {
                 Some(res) => {
-                    (*result).data = res;
+                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -331,7 +332,7 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
                 &std::ptr::read_unaligned(std::ptr::addr_of!((*scalar).data)),
             ) {
                 Some(res) => {
-                    (*result).data = res;
+                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -612,7 +613,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_add(
                 &std::ptr::read_unaligned(std::ptr::addr_of!((*p2).data)),
             ) {
                 Some(res) => {
-                    (*result).data = res;
+                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -685,7 +686,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
                 num_pairs,
             )) {
                 Some(res) => {
-                    (*result).data = res;
+                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -761,7 +762,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_add(
                 &std::ptr::read_unaligned(std::ptr::addr_of!((*p2).data)),
             ) {
                 Some(res) => {
-                    (*result).data = res;
+                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -834,7 +835,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
                 num_pairs,
             )) {
                 Some(res) => {
-                    (*result).data = res;
+                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -970,7 +971,7 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(
                 (*field_element).data
             ))) {
                 Some(res) => {
-                    (*result).data = res;
+                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -1033,7 +1034,7 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(
                 (*field_element).data
             ))) {
                 Some(res) => {
-                    (*result).data = res;
+                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -1242,7 +1243,7 @@ pub unsafe extern "C" fn zkvm_secp256k1_ecrecover(
                 std::ptr::read_unaligned(std::ptr::addr_of!((*msg).data)),
             ) {
                 Some(pk) => {
-                    (*output).data = pk;
+                    std::ptr::addr_of_mut!((*output).data).write_unaligned(pk);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
