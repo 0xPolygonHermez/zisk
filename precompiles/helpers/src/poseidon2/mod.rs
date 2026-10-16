@@ -232,6 +232,61 @@ mod tests {
         }
     }
 
+    /// The C++ implementation (lib-c, run by the ASM emulator) gives the same words as
+    /// permute_words on the SP1 vectors and on random and edge states, and rejects the same
+    /// non-canonical states, leaving them untouched.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn koalabear_sp1_cpp_matches_rust() {
+        let kb = &POSEIDON2_KOALABEAR_SP1;
+        let p = kb.p;
+        let check = |lanes: [u32; 16]| {
+            let mut rust: [u64; 8] = std::array::from_fn(|w| {
+                u64::from(lanes[2 * w]) | (u64::from(lanes[2 * w + 1]) << 32)
+            });
+            let mut cpp = rust;
+            let accepted = kb.permute_words(&mut rust).is_ok();
+            let rc = zisk_lib_c::poseidon2_koalabear_c(&mut cpp);
+            assert_eq!(rc == 0, accepted, "return code {rc} on {lanes:x?}");
+            assert_eq!(cpp, rust, "on {lanes:x?}");
+        };
+
+        let mont = |x: u32| ((u64::from(x) << 32) % u64::from(p)) as u32;
+        for (input, _) in KOALABEAR_SP1_VECTORS {
+            check(input.map(mont));
+        }
+        check([0; 16]);
+        check([p - 1; 16]);
+
+        // Deterministic pseudo-random states (splitmix64), with some 0 and P - 1 lanes
+        let mut seed = 0x5eed_u64;
+        let mut next = || {
+            seed = seed.wrapping_add(0x9e37_79b9_7f4a_7c15);
+            let z = (seed ^ (seed >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+            let z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+            z ^ (z >> 31)
+        };
+        for _ in 0..10_000 {
+            check(std::array::from_fn(|_| {
+                let r = next();
+                match r % 16 {
+                    0 => 0,
+                    1 => p - 1,
+                    _ => (r >> 32) as u32 % p,
+                }
+            }));
+        }
+
+        // One lane not below P, in the low and the high half of a word
+        for bad in [p, p + 1, u32::MAX] {
+            for lane in [0, 7, 15] {
+                let mut lanes = [1; 16];
+                lanes[lane] = bad;
+                check(lanes);
+            }
+        }
+    }
+
     #[test]
     fn first_noncanonical_finds_the_lane() {
         let p = POSEIDON2_KOALABEAR_SP1.p;
