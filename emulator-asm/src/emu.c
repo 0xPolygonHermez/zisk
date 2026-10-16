@@ -21,6 +21,7 @@
 #include "../../lib-c/c/src/ed25519/ed25519.hpp"
 #include "../../lib-c/c/src/bls12_381/bls12_381.hpp"
 #include "../../lib-c/c/src/poseidon2/poseidon2_goldilocks.hpp"
+#include "../../lib-c/c/src/poseidon2/poseidon2_non_native.hpp"
 #include "../../lib-c/c/src/poseidon1/poseidon1_goldilocks.hpp"
 #include "../../lib-c/c/src/blake2/blake2.hpp"
 #include "../../lib-c/c/src/blake3/blake3.hpp"
@@ -50,6 +51,7 @@ static const char * asm_call_names[ASM_CALL_COUNT] = {
     [ASM_CALL_BLAKE2S] = "blake2s",
     [ASM_CALL_POSEIDON2] = "poseidon2",
     [ASM_CALL_POSEIDON1] = "poseidon1",
+    [ASM_CALL_POSEIDON2_KOALABEAR] = "poseidon2_koalabear",
     [ASM_CALL_ARITH256] = "arith256",
     [ASM_CALL_ARITH256_MOD] = "arith256_mod",
     [ASM_CALL_ARITH384_MOD] = "arith384_mod",
@@ -666,6 +668,46 @@ extern int _opcode_blake2s(uint64_t * state, uint64_t * input)
     if (emu_verbose) asm_printf("opcode_blake2s() called blake2s_f()\n");
 #endif
     ASM_CALL_METRICS_STOP(ASM_CALL_BLAKE2S);
+    return 0;
+}
+
+// Poseidon2 over a 31-bit field: permutes `words` u64 in place at `address`; a non-canonical
+// element is not a valid input
+static void opcode_poseidon2_non_native(uint64_t address, int (*permute)(uint64_t *), uint64_t words, const char *name)
+{
+    (void)words; // only used with ASM_PRECOMPILE_CACHE
+#ifdef DEBUG
+    if (emu_verbose) asm_printf("opcode_%s() address=%08lx\n", name, address);
+#endif
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        int result = permute((uint64_t *)address);
+        if (result != 0)
+        {
+            asm_printf("_opcode_%s() found a non-canonical field element result=%d;", name, result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)address, words*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)address, words*8);
+    }
+#endif
+}
+
+extern int _opcode_poseidon2_koalabear(uint64_t address)
+{
+    ASM_CALL_METRICS_START();
+    opcode_poseidon2_non_native(address, poseidon2_koalabear, 8, "poseidon2_koalabear");
+    ASM_CALL_METRICS_STOP(ASM_CALL_POSEIDON2_KOALABEAR);
     return 0;
 }
 

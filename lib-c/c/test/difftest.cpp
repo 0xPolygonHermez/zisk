@@ -42,6 +42,7 @@ void blake2s_f(uint32_t v[16], const uint32_t m[16]);
 void blake3_f(uint32_t v[16], const uint32_t m[16]);
 void poseidon2_hash(uint64_t *state);
 void poseidon1_hash(uint64_t *state);
+int poseidon2_koalabear(uint64_t *state);
 int Arith256(const uint64_t *a, const uint64_t *b, const uint64_t *c, uint64_t *dl, uint64_t *dh);
 int Arith384Mod(const uint64_t *a, const uint64_t *b, const uint64_t *c, const uint64_t *module, uint64_t *d);
 int Arith256Mod(const uint64_t *a, const uint64_t *b, const uint64_t *c, const uint64_t *module, uint64_t *d);
@@ -141,6 +142,7 @@ static const mpz_class R_BN254("30644e72e131a029b85045b68181585d2833e84879b97091
 static const mpz_class P_ED25519("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed", 16);
 static const mpz_class P_BLS12_381("1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab", 16);
 static const mpz_class P_GOLDILOCKS("ffffffff00000001", 16);
+static const mpz_class P_KOALABEAR("7f000001", 16);
 static const mpz_class P_STARKNET("0800000000000011000000000000000000000000000000000000000000000001", 16);
 
 static void to_limbs(const mpz_class &v, uint64_t *out, int n) {
@@ -298,6 +300,20 @@ static void register_ops() {
         rec.put(s, 16);
         TIMEDV(poseidon1_hash(s));
         rec.put(s, 16);
+    }});
+    // 16 KoalaBear lanes packed two per word; a lane >= p (any mode only) returns -1, state untouched
+    ops.push_back({"poseidon2_koalabear", 20000, [](Rng &r, bool canon, Record &rec) {
+        uint64_t s[8] = {0};
+        for (int i = 0; i < 16; i++) {
+            uint64_t lane;
+            rand_fe(r, P_KOALABEAR, 1, &lane, canon);
+            lane = canon ? lane % 0x7f000001 : lane & 0xffffffff;
+            s[i / 2] |= lane << (32 * (i % 2));
+        }
+        rec.put(s, 8);
+        int ret = TIMED(poseidon2_koalabear(s));
+        rec.put((uint64_t)(int64_t)ret);
+        rec.put(s, 8);
     }});
     ops.push_back({"arith256", 20000, [](Rng &r, bool canon, Record &rec) {
         uint64_t a[4], b[4], c[4], dl[4], dh[4];

@@ -104,6 +104,9 @@ pub const OPERATION_BUS_BLAKE3_DATA_SIZE: usize =
 /// Blake2s operation data size (state[8] + input[8]; their addresses travel in a and b).
 pub const OPERATION_BUS_BLAKE2S_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 16 * DATA_64_BITS_SIZE;
+/// Poseidon2 KoalaBear operation data size (state[8], 16 lanes packed two per word; its address travels in b).
+pub const OPERATION_BUS_POSEIDON2_KOALABEAR_DATA_SIZE: usize =
+    OPERATION_PRECOMPILED_BUS_DATA_SIZE + 8 * DATA_64_BITS_SIZE;
 /// BabyJubJub point-add operation data size (2 points; their addresses travel in a and b).
 pub const OPERATION_BUS_BABYJUBJUB_ADD_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * POINT_256_BITS_SIZE;
@@ -215,6 +218,8 @@ pub type OperationBlake2bData<D> = [D; OPERATION_BUS_BLAKE2B_DATA_SIZE];
 pub type OperationBlake3Data<D> = [D; OPERATION_BUS_BLAKE3_DATA_SIZE];
 /// Blake2s operation data type alias.
 pub type OperationBlake2sData<D> = [D; OPERATION_BUS_BLAKE2S_DATA_SIZE];
+/// Poseidon2 KoalaBear operation data type alias.
+pub type OperationPoseidon2KoalaBearData<D> = [D; OPERATION_BUS_POSEIDON2_KOALABEAR_DATA_SIZE];
 /// BabyJubJub point-add operation data type alias.
 pub type OperationBabyJubJubAddData<D> = [D; OPERATION_BUS_BABYJUBJUB_ADD_DATA_SIZE];
 /// Ed25519 point-add operation data type alias.
@@ -288,6 +293,8 @@ pub enum ExtOperationData<D> {
     OperationBabyJubJubAddData(OperationBabyJubJubAddData<D>),
     /// Ed25519 point-add operation data.
     OperationEd25519AddData(OperationEd25519AddData<D>),
+    /// Poseidon2 KoalaBear operation data.
+    OperationPoseidon2KoalaBearData(OperationPoseidon2KoalaBearData<D>),
 }
 
 // impl<D: Copy + Into<u8>> TryFrom<&[D]> for ExtOperationData<D> {
@@ -329,6 +336,11 @@ impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
                 let array: OperationBlake2sData<D> =
                     data.try_into().map_err(|_| "Invalid OperationBlake2sData size")?;
                 Ok(ExtOperationData::OperationBlake2sData(array))
+            }
+            ZiskOp::POSEIDON2_KOALABEAR => {
+                let array: OperationPoseidon2KoalaBearData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationPoseidon2KoalaBearData size")?;
+                Ok(ExtOperationData::OperationPoseidon2KoalaBearData(array))
             }
             ZiskOp::ARITH256 => {
                 let array: OperationArith256Data<D> =
@@ -567,6 +579,15 @@ impl OperationBusData<u64> {
                 data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
                     .copy_from_slice(&ctx.precompiled.input_data);
                 ExtOperationData::OperationBlake2sData(data)
+            }
+
+            ZiskOperationType::Poseidon2KoalaBear => {
+                let mut data = [0u64; OPERATION_BUS_POSEIDON2_KOALABEAR_DATA_SIZE];
+                data[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
+                    .copy_from_slice(&[op, op_type, a, b, step]);
+                data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
+                    .copy_from_slice(&ctx.precompiled.input_data);
+                ExtOperationData::OperationPoseidon2KoalaBearData(data)
             }
 
             ZiskOperationType::ArithEq => match inst.op {
@@ -869,6 +890,16 @@ impl OperationBusData<u64> {
                 &buffer[..OPERATION_BUS_BLAKE2S_DATA_SIZE]
             }
 
+            ZiskOperationType::Poseidon2KoalaBear => {
+                debug_assert_eq!(ctx.precompiled.input_data.len(), 8);
+                buffer[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
+                    .copy_from_slice(&[op, op_type, a, b, step]);
+                buffer[OPERATION_PRECOMPILED_BUS_DATA_SIZE
+                    ..OPERATION_BUS_POSEIDON2_KOALABEAR_DATA_SIZE]
+                    .copy_from_slice(&ctx.precompiled.input_data);
+                &buffer[..OPERATION_BUS_POSEIDON2_KOALABEAR_DATA_SIZE]
+            }
+
             ZiskOperationType::ArithEq => match inst.op {
                 ZiskOp::ARITH256 => {
                     let len =
@@ -1155,6 +1186,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBlake2bData(d) => d[OP] as u8,
             ExtOperationData::OperationBlake3Data(d) => d[OP] as u8,
             ExtOperationData::OperationBlake2sData(d) => d[OP] as u8,
+            ExtOperationData::OperationPoseidon2KoalaBearData(d) => d[OP] as u8,
             ExtOperationData::OperationBabyJubJubAddData(d) => d[OP] as u8,
             ExtOperationData::OperationEd25519AddData(d) => d[OP] as u8,
         }
@@ -1201,6 +1233,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBlake2bData(d) => d[OP_TYPE],
             ExtOperationData::OperationBlake3Data(d) => d[OP_TYPE],
             ExtOperationData::OperationBlake2sData(d) => d[OP_TYPE],
+            ExtOperationData::OperationPoseidon2KoalaBearData(d) => d[OP_TYPE],
             ExtOperationData::OperationBabyJubJubAddData(d) => d[OP_TYPE],
             ExtOperationData::OperationEd25519AddData(d) => d[OP_TYPE],
         }
@@ -1247,6 +1280,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBlake2bData(d) => d[A],
             ExtOperationData::OperationBlake3Data(d) => d[A],
             ExtOperationData::OperationBlake2sData(d) => d[A],
+            ExtOperationData::OperationPoseidon2KoalaBearData(d) => d[A],
             ExtOperationData::OperationBabyJubJubAddData(d) => d[A],
             ExtOperationData::OperationEd25519AddData(d) => d[A],
         }
@@ -1293,6 +1327,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBlake2bData(d) => d[B],
             ExtOperationData::OperationBlake3Data(d) => d[B],
             ExtOperationData::OperationBlake2sData(d) => d[B],
+            ExtOperationData::OperationPoseidon2KoalaBearData(d) => d[B],
             ExtOperationData::OperationBabyJubJubAddData(d) => d[B],
             ExtOperationData::OperationEd25519AddData(d) => d[B],
         }
