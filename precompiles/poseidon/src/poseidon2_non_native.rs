@@ -134,6 +134,8 @@ macro_rules! poseidon2_non_native_sm {
                         (num_inputs * clocks) as f64 / NUM_ROWS as f64 * 100.0
                     );
 
+                    // Whole blocks only: the rows past num_available * clocks have no clock active
+                    // and stay zero, so `padding` is a whole number of blocks too
                     let (used, padding) =
                         trace.buffer[..num_available * clocks].split_at_mut(num_inputs * clocks);
                     let ops: Vec<_> = inputs.iter().flatten().collect();
