@@ -21,8 +21,9 @@ MemCounter::MemCounter(uint32_t id, std::shared_ptr<MemContext> context)
     queue_full = 0;
     first_chunk_us = 0;
     tot_wait_us = 0;
-    addr_count_table = (AddrCount *)malloc(ADDR_TABLE_SIZE * sizeof(AddrCount));
-    memset(addr_count_table, 0, ADDR_TABLE_SIZE * sizeof(AddrCount));
+    // calloc instead of malloc + memset: the table spans every page of every memory area, but only
+    // the pages actually used get committed
+    addr_count_table = (AddrCount *)calloc(ADDR_TABLE_SIZE, sizeof(AddrCount));
 
     // no memset because informations is overrided.
     addr_slots = (uint32_t *)std::aligned_alloc(64, ADDR_SLOTS_SIZE * sizeof(uint32_t));

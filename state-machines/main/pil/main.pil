@@ -377,7 +377,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         store_value[lane][0] = store_pc[lane]*(pc[lane] + jmp_offset2[lane] - c[lane][0]) + c[lane][0];
         // BUG(rv64-auipc): when store_pc=1 (AUIPC), store_value[1] is forced to 0, dropping the
         // carry out of bit 31 of (pc + jmp_offset2).  For pc + jmp_offset2 >= 2^32 - valid in RV64I,
-        // e.g. auipc rd, 0x7ffff at PC >= 0x80001000 - this no longer matches the 64-bit value
+        // e.g. auipc rd, 0x6ffff at PC >= 0x90001000 - this no longer matches the 64-bit value
         // that the memory/register bus represents as two 32-bit limbs.
         // Reproducer: elf-regressions/auipc_rv64_overflow/
         store_value[lane][1] = (1 - store_pc[lane]) * c[lane][1];
@@ -477,7 +477,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         // The selectors flag an set_pc are disjoint, meaning they cannot be active simultaneously.
         flag[lane] * set_pc[lane] === 0;
 
-        // A user program lives in [0x8000_0000, 0x8000_0000 + 128MB), so any valid address plus a
+        // A user program lives in [0x9000_0000, 0x9000_0000 + 128MB), so any valid address plus a
         // valid 12-bit (or 32-bit) offset is guaranteed to fit within a Goldilocks field element.
         // If the result is "negative" or falls outside this range, proof generation will fail,
         // because the program will have jumped to a non-existent address and the ROM lookup will fail.

@@ -42,8 +42,9 @@
 
 #define MOPS_BLOCK_COUNT_SBITS        4
 
-constexpr uint32_t ZISK_ROM_ADDR_BASE     = 0x80000000u;
-constexpr uint32_t ZISK_INPUT_ADDR_BASE   = 0x40000000u;
+// Must match core/src/mem.rs
+constexpr uint32_t ZISK_ROM_ADDR_BASE     = 0x90000000u;
+constexpr uint32_t ZISK_INPUT_ADDR_BASE   = 0x10000000u;
 constexpr uint32_t ZISK_RAM_ADDR_BASE     = 0xA0000000u;
 constexpr uint32_t ZISK_RAM_SIZE_BYTES    = 512u * 1024u * 1024u;
 constexpr uint32_t ZISK_RAM_ADDR_END      = ZISK_RAM_ADDR_BASE + ZISK_RAM_SIZE_BYTES;
@@ -433,7 +434,7 @@ void extract_sorted_packed_kernel(const uint64_t* __restrict__ d_sorted_keys,
 // =====================================================================
 
 constexpr uint32_t N_ADDR_ROM   = 1u << 27;   // 128M
-constexpr uint32_t N_ADDR_INPUT = 1u << 30;   // 1G
+constexpr uint32_t N_ADDR_INPUT = 1u << 30;   // 1G, covers the 2^28 words of the 2GB input
 constexpr uint32_t N_ADDR_RAM   = 1u << 29;   // 512M
 constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;
 

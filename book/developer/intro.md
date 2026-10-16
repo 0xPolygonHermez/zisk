@@ -315,8 +315,8 @@ This is the ZisK high-level address map:
 |From|To|Usage|
 |---|---|---|
 |0x1000|0x0FFFFFFF|ziskos ROM|
-|0x40000000|0x7FFFFFFF|Input data|
-|0x80000000|0x87FFFFFF|ROM|
+|0x10000000|0x8FFFFFFF|Input data|
+|0x90000000|0x97FFFFFF|ROM|
 |0xA0000000|0xBFFFFFFF|RAM|
 
 
@@ -329,9 +329,10 @@ ROM address map:
 |0x1000|ROM_ENTRY.  Initial execution address.  It simply jumps to the program launcher code.|
 |0x1004|ROM_EXIT. Final execution address.  It exits the program.|
 |0x1008|FLOAT_HANDLER_ADDR.  Saves RISC-V registers, calls the float library, and restores the saved registers.  Called when an F or D extension instruction is transpiled.|
-|0x1110|Program launcher code.  It writes initial values of ROM and RAM globals.  It saves some data and jumps to the first program instruction at 0x80000000.  Syscall trap handler, including the exit sequence to make output public and jump to the ROM_EXIT address.  This address corresponds to a float-enabled build; when ZisK is built without the `float` feature there is no float handler and the launcher starts at 0x1008 instead.|
-|0x80000000|Program code.  When done, a syscall is called to end the execution.|
-|0x87F00000|Float soft library code|
+|0x1110|Program launcher code.  It writes initial values of ROM and RAM globals.  It saves some data and jumps to the first program instruction at 0x90000000.  Syscall trap handler, including the exit sequence to make output public and jump to the ROM_EXIT address.  This address corresponds to a float-enabled build; when ZisK is built without the `float` feature there is no float handler and the launcher starts at 0x1008 instead.|
+|0x90000000|Program code.  When done, a syscall is called to end the execution.|
+|0x97E00000|ZisK library code|
+|0x97F00000|Float soft library code|
 
 RAM address map:
 

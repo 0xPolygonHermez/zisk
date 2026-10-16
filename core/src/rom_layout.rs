@@ -6,7 +6,7 @@
 
 use crate::{
     DataSection, ZiskInst, ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, INPUT_ADDR,
-    MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, RAM_ADDR, ROM_ENTRY, ROM_EXIT,
+    MAX_INPUT_SIZE, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, RAM_ADDR, ROM_ENTRY, ROM_EXIT,
 };
 
 #[cfg(feature = "float")]
@@ -29,11 +29,27 @@ const ENTRY_EXIT_JMP_ADDR: u64 = ROM_ENTRY + 4 * 68;
 #[cfg(not(feature = "float"))]
 const ENTRY_EXIT_JMP_ADDR: u64 = ROM_ENTRY + 4 * 2;
 
-/// ROM address of the ecall trap handler that [`add_entry_exit_jmp`] stores in MTVEC.
+/// Distance between the input reads the BIOS does at the end of the execution: the largest
+/// distance between consecutive addresses of a Mem AIR segment, whose `delta_addr - 1` is range
+/// checked to 24 bits (state-machines/mem/pil/mem.pil), i.e. 2^24 words of 8 bytes = 128MB.
+const INPUT_ANCHOR_STEP: u64 = (1 << 24) * 8;
+
+/// Number of BIOS input reads, at `INPUT_ADDR + k * INPUT_ANCHOR_STEP` for k = 1.., so that any two
+/// consecutive input addresses accessed are never more than `INPUT_ANCHOR_STEP` apart, however
+/// sparsely the program reads the input. `INPUT_ADDR` itself (k = 0) is the free input.
+const INPUT_ANCHOR_READS: u64 = MAX_INPUT_SIZE / INPUT_ANCHOR_STEP - 1;
+
+const _: () = assert!(
+    MAX_INPUT_SIZE % INPUT_ANCHOR_STEP == 0,
+    "MAX_INPUT_SIZE must be a multiple of the BIOS input read step"
+);
+
+/// ROM address of the ecall trap handler that [`add_entry_exit_jmp`] stores in MTVEC: after the 13
+/// setup and output instructions, the input reads and the jump to the end.
 ///
 /// It depends on this crate's `float` feature, which selects the BIOS layout, so code that jumps
 /// to the handler directly must use this constant rather than derive it from its own features.
-pub const ECALL_HANDLER_ADDR: u64 = ENTRY_EXIT_JMP_ADDR + 0x54; // must match add_entry_exit_jmp's trap handler offset
+pub const ECALL_HANDLER_ADDR: u64 = ENTRY_EXIT_JMP_ADDR + 4 * (13 + INPUT_ANCHOR_READS + 1);
 
 /// A library routine's body for an inline zkvmcall (see `ZiskLibrary::inline_body`),
 /// as a small control-flow graph: the instructions, entry first, and for each one
@@ -117,6 +133,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
 
     // :0014
     // Returns from the program execution.
+    let output_addr = rom.next_init_inst_addr;
     // Reads output data using the specific pubout operation in 32 chunks of 64 bits:
     //
     // loadw: c(reg11) = b(32), a=0
@@ -234,84 +251,20 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     // sizes that are not continuous, i.e. when the program reads 2 input data chunks distant more
     // than 128MB, we can still prove the program by reading the input data in 128MB steps
 
-    // :0034 -> read input[128M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[128M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
+    // :0034.. -> read input[k * 128M], k = 1..=INPUT_ANCHOR_READS
+    for k in 1..=INPUT_ANCHOR_READS {
+        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+        zib.src_a("imm", INPUT_ADDR + k * INPUT_ANCHOR_STEP, false);
+        zib.src_b("ind", 0, false);
+        zib.ind_width(8);
+        zib.op("copyb").unwrap();
+        zib.j(4, 4);
+        zib.verbose(&format!("Read input[{}M]", (k * INPUT_ANCHOR_STEP) >> 20));
+        zib.build(rom);
+        rom.next_init_inst_addr += 4;
+    }
 
-    // :0038 -> read input[256M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 2 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[256M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :003c -> read input[384M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 3 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[384M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0040 -> read input[512M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 4 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[512M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0044 -> read input[640M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 5 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[640M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0048 -> read input[768M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 6 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[768M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :004c -> read input[896M]
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 7 * 128 * 1024 * 1024, false);
-    zib.src_b("ind", 0, false);
-    zib.ind_width(8);
-    zib.op("copyb").unwrap();
-    zib.j(4, 4);
-    zib.verbose("Read input[896M]");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // :0050 jump to end (success)
+    // jump to end (success)
     // Jump to the last instruction (ROM_EXIT) to properly finish the program execution
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
@@ -323,12 +276,13 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
-    // :0054 trap_handle -> This is the address offset we use at the beginning of the function
-    // This code is executed when the program makes an ecall (system call).
+    // ECALL_HANDLER_ADDR: trap_handle -> This is the address we store in MTVEC at the beginning of
+    // the function. This code is executed when the program makes an ecall (system call).
     // The pc is set to this address, and after the system call, it returns to the pc next to the
     // one that made the ecall
-    // If register a7==CAUSE_EXIT, jump to the exit code check (:005c); otherwise
-    // return to the caller (:0058)
+    // If register a7==CAUSE_EXIT, jump to the exit code check (+8); otherwise
+    // return to the caller (+4)
+    assert!(rom.next_init_inst_addr == ECALL_HANDLER_ADDR);
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 17, false);
     zib.src_b("imm", CAUSE_EXIT, false);
@@ -338,7 +292,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
-    // :0058
+    // ECALL_HANDLER_ADDR + 4
     // Return to the instruction next to the one that made this ecall
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
@@ -350,20 +304,20 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
-    // :005c
+    // ECALL_HANDLER_ADDR + 8
     // Exit: the exit code is in a0 (register #10). 0 means success: publish the output
-    // and end (:0014); anything else is a failed execution (:0060), which must not be
+    // and end (:0014); anything else is a failed execution (next instruction), which must not be
     // proven
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 10, false);
     zib.src_b("imm", 0, false);
     zib.op("eq").unwrap();
-    zib.j(-72, 4);
+    zib.j(output_addr as i64 - rom.next_init_inst_addr as i64, 4);
     zib.verbose("beq r10, 0 # Exit code 0: jump to output, then end");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
-    // :0060
+    // ECALL_HANDLER_ADDR + 12
     // Nonzero exit code: end the execution with an error. The halt reads a0 as its `a`
     // operand, so the error carries the exit code (a trap's halt has a = 0)
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
@@ -695,6 +649,34 @@ mod tests {
         let set_mtvec = &rom.insts[&(ENTRY_EXIT_JMP_ADDR + 4)].i;
         assert_eq!(set_mtvec.store_offset, MTVEC as i64);
         assert_eq!(set_mtvec.b_offset_imm0, ECALL_HANDLER_ADDR);
+    }
+
+    /// The BIOS reads the input every INPUT_ANCHOR_STEP bytes up to its end, so no two
+    /// consecutive input addresses of a Mem segment are farther apart than the PIL accepts, and
+    /// the exit check still jumps back to the output block.
+    #[test]
+    fn bios_input_reads_cover_the_whole_input() {
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
+        add_end_and_lib(&mut rom);
+        add_entry_exit_jmp(&mut rom, crate::ROM_ADDR);
+
+        let reads: Vec<u64> = (ENTRY_EXIT_JMP_ADDR..ECALL_HANDLER_ADDR)
+            .step_by(4)
+            .map(|pc| &rom.insts[&pc].i)
+            .filter(|i| i.op_str == "copyb" && i.ind_width == 8 && i.a_offset_imm0 > INPUT_ADDR)
+            .map(|i| i.a_offset_imm0)
+            .collect();
+        let expected: Vec<u64> =
+            (1..=INPUT_ANCHOR_READS).map(|k| INPUT_ADDR + k * INPUT_ANCHOR_STEP).collect();
+        assert_eq!(reads, expected);
+        assert_eq!(expected.last().unwrap() + INPUT_ANCHOR_STEP, INPUT_ADDR + MAX_INPUT_SIZE);
+
+        // ECALL_HANDLER_ADDR + 8: beq r10, 0 jumps back to the output block (:0014)
+        let exit_check = &rom.insts[&(ECALL_HANDLER_ADDR + 8)].i;
+        assert_eq!(
+            (ECALL_HANDLER_ADDR + 8) as i64 + exit_check.jmp_offset1,
+            (ENTRY_EXIT_JMP_ADDR + 0x14) as i64
+        );
     }
 
     // Fixtures live inside real RAM so the RAM_ADDR clamp is exercised realistically.

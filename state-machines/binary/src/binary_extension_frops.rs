@@ -180,14 +180,14 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0x800D5000 && a < 0x800D6000 && (a & 7) == 0 && b < 6
-            for a in (0x800D5000..0x800D6000).step_by(8) {
+            // mid_box: a >= 0x900D5000 && a < 0x900D6000 && (a & 7) == 0 && b < 6
+            for a in (0x900D5000..0x900D6000).step_by(8) {
                 for b in 0..6 {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 0x800D5000 && a < 0x800D6000 && (a & 7) == 0 && b == 100
-            for a in (0x800D5000..0x800D6000).step_by(8) {
+            // mid_box: a >= 0x900D5000 && a < 0x900D6000 && (a & 7) == 0 && b == 100
+            for a in (0x900D5000..0x900D6000).step_by(8) {
                 for b in 0x64..0x65 {
                     ops.push([a, b]);
                 }
@@ -197,8 +197,8 @@ impl BinaryExtensionFrops {
         // op signextend_w
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // mid_box: a >= 0x800D5000 && a < 0x800D6000 && (a & 3) == 0 && b == 100
-            for a in (0x800D5000..0x800D6000).step_by(4) {
+            // mid_box: a >= 0x900D5000 && a < 0x900D6000 && (a & 3) == 0 && b == 100
+            for a in (0x900D5000..0x900D6000).step_by(4) {
                 for b in 0x64..0x65 {
                     ops.push([a, b]);
                 }
@@ -357,11 +357,11 @@ impl BinaryExtensionFrops {
             }
             ZiskOp::SIGNEXTEND_H => {
                 a == 0 && b < 2901
-                    || a >= 0x800D5000 && a < 0x800D6000 && (a & 7) == 0 && b < 6
-                    || a >= 0x800D5000 && a < 0x800D6000 && (a & 7) == 0 && b == 100
+                    || a >= 0x900D5000 && a < 0x900D6000 && (a & 7) == 0 && b < 6
+                    || a >= 0x900D5000 && a < 0x900D6000 && (a & 7) == 0 && b == 100
             }
             ZiskOp::SIGNEXTEND_W => {
-                a >= 0x800D5000 && a < 0x800D6000 && (a & 3) == 0 && b == 100
+                a >= 0x900D5000 && a < 0x900D6000 && (a & 3) == 0 && b == 100
                     || a >= 0xAABC9000 && a < 0xAABCA000 && (a & 7) == 0 && b < 15
                     || a >= 0xAAC0C000 && a < 0xAAC0E000 && (a & 7) == 0 && b < 15
                     || a >= 0xAACAE000 && a < 0xAACB0000 && (a & 7) == 0 && b < 15
@@ -463,17 +463,17 @@ impl BinaryExtensionFrops {
             ZiskOp::SIGNEXTEND_H => {
                 if a == 0 && b < 2901 {
                     (a * 2901 + b) as usize
-                } else if a >= 0x800D5000 && a < 0x800D6000 && (a & 7) == 0 && b < 6 {
-                    (((a - 0x800D5000) / 8) * 6 + b) as usize + 2901
-                } else if a >= 0x800D5000 && a < 0x800D6000 && (a & 7) == 0 && b == 100 {
-                    ((a - 0x800D5000) / 8) as usize + 5973
+                } else if a >= 0x900D5000 && a < 0x900D6000 && (a & 7) == 0 && b < 6 {
+                    (((a - 0x900D5000) / 8) * 6 + b) as usize + 2901
+                } else if a >= 0x900D5000 && a < 0x900D6000 && (a & 7) == 0 && b == 100 {
+                    ((a - 0x900D5000) / 8) as usize + 5973
                 } else {
                     Self::NO_FROPS
                 }
             }
             ZiskOp::SIGNEXTEND_W => {
-                if a >= 0x800D5000 && a < 0x800D6000 && (a & 3) == 0 && b == 100 {
-                    ((a - 0x800D5000) / 4) as usize
+                if a >= 0x900D5000 && a < 0x900D6000 && (a & 3) == 0 && b == 100 {
+                    ((a - 0x900D5000) / 4) as usize
                 } else if a >= 0xAABC9000 && a < 0xAABCA000 && (a & 7) == 0 && b < 15 {
                     (((a - 0xAABC9000) / 8) * 15 + b) as usize + 1024
                 } else if a >= 0xAAC0C000 && a < 0xAAC0E000 && (a & 7) == 0 && b < 15 {

@@ -3,7 +3,7 @@
 # Usage: ./build-elf <source.s> [output.elf]
 #
 # Uses riscv64-elf-as / riscv64-elf-ld from PATH.
-# Default link: -Ttext=0x80000000 (no linker script).
+# Default link: -Ttext=0x90000000 (no linker script).
 # To use a linker script, place a .ld file next to the source; it will be picked up automatically.
 
 set -euo pipefail
@@ -23,7 +23,7 @@ fi
 if [ -n "$LD_SCRIPT" ] && [ -f "$LD_SCRIPT" ]; then
     riscv64-elf-ld -T "$LD_SCRIPT" "$OBJ" -o "$OUT"
 else
-    riscv64-elf-ld -Ttext=0x80000000 "$OBJ" -o "$OUT"
+    riscv64-elf-ld -Ttext=0x90000000 "$OBJ" -o "$OUT"
 fi
 
 echo "Built: $OUT"

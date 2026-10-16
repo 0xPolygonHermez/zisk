@@ -10,10 +10,10 @@
 // Address map
 // There definitions must match the ZisK rust code ones at core/src/mem.rs used to generate the
 // assembly code, and that are used by the assembly code to access memory and generate the trace
-#define ROM_ADDR          (uint64_t)0x80000000
+#define ROM_ADDR          (uint64_t)0x90000000
 #define ROM_SIZE          (uint64_t)0x08000000 // 128MB
-#define INPUT_ADDR        (uint64_t)0x40000000
-#define MAX_INPUT_SIZE    (uint64_t)0x40000000 // 1024MB = 1GB
+#define INPUT_ADDR        (uint64_t)0x10000000
+#define MAX_INPUT_SIZE    (uint64_t)0x80000000 // 2048MB = 2GB
 #define LOCKED_INPUT_SIZE (uint64_t)0x08000000 // 128MB, the part of the input that is mapped with MAP_LOCKED to ensure it is always resident in RAM
 #define RAM_ADDR          (uint64_t)0xA0000000
 #define RAM_SIZE          (uint64_t)0x20000000 // 512MB
@@ -26,8 +26,8 @@
 // check -- an out-of-range guest access faults only because the host has nothing
 // mapped there -- so server_setup() reserves the whole span PROT_NONE to stop a
 // casual mmap(NULL, ...) or large malloc from being placed inside it.
-#define GUARD_ADDR        (ROM_ADDR + ROM_SIZE)   // 0x88000000
-#define GUARD_SIZE        (RAM_ADDR - GUARD_ADDR) // 0x18000000 = 384MB
+#define GUARD_ADDR        (ROM_ADDR + ROM_SIZE)   // 0x98000000
+#define GUARD_SIZE        (RAM_ADDR - GUARD_ADDR) // 0x08000000 = 128MB
 #define SYS_SIZE          (uint64_t)0x10000
 #define OUTPUT_ADDR       (SYS_ADDR + SYS_SIZE)
 
@@ -59,7 +59,11 @@
 // precompile results.  Assembly code waits when the number of read fields is not lower than the
 // number of written fields, and client waits when the number of written fields would exceed the
 // number of read fields plus the available precompile shared memory size, which is a circular buffer
-#define CONTROL_INPUT_ADDR (uint64_t)0x70000000
+// The generated assembly addresses these pages with absolute 32-bit displacements (see
+// CONTROL_INPUT_ADDR in core/src/zisk_rom_2_asm.rs), so they must lie below 2GB, and outside the
+// guest regions: they sit just below INPUT_ADDR, at the top of the window left for this executable,
+// which is linked at 0x400000 and must end below them (see the .zisk_region in the Makefile).
+#define CONTROL_INPUT_ADDR (uint64_t)0x0FF00000
 #define CONTROL_INPUT_SIZE (uint64_t)0x1000 // 4kB
 
 // Control input u64 slots carrying the seed of zkvm_random_u64 for the next execution: the
@@ -67,7 +71,7 @@
 // match ControlShmemOffsets in asm-runner/src/control_shmem.rs
 #define CONTROL_INPUT_RANDOM_SEED_INDEX 4
 #define CONTROL_INPUT_RANDOM_SEED_SET_INDEX 8
-#define CONTROL_OUTPUT_ADDR (uint64_t)0x70001000
+#define CONTROL_OUTPUT_ADDR (uint64_t)0x0FF01000
 #define CONTROL_OUTPUT_SIZE (uint64_t)0x1000 // 4kB
 #define CONTROL_RETRY_DELAY_US 1000 // 1ms
 #define CONTROL_NUMBER_OF_RETRIES 1000 // 1s max total

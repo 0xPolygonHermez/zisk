@@ -11,8 +11,8 @@ fn generate_test_plans(
     counters: Vec<(ChunkId, &MemCounters)>,
 ) -> Vec<Plan> {
     let addr_index = match from_addr {
-        0x8000_0000 => 0,
-        0x4000_0000 => 1,
+        0x9000_0000 => 0,
+        0x1000_0000 => 1,
         0xA000_0000 => 2,
         _ => panic!("invalid addr 0x{from_addr:X}"),
     };
@@ -22,7 +22,7 @@ fn generate_test_plans(
             air_id: addr_index + 10,
             addr_index,
             from_addr: from_addr >> 3,
-            last_addr: (from_addr >> 3) - if from_addr == 0x8000_0000 { 1 } else { 0 },
+            last_addr: (from_addr >> 3) - if from_addr == 0x9000_0000 { 1 } else { 0 },
             rows,
             max_addr_distance: 1,
         },
@@ -137,8 +137,8 @@ fn test_mem_module_planner() {
 fn test_counters() {
     let mut counter = MemCounters::new();
     let cfg = ConfigNextOp { step_delta: 1, step_cycle: 0, addr_delta: 8, addr_cycle: 0 };
-    add_mem_data(&mut counter, 10, 0x8000_0000, 10, 0x01020304_05060708, 8, true, &cfg);
-    add_mem_data(&mut counter, 10, 0x8000_0000, 100, 0x01020304_05060708, 8, false, &cfg);
+    add_mem_data(&mut counter, 10, 0x9000_0000, 10, 0x01020304_05060708, 8, true, &cfg);
+    add_mem_data(&mut counter, 10, 0x9000_0000, 100, 0x01020304_05060708, 8, false, &cfg);
     add_mem_write64(&mut counter, 0xA000_0002, 18, 0x2222_2222_2222_2222);
     add_mem_read64(&mut counter, 0xA000_0000, 12, 0x1111_1111_1111_1111);
     add_mem_read64(&mut counter, 0xA000_0000, 40, 0x2222_2222_2222_1111); // dual
@@ -148,9 +148,9 @@ fn test_counters() {
     add_mem_write64(&mut counter, 0xA000_0000, 80, 0x2222_2222_6666_1111);
     add_mem_read64(&mut counter, 0xA000_0016, 85, 0x3333_3333_3333_3333);
     add_mem_read64(&mut counter, 0xA000_0000, 90, 0x2222_2222_6666_1111); // dual => 2 (A000_0002) + 5 rows = 7
-    add_mem_data(&mut counter, 10, 0x4000_0000, 10, 0x4041_4243_4445_4647, 8, false, &cfg);
+    add_mem_data(&mut counter, 10, 0x1000_0000, 10, 0x4041_4243_4445_4647, 8, false, &cfg);
     counter.close();
-    assert_eq!(format!("{counter:?}"), "[MEM_0,#:10 => 0x80000000:2 0x80000008:2 0x80000010:2 0x80000018:2 0x80000020:2 0x80000028:2 0x80000030:2 0x80000038:2 0x80000040:2 0x80000048:2][MEM_1,#:10 => 0x40000000:1 0x40000008:1 0x40000010:1 0x40000018:1 0x40000020:1 0x40000028:1 0x40000030:1 0x40000038:1 0x40000040:1 0x40000048:1][MEM_2,#:4 => 0xA0000000:7 0xA0000008:2 0xA0000010:1 0xA0000018:1]");
+    assert_eq!(format!("{counter:?}"), "[MEM_0,#:10 => 0x90000000:2 0x90000008:2 0x90000010:2 0x90000018:2 0x90000020:2 0x90000028:2 0x90000030:2 0x90000038:2 0x90000040:2 0x90000048:2][MEM_1,#:10 => 0x10000000:1 0x10000008:1 0x10000010:1 0x10000018:1 0x10000020:1 0x10000028:1 0x10000030:1 0x10000038:1 0x10000040:1 0x10000048:1][MEM_2,#:4 => 0xA0000000:7 0xA0000008:2 0xA0000010:1 0xA0000018:1]");
 }
 
 #[test]

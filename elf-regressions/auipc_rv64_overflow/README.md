@@ -1,12 +1,12 @@
 # auipc_rv64_overflow - RV64 AUIPC circuit bug
 
-Two tests, same instruction (`auipc a0, 0x7ffff`), different instruction
+Two tests, same instruction (`auipc a0, 0x6ffff`), different instruction
 addresses.  The only relevant difference is whether `pc + imm` crosses the
 32-bit limb boundary.
 
 ```
-auipc_rv64_safe/     auipc at PC = 0x80000000  ->  a0 = 0xFFFFFF00   (high limb 0, proving OK)
-auipc_rv64_overflow/ auipc at PC = 0x80001000  ->  a0 = 0x100000000  (high limb 1, proving FAILS)
+auipc_rv64_safe/     auipc at PC = 0x90000000  ->  a0 = 0xFFFFF000   (high limb 0, proving OK)
+auipc_rv64_overflow/ auipc at PC = 0x90001000  ->  a0 = 0x100000000  (high limb 1, proving FAILS)
 ```
 
 The overflow case uses `.balign 4096` in the assembly to place `auipc_test` at a
@@ -16,11 +16,11 @@ next page boundary.
 ## The arithmetic
 
 ```
-auipc a0, 0x7ffff
-  offset = 0x7FFFF << 12 = 0x7FFFF000   (largest positive 20-bit AUIPC immediate, bit 19 = 0)
+auipc a0, 0x6ffff
+  offset = 0x6FFFF << 12 = 0x6FFFF000   (positive 20-bit AUIPC immediate, bit 19 = 0)
 
-At PC = 0x80000000:  0x80000000 + 0x7FFFF000 = 0xFFFFFF00          -> high limb 0
-At PC = 0x80001000:  0x80001000 + 0x7FFFF000 = 0x100000000 = 2^32  -> high limb 1
+At PC = 0x90000000:  0x90000000 + 0x6FFFF000 = 0xFFFFF000          -> high limb 0
+At PC = 0x90001000:  0x90001000 + 0x6FFFF000 = 0x100000000 = 2^32  -> high limb 1
 ```
 
 ## Why proving fails

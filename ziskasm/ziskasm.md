@@ -85,7 +85,7 @@ it. In a multi-file assembly (a library, or a `-z <dir>` run) a definition can b
 made visible to **every** file by prefixing it with `pub`:
 
 ```
-pub define FREE_INPUT 0x40000000
+pub define FREE_INPUT 0x10000000
 ```
 
 The assembler gathers all `pub define`s across the sources in a pre-pass and seeds
