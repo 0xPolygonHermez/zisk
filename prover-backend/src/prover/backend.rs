@@ -5,6 +5,7 @@ use crate::{
 };
 use anyhow::Result;
 use colored::Colorize;
+use mpi::topology::Communicator;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
@@ -783,6 +784,11 @@ impl ProverBackend {
 
     pub(crate) fn cluster_barrier(&self) {
         self.proofman.set_barrier();
+    }
+
+    /// End every rank of the MPI job, this one included, with exit `code`.
+    pub(crate) fn abort_cluster(&self, code: i32) -> ! {
+        self.proofman.get_wcm().get_pctx().mpi_ctx.world.abort(code)
     }
 }
 

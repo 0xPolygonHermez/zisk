@@ -6,6 +6,7 @@ use anyhow::{anyhow, Context, Result};
 use proofman::{AggProofs, ContributionsInfo, WitnessInfo};
 use std::collections::VecDeque;
 use std::path::Path;
+use std::sync::Arc;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -64,6 +65,65 @@ pub(crate) fn run_recovery<R: RecoveryActions + ?Sized>(prover: &R) -> Result<()
     Ok(())
 }
 
+/// Run [`run_recovery`] off the async runtime, giving up after `timeout`, and say
+/// why it failed if it did. A handshake that gives up leaves its thread in MPI.
+async fn run_recovery_within<R: RecoveryActions + Send + Sync + 'static>(
+    prover: Arc<R>,
+    timeout: Duration,
+) -> std::result::Result<(), String> {
+    let handshake = tokio::task::spawn_blocking(move || run_recovery(&*prover));
+    match tokio::time::timeout(timeout, handshake).await {
+        Ok(Ok(Ok(()))) => Ok(()),
+        Ok(Ok(Err(e))) => Err(format!("cluster handshake failed: {e:#}")),
+        Ok(Err(e)) => Err(format!("recovery task panicked: {e}")),
+        Err(_) => Err(format!("cluster handshake timed out after {timeout:?}")),
+    }
+}
+
+/// The exit status of a worker that ends itself because it cannot recover
+/// in-process: `EX_TEMPFAIL`, since a restart is what recovers it.
+pub(crate) const WEDGED_EXIT_CODE: i32 = 75;
+
+/// End the worker, every MPI rank of it, because it cannot recover in-process.
+///
+/// Once ranks may be in different MPI collectives, nothing in the process resumes
+/// them, and a rank that exits normally waits in proofman's teardown barrier: only
+/// aborting the MPI job ends them all. The service manager then restarts the
+/// worker, as after any failed exit, and the coordinator, seeing it disconnect, no
+/// longer waits for its recovery.
+fn abort_wedged_worker<T: ZiskBackend + 'static>(prover: &ZiskProver<T>, why: &str) -> ! {
+    error!("{why}; aborting the worker so that it restarts");
+    // Also on stderr, unbuffered: a log file's writer thread may never write the line.
+    eprintln!("zisk-worker: {why}; aborting the worker so that it restarts");
+    prover.abort_cluster(WEDGED_EXIT_CODE)
+}
+
+/// Make a panic anywhere in the process call `abort`, once the panic is reported.
+///
+/// For a worker of several MPI ranks: a rank that panics leaves the others waiting
+/// in whichever collective they had reached. A witness thread's panic, for one,
+/// never reaches the collective where proofman's ranks agree on a failure, so they
+/// wait for good; see [`abort_wedged_worker`]. On one rank there is no collective
+/// to wait in, and a task's panic is caught and reported as its failure.
+fn abort_on_panic(abort: impl Fn(&str) + Send + Sync + 'static) {
+    let report = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        report(info);
+        abort("a panic left the other MPI ranks waiting for this one");
+        // `abort` does not return; should it, the panic must still not unwind.
+        std::process::abort();
+    }));
+}
+
+/// On a worker of several MPI ranks, a panic anywhere ends every rank; see
+/// [`abort_on_panic`].
+fn abort_every_rank_on_panic<T: ZiskBackend + 'static>(worker: &Worker<T>) {
+    let prover = worker.prover_arc();
+    if prover.n_processes() > 1 {
+        abort_on_panic(move |why| abort_wedged_worker(&prover, why));
+    }
+}
+
 /// A worker process, specialized by MPI role: rank 0 talks to the coordinator
 /// over gRPC, secondary ranks only service MPI broadcasts.
 pub enum WorkerNode<T: ZiskBackend + 'static> {
@@ -90,6 +150,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
         prover_config: ProverConfig,
     ) -> Result<WorkerNode<Emu>> {
         let worker = Worker::<Emu>::new_emu(prover_config)?;
+        abort_every_rank_on_panic(&worker);
 
         if worker.local_rank() == 0 {
             Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Emu>::new(worker_config, worker).await?))
@@ -104,6 +165,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
         prover_config: ProverConfig,
     ) -> Result<WorkerNode<Asm>> {
         let worker = Worker::<Asm>::new_asm(prover_config)?;
+        abort_every_rank_on_panic(&worker);
 
         if worker.local_rank() == 0 {
             Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Asm>::new(worker_config, worker).await?))
@@ -1140,9 +1202,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// wait for the proofman thread to drain, cluster_barrier), then signal
     /// `WorkerRecoveryComplete`. The ASM soft reset itself runs inside
     /// `executor::execute`'s Err arm — this task is only the post-cancel sync.
-    /// On `RECOVERY_TIMEOUT` we log loudly and drop the completion: the worker
-    /// stays wedged `SettingUp` (still heartbeating, so the stale-disconnected
-    /// sweep won't reap it), so operator action is required.
+    /// A handshake that fails, or does not complete within `RECOVERY_TIMEOUT`,
+    /// aborts the worker; see [`abort_wedged_worker`].
     fn spawn_post_failure_recovery(&mut self, loop_tx: LoopEventSender, cancelled: CancelledWork) {
         let prover = self.worker.prover_arc();
         let worker_id = self.worker_config.worker.worker_id.as_string();
@@ -1159,29 +1220,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             // computation's cancel never leaves the stream half un-joined.
             Self::drain_cancelled_computation(cancelled.stream, &recovery_context).await;
 
-            let join = tokio::time::timeout(
-                Self::RECOVERY_TIMEOUT,
-                tokio::task::spawn_blocking(move || run_recovery(&*prover)),
-            )
-            .await;
-            match join {
-                Ok(Ok(Ok(()))) => {
+            match run_recovery_within(Arc::clone(&prover), Self::RECOVERY_TIMEOUT).await {
+                Ok(()) => {
                     info!("[Recovery] {worker_id}: cluster handshake done; signalling Ready");
                     let msg = WorkerRecoveryComplete { worker_id: worker_id.clone() };
                     if let Err(e) = loop_tx.send_recovery_complete(msg) {
                         error!("[Recovery] {worker_id}: enqueue RecoveryComplete failed: {e}");
                     }
                 }
-                Ok(Ok(Err(e))) => error!(
-                    "[Recovery] {worker_id}: cluster handshake failed: {e:#}; worker stays in SettingUp"
-                ),
-                Ok(Err(e)) => {
-                    error!("[Recovery] {worker_id}: recovery task panicked: {e}")
-                }
-                Err(_) => error!(
-                    "[Recovery] {worker_id}: cluster handshake timed out after {:?}; worker is wedged in SettingUp and needs operator attention",
-                    Self::RECOVERY_TIMEOUT
-                ),
+                Err(why) => abort_wedged_worker(&prover, &format!("[Recovery] {worker_id}: {why}")),
             }
         }));
     }
@@ -2626,6 +2673,94 @@ mod recovery_tests {
         let prover = RecordingProver::new();
         run_recovery(&prover).unwrap();
         assert_eq!(prover.calls(), vec!["notify", "wait_until_proofman_ready", "barrier"]);
+    }
+
+    /// A barrier that waits until the test lets it go, as it does on rank 0 while a
+    /// peer rank sits in another collective.
+    struct StuckBarrier {
+        release: Mutex<std::sync::mpsc::Receiver<()>>,
+    }
+
+    impl RecoveryActions for StuckBarrier {
+        fn notify_cluster_cancellation(&self) {}
+
+        fn cluster_barrier(&self) {
+            let _ = self.release.lock().unwrap().recv();
+        }
+
+        fn wait_until_proofman_ready(&self) {}
+    }
+
+    struct PanickingBarrier;
+
+    impl RecoveryActions for PanickingBarrier {
+        fn notify_cluster_cancellation(&self) {}
+
+        fn cluster_barrier(&self) {
+            panic!("a barrier that panics");
+        }
+
+        fn wait_until_proofman_ready(&self) {}
+    }
+
+    #[tokio::test]
+    async fn a_handshake_that_completes_succeeds() {
+        let prover = Arc::new(RecordingProver::new());
+        run_recovery_within(Arc::clone(&prover), Duration::from_secs(5)).await.unwrap();
+        assert_eq!(prover.calls(), vec!["notify", "wait_until_proofman_ready", "barrier"]);
+    }
+
+    #[tokio::test]
+    async fn a_handshake_that_does_not_complete_in_time_fails() {
+        let (release, stuck) = std::sync::mpsc::channel();
+        let prover = Arc::new(StuckBarrier { release: Mutex::new(stuck) });
+
+        let outcome = run_recovery_within(prover, Duration::from_millis(50)).await;
+        // Let the barrier go, so the runtime's shutdown does not wait for it.
+        release.send(()).unwrap();
+
+        assert!(matches!(&outcome, Err(why) if why.contains("timed out")), "{outcome:?}");
+    }
+
+    #[tokio::test]
+    async fn a_handshake_that_panics_fails() {
+        let outcome = run_recovery_within(Arc::new(PanickingBarrier), Duration::from_secs(5)).await;
+        assert!(matches!(&outcome, Err(why) if why.contains("panicked")), "{outcome:?}");
+    }
+
+    /// Set in the child process of `a_panic_anywhere_aborts_through_the_hook`.
+    const ABORT_ON_PANIC_CHILD: &str = "ZISK_WORKER_TEST_ABORT_ON_PANIC_CHILD";
+
+    /// The child half of `a_panic_anywhere_aborts_through_the_hook`, in a process of
+    /// its own since a panic hook is process-wide. Does nothing unless that test
+    /// runs it.
+    #[test]
+    fn abort_on_panic_child() {
+        if std::env::var_os(ABORT_ON_PANIC_CHILD).is_none() {
+            return;
+        }
+        abort_on_panic(|why| {
+            println!("aborting: {why}");
+            std::process::exit(WEDGED_EXIT_CODE)
+        });
+        // As a witness thread's panic would be: on a thread nobody joins in time.
+        let _ = std::thread::spawn(|| panic!("a witness thread's panic")).join();
+        unreachable!("the hook ends the process before the panic unwinds");
+    }
+
+    #[test]
+    fn a_panic_anywhere_aborts_through_the_hook() {
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "worker_node::recovery_tests::abort_on_panic_child", "--nocapture"])
+            .env(ABORT_ON_PANIC_CHILD, "1")
+            .output()
+            .unwrap();
+
+        assert_eq!(child.status.code(), Some(WEDGED_EXIT_CODE), "{child:?}");
+        let stdout = String::from_utf8_lossy(&child.stdout);
+        assert!(stdout.contains("aborting: a panic left the other MPI ranks"), "{stdout}");
+        let stderr = String::from_utf8_lossy(&child.stderr);
+        assert!(stderr.contains("a witness thread's panic"), "the panic is reported: {stderr}");
     }
 
     /// Process-long loop channel must redeliver after the original
