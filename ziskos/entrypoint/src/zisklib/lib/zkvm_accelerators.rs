@@ -35,7 +35,7 @@ pub unsafe extern "C" fn zkvm_keccak256(
     super::keccak256_c(
         data,
         len,
-        (*output).data.as_mut_ptr(),
+        core::ptr::addr_of_mut!((*output).data).cast::<u8>(),
         #[cfg(feature = "hints")]
         hints,
     );
@@ -52,7 +52,7 @@ pub unsafe extern "C" fn zkvm_sha256(
 ) -> zkvm_status {
     #[cfg(feature = "hints")]
     {
-        super::sha256_c(data, len, (*output).data.as_mut_ptr(), hints);
+        super::sha256_c(data, len, core::ptr::addr_of_mut!((*output).data).cast::<u8>(), hints);
         ZKVM_EOK
     }
 
@@ -73,7 +73,7 @@ pub unsafe extern "C" fn zkvm_sha256(
 
             #[cfg(zisk_guest)]
             {
-                super::sha256_c(data, len, (*output).data.as_mut_ptr());
+                super::sha256_c(data, len, core::ptr::addr_of_mut!((*output).data).cast::<u8>());
                 return ZKVM_EOK;
             }
         }
@@ -97,7 +97,7 @@ pub unsafe extern "C" fn zkvm_ripemd160(
 ) -> zkvm_status {
     #[cfg(feature = "hints")]
     {
-        super::ripemd160_c(data, len, (*output).data.as_mut_ptr(), hints);
+        super::ripemd160_c(data, len, core::ptr::addr_of_mut!((*output).data).cast::<u8>(), hints);
         ZKVM_EOK
     }
 
@@ -115,14 +115,14 @@ pub unsafe extern "C" fn zkvm_ripemd160(
 
             #[cfg(zisk_guest)]
             {
-                super::ripemd160_c(data, len, (*output).data.as_mut_ptr());
+                super::ripemd160_c(data, len, core::ptr::addr_of_mut!((*output).data).cast::<u8>());
                 return ZKVM_EOK;
             }
         }
 
         #[cfg(not(zisk_guest))]
         {
-            std::ptr::addr_of_mut!((*output).data)
+            core::ptr::addr_of_mut!((*output).data)
                 .write_unaligned(ripemd160_sw::hash(std::slice::from_raw_parts(data, len)));
             ZKVM_EOK
         }
@@ -206,9 +206,9 @@ pub unsafe extern "C" fn zkvm_bn254_g1_add(
     #[cfg(feature = "hints")]
     {
         let ret = super::add_safe_bn254_c(
-            (*p1).data.as_ptr(),
-            (*p2).data.as_ptr(),
-            (*result).data.as_mut_ptr(),
+            core::ptr::addr_of!((*p1).data).cast::<u8>(),
+            core::ptr::addr_of!((*p2).data).cast::<u8>(),
+            core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
             hints,
         );
         if matches!(ret, bn254::G1_ADD_SUCCESS | bn254::G1_ADD_SUCCESS_INFINITY) {
@@ -225,24 +225,24 @@ pub unsafe extern "C" fn zkvm_bn254_g1_add(
             #[cfg(zisk_hints)]
             unsafe {
                 crate::hints::hint_bn254_g1_add(
-                    std::ptr::addr_of!((*p1).data).cast::<u8>(),
-                    std::ptr::addr_of!((*p2).data).cast::<u8>(),
+                    core::ptr::addr_of!((*p1).data).cast::<u8>(),
+                    core::ptr::addr_of!((*p2).data).cast::<u8>(),
                 );
             }
 
             #[cfg(zisk_hints_debug)]
             crate::hint_log(format!(
                 "hint_bn254_g1_add (p1: {:x?}, p2: {:x?})",
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*p1).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*p2).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*p1).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*p2).data)),
             ));
 
             #[cfg(zisk_guest)]
             {
                 let ret = super::add_safe_bn254_c(
-                    (*p1).data.as_ptr(),
-                    (*p2).data.as_ptr(),
-                    (*result).data.as_mut_ptr(),
+                    core::ptr::addr_of!((*p1).data).cast::<u8>(),
+                    core::ptr::addr_of!((*p2).data).cast::<u8>(),
+                    core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
                 );
                 return if matches!(ret, bn254::G1_ADD_SUCCESS | bn254::G1_ADD_SUCCESS_INFINITY) {
                     ZKVM_EOK
@@ -255,11 +255,11 @@ pub unsafe extern "C" fn zkvm_bn254_g1_add(
         #[cfg(not(zisk_guest))]
         {
             match bn254_sw::g1_add(
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*p1).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*p2).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*p1).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*p2).data)),
             ) {
                 Some(res) => {
-                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
+                    core::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -279,9 +279,9 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
     #[cfg(feature = "hints")]
     {
         let ret = super::scalar_mul_safe_bn254_c(
-            (*point).data.as_ptr(),
-            (*scalar).data.as_ptr(),
-            (*result).data.as_mut_ptr(),
+            core::ptr::addr_of!((*point).data).cast::<u8>(),
+            core::ptr::addr_of!((*scalar).data).cast::<u8>(),
+            core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
             hints,
         );
         if matches!(ret, bn254::G1_MUL_SUCCESS | bn254::G1_MUL_SUCCESS_INFINITY) {
@@ -298,24 +298,24 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
             #[cfg(zisk_hints)]
             unsafe {
                 crate::hints::hint_bn254_g1_mul(
-                    std::ptr::addr_of!((*point).data).cast::<u8>(),
-                    std::ptr::addr_of!((*scalar).data).cast::<u8>(),
+                    core::ptr::addr_of!((*point).data).cast::<u8>(),
+                    core::ptr::addr_of!((*scalar).data).cast::<u8>(),
                 );
             }
 
             #[cfg(zisk_hints_debug)]
             crate::hint_log(format!(
                 "hint_bn254_g1_mul (point: {:x?}, scalar: {:x?})",
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*point).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*scalar).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*point).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*scalar).data)),
             ));
 
             #[cfg(zisk_guest)]
             {
                 let ret = super::scalar_mul_safe_bn254_c(
-                    (*point).data.as_ptr(),
-                    (*scalar).data.as_ptr(),
-                    (*result).data.as_mut_ptr(),
+                    core::ptr::addr_of!((*point).data).cast::<u8>(),
+                    core::ptr::addr_of!((*scalar).data).cast::<u8>(),
+                    core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
                 );
                 return if matches!(ret, bn254::G1_MUL_SUCCESS | bn254::G1_MUL_SUCCESS_INFINITY) {
                     ZKVM_EOK
@@ -328,11 +328,11 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
         #[cfg(not(zisk_guest))]
         {
             match bn254_sw::g1_mul(
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*point).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*scalar).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*point).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*scalar).data)),
             ) {
                 Some(res) => {
-                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
+                    core::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -424,9 +424,9 @@ pub unsafe extern "C" fn zkvm_blake2f(
     {
         super::blake2b_compress_c(
             rounds,
-            (*h).data.as_mut_ptr() as *mut u64,
-            (*m).data.as_ptr() as *const u64,
-            (*t).data.as_ptr() as *const u64,
+            core::ptr::addr_of_mut!((*h).data).cast::<u8>() as *mut u64,
+            core::ptr::addr_of!((*m).data).cast::<u8>() as *const u64,
+            core::ptr::addr_of!((*t).data).cast::<u8>() as *const u64,
             f,
             hints,
         );
@@ -441,9 +441,9 @@ pub unsafe extern "C" fn zkvm_blake2f(
             unsafe {
                 crate::hints::hint_blake2b_compress(
                     rounds,
-                    (*h).data.as_mut_ptr() as *mut u64,
-                    (*m).data.as_ptr() as *const u64,
-                    (*t).data.as_ptr() as *const u64,
+                    core::ptr::addr_of_mut!((*h).data).cast::<u8>() as *mut u64,
+                    core::ptr::addr_of!((*m).data).cast::<u8>() as *const u64,
+                    core::ptr::addr_of!((*t).data).cast::<u8>() as *const u64,
                     f,
                 );
             }
@@ -455,9 +455,9 @@ pub unsafe extern "C" fn zkvm_blake2f(
             {
                 super::blake2b_compress_c(
                     rounds,
-                    (*h).data.as_mut_ptr() as *mut u64,
-                    (*m).data.as_ptr() as *const u64,
-                    (*t).data.as_ptr() as *const u64,
+                    core::ptr::addr_of_mut!((*h).data).cast::<u8>() as *mut u64,
+                    core::ptr::addr_of!((*m).data).cast::<u8>() as *const u64,
+                    core::ptr::addr_of!((*t).data).cast::<u8>() as *const u64,
                     f,
                 );
                 return ZKVM_EOK;
@@ -466,10 +466,14 @@ pub unsafe extern "C" fn zkvm_blake2f(
 
         #[cfg(not(zisk_guest))]
         {
-            let h_ptr = (*h).data.as_mut_ptr() as *mut [u64; 8];
+            let h_ptr = core::ptr::addr_of_mut!((*h).data).cast::<u8>() as *mut [u64; 8];
             let mut h_arr = super::read_maybe_unaligned(h_ptr);
-            let m_arr = super::read_maybe_unaligned((*m).data.as_ptr() as *const [u64; 16]);
-            let t_arr = super::read_maybe_unaligned((*t).data.as_ptr() as *const [u64; 2]);
+            let m_arr = super::read_maybe_unaligned(
+                core::ptr::addr_of!((*m).data).cast::<u8>() as *const [u64; 16]
+            );
+            let t_arr = super::read_maybe_unaligned(
+                core::ptr::addr_of!((*t).data).cast::<u8>() as *const [u64; 2]
+            );
             blake2::compress(rounds, &mut h_arr, m_arr, t_arr, f != 0);
             super::write_maybe_unaligned(h_ptr, h_arr);
             ZKVM_EOK
@@ -491,10 +495,10 @@ pub unsafe extern "C" fn zkvm_kzg_point_eval(
     {
         // verify_kzg_proof_c takes (z, y, commitment, proof)
         *verified = super::verify_kzg_proof_c(
-            (*z).data.as_ptr(),
-            (*y).data.as_ptr(),
-            (*commitment).data.as_ptr(),
-            (*proof).data.as_ptr(),
+            core::ptr::addr_of!((*z).data).cast::<u8>(),
+            core::ptr::addr_of!((*y).data).cast::<u8>(),
+            core::ptr::addr_of!((*commitment).data).cast::<u8>(),
+            core::ptr::addr_of!((*proof).data).cast::<u8>(),
             hints,
         );
         ZKVM_EOK
@@ -507,27 +511,27 @@ pub unsafe extern "C" fn zkvm_kzg_point_eval(
             #[cfg(zisk_hints)]
             unsafe {
                 crate::hints::hint_verify_kzg_proof(
-                    std::ptr::addr_of!((*z).data).cast::<u8>(),
-                    std::ptr::addr_of!((*y).data).cast::<u8>(),
-                    std::ptr::addr_of!((*commitment).data).cast::<u8>(),
-                    std::ptr::addr_of!((*proof).data).cast::<u8>(),
+                    core::ptr::addr_of!((*z).data).cast::<u8>(),
+                    core::ptr::addr_of!((*y).data).cast::<u8>(),
+                    core::ptr::addr_of!((*commitment).data).cast::<u8>(),
+                    core::ptr::addr_of!((*proof).data).cast::<u8>(),
                 );
             }
 
             #[cfg(zisk_hints_debug)]
             crate::hint_log(format!(
                 "hint_verify_kzg_proof (z: {:x?}, y: {:x?})",
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*z).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*y).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*z).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*y).data)),
             ));
 
             #[cfg(zisk_guest)]
             {
                 *verified = super::verify_kzg_proof_c(
-                    (*z).data.as_ptr(),
-                    (*y).data.as_ptr(),
-                    (*commitment).data.as_ptr(),
-                    (*proof).data.as_ptr(),
+                    core::ptr::addr_of!((*z).data).cast::<u8>(),
+                    core::ptr::addr_of!((*y).data).cast::<u8>(),
+                    core::ptr::addr_of!((*commitment).data).cast::<u8>(),
+                    core::ptr::addr_of!((*proof).data).cast::<u8>(),
                 );
                 return ZKVM_EOK;
             }
@@ -536,10 +540,10 @@ pub unsafe extern "C" fn zkvm_kzg_point_eval(
         #[cfg(not(zisk_guest))]
         {
             *verified = bls12_sw::verify_kzg_proof(
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*z).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*y).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*commitment).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*proof).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*z).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*y).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*commitment).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*proof).data)),
             );
             ZKVM_EOK
         }
@@ -557,9 +561,9 @@ pub unsafe extern "C" fn zkvm_bls12_g1_add(
     #[cfg(feature = "hints")]
     {
         let ret = super::add_safe_bls12_381_c(
-            (*result).data.as_mut_ptr(),
-            (*p1).data.as_ptr(),
-            (*p2).data.as_ptr(),
+            core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
+            core::ptr::addr_of!((*p1).data).cast::<u8>(),
+            core::ptr::addr_of!((*p2).data).cast::<u8>(),
             hints,
         );
         if matches!(ret, bls12_381::G1_ADD_SUCCESS | bls12_381::G1_ADD_SUCCESS_INFINITY) {
@@ -576,24 +580,24 @@ pub unsafe extern "C" fn zkvm_bls12_g1_add(
             #[cfg(zisk_hints)]
             unsafe {
                 crate::hints::hint_bls12_381_g1_add(
-                    std::ptr::addr_of!((*p1).data).cast::<u8>(),
-                    std::ptr::addr_of!((*p2).data).cast::<u8>(),
+                    core::ptr::addr_of!((*p1).data).cast::<u8>(),
+                    core::ptr::addr_of!((*p2).data).cast::<u8>(),
                 );
             }
 
             #[cfg(zisk_hints_debug)]
             crate::hint_log(format!(
                 "hint_bls12_381_g1_add (p1: {:x?}, p2: {:x?})",
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*p1).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*p2).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*p1).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*p2).data)),
             ));
 
             #[cfg(zisk_guest)]
             {
                 let ret = super::add_safe_bls12_381_c(
-                    (*result).data.as_mut_ptr(),
-                    (*p1).data.as_ptr(),
-                    (*p2).data.as_ptr(),
+                    core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
+                    core::ptr::addr_of!((*p1).data).cast::<u8>(),
+                    core::ptr::addr_of!((*p2).data).cast::<u8>(),
                 );
                 return if matches!(
                     ret,
@@ -609,11 +613,11 @@ pub unsafe extern "C" fn zkvm_bls12_g1_add(
         #[cfg(not(zisk_guest))]
         {
             match bls12_sw::g1_add(
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*p1).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*p2).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*p1).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*p2).data)),
             ) {
                 Some(res) => {
-                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
+                    core::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -637,7 +641,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
     #[cfg(feature = "hints")]
     {
         let ret = super::msm_safe_bls12_381_c(
-            (*result).data.as_mut_ptr(),
+            core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
             pairs as *const u8,
             num_pairs,
             hints,
@@ -664,7 +668,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
             #[cfg(zisk_guest)]
             {
                 let ret = super::msm_safe_bls12_381_c(
-                    (*result).data.as_mut_ptr(),
+                    core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
                     pairs as *const u8,
                     num_pairs,
                 );
@@ -686,7 +690,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
                 num_pairs,
             )) {
                 Some(res) => {
-                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
+                    core::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -706,9 +710,9 @@ pub unsafe extern "C" fn zkvm_bls12_g2_add(
     #[cfg(feature = "hints")]
     {
         let ret = super::add_safe_twist_bls12_381_c(
-            (*result).data.as_mut_ptr(),
-            (*p1).data.as_ptr(),
-            (*p2).data.as_ptr(),
+            core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
+            core::ptr::addr_of!((*p1).data).cast::<u8>(),
+            core::ptr::addr_of!((*p2).data).cast::<u8>(),
             hints,
         );
         if matches!(ret, bls12_381::G2_ADD_SUCCESS | bls12_381::G2_ADD_SUCCESS_INFINITY) {
@@ -725,24 +729,24 @@ pub unsafe extern "C" fn zkvm_bls12_g2_add(
             #[cfg(zisk_hints)]
             unsafe {
                 crate::hints::hint_bls12_381_g2_add(
-                    std::ptr::addr_of!((*p1).data).cast::<u8>(),
-                    std::ptr::addr_of!((*p2).data).cast::<u8>(),
+                    core::ptr::addr_of!((*p1).data).cast::<u8>(),
+                    core::ptr::addr_of!((*p2).data).cast::<u8>(),
                 );
             }
 
             #[cfg(zisk_hints_debug)]
             crate::hint_log(format!(
                 "hint_bls12_381_g2_add (p1: {:x?}, p2: {:x?})",
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*p1).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*p2).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*p1).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*p2).data)),
             ));
 
             #[cfg(zisk_guest)]
             {
                 let ret = super::add_safe_twist_bls12_381_c(
-                    (*result).data.as_mut_ptr(),
-                    (*p1).data.as_ptr(),
-                    (*p2).data.as_ptr(),
+                    core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
+                    core::ptr::addr_of!((*p1).data).cast::<u8>(),
+                    core::ptr::addr_of!((*p2).data).cast::<u8>(),
                 );
                 return if matches!(
                     ret,
@@ -758,11 +762,11 @@ pub unsafe extern "C" fn zkvm_bls12_g2_add(
         #[cfg(not(zisk_guest))]
         {
             match bls12_sw::g2_add(
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*p1).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*p2).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*p1).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*p2).data)),
             ) {
                 Some(res) => {
-                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
+                    core::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -786,7 +790,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
     #[cfg(feature = "hints")]
     {
         let ret = super::msm_safe_twist_bls12_381_c(
-            (*result).data.as_mut_ptr(),
+            core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
             pairs as *const u8,
             num_pairs,
             hints,
@@ -813,7 +817,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
             #[cfg(zisk_guest)]
             {
                 let ret = super::msm_safe_twist_bls12_381_c(
-                    (*result).data.as_mut_ptr(),
+                    core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
                     pairs as *const u8,
                     num_pairs,
                 );
@@ -835,7 +839,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
                 num_pairs,
             )) {
                 Some(res) => {
-                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
+                    core::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -927,8 +931,8 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(
     #[cfg(feature = "hints")]
     {
         let ret = super::bls12_381_fp_to_g1_c(
-            (*result).data.as_mut_ptr(),
-            (*field_element).data.as_ptr(),
+            core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
+            core::ptr::addr_of!((*field_element).data).cast::<u8>(),
             hints,
         );
         if ret == bls12_381::FP_TO_G1_SUCCESS {
@@ -945,21 +949,21 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(
             #[cfg(zisk_hints)]
             unsafe {
                 crate::hints::hint_bls12_381_fp_to_g1(
-                    std::ptr::addr_of!((*field_element).data).cast::<u8>(),
+                    core::ptr::addr_of!((*field_element).data).cast::<u8>(),
                 );
             }
 
             #[cfg(zisk_hints_debug)]
             crate::hint_log(format!(
                 "hint_bls12_381_fp_to_g1 (fp: {:x?})",
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*field_element).data))
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*field_element).data))
             ));
 
             #[cfg(zisk_guest)]
             {
                 let ret = super::bls12_381_fp_to_g1_c(
-                    (*result).data.as_mut_ptr(),
-                    (*field_element).data.as_ptr(),
+                    core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
+                    core::ptr::addr_of!((*field_element).data).cast::<u8>(),
                 );
                 return if ret == bls12_381::FP_TO_G1_SUCCESS { ZKVM_EOK } else { ZKVM_EFAIL };
             }
@@ -967,11 +971,11 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(
 
         #[cfg(not(zisk_guest))]
         {
-            match bls12_sw::map_fp_to_g1(&std::ptr::read_unaligned(std::ptr::addr_of!(
+            match bls12_sw::map_fp_to_g1(&std::ptr::read_unaligned(core::ptr::addr_of!(
                 (*field_element).data
             ))) {
                 Some(res) => {
-                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
+                    core::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -990,8 +994,8 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(
     #[cfg(feature = "hints")]
     {
         let ret = super::bls12_381_fp2_to_g2_c(
-            (*result).data.as_mut_ptr(),
-            (*field_element).data.as_ptr(),
+            core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
+            core::ptr::addr_of!((*field_element).data).cast::<u8>(),
             hints,
         );
         if ret == bls12_381::FP2_TO_G2_SUCCESS {
@@ -1008,21 +1012,21 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(
             #[cfg(zisk_hints)]
             unsafe {
                 crate::hints::hint_bls12_381_fp2_to_g2(
-                    std::ptr::addr_of!((*field_element).data).cast::<u8>(),
+                    core::ptr::addr_of!((*field_element).data).cast::<u8>(),
                 );
             }
 
             #[cfg(zisk_hints_debug)]
             crate::hint_log(format!(
                 "hint_bls12_381_fp2_to_g2 (fp2: {:x?})",
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*field_element).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*field_element).data)),
             ));
 
             #[cfg(zisk_guest)]
             {
                 let ret = super::bls12_381_fp2_to_g2_c(
-                    (*result).data.as_mut_ptr(),
-                    (*field_element).data.as_ptr(),
+                    core::ptr::addr_of_mut!((*result).data).cast::<u8>(),
+                    core::ptr::addr_of!((*field_element).data).cast::<u8>(),
                 );
                 return if ret == bls12_381::FP2_TO_G2_SUCCESS { ZKVM_EOK } else { ZKVM_EFAIL };
             }
@@ -1030,11 +1034,11 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(
 
         #[cfg(not(zisk_guest))]
         {
-            match bls12_sw::map_fp2_to_g2(&std::ptr::read_unaligned(std::ptr::addr_of!(
+            match bls12_sw::map_fp2_to_g2(&std::ptr::read_unaligned(core::ptr::addr_of!(
                 (*field_element).data
             ))) {
                 Some(res) => {
-                    std::ptr::addr_of_mut!((*result).data).write_unaligned(res);
+                    core::ptr::addr_of_mut!((*result).data).write_unaligned(res);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
@@ -1055,9 +1059,9 @@ pub unsafe extern "C" fn zkvm_secp256r1_verify(
     #[cfg(feature = "hints")]
     {
         *verified = super::secp256r1_ecdsa_verify_c(
-            (*msg).data.as_ptr(),
-            (*sig).data.as_ptr(),
-            (*pubkey).data.as_ptr(),
+            core::ptr::addr_of!((*msg).data).cast::<u8>(),
+            core::ptr::addr_of!((*sig).data).cast::<u8>(),
+            core::ptr::addr_of!((*pubkey).data).cast::<u8>(),
             hints,
         );
         ZKVM_EOK
@@ -1070,26 +1074,26 @@ pub unsafe extern "C" fn zkvm_secp256r1_verify(
             #[cfg(zisk_hints)]
             unsafe {
                 crate::hints::hint_secp256r1_ecdsa_verify(
-                    std::ptr::addr_of!((*msg).data).cast::<u8>(),
-                    std::ptr::addr_of!((*sig).data).cast::<u8>(),
-                    std::ptr::addr_of!((*pubkey).data).cast::<u8>(),
+                    core::ptr::addr_of!((*msg).data).cast::<u8>(),
+                    core::ptr::addr_of!((*sig).data).cast::<u8>(),
+                    core::ptr::addr_of!((*pubkey).data).cast::<u8>(),
                 );
             }
 
             #[cfg(zisk_hints_debug)]
             crate::hint_log(format!(
                 "hint_secp256r1_ecdsa_verify (msg: {:x?}, sig: {:x?}, pk: {:x?})",
-                std::ptr::read_unaligned(std::ptr::addr_of!((*msg).data)),
-                std::ptr::read_unaligned(std::ptr::addr_of!((*sig).data)),
-                std::ptr::read_unaligned(std::ptr::addr_of!((*pubkey).data)),
+                std::ptr::read_unaligned(core::ptr::addr_of!((*msg).data)),
+                std::ptr::read_unaligned(core::ptr::addr_of!((*sig).data)),
+                std::ptr::read_unaligned(core::ptr::addr_of!((*pubkey).data)),
             ));
 
             #[cfg(zisk_guest)]
             {
                 *verified = super::secp256r1_ecdsa_verify_c(
-                    (*msg).data.as_ptr(),
-                    (*sig).data.as_ptr(),
-                    (*pubkey).data.as_ptr(),
+                    core::ptr::addr_of!((*msg).data).cast::<u8>(),
+                    core::ptr::addr_of!((*sig).data).cast::<u8>(),
+                    core::ptr::addr_of!((*pubkey).data).cast::<u8>(),
                 );
                 return ZKVM_EOK;
             }
@@ -1100,9 +1104,9 @@ pub unsafe extern "C" fn zkvm_secp256r1_verify(
         #[cfg(not(zisk_guest))]
         {
             *verified = super::secp256r1_ecdsa_verify_c(
-                std::ptr::addr_of!((*msg).data).cast::<u8>(),
-                std::ptr::addr_of!((*sig).data).cast::<u8>(),
-                std::ptr::addr_of!((*pubkey).data).cast::<u8>(),
+                core::ptr::addr_of!((*msg).data).cast::<u8>(),
+                core::ptr::addr_of!((*sig).data).cast::<u8>(),
+                core::ptr::addr_of!((*pubkey).data).cast::<u8>(),
             );
             ZKVM_EOK
         }
@@ -1145,9 +1149,9 @@ pub unsafe extern "C" fn zkvm_secp256k1_verify(
             #[cfg(zisk_hints_debug)]
             crate::hint_log(format!(
                 "hint_secp256k1_ecdsa_verify (sig: {:x?}, msg: {:x?}, pk: {:x?})",
-                std::ptr::read_unaligned(std::ptr::addr_of!((*sig).data)),
-                std::ptr::read_unaligned(std::ptr::addr_of!((*msg).data)),
-                std::ptr::read_unaligned(std::ptr::addr_of!((*pubkey).data)),
+                std::ptr::read_unaligned(core::ptr::addr_of!((*sig).data)),
+                std::ptr::read_unaligned(core::ptr::addr_of!((*msg).data)),
+                std::ptr::read_unaligned(core::ptr::addr_of!((*pubkey).data)),
             ));
 
             #[cfg(zisk_guest)]
@@ -1164,9 +1168,9 @@ pub unsafe extern "C" fn zkvm_secp256k1_verify(
         #[cfg(not(zisk_guest))]
         {
             *verified = secp256k1_sw::verify(
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*sig).data)),
-                std::ptr::read_unaligned(std::ptr::addr_of!((*msg).data)),
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*pubkey).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*sig).data)),
+                std::ptr::read_unaligned(core::ptr::addr_of!((*msg).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*pubkey).data)),
             );
             ZKVM_EOK
         }
@@ -1217,9 +1221,9 @@ pub unsafe extern "C" fn zkvm_secp256k1_ecrecover(
                 let recid_bytes = (recid as u64).to_le_bytes();
                 crate::hint_log(format!(
                     "hint_secp256k1_ecrecover (sig: {:x?}, recid: {:x?}, msg: {:x?})",
-                    std::ptr::read_unaligned(std::ptr::addr_of!((*sig).data)),
+                    std::ptr::read_unaligned(core::ptr::addr_of!((*sig).data)),
                     recid_bytes,
-                    std::ptr::read_unaligned(std::ptr::addr_of!((*msg).data)),
+                    std::ptr::read_unaligned(core::ptr::addr_of!((*msg).data)),
                 ));
             }
 
@@ -1238,12 +1242,12 @@ pub unsafe extern "C" fn zkvm_secp256k1_ecrecover(
         #[cfg(not(zisk_guest))]
         {
             match secp256k1_sw::ecrecover(
-                &std::ptr::read_unaligned(std::ptr::addr_of!((*sig).data)),
+                &std::ptr::read_unaligned(core::ptr::addr_of!((*sig).data)),
                 recid,
-                std::ptr::read_unaligned(std::ptr::addr_of!((*msg).data)),
+                std::ptr::read_unaligned(core::ptr::addr_of!((*msg).data)),
             ) {
                 Some(pk) => {
-                    std::ptr::addr_of_mut!((*output).data).write_unaligned(pk);
+                    core::ptr::addr_of_mut!((*output).data).write_unaligned(pk);
                     ZKVM_EOK
                 }
                 None => ZKVM_EFAIL,
