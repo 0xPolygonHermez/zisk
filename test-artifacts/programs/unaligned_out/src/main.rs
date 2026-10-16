@@ -113,6 +113,8 @@ extern "C" {
     fn decompress_twist_bls12_381_c(input: *const u8, r: *mut u64) -> u8;
     fn add_twist_bls12_381_c(p1: *const u64, p2: *const u64, r: *mut u64) -> u8;
     fn scalar_mul_twist_bls12_381_c(p: *const u64, k: *const u64, r: *mut u64) -> u8;
+    fn ecdsa_verify_secp256k1_c(pk: *const u64, z: *const u64, r: *const u64, s: *const u64) -> u8;
+    fn pairing_batch_safe_bn254_c(g1: *const u64, g2: *const u64, n: usize, r: *mut u64) -> u8;
     // hashes
     fn native_keccak256(bytes: *const u8, len: usize, out: *mut u8);
     fn sha256f_compress_c(state: *mut u32, blocks: *const u8, num_blocks: usize);
@@ -185,6 +187,17 @@ const S: [u64; 4] =
     [0xd4e89d1ae75aeea2, 0xb8e33178783bd1a3, 0x0866acebc9e141ec, 0x3a816b1c33739e41];
 const Z: [u64; 4] =
     [0x1bf86a1816a52f52, 0xd31e26c3da73dda8, 0xa3b71997594da038, 0x17560495f6944673];
+/// its public key, x then y
+const PK: [u64; 8] = [
+    0x3bcfdc2aca47e0f2,
+    0xa739d5cc6b89e9b5,
+    0x35b73cc431afc6bc,
+    0xe1ea4273f638d4ae,
+    0xc6402318ee33448e,
+    0x9f18c242b8df8bb6,
+    0x934a8dfdd797e1c4,
+    0x3840aa9c4d86557e,
+];
 /// BLS12-381 generators, little-endian limbs (x then y; G2: x0 x1 y0 y1)
 const BLS_G1: [u64; 12] = [
     0xFB3AF00ADB22C6BB,
@@ -510,6 +523,10 @@ cases! {
         let code = core::slice::from_raw_parts(ip(&x.code) as *const u8, 128);
         ziskos::ziskos_jump_dest!(dst_ptr: o as *mut u64, code, 100usize)
     };
+    // inputs only: the return value is the result
+    ecdsa_verify_secp256k1, 0, |x, o| ecdsa_verify_secp256k1_c(ip(&PK), ip(&Z), ip(&R), ip(&S));
+    // one pair: the bn254 generator with the point at infinity of the twist
+    pairing_batch_safe_bn254, 384, |x, o| pairing_batch_safe_bn254_c(ip(&x.bn_g1), ip(&[0u64; 16]), 1, u64p!(o));
 }
 
 // ---- input relocation ----------------------------------------------------------

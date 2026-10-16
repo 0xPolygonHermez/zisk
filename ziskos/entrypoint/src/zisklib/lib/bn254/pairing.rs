@@ -4,6 +4,7 @@
 use crate::alloc_extern::vec::Vec;
 
 use crate::zisklib::lib::utils::{eq, is_one, lt, slice_from_ffi};
+use crate::zisklib::unaligned_redirect;
 
 use super::{
     constants::{G1_IDENTITY, G2_IDENTITY, P},
@@ -229,6 +230,25 @@ pub unsafe extern "C" fn pairing_batch_safe_bn254_c(
     result_ptr: *mut u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
+    unaligned_redirect!(
+        [g1_ptr: num_points * 8, g2_ptr: num_points * 16],
+        [result_ptr: 48],
+        |ins, outs| {
+            let f: unsafe extern "C" fn(*const u64, *const u64, usize, *mut u64) -> u8 =
+                pairing_batch_safe_bn254_c;
+            core::hint::black_box(f)(ins[0], ins[1], num_points, outs[0])
+        },
+        |ins, outs| {
+            let f: unsafe extern "C" fn(
+                *const u64,
+                *const u64,
+                usize,
+                *mut u64,
+                &mut Vec<u64>,
+            ) -> u8 = pairing_batch_safe_bn254_c;
+            core::hint::black_box(f)(ins[0], ins[1], num_points, outs[0], &mut *hints)
+        }
+    );
     let g1_points = slice_from_ffi(g1_ptr as *const [u64; 8], num_points);
     let g2_points = slice_from_ffi(g2_ptr as *const [u64; 16], num_points);
 

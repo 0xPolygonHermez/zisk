@@ -93,8 +93,9 @@ pub(crate) use let_input;
 /// The first statement of a C-ABI function whose u64 buffers may be unaligned:
 /// `unaligned_redirect!([a_ptr: 4, ...], [result_ptr: 4, ...], |ins, outs| f(...),
 /// |ins, outs| f(..., hints))`, listing each `*const u64` input and `*mut u64` output
-/// with its length in u64 words, and the call to the function itself, without and
-/// with the `hints` argument.
+/// with its length in u64 words (a constant, or an expression of the other
+/// arguments), and the call to the function itself, without and with the `hints`
+/// argument.
 ///
 /// One test covers every pointer. When all are 8-byte aligned (the normal case) it
 /// falls through to the body, which runs as written: its references, and the
@@ -105,7 +106,7 @@ pub(crate) use let_input;
 ///
 /// Must be used in an `unsafe` context, with every pointer valid for its length.
 macro_rules! unaligned_redirect {
-    ([$($i:ident: $ni:literal),*], [$($o:ident: $no:literal),*],
+    ([$($i:ident: $ni:expr),*], [$($o:ident: $no:expr),*],
      |$ins:ident, $outs:ident| $call:expr, |$hins:ident, $houts:ident| $call_hints:expr) => {
         if (0usize $(| $i as usize)* $(| $o as usize)*) & 0x7 != 0 {
             #[cfg(not(feature = "hints"))]
