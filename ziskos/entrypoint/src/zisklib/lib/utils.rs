@@ -147,11 +147,16 @@ pub(crate) unsafe fn ffi_unaligned<R>(
     run: &mut dyn FnMut(&[*const u64], &[*mut u64]) -> R,
 ) -> R {
     use core::mem::MaybeUninit;
-    // An aligned copy of the `n` u64 words at `p`, byte for byte.
+    // An aligned copy of the `n` u64 words at `p`, byte for byte. `copy_nonoverlapping`
+    // is an untyped copy, so uninitialized bytes are fine, but it needs a non-null
+    // pointer even for 0 bytes, and an empty buffer may be null (see `slice_from_ffi`):
+    // nothing is copied then.
     let copy = |p: *const u64, n: usize| -> Vec<MaybeUninit<u64>> {
         let mut v: Vec<MaybeUninit<u64>> = Vec::with_capacity(n);
-        core::ptr::copy_nonoverlapping(p as *const u8, v.as_mut_ptr() as *mut u8, n * 8);
-        v.set_len(n);
+        if n > 0 {
+            core::ptr::copy_nonoverlapping(p as *const u8, v.as_mut_ptr() as *mut u8, n * 8);
+            v.set_len(n);
+        }
         v
     };
     let in_copies: Vec<Vec<MaybeUninit<u64>>> = ins.iter().map(|&(p, n)| copy(p, n)).collect();
@@ -162,7 +167,9 @@ pub(crate) unsafe fn ffi_unaligned<R>(
         out_copies.iter_mut().map(|v| v.as_mut_ptr() as *mut u64).collect();
     let result = run(&in_ptrs, &out_ptrs);
     for (&(p, n), v) in outs.iter().zip(&out_copies) {
-        core::ptr::copy_nonoverlapping(v.as_ptr() as *const u8, p as *mut u8, n * 8);
+        if n > 0 {
+            core::ptr::copy_nonoverlapping(v.as_ptr() as *const u8, p as *mut u8, n * 8);
+        }
     }
     result
 }

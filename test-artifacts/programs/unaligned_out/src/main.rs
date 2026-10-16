@@ -527,6 +527,9 @@ cases! {
     ecdsa_verify_secp256k1, 0, |x, o| ecdsa_verify_secp256k1_c(ip(&PK), ip(&Z), ip(&R), ip(&S));
     // one pair: the bn254 generator with the point at infinity of the twist
     pairing_batch_safe_bn254, 384, |x, o| pairing_batch_safe_bn254_c(ip(&x.bn_g1), ip(&[0u64; 16]), 1, u64p!(o));
+    // an empty batch: null inputs are valid for 0 pairs, even when only the result
+    // is unaligned and the call takes the copying path
+    pairing_batch_safe_bn254_empty, 384, |x, o| pairing_batch_safe_bn254_c(core::ptr::null(), core::ptr::null(), 0, u64p!(o));
 }
 
 // ---- input relocation ----------------------------------------------------------
