@@ -30,7 +30,18 @@ MODEL = model/zisk_prelude.sail \
         $(ROM) \
         model/zisk_step.sail
 
-.PHONY: all check lean ops pil lean-env lean-build pil-build proofs clean
+# The C emulator, and the differential test that runs it against ziskemu.
+# EMU_DIR holds one emulator per ROM, since the ROM is compiled in.
+CC ?= cc
+SAIL_LIB = $(shell $(SAIL) --dir)/lib
+EMU_DIR ?= build/c
+
+# The program to difftest, as `ziskemu -z` and `-i` take them.
+PROG  ?= ../ziskasm/examples/doubler-min
+INPUT ?= ../ziskasm/examples/doubler/input.bin
+DIFF_DIR = build/difftest/$(notdir $(PROG))
+
+.PHONY: all check lean ops pil lean-env lean-build pil-build proofs emu difftest clean
 
 all: check ops
 
@@ -83,6 +94,24 @@ proofs: lean-env
 lean-build: lean-env
 	@test -d build/lean/out || { echo "build/lean/out is missing — run make lean" >&2; exit 1; }
 	cd lean && $(LAKE) build Out
+
+## Build the C emulator for ROM into EMU_DIR/zisk_emu.
+emu:
+	@mkdir -p $(EMU_DIR)
+	$(SAIL) $(SAILFLAGS) -c $(MODEL) model/zisk_main.sail -o $(EMU_DIR)/zisk_emu
+	$(CC) -O2 -w -I $(SAIL_LIB) $(EMU_DIR)/zisk_emu.c $(SAIL_LIB)/*.c -lgmp -lz -o $(EMU_DIR)/zisk_emu
+
+## Run PROG on ziskemu and on the model's C emulator, and diff the two traces.
+## Silent beyond a summary when they agree; the first difference otherwise.
+difftest:
+	cargo run --release -q -p zisk-sail-difftest -- prepare -z $(PROG) \
+	  $(if $(INPUT),-i $(INPUT)) -o $(DIFF_DIR)
+	$(MAKE) --no-print-directory emu ROM=$(DIFF_DIR)/rom.sail EMU_DIR=$(DIFF_DIR)
+	$(DIFF_DIR)/zisk_emu $$(cat $(DIFF_DIR)/mem.args) > $(DIFF_DIR)/sail.trace
+	@diff -u $(DIFF_DIR)/ziskemu.trace $(DIFF_DIR)/sail.trace | head -40; \
+	  if cmp -s $(DIFF_DIR)/ziskemu.trace $(DIFF_DIR)/sail.trace; then \
+	    echo "OK: $$(grep -vc '^out' $(DIFF_DIR)/sail.trace) steps and the output agree with ziskemu"; \
+	  else echo "FAIL: the model diverges from ziskemu (traces in $(DIFF_DIR))" >&2; exit 1; fi
 
 clean:
 	rm -rf build

@@ -101,14 +101,16 @@ order-sensitive.
 
 ## Status
 
-**Early.** 4 of 127 opcodes are modeled — `copyb`, `add`, `eq`, `ltu`, which
-are the four the `ziskasm` doubler example uses. The step function, the
-instruction record, and the source/store/jump machinery are complete.
+**Early.** 7 of 127 opcodes are modeled — `copyb`, `add`, `eq`, `ltu`, which
+the `ziskasm` doubler's own code uses, and `flag`, `and`, `pubout`, which its
+launcher and the BIOS add. The step function, the instruction record, and the
+source/store/jump machinery are complete.
 
 The register file, memory and the ROM are modeled, so every function the model
-uses is defined and the generated Lean elaborates in full. No program is loaded
-yet: the default ROM has no instructions, and running the model on a real
-program is the next milestone.
+uses is defined and the generated Lean elaborates in full. The model also runs:
+compiled to C, it executes `ziskasm/examples/doubler-min` — BIOS, launcher and
+program, 245 steps — and `make difftest` checks every step of it against
+`ziskemu`. See [Differential testing](#differential-testing).
 
 ## Layout
 
@@ -121,6 +123,8 @@ program is the next milestone.
 | `model/zisk_inst.sail` | The `zisk_inst` record, mirroring `ZiskInst` in `core/src/zisk_inst.rs`. |
 | `model/zisk_rom.sail` | The default ROM: `rom_fetch` with no instructions. A program supplies its own file, selected with `make ROM=…`. |
 | `model/zisk_step.sail` | The execution step, mirroring `Emu::step` in `emulator/src/emu.rs`: `zisk_execute(inst)` runs one instruction, `zisk_step()` fetches it from the ROM first. |
+| `model/zisk_main.sail` | The C emulator's `main`: initial state, the step loop, and the trace `make difftest` compares. Not part of the Lean build. |
+| [`../tools/sail-difftest`](../tools/sail-difftest/src/main.rs) | Exports a program to the model — `rom.sail` and its initial memory — and records the reference trace on `ziskemu`. |
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
 | `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. A proof relating the two belongs here. |
 
@@ -145,6 +149,14 @@ Two more targets typecheck the generated Lean, through the lake package in
 make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~85s)
 make proofs       # check lean/Proofs against them
 make lean-build   # elaborate the model            (all 14 modules build, ~6s)
+```
+
+And two that compile the model to C, which needs a C compiler and the GMP and
+zlib headers Sail's runtime links against:
+
+```sh
+make emu ROM=…    # build the C emulator for one ROM into build/c/zisk_emu
+make difftest     # run PROG on ziskemu and on the model, and diff every step
 ```
 
 `make pil` is the other half of the correspondence proof (steps 3 and 6 of
@@ -181,6 +193,7 @@ AIRs, 4066 constraints.
 | Node + npm | the pil2 compiler, pulled at the version proofman pins | any recent LTS (v24 here) |
 | Python 3 | `check_ops.py` | any 3.x |
 | Sail 0.19+ | the ISA model | `opam install sail` |
+| A C compiler, GMP, zlib | the model's C emulator, for `make difftest` | e.g. `apt install build-essential libgmp-dev zlib1g-dev` |
 | elan | Lean 4 | [lean-lang.org/install](https://lean-lang.org/install/). No `elan default` needed: `lean/lean-toolchain` picks the toolchain and elan fetches it on the first `lake build`. |
 
 ### The run
@@ -225,10 +238,10 @@ make ops
 ```
 
 ```
-Rust ops: 127   Sail clauses: 4   modeled: 4/127 (3%)
+Rust ops: 127   Sail clauses: 7   modeled: 7/127 (5%)
 
-UNMODELED -- 123 Rust ops with no Sail clause:
-  add256, add_u_w, add_w, and, andn, arith256, ...
+UNMODELED -- 120 Rust ops with no Sail clause:
+  add256, add_u_w, add_w, andn, arith256, arith256_mod, ...
 
 OK: no stale opcodes.
 ```
@@ -309,6 +322,22 @@ About 6 s from cold. Every function the model uses is now defined, so the
 generated `Out.Functions.zisk_execute` is a complete Lean definition: one side
 of the correspondence theorem, with no `sorry` and no axioms.
 
+**9. Run the model against ziskemu.**
+
+```sh
+make difftest
+```
+
+```
+wrote build/difftest/doubler-min: 42 instructions, 7 opcodes (add, and, copyb, eq, flag, ltu, pubout), 245 steps on ziskemu
+...
+OK: 245 steps and the output agree with ziskemu
+```
+
+A few seconds, most of it the C compile. On a divergence it prints the first
+lines of the diff and fails instead; the two traces are left in
+`build/difftest/doubler-min/`.
+
 Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
 13 tests.
 
@@ -318,6 +347,8 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
   `core/src/zisk_ops.rs`.
 - The model's generated Lean elaborates, with registers, memory and the ROM
   defined, so it is a complete Lean definition of one ZisK step.
+- The same model, compiled to C, runs `doubler-min` to the same result as
+  `ziskemu`, agreeing with it at every one of the 245 steps.
 - The 4066 constraints of the pilout ZisK ships are well-formed propositions
   over a commutative ring, in Lean, **generated rather than transcribed**, each
   carrying the `.pil` file and line it came from.
@@ -328,9 +359,12 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
 
 - **No correspondence.** Nothing yet relates the model to the AIR. That
   relation is the verification, and it is unwritten.
-- **123 of 127 opcodes are unmodeled.**
-- **The model has not run a program.** Nothing has checked it against
-  `ziskemu` yet; that is step 2 of [Next steps](#next-steps).
+- **120 of 127 opcodes are unmodeled**, and one program has been run. The
+  difftest covers what the doubler executes: seven opcodes, and of the
+  sources and stores, the ones it uses.
+- **The C backend is tested, the Lean backend is not.** Both are generated from
+  the same Sail, but agreeing with `ziskemu` in C is evidence about the model,
+  not a proof that the Lean definition says the same thing.
 - **Lookup and permutation arguments are out of scope.** The extractor reads
   the AIR's algebraic constraints; the pilout's 4211 hints — where range checks
   such as the booleanity of a `bits(1)` column live — are not extracted, so a
@@ -427,26 +461,60 @@ but throws `OutOfMemoryRange` in Lean. A proof states which bytes its initial
 memory defines; a differential run against `ziskemu` loads every section of
 the program into memory first.
 
+## Differential testing
+
+`make difftest` runs one program on `ziskemu` and on the model's C emulator,
+and diffs the two runs step by step. It is the check that the specification
+says what ZisK actually does, which no proof can provide: a proof only shows
+that the AIR agrees with the model, so the model has to be right first.
+
+The pipeline:
+
+1. [`tools/sail-difftest`](../tools/sail-difftest/src/main.rs) assembles
+   `PROG` with the same code `ziskemu -z` uses, and writes three things into
+   `build/difftest/<prog>/`. `rom.sail` holds every instruction of the ROM, BIOS
+   included, as a `rom_fetch`. `mem/` holds the initial memory sections: the
+   ROM's data and the input behind its 8-byte header, as
+   `Emu::create_emu_context` lays them out. `ziskemu.trace` is the reference
+   run, recorded by stepping `Emu` directly.
+2. The model is compiled to C with that ROM and `model/zisk_main.sail`, and
+   run with the memory sections loaded through `-b addr,file`.
+3. The two traces are diffed.
+
+Each line of the trace is a step: the pc it ran at, `c`, `flag`, and every
+register the step changed. After the last step comes the output region. `a`
+and `b` are not traced, because they are locals of `zisk_execute`, and exposing
+them would mean adding state the Lean side would carry into every proof. A
+wrong source still shows up, in `c` or in a register, at the step that uses
+it. A wrong memory write shows up when the value is read back, or in the
+output.
+
+The exporter refuses what the model does not describe, rather than exporting
+something the model would get subtly wrong: an instruction that uses the stack
+pointer or takes extended arguments (the precompiles), or a source or store
+kind with no Sail counterpart. An opcode with no Sail clause gets through the
+exporter, then fails the Sail typecheck with the opcode's name.
+
+It does catch what it should: changing `ltu` to answer wrongly for one value
+makes `make difftest` fail at the first step where that value appears.
+
 ## Next steps
 
 1. **Memory and registers — done.** `rX`, `wX`, `read_mem`, `write_mem` and
    `rom_fetch` are defined, as described in
    [Registers and memory](#registers-and-memory), and `make lean-build`
    elaborates the whole model.
-2. **Run the doubler.** Generate a ROM file from
-   `ziskasm/examples/doubler-min`, give the C backend a `main` that loads the
-   program's data sections and steps until `is_end`, and build it with
-   `sail -c`. Then diff its trace step by step against `ziskemu`: `pc`, `a`,
-   `b`, `c` and `flag` at every step. This is the first time the specification
-   is checked against what ZisK actually does, and nothing after this step is
-   worth more than that check.
+2. **Run the doubler — done.** `make difftest` runs
+   `ziskasm/examples/doubler-min` on both emulators and diffs every step; see
+   [Differential testing](#differential-testing). It took three more opcodes
+   than the program's own four, because the BIOS and the launcher run too.
 3. **A one-slot correspondence, as a pilot.** Write the mapping from a
    `zisk_inst` plus machine state into one slot of a `Pil.Zisk.Main.Row`, and
    prove that `zisk_execute` on an `add` satisfies slot 0's constraints. Range
    checks enter as hypotheses, and `F` is fixed to Goldilocks where a step
    needs field laws (see [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean)).
-   Doing this with four opcodes, before adding the other 123, shows whether the
-   shape works while changing it is still cheap.
+   Doing this with seven opcodes, before adding the other 120, shows whether
+   the shape works while changing it is still cheap.
 
    The mapping is where the model's `ind_width`-style typing meets the AIR's
    field columns, and it maps into a *slot*, not a row: Main packs four
@@ -458,8 +526,9 @@ the program into memory first.
    range-check lookups among the pilout's hints, so that facts like "`a_src_mem`
    is 0 or 1" come from the generated AIR rather than being assumed in step 3.
 5. **Fill in the opcode table**, tracked by `make ops`, with each new opcode
-   checked against `ziskemu` the way step 2 sets up. Turn on `--strict` once
-   coverage is complete.
+   checked by `make difftest` on a program that executes it
+   (`make difftest PROG=… INPUT=…`). Turn on `--strict` once coverage is
+   complete.
 6. **The full correspondence.** Extend step 3 to all four slots and every
    opcode, up to `zisk_execute` implies `Pil.Zisk.Main.holds`. Neither side is
    transcribed by hand, so neither can drift from what ZisK ships without the

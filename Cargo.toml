@@ -66,6 +66,7 @@ members = [
   "tools/circuit",
   "tools/frops-analyzer",
   "tools/pilout-constraints",
+  "tools/sail-difftest",
   "distributed/crates/coordinator",
   "distributed/crates/coordinator-server",
   "distributed/crates/coordinator-api",

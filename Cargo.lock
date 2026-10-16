@@ -7606,7 +7606,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-pilout-constraints"
-version = "1.3.0-alpha"
+version = "1.4.0-alpha"
 dependencies = [
  "anyhow",
  "blake3",
@@ -7981,6 +7981,18 @@ dependencies = [
  "zisk-pil",
  "zisk-sm-rom",
  "zisk-transpiler-riscv",
+]
+
+[[package]]
+name = "zisk-sail-difftest"
+version = "1.4.0-alpha"
+dependencies = [
+ "anyhow",
+ "clap",
+ "zisk-asm",
+ "zisk-common",
+ "zisk-core",
+ "ziskemu",
 ]
 
 [[package]]
