@@ -19,10 +19,15 @@ LAKE ?= lake
 # Sail memoizes z3 results in the working directory by default; keep it in build/.
 SAILFLAGS = --memo-z3-path build/z3_problems
 
+# The program: a file defining rom_fetch. The default has no instructions.
+ROM ?= model/zisk_rom.sail
+
 MODEL = model/zisk_prelude.sail \
         model/zisk_types.sail \
+        model/zisk_mem.sail \
         model/zisk_ops.sail \
         model/zisk_inst.sail \
+        $(ROM) \
         model/zisk_step.sail
 
 .PHONY: all check lean ops pil lean-env lean-build pil-build proofs clean
@@ -75,8 +80,6 @@ proofs: lean-env
 	cd lean && $(LAKE) build Proofs
 
 ## Typecheck the generated model. Run `make lean` first.
-## Fails today: the model declares rX, wX, read_mem, write_mem and rom_fetch
-## without definitions, so Out.ZiskStep has no Lean to elaborate.
 lean-build: lean-env
 	@test -d build/lean/out || { echo "build/lean/out is missing — run make lean" >&2; exit 1; }
 	cd lean && $(LAKE) build Out

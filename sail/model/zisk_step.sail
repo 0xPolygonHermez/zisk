@@ -47,9 +47,10 @@ function next_pc (inst : zisk_inst, c : bits(64), flag : bool) -> bits(64) =
   else if flag   then PC + inst.jmp_off1       /* branch taken     */
   else                PC + inst.jmp_off2       /* fall through     */
 
-/* Returns true when the program has ended. */
-function zisk_step () -> bool = {
-  let inst = rom_fetch(PC);
+/* Executes one instruction against the current state; returns true when
+ * the program has ended. Split from the fetch so that a proof can take
+ * the instruction as an argument rather than fixing a ROM. */
+function zisk_execute (inst : zisk_inst) -> bool = {
   let a    = source_a(inst);
   let b    = source_b(inst, a);
   let (c, flag) = zisk_exec(inst.op, a, b);
@@ -60,3 +61,5 @@ function zisk_step () -> bool = {
   if inst.is_end then true
   else { PC = next_pc(inst, c, flag); false }
 }
+
+function zisk_step () -> bool = zisk_execute(rom_fetch(PC))

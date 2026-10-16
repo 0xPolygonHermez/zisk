@@ -8,13 +8,8 @@
 #   Out    — the ISA model, from `make lean` (sail --lean)
 #   Pil    — the AIR constraints, from `make pil` (pilout-constraints)
 #   Proofs — hand-written, in Proofs/
-#
-# `Out` does not build yet: the model declares rX, wX, read_mem, write_mem and
-# rom_fetch without definitions, so Out.ZiskStep has no Lean to elaborate. See
-# the memory-and-registers milestone in ../README.md. Until it does, Proofs can
-# only talk about the constraint side.
 name = "zisk"
-defaultTargets = ["Pil", "Proofs"]
+defaultTargets = ["Out", "Pil", "Proofs"]
 
 [[lean_lib]]
 name = "Pil"

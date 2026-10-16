@@ -21,21 +21,3 @@ struct zisk_inst = {
   jmp_off2  : bits(64),        /* not taken / fall through               */
   is_end    : bool
 }
-
-/* --- Interfaces left abstract in this slice -------------------------- *
- * Deliberately undefined: the memory model and the register file are the
- * next milestone. Declaring them lets the instruction semantics below be
- * typechecked precisely while staying honest about what is not modeled.
- */
-
-val rom_fetch : bits(64) -> zisk_inst
-
-/* NOTE: ZisK has no hardwired-zero register. The assembler and the
- * transpiler both rewrite `r0` to SRC_IMM 0 at encode time
- * (see ZiskInstBuilder::src_a), so a_src = A_REG implies index != 0.
- */
-val rX : regidx -> bits(64)
-val wX : (regidx, bits(64)) -> unit
-
-val read_mem  : forall 'n, 'n in {1, 2, 4, 8}. (bits(64), int('n)) -> bits(8 * 'n)
-val write_mem : forall 'n, 'n in {1, 2, 4, 8}. (bits(64), int('n), bits(8 * 'n)) -> unit

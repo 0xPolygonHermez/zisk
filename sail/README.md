@@ -105,10 +105,10 @@ order-sensitive.
 are the four the `ziskasm` doubler example uses. The step function, the
 instruction record, and the source/store/jump machinery are complete.
 
-The memory model and the register file are deliberately **not** modeled yet:
-`rX`, `wX`, `read_mem` and `write_mem` are declared without definitions. That
-keeps the instruction semantics precise and typechecked while being honest
-about what is still missing. Filling them in is the next milestone.
+The register file, memory and the ROM are modeled, so every function the model
+uses is defined and the generated Lean elaborates in full. No program is loaded
+yet: the default ROM has no instructions, and running the model on a real
+program is the next milestone.
 
 ## Layout
 
@@ -116,9 +116,11 @@ about what is still missing. Filling them in is the next milestone.
 |------|-----------|
 | `model/zisk_prelude.sail` | Bitvector comparison operators and `zero_extend`/`zeros` wrappers. Sail's standard library leaves these to each model; `sail-riscv` defines the same set. |
 | `model/zisk_types.sail` | Architectural state (`PC`, `Zc`, `Zflag`, `Step`) and the source/store enums. |
+| `model/zisk_mem.sail` | The register file (`rX`, `wX` over `x1`–`x31`) and byte-addressed memory (`read_mem`, `write_mem`). See [Registers and memory](#registers-and-memory). |
 | `model/zisk_ops.sail` | One `union clause` + one `function clause` per opcode: `(c, flag) = op(a, b)`. Mirrors `core/src/zisk_ops.rs`. |
 | `model/zisk_inst.sail` | The `zisk_inst` record, mirroring `ZiskInst` in `core/src/zisk_inst.rs`. |
-| `model/zisk_step.sail` | The single execution step, mirroring `Emu::step` in `emulator/src/emu.rs`. |
+| `model/zisk_rom.sail` | The default ROM: `rom_fetch` with no instructions. A program supplies its own file, selected with `make ROM=…`. |
+| `model/zisk_step.sail` | The execution step, mirroring `Emu::step` in `emulator/src/emu.rs`: `zisk_execute(inst)` runs one instruction, `zisk_step()` fetches it from the ROM first. |
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
 | `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. A proof relating the two belongs here. |
 
@@ -142,16 +144,11 @@ Two more targets typecheck the generated Lean, through the lake package in
 ```sh
 make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~85s)
 make proofs       # check lean/Proofs against them
-make lean-build   # elaborate the model            (9 of 12 modules build)
+make lean-build   # elaborate the model            (all 14 modules build, ~6s)
 ```
 
-`make lean-build` does not pass yet, and the reason is the gap below: `rX`,
-`wX`, `read_mem`, `write_mem` and `rom_fetch` are declared without definitions,
-so Sail emits references to Lean identifiers that do not exist and
-`Out.ZiskStep` fails to elaborate with 9 `unknown identifier` errors. The other
-nine modules — the types, the opcodes, the prelude — are fine.
-
-`make pil` is the other half of step 5 below: it reads the compiled
+`make pil` is the other half of the correspondence proof (steps 3 and 6 of
+[Next steps](#next-steps)): it reads the compiled
 `pil/zisk.pilout` and emits the Main AIR's constraints as Lean, so the proof
 has a machine-generated definition on both sides instead of a hand-transcribed
 one. It needs `pil/zisk.pilout`, which is a build artifact — see
@@ -167,11 +164,10 @@ definitions must precede their use. Prelude first, step last.
 > of the intended proof are generated from what ZisK actually ships, the AIR
 > constraints elaborate as Lean propositions, and proofs about them go through.
 > The theorem that would earn the phrase "formally verified" — that the model's
-> `Out.Functions.zisk_step` implies the AIR's `Pil.Zisk.Main.holds` — does not
-> exist, and cannot be stated until the model side elaborates, which is step 1
-> of [Next steps](#next-steps). One of the commands below is *expected to
-> fail*, and it is the one that measures how far away that is. Delete this
-> disclaimer when step 5 lands.
+> `Out.Functions.zisk_execute` implies the AIR's `Pil.Zisk.Main.holds` — does
+> not exist. Both sides now elaborate, so it can be stated, but it is not yet
+> proved; that is steps 3 and 6 of [Next steps](#next-steps). Delete this
+> disclaimer when step 6 lands.
 
 Nothing below is assumed already built, and every figure quoted is what the
 command printed against the pilout this branch was last regenerated on: 54
@@ -241,8 +237,8 @@ The UNMODELED list is informational and is meant to be long today; the last
 line is the one that matters. A **STALE** entry is the real failure — it means
 the model describes a machine ZisK no longer ships.
 
-**4. Generate Lean from the model.** Writes twelve modules into
-`build/lean/out/`.
+**4. Generate Lean from the model.** Writes fourteen modules into
+`build/lean/out/Out/`, plus Sail's Lean runtime under `Out/Sail/`.
 
 ```sh
 make lean
@@ -296,25 +292,22 @@ Under a second. [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds five
 theorems proved from the generated Main AIR and nothing else; it also records
 where the abstraction stops.
 
-**8. Elaborate the model — this one is expected to fail.**
+**8. Elaborate the model.**
 
 ```sh
 make lean-build
 ```
 
 ```
-✖ [10/12] Building Out.ZiskStep
-error: ../build/lean/out/Out/ZiskStep.lean:23:20: unknown identifier 'rX'
-... 9 errors ...
-make: *** [Makefile:82: lean-build] Error 1
+✔ [12/15] Built Out.ZiskMem
+✔ [13/15] Built Out.ZiskStep
+✔ [14/15] Built Out
+Build completed successfully.
 ```
 
-Nine errors, one per use of the five functions the model declares without
-defining (`rX`, `wX`, `read_mem`, `write_mem`, `rom_fetch`). The other nine
-modules do elaborate. This is exactly the gap described in step 1 of
-[Next steps](#next-steps), and it is why the correspondence theorem cannot yet
-be stated. When this command passes, the disclaimer above is a step closer to
-deletable.
+About 6 s from cold. Every function the model uses is now defined, so the
+generated `Out.Functions.zisk_execute` is a complete Lean definition: one side
+of the correspondence theorem, with no `sorry` and no axioms.
 
 Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
 13 tests.
@@ -323,6 +316,8 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
 
 - The ISA model is well typed, and every opcode it names still exists in
   `core/src/zisk_ops.rs`.
+- The model's generated Lean elaborates, with registers, memory and the ROM
+  defined, so it is a complete Lean definition of one ZisK step.
 - The 4066 constraints of the pilout ZisK ships are well-formed propositions
   over a commutative ring, in Lean, **generated rather than transcribed**, each
   carrying the `.pil` file and line it came from.
@@ -333,7 +328,9 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
 
 - **No correspondence.** Nothing yet relates the model to the AIR. That
   relation is the verification, and it is unwritten.
-- **123 of 127 opcodes are unmodeled**, as are memory and the register file.
+- **123 of 127 opcodes are unmodeled.**
+- **The model has not run a program.** Nothing has checked it against
+  `ziskemu` yet; that is step 2 of [Next steps](#next-steps).
 - **Lookup and permutation arguments are out of scope.** The extractor reads
   the AIR's algebraic constraints; the pilout's 4211 hints — where range checks
   such as the booleanity of a `bits(1)` column live — are not extracted, so a
@@ -374,7 +371,7 @@ here, where a RISC-V instruction needs three (`ast`, `encdec`, `execute`).
 **There is no hardwired-zero register.** RISC-V models `x0` as always-zero in
 the register accessor. ZisK does not need to: both `ZiskInstBuilder::src_a` and
 the assembler rewrite `r0` to `SRC_IMM 0` at encode time, so `a_src = A_REG`
-implies the index is non-zero.
+implies the index is non-zero. `rX` and `wX` assert it rather than assume it.
 
 **The source enums are split.** `a_src` and `b_src` are separate types so that
 the asymmetry — `STEP` is a-only, `IND` is b-only — is a *type error* rather
@@ -386,42 +383,92 @@ to watch for: each *projection* of the field yields a fresh type variable, so
 two reads of `inst.ind_width` cannot be proven equal. Bind it once with a `let`
 and use that binding — see `store_c` in `model/zisk_step.sail`.
 
+## Registers and memory
+
+`model/zisk_mem.sail` fixes three decisions, each taken from what the encoder
+and the emulator already do rather than chosen freely.
+
+**The register file is `x1`–`x31`.** ZisK maps registers at `REG_FIRST =
+SYS_ADDR`, but an instruction never reaches the first 32 through memory. The
+encoder (`ZiskInstBuilder::src_a`, `src_b`, `store` in
+`core/src/zisk_inst_builder.rs`) turns register 0 into `SRC_IMM 0` or no store
+at all, registers 1–31 into `SRC_REG`/`STORE_REG`, and the "virtual registers"
+32–63 into `SRC_MEM`/`STORE_MEM` at `REG_FIRST + 8·i`. So registers 32–63 are
+plain memory, above `REG_LAST`, and the register file is the 31 registers the
+main trace holds: a `vector(32, bits(64))` whose slot 0 is never used.
+
+**Memory is a little-endian byte map, apart from the registers.** `read_mem`
+and `write_mem` go through Sail's `read_ram`/`write_ram` builtins, which
+`rts.c` implements for the C emulator and the Lean runtime implements over
+`SequentialState.mem`. The emulator keeps `x0`–`x31` in an array of their own,
+and `Mem` `debug_assert`s that no memory access lands on an aligned register
+address. The model asserts the stronger condition: no access overlaps
+`[REG_FIRST, REG_LAST + 8)` at all.
+
+**The ROM is per program.** An instruction is a record, not bytes, so
+`rom_fetch` is a function from `pc` to `zisk_inst` rather than a memory read.
+`model/zisk_rom.sail` is a ROM with no instructions, so the model builds with
+no program at all, and a program supplies its own file (`make ROM=…`). The step
+is split so that proofs need no ROM: `zisk_execute(inst)` runs one instruction,
+and `zisk_step()` is `zisk_execute(rom_fetch(PC))`.
+
+Two simplifications, both of which hold today but which the model does not
+check:
+
+- **No stack pointer.** The emulator adds `sp` to a `SRC_MEM`/`STORE_MEM`
+  address when the instruction's `use_sp` bit is set. Nothing in the
+  transpilers sets it, and `sp` starts at 0 and is never written, so the
+  model leaves it out.
+- **No memory regions.** ZisK's memory map has read-only and input regions;
+  the model lets any address outside the register file be read and written.
+
+And one difference between the backends: an unwritten byte reads as 0 in C,
+but throws `OutOfMemoryRange` in Lean. A proof states which bytes its initial
+memory defines; a differential run against `ziskemu` loads every section of
+the program into memory first.
+
 ## Next steps
 
-1. **Memory and registers.** Define `read_mem`/`write_mem`/`rX`/`wX`/`rom_fetch`
-   so the model becomes executable — and so it elaborates at all, since these
-   five are what `make lean-build` trips over. Note that ZisK registers are
-   memory-mapped at `SYS_ADDR` but the first 32 live in the main trace, and
-   indices 32–63 are "virtual registers" backed by memory — that distinction
-   needs a decision.
+1. **Memory and registers — done.** `rX`, `wX`, `read_mem`, `write_mem` and
+   `rom_fetch` are defined, as described in
+   [Registers and memory](#registers-and-memory), and `make lean-build`
+   elaborates the whole model.
+2. **Run the doubler.** Generate a ROM file from
+   `ziskasm/examples/doubler-min`, give the C backend a `main` that loads the
+   program's data sections and steps until `is_end`, and build it with
+   `sail -c`. Then diff its trace step by step against `ziskemu`: `pc`, `a`,
+   `b`, `c` and `flag` at every step. This is the first time the specification
+   is checked against what ZisK actually does, and nothing after this step is
+   worth more than that check.
+3. **A one-slot correspondence, as a pilot.** Write the mapping from a
+   `zisk_inst` plus machine state into one slot of a `Pil.Zisk.Main.Row`, and
+   prove that `zisk_execute` on an `add` satisfies slot 0's constraints. Range
+   checks enter as hypotheses, and `F` is fixed to Goldilocks where a step
+   needs field laws (see [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean)).
+   Doing this with four opcodes, before adding the other 123, shows whether the
+   shape works while changing it is still cheap.
 
-   The plumbing is already there on the Lean side: `SequentialState` in the
-   generated `Out/Sail/Sail.lean` carries `mem : Std.HashMap Nat (BitVec 8)`,
-   and `$include <concurrency_interface/emulator_memory.sail>` declares the
-   `read_mem#`/`write_mem#` externs that reach it. So the work is the modeling
-   decisions, not the memory representation. `rom_fetch` is the odd one out: it
-   returns a `zisk_inst` record, not bytes, so it needs a ROM representation of
-   its own.
-2. **Run the doubler.** With memory in place, `sail -c` produces an emulator
-   that can execute `ziskasm/examples/doubler-min`. That is the first real
-   cross-check against `ziskemu`.
-3. **Fill in the opcode table**, tracked by `make ops`.
-4. **An `assembly` mapping.** Sail mappings are bidirectional, so one
-   definition yields both an assembler and a disassembler — which would
+   The mapping is where the model's `ind_width`-style typing meets the AIR's
+   field columns, and it maps into a *slot*, not a row: Main packs four
+   instructions per row, so every column is indexed (`(t i).pc 2`) and one
+   `zisk_execute` corresponds to one of the four. A `.pil` line such as
+   `main.pil:224` therefore yields four constraints, one per slot.
+4. **Extract the range checks.** Teach
+   [`pilout-constraints`](../tools/pilout-constraints/README.md) to read the
+   range-check lookups among the pilout's hints, so that facts like "`a_src_mem`
+   is 0 or 1" come from the generated AIR rather than being assumed in step 3.
+5. **Fill in the opcode table**, tracked by `make ops`, with each new opcode
+   checked against `ziskemu` the way step 2 sets up. Turn on `--strict` once
+   coverage is complete.
+6. **The full correspondence.** Extend step 3 to all four slots and every
+   opcode, up to `zisk_execute` implies `Pil.Zisk.Main.holds`. Neither side is
+   transcribed by hand, so neither can drift from what ZisK ships without the
+   generators noticing.
+7. **An `assembly` mapping** (optional). Sail mappings are bidirectional, so
+   one definition yields both an assembler and a disassembler — which would
    subsume the round-trip test listed as a TODO in `ziskasm/README.md`
    (currently `src/assembler.rs` and `ZiskInst::to_zisk_asm` are two
    hand-written implementations of the same relation).
-5. **Lean proofs** relating the two generated definitions: `Out.Functions.zisk_step`
-   from this model, and `Pil.Zisk.Main.holds` from
-   [`pilout-constraints`](../tools/pilout-constraints/README.md), which reads
-   the constraints out of the compiled pilout. Neither side is transcribed by
-   hand, so neither can drift from what ZisK ships without the generator
-   noticing. The constraint side already elaborates (`make pil-build`); what is
-   still missing is the model side (step 1 above) and a mapping from a
-   `zisk_inst` plus machine state into a `Pil.Zisk.Main.Row`.
 
-   That mapping is where the model's `ind_width`-style typing meets the AIR's
-   field columns, and it is a mapping into a *slot*, not a row: Main packs four
-   instructions per row, so every column is indexed (`(t i).pc 2`) and one
-   `zisk_step` corresponds to one of the four. A `.pil` line such as
-   `main.pil:224` therefore yields four constraints, one per slot.
+Out of scope throughout: that the witness computation fills the columns the
+constraints describe, and the soundness of the STARK backend.
