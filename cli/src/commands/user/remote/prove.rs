@@ -88,10 +88,8 @@ impl ZiskRemoteProve {
         if proof_kind != ProofKind::VadcopFinal {
             request = request.wrap(proof_kind);
         }
-        if self.timeout != 0 {
-            request = request.timeout(Duration::from_secs(self.timeout));
-        }
-        let result = request.run()?.await?;
+        let timeout = (self.timeout != 0).then(|| Duration::from_secs(self.timeout));
+        let result = super::await_job(request.run()?, timeout).await?;
 
         let output_file = resolve_output_path(self.output.clone(), result.job_id());
         result.save_proof(&output_file).map_err(|e| {
