@@ -22,7 +22,7 @@ use zisk_prover_backend::{
 };
 
 use crate::stream_ordering::StreamOrderingActor;
-use crate::worker_node::run_recovery;
+use crate::worker_node::CANCEL_DONE_TAG;
 
 use proofman::ProvePhaseInputs;
 use proofman::WitnessInfo;
@@ -42,6 +42,19 @@ struct SetupMessage {
     emulator_only: bool,
 }
 
+/// What a `Cancel` broadcast carries: the job whose work the peer ranks stop, for
+/// their logs. See [`crate::worker_node::begin_cluster_recovery`].
+#[derive(BorshSerialize, BorshDeserialize)]
+struct CancelMessage {
+    job_id: String,
+}
+
+/// The broadcast that tells the peer ranks to stop `job_id`'s work and reply.
+pub(crate) fn cancel_broadcast(job_id: &str) -> Result<Vec<u8>> {
+    borsh::to_vec(&(WorkerMpiTag::Cancel, CancelMessage { job_id: job_id.to_string() }))
+        .map_err(|e| anyhow::anyhow!("Failed to serialize Cancel MPI broadcast: {e}"))
+}
+
 /// Tag byte used as the first byte of every MPI broadcast message.
 ///
 /// Variants must stay in this order (Borsh encodes variant index, not the repr value).
@@ -58,6 +71,8 @@ pub(crate) enum WorkerMpiTag {
     ContributionsInputsStream,
     ContributionsHintsStream,
     Setup,
+    /// Stop the current job's work and reply: rank 0's recovery.
+    Cancel,
 }
 
 /// Timeout for waiting for the stream-ordering actor to finish its current
@@ -1267,10 +1282,33 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     }
 
     /// Run the execute-only phase synchronously and return
-    /// `(num_instances, public_outputs)`. Ends with a cluster barrier so all
-    /// ranks finish before success is reported.
+    /// `(num_instances, public_outputs)`. Ends with every rank agreeing on whether
+    /// they all succeeded, so all ranks finish before success is reported.
     #[allow(clippy::too_many_arguments)]
     pub fn execute_execution_task(
+        prover: &ZiskProver<T>,
+        job: &ProverJob,
+        input_source: InputSourceDto,
+        hints_source: HintsSourceDto,
+        seed: RandomSeed,
+        partition_info: PartitionInfo,
+    ) -> Result<(usize, Vec<u64>)> {
+        let outcome =
+            Self::run_execution(prover, job, input_source, hints_source, seed, partition_info);
+        // `execute` has no implicit MPI sync (each rank runs its own partition
+        // independently). Every rank says whether its own ran, failed or not, so
+        // that they all end the execution together, and all fail if any did: a rank
+        // left waiting for the others could never stop for a recovery.
+        let all_ok = prover.cluster_all_ok(outcome.is_ok());
+        let outcome = outcome?;
+        if !all_ok {
+            return Err(anyhow::anyhow!("another MPI rank failed its part of the execution"));
+        }
+        Ok(outcome)
+    }
+
+    /// [`Self::execute_execution_task`] on this rank alone.
+    fn run_execution(
         prover: &ZiskProver<T>,
         job: &ProverJob,
         input_source: InputSourceDto,
@@ -1313,12 +1351,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let num_instances = prover.get_execution_info()?.0.total_instances;
 
         let publics_u64 = result.get_publics().public_u64();
-
-        // `execute` has no implicit MPI sync (each rank runs its own
-        // partition independently). Block until every rank has finished so
-        // rank 0 can't report success while peer ranks are still draining
-        // stale broadcasts queued behind a previous cancel/failure.
-        prover.cluster_barrier();
 
         Ok((num_instances, publics_u64))
     }
@@ -1735,24 +1767,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         Ok(())
                     };
 
-                    let task_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run));
-                    let task_failed = match task_result {
-                        Ok(Ok(())) => false,
+                    // A failure reaches rank 0 through the job's collectives, and its
+                    // recovery stops this rank too; see `stop_cancelled_job`.
+                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
+                        Ok(Ok(())) => {}
                         Ok(Err(e)) => {
                             error!("MPI broadcast task failed: {}. Waiting for new job...", e);
-                            true
                         }
                         Err(_) => {
                             error!(
                                 "MPI broadcast task panicked on rank {world_rank}. Waiting for new job..."
                             );
-                            true
-                        }
-                    };
-
-                    if task_failed {
-                        if let Err(e) = run_recovery(&*prover) {
-                            error!("[Recovery] rank {world_rank}: recovery failed: {e:#}");
                         }
                     }
                 });
@@ -1779,24 +1804,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 options,
                             )
                         }));
-                    let task_failed = match task_result {
-                        Ok(Ok(_)) => false,
+                    // As for the contribution's: rank 0's recovery stops this rank.
+                    match task_result {
+                        Ok(Ok(_)) => {}
                         Ok(Err(e)) => {
                             error!("MPI Prove task failed: {}. Waiting for new job...", e);
-                            true
                         }
                         Err(_) => {
                             error!(
                                 "MPI Prove task panicked on rank {world_rank}. Waiting for new job..."
                             );
-                            true
                         }
-                    };
-
-                    if task_failed {
-                        run_recovery(&*prover).unwrap_or_else(|e| {
-                            error!("[Recovery] rank {world_rank}: recovery failed: {e:#}");
-                        });
                     }
                 });
                 self.current_mpi_task = Some(handle);
@@ -1804,13 +1822,46 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             WorkerMpiTag::Aggregate => {
                 return Err(anyhow::anyhow!("Aggregate phase is not supported in MPI broadcast"));
             }
+            WorkerMpiTag::Cancel => {
+                let message: CancelMessage = borsh::from_slice(&bytes[1..]).map_err(|e| {
+                    anyhow::anyhow!("Failed to deserialize Cancel MPI broadcast: {}", e)
+                })?;
+                self.stop_cancelled_job(&message.job_id).await;
+            }
         }
         Ok(())
     }
 
+    /// A peer rank's part of rank 0's recovery: stop the cancelled job's task, end
+    /// the job, and reply once the prover is idle, which rank 0 waits for.
+    async fn stop_cancelled_job(&mut self, job_id: &str) {
+        let world_rank = self.world_rank();
+        warn!("[Recovery] rank {world_rank}: job {job_id} cancelled; stopping its work");
+        // Only while the job is held: its end resets the ASM services' cancel flag,
+        // which would otherwise reach the next job.
+        if self.has_job() {
+            if let Err(e) = self.prover.cancel() {
+                warn!("[Recovery] rank {world_rank}: cancelling the prover failed: {e:#}");
+            }
+        }
+        self.await_current_mpi_task().await;
+        self.end_job();
+
+        let prover = self.prover.clone();
+        let replied = tokio::task::spawn_blocking(move || {
+            prover.wait_until_proofman_ready();
+            prover.mpi_send(0, CANCEL_DONE_TAG, &[]);
+        })
+        .await;
+        match replied {
+            Ok(()) => info!("[Recovery] rank {world_rank}: job {job_id} stopped; told rank 0"),
+            Err(e) => error!("[Recovery] rank {world_rank}: replying to rank 0 failed: {e}"),
+        }
+    }
+
     /// Joins the previous MPI peer-rank task before starting a new one.
     /// Errors and panics from the joined task are logged here so the loop
-    /// keeps running — the task itself already ran `run_recovery` on failure.
+    /// keeps running; rank 0's recovery handles a failed job.
     async fn await_current_mpi_task(&mut self) {
         if let Some(handle) = self.current_mpi_task.take() {
             if let Err(e) = handle.await {

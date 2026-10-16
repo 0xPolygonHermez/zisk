@@ -372,6 +372,18 @@ impl ProverEngine for EmuProver {
     fn abort_cluster(&self, code: i32) -> ! {
         self.core_prover.backend.abort_cluster(code)
     }
+
+    fn cluster_all_ok(&self, ok: bool) -> bool {
+        self.core_prover.backend.cluster_all_ok(ok)
+    }
+
+    fn mpi_send(&self, dest: i32, tag: i32, data: &[u8]) {
+        self.core_prover.backend.mpi_send(dest, tag, data);
+    }
+
+    fn mpi_try_receive(&self, tag: i32) -> Option<(i32, Vec<u8>)> {
+        self.core_prover.backend.mpi_try_receive(tag)
+    }
 }
 
 /// Low-level EMU prover holding the initialized `ProofMan` backend and this

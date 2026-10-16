@@ -5,7 +5,7 @@ use crate::{
 };
 use anyhow::Result;
 use colored::Colorize;
-use mpi::topology::Communicator;
+use mpi::traits::{Communicator, Destination, MatchedReceiveVec, Source};
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
@@ -787,6 +787,29 @@ impl ProverBackend {
 
     pub(crate) fn cluster_barrier(&self) {
         self.proofman.set_barrier();
+    }
+
+    /// Whether every rank succeeded, from each one's `ok`: a collective, which
+    /// every rank must call.
+    pub(crate) fn cluster_all_ok(&self, ok: bool) -> bool {
+        self.proofman.get_wcm().get_pctx().mpi_ctx.all_finished_ok(ok)
+    }
+
+    /// Send `data` to MPI rank `dest`, tagged `tag`.
+    pub(crate) fn mpi_send(&self, dest: i32, tag: i32, data: &[u8]) {
+        let pctx = self.proofman.get_wcm().get_pctx();
+        pctx.mpi_ctx.world.process_at_rank(dest).send_with_tag(data, tag);
+    }
+
+    /// A message tagged `tag` from any rank, if one has arrived: its source rank and
+    /// its data.
+    pub(crate) fn mpi_try_receive(&self, tag: i32) -> Option<(i32, Vec<u8>)> {
+        let pctx = self.proofman.get_wcm().get_pctx();
+        let (message, status) =
+            pctx.mpi_ctx.world.any_process().immediate_matched_probe_with_tag(tag)?;
+        let source = status.source_rank();
+        let (data, _) = (message, status).matched_receive_vec::<u8>();
+        Some((source, data))
     }
 
     /// End every rank of the MPI job, this one included, with exit `code`.
