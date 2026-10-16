@@ -7,9 +7,10 @@
 //! 20, the XOR of all of them and its own checks (0 = all distinct, every bit varies).
 
 use zisk_common::{EmuTrace, RandomSeed};
-use zisk_core::{AsmGenerationMethod, ZiskRom2Asm};
+use zisk_core::{ziskbin, AsmGenerationMethod, ZiskRom2Asm};
 use zisk_transpiler_common::{program2rom, program2romfile, HINTS_WITH_RANDOM_ERROR};
 use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
+use ziskos::zisklib::{FCALL_GET_KECCAKF_CACHE_INDEX_ID, FCALL_RANDOM_SEED_ID};
 
 /// The 32 seed bytes 00 01 .. 1f: all distinct, so a byte or word order slip shows
 const SEED: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
@@ -130,25 +131,68 @@ fn the_seed_never_comes_from_the_precompile_results() {
 /// The hints setup (the precompile-results assembly) must reject it
 #[test]
 fn the_hints_setup_rejects_a_guest_that_uses_it() {
-    let asm_file = std::env::temp_dir().join(format!("zkvm_random_{}.asm", std::process::id()));
-    let setup = |elf: &str, hints| {
-        let elf = std::fs::read(elf).expect("committed ELF");
-        let result = program2romfile(
-            &elf,
-            &asm_file,
-            AsmGenerationMethod::AsmMinimalTraces,
-            false,
-            false,
-            hints,
-        )
-        .map_err(|e| e.to_string());
-        let _ = std::fs::remove_file(&asm_file);
-        result
-    };
-    assert_eq!(setup(&elf_path(), true), Err(HINTS_WITH_RANDOM_ERROR.to_string()));
-    assert_eq!(setup(&elf_path(), false), Ok(()));
+    let elf = std::fs::read(elf_path()).expect("committed ELF");
+    assert_eq!(hints_setup(&elf, true), Err(HINTS_WITH_RANDOM_ERROR.to_string()));
+    assert_eq!(hints_setup(&elf, false), Ok(()));
     // A guest that does not use it still gets the hints setup
     let other =
         format!("{}/../elf-regressions/failed_execution/exit_ok.elf", env!("CARGO_MANIFEST_DIR"));
-    assert_eq!(setup(&other, true), Ok(()));
+    let other = std::fs::read(other).expect("committed ELF");
+    assert_eq!(hints_setup(&other, true), Ok(()));
+}
+
+/// Generates the precompile-results (`hints`) or plain assembly of `program` (a RISC-V ELF
+/// or a ziskbin ELF), as the ROM setup does
+fn hints_setup(program: &[u8], hints: bool) -> Result<(), String> {
+    let asm_file = std::env::temp_dir().join(format!(
+        "zkvm_random_{}_{:?}.asm",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let result = program2romfile(
+        program,
+        &asm_file,
+        AsmGenerationMethod::AsmMinimalTraces,
+        false,
+        false,
+        hints,
+    )
+    .map_err(|e| e.to_string());
+    let _ = std::fs::remove_file(&asm_file);
+    result
+}
+
+/// The rejection survives saving the ROM as a ziskbin ELF, which the ROM setup also
+/// accepts: the zkvmcalls the guest uses are part of the format
+#[test]
+fn the_hints_setup_rejects_it_after_a_ziskbin_round_trip() {
+    let elf = std::fs::read(elf_path()).expect("committed ELF");
+    let rom = program2rom(&elf).expect("ELF must transpile");
+    let ziskbin = ziskbin::rom_to_elf(&rom);
+    assert_eq!(program2rom(&ziskbin).unwrap().zkvmcalls, rom.zkvmcalls);
+    assert_eq!(hints_setup(&ziskbin, true), Err(HINTS_WITH_RANDOM_ERROR.to_string()));
+    assert_eq!(hints_setup(&ziskbin, false), Ok(()));
+}
+
+/// Assembles a hand-written `.zisk` program into a ziskbin ELF, as `zisk2zisk --elf` does
+fn ziskbin_program(name: &str, source: &str) -> Vec<u8> {
+    let file = std::env::temp_dir().join(format!("zkvm_random_{}_{name}.zisk", std::process::id()));
+    std::fs::write(&file, source).unwrap();
+    let rom = ziskasm::assemble_files(&[&file]);
+    let _ = std::fs::remove_file(&file);
+    ziskbin::rom_to_elf(&rom.expect("the program must assemble"))
+}
+
+/// A hand-written `.zisk` program has no zkvmcalls, but it can issue the seed fcall
+/// directly: the hints setup must reject that too, and only that
+#[test]
+fn the_hints_setup_rejects_a_zisk_program_that_reads_the_seed() {
+    let program = |id: u16| format!("main:\n\tfcall({id}, 0)\n\tret\n");
+
+    let reads_seed = ziskbin_program("reads_seed", &program(FCALL_RANDOM_SEED_ID));
+    assert_eq!(hints_setup(&reads_seed, true), Err(HINTS_WITH_RANDOM_ERROR.to_string()));
+    assert_eq!(hints_setup(&reads_seed, false), Ok(()));
+
+    let other_fcall = ziskbin_program("other_fcall", &program(FCALL_GET_KECCAKF_CACHE_INDEX_ID));
+    assert_eq!(hints_setup(&other_fcall, true), Ok(()));
 }

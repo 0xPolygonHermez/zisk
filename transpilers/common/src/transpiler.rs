@@ -57,7 +57,7 @@ pub fn program2romfile(
     hints: bool,
 ) -> Result<(), Box<dyn Error>> {
     let rom = program2rom(bytes)?;
-    if hints && rom.zkvmcalls.contains(&zisk_definitions::zkvmcall_id("zkvm_random_u64")) {
+    if hints && rom.uses_random_seed() {
         return Err(HINTS_WITH_RANDOM_ERROR.into());
     }
     ZiskRom2Asm::save_to_asm_file(&rom, asm_file, generation_method, log_output, comments, hints);

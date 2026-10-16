@@ -8257,7 +8257,6 @@ name = "zisk-transpiler-common"
 version = "1.4.0-alpha"
 dependencies = [
  "zisk-core",
- "zisk-definitions",
  "zisk-lib-float",
  "zisk-riscv",
  "zisk-transpiler-wasm",
