@@ -1629,7 +1629,7 @@ impl Coordinator {
                     JobPhase::Recurse if job.phase_start_time(phase).is_none() => &JobPhase::Prove,
                     _ => phase,
                 };
-                let timeout_secs = self.phase_timeout_secs(phase);
+                let timeout_secs = self.phase_timeout_secs(phase, job.execution_only);
                 if timeout_secs == 0 {
                     continue;
                 }
@@ -1658,10 +1658,15 @@ impl Coordinator {
         }
     }
 
-    /// Returns the configured timeout in seconds for a given phase.
-    fn phase_timeout_secs(&self, phase: &JobPhase) -> u64 {
+    /// Returns the configured timeout in seconds for a given phase. An
+    /// execution-only job runs in `Running(Contributions)` (`JobPhase::Execution`
+    /// is only a timing key), so its timeout is told apart by `execution_only`.
+    fn phase_timeout_secs(&self, phase: &JobPhase, execution_only: bool) -> u64 {
         match phase {
             JobPhase::Execution => self.config.coordinator.execution_timeout_seconds,
+            JobPhase::Contributions if execution_only => {
+                self.config.coordinator.execution_timeout_seconds
+            }
             JobPhase::Contributions
             | JobPhase::ContributionsInputsStream
             | JobPhase::ContributionsHintsStream => self.config.coordinator.phase1_timeout_seconds,
@@ -2032,6 +2037,36 @@ mod tests {
                 JobPhase::Prove,
                 PhaseTimings {
                     start_time: Utc::now() - chrono::Duration::seconds(600),
+                    end_time: None,
+                },
+            );
+        }
+
+        coordinator.check_phase_timeouts().await;
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    /// An execution-only job runs in `Running(Contributions)`, yet is bound by the
+    /// execution timeout, not phase 1's.
+    #[tokio::test]
+    async fn test_check_phase_timeouts_execution_only_job() {
+        let (coordinator, _workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |c| {
+                c.coordinator.execution_timeout_seconds = 60;
+                c.coordinator.phase1_timeout_seconds = 300;
+            })
+            .await;
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let mut job = entry.write().await;
+            job.execution_only = true;
+            job.phase_timings.insert(
+                JobPhase::Contributions,
+                PhaseTimings {
+                    start_time: Utc::now() - chrono::Duration::seconds(120),
                     end_time: None,
                 },
             );

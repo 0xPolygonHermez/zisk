@@ -52,7 +52,7 @@ pub struct ServiceConfig {
 ///
 /// | Job phase                              | Config field                    | Default |
 /// |----------------------------------------|---------------------------------|---------|
-/// | `Execution`                            | `execution_timeout_seconds`     | 300 s   |
+/// | An execution-only job                  | `execution_timeout_seconds`     | 300 s   |
 /// | `Contributions` / `ContributionsInputsStream` / `ContributionsHintsStream` | `phase1_timeout_seconds` | 300 s |
 /// | `Prove`                                | `phase2_timeout_seconds`        | 600 s   |
 /// | `Aggregate`                            | `phase3_timeout_seconds`        | 100 s   |
@@ -84,7 +84,8 @@ pub struct CoordinatorConfig {
     pub max_workers_per_job: u32,
     /// Maximum number of workers the coordinator will accept (across all jobs).
     pub max_total_workers: u32,
-    /// Timeout for the Execution phase. Default: 300s.
+    /// Timeout for an execution-only job, which runs in the Contributions phase.
+    /// Default: 300s.
     pub execution_timeout_seconds: u64,
     /// Timeout for Phase 1: Contributions. Default: 300s.
     pub phase1_timeout_seconds: u64,
