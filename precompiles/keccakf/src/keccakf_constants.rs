@@ -17,25 +17,26 @@ pub(crate) const C_PER_ROW: usize = 320usize.div_ceil(ROWS_PER_STATE);
 pub(crate) const OPS_PER_SLOT: usize = 2;
 pub(crate) const SLOT: u8 = 8;
 
-/// 2 input-bit groups + 25 sliced round groups + 2 output-bit groups
-pub(crate) const GROUPS: usize = 2 + (1 + ROUNDS) + 2;
+/// op A's input bits + 25 sliced round groups + op A's output bits; op B's bits are
+/// (v - a) / 8 of the round-0 / round-24 cells, so it has no boundary groups
+pub(crate) const GROUPS: usize = 1 + (1 + ROUNDS) + 1;
 pub(crate) const CLOCKS: usize = GROUPS * ROWS_PER_STATE;
 
 /// First rows of the slot's groups
 pub(crate) const GROUP_IN_A: usize = 0;
-pub(crate) const GROUP_IN_B: usize = ROWS_PER_STATE;
-pub(crate) const GROUP_ROUND_0: usize = 2 * ROWS_PER_STATE;
-pub(crate) const GROUP_OUT_A: usize = (3 + ROUNDS) * ROWS_PER_STATE;
-pub(crate) const GROUP_OUT_B: usize = (4 + ROUNDS) * ROWS_PER_STATE;
+pub(crate) const GROUP_ROUND_0: usize = ROWS_PER_STATE;
+pub(crate) const GROUP_OUT_A: usize = (2 + ROUNDS) * ROWS_PER_STATE;
 
 /// The packed χ-row lookup input: rc·28⁵ + Σ_x (tA_x + 8·tB_x)·28ˣ
 /// (base 28 since a sliced θ-output digit reaches 3 + 8·3 = 27)
 pub(crate) const CHI_BASE: u32 = 28;
 pub(crate) const CHI_SPAN: u32 = CHI_BASE.pow(5); // 17_210_368
 
-/// xor5 table: row = Σ_k (sA_k + 6·sB_k)·36ᵏ with sA,sB ∈ [0,5], 3 positions per lookup
-pub(crate) const XOR5_BATCH: usize = 3;
-/// xor5 lookups per trace row: batches of three c-column slots (mirrors the AIR)
+/// xor5 table: row = Σ_k (sA_k + 6·sB_k)·36ᵏ with sA,sB ∈ [0,5], 4 positions per lookup
+pub(crate) const XOR5_BATCH: usize = 4;
+/// The batch's sliced column sums (each <= 5 + 8·5 = 45) are packed into one xor5 key in this base
+pub(crate) const XOR5_KEY_BASE: u32 = 64;
+/// xor5 lookups per trace row: batches of four c-column slots (mirrors the AIR)
 pub(crate) const XOR5_GROUPS: usize = C_PER_ROW.div_ceil(XOR5_BATCH);
 
 /// Keccak-f round constants

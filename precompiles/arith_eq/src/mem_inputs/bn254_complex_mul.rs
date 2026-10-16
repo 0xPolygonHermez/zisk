@@ -3,7 +3,8 @@ use crate::executors::Bn254Complex;
 use zisk_precomp_common::MemProcessor;
 
 pub const BN254_COMPLEX_MUL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
-    indirect_params: 2,
+    indirect_params: 0,
+    direct_ab: true,
     rewrite_params: true,
     read_params: 2,
     write_params: 1,
@@ -17,9 +18,9 @@ pub fn generate_bn254_complex_mul_mem_inputs<P: MemProcessor>(
     only_counters: bool,
     mem_processors: &mut P,
 ) {
-    // op,op_type,a,b,addr[2],...
-    let f1: &[u64; 8] = &data[7..15].try_into().unwrap();
-    let f2: &[u64; 8] = &data[15..23].try_into().unwrap();
+    // op,op_type,a,b,step,p1[8],p2[8] (a = p1 address, b = p2 address)
+    let f1: &[u64; 8] = &data[5..13].try_into().unwrap();
+    let f2: &[u64; 8] = &data[13..21].try_into().unwrap();
     let mut f3 = [0u64; 8];
 
     Bn254Complex::calculate_mul(f1, f2, &mut f3);

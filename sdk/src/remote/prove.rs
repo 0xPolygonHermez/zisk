@@ -8,7 +8,7 @@ use crate::{
 };
 use std::collections::BTreeMap;
 use std::time::Duration;
-use zisk_common::ProofKind;
+use zisk_common::{ProofKind, RandomSeed};
 use zisk_coordinator_api::dto::{deadline_from_now, DomainJobKind, DomainProveRequest};
 use zisk_prover_backend::GuestProgram;
 
@@ -22,12 +22,13 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ProveResult>> {
-        self.submit_prove(program, stdin, hints, executor, proof_kind, timeout, subs, None)
+        self.submit_prove(program, stdin, hints, seed, executor, proof_kind, timeout, subs, None)
     }
 
     /// Submit a prove job over the extended coordinator API, attaching
@@ -38,6 +39,7 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
@@ -48,6 +50,7 @@ impl RemoteClient {
             program,
             stdin,
             hints,
+            seed,
             executor,
             proof_kind,
             timeout,
@@ -64,6 +67,7 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         _executor: ExecutorKind, // remote: coordinator uses its configured executor; hint ignored
         proof_kind: ProofKind,
         timeout: Option<Duration>,
@@ -90,6 +94,7 @@ impl RemoteClient {
             hash_id,
             input,
             hints,
+            random_seed: seed,
             proof_timeout,
             proof_dest,
         });

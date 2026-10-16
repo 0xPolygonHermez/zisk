@@ -6,6 +6,3 @@ edition.workspace = true
 [dependencies]
 ziskos.workspace = true
 rand.workspace = true
-
-[build-dependencies]
-zisk-sdk.workspace = true

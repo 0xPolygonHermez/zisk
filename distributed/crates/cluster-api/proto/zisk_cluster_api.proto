@@ -214,6 +214,7 @@ message ContributionParams {
   repeated uint32 worker_allocation = 8;
   uint32 job_compute_units = 9;
   string hash_id = 11;
+  bytes random_seed = 12; // 32-byte host randomness seed, the same for every worker of the job
 }
 
 message ProveParams {

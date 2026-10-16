@@ -1,5 +1,5 @@
 use zisk_cluster_common::JobPhase;
-use zisk_common::{AirInstanceCount, ZiskExecutorTime};
+use zisk_common::{AirInstanceCount, RandomSeed, ZiskExecutorTime};
 
 /// Events broadcast on the per-job channel as the job transitions through states.
 #[derive(Debug, Clone)]
@@ -36,6 +36,8 @@ pub enum CoordinatorJobResult {
         proof_bytes: Vec<u8>,
         /// Execution statistics.
         stats: CoordinatorExecutionStats,
+        /// Seed of the execution the proof attests to.
+        random_seed: Option<RandomSeed>,
     },
     /// Execute-only result (no proof).
     Execute {
@@ -43,11 +45,15 @@ pub enum CoordinatorJobResult {
         stats: CoordinatorExecutionStats,
         /// The program's public outputs.
         public_outputs: Vec<u8>,
+        /// Seed the execution ran with.
+        random_seed: Option<RandomSeed>,
     },
     /// Proof-wrapping result.
     Wrap {
         /// The wrapped proof.
         proof_bytes: Vec<u8>,
+        /// Seed of the execution the source proof attests to.
+        random_seed: Option<RandomSeed>,
     },
     /// Aggregation-program setup result.
     SetupAggregationProgram {

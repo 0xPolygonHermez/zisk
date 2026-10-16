@@ -1,0 +1,24 @@
+[package]
+name = "patch-ruint"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone workspace: every guest pins its own patch revision, so two
+# versions of the same patched crate can be tested side by side.
+[workspace]
+
+[dependencies]
+ziskos = { path = "../../ziskos/entrypoint" }
+patch-test-common = { path = "../common" }
+ruint = { version = "=1.19.1", default-features = false, features = ["alloc"] }
+
+[patch.crates-io]
+# Latest patch. No tag yet: zisk-eth-client pins this branch.
+ruint = { git = "https://github.com/0xPolygonHermez/zisk-patch-ruint", package = "ruint", tag = "patch-1.19.1-zisk-1.0.0+" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

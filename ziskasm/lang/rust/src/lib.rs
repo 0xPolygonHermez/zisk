@@ -930,14 +930,26 @@ zkvmcall! {
 
 /// `zkvm_keccak_f1600(state)` — applies the Keccak-f[1600] permutation in place to
 /// the raw 25-word `state`. Always returns 0 = ZKVM_EOK. A single keccakf precompile
-/// (CSR 0x800), so it is inlined instead of being a zkvmcall.
+/// (CSR 0x800), so it is inlined instead of being a zkvmcall. The precompile halts
+/// on a state that is not 8-byte aligned, so such a state is DMA-copied (CSR 0x813,
+/// one step each way) to an aligned local and back.
 ///
 /// # Safety
-/// `state` must point to a writable `[u64; 25]`.
+/// `state` must point to 200 writable bytes (a `[u64; 25]`, at any alignment).
 #[cfg(target_arch = "riscv64")]
 #[inline(always)]
 pub unsafe fn zkvm_keccak_f1600(state: *mut u64) -> i32 {
-    core::arch::asm!("csrs 0x800, {0}", in(reg) state, options(nostack));
+    if (state as usize) & 7 == 0 {
+        core::arch::asm!("csrs 0x800, {0}", in(reg) state, options(nostack));
+    } else {
+        let mut s = core::mem::MaybeUninit::<[u64; 25]>::uninit();
+        let s = s.as_mut_ptr() as *mut u64;
+        core::arch::asm!("csrs 0x813, {src}", "addi x0, {dst}, 200",
+            dst = in(reg) s, src = in(reg) state, options(nostack));
+        core::arch::asm!("csrs 0x800, {0}", in(reg) s, options(nostack));
+        core::arch::asm!("csrs 0x813, {src}", "addi x0, {dst}, 200",
+            dst = in(reg) state, src = in(reg) s, options(nostack));
+    }
     0
 }
 
@@ -1081,6 +1093,23 @@ zkvmcall! {
         proof: *const u8,
         verified: *mut bool,
     )
+}
+
+// EF host randomness (zkvm_random.h)
+zkvmcall! {
+    /// `zkvm_random_u64()` — calls `ziskasm_zkvm_random_u64`: 64 random bits, the next
+    /// word of the SHAKE256 stream of the 256-bit seed the host provides with each execution.
+    /// Cannot fail.
+    ///
+    /// # Safety
+    /// Always safe; `unsafe` only because every zkvmcall thunk is.
+    fn zkvm_random_u64() -> u64
+}
+
+/// Safe wrapper over [`zkvm_random_u64`]: 64 random bits from the host.
+pub fn random_u64() -> u64 {
+    // SAFETY: takes no arguments and touches only the library's own state.
+    unsafe { zkvm_random_u64() }
 }
 
 zkvmcall! {

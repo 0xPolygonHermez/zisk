@@ -4,7 +4,7 @@
 //! * The state includes: memory, registers (a, b, c, flag, sp), program counter (pc), step and a
 //!   flag to mark the end of the program execution.
 
-use ziskos::zisklib::keccakf_cache::KeccakfCache;
+use ziskos::zisklib::{keccakf_cache::KeccakfCache, RANDOM_SEED_WORDS};
 
 use crate::{
     Mem, FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
@@ -107,6 +107,13 @@ pub struct InstContext {
     /// a 0x0000 instruction
     pub error: bool,
 
+    /// Step and pc of the instruction that set `error`; `step` and `pc` have moved on by the
+    /// time the execution stops
+    pub error_step: u64,
+    pub error_pc: u64,
+    /// The halt's `a` operand: the exit code for a nonzero exit, 0 for a trap
+    pub error_code: u64,
+
     /// Registers
     pub regs: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
 
@@ -134,6 +141,10 @@ pub struct InstContext {
 
     /// Input data length, stored in the context to be used by the FCALL_INPUT_READY_ID fcall
     pub input_len: u64,
+
+    /// Host randomness seed (256 bits, as little-endian words), returned by the
+    /// FCALL_RANDOM_SEED_ID fcall. Provided with each execution; `None` makes that fcall fail
+    pub random_seed: Option<[u64; RANDOM_SEED_WORDS]>,
 }
 
 /// RisK instruction context implementation
@@ -151,6 +162,9 @@ impl InstContext {
             step: 0,
             end: false,
             error: false,
+            error_step: 0,
+            error_pc: 0,
+            error_code: 0,
             regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
             emulation_mode: EmulationMode::default(),
             precompiled: PrecompiledInstContext::default(),
@@ -160,6 +174,7 @@ impl InstContext {
             extended_arg: 0,
             stats_hint: 0,
             input_len: 0,
+            random_seed: None,
         }
     }
 

@@ -5,7 +5,7 @@
 //! ## Why this exists
 //!
 //! ZisK's uniform precompiles (`blake2b`, `blake2s`, `blake3`, `keccakf`, `sha256f`,
-//! `poseidon2`, `add256`, `arith_eq`, `arith_eq_384`, `babyjubjub`) share
+//! `poseidon2`, `add256`, `arith_eq`, `arith_eq_384`, `twisted_edwards`) share
 //! byte-isomorphic shell code. This module generates that boilerplate from
 //! a small declarative invocation.
 //!
@@ -70,7 +70,7 @@
 //! ## Usage
 //!
 //! See `precompiles/blake2/src/lib.rs` (mono-op, one air),
-//! `precompiles/babyjubjub/src/lib.rs` (multi-op) and
+//! `precompiles/twisted_edwards/src/lib.rs` (multi-op) and
 //! `precompiles/arith_eq_384/src/lib.rs` (multi-op over a size ladder) for
 //! canonical invocations.
 
@@ -142,6 +142,8 @@ macro_rules! zisk_precompile_explicit {
                 )
             ),* $(,)?
         ] $(,)?
+        // Optional GPU witness kernel; `op` is its per-operation input, `From<&Input>`.
+        $( gpu_witness = { op = $gpu_op:path $(,)? } $(,)? )?
     ) => {
         $crate::__zisk_paste! {
             // ============================================================
@@ -421,6 +423,31 @@ macro_rules! zisk_precompile_explicit {
                     // The airs of the ladder commit the same columns and differ only in height, so
                     // the row type is shared and the height and air id are what select the air.
                     let air_id = self.ictx.plan.air_id;
+
+                    // With a kernel registered for this air the prover writes cm1 itself, so
+                    // the buffer carries the kernel's staged inputs instead of a trace. The
+                    // prover's declaration and the setup's geometry are the ones the commit
+                    // checks against.
+                    $(
+                        #[cfg(gpu)]
+                        {
+                            let airgroup_id = self.ictx.plan.airgroup_id;
+                            if let Some(decl) = _pctx.gpu_witness_air(airgroup_id, air_id) {
+                                let setup = _sctx.get_setup(airgroup_id, air_id)?;
+                                let num_rows = 1usize << setup.stark_info.stark_struct.n_bits;
+                                let n_cols = setup.stark_info.map_sections_n["cm1"] as usize;
+                                let (air_instance, _ops) =
+                                    ::proofman_common::stage_gpu_witness::<F, $gpu_op, _>(
+                                        decl,
+                                        num_rows,
+                                        n_cols,
+                                        trace_buffer,
+                                        &inputs,
+                                    )?;
+                                return Ok(Some(air_instance));
+                            }
+                        }
+                    )?
                     $(
                         if air_id == $air_id_path {
                             return if packed {
@@ -710,6 +737,7 @@ macro_rules! zisk_precompile {
                 )
             ),* $(,)?
         ] $(,)?
+        $( gpu_witness = { op = $gpu_op:path $(,)? } $(,)? )?
     ) => {
         $crate::__zisk_paste! {
             $crate::zisk_precompile_explicit! {
@@ -735,6 +763,7 @@ macro_rules! zisk_precompile {
                         ( $ext_variant $( => $enum_variant )? , $sub_input )
                     ),*
                 ],
+                $( gpu_witness = { op = $gpu_op }, )?
             }
         }
     };
@@ -755,6 +784,7 @@ macro_rules! zisk_precompile {
                 )
             ),* $(,)?
         ] $(,)?
+        $( gpu_witness = { op = $gpu_op:path $(,)? } $(,)? )?
     ) => {
         $crate::zisk_precompile! {
             name = $name,
@@ -766,6 +796,7 @@ macro_rules! zisk_precompile {
                     ( $ext_variant $( => $enum_variant )? , $sub_input )
                 ),*
             ],
+            $( gpu_witness = { op = $gpu_op }, )?
         }
     };
 }

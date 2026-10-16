@@ -31,3 +31,10 @@ u64 U256_DH[4] = 0, 0, 0, 0
 u64 U256_INV[4] = 0, 0, 0, 0
 u64 U256_POW_RES[4] = 0, 0, 0, 0
 u64 U256_POW_TMP[4] = 0, 0, 0, 0
+
+; Aligned stand-in for a caller's result that is not 8-byte aligned: the 256-bit
+; precompiles need every pointer they get 8-aligned, so a routine that hands them
+; the caller's result pointer tests it with `unal8` first and, when unaligned,
+; computes into U256_UNAL and DMA-copies the 32 bytes out. Used by uint256/*.zisk
+; and zkvm/u256_le.zisk; no routine keeps a value in it across a call.
+u64 U256_UNAL[4] = 0, 0, 0, 0

@@ -24,7 +24,7 @@ zisk-setup = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
 zisk-cluster-common = { workspace = true }
-zisk-transpiler-riscv = { workspace = true }
+zisk-transpiler-common = { workspace = true }
 zisk-executor = { workspace = true }
 zisk-rom-setup = { workspace = true }
 zisk-asm-runner = { workspace = true }
@@ -54,7 +54,7 @@ default = []
 # `zisk_core::frops`.
 debug_frops = ["zisk-executor/debug_frops"]
 # RISC-V C (compressed) extension decoding (see zisk-riscv's `compressed`). OFF by default.
-compressed = ["zisk-transpiler-riscv/compressed"]
+compressed = ["zisk-transpiler-common/compressed"]
 witness_timers = ["zisk-executor/witness_timers"]
 cpu-only = ["proofman-common/cpu-only", "zisk-executor/cpu-only"]
 stats = []

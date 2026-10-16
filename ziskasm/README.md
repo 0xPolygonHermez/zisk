@@ -42,7 +42,7 @@ cargo run -p ziskasm --bin zisk2zisk -- ziskasm/examples/doubler out.asm --gen=0
 
 ## Architecture
 
-The assembler mirrors `transpilers/common/src/elf2rom.rs`, but the program
+The assembler mirrors `transpilers/riscv/src/elf2rom.rs`, but the program
 instructions come from the `.zisk` parser instead of the RISC-V transpiler:
 
 1. Parse each file → a flat list of instructions (labels attached to the

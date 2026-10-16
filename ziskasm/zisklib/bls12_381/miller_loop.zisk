@@ -4,28 +4,10 @@
 ; coeffs hinted (fcalls 14/15) + is_tangent/is_line checks. Prefix lml_.
 ; ============================================================================
 
-; inline-op headers (zopt): precompile parameter blocks
-const u64 ZBLS_MILLER_LOOP_H0[2] = BLS_ML_L, BLS_ML_NEGYPP
-const u64 ZBLS_MILLER_LOOP_H1[2] = BLS_ML_L + 96, BLS_ML_XPP
-const u64 ZBLS_MILLER_LOOP_H2[2] = BLS_ML_X3, BLS_ML_LAMMU
-const u64 ZBLS_MILLER_LOOP_H3[2] = BLS_ML_T2, BLS_ML_T1
-const u64 ZBLS_MILLER_LOOP_H4[2] = BLS_ML_X3, BLS_ML_T2
-const u64 ZBLS_MILLER_LOOP_H5[2] = BLS_ML_Y3, BLS_ML_X3
-const u64 ZBLS_MILLER_LOOP_H6[2] = BLS_ML_T2, BLS_ML_Y3
-const u64 ZBLS_MILLER_LOOP_H7[2] = BLS_ML_Y3, BLS_F2_NEGMUL
-const u64 ZBLS_MILLER_LOOP_H8[2] = BLS_ML_X3, BLS_ML_T1
-const u64 ZBLS_MILLER_LOOP_H9[2] = BLS_ML_T1, BLS_ML_C1
-const u64 ZBLS_MILLER_LOOP_H10[2] = BLS_ML_T1, BLS_ML_LAMMU + 96
-const u64 ZBLS_MILLER_LOOP_H11[2] = BLS_ML_T1, BLS_ML_C2
-const u64 ZBLS_MILLER_LOOP_H12[2] = BLS_ML_T1, BLS_ML_T1
-const u64 ZBLS_MILLER_LOOP_H13[2] = BLS_ML_C2, BLS_ML_C1
-const u64 ZBLS_MILLER_LOOP_H14[2] = BLS_ML_C2, BLS_F2_SB
-const u64 ZBLS_MILLER_LOOP_H16[5] = BLS_ML_XP, BLS_ML_YP, BLS_ZERO, BLS_P, BLS_ML_XP
-const u64 ZBLS_MILLER_LOOP_H17[2] = BLS_ML_XPP, BLS_F2_SB
-const u64 ZBLS_MILLER_LOOP_H18[2] = BLS_ML_YPP, BLS_F2_SB
-const u64 ZBLS_MILLER_LOOP_H19[2] = BLS_ML_NEGYPP, BLS_F2_NEGMUL
-u64 ZBLS_MILLER_LOOP_H15[5] = 0, BLS_P_MINUS_ONE, BLS_ZERO, BLS_P, BLS_ML_XP
-u64 ZBLS_MILLER_LOOP_H20[5] = 0, BLS_P_MINUS_ONE, BLS_ZERO, BLS_P, BLS_ML_XP
+; inline-op headers (zopt): arith256_mod / arith384_mod parameter blocks
+const u64 ZBLS_MILLER_LOOP_H1[5] = BLS_ML_XP, BLS_ML_YP, BLS_ZERO, BLS_P, BLS_ML_XP
+u64 ZBLS_MILLER_LOOP_H0[5] = 0, BLS_P_MINUS_ONE, BLS_ZERO, BLS_P, BLS_ML_XP
+u64 ZBLS_MILLER_LOOP_H2[5] = 0, BLS_P_MINUS_ONE, BLS_ZERO, BLS_P, BLS_ML_XP
 
 const u64 BLS_ML_LOOP[64] = 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 const u64 BLS_ML_THREE[6] = 3, 0, 0, 0, 0, 0
@@ -119,9 +101,9 @@ zisklib_ml_add_coeffs_bls12_381:
 zisklib_ml_line_eval_bls12_381:
 	push r1
 	dma_xmemcpy(BLS_ML_L, BLS_ML_LAMMU + 96) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H0)
+	bls12_381_complex_mul(BLS_ML_L, BLS_ML_NEGYPP)
 	dma_xmemcpy(BLS_ML_L + 96, BLS_ML_LAMMU) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H1)
+	bls12_381_complex_mul(BLS_ML_L + 96, BLS_ML_XPP)
 	copyb(0, BLS_ML_LAMMU) -> r10
 	copyb(0, BLS_ML_XPP) -> r11
 	copyb(0, BLS_ML_L + 96) -> r12
@@ -134,16 +116,16 @@ zisklib_ml_dbl_wh_bls12_381:
 	copyb(0, r10) -> [BLS_ML_WP1]
 	dma_xmemcpy(BLS_ML_T1, r10) -> r5, j(96, 4)
 	dma_xmemcpy(BLS_ML_X3, BLS_ML_LAMMU) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H2)
+	bls12_381_complex_mul(BLS_ML_X3, BLS_ML_LAMMU)
 	dma_xmemcpy(BLS_ML_T2, BLS_ML_T1) -> r5, j(96, 4)
-	bls12_381_complex_add(0, ZBLS_MILLER_LOOP_H3)
-	bls12_381_complex_sub(0, ZBLS_MILLER_LOOP_H4)
+	bls12_381_complex_add(BLS_ML_T2, BLS_ML_T1)
+	bls12_381_complex_sub(BLS_ML_X3, BLS_ML_T2)
 	dma_xmemcpy(BLS_ML_Y3, BLS_ML_LAMMU) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H5)
+	bls12_381_complex_mul(BLS_ML_Y3, BLS_ML_X3)
 	dma_xmemcpy(BLS_ML_T2, BLS_ML_LAMMU + 96) -> r5, j(96, 4)
-	bls12_381_complex_add(0, ZBLS_MILLER_LOOP_H6)
+	bls12_381_complex_add(BLS_ML_T2, BLS_ML_Y3)
 	dma_xmemcpy(BLS_ML_Y3, BLS_ML_T2) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H7)
+	bls12_381_complex_mul(BLS_ML_Y3, BLS_F2_NEGMUL)
 	dma_xmemcpy(BLS_ML_R2, BLS_ML_X3) -> r5, j(96, 4)
 	dma_xmemcpy(BLS_ML_R2 + 96, BLS_ML_Y3) -> r5, j(96, 4)
 	copyb(0, BLS_ML_Y3) -> r10
@@ -160,15 +142,15 @@ zisklib_ml_add_wh_bls12_381:
 	dma_xmemcpy(BLS_ML_T1, r10) -> r5, j(96, 4)
 	dma_xmemcpy(BLS_ML_T2, r11) -> r5, j(96, 4)
 	dma_xmemcpy(BLS_ML_X3, BLS_ML_LAMMU) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H2)
-	bls12_381_complex_sub(0, ZBLS_MILLER_LOOP_H8)
-	bls12_381_complex_sub(0, ZBLS_MILLER_LOOP_H4)
+	bls12_381_complex_mul(BLS_ML_X3, BLS_ML_LAMMU)
+	bls12_381_complex_sub(BLS_ML_X3, BLS_ML_T1)
+	bls12_381_complex_sub(BLS_ML_X3, BLS_ML_T2)
 	dma_xmemcpy(BLS_ML_Y3, BLS_ML_LAMMU) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H5)
+	bls12_381_complex_mul(BLS_ML_Y3, BLS_ML_X3)
 	dma_xmemcpy(BLS_ML_T2, BLS_ML_LAMMU + 96) -> r5, j(96, 4)
-	bls12_381_complex_add(0, ZBLS_MILLER_LOOP_H6)
+	bls12_381_complex_add(BLS_ML_T2, BLS_ML_Y3)
 	dma_xmemcpy(BLS_ML_Y3, BLS_ML_T2) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H7)
+	bls12_381_complex_mul(BLS_ML_Y3, BLS_F2_NEGMUL)
 	dma_xmemcpy(BLS_ML_R2, BLS_ML_X3) -> r5, j(96, 4)
 	dma_xmemcpy(BLS_ML_R2 + 96, BLS_ML_Y3) -> r5, j(96, 4)
 	copyb(0, BLS_ML_Y3) -> r10
@@ -185,8 +167,8 @@ zisklib_ml_line_check_bls12_381:
 	add(r10, 96) -> r5
 	dma_xmemcpy(BLS_ML_C2, r5) -> r5, j(96, 4)
 	dma_xmemcpy(BLS_ML_T1, BLS_ML_LAMMU) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H9)
-	bls12_381_complex_add(0, ZBLS_MILLER_LOOP_H10)
+	bls12_381_complex_mul(BLS_ML_T1, BLS_ML_C1)
+	bls12_381_complex_add(BLS_ML_T1, BLS_ML_LAMMU + 96)
 	dma_xmemcmp(BLS_ML_T1, BLS_ML_C2) -> r5, j(96, 4)
 	eq(r5, 0) -> r10
 	copyb(0, BLS_ML_C2) -> r11
@@ -212,12 +194,12 @@ zisklib_ml_is_tangent_bls12_381:
 	add([BLS_ML_WP2], 96) -> r5
 	dma_xmemcpy(BLS_ML_C2, r5) -> r5, j(96, 4)
 	dma_xmemcpy(BLS_ML_T1, BLS_ML_LAMMU) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H11)
-	bls12_381_complex_add(0, ZBLS_MILLER_LOOP_H12)
+	bls12_381_complex_mul(BLS_ML_T1, BLS_ML_C2)
+	bls12_381_complex_add(BLS_ML_T1, BLS_ML_T1)
 	dma_xmemcpy(BLS_ML_C2, BLS_ML_C1) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H13)
+	bls12_381_complex_mul(BLS_ML_C2, BLS_ML_C1)
 	dma_xmemcpy(BLS_F2_SB, BLS_ML_THREE) -> r5, j(48, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H14)
+	bls12_381_complex_mul(BLS_ML_C2, BLS_F2_SB)
 	dma_xmemcmp(BLS_ML_T1, BLS_ML_C2) -> r5, j(96, 4)
 	eq(r5, 0) -> r10
 	copyb(0, BLS_ML_C2) -> r11
@@ -260,17 +242,17 @@ zisklib_miller_loop_bls12_381:
 	add(r10, 48) -> r10
 	copyb(0, BLS_ML_YP) -> r11
 	call zisklib_inv_fp_bls12_381
-	copyb(0, [BLS_ML_P]) -> [ZBLS_MILLER_LOOP_H15]
-	arith384_mod(0, ZBLS_MILLER_LOOP_H15)
-	arith384_mod(0, ZBLS_MILLER_LOOP_H16)
+	copyb(0, [BLS_ML_P]) -> [ZBLS_MILLER_LOOP_H0]
+	arith384_mod(0, ZBLS_MILLER_LOOP_H0)
+	arith384_mod(0, ZBLS_MILLER_LOOP_H1)
 	dma_xmemcpy(BLS_F2_SB, BLS_ML_XP) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_ML_XPP, BLS_EXT_U_INV) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H17)
+	bls12_381_complex_mul(BLS_ML_XPP, BLS_F2_SB)
 	dma_xmemcpy(BLS_F2_SB, BLS_ML_YP) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_ML_YPP, BLS_EXT_U_INV) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H18)
+	bls12_381_complex_mul(BLS_ML_YPP, BLS_F2_SB)
 	dma_xmemcpy(BLS_ML_NEGYPP, BLS_ML_YPP) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H19)
+	bls12_381_complex_mul(BLS_ML_NEGYPP, BLS_F2_NEGMUL)
 	copyb(0, [BLS_ML_Q]) -> r5
 	dma_xmemcpy(BLS_ML_R, r5) -> r5, j(192, 4)
 	copyb(0, 1) -> [BLS_ML_F]
@@ -515,17 +497,17 @@ bmlb_pre_pl:
 	copyb(0, BLS_ML_YP) -> r11
 	call zisklib_inv_fp_bls12_381
 	copyb(0, [BLS_ML_P]) -> r10
-	copyb(0, r10) -> [ZBLS_MILLER_LOOP_H20]
-	arith384_mod(0, ZBLS_MILLER_LOOP_H20)
-	arith384_mod(0, ZBLS_MILLER_LOOP_H16)
+	copyb(0, r10) -> [ZBLS_MILLER_LOOP_H2]
+	arith384_mod(0, ZBLS_MILLER_LOOP_H2)
+	arith384_mod(0, ZBLS_MILLER_LOOP_H1)
 	dma_xmemcpy(BLS_F2_SB, BLS_ML_XP) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_ML_XPP, BLS_EXT_U_INV) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H17)
+	bls12_381_complex_mul(BLS_ML_XPP, BLS_F2_SB)
 	dma_xmemcpy(BLS_F2_SB, BLS_ML_YP) -> r5, j(48, 4)
 	dma_xmemcpy(BLS_ML_YPP, BLS_EXT_U_INV) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H18)
+	bls12_381_complex_mul(BLS_ML_YPP, BLS_F2_SB)
 	dma_xmemcpy(BLS_ML_NEGYPP, BLS_ML_YPP) -> r5, j(96, 4)
-	bls12_381_complex_mul(0, ZBLS_MILLER_LOOP_H19)
+	bls12_381_complex_mul(BLS_ML_NEGYPP, BLS_F2_NEGMUL)
 	copyb(0, BLS_ML_YPP) -> r10
 	copyb(0, BLS_ML_NEGYPP) -> r11
 	copyb(0, BLS_ML_YPP) -> r12

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use zisk_common::io::{StreamError, StreamProcessor, StreamSink};
 
-use crate::ControlShmem;
+use crate::{ControlShmem, RANDOM_SEED_WORDS};
 
 use anyhow::Result;
 
@@ -44,6 +44,12 @@ impl InputsShmemWriter {
     pub fn append_input(&self, _inputs: &[u8]) -> Result<()> {
         unreachable!(
             "InputsShmemWriter::append_input() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
+
+    pub fn set_random_seed(&self, _seed: &[u64; RANDOM_SEED_WORDS]) -> Result<()> {
+        unreachable!(
+            "InputsShmemWriter::set_random_seed() is not supported on this platform. Only Linux x86_64 is supported."
         );
     }
 

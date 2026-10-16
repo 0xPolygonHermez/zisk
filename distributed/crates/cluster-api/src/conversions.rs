@@ -341,6 +341,7 @@ impl From<ContributionParamsDto> for ContributionParams {
             total_workers: dto.total_workers,
             worker_allocation: dto.worker_allocation,
             job_compute_units: dto.job_compute_units.compute_units,
+            random_seed: dto.random_seed.as_bytes().to_vec(),
         }
     }
 }

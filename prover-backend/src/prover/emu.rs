@@ -19,13 +19,13 @@ use zisk_asm_runner::HintsShmem;
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::io::StreamSource;
 use zisk_common::{
-    io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, StatsCostPerType,
-    VadcopKind, ZiskExecutorTime,
+    io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, RandomSeed,
+    StatsCostPerType, VadcopKind, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
 use zisk_precomp_hints::HintsProcessor;
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use anyhow::Result;
 
@@ -108,7 +108,7 @@ impl ProverEngine for EmuProver {
 
         let program_vk = ensure_program_vk(&pctx, elf)?;
 
-        let rv2zk = Riscv2zisk::new(elf.elf());
+        let rv2zk = ZiskTranspiler::new(elf.elf());
 
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
         let zisk_rom = Arc::new(zisk_rom);
@@ -129,8 +129,8 @@ impl ProverEngine for EmuProver {
         self.core_prover.rank_info.local_rank
     }
 
-    fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.core_prover.backend.set_stdin(stdin)
+    fn set_stdin_and_random_seed(&self, stdin: ZiskStdin, seed: RandomSeed) -> Result<()> {
+        self.core_prover.backend.set_stdin_and_random_seed(stdin, seed)
     }
 
     fn register_program(&self, program_id: &ProgramId, _with_hints: bool) -> Result<()> {
@@ -175,21 +175,27 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.get_execution_info()
     }
 
-    fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
+    fn execute(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        seed: RandomSeed,
+    ) -> Result<ExecuteOutput> {
         self.register_program(&program.program_id, false)?;
-        self.core_prover.backend.execute(stdin)
+        self.core_prover.backend.execute(stdin, seed)
     }
 
     fn stats(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         self.register_program(&program.program_id, false)?;
-        self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
+        self.core_prover.backend.stats(stdin, seed, debug_info, minimal_memory, mpi_node)
     }
 
     fn get_instance_trace(
@@ -220,21 +226,23 @@ impl ProverEngine for EmuProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: RandomSeed,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         self.register_program(&program.program_id, false)?;
-        self.core_prover.backend.verify_constraints(stdin, debug_info)
+        self.core_prover.backend.verify_constraints(stdin, seed, debug_info)
     }
 
     fn prove(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        seed: RandomSeed,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
         self.register_program(&program.program_id, false)?;
-        self.core_prover.backend.prove(stdin, proof_kind, prover_options)
+        self.core_prover.backend.prove(stdin, seed, proof_kind, prover_options)
     }
 
     fn wrap_proof(
@@ -243,12 +251,15 @@ impl ProverEngine for EmuProver {
         publics_full: &[u64],
         source_kind: VadcopKind,
         proof_kind: ProofKind,
+        seed: Option<RandomSeed>,
     ) -> Result<ProveOutput> {
         match proof_kind {
             ProofKind::VadcopFinalMinimal => {
-                self.core_prover.backend.minimal(proof, publics_full, source_kind)
+                self.core_prover.backend.minimal(proof, publics_full, source_kind, seed)
             }
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full, source_kind),
+            ProofKind::Plonk => {
+                self.core_prover.backend.plonk(proof, publics_full, source_kind, seed)
+            }
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
@@ -443,7 +454,8 @@ impl ExecuteClient for ZiskProver<Emu> {
         program: &GuestProgram,
         stdin: ZiskStdin,
         _hints: Option<StreamSource>,
+        seed: Option<RandomSeed>,
     ) -> Result<ExecuteOutput> {
-        ZiskProver::<Emu>::execute(self, program, stdin)
+        ZiskProver::<Emu>::execute(self, program, stdin, seed)
     }
 }

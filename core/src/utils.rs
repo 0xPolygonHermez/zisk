@@ -56,3 +56,10 @@ pub fn is_elf_file(file_data: &[u8]) -> std::io::Result<bool> {
     // Check if the first 4 bytes match the ELF magic number
     Ok(file_data[0..4] == [0x7F, b'E', b'L', b'F'])
 }
+
+/// Returns true if the data starts with the WebAssembly binary magic and version 1
+/// (`\0asm\x01\x00\x00\x00`).  This is how the transpiler distinguishes a wasm guest from a
+/// RISC-V ELF guest.
+pub fn is_wasm_file(file_data: &[u8]) -> bool {
+    file_data.len() >= 8 && file_data[0..8] == [0x00, b'a', b's', b'm', 0x01, 0x00, 0x00, 0x00]
+}

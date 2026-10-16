@@ -7,7 +7,6 @@
 #include <cub/device/device_radix_sort.cuh>
 #include <cub/device/device_run_length_encode.cuh>
 #include <cub/device/device_scan.cuh>
-#include <thrust/iterator/discard_iterator.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -1471,9 +1470,11 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
             d_ram_keys_sorted_[s], ram, d_ram_vals_sorted_[s]);
         CUDA_CHECK_LAUNCH();
 
+        // Uniques land in d_run_offsets_, dead until the scan below overwrites it. A discard
+        // iterator would make CUB key on its any_assign value_type, which CCCL 2.7 rejects.
         size_t bytes_rle = cub_temp_bytes_;
         CUDA_CHECK(cub::DeviceRunLengthEncode::Encode(d_cub_temp_[s], bytes_rle,
-            d_sorted_addr_[s], thrust::discard_iterator<>{},
+            d_sorted_addr_[s], d_run_offsets_[s],
             d_run_lengths_[s], d_num_unique_[s], ram, st));
 
         size_t bytes_sr = cub_temp_bytes_;
@@ -1707,7 +1708,7 @@ void CountAndPlan::query_cub_sizes_(size_t& scan_counts_b, size_t& scan_emit_b,
     cub::DeviceRadixSort::SortKeys(nullptr, sort_b,
         (uint64_t*)nullptr, (uint64_t*)nullptr, MAX_POT);
     cub::DeviceRunLengthEncode::Encode(nullptr, rle_b,
-        (uint32_t*)nullptr, thrust::discard_iterator<>{},
+        (uint32_t*)nullptr, (uint32_t*)nullptr,
         (uint32_t*)nullptr, (uint32_t*)nullptr, MAX_POT);
     cub::DeviceScan::ExclusiveSum(nullptr, hist_scan_b,
         (uint32_t*)nullptr, (uint32_t*)nullptr, N_ADDR);

@@ -4,6 +4,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::RandomSeedArgs;
 use zisk_sdk::{
     AsmOptions, EmbeddedClientBuilder, EmbeddedOpts, GuestProgram, ProofKind, ZiskHints, ZiskStdin,
 };
@@ -11,7 +12,7 @@ use zisk_sdk::{
 use super::validate_asm_hints;
 use crate::common::{resolve_elf, resolve_output_path, ElfSelectorArgs};
 use crate::proof::select_prove_kind;
-use crate::ux::print_job_banner;
+use crate::ux::{print_job_banner, print_random_seed};
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -41,6 +42,9 @@ pub(crate) struct ZiskEmbeddedProve {
     /// - `unix://path/to/socket` → Unix domain socket stream
     #[arg(long)]
     hints: Option<String>,
+
+    #[command(flatten)]
+    random_seed: RandomSeedArgs,
 
     /// Use the ASM emulator instead of the default Rust emulator
     #[arg(short = 'a', long)]
@@ -167,6 +171,7 @@ impl ZiskEmbeddedProve {
         if let Some(hints) = hints {
             request = request.hints(hints);
         }
+        request = request.random_seed(self.random_seed.provided());
         if proof_kind != ProofKind::VadcopFinal {
             request = request.wrap(proof_kind);
         }
@@ -188,6 +193,7 @@ impl ZiskEmbeddedProve {
             result.get_proving_time() as f64 / 1000.0,
             result.get_execution_steps()
         );
+        print_random_seed(result.get_random_seed());
         info!("Proof saved to {}", output_file.display());
 
         Ok(())

@@ -7,7 +7,7 @@ use proofman_fields::PrimeField64;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, SRC_IMM};
 use zisk_pil::{RomRomTrace, RomRomTraceRow, RomTrace};
 use zisk_sm_mem_common::{MEMORY_ROM_INIT_OP, MEMORY_STORE_OP};
-use zisk_transpiler_riscv::Riscv2zisk;
+use zisk_transpiler_common::ZiskTranspiler;
 
 use crate::error::{RomError, RomResult};
 
@@ -34,10 +34,11 @@ impl CustomRom {
     /// Transpiles `elf` into a `ZiskRom` and validates that its instruction count fits the
     /// PIL ROM trace.
     fn parse_rom<F: PrimeField64>(elf: &[u8]) -> RomResult<ZiskRom> {
-        // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
+        // Load and parse the ELF file, and transpile it into a ZisK ROM using ZiskTranspiler
 
         // Create an instance of the RISCV -> ZisK program converter and convert the ELF bytes into a ZisK ROM.
-        let rom = Riscv2zisk::new(elf).run().map_err(|e| RomError::ElfTranspile(e.to_string()))?;
+        let rom =
+            ZiskTranspiler::new(elf).run().map_err(|e| RomError::ElfTranspile(e.to_string()))?;
 
         let len = rom.insts.len();
         let max_len = RomTrace::<F>::NUM_ROWS;

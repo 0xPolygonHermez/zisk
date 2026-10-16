@@ -80,7 +80,6 @@ pub fn gen_recurser_setup(
             enable_input: false,
             input_challenges: false,
             fri_queries_batch_size: None,
-            multi_fri: false,
             hash: config.hash.to_string(),
         };
         let circom_src = gen_stark_verifier(
@@ -100,7 +99,13 @@ pub fn gen_recurser_setup(
     )
     .context("Failed to write publics_helpers circom")?;
 
-    let io_opts = StarkInputOptions { add_publics: true, is_final: false, parallel: false };
+    // The two proofs are unrelated, so each verifier reads its own publics.
+    let io_opts = StarkInputOptions {
+        add_publics: true,
+        is_final: false,
+        parallel: false,
+        shared_publics: false,
+    };
     let define_a = define_stark_inputs(config.stark_info, "a_sv", &io_opts);
     let define_b = define_stark_inputs(config.stark_info, "b_sv", &io_opts);
     let assign_a =

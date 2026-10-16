@@ -3,7 +3,7 @@
 ; (scripts/legacy/gen_bls_map.py). SSWU -> 11-isogeny -> cofactor·(1-x). lmp_.
 ; ============================================================================
 
-; inline-op headers (zopt): precompile parameter blocks
+; inline-op headers (zopt): arith256_mod / arith384_mod parameter blocks
 const u64 ZBLS_MAP_H5[5] = BLS_MP_T, BLS_ONE, BLS_MP_T2, BLS_P, BLS_MP_T
 const u64 ZBLS_MAP_H6[5] = BLS_MP_T, BLS_ONE, BLS_ISO_B_G1, BLS_P, BLS_MP_GX
 const u64 ZBLS_MAP_H7[5] = BLS_MP_XNUM, BLS_MP_T, BLS_ZERO, BLS_P, BLS_MP_T

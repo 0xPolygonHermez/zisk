@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "dfa80d09891bfe69d17a389606e3fb17cd7c7adcbac2988759884d5501c494db";
+pub const PILOUT_HASH: &str = "3df3a91972bffd6890bc0fa68fb5798840ea0b8e230ad5e523bf9fb6757dfc16";
 
 //AIRGROUP CONSTANTS
 
@@ -94,7 +94,7 @@ pub const ARITH_EQ_384_AIR_IDS: &[usize] = &[33];
 
 pub const ARITH_EQ_384_LARGE_AIR_IDS: &[usize] = &[34];
 
-pub const BABY_JUB_JUB_AIR_IDS: &[usize] = &[35];
+pub const TWISTED_EDWARDS_AIR_IDS: &[usize] = &[35];
 
 pub const KECCAKF_AIR_IDS: &[usize] = &[36];
 
@@ -559,27 +559,27 @@ trace_row!(ArithEq384LargeTraceRow<F> {
 
 pub type ArithEq384LargeTrace<R> = GenericTrace<R, 2097152, 0, 34>;
 
-trace_row!(BabyJubJubFixedRow<F> {
+trace_row!(TwistedEdwardsFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type BabyJubJubFixed<F> = GenericTrace<BabyJubJubFixedRow<F>, 262144, 0, 35>;
+pub type TwistedEdwardsFixed<F> = GenericTrace<TwistedEdwardsFixedRow<F>, 262144, 0, 35>;
 
-trace_row!(BabyJubJubTraceRow<F> {
- x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, A:u16, B:u16, Nx:u16, T:u16, DT:u16, qa:ubit(22), qb:ubit(22), qn:ubit(22), qt:ubit(22), qdt:ubit(22), qx:ubit(22), qy:ubit(22), sel_op:[bit; 1], sel_op_clk0:[bit; 1], x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 7], step_addr:ubit(40),
+trace_row!(TwistedEdwardsTraceRow<F> {
+ x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, A:u16, B:u16, Nx:u16, T:u16, DT:u16, qa:ubit(22), qb:ubit(22), qn:ubit(22), qt:ubit(22), qdt:ubit(22), qx:ubit(22), qy:ubit(22), sel_op:[bit; 2], sel_op_clk0:[bit; 2], x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 7], step_addr:ubit(40),
 });
 
-pub type BabyJubJubTrace<R> = GenericTrace<R, 262144, 0, 35>;
+pub type TwistedEdwardsTrace<R> = GenericTrace<R, 262144, 0, 35>;
 
 trace_row!(KeccakfFixedRow<F> {
  CLK_0: F, ROUND_CLK_0: F, __L1__: F,
 });
-pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 1048576, 0, 36>;
+pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 2097152, 0, 36>;
 
 trace_row!(KeccakfTraceRow<F> {
- in_use_a:bit, in_use_b:bit, in_use_a_clk_0:bit, in_use_b_clk_0:bit, state:[ubit(4); 320], c:[ubit(4); 64], chi_acc:[ubit(26); 64], step_addr:ubit(40),
+ in_use_a:bit, in_use_b:bit, state:[ubit(4); 320], c:[ubit(4); 64], xor5_acc:[ubit(24); 16], chi_acc:[ubit(26); 64], step_addr:ubit(40),
 });
 
-pub type KeccakfTrace<R> = GenericTrace<R, 1048576, 0, 36>;
+pub type KeccakfTrace<R> = GenericTrace<R, 2097152, 0, 36>;
 
 trace_row!(Sha256fFixedRow<F> {
  CLK_0: F, __L1__: F,
@@ -758,12 +758,12 @@ trace_row!(VirtualTableZisk0TraceRow<F> {
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 52>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
- __ROW_INDEX__: F, COL_9_9_0: F, COL_14_14_0: F, COL_14_14_1: F, UID_14: F, COL_15_16_0: F, COL_15_16_1: F, COL_15_16_2: F, COL_15_16_3: F, COL_15_16_4: F, COL_15_16_5: F, UID_15: F, COL_16_22_0: F, COL_16_22_1: F, COL_16_22_2: F, COL_16_22_3: F, COL_16_22_4: F, COL_16_22_5: F, UID_16: F, COL_17_28_0: F, COL_17_28_1: F, COL_17_28_2: F, COL_17_28_3: F, COL_17_28_4: F, COL_17_28_5: F, COL_17_28_6: F, UID_17: F, COL_18_35_0: F, COL_18_35_1: F, COL_18_35_2: F, COL_18_35_3: F, COL_18_35_4: F, COL_18_35_5: F, COL_18_35_6: F, COL_19_42_0: F, COL_19_42_1: F, COL_19_42_4: F, COL_19_42_5: F, COL_19_42_6: F, COL_20_49_0: F, COL_20_49_1: F, COL_20_49_4: F, COL_20_49_5: F, COL_20_49_6: F, COL_21_56_0: F, COL_21_56_1: F, COL_21_56_2: F, COL_21_56_3: F, COL_21_56_4: F, COL_21_56_5: F, COL_21_56_6: F, UID_21: F, __L1__: F,
+ __ROW_INDEX__: F, COL_9_9_0: F, COL_14_14_0: F, COL_14_14_1: F, UID_14: F, COL_15_16_0: F, COL_15_16_1: F, COL_15_16_2: F, COL_15_16_3: F, COL_15_16_4: F, UID_15: F, COL_16_21_0: F, COL_16_21_1: F, COL_16_21_2: F, COL_16_21_3: F, COL_16_21_4: F, COL_16_21_5: F, UID_16: F, COL_17_27_0: F, COL_17_27_1: F, COL_17_27_2: F, COL_17_27_3: F, COL_17_27_4: F, COL_17_27_5: F, UID_17: F, COL_18_33_0: F, COL_18_33_1: F, COL_18_33_2: F, COL_18_33_3: F, COL_18_33_4: F, COL_18_33_5: F, COL_18_33_6: F, UID_18: F, COL_19_40_0: F, COL_19_40_1: F, COL_19_40_2: F, COL_19_40_3: F, COL_19_40_4: F, COL_19_40_5: F, COL_19_40_6: F, COL_20_47_0: F, COL_20_47_1: F, COL_20_47_4: F, COL_20_47_5: F, COL_20_47_6: F, COL_21_54_0: F, COL_21_54_1: F, COL_21_54_4: F, COL_21_54_5: F, COL_21_54_6: F, COL_22_61_0: F, COL_22_61_1: F, COL_22_61_2: F, COL_22_61_3: F, COL_22_61_4: F, COL_22_61_5: F, COL_22_61_6: F, UID_22: F, __L1__: F,
 });
 pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 53>;
 
 trace_row!(VirtualTableZisk1TraceRow<F> {
- multiplicity:[F; 22],
+ multiplicity:[F; 23],
 });
 
 pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 53>;
@@ -1030,7 +1030,7 @@ values!(ArithEq384LargeAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(BabyJubJubAirGroupValues<F> {
+values!(TwistedEdwardsAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
@@ -1280,12 +1280,12 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 35, PackedInfoConst {
         is_packed: true,
         num_packed_words: 22,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 22, 22, 22, 1, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 40],
+        unpack_info: &[16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 40],
     }),
     (0, 36, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 51,
-        unpack_info: &[1, 1, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 40],
+        num_packed_words: 57,
+        unpack_info: &[1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 40],
     }),
     (0, 37, PackedInfoConst {
         is_packed: true,
@@ -1402,7 +1402,7 @@ pub const AIR_NAMES: &[(usize, usize, &str)] = &[
     (0, 32, "ArithBn254Large"),
     (0, 33, "ArithEq384"),
     (0, 34, "ArithEq384Large"),
-    (0, 35, "BabyJubJub"),
+    (0, 35, "TwistedEdwards"),
     (0, 36, "Keccakf"),
     (0, 37, "Sha256f"),
     (0, 38, "Poseidon"),

@@ -1,23 +1,17 @@
 ; ============================================================================
 ; bn254/fp2.zisk - degree-2 extension field Fp2 = Fp[u]/(u²+1) for BN254.
 ; Mirrors ziskos/entrypoint/src/zisklib/lib/bn254/fp2.rs. All arithmetic runs on
-; the bn254 complex precompiles (bn254_complex_add/sub/mul), which take a 2-ptr
-; header [&f1,&f2] (each 8 u64 = real‖imag) and update f1 in place. inv uses the
+; the bn254 complex precompiles (bn254_complex_add/sub/mul), which take a = &f1
+; and b = &f2 directly (each 8 u64 = real‖imag) and update f1 in place. inv uses the
 ; FCALL_BN254_FP2_INV hint + verify. All leaves; they clobber only r5. Prefix `bf2_`.
 ; Fp2 element = 8 u64 LE limbs: real (limbs 0..3) ‖ imag (limbs 4..7).
 ; ============================================================================
 
-u64 BN_F2_HDR[2]  = 0, 0
 u64 BN_F2_INV[8]  = 0, 0, 0, 0, 0, 0, 0, 0
 u64 BN_F2_PROD[8] = 0, 0, 0, 0, 0, 0, 0, 0
 ; scalar operand b‖0 (imag half stays 0) and conjugate operand 0‖a_imag (real half stays 0)
 u64 BN_F2_SB[8]   = 0, 0, 0, 0, 0, 0, 0, 0
 u64 BN_F2_CB[8]   = 0, 0, 0, 0, 0, 0, 0, 0
-; preset headers: slot 0 (the in-place operand) is written per call
-u64 BN_F2_HDRS[2] = 0, BN_F2_SB
-u64 BN_F2_HDRC[2] = 0, BN_F2_CB
-u64 BN_F2_HDRN[2] = 0, BN_F2_NEGMUL
-u64 BN_F2_HDRP[2] = BN_F2_PROD, BN_F2_INV
 
 ; f2 = (P-1)‖0: multiplying by it negates an Fp2 element (used by neg).
 const u64 BN_F2_NEGMUL[8] =
@@ -27,56 +21,45 @@ const u64 BN_F2_ZERO[8] = 0, 0, 0, 0, 0, 0, 0, 0
 const u64 BN_F2_ONE[8]  = 1, 0, 0, 0, 0, 0, 0, 0
 
 ; All leaves copy the in-place operand with one DMA op and run the precompile on
-; a header in RAM; they clobber only r5.
+; it directly (a = the in-place operand, b = the other one); they clobber only r5.
 ; void zisklib_add_fp2_bn254(const u64* a, const u64* b, u64* result)
 ;   result = a + b.  [r10=a, r11=b, r12=result]  (result must not alias b)
 zisklib_add_fp2_bn254:
 	dma_xmemcpy(r12, r10) -> r5, j(64, 4)
-	copyb(0, r12) -> [BN_F2_HDR]
-	copyb(0, r11) -> [BN_F2_HDR + 8]
-	bn254_complex_add(0, BN_F2_HDR)
+	bn254_complex_add(r12, r11)
 	ret
 
 ; void zisklib_sub_fp2_bn254(const u64* a, const u64* b, u64* result)  [r10,r11,r12]
 zisklib_sub_fp2_bn254:
 	dma_xmemcpy(r12, r10) -> r5, j(64, 4)
-	copyb(0, r12) -> [BN_F2_HDR]
-	copyb(0, r11) -> [BN_F2_HDR + 8]
-	bn254_complex_sub(0, BN_F2_HDR)
+	bn254_complex_sub(r12, r11)
 	ret
 
 ; void zisklib_mul_fp2_bn254(const u64* a, const u64* b, u64* result)  [r10,r11,r12]
 zisklib_mul_fp2_bn254:
 	dma_xmemcpy(r12, r10) -> r5, j(64, 4)
-	copyb(0, r12) -> [BN_F2_HDR]
-	copyb(0, r11) -> [BN_F2_HDR + 8]
-	bn254_complex_mul(0, BN_F2_HDR)
+	bn254_complex_mul(r12, r11)
 	ret
 
 ; void zisklib_dbl_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
-;   (result may alias a: the header then reads [a, a]; else [result, a] after the copy)
+;   (result may alias a: the precompile then adds a to itself; else result + a after the copy)
 zisklib_dbl_fp2_bn254:
 	dma_xmemcpy(r11, r10) -> r5, j(64, 4)
-	copyb(0, r11) -> [BN_F2_HDR]
-	copyb(0, r10) -> [BN_F2_HDR + 8]
-	bn254_complex_add(0, BN_F2_HDR)
+	bn254_complex_add(r11, r10)
 	ret
 
 ; void zisklib_square_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
 ;   result = a * a.
 zisklib_square_fp2_bn254:
 	dma_xmemcpy(r11, r10) -> r5, j(64, 4)
-	copyb(0, r11) -> [BN_F2_HDR]
-	copyb(0, r10) -> [BN_F2_HDR + 8]
-	bn254_complex_mul(0, BN_F2_HDR)
+	bn254_complex_mul(r11, r10)
 	ret
 
 ; void zisklib_neg_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
 ;   result = -a = a * (P-1).
 zisklib_neg_fp2_bn254:
 	dma_xmemcpy(r11, r10) -> r5, j(64, 4)
-	copyb(0, r11) -> [BN_F2_HDRN]
-	bn254_complex_mul(0, BN_F2_HDRN)
+	bn254_complex_mul(r11, BN_F2_NEGMUL)
 	ret
 
 ; void zisklib_scalar_mul_fp2_bn254(const u64* a, const u64* b, u64* result)
@@ -85,8 +68,7 @@ zisklib_neg_fp2_bn254:
 zisklib_scalar_mul_fp2_bn254:
 	dma_xmemcpy(BN_F2_SB, r11) -> r5, j(32, 4)
 	dma_xmemcpy(r12, r10) -> r5, j(64, 4)
-	copyb(0, r12) -> [BN_F2_HDRS]
-	bn254_complex_mul(0, BN_F2_HDRS)
+	bn254_complex_mul(r12, BN_F2_SB)
 	ret
 
 ; void zisklib_conjugate_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
@@ -97,8 +79,7 @@ zisklib_conjugate_fp2_bn254:
 	dma_xmemcpy(r11, r10) -> r5, j(32, 4)
 	add(r11, 32) -> r5
 	dma_xmemset(r5, 32) -> r5, j(0, 4)
-	copyb(0, r11) -> [BN_F2_HDRC]
-	bn254_complex_sub(0, BN_F2_HDRC)
+	bn254_complex_sub(r11, BN_F2_CB)
 	ret
 
 ; void zisklib_inv_fp2_bn254(const u64* a, u64* result)  [r10=a, r11=result]
@@ -138,7 +119,7 @@ bf2_inv_c1:
 bf2_inv_vfy:
 	; PROD = a * inv (Fp2), check == 1
 	dma_xmemcpy(BN_F2_PROD, r10) -> r5, j(64, 4)
-	bn254_complex_mul(0, BN_F2_HDRP)
+	bn254_complex_mul(BN_F2_PROD, BN_F2_INV)
 	dma_xmemcmp(BN_F2_PROD, BN_F2_ONE) -> r5, j(64, 4)
 	eq(r5, 0), j(bf2_inv_wr)
 bf2_inv_panic:

@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use std::process::{Command, Stdio};
 use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
 use zisk_common::io::ZiskStdin;
+use zisk_common::{RandomSeed, RandomSeedArgs};
 use zisk_prover_backend::{GuestProgram, ProfilingMode};
 
 use crate::common::{detect_project_elf_for_profile, ElfSelectorArgs, Profile};
@@ -38,6 +39,9 @@ pub(crate) struct RunCmd {
     /// Profiling report to emit
     #[arg(short = 'p', long)]
     profiling: Option<ProfilingMode>,
+
+    #[command(flatten)]
+    random_seed: RandomSeedArgs,
 }
 
 // Implement the run functionality for ZiskRun
@@ -79,7 +83,14 @@ impl RunCmd {
 
         let program = GuestProgram::from_uri(&elf_path)?;
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
-        program.run_emulation(stdin, self.profiling)
+        // `run` has no logger, so it reports the seed itself, on stderr (stdout is the guest's),
+        // and before emulating, so that a run that fails can still be replayed.
+        let provided = self.random_seed.provided();
+        let seed = provided.map_or_else(RandomSeed::random, Ok)?;
+        let note = if provided.is_some() { " (provided)" } else { "" };
+        eprintln!("Random seed: {seed}{note}");
+        program.run_emulation_with_random_seed(stdin, self.profiling, Some(seed))?;
+        Ok(())
     }
 
     /// Assemble the `cargo` argument vector used to build the guest before

@@ -49,34 +49,31 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
         Each slot proves TWO independent Keccak-f operations, A and B. On the
         round rows every state cell is SLICED: it holds v = a + 8·b, the
         same-position values of both instances (slot base 8 leaves room for θ's
-        column sums, which reach 5 per instance). The boundary rows hold the two
-        instances' plain bits, so the memory interface can pack per-instance
-        words; they are glued to the sliced rows by linear constraints.
+        column sums, which reach 5 per instance). The boundary rows hold op A's
+        plain bits; op B's are b = (v - a) / 8, read off the sliced rows, so the
+        memory interface can pack per-instance words.
 
         Every state-group (a full 1600-cell state) occupies ROWS_PER_STATE =
         25 / lanes_per_row consecutive rows: group-row k holds the lanes
         [k·lanes_per_row, (k+1)·lanes_per_row), where lane l = 5y + x holds the
-        bits (x, y, 0..63). A slot is 29 state-groups:
+        bits (x, y, 0..63). A slot is 27 state-groups:
 
            GROUP              state[64·lanes_per_row]
         |---------|--------------------------------------------------|
         |    0    |  op A input bits                                 | <-- A STATE IN
-        |    1    |  op B input bits                                 | <-- B STATE IN
         |---------|--------------------------------------------------|
-        |    2    |  round0  (sliced a+8b, plus sliced parities c)   |
+        |    1    |  round0  (sliced a+8b, plus sliced parities c)   | <-- B STATE IN
         |   ...   |  ...                                             |
-        |   25    |  round23 (sliced, plus c)                        |
-        |   26    |  round24 (sliced)                                |
+        |   24    |  round23 (sliced, plus c)                        |
+        |   25    |  round24 (sliced)                                | <-- B STATE OUT
         |---------|--------------------------------------------------|
-        |   27    |  op A output bits                                | <-- A STATE OUT
-        |   28    |  op B output bits                                | <-- B STATE OUT
+        |   26    |  op A output bits                                | <-- A STATE OUT
         |---------|--------------------------------------------------|
 
-        Glue (all linear, uniform in lanes_per_row):
-            group 2  = group 0 + 8·group 1     (slice in, row by row)
-            group 26 = group 27 + 8·group 28   (unslice out, row by row)
-        with booleanity enforced on the boundary groups, which makes both the
-        slicing and the memory packing decode uniquely.
+        Glue (uniform in lanes_per_row): op B's bits are b = (v - a) / 8 for the
+        round-0 (round-24) cell v and the group-0 (group-26) bit a. Booleanity of
+        a and of 8b = v - a makes both the slicing and the memory packing decode
+        uniquely.
 
        ═══════════════════════════════════════════════════════════════════════════
        ROUND VERIFICATION: SLICED χ-ROW S-BOX + XOR5 NORMALIZATION
@@ -86,10 +83,11 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
         cells, sums act on both slots at once:
 
             1. Column sums Σ_y state[x,y,z] have slot values in [0,5]. They are
-               normalized to the committed sliced parities c (xor5 table, three
-               positions per lookup) — this keeps the χ-table input entropy
-               affordable at two instances per cell. Parity (x,z) is stored at
-               group-row (x·64+z) / C_PER_ROW, column (x·64+z) % C_PER_ROW.
+               normalized to the committed sliced parities c (xor5 table, four
+               positions per lookup, their sums packed base 64 into one key) —
+               this keeps the χ-table input entropy affordable at two instances
+               per cell. Parity (x,z) is stored at group-row (x·64+z) / C_PER_ROW,
+               column (x·64+z) % C_PER_ROW.
 
             2. θ-outputs are rebuilt from CLEAN parities:
                    t[x,y,z] = state[x,y,z] + c[x-1][z] + c[x+1][z-1],
@@ -118,8 +116,8 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     const int ROWS_PER_STATE = LANES / lanes_per_row;
     const int BITS_PER_ROW = lanes_per_row * LANE_BITS;
 
-    // 2 input-bit groups + 25 sliced round groups + 2 output-bit groups
-    const int GROUPS = 2 + (1 + ROUNDS) + 2;
+    // op A's input bits + 25 sliced round groups + op A's output bits
+    const int GROUPS = 1 + (1 + ROUNDS) + 1;
     const int CLOCKS = GROUPS * ROWS_PER_STATE;
 
     // Sliced parities per row: the 320 (x,z) positions of a round, spread
@@ -145,11 +143,11 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
 
     // First rows of the slot's groups
     const int GROUP_IN_A = 0;
-    const int GROUP_IN_B = ROWS_PER_STATE;
-    const int GROUP_ROUND_0 = 2 * ROWS_PER_STATE;
-    const int GROUP_ROUND_LAST = (2 + ROUNDS) * ROWS_PER_STATE;   // round-24 group
-    const int GROUP_OUT_A = (3 + ROUNDS) * ROWS_PER_STATE;
-    const int GROUP_OUT_B = (4 + ROUNDS) * ROWS_PER_STATE;
+    const int GROUP_ROUND_0 = ROWS_PER_STATE;
+    const int GROUP_ROUND_LAST = (1 + ROUNDS) * ROWS_PER_STATE;   // round-24 group
+    const int GROUP_OUT_A = (2 + ROUNDS) * ROWS_PER_STATE;
+
+    const int INV8 = 16140901060737761281;                        // 8^-1 mod p
 
     // ═══════════════════════════════════════════════════════════════════════════
     // CLOCK SELECTORS
@@ -181,10 +179,8 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     in_use_latched * (in_use_a - 'in_use_a) === 0;
     in_use_latched * (in_use_b - 'in_use_b) === 0;
 
-    col witness bits(1) in_use_a_clk_0; // 1 at the first clock of a slot whose op A is in use
-    col witness bits(1) in_use_b_clk_0; // 1 at the first clock of a slot whose op B is in use
-    in_use_a_clk_0 <== CLK_0 * in_use_a;
-    in_use_b_clk_0 <== CLK_0 * in_use_b;
+    const expr in_use_a_clk_0 = CLK_0 * in_use_a; // 1 at the first clock of a slot whose op A is in use
+    const expr in_use_b_clk_0 = CLK_0 * in_use_b; // 1 at the first clock of a slot whose op B is in use
 
     // ═══════════════════════════════════════════════════════════════════════════
     // STATE COLUMNS
@@ -196,34 +192,27 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     // Committed sliced column parities of θ
     col witness bits(4) c[C_PER_ROW];
 
-    // Boundary constraints: booleanity of the four boundary groups plus the
-    // slice/unslice glue, folded into ONE family. A merged family is sound iff
-    // its terms have pairwise-disjoint anchor rows, so the booleanity of the
-    // groups occupied by the glue anchors is checked THROUGH shifts from the
-    // neighboring round groups (rotations the design already opens):
+    // Boundary constraints: booleanity of op A's bits and of op B's 8b = v − a, folded into ONE
+    // family. A merged family is sound iff its terms have pairwise-disjoint anchor rows:
     //
     //   anchor group   term                          checks
     //   IN_A           state·(1−state)               booleanity of A input bits
-    //   IN_B           slice-in                      round-0 = A + 8·B
-    //   ROUND_0        (RPS)'state·(1−(RPS)'state)   booleanity of B input bits
-    //   ROUND_LAST     state'(RPS)·(1−state'(RPS))   booleanity of A output bits
-    //   OUT_A          unslice                       round-24 = A_out + 8·B_out
-    //   OUT_B          state·(1−state)               booleanity of B output bits
+    //   ROUND_0        8b·(8−8b), 8b = v − (RPS)'a   booleanity of B input bits
+    //   ROUND_LAST     8b·(8−8b), 8b = v − a'(RPS)   booleanity of B output bits
+    //   OUT_A          state·(1−state)               booleanity of A output bits
     //
-    const expr IN_A_CLK = clock_set(start: GROUP_IN_A, end: GROUP_IN_B);
-    const expr IN_B_CLK = clock_set(start: GROUP_IN_B, end: GROUP_ROUND_0);
+    const expr IN_A_CLK = clock_set(start: GROUP_IN_A, end: GROUP_ROUND_0);
     const expr ROUND_0_CLK = clock_set(start: GROUP_ROUND_0, end: GROUP_ROUND_0 + ROWS_PER_STATE);
     const expr ROUND_LAST_CLK = clock_set(start: GROUP_ROUND_LAST, end: GROUP_OUT_A);
-    const expr OUT_A_CLK = clock_set(start: GROUP_OUT_A, end: GROUP_OUT_B);
-    const expr OUT_B_CLK = clock_set(start: GROUP_OUT_B, end: CLOCKS);
+    const expr OUT_A_CLK = clock_set(start: GROUP_OUT_A, end: CLOCKS);
+    const expr b_in8[BITS_PER_ROW];
+    const expr b_out8[BITS_PER_ROW];
     for (int i = 0; i < BITS_PER_ROW; i++) {
-        (IN_A_CLK + OUT_B_CLK) * state[i] * (1 - state[i]) +
-        ROUND_0_CLK * (ROWS_PER_STATE)'state[i] * (1 - (ROWS_PER_STATE)'state[i]) +
-        ROUND_LAST_CLK * state[i]'(ROWS_PER_STATE) * (1 - state[i]'(ROWS_PER_STATE)) +
-        // Slice in: round-0 group = A input bits + 8·B input bits
-        IN_B_CLK * (state[i]'(ROWS_PER_STATE) - (ROWS_PER_STATE)'state[i] - KECCAKF_SLOT * state[i]) +
-        // Unslice out: round-24 group = A output bits + 8·B output bits
-        OUT_A_CLK * ((ROWS_PER_STATE)'state[i] - state[i] - KECCAKF_SLOT * state[i]'(ROWS_PER_STATE)) === 0;
+        b_in8[i] = state[i] - (ROWS_PER_STATE)'state[i];
+        b_out8[i] = state[i] - state[i]'(ROWS_PER_STATE);
+        (IN_A_CLK + OUT_A_CLK) * state[i] * (1 - state[i]) +
+        ROUND_0_CLK * b_in8[i] * (KECCAKF_SLOT - b_in8[i]) +
+        ROUND_LAST_CLK * b_out8[i] * (KECCAKF_SLOT - b_out8[i]) === 0;
     }
 
     // Round transitions fire on the rows of the groups holding rounds 0..23
@@ -250,9 +239,11 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
         // Full state per row: every χ-row anchors here, the packed θ-expressions
         // feed the lookups directly and no accumulator is needed.
 
-        // xor5 normalization: bind the committed sliced parities to the column sums
+        // xor5 normalization: bind the committed sliced parities to the column sums, the batch's
+        // sums packed base KECCAKF_XOR5_KEY_BASE into one key
         for (int g = 0; g < (320 + KECCAKF_XOR5_BATCH - 1) / KECCAKF_XOR5_BATCH; g++) {
-            const expr lookup_cols[2 * KECCAKF_XOR5_BATCH];
+            const expr lookup_cols[1 + KECCAKF_XOR5_BATCH];
+            expr key = 0;
 
             for (int k = 0; k < KECCAKF_XOR5_BATCH; k++) {
                 const int pos = g * KECCAKF_XOR5_BATCH + k;
@@ -264,14 +255,14 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
                     for (int y = 0; y < 5; y++) {
                         col_sum += state[bit_pos(x, y, z)];
                     }
-                    lookup_cols[k] = col_sum;
-                    lookup_cols[KECCAKF_XOR5_BATCH + k] = c[pos];
+                    key += KECCAKF_XOR5_KEY_BASE ** k * col_sum;
+                    lookup_cols[1 + k] = c[pos];
                 } else {
                     // Pad with zeros (a valid table entry: zero sums have zero parities)
-                    lookup_cols[k] = 0;
-                    lookup_cols[KECCAKF_XOR5_BATCH + k] = 0;
+                    lookup_cols[1 + k] = 0;
                 }
             }
+            lookup_cols[0] = key;
 
             lookup_assumes(KECCAKF_XOR5_TABLE_ID, lookup_cols, sel: rounds_active, sel_is_binary: 1);
         }
@@ -320,18 +311,22 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
 
         // Fixed mask: 1 at group-row 0 of the round groups 0..23 of each cycle.
         // Group-row k of those groups is selected by shifting the mask by k rows.
-        col fixed ROUND_CLK_0 = [[0:(2*ROWS_PER_STATE), [1, 0:(ROWS_PER_STATE-1)]:ROUNDS, 0:(3*ROWS_PER_STATE)]:NUM_SLOTS, 0...];
+        col fixed ROUND_CLK_0 = [[0:ROWS_PER_STATE, [1, 0:(ROWS_PER_STATE-1)]:ROUNDS, 0:(2*ROWS_PER_STATE)]:NUM_SLOTS, 0...];
 
         // View of the full current state-group, as seen from group-row k:
         // lane l lives at group-row l / lanes_per_row, i.e. (l / lanes_per_row - k)
         // rows away; the parity of position p = x·64+z lives at group-row
         // p / C_PER_ROW, column p % C_PER_ROW.
 
-        // ── xor5 normalization with mask-gated inputs: at group-row rho the
-        // column c[j] holds the parity of position p = rho·C_PER_ROW + j, and the
-        // input expression selects that row's column sum through the masks
-        for (int g = 0; g < (C_PER_ROW + KECCAKF_XOR5_BATCH - 1) / KECCAKF_XOR5_BATCH; g++) {
-            const expr lookup_cols[2 * KECCAKF_XOR5_BATCH];
+        // ── xor5 normalization: at group-row rho the column c[j] holds the parity
+        // of position p = rho·C_PER_ROW + j, and the masks select that row's column
+        // sum. Like chi_acc, xor5_acc commits the (degree-2) masked key so the
+        // lookup reads a degree-1 input and its bus term can pair at maxDeg 3
+        const int XOR5_GROUPS = (C_PER_ROW + KECCAKF_XOR5_BATCH - 1) / KECCAKF_XOR5_BATCH;
+        col witness bits(24) xor5_acc[XOR5_GROUPS];
+        for (int g = 0; g < XOR5_GROUPS; g++) {
+            const expr lookup_cols[1 + KECCAKF_XOR5_BATCH];
+            expr key = 0;
 
             for (int k = 0; k < KECCAKF_XOR5_BATCH; k++) {
                 const int j = g * KECCAKF_XOR5_BATCH + k;
@@ -353,13 +348,16 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
                         }
                         masked_sum += (rho_row)'ROUND_CLK_0 * col_sum;
                     }
-                    lookup_cols[k] = masked_sum;
-                    lookup_cols[KECCAKF_XOR5_BATCH + k] = c[j];
+                    key += KECCAKF_XOR5_KEY_BASE ** k * masked_sum;
+                    lookup_cols[1 + k] = c[j];
                 } else {
-                    lookup_cols[k] = 0;
-                    lookup_cols[KECCAKF_XOR5_BATCH + k] = 0;
+                    lookup_cols[1 + k] = 0;
                 }
             }
+
+            // Bound on round rows of active slots; elsewhere both sides are 0
+            xor5_acc[g] - in_use_a * key === 0;
+            lookup_cols[0] = xor5_acc[g];
 
             lookup_assumes(KECCAKF_XOR5_TABLE_ID, lookup_cols, sel: rounds_active, sel_is_binary: 1);
         }
@@ -460,10 +458,10 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
         ===============================================================================================================
 
         Memory Access Schedule (100 total operations, lanes_per_row in parallel):
-            Group GROUP_IN_A:   Read op A input_state[0..24]    (lanes_per_row per clock)
-            Group GROUP_IN_B:   Read op B input_state[0..24]
-            Group GROUP_OUT_A:  Write op A output_state[0..24]
-            Group GROUP_OUT_B:  Write op B output_state[0..24]
+            Group GROUP_IN_A:        Read op A input_state[0..24]    (lanes_per_row per clock)
+            Group GROUP_ROUND_0:     Read op B input_state[0..24]    (bits (v - a) / 8)
+            Group GROUP_ROUND_LAST:  Write op B output_state[0..24]  (bits (v - a) / 8)
+            Group GROUP_OUT_A:       Write op A output_state[0..24]
     */
 
     col witness bits(40) step_addr;
@@ -478,31 +476,36 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     const int MEM_OPS_IN_PARALLEL = lanes_per_row;
 
     const expr mem_sel = clock_set(in_use_a, start: GROUP_IN_A, end: GROUP_IN_A + ROWS_PER_STATE) +
-                         clock_set(in_use_b, start: GROUP_IN_B, end: GROUP_IN_B + ROWS_PER_STATE) +
+                         clock_set(in_use_b, start: GROUP_ROUND_0, end: GROUP_ROUND_0 + ROWS_PER_STATE) +
                          clock_set(in_use_a, start: GROUP_OUT_A, end: GROUP_OUT_A + ROWS_PER_STATE) +
-                         clock_set(in_use_b, start: GROUP_OUT_B, end: GROUP_OUT_B + ROWS_PER_STATE);
+                         clock_set(in_use_b, start: GROUP_ROUND_LAST, end: GROUP_ROUND_LAST + ROWS_PER_STATE);
 
-    const expr mem_is_write = clock_set(start: GROUP_OUT_A, end: CLOCKS);
+    const expr mem_is_write = clock_set(start: GROUP_ROUND_LAST, end: CLOCKS);
 
     const expr main_step = clock_shift(step_addr, STEP_A, start: GROUP_IN_A, end: GROUP_IN_A + ROWS_PER_STATE) +
-                           clock_shift(step_addr, STEP_B, start: GROUP_IN_B, end: GROUP_IN_B + ROWS_PER_STATE) +
+                           clock_shift(step_addr, STEP_B, start: GROUP_ROUND_0, end: GROUP_ROUND_0 + ROWS_PER_STATE) +
                            clock_shift(step_addr, STEP_A, start: GROUP_OUT_A, end: GROUP_OUT_A + ROWS_PER_STATE) +
-                           clock_shift(step_addr, STEP_B, start: GROUP_OUT_B, end: GROUP_OUT_B + ROWS_PER_STATE);
+                           clock_shift(step_addr, STEP_B, start: GROUP_ROUND_LAST, end: GROUP_ROUND_LAST + ROWS_PER_STATE);
 
     for (int i = 0; i < MEM_OPS_IN_PARALLEL; i++) {
         // Address: ADDR + WORD_SIZE*(k*lanes_per_row + i) at group-row k of the op
         // whose bits live at the firing clock, i.e. the word address advances by
         // WORD_SIZE*lanes_per_row per clock within each window
         const expr mem_addr = clock_shift(step_addr, ADDR_A, start: GROUP_IN_A, end: GROUP_IN_A + ROWS_PER_STATE, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row) +
-                              clock_shift(step_addr, ADDR_B, start: GROUP_IN_B, end: GROUP_IN_B + ROWS_PER_STATE, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row) +
+                              clock_shift(step_addr, ADDR_B, start: GROUP_ROUND_0, end: GROUP_ROUND_0 + ROWS_PER_STATE, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row) +
                               clock_shift(step_addr, ADDR_A, start: GROUP_OUT_A, end: GROUP_OUT_A + ROWS_PER_STATE, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row) +
-                              clock_shift(step_addr, ADDR_B, start: GROUP_OUT_B, end: GROUP_OUT_B + ROWS_PER_STATE, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row);
+                              clock_shift(step_addr, ADDR_B, start: GROUP_ROUND_LAST, end: GROUP_ROUND_LAST + ROWS_PER_STATE, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row);
 
-        // Pack this row's state bits into two 32-bit limbs
+        // Pack this row's op bits into two 32-bit limbs: op A's plain bits, or op B's (v - a) / 8
         const int base = i * 64;
+        const expr bits[64];
+        for (int j = 0; j < 64; j++) {
+            bits[j] = (IN_A_CLK + OUT_A_CLK) * state[base + j] +
+                      INV8 * (ROUND_0_CLK * b_in8[base + j] + ROUND_LAST_CLK * b_out8[base + j]);
+        }
         const expr mem_value[2];
-        mem_value[0] = pack(state, offset: base, len: BITS_PER_LIMB);
-        mem_value[1] = pack(state, offset: base + BITS_PER_LIMB, len: BITS_PER_LIMB);
+        mem_value[0] = pack(bits, offset: 0, len: BITS_PER_LIMB);
+        mem_value[1] = pack(bits, offset: BITS_PER_LIMB, len: BITS_PER_LIMB);
 
         precompiled_mem_op(
             sel: mem_sel,

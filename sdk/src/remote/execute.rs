@@ -9,6 +9,7 @@ use crate::SdkError;
 
 use std::collections::BTreeMap;
 use std::time::Duration;
+use zisk_common::RandomSeed;
 use zisk_coordinator_api::dto::{deadline_from_now, DomainExecuteRequest, DomainJobKind};
 use zisk_prover_backend::GuestProgram;
 
@@ -16,16 +17,18 @@ use crate::Result;
 
 impl RemoteClient {
     /// Submit an execute job over the standard coordinator API.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn do_execute(
         &self,
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ExecuteResult>> {
-        self.submit_execute(program, stdin, hints, executor, timeout, subs, None)
+        self.submit_execute(program, stdin, hints, seed, executor, timeout, subs, None)
     }
 
     /// Submit an execute job over the extended coordinator API, attaching
@@ -36,12 +39,13 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
         metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ExecuteResult>> {
-        self.submit_execute(program, stdin, hints, executor, timeout, subs, Some(metadata))
+        self.submit_execute(program, stdin, hints, seed, executor, timeout, subs, Some(metadata))
     }
 
     /// Shared execute submission. `metadata` selects the transport: `Some` routes
@@ -52,6 +56,7 @@ impl RemoteClient {
         program: &GuestProgram,
         stdin: InputSource,
         hints: Option<HintsSource>,
+        seed: Option<RandomSeed>,
         _executor: ExecutorKind, // remote: coordinator uses its configured executor; hint ignored
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -72,8 +77,13 @@ impl RemoteClient {
             stream.start()?;
         }
 
-        let job_kind =
-            DomainJobKind::Execute(DomainExecuteRequest { hash_id, input, hints, execute_timeout });
+        let job_kind = DomainJobKind::Execute(DomainExecuteRequest {
+            hash_id,
+            input,
+            hints,
+            random_seed: seed,
+            execute_timeout,
+        });
 
         let remote_job = match metadata {
             Some(metadata) => self.gw.submit_job_ext(job_kind, metadata),

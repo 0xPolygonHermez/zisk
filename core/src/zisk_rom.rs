@@ -50,13 +50,14 @@
 //!       using as index `(pc-FLOAT_LIB_ROM_ADDR)`
 use crate::FLOAT_LIB_ROM_ADDR_MAX;
 use crate::{
-    ZiskInst, ZiskInstBuilder, FLOAT_LIB_ROM_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
-    ZISKLIB_ROM_ADDR,
+    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, FLOAT_LIB_ROM_ADDR, ROM_ADDR, ROM_ADDR_MAX,
+    ROM_ENTRY, SRC_IMM, ZISKLIB_ROM_ADDR, ZISKLIB_ROM_ADDR_MAX,
 };
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
+use ziskos::zisklib::FCALL_RANDOM_SEED_ID;
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
@@ -112,6 +113,9 @@ pub struct ZiskRom {
     /// Maximum entry/bios ROM instruction PC
     pub max_bios_pc: u64,
 
+    /// IDs of the zkvmcalls the guest uses (see zisk_definitions::ZKVMCALLS)
+    pub zkvmcalls: BTreeSet<u16>,
+
     /// Maximum program ROM instruction PC
     pub max_program_pc: u64,
 
@@ -140,6 +144,24 @@ pub struct ZiskRom {
 
 /// ZisK ROM implementation
 impl ZiskRom {
+    /// Whether the guest can reach the seed of `zkvm_random_u64`: it uses that zkvmcall, or
+    /// its own code (outside the ZisK library, which always holds the seed fcall) issues the
+    /// seed fcall directly, as a hand-written `.zisk` program can. Such a guest cannot run
+    /// with hints (see `HINTS_WITH_RANDOM_ERROR` in zisk-transpiler-common).
+    pub fn uses_random_seed(&self) -> bool {
+        if self.zkvmcalls.contains(&zisk_definitions::zkvmcall_id("zkvm_random_u64")) {
+            return true;
+        }
+        let fcall = ZiskOp::Fcall.code();
+        self.insts.values().any(|zib| {
+            let i = &zib.i;
+            i.op == fcall
+                && i.a_src == SRC_IMM
+                && (i.a_offset_imm0 | (i.a_use_sp_imm1 << 32)) == FCALL_RANDOM_SEED_ID as u64
+                && !(ZISKLIB_ROM_ADDR..=ZISKLIB_ROM_ADDR_MAX).contains(&i.paddr)
+        })
+    }
+
     /// Optimizes instruction lookup by organizing instructions into direct-access arrays.
     ///
     /// ## Problem it solves:

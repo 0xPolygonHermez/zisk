@@ -1,7 +1,7 @@
 use colored::Colorize;
 use sysinfo::System;
 use tracing::info;
-use zisk_common::ZiskExecutorTime;
+use zisk_common::{RandomSeed, ZiskExecutorTime};
 use zisk_sdk::ExecuteOutput;
 
 pub(crate) fn print_banner() {
@@ -83,9 +83,11 @@ pub(crate) fn print_execution_summary(
     executor_time: &ZiskExecutorTime,
     total_duration: u64,
     steps: u64,
+    seed: Option<RandomSeed>,
     overhead_label: &str,
 ) {
     info!("Execution completed in {}ms, steps: {}", total_duration, steps);
+    print_random_seed(seed);
     info!(
         "Execution summary: {} {}ms + {} {}ms + {} {}ms + {} {}ms",
         overhead_label.dimmed(),
@@ -101,6 +103,14 @@ pub(crate) fn print_execution_summary(
     /*●⎿✔◼✽*/
 }
 
+/// Report the seed a run used, so it can be replayed with `--random-seed`. Silent when the
+/// backend did not report one.
+pub(crate) fn print_random_seed(seed: Option<RandomSeed>) {
+    if let Some(seed) = seed {
+        info!("Random seed: {seed}");
+    }
+}
+
 /// Render an [`ExecuteOutput`] to the log — shared by the embedded and remote
 /// `execute` commands so both report identically.
 pub(crate) fn print_execute_output(output: &ExecuteOutput) {
@@ -109,6 +119,7 @@ pub(crate) fn print_execute_output(output: &ExecuteOutput) {
     let time = output.get_execution_time();
     let cost = format_cost(output.get_execution_cost());
     info!("Execution completed in {}ms, steps: {}, cost: {}", time, steps, cost);
+    print_random_seed(output.get_random_seed());
 
     let sep2 = " [ ".dimmed();
     let sep3 = " ] ".dimmed();
