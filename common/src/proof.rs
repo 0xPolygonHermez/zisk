@@ -684,7 +684,9 @@ fn zisk_publics_info() -> &'static PublicsInfo {
 ///
 /// Panics if `publics_full` is not a `[flag? | program_vk | inputs]` vector.
 pub fn snark_inputs_bytes(publics_full: &[u64]) -> Vec<u8> {
-    zisk_publics_info().solidity_public_bytes(publics_full).expect("publics_full has ZisK's layout")
+    zisk_publics_info()
+        .solidity_public_bytes(program_publics(publics_full))
+        .expect("publics_full has ZisK's layout")
 }
 
 /// The public input the SNARK commits to, as 32 big-endian bytes: `getSha256Inputs` over
@@ -699,7 +701,7 @@ pub fn snark_publics_hash(publics_full: &[u64], rootc: &[u64]) -> Vec<u8> {
     let rootc: &[u64; PROGRAM_VK_LEN] =
         rootc.get(..PROGRAM_VK_LEN).and_then(|r| r.try_into().ok()).expect("rootc too short");
     zisk_publics_info()
-        .snark_public_digest(publics_full, rootc)
+        .snark_public_digest(program_publics(publics_full), rootc)
         .expect("publics_full has ZisK's layout")
         .to_vec()
 }
@@ -1833,6 +1835,12 @@ impl Proof {
     pub fn with_setup_vk<'a>(&'a self, setup_vk: &'a [u64]) -> ZiskVerifyBuilder<'a> {
         ZiskVerifyBuilder::new(self).with_setup_vk(setup_vk)
     }
+
+    /// Start a custom verification with a non-release setup's leaf key. See
+    /// [`ZiskVerifyBuilder::with_leaf_setup_vk`].
+    pub fn with_leaf_setup_vk<'a>(&'a self, setup_vk: &'a [u64]) -> ZiskVerifyBuilder<'a> {
+        ZiskVerifyBuilder::new(self).with_leaf_setup_vk(setup_vk)
+    }
 }
 
 #[cfg(test)]
@@ -2414,6 +2422,11 @@ mod tests {
         let vk = ProgramVK { vk: vec![1, 2, 3, 4], hash_mode: HashMode::Poseidon1 };
         let rootc = [5, 6, 7, 8];
         assert_eq!(publics.hash_solidity(&vk, &rootc), snark_publics_hash(&publics_full, &rootc));
+        // A raw vadcop_final vector hashes as its flag-free statement.
+        let mut flagged = vec![IS_VADCOP_FINAL_PROOF];
+        flagged.extend(&publics_full);
+        assert_eq!(snark_publics_hash(&flagged, &rootc), snark_publics_hash(&publics_full, &rootc));
+        assert_eq!(snark_inputs_bytes(&flagged), snark_inputs_bytes(&publics_full));
         let bytes = publics.bytes_solidity(&vk, &rootc);
         assert_eq!(bytes.len(), (2 * PROGRAM_VK_LEN + ZISK_PUBLICS) * 8);
         assert_eq!(&bytes[32..40], &0xAABB_CCDDu64.to_le_bytes());
