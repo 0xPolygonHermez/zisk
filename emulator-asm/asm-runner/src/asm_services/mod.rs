@@ -63,6 +63,7 @@ mod rom_histogram;
 mod segments;
 mod services;
 mod shutdown;
+mod spawner;
 mod status;
 mod stdio;
 

@@ -73,6 +73,7 @@ impl AsmService {
             unsafe {
                 command.pre_exec(|| {
                     libc::setpriority(libc::PRIO_PROCESS, 0, -5);
+                    // Killed with the thread that starts it, hence `spawner`.
                     libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
                     Ok(())
                 });
