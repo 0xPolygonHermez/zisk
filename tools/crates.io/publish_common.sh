@@ -32,6 +32,7 @@ PROOFMAN_CRATES=(
   "pil2-stark-recurser"
   "proofman-hints"
   "proofman-witness"
+  "pil-info"
   "pil2-stark-setup"
   "pil2-std-lib"
   "proofman"
