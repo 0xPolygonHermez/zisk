@@ -178,8 +178,7 @@ impl StdioService {
             asm_service.build_service_command(trimmed_path, options, shm_prefix, sem_prefix);
         command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
-        let mut child = command
-            .spawn()
+        let mut child = super::spawner::spawn(command)
             .with_context(|| format!("Failed to spawn stdio service {asm_service}"))?;
 
         // Until the child is in a handle, which stops it when dropped, a failure must
