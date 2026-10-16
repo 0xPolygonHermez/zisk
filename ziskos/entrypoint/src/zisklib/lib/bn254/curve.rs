@@ -458,18 +458,18 @@ pub unsafe extern "C" fn jacobian_to_affine_bn254_c(
         }
     );
     let p = &*(p_ptr as *const [u64; 12]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
     match jacobian_to_affine_bn254(
         p,
         #[cfg(feature = "hints")]
         hints,
     ) {
         G1_IDENTITY => {
-            *result = G1_IDENTITY;
+            let result = G1_IDENTITY;
+            (result_ptr as *mut [u64; 8]).write(result);
             1
         }
         affine => {
-            *result = affine;
+            (result_ptr as *mut [u64; 8]).write(affine);
             0
         }
     }
@@ -543,16 +543,16 @@ pub unsafe extern "C" fn add_bn254_c(
     );
     let p1 = &*(p1_ptr as *const [u64; 8]);
     let p2 = &*(p2_ptr as *const [u64; 8]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
 
-    *result = add_bn254(
+    let result = add_bn254(
         p1,
         p2,
         #[cfg(feature = "hints")]
         hints,
     );
+    (result_ptr as *mut [u64; 8]).write(result);
 
-    if eq(result, &G1_IDENTITY) {
+    if eq(&result, &G1_IDENTITY) {
         G1_ADD_SUCCESS_INFINITY
     } else {
         G1_ADD_SUCCESS
@@ -648,7 +648,6 @@ pub unsafe extern "C" fn scalar_mul_bn254_c(
     );
     let p = &*(p_ptr as *const [u64; 8]);
     let k = &*(k_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
     match scalar_mul_bn254(
         p,
         k,
@@ -656,11 +655,12 @@ pub unsafe extern "C" fn scalar_mul_bn254_c(
         hints,
     ) {
         G1_IDENTITY => {
-            *result = G1_IDENTITY;
+            let result = G1_IDENTITY;
+            (result_ptr as *mut [u64; 8]).write(result);
             1
         }
         product => {
-            *result = product;
+            (result_ptr as *mut [u64; 8]).write(product);
             0
         }
     }

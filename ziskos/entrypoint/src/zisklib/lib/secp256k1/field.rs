@@ -241,12 +241,11 @@ pub unsafe extern "C" fn reduce_fp_secp256k1_c(
         }
     );
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = reduce_fp_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(reduce_fp_secp256k1(
         x,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Addition in Fp of the secp256k1 curve.
@@ -282,13 +281,12 @@ pub unsafe extern "C" fn add_fp_secp256k1_c(
     );
     let x = &*(x_ptr as *const [u64; 4]);
     let y = &*(y_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = add_fp_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(add_fp_secp256k1(
         x,
         y,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Negation in Fp of the secp256k1 curve.
@@ -316,12 +314,11 @@ pub unsafe extern "C" fn neg_fp_secp256k1_c(
         }
     );
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = neg_fp_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(neg_fp_secp256k1(
         x,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Subtraction in Fp of the secp256k1 curve.
@@ -357,13 +354,12 @@ pub unsafe extern "C" fn sub_fp_secp256k1_c(
     );
     let x = &*(x_ptr as *const [u64; 4]);
     let y = &*(y_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = sub_fp_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(sub_fp_secp256k1(
         x,
         y,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Multiplication in Fp of the secp256k1 curve.
@@ -399,13 +395,12 @@ pub unsafe extern "C" fn mul_fp_secp256k1_c(
     );
     let x = &*(x_ptr as *const [u64; 4]);
     let y = &*(y_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = mul_fp_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(mul_fp_secp256k1(
         x,
         y,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Squaring in Fp of the secp256k1 curve.
@@ -437,12 +432,11 @@ pub unsafe extern "C" fn square_fp_secp256k1_c(
         }
     );
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = square_fp_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(square_fp_secp256k1(
         x,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Square root in Fp of the secp256k1 curve. Writes the square root to `result_ptr`.
@@ -477,14 +471,13 @@ pub unsafe extern "C" fn sqrt_fp_secp256k1_c(
         }
     );
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
     let (sqrt, is_qr) = sqrt_fp_secp256k1(
         x,
         parity,
         #[cfg(feature = "hints")]
         hints,
     );
-    *result = sqrt;
+    (result_ptr as *mut [u64; 4]).write(sqrt);
     is_qr as u8
 }
 
@@ -513,10 +506,9 @@ pub unsafe extern "C" fn inv_fp_secp256k1_c(
         }
     );
     let x = &*(x_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = inv_fp_secp256k1(
+    (result_ptr as *mut [u64; 4]).write(inv_fp_secp256k1(
         x,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }

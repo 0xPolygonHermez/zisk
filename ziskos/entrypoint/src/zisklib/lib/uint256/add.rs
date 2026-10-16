@@ -227,8 +227,7 @@ pub unsafe extern "C" fn checked_add256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            (result_ptr as *mut [u64; 4]).write(res);
             1
         }
         None => 0,
@@ -271,8 +270,7 @@ pub unsafe extern "C" fn checked_neg256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            (result_ptr as *mut [u64; 4]).write(res);
             1
         }
         None => 0,
@@ -320,8 +318,7 @@ pub unsafe extern "C" fn checked_sub256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            (result_ptr as *mut [u64; 4]).write(res);
             1
         }
         None => 0,
@@ -372,9 +369,7 @@ pub unsafe extern "C" fn overflowing_add256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 
     overflow as u8
 }
@@ -414,9 +409,7 @@ pub unsafe extern "C" fn overflowing_neg256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 
     overflow as u8
 }
@@ -465,9 +458,7 @@ pub unsafe extern "C" fn overflowing_sub256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 
     overflow as u8
 }
@@ -512,9 +503,7 @@ pub unsafe extern "C" fn saturating_add256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 }
 
 /// 256-bit saturating subtraction.
@@ -557,9 +546,7 @@ pub unsafe extern "C" fn saturating_sub256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 }
 
 /// 256-bit wrapping addition.
@@ -602,9 +589,7 @@ pub unsafe extern "C" fn wrapping_add256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 }
 
 /// 256-bit wrapping subtraction.
@@ -647,9 +632,7 @@ pub unsafe extern "C" fn wrapping_sub256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 }
 
 /// 256-bit wrapping negation.
@@ -683,7 +666,5 @@ pub unsafe extern "C" fn wrapping_neg256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 }

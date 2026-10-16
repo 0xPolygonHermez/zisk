@@ -173,10 +173,9 @@ pub unsafe extern "C" fn final_exp_bls12_381_c(
         }
     );
     let f = &*(f_ptr as *const [u64; 72]);
-    let result = &mut *(result_ptr as *mut [u64; 72]);
-    *result = final_exp_bls12_381(
+    (result_ptr as *mut [u64; 72]).write(final_exp_bls12_381(
         f,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }

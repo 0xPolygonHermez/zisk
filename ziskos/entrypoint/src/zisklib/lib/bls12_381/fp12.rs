@@ -586,11 +586,10 @@ pub unsafe extern "C" fn mul_fp12_bls12_381_c(
     );
     let a = &*(a_ptr as *const [u64; 72]);
     let b = &*(b_ptr as *const [u64; 72]);
-    let result = &mut *(result_ptr as *mut [u64; 72]);
-    *result = mul_fp12_bls12_381(
+    (result_ptr as *mut [u64; 72]).write(mul_fp12_bls12_381(
         a,
         b,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }

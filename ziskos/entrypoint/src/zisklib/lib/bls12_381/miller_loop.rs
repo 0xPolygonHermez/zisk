@@ -648,11 +648,10 @@ pub unsafe extern "C" fn miller_loop_bls12_381_c(
     );
     let p = &*(p_ptr as *const [u64; 12]);
     let q = &*(q_ptr as *const [u64; 24]);
-    let result = &mut *(result_ptr as *mut [u64; 72]);
-    *result = miller_loop_bls12_381(
+    (result_ptr as *mut [u64; 72]).write(miller_loop_bls12_381(
         p,
         q,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }

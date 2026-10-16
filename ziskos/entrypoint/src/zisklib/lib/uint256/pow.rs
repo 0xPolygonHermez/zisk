@@ -300,8 +300,7 @@ pub unsafe extern "C" fn checked_pow256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            (result_ptr as *mut [u64; 4]).write(res);
             1
         }
         None => 0,
@@ -352,9 +351,7 @@ pub unsafe extern "C" fn overflowing_pow256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 
     overflow as u8
 }
@@ -392,14 +389,12 @@ pub unsafe extern "C" fn wrapping_pow256_c(
     );
     let base = &*(base_ptr as *const [u64; 4]);
     let exp = &*(exp_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = wrapping_pow256(
+    (result_ptr as *mut [u64; 4]).write(wrapping_pow256(
         base,
         exp,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// 256-bit saturating exponentiation.
@@ -435,12 +430,10 @@ pub unsafe extern "C" fn saturating_pow256_c(
     );
     let base = &*(base_ptr as *const [u64; 4]);
     let exp = &*(exp_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = saturating_pow256(
+    (result_ptr as *mut [u64; 4]).write(saturating_pow256(
         base,
         exp,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }

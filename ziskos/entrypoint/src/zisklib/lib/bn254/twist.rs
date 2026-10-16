@@ -514,12 +514,11 @@ pub unsafe extern "C" fn jacobian_to_affine_twist_bn254_c(
         }
     );
     let p = &*(p_ptr as *const [u64; 24]);
-    let result = &mut *(result_ptr as *mut [u64; 16]);
-    *result = jacobian_to_affine_twist_bn254(
+    (result_ptr as *mut [u64; 16]).write(jacobian_to_affine_twist_bn254(
         p,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Curve membership check for a BN254 G2 (twist) point.

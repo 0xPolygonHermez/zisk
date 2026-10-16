@@ -298,9 +298,7 @@ pub unsafe extern "C" fn reduce_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 }
 
 /// 256-bit modular addition.
@@ -353,9 +351,7 @@ pub unsafe extern "C" fn add_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 }
 
 /// 256-bit modular multiplication.
@@ -408,9 +404,7 @@ pub unsafe extern "C" fn mul_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 }
 
 /// 256-bit modular multiplication.
@@ -623,9 +617,7 @@ pub unsafe extern "C" fn square_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 }
 
 /// 256-bit modular exponentiation.
@@ -678,9 +670,7 @@ pub unsafe extern "C" fn pow_mod256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 }
 
 /// 256-bit modular inverse. Returns 1 if the inverse exists, 0 otherwise.
@@ -724,8 +714,7 @@ pub unsafe extern "C" fn inv_mod256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            (result_ptr as *mut [u64; 4]).write(res);
             1
         }
         None => 0,

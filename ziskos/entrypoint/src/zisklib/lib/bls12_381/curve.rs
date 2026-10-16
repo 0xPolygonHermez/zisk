@@ -892,8 +892,7 @@ pub unsafe extern "C" fn decompress_bls12_381_c(
         hints,
     ) {
         Ok((p, is_infinity)) => {
-            let result = &mut *(result_ptr as *mut [u64; 12]);
-            *result = p;
+            (result_ptr as *mut [u64; 12]).write(p);
             if is_infinity {
                 1
             } else {
@@ -1012,15 +1011,15 @@ pub unsafe extern "C" fn add_bls12_381_c(
     );
     let p1 = &*(p1_ptr as *const [u64; 12]);
     let p2 = &*(p2_ptr as *const [u64; 12]);
-    let result = &mut *(result_ptr as *mut [u64; 12]);
-    *result = add_bls12_381(
+    let result = add_bls12_381(
         p1,
         p2,
         #[cfg(feature = "hints")]
         hints,
     );
+    (result_ptr as *mut [u64; 12]).write(result);
 
-    if eq(result, &G1_IDENTITY) {
+    if eq(&result, &G1_IDENTITY) {
         1
     } else {
         0
@@ -1119,15 +1118,15 @@ pub unsafe extern "C" fn scalar_mul_bls12_381_c(
     );
     let p = &*(p_ptr as *const [u64; 12]);
     let k = &*(k_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 12]);
-    *result = scalar_mul_bls12_381(
+    let result = scalar_mul_bls12_381(
         p,
         k,
         #[cfg(feature = "hints")]
         hints,
     );
+    (result_ptr as *mut [u64; 12]).write(result);
 
-    if eq(result, &G1_IDENTITY) {
+    if eq(&result, &G1_IDENTITY) {
         1
     } else {
         0

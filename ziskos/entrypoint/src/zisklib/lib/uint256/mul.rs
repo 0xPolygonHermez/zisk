@@ -211,8 +211,7 @@ pub unsafe extern "C" fn checked_mul256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            (result_ptr as *mut [u64; 4]).write(res);
             1 // Success
         }
         None => 0, // Overflow
@@ -255,8 +254,7 @@ pub unsafe extern "C" fn checked_square256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            (result_ptr as *mut [u64; 4]).write(res);
             1 // Success
         }
         None => 0, // Overflow
@@ -307,9 +305,7 @@ pub unsafe extern "C" fn overflowing_mul256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 
     overflow as u8
 }
@@ -349,9 +345,7 @@ pub unsafe extern "C" fn overflowing_square256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = res;
+    (result_ptr as *mut [u64; 4]).write(res);
 
     overflow as u8
 }
@@ -389,14 +383,12 @@ pub unsafe extern "C" fn saturating_mul256_c(
     );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = saturating_mul256(
+    (result_ptr as *mut [u64; 4]).write(saturating_mul256(
         a,
         b,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// 256-bit saturating square.
@@ -428,13 +420,11 @@ pub unsafe extern "C" fn saturating_square256_c(
         }
     );
     let a = &*(a_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = saturating_square256(
+    (result_ptr as *mut [u64; 4]).write(saturating_square256(
         a,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// 256-bit wrapping multiplication.
@@ -470,14 +460,12 @@ pub unsafe extern "C" fn wrapping_mul256_c(
     );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = wrapping_mul256(
+    (result_ptr as *mut [u64; 4]).write(wrapping_mul256(
         a,
         b,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// 256-bit wrapping squaring.
@@ -505,13 +493,11 @@ pub unsafe extern "C" fn wrapping_square256_c(
         }
     );
     let a = &*(a_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = wrapping_square256(
+    (result_ptr as *mut [u64; 4]).write(wrapping_square256(
         a,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// 256-bit modular inverse (mod 2^256). Returns 1 if inverse exists, 0 otherwise.
@@ -546,8 +532,7 @@ pub unsafe extern "C" fn inv256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            (result_ptr as *mut [u64; 4]).write(res);
             1
         }
         None => 0,

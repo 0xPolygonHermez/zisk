@@ -189,8 +189,7 @@ pub unsafe extern "C" fn checked_div256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            (result_ptr as *mut [u64; 4]).write(res);
             1 // Success
         }
         None => 0, // Division by zero
@@ -238,8 +237,7 @@ pub unsafe extern "C" fn checked_rem256_c(
         hints,
     ) {
         Some(res) => {
-            let result = &mut *(result_ptr as *mut [u64; 4]);
-            *result = res;
+            (result_ptr as *mut [u64; 4]).write(res);
             1 // Success
         }
         None => 0, // Division by zero
@@ -291,11 +289,8 @@ pub unsafe extern "C" fn div_rem256_c(
         #[cfg(feature = "hints")]
         hints,
     );
-
-    let quo = &mut *(quo_ptr as *mut [u64; 4]);
-    *quo = q;
-    let rem = &mut *(rem_ptr as *mut [u64; 4]);
-    *rem = r;
+    (quo_ptr as *mut [u64; 4]).write(q);
+    (rem_ptr as *mut [u64; 4]).write(r);
 }
 
 /// 256-bit ceiling division.
@@ -333,14 +328,12 @@ pub unsafe extern "C" fn div_ceil256_c(
     );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = div_ceil256(
+    (result_ptr as *mut [u64; 4]).write(div_ceil256(
         a,
         b,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// 256-bit division.
@@ -378,14 +371,12 @@ pub unsafe extern "C" fn wrapping_div256_c(
     );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = wrapping_div256(
+    (result_ptr as *mut [u64; 4]).write(wrapping_div256(
         a,
         b,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// 256-bit remainder.
@@ -423,12 +414,10 @@ pub unsafe extern "C" fn wrapping_rem256_c(
     );
     let a = &*(a_ptr as *const [u64; 4]);
     let b = &*(b_ptr as *const [u64; 4]);
-
-    let result = &mut *(result_ptr as *mut [u64; 4]);
-    *result = wrapping_rem256(
+    (result_ptr as *mut [u64; 4]).write(wrapping_rem256(
         a,
         b,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }

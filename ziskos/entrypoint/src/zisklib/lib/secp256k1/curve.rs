@@ -832,12 +832,11 @@ pub unsafe extern "C" fn jacobian_to_affine_secp256k1_c(
         }
     );
     let p = &*(p_ptr as *const [u64; 12]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
-    *result = jacobian_to_affine_secp256k1(
+    (result_ptr as *mut [u64; 8]).write(jacobian_to_affine_secp256k1(
         p,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ));
 }
 
 /// Lift an x-coordinate (32 big-endian bytes) to a secp256k1 point.
@@ -886,8 +885,7 @@ pub unsafe extern "C" fn lift_x_secp256k1_c(
     ) {
         Err(_) => 0,
         Ok(point) => {
-            let result = &mut *(result_ptr as *mut [u64; 8]);
-            *result = point;
+            (result_ptr as *mut [u64; 8]).write(point);
             1
         }
     }
@@ -950,8 +948,7 @@ pub unsafe extern "C" fn double_scalar_mul_with_g_secp256k1_c(
     ) {
         None => 0,
         Some(point) => {
-            let result = &mut *(result_ptr as *mut [u64; 8]);
-            *result = point;
+            (result_ptr as *mut [u64; 8]).write(point);
             1
         }
     }
