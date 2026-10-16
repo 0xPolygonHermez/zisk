@@ -22,7 +22,8 @@ const _: () = assert!(core::mem::size_of::<RamFillPrepared>() == 32);
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct RamFillResult {
-    /// 0 ok; -5 resolved for another process; other negatives: a failure.
+    /// 0 ok; a negative is a failure (ram_fill.cu: -1 not available, -2 geometry, -3 no room, -4 the
+    /// device disagrees with the plan).
     pub status: i32,
     /// Lanes the instance's accesses occupy, before padding (MemAlign: rows used).
     pub n_lanes: u32,
