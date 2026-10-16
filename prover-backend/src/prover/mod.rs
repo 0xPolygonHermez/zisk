@@ -632,6 +632,13 @@ pub trait ProverEngine {
     /// Block until any in-flight proofman entry point has returned. Called
     /// in recovery before advertising `Ready`. Default no-op.
     fn wait_until_proofman_ready(&self) {}
+
+    /// End every rank of the cluster, this one included, with exit `code`: the way
+    /// out once ranks may be in different MPI collectives, which nothing resumes.
+    /// The default, for an engine without MPI, exits this process.
+    fn abort_cluster(&self, code: i32) -> ! {
+        std::process::exit(code)
+    }
 }
 
 /// One job on a prover: one operation (execute, stats, verify_constraints or prove)
@@ -1075,6 +1082,12 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Block until any in-flight proofman entry point has returned.
     pub fn wait_until_proofman_ready(&self) {
         self.prover.wait_until_proofman_ready()
+    }
+
+    /// End every MPI rank of the prover, this one included, with exit `code`. See
+    /// [`ProverEngine::abort_cluster`].
+    pub fn abort_cluster(&self, code: i32) -> ! {
+        self.prover.abort_cluster(code)
     }
 }
 

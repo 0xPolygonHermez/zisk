@@ -368,6 +368,10 @@ impl ProverEngine for EmuProver {
     fn wait_until_proofman_ready(&self) {
         self.core_prover.backend.wait_until_proofman_ready();
     }
+
+    fn abort_cluster(&self, code: i32) -> ! {
+        self.core_prover.backend.abort_cluster(code)
+    }
 }
 
 /// Low-level EMU prover holding the initialized `ProofMan` backend and this

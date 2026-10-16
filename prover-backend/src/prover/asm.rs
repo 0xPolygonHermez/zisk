@@ -761,6 +761,10 @@ impl ProverEngine for AsmProver {
     fn wait_until_proofman_ready(&self) {
         self.core_prover.backend.wait_until_proofman_ready();
     }
+
+    fn abort_cluster(&self, code: i32) -> ! {
+        self.core_prover.backend.abort_cluster(code)
+    }
 }
 
 /// ASM-backend configuration and runtime counters carried by the core prover.
