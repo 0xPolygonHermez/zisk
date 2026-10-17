@@ -10,10 +10,10 @@
 ;
 ; --- I/O memory contract (see core/src/mem.rs and emulator/src/emu_context.rs) ---
 ;
-;   Input, laid out by the emulator at INPUT_ADDR (0x40000000):
-;     [0x40000000 .. 0x40000008)  reserved 8-byte header (always zero)
-;     [0x40000008 .. 0x40000010)  u64  N = number of input values
-;     [0x40000010 .. )            N little-endian u64 values
+;   Input, laid out by the emulator at INPUT_ADDR (0x10000000):
+;     [0x10000000 .. 0x10000008)  reserved 8-byte header (always zero)
+;     [0x10000008 .. 0x10000010)  u64  N = number of input values
+;     [0x10000010 .. )            N little-endian u64 values
 ;
 ;   Output, read back by the emulator from OUTPUT_ADDR (0xa0410000):
 ;     The emulator exposes the first ZISK_PUBLICS (64) u32 words at OUTPUT_ADDR
@@ -26,8 +26,8 @@
 
 ; ---- Definitions ----
 
-define INPUT_COUNT   0x40000008       ; address of N (the value count)
-define INPUT_VALUES  0x40000010       ; address of value[0]
+define INPUT_COUNT   0x10000008       ; address of N (the value count)
+define INPUT_VALUES  0x10000010       ; address of value[0]
 define OUTPUT_ADDR   0xa0410000       ; address of result[0]
 
 

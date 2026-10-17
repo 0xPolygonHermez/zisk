@@ -10,6 +10,7 @@
 //! sources and `build.sh` are next to them.
 
 use zisk_common::EmuTrace;
+use zisk_core::ROM_ADDR;
 use zisk_transpiler_common::program2rom;
 use ziskemu::{EmuOptions, Emulator, FailureReason, ZiskEmulator, ZiskEmulatorErr};
 
@@ -54,17 +55,17 @@ fn assert_fails_at(name: &str, failing_pc: u64) {
 #[test]
 fn trap_fails() {
     // unimp is the first instruction
-    assert_fails_at("trap_unimp", 0x8000_0000);
+    assert_fails_at("trap_unimp", ROM_ADDR);
 }
 
 #[test]
 fn ebreak_fails() {
-    assert_fails_at("trap_ebreak", 0x8000_0000);
+    assert_fails_at("trap_ebreak", ROM_ADDR);
 }
 
 #[test]
 fn compressed_ebreak_fails() {
-    assert_fails_at("trap_c_ebreak", 0x8000_0000);
+    assert_fails_at("trap_c_ebreak", ROM_ADDR);
 }
 
 /// trap_c_ebreak fails either way, but only with the `compressed` feature does the
@@ -75,20 +76,20 @@ fn compressed_ebreak_takes_its_own_path() {
     let elf = std::fs::read(elf_path("trap_c_ebreak")).expect("committed ELF");
     let rom = program2rom(&elf).expect("ELF must transpile");
     let expected = if cfg!(feature = "compressed") { "c.ebreak" } else { "c.halt" };
-    assert_eq!(rom.get_instruction(0x8000_0000).riscv_inst.as_deref(), Some(expected));
+    assert_eq!(rom.get_instruction(ROM_ADDR).riscv_inst.as_deref(), Some(expected));
 }
 
 #[test]
 fn write_to_read_only_csr_fails() {
     // li t0, 1; csrrs x0, mvendorid, t0
-    assert_fails_at("write_ro_csr", 0x8000_0004);
+    assert_fails_at("write_ro_csr", ROM_ADDR + 4);
 }
 
 #[test]
 fn immediate_write_to_read_only_csr_fails() {
     // csrrsi / csrrci with a nonzero uimm; exit_ok checks that uimm == 0 is legal
-    assert_fails_at("write_ro_csr_csrrsi", 0x8000_0000);
-    assert_fails_at("write_ro_csr_csrrci", 0x8000_0000);
+    assert_fails_at("write_ro_csr_csrrsi", ROM_ADDR);
+    assert_fails_at("write_ro_csr_csrrci", ROM_ADDR);
 }
 
 #[test]
@@ -96,7 +97,7 @@ fn nonzero_exit_code_fails() {
     // exit(42): the error carries the code, and the exit code is checked in the BIOS
     // exit handler, not in the guest.
     let (pc, traces_pc) = assert_fails("exit_code", FailureReason::ExitCode(42));
-    assert!(pc < 0x8000_0000, "exit_code: must fail in the BIOS, got pc={pc:#x}");
+    assert!(pc < ROM_ADDR, "exit_code: must fail in the BIOS, got pc={pc:#x}");
     assert_eq!(pc, traces_pc);
 }
 

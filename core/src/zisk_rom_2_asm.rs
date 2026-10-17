@@ -68,6 +68,18 @@ const REG_PC: &str = "r8";
 // Only used to calculate histogram position for every rom pc
 const TRACE_ADDR_NUMBER: u64 = 0xd0000000 + 0x20;
 
+// Control input and output shared memory pages, mapped by the emulator at these fixed addresses.
+// They must match CONTROL_INPUT_ADDR and CONTROL_OUTPUT_ADDR in emulator-asm/src/constants.hpp.
+// The generated code accesses them as absolute 32-bit displacements, which are sign-extended, so
+// they must lie below 2GB; and they must lie outside the guest memory regions, so they sit just
+// below INPUT_ADDR.
+const CONTROL_INPUT_ADDR: u64 = 0x0FF0_0000;
+const CONTROL_OUTPUT_ADDR: u64 = 0x0FF0_1000;
+const _: () = {
+    assert!(CONTROL_INPUT_ADDR < 0x8000_0000 && CONTROL_OUTPUT_ADDR < 0x8000_0000);
+    assert!(CONTROL_OUTPUT_ADDR + 0x1000 <= INPUT_ADDR);
+};
+
 // Fcall params and result lengths
 // NOTE: if these parameters are update, review dma_constants.inc
 const FCALL_PARAMS_LENGTH: u64 = 386;
@@ -194,7 +206,7 @@ pub struct ZiskAsmContext {
     mem_chunk_start_step: String,
     fcall_ctx: String,
     mem_rsp: String,        // Backup of rsp register value from caller
-    mem_free_input: String, // Free input address (0x40000000) used in free call operations, but stored in memory to allow sharing the input shared memory
+    mem_free_input: String, // Free input address (FREE_INPUT_ADDR) used in free call operations, but stored in memory to allow sharing the input shared memory
     mem_precompile_results_address: String, // Address where precompile results are read from
     mem_precompile_written_address: String, // Address where precompile written counter is stored
     mem_precompile_read_address: String, // Address where precompile read counter is stored
@@ -605,10 +617,13 @@ impl ZiskRom2Asm {
         if ctx.precompile_results() {
             ctx.mem_precompile_results_address =
                 format!("qword {}[MEM_PRECOMPILE_RESULTS_ADDRESS]", ctx.ptr);
-            ctx.mem_precompile_written_address = format!("qword {}[0x70000000]", ctx.ptr);
-            ctx.mem_precompile_read_address = format!("qword {}[0x70001000]", ctx.ptr);
+            ctx.mem_precompile_written_address =
+                format!("qword {}[0x{CONTROL_INPUT_ADDR:x}]", ctx.ptr);
+            ctx.mem_precompile_read_address =
+                format!("qword {}[0x{CONTROL_OUTPUT_ADDR:x}]", ctx.ptr);
         }
-        ctx.mem_input_written_address = format!("qword {}[0x70000010]", ctx.ptr);
+        ctx.mem_input_written_address =
+            format!("qword {}[0x{:x}]", ctx.ptr, CONTROL_INPUT_ADDR + 0x10);
 
         // Preamble
         *code += ".intel_syntax noprefix\n";
@@ -7175,17 +7190,24 @@ impl ZiskRom2Asm {
                 ctx.pc < FLOAT_LIB_ROM_ADDR,
                 "Non-float build must not emit dynamic-jump code for float-lib PCs (ctx.pc must be < FLOAT_LIB_ROM_ADDR)"
             );
-            // The next assembly line is an optimization that depends on the ROM_ADDR being
-            // 0x8000_0000, so we assert it to ensure correctness.  If it wasn't, we should subtract
-            // ROM_ADDR from pc, but since it is, we can just clear the 31st bit of pc to get the
-            // correct index into the map.
-            const {
-                assert!(ROM_ADDR == 0x8000_0000, "ROM_ADDR must be 0x8000_0000");
-            }
-            *code += &format!("\tbtr {}, 31 {}\n", REG_PC, ctx.comment_str("pc -= ROM_ADDR"));
+            // ROM_ADDR does not fit in a sign-extended 32-bit immediate, so it is loaded into
+            // a register to be subtracted from pc, giving the index into the map.
             *code += &format!(
-                "\tmov {}, [map_pc_80000000 + {}*8] {}\n",
+                "\tmov {}, 0x{:x} {}\n",
                 REG_ADDRESS,
+                ROM_ADDR,
+                ctx.comment_str("address = ROM_ADDR")
+            );
+            *code += &format!(
+                "\tsub {}, {} {}\n",
+                REG_PC,
+                REG_ADDRESS,
+                ctx.comment_str("pc -= ROM_ADDR")
+            );
+            *code += &format!(
+                "\tmov {}, [map_pc_{:x} + {}*8] {}\n",
+                REG_ADDRESS,
+                ROM_ADDR,
                 REG_PC,
                 ctx.comment_str("address = map[pc]")
             );

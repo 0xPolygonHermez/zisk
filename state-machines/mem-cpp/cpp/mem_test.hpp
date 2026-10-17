@@ -70,10 +70,10 @@ public:
             // if (chunk_id == 999999) {
                 for (int32_t i = 0; i < chunk_size; ++i) {
                     const uint32_t addr = chunk_data[i].addr;
-                    if (addr < 0x40000000 || addr >= 0x80000000) continue;
+                    if (addr < INPUT_ADDR || addr >= ROM_ADDR) continue;
                     const uint8_t bytes = chunk_data[i].flags & 0xFF; 
                     const uint8_t is_write = chunk_data[i].flags >> 16;
-                    if (addr == 0x80000000) printf("=================> ADDR 0x80000000\n");
+                    if (addr == ROM_ADDR) printf("=================> ADDR 0x%08X\n", ROM_ADDR);
                     if ((addr & 0x7) == 0 && bytes == 8) {
                         printf("MEM_OP 0x%08X %04d:%07d:0\n", addr, chunk_id, i);
                     } else if ((addr & 0x7) != 0 || bytes != 8) {

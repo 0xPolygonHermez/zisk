@@ -156,7 +156,7 @@ not a burden: stock GNU ld and LLD always provide these symbols automatically
 construction loops are no-ops.
 
 If you bring your own script, keep the ZisK memory windows (code and read-only
-data in ROM at `0x8000_0000`, writable data in RAM at `0xa000_0000`) — the ELF
+data in ROM at `0x9000_0000`, writable data in RAM at `0xa000_0000`) — the ELF
 interpreter rejects loadable segments outside them.
 
 ### Building a C++ host

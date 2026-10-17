@@ -2202,7 +2202,7 @@ pub fn opc_fcall(ctx: &mut InstContext) {
                 required_address, INPUT_ADDR
             );
         }
-        if required_address >= INPUT_ADDR + MAX_INPUT_SIZE - 1 {
+        if required_address > INPUT_ADDR + MAX_INPUT_SIZE - 1 {
             panic!(
                 "opc_fcall() FCALL_INPUT_READY_ID called with required_address {:#x} > {:#x}",
                 required_address,

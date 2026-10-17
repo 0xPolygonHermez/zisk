@@ -12,7 +12,7 @@
 ;
 ; The result words are NOT the `c` output of the fcall ops (those just pass `b`
 ; through); each result word is read back by loading the free-input address
-; FREE_INPUT (== INPUT_ADDR, 0x40000000) as a u64. `fcall` publishes result[0];
+; FREE_INPUT (== INPUT_ADDR, 0x10000000) as a u64. `fcall` publishes result[0];
 ; every following `fcall_get` publishes the next word before it is read.
 ;
 ; This test drives function id 17 = FCALL_MSB_POS_256_ID (see
@@ -29,7 +29,7 @@
 ; Registers: r4 scratch (fcall op passthrough), r7 limb result, r8 bit result.
 ; ============================================================================
 
-define FREE_INPUT      0x40000000    ; == INPUT_ADDR; a u64 load here yields free_input
+define FREE_INPUT      0x10000000    ; == INPUT_ADDR; a u64 load here yields free_input
 define MSB_POS_256_ID  17            ; FCALL_MSB_POS_256_ID
 
 fcall:
