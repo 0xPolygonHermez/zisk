@@ -9,7 +9,9 @@
 
 use super::*;
 use crate::{
-    DmaLoopInput, DmaWithPrePostInput, DMA_LOOP_CLASSES, DMA_WPP_CLASS_DOUBLE, DMA_WPP_CLASS_SINGLE,
+    DmaLoopInput, DmaWithPrePostInput, DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW,
+    DMA_64_ALIGNED_MEMSET_OPS_BY_ROW, DMA_64_ALIGNED_OPS_BY_ROW, DMA_LOOP_CLASSES,
+    DMA_WPP_CLASS_DOUBLE, DMA_WPP_CLASS_SINGLE,
 };
 use proofman_fields::Goldilocks;
 use zisk_core::zisk_ops::ZiskOp;
@@ -41,17 +43,19 @@ fn rows_of_kind(work: &DmaWork, k: usize) -> usize {
     }
 }
 
-/// Aligned loop work, in rows of the general airs (four words per row). The packed airs hold
-/// eight words per row, so the same work takes half the rows there (see
-/// `DmaCounterInputGen::OPS_X_ROW`).
+/// Aligned loop work, in plain rows of four words. The packed counts are the same words in the
+/// rows of the packed airs, which hold `DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW` /
+/// `DMA_64_ALIGNED_MEMSET_OPS_BY_ROW` words each (see `DmaCounterInputGen::OPS_X_ROW`).
 fn aligned(memcpy: usize, memset: usize, memcmp: usize, inputcpy: usize) -> DmaWork {
     let mut work = DmaWork::default();
     work.loop_rows[kind::MEMCPY] = memcpy;
     work.loop_rows[kind::MEMSET] = memset;
     work.loop_rows[kind::MEMCMP] = memcmp;
     work.loop_rows[kind::INPUTCPY] = inputcpy;
-    work.memcpy_packed = memcpy.div_ceil(2);
-    work.memset_packed = memset.div_ceil(2);
+    work.memcpy_packed =
+        (memcpy * DMA_64_ALIGNED_OPS_BY_ROW).div_ceil(DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW);
+    work.memset_packed =
+        (memset * DMA_64_ALIGNED_OPS_BY_ROW).div_ceil(DMA_64_ALIGNED_MEMSET_OPS_BY_ROW);
     work
 }
 
@@ -155,8 +159,13 @@ fn memory_breaks_the_tie_for_a_small_workload() {
             }
         }
     }
-    // Among the aligned airs alone, that is the short memcpy/memcmp/memset one.
-    assert_eq!(select(&work, ALIGNED_ONLY).assignment[kind::MEMCMP], air::MEM);
+    // Among the aligned airs alone, that is the cheapest of the short ones able to prove a memcmp:
+    // `Dma64AlignedMem` (DMA_64_ALIGNED_MEM_INSTANCE_COST) against `Dma64Aligned`
+    // (DMA_64_ALIGNED_INSTANCE_COST).
+    let airs = Strategy::air_choices();
+    let cheapest_short =
+        if airs[air::MEM].memory <= airs[air::FULL].memory { air::MEM } else { air::FULL };
+    assert_eq!(select(&work, ALIGNED_ONLY).assignment[kind::MEMCMP], cheapest_short);
 }
 
 /// Kinds that fit together share an instance rather than taking one each -- which is the packing
@@ -180,13 +189,16 @@ fn an_input_copy_only_ever_goes_to_a_general_air() {
     }
 }
 
-/// A memcpy as tall as the packed air takes one instance of it: the cheapest of the airs that
-/// hold it in one.
+/// A memcpy as tall as the packed air takes one instance of it: of the airs that hold it in one,
+/// it is the cheapest -- the packed air holds twice the words of the short general airs, so the
+/// others able to hold it are the tall ones.
 #[test]
 fn a_big_memcpy_takes_the_packed_air() {
     let caps = caps();
-    // as tall as the packed air: twice its rows in the general airs' row cost
-    let work = aligned(2 * caps[air::MEMCPY], 0, 0, 0);
+    let plain_rows =
+        caps[air::MEMCPY] * DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW / DMA_64_ALIGNED_OPS_BY_ROW;
+    let work = aligned(plain_rows, 0, 0, 0);
+    assert_eq!(work.memcpy_packed, caps[air::MEMCPY]);
     let selection = select(&work, ALL);
     assert_eq!(selection.assignment[kind::MEMCPY], air::MEMCPY);
     assert_eq!(total_instances(&selection), 1);

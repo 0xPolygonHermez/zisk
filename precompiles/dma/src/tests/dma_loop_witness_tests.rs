@@ -236,8 +236,7 @@ fn word(bytes: &[u8]) -> u64 {
 }
 
 /// Evaluates every constraint of `dma_loop.pil` on `rows`, one segment whose air values are
-/// `values`, and returns what the rows put on the
-/// buses.
+/// `values`, and returns what the rows put on the buses.
 fn check_segment(rows: &[Row], values: &DmaLoopSegmentValues) -> Effects {
     let n = rows.len();
     let previous = &values.previous;
@@ -654,8 +653,8 @@ fn the_fill_does_not_depend_on_what_the_buffer_held() {
     assert_eq!(clean_fill.values, poisoned_fill.values);
 }
 
-/// The fill cuts the inputs into groups filled in parallel; the rows and the multiplicities must
-/// come out exactly as a single worker writes them.
+/// The fill cuts the inputs into groups filled in parallel; the rows must come out exactly as a
+/// single worker writes them.
 #[test]
 fn the_parallel_fill_matches_a_single_worker() {
     // Enough inputs to give every worker several, of every kind.

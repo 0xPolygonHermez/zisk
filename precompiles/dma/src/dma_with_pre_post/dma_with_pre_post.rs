@@ -33,9 +33,15 @@ pub struct DmaWithPrePostSM<F: PrimeField64> {
     _phantom: PhantomData<F>,
 }
 
+impl<F: PrimeField64> Default for DmaWithPrePostSM<F> {
+    fn default() -> Self {
+        Self { _phantom: PhantomData }
+    }
+}
+
 impl<F: PrimeField64> DmaWithPrePostSM<F> {
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { _phantom: PhantomData })
+        Arc::new(Self::default())
     }
 
     /// Writes one operation into `rows`, which is exactly `input.rows()` long.

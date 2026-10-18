@@ -31,7 +31,10 @@ airtemplate Dma64Aligned(int N = 2**21,                   // Rows of instance
                                                           // From memory position
                                                           //
                          int cont_subid = 0,             // Force subid used in continuations
-                         int lanes_x_row = 4)  {
+                         int lanes_x_row = 4)  {         // Reserved: independent lanes on a row,
+                                                          // each one holding op_x_row consecutive
+                                                          // words. Not implemented yet, the air
+                                                          // proves a single lane.
 
     const int enable_memcpy = (enable & E_DMA_MEMCPY) ? 1 : 0;
     const int enable_memcmp = (enable & E_DMA_MEMCMP) ? 1 : 0; 

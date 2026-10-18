@@ -91,9 +91,15 @@ pub struct DmaLoopSM<F: PrimeField64> {
     _phantom: PhantomData<F>,
 }
 
+impl<F: PrimeField64> Default for DmaLoopSM<F> {
+    fn default() -> Self {
+        Self { _phantom: PhantomData }
+    }
+}
+
 impl<F: PrimeField64> DmaLoopSM<F> {
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { _phantom: PhantomData })
+        Arc::new(Self::default())
     }
 
     /// @[flags] of the sequence an input belongs to.

@@ -182,7 +182,10 @@ impl DmaWithPrePostInstancesBuilder {
             .iter_mut()
             .enumerate()
             .map(|(segment_id, info)| {
-                let keys = info.chunks.keys().cloned().collect::<Vec<_>>();
+                // Sorted, like the sibling builders: the plan dumps are then deterministic and the
+                // collect phase can rely on the position of a chunk in the list.
+                let mut keys = info.chunks.keys().cloned().collect::<Vec<_>>();
+                keys.sort_unstable();
                 (
                     CheckPoint::Multiple(keys),
                     DmaWithPrePostCheckPoint {

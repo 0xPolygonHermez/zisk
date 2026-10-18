@@ -27,9 +27,15 @@ pub struct DmaCompactSM<F: PrimeField64> {
     _phantom: PhantomData<F>,
 }
 
+impl<F: PrimeField64> Default for DmaCompactSM<F> {
+    fn default() -> Self {
+        Self { _phantom: PhantomData }
+    }
+}
+
 impl<F: PrimeField64> DmaCompactSM<F> {
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { _phantom: PhantomData })
+        Arc::new(Self::default())
     }
 
     /// Computes the witness of one `DmaCompact` instance.

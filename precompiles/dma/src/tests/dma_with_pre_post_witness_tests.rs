@@ -3,10 +3,10 @@
 //!
 //! `pp_dst_offset`, `pp_src_offset` and `pp_count` are `<==` columns: the SM leaves them alone and
 //! the prover fills them from their expression. So whenever the SM computes something *else* from
-//! the sub-operation offsets — the byte rotation in `selr`, and the `DMA_PRE_POST_TABLE` row it
-//! charges — it has to start from exactly the offsets that expression will produce. When the two
-//! drift apart the air looks the table up with one offset while the SM charged the row of another,
-//! and the lookup is left unmatched on both sides.
+//! the sub-operation offsets — the byte rotation in `selr`, the byte selectors in `sb` — it has to
+//! start from exactly the offsets that expression will produce. When the two drift apart the air
+//! looks the `DMA_PRE_POST_TABLE` up with one offset while the row carries the rotation of another,
+//! and the lookup is left unmatched.
 
 use super::*;
 use proofman_fields::Goldilocks;
@@ -115,7 +115,7 @@ fn every_operation() -> Vec<DmaWithPrePostInput> {
 #[test]
 fn a_post_without_a_source_starts_at_offset_zero() {
     // dst_offset 4 needs 4 PRE bytes, and 4 more bytes past the loop need a POST: the case that
-    // charged the table row of src_offset 4 while the air asked for src_offset 0.
+    // wrote the rotation of src_offset 4 while the air asked for src_offset 0.
     for op in [ZiskOp::DMA_INPUTCPY, ZiskOp::DMA_XMEMSET] {
         let dst = 0x8004u64;
         let count = 4 + 8 + 4;

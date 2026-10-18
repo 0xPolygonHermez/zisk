@@ -185,26 +185,31 @@ pub const DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST: usize = 6031;
 /// `Dma64AlignedMemCpy`: 3.48 GB.
 pub const DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST: usize = 3564;
 
-/// `DmaUnaligned`: 2.29 GB at `2**20` and four words per row, ESTIMATED -- refresh from
-/// `build/setup.log` on the next setup. Scaled from the 9.14 GB it measured at `2**22`: the
-/// prover's peak is linear in the rows.
-pub const DMA_UNALIGNED_INSTANCE_COST: usize = 2340;
+/// `DmaUnaligned`: 2.43 GB at `2**20` rows and 4 words per row.
+///
+/// The four DMA airs below were measured on a non-aggregated setup (2026-10-09) whose figures read
+/// about 23% below the ones the rest of this table was taken from (`Dma` 2.73 GB there against the
+/// 3.29 GB above, and the same gap on every other DMA air), so they are scaled by that ratio to
+/// stay comparable with their neighbours: 1.97 GB measured. Refresh them all together from the
+/// next full setup. The air was shrunk to `2**20` because over 779 mainnet blocks its fill never
+/// went past 19% of `2**22` rows, so at `2**20` the same traffic tops out near 77% and still fits
+/// in one instance.
+pub const DMA_UNALIGNED_INSTANCE_COST: usize = 2488;
 
 /// `DmaPrePost`: 4.63 GB.
 pub const DMA_PRE_POST_INSTANCE_COST: usize = 4741;
 
-/// `DmaWithPrePost`: 6.07 GB.
-pub const DMA_WITH_PRE_POST_INSTANCE_COST: usize = 6216;
+/// `DmaWithPrePost`: 6.70 GB at `2**21` rows (5.44 GB measured, scaled as `DmaUnaligned`).
+pub const DMA_WITH_PRE_POST_INSTANCE_COST: usize = 6861;
 
-/// `DmaLoop`: 5.20 GB at `2**21` rows and 4 words per row. Measured 4.57 GB on a setup without
-/// aggregation, plus the 0.63 GB per `2**21` rows the aggregated setup adds on every air above.
-pub const DMA_LOOP_INSTANCE_COST: usize = 5325;
+/// `DmaLoop`: 5.63 GB at `2**21` rows and 4 words per row (4.57 GB measured, scaled as
+/// `DmaUnaligned`).
+pub const DMA_LOOP_INSTANCE_COST: usize = 5765;
 
-/// `DmaCompact`: 4.81 GB at `2**20` rows. It is `DmaWithPrePost` and `DmaLoop` inlined side by
-/// side (263 columns): measured 4.49 GB on a setup without aggregation, plus the 0.32 GB per `2**20`
-/// rows the aggregated setup adds. Cheaper than the two blocks apart at its height (3.04 + 2.60
-/// GB), since they share one gsum and one instance's fixed overhead.
-pub const DMA_COMPACT_INSTANCE_COST: usize = 4920;
+/// `DmaCompact`: 5.53 GB at `2**20` rows (4.49 GB measured, scaled as `DmaUnaligned`). It is
+/// `DmaWithPrePost` and `DmaLoop` side by side at half their height, and it measures below the two
+/// halves added up because the blocks share one gsum and one instance's fixed overhead.
+pub const DMA_COMPACT_INSTANCE_COST: usize = 5663;
 
 /// `JumpDest`: 3.40 GB.
 pub const JUMP_DEST_INSTANCE_COST: usize = 3482;

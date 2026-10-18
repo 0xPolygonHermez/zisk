@@ -11,12 +11,13 @@ use zisk_precomp_helpers::DmaInfo;
 /// That is also why the values of both sub-operations travel together in a single input.
 #[derive(Debug)]
 pub struct DmaWithPrePostInput {
-    /// Destination address of the operation, the 64 bits Main sent: the high half can only be
-    /// non zero when the count is 0 (see `dst_hi` in the PIL).
+    /// Destination address of the operation (byte address, as sent to the main bus). The full
+    /// 64 bits main sent: the air proves the low 32 as the address and pins the high word to zero
+    /// unless the count is zero (see `dst_hi` in the PIL).
     pub dst: u64,
 
     /// Source address for memcpy/memcmp; the count for inputcpy; zero for memset — the same
-    /// convention `DmaInput` uses, because the DMA columns are shared. 64 bits, as `dst`.
+    /// convention `DmaInput` uses, because the DMA columns are shared. Full 64 bits, as `dst`.
     pub src: u64,
 
     /// Main step of the operation.
@@ -171,14 +172,14 @@ impl DmaWithPrePostInput {
 
         writeln!(
             file,
-            "{:>8}|{:>10}|{:>10}|{:>2}|{:>18}|{:>8}|{:>14}|pre|post|{:>10}|rows",
+            "{:>8}|{:>18}|{:>18}|{:>2}|{:>18}|{:>8}|{:>14}|pre|post|{:>10}|rows",
             "pos", "src", "dst", "op", "encoded", "count_bus", "step", "loop"
         )?;
 
         for (pos, input) in inputs.iter().flatten().enumerate() {
             writeln!(
                 file,
-                "{:>8}|0x{:08X}|0x{:08X}|{:02X}|0x{:016X}|{:>8}|{:>14}|{}|{}|{:>10}|{}",
+                "{:>8}|0x{:016X}|0x{:016X}|{:02X}|0x{:016X}|{:>8}|{:>14}|{}|{}|{:>10}|{}",
                 pos,
                 input.src,
                 input.dst,

@@ -4,7 +4,7 @@
 //! It organizes execution plans for both regular instances and table instances,
 //! leveraging arithmetic operation counts and metadata to construct detailed plans.
 
-use crate::{DmaStrategy, DMA_WPP_CLASSES, DMA_WPP_CLASS_ROWS};
+use crate::{DmaStrategy, DmaWithPrePostCheckPoint, DMA_WPP_CLASSES, DMA_WPP_CLASS_ROWS};
 
 use proofman_fields::PrimeField64;
 use zisk_common::{BusDeviceMetrics, ChunkId, InstanceType, Plan, Planner, SegmentId};
@@ -73,17 +73,40 @@ impl<F: PrimeField64> Planner for DmaPlanner<F> {
         }
         // The airs with a checkpoint type of their own come back apart from the rest; each one is
         // empty when the strategy gave that air nothing.
+        // A controller operation takes one or two rows (`DMA_WPP_CLASS_ROWS`), so the rows an
+        // instance was budgeted are the operations of each class times the rows of the class.
+        let wpp_rows_used = |collect_info: &DmaWithPrePostCheckPoint| -> u64 {
+            collect_info
+                .chunks
+                .values()
+                .map(|(_, counters)| {
+                    (0..DMA_WPP_CLASSES)
+                        .map(|class| {
+                            counters.classes[class].collect_count as u64
+                                * DMA_WPP_CLASS_ROWS[class] as u64
+                        })
+                        .sum::<u64>()
+                })
+                .sum()
+        };
+        let wpp_capacity = DmaStrategy::<F>::rows_by_air_id(DmaWithPrePostTrace::<F>::AIR_ID)
+            .expect("DmaWithPrePost is planned by the DMA strategy")
+            as u64;
         for (segment_id, (check_point, collect_info)) in
             std::mem::take(&mut dma_strategy.dma_with_pre_post_plan).into_iter().enumerate()
         {
-            plans.push(Plan::new(
-                ZISK_AIRGROUP_ID,
-                DmaWithPrePostTrace::<F>::AIR_ID,
-                Some(SegmentId(segment_id)),
-                InstanceType::Instance,
-                check_point,
-                Some(Box::new(collect_info)),
-            ));
+            let used = wpp_rows_used(&collect_info);
+            plans.push(
+                Plan::new(
+                    ZISK_AIRGROUP_ID,
+                    DmaWithPrePostTrace::<F>::AIR_ID,
+                    Some(SegmentId(segment_id)),
+                    InstanceType::Instance,
+                    check_point,
+                    Some(Box::new(collect_info)),
+                )
+                .with_occupancy(used, wpp_capacity),
+            );
         }
         let loop_capacity = DmaStrategy::<F>::rows_by_air_id(DmaLoopTrace::<F>::AIR_ID)
             .expect("DmaLoop is planned by the DMA strategy") as u64;
@@ -115,19 +138,7 @@ impl<F: PrimeField64> Planner for DmaPlanner<F> {
         for (segment_id, (check_point, collect_info)) in
             std::mem::take(&mut dma_strategy.dma_compact_plan).into_iter().enumerate()
         {
-            let wpp_used: u64 = collect_info
-                .wpp
-                .chunks
-                .values()
-                .map(|(_, counters)| {
-                    (0..DMA_WPP_CLASSES)
-                        .map(|class| {
-                            counters.classes[class].collect_count as u64
-                                * DMA_WPP_CLASS_ROWS[class] as u64
-                        })
-                        .sum::<u64>()
-                })
-                .sum();
+            let wpp_used = wpp_rows_used(&collect_info.wpp);
             let loop_used: u64 = collect_info
                 .lp
                 .chunks

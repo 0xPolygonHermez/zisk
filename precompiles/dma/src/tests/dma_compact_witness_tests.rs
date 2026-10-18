@@ -3,7 +3,7 @@
 //! What makes the fused air sound is that each block is exactly the air it stands in for (see
 //! `dma_compact.pil`), so what these pin is the witness side of the same claim: each block of a
 //! fused row comes out exactly as the standalone air writes its own row, whatever the other block
-//! holds, whichever fill runs first, and with the same multiplicities.
+//! holds, whichever fill runs first.
 
 use super::*;
 use crate::{loop_snapshot, wpp_snapshot, DmaLoopRowState, DmaLoopSegmentValues};
