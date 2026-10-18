@@ -435,6 +435,12 @@ fn run_release(release: Box<dyn FnOnce() + Send>) {
 
 /// Runs the armed release now, if it has not run: the end of the proof, a block whose memory
 /// instances were not all computed here, or a failure that sends the block to the CPU witness.
+///
+/// Fills of other instances may be inside `rows_into` meanwhile; none can touch the arena after
+/// this returns: `run_release` joins the preparation thread, then `quiesce` (under the registry
+/// lock, so no `fill_host` is in progress and every image copy has landed) marks the arena
+/// released, after which `copy_staged` and `fill_host` refuse (−1) and the fill ends in the CPU
+/// witness. The pending count is zeroed so that no later guard runs a second release.
 pub fn gpu_mem_witness_release_now() {
     let release = {
         let mut g = RELEASE.lock().unwrap_or_else(|e| e.into_inner());
