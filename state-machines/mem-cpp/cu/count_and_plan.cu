@@ -1527,7 +1527,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     fprintf(stderr, "[mops] test knobs enabled\n");
     if (const char* e = std::getenv("ZISK_MEM_TEST_PIECE_POTENTIALS")) {   // tests: pieces of fewer potentials
         const long v = std::atol(e);
-        if (v > 0 && (uint32_t)v < MAX_POT_PER_PIECE) piece_potentials_ = (uint32_t)v;
+        if (v >= 64 && (uint32_t)v < MAX_POT_PER_PIECE) piece_potentials_ = (uint32_t)v;   // a piece holds any value block
     }
     if (const char* e = std::getenv("ZISK_MEM_TEST_RETENTION")) {   // tests: a block that exceeds the retention cap
         const long long v = std::atoll(e);
@@ -1661,6 +1661,9 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
         if (dp > piece_potentials_) {
             // A block record wider than a piece: sub-records of up to piece_potentials_ words, the
             // address advanced, the step and the payload kept.
+            // A value block holds at most 63 words and a piece at least 64, so it is never split:
+            // the rewrite below would drop its write step (bits 42-61).
+            if ((op.flags & 0x0Fu) == MOPS_BLOCK_VALUES) return malformed(k, "value block wider than a piece");
             const uint32_t count = op.flags >> MOPS_BLOCK_COUNT_SBITS;
             if (dp != count) return malformed(k, "record wider than a piece");
             if (cur.nw > 0) pieces.push_back(cur);
