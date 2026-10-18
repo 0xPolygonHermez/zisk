@@ -2008,8 +2008,14 @@ bool CountAndPlan::prepare_fills(const void* image, size_t image_bytes, const Al
         std::lock_guard<std::mutex> lk(staged_mtx_);
         size_t bytes = 0;
         for (const Staged& s : staged_) bytes += s.words * 8;
-        fprintf(stderr, "mem_fill: %zu of %u instances staged (%zu MB), %zu MB kept for the largest fill\n",
-                staged_.size(), prepared->n_instances, bytes >> 20, stage_reserve_ >> 20);
+        fprintf(stderr, "mem_fill: %zu of %u instances staged (%zu MB), %zu MB kept for the largest fill; "
+                        "retained %zu RAM + %zu ROM/input accesses (%zu MB), %zu MemAlign records of %zu (%zu MB), "
+                        "ops pool %zu MB\n",
+                staged_.size(), prepared->n_instances, bytes >> 20, stage_reserve_ >> 20,
+                (size_t)ram_cursor_.load(std::memory_order_relaxed) - other_total_, other_total_,
+                ((size_t)ram_cursor_.load(std::memory_order_relaxed) * RAM_RECORD_WORDS * 4) >> 20,
+                align_total_, align_cap_, (align_total_ * sizeof(AlignRecord)) >> 20,
+                (pool_cursor_u32_.load(std::memory_order_relaxed) * 4) >> 20);
     }
     fills_prepared_ = true;
     prepared->status = 0;
