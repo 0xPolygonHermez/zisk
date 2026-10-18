@@ -18,8 +18,8 @@ lookup and permutation arguments, constant folding, and the intermediate
 columns it introduces. The pilout has all of that already done, and it carries
 three things that make it a better source than the text:
 
-- **The expression DAG**, with sharing intact. Main is 609 constraints over a
-  9488-node pool, 6764 of which the constraints reach.
+- **The expression DAG**, with sharing intact. Main is 713 constraints over an
+  11376-node pool, 8092 of which the constraints reach.
 - **Resolved names.** A witness operand is `(stage, colIdx, rowOffset)` in the
   protobuf, and `PilOut.symbols` maps that back to `a[0]` or `b_src_ind` — the
   same names the Sail model's `zisk_inst` record uses.
@@ -140,8 +140,8 @@ cd sail && make pil-build   # typecheck
 ```
 
 Needs a Lean toolchain — install [elan](https://lean-lang.org/install/). All 54
-AIRs of the ZisK pilout elaborate: about 75s for the set, 42s of that being
-Keccakf alone. That is the check that matters for this tool — an expression
+AIRs of the ZisK pilout elaborate: about 87s for the set from cold, the two
+widest taking about 49s (Keccakf) and 30s (Main) each on their own. That is the check that matters for this tool — an expression
 printed with the wrong precedence, a reference to a column that was never
 declared, or a name Lean will not accept all fail here.
 
@@ -154,7 +154,9 @@ every later field access fails with it — 2 real errors became 16520.
 ## What the output can prove
 
 Elaborating is not the same as being usable, so [`sail/lean/Proofs/Main.lean`](../../sail/lean/Proofs/Main.lean)
-proves five things from the generated Main and nothing else — `cd sail && make proofs`:
+proves six things from the generated Main and nothing else — `cd sail && make proofs`.
+The first proof that relates Main to the Sail model, a single slot against a
+single step, is in [`Proofs/Slot.lean`](../../sail/lean/Proofs/Slot.lean).
 
 ```lean
 /-- `main.pil:224` determines `addr1`, so the column can be eliminated. -/
@@ -164,17 +166,39 @@ theorem addr1_eq (h : c1 x t i) :
 ```
 
 They cover the three moves a correspondence proof needs constantly: turning a
-vanishing polynomial into an equation, combining two constraints, and reaching
-one constraint out of `holds` without unfolding the other 608. All five go
-through by `grind` alone, in under a second.
+vanishing polynomial into an equation, combining constraints, and reaching one
+constraint out of `holds` without unfolding the other 712. All go through by
+`grind` alone, in under a second.
+
+**Reaching one constraint.** `everyRow` is the conjunction of every constraint,
+and for each one the generator also writes an accessor, so a proof names what
+it uses:
+
+```lean
+theorem everyRow.c46 {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i) : c46 x t i := h.1.1.1.2.1.1.1.2.1
+```
+
+`everyRow` is built as a balanced tree of `∧` rather than a right-nested chain,
+so each accessor is a path of about log2(n) projections. With a chain, the
+accessors alone took Main from 21s to 89s to elaborate; balanced, they cost
+about 13s. Searching the conjunction instead is not an option: `grind` runs
+out of recursion depth on it.
+
+The constraint names (`c46`) are positions in the pilout, so they are stable
+only as long as the AIR is: a regenerated pilout that adds a constraint ahead
+of it renumbers it. A proof that uses one then fails to elaborate rather than
+silently proving something else, since the definition it unfolds changes, and
+each name's doc comment carries the `.pil` line to find it again.
 
 Two limits surfaced while writing them, both worth knowing before planning a
 larger proof:
 
-- **Booleanity is not a constraint.** `a_src_mem` is `bits(1)` in the PIL, but
-  that range check is a lookup argument — it lives in the hints, which this
-  tool does not extract. So `a_src_mem * (1 - a_src_mem) = 0` cannot be had
-  from the AIR, and a proof that needs it must take it as a hypothesis.
+- **Booleanity is a constraint; range is not.** Main asserts each one-bit
+  selector boolean explicitly (`main.pil:544`–`567`), so `a_src_mem * (1 -
+  a_src_mem) = 0` is available. A wider declared range, such as a `bits(32)`
+  limb, is a lookup argument that lives in the hints, which this tool does not
+  extract, so a proof that needs a limb below `2^32` must take it as a
+  hypothesis.
 - **Ring laws are not field laws.** Mutual exclusion of two selectors follows
   from the constraints only up to a factor of two, because dividing by two
   needs `2 ≠ 0`. A proof needing that instantiates `F` at the concrete field;
@@ -203,7 +227,7 @@ slots, ids 9 to 256, and the next symbol (`Main.last_reg_mem_step`) starts at
 - **CI does not typecheck the generated Lean.** `make pil-build` does, but it
   needs a Lean toolchain that the PR workflow does not install. Until it does,
   the check is one a person has to remember to run.
-- **`every_frame` is untested.** All 4066 constraints in the ZisK pilout are
+- **`every_frame` is untested.** All 4188 constraints in the ZisK pilout are
   `every_row`; boundary conditions are expressed with fixed selector columns
   such as `__L1__` instead. The other three kinds are
   implemented and carry their frame bounds through, but nothing has exercised
@@ -212,7 +236,7 @@ slots, ids 9 to 256, and the next symbol (`Main.last_reg_mem_step`) starts at
   `--no-proto-fixed-data`, which keeps them out of the protobuf entirely (they
   go to `tmp/fixed/`), so only the columns' names and identities are available
   here.
-- **Hints and global constraints are not extracted.** The pilout carries 4211
+- **Hints and global constraints are not extracted.** The pilout carries 4451
   hints and 12 global constraints; the lookup and permutation arguments the
   `std` library builds are visible here only through the columns and `gsum`
   expressions they leave in the AIR.

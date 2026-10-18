@@ -271,12 +271,28 @@ fn aggregate(out: &mut String, ir: &Ir, names: &Names) {
     };
 
     let _ = writeln!(out, "/-! ### The AIR -/\n");
+    // `everyRow` is a balanced tree of conjunctions rather than a right-nested
+    // chain, so that each accessor below is a path of about log2(n)
+    // projections: with a chain, the accessors alone take Main from seconds to
+    // a minute and a half to elaborate.
+    let leaves: Vec<String> =
+        every.iter().map(|i| format!("{} x t i", names.constraint[i])).collect();
     let _ = writeln!(
         out,
-        "/-- Every constraint asserted at every row, at row `i`. -/\n\
+        "/-- Every constraint asserted at every row, at row `i`. Reach one with its\n\
+         accessor: `h.c7` for `h : everyRow x t i`. -/\n\
          def everyRow (x : Ctx F) (t : Trace F) (i : Int) : Prop :=\n  {}\n",
-        conjunction(&every, "i")
+        if leaves.is_empty() { "True".to_string() } else { balanced(&leaves) }
     );
+    for (k, idx) in every.iter().enumerate() {
+        let name = &names.constraint[idx];
+        let _ = writeln!(
+            out,
+            "theorem everyRow.{name} {{x : Ctx F}} {{t : Trace F}} {{i : Int}} \
+             (h : everyRow x t i) : {name} x t i := h{}\n",
+            balanced_path(k, every.len())
+        );
+    }
     let _ = writeln!(
         out,
         "/-- Constraints asserted only on the first row. -/\n\
@@ -295,6 +311,41 @@ fn aggregate(out: &mut String, ir: &Ir, names: &Names) {
          def holds (x : Ctx F) (t : Trace F) : Prop :=\n  \
          cyclic t\n  ∧ (∀ i : Int, everyRow x t i)\n  ∧ firstRow x t\n  ∧ lastRow x t\n"
     );
+}
+
+/// `items` as a balanced tree of `∧`: the left half, then the right.
+fn balanced(items: &[String]) -> String {
+    match items {
+        [one] => one.clone(),
+        _ => {
+            let (l, r) = items.split_at(items.len() / 2);
+            let wrap = |side: &[String]| {
+                if side.len() == 1 {
+                    balanced(side)
+                } else {
+                    format!("({})", balanced(side))
+                }
+            };
+            format!("{}\n  ∧ {}", wrap(l), wrap(r))
+        }
+    }
+}
+
+/// The projections that reach item `k` of `n` in `balanced`, as `.1`/`.2`.
+fn balanced_path(mut k: usize, mut n: usize) -> String {
+    let mut path = String::new();
+    while n > 1 {
+        let half = n / 2;
+        if k < half {
+            path.push_str(".1");
+            n = half;
+        } else {
+            path.push_str(".2");
+            k -= half;
+            n -= half;
+        }
+    }
+    path
 }
 
 /// How to reach one scalar: a structure field, plus the indices to apply to it
@@ -722,6 +773,36 @@ mod tests {
         );
         assert_eq!(field.declare().0, "flag : F");
         assert_eq!(field.accesses()[0].1.render(), "flag");
+    }
+
+    /// Follow a `.1`/`.2` path down the tree `balanced` builds, splitting the
+    /// same way it does, and return the item it lands on.
+    fn walk(path: &str, n: usize) -> usize {
+        let (mut lo, mut len) = (0, n);
+        for step in path.split('.').filter(|s| !s.is_empty()) {
+            let half = len / 2;
+            if step == "1" {
+                len = half;
+            } else {
+                lo += half;
+                len -= half;
+            }
+        }
+        assert_eq!(len, 1, "path {path} stops above a leaf");
+        lo
+    }
+
+    #[test]
+    fn every_accessor_path_reaches_its_own_conjunct() {
+        for n in 1..=130 {
+            for k in 0..n {
+                assert_eq!(walk(&balanced_path(k, n), n), k, "item {k} of {n}");
+            }
+        }
+        let items: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(balanced(&items), "a\n  ∧ (b\n  ∧ c)");
+        assert_eq!(balanced_path(0, 3), ".1");
+        assert_eq!(balanced_path(2, 3), ".2.2");
     }
 
     #[test]

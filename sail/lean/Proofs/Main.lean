@@ -32,23 +32,31 @@ theorem addr1_eq (h : c1 x t i) :
 and bounds `a_src_mem + a_src_reg`; together they force the product of the two
 selectors to be its own negation — one step short of the mutual exclusion the
 PIL intends. Completing it needs `2 ≠ 0`, which a commutative ring does not
-give; see below. -/
+give; see below and `sources_exclusive_twice`. -/
 theorem sources_almost_exclusive (h9 : c9 x t i) (h10 : c10 x t i) :
     (t i).a_src_mem 0 * (t i).a_src_mem 0 - (t i).a_src_mem 0
       = -((t i).a_src_mem 0 * (t i).a_src_reg 0)
         - ((t i).a_src_mem 0 * (t i).a_src_reg 0) := by
   unfold c9 c10 Zisk_direct_gsum_e_0 at *; grind
 
+/-- With `main.pil:553`, the booleanity of `a_src_mem`, the two selectors are
+exclusive up to a factor of two: `2·(a_src_mem·a_src_reg) = 0`. That factor is
+as far as ring laws go. -/
+theorem sources_exclusive_twice (h9 : c9 x t i) (h10 : c10 x t i) (h110 : c110 x t i) :
+    2 * ((t i).a_src_mem 0 * (t i).a_src_reg 0) = 0 := by
+  unfold c9 c10 c110 Zisk_direct_gsum_e_0 Zisk_direct_gsum_e_41 at *; grind
+
 /-! ### Reasoning from the whole AIR
 
 `holds` is the AIR as one proposition. A proof about a single constraint should
-be reachable from it without unfolding 609 definitions. -/
+be reachable from it without unfolding 713 definitions: each constraint has an
+accessor on `everyRow`, `h.c1` for `h : everyRow x t i`. -/
 
 /-- Any constraint of the AIR follows from `holds`, at every row. -/
 theorem addr1_eq_of_holds (h : holds x t) :
     ∀ i : Int, (t i).addr1 0 = (t i).b_offset_imm0 0 + (t i).b_src_ind 0 * (t i).a 0 0 := by
   intro i
-  exact addr1_eq x t i (h.2.1 i).2.1
+  exact addr1_eq x t i (h.2.1 i).c1
 
 /-- The packed row is four instruction slots, and the same `.pil` line
 constrains each. Slot 3's copy of `main.pil:224` is `c7`, and it mentions only
@@ -59,15 +67,15 @@ theorem addr1_eq_slot3 (h : c7 x t i) :
 
 /-! ### Where the abstraction stops
 
-Two facts the constraints alone do not give, both worth knowing before anyone
-plans a larger proof.
+What the constraints alone do not give, worth knowing before anyone plans a
+larger proof.
 
-**Booleanity is not a constraint.** `a_src_mem` is declared `bits(1)` in the
-PIL, and that range check is a lookup argument: it lives in the pilout's hints,
-which this generator does not extract. So `a_src_mem * (1 - a_src_mem) = 0` is
-not available from this AIR, and `sources_almost_exclusive` cannot be finished
-into `a_src_mem * a_src_reg = 0` without it — nor without `2 ≠ 0`, since the
-remaining step divides by two.
+**Booleanity is a constraint; range is not.** Main asserts each one-bit
+selector boolean explicitly (`main.pil:544`–`567`, e.g. `c110` for
+`a_src_mem[0]`), so those facts are available here. Wider declared ranges, such
+as a `bits(32)` limb, are lookup arguments: they live in the pilout's hints,
+which this generator does not extract, so a limb is not known here to be below
+`2^32`.
 
 **Ring laws are not field laws.** `PilField` is `Lean.Grind.CommRing`, so there
 is no inverse and no characteristic. A proof needing either instantiates `F` at
