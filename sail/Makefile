@@ -41,7 +41,7 @@ PROG  ?= ../ziskasm/examples/doubler-min
 INPUT ?= ../ziskasm/examples/doubler/input.bin
 DIFF_DIR = build/difftest/$(notdir $(PROG))
 
-.PHONY: all check lean ops pil lean-env lean-build pil-build proofs emu difftest clean
+.PHONY: all check lean ops pil lean-env lean-build pil-build proofs emu difftest difftest-all clean
 
 all: check ops
 
@@ -110,8 +110,14 @@ difftest:
 	$(DIFF_DIR)/zisk_emu $$(cat $(DIFF_DIR)/mem.args) > $(DIFF_DIR)/sail.trace
 	@diff -u $(DIFF_DIR)/ziskemu.trace $(DIFF_DIR)/sail.trace | head -40; \
 	  if cmp -s $(DIFF_DIR)/ziskemu.trace $(DIFF_DIR)/sail.trace; then \
-	    echo "OK: $$(grep -vc '^out' $(DIFF_DIR)/sail.trace) steps and the output agree with ziskemu"; \
+	    echo "OK: $$(grep -vEc '^(out|end) ' $(DIFF_DIR)/sail.trace) steps and the output agree with ziskemu"; \
 	  else echo "FAIL: the model diverges from ziskemu (traces in $(DIFF_DIR))" >&2; exit 1; fi
+
+## Every program the model is difftested on: the doubler, and difftest/halt,
+## which ends through the BIOS's halt with exit code 3.
+difftest-all:
+	$(MAKE) --no-print-directory difftest
+	$(MAKE) --no-print-directory difftest PROG=difftest/halt INPUT=
 
 clean:
 	rm -rf build

@@ -8,6 +8,8 @@ register PC    : bits(64)   /* program counter                         */
 register Zc    : bits(64)   /* c register: result of the previous step */
 register Zflag : bool       /* flag register: one bit, not 64          */
 register Step  : bits(64)   /* execution step counter                  */
+register Zerror      : bool      /* the program ended by `halt`        */
+register Zerror_code : bits(64)  /* and its exit code, halt's a        */
 
 /* --- Sources and stores --------------------------------------------- *
  * Split a/b enums make the asymmetry a type error rather than a runtime

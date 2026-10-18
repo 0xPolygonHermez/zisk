@@ -1,0 +1,8 @@
+; Ends through the BIOS trap handler with exit code 3, so the BIOS reaches its
+; `halt`: the one path the doubler never takes. The handler sits at mtvec,
+; which the BIOS sets to 0x105c, and treats r17 = 93 as the exit syscall with
+; the code in r10. Both emulators must report the run as failed, with code 3.
+main:
+	copyb(0, 93) -> r17
+	copyb(0, 3) -> r10
+	jump(0x105c)

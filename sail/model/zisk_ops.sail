@@ -42,5 +42,11 @@ function clause zisk_exec (ZOP_LTU(), a, b) =
 union clause zisk_op = ZOP_PUBOUT : unit
 function clause zisk_exec (ZOP_PUBOUT(), a, b) = (b, false)
 
+/* halt: c = 0. The program ends in error; the instruction carries is_end,
+ * and zisk_execute records the error and its code, since an op here is a
+ * pure function of a and b (Emu: opc_halt). */
+union clause zisk_op = ZOP_HALT : unit
+function clause zisk_exec (ZOP_HALT(), a, b) = (zeros(), false)
+
 end zisk_op
 end zisk_exec

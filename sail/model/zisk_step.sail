@@ -55,6 +55,10 @@ function zisk_execute (inst : zisk_inst) -> bool = {
   let b    = source_b(inst, a);
   let (c, flag) = zisk_exec(inst.op, a, b);
   store_c(inst, a, c);
+  match inst.op {
+    ZOP_HALT() => { Zerror = true; Zerror_code = a },
+    _          => ()
+  };
   Zc    = c;
   Zflag = flag;
   Step  = Step + 1;

@@ -7,7 +7,11 @@
  *
  *   <step> <pc it ran at> <c> <flag> [x<i>=<value> for each register changed]
  *
- * and after the last step, the output region as 32 words:
+ * then how the run ended, `halt`'s error and exit code,
+ *
+ *   end <error> <code>
+ *
+ * and the output region as 32 words:
  *
  *   out <k> <word at OUTPUT_ADDR + 8k>
  *
@@ -42,6 +46,8 @@ function main() = {
   Zc    = zeros();
   Zflag = false;
   Step  = zeros();
+  Zerror      = false;
+  Zerror_code = zeros();
   foreach (r from 0 to 31) { Xs[r] = zeros() };
 
   var n : int = 0;
@@ -55,6 +61,7 @@ function main() = {
     n = n + 1
   };
 
+  print_endline(concat_str(concat_str("end ", flag_str(Zerror)), concat_str(" ", bits_str(Zerror_code))));
   foreach (k from 0 to 31) {
     let w = read_mem(OUTPUT_ADDR + 8 * k, 8);
     print_endline(concat_str(concat_str("out ", dec_str(k)), concat_str(" ", bits_str(w))))

@@ -217,7 +217,8 @@ fn write_memory(rom: &ZiskRom, input: &[u8], out: &Path) -> Result<String> {
 
 /// Run the program on ziskemu one step at a time, and print what
 /// `model/zisk_main.sail` prints: per step, the pc it ran at, c, flag, and
-/// every register the step changed; then the output region.
+/// every register the step changed; then how the run ended, and the output
+/// region.
 fn reference_trace(rom: &ZiskRom, input: Vec<u8>, max_steps: u64) -> Result<(String, u64)> {
     let options = EmuOptions::default();
     let mut emu = Emu::new(rom);
@@ -242,6 +243,8 @@ fn reference_trace(rom: &ZiskRom, input: Vec<u8>, max_steps: u64) -> Result<(Str
         s.push('\n');
         n += 1;
     }
+    let ctx = &emu.ctx.inst_ctx;
+    writeln!(s, "end {} {}", ctx.error as u8, hex(if ctx.error { ctx.error_code } else { 0 }))?;
     for (k, w) in emu.get_output_8().chunks(8).enumerate() {
         let w = u64::from_le_bytes(w.try_into().context("output is not a whole number of u64")?);
         writeln!(s, "out {k} {}", hex(w))?;
