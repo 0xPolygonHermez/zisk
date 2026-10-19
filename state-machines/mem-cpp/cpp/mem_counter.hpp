@@ -118,8 +118,9 @@ uint32_t MemCounter::get_count() {
     return addr_count;
 }
 
+// Blocks handed out so far: block 0 is reserved (see the constructor) and not counted.
 uint32_t MemCounter::get_used_slots() {
-    return free_slot;
+    return free_slot - 1;
 }
 
 uint32_t MemCounter::get_initial_block_pos(uint32_t pos) {
@@ -365,7 +366,8 @@ uint32_t MemCounter::page_to_addr(uint8_t page) {
     throw std::runtime_error(msg.str());
 }
 
+// See get_used_slots() above: the reserved block 0 is not counted.
 uint32_t MemCounter::get_used_slots(void) const {
-        return free_slot;
+        return free_slot - 1;
 }
 #endif
