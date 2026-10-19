@@ -323,6 +323,11 @@ pub struct BusArg {
     pub bus: Operand,
     /// How many times the tuple is sent: a selector, or a multiplicity column.
     pub reps: Operand,
+    /// Whether the tuple is sent once per instance rather than at every row:
+    /// both it and `reps` have degree 0 (constants and air values only), which
+    /// the `std` library moves into the instance's direct sum (`std_sum.pil`,
+    /// "Constants go directly to direct terms").
+    pub once: bool,
     /// The tuple, each element with the name the PIL gave it.
     pub tuple: Vec<(String, Operand)>,
 }
@@ -544,6 +549,7 @@ fn bus_arg(hint: usize, h: &Hint) -> Option<BusArg> {
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
+    let once = constant("deg_expr").as_deref() == Some("0") && constant("deg_sel").as_deref() == Some("0");
     Some(BusArg {
         hint,
         piop,
@@ -551,6 +557,7 @@ fn bus_arg(hint: usize, h: &Hint) -> Option<BusArg> {
         opids,
         bus: operand("busid")?,
         reps: operand("num_reps")?,
+        once,
         tuple,
     })
 }
@@ -716,6 +723,28 @@ pub(crate) mod tests {
         assert_eq!(args[1].opids, vec!["104", "105"], "a per-row bus keeps its candidates");
         assert_eq!((args[2].piop, args[2].side), (Piop::Permutation, Side::Free));
         assert_eq!(args[0].tuple[0].0, "x");
+    }
+
+    #[test]
+    fn degree_zero_arguments_are_sent_once() {
+        let konst = |v: &str| HintValue::Operand(Operand::Const { value: v.into() });
+        let with_degrees = |mut h: Hint, e: &str, s: &str| {
+            if let HintValue::Array(fields) = &mut h.fields[0].value {
+                fields.push(HintField { name: Some("deg_expr".into()), value: konst(e) });
+                fields.push(HintField { name: Some("deg_sel".into()), value: konst(s) });
+            }
+            h
+        };
+        let busid = Operand::Const { value: "10".into() };
+        let mut ir = sample();
+        ir.hints = vec![
+            with_degrees(debug_hint("Permutation", "1", busid.clone(), &["10"]), "0", "0"),
+            with_degrees(debug_hint("Permutation", "1", busid.clone(), &["10"]), "1", "0"),
+            debug_hint("Permutation", "1", busid, &["10"]),
+        ];
+        let (args, _) = ir.bus_args();
+        let once: Vec<bool> = args.iter().map(|a| a.once).collect();
+        assert_eq!(once, vec![true, false, false], "only an all-constant argument is sent once");
     }
 
     #[test]

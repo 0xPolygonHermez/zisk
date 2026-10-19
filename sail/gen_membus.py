@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Generate lean/Proofs/MemBus.lean: no AIR but Main sends a register tuple.
 
+And the memory bus over every AIR, reduced to Main's register chain.
+
 Main keeps the registers as a chain of tuples `(3, reg, step, 8, value)` on
 the memory bus (10). The chain argument (lean/Proofs/MemCheck.lean) needs the
 tuples with op 3 to be Main's alone. This script reads every argument on bus
@@ -161,7 +163,7 @@ def lit(n):
 
 
 def main():
-    theorems, census, airs = [], [], []
+    theorems, census, airs, perair = [], [], [], {}
     for f in sorted(glob.glob(os.path.join(PIL, '*.lean'))):
         air = os.path.basename(f)[:-5]
         if air in ('Main', 'Prelude'):
@@ -175,7 +177,7 @@ def main():
                   if False}
         found = False
         for m in re.finditer(r"^def (bus\d+) : BusArg F \(Ctx F\) \(Trace F\) where\n  opids := \[([^\]]*)\]\n"
-                             r"  bus := .*\n  piop := \.(\w+)\n  side := \.(\w+)\n  reps := (.*)\n  tuple := \[\n"
+                             r"  bus := .*\n  piop := \.(\w+)\n  side := \.(\w+)\n  reps := (.*)\n(?:  once := \w+\n)?  tuple := \[\n"
                              r"    fun x t i => (.*?),?\n", s, re.M):
             bus, opids, piop, side, reps, op = m.groups()
             if MEMORY_BUS not in opids.split(', '):
@@ -272,6 +274,7 @@ def main():
                             f"  · exact hs\n  · decide\n  · decide\n")
                     theorems.append(head + concl + body)
             census.append(entry)
+            perair.setdefault(air, []).append((bus, entry['kind']))
         if found:
             airs.append(air)
     os.makedirs(os.path.dirname(CENSUS), exist_ok=True)
@@ -282,10 +285,165 @@ def main():
         kinds[e['kind']] = kinds.get(e['kind'], 0) + 1
     text = HEAD.format(imports=imports, n=len(census), nairs=len(airs),
                        kinds=', '.join(f"{v} {k}" for k, v in sorted(kinds.items()))) + \
-        '\n'.join(theorems) + "\nend Provers\n\nend Correspondence\n"
+        '\n'.join(theorems) + "\nend Provers\n\n" + system(airs, perair) + "\nend Correspondence\n"
     open(OUT, 'w').write(text)
     print(f"wrote {os.path.relpath(OUT, HERE)}: {len(census)} arguments in {len(airs)} AIRs "
           f"({', '.join(f'{v} {k}' for k, v in sorted(kinds.items()))})")
+
+
+def main_buses():
+    """Main's arguments on the memory bus, in hint order."""
+    s = open(os.path.join(PIL, 'Main.lean')).read()
+    return [m.group(1) for m in re.finditer(r"^def (bus\d+) : BusArg F \(Ctx F\) \(Trace F\) where\n"
+                                            r"  opids := \[([^\]]*)\]", s, re.M)
+            if MEMORY_BUS in m.group(2).split(', ')]
+
+
+def system(airs, perair):
+    """The instances, their senders, and the reduction of a sound bus to Main's."""
+    out = [SYSTEM_HEAD]
+    fields, senders, nevers = [], [], []
+    for air in airs:
+        inst = f"{air}OnMem"
+        extra = []
+        for bus, kind in perair[air]:
+            if kind == 'fixed':
+                extra.append(f"  fix_{bus} : ∀ j, FixedOp {air}.{bus} x t j")
+        if any(k == 'romdata' for _, k in perair[air]):
+            extra.append("  data : RomDataFlags t")
+        out.append(f"""/-- An instance of `{air}` on the memory bus: its trace, its constraints at every
+row, and the data its ops rest on. -/
+structure {inst} (F : Type) [Lean.Grind.Field F] where
+  x : {air}.Ctx F
+  t : {air}.Trace F
+  rows : ∀ j, {air}.everyRow x t j{''.join(chr(10) + e for e in extra)}
+
+/-- `{air}`'s arguments on the memory bus. -/
+def {inst}.senders (I : {inst} F) : List (Sender F) :=
+  [{', '.join(f"⟨⟨{air}.{b}, I.x, I.t⟩, {air}.numRows⟩" for b, _ in perair[air])}]
+
+theorem {inst}.never (I : {inst} F) :
+    ∀ s ∈ I.senders, ∀ j, s.p.arg.reps s.p.x s.p.t j ≠ 0 → (tupleOf s.p j).headD 0 ≠ ((3 : Int) : F) := by
+  intro s hs j hr
+  rw [headD_tupleOf]
+  simp only [{inst}.senders, List.mem_cons, List.not_mem_nil, or_false] at hs
+  rcases hs with {' | '.join(['rfl'] * len(perair[air]))}
+""")
+        for bus, kind in perair[air]:
+            args = "(I.rows j) hr"
+            if kind == 'fixed':
+                args += f" (I.fix_{bus} j)"
+            if kind == 'romdata':
+                args += " I.data"
+            out.append(f"  · exact {air}_{bus}_not_reg {args}\n")
+        out.append("\n")
+        fname = air[0].lower() + air[1:]
+        fields.append(f"  {fname} : List ({inst} F)")
+        senders.append(f"(S.{fname}.flatMap {inst}.senders)")
+        nevers.append(f"never_flatMap (fun I _ => {inst}.never I)")
+    prov = '\n'.join(('  ' if i == 0 else '    ') + x + (' ++ (' if i < len(senders) - 1 else '')
+                     for i, x in enumerate(senders)) + ')' * (len(senders) - 1)
+    nev = ('  ' + ' <|\n    '.join(f"never_append ({n})" for n in nevers[:-1]) + ' <|\n    ' + nevers[-1])
+    mb = main_buses()
+    mlist = ',\n   '.join(f"⟨⟨Main.{b}, x, t⟩, Main.numRows⟩" for b in mb)
+    out.append(SYSTEM_TAIL.format(fields='\n'.join(fields), senders=prov, never=nev,
+                                  nmain=len(mb), mainlist=mlist))
+    return ''.join(out)
+
+
+SYSTEM_HEAD = """/-! ### Every other AIR on the memory bus
+
+The instances of the 39 AIRs, their senders on bus 10, and what follows for a
+sound bus: a register tuple balances among Main's senders and the global
+updates alone (`reg_balance`). -/
+
+section System
+
+variable {F : Type} [Lean.Grind.Field F] [Lean.Grind.IsCharP F goldilocks]
+
+/-- A tuple's first element is the op its argument sends. -/
+theorem headD_tupleOf (p : Prover F) (j : Int) : (tupleOf p j).headD 0 = opOf p.arg p.x p.t j := by
+  unfold tupleOf opOf
+  cases p.arg.tuple <;> rfl
+
+theorem never_append {ss ss' : List (Sender F)} {k : F}
+    (h : ∀ s ∈ ss, ∀ j, s.p.arg.reps s.p.x s.p.t j ≠ 0 → (tupleOf s.p j).headD 0 ≠ k)
+    (h' : ∀ s ∈ ss', ∀ j, s.p.arg.reps s.p.x s.p.t j ≠ 0 → (tupleOf s.p j).headD 0 ≠ k) :
+    ∀ s ∈ ss ++ ss', ∀ j, s.p.arg.reps s.p.x s.p.t j ≠ 0 → (tupleOf s.p j).headD 0 ≠ k := by
+  intro s hs
+  rcases List.mem_append.mp hs with hs | hs
+  · exact h s hs
+  · exact h' s hs
+
+theorem never_flatMap {α : Type} {l : List α} {f : α → List (Sender F)} {k : F}
+    (h : ∀ a ∈ l, ∀ s ∈ f a, ∀ j, s.p.arg.reps s.p.x s.p.t j ≠ 0 → (tupleOf s.p j).headD 0 ≠ k) :
+    ∀ s ∈ l.flatMap f, ∀ j, s.p.arg.reps s.p.x s.p.t j ≠ 0 → (tupleOf s.p j).headD 0 ≠ k := by
+  intro s hs
+  obtain ⟨a, ha, hs⟩ := List.mem_flatMap.mp hs
+  exact h a ha s hs
+
+"""
+
+SYSTEM_TAIL = """/-- Every instance of every AIR but Main on the memory bus. -/
+structure MemOthers (F : Type) [Lean.Grind.Field F] where
+{fields}
+
+/-- Their senders on the memory bus. -/
+def MemOthers.senders (S : MemOthers F) : List (Sender F) :=
+{senders}
+
+/-- **None of them sends a register tuple.** -/
+theorem MemOthers.never (S : MemOthers F) :
+    ∀ s ∈ S.senders, ∀ j, s.p.arg.reps s.p.x s.p.t j ≠ 0 → (tupleOf s.p j).headD 0 ≠ ((3 : Int) : F) :=
+{never}
+
+/-- **A register tuple balances among Main's senders.** On a sound memory bus
+over Main's senders `ms` and every other AIR's, every tuple with op 3 — a
+register's — is proved as often as it is assumed by Main's senders and the
+global updates alone. -/
+theorem reg_balance (S : MemOthers F) {{ms : List (Sender F)}} {{gp ga : List (List F)}}
+    (h : SumHolds 10 (ms ++ S.senders) gp ga) {{τ : List F}} (h3 : τ.headD 0 = ((3 : Int) : F)) :
+    provedCount ms τ + times gp τ = assumedCount ms τ + times ga τ :=
+  h.restrict S.never h3
+
+/-- Main's {nmain} arguments on the memory bus, for one instance: per lane, the
+register accesses of `a`, `b` and the store (each proving the access before it
+and assuming itself, or a memory access), and per flush window and register,
+the flush (once per instance). -/
+def mainMemSenders (x : Main.Ctx F) (t : Main.Trace F) : List (Sender F) :=
+  [{mainlist}]
+
+/-- The register `r`'s initial tuple, `(3, r, 0, 8, 0, 0)`: what the global
+update `global_init_mem` assumes for each register in Main. -/
+def regInit (r : Nat) : List F := [3, ((r : Nat) : F), 0, 8, 0, 0]
+
+/-- The registers' initial tuples, `x1` to `x39`. -/
+def regInits : List (List F) := (List.range 39).map fun r => regInit (r + 1)
+
+/-- The global updates on the memory bus, as far as register tuples go: none
+proves one, and the ones that assume one are the registers' initial tuples.
+The global updates are not extracted, so this is written here, from
+`main.pil` (`global_init_mem`). -/
+def GlobalRegs (gp ga : List (List F)) : Prop :=
+  ∀ τ : List F, τ.headD 0 = ((3 : Int) : F) → times gp τ = 0 ∧ times ga τ = times regInits τ
+
+/-- **The register chain balances within Main.** On a sound memory bus over
+every Main instance (`segs`) and every other AIR, with the global updates
+`GlobalRegs` describes, every register tuple is proved by Main's arguments as
+often as they and the registers' initial values assume it. -/
+theorem reg_chain_balance (S : MemOthers F) (segs : List (Main.Ctx F × Main.Trace F))
+    {{gp ga : List (List F)}} (hg : GlobalRegs gp ga)
+    (h : SumHolds 10 (segs.flatMap (fun m => mainMemSenders m.1 m.2) ++ S.senders) gp ga)
+    {{τ : List F}} (h3 : τ.headD 0 = ((3 : Int) : F)) :
+    provedCount (segs.flatMap (fun m => mainMemSenders m.1 m.2)) τ =
+      assumedCount (segs.flatMap (fun m => mainMemSenders m.1 m.2)) τ + times regInits τ := by
+  have e := reg_balance S h h3
+  obtain ⟨g1, g2⟩ := hg τ h3
+  rw [g1, g2, Lean.Grind.Semiring.add_zero] at e
+  exact e
+
+end System
+"""
 
 
 HEAD = """/-
@@ -309,10 +467,19 @@ HEAD = """/-
   * `romdata`: the Rom's data rows send their `flags`, 2 (RAM) or 4 (ROM
     initialization), the program's data: `RomDataFlags`.
 
+  Then the system: an instance structure per AIR (its trace, constraints and
+  the data its ops rest on), `MemOthers` listing any number of instances of
+  each, and Main's 336 arguments on the bus (`mainMemSenders`). On a sound
+  memory bus (`SumHolds`, `SumBus.lean`) over all of them, with the global
+  updates as `GlobalRegs` writes them, every register tuple balances among
+  Main's arguments and the registers' initial tuples alone
+  (`reg_chain_balance`).
+
   Generated by `sail/gen_membus.py` (`make membus`).
 -/
 import Proofs.OpBusCmp
 import Proofs.Adders
+import Proofs.SumBus
 {imports}
 
 namespace Correspondence

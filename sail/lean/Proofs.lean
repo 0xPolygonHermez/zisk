@@ -15,3 +15,4 @@ import Proofs.Segments
 import Proofs.End
 import Proofs.MemCheck
 import Proofs.MemBus
+import Proofs.SumBus

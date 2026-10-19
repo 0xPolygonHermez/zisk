@@ -77,6 +77,10 @@ structure BusArg (F C T : Type) where
   piop : Piop
   side : BusSide
   reps : C → T → Int → F
+  /-- Sent once per instance, not at every row: the tuple and the count are
+  constants and air values (degree 0), which the `std` library sums once, in
+  the instance's direct terms. Such an argument does not depend on the row. -/
+  once : Bool
   tuple : List (C → T → Int → F)
 
 /-- A range a range-check bus serves, from a `range_def` hint: the values
@@ -486,12 +490,13 @@ fn buses(out: &mut String, ir: &Ir, plan: &Plan, leaves: &LeanLeaves) {
             "/-- {} on bus {opids}, {side}: `({})` -/\n\
              def bus{} : BusArg F (Ctx F) (Trace F) where\n  \
              opids := [{opids}]\n  bus := {}\n  piop := .{piop}\n  side := .{side}\n  \
-             reps := {}\n  tuple := [\n    {}]\n",
+             reps := {}\n  once := {}\n  tuple := [\n    {}]\n",
             a.piop.name(),
             escape_doc(&labels.join(", ")),
             a.hint,
             fun(&a.bus),
             fun(&a.reps),
+            a.once,
             tuple.join(",\n    ")
         );
     }

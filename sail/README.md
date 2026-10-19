@@ -153,6 +153,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/End.lean` | The program's end: from boot, the model runs the program to an end instruction and stops (`run_to_end`). |
 | `lean/Proofs/MemCheck.lean` | Offline memory checking, in the abstract: from a permutation of proved and assumed tuples and strictly increasing steps, a register read returns the last write (`reads_last_write`). |
 | `lean/Proofs/MemBus.lean` | No AIR but Main sends a register tuple on the memory bus: 173 arguments in 39 AIRs, each proved never to send op 3. Generated. |
+| `lean/Proofs/SumBus.lean` | What a sound sum bus guarantees, tuple by tuple (`SumHolds`), and how senders that never send a tuple drop out. |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
@@ -337,7 +338,7 @@ make proofs
 ```
 
 ```
-✔ [88/89] Built Proofs
+✔ [89/90] Built Proofs
 Build completed successfully.
 ```
 
@@ -382,7 +383,7 @@ lines of the diff and fails instead; the two traces are left in
 which ends the run in error through the BIOS's `halt` (15 steps, exit code 3).
 
 Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
-15 tests.
+18 tests.
 
 ### What a clean run establishes
 
@@ -1067,9 +1068,30 @@ fixed files, and checks that it found as many per AIR as `MemBus.lean` takes
 data row of the committed ROM; the programs difftested so far have none.
 Standard three axioms.
 
-Still to come: the permutation stated over every bus-10 argument, Main's
-register file against the model's `rX` and `wX`, and the runs with register
-sources and stores.
+**The bus, over every argument.** [`lean/Proofs/SumBus.lean`](lean/Proofs/SumBus.lean)
+states what a sound sum bus guarantees in full, tuple by tuple: a *sender*
+is one argument of one instance, sending its tuple at every row with its
+count, and `SumHolds b ss gp ga` says that for every tuple, what the senders
+and the global updates prove equals what they assume, in the field — what a
+sound gsum argument gives. An argument whose tuple and count are constants and
+air values (degree 0) is sent once per instance, not at every row: the `std`
+library moves it into the instance's direct sum. The extractor now records
+that (`once`, from the hint's `deg_expr` and `deg_sel`); Main's flushes —
+`FLUSH_COUNT = 4` windows per segment here, 39 registers each — are such
+arguments.
+
+`MemBus.lean` then lists every instance of the 39 other AIRs (`MemOthers`)
+and Main's 336 arguments on the bus (`mainMemSenders`), and proves
+`reg_chain_balance`: on a sound memory bus over all of them, every register
+tuple balances among Main's arguments and the registers' initial tuples
+alone. The global updates are not extracted; `GlobalRegs` writes their
+register part, from `main.pil`: none proves a register tuple, and the ones
+that assume one are `(3, r, 0, 8, 0, 0)` for `x1` to `x39`.
+
+Still to come: from that balance, each register's accesses as `MemCheck`'s
+chain — counts as naturals, steps as distinct naturals, the strict range
+checks — and Main's register file against the model's `rX` and `wX`; then the
+runs with register sources and stores.
 
 ## The operation bus's provers
 
