@@ -245,12 +245,18 @@ landing in the 32-bit pc range. -/
 def PilotProg (prog : BitVec 64 → Option zisk_inst) : Prop :=
   ∀ pc inst, prog pc = some inst → Pilot inst ∧ Lands pc inst.jmp_off1 ∧ Lands pc inst.jmp_off2
 
-/-- Every prover in `ps` computes each modeled external op on the operation
-bus: what `Adders.lean`, `Binary.lean`, `BinaryOps.lean`, `OpBus.lean`,
-`OpBusCmp.lean` and the checked FROPS tables give, prover by prover. -/
+/-- Prover `p` computes each modeled external op on the operation bus. -/
+structure OpsOk (p : Prover F) : Prop where
+  add : OpProves 10 addSem p
+  ltu : OpProves 6 ltuSem p
+  eq : OpProves 9 eqSem p
+  and : OpProves 14 andSem p
+
+/-- Every prover in `ps` does: what `Adders.lean`, `Binary.lean`,
+`BinaryOps.lean`, `OpBus.lean`, `OpBusCmp.lean` and the checked FROPS tables
+give, prover by prover, and `Provers.lean` collects. -/
 def OpsProved (ps : List (Prover F)) : Prop :=
-  ∀ p ∈ ps, OpProves 10 addSem p ∧ OpProves 6 ltuSem p ∧ OpProves 9 eqSem p ∧
-    OpProves 14 andSem p
+  ∀ p ∈ ps, OpsOk p
 
 /-- **One step of any of the six opcodes, at any position.** As
 `step_internal`; an external op's result comes over the operation bus, from
@@ -290,13 +296,13 @@ theorem step_pilot (prog : BitVec 64 → Option zisk_inst) (hprog : PilotProg pr
         hslot ⟨hp0, hp1⟩ hw
     · exact lane_internal hlane inst σ pc zc st hpc hzc hst ha hb (.inr h) hstore hset hend
         hslot ⟨hp0, hp1⟩ hw
-    · exact hext 10 addSem (.inl h) (fun p hp => (hpr p hp).1) (by rw [h]; rfl)
+    · exact hext 10 addSem (.inl h) (fun p hp => (hpr p hp).add) (by rw [h]; rfl)
         (by rw [h]; exact exec_add)
-    · exact hext 6 ltuSem (.inr (.inl h)) (fun p hp => (hpr p hp).2.1) (by rw [h]; rfl)
+    · exact hext 6 ltuSem (.inr (.inl h)) (fun p hp => (hpr p hp).ltu) (by rw [h]; rfl)
         (by rw [h]; exact exec_ltu)
-    · exact hext 9 eqSem (.inr (.inr (.inl h))) (fun p hp => (hpr p hp).2.2.1) (by rw [h]; rfl)
+    · exact hext 9 eqSem (.inr (.inr (.inl h))) (fun p hp => (hpr p hp).eq) (by rw [h]; rfl)
         (by rw [h]; exact exec_eq)
-    · exact hext 14 andSem (.inr (.inr (.inr h))) (fun p hp => (hpr p hp).2.2.2)
+    · exact hext 14 andSem (.inr (.inr (.inr h))) (fun p hp => (hpr p hp).and)
         (by rw [h]; rfl) (by rw [h]; exact exec_and)
   obtain ⟨σ', c, f, pc', hrun, hc, -, hp, hst', hnext, hc0, hc1, -, hnp⟩ := key
   refine ⟨inst, σ', pc', c, hinst, hrun, ⟨hp, hc, ⟨_, hst'⟩, ?_⟩, hnp, ?_, ?_⟩

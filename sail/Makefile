@@ -44,7 +44,7 @@ PROG  ?= ../ziskasm/examples/doubler-min
 INPUT ?= ../ziskasm/examples/doubler/input.bin
 DIFF_DIR = build/difftest/$(notdir $(PROG))
 
-.PHONY: all check lean ops pil lean-env lean-build pil-build proofs tables emu difftest difftest-all clean
+.PHONY: all check lean ops pil lean-env lean-build pil-build proofs provers tables emu difftest difftest-all clean
 
 all: check ops
 
@@ -92,6 +92,12 @@ pil-build: lean-env
 proofs: lean-env
 	@test -d build/pil || { echo "build/pil is missing — run make pil" >&2; exit 1; }
 	cd lean && $(LAKE) build Proofs
+
+## Regenerate lean/Proofs/Provers.lean, which collects every operation-bus
+## prover's proofs, from the AIRs and the prover lemmas. See gen_provers.py.
+provers:
+	@test -d build/pil || { echo "build/pil is missing — run make pil" >&2; exit 1; }
+	python3 gen_provers.py
 
 ## Typecheck the generated model. Run `make lean` first.
 lean-build: lean-env
