@@ -156,7 +156,11 @@ impl WitnessGenerator {
                 trace_buffer,
                 self.packed.load(Ordering::Relaxed),
             )
-            .map_err(|e| (e.error.into(), e.trace_buffer))?;
+            .map_err(|e| {
+                // Closed here too: a device failure is retried on the CPU, with a scope of its own.
+                stats_end!(state.stats, &_stats_scope);
+                (e.error.into(), e.trace_buffer)
+            })?;
 
         if let Some(air_instance) = air_instance {
             let should_add_instance = secn_instance.instance_type() == InstanceType::Instance
