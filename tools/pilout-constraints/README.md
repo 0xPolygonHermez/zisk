@@ -178,6 +178,18 @@ it uses:
 theorem everyRow.c46 {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i) : c46 x t i := h.1.1.1.2.1.1.1.2.1
 ```
 
+**Booleanity, by column.** A constraint of the shape `s*(1-s)` or `s*(s-1)`
+on one column — either factor possibly behind an intermediate — also gets an
+accessor named after the column rather than the constraint, stated in one form:
+
+```lean
+theorem everyRow.bool_sel_arith256 {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i) :
+    (t i).sel_arith256 * (1 - (t i).sel_arith256) = 0
+```
+
+A proof that needs a selector to be a bit names the column, so it survives a
+renumbering of the constraints. The ZisK pilout has 621 of them.
+
 `everyRow` is built as a balanced tree of `∧` rather than a right-nested chain,
 so each accessor is a path of about log2(n) projections. With a chain, the
 accessors alone took Main from 21s to 89s to elaborate; balanced, they cost

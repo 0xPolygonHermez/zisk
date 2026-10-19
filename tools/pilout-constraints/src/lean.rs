@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 
-use crate::ir::{Ir, Kind, Operand, Side, Slot};
+use crate::ir::{Ir, Kind, Node, Operand, Side, Slot};
 use crate::print::{self, Leaves, Plan, MAX_INLINE};
 
 /// The field interface the generated constraints are stated over. Static: it
@@ -104,6 +104,7 @@ pub fn render(ir: &Ir, module: &str) -> String {
     definitions(&mut out, ir, &plan, &names, &leaves);
     constraints(&mut out, ir, &plan, &names, &leaves);
     aggregate(&mut out, ir, &names);
+    booleanity(&mut out, ir, &plan, &names, &leaves);
     buses(&mut out, ir, &plan, &leaves);
     let _ = writeln!(out, "end {}", namespace(ir));
     out
@@ -360,6 +361,100 @@ fn aggregate(out: &mut String, ir: &Ir, names: &Names) {
          def holds (x : Ctx F) (t : Trace F) : Prop :=\n  \
          cyclic t\n  ∧ (∀ i : Int, everyRow x t i)\n  ∧ firstRow x t\n  ∧ lastRow x t\n"
     );
+}
+
+/// One accessor per column the AIR asserts boolean, named after the column
+/// rather than the constraint (`everyRow.bool_sel_arith256`), so a proof that
+/// needs a selector to be a bit does not depend on constraint numbering. A
+/// booleanity constraint is recognized by shape: `s*(1-s)` or `s*(s-1)` on one
+/// column at the current row, either factor possibly behind an intermediate.
+/// Every one is stated as `s * (1 - s) = 0`.
+fn booleanity(out: &mut String, ir: &Ir, plan: &Plan, names: &Names, leaves: &LeanLeaves) {
+    let mut seen = HashSet::new();
+    let mut emitted = false;
+    for c in &ir.constraints {
+        if !matches!(c.kind, Kind::EveryRow) {
+            continue;
+        }
+        let Some(col) = boolean_column(ir, c.expr) else { continue };
+        if !seen.insert(col.clone()) {
+            continue;
+        }
+        if !emitted {
+            let _ = writeln!(out, "/-! ### Booleanity, by column -/\n");
+            emitted = true;
+        }
+        // The intermediates the constraint's body goes through, to unfold.
+        let defs: Vec<String> = ir
+            .reachable_from(vec![c.expr])
+            .into_iter()
+            .filter(|i| plan.is_defined(*i))
+            .filter_map(|i| names.expr.get(&i).cloned())
+            .collect();
+        let cname = &names.constraint[&c.idx];
+        // Qualified: inside `theorem everyRow.bool_…` the namespace
+        // `everyRow` is open, where `c1` would name the accessor, not the
+        // constraint.
+        let ns = namespace(ir);
+        let mut unfold = vec![format!("{ns}.{cname}")];
+        unfold.extend(defs.into_iter().map(|d| format!("{ns}.{d}")));
+        let v = leaves.column(&col, 0);
+        let _ = writeln!(
+            out,
+            "theorem everyRow.bool_{} {{x : Ctx F}} {{t : Trace F}} {{i : Int}} \
+             (h : everyRow x t i) :\n    {v} * (1 - {v}) = 0 := by\n  \
+             have h' := h.{cname}; simp only [{}] at h'; grind\n",
+            ident(&col),
+            unfold.join(", ")
+        );
+    }
+}
+
+/// The column `expr` asserts boolean, if it is `s*(1-s)` or `s*(s-1)`.
+fn boolean_column(ir: &Ir, expr: u32) -> Option<String> {
+    // Follow expression references to the operand or node they stand for.
+    enum View<'a> {
+        Leaf(&'a Operand),
+        Node(&'a Node),
+    }
+    fn view<'a>(ir: &'a Ir, o: &'a Operand) -> View<'a> {
+        match o {
+            Operand::Expr { idx, .. } => match ir.expressions.get(*idx as usize) {
+                Some(n) => View::Node(n),
+                None => View::Leaf(o),
+            },
+            _ => View::Leaf(o),
+        }
+    }
+    let column = |v: &View| match v {
+        View::Leaf(Operand::Witness { name, offset: 0, .. })
+        | View::Leaf(Operand::Fixed { name, offset: 0, .. })
+        | View::Leaf(Operand::Custom { name, offset: 0, .. }) => Some(name.clone()),
+        _ => None,
+    };
+    let one = |v: &View| matches!(v, View::Leaf(Operand::Const { value }) if value == "1");
+    // `1 - s` or `s - 1`, for the column `s`.
+    let complement = |v: &View, s: &str| match v {
+        View::Node(Node::Sub { lhs, rhs }) => {
+            let (l, r) = (view(ir, lhs), view(ir, rhs));
+            (one(&l) && column(&r).as_deref() == Some(s))
+                || (column(&l).as_deref() == Some(s) && one(&r))
+        }
+        _ => false,
+    };
+    let Some(Node::Mul { lhs, rhs }) = ir.expressions.get(expr as usize) else { return None };
+    let (l, r) = (view(ir, lhs), view(ir, rhs));
+    if let Some(s) = column(&l) {
+        if complement(&r, &s) {
+            return Some(s);
+        }
+    }
+    if let Some(s) = column(&r) {
+        if complement(&l, &s) {
+            return Some(s);
+        }
+    }
+    None
 }
 
 /// The AIR's bus arguments: one `busK` per `gsum_debug_data` hint (`K` is the
@@ -863,6 +958,32 @@ fn escape_doc(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn booleanity_is_recognized_in_both_orders_and_through_intermediates() {
+        let col = |name: &str| Operand::Witness { name: name.into(), stage: 1, col: 0, offset: 0 };
+        let one = Operand::Const { value: "1".into() };
+        let expr = |idx: u32| Operand::Expr { idx, name: None };
+        let mut ir = crate::ir::tests::sample();
+        ir.expressions = vec![
+            // 0: 1 - s
+            Node::Sub { lhs: one.clone(), rhs: col("s") },
+            // 1: s * (1 - s), the complement behind an intermediate
+            Node::Mul { lhs: col("s"), rhs: expr(0) },
+            // 2: s - 1
+            Node::Sub { lhs: col("s"), rhs: one.clone() },
+            // 3: (s - 1) * s, factors swapped
+            Node::Mul { lhs: expr(2), rhs: col("s") },
+            // 4: s * (1 - r): two columns, not booleanity
+            Node::Mul { lhs: col("s"), rhs: expr(5) },
+            // 5: 1 - r
+            Node::Sub { lhs: one, rhs: col("r") },
+        ];
+        assert_eq!(boolean_column(&ir, 1).as_deref(), Some("s"));
+        assert_eq!(boolean_column(&ir, 3).as_deref(), Some("s"));
+        assert_eq!(boolean_column(&ir, 4), None);
+        assert_eq!(boolean_column(&ir, 0), None);
+    }
 
     #[test]
     fn idents_are_legal_and_keep_the_pil_shape() {

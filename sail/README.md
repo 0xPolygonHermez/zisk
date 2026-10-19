@@ -138,6 +138,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/Slot.lean` | The pilot correspondence: one slot of Main against one step of the model. |
 | `lean/Proofs/Rom.lean` | The ROM lookup: the slot's instruction derived from the program, through the bus. |
 | `lean/Proofs/BinaryAdd.lean` | BinaryAdd computes `add`: the `c` it proves is `a + b` mod 2^64. |
+| `lean/Proofs/OpBus.lean` | The 29 operation-bus provers that cannot prove `add`, each proved so. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
 ## Building
@@ -160,7 +161,7 @@ Two more targets typecheck the generated Lean, through the lake package in
 
 ```sh
 make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~87s)
-make proofs       # check lean/Proofs against them (~12s)
+make proofs       # check lean/Proofs against them (~21s)
 make lean-build   # elaborate the model            (all 14 modules build, ~6s)
 ```
 
@@ -312,11 +313,11 @@ make proofs
 ```
 
 ```
-✔ [21/22] Built Proofs
+✔ [51/52] Built Proofs
 Build completed successfully.
 ```
 
-About 12 s, most of it elaborating the model, which `Proofs/Slot.lean` imports.
+About 21 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, and the op-bus exclusions.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -642,6 +643,16 @@ So an `add` has three kinds of prover, and each needs its own argument: the
 dedicated adder's constraints, the general Binary AIR's byte-wise table
 lookups, and a table of precomputed results.
 
+**The exclusions are proved.** [`lean/Proofs/OpBus.lean`](lean/Proofs/OpBus.lean)
+proves, for each of the 29 proving arguments in the first three rows of the
+table, that its op is never 10, from the AIR's own constraints. One lemma does
+it: an op of the form `c₀ + Σ cₖ·sₖ` with every `sₖ` a bit takes one of the
+values `c₀ + Σ_{k∈S} cₖ`; `decide` checks that none is 10 (2048 subsets for
+ArithEq), and each `sₖ` is a bit by the AIR's booleanity constraint, reached by
+column name (`h.bool_sel_arith256`). All 29 check in about 3 seconds, on Lean's
+standard three axioms. Arith and BinaryExtension, ruled out only by their
+tables, are not among them.
+
 **The FROPS tables are checked, not assumed.** They are fixed data the pilout
 does not carry, compiled into `VirtualTableZisk0`. `make frops` runs
 [`check_frops.py`](check_frops.py): for every argument the virtual table
@@ -698,10 +709,11 @@ are the same template with more lanes, still to be covered.
    - the **operation bus**, which ties an external op in Main to the AIR that
      computes it, so `add`, `eq`, `ltu` and the rest can be proved. Started:
      the census of who can prove an `add` is done and the FROPS rows are
-     checked, and BinaryAdd is proved to add (see
-     [Who can prove an `add`](#who-can-prove-an-add)); what remains is the
-     exclusions in Lean, BinaryAdd's other variants, Binary's byte-wise
-     lookups, and the `add` pilot on top;
+     checked, BinaryAdd is proved to add, and the 29 provers that cannot
+     prove `add` are proved not to (see
+     [Who can prove an `add`](#who-can-prove-an-add)); what remains is
+     BinaryAdd's other variants, Binary's byte-wise lookups, the Arith and
+     BinaryExtension tables, and the `add` pilot on top;
    - the **memory bus**, for memory and register sources and stores;
    - the **range checks**, for limbs known to be below `2^32`.
 5. **Fill in the opcode table**, tracked by `make ops`, with each new opcode

@@ -24,3 +24,6 @@ moreLeanArgs = ["--tstack=400000"]
 [[lean_lib]]
 name = "Proofs"
 srcDir = "."
+# The op-bus exclusions `decide` over thousands of subset sums (OpBus.lean),
+# which needs the same stack as the model.
+moreLeanArgs = ["--tstack=400000"]
