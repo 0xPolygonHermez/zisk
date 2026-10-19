@@ -137,6 +137,7 @@ reached through the ROM lookup. See
 | `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. |
 | `lean/Proofs/Slot.lean` | The pilot correspondence: one slot of Main against one step of the model. |
 | `lean/Proofs/Rom.lean` | The ROM lookup: the slot's instruction derived from the program, through the bus. |
+| `lean/Proofs/BinaryAdd.lean` | BinaryAdd computes `add`: the `c` it proves is `a + b` mod 2^64. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
 ## Building
@@ -658,6 +659,21 @@ Two "no, given its table" entries rest on the same kind of fixed data, the
 Arith and BinaryExtension tables; `check_frops.py` is the place to check them
 too.
 
+**BinaryAdd adds — proved.** [`lean/Proofs/BinaryAdd.lean`](lean/Proofs/BinaryAdd.lean):
+at a row where BinaryAdd proves a tuple whose op is `add`, on operands that are
+the limbs of two 64-bit values `A` and `B`, the `c` limbs it proves are those of
+`A + B`. Op 10 clears `sel_sh3add` (78 is not zero in the field), the carries
+are bits by the AIR's constraints, and each `c` limb is two 16-bit chunks by
+four range checks. The range checks enter as `RangeHolds`, the guarantee of a
+sound range check, with the range read from the AIR's generated `ranges`
+(bus 104, `[0, 65535]`) rather than written in the proof. The two limb
+equations then become equations between naturals below the characteristic, and
+the rest is arithmetic. It depends on Lean's standard three axioms.
+
+The operands being the model's limbs is the job of the lookup that carries the
+tuple from Main; the variants (`BinaryAddLarge`, `Huge`, and the `Hi` family)
+are the same template with more lanes, still to be covered.
+
 ## Next steps
 
 1. **Memory and registers — done.** `rX`, `wX`, `read_mem`, `write_mem` and
@@ -682,9 +698,10 @@ too.
    - the **operation bus**, which ties an external op in Main to the AIR that
      computes it, so `add`, `eq`, `ltu` and the rest can be proved. Started:
      the census of who can prove an `add` is done and the FROPS rows are
-     checked (see [Who can prove an `add`](#who-can-prove-an-add)); what
-     remains is the Lean side — the exclusions, BinaryAdd's constraints,
-     Binary's byte-wise lookups — and the `add` pilot on top;
+     checked, and BinaryAdd is proved to add (see
+     [Who can prove an `add`](#who-can-prove-an-add)); what remains is the
+     exclusions in Lean, BinaryAdd's other variants, Binary's byte-wise
+     lookups, and the `add` pilot on top;
    - the **memory bus**, for memory and register sources and stores;
    - the **range checks**, for limbs known to be below `2^32`.
 5. **Fill in the opcode table**, tracked by `make ops`, with each new opcode

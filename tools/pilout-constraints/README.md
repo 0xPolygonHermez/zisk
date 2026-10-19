@@ -253,7 +253,10 @@ def bus87 : BusArg F (Ctx F) (Trace F) where
 ```
 
 They are data, not constraints: what an argument guarantees is stated by the
-proof that relies on it, in terms of these. `sail/lean/Proofs/Rom.lean` does
+proof that relies on it, in terms of these. The ranges the range checks use come
+the same way, from the `range_def` hints, as a `ranges` list per AIR: bus 104
+is `[0, 65535]`, for instance. A bound can stand for a negative number (its
+flag is set and the bound is its field element), as on bus 107. `sail/lean/Proofs/Rom.lean` does
 that for the ROM lookup. All 1629 such hints in the ZisK pilout are extracted;
 one whose shape is not the expected one would be listed in a comment rather
 than guessed at. The columns a bus tuple names are declared in `Row`/`Ctx` even

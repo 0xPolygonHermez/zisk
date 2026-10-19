@@ -78,6 +78,17 @@ structure BusArg (F C T : Type) where
   side : BusSide
   reps : C → T → Int → F
   tuple : List (C → T → Int → F)
+
+/-- A range a range-check bus serves, from a `range_def` hint: the values
+`min..=max` on bus `opid`. Each bound is a field element; its flag says it
+stands for a negative number, `p - |bound|`. -/
+structure RangeDef where
+  opid : Nat
+  min : Nat
+  max : Nat
+  minNeg : Bool
+  maxNeg : Bool
+  deriving DecidableEq, Repr
 "#;
 
 /// Renders one AIR. `module` is the import path of the prelude, e.g. `Pil`.
@@ -389,6 +400,17 @@ fn buses(out: &mut String, ir: &Ir, plan: &Plan, leaves: &LeanLeaves) {
             tuple.join(",\n    ")
         );
     }
+    let ranges: Vec<String> = ir
+        .range_defs()
+        .iter()
+        .map(|r| format!("⟨{}, {}, {}, {}, {}⟩", r.opid, r.min, r.max, r.min_neg, r.max_neg))
+        .collect();
+    let _ = writeln!(
+        out,
+        "/-- The ranges this AIR's range checks use, from its `range_def` hints. -/\n\
+         def ranges : List RangeDef := [{}]\n",
+        ranges.join(", ")
+    );
     let list: Vec<String> = args.iter().map(|a| format!("bus{}", a.hint)).collect();
     let _ = writeln!(
         out,

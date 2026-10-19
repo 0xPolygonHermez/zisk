@@ -280,6 +280,19 @@ impl Piop {
     }
 }
 
+/// A range a range-check bus serves, from a `range_def` hint: the values
+/// `min..=max` on bus `opid`. Each bound is a field element, decimal; its
+/// `*_neg` flag says it stands for a negative number, `p - |bound|` (bus 107's
+/// minimum is `p - 4194303`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RangeDef {
+    pub opid: String,
+    pub min: String,
+    pub max: String,
+    pub min_neg: bool,
+    pub max_neg: bool,
+}
+
 /// Which way a bus argument sends its tuple; see [`BusArg::side`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Side {
@@ -428,6 +441,12 @@ impl Ir {
         (args, skipped)
     }
 
+    /// The ranges the AIR's range checks use, one per `range_def` hint, in
+    /// hint order; a hint whose shape is not the expected one is skipped.
+    pub fn range_defs(&self) -> Vec<RangeDef> {
+        self.hints.iter().filter(|h| h.name == "range_def").filter_map(range_def).collect()
+    }
+
     pub fn use_counts(&self) -> Vec<u32> {
         let mut counts = vec![0u32; self.expressions.len()];
         for idx in self.reachable() {
@@ -446,6 +465,33 @@ impl Ir {
         }
         counts
     }
+}
+
+/// Read one `range_def` hint: `opid`, `min`, `max`, `min_neg`, `max_neg`, all
+/// constants, in a single array.
+fn range_def(h: &Hint) -> Option<RangeDef> {
+    let fields = match h.fields.as_slice() {
+        [HintField { value: HintValue::Array(fields), .. }] => fields,
+        _ => return None,
+    };
+    let constant = |name: &str| match fields.iter().find(|f| f.name.as_deref() == Some(name)) {
+        Some(HintField { value: HintValue::Operand(Operand::Const { value }), .. }) => {
+            Some(value.clone())
+        }
+        _ => None,
+    };
+    let flag = |name: &str| match constant(name)?.as_str() {
+        "0" => Some(false),
+        "1" => Some(true),
+        _ => None,
+    };
+    Some(RangeDef {
+        opid: constant("opid")?,
+        min: constant("min")?,
+        max: constant("max")?,
+        min_neg: flag("min_neg")?,
+        max_neg: flag("max_neg")?,
+    })
 }
 
 /// Read one `gsum_debug_data` hint. Its fields sit in a single array:
@@ -620,6 +666,36 @@ pub(crate) mod tests {
                 ]),
             }],
         }
+    }
+
+    #[test]
+    fn range_defs_keep_their_bounds_and_signs() {
+        let konst = |v: &str| HintValue::Operand(Operand::Const { value: v.into() });
+        let field = |name: &str, value: HintValue| HintField { name: Some(name.into()), value };
+        let mut ir = sample();
+        ir.hints = vec![Hint {
+            name: "range_def".into(),
+            fields: vec![HintField {
+                name: None,
+                value: HintValue::Array(vec![
+                    field("opid", konst("107")),
+                    field("min", konst("18446744069410390018")),
+                    field("max", konst("4194304")),
+                    field("min_neg", konst("1")),
+                    field("max_neg", konst("0")),
+                ]),
+            }],
+        }];
+        assert_eq!(
+            ir.range_defs(),
+            vec![RangeDef {
+                opid: "107".into(),
+                min: "18446744069410390018".into(),
+                max: "4194304".into(),
+                min_neg: true,
+                max_neg: false,
+            }]
+        );
     }
 
     #[test]
