@@ -150,6 +150,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/Provers.lean` | Every prover on the operation bus, collected: 61 arguments in 39 AIRs and the 12 of the FROPS table, each proved to compute the four external ops, and the run over them (`run_system`). Generated. |
 | `lean/Proofs/Segments.lean` | Across segments: from the boot state, along the continuation bus's chain of Main segments, every step is a step of the model (`run_from_boot`). |
 | `lean/Proofs/End.lean` | The program's end: from boot, the model runs the program to an end instruction and stops (`run_to_end`). |
+| `lean/Proofs/MemCheck.lean` | Offline memory checking, in the abstract: from a permutation of proved and assumed tuples and strictly increasing steps, a register read returns the last write (`reads_last_write`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
@@ -1021,6 +1022,35 @@ steps the segments hold, to an end instruction, and ends. The scope
 (`PilotProgEnd`) is the pilot's, with end instructions allowed as internal
 ops. `run_to_end_system` is the same over the operation bus's provers. About 4
 seconds, on Lean's standard three axioms.
+
+## Registers: memory checking
+
+Registers live in Main, as a linked list of accesses over the memory bus
+(10), a permutation argument ("Registers on Main" in `main.pil`). Every access
+to a register at memory step `s` proves the access before it,
+`(3, reg, prev, 8, pv)`, with `prev < s` range-checked strictly, and assumes
+itself, `(3, reg, s, 8, v)` — except the final flush of the last segment,
+which closes the chain; a global update assumes the initial zero,
+`(3, reg, 0, 8, 0)`.
+
+[`lean/Proofs/MemCheck.lean`](lean/Proofs/MemCheck.lean) proves what a sound
+permutation buys, for one register, in the abstract. If the proved tuples are a
+permutation of the assumed ones, every access's `prev` is below its step, and
+the steps are distinct, then every access proves the value of the latest
+access before it — all of which assumed one — or, for the first, the initial
+value (`reads_last_write`). The proof counts: at an access's step, the
+permutation makes the tuples pointing below it exactly as many as the writes
+below it, which forces every earlier access to be current and no later one to
+point back; an access pointing past the latest write then leads to an endless
+chain of later ones. Lean's core lists and `List.Perm` suffice, on the
+standard three axioms.
+
+What connects it to the AIRs is still to come: that no AIR but Main sends a
+register tuple on bus 10 (a census like the operation bus's — the memory
+AIRs send ops 1 and 2 as `bit + 1`, some as sums of selectors, and the Rom's
+data rows send their `flags`), the permutation stated over every bus-10
+argument, Main's register file against the model's `rX` and `wX`, and the
+runs with register sources and stores.
 
 ## The operation bus's provers
 

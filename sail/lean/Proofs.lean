@@ -13,3 +13,4 @@ import Proofs.Run
 import Proofs.Provers
 import Proofs.Segments
 import Proofs.End
+import Proofs.MemCheck
