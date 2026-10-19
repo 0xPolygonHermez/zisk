@@ -47,7 +47,19 @@ constexpr uint32_t ZISK_INPUT_ADDR_BASE   = 0x40000000u;
 constexpr uint32_t ZISK_RAM_ADDR_BASE     = 0xA0000000u;
 constexpr uint32_t ZISK_RAM_SIZE_BYTES    = 512u * 1024u * 1024u;
 constexpr uint32_t ZISK_RAM_ADDR_END      = ZISK_RAM_ADDR_BASE + ZISK_RAM_SIZE_BYTES;
+// The ROM and input regions as the CPU planner sizes them (cpp/mem_config.hpp ROM_SIZE_MB,
+// INPUT_SIZE_MB; zisk_core::mem ROM_SIZE, MAX_INPUT_SIZE). The CPU planner rejects any address
+// outside the three regions (MemCounter::addr_to_offset), and so does this one.
+constexpr uint32_t ZISK_ROM_SIZE_BYTES    = 128u * 1024u * 1024u;
+constexpr uint32_t ZISK_INPUT_SIZE_BYTES  = 1024u * 1024u * 1024u;
+static_assert(ZISK_INPUT_ADDR_BASE + ZISK_INPUT_SIZE_BYTES <= ZISK_ROM_ADDR_BASE &&
+              ZISK_ROM_ADDR_BASE + ZISK_ROM_SIZE_BYTES <= ZISK_RAM_ADDR_BASE,
+              "the input, ROM and RAM regions must not overlap");
 constexpr uint32_t ZISK_ALIGN_MASK        = 0xFFFFFFF8u;
+
+// d_invalid_mode_flag_ bits, reported by run().
+constexpr uint32_t INVALID_MODE_FLAG      = 1u;  // a memop with an unknown mode
+constexpr uint32_t INVALID_ADDR_FLAG      = 2u;  // an address outside the ROM, input and RAM regions
 
 // Per-chunk capacity for block-op spill entries. Must hold every memop that
 // could be a block-op spill candidate, which in the worst case is every memop
@@ -213,7 +225,7 @@ bool decode(MemOp op,
             *count_out = op.flags >> MOPS_BLOCK_COUNT_SBITS; return true;
 
         default:
-            atomicOr(d_invalid_mode_flag, 1u);
+            atomicOr(d_invalid_mode_flag, INVALID_MODE_FLAG);
             *count_out = 0;
             return false;
     }
@@ -432,9 +444,10 @@ void extract_sorted_packed_kernel(const uint64_t* __restrict__ d_sorted_keys,
 // PairSortGPU constants (those NOT in count_and_plan.cuh)
 // =====================================================================
 
-constexpr uint32_t N_ADDR_ROM   = 1u << 27;   // 128M
-constexpr uint32_t N_ADDR_INPUT = 1u << 30;   // 1G
-constexpr uint32_t N_ADDR_RAM   = 1u << 29;   // 512M
+// One histogram (and prefix) slot per 8-byte word of each region: compact_addr divides by 8.
+constexpr uint32_t N_ADDR_ROM   = ZISK_ROM_SIZE_BYTES   >> 3;   // 16M
+constexpr uint32_t N_ADDR_INPUT = ZISK_INPUT_SIZE_BYTES >> 3;   // 128M
+constexpr uint32_t N_ADDR_RAM   = ZISK_RAM_SIZE_BYTES   >> 3;   // 64M
 constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;
 
 
@@ -463,6 +476,12 @@ inline uint32_t expand_addr(uint32_t compact) {
     if (compact < N_ADDR_ROM)
         return (compact << 3) + ZISK_ROM_ADDR_BASE;
     return ((compact - N_ADDR_ROM) << 3) + ZISK_INPUT_ADDR_BASE;
+}
+
+// The addresses the non-RAM path counts; RAM ones go through ram_compact.
+__device__ __forceinline__ bool is_rom_or_input_addr(uint32_t raw) {
+    return (raw >= ZISK_ROM_ADDR_BASE && raw < ZISK_ROM_ADDR_BASE + ZISK_ROM_SIZE_BYTES) ||
+           (raw >= ZISK_INPUT_ADDR_BASE && raw < ZISK_INPUT_ADDR_BASE + ZISK_INPUT_SIZE_BYTES);
 }
 
 __device__ __forceinline__ uint32_t compact_addr_dev(uint32_t raw) {
@@ -503,7 +522,8 @@ void gather_ram_events_with_hist_kernel(const PotentialEmit* __restrict__ d_pote
                                         uint32_t* __restrict__ d_ram_count,
                                         uint32_t* __restrict__ d_emit_bits,
                                         uint32_t* __restrict__ d_histogram,
-                                        uint32_t* __restrict__ d_max_compact) {
+                                        uint32_t* __restrict__ d_max_compact,
+                                        uint32_t* __restrict__ d_invalid_mode_flag) {
     uint32_t local_max_rom   = 0;
     uint32_t local_max_input = 0;
 
@@ -519,14 +539,20 @@ void gather_ram_events_with_hist_kernel(const PotentialEmit* __restrict__ d_pote
             d_ram_keys[slot] = key;
             d_emit_bits[i] = 0;
         } else {
-            d_emit_bits[i] = 1;
             const uint32_t raw = emit_aligned_addr(p);
-            const uint32_t compact = compact_addr_dev(raw);
-            atomicAdd(&d_histogram[compact], 1u);
-            if (compact < N_ADDR_ROM) {
-                local_max_rom = compact;
+            if (!is_rom_or_input_addr(raw)) {
+                // No histogram slot to count it in; run() reports it.
+                d_emit_bits[i] = 0;
+                atomicOr(d_invalid_mode_flag, INVALID_ADDR_FLAG);
             } else {
-                local_max_input = compact - N_ADDR_ROM;
+                d_emit_bits[i] = 1;
+                const uint32_t compact = compact_addr_dev(raw);
+                atomicAdd(&d_histogram[compact], 1u);
+                if (compact < N_ADDR_ROM) {
+                    local_max_rom = compact;
+                } else {
+                    local_max_input = compact - N_ADDR_ROM;
+                }
             }
         }
     }
@@ -1129,11 +1155,14 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     // Worst-case total page-meta entries across all active instances.
     const size_t max_total_pages =
         ((size_t)N_ADDR + MEM_OFFSETS_PAGE_SIZE - 1) / MEM_OFFSETS_PAGE_SIZE + max_active_;
+    // d_histogram_ also backs d_pages_dense_, which reserves every instance's address range in
+    // whole pages: up to N_ADDR slots, plus a partial page per instance.
+    const size_t histogram_slots = (size_t)N_ADDR + (size_t)max_active_ * MEM_OFFSETS_PAGE_SIZE;
 
     auto fixed_bytes = [&]() -> size_t {
         size_t cur = 0;
         auto take = [&](size_t b) { cur = (cur + 255) & ~(size_t)255; cur += b; };
-        take(((size_t)N_ADDR + max_active_) * 4);  // d_histogram_ (also backs d_pages_dense_)
+        take(histogram_slots * 4);                 // d_histogram_ (also backs d_pages_dense_)
         take(((size_t)N_ADDR + 1) * 4);
         take(d_temp_hist_bytes_);
         take((size_t)max_active_ * 4);
@@ -1216,7 +1245,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         return p;
     };
 
-    d_histogram_              = (uint32_t*)take(((size_t)N_ADDR + max_active_) * 4);
+    d_histogram_              = (uint32_t*)take(histogram_slots * 4);
     d_prefix_                 = (uint32_t*)take(((size_t)N_ADDR + 1) * 4);
     d_temp_hist_              = (void*)    take(d_temp_hist_bytes_);
     d_active_ids_             = (uint32_t*)take((size_t)max_active_ * 4);
@@ -1235,7 +1264,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     // process_worker_(). reset() re-zeros the histogram only at the next
     // block boundary, after this block's compaction D2H has finished. No
     // concurrent reader (unlike d_prefix_, which build_metas_kernel reads on
-    // a separate stream). d_histogram_ is allocated N_ADDR+max_active_ so it
+    // a separate stream). d_histogram_ is allocated histogram_slots so it
     // covers d_pages_dense_'s footprint.
     d_pages_dense_            = d_histogram_;
     d_present_counters_       = (uint32_t*)take((size_t)max_active_ * 4);
@@ -1454,7 +1483,7 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
     gather_ram_events_with_hist_kernel<<<g_pot, BLOCK, 0, st>>>(
         d_potentials_[s], (uint32_t)pot,
         d_ram_keys_[s], d_ram_count_[s], d_emit_bits_[s],
-        d_histogram_, d_max_compact_);
+        d_histogram_, d_max_compact_, d_invalid_mode_flag_);
     CUDA_CHECK_LAUNCH();
 
     if (ram > 0) {
@@ -1588,10 +1617,12 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
 
         uint32_t h_invalid = 0;
         CUDA_CHECK(cudaMemcpy(&h_invalid, d_invalid_mode_flag_, 4, cudaMemcpyDeviceToHost));
-        if (h_invalid != 0) {
+        if (h_invalid & INVALID_MODE_FLAG)
             fprintf(stderr, "CountAndPlan::run FATAL: unrecognised opcode in input\n");
-            std::exit(1);
-        }
+        if (h_invalid & INVALID_ADDR_FLAG)
+            fprintf(stderr, "CountAndPlan::run FATAL: memory access outside the ROM, input and RAM "
+                            "regions\n");
+        if (h_invalid != 0) std::exit(1);
 
         prepare_global_();
         CUDA_CHECK(cudaEventRecord(e_after_prepare_, 0));
