@@ -79,3 +79,29 @@ pub const NORMALIZE_1_FREE_NO_OUTPUTS: &str = r#"template NormalizePublics(nFree
         recurser_publics[i] <== publics[i];
     }
 }"#;
+
+// With an allow-list the scaffolding feeds each leaf's allow-list index in as `programIndex`.
+pub const NORMALIZE_0_FREE_INDEXED: &str = r#"template NormalizePublics() {
+    signal input publics[ZISK_PUBLICS()];
+    signal input programIndex;
+    signal output recurser_publics[ZISK_PUBLICS()];
+    recurser_publics[0] <== publics[0] + programIndex;
+    for (var i = 1; i < ZISK_PUBLICS(); i++) {
+        recurser_publics[i] <== publics[i];
+    }
+}"#;
+
+pub const NORMALIZE_1_FREE_INDEXED: &str = r#"template NormalizePublics(nFreeInputs) {
+    signal input publics[ZISK_PUBLICS()];
+    signal input free_inputs[nFreeInputs];
+    signal input programIndex;
+    signal output recurser_publics[ZISK_PUBLICS()];
+    signal output free_outputs[nFreeInputs];
+    for (var i = 0; i < nFreeInputs; i++) {
+        free_outputs[i] <== free_inputs[i];
+    }
+    recurser_publics[0] <== publics[0] + programIndex;
+    for (var i = 1; i < ZISK_PUBLICS(); i++) {
+        recurser_publics[i] <== publics[i];
+    }
+}"#;

@@ -14,7 +14,10 @@ use std::process::Command;
 use zisk_recurser::{gen_recurser, templates::StarkInputBlocks, CircomTemplates, NormalizeCircuit};
 
 mod common;
-use common::{AGGREGATE_0_FREE, AGGREGATE_1_FREE, NORMALIZE_1_FREE};
+use common::{
+    AGGREGATE_0_FREE, AGGREGATE_1_FREE, NORMALIZE_0_FREE_INDEXED, NORMALIZE_1_FREE,
+    NORMALIZE_1_FREE_INDEXED,
+};
 
 /// The include filename the aggregator emits (`include "<verifier_filename>"`).
 const STUB_VERIFIER_FILENAME: &str = "stub_verifier.circom";
@@ -147,9 +150,16 @@ fn aggregator_circom_compiles_all_branches() {
         ("allowlist", None, AGGREGATE_0_FREE, 0, program_vks()),
         (
             "allowlist_normalize_nfree1",
-            Some(NormalizeCircuit { body: NORMALIZE_1_FREE.to_string() }),
+            Some(NormalizeCircuit { body: NORMALIZE_1_FREE_INDEXED.to_string() }),
             AGGREGATE_1_FREE,
             1,
+            program_vks(),
+        ),
+        (
+            "allowlist_normalize_nfree0",
+            Some(NormalizeCircuit { body: NORMALIZE_0_FREE_INDEXED.to_string() }),
+            AGGREGATE_0_FREE,
+            0,
             program_vks(),
         ),
     ];
@@ -164,4 +174,88 @@ fn aggregator_circom_compiles_all_branches() {
         };
         assert_compiles(label, &templates);
     }
+}
+
+/// True if `cmd` can be spawned (snarkjs exits non-zero on `--version`).
+fn tool_available(cmd: &str) -> bool {
+    Command::new(cmd).arg("--version").output().is_ok()
+}
+
+/// The leaf's allow-list position reaches NormalizePublics: the indexed normalize adds it to
+/// user public 0, and AggregatePublics passes A's normalized publics to the output.
+#[test]
+fn program_index_is_the_leafs_allow_list_position() {
+    if !circom_available() || !tool_available("node") || !tool_available("snarkjs") {
+        eprintln!("skipping: circom, node or snarkjs not found on PATH");
+        return;
+    }
+    let vks: Vec<[String; 4]> = (0..3)
+        .map(|k| {
+            [10 * (k + 1), 10 * (k + 1) + 1, 10 * (k + 1) + 2, 10 * (k + 1) + 3]
+                .map(|v| v.to_string())
+        })
+        .collect();
+    let templates = CircomTemplates {
+        normalize: Some(NormalizeCircuit { body: NORMALIZE_0_FREE_INDEXED.to_string() }),
+        aggregate_publics: AGGREGATE_0_FREE.to_string(),
+        n_free: 0,
+        n_publics_agg: zisk_recurser::templates::ZISK_PUBLICS,
+        program_vks: vks.clone(),
+    };
+    let out = gen_recurser(STUB_VERIFIER_FILENAME, &zisk_vk(), &stub_stark(), &templates).unwrap();
+
+    let dir = std::env::temp_dir().join(format!("recurser_program_index_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("agg.circom"), &out).unwrap();
+    fs::write(dir.join(STUB_VERIFIER_FILENAME), STUB_VERIFIER).unwrap();
+    fs::write(dir.join("mux1.circom"), STUB_MUX1).unwrap();
+    fs::write(dir.join("iszero.circom"), STUB_ISZERO).unwrap();
+    fs::write(dir.join("publics_helpers.circom"), STUB_PUBLICS_HELPERS).unwrap();
+    let compiled = Command::new("circom")
+        .args(["--wasm", "--prime", "goldilocks", "-l"])
+        .arg(&dir)
+        .arg(dir.join("agg.circom"))
+        .arg("-o")
+        .arg(&dir)
+        .output()
+        .unwrap();
+    assert!(compiled.status.success(), "{}", String::from_utf8_lossy(&compiled.stderr));
+
+    // A leaf's publics: flag 1, its program VK, user public 0 = 1000.
+    let leaf = |k: usize| -> Vec<String> {
+        let mut p = vec!["0".to_string(); 69];
+        p[0] = "1".into();
+        p[1..5].clone_from_slice(&vks[k]);
+        p[5] = "1000".into();
+        p
+    };
+    for k in 0..3 {
+        let input = serde_json::json!({ "a_sv_publics": leaf(k), "b_sv_publics": leaf(1), "rootCRecurserAgg": ["9", "9", "9", "9"] });
+        fs::write(dir.join("in.json"), input.to_string()).unwrap();
+        let witness = Command::new("node")
+            .arg(dir.join("agg_js/generate_witness.js"))
+            .arg(dir.join("agg_js/agg.wasm"))
+            .arg(dir.join("in.json"))
+            .arg(dir.join("w.wtns"))
+            .output()
+            .unwrap();
+        assert!(
+            witness.status.success(),
+            "program {k}: {}",
+            String::from_utf8_lossy(&witness.stderr)
+        );
+        let export = Command::new("snarkjs")
+            .arg("wej")
+            .arg(dir.join("w.wtns"))
+            .arg(dir.join("w.json"))
+            .output()
+            .unwrap();
+        assert!(export.status.success());
+        let w: Vec<String> =
+            serde_json::from_str(&fs::read_to_string(dir.join("w.json")).unwrap()).unwrap();
+        // Witness 0 is the constant 1; the main outputs follow, aggregatedPublics[5] is user public 0.
+        assert_eq!(w[1 + 5], (1000 + k).to_string(), "leaf of allow-list program {k}");
+    }
+    let _ = fs::remove_dir_all(&dir);
 }

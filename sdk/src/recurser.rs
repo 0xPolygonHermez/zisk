@@ -77,7 +77,7 @@ fn expect_template_decl(circuit: &CircomCircuit, template: &str) -> Result<()> {
 }
 
 /// Derive the 4-limb VK of each allow-listed guest program, in order, with a
-/// duplicate check. Empty input → empty output (the VK-agnostic default), so
+/// duplicate check. Empty input → empty output (an explicit `any_program` recurser), so
 /// callers pay the ELF-reading cost only when they supply an allow-list.
 ///
 /// Derived under the proving key's `hash_mode`; a verkey is only valid relative
@@ -118,6 +118,7 @@ fn derive_program_vks(programs: &[&GuestProgram], hash_mode: HashMode) -> Result
 ///
 /// ```ignore
 /// let recurser = AggregationProgramBuilder::new(load_circuit!("aggregate.circom"), 6)
+///     .programs(&[&GUEST])
 ///     .normalize(load_circuit!("normalize.circom"))
 ///     .free_inputs(1)
 ///     .build()?;
@@ -131,9 +132,10 @@ pub struct AggregationProgramBuilder<'a> {
     /// array; the generator zero-fills the remaining tail.
     n_publics_agg: usize,
     normalize: Option<CircomCircuit>,
-    /// Optional leaf allow-list. Empty = VK-agnostic (any valid leaf accepted).
-    /// Order is significant (fixes each program's `programVKs[]` index).
+    /// Leaf allow-list. Order is significant (fixes each program's `programVKs[]` index).
     programs: Vec<&'a GuestProgram>,
+    /// Explicit opt-in to accept leaves of any program (an empty allow-list).
+    any_program: bool,
 }
 
 impl<'a> AggregationProgramBuilder<'a> {
@@ -153,21 +155,31 @@ impl<'a> AggregationProgramBuilder<'a> {
             n_publics_agg,
             normalize: None,
             programs: Vec::new(),
+            any_program: false,
         }
     }
 
-    /// Optional leaf allow-list (access control). When set, the circuit accepts
-    /// only these guest programs' proofs as raw vadcop_final leaves; a leaf with
-    /// any other programVK is rejected (the proof is unsatisfiable). Omit (or
-    /// pass an empty slice) to accept any valid leaf. Order is significant and
-    /// must stay stable across runs — it is part of the `recurser_id` digest.
+    /// Leaf allow-list (access control): the circuit accepts only these guest programs'
+    /// proofs as raw vadcop_final leaves; any other programVK makes the proof unsatisfiable.
+    /// Required unless [`any_program`](Self::any_program) is set. Order is significant and
+    /// must stay stable across runs — it is part of the `recurser_id` digest. A
+    /// `NormalizePublics` that declares `signal input programIndex` receives each leaf's
+    /// position here; with two or more programs it must declare it.
     ///
-    /// Deriving each program's VK reads its ELF, so this makes `build()` heavier
-    /// than the VK-agnostic default; the cost is only paid when an allow-list is
-    /// supplied.
+    /// Deriving each program's VK reads its ELF, so this makes `build()` heavier than
+    /// [`any_program`](Self::any_program).
     #[must_use]
     pub fn programs(mut self, programs: &[&'a GuestProgram]) -> Self {
         self.programs = programs.to_vec();
+        self
+    }
+
+    /// Accept leaves of any guest program (no allow-list). Anyone can then feed this
+    /// recurser a proof of a program they wrote, so its publics are only as trustworthy as
+    /// what `NormalizePublics`/`AggregatePublics` check. Exclusive with [`programs`](Self::programs).
+    #[must_use]
+    pub fn any_program(mut self) -> Self {
+        self.any_program = true;
         self
     }
 
@@ -181,7 +193,9 @@ impl<'a> AggregationProgramBuilder<'a> {
         self
     }
 
-    /// Attach the single optional `NormalizePublics` circuit (runs on all leaves).
+    /// Attach the single optional `NormalizePublics` circuit. It runs on every proof, leaves
+    /// and aggregates alike (only a leaf's output is used), so it must be satisfiable for any
+    /// input; its `programIndex`, if declared, is 0 on an aggregate.
     #[must_use]
     pub fn normalize(mut self, circuit: impl Into<CircomCircuit>) -> Self {
         self.normalize = Some(circuit.into());
@@ -193,6 +207,21 @@ impl<'a> AggregationProgramBuilder<'a> {
     /// vadcop_final verkey — even when proving remotely it must match the
     /// workers' copy or `recurser_id` diverges.
     pub fn build(self) -> Result<Recurser> {
+        match (self.programs.is_empty(), self.any_program) {
+            (true, false) => {
+                return Err(SdkError::Recurser(
+                    "no program allow-list: pass the accepted guests with `.programs(..)`, or \
+                     accept leaves of any program explicitly with `.any_program()`"
+                        .into(),
+                ))
+            }
+            (false, true) => {
+                return Err(SdkError::Recurser(
+                    "`.programs(..)` and `.any_program()` are exclusive".into(),
+                ))
+            }
+            _ => {}
+        }
         expect_template_decl(&self.aggregate, "AggregatePublics")?;
         if let Some(circuit) = &self.normalize {
             expect_template_decl(circuit, "NormalizePublics")?;
@@ -222,9 +251,12 @@ impl<'a> AggregationProgramBuilder<'a> {
             .to_string();
 
         // Derive the optional leaf allow-list VKs. Only touches ELFs when a
-        // `programs` list was supplied — the VK-agnostic default stays cheap.
-        let hash_mode = HashMode::local().map_err(SdkError::backend)?;
-        let program_vks = derive_program_vks(&self.programs, hash_mode)?;
+        // `programs` list was supplied — an `any_program` recurser stays cheap.
+        let program_vks = if self.programs.is_empty() {
+            Vec::new()
+        } else {
+            derive_program_vks(&self.programs, HashMode::local().map_err(SdkError::backend)?)?
+        };
         let templates = zisk_recurser::CircomTemplates {
             normalize: normalize.clone(),
             aggregate_publics: self.aggregate.source().to_string(),
@@ -232,6 +264,8 @@ impl<'a> AggregationProgramBuilder<'a> {
             n_publics_agg,
             program_vks: program_vks.clone(),
         };
+        templates.validate().map_err(|e| SdkError::Recurser(e.to_string()))?;
+        let hash_mode = HashMode::local().map_err(SdkError::backend)?;
 
         let output_dir = ZiskPaths::global()
             .home
@@ -367,6 +401,51 @@ mod tests {
             output_dir: "/tmp/zisk-test-output".into(),
             vk_cache: Arc::new(OnceLock::new()),
         }
+    }
+
+    const AGGREGATE: CircomCircuit =
+        CircomCircuit::new_static("agg", "template AggregatePublics(n) {}");
+    static GUEST: GuestProgram = GuestProgram {
+        program_id: zisk_prover_backend::ProgramId::new_static("guest", "00"),
+        elf: zisk_prover_backend::Elf::from_embedded(b"not an elf"),
+    };
+
+    /// An empty allow-list accepts leaves of any program, so it must be asked for.
+    #[test]
+    fn build_requires_an_allowlist_or_explicit_any_program() {
+        let err = AggregationProgramBuilder::new(AGGREGATE, 4).build().err().expect("must refuse");
+        assert!(err.to_string().contains("any_program"), "{err}");
+    }
+
+    #[test]
+    fn any_program_and_an_allowlist_are_exclusive() {
+        let err = AggregationProgramBuilder::new(AGGREGATE, 4)
+            .programs(&[&GUEST])
+            .any_program()
+            .build()
+            .err()
+            .expect("must refuse");
+        assert!(err.to_string().contains("any_program"), "{err}");
+    }
+
+    #[test]
+    fn any_program_passes_the_allowlist_check() {
+        if let Err(err) = AggregationProgramBuilder::new(AGGREGATE, 4).any_program().build() {
+            assert!(!err.to_string().contains("any_program"), "{err}");
+        }
+    }
+
+    /// The circuits are checked before a recurser_id exists, not later at setup.
+    #[test]
+    fn build_validates_the_circuits() {
+        let normalize = CircomCircuit::new_static(
+            "norm",
+            "template NormalizePublics() { signal input publics[64]; signal input programIndex; }",
+        );
+        let err =
+            AggregationProgramBuilder::new(AGGREGATE, 4).any_program().normalize(normalize).build();
+        let err = err.err().expect("must refuse");
+        assert!(err.to_string().contains("programIndex"), "{err}");
     }
 
     /// `vk_cache` must be shared across clones — the remote `setup.rs` hook
