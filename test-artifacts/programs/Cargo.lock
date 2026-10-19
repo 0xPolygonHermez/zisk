@@ -1154,6 +1154,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "poseidon2_koalabear"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.8",
+ "zisk-precomp-helpers",
+ "ziskos",
+]
+
+[[package]]
 name = "ppv-lite86"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"

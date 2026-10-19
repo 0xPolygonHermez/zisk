@@ -9,7 +9,7 @@
 
 #![allow(unused)]
 
-use zisk_precomp_helpers::DmaInfo;
+use zisk_precomp_helpers::{DmaInfo, Poseidon2Params, POSEIDON2_KOALABEAR};
 use ziskos::zisklib::fcall_proxy;
 
 use crate::{
@@ -19,8 +19,8 @@ use crate::{
     BLAKE2B_COST, BLAKE2S_COST, BLAKE3_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST,
     DMA_MEMCMP_COST, DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST,
     EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64,
-    MAX_INPUT_SIZE, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST,
-    SYS_ADDR, TWISTED_EDWARDS_COST,
+    MAX_INPUT_SIZE, POSEIDON2_KOALABEAR_COST, POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST,
+    SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR, TWISTED_EDWARDS_COST,
 };
 use paste::paste;
 use proofman_fields::{
@@ -70,6 +70,7 @@ pub enum OpType {
     TwistedEdwards,
     Blake3,
     Blake2s,
+    Poseidon2KoalaBear,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -94,6 +95,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::TwistedEdwards => ZiskOperationType::TwistedEdwards,
             OpType::Blake3 => ZiskOperationType::Blake3,
             OpType::Blake2s => ZiskOperationType::Blake2s,
+            OpType::Poseidon2KoalaBear => ZiskOperationType::Poseidon2KoalaBear,
         }
     }
 }
@@ -122,6 +124,7 @@ impl Display for OpType {
             Self::TwistedEdwards => write!(f, "TwistedEdwards"),
             Self::Blake3 => write!(f, "Blake3"),
             Self::Blake2s => write!(f, "Blake2s"),
+            Self::Poseidon2KoalaBear => write!(f, "Poseidon2KoalaBear"),
         }
     }
 }
@@ -151,6 +154,7 @@ impl FromStr for OpType {
             "twisted_edwards" => Ok(Self::TwistedEdwards),
             "b3" => Ok(Self::Blake3),
             "b2s" => Ok(Self::Blake2s),
+            "p2kb" => Ok(Self::Poseidon2KoalaBear),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -545,7 +549,8 @@ define_ops! {
     // input_size = 8: one synthesized minimal-trace header word (count + number of loaded
     // source words), followed by the loaded words themselves via data_ext_len.
     (JumpDest, "jump_dest", Evm, JUMP_DEST_COST, 0xc0, 8, 0, opc_jump_dest, op_jump_dest, ops_jump_dest),
-    // opcpdes 0xc1-0xcf are available
+    (Poseidon2KoalaBear, "poseidon2_koalabear", Poseidon2KoalaBear, POSEIDON2_KOALABEAR_COST, 0xc1, 64, 64, opc_poseidon2_koalabear, op_poseidon2_koalabear, ops_poseidon2_koalabear),
+    // opcodes 0xc2-0xcf are available
 
     (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
     (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
@@ -824,6 +829,73 @@ pub fn op_poseidon2(_a: u64, _b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn ops_poseidon2(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 16, 16);
+}
+
+/// Poseidon2 over a 31-bit field (see `Poseidon2Params`): permutes the `W / 2` u64 words at the
+/// address in b in place, two lanes per word in the instance's memory form (`io_scale * x`). A lane
+/// that is not below P is not a valid input: the execution fails.
+#[inline(always)]
+fn opc_poseidon2_non_native<const W: usize>(
+    ctx: &mut InstContext,
+    params: &Poseidon2Params<W>,
+    name: &str,
+) {
+    let address = ctx.b;
+    if address & 0x7 != 0 {
+        panic!("opc_{name}() found address not aligned to 8 bytes");
+    }
+    let words = W / 2;
+
+    if ctx.emulation_mode == EmulationMode::ConsumeMemReads {
+        if ctx.precompiled.input_data.len() != words {
+            panic!(
+                "opc_{name}() found ctx.precompiled.input_data.len={} != {words}",
+                ctx.precompiled.input_data.len()
+            );
+        }
+    } else {
+        let mut buffer = [0u64; W];
+        let data = &mut buffer[..words];
+        for (i, d) in data.iter_mut().enumerate() {
+            *d = ctx.mem.read(address + (8 * i as u64), 8);
+        }
+        let generate = ctx.emulation_mode == EmulationMode::GenerateMemReads;
+        if generate {
+            ctx.precompiled.input_data.clear();
+            ctx.precompiled.input_data.extend_from_slice(data);
+        }
+        if let Err(lane) = params.permute_words(data) {
+            panic!("opc_{name}() found non-canonical field element at lane {lane}");
+        }
+        for (i, d) in data.iter().enumerate() {
+            ctx.mem.write(address + (8 * i as u64), *d, 8);
+        }
+        if generate {
+            ctx.precompiled.output_data.clear();
+            ctx.precompiled.output_data.extend_from_slice(data);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Poseidon2 over KoalaBear, width 16 (`POSEIDON2_KOALABEAR`).
+#[inline(always)]
+pub fn opc_poseidon2_koalabear(ctx: &mut InstContext) {
+    opc_poseidon2_non_native(ctx, &POSEIDON2_KOALABEAR, "poseidon2_koalabear");
+}
+
+/// Unimplemented. Poseidon2 KoalaBear can only be called from the system call context via
+/// InstContext. This is provided just for completeness.
+#[inline(always)]
+pub fn op_poseidon2_koalabear(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_poseidon2_koalabear() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_poseidon2_koalabear(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_direct_data(ctx, stats, 8, 8);
 }
 
 /// Performs a Poseidon1 hash over a 16 elements stored in memory at the address

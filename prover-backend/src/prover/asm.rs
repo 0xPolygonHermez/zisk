@@ -207,15 +207,6 @@ impl AsmProver {
         // and are shared/reused across program hashes. Each program still gets its
         // own AsmSharedResources; previous programs' resources stay alive in the
         // pool via Arc.
-        let asm_services = AsmServices::new(
-            world_rank,
-            local_rank,
-            elf.program_id.hash_id.as_ref().to_string(),
-            &asm_mt_path,
-            with_hints,
-            asm_runner_options,
-        )?;
-
         // Borrow proofman's already-allocated unified GPU buffer.
         // Zero values when CUDA is unavailable; downstream consumers no-op on (0, 0).
         // When --cpu-mops is set, force the planner onto CPU regardless of buffer
@@ -227,6 +218,27 @@ impl AsmProver {
             let gpu_id = pctx.first_gpu_id();
             GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize, gpu_id }
         };
+        // The device memory witness needs the GPU planner and a layout with streaming-commit
+        // slots (the window stays borrowed through the memory witnesses); decided before the
+        // memory-ops emulator starts, since its stream form follows.
+        let gpu_planner = matches!(gpu_buffer_source, GpuBufferSource::Borrowed { ptr, size, .. } if ptr != 0 && size > 0);
+        let slots = gpu_planner
+            && zisk_asm_runner::gpu_layout_has_commit_slots(pctx.get_device_buffers_ptr());
+        if gpu_planner && !slots && zisk_common::device_mem_witness() {
+            tracing::info!(
+                "[gpu] no streaming-commit slots in this layout; the memory witness stays on the CPU"
+            );
+        }
+        zisk_common::enable_device_mem_witness(slots);
+
+        let asm_services = AsmServices::new(
+            world_rank,
+            local_rank,
+            elf.program_id.hash_id.as_ref().to_string(),
+            &asm_mt_path,
+            with_hints,
+            asm_runner_options,
+        )?;
 
         let shared = Arc::new(AsmSharedResources::new(
             local_rank,
@@ -364,8 +376,17 @@ impl ProverEngine for AsmProver {
 
         let asm_mt_path_exists = check_paths_exist(&asm_mt_path).is_ok();
         let asm_rh_path_exists = check_paths_exist(&asm_rh_path).is_ok();
+        // The memory-ops emulators too: a cache another build filled has only its own forms.
+        let output_path = get_output_path(&None)?;
+        let asm_all_exist = zisk_rom_setup::get_assembly_file_paths_from_id(
+            &zisk_rom_setup::get_elf_data_hash(elf.elf()),
+            &output_path,
+            with_hints,
+        )
+        .iter()
+        .all(|f| f.exists());
 
-        if !asm_mt_path_exists || !asm_rh_path_exists {
+        if !asm_mt_path_exists || !asm_rh_path_exists || !asm_all_exist {
             if self.core_prover.asm_info.no_auto_setup {
                 return Err(anyhow::anyhow!(
                         "Assembly files not found for ELF {}. Force ROM setup is enabled, but assembly files are still missing. Please ensure that the assembly generation process has been completed successfully.",

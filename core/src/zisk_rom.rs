@@ -53,6 +53,7 @@ use crate::{
     zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, FLOAT_LIB_ROM_ADDR, ROM_ADDR, ROM_ADDR_MAX,
     ROM_ENTRY, SRC_IMM, ZISKLIB_ROM_ADDR, ZISKLIB_ROM_ADDR_MAX,
 };
+use rayon::iter::IndexedParallelIterator;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use std::collections::{BTreeMap, BTreeSet};
@@ -140,6 +141,21 @@ pub struct ZiskRom {
     /// Initialized to 0, then 1, 3, 5... every time a non-aligned instruction is added to the ROM
     /// Add this value to ROM_ADDR to get the actual address of the internal instruction
     pub last_internal_address_offset: u64,
+}
+
+/// Minimum number of instructions each rayon job initializes in `default_instructions()`.
+/// Without it, rayon splits the range down to single-item jobs; a worker waiting in `join`
+/// runs stolen jobs on its own stack, and with many threads that nesting can exceed the
+/// 2 MB worker stack (seen in debug builds on a 128-core machine).
+const DEFAULT_INSTRUCTIONS_MIN_LEN: usize = 4096;
+
+/// Allocate `n` default instructions, initialized in parallel to increase performance
+fn default_instructions(n: u64) -> Vec<ZiskInst> {
+    (0..n as usize)
+        .into_par_iter()
+        .with_min_len(DEFAULT_INSTRUCTIONS_MIN_LEN)
+        .map(|_| ZiskInst::default())
+        .collect()
 }
 
 /// ZisK ROM implementation
@@ -325,21 +341,13 @@ impl ZiskRom {
             0
         };
 
-        // Initialize in parallel to increase performance
-        self.rom_bios_instructions =
-            (0..num_bios_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
-        self.rom_program_instructions =
-            (0..num_program_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
-        self.rom_program_na_instructions =
-            (0..num_program_na_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
-        self.rom_zisklib_instructions =
-            (0..num_zisklib_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
-        self.rom_zisklib_na_instructions =
-            (0..num_zisklib_na_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
-        self.rom_float_instructions =
-            (0..num_float_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
-        self.rom_float_na_instructions =
-            (0..num_float_na_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
+        self.rom_bios_instructions = default_instructions(num_bios_instructions);
+        self.rom_program_instructions = default_instructions(num_program_instructions);
+        self.rom_program_na_instructions = default_instructions(num_program_na_instructions);
+        self.rom_zisklib_instructions = default_instructions(num_zisklib_instructions);
+        self.rom_zisklib_na_instructions = default_instructions(num_zisklib_na_instructions);
+        self.rom_float_instructions = default_instructions(num_float_instructions);
+        self.rom_float_na_instructions = default_instructions(num_float_na_instructions);
 
         // Sort pc list
         self.sorted_pc_list.sort();

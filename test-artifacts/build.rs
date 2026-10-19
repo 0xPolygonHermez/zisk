@@ -46,6 +46,7 @@ const PROGRAMS: &[&str] = &[
     "panic_modes",
     "poseidon1",
     "poseidon2",
+    "poseidon2_koalabear",
     "secp256k1",
     "secp256k1_add",
     "secp256k1_dbl",

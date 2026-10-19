@@ -54,14 +54,19 @@ inline int32_t load_from_compact_file(const char *path, size_t chunk_id, MemCoun
     return chunk_size;
 }
 
+// Aligned word accesses of a chunk of the stream (`count` words; see mops_format.hpp).
 inline uint32_t count_operations(MemCountersBusData *chunk_data, int count) {
     uint32_t ops = 0;
     uint32_t cops = 0;
-    for (int i = 0; i < count; ++i) {
-        const uint32_t bytes = chunk_data[i].flags & 0x0F;
-        const uint32_t offset = chunk_data[i].addr & 0x07;
-        const bool wr = (chunk_data[i].flags & MOPS_WRITE_FLAG) != 0;
-        if (offset == 0 && bytes == 8) {
+    const uint64_t *words = (const uint64_t *)chunk_data;
+    for (int i = 0; i < count; i += mops_record_len(words[i])) {
+        const MemCountersBusData rec = mops_decode_record(words + i);
+        const uint32_t bytes = rec.flags & 0x0F;
+        const uint32_t offset = rec.addr & 0x07;
+        const bool wr = (rec.flags & MOPS_WRITE_FLAG) != 0;
+        if (bytes >= MOPS_BLOCK_READ) {
+            cops = rec.flags >> 4;   // a block record: one access per word
+        } else if (offset == 0 && bytes == 8) {
             cops = 1;
         } else if (offset + bytes > 8) {
             if (wr) {

@@ -15,16 +15,20 @@
 //! maintaining clarity and modularity in the computation process.
 
 use crate::{
-    ports::ProofRegistry, witness::WitnessContext, AirClassifier, AsmResources, EmulatorAsm,
-    ExecutionPhase, ExecutionState, InstanceAssigner, NoopProofRegistry, PlanPhase,
-    ProofmanAdapter, StaticSMBundle, WitnessPhase,
+    plan::MemPlanArtifacts, ports::GlobalId, ports::ProofRegistry, sm::MEM_POSITION,
+    witness::WitnessContext, AirClassifier, AsmResources, EmulatorAsm, ExecutionPhase,
+    ExecutionState, InstanceAssigner, NoopProofRegistry, PlanPhase, ProofmanAdapter,
+    StaticSMBundle, WitnessPhase,
 };
 use proofman_common::{lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use proofman_witness::{WitnessComponent, WitnessManager};
+use zisk_asm_runner::OwnedMemInstances;
+use zisk_pil::{INPUT_DATA_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS};
 
 use std::{
+    collections::BTreeMap,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, RwLock,
@@ -335,6 +339,10 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             witness.set_frops_multiplicity_from_asm(from_asm);
         }
 
+        // A previous execution whose memory witness was never consumed (an execution-only run, no
+        // witness phase, no proof end) still holds the arena: hand it back before borrowing it again.
+        zisk_asm_runner::device_mem_witness_end();
+
         // Reserve proofman's unified GPU buffer for MO count-and-plan
         // (no-op on CPU / standalone).
         if is_asm_emulator {
@@ -458,52 +466,104 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         };
 
         // ────────────────────────────────────────────────────────────
-        // Phase 1.3: Plan secondary, await async, configure + populate (witness only)
+        // Phase 1.3: Plan and register the secondaries in two rounds (witness only)
         // ────────────────────────────────────────────────────────────
-        let secn_artifacts = self.plan.run_secondary(
+        // The minimal trace determines every secondary but the memory ones. Those are
+        // registered first and their inputs collected while the memory-ops runner finishes,
+        // so their witnesses do not wait for it; the memory plans form the second round.
+        let (mut secn_planning, count_and_plan_duration) = self.plan.run_secondary_mt(
             &mut counters,
             num_chunks,
             is_asm_emulator,
-            &mut backend,
             &self.state.stats,
             &_exec_scope,
         )?;
-
-        // MO runner joined in `run_secondary`; release the buffer back to proofman.
-        // Earlier error paths skip the release on purpose: the MO thread may
-        // still be using the buffer.
-        if is_asm_emulator {
-            if let Some(extras) = proofman_extras {
-                if let Some(used) = secn_artifacts.gpu_mops_used_bytes {
-                    extras.pctx().report_first_gpu_buffer_usage(used);
-                }
-                extras.release_gpu_buffer();
-            }
+        let mut mem_planning = BTreeMap::new();
+        if let Some(mem_mt_plans) = secn_planning.remove(&MEM_POSITION) {
+            mem_planning.insert(MEM_POSITION, mem_mt_plans);
         }
-
-        stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
-
-        if let (Some(witness), Some(extras)) = (self.witness.as_ref(), proofman_extras) {
-            witness.configure_sm_instances(extras.pctx(), &secn_artifacts.secn_planning);
-        }
-
-        let mut secn_plans: Vec<Plan> =
-            secn_artifacts.secn_planning.into_values().flatten().collect();
-        InstanceAssigner::assign_secn_instances(registry, global_ids, &mut secn_plans)?;
-        let secn_global_ids: Vec<usize> = secn_plans
-            .iter()
-            .map(|plan| {
-                plan.global_id
-                    .ok_or(crate::error::ExecutorError::SecnPlanMissing { phase: "assignment" })
-            })
-            .collect::<ExecutorResult<Vec<_>>>()?;
 
         registry.write_pub_outs(&pub_outs.0);
 
-        if let Some(witness) = self.witness.as_ref() {
-            witness.populate_secn_instances(&self.state, secn_plans)?;
-            witness.configure_checkpoints(registry, &self.state, &secn_global_ids)?;
-        }
+        stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
+        // Two rounds, with the first collected early and every secondary placed on registration,
+        // only when the memory airs come from the device: with the CPU witness the memory
+        // instances would need a second collect pass of their own, which costs more than the
+        // overlap gains, so that path keeps the one-round flow.
+        let two_rounds = is_asm_emulator && zisk_asm_runner::device_mem_witness_requested();
+        let first_round = self.register_secn_round(
+            registry,
+            global_ids,
+            proofman_extras,
+            secn_planning,
+            two_rounds,
+        )?;
+
+        // Collected here, early, only where this process proves them: an instance announced
+        // ready is computed by whoever announces it, and the other workers prove theirs.
+        let first_round = own_instances(registry, &first_round)?;
+        let mem_artifacts = std::thread::scope(|scope| -> ExecutorResult<MemPlanArtifacts> {
+            let collecting = match (self.witness.as_ref(), proofman_extras) {
+                (Some(witness), Some(extras)) if two_rounds && !first_round.is_empty() => {
+                    Some(scope.spawn(|| {
+                        witness.pre_calculate(
+                            extras.pctx(),
+                            extras,
+                            &self.state,
+                            &first_round,
+                            is_asm_emulator,
+                        )
+                    }))
+                }
+                _ => None,
+            };
+
+            let mut mem_artifacts =
+                self.plan.await_mem_plans(&mut backend, &self.state.stats, &_exec_scope)?;
+
+            // Round 2: the memory plans, registered and placed before the device fills so only
+            // the instances this process owns are filled, while the arena is still borrowed.
+            let mut mem_plans = std::mem::take(&mut mem_artifacts.mem_plans);
+            mem_planning.entry(MEM_POSITION).or_default().append(&mut mem_plans);
+            let (plans, ids) = self.assign_secn_round(
+                registry,
+                global_ids,
+                proofman_extras,
+                mem_planning,
+                two_rounds,
+            )?;
+            let mut release_deferred = false;
+            if let Some(device_witness) = mem_artifacts.device_witness.as_ref() {
+                let owned = owned_mem_instances(registry, &plans, &ids)?;
+                let d_buffers = proofman_extras
+                    .map(|extras| extras.pctx().get_device_buffers_ptr())
+                    .unwrap_or(std::ptr::null_mut());
+                release_deferred = device_witness.fill_owned(&owned, d_buffers);
+            }
+
+            // MO runner joined and the fills are done; release the buffer back to proofman.
+            // Earlier error paths skip the release on purpose: the MO thread may still be using
+            // the buffer. With the device witness the release follows the last owned memory
+            // instance's fill.
+            if is_asm_emulator {
+                if let Some(extras) = proofman_extras {
+                    if let Some(used) = mem_artifacts.gpu_mops_used_bytes {
+                        extras.pctx().report_first_gpu_buffer_usage(used);
+                    }
+                    if !release_deferred {
+                        extras.release_gpu_buffer();
+                    }
+                }
+            }
+            self.populate_secn_round(registry, plans, &ids)?;
+
+            if let Some(handle) = collecting {
+                handle
+                    .join()
+                    .map_err(|_| ExecutorError::SecnPlanMissing { phase: "collect" })??;
+            }
+            Ok(mem_artifacts)
+        })?;
 
         stats_end!(self.state.stats, &_config_scope);
 
@@ -526,9 +586,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let zisk_execution_time = ZiskExecutorTime {
             execution_duration: execution_duration.as_millis() as u64,
-            count_and_plan_duration: secn_artifacts.count_and_plan_duration.as_millis() as u64,
-            count_and_plan_mo_duration: secn_artifacts.count_and_plan_mo_duration.as_millis()
-                as u64,
+            count_and_plan_duration: count_and_plan_duration.as_millis() as u64,
+            count_and_plan_mo_duration: mem_artifacts.count_and_plan_mo_duration.as_millis() as u64,
             total_duration: start_total.elapsed().as_millis() as u64,
             asm_execution_duration: self.execution.get_asm_execution_info()?,
         };
@@ -553,6 +612,85 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // Store the execution result
         self.state.set_execution_result(execution_result);
 
+        Ok(())
+    }
+
+    /// Registers one round of secondary plans: SM configuration, placement, instances and
+    /// checkpoints. Returns the round's global ids.
+    fn register_secn_round(
+        &self,
+        registry: &dyn ProofRegistry,
+        global_ids: &RwLock<Vec<usize>>,
+        proofman_extras: Option<&ProofmanAdapter<'_, F>>,
+        planning: BTreeMap<usize, Vec<Plan>>,
+        place_on_registration: bool,
+    ) -> ExecutorResult<Vec<usize>> {
+        let (plans, ids) = self.assign_secn_round(
+            registry,
+            global_ids,
+            proofman_extras,
+            planning,
+            place_on_registration,
+        )?;
+        self.populate_secn_round(registry, plans, &ids)?;
+        Ok(ids)
+    }
+
+    /// The first half of a round: SM configuration and placement. Returns the plans with their
+    /// global ids, so the caller can act on the placement before the instances exist.
+    fn assign_secn_round(
+        &self,
+        registry: &dyn ProofRegistry,
+        global_ids: &RwLock<Vec<usize>>,
+        proofman_extras: Option<&ProofmanAdapter<'_, F>>,
+        planning: BTreeMap<usize, Vec<Plan>>,
+        place_on_registration: bool,
+    ) -> ExecutorResult<(Vec<Plan>, Vec<usize>)> {
+        if let (Some(witness), Some(extras)) = (self.witness.as_ref(), proofman_extras) {
+            witness.configure_sm_instances(extras.pctx(), &planning);
+        }
+
+        let mut plans: Vec<Plan> = planning.into_values().flatten().collect();
+        if place_on_registration {
+            // Placed one by one as registered, so heaviest first: the greedy placement then
+            // balances the workers as the end-of-execution sort does. Stable, so the instances of
+            // one air keep their order.
+            plans.sort_by_key(|plan| {
+                (
+                    matches!(plan.instance_type, zisk_common::InstanceType::Table),
+                    std::cmp::Reverse(registry.instance_weight(crate::ports::InstanceInfo::new(
+                        plan.airgroup_id,
+                        plan.air_id,
+                    ))),
+                )
+            });
+        }
+        InstanceAssigner::assign_secn_instances(
+            registry,
+            global_ids,
+            &mut plans,
+            place_on_registration,
+        )?;
+        let ids: Vec<usize> = plans
+            .iter()
+            .map(|plan| {
+                plan.global_id.ok_or(ExecutorError::SecnPlanMissing { phase: "assignment" })
+            })
+            .collect::<ExecutorResult<Vec<_>>>()?;
+        Ok((plans, ids))
+    }
+
+    /// The second half of a round: the instances and their checkpoints.
+    fn populate_secn_round(
+        &self,
+        registry: &dyn ProofRegistry,
+        plans: Vec<Plan>,
+        ids: &[usize],
+    ) -> ExecutorResult<()> {
+        if let Some(witness) = self.witness.as_ref() {
+            witness.populate_secn_instances(&self.state, plans)?;
+            witness.configure_checkpoints(registry, &self.state, ids)?;
+        }
         Ok(())
     }
 
@@ -639,6 +777,17 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 }
 
 impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
+    /// The proof's end: a block that still holds the arena hands it back.
+    fn end(
+        &self,
+        _pctx: Arc<ProofCtx<F>>,
+        _sctx: Arc<SetupCtx<F>>,
+        _debug_info: &proofman_common::DebugInfo,
+    ) -> ProofmanResult<()> {
+        zisk_asm_runner::device_mem_witness_end();
+        Ok(())
+    }
+
     /// Executes the ZisK ROM program and calculate the plans for main and secondary state machines.
     fn execute(
         &self,
@@ -706,6 +855,42 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         }
         Ok(())
     }
+}
+
+/// The memory instances this process proves, by family, out of the round's plans.
+fn owned_mem_instances<'a>(
+    registry: &dyn ProofRegistry,
+    plans: &'a [Plan],
+    ids: &[usize],
+) -> ExecutorResult<OwnedMemInstances<'a>> {
+    let mut owned = OwnedMemInstances::default();
+    for (plan, &gid) in plans.iter().zip(ids.iter()) {
+        if !registry.is_my_process_instance(GlobalId(gid))? {
+            continue;
+        }
+        let segment = plan.segment_id.map(|s| usize::from(s) as u32);
+        if plan.air_id == MEM_AIR_IDS[0] {
+            owned.ram.extend(segment);
+        } else if plan.air_id == ROM_DATA_AIR_IDS[0] {
+            owned.rom.extend(segment);
+        } else if plan.air_id == INPUT_DATA_AIR_IDS[0] {
+            owned.input.extend(segment);
+        } else if AirClassifier::is_mem_align(plan.air_id) {
+            owned.align.push(plan);
+        }
+    }
+    Ok(owned)
+}
+
+/// The instances of `ids` this process proves, in order.
+fn own_instances(registry: &dyn ProofRegistry, ids: &[usize]) -> ExecutorResult<Vec<usize>> {
+    let mut own = Vec::with_capacity(ids.len());
+    for &id in ids {
+        if registry.is_my_process_instance(GlobalId(id))? {
+            own.push(id);
+        }
+    }
+    Ok(own)
 }
 
 #[cfg(test)]

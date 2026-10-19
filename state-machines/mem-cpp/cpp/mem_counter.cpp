@@ -31,7 +31,11 @@ MemCounter::MemCounter(uint32_t id, std::shared_ptr<MemContext> context)
     memset(first_offset, 0xFF, sizeof(first_offset));
     memset(last_offset, 0, sizeof(last_offset));
 
-    free_slot = 0;
+    // Block 0 is never handed out: a block's first word holds the position of the
+    // previous block of the same address, and 0 there marks the address's first
+    // block. A second block chained after a first block at position 0 would look like
+    // a first block too, and the walk from get_initial_pos would skip the real one.
+    free_slot = 1;
     addr_count = 0;
 }
 
@@ -117,7 +121,7 @@ void MemCounter::execute() {
     #endif
 }
 
-void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chunk_data, uint32_t chunk_size) {
+void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chunk_words, uint32_t chunk_size) {
 
 #ifdef MEM_STATS_ACTIVE
     // Get start time for stats
@@ -127,7 +131,10 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
 
     current_chunk = chunk_id;
 
-    for (const MemCountersBusData *chunk_eod = chunk_data + chunk_size; chunk_eod != chunk_data; chunk_data++) {
+    const uint64_t *words = (const uint64_t *)chunk_words;
+    for (uint32_t w = 0; w < chunk_size; w += mops_record_len(words[w])) {
+        const MemCountersBusData rec = mops_decode_record(words + w);
+        const MemCountersBusData *chunk_data = &rec;
         const uint8_t bytes = chunk_data->flags & 0x0F;
         const uint32_t addr = chunk_data->addr;
         switch (bytes) {

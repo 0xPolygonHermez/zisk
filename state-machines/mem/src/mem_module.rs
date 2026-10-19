@@ -64,6 +64,14 @@ impl<'a> MemOps<'a> {
 }
 
 pub trait MemModule<F: Clone>: Send + Sync {
+    /// The instance from the rows the GPU planner built (`ZISK_MEM_GPU_FILL`).
+    fn compute_witness_gpu_arena(
+        &self,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<Option<AirInstance<F>>>;
     #[allow(clippy::too_many_arguments)]
     fn compute_witness(
         &self,

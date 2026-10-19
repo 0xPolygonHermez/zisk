@@ -7,6 +7,7 @@ mod common;
 mod dma;
 mod jump_dest;
 mod keccak;
+mod poseidon2;
 
 pub use arith_eq::*;
 pub use arith_eq_384::*;
@@ -20,3 +21,4 @@ pub use keccak::{
     keccak_f, keccak_f_expr, keccak_f_round, keccakf_bit_pos, keccakf_state_flatten,
     keccakf_state_from_linear, KeccakState,
 };
+pub use poseidon2::{Poseidon2Params, POSEIDON2_KOALABEAR};

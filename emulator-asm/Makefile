@@ -25,6 +25,10 @@ else ifeq ($(TRACE_TARGET),RH)
     CFLAGS += -DTRACE_TARGET_RH
     ASMFLAGS += --defsym TRACE_TARGET=2
 endif
+# Light memory-ops stream: one word per record, no values and no steps.
+ifeq ($(MOPS_LIGHT),1)
+    ASMFLAGS += --defsym MOPS_LIGHT=1
+endif
 
 # Default EMU_PATH and OUT_PATH
 EMU_PATH ?= src/emu.asm
