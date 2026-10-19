@@ -40,6 +40,12 @@ impl<F> From<ProofmanError> for WitnessError<F> {
     }
 }
 
+impl<F> From<std::io::Error> for WitnessError<F> {
+    fn from(error: std::io::Error) -> Self {
+        ProofmanError::from(error).into()
+    }
+}
+
 /// The result of [`Instance::compute_witness`].
 pub type WitnessResult<F> = Result<Option<AirInstance<F>>, WitnessError<F>>;
 
