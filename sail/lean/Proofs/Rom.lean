@@ -240,6 +240,32 @@ theorem lane_bits {x : Main.Ctx F} {t : Main.Trace F} {i : Int} (h : Main.everyR
   · exact ⟨h.bool_a_src_imm_3, h.bool_a_src_mem_3, h.bool_is_precompiled_3, h.bool_b_src_imm_3, h.bool_b_src_mem_3, h.bool_is_external_op_3, h.bool_store_pc_3, h.bool_store_mem_3, h.bool_store_ind_3, h.bool_set_pc_3, h.bool_m32_3, h.bool_b_src_ind_3, h.bool_a_src_reg_3, h.bool_b_src_reg_3, h.bool_store_reg_3⟩
   · omega
 
+/-- **The ROM lookup bounds the pc.** Whatever a lane holds, its pc column is
+the line of a Rom code row, so a 32-bit value. -/
+theorem rom_pc32 (prog : BitVec 64 → Option zisk_inst)
+    (xm : Main.Ctx F) (tm : Main.Trace F) (i : Int)
+    (xr : Rom.Ctx F) (tr : Rom.Trace F) (hr : ∀ j, Rom.everyRow xr tr j)
+    {l : Nat} (hl : l < 4)
+    (hbus : LookupHolds (romArg l) xm tm [⟨Rom.bus0, xr, tr⟩]) (hrom : RomHolds prog tr) :
+    ∃ q : BitVec 64, q.toNat < 2 ^ 32 ∧ (tm i).pc l = ((q.toNat : Nat) : F) := by
+  obtain ⟨-, -, -, -, hb⟩ := hbus
+  obtain ⟨p, hp, j, hmult, -, htup⟩ := hb i (by rw [romArg_reps]; exact one_ne_zero')
+  rw [List.mem_singleton] at hp
+  subst hp
+  simp only [Rom.bus0] at hmult
+  have hdata : (tr j).is_data = 0 := by
+    have h0 := (hr j).c0
+    simp only [Rom.c0] at h0
+    have hm' : (tr j).multiplicity ≠ 0 := by intro h; apply hmult; rw [h]; grind
+    have := congrArg (fun y => y * ((tr j).multiplicity)⁻¹) h0
+    simp only at this
+    grind
+  obtain ⟨pc', _inst, _hprog, hlt', enc⟩ := hrom j hdata
+  have t_pc := htup 0
+  rw [(romArg_tuple hl xm tm i).1] at t_pc
+  simp only [tupleAt, Rom.bus0, List.getD_cons_zero] at t_pc
+  exact ⟨pc', hlt', by rw [← enc.line]; grind⟩
+
 /-- **The ROM lookup gives the instruction, at any lane.** If Main's lane `l`
 looks its instruction up on the ROM bus, the Rom holds the program `prog`, and
 the lane's `pc` column is a 32-bit `pc`, then the program has an instruction

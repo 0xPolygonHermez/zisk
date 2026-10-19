@@ -90,6 +90,27 @@ theorem execute_internal (inst : zisk_inst) (σ : State) (pc zc st : BitVec 64)
       ha, hb, hop, hstore, hset, hend, hsp, srcA, srcB, bind, EStateM.bind, pure, EStateM.pure,
       readReg_eq, writeReg_run, hpc, hzc, hst, Std.ExtDHashMap.get?_insert]
 
+/-- What one step of the model does for an internal op that sets the pc: the
+pc jumps to `c + jmp_off1`, an indirect jump. -/
+theorem execute_setpc (inst : zisk_inst) (σ : State) (pc zc st : BitVec 64)
+    (hpc : σ.regs.get? Register.PC = some pc) (hzc : σ.regs.get? Register.Zc = some zc)
+    (hst : σ.regs.get? Register.Step = some st)
+    (ha : inst.a_src = .A_IMM ∨ inst.a_src = .A_C)
+    (hb : inst.b_src = .B_IMM ∨ inst.b_src = .B_C)
+    (hop : inst.op = .ZOP_COPYB () ∨ inst.op = .ZOP_FLAG ())
+    (hstore : inst.store = .ST_NONE) (hset : inst.set_pc = true) (hend : inst.is_end = false) :
+    let r := zisk_exec inst.op (srcA inst zc) (srcB inst zc)
+    ∃ σ', zisk_execute inst σ = .ok false σ' ∧
+      σ'.regs.get? Register.Zc = some r.1 ∧
+      σ'.regs.get? Register.Zflag = some r.2 ∧
+      σ'.regs.get? Register.PC = some (r.1 + inst.jmp_off1) ∧
+      σ'.regs.get? Register.Step = some (BitVec.addInt st 1) := by
+  rcases ha with ha | ha <;> rcases hb with hb | hb <;> rcases hop with hop | hop <;>
+  cases hsp : inst.store_pc <;>
+  · simp [zisk_execute, source_a, source_b, store_c, value_to_store, next_pc, zisk_exec,
+      ha, hb, hop, hstore, hset, hend, hsp, srcA, srcB, bind, EStateM.bind, pure, EStateM.pure,
+      readReg_eq, writeReg_run, hpc, hzc, hst, Std.ExtDHashMap.get?_insert]
+
 /-- What one step of the model does for an `add` with the pilot's sources:
 `c = a + b`, no flag, and the pc falls through. -/
 theorem execute_add (inst : zisk_inst) (σ : State) (pc zc st : BitVec 64)
@@ -241,6 +262,8 @@ structure LaneHolds (r : Row F) (l : Nat) (p0 p1 np : F) : Prop where
   fb : (1 - r.is_external_op l) * r.op l * r.flag l = 0
   npc : np = r.set_pc l * (r.c l 0 + r.jmp_offset1 l) + (1 - r.set_pc l) * (r.pc l + r.jmp_offset2 l)
     + r.flag l * (r.jmp_offset1 l - r.jmp_offset2 l)
+  fs : r.flag l * r.set_pc l = 0
+  sc1 : r.set_pc l * r.c l 1 = 0
 
 theorem laneHolds_0 {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i) :
     LaneHolds (t i) 0 (Main_previous_c_0_0 x t i) (Main_previous_c_0_1 x t i) ((t i).pc 1) where
@@ -259,6 +282,8 @@ theorem laneHolds_0 {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i) :
   fz := by have e := h.c28; simp only [c28, Zisk_direct_gsum_e_8] at e; grind
   fb := by have e := h.c29; simp only [c29] at e; grind
   npc := by have e := h.c57; simp only [c57, Main_expected_current_pc_1, Zisk_direct_gsum_e_20] at e; grind
+  fs := by have e := h.c30; simp only [c30] at e; exact e
+  sc1 := by have e := h.c31; simp only [c31] at e; exact e
 
 theorem laneHolds_1 {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i) :
     LaneHolds (t i) 1 ((t i).c 0 0) ((t i).c 0 1) ((t i).pc 2) where
@@ -277,6 +302,8 @@ theorem laneHolds_1 {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i) :
   fz := by have e := h.c53; simp only [c53, Zisk_direct_gsum_e_19] at e; grind
   fb := by have e := h.c54; simp only [c54] at e; grind
   npc := by have e := h.c81; simp only [c81, Main_expected_current_pc_2, Zisk_direct_gsum_e_30] at e; grind
+  fs := by have e := h.c55; simp only [c55] at e; exact e
+  sc1 := by have e := h.c56; simp only [c56] at e; exact e
 
 theorem laneHolds_2 {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i) :
     LaneHolds (t i) 2 ((t i).c 1 0) ((t i).c 1 1) ((t i).pc 3) where
@@ -295,6 +322,8 @@ theorem laneHolds_2 {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i) :
   fz := by have e := h.c77; simp only [c77] at e; grind
   fb := by have e := h.c78; simp only [c78, Zisk_direct_gsum_e_29] at e; grind
   npc := by have e := h.c105; simp only [c105, Zisk_direct_gsum_e_40, Main_expected_current_pc_3, Zisk_direct_gsum_e_39] at e; grind
+  fs := by have e := h.c79; simp only [c79] at e; exact e
+  sc1 := by have e := h.c80; simp only [c80] at e; exact e
 
 /-- Lane 3 hands its pc to lane 0 of the next row, when that row is in the
 same segment (`main.pil:498`, which the first row of a segment skips). -/
@@ -319,6 +348,8 @@ theorem laneHolds_3 {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i)
     have e := h'.c32
     simp only [c32, Zisk_direct_gsum_e_10, Main_expected_current_pc_0, Zisk_direct_gsum_e_9, hl, Int.add_sub_cancel] at e
     grind
+  fs := by have e := h.c103; simp only [c103] at e; exact e
+  sc1 := by have e := h.c104; simp only [c104] at e; exact e
 
 /-- On the last row of a segment, lane 3 hands its pc to the next segment, as
 the airval `segment_next_pc` (`main.pil:526`). -/
@@ -343,6 +374,8 @@ theorem laneHolds_3_last {x : Ctx F} {t : Trace F} {i : Int} (h : everyRow x t i
     have e := h.c33
     simp only [c33, Main_expected_current_pc_0_', Zisk_direct_gsum_e_11, hl] at e
     grind
+  fs := by have e := h.c103; simp only [c103] at e; exact e
+  sc1 := by have e := h.c104; simp only [c104] at e; exact e
 
 /-- Lane 0 reads the last lane of the previous row, inside a segment. -/
 theorem previous_c_0 {x : Ctx F} {t : Trace F} {i : Int} (hl : (t i).__L1__ = 0) :
@@ -392,7 +425,7 @@ theorem lane_internal {r : Row F} {l : Nat} {p0 p1 np : F} (hl : LaneHolds r l p
   obtain ⟨σ', hrun, hc, hf, hp, hs⟩ :=
     execute_internal inst σ pc zc st hpc hzc hst ha hb hop hstore hset hend
   refine ⟨σ', _, _, _, hrun, hc, hf, hp, hs, by cases (zisk_exec inst.op _ _).2 <;> simp, ?_⟩
-  obtain ⟨h41, h42, h43, h44, h45, h46, h47, h48, h49, h50, h51, h52, h53, h54, h81⟩ := hl
+  obtain ⟨h41, h42, h43, h44, h45, h46, h47, h48, h49, h50, h51, h52, h53, h54, h81, -, -⟩ := hl
   obtain ⟨hw1, hw2⟩ := hwrap
   have p1' := pc_add (F := F) pc inst.jmp_off1 hw1
   have p2' := pc_add (F := F) pc inst.jmp_off2 hw2
@@ -408,6 +441,30 @@ theorem lane_internal {r : Row F} {l : Nat} {p0 p1 np : F} (hl : LaneHolds r l p
     simp only [srcA, srcB, ha, hb, hop, zisk_exec, cond_true, cond_false, lo_zeros, hi_zeros,
       bit, if_true, if_false, Bool.false_eq_true, p1', p2']
     grind
+
+/-- A lane holding an internal op: its `c` and `flag` are the op's, whatever
+the instruction does with the pc. -/
+theorem lane_cf {r : Row F} {l : Nat} {p0 p1 np : F} (hl : LaneHolds r l p0 p1 np)
+    (inst : zisk_inst) (pc zc : BitVec 64)
+    (ha : inst.a_src = .A_IMM ∨ inst.a_src = .A_C)
+    (hb : inst.b_src = .B_IMM ∨ inst.b_src = .B_C)
+    (hop : inst.op = .ZOP_COPYB () ∨ inst.op = .ZOP_FLAG ())
+    (hslot : SlotHolds r l inst pc) (hprev : p0 = lo zc ∧ p1 = hi zc) :
+    r.c l 0 = lo (zisk_exec inst.op (srcA inst zc) (srcB inst zc)).1 ∧
+      r.c l 1 = hi (zisk_exec inst.op (srcA inst zc) (srcB inst zc)).1 ∧
+      r.flag l = bit (zisk_exec inst.op (srcA inst zc) (srcB inst zc)).2 := by
+  obtain ⟨h41, h42, h43, h44, h45, h46, h47, h48, h49, h50, h51, h52, h53, h54, -, -, -⟩ := hl
+  obtain ⟨rfl, rfl⟩ := hprev
+  rcases hslot with ⟨s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, -, -, -, -, -⟩
+  rcases ha with ha | ha <;> rcases hb with hb | hb <;> rcases hop with hop | hop <;>
+  · simp only [ha, hb, hop, bit, opcode, isExternal, isAImm, isAMem, isAReg, isBImm,
+      isBMem, isBInd, isBReg, Bool.false_eq_true, if_false, if_true, Lean.Grind.Semiring.natCast_zero,
+      Lean.Grind.Semiring.natCast_one] at s1 s2 s3 s6 s7 s8 s9 s12 s13
+    simp only [s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13]
+      at h41 h42 h43 h44 h45 h46 h47 h48 h49 h50 h51 h52 h53 h54
+    simp only [srcA, srcB, ha, hb, hop, zisk_exec, lo_zeros, hi_zeros,
+      bit, if_true, if_false, Bool.false_eq_true]
+    refine ⟨?_, ?_, ?_⟩ <;> grind
 
 /-- **One slot, one step**: `lane_internal` at slot 1, whose neighbours are
 slots 0 and 2 of the same row. The constraints used are `main.pil:456`–`503`

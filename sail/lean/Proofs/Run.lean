@@ -230,14 +230,20 @@ theorem run_internal (prog : BitVec 64 → Option zisk_inst) (hprog : InternalPr
 
 /-! ### All six opcodes -/
 
-/-- An instruction the pilot covers, of any of the six modeled opcodes. -/
+/-- A jump offset of at most 31 bits, either way: what an indirect jump adds
+to a 32-bit `c`. -/
+def ShortJump (j : BitVec 64) : Prop := -2 ^ 31 ≤ j.toInt ∧ j.toInt < 2 ^ 31
+
+/-- An instruction the pilot covers, of any of the six modeled opcodes. It may
+set the pc — an indirect jump — if its op is internal and its `jmp_off1` short. -/
 structure Pilot (inst : zisk_inst) : Prop where
   a : inst.a_src = .A_IMM ∨ inst.a_src = .A_C
   b : inst.b_src = .B_IMM ∨ inst.b_src = .B_C
   op : inst.op = .ZOP_COPYB () ∨ inst.op = .ZOP_FLAG () ∨ inst.op = .ZOP_ADD () ∨
     inst.op = .ZOP_LTU () ∨ inst.op = .ZOP_EQ () ∨ inst.op = .ZOP_AND ()
   store : inst.store = .ST_NONE
-  set_pc : inst.set_pc = false
+  set_pc : inst.set_pc = true →
+    (inst.op = .ZOP_COPYB () ∨ inst.op = .ZOP_FLAG ()) ∧ ShortJump inst.jmp_off1
   is_end : inst.is_end = false
 
 /-- Every instruction of `prog` is one the pilot covers, with both jumps
@@ -258,6 +264,73 @@ give, prover by prover, and `Provers.lean` collects. -/
 def OpsProved (ps : List (Prover F)) : Prop :=
   ∀ p ∈ ps, OpsOk p
 
+/-- **One lane, one indirect jump.** A lane holding an internal op with
+`set_pc` jumps to `c + jmp_off1`. Main computes that target as
+`c₀ + jmp_offset1`, with `c₁ = 0` (`main.pil:489`) and no flag
+(`main.pil:478`); if the next pc column is a 32-bit `q` — the next step's ROM
+lookup gives one — the target is `q` exactly, as the model's 64-bit addition
+gives it: both sides are below the characteristic, so the field equation is an
+equation between integers. -/
+theorem lane_setpc {r : Main.Row F} {l : Nat} {p0 p1 np : F} (hl : LaneHolds r l p0 p1 np)
+    (inst : zisk_inst) (σ : State) (pc zc st : BitVec 64)
+    (hpc : σ.regs.get? Register.PC = some pc) (hzc : σ.regs.get? Register.Zc = some zc)
+    (hst : σ.regs.get? Register.Step = some st)
+    (ha : inst.a_src = .A_IMM ∨ inst.a_src = .A_C)
+    (hb : inst.b_src = .B_IMM ∨ inst.b_src = .B_C)
+    (hop : inst.op = .ZOP_COPYB () ∨ inst.op = .ZOP_FLAG ())
+    (hstore : inst.store = .ST_NONE) (hset : inst.set_pc = true) (hend : inst.is_end = false)
+    (hslot : SlotHolds r l inst pc) (hprev : p0 = lo zc ∧ p1 = hi zc)
+    (hj : ShortJump inst.jmp_off1) (q : BitVec 64) (hq : q.toNat < 2 ^ 32)
+    (hnp : np = ((q.toNat : Nat) : F)) :
+    ∃ σ' c, zisk_execute inst σ = .ok false σ' ∧ σ'.regs.get? Register.Zc = some c ∧
+      σ'.regs.get? Register.PC = some q ∧
+      σ'.regs.get? Register.Step = some (Sail.BitVec.addInt st 1) ∧
+      r.c l 0 = lo c ∧ r.c l 1 = hi c := by
+  obtain ⟨σ', hrun, hc, -, hp, hs⟩ :=
+    execute_setpc inst σ pc zc st hpc hzc hst ha hb hop hstore hset hend
+  obtain ⟨c0, c1, cf⟩ := lane_cf hl inst pc zc ha hb hop hslot hprev
+  refine ⟨σ', _, hrun, hc, ?_, hs, c0, c1⟩
+  rw [hp]
+  congr 1
+  generalize hR : (zisk_exec inst.op (srcA inst zc) (srcB inst zc)) = R at c0 c1 cf ⊢
+  -- The lane's set_pc is 1, so its flag is 0 and its `c₁` is 0.
+  have s14 := hslot.set_pc
+  have s15 := hslot.jmp_offset1
+  rw [hset] at s14
+  simp only [bit, if_true] at s14
+  have hfs := hl.fs
+  have hsc := hl.sc1
+  have hn := hl.npc
+  rw [s14] at hfs hsc hn
+  have hf0 : r.flag l = 0 := by grind
+  have hc1 : r.c l 1 = 0 := by grind
+  -- `c` is below 2^32.
+  have hhi : R.1.toNat / 2 ^ 32 = 0 := by
+    have h' : ((R.1.toNat / 2 ^ 32 : Nat) : F) = ((0 : Nat) : F) := by
+      rw [Lean.Grind.Semiring.natCast_zero, ← hc1, c1, hi]
+    exact natCast_inj (F := F) (by have := R.1.isLt; unfold goldilocks; omega)
+      (by unfold goldilocks; omega) h'
+  -- The target, in the field: `q = c₀ + jmp_offset1`.
+  have hfield : ((q.toNat : Nat) : F) = ((R.1.toNat % 2 ^ 32 : Nat) : F) + off inst.jmp_off1 := by
+    rw [← hnp, hn, hf0, ← s15, c0, lo]; grind
+  have hint : (((q.toNat : Nat) : Int) : F) =
+      ((((R.1.toNat % 2 ^ 32 : Nat) : Int) + inst.jmp_off1.toInt : Int) : F) := by
+    rw [Lean.Grind.Ring.intCast_natCast, Lean.Grind.Ring.intCast_add,
+      Lean.Grind.Ring.intCast_natCast, hfield, off]
+  have hmod := (Lean.Grind.IsCharP.intCast_ext_iff (p := goldilocks)).mp hint
+  obtain ⟨hj0, hj1⟩ := hj
+  have hR1 := R.1.isLt
+  have heq : ((q.toNat : Nat) : Int) = ((R.1.toNat % 2 ^ 32 : Nat) : Int) + inst.jmp_off1.toInt := by
+    unfold goldilocks at hmod; omega
+  -- So the 64-bit sum is `q`.
+  apply BitVec.eq_of_toNat_eq
+  have hz : (((R.1 + inst.jmp_off1).toNat : Nat) : Int) = (R.1.toNat : Int) + inst.jmp_off1.toInt := by
+    rw [BitVec.toNat_add]
+    have := BitVec.toInt_eq_toNat_cond inst.jmp_off1
+    have := inst.jmp_off1.isLt
+    split at * <;> omega
+  omega
+
 /-- **One step of any of the six opcodes, at one lane.** Lane `l` of row `i`,
 with its constraints `LaneHolds` for whatever neighbours it has, reads the
 model's `c` and sits at the model's pc: the step there executes the program's
@@ -271,6 +344,7 @@ theorem step_core (prog : BitVec 64 → Option zisk_inst) (hprog : PilotProg pro
     (hrom : RomHolds prog tr)
     (ps : List (Prover F)) (hops : LookupHolds (opArg l) xm tm ps) (hpr : OpsProved ps)
     {p0 p1 np : F} (hlane : LaneHolds (tm i) l p0 p1 np)
+    (hq : ∃ q : BitVec 64, q.toNat < 2 ^ 32 ∧ np = ((q.toNat : Nat) : F))
     (σ : State) (pc zc : BitVec 64) (hσ : Ready σ pc zc)
     (hcol : (tm i).pc l = ((pc.toNat : Nat) : F)) (hprev : p0 = lo zc ∧ p1 = hi zc) :
     ∃ inst σ' pc' c, prog pc = some inst ∧ zisk_execute inst σ = .ok false σ' ∧
@@ -279,7 +353,16 @@ theorem step_core (prog : BitVec 64 → Option zisk_inst) (hprog : PilotProg pro
   obtain ⟨hpc, hzc, ⟨st, hst⟩, hpc32⟩ := hσ
   obtain ⟨inst, hinst, hslot⟩ :=
     rom_lane prog xm tm i hmi xr tr hr hl4 hbus hrom pc hpc32 hcol
-  obtain ⟨⟨ha, hb, hop, hstore, hset, hend⟩, hl1, hl2⟩ := hprog pc inst hinst
+  obtain ⟨⟨ha, hb, hop, hstore, hset', hend⟩, hl1, hl2⟩ := hprog pc inst hinst
+  cases hset : inst.set_pc
+  case true =>
+    -- An indirect jump: the next pc is the 32-bit `q` the next pc column holds.
+    obtain ⟨hint, hj⟩ := hset' hset
+    obtain ⟨q, hq32, hnq⟩ := hq
+    obtain ⟨σ', c, hrun, hc, hp, hst', hc0, hc1⟩ :=
+      lane_setpc hlane inst σ pc zc st hpc hzc hst ha hb hint hstore hset hend hslot hprev hj
+        q hq32 hnq
+    exact ⟨inst, σ', q, c, hinst, hrun, ⟨hp, hc, ⟨_, hst'⟩, hq32⟩, hnq, hc0, hc1⟩
   have hw : NoWrap pc inst.jmp_off1 ∧ NoWrap pc inst.jmp_off2 := ⟨hl1.noWrap, hl2.noWrap⟩
   have key : ∃ σ' c flag pc', zisk_execute inst σ = .ok false σ' ∧
       σ'.regs.get? Register.Zc = some c ∧
@@ -327,7 +410,9 @@ theorem step_pilot (prog : BitVec 64 → Option zisk_inst) (hprog : PilotProg pr
   obtain ⟨hcol, hp0, hp1⟩ := henc
   obtain ⟨inst, σ', pc', c, hinst, hrun, hσ', hnp, hc0, hc1⟩ :=
     step_core prog hprog xm tm (hm s.row) xr tr hr s.lt (hbus s.lane s.lt) hrom ps
-      (hops s.lane s.lt) hpr (laneHolds_at hm hs) σ pc zc hσ hcol ⟨hp0, hp1⟩
+      (hops s.lane s.lt) hpr (laneHolds_at hm hs)
+      (rom_pc32 prog xm tm s.next.row xr tr hr s.next.lt (hbus s.next.lane s.next.lt) hrom)
+      σ pc zc hσ hcol ⟨hp0, hp1⟩
   refine ⟨inst, σ', pc', c, hinst, hrun, hσ', hnp, ?_, ?_⟩
   · rw [prevC_next hs 0 (.inl rfl)]; exact hc0
   · rw [prevC_next hs 1 (.inr rfl)]; exact hc1

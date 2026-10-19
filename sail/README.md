@@ -174,7 +174,7 @@ Two more targets typecheck the generated Lean, through the lake package in
 
 ```sh
 make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~87s)
-make proofs       # check lean/Proofs against them (~95s)
+make proofs       # check lean/Proofs against them (~100s)
 make lean-build   # elaborate the model            (all 14 modules build, ~6s)
 ```
 
@@ -337,7 +337,7 @@ make proofs
 Build completed successfully.
 ```
 
-About 95 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, and the program's end.
+About 100 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, and the program's end.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -420,9 +420,10 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
 
 ### And what it does not
 
-- **The correspondence is a pilot.** Six opcodes, two sources, no stores, no
-  `set_pc`; an end instruction must be an internal op. The rest is steps 4
-  to 6 of [Next steps](#next-steps).
+- **The correspondence is a pilot.** Six opcodes, two sources, no stores;
+  `set_pc` only on internal ops with a short `jmp_off1`, and an end
+  instruction must be an internal op. The rest is steps 4 to 6 of
+  [Next steps](#next-steps).
 - **Bus arguments are assumed sound, not derived.** The ROM lookup's guarantee
   (`LookupHolds`) and the ROM's contents (`RomHolds`) are hypotheses; the gsum
   columns and the global constraints that enforce a bus are not modeled.
@@ -929,7 +930,8 @@ instruction the model executes at each step, and the constraints that it
 executes it as `zisk_execute` does. The scope is the pilot's, stated over the
 whole program (`InternalProg`): every instruction is `copyb` or `flag`, with
 immediate or `c` sources, no store and no `set_pc`, and both its jumps land in
-the 32-bit pc range (`PilotProg` allows the four external ops too). A run stays
+the 32-bit pc range (`PilotProg` allows the four external ops too, and
+indirect jumps, see [Indirect jumps](#indirect-jumps)). A run stays
 within one segment; crossing to the next is
 [Across segments](#across-segments). Standard three axioms; `Run.lean` checks
 in about a second.
@@ -971,6 +973,27 @@ over the operation bus's provers of `Provers.lean`.
 Besides the buses' soundness, a segment (`Segment`) assumes the setup's
 `__L1__`: 1 on row 0, 0 on the others. The file checks in about two seconds,
 on Lean's standard three axioms.
+
+## Indirect jumps
+
+An instruction with `set_pc` jumps to `c + jmp_off1`: how ZisK returns from a
+call, and how the BIOS jumps to its end. Main needs no bus for it — the pc
+transition computes the target as `c₀ + jmp_offset1`, with `set_pc·c₁ = 0`
+(`main.pil:489`) and `flag·set_pc = 0` (`main.pil:478`) — but the target is
+data, not a static offset, so no property of the program bounds it. The bound
+comes from the trace instead: the next step's ROM lookup puts a 32-bit value
+in its pc column (`rom_pc32`), the next segment's first lookup does for a
+segment's last step (`ChainHolds.next_pc32`), and the closing global update
+does at the end.
+
+`lane_setpc` ([`Run.lean`](lean/Proofs/Run.lean)): given that bound, the
+target is exactly the model's 64-bit `c + jmp_off1`. `c₁ = 0` puts `c` below
+2^32, a short `jmp_off1` (`ShortJump`, 31 bits either way) keeps the sum in a
+range far below the characteristic, so the field equation
+`q = c₀ + jmp_offset1` is an equation between integers. `step_core` takes the
+next pc column's bound as a hypothesis and handles both kinds of step, so the
+runs, from boot to the end, now cover programs whose internal ops set the pc.
+`set_pc` on an external op is not covered yet.
 
 ## The program's end
 

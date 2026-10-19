@@ -102,8 +102,13 @@ theorem Ready.hasRegs {σ : State} {pc zc : BitVec 64} (h : Ready σ pc zc) : Ha
 theorem HasRegs.step {inst : zisk_inst} (hi : Pilot inst) {σ σ' : State} (hσ : HasRegs σ)
     (hrun : zisk_execute inst σ = .ok false σ') : HasRegs σ' := by
   obtain ⟨⟨pc, hpc⟩, ⟨zc, hzc⟩, ⟨st, hst⟩⟩ := hσ
-  obtain ⟨ha, hb, hop, hstore, hset, hend⟩ := hi
+  obtain ⟨ha, hb, hop, hstore, hset', hend⟩ := hi
   have key : ∃ σ'', zisk_execute inst σ = .ok false σ'' ∧ HasRegs σ'' := by
+    cases hset : inst.set_pc
+    case true =>
+      obtain ⟨σ'', h1, h2, -, h4, h5⟩ :=
+        execute_setpc inst σ pc zc st hpc hzc hst ha hb (hset' hset).1 hstore hset hend
+      exact ⟨σ'', h1, ⟨_, h4⟩, ⟨_, h2⟩, ⟨_, h5⟩⟩
     rcases hop with h | h | h | h | h | h
     · obtain ⟨σ'', h1, h2, -, h4, h5⟩ :=
         execute_internal inst σ pc zc st hpc hzc hst ha hb (.inl h) hstore hset hend
@@ -174,14 +179,22 @@ def ChainCloses (fin : BitVec 64) (segs : List (Segment xr tr ps)) : Prop :=
 segment's exit airvals encode the state they reach. -/
 theorem run_all_segments (prog : BitVec 64 → Option zisk_inst) (hprog : PilotProg prog)
     (hr : ∀ j, Rom.everyRow xr tr j) (hrom : RomHolds prog tr) (hpr : OpsProved ps)
-    (boot : BitVec 64) (segs : List (Segment xr tr ps)) (hc : ChainHolds boot segs)
+    (boot fin : BitVec 64) (segs : List (Segment xr tr ps)) (hc : ChainHolds boot segs)
+    (hcl : ChainCloses fin segs) (hfin : fin.toNat < 2 ^ 32)
     (hlen : 0 < segs.length) (σ₀ : State) (h₀ : Ready σ₀ boot 0) :
     ∃ σ pc zc, Runs prog (segs.length * segSteps) σ₀ σ ∧ Ready σ pc zc ∧
       (segs[segs.length - 1]'(by omega)).Exit pc zc := by
   obtain ⟨σ, pc, zc, hruns, hσ, hin⟩ :=
     run_segments prog hprog hr hrom hpr boot segs hc σ₀ h₀ (segs.length - 1) (by omega)
+  -- The last segment hands on the end pc, which is 32-bit.
+  have hq : ∃ q : BitVec 64, q.toNat < 2 ^ 32 ∧
+      (segs[segs.length - 1]'(by omega)).x.Main_segment_next_pc = ((q.toNat : Nat) : F) := by
+    have e3 := hcl hlen 3
+    simp only [tupleAt, Main.bus715, endTuple, List.getD_cons_zero, List.getD_cons_succ,
+      Lean.Grind.Semiring.add_zero] at e3
+    exact ⟨fin, hfin, e3⟩
   obtain ⟨σ', pc', zc', hrun, hσ', hex⟩ :=
-    (segs[segs.length - 1]'(by omega)).run prog hprog hr hrom hpr σ pc zc hσ (hin (by omega))
+    (segs[segs.length - 1]'(by omega)).run prog hprog hr hrom hpr hq σ pc zc hσ hin
   refine ⟨σ', pc', zc', ?_, hσ', hex⟩
   have := hruns.append hrun
   rwa [← Nat.succ_mul, Nat.succ_eq_add_one, Nat.sub_add_cancel hlen] at this
@@ -206,7 +219,8 @@ theorem run_to_end (prog : BitVec 64 → Option zisk_inst) (hprog : PilotProgEnd
       σ.regs.get? Register.PC = some pc ∧ prog pc = some e ∧ e.is_end = true ∧
       zisk_execute e σ = .ok true σe := by
   obtain ⟨σ, pc, zc, hruns, hσ, hex⟩ :=
-    run_all_segments (mainView prog) hprog.mainView hr hrom.mainView hpr boot segs hc hlen σ₀ h₀
+    run_all_segments (mainView prog) hprog.mainView hr hrom.mainView hpr boot fin segs hc hcl hfin
+      hlen σ₀ h₀
   -- The closing: the last exit pc is `fin`.
   have e3 := hcl hlen 3
   simp only [tupleAt, Main.bus715, endTuple, List.getD_cons_zero, List.getD_cons_succ,

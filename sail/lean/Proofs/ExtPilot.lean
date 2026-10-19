@@ -96,7 +96,7 @@ theorem lane_sources {r : Main.Row F} {l : Nat} {p0 p1 np : F} (hl : LaneHolds r
     (hprev : p0 = lo zc ∧ p1 = hi zc) :
     (r.a l 0 = lo (srcA inst zc) ∧ r.a l 1 = hi (srcA inst zc)) ∧
       (r.b l 0 = lo (srcB inst zc) ∧ r.b l 1 = hi (srcB inst zc)) := by
-  obtain ⟨h41, h42, h43, h44, -, -, h47, h48, h49, h50, -, -, -, -, -⟩ := hl
+  obtain ⟨h41, h42, h43, h44, -, -, h47, h48, h49, h50, -, -, -, -, -, -, -⟩ := hl
   obtain ⟨rfl, rfl⟩ := hprev
   rcases hslot with ⟨s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, -, -, -, -, -, -, -⟩
   rcases ha with ha | ha <;> rcases hb with hb | hb <;>

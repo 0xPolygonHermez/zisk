@@ -148,7 +148,9 @@ theorem Segment.entry_encodes (G : Segment xr tr ps) {pc zc : BitVec 64} (h : G.
 /-- **The last step leaves the exit airvals encoding its result.** -/
 theorem Segment.exit_step (G : Segment xr tr ps) (prog : BitVec 64 → Option zisk_inst)
     (hprog : PilotProg prog) (hr : ∀ j, Rom.everyRow xr tr j) (hrom : RomHolds prog tr)
-    (hpr : OpsProved ps) (σ : State) (pc zc : BitVec 64) (hσ : Ready σ pc zc)
+    (hpr : OpsProved ps)
+    (hq : ∃ q : BitVec 64, q.toNat < 2 ^ 32 ∧ G.x.Main_segment_next_pc = ((q.toNat : Nat) : F))
+    (σ : State) (pc zc : BitVec 64) (hσ : Ready σ pc zc)
     (henc : Encodes G.x G.t Pos.last pc zc) :
     ∃ inst σ' pc' zc', prog pc = some inst ∧ zisk_execute inst σ = .ok false σ' ∧
       Ready σ' pc' zc' ∧ G.Exit pc' zc' := by
@@ -161,7 +163,7 @@ theorem Segment.exit_step (G : Segment xr tr ps) (prog : BitVec 64 → Option zi
   have hlane := laneHolds_3_last (G.rows ((Main.numRows : Int) - 1)) hl
   obtain ⟨inst, σ', pc', c, hinst, hrun, hσ', hnp, hc0, hc1⟩ :=
     step_core prog hprog G.x G.t (G.rows _) xr tr hr (l := 3) (by omega) (G.rom 3 (by omega))
-      hrom ps (G.ops 3 (by omega)) hpr hlane σ pc zc hσ hcol ⟨hp0, hp1⟩
+      hrom ps (G.ops 3 (by omega)) hpr hlane hq σ pc zc hσ hcol ⟨hp0, hp1⟩
   have e0 := (G.rows ((Main.numRows : Int) - 1)).c106
   have e1 := (G.rows ((Main.numRows : Int) - 1)).c107
   simp only [Main.c106, Main.c107, hl] at e0 e1
@@ -200,10 +202,13 @@ theorem Segment.run_within (G : Segment xr tr ps) (prog : BitVec 64 → Option z
 
 /-- **A whole segment.** From its entry airvals, a segment forces
 `4·numRows` steps of the model, and its exit airvals encode the state they
-reach. -/
+reach. The exit pc must be a 32-bit value — the next segment's first pc, or
+the end pc — which bounds an indirect jump at the segment's last step. -/
 theorem Segment.run (G : Segment xr tr ps) (prog : BitVec 64 → Option zisk_inst)
     (hprog : PilotProg prog) (hr : ∀ j, Rom.everyRow xr tr j) (hrom : RomHolds prog tr)
-    (hpr : OpsProved ps) (σ : State) (pc zc : BitVec 64) (hσ : Ready σ pc zc)
+    (hpr : OpsProved ps)
+    (hq : ∃ q : BitVec 64, q.toNat < 2 ^ 32 ∧ G.x.Main_segment_next_pc = ((q.toNat : Nat) : F))
+    (σ : State) (pc zc : BitVec 64) (hσ : Ready σ pc zc)
     (hin : G.Entry pc zc) :
     ∃ σ' pc' zc', Runs prog segSteps σ σ' ∧ Ready σ' pc' zc' ∧ G.Exit pc' zc' := by
   obtain ⟨σ₁, pc₁, zc₁, hruns, hσ₁, henc⟩ :=
@@ -211,7 +216,7 @@ theorem Segment.run (G : Segment xr tr ps) (prog : BitVec 64 → Option zisk_ins
       σ pc zc hσ hin
   rw [first_after_last] at henc
   obtain ⟨inst, σ', pc', zc', hinst, hrun, hσ', hex⟩ :=
-    G.exit_step prog hprog hr hrom hpr σ₁ pc₁ zc₁ hσ₁ henc
+    G.exit_step prog hprog hr hrom hpr hq σ₁ pc₁ zc₁ hσ₁ henc
   refine ⟨σ', pc', zc', ?_, hσ', hex⟩
   have := hruns.append (Runs.one hσ₁.1 hinst hrun)
   rwa [Nat.sub_add_cancel (by simp [segSteps, Main.numRows])] at this
@@ -266,25 +271,41 @@ theorem ChainHolds.entry_next {boot : BitVec 64} {segs : List (Segment xr tr ps)
   obtain ⟨x3, x4, x5⟩ := hex
   exact ⟨e3.trans x3, e4.trans x4, e5.trans x5⟩
 
-/-- **Whole segments from boot.** Along the chain, the first `k` segments
-force `k·4·numRows` steps of the model from the boot state, and the state they
-reach is the next segment's entry. -/
+/-- A segment followed by another hands on a 32-bit pc: the next segment's
+first pc, which its ROM lookup bounds. -/
+theorem ChainHolds.next_pc32 (prog : BitVec 64 → Option zisk_inst)
+    (hr : ∀ j, Rom.everyRow xr tr j) (hrom : RomHolds prog tr) {boot : BitVec 64}
+    {segs : List (Segment xr tr ps)} (hc : ChainHolds boot segs) {k : Nat}
+    (h : k + 1 < segs.length) :
+    ∃ q : BitVec 64, q.toNat < 2 ^ 32 ∧ segs[k].x.Main_segment_next_pc = ((q.toNat : Nat) : F) := by
+  have e3 := hc.next k h 3
+  simp only [tupleAt, Main.bus714, Main.bus715, List.getD_cons_zero, List.getD_cons_succ,
+    Lean.Grind.Semiring.add_zero] at e3
+  have e := (segs[k + 1].rows 0).c211
+  simp only [Main.c211, segs[k + 1].first] at e
+  obtain ⟨q, hq, hcol⟩ := rom_pc32 prog segs[k + 1].x segs[k + 1].t 0 xr tr hr (l := 0)
+    (by omega) (segs[k + 1].rom 0 (by omega)) hrom
+  exact ⟨q, hq, by rw [← e3, ← hcol]; grind⟩
+
+/-- **Whole segments from boot.** Along the chain, the segments before the
+`k`-th force `k·4·numRows` steps of the model from the boot state, and the
+state they reach is the `k`-th segment's entry. -/
 theorem run_segments (prog : BitVec 64 → Option zisk_inst) (hprog : PilotProg prog)
     (hr : ∀ j, Rom.everyRow xr tr j) (hrom : RomHolds prog tr) (hpr : OpsProved ps)
     (boot : BitVec 64) (segs : List (Segment xr tr ps)) (hc : ChainHolds boot segs)
     (σ₀ : State) (h₀ : Ready σ₀ boot 0) :
-    ∀ k, k ≤ segs.length → ∃ σ pc zc, Runs prog (k * segSteps) σ₀ σ ∧ Ready σ pc zc ∧
-      ∀ (h : k < segs.length), segs[k].Entry pc zc := by
+    ∀ k (hk : k < segs.length), ∃ σ pc zc, Runs prog (k * segSteps) σ₀ σ ∧ Ready σ pc zc ∧
+      segs[k].Entry pc zc := by
   intro k
   induction k with
-  | zero => exact fun _ => ⟨σ₀, boot, 0, by rw [Nat.zero_mul]; exact .refl σ₀, h₀,
-      fun h => hc.entry_first h⟩
+  | zero => exact fun h => ⟨σ₀, boot, 0, by rw [Nat.zero_mul]; exact .refl σ₀, h₀,
+      hc.entry_first h⟩
   | succ k ih =>
     intro hk
     obtain ⟨σ, pc, zc, hruns, hσ, hin⟩ := ih (by omega)
     obtain ⟨σ', pc', zc', hrun, hσ', hex⟩ :=
-      segs[k].run prog hprog hr hrom hpr σ pc zc hσ (hin (by omega))
-    refine ⟨σ', pc', zc', ?_, hσ', fun h => hc.entry_next h hex⟩
+      segs[k].run prog hprog hr hrom hpr (hc.next_pc32 prog hr hrom hk) σ pc zc hσ hin
+    refine ⟨σ', pc', zc', ?_, hσ', hc.entry_next hk hex⟩
     rw [Nat.succ_mul]
     exact hruns.append hrun
 
@@ -313,10 +334,10 @@ theorem run_from_boot (prog : BitVec 64 → Option zisk_inst) (hprog : PilotProg
   have hpos : 0 < segSteps := by simp [segSteps, Main.numRows]
   have hk : n / segSteps < segs.length := div_lt_len hn
   obtain ⟨σ, pc, zc, hruns, hσ, hin⟩ :=
-    run_segments prog hprog hr hrom hpr boot segs hc σ₀ h₀ (n / segSteps) (by omega)
+    run_segments prog hprog hr hrom hpr boot segs hc σ₀ h₀ (n / segSteps) hk
   obtain ⟨σ', pc', zc', hrun, hσ', henc⟩ :=
     segs[n / segSteps].run_within prog hprog hr hrom hpr (n := n % segSteps)
-      (Nat.mod_lt _ hpos) σ pc zc hσ (hin hk)
+      (Nat.mod_lt _ hpos) σ pc zc hσ hin
   refine ⟨σ', pc', zc', ?_, hσ', henc⟩
   have := hruns.append hrun
   rwa [Nat.mul_comm, Nat.div_add_mod] at this
