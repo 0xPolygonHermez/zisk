@@ -149,6 +149,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/ExtPilot.lean` | The external ops at any lane (`lane_external`), through that lane's operation-bus lookup; slot 1 executing `add`, `ltu`, `eq` and `and`. |
 | `lean/Proofs/Provers.lean` | Every prover on the operation bus, collected: 61 arguments in 39 AIRs and the 12 of the FROPS table, each proved to compute the four external ops, and the run over them (`run_system`). Generated. |
 | `lean/Proofs/Segments.lean` | Across segments: from the boot state, along the continuation bus's chain of Main segments, every step is a step of the model (`run_from_boot`). |
+| `lean/Proofs/End.lean` | The program's end: from boot, the model runs the program to an end instruction and stops (`run_to_end`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
@@ -173,7 +174,7 @@ Two more targets typecheck the generated Lean, through the lake package in
 
 ```sh
 make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~87s)
-make proofs       # check lean/Proofs against them (~90s)
+make proofs       # check lean/Proofs against them (~95s)
 make lean-build   # elaborate the model            (all 14 modules build, ~6s)
 ```
 
@@ -206,10 +207,12 @@ definitions must precede their use. Prelude first, step last.
 > the AIRs accept is a run of the model's `Out.Functions.zisk_execute` — does
 > not exist. What is proved is a pilot of it: runs of six opcodes (`copyb`,
 > `flag`, and `add`, `ltu`, `eq`, `and` through the operation bus) from the
-> boot state, across every lane, row and segment, with two sources, the
+> boot state to the program's end, across every lane, row and segment, with
+> two sources, the
 > soundness of the bus arguments and the contents of the tables assumed (see
 > [The pilot correspondence](#the-pilot-correspondence),
-> [Many steps](#many-steps), [Across segments](#across-segments) and
+> [Many steps](#many-steps), [Across segments](#across-segments),
+> [The program's end](#the-programs-end) and
 > [The `add` pilot](#the-add-pilot) and
 > [`ltu`, `eq` and `and`](#ltu-eq-and-and)). Delete this disclaimer
 > when step 6 of [Next steps](#next-steps) lands.
@@ -330,11 +333,11 @@ make proofs
 ```
 
 ```
-✔ [74/75] Built Proofs
+✔ [75/76] Built Proofs
 Build completed successfully.
 ```
 
-About 90 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, and the runs across segments.
+About 95 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, and the program's end.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -403,7 +406,9 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
   checked contents.
 - And across segments, from the boot state: along a chain of Main segments
   linked by a sound continuation bus, every step the trace holds is a step of
-  the model, the first from the boot pc with `c = 0`.
+  the model, the first from the boot pc with `c = 0`; and when the chain
+  closes at the end pc, the model runs the program to an end instruction and
+  stops.
 - The same for `add`, whose result another AIR computes: given a sound
   operation bus, whichever of its provers answers, the slot's `c` is
   `a + b` modulo 2^64.
@@ -416,8 +421,8 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
 ### And what it does not
 
 - **The correspondence is a pilot.** Six opcodes, two sources, no stores, no
-  `set_pc`, and no program end: a run is as long as its segments. The rest
-  is steps 4 to 6 of [Next steps](#next-steps).
+  `set_pc`; an end instruction must be an internal op. The rest is steps 4
+  to 6 of [Next steps](#next-steps).
 - **Bus arguments are assumed sound, not derived.** The ROM lookup's guarantee
   (`LookupHolds`) and the ROM's contents (`RomHolds`) are hypotheses; the gsum
   columns and the global constraints that enforce a bus are not modeled.
@@ -967,6 +972,33 @@ Besides the buses' soundness, a segment (`Segment`) assumes the setup's
 `__L1__`: 1 on row 0, 0 on the others. The file checks in about two seconds,
 on Lean's standard three axioms.
 
+## The program's end
+
+ZisK ends a program at `ROM_EXIT` (0x1004): a `copyb` of 0 with `is_end` set,
+jumping to itself. The model stops there: `zisk_execute` returns `true` and
+leaves the pc. Main does not see the flag — `is_end` is not among the ROM's
+flags — so to Main the end instruction is a `copyb` that loops on itself, and
+the last segment is padded with it. What ends the trace is the continuation
+bus: a global update closes the chain at `(0, 1, 0, END_PC, 0, 0)`, so the last
+segment's exit pc is `END_PC`.
+
+[`lean/Proofs/End.lean`](lean/Proofs/End.lean) proves the end in two steps:
+
+- **Main's view.** `mainView prog` is the program with every `is_end`
+  cleared; the Rom encodes it as well as `prog`. `run_all_segments` runs it
+  through every segment of the chain from boot, and `ChainCloses` — the
+  closing tuple, written in the file since the global update is not extracted
+  — pins the final pc to `END_PC`.
+- **The model's run.** `runs_to_end`: the model's own run of `prog` follows
+  Main's view step for step until the first end instruction it reaches,
+  which it executes (`execute_end`), and stops.
+
+`run_to_end`: from the boot state, the model runs the program, within the
+steps the segments hold, to an end instruction, and ends. The scope
+(`PilotProgEnd`) is the pilot's, with end instructions allowed as internal
+ops. `run_to_end_system` is the same over the operation bus's provers. About 4
+seconds, on Lean's standard three axioms.
+
 ## The operation bus's provers
 
 `run_pilot` takes the operation bus's provers as a list and assumes they all
@@ -1036,10 +1068,9 @@ checks in about 4 seconds, on Lean's standard three axioms.
    checked by `make difftest` on a program that executes it
    (`make difftest PROG=… INPUT=…`). Turn on `--strict` once coverage is
    complete.
-6. **The full correspondence.** Extend the run from boot of
-   [Across segments](#across-segments) to the program's end (the closing
-   global update and `is_end`), and to every source, store and opcode, up to:
-   a trace every
+6. **The full correspondence.** Extend the run from boot to end of
+   [The program's end](#the-programs-end) to every source, store and opcode,
+   up to: a trace every
    AIR accepts is a run of `zisk_execute`. Neither side is transcribed by hand,
    so neither can drift from what ZisK ships without the generators noticing.
 7. **An `assembly` mapping** (optional). Sail mappings are bidirectional, so
