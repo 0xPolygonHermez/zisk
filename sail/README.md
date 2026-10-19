@@ -114,7 +114,10 @@ program, 245 steps — and `make difftest` checks every step of it against
 
 The first theorem relating the model to the AIR is proved: for one slot of
 Main and the internal ops, the constraints force exactly the state
-`zisk_execute` produces. See [The pilot correspondence](#the-pilot-correspondence).
+`zisk_execute` produces, for the instruction the program holds at that pc,
+reached through the ROM lookup. See
+[The pilot correspondence](#the-pilot-correspondence) and
+[The ROM lookup](#the-rom-lookup).
 
 ## Layout
 
@@ -128,10 +131,11 @@ Main and the internal ops, the constraints force exactly the state
 | `model/zisk_rom.sail` | The default ROM: `rom_fetch` with no instructions. A program supplies its own file, selected with `make ROM=…`. |
 | `model/zisk_step.sail` | The execution step, mirroring `Emu::step` in `emulator/src/emu.rs`: `zisk_execute(inst)` runs one instruction, `zisk_step()` fetches it from the ROM first. |
 | `model/zisk_main.sail` | The C emulator's `main`: initial state, the step loop, and the trace `make difftest` compares. Not part of the Lean build. |
-| [`../tools/sail-difftest`](../tools/sail-difftest/src/main.rs) | Exports a program to the model — `rom.sail` and its initial memory — and records the reference trace on `ziskemu`. |
+| [`../tools/sail-difftest`](../tools/sail-difftest/src/main.rs) | Exports a program to the model — `rom.sail` and its initial memory — records the reference trace on `ziskemu`, and checks the program's committed ROM rows against the encoding the Lean proofs assume. |
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
 | `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. |
 | `lean/Proofs/Slot.lean` | The pilot correspondence: one slot of Main against one step of the model. |
+| `lean/Proofs/Rom.lean` | The ROM lookup: the slot's instruction derived from the program, through the bus. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
 ## Building
@@ -153,7 +157,7 @@ Two more targets typecheck the generated Lean, through the lake package in
 
 ```sh
 make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~87s)
-make proofs       # check lean/Proofs against them (~10s)
+make proofs       # check lean/Proofs against them (~12s)
 make lean-build   # elaborate the model            (all 14 modules build, ~6s)
 ```
 
@@ -185,7 +189,7 @@ definitions must precede their use. Prelude first, step last.
 > The theorem that would earn the phrase "formally verified" — that any trace
 > the AIRs accept is a run of the model's `Out.Functions.zisk_execute` — does
 > not exist. What is proved is a pilot of it: one slot of Main, two opcodes,
-> two sources, with the ROM lookup assumed (see
+> two sources, with the soundness of the ROM lookup argument assumed (see
 > [The pilot correspondence](#the-pilot-correspondence)). Delete this disclaimer
 > when step 6 of [Next steps](#next-steps) lands.
 
@@ -305,11 +309,11 @@ make proofs
 ```
 
 ```
-✔ [19/20] Built Proofs
+✔ [21/22] Built Proofs
 Build completed successfully.
 ```
 
-About 10 s, most of it elaborating the model, which `Proofs/Slot.lean` imports.
+About 12 s, most of it elaborating the model, which `Proofs/Slot.lean` imports.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -339,6 +343,7 @@ make difftest
 
 ```
 wrote build/difftest/doubler-min: 44 instructions, 8 opcodes (add, and, copyb, eq, flag, halt, ltu, pubout), 245 steps on ziskemu
+RomHolds: the committed ROM row of all 44 instructions is RomRowEncodes
 ...
 OK: 245 steps and the output agree with ziskemu
 ```
@@ -349,7 +354,7 @@ lines of the diff and fails instead; the two traces are left in
 which ends the run in error through the BIOS's `halt` (15 steps, exit code 3).
 
 Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
-14 tests.
+15 tests.
 
 ### What a clean run establishes
 
@@ -366,25 +371,30 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
   theorems about the Main AIR go through by `grind` alone.
 - For one slot of Main and the `copyb` and `flag` ops, with immediate or `c`
   sources, the constraints force the slot's `c` and `flag` and the next slot's
-  `pc` to be exactly what `zisk_execute` computes.
+  `pc` to be exactly what `zisk_execute` computes, for the program's
+  instruction at that pc, given a sound ROM lookup.
+- The encoding of an instruction in the committed ROM that this relies on is
+  the one the ROM setup code produces, checked row by row for every program
+  `make difftest` runs.
 
 ### And what it does not
 
 - **The correspondence is a pilot.** One slot of four, two opcodes, two
-  sources, no stores, no `set_pc`, with the ROM lookup taken as a hypothesis.
-  The rest is steps 4 to 6 of [Next steps](#next-steps).
+  sources, no stores, no `set_pc`. The rest is steps 4 to 6 of
+  [Next steps](#next-steps).
+- **Bus arguments are assumed sound, not derived.** The ROM lookup's guarantee
+  (`LookupHolds`) and the ROM's contents (`RomHolds`) are hypotheses; the gsum
+  columns and the global constraints that enforce a bus are not modeled.
 - **121 of 129 opcodes are unmodeled**, and two programs have been run. The
   difftest covers what they execute: eight opcodes, and of the sources and
   stores, the ones they use.
 - **The C backend is tested, the Lean backend is not.** Both are generated from
   the same Sail, but agreeing with `ziskemu` in C is evidence about the model,
   not a proof that the Lean definition says the same thing.
-- **Lookup and permutation arguments are out of scope.** The extractor reads
-  the AIR's algebraic constraints. The buses — the ROM lookup, the operation bus
-  that carries `add` and every other external op to the AIR that computes it,
-  the memory bus, and the range checks — live in the pilout's 4451 hints, which
-  are not extracted. (Booleanity of the one-bit selectors is not among them:
-  Main asserts it as ordinary constraints.)
+- **Only the ROM bus is used.** Every bus argument of every AIR is extracted
+  (1629 of them, from the pilout's hints), but only the ROM lookup has been
+  given a meaning and used in a proof. The operation bus that carries `add` and
+  every other external op, the memory bus, and the range checks are next.
 - **The AIR is checked, not the prover.** Nothing here says the witness
   computation fills the columns these constraints describe, nor anything about
   the soundness of the STARK backend.
@@ -514,6 +524,14 @@ exporter, then fails the Sail typecheck with the opcode's name.
 It does catch what it should: changing `ltu` to answer wrongly for one value
 makes `make difftest` fail at the first step where that value appears.
 
+The same run checks the hypothesis the Lean proofs make about the ROM,
+`RomHolds`: for every instruction, the row the ROM setup commits for it —
+computed by `CustomRom::build_trace`, the function the setup itself calls — is
+the `RomRowEncodes` of the instruction `rom.sail` exports, field by field, with
+the opcode table and flag packing as the Lean side defines them. A mismatch
+names the row and the field; giving `add` the wrong opcode in the Lean table's
+mirror fails at the first `add` in the ROM.
+
 ## The pilot correspondence
 
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) holds the first theorem that
@@ -544,10 +562,10 @@ Three things the pilot settled about the shape:
   constrains it; nothing in Main says `c = a + b`. So the pilot's opcodes are
   the internal ones, and `add` waits for the bus. The same holds for memory and
   register sources and stores, which go over the memory bus.
-- **The ROM lookup is a hypothesis.** `SlotHolds` says which instruction a slot
-  holds, column by column. In the AIR that is the ROM lookup, a bus the
-  extractor does not read yet, so the pilot assumes it, the way the full proof
-  would have to assume any bus it cannot see.
+- **The ROM lookup was first a hypothesis.** `SlotHolds` says which
+  instruction a slot holds, column by column. In the AIR that is the ROM
+  lookup, which the pilot first assumed; it is now derived, see
+  [The ROM lookup](#the-rom-lookup).
 
 The encoding is the one Main uses: a 64-bit value is two 32-bit limbs, low
 first; a jump offset is a signed field element; a pc is its value. Everything
@@ -557,6 +575,45 @@ Writing it needed one change to the extractor: `everyRow` now comes with an
 accessor per constraint (`h.c46`), because `grind` cannot search a conjunction
 713 constraints wide. See
 [`tools/pilout-constraints/README.md`](../tools/pilout-constraints/README.md).
+
+## The ROM lookup
+
+[`lean/Proofs/Rom.lean`](lean/Proofs/Rom.lean) derives the pilot's
+`SlotHolds` instead of assuming it. In the AIR, each of Main's four slots looks
+its instruction columns up on bus 7890, and the Rom AIR proves the program's
+rows there; `slot1_internal_rom` is the pilot restated on top of that, with
+the instruction now `prog pc`, the program's.
+
+The bus arguments come from the generator: every pil2 lookup, permutation and
+range check leaves a `gsum_debug_data` hint naming its bus, its side, its
+count and its tuple, and `pilout-constraints` emits each one as a `BusArg`
+(see [its README](../tools/pilout-constraints/README.md#bus-arguments)). So the
+lookup is stated over the generated `Main.bus87` and `Rom.bus0`, not over a
+hand-copied list of columns.
+
+What is assumed instead of `SlotHolds`:
+
+- **`LookupHolds`**: the lookup argument is sound — every tuple Main assumes
+  is a tuple the Rom proves, at a row with nonzero multiplicity. It is the
+  guarantee of the gsum argument, which is not modeled; it also checks that
+  the two arguments it pairs are on the same bus, one assuming and one proving.
+- **`RomHolds prog`**: the Rom's committed `rom` columns encode the program.
+  That commitment is fixed per program, and its root is a public of the proof,
+  so this is a statement about the setup. `make difftest` checks it for every
+  program it runs, against the setup's own code; see
+  [Differential testing](#differential-testing).
+
+The derivation needs two field facts, so it is stated for `F` a field of the
+Goldilocks characteristic rather than any commutative ring: the Rom's
+`is_data * multiplicity = 0` makes a row in use a code row only because a
+nonzero multiplicity is invertible, and the flag bits come out of the packed
+`rom_flags` only because a number below `2^16` is a distinct field element.
+Each bit is first a bit by Main's booleanity constraints.
+
+Writing it surfaced a fact for later: `halt` (op `0xff`) can never be proved.
+Main's internal-op constraints with that opcode force both `flag = 1` and
+`flag = 0`, so no accepted trace executes it — which is what a program that
+fails should get.
 
 ## Next steps
 
@@ -571,12 +628,14 @@ accessor per constraint (`h.c46`), because `grind` cannot search a conjunction
 3. **A one-slot correspondence, as a pilot — done.** See
    [The pilot correspondence](#the-pilot-correspondence): slot 1, `copyb` and
    `flag`, immediate and `c` sources.
-4. **Extract the buses.** Teach
+4. **Extract the buses — in progress.** Teach
    [`pilout-constraints`](../tools/pilout-constraints/README.md) to read the
    lookup and permutation arguments among the pilout's hints, so the facts the
    pilot assumes or cannot reach come from the generated AIR. In order of what
    they unlock:
-   - the **ROM lookup**, which turns `SlotHolds` from a hypothesis into a fact;
+   - the **ROM lookup** — done: every bus argument is extracted, and
+     `SlotHolds` is derived from the ROM lookup; see
+     [The ROM lookup](#the-rom-lookup);
    - the **operation bus**, which ties an external op in Main to the AIR that
      computes it, so `add`, `eq`, `ltu` and the rest can be proved — this one
      needs the other AIR's constraints too, Binary's for these;

@@ -19,13 +19,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
+use proofman_fields::{Goldilocks, PrimeField64};
 use zisk_common::EmuTrace;
 use zisk_core::{
     ZiskInst, ZiskRom, INPUT_ADDR, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND,
     STORE_MEM, STORE_NONE, STORE_REG,
 };
+use zisk_sm_rom::CustomRom;
 use ziskemu::{Emu, EmuOptions};
 
 #[derive(Parser)]
@@ -81,6 +83,8 @@ fn prepare(zisk: &Path, input: Option<&Path>, out: &Path, max_steps: u64) -> Res
     let (trace, steps) = reference_trace(&rom, input, max_steps)?;
     fs::write(out.join("ziskemu.trace"), trace)?;
 
+    let rows = check_rom_rows(&rom)?;
+
     println!(
         "wrote {}: {} instructions, {} opcodes ({}), {} steps on ziskemu",
         out.display(),
@@ -89,6 +93,7 @@ fn prepare(zisk: &Path, input: Option<&Path>, out: &Path, max_steps: u64) -> Res
         ops.into_iter().collect::<Vec<_>>().join(", "),
         steps
     );
+    println!("RomHolds: the committed ROM row of all {rows} instructions is RomRowEncodes");
     Ok(())
 }
 
@@ -130,9 +135,26 @@ fn rom_to_sail(rom: &ZiskRom) -> Result<(String, BTreeSet<&'static str>)> {
     Ok((s, ops))
 }
 
-/// One `zisk_inst` record literal. Fails on what the model does not describe,
-/// rather than exporting something it would silently get wrong.
-fn inst_to_sail(i: &ZiskInst) -> Result<String> {
+/// An instruction as the model sees it: the fields of the Sail `zisk_inst`.
+struct ModelInst {
+    a_src: &'static str,
+    a_imm: u64,
+    b_src: &'static str,
+    b_imm: u64,
+    ind_width: u64,
+    op: &'static str,
+    store: &'static str,
+    store_off: i64,
+    store_pc: bool,
+    set_pc: bool,
+    jmp_off1: i64,
+    jmp_off2: i64,
+    is_end: bool,
+}
+
+/// The model's view of one instruction. Fails on what the model does not
+/// describe, rather than exporting something it would silently get wrong.
+fn model_inst(i: &ZiskInst) -> Result<ModelInst> {
     if i.input_size > 0 || i.is_precompiled {
         bail!("op {} takes extended arguments, which the model does not describe", i.op_str);
     }
@@ -175,20 +197,126 @@ fn inst_to_sail(i: &ZiskInst) -> Result<String> {
         w => bail!("indirect width {w}"),
     };
 
+    Ok(ModelInst {
+        a_src,
+        a_imm,
+        b_src,
+        b_imm,
+        ind_width,
+        op: i.op_str,
+        store,
+        store_off: i.store_offset,
+        store_pc: i.store_pc,
+        set_pc: i.set_pc,
+        jmp_off1: i.jmp_offset1,
+        jmp_off2: i.jmp_offset2,
+        is_end: i.end,
+    })
+}
+
+/// One `zisk_inst` record literal.
+fn inst_to_sail(i: &ZiskInst) -> Result<String> {
+    let m = model_inst(i)?;
     Ok(format!(
-        "struct {{ a_src = {a_src}, a_imm = {}, b_src = {b_src}, b_imm = {}, ind_width = {ind_width},\n    \
-         op = ZOP_{}(), store = {store}, store_off = {}, store_pc = {},\n    \
+        "struct {{ a_src = {}, a_imm = {}, b_src = {}, b_imm = {}, ind_width = {},\n    \
+         op = ZOP_{}(), store = {}, store_off = {}, store_pc = {},\n    \
          set_pc = {}, jmp_off1 = {}, jmp_off2 = {}, is_end = {} }}",
-        lit(a_imm),
-        lit(b_imm),
-        i.op_str.to_uppercase(),
-        lit(i.store_offset as u64),
-        i.store_pc,
-        i.set_pc,
-        lit(i.jmp_offset1 as u64),
-        lit(i.jmp_offset2 as u64),
-        i.end,
+        m.a_src,
+        lit(m.a_imm),
+        m.b_src,
+        lit(m.b_imm),
+        m.ind_width,
+        m.op.to_uppercase(),
+        m.store,
+        lit(m.store_off as u64),
+        m.store_pc,
+        m.set_pc,
+        lit(m.jmp_off1 as u64),
+        lit(m.jmp_off2 as u64),
+        m.is_end,
     ))
+}
+
+/// `RomHolds`, checked for this program: the row the ROM setup commits for each
+/// instruction (`CustomRom::build_trace`, the function the setup itself calls)
+/// is `RomRowEncodes` of the instruction `rom.sail` exports, as
+/// `sail/lean/Proofs/Rom.lean` defines it. The Lean proofs take that encoding
+/// as a hypothesis; this is where it is held to the code that fills the ROM.
+fn check_rom_rows(rom: &ZiskRom) -> Result<usize> {
+    const P: u64 = 0xFFFF_FFFF_0000_0001;
+    let signed = |v: i64| if v >= 0 { v as u64 } else { P - v.unsigned_abs() };
+    let trace = CustomRom::build_trace::<Goldilocks>(rom).map_err(|e| anyhow!("{e}"))?;
+    for (&pc, builder) in &rom.insts {
+        let i = &builder.i;
+        let m = model_inst(i)?;
+        let row = &trace[i.index as usize];
+        let expect: [(&str, u64, Goldilocks); 11] = [
+            ("is_data", 0, row.is_data),
+            ("line", pc, row.line),
+            ("a_offset_imm0", m.a_imm & 0xFFFF_FFFF, row.a_offset_imm0),
+            ("a_imm1", m.a_imm >> 32, row.a_imm1),
+            ("b_offset_imm0", m.b_imm & 0xFFFF_FFFF, row.b_offset_imm0),
+            ("b_imm1", m.b_imm >> 32, row.b_imm1),
+            ("op", lean_opcode(m.op)?, row.op),
+            ("store_offset", signed(m.store_off), row.store_offset),
+            ("jmp_offset1", signed(m.jmp_off1), row.jmp_offset1),
+            ("jmp_offset2", signed(m.jmp_off2), row.jmp_offset2),
+            ("flags", flags_enc(&m), row.flags),
+        ];
+        for (name, want, got) in expect {
+            if got.as_canonical_u64() != want {
+                bail!(
+                    "ROM row for pc {pc:#x} ({}): {name} is {:#x}, RomRowEncodes says {want:#x}",
+                    i.verbose,
+                    got.as_canonical_u64()
+                );
+            }
+        }
+        if pc >= 1 << 32 {
+            bail!("pc {pc:#x} does not fit the 32-bit pc column RomHolds requires");
+        }
+    }
+    Ok(rom.insts.len())
+}
+
+/// `Correspondence.opcode` in `sail/lean/Proofs/Slot.lean`.
+fn lean_opcode(op: &str) -> Result<u64> {
+    Ok(match op {
+        "flag" => 0x00,
+        "copyb" => 0x01,
+        "ltu" => 0x06,
+        "eq" => 0x09,
+        "add" => 0x0a,
+        "and" => 0x0e,
+        "pubout" => 0xa0,
+        "halt" => 0xff,
+        _ => bail!("op {op} is not in the Lean opcode table"),
+    })
+}
+
+/// `Correspondence.flagsEnc` in `sail/lean/Proofs/Rom.lean`: bit 0 set, then
+/// `flagBits` from bit 1 up.
+fn flags_enc(m: &ModelInst) -> u64 {
+    // `Correspondence.isExternal`: everything but the internal ops.
+    let external = !matches!(m.op, "flag" | "copyb" | "halt");
+    let bits = [
+        m.a_src == "A_IMM",
+        m.a_src == "A_MEM",
+        false, // is_precompiled
+        m.b_src == "B_IMM",
+        m.b_src == "B_MEM",
+        external,
+        m.store_pc,
+        m.store == "ST_MEM",
+        m.store == "ST_IND",
+        m.set_pc,
+        false, // m32
+        m.b_src == "B_IND",
+        m.a_src == "A_REG",
+        m.b_src == "B_REG",
+        m.store == "ST_REG",
+    ];
+    bits.iter().enumerate().fold(1, |acc, (k, &b)| acc | ((b as u64) << (k + 1)))
 }
 
 /// Write each initial memory section as a raw file, and return the `-b`
