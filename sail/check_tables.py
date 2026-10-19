@@ -14,27 +14,36 @@ and evaluated at every row of the compiled fixed file. A merged table may
 serve several buses through one argument, picking the bus per row; the bus is
 evaluated per row too, and each check applies to the rows on its bus.
 
-Two checks:
+Three checks:
 
 1. **Results on the operation bus (5000).** Every row whose op is a checked
    opcode carries the op's result (the FROPS tables of precomputed results):
 
-       add (0x0a):  c = a + b mod 2^64,  flag = 0,  every limb below 2^32
+       add (0x0a):  c = a + b mod 2^64,  flag = 0
+       ltu (0x06):  c = flag = [a < b], unsigned
+       eq  (0x09):  c = flag = [a = b]
+       and (0x0e):  c = a & b,  flag = 0
+
+   with every limb below 2^32.
 
 2. **Ops a table never serves.** The Arith table (bus 331) and the
    BinaryExtension table (bus 124) are where Arith and BinaryExtension look
    their `op` column up, as the first element of the tuple. A row on one of
-   those buses never has `add` there, which is what rules the two AIRs out as
-   provers of an `add`.
+   those buses never has a modeled op there, which is what rules the two AIRs
+   out as provers of one.
 
-3. **The Binary table's `add` rows (bus 125).** Binary adds byte by byte, each
-   byte a lookup of `(pos, op, a, b, cin, c, flags)`. Every row has an op below
-   2^10 (the widest is SEXT_FF, 0x201), so in particular never -6, the `b_op`
-   a 32-bit `add` would need; and every `add` row (op 0x0a) has bytes below 256 and `cin` 0 or 1,
-   and computes the byte: a middle byte (`pos` 0) has
-   `c + 256*flags = a + b + cin` with `flags` the carry, 0 or 1; the last byte
-   (`pos` 1) has `c = (a + b + cin) mod 256` and discards the carry, its flags
-   only `c`'s sign bit (0 or 64).
+3. **The Binary table's rows for the modeled ops (bus 125).** Binary computes
+   each op byte by byte, each byte a lookup of `(pos, op, a, b, cin, c, flags)`.
+   Every row has an op below 2^10 (the widest is SEXT_FF, 0x201), so never one
+   of the negative `b_op`s a 32-bit form of a modeled op would need; and every
+   row of a modeled op has `pos` 0 or 1 (middle or last byte), bytes below 256,
+   `cin` 0 or 1, and computes its byte:
+
+       add  middle: c + 256*flags = a + b + cin, flags 0 or 1
+            last:   c = (a + b + cin) mod 256, flags 0 or 64 (c's sign bit)
+       ltu  c = 0, flags = 1 if a < b, cin if a = b, else 0
+       eq   c = 0, flags = 0 if cin = 0 and a = b, else 1; the last byte inverted
+       and  c = a & b, flags = 0
 
 The fixed file is the compiler's: a row-major array of u64, one column per
 fixed column of the AIR, in id order.
@@ -54,14 +63,18 @@ P = 0xFFFF_FFFF_0000_0001  # the Goldilocks prime
 # op -> (name, the result it must carry). Arguments are Python ints.
 SEMANTICS = {
     0x0A: ("add", lambda a, b: ((a + b) % 2**64, 0)),
+    0x06: ("ltu", lambda a, b: (int(a < b), int(a < b))),
+    0x09: ("eq", lambda a, b: (int(a == b), int(a == b))),
+    0x0E: ("and", lambda a, b: (a & b, 0)),
 }
 
 BINARY_TABLE = 125
 
 # table bus -> (name, ops whose first element it must never be)
+MODELED = {code: name for code, (name, _) in SEMANTICS.items()}
 NEVER = {
-    331: ("Arith table", {0x0A: "add"}),
-    124: ("BinaryExtension table", {0x0A: "add"}),
+    331: ("Arith table", MODELED),
+    124: ("BinaryExtension table", MODELED),
 }
 
 
@@ -143,7 +156,26 @@ def check_results(k, rows, tuple_values):
     return checked, failures
 
 
-def check_binary_add(k, rows, values):
+def binary_row_ok(op, pos, a, b, cin, c, f):
+    """Whether one Binary-table row of a modeled op computes its byte."""
+    if not (a < 256 and b < 256 and c < 256 and cin in (0, 1) and pos in (0, 1)):
+        return False
+    last = pos == 1
+    if op == 0x0A:
+        if last:
+            return f in (0, 64) and c == (a + b + cin) % 256
+        return f in (0, 1) and c + 256 * f == a + b + cin
+    if op == 0x06:
+        return c == 0 and f == (1 if a < b else cin if a == b else 0)
+    if op == 0x09:
+        neq = 0 if (cin == 0 and a == b) else 1
+        return c == 0 and f == (1 - neq if last else neq)
+    if op == 0x0E:
+        return c == (a & b) and f == 0
+    return True
+
+
+def check_binary_rows(k, rows, values):
     """Check 3 on one argument's rows on the Binary table; returns failures."""
     if len(values) != 7:
         sys.exit(f"hint {k}: a {len(values)}-element tuple, expected (pos, op, a, b, cin, c, flags)")
@@ -153,24 +185,24 @@ def check_binary_add(k, rows, values):
     if wide:
         print(f"FAIL hint {k}: {wide} rows with an op of 2^10 or more")
         failures += wide
-    sel = op == 0x0A
-    pos, a, b, cin, c, flags = (x[sel].astype(object) for x in (pos, a, b, cin, c, flags))
-    bad = 0
-    for r, (p_, x, y, ci, z, f) in enumerate(zip(pos, a, b, cin, c, flags)):
-        ok = x < 256 and y < 256 and z < 256 and ci in (0, 1)
-        if p_ == 0:
-            ok = ok and f in (0, 1) and z + 256 * f == x + y + ci
-        elif p_ == 1:
-            ok = ok and f in (0, 64) and z == (x + y + ci) % 256
-        else:
-            ok = False
-        if not ok:
-            if bad < 5:
-                print(f"FAIL hint {k}: add row {rows[sel][r]} = {(p_, x, y, ci, z, f)}")
-            bad += 1
+    counts = []
+    for code, (name, _) in SEMANTICS.items():
+        sel = op == code
+        n = int(sel.sum())
+        if not n:
+            continue
+        cols = [x[sel].astype(object) for x in (pos, a, b, cin, c, flags)]
+        bad = 0
+        for r, (p_, x, y, ci, z, f) in enumerate(zip(*cols)):
+            if not binary_row_ok(code, p_, x, y, ci, z, f):
+                if bad < 5:
+                    print(f"FAIL hint {k}: {name} row {rows[sel][r]} = {(p_, x, y, ci, z, f)}")
+                bad += 1
+        failures += bad
+        counts.append(f"{n} {name} rows, {bad} wrong")
     print(f"  hint {k}: {rows.size} rows on the Binary table, ops all below 2^10: {wide == 0}; "
-          f"{int(sel.sum())} add rows, {bad} wrong")
-    return failures + bad
+          + ("; ".join(counts) if counts else "no modeled op"))
+    return failures
 
 
 def main():
@@ -202,7 +234,7 @@ def main():
                 total_failures += failures
             if BINARY_TABLE in opids:
                 rows = np.nonzero(bus_values == BINARY_TABLE)[0]
-                total_failures += check_binary_add(k, rows, values)
+                total_failures += check_binary_rows(k, rows, values)
             for table_bus, (table, ops) in NEVER.items():
                 if table_bus not in opids:
                     continue

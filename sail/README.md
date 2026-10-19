@@ -133,15 +133,20 @@ reached through the ROM lookup. See
 | `model/zisk_main.sail` | The C emulator's `main`: initial state, the step loop, and the trace `make difftest` compares. Not part of the Lean build. |
 | [`../tools/sail-difftest`](../tools/sail-difftest/src/main.rs) | Exports a program to the model — `rom.sail` and its initial memory — records the reference trace on `ziskemu`, and checks the program's committed ROM rows against the encoding the Lean proofs assume. |
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
-| `check_tables.py` | Checks the virtual tables the setup commits against what the proofs assume: every FROPS `add` row is `c = a + b`, the Arith and BinaryExtension tables never serve `add`, and the Binary table's `add` rows compute their byte; `make tables`. |
+| `check_tables.py` | Checks the virtual tables the setup commits against what the proofs assume: every FROPS row of a modeled op (`add`, `ltu`, `eq`, `and`) carries its result, the Arith and BinaryExtension tables never serve one, and the Binary table's rows for them compute their byte; `make tables`. |
 | `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. |
-| `lean/Proofs/Slot.lean` | The pilot correspondence: one slot of Main against one step of the model. |
+| `lean/Proofs/Slot.lean` | The pilot correspondence: one lane of Main against one step of the model, at any of the four lanes. |
 | `lean/Proofs/Rom.lean` | The ROM lookup: the slot's instruction derived from the program, through the bus. |
 | `lean/Proofs/Adders.lean` | The six adders, 21 lanes, prove `add` correctly (`AddsAt`). |
 | `lean/Proofs/Binary.lean` | Binary, 7 lanes, proves `add` correctly, byte by byte through its table. |
 | `lean/Proofs/Bus.lean` | What a bus guarantees: `LookupHolds`, for any number of provers, and `TableNever`. |
 | `lean/Proofs/OpBus.lean` | The 33 operation-bus provers that cannot prove `add`, each proved so. |
 | `lean/Proofs/AddPilot.lean` | The `add` pilot: slot 1 executing `add`, through the operation bus. |
+| `lean/Proofs/Ops.lean` | External ops in general: `ltu`, `eq`, `and` and `add` as `sem`, and what a prover of one must do (`OpProves`). |
+| `lean/Proofs/BinaryOps.lean` | Binary, 7 lanes, proves `ltu`, `eq` and `and`, byte by byte through its table. |
+| `lean/Proofs/OpBusCmp.lean` | The 54 operation-bus provers that cannot prove `ltu`, `eq` or `and`, each proved so. |
+| `lean/Proofs/ExtPilot.lean` | The external ops at any lane (`lane_external`), through that lane's operation-bus lookup; slot 1 executing `add`, `ltu`, `eq` and `and`. |
+| `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
 ## Building
@@ -164,7 +169,7 @@ Two more targets typecheck the generated Lean, through the lake package in
 
 ```sh
 make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~87s)
-make proofs       # check lean/Proofs against them (~31s)
+make proofs       # check lean/Proofs against them (~85s)
 make lean-build   # elaborate the model            (all 14 modules build, ~6s)
 ```
 
@@ -195,11 +200,15 @@ definitions must precede their use. Prelude first, step last.
 > constraints elaborate as Lean propositions, and proofs about them go through.
 > The theorem that would earn the phrase "formally verified" — that any trace
 > the AIRs accept is a run of the model's `Out.Functions.zisk_execute` — does
-> not exist. What is proved is a pilot of it: one slot of Main, three opcodes
-> (`copyb`, `flag`, and `add` through the operation bus), two sources, with
-> the soundness of the bus arguments assumed (see
-> [The pilot correspondence](#the-pilot-correspondence) and
-> [The `add` pilot](#the-add-pilot)). Delete this disclaimer
+> not exist. What is proved is a pilot of it: runs of six opcodes (`copyb`,
+> `flag`, and `add`, `ltu`, `eq`, `and` through the operation bus) across every
+> lane and row of one segment, with two sources, the soundness of the bus
+> arguments assumed, and every operation-bus prover assumed to compute each op,
+> as the prover files prove one by one (see
+> [The pilot correspondence](#the-pilot-correspondence),
+> [Many steps](#many-steps) and
+> [The `add` pilot](#the-add-pilot) and
+> [`ltu`, `eq` and `and`](#ltu-eq-and-and)). Delete this disclaimer
 > when step 6 of [Next steps](#next-steps) lands.
 
 Nothing below is assumed already built, and every figure quoted is what the
@@ -318,11 +327,11 @@ make proofs
 ```
 
 ```
-✔ [51/52] Built Proofs
+✔ [71/72] Built Proofs
 Build completed successfully.
 ```
 
-About 31 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary and the `add` pilot.
+About 85 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — and the runs.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -378,21 +387,30 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
   carrying the `.pil` file and line it came from.
 - Those definitions are usable for proof, not merely well formed: six
   theorems about the Main AIR go through by `grind` alone.
-- For one slot of Main and the `copyb` and `flag` ops, with immediate or `c`
-  sources, the constraints force the slot's `c` and `flag` and the next slot's
-  `pc` to be exactly what `zisk_execute` computes, for the program's
-  instruction at that pc, given a sound ROM lookup.
+- For the `copyb` and `flag` ops, with immediate or `c` sources, at any of
+  Main's four lanes, the constraints force the lane's `c` and `flag` and the
+  next step's `pc` to be exactly what `zisk_execute` computes, for the
+  program's instruction at that pc, given a sound ROM lookup.
+- For a program of those ops, steps chain: from a position that encodes the
+  model's state, the trace forces `n` steps of the model, lane after lane and
+  row after row within a segment, and ends encoding the state they reach. The
+  same for programs that also use `add`, `ltu`, `eq` and `and`, at any lane,
+  given a sound operation bus whose provers compute each op.
 - The same for `add`, whose result another AIR computes: given a sound
   operation bus, whichever of its forty provers answers, the slot's `c` is
   `a + b` modulo 2^64.
+- The same for `ltu`, `eq` and `and`: `c` and `flag` are `[a < b]` unsigned,
+  `[a = b]`, and `a & b` with no flag, and the next `pc` follows the flag.
 - The encoding of an instruction in the committed ROM that this relies on is
   the one the ROM setup code produces, checked row by row for every program
   `make difftest` runs.
 
 ### And what it does not
 
-- **The correspondence is a pilot.** One slot of four, three opcodes, two
-  sources, no stores, no `set_pc`. The rest is steps 4 to 6 of
+- **The correspondence is a pilot.** Six opcodes, two sources, no stores, no
+  `set_pc`. Runs stay within one segment and need their start encoded. That
+  every operation-bus prover computes each op is proved prover by prover; the
+  list of every AIR instance on the bus is still to be written down. The rest is steps 4 to 6 of
   [Next steps](#next-steps).
 - **Bus arguments are assumed sound, not derived.** The ROM lookup's guarantee
   (`LookupHolds`) and the ROM's contents (`RomHolds`) are hypotheses; the gsum
@@ -405,8 +423,9 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
   not a proof that the Lean definition says the same thing.
 - **Only the ROM bus is used.** Every bus argument of every AIR is extracted
   (1629 of them, from the pilout's hints), but only the ROM lookup has been
-  given a meaning and used in a proof. The operation bus that carries `add` and
-  every other external op, the memory bus, and the range checks are next.
+  given a meaning and used in a proof, together with the operation bus for
+  `add`, `ltu`, `eq` and `and` and the range checks the adders use. The
+  operation bus for the other external ops, and the memory bus, are next.
 - **The AIR is checked, not the prover.** Nothing here says the witness
   computation fills the columns these constraints describe, nor anything about
   the soundness of the STARK backend.
@@ -553,8 +572,10 @@ holds the instruction the model is about to execute, at the model's pc, and
 slot 0's `c` is the model's `c`, then Main's constraints force slot 1's `c`
 and `flag`, and slot 2's `pc`, to encode exactly the state `zisk_execute`
 leaves. It holds for `copyb` and `flag`, with immediate or `c` sources, no
-store, no `set_pc`, and a jump that does not wrap the address space. The proof
-takes 9s and depends on no axioms beyond Lean's standard three.
+store, no `set_pc`, and a jump that does not wrap the address space. It is now
+the slot-1 instance of `lane_internal`, the same statement for any lane (see
+[Many steps](#many-steps)); the file takes 17s and depends on no axioms beyond
+Lean's standard three.
 
 **The direction is soundness.** The plan said "`zisk_execute` implies
 `Main.holds`": a model step yields a trace the AIR accepts. The pilot proves
@@ -564,10 +585,10 @@ program ran correctly. The full theorem in step 6 is stated this way too.
 
 Three things the pilot settled about the shape:
 
-- **Slot 1, not slot 0.** Main packs four steps per row. Slot 1 reads its
+- **Slot 1 first.** Main packs four steps per row. Slot 1 reads its
   previous `c` from slot 0 and hands its pc to slot 2 inside one row, while
   slot 0 reads across a row boundary, or a segment boundary on the first row.
-  The boundary cases belong to the full correspondence.
+  The other lanes and the boundaries came next; see [Many steps](#many-steps).
 - **Main alone cannot prove `add`.** Main fixes `c` and `flag` only for the
   internal ops, `flag` (op 0) and `copyb` (op 1). For every other op it sends
   `(op, a, b, c, flag)` over the operation bus, and the AIR that computes the op
@@ -679,10 +700,12 @@ others). `make tables` runs [`check_tables.py`](check_tables.py): for every
 argument the virtual table
 proves on the operation bus, it evaluates the tuple exactly as the extracted
 bus argument states it, at every row of the compiled fixed file the setup
-commits (`tmp/fixed/VirtualTableZisk0.fixed`), and checks every `add` row:
-`c = a + b mod 2^64`, `flag = 0`, every limb below `2^32`. All 15,604,641 `add`
-rows pass, in about 25s, the same count as the source table
-`binary_basic_frops_fixed.bin`. Six of the eight sub-tables hold only 32-bit
+commits (`tmp/fixed/VirtualTableZisk0.fixed`), and checks every row of a
+modeled op: `add` is `c = a + b mod 2^64` with `flag = 0`, `ltu` and `eq` are
+`c = flag = [a < b]` (unsigned) and `[a = b]`, `and` is `c = a & b` with
+`flag = 0`, every limb below `2^32`. All 18,168,075 such rows pass — 15,604,641
+`add`, 625,346 `ltu`, 1,500,428 `eq` and 437,660 `and` — the same counts as
+the source table `binary_basic_frops_fixed.bin`. Six of the eight sub-tables hold only 32-bit
 operands, their high limbs folded to constants by the compiler, which is why
 the check reads the compiled table rather than the source file. Making the
 checker expect `a + b + 1` fails every row.
@@ -691,12 +714,14 @@ The same run checks `TableNever` for the two tables. A merged table serves
 several buses through one argument, choosing per row, so the bus is evaluated
 per row too: of `VirtualTableZisk1`'s rows, 124 are on the Arith table, serving
 exactly the 14 mul/div opcodes, and about 2.5 million on BinaryExtension's,
-serving shifts, sign extension and bit counts (`0x21`–`0x43`); none is `add`.
+serving shifts, sign extension and bit counts (`0x21`–`0x43`); none is `add`,
+`ltu`, `eq` or `and`.
 Forbidding `mul`, which the Arith table does serve, fails on its rows. It
 also checks the Binary table (bus 125, five arguments of `VirtualTableZisk1`):
-every row's op is below 2^10, and each of its 262,144 `add` rows computes its
-byte; requiring one more than the true sum fails on half of them. The whole
-run takes about 19s.
+every row's op is below 2^10, and each row of a modeled op computes its byte:
+262,144 `add` rows, 262,144 `ltu` (across two arguments), 262,144 `eq` and
+131,072 `and`. Requiring one more than the true sum fails on half the `add`
+rows; a wrong `ltu` rule fails 512 rows. The whole run takes about 18s.
 
 **Every adder adds — proved.** [`lean/Proofs/Adders.lean`](lean/Proofs/Adders.lean)
 covers the six dedicated adders, 21 lanes from two templates. What each lane
@@ -784,6 +809,121 @@ prover's `OpAdds` is proved for any one of its rows; collecting every
 instance of every AIR into the list the lookup answers from is bookkeeping
 still to be written down.
 
+## `ltu`, `eq` and `and`
+
+The other external ops the model has follow the `add` pilot's route, prover by
+prover, with what the pilot needed of `add` stated for any op in
+[`lean/Proofs/Ops.lean`](lean/Proofs/Ops.lean): each op is a `sem`,
+`(c, flag)` of two 64-bit values, proved to be the model's `zisk_exec`
+(`ltuSem`, `eqSem`, `andSem`), and `OpProves code sem p` says prover `p`, at
+every row it proves on the operation bus with a nonzero count, carries `sem`
+of its operands when its op is `code`. The count matters only for Dma (below).
+
+**The census.** The same provers as for `add`, sorted anew:
+
+| Provers | `OpProves` from | Where |
+|---|---|---|
+| the 7 Binary lanes | their byte lookups and the Binary table | `BinaryOps.lean` |
+| the FROPS tables | their contents, `FropsProves` (`opProves_of_frops`), checked by `make tables` | `check_tables.py` |
+| the 21 adder lanes, the 29 constant- and selector-op provers | their op is never 6, 9 or 14 (`opProves_of_not`) | `OpBusCmp.lean` |
+| Arith, BinaryExtension (4 arguments) | their table never holds those ops (`TableNever`) | `OpBusCmp.lean` |
+
+The 29 are proved as for `add`, enumerating the values their op can take, now
+for three codes. Dma is the exception: its op is a sum of opcodes plus
+`6·sel_extended`, which is `ltu`'s code exactly when no base selector is set —
+and then its count, the sum of the same selectors, is 0. So for `ltu` it is
+excluded through its count (`Dma_bus51_not_ltu`, the op and the count
+enumerated together over the same bits), and for `eq` and `and` through its op.
+
+**Binary computes them — proved.**
+[`lean/Proofs/BinaryOps.lean`](lean/Proofs/BinaryOps.lean) proves, for each of
+the 7 lanes, all three ops at every row. As for `add`, it rests on what the
+table's rows are (`OpRow`, checked by `make tables` as `BinaryTableOps`):
+
+- **`ltu`**: each byte's flags are 1 if `a < b`, its carry-in if `a = b`, 0
+  otherwise, and `c` is 0. Chained from the lowest byte, the last byte's flags
+  are `[A < B]`.
+- **`eq`**: each byte's flags are 1 unless the carry-in is 0 and the bytes are
+  equal, inverted in the last byte, so the result is `[A = B]`.
+- **`and`**: each byte is `a & b`, no carry.
+
+The 32-bit forms are excluded as for `add`: Binary's op is `b_op + 16·mode32`,
+and no row of the table has the `b_op` a 32-bit form of 6, 9 or 14 would need,
+since every op is below 2^10. The byte chains are small Nat lemmas (`ltu8`,
+`eq8`, `and8`), and the bridge from the lane's field columns to naturals is
+shared by the three. About 5 s.
+
+**The pilot.** [`lean/Proofs/ExtPilot.lean`](lean/Proofs/ExtPilot.lean)
+generalizes `slot1_add` to `slot1_external code sem`, given every prover's
+`OpProves code sem`, and instantiates it: `slot1_ltu`, `slot1_eq`, `slot1_and`.
+Unlike `add`, `ltu` and `eq` set the flag, so slot 2's pc is the model's
+`bif flag then pc + jmp_offset1 else pc + jmp_offset2`, both cases proved from
+Main's transition. Standard three axioms; the file takes about 47 s, most of it
+the case split that unfolds `zisk_execute` for the four ops.
+
+The assumptions are the `add` pilot's: the lookups' soundness, the ROM, the
+tables `make tables` checks, slot 1's pc and slot 0's `c`, the one-slot scope,
+and the list of every AIR instance as provers.
+
+## Many steps
+
+The pilot proved one step at slot 1 and assumed what the step before it left:
+slot 1's pc and slot 0's `c`. Chaining steps discharges both, for every lane
+and across rows.
+
+**Every lane.** Main constrains its four lanes alike, each with its own copy
+of `main.pil:456`–`503`; only the neighbours differ. `LaneHolds r l p0 p1 np`
+([`Slot.lean`](lean/Proofs/Slot.lean)) is one lane's constraints as
+equations, with the `c` it reads (`p0`, `p1`) and the pc it determines (`np`)
+as parameters, and `lane_internal` proves the step for any lane from it. Four
+lemmas derive `LaneHolds` from the generated AIR, naming each lane's
+constraints and their intermediates:
+
+| Lane | Reads `c` from | Determines the pc of |
+|---|---|---|
+| 0 | `previous_c`: lane 3 of the previous row (`previous_c_0`), or `segment_previous_c` on a segment's first row (`previous_c_0_first`) | lane 1 |
+| 1, 2 | the lane before | the lane after |
+| 3 | lane 2 | lane 0 of the next row (`laneHolds_3`, when the next row is not a segment's first), or the airval `segment_next_pc` on a segment's last row (`laneHolds_3_last`) |
+
+The ROM lookup is generalized the same way: `romArg l` is lane `l`'s lookup
+(`Main.bus86` to `bus89`), and `rom_lane` derives `SlotHolds` at any lane from
+it. It also shows more than before: the lookup itself puts an instruction of
+the program at the lane's pc, provided that pc is below 2^32.
+
+**Steps chain.** [`lean/Proofs/Run.lean`](lean/Proofs/Run.lean) names a step's
+place, `Pos` (a row and a lane), and when it *encodes* a model state: its pc
+column is the state's pc and the `c` it reads is the state's `c`.
+
+- `step_internal`: if position `s` encodes a state, the step there runs the
+  program's instruction at its pc, which the ROM lookup finds, and `s.next`
+  encodes the state `zisk_execute` leaves.
+- `run_internal`: by induction, from an encoded start, the trace forces `n`
+  steps of the model (`Runs prog n σ σ'`), and the position `n` steps on
+  encodes `σ'`.
+- `step_pilot`, `run_pilot`: the same for programs of all six modeled opcodes
+  (`PilotProg`). An external op's result comes over the operation bus:
+  `opArg l` is lane `l`'s lookup (`Main.bus46`, `bus59`, `bus72`, `bus85`, one
+  tuple at four lanes), and `lane_external`
+  ([`ExtPilot.lean`](lean/Proofs/ExtPilot.lean)) proves the step at any lane
+  from `LaneHolds`, the lookup, and every prover's `OpProves`. `slot1_external`
+  is now its slot-1 case. The provers' guarantee enters as `OpsProved ps`: each
+  prover in the list computes all four ops, which the prover files give one by
+  one.
+
+Both runs share one induction, `run_of_step`, which turns any step lemma into
+runs of any length.
+
+The model's run is a conclusion, not a hypothesis: the trace determines which
+instruction the model executes at each step, and the constraints that it
+executes it as `zisk_execute` does. The scope is the pilot's, stated over the
+whole program (`InternalProg`): every instruction is `copyb` or `flag`, with
+immediate or `c` sources, no store and no `set_pc`, and both its jumps land in
+the 32-bit pc range (`PilotProg` allows the four external ops too). A run stays
+within one segment; crossing to the next goes
+through the continuation bus and the segment airvals, whose lane-level ends are
+proved (`previous_c_0_first`, `laneHolds_3_last`) but not yet joined. Standard
+three axioms; `Run.lean` checks in about a second.
+
 ## Next steps
 
 1. **Memory and registers — done.** `rX`, `wX`, `read_mem`, `write_mem` and
@@ -796,7 +936,8 @@ still to be written down.
    than the program's own four, because the BIOS and the launcher run too.
 3. **A one-slot correspondence, as a pilot — done.** See
    [The pilot correspondence](#the-pilot-correspondence): slot 1, `copyb` and
-   `flag`, immediate and `c` sources.
+   `flag`, immediate and `c` sources. Since extended to every lane and to runs
+   within a segment; see [Many steps](#many-steps).
 4. **Extract the buses — in progress.** Teach
    [`pilout-constraints`](../tools/pilout-constraints/README.md) to read the
    lookup and permutation arguments among the pilout's hints, so the facts the
@@ -812,9 +953,10 @@ still to be written down.
      proved to add (21 lanes), Binary is proved to add (7 lanes), and all 33
      provers that cannot prove `add` are proved not to (see
      [Who can prove an `add`](#who-can-prove-an-add)), and the `add` pilot
-     is proved on top (see [The `add` pilot](#the-add-pilot)). The other
-     external ops (`eq`, `ltu`, `and`, …) follow the same census, prover by
-     prover;
+     is proved on top (see [The `add` pilot](#the-add-pilot)). The same is
+     done for `ltu`, `eq` and `and` (see [`ltu`, `eq` and `and`](#ltu-eq-and-and)),
+     which with `add` are every external op the model has; the rest come with
+     the opcodes of step 5;
    - the **memory bus**, for memory and register sources and stores;
    - the **range checks**, for limbs known to be below `2^32` — stated
      (`RangeHolds`, with each AIR's ranges generated) and used by the adders.
@@ -822,8 +964,9 @@ still to be written down.
    checked by `make difftest` on a program that executes it
    (`make difftest PROG=… INPUT=…`). Turn on `--strict` once coverage is
    complete.
-6. **The full correspondence.** Extend the pilot to every slot, the row and
-   segment boundaries, every source, store and opcode, up to: a trace every
+6. **The full correspondence.** Extend the runs of [Many steps](#many-steps)
+   across segment boundaries through the continuation bus, from the program's
+   entry, and to every source, store and opcode, up to: a trace every
    AIR accepts is a run of `zisk_execute`. Neither side is transcribed by hand,
    so neither can drift from what ZisK ships without the generators noticing.
 7. **An `assembly` mapping** (optional). Sail mappings are bidirectional, so

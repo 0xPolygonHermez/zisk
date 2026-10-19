@@ -5,3 +5,8 @@ import Proofs.Adders
 import Proofs.Binary
 import Proofs.OpBus
 import Proofs.AddPilot
+import Proofs.Ops
+import Proofs.BinaryOps
+import Proofs.OpBusCmp
+import Proofs.ExtPilot
+import Proofs.Run

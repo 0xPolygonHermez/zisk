@@ -171,20 +171,89 @@ abbrev goldilocks : Nat := 18446744069414584321
 
 variable {F : Type} [Lean.Grind.Field F] [Lean.Grind.IsCharP F goldilocks]
 
-/-- **The ROM lookup gives `SlotHolds`.** If Main's slot 1 looks its
-instruction up on the ROM bus, the Rom holds the program `prog`, and slot 1's
-`pc` column is `pc`, then slot 1 holds `prog pc`, column by column. -/
-theorem slotHolds_of_rom (prog : BitVec 64 → Option zisk_inst)
+/-- Lane `l`'s ROM lookup, `Main.bus86` to `Main.bus89`: the same tuple, at
+each lane's columns. -/
+def romArg : Nat → BusArg F (Main.Ctx F) (Main.Trace F)
+  | 0 => Main.bus86
+  | 1 => Main.bus87
+  | 2 => Main.bus88
+  | _ => Main.bus89
+
+/-- Lane `l`'s packed ROM flags, `Main_rom_flags_l`. -/
+def romFlags (r : Main.Row F) (l : Nat) : F :=
+  1 + 2 * r.a_src_imm l + 4 * r.a_src_mem l + 8 * r.is_precompiled l + 16 * r.b_src_imm l +
+    32 * r.b_src_mem l + 64 * r.is_external_op l + 128 * r.store_pc l + 256 * r.store_mem l +
+    512 * r.store_ind l + 1024 * r.set_pc l + 2048 * r.m32 l + 4096 * r.b_src_ind l +
+    8192 * r.a_src_reg l + 16384 * r.b_src_reg l + 32768 * r.store_reg l
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem romArg_reps (l : Nat) (x : Main.Ctx F) (t : Main.Trace F) (i : Int) :
+    (romArg l).reps x t i = 1 := by
+  rcases l with _ | _ | _ | l <;> rfl
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem romArg_bus (l : Nat) (x : Main.Ctx F) (t : Main.Trace F) (i : Int) :
+    (romArg l).bus x t i = 7890 := by
+  rcases l with _ | _ | _ | l <;> rfl
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+/-- The elements of lane `l`'s ROM tuple the proof reads. -/
+theorem romArg_tuple {l : Nat} (hl : l < 4) (x : Main.Ctx F) (t : Main.Trace F) (i : Int) :
+    tupleAt (romArg l).tuple x t i 0 = (t i).pc l + 0 ∧
+      tupleAt (romArg l).tuple x t i 1 = (t i).a_offset_imm0 l + 0 ∧
+      tupleAt (romArg l).tuple x t i 2 = (t i).a_imm1 l + 0 ∧
+      tupleAt (romArg l).tuple x t i 3 = (t i).b_offset_imm0 l + 0 ∧
+      tupleAt (romArg l).tuple x t i 4 = (t i).b_imm1 l + 0 ∧
+      tupleAt (romArg l).tuple x t i 6 = (t i).op l + 0 ∧
+      tupleAt (romArg l).tuple x t i 8 = (t i).jmp_offset1 l + 0 ∧
+      tupleAt (romArg l).tuple x t i 9 = (t i).jmp_offset2 l + 0 ∧
+      tupleAt (romArg l).tuple x t i 10 = romFlags (t i) l + 0 := by
+  rcases l with _ | _ | _ | _ | l
+  all_goals first
+    | exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    | omega
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+/-- Every flag of lane `l` is a bit, by Main's booleanity constraints
+(`main.pil:552`–`566`). -/
+theorem lane_bits {x : Main.Ctx F} {t : Main.Trace F} {i : Int} (h : Main.everyRow x t i)
+    {l : Nat} (hl : l < 4) :
+      (t i).a_src_imm l * (1 - (t i).a_src_imm l) = 0 ∧
+      (t i).a_src_mem l * (1 - (t i).a_src_mem l) = 0 ∧
+      (t i).is_precompiled l * (1 - (t i).is_precompiled l) = 0 ∧
+      (t i).b_src_imm l * (1 - (t i).b_src_imm l) = 0 ∧
+      (t i).b_src_mem l * (1 - (t i).b_src_mem l) = 0 ∧
+      (t i).is_external_op l * (1 - (t i).is_external_op l) = 0 ∧
+      (t i).store_pc l * (1 - (t i).store_pc l) = 0 ∧
+      (t i).store_mem l * (1 - (t i).store_mem l) = 0 ∧
+      (t i).store_ind l * (1 - (t i).store_ind l) = 0 ∧
+      (t i).set_pc l * (1 - (t i).set_pc l) = 0 ∧
+      (t i).m32 l * (1 - (t i).m32 l) = 0 ∧
+      (t i).b_src_ind l * (1 - (t i).b_src_ind l) = 0 ∧
+      (t i).a_src_reg l * (1 - (t i).a_src_reg l) = 0 ∧
+      (t i).b_src_reg l * (1 - (t i).b_src_reg l) = 0 ∧
+      (t i).store_reg l * (1 - (t i).store_reg l) = 0 := by
+  rcases l with _ | _ | _ | _ | l
+  · exact ⟨h.bool_a_src_imm_0, h.bool_a_src_mem_0, h.bool_is_precompiled_0, h.bool_b_src_imm_0, h.bool_b_src_mem_0, h.bool_is_external_op_0, h.bool_store_pc_0, h.bool_store_mem_0, h.bool_store_ind_0, h.bool_set_pc_0, h.bool_m32_0, h.bool_b_src_ind_0, h.bool_a_src_reg_0, h.bool_b_src_reg_0, h.bool_store_reg_0⟩
+  · exact ⟨h.bool_a_src_imm_1, h.bool_a_src_mem_1, h.bool_is_precompiled_1, h.bool_b_src_imm_1, h.bool_b_src_mem_1, h.bool_is_external_op_1, h.bool_store_pc_1, h.bool_store_mem_1, h.bool_store_ind_1, h.bool_set_pc_1, h.bool_m32_1, h.bool_b_src_ind_1, h.bool_a_src_reg_1, h.bool_b_src_reg_1, h.bool_store_reg_1⟩
+  · exact ⟨h.bool_a_src_imm_2, h.bool_a_src_mem_2, h.bool_is_precompiled_2, h.bool_b_src_imm_2, h.bool_b_src_mem_2, h.bool_is_external_op_2, h.bool_store_pc_2, h.bool_store_mem_2, h.bool_store_ind_2, h.bool_set_pc_2, h.bool_m32_2, h.bool_b_src_ind_2, h.bool_a_src_reg_2, h.bool_b_src_reg_2, h.bool_store_reg_2⟩
+  · exact ⟨h.bool_a_src_imm_3, h.bool_a_src_mem_3, h.bool_is_precompiled_3, h.bool_b_src_imm_3, h.bool_b_src_mem_3, h.bool_is_external_op_3, h.bool_store_pc_3, h.bool_store_mem_3, h.bool_store_ind_3, h.bool_set_pc_3, h.bool_m32_3, h.bool_b_src_ind_3, h.bool_a_src_reg_3, h.bool_b_src_reg_3, h.bool_store_reg_3⟩
+  · omega
+
+/-- **The ROM lookup gives the instruction, at any lane.** If Main's lane `l`
+looks its instruction up on the ROM bus, the Rom holds the program `prog`, and
+the lane's `pc` column is a 32-bit `pc`, then the program has an instruction
+at `pc`, and the lane holds it, column by column. -/
+theorem rom_lane (prog : BitVec 64 → Option zisk_inst)
     (xm : Main.Ctx F) (tm : Main.Trace F) (i : Int) (hm : Main.everyRow xm tm i)
     (xr : Rom.Ctx F) (tr : Rom.Trace F) (hr : ∀ j, Rom.everyRow xr tr j)
-    (hbus : LookupHolds Main.bus87 xm tm [⟨Rom.bus0, xr, tr⟩]) (hrom : RomHolds prog tr)
-    (pc : BitVec 64) (inst : zisk_inst) (hpc32 : pc.toNat < 2 ^ 32)
-    (hpc : (tm i).pc 1 = ((pc.toNat : Nat) : F)) (hprog : prog pc = some inst) :
-    SlotHolds (tm i) 1 inst pc := by
+    {l : Nat} (hl : l < 4)
+    (hbus : LookupHolds (romArg l) xm tm [⟨Rom.bus0, xr, tr⟩]) (hrom : RomHolds prog tr)
+    (pc : BitVec 64) (hpc32 : pc.toNat < 2 ^ 32) (hpc : (tm i).pc l = ((pc.toNat : Nat) : F)) :
+    ∃ inst, prog pc = some inst ∧ SlotHolds (tm i) l inst pc := by
   obtain ⟨-, -, -, -, hb⟩ := hbus
-  -- The lookup: slot 1's tuple is the tuple of some Rom row `j` in use.
-  obtain ⟨p, hp, j, hmult, -, htup⟩ := hb i (by
-    simp only [Main.bus87]; exact fun h => Lean.Grind.Field.zero_ne_one h.symm)
+  -- The lookup: the lane's tuple is the tuple of some Rom row `j` in use.
+  obtain ⟨p, hp, j, hmult, -, htup⟩ := hb i (by rw [romArg_reps]; exact one_ne_zero')
   rw [List.mem_singleton] at hp
   subst hp
   simp only [Rom.bus0] at hmult
@@ -196,21 +265,23 @@ theorem slotHolds_of_rom (prog : BitVec 64 → Option zisk_inst)
     have := congrArg (fun y => y * ((tr j).multiplicity)⁻¹) h0
     simp only at this
     grind
-  obtain ⟨pc', inst', hprog', hlt', enc⟩ := hrom j hdata
-  have tup := fun k => htup k
-  simp only [tupleAt, Main.bus87, Rom.bus0] at tup
-  have t_pc := tup 0
-  have t_a0 := tup 1
-  have t_a1 := tup 2
-  have t_b0 := tup 3
-  have t_b1 := tup 4
-  have t_op := tup 6
-  have t_j1 := tup 8
-  have t_j2 := tup 9
-  have t_flags := tup 10
-  simp only [List.getD_cons_zero, List.getD_cons_succ] at t_pc t_a0 t_a1 t_b0 t_b1 t_op t_j1
-  simp only [List.getD_cons_zero, List.getD_cons_succ] at t_j2 t_flags
-  -- The row's pc is slot 1's pc, so its instruction is `prog pc`.
+  obtain ⟨pc', inst, hprog', hlt', enc⟩ := hrom j hdata
+  obtain ⟨r0, r1, r2, r3, r4, r6, r8, r9, r10⟩ := romArg_tuple hl xm tm i
+  have t_pc := htup 0
+  have t_a0 := htup 1
+  have t_a1 := htup 2
+  have t_b0 := htup 3
+  have t_b1 := htup 4
+  have t_op := htup 6
+  have t_j1 := htup 8
+  have t_j2 := htup 9
+  have t_flags := htup 10
+  rw [r0] at t_pc; rw [r1] at t_a0; rw [r2] at t_a1; rw [r3] at t_b0; rw [r4] at t_b1
+  rw [r6] at t_op; rw [r8] at t_j1; rw [r9] at t_j2; rw [r10] at t_flags
+  simp only [tupleAt, Rom.bus0, List.getD_cons_zero, List.getD_cons_succ] at t_pc t_a0 t_a1 t_b0
+  simp only [tupleAt, Rom.bus0, List.getD_cons_zero, List.getD_cons_succ] at t_b1 t_op t_j1 t_j2
+  simp only [tupleAt, Rom.bus0, List.getD_cons_zero, List.getD_cons_succ] at t_flags
+  -- The row's pc is the lane's pc, so its instruction is `prog pc`.
   have hpcs : pc' = pc := by
     have h := t_pc
     rw [hpc, enc.line] at h
@@ -219,33 +290,33 @@ theorem slotHolds_of_rom (prog : BitVec 64 → Option zisk_inst)
       (by unfold goldilocks; omega) (by unfold goldilocks; omega)).mp h'
     exact BitVec.eq_of_toNat_eq this.symm
   rw [hpcs] at hprog' enc
-  have hinst : inst' = inst := by rw [hprog] at hprog'; exact (Option.some.inj hprog').symm
-  rw [hinst] at enc
+  refine ⟨inst, hprog', ?_⟩
   -- Every selector is a bit, by Main's booleanity constraints.
-  obtain ⟨b1, e1⟩ := bool_of_idem (by have := hm.c125; simpa [Main.c125] using this)
-  obtain ⟨b2, e2⟩ := bool_of_idem (by have := hm.c126; simpa [Main.c126] using this)
-  obtain ⟨b3, e3⟩ := bool_of_idem (by have := hm.c127; simpa [Main.c127] using this)
-  obtain ⟨b4, e4⟩ := bool_of_idem (by have := hm.c128; simpa [Main.c128] using this)
-  obtain ⟨b5, e5⟩ := bool_of_idem (by have := hm.c129; simpa [Main.c129] using this)
-  obtain ⟨b6, e6⟩ := bool_of_idem (by have := hm.c130; simpa [Main.c130] using this)
-  obtain ⟨b7, e7⟩ := bool_of_idem (by have := hm.c131; simpa [Main.c131] using this)
-  obtain ⟨b8, e8⟩ := bool_of_idem (by have := hm.c132; simpa [Main.c132] using this)
-  obtain ⟨b9, e9⟩ := bool_of_idem (by have := hm.c133; simpa [Main.c133] using this)
-  obtain ⟨b10, e10⟩ := bool_of_idem (by have := hm.c134; simpa [Main.c134] using this)
-  obtain ⟨b11, e11⟩ := bool_of_idem (by have := hm.c135; simpa [Main.c135] using this)
-  obtain ⟨b12, e12⟩ := bool_of_idem (by have := hm.c136; simpa [Main.c136] using this)
-  obtain ⟨b13, e13⟩ := bool_of_idem (by have := hm.c137; simpa [Main.c137] using this)
-  obtain ⟨b14, e14⟩ := bool_of_idem (by have := hm.c138; simpa [Main.c138] using this)
-  obtain ⟨b15, e15⟩ := bool_of_idem (by have := hm.c139; simpa [Main.c139] using this)
+  obtain ⟨q1, q2, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12, q13, q14, q15⟩ := lane_bits hm hl
+  obtain ⟨b1, e1⟩ := bool_of_idem q1
+  obtain ⟨b2, e2⟩ := bool_of_idem q2
+  obtain ⟨b3, e3⟩ := bool_of_idem q3
+  obtain ⟨b4, e4⟩ := bool_of_idem q4
+  obtain ⟨b5, e5⟩ := bool_of_idem q5
+  obtain ⟨b6, e6⟩ := bool_of_idem q6
+  obtain ⟨b7, e7⟩ := bool_of_idem q7
+  obtain ⟨b8, e8⟩ := bool_of_idem q8
+  obtain ⟨b9, e9⟩ := bool_of_idem q9
+  obtain ⟨b10, e10⟩ := bool_of_idem q10
+  obtain ⟨b11, e11⟩ := bool_of_idem q11
+  obtain ⟨b12, e12⟩ := bool_of_idem q12
+  obtain ⟨b13, e13⟩ := bool_of_idem q13
+  obtain ⟨b14, e14⟩ := bool_of_idem q14
+  obtain ⟨b15, e15⟩ := bool_of_idem q15
   -- The packed flags are the program's, so each bit is the instruction's.
   have hbits : [b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15]
       = flagBits inst := by
-    have hf : Main.Main_rom_flags_1 xm tm i = ((flagsEnc inst : Nat) : F) := by
+    have hf : romFlags (tm i) l = ((flagsEnc inst : Nat) : F) := by
       rw [← enc.flags]; grind
     apply unpack (F := F) (p := goldilocks) (by decide) _ _ rfl rfl
     show _ = ((flagsEnc inst : Nat) : F)
     rw [← hf]
-    simp only [Main.Main_rom_flags_1, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13,
+    simp only [romFlags, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13,
       e14, e15, List.map_cons, List.map_nil, packF]
     grind
   simp only [flagBits, List.cons.injEq] at hbits
@@ -263,6 +334,32 @@ theorem slotHolds_of_rom (prog : BitVec 64 → Option zisk_inst)
     jmp_offset1 := by rw [← enc.jmp_offset1]; grind
     jmp_offset2 := by rw [← enc.jmp_offset2]; grind
     pc := hpc, m32 := e11 }
+
+/-- **The ROM lookup gives `SlotHolds`**, at any lane, for the instruction the
+program has there. -/
+theorem slotHolds_of_rom_lane (prog : BitVec 64 → Option zisk_inst)
+    (xm : Main.Ctx F) (tm : Main.Trace F) (i : Int) (hm : Main.everyRow xm tm i)
+    (xr : Rom.Ctx F) (tr : Rom.Trace F) (hr : ∀ j, Rom.everyRow xr tr j)
+    {l : Nat} (hl : l < 4)
+    (hbus : LookupHolds (romArg l) xm tm [⟨Rom.bus0, xr, tr⟩]) (hrom : RomHolds prog tr)
+    (pc : BitVec 64) (inst : zisk_inst) (hpc32 : pc.toNat < 2 ^ 32)
+    (hpc : (tm i).pc l = ((pc.toNat : Nat) : F)) (hprog : prog pc = some inst) :
+    SlotHolds (tm i) l inst pc := by
+  obtain ⟨inst', h', hs⟩ := rom_lane prog xm tm i hm xr tr hr hl hbus hrom pc hpc32 hpc
+  rw [hprog] at h'
+  rw [Option.some.inj h']
+  exact hs
+
+/-- **The ROM lookup gives `SlotHolds`**, at slot 1. -/
+theorem slotHolds_of_rom (prog : BitVec 64 → Option zisk_inst)
+    (xm : Main.Ctx F) (tm : Main.Trace F) (i : Int) (hm : Main.everyRow xm tm i)
+    (xr : Rom.Ctx F) (tr : Rom.Trace F) (hr : ∀ j, Rom.everyRow xr tr j)
+    (hbus : LookupHolds Main.bus87 xm tm [⟨Rom.bus0, xr, tr⟩]) (hrom : RomHolds prog tr)
+    (pc : BitVec 64) (inst : zisk_inst) (hpc32 : pc.toNat < 2 ^ 32)
+    (hpc : (tm i).pc 1 = ((pc.toNat : Nat) : F)) (hprog : prog pc = some inst) :
+    SlotHolds (tm i) 1 inst pc :=
+  slotHolds_of_rom_lane prog xm tm i hm xr tr hr (l := 1) (by decide) hbus hrom pc inst hpc32 hpc
+    hprog
 
 /-- **The pilot, with the ROM lookup in place of `SlotHolds`.** The same
 conclusion as `slot1_internal`: slot 1's `c` and `flag`, and slot 2's `pc`,
