@@ -218,10 +218,18 @@ impl AsmProver {
             let gpu_id = pctx.first_gpu_id();
             GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize, gpu_id }
         };
-        // The device memory witness needs the GPU planner; decided before the memory-ops
-        // emulator starts, since its stream form follows.
+        // The device memory witness needs the GPU planner and a layout with streaming-commit
+        // slots (the window stays borrowed through the memory witnesses); decided before the
+        // memory-ops emulator starts, since its stream form follows.
         let gpu_planner = matches!(gpu_buffer_source, GpuBufferSource::Borrowed { ptr, size, .. } if ptr != 0 && size > 0);
-        zisk_common::enable_device_mem_witness(gpu_planner);
+        let slots = gpu_planner
+            && zisk_asm_runner::gpu_layout_has_commit_slots(pctx.get_device_buffers_ptr());
+        if gpu_planner && !slots && zisk_common::device_mem_witness() {
+            tracing::info!(
+                "[gpu] no streaming-commit slots in this layout; the memory witness stays on the CPU"
+            );
+        }
+        zisk_common::enable_device_mem_witness(slots);
 
         let asm_services = AsmServices::new(
             world_rank,

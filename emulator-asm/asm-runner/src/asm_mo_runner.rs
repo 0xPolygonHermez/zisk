@@ -290,6 +290,28 @@ pub fn device_mem_witness_requested() -> bool {
     zisk_common::device_mem_witness_active()
 }
 
+/// Whether proofman's GPU layout has streaming-commit slots below the memory-ops window. The device
+/// witness keeps the window borrowed until the last owned memory instance is filled, and the
+/// other instances' contributions commit on the slots meanwhile; a layout without them (verify
+/// constraints, debug info) runs every contribution on the basic streams the window covers and
+/// would wait for the release that waits for them.
+pub fn gpu_layout_has_commit_slots(d_buffers: *mut std::ffi::c_void) -> bool {
+    #[cfg(gpu)]
+    {
+        use proofman_starks_lib_c::{get_layout_offset_c, LayoutBoundary};
+        if d_buffers.is_null() {
+            return false;
+        }
+        get_layout_offset_c(d_buffers, LayoutBoundary::MopsBase)
+            > get_layout_offset_c(d_buffers, LayoutBoundary::AuxBase)
+    }
+    #[cfg(not(gpu))]
+    {
+        let _ = d_buffers;
+        false
+    }
+}
+
 /// Whether the memory-ops emulator runs in its light form (no values, no steps): whenever the
 /// device witness, which needs them, is off.
 pub fn mops_light() -> bool {

@@ -66,6 +66,11 @@ pub fn device_mem_witness_requested() -> bool {
     zisk_common::device_mem_witness_active()
 }
 
+/// No device witness on this platform.
+pub fn gpu_layout_has_commit_slots(_d_buffers: *mut std::ffi::c_void) -> bool {
+    false
+}
+
 /// The light memory-ops emulator whenever the device witness is off.
 pub fn mops_light() -> bool {
     !device_mem_witness_requested()
