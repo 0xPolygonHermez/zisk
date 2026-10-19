@@ -44,7 +44,7 @@ PROG  ?= ../ziskasm/examples/doubler-min
 INPUT ?= ../ziskasm/examples/doubler/input.bin
 DIFF_DIR = build/difftest/$(notdir $(PROG))
 
-.PHONY: all check lean ops pil lean-env lean-build pil-build proofs frops emu difftest difftest-all clean
+.PHONY: all check lean ops pil lean-env lean-build pil-build proofs tables emu difftest difftest-all clean
 
 all: check ops
 
@@ -98,16 +98,19 @@ lean-build: lean-env
 	@test -d build/lean/out || { echo "build/lean/out is missing — run make lean" >&2; exit 1; }
 	cd lean && $(LAKE) build Out
 
-## Check every FROPS row with a checked op against the op's result, in the
-## virtual table the setup commits. See check_frops.py.
-frops:
-	@test -f $(FIXED)/VirtualTableZisk0.fixed || { \
-	  echo "$(FIXED)/VirtualTableZisk0.fixed not found — run tools/test-env/setup_build.sh --compile-pil" >&2; \
-	  exit 1; }
+## Check the virtual tables' contents against what the proofs assume: the
+## FROPS rows' results, and the ops the Arith and BinaryExtension tables never
+## serve. See check_tables.py.
+tables:
+	@for v in VirtualTableZisk0 VirtualTableZisk1; do test -f $(FIXED)/$$v.fixed || { \
+	  echo "$(FIXED)/$$v.fixed not found — run tools/test-env/setup_build.sh --compile-pil" >&2; \
+	  exit 1; }; done
 	@mkdir -p build
-	cargo run --release -q -p zisk-pilout-constraints -- \
-	  extract --pilout $(PILOUT) --air VirtualTableZisk0 > build/VirtualTableZisk0.json
-	python3 check_frops.py build/VirtualTableZisk0.json $(FIXED)/VirtualTableZisk0.fixed
+	for v in VirtualTableZisk0 VirtualTableZisk1; do \
+	  cargo run --release -q -p zisk-pilout-constraints -- \
+	    extract --pilout $(PILOUT) --air $$v > build/$$v.json || exit 1; done
+	python3 check_tables.py build/VirtualTableZisk0.json $(FIXED)/VirtualTableZisk0.fixed \
+	  build/VirtualTableZisk1.json $(FIXED)/VirtualTableZisk1.fixed
 
 ## Build the C emulator for ROM into EMU_DIR/zisk_emu.
 emu:

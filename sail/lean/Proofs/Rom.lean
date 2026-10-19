@@ -8,11 +8,10 @@
   remains assumed is no longer a statement about Main's columns but two
   statements about the system around it:
 
-  * `LookupHolds` — what a sound lookup argument guarantees: every tuple Main
-    assumes is a tuple the Rom proves, at a row it proves with nonzero
-    multiplicity. It is stated over the generated bus arguments (`Main.bus87`,
-    `Rom.bus0`), and it refuses a pairing that is not one: both must be on the
-    same bus, one assuming and one proving.
+  * `LookupHolds` (`Bus.lean`) — what a sound lookup argument guarantees:
+    every tuple Main assumes is a tuple the Rom proves, at a row it proves with
+    nonzero multiplicity. It is stated over the generated bus arguments
+    (`Main.bus87`, `Rom.bus0`), with the Rom as the bus's one prover.
   * `RomHolds prog` — the Rom's committed `rom` columns encode `prog`, the
     program. That commitment is fixed per program (its root is a public of the
     proof), so this is a statement about the setup, not something an AIR could
@@ -26,6 +25,7 @@
   field of the base characteristic here, not an arbitrary ring.
 -/
 import Proofs.Slot
+import Proofs.Bus
 import Pil.Rom
 
 open Out.Functions Correspondence
@@ -33,24 +33,6 @@ open Out.Functions Correspondence
 namespace Correspondence
 
 /-! ### What a lookup guarantees -/
-
-section Bus
-
-variable {F C T C' T' : Type} [PilField F]
-
-/-- The guarantee of a sound lookup argument between the side `a` that assumes
-and the side `p` that proves: whenever `a` sends its tuple, `p` proves the same
-tuple at some row, with nonzero multiplicity. Both must be on the same single
-bus, one assuming and one proving, or the pairing is not one the argument
-covers. -/
-def LookupHolds (a : BusArg F C T) (x : C) (t : T) (p : BusArg F C' T') (x' : C') (t' : T') :
-    Prop :=
-  (∃ b, a.opids = [b] ∧ p.opids = [b]) ∧ a.piop = .lookup ∧ p.piop = .lookup ∧
-    a.side = .assumes ∧ p.side = .proves ∧
-    ∀ i, a.reps x t i ≠ 0 →
-      ∃ j, p.reps x' t' j ≠ 0 ∧ a.tuple.map (fun f => f x t i) = p.tuple.map (fun f => f x' t' j)
-
-end Bus
 
 /-! ### The ROM's encoding of an instruction -/
 
@@ -198,14 +180,16 @@ instruction up on the ROM bus, the Rom holds the program `prog`, and slot 1's
 theorem slotHolds_of_rom (prog : BitVec 64 → Option zisk_inst)
     (xm : Main.Ctx F) (tm : Main.Trace F) (i : Int) (hm : Main.everyRow xm tm i)
     (xr : Rom.Ctx F) (tr : Rom.Trace F) (hr : ∀ j, Rom.everyRow xr tr j)
-    (hbus : LookupHolds Main.bus87 xm tm Rom.bus0 xr tr) (hrom : RomHolds prog tr)
+    (hbus : LookupHolds Main.bus87 xm tm [⟨Rom.bus0, xr, tr⟩]) (hrom : RomHolds prog tr)
     (pc : BitVec 64) (inst : zisk_inst) (hpc32 : pc.toNat < 2 ^ 32)
     (hpc : (tm i).pc 1 = ((pc.toNat : Nat) : F)) (hprog : prog pc = some inst) :
     SlotHolds (tm i) 1 inst pc := by
-  obtain ⟨-, -, -, -, -, hb⟩ := hbus
+  obtain ⟨-, -, -, -, hb⟩ := hbus
   -- The lookup: slot 1's tuple is the tuple of some Rom row `j` in use.
-  obtain ⟨j, hmult, htup⟩ := hb i (by
+  obtain ⟨p, hp, j, hmult, -, htup⟩ := hb i (by
     simp only [Main.bus87]; exact fun h => Lean.Grind.Field.zero_ne_one h.symm)
+  rw [List.mem_singleton] at hp
+  subst hp
   simp only [Rom.bus0] at hmult
   -- A row in use is a code row: `is_data * multiplicity = 0`.
   have hdata : (tr j).is_data = 0 := by
@@ -216,8 +200,19 @@ theorem slotHolds_of_rom (prog : BitVec 64 → Option zisk_inst)
     simp only at this
     grind
   obtain ⟨pc', inst', hprog', hlt', enc⟩ := hrom j hdata
-  simp only [Main.bus87, Rom.bus0, List.map_cons, List.map_nil, List.cons.injEq] at htup
-  obtain ⟨t_pc, t_a0, t_a1, t_b0, t_b1, -, t_op, -, t_j1, t_j2, t_flags, -⟩ := htup
+  have tup := fun k => htup k
+  simp only [tupleAt, Main.bus87, Rom.bus0] at tup
+  have t_pc := tup 0
+  have t_a0 := tup 1
+  have t_a1 := tup 2
+  have t_b0 := tup 3
+  have t_b1 := tup 4
+  have t_op := tup 6
+  have t_j1 := tup 8
+  have t_j2 := tup 9
+  have t_flags := tup 10
+  simp only [List.getD_cons_zero, List.getD_cons_succ] at t_pc t_a0 t_a1 t_b0 t_b1 t_op t_j1
+  simp only [List.getD_cons_zero, List.getD_cons_succ] at t_j2 t_flags
   -- The row's pc is slot 1's pc, so its instruction is `prog pc`.
   have hpcs : pc' = pc := by
     have h := t_pc
@@ -284,7 +279,7 @@ immediate and `c` sources, no store, no `set_pc`, no wrapping jump). -/
 theorem slot1_internal_rom (prog : BitVec 64 → Option zisk_inst)
     (xm : Main.Ctx F) (tm : Main.Trace F) (i : Int) (hm : Main.everyRow xm tm i)
     (xr : Rom.Ctx F) (tr : Rom.Trace F) (hr : ∀ j, Rom.everyRow xr tr j)
-    (hbus : LookupHolds Main.bus87 xm tm Rom.bus0 xr tr) (hrom : RomHolds prog tr)
+    (hbus : LookupHolds Main.bus87 xm tm [⟨Rom.bus0, xr, tr⟩]) (hrom : RomHolds prog tr)
     (inst : zisk_inst) (σ : State) (pc zc st : BitVec 64)
     (hpc : σ.regs.get? Register.PC = some pc) (hzc : σ.regs.get? Register.Zc = some zc)
     (hst : σ.regs.get? Register.Step = some st)

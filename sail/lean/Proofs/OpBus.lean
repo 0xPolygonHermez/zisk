@@ -7,8 +7,9 @@
   the ones that cannot. This file does that for every prover whose op is a
   constant or a sum of opcodes weighted by selectors: from the AIR's own
   constraints, its op is never 10. (The census is in the README, "Who can prove
-  an add"; Arith and BinaryExtension, whose op is ruled out by a table, and the
-  three kinds that can prove `add`, are not here.)
+  an add"; the three kinds that can prove `add` are not here.) Arith and
+  BinaryExtension, whose op is ruled out by a table, are at the end, from the
+  lookup into their table and the table's contents.
 
   One lemma does the work: an op of the form `c₀ + Σ cₖ·sₖ`, every `sₖ` a bit,
   takes one of the finitely many values `c₀ + Σ_{k ∈ S} cₖ`. If none is 10, and
@@ -24,6 +25,11 @@
   rather than going unnoticed.
 -/
 import Proofs.Rom
+import Proofs.Bus
+import Pil.Arith
+import Pil.BinaryExtension
+import Pil.BinaryExtensionLarge
+import Pil.VirtualTableZisk1
 import Pil.Add256
 import Pil.Arith256X
 import Pil.Arith256XLarge
@@ -538,6 +544,77 @@ theorem TwistedEdwards_bus103_not_add {x t i} (h : TwistedEdwards.everyRow x t i
     grind
   · decide
   · decide
+
+/-! ### Ruled out by a table
+
+Arith and BinaryExtension send their `op` column on the operation bus, and
+look the same column up in a table: Arith in the Arith table (bus 331),
+BinaryExtension in its own (bus 124), both served by the merged virtual table
+`VirtualTableZisk1`. The lookup makes the op one the table holds, and
+`check_tables.py` checks the tables never hold `add` (`TableNever`). -/
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+/-- The table side of a lookup on a single-bus argument `a` never sends `k`
+first, so neither does `a`. -/
+theorem not_of_table {C T : Type} (a : BusArg F C T) (x : C) (t : T) (i : Int) (ps : List (Prover F))
+    (b k : F) (hl : LookupHolds a x t ps) (hbus : ∀ x t i, a.bus x t i = b)
+    (hreps : a.reps x t i ≠ 0) (hd : ∀ p ∈ ps, TableNever p b k) :
+    tupleAt a.tuple x t i 0 ≠ k := by
+  obtain ⟨-, -, -, -, hb⟩ := hl
+  obtain ⟨p, hp, j, -, hpb, htup⟩ := hb i hreps
+  rw [htup 0]
+  exact hd p hp j (by rw [hpb, hbus])
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem one_ne_zero' : (1 : F) ≠ 0 := fun h => Lean.Grind.Field.zero_ne_one h.symm
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem Arith_bus30_not_add {x : Arith.Ctx F} {t : Arith.Trace F} {i : Int}
+    {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F}
+    (hl : LookupHolds Arith.bus41 x t [⟨VirtualTableZisk1.bus16, xv, tv⟩])
+    (hd : TableNever ⟨VirtualTableZisk1.bus16, xv, tv⟩ 331 ((10 : Int) : F)) :
+    opOf Arith.bus30 x t i ≠ ((10 : Int) : F) := by
+  have := not_of_table Arith.bus41 x t i _ 331 _ hl (fun _ _ _ => rfl) one_ne_zero'
+    (by simpa using hd)
+  simpa [opOf, tupleAt, Arith.bus30, Arith.bus41] using this
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem BinaryExtension_bus21_not_add {x : BinaryExtension.Ctx F} {t : BinaryExtension.Trace F}
+    {i : Int} {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F}
+    (hl : LookupHolds BinaryExtension.bus11 x t
+      [⟨VirtualTableZisk1.bus17, xv, tv⟩, ⟨VirtualTableZisk1.bus18, xv, tv⟩])
+    (hd17 : TableNever ⟨VirtualTableZisk1.bus17, xv, tv⟩ 124 ((10 : Int) : F))
+    (hd18 : TableNever ⟨VirtualTableZisk1.bus18, xv, tv⟩ 124 ((10 : Int) : F)) :
+    opOf BinaryExtension.bus21 x t i ≠ ((10 : Int) : F) := by
+  have := not_of_table BinaryExtension.bus11 x t i _ 124 _ hl (fun _ _ _ => rfl) one_ne_zero'
+    (by simp only [List.mem_cons, List.not_mem_nil, or_false]; rintro p (rfl | rfl) <;> assumption)
+  simpa [opOf, tupleAt, BinaryExtension.bus21, BinaryExtension.bus11] using this
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem BinaryExtensionLarge_bus21_not_add {x : BinaryExtensionLarge.Ctx F}
+    {t : BinaryExtensionLarge.Trace F} {i : Int}
+    {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F}
+    (hl : LookupHolds BinaryExtensionLarge.bus11 x t
+      [⟨VirtualTableZisk1.bus17, xv, tv⟩, ⟨VirtualTableZisk1.bus18, xv, tv⟩])
+    (hd17 : TableNever ⟨VirtualTableZisk1.bus17, xv, tv⟩ 124 ((10 : Int) : F))
+    (hd18 : TableNever ⟨VirtualTableZisk1.bus18, xv, tv⟩ 124 ((10 : Int) : F)) :
+    opOf BinaryExtensionLarge.bus21 x t i ≠ ((10 : Int) : F) := by
+  have := not_of_table BinaryExtensionLarge.bus11 x t i _ 124 _ hl (fun _ _ _ => rfl) one_ne_zero'
+    (by simp only [List.mem_cons, List.not_mem_nil, or_false]; rintro p (rfl | rfl) <;> assumption)
+  simpa [opOf, tupleAt, BinaryExtensionLarge.bus21, BinaryExtensionLarge.bus11] using this
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem BinaryExtensionLarge_bus32_not_add {x : BinaryExtensionLarge.Ctx F}
+    {t : BinaryExtensionLarge.Trace F} {i : Int}
+    {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F}
+    (hl : LookupHolds BinaryExtensionLarge.bus22 x t
+      [⟨VirtualTableZisk1.bus17, xv, tv⟩, ⟨VirtualTableZisk1.bus18, xv, tv⟩])
+    (hd17 : TableNever ⟨VirtualTableZisk1.bus17, xv, tv⟩ 124 ((10 : Int) : F))
+    (hd18 : TableNever ⟨VirtualTableZisk1.bus18, xv, tv⟩ 124 ((10 : Int) : F)) :
+    opOf BinaryExtensionLarge.bus32 x t i ≠ ((10 : Int) : F) := by
+  have := not_of_table BinaryExtensionLarge.bus22 x t i _ 124 _ hl (fun _ _ _ => rfl) one_ne_zero'
+    (by simp only [List.mem_cons, List.not_mem_nil, or_false]; rintro p (rfl | rfl) <;> assumption)
+  simpa [opOf, tupleAt, BinaryExtensionLarge.bus32, BinaryExtensionLarge.bus22] using this
 
 end Provers
 

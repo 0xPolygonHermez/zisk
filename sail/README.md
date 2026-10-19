@@ -133,12 +133,13 @@ reached through the ROM lookup. See
 | `model/zisk_main.sail` | The C emulator's `main`: initial state, the step loop, and the trace `make difftest` compares. Not part of the Lean build. |
 | [`../tools/sail-difftest`](../tools/sail-difftest/src/main.rs) | Exports a program to the model — `rom.sail` and its initial memory — records the reference trace on `ziskemu`, and checks the program's committed ROM rows against the encoding the Lean proofs assume. |
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
-| `check_frops.py` | Checks every `add` row of the FROPS tables the setup commits against `c = a + b`; `make frops`. |
+| `check_tables.py` | Checks the virtual tables the setup commits against what the proofs assume: every FROPS `add` row is `c = a + b`, and the Arith and BinaryExtension tables never serve `add`; `make tables`. |
 | `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. |
 | `lean/Proofs/Slot.lean` | The pilot correspondence: one slot of Main against one step of the model. |
 | `lean/Proofs/Rom.lean` | The ROM lookup: the slot's instruction derived from the program, through the bus. |
 | `lean/Proofs/BinaryAdd.lean` | BinaryAdd computes `add`: the `c` it proves is `a + b` mod 2^64. |
-| `lean/Proofs/OpBus.lean` | The 29 operation-bus provers that cannot prove `add`, each proved so. |
+| `lean/Proofs/Bus.lean` | What a bus guarantees: `LookupHolds`, for any number of provers, and `TableNever`. |
+| `lean/Proofs/OpBus.lean` | The 33 operation-bus provers that cannot prove `add`, each proved so. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
 ## Building
@@ -152,7 +153,7 @@ make check   # typecheck the model
 make lean    # generate Lean definitions into build/lean/out
 make ops     # check opcode names against core/src/zisk_ops.rs
 make pil     # generate Lean definitions of the AIR constraints into build/pil
-make frops   # check the FROPS tables' add rows (needs the PIL compile's tmp/fixed)
+make tables  # check the virtual tables' contents (needs the PIL compile's tmp/fixed)
 ```
 
 Two more targets typecheck the generated Lean, through the lake package in
@@ -597,10 +598,14 @@ hand-copied list of columns.
 
 What is assumed instead of `SlotHolds`:
 
-- **`LookupHolds`**: the lookup argument is sound — every tuple Main assumes
-  is a tuple the Rom proves, at a row with nonzero multiplicity. It is the
-  guarantee of the gsum argument, which is not modeled; it also checks that
-  the two arguments it pairs are on the same bus, one assuming and one proving.
+- **`LookupHolds`** ([`lean/Proofs/Bus.lean`](lean/Proofs/Bus.lean)): the
+  lookup argument is sound — every tuple Main assumes is a tuple the Rom
+  proves, at a row with nonzero multiplicity. It is the guarantee of the gsum
+  argument, which is not modeled. It is stated for any list of provers, from
+  AIRs of any type, comparing tuples up to zero padding and the bus per row as
+  the bus itself does; the ROM is the case of one prover. It also refuses a
+  pairing that is not one: the assuming side must assume on one bus, and every
+  prover must prove and serve that bus.
 - **`RomHolds prog`**: the Rom's committed `rom` columns encode the program.
   That commitment is fixed per program, and its root is a public of the proof,
   so this is a statement about the setup. `make difftest` checks it for every
@@ -633,8 +638,8 @@ arguments (`op` is the tuple's first element):
 | Add256, Blake2br, Blake2s, Blake3f, JumpDest, Keccakf, Sha256f | a constant (240, 234, 239, 238, 192, 241, 249) | no |
 | Poseidon | `235 + sel_poseidon1` | no (235 or 236) |
 | Arith256X, ArithBn254, ArithEq, ArithEq384, ArithSecp256K1, TwistedEdwards, Dma, Dma64Aligned\*, DmaUnaligned (and their Large variants) | a sum of selectors times opcodes | no: every selector is constrained boolean, and no 0/1 combination sums to 10 |
-| Arith | its `op` column | no, given its table: the Arith table's `OP` is a mul/div code, `0xB0`–`0xBF` |
-| BinaryExtension (2 variants) | its `op` column | no, given its table: shifts, sign extension and bit counts |
+| Arith | its `op` column | no: its table's ops are mul/div codes, `0xB0`–`0xBF` |
+| BinaryExtension (2 variants) | its `op` column | no: its table's ops are shifts, sign extension and bit counts |
 | **BinaryAdd, BinaryAddHi** (6 variants) | `10 + 78·sel_sh3add` | **yes**: `add`, or `sh3add` |
 | **Binary** (3 variants) | `b_op + 16·mode32` | **yes**, with `b_op = 0x0a`, `mode32 = 0`: byte by byte, through the Binary table |
 | **VirtualTableZisk0** | 8 of its 10 arguments | **yes**: the FROPS tables, precomputed results |
@@ -650,12 +655,21 @@ it: an op of the form `c₀ + Σ cₖ·sₖ` with every `sₖ` a bit takes one o
 values `c₀ + Σ_{k∈S} cₖ`; `decide` checks that none is 10 (2048 subsets for
 ArithEq), and each `sₖ` is a bit by the AIR's booleanity constraint, reached by
 column name (`h.bool_sel_arith256`). All 29 check in about 3 seconds, on Lean's
-standard three axioms. Arith and BinaryExtension, ruled out only by their
-tables, are not among them.
+standard three axioms.
 
-**The FROPS tables are checked, not assumed.** They are fixed data the pilout
-does not carry, compiled into `VirtualTableZisk0`. `make frops` runs
-[`check_frops.py`](check_frops.py): for every argument the virtual table
+Arith and BinaryExtension are ruled out by their tables, so they are proved
+from three facts: the lookup that ties their `op` column to the table
+(`LookupHolds`, stated over `Arith.bus41` and the merged `VirtualTableZisk1`,
+which serves the Arith table on bus 331 and BinaryExtension's on 124), the
+first element of a looked-up tuple being the op, and the table never holding
+`add` (`TableNever`), which `make tables` checks. Four theorems, one per
+proving argument (BinaryExtensionLarge has two lanes).
+
+**The tables are checked, not assumed.** They are fixed data the pilout does
+not carry, compiled into `VirtualTableZisk0` (the FROPS tables) and
+`VirtualTableZisk1` (the Arith, BinaryExtension and range tables, among
+others). `make tables` runs [`check_tables.py`](check_tables.py): for every
+argument the virtual table
 proves on the operation bus, it evaluates the tuple exactly as the extracted
 bus argument states it, at every row of the compiled fixed file the setup
 commits (`tmp/fixed/VirtualTableZisk0.fixed`), and checks every `add` row:
@@ -666,9 +680,13 @@ operands, their high limbs folded to constants by the compiler, which is why
 the check reads the compiled table rather than the source file. Making the
 checker expect `a + b + 1` fails every row.
 
-Two "no, given its table" entries rest on the same kind of fixed data, the
-Arith and BinaryExtension tables; `check_frops.py` is the place to check them
-too.
+The same run checks `TableNever` for the two tables. A merged table serves
+several buses through one argument, choosing per row, so the bus is evaluated
+per row too: of `VirtualTableZisk1`'s rows, 124 are on the Arith table, serving
+exactly the 14 mul/div opcodes, and about 2.5 million on BinaryExtension's,
+serving shifts, sign extension and bit counts (`0x21`–`0x43`); none is `add`.
+Forbidding `mul`, which the Arith table does serve, fails on its rows. The
+whole run takes about 16s.
 
 **BinaryAdd adds — proved.** [`lean/Proofs/BinaryAdd.lean`](lean/Proofs/BinaryAdd.lean):
 at a row where BinaryAdd proves a tuple whose op is `add`, on operands that are
@@ -709,11 +727,11 @@ are the same template with more lanes, still to be covered.
    - the **operation bus**, which ties an external op in Main to the AIR that
      computes it, so `add`, `eq`, `ltu` and the rest can be proved. Started:
      the census of who can prove an `add` is done and the FROPS rows are
-     checked, BinaryAdd is proved to add, and the 29 provers that cannot
+     checked, BinaryAdd is proved to add, and all 33 provers that cannot
      prove `add` are proved not to (see
      [Who can prove an `add`](#who-can-prove-an-add)); what remains is
-     BinaryAdd's other variants, Binary's byte-wise lookups, the Arith and
-     BinaryExtension tables, and the `add` pilot on top;
+     BinaryAdd's other variants, Binary's byte-wise lookups, and the `add`
+     pilot on top;
    - the **memory bus**, for memory and register sources and stores;
    - the **range checks**, for limbs known to be below `2^32`.
 5. **Fill in the opcode table**, tracked by `make ops`, with each new opcode
