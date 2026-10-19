@@ -22,14 +22,15 @@ while true; do
     echo "11) Test ELF diagnostic"
     echo "12) Test docs examples"
     echo "13) Test quickstart"
-    echo "14) Install setup from public packages"
-    echo "15) Install setup from local packages"
-    echo "16) Shell"
-    echo "17) Exit"
+    echo "14) Test memory witness (GPU)"
+    echo "15) Install setup from public packages"
+    echo "16) Install setup from local packages"
+    echo "17) Shell"
+    echo "18) Exit"
     echo
 
     # Prompt for user selection
-    read -p "Select an option [1-17]: " option
+    read -p "Select an option [1-18]: " option
     echo
 
     case $option in
@@ -73,21 +74,24 @@ while true; do
             run_timed "./test_quickstart.sh"
             ;;
         14)
-            run_timed "./install_setup_public.sh"
+            run_timed "./test_mem_witness.sh"
             ;;
         15)
-            run_timed "./install_setup_local.sh"
+            run_timed "./install_setup_public.sh"
             ;;
         16)
+            run_timed "./install_setup_local.sh"
+            ;;
+        17)
             info "Open shell"
             bash -i
             ;;
-        17)
+        18)
             info "Exiting ZisK Release Kit. Goodbye!"
             exit
             ;;
         *)
-            info "Invalid selection. Please enter a number between 1 and 17."
+            info "Invalid selection. Please enter a number between 1 and 18."
             ;;
     esac
 

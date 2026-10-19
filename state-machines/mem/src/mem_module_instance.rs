@@ -105,6 +105,17 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         // Timed apart: flattening the per-chunk input vectors into one is a full copy of every
         // operation, and `Iterator::flatten` gives `collect` no usable size hint, so the
         // destination is grown and recopied as it goes.
+        // No collectors: the executor left the rows to the device (a device failure here makes
+        // it collect the instance and come back with collectors for the CPU witness).
+        if collectors.is_empty() {
+            let segment_id = self.ictx.plan.segment_id.unwrap();
+            return self.module.compute_witness_gpu_arena(
+                segment_id,
+                self.check_point.is_last_segment,
+                trace_buffer,
+                packed,
+            );
+        }
         phase_start!(t_gather);
         #[cfg(feature = "witness_timers")]
         let n_collectors = collectors.len();
@@ -180,6 +191,11 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
+        // The device built this block's rows of this memory from the planner's retained accesses:
+        // nothing to collect from the replay.
+        if crate::mem_device_rows::rows_on_device() {
+            return None;
+        }
         let chunk_check_point = self.check_point.chunks.get(&chunk_id).unwrap();
         let collector = MemModuleCollector::new(
             chunk_check_point,

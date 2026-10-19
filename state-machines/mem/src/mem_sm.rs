@@ -578,6 +578,43 @@ impl<F: PrimeField64> MemSM<F> {
         }
     }
 
+    /// The air values of a `Mem` segment from what the fill produced.
+    fn set_mem_air_values(
+        air_values: &mut MemAirValues<'_, F>,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        out: &MemFillOutput,
+    ) {
+        air_values.segment_id = F::from_usize(segment_id.into());
+        air_values.is_first_segment = F::from_bool(segment_id == 0);
+        air_values.is_last_segment = F::from_bool(is_last_segment);
+        air_values.previous_segment_step = F::from_u64(previous_segment.step);
+        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
+        air_values.segment_last_addr = F::from_u32(out.last_addr);
+        air_values.segment_last_step = F::from_u64(out.last_step);
+
+        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
+        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
+
+        air_values.segment_last_value[0] = F::from_u32(out.last_value[0]);
+        air_values.segment_last_value[1] = F::from_u32(out.last_value[1]);
+
+        air_values.distance_base[0] = F::from_u16(out.distance_base[0]);
+        air_values.distance_base[1] = F::from_u16(out.distance_base[1]);
+
+        air_values.distance_end[0] = F::from_u16(out.distance_end[0]);
+        air_values.distance_end[1] = F::from_u16(out.distance_end[1]);
+
+        // @[last_step_bound], see `split_last_step`.
+        air_values.last_step_chunks[0] = F::from_u32(out.last_step_chunks[0]);
+        air_values.last_step_chunks[1] = F::from_u32(out.last_step_chunks[1]);
+
+        // @[mem_padding], see `split_padding_size`.
+        air_values.padding_size_chunks = out.padding_size_chunks.map(F::from_u16);
+        air_values.padding_size_to_max_chunks = out.padding_size_to_max_chunks.map(F::from_u16);
+    }
+
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
     ///
     /// `mem_ops` does not need to be sorted. Each operation is placed directly
@@ -647,34 +684,23 @@ impl<F: PrimeField64> MemSM<F> {
             out.padding_size
         );
 
+        #[cfg(feature = "mem-witness-test")]
+        crate::mem_trace_hash::dump(
+            self.get_mem_name(),
+            usize::from(segment_id),
+            is_last_segment,
+            crate::mem_gpu_fill::rows_as_words(&trace.buffer),
+            previous_segment,
+            &out,
+        );
         let mut air_values = MemAirValues::<F>::new();
-        air_values.segment_id = F::from_usize(segment_id.into());
-        air_values.is_first_segment = F::from_bool(segment_id == 0);
-        air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_step = F::from_u64(previous_segment.step);
-        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
-        air_values.segment_last_addr = F::from_u32(out.last_addr);
-        air_values.segment_last_step = F::from_u64(out.last_step);
-
-        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
-
-        air_values.segment_last_value[0] = F::from_u32(out.last_value[0]);
-        air_values.segment_last_value[1] = F::from_u32(out.last_value[1]);
-
-        air_values.distance_base[0] = F::from_u16(out.distance_base[0]);
-        air_values.distance_base[1] = F::from_u16(out.distance_base[1]);
-
-        air_values.distance_end[0] = F::from_u16(out.distance_end[0]);
-        air_values.distance_end[1] = F::from_u16(out.distance_end[1]);
-
-        // @[last_step_bound], see `split_last_step`.
-        air_values.last_step_chunks[0] = F::from_u32(out.last_step_chunks[0]);
-        air_values.last_step_chunks[1] = F::from_u32(out.last_step_chunks[1]);
-
-        // @[mem_padding], see `split_padding_size`.
-        air_values.padding_size_chunks = out.padding_size_chunks.map(F::from_u16);
-        air_values.padding_size_to_max_chunks = out.padding_size_to_max_chunks.map(F::from_u16);
+        Self::set_mem_air_values(
+            &mut air_values,
+            segment_id,
+            is_last_segment,
+            previous_segment,
+            &out,
+        );
 
         phase_start!(t_air);
         let air_instance = AirInstance::new_from_trace(
@@ -702,6 +728,61 @@ impl<F: PrimeField64> MemSM<F> {
 }
 
 impl<F: PrimeField64> MemModule<F> for MemSM<F> {
+    fn compute_witness_gpu_arena(
+        &self,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<Option<AirInstance<F>>> {
+        use crate::mem_gpu_fill::arena_fill_packed_rows;
+        if !packed {
+            return Err(proofman_common::ProofmanError::InvalidParameters(
+                "the device memory witness needs the packed Mem trace".to_string(),
+            ));
+        }
+        let seg_idx = usize::from(segment_id);
+        // The device rows cover every row of the instance, padding included.
+        let mut trace = MemTrace::<MemTraceRowPacked<F>>::new_from_vec(trace_buffer)?;
+        let n_rows = trace.num_rows();
+        let report = {
+            let words = crate::mem_gpu_fill::rows_as_words_mut(&mut trace.buffer);
+            arena_fill_packed_rows(words, n_rows, segment_id)
+        }
+        .map_err(|e| {
+            proofman_common::ProofmanError::InvalidParameters(format!(
+                "Mem[{seg_idx}] RAM witness from the GPU planner failed: {e}"
+            ))
+        })?;
+        // @[mem_padding]: only the last segment may carry padding.
+        assert!(
+            is_last_segment || report.out.padding_size == 0,
+            "MemSM: padding_size must be 0 for non last segment, but got {}",
+            report.out.padding_size
+        );
+        tracing::debug!("Mem[{seg_idx}] rows from the device: {} lanes", report.res.n_lanes);
+        #[cfg(feature = "mem-witness-test")]
+        crate::mem_trace_hash::dump(
+            self.get_mem_name(),
+            seg_idx,
+            is_last_segment,
+            crate::mem_gpu_fill::rows_as_words(&trace.buffer),
+            &report.previous_segment,
+            &report.out,
+        );
+        let mut air_values = MemAirValues::<F>::new();
+        Self::set_mem_air_values(
+            &mut air_values,
+            segment_id,
+            is_last_segment,
+            &report.previous_segment,
+            &report.out,
+        );
+        Ok(Some(AirInstance::new_from_trace(
+            FromTrace::new(&mut trace).with_air_values(&mut air_values),
+        )))
+    }
+
     fn get_addr_range(&self) -> (u32, u32) {
         (RAM_W_ADDR_INIT, RAM_W_ADDR_END)
     }
@@ -899,23 +980,24 @@ fn set_mem_padding_lane<F: PrimeField64, R: MemTraceRowOps<F>>(
 /// What the fill produces besides the rows themselves: the scalars the air values are built from.
 /// Deliberately not `MemAirValues` -- that type carries a lifetime and a self-referential buffer,
 /// and building it is the caller's business anyway.
-struct MemFillOutput {
-    /// Address, step and value of the last filled slot: what the padding repeats and what the
-    /// segment hands to the next one.
-    last_addr: u32,
-    last_step: u64,
-    last_value: [u32; 2],
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct MemFillOutput {
+    /// Address, step and value of the LAST lane, padding included: what the segment hands to the
+    /// next one.
+    pub(crate) last_addr: u32,
+    pub(crate) last_step: u64,
+    pub(crate) last_value: [u32; 2],
     /// Distance from the segment's base / to the memory end, split in 16-bit halves.
-    distance_base: [u16; 2],
-    distance_end: [u16; 2],
+    pub(crate) distance_base: [u16; 2],
+    pub(crate) distance_end: [u16; 2],
     /// `last_step` split for @[last_step_bound]: a 22-bit and a 16-bit chunk. See
     /// `split_last_step`.
-    last_step_chunks: [u32; 2],
+    pub(crate) last_step_chunks: [u32; 2],
     /// Padding lanes emitted and cancelled by @[mem_padding], and the 16-bit chunks of it and
     /// of its distance to `N * lanes_x_row - 1` that bound it. See `split_padding_size`.
-    padding_size: u32,
-    padding_size_chunks: [u16; 2],
-    padding_size_to_max_chunks: [u16; 2],
+    pub(crate) padding_size: u32,
+    pub(crate) padding_size_chunks: [u16; 2],
+    pub(crate) padding_size_to_max_chunks: [u16; 2],
 }
 
 /// Splits `padding_size` and its distance to `max_padding` (`N * lanes_x_row - 1`) into the 16-bit
@@ -923,7 +1005,7 @@ struct MemFillOutput {
 /// integers below 2^32, whose sum cannot wrap the field, so the constraint tying that sum to the
 /// maximum bounds padding_size on both sides. Air values are cheap on the bus; a range table of
 /// the maximum's size would not be.
-fn split_padding_size(padding_size: u32, max_padding: u32) -> ([u16; 2], [u16; 2]) {
+pub(crate) fn split_padding_size(padding_size: u32, max_padding: u32) -> ([u16; 2], [u16; 2]) {
     assert!(
         padding_size <= max_padding,
         "MemSM: padding_size {padding_size} exceeds the {max_padding} lanes a segment can pad"
@@ -943,7 +1025,7 @@ const MAX_MEM_STEP: u64 = 1 + 4 * ((1 << 36) - 2) + 3;
 /// wants it: `step = chunks[0] + 2^22 * chunks[1]`, with `chunks[0] < 2^22` and
 /// `chunks[1] < 2^16`. The bound is what stops a prover from wrapping the step clock around the
 /// field over several segments, so both chunks are range checked.
-fn split_last_step(last_step: u64) -> [u32; 2] {
+pub(crate) fn split_last_step(last_step: u64) -> [u32; 2] {
     assert!(last_step <= MAX_MEM_STEP, "MemSM: last step {last_step} exceeds 2^38 - 4");
     [(last_step & ((1 << 22) - 1)) as u32, (last_step >> 22) as u32]
 }
@@ -953,7 +1035,7 @@ fn split_last_step(last_step: u64) -> [u32; 2] {
 /// Takes `rows` rather than a `MemTrace` so the equivalence test can run it over a handful of rows:
 /// the generated `MemTrace` fixes 2^22 rows, which at 104 columns is 3.25 GB and unusable from a
 /// test. `rows.len()` is the segment's row count, exactly as `trace.num_rows()` was.
-fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
+pub(crate) fn fill_mem_trace<F: PrimeField64, R: MemTraceRowOps<F>>(
     rows: &mut [R],
     mem_ops: MemOps<'_>,
     seg: &MemModuleSegmentCheckPoint,

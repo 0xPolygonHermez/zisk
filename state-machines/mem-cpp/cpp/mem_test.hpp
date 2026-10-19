@@ -52,27 +52,20 @@ public:
         uint32_t chunk_id;
         int32_t chunk_size;
         MemCountersBusData *chunk_data;
-        bool convert = false;
+        // A chunk file holds the chunk's stream words (mops_format.hpp); chunk_size counts words.
         while ((chunk_id = chunks.size()) < MAX_CHUNKS && (chunk_size = load_from_compact_file(path, chunk_id, &chunk_data)) >=0) {
             chunks.emplace_back(chunk_data, chunk_size);
             tot_ops += count_operations(chunk_data, chunk_size);
             tot_chunks += chunk_size;
-            if (chunk_id == 0 && (chunk_data[0].flags & 0xF000000)) {
-                printf("converting format ....\n");
-                convert = true;
-            }
-            if (convert) {
-                for (int32_t index = 0; index < chunk_size; ++index) {
-                    chunk_data[index].flags = ((chunk_data[index].flags & 0x08000000) >> 11) | ((chunk_data[index].flags & 0xF0000000) >> 28);
-                }
-            }
             #ifdef DEBUG_INFO
             // if (chunk_id == 999999) {
-                for (int32_t i = 0; i < chunk_size; ++i) {
-                    const uint32_t addr = chunk_data[i].addr;
+                const uint64_t *words = (const uint64_t *)chunk_data;
+                for (int32_t i = 0; i < chunk_size; i += mops_record_len(words[i])) {
+                    const MemCountersBusData rec = mops_decode_record(words + i);
+                    const uint32_t addr = rec.addr;
                     if (addr < 0x40000000 || addr >= 0x80000000) continue;
-                    const uint8_t bytes = chunk_data[i].flags & 0xFF; 
-                    const uint8_t is_write = chunk_data[i].flags >> 16;
+                    const uint8_t bytes = rec.flags & 0x0F;
+                    const uint8_t is_write = (rec.flags & MOPS_WRITE_FLAG) != 0;
                     if (addr == 0x80000000) printf("=================> ADDR 0x80000000\n");
                     if ((addr & 0x7) == 0 && bytes == 8) {
                         printf("MEM_OP 0x%08X %04d:%07d:0\n", addr, chunk_id, i);
@@ -94,11 +87,6 @@ public:
                         }
                     }
 
-                    // if (chunk_data[i].addr >= 0xA797E770 && chunk_data[i].addr < 0xA8014B08) {
-                    //     printf("MEM_OP 0x%08X %d W:%d\n", chunk_data[i].addr, bytes, is_write);
-                    // } else if (((chunk_data[i].addr + (chunk_data[i].flags & 0xFF)) & 0xFFFFFFF8) == (0xA797E770 - 8)) {
-                    //     printf("MEM_OP 0x%08X %d W:%d UNALIGNED\n", chunk_data[i].addr, bytes, is_write);
-                    // }
                 }
             // }
             #endif

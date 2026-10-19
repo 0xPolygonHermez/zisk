@@ -18,13 +18,13 @@ void count_and_plan_destroy(void* h) {
 // ─── Pipeline ───────────────────────────────────────────────────────
 bool count_and_plan_setup(void* h, void* d_buf, size_t bytes,
                uint32_t n_workers, uint32_t worker_id, int gpu_id,
-               const uint32_t* instance_rows) {
+               const uint32_t* instance_rows, bool retain_rows) {
     return static_cast<CountAndPlan*>(h)->setup(d_buf, bytes, n_workers, worker_id, gpu_id,
-                                               instance_rows);
+                                               instance_rows, retain_rows);
 }
 
-bool count_and_plan_add_chunk(void* h, const MemOp* memops, uint32_t n) {
-    return static_cast<CountAndPlan*>(h)->add_chunk(memops, n);
+bool count_and_plan_add_chunk(void* h, const uint64_t* words, uint32_t n_words) {
+    return static_cast<CountAndPlan*>(h)->add_chunk(words, n_words);
 }
 
 bool count_and_plan_run(void* h, InstanceMeta** metas_out, uint32_t* n_metas) {
@@ -77,6 +77,70 @@ bool count_and_plan_save_metas(const InstanceMeta* metas, uint32_t n,
     for (uint32_t i = 0; i < n; i++) save_metas_append(f, metas[i]);
     save_metas_end(f, n);
     return true;
+}
+
+// ─── The memory witness from the retained accesses ─────────────────────
+void count_and_plan_set_chunk_size_bits(void* h, uint32_t bits) {
+    if (h) static_cast<CountAndPlan*>(h)->set_chunk_size_bits(bits);
+}
+
+bool count_and_plan_set_mem_layout(void* h, const uint32_t* col_widths, uint32_t n_cols,
+                                   uint32_t words_per_row, uint32_t lanes_x_row) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->set_mem_layout(col_widths, n_cols, words_per_row, lanes_x_row);
+}
+
+bool count_and_plan_retains_rows(void* h) {
+    return h && static_cast<CountAndPlan*>(h)->retains_rows();
+}
+
+bool count_and_plan_ram_retention_ok(void* h) {
+    return h && static_cast<CountAndPlan*>(h)->ram_retention_ok();
+}
+
+bool count_and_plan_set_rom_layout(void* h, const uint32_t* col_widths, uint32_t n_cols,
+                                   uint32_t words_per_row, uint32_t lanes_x_row) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->set_rom_layout(col_widths, n_cols, words_per_row, lanes_x_row);
+}
+
+bool count_and_plan_set_input_layout(void* h, const uint32_t* col_widths, uint32_t n_cols,
+                                     uint32_t words_per_row, uint32_t lanes_x_row) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->set_input_layout(col_widths, n_cols, words_per_row, lanes_x_row);
+}
+
+bool count_and_plan_set_align_layout(void* h, uint32_t air_kind, const uint32_t* col_widths, uint32_t n_cols,
+                                     uint32_t words_per_row) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->set_align_layout(air_kind, col_widths, n_cols, words_per_row);
+}
+
+bool count_and_plan_prepare_fills(void* h, const void* image, size_t image_bytes, const AlignPlanDesc* plans,
+                                  uint32_t n_plans, const AlignChunkEntry* entries, uint32_t n_entries,
+                                  const uint32_t* ram, uint32_t n_ram, const uint32_t* rom, uint32_t n_rom,
+                                  const uint32_t* input, uint32_t n_input, RamFillPrepared* prepared) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->prepare_fills(image, image_bytes, plans, n_plans, entries, n_entries,
+                                                        ram, n_ram, rom, n_rom, input, n_input, prepared);
+}
+
+int count_and_plan_staged_wait(void* h, uint32_t family, uint32_t air_id, uint32_t segment, uint32_t timeout_ms,
+                               StagedRows* out) {
+    return h ? static_cast<CountAndPlan*>(h)->staged_wait(family, air_id, segment, timeout_ms, out) : -1;
+}
+
+bool count_and_plan_copy_staged(void* h, uint32_t family, uint32_t air_id, uint32_t segment, uint64_t* dst, uint64_t words) {
+    return h && static_cast<CountAndPlan*>(h)->copy_staged(family, air_id, segment, dst, words);
+}
+
+bool count_and_plan_fill_host(void* h, uint32_t family, uint32_t air_id, uint32_t segment, uint32_t n_rows,
+                              uint64_t* out_rows, RamFillResult* res) {
+    return h && static_cast<CountAndPlan*>(h)->fill_host(family, air_id, segment, n_rows, out_rows, res);
+}
+
+void count_and_plan_quiesce(void* h) {
+    if (h) static_cast<CountAndPlan*>(h)->quiesce();
 }
 
 }  // extern "C"
