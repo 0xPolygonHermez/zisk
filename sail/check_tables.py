@@ -14,7 +14,7 @@ and evaluated at every row of the compiled fixed file. A merged table may
 serve several buses through one argument, picking the bus per row; the bus is
 evaluated per row too, and each check applies to the rows on its bus.
 
-Three checks:
+Four checks:
 
 1. **Results on the operation bus (5000).** Every row whose op is a checked
    opcode carries the op's result (the FROPS tables of precomputed results):
@@ -44,6 +44,14 @@ Three checks:
        ltu  c = 0, flags = 1 if a < b, cin if a = b, else 0
        eq   c = 0, flags = 0 if cin = 0 and a = b, else 1; the last byte inverted
        and  c = a & b, flags = 0
+
+4. **Fixed ops on the memory bus (10).** A precompile's memory accesses send
+   an op that is a sum of its clock columns plus 1: fixed data, which
+   `lean/Proofs/MemBus.lean` takes as `FixedOp`. Every argument on bus 10
+   whose op reads only constants and fixed columns (shifted or not) has op 1
+   or 2 at every row — never 3, a register's. When `build/membus.json` (from
+   `gen_membus.py`) is present, the arguments found must be as many, per AIR,
+   as the ones it proves with `FixedOp`.
 
 The fixed file is the compiler's: a row-major array of u64, one column per
 fixed column of the AIR, in id order.
@@ -78,6 +86,26 @@ NEVER = {
 }
 
 
+MEMORY_BUS = 10
+
+
+class NotFixed(Exception):
+    """An operand that is not fixed data: a witness column, a challenge."""
+
+
+def bus_args(ir):
+    """Every bus argument, either side: (hint index, opids, tuple)."""
+    out = []
+    for k, hint in enumerate(ir["hints"]):
+        if hint["name"] != "gsum_debug_data":
+            continue
+        fields = {f.get("name"): f["value"] for f in hint["fields"][0]["value"]["value"]}
+        opids = {int(e["value"]["value"]["value"]) for e in fields["opids"]["value"]}
+        tuple_ = [e["value"]["value"] for e in fields["expressions"]["value"]]
+        out.append((k, opids, tuple_))
+    return out
+
+
 def proving_args(ir):
     """Every proving argument: (hint index, opids, bus operand, tuple)."""
     out = []
@@ -96,21 +124,24 @@ def proving_args(ir):
 def evaluator(ir, columns, n):
     """An operand -> its value at every row, in [0, P), as a uint64 array.
 
-    Expressions are evaluated over the pool, mod P. Only constants and
-    unshifted fixed columns can appear: a table has nothing else."""
+    Expressions are evaluated over the pool, mod P. Only constants and fixed
+    columns can appear, a shifted column read cyclically; anything else raises
+    `NotFixed`."""
     cache = {}
 
     def operand(o):
         kind = o["kind"]
         if kind == "const":
             return np.full(n, int(o["value"]) % P, dtype=np.uint64)
-        if kind == "fixed" and o.get("offset", 0) == 0:
-            return np.asarray(columns[:, o["col"]]) % np.uint64(P)
+        if kind == "fixed":
+            col = np.asarray(columns[:, o["col"]]) % np.uint64(P)
+            off = o.get("offset", 0)
+            return np.roll(col, -off) if off else col
         if kind == "expr":
             if o["idx"] not in cache:
                 cache[o["idx"]] = node(ir["expressions"][o["idx"]])
             return cache[o["idx"]]
-        sys.exit(f"operand {o} is not something a fixed table can contain")
+        raise NotFixed(f"operand {o} is not fixed data")
 
     def node(e):
         op = e["op"]
@@ -205,11 +236,49 @@ def check_binary_rows(k, rows, values):
     return failures
 
 
+def check_fixed_ops(k, op):
+    """Check 4 on one argument's op, at every row; returns failures."""
+    bad = int(((op != 1) & (op != 2)).sum())
+    for r in np.nonzero((op != 1) & (op != 2))[0][:5]:
+        print(f"FAIL hint {k} row {r}: a fixed op of {int(op[r])} on the memory bus")
+    print(f"  hint {k}: a fixed op on the memory bus, 1 or 2 at all {op.size} rows: {bad == 0}")
+    return bad
+
+
+def is_fixed_op(ir, o):
+    """Whether an operand reads fixed columns and nothing but constants besides."""
+    seen, fixed = set(), [False]
+
+    def walk(x):
+        kind = x["kind"]
+        if kind == "fixed":
+            fixed[0] = True
+            return True
+        if kind == "const":
+            return True
+        if kind == "expr":
+            if x["idx"] in seen:
+                return True
+            seen.add(x["idx"])
+            e = ir["expressions"][x["idx"]]
+            return all(walk(e[side]) for side in ("lhs", "rhs", "value") if side in e)
+        return False
+
+    return walk(o) and fixed[0]
+
+
 def main():
     args = sys.argv[1:]
     if not args or len(args) % 2:
         sys.exit(__doc__)
     total_failures = 0
+    expected = {}
+    try:
+        for e in json.load(open("build/membus.json")):
+            if e["kind"] == "fixed":
+                expected[e["air"]] = expected.get(e["air"], 0) + 1
+    except FileNotFoundError:
+        expected = None
     for ir_path, fixed_path in zip(args[::2], args[1::2]):
         ir = json.load(open(ir_path))
         n = ir["air"]["num_rows"]
@@ -220,8 +289,22 @@ def main():
         value = evaluator(ir, data.reshape(n, ncols), n)
         print(f"{ir['air']['air']}: {n} rows, {ncols} fixed columns")
 
+        fixed_ops = 0
+        for k, opids, tuple_ in bus_args(ir):
+            if MEMORY_BUS in opids and tuple_ and is_fixed_op(ir, tuple_[0]):
+                total_failures += check_fixed_ops(k, value(tuple_[0]))
+                fixed_ops += 1
+        air = ir["air"]["air"]
+        if expected is not None and (fixed_ops or air in expected):
+            if fixed_ops != expected.get(air, 0):
+                print(f"FAIL {air}: {fixed_ops} fixed ops on the memory bus, "
+                      f"MemBus.lean takes {expected.get(air, 0)} as FixedOp")
+                total_failures += 1
+
         results_checked = 0
-        for k, opids, bus, tuple_ in proving_args(ir):
+        # Checks 1-3 are about the virtual tables; another AIR's tuples are witness data.
+        table_args = proving_args(ir) if air.startswith("VirtualTable") else []
+        for k, opids, bus, tuple_ in table_args:
             watched = (opids & ({OPERATION_BUS, BINARY_TABLE} | set(NEVER)))
             if not watched:
                 continue

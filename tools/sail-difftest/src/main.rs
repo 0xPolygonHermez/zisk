@@ -83,7 +83,7 @@ fn prepare(zisk: &Path, input: Option<&Path>, out: &Path, max_steps: u64) -> Res
     let (trace, steps) = reference_trace(&rom, input, max_steps)?;
     fs::write(out.join("ziskemu.trace"), trace)?;
 
-    let rows = check_rom_rows(&rom)?;
+    let (rows, data_rows) = check_rom_rows(&rom)?;
 
     println!(
         "wrote {}: {} instructions, {} opcodes ({}), {} steps on ziskemu",
@@ -94,6 +94,7 @@ fn prepare(zisk: &Path, input: Option<&Path>, out: &Path, max_steps: u64) -> Res
         steps
     );
     println!("RomHolds: the committed ROM row of all {rows} instructions is RomRowEncodes");
+    println!("RomDataFlags: all {data_rows} data rows initialize memory with flags 2 or 4");
     Ok(())
 }
 
@@ -242,7 +243,12 @@ fn inst_to_sail(i: &ZiskInst) -> Result<String> {
 /// is `RomRowEncodes` of the instruction `rom.sail` exports, as
 /// `sail/lean/Proofs/Rom.lean` defines it. The Lean proofs take that encoding
 /// as a hypothesis; this is where it is held to the code that fills the ROM.
-fn check_rom_rows(rom: &ZiskRom) -> Result<usize> {
+///
+/// And `RomDataFlags` (`sail/lean/Proofs/MemBus.lean`): every data row sends
+/// its `flags` as the op of a memory-bus tuple, so they must be 2 (RAM) or 4
+/// (ROM initialization), never a register's 3. Returns the number of
+/// instruction rows and of data rows.
+fn check_rom_rows(rom: &ZiskRom) -> Result<(usize, usize)> {
     const P: u64 = 0xFFFF_FFFF_0000_0001;
     let signed = |v: i64| if v >= 0 { v as u64 } else { P - v.unsigned_abs() };
     let trace = CustomRom::build_trace::<Goldilocks>(rom).map_err(|e| anyhow!("{e}"))?;
@@ -276,7 +282,18 @@ fn check_rom_rows(rom: &ZiskRom) -> Result<usize> {
             bail!("pc {pc:#x} does not fit the 32-bit pc column RomHolds requires");
         }
     }
-    Ok(rom.insts.len())
+    let mut data_rows = 0;
+    for (j, row) in trace.buffer.iter().enumerate() {
+        if row.is_data.as_canonical_u64() == 0 {
+            continue;
+        }
+        data_rows += 1;
+        let flags = row.flags.as_canonical_u64();
+        if flags != 2 && flags != 4 {
+            bail!("ROM data row {j}: flags is {flags:#x}, RomDataFlags says 2 or 4");
+        }
+    }
+    Ok((rom.insts.len(), data_rows))
 }
 
 /// `Correspondence.opcode` in `sail/lean/Proofs/Slot.lean`.

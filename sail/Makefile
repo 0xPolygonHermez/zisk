@@ -44,7 +44,7 @@ PROG  ?= ../ziskasm/examples/doubler-min
 INPUT ?= ../ziskasm/examples/doubler/input.bin
 DIFF_DIR = build/difftest/$(notdir $(PROG))
 
-.PHONY: all check lean ops pil lean-env lean-build pil-build proofs provers tables emu difftest difftest-all clean
+.PHONY: all check lean ops pil lean-env lean-build pil-build proofs provers membus tables emu difftest difftest-all clean
 
 all: check ops
 
@@ -99,6 +99,12 @@ provers:
 	@test -d build/pil || { echo "build/pil is missing — run make pil" >&2; exit 1; }
 	python3 gen_provers.py
 
+## Regenerate lean/Proofs/MemBus.lean, which proves no AIR but Main sends a
+## register tuple on the memory bus, from the AIRs. See gen_membus.py.
+membus:
+	@test -d build/pil || { echo "build/pil is missing — run make pil" >&2; exit 1; }
+	python3 gen_membus.py
+
 ## Typecheck the generated model. Run `make lean` first.
 lean-build: lean-env
 	@test -d build/lean/out || { echo "build/lean/out is missing — run make lean" >&2; exit 1; }
@@ -107,16 +113,20 @@ lean-build: lean-env
 ## Check the virtual tables' contents against what the proofs assume: the
 ## FROPS rows' results, and the ops the Arith and BinaryExtension tables never
 ## serve. See check_tables.py.
+TABLE_AIRS = VirtualTableZisk0 VirtualTableZisk1 \
+  Arith256X Arith256XLarge ArithBn254 ArithBn254Large ArithEq ArithEq384 ArithEq384Large \
+  ArithEqLarge ArithSecp256K1 ArithSecp256K1Large Blake2br Blake2s Blake3f Keccakf Poseidon \
+  Sha256f TwistedEdwards
+
 tables:
-	@for v in VirtualTableZisk0 VirtualTableZisk1; do test -f $(FIXED)/$$v.fixed || { \
+	@for v in $(TABLE_AIRS); do test -f $(FIXED)/$$v.fixed || { \
 	  echo "$(FIXED)/$$v.fixed not found — run tools/test-env/setup_build.sh --compile-pil" >&2; \
 	  exit 1; }; done
 	@mkdir -p build
-	for v in VirtualTableZisk0 VirtualTableZisk1; do \
+	for v in $(TABLE_AIRS); do \
 	  cargo run --release -q -p zisk-pilout-constraints -- \
 	    extract --pilout $(PILOUT) --air $$v > build/$$v.json || exit 1; done
-	python3 check_tables.py build/VirtualTableZisk0.json $(FIXED)/VirtualTableZisk0.fixed \
-	  build/VirtualTableZisk1.json $(FIXED)/VirtualTableZisk1.fixed
+	python3 check_tables.py $(foreach v,$(TABLE_AIRS),build/$(v).json $(FIXED)/$(v).fixed)
 
 ## Build the C emulator for ROM into EMU_DIR/zisk_emu.
 emu:
