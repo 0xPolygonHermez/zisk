@@ -86,7 +86,8 @@ pub enum ZiskOperationType {
     BigInt,
     TwistedEdwards,
     Blake3,
-    Blake2s, // Note: Add new core operations here
+    Blake2s,
+    Poseidon2KoalaBear, // Note: Add new core operations here
     Evm,
     Dma, // Note: To add extra params to precompiles calls
     // ZisK Free Input Operations
@@ -116,6 +117,7 @@ pub const BLAKE2B_OP_TYPE_ID: u32 = ZiskOperationType::Blake2b as u32;
 pub const TWISTED_EDWARDS_OP_TYPE_ID: u32 = ZiskOperationType::TwistedEdwards as u32;
 pub const BLAKE3_OP_TYPE_ID: u32 = ZiskOperationType::Blake3 as u32;
 pub const BLAKE2S_OP_TYPE_ID: u32 = ZiskOperationType::Blake2s as u32;
+pub const POSEIDON2_KOALABEAR_OP_TYPE_ID: u32 = ZiskOperationType::Poseidon2KoalaBear as u32;
 
 /// ZisK instruction definition
 ///
