@@ -56,10 +56,11 @@ impl SecondaryWitnessHandler {
                 .contains_key(&global_id))
         };
         // An instance whose rows come from the GPU planner gets no collectors; should the device
-        // fail it after all, it is collected here and computed on the CPU like any other.
+        // fail it after all, it is collected here and computed on the CPU like any other, on the
+        // buffer the failure handed back (a second `take_buffer` would lose that one).
+        let mut trace_buffer = None;
         if !collect {
             MEM_FALLBACK.lock_or_poison("mem_fallback")?.on_device.push(global_id);
-            let trace_buffer = buffer_pool.take_buffer();
             let computed = generator.compute_secn_witness(
                 pctx,
                 sctx,
@@ -67,13 +68,16 @@ impl SecondaryWitnessHandler {
                 global_id,
                 instance,
                 Vec::new(),
-                trace_buffer,
+                buffer_pool.take_buffer(),
                 stats_scope_id,
             );
             MEM_FALLBACK.lock_or_poison("mem_fallback")?.on_device.retain(|&g| g != global_id);
             match computed {
                 Ok(()) => return Ok(()),
-                Err(e) => zisk_asm_runner::device_mem_witness_failed(&e.to_string()),
+                Err((e, buffer)) => {
+                    zisk_asm_runner::device_mem_witness_failed(&e.to_string());
+                    trace_buffer = buffer;
+                }
             }
         }
         let (_, air_id) = pctx.dctx_get_instance_info(global_id)?;
@@ -84,18 +88,20 @@ impl SecondaryWitnessHandler {
         }
         let collectors: Collectors =
             state.take_collectors_for_instance(global_id, instance.instance_type())?;
-        let trace_buffer = buffer_pool.take_buffer();
+        let trace_buffer = trace_buffer.unwrap_or_else(|| buffer_pool.take_buffer());
 
-        generator.compute_secn_witness(
-            pctx,
-            sctx,
-            state,
-            global_id,
-            instance,
-            collectors,
-            trace_buffer,
-            stats_scope_id,
-        )
+        generator
+            .compute_secn_witness(
+                pctx,
+                sctx,
+                state,
+                global_id,
+                instance,
+                collectors,
+                trace_buffer,
+                stats_scope_id,
+            )
+            .map_err(|(e, _)| e)
     }
 
     /// Collects, when `global_id` has no collectors yet, every memory instance of the block this

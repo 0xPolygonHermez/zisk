@@ -601,10 +601,13 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         is_last_segment: bool,
         trace_buffer: Vec<F>,
         packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
+    ) -> zisk_common::WitnessResult<F> {
         if !packed {
-            return Err(proofman_common::ProofmanError::InvalidParameters(
-                "the device memory witness needs the packed RomData trace".to_string(),
+            return Err(zisk_common::WitnessError::with_buffer(
+                proofman_common::ProofmanError::InvalidParameters(
+                    "the device memory witness needs the packed RomData trace".to_string(),
+                ),
+                trace_buffer,
             ));
         }
         let seg_idx = usize::from(segment_id);
@@ -616,9 +619,10 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             Self::device_rows(words, n_rows, segment_id)
         }
         .map_err(|e| {
-            proofman_common::ProofmanError::InvalidParameters(format!(
+            let error = proofman_common::ProofmanError::InvalidParameters(format!(
                 "RomData[{seg_idx}] witness from the GPU planner failed: {e}"
-            ))
+            ));
+            zisk_common::WitnessError::with_buffer(error, trace.get_buffer())
         })?;
         assert!(
             is_last_segment || out.padding_size == 0,

@@ -1,5 +1,5 @@
 use crate::{mem_module_collector::MemModuleCollector, MemModule, MemOps, MemPreviousSegment};
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::sync::Arc;
 use zisk_common::StatsType;
@@ -97,7 +97,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
         packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
+    ) -> zisk_common::WitnessResult<F> {
         // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
         // we take this `prev_last_value`, which represents the last value of the previous segment.
 

@@ -406,9 +406,7 @@ macro_rules! zisk_precompile_explicit {
                     )>,
                     trace_buffer: ::std::vec::Vec<F>,
                     packed: bool,
-                ) -> ::proofman_common::ProofmanResult<
-                    ::std::option::Option<::proofman_common::AirInstance<F>>,
-                > {
+                ) -> $crate::WitnessResult<F> {
                     let inputs: ::std::vec::Vec<_> = collectors
                         .into_iter()
                         .map(|(_, collector)| {

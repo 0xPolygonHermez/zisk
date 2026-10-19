@@ -3,7 +3,7 @@
 //! and integrating them with state machines and proofs.
 
 use crate::{BusDevice, CheckPoint, ChunkId, PayloadType, StatsType};
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, ProofCtx, ProofmanError, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::any::Any;
 
@@ -16,6 +16,32 @@ pub enum InstanceType {
     /// A table-backed computation instance.
     Table,
 }
+
+/// A failed witness computation. `trace_buffer` is the pooled buffer the instance was given, when
+/// it can still hand it back: the caller then reuses or returns it instead of losing it.
+#[derive(Debug)]
+pub struct WitnessError<F> {
+    /// What failed.
+    pub error: ProofmanError,
+    /// The trace buffer, when the instance could hand it back.
+    pub trace_buffer: Option<Vec<F>>,
+}
+
+impl<F> WitnessError<F> {
+    /// A failure that hands `trace_buffer` back.
+    pub fn with_buffer(error: ProofmanError, trace_buffer: Vec<F>) -> Self {
+        Self { error, trace_buffer: Some(trace_buffer) }
+    }
+}
+
+impl<F> From<ProofmanError> for WitnessError<F> {
+    fn from(error: ProofmanError) -> Self {
+        Self { error, trace_buffer: None }
+    }
+}
+
+/// The result of [`Instance::compute_witness`].
+pub type WitnessResult<F> = Result<Option<AirInstance<F>>, WitnessError<F>>;
 
 /// The `Instance` trait defines the interface for any computation instance used in proof systems.
 ///
@@ -34,8 +60,8 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns an error if the witness computation fails. Implementations that do
-    /// no fallible work return `Ok`.
+    /// Returns an error if the witness computation fails, with `trace_buffer` when the
+    /// implementation can still hand it back. Implementations that do no fallible work return `Ok`.
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,
@@ -43,7 +69,7 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
         _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         _trace_buffer: Vec<F>,
         _packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
+    ) -> WitnessResult<F> {
         Ok(None)
     }
 
@@ -158,7 +184,7 @@ macro_rules! table_instance {
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
                 _trace_buffer: Vec<F>,
                 _packed: bool,
-            ) -> ProofmanResult<Option<AirInstance<F>>> {
+            ) -> $crate::WitnessResult<F> {
                 let multiplicity = self.table_sm.detach_multiplicity();
                 self.table_sm.set_calculated();
 
@@ -268,7 +294,7 @@ macro_rules! table_instance_array {
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
                 _trace_buffer: Vec<F>,
                 _packed: bool,
-            ) -> ProofmanResult<Option<AirInstance<F>>> {
+            ) -> $crate::WitnessResult<F> {
                 let multiplicities = self.table_sm.detach_multiplicities();
                 self.table_sm.set_calculated();
                 pctx.dctx_distribute_multiplicities(multiplicities, self.ictx.global_id);
