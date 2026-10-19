@@ -1,10 +1,11 @@
 #!/bin/bash
 # The device memory witness against the CPU rows, with its fallbacks: proves one Ethereum block
 # (the first of BLOCK_INPUTS_SINGLE) with the assembly emulator on the GPU in every configuration
-# below. Each proof must verify, and the memory airs' row hashes (ZISK_MEM_TRACE_HASH_DIR) must
-# equal those of the CPU path (ZISK_MEM_GPU_FILL=0). The fallback cases must also log the
-# fallback they exercise. ZISK_MEM_GPU_FILL is unset for every case but "off" (ZISK_MEM_GPU_FILL=0, the device witness
-# is the default).
+# below, then the diagnostic program (every precompile) on both paths. Each proof must verify, and
+# the memory airs' row hashes (ZISK_MEM_TRACE_HASH_DIR) must equal those of the CPU path
+# (ZISK_MEM_GPU_FILL=0). The fallback cases must also log the fallback they exercise.
+# ZISK_MEM_GPU_FILL is unset for every case but the "off" ones (ZISK_MEM_GPU_FILL=0, the device
+# witness is the default).
 #
 # Needs cargo-zisk built with `--features mem-witness-test`: the knobs below and the row-hash dump
 # exist in that build only. The planner of such a build logs "[mops] test knobs enabled" at its
@@ -36,7 +37,7 @@ run_case() {
     mkdir -p "${hash_dir}"
     info "Case ${name}: $*"
     env -u ZISK_MEM_GPU_FILL "$@" ZISK_MEM_TRACE_HASH_DIR="${hash_dir}" cargo-zisk-dev prove \
-        -e "${ZEC_ELF}" -i "${ZEC_INPUTS}/${INPUT_FILE}" -o "${LOGS_DIR}/mem_witness/${name}.bin" \
+        -e "${CASE_ELF}" ${CASE_INPUT} -o "${LOGS_DIR}/mem_witness/${name}.bin" \
         --asm --gpu -y $PROVE_FLAGS > "${log}" 2>&1
     local rc=$?
     rm -f "${LOGS_DIR}/mem_witness/${name}.bin"
@@ -56,7 +57,7 @@ run_case() {
         err "Case ${name}: the proof did not verify (see ${log})"
         return 1
     fi
-    if [[ "${name}" == "off" ]]; then
+    if [[ "${name}" == *off ]]; then
         REF_DIR="${hash_dir}"
         success "Case ${name}: $(ls "${hash_dir}" | wc -l) instance hashes taken as the reference"
         return 0
@@ -75,7 +76,7 @@ run_case() {
 main() {
     info "▶️  Running $(basename "$0") script..."
 
-    load_env BLOCK_INPUTS_SINGLE PROVE_FLAGS ZEC_GUEST || return 1
+    load_env ZISK_REPO_DIR BLOCK_INPUTS_SINGLE PROVE_FLAGS ZEC_GUEST || return 1
     resolve_zec_guest || return 1
     zec_guest_inputs BLOCK_INPUTS_SINGLE || return 1
     is_proving_key_installed || return 1
@@ -98,6 +99,8 @@ main() {
     mkdir -p "${LOGS_DIR}/mem_witness"
     cd "${WORKSPACE_DIR}" || return 1
 
+    CASE_ELF="${ZEC_ELF}"
+    CASE_INPUT="-i ${ZEC_INPUTS}/${INPUT_FILE}"
     local plan_fail="no device plan for this block; planning it on the CPU"
     # The CPU path: its hashes are the reference.
     run_case off 0 "" ZISK_MEM_GPU_FILL=0 || return 1
@@ -138,6 +141,16 @@ main() {
     # The MemAlign region too small for the block's unaligned accesses (a 16 MB region instead of 2560):
     # the overflow is detected and the block's memory instances go to the CPU. No test build needed.
     run_case align_region_overflow 0 "overflowed; witness off" ZISK_MEM_ALIGN_MB=16 || return 1
+
+    # The diagnostic program: every precompile's records in the stream, which a block does not cover.
+    CASE_ELF="$(get_zisk_repo_dir)/test-artifacts/programs/target/elf/riscv64ima-zisk-zkvm-elf/release/diagnostic"
+    CASE_INPUT=""
+    if [[ ! -f "${CASE_ELF}" ]]; then
+        err "diagnostic ELF not built (menu option 11 builds it)"
+        return 1
+    fi
+    run_case diagnostic_off 0 "" ZISK_MEM_GPU_FILL=0 || return 1
+    run_case diagnostic 0 "" || return 1
 
     success "Device memory witness: every configuration proved, verified and matched the CPU rows"
 }

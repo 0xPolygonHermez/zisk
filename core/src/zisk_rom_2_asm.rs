@@ -6690,6 +6690,9 @@ impl ZiskRom2Asm {
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
 
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_flush_writes(ctx, code);
+                }
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
@@ -6996,6 +6999,11 @@ impl ZiskRom2Asm {
                 panic!("B extension opcode {:?} not supported in assembly emulator", inst.op);
             }
         }
+        assert!(
+            ctx.mops_pending_writes.is_empty(),
+            "{:?}: precompile output writes not flushed to the memory-ops stream",
+            inst.op
+        );
     }
 
     /// Materialize the result of a comparison operation branchlessly using `setcc`.
