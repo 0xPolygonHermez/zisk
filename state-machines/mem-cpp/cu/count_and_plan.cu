@@ -616,8 +616,7 @@ __device__ __forceinline__ uint32_t compact_addr_dev(uint32_t raw) {
 // Specialised kernels (variants of the generic mem_preprocess.cuh ones)
 // =====================================================================
 
-__global__ void add_const_kernel(uint32_t* arr, const uint32_t* d_offset, uint32_t n) {
-    uint32_t off = *d_offset;
+__global__ void add_const_kernel(uint32_t* arr, uint32_t off, uint32_t n) {
     uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) arr[i] += off;
 }
@@ -2248,34 +2247,38 @@ void CountAndPlan::query_cub_sizes_(size_t& scan_counts_b, size_t& scan_emit_b,
 
 bool CountAndPlan::prepare_global_() {
     if (prepared_) return true;
+    // The prefix of each region is scanned in place over its words and one more slot, which
+    // receives the region's total. When the region's last word was accessed that slot is the
+    // next region's first, so the total is read back before the next scan overwrites it, and
+    // the next region's offset is passed by value (the overwritten slot ends up holding the
+    // same total once that region's offset is added).
+    uint32_t h_boundary[3];
     {
         uint32_t n_rom = h_max_compact_[REGION_ROM] + 2;
         CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
             d_histogram_ + 0, d_prefix_ + 0, n_rom, meta_stream_));
+        CUDA_CHECK(cudaMemcpyAsync(&h_boundary[0],
+                   d_prefix_ + h_max_compact_[REGION_ROM] + 1, 4, cudaMemcpyDeviceToHost, meta_stream_));
+        CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
 
         uint32_t n_in = h_max_compact_[REGION_INPUT] + 2;
         CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
             d_histogram_ + N_ADDR_ROM, d_prefix_ + N_ADDR_ROM, n_in, meta_stream_));
         add_const_kernel<<<(n_in + 255) / 256, 256, 0, meta_stream_>>>(
-            d_prefix_ + N_ADDR_ROM, d_prefix_ + h_max_compact_[REGION_ROM] + 1, n_in);
+            d_prefix_ + N_ADDR_ROM, h_boundary[0], n_in);
         CUDA_CHECK_LAUNCH();
+        CUDA_CHECK(cudaMemcpyAsync(&h_boundary[1],
+                   d_prefix_ + N_ADDR_ROM + h_max_compact_[REGION_INPUT] + 1, 4, cudaMemcpyDeviceToHost, meta_stream_));
+        CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
 
         uint32_t n_ram = h_max_compact_[REGION_RAM] + 2;
         CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
             d_histogram_ + N_ADDR_ROM + N_ADDR_INPUT,
             d_prefix_ + N_ADDR_ROM + N_ADDR_INPUT, n_ram, meta_stream_));
         add_const_kernel<<<(n_ram + 255) / 256, 256, 0, meta_stream_>>>(
-            d_prefix_ + N_ADDR_ROM + N_ADDR_INPUT,
-            d_prefix_ + N_ADDR_ROM + h_max_compact_[REGION_INPUT] + 1, n_ram);
+            d_prefix_ + N_ADDR_ROM + N_ADDR_INPUT, h_boundary[1], n_ram);
         CUDA_CHECK_LAUNCH();
     }
-
-    uint32_t h_boundary[3];
-    CUDA_CHECK(cudaMemcpyAsync(&h_boundary[0],
-               d_prefix_ + h_max_compact_[REGION_ROM] + 1, 4, cudaMemcpyDeviceToHost, meta_stream_));
-    CUDA_CHECK(cudaMemcpyAsync(&h_boundary[1],
-               d_prefix_ + N_ADDR_ROM + h_max_compact_[REGION_INPUT] + 1, 4, cudaMemcpyDeviceToHost, meta_stream_));
-    CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
     h_boundary[2] = num_ops_;
 
     region_n_ops_[REGION_ROM]   = h_boundary[0];
