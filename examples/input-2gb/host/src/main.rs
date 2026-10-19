@@ -1,9 +1,9 @@
 //! Executes the `input_2gb` guest on an input that fills the whole 2GB input region and checks
 //! that it read the u64 it should.
 //!
-//! The first u64 of the input is the read stride `s`: the guest reads every `s`-th u64 plus the
-//! last one, and commits 4 u64: how many it read, their wrapping sum, and the first and last u64
-//! of the input. This host builds the input, computes the same 4 values and compares them with
+//! The first u64 of the input is the read stride `s` (0 is taken as 1): the guest reads every
+//! `s`-th u64 plus the last one, and commits 4 u64: how many it read, their wrapping sum, and the
+//! first and last u64 of the input. This host builds the input, computes the same 4 values and compares them with
 //! the public output, on the backend given as first argument:
 //!
 //! ```bash
@@ -45,23 +45,25 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(mb) => (mb.parse::<usize>()? << 20).min(MAX_DATA_BYTES),
         None => MAX_DATA_BYTES,
     };
-    let stride: u64 = match args.get(3) {
+    // Written to the input as given; the guest takes 0 as 1, and so does the read model below
+    let stride_arg: u64 = match args.get(3) {
         Some(s) => s.parse()?,
         None => 1,
     };
+    let stride = stride_arg.max(1);
     let count = data_bytes / 8;
-    if count < 2 || stride == 0 {
-        return Err("the input needs at least 2 u64 and the stride must be at least 1".into());
+    if count < 2 {
+        return Err("the input needs at least 2 u64".into());
     }
 
-    println!("Building input: {count} u64 ({data_bytes} bytes), read stride {stride}");
+    println!("Building input: {count} u64 ({data_bytes} bytes), read stride {stride_arg}");
     let start = Instant::now();
     let mut data = Vec::with_capacity(count * 8);
-    data.extend_from_slice(&stride.to_le_bytes());
+    data.extend_from_slice(&stride_arg.to_le_bytes());
     for i in 1..count as u64 {
         data.extend_from_slice(&value(i).to_le_bytes());
     }
-    let at = |i: u64| if i == 0 { stride } else { value(i) };
+    let at = |i: u64| if i == 0 { stride_arg } else { value(i) };
     let last = count as u64 - 1;
     let (mut read, mut sum) = (0u64, 0u64);
     for i in (0..count as u64).step_by(stride as usize) {

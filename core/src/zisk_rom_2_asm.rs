@@ -71,8 +71,8 @@ const TRACE_ADDR_NUMBER: u64 = 0xd0000000 + 0x20;
 // Control input and output shared memory pages, mapped by the emulator at these fixed addresses.
 // They must match CONTROL_INPUT_ADDR and CONTROL_OUTPUT_ADDR in emulator-asm/src/constants.hpp.
 // The generated code accesses them as absolute 32-bit displacements, which are sign-extended, so
-// they must lie below 2GB; and they must lie outside the guest memory regions, so they sit just
-// below INPUT_ADDR.
+// they must lie below 2GB; and they must lie outside the guest data regions, so they sit just
+// below INPUT_ADDR, at the top of the BIOS ROM span, which the guest never accesses as data.
 const CONTROL_INPUT_ADDR: u64 = 0x0FF0_0000;
 const CONTROL_OUTPUT_ADDR: u64 = 0x0FF0_1000;
 const _: () = {

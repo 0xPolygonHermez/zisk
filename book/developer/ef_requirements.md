@@ -402,9 +402,12 @@ of at least 4 kB immediately below the stack bottom, contiguous with no gap.
 **ZisK.** Both guard regions are satisfied by the address map, and the invariant is
 now enforced rather than incidental.
 
-**Null-pointer trap.** No data is mapped below `INPUT_ADDR = 0x1000_0000`, so the whole
-of `0x0000`–`0x0FFF` is unmapped and any access fails the `Mem` section bounds check
-and aborts.
+**Null-pointer trap.** The lowest data area is the input window at
+`INPUT_ADDR = 0x1000_0000`. Below it there is only the BIOS ROM (`0x1000`–`0x0fff_ffff`),
+which holds instructions and is never a data area: no `Mem` or `RomData` section covers
+any address below `INPUT_ADDR`. So a load or store anywhere in `0x0000`–`0x0FFF` fails the
+`Mem` section bounds check and aborts, and since no instruction lives there either, a jump
+into it aborts too.
 
 **Stack guard.** The stack bottom is `STACK_ADDR = RAM_ADDR = 0xa000_0000` — the
 lowest mapped RAM address — with the stack growing down from `0xa040_0000`. ROM ends

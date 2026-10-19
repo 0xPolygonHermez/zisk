@@ -61,8 +61,12 @@
 // number of read fields plus the available precompile shared memory size, which is a circular buffer
 // The generated assembly addresses these pages with absolute 32-bit displacements (see
 // CONTROL_INPUT_ADDR in core/src/zisk_rom_2_asm.rs), so they must lie below 2GB, and outside the
-// guest regions: they sit just below INPUT_ADDR, at the top of the window left for this executable,
-// which is linked at 0x400000 and must end below them (see the .zisk_region in the Makefile).
+// guest data regions (input, ROM data, RAM). Below 2GB that leaves only the BIOS ROM span
+// [0x1000, INPUT_ADDR), which the guest fetches instructions from but never accesses as data: they
+// sit at its top, just below INPUT_ADDR, above this executable, which is linked at 0x400000 in the
+// same span and must end below them (see the .zisk_region in the Makefile). As with the executable
+// itself, this emulator does no software bounds check, so a guest load or store there is not
+// trapped; it is rejected by the Rust emulator and cannot be proven, as no Mem area covers it.
 #define CONTROL_INPUT_ADDR (uint64_t)0x0FF00000
 #define CONTROL_INPUT_SIZE (uint64_t)0x1000 // 4kB
 
