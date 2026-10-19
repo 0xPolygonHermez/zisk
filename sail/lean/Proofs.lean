@@ -19,3 +19,5 @@ import Proofs.SumBus
 import Proofs.RegChain
 import Proofs.MainRegs
 import Proofs.Registers
+import Proofs.ModelRegs
+import Proofs.Execution

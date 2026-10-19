@@ -157,6 +157,8 @@ reached through the ROM lookup. See
 | `lean/Proofs/RegChain.lean` | From the memory bus's balance to a permutation of lists: senders of bits, counts below the characteristic (`perm_of_balance`). |
 | `lean/Proofs/MainRegs.lean` | Main's 168 register-access pairs per segment are good, their gaps range-checked. Generated. |
 | `lean/Proofs/Registers.lean` | Every register access in Main reads the last write (`MainSegs.reads`). |
+| `lean/Proofs/ModelRegs.lean` | The model's step in general: any op but `halt`, register sources and stores (`execute_gen`). |
+| `lean/Proofs/Execution.lean` | The runs and the register file over one chain of segments; each segment's first step from the continuation chain. |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
@@ -341,7 +343,7 @@ make proofs
 ```
 
 ```
-✔ [92/93] Built Proofs
+✔ [94/95] Built Proofs
 Build completed successfully.
 ```
 
@@ -1133,8 +1135,22 @@ bus's soundness (`SumHolds`), its global register updates (`GlobalRegs`),
 the range checks' soundness, each segment's first step (the continuation
 chain's, not yet derived here), and fewer than 2^20 segments.
 
-Still to come: Main's register file against the model's `rX` and `wX`, and
-the runs with register sources and stores.
+**Toward the runs with registers.** Two pieces are in place.
+[`lean/Proofs/Execution.lean`](lean/Proofs/Execution.lean) derives each
+segment's first step from the continuation chain (`ChainHolds.initial_step`:
+the boot tuple starts at 0, and every segment but the last — whose
+`main_last_segment` the next one's assumed tuple forces to 0 — hands on
+`initial_step + 2^24`), so `MainSegOk`'s first step need not be assumed.
+[`lean/Proofs/ModelRegs.lean`](lean/Proofs/ModelRegs.lean) runs the model's
+step in general (`execute_gen`): for any op but `halt`, kept abstract as
+`zisk_exec inst.op a b`, with immediate, `c` or register sources (`rX` of an
+index other than x0) and no store or a register store (`wX`), the step's `c`,
+flag, pc, step counter and register file — one lemma, checked in about two
+seconds, where the per-op lemmas took 47.
+
+Still to come: the encoding of the register file — each model register the
+value of the latest access to it in Main before the current step — carried
+through a step with register sources and stores, and the runs.
 
 ## The operation bus's provers
 
