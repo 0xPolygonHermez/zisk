@@ -70,4 +70,8 @@ about the table's fixed data, which `check_tables.py` checks. -/
 def TableNever (p : Prover F) (b k : F) : Prop :=
   ∀ j, p.arg.bus p.x p.t j = b → tupleAt p.arg.tuple p.x p.t j 0 ≠ k
 
+/-- A count of 1 is not 0: what a lookup with a constant count needs to fire. -/
+theorem one_ne_zero' {F : Type} [Lean.Grind.Field F] : (1 : F) ≠ 0 :=
+  fun h => Lean.Grind.Field.zero_ne_one h.symm
+
 end Correspondence

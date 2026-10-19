@@ -27,6 +27,15 @@ Two checks:
    those buses never has `add` there, which is what rules the two AIRs out as
    provers of an `add`.
 
+3. **The Binary table's `add` rows (bus 125).** Binary adds byte by byte, each
+   byte a lookup of `(pos, op, a, b, cin, c, flags)`. Every row has an op below
+   2^10 (the widest is SEXT_FF, 0x201), so in particular never -6, the `b_op`
+   a 32-bit `add` would need; and every `add` row (op 0x0a) has bytes below 256 and `cin` 0 or 1,
+   and computes the byte: a middle byte (`pos` 0) has
+   `c + 256*flags = a + b + cin` with `flags` the carry, 0 or 1; the last byte
+   (`pos` 1) has `c = (a + b + cin) mod 256` and discards the carry, its flags
+   only `c`'s sign bit (0 or 64).
+
 The fixed file is the compiler's: a row-major array of u64, one column per
 fixed column of the AIR, in id order.
 
@@ -46,6 +55,8 @@ P = 0xFFFF_FFFF_0000_0001  # the Goldilocks prime
 SEMANTICS = {
     0x0A: ("add", lambda a, b: ((a + b) % 2**64, 0)),
 }
+
+BINARY_TABLE = 125
 
 # table bus -> (name, ops whose first element it must never be)
 NEVER = {
@@ -132,6 +143,36 @@ def check_results(k, rows, tuple_values):
     return checked, failures
 
 
+def check_binary_add(k, rows, values):
+    """Check 3 on one argument's rows on the Binary table; returns failures."""
+    if len(values) != 7:
+        sys.exit(f"hint {k}: a {len(values)}-element tuple, expected (pos, op, a, b, cin, c, flags)")
+    pos, op, a, b, cin, c, flags = (v[rows] for v in values)
+    failures = 0
+    wide = int((op >= 1024).sum())
+    if wide:
+        print(f"FAIL hint {k}: {wide} rows with an op of 2^10 or more")
+        failures += wide
+    sel = op == 0x0A
+    pos, a, b, cin, c, flags = (x[sel].astype(object) for x in (pos, a, b, cin, c, flags))
+    bad = 0
+    for r, (p_, x, y, ci, z, f) in enumerate(zip(pos, a, b, cin, c, flags)):
+        ok = x < 256 and y < 256 and z < 256 and ci in (0, 1)
+        if p_ == 0:
+            ok = ok and f in (0, 1) and z + 256 * f == x + y + ci
+        elif p_ == 1:
+            ok = ok and f in (0, 64) and z == (x + y + ci) % 256
+        else:
+            ok = False
+        if not ok:
+            if bad < 5:
+                print(f"FAIL hint {k}: add row {rows[sel][r]} = {(p_, x, y, ci, z, f)}")
+            bad += 1
+    print(f"  hint {k}: {rows.size} rows on the Binary table, ops all below 2^10: {wide == 0}; "
+          f"{int(sel.sum())} add rows, {bad} wrong")
+    return failures + bad
+
+
 def main():
     args = sys.argv[1:]
     if not args or len(args) % 2:
@@ -149,7 +190,7 @@ def main():
 
         results_checked = 0
         for k, opids, bus, tuple_ in proving_args(ir):
-            watched = (opids & ({OPERATION_BUS} | set(NEVER)))
+            watched = (opids & ({OPERATION_BUS, BINARY_TABLE} | set(NEVER)))
             if not watched:
                 continue
             bus_values = value(bus)
@@ -159,6 +200,9 @@ def main():
                 checked, failures = check_results(k, rows, values)
                 results_checked += checked
                 total_failures += failures
+            if BINARY_TABLE in opids:
+                rows = np.nonzero(bus_values == BINARY_TABLE)[0]
+                total_failures += check_binary_add(k, rows, values)
             for table_bus, (table, ops) in NEVER.items():
                 if table_bus not in opids:
                     continue

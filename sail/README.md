@@ -133,11 +133,12 @@ reached through the ROM lookup. See
 | `model/zisk_main.sail` | The C emulator's `main`: initial state, the step loop, and the trace `make difftest` compares. Not part of the Lean build. |
 | [`../tools/sail-difftest`](../tools/sail-difftest/src/main.rs) | Exports a program to the model — `rom.sail` and its initial memory — records the reference trace on `ziskemu`, and checks the program's committed ROM rows against the encoding the Lean proofs assume. |
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
-| `check_tables.py` | Checks the virtual tables the setup commits against what the proofs assume: every FROPS `add` row is `c = a + b`, and the Arith and BinaryExtension tables never serve `add`; `make tables`. |
+| `check_tables.py` | Checks the virtual tables the setup commits against what the proofs assume: every FROPS `add` row is `c = a + b`, the Arith and BinaryExtension tables never serve `add`, and the Binary table's `add` rows compute their byte; `make tables`. |
 | `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. |
 | `lean/Proofs/Slot.lean` | The pilot correspondence: one slot of Main against one step of the model. |
 | `lean/Proofs/Rom.lean` | The ROM lookup: the slot's instruction derived from the program, through the bus. |
 | `lean/Proofs/Adders.lean` | The six adders, 21 lanes, prove `add` correctly (`AddsAt`). |
+| `lean/Proofs/Binary.lean` | Binary, 7 lanes, proves `add` correctly, byte by byte through its table. |
 | `lean/Proofs/Bus.lean` | What a bus guarantees: `LookupHolds`, for any number of provers, and `TableNever`. |
 | `lean/Proofs/OpBus.lean` | The 33 operation-bus provers that cannot prove `add`, each proved so. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
@@ -685,8 +686,11 @@ several buses through one argument, choosing per row, so the bus is evaluated
 per row too: of `VirtualTableZisk1`'s rows, 124 are on the Arith table, serving
 exactly the 14 mul/div opcodes, and about 2.5 million on BinaryExtension's,
 serving shifts, sign extension and bit counts (`0x21`–`0x43`); none is `add`.
-Forbidding `mul`, which the Arith table does serve, fails on its rows. The
-whole run takes about 16s.
+Forbidding `mul`, which the Arith table does serve, fails on its rows. It
+also checks the Binary table (bus 125, five arguments of `VirtualTableZisk1`):
+every row's op is below 2^10, and each of its 262,144 `add` rows computes its
+byte; requiring one more than the true sum fails on half of them. The whole
+run takes about 19s.
 
 **Every adder adds — proved.** [`lean/Proofs/Adders.lean`](lean/Proofs/Adders.lean)
 covers the six dedicated adders, 21 lanes from two templates. What each lane
@@ -713,6 +717,34 @@ mechanically from the generated AIRs, name their lane's constraints, its
 intermediates and its range checks. All check in about 4 seconds, on Lean's
 standard three axioms.
 
+**Binary adds — proved.** [`lean/Proofs/Binary.lean`](lean/Proofs/Binary.lean)
+covers the general Binary AIR, 7 lanes over `Binary`, `BinaryLarge` and
+`BinaryHuge`, to the same `AddsAt`. Binary proves every binary op as eight byte
+lookups into the Binary table, `(pos, op, a, b, cin, c, flags)`, chained by the
+carry, so whether it adds is mostly a fact about the table:
+
+- **`AddRow`**, what an `add` row of the table is: bytes below 256, a carry-in
+  of 0 or 1, and the byte computed — `c + 256·cout = a + b + cin` with the
+  carry as its flags in a middle byte, `c = (a + b + cin) mod 256` with the
+  carry discarded in the last. Every row's op is also something other than
+  −6. `make tables` checks this against the committed table
+  (`BinaryTableAdds`): all 262,144 `add` rows, every byte, carry-in and
+  position.
+- **`binary8`**, the lane's algebra. Binary's op is `b_op + 16·mode32`, so an
+  op of 10 could be `b_op = −6` in 32-bit mode; no table row has that op, so
+  `mode32 = 0`. Its carry columns are not range-checked: a carry is pinned only
+  as part of a byte's flags, next to `16·result_is_a + 32·use_first_byte`, and
+  as the next byte's carry-in. An `add` row's carry-in is 0 or 1 and its flags
+  at most 1, which forces those extra flag bits to 0 and each carry to the
+  table's; the last byte's flags force the final carry, which Binary adds into
+  `c` and sends as the flag, to 0. Then eight bytes and their carries are
+  `A + B` modulo 2^64.
+
+The natural-number arithmetic is split into small lemmas (`chain4`,
+`limbs_sum`): `omega` given the whole eight-byte chain with its bounds at once
+does not finish, and an `omega` deep inside the proof sees every hypothesis in
+scope. The file checks in about 4 seconds.
+
 ## Next steps
 
 1. **Memory and registers — done.** `rX`, `wX`, `read_mem`, `write_mem` and
@@ -738,9 +770,10 @@ standard three axioms.
      computes it, so `add`, `eq`, `ltu` and the rest can be proved. For
      `add`: the census of its provers is done, the FROPS tables and the
      Arith and BinaryExtension tables are checked, every dedicated adder is
-     proved to add (21 lanes), and all 33 provers that cannot prove `add`
-     are proved not to (see [Who can prove an `add`](#who-can-prove-an-add));
-     what remains is Binary's byte-wise lookups and the `add` pilot on top;
+     proved to add (21 lanes), Binary is proved to add (7 lanes), and all 33
+     provers that cannot prove `add` are proved not to (see
+     [Who can prove an `add`](#who-can-prove-an-add)); every prover of an
+     `add` is now covered, and what remains is the `add` pilot on top;
    - the **memory bus**, for memory and register sources and stores;
    - the **range checks**, for limbs known to be below `2^32` — stated
      (`RangeHolds`, with each AIR's ranges generated) and used by the adders.

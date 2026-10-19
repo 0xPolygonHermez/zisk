@@ -566,9 +566,6 @@ theorem not_of_table {C T : Type} (a : BusArg F C T) (x : C) (t : T) (i : Int) (
   exact hd p hp j (by rw [hpb, hbus])
 
 omit [Lean.Grind.IsCharP F goldilocks] in
-theorem one_ne_zero' : (1 : F) ≠ 0 := fun h => Lean.Grind.Field.zero_ne_one h.symm
-
-omit [Lean.Grind.IsCharP F goldilocks] in
 theorem Arith_bus30_not_add {x : Arith.Ctx F} {t : Arith.Trace F} {i : Int}
     {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F}
     (hl : LookupHolds Arith.bus41 x t [⟨VirtualTableZisk1.bus16, xv, tv⟩])
