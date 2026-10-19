@@ -262,9 +262,8 @@ impl DeviceMemWitness {
                     true
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "[gpu] memory witness on the device unavailable for this block ({e}); the memory instances fall back to the CPU witness"
-                    );
+                    // The planner already reported why on stderr when it detected the condition.
+                    tracing::info!("[gpu] memory witness on the CPU for this block ({e})");
                     false
                 }
             }

@@ -290,13 +290,15 @@ public:
     const InstanceMeta* metas_data()             const { return metas_.data(); }
     uint32_t            num_active_instances()   const { return num_active_; }
 
-    // Arena usage of the CURRENT block in BYTES: fixed carve end + ops-pool cursor.
-    // Valid between run() and the next reset() (reset zeroes the pool cursor). 
+    // Bytes of the arena the CURRENT block wrote: the fixed carve, the ops pool and the retained
+    // accesses (the pool grows up from the carve, the records down from the MemAlign region, so
+    // the two never add up to an address). The MemAlign region is accounted by the mem_fill
+    // summary. Valid between run() and the next reset(). Capped at the arena: the record count
+    // includes the piece that met the pool and was not written.
     size_t max_used_bytes() const {
-        const size_t used = cursor_ + pool_cursor_u32_.load(std::memory_order_relaxed) * 4;
-        // The retained accesses sit at the top of the arena: any retention touches its end.
-        if (ram_cursor_.load(std::memory_order_relaxed) > 0) return arena_bytes_;
-        return used;
+        const size_t used = cursor_ + pool_cursor_u32_.load(std::memory_order_relaxed) * 4
+                          + ram_cursor_.load(std::memory_order_relaxed) * RAM_RECORD_WORDS * 4;
+        return used < arena_bytes_ ? used : arena_bytes_;
     }
 
     // Per-chunk mem-align counters, valid after `run()`. Length == n_chunks().
