@@ -16,6 +16,9 @@
     11-element operation tuples meet 8-element ones from the FROPS tables.
   * A prover may serve several buses through one argument, choosing per row
     (a merged virtual table). The bus is compared per row.
+  * `RangeHolds ranges a x t`: whenever the range check `a` sends its value,
+    the value is a number in the range its bus serves, taken from the AIR's
+    generated `ranges` rather than written in the proof.
   * `TableNever p b k`: no row of the table `p` on bus `b` has `k` as its first
     element. That is a fact about fixed data, and `sail/check_tables.py`
     checks it against the data the setup commits.
@@ -52,6 +55,15 @@ def LookupHolds {C T : Type} (a : BusArg F C T) (x : C) (t : T) (ps : List (Prov
     ∀ i, a.reps x t i ≠ 0 →
       ∃ p ∈ ps, ∃ j, p.arg.reps p.x p.t j ≠ 0 ∧ p.arg.bus p.x p.t j = a.bus x t i ∧
         ∀ k, tupleAt a.tuple x t i k = tupleAt p.arg.tuple p.x p.t j k
+
+attribute [local instance] Lean.Grind.Semiring.natCast in
+/-- What a sound range check guarantees: whenever `a` sends its value, the
+value is a number in the range its bus serves. The range must be one of the
+AIR's generated `ranges`, on the argument's single bus, with no negative bound. -/
+def RangeHolds {C T : Type} (ranges : List RangeDef) (a : BusArg F C T) (x : C) (t : T) : Prop :=
+  a.piop = .rangeCheck ∧ a.side = .assumes ∧
+    ∃ b d, a.opids = [b] ∧ d ∈ ranges ∧ d.opid = b ∧ d.minNeg = false ∧ d.maxNeg = false ∧
+      ∀ i, a.reps x t i ≠ 0 → ∀ f ∈ a.tuple, ∃ n : Nat, d.min ≤ n ∧ n ≤ d.max ∧ f x t i = (n : F)
 
 /-- No row of the table `p` on bus `b` sends `k` as its first element: a fact
 about the table's fixed data, which `check_tables.py` checks. -/

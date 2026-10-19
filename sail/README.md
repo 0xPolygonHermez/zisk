@@ -137,7 +137,7 @@ reached through the ROM lookup. See
 | `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. |
 | `lean/Proofs/Slot.lean` | The pilot correspondence: one slot of Main against one step of the model. |
 | `lean/Proofs/Rom.lean` | The ROM lookup: the slot's instruction derived from the program, through the bus. |
-| `lean/Proofs/BinaryAdd.lean` | BinaryAdd computes `add`: the `c` it proves is `a + b` mod 2^64. |
+| `lean/Proofs/Adders.lean` | The six adders, 21 lanes, prove `add` correctly (`AddsAt`). |
 | `lean/Proofs/Bus.lean` | What a bus guarantees: `LookupHolds`, for any number of provers, and `TableNever`. |
 | `lean/Proofs/OpBus.lean` | The 33 operation-bus provers that cannot prove `add`, each proved so. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
@@ -162,7 +162,7 @@ Two more targets typecheck the generated Lean, through the lake package in
 
 ```sh
 make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~87s)
-make proofs       # check lean/Proofs against them (~21s)
+make proofs       # check lean/Proofs against them (~23s)
 make lean-build   # elaborate the model            (all 14 modules build, ~6s)
 ```
 
@@ -318,7 +318,7 @@ make proofs
 Build completed successfully.
 ```
 
-About 21 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, and the op-bus exclusions.
+About 23 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions and the adders.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -688,20 +688,30 @@ serving shifts, sign extension and bit counts (`0x21`–`0x43`); none is `add`.
 Forbidding `mul`, which the Arith table does serve, fails on its rows. The
 whole run takes about 16s.
 
-**BinaryAdd adds — proved.** [`lean/Proofs/BinaryAdd.lean`](lean/Proofs/BinaryAdd.lean):
-at a row where BinaryAdd proves a tuple whose op is `add`, on operands that are
-the limbs of two 64-bit values `A` and `B`, the `c` limbs it proves are those of
-`A + B`. Op 10 clears `sel_sh3add` (78 is not zero in the field), the carries
-are bits by the AIR's constraints, and each `c` limb is two 16-bit chunks by
-four range checks. The range checks enter as `RangeHolds`, the guarantee of a
-sound range check, with the range read from the AIR's generated `ranges`
-(bus 104, `[0, 65535]`) rather than written in the proof. The two limb
-equations then become equations between naturals below the characteristic, and
-the rest is arithmetic. It depends on Lean's standard three axioms.
+**Every adder adds — proved.** [`lean/Proofs/Adders.lean`](lean/Proofs/Adders.lean)
+covers the six dedicated adders, 21 lanes from two templates. What each lane
+proves is stated the way the `add` pilot will consume it, over the tuple it
+sends, `(op, a₀, a₁, b₀, b₁, c₀, c₁, flag)`: `AddsAt p j` says that if prover
+`p`'s tuple at row `j` has op 10 and its `a` and `b` limbs are those of two
+64-bit values `A` and `B`, its `c` limbs are those of `A + B` and its flag is 0.
 
-The operands being the model's limbs is the job of the lookup that carries the
-tuple from Main; the variants (`BinaryAddLarge`, `Huge`, and the `Hi` family)
-are the same template with more lanes, still to be covered.
+- **BinaryAdd** (1, 2, 4 lanes; `adder64`): two 32-bit limbs and a carry bit
+  between them. Op 10 clears `sel_sh3add` (78 is not zero in the field), the
+  carries are bits by the AIR's constraints, and each `c` limb is two 16-bit
+  chunks by four range checks.
+- **BinaryAddHi** (2, 4, 8 lanes; `adderHi`): a 32-bit result, `a`'s high half
+  zero and `b`'s either zero or `0xFFFF_FFFF`. Without the high bits the low
+  limb does not carry; with them it must, and the high halves wrap to 0 modulo
+  2^64. Either way `c = A + B`, with a zero high limb.
+
+The range checks enter as `RangeHolds` (`Bus.lean`), the guarantee of a sound
+range check, with the range read from each AIR's generated `ranges` (bus 104,
+`[0, 65535]`). With them the limb equations become equations between naturals
+below the characteristic, and the rest is arithmetic. Each template's algebra
+is one lemma over plain field values; the 21 lane instances, written out
+mechanically from the generated AIRs, name their lane's constraints, its
+intermediates and its range checks. All check in about 4 seconds, on Lean's
+standard three axioms.
 
 ## Next steps
 
@@ -725,15 +735,15 @@ are the same template with more lanes, still to be covered.
      `SlotHolds` is derived from the ROM lookup; see
      [The ROM lookup](#the-rom-lookup);
    - the **operation bus**, which ties an external op in Main to the AIR that
-     computes it, so `add`, `eq`, `ltu` and the rest can be proved. Started:
-     the census of who can prove an `add` is done and the FROPS rows are
-     checked, BinaryAdd is proved to add, and all 33 provers that cannot
-     prove `add` are proved not to (see
-     [Who can prove an `add`](#who-can-prove-an-add)); what remains is
-     BinaryAdd's other variants, Binary's byte-wise lookups, and the `add`
-     pilot on top;
+     computes it, so `add`, `eq`, `ltu` and the rest can be proved. For
+     `add`: the census of its provers is done, the FROPS tables and the
+     Arith and BinaryExtension tables are checked, every dedicated adder is
+     proved to add (21 lanes), and all 33 provers that cannot prove `add`
+     are proved not to (see [Who can prove an `add`](#who-can-prove-an-add));
+     what remains is Binary's byte-wise lookups and the `add` pilot on top;
    - the **memory bus**, for memory and register sources and stores;
-   - the **range checks**, for limbs known to be below `2^32`.
+   - the **range checks**, for limbs known to be below `2^32` — stated
+     (`RangeHolds`, with each AIR's ranges generated) and used by the adders.
 5. **Fill in the opcode table**, tracked by `make ops`, with each new opcode
    checked by `make difftest` on a program that executes it
    (`make difftest PROG=… INPUT=…`). Turn on `--strict` once coverage is
