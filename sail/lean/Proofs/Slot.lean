@@ -87,6 +87,24 @@ theorem execute_internal (inst : zisk_inst) (σ : State) (pc zc st : BitVec 64)
       ha, hb, hop, hstore, hset, hend, hsp, srcA, srcB, bind, EStateM.bind, pure, EStateM.pure,
       readReg_eq, writeReg_run, hpc, hzc, hst, Std.ExtDHashMap.get?_insert]
 
+/-- What one step of the model does for an `add` with the pilot's sources:
+`c = a + b`, no flag, and the pc falls through. -/
+theorem execute_add (inst : zisk_inst) (σ : State) (pc zc st : BitVec 64)
+    (hpc : σ.regs.get? Register.PC = some pc) (hzc : σ.regs.get? Register.Zc = some zc)
+    (hst : σ.regs.get? Register.Step = some st)
+    (ha : inst.a_src = .A_IMM ∨ inst.a_src = .A_C)
+    (hb : inst.b_src = .B_IMM ∨ inst.b_src = .B_C)
+    (hop : inst.op = .ZOP_ADD ())
+    (hstore : inst.store = .ST_NONE) (hset : inst.set_pc = false) (hend : inst.is_end = false) :
+    ∃ σ', zisk_execute inst σ = .ok false σ' ∧
+      σ'.regs.get? Register.Zc = some (srcA inst zc + srcB inst zc) ∧
+      σ'.regs.get? Register.Zflag = some false ∧
+      σ'.regs.get? Register.PC = some (pc + inst.jmp_off2) := by
+  rcases ha with ha | ha <;> rcases hb with hb | hb <;> cases hsp : inst.store_pc <;>
+  · simp [zisk_execute, source_a, source_b, store_c, value_to_store, next_pc, zisk_exec,
+      ha, hb, hop, hstore, hset, hend, hsp, srcA, srcB, bind, EStateM.bind, pure, EStateM.pure,
+      readReg_eq, writeReg_run, hpc, hzc, hst, Std.ExtDHashMap.get?_insert]
+
 /-! ### Encoding the model's values as columns
 
 A 64-bit value is two 32-bit limbs, low first, as `a`, `b` and `c` are in
@@ -140,6 +158,9 @@ def isBMem : b_src → Bool | .B_MEM => true | _ => false
 def isBInd : b_src → Bool | .B_IND => true | _ => false
 def isBReg : b_src → Bool | .B_REG => true | _ => false
 
+/-- Whether the op works on 32 bits (`m32`). None of the modeled ops does. -/
+def isM32 : zisk_op → Bool | _ => false
+
 /-- Slot `l` of row `r` holds `inst`, run at `pc`. This is what the ROM lookup
 establishes in the AIR; the pilot takes it as a hypothesis. -/
 structure SlotHolds (r : Row F) (l : Nat) (inst : zisk_inst) (pc : BitVec 64) : Prop where
@@ -160,6 +181,7 @@ structure SlotHolds (r : Row F) (l : Nat) (inst : zisk_inst) (pc : BitVec 64) : 
   jmp_offset1 : r.jmp_offset1 l = off inst.jmp_off1
   jmp_offset2 : r.jmp_offset2 l = off inst.jmp_off2
   pc : r.pc l = ((pc.toNat : Nat) : F)
+  m32 : r.m32 l = bit (isM32 inst.op)
 
 /-- A jump from `pc` by `j` stays inside the 64-bit address space. -/
 def NoWrap (pc j : BitVec 64) : Prop := 0 ≤ (pc.toNat : Int) + j.toInt ∧ (pc.toNat : Int) + j.toInt < 2 ^ 64
@@ -229,7 +251,7 @@ theorem slot1_internal (x : Ctx F) (t : Trace F) (i : Int) (h : everyRow x t i)
   have p1 := pc_add (F := F) pc inst.jmp_off1 hw1
   have p2 := pc_add (F := F) pc inst.jmp_off2 hw2
   obtain ⟨hc0, hc1⟩ := hprev
-  rcases hslot with ⟨s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16, s17⟩
+  rcases hslot with ⟨s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16, s17, -⟩
   rcases ha with ha | ha <;> rcases hb with hb | hb <;> rcases hop with hop | hop <;>
   · -- The slot's columns are now constants: 0/1 selectors, the opcode, the offsets.
     simp only [ha, hb, hop, hset, bit, opcode, isExternal, isAImm, isAMem, isAReg, isBImm,

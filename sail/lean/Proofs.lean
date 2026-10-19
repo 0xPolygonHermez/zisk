@@ -4,3 +4,4 @@ import Proofs.Rom
 import Proofs.Adders
 import Proofs.Binary
 import Proofs.OpBus
+import Proofs.AddPilot

@@ -44,9 +44,6 @@ def isStMem : c_store → Bool | .ST_MEM => true | _ => false
 def isStInd : c_store → Bool | .ST_IND => true | _ => false
 def isStReg : c_store → Bool | .ST_REG => true | _ => false
 
-/-- Whether the op works on 32 bits (`m32`). None of the modeled ops does. -/
-def isM32 : zisk_op → Bool | _ => false
-
 /-- The fifteen flag bits above bit 0 of `ZiskInst::get_flags`, low first. The
 model has no precompiles, so `is_precompiled` is always clear. -/
 def flagBits (inst : zisk_inst) : List Bool :=
@@ -252,8 +249,8 @@ theorem slotHolds_of_rom (prog : BitVec 64 → Option zisk_inst)
       e14, e15, List.map_cons, List.map_nil, packF]
     grind
   simp only [flagBits, List.cons.injEq] at hbits
-  obtain ⟨h1, h2, -, h4, h5, h6, -, -, -, h10, -, h12, h13, h14, -⟩ := hbits
-  subst h1 h2 h4 h5 h6 h10 h12 h13 h14
+  obtain ⟨h1, h2, -, h4, h5, h6, -, -, -, h10, h11, h12, h13, h14, -⟩ := hbits
+  subst h1 h2 h4 h5 h6 h10 h11 h12 h13 h14
   exact {
     a_src_imm := e1, a_src_mem := e2, a_src_reg := e13,
     a_offset_imm0 := by rw [← enc.a_offset_imm0]; grind
@@ -265,7 +262,7 @@ theorem slotHolds_of_rom (prog : BitVec 64 → Option zisk_inst)
     op := by rw [← enc.op]; grind
     jmp_offset1 := by rw [← enc.jmp_offset1]; grind
     jmp_offset2 := by rw [← enc.jmp_offset2]; grind
-    pc := hpc }
+    pc := hpc, m32 := e11 }
 
 /-- **The pilot, with the ROM lookup in place of `SlotHolds`.** The same
 conclusion as `slot1_internal`: slot 1's `c` and `flag`, and slot 2's `pc`,

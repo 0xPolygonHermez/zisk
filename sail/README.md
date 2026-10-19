@@ -141,6 +141,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/Binary.lean` | Binary, 7 lanes, proves `add` correctly, byte by byte through its table. |
 | `lean/Proofs/Bus.lean` | What a bus guarantees: `LookupHolds`, for any number of provers, and `TableNever`. |
 | `lean/Proofs/OpBus.lean` | The 33 operation-bus provers that cannot prove `add`, each proved so. |
+| `lean/Proofs/AddPilot.lean` | The `add` pilot: slot 1 executing `add`, through the operation bus. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
 ## Building
@@ -163,7 +164,7 @@ Two more targets typecheck the generated Lean, through the lake package in
 
 ```sh
 make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~87s)
-make proofs       # check lean/Proofs against them (~23s)
+make proofs       # check lean/Proofs against them (~31s)
 make lean-build   # elaborate the model            (all 14 modules build, ~6s)
 ```
 
@@ -194,9 +195,11 @@ definitions must precede their use. Prelude first, step last.
 > constraints elaborate as Lean propositions, and proofs about them go through.
 > The theorem that would earn the phrase "formally verified" — that any trace
 > the AIRs accept is a run of the model's `Out.Functions.zisk_execute` — does
-> not exist. What is proved is a pilot of it: one slot of Main, two opcodes,
-> two sources, with the soundness of the ROM lookup argument assumed (see
-> [The pilot correspondence](#the-pilot-correspondence)). Delete this disclaimer
+> not exist. What is proved is a pilot of it: one slot of Main, three opcodes
+> (`copyb`, `flag`, and `add` through the operation bus), two sources, with
+> the soundness of the bus arguments assumed (see
+> [The pilot correspondence](#the-pilot-correspondence) and
+> [The `add` pilot](#the-add-pilot)). Delete this disclaimer
 > when step 6 of [Next steps](#next-steps) lands.
 
 Nothing below is assumed already built, and every figure quoted is what the
@@ -319,7 +322,7 @@ make proofs
 Build completed successfully.
 ```
 
-About 23 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions and the adders.
+About 31 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary and the `add` pilot.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -379,13 +382,16 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
   sources, the constraints force the slot's `c` and `flag` and the next slot's
   `pc` to be exactly what `zisk_execute` computes, for the program's
   instruction at that pc, given a sound ROM lookup.
+- The same for `add`, whose result another AIR computes: given a sound
+  operation bus, whichever of its forty provers answers, the slot's `c` is
+  `a + b` modulo 2^64.
 - The encoding of an instruction in the committed ROM that this relies on is
   the one the ROM setup code produces, checked row by row for every program
   `make difftest` runs.
 
 ### And what it does not
 
-- **The correspondence is a pilot.** One slot of four, two opcodes, two
+- **The correspondence is a pilot.** One slot of four, three opcodes, two
   sources, no stores, no `set_pc`. The rest is steps 4 to 6 of
   [Next steps](#next-steps).
 - **Bus arguments are assumed sound, not derived.** The ROM lookup's guarantee
@@ -745,6 +751,39 @@ The natural-number arithmetic is split into small lemmas (`chain4`,
 does not finish, and an `omega` deep inside the proof sees every hypothesis in
 scope. The file checks in about 4 seconds.
 
+## The `add` pilot
+
+[`lean/Proofs/AddPilot.lean`](lean/Proofs/AddPilot.lean) proves the
+correspondence for an op Main does not compute itself. `slot1_add`: if slot 1
+holds an `add` the model is about to execute — the program's instruction,
+through the ROM lookup — with immediate or `c` sources, then slot 1's `c` and
+`flag` and slot 2's `pc` are exactly what `zisk_execute` computes: `c = a + b`
+modulo 2^64, no flag, the next instruction.
+
+Main sends the `add` over the operation bus, so the theorem takes the bus's
+guarantee (`LookupHolds`) over an arbitrary list of provers, and one fact about
+each, `OpAdds`: on the operation bus it proves `add` correctly. Every kind of
+prover has its route to that fact:
+
+| Provers | `OpAdds` from | Where |
+|---|---|---|
+| the 21 adder lanes | their constraints, `AddsAt` at every row (`opAdds_of_adds`) | `Adders.lean` |
+| the 7 Binary lanes | their byte lookups and the Binary table (`opAdds_of_adds`) | `Binary.lean` |
+| the FROPS tables | their contents, `FropsAdds` (`opAdds_of_frops`), checked by `make tables` | `check_tables.py` |
+| the 33 others | their op is never 10 (`opAdds_of_not`) | `OpBus.lean` |
+
+Main's own constraints give the rest: the sources, from `main.pil:456`–`461`
+(`slot1_sources`); `m32 = 0` for an `add`, from the ROM's flags, so the high
+limbs go to the bus unmasked; the flag of 0 from the prover; and the pc, from
+the transition with no `set_pc` and no flag. Standard three axioms.
+
+What it still takes as given: the soundness of the two lookups, the ROM, the
+tables `make tables` checks, slot 1's pc and slot 0's `c` being the model's,
+and the pilot's scope — one slot, immediate and `c` sources, no store. Each
+prover's `OpAdds` is proved for any one of its rows; collecting every
+instance of every AIR into the list the lookup answers from is bookkeeping
+still to be written down.
+
 ## Next steps
 
 1. **Memory and registers — done.** `rX`, `wX`, `read_mem`, `write_mem` and
@@ -772,8 +811,10 @@ scope. The file checks in about 4 seconds.
      Arith and BinaryExtension tables are checked, every dedicated adder is
      proved to add (21 lanes), Binary is proved to add (7 lanes), and all 33
      provers that cannot prove `add` are proved not to (see
-     [Who can prove an `add`](#who-can-prove-an-add)); every prover of an
-     `add` is now covered, and what remains is the `add` pilot on top;
+     [Who can prove an `add`](#who-can-prove-an-add)), and the `add` pilot
+     is proved on top (see [The `add` pilot](#the-add-pilot)). The other
+     external ops (`eq`, `ltu`, `and`, …) follow the same census, prover by
+     prover;
    - the **memory bus**, for memory and register sources and stores;
    - the **range checks**, for limbs known to be below `2^32` — stated
      (`RangeHolds`, with each AIR's ranges generated) and used by the adders.
