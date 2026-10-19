@@ -16,3 +16,6 @@ import Proofs.End
 import Proofs.MemCheck
 import Proofs.MemBus
 import Proofs.SumBus
+import Proofs.RegChain
+import Proofs.MainRegs
+import Proofs.Registers

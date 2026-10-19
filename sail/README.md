@@ -134,7 +134,7 @@ reached through the ROM lookup. See
 | [`../tools/sail-difftest`](../tools/sail-difftest/src/main.rs) | Exports a program to the model — `rom.sail` and its initial memory — records the reference trace on `ziskemu`, and checks the program's committed ROM rows against the encoding the Lean proofs assume. |
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
 | `check_tables.py` | Checks the virtual tables the setup commits against what the proofs assume: every FROPS row of a modeled op (`add`, `ltu`, `eq`, `and`) carries its result, the Arith and BinaryExtension tables never serve one, the Binary table's rows for them compute their byte, and the precompiles' fixed ops on the memory bus are 1 or 2; `make tables`. |
-| `gen_membus.py` | Generates `lean/Proofs/MemBus.lean` from every argument on the memory bus; `make membus`. |
+| `gen_membus.py` | Generates `lean/Proofs/MemBus.lean` (every argument on the memory bus) and `lean/Proofs/MainRegs.lean` (Main's register pairs); `make membus`. |
 | `gen_provers.py` | Generates `lean/Proofs/Provers.lean` from the AIRs' operation-bus arguments and the prover lemmas' signatures; `make provers`. |
 | `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. |
 | `lean/Proofs/Slot.lean` | The pilot correspondence: one lane of Main against one step of the model, at any of the four lanes. |
@@ -154,6 +154,9 @@ reached through the ROM lookup. See
 | `lean/Proofs/MemCheck.lean` | Offline memory checking, in the abstract: from a permutation of proved and assumed tuples and strictly increasing steps, a register read returns the last write (`reads_last_write`). |
 | `lean/Proofs/MemBus.lean` | No AIR but Main sends a register tuple on the memory bus: 173 arguments in 39 AIRs, each proved never to send op 3. Generated. |
 | `lean/Proofs/SumBus.lean` | What a sound sum bus guarantees, tuple by tuple (`SumHolds`), and how senders that never send a tuple drop out. |
+| `lean/Proofs/RegChain.lean` | From the memory bus's balance to a permutation of lists: senders of bits, counts below the characteristic (`perm_of_balance`). |
+| `lean/Proofs/MainRegs.lean` | Main's 168 register-access pairs per segment are good, their gaps range-checked. Generated. |
+| `lean/Proofs/Registers.lean` | Every register access in Main reads the last write (`MainSegs.reads`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
@@ -170,7 +173,7 @@ make ops     # check opcode names against core/src/zisk_ops.rs
 make pil     # generate Lean definitions of the AIR constraints into build/pil
 make tables  # check the virtual tables' contents (needs the PIL compile's tmp/fixed)
 make provers # regenerate lean/Proofs/Provers.lean (after make pil, or a new prover lemma)
-make membus  # regenerate lean/Proofs/MemBus.lean (after make pil)
+make membus  # regenerate lean/Proofs/MemBus.lean and MainRegs.lean (after make pil)
 ```
 
 Two more targets typecheck the generated Lean, through the lake package in
@@ -179,7 +182,7 @@ Two more targets typecheck the generated Lean, through the lake package in
 
 ```sh
 make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~87s)
-make proofs       # check lean/Proofs against them (~100s)
+make proofs       # check lean/Proofs against them (~110s)
 make lean-build   # elaborate the model            (all 14 modules build, ~6s)
 ```
 
@@ -338,11 +341,11 @@ make proofs
 ```
 
 ```
-✔ [89/90] Built Proofs
+✔ [92/93] Built Proofs
 Build completed successfully.
 ```
 
-About 100 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, and the program's end.
+About 110 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, the program's end, and the registers' memory checking.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -1088,10 +1091,50 @@ alone. The global updates are not extracted; `GlobalRegs` writes their
 register part, from `main.pil`: none proves a register tuple, and the ones
 that assume one are `(3, r, 0, 8, 0, 0)` for `x1` to `x39`.
 
-Still to come: from that balance, each register's accesses as `MemCheck`'s
-chain — counts as naturals, steps as distinct naturals, the strict range
-checks — and Main's register file against the model's `rX` and `wX`; then the
-runs with register sources and stores.
+**From a balance to a permutation.** [`lean/Proofs/RegChain.lean`](lean/Proofs/RegChain.lean)
+starts the bridge to `MemCheck`, generically: a sender whose count is a bit at
+every row contributes exactly the list of tuples it sends (`count_eq_times`),
+and lists whose every tuple counts the same in the field, shorter than the
+characteristic, are permutations of each other (`perm_of_times`). Together,
+`perm_of_balance`: a balance of bits, restricted to any set of tuples, is a
+`List.Perm` of what is proved and what is assumed plus the initial tuples.
+
+It goes on generically: a *pair* is an access kind's two arguments, the
+one proving the access before and the one assuming the access, over the same
+rows, with each row's memory step; when a pair is `Good` — counts are bits,
+the proved tuple is `(3, addr, prev, 8, v)`, and whenever the assuming side
+sends a register tuple the proving side does too, with the access's own step
+— its register tuples are exactly its accesses' (`Pair.pre_sent`,
+`Pair.cur_sent`). A raw access's previous step is a field element; every
+proved tuple being an assumed one makes it a step's cast, and the strict range
+check puts it below the access's step (`chain_of_raw`). `pairs_chain` puts it
+together: good pairs whose register tuples balance, with distinct, bounded
+steps and range-checked gaps, are a `MemCheck` chain.
+
+**Main's registers.** Main has 168 pairs per segment (`PairTag`): per lane,
+`a`, `b` and the store (12), and per flush window and register (156). The
+generator also writes [`lean/Proofs/MainRegs.lean`](lean/Proofs/MainRegs.lean):
+every pair is good (`mainTags_good`) — with count 1 and op 3 the register
+selector is 1 and the memory selectors 0, so the address is the register's
+(`b` through `addr1`) and the memory step the formula's — every gap is
+range-checked (`mainTags_gap`), and a flush's address is its register's. A
+segment's hypotheses (`MainSegOk`) are Main's constraints, its first step
+`k·2^24`, and the fixed `SEGMENT_STEP` being the row index, which
+`make tables` checks against the setup.
+
+[`lean/Proofs/Registers.lean`](lean/Proofs/Registers.lean) assembles the
+segments (`MainSegs`): each register's accesses over every segment form a
+`MemCheck` chain (`MainSegs.reg_chain`) — distinct steps because segments,
+lanes, slots and flush windows each own theirs — and so
+`MainSegs.reads`: on a sound memory bus, every access to a register in Main
+proves the value of the latest access to it before, or, for the first, 0.
+Standard three axioms. What remains assumed for the registers: the memory
+bus's soundness (`SumHolds`), its global register updates (`GlobalRegs`),
+the range checks' soundness, each segment's first step (the continuation
+chain's, not yet derived here), and fewer than 2^20 segments.
+
+Still to come: Main's register file against the model's `rX` and `wX`, and
+the runs with register sources and stores.
 
 ## The operation bus's provers
 

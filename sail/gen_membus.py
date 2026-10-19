@@ -36,6 +36,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PIL = os.path.join(HERE, 'build', 'pil', 'Pil')
 OUT = os.path.join(HERE, 'lean', 'Proofs', 'MemBus.lean')
+OUT_REGS = os.path.join(HERE, 'lean', 'Proofs', 'MainRegs.lean')
 CENSUS = os.path.join(HERE, 'build', 'membus.json')
 
 MEMORY_BUS = '10'
@@ -287,8 +288,55 @@ def main():
                        kinds=', '.join(f"{v} {k}" for k, v in sorted(kinds.items()))) + \
         '\n'.join(theorems) + "\nend Provers\n\n" + system(airs, perair) + "\nend Correspondence\n"
     open(OUT, 'w').write(text)
+    npairs = main_regs()
+    print(f"wrote {os.path.relpath(OUT_REGS, HERE)}: {npairs} pairs of Main's, each good")
     print(f"wrote {os.path.relpath(OUT, HERE)}: {len(census)} arguments in {len(airs)} AIRs "
           f"({', '.join(f'{v} {k}' for k, v in sorted(kinds.items()))})")
+
+
+def main_pairs():
+    """Main's register-access pairs on the memory bus, with each one's range check.
+
+    Lane `l`, slot `k` (a, b, store): the argument proving the access before,
+    the one assuming the access (or a memory access), the range check of the
+    gap. Flush window `f`, register `r`: the same three, sent once."""
+    s = open(os.path.join(PIL, 'Main.lean')).read()
+    docs = [(m.group(5), m.group(2).strip(), m.group(3), m.group(4)) for m in re.finditer(
+        r"^/-- ([\w ]+) on bus ([\d, ]+), (\w+): `(.*?)` -/\ndef (bus\d+) ", s, re.M)]
+    by_doc = {(b, side, tup): name for name, b, side, tup in docs}
+    steps = int(re.search(r"^def Main_segment_next_step .*\n  \(x.Main_segment_initial_step \+ (\d+)\)",
+                          s, re.M).group(1))
+    lanes, flushes, windows = [], [], {}
+    slots = [('a', 'a_offset_imm0', 'a_reg_prev_mem_step', 'a_mem_step'),
+             ('b', 'b_offset_imm0', 'b_reg_prev_mem_step', 'b_mem_step'),
+             ('store', 'store_offset', 'store_reg_prev_mem_step', 'store_mem_step')]
+    for l in range(4):
+        for k, (nm, addr, prev, mstep) in enumerate(slots):
+            pre = next(n for n, b, side, tup in docs if b == '10' and side == 'proves'
+                       and tup.startswith(f"(3, {addr}[{l}], {prev}[{l}], 8,"))
+            idx = [d[0] for d in docs].index(pre)
+            cur = docs[idx + 1][0]
+            assert docs[idx + 1][2] == 'assumes' and f"{mstep}[{l}]" in docs[idx + 1][3], (pre, cur)
+            rng = by_doc[('102', 'assumes', f"(({mstep}[{l}] - {prev}[{l}]) - 1)")]
+            lanes.append((l, k, pre, cur, rng))
+    for f in range(8):
+        m = re.search(rf"^def Main_flush_reg_mem_step_{f} .*\n  1 \+ 4 \* \(x.Main_segment_initial_step \+ (\d+) - 1\) \+ 4 - 1",
+                      s, re.M)
+        if not m:
+            break
+        windows[f] = int(m.group(1))
+        for r in range(39):
+            pre = by_doc[('10', 'proves', f"(3, {r + 1}, Main.last_reg_mem_step[{f}][{r}], 8, "
+                          f"Main.last_reg_value[{f}][{r}][0], Main.last_reg_value[{f}][{r}][1])")]
+            cur = by_doc[('10', 'assumes', f"(3, {r + 1}, flush_reg_mem_step[{f}], 8, "
+                          f"Main.last_reg_value[{f}][{r}][0], Main.last_reg_value[{f}][{r}][1])")]
+            rng = by_doc[('102', 'assumes', f"((flush_reg_mem_step[{f}] - Main.last_reg_mem_step[{f}][{r}]) - 1)")]
+            flushes.append((f, r, pre, cur, rng))
+    used = [x for _, _, p, c, _ in lanes + flushes for x in (p, c)]
+    on10 = main_buses()
+    if sorted(used) != sorted(on10) or len(set(used)) != len(used):
+        sys.exit(f"gen_membus: Main's pairs cover {len(set(used))} of its {len(on10)} memory-bus arguments")
+    return lanes, flushes, windows, steps
 
 
 def main_buses():
@@ -344,11 +392,254 @@ theorem {inst}.never (I : {inst} F) :
     prov = '\n'.join(('  ' if i == 0 else '    ') + x + (' ++ (' if i < len(senders) - 1 else '')
                      for i, x in enumerate(senders)) + ')' * (len(senders) - 1)
     nev = ('  ' + ' <|\n    '.join(f"never_append ({n})" for n in nevers[:-1]) + ' <|\n    ' + nevers[-1])
-    mb = main_buses()
-    mlist = ',\n   '.join(f"⟨⟨Main.{b}, x, t⟩, Main.numRows⟩" for b in mb)
+    lanes, flushes, windows, steps = main_pairs()
+    tags = [f".lane {l} {k}" for l, k, *_ in lanes] + [f".flush {f} {r}" for f, r, *_ in flushes]
+    arms = lambda col: '\n'.join([f"  | .lane {l} {k} => Main.{t[col]}" for t in lanes for l, k in [t[:2]]] +
+                                  [f"  | .flush {f} {r} => Main.{t[col]}" for t in flushes for f, r in [t[:2]]] +
+                                  [f"  | _ => Main.{lanes[0][col]}"])
+    plist = tags
+    wins = list(windows.values())
+    if wins != [(f + 1) * wins[0] for f in range(len(wins))]:
+        sys.exit(f"gen_membus: flush windows not evenly spaced: {wins}")
     out.append(SYSTEM_TAIL.format(fields='\n'.join(fields), senders=prov, never=nev,
-                                  nmain=len(mb), mainlist=mlist))
+                                  nmain=2 * len(plist), npairs=len(plist), nlane=len(lanes),
+                                  nflush=len(flushes), nwin=len(windows), steps=steps,
+                                  window=wins[0],
+                                  taglist=', '.join(plist), prearms=arms(2), curarms=arms(3),
+                                  rangearms=arms(4)))
     return ''.join(out)
+
+
+def main_regs():
+    """MainRegs.lean: every pair of Main's is good, from Main's constraints."""
+    lanes, flushes, windows, steps = main_pairs()
+    s = open(os.path.join(PIL, 'Main.lean')).read()
+    defs = {m.group(1): ' '.join(m.group(2).split()) for m in re.finditer(DEF, s, re.M)}
+    docs = {m.group(2): m.group(1) for m in re.finditer(r"^/-- `([^`]*)` — `(.*?)` -/\ndef (c\d+) ", s, re.M)}
+    cname = {}
+    for m in re.finditer(r"^/-- `[^`]*` — `(.*?)` -/\ndef (c\d+) ", s, re.M):
+        cname[m.group(1)] = m.group(2)
+    bus_reps = {m.group(1): m.group(2) for m in re.finditer(
+        r"^def (bus\d+) : BusArg F \(Ctx F\) \(Trace F\) where\n(?:  .*\n){4}  reps := fun x t i => (.*)\n", s, re.M)}
+    bus_op = {m.group(1): m.group(2).rstrip(',') for m in re.finditer(
+        r"^def (bus\d+) : BusArg F \(Ctx F\) \(Trace F\) where\n(?:  .*\n){6}  tuple := \[\n    fun x t i => (.*)\n", s, re.M)}
+
+    def unf(names):
+        return ', '.join(f"Main.{n}" for n in closure(names, defs))
+
+    def at(e, row):
+        e = re.sub(r"\bx t i\b", f"x t {row}", e)
+        e = re.sub(r"(?<![.\w])((?:Main|Zisk)_\w+) x t", r"Main.\1 x t", e)
+        return e.replace("(t i)", f"(t {row})")
+
+    def lit_cast(n):
+        return {0: 'Lean.Grind.Semiring.natCast_zero', 1: 'Lean.Grind.Semiring.natCast_one'}.get(n)
+
+    out = [REGS_HEAD]
+    names = []
+    excl = {0: "(a_src_mem[{l}]+a_src_reg[{l}])*((a_src_mem[{l}]+a_src_reg[{l}])-1)",
+            1: "((sel_mem_b[{l}])+b_src_reg[{l}])*(((sel_mem_b[{l}])+b_src_reg[{l}])-1)",
+            2: "((store_mem[{l}]+store_ind[{l}])+store_reg[{l}])*(((store_mem[{l}]+store_ind[{l}])+store_reg[{l}])-1)"}
+    regcol = {0: 'a_src_reg', 1: 'b_src_reg', 2: 'store_reg'}
+    memcols = {1: ('b_src_mem', 'b_src_ind'), 2: ('store_mem', 'store_ind')}
+    mstep = {0: 'a_mem_step', 1: 'b_mem_step', 2: 'store_mem_step'}
+    for l, k, pre, cur, _ in lanes:
+        name = f"lane_good_{l}_{k}"
+        names.append(name)
+        cx = cname[excl[k].format(l=l)]
+        rp, rc, op = bus_reps[pre], bus_reps[cur], bus_op[cur]
+        casts = []
+        for v in (l, k):
+            c = lit_cast(v)
+            casts.append(c if c else f"← natCast_ofNat' {v}")
+        cast_simp = [c for c in casts if not c.startswith('←')]
+        cast_rw = list(dict.fromkeys(c for c in casts if c.startswith('←')))
+        stepdefs = unf([f"Main_{mstep[k]}_{l}"])
+        rc_unf = unf(re.findall(r"((?:Main|Zisk)_\w+) x t i", rc))
+        rcop_unf = unf(re.findall(r"((?:Main|Zisk)_\w+) x t i", rc + ' ' + op))
+        rc_simp = f"\n    simp only [{rc_unf}]" if rc_unf else ""
+        rcop_simp = f"\n    simp only [{rcop_unf}] at hr h3" if rcop_unf else ""
+        body = f"""theorem {name} {{k : Nat}} {{x : Main.Ctx F}} {{t : Main.Trace F}} (h : MainSegOk k x t) :
+    (Pair.mk ⟨⟨Main.{pre}, x, t⟩, Main.numRows⟩ ⟨⟨Main.{cur}, x, t⟩, Main.numRows⟩
+      (laneStep k {l} {k})).Good where
+  same := rfl
+  side_pre := rfl
+  side_cur := rfl
+  bits_pre := fun j _ => by
+    have e := (h.rows j).bool_{regcol[k]}_{l}
+    show {at(rp, 'j')} = 0 ∨ {at(rp, 'j')} = 1
+    rw [Lean.Grind.Semiring.add_zero]; exact bit_or e
+  bits_cur := fun j _ => by
+    have e := (h.rows j).{cx}
+    simp only [{unf([cx])}] at e
+    show {at(rc, 'j')} = 0 ∨ {at(rc, 'j')} = 1{rc_simp}
+    exact bit_or (by grind)
+  shape := fun j _ => rfl
+  cur_reg := fun j hj hr h3 => by
+    obtain ⟨m, hm, rfl⟩ := mem_at_rows (s := ⟨⟨Main.{pre}, x, t⟩, Main.numRows⟩) rfl hj
+    change {at(rc, 'm')} = 1 at hr
+    change {at(op, 'm')} = 3 at h3
+    have h3' := h3{rcop_simp}
+    have hreg : (t m).{regcol[k]} {l} = 1 := by grind
+"""
+        if k in memcols:
+            a, b2 = memcols[k]
+            body += f"""    obtain ⟨-, hind⟩ := bits_zero (h.rows m).bool_{a}_{l} (h.rows m).bool_{b2}_{l} (by grind)
+"""
+        body += f"""    refine ⟨by show (t m).{regcol[k]} {l} + 0 = 1; rw [hreg]; grind, ?_⟩
+    have hs := laneStep_cast (F := F) k {l} {k} m
+"""
+        if k == 1:
+            ca = cname[f"addr1[{l}]-(b_offset_imm0[{l}]+(b_src_ind[{l}]*a[{l}][0]))"]
+            body += f"""    have ha := (h.rows m).{ca}
+    simp only [Main.{ca}] at ha
+"""
+        body += f"""    simp only [tupleOf, Main.{cur}, Main.{pre}, el, List.map_cons, List.map_nil,
+      List.getD_cons_zero, List.getD_cons_succ, List.cons.injEq, and_true]
+"""
+        if k == 0:
+            body += "    refine ⟨h3', trivial, ?_⟩\n"
+        elif k == 1:
+            body += "    refine ⟨h3', by rw [hind] at ha; grind, ?_, by rw [hind]; grind⟩\n"
+        else:
+            body += f"    refine ⟨h3', by simp only [{unf([f'Main_addr2_{l}'])}, hind]; grind, ?_, by rw [hind]; grind⟩\n"
+        body += f"""    simp only [{stepdefs}, h.init, h.segStep m hm, hs{''.join(', ' + c for c in cast_simp)}]
+"""
+        if cast_rw:
+            body += f"    all_goals rw [{', '.join(cast_rw)}]\n"
+        body += "    all_goals grind\n"
+        out.append(body)
+    for f, r, pre, cur, _ in flushes:
+        name = f"flush_good_{f}_{r}"
+        names.append(name)
+        last = bus_reps[cur].strip() != '1'
+        bits_cur = ("fun _ _ => .inr rfl" if not last else """fun j _ => by
+    have e := (h.rows j).c0
+    simp only [Main.c0] at e
+    show 1 - x.Main_main_last_segment = 0 ∨ 1 - x.Main_main_last_segment = 1
+    rcases bit_or (s := x.Main_main_last_segment) (by grind) with h0 | h1
+    · right; rw [h0]; grind
+    · left; rw [h1]; grind""")
+        out.append(f"""theorem {name} {{k : Nat}} {{x : Main.Ctx F}} {{t : Main.Trace F}} (h : MainSegOk k x t) :
+    (Pair.mk ⟨⟨Main.{pre}, x, t⟩, Main.numRows⟩ ⟨⟨Main.{cur}, x, t⟩, Main.numRows⟩
+      (fun _ => flushStep k {f})).Good where
+  same := rfl
+  side_pre := rfl
+  side_cur := rfl
+  bits_pre := fun _ _ => .inr rfl
+  bits_cur := {bits_cur}
+  shape := fun _ _ => rfl
+  cur_reg := fun j _ _ _ => by
+    refine ⟨rfl, ?_⟩
+    have hs := flushStep_cast (F := F) k {f}
+    simp only [tupleOf, Main.{cur}, Main.{pre}, el, List.map_cons, List.map_nil,
+      List.getD_cons_zero, List.getD_cons_succ, List.cons.injEq, and_true, true_and]
+    simp only [{unf([f'Main_flush_reg_mem_step_{f}'])}, h.init, hs]
+    rw [← natCast_ofNat' {windows[f]}]
+    grind
+""")
+    ranges = {(l, k): r for l, k, _, _, r in lanes}
+    franges = {(f, r): rg for f, r, _, _, rg in flushes}
+    bus_tuple0 = {m.group(1): m.group(2).rstrip(',') for m in re.finditer(
+        r"^def (bus\d+) : BusArg F \(Ctx F\) \(Trace F\) where\n(?:  .*\n){6}  tuple := \[\n    fun x t i => (.*)\]\n", s, re.M)}
+    gaps = []
+    for l, k, pre, cur, rng in lanes:
+        gname = f"gap_lane_{l}_{k}"
+        gaps.append((gname, f".lane {l} {k}"))
+        stepname = re.search(r"((?:Main|Zisk)_\w+) x t i", bus_tuple0[rng]).group(1)
+        casts = []
+        for v in (l, k):
+            c = lit_cast(v)
+            casts.append(c if c else f"← natCast_ofNat' {v}")
+        cast_simp = [c for c in casts if not c.startswith('←')]
+        cast_rw = list(dict.fromkeys(c for c in casts if c.startswith('←')))
+        out.append(f"""theorem {gname} {{k : Nat}} {{x : Main.Ctx F}} {{t : Main.Trace F}} (h : MainSegOk k x t)
+    (hR : RangeHolds Main.ranges Main.{rng} x t) : ((PairTag.lane {l} {k}).pair k x t).GapOk := by
+  intro j hj hr
+  obtain ⟨m, hm, rfl⟩ := mem_at_rows (s := ⟨⟨Main.{pre}, x, t⟩, Main.numRows⟩) rfl hj
+  obtain ⟨n, hn, e⟩ := range_val hR rfl (j := m)
+    (fun h0 => Lean.Grind.Field.zero_ne_one (h0.symm.trans hr)) (List.mem_singleton_self _)
+  refine ⟨n, hn, ?_⟩
+  have hs : Main.{stepname} x t m = ((laneStep k {l} {k} m : Nat) : F) := by
+    rw [laneStep_cast]
+    simp only [{unf([stepname])}, h.init, h.segStep m hm{''.join(', ' + c for c in cast_simp)}]
+{'    all_goals rw [' + ', '.join(cast_rw) + ']' + chr(10) if cast_rw else ''}    all_goals grind
+  show ((laneStep k {l} {k} m : Nat) : F) - el 2 (tupleOf ⟨Main.{pre}, x, t⟩ m) - 1 = _
+  rw [← hs]
+  simp only [tupleOf, el, Main.{pre}, List.map_cons, List.getD_cons_zero, List.getD_cons_succ,
+    Lean.Grind.Semiring.add_zero]
+  exact e
+""")
+    for f, r, pre, cur, rng in flushes:
+        gname = f"gap_flush_{f}_{r}"
+        gaps.append((gname, f".flush {f} {r}"))
+        out.append(f"""theorem {gname} {{k : Nat}} {{x : Main.Ctx F}} {{t : Main.Trace F}} (h : MainSegOk k x t)
+    (hR : RangeHolds Main.ranges Main.{rng} x t) : ((PairTag.flush {f} {r}).pair k x t).GapOk := by
+  intro j hj _
+  obtain ⟨n, hn, e⟩ := range_val hR rfl (j := j) (fun h0 => Lean.Grind.Field.zero_ne_one h0.symm)
+    (List.mem_singleton_self _)
+  refine ⟨n, hn, ?_⟩
+  have hs : Main.Main_flush_reg_mem_step_{f} x t j = ((flushStep k {f} : Nat) : F) := by
+    rw [flushStep_cast]
+    simp only [{unf([f'Main_flush_reg_mem_step_{f}'])}, h.init]
+    rw [← natCast_ofNat' {windows[f]}]
+    all_goals grind
+  show ((flushStep k {f} : Nat) : F) - el 2 (tupleOf ⟨Main.{pre}, x, t⟩ j) - 1 = _
+  rw [← hs]
+  simp only [tupleOf, el, Main.{pre}, List.map_cons, List.getD_cons_zero, List.getD_cons_succ,
+    Lean.Grind.Semiring.add_zero]
+  exact e
+""")
+    gterms = ',\n    '.join(f"{g} h (hR ({tag}))" for g, tag in gaps)
+    out.append(f"""set_option maxRecDepth 100000 in
+/-- **Every pair's gap is range-checked**, given each pair's range check sound. -/
+theorem mainTags_gap {{k : Nat}} {{x : Main.Ctx F}} {{t : Main.Trace F}} (h : MainSegOk k x t)
+    (hR : ∀ g : PairTag, RangeHolds Main.ranges g.rangeArg x t) :
+    AllOf (fun g : PairTag => (g.pair k x t).GapOk) mainTags :=
+  ⟨{gterms},
+    trivial⟩
+""")
+    aterms = []
+    for l, k, *_ in lanes:
+        aterms.append("fun _ _ e => PairTag.noConfusion e")
+    for f, r, *_ in flushes:
+        n = r + 1
+        lem = "Lean.Grind.Semiring.natCast_one.symm" if n == 1 else f"natCast_ofNat' {n}"
+        aterms.append(f"fun _ _ e => by cases e; exact fun _ _ _ => {lem}")
+    oterms = ',\n    '.join(["rfl"] * (len(lanes) + len(flushes)))
+    out.append(f"""set_option maxRecDepth 100000 in
+/-- **A lane pair is sent at every row, a flush once.** -/
+theorem mainTags_once : AllOf (fun g : PairTag => g.OnceOk (F := F)) mainTags :=
+  ⟨{oterms},
+    trivial⟩
+
+""")
+    out.append(f"""set_option maxRecDepth 100000 in
+/-- **A flush's address is its register's.** -/
+theorem mainTags_addr : AllOf (fun g : PairTag => g.AddrOk (F := F)) mainTags :=
+  ⟨{(','+chr(10)+'    ').join(aterms)},
+    trivial⟩
+
+""")
+    terms = ',\n    '.join(f"{n} h" for n in names)
+    out.append(f"""set_option maxRecDepth 100000 in
+theorem mainTags_good {{k : Nat}} {{x : Main.Ctx F}} {{t : Main.Trace F}} (h : MainSegOk k x t) :
+    AllOf (fun g : PairTag => (g.pair k x t).Good) mainTags :=
+  ⟨{terms},
+    trivial⟩
+
+/-- **Every pair of Main's is good**, in a segment whose hypotheses hold. -/
+theorem mainPairs_good {{k : Nat}} {{x : Main.Ctx F}} {{t : Main.Trace F}} (h : MainSegOk k x t) :
+    ∀ P ∈ mainPairs k x t, P.Good := by
+  intro P hP
+  simp only [mainPairs, List.mem_map] at hP
+  obtain ⟨g, hg, rfl⟩ := hP
+  exact (mainTags_good h).mem g hg
+
+end Correspondence
+""")
+    open(OUT_REGS, 'w').write('\n'.join(out))
+    return len(names)
 
 
 SYSTEM_HEAD = """/-! ### Every other AIR on the memory bus
@@ -406,12 +697,67 @@ theorem reg_balance (S : MemOthers F) {{ms : List (Sender F)}} {{gp ga : List (L
     provedCount ms τ + times gp τ = assumedCount ms τ + times ga τ :=
   h.restrict S.never h3
 
-/-- Main's {nmain} arguments on the memory bus, for one instance: per lane, the
-register accesses of `a`, `b` and the store (each proving the access before it
-and assuming itself, or a memory access), and per flush window and register,
-the flush (once per instance). -/
+/-- The memory step of lane `l`'s access in slot `κ` (0 for `a`, 1 for `b`, 2
+for the store) at row `j` of segment `k`: `main_step_to_mem_step`, with the
+segment's first step `k·{steps}` and the row's step `4·j + l`. -/
+def laneStep (k l κ : Nat) (j : Int) : Nat := 1 + 4 * (k * {steps} + 4 * j.toNat + l) + κ
+
+/-- The memory step of flush window `f` of segment `k`: the special step after
+the window's last main step. -/
+def flushStep (k f : Nat) : Nat := 1 + 4 * (k * {steps} + (f + 1) * {window} - 1) + 3
+
+end System
+
+/-- Which register-access pair of Main's: lane `l`'s access in slot `κ` (0 for
+`a`, 1 for `b`, 2 for the store), or flush window `f`'s of register `ρ + 1`. -/
+inductive PairTag where
+  | lane (l κ : Nat)
+  | flush (f ρ : Nat)
+  deriving DecidableEq
+
+/-- The pair's memory step at row `j` of segment `k`. -/
+def PairTag.step : PairTag → Nat → Int → Nat
+  | .lane l κ, k, j => laneStep k l κ j
+  | .flush f _, k, _ => flushStep k f
+
+/-- Main's {npairs} register-access pairs: per lane, `a`, `b` and the store
+({nlane}); per flush window and register ({nflush}: {nwin} windows). -/
+def mainTags : List PairTag := [{taglist}]
+
+set_option maxRecDepth 100000 in
+theorem mainTags_nodup : mainTags.Nodup := by decide
+
+section System
+
+variable {{F : Type}} [Lean.Grind.Field F] [Lean.Grind.IsCharP F goldilocks]
+
+/-- The argument proving the access before, per pair. -/
+def PairTag.preArg : PairTag → BusArg F (Main.Ctx F) (Main.Trace F)
+{prearms}
+
+/-- The argument assuming the access, per pair. -/
+def PairTag.curArg : PairTag → BusArg F (Main.Ctx F) (Main.Trace F)
+{curarms}
+
+/-- The range check of the pair's gap, `step - prev - 1`. -/
+def PairTag.rangeArg : PairTag → BusArg F (Main.Ctx F) (Main.Trace F)
+{rangearms}
+
+/-- Pair `g` of segment `k`, instance `x`, `t`. -/
+def PairTag.pair (g : PairTag) (k : Nat) (x : Main.Ctx F) (t : Main.Trace F) : Pair F :=
+  ⟨⟨⟨g.preArg, x, t⟩, Main.numRows⟩, ⟨⟨g.curArg, x, t⟩, Main.numRows⟩, g.step k⟩
+
+/-- Main's register-access pairs in segment `k`. -/
+def mainPairs (k : Nat) (x : Main.Ctx F) (t : Main.Trace F) : List (Pair F) :=
+  mainTags.map fun g => g.pair k x t
+
+/-- Main's {nmain} arguments on the memory bus, for one instance: its pairs'. -/
 def mainMemSenders (x : Main.Ctx F) (t : Main.Trace F) : List (Sender F) :=
-  [{mainlist}]
+  pairSenders (mainPairs 0 x t)
+
+theorem pairSenders_mainPairs (k : Nat) (x : Main.Ctx F) (t : Main.Trace F) :
+    pairSenders (mainPairs k x t) = mainMemSenders x t := by
+  simp only [mainMemSenders, pairSenders, mainPairs, List.flatMap_map, PairTag.pair]
 
 /-- The register `r`'s initial tuple, `(3, r, 0, 8, 0, 0)`: what the global
 update `global_init_mem` assumes for each register in Main. -/
@@ -445,6 +791,144 @@ theorem reg_chain_balance (S : MemOthers F) (segs : List (Main.Ctx F × Main.Tra
 end System
 """
 
+
+REGS_HEAD = """/-
+  Every pair of Main's is good.
+
+  `pairs_chain` (`RegChain.lean`) turns good pairs into a register chain. This
+  file proves Main's pairs good (`mainPairs_good`), from Main's constraints and
+  two facts about the segment (`MainSegOk`): its first step is `k·2^24`, as
+  the continuation chain makes it, and the fixed column `SEGMENT_STEP` is the
+  row, as the setup fixes it.
+
+  * A lane's register access in slot `κ` (`a`, `b`, the store): its count is a
+    bit, the sum of its memory and register selectors is a bit, and when it
+    assumes a register tuple, the register selector is 1 and the memory
+    selectors 0, so its address is the register's (for `b`, through `addr1`,
+    `main.pil:224`) and its memory step is `laneStep k l κ`.
+  * A flush, window `f` and register `r`: sent once, its count 1 — or, for the
+    last window, `1 - main_last_segment`, a bit — and its step `flushStep k f`.
+
+  Generated by `sail/gen_membus.py` (`make membus`).
+-/
+import Proofs.RegChain
+
+namespace Correspondence
+
+open Pil.Zisk
+
+attribute [local instance] Lean.Grind.Semiring.natCast Lean.Grind.Ring.intCast
+
+/- The generated theorems share one signature; not all need the characteristic. -/
+set_option linter.unusedSectionVars false
+
+variable {F : Type} [Lean.Grind.Field F] [Lean.Grind.IsCharP F goldilocks]
+
+/-- Every element of a list satisfies `p`, as a nested conjunction: a proof of it
+for a literal list is a tuple, one component per element. -/
+def AllOf {α : Type _} (p : α → Prop) : List α → Prop
+  | [] => True
+  | a :: l => p a ∧ AllOf p l
+
+theorem AllOf.mem {α : Type _} {p : α → Prop} : ∀ {l : List α}, AllOf p l → ∀ a ∈ l, p a
+  | [], _, _, ha => nomatch ha
+  | b :: l, ⟨hb, hl⟩, a, ha => by
+    rcases List.mem_cons.mp ha with rfl | ha
+    · exact hb
+    · exact AllOf.mem hl a ha
+
+/-- What a segment's register pairs need besides Main's constraints: the
+segment's first step, `k·2^24` (the continuation chain's), and the row's step
+in the fixed column `SEGMENT_STEP` (the setup's). -/
+structure MainSegOk (k : Nat) (x : Main.Ctx F) (t : Main.Trace F) : Prop where
+  rows : ∀ i, Main.everyRow x t i
+  init : x.Main_segment_initial_step = ((k * 16777216 : Nat) : F)
+  segStep : ∀ m : Nat, m < Main.numRows → (t m).Main_SEGMENT_STEP = ((m : Nat) : F)
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem bit_or {s : F} (h : s * (1 - s) = 0) : s = 0 ∨ s = 1 := by
+  obtain ⟨b, e⟩ := bool_of_idem h
+  cases b <;> simp [e, bit]
+
+/-- Two bits that sum to 0 are both 0. -/
+theorem bits_zero {u v : F} (hu : u * (1 - u) = 0) (hv : v * (1 - v) = 0) (h : u + v = 0) :
+    u = 0 ∧ v = 0 := by
+  rcases bit_or hu with rfl | rfl <;> rcases bit_or hv with rfl | rfl
+  · exact ⟨rfl, rfl⟩
+  · exfalso; have : (1 : F) = 0 := by grind
+    exact Lean.Grind.Field.zero_ne_one this.symm
+  · exfalso; have : (1 : F) = 0 := by grind
+    exact Lean.Grind.Field.zero_ne_one this.symm
+  · exfalso
+    have : ((2 : Nat) : F) = ((0 : Nat) : F) := by
+      rw [natCast_two, Lean.Grind.Semiring.natCast_zero]; grind
+    have := natCast_inj (F := F) (by unfold goldilocks; omega) (by unfold goldilocks; omega) this
+    omega
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem mem_at_rows {s : Sender F} (hs : s.p.arg.once = false) {j : Int}
+    (hj : j ∈ s.at) : ∃ m : Nat, m < s.rows ∧ j = (m : Int) := by
+  simp only [Sender.at, hs, Bool.false_eq_true, if_false, List.mem_map, List.mem_range] at hj
+  obtain ⟨m, hm, rfl⟩ := hj
+  exact ⟨m, hm, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem laneStep_cast (k l κ m : Nat) :
+    ((laneStep k l κ (m : Int) : Nat) : F) =
+      1 + 4 * (((k * 16777216 : Nat) : F) + ((m : Nat) : F) * 4 + ((l : Nat) : F)) + ((κ : Nat) : F) := by
+  simp only [laneStep, Int.toNat_natCast, Lean.Grind.Semiring.natCast_add,
+    Lean.Grind.Semiring.natCast_mul, Lean.Grind.Semiring.natCast_one]
+  rw [← natCast_ofNat' 4, ← natCast_ofNat' 16777216]
+  grind
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem flushStep_cast (k f : Nat) :
+    ((flushStep k f : Nat) : F) =
+      1 + 4 * (((k * 16777216 : Nat) : F) + (((f + 1) * 4194304 : Nat) : F) - 1) + 4 - 1 := by
+  have e : flushStep k f = 4 * (k * 16777216) + 4 * ((f + 1) * 4194304) := by
+    unfold flushStep; have : 1 ≤ (f + 1) * 4194304 := by omega
+    omega
+  rw [e]
+  simp only [Lean.Grind.Semiring.natCast_add, Lean.Grind.Semiring.natCast_mul,
+    Lean.Grind.Semiring.natCast_one]
+  rw [← natCast_ofNat' 4, ← natCast_ofNat' 16777216, ← natCast_ofNat' 4194304]
+  grind
+
+/-- At every row a pair proves at, its gap `step - prev - 1` is a range-checked
+24-bit number. -/
+def Pair.GapOk (P : Pair F) : Prop :=
+  ∀ j ∈ P.pre.at, P.pre.p.arg.reps P.pre.p.x P.pre.p.t j = 1 →
+    ∃ m : Nat, m < 16777216 ∧ ((P.step j : Nat) : F) - el 2 (tupleOf P.pre.p j) - 1 = ((m : Nat) : F)
+
+set_option maxRecDepth 100000 in
+omit [Lean.Grind.Field F] [Lean.Grind.IsCharP F goldilocks] in
+theorem main_range_max : ∀ d ∈ (Main.ranges : List RangeDef), d.opid = 102 → d.max = 16777215 := by
+  decide
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+/-- A value a sound range check on bus 102 sends is a 24-bit number. -/
+theorem range_val {x : Main.Ctx F} {t : Main.Trace F} {R : BusArg F (Main.Ctx F) (Main.Trace F)}
+    (hR : RangeHolds Main.ranges R x t) (hop : R.opids = [102]) {j : Int} (hr : R.reps x t j ≠ 0)
+    {f : Main.Ctx F → Main.Trace F → Int → F} (hf : f ∈ R.tuple) :
+    ∃ n : Nat, n < 16777216 ∧ f x t j = ((n : Nat) : F) := by
+  obtain ⟨-, -, b, d, hb, hd, hdo, -, -, hall⟩ := hR
+  rw [hop] at hb
+  have hb' : b = 102 := by simpa using hb.symm
+  have hmax := main_range_max d hd (by rw [hdo, hb'])
+  obtain ⟨n, -, hn, e⟩ := hall j hr f hf
+  exact ⟨n, by omega, e⟩
+
+/-- A lane pair is sent at every row of its instance, a flush once. -/
+def PairTag.OnceOk : PairTag → Prop
+  | .lane l κ => ((PairTag.lane l κ).preArg (F := F)).once = false
+  | .flush f ρ => ((PairTag.flush f ρ).preArg (F := F)).once = true
+
+/-- A flush pair's address is its register's. -/
+def PairTag.AddrOk (g : PairTag) : Prop :=
+  ∀ f ρ, g = .flush f ρ → ∀ (x : Main.Ctx F) (t : Main.Trace F) (j : Int),
+    el 1 (tupleOf ⟨g.preArg, x, t⟩ j) = ((ρ + 1 : Nat) : F)
+
+"""
 
 HEAD = """/-
   No AIR but Main sends a register tuple.

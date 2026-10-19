@@ -3176,347 +3176,571 @@ theorem reg_balance (S : MemOthers F) {ms : List (Sender F)} {gp ga : List (List
     provedCount ms τ + times gp τ = assumedCount ms τ + times ga τ :=
   h.restrict S.never h3
 
-/-- Main's 336 arguments on the memory bus, for one instance: per lane, the
-register accesses of `a`, `b` and the store (each proving the access before it
-and assuming itself, or a memory access), and per flush window and register,
-the flush (once per instance). -/
+/-- The memory step of lane `l`'s access in slot `κ` (0 for `a`, 1 for `b`, 2
+for the store) at row `j` of segment `k`: `main_step_to_mem_step`, with the
+segment's first step `k·16777216` and the row's step `4·j + l`. -/
+def laneStep (k l κ : Nat) (j : Int) : Nat := 1 + 4 * (k * 16777216 + 4 * j.toNat + l) + κ
+
+/-- The memory step of flush window `f` of segment `k`: the special step after
+the window's last main step. -/
+def flushStep (k f : Nat) : Nat := 1 + 4 * (k * 16777216 + (f + 1) * 4194304 - 1) + 3
+
+end System
+
+/-- Which register-access pair of Main's: lane `l`'s access in slot `κ` (0 for
+`a`, 1 for `b`, 2 for the store), or flush window `f`'s of register `ρ + 1`. -/
+inductive PairTag where
+  | lane (l κ : Nat)
+  | flush (f ρ : Nat)
+  deriving DecidableEq
+
+/-- The pair's memory step at row `j` of segment `k`. -/
+def PairTag.step : PairTag → Nat → Int → Nat
+  | .lane l κ, k, j => laneStep k l κ j
+  | .flush f _, k, _ => flushStep k f
+
+/-- Main's 168 register-access pairs: per lane, `a`, `b` and the store
+(12); per flush window and register (156: 4 windows). -/
+def mainTags : List PairTag := [.lane 0 0, .lane 0 1, .lane 0 2, .lane 1 0, .lane 1 1, .lane 1 2, .lane 2 0, .lane 2 1, .lane 2 2, .lane 3 0, .lane 3 1, .lane 3 2, .flush 0 0, .flush 0 1, .flush 0 2, .flush 0 3, .flush 0 4, .flush 0 5, .flush 0 6, .flush 0 7, .flush 0 8, .flush 0 9, .flush 0 10, .flush 0 11, .flush 0 12, .flush 0 13, .flush 0 14, .flush 0 15, .flush 0 16, .flush 0 17, .flush 0 18, .flush 0 19, .flush 0 20, .flush 0 21, .flush 0 22, .flush 0 23, .flush 0 24, .flush 0 25, .flush 0 26, .flush 0 27, .flush 0 28, .flush 0 29, .flush 0 30, .flush 0 31, .flush 0 32, .flush 0 33, .flush 0 34, .flush 0 35, .flush 0 36, .flush 0 37, .flush 0 38, .flush 1 0, .flush 1 1, .flush 1 2, .flush 1 3, .flush 1 4, .flush 1 5, .flush 1 6, .flush 1 7, .flush 1 8, .flush 1 9, .flush 1 10, .flush 1 11, .flush 1 12, .flush 1 13, .flush 1 14, .flush 1 15, .flush 1 16, .flush 1 17, .flush 1 18, .flush 1 19, .flush 1 20, .flush 1 21, .flush 1 22, .flush 1 23, .flush 1 24, .flush 1 25, .flush 1 26, .flush 1 27, .flush 1 28, .flush 1 29, .flush 1 30, .flush 1 31, .flush 1 32, .flush 1 33, .flush 1 34, .flush 1 35, .flush 1 36, .flush 1 37, .flush 1 38, .flush 2 0, .flush 2 1, .flush 2 2, .flush 2 3, .flush 2 4, .flush 2 5, .flush 2 6, .flush 2 7, .flush 2 8, .flush 2 9, .flush 2 10, .flush 2 11, .flush 2 12, .flush 2 13, .flush 2 14, .flush 2 15, .flush 2 16, .flush 2 17, .flush 2 18, .flush 2 19, .flush 2 20, .flush 2 21, .flush 2 22, .flush 2 23, .flush 2 24, .flush 2 25, .flush 2 26, .flush 2 27, .flush 2 28, .flush 2 29, .flush 2 30, .flush 2 31, .flush 2 32, .flush 2 33, .flush 2 34, .flush 2 35, .flush 2 36, .flush 2 37, .flush 2 38, .flush 3 0, .flush 3 1, .flush 3 2, .flush 3 3, .flush 3 4, .flush 3 5, .flush 3 6, .flush 3 7, .flush 3 8, .flush 3 9, .flush 3 10, .flush 3 11, .flush 3 12, .flush 3 13, .flush 3 14, .flush 3 15, .flush 3 16, .flush 3 17, .flush 3 18, .flush 3 19, .flush 3 20, .flush 3 21, .flush 3 22, .flush 3 23, .flush 3 24, .flush 3 25, .flush 3 26, .flush 3 27, .flush 3 28, .flush 3 29, .flush 3 30, .flush 3 31, .flush 3 32, .flush 3 33, .flush 3 34, .flush 3 35, .flush 3 36, .flush 3 37, .flush 3 38]
+
+set_option maxRecDepth 100000 in
+theorem mainTags_nodup : mainTags.Nodup := by decide
+
+section System
+
+variable {F : Type} [Lean.Grind.Field F] [Lean.Grind.IsCharP F goldilocks]
+
+/-- The argument proving the access before, per pair. -/
+def PairTag.preArg : PairTag → BusArg F (Main.Ctx F) (Main.Trace F)
+  | .lane 0 0 => Main.bus34
+  | .lane 0 1 => Main.bus36
+  | .lane 0 2 => Main.bus38
+  | .lane 1 0 => Main.bus47
+  | .lane 1 1 => Main.bus49
+  | .lane 1 2 => Main.bus51
+  | .lane 2 0 => Main.bus60
+  | .lane 2 1 => Main.bus62
+  | .lane 2 2 => Main.bus64
+  | .lane 3 0 => Main.bus73
+  | .lane 3 1 => Main.bus75
+  | .lane 3 2 => Main.bus77
+  | .flush 0 0 => Main.bus92
+  | .flush 0 1 => Main.bus96
+  | .flush 0 2 => Main.bus100
+  | .flush 0 3 => Main.bus104
+  | .flush 0 4 => Main.bus108
+  | .flush 0 5 => Main.bus112
+  | .flush 0 6 => Main.bus116
+  | .flush 0 7 => Main.bus120
+  | .flush 0 8 => Main.bus124
+  | .flush 0 9 => Main.bus128
+  | .flush 0 10 => Main.bus132
+  | .flush 0 11 => Main.bus136
+  | .flush 0 12 => Main.bus140
+  | .flush 0 13 => Main.bus144
+  | .flush 0 14 => Main.bus148
+  | .flush 0 15 => Main.bus152
+  | .flush 0 16 => Main.bus156
+  | .flush 0 17 => Main.bus160
+  | .flush 0 18 => Main.bus164
+  | .flush 0 19 => Main.bus168
+  | .flush 0 20 => Main.bus172
+  | .flush 0 21 => Main.bus176
+  | .flush 0 22 => Main.bus180
+  | .flush 0 23 => Main.bus184
+  | .flush 0 24 => Main.bus188
+  | .flush 0 25 => Main.bus192
+  | .flush 0 26 => Main.bus196
+  | .flush 0 27 => Main.bus200
+  | .flush 0 28 => Main.bus204
+  | .flush 0 29 => Main.bus208
+  | .flush 0 30 => Main.bus212
+  | .flush 0 31 => Main.bus216
+  | .flush 0 32 => Main.bus220
+  | .flush 0 33 => Main.bus224
+  | .flush 0 34 => Main.bus228
+  | .flush 0 35 => Main.bus232
+  | .flush 0 36 => Main.bus236
+  | .flush 0 37 => Main.bus240
+  | .flush 0 38 => Main.bus244
+  | .flush 1 0 => Main.bus248
+  | .flush 1 1 => Main.bus252
+  | .flush 1 2 => Main.bus256
+  | .flush 1 3 => Main.bus260
+  | .flush 1 4 => Main.bus264
+  | .flush 1 5 => Main.bus268
+  | .flush 1 6 => Main.bus272
+  | .flush 1 7 => Main.bus276
+  | .flush 1 8 => Main.bus280
+  | .flush 1 9 => Main.bus284
+  | .flush 1 10 => Main.bus288
+  | .flush 1 11 => Main.bus292
+  | .flush 1 12 => Main.bus296
+  | .flush 1 13 => Main.bus300
+  | .flush 1 14 => Main.bus304
+  | .flush 1 15 => Main.bus308
+  | .flush 1 16 => Main.bus312
+  | .flush 1 17 => Main.bus316
+  | .flush 1 18 => Main.bus320
+  | .flush 1 19 => Main.bus324
+  | .flush 1 20 => Main.bus328
+  | .flush 1 21 => Main.bus332
+  | .flush 1 22 => Main.bus336
+  | .flush 1 23 => Main.bus340
+  | .flush 1 24 => Main.bus344
+  | .flush 1 25 => Main.bus348
+  | .flush 1 26 => Main.bus352
+  | .flush 1 27 => Main.bus356
+  | .flush 1 28 => Main.bus360
+  | .flush 1 29 => Main.bus364
+  | .flush 1 30 => Main.bus368
+  | .flush 1 31 => Main.bus372
+  | .flush 1 32 => Main.bus376
+  | .flush 1 33 => Main.bus380
+  | .flush 1 34 => Main.bus384
+  | .flush 1 35 => Main.bus388
+  | .flush 1 36 => Main.bus392
+  | .flush 1 37 => Main.bus396
+  | .flush 1 38 => Main.bus400
+  | .flush 2 0 => Main.bus404
+  | .flush 2 1 => Main.bus408
+  | .flush 2 2 => Main.bus412
+  | .flush 2 3 => Main.bus416
+  | .flush 2 4 => Main.bus420
+  | .flush 2 5 => Main.bus424
+  | .flush 2 6 => Main.bus428
+  | .flush 2 7 => Main.bus432
+  | .flush 2 8 => Main.bus436
+  | .flush 2 9 => Main.bus440
+  | .flush 2 10 => Main.bus444
+  | .flush 2 11 => Main.bus448
+  | .flush 2 12 => Main.bus452
+  | .flush 2 13 => Main.bus456
+  | .flush 2 14 => Main.bus460
+  | .flush 2 15 => Main.bus464
+  | .flush 2 16 => Main.bus468
+  | .flush 2 17 => Main.bus472
+  | .flush 2 18 => Main.bus476
+  | .flush 2 19 => Main.bus480
+  | .flush 2 20 => Main.bus484
+  | .flush 2 21 => Main.bus488
+  | .flush 2 22 => Main.bus492
+  | .flush 2 23 => Main.bus496
+  | .flush 2 24 => Main.bus500
+  | .flush 2 25 => Main.bus504
+  | .flush 2 26 => Main.bus508
+  | .flush 2 27 => Main.bus512
+  | .flush 2 28 => Main.bus516
+  | .flush 2 29 => Main.bus520
+  | .flush 2 30 => Main.bus524
+  | .flush 2 31 => Main.bus528
+  | .flush 2 32 => Main.bus532
+  | .flush 2 33 => Main.bus536
+  | .flush 2 34 => Main.bus540
+  | .flush 2 35 => Main.bus544
+  | .flush 2 36 => Main.bus548
+  | .flush 2 37 => Main.bus552
+  | .flush 2 38 => Main.bus556
+  | .flush 3 0 => Main.bus560
+  | .flush 3 1 => Main.bus564
+  | .flush 3 2 => Main.bus568
+  | .flush 3 3 => Main.bus572
+  | .flush 3 4 => Main.bus576
+  | .flush 3 5 => Main.bus580
+  | .flush 3 6 => Main.bus584
+  | .flush 3 7 => Main.bus588
+  | .flush 3 8 => Main.bus592
+  | .flush 3 9 => Main.bus596
+  | .flush 3 10 => Main.bus600
+  | .flush 3 11 => Main.bus604
+  | .flush 3 12 => Main.bus608
+  | .flush 3 13 => Main.bus612
+  | .flush 3 14 => Main.bus616
+  | .flush 3 15 => Main.bus620
+  | .flush 3 16 => Main.bus624
+  | .flush 3 17 => Main.bus628
+  | .flush 3 18 => Main.bus632
+  | .flush 3 19 => Main.bus636
+  | .flush 3 20 => Main.bus640
+  | .flush 3 21 => Main.bus644
+  | .flush 3 22 => Main.bus648
+  | .flush 3 23 => Main.bus652
+  | .flush 3 24 => Main.bus656
+  | .flush 3 25 => Main.bus660
+  | .flush 3 26 => Main.bus664
+  | .flush 3 27 => Main.bus668
+  | .flush 3 28 => Main.bus672
+  | .flush 3 29 => Main.bus676
+  | .flush 3 30 => Main.bus680
+  | .flush 3 31 => Main.bus684
+  | .flush 3 32 => Main.bus688
+  | .flush 3 33 => Main.bus692
+  | .flush 3 34 => Main.bus696
+  | .flush 3 35 => Main.bus700
+  | .flush 3 36 => Main.bus704
+  | .flush 3 37 => Main.bus708
+  | .flush 3 38 => Main.bus712
+  | _ => Main.bus34
+
+/-- The argument assuming the access, per pair. -/
+def PairTag.curArg : PairTag → BusArg F (Main.Ctx F) (Main.Trace F)
+  | .lane 0 0 => Main.bus35
+  | .lane 0 1 => Main.bus37
+  | .lane 0 2 => Main.bus39
+  | .lane 1 0 => Main.bus48
+  | .lane 1 1 => Main.bus50
+  | .lane 1 2 => Main.bus52
+  | .lane 2 0 => Main.bus61
+  | .lane 2 1 => Main.bus63
+  | .lane 2 2 => Main.bus65
+  | .lane 3 0 => Main.bus74
+  | .lane 3 1 => Main.bus76
+  | .lane 3 2 => Main.bus78
+  | .flush 0 0 => Main.bus93
+  | .flush 0 1 => Main.bus97
+  | .flush 0 2 => Main.bus101
+  | .flush 0 3 => Main.bus105
+  | .flush 0 4 => Main.bus109
+  | .flush 0 5 => Main.bus113
+  | .flush 0 6 => Main.bus117
+  | .flush 0 7 => Main.bus121
+  | .flush 0 8 => Main.bus125
+  | .flush 0 9 => Main.bus129
+  | .flush 0 10 => Main.bus133
+  | .flush 0 11 => Main.bus137
+  | .flush 0 12 => Main.bus141
+  | .flush 0 13 => Main.bus145
+  | .flush 0 14 => Main.bus149
+  | .flush 0 15 => Main.bus153
+  | .flush 0 16 => Main.bus157
+  | .flush 0 17 => Main.bus161
+  | .flush 0 18 => Main.bus165
+  | .flush 0 19 => Main.bus169
+  | .flush 0 20 => Main.bus173
+  | .flush 0 21 => Main.bus177
+  | .flush 0 22 => Main.bus181
+  | .flush 0 23 => Main.bus185
+  | .flush 0 24 => Main.bus189
+  | .flush 0 25 => Main.bus193
+  | .flush 0 26 => Main.bus197
+  | .flush 0 27 => Main.bus201
+  | .flush 0 28 => Main.bus205
+  | .flush 0 29 => Main.bus209
+  | .flush 0 30 => Main.bus213
+  | .flush 0 31 => Main.bus217
+  | .flush 0 32 => Main.bus221
+  | .flush 0 33 => Main.bus225
+  | .flush 0 34 => Main.bus229
+  | .flush 0 35 => Main.bus233
+  | .flush 0 36 => Main.bus237
+  | .flush 0 37 => Main.bus241
+  | .flush 0 38 => Main.bus245
+  | .flush 1 0 => Main.bus249
+  | .flush 1 1 => Main.bus253
+  | .flush 1 2 => Main.bus257
+  | .flush 1 3 => Main.bus261
+  | .flush 1 4 => Main.bus265
+  | .flush 1 5 => Main.bus269
+  | .flush 1 6 => Main.bus273
+  | .flush 1 7 => Main.bus277
+  | .flush 1 8 => Main.bus281
+  | .flush 1 9 => Main.bus285
+  | .flush 1 10 => Main.bus289
+  | .flush 1 11 => Main.bus293
+  | .flush 1 12 => Main.bus297
+  | .flush 1 13 => Main.bus301
+  | .flush 1 14 => Main.bus305
+  | .flush 1 15 => Main.bus309
+  | .flush 1 16 => Main.bus313
+  | .flush 1 17 => Main.bus317
+  | .flush 1 18 => Main.bus321
+  | .flush 1 19 => Main.bus325
+  | .flush 1 20 => Main.bus329
+  | .flush 1 21 => Main.bus333
+  | .flush 1 22 => Main.bus337
+  | .flush 1 23 => Main.bus341
+  | .flush 1 24 => Main.bus345
+  | .flush 1 25 => Main.bus349
+  | .flush 1 26 => Main.bus353
+  | .flush 1 27 => Main.bus357
+  | .flush 1 28 => Main.bus361
+  | .flush 1 29 => Main.bus365
+  | .flush 1 30 => Main.bus369
+  | .flush 1 31 => Main.bus373
+  | .flush 1 32 => Main.bus377
+  | .flush 1 33 => Main.bus381
+  | .flush 1 34 => Main.bus385
+  | .flush 1 35 => Main.bus389
+  | .flush 1 36 => Main.bus393
+  | .flush 1 37 => Main.bus397
+  | .flush 1 38 => Main.bus401
+  | .flush 2 0 => Main.bus405
+  | .flush 2 1 => Main.bus409
+  | .flush 2 2 => Main.bus413
+  | .flush 2 3 => Main.bus417
+  | .flush 2 4 => Main.bus421
+  | .flush 2 5 => Main.bus425
+  | .flush 2 6 => Main.bus429
+  | .flush 2 7 => Main.bus433
+  | .flush 2 8 => Main.bus437
+  | .flush 2 9 => Main.bus441
+  | .flush 2 10 => Main.bus445
+  | .flush 2 11 => Main.bus449
+  | .flush 2 12 => Main.bus453
+  | .flush 2 13 => Main.bus457
+  | .flush 2 14 => Main.bus461
+  | .flush 2 15 => Main.bus465
+  | .flush 2 16 => Main.bus469
+  | .flush 2 17 => Main.bus473
+  | .flush 2 18 => Main.bus477
+  | .flush 2 19 => Main.bus481
+  | .flush 2 20 => Main.bus485
+  | .flush 2 21 => Main.bus489
+  | .flush 2 22 => Main.bus493
+  | .flush 2 23 => Main.bus497
+  | .flush 2 24 => Main.bus501
+  | .flush 2 25 => Main.bus505
+  | .flush 2 26 => Main.bus509
+  | .flush 2 27 => Main.bus513
+  | .flush 2 28 => Main.bus517
+  | .flush 2 29 => Main.bus521
+  | .flush 2 30 => Main.bus525
+  | .flush 2 31 => Main.bus529
+  | .flush 2 32 => Main.bus533
+  | .flush 2 33 => Main.bus537
+  | .flush 2 34 => Main.bus541
+  | .flush 2 35 => Main.bus545
+  | .flush 2 36 => Main.bus549
+  | .flush 2 37 => Main.bus553
+  | .flush 2 38 => Main.bus557
+  | .flush 3 0 => Main.bus561
+  | .flush 3 1 => Main.bus565
+  | .flush 3 2 => Main.bus569
+  | .flush 3 3 => Main.bus573
+  | .flush 3 4 => Main.bus577
+  | .flush 3 5 => Main.bus581
+  | .flush 3 6 => Main.bus585
+  | .flush 3 7 => Main.bus589
+  | .flush 3 8 => Main.bus593
+  | .flush 3 9 => Main.bus597
+  | .flush 3 10 => Main.bus601
+  | .flush 3 11 => Main.bus605
+  | .flush 3 12 => Main.bus609
+  | .flush 3 13 => Main.bus613
+  | .flush 3 14 => Main.bus617
+  | .flush 3 15 => Main.bus621
+  | .flush 3 16 => Main.bus625
+  | .flush 3 17 => Main.bus629
+  | .flush 3 18 => Main.bus633
+  | .flush 3 19 => Main.bus637
+  | .flush 3 20 => Main.bus641
+  | .flush 3 21 => Main.bus645
+  | .flush 3 22 => Main.bus649
+  | .flush 3 23 => Main.bus653
+  | .flush 3 24 => Main.bus657
+  | .flush 3 25 => Main.bus661
+  | .flush 3 26 => Main.bus665
+  | .flush 3 27 => Main.bus669
+  | .flush 3 28 => Main.bus673
+  | .flush 3 29 => Main.bus677
+  | .flush 3 30 => Main.bus681
+  | .flush 3 31 => Main.bus685
+  | .flush 3 32 => Main.bus689
+  | .flush 3 33 => Main.bus693
+  | .flush 3 34 => Main.bus697
+  | .flush 3 35 => Main.bus701
+  | .flush 3 36 => Main.bus705
+  | .flush 3 37 => Main.bus709
+  | .flush 3 38 => Main.bus713
+  | _ => Main.bus35
+
+/-- The range check of the pair's gap, `step - prev - 1`. -/
+def PairTag.rangeArg : PairTag → BusArg F (Main.Ctx F) (Main.Trace F)
+  | .lane 0 0 => Main.bus41
+  | .lane 0 1 => Main.bus43
+  | .lane 0 2 => Main.bus45
+  | .lane 1 0 => Main.bus54
+  | .lane 1 1 => Main.bus56
+  | .lane 1 2 => Main.bus58
+  | .lane 2 0 => Main.bus67
+  | .lane 2 1 => Main.bus69
+  | .lane 2 2 => Main.bus71
+  | .lane 3 0 => Main.bus80
+  | .lane 3 1 => Main.bus82
+  | .lane 3 2 => Main.bus84
+  | .flush 0 0 => Main.bus91
+  | .flush 0 1 => Main.bus95
+  | .flush 0 2 => Main.bus99
+  | .flush 0 3 => Main.bus103
+  | .flush 0 4 => Main.bus107
+  | .flush 0 5 => Main.bus111
+  | .flush 0 6 => Main.bus115
+  | .flush 0 7 => Main.bus119
+  | .flush 0 8 => Main.bus123
+  | .flush 0 9 => Main.bus127
+  | .flush 0 10 => Main.bus131
+  | .flush 0 11 => Main.bus135
+  | .flush 0 12 => Main.bus139
+  | .flush 0 13 => Main.bus143
+  | .flush 0 14 => Main.bus147
+  | .flush 0 15 => Main.bus151
+  | .flush 0 16 => Main.bus155
+  | .flush 0 17 => Main.bus159
+  | .flush 0 18 => Main.bus163
+  | .flush 0 19 => Main.bus167
+  | .flush 0 20 => Main.bus171
+  | .flush 0 21 => Main.bus175
+  | .flush 0 22 => Main.bus179
+  | .flush 0 23 => Main.bus183
+  | .flush 0 24 => Main.bus187
+  | .flush 0 25 => Main.bus191
+  | .flush 0 26 => Main.bus195
+  | .flush 0 27 => Main.bus199
+  | .flush 0 28 => Main.bus203
+  | .flush 0 29 => Main.bus207
+  | .flush 0 30 => Main.bus211
+  | .flush 0 31 => Main.bus215
+  | .flush 0 32 => Main.bus219
+  | .flush 0 33 => Main.bus223
+  | .flush 0 34 => Main.bus227
+  | .flush 0 35 => Main.bus231
+  | .flush 0 36 => Main.bus235
+  | .flush 0 37 => Main.bus239
+  | .flush 0 38 => Main.bus243
+  | .flush 1 0 => Main.bus247
+  | .flush 1 1 => Main.bus251
+  | .flush 1 2 => Main.bus255
+  | .flush 1 3 => Main.bus259
+  | .flush 1 4 => Main.bus263
+  | .flush 1 5 => Main.bus267
+  | .flush 1 6 => Main.bus271
+  | .flush 1 7 => Main.bus275
+  | .flush 1 8 => Main.bus279
+  | .flush 1 9 => Main.bus283
+  | .flush 1 10 => Main.bus287
+  | .flush 1 11 => Main.bus291
+  | .flush 1 12 => Main.bus295
+  | .flush 1 13 => Main.bus299
+  | .flush 1 14 => Main.bus303
+  | .flush 1 15 => Main.bus307
+  | .flush 1 16 => Main.bus311
+  | .flush 1 17 => Main.bus315
+  | .flush 1 18 => Main.bus319
+  | .flush 1 19 => Main.bus323
+  | .flush 1 20 => Main.bus327
+  | .flush 1 21 => Main.bus331
+  | .flush 1 22 => Main.bus335
+  | .flush 1 23 => Main.bus339
+  | .flush 1 24 => Main.bus343
+  | .flush 1 25 => Main.bus347
+  | .flush 1 26 => Main.bus351
+  | .flush 1 27 => Main.bus355
+  | .flush 1 28 => Main.bus359
+  | .flush 1 29 => Main.bus363
+  | .flush 1 30 => Main.bus367
+  | .flush 1 31 => Main.bus371
+  | .flush 1 32 => Main.bus375
+  | .flush 1 33 => Main.bus379
+  | .flush 1 34 => Main.bus383
+  | .flush 1 35 => Main.bus387
+  | .flush 1 36 => Main.bus391
+  | .flush 1 37 => Main.bus395
+  | .flush 1 38 => Main.bus399
+  | .flush 2 0 => Main.bus403
+  | .flush 2 1 => Main.bus407
+  | .flush 2 2 => Main.bus411
+  | .flush 2 3 => Main.bus415
+  | .flush 2 4 => Main.bus419
+  | .flush 2 5 => Main.bus423
+  | .flush 2 6 => Main.bus427
+  | .flush 2 7 => Main.bus431
+  | .flush 2 8 => Main.bus435
+  | .flush 2 9 => Main.bus439
+  | .flush 2 10 => Main.bus443
+  | .flush 2 11 => Main.bus447
+  | .flush 2 12 => Main.bus451
+  | .flush 2 13 => Main.bus455
+  | .flush 2 14 => Main.bus459
+  | .flush 2 15 => Main.bus463
+  | .flush 2 16 => Main.bus467
+  | .flush 2 17 => Main.bus471
+  | .flush 2 18 => Main.bus475
+  | .flush 2 19 => Main.bus479
+  | .flush 2 20 => Main.bus483
+  | .flush 2 21 => Main.bus487
+  | .flush 2 22 => Main.bus491
+  | .flush 2 23 => Main.bus495
+  | .flush 2 24 => Main.bus499
+  | .flush 2 25 => Main.bus503
+  | .flush 2 26 => Main.bus507
+  | .flush 2 27 => Main.bus511
+  | .flush 2 28 => Main.bus515
+  | .flush 2 29 => Main.bus519
+  | .flush 2 30 => Main.bus523
+  | .flush 2 31 => Main.bus527
+  | .flush 2 32 => Main.bus531
+  | .flush 2 33 => Main.bus535
+  | .flush 2 34 => Main.bus539
+  | .flush 2 35 => Main.bus543
+  | .flush 2 36 => Main.bus547
+  | .flush 2 37 => Main.bus551
+  | .flush 2 38 => Main.bus555
+  | .flush 3 0 => Main.bus559
+  | .flush 3 1 => Main.bus563
+  | .flush 3 2 => Main.bus567
+  | .flush 3 3 => Main.bus571
+  | .flush 3 4 => Main.bus575
+  | .flush 3 5 => Main.bus579
+  | .flush 3 6 => Main.bus583
+  | .flush 3 7 => Main.bus587
+  | .flush 3 8 => Main.bus591
+  | .flush 3 9 => Main.bus595
+  | .flush 3 10 => Main.bus599
+  | .flush 3 11 => Main.bus603
+  | .flush 3 12 => Main.bus607
+  | .flush 3 13 => Main.bus611
+  | .flush 3 14 => Main.bus615
+  | .flush 3 15 => Main.bus619
+  | .flush 3 16 => Main.bus623
+  | .flush 3 17 => Main.bus627
+  | .flush 3 18 => Main.bus631
+  | .flush 3 19 => Main.bus635
+  | .flush 3 20 => Main.bus639
+  | .flush 3 21 => Main.bus643
+  | .flush 3 22 => Main.bus647
+  | .flush 3 23 => Main.bus651
+  | .flush 3 24 => Main.bus655
+  | .flush 3 25 => Main.bus659
+  | .flush 3 26 => Main.bus663
+  | .flush 3 27 => Main.bus667
+  | .flush 3 28 => Main.bus671
+  | .flush 3 29 => Main.bus675
+  | .flush 3 30 => Main.bus679
+  | .flush 3 31 => Main.bus683
+  | .flush 3 32 => Main.bus687
+  | .flush 3 33 => Main.bus691
+  | .flush 3 34 => Main.bus695
+  | .flush 3 35 => Main.bus699
+  | .flush 3 36 => Main.bus703
+  | .flush 3 37 => Main.bus707
+  | .flush 3 38 => Main.bus711
+  | _ => Main.bus41
+
+/-- Pair `g` of segment `k`, instance `x`, `t`. -/
+def PairTag.pair (g : PairTag) (k : Nat) (x : Main.Ctx F) (t : Main.Trace F) : Pair F :=
+  ⟨⟨⟨g.preArg, x, t⟩, Main.numRows⟩, ⟨⟨g.curArg, x, t⟩, Main.numRows⟩, g.step k⟩
+
+/-- Main's register-access pairs in segment `k`. -/
+def mainPairs (k : Nat) (x : Main.Ctx F) (t : Main.Trace F) : List (Pair F) :=
+  mainTags.map fun g => g.pair k x t
+
+/-- Main's 336 arguments on the memory bus, for one instance: its pairs'. -/
 def mainMemSenders (x : Main.Ctx F) (t : Main.Trace F) : List (Sender F) :=
-  [⟨⟨Main.bus34, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus35, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus36, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus37, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus38, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus39, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus47, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus48, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus49, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus50, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus51, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus52, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus60, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus61, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus62, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus63, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus64, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus65, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus73, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus74, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus75, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus76, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus77, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus78, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus92, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus93, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus96, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus97, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus100, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus101, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus104, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus105, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus108, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus109, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus112, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus113, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus116, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus117, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus120, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus121, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus124, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus125, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus128, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus129, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus132, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus133, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus136, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus137, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus140, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus141, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus144, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus145, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus148, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus149, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus152, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus153, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus156, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus157, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus160, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus161, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus164, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus165, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus168, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus169, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus172, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus173, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus176, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus177, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus180, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus181, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus184, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus185, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus188, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus189, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus192, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus193, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus196, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus197, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus200, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus201, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus204, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus205, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus208, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus209, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus212, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus213, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus216, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus217, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus220, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus221, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus224, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus225, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus228, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus229, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus232, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus233, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus236, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus237, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus240, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus241, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus244, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus245, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus248, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus249, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus252, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus253, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus256, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus257, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus260, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus261, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus264, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus265, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus268, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus269, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus272, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus273, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus276, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus277, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus280, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus281, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus284, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus285, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus288, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus289, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus292, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus293, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus296, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus297, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus300, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus301, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus304, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus305, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus308, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus309, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus312, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus313, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus316, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus317, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus320, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus321, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus324, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus325, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus328, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus329, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus332, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus333, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus336, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus337, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus340, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus341, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus344, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus345, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus348, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus349, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus352, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus353, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus356, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus357, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus360, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus361, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus364, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus365, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus368, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus369, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus372, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus373, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus376, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus377, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus380, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus381, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus384, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus385, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus388, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus389, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus392, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus393, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus396, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus397, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus400, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus401, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus404, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus405, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus408, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus409, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus412, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus413, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus416, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus417, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus420, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus421, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus424, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus425, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus428, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus429, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus432, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus433, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus436, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus437, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus440, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus441, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus444, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus445, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus448, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus449, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus452, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus453, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus456, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus457, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus460, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus461, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus464, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus465, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus468, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus469, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus472, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus473, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus476, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus477, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus480, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus481, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus484, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus485, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus488, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus489, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus492, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus493, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus496, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus497, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus500, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus501, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus504, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus505, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus508, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus509, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus512, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus513, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus516, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus517, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus520, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus521, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus524, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus525, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus528, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus529, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus532, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus533, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus536, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus537, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus540, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus541, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus544, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus545, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus548, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus549, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus552, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus553, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus556, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus557, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus560, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus561, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus564, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus565, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus568, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus569, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus572, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus573, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus576, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus577, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus580, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus581, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus584, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus585, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus588, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus589, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus592, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus593, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus596, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus597, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus600, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus601, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus604, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus605, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus608, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus609, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus612, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus613, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus616, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus617, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus620, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus621, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus624, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus625, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus628, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus629, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus632, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus633, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus636, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus637, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus640, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus641, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus644, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus645, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus648, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus649, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus652, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus653, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus656, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus657, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus660, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus661, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus664, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus665, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus668, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus669, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus672, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus673, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus676, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus677, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus680, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus681, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus684, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus685, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus688, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus689, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus692, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus693, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus696, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus697, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus700, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus701, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus704, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus705, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus708, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus709, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus712, x, t⟩, Main.numRows⟩,
-   ⟨⟨Main.bus713, x, t⟩, Main.numRows⟩]
+  pairSenders (mainPairs 0 x t)
+
+theorem pairSenders_mainPairs (k : Nat) (x : Main.Ctx F) (t : Main.Trace F) :
+    pairSenders (mainPairs k x t) = mainMemSenders x t := by
+  simp only [mainMemSenders, pairSenders, mainPairs, List.flatMap_map, PairTag.pair]
 
 /-- The register `r`'s initial tuple, `(3, r, 0, 8, 0, 0)`: what the global
 update `global_init_mem` assumes for each register in Main. -/

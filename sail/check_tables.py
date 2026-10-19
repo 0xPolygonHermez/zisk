@@ -14,7 +14,7 @@ and evaluated at every row of the compiled fixed file. A merged table may
 serve several buses through one argument, picking the bus per row; the bus is
 evaluated per row too, and each check applies to the rows on its bus.
 
-Four checks:
+Five checks:
 
 1. **Results on the operation bus (5000).** Every row whose op is a checked
    opcode carries the op's result (the FROPS tables of precomputed results):
@@ -52,6 +52,10 @@ Four checks:
    or 2 at every row — never 3, a register's. When `build/membus.json` (from
    `gen_membus.py`) is present, the arguments found must be as many, per AIR,
    as the ones it proves with `FixedOp`.
+
+5. **Main's row counter.** The fixed column `SEGMENT_STEP` of Main is the row
+   index, 0 to N-1, which `lean/Proofs/MainRegs.lean` takes as part of
+   `MainSegOk` (a step's memory step counts from it).
 
 The fixed file is the compiler's: a row-major array of u64, one column per
 fixed column of the AIR, in id order.
@@ -288,6 +292,13 @@ def main():
             sys.exit(f"{fixed_path}: {data.size} values, expected {n} rows x {ncols} columns")
         value = evaluator(ir, data.reshape(n, ncols), n)
         print(f"{ir['air']['air']}: {n} rows, {ncols} fixed columns")
+
+        names = [c["name"] for c in ir["columns"]["fixed"]]
+        if "Main.SEGMENT_STEP" in names:
+            col = np.asarray(data.reshape(n, ncols)[:, names.index("Main.SEGMENT_STEP")])
+            bad = int((col != np.arange(n, dtype=np.uint64)).sum())
+            print(f"  Main.SEGMENT_STEP is the row index at all {n} rows: {bad == 0}")
+            total_failures += bad
 
         fixed_ops = 0
         for k, opids, tuple_ in bus_args(ir):

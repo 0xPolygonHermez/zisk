@@ -51,6 +51,17 @@ def Sender.at (s : Sender F) : List Int :=
 noncomputable def Sender.count (s : Sender F) (τ : List F) : F :=
   (s.at.map fun j => if tupleOf s.p j = τ then s.p.arg.reps s.p.x s.p.t j else 0).foldr (· + ·) 0
 
+/-- One kind of access that proves one tuple and assumes another, row by row:
+the argument proving (say, a register's access before this one), the one
+assuming (the access itself), over the same rows, and each row's memory step. -/
+structure Pair (F : Type) where
+  pre : Sender F
+  cur : Sender F
+  step : Int → Nat
+
+/-- The senders of a list of pairs, each pair's proving then assuming argument. -/
+def pairSenders {F : Type} (Ps : List (Pair F)) : List (Sender F) := Ps.flatMap fun P => [P.pre, P.cur]
+
 /-- Whether a sender counts on the proving side: proves, or a free argument,
 whose count enters the sum as is. -/
 def Sender.proving (s : Sender F) : Bool :=

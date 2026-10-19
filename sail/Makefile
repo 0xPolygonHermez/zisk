@@ -113,7 +113,7 @@ lean-build: lean-env
 ## Check the virtual tables' contents against what the proofs assume: the
 ## FROPS rows' results, and the ops the Arith and BinaryExtension tables never
 ## serve. See check_tables.py.
-TABLE_AIRS = VirtualTableZisk0 VirtualTableZisk1 \
+TABLE_AIRS = VirtualTableZisk0 VirtualTableZisk1 Main \
   Arith256X Arith256XLarge ArithBn254 ArithBn254Large ArithEq ArithEq384 ArithEq384Large \
   ArithEqLarge ArithSecp256K1 ArithSecp256K1Large Blake2br Blake2s Blake3f Keccakf Poseidon \
   Sha256f TwistedEdwards
