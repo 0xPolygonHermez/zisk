@@ -6,7 +6,7 @@
 
 use std::fmt::Write as _;
 
-use crate::ir::{Ir, Kind};
+use crate::ir::{HintField, HintValue, Ir, Kind, Operand};
 use crate::print::{self, Leaves, Plan, MAX_INLINE};
 
 pub fn render(ir: &Ir) -> String {
@@ -81,7 +81,65 @@ pub fn render(ir: &Ir) -> String {
         };
         let _ = writeln!(out, "       0 = {body}");
     }
+
+    if !ir.hints.is_empty() {
+        let _ = writeln!(out, "\nhints ({})", ir.hints.len());
+        for (k, h) in ir.hints.iter().enumerate() {
+            let _ = writeln!(out, "\n  [{k}] {}", h.name);
+            hint_fields(&mut out, ir, &plan, &leaves, &h.fields, 2);
+        }
+    }
     out
+}
+
+/// One line per field, an array's elements indented under it.
+fn hint_fields(
+    out: &mut String,
+    ir: &Ir,
+    plan: &Plan,
+    leaves: &PilLeaves,
+    fields: &[HintField],
+    depth: usize,
+) {
+    let pad = "  ".repeat(depth + 1);
+    for (k, f) in fields.iter().enumerate() {
+        let name = f.name.clone().unwrap_or_else(|| format!("[{k}]"));
+        match &f.value {
+            HintValue::String(v) => {
+                let _ = writeln!(out, "{pad}{name} = {v:?}");
+            }
+            HintValue::Operand(o) => {
+                let _ = writeln!(out, "{pad}{name} = {}", operand(ir, plan, leaves, o));
+            }
+            HintValue::Array(items) => {
+                let _ = writeln!(out, "{pad}{name} = [{}]", items.len());
+                hint_fields(out, ir, plan, leaves, items, depth + 1);
+            }
+        }
+    }
+}
+
+/// A hint operand, in the same notation as the constraints.
+fn operand(ir: &Ir, plan: &Plan, leaves: &PilLeaves, o: &Operand) -> String {
+    match o {
+        Operand::Const { value } => leaves.constant(value),
+        Operand::Witness { name, offset, .. }
+        | Operand::Fixed { name, offset, .. }
+        | Operand::Periodic { name, offset, .. }
+        | Operand::Custom { name, offset, .. } => leaves.column(name, *offset),
+        Operand::AirValue { name, .. }
+        | Operand::AirGroupValue { name, .. }
+        | Operand::Public { name, .. }
+        | Operand::ProofValue { name, .. }
+        | Operand::Challenge { name, .. } => leaves.global(name),
+        Operand::Expr { idx, .. } => {
+            if plan.is_defined(*idx) {
+                leaves.name(*idx)
+            } else {
+                print::render(ir, plan, leaves, *idx)
+            }
+        }
+    }
 }
 
 struct PilLeaves<'a> {

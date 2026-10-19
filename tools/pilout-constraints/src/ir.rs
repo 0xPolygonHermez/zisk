@@ -29,6 +29,34 @@ pub struct Ir {
     pub globals: Globals,
     pub expressions: Vec<Node>,
     pub constraints: Vec<Constraint>,
+    /// The AIR's hints: how the `std` library records its lookup, permutation
+    /// and range-check arguments (and what the prover needs to build their
+    /// columns). Their operands index the same expression pool.
+    #[serde(default)]
+    pub hints: Vec<Hint>,
+}
+
+/// One pilout hint: a name, such as `gsum_col` or `gsum_debug_data`, and a
+/// tree of named fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Hint {
+    pub name: String,
+    pub fields: Vec<HintField>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HintField {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub value: HintValue,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+pub enum HintValue {
+    String(String),
+    Operand(Operand),
+    Array(Vec<HintField>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -202,6 +230,90 @@ pub enum Operand {
     },
 }
 
+/// The `std` library's argument kinds, `PIOP_NAME_*` in `std_constants.pil`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Piop {
+    Default,
+    Permutation,
+    Lookup,
+    RangeCheck,
+    Connection,
+    Direct,
+}
+
+impl Piop {
+    /// From the name `get_piop_name` gives the hint.
+    fn from_name(name: &str) -> Option<Piop> {
+        Some(match name {
+            "" => Piop::Default,
+            "Permutation" => Piop::Permutation,
+            "Lookup" => Piop::Lookup,
+            "Range Check" => Piop::RangeCheck,
+            "Connection" => Piop::Connection,
+            "Direct" => Piop::Direct,
+            _ => return None,
+        })
+    }
+
+    /// The constructor of the Lean `Piop`.
+    pub fn lean(self) -> &'static str {
+        match self {
+            Piop::Default => "default",
+            Piop::Permutation => "permutation",
+            Piop::Lookup => "lookup",
+            Piop::RangeCheck => "rangeCheck",
+            Piop::Connection => "connection",
+            Piop::Direct => "direct",
+        }
+    }
+
+    /// As the hint names it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Piop::Default => "Default",
+            Piop::Permutation => "Permutation",
+            Piop::Lookup => "Lookup",
+            Piop::RangeCheck => "Range Check",
+            Piop::Connection => "Connection",
+            Piop::Direct => "Direct",
+        }
+    }
+}
+
+/// Which way a bus argument sends its tuple; see [`BusArg::side`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Side {
+    Assumes,
+    Proves,
+    Free,
+}
+
+/// One side of one bus argument, as its `gsum_debug_data` hint records it:
+/// the `std` library's view of a `lookup_assumes`, `permutation_proves` and the
+/// like, before it is compiled into gsum columns.
+#[derive(Debug, Clone)]
+pub struct BusArg {
+    /// Index of the hint in [`Ir::hints`].
+    pub hint: usize,
+    /// Which argument the `std` library built.
+    pub piop: Piop,
+    /// `type_piop`: whether this AIR assumes the tuple (0), proves it (1), or
+    /// sends it with a signed count of its own (2, the `std` library's
+    /// `SUM_TYPE_FREE`: `reps` enters the sum as is, so a negative count
+    /// assumes and a positive one proves).
+    pub side: Side,
+    /// The buses the argument may use, decimal: one, unless the bus is chosen
+    /// per row.
+    pub opids: Vec<String>,
+    /// The bus at a row: a constant, or an expression picking among `opids`
+    /// (a range check that alternates two ranges, say).
+    pub bus: Operand,
+    /// How many times the tuple is sent: a selector, or a multiplicity column.
+    pub reps: Operand,
+    /// The tuple, each element with the name the PIL gave it.
+    pub tuple: Vec<(String, Operand)>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Constraint {
     /// Position in the AIR's constraint list.
@@ -273,8 +385,13 @@ impl Ir {
     /// The expression indices the constraints actually reach, in ascending
     /// order. Roughly half the pool for Main: the rest serves hints.
     pub fn reachable(&self) -> Vec<u32> {
+        self.reachable_from(self.constraints.iter().map(|c| c.expr).collect())
+    }
+
+    /// The expressions `roots` reach, roots included, in index order.
+    pub fn reachable_from(&self, roots: Vec<u32>) -> Vec<u32> {
         let mut seen = vec![false; self.expressions.len()];
-        let mut stack: Vec<u32> = self.constraints.iter().map(|c| c.expr).collect();
+        let mut stack = roots;
         while let Some(idx) = stack.pop() {
             let i = idx as usize;
             if i >= seen.len() || seen[i] {
@@ -294,6 +411,23 @@ impl Ir {
     /// from other expressions and from constraints. Backends use this to decide
     /// what to inline: a node used once can be folded into its user, a node
     /// used twice must stay shared.
+    /// The AIR's bus arguments, one per `gsum_debug_data` hint. A hint whose
+    /// shape is not the expected one is skipped, and its index returned.
+    pub fn bus_args(&self) -> (Vec<BusArg>, Vec<usize>) {
+        let mut args = Vec::new();
+        let mut skipped = Vec::new();
+        for (k, h) in self.hints.iter().enumerate() {
+            if h.name != "gsum_debug_data" {
+                continue;
+            }
+            match bus_arg(k, h) {
+                Some(arg) => args.push(arg),
+                None => skipped.push(k),
+            }
+        }
+        (args, skipped)
+    }
+
     pub fn use_counts(&self) -> Vec<u32> {
         let mut counts = vec![0u32; self.expressions.len()];
         for idx in self.reachable() {
@@ -312,6 +446,67 @@ impl Ir {
         }
         counts
     }
+}
+
+/// Read one `gsum_debug_data` hint. Its fields sit in a single array:
+/// `name_piop`, `type_piop`, `busid`, `num_reps`, `name_exprs`, `expressions`.
+fn bus_arg(hint: usize, h: &Hint) -> Option<BusArg> {
+    let fields = match h.fields.as_slice() {
+        [HintField { value: HintValue::Array(fields), .. }] => fields,
+        _ => return None,
+    };
+    let get = |name: &str| fields.iter().find(|f| f.name.as_deref() == Some(name));
+    let constant = |name: &str| match get(name).map(|f| &f.value) {
+        Some(HintValue::Operand(Operand::Const { value })) => Some(value.clone()),
+        _ => None,
+    };
+    let operand = |name: &str| match get(name).map(|f| &f.value) {
+        Some(HintValue::Operand(o)) => Some(o.clone()),
+        _ => None,
+    };
+    let array = |name: &str| match get(name).map(|f| &f.value) {
+        Some(HintValue::Array(items)) => Some(items.clone()),
+        _ => None,
+    };
+    let piop = match get("name_piop").map(|f| &f.value) {
+        Some(HintValue::String(s)) => Piop::from_name(s)?,
+        _ => return None,
+    };
+    let side = match constant("type_piop")?.as_str() {
+        "0" => Side::Assumes,
+        "1" => Side::Proves,
+        "2" => Side::Free,
+        _ => return None,
+    };
+    let names = array("name_exprs")?;
+    let exprs = array("expressions")?;
+    if names.len() != exprs.len() {
+        return None;
+    }
+    let tuple = names
+        .iter()
+        .zip(&exprs)
+        .map(|(n, e)| match (&n.value, &e.value) {
+            (HintValue::String(n), HintValue::Operand(o)) => Some((n.clone(), o.clone())),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let opids = array("opids")?
+        .iter()
+        .map(|f| match &f.value {
+            HintValue::Operand(Operand::Const { value }) => Some(value.clone()),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(BusArg {
+        hint,
+        piop,
+        side,
+        opids,
+        bus: operand("busid")?,
+        reps: operand("num_reps")?,
+        tuple,
+    })
 }
 
 #[cfg(test)]
@@ -396,7 +591,55 @@ pub(crate) mod tests {
                     source: Source::parse("x.pil:7 a*(2*a')"),
                 },
             ],
+            hints: vec![],
         }
+    }
+
+    /// A `gsum_debug_data` hint shaped as the `std` library writes it.
+    fn debug_hint(piop: &str, side: &str, busid: Operand, opids: &[&str]) -> Hint {
+        let field = |name: &str, value: HintValue| HintField { name: Some(name.into()), value };
+        let konst = |v: &str| HintValue::Operand(Operand::Const { value: v.into() });
+        let list = |items: Vec<HintValue>| {
+            HintValue::Array(
+                items.into_iter().map(|value| HintField { name: None, value }).collect(),
+            )
+        };
+        let col = Operand::Witness { name: "x".into(), stage: 1, col: 0, offset: 0 };
+        Hint {
+            name: "gsum_debug_data".into(),
+            fields: vec![HintField {
+                name: None,
+                value: HintValue::Array(vec![
+                    field("name_piop", HintValue::String(piop.into())),
+                    field("type_piop", konst(side)),
+                    field("opids", list(opids.iter().map(|o| konst(o)).collect())),
+                    field("busid", HintValue::Operand(busid)),
+                    field("num_reps", konst("1")),
+                    field("name_exprs", list(vec![HintValue::String("x".into())])),
+                    field("expressions", list(vec![HintValue::Operand(col)])),
+                ]),
+            }],
+        }
+    }
+
+    #[test]
+    fn bus_hints_parse_every_kind_and_side() {
+        let konst = |v: &str| Operand::Const { value: v.into() };
+        let mut ir = sample();
+        ir.hints = vec![
+            debug_hint("Lookup", "0", konst("7890"), &["7890"]),
+            debug_hint("Range Check", "1", Operand::Expr { idx: 0, name: None }, &["104", "105"]),
+            debug_hint("Permutation", "2", konst("10"), &["10"]),
+            debug_hint("Mystery", "0", konst("1"), &["1"]),
+        ];
+        let (args, skipped) = ir.bus_args();
+        assert_eq!(skipped, vec![3], "an unknown argument kind is reported, not guessed");
+        assert_eq!(args.len(), 3);
+        assert_eq!((args[0].piop, args[0].side), (Piop::Lookup, Side::Assumes));
+        assert_eq!((args[1].piop, args[1].side), (Piop::RangeCheck, Side::Proves));
+        assert_eq!(args[1].opids, vec!["104", "105"], "a per-row bus keeps its candidates");
+        assert_eq!((args[2].piop, args[2].side), (Piop::Permutation, Side::Free));
+        assert_eq!(args[0].tuple[0].0, "x");
     }
 
     #[test]

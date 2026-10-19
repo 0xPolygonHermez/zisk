@@ -216,11 +216,48 @@ larger proof:
 | `globals` | Air values, airgroup values, publics, proof values, challenges. |
 | `expressions` | The expression pool. **Indices are the pilout's own**, including nodes no constraint reaches — those belong to hints and to the global constraint. `Ir::reachable` gives the subset the constraints use. |
 | `constraints` | Kind (`every_row`, `first_row`, `last_row`, `every_frame`), the expression index asserted to vanish, and the `debugLine`. |
+| `hints` | The AIR's hints, each a name and a tree of named fields whose leaves are strings or operands into the same pool. The `text` listing prints them after the constraints. |
 
 PIL arrays are flattened the way the pilout numbers them: consecutive ids,
 row-major. `Main.last_reg_value` is `[4][31][2]`, so it covers 248 air value
 slots, ids 9 to 256, and the next symbol (`Main.last_reg_mem_step`) starts at
 257. The IR keeps one entry per scalar; the Lean backend regroups them.
+
+## Bus arguments
+
+The constraints of an AIR say nothing, on their own, about the lookups,
+permutations and range checks that tie it to other AIRs: those are enforced
+jointly, by every AIR on a bus, through gsum columns. What each argument
+*means* survives in the pilout as a hint, `gsum_debug_data`, which the `std`
+library writes for every argument it builds: the kind (`name_piop`: Lookup,
+Permutation, Range Check, Direct, …), which way the tuple goes (`type_piop`:
+assumes, proves, or free — a count of its own sign), the bus (`busid`, with
+`opids` listing the buses it may use, since a range check can pick per row),
+how many times (`num_reps`: a selector or a multiplicity column), and the
+tuple, field by field with the names the PIL gave them.
+
+The Lean backend emits each of these as data, a `BusArg` per hint and
+`busArgs` per AIR:
+
+```lean
+/-- Lookup on bus 7890, assumes: `(pc[1], a_offset_imm0[1], …, rom_flags[1])` -/
+def bus87 : BusArg F (Ctx F) (Trace F) where
+  opids := [7890]
+  bus := fun x t i => 7890
+  piop := .lookup
+  side := .assumes
+  reps := fun x t i => 1
+  tuple := [
+    fun x t i => (t i).pc 1 + 0,
+    …
+```
+
+They are data, not constraints: what an argument guarantees is stated by the
+proof that relies on it, in terms of these. `sail/lean/Proofs/Rom.lean` does
+that for the ROM lookup. All 1629 such hints in the ZisK pilout are extracted;
+one whose shape is not the expected one would be listed in a comment rather
+than guessed at. The columns a bus tuple names are declared in `Row`/`Ctx` even
+when no constraint uses them.
 
 ## Known limits
 
@@ -236,7 +273,9 @@ slots, ids 9 to 256, and the next symbol (`Main.last_reg_mem_step`) starts at
   `--no-proto-fixed-data`, which keeps them out of the protobuf entirely (they
   go to `tmp/fixed/`), so only the columns' names and identities are available
   here.
-- **Hints and global constraints are not extracted.** The pilout carries 4451
-  hints and 12 global constraints; the lookup and permutation arguments the
-  `std` library builds are visible here only through the columns and `gsum`
-  expressions they leave in the AIR.
+- **Global hints and global constraints are not extracted.** Of the pilout's
+  4451 hints, the 4362 that belong to an AIR are in the IR, and its 1629
+  `gsum_debug_data` hints become Lean bus arguments; the 89 global hints and
+  the 12 global constraints, which close each bus's sum across AIRs, are not
+  read. A proof relying on a bus therefore states its guarantee as a
+  hypothesis rather than deriving it from the gsum columns.

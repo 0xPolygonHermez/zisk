@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 
-use crate::ir::{Ir, Kind, Operand, Slot};
+use crate::ir::{Ir, Kind, Operand, Side, Slot};
 use crate::print::{self, Leaves, Plan, MAX_INLINE};
 
 /// The field interface the generated constraints are stated over. Static: it
@@ -34,13 +34,50 @@ pub const PRELUDE: &str = r#"/-
     that 2 is not zero — are not available here. A proof needing one
     instantiates `F` at the concrete field, whose characteristic each generated
     AIR records as `basePrime`.
-  - The booleanity of a `bits(1)` column is not a constraint at all. It comes
-    from a range-check lookup, which lives in the pilout's hints rather than in
-    the AIR, and is not extracted.
+  - A declared range wider than one bit, such as `bits(32)`, is not a
+    constraint. It is a range-check lookup, one of the bus arguments each AIR
+    lists in `busArgs`; what it means is up to whoever states the bus.
+    (Main asserts the booleanity of its one-bit selectors as constraints.)
 -/
 
 /-- The ring a PIL constraint is evaluated in. -/
 abbrev PilField (F : Type) := Lean.Grind.CommRing F
+
+/-- The arguments the pil2 `std` library builds a bus from (`PIOP_NAME_*`). -/
+inductive Piop where
+  | default
+  | permutation
+  | lookup
+  | rangeCheck
+  | connection
+  | direct
+  deriving DecidableEq, Repr
+
+/-- Which way a bus argument sends its tuple. `free` is the `std` library's
+`SUM_TYPE_FREE`: the count enters the bus sum as is, so a negative one assumes
+and a positive one proves. -/
+inductive BusSide where
+  | assumes
+  | proves
+  | free
+  deriving DecidableEq, Repr
+
+/-- One side of one bus argument in one AIR, as its `gsum_debug_data` hint
+records it: on which bus, whether this AIR proves the tuple or assumes it, how
+many times at a row (a selector, or a multiplicity column), and the tuple.
+
+This is data, not a constraint. The AIR's gsum columns are what enforce a bus,
+and they do it jointly with every other AIR on the same bus; a proof that
+relies on a bus states what the argument guarantees in terms of these. -/
+structure BusArg (F C T : Type) where
+  /-- The buses the argument may use: one, unless `bus` picks per row. -/
+  opids : List Nat
+  /-- The bus at a row, a constant unless the argument alternates buses. -/
+  bus : C → T → Int → F
+  piop : Piop
+  side : BusSide
+  reps : C → T → Int → F
+  tuple : List (C → T → Int → F)
 "#;
 
 /// Renders one AIR. `module` is the import path of the prelude, e.g. `Pil`.
@@ -56,6 +93,7 @@ pub fn render(ir: &Ir, module: &str) -> String {
     definitions(&mut out, ir, &plan, &names, &leaves);
     constraints(&mut out, ir, &plan, &names, &leaves);
     aggregate(&mut out, ir, &names);
+    buses(&mut out, ir, &plan, &leaves);
     let _ = writeln!(out, "end {}", namespace(ir));
     out
 }
@@ -313,6 +351,76 @@ fn aggregate(out: &mut String, ir: &Ir, names: &Names) {
     );
 }
 
+/// The AIR's bus arguments: one `busK` per `gsum_debug_data` hint (`K` is the
+/// hint's index), and `busArgs`, all of them in hint order.
+fn buses(out: &mut String, ir: &Ir, plan: &Plan, leaves: &LeanLeaves) {
+    let (args, skipped) = ir.bus_args();
+    let _ = writeln!(out, "/-! ### Bus arguments -/\n");
+    if !skipped.is_empty() {
+        let list: Vec<String> = skipped.iter().map(|k| k.to_string()).collect();
+        let _ = writeln!(
+            out,
+            "-- gsum_debug_data hints with an unexpected shape, not listed: {}\n",
+            list.join(", ")
+        );
+    }
+    let fun = |o: &Operand| format!("fun x t i => {}", lean_operand(ir, plan, leaves, o));
+    for a in &args {
+        let piop = a.piop.lean();
+        let side = match a.side {
+            Side::Assumes => "assumes",
+            Side::Proves => "proves",
+            Side::Free => "free",
+        };
+        let labels: Vec<&str> = a.tuple.iter().map(|(n, _)| n.as_str()).collect();
+        let tuple: Vec<String> = a.tuple.iter().map(|(_, o)| fun(o)).collect();
+        let opids = a.opids.join(", ");
+        let _ = writeln!(
+            out,
+            "/-- {} on bus {opids}, {side}: `({})` -/\n\
+             def bus{} : BusArg F (Ctx F) (Trace F) where\n  \
+             opids := [{opids}]\n  bus := {}\n  piop := .{piop}\n  side := .{side}\n  \
+             reps := {}\n  tuple := [\n    {}]\n",
+            a.piop.name(),
+            escape_doc(&labels.join(", ")),
+            a.hint,
+            fun(&a.bus),
+            fun(&a.reps),
+            tuple.join(",\n    ")
+        );
+    }
+    let list: Vec<String> = args.iter().map(|a| format!("bus{}", a.hint)).collect();
+    let _ = writeln!(
+        out,
+        "/-- Every bus argument of the AIR, in hint order. -/\n\
+         def busArgs : List (BusArg F (Ctx F) (Trace F)) := [{}]\n",
+        list.join(", ")
+    );
+}
+
+/// A hint operand, in the same notation as a constraint body.
+fn lean_operand(ir: &Ir, plan: &Plan, leaves: &LeanLeaves, o: &Operand) -> String {
+    match o {
+        Operand::Const { value } => leaves.constant(value),
+        Operand::Witness { name, offset, .. }
+        | Operand::Fixed { name, offset, .. }
+        | Operand::Periodic { name, offset, .. }
+        | Operand::Custom { name, offset, .. } => leaves.column(name, *offset),
+        Operand::AirValue { name, .. }
+        | Operand::AirGroupValue { name, .. }
+        | Operand::Public { name, .. }
+        | Operand::ProofValue { name, .. }
+        | Operand::Challenge { name, .. } => leaves.global(name),
+        Operand::Expr { idx, .. } => {
+            if plan.is_defined(*idx) {
+                leaves.reference(*idx)
+            } else {
+                print::render(ir, plan, leaves, *idx)
+            }
+        }
+    }
+}
+
 /// `items` as a balanced tree of `∧`: the left half, then the right.
 fn balanced(items: &[String]) -> String {
     match items {
@@ -552,8 +660,31 @@ impl Names {
 fn referenced(ir: &Ir) -> Vec<(String, bool)> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
-    for idx in ir.reachable() {
-        for operand in ir.expressions[idx as usize].operands() {
+    // The bus arguments are rendered too, and may name columns no constraint
+    // reaches, so their operands count: directly, and through the expressions
+    // they reach.
+    let (args, _) = ir.bus_args();
+    let direct: Vec<Operand> = args
+        .iter()
+        .flat_map(|a| {
+            [a.bus.clone(), a.reps.clone()]
+                .into_iter()
+                .chain(a.tuple.iter().map(|(_, o)| o.clone()))
+        })
+        .collect();
+    let mut roots: Vec<u32> = ir.constraints.iter().map(|c| c.expr).collect();
+    roots.extend(direct.iter().filter_map(|o| match o {
+        Operand::Expr { idx, .. } => Some(*idx),
+        _ => None,
+    }));
+    let reached = ir.reachable_from(roots);
+    let operands = reached
+        .iter()
+        .flat_map(|idx| ir.expressions[*idx as usize].operands().into_iter().cloned())
+        .chain(direct.iter().cloned())
+        .collect::<Vec<_>>();
+    {
+        for operand in operands.iter() {
             let entry = match operand {
                 Operand::Witness { name, .. }
                 | Operand::Fixed { name, .. }

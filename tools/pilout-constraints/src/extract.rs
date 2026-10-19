@@ -107,6 +107,20 @@ impl Pilout {
             .map(|(i, c)| constraint(c, i))
             .collect::<Result<Vec<_>>>()?;
 
+        let hints = self
+            .pilout
+            .hints
+            .iter()
+            .enumerate()
+            .filter(|(_, h)| {
+                h.air_group_id == Some(air_ref.airgroup_id as u32)
+                    && h.air_id == Some(air_ref.air_id as u32)
+            })
+            .map(|(i, h)| {
+                Ok(Hint { name: h.name.clone(), fields: symbols.hint_fields(&h.hint_fields, i)? })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
         Ok(Ir {
             schema: SCHEMA,
             pilout: PiloutMeta {
@@ -141,6 +155,7 @@ impl Pilout {
             },
             expressions,
             constraints,
+            hints,
         })
     }
 }
@@ -329,6 +344,26 @@ impl Symbols {
                 Node::Neg { value: self.operand(value, idx)? }
             }
         })
+    }
+
+    fn hint_fields(&self, fields: &[pilout::HintField], hint: usize) -> Result<Vec<HintField>> {
+        use pilout::hint_field::Value as V;
+        fields
+            .iter()
+            .map(|f| {
+                let value = match f.value.as_ref() {
+                    Some(V::StringValue(s)) => HintValue::String(s.clone()),
+                    Some(V::Operand(o)) => HintValue::Operand(
+                        self.operand(o, hint).with_context(|| format!("hint {hint}"))?,
+                    ),
+                    Some(V::HintFieldArray(a)) => {
+                        HintValue::Array(self.hint_fields(&a.hint_fields, hint)?)
+                    }
+                    None => bail!("hint {hint} has a field with no value"),
+                };
+                Ok(HintField { name: f.name.clone(), value })
+            })
+            .collect()
     }
 
     fn operand(&self, o: &pilout::Operand, idx: usize) -> Result<Operand> {
