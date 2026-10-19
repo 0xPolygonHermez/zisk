@@ -190,4 +190,4 @@ macro_rules! poseidon2_non_native_sm {
     };
 }
 
-poseidon2_non_native_sm!(Poseidon2KoalaBear, zisk_precomp_helpers::POSEIDON2_KOALABEAR_SP1);
+poseidon2_non_native_sm!(Poseidon2KoalaBear, zisk_precomp_helpers::POSEIDON2_KOALABEAR);

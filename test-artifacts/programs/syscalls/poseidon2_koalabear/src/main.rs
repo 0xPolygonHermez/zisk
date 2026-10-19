@@ -3,7 +3,7 @@ ziskos::entrypoint!(main);
 
 use rand::Rng;
 
-use zisk_precomp_helpers::POSEIDON2_KOALABEAR_SP1;
+use zisk_precomp_helpers::POSEIDON2_KOALABEAR;
 use ziskos::syscalls::syscall_poseidon2_koalabear;
 
 fn main() {
@@ -11,7 +11,7 @@ fn main() {
     let num_perms: u64 = ziskos::io::read();
     println!("Running Poseidon2 KoalaBear random tests for {} times", num_perms);
 
-    let p = POSEIDON2_KOALABEAR_SP1.p;
+    let p = POSEIDON2_KOALABEAR.p;
     let mut rng = rand::thread_rng();
     for k in 0..num_perms {
         // The first two states are the boundaries 0 and P - 1
@@ -26,7 +26,7 @@ fn main() {
         }
 
         let mut expected = state;
-        POSEIDON2_KOALABEAR_SP1.permute_words(&mut expected).unwrap();
+        POSEIDON2_KOALABEAR.permute_words(&mut expected).unwrap();
 
         unsafe { syscall_poseidon2_koalabear(&mut state) };
 

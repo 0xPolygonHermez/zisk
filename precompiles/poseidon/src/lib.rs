@@ -23,7 +23,7 @@ zisk_common::zisk_precompile! {
     op_type = Poseidon2KoalaBear,
     trace = Poseidon2KoalaBearTrace,
     num_available = {
-        ::zisk_precomp_helpers::POSEIDON2_KOALABEAR_SP1.num_available(
+        ::zisk_precomp_helpers::POSEIDON2_KOALABEAR.num_available(
             ::zisk_pil::Poseidon2KoalaBearTrace::<::zisk_pil::Poseidon2KoalaBearTraceRow<F>>::NUM_ROWS,
         )
     },

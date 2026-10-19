@@ -19,7 +19,7 @@
 //! - [`syscall_keccak_f`] — Keccak-f\[1600\] permutation
 //! - [`syscall_poseidon1`] — Poseidon1 hash function
 //! - [`syscall_poseidon2`] — Poseidon2 hash function
-//! - [`syscall_poseidon2_koalabear`] — Poseidon2 permutation over KoalaBear (SP1 parameters)
+//! - [`syscall_poseidon2_koalabear`] — Poseidon2 permutation over KoalaBear, width 16
 //! - [`syscall_sha256_f`] — SHA-256 compression function
 //!
 //! ### Elliptic curve (secp256k1)

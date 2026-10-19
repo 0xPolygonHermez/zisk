@@ -1,5 +1,6 @@
-// Generated from SP1's `my_kb_16_perm` (slop-koala-bear 6.2.2; 6.8.1 gives identical output).
-pub const KOALABEAR_SP1_VECTORS: [([u32; 16], [u32; 16]); 99] = [
+// Reference vectors of POSEIDON2_KOALABEAR, generated with an independent implementation of the
+// same permutation.
+pub const KOALABEAR_VECTORS: [([u32; 16], [u32; 16]); 99] = [
     (
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         [

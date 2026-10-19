@@ -9,7 +9,7 @@
 
 #![allow(unused)]
 
-use zisk_precomp_helpers::{DmaInfo, Poseidon2Params, POSEIDON2_KOALABEAR_SP1};
+use zisk_precomp_helpers::{DmaInfo, Poseidon2Params, POSEIDON2_KOALABEAR};
 use ziskos::zisklib::fcall_proxy;
 
 use crate::{
@@ -880,10 +880,10 @@ fn opc_poseidon2_non_native<const W: usize>(
     ctx.flag = false;
 }
 
-/// Poseidon2 over KoalaBear, width 16, SP1's parameters.
+/// Poseidon2 over KoalaBear, width 16 (`POSEIDON2_KOALABEAR`).
 #[inline(always)]
 pub fn opc_poseidon2_koalabear(ctx: &mut InstContext) {
-    opc_poseidon2_non_native(ctx, &POSEIDON2_KOALABEAR_SP1, "poseidon2_koalabear");
+    opc_poseidon2_non_native(ctx, &POSEIDON2_KOALABEAR, "poseidon2_koalabear");
 }
 
 /// Unimplemented. Poseidon2 KoalaBear can only be called from the system call context via

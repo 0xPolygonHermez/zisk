@@ -186,15 +186,15 @@ impl<const W: usize> Poseidon2Params<W> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_vectors::KOALABEAR_SP1_VECTORS;
-    use super::super::POSEIDON2_KOALABEAR_SP1;
+    use super::super::test_vectors::KOALABEAR_VECTORS;
+    use super::super::POSEIDON2_KOALABEAR;
 
     #[test]
     fn trace_rows_end_in_the_permutation_output() {
-        let params = &POSEIDON2_KOALABEAR_SP1;
+        let params = &POSEIDON2_KOALABEAR;
         assert_eq!(params.clocks(), 30);
         let mont = |v: [u32; 16]| v.map(|x| ((u64::from(x) << 32) % u64::from(params.p)) as u32);
-        for (input, expected) in KOALABEAR_SP1_VECTORS {
+        for (input, expected) in KOALABEAR_VECTORS {
             let rows = params.trace_rows(&mont(input));
             let last = rows.last().unwrap();
             assert_eq!(rows[0].chunks, input);

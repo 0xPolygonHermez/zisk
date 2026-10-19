@@ -7,10 +7,10 @@ use core::arch::asm;
 use crate::ziskos_syscall;
 
 #[cfg(not(zisk_guest))]
-use zisk_precomp_helpers::POSEIDON2_KOALABEAR_SP1;
+use zisk_precomp_helpers::POSEIDON2_KOALABEAR;
 
-/// Executes the width-16 Poseidon2 permutation over KoalaBear, with SP1's parameters
-/// (`my_kb_16_perm`), on the given state.
+/// Executes the width-16 Poseidon2 permutation over KoalaBear (`POSEIDON2_KOALABEAR` in
+/// `zisk-precomp-helpers`) on the given state.
 ///
 /// The state is sixteen KoalaBear elements in Montgomery form (`x * 2^32 mod P`, the
 /// representation Plonky3 keeps them in), packed two per `u64` (little-endian), and is modified in
@@ -31,7 +31,7 @@ pub unsafe extern "C" fn syscall_poseidon2_koalabear(
     #[cfg(not(zisk_guest))]
     {
         let state: &mut [u64; 8] = unsafe { &mut *(state) };
-        if let Err(lane) = POSEIDON2_KOALABEAR_SP1.permute_words(state) {
+        if let Err(lane) = POSEIDON2_KOALABEAR.permute_words(state) {
             panic!("syscall_poseidon2_koalabear: lane {lane} is not below the KoalaBear modulus");
         }
 

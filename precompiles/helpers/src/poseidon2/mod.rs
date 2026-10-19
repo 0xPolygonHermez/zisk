@@ -7,12 +7,12 @@
 //! - in memory each lane x is stored as `io_scale * x`: `2^32 mod P` is the Montgomery form in
 //!   which Plonky3 keeps KoalaBear and BabyBear, so guests pass their elements as they are.
 
-mod koalabear_sp1;
+mod koalabear;
 #[cfg(test)]
 mod test_vectors;
 mod trace;
 
-pub use koalabear_sp1::POSEIDON2_KOALABEAR_SP1;
+pub use koalabear::POSEIDON2_KOALABEAR;
 
 pub struct Poseidon2Params<const W: usize> {
     pub p: u32,
@@ -145,14 +145,14 @@ pub(crate) fn pow_mod(base: u32, mut exp: u32, m: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::test_vectors::KOALABEAR_SP1_VECTORS;
+    use super::test_vectors::KOALABEAR_VECTORS;
     use super::*;
 
     #[test]
-    fn koalabear_sp1_matches_sp1_vectors() {
-        for (input, expected) in KOALABEAR_SP1_VECTORS {
+    fn koalabear_matches_reference_vectors() {
+        for (input, expected) in KOALABEAR_VECTORS {
             let mut state = input;
-            POSEIDON2_KOALABEAR_SP1.permute(&mut state);
+            POSEIDON2_KOALABEAR.permute(&mut state);
             assert_eq!(state, expected, "input {input:?}");
         }
     }
@@ -169,10 +169,10 @@ mod tests {
             .collect()
     }
 
-    /// The PIL and C++ copies of the constants are the ones of POSEIDON2_KOALABEAR_SP1.
+    /// The PIL and C++ copies of the constants are the ones of POSEIDON2_KOALABEAR.
     #[test]
-    fn koalabear_sp1_constants_match_pil_and_cpp() {
-        let kb = &POSEIDON2_KOALABEAR_SP1;
+    fn koalabear_constants_match_pil_and_cpp() {
+        let kb = &POSEIDON2_KOALABEAR;
         let u = |v: &[u32]| v.iter().map(|&x| u64::from(x)).collect::<Vec<_>>();
         let m4 = u(kb.m4.as_flattened());
         let diag = u(&kb.internal_diag);
@@ -181,19 +181,19 @@ mod tests {
             .flat_map(|v| u(v))
             .collect();
 
-        let pil = include_str!("../../../poseidon/pil/poseidon2_koalabear_sp1.pil");
-        assert_eq!(numbers(pil, "const int KB_SP1_P =", ' ', ';'), [u64::from(kb.p)]);
+        let pil = include_str!("../../../poseidon/pil/poseidon2_koalabear.pil");
+        assert_eq!(numbers(pil, "const int KB_P =", ' ', ';'), [u64::from(kb.p)]);
         assert_eq!(
-            numbers(pil, "const int KB_SP1_INT_SCALE =", ' ', ';'),
+            numbers(pil, "const int KB_INT_SCALE =", ' ', ';'),
             [u64::from(kb.internal_scale)]
         );
-        assert_eq!(numbers(pil, "const int KB_SP1_IO_SCALE =", ' ', ';'), [u64::from(kb.io_scale)]);
-        assert_eq!(numbers(pil, "const int KB_SP1_M4[16] =", '[', ']'), m4);
-        assert_eq!(numbers(pil, "const int KB_SP1_D_16[16] =", '[', ']'), diag);
-        assert_eq!(numbers(pil, "const int KB_SP1_RC_16[148] =", '[', ']'), rc);
+        assert_eq!(numbers(pil, "const int KB_IO_SCALE =", ' ', ';'), [u64::from(kb.io_scale)]);
+        assert_eq!(numbers(pil, "const int KB_M4[16] =", '[', ']'), m4);
+        assert_eq!(numbers(pil, "const int KB_D_16[16] =", '[', ']'), diag);
+        assert_eq!(numbers(pil, "const int KB_RC_16[148] =", '[', ']'), rc);
 
         let cpp = include_str!("../../../../lib-c/c/src/poseidon2/poseidon2_non_native.cpp");
-        let params = numbers(cpp, "Poseidon2Params KOALABEAR_SP1 =", '{', '&');
+        let params = numbers(cpp, "Poseidon2Params KOALABEAR =", '{', '&');
         let [p, width, degree, m4_cpp @ .., scale, io_scale] = params.as_slice() else { panic!() };
         assert_eq!(
             (*p, *width, *degree, *scale, *io_scale),
@@ -206,23 +206,23 @@ mod tests {
             )
         );
         assert_eq!(m4_cpp, m4);
-        assert_eq!(numbers(cpp, "KB_SP1_INTERNAL_DIAG[16] =", '{', ';'), diag);
+        assert_eq!(numbers(cpp, "KB_INTERNAL_DIAG[16] =", '{', ';'), diag);
         let rc_cpp: Vec<u64> =
-            ["KB_SP1_RC_BEGIN[4][16] =", "KB_SP1_RC_PARTIAL[20] =", "KB_SP1_RC_END[4][16] ="]
+            ["KB_RC_BEGIN[4][16] =", "KB_RC_PARTIAL[20] =", "KB_RC_END[4][16] ="]
                 .iter()
                 .flat_map(|name| numbers(cpp, name, '{', ';'))
                 .collect();
         assert_eq!(rc_cpp, rc);
     }
 
-    /// permute_words takes and returns the lanes in memory form (Montgomery for KoalaBear SP1).
+    /// permute_words takes and returns the lanes in memory form (Montgomery for KoalaBear).
     #[test]
-    fn koalabear_sp1_permute_words_is_in_montgomery_form() {
-        let kb = &POSEIDON2_KOALABEAR_SP1;
+    fn koalabear_permute_words_is_in_montgomery_form() {
+        let kb = &POSEIDON2_KOALABEAR;
         let p = u64::from(kb.p);
         assert_eq!(u64::from(kb.io_scale), (1u64 << 32) % p);
         let mont = |x: u32| (u64::from(x) << 32) % p;
-        for (input, expected) in KOALABEAR_SP1_VECTORS {
+        for (input, expected) in KOALABEAR_VECTORS {
             let pack = |v: [u32; 16]| -> Vec<u64> {
                 v.chunks_exact(2).map(|c| mont(c[0]) | (mont(c[1]) << 32)).collect()
             };
@@ -233,12 +233,12 @@ mod tests {
     }
 
     /// The C++ implementation (lib-c, run by the ASM emulator) gives the same words as
-    /// permute_words on the SP1 vectors and on random and edge states, and rejects the same
+    /// permute_words on the reference vectors and on random and edge states, and rejects the same
     /// non-canonical states, leaving them untouched.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     #[test]
-    fn koalabear_sp1_cpp_matches_rust() {
-        let kb = &POSEIDON2_KOALABEAR_SP1;
+    fn koalabear_cpp_matches_rust() {
+        let kb = &POSEIDON2_KOALABEAR;
         let p = kb.p;
         let check = |lanes: [u32; 16]| {
             let mut rust: [u64; 8] = std::array::from_fn(|w| {
@@ -252,7 +252,7 @@ mod tests {
         };
 
         let mont = |x: u32| ((u64::from(x) << 32) % u64::from(p)) as u32;
-        for (input, _) in KOALABEAR_SP1_VECTORS {
+        for (input, _) in KOALABEAR_VECTORS {
             check(input.map(mont));
         }
         check([0; 16]);
@@ -289,10 +289,10 @@ mod tests {
 
     #[test]
     fn first_noncanonical_finds_the_lane() {
-        let p = POSEIDON2_KOALABEAR_SP1.p;
+        let p = POSEIDON2_KOALABEAR.p;
         let mut state = [p - 1; 16];
-        assert_eq!(POSEIDON2_KOALABEAR_SP1.first_noncanonical(&state), None);
+        assert_eq!(POSEIDON2_KOALABEAR.first_noncanonical(&state), None);
         state[5] = p;
-        assert_eq!(POSEIDON2_KOALABEAR_SP1.first_noncanonical(&state), Some(5));
+        assert_eq!(POSEIDON2_KOALABEAR.first_noncanonical(&state), Some(5));
     }
 }

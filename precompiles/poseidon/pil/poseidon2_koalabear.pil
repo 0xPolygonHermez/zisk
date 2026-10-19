@@ -1,22 +1,22 @@
-// KoalaBear width-16 Poseidon2 as used by SP1 (`my_kb_16_perm`).
-// Same values as precompiles/helpers/src/poseidon2/koalabear_sp1.rs.
+// KoalaBear width-16 Poseidon2 constants: the same values as
+// precompiles/helpers/src/poseidon2/koalabear.rs, where the parameters are described.
 
-const int KB_SP1_P = 2130706433;
+const int KB_P = 2130706433;
 
-const int KB_SP1_M4[16] = [
+const int KB_M4[16] = [
     2, 3, 1, 1,
     1, 2, 3, 1,
     1, 1, 2, 3,
     3, 1, 1, 2
 ];
 
-// Internal matrix KB_SP1_INT_SCALE·(J + diag(KB_SP1_D_16)), with KB_SP1_INT_SCALE = 2^-32 mod P
-const int KB_SP1_INT_SCALE = 1057030144;
+// Internal matrix KB_INT_SCALE·(J + diag(KB_D_16)), with KB_INT_SCALE = 2^-32 mod P
+const int KB_INT_SCALE = 1057030144;
 
 // Lanes in memory are in Montgomery form, as Plonky3 stores KoalaBear: IO_SCALE = 2^32 mod P
-const int KB_SP1_IO_SCALE = 33554430;
+const int KB_IO_SCALE = 33554430;
 
-const int KB_SP1_D_16[16] = [
+const int KB_D_16[16] = [
     2130706431,
     1,
     2,
@@ -36,7 +36,7 @@ const int KB_SP1_D_16[16] = [
 ];
 
 // 4 full rounds (4·16) | 20 partial rounds | 4 full rounds (4·16)
-const int KB_SP1_RC_16[148] = [
+const int KB_RC_16[148] = [
     2128964168,
     288780357,
     316938561,

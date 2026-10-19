@@ -84,7 +84,7 @@ pub fn add256(a: &[u64; 4], b: &[u64; 4], cin: u64, c: &mut [u64; 4]) -> i32 {
     run_on_linux!(Add256(&a[0], &b[0], cin, &mut c[0]))
 }
 
-/// Poseidon2 KoalaBear (SP1 parameters) on a state of 16 lanes packed two per word, each in
+/// Poseidon2 KoalaBear (`POSEIDON2_KOALABEAR`) on a state of 16 lanes packed two per word, each in
 /// Montgomery form: 0, or -1 (state untouched) if a lane is not canonical.
 pub fn poseidon2_koalabear_c(state: &mut [u64; 8]) -> i32 {
     run_on_linux!(poseidon2_koalabear(&mut state[0]))

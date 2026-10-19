@@ -21,4 +21,4 @@ pub use keccak::{
     keccak_f, keccak_f_expr, keccak_f_round, keccakf_bit_pos, keccakf_state_flatten,
     keccakf_state_from_linear, KeccakState,
 };
-pub use poseidon2::{Poseidon2Params, POSEIDON2_KOALABEAR_SP1};
+pub use poseidon2::{Poseidon2Params, POSEIDON2_KOALABEAR};

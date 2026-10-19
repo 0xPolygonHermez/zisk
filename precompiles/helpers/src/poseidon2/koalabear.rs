@@ -1,14 +1,12 @@
-//! KoalaBear width-16 Poseidon2 as used by SP1 (`slop-koala-bear` 6.2.2 to 6.8.1,
-//! `my_kb_16_perm`).
-//!
-//! The internal matrix is `2^-32 * (J + diag(d))`: SP1 keeps the Montgomery factor of its
-//! diffusion layer, so the result differs from upstream Plonky3's KoalaBear Poseidon2.
+//! KoalaBear width-16 Poseidon2: 8 full and 20 partial rounds, S-box x^3, and an internal matrix
+//! `2^-32 * (J + diag(d))`, i.e. with the Montgomery factor of the Plonky3 0.4 diffusion layer
+//! (current upstream Plonky3 KoalaBear Poseidon2 is a different permutation).
 
 use super::Poseidon2Params;
 
 const P: u32 = 2130706433;
 
-pub const POSEIDON2_KOALABEAR_SP1: Poseidon2Params<16> = Poseidon2Params {
+pub const POSEIDON2_KOALABEAR: Poseidon2Params<16> = Poseidon2Params {
     p: P,
     sbox_degree: 3,
     m4: [[2, 3, 1, 1], [1, 2, 3, 1], [1, 1, 2, 3], [3, 1, 1, 2]],
