@@ -148,6 +148,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/OpBusCmp.lean` | The 54 operation-bus provers that cannot prove `ltu`, `eq` or `and`, each proved so. |
 | `lean/Proofs/ExtPilot.lean` | The external ops at any lane (`lane_external`), through that lane's operation-bus lookup; slot 1 executing `add`, `ltu`, `eq` and `and`. |
 | `lean/Proofs/Provers.lean` | Every prover on the operation bus, collected: 61 arguments in 39 AIRs and the 12 of the FROPS table, each proved to compute the four external ops, and the run over them (`run_system`). Generated. |
+| `lean/Proofs/Segments.lean` | Across segments: from the boot state, along the continuation bus's chain of Main segments, every step is a step of the model (`run_from_boot`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
@@ -204,11 +205,11 @@ definitions must precede their use. Prelude first, step last.
 > The theorem that would earn the phrase "formally verified" — that any trace
 > the AIRs accept is a run of the model's `Out.Functions.zisk_execute` — does
 > not exist. What is proved is a pilot of it: runs of six opcodes (`copyb`,
-> `flag`, and `add`, `ltu`, `eq`, `and` through the operation bus) across every
-> lane and row of one segment, with two sources, the soundness of the bus
-> arguments and the contents of the tables assumed (see
+> `flag`, and `add`, `ltu`, `eq`, `and` through the operation bus) from the
+> boot state, across every lane, row and segment, with two sources, the
+> soundness of the bus arguments and the contents of the tables assumed (see
 > [The pilot correspondence](#the-pilot-correspondence),
-> [Many steps](#many-steps) and
+> [Many steps](#many-steps), [Across segments](#across-segments) and
 > [The `add` pilot](#the-add-pilot) and
 > [`ltu`, `eq` and `and`](#ltu-eq-and-and)). Delete this disclaimer
 > when step 6 of [Next steps](#next-steps) lands.
@@ -329,11 +330,11 @@ make proofs
 ```
 
 ```
-✔ [73/74] Built Proofs
+✔ [74/75] Built Proofs
 Build completed successfully.
 ```
 
-About 90 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, and the operation bus's provers collected.
+About 90 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, and the runs across segments.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -400,6 +401,9 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
   given a sound operation bus: each of its 73 provers, in every instance of
   its AIR, is proved to compute each op, from its constraints or its table's
   checked contents.
+- And across segments, from the boot state: along a chain of Main segments
+  linked by a sound continuation bus, every step the trace holds is a step of
+  the model, the first from the boot pc with `c = 0`.
 - The same for `add`, whose result another AIR computes: given a sound
   operation bus, whichever of its provers answers, the slot's `c` is
   `a + b` modulo 2^64.
@@ -412,8 +416,8 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
 ### And what it does not
 
 - **The correspondence is a pilot.** Six opcodes, two sources, no stores, no
-  `set_pc`. Runs stay within one segment and need their start encoded. The
-  rest is steps 4 to 6 of [Next steps](#next-steps).
+  `set_pc`, and no program end: a run is as long as its segments. The rest
+  is steps 4 to 6 of [Next steps](#next-steps).
 - **Bus arguments are assumed sound, not derived.** The ROM lookup's guarantee
   (`LookupHolds`) and the ROM's contents (`RomHolds`) are hypotheses; the gsum
   columns and the global constraints that enforce a bus are not modeled.
@@ -921,10 +925,47 @@ executes it as `zisk_execute` does. The scope is the pilot's, stated over the
 whole program (`InternalProg`): every instruction is `copyb` or `flag`, with
 immediate or `c` sources, no store and no `set_pc`, and both its jumps land in
 the 32-bit pc range (`PilotProg` allows the four external ops too). A run stays
-within one segment; crossing to the next goes
-through the continuation bus and the segment airvals, whose lane-level ends are
-proved (`previous_c_0_first`, `laneHolds_3_last`) but not yet joined. Standard
-three axioms; `Run.lean` checks in about a second.
+within one segment; crossing to the next is
+[Across segments](#across-segments). Standard three axioms; `Run.lean` checks
+in about a second.
+
+## Across segments
+
+A ZisK execution is a chain of Main segments, each a Main instance of
+`numRows` (2^22) rows, so `4·numRows` steps. The continuation bus (1000) links
+them: a segment assumes the state it starts from, as airvals
+(`segment_initial_pc`, `segment_previous_c`), and proves the state it hands on
+(`segment_next_pc`, `segment_last_c`) — the generated `Main.bus714` and
+`bus715`. Global updates open the chain at the boot state and close it at the
+end. [`lean/Proofs/Segments.lean`](lean/Proofs/Segments.lean) joins the runs of
+[Many steps](#many-steps) along that chain:
+
+- **Entry**: `segment_initial_pc` is row 0's pc (`main.pil:661`), and lane 0
+  of row 0 reads `segment_previous_c` (`previous_c_0_first`), so a segment's
+  entry airvals encode its first position (`entry_encodes`).
+- **Inside**: `run_within`, the run of `Run.lean` from that position, for any
+  number of steps short of the last; every row but the first has
+  `__L1__ = 0`.
+- **Exit**: the last step, lane 3 of the last row, hands its pc to
+  `segment_next_pc` (`laneHolds_3_last`) and its `c` to `segment_last_c`
+  (`main.pil:532`), so the segment's exit airvals encode the state it leaves
+  (`exit_step`). `step_core` ([`Run.lean`](lean/Proofs/Run.lean)) is the step
+  for a lane with any next-pc value, which both uses share.
+- **The chain** (`ChainHolds`): the segments, in order, each assume what the
+  one before proved, and the first the boot tuple `(0, 0, 0, boot, 0, 0)`. It
+  is what a sound continuation bus guarantees, stated over the generated
+  arguments; the global update that writes the boot tuple is not extracted,
+  so the tuple is written in the file.
+
+`run_from_boot`: for any `n` below the segments' total steps, the model runs
+`n` steps of the program from the boot state, and the position of step `n` —
+segment `n / 4·numRows`, step `n mod 4·numRows` within it — encodes the state
+it reaches. The start is no longer assumed. `run_from_boot_system` is the same
+over the operation bus's provers of `Provers.lean`.
+
+Besides the buses' soundness, a segment (`Segment`) assumes the setup's
+`__L1__`: 1 on row 0, 0 on the others. The file checks in about two seconds,
+on Lean's standard three axioms.
 
 ## The operation bus's provers
 
@@ -995,9 +1036,10 @@ checks in about 4 seconds, on Lean's standard three axioms.
    checked by `make difftest` on a program that executes it
    (`make difftest PROG=… INPUT=…`). Turn on `--strict` once coverage is
    complete.
-6. **The full correspondence.** Extend the runs of [Many steps](#many-steps)
-   across segment boundaries through the continuation bus, from the program's
-   entry, and to every source, store and opcode, up to: a trace every
+6. **The full correspondence.** Extend the run from boot of
+   [Across segments](#across-segments) to the program's end (the closing
+   global update and `is_end`), and to every source, store and opcode, up to:
+   a trace every
    AIR accepts is a run of `zisk_execute`. Neither side is transcribed by hand,
    so neither can drift from what ZisK ships without the generators noticing.
 7. **An `assembly` mapping** (optional). Sail mappings are bidirectional, so

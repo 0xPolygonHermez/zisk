@@ -258,9 +258,61 @@ give, prover by prover, and `Provers.lean` collects. -/
 def OpsProved (ps : List (Prover F)) : Prop :=
   ∀ p ∈ ps, OpsOk p
 
-/-- **One step of any of the six opcodes, at any position.** As
-`step_internal`; an external op's result comes over the operation bus, from
-whichever prover answers lane `l`'s lookup. -/
+/-- **One step of any of the six opcodes, at one lane.** Lane `l` of row `i`,
+with its constraints `LaneHolds` for whatever neighbours it has, reads the
+model's `c` and sits at the model's pc: the step there executes the program's
+instruction at that pc — which the ROM lookup finds — leaving the lane's `c`
+and the next pc `np` as `zisk_execute` does. An external op's result comes
+over the operation bus, from whichever prover answers the lane's lookup. -/
+theorem step_core (prog : BitVec 64 → Option zisk_inst) (hprog : PilotProg prog)
+    (xm : Main.Ctx F) (tm : Main.Trace F) {i : Int} (hmi : Main.everyRow xm tm i)
+    (xr : Rom.Ctx F) (tr : Rom.Trace F) (hr : ∀ j, Rom.everyRow xr tr j)
+    {l : Nat} (hl4 : l < 4) (hbus : LookupHolds (romArg l) xm tm [⟨Rom.bus0, xr, tr⟩])
+    (hrom : RomHolds prog tr)
+    (ps : List (Prover F)) (hops : LookupHolds (opArg l) xm tm ps) (hpr : OpsProved ps)
+    {p0 p1 np : F} (hlane : LaneHolds (tm i) l p0 p1 np)
+    (σ : State) (pc zc : BitVec 64) (hσ : Ready σ pc zc)
+    (hcol : (tm i).pc l = ((pc.toNat : Nat) : F)) (hprev : p0 = lo zc ∧ p1 = hi zc) :
+    ∃ inst σ' pc' c, prog pc = some inst ∧ zisk_execute inst σ = .ok false σ' ∧
+      Ready σ' pc' c ∧ np = ((pc'.toNat : Nat) : F) ∧
+      (tm i).c l 0 = lo c ∧ (tm i).c l 1 = hi c := by
+  obtain ⟨hpc, hzc, ⟨st, hst⟩, hpc32⟩ := hσ
+  obtain ⟨inst, hinst, hslot⟩ :=
+    rom_lane prog xm tm i hmi xr tr hr hl4 hbus hrom pc hpc32 hcol
+  obtain ⟨⟨ha, hb, hop, hstore, hset, hend⟩, hl1, hl2⟩ := hprog pc inst hinst
+  have hw : NoWrap pc inst.jmp_off1 ∧ NoWrap pc inst.jmp_off2 := ⟨hl1.noWrap, hl2.noWrap⟩
+  have key : ∃ σ' c flag pc', zisk_execute inst σ = .ok false σ' ∧
+      σ'.regs.get? Register.Zc = some c ∧
+      σ'.regs.get? Register.Zflag = some flag ∧
+      σ'.regs.get? Register.PC = some pc' ∧
+      σ'.regs.get? Register.Step = some (Sail.BitVec.addInt st 1) ∧
+      (pc' = pc + inst.jmp_off1 ∨ pc' = pc + inst.jmp_off2) ∧
+      (tm i).c l 0 = lo c ∧ (tm i).c l 1 = hi c ∧ (tm i).flag l = bit flag ∧
+      np = ((pc'.toNat : Nat) : F) := by
+    have hext := fun (code : Nat) sem h4 (hpc' : ∀ p ∈ ps, OpProves code sem p) hc hsm =>
+      lane_external code sem hl4 hlane ps hops hpc' inst σ pc zc st hpc hzc hst
+        hslot ha hb h4 hc hsm hstore hset hend hprev hw
+    rcases hop with h | h | h | h | h | h
+    · exact lane_internal hlane inst σ pc zc st hpc hzc hst ha hb (.inl h) hstore hset hend
+        hslot hprev hw
+    · exact lane_internal hlane inst σ pc zc st hpc hzc hst ha hb (.inr h) hstore hset hend
+        hslot hprev hw
+    · exact hext 10 addSem (.inl h) (fun p hp => (hpr p hp).add) (by rw [h]; rfl)
+        (by rw [h]; exact exec_add)
+    · exact hext 6 ltuSem (.inr (.inl h)) (fun p hp => (hpr p hp).ltu) (by rw [h]; rfl)
+        (by rw [h]; exact exec_ltu)
+    · exact hext 9 eqSem (.inr (.inr (.inl h))) (fun p hp => (hpr p hp).eq) (by rw [h]; rfl)
+        (by rw [h]; exact exec_eq)
+    · exact hext 14 andSem (.inr (.inr (.inr h))) (fun p hp => (hpr p hp).and)
+        (by rw [h]; rfl) (by rw [h]; exact exec_and)
+  obtain ⟨σ', c, f, pc', hrun, hc, -, hp, hst', hnext, hc0, hc1, -, hnp⟩ := key
+  refine ⟨inst, σ', pc', c, hinst, hrun, ⟨hp, hc, ⟨_, hst'⟩, ?_⟩, hnp, hc0, hc1⟩
+  rcases hnext with rfl | rfl
+  · exact hl1.lt
+  · exact hl2.lt
+
+/-- **One step of any of the six opcodes, at any position** inside a segment:
+`step_core` with the position's neighbours. -/
 theorem step_pilot (prog : BitVec 64 → Option zisk_inst) (hprog : PilotProg prog)
     (xm : Main.Ctx F) (tm : Main.Trace F) (hm : ∀ i, Main.everyRow xm tm i)
     (xr : Rom.Ctx F) (tr : Rom.Trace F) (hr : ∀ j, Rom.everyRow xr tr j)
@@ -272,43 +324,11 @@ theorem step_pilot (prog : BitVec 64 → Option zisk_inst) (hprog : PilotProg pr
     (henc : Encodes xm tm s pc zc) :
     ∃ inst σ' pc' zc', prog pc = some inst ∧ zisk_execute inst σ = .ok false σ' ∧
       Ready σ' pc' zc' ∧ Encodes xm tm s.next pc' zc' := by
-  obtain ⟨hpc, hzc, ⟨st, hst⟩, hpc32⟩ := hσ
   obtain ⟨hcol, hp0, hp1⟩ := henc
-  obtain ⟨inst, hinst, hslot⟩ :=
-    rom_lane prog xm tm s.row (hm s.row) xr tr hr s.lt (hbus s.lane s.lt) hrom pc hpc32 hcol
-  obtain ⟨⟨ha, hb, hop, hstore, hset, hend⟩, hl1, hl2⟩ := hprog pc inst hinst
-  have hlane := laneHolds_at (x := xm) hm hs
-  have hw : NoWrap pc inst.jmp_off1 ∧ NoWrap pc inst.jmp_off2 := ⟨hl1.noWrap, hl2.noWrap⟩
-  have key : ∃ σ' c flag pc', zisk_execute inst σ = .ok false σ' ∧
-      σ'.regs.get? Register.Zc = some c ∧
-      σ'.regs.get? Register.Zflag = some flag ∧
-      σ'.regs.get? Register.PC = some pc' ∧
-      σ'.regs.get? Register.Step = some (Sail.BitVec.addInt st 1) ∧
-      (pc' = pc + inst.jmp_off1 ∨ pc' = pc + inst.jmp_off2) ∧
-      (tm s.row).c s.lane 0 = lo c ∧ (tm s.row).c s.lane 1 = hi c ∧
-      (tm s.row).flag s.lane = bit flag ∧
-      (tm s.next.row).pc s.next.lane = ((pc'.toNat : Nat) : F) := by
-    have hext := fun (code : Nat) sem h4 (hpc' : ∀ p ∈ ps, OpProves code sem p) hc hsm =>
-      lane_external code sem s.lt hlane ps (hops s.lane s.lt) hpc' inst σ pc zc st hpc hzc hst
-        hslot ha hb h4 hc hsm hstore hset hend ⟨hp0, hp1⟩ hw
-    rcases hop with h | h | h | h | h | h
-    · exact lane_internal hlane inst σ pc zc st hpc hzc hst ha hb (.inl h) hstore hset hend
-        hslot ⟨hp0, hp1⟩ hw
-    · exact lane_internal hlane inst σ pc zc st hpc hzc hst ha hb (.inr h) hstore hset hend
-        hslot ⟨hp0, hp1⟩ hw
-    · exact hext 10 addSem (.inl h) (fun p hp => (hpr p hp).add) (by rw [h]; rfl)
-        (by rw [h]; exact exec_add)
-    · exact hext 6 ltuSem (.inr (.inl h)) (fun p hp => (hpr p hp).ltu) (by rw [h]; rfl)
-        (by rw [h]; exact exec_ltu)
-    · exact hext 9 eqSem (.inr (.inr (.inl h))) (fun p hp => (hpr p hp).eq) (by rw [h]; rfl)
-        (by rw [h]; exact exec_eq)
-    · exact hext 14 andSem (.inr (.inr (.inr h))) (fun p hp => (hpr p hp).and)
-        (by rw [h]; rfl) (by rw [h]; exact exec_and)
-  obtain ⟨σ', c, f, pc', hrun, hc, -, hp, hst', hnext, hc0, hc1, -, hnp⟩ := key
-  refine ⟨inst, σ', pc', c, hinst, hrun, ⟨hp, hc, ⟨_, hst'⟩, ?_⟩, hnp, ?_, ?_⟩
-  · rcases hnext with rfl | rfl
-    · exact hl1.lt
-    · exact hl2.lt
+  obtain ⟨inst, σ', pc', c, hinst, hrun, hσ', hnp, hc0, hc1⟩ :=
+    step_core prog hprog xm tm (hm s.row) xr tr hr s.lt (hbus s.lane s.lt) hrom ps
+      (hops s.lane s.lt) hpr (laneHolds_at hm hs) σ pc zc hσ hcol ⟨hp0, hp1⟩
+  refine ⟨inst, σ', pc', c, hinst, hrun, hσ', hnp, ?_, ?_⟩
   · rw [prevC_next hs 0 (.inl rfl)]; exact hc0
   · rw [prevC_next hs 1 (.inr rfl)]; exact hc1
 
