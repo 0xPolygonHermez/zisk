@@ -133,6 +133,7 @@ reached through the ROM lookup. See
 | `model/zisk_main.sail` | The C emulator's `main`: initial state, the step loop, and the trace `make difftest` compares. Not part of the Lean build. |
 | [`../tools/sail-difftest`](../tools/sail-difftest/src/main.rs) | Exports a program to the model — `rom.sail` and its initial memory — records the reference trace on `ziskemu`, and checks the program's committed ROM rows against the encoding the Lean proofs assume. |
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
+| `check_frops.py` | Checks every `add` row of the FROPS tables the setup commits against `c = a + b`; `make frops`. |
 | `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. |
 | `lean/Proofs/Slot.lean` | The pilot correspondence: one slot of Main against one step of the model. |
 | `lean/Proofs/Rom.lean` | The ROM lookup: the slot's instruction derived from the program, through the bus. |
@@ -149,6 +150,7 @@ make check   # typecheck the model
 make lean    # generate Lean definitions into build/lean/out
 make ops     # check opcode names against core/src/zisk_ops.rs
 make pil     # generate Lean definitions of the AIR constraints into build/pil
+make frops   # check the FROPS tables' add rows (needs the PIL compile's tmp/fixed)
 ```
 
 Two more targets typecheck the generated Lean, through the lake package in
@@ -615,6 +617,47 @@ Main's internal-op constraints with that opcode force both `flag = 1` and
 `flag = 0`, so no accepted trace executes it — which is what a program that
 fails should get.
 
+## Who can prove an `add`
+
+The ROM bus had one prover. The operation bus (5000), which carries every
+external op from Main to the AIR that computes it, has forty: an `add` slot in
+Main is correct only if *every* AIR that could prove a tuple with `op = 0x0a`
+constrains its `c` to be `a + b`. So before proving `add`, the provers were
+sorted by what their tuple's `op` can be, read from the generated bus
+arguments (`op` is the tuple's first element):
+
+| Provers | `op` | Can be `add`? |
+|---|---|---|
+| Add256, Blake2br, Blake2s, Blake3f, JumpDest, Keccakf, Sha256f | a constant (240, 234, 239, 238, 192, 241, 249) | no |
+| Poseidon | `235 + sel_poseidon1` | no (235 or 236) |
+| Arith256X, ArithBn254, ArithEq, ArithEq384, ArithSecp256K1, TwistedEdwards, Dma, Dma64Aligned\*, DmaUnaligned (and their Large variants) | a sum of selectors times opcodes | no: every selector is constrained boolean, and no 0/1 combination sums to 10 |
+| Arith | its `op` column | no, given its table: the Arith table's `OP` is a mul/div code, `0xB0`–`0xBF` |
+| BinaryExtension (2 variants) | its `op` column | no, given its table: shifts, sign extension and bit counts |
+| **BinaryAdd, BinaryAddHi** (6 variants) | `10 + 78·sel_sh3add` | **yes**: `add`, or `sh3add` |
+| **Binary** (3 variants) | `b_op + 16·mode32` | **yes**, with `b_op = 0x0a`, `mode32 = 0`: byte by byte, through the Binary table |
+| **VirtualTableZisk0** | 8 of its 10 arguments | **yes**: the FROPS tables, precomputed results |
+
+So an `add` has three kinds of prover, and each needs its own argument: the
+dedicated adder's constraints, the general Binary AIR's byte-wise table
+lookups, and a table of precomputed results.
+
+**The FROPS tables are checked, not assumed.** They are fixed data the pilout
+does not carry, compiled into `VirtualTableZisk0`. `make frops` runs
+[`check_frops.py`](check_frops.py): for every argument the virtual table
+proves on the operation bus, it evaluates the tuple exactly as the extracted
+bus argument states it, at every row of the compiled fixed file the setup
+commits (`tmp/fixed/VirtualTableZisk0.fixed`), and checks every `add` row:
+`c = a + b mod 2^64`, `flag = 0`, every limb below `2^32`. All 15,604,641 `add`
+rows pass, in about 25s, the same count as the source table
+`binary_basic_frops_fixed.bin`. Six of the eight sub-tables hold only 32-bit
+operands, their high limbs folded to constants by the compiler, which is why
+the check reads the compiled table rather than the source file. Making the
+checker expect `a + b + 1` fails every row.
+
+Two "no, given its table" entries rest on the same kind of fixed data, the
+Arith and BinaryExtension tables; `check_frops.py` is the place to check them
+too.
+
 ## Next steps
 
 1. **Memory and registers — done.** `rX`, `wX`, `read_mem`, `write_mem` and
@@ -637,8 +680,11 @@ fails should get.
      `SlotHolds` is derived from the ROM lookup; see
      [The ROM lookup](#the-rom-lookup);
    - the **operation bus**, which ties an external op in Main to the AIR that
-     computes it, so `add`, `eq`, `ltu` and the rest can be proved — this one
-     needs the other AIR's constraints too, Binary's for these;
+     computes it, so `add`, `eq`, `ltu` and the rest can be proved. Started:
+     the census of who can prove an `add` is done and the FROPS rows are
+     checked (see [Who can prove an `add`](#who-can-prove-an-add)); what
+     remains is the Lean side — the exclusions, BinaryAdd's constraints,
+     Binary's byte-wise lookups — and the `add` pilot on top;
    - the **memory bus**, for memory and register sources and stores;
    - the **range checks**, for limbs known to be below `2^32`.
 5. **Fill in the opcode table**, tracked by `make ops`, with each new opcode
