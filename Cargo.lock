@@ -7649,6 +7649,7 @@ dependencies = [
  "serde",
  "signal-hook",
  "signal-hook-tokio",
+ "sysinfo 0.38.4",
  "thiserror 2.0.21",
  "tokio",
  "tokio-stream",

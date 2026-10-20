@@ -33,6 +33,7 @@
 pub(crate) mod aggregate;
 pub(crate) mod contributions;
 pub(crate) mod prove;
+mod telemetry;
 pub(crate) mod worker_handlers;
 pub(crate) mod wrap;
 
@@ -196,6 +197,10 @@ pub struct Coordinator {
 struct TerminationOutcome {
     worker_ids: Vec<WorkerId>,
     phase1_start: Option<DateTime<Utc>>,
+    /// Seconds from the job's first phase to its termination, if any phase started.
+    duration: Option<f64>,
+    /// Steps the job had executed, if its execution finished before it ended.
+    executed_steps: Option<u64>,
 }
 
 /// Structural equality on `AggregationProgramSpecDto`. The DTO has no `PartialEq` derive.
@@ -280,6 +285,7 @@ impl Coordinator {
     /// * `config` - Configuration settings
     pub fn new(config: Config) -> Self {
         let start_time_utc = Utc::now();
+        crate::metrics::record_coordinator_started();
 
         Self {
             config,
@@ -385,11 +391,17 @@ impl Coordinator {
         };
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Cancelled).await;
-        crate::metrics::record_job_terminal(
-            crate::metrics::OUTCOME_CANCELLED,
-            &outcome.worker_ids,
-            outcome.phase1_start,
-        );
+        crate::metrics::record_job_terminal(crate::metrics::JobOutcome {
+            job_id,
+            outcome: crate::metrics::OUTCOME_CANCELLED,
+            reason: None,
+            workers: &outcome.worker_ids,
+            contributions_started: outcome.phase1_start,
+            duration: outcome.duration,
+            phases: None,
+            steps: outcome.executed_steps,
+            instances: None,
+        });
         info!("Cancelled job {}", job_id);
 
         Ok(true)
@@ -422,13 +434,18 @@ impl Coordinator {
             jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         drop(jobs_map);
 
-        let (worker_ids, phase1_start) = {
+        let (worker_ids, phase1_start, duration, executed_steps) = {
             let mut job = job_entry.write().await;
             if job.state().is_resolved() {
                 return Ok(None);
             }
             job.change_state(terminal_state);
-            let outcome = (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions));
+            let outcome = (
+                job.workers.clone(),
+                job.phase_start_time(&JobPhase::Contributions),
+                job.duration_ms.map(|ms| ms as f64 / 1000.0),
+                job.executed_steps,
+            );
             // Free the proof payloads now. A failed phase-3 job otherwise pins every
             // retained aggregation set for the whole lifetime of the map entry.
             job.cleanup();
@@ -445,7 +462,7 @@ impl Coordinator {
         }
         self.cancel_job_workers(&worker_ids, job_id, cancel_reason).await;
 
-        Ok(Some(TerminationOutcome { worker_ids, phase1_start }))
+        Ok(Some(TerminationOutcome { worker_ids, phase1_start, duration, executed_steps }))
     }
 
     /// Content-addresses ELF bytes with blake3, writes to cache if absent, returns `hash_id`.
@@ -463,7 +480,7 @@ impl Coordinator {
             }
             fs::write(&path, &elf_bytes)
                 .map_err(|e| CoordinatorError::Internal(format!("write ELF cache: {e}")))?;
-            metrics::gauge!("coordinator_registered_programs_total").increment(1.0);
+            crate::metrics::record_program_registered(&hash_id, elf_bytes.len());
         }
 
         Ok(hash_id)
@@ -1039,9 +1056,21 @@ impl Coordinator {
         // timeout will call `record_job_terminal` (which decrements). Without
         // the matching increment here, the gauge would underflow on the
         // dispatch-failure path.
-        crate::metrics::record_job_started();
-
         let job = job_arc.read().await;
+        crate::metrics::record_job_started(
+            &job_id,
+            crate::metrics::job_kind(job.execution_only),
+            job.workers.len(),
+        );
+        crate::metrics::record_job_phase(
+            &job_id,
+            if job.execution_only {
+                crate::metrics::PHASE_EXECUTION
+            } else {
+                crate::metrics::PHASE_CONTRIBUTIONS
+            },
+        );
+
         if let Err(e) = self.dispatch_contributions_messages(&job, &active_workers).await {
             drop(job);
             // Dispatch flaked (e.g. a worker's channel broke). The job is
@@ -1437,11 +1466,17 @@ impl Coordinator {
         };
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.to_string())).await;
-        crate::metrics::record_job_terminal(
-            crate::metrics::OUTCOME_FAILURE,
-            &outcome.worker_ids,
-            outcome.phase1_start,
-        );
+        crate::metrics::record_job_terminal(crate::metrics::JobOutcome {
+            job_id,
+            outcome: crate::metrics::OUTCOME_FAILURE,
+            reason: Some(reason),
+            workers: &outcome.worker_ids,
+            contributions_started: outcome.phase1_start,
+            duration: outcome.duration,
+            phases: None,
+            steps: outcome.executed_steps,
+            instances: None,
+        });
         error!("Failed job {} (reason: {})", job_id, reason);
 
         // Only fails when the job is already gone from `self.jobs`, in which
@@ -1759,6 +1794,7 @@ impl Coordinator {
                         "[Recovery] Worker {} stuck in pending_recovery > {}s; unregistering",
                         wid, threshold_secs
                     );
+                    crate::metrics::record_worker_recovery_expired(&wid, threshold_secs as f64);
                     if let Err(e) = self.unregister_worker(&wid).await {
                         warn!("Failed to unregister stuck-recovery worker {}: {}", wid, e);
                     }

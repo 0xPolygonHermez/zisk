@@ -54,6 +54,12 @@ impl Coordinator {
                 ack.error_message.as_deref().unwrap_or("unknown error")
             );
         }
+        crate::metrics::record_setup_ack(
+            &ack.worker_id,
+            &ack.hash_id,
+            ack.success,
+            ack.error_message.as_deref(),
+        );
 
         // A successful SetupProgramAck proves the prover is healthy; any
         // lingering pending_recovery entry is stale (WRC will never arrive).
@@ -405,7 +411,12 @@ impl Coordinator {
         &self,
         worker_id: &WorkerId,
     ) -> CoordinatorResult<()> {
-        let was_pending = self.pending_recovery.write().await.remove(worker_id).is_some();
+        let parked_at = self.pending_recovery.write().await.remove(worker_id);
+        let was_pending = parked_at.is_some();
+        if let Some(parked_at) = parked_at {
+            let seconds = (Utc::now() - parked_at).num_milliseconds().max(0) as f64 / 1000.0;
+            crate::metrics::record_worker_recovered(worker_id, seconds);
+        }
         let state = self.workers_pool.worker_state(worker_id).await;
         let parked = state == Some(WorkerState::SettingUp);
 

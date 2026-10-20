@@ -1,12 +1,24 @@
-//! Centralised emission of coordinator job-lifecycle metrics.
+//! Centralised emission of coordinator metrics.
 //!
-//! All metric *descriptions* live in `zisk-coordinator-server`'s `metrics` module
-//! (alongside the Prometheus recorder install). This module only emits values.
-//! One-shot gauge updates that don't share semantics (program registration,
-//! worker pool +/-) stay inline at their callsites.
+//! All metric *descriptions* live in `zisk-coordinator-server`'s `metrics` module (alongside the
+//! Prometheus recorder install). This module emits values through the `metrics` facade and keeps
+//! the [`journal`] of recent jobs and events; [`Coordinator::render_metrics`] adds what is read
+//! from the coordinator's state when `/metrics` is scraped.
+//!
+//! [`Coordinator::render_metrics`]: crate::Coordinator::render_metrics
+
+mod journal;
+
+use std::sync::LazyLock;
 
 use chrono::{DateTime, Utc};
-use zisk_cluster_common::WorkerId;
+use zisk_cluster_common::{JobId, WorkerId, WorkerState};
+use zisk_common::AsmExecutionInfo;
+
+pub(crate) use journal::{
+    gauge_family, gauge_sample, JobEnded, Journal, PHASE_AGGREGATION, PHASE_CONTRIBUTIONS,
+    PHASE_EXECUTION, PHASE_PROVE,
+};
 
 /// Closed set of `outcome` label values. Sharing the constants between the
 /// helper and its callers keeps the label cardinality fixed and avoids drift
@@ -15,47 +27,303 @@ pub(crate) const OUTCOME_SUCCESS: &str = "success";
 pub(crate) const OUTCOME_FAILURE: &str = "failure";
 pub(crate) const OUTCOME_CANCELLED: &str = "cancelled";
 
-/// Record that a job has just been accepted and dispatched. Pairs with
-/// `record_job_terminal` (one increment ↔ one decrement of `coordinator_active_jobs`).
-pub(crate) fn record_job_started() {
+/// Closed set of `kind` label values.
+pub(crate) const KIND_PROVE: &str = "prove";
+pub(crate) const KIND_EXECUTE: &str = "execute";
+pub(crate) const KIND_WRAP: &str = "wrap";
+/// A job that ended without having been recorded as started.
+const KIND_UNKNOWN: &str = "unknown";
+
+static JOURNAL: LazyLock<Journal> = LazyLock::new(Journal::default);
+
+/// The coordinator's recent jobs and events, for `/metrics`.
+pub(crate) fn journal() -> &'static Journal {
+    &JOURNAL
+}
+
+/// The `kind` of a job launched by `launch_proof`.
+pub(crate) fn job_kind(execution_only: bool) -> &'static str {
+    if execution_only {
+        KIND_EXECUTE
+    } else {
+        KIND_PROVE
+    }
+}
+
+/// `coordinator_worker_state` code of a worker: 0 disconnected, 1 ready, 2 setting up (or
+/// connected without a setup), 3 computing, 4 recovering from a cancelled or failed job, 5 error.
+pub(crate) fn worker_state_code(state: &WorkerState, recovering: bool) -> u8 {
+    match state {
+        WorkerState::Disconnected | WorkerState::Connecting => 0,
+        WorkerState::Ready => 1,
+        WorkerState::SettingUp if recovering => 4,
+        WorkerState::Idle | WorkerState::SettingUp => 2,
+        WorkerState::Computing(_) => 3,
+        WorkerState::Error => 5,
+    }
+}
+
+/// Record that a job has just been accepted and dispatched to `workers` workers. Pairs with
+/// [`record_job_terminal`] (one increment ↔ one decrement of `coordinator_active_jobs`).
+pub(crate) fn record_job_started(job_id: &JobId, kind: &'static str, workers: usize) {
     metrics::gauge!("coordinator_active_jobs").increment(1.0);
+    journal().job_started(job_id, kind, workers);
+}
+
+/// A job in flight entered `phase` (one of the `PHASE_*` constants).
+pub(crate) fn record_job_phase(job_id: &JobId, phase: &'static str) {
+    journal().job_phase(job_id, phase);
+}
+
+/// A job in flight takes its input inline, `bytes` long.
+pub(crate) fn record_job_input(job_id: &JobId, bytes: u64) {
+    journal().job_input(job_id, bytes);
+}
+
+/// A worker finished running a job's guest: phase 1 of a proof, or an execute-only job.
+pub(crate) fn record_worker_execution(
+    job_id: &JobId,
+    kind: &'static str,
+    asm: Option<&AsmExecutionInfo>,
+    witness_seconds: Option<f64>,
+) {
+    if let Some(asm) = asm {
+        let (time, mhz) = (f64::from(asm.time), f64::from(asm.mhz));
+        metrics::gauge!("coordinator_last_asm_seconds", "kind" => kind).set(time);
+        metrics::gauge!("coordinator_last_asm_mhz", "kind" => kind).set(mhz);
+        let steps = time * mhz * 1e6;
+        if steps.is_finite() && steps > 0.0 {
+            journal().job_steps_estimate(job_id, steps as u64);
+        }
+    }
+    if let Some(seconds) = witness_seconds {
+        metrics::gauge!("coordinator_last_witness_seconds", "kind" => kind).set(seconds);
+    }
+}
+
+/// The instances per AIR of the last execution, from proofman's summary line.
+pub(crate) fn record_execution_summary(summary: &str) {
+    journal().execution_summary(summary);
+}
+
+/// How a job ended, for [`record_job_terminal`].
+pub(crate) struct JobOutcome<'a> {
+    pub job_id: &'a JobId,
+    /// One of the `OUTCOME_*` constants.
+    pub outcome: &'static str,
+    /// Why a failed job failed.
+    pub reason: Option<&'a str>,
+    pub workers: &'a [WorkerId],
+    /// When the Contributions (or Execution) phase started; `None` for jobs cancelled or failed
+    /// before any phase began.
+    pub contributions_started: Option<DateTime<Utc>>,
+    /// Seconds from the job's first phase to its end, when known.
+    pub duration: Option<f64>,
+    /// A successful proof's three phases (contributions, prove, aggregation), in seconds.
+    pub phases: Option<[f64; 3]>,
+    pub steps: Option<u64>,
+    pub instances: Option<u64>,
 }
 
 /// Record metrics for a job that has reached a terminal state.
 ///
 /// Emits in one call:
 /// - decrement of `coordinator_active_jobs`
-/// - increment of `coordinator_jobs_total{kind="prove", outcome=…}`
+/// - increment of `coordinator_jobs_total{kind, outcome[, reason]}`
 /// - per-worker increment of `coordinator_worker_jobs_total{worker_id, outcome=…}`
 /// - end-to-end duration into `coordinator_job_duration_seconds{outcome=…}` if
 ///   the Contributions phase actually started (skipped for jobs cancelled/failed
-///   before any phase began).
-pub(crate) fn record_job_terminal(
-    outcome: &'static str,
-    workers: &[WorkerId],
-    contributions_started: Option<DateTime<Utc>>,
-) {
-    metrics::counter!(
-        "coordinator_jobs_total", "kind" => "prove", "outcome" => outcome
-    )
-    .increment(1);
+///   before any phase began)
+/// - for a success: the steps and the `coordinator_last_job_*` gauges, and for a proof its
+///   phases (`coordinator_proof_phase_seconds`, `coordinator_last_proof_phase_seconds`)
+/// - the journal's record of the job
+pub(crate) fn record_job_terminal(o: JobOutcome<'_>) {
+    let kind = journal().job_kind(o.job_id).unwrap_or(KIND_UNKNOWN);
+    match (o.outcome, o.reason) {
+        (OUTCOME_FAILURE, Some(reason)) => metrics::counter!(
+            "coordinator_jobs_total",
+            "kind" => kind, "outcome" => o.outcome, "reason" => failure_class(reason)
+        )
+        .increment(1),
+        _ => metrics::counter!("coordinator_jobs_total", "kind" => kind, "outcome" => o.outcome)
+            .increment(1),
+    }
     metrics::gauge!("coordinator_active_jobs").decrement(1.0);
 
     // WorkerId::Display truncates + wraps in "WorkerId(...)" — wrong for label
     // values; use the raw UUID via as_str().
-    for w in workers {
+    for w in o.workers {
         metrics::counter!(
             "coordinator_worker_jobs_total",
-            "worker_id" => w.as_str().to_owned(), "outcome" => outcome
+            "worker_id" => w.as_str().to_owned(), "outcome" => o.outcome
         )
         .increment(1);
     }
 
-    if let Some(started) = contributions_started {
+    if let Some(started) = o.contributions_started {
         let elapsed = (Utc::now() - started).num_milliseconds() as f64 / 1000.0;
         metrics::histogram!(
-            "coordinator_job_duration_seconds", "outcome" => outcome
+            "coordinator_job_duration_seconds", "outcome" => o.outcome
         )
         .record(elapsed);
+    }
+
+    let mut cold = false;
+    if o.outcome == OUTCOME_SUCCESS {
+        if let Some(steps) = o.steps {
+            metrics::counter!("coordinator_job_steps_total", "kind" => kind).increment(steps);
+            metrics::gauge!("coordinator_last_job_steps", "kind" => kind).set(steps as f64);
+        }
+        if let Some(instances) = o.instances {
+            metrics::gauge!("coordinator_last_job_instances", "kind" => kind).set(instances as f64);
+        }
+        if let Some(duration) = o.duration {
+            metrics::gauge!("coordinator_last_job_duration_seconds", "kind" => kind).set(duration);
+            if let Some(steps) = o.steps.filter(|_| duration > 0.0) {
+                metrics::gauge!("coordinator_last_job_mhz", "kind" => kind)
+                    .set(steps as f64 / duration / 1e6);
+            }
+        }
+        if let Some(phases) = o.phases {
+            cold = journal().take_cold();
+            let cold_label = if cold { "true" } else { "false" };
+            for (phase, seconds) in ["1", "2", "3"].into_iter().zip(phases) {
+                metrics::histogram!(
+                    "coordinator_proof_phase_seconds", "phase" => phase, "cold" => cold_label
+                )
+                .record(seconds);
+                metrics::gauge!("coordinator_last_proof_phase_seconds", "phase" => phase)
+                    .set(seconds);
+            }
+            metrics::gauge!("coordinator_last_job_cold", "kind" => kind).set(if cold {
+                1.0
+            } else {
+                0.0
+            });
+        }
+    }
+
+    journal().job_ended(&JobEnded {
+        job_id: o.job_id,
+        kind,
+        outcome: o.outcome,
+        duration: o.duration,
+        phases: o.phases,
+        steps: o.steps,
+        instances: o.instances,
+        reason: o.reason,
+        cold,
+    });
+}
+
+/// The class of a failure reason: a phase or execution `timeout`, a `worker` error, or `other`.
+fn failure_class(reason: &str) -> &'static str {
+    let reason = reason.to_ascii_lowercase();
+    if reason.contains("timed out") {
+        "timeout"
+    } else if reason.contains("worker") {
+        "worker"
+    } else {
+        "other"
+    }
+}
+
+/// A worker acknowledged a program setup.
+pub(crate) fn record_setup_ack(
+    worker_id: &WorkerId,
+    hash_id: &str,
+    success: bool,
+    error: Option<&str>,
+) {
+    let outcome = if success { OUTCOME_SUCCESS } else { OUTCOME_FAILURE };
+    metrics::counter!("coordinator_setups_total", "outcome" => outcome).increment(1);
+    let program = &hash_id[..hash_id.len().min(12)];
+    if success {
+        journal().event("setup done", format!("hash_id {program}… on {worker_id}"));
+    } else {
+        let error = error.unwrap_or("unknown error");
+        journal().event("setup failed", format!("hash_id {program}… on {worker_id}: {error}"));
+    }
+}
+
+/// A worker registered (`reconnected` when it was known already). `total`, `cc` and `acc` are
+/// the pool's workers, compute units and available compute units after it.
+pub(crate) fn record_worker_registered(
+    worker_id: &WorkerId,
+    reconnected: bool,
+    pool: (usize, u32, u32),
+) {
+    let reconnect = if reconnected { "true" } else { "false" };
+    metrics::counter!("coordinator_worker_registrations_total", "reconnect" => reconnect)
+        .increment(1);
+    journal().mark_cold();
+    let kind = if reconnected { "worker reconnected" } else { "worker registered" };
+    journal().event(kind, pool_detail(worker_id, pool));
+}
+
+/// A worker disconnected; `pool` as in [`record_worker_registered`].
+pub(crate) fn record_worker_disconnected(worker_id: &WorkerId, pool: (usize, u32, u32)) {
+    metrics::counter!("coordinator_worker_disconnects_total").increment(1);
+    journal().event("worker disconnected", pool_detail(worker_id, pool));
+}
+
+fn pool_detail(worker_id: &WorkerId, (total, cc, acc): (usize, u32, u32)) -> String {
+    format!("{worker_id} · {total} worker(s) · {cc} CU total, {acc} CU available")
+}
+
+/// A worker parked after a cancelled or failed job reported it is ready again, `seconds` after
+/// it was parked.
+pub(crate) fn record_worker_recovered(worker_id: &WorkerId, seconds: f64) {
+    metrics::counter!("coordinator_worker_recoveries_total", "result" => "done").increment(1);
+    metrics::histogram!("coordinator_worker_recovery_seconds").record(seconds);
+    metrics::gauge!("coordinator_last_worker_recovery_seconds").set(seconds);
+    journal().event("recovery done", format!("{worker_id} in {seconds:.2} s"));
+}
+
+/// A parked worker never reported its recovery and was given up on after `seconds`.
+pub(crate) fn record_worker_recovery_expired(worker_id: &WorkerId, seconds: f64) {
+    metrics::counter!("coordinator_worker_recoveries_total", "result" => "expired").increment(1);
+    journal().event("recovery expired", format!("{worker_id} after {seconds:.0} s"));
+}
+
+/// A new program's ELF entered the coordinator's cache.
+pub(crate) fn record_program_registered(hash_id: &str, bytes: usize) {
+    let program = &hash_id[..hash_id.len().min(12)];
+    journal().event("program registered", format!("hash_id {program}… ({bytes} bytes)"));
+}
+
+/// The coordinator started.
+pub(crate) fn record_coordinator_started() {
+    journal().event("coordinator started", format!("version {}", env!("CARGO_PKG_VERSION")));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zisk_cluster_common::JobPhase;
+
+    #[test]
+    fn failure_reasons_fall_into_three_classes() {
+        assert_eq!(
+            failure_class("[Monitor] Phase Recurse timed out for job x (107s > 100s)"),
+            "timeout"
+        );
+        assert_eq!(
+            failure_class("Task execution failed on worker WorkerId(1): Error aggregating proofs"),
+            "worker"
+        );
+        assert_eq!(failure_class("Failed to dispatch Phase 1"), "other");
+    }
+
+    #[test]
+    fn a_parked_worker_reads_as_recovering_and_a_setting_up_one_does_not() {
+        assert_eq!(worker_state_code(&WorkerState::SettingUp, true), 4);
+        assert_eq!(worker_state_code(&WorkerState::SettingUp, false), 2);
+        assert_eq!(worker_state_code(&WorkerState::Idle, false), 2);
+        assert_eq!(worker_state_code(&WorkerState::Ready, false), 1);
+        let job = JobId::new();
+        assert_eq!(worker_state_code(&WorkerState::Computing((job, JobPhase::Prove)), false), 3);
+        assert_eq!(worker_state_code(&WorkerState::Disconnected, true), 0);
+        assert_eq!(worker_state_code(&WorkerState::Error, false), 5);
     }
 }
