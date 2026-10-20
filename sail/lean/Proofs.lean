@@ -40,3 +40,4 @@ import Proofs.MemEnd
 import Proofs.OpBusPub
 import Proofs.BinaryPub
 import Proofs.PubGlobal
+import Proofs.MemCount

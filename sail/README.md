@@ -178,6 +178,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/StepMem.lean` | One step with register and memory sources and stores (`step_genM`). |
 | `lean/Proofs/MemBoot.lean` | A run from boot with the register file and memory (`run_from_boot_memory`). |
 | `lean/Proofs/MemEnd.lean` | The run to the end with the register file and memory (`run_to_end_memory`). |
+| `lean/Proofs/MemCount.lean` | Counting a tuple on a sum bus, in integers: an assumed tuple is proved, a proved one assumed (`SumHolds.proved_of_assumed`). |
 | `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
@@ -363,7 +364,7 @@ make proofs
 ```
 
 ```
-✔ [113/114] Built Proofs
+✔ [114/115] Built Proofs
 Build completed successfully.
 ```
 
@@ -1381,6 +1382,21 @@ each proves `pubout` correctly and none of the other modeled ops. So
 updates, no longer assumes `OpsProved` or `PubProved` — only the tables'
 contents. What remains assumed for the doubler's run is the memory bus's
 guarantee, `MemAnswers`.
+
+**Toward `MemAnswers`.** Its discharge splits in two. First, from the memory
+bus's balance and the sorted logs already proved — the RAM's and
+InputData's — derive `MemAnswers`, given that no other AIR sends a load or a
+store with a nonzero count; then the census, for that. The first rests on
+counting: [`lean/Proofs/MemCount.lean`](lean/Proofs/MemCount.lean) turns
+`SumHolds`'s field balance into one of integers — every count an integer,
+small, the assuming senders' non-negative — so that a tuple some sender
+assumes is sent by some proving sender with a positive count
+(`SumHolds.proved_of_assumed`), at one of its rows (`Sender.sends_of_count`),
+and conversely (`SumHolds.assumed_of_proved`). Integers, not naturals: the
+RAM's padding cancellation sends with a negative count. With it, a Main load
+is a RAM or InputData lane's read, and a RAM lane's tuple is some access
+Main makes — which bounds the RAM's steps, the one input `RamTrace.toSeg`
+still takes.
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'
