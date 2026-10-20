@@ -65,15 +65,14 @@
 //! - `GET /metrics` → Prometheus text format
 //! - `GET /health`  → `200 OK` (liveness probe)
 
-use std::fmt::Write;
-use std::sync::{Arc, LazyLock, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 use anyhow::Result;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
-use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
+use zisk_cluster_common::prometheus_text;
 
 use crate::backend::BackendService;
 use crate::config::{MetricsConfig, ServiceConfig};
@@ -330,7 +329,7 @@ async fn serve_connection<B: BackendService>(mut stream: tokio::net::TcpStream, 
             let state = backend.render_metrics().await;
             let mut body = handle.render();
             body.push_str(&state);
-            render_process(&mut body);
+            prometheus_text::process_metrics(&mut body);
             format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {}\r\n\r\n{}",
                 body.len(),
@@ -346,33 +345,4 @@ async fn serve_connection<B: BackendService>(mut stream: tokio::net::TcpStream, 
     };
 
     let _ = stream.write_all(response.as_bytes()).await;
-}
-
-/// Append this process's standard `process_*` metrics: resident memory, CPU time, start time.
-fn render_process(out: &mut String) {
-    static SYSTEM: LazyLock<Mutex<System>> = LazyLock::new(|| Mutex::new(System::new()));
-
-    let Ok(pid) = sysinfo::get_current_pid() else { return };
-    let mut system = SYSTEM.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    system.refresh_processes_specifics(
-        ProcessesToUpdate::Some(&[pid]),
-        false,
-        ProcessRefreshKind::nothing().with_memory().with_cpu(),
-    );
-    let Some(process) = system.process(pid) else { return };
-    let _ = write!(
-        out,
-        "# HELP process_resident_memory_bytes Resident memory size in bytes.\n\
-         # TYPE process_resident_memory_bytes gauge\n\
-         process_resident_memory_bytes {}\n\
-         # HELP process_cpu_seconds_total Total user and system CPU time spent in seconds.\n\
-         # TYPE process_cpu_seconds_total counter\n\
-         process_cpu_seconds_total {}\n\
-         # HELP process_start_time_seconds Start time of the process since unix epoch in seconds.\n\
-         # TYPE process_start_time_seconds gauge\n\
-         process_start_time_seconds {}\n",
-        process.memory(),
-        process.accumulated_cpu_time() as f64 / 1000.0,
-        process.start_time(),
-    );
 }

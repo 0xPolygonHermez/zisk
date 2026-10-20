@@ -16,11 +16,11 @@
 //! two would split the samples between them.
 
 use std::collections::{BTreeMap, VecDeque};
-use std::fmt::Write;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
+use zisk_cluster_common::prometheus_text::{self, sample};
 use zisk_cluster_common::JobId;
 
 /// Jobs kept for `coordinator_recent_job`.
@@ -570,52 +570,9 @@ fn parse_air_instances(summary: &str) -> Vec<(String, u64)> {
         .collect()
 }
 
+/// Append a gauge family's `# HELP` and `# TYPE` lines.
 fn family(out: &mut String, name: &str, help: &str) {
-    let _ = writeln!(out, "# HELP {name} {help}");
-    let _ = writeln!(out, "# TYPE {name} gauge");
-}
-
-fn sample(out: &mut String, name: &str, labels: &[(&str, &str)], value: f64, at_ms: Option<i64>) {
-    out.push_str(name);
-    if !labels.is_empty() {
-        out.push('{');
-        for (i, (key, value)) in labels.iter().enumerate() {
-            if i > 0 {
-                out.push(',');
-            }
-            let _ = write!(out, "{key}=\"");
-            escape_label(out, value);
-            out.push('"');
-        }
-        out.push('}');
-    }
-    let _ = write!(out, " {value}");
-    if let Some(at) = at_ms {
-        let _ = write!(out, " {at}");
-    }
-    out.push('\n');
-}
-
-/// A label value in the text format: `\`, `"` and line breaks escaped.
-fn escape_label(out: &mut String, value: &str) {
-    for c in value.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            _ => out.push(c),
-        }
-    }
-}
-
-/// Append one gauge sample (no timestamp) to a `/metrics` body.
-pub(crate) fn gauge_sample(out: &mut String, name: &str, labels: &[(&str, &str)], value: f64) {
-    sample(out, name, labels, value, None);
-}
-
-/// Append a family's `HELP` and `TYPE gauge` lines to a `/metrics` body.
-pub(crate) fn gauge_family(out: &mut String, name: &str, help: &str) {
-    family(out, name, help);
+    prometheus_text::family(out, name, "gauge", help);
 }
 
 #[cfg(test)]

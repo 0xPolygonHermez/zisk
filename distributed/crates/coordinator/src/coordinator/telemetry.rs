@@ -9,7 +9,9 @@ use std::time::UNIX_EPOCH;
 
 use zisk_common::ZiskPaths;
 
-use crate::metrics::{gauge_family, gauge_sample, journal, worker_state_code};
+use zisk_cluster_common::prometheus_text::{family, sample};
+
+use crate::metrics::{journal, worker_state_code};
 use crate::Coordinator;
 
 /// Characters of a program's hash shown in labels.
@@ -32,36 +34,40 @@ impl Coordinator {
 
         let workers = self.workers_pool.worker_states().await;
         let recovering = self.pending_recovery.read().await;
-        gauge_family(
+        family(
             &mut out,
             "coordinator_worker_state",
+            "gauge",
             "Each worker's state: 0 disconnected, 1 ready, 2 setting up, 3 computing, 4 recovering, 5 error",
         );
         for (worker_id, state) in &workers {
             let code = worker_state_code(state, recovering.contains_key(worker_id));
-            gauge_sample(
+            sample(
                 &mut out,
                 "coordinator_worker_state",
                 &[("worker_id", worker_id.as_str())],
                 f64::from(code),
+                None,
             );
         }
         drop(recovering);
 
         let programs = registered_programs();
         metrics::gauge!("coordinator_registered_programs_total").set(programs.len() as f64);
-        gauge_family(
+        family(
             &mut out,
             "coordinator_program_registered_timestamp_seconds",
+            "gauge",
             "When each registered program's ELF entered the coordinator's cache",
         );
         for (hash_id, bytes, registered) in &programs {
             let bytes = bytes.to_string();
-            gauge_sample(
+            sample(
                 &mut out,
                 "coordinator_program_registered_timestamp_seconds",
                 &[("hash_id", hash_id), ("bytes", &bytes)],
                 *registered,
+                None,
             );
         }
 

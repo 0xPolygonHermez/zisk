@@ -56,7 +56,6 @@ tracing = { workspace = true }
 # Metrics
 metrics = { workspace = true }
 metrics-exporter-prometheus = "0.18"
-sysinfo = { workspace = true }
 
 # Graceful shutdown
 signal-hook = { workspace = true }

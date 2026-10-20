@@ -16,8 +16,7 @@ use zisk_cluster_common::{JobId, WorkerId, WorkerState};
 use zisk_common::{StatsCostPerType, ZiskExecutorTime};
 
 pub(crate) use journal::{
-    gauge_family, gauge_sample, JobEnded, Journal, PHASE_AGGREGATION, PHASE_CONTRIBUTIONS,
-    PHASE_EXECUTION, PHASE_PROVE,
+    JobEnded, Journal, PHASE_AGGREGATION, PHASE_CONTRIBUTIONS, PHASE_EXECUTION, PHASE_PROVE,
 };
 
 /// Closed set of `outcome` label values. Sharing the constants between the
