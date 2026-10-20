@@ -1735,6 +1735,7 @@ bool CountAndPlan::add_chunk_core_(const uint64_t* words, uint32_t n, uint32_t c
     if (n == 0) {
         *(h_n_emits_[s]) = 0;
         h_n_emits_all_[c] = 0;
+        h_pot_device_[c] = 0;   // run() compares it with the walk's count; a previous block's value would reject the plan
         return true;
     }
     uint32_t* d_chunk_out = d_ops_pool_ + base;
@@ -1781,7 +1782,9 @@ bool CountAndPlan::add_piece_(const uint64_t* words, uint32_t n, uint32_t c, int
     cudaStream_t st = streams_[s];
     constexpr int BLOCK = 256;
     const int g_memops = (n + BLOCK - 1) / BLOCK;
-    const int g_pot    = (pot + BLOCK - 1) / BLOCK;
+    // At least one block: a piece of zero-count block records has no potential, and the kernels
+    // indexed by potential bound their threads (a zero-block launch is a CUDA error).
+    const int g_pot    = pot == 0 ? 1 : (int)((pot + BLOCK - 1) / BLOCK);
     const uint32_t n_sort = ram + n_carry;
     const int g_sort   = n_sort == 0 ? 0 : (int)((n_sort + BLOCK - 1) / BLOCK);
 
@@ -2249,35 +2252,39 @@ bool CountAndPlan::prepare_global_() {
     if (prepared_) return true;
     // The prefix of each region is scanned in place over its words and one more slot, which
     // receives the region's total. When the region's last word was accessed that slot is the
-    // next region's first, so the total is read back before the next scan overwrites it, and
-    // the next region's offset is passed by value (the overwritten slot ends up holding the
-    // same total once that region's offset is added).
+    // next region's first word: its count is saved before the scan and put back once the total
+    // is read, so the next region scans its own counts; that region's scan then writes the
+    // slot again, and with the offset (passed by value, read back before) it holds the same
+    // total every reader expects. The RAM region's slot is the array's extra entry.
     uint32_t h_boundary[3];
     {
-        uint32_t n_rom = h_max_compact_[REGION_ROM] + 2;
-        CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
-            d_histogram_ + 0, d_prefix_ + 0, n_rom, meta_stream_));
-        CUDA_CHECK(cudaMemcpyAsync(&h_boundary[0],
-                   d_prefix_ + h_max_compact_[REGION_ROM] + 1, 4, cudaMemcpyDeviceToHost, meta_stream_));
-        CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
-
-        uint32_t n_in = h_max_compact_[REGION_INPUT] + 2;
-        CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
-            d_histogram_ + N_ADDR_ROM, d_prefix_ + N_ADDR_ROM, n_in, meta_stream_));
-        add_const_kernel<<<(n_in + 255) / 256, 256, 0, meta_stream_>>>(
-            d_prefix_ + N_ADDR_ROM, h_boundary[0], n_in);
-        CUDA_CHECK_LAUNCH();
-        CUDA_CHECK(cudaMemcpyAsync(&h_boundary[1],
-                   d_prefix_ + N_ADDR_ROM + h_max_compact_[REGION_INPUT] + 1, 4, cudaMemcpyDeviceToHost, meta_stream_));
-        CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
-
-        uint32_t n_ram = h_max_compact_[REGION_RAM] + 2;
-        CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
-            d_histogram_ + N_ADDR_ROM + N_ADDR_INPUT,
-            d_prefix_ + N_ADDR_ROM + N_ADDR_INPUT, n_ram, meta_stream_));
-        add_const_kernel<<<(n_ram + 255) / 256, 256, 0, meta_stream_>>>(
-            d_prefix_ + N_ADDR_ROM + N_ADDR_INPUT, h_boundary[1], n_ram);
-        CUDA_CHECK_LAUNCH();
+        auto scan_region = [&](uint32_t base, uint32_t n_words, uint32_t max_compact, bool next_region,
+                               uint32_t offset, uint32_t* total) {
+            const uint32_t n = max_compact + 2;
+            const bool edge = next_region && max_compact + 1 == n_words;
+            uint32_t saved = 0;
+            if (edge) {
+                CUDA_CHECK(cudaMemcpyAsync(&saved, d_histogram_ + base + n_words, 4, cudaMemcpyDeviceToHost, meta_stream_));
+                CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
+            }
+            CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
+                d_histogram_ + base, d_prefix_ + base, n, meta_stream_));
+            if (offset != 0) {
+                add_const_kernel<<<(n + 255) / 256, 256, 0, meta_stream_>>>(d_prefix_ + base, offset, n);
+                CUDA_CHECK_LAUNCH();
+            }
+            if (total) {
+                CUDA_CHECK(cudaMemcpyAsync(total, d_prefix_ + base + max_compact + 1, 4, cudaMemcpyDeviceToHost, meta_stream_));
+                CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
+            }
+            if (edge) {
+                CUDA_CHECK(cudaMemcpyAsync(d_histogram_ + base + n_words, &saved, 4, cudaMemcpyHostToDevice, meta_stream_));
+                CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
+            }
+        };
+        scan_region(0, N_ADDR_ROM, h_max_compact_[REGION_ROM], true, 0, &h_boundary[0]);
+        scan_region(N_ADDR_ROM, N_ADDR_INPUT, h_max_compact_[REGION_INPUT], true, h_boundary[0], &h_boundary[1]);
+        scan_region(N_ADDR_ROM + N_ADDR_INPUT, N_ADDR_RAM, h_max_compact_[REGION_RAM], false, h_boundary[1], nullptr);
     }
     h_boundary[2] = num_ops_;
 

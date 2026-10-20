@@ -368,6 +368,11 @@ bool CountAndPlan::prepare_ram_fill(MemFillPrepared* out) {
         d_rf_bound_      = (uint32_t*)take((size_t)nc * 2 * n_inst * 4);
         d_rf_pref_       = (uint32_t*)take((size_t)nc * n_inst * 4);
         rf_scratch_      = (uint8_t*)take(0);
+        if (rf_scratch_ > arena_ + ram_low_edge_bytes(n)) {
+            fprintf(stderr, "ram_fill: no room for the run tables below the retained accesses; RAM witness off\n");
+            out->status = -3;
+            return false;
+        }
         std::vector<uint32_t> h_base(nc), h_n(nc), h_ids(n_inst);
         for (uint32_t c = 0; c < nc; ++c) { h_base[c] = runs[c].base; h_n[c] = runs[c].n; }
         for (uint32_t i = 0; i < n_inst; ++i) h_ids[i] = i;
@@ -852,6 +857,10 @@ bool CountAndPlan::other_geometry_(int region, std::vector<uint32_t>& first, std
     // Scratch past every table once the preparation laid them out (the input image follows
     // the access table), else just past the access table.
     uint32_t* d_ids = (uint32_t*)(fill_scratch_ ? fill_scratch_ : other_scratch_); uint32_t* d_first = d_ids + n_inst; uint32_t* d_last = d_first + n_inst;
+    if ((uint8_t*)(d_last + n_inst) > arena_ + ram_low_edge_bytes(ram_cursor_.load(std::memory_order_relaxed))) {
+        fprintf(stderr, "rom_fill: no room for the instance bounds below the retained accesses; witness off\n");
+        return false;
+    }
     std::vector<uint32_t> h_ids(n_inst);
     for (uint32_t i = 0; i < n_inst; ++i) h_ids[i] = i;
     RF_TRY(cudaMemcpyAsync(d_ids, h_ids.data(), (size_t)n_inst * 4, cudaMemcpyHostToDevice, fill_stream_));
