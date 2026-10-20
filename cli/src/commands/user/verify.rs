@@ -47,7 +47,7 @@ impl VerifyCmd {
         let proof = Proof::load(&self.proof)
             .map_err(|e| anyhow::anyhow!("Error loading proof from {}: {}", self.proof, e))?;
 
-        let proof_type = crate::proof::verify_kind_label(proof.kind());
+        let proof_type = crate::proof::verify_kind_label(&proof);
 
         let trusted_plonk_vk =
             match &self.plonk_vk {

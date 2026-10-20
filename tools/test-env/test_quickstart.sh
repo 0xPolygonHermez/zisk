@@ -20,7 +20,7 @@ GUEST_INPUT="samples/example-input.bin"
 EXPECTED_GUEST_OUTPUT="sha256('Hello World!') => 0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
 EXPECTED_PROOF_SAVED="INFO: Proof saved to proof.bin"
 EXPECTED_STARK_VERIFIED="STARK proof was verified"
-EXPECTED_PLONK_VERIFIED="PLONK proof was verified"
+EXPECTED_PLONK_VERIFIED="PILFFLONK proof was verified"
 EXPECTED_SDK_OUTPUT="sha256('Hello Zisk!') => 0xd3e33ed651e7c8d8d4e30ce9a3e4a40e9f089f22435e279a84ea5f8ae234eead"
 
 # check_output: Fail when the expected fixed string is not present in a log file
