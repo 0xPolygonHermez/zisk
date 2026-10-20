@@ -172,6 +172,15 @@ theorem lane_good_0_0 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSeg
     simp only [Main.Main_a_mem_step_0, Main.Main_STEP_0, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_zero, Lean.Grind.Semiring.natCast_zero]
     all_goals grind
 
+theorem lane_step_0_0 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t)
+    {m : Nat} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.bus35, x, t⟩ m) = ((laneStep k 0 0 m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k 0 0 m
+  simp only [tupleOf, Main.bus35, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [Main.Main_a_mem_step_0, Main.Main_STEP_0, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_zero, Lean.Grind.Semiring.natCast_zero]
+  all_goals grind
+
 theorem lane_good_0_1 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t) :
     (Pair.mk ⟨⟨Main.bus36, x, t⟩, Main.numRows⟩ ⟨⟨Main.bus37, x, t⟩, Main.numRows⟩
       (laneStep k 0 1)).Good where
@@ -207,6 +216,15 @@ theorem lane_good_0_1 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSeg
     simp only [Main.Main_b_mem_step_0, Main.Main_STEP_0, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_zero, Lean.Grind.Semiring.natCast_one]
     all_goals grind
 
+theorem lane_step_0_1 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t)
+    {m : Nat} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.bus37, x, t⟩ m) = ((laneStep k 0 1 m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k 0 1 m
+  simp only [tupleOf, Main.bus37, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [Main.Main_b_mem_step_0, Main.Main_STEP_0, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_zero, Lean.Grind.Semiring.natCast_one]
+  all_goals grind
+
 theorem lane_good_0_2 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t) :
     (Pair.mk ⟨⟨Main.bus38, x, t⟩, Main.numRows⟩ ⟨⟨Main.bus39, x, t⟩, Main.numRows⟩
       (laneStep k 0 2)).Good where
@@ -239,6 +257,16 @@ theorem lane_good_0_2 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSeg
     all_goals rw [← natCast_ofNat' 2]
     all_goals grind
 
+theorem lane_step_0_2 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t)
+    {m : Nat} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.bus39, x, t⟩ m) = ((laneStep k 0 2 m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k 0 2 m
+  simp only [tupleOf, Main.bus39, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [Main.Main_store_mem_step_0, Main.Main_STEP_0, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_zero]
+  all_goals rw [← natCast_ofNat' 2]
+  all_goals grind
+
 theorem lane_good_1_0 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t) :
     (Pair.mk ⟨⟨Main.bus47, x, t⟩, Main.numRows⟩ ⟨⟨Main.bus48, x, t⟩, Main.numRows⟩
       (laneStep k 1 0)).Good where
@@ -268,6 +296,15 @@ theorem lane_good_1_0 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSeg
     refine ⟨h3', trivial, ?_⟩
     simp only [Main.Main_a_mem_step_1, Main.Main_STEP_1, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_one, Lean.Grind.Semiring.natCast_zero]
     all_goals grind
+
+theorem lane_step_1_0 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t)
+    {m : Nat} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.bus48, x, t⟩ m) = ((laneStep k 1 0 m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k 1 0 m
+  simp only [tupleOf, Main.bus48, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [Main.Main_a_mem_step_1, Main.Main_STEP_1, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_one, Lean.Grind.Semiring.natCast_zero]
+  all_goals grind
 
 theorem lane_good_1_1 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t) :
     (Pair.mk ⟨⟨Main.bus49, x, t⟩, Main.numRows⟩ ⟨⟨Main.bus50, x, t⟩, Main.numRows⟩
@@ -304,6 +341,15 @@ theorem lane_good_1_1 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSeg
     simp only [Main.Main_b_mem_step_1, Main.Main_STEP_1, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_one, Lean.Grind.Semiring.natCast_one]
     all_goals grind
 
+theorem lane_step_1_1 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t)
+    {m : Nat} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.bus50, x, t⟩ m) = ((laneStep k 1 1 m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k 1 1 m
+  simp only [tupleOf, Main.bus50, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [Main.Main_b_mem_step_1, Main.Main_STEP_1, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_one, Lean.Grind.Semiring.natCast_one]
+  all_goals grind
+
 theorem lane_good_1_2 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t) :
     (Pair.mk ⟨⟨Main.bus51, x, t⟩, Main.numRows⟩ ⟨⟨Main.bus52, x, t⟩, Main.numRows⟩
       (laneStep k 1 2)).Good where
@@ -336,6 +382,16 @@ theorem lane_good_1_2 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSeg
     all_goals rw [← natCast_ofNat' 2]
     all_goals grind
 
+theorem lane_step_1_2 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t)
+    {m : Nat} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.bus52, x, t⟩ m) = ((laneStep k 1 2 m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k 1 2 m
+  simp only [tupleOf, Main.bus52, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [Main.Main_store_mem_step_1, Main.Main_STEP_1, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_one]
+  all_goals rw [← natCast_ofNat' 2]
+  all_goals grind
+
 theorem lane_good_2_0 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t) :
     (Pair.mk ⟨⟨Main.bus60, x, t⟩, Main.numRows⟩ ⟨⟨Main.bus61, x, t⟩, Main.numRows⟩
       (laneStep k 2 0)).Good where
@@ -366,6 +422,16 @@ theorem lane_good_2_0 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSeg
     simp only [Main.Main_a_mem_step_2, Main.Main_STEP_2, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_zero]
     all_goals rw [← natCast_ofNat' 2]
     all_goals grind
+
+theorem lane_step_2_0 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t)
+    {m : Nat} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.bus61, x, t⟩ m) = ((laneStep k 2 0 m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k 2 0 m
+  simp only [tupleOf, Main.bus61, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [Main.Main_a_mem_step_2, Main.Main_STEP_2, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_zero]
+  all_goals rw [← natCast_ofNat' 2]
+  all_goals grind
 
 theorem lane_good_2_1 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t) :
     (Pair.mk ⟨⟨Main.bus62, x, t⟩, Main.numRows⟩ ⟨⟨Main.bus63, x, t⟩, Main.numRows⟩
@@ -403,6 +469,16 @@ theorem lane_good_2_1 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSeg
     all_goals rw [← natCast_ofNat' 2]
     all_goals grind
 
+theorem lane_step_2_1 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t)
+    {m : Nat} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.bus63, x, t⟩ m) = ((laneStep k 2 1 m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k 2 1 m
+  simp only [tupleOf, Main.bus63, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [Main.Main_b_mem_step_2, Main.Main_STEP_2, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_one]
+  all_goals rw [← natCast_ofNat' 2]
+  all_goals grind
+
 theorem lane_good_2_2 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t) :
     (Pair.mk ⟨⟨Main.bus64, x, t⟩, Main.numRows⟩ ⟨⟨Main.bus65, x, t⟩, Main.numRows⟩
       (laneStep k 2 2)).Good where
@@ -435,6 +511,16 @@ theorem lane_good_2_2 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSeg
     all_goals rw [← natCast_ofNat' 2]
     all_goals grind
 
+theorem lane_step_2_2 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t)
+    {m : Nat} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.bus65, x, t⟩ m) = ((laneStep k 2 2 m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k 2 2 m
+  simp only [tupleOf, Main.bus65, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [Main.Main_store_mem_step_2, Main.Main_STEP_2, h.init, h.segStep m hm, hs]
+  all_goals rw [← natCast_ofNat' 2]
+  all_goals grind
+
 theorem lane_good_3_0 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t) :
     (Pair.mk ⟨⟨Main.bus73, x, t⟩, Main.numRows⟩ ⟨⟨Main.bus74, x, t⟩, Main.numRows⟩
       (laneStep k 3 0)).Good where
@@ -465,6 +551,16 @@ theorem lane_good_3_0 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSeg
     simp only [Main.Main_a_mem_step_3, Main.Main_STEP_3, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_zero]
     all_goals rw [← natCast_ofNat' 3]
     all_goals grind
+
+theorem lane_step_3_0 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t)
+    {m : Nat} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.bus74, x, t⟩ m) = ((laneStep k 3 0 m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k 3 0 m
+  simp only [tupleOf, Main.bus74, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [Main.Main_a_mem_step_3, Main.Main_STEP_3, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_zero]
+  all_goals rw [← natCast_ofNat' 3]
+  all_goals grind
 
 theorem lane_good_3_1 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t) :
     (Pair.mk ⟨⟨Main.bus75, x, t⟩, Main.numRows⟩ ⟨⟨Main.bus76, x, t⟩, Main.numRows⟩
@@ -502,6 +598,16 @@ theorem lane_good_3_1 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSeg
     all_goals rw [← natCast_ofNat' 3]
     all_goals grind
 
+theorem lane_step_3_1 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t)
+    {m : Nat} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.bus76, x, t⟩ m) = ((laneStep k 3 1 m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k 3 1 m
+  simp only [tupleOf, Main.bus76, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [Main.Main_b_mem_step_3, Main.Main_STEP_3, h.init, h.segStep m hm, hs, Lean.Grind.Semiring.natCast_one]
+  all_goals rw [← natCast_ofNat' 3]
+  all_goals grind
+
 theorem lane_good_3_2 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t) :
     (Pair.mk ⟨⟨Main.bus77, x, t⟩, Main.numRows⟩ ⟨⟨Main.bus78, x, t⟩, Main.numRows⟩
       (laneStep k 3 2)).Good where
@@ -533,6 +639,16 @@ theorem lane_good_3_2 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSeg
     simp only [Main.Main_store_mem_step_3, Main.Main_STEP_3, h.init, h.segStep m hm, hs]
     all_goals rw [← natCast_ofNat' 3, ← natCast_ofNat' 2]
     all_goals grind
+
+theorem lane_step_3_2 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t)
+    {m : Nat} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.bus78, x, t⟩ m) = ((laneStep k 3 2 m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k 3 2 m
+  simp only [tupleOf, Main.bus78, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [Main.Main_store_mem_step_3, Main.Main_STEP_3, h.init, h.segStep m hm, hs]
+  all_goals rw [← natCast_ofNat' 3, ← natCast_ofNat' 2]
+  all_goals grind
 
 theorem flush_good_0_0 {k : Nat} {x : Main.Ctx F} {t : Main.Trace F} (h : MainSegOk k x t) :
     (Pair.mk ⟨⟨Main.bus92, x, t⟩, Main.numRows⟩ ⟨⟨Main.bus93, x, t⟩, Main.numRows⟩

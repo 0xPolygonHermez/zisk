@@ -42,3 +42,4 @@ import Proofs.BinaryPub
 import Proofs.PubGlobal
 import Proofs.MemCount
 import Proofs.MemRamBus
+import Proofs.MemWorld

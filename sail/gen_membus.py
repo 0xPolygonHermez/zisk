@@ -509,6 +509,19 @@ def main_regs():
             body += f"    all_goals rw [{', '.join(cast_rw)}]\n"
         body += "    all_goals grind\n"
         out.append(body)
+        # The step the access sends, whatever its op: the lane's memory step.
+        sbody = f"""theorem lane_step_{l}_{k} {{k : Nat}} {{x : Main.Ctx F}} {{t : Main.Trace F}} (h : MainSegOk k x t)
+    {{m : Nat}} (hm : m < Main.numRows) :
+    el 2 (tupleOf ⟨Main.{cur}, x, t⟩ m) = ((laneStep k {l} {k} m : Nat) : F) := by
+  have hs := laneStep_cast (F := F) k {l} {k} m
+  simp only [tupleOf, Main.{cur}, el, List.map_cons, List.map_nil, List.getD_cons_zero,
+    List.getD_cons_succ]
+  simp only [{stepdefs}, h.init, h.segStep m hm, hs{''.join(', ' + c for c in cast_simp)}]
+"""
+        if cast_rw:
+            sbody += f"  all_goals rw [{', '.join(cast_rw)}]\n"
+        sbody += "  all_goals grind\n"
+        out.append(sbody)
     for f, r, pre, cur, _ in flushes:
         name = f"flush_good_{f}_{r}"
         names.append(name)
