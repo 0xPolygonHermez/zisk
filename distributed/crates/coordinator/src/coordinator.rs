@@ -2207,6 +2207,58 @@ mod tests {
         assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
     }
 
+    /// A worker that fails a task before starting it (`worker_in_recovery` false) sends no
+    /// `WorkerRecoveryComplete`: parked, it would wait for the stuck-recovery sweep.
+    #[tokio::test]
+    async fn a_worker_that_failed_without_starting_is_ready_again() {
+        use zisk_cluster_common::ExecuteTaskResponseDto;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+        let failure = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: w0_id.clone(),
+            success: false,
+            error_message: Some("Guest program not found".into()),
+            result_data: None,
+            worker_in_recovery: false,
+        };
+
+        let result = coordinator.handle_stream_execute_task_response(failure).await;
+
+        assert!(matches!(result, Err(CoordinatorError::WorkerError(_))));
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
+        assert!(!coordinator.pending_recovery.read().await.contains_key(&w0_id));
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    #[tokio::test]
+    async fn a_worker_that_failed_in_recovery_stays_parked_for_it() {
+        use zisk_cluster_common::ExecuteTaskResponseDto;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+        let failure = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: w0_id.clone(),
+            success: false,
+            error_message: Some("contribution failed".into()),
+            result_data: None,
+            worker_in_recovery: true,
+        };
+
+        let _ = coordinator.handle_stream_execute_task_response(failure).await;
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0_id).await,
+            Some(WorkerState::SettingUp)
+        );
+        assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
+    }
+
     /// Builds a `FinalProof` response with the given proof bytes.
     fn final_proof_response(
         job_id: &JobId,

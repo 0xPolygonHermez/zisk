@@ -1136,6 +1136,13 @@ impl Coordinator {
 
         self.fail_job(&message.job_id, &reason).await?;
 
+        // `fail_job` parked every worker of the job to wait for its `WorkerRecoveryComplete`. One
+        // that failed without starting any work (`worker_in_recovery` false) is Ready again on its
+        // side and sends none: release it now rather than at the stuck-recovery sweep.
+        if !message.worker_in_recovery {
+            self.handle_stream_recovery_complete(&message.worker_id).await?;
+        }
+
         Err(CoordinatorError::WorkerError(format!(
             "Worker {} failed task for job {}: {}",
             message.worker_id,
