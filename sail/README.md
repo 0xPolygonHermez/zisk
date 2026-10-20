@@ -166,6 +166,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/RegStep.lean` | The model's register file through one lane's step: sources read it, the store updates it (`reg_srcs`, `reg_update`). |
 | `lean/Proofs/RegBoot.lean` | A run from boot with the register file: after `n` steps the model's registers are Main's register chain's (`run_from_boot_mem`). |
 | `lean/Proofs/MemSort.lean` | Sorted memory checking, in the abstract: along a log sorted by address and step, every read returns the latest write (`MemSort.reads_last_write`). |
+| `lean/Proofs/MemRam.lean` | The RAM's constraints as a sorted log, over a chain of its segments: every read returns the last write (`ram_reads_last_write`). |
 | `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
@@ -351,7 +352,7 @@ make proofs
 ```
 
 ```
-✔ [102/103] Built Proofs
+✔ [103/104] Built Proofs
 Build completed successfully.
 ```
 
@@ -1239,12 +1240,30 @@ last lane's address and, at it, at or below its last step; the last lane's
 value is its address's current one; and every read so far returns the latest
 write.
 
-Still to come: the RAM's constraints as such a log — its steps and addresses
-as integers, accumulated from range-checked increments starting from the
-continuation chain's values, so the field's relations are integer ones; the
-memory bus's census for loads and stores, as `MemBus.lean` did for register
-tuples; `MemAlign`; and Main's memory sources and stores against the model's
-byte-addressed `read_mem` and `write_mem`.
+[`lean/Proofs/MemRam.lean`](lean/Proofs/MemRam.lean) shows the RAM is such
+a log. Each of a row's four lanes is checked against the lane before it —
+lane `L-1` of the row, lane 3 of the row before, or on the first row the
+previous segment's air values — and the generated constraints give a uniform
+set of facts per lane (`RamLaneHolds`). The AIR fixes only differences, in the
+field: the increment `l_increment + 2^22·h_increment + 1`, range-checked into
+`[1, 2^38]`, is the address's step up when it changes and the step's when it
+does not; a dual read's distance is range-checked too. With every lane's
+address and step a natural below `2^40` (`RamNat`), those relations are
+relations between naturals, and the lane `Follows` the one before
+(`follows_cols`, `RamNat.lane_follows`). So a first segment's lanes are a
+sorted log (`sorted_first`), a later segment's extend the log from the lane
+its air values name (`sorted_next`), its last lane is what its exit air
+values hand on (`last_lane`), and a chain of segments linked by the
+continuation bus (`RamChain`) makes one sorted log, where every read returns
+the latest write or 0 (`ram_reads_last_write`). Nothing unfolds a segment's
+2^24 lanes: the run of lanes is stated for any length (`sorted_run`).
+
+Still to come: the bounds `RamNat` assumes, which come from the memory bus —
+every lane's tuple is one some AIR assumes, with a bounded address and step —
+and the continuation bus's guarantee (`RamChain`); the memory bus's census for
+loads and stores, as `MemBus.lean` did for register tuples; `MemAlign`; and
+Main's memory sources and stores against the model's byte-addressed
+`read_mem` and `write_mem`.
 
 ## The operation bus's provers
 

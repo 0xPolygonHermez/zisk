@@ -274,4 +274,32 @@ theorem reads_last_write {v₀ : V} {L : List (Lane V)} (h : Sorted v₀ L) :
   obtain ⟨p, -, hinv⟩ := h.inv
   exact hinv.ok
 
+/-! ### Growing a sorted log -/
+
+theorem Sorted.snoc' {v₀ : V} {L : List (Lane V)} {p q : Lane V} (h : Sorted v₀ L)
+    (hl : L.getLast? = some p) (hq : q.Ok) (hf : Follows v₀ p q) : Sorted v₀ (L ++ [q]) := by
+  obtain ⟨L', rfl⟩ : ∃ L', L = L' ++ [p] := by
+    rw [List.getLast?_eq_some_iff] at hl
+    exact hl
+  exact Sorted.snoc L' p q h hq hf
+
+/-- A sorted log grows by `m` lanes `f 0, …, f (m-1)`, each following the
+one before, the first following the log's last lane `p`. -/
+theorem Sorted.extend {v₀ : V} {L : List (Lane V)} {p : Lane V} (f : Nat → Lane V) :
+    ∀ m, Sorted v₀ L → L.getLast? = some p → (∀ k, k < m → (f k).Ok) →
+      (0 < m → Follows v₀ p (f 0)) → (∀ k, k + 1 < m → Follows v₀ (f k) (f (k + 1))) →
+      Sorted v₀ (L ++ (List.range m).map f) ∧
+        (L ++ (List.range m).map f).getLast? = some (if m = 0 then p else f (m - 1))
+  | 0, h, hl, _, _, _ => by simpa using ⟨h, hl⟩
+  | m + 1, h, hl, hok, h0, hnext => by
+    obtain ⟨ih, ihl⟩ := Sorted.extend f m h hl (fun k hk => hok k (by omega))
+      (fun hm => h0 (by omega)) (fun k hk => hnext k (by omega))
+    have e : L ++ (List.range (m + 1)).map f = (L ++ (List.range m).map f) ++ [f m] := by
+      rw [List.range_succ, List.map_append, List.append_assoc]; rfl
+    rw [e]
+    refine ⟨ih.snoc' ihl (hok m (by omega)) ?_, by simp⟩
+    cases m with
+    | zero => exact h0 (by omega)
+    | succ m => simpa using hnext m (by omega)
+
 end Correspondence.MemSort
