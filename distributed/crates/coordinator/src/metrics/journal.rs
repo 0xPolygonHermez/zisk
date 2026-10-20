@@ -305,7 +305,7 @@ impl Journal {
             state.event(now, "job cancelled", detail);
         } else if ended.outcome == super::OUTCOME_FAILURE {
             let reason = ended.reason.unwrap_or_default();
-            state.event(now, "job failed", format!("{job_id}: {}", clip(reason)));
+            state.event(now, "job failed", format!("{job_id}: {reason}"));
             let seq = state.next_failure;
             state.next_failure += 1;
             push_bounded(
@@ -520,9 +520,11 @@ impl Journal {
 }
 
 impl State {
+    /// Record an event; its detail, which can quote a worker, is clipped to one short line.
     fn event(&mut self, at: DateTime<Utc>, kind: &'static str, detail: String) {
         let seq = self.next_event;
         self.next_event += 1;
+        let detail = clip(&detail);
         push_bounded(&mut self.events, RECENT_EVENTS, EventRecord { seq, at, kind, detail });
     }
 }
@@ -820,5 +822,15 @@ mod tests {
     fn the_worker_error_is_found_only_after_a_worker_id() {
         assert_eq!(worker_cause("on worker WorkerId(abc): boom: deep"), "boom: deep");
         assert_eq!(worker_cause("[Monitor] Phase Recurse timed out"), "");
+    }
+
+    #[test]
+    fn an_event_quoting_a_worker_is_clipped_to_one_line() {
+        let journal = Journal::default();
+        journal.event("setup failed", format!("on w: {}\nsecond line", "e".repeat(500)));
+        let body = rendered(&journal);
+        let events = samples(&body, "coordinator_recent_event");
+        assert_eq!(events.len(), 1);
+        assert!(!events[0].contains("\\n") && events[0].contains('…'), "{}", events[0]);
     }
 }

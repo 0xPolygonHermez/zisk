@@ -29,6 +29,8 @@
 //! | `coordinator_job_cost_total` | Counter | `kind`, `type` | Cost of the jobs that succeeded, by type (main, opcode, memory, precompile, tables, other) |
 //! | `coordinator_last_job_cost` | Gauge | `kind`, `type` | The last successful job's cost, by type |
 //! | `coordinator_setups_total` | Counter | `outcome` | Program setups the workers acknowledged |
+//! | `coordinator_setup_seconds` | Histogram | — | From sending a setup to a worker's successful ack |
+//! | `coordinator_last_setup_seconds` | Gauge | `hash_id` | The last successful setup of each program |
 //! | `coordinator_worker_registrations_total` | Counter | `reconnect` | Worker registrations |
 //! | `coordinator_worker_disconnects_total` | Counter | — | Worker disconnections |
 //! | `coordinator_worker_recoveries_total` | Counter | `result` | Workers back from a cancelled or failed job (`done`) or given up on (`expired`) |
@@ -90,6 +92,8 @@ pub fn install_prometheus() -> Result<()> {
     // A healthy recovery is sub-second; a stuck one runs to the recovery timeout.
     const RECOVERY_BUCKETS: &[f64] =
         &[0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0];
+    // A program's setup starts its ASM services: tens of seconds.
+    const SETUP_BUCKETS: &[f64] = &[5.0, 10.0, 20.0, 30.0, 45.0, 60.0, 90.0, 120.0, 300.0, 600.0];
     // A task reaches its worker in milliseconds unless the worker is busy elsewhere.
     const DISPATCH_BUCKETS: &[f64] =
         &[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0];
@@ -109,6 +113,10 @@ pub fn install_prometheus() -> Result<()> {
         .set_buckets_for_metric(
             Matcher::Full("coordinator_worker_recovery_seconds".to_owned()),
             RECOVERY_BUCKETS,
+        )?
+        .set_buckets_for_metric(
+            Matcher::Full("coordinator_setup_seconds".to_owned()),
+            SETUP_BUCKETS,
         )?
         .set_buckets_for_metric(
             Matcher::Full("coordinator_dispatch_delay_seconds".to_owned()),
@@ -242,6 +250,14 @@ fn register_descriptions() {
     metrics::describe_counter!(
         "coordinator_setups_total",
         "Program setups the workers acknowledged, by outcome"
+    );
+    metrics::describe_histogram!(
+        "coordinator_setup_seconds",
+        "From sending a program setup to a worker to its successful ack, in seconds"
+    );
+    metrics::describe_gauge!(
+        "coordinator_last_setup_seconds",
+        "The last successful setup duration of each program"
     );
     metrics::describe_counter!(
         "coordinator_worker_registrations_total",

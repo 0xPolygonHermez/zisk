@@ -54,11 +54,20 @@ impl Coordinator {
                 ack.error_message.as_deref().unwrap_or("unknown error")
             );
         }
+        // How long this worker took, if it is one the setup was sent to.
+        let setup_seconds = self
+            .setup_pending
+            .read()
+            .await
+            .get(&job_id)
+            .filter(|state| state.pending.contains(&ack.worker_id))
+            .map(|state| state.started.elapsed().as_secs_f64());
         crate::metrics::record_setup_ack(
             &ack.worker_id,
             &ack.hash_id,
             ack.success,
             ack.error_message.as_deref(),
+            setup_seconds,
         );
 
         // A successful SetupProgramAck proves the prover is healthy; any

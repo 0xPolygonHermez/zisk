@@ -51,7 +51,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     sync::{atomic::AtomicU64, Arc},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, error, info, warn};
@@ -70,6 +70,8 @@ struct SetupPendingState {
     program_name: String,
     with_hints: bool,
     emulator_only: bool,
+    /// When the setup was sent to its workers.
+    started: Instant,
 }
 
 /// Per-program record for setups already applied to the cluster.
@@ -561,6 +563,7 @@ impl Coordinator {
                 program_name: program_name.clone(),
                 with_hints,
                 emulator_only,
+                started: Instant::now(),
             },
         );
 
@@ -870,6 +873,7 @@ impl Coordinator {
                 program_name: program_name.to_string(),
                 with_hints: key.with_hints,
                 emulator_only: key.emulator_only,
+                started: Instant::now(),
             },
         );
 
@@ -2871,6 +2875,7 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
+                started: Instant::now(),
             },
         );
 
@@ -3984,6 +3989,7 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
+                started: Instant::now(),
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -4062,6 +4068,7 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
+                started: Instant::now(),
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -4197,6 +4204,7 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
+                started: Instant::now(),
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -4384,6 +4392,7 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
+                started: Instant::now(),
             },
         );
         coordinator.alloc_job_events(&setup_job).await;

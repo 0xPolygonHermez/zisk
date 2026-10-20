@@ -285,22 +285,38 @@ fn failure_class(reason: &str) -> &'static str {
     }
 }
 
-/// A worker acknowledged a program setup.
+/// A worker acknowledged a program setup, `seconds` after it was sent the setup if it was one
+/// of the setup's workers.
 pub(crate) fn record_setup_ack(
     worker_id: &WorkerId,
     hash_id: &str,
     success: bool,
     error: Option<&str>,
+    seconds: Option<f64>,
 ) {
     let outcome = if success { OUTCOME_SUCCESS } else { OUTCOME_FAILURE };
     metrics::counter!("coordinator_setups_total", "outcome" => outcome).increment(1);
-    let program = &hash_id[..hash_id.len().min(12)];
+    let program = short_hash(hash_id);
     if success {
-        journal().event("setup done", format!("hash_id {program}… on {worker_id}"));
+        let took = match seconds {
+            Some(seconds) => {
+                metrics::histogram!("coordinator_setup_seconds").record(seconds);
+                metrics::gauge!("coordinator_last_setup_seconds", "hash_id" => program.clone())
+                    .set(seconds);
+                format!(" in {seconds:.1} s")
+            }
+            None => String::new(),
+        };
+        journal().event("setup done", format!("hash_id {program}… on {worker_id}{took}"));
     } else {
         let error = error.unwrap_or("unknown error");
         journal().event("setup failed", format!("hash_id {program}… on {worker_id}: {error}"));
     }
+}
+
+/// A program's hash as labels show it: its first 12 characters.
+fn short_hash(hash_id: &str) -> String {
+    hash_id.chars().take(12).collect()
 }
 
 /// A worker registered (`reconnected` when it was known already). `total`, `cc` and `acc` are
@@ -345,7 +361,7 @@ pub(crate) fn record_worker_recovery_expired(worker_id: &WorkerId, seconds: f64)
 
 /// A new program's ELF entered the coordinator's cache.
 pub(crate) fn record_program_registered(hash_id: &str, bytes: usize) {
-    let program = &hash_id[..hash_id.len().min(12)];
+    let program = short_hash(hash_id);
     journal().event("program registered", format!("hash_id {program}… ({bytes} bytes)"));
 }
 
@@ -358,6 +374,14 @@ pub(crate) fn record_coordinator_started() {
 mod tests {
     use super::*;
     use zisk_cluster_common::JobPhase;
+
+    #[test]
+    fn a_hash_from_a_worker_is_shortened_by_characters_not_bytes() {
+        assert_eq!(short_hash("0123456789abcdef"), "0123456789ab");
+        assert_eq!(short_hash("ééééééééééééé"), "éééééééééééé");
+        // Must not panic on a multi-byte character at the 12-byte boundary.
+        record_setup_ack(&WorkerId::from("w".to_string()), "aaaaaaaaaaaé", true, None, Some(1.0));
+    }
 
     #[test]
     fn failure_reasons_fall_into_three_classes() {
