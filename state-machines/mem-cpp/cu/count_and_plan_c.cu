@@ -119,7 +119,7 @@ bool count_and_plan_set_align_layout(void* h, uint32_t air_kind, const uint32_t*
 bool count_and_plan_prepare_fills(void* h, const void* image, size_t image_bytes, const AlignPlanDesc* plans,
                                   uint32_t n_plans, const AlignChunkEntry* entries, uint32_t n_entries,
                                   const uint32_t* ram, uint32_t n_ram, const uint32_t* rom, uint32_t n_rom,
-                                  const uint32_t* input, uint32_t n_input, RamFillPrepared* prepared) {
+                                  const uint32_t* input, uint32_t n_input, MemFillPrepared* prepared) {
     if (!h) return false;
     return static_cast<CountAndPlan*>(h)->prepare_fills(image, image_bytes, plans, n_plans, entries, n_entries,
                                                         ram, n_ram, rom, n_rom, input, n_input, prepared);
@@ -135,7 +135,7 @@ bool count_and_plan_copy_staged(void* h, uint32_t family, uint32_t air_id, uint3
 }
 
 bool count_and_plan_fill_host(void* h, uint32_t family, uint32_t air_id, uint32_t segment, uint32_t n_rows,
-                              uint64_t* out_rows, RamFillResult* res) {
+                              uint64_t* out_rows, MemFillResult* res) {
     return h && static_cast<CountAndPlan*>(h)->fill_host(family, air_id, segment, n_rows, out_rows, res);
 }
 

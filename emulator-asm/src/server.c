@@ -357,10 +357,10 @@ void server_setup (void)
             exit(-1);
         }
 
-        // The maximum input size is MAX_INPUT_SIZE = 1GB, but in most of the cases the actual input
+        // The maximum input size is MAX_INPUT_SIZE = 2GB, but in most of the cases the actual input
         // size is much smaller, so we can map this address space in two parts:
         // - 128 MB with MAP_LOCKED to ensure it is always resident in RAM
-        // - The rest of the 1 GB without MAP_LOCKED, taking RAM physical pages only if used
+        // - The rest of the 2 GB without MAP_LOCKED, taking RAM physical pages only if used
 
         // Check the input sizes
         if (LOCKED_INPUT_SIZE > MAX_INPUT_SIZE)

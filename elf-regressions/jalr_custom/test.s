@@ -1,7 +1,7 @@
-# Tests that JALR works when code doesn't start at 0x80000000
+# Tests that JALR works when code doesn't start at 0x90000000
 #
 # This is mainly testing `jumpt_to_dynamic_pc`; it currently assumes that
-# user code starts from 0x800000000.
+# user code starts from ROM_ADDR (0x90000000).
 
 # Header section - emulating ELF/program headers in first page
 .section .header, "a"
@@ -14,7 +14,7 @@
 .hword 2                       # e_type: EXEC
 .hword 0xf3                    # e_machine: RISC-V
 .word 1                        # e_version
-.quad 0x80001000              # e_entry: entry point
+.quad 0x90001000              # e_entry: entry point
 .quad 0x40                    # e_phoff: program header offset
 .quad 0                       # e_shoff: section header offset
 .word 0                       # e_flags
@@ -29,8 +29,8 @@
 .word 1                       # p_type: PT_LOAD
 .word 5                       # p_flags: PF_R | PF_X
 .quad 0x1000                  # p_offset
-.quad 0x80000000             # p_vaddr
-.quad 0x80000000             # p_paddr
+.quad 0x90000000             # p_vaddr
+.quad 0x90000000             # p_paddr
 .quad 0x2000                  # p_filesz
 .quad 0x2000                  # p_memsz
 .quad 0x1000                  # p_align

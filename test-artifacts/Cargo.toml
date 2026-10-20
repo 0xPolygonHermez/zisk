@@ -28,7 +28,7 @@ all = [
   "bls12_381_complex_add", "bls12_381_complex_mul", "bls12_381_complex_sub",
   "bls12_381_dbl", "bn254", "bn254_add", "bn254_complex_add",
   "bn254_complex_mul", "bn254_complex_sub", "bn254_dbl", "diagnostic",
-  "diagnostic-hints", "ed25519_verify", "fib_mod", "hashes", "keccak", "keccakf_cache", "liveness",
+  "diagnostic-hints", "ed25519_verify", "fib_mod", "hashes", "input_2gb", "keccak", "keccakf_cache", "liveness",
   "missing_entrypoint", "panic_modes", "poseidon1", "poseidon2", "poseidon2_koalabear", "secp256k1",
   "secp256k1_add", "secp256k1_dbl", "secp256r1", "secp256r1_add",
   "secp256r1_dbl", "sha256", "twisted_edwards", "uint256",
@@ -64,6 +64,7 @@ diagnostic-hints = []
 ed25519_verify = []
 fib_mod = []
 hashes = []
+input_2gb = []
 keccak = []
 keccakf_cache = []
 liveness = []

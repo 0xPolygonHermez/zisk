@@ -46,7 +46,7 @@ pub struct InstanceMeta {
 pub enum CountAndPlanHandle {}
 
 // The result structs live with the plain data in mem_witness_types.rs.
-pub use crate::mem_witness_types::{RamFillPrepared, RamFillResult};
+pub use crate::mem_witness_types::{MemFillPrepared, MemFillResult};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default)]
@@ -81,7 +81,7 @@ pub struct StagedRows {
     pub air_id: u32,
     pub segment: u32,
     pub n_rows: u32,
-    pub res: RamFillResult,
+    pub res: MemFillResult,
 }
 impl Default for StagedRows {
     fn default() -> Self {
@@ -92,7 +92,7 @@ impl Default for StagedRows {
             air_id: 0,
             segment: 0,
             n_rows: 0,
-            res: RamFillResult::default(),
+            res: MemFillResult::default(),
         }
     }
 }
@@ -183,7 +183,7 @@ extern "C" {
         n_rom: u32,
         input: *const u32,
         n_input: u32,
-        prepared: *mut RamFillPrepared,
+        prepared: *mut MemFillPrepared,
     ) -> bool;
     /// Marks the arena released and waits for the copies still reading the staged images.
     pub fn count_and_plan_quiesce(h: *mut CountAndPlanHandle);
@@ -215,7 +215,7 @@ extern "C" {
         segment: u32,
         n_rows: u32,
         out_rows: *mut u64,
-        res: *mut RamFillResult,
+        res: *mut MemFillResult,
     ) -> bool;
     pub fn count_and_plan_max_used_bytes(h: *mut CountAndPlanHandle) -> usize;
     pub fn count_and_plan_register_input_pinned(

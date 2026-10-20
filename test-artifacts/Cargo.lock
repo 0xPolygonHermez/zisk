@@ -6424,6 +6424,8 @@ dependencies = [
  "clap",
  "crossbeam-queue",
  "dirs",
+ "getrandom 0.2.17",
+ "hex",
  "num-bigint",
  "paste",
  "proofman",
@@ -6520,7 +6522,6 @@ dependencies = [
  "zisk-pil",
  "zisk-precomp-arith-eq",
  "zisk-precomp-arith-eq-384",
- "zisk-precomp-babyjubjub",
  "zisk-precomp-big-int",
  "zisk-precomp-blake2",
  "zisk-precomp-blake3",
@@ -6531,6 +6532,7 @@ dependencies = [
  "zisk-precomp-keccakf",
  "zisk-precomp-poseidon",
  "zisk-precomp-sha256f",
+ "zisk-precomp-twisted-edwards",
  "zisk-sm-arith",
  "zisk-sm-binary",
  "zisk-sm-main",
@@ -6607,31 +6609,6 @@ dependencies = [
  "proofman-util",
  "rayon",
  "rustfmt-wrapper",
- "tracing",
- "zisk-common",
- "zisk-core",
- "zisk-pil",
- "zisk-precomp-arith-eq",
- "zisk-precomp-common",
- "zisk-precomp-helpers",
-]
-
-[[package]]
-name = "zisk-precomp-babyjubjub"
-version = "1.4.0-alpha"
-dependencies = [
- "ark-bn254",
- "ark-ff 0.5.0",
- "ark-std 0.5.0",
- "lazy_static",
- "num-bigint",
- "num-traits",
- "path-clean",
- "pil2-std-lib",
- "proofman-common",
- "proofman-fields",
- "proofman-util",
- "rayon",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -6816,6 +6793,31 @@ dependencies = [
  "zisk-core",
  "zisk-pil",
  "zisk-precomp-common",
+]
+
+[[package]]
+name = "zisk-precomp-twisted-edwards"
+version = "1.4.0-alpha"
+dependencies = [
+ "ark-bn254",
+ "ark-ff 0.5.0",
+ "ark-std 0.5.0",
+ "lazy_static",
+ "num-bigint",
+ "num-traits",
+ "path-clean",
+ "pil2-std-lib",
+ "proofman-common",
+ "proofman-fields",
+ "proofman-util",
+ "rayon",
+ "tracing",
+ "zisk-common",
+ "zisk-core",
+ "zisk-pil",
+ "zisk-precomp-arith-eq",
+ "zisk-precomp-common",
+ "zisk-precomp-helpers",
 ]
 
 [[package]]
@@ -7139,6 +7141,7 @@ dependencies = [
  "zisk-sm-binary",
  "zisk-sm-mem-common",
  "zisk-transpiler-common",
+ "ziskos",
 ]
 
 [[package]]

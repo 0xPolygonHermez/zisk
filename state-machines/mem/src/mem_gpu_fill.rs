@@ -8,7 +8,7 @@ use crate::mem_sm::{split_last_step, split_padding_size, MemFillOutput, MemPrevi
 /// What a device fill of a Mem instance returned: the planner's scalars and their translation into
 /// the air values' inputs, before the air instance is built.
 pub(crate) struct ArenaFillReport {
-    pub res: zisk_sm_mem_planner::RamFillResult,
+    pub res: zisk_sm_mem_planner::MemFillResult,
     pub previous_segment: MemPreviousSegment,
     pub out: MemFillOutput,
 }
@@ -25,15 +25,38 @@ pub(crate) fn arena_fill_packed_rows(
         rows,
         n_rows as u32,
     )?;
-    let (previous_segment, out) = mem_report(&res, n_rows);
+    let (previous_segment, out) = mem_report(&res, n_rows)?;
     Ok(ArenaFillReport { res, previous_segment, out })
+}
+
+/// The planner's scalars are trusted no further than this: the lanes must fit the instance and
+/// the continuation must precede the last lane, or the air values below would wrap. A result
+/// that fails is an error like any device failure, and the instance takes the CPU witness.
+pub(crate) fn check_scalars(
+    res: &zisk_sm_mem_planner::MemFillResult,
+    num_slots: usize,
+) -> Result<(), String> {
+    if res.n_lanes == 0 || res.n_lanes as usize > num_slots {
+        return Err(format!(
+            "the device reports {} lanes for an instance of {num_slots}",
+            res.n_lanes
+        ));
+    }
+    if res.prev_addr_w > res.last_addr_w {
+        return Err(format!(
+            "the device reports a continuation at word {:#x} past the last lane at {:#x}",
+            res.prev_addr_w, res.last_addr_w
+        ));
+    }
+    Ok(())
 }
 
 /// The scalars a filled Mem instance's air values are built from, out of the planner's result.
 pub(crate) fn mem_report(
-    res: &zisk_sm_mem_planner::RamFillResult,
+    res: &zisk_sm_mem_planner::MemFillResult,
     n_rows: usize,
-) -> (MemPreviousSegment, MemFillOutput) {
+) -> Result<(MemPreviousSegment, MemFillOutput), String> {
+    check_scalars(res, n_rows * zisk_sm_mem_common::mem_lanes_x_row())?;
     let previous_segment =
         MemPreviousSegment { addr: res.prev_addr_w, step: res.prev_step, value: res.prev_value };
     // The padding (`MemPadding` in mem_sm.rs) reads the last word of the region: when there is
@@ -62,7 +85,7 @@ pub(crate) fn mem_report(
         padding_size_chunks,
         padding_size_to_max_chunks,
     };
-    (previous_segment, out)
+    Ok((previous_segment, out))
 }
 
 /// The rows' memory as words, for a packed row type the device writes directly.

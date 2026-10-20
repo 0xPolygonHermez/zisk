@@ -651,7 +651,7 @@ mod tests {
         0x3737373737373737, 0x3838383838383838, 0x3939393939393939, 0x3a3a3a3a3a3a3a3a,
         0x3b3b3b3b3b3b3b3b, 0x3c3c3c3c3c3c3c3c, 0x3d3d3d3d3d3d3d3d, 0x3e3e3e3e3e3e3e3e,
         0xaaf37817a0200000, 0x0000000000000000, 0x0000000000000042,
-        0xc048d16840000000, 0x0000000000000042, 0x8400002840000000,
+        0xc048d16810000000, 0x0000000000000042, 0x8400002810000000,
     ];
     const EXPECT: &[(usize, u32, u32, i64, &str)] = &[
         (1, 0xa0000003, 0x01, -1, "read_1 unaligned"),
@@ -669,8 +669,8 @@ mod tests {
         (2, 0xa0005000, 0x0f, 9, "aligned block write 9 with step payload"),
         (65, 0xa0100000, 0x0f, 63, "value block 63"),
         (3, 0xa0200000, 0x0f, 1, "value block 1"),
-        (2, 0x40000000, 0x28, -1, "free-input read with value"),
-        (1, 0x40000000, 0x28, -1, "free-input read, light"),
+        (2, 0x10000000, 0x28, -1, "free-input read with value"),
+        (1, 0x10000000, 0x28, -1, "free-input read, light"),
     ];
 
     #[test]

@@ -48,12 +48,12 @@ The only memory the program sees change is the result buffer.
 From the program's point of view, the whole sequence is one instruction as long as the sequence itself. In the example above, the three 4-byte `csrs` behave as a single 12-byte instruction, and execution continues at the instruction after the third `csrs`:
 
 ```text
-0x80001000  csrs 0x888, rA   ->  body instruction 1 (at the RISC-V address)
+0x90001000  csrs 0x888, rA   ->  body instruction 1 (at the RISC-V address)
                                  body instructions 2..n at internal addresses,
-                                 the last one jumping to 0x8000100c
-0x80001004  csrs 0x8E0, rB   ->  never executed
-0x80001008  csrs 0x8E1, rR   ->  never executed
-0x8000100c  next instruction <-  execution continues here
+                                 the last one jumping to 0x9000100c
+0x90001004  csrs 0x8E0, rB   ->  never executed
+0x90001008  csrs 0x8E1, rR   ->  never executed
+0x9000100c  next instruction <-  execution continues here
 ```
 
 The transpiler places the body's first ZisK instruction at the address of the first `csrs`. The other body instructions go to internal addresses: odd ROM addresses, which RISC-V code never uses, so they interleave with the program's code without displacing it. The body's exits jump to the address after the last `csrs`. The addresses of the second and later `csrs` are never reached. If the program jumps to one of them, the execution halts with an error.

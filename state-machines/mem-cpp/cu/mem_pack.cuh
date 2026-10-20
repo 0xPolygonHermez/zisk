@@ -1,7 +1,7 @@
 #ifndef MEM_PACK_CUH
 #define MEM_PACK_CUH
 
-// Packing of `Mem` trace rows on the device (ram_fill.cu).
+// Packing of `Mem` trace rows on the device (mem_fill.cu).
 //
 // A packed row is `words_per_row` u64 words holding every column of every lane, in declaration
 // order, at sequential bit offsets. Columns come in 11 groups; every group has one column per lane

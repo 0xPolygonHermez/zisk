@@ -127,11 +127,11 @@ pub struct ZiskRom {
     pub max_float_pc: u64,
 
     /// List of instruction program counter (address) in incremental order:
-    /// 0x1000, 0x1004, ..., 0x80000000, 0x80000004, ...
+    /// 0x1000, 0x1004, ..., 0x90000000, 0x90000004, ...
     pub sorted_pc_list: Vec<u64>,
 
     /// Minimum ROM instruction PC (first program instruction address)
-    /// This is typically 0x80000000 but can be different (e.g., 0x80001000 with Go's internal linker)
+    /// This is typically ROM_ADDR (0x90000000) but can be different (e.g., ROM_ADDR + 0x1000 with Go's internal linker)
     pub min_program_pc: u64, // check usage
 
     /// Used for tracking the instruction creation order in the ROM

@@ -5,6 +5,7 @@ members = [
   "multiple-programs/host",
   "aggregation/host",
   "big-program/host",
+  "input-2gb/host",
   "hints/host",
   "hash/host",
   "hash/guest",
