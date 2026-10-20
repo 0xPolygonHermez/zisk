@@ -142,7 +142,11 @@ impl AsmRunnerMT {
         };
 
         let loop_result: Result<u64> = loop {
-            match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
+            match crate::wait_for_chunk(
+                &mut sem_chunk_done,
+                || handle.is_finished(),
+                SEM_CHUNK_DONE_WAIT_DURATION,
+            ) {
                 Ok(()) => {
                     stats_mark!(_stats, &_runner_scope, "MT_CHUNK_DONE", 0);
 
@@ -185,13 +189,8 @@ impl AsmRunnerMT {
                     }
                     chunk_id.0 += 1;
                 }
-                Err(named_sem::Error::WaitFailed(e))
-                    if e.kind() == std::io::ErrorKind::Interrupted =>
-                {
-                    continue
-                }
-                Err(e) => {
-                    error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
+                Err(stop) => {
+                    error!("MT chunk stream on '{sem_chunk_done_name}' stopped: {stop}");
 
                     signal_runner_failure();
 
@@ -216,6 +215,12 @@ impl AsmRunnerMT {
         let exit_code = loop_result?;
 
         if exit_code != 0 {
+            // A service that died says how in its answer: that is the cause to report.
+            if let Err(e) = handle {
+                return Err(AsmRunError::ServiceError(e)).with_context(|| {
+                    format!("MT stream ended before its last chunk (exit code {exit_code})")
+                });
+            }
             return Err(AsmRunError::ExitCode(exit_code as u32))
                 .context("Child process returned error");
         }
@@ -264,5 +269,150 @@ impl AsmRunnerMT {
 
         stats_end!(_stats, &_runner_scope);
         Ok((emu_traces, asm_execution_info))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AsmRunnerOptions, AsmServices};
+
+    use std::io::Write;
+    use std::path::PathBuf;
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+
+    /// A program whose services are stand-ins: shell scripts that answer pings, run
+    /// `on_minimal_trace` on a minimal-trace request, and exit on anything else. Its
+    /// directory goes when it is dropped.
+    struct FakeProgram {
+        dir: PathBuf,
+    }
+
+    impl FakeProgram {
+        fn new(name: &str, on_minimal_trace: &str) -> Self {
+            let script = format!(
+                r#"#!/bin/sh
+for arg in "$@"; do case "$arg" in --just_create*) exit 0;; esac; done
+while :; do
+  id=$(head -c 40 | od -An -tu8 -N8 | tr -d ' ')
+  [ -n "$id" ] || exit 0
+  case "$id" in
+    1) printf '\002'; head -c 39 /dev/zero ;;
+    3) {on_minimal_trace} ;;
+    *) exit 0 ;;
+  esac
+done
+"#
+            );
+            let dir = std::env::temp_dir()
+                .join(format!("zisk_unittest_mt_runner_{}_{name}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            // Written by a child process, so that no child another test forks meanwhile
+            // inherits a descriptor open for writing on it, which would fail its exec.
+            for service in AsmServices::SERVICES {
+                let path = service.command_path_for(&dir.join("prog").to_string_lossy());
+                let mut writer = Command::new("sh")
+                    .args(["-c", r#"cat > "$0" && chmod 755 "$0""#])
+                    .arg(&path)
+                    .stdin(Stdio::piped())
+                    .spawn()
+                    .unwrap();
+                writer.stdin.take().unwrap().write_all(script.as_bytes()).unwrap();
+                assert!(writer.wait().unwrap().success(), "write {path}");
+            }
+            Self { dir }
+        }
+    }
+
+    impl Drop for FakeProgram {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// Runs a minimal trace of `program` on rank `rank`'s segments, as a job does, and
+    /// returns its error and how long the run took to fail.
+    fn failed_run(program: &FakeProgram, rank: i32) -> (anyhow::Error, Duration) {
+        let (services, _claim) = AsmServices::new(
+            0,
+            rank,
+            "f".repeat(64),
+            &program.dir.join("prog-mt.bin"),
+            false,
+            AsmRunnerOptions::new(),
+        )
+        .expect("the stand-in services start");
+
+        // The output the MT service would write, with no chunk in it. The segments' last
+        // owner, `services`, unlinks it.
+        let size = 1 << 20;
+        let name = shmem_output_name(services.shm_prefix(), AsmService::MT, Some(0));
+        let c = std::ffi::CString::new(name.as_str()).unwrap();
+        unsafe {
+            let fd = libc::shm_open(c.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+            assert!(fd >= 0);
+            assert_eq!(libc::ftruncate(fd, size as libc::off_t), 0);
+            libc::close(fd);
+        }
+        crate::ShmemWriter::new(&name, size, true)
+            .unwrap()
+            .write_u64_at(std::mem::offset_of!(AsmMTHeader, shmem_allocated_size), size as u64)
+            .unwrap();
+        let output = shmem_output_name(services.shm_prefix(), AsmService::MT, None);
+        let mut reader = MTShmemReader {
+            output_shmem: AsmMultiShmem::open_and_map(&output, size, size, size * 4, true, false)
+                .unwrap(),
+        };
+
+        let start = Instant::now();
+        let Err(error) = AsmRunnerMT::run_and_count(
+            &mut reader,
+            1 << 20,
+            1,
+            |_, _, _| Ok(()),
+            || Ok(()),
+            services,
+            ExecutorStatsHandle::new(),
+        ) else {
+            panic!("a run that publishes no chunk must fail");
+        };
+        (error, start.elapsed())
+    }
+
+    /// A run whose emulation faults is answered with a failed result and no last chunk,
+    /// which is what a caught fault does: it fails as soon as it is answered, not after
+    /// the chunk wait's stall limit.
+    #[test]
+    fn a_run_answered_without_its_last_chunk_fails_at_once() {
+        let program = FakeProgram::new(
+            "fault",
+            r"printf '\004'; head -c 7 /dev/zero; printf '\001'; head -c 31 /dev/zero",
+        );
+        let (error, took) = failed_run(&program, 111);
+        assert!(took < SEM_CHUNK_DONE_WAIT_DURATION / 5, "failed after {took:?}: {error:#}");
+        assert!(
+            error
+                .chain()
+                .any(|e| matches!(e.downcast_ref::<AsmRunError>(), Some(AsmRunError::ExitCode(1)))),
+            "{error:#}"
+        );
+    }
+
+    /// A service killed during a run fails it as soon as its pipe says so, and the error
+    /// says it died.
+    #[test]
+    fn a_run_whose_service_dies_fails_at_once_and_says_why() {
+        let program = FakeProgram::new("crash", "kill -KILL $$");
+        let (error, took) = failed_run(&program, 112);
+        assert!(took < SEM_CHUNK_DONE_WAIT_DURATION / 5, "failed after {took:?}: {error:#}");
+        assert!(
+            error.chain().any(|e| matches!(
+                e.downcast_ref::<AsmRunError>(),
+                Some(AsmRunError::ServiceDied { .. })
+            )),
+            "{error:#}"
+        );
     }
 }
