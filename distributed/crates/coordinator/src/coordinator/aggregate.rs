@@ -190,7 +190,21 @@ impl Coordinator {
             ]),
             steps: job.executed_steps,
             instances: job.instances,
+            costs: Some(super::cost_per_type_from_job(&job)),
         });
+        for (label, phase) in [("1", JobPhase::Contributions), ("2", JobPhase::Prove)] {
+            if let (Some(results), Some(start)) =
+                (job.results.get(&phase), job.phase_start_time(&phase))
+            {
+                let durations: Vec<(WorkerId, f64)> = results
+                    .iter()
+                    .map(|(worker_id, result)| {
+                        (worker_id.clone(), (result.end_time - start).as_seconds_f64())
+                    })
+                    .collect();
+                crate::metrics::record_proof_worker_phases(label, &durations);
+            }
+        }
 
         let header = format!("[Job] Finished {} successfully ✔", job_id).green();
         let duration_str = format!("Duration: {:.3}s", duration.as_secs_f32()).bold();

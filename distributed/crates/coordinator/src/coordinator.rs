@@ -401,6 +401,7 @@ impl Coordinator {
             phases: None,
             steps: outcome.executed_steps,
             instances: None,
+            costs: None,
         });
         info!("Cancelled job {}", job_id);
 
@@ -1476,6 +1477,7 @@ impl Coordinator {
             phases: None,
             steps: outcome.executed_steps,
             instances: None,
+            costs: None,
         });
         error!("Failed job {} (reason: {})", job_id, reason);
 

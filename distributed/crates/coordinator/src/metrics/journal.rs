@@ -87,6 +87,9 @@ struct State {
     proof_seconds: BTreeMap<&'static str, TimedSeries>,
     /// Each failed or cancelled job's time from its start to its end, by outcome.
     unsuccessful_seconds: BTreeMap<&'static str, TimedSeries>,
+    /// Each warm proof's input size and steps, at the same time as its `proof_seconds`.
+    proof_input_bytes: TimedSeries,
+    proof_steps: TimedSeries,
     /// Instances per AIR in the last execution summary.
     air_instances: Vec<(String, u64)>,
     /// A worker registered since the last successful proof.
@@ -125,6 +128,7 @@ struct JobRecord {
     steps: Option<u64>,
     instances: Option<u64>,
     mhz: Option<f64>,
+    input_bytes: Option<u64>,
 }
 
 struct EventRecord {
@@ -265,6 +269,12 @@ impl Journal {
                     state.proof_seconds.entry(phase).or_default().push(value, now);
                 }
                 state.proof_seconds.entry("total").or_default().push(total, now);
+                if let Some(bytes) = running.as_ref().and_then(|r| r.input_bytes) {
+                    state.proof_input_bytes.push(bytes as f64, now);
+                }
+                if let Some(steps) = ended.steps {
+                    state.proof_steps.push(steps as f64, now);
+                }
             }
         } else if let Some(d) = duration {
             state.unsuccessful_seconds.entry(ended.outcome).or_default().push(d, now);
@@ -283,6 +293,7 @@ impl Journal {
                 steps: ended.steps,
                 instances: ended.instances,
                 mhz,
+                input_bytes: running.as_ref().and_then(|r| r.input_bytes),
             },
         );
 
@@ -392,6 +403,7 @@ impl Journal {
             let steps = j.steps.map(|s| s.to_string()).unwrap_or_default();
             let instances = j.instances.map(|i| i.to_string()).unwrap_or_default();
             let mhz = j.mhz.map(|m| format!("{m:.1}")).unwrap_or_default();
+            let input = j.input_bytes.map(|b| b.to_string()).unwrap_or_default();
             sample(
                 out,
                 "coordinator_recent_job",
@@ -405,6 +417,7 @@ impl Journal {
                     ("steps", &steps),
                     ("instances", &instances),
                     ("mhz", &mhz),
+                    ("input_bytes", &input),
                 ],
                 j.at.timestamp_millis() as f64,
                 None,
@@ -484,6 +497,24 @@ impl Journal {
                     Some(at),
                 );
             }
+        }
+
+        family(
+            out,
+            "coordinator_proof_input_bytes",
+            "Each proof's input size, at the time it ended (as coordinator_proof_seconds)",
+        );
+        if let Some((value, at)) = state.proof_input_bytes.next(now) {
+            sample(out, "coordinator_proof_input_bytes", &[], value, Some(at));
+        }
+
+        family(
+            out,
+            "coordinator_proof_steps",
+            "Each proof's steps, at the time it ended (as coordinator_proof_seconds)",
+        );
+        if let Some((value, at)) = state.proof_steps.next(now) {
+            sample(out, "coordinator_proof_steps", &[], value, Some(at));
         }
     }
 }
@@ -641,6 +672,7 @@ mod tests {
         let journal = Journal::default();
         let job = JobId::new();
         journal.job_started(&job, "prove", 1);
+        journal.job_input(&job, 712_000);
         journal.job_ended(&JobEnded {
             phases: Some([1.0, 2.0, 0.5]),
             steps: Some(350_000_000),
@@ -658,6 +690,7 @@ mod tests {
             r#"instances="57""#,
             r#"mhz="100.0""#,
             r#"duration_seconds="3.500""#,
+            r#"input_bytes="712000""#,
         ] {
             assert!(recent[0].contains(label), "{label} missing in {}", recent[0]);
         }
@@ -674,6 +707,16 @@ mod tests {
         assert!(proof
             .iter()
             .any(|s| s.starts_with(r#"coordinator_proof_seconds{phase="total"} 3.5 "#)));
+
+        // Its input size and steps, at the same time as its total.
+        let at = |line: &str| line.rsplit(' ').next().map(str::to_owned);
+        let total = proof.iter().find(|s| s.contains(r#"phase="total""#)).copied().unwrap();
+        let input = samples(&body, "coordinator_proof_input_bytes");
+        let steps = samples(&body, "coordinator_proof_steps");
+        assert!(input.len() == 1 && input[0].starts_with("coordinator_proof_input_bytes 712000 "));
+        assert!(steps.len() == 1 && steps[0].starts_with("coordinator_proof_steps 350000000 "));
+        assert_eq!(at(input[0]), at(total));
+        assert_eq!(at(steps[0]), at(total));
     }
 
     #[test]

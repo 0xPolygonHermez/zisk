@@ -13,7 +13,7 @@ use std::sync::LazyLock;
 
 use chrono::{DateTime, Utc};
 use zisk_cluster_common::{JobId, WorkerId, WorkerState};
-use zisk_common::AsmExecutionInfo;
+use zisk_common::{StatsCostPerType, ZiskExecutorTime};
 
 pub(crate) use journal::{
     gauge_family, gauge_sample, JobEnded, Journal, PHASE_AGGREGATION, PHASE_CONTRIBUTIONS,
@@ -80,14 +80,24 @@ pub(crate) fn record_job_input(job_id: &JobId, bytes: u64) {
     journal().job_input(job_id, bytes);
 }
 
+/// What a worker reported about running a job's guest.
+pub(crate) struct WorkerExecution<'a> {
+    /// The executor's own timing, in milliseconds, and the assembly execution's.
+    pub executor: &'a ZiskExecutorTime,
+    /// The witness computation, for a proof's phase 1.
+    pub witness_seconds: Option<f64>,
+    /// From the coordinator starting the phase to the worker receiving the task.
+    pub dispatch_delay: Option<f64>,
+}
+
 /// A worker finished running a job's guest: phase 1 of a proof, or an execute-only job.
 pub(crate) fn record_worker_execution(
     job_id: &JobId,
     kind: &'static str,
-    asm: Option<&AsmExecutionInfo>,
-    witness_seconds: Option<f64>,
+    report: WorkerExecution<'_>,
 ) {
-    if let Some(asm) = asm {
+    let executor = report.executor;
+    if let Some(asm) = &executor.asm_execution_duration {
         let (time, mhz) = (f64::from(asm.time), f64::from(asm.mhz));
         metrics::gauge!("coordinator_last_asm_seconds", "kind" => kind).set(time);
         metrics::gauge!("coordinator_last_asm_mhz", "kind" => kind).set(mhz);
@@ -96,8 +106,39 @@ pub(crate) fn record_worker_execution(
             journal().job_steps_estimate(job_id, steps as u64);
         }
     }
-    if let Some(seconds) = witness_seconds {
+    for (part, ms) in [
+        ("total", executor.total_duration),
+        ("execution", executor.execution_duration),
+        ("count_and_plan", executor.count_and_plan_duration),
+        ("count_and_plan_mo", executor.count_and_plan_mo_duration),
+    ] {
+        metrics::gauge!("coordinator_last_executor_seconds", "kind" => kind, "part" => part)
+            .set(ms as f64 / 1000.0);
+    }
+    if let Some(seconds) = report.witness_seconds {
         metrics::gauge!("coordinator_last_witness_seconds", "kind" => kind).set(seconds);
+    }
+    if let Some(seconds) = report.dispatch_delay {
+        metrics::histogram!("coordinator_dispatch_delay_seconds", "kind" => kind).record(seconds);
+        metrics::gauge!("coordinator_last_dispatch_delay_seconds", "kind" => kind).set(seconds);
+    }
+}
+
+/// How long each worker took over phase `phase` ("1" contributions, "2" prove) of the proof
+/// that just succeeded, from the phase's start to its result.
+pub(crate) fn record_proof_worker_phases(phase: &'static str, durations: &[(WorkerId, f64)]) {
+    for (worker_id, seconds) in durations {
+        metrics::gauge!(
+            "coordinator_last_proof_worker_phase_seconds",
+            "phase" => phase, "worker_id" => worker_id.as_str().to_owned()
+        )
+        .set(*seconds);
+    }
+    if durations.len() > 1 {
+        let slowest = durations.iter().map(|(_, s)| *s).fold(f64::MIN, f64::max);
+        let fastest = durations.iter().map(|(_, s)| *s).fold(f64::MAX, f64::min);
+        metrics::histogram!("coordinator_proof_worker_spread_seconds", "phase" => phase)
+            .record(slowest - fastest);
     }
 }
 
@@ -123,6 +164,8 @@ pub(crate) struct JobOutcome<'a> {
     pub phases: Option<[f64; 3]>,
     pub steps: Option<u64>,
     pub instances: Option<u64>,
+    /// The execution's cost per type, for a job that ran a guest.
+    pub costs: Option<StatsCostPerType>,
 }
 
 /// Record metrics for a job that has reached a terminal state.
@@ -200,6 +243,21 @@ pub(crate) fn record_job_terminal(o: JobOutcome<'_>) {
             } else {
                 0.0
             });
+        }
+        if let Some(costs) = &o.costs {
+            for (cost_type, cost) in [
+                ("main", costs.main_cost),
+                ("opcode", costs.opcode_cost),
+                ("memory", costs.memory_cost),
+                ("precompile", costs.precompile_cost),
+                ("tables", costs.tables_cost),
+                ("other", costs.other_cost),
+            ] {
+                metrics::counter!("coordinator_job_cost_total", "kind" => kind, "type" => cost_type)
+                    .increment(cost);
+                metrics::gauge!("coordinator_last_job_cost", "kind" => kind, "type" => cost_type)
+                    .set(cost as f64);
+            }
         }
     }
 

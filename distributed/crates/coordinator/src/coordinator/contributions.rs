@@ -662,6 +662,7 @@ impl Coordinator {
             phases: None,
             steps: job.executed_steps,
             instances: job.instances,
+            costs: Some(super::cost_per_type_from_job(&job)),
         });
 
         // Release job lock before cleanup
@@ -968,8 +969,15 @@ impl Coordinator {
                     crate::metrics::record_worker_execution(
                         &job.job_id,
                         crate::metrics::KIND_PROVE,
-                        contributions_result.zisk_executor_time.asm_execution_duration.as_ref(),
-                        Some(f64::from(contributions_result.witness_info.witness_time) / 1000.0),
+                        crate::metrics::WorkerExecution {
+                            executor: &contributions_result.zisk_executor_time,
+                            witness_seconds: Some(
+                                f64::from(contributions_result.witness_info.witness_time) / 1000.0,
+                            ),
+                            dispatch_delay: contributions_result.task_received_time.map(
+                                |received| (received - phase_start_time).as_seconds_f64().max(0.0),
+                            ),
+                        },
                     );
 
                     (asm_str, witness_str, delay_str)
@@ -1045,8 +1053,13 @@ impl Coordinator {
                     crate::metrics::record_worker_execution(
                         &job.job_id,
                         crate::metrics::KIND_EXECUTE,
-                        execution_result.zisk_executor_time.asm_execution_duration.as_ref(),
-                        None,
+                        crate::metrics::WorkerExecution {
+                            executor: &execution_result.zisk_executor_time,
+                            witness_seconds: None,
+                            dispatch_delay: execution_result.task_received_time.map(|received| {
+                                (received - phase_start_time).as_seconds_f64().max(0.0)
+                            }),
+                        },
                     );
 
                     (asm_str, delay_str)

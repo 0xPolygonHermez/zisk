@@ -139,6 +139,7 @@ impl Coordinator {
             phases: None,
             steps: None,
             instances: None,
+            costs: None,
         });
 
         tracing::info!("[Wrap] Job {} completed successfully", job_id);

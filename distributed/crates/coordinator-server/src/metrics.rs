@@ -21,6 +21,13 @@
 //! | `coordinator_last_proof_phase_seconds` | Gauge | `phase` | The last proof's duration per phase |
 //! | `coordinator_last_asm_seconds`, `coordinator_last_asm_mhz` | Gauge | `kind` | The last worker's assembly execution |
 //! | `coordinator_last_witness_seconds` | Gauge | `kind` | The last worker's witness computation |
+//! | `coordinator_last_executor_seconds` | Gauge | `kind`, `part` | The last worker's executor: `total`, `execution`, `count_and_plan`, `count_and_plan_mo` |
+//! | `coordinator_dispatch_delay_seconds` | Histogram | `kind` | From starting a phase to a worker receiving its task |
+//! | `coordinator_last_dispatch_delay_seconds` | Gauge | `kind` | The last of those |
+//! | `coordinator_last_proof_worker_phase_seconds` | Gauge | `phase`, `worker_id` | Each worker's time over phases 1 and 2 of the last proof |
+//! | `coordinator_proof_worker_spread_seconds` | Histogram | `phase` | Slowest minus fastest worker over phases 1 and 2, for proofs on several workers |
+//! | `coordinator_job_cost_total` | Counter | `kind`, `type` | Cost of the jobs that succeeded, by type (main, opcode, memory, precompile, tables, other) |
+//! | `coordinator_last_job_cost` | Gauge | `kind`, `type` | The last successful job's cost, by type |
 //! | `coordinator_setups_total` | Counter | `outcome` | Program setups the workers acknowledged |
 //! | `coordinator_worker_registrations_total` | Counter | `reconnect` | Worker registrations |
 //! | `coordinator_worker_disconnects_total` | Counter | — | Worker disconnections |
@@ -39,11 +46,12 @@
 //! | `coordinator_program_registered_timestamp_seconds` | Gauge | `hash_id`, `bytes` | When each program was registered |
 //! | `coordinator_last_execution_air_instances` | Gauge | `air` | Instances per AIR in the last execution |
 //! | `coordinator_job_now_seconds` | Gauge | `job_id`, `kind`, `status`, `phase`, `workers`, `mhz`, `ended_at` | The jobs in flight, or the one that just ended |
-//! | `coordinator_recent_job` | Gauge | `job_id`, `kind`, `outcome`, `finished`, `duration_seconds`, `phases`, `steps`, `instances`, `mhz` | The last jobs, valued at their end time |
+//! | `coordinator_recent_job` | Gauge | `job_id`, `kind`, `outcome`, `finished`, `duration_seconds`, `phases`, `steps`, `instances`, `mhz`, `input_bytes` | The last jobs, valued at their end time |
 //! | `coordinator_recent_event` | Gauge | `seq`, `at`, `kind`, `detail` | The last events, valued at their time |
 //! | `coordinator_job_failure_info` | Gauge | `seq`, `at`, `job_id`, `reason`, `cause`, `input_bytes`, `steps` | The last failures, valued at their time |
 //! | `coordinator_proof_seconds` | Gauge, timestamped | `phase` | Each proof's phases and total, at the time it ended |
 //! | `coordinator_job_unsuccessful_seconds` | Gauge, timestamped | `outcome` | Each failed or cancelled job's duration, at the time it ended |
+//! | `coordinator_proof_input_bytes`, `coordinator_proof_steps` | Gauge, timestamped | — | Each proof's input size and steps, at the same time as its `coordinator_proof_seconds` |
 //! | `process_resident_memory_bytes`, `process_cpu_seconds_total`, `process_start_time_seconds` | — | — | This process |
 //!
 //! The timestamped series take their next queued sample on each scrape: point a single
@@ -83,6 +91,12 @@ pub fn install_prometheus() -> Result<()> {
     // A healthy recovery is sub-second; a stuck one runs to the recovery timeout.
     const RECOVERY_BUCKETS: &[f64] =
         &[0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0];
+    // A task reaches its worker in milliseconds unless the worker is busy elsewhere.
+    const DISPATCH_BUCKETS: &[f64] =
+        &[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0];
+    // Workers of one proof finish a phase within a fraction of it of each other.
+    const SPREAD_BUCKETS: &[f64] =
+        &[0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0];
 
     let handle = PrometheusBuilder::new()
         .set_buckets_for_metric(
@@ -96,6 +110,14 @@ pub fn install_prometheus() -> Result<()> {
         .set_buckets_for_metric(
             Matcher::Full("coordinator_worker_recovery_seconds".to_owned()),
             RECOVERY_BUCKETS,
+        )?
+        .set_buckets_for_metric(
+            Matcher::Full("coordinator_dispatch_delay_seconds".to_owned()),
+            DISPATCH_BUCKETS,
+        )?
+        .set_buckets_for_metric(
+            Matcher::Full("coordinator_proof_worker_spread_seconds".to_owned()),
+            SPREAD_BUCKETS,
         )?
         .install_recorder()?;
     PROMETHEUS_HANDLE.set(handle).ok(); // ignore if already set (e.g. in tests)
@@ -187,6 +209,36 @@ fn register_descriptions() {
     metrics::describe_gauge!(
         "coordinator_last_witness_seconds",
         "The last worker-reported witness computation time"
+    );
+    metrics::describe_gauge!(
+        "coordinator_last_executor_seconds",
+        "The last worker-reported executor time, by part (total, execution, count_and_plan, \
+         count_and_plan_mo)"
+    );
+    metrics::describe_histogram!(
+        "coordinator_dispatch_delay_seconds",
+        "From the coordinator starting a phase to a worker receiving its task, in seconds"
+    );
+    metrics::describe_gauge!(
+        "coordinator_last_dispatch_delay_seconds",
+        "The last delay from starting a phase to a worker receiving its task"
+    );
+    metrics::describe_gauge!(
+        "coordinator_last_proof_worker_phase_seconds",
+        "Each worker's time over phases 1 (contributions) and 2 (prove) of the last proof"
+    );
+    metrics::describe_histogram!(
+        "coordinator_proof_worker_spread_seconds",
+        "The slowest minus the fastest worker's time over phases 1 and 2, for proofs on \
+         several workers"
+    );
+    metrics::describe_counter!(
+        "coordinator_job_cost_total",
+        "Cost of the jobs that succeeded, by type (main, opcode, memory, precompile, tables, other)"
+    );
+    metrics::describe_gauge!(
+        "coordinator_last_job_cost",
+        "The last successful job's cost, by type"
     );
     metrics::describe_counter!(
         "coordinator_setups_total",
