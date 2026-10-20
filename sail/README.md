@@ -1431,7 +1431,12 @@ from the bus (`MemBusWorld.seg`). And a load or store tuple a prover sends
 with a positive count is a RAM lane's access or dual read, or an InputData
 row (`MemBusWorld.who`): Main proves only register tuples, the padding counts
 non-positively — a sender's integer count being unique (`MemBusWorld.z_eq`) —
-and the rest send none.
+and the rest send none. Taken in the order `S.mem` lists them, the segments make
+one log (`MemBusWorld.segs`), and every lane's reads and writes are its
+(`emit_mem`); so a load Main assumes is a read of that log, its bus address
+`8·addr`, its step and value the read's, or an InputData row
+(`MemBusWorld.load_read`), and a store Main assumes is a write of it
+(`MemBusWorld.store_write`).
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'
