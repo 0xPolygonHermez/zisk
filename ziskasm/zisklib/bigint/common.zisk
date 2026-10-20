@@ -165,20 +165,19 @@ bi_eq_same:
 
 ; u64 zisklib_bi_iszero(const u64* a, u64 nwords) -> r10 (1 if all zero)
 zisklib_bi_iszero:
-	copyb(0, 0) -> r6
-	copyb(0, 0) -> r7
+	sll(r11, 3) -> r7
+	add(r10, r7) -> r7                  ; end
+	eq(r10, r7), j(bi_iz_zero)
 bi_iz_loop:
-	eq(r7, r11), j(bi_iz_done)
 	copyb(r10, 8[a + 0]) -> r5
-	or(r6, r5) -> r6
+	ltu(0, r5), j(bi_iz_nz)             ; a nonzero word: done
 	add(r10, 8) -> r10
-	add(r7, 1) -> r7
-	jump(bi_iz_loop)
-bi_iz_done:
+	ltu(r10, r7), j(bi_iz_loop)
+bi_iz_zero:
 	copyb(0, 1) -> r10
-	eq(r6, 0), j(bi_iz_ret)
+	ret
+bi_iz_nz:
 	copyb(0, 0) -> r10
-bi_iz_ret:
 	ret
 
 u64 BI_DP_EXP[1] = 0

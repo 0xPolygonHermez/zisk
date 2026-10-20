@@ -126,15 +126,20 @@ zmm_ldl:
 	sub(r30, r6) -> r30
 	copyb(0, r6) -> [ZME_DMA_COUNT]
 	dma_memcpy(r30, r5) -> r0
-	add(r29, ZMM_BUFL - 8) -> r30      ; the last big-endian word
-	srl(r29, 3) -> r31
+	add(r29, ZMM_BUFL - 32) -> r30     ; the last big-endian digit
+	add(r7, r29) -> r31                 ; the end of dst
 zmm_ldl_w:
-	rev8(r30, 8[a + 0])
+	rev8(r30, 8[a + 24])
 	copyb(r7, c) -> 8[a + 0]
-	sub(r30, 8) -> r30
-	add(r7, 8) -> r7
-	sub(r31, 1) -> r31
-	ltu(0, r31), j(zmm_ldl_w)
+	rev8(r30, 8[a + 16])
+	copyb(r7, c) -> 8[a + 8]
+	rev8(r30, 8[a + 8])
+	copyb(r7, c) -> 8[a + 16]
+	rev8(r30, 8[a + 0])
+	copyb(r7, c) -> 8[a + 24]
+	sub(r30, 32) -> r30
+	add(r7, 32) -> r7
+	ltu(r7, r31), j(zmm_ldl_w)
 	ret
 
 ; zmm_mul: [r10 = &Y[idx0]] X = X * Y * R^-1 mod M (Y may be X).
@@ -262,15 +267,24 @@ zms_noset:
 	dma_xmemcpy(ZMM_M0, r5) -> r0, j(32, 4)
 	add(r6, ZMM_NM) -> r7
 	copyb(0, r34) -> r29
-	sll(r29, 2) -> r29                  ; limbs
+	sll(r29, 5) -> r29
+	add(r5, r29) -> r29                 ; the end of M
 zmm_nm:
 	copyb(r5, 8[a + 0])
 	xor(c, 0xffffffffffffffff)
 	copyb(r7, c) -> 8[a + 0]
-	add(r5, 8) -> r5
-	add(r7, 8) -> r7
-	sub(r29, 1) -> r29
-	ltu(0, r29), j(zmm_nm)
+	copyb(r5, 8[a + 8])
+	xor(c, 0xffffffffffffffff)
+	copyb(r7, c) -> 8[a + 8]
+	copyb(r5, 8[a + 16])
+	xor(c, 0xffffffffffffffff)
+	copyb(r7, c) -> 8[a + 16]
+	copyb(r5, 8[a + 24])
+	xor(c, 0xffffffffffffffff)
+	copyb(r7, c) -> 8[a + 24]
+	add(r5, 32) -> r5
+	add(r7, 32) -> r7
+	ltu(r5, r29), j(zmm_nm)
 	; --- np = -M^-1 mod 2^256: Newton from inv = M0 (right mod 8), 7 doublings ---
 	dma_xmemcpy(ZMM_INV, ZMM_M0) -> r0, j(32, 4)""")
     for _ in range(7):
@@ -414,16 +428,21 @@ zmm_out:
 zmm_outp:
 	; --- X (k digits, < M) as mod_len big-endian bytes ---
 	copyb(0, r39) -> r29
-	add(r29, ZMM_BUFL - 8) -> r30      ; the last big-endian word
-	srl(r29, 3) -> r31
+	add(r29, ZMM_BUFL - 32) -> r30     ; the last big-endian digit
 	copyb(0, r38) -> r7
+	add(r7, r29) -> r31                 ; the end of X
 zmm_st:
 	rev8(r7, 8[a + 0])
+	copyb(r30, c) -> 8[a + 24]
+	rev8(r7, 8[a + 8])
+	copyb(r30, c) -> 8[a + 16]
+	rev8(r7, 8[a + 16])
+	copyb(r30, c) -> 8[a + 8]
+	rev8(r7, 8[a + 24])
 	copyb(r30, c) -> 8[a + 0]
-	add(r7, 8) -> r7
-	sub(r30, 8) -> r30
-	sub(r31, 1) -> r31
-	ltu(0, r31), j(zmm_st)
+	add(r7, 32) -> r7
+	sub(r30, 32) -> r30
+	ltu(r7, r31), j(zmm_st)
 	copyb(0, [ZMM_A_OUT]) -> r16
 	copyb(0, [ZMM_A_MLEN]) -> r15
 	ltu(r15, r29), j(zmm_narrow)
