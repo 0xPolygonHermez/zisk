@@ -116,11 +116,11 @@
   {
    "type": "stat",
    "title": "Data sources",
-   "description": "The coordinator feeds almost all of this dashboard: if it is DOWN, empty panels do not mean idle",
+   "description": "The coordinator feeds almost all of this dashboard: if it is DOWN, empty panels do not mean idle. Host metrics (node_exporter) and GPU metrics (nvidia_gpu_exporter) feed the host rows, on every selected host: DOWN when any host's is (the Host and GPUs dashboards show each host)",
    "targets": [
     {
      "refId": "A",
-     "expr": "up{job=\"zisk-coordinator\",cluster=~\"$cluster\"}",
+     "expr": "min(up{job=\"zisk-coordinator\",cluster=~\"$cluster\"})",
      "legendFormat": "coordinator",
      "datasource": {
       "type": "prometheus",
@@ -131,8 +131,8 @@
     },
     {
      "refId": "B",
-     "expr": "up{job=\"node\",host=~\"$host\"}",
-     "legendFormat": "host {{host}}",
+     "expr": "min(up{job=\"node\",host=~\"$host\"})",
+     "legendFormat": "host metrics",
      "datasource": {
       "type": "prometheus",
       "uid": "prometheus"
@@ -142,8 +142,8 @@
     },
     {
      "refId": "C",
-     "expr": "up{job=\"nvidia_gpu_exporter\",host=~\"$host\"}",
-     "legendFormat": "GPUs {{host}}",
+     "expr": "min(up{job=\"nvidia_gpu_exporter\",host=~\"$host\"})",
+     "legendFormat": "GPU metrics",
      "datasource": {
       "type": "prometheus",
       "uid": "prometheus"

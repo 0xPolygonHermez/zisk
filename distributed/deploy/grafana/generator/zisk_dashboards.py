@@ -475,9 +475,12 @@ def live():
     p["fieldConfig"]["defaults"]["noValue"] = "none"
     p["options"]["graphMode"] = "none"
     l.add(p, 4, 5)
-    p = stat("Data sources", [(f"up{{{C}}}", "coordinator"), (f'up{{job="node",{H}}}', "host {{host}}"),
-                              (f'up{{job="nvidia_gpu_exporter",{H}}}', "GPUs {{host}}")],
-             desc="The coordinator feeds almost all of this dashboard: if it is DOWN, empty panels do not mean idle")
+    # One box per exporter, whatever the number of hosts: DOWN when any selected host's is.
+    p = stat("Data sources", [(f"min(up{{{C}}})", "coordinator"), (f'min(up{{job="node",{H}}})', "host metrics"),
+                              (f'min(up{{job="nvidia_gpu_exporter",{H}}})', "GPU metrics")],
+             desc="The coordinator feeds almost all of this dashboard: if it is DOWN, empty panels do not mean "
+                  "idle. Host metrics (node_exporter) and GPU metrics (nvidia_gpu_exporter) feed the host rows, "
+                  "on every selected host: DOWN when any host's is (the Host and GPUs dashboards show each host)")
     p["fieldConfig"]["defaults"]["mappings"] = [{"type": "value", "options": {"1": {"text": "UP", "color": "green"},
                                                                             "0": {"text": "DOWN", "color": "red"}}}]
     p["fieldConfig"]["defaults"]["noValue"] = "DOWN"
