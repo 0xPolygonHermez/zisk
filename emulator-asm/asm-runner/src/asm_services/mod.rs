@@ -35,11 +35,13 @@
 //!
 //! # Failures
 //!
-//! A service that can serve no more requests is not restarted: one whose process exits, one that
-//! answers out of turn, or one a panic left in an unknown state, which are then stopped. The first
-//! request to find it so reports why, and every later one fails with
-//! [`AsmRunError::ServiceDied`](crate::AsmRunError), as does activating its program. A program's
-//! services are stopped whenever its handle goes, even by a panic.
+//! A service can serve no more requests once its process exits, or once it answers out of turn
+//! or a panic leaves it in an unknown state, which stop it. The first request to find it so
+//! reports why, and every later one fails with [`AsmRunError::ServiceDied`](crate::AsmRunError),
+//! so the job running then fails. Its program's next activation, which every job begins with,
+//! starts it again: with the segments claimed and the active program quiesced, as for starting a
+//! program, and then binding the writers and resetting the guest memory, as for a switch. A
+//! program's services are stopped whenever its handle goes, even by a panic.
 //!
 //! # Cached binaries
 //!
