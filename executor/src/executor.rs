@@ -400,15 +400,20 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let stdin = self.state.get_stdin();
         let seed = self.state.get_random_seed()?;
         tracing::info!("Random seed: {seed}");
+        // The ROM-histogram runner is what asks the assembly child for a histogram,
+        // so not spawning it leaves that child idle. Skipped without a witness:
+        // there is no ROM state machine to read one, and the standalone path would
+        // pay for a full histogram pass only to drop the result.
+        let has_rom_sm = self.witness.is_some() && registry.is_first_process();
+        // An idle RH never reads hints, so it must not hold back the hints flow control
+        if let Some(asm) = self.asm_emulator() {
+            asm.set_active_services(has_rom_sm)?;
+        }
         let output = self.execution.run::<F>(
             &zisk_rom,
             &stdin,
             &seed,
-            // The ROM-histogram runner is what asks the assembly child for a histogram,
-            // so not spawning it leaves that child idle. Skipped without a witness:
-            // there is no ROM state machine to read one, and the standalone path would
-            // pay for a full histogram pass only to drop the result.
-            self.witness.is_some() && registry.is_first_process(),
+            has_rom_sm,
             self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
             &self.state.stats,
             &_exec_scope,
