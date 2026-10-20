@@ -778,3 +778,67 @@ fn pilfflonk_vkey_path(proving_key_snark: &std::path::Path) -> Result<PathBuf> {
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::pilfflonk_vkey_path;
+    use std::path::{Path, PathBuf};
+
+    /// A `provingKeySnark/` in a fresh directory, removed on drop.
+    struct SnarkKeyDir(PathBuf);
+
+    impl SnarkKeyDir {
+        fn new(tag: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "pilfflonk_vkey_{tag}_{}_{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+
+        fn add_vkey(&self, name: &str) {
+            let dir = self.0.join("final").join("provingKey").join(name).join("pilfflonk");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("pilfflonk.vkey.json"), "{}").unwrap();
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for SnarkKeyDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn the_pilfflonk_vkey_is_the_one_under_the_setups_name() {
+        let key = SnarkKeyDir::new("one");
+        key.add_vkey("zisk");
+        let path = pilfflonk_vkey_path(key.path()).unwrap();
+        assert!(path.ends_with("final/provingKey/zisk/pilfflonk/pilfflonk.vkey.json"), "{path:?}");
+    }
+
+    #[test]
+    fn a_plonk_key_has_no_pilfflonk_vkey() {
+        let key = SnarkKeyDir::new("none");
+        std::fs::create_dir_all(key.path().join("final")).unwrap();
+        std::fs::write(key.path().join("final").join("final.zkey"), "").unwrap();
+        assert!(pilfflonk_vkey_path(key.path()).is_err());
+    }
+
+    /// Two names would mean two setups in one key, and picking one would verify against the wrong vkey.
+    #[test]
+    fn two_pilfflonk_vkeys_are_refused() {
+        let key = SnarkKeyDir::new("two");
+        key.add_vkey("zisk");
+        key.add_vkey("other");
+        let err = pilfflonk_vkey_path(key.path()).unwrap_err().to_string();
+        assert!(err.contains("found 2"), "{err}");
+    }
+}
