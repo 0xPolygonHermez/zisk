@@ -27,6 +27,15 @@ pub(crate) struct ZiskProofmanSetupSnark {
     #[arg(long)]
     only_recursive_final: bool,
 
+    /// pilfflonk: the extra scalar multiplications of its grouping, instead of the wrap family's
+    #[arg(long)]
+    extra_muls: Option<u64>,
+
+    /// CUDA arch spec of the Q kernels (.exps.so), pilfflonk's wrap's and a blake3 key's recursivef's
+    /// when setup-snark sets it up: auto | major | "89,120" | sm_120. No kernel without nvcc.
+    #[arg(long, default_value = "auto")]
+    exps_arch: String,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -42,6 +51,8 @@ impl ZiskProofmanSetupSnark {
             final_snark: self.final_snark.clone(),
             publics_info: self.publics_info.clone(),
             only_recursive_final: self.only_recursive_final,
+            extra_muls: self.extra_muls,
+            exps_arch: self.exps_arch.clone(),
             contract_version: Some(format!("v{}", env!("CARGO_PKG_VERSION"))),
         };
         run_setup_snark(&opts)
