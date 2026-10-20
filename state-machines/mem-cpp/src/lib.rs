@@ -13,6 +13,8 @@ mod gpu_bindings;
 mod gpu_count_and_plan;
 #[cfg(gpu)]
 mod gpu_mem_witness;
+#[cfg(all(test, gpu))]
+mod plan_edge_tests;
 #[cfg(not(gpu))]
 mod gpu_mem_witness_stub;
 
