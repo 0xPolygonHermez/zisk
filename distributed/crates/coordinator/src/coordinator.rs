@@ -961,6 +961,10 @@ impl Coordinator {
         request: LaunchProofRequestDto,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
         let seed = self.resolve_random_seed(request.random_seed)?;
+        // A worker holds only the programs set up on it: sent any other, it fails the task.
+        if !self.is_set_up(&request.hash_id).await {
+            return Err(CoordinatorError::ProgramNotSetup(request.hash_id.clone()));
+        }
         let (requested, minimum) = self.resolve_capacity(&request).await?;
 
         // Generate job_id up-front so we can atomically reserve workers
@@ -1054,6 +1058,12 @@ impl Coordinator {
         info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
 
         Ok(LaunchProofResponseDto { job_id })
+    }
+
+    /// Whether `hash_id` is set up on the workers, in any mode: what a worker checks before it
+    /// runs one of its tasks.
+    async fn is_set_up(&self, hash_id: &str) -> bool {
+        self.active_setups.read().await.keys().any(|key| key.hash_id == hash_id)
     }
 
     /// Resolve the compute capacity for an incoming job request.
@@ -3263,12 +3273,19 @@ mod tests {
         let hash_id = coordinator.register_guest_program(elf_bytes).unwrap();
         assert!(fs::metadata(zisk_common::ZiskPaths::global().elf_cache(&hash_id)).is_ok());
 
+        // The proof is of another program, set up earlier: the two race for the worker only.
+        let proven = "proven-hash".to_string();
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new(proven.clone(), false, false),
+            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+        );
+
         let coord_a = coordinator.clone();
         let coord_b = coordinator.clone();
         let hash_id_a = hash_id.clone();
         let prove_req = LaunchProofRequestDto {
             data_id: "data".to_string().into(),
-            hash_id,
+            hash_id: proven,
             compute_capacity: Some(1),
             minimal_compute_capacity: Some(1),
             inputs_mode: zisk_cluster_common::InputsModeDto::InputsNone,
@@ -5047,6 +5064,24 @@ mod tests {
         let result = coordinator.launch_proof(request).await;
 
         assert!(matches!(result, Err(CoordinatorError::ClientRandomSeedNotAllowed)));
+        let w0 = WorkerId::from("w0".to_string());
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert!(coordinator.jobs.read().await.is_empty());
+    }
+
+    /// A worker has only the programs set up on it; a job for any other would fail on it.
+    #[tokio::test]
+    async fn launch_proof_refuses_a_program_that_is_not_set_up_before_reserving_workers() {
+        let coordinator = Arc::new(Coordinator::new(test_config_with(|_| {})));
+        add_worker(&coordinator, "w0", 1, WorkerState::Ready).await;
+        coordinator.active_setups.write().await.insert(
+            SetupKey::new("another-program".to_string(), false, false),
+            ActiveSetup { program_name: "p".into(), vk: vec![1], hash_mode: "Poseidon1".into() },
+        );
+
+        let result = coordinator.launch_proof(capacity_request(None, None)).await;
+
+        assert!(matches!(result, Err(CoordinatorError::ProgramNotSetup(ref h)) if h == "hash"));
         let w0 = WorkerId::from("w0".to_string());
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
         assert!(coordinator.jobs.read().await.is_empty());
