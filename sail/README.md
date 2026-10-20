@@ -179,6 +179,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/MemBoot.lean` | A run from boot with the register file and memory (`run_from_boot_memory`). |
 | `lean/Proofs/MemEnd.lean` | The run to the end with the register file and memory (`run_to_end_memory`). |
 | `lean/Proofs/MemCount.lean` | Counting a tuple on a sum bus, in integers: an assumed tuple is proved, a proved one assumed (`SumHolds.proved_of_assumed`). |
+| `lean/Proofs/MemRamBus.lean` | The RAM's arguments on the memory bus, in its lanes' terms: a read, write or dual tuple at a row is an emission of the sorted log. |
 | `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
@@ -364,7 +365,7 @@ make proofs
 ```
 
 ```
-✔ [114/115] Built Proofs
+✔ [115/116] Built Proofs
 Build completed successfully.
 ```
 
@@ -1396,7 +1397,14 @@ and conversely (`SumHolds.assumed_of_proved`). Integers, not naturals: the
 RAM's padding cancellation sends with a negative count. With it, a Main load
 is a RAM or InputData lane's read, and a RAM lane's tuple is some access
 Main makes — which bounds the RAM's steps, the one input `RamTrace.toSeg`
-still takes.
+still takes. [`lean/Proofs/MemRamBus.lean`](lean/Proofs/MemRamBus.lean)
+connects the two sides: each of the RAM's nine arguments per segment — a
+lane's access `(wr + 1, 8·addr, step, 8, value)`, its dual read, the padding's
+cancellation — and what it sends at a row, as a read or write of the sorted
+log, its bus address `8·A` and step the lane's naturals (`read_emit`,
+`write_emit`, `dual_emit`); and `MemCount.lean` gives each kind of sender's
+integer count — a sender of bits counts a tuple as how many of its rows send
+it (`Sender.count_of_bits`).
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'

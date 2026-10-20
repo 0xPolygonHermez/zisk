@@ -187,4 +187,23 @@ theorem Sender.sends_of_count {s : Sender F} {τ : List F} {z : Int}
   unfold goldilocks at this
   omega
 
+/-! ### Counts of the senders -/
+
+/-- A sender of bits counts a tuple as a natural: how many of its rows send
+it, at most its number of rows. -/
+theorem Sender.count_of_bits (s : Sender F)
+    (hb : ∀ j ∈ s.at, s.p.arg.reps s.p.x s.p.t j = 0 ∨ s.p.arg.reps s.p.x s.p.t j = 1)
+    (τ : List F) : s.count τ = ((((s.sent.count τ : Nat) : Int)) : F) ∧ s.sent.count τ ≤ s.at.length := by
+  refine ⟨?_, ?_⟩
+  · rw [s.count_eq_times hb, times_eq_count, Lean.Grind.Ring.intCast_natCast]
+  · calc s.sent.count τ ≤ s.sent.length := List.count_le_length
+      _ ≤ s.at.length := List.length_filterMap_le _ _
+
+/-- A sender that never sends `τ`'s first element at a row it sends with a
+nonzero count counts it as 0. -/
+theorem Sender.count_of_never (s : Sender F) {τ : List F} {k : F} (hk : τ.headD 0 = k)
+    (h : ∀ j, s.p.arg.reps s.p.x s.p.t j ≠ 0 → (tupleOf s.p j).headD 0 ≠ k) :
+    s.count τ = (((0 : Int)) : F) := by
+  rw [s.count_eq_zero_of_never hk h, Lean.Grind.Ring.intCast_zero]
+
 end Correspondence
