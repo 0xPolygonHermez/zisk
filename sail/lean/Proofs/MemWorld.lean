@@ -298,13 +298,13 @@ theorem MemBusWorld.proved {M : MainSegs F} {S : MemOthers F} {gp ga : List (Lis
     (hs₀ : s₀ ∈ busSenders M S) (hside : s₀.proving = false)
     (hb : ∀ j ∈ s₀.at, s₀.p.arg.reps s₀.p.x s₀.p.t j = 0 ∨ s₀.p.arg.reps s₀.p.x s₀.p.t j = 1)
     {j : Int} (hj : j ∈ s₀.at) (ht : tupleOf s₀.p j = τ) (hr : s₀.p.arg.reps s₀.p.x s₀.p.t j = 1) :
-    ∃ s ∈ busSenders M S, s.proving = true ∧
+    ∃ s ∈ busSenders M S, s.proving = true ∧ 1 ≤ W.z hop s ∧
       ∃ j ∈ s.at, tupleOf s.p j = τ ∧ s.p.arg.reps s.p.x s.p.t j ≠ 0 := by
   obtain ⟨s, hs, hp, h1⟩ := W.bus.proved_of_assumed (W.globals τ hop) (W.z hop)
     (fun s hs => (W.z_spec hop hs).1.1) (W.bound hop) (fun s hs => (W.z_spec hop hs).2.1)
     hs₀ hside (W.z_pos hop hs₀ hb hj ht hr)
   have hza := Nat.lt_of_le_of_lt (le_foldr_of_mem (fun s => (W.z hop s).natAbs) hs) (W.bound hop)
-  exact ⟨s, hs, hp, s.sends_of_count (W.z_spec hop hs).1.1 h1 (by simp only at hza; omega)⟩
+  exact ⟨s, hs, hp, h1, s.sends_of_count (W.z_spec hop hs).1.1 h1 (by simp only at hza; omega)⟩
 
 /-- **The provers' loads and stores are assumed.** A load or store tuple, not a
 RAM padding's, that some proving sender of bits sends with count 1 is sent by
@@ -514,5 +514,150 @@ theorem MemBusWorld.ram_steps {M : MainSegs F} {S : MemOthers F} {gp ga : List (
       (by rw [ht2]; left; rfl)
     rw [ht2] at e
     exact ⟨n, hn, e⟩
+
+/-! ### Assembling the RAM's segments -/
+
+/-- What a RAM instance needs beyond its rows: the trace's period, `__L1__` as
+the setup fixes it, and its range checks sound. -/
+structure RamInst (I : MemOnMem F) : Prop where
+  cyclic : Mem.cyclic I.t
+  first : (I.t 0).__L1__ = 1
+  inner : ∀ i : Int, 0 < i → i < Mem.numRows → (I.t i).__L1__ = 0
+  ranges : RamRanges I.x I.t
+  base0 : RangeHolds Mem.ranges Mem.bus10 I.x I.t
+  base1 : RangeHolds Mem.ranges Mem.bus12 I.x I.t
+  end0 : RangeHolds Mem.ranges Mem.bus14 I.x I.t
+  end1 : RangeHolds Mem.ranges Mem.bus16 I.x I.t
+
+/-- The instance as `MemRam.lean` takes it. -/
+def RamInst.trace {I : MemOnMem F} (h : RamInst I) : RamTrace F :=
+  ⟨I.x, I.t, I.rows, h.cyclic, h.first, h.inner, h.ranges, h.base0, h.base1, h.end0, h.end1⟩
+
+open Classical in
+/-- **The instance's steps, from the memory bus.** -/
+noncomputable def MemBusWorld.steps {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {I : MemOnMem F} (hI : I ∈ S.mem) : RamSteps I.x I.t where
+  S i L := if h : InRows i ∧ L < 4 then
+      Classical.choose (W.ram_steps hI (j := i.toNat) (by have := h.1.2; have := h.1.1; omega) h.2).1
+    else 0
+  D i L := if h : InRows i ∧ L < 4 ∧ (I.t i).sel_dual L ≠ 0 then
+      Classical.choose ((W.ram_steps hI (j := i.toNat) (by have := h.1.2; have := h.1.1; omega) h.2.1).2
+        (by rw [show ((i.toNat : Nat) : Int) = i by have := h.1.1; omega]; exact h.2.2))
+    else 0
+  step i L hi hL := by
+    rw [dif_pos ⟨hi, hL⟩]
+    have hs := Classical.choose_spec (W.ram_steps hI (j := i.toNat)
+      (by have := hi.2; have := hi.1; omega) hL).1
+    have hii : I.t ((i.toNat : Nat) : Int) = I.t i := by
+      rw [show ((i.toNat : Nat) : Int) = i by have := hi.1; omega]
+    exact ⟨hs.1, (congrArg (fun r => r.step L) hii).symm.trans hs.2⟩
+  dual i L hi hL hd := by
+    rw [dif_pos ⟨hi, hL, hd⟩]
+    have hs := Classical.choose_spec ((W.ram_steps hI (j := i.toNat)
+      (by have := hi.2; have := hi.1; omega) hL).2
+        (by rw [show ((i.toNat : Nat) : Int) = i by have := hi.1; omega]; exact hd))
+    have hii : I.t ((i.toNat : Nat) : Int) = I.t i := by
+      rw [show ((i.toNat : Nat) : Int) = i by have := hi.1; omega]
+    exact ⟨hs.1, (congrArg (fun r => r.step_dual L) hii).symm.trans hs.2⟩
+
+/-- **The RAM segment an instance is**, its addresses from its range checks and
+its steps from the memory bus. -/
+noncomputable def MemBusWorld.seg {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {I : MemOnMem F} (hI : I ∈ S.mem) (h : RamInst I) : RamSeg F :=
+  h.trace.toSeg (W.steps hI)
+
+/-- A sender's integer count, among `busSenders`, is unique. -/
+theorem MemBusWorld.z_eq {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {τ : List F} (hop : τ.headD 0 = 1 ∨ τ.headD 0 = 2) {s : Sender F}
+    (hs : s ∈ busSenders M S) {z : Int} (hz : IntCount s τ z) : W.z hop s = z := by
+  have h1 := (W.z_spec hop hs).1
+  have hla := Nat.lt_of_le_of_lt
+    (le_foldr_of_mem (fun s : Sender F => s.at.length + (if s.p.arg.once then 2 ^ 32 else 0)) hs) W.size
+  have e : ((W.z hop s : Int) : F) = ((z : Int) : F) := h1.1.symm.trans hz.1
+  have := (Lean.Grind.IsCharP.intCast_ext_iff (p := goldilocks)).mp e
+  have b1 := h1.2
+  have b2 := hz.2
+  unfold goldilocks at this
+  simp only at hla
+  split at b1 <;> split at b2 <;> omega
+
+/-! ### Who proves a load, who a store -/
+
+theorem headD_ne {τ : List F} {a b : F} (h : τ.headD 0 = a) (hb : a ≠ b) : τ.headD 0 ≠ b := by
+  rw [h]; exact hb
+
+theorem one_ne_three : (1 : F) ≠ 3 := by
+  intro h; have := natCast_inj49 (F := F) (x := 1) (y := 3) (by omega) (by omega)
+    (by rw [Lean.Grind.Semiring.natCast_one, ← natCast_ofNat' 3]; exact h)
+  omega
+
+theorem two_ne_three : (2 : F) ≠ 3 := by
+  intro h; have := natCast_inj49 (F := F) (x := 2) (y := 3) (by omega) (by omega)
+    (by rw [← natCast_ofNat' 2, ← natCast_ofNat' 3]; exact h)
+  omega
+
+/-- **Who proves a load or a store.** A proving sender with a positive count
+that sends a load or store tuple at one of its rows is a RAM lane's access or
+dual read, or an InputData row. -/
+theorem MemBusWorld.who {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {τ : List F} (hop : τ.headD 0 = 1 ∨ τ.headD 0 = 2)
+    {s : Sender F} (hs : s ∈ busSenders M S) (hp : s.proving = true) (h1 : 1 ≤ W.z hop s)
+    {j : Int} (hj : j ∈ s.at) (ht : tupleOf s.p j = τ) (hr : s.p.arg.reps s.p.x s.p.t j ≠ 0) :
+    (∃ I ∈ S.mem, ∃ m : Nat, m < Mem.numRows ∧ ∃ L : Nat, L < 4 ∧
+      (tupleOf (⟨ramLaneArg L, I.x, I.t⟩ : Prover F) m = τ ∨
+        ((I.t m).sel_dual L ≠ 0 ∧ tupleOf (⟨ramDualArg L, I.x, I.t⟩ : Prover F) m = τ))) ∨
+    (∃ I ∈ S.inputData, ∃ m : Nat, m < InputData.numRows ∧ (I.t m).sel 0 ≠ 0 ∧
+      tupleOf (⟨InputData.bus26, I.x, I.t⟩ : Prover F) m = τ) := by
+  have hne3 : τ.headD 0 ≠ 3 := by
+    rcases hop with h | h
+    · exact headD_ne h one_ne_three
+    · exact headD_ne h two_ne_three
+  rcases List.mem_append.mp hs with hm | ho
+  · -- Main proves only register tuples.
+    exfalso
+    rw [← M.pairSenders_pairs] at hm
+    obtain ⟨P, hP, hs'⟩ := List.mem_flatMap.mp hm
+    have hg := M.pairs_good W.ok P hP
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hs'
+    rcases hs' with rfl | rfl
+    · have hj' : j ∈ P.pre.at := hj
+      rw [hg.shape j hj'] at ht
+      rw [← ht] at hne3
+      exact hne3 rfl
+    · rw [hg.side_cur] at hp; exact nomatch hp
+  · rcases S.mem_split ho with hr' | hi | hn
+    · obtain ⟨I, hI, hs'⟩ := List.mem_flatMap.mp hr'
+      left
+      refine ⟨I, hI, ?_⟩
+      simp only [MemOnMem.senders, List.mem_cons, List.not_mem_nil, or_false] at hs'
+      rcases hs' with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+      · -- The padding counts its tuple non-positively.
+        exfalso
+        obtain ⟨z, hz, h0, -⟩ := intCount_pad I.rows (W.pad I hI).1 (W.pad I hI).2 τ
+        rw [W.z_eq hop hs hz] at h1
+        omega
+      all_goals
+        obtain ⟨m, hm, rfl⟩ := mem_at_rows (s := ⟨⟨_, I.x, I.t⟩, Mem.numRows⟩) rfl hj
+        refine ⟨m, hm, ?_⟩
+      · exact ⟨0, by omega, .inl ht⟩
+      · exact ⟨0, by omega, .inr ⟨by simpa [Mem.bus67, Lean.Grind.Semiring.add_zero] using hr, ht⟩⟩
+      · exact ⟨1, by omega, .inl ht⟩
+      · exact ⟨1, by omega, .inr ⟨by simpa [Mem.bus69, Lean.Grind.Semiring.add_zero] using hr, ht⟩⟩
+      · exact ⟨2, by omega, .inl ht⟩
+      · exact ⟨2, by omega, .inr ⟨by simpa [Mem.bus71, Lean.Grind.Semiring.add_zero] using hr, ht⟩⟩
+      · exact ⟨3, by omega, .inl ht⟩
+      · exact ⟨3, by omega, .inr ⟨by simpa [Mem.bus73, Lean.Grind.Semiring.add_zero] using hr, ht⟩⟩
+    · obtain ⟨I, hI, hs'⟩ := List.mem_flatMap.mp hi
+      right
+      simp only [InputDataOnMem.senders, List.mem_cons, List.not_mem_nil, or_false] at hs'
+      subst hs'
+      obtain ⟨m, hm, rfl⟩ := mem_at_rows (s := ⟨⟨InputData.bus26, I.x, I.t⟩, InputData.numRows⟩) rfl hj
+      exact ⟨I, hI, m, hm, by simpa [InputData.bus26, Lean.Grind.Semiring.add_zero] using hr, ht⟩
+    · exfalso
+      have := W.none s hn j hr
+      rw [ht] at this
+      rcases hop with h | h
+      · exact this.1 h
+      · exact this.2 h
 
 end Correspondence

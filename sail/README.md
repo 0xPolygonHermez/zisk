@@ -1424,7 +1424,14 @@ prover sends, other than a padding tuple, is assumed by some sender
 padding tuple — whose step is the last step, range-checked below `2^38` — is
 assumed by some Main access, whose step element is its lane's memory step
 (`mainTags_cur`, generated), so every lane's step and every set dual read's
-is a natural below `2^48` (`MemBusWorld.ram_steps`): what `RamSteps` asks.
+is a natural below `2^48` (`MemBusWorld.ram_steps`): what `RamSteps` asks. So
+each RAM instance, with its fixed columns and range checks (`RamInst`), is a
+segment of the sorted log, its addresses from its range checks and its steps
+from the bus (`MemBusWorld.seg`). And a load or store tuple a prover sends
+with a positive count is a RAM lane's access or dual read, or an InputData
+row (`MemBusWorld.who`): Main proves only register tuples, the padding counts
+non-positively — a sender's integer count being unique (`MemBusWorld.z_eq`) —
+and the rest send none.
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'
