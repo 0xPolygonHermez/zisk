@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "1c8dc419c2fc40225d8b4399575df1811ffb2cb96f81e4b14c592d540b07086f";
+pub const PILOUT_HASH: &str = "f7cea6f0c21f3fa60558695c7b57de784f8c9bc4b7a8fe040117d5596862739e";
 
 //AIRGROUP CONSTANTS
 
@@ -586,13 +586,13 @@ pub type KeccakfTrace<R> = GenericTrace<R, 2097152, 0, 36>;
 trace_row!(Sha256fFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type Sha256fFixed<F> = GenericTrace<Sha256fFixedRow<F>, 262144, 0, 37>;
+pub type Sha256fFixed<F> = GenericTrace<Sha256fFixedRow<F>, 524288, 0, 37>;
 
 trace_row!(Sha256fTraceRow<F> {
  a:[bit; 32], e:[bit; 32], w:[bit; 32], new_a_carry_bits:u8, new_e_carry_bits:u8, new_w_carry_bits:ubit(4), step_addr:ubit(40), in_use:bit, in_use_clk_0:bit,
 });
 
-pub type Sha256fTrace<R> = GenericTrace<R, 262144, 0, 37>;
+pub type Sha256fTrace<R> = GenericTrace<R, 524288, 0, 37>;
 
 trace_row!(PoseidonFixedRow<F> {
  CLK_0: F, __L1__: F,
@@ -619,13 +619,13 @@ pub type Poseidon2KoalaBearTrace<R> = GenericTrace<R, 1048576, 0, 39>;
 trace_row!(Blake2brFixedRow<F> {
  CLK_0: F, MSG_IDX: F, __L1__: F,
 });
-pub type Blake2brFixed<F> = GenericTrace<Blake2brFixedRow<F>, 262144, 0, 40>;
+pub type Blake2brFixed<F> = GenericTrace<Blake2brFixedRow<F>, 1048576, 0, 40>;
 
 trace_row!(Blake2brTraceRow<F> {
  in_use:bit, round_idx:ubit(4), rd_chain:bit, wr_chain:bit, gap:u8, round_idx_sel:[bit; 10], sigma_idx:[ubit(4); 2], x:[u16; 4], y:[u16; 4], xs:[u32; 2], ys:[u32; 2], step_addr:ubit(40), op_step:ubit(40), va:[u16; 4], vb:[u8; 8], vc:[u16; 4], vd:[u8; 8], va_prime:[u8; 8], vd_prime:[u8; 8], vc_prime:[u8; 8], vb_prime:[u8; 8], va_prime_prime:[u8; 8], vd_prime_prime:[u8; 8], vc_prime_prime:[u8; 8], vb_pp_xor:[u8; 8], vb_pp_t:[bit; 2], in_use_clk_0:bit,
 });
 
-pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 40>;
+pub type Blake2brTrace<R> = GenericTrace<R, 1048576, 0, 40>;
 
 trace_row!(Blake3fFixedRow<F> {
  CLK_0: F, __L1__: F,
@@ -1322,7 +1322,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 40, PackedInfoConst {
         is_packed: true,
         num_packed_words: 18,
-        unpack_info: &[1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 16, 16, 16, 16, 16, 16, 16, 16, 32, 32, 32, 32, 40, 40, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1],
+        unpack_info: &[1, 4, 1, 1, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 16, 16, 16, 16, 16, 16, 16, 16, 32, 32, 32, 32, 40, 40, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1],
     }),
     (0, 41, PackedInfoConst {
         is_packed: true,
