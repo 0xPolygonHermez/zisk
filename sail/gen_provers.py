@@ -35,6 +35,8 @@ LEMMA_FILES = [
     ('Adders.lean', r'[A-Z]\w*_bus\d+_adds'),
     ('Binary.lean', r'[A-Z]\w*_bus\d+_adds'),
     ('BinaryOps.lean', r'[A-Z]\w*_bus\d+_cmp'),
+    ('OpBusPub.lean', r'[A-Z]\w*_bus\d+_not_pub'),
+    ('BinaryPub.lean', r'[A-Z]\w*_bus\d+_pub'),
 ]
 
 
@@ -102,6 +104,12 @@ def arg_of(ty, fields):
         return 'hT.binAdds'
     if ty == '∀ p ∈ binaryTable xv tv, BinaryTableOps p':
         return 'hT.binOps'
+    if ty == '∀ p ∈ binaryTable xv tv, BinaryTableNoPub p':
+        return 'hT.binNoPub'
+    m = re.match(r"∀ k ∈ \(\[160\] : List Int\), TableNever ⟨VirtualTableZisk1\.(bus\d+), xv, tv⟩"
+                 r" \d+ \(\(k : Int\) : F\)$", ty)
+    if m:
+        return f"hT.{TABLE[m.group(1)]}P"
     m = re.match(r"TableNever ⟨VirtualTableZisk1\.(bus\d+), xv, tv⟩ \d+ \(\(10 : Int\) : F\)$", ty)
     if m:
         return f"(hT.{TABLE[m.group(1)]} 10 (by simp))"
@@ -148,6 +156,13 @@ def air_parts(sigs, air, buses):
                 parts[key] = f"opProves_of_not ({not_fun(call(sigs, ncmp, fields) + f' {code} (by simp)')})"
             else:
                 sys.exit(f"gen_provers: {air}.{bus} has no lemma for {key}")
+        pub_, npub = lemma('pub'), lemma('not_pub')
+        if pub_:
+            parts['pub'] = f"fun j _ _ => ({call(sigs, pub_, fields)} j)"
+        elif npub:
+            parts['pub'] = f"opProves_of_not ({not_fun(call(sigs, npub, fields) + ' 160 (by simp)')})"
+        else:
+            sys.exit(f"gen_provers: {air}.{bus} has no lemma for pubout")
         oks.append((add, parts))
     inst = f"{air}Inst"
     extra = ''.join(f"\n  {f} : {ty}" for f, ty in fields.items())
@@ -167,6 +182,11 @@ structure {inst} (xv : VirtualTableZisk1.Ctx F) (tv : VirtualTableZisk1.Trace F)
       eq := {parts['eq']}
       and := {parts['and']} }}
     ({body})"""
+    pbody = 'pubProved_nil'
+    for add, parts in reversed(oks):
+        pbody = f"""pubProved_cons
+    ({parts['pub']})
+    ({pbody})"""
     ok = f"""/-- `{air}`'s arguments on the operation bus. -/
 def {inst}.provers {{xv : VirtualTableZisk1.Ctx F}} {{tv : VirtualTableZisk1.Trace F}} (I : {inst} xv tv) :
     List (Prover F) :=
@@ -175,6 +195,10 @@ def {inst}.provers {{xv : VirtualTableZisk1.Ctx F}} {{tv : VirtualTableZisk1.Tra
 theorem {inst}.ok {{xv : VirtualTableZisk1.Ctx F}} {{tv : VirtualTableZisk1.Trace F}} (hT : Tables xv tv)
     (I : {inst} xv tv) : OpsProved I.provers :=
   {body}
+
+theorem {inst}.pub {{xv : VirtualTableZisk1.Ctx F}} {{tv : VirtualTableZisk1.Trace F}} (hT : Tables xv tv)
+    (I : {inst} xv tv) : PubProved I.provers :=
+  {pbody}
 """
     return struct, ok
 
@@ -182,7 +206,7 @@ theorem {inst}.ok {{xv : VirtualTableZisk1.Ctx F}} {{tv : VirtualTableZisk1.Trac
 def main():
     sigs = signatures()
     airs = census()
-    structs, oks, fields, provers, okp = [], [], [], [], []
+    structs, oks, fields, provers, okp, pubp = [], [], [], [], [], []
     for air, buses in airs.items():
         st, ok = air_parts(sigs, air, buses)
         structs.append(st)
@@ -191,6 +215,7 @@ def main():
         fields.append(f"  {fname} : List ({inst} xv tv)")
         provers.append(f"(S.{fname}.flatMap {inst}.provers)")
         okp.append(f"opsProved_flatMap (fun I _ => {inst}.ok hT I)")
+        pubp.append(f"pubProved_flatMap (fun I _ => {inst}.pub hT I)")
     # `++` associates to the left; the list is nested to the right, as the
     # proof's `opsProved_append` chain is, so the two match without unfolding.
     parts = ['frops S.x0 S.t0'] + provers
@@ -198,11 +223,13 @@ def main():
                      for i, x in enumerate(parts)) + ')' * (len(parts) - 1)
     ok = ('  opsProved_append (frops_ok hF) <|\n    '
           + ' <|\n    '.join(f"opsProved_append ({o})" for o in okp[:-1]) + ' <|\n    ' + okp[-1])
+    pub = ('  pubProved_append (frops_pub hF) <|\n    '
+           + ' <|\n    '.join(f"pubProved_append ({o})" for o in pubp[:-1]) + ' <|\n    ' + pubp[-1])
     frops = ', '.join(f"⟨VirtualTableZisk0.bus{k}, x0, t0⟩" for k in range(1, 13))
     names = textwrap.fill(', '.join(airs), width=78, initial_indent='  ', subsequent_indent='  ')
     text = (HEAD.format(airs=names, frops=frops) + '/-! ### The instances -/\n\n' + '\n'.join(structs)
             + '\n/-! ### Each AIR\'s provers -/\n\n' + '\n'.join(oks) + '\n'
-            + TAIL.format(fields='\n'.join(fields), provers=prov, ok=ok))
+            + TAIL.format(fields='\n'.join(fields), provers=prov, ok=ok, pub=pub))
     open(OUT, 'w').write(text)
     print(f"wrote {os.path.relpath(OUT, HERE)}: {sum(map(len, airs.values()))} arguments in "
           f"{len(airs)} AIRs, and the FROPS table's 12")
@@ -229,6 +256,7 @@ HEAD = """/-
     checks against the data the setup commits.
 
   `System.ok`: every prover of every instance computes the four ops.
+  `System.pub`: and proves `pubout` correctly — none proves it at all.
   `run_system`: the run of `run_pilot`, over the system's provers, with
   `OpsProved` gone.
 
@@ -238,6 +266,8 @@ HEAD = """/-
 import Proofs.Run
 import Proofs.BinaryOps
 import Proofs.OpBusCmp
+import Proofs.OpBusPub
+import Proofs.BinaryPub
 import Pil.VirtualTableZisk0
 
 open Out.Functions
@@ -279,6 +309,28 @@ theorem opsProved_flatMap {{α : Type}} {{l : List α}} {{f : α → List (Prove
   obtain ⟨a, ha, hq⟩ := List.mem_flatMap.mp hq
   exact h a ha q hq
 
+theorem pubProved_nil : PubProved ([] : List (Prover F)) := fun _ h => nomatch h
+
+theorem pubProved_cons {{p : Prover F}} {{ps : List (Prover F)}} (h : OpProves 0xA0 pubSem p)
+    (hs : PubProved ps) : PubProved (p :: ps) := by
+  intro q hq
+  rcases List.mem_cons.mp hq with rfl | hq
+  · exact h
+  · exact hs q hq
+
+theorem pubProved_append {{ps qs : List (Prover F)}} (h : PubProved ps) (h' : PubProved qs) :
+    PubProved (ps ++ qs) := by
+  intro q hq
+  rcases List.mem_append.mp hq with hq | hq
+  · exact h q hq
+  · exact h' q hq
+
+theorem pubProved_flatMap {{α : Type}} {{l : List α}} {{f : α → List (Prover F)}}
+    (h : ∀ a ∈ l, PubProved (f a)) : PubProved (l.flatMap f) := by
+  intro q hq
+  obtain ⟨a, ha, hq⟩ := List.mem_flatMap.mp hq
+  exact h a ha q hq
+
 /-! ### The tables -/
 
 /-- What `check_tables.py` checks of `VirtualTableZisk1`: the Binary table's
@@ -293,6 +345,10 @@ structure Tables (xv : VirtualTableZisk1.Ctx F) (tv : VirtualTableZisk1.Trace F)
     TableNever ⟨VirtualTableZisk1.bus17, xv, tv⟩ 124 ((k : Int) : F)
   ext18 : ∀ k ∈ ([10, 6, 9, 14] : List Int),
     TableNever ⟨VirtualTableZisk1.bus18, xv, tv⟩ 124 ((k : Int) : F)
+  binNoPub : ∀ p ∈ binaryTable xv tv, BinaryTableNoPub p
+  arithP : ∀ k ∈ ([160] : List Int), TableNever ⟨VirtualTableZisk1.bus16, xv, tv⟩ 331 ((k : Int) : F)
+  ext17P : ∀ k ∈ ([160] : List Int), TableNever ⟨VirtualTableZisk1.bus17, xv, tv⟩ 124 ((k : Int) : F)
+  ext18P : ∀ k ∈ ([160] : List Int), TableNever ⟨VirtualTableZisk1.bus18, xv, tv⟩ 124 ((k : Int) : F)
 
 /-- The FROPS table's arguments on the operation bus. -/
 def frops (x0 : VirtualTableZisk0.Ctx F) (t0 : VirtualTableZisk0.Trace F) : List (Prover F) :=
@@ -305,6 +361,7 @@ structure FropsOk (p : Prover F) : Prop where
   ltu : FropsProves 6 ltuN p
   eq : FropsProves 9 eqN p
   and : FropsProves 14 andN p
+  pub : FropsProves 0xA0 pubN p
 
 theorem frops_ok {{x0 : VirtualTableZisk0.Ctx F}} {{t0 : VirtualTableZisk0.Trace F}}
     (h : ∀ p ∈ frops x0 t0, FropsOk p) : OpsProved (frops x0 t0) := fun p hp =>
@@ -312,6 +369,10 @@ theorem frops_ok {{x0 : VirtualTableZisk0.Ctx F}} {{t0 : VirtualTableZisk0.Trace
     ltu := opProves_of_frops ltuN_sem (h p hp).ltu
     eq := opProves_of_frops eqN_sem (h p hp).eq
     and := opProves_of_frops andN_sem (h p hp).and }}
+
+theorem frops_pub {{x0 : VirtualTableZisk0.Ctx F}} {{t0 : VirtualTableZisk0.Trace F}}
+    (h : ∀ p ∈ frops x0 t0, FropsOk p) : PubProved (frops x0 t0) := fun p hp =>
+  opProves_of_frops pubN_sem (h p hp).pub
 
 """
 
@@ -335,6 +396,12 @@ tables' contents. -/
 theorem System.ok (S : System F) (hT : Tables S.xv S.tv) (hF : ∀ p ∈ frops S.x0 S.t0, FropsOk p) :
     OpsProved S.provers :=
 {ok}
+
+/-- **Every prover on the operation bus proves `pubout` correctly**, given the
+tables' contents: none of them proves it at all. -/
+theorem System.pub (S : System F) (hT : Tables S.xv S.tv) (hF : ∀ p ∈ frops S.x0 S.t0, FropsOk p) :
+    PubProved S.provers :=
+{pub}
 
 /-- **A run of the pilot's programs, over ZisK's provers.** `run_pilot` with
 the operation bus answered by the system's provers: `OpsProved` is no longer

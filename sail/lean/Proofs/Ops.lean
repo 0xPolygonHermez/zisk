@@ -51,6 +51,12 @@ theorem exec_eq (a b : BitVec 64) : zisk_exec (.ZOP_EQ ()) a b = eqSem a b := by
 theorem exec_and (a b : BitVec 64) : zisk_exec (.ZOP_AND ()) a b = andSem a b := by
   simp [zisk_exec, andSem]
 
+/-- What `pubout` does: `c = b`, no flag. -/
+def pubSem (_A B : BitVec 64) : BitVec 64 × Bool := (B, false)
+
+theorem exec_pubout (a b : BitVec 64) : zisk_exec (.ZOP_PUBOUT ()) a b = pubSem a b := by
+  simp [zisk_exec, pubSem]
+
 /-! ### What a prover must do -/
 
 section Statement
@@ -73,6 +79,10 @@ proves `code` correctly. -/
 def OpProves (code : Nat) (sem : BitVec 64 → BitVec 64 → BitVec 64 × Bool) (p : Prover F) :
     Prop :=
   ∀ j, p.arg.bus p.x p.t j = 5000 → p.arg.reps p.x p.t j ≠ 0 → ProvesAt code sem p j
+
+/-- Every prover on the operation bus proves `pubout` (`0xA0`) correctly. -/
+def PubProved (ps : List (Prover F)) : Prop :=
+  ∀ p ∈ ps, OpProves 0xA0 pubSem p
 
 end Statement
 
@@ -145,6 +155,11 @@ def addN (a b : Nat) : Nat × Nat := ((a + b) % 2 ^ 64, 0)
 def ltuN (a b : Nat) : Nat × Nat := if a < b then (1, 1) else (0, 0)
 def eqN (a b : Nat) : Nat × Nat := if a = b then (1, 1) else (0, 0)
 def andN (a b : Nat) : Nat × Nat := (a &&& b, 0)
+def pubN (_a b : Nat) : Nat × Nat := (b, 0)
+
+theorem pubN_sem (A B : BitVec 64) :
+    pubN A.toNat B.toNat = ((pubSem A B).1.toNat, if (pubSem A B).2 then 1 else 0) := by
+  simp [pubN, pubSem]
 
 theorem addN_sem (A B : BitVec 64) :
     addN A.toNat B.toNat = ((addSem A B).1.toNat, if (addSem A B).2 then 1 else 0) := by

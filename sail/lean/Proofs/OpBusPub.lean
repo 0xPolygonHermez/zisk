@@ -4,7 +4,8 @@
   The census of `OpBusCmp.lean`, for `pubout` (`0xA0`, 160): the same
   arguments, ruled out the same way — their op is a constant or opcodes
   weighted by bits, and no combination is 160 — and Arith and BinaryExtension
-  by their tables. Written out mechanically from `OpBusCmp.lean`.
+  by their tables. Written out mechanically from `OpBusCmp.lean`; Dma, whose
+  `ltu` needed its count there, needs nothing more here.
 -/
 import Proofs.OpBusCmp
 
@@ -293,10 +294,10 @@ theorem Blake3f_bus102_not_pub {x t i} (_h : Blake3f.everyRow x t i) :
     · decide
 
 theorem Dma_bus51_not_pub {x t i} (h : Dma.everyRow x t i) :
-    ∀ k ∈ ([9, 14] : List Int), opOf Dma.bus51 x t i ≠ ((k : Int) : F) := by
+    ∀ k ∈ ([160] : List Int), opOf Dma.bus51 x t i ≠ ((k : Int) : F) := by
   intro k hk
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hk
-  rcases hk with rfl | rfl
+  rcases hk with rfl
   all_goals
     apply op_ne (F := F) 0 [208, 209, 211, 6, 210] 0 [208, 209, 211, 6, 210] [(t i).sel_memcpy, (t i).sel_memcmp, (t i).sel_memset, (t i).sel_extended, (t i).sel_inputcpy] _ _
       (by cast_lits) (by cast_lits) rfl

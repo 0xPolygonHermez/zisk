@@ -38,3 +38,5 @@ import Proofs.StepMem
 import Proofs.MemBoot
 import Proofs.MemEnd
 import Proofs.OpBusPub
+import Proofs.BinaryPub
+import Proofs.PubGlobal

@@ -16,16 +16,6 @@ open Pil.Zisk
 
 attribute [local instance] Lean.Grind.Semiring.natCast Lean.Grind.Ring.intCast
 
-/-- What `pubout` does: `c = b`, no flag. -/
-def pubSem (_A B : BitVec 64) : BitVec 64 × Bool := (B, false)
-
-theorem exec_pubout (a b : BitVec 64) : zisk_exec (.ZOP_PUBOUT ()) a b = pubSem a b := by
-  simp [zisk_exec, pubSem]
-
-/-- Every prover on the operation bus proves `pubout` (`0xA0`) correctly. -/
-def PubProved {F : Type} [PilField F] (ps : List (Prover F)) : Prop :=
-  ∀ p ∈ ps, OpProves 0xA0 pubSem p
-
 /-- An instruction the pilot with memory covers: the six modeled ops, `pubout`
 (given `PubProved`), and `halt` (which no lane can hold);
 immediate, `c`, register or memory sources — `B_IND` of width 8 — with 32-bit

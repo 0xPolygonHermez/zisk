@@ -19,6 +19,7 @@
     checks against the data the setup commits.
 
   `System.ok`: every prover of every instance computes the four ops.
+  `System.pub`: and proves `pubout` correctly — none proves it at all.
   `run_system`: the run of `run_pilot`, over the system's provers, with
   `OpsProved` gone.
 
@@ -37,6 +38,8 @@
 import Proofs.Run
 import Proofs.BinaryOps
 import Proofs.OpBusCmp
+import Proofs.OpBusPub
+import Proofs.BinaryPub
 import Pil.VirtualTableZisk0
 
 open Out.Functions
@@ -78,6 +81,28 @@ theorem opsProved_flatMap {α : Type} {l : List α} {f : α → List (Prover F)}
   obtain ⟨a, ha, hq⟩ := List.mem_flatMap.mp hq
   exact h a ha q hq
 
+theorem pubProved_nil : PubProved ([] : List (Prover F)) := fun _ h => nomatch h
+
+theorem pubProved_cons {p : Prover F} {ps : List (Prover F)} (h : OpProves 0xA0 pubSem p)
+    (hs : PubProved ps) : PubProved (p :: ps) := by
+  intro q hq
+  rcases List.mem_cons.mp hq with rfl | hq
+  · exact h
+  · exact hs q hq
+
+theorem pubProved_append {ps qs : List (Prover F)} (h : PubProved ps) (h' : PubProved qs) :
+    PubProved (ps ++ qs) := by
+  intro q hq
+  rcases List.mem_append.mp hq with hq | hq
+  · exact h q hq
+  · exact h' q hq
+
+theorem pubProved_flatMap {α : Type} {l : List α} {f : α → List (Prover F)}
+    (h : ∀ a ∈ l, PubProved (f a)) : PubProved (l.flatMap f) := by
+  intro q hq
+  obtain ⟨a, ha, hq⟩ := List.mem_flatMap.mp hq
+  exact h a ha q hq
+
 /-! ### The tables -/
 
 /-- What `check_tables.py` checks of `VirtualTableZisk1`: the Binary table's
@@ -92,6 +117,10 @@ structure Tables (xv : VirtualTableZisk1.Ctx F) (tv : VirtualTableZisk1.Trace F)
     TableNever ⟨VirtualTableZisk1.bus17, xv, tv⟩ 124 ((k : Int) : F)
   ext18 : ∀ k ∈ ([10, 6, 9, 14] : List Int),
     TableNever ⟨VirtualTableZisk1.bus18, xv, tv⟩ 124 ((k : Int) : F)
+  binNoPub : ∀ p ∈ binaryTable xv tv, BinaryTableNoPub p
+  arithP : ∀ k ∈ ([160] : List Int), TableNever ⟨VirtualTableZisk1.bus16, xv, tv⟩ 331 ((k : Int) : F)
+  ext17P : ∀ k ∈ ([160] : List Int), TableNever ⟨VirtualTableZisk1.bus17, xv, tv⟩ 124 ((k : Int) : F)
+  ext18P : ∀ k ∈ ([160] : List Int), TableNever ⟨VirtualTableZisk1.bus18, xv, tv⟩ 124 ((k : Int) : F)
 
 /-- The FROPS table's arguments on the operation bus. -/
 def frops (x0 : VirtualTableZisk0.Ctx F) (t0 : VirtualTableZisk0.Trace F) : List (Prover F) :=
@@ -104,6 +133,7 @@ structure FropsOk (p : Prover F) : Prop where
   ltu : FropsProves 6 ltuN p
   eq : FropsProves 9 eqN p
   and : FropsProves 14 andN p
+  pub : FropsProves 0xA0 pubN p
 
 theorem frops_ok {x0 : VirtualTableZisk0.Ctx F} {t0 : VirtualTableZisk0.Trace F}
     (h : ∀ p ∈ frops x0 t0, FropsOk p) : OpsProved (frops x0 t0) := fun p hp =>
@@ -111,6 +141,10 @@ theorem frops_ok {x0 : VirtualTableZisk0.Ctx F} {t0 : VirtualTableZisk0.Trace F}
     ltu := opProves_of_frops ltuN_sem (h p hp).ltu
     eq := opProves_of_frops eqN_sem (h p hp).eq
     and := opProves_of_frops andN_sem (h p hp).and }
+
+theorem frops_pub {x0 : VirtualTableZisk0.Ctx F} {t0 : VirtualTableZisk0.Trace F}
+    (h : ∀ p ∈ frops x0 t0, FropsOk p) : PubProved (frops x0 t0) := fun p hp =>
+  opProves_of_frops pubN_sem (h p hp).pub
 
 /-! ### The instances -/
 
@@ -519,6 +553,12 @@ theorem Add256Inst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Tra
       and := opProves_of_not (fun j _ => Add256_bus59_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
 
+theorem Add256Inst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Add256Inst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Add256_bus59_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
+
 /-- `Arith`'s arguments on the operation bus. -/
 def ArithInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : ArithInst xv tv) :
     List (Prover F) :=
@@ -532,6 +572,12 @@ theorem ArithInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trac
       eq := opProves_of_not (fun j _ => Arith_bus30_not_cmp I.lk_bus41 (fun k hk => hT.arith k (List.mem_cons_of_mem _ hk)) 9 (by simp))
       and := opProves_of_not (fun j _ => Arith_bus30_not_cmp I.lk_bus41 (fun k hk => hT.arith k (List.mem_cons_of_mem _ hk)) 14 (by simp)) }
     (opsProved_nil)
+
+theorem ArithInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : ArithInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Arith_bus30_not_pub I.lk_bus41 hT.arithP 160 (by simp)))
+    (pubProved_nil)
 
 /-- `Arith256X`'s arguments on the operation bus. -/
 def Arith256XInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : Arith256XInst xv tv) :
@@ -547,6 +593,12 @@ theorem Arith256XInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.
       and := opProves_of_not (fun j _ => Arith256X_bus46_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
 
+theorem Arith256XInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Arith256XInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Arith256X_bus46_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
+
 /-- `Arith256XLarge`'s arguments on the operation bus. -/
 def Arith256XLargeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : Arith256XLargeInst xv tv) :
     List (Prover F) :=
@@ -560,6 +612,12 @@ theorem Arith256XLargeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZ
       eq := opProves_of_not (fun j _ => Arith256XLarge_bus46_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => Arith256XLarge_bus46_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem Arith256XLargeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Arith256XLargeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Arith256XLarge_bus46_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `ArithBn254`'s arguments on the operation bus. -/
 def ArithBn254Inst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : ArithBn254Inst xv tv) :
@@ -575,6 +633,12 @@ theorem ArithBn254Inst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1
       and := opProves_of_not (fun j _ => ArithBn254_bus69_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
 
+theorem ArithBn254Inst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : ArithBn254Inst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => ArithBn254_bus69_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
+
 /-- `ArithBn254Large`'s arguments on the operation bus. -/
 def ArithBn254LargeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : ArithBn254LargeInst xv tv) :
     List (Prover F) :=
@@ -588,6 +652,12 @@ theorem ArithBn254LargeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTable
       eq := opProves_of_not (fun j _ => ArithBn254Large_bus69_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => ArithBn254Large_bus69_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem ArithBn254LargeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : ArithBn254LargeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => ArithBn254Large_bus69_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `ArithEq`'s arguments on the operation bus. -/
 def ArithEqInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : ArithEqInst xv tv) :
@@ -603,6 +673,12 @@ theorem ArithEqInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Tr
       and := opProves_of_not (fun j _ => ArithEq_bus81_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
 
+theorem ArithEqInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : ArithEqInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => ArithEq_bus81_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
+
 /-- `ArithEq384`'s arguments on the operation bus. -/
 def ArithEq384Inst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : ArithEq384Inst xv tv) :
     List (Prover F) :=
@@ -616,6 +692,12 @@ theorem ArithEq384Inst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1
       eq := opProves_of_not (fun j _ => ArithEq384_bus67_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => ArithEq384_bus67_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem ArithEq384Inst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : ArithEq384Inst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => ArithEq384_bus67_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `ArithEq384Large`'s arguments on the operation bus. -/
 def ArithEq384LargeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : ArithEq384LargeInst xv tv) :
@@ -631,6 +713,12 @@ theorem ArithEq384LargeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTable
       and := opProves_of_not (fun j _ => ArithEq384Large_bus67_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
 
+theorem ArithEq384LargeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : ArithEq384LargeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => ArithEq384Large_bus67_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
+
 /-- `ArithEqLarge`'s arguments on the operation bus. -/
 def ArithEqLargeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : ArithEqLargeInst xv tv) :
     List (Prover F) :=
@@ -644,6 +732,12 @@ theorem ArithEqLargeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZis
       eq := opProves_of_not (fun j _ => ArithEqLarge_bus81_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => ArithEqLarge_bus81_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem ArithEqLargeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : ArithEqLargeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => ArithEqLarge_bus81_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `ArithSecp256K1`'s arguments on the operation bus. -/
 def ArithSecp256K1Inst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : ArithSecp256K1Inst xv tv) :
@@ -659,6 +753,12 @@ theorem ArithSecp256K1Inst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZ
       and := opProves_of_not (fun j _ => ArithSecp256K1_bus63_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
 
+theorem ArithSecp256K1Inst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : ArithSecp256K1Inst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => ArithSecp256K1_bus63_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
+
 /-- `ArithSecp256K1Large`'s arguments on the operation bus. -/
 def ArithSecp256K1LargeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : ArithSecp256K1LargeInst xv tv) :
     List (Prover F) :=
@@ -672,6 +772,12 @@ theorem ArithSecp256K1LargeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualT
       eq := opProves_of_not (fun j _ => ArithSecp256K1Large_bus63_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => ArithSecp256K1Large_bus63_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem ArithSecp256K1LargeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : ArithSecp256K1LargeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => ArithSecp256K1Large_bus63_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `Binary`'s arguments on the operation bus. -/
 def BinaryInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : BinaryInst xv tv) :
@@ -687,6 +793,12 @@ theorem BinaryInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Tra
       and := fun j _ _ => (Binary_bus21_cmp I.rows hT.binOps I.lk_bus13 I.lk_bus14 I.lk_bus15 I.lk_bus16 I.lk_bus17 I.lk_bus18 I.lk_bus19 I.lk_bus20 j).2.2 }
     (opsProved_nil)
 
+theorem BinaryInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : BinaryInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (fun j _ _ => (Binary_bus21_pub I.rows hT.binNoPub I.lk_bus13 j))
+    (pubProved_nil)
+
 /-- `BinaryAdd`'s arguments on the operation bus. -/
 def BinaryAddInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : BinaryAddInst xv tv) :
     List (Prover F) :=
@@ -700,6 +812,12 @@ theorem BinaryAddInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.
       eq := opProves_of_not (fun j _ => BinaryAdd_bus13_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => BinaryAdd_bus13_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem BinaryAddInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : BinaryAddInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAdd_bus13_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `BinaryAddHi`'s arguments on the operation bus. -/
 def BinaryAddHiInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : BinaryAddHiInst xv tv) :
@@ -719,6 +837,14 @@ theorem BinaryAddHiInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk
       eq := opProves_of_not (fun j _ => BinaryAddHi_bus14_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => BinaryAddHi_bus14_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil))
+
+theorem BinaryAddHiInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : BinaryAddHiInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHi_bus9_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHi_bus14_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil))
 
 /-- `BinaryAddHiHuge`'s arguments on the operation bus. -/
 def BinaryAddHiHugeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : BinaryAddHiHugeInst xv tv) :
@@ -769,6 +895,26 @@ theorem BinaryAddHiHugeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTable
       and := opProves_of_not (fun j _ => BinaryAddHiHuge_bus44_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil))))))))
 
+theorem BinaryAddHiHugeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : BinaryAddHiHugeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHiHuge_bus9_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHiHuge_bus14_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHiHuge_bus19_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHiHuge_bus24_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHiHuge_bus29_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHiHuge_bus34_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHiHuge_bus39_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHiHuge_bus44_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil))))))))
+
 /-- `BinaryAddHiLarge`'s arguments on the operation bus. -/
 def BinaryAddHiLargeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : BinaryAddHiLargeInst xv tv) :
     List (Prover F) :=
@@ -797,6 +943,18 @@ theorem BinaryAddHiLargeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTabl
       eq := opProves_of_not (fun j _ => BinaryAddHiLarge_bus24_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => BinaryAddHiLarge_bus24_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil))))
+
+theorem BinaryAddHiLargeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : BinaryAddHiLargeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHiLarge_bus9_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHiLarge_bus14_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHiLarge_bus19_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHiLarge_bus24_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil))))
 
 /-- `BinaryAddHuge`'s arguments on the operation bus. -/
 def BinaryAddHugeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : BinaryAddHugeInst xv tv) :
@@ -827,6 +985,18 @@ theorem BinaryAddHugeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZi
       and := opProves_of_not (fun j _ => BinaryAddHuge_bus40_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil))))
 
+theorem BinaryAddHugeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : BinaryAddHugeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHuge_bus13_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHuge_bus22_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHuge_bus31_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddHuge_bus40_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil))))
+
 /-- `BinaryAddLarge`'s arguments on the operation bus. -/
 def BinaryAddLargeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : BinaryAddLargeInst xv tv) :
     List (Prover F) :=
@@ -846,6 +1016,14 @@ theorem BinaryAddLargeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZ
       and := opProves_of_not (fun j _ => BinaryAddLarge_bus22_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil))
 
+theorem BinaryAddLargeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : BinaryAddLargeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddLarge_bus13_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryAddLarge_bus22_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil))
+
 /-- `BinaryExtension`'s arguments on the operation bus. -/
 def BinaryExtensionInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : BinaryExtensionInst xv tv) :
     List (Prover F) :=
@@ -859,6 +1037,12 @@ theorem BinaryExtensionInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTable
       eq := opProves_of_not (fun j _ => BinaryExtension_bus21_not_cmp I.lk_bus11 (fun k hk => hT.ext17 k (List.mem_cons_of_mem _ hk)) (fun k hk => hT.ext18 k (List.mem_cons_of_mem _ hk)) 9 (by simp))
       and := opProves_of_not (fun j _ => BinaryExtension_bus21_not_cmp I.lk_bus11 (fun k hk => hT.ext17 k (List.mem_cons_of_mem _ hk)) (fun k hk => hT.ext18 k (List.mem_cons_of_mem _ hk)) 14 (by simp)) }
     (opsProved_nil)
+
+theorem BinaryExtensionInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : BinaryExtensionInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => BinaryExtension_bus21_not_pub I.lk_bus11 hT.ext17P hT.ext18P 160 (by simp)))
+    (pubProved_nil)
 
 /-- `BinaryExtensionLarge`'s arguments on the operation bus. -/
 def BinaryExtensionLargeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : BinaryExtensionLargeInst xv tv) :
@@ -878,6 +1062,14 @@ theorem BinaryExtensionLargeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : Virtual
       eq := opProves_of_not (fun j _ => BinaryExtensionLarge_bus32_not_cmp I.lk_bus22 (fun k hk => hT.ext17 k (List.mem_cons_of_mem _ hk)) (fun k hk => hT.ext18 k (List.mem_cons_of_mem _ hk)) 9 (by simp))
       and := opProves_of_not (fun j _ => BinaryExtensionLarge_bus32_not_cmp I.lk_bus22 (fun k hk => hT.ext17 k (List.mem_cons_of_mem _ hk)) (fun k hk => hT.ext18 k (List.mem_cons_of_mem _ hk)) 14 (by simp)) }
     (opsProved_nil))
+
+theorem BinaryExtensionLargeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : BinaryExtensionLargeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => BinaryExtensionLarge_bus21_not_pub I.lk_bus11 hT.ext17P hT.ext18P 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => BinaryExtensionLarge_bus32_not_pub I.lk_bus22 hT.ext17P hT.ext18P 160 (by simp)))
+    (pubProved_nil))
 
 /-- `BinaryHuge`'s arguments on the operation bus. -/
 def BinaryHugeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : BinaryHugeInst xv tv) :
@@ -908,6 +1100,18 @@ theorem BinaryHugeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1
       and := fun j _ _ => (BinaryHuge_bus54_cmp I.rows hT.binOps I.lk_bus46 I.lk_bus47 I.lk_bus48 I.lk_bus49 I.lk_bus50 I.lk_bus51 I.lk_bus52 I.lk_bus53 j).2.2 }
     (opsProved_nil))))
 
+theorem BinaryHugeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : BinaryHugeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (fun j _ _ => (BinaryHuge_bus21_pub I.rows hT.binNoPub I.lk_bus13 j))
+    (pubProved_cons
+    (fun j _ _ => (BinaryHuge_bus32_pub I.rows hT.binNoPub I.lk_bus24 j))
+    (pubProved_cons
+    (fun j _ _ => (BinaryHuge_bus43_pub I.rows hT.binNoPub I.lk_bus35 j))
+    (pubProved_cons
+    (fun j _ _ => (BinaryHuge_bus54_pub I.rows hT.binNoPub I.lk_bus46 j))
+    (pubProved_nil))))
+
 /-- `BinaryLarge`'s arguments on the operation bus. -/
 def BinaryLargeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : BinaryLargeInst xv tv) :
     List (Prover F) :=
@@ -927,6 +1131,14 @@ theorem BinaryLargeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk
       and := fun j _ _ => (BinaryLarge_bus32_cmp I.rows hT.binOps I.lk_bus24 I.lk_bus25 I.lk_bus26 I.lk_bus27 I.lk_bus28 I.lk_bus29 I.lk_bus30 I.lk_bus31 j).2.2 }
     (opsProved_nil))
 
+theorem BinaryLargeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : BinaryLargeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (fun j _ _ => (BinaryLarge_bus21_pub I.rows hT.binNoPub I.lk_bus13 j))
+    (pubProved_cons
+    (fun j _ _ => (BinaryLarge_bus32_pub I.rows hT.binNoPub I.lk_bus24 j))
+    (pubProved_nil))
+
 /-- `Blake2br`'s arguments on the operation bus. -/
 def Blake2brInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : Blake2brInst xv tv) :
     List (Prover F) :=
@@ -941,6 +1153,12 @@ theorem Blake2brInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.T
       and := opProves_of_not (fun j _ => Blake2br_bus104_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
 
+theorem Blake2brInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Blake2brInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Blake2br_bus104_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
+
 /-- `Blake2s`'s arguments on the operation bus. -/
 def Blake2sInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : Blake2sInst xv tv) :
     List (Prover F) :=
@@ -954,6 +1172,12 @@ theorem Blake2sInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Tr
       eq := opProves_of_not (fun j _ => Blake2s_bus60_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => Blake2s_bus60_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem Blake2sInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Blake2sInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Blake2s_bus60_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `Blake3f`'s arguments on the operation bus. -/
 def Blake3fInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : Blake3fInst xv tv) :
@@ -974,6 +1198,14 @@ theorem Blake3fInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Tr
       and := opProves_of_not (fun j _ => Blake3f_bus102_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil))
 
+theorem Blake3fInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Blake3fInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Blake3f_bus62_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => Blake3f_bus102_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil))
+
 /-- `Dma`'s arguments on the operation bus. -/
 def DmaInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : DmaInst xv tv) :
     List (Prover F) :=
@@ -987,6 +1219,12 @@ theorem DmaInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace 
       eq := opProves_of_not (fun j _ => Dma_bus51_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => Dma_bus51_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem DmaInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : DmaInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Dma_bus51_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `Dma64Aligned`'s arguments on the operation bus. -/
 def Dma64AlignedInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : Dma64AlignedInst xv tv) :
@@ -1002,6 +1240,12 @@ theorem Dma64AlignedInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZis
       and := opProves_of_not (fun j _ => Dma64Aligned_bus56_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
 
+theorem Dma64AlignedInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Dma64AlignedInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Dma64Aligned_bus56_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
+
 /-- `Dma64AlignedLarge`'s arguments on the operation bus. -/
 def Dma64AlignedLargeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : Dma64AlignedLargeInst xv tv) :
     List (Prover F) :=
@@ -1015,6 +1259,12 @@ theorem Dma64AlignedLargeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTab
       eq := opProves_of_not (fun j _ => Dma64AlignedLarge_bus56_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => Dma64AlignedLarge_bus56_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem Dma64AlignedLargeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Dma64AlignedLargeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Dma64AlignedLarge_bus56_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `Dma64AlignedMem`'s arguments on the operation bus. -/
 def Dma64AlignedMemInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : Dma64AlignedMemInst xv tv) :
@@ -1030,6 +1280,12 @@ theorem Dma64AlignedMemInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTable
       and := opProves_of_not (fun j _ => Dma64AlignedMem_bus34_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
 
+theorem Dma64AlignedMemInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Dma64AlignedMemInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Dma64AlignedMem_bus34_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
+
 /-- `Dma64AlignedMemCpy`'s arguments on the operation bus. -/
 def Dma64AlignedMemCpyInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : Dma64AlignedMemCpyInst xv tv) :
     List (Prover F) :=
@@ -1043,6 +1299,12 @@ theorem Dma64AlignedMemCpyInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTa
       eq := opProves_of_not (fun j _ => Dma64AlignedMemCpy_bus34_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => Dma64AlignedMemCpy_bus34_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem Dma64AlignedMemCpyInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Dma64AlignedMemCpyInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Dma64AlignedMemCpy_bus34_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `Dma64AlignedMemLarge`'s arguments on the operation bus. -/
 def Dma64AlignedMemLargeInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : Dma64AlignedMemLargeInst xv tv) :
@@ -1058,6 +1320,12 @@ theorem Dma64AlignedMemLargeInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : Virtual
       and := opProves_of_not (fun j _ => Dma64AlignedMemLarge_bus34_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
 
+theorem Dma64AlignedMemLargeInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Dma64AlignedMemLargeInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Dma64AlignedMemLarge_bus34_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
+
 /-- `Dma64AlignedMemSet`'s arguments on the operation bus. -/
 def Dma64AlignedMemSetInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : Dma64AlignedMemSetInst xv tv) :
     List (Prover F) :=
@@ -1071,6 +1339,12 @@ theorem Dma64AlignedMemSetInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTa
       eq := opProves_of_not (fun j _ => Dma64AlignedMemSet_bus23_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => Dma64AlignedMemSet_bus23_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem Dma64AlignedMemSetInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Dma64AlignedMemSetInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Dma64AlignedMemSet_bus23_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `DmaUnaligned`'s arguments on the operation bus. -/
 def DmaUnalignedInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : DmaUnalignedInst xv tv) :
@@ -1086,6 +1360,12 @@ theorem DmaUnalignedInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZis
       and := opProves_of_not (fun j _ => DmaUnaligned_bus24_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
 
+theorem DmaUnalignedInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : DmaUnalignedInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => DmaUnaligned_bus24_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
+
 /-- `JumpDest`'s arguments on the operation bus. -/
 def JumpDestInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : JumpDestInst xv tv) :
     List (Prover F) :=
@@ -1099,6 +1379,12 @@ theorem JumpDestInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.T
       eq := opProves_of_not (fun j _ => JumpDest_bus36_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => JumpDest_bus36_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem JumpDestInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : JumpDestInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => JumpDest_bus36_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `Keccakf`'s arguments on the operation bus. -/
 def KeccakfInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : KeccakfInst xv tv) :
@@ -1119,6 +1405,14 @@ theorem KeccakfInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Tr
       and := opProves_of_not (fun j _ => Keccakf_bus93_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil))
 
+theorem KeccakfInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : KeccakfInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Keccakf_bus92_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_cons
+    (opProves_of_not (fun j _ => Keccakf_bus93_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil))
+
 /-- `Poseidon`'s arguments on the operation bus. -/
 def PoseidonInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : PoseidonInst xv tv) :
     List (Prover F) :=
@@ -1132,6 +1426,12 @@ theorem PoseidonInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.T
       eq := opProves_of_not (fun j _ => Poseidon_bus139_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => Poseidon_bus139_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem PoseidonInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : PoseidonInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Poseidon_bus139_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-- `Sha256f`'s arguments on the operation bus. -/
 def Sha256fInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : Sha256fInst xv tv) :
@@ -1147,6 +1447,12 @@ theorem Sha256fInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Tr
       and := opProves_of_not (fun j _ => Sha256f_bus15_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
 
+theorem Sha256fInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : Sha256fInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => Sha256f_bus15_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
+
 /-- `TwistedEdwards`'s arguments on the operation bus. -/
 def TwistedEdwardsInst.provers {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (I : TwistedEdwardsInst xv tv) :
     List (Prover F) :=
@@ -1160,6 +1466,12 @@ theorem TwistedEdwardsInst.ok {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZ
       eq := opProves_of_not (fun j _ => TwistedEdwards_bus103_not_cmp (I.rows j) 9 (by simp))
       and := opProves_of_not (fun j _ => TwistedEdwards_bus103_not_cmp (I.rows j) 14 (by simp)) }
     (opsProved_nil)
+
+theorem TwistedEdwardsInst.pub {xv : VirtualTableZisk1.Ctx F} {tv : VirtualTableZisk1.Trace F} (hT : Tables xv tv)
+    (I : TwistedEdwardsInst xv tv) : PubProved I.provers :=
+  pubProved_cons
+    (opProves_of_not (fun j _ => TwistedEdwards_bus103_not_pub (I.rows j) 160 (by simp)))
+    (pubProved_nil)
 
 /-! ### The system -/
 
@@ -1297,6 +1609,51 @@ theorem System.ok (S : System F) (hT : Tables S.xv S.tv) (hF : ∀ p ∈ frops S
     opsProved_append (opsProved_flatMap (fun I _ => PoseidonInst.ok hT I)) <|
     opsProved_append (opsProved_flatMap (fun I _ => Sha256fInst.ok hT I)) <|
     opsProved_flatMap (fun I _ => TwistedEdwardsInst.ok hT I)
+
+/-- **Every prover on the operation bus proves `pubout` correctly**, given the
+tables' contents: none of them proves it at all. -/
+theorem System.pub (S : System F) (hT : Tables S.xv S.tv) (hF : ∀ p ∈ frops S.x0 S.t0, FropsOk p) :
+    PubProved S.provers :=
+  pubProved_append (frops_pub hF) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Add256Inst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => ArithInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Arith256XInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Arith256XLargeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => ArithBn254Inst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => ArithBn254LargeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => ArithEqInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => ArithEq384Inst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => ArithEq384LargeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => ArithEqLargeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => ArithSecp256K1Inst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => ArithSecp256K1LargeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => BinaryInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => BinaryAddInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => BinaryAddHiInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => BinaryAddHiHugeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => BinaryAddHiLargeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => BinaryAddHugeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => BinaryAddLargeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => BinaryExtensionInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => BinaryExtensionLargeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => BinaryHugeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => BinaryLargeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Blake2brInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Blake2sInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Blake3fInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => DmaInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Dma64AlignedInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Dma64AlignedLargeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Dma64AlignedMemInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Dma64AlignedMemCpyInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Dma64AlignedMemLargeInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Dma64AlignedMemSetInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => DmaUnalignedInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => JumpDestInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => KeccakfInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => PoseidonInst.pub hT I)) <|
+    pubProved_append (pubProved_flatMap (fun I _ => Sha256fInst.pub hT I)) <|
+    pubProved_flatMap (fun I _ => TwistedEdwardsInst.pub hT I)
 
 /-- **A run of the pilot's programs, over ZisK's provers.** `run_pilot` with
 the operation bus answered by the system's provers: `OpsProved` is no longer

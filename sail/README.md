@@ -150,6 +150,8 @@ reached through the ROM lookup. See
 | `lean/Proofs/OpBusCmp.lean` | The 54 operation-bus provers that cannot prove `ltu`, `eq` or `and`, each proved so. |
 | `lean/Proofs/ExtPilot.lean` | The external ops at any lane (`lane_external`), through that lane's operation-bus lookup; slot 1 executing `add`, `ltu`, `eq` and `and`. |
 | `lean/Proofs/OpBusPub.lean` | The 53 operation-bus arguments that cannot prove `pubout`, each proved so. |
+| `lean/Proofs/BinaryPub.lean` | Binary's seven lanes never prove `pubout`: their op is the Binary table's, never 160 or 144. |
+| `lean/Proofs/PubGlobal.lean` | The public outputs' global updates, `pubout`'s provers, and the run to the end with registers and memory over ZisK's provers (`run_to_end_memory_system`). |
 | `lean/Proofs/Provers.lean` | Every prover on the operation bus, collected: 61 arguments in 39 AIRs and the 12 of the FROPS table, each proved to compute the four external ops, and the run over them (`run_system`). Generated. |
 | `lean/Proofs/Segments.lean` | Across segments: from the boot state, along the continuation bus's chain of Main segments, every step is a step of the model (`run_from_boot`). |
 | `lean/Proofs/End.lean` | The program's end: from boot, the model runs the program to an end instruction and stops (`run_to_end`). |
@@ -361,7 +363,7 @@ make proofs
 ```
 
 ```
-✔ [111/112] Built Proofs
+✔ [113/114] Built Proofs
 Build completed successfully.
 ```
 
@@ -1360,17 +1362,25 @@ hypothesis for now). `make scope` (`check_scope.py`) checks the programs
 `make difftest` runs against the scope: every instruction of the doubler,
 BIOS and launcher included, is in it.
 
-`PubProved` is the operation bus's census for a fifth op. No AIR proves
-`pubout`: the global updates do, one per public input,
-`(0xA0, i, 0, inputs[i], inputs[i])` — `c = b`, and the flag, absent, 0. Of
-the AIRs' arguments, the 53 `OpBusCmp.lean` rules out for `ltu`, `eq` and
-`and` are ruled out for `pubout` (160) the same way
+`PubProved` is the operation bus's census for a fifth op, and it is proved.
+No AIR proves `pubout`: the global updates do, one per public input,
+`(0xA0, i, 0, inputs[2i], inputs[2i+1], inputs[2i], inputs[2i+1])` — `c = b`,
+and the flag, absent, 0. Of the AIRs' arguments, the 53 `OpBusCmp.lean` rules
+out for `ltu`, `eq` and `and` are ruled out for `pubout` (160) the same way
 ([`lean/Proofs/OpBusPub.lean`](lean/Proofs/OpBusPub.lean), written out
-mechanically from it; Dma needs no special case here). Still to come: Binary,
-whose op is its table's — `b_op + 16·mode32`, and the table's opcodes all
-below `0x60` — the FROPS rows, Arith's and BinaryExtension's tables, all
-facts for `check_tables.py`; and the global updates, as provers of their
-own.
+mechanically from it). Binary's seven lanes have op `b_op + 16·mode32`,
+`mode32` a bit and `b_op` its table's op, which is never 160 or 144
+([`lean/Proofs/BinaryPub.lean`](lean/Proofs/BinaryPub.lean)); Arith's and
+BinaryExtension's tables never serve 160; and the FROPS table has no
+`pubout` rows — all checked by `check_tables.py`, and taken in `Tables` and
+`FropsOk`. `gen_provers.py` collects them into `System.pub`: no prover of the
+system proves `pubout` at all. The global updates are provers of their own
+([`lean/Proofs/PubGlobal.lean`](lean/Proofs/PubGlobal.lean), `pubGlobals`):
+each proves `pubout` correctly and none of the other modeled ops. So
+`run_to_end_memory_system`, over the system's provers and the public outputs'
+updates, no longer assumes `OpsProved` or `PubProved` — only the tables'
+contents. What remains assumed for the doubler's run is the memory bus's
+guarantee, `MemAnswers`.
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'

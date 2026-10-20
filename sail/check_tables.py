@@ -23,6 +23,7 @@ Five checks:
        ltu (0x06):  c = flag = [a < b], unsigned
        eq  (0x09):  c = flag = [a = b]
        and (0x0e):  c = a & b,  flag = 0
+       pubout (0xa0):  c = b,  flag = 0
 
    with every limb below 2^32.
 
@@ -35,7 +36,9 @@ Five checks:
 3. **The Binary table's rows for the modeled ops (bus 125).** Binary computes
    each op byte by byte, each byte a lookup of `(pos, op, a, b, cin, c, flags)`.
    Every row has an op below 2^10 (the widest is SEXT_FF, 0x201), so never one
-   of the negative `b_op`s a 32-bit form of a modeled op would need; and every
+   of the negative `b_op`s a 32-bit form of a modeled op would need; no row has
+   op 160 or 144, so Binary, whose op is `b_op + 16*mode32`, never proves
+   pubout (`lean/Proofs/BinaryPub.lean`); and every
    row of a modeled op has `pos` 0 or 1 (middle or last byte), bytes below 256,
    `cin` 0 or 1, and computes its byte:
 
@@ -78,6 +81,7 @@ SEMANTICS = {
     0x06: ("ltu", lambda a, b: (int(a < b), int(a < b))),
     0x09: ("eq", lambda a, b: (int(a == b), int(a == b))),
     0x0E: ("and", lambda a, b: (a & b, 0)),
+    0xA0: ("pubout", lambda a, b: (b, 0)),
 }
 
 BINARY_TABLE = 125
@@ -220,6 +224,10 @@ def check_binary_rows(k, rows, values):
     if wide:
         print(f"FAIL hint {k}: {wide} rows with an op of 2^10 or more")
         failures += wide
+    pub = int(((op == 160) | (op == 144)).sum())
+    if pub:
+        print(f"FAIL hint {k}: {pub} rows with op 160 or 144, which would let Binary prove pubout")
+        failures += pub
     counts = []
     for code, (name, _) in SEMANTICS.items():
         sel = op == code
@@ -235,7 +243,8 @@ def check_binary_rows(k, rows, values):
                 bad += 1
         failures += bad
         counts.append(f"{n} {name} rows, {bad} wrong")
-    print(f"  hint {k}: {rows.size} rows on the Binary table, ops all below 2^10: {wide == 0}; "
+    print(f"  hint {k}: {rows.size} rows on the Binary table, ops all below 2^10: {wide == 0}, "
+          f"none 160 or 144: {pub == 0}; "
           + ("; ".join(counts) if counts else "no modeled op"))
     return failures
 
