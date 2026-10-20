@@ -7,6 +7,7 @@ use std::sync::Arc;
 use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::OperationBlake2bData;
+use zisk_core::{BLAKE2B_GAP_SHIFT, BLAKE2B_RD_CHAIN, BLAKE2B_ROUND_MASK, BLAKE2B_WR_CHAIN};
 use zisk_pil::{Blake2brTraceRowOps, ZISK_AIRGROUP_ID};
 
 use super::blake2b_constants::{CLOCKS, R1_G, R2_G, R3_G, R4_G, SIGMA};
@@ -28,7 +29,7 @@ const G_INDICES: [(usize, usize, usize, usize); CLOCKS] = [
 #[derive(Debug)]
 pub struct Blake2bInput {
     pub step_main: u64,
-    /// Round index, the static argument of the instruction (first word of the payload).
+    /// Static argument of the instruction (first word of the payload): round index and chain mode.
     pub index: u64,
     /// Main operand a: the state address (the result overwrites it).
     pub state_addr: u32,
@@ -78,8 +79,11 @@ impl<F: PrimeField64> Blake2bSM<F> {
     /// * `trace` - The CLOCKS-row chunk of the trace assigned to this operation.
     #[inline(always)]
     pub fn process_input<R: Blake2brTraceRowOps<F>>(&self, input: &Blake2bInput, trace: &mut [R]) {
-        let idx_usize = input.index as usize;
+        let idx_usize = (input.index & BLAKE2B_ROUND_MASK) as usize;
         let s = &SIGMA[idx_usize];
+        let rd_chain = input.index & BLAKE2B_RD_CHAIN != 0;
+        let wr_chain = input.index & BLAKE2B_WR_CHAIN != 0;
+        let gap = (input.index >> BLAKE2B_GAP_SHIFT) as u8;
 
         // Fill the step_addr
         trace[0].set_step_addr(input.step_main); // STEP_MAIN
@@ -92,6 +96,9 @@ impl<F: PrimeField64> Blake2bSM<F> {
         for (k, row) in trace.iter_mut().enumerate().take(CLOCKS) {
             row.set_in_use(true);
             row.set_round_idx_sel(idx_usize, true);
+            row.set_rd_chain(rd_chain);
+            row.set_wr_chain(wr_chain);
+            row.set_gap(gap);
 
             // Memory-ordered message words bound by the x/y memory ports at this clock
             let x_limbs = u64_to_limbs16(input.input[2 * k]);

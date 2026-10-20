@@ -130,6 +130,17 @@ airtemplate Blake2br(const int N = 2**20) {
     // Round index is constant within a round
     in_use * (1 - CLK_0) * (round_idx - 'round_idx) === 0;
 
+    // Chain mode, constant within a round: rd_chain = state and m come from the previous round of
+    // the call (not memory), wr_chain = they go to the next one; gap = Main steps back to that round
+    col witness bits(1) rd_chain;
+    col witness bits(1) wr_chain;
+    col witness bits(8) gap;
+    rd_chain * (1 - rd_chain) === 0;
+    wr_chain * (1 - wr_chain) === 0;
+    in_use * (1 - CLK_0) * (rd_chain - 'rd_chain) === 0;
+    in_use * (1 - CLK_0) * (wr_chain - 'wr_chain) === 0;
+    in_use * (1 - CLK_0) * (gap - 'gap) === 0;
+
     // One-hot encoding for round index selection
     col witness bits(1) round_idx_sel[SIGMA_LENGTH];
 
@@ -416,11 +427,15 @@ airtemplate Blake2br(const int N = 2**20) {
 
         precompiled_mem_op(
             is_write: clks_write_state,
-            sel: (clks_read_state + clks_write_state) * in_use,
+            sel: (clks_read_state * (1 - rd_chain) + clks_write_state * (1 - wr_chain)) * in_use,
             main_step: op_step,
             addr: mem_addr,
             value: mem_value
         );
+
+        // Chained state: the producer's step in the key ties each round to its only predecessor
+        permutation(BLAKE2B_CHAIN_ID, [op_step - clks_read_state * gap, mem_addr, ...mem_value],
+                    sel: (clks_write_state * wr_chain - clks_read_state * rd_chain) * in_use, sel_is_ternary: 1);
     }
 
     // ── Message ports ──
@@ -444,11 +459,15 @@ airtemplate Blake2br(const int N = 2**20) {
 
         precompiled_mem_op(
             is_write: 0,
-            sel: clks_read_input * in_use,
+            sel: clks_read_input * in_use * (1 - rd_chain),
             main_step: op_step,
             addr: mem_addr,
             value: mem_value
         );
+
+        // Chained message: taken from the previous round and handed on to the next one
+        permutation_assumes(BLAKE2B_CHAIN_ID, [op_step - gap, mem_addr, ...mem_value], sel: in_use * rd_chain, sel_is_binary: 1);
+        permutation_proves(BLAKE2B_CHAIN_ID, [op_step, mem_addr, ...mem_value], sel: in_use * wr_chain, sel_is_binary: 1);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -457,10 +476,11 @@ airtemplate Blake2br(const int N = 2**20) {
     col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Blake2br operation, 0 otherwise
     in_use_clk_0 <== CLK_0 * in_use;
 
-    // The round index is the static argument of the instruction (extended_arg); round_idx is
-    // latched over the cycle, so its value at the first clock is the one the main processor sent.
+    // The round index and chain mode are the static argument of the instruction (extended_arg),
+    // latched over the cycle, so their values at the first clock are the ones Main sent.
     proves_operation(op: OP_BLAKE2B, a: [step_addr'(ADDR_STATE), 0], b: [step_addr'(ADDR_INPUT), 0],
-                     main_step: step_addr'(STEP_MAIN), extended_arg: round_idx, mul: in_use_clk_0);
+                     main_step: step_addr'(STEP_MAIN), extended_arg: round_idx + 16 * rd_chain + 32 * wr_chain + 64 * gap,
+                     mul: in_use_clk_0);
 
     function pack(const expr a[], const int s): expr {
         const int len = length(a);

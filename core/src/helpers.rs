@@ -13,9 +13,16 @@ pub fn sha256f(state: &mut [u64; 4], input: &[u64; 8]) {
     compress256(state_u32, input_u8);
 }
 
+/// blake2b `extended_arg`: round index (bits 0..4), state and m from the previous round of the
+/// call (`BLAKE2B_RD_CHAIN`), to the next one (`BLAKE2B_WR_CHAIN`), steps back to it (bits 6..).
+pub const BLAKE2B_ROUND_MASK: u64 = 0xF;
+pub const BLAKE2B_RD_CHAIN: u64 = 1 << 4;
+pub const BLAKE2B_WR_CHAIN: u64 = 1 << 5;
+pub const BLAKE2B_GAP_SHIFT: u64 = 6;
+
 #[allow(deprecated)]
 pub fn blake2br(index: u64, state: &mut [u64; 16], input: &[u64; 16]) {
-    blake2b_round(state, input, index as u32);
+    blake2b_round(state, input, (index & BLAKE2B_ROUND_MASK) as u32);
 }
 
 /// Blake3 permutation (7 rounds of G-mixing, no feed-forward) over the 16-u32 state,

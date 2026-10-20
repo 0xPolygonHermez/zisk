@@ -2127,6 +2127,7 @@ impl<'a> Emu<'a> {
             } else {
                 // Check if is the first step of a new block
                 if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
+                    self.ctx.inst_ctx.blake2b_chain_cached = false;
                     emu_traces.push(EmuTrace {
                         start_state: EmuTraceStart {
                             pc: self.ctx.inst_ctx.pc,
@@ -2182,6 +2183,7 @@ impl<'a> Emu<'a> {
         while !self.ctx.inst_ctx.end {
             // Check if is the first step of a new block
             if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
+                self.ctx.inst_ctx.blake2b_chain_cached = false;
                 emu_traces.push(EmuTrace {
                     start_state: EmuTraceStart {
                         pc: self.ctx.inst_ctx.pc,
@@ -2482,8 +2484,8 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
-            // round_up => (size + 7) >> 3
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            let number_of_mem_reads =
+                instruction.min_trace_words(self.ctx.inst_ctx.blake2b_chain_cached);
             for _ in 0..number_of_mem_reads {
                 let mem_read = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
@@ -2560,8 +2562,8 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
-            // round_up => (size + 7) >> 3
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            let number_of_mem_reads =
+                instruction.min_trace_words(self.ctx.inst_ctx.blake2b_chain_cached);
             for _ in 0..number_of_mem_reads {
                 let mem_read = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
@@ -2621,6 +2623,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step = emu_trace.start_state.step;
         self.ctx.inst_ctx.c = emu_trace.start_state.c;
         self.ctx.inst_ctx.regs = emu_trace.start_state.regs;
+        self.ctx.inst_ctx.blake2b_chain_cached = false;
         self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
 
         let mut mem_reads_index: usize = 0;
@@ -2653,6 +2656,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step = emu_trace_start.step;
         self.ctx.inst_ctx.c = emu_trace_start.c;
         self.ctx.inst_ctx.regs = emu_trace_start.regs;
+        self.ctx.inst_ctx.blake2b_chain_cached = false;
         self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
 
         let mut current_step_idx = 0;
@@ -2697,7 +2701,8 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            let number_of_mem_reads =
+                instruction.min_trace_words(self.ctx.inst_ctx.blake2b_chain_cached);
             for _ in 0..number_of_mem_reads {
                 let mem_read = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
@@ -2797,7 +2802,8 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            let number_of_mem_reads =
+                instruction.min_trace_words(self.ctx.inst_ctx.blake2b_chain_cached);
             for _ in 0..number_of_mem_reads {
                 let mem_read = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
