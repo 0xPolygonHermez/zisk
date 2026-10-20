@@ -7,14 +7,14 @@
 
 use proofman_fields::Goldilocks;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs::File,
     io::{BufWriter, IsTerminal, Write},
 };
 use zisk_core::{
     zisk_ops::{OpStats, OpType, ZiskOp},
     InstContext, ZiskInst, ZiskOperationType, ZiskRom, RAM_ADDR, REGS_IN_MAIN_TOTAL_NUMBER,
-    ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, STORE_NONE, SYS_ADDR,
+    ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, SRC_IMM, STORE_NONE, SYS_ADDR,
 };
 use zisk_core::{FLOAT_LIB_ROM_ADDR, ZISKLIB_ROM_ADDR};
 use zisk_pil::RomRomTrace;
@@ -1333,7 +1333,17 @@ impl Stats {
             false
         };
         let non_rd = if let Some(rd) = inst.meta_rd { rd == 0 } else { false };
-        if !non_rd {
+        if inst.op == ZiskOp::COPYB
+            && inst.set_pc
+            && !inst.store_pc
+            && inst.store == STORE_NONE
+            && inst.b_src == SRC_IMM
+        {
+            // Static jump (`copyb` imm + `set_pc`, no store): a zkvmcall's tail-jump into its
+            // ZisK library routine (see `emit_zkvmcall_jump`). ra is untouched and the routine's
+            // `ret` returns to the guest caller, so it is a tail call when it leaves the ROI.
+            self.is_tail_call = self.check_call(inst_ctx.c as i64 + inst.jmp_offset1);
+        } else if !non_rd {
             // CALL path
             match inst.op {
                 ZiskOp::AND
@@ -3284,6 +3294,144 @@ impl Stats {
         let index = self.rois.len() as u32;
         self.rois.push(roi);
         self.rois_by_pc.insert(from_pc, index);
+    }
+
+    /// Adds a ROI for each function of the ZisK library merged into the ROM, which has no
+    /// ELF symbols. The library labels (`ZiskLibrary::symbols`) don't tell functions from
+    /// local labels, so a function is an address the code enters as one: the target of a
+    /// `call`, or of a zkvmcall's jump from the guest (see `emit_zkvmcall_jump`). Its extent
+    /// is the code it reaches without calls (see `zisklib_reach`); entries whose extents
+    /// overlap are one ROI, so a subroutine placed inside a function's body (e.g. `zme_ld32`
+    /// in `ziskasm_zkvm_modexp`) stays part of it, and so do functions that share code
+    /// (e.g. `zbn_g1_encode` in bn254). Each ROI spans up to the next one and is named after
+    /// the library labels of its first entry and its other zkvmcall entries, joined by `|`.
+    /// Returns the number of ROIs added.
+    pub fn add_zisklib_rois(&mut self, rom: &ZiskRom) -> usize {
+        let in_lib = |addr: u64| (ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(&addr);
+        let mut entries = BTreeSet::new();
+        let mut zkvmcall_entries = HashSet::new();
+        for (&addr, zib) in &rom.insts {
+            let inst = &zib.i;
+            let (target, zkvmcall) = if inst.op == ZiskOp::FLAG && inst.store_pc && !inst.set_pc {
+                // call: flag is 1, so it jumps to jmp_offset1
+                ((addr as i64 + inst.jmp_offset1) as u64, false)
+            } else if inst.op == ZiskOp::COPYB
+                && inst.set_pc
+                && inst.b_src == SRC_IMM
+                && !in_lib(addr)
+            {
+                // static jump into the library: a zkvmcall
+                (Self::static_jump_target(inst), true)
+            } else {
+                continue;
+            };
+            if in_lib(target) && rom.insts.contains_key(&target) {
+                entries.insert(target);
+                if zkvmcall {
+                    zkvmcall_entries.insert(target);
+                }
+            }
+        }
+        if entries.is_empty() {
+            return 0;
+        }
+
+        // Extent [lo, hi] of each entry, merged with any it overlaps: (lo, hi, entries).
+        let mut extents: Vec<(u64, u64, u64)> = entries
+            .iter()
+            .map(|&entry| {
+                let (lo, hi) = Self::zisklib_reach(rom, entry, &entries);
+                (lo, hi, entry)
+            })
+            .collect();
+        extents.sort();
+        let mut groups: Vec<(u64, u64, Vec<u64>)> = Vec::new();
+        for (lo, hi, entry) in extents {
+            match groups.last_mut() {
+                Some(group) if lo <= group.1 => {
+                    group.1 = group.1.max(hi);
+                    group.2.push(entry);
+                }
+                _ => groups.push((lo, hi, vec![entry])),
+            }
+        }
+
+        // Label names by address; with several labels at one entry, take the shortest.
+        let mut names: HashMap<u64, String> = HashMap::new();
+        if let Ok(library) = ziskasm::assemble_zisk_library() {
+            for (name, addr) in library.symbols {
+                if entries.contains(&addr) {
+                    let best = names.entry(addr).or_insert_with(|| name.clone());
+                    if (name.len(), &name) < (best.len(), best) {
+                        *best = name;
+                    }
+                }
+            }
+        }
+
+        let last_pc = *rom.insts.range(ZISKLIB_ROM_ADDR..FLOAT_LIB_ROM_ADDR).next_back().unwrap().0;
+        for (i, (lo, _, group_entries)) in groups.iter().enumerate() {
+            let to_pc = groups.get(i + 1).map_or(last_pc + 3, |next| next.0 - 1);
+            let mut group_entries = group_entries.clone();
+            group_entries.sort();
+            let name = group_entries
+                .iter()
+                .enumerate()
+                .filter(|(k, entry)| *k == 0 || zkvmcall_entries.contains(*entry))
+                .map(|(_, entry)| {
+                    names.remove(entry).unwrap_or_else(|| format!("zisklib@0x{entry:08x}"))
+                })
+                .collect::<Vec<_>>()
+                .join("|");
+            self.add_roi(*lo as u32, to_pc as u32, &name);
+        }
+        groups.len()
+    }
+
+    /// Target of a static jump (`copyb` imm + `set_pc`): the next pc is c + jmp_offset1.
+    fn static_jump_target(inst: &ZiskInst) -> u64 {
+        ((inst.b_use_sp_imm1 << 32) | (inst.b_offset_imm0 & 0xffff_ffff))
+            .wrapping_add_signed(inst.jmp_offset1)
+    }
+
+    /// The lowest and highest address of the library code reachable from `entry` within
+    /// its function: branches and static jumps are followed, except a jump to another
+    /// function (a tail call), a `call` continues at its return address, and a `ret` (or
+    /// any other dynamic jump) stops.
+    fn zisklib_reach(rom: &ZiskRom, entry: u64, entries: &BTreeSet<u64>) -> (u64, u64) {
+        let (mut lo, mut hi) = (entry, entry);
+        let mut visited = HashSet::new();
+        let mut pending = vec![entry];
+        while let Some(addr) = pending.pop() {
+            let Some(zib) = rom.insts.get(&addr) else {
+                continue;
+            };
+            let inst = &zib.i;
+            // An `end` (e.g. a panic block shared by several functions) never returns, so
+            // it does not extend the function.
+            if inst.end || !visited.insert(addr) {
+                continue;
+            }
+            (lo, hi) = (lo.min(addr), hi.max(addr));
+            let rel = |offset: i64| addr.wrapping_add_signed(offset);
+            if inst.set_pc {
+                if inst.b_src == SRC_IMM && !inst.store_pc {
+                    let target = Self::static_jump_target(inst);
+                    if !entries.contains(&target) {
+                        pending.push(target);
+                    }
+                }
+            } else if inst.op == ZiskOp::FLAG && inst.store_pc {
+                pending.push(rel(inst.jmp_offset2));
+            } else {
+                pending.push(rel(inst.jmp_offset2));
+                // A precompile's jmp_offset1 is a parameter: its flag is always 0.
+                if !inst.is_precompiled {
+                    pending.push(rel(inst.jmp_offset1));
+                }
+            }
+        }
+        (lo, hi)
     }
     pub fn update_roi_internal_pc_range(
         &mut self,

@@ -1725,6 +1725,8 @@ impl<'a> Emu<'a> {
                         &symbol.name,
                     );
                 }
+                // The ZisK library merged into the ROM has no ELF symbols.
+                count += self.ctx.stats.add_zisklib_rois(self.rom);
 
                 self.ctx.stats.load_rom_data(self.rom);
 
