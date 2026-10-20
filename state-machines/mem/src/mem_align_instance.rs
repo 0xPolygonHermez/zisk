@@ -1,7 +1,7 @@
 use crate::{MemAlignCollector, MemAlignSM};
 use zisk_sm_mem_common::MemAlignCheckPoint;
 
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
@@ -54,7 +54,7 @@ impl<F: PrimeField64> MemAlignInstance<F> {
         segment: usize,
         trace_buffer: Vec<F>,
         packed: bool,
-    ) -> ProofmanResult<AirInstance<F>> {
+    ) -> Result<AirInstance<F>, zisk_common::WitnessError<F>> {
         use crate::mem_device_rows::{align_device_instance, plain_instance};
         if self.is_large() {
             align_device_instance::<F, MemAlignTraceRowPacked<F>, LARGE_ROWS, LARGE_AIR_ID>(
@@ -84,7 +84,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
         packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
+    ) -> zisk_common::WitnessResult<F> {
         let air_id = self.ictx.plan.air_id;
         let segment =
             usize::from(self.ictx.plan.segment_id.expect("MemAlign plan without segment"));

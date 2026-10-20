@@ -1,8 +1,9 @@
 //! Whether this block's memory rows come from the GPU planner, and the MemAlign instances' device
 //! path (`ZISK_MEM_GPU_FILL`, see `mem_gpu_fill`).
 
-use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanError, ProofmanResult};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanError};
 use proofman_fields::PrimeField64;
+use zisk_common::WitnessError;
 use zisk_pil::ZISK_AIRGROUP_ID;
 
 /// Whether this block's rows of the memory airs come from the GPU planner; otherwise the
@@ -28,9 +29,12 @@ pub(crate) fn align_device_instance<
     trace_buffer: Vec<F>,
     packed: bool,
     make: impl FnOnce(&mut GenericTrace<Row, N, ZISK_AIRGROUP_ID, A>, usize) -> AirInstance<F>,
-) -> ProofmanResult<AirInstance<F>> {
+) -> Result<AirInstance<F>, WitnessError<F>> {
     if !packed {
-        return Err(invalid("the device memory witness needs the packed MemAlign traces".into()));
+        return Err(WitnessError::with_buffer(
+            invalid("the device memory witness needs the packed MemAlign traces".into()),
+            trace_buffer,
+        ));
     }
     let mut trace = GenericTrace::<Row, N, ZISK_AIRGROUP_ID, A>::new_from_vec(trace_buffer)?;
     let used = zisk_sm_mem_planner::gpu_align_witness_fill(
@@ -39,9 +43,10 @@ pub(crate) fn align_device_instance<
         crate::mem_gpu_fill::rows_as_words_mut(&mut trace.buffer),
     )
     .map_err(|e| {
-        invalid(format!(
+        let error = invalid(format!(
             "MemAlign air {air_id}[{segment}] witness from the GPU planner failed: {e}"
-        ))
+        ));
+        WitnessError::with_buffer(error, trace.get_buffer())
     })?;
     #[cfg(feature = "mem-witness-test")]
     align_dump(
