@@ -376,7 +376,7 @@ def scatter(title, x_metric, x_name, x_unit):
     """Each successful proof as a point: its total time against `x_metric`, sampled at the same time."""
     total = f'coordinator_proof_seconds{{{C},phase="total"}}'
     return {"type": "xychart", "title": title,
-            "description": f"One point per successful proof of the selected range (the first after a worker restart left out)",
+            "description": "One point per successful proof of the selected range",
             "targets": targets([(once(f"{x_metric}{{{C}}}"), x_name), (once(total), "Proof time")]),
             "transformations": [{"id": "joinByField", "options": {"byField": "Time", "mode": "inner"}}],
             "fieldConfig": {"defaults": {"custom": {"show": "points", "pointSize": {"fixed": 5}}},
@@ -546,8 +546,7 @@ def live():
             (f"quantile_over_time(0.999, {TOTAL}[$__range])", "P99.9")]
     for i, (expr, name) in enumerate(grid):
         b = stat(name, [(expr, name)], "s", decimals=3,
-                 desc="Total proof time of the successful proofs in the selected time range (the first proof "
-                      "after a worker restart is left out)")
+                 desc="Total proof time of the successful proofs in the selected time range")
         b["fieldConfig"]["defaults"]["noValue"] = "–"
         b["options"]["textMode"] = "value"
         b["options"]["colorMode"] = "none"
@@ -701,9 +700,9 @@ def proof_bin_index(x):  # the index of the bin a duration falls in
 def proof_time_rules():
     """The Prometheus recording rules (YAML) behind the proof-time histogram, evaluated every second.
 
-    They read the same samples as "Proof time per job": one per successful proof at its end, the
-    first after a worker restart left out. The evaluation at t records the proof that ended in
-    (t - 11 s, t - 10 s], so each one exactly once (two ending in the same second would count as one)."""
+    They read the same samples as "Proof time per job": one per successful proof at its end. The
+    evaluation at t records the proof that ended in (t - 11 s, t - 10 s], so each one exactly once
+    (two ending in the same second would count as one)."""
     total = 'coordinator_proof_seconds{phase="total"}'
     lagged = f"{total} offset {PROOF_RECORD_LAG}s"
     once_ = f"{lagged} and ((time() - {PROOF_RECORD_LAG} - timestamp({lagged})) < 1)"
@@ -783,8 +782,8 @@ def proof_time_histogram():
     (Grafana's histogram panel only draws vertically.)"""
     rows, named, labelled = proof_time_bins()
     return {"type": "barchart", "title": "Proof time histogram · ${range_text}", "datasource": DS,
-            "description": "Successful proofs of the selected range by their total time (the first proof after a "
-                           "worker restart left out, as in the chart above), from the fastest to the slowest, with "
+            "description": "Successful proofs of the selected range by their total time (as in the chart above), "
+                           "from the fastest to the slowest, with "
                            "each bar's count and share. Each bar is named by its start: 4.00 is 4.00 up to the next "
                            "bar. Bin sets the bars' width; Auto takes 250 ms, or 500 ms, 1 s or 2 s when the range "
                            "needs more than 16 bars. Up to puts every slower proof in the last bar (≥); All stops at "

@@ -63,9 +63,6 @@ pub(crate) struct JobEnded<'a> {
     pub instances: Option<u64>,
     /// Why a failed job failed.
     pub reason: Option<&'a str>,
-    /// A successful proof that was the first after a worker registered: its phase 1 can include
-    /// waiting for the worker's other programs to set up, so it is left out of the samples.
-    pub cold: bool,
 }
 
 /// The coordinator's bounded recent history. See the module documentation.
@@ -83,11 +80,11 @@ struct State {
     failures: VecDeque<FailureRecord>,
     next_event: u64,
     next_failure: u64,
-    /// Each warm proof's duration per phase ("1", "2", "3") and in total.
+    /// Each proof's duration per phase ("1", "2", "3") and in total.
     proof_seconds: BTreeMap<&'static str, TimedSeries>,
     /// Each failed or cancelled job's time from its start to its end, by outcome.
     unsuccessful_seconds: BTreeMap<&'static str, TimedSeries>,
-    /// Each warm proof's input size and steps, at the same time as its `proof_seconds`.
+    /// Each proof's input size and steps, at the same time as its `proof_seconds`.
     proof_input_bytes: TimedSeries,
     proof_steps: TimedSeries,
     /// Instances per AIR in the last execution summary.
@@ -264,7 +261,7 @@ impl Journal {
         }
 
         if ended.outcome == super::OUTCOME_SUCCESS {
-            if let (Some(phases), Some(total), false) = (ended.phases, duration, ended.cold) {
+            if let (Some(phases), Some(total)) = (ended.phases, duration) {
                 for (phase, value) in [("1", phases[0]), ("2", phases[1]), ("3", phases[2])] {
                     state.proof_seconds.entry(phase).or_default().push(value, now);
                 }
@@ -475,7 +472,7 @@ impl Journal {
             );
         }
 
-        family(out, "coordinator_proof_seconds", "Each proof's duration per phase (1 contributions, 2 prove, 3 aggregation) and in total, at the time it ended; the first proof after a worker registered is left out");
+        family(out, "coordinator_proof_seconds", "Each proof's duration per phase (1 contributions, 2 prove, 3 aggregation) and in total, at the time it ended");
         for (phase, series) in state.proof_seconds.iter_mut() {
             if let Some((value, at)) = series.next(now) {
                 sample(out, "coordinator_proof_seconds", &[("phase", phase)], value, Some(at));
@@ -606,7 +603,6 @@ mod tests {
             steps: None,
             instances: None,
             reason: None,
-            cold: false,
         }
     }
 
@@ -676,20 +672,6 @@ mod tests {
         assert!(steps.len() == 1 && steps[0].starts_with("coordinator_proof_steps 350000000 "));
         assert_eq!(at(input[0]), at(total));
         assert_eq!(at(steps[0]), at(total));
-    }
-
-    #[test]
-    fn the_first_proof_after_a_worker_registers_is_left_out_of_the_samples() {
-        let journal = Journal::default();
-        let job = JobId::new();
-        journal.job_ended(&JobEnded {
-            phases: Some([1.0, 2.0, 0.5]),
-            cold: true,
-            ..ended(&job, OUTCOME_SUCCESS)
-        });
-        assert!(samples(&rendered(&journal), "coordinator_proof_seconds").is_empty());
-        // ...but it is still listed.
-        assert_eq!(samples(&rendered(&journal), "coordinator_recent_job").len(), 1);
     }
 
     #[test]

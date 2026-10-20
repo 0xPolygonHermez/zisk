@@ -216,7 +216,6 @@ pub(crate) fn record_job_terminal(o: JobOutcome<'_>) {
         .record(elapsed);
     }
 
-    let mut cold = false;
     if o.outcome == OUTCOME_SUCCESS {
         if let Some(steps) = o.steps {
             metrics::counter!("coordinator_job_steps_total", "kind" => kind).increment(steps);
@@ -233,7 +232,7 @@ pub(crate) fn record_job_terminal(o: JobOutcome<'_>) {
             }
         }
         if let Some(phases) = o.phases {
-            cold = journal().take_cold();
+            let cold = journal().take_cold();
             let cold_label = if cold { "true" } else { "false" };
             for (phase, seconds) in ["1", "2", "3"].into_iter().zip(phases) {
                 metrics::histogram!(
@@ -276,7 +275,6 @@ pub(crate) fn record_job_terminal(o: JobOutcome<'_>) {
         steps: o.steps,
         instances: o.instances,
         reason: o.reason,
-        cold,
     });
 }
 

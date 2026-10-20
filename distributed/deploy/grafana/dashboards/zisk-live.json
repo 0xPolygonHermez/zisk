@@ -1411,7 +1411,7 @@
   {
    "type": "stat",
    "title": "Mean",
-   "description": "Total proof time of the successful proofs in the selected time range (the first proof after a worker restart is left out)",
+   "description": "Total proof time of the successful proofs in the selected time range",
    "targets": [
     {
      "refId": "A",
@@ -1474,7 +1474,7 @@
   {
    "type": "stat",
    "title": "Median",
-   "description": "Total proof time of the successful proofs in the selected time range (the first proof after a worker restart is left out)",
+   "description": "Total proof time of the successful proofs in the selected time range",
    "targets": [
     {
      "refId": "A",
@@ -1537,7 +1537,7 @@
   {
    "type": "stat",
    "title": "Min",
-   "description": "Total proof time of the successful proofs in the selected time range (the first proof after a worker restart is left out)",
+   "description": "Total proof time of the successful proofs in the selected time range",
    "targets": [
     {
      "refId": "A",
@@ -1600,7 +1600,7 @@
   {
    "type": "stat",
    "title": "Max",
-   "description": "Total proof time of the successful proofs in the selected time range (the first proof after a worker restart is left out)",
+   "description": "Total proof time of the successful proofs in the selected time range",
    "targets": [
     {
      "refId": "A",
@@ -1663,7 +1663,7 @@
   {
    "type": "stat",
    "title": "Std dev",
-   "description": "Total proof time of the successful proofs in the selected time range (the first proof after a worker restart is left out)",
+   "description": "Total proof time of the successful proofs in the selected time range",
    "targets": [
     {
      "refId": "A",
@@ -1726,7 +1726,7 @@
   {
    "type": "stat",
    "title": "P99.9",
-   "description": "Total proof time of the successful proofs in the selected time range (the first proof after a worker restart is left out)",
+   "description": "Total proof time of the successful proofs in the selected time range",
    "targets": [
     {
      "refId": "A",
@@ -1793,7 +1793,7 @@
     "type": "prometheus",
     "uid": "prometheus"
    },
-   "description": "Successful proofs of the selected range by their total time (the first proof after a worker restart left out, as in the chart above), from the fastest to the slowest, with each bar's count and share. Each bar is named by its start: 4.00 is 4.00 up to the next bar. Bin sets the bars' width; Auto takes 250 ms, or 500 ms, 1 s or 2 s when the range needs more than 16 bars. Up to puts every slower proof in the last bar (≥); All stops at 30 s. The statistics beside are of the same proofs. A proof shows here 10 s after it ends",
+   "description": "Successful proofs of the selected range by their total time (as in the chart above), from the fastest to the slowest, with each bar's count and share. Each bar is named by its start: 4.00 is 4.00 up to the next bar. Bin sets the bars' width; Auto takes 250 ms, or 500 ms, 1 s or 2 s when the range needs more than 16 bars. Up to puts every slower proof in the last bar (≥); All stops at 30 s. The statistics beside are of the same proofs. A proof shows here 10 s after it ends",
    "targets": [
     {
      "refId": "A",

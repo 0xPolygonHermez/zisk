@@ -1161,7 +1161,7 @@
   {
    "type": "xychart",
    "title": "Proof time vs input size",
-   "description": "One point per successful proof of the selected range (the first after a worker restart left out)",
+   "description": "One point per successful proof of the selected range",
    "targets": [
     {
      "refId": "A",
@@ -1258,7 +1258,7 @@
   {
    "type": "xychart",
    "title": "Proof time vs steps",
-   "description": "One point per successful proof of the selected range (the first after a worker restart left out)",
+   "description": "One point per successful proof of the selected range",
    "targets": [
     {
      "refId": "A",
