@@ -8,6 +8,7 @@
 //! [`Coordinator::render_metrics`]: crate::Coordinator::render_metrics
 
 mod journal;
+pub(crate) mod worker_report;
 
 use std::sync::LazyLock;
 

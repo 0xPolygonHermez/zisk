@@ -118,6 +118,22 @@ pub struct WorkerRegisterRequestDto {
     pub compute_capacity: ComputeCapacity,
     /// Aggregation arity of the worker's proving key.
     pub aggregation_arity: u32,
+    /// How the worker's previous run ended, when it ended itself. Reported by the worker:
+    /// informational, unverified.
+    pub previous_exit: Option<WorkerExitDto>,
+}
+
+/// How a worker's previous run ended, when it ended itself.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WorkerExitDto {
+    /// `panic`, `recovery_timeout` or `recovery_failed`.
+    pub reason: String,
+    /// A panic's source location, `file:line`.
+    pub location: String,
+    /// When it ended, in seconds since the unix epoch.
+    pub at_unix_seconds: i64,
+    /// The MPI rank that ended it.
+    pub rank: u32,
 }
 
 /// Request from a worker to reconnect after a disconnect.
@@ -704,6 +720,71 @@ pub struct WrapResultDto {
 pub struct HeartbeatAckDto {
     /// The acking worker.
     pub worker_id: WorkerId,
+    /// The worker's host and process telemetry, unless its operator turned it off.
+    pub telemetry: Option<WorkerTelemetryDto>,
+}
+
+/// What a worker reports about its host and processes. Reported by the worker: informational,
+/// unverified, to be bounded before it is exposed.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WorkerTelemetryDto {
+    /// Seconds since the worker process started.
+    pub uptime_seconds: f64,
+    /// Seconds from the worker's start to its first accepted registration; 0 until then.
+    pub start_to_registration_seconds: f64,
+    /// Seconds from the worker's start to its first program set up; 0 until then.
+    pub start_to_ready_seconds: f64,
+    /// The memory of the worker's processes, summed by role.
+    pub processes: Vec<ProcessMemoryDto>,
+    /// The ZisK shared memory on the worker's host, by kind and owner liveness.
+    pub shared_memory: Vec<SharedMemoryDto>,
+    /// The worker's cgroup, when it runs in one.
+    pub cgroup: Option<CgroupUsageDto>,
+}
+
+/// The memory of a worker's processes of one role.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ProcessMemoryDto {
+    /// `rankN`, `asm-<service>-rankN`, `mpirun` or `other`.
+    pub role: String,
+    /// Resident set size.
+    pub rss_bytes: u64,
+    /// Resident anonymous memory.
+    pub anon_bytes: u64,
+    /// Resident file-backed memory.
+    pub file_bytes: u64,
+    /// Resident shared memory.
+    pub shmem_bytes: u64,
+}
+
+/// ZisK shared memory segments of one kind on a worker's host.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SharedMemoryDto {
+    /// The segments' kind (`control_input`, `rom`, `semaphore`, …).
+    pub kind: String,
+    /// Whether the process that created them still runs.
+    pub owner_alive: bool,
+    /// Their size in bytes.
+    pub bytes: u64,
+    /// How many there are.
+    pub segments: u32,
+}
+
+/// A worker's cgroup memory and CPU usage.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CgroupUsageDto {
+    /// `memory.current`.
+    pub memory_current_bytes: u64,
+    /// `memory.peak`.
+    pub memory_peak_bytes: u64,
+    /// `memory.stat` anon.
+    pub anon_bytes: u64,
+    /// `memory.stat` file.
+    pub file_bytes: u64,
+    /// `memory.stat` shmem.
+    pub shmem_bytes: u64,
+    /// `cpu.stat` usage, in seconds.
+    pub cpu_seconds: f64,
 }
 
 /// Worker → coordinator ack for a guest-program setup.

@@ -54,14 +54,8 @@ impl Coordinator {
                 ack.error_message.as_deref().unwrap_or("unknown error")
             );
         }
-        // How long this worker took, if it is one the setup was sent to.
-        let setup_seconds = self
-            .setup_pending
-            .read()
-            .await
-            .get(&job_id)
-            .filter(|state| state.pending.contains(&ack.worker_id))
-            .map(|state| state.started.elapsed().as_secs_f64());
+        // How long this worker took, if the setup was sent to it.
+        let setup_seconds = self.take_setup_sent(&ack.worker_id, &ack.hash_id).await;
         crate::metrics::record_setup_ack(
             &ack.worker_id,
             &ack.hash_id,
@@ -533,8 +527,15 @@ impl Coordinator {
 
         match registered {
             Ok(()) => {
+                if let Some(exit) = req.previous_exit {
+                    self.record_worker_exit(&worker_id, exit);
+                }
+                if let Some(setup) = &first_setup {
+                    self.note_setup_sent(&worker_id, &setup.hash_id).await;
+                }
                 // Send any additional known setups (beyond the first) as messages.
                 for setup in setups {
+                    self.note_setup_sent(&worker_id, &setup.hash_id).await;
                     let msg = CoordinatorMessageDto::SetupProgram(setup);
                     if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                         warn!("[Setup] Failed to send additional setup to {}: {}", worker_id, e);
@@ -662,8 +663,12 @@ impl Coordinator {
             }
         }
 
+        if let Some(setup) = &first_setup {
+            self.note_setup_sent(&worker_id, &setup.hash_id).await;
+        }
         // Send any additional known setups (beyond the first) as messages.
         for setup in setups {
+            self.note_setup_sent(&worker_id, &setup.hash_id).await;
             let msg = CoordinatorMessageDto::SetupProgram(setup);
             if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                 warn!(
@@ -846,6 +851,9 @@ impl Coordinator {
         &self,
         message: HeartbeatAckDto,
     ) -> CoordinatorResult<()> {
+        if let Some(telemetry) = message.telemetry {
+            self.store_worker_telemetry(&message.worker_id, telemetry).await;
+        }
         self.workers_pool.update_last_heartbeat(&message.worker_id).await
     }
 

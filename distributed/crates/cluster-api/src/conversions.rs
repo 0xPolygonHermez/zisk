@@ -16,7 +16,8 @@ use crate::{
     JobCancelled, NormalizeCircuit, ProgramVk, ProofList, ProofStark, ProveParams,
     ReconnectionAction, ReconnectionDirective, RunAggregateProofs, SetupAggregationProgram,
     SetupProgram, Shutdown, StreamData, StreamPayload, StreamType, TaskType, WorkerError,
-    WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
+    WorkerExit, WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
+    WorkerTelemetry,
 };
 use zisk_cluster_common::*;
 
@@ -84,6 +85,18 @@ impl From<WorkerRegisterRequest> for WorkerRegisterRequestDto {
             worker_id: req.worker_id.into(),
             compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
             aggregation_arity: req.aggregation_arity,
+            previous_exit: req.previous_exit.map(Into::into),
+        }
+    }
+}
+
+impl From<WorkerExit> for WorkerExitDto {
+    fn from(exit: WorkerExit) -> Self {
+        WorkerExitDto {
+            reason: exit.reason,
+            location: exit.location,
+            at_unix_seconds: exit.at_unix_seconds,
+            rank: exit.rank,
         }
     }
 }
@@ -516,7 +529,49 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
 
 impl From<HeartbeatAck> for HeartbeatAckDto {
     fn from(message: HeartbeatAck) -> Self {
-        HeartbeatAckDto { worker_id: WorkerId::from(message.worker_id) }
+        HeartbeatAckDto {
+            worker_id: WorkerId::from(message.worker_id),
+            telemetry: message.telemetry.map(Into::into),
+        }
+    }
+}
+
+impl From<WorkerTelemetry> for WorkerTelemetryDto {
+    fn from(t: WorkerTelemetry) -> Self {
+        WorkerTelemetryDto {
+            uptime_seconds: t.uptime_seconds,
+            start_to_registration_seconds: t.start_to_registration_seconds,
+            start_to_ready_seconds: t.start_to_ready_seconds,
+            processes: t
+                .processes
+                .into_iter()
+                .map(|p| ProcessMemoryDto {
+                    role: p.role,
+                    rss_bytes: p.rss_bytes,
+                    anon_bytes: p.anon_bytes,
+                    file_bytes: p.file_bytes,
+                    shmem_bytes: p.shmem_bytes,
+                })
+                .collect(),
+            shared_memory: t
+                .shared_memory
+                .into_iter()
+                .map(|m| SharedMemoryDto {
+                    kind: m.kind,
+                    owner_alive: m.owner_alive,
+                    bytes: m.bytes,
+                    segments: m.segments,
+                })
+                .collect(),
+            cgroup: t.cgroup.map(|c| CgroupUsageDto {
+                memory_current_bytes: c.memory_current_bytes,
+                memory_peak_bytes: c.memory_peak_bytes,
+                anon_bytes: c.anon_bytes,
+                file_bytes: c.file_bytes,
+                shmem_bytes: c.shmem_bytes,
+                cpu_seconds: c.cpu_seconds,
+            }),
+        }
     }
 }
 

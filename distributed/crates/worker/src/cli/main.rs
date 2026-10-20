@@ -25,6 +25,10 @@ struct Cli {
     #[arg(long)]
     compute_capacity: Option<u32>,
 
+    /// Do not report host and process telemetry to the coordinator (overrides config file)
+    #[arg(long)]
+    no_telemetry: bool,
+
     /// Path to configuration file
     #[arg(
         long,
@@ -107,6 +111,7 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    zisk_worker::telemetry::mark_process_start();
     zisk_worker::stop::stop_on_signals()?;
     let cli = Cli::parse();
 
@@ -115,6 +120,7 @@ async fn main() -> Result<()> {
         cli.coordinator_url,
         cli.worker_id,
         cli.compute_capacity,
+        cli.no_telemetry,
     )
     .await?;
 

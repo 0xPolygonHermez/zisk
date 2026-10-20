@@ -70,8 +70,6 @@ struct SetupPendingState {
     program_name: String,
     with_hints: bool,
     emulator_only: bool,
-    /// When the setup was sent to its workers.
-    started: Instant,
 }
 
 /// Per-program record for setups already applied to the cluster.
@@ -192,6 +190,11 @@ pub struct Coordinator {
     /// timestamp the worker was parked, used by the stuck-recovery sweep
     /// to evict workers that never confirm.
     pending_recovery: RwLock<HashMap<WorkerId, DateTime<Utc>>>,
+    /// When each program's setup was last sent to each worker, until the worker acks it: for
+    /// the setup's duration.
+    setups_sent: RwLock<HashMap<(WorkerId, String), Instant>>,
+    /// The last telemetry each worker reported, bounded, and when it arrived.
+    worker_telemetry: RwLock<HashMap<WorkerId, (Instant, zisk_cluster_common::WorkerTelemetryDto)>>,
 }
 
 /// Bookkeeping captured by `Coordinator::terminate_job` and consumed by
@@ -306,6 +309,8 @@ impl Coordinator {
             active_recurser_setups: RwLock::new(HashSet::new()),
             grpc_hints_senders: Arc::new(RwLock::new(HashMap::new())),
             pending_recovery: RwLock::new(HashMap::new()),
+            setups_sent: RwLock::new(HashMap::new()),
+            worker_telemetry: RwLock::new(HashMap::new()),
         }
     }
 
@@ -563,7 +568,6 @@ impl Coordinator {
                 program_name: program_name.clone(),
                 with_hints,
                 emulator_only,
-                started: Instant::now(),
             },
         );
 
@@ -576,6 +580,7 @@ impl Coordinator {
                 with_hints,
                 emulator_only,
             });
+            self.note_setup_sent(worker_id, hash_id).await;
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
                 warn!("[Setup] Failed to send SetupProgram to worker {}: {}", worker_id, e);
                 self.setup_pending.write().await.entry(job_id.clone()).and_modify(|s| {
@@ -873,7 +878,6 @@ impl Coordinator {
                 program_name: program_name.to_string(),
                 with_hints: key.with_hints,
                 emulator_only: key.emulator_only,
-                started: Instant::now(),
             },
         );
 
@@ -886,6 +890,7 @@ impl Coordinator {
                 with_hints: key.with_hints,
                 emulator_only: key.emulator_only,
             });
+            self.note_setup_sent(&worker_id, &key.hash_id).await;
             if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                 // Unreachable: drop from pending + disconnect so it can't hang the
                 // entry (same failed-send handling as `setup_program`).
@@ -2875,7 +2880,6 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
-                started: Instant::now(),
             },
         );
 
@@ -3679,6 +3683,7 @@ mod tests {
             worker_id: worker_id.clone(),
             aggregation_arity: 2,
             compute_capacity: 1u32.into(),
+            previous_exit: None,
         };
         let (accepted, _msg, _setup) =
             coordinator.handle_stream_registration(req, Box::new(sender)).await;
@@ -3989,7 +3994,6 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
-                started: Instant::now(),
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -4068,7 +4072,6 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
-                started: Instant::now(),
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -4204,7 +4207,6 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
-                started: Instant::now(),
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -4392,7 +4394,6 @@ mod tests {
                 program_name: "p".into(),
                 with_hints: false,
                 emulator_only: false,
-                started: Instant::now(),
             },
         );
         coordinator.alloc_job_events(&setup_job).await;

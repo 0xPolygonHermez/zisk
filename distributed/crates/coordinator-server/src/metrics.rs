@@ -36,6 +36,8 @@
 //! | `coordinator_worker_recoveries_total` | Counter | `result` | Workers back from a cancelled or failed job (`done`) or given up on (`expired`) |
 //! | `coordinator_worker_recovery_seconds` | Histogram | — | From parking a worker to its recovery |
 //! | `coordinator_last_worker_recovery_seconds` | Gauge | — | The last recovery |
+//! | `coordinator_worker_exits_total` | Counter | `reason` | Worker runs that ended themselves (`panic`, `recovery_timeout`, `recovery_failed`), as the worker reports when it registers again |
+//! | `coordinator_worker_panics_total` | Counter | `location` | Those panics by source location (the first 64 locations, then `other`) |
 //!
 //! Read from the coordinator's state when scraped:
 //!
@@ -54,7 +56,17 @@
 //! | `coordinator_proof_seconds` | Gauge, timestamped | `phase` | Each proof's phases and total, at the time it ended |
 //! | `coordinator_job_unsuccessful_seconds` | Gauge, timestamped | `outcome` | Each failed or cancelled job's duration, at the time it ended |
 //! | `coordinator_proof_input_bytes`, `coordinator_proof_steps` | Gauge, timestamped | — | Each proof's input size and steps, at the same time as its `coordinator_proof_seconds` |
+//! | `coordinator_worker_uptime_seconds` | Gauge | `worker_id` | Each worker process's uptime |
+//! | `coordinator_worker_start_to_seconds` | Gauge | `worker_id`, `milestone` | From a worker's start to its first `registration` and to `ready` |
+//! | `coordinator_worker_process_memory_bytes` | Gauge | `worker_id`, `role`, `kind` | A worker's processes' memory by role (`rankN`, `asm-<service>-rankN`, `mpirun`, `other`) and kind (`rss`, `anon`, `file`, `shmem`) |
+//! | `coordinator_worker_shm_bytes`, `coordinator_worker_shm_segments` | Gauge | `worker_id`, `kind`, `owner_alive` | The ZisK shared memory on a worker's host |
+//! | `coordinator_worker_cgroup_memory_bytes` | Gauge | `worker_id`, `kind` | A worker's cgroup memory: `current`, `peak`, `anon`, `file`, `shmem` |
+//! | `coordinator_worker_cgroup_cpu_seconds_total` | Counter | `worker_id` | A worker's cgroup CPU time |
 //! | `process_resident_memory_bytes`, `process_cpu_seconds_total`, `process_start_time_seconds` | — | — | This process |
+//!
+//! The `coordinator_worker_*` families come from the workers' own reports (their heartbeat
+//! acknowledgements), which are informational: bounded by the coordinator, never acted on, and
+//! absent for a worker whose operator turned telemetry off.
 //!
 //! The timestamped series take their next queued sample on each scrape: point a single
 //! Prometheus at a coordinator.
@@ -276,6 +288,15 @@ fn register_descriptions() {
     metrics::describe_gauge!(
         "coordinator_last_worker_recovery_seconds",
         "The last worker recovery's duration"
+    );
+    metrics::describe_counter!(
+        "coordinator_worker_exits_total",
+        "Worker runs that ended themselves, by reason, as each worker reports when it registers \
+         again"
+    );
+    metrics::describe_counter!(
+        "coordinator_worker_panics_total",
+        "Worker runs that ended in a panic, by source location"
     );
 }
 

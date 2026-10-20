@@ -28,6 +28,7 @@ use zisk_common::{ProgramVK, Proof, RandomSeed, StatsCostPerType, ZiskExecutorTi
 use zisk_prover_backend::{Asm, Emu, GuestProgram, ZiskBackend, ZiskProver};
 
 use crate::config::WorkerServiceConfig;
+use crate::telemetry::{self, ExitReason};
 
 /// The MPI tag of a peer rank's reply that it has stopped a cancelled job's work.
 /// Apart from proofman's own: 999996 to 999999, and air group ids for proofs.
@@ -136,13 +137,18 @@ pub(crate) const WEDGED_EXIT_CODE: i32 = 75;
 /// aborting the MPI job ends them all. The service manager then restarts the
 /// worker, as after any failed exit, and the coordinator, seeing it disconnect, no
 /// longer waits for its recovery.
-fn abort_wedged_worker<T: ZiskBackend + 'static>(prover: &ZiskProver<T>, why: &str) -> ! {
+fn abort_wedged_worker<T: ZiskBackend + 'static>(
+    prover: &ZiskProver<T>,
+    reason: ExitReason<'_>,
+    why: &str,
+) -> ! {
     if stop::is_stopping() {
         // A stop kills the services under the job in flight, which may fail it on the way
         // out; the stop ends every rank by itself, and an abort would only fail its exit.
         warn!("{why}; the worker is stopping");
         stop::wait_for_exit();
     }
+    telemetry::record_exit(prover.world_rank(), reason);
     error!("{why}; aborting the worker so that it restarts");
     // Also on stderr, unbuffered: a log file's writer thread may never write the line.
     eprintln!("zisk-worker: {why}; aborting the worker so that it restarts");
@@ -156,11 +162,13 @@ fn abort_wedged_worker<T: ZiskBackend + 'static>(prover: &ZiskProver<T>, why: &s
 /// never reaches the collective where proofman's ranks agree on a failure, so they
 /// wait for good; see [`abort_wedged_worker`]. On one rank there is no collective
 /// to wait in, and a task's panic is caught and reported as its failure.
-fn abort_on_panic(abort: impl Fn(&str) + Send + Sync + 'static) {
+fn abort_on_panic(abort: impl Fn(&str, &str) + Send + Sync + 'static) {
     let report = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         report(info);
-        abort("a panic left the other MPI ranks waiting for this one");
+        let location =
+            info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default();
+        abort("a panic left the other MPI ranks waiting for this one", &location);
         // `abort` does not return; should it, the panic must still not unwind.
         std::process::abort();
     }));
@@ -171,7 +179,9 @@ fn abort_on_panic(abort: impl Fn(&str) + Send + Sync + 'static) {
 fn abort_every_rank_on_panic<T: ZiskBackend + 'static>(worker: &Worker<T>) {
     let prover = worker.prover_arc();
     if prover.n_processes() > 1 {
-        abort_on_panic(move |why| abort_wedged_worker(&prover, why));
+        abort_on_panic(move |why, location| {
+            abort_wedged_worker(&prover, ExitReason::Panic { location }, why)
+        });
     }
 }
 
@@ -188,6 +198,8 @@ fn cancel_job_on_stop<T: ZiskBackend + 'static>(worker: &Worker<T>) {
 
 /// A worker process, specialized by MPI role: rank 0 talks to the coordinator
 /// over gRPC, secondary ranks only service MPI broadcasts.
+// One per process: the rank-0 variant's extra configuration costs nothing.
+#[allow(clippy::large_enum_variant)]
 pub enum WorkerNode<T: ZiskBackend + 'static> {
     /// Rank-0 node with a gRPC connection to the coordinator.
     WorkerGrpc(WorkerNodeGrpc<T>),
@@ -328,6 +340,11 @@ struct AggOutcome {
 impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// Wrap a worker as the rank-0 gRPC node with the given config.
     pub async fn new(worker_config: WorkerServiceConfig, worker: Worker<T>) -> Result<Self> {
+        if worker_config.telemetry.enabled {
+            telemetry::start_sampling(Duration::from_secs(
+                worker_config.telemetry.interval_seconds.max(1),
+            ));
+        }
         Ok(Self {
             worker_config,
             worker,
@@ -416,6 +433,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     worker_id: self.worker_config.worker.worker_id.as_string(),
                     compute_capacity: Some(self.worker_config.worker.compute_capacity.into()),
                     aggregation_arity: self.worker.aggregation_arity() as u32,
+                    previous_exit: self
+                        .worker_config
+                        .telemetry
+                        .enabled
+                        .then(telemetry::take_previous_exit)
+                        .flatten(),
                 })),
             }
         };
@@ -427,7 +450,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // and acking one twice is harmless.
         self.deferred.retain(|work| matches!(work, DeferredWork::Setup(_)));
 
-        let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));
+        let telemetry = &self.worker_config.telemetry;
+        let heartbeat_seconds =
+            if telemetry.enabled { telemetry.interval_seconds.clamp(1, 30) } else { 30 };
+        let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(heartbeat_seconds));
 
         // Main non-blocking event loop
         loop {
@@ -675,6 +701,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             program_vk.clone(),
                         );
                         info!("[Setup] job_id {} Completed setup for hash_id {}", job_id, hash_id);
+                        telemetry::mark_ready();
                         Self::build_setup_program_ack(
                             job_id.as_string(),
                             worker_id,
@@ -1298,12 +1325,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => abort_wedged_worker(
                     &prover,
+                    ExitReason::RecoveryFailed,
                     &format!(
                         "[Recovery] {worker_id}: telling the peer ranks to stop failed: {e:#}"
                     ),
                 ),
                 Err(e) => abort_wedged_worker(
                     &prover,
+                    ExitReason::RecoveryFailed,
                     &format!(
                         "[Recovery] {worker_id}: telling the peer ranks to stop panicked: {e}"
                     ),
@@ -1328,7 +1357,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         error!("[Recovery] {worker_id}: enqueue RecoveryComplete failed: {e}");
                     }
                 }
-                Err(why) => abort_wedged_worker(&prover, &format!("[Recovery] {worker_id}: {why}")),
+                Err(why) => {
+                    let reason = if why.contains("timed out") {
+                        ExitReason::RecoveryTimeout
+                    } else {
+                        ExitReason::RecoveryFailed
+                    };
+                    abort_wedged_worker(&prover, reason, &format!("[Recovery] {worker_id}: {why}"))
+                }
             }
         }));
     }
@@ -1429,6 +1465,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let message = WorkerMessage {
             payload: Some(worker_message::Payload::HeartbeatAck(HeartbeatAck {
                 worker_id: self.worker_config.worker.worker_id.as_string(),
+                telemetry: self.worker_config.telemetry.enabled.then(telemetry::latest),
             })),
         };
 
@@ -1451,6 +1488,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             coordinator_message::Payload::RegisterResponse(response) => {
                 if response.accepted {
                     info!("Registration accepted: {}", response.message);
+                    telemetry::mark_registered();
 
                     // If we clobbered a live computation, hand its work to the
                     // recovery driver so it awaits the drain before the barrier
@@ -2917,8 +2955,8 @@ mod recovery_tests {
         if std::env::var_os(ABORT_ON_PANIC_CHILD).is_none() {
             return;
         }
-        abort_on_panic(|why| {
-            println!("aborting: {why}");
+        abort_on_panic(|why, location| {
+            println!("aborting: {why} (at {location})");
             std::process::exit(WEDGED_EXIT_CODE)
         });
         // As a witness thread's panic would be: on a thread nobody joins in time.
@@ -2937,6 +2975,7 @@ mod recovery_tests {
         assert_eq!(child.status.code(), Some(WEDGED_EXIT_CODE), "{child:?}");
         let stdout = String::from_utf8_lossy(&child.stdout);
         assert!(stdout.contains("aborting: a panic left the other MPI ranks"), "{stdout}");
+        assert!(stdout.contains("worker_node.rs:"), "the panic's location is passed on: {stdout}");
         let stderr = String::from_utf8_lossy(&child.stderr);
         assert!(stderr.contains("a witness thread's panic"), "the panic is reported: {stderr}");
     }
