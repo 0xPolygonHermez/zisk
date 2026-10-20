@@ -13,7 +13,7 @@ pub fn sha256f(state: &mut [u64; 4], input: &[u64; 8]) {
     compress256(state_u32, input_u8);
 }
 
-/// blake2b `extended_arg`: round index (bits 0..4), state and m from the previous round of the
+/// blake2b `extended_arg`: round index (bits 0..3), state and m from the previous round of the
 /// call (`BLAKE2B_RD_CHAIN`), to the next one (`BLAKE2B_WR_CHAIN`), steps back to it (bits 6..).
 pub const BLAKE2B_ROUND_MASK: u64 = 0xF;
 pub const BLAKE2B_RD_CHAIN: u64 = 1 << 4;
