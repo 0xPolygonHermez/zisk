@@ -135,6 +135,7 @@ reached through the ROM lookup. See
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
 | `check_tables.py` | Checks the virtual tables the setup commits against what the proofs assume: every FROPS row of a modeled op (`add`, `ltu`, `eq`, `and`) carries its result, the Arith and BinaryExtension tables never serve one, the Binary table's rows for them compute their byte, and the precompiles' fixed ops on the memory bus are 1 or 2; `make tables`. |
 | `check_scope.py` | Checks a program `make difftest` exported against the scope of the proofs' runs (`MemProgEnd`), naming every instruction outside it; `make scope`. |
+| `check_cont.py` | Checks that the continuation buses (11 and 12) carry exactly the arguments `lean/Proofs/MemCont.lean` lists: the RAM's, InputData's and RomData's two a segment; `make cont`. |
 | `gen_membus.py` | Generates `lean/Proofs/MemBus.lean` (every argument on the memory bus) and `lean/Proofs/MainRegs.lean` (Main's register pairs); `make membus`. |
 | `gen_provers.py` | Generates `lean/Proofs/Provers.lean` from the AIRs' operation-bus arguments and the prover lemmas' signatures; `make provers`. |
 | `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. |
@@ -204,6 +205,7 @@ make pil     # generate Lean definitions of the AIR constraints into build/pil
 make tables  # check the virtual tables' contents (needs the PIL compile's tmp/fixed)
 make provers # regenerate lean/Proofs/Provers.lean (after make pil, or a new prover lemma)
 make membus  # regenerate lean/Proofs/MemBus.lean and MainRegs.lean (after make pil)
+make cont    # check the continuation buses' senders against MemCont.lean (after make pil)
 ```
 
 Two more targets typecheck the generated Lean, through the lake package in
@@ -1527,8 +1529,8 @@ the characteristic (a pigeonhole); and the counts allow one segment per id.
 [`lean/Proofs/MemCont.lean`](lean/Proofs/MemCont.lean) applies it to bus 11,
 which carries the RAM's and InputData's chains under their own tags, and bus
 12, RomData's (`MemBusWorld.ram_chain`, `in_world`, `rd_world`): their
-senders are the areas' two arguments a segment, by the census of the buses,
-and their global updates (`GlobalCont`, `GlobalRd`) are written from
+senders are the areas' two arguments a segment, which `make cont`
+([`check_cont.py`](check_cont.py)) checks against every AIR, and their global updates (`GlobalCont`, `GlobalRd`) are written from
 `mem.pil` and `rom_data.pil`, as the global updates are not extracted.
 `ContWorld` bundles them with each instance's fixed columns and range
 checks, and `MemBusWorld.answers_cont` proves `MemAnswers` from all the

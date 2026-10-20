@@ -44,7 +44,7 @@ PROG  ?= ../ziskasm/examples/doubler-min
 INPUT ?= ../ziskasm/examples/doubler/input.bin
 DIFF_DIR = build/difftest/$(notdir $(PROG))
 
-.PHONY: all check lean ops pil lean-env lean-build pil-build proofs provers membus tables emu difftest difftest-all scope clean
+.PHONY: all check lean ops pil lean-env lean-build pil-build proofs provers membus cont tables emu difftest difftest-all scope clean
 
 all: check ops
 
@@ -104,6 +104,12 @@ provers:
 membus:
 	@test -d build/pil || { echo "build/pil is missing — run make pil" >&2; exit 1; }
 	python3 gen_membus.py
+
+## Check that the continuation buses (11 and 12) carry exactly the arguments
+## lean/Proofs/MemCont.lean lists. See check_cont.py.
+cont:
+	@test -d build/pil || { echo "build/pil is missing — run make pil" >&2; exit 1; }
+	python3 check_cont.py
 
 ## Typecheck the generated model. Run `make lean` first.
 lean-build: lean-env
