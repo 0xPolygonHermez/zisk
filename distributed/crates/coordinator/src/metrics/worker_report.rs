@@ -83,6 +83,13 @@ pub(crate) fn bounded_exit(exit: WorkerExitDto, now_unix_seconds: i64) -> Worker
     WorkerExitDto { reason, location, at_unix_seconds, rank: exit.rank.min(MAX_RANK) }
 }
 
+/// Every exit reason's counter at zero (see `record_coordinator_started`).
+pub(crate) fn zero_exit_counters() {
+    for reason in EXIT_REASONS.into_iter().chain(["other"]) {
+        metrics::counter!("coordinator_worker_exits_total", "reason" => reason).increment(0);
+    }
+}
+
 /// A worker reported how its previous run ended, as it registered again.
 pub(crate) fn record_exit(worker_id: &WorkerId, exit: &WorkerExitDto) {
     metrics::counter!("coordinator_worker_exits_total", "reason" => exit.reason.clone())

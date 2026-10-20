@@ -31,6 +31,11 @@ pub(crate) const OUTCOME_CANCELLED: &str = "cancelled";
 pub(crate) const KIND_PROVE: &str = "prove";
 pub(crate) const KIND_EXECUTE: &str = "execute";
 pub(crate) const KIND_WRAP: &str = "wrap";
+
+/// What a failed job's reason falls under ([`failure_class`]).
+const FAILURE_CLASSES: [&str; 3] = ["timeout", "worker", "other"];
+/// What a job's cost is split into.
+const COST_TYPES: [&str; 6] = ["main", "opcode", "memory", "precompile", "tables", "other"];
 /// A job that ended without having been recorded as started.
 const KIND_UNKNOWN: &str = "unknown";
 
@@ -245,14 +250,15 @@ pub(crate) fn record_job_terminal(o: JobOutcome<'_>) {
             });
         }
         if let Some(costs) = &o.costs {
-            for (cost_type, cost) in [
-                ("main", costs.main_cost),
-                ("opcode", costs.opcode_cost),
-                ("memory", costs.memory_cost),
-                ("precompile", costs.precompile_cost),
-                ("tables", costs.tables_cost),
-                ("other", costs.other_cost),
-            ] {
+            let split = [
+                costs.main_cost,
+                costs.opcode_cost,
+                costs.memory_cost,
+                costs.precompile_cost,
+                costs.tables_cost,
+                costs.other_cost,
+            ];
+            for (cost_type, cost) in COST_TYPES.into_iter().zip(split) {
                 metrics::counter!("coordinator_job_cost_total", "kind" => kind, "type" => cost_type)
                     .increment(cost);
                 metrics::gauge!("coordinator_last_job_cost", "kind" => kind, "type" => cost_type)
@@ -276,13 +282,14 @@ pub(crate) fn record_job_terminal(o: JobOutcome<'_>) {
 
 /// The class of a failure reason: a phase or execution `timeout`, a `worker` error, or `other`.
 fn failure_class(reason: &str) -> &'static str {
+    let [timeout, worker, other] = FAILURE_CLASSES;
     let reason = reason.to_ascii_lowercase();
     if reason.contains("timed out") {
-        "timeout"
+        timeout
     } else if reason.contains("worker") {
-        "worker"
+        worker
     } else {
-        "other"
+        other
     }
 }
 
@@ -366,8 +373,40 @@ pub(crate) fn record_program_registered(hash_id: &str, bytes: usize) {
     journal().event("program registered", format!("hash_id {program}… ({bytes} bytes)"));
 }
 
-/// The coordinator started.
+/// The coordinator started. Its counters start at zero for every label set they can take, bar
+/// the per-worker and per-location ones: a series that appears at its first event loses that
+/// event to `increase()` and `rate()`, which need a sample before it.
 pub(crate) fn record_coordinator_started() {
+    for kind in [KIND_PROVE, KIND_EXECUTE, KIND_WRAP] {
+        for outcome in [OUTCOME_SUCCESS, OUTCOME_CANCELLED] {
+            metrics::counter!("coordinator_jobs_total", "kind" => kind, "outcome" => outcome)
+                .increment(0);
+        }
+        for reason in FAILURE_CLASSES {
+            metrics::counter!(
+                "coordinator_jobs_total",
+                "kind" => kind, "outcome" => OUTCOME_FAILURE, "reason" => reason
+            )
+            .increment(0);
+        }
+        metrics::counter!("coordinator_job_steps_total", "kind" => kind).increment(0);
+        for cost_type in COST_TYPES {
+            metrics::counter!("coordinator_job_cost_total", "kind" => kind, "type" => cost_type)
+                .increment(0);
+        }
+    }
+    for outcome in [OUTCOME_SUCCESS, OUTCOME_FAILURE] {
+        metrics::counter!("coordinator_setups_total", "outcome" => outcome).increment(0);
+    }
+    for reconnect in ["false", "true"] {
+        metrics::counter!("coordinator_worker_registrations_total", "reconnect" => reconnect)
+            .increment(0);
+    }
+    metrics::counter!("coordinator_worker_disconnects_total").increment(0);
+    for result in ["done", "expired"] {
+        metrics::counter!("coordinator_worker_recoveries_total", "result" => result).increment(0);
+    }
+    worker_report::zero_exit_counters();
     journal().event("coordinator started", format!("version {}", env!("CARGO_PKG_VERSION")));
 }
 
