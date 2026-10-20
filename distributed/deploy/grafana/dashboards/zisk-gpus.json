@@ -84,6 +84,18 @@
    "tooltip": "",
    "asDropdown": false,
    "tags": []
+  },
+  {
+   "title": "Host",
+   "type": "link",
+   "url": "/d/zisk-host",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
   }
  ],
  "editable": true,

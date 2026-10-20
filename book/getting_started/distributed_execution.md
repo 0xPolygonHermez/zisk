@@ -564,7 +564,7 @@ enabled = false
 ### Dashboards
 
 [`distributed/deploy/`](https://github.com/0xPolygonHermez/zisk/tree/main/distributed/deploy)
-holds a Prometheus configuration, its recording rules, and five Grafana
+holds a Prometheus configuration, its recording rules, and six Grafana
 dashboards:
 
 | Dashboard               | Shows                                                                                              |
@@ -574,13 +574,16 @@ dashboards:
 | **Recovery**            | Cancellations, recoveries and how long they took, worker start-up times, exits and panics.          |
 | **Resources**           | Each worker's memory by process and by type, the ZisK shared memory, CPU, the host's memory.       |
 | **GPUs**                | Each GPU's use, memory, power, temperature, clocks and throttling.                                 |
+| **Host**                | One host: CPU (per CPU and per socket), memory and NUMA, pressure, disks, network, hardware health. |
 
 The host and GPU panels read
 [node_exporter](https://github.com/prometheus/node_exporter) and
 [nvidia_gpu_exporter](https://github.com/utkuozdemir/nvidia_gpu_exporter),
 which run on each host next to the worker. Give every scrape target a
 `cluster` label and a `host` label: the dashboards' selectors filter on
-them.
+them. The Host dashboard's per-socket and NUMA panels need node_exporter's
+`--collector.cpu.info` and `--collector.meminfo_numa`, and its failed-units
+panels `--collector.systemd`.
 
 The docker-compose stack starts all of it:
 

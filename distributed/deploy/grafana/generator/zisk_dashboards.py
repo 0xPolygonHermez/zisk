@@ -132,7 +132,7 @@ def state_timeline(title, exprs):
 
 NAV = [("zisk-live", "🔴 LIVE"), ("zisk-overview", "Overview"), ("zisk-proofs", "Executions & proofs"),
        ("zisk-recovery", "Cancellations & recovery"), ("zisk-resources", "Worker resources"),
-       ("zisk-gpus", "GPUs")]
+       ("zisk-gpus", "GPUs"), ("zisk-host", "Host")]
 
 
 def nav_links():
@@ -1009,6 +1009,216 @@ def gpus():
     return d
 
 
+NEEDS_CPU_INFO = "needs node_exporter's --collector.cpu.info"
+NEEDS_NUMA = "needs node_exporter's --collector.meminfo_numa"
+
+
+def host():
+    """One host, from node_exporter: what a worker's host is short of, and what broke on it."""
+    h = H.replace("=~", "=")  # one host at a time
+
+    def node(metric, more=""):
+        return f"{metric}{{{h}{',' + more if more else ''}}}"
+
+    IDLE, BUSY, FAILED = 'mode="idle"', 'mode!="idle"', 'state="failed"'
+    cpus = f'count({node("node_cpu_seconds_total", IDLE)})'
+    fs = 'fstype!~"tmpfs|devtmpfs|overlay|squashfs|nsfs|ramfs|fuse.*",mountpoint!~"/(run|boot/efi)(/.*)?"'
+    net = 'device!~"lo|veth.*|docker.*|br-.*|virbr.*|cali.*|flannel.*|cni.*"'
+    disk = 'device!~"loop.*|ram.*|zram.*|dm-.*|sr.*"'
+
+    def right_legend(p):
+        p["options"]["legend"]["placement"] = "right"
+        return p
+
+    def plain_line(p, name):  # a reference series: a dashed line, not stacked, not filled
+        p["fieldConfig"]["overrides"].append({"matcher": {"id": "byName", "options": name}, "properties": [
+            {"id": "custom.stacking", "value": {"mode": "none", "group": "A"}}, {"id": "custom.fillOpacity", "value": 0},
+            {"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}},
+            {"id": "color", "value": {"mode": "fixed", "fixedColor": "text"}}]})
+        return p
+
+    l = Layout()
+    l.row("Host $host · now")
+    l.add(stat("Uptime", [(f'time() - {node("node_boot_time_seconds")}', "up")], "dtdurations"), 4, 4)
+    l.add(stat("CPU busy", [(f'100 * (1 - avg(rate({node("node_cpu_seconds_total", IDLE)}[1m])))', "busy")],
+               "percent", decimals=0), 4, 4)
+    l.add(stat("Memory used", [(f'100 * (1 - {node("node_memory_MemAvailable_bytes")} / {node("node_memory_MemTotal_bytes")})',
+                                "used")], "percent", "Memory not available to new allocations without swapping",
+               decimals=0, red_above=90), 4, 4)
+    l.add(stat("Shared memory", [(node("node_memory_Shmem_bytes"), "shm and tmpfs")], "bytes",
+               "Memory in shm segments and tmpfs, the workers' /dev/shm segments among them"), 4, 4)
+    l.add(stat("Fullest filesystem", [(f'max(100 * (1 - {node("node_filesystem_avail_bytes", fs)} / '
+                                       f'{node("node_filesystem_size_bytes", fs)}))', "used")],
+               "percent", "The disk-backed filesystem nearest to full", decimals=0, red_above=90), 4, 4)
+    l.add(stat("Swap used", [(f'{node("node_memory_SwapTotal_bytes")} - {node("node_memory_SwapFree_bytes")}', "used")],
+               "bytes", red_above=1), 4, 4)
+    l.add(stat("OOM kills", [(f'increase({node("node_vmstat_oom_kill")}[$__range])', "in the range")], "none",
+               "Processes the kernel killed for want of memory, over the selected range", decimals=0, red_above=0.5), 4, 4)
+    l.add(stat("Memory errors (ECC)", [(f'sum({node("node_edac_correctable_errors_total")})', "corrected"),
+                                       (f'sum({node("node_edac_uncorrectable_errors_total")})', "uncorrected")],
+               "none", "Errors the memory controllers reported since boot (EDAC)", decimals=0, red_above=0.5), 4, 4)
+    l.add(stat("Hottest sensor", [(f'max({node("node_hwmon_temp_celsius")})', "max")], "celsius",
+               "The hottest of the host's hwmon temperature sensors (CPUs, board, disks); GPUs are on the GPUs dashboard",
+               decimals=0, red_above=90), 4, 4)
+    l.add(stat("Failed units", [(f'sum({node("node_systemd_unit_state", FAILED)})', "failed")], "none",
+               "systemd units in the failed state (needs node_exporter's --collector.systemd)",
+               decimals=0, red_above=0.5), 4, 4)
+    clock = stat("Clock", [(node("node_timex_sync_status"), "sync")], "none",
+                 "Whether the kernel's clock is synchronised (NTP): the cluster's logs and metrics compare times across hosts")
+    clock["fieldConfig"]["defaults"]["mappings"] = [{"type": "value", "options": {
+        "0": {"text": "not synced", "color": "red"}, "1": {"text": "synced", "color": "green"}}}]
+    l.add(clock, 4, 4)
+    l.add(stat("Logical CPUs", [(cpus, "CPUs")], "none", decimals=0), 4, 4)
+
+    l.row("CPU")
+    modes = timeseries("CPU busy by mode", [(f'100 * sum by (mode) (rate({node("node_cpu_seconds_total", BUSY)}[1m])) '
+                                             f'/ scalar({cpus})', "{{mode}}")], "percent", stack=True,
+                       desc="Share of all the host's CPUs; iowait is idle time waiting on disk")
+    modes["fieldConfig"]["defaults"].update({"min": 0, "max": 100})
+    l.add(right_legend(modes), 12, 9)
+    per_cpu = f'100 * (1 - rate({node("node_cpu_seconds_total", IDLE)}[1m]))'
+    # Zero-padded, the CPUs sort by number: Prometheus orders a range query's series by their labels.
+    per_cpu = f'label_replace(label_replace({per_cpu}, "cpu", "0$1", "cpu", "([0-9]{{2}})"), "cpu", "00$1", "cpu", "([0-9])")'
+    l.add({"type": "heatmap", "title": "Busy per CPU",
+           "description": "One row per logical CPU, from CPU 0 at the bottom. On a host with several sockets, "
+                          "`lscpu` lists each NUMA node's CPUs, and the Busy per socket chart adds them up",
+           "targets": targets([(per_cpu, "{{cpu}}")]),
+           "fieldConfig": {"defaults": {"custom": {"scaleDistribution": {"type": "linear"},
+                                                   "hideFrom": {"legend": False, "tooltip": False, "viz": False}}},
+                           "overrides": []},
+           "options": {"calculate": False, "cellGap": 0, "rowsFrame": {"layout": "unknown"},
+                       "color": {"mode": "opacity", "fill": "orange", "scale": "linear", "steps": 64,
+                                 "min": 0, "max": 100, "reverse": False, "exponent": 0.5},
+                       "yAxis": {"axisPlacement": "left", "reverse": False},
+                       "cellValues": {"unit": "percent", "decimals": 0},
+                       "tooltip": {"mode": "single", "yHistogram": False, "showColorScale": True},
+                       "legend": {"show": True}, "filterValues": {"le": -1},
+                       "exemplars": {"color": "rgba(255,0,255,0.7)"}}}, 12, 9)
+    socket = timeseries("Busy per socket", [(
+        f'100 * sum by (package) (rate({node("node_cpu_seconds_total", BUSY)}[1m]) '
+        f'* on (cpu) group_left (package) {node("node_cpu_info")}) / count by (package) ({node("node_cpu_info")})',
+        "socket {{package}}")], "percent",
+        desc="Needs node_exporter's --collector.cpu.info, which labels each CPU with its socket")
+    socket["fieldConfig"]["defaults"].update({"min": 0, "max": 100, "noValue": NEEDS_CPU_INFO})
+    l.add(socket, 8, 8)
+    l.add(timeseries("Waiting for a resource (pressure)", [
+        (f'100 * rate({node("node_pressure_cpu_waiting_seconds_total")}[1m])', "CPU: some waiting"),
+        (f'100 * rate({node("node_pressure_memory_waiting_seconds_total")}[1m])', "memory: some waiting"),
+        (f'100 * rate({node("node_pressure_memory_stalled_seconds_total")}[1m])', "memory: all stalled"),
+        (f'100 * rate({node("node_pressure_io_waiting_seconds_total")}[1m])', "I/O: some waiting"),
+        (f'100 * rate({node("node_pressure_io_stalled_seconds_total")}[1m])', "I/O: all stalled")], "percent",
+        desc="Linux pressure stall information: share of the time some (or all) runnable tasks waited for the CPU, "
+             "memory or I/O"), 8, 8)
+    l.add(plain_line(timeseries("Load", [(node("node_load1"), "1 min"), (node("node_load15"), "15 min"),
+                                         (node("node_procs_running"), "running"),
+                                         (node("node_procs_blocked"), "blocked on I/O"), (cpus, "logical CPUs")], "none",
+                                desc="Runnable (and uninterruptible) tasks; above the CPU count, tasks queue for a CPU"),
+                     "logical CPUs"), 8, 8)
+
+    l.row("Memory")
+    mem = timeseries("Memory", [
+        (node("node_memory_AnonPages_bytes"), "processes (anonymous)"),
+        (node("node_memory_Shmem_bytes"), "shared (shm, tmpfs)"),
+        (f'{node("node_memory_Cached_bytes")} - {node("node_memory_Shmem_bytes")}', "page cache"),
+        (f'{node("node_memory_Buffers_bytes")}', "buffers"),
+        (node("node_memory_Slab_bytes"), "kernel slab"),
+        (node("node_memory_MemFree_bytes"), "free"),
+        (node("node_memory_MemTotal_bytes"), "total")], "bytes", stack=True,
+        desc="Where the host's memory goes. Shared memory includes the workers' /dev/shm segments")
+    mem["fieldConfig"]["defaults"]["min"] = 0
+    l.add(right_legend(plain_line(mem, "total")), 12, 9)
+    numa = timeseries("Memory per NUMA node", [
+        (node("node_memory_numa_MemUsed"), "node {{node}} used"),
+        (node("node_memory_numa_MemTotal"), "node {{node}} total")], "bytes",
+        desc="Needs node_exporter's --collector.meminfo_numa. A node that fills up sends its allocations to "
+             "the other socket's memory")
+    numa["fieldConfig"]["defaults"]["noValue"] = NEEDS_NUMA
+    l.add(numa, 12, 9)
+    off = timeseries("Allocations off their NUMA node", [
+        (f'rate({node("node_memory_numa_numa_miss_total")}[1m]) * 4096', "node {{node}}: placed here, meant for another"),
+        (f'rate({node("node_memory_numa_other_node_total")}[1m]) * 4096', "node {{node}}: placed here, for a task on another")],
+        "Bps", desc="Needs node_exporter's --collector.meminfo_numa. Pages (4 KiB) a task on one socket got from "
+                    "the other socket's memory")
+    off["fieldConfig"]["defaults"]["noValue"] = NEEDS_NUMA
+    l.add(off, 12, 8)
+    l.add(timeseries("Paging and swapping", [
+        (f'rate({node("node_vmstat_pgmajfault")}[1m])', "major faults (read from disk)"),
+        (f'rate({node("node_vmstat_pswpin")}[1m])', "swapped in"),
+        (f'rate({node("node_vmstat_pswpout")}[1m])', "swapped out")], "ops",
+        desc="Per second. Major faults while proving mean the working set does not fit in memory"), 12, 8)
+
+    l.row("Disks")
+    used = f'100 * (1 - {node("node_filesystem_avail_bytes", fs)} / {node("node_filesystem_size_bytes", fs)})'
+    # `+ 0` drops the metric name, as the Used query's arithmetic does, so the three merge into a row each.
+    now = [("Used", used, "percent"), ("Available", f'{node("node_filesystem_avail_bytes", fs)} + 0', "bytes"),
+           ("Size", f'{node("node_filesystem_size_bytes", fs)} + 0', "bytes")]
+    value = {f"Value #{chr(65 + i)}": name for i, (name, *_) in enumerate(now)}
+    overrides = [{"matcher": {"id": "byName", "options": name}, "properties": [{"id": "unit", "value": unit}]}
+                 for name, _, unit in now]
+    overrides.append({"matcher": {"id": "byName", "options": "Used"}, "properties": [
+        {"id": "custom.cellOptions", "value": {"type": "gauge", "mode": "basic", "valueDisplayMode": "text"}},
+        {"id": "min", "value": 0}, {"id": "max", "value": 100}, {"id": "decimals", "value": 0},
+        {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": None},
+                                                                     {"color": "orange", "value": 80},
+                                                                     {"color": "red", "value": 90}]}},
+        {"id": "color", "value": {"mode": "thresholds"}}]})
+    l.add({"type": "table", "title": "Filesystems", "description": "Disk-backed filesystems",
+           "targets": targets([(expr, "") for _, expr, _ in now], instant=True, fmt="table"),
+           "transformations": [
+               {"id": "merge", "options": {}},
+               {"id": "organize", "options": {
+                   "includeByName": {"mountpoint": True, "device": True, "fstype": True, **{v: True for v in value}},
+                   "renameByName": {"mountpoint": "Mount point", "device": "Device", "fstype": "Type", **value},
+                   "indexByName": {"mountpoint": 0, "device": 1, "fstype": 2,
+                                   **{v: i + 3 for i, v in enumerate(value)}}}}],
+           # Grafana's default 150 px a column scrolls the last ones out of a third of the screen.
+           "fieldConfig": {"defaults": {"custom": {"align": "auto", "minWidth": 60}}, "overrides": overrides},
+           "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": "Used", "desc": True}]}}, 10, 9)
+    l.add(timeseries("Disk throughput", [
+        (f'rate({node("node_disk_read_bytes_total", disk)}[1m])', "{{device}} read"),
+        (f'rate({node("node_disk_written_bytes_total", disk)}[1m])', "{{device}} written")], "Bps"), 7, 9)
+    busy = timeseries("Disk busy", [(f'100 * rate({node("node_disk_io_time_seconds_total", disk)}[1m])', "{{device}}")],
+                      "percent", desc="Share of the time each device had I/O in flight")
+    busy["fieldConfig"]["defaults"].update({"min": 0, "max": 100})
+    l.add(busy, 7, 9)
+
+    l.row("Network")
+    l.add(timeseries("Network throughput", [
+        (f'8 * rate({node("node_network_receive_bytes_total", net)}[1m])', "{{device}} in"),
+        (f'8 * rate({node("node_network_transmit_bytes_total", net)}[1m])', "{{device}} out")], "bps"), 8, 8)
+    l.add(timeseries("Network errors and drops", [
+        (f'rate({node("node_network_receive_errs_total", net)}[1m])', "{{device}} in: errors"),
+        (f'rate({node("node_network_transmit_errs_total", net)}[1m])', "{{device}} out: errors"),
+        (f'rate({node("node_network_receive_drop_total", net)}[1m])', "{{device}} in: dropped"),
+        (f'rate({node("node_network_transmit_drop_total", net)}[1m])', "{{device}} out: dropped")], "pps"), 8, 8)
+    l.add(timeseries("TCP retransmissions", [
+        (f'100 * rate({node("node_netstat_Tcp_RetransSegs")}[1m]) / rate({node("node_netstat_Tcp_OutSegs")}[1m])',
+         "retransmitted")], "percent",
+        desc="Share of the TCP segments sent again: the coordinator's and the workers' connections run over TCP"), 8, 8)
+
+    l.row("Hardware")
+    temps = right_legend(timeseries("Temperatures", [(node("node_hwmon_temp_celsius"), "{{chip}} {{sensor}}")], "celsius"))
+    temps["fieldConfig"]["defaults"]["custom"]["fillOpacity"] = 0
+    l.add(temps, 12, 8)
+    failed = table("Failed units", f'{node("node_systemd_unit_state", FAILED)} == 1', {"name": "Unit"},
+                   desc="systemd units in the failed state (needs node_exporter's --collector.systemd)")
+    failed["transformations"] = [{"id": "organize", "options": {"includeByName": {"name": True},
+                                                               "renameByName": {"name": "Unit"}}}]
+    failed["options"]["sortBy"] = [{"displayName": "Unit", "desc": False}]
+    failed["fieldConfig"]["defaults"]["noValue"] = "none"
+    l.add(failed, 6, 8)
+    l.add(timeseries("Clock offset", [(node("node_timex_offset_seconds"), "offset")], "s",
+                     desc="The kernel clock's offset from its NTP source"), 6, 8)
+
+    d = dashboard("zisk-host", "ZisK — Host", l,
+                  "One host, from node_exporter: CPU, memory, NUMA, disks, network and hardware")
+    v = host_variable()
+    v.update({"includeAll": False, "multi": False, "current": {}})
+    d["templating"]["list"].append(v)
+    d["annotations"] = {"list": job_annotations()}
+    return d
+
+
 if __name__ == "__main__":
     here = os.path.dirname(os.path.abspath(__file__))
     if len(sys.argv) == 3:
@@ -1018,7 +1228,7 @@ if __name__ == "__main__":
         rules = os.path.join(here, "..", "..", "prometheus", "rules", "zisk-proof-time.yml")
     else:
         sys.exit(__doc__)
-    for d in (resources(), recovery(), proofs(), live2(), gpus()):
+    for d in (resources(), recovery(), proofs(), live2(), gpus(), host()):
         with open(os.path.join(out, f"{d['uid']}.json"), "w") as f:
             json.dump(d, f, indent=1, ensure_ascii=False)
             f.write("\n")

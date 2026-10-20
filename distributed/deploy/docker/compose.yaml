@@ -99,6 +99,8 @@ services:
     pid: host
     command:
       - "--path.rootfs=/host"
+      - "--collector.cpu.info"     # each CPU's socket, for the Host dashboard's busy per socket
+      - "--collector.meminfo_numa" # memory per NUMA node
     volumes:
       - /:/host:ro,rslave
     networks:

@@ -1,0 +1,2585 @@
+{
+ "uid": "zisk-host",
+ "title": "ZisK — Host",
+ "description": "One host, from node_exporter: CPU, memory, NUMA, disks, network and hardware",
+ "tags": [
+  "zisk"
+ ],
+ "schemaVersion": 39,
+ "time": {
+  "from": "now-1h",
+  "to": "now"
+ },
+ "refresh": "10s",
+ "timezone": "utc",
+ "links": [
+  {
+   "title": "🔴 LIVE",
+   "type": "link",
+   "url": "/d/zisk-live",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Overview",
+   "type": "link",
+   "url": "/d/zisk-overview",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Executions & proofs",
+   "type": "link",
+   "url": "/d/zisk-proofs",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Cancellations & recovery",
+   "type": "link",
+   "url": "/d/zisk-recovery",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Worker resources",
+   "type": "link",
+   "url": "/d/zisk-resources",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "GPUs",
+   "type": "link",
+   "url": "/d/zisk-gpus",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Host",
+   "type": "link",
+   "url": "/d/zisk-host",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  }
+ ],
+ "editable": true,
+ "panels": [
+  {
+   "type": "row",
+   "title": "Host $host · now",
+   "id": 1,
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Uptime",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "time() - node_boot_time_seconds{host=\"$host\"}",
+     "legendFormat": "up",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "dtdurations",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 2,
+   "gridPos": {
+    "x": 0,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "CPU busy",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{host=\"$host\",mode=\"idle\"}[1m])))",
+     "legendFormat": "busy",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 3,
+   "gridPos": {
+    "x": 4,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Memory used",
+   "description": "Memory not available to new allocations without swapping",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "100 * (1 - node_memory_MemAvailable_bytes{host=\"$host\"} / node_memory_MemTotal_bytes{host=\"$host\"})",
+     "legendFormat": "used",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       },
+       {
+        "color": "red",
+        "value": 90
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 4,
+   "gridPos": {
+    "x": 8,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Shared memory",
+   "description": "Memory in shm segments and tmpfs, the workers' /dev/shm segments among them",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "node_memory_Shmem_bytes{host=\"$host\"}",
+     "legendFormat": "shm and tmpfs",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 5,
+   "gridPos": {
+    "x": 12,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Fullest filesystem",
+   "description": "The disk-backed filesystem nearest to full",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(100 * (1 - node_filesystem_avail_bytes{host=\"$host\",fstype!~\"tmpfs|devtmpfs|overlay|squashfs|nsfs|ramfs|fuse.*\",mountpoint!~\"/(run|boot/efi)(/.*)?\"} / node_filesystem_size_bytes{host=\"$host\",fstype!~\"tmpfs|devtmpfs|overlay|squashfs|nsfs|ramfs|fuse.*\",mountpoint!~\"/(run|boot/efi)(/.*)?\"}))",
+     "legendFormat": "used",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       },
+       {
+        "color": "red",
+        "value": 90
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 6,
+   "gridPos": {
+    "x": 16,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Swap used",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "node_memory_SwapTotal_bytes{host=\"$host\"} - node_memory_SwapFree_bytes{host=\"$host\"}",
+     "legendFormat": "used",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 7,
+   "gridPos": {
+    "x": 20,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "OOM kills",
+   "description": "Processes the kernel killed for want of memory, over the selected range",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "increase(node_vmstat_oom_kill{host=\"$host\"}[$__range])",
+     "legendFormat": "in the range",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       },
+       {
+        "color": "red",
+        "value": 0.5
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 8,
+   "gridPos": {
+    "x": 0,
+    "y": 5,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Memory errors (ECC)",
+   "description": "Errors the memory controllers reported since boot (EDAC)",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum(node_edac_correctable_errors_total{host=\"$host\"})",
+     "legendFormat": "corrected",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "sum(node_edac_uncorrectable_errors_total{host=\"$host\"})",
+     "legendFormat": "uncorrected",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       },
+       {
+        "color": "red",
+        "value": 0.5
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 9,
+   "gridPos": {
+    "x": 4,
+    "y": 5,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Hottest sensor",
+   "description": "The hottest of the host's hwmon temperature sensors (CPUs, board, disks); GPUs are on the GPUs dashboard",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(node_hwmon_temp_celsius{host=\"$host\"})",
+     "legendFormat": "max",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "celsius",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       },
+       {
+        "color": "red",
+        "value": 90
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 10,
+   "gridPos": {
+    "x": 8,
+    "y": 5,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Failed units",
+   "description": "systemd units in the failed state (needs node_exporter's --collector.systemd)",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum(node_systemd_unit_state{host=\"$host\",state=\"failed\"})",
+     "legendFormat": "failed",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       },
+       {
+        "color": "red",
+        "value": 0.5
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 11,
+   "gridPos": {
+    "x": 12,
+    "y": 5,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Clock",
+   "description": "Whether the kernel's clock is synchronised (NTP): the cluster's logs and metrics compare times across hosts",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "node_timex_sync_status{host=\"$host\"}",
+     "legendFormat": "sync",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       }
+      ]
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "not synced",
+         "color": "red"
+        },
+        "1": {
+         "text": "synced",
+         "color": "green"
+        }
+       }
+      }
+     ]
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 12,
+   "gridPos": {
+    "x": 16,
+    "y": 5,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Logical CPUs",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "count(node_cpu_seconds_total{host=\"$host\",mode=\"idle\"})",
+     "legendFormat": "CPUs",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": -1e+300
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto"
+   },
+   "id": 13,
+   "gridPos": {
+    "x": 20,
+    "y": 5,
+    "w": 4,
+    "h": 4
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "row",
+   "title": "CPU",
+   "id": 14,
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 9,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "CPU busy by mode",
+   "description": "Share of all the host's CPUs; iowait is idle time waiting on disk",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "100 * sum by (mode) (rate(node_cpu_seconds_total{host=\"$host\",mode!=\"idle\"}[1m])) / scalar(count(node_cpu_seconds_total{host=\"$host\",mode=\"idle\"}))",
+     "legendFormat": "{{mode}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "min": 0,
+     "max": 100
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 15,
+   "gridPos": {
+    "x": 0,
+    "y": 10,
+    "w": 12,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "heatmap",
+   "title": "Busy per CPU",
+   "description": "One row per logical CPU, from CPU 0 at the bottom. On a host with several sockets, `lscpu` lists each NUMA node's CPUs, and the Busy per socket chart adds them up",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "label_replace(label_replace(100 * (1 - rate(node_cpu_seconds_total{host=\"$host\",mode=\"idle\"}[1m])), \"cpu\", \"0$1\", \"cpu\", \"([0-9]{2})\"), \"cpu\", \"00$1\", \"cpu\", \"([0-9])\")",
+     "legendFormat": "{{cpu}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "hideFrom": {
+       "legend": false,
+       "tooltip": false,
+       "viz": false
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "calculate": false,
+    "cellGap": 0,
+    "rowsFrame": {
+     "layout": "unknown"
+    },
+    "color": {
+     "mode": "opacity",
+     "fill": "orange",
+     "scale": "linear",
+     "steps": 64,
+     "min": 0,
+     "max": 100,
+     "reverse": false,
+     "exponent": 0.5
+    },
+    "yAxis": {
+     "axisPlacement": "left",
+     "reverse": false
+    },
+    "cellValues": {
+     "unit": "percent",
+     "decimals": 0
+    },
+    "tooltip": {
+     "mode": "single",
+     "yHistogram": false,
+     "showColorScale": true
+    },
+    "legend": {
+     "show": true
+    },
+    "filterValues": {
+     "le": -1
+    },
+    "exemplars": {
+     "color": "rgba(255,0,255,0.7)"
+    }
+   },
+   "id": 16,
+   "gridPos": {
+    "x": 12,
+    "y": 10,
+    "w": 12,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Busy per socket",
+   "description": "Needs node_exporter's --collector.cpu.info, which labels each CPU with its socket",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "100 * sum by (package) (rate(node_cpu_seconds_total{host=\"$host\",mode!=\"idle\"}[1m]) * on (cpu) group_left (package) node_cpu_info{host=\"$host\"}) / count by (package) (node_cpu_info{host=\"$host\"})",
+     "legendFormat": "socket {{package}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     },
+     "min": 0,
+     "max": 100,
+     "noValue": "needs node_exporter's --collector.cpu.info"
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 17,
+   "gridPos": {
+    "x": 0,
+    "y": 19,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Waiting for a resource (pressure)",
+   "description": "Linux pressure stall information: share of the time some (or all) runnable tasks waited for the CPU, memory or I/O",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "100 * rate(node_pressure_cpu_waiting_seconds_total{host=\"$host\"}[1m])",
+     "legendFormat": "CPU: some waiting",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "100 * rate(node_pressure_memory_waiting_seconds_total{host=\"$host\"}[1m])",
+     "legendFormat": "memory: some waiting",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "C",
+     "expr": "100 * rate(node_pressure_memory_stalled_seconds_total{host=\"$host\"}[1m])",
+     "legendFormat": "memory: all stalled",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "D",
+     "expr": "100 * rate(node_pressure_io_waiting_seconds_total{host=\"$host\"}[1m])",
+     "legendFormat": "I/O: some waiting",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "E",
+     "expr": "100 * rate(node_pressure_io_stalled_seconds_total{host=\"$host\"}[1m])",
+     "legendFormat": "I/O: all stalled",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 18,
+   "gridPos": {
+    "x": 8,
+    "y": 19,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Load",
+   "description": "Runnable (and uninterruptible) tasks; above the CPU count, tasks queue for a CPU",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "node_load1{host=\"$host\"}",
+     "legendFormat": "1 min",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "node_load15{host=\"$host\"}",
+     "legendFormat": "15 min",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "C",
+     "expr": "node_procs_running{host=\"$host\"}",
+     "legendFormat": "running",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "D",
+     "expr": "node_procs_blocked{host=\"$host\"}",
+     "legendFormat": "blocked on I/O",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "E",
+     "expr": "count(node_cpu_seconds_total{host=\"$host\",mode=\"idle\"})",
+     "legendFormat": "logical CPUs",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "logical CPUs"
+      },
+      "properties": [
+       {
+        "id": "custom.stacking",
+        "value": {
+         "mode": "none",
+         "group": "A"
+        }
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          10
+         ]
+        }
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "text"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 19,
+   "gridPos": {
+    "x": 16,
+    "y": 19,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Memory",
+   "id": 20,
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 27,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Memory",
+   "description": "Where the host's memory goes. Shared memory includes the workers' /dev/shm segments",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "node_memory_AnonPages_bytes{host=\"$host\"}",
+     "legendFormat": "processes (anonymous)",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "node_memory_Shmem_bytes{host=\"$host\"}",
+     "legendFormat": "shared (shm, tmpfs)",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "C",
+     "expr": "node_memory_Cached_bytes{host=\"$host\"} - node_memory_Shmem_bytes{host=\"$host\"}",
+     "legendFormat": "page cache",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "D",
+     "expr": "node_memory_Buffers_bytes{host=\"$host\"}",
+     "legendFormat": "buffers",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "E",
+     "expr": "node_memory_Slab_bytes{host=\"$host\"}",
+     "legendFormat": "kernel slab",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "F",
+     "expr": "node_memory_MemFree_bytes{host=\"$host\"}",
+     "legendFormat": "free",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "G",
+     "expr": "node_memory_MemTotal_bytes{host=\"$host\"}",
+     "legendFormat": "total",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "min": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "total"
+      },
+      "properties": [
+       {
+        "id": "custom.stacking",
+        "value": {
+         "mode": "none",
+         "group": "A"
+        }
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          10
+         ]
+        }
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "text"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 21,
+   "gridPos": {
+    "x": 0,
+    "y": 28,
+    "w": 12,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Memory per NUMA node",
+   "description": "Needs node_exporter's --collector.meminfo_numa. A node that fills up sends its allocations to the other socket's memory",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "node_memory_numa_MemUsed{host=\"$host\"}",
+     "legendFormat": "node {{node}} used",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "node_memory_numa_MemTotal{host=\"$host\"}",
+     "legendFormat": "node {{node}} total",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     },
+     "noValue": "needs node_exporter's --collector.meminfo_numa"
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 22,
+   "gridPos": {
+    "x": 12,
+    "y": 28,
+    "w": 12,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Allocations off their NUMA node",
+   "description": "Needs node_exporter's --collector.meminfo_numa. Pages (4 KiB) a task on one socket got from the other socket's memory",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "rate(node_memory_numa_numa_miss_total{host=\"$host\"}[1m]) * 4096",
+     "legendFormat": "node {{node}}: placed here, meant for another",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "rate(node_memory_numa_other_node_total{host=\"$host\"}[1m]) * 4096",
+     "legendFormat": "node {{node}}: placed here, for a task on another",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "Bps",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     },
+     "noValue": "needs node_exporter's --collector.meminfo_numa"
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 23,
+   "gridPos": {
+    "x": 0,
+    "y": 37,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Paging and swapping",
+   "description": "Per second. Major faults while proving mean the working set does not fit in memory",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "rate(node_vmstat_pgmajfault{host=\"$host\"}[1m])",
+     "legendFormat": "major faults (read from disk)",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "rate(node_vmstat_pswpin{host=\"$host\"}[1m])",
+     "legendFormat": "swapped in",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "C",
+     "expr": "rate(node_vmstat_pswpout{host=\"$host\"}[1m])",
+     "legendFormat": "swapped out",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 24,
+   "gridPos": {
+    "x": 12,
+    "y": 37,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Disks",
+   "id": 25,
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 45,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "table",
+   "title": "Filesystems",
+   "description": "Disk-backed filesystems",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "100 * (1 - node_filesystem_avail_bytes{host=\"$host\",fstype!~\"tmpfs|devtmpfs|overlay|squashfs|nsfs|ramfs|fuse.*\",mountpoint!~\"/(run|boot/efi)(/.*)?\"} / node_filesystem_size_bytes{host=\"$host\",fstype!~\"tmpfs|devtmpfs|overlay|squashfs|nsfs|ramfs|fuse.*\",mountpoint!~\"/(run|boot/efi)(/.*)?\"})",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    },
+    {
+     "refId": "B",
+     "expr": "node_filesystem_avail_bytes{host=\"$host\",fstype!~\"tmpfs|devtmpfs|overlay|squashfs|nsfs|ramfs|fuse.*\",mountpoint!~\"/(run|boot/efi)(/.*)?\"} + 0",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    },
+    {
+     "refId": "C",
+     "expr": "node_filesystem_size_bytes{host=\"$host\",fstype!~\"tmpfs|devtmpfs|overlay|squashfs|nsfs|ramfs|fuse.*\",mountpoint!~\"/(run|boot/efi)(/.*)?\"} + 0",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "includeByName": {
+       "mountpoint": true,
+       "device": true,
+       "fstype": true,
+       "Value #A": true,
+       "Value #B": true,
+       "Value #C": true
+      },
+      "renameByName": {
+       "mountpoint": "Mount point",
+       "device": "Device",
+       "fstype": "Type",
+       "Value #A": "Used",
+       "Value #B": "Available",
+       "Value #C": "Size"
+      },
+      "indexByName": {
+       "mountpoint": 0,
+       "device": 1,
+       "fstype": 2,
+       "Value #A": 3,
+       "Value #B": 4,
+       "Value #C": 5
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "minWidth": 60
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Used"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percent"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Available"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "bytes"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Size"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "bytes"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Used"
+      },
+      "properties": [
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "gauge",
+         "mode": "basic",
+         "valueDisplayMode": "text"
+        }
+       },
+       {
+        "id": "min",
+        "value": 0
+       },
+       {
+        "id": "max",
+        "value": 100
+       },
+       {
+        "id": "decimals",
+        "value": 0
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "orange",
+           "value": 80
+          },
+          {
+           "color": "red",
+           "value": 90
+          }
+         ]
+        }
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "sortBy": [
+     {
+      "displayName": "Used",
+      "desc": true
+     }
+    ]
+   },
+   "id": 26,
+   "gridPos": {
+    "x": 0,
+    "y": 46,
+    "w": 10,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Disk throughput",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "rate(node_disk_read_bytes_total{host=\"$host\",device!~\"loop.*|ram.*|zram.*|dm-.*|sr.*\"}[1m])",
+     "legendFormat": "{{device}} read",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "rate(node_disk_written_bytes_total{host=\"$host\",device!~\"loop.*|ram.*|zram.*|dm-.*|sr.*\"}[1m])",
+     "legendFormat": "{{device}} written",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "Bps",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 27,
+   "gridPos": {
+    "x": 10,
+    "y": 46,
+    "w": 7,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Disk busy",
+   "description": "Share of the time each device had I/O in flight",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "100 * rate(node_disk_io_time_seconds_total{host=\"$host\",device!~\"loop.*|ram.*|zram.*|dm-.*|sr.*\"}[1m])",
+     "legendFormat": "{{device}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     },
+     "min": 0,
+     "max": 100
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 28,
+   "gridPos": {
+    "x": 17,
+    "y": 46,
+    "w": 7,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Network",
+   "id": 29,
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 55,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Network throughput",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "8 * rate(node_network_receive_bytes_total{host=\"$host\",device!~\"lo|veth.*|docker.*|br-.*|virbr.*|cali.*|flannel.*|cni.*\"}[1m])",
+     "legendFormat": "{{device}} in",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "8 * rate(node_network_transmit_bytes_total{host=\"$host\",device!~\"lo|veth.*|docker.*|br-.*|virbr.*|cali.*|flannel.*|cni.*\"}[1m])",
+     "legendFormat": "{{device}} out",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bps",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 30,
+   "gridPos": {
+    "x": 0,
+    "y": 56,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Network errors and drops",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "rate(node_network_receive_errs_total{host=\"$host\",device!~\"lo|veth.*|docker.*|br-.*|virbr.*|cali.*|flannel.*|cni.*\"}[1m])",
+     "legendFormat": "{{device}} in: errors",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "rate(node_network_transmit_errs_total{host=\"$host\",device!~\"lo|veth.*|docker.*|br-.*|virbr.*|cali.*|flannel.*|cni.*\"}[1m])",
+     "legendFormat": "{{device}} out: errors",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "C",
+     "expr": "rate(node_network_receive_drop_total{host=\"$host\",device!~\"lo|veth.*|docker.*|br-.*|virbr.*|cali.*|flannel.*|cni.*\"}[1m])",
+     "legendFormat": "{{device}} in: dropped",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "D",
+     "expr": "rate(node_network_transmit_drop_total{host=\"$host\",device!~\"lo|veth.*|docker.*|br-.*|virbr.*|cali.*|flannel.*|cni.*\"}[1m])",
+     "legendFormat": "{{device}} out: dropped",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "pps",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 31,
+   "gridPos": {
+    "x": 8,
+    "y": 56,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "TCP retransmissions",
+   "description": "Share of the TCP segments sent again: the coordinator's and the workers' connections run over TCP",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "100 * rate(node_netstat_Tcp_RetransSegs{host=\"$host\"}[1m]) / rate(node_netstat_Tcp_OutSegs{host=\"$host\"}[1m])",
+     "legendFormat": "retransmitted",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 32,
+   "gridPos": {
+    "x": 16,
+    "y": 56,
+    "w": 8,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Hardware",
+   "id": 33,
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 64,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Temperatures",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "node_hwmon_temp_celsius{host=\"$host\"}",
+     "legendFormat": "{{chip}} {{sensor}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "celsius",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 0,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 34,
+   "gridPos": {
+    "x": 0,
+    "y": 65,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "table",
+   "title": "Failed units",
+   "description": "systemd units in the failed state (needs node_exporter's --collector.systemd)",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "node_systemd_unit_state{host=\"$host\",state=\"failed\"} == 1",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "none"
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "sortBy": [
+     {
+      "displayName": "Unit",
+      "desc": false
+     }
+    ]
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "includeByName": {
+       "name": true
+      },
+      "renameByName": {
+       "name": "Unit"
+      }
+     }
+    }
+   ],
+   "id": 35,
+   "gridPos": {
+    "x": 12,
+    "y": 65,
+    "w": 6,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Clock offset",
+   "description": "The kernel clock's offset from its NTP source",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "node_timex_offset_seconds{host=\"$host\"}",
+     "legendFormat": "offset",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 36,
+   "gridPos": {
+    "x": 18,
+    "y": 65,
+    "w": 6,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  }
+ ],
+ "templating": {
+  "list": [
+   {
+    "type": "query",
+    "name": "cluster",
+    "label": "Cluster",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "query": {
+     "query": "label_values(coordinator_info, cluster)",
+     "refId": "cluster"
+    },
+    "definition": "label_values(coordinator_info, cluster)",
+    "refresh": 2,
+    "includeAll": true,
+    "allValue": ".*",
+    "multi": false,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    }
+   },
+   {
+    "type": "query",
+    "name": "coordinator_name",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "hide": 2,
+    "query": {
+     "query": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, name)",
+     "refId": "name"
+    },
+    "definition": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, name)",
+    "refresh": 2
+   },
+   {
+    "type": "query",
+    "name": "coordinator_environment",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "hide": 2,
+    "query": {
+     "query": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, environment)",
+     "refId": "environment"
+    },
+    "definition": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, environment)",
+    "refresh": 2
+   },
+   {
+    "type": "query",
+    "name": "coordinator_version",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "hide": 2,
+    "query": {
+     "query": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, version)",
+     "refId": "version"
+    },
+    "definition": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, version)",
+    "refresh": 2
+   },
+   {
+    "type": "query",
+    "name": "host",
+    "label": "Host",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "query": {
+     "query": "label_values(up{job=\"node\",cluster=~\"$cluster\"}, host)",
+     "refId": "host"
+    },
+    "definition": "label_values(up{job=\"node\",cluster=~\"$cluster\"}, host)",
+    "refresh": 2,
+    "includeAll": false,
+    "multi": false,
+    "current": {}
+   }
+  ]
+ },
+ "annotations": {
+  "list": [
+   {
+    "name": "Worker restarted",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "enable": true,
+    "hide": true,
+    "expr": "sum(((last_over_time(coordinator_worker_registrations_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",reconnect=\"false\"}[1m]) - last_over_time(coordinator_worker_registrations_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",reconnect=\"false\"}[1m] offset $__interval)) > 0))",
+    "iconColor": "purple",
+    "step": "2s",
+    "titleFormat": "worker restarted",
+    "useValueForTime": false
+   },
+   {
+    "name": "Job cancelled",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "enable": true,
+    "hide": true,
+    "expr": "sum(((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"cancelled\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"cancelled\"}[1m] offset $__interval)) > 0))",
+    "iconColor": "dark-blue",
+    "step": "2s",
+    "titleFormat": "job cancelled",
+    "useValueForTime": false
+   },
+   {
+    "name": "Job failed",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "enable": true,
+    "hide": true,
+    "expr": "label_replace(sum by (reason) (((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m] offset $__interval)) > 0)), \"outcome\", \"failure_$1\", \"reason\", \"(.*)\")",
+    "iconColor": "red",
+    "step": "2s",
+    "titleFormat": "job {{outcome}}",
+    "useValueForTime": false
+   }
+  ]
+ }
+}
