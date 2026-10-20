@@ -145,6 +145,15 @@ def PairTag.CurOk : PairTag → Prop
   | .flush f ρ => ∀ (x : Main.Ctx F) (t : Main.Trace F) (j : Int),
       el 0 (tupleOf ⟨(PairTag.flush f ρ).curArg, x, t⟩ j) = 3
 
+/-- A lane access's op: for `a` and `b`, its count plus twice its register
+bit; for the store, twice its count plus its register bit. -/
+def PairTag.OpOk : PairTag → Prop
+  | .lane l κ => ∀ (x : Main.Ctx F) (t : Main.Trace F) (j : Int),
+      el 0 (tupleOf ⟨(PairTag.lane l κ).curArg, x, t⟩ j) =
+        if κ = 2 then 2 * (PairTag.lane l κ).curArg.reps x t j + (PairTag.lane l κ).preArg.reps x t j
+        else (PairTag.lane l κ).curArg.reps x t j + 2 * (PairTag.lane l κ).preArg.reps x t j
+  | .flush _ _ => True
+
 /-- A flush pair's address is its register's. -/
 def PairTag.AddrOk (g : PairTag) : Prop :=
   ∀ f ρ, g = .flush f ρ → ∀ (x : Main.Ctx F) (t : Main.Trace F) (j : Int),
@@ -7905,6 +7914,264 @@ theorem mainTags_read : AllOf (fun g : PairTag => g.ReadOk (F := F)) mainTags :=
     fun _ => read_flush_3_36,
     fun _ => read_flush_3_37,
     fun _ => read_flush_3_38,
+    trivial⟩
+
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_0_0 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.bus35, x, t⟩ j) =
+      Main.bus35.reps x t j + 2 * Main.bus34.reps x t j := by
+  simp only [tupleOf, el, Main.bus35, Main.bus34, List.map_cons, List.getD_cons_zero]
+  grind
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_0_1 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.bus37, x, t⟩ j) =
+      Main.bus37.reps x t j + 2 * Main.bus36.reps x t j := by
+  simp only [tupleOf, el, Main.bus37, Main.bus36, List.map_cons, List.getD_cons_zero, Main.Main_sel_mem_b_0]
+  grind
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_0_2 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.bus39, x, t⟩ j) =
+      2 * Main.bus39.reps x t j + Main.bus38.reps x t j := by
+  simp only [tupleOf, el, Main.bus39, Main.bus38, List.map_cons, List.getD_cons_zero]
+  grind
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_1_0 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.bus48, x, t⟩ j) =
+      Main.bus48.reps x t j + 2 * Main.bus47.reps x t j := by
+  simp only [tupleOf, el, Main.bus48, Main.bus47, List.map_cons, List.getD_cons_zero]
+  grind
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_1_1 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.bus50, x, t⟩ j) =
+      Main.bus50.reps x t j + 2 * Main.bus49.reps x t j := by
+  simp only [tupleOf, el, Main.bus50, Main.bus49, List.map_cons, List.getD_cons_zero, Main.Main_sel_mem_b_1]
+  grind
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_1_2 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.bus52, x, t⟩ j) =
+      2 * Main.bus52.reps x t j + Main.bus51.reps x t j := by
+  simp only [tupleOf, el, Main.bus52, Main.bus51, List.map_cons, List.getD_cons_zero]
+  grind
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_2_0 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.bus61, x, t⟩ j) =
+      Main.bus61.reps x t j + 2 * Main.bus60.reps x t j := by
+  simp only [tupleOf, el, Main.bus61, Main.bus60, List.map_cons, List.getD_cons_zero]
+  grind
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_2_1 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.bus63, x, t⟩ j) =
+      Main.bus63.reps x t j + 2 * Main.bus62.reps x t j := by
+  simp only [tupleOf, el, Main.bus63, Main.bus62, List.map_cons, List.getD_cons_zero, Main.Zisk_direct_gsum_e_22]
+  grind
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_2_2 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.bus65, x, t⟩ j) =
+      2 * Main.bus65.reps x t j + Main.bus64.reps x t j := by
+  simp only [tupleOf, el, Main.bus65, Main.bus64, List.map_cons, List.getD_cons_zero]
+  grind
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_3_0 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.bus74, x, t⟩ j) =
+      Main.bus74.reps x t j + 2 * Main.bus73.reps x t j := by
+  simp only [tupleOf, el, Main.bus74, Main.bus73, List.map_cons, List.getD_cons_zero]
+  grind
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_3_1 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.bus76, x, t⟩ j) =
+      Main.bus76.reps x t j + 2 * Main.bus75.reps x t j := by
+  simp only [tupleOf, el, Main.bus76, Main.bus75, List.map_cons, List.getD_cons_zero, Main.Main_sel_mem_b_3]
+  grind
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_3_2 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.bus78, x, t⟩ j) =
+      2 * Main.bus78.reps x t j + Main.bus77.reps x t j := by
+  simp only [tupleOf, el, Main.bus78, Main.bus77, List.map_cons, List.getD_cons_zero]
+  grind
+
+set_option maxRecDepth 100000 in
+/-- **A lane access's op, from its count and its register bit.** -/
+theorem mainTags_op : AllOf (fun g : PairTag => g.OpOk (F := F)) mainTags :=
+  ⟨fun x t j => op_lane_0_0 x t j,
+    fun x t j => op_lane_0_1 x t j,
+    fun x t j => op_lane_0_2 x t j,
+    fun x t j => op_lane_1_0 x t j,
+    fun x t j => op_lane_1_1 x t j,
+    fun x t j => op_lane_1_2 x t j,
+    fun x t j => op_lane_2_0 x t j,
+    fun x t j => op_lane_2_1 x t j,
+    fun x t j => op_lane_2_2 x t j,
+    fun x t j => op_lane_3_0 x t j,
+    fun x t j => op_lane_3_1 x t j,
+    fun x t j => op_lane_3_2 x t j,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
+    trivial,
     trivial⟩
 
 

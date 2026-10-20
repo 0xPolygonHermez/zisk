@@ -8,6 +8,8 @@
 -/
 import Proofs.MemRamBus
 import Proofs.Registers
+import Proofs.RegRun
+import Proofs.MemMain
 
 namespace Correspondence
 
@@ -591,6 +593,11 @@ theorem one_ne_three : (1 : F) ≠ 3 := by
     (by rw [Lean.Grind.Semiring.natCast_one, ← natCast_ofNat' 3]; exact h)
   omega
 
+theorem natCast_ne12 : (1 : F) ≠ 2 := by
+  intro h; have := natCast_inj49 (F := F) (x := 1) (y := 2) (by omega) (by omega)
+    (by rw [Lean.Grind.Semiring.natCast_one, ← natCast_ofNat' 2]; exact h)
+  omega
+
 theorem two_ne_three : (2 : F) ≠ 3 := by
   intro h; have := natCast_inj49 (F := F) (x := 2) (y := 3) (by omega) (by omega)
     (by rw [← natCast_ofNat' 2, ← natCast_ofNat' 3]; exact h)
@@ -748,5 +755,150 @@ theorem MemBusWorld.store_write {M : MainSegs F} {S : MemOthers F} {gp ga : List
       intro e; have := natCast_inj49 (F := F) (x := 1) (y := 2) (by omega) (by omega)
         (by rw [Lean.Grind.Semiring.natCast_one, ← natCast_ofNat' 2]; exact e)
       omega)
+
+/-! ### Every RAM write is a Main store -/
+
+/-- **A Main access assuming a store is a store lane.** A Main sender that
+assumes a tuple with op 2, at a row with a nonzero count, is the store access
+of lane `l` of row `m` of segment `k`, which stores to memory. -/
+theorem MemBusWorld.main_store {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {s : Sender F}
+    (hs : s ∈ M.list.flatMap (fun m => mainMemSenders m.1 m.2)) (hside : s.proving = false)
+    {j : Int} (hj : j ∈ s.at) (hr : s.p.arg.reps s.p.x s.p.t j ≠ 0) (hop : (tupleOf s.p j).headD 0 = 2) :
+    ∃ k < M.K, ∃ m < Main.numRows, ∃ l < 4,
+      s = ⟨⟨(PairTag.lane l 2).curArg, (M.seg k).1, (M.seg k).2⟩, Main.numRows⟩ ∧ j = (m : Int) ∧
+      StoresAt M k m l := by
+  rw [← M.pairSenders_pairs] at hs
+  obtain ⟨P, hP, hs⟩ := List.mem_flatMap.mp hs
+  have hg := M.pairs_good W.ok P hP
+  obtain ⟨k, hk, g, hgm, rfl⟩ := M.mem_pairs hP
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hs
+  rcases hs with rfl | rfl
+  · rw [hg.side_pre] at hside; exact nomatch hside
+  have hj' : j ∈ (g.pair k (M.seg k).1 (M.seg k).2).pre.at := by rw [← hg.same]; exact hj
+  have hrc := hg.bits_cur j hj'
+  have hrp := hg.bits_pre j hj'
+  have hr1 : (g.pair k (M.seg k).1 (M.seg k).2).cur.p.arg.reps (M.seg k).1 (M.seg k).2 j = 1 := by
+    rcases hrc with h | h
+    · exact absurd h hr
+    · exact h
+  rw [← el_zero_headD] at hop
+  have hopk := (mainTags_op (F := F)).mem g hgm
+  have hcur := (mainTags_cur (F := F)).mem g hgm
+  have honce := (mainTags_once (F := F)).mem g hgm
+  have hwf := mainTags_wf _ hgm
+  cases g with
+  | flush f ρ =>
+    exfalso
+    have e := hcur (M.seg k).1 (M.seg k).2 j
+    have hop' : el 0 (tupleOf ⟨(PairTag.flush f ρ).curArg, (M.seg k).1, (M.seg k).2⟩ j) = 2 := hop
+    rw [e] at hop'
+    exact two_ne_three hop'.symm
+  | lane l κ =>
+    simp only [PairTag.Wf] at hwf
+    obtain ⟨m, hm, rfl⟩ := mem_at_rows (s := ⟨⟨(PairTag.lane l κ).preArg, (M.seg k).1, (M.seg k).2⟩,
+      Main.numRows⟩) honce hj'
+    have e := hopk (M.seg k).1 (M.seg k).2 m
+    have hop' : el 0 (tupleOf ⟨(PairTag.lane l κ).curArg, (M.seg k).1, (M.seg k).2⟩ m) = 2 := hop
+    change ((PairTag.lane l κ).curArg (F := F)).reps (M.seg k).1 (M.seg k).2 m = 1 at hr1
+    change ((PairTag.lane l κ).preArg (F := F)).reps (M.seg k).1 (M.seg k).2 m = 0 ∨
+      ((PairTag.lane l κ).preArg (F := F)).reps (M.seg k).1 (M.seg k).2 m = 1 at hrp
+    rw [e, hr1] at hop'
+    by_cases hκ : κ = 2
+    · subst hκ
+      simp only [if_true] at hop'
+      have hreg : ((PairTag.lane l 2).preArg (F := F)).reps (M.seg k).1 (M.seg k).2 m = 0 := by
+        rcases hrp with h | h
+        · exact h
+        · exfalso; rw [h] at hop'
+          have : (1 : F) = 0 := by
+            generalize ((PairTag.lane l 2).preArg (F := F)).reps (M.seg k).1 (M.seg k).2 m = r at *
+            grind
+          exact Lean.Grind.Field.zero_ne_one this.symm
+      refine ⟨k, hk, m, hm, l, by omega, rfl, rfl, ?_⟩
+      obtain ⟨-, -, -, -, -, -, -, -, c9, -, c11, -⟩ := lane_cols (F := F) (l := l) (by omega) (M.seg k).1 (M.seg k).2 m
+      rw [c9, Lean.Grind.Semiring.add_zero] at hreg
+      rw [c11, hreg, Lean.Grind.Semiring.add_zero] at hr1
+      exact hr1
+    · exfalso
+      simp only [hκ, if_false] at hop'
+      rcases hrp with h | h <;> rw [h] at hop'
+      · have : (1 : F) = 2 := by generalize (2 : F) = r at *; grind
+        exact (natCast_ne12 this)
+      · have : (3 : F) = 2 := by grind
+        exact two_ne_three this.symm
+
+open Classical in
+/-- **Every write of the RAM's log is a Main store.** -/
+theorem MemBusWorld.write_is_store {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {w : MemSort.Emit (F × F)}
+    (hw : w ∈ MemSort.writes (ramLog (W.segs hram))) :
+    ∃ k < M.K, ∃ m < Main.numRows, ∃ l < 4, StoresAt M k m l ∧
+      tupleOf ⟨(PairTag.lane l 2).curArg, (M.seg k).1, (M.seg k).2⟩ (m : Int) =
+        [2, ((8 * w.addr : Nat) : F), ((w.step : Nat) : F), 8, w.val.1, w.val.2] := by
+  -- The lane the write is.
+  obtain ⟨lane, hlane, hwl⟩ := List.mem_flatMap.mp hw
+  obtain ⟨seg, hseg, hls⟩ := List.mem_flatMap.mp hlane
+  obtain ⟨⟨I, hI⟩, -, rfl⟩ := List.mem_map.mp hseg
+  obtain ⟨n, hn, rfl⟩ := List.mem_map.mp hls
+  rw [List.mem_range] at hn
+  have hN : Mem.numRows = 4194304 := rfl
+  have hm : n / 4 < Mem.numRows := by rw [hN] at hn ⊢; omega
+  have hL : n % 4 < 4 := Nat.mod_lt _ (by omega)
+  let N := (W.seg hI (hram I hI)).nat
+  have hwl' : w ∈ (N.lane ((n / 4 : Nat) : Int) (n % 4)).writes := hwl
+  unfold MemSort.Lane.writes at hwl'
+  split at hwl'
+  rotate_left
+  · exact absurd hwl' (List.not_mem_nil)
+  rename_i hwrb
+  have hwr : (I.t ((n / 4 : Nat) : Int)).wr (n % 4) = 1 := by
+    simpa [RamNat.lane] using hwrb
+  have hwe : w = ⟨N.A ((n / 4 : Nat) : Int) (n % 4), N.S ((n / 4 : Nat) : Int) (n % 4),
+      ((I.t ((n / 4 : Nat) : Int)).value (n % 4) 0, (I.t ((n / 4 : Nat) : Int)).value (n % 4) 1)⟩ :=
+    List.mem_singleton.mp hwl'
+  -- Its tuple.
+  have ha : (I.t ((n / 4 : Nat) : Int)).addr (n % 4) = ((N.A ((n / 4 : Nat) : Int) (n % 4) : Nat) : F) :=
+    (N.addr ((n / 4 : Nat) : Int) (n % 4) (inRows_nat hm) hL).2
+  have hs : (I.t ((n / 4 : Nat) : Int)).step (n % 4) = ((N.S ((n / 4 : Nat) : Int) (n % 4) : Nat) : F) :=
+    (N.step ((n / 4 : Nat) : Int) (n % 4) (inRows_nat hm) hL).2
+  obtain ⟨hr1, ht1⟩ := ram_lane_tuple hL I.x I.t ((n / 4 : Nat) : Int)
+  have hτ : tupleOf (⟨ramLaneArg (n % 4), I.x, I.t⟩ : Prover F) ((n / 4 : Nat) : Int) =
+      [2, ((8 * w.addr : Nat) : F), ((w.step : Nat) : F), 8, w.val.1, w.val.2] := by
+    have e8 : ((N.A ((n / 4 : Nat) : Int) (n % 4) : Nat) : F) * 8 =
+        ((8 * N.A ((n / 4 : Nat) : Int) (n % 4) : Nat) : F) := by
+      rw [Lean.Grind.Semiring.natCast_mul, natCast_ofNat' 8]
+      exact Lean.Grind.CommSemiring.mul_comm _ _
+    have e2 : (1 : F) + 1 = 2 := by grind
+    rw [ht1, hwe, hwr, ha, hs, e8, e2]
+  -- Someone assumes it: a Main store.
+  have honce : (ramLaneArg (F := F) (n % 4)).once = false := by
+    generalize n % 4 = L at hL ⊢
+    rcases L with _ | _ | _ | _ | L <;> first | omega | rfl
+  have hop : ([2, ((8 * w.addr : Nat) : F), ((w.step : Nat) : F), 8, w.val.1, w.val.2] : List F).headD 0 = 1 ∨
+      ([2, ((8 * w.addr : Nat) : F), ((w.step : Nat) : F), 8, w.val.1, w.val.2] : List F).headD 0 = 2 :=
+    .inr rfl
+  have hnp : ∀ I' ∈ S.mem, ([2, ((8 * w.addr : Nat) : F), ((w.step : Nat) : F), 8, w.val.1, w.val.2] :
+      List F) ≠ padTuple I'.x := by
+    intro I' _ h
+    simp only [padTuple, List.cons.injEq] at h
+    exact natCast_ne12 h.1.symm
+  obtain ⟨s, hs', hp, j', hj', ht', hr'⟩ := W.assumed hop hnp (W.ram_mem hI (lane_sender_mem I hL).1)
+    (ram_counts I (W.pad I hI).1 (W.pad I hI).2 [] _ (lane_sender_mem I hL).1).1
+    (fun j _ => .inr (ram_lane_tuple hL I.x I.t j).1) (lane_at_mem honce hm) hτ hr1
+  rcases List.mem_append.mp hs' with hmain | ho
+  · obtain ⟨k, hk, m, hm', l, hl, rfl, rfl, hst⟩ := W.main_store hmain hp hj' hr' (by rw [ht']; rfl)
+    exact ⟨k, hk, m, hm', l, hl, hst, ht'⟩
+  · exfalso
+    rcases S.mem_split ho with hr | hi | hn
+    · obtain ⟨I', hI', hs''⟩ := List.mem_flatMap.mp hr
+      have := (ram_counts I' (W.pad I' hI').1 (W.pad I' hI').2 [] s hs'').1
+      rw [hp] at this; exact nomatch this
+    · obtain ⟨I', -, hs''⟩ := List.mem_flatMap.mp hi
+      have := (input_counts I' [] s hs'').1
+      rw [hp] at this; exact nomatch this
+    · have := (W.none s hn j' hr').2
+      rw [ht'] at this
+      exact this rfl
 
 end Correspondence

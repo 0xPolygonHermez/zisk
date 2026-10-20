@@ -648,6 +648,27 @@ theorem mainTags_read : AllOf (fun g : PairTag => g.ReadOk (F := F)) mainTags :=
     trivial⟩
 
 """)
+    oterms2 = []
+    for l, k, pre, cur, _ in lanes:
+        rc = bus_reps[cur]; rp = bus_reps[pre]
+        unfs = unf(re.findall(r"((?:Main|Zisk)_\w+) x t i", rc + ' ' + bus_op[cur] + ' ' + rp))
+        out.append(f"""omit [Lean.Grind.IsCharP F goldilocks] in
+theorem op_lane_{l}_{k} (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.{cur}, x, t⟩ j) =
+      {'2 * Main.' + cur + '.reps x t j + Main.' + pre + '.reps x t j' if k == 2 else 'Main.' + cur + '.reps x t j + 2 * Main.' + pre + '.reps x t j'} := by
+  simp only [tupleOf, el, Main.{cur}, Main.{pre}, List.map_cons, List.getD_cons_zero{', ' + unfs if unfs else ''}]
+  grind
+""")
+        oterms2.append(f"fun x t j => op_lane_{l}_{k} x t j")
+    for f, r, *_ in flushes:
+        oterms2.append("trivial")
+    out.append(f"""set_option maxRecDepth 100000 in
+/-- **A lane access's op, from its count and its register bit.** -/
+theorem mainTags_op : AllOf (fun g : PairTag => g.OpOk (F := F)) mainTags :=
+  ⟨{(','+chr(10)+'    ').join(oterms2)},
+    trivial⟩
+
+""")
     cterms = []
     for l, k, *_ in lanes:
         cterms.append(f"fun _ _ _ h _ hm => lane_step_{l}_{k} h hm")
@@ -994,6 +1015,15 @@ def PairTag.CurOk : PairTag → Prop
         el 2 (tupleOf ⟨(PairTag.lane l κ).curArg, x, t⟩ m) = ((laneStep k l κ m : Nat) : F)
   | .flush f ρ => ∀ (x : Main.Ctx F) (t : Main.Trace F) (j : Int),
       el 0 (tupleOf ⟨(PairTag.flush f ρ).curArg, x, t⟩ j) = 3
+
+/-- A lane access's op: for `a` and `b`, its count plus twice its register
+bit; for the store, twice its count plus its register bit. -/
+def PairTag.OpOk : PairTag → Prop
+  | .lane l κ => ∀ (x : Main.Ctx F) (t : Main.Trace F) (j : Int),
+      el 0 (tupleOf ⟨(PairTag.lane l κ).curArg, x, t⟩ j) =
+        if κ = 2 then 2 * (PairTag.lane l κ).curArg.reps x t j + (PairTag.lane l κ).preArg.reps x t j
+        else (PairTag.lane l κ).curArg.reps x t j + 2 * (PairTag.lane l κ).preArg.reps x t j
+  | .flush _ _ => True
 
 /-- A flush pair's address is its register's. -/
 def PairTag.AddrOk (g : PairTag) : Prop :=

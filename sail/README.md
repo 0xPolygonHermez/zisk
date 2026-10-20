@@ -1436,7 +1436,12 @@ one log (`MemBusWorld.segs`), and every lane's reads and writes are its
 (`emit_mem`); so a load Main assumes is a read of that log, its bus address
 `8·addr`, its step and value the read's, or an InputData row
 (`MemBusWorld.load_read`), and a store Main assumes is a write of it
-(`MemBusWorld.store_write`).
+(`MemBusWorld.store_write`). Conversely, every write of the log is a Main store
+(`MemBusWorld.write_is_store`): its tuple, op 2 and so no padding's, is
+assumed by some sender, and the only senders that assume an op-2 tuple are
+Main's store accesses of lanes that store to memory (`MemBusWorld.main_store`;
+an `a` or `b` access's op is its count plus twice its register bit, a store's
+twice its count plus its register bit, `mainTags_op`, generated).
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'
