@@ -134,7 +134,7 @@ reached through the ROM lookup. See
 | [`../tools/sail-difftest`](../tools/sail-difftest/src/main.rs) | Exports a program to the model — `rom.sail` and its initial memory — records the reference trace on `ziskemu`, and checks the program's committed ROM rows against the encoding the Lean proofs assume. |
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
 | `check_tables.py` | Checks the virtual tables the setup commits against what the proofs assume: every FROPS row of a modeled op (`add`, `ltu`, `eq`, `and`) carries its result, the Arith and BinaryExtension tables never serve one, the Binary table's rows for them compute their byte, and the precompiles' fixed ops on the memory bus are 1 or 2; `make tables`. |
-| `check_scope.py` | Checks a program `make difftest` exported against the scope of the proofs' runs (`MemProgEnd`), naming every instruction outside it; `make scope`. |
+| `check_scope.py` | Checks a program `make difftest` exported against the scope of the proofs' runs (`MemProgEnd`), naming every instruction outside it, and that the boot instruction loads nothing (`BootNoLoad`); `make scope`. |
 | `check_cont.py` | Checks that the continuation buses (11 and 12) carry exactly the arguments `lean/Proofs/MemCont.lean` lists: the RAM's, InputData's and RomData's two a segment; `make cont`. |
 | `gen_membus.py` | Generates `lean/Proofs/MemBus.lean` (every argument on the memory bus) and `lean/Proofs/MainRegs.lean` (Main's register pairs); `make membus`. |
 | `gen_provers.py` | Generates `lean/Proofs/Provers.lean` from the AIRs' operation-bus arguments and the prover lemmas' signatures; `make provers`. |
@@ -1509,7 +1509,9 @@ the instances and the Rom alone. Four facts stay as hypotheses:
 - `MainAvoids`: Main's memory accesses avoid the register file, which the
   model asserts of every access, and the free-input base;
 - `FirstNoLoad`: Main's first lane loads nothing — its loads, at steps 1 and
-  2, would come before the Rom's data reaches the RAM, at step 3;
+  2, would come before the Rom's data reaches the RAM, at step 3. The first
+  lane runs the boot instruction (`first_no_load`, in `MemSystem.lean`), so
+  this is the program's `BootNoLoad`, which `make scope` checks;
 - `Quiet`, inside `MemBusWorld`.
 
 The domain is the 32-bit words off the register file and the free-input base
@@ -1538,12 +1540,12 @@ buses. With it,
 [`lean/Proofs/MemSystem.lean`](lean/Proofs/MemSystem.lean) states the run to
 the end over the operation bus's provers and the memory bus
 (`run_to_end_memory_bus`): `MemAnswers` is no longer assumed; in its place
-are `MemBusWorld`, `ContWorld`, the hypotheses above, and the model's
-initial memory being the bus's.
+are `MemBusWorld`, `ContWorld`, `RomOk`, `MainAvoids`, `BootNoLoad`, and
+the model's initial memory being the bus's.
 
 Still to come: `Quiet`, from the operation bus — the precompiles and DMA run only
 when Main calls them; `MemAlign`, for byte and unaligned accesses;
-`MainAvoids` and `FirstNoLoad`; and `RomOk`, from the setup's ROM.
+`MainAvoids`; and `RomOk`, from the setup's ROM.
 
 ## The operation bus's provers
 

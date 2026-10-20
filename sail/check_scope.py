@@ -15,7 +15,10 @@ scope of `run_to_end_memory`:
   width 8) with an offset below 2^32;
 * set_pc only with a jmp_off1 of at most 31 bits either way;
 * both jumps land in the 32-bit pc range;
-* an end instruction makes no memory access.
+* an end instruction makes no memory access;
+* the boot instruction, at ROM_ENTRY (0x1000), loads nothing from memory
+  (`BootNoLoad`, lean/Proofs/MemSystem.lean): Main's first lane runs it, and
+  its loads would come before the program's data reaches the RAM.
 
 Prints each instruction outside the scope, and why. Exit status 1 if any.
 
@@ -24,6 +27,8 @@ Usage: check_scope.py [build/difftest/<prog>/rom.sail]
 
 import re
 import sys
+
+ROM_ENTRY = 0x1000
 
 OPS = {'ZOP_COPYB', 'ZOP_FLAG', 'ZOP_ADD', 'ZOP_LTU', 'ZOP_EQ', 'ZOP_AND', 'ZOP_HALT', 'ZOP_PUBOUT'}
 ENTRY = re.compile(r"(0x[0-9a-f_]+) => struct \{([^}]*)\}", re.S)
@@ -73,6 +78,8 @@ def check(pc, f):
     if f['is_end'] == 'true' and (a == 'A_MEM' or b in ('B_MEM', 'B_IND')
                                   or st in ('ST_MEM', 'ST_IND')):
         why.append('an end instruction with a memory access')
+    if pc == ROM_ENTRY and (a == 'A_MEM' or b in ('B_MEM', 'B_IND')):
+        why.append('the boot instruction loads from memory')
     return why
 
 
@@ -89,6 +96,9 @@ def main():
         if why:
             bad += 1
             print(f'{pc:#010x}  {f["op"]:<14} ' + '; '.join(why))
+    if not any(num(m.group(1)) == ROM_ENTRY for m in ENTRY.finditer(text)):
+        bad += 1
+        print(f'no instruction at the boot pc {ROM_ENTRY:#x}')
     print(f'{n} instructions, {bad} outside the scope of run_to_end_memory')
     sys.exit(1 if bad else 0)
 
