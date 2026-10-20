@@ -13,6 +13,7 @@ use proofman::{
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_fields::Goldilocks;
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -158,6 +159,19 @@ impl ProverBackend {
     /// no assembly job; see `ZiskExecutor::reset_for_new_job`.
     pub(crate) fn reset(&self) -> Result<()> {
         self.executor.reset_for_new_job().map_err(Into::into)
+    }
+
+    /// Builds now what proofman otherwise builds in the first job's reset and keeps for the
+    /// rest of the process: on the GPU, the multiplicity state in the late region and the
+    /// streaming-commit programs and tables. Every proving entry point resets anyway, so
+    /// this only moves the work. Call it before any job; a failure is left to the first
+    /// job, whose reset repeats it.
+    pub(crate) fn warm_up(&self) {
+        timer_start_info!(WARMING_UP_PROOFMAN);
+        if let Err(e) = self.proofman.reset() {
+            tracing::warn!("Proofman warm-up failed, the first job will retry it: {e}");
+        }
+        timer_stop_and_log_info!(WARMING_UP_PROOFMAN);
     }
 
     /// Begins a job on the assembly backend; see `ZiskExecutor::begin_asm_job`.

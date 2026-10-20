@@ -287,6 +287,34 @@ impl AsmProver {
         Ok(())
     }
 
+    /// Registers the program a full setup has just set up, which its first job would
+    /// otherwise do (see [`ProverBackend::register_program`]): that job then finds it
+    /// registered, unless another program is registered in between.
+    ///
+    /// Called on every rank. A failure costs only the head start, since the job registers
+    /// in full and fails there if it must. The ranks keep the registration only if all of
+    /// them have it: one registering alone at the job would take proofman's custom-commit
+    /// barrier alone, when a commit file is still to be generated.
+    fn register_set_up_program(
+        &self,
+        program_id: &ProgramId,
+        zisk_rom: Arc<ZiskRom>,
+        with_hints: bool,
+        pctx: &ProofCtx<Goldilocks>,
+    ) {
+        timer_start_info!(REGISTERING_PROGRAM);
+        let registered = get_rom_bin_path(pctx, program_id).and_then(|rom_bin_path| {
+            self.core_prover.backend.register_program(zisk_rom, &rom_bin_path, with_hints)
+        });
+        if let Err(e) = &registered {
+            tracing::warn!("Program not registered at setup, its first job will: {e:#}");
+        }
+        if !pctx.mpi_ctx.all_finished_ok(registered.is_ok()) {
+            self.core_prover.backend.forget_registered_program();
+        }
+        timer_stop_and_log_info!(REGISTERING_PROGRAM);
+    }
+
     fn register_program_for_emulator(&self, program_id: &ProgramId) -> Result<()> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
         let rom = {
@@ -398,6 +426,9 @@ impl ProverEngine for AsmProver {
             return Ok(program_vk);
         }
 
+        // Registered once every rank has set it up; see `register_set_up_program`.
+        let rom_to_register = Arc::clone(&zisk_rom);
+
         // Assembly file generation
         let (asm_mt_path, asm_rh_path) = Self::get_asm_cache_paths(elf, with_hints)?;
 
@@ -469,6 +500,8 @@ impl ProverEngine for AsmProver {
         if !all_ok {
             return Err(anyhow::anyhow!("Setup failed on another MPI rank"));
         }
+
+        self.register_set_up_program(&elf.program_id, rom_to_register, with_hints, &pctx);
 
         self.current_with_hints.store(with_hints, Ordering::SeqCst);
         Ok(program_vk)
@@ -899,6 +932,7 @@ impl AsmCoreProver {
             proving_key,
             Some(proving_key_snark),
         );
+        core.warm_up();
 
         Ok(Self {
             backend: core,
