@@ -61,10 +61,10 @@ theorem step_reg_at (prog : BitVec 64 → Option zisk_inst) (hprog : RegProg pro
   obtain ⟨inst, σ', pc', c, hinst, hslot, hsto, hpil, hrun, hσ', hx, -, hnp, hc0, hc1⟩ :=
     step_gen prog hprog _ _ (hmi m) xr tr hr hl (hbus l hl) hrom ps (hops l hl) hpr hlane hq
       σ pc zc xs hσ hxs hcol hprev
-      (fun inst hinst ha => (reg_srcs hch hk hm hl (hsrc inst hinst).2 (hsrc inst hinst).1 hinv).1 ha)
-      (fun inst hinst hb => (reg_srcs hch hk hm hl (hsrc inst hinst).2 (hsrc inst hinst).1 hinv).2 hb)
+      (fun inst hinst ha => (reg_srcs hch hk hm hl (hsrc inst hinst).2 (hsrc inst hinst).1.idx hinv).1 ha)
+      (fun inst hinst hb => (reg_srcs hch hk hm hl (hsrc inst hinst).2 (hsrc inst hinst).1.idx hinv).2 hb)
   exact ⟨inst, σ', pc', c, _, hinst, hrun, hσ', hx,
-    reg_update hch hK hk hm hl hslot hsto hpil (hprog pc inst hinst).2.2 hc0 hc1 hinv, hnp, hc0, hc1⟩
+    reg_update hch hK hk hm hl hslot hsto hpil.idx (hprog pc inst hinst).2.2 hc0 hc1 hinv, hnp, hc0, hc1⟩
 
 theorem first_after_next (j : Nat) : (Pos.first.after j).next = Pos.first.after (j + 1) := by
   have hr := first_after_row j

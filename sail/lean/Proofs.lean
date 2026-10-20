@@ -32,3 +32,8 @@ import Proofs.MemSort
 import Proofs.MemRam
 import Proofs.MemInput
 import Proofs.ModelMem
+import Proofs.MemFile
+import Proofs.MemMain
+import Proofs.StepMem
+import Proofs.MemBoot
+import Proofs.MemEnd

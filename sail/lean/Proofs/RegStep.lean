@@ -93,32 +93,40 @@ theorem slot_read {M : MainSegs F} (hch : ChainOk M) {k m l κ : Nat} (hk : k < 
   rw [hidx]
   exact hr
 
+/-- What the register steps need of an instruction: its register indices
+`x1`–`x31`, written as such. -/
+structure RegIdx (inst : zisk_inst) : Prop where
+  a : inst.a_src = .A_REG → regIdx inst.a_imm ≠ 0 ∧ inst.a_imm.toNat < 32
+  b : inst.b_src = .B_REG → regIdx inst.b_imm ≠ 0 ∧ inst.b_imm.toNat < 32
+  s : inst.store = .ST_REG → inst.store_off.toNat < 32
+
+theorem RegPilot.idx {inst : zisk_inst} (hp : RegPilot inst) : RegIdx inst where
+  a ha := ⟨by rcases hp.a with h | h | ⟨-, h⟩
+              · cases h.symm.trans ha
+              · cases h.symm.trans ha
+              · exact h, hp.a_idx ha⟩
+  b hb := ⟨by rcases hp.b with h | h | ⟨-, h⟩
+              · cases h.symm.trans hb
+              · cases h.symm.trans hb
+              · exact h, hp.b_idx hb⟩
+  s := hp.s_idx
+
 /-- **Register sources read the model's registers.** With `RegInv` at the lane's
 first memory step, a register source's value is in the lane's columns. -/
 theorem reg_srcs {M : MainSegs F} (hch : ChainOk M) {k m l : Nat} (hk : k < M.K)
     (hm : m < Main.numRows) (hl : l < 4) {inst : zisk_inst} {pc : BitVec 64}
-    (hslot : SlotHolds ((M.seg k).2 m) l inst pc) (hp : RegPilot inst)
+    (hslot : SlotHolds ((M.seg k).2 m) l inst pc) (hp : RegIdx inst)
     {xs : Vector (BitVec 64) 32} (hinv : RegInv M xs (1 + 4 * (k * 16777216 + 4 * m + l))) :
     (inst.a_src = .A_REG → ACols ((M.seg k).2 m) l (xs[(regIdx inst.a_imm).toNat]!)) ∧
       (inst.b_src = .B_REG → BCols ((M.seg k).2 m) l (xs[(regIdx inst.b_imm).toNat]!)) := by
   obtain ⟨c1, c2, c3, c4, c5, c6, c7, c8, -⟩ := lane_cols (F := F) hl (M.seg k).1 (M.seg k).2 m
   refine ⟨fun ha => ?_, fun hb => ?_⟩
-  · have hne : regIdx inst.a_imm ≠ 0 := by
-      rcases hp.a with h | h | ⟨-, h⟩
-      · cases h.symm.trans ha
-      · cases h.symm.trans ha
-      · exact h
-    have hr := slot_read hch hk hm hl (κ := 0) (by omega) (hp.a_idx ha) hne
+  · have hr := slot_read hch hk hm hl (κ := 0) (by omega) (hp.a ha).2 (hp.a ha).1
       (by rw [c1, hslot.a_src_reg, ha]; simp [bit, isAReg, Lean.Grind.Semiring.add_zero])
       (by rw [c2, hslot.a_offset_imm0, Lean.Grind.Semiring.add_zero]) hinv
     rw [c3, c4, Lean.Grind.Semiring.add_zero, Lean.Grind.Semiring.add_zero, Prod.mk.injEq] at hr
     exact hr
-  · have hne : regIdx inst.b_imm ≠ 0 := by
-      rcases hp.b with h | h | ⟨-, h⟩
-      · cases h.symm.trans hb
-      · cases h.symm.trans hb
-      · exact h
-    have hr := slot_read hch hk hm hl (κ := 1) (by omega) (hp.b_idx hb) hne
+  · have hr := slot_read hch hk hm hl (κ := 1) (by omega) (hp.b hb).2 (hp.b hb).1
       (by rw [c5, hslot.b_src_reg, hb]; simp [bit, isBReg, Lean.Grind.Semiring.add_zero])
       (by rw [c6, hslot.b_offset_imm0, Lean.Grind.Semiring.add_zero]) hinv
     rw [c7, c8, Lean.Grind.Semiring.add_zero, Lean.Grind.Semiring.add_zero, Prod.mk.injEq] at hr
@@ -151,7 +159,7 @@ for the register file after the model's store. -/
 theorem reg_update {M : MainSegs F} (hch : ChainOk M) (hK : M.K < 1048576) {k m l : Nat}
     (hk : k < M.K) (hm : m < Main.numRows) (hl : l < 4) {inst : zisk_inst} {pc c : BitVec 64}
     (hslot : SlotHolds ((M.seg k).2 m) l inst pc) (hsto : StoreHolds ((M.seg k).2 m) l inst)
-    (hp : RegPilot inst) (hland : Lands pc inst.jmp_off2)
+    (hp : RegIdx inst) (hland : Lands pc inst.jmp_off2)
     (hc0 : ((M.seg k).2 m).c l 0 = lo c) (hc1 : ((M.seg k).2 m).c l 1 = hi c)
     {xs : Vector (BitVec 64) 32} (hinv : RegInv M xs (1 + 4 * (k * 16777216 + 4 * m + l))) :
     RegInv M (storeXs inst pc c xs) (1 + 4 * (k * 16777216 + 4 * m + l) + 4) := by
@@ -172,7 +180,7 @@ theorem reg_update {M : MainSegs F} (hch : ChainOk M) (hK : M.K < 1048576) {k m 
   by_cases hs : inst.store = .ST_REG ∧ inst.store_off.toNat = i + 1
   · -- The lane stores to `x(i+1)`.
     obtain ⟨hs, hoff⟩ := hs
-    have h32 := hp.s_idx hs
+    have h32 := hp.s hs
     have hidx := regIdx_toNat h32
     have hreg : ((M.seg k).2 m).store_reg l = 1 := by
       rw [hsto.store_reg, hs]; rfl
@@ -201,7 +209,7 @@ theorem reg_update {M : MainSegs F} (hch : ChainOk M) (hK : M.K < 1048576) {k m 
       rw [hpre, c10, hsto.store_offset, Lean.Grind.Semiring.add_zero] at h2
       cases hst : inst.store with
       | ST_REG =>
-        have h32 := hp.s_idx hst
+        have h32 := hp.s hst
         rw [off_small h32] at h2
         exact hs ⟨hst, natCast_lt32_inj h32 (by omega) h2⟩
       | _ =>
@@ -215,7 +223,7 @@ theorem reg_update {M : MainSegs F} (hch : ChainOk M) (hK : M.K < 1048576) {k m 
       unfold storeXs
       split
       · rename_i hst
-        have h32 := hp.s_idx hst
+        have h32 := hp.s hst
         rw [regIdx_toNat h32, vec_get_set xs h32 (by omega), if_neg]
         intro e; exact hs ⟨hst, e⟩
       · rfl

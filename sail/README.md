@@ -169,6 +169,11 @@ reached through the ROM lookup. See
 | `lean/Proofs/MemRam.lean` | The RAM's constraints as a sorted log, over a chain of its segments: every read returns the last write (`ram_reads_last_write`). |
 | `lean/Proofs/MemInput.lean` | The input memory, over a chain of InputData segments: two reads of the same address, other than the base, return the same value (`input_consistent`). |
 | `lean/Proofs/ModelMem.lean` | The model's step with memory sources and stores, memory seen as 8-byte words (`execute_mem`). |
+| `lean/Proofs/MemFile.lean` | A memory word's value at a step (`memVal`): the latest write before it, or the initial value. |
+| `lean/Proofs/MemMain.lean` | Main's memory accesses against the memory bus's guarantee (`MemAnswers`, a hypothesis): sources read the model's words, and the memory invariant moves on (`mem_a_cols`, `mem_b_cols`, `mem_update`). |
+| `lean/Proofs/StepMem.lean` | One step with register and memory sources and stores (`step_genM`). |
+| `lean/Proofs/MemBoot.lean` | A run from boot with the register file and memory (`run_from_boot_memory`). |
+| `lean/Proofs/MemEnd.lean` | The run to the end with the register file and memory (`run_to_end_memory`). |
 | `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
@@ -354,11 +359,11 @@ make proofs
 ```
 
 ```
-✔ [105/106] Built Proofs
+✔ [110/111] Built Proofs
 Build completed successfully.
 ```
 
-About 130 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, the program's end, the registers' memory checking, the runs with registers, to the end, and sorted memory checking.
+About 130 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, the program's end, the registers' memory checking, the runs with registers, to the end, sorted memory checking, and the runs with memory.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -434,6 +439,10 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
   register stores are covered too, and after every step the model's
   registers `x1`–`x31` are what Main's register chain holds — up to the end
   instruction, which the model executes and stops.
+- With memory: given the memory bus's guarantee for Main's loads and stores
+  (still a hypothesis), memory sources and memory stores of 8-byte words are
+  covered too, and the model's memory words are, at every step, the latest
+  store Main made to them, or their initial value.
 - The same for `add`, whose result another AIR computes: given a sound
   operation bus, whichever of its provers answers, the slot's `c` is
   `a + b` modulo 2^64.
@@ -445,10 +454,10 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
 
 ### And what it does not
 
-- **The correspondence is a pilot.** Six opcodes; immediate, `c` or register
-  sources, and no store or a register store, with no memory or indirect
-  access; `set_pc` only with a short `jmp_off1`, and in the runs without
-  registers only on internal ops. The rest is steps 4 to 6 of
+- **The correspondence is a pilot.** Six opcodes; immediate, `c`, register or
+  8-byte memory sources, and no store, a register store or an 8-byte memory
+  store, the memory bus's guarantee for them a hypothesis; `set_pc` only with
+  a short `jmp_off1`, and in the runs without registers only on internal ops. The rest is steps 4 to 6 of
   [Next steps](#next-steps).
 - **Bus arguments are assumed sound, not derived.** The ROM lookup's guarantee
   (`LookupHolds`) and the ROM's contents (`RomHolds`) are hypotheses; the gsum
@@ -1306,11 +1315,39 @@ of width 8 — at addresses of `D` away from the register file: the step reads
 the words memory holds, and leaves memory as the store's update of them
 (`storeW`).
 
-The next piece takes the memory bus's guarantee for Main's loads as a
-hypothesis — every load returns the latest store Main made to its word before
-its step, or the word's initial value — and carries a memory invariant along
-the run as `RegInv` carries the registers; the census below then discharges
-it.
+**Runs with memory.** The memory bus's guarantee for Main's accesses is, for
+now, a hypothesis, `MemAnswers` ([`lean/Proofs/MemMain.lean`](lean/Proofs/MemMain.lean)),
+stated over Main's columns: a list `ws` holds Main's stores — every one,
+nothing else, with distinct steps — every load returns `memVal init ws` of its
+address at its step ([`MemFile.lean`](lean/Proofs/MemFile.lean): the latest
+store to the word before the step, or its initial value), and every access is
+at an address of `D`, 8-aligned, 32-bit and away from the register file
+(`MemDomain`). The memory invariant, `MemInv`, carried along the run as
+`RegInv` carries the registers, is that the model's words are `memVal` at the
+lane's first memory step. A lane's `a` load is at that step, its `b` load one
+on and its store two on, so:
+
+- a memory source's value is in the lane's columns, the word the model reads
+  (`mem_a_cols`, `mem_b_cols`). Main's addresses are 32-bit field elements —
+  `a_offset_imm0`, `addr1 = b_offset_imm0 + a[0]`, `store_offset + a[0]` —
+  and Main forces `a[1] = 0` on an indirect access, so with the program's
+  immediates below `2^32` (and store offsets below `2^31`) they are the
+  model's 64-bit addresses;
+- after the step, `MemInv` holds four memory steps on for the model's memory
+  after its store (`mem_update`): the store sets its word to the value Main
+  stores, and every other word, and every other step, keeps its value.
+
+With them, [`StepMem.lean`](lean/Proofs/StepMem.lean) runs one step of the
+pilot with memory (`MemPilot`: the six ops, immediate, `c`, register or
+memory sources, no store, a register or a memory store; `step_genM`), and
+[`MemBoot.lean`](lean/Proofs/MemBoot.lean) and
+[`MemEnd.lean`](lean/Proofs/MemEnd.lean) carry both invariants along the
+run: from boot, with registers 0 and memory the initial words, every step the
+segments hold is a step of the model, and its registers and memory are the
+chain's and `memVal`'s (`run_from_boot_memory`); and the model runs the
+program to its end instruction — which makes no memory access, as ZisK's
+`ROM_EXIT` does not — and stops (`run_to_end_memory`). Standard three axioms.
+The census below is to discharge `MemAnswers`.
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'
