@@ -30,3 +30,4 @@ import Proofs.RegBoot
 import Proofs.RegEnd
 import Proofs.MemSort
 import Proofs.MemRam
+import Proofs.MemInput

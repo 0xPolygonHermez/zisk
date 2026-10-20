@@ -167,6 +167,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/RegBoot.lean` | A run from boot with the register file: after `n` steps the model's registers are Main's register chain's (`run_from_boot_mem`). |
 | `lean/Proofs/MemSort.lean` | Sorted memory checking, in the abstract: along a log sorted by address and step, every read returns the latest write (`MemSort.reads_last_write`). |
 | `lean/Proofs/MemRam.lean` | The RAM's constraints as a sorted log, over a chain of its segments: every read returns the last write (`ram_reads_last_write`). |
+| `lean/Proofs/MemInput.lean` | The input memory, over a chain of InputData segments: two reads of the same address, other than the base, return the same value (`input_consistent`). |
 | `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
@@ -352,7 +353,7 @@ make proofs
 ```
 
 ```
-✔ [103/104] Built Proofs
+✔ [104/105] Built Proofs
 Build completed successfully.
 ```
 
@@ -1258,7 +1259,21 @@ continuation bus (`RamChain`) makes one sorted log, where every read returns
 the latest write or 0 (`ram_reads_last_write`). Nothing unfolds a segment's
 2^24 lanes: the run of lanes is stated for any length (`sorted_run`).
 
-Still to come: the bounds `RamNat` assumes, which come from the memory bus —
+[`lean/Proofs/MemInput.lean`](lean/Proofs/MemInput.lean) does the same for
+the input memory, `InputData`: read-only, one lane a row, sorted by address
+alone, a lane keeping the value of the one before unless its address changes
+— a step up of `1` plus a range-checked 24-bit distance — or it is a free
+read, which the AIR allows only at the region's base. In the abstract
+(`MemImm.imm_consistent`), along such a sequence two lanes at the same
+address, other than the base, hold the same value; InputData's rows, over a
+chain of segments linked by their continuation values (`InChain`), are such a
+sequence, given their addresses as naturals below `2^40`
+(`input_consistent`). So the input memory is a function of the address — the
+model's initial memory for the region. The steps play no part, and the
+segments are indexed as one sequence, `m ↦ row m mod numRows of segment
+m / numRows`, with no list built.
+
+Still to come: the bounds `RamNat` and `InSeg` assume, which come from the memory bus —
 every lane's tuple is one some AIR assumes, with a bounded address and step —
 and the continuation bus's guarantee (`RamChain`); the memory bus's census for
 loads and stores, as `MemBus.lean` did for register tuples; `MemAlign`; and
