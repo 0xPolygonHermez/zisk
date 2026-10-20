@@ -36,10 +36,10 @@ pub(crate) fn select_wrap_kind(plonk: bool, minimal: bool) -> Result<ProofKind> 
     }
 }
 
-/// Label for a wrapped proof, used in the `wrap` summary line ("PLONK" / "minimal").
+/// Label for a wrapped proof, used in the `wrap` summary line ("SNARK" / "minimal").
 pub(crate) fn wrap_kind_label(kind: ProofKind) -> &'static str {
     match kind {
-        ProofKind::Plonk => "PLONK",
+        ProofKind::Plonk => "SNARK",
         _ => "minimal",
     }
 }
@@ -83,8 +83,8 @@ mod tests {
     }
 
     #[test]
-    fn wrap_label_maps_plonk_else_minimal() {
-        assert_eq!(wrap_kind_label(ProofKind::Plonk), "PLONK");
+    fn wrap_label_maps_snark_else_minimal() {
+        assert_eq!(wrap_kind_label(ProofKind::Plonk), "SNARK");
         assert_eq!(wrap_kind_label(ProofKind::VadcopFinalMinimal), "minimal");
         assert_eq!(wrap_kind_label(ProofKind::VadcopFinal), "minimal");
     }
