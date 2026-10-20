@@ -129,6 +129,13 @@ def PairTag.OnceOk : PairTag → Prop
   | .lane l κ => ((PairTag.lane l κ).preArg (F := F)).once = false
   | .flush f ρ => ((PairTag.flush f ρ).preArg (F := F)).once = true
 
+/-- A read writes back what it proves: the assumed tuple's value is the proved
+one's, for a lane's `a` and `b` accesses and a flush (not a store). -/
+def PairTag.ReadOk (g : PairTag) : Prop :=
+  g.isRead = true → ∀ (x : Main.Ctx F) (t : Main.Trace F) (j : Int),
+    el 4 (tupleOf ⟨g.curArg, x, t⟩ j) = el 4 (tupleOf ⟨g.preArg, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨g.curArg, x, t⟩ j) = el 5 (tupleOf ⟨g.preArg, x, t⟩ j)
+
 /-- A flush pair's address is its register's. -/
 def PairTag.AddrOk (g : PairTag) : Prop :=
   ∀ f ρ, g = .flush f ρ → ∀ (x : Main.Ctx F) (t : Main.Trace F) (j : Int),
@@ -6779,6 +6786,1000 @@ theorem mainTags_once : AllOf (fun g : PairTag => g.OnceOk (F := F)) mainTags :=
     rfl,
     rfl,
     rfl,
+    trivial⟩
+
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_lane_0_0 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus35, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus34, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus35, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus34, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_lane_0_1 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus37, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus36, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus37, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus36, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_lane_1_0 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus48, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus47, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus48, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus47, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_lane_1_1 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus50, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus49, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus50, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus49, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_lane_2_0 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus61, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus60, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus61, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus60, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_lane_2_1 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus63, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus62, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus63, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus62, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_lane_3_0 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus74, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus73, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus74, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus73, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_lane_3_1 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus76, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus75, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus76, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus75, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_0 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus93, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus92, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus93, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus92, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_1 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus97, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus96, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus97, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus96, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_2 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus101, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus100, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus101, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus100, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_3 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus105, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus104, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus105, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus104, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_4 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus109, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus108, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus109, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus108, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_5 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus113, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus112, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus113, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus112, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_6 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus117, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus116, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus117, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus116, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_7 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus121, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus120, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus121, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus120, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_8 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus125, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus124, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus125, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus124, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_9 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus129, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus128, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus129, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus128, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_10 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus133, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus132, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus133, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus132, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_11 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus137, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus136, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus137, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus136, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_12 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus141, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus140, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus141, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus140, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_13 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus145, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus144, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus145, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus144, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_14 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus149, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus148, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus149, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus148, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_15 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus153, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus152, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus153, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus152, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_16 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus157, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus156, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus157, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus156, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_17 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus161, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus160, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus161, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus160, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_18 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus165, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus164, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus165, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus164, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_19 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus169, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus168, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus169, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus168, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_20 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus173, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus172, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus173, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus172, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_21 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus177, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus176, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus177, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus176, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_22 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus181, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus180, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus181, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus180, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_23 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus185, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus184, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus185, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus184, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_24 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus189, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus188, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus189, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus188, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_25 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus193, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus192, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus193, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus192, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_26 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus197, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus196, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus197, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus196, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_27 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus201, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus200, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus201, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus200, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_28 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus205, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus204, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus205, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus204, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_29 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus209, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus208, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus209, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus208, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_30 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus213, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus212, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus213, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus212, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_31 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus217, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus216, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus217, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus216, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_32 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus221, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus220, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus221, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus220, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_33 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus225, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus224, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus225, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus224, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_34 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus229, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus228, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus229, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus228, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_35 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus233, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus232, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus233, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus232, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_36 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus237, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus236, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus237, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus236, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_37 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus241, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus240, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus241, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus240, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_0_38 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus245, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus244, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus245, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus244, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_0 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus249, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus248, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus249, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus248, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_1 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus253, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus252, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus253, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus252, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_2 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus257, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus256, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus257, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus256, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_3 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus261, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus260, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus261, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus260, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_4 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus265, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus264, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus265, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus264, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_5 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus269, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus268, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus269, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus268, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_6 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus273, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus272, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus273, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus272, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_7 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus277, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus276, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus277, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus276, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_8 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus281, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus280, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus281, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus280, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_9 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus285, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus284, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus285, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus284, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_10 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus289, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus288, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus289, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus288, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_11 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus293, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus292, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus293, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus292, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_12 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus297, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus296, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus297, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus296, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_13 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus301, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus300, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus301, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus300, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_14 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus305, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus304, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus305, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus304, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_15 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus309, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus308, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus309, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus308, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_16 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus313, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus312, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus313, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus312, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_17 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus317, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus316, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus317, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus316, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_18 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus321, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus320, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus321, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus320, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_19 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus325, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus324, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus325, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus324, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_20 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus329, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus328, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus329, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus328, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_21 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus333, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus332, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus333, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus332, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_22 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus337, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus336, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus337, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus336, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_23 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus341, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus340, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus341, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus340, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_24 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus345, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus344, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus345, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus344, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_25 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus349, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus348, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus349, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus348, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_26 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus353, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus352, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus353, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus352, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_27 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus357, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus356, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus357, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus356, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_28 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus361, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus360, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus361, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus360, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_29 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus365, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus364, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus365, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus364, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_30 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus369, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus368, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus369, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus368, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_31 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus373, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus372, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus373, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus372, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_32 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus377, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus376, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus377, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus376, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_33 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus381, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus380, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus381, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus380, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_34 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus385, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus384, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus385, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus384, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_35 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus389, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus388, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus389, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus388, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_36 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus393, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus392, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus393, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus392, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_37 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus397, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus396, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus397, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus396, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_1_38 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus401, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus400, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus401, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus400, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_0 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus405, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus404, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus405, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus404, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_1 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus409, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus408, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus409, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus408, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_2 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus413, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus412, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus413, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus412, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_3 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus417, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus416, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus417, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus416, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_4 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus421, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus420, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus421, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus420, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_5 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus425, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus424, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus425, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus424, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_6 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus429, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus428, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus429, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus428, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_7 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus433, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus432, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus433, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus432, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_8 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus437, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus436, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus437, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus436, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_9 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus441, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus440, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus441, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus440, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_10 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus445, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus444, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus445, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus444, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_11 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus449, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus448, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus449, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus448, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_12 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus453, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus452, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus453, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus452, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_13 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus457, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus456, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus457, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus456, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_14 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus461, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus460, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus461, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus460, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_15 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus465, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus464, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus465, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus464, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_16 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus469, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus468, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus469, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus468, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_17 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus473, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus472, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus473, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus472, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_18 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus477, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus476, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus477, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus476, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_19 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus481, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus480, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus481, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus480, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_20 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus485, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus484, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus485, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus484, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_21 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus489, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus488, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus489, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus488, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_22 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus493, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus492, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus493, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus492, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_23 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus497, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus496, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus497, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus496, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_24 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus501, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus500, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus501, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus500, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_25 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus505, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus504, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus505, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus504, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_26 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus509, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus508, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus509, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus508, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_27 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus513, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus512, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus513, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus512, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_28 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus517, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus516, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus517, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus516, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_29 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus521, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus520, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus521, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus520, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_30 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus525, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus524, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus525, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus524, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_31 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus529, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus528, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus529, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus528, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_32 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus533, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus532, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus533, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus532, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_33 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus537, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus536, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus537, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus536, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_34 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus541, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus540, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus541, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus540, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_35 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus545, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus544, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus545, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus544, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_36 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus549, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus548, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus549, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus548, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_37 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus553, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus552, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus553, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus552, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_2_38 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus557, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus556, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus557, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus556, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_0 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus561, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus560, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus561, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus560, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_1 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus565, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus564, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus565, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus564, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_2 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus569, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus568, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus569, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus568, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_3 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus573, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus572, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus573, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus572, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_4 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus577, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus576, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus577, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus576, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_5 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus581, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus580, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus581, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus580, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_6 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus585, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus584, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus585, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus584, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_7 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus589, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus588, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus589, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus588, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_8 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus593, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus592, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus593, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus592, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_9 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus597, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus596, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus597, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus596, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_10 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus601, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus600, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus601, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus600, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_11 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus605, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus604, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus605, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus604, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_12 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus609, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus608, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus609, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus608, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_13 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus613, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus612, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus613, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus612, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_14 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus617, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus616, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus617, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus616, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_15 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus621, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus620, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus621, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus620, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_16 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus625, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus624, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus625, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus624, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_17 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus629, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus628, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus629, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus628, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_18 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus633, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus632, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus633, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus632, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_19 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus637, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus636, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus637, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus636, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_20 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus641, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus640, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus641, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus640, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_21 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus645, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus644, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus645, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus644, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_22 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus649, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus648, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus649, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus648, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_23 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus653, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus652, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus653, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus652, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_24 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus657, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus656, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus657, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus656, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_25 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus661, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus660, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus661, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus660, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_26 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus665, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus664, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus665, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus664, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_27 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus669, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus668, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus669, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus668, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_28 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus673, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus672, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus673, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus672, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_29 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus677, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus676, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus677, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus676, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_30 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus681, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus680, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus681, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus680, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_31 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus685, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus684, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus685, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus684, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_32 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus689, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus688, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus689, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus688, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_33 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus693, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus692, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus693, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus692, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_34 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus697, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus696, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus697, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus696, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_35 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus701, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus700, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus701, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus700, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_36 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus705, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus704, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus705, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus704, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_37 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus709, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus708, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus709, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus708, x, t⟩ j) := ⟨rfl, rfl⟩
+
+omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_flush_3_38 (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.bus713, x, t⟩ j) = el 4 (tupleOf ⟨Main.bus712, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.bus713, x, t⟩ j) = el 5 (tupleOf ⟨Main.bus712, x, t⟩ j) := ⟨rfl, rfl⟩
+
+set_option maxRecDepth 100000 in
+/-- **Reads write back what they prove.** -/
+theorem mainTags_read : AllOf (fun g : PairTag => g.ReadOk (F := F)) mainTags :=
+  ⟨fun _ => read_lane_0_0,
+    fun _ => read_lane_0_1,
+    fun h => absurd h (by decide),
+    fun _ => read_lane_1_0,
+    fun _ => read_lane_1_1,
+    fun h => absurd h (by decide),
+    fun _ => read_lane_2_0,
+    fun _ => read_lane_2_1,
+    fun h => absurd h (by decide),
+    fun _ => read_lane_3_0,
+    fun _ => read_lane_3_1,
+    fun h => absurd h (by decide),
+    fun _ => read_flush_0_0,
+    fun _ => read_flush_0_1,
+    fun _ => read_flush_0_2,
+    fun _ => read_flush_0_3,
+    fun _ => read_flush_0_4,
+    fun _ => read_flush_0_5,
+    fun _ => read_flush_0_6,
+    fun _ => read_flush_0_7,
+    fun _ => read_flush_0_8,
+    fun _ => read_flush_0_9,
+    fun _ => read_flush_0_10,
+    fun _ => read_flush_0_11,
+    fun _ => read_flush_0_12,
+    fun _ => read_flush_0_13,
+    fun _ => read_flush_0_14,
+    fun _ => read_flush_0_15,
+    fun _ => read_flush_0_16,
+    fun _ => read_flush_0_17,
+    fun _ => read_flush_0_18,
+    fun _ => read_flush_0_19,
+    fun _ => read_flush_0_20,
+    fun _ => read_flush_0_21,
+    fun _ => read_flush_0_22,
+    fun _ => read_flush_0_23,
+    fun _ => read_flush_0_24,
+    fun _ => read_flush_0_25,
+    fun _ => read_flush_0_26,
+    fun _ => read_flush_0_27,
+    fun _ => read_flush_0_28,
+    fun _ => read_flush_0_29,
+    fun _ => read_flush_0_30,
+    fun _ => read_flush_0_31,
+    fun _ => read_flush_0_32,
+    fun _ => read_flush_0_33,
+    fun _ => read_flush_0_34,
+    fun _ => read_flush_0_35,
+    fun _ => read_flush_0_36,
+    fun _ => read_flush_0_37,
+    fun _ => read_flush_0_38,
+    fun _ => read_flush_1_0,
+    fun _ => read_flush_1_1,
+    fun _ => read_flush_1_2,
+    fun _ => read_flush_1_3,
+    fun _ => read_flush_1_4,
+    fun _ => read_flush_1_5,
+    fun _ => read_flush_1_6,
+    fun _ => read_flush_1_7,
+    fun _ => read_flush_1_8,
+    fun _ => read_flush_1_9,
+    fun _ => read_flush_1_10,
+    fun _ => read_flush_1_11,
+    fun _ => read_flush_1_12,
+    fun _ => read_flush_1_13,
+    fun _ => read_flush_1_14,
+    fun _ => read_flush_1_15,
+    fun _ => read_flush_1_16,
+    fun _ => read_flush_1_17,
+    fun _ => read_flush_1_18,
+    fun _ => read_flush_1_19,
+    fun _ => read_flush_1_20,
+    fun _ => read_flush_1_21,
+    fun _ => read_flush_1_22,
+    fun _ => read_flush_1_23,
+    fun _ => read_flush_1_24,
+    fun _ => read_flush_1_25,
+    fun _ => read_flush_1_26,
+    fun _ => read_flush_1_27,
+    fun _ => read_flush_1_28,
+    fun _ => read_flush_1_29,
+    fun _ => read_flush_1_30,
+    fun _ => read_flush_1_31,
+    fun _ => read_flush_1_32,
+    fun _ => read_flush_1_33,
+    fun _ => read_flush_1_34,
+    fun _ => read_flush_1_35,
+    fun _ => read_flush_1_36,
+    fun _ => read_flush_1_37,
+    fun _ => read_flush_1_38,
+    fun _ => read_flush_2_0,
+    fun _ => read_flush_2_1,
+    fun _ => read_flush_2_2,
+    fun _ => read_flush_2_3,
+    fun _ => read_flush_2_4,
+    fun _ => read_flush_2_5,
+    fun _ => read_flush_2_6,
+    fun _ => read_flush_2_7,
+    fun _ => read_flush_2_8,
+    fun _ => read_flush_2_9,
+    fun _ => read_flush_2_10,
+    fun _ => read_flush_2_11,
+    fun _ => read_flush_2_12,
+    fun _ => read_flush_2_13,
+    fun _ => read_flush_2_14,
+    fun _ => read_flush_2_15,
+    fun _ => read_flush_2_16,
+    fun _ => read_flush_2_17,
+    fun _ => read_flush_2_18,
+    fun _ => read_flush_2_19,
+    fun _ => read_flush_2_20,
+    fun _ => read_flush_2_21,
+    fun _ => read_flush_2_22,
+    fun _ => read_flush_2_23,
+    fun _ => read_flush_2_24,
+    fun _ => read_flush_2_25,
+    fun _ => read_flush_2_26,
+    fun _ => read_flush_2_27,
+    fun _ => read_flush_2_28,
+    fun _ => read_flush_2_29,
+    fun _ => read_flush_2_30,
+    fun _ => read_flush_2_31,
+    fun _ => read_flush_2_32,
+    fun _ => read_flush_2_33,
+    fun _ => read_flush_2_34,
+    fun _ => read_flush_2_35,
+    fun _ => read_flush_2_36,
+    fun _ => read_flush_2_37,
+    fun _ => read_flush_2_38,
+    fun _ => read_flush_3_0,
+    fun _ => read_flush_3_1,
+    fun _ => read_flush_3_2,
+    fun _ => read_flush_3_3,
+    fun _ => read_flush_3_4,
+    fun _ => read_flush_3_5,
+    fun _ => read_flush_3_6,
+    fun _ => read_flush_3_7,
+    fun _ => read_flush_3_8,
+    fun _ => read_flush_3_9,
+    fun _ => read_flush_3_10,
+    fun _ => read_flush_3_11,
+    fun _ => read_flush_3_12,
+    fun _ => read_flush_3_13,
+    fun _ => read_flush_3_14,
+    fun _ => read_flush_3_15,
+    fun _ => read_flush_3_16,
+    fun _ => read_flush_3_17,
+    fun _ => read_flush_3_18,
+    fun _ => read_flush_3_19,
+    fun _ => read_flush_3_20,
+    fun _ => read_flush_3_21,
+    fun _ => read_flush_3_22,
+    fun _ => read_flush_3_23,
+    fun _ => read_flush_3_24,
+    fun _ => read_flush_3_25,
+    fun _ => read_flush_3_26,
+    fun _ => read_flush_3_27,
+    fun _ => read_flush_3_28,
+    fun _ => read_flush_3_29,
+    fun _ => read_flush_3_30,
+    fun _ => read_flush_3_31,
+    fun _ => read_flush_3_32,
+    fun _ => read_flush_3_33,
+    fun _ => read_flush_3_34,
+    fun _ => read_flush_3_35,
+    fun _ => read_flush_3_36,
+    fun _ => read_flush_3_37,
+    fun _ => read_flush_3_38,
     trivial⟩
 
 

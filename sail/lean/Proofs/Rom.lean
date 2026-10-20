@@ -214,6 +214,21 @@ theorem romArg_tuple {l : Nat} (hl : l < 4) (x : Main.Ctx F) (t : Main.Trace F) 
     | omega
 
 omit [Lean.Grind.IsCharP F goldilocks] in
+theorem romArg_tuple7 {l : Nat} (hl : l < 4) (x : Main.Ctx F) (t : Main.Trace F) (i : Int) :
+    tupleAt (romArg l).tuple x t i 7 = (t i).store_offset l + 0 := by
+  rcases l with _ | _ | _ | _ | l
+  all_goals first | rfl | omega
+
+/-- Lane `l`'s store columns: what its store selectors and offset say of
+`inst`, by the same ROM lookup as `SlotHolds`. -/
+structure StoreHolds (r : Main.Row F) (l : Nat) (inst : zisk_inst) : Prop where
+  store_pc : r.store_pc l = bit inst.store_pc
+  store_mem : r.store_mem l = bit (isStMem inst.store)
+  store_ind : r.store_ind l = bit (isStInd inst.store)
+  store_reg : r.store_reg l = bit (isStReg inst.store)
+  store_offset : r.store_offset l = off inst.store_off
+
+omit [Lean.Grind.IsCharP F goldilocks] in
 /-- Every flag of lane `l` is a bit, by Main's booleanity constraints
 (`main.pil:552`–`566`). -/
 theorem lane_bits {x : Main.Ctx F} {t : Main.Trace F} {i : Int} (h : Main.everyRow x t i)
@@ -270,13 +285,13 @@ theorem rom_pc32 (prog : BitVec 64 → Option zisk_inst)
 looks its instruction up on the ROM bus, the Rom holds the program `prog`, and
 the lane's `pc` column is a 32-bit `pc`, then the program has an instruction
 at `pc`, and the lane holds it, column by column. -/
-theorem rom_lane (prog : BitVec 64 → Option zisk_inst)
+theorem rom_lane' (prog : BitVec 64 → Option zisk_inst)
     (xm : Main.Ctx F) (tm : Main.Trace F) (i : Int) (hm : Main.everyRow xm tm i)
     (xr : Rom.Ctx F) (tr : Rom.Trace F) (hr : ∀ j, Rom.everyRow xr tr j)
     {l : Nat} (hl : l < 4)
     (hbus : LookupHolds (romArg l) xm tm [⟨Rom.bus0, xr, tr⟩]) (hrom : RomHolds prog tr)
     (pc : BitVec 64) (hpc32 : pc.toNat < 2 ^ 32) (hpc : (tm i).pc l = ((pc.toNat : Nat) : F)) :
-    ∃ inst, prog pc = some inst ∧ SlotHolds (tm i) l inst pc := by
+    ∃ inst, prog pc = some inst ∧ SlotHolds (tm i) l inst pc ∧ StoreHolds (tm i) l inst := by
   obtain ⟨-, -, -, -, hb⟩ := hbus
   -- The lookup: the lane's tuple is the tuple of some Rom row `j` in use.
   obtain ⟨p, hp, j, hmult, -, htup⟩ := hb i (by rw [romArg_reps]; exact one_ne_zero')
@@ -302,6 +317,9 @@ theorem rom_lane (prog : BitVec 64 → Option zisk_inst)
   have t_j1 := htup 8
   have t_j2 := htup 9
   have t_flags := htup 10
+  have t_so := htup 7
+  rw [romArg_tuple7 hl] at t_so
+  simp only [tupleAt, Rom.bus0, List.getD_cons_zero, List.getD_cons_succ] at t_so
   rw [r0] at t_pc; rw [r1] at t_a0; rw [r2] at t_a1; rw [r3] at t_b0; rw [r4] at t_b1
   rw [r6] at t_op; rw [r8] at t_j1; rw [r9] at t_j2; rw [r10] at t_flags
   simp only [tupleAt, Rom.bus0, List.getD_cons_zero, List.getD_cons_succ] at t_pc t_a0 t_a1 t_b0
@@ -346,7 +364,9 @@ theorem rom_lane (prog : BitVec 64 → Option zisk_inst)
       e14, e15, List.map_cons, List.map_nil, packF]
     grind
   simp only [flagBits, List.cons.injEq] at hbits
-  obtain ⟨h1, h2, -, h4, h5, h6, -, -, -, h10, h11, h12, h13, h14, -⟩ := hbits
+  obtain ⟨h1, h2, -, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15⟩ := hbits
+  refine ⟨?_, StoreHolds.mk (by rw [e7, h7]) (by rw [e8, h8]) (by rw [e9, h9])
+    (by rw [e15]; simp_all) (by rw [← enc.store_offset]; grind)⟩
   subst h1 h2 h4 h5 h6 h10 h11 h12 h13 h14
   exact {
     a_src_imm := e1, a_src_mem := e2, a_src_reg := e13,
@@ -360,6 +380,18 @@ theorem rom_lane (prog : BitVec 64 → Option zisk_inst)
     jmp_offset1 := by rw [← enc.jmp_offset1]; grind
     jmp_offset2 := by rw [← enc.jmp_offset2]; grind
     pc := hpc, m32 := e11 }
+
+/-- **The ROM lookup gives the instruction**, as `rom_lane'`, without the store
+columns. -/
+theorem rom_lane (prog : BitVec 64 → Option zisk_inst)
+    (xm : Main.Ctx F) (tm : Main.Trace F) (i : Int) (hm : Main.everyRow xm tm i)
+    (xr : Rom.Ctx F) (tr : Rom.Trace F) (hr : ∀ j, Rom.everyRow xr tr j)
+    {l : Nat} (hl : l < 4)
+    (hbus : LookupHolds (romArg l) xm tm [⟨Rom.bus0, xr, tr⟩]) (hrom : RomHolds prog tr)
+    (pc : BitVec 64) (hpc32 : pc.toNat < 2 ^ 32) (hpc : (tm i).pc l = ((pc.toNat : Nat) : F)) :
+    ∃ inst, prog pc = some inst ∧ SlotHolds (tm i) l inst pc :=
+  let ⟨inst, h1, h2, _⟩ := rom_lane' prog xm tm i hm xr tr hr hl hbus hrom pc hpc32 hpc
+  ⟨inst, h1, h2⟩
 
 /-- **The ROM lookup gives `SlotHolds`**, at any lane, for the instruction the
 program has there. -/

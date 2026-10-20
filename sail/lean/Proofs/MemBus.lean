@@ -3194,6 +3194,12 @@ inductive PairTag where
   | flush (f ρ : Nat)
   deriving DecidableEq
 
+/-- Whether the pair's access only reads: every lane access but a store, and
+the flushes. -/
+def PairTag.isRead : PairTag → Bool
+  | .lane _ κ => κ != 2
+  | .flush _ _ => true
+
 /-- The pair's memory step at row `j` of segment `k`. -/
 def PairTag.step : PairTag → Nat → Int → Nat
   | .lane l κ, k, j => laneStep k l κ j

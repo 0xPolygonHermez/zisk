@@ -614,6 +614,27 @@ theorem mainTags_once : AllOf (fun g : PairTag => g.OnceOk (F := F)) mainTags :=
     trivial⟩
 
 """)
+    rterms = []
+    reads = [(f"lane_{l}_{k}", p, c) for l, k, p, c, _ in lanes if k != 2] + \
+            [(f"flush_{f}_{r}", p, c) for f, r, p, c, _ in flushes]
+    for nm, p, c in reads:
+        out.append(f"""omit [Lean.Grind.IsCharP F goldilocks] in
+theorem read_{nm} (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 4 (tupleOf ⟨Main.{c}, x, t⟩ j) = el 4 (tupleOf ⟨Main.{p}, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨Main.{c}, x, t⟩ j) = el 5 (tupleOf ⟨Main.{p}, x, t⟩ j) := ⟨rfl, rfl⟩
+""")
+    for l, k, *_ in lanes:
+        rterms.append("fun h => absurd h (by decide)" if k == 2 else f"fun _ => read_lane_{l}_{k}")
+    for f, r, *_ in flushes:
+        rterms.append(f"fun _ => read_flush_{f}_{r}")
+    rterms = ',\n    '.join(rterms)
+    out.append(f"""set_option maxRecDepth 100000 in
+/-- **Reads write back what they prove.** -/
+theorem mainTags_read : AllOf (fun g : PairTag => g.ReadOk (F := F)) mainTags :=
+  ⟨{rterms},
+    trivial⟩
+
+""")
     out.append(f"""set_option maxRecDepth 100000 in
 /-- **A flush's address is its register's.** -/
 theorem mainTags_addr : AllOf (fun g : PairTag => g.AddrOk (F := F)) mainTags :=
@@ -714,6 +735,12 @@ inductive PairTag where
   | lane (l κ : Nat)
   | flush (f ρ : Nat)
   deriving DecidableEq
+
+/-- Whether the pair's access only reads: every lane access but a store, and
+the flushes. -/
+def PairTag.isRead : PairTag → Bool
+  | .lane _ κ => κ != 2
+  | .flush _ _ => true
 
 /-- The pair's memory step at row `j` of segment `k`. -/
 def PairTag.step : PairTag → Nat → Int → Nat
@@ -922,6 +949,13 @@ theorem range_val {x : Main.Ctx F} {t : Main.Trace F} {R : BusArg F (Main.Ctx F)
 def PairTag.OnceOk : PairTag → Prop
   | .lane l κ => ((PairTag.lane l κ).preArg (F := F)).once = false
   | .flush f ρ => ((PairTag.flush f ρ).preArg (F := F)).once = true
+
+/-- A read writes back what it proves: the assumed tuple's value is the proved
+one's, for a lane's `a` and `b` accesses and a flush (not a store). -/
+def PairTag.ReadOk (g : PairTag) : Prop :=
+  g.isRead = true → ∀ (x : Main.Ctx F) (t : Main.Trace F) (j : Int),
+    el 4 (tupleOf ⟨g.curArg, x, t⟩ j) = el 4 (tupleOf ⟨g.preArg, x, t⟩ j) ∧
+      el 5 (tupleOf ⟨g.curArg, x, t⟩ j) = el 5 (tupleOf ⟨g.preArg, x, t⟩ j)
 
 /-- A flush pair's address is its register's. -/
 def PairTag.AddrOk (g : PairTag) : Prop :=

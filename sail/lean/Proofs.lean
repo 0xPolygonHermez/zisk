@@ -21,3 +21,9 @@ import Proofs.MainRegs
 import Proofs.Registers
 import Proofs.ModelRegs
 import Proofs.Execution
+import Proofs.RegFile
+import Proofs.LaneGen
+import Proofs.StepRegs
+import Proofs.RegRun
+import Proofs.RegStep
+import Proofs.RegBoot

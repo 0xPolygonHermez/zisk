@@ -159,6 +159,12 @@ reached through the ROM lookup. See
 | `lean/Proofs/Registers.lean` | Every register access in Main reads the last write (`MainSegs.reads`). |
 | `lean/Proofs/ModelRegs.lean` | The model's step in general: any op but `halt`, register sources and stores (`execute_gen`). |
 | `lean/Proofs/Execution.lean` | The runs and the register file over one chain of segments; each segment's first step from the continuation chain. |
+| `lean/Proofs/RegFile.lean` | A register's value at a memory step (`regVal`): what an access proves, what a read keeps and a store sets. |
+| `lean/Proofs/LaneGen.lean` | One lane over known source columns: its `c`, flag and next pc, for any source. |
+| `lean/Proofs/StepRegs.lean` | One step with register sources and stores, given what the register sources put in the lane's columns (`step_gen`). |
+| `lean/Proofs/RegRun.lean` | Main's register chain at a lane's memory steps: reads keep the value, a store sets it (`lane_read`, `store_set`, `store_none`). |
+| `lean/Proofs/RegStep.lean` | The model's register file through one lane's step: sources read it, the store updates it (`reg_srcs`, `reg_update`). |
+| `lean/Proofs/RegBoot.lean` | A run from boot with the register file: after `n` steps the model's registers are Main's register chain's (`run_from_boot_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
@@ -184,7 +190,7 @@ Two more targets typecheck the generated Lean, through the lake package in
 
 ```sh
 make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~87s)
-make proofs       # check lean/Proofs against them (~110s)
+make proofs       # check lean/Proofs against them (~125s)
 make lean-build   # elaborate the model            (all 14 modules build, ~6s)
 ```
 
@@ -343,11 +349,11 @@ make proofs
 ```
 
 ```
-✔ [94/95] Built Proofs
+✔ [100/101] Built Proofs
 Build completed successfully.
 ```
 
-About 110 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, the program's end, and the registers' memory checking.
+About 125 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, the program's end, the registers' memory checking, and the runs with registers.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -419,6 +425,9 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
   the model, the first from the boot pc with `c = 0`; and when the chain
   closes at the end pc, the model runs the program to an end instruction and
   stops.
+- With registers: given a sound memory bus as well, register sources and
+  register stores are covered too, and after every step the model's
+  registers `x1`–`x31` are what Main's register chain holds.
 - The same for `add`, whose result another AIR computes: given a sound
   operation bus, whichever of its provers answers, the slot's `c` is
   `a + b` modulo 2^64.
@@ -430,9 +439,11 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
 
 ### And what it does not
 
-- **The correspondence is a pilot.** Six opcodes, two sources, no stores;
-  `set_pc` only on internal ops with a short `jmp_off1`, and an end
-  instruction must be an internal op. The rest is steps 4 to 6 of
+- **The correspondence is a pilot.** Six opcodes; immediate, `c` or register
+  sources, and no store or a register store, with no memory or indirect
+  access; `set_pc` only on internal ops with a short `jmp_off1`. An end
+  instruction must be an internal op, and the run to the end does not yet
+  carry registers. The rest is steps 4 to 6 of
   [Next steps](#next-steps).
 - **Bus arguments are assumed sound, not derived.** The ROM lookup's guarantee
   (`LookupHolds`) and the ROM's contents (`RomHolds`) are hypotheses; the gsum
@@ -1148,9 +1159,47 @@ index other than x0) and no store or a register store (`wX`), the step's `c`,
 flag, pc, step counter and register file — one lemma, checked in about two
 seconds, where the per-op lemmas took 47.
 
-Still to come: the encoding of the register file — each model register the
-value of the latest access to it in Main before the current step — carried
-through a step with register sources and stores, and the runs.
+**Runs with registers.** The model's register file is now carried along the
+run, encoded as Main's register chain holds it.
+
+- [`lean/Proofs/RegFile.lean`](lean/Proofs/RegFile.lean) turns
+  `reads_last_write` into a function of the memory step: `regVal es s`, the
+  value the latest access before step `s` wrote, or 0. An access proves
+  `regVal` at its own step; one step on, a read leaves it unchanged and a
+  store sets it.
+- [`lean/Proofs/RegRun.lean`](lean/Proofs/RegRun.lean) places Main's accesses:
+  a lane's `a`, `b` and store accesses take memory steps `≡ 1, 2, 3 (mod 4)`
+  and the flushes `≡ 0`, and every access but a store's is a read
+  (`mainTags_read`, generated per pair). So a lane's source access proves the
+  register's value at its step (`lane_read`), its store sets the register it
+  names (`store_set`) and keeps every other (`store_none`), and every other
+  step keeps them all (`reads_keep`).
+- [`lean/Proofs/RegStep.lean`](lean/Proofs/RegStep.lean) states the
+  encoding: `RegInv M xs b`, the model's `x1`–`x31` are the chain's values at
+  memory step `b`. At a lane whose memory steps start at `b`, a register
+  source's value is in the lane's `a` or `b` columns (`reg_srcs`), and after
+  the step `RegInv` holds at `b + 4` for the register file the model's store
+  leaves (`reg_update`). The value Main stores, `store_pc`'s `pc + jmp_offset2`
+  or `c`, is the model's.
+- [`lean/Proofs/LaneGen.lean`](lean/Proofs/LaneGen.lean) and
+  [`lean/Proofs/StepRegs.lean`](lean/Proofs/StepRegs.lean) give the lane over
+  any source columns, and with `execute_gen` one step of the register-aware
+  pilot (`RegProg`: the six ops, immediate, `c` or register sources, no store
+  or a register store; `step_gen`), given what the register sources put in
+  the lane's columns — which `reg_srcs` supplies.
+- [`lean/Proofs/RegBoot.lean`](lean/Proofs/RegBoot.lean) runs it.
+  `run_from_boot_regs`: along a chain of segments from the boot state, with
+  every register 0, every step the segments hold is a step of the model, and
+  after `n` steps the model's registers are the chain's at memory step
+  `1 + 4n`. `run_from_boot_mem` derives the chain's facts from a sound memory
+  bus: the segments' `MainSegs.Ok` comes from the continuation chain
+  (`initial_step`), `SEGMENT_STEP`, the range checks, and at most `2^20`
+  segments.
+
+Standard three axioms. What the runs with registers assume, besides
+`run_from_boot`'s: the memory bus's soundness and its global register updates,
+the range checks of the gaps, `SEGMENT_STEP`, that the segments are the memory
+bus's Main instances, and the register-aware pilot's scope.
 
 ## The operation bus's provers
 
@@ -1214,7 +1263,10 @@ checks in about 4 seconds, on Lean's standard three axioms.
      prover's proofs are collected over every instance of its AIR (see
      [The operation bus's provers](#the-operation-buss-provers)); the rest
      come with the opcodes of step 5;
-   - the **memory bus**, for memory and register sources and stores;
+   - the **memory bus**, for memory and register sources and stores —
+     registers done: from boot, with register sources and stores, the
+     model's registers are Main's register chain's at every step (see
+     [Registers: memory checking](#registers-memory-checking)); memory next;
    - the **range checks**, for limbs known to be below `2^32` — stated
      (`RangeHolds`, with each AIR's ranges generated) and used by the adders.
 5. **Fill in the opcode table**, tracked by `make ops`, with each new opcode
