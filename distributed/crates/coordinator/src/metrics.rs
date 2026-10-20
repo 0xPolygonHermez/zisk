@@ -55,14 +55,16 @@ pub(crate) fn job_kind(execution_only: bool) -> &'static str {
     }
 }
 
-/// `coordinator_worker_state` code of a worker: 0 disconnected, 1 ready, 2 setting up (or
-/// connected without a setup), 3 computing, 4 recovering from a cancelled or failed job, 5 error.
+/// `coordinator_worker_state` code of a worker: 0 disconnected, 1 ready, 2 setting up, 3 computing,
+/// 4 recovering from a cancelled or failed job, 5 error, 6 connected with no program set up (the
+/// cluster has none to send it), which is not a setup.
 pub(crate) fn worker_state_code(state: &WorkerState, recovering: bool) -> u8 {
     match state {
         WorkerState::Disconnected | WorkerState::Connecting => 0,
         WorkerState::Ready => 1,
         WorkerState::SettingUp if recovering => 4,
-        WorkerState::Idle | WorkerState::SettingUp => 2,
+        WorkerState::SettingUp => 2,
+        WorkerState::Idle => 6,
         WorkerState::Computing(_) => 3,
         WorkerState::Error => 5,
     }
@@ -438,7 +440,7 @@ mod tests {
     fn a_parked_worker_reads_as_recovering_and_a_setting_up_one_does_not() {
         assert_eq!(worker_state_code(&WorkerState::SettingUp, true), 4);
         assert_eq!(worker_state_code(&WorkerState::SettingUp, false), 2);
-        assert_eq!(worker_state_code(&WorkerState::Idle, false), 2);
+        assert_eq!(worker_state_code(&WorkerState::Idle, false), 6);
         assert_eq!(worker_state_code(&WorkerState::Ready, false), 1);
         let job = JobId::new();
         assert_eq!(worker_state_code(&WorkerState::Computing((job, JobPhase::Prove)), false), 3);

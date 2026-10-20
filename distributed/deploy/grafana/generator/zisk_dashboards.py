@@ -388,8 +388,9 @@ def scatter(title, x_metric, x_name, x_unit):
                         "legend": {"showLegend": False}, "tooltip": {"mode": "single"}}}
 
 
-STATES = {"0": ("disconnected", "red"), "1": ("idle", "green"), "2": ("setup", "purple"),
-          "3": ("computing", "blue"), "4": ("recovering", "orange"), "5": ("error", "dark-red")}
+STATES = {"0": ("disconnected", "red"), "1": ("ready", "green"), "2": ("setup", "purple"),
+          "3": ("computing", "blue"), "4": ("recovering", "orange"), "5": ("error", "dark-red"),
+          "6": ("idle", "yellow")}
 STATE_MAPPINGS = [{"type": "value", "options": {k: {"text": t, "color": c, "index": int(k)} for k, (t, c) in STATES.items()}}]
 
 
@@ -449,10 +450,11 @@ def live():
     l.row("Cluster — as the coordinator sees it (valid wherever the workers run)")
     state = f"coordinator_worker_state{{{C}}}"
     l.add(stat("Workers connected", [(f"count({state} > 0) or vector(0)", "connected")]), 3, 5)
-    l.add(stat("Workers by state", [(f"count({state} == 1) or vector(0)", "idle"),
+    l.add(stat("Workers by state", [(f"count({state} == 1) or vector(0)", "ready"),
                                     (f"count({state} == 3) or vector(0)", "computing"),
                                     (f"count({state} == 2) or vector(0)", "setup"),
-                                    (f"count({state} == 4) or vector(0)", "recovering")]), 6, 5)
+                                    (f"count({state} == 4) or vector(0)", "recovering"),
+                                    (f"count({state} == 6) or vector(0)", "idle")]), 6, 5)
     p = stat("Each worker", [(state, "worker {{worker_id}}")])
     p["fieldConfig"]["defaults"]["mappings"] = STATE_MAPPINGS
     p["fieldConfig"]["defaults"]["thresholds"]["steps"][0]["color"] = "transparent"

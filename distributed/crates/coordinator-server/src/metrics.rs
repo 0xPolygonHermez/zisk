@@ -45,7 +45,7 @@
 //! |------|------|--------|-------------|
 //! | `coordinator_workers_connected` | Gauge | — | Workers not disconnected |
 //! | `coordinator_compute_units` | Gauge | `kind` | Compute units: `total` (connected) and `available` (ready) |
-//! | `coordinator_worker_state` | Gauge | `worker_id` | 0 disconnected, 1 ready, 2 setting up, 3 computing, 4 recovering, 5 error |
+//! | `coordinator_worker_state` | Gauge | `worker_id` | 0 disconnected, 1 ready, 2 setting up, 3 computing, 4 recovering, 5 error, 6 idle (no program set up) |
 //! | `coordinator_registered_programs_total` | Gauge | — | Programs in the coordinator's ELF cache |
 //! | `coordinator_program_registered_timestamp_seconds` | Gauge | `hash_id`, `bytes` | When each program was registered |
 //! | `coordinator_last_execution_air_instances` | Gauge | `air` | Instances per AIR in the last execution |
