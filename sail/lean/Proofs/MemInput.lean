@@ -123,6 +123,11 @@ end Rows
 
 /-! ### As naturals -/
 
+/-- Equal in the field and below `2^48`, so equal. -/
+theorem natCast_inj48 {x y : Nat} (hx : x < 2 ^ 48) (hy : y < 2 ^ 48) (h : (x : F) = (y : F)) :
+    x = y :=
+  natCast_inj (by unfold goldilocks; omega) (by unfold goldilocks; omega) h
+
 open MemImm
 
 open Classical in
@@ -133,7 +138,7 @@ noncomputable def inLaneOf (r : InputData.Row F) (a : Nat) : ILane (F × F) :=
 /-- **A row follows the lane before it.** -/
 theorem in_step {r : InputData.Row F} {pa : F} {pv : F × F} (hl : InLaneHolds r pa pv)
     (hrng : r.addr_changes 0 ≠ 0 → ∃ n : Nat, n < 2 ^ 24 ∧ r.addr 0 - pa - 1 = ((n : Nat) : F))
-    {a PA : Nat} (ha40 : a < 2 ^ 40) (hPA : PA < 2 ^ 40) (ha : r.addr 0 = ((a : Nat) : F))
+    {a PA : Nat} (ha40 : a < 2 ^ 48) (hPA : PA < 2 ^ 48) (ha : r.addr 0 = ((a : Nat) : F))
     (hpa : pa = ((PA : Nat) : F)) (p : ILane (F × F)) (hpA : p.addr = PA) (hpv : p.val = pv) :
     IStep p (inLaneOf r a) := by
   obtain ⟨b, hb⟩ := bool_of_idem hl.ac
@@ -143,7 +148,7 @@ theorem in_step {r : InputData.Row F} {pa : F} {pv : F × F} (hl : InLaneHolds r
     rw [hb, ha, hpa] at e
     simp only [bit, Bool.false_eq_true, if_false] at e
     have e' : ((a : Nat) : F) = ((PA : Nat) : F) := by grind
-    have := natCast_inj41 (F := F) (by omega) (by omega) e'
+    have := natCast_inj48 (F := F) (by omega) (by omega) e'
     refine .inl ⟨by simp only [inLaneOf]; omega, fun hf => ?_⟩
     simp only [inLaneOf, decide_eq_false_iff_not] at hf ⊢
     have hf0 : r.is_free_read 0 = 0 := by
@@ -161,19 +166,19 @@ theorem in_step {r : InputData.Row F} {pa : F} {pv : F × F} (hl : InLaneHolds r
     have e' : ((a : Nat) : F) = ((PA + n + 1 : Nat) : F) := by
       rw [Lean.Grind.Semiring.natCast_add, Lean.Grind.Semiring.natCast_add,
         Lean.Grind.Semiring.natCast_one]; grind
-    have := natCast_inj41 (F := F) (by omega) (by omega) e'
+    have := natCast_inj (F := F) (by unfold goldilocks; omega) (by unfold goldilocks; omega) e'
     exact .inr (by simp only [inLaneOf]; omega)
 
 /-- A free read is at the region's base. -/
 theorem in_free {r : InputData.Row F} {pa : F} {pv : F × F} (hl : InLaneHolds r pa pv) {a : Nat}
-    (ha40 : a < 2 ^ 40) (ha : r.addr 0 = ((a : Nat) : F)) (hf : (inLaneOf r a).free = true) :
+    (ha40 : a < 2 ^ 48) (ha : r.addr 0 = ((a : Nat) : F)) (hf : (inLaneOf r a).free = true) :
     (inLaneOf r a).addr = 134217728 := by
   simp only [inLaneOf, decide_eq_true_eq] at hf ⊢
   have e := hl.free_addr
   rw [hf, ha, Lean.Grind.Semiring.one_mul] at e
   have e' : ((a : Nat) : F) = ((134217728 : Nat) : F) := by
     rw [← natCast_ofNat' 134217728]; grind
-  exact natCast_inj41 (F := F) (by omega) (by omega) e'
+  exact natCast_inj48 (F := F) (by omega) (by omega) e'
 
 /-! ### Segments -/
 
@@ -188,11 +193,11 @@ structure InSeg (F : Type) [Lean.Grind.Field F] where
   first : (t 0).__L1__ = 1
   inner : ∀ i : Int, 0 < i → i < InputData.numRows → (t i).__L1__ = 0
   range : RangeHolds InputData.ranges InputData.bus25 x t
-  A : Int → Nat
-  addr : ∀ i, A i < 2 ^ 40 ∧ (t i).addr 0 = ((A i : Nat) : F)
+  A : Nat → Nat
+  addr : ∀ r : Nat, r < InputData.numRows → A r < 2 ^ 48 ∧ (t r).addr 0 = ((A r : Nat) : F)
 
 /-- Row `i`'s lane. -/
-noncomputable def InSeg.lane (G : InSeg F) (i : Int) : ILane (F × F) := inLaneOf (G.t i) (G.A i)
+noncomputable def InSeg.lane (G : InSeg F) (r : Nat) : ILane (F × F) := inLaneOf (G.t r) (G.A r)
 
 set_option maxRecDepth 100000 in
 omit [Lean.Grind.Field F] [Lean.Grind.IsCharP F goldilocks] in
@@ -213,7 +218,7 @@ theorem InSeg.rng (G : InSeg F) (i : Int) :
 
 /-- Inside a segment, each row follows the one before. -/
 theorem InSeg.step_inner (G : InSeg F) {r : Nat} (hr : r + 1 < InputData.numRows) :
-    IStep (G.lane (r : Int)) (G.lane ((r + 1 : Nat) : Int)) := by
+    IStep (G.lane r) (G.lane (r + 1)) := by
   have hL1 := G.inner ((r + 1 : Nat) : Int) (by omega) (by omega)
   have hl := inLane (G.rows ((r + 1 : Nat) : Int))
   have hi : ((r + 1 : Nat) : Int) - 1 = (r : Int) := by omega
@@ -222,10 +227,11 @@ theorem InSeg.step_inner (G : InSeg F) {r : Nat} (hr : r + 1 < InputData.numRows
   have hrng := G.rng ((r + 1 : Nat) : Int)
   simp only [InputData.InputData_previous_addr_0, hL1, hi, Lean.Grind.Semiring.zero_mul,
     Lean.Grind.Semiring.zero_add] at hl hrng
-  exact in_step hl hrng (G.addr _).1 (G.addr _).1 (G.addr _).2 (G.addr _).2 _ rfl rfl
+  exact in_step hl hrng (G.addr (r + 1) hr).1 (G.addr r (by omega)).1 (G.addr (r + 1) hr).2
+    (G.addr r (by omega)).2 _ rfl rfl
 
 /-- The first row follows the lane its air values name. -/
-theorem InSeg.step_first (G : InSeg F) (p : ILane (F × F)) (hpA : p.addr < 2 ^ 40)
+theorem InSeg.step_first (G : InSeg F) (p : ILane (F × F)) (hpA : p.addr < 2 ^ 48)
     (hpa : ((p.addr : Nat) : F) = G.x.InputData_previous_segment_addr)
     (hpv : p.val = (G.x.InputData_previous_segment_value 0, G.x.InputData_previous_segment_value 1)) :
     IStep p (G.lane 0) := by
@@ -234,14 +240,15 @@ theorem InSeg.step_first (G : InSeg F) (p : ILane (F × F)) (hpA : p.addr < 2 ^ 
   simp only [InputData.InputData_previous_addr_0, G.first, Lean.Grind.Semiring.one_mul] at hl hrng
   have e1 : ∀ a b : F, a - b + b = a := fun a b => by grind
   simp only [e1] at hl hrng
-  exact in_step hl hrng (G.addr 0).1 hpA (G.addr 0).2 hpa.symm p rfl hpv
+  have h0 := G.addr 0 (by simp [InputData.numRows])
+  exact in_step hl hrng h0.1 hpA h0.2 hpa.symm p rfl hpv
 
 /-- The last row is what the exit air values hand on. -/
 theorem InSeg.last (G : InSeg F) :
-    (((G.lane ((InputData.numRows - 1 : Nat) : Int)).addr : Nat) : F) = G.x.InputData_segment_last_addr ∧
-      (G.lane ((InputData.numRows - 1 : Nat) : Int)).val =
+    (((G.lane (InputData.numRows - 1)).addr : Nat) : F) = G.x.InputData_segment_last_addr ∧
+      (G.lane (InputData.numRows - 1)).val =
         (G.x.InputData_segment_last_value 0, G.x.InputData_segment_last_value 1) ∧
-      (G.lane ((InputData.numRows - 1 : Nat) : Int)).addr < 2 ^ 40 := by
+      (G.lane (InputData.numRows - 1)).addr < 2 ^ 48 := by
   have hwrap : (G.t (((InputData.numRows - 1 : Nat) : Int) + 1)).__L1__ = 1 := by
     have := G.cyclic 0
     rw [Int.zero_add] at this
@@ -252,9 +259,10 @@ theorem InSeg.last (G : InSeg F) :
   have e7 := hrow.c7; have e8 := hrow.c8; have e9 := hrow.c9
   simp only [InputData.c7, InputData.c8, InputData.c9, InputData.InputData_value_0_0,
     InputData.InputData_value_0_1, hwrap, Lean.Grind.Semiring.one_mul] at e7 e8 e9
-  refine ⟨?_, ?_, (G.addr _).1⟩
+  have hl := G.addr (InputData.numRows - 1) (by simp [InputData.numRows])
+  refine ⟨?_, ?_, hl.1⟩
   · show ((G.A _ : Nat) : F) = _
-    rw [← (G.addr _).2]; grind
+    rw [← hl.2]; grind
   · show inVal _ = _
     apply Prod.ext <;> simp only [inVal] <;> grind
 
@@ -272,7 +280,7 @@ def InChain (seg : Nat → InSeg F) (K : Nat) : Prop :=
 /-- The `m`-th lane over all segments: row `m mod numRows` of segment
 `m / numRows`. -/
 noncomputable def inLog (seg : Nat → InSeg F) (m : Nat) : ILane (F × F) :=
-  (seg (m / InputData.numRows)).lane ((m % InputData.numRows : Nat) : Int)
+  (seg (m / InputData.numRows)).lane (m % InputData.numRows)
 
 /-- **Every read of the input memory returns the same value at an address.**
 Over a chain of InputData segments, two lanes at the same address, other than
@@ -303,6 +311,197 @@ theorem input_consistent {seg : Nat → InSeg F} {K : Nat} (hc : InChain seg K) 
       simp only [inLog, hk, hr]
       exact (seg _).step_inner (by rw [hN] at hr ⊢; omega)
   · intro m _ hf
-    exact in_free (inLane ((seg _).rows _)) ((seg _).addr _).1 ((seg _).addr _).2 hf
+    have hm := (seg (m / InputData.numRows)).addr (m % InputData.numRows) (Nat.mod_lt _ (by
+      simp [InputData.numRows]))
+    exact in_free (inLane ((seg _).rows _)) hm.1 hm.2 hf
+
+
+/-! ### The addresses, from the AIR -/
+
+set_option maxRecDepth 100000 in
+omit [Lean.Grind.Field F] [Lean.Grind.IsCharP F goldilocks] in
+theorem in_range_max104 : ∀ d ∈ (InputData.ranges : List RangeDef), d.opid = 104 → d.max = 65535 := by
+  decide
+
+/-- A 16-bit air value, by a sound range check. -/
+theorem in_chunk {x : InputData.Ctx F} {t : InputData.Trace F}
+    {R : BusArg F (InputData.Ctx F) (InputData.Trace F)} (hR : RangeHolds InputData.ranges R x t)
+    (hop : R.opids = [104]) (hreps : R.reps x t 0 = 1) {f : InputData.Ctx F → InputData.Trace F → Int → F}
+    (hf : R.tuple = [f]) : ∃ n : Nat, n < 2 ^ 16 ∧ f x t 0 = ((n : Nat) : F) := by
+  obtain ⟨-, -, b, d, hb, hd, hdo, -, -, hall⟩ := hR
+  rw [hop] at hb
+  have hb' : b = 104 := by simpa using hb.symm
+  have hmax := in_range_max104 d hd (by rw [hdo, hb'])
+  obtain ⟨n, -, hn, e⟩ := hall 0 (by rw [hreps]; exact one_ne_zero') f (by rw [hf]; exact List.mem_singleton_self _)
+  exact ⟨n, by omega, e⟩
+
+/-- One segment of InputData, as the AIR gives it: its trace, its constraints
+at every row, `__L1__` as the setup fixes it, and its range checks sound — the
+address step's, and the distances from the region's base to the first
+address and from the last address to the region's end. -/
+structure InTrace (F : Type) [Lean.Grind.Field F] where
+  x : InputData.Ctx F
+  t : InputData.Trace F
+  rows : ∀ i, InputData.everyRow x t i
+  cyclic : InputData.cyclic t
+  first : (t 0).__L1__ = 1
+  inner : ∀ i : Int, 0 < i → i < InputData.numRows → (t i).__L1__ = 0
+  range : RangeHolds InputData.ranges InputData.bus25 x t
+  base0 : RangeHolds InputData.ranges InputData.bus17 x t
+  base1 : RangeHolds InputData.ranges InputData.bus19 x t
+  end0 : RangeHolds InputData.ranges InputData.bus21 x t
+  end1 : RangeHolds InputData.ranges InputData.bus23 x t
+
+namespace InTrace
+
+variable (T : InTrace F)
+
+/-- The address range check, at a row. -/
+theorem rng (i : Int) :
+    (T.t i).addr_changes 0 ≠ 0 → ∃ n : Nat, n < 2 ^ 24 ∧
+      (T.t i).addr 0 - InputData.InputData_previous_addr_0 T.x T.t i - 1 = ((n : Nat) : F) := by
+  intro hac
+  obtain ⟨-, -, b, d, hb, hd, hdo, -, -, hall⟩ := T.range
+  have hb' : b = 102 := by simpa [InputData.bus25] using hb.symm
+  have hmax := in_range_max d hd (by rw [hdo, hb'])
+  obtain ⟨n, -, hn, e⟩ := hall i (by simpa [InputData.bus25, Lean.Grind.Semiring.add_zero] using hac)
+    _ (List.mem_singleton_self _)
+  exact ⟨n, by omega, by simpa [InputData.InputData_delta_addr_0] using e⟩
+
+/-- The first address, as a natural: the region's base plus its range-checked
+distance. -/
+theorem base_nat : ∃ P : Nat, 134217728 ≤ P ∧ P < 2 ^ 33 ∧
+    T.x.InputData_previous_segment_addr = ((P : Nat) : F) := by
+  obtain ⟨d0, h0, e0⟩ := in_chunk T.base0 rfl rfl (f := fun x t i => x.InputData_distance_base 0 + 0) rfl
+  obtain ⟨d1, h1, e1⟩ := in_chunk T.base1 rfl rfl (f := fun x t i => x.InputData_distance_base 1 + 0) rfl
+  have c := (T.rows 0).c11
+  simp only [InputData.c11, InputData.Zisk_direct_gsum_e_0] at c e0 e1
+  refine ⟨134217728 + d0 + 65536 * d1, by omega, by omega, ?_⟩
+  simp only [Lean.Grind.Semiring.add_zero] at e0 e1
+  rw [Lean.Grind.Semiring.natCast_add, Lean.Grind.Semiring.natCast_add,
+    Lean.Grind.Semiring.natCast_mul, ← natCast_ofNat' 134217728, ← natCast_ofNat' 65536, ← e0, ← e1]
+  grind
+
+/-- The first address. -/
+noncomputable def P : Nat := Classical.choose T.base_nat
+
+open Classical in
+/-- Row `r`'s address step, as a natural: `1 +` its range-checked distance
+when the address changes, else 0. -/
+noncomputable def inc (r : Nat) : Nat :=
+  if (T.t r).addr_changes 0 = 1 then
+    (if h : ∃ n : Nat, n < 2 ^ 24 ∧
+        (T.t r).addr 0 - InputData.InputData_previous_addr_0 T.x T.t r - 1 = ((n : Nat) : F)
+      then Classical.choose h else 0) + 1
+  else 0
+
+/-- Row `r`'s address, as a natural. -/
+noncomputable def A : Nat → Nat
+  | 0 => T.P + T.inc 0
+  | r + 1 => A r + T.inc (r + 1)
+
+theorem inc_le (r : Nat) : T.inc r ≤ 2 ^ 24 := by
+  unfold inc
+  split
+  · split
+    · rename_i h; have := (Classical.choose_spec h).1; omega
+    · omega
+  · omega
+
+/-- A row's address is the one before plus its step. -/
+theorem addr_step {r : Nat} {Q : Nat} (hQ : InputData.InputData_previous_addr_0 T.x T.t r = ((Q : Nat) : F)) :
+    (T.t r).addr 0 = ((Q + T.inc r : Nat) : F) := by
+  have hl := inLane (T.rows (r : Int))
+  obtain ⟨b, hb⟩ := bool_of_idem hl.ac
+  unfold inc
+  cases b
+  · have h1 : ¬ (T.t (r : Int)).addr_changes 0 = 1 := by
+      rw [hb]; simp [bit, Lean.Grind.Field.zero_ne_one]
+    rw [if_neg h1, Nat.add_zero]
+    have e := hl.addr
+    rw [hb, hQ] at e
+    simp only [bit, Bool.false_eq_true, if_false] at e
+    grind
+  · have h1 : (T.t (r : Int)).addr_changes 0 = 1 := by rw [hb]; rfl
+    rw [if_pos h1]
+    have hex := T.rng r (by rw [h1]; exact one_ne_zero')
+    rw [dif_pos hex]
+    have e := (Classical.choose_spec hex).2
+    generalize Classical.choose hex = n at e ⊢
+    rw [hQ] at e
+    rw [Lean.Grind.Semiring.natCast_add, Lean.Grind.Semiring.natCast_add, Lean.Grind.Semiring.natCast_one]
+    grind
+
+theorem P_spec : 134217728 ≤ T.P ∧ T.P < 2 ^ 33 ∧
+    T.x.InputData_previous_segment_addr = ((T.P : Nat) : F) :=
+  Classical.choose_spec T.base_nat
+
+/-- **Every address is the natural `A r`.** -/
+theorem addr_eq : ∀ r : Nat, r < InputData.numRows → (T.t r).addr 0 = ((T.A r : Nat) : F)
+  | 0, _ => by
+    apply T.addr_step
+    simp only [InputData.InputData_previous_addr_0]
+    rw [show ((0 : Nat) : Int) = 0 from rfl, T.first, T.P_spec.2.2]
+    grind
+  | r + 1, hr => by
+    have ih := addr_eq r (by omega)
+    apply T.addr_step
+    have hL1 := T.inner ((r + 1 : Nat) : Int) (by omega) (by omega)
+    have hi : ((r + 1 : Nat) : Int) - 1 = (r : Int) := by omega
+    simp only [InputData.InputData_previous_addr_0, hL1, hi, ih]
+    grind
+
+theorem A_le : ∀ r, T.A r ≤ T.P + (r + 1) * 2 ^ 24
+  | 0 => by have := T.inc_le 0; simp only [A]; omega
+  | r + 1 => by have := A_le r; have := T.inc_le (r + 1); simp only [A]; rw [Nat.succ_mul]; omega
+
+theorem A_mono : ∀ {r s : Nat}, r ≤ s → T.A r ≤ T.A s
+  | r, 0, h => by rw [Nat.le_zero.mp h]; exact Nat.le_refl _
+  | r, s + 1, h => by
+    rcases Nat.eq_or_lt_of_le h with rfl | hlt
+    · exact Nat.le_refl _
+    · have := A_mono (r := r) (s := s) (by omega); simp only [A]; omega
+
+/-- The segment, with its addresses. -/
+noncomputable def toSeg : InSeg F where
+  x := T.x
+  t := T.t
+  rows := T.rows
+  cyclic := T.cyclic
+  first := T.first
+  inner := T.inner
+  range := T.range
+  A := T.A
+  addr r hr := ⟨by
+    have := T.A_le r; have := T.P_spec.2.1
+    simp only [InputData.numRows] at hr; omega, T.addr_eq r hr⟩
+
+/-- **The addresses lie in the region**: internal addresses
+`[0x0800_0000, 0x0FFF_FFFF]`, bytes `[0x4000_0000, 0x7FFF_FFFF]`. -/
+theorem A_region {r : Nat} (hr : r < InputData.numRows) :
+    134217728 ≤ T.A r ∧ T.A r ≤ 268435455 := by
+  have hN : InputData.numRows = 4194304 := rfl
+  constructor
+  · have := T.A_mono (Nat.zero_le r); have := T.P_spec.1; simp only [A] at *; omega
+  · -- The last address: the region's end less a range-checked distance.
+    obtain ⟨e0, h0, f0⟩ := in_chunk T.end0 rfl rfl (f := fun x t i => x.InputData_distance_end 0 + 0) rfl
+    obtain ⟨e1, h1, f1⟩ := in_chunk T.end1 rfl rfl (f := fun x t i => x.InputData_distance_end 1 + 0) rfl
+    simp only [Lean.Grind.Semiring.add_zero] at f0 f1
+    have c := (T.rows 0).c12
+    simp only [InputData.c12, InputData.Zisk_direct_gsum_e_1] at c
+    have hlast := (T.toSeg.last).1
+    have hla : ((T.A (InputData.numRows - 1) : Nat) : F) = T.x.InputData_segment_last_addr := hlast
+    have e : ((T.A (InputData.numRows - 1) + (e0 + 65536 * e1) : Nat) : F) = ((268435455 : Nat) : F) := by
+      rw [Lean.Grind.Semiring.natCast_add, Lean.Grind.Semiring.natCast_add,
+        Lean.Grind.Semiring.natCast_mul, hla, ← natCast_ofNat' 65536, ← f0, ← f1,
+        ← natCast_ofNat' 268435455]
+      grind
+    have hA := (T.toSeg.addr (InputData.numRows - 1) (by omega)).1
+    have := natCast_inj (F := F) (by unfold goldilocks; simp only [toSeg] at hA; omega)
+      (by unfold goldilocks; omega) e
+    have := T.A_mono (r := r) (s := InputData.numRows - 1) (by omega)
+    omega
+
+end InTrace
 
 end Correspondence

@@ -1267,15 +1267,23 @@ read, which the AIR allows only at the region's base. In the abstract
 (`MemImm.imm_consistent`), along such a sequence two lanes at the same
 address, other than the base, hold the same value; InputData's rows, over a
 chain of segments linked by their continuation values (`InChain`), are such a
-sequence, given their addresses as naturals below `2^40`
-(`input_consistent`). So the input memory is a function of the address — the
-model's initial memory for the region. The steps play no part, and the
+sequence (`input_consistent`). So the input memory is a function of the
+address — the model's initial memory for the region.
+
+The addresses need no help from the bus. The AIR range-checks the first one's
+distance from the region's base and the last one's from its end, and in
+between an address grows only by range-checked steps; so each is a natural,
+built up from the first (`InTrace.A`, `addr_eq`), and lies in the region,
+bytes `[0x4000_0000, 0x7FFF_FFFF]` (`A_region`). `InTrace` holds only what
+the AIR gives — its constraints, `__L1__` and its range checks — and
+`InTrace.toSeg` turns it into the segment `input_consistent` takes. The steps play no part, and the
 segments are indexed as one sequence, `m ↦ row m mod numRows of segment
 m / numRows`, with no list built.
 
-Still to come: the bounds `RamNat` and `InSeg` assume, which come from the memory bus —
-every lane's tuple is one some AIR assumes, with a bounded address and step —
-and the continuation bus's guarantee (`RamChain`); the memory bus's census for
+Still to come: the bounds `RamNat` assumes — the RAM's addresses can be built
+up the same way, while its steps need the memory bus, every lane's tuple being
+one some AIR assumes with a bounded step; the continuation buses' guarantees
+(`RamChain`, `InChain`); the memory bus's census for
 loads and stores, as `MemBus.lean` did for register tuples; `MemAlign`; and
 Main's memory sources and stores against the model's byte-addressed
 `read_mem` and `write_mem`.
