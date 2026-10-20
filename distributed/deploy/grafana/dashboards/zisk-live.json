@@ -10,7 +10,7 @@
   "from": "now-1h",
   "to": "now"
  },
- "refresh": "1s",
+ "refresh": "auto",
  "timezone": "utc",
  "links": [
   {

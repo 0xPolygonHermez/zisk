@@ -162,7 +162,7 @@ def identity_variables():
 
 def dashboard(uid, title, layout, desc):
     return {"uid": uid, "title": title, "description": desc, "tags": ["zisk"], "schemaVersion": 39,
-            "time": {"from": "now-1h", "to": "now"}, "refresh": "10s", "timezone": "utc", "links": nav_links(),
+            "time": {"from": "now-1h", "to": "now"}, "refresh": "auto", "timezone": "utc", "links": nav_links(),
             "editable": True, "panels": layout.panels,
             "templating": {"list": [cluster_variable()] + identity_variables()},
             "annotations": {"list": []}}
@@ -624,7 +624,6 @@ def live():
                 t["instant"], t["range"] = True, False
             p["options"]["graphMode"] = "none"
     d = dashboard("zisk-live", "ZisK — Live", l, "What the cluster is doing now: workers, the job in flight, the last jobs and events, and each host's load")
-    d["refresh"] = "1s"
     d["templating"]["list"].append(host_variable())
     d["annotations"] = {"list": job_annotations()}
     return d
@@ -680,7 +679,7 @@ def job_annotations():
 
 # The proof-time histogram's bins. Prometheus records each proof's bin as it ends (`proof_time_rules`)
 # and the histogram only adds the records up: binning the proofs at query time took longer than the
-# Live dashboard's 1 s refresh from 6 h of range on, so the panel never drew.
+# Live dashboard's refresh (1 s then) from 6 h of range on, so the panel never drew.
 PROOF_BINS_PER_S = 4  # 250 ms, about the Freedman-Diaconis width of an hour of proofs
 PROOF_LAST_BIN = 30 * PROOF_BINS_PER_S  # the last bin's index: 30 s and above
 PROOF_RECORD_LAG = 10  # s from a proof's end to its record, for its sample to be scraped first
@@ -1034,7 +1033,6 @@ def gpus():
                    "Each GPU's performance state: P0 the highest, P8 idle"), 24, 6)
 
     d = dashboard("zisk-gpus", "ZisK — GPUs", l, "Every GPU of each host side by side: now, and each metric over time")
-    d["refresh"] = "5s"  # nvidia-smi is read every 5 s
     q = 'label_values(nvidia_smi_gpu_info{cluster=~"$cluster"}, host)'
     d["templating"]["list"].append({"type": "query", "name": "host", "label": "Host", "datasource": DS, "hide": 2,
                                     "query": {"query": q, "refId": "host"}, "definition": q, "refresh": 2,
