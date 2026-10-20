@@ -186,6 +186,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/MemFromBus.lean` | `MemAnswers` from the memory bus: Main's stores (`mainStores`), the RAM's writes as those stores and the Rom's data, its reads as `memVal`, the initial memory by region (`MemBusWorld.init`), and `MemBusWorld.answers`. |
 | `lean/Proofs/Continuation.lean` | Continuation buses, in the abstract: on a balanced bus, the segments form one chain from the global update's tuple (`ContBal.chain`). |
 | `lean/Proofs/MemCont.lean` | The RAM's, InputData's and RomData's continuation buses (11 and 12): their chains (`MemBusWorld.ram_chain`, `in_world`, `rd_world`), and `MemAnswers` from all the buses (`MemBusWorld.answers_cont`). |
+| `lean/Proofs/OpCensus.lean` | What Main assumes on the operation bus: only the model's external ops (`main_op_modeled`), the first step towards `Quiet`. |
 | `lean/Proofs/MemSystem.lean` | The run to the end over the operation bus's provers and the memory bus (`run_to_end_memory_bus`). |
 | `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
@@ -373,7 +374,7 @@ make proofs
 ```
 
 ```
-✔ [121/122] Built Proofs
+✔ [122/123] Built Proofs
 Build completed successfully.
 ```
 
@@ -1546,7 +1547,17 @@ are `MemBusWorld`, `ContWorld`, `RomOk`, `MainAvoids`, `BootNoLoad`, and
 the model's initial memory being the bus's.
 
 Still to come: `Quiet`, from the operation bus — the precompiles and DMA run only
-when Main calls them; and `MemAlign`, for byte and unaligned accesses.
+when Main calls them; and `MemAlign`, for byte and unaligned accesses. For
+`Quiet`, [`lean/Proofs/OpCensus.lean`](lean/Proofs/OpCensus.lean) takes the
+first step: the ROM lookup holds at every lane, so every lane holds an
+instruction of the program, and Main assumes only the model's external ops
+— add, ltu, eq, and, pubout — on the operation bus (`main_op_modeled`).
+Every op-bus prover of the AIRs `Quiet` rules out never proves one of them
+(the `_not_add`, `_not_cmp`, `_not_pub` lemmas), so, on a balanced operation
+bus, what those AIRs prove is assumed only by each other or their own
+padding. What remains is per AIR: its memory-bus counts vanish wherever its
+operation-bus counts do, its padding rows included; and the `MemAlign` AIRs,
+which have no operation-bus argument, by a memory-bus count of their own.
 `MainAvoids` stays a hypothesis on the run: most programs' accesses are
 indirect, and what it rules out — the register file, which the model asserts
 no access touches, and the free-input base, where ZisK's reads return fresh
