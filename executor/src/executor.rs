@@ -518,23 +518,29 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 _ => None,
             };
 
-            let mut mem_artifacts =
-                self.plan.await_mem_plans(&mut backend, &self.state.stats, &_exec_scope)?;
+            // From here the MO runner is joined (`await_mem_plans` joins it before it returns,
+            // success or error): a failure on the way to the release hands the buffer back now.
+            let release_on_error = |e: ExecutorError| {
+                if let (true, Some(extras)) = (is_asm_emulator, proofman_extras) {
+                    extras.release_gpu_buffer();
+                }
+                e
+            };
+            let mut mem_artifacts = self
+                .plan
+                .await_mem_plans(&mut backend, &self.state.stats, &_exec_scope)
+                .map_err(release_on_error)?;
 
             // Round 2: the memory plans, registered and placed before the device fills so only
             // the instances this process owns are filled, while the arena is still borrowed.
             let mut mem_plans = std::mem::take(&mut mem_artifacts.mem_plans);
             mem_planning.entry(MEM_POSITION).or_default().append(&mut mem_plans);
-            let (plans, ids) = self.assign_secn_round(
-                registry,
-                global_ids,
-                proofman_extras,
-                mem_planning,
-                two_rounds,
-            )?;
+            let (plans, ids) = self
+                .assign_secn_round(registry, global_ids, proofman_extras, mem_planning, two_rounds)
+                .map_err(release_on_error)?;
             let mut release_deferred = false;
             if let Some(device_witness) = mem_artifacts.device_witness.as_ref() {
-                let owned = owned_mem_instances(registry, &plans, &ids)?;
+                let owned = owned_mem_instances(registry, &plans, &ids).map_err(release_on_error)?;
                 let d_buffers = proofman_extras
                     .map(|extras| extras.pctx().get_device_buffers_ptr())
                     .unwrap_or(std::ptr::null_mut());
@@ -542,8 +548,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             }
 
             // MO runner joined and the fills are done; release the buffer back to proofman.
-            // Earlier error paths skip the release on purpose: the MO thread may still be using
-            // the buffer. With the device witness the release follows the last owned memory
+            // Error paths before the join skip the release on purpose: the MO thread may still be
+            // using the buffer. With the device witness the release follows the last owned memory
             // instance's fill.
             if is_asm_emulator {
                 if let Some(extras) = proofman_extras {
