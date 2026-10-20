@@ -19,7 +19,9 @@
 //!
 //! Reading every u64 of a 2GB input touches 2^28 distinct addresses, more than the CPU memory
 //! planner of the assembly backend has slots for (`MAX_SLOT_GB` in
-//! state-machines/mem-cpp/cpp/mem_config.hpp); use a stride of 16 or more there.
+//! state-machines/mem-cpp/cpp/mem_config.hpp), and a stride that is a multiple of 4 words lands
+//! every access on one of its counter threads and exhausts that thread's slots first; use a
+//! stride of 17 or more there.
 
 use std::error::Error;
 use std::time::Instant;
