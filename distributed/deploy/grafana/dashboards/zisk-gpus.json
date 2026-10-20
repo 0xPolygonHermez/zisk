@@ -1,0 +1,1249 @@
+{
+ "uid": "zisk-gpus",
+ "title": "ZisK — GPUs",
+ "description": "Every GPU of each host side by side: now, and each metric over time",
+ "tags": [
+  "zisk"
+ ],
+ "schemaVersion": 39,
+ "time": {
+  "from": "now-1h",
+  "to": "now"
+ },
+ "refresh": "5s",
+ "timezone": "utc",
+ "links": [
+  {
+   "title": "🔴 LIVE",
+   "type": "link",
+   "url": "/d/zisk-live",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Overview",
+   "type": "link",
+   "url": "/d/zisk-overview",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Executions & proofs",
+   "type": "link",
+   "url": "/d/zisk-proofs",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Cancellations & recovery",
+   "type": "link",
+   "url": "/d/zisk-recovery",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "Worker resources",
+   "type": "link",
+   "url": "/d/zisk-resources",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "title": "GPUs",
+   "type": "link",
+   "url": "/d/zisk-gpus",
+   "icon": "dashboard",
+   "keepTime": true,
+   "includeVars": true,
+   "targetBlank": false,
+   "tooltip": "",
+   "asDropdown": false,
+   "tags": []
+  }
+ ],
+ "editable": true,
+ "panels": [
+  {
+   "type": "row",
+   "title": "Host $host",
+   "id": 1,
+   "collapsed": false,
+   "repeat": "host",
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "table",
+   "title": "Each GPU now",
+   "description": "nvidia-smi's last reading of each GPU (every 5 s). Power capped: the driver is holding the clocks down to stay within the power limit",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "(100 * nvidia_smi_utilization_gpu_ratio{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    },
+    {
+     "refId": "B",
+     "expr": "(nvidia_smi_memory_used_bytes{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    },
+    {
+     "refId": "C",
+     "expr": "(100 * nvidia_smi_memory_used_bytes{host=~\"$host\"} / nvidia_smi_memory_total_bytes{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    },
+    {
+     "refId": "D",
+     "expr": "(nvidia_smi_power_draw_watts{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    },
+    {
+     "refId": "E",
+     "expr": "(nvidia_smi_enforced_power_limit_watts{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    },
+    {
+     "refId": "F",
+     "expr": "(nvidia_smi_clocks_throttle_reasons_sw_power_cap{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    },
+    {
+     "refId": "G",
+     "expr": "(nvidia_smi_temperature_gpu{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    },
+    {
+     "refId": "H",
+     "expr": "(nvidia_smi_clocks_current_sm_clock_hz{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    },
+    {
+     "refId": "I",
+     "expr": "(nvidia_smi_pstate{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "convertFieldType",
+     "options": {
+      "conversions": [
+       {
+        "targetField": "index",
+        "destinationType": "number"
+       }
+      ]
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "index",
+        "desc": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "organize",
+     "options": {
+      "includeByName": {
+       "index": true,
+       "Value #A": true,
+       "Value #B": true,
+       "Value #C": true,
+       "Value #D": true,
+       "Value #E": true,
+       "Value #F": true,
+       "Value #G": true,
+       "Value #H": true,
+       "Value #I": true
+      },
+      "renameByName": {
+       "index": "GPU",
+       "Value #A": "Busy",
+       "Value #B": "Memory",
+       "Value #C": "Memory %",
+       "Value #D": "Power",
+       "Value #E": "Power limit",
+       "Value #F": "Power capped",
+       "Value #G": "Temperature",
+       "Value #H": "SM clock",
+       "Value #I": "P-state"
+      },
+      "indexByName": {
+       "index": 0,
+       "Value #A": 1,
+       "Value #B": 2,
+       "Value #C": 3,
+       "Value #D": 4,
+       "Value #E": 5,
+       "Value #F": 6,
+       "Value #G": 7,
+       "Value #H": 8,
+       "Value #I": 9
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Busy"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percent"
+       },
+       {
+        "id": "decimals",
+        "value": 0
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Memory"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "bytes"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Memory %"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percent"
+       },
+       {
+        "id": "decimals",
+        "value": 0
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Power"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "watt"
+       },
+       {
+        "id": "decimals",
+        "value": 0
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Power limit"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "watt"
+       },
+       {
+        "id": "decimals",
+        "value": 0
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Power capped"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "none"
+       },
+       {
+        "id": "decimals",
+        "value": 0
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Temperature"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "celsius"
+       },
+       {
+        "id": "decimals",
+        "value": 0
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SM clock"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "hertz"
+       },
+       {
+        "id": "decimals",
+        "value": 2
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "P-state"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "prefix:P"
+       },
+       {
+        "id": "decimals",
+        "value": 0
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Busy"
+      },
+      "properties": [
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "gauge",
+         "mode": "basic",
+         "valueDisplayMode": "text"
+        }
+       },
+       {
+        "id": "min",
+        "value": 0
+       },
+       {
+        "id": "max",
+        "value": 100
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "continuous-GrYlRd"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Memory %"
+      },
+      "properties": [
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "gauge",
+         "mode": "basic",
+         "valueDisplayMode": "text"
+        }
+       },
+       {
+        "id": "min",
+        "value": 0
+       },
+       {
+        "id": "max",
+        "value": 100
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "continuous-GrYlRd"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Power capped"
+      },
+      "properties": [
+       {
+        "id": "mappings",
+        "value": [
+         {
+          "type": "value",
+          "options": {
+           "0": {
+            "text": "no",
+            "color": "text"
+           },
+           "1": {
+            "text": "capped",
+            "color": "orange"
+           }
+          }
+         }
+        ]
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm"
+   },
+   "id": 2,
+   "gridPos": {
+    "x": 0,
+    "y": 1,
+    "w": 24,
+    "h": 10
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Busy",
+   "description": "Share of the last sample period in which a kernel ran on the GPU",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "(100 * nvidia_smi_utilization_gpu_ratio{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "GPU {{index}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     },
+     "min": 0,
+     "max": 100
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "mean",
+      "max",
+      "lastNotNull"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 3,
+   "gridPos": {
+    "x": 0,
+    "y": 11,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Memory used",
+   "description": "Device memory in use",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "(nvidia_smi_memory_used_bytes{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "GPU {{index}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     },
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "mean",
+      "max",
+      "lastNotNull"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 4,
+   "gridPos": {
+    "x": 12,
+    "y": 11,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Power",
+   "description": "Power draw; the dashed line is the enforced limit",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "(nvidia_smi_power_draw_watts{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "GPU {{index}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "max(nvidia_smi_enforced_power_limit_watts{host=~\"$host\"})",
+     "legendFormat": "limit",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "watt",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     },
+     "min": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "limit"
+      },
+      "properties": [
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          10
+         ]
+        }
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "mean",
+      "max",
+      "lastNotNull"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 5,
+   "gridPos": {
+    "x": 0,
+    "y": 19,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Temperature",
+   "description": "GPU core temperature",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "(nvidia_smi_temperature_gpu{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "GPU {{index}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "celsius",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     },
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "mean",
+      "max",
+      "lastNotNull"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 6,
+   "gridPos": {
+    "x": 12,
+    "y": 19,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "SM clock",
+   "description": "Streaming multiprocessor clock; it drops while the GPU is power capped or idle",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "(nvidia_smi_clocks_current_sm_clock_hz{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "GPU {{index}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "hertz",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     },
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "mean",
+      "max",
+      "lastNotNull"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 7,
+   "gridPos": {
+    "x": 0,
+    "y": 27,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Memory controller busy",
+   "description": "Share of the last sample period in which device memory was read or written",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "(100 * nvidia_smi_utilization_memory_ratio{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "GPU {{index}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 15,
+      "lineWidth": 1,
+      "showPoints": "auto",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     },
+     "min": 0,
+     "max": 100
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "mean",
+      "max",
+      "lastNotNull"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 8,
+   "gridPos": {
+    "x": 12,
+    "y": 27,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "state-timeline",
+   "title": "Power capped",
+   "description": "When the driver held each GPU's clocks down to stay within its power limit",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "(nvidia_smi_clocks_throttle_reasons_sw_power_cap{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "GPU {{index}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "no",
+         "color": "transparent",
+         "index": 0
+        },
+        "1": {
+         "text": "capped",
+         "color": "orange",
+         "index": 1
+        }
+       }
+      }
+     ],
+     "custom": {
+      "fillOpacity": 80
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showValue": "never",
+    "mergeValues": true,
+    "rowHeight": 0.8,
+    "legend": {
+     "showLegend": true
+    }
+   },
+   "id": 9,
+   "gridPos": {
+    "x": 0,
+    "y": 35,
+    "w": 24,
+    "h": 6
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  },
+  {
+   "type": "state-timeline",
+   "title": "P-state",
+   "description": "Each GPU's performance state: P0 the highest, P8 idle",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "(nvidia_smi_pstate{host=~\"$host\"}) * on (uuid) group_left (index) nvidia_smi_gpu_info{host=~\"$host\"}",
+     "legendFormat": "GPU {{index}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "P0",
+         "color": "dark-green",
+         "index": 0
+        },
+        "1": {
+         "text": "P1",
+         "color": "green",
+         "index": 1
+        },
+        "2": {
+         "text": "P2",
+         "color": "green",
+         "index": 2
+        },
+        "3": {
+         "text": "P3",
+         "color": "yellow",
+         "index": 3
+        },
+        "4": {
+         "text": "P4",
+         "color": "yellow",
+         "index": 4
+        },
+        "5": {
+         "text": "P5",
+         "color": "yellow",
+         "index": 5
+        },
+        "6": {
+         "text": "P6",
+         "color": "orange",
+         "index": 6
+        },
+        "7": {
+         "text": "P7",
+         "color": "orange",
+         "index": 7
+        },
+        "8": {
+         "text": "P8 · idle",
+         "color": "gray",
+         "index": 8
+        },
+        "12": {
+         "text": "P12",
+         "color": "gray",
+         "index": 9
+        }
+       }
+      }
+     ],
+     "custom": {
+      "fillOpacity": 80
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showValue": "never",
+    "mergeValues": true,
+    "rowHeight": 0.8,
+    "legend": {
+     "showLegend": true
+    }
+   },
+   "id": 10,
+   "gridPos": {
+    "x": 0,
+    "y": 41,
+    "w": 24,
+    "h": 6
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   }
+  }
+ ],
+ "templating": {
+  "list": [
+   {
+    "type": "query",
+    "name": "cluster",
+    "label": "Cluster",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "query": {
+     "query": "label_values(coordinator_info, cluster)",
+     "refId": "cluster"
+    },
+    "definition": "label_values(coordinator_info, cluster)",
+    "refresh": 2,
+    "includeAll": true,
+    "allValue": ".*",
+    "multi": false,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    }
+   },
+   {
+    "type": "query",
+    "name": "coordinator_name",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "hide": 2,
+    "query": {
+     "query": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, name)",
+     "refId": "name"
+    },
+    "definition": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, name)",
+    "refresh": 2
+   },
+   {
+    "type": "query",
+    "name": "coordinator_environment",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "hide": 2,
+    "query": {
+     "query": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, environment)",
+     "refId": "environment"
+    },
+    "definition": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, environment)",
+    "refresh": 2
+   },
+   {
+    "type": "query",
+    "name": "coordinator_version",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "hide": 2,
+    "query": {
+     "query": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, version)",
+     "refId": "version"
+    },
+    "definition": "label_values(coordinator_info{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, version)",
+    "refresh": 2
+   },
+   {
+    "type": "query",
+    "name": "host",
+    "label": "Host",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "query": {
+     "query": "label_values(nvidia_smi_gpu_info{cluster=~\"$cluster\"}, host)",
+     "refId": "host"
+    },
+    "definition": "label_values(nvidia_smi_gpu_info{cluster=~\"$cluster\"}, host)",
+    "refresh": 2,
+    "includeAll": true,
+    "multi": true,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    }
+   }
+  ]
+ },
+ "annotations": {
+  "list": [
+   {
+    "name": "Worker restarted",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "enable": true,
+    "hide": true,
+    "expr": "sum(((last_over_time(coordinator_worker_registrations_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",reconnect=\"false\"}[1m]) - last_over_time(coordinator_worker_registrations_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",reconnect=\"false\"}[1m] offset $__interval)) > 0))",
+    "iconColor": "purple",
+    "step": "2s",
+    "titleFormat": "worker restarted",
+    "useValueForTime": false
+   },
+   {
+    "name": "Job cancelled",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "enable": true,
+    "hide": true,
+    "expr": "sum(((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"cancelled\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"cancelled\"}[1m] offset $__interval)) > 0))",
+    "iconColor": "dark-blue",
+    "step": "2s",
+    "titleFormat": "job cancelled",
+    "useValueForTime": false
+   },
+   {
+    "name": "Job failed",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "enable": true,
+    "hide": true,
+    "expr": "label_replace(sum by (reason) (((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m] offset $__interval)) > 0)), \"outcome\", \"failure_$1\", \"reason\", \"(.*)\")",
+    "iconColor": "red",
+    "step": "2s",
+    "titleFormat": "job {{outcome}}",
+    "useValueForTime": false
+   }
+  ]
+ }
+}

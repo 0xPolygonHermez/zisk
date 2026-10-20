@@ -398,7 +398,7 @@ impl Journal {
             let duration = j.duration.map(|d| format!("{d:.3}")).unwrap_or_default();
             let phases = j
                 .phases
-                .map(|p| format!("{:.3}+{:.3}+{:.3}", p[0], p[1], p[2]))
+                .map(|p| format!("{:.2}+{:.2}+{:.2}", p[0], p[1], p[2]))
                 .unwrap_or_default();
             let steps = j.steps.map(|s| s.to_string()).unwrap_or_default();
             let instances = j.instances.map(|i| i.to_string()).unwrap_or_default();
@@ -644,7 +644,7 @@ mod tests {
         assert_eq!(recent.len(), 1, "{body}");
         for label in [
             r#"outcome="success""#,
-            r#"phases="1.000+2.000+0.500""#,
+            r#"phases="1.00+2.00+0.50""#,
             r#"steps="350000000""#,
             r#"instances="57""#,
             r#"mhz="100.0""#,
