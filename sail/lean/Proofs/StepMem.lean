@@ -16,7 +16,18 @@ open Pil.Zisk
 
 attribute [local instance] Lean.Grind.Semiring.natCast Lean.Grind.Ring.intCast
 
-/-- An instruction the pilot with memory covers: the six modeled ops;
+/-- What `pubout` does: `c = b`, no flag. -/
+def pubSem (_A B : BitVec 64) : BitVec 64 × Bool := (B, false)
+
+theorem exec_pubout (a b : BitVec 64) : zisk_exec (.ZOP_PUBOUT ()) a b = pubSem a b := by
+  simp [zisk_exec, pubSem]
+
+/-- Every prover on the operation bus proves `pubout` (`0xA0`) correctly. -/
+def PubProved {F : Type} [PilField F] (ps : List (Prover F)) : Prop :=
+  ∀ p ∈ ps, OpProves 0xA0 pubSem p
+
+/-- An instruction the pilot with memory covers: the six modeled ops, `pubout`
+(given `PubProved`), and `halt` (which no lane can hold);
 immediate, `c`, register or memory sources — `B_IND` of width 8 — with 32-bit
 memory addresses; no store, a register store, or a memory store — `ST_IND` of
 width 8 — with an offset below `2^32`; register indices `x1`–`x31` written as
@@ -29,7 +40,8 @@ structure MemPilot (inst : zisk_inst) : Prop where
   store_reg : inst.store = .ST_REG → regIdx inst.store_off ≠ 0
   store_ind : inst.store = .ST_IND → inst.ind_width = 8
   op : inst.op = .ZOP_COPYB () ∨ inst.op = .ZOP_FLAG () ∨ inst.op = .ZOP_ADD () ∨
-    inst.op = .ZOP_LTU () ∨ inst.op = .ZOP_EQ () ∨ inst.op = .ZOP_AND () ∨ inst.op = .ZOP_HALT ()
+    inst.op = .ZOP_LTU () ∨ inst.op = .ZOP_EQ () ∨ inst.op = .ZOP_AND () ∨ inst.op = .ZOP_HALT () ∨
+    inst.op = .ZOP_PUBOUT ()
   set_pc : inst.set_pc = true → ShortJump inst.jmp_off1
   is_end : inst.is_end = false
   a_idx : inst.a_src = .A_REG → inst.a_imm.toNat < 32
@@ -113,6 +125,7 @@ theorem step_genM (prog : BitVec 64 → Option zisk_inst) (hprog : MemProg prog)
     {l : Nat} (hl4 : l < 4) (hbus : LookupHolds (romArg l) xm tm [⟨Rom.bus0, xr, tr⟩])
     (hrom : RomHolds prog tr)
     (ps : List (Prover F)) (hops : LookupHolds (opArg l) xm tm ps) (hpr : OpsProved ps)
+    (hpub : PubProved ps)
     {p0 p1 np : F} (hlane : LaneHolds (tm i) l p0 p1 np)
     (hq : ∃ q : BitVec 64, q.toNat < 2 ^ 32 ∧ np = ((q.toNat : Nat) : F))
     (σ : State) (pc zc : BitVec 64) (xs : Vector (BitVec 64) 32) {W : Nat → BitVec 64}
@@ -166,7 +179,7 @@ theorem step_genM (prog : BitVec 64 → Option zisk_inst) (hprog : MemProg prog)
         (bValM inst zc xs W (aValM inst zc xs W))).1 ∧
       (tm i).flag l = bit (zisk_exec inst.op (aValM inst zc xs W)
         (bValM inst zc xs W (aValM inst zc xs W))).2 := by
-    rcases hpil.op with h | h | h | h | h | h | h
+    rcases hpil.op with h | h | h | h | h | h | h | h
     · exact lane_int_cols hlane hslot (.inl h) hB
     · exact lane_int_cols hlane hslot (.inr h) hB
     · exact ext_cols inst (.inl h) hl4 ps hops hpr hslot hA hB
@@ -174,6 +187,8 @@ theorem step_genM (prog : BitVec 64 → Option zisk_inst) (hprog : MemProg prog)
     · exact ext_cols inst (.inr (.inr (.inl h))) hl4 ps hops hpr hslot hA hB
     · exact ext_cols inst (.inr (.inr (.inr h))) hl4 ps hops hpr hslot hA hB
     · exact absurd h hop
+    · rw [h, exec_pubout]
+      exact lane_ext_cols 0xA0 pubSem hl4 ps hops hpub hslot (by rw [h]; rfl) (by rw [h]; rfl) hA hB
   obtain ⟨hc0, hc1, hf⟩ := hcf
   -- The next pc.
   obtain ⟨hnp, hnp32⟩ := lane_npc hlane hslot hc0 hc1 hf hpil.set_pc (fun _ => ⟨hl1, hl2⟩) hq

@@ -31,7 +31,7 @@ memory words are `memVal` at the lane's first memory step, the program's
 instruction runs, and both hold again four memory steps on. -/
 theorem step_mem_at (prog : BitVec 64 → Option zisk_inst) (hprog : MemProg prog)
     (xr : Rom.Ctx F) (tr : Rom.Trace F) (hr : ∀ j, Rom.everyRow xr tr j) (hrom : RomHolds prog tr)
-    (ps : List (Prover F)) (hpr : OpsProved ps)
+    (ps : List (Prover F)) (hpr : OpsProved ps) (hpub : PubProved ps)
     (M : MainSegs F) (hch : ChainOk M) (hK : M.K < 1048576)
     {D : Nat → Prop} {init : Nat → F × F} {ws : List (Emit (F × F))}
     (hA : MemAnswers M D init ws) (hD : MemDomain D) {k : Nat} (hk : k < M.K)
@@ -72,7 +72,7 @@ theorem step_mem_at (prog : BitVec 64 → Option zisk_inst) (hprog : MemProg pro
     · have := (mem_a_cols hA hD hk hm hl hslot h h32 hminv).2
       simp only [aValM, h]; exact this
   obtain ⟨inst, σ', pc', c, hinst, hslot, hsto, hpil, hrun, hσ', hx, hmem, -, hnp, hc0, hc1, haV⟩ :=
-    step_genM prog hprog _ _ (hmi m) xr tr hr hl (hbus l hl) hrom ps (hops l hl) hpr hlane hq
+    step_genM prog hprog _ _ (hmi m) xr tr hr hl (hbus l hl) hrom ps (hops l hl) hpr hpub hlane hq
       σ pc zc xs hσ hxs hmo hD.aligned hcol hprev
       (fun inst hinst ha => ⟨hAc inst hinst, fun h => by
         obtain ⟨hpil, hslot, -⟩ := hsrc inst hinst
@@ -133,6 +133,7 @@ structure MemSetup (prog : BitVec 64 → Option zisk_inst) (xr : Rom.Ctx F) (tr 
   rom_rows : ∀ j, Rom.everyRow xr tr j
   rom : RomHolds prog tr
   ops : OpsProved ps
+  pub : PubProved ps
   chain : ChainOk M
   small : M.K < 1048576
   ans : MemAnswers M D init ws
@@ -170,7 +171,7 @@ theorem Segment.step_mem {prog : BitVec 64 → Option zisk_inst} {M : MainSegs F
   have hb : memBase k (j / 4) (j % 4) = 1 + 4 * (k * 16777216 + j) := by
     simp only [memBase]; omega
   obtain ⟨inst, σ', pc', c, xs', W', hinst, hrun, hσ', hx, hinv', hmo', hminv', hnp, hc0, hc1⟩ :=
-    step_mem_at prog hS.prog_ok xr tr hS.rom_rows hS.rom ps hS.ops M hS.chain hS.small hS.ans hS.dom
+    step_mem_at prog hS.prog_ok xr tr hS.rom_rows hS.rom ps hS.ops hS.pub M hS.chain hS.small hS.ans hS.dom
       hk (by rw [hMk]; exact G.rows) (by rw [hMk]; exact G.rom) (by rw [hMk]; exact G.ops)
       hm hl4 (by rw [hMk]; exact hlane) ⟨q, hq32, hq⟩ σ pc zc xs W hσ hxs hmo
       (by rw [hMk]; exact hcol) ⟨hp0, hp1⟩ (by rw [hb]; exact hinv) (by rw [hb]; exact hminv)
@@ -228,7 +229,7 @@ theorem Segment.run_mem {prog : BitVec 64 → Option zisk_inst} {M : MainSegs F}
   have hb : memBase k (Main.numRows - 1) 3 = 1 + 4 * (k * 16777216 + (segSteps - 1)) := by
     simp only [memBase]; omega
   obtain ⟨inst, σ', pc', c, xs', W', hinst, hrun, hσ', hx, hinv', hmo', hminv', hnp, hc0, hc1⟩ :=
-    step_mem_at prog hS.prog_ok xr tr hS.rom_rows hS.rom ps hS.ops M hS.chain hS.small hS.ans hS.dom
+    step_mem_at prog hS.prog_ok xr tr hS.rom_rows hS.rom ps hS.ops hS.pub M hS.chain hS.small hS.ans hS.dom
       hk (by rw [hMk]; exact G.rows) (by rw [hMk]; exact G.rom) (by rw [hMk]; exact G.ops)
       hm (l := 3) (by omega) (by rw [hMk]; exact hlane) hq σ₁ pc₁ zc₁ xs W hσ₁ hxs hmo
       (by rw [hMk]; simp only [Pos.last] at hcol; rw [hrow] at hcol; exact hcol)

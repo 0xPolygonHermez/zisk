@@ -149,6 +149,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/BinaryOps.lean` | Binary, 7 lanes, proves `ltu`, `eq` and `and`, byte by byte through its table. |
 | `lean/Proofs/OpBusCmp.lean` | The 54 operation-bus provers that cannot prove `ltu`, `eq` or `and`, each proved so. |
 | `lean/Proofs/ExtPilot.lean` | The external ops at any lane (`lane_external`), through that lane's operation-bus lookup; slot 1 executing `add`, `ltu`, `eq` and `and`. |
+| `lean/Proofs/OpBusPub.lean` | The 53 operation-bus arguments that cannot prove `pubout`, each proved so. |
 | `lean/Proofs/Provers.lean` | Every prover on the operation bus, collected: 61 arguments in 39 AIRs and the 12 of the FROPS table, each proved to compute the four external ops, and the run over them (`run_system`). Generated. |
 | `lean/Proofs/Segments.lean` | Across segments: from the boot state, along the continuation bus's chain of Main segments, every step is a step of the model (`run_from_boot`). |
 | `lean/Proofs/End.lean` | The program's end: from boot, the model runs the program to an end instruction and stops (`run_to_end`). |
@@ -360,7 +361,7 @@ make proofs
 ```
 
 ```
-✔ [110/111] Built Proofs
+✔ [111/112] Built Proofs
 Build completed successfully.
 ```
 
@@ -1353,13 +1354,23 @@ The census below is to discharge `MemAnswers`.
 The pilot also admits `halt`, vacuously: Main knows two internal ops, `flag`
 (`op = 0`) and `copyb` (`op = 1`), and for `halt`'s opcode, `0xff`, its
 internal-op constraints force `flag = 0` and `flag = 1` at once, so no lane
-holds one (`halt_impossible`). `make scope` (`check_scope.py`) checks the
-programs `make difftest` runs against the scope: of the doubler's 44
-instructions, BIOS and launcher included, all but `pubout` are in it. `pubout`
-is an external op that no AIR proves — the global updates do, one per public
-input, `(0xA0, i, 0, inputs[i], inputs[i])` — so covering it means the
-operation bus's census for a fifth op, with global updates among its
-provers.
+holds one (`halt_impossible`). And it admits `pubout`, `c = b`, given that
+every prover on the operation bus proves it correctly (`PubProved`, a
+hypothesis for now). `make scope` (`check_scope.py`) checks the programs
+`make difftest` runs against the scope: every instruction of the doubler,
+BIOS and launcher included, is in it.
+
+`PubProved` is the operation bus's census for a fifth op. No AIR proves
+`pubout`: the global updates do, one per public input,
+`(0xA0, i, 0, inputs[i], inputs[i])` — `c = b`, and the flag, absent, 0. Of
+the AIRs' arguments, the 53 `OpBusCmp.lean` rules out for `ltu`, `eq` and
+`and` are ruled out for `pubout` (160) the same way
+([`lean/Proofs/OpBusPub.lean`](lean/Proofs/OpBusPub.lean), written out
+mechanically from it; Dma needs no special case here). Still to come: Binary,
+whose op is its table's — `b_op + 16·mode32`, and the table's opcodes all
+below `0x60` — the FROPS rows, Arith's and BinaryExtension's tables, all
+facts for `check_tables.py`; and the global updates, as provers of their
+own.
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'

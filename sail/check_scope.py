@@ -5,8 +5,9 @@ Reads the ROM tools/sail-difftest exports (build/difftest/<prog>/rom.sail) and
 checks every instruction against `MemProgEnd` (lean/Proofs/MemEnd.lean), the
 scope of `run_to_end_memory`:
 
-* the op is one of the six modeled ones (copyb, flag, add, ltu, eq, and), or
-  halt, which Main cannot execute (`halt_impossible`);
+* the op is one of the six modeled ones (copyb, flag, add, ltu, eq, and),
+  pubout (given `PubProved`: every prover on the operation bus proves it
+  correctly), or halt, which Main cannot execute (`halt_impossible`);
 * source a is immediate, c, a register x1-x31, or memory at a 32-bit address;
 * source b is immediate, c, a register x1-x31, memory at a 32-bit address, or
   indirect of width 8 with a 32-bit offset;
@@ -24,7 +25,7 @@ Usage: check_scope.py [build/difftest/<prog>/rom.sail]
 import re
 import sys
 
-OPS = {'ZOP_COPYB', 'ZOP_FLAG', 'ZOP_ADD', 'ZOP_LTU', 'ZOP_EQ', 'ZOP_AND', 'ZOP_HALT'}
+OPS = {'ZOP_COPYB', 'ZOP_FLAG', 'ZOP_ADD', 'ZOP_LTU', 'ZOP_EQ', 'ZOP_AND', 'ZOP_HALT', 'ZOP_PUBOUT'}
 ENTRY = re.compile(r"(0x[0-9a-f_]+) => struct \{([^}]*)\}", re.S)
 FIELD = re.compile(r"(\w+) = ([^,]+?)(?:,|$)")
 

@@ -84,7 +84,7 @@ Main's accesses (`MemAnswers`) over the word addresses `D`, with the pilot's
 scope with memory (`MemProgEnd`). -/
 theorem run_to_end_memory {prog : BitVec 64 → Option zisk_inst} (hprog : MemProgEnd prog)
     (hr : ∀ j, Rom.everyRow xr tr j) (hrom : RomHolds prog tr) (hpr : OpsProved ps)
-    {M : MainSegs F} (hch : ChainOk M) (hK : M.K < 1048576)
+    (hpub : PubProved ps) {M : MainSegs F} (hch : ChainOk M) (hK : M.K < 1048576)
     {D : Nat → Prop} {init : Nat → F × F} {ws : List (Emit (F × F))}
     (hA : MemAnswers M D init ws) (hD : MemDomain D)
     (boot fin : BitVec 64) (segs : List (Segment xr tr ps)) (hc : ChainHolds boot segs)
@@ -98,7 +98,7 @@ theorem run_to_end_memory {prog : BitVec 64 → Option zisk_inst} (hprog : MemPr
       MemOk σ W D ∧ MemInv D init ws W (1 + 4 * m) ∧
       prog pc = some e ∧ e.is_end = true ∧ zisk_execute e σ = .ok true σe := by
   have hS : MemSetup (mainView prog) xr tr ps M D init ws :=
-    ⟨hprog.mainView, hr, hrom.mainView, hpr, hch, hK, hA, hD⟩
+    ⟨hprog.mainView, hr, hrom.mainView, hpr, hpub, hch, hK, hA, hD⟩
   obtain ⟨σ, pc, zc, xs, W, hruns, hσ, hex, hx, hinv, hmo, hminv⟩ :=
     run_all_segments_mem hS boot fin segs hc hcl hfin hlen hM σ₀ h₀ hx₀ hm₀ hW₀
   -- The closing: the last exit pc is `fin`.
