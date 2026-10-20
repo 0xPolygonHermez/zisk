@@ -687,7 +687,7 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "sum by (outcome) (label_replace(sum by (outcome, reason) (increase(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\"}[5m])), \"outcome\", \"failure_$1\", \"reason\", \"(.+)\"))",
+     "expr": "sum by (outcome) (label_replace(label_replace(label_replace(sum by (outcome, reason) (increase(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\"}[5m])), \"outcome\", \"succeeded\", \"outcome\", \"success\"), \"outcome\", \"failed\", \"outcome\", \"failure\"), \"outcome\", \"failed: $1\", \"reason\", \"(.+)\"))",
      "legendFormat": "{{outcome}}",
      "datasource": {
       "type": "prometheus",
@@ -714,7 +714,7 @@
      {
       "matcher": {
        "id": "byRegexp",
-       "options": ".*(success|finished|done).*"
+       "options": "^succeeded$|.*(success|finished|done).*"
       },
       "properties": [
        {

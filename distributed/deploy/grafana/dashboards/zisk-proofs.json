@@ -115,7 +115,7 @@
   },
   {
    "type": "stat",
-   "title": "Proofs ok",
+   "title": "Proofs succeeded",
    "description": "",
    "targets": [
     {
@@ -174,7 +174,7 @@
   },
   {
    "type": "stat",
-   "title": "Executions ok",
+   "title": "Executions succeeded",
    "description": "",
    "targets": [
     {
@@ -1659,7 +1659,7 @@
      {
       "matcher": {
        "id": "byRegexp",
-       "options": ".*(success|finished|done).*"
+       "options": "^succeeded$|.*(success|finished|done).*"
       },
       "properties": [
        {

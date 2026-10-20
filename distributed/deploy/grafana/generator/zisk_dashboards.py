@@ -172,8 +172,8 @@ def identity_row(layout, what):
     layout.row(f"{what} · ${{coordinator_name}} · ${{coordinator_environment}} · v${{coordinator_version}}")
 
 
-# How a job ended, the same colour everywhere: by series name (success, cancelled, failure_*, …).
-OUTCOME_COLORS = [(".*(success|finished|done).*", "green"), (".*cancel.*", "dark-blue"), (".*fail.*", "red")]
+# How a job ended, the same colour everywhere: by series name (succeeded, cancelled, failed, failed: …).
+OUTCOME_COLORS = [("^succeeded$|.*(success|finished|done).*", "green"), (".*cancel.*", "dark-blue"), (".*fail.*", "red")]
 
 
 def outcome_overrides():
@@ -182,12 +182,20 @@ def outcome_overrides():
             for rx, color in OUTCOME_COLORS]
 
 
-def by_outcome(window=None):
-    """Jobs that ended (in `window`, or since the coordinator started), summed by outcome: success,
-    cancelled, and a failure as failure_<reason class> (timeout, worker, other)."""
-    counter = f"coordinator_jobs_total{{{C}}}"
-    inner = f"sum by (outcome, reason) ({f'increase({counter}[{window}])' if window else counter})"
-    return f'sum by (outcome) (label_replace({inner}, "outcome", "failure_$1", "reason", "(.+)"))'
+def short_outcomes(expr):
+    """`outcome` as the dashboards print it: succeeded, cancelled or failed."""
+    return (f'label_replace(label_replace({expr}, "outcome", "succeeded", "outcome", "success"), '
+            f'"outcome", "failed", "outcome", "failure")')
+
+
+def by_outcome(window, reasons=False):
+    """Jobs that ended in `window`, summed by outcome: succeeded, cancelled and failed, or with `reasons`
+    each failure as "failed: <reason class>" (timeout, worker, other)."""
+    counter = f"increase(coordinator_jobs_total{{{C}}}[{window}])"
+    if not reasons:
+        return short_outcomes(f"sum by (outcome) ({counter})")
+    inner = short_outcomes(f"sum by (outcome, reason) ({counter})")
+    return f'sum by (outcome) (label_replace({inner}, "outcome", "failed: $1", "reason", "(.+)"))'
 
 
 def resources():
@@ -254,7 +262,7 @@ def recovery():
                "After the last worker start", decimals=1), 6, 5)
     l.add(stat("Worker start → Ready", [(f'{s},milestone="ready"}}', "worker {{worker_id}}")], "s",
                "After the last worker start: registration plus its first program set up", decimals=1), 6, 5)
-    p = timeseries("Job outcomes (per 5 min)", [(by_outcome("5m"), "{{outcome}}")], bars=True)
+    p = timeseries("Job outcomes (per 5 min)", [(by_outcome("5m", reasons=True), "{{outcome}}")], bars=True)
     p["fieldConfig"]["overrides"] = outcome_overrides()
     l.add(p, 12, 5)
     l.row("Cancellations")
@@ -278,8 +286,8 @@ def proofs():
     l = Layout()
     identity_row(l, "Jobs since the coordinator started")
     jobs = f"coordinator_jobs_total{{{C}"
-    l.add(stat("Proofs ok", [(f'sum({jobs},kind="prove",outcome="success"}}) or vector(0)', "proofs")]), 4, 4)
-    l.add(stat("Executions ok", [(f'sum({jobs},kind="execute",outcome="success"}}) or vector(0)', "executions")]), 4, 4)
+    l.add(stat("Proofs succeeded", [(f'sum({jobs},kind="prove",outcome="success"}}) or vector(0)', "proofs")]), 4, 4)
+    l.add(stat("Executions succeeded", [(f'sum({jobs},kind="execute",outcome="success"}}) or vector(0)', "executions")]), 4, 4)
     p = stat("Cancelled", [(f'sum({jobs},outcome="cancelled"}}) or vector(0)', "cancelled")])
     p["fieldConfig"]["defaults"]["thresholds"]["steps"] = [{"color": NO_VALUE_COLOR, "value": None},
                                                           {"color": "dark-blue", "value": ANY_VALUE}]
@@ -477,8 +485,10 @@ def live():
     p["options"]["colorMode"] = "background"
     p["options"]["graphMode"] = "none"
     l.add(p, 4, 4)
-    p = stat("Jobs in the selected range", [(f"round({by_outcome('$__range')})", "{{outcome}}")],
-             desc="Jobs that ended in the dashboard's time range, by outcome")
+    # One query each, so that they read succeeded, cancelled, failed rather than in the label's order.
+    ended = [(f'round(sum(increase(coordinator_jobs_total{{{C},outcome="{outcome}"}}[$__range])) or vector(0))', name)
+             for outcome, name in (("success", "succeeded"), ("cancelled", "cancelled"), ("failure", "failed"))]
+    p = stat("Jobs in the selected range", ended, desc="Jobs that ended in the dashboard's time range, by outcome")
     p["options"]["colorMode"] = "value"
     p["fieldConfig"]["overrides"] = outcome_overrides()
     l.add(p, 6, 4)
@@ -650,7 +660,8 @@ def job_annotations():
     return [
         ann("Worker restarted", f"sum({rose(fresh_registrations)})", "purple", "worker restarted"),
         ann("Job cancelled", f"sum({rose(cancelled)})", "dark-blue", "job cancelled"),
-        ann("Job failed", f'label_replace({failed}, "outcome", "failure_$1", "reason", "(.*)")', "red", "job {{outcome}}")]
+        ann("Job failed", f'label_replace(label_replace({failed}, "outcome", "failed", "", ""), "outcome", "failed: $1", "reason", "(.+)")',
+            "red", "job {{outcome}}")]
 
 
 # The proof-time histogram's bins. Prometheus records each proof's bin as it ends (`proof_time_rules`)

@@ -2574,7 +2574,7 @@
     },
     "enable": true,
     "hide": true,
-    "expr": "label_replace(sum by (reason) (((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m] offset $__interval)) > 0)), \"outcome\", \"failure_$1\", \"reason\", \"(.*)\")",
+    "expr": "label_replace(label_replace(sum by (reason) (((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m] offset $__interval)) > 0)), \"outcome\", \"failed\", \"\", \"\"), \"outcome\", \"failed: $1\", \"reason\", \"(.+)\")",
     "iconColor": "red",
     "step": "2s",
     "titleFormat": "job {{outcome}}",

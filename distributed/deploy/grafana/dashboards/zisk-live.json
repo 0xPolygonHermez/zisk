@@ -916,8 +916,30 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "round(sum by (outcome) (label_replace(sum by (outcome, reason) (increase(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\"}[$__range])), \"outcome\", \"failure_$1\", \"reason\", \"(.+)\")))",
-     "legendFormat": "{{outcome}}",
+     "expr": "round(sum(increase(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"success\"}[$__range])) or vector(0))",
+     "legendFormat": "succeeded",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false
+    },
+    {
+     "refId": "B",
+     "expr": "round(sum(increase(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"cancelled\"}[$__range])) or vector(0))",
+     "legendFormat": "cancelled",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "instant": true,
+     "range": false
+    },
+    {
+     "refId": "C",
+     "expr": "round(sum(increase(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[$__range])) or vector(0))",
+     "legendFormat": "failed",
      "datasource": {
       "type": "prometheus",
       "uid": "prometheus"
@@ -947,7 +969,7 @@
      {
       "matcher": {
        "id": "byRegexp",
-       "options": ".*(success|finished|done).*"
+       "options": "^succeeded$|.*(success|finished|done).*"
       },
       "properties": [
        {
@@ -2529,7 +2551,7 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "round(sum by (outcome) (label_replace(sum by (outcome, reason) (increase(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\"}[1m])), \"outcome\", \"failure_$1\", \"reason\", \"(.+)\")))",
+     "expr": "round(label_replace(label_replace(sum by (outcome) (increase(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\"}[1m])), \"outcome\", \"succeeded\", \"outcome\", \"success\"), \"outcome\", \"failed\", \"outcome\", \"failure\"))",
      "legendFormat": "{{outcome}}",
      "datasource": {
       "type": "prometheus",
@@ -2556,7 +2578,7 @@
      {
       "matcher": {
        "id": "byRegexp",
-       "options": ".*(success|finished|done).*"
+       "options": "^succeeded$|.*(success|finished|done).*"
       },
       "properties": [
        {
@@ -3643,7 +3665,7 @@
     },
     "enable": true,
     "hide": true,
-    "expr": "label_replace(sum by (reason) (((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m] offset $__interval)) > 0)), \"outcome\", \"failure_$1\", \"reason\", \"(.*)\")",
+    "expr": "label_replace(label_replace(sum by (reason) (((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m] offset $__interval)) > 0)), \"outcome\", \"failed\", \"\", \"\"), \"outcome\", \"failed: $1\", \"reason\", \"(.+)\")",
     "iconColor": "red",
     "step": "2s",
     "titleFormat": "job {{outcome}}",
