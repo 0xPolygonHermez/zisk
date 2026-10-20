@@ -20,16 +20,15 @@ attribute [local instance] Lean.Grind.Semiring.natCast Lean.Grind.Ring.intCast
 
 /-- An instruction the register-aware pilot covers: the six modeled ops,
 immediate, `c` or register sources, no store or a register store, register
-indices `x1`–`x31` written as such, `set_pc` on internal ops with a short
-offset, not the end. -/
+indices `x1`–`x31` written as such, `set_pc` with a short offset, on any op,
+not the end. -/
 structure RegPilot (inst : zisk_inst) : Prop where
   a : ASrcOk inst
   b : BSrcOk inst
   store : StoreOk inst
   op : inst.op = .ZOP_COPYB () ∨ inst.op = .ZOP_FLAG () ∨ inst.op = .ZOP_ADD () ∨
     inst.op = .ZOP_LTU () ∨ inst.op = .ZOP_EQ () ∨ inst.op = .ZOP_AND ()
-  set_pc : inst.set_pc = true →
-    (inst.op = .ZOP_COPYB () ∨ inst.op = .ZOP_FLAG ()) ∧ ShortJump inst.jmp_off1
+  set_pc : inst.set_pc = true → ShortJump inst.jmp_off1
   is_end : inst.is_end = false
   a_idx : inst.a_src = .A_REG → inst.a_imm.toNat < 32
   b_idx : inst.b_src = .B_REG → inst.b_imm.toNat < 32
@@ -125,7 +124,7 @@ theorem step_gen (prog : BitVec 64 → Option zisk_inst) (hprog : RegProg prog)
     · exact ext_cols inst (.inr (.inr (.inr h))) hl4 ps hops hpr hslot hA hB
   obtain ⟨hc0, hc1, hf⟩ := hcf
   -- The next pc.
-  obtain ⟨hnp, hnp32⟩ := lane_npc hlane hslot hc0 hc1 hf (fun h => (hpil.set_pc h).2)
+  obtain ⟨hnp, hnp32⟩ := lane_npc hlane hslot hc0 hc1 hf hpil.set_pc
     (fun _ => ⟨hl1, hl2⟩) hq
   -- The model.
   have hop : inst.op ≠ .ZOP_HALT () := by

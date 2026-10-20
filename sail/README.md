@@ -165,6 +165,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/RegRun.lean` | Main's register chain at a lane's memory steps: reads keep the value, a store sets it (`lane_read`, `store_set`, `store_none`). |
 | `lean/Proofs/RegStep.lean` | The model's register file through one lane's step: sources read it, the store updates it (`reg_srcs`, `reg_update`). |
 | `lean/Proofs/RegBoot.lean` | A run from boot with the register file: after `n` steps the model's registers are Main's register chain's (`run_from_boot_mem`). |
+| `lean/Proofs/MemSort.lean` | Sorted memory checking, in the abstract: along a log sorted by address and step, every read returns the latest write (`MemSort.reads_last_write`). |
 | `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
@@ -350,11 +351,11 @@ make proofs
 ```
 
 ```
-✔ [101/102] Built Proofs
+✔ [102/103] Built Proofs
 Build completed successfully.
 ```
 
-About 130 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, the program's end, the registers' memory checking, and the runs with registers, to the end.
+About 130 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, the program's end, the registers' memory checking, the runs with registers, to the end, and sorted memory checking.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -443,7 +444,8 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
 
 - **The correspondence is a pilot.** Six opcodes; immediate, `c` or register
   sources, and no store or a register store, with no memory or indirect
-  access; `set_pc` only on internal ops with a short `jmp_off1`. The rest is steps 4 to 6 of
+  access; `set_pc` only with a short `jmp_off1`, and in the runs without
+  registers only on internal ops. The rest is steps 4 to 6 of
   [Next steps](#next-steps).
 - **Bus arguments are assumed sound, not derived.** The ROM lookup's guarantee
   (`LookupHolds`) and the ROM's contents (`RomHolds`) are hypotheses; the gsum
@@ -1014,7 +1016,10 @@ range far below the characteristic, so the field equation
 `q = c₀ + jmp_offset1` is an equation between integers. `step_core` takes the
 next pc column's bound as a hypothesis and handles both kinds of step, so the
 runs, from boot to the end, now cover programs whose internal ops set the pc.
-`set_pc` on an external op is not covered yet.
+The runs with registers (`RegPilot`) allow `set_pc` on any op: the next pc
+depends only on the lane's `c` and flag (`lane_npc`), which for an external op
+the operation bus supplies, and Main's constraints force `flag = 0` and
+`c < 2^32` whatever the op.
 
 ## The program's end
 
@@ -1210,6 +1215,36 @@ Standard three axioms. What the runs with registers assume, besides
 `run_from_boot`'s: the memory bus's soundness and its global register updates,
 the range checks of the gaps, `SEGMENT_STEP`, that the segments are the memory
 bus's Main instances, and the register-aware pilot's scope.
+
+## Memory: sorted checking
+
+Memory is checked differently from registers. Main assumes each load and
+store on the memory bus, `(1 or 2, addr, step, width, v₀, v₁)`, and the Mem
+AIR proves them from a log sorted by address, then by step, continued across
+its segments by its own continuation bus. ZisK instantiates it three times —
+the RAM (mutable, with dual reads, four lanes a row), `InputData` (free
+input) and `RomData` (written once) — and `MemAlign` turns narrow or
+unaligned accesses into aligned ones.
+
+[`lean/Proofs/MemSort.lean`](lean/Proofs/MemSort.lean) proves what the
+sorted log buys, in the abstract. A lane holds an access and possibly a dual
+read of the same address and value at a later step. Against the lane before
+it, a lane either keeps the address — its step no lower than that lane's
+last, strictly higher for a write, a read returning the previous value — or
+moves to a higher address, where a read returns the initial value. Then every
+read the log emits returns the latest write to its address at or before its
+step, or the initial value (`MemSort.reads_last_write`). The proof walks the
+log lane by lane, keeping three facts: every access so far is at or below the
+last lane's address and, at it, at or below its last step; the last lane's
+value is its address's current one; and every read so far returns the latest
+write.
+
+Still to come: the RAM's constraints as such a log — its steps and addresses
+as integers, accumulated from range-checked increments starting from the
+continuation chain's values, so the field's relations are integer ones; the
+memory bus's census for loads and stores, as `MemBus.lean` did for register
+tuples; `MemAlign`; and Main's memory sources and stores against the model's
+byte-addressed `read_mem` and `write_mem`.
 
 ## The operation bus's provers
 
