@@ -1193,8 +1193,8 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
             ProofBody::Vadcop { proof, kind, publics_full, .. } => {
                 (proof.as_slice(), *kind, publics_full)
             }
-            ProofBody::Plonk { .. } => {
-                return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
+            ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => {
+                return Err(anyhow::anyhow!("Cannot wrap a SNARK proof"));
             }
         };
         self.prover.wrap_proof(

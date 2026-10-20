@@ -1,5 +1,5 @@
 use crate::error::{CommonError, Result};
-use proofman::{verify_snark_proof, SnarkProof, SnarkProtocol};
+use proofman::{verify_snark_proof, verify_snark_proof_with_vkey, SnarkProof, SnarkProtocol};
 use proofman_verifier::VadcopFinalProof;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -38,6 +38,7 @@ fn ensure_stored_publics(body: &ProofBody) -> Result<()> {
     let (publics_full, flagged_ok) = match body {
         ProofBody::Vadcop { publics_full, .. } => (publics_full.as_slice(), false),
         ProofBody::Plonk { publics_full, .. } => (publics_full.as_slice(), true),
+        ProofBody::Pilfflonk { publics_full, .. } => (publics_full.as_slice(), false),
     };
     let ok = publics_full.len() == flag_free
         || (flagged_ok && publics_full.len() == VADCOP_FINAL_FLAG_LEN + flag_free);
@@ -708,6 +709,22 @@ pub enum ProofBody {
         /// aggregated one. Not derivable from `publics_full` (see `Proof::verify`).
         rootc: Vec<u64>,
     },
+    /// A pilfflonk SNARK proof. It is the final SNARK of a blake3 key, and is also set up for the
+    /// poseidon families with `--final-snark pilfflonk`. Appended after `Plonk`: bincode records
+    /// the variant by position, so files of the other variants decode as before.
+    Pilfflonk {
+        /// Serialized proof bytes.
+        proof_bytes: Vec<u8>,
+        /// The `pilfflonk.vkey.json` the proof verifies under, as its JSON. Unlike a PLONK vkey it
+        /// has no fixed fields to deserialize into, and the verifier reads it as a file.
+        vkey_json: String,
+        /// u32 view of the publics.
+        publics: PublicValues,
+        /// Full-width publics; the snark's public digest is computed over these.
+        publics_full: Vec<u64>,
+        /// The stamped `rootCVadcopFinal` committed into the digest, as in `Plonk`.
+        rootc: Vec<u64>,
+    },
 }
 
 impl Default for ProofBody {
@@ -768,6 +785,7 @@ pub struct ZiskVerifyBuilder<'a> {
     override_publics: Option<&'a PublicValues>,
     override_program_vk: Option<&'a ProgramVK>,
     trusted_plonk_vk: Option<&'a PlonkVkey>,
+    trusted_pilfflonk_vkey: Option<&'a str>,
     trusted_setup_vk: Option<&'a [u64]>,
 }
 
@@ -778,6 +796,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
             override_publics: None,
             override_program_vk: None,
             trusted_plonk_vk: None,
+            trusted_pilfflonk_vkey: None,
             trusted_setup_vk: None,
         }
     }
@@ -800,12 +819,57 @@ impl<'a> ZiskVerifyBuilder<'a> {
         self
     }
 
+    /// Optional trusted pilfflonk key, the JSON of its `pilfflonk.vkey.json`; if unset, the proof's
+    /// embedded key is used.
+    pub fn with_pilfflonk_vkey(mut self, vkey_json: &'a str) -> Self {
+        self.trusted_pilfflonk_vkey = Some(vkey_json);
+        self
+    }
+
     /// Optional trusted recursion setup key (4 u64 limbs: `vadcop_final` verkey for
     /// a plain proof, recurser verkey for an aggregated one); if unset, the proof's
     /// embedded value is used.
     pub fn with_setup_vk(mut self, setup_vk: &'a [u64]) -> Self {
         self.trusted_setup_vk = Some(setup_vk);
         self
+    }
+
+    /// The public digest a SNARK body must carry: of the committed publics (with any override
+    /// applied) and the root, the caller's if pinned, else the proof's.
+    fn snark_statement(
+        &self,
+        publics_full: &[u64],
+        rootc: &[u64],
+        publics: &PublicValues,
+    ) -> Result<Vec<u8>> {
+        let rootc = self.trusted_setup_vk.unwrap_or(rootc);
+        if rootc.len() != PROGRAM_VK_LEN {
+            return Err(CommonError::InvalidProof(format!(
+                "setup vk (`rootc`) must have exactly {PROGRAM_VK_LEN} u64 limbs, got {}",
+                rootc.len()
+            )));
+        }
+
+        // Statement to verify: the committed publics with any override applied.
+        // Only an explicit publics override takes the u32-lossy `[vk | inputs]`
+        // rebuild. snarkjs uses only these bytes; `public_bytes` is unused.
+        Ok(match (self.override_publics, self.override_program_vk) {
+            (None, None) => snark_publics_hash(publics_full, rootc),
+            (None, Some(pv)) => {
+                snark_publics_hash(&splice_program_vk(publics_full, &pv.vk)?, rootc)
+            }
+            (Some(_), _) => {
+                // Committed vk unless overridden — never the stored copy.
+                let committed = program_publics(publics_full);
+                let vk_limbs: &[u64] = match self.override_program_vk {
+                    Some(pv) => &pv.vk,
+                    None => &committed[..PROGRAM_VK_LEN],
+                };
+                let mut pf = vk_limbs.to_vec();
+                pf.extend(publics.public_u64());
+                snark_publics_hash(&pf, rootc)
+            }
+        })
     }
 
     /// Verify the proof using the configured parameters.
@@ -868,34 +932,13 @@ impl<'a> ZiskVerifyBuilder<'a> {
             ProofBody::Plonk { proof_bytes, plonk_vk, publics_full, rootc, .. } => {
                 // Caller-provided keys if given, else the proof's own.
                 let plonk_vkey = self.trusted_plonk_vk.unwrap_or(&plonk_vk.plonk_vkey);
-                let rootc = self.trusted_setup_vk.unwrap_or(rootc.as_slice());
-                if rootc.len() != PROGRAM_VK_LEN {
-                    return Err(CommonError::InvalidProof(format!(
-                        "setup vk (`rootc`) must have exactly {PROGRAM_VK_LEN} u64 limbs, got {}",
-                        rootc.len()
-                    )));
+                if self.trusted_pilfflonk_vkey.is_some() {
+                    return Err(CommonError::InvalidProof(
+                        "a pilfflonk verification key was pinned (with_pilfflonk_vkey) for a PLONK proof"
+                            .to_string(),
+                    ));
                 }
-
-                // Statement to verify: the committed publics with any override applied.
-                // Only an explicit publics override takes the u32-lossy `[vk | inputs]`
-                // rebuild. snarkjs uses only these bytes; `public_bytes` is unused.
-                let public_snark_bytes = match (self.override_publics, self.override_program_vk) {
-                    (None, None) => snark_publics_hash(publics_full, rootc),
-                    (None, Some(pv)) => {
-                        snark_publics_hash(&splice_program_vk(publics_full, &pv.vk)?, rootc)
-                    }
-                    (Some(_), _) => {
-                        // Committed vk unless overridden — never the stored copy.
-                        let committed = program_publics(publics_full);
-                        let vk_limbs: &[u64] = match self.override_program_vk {
-                            Some(pv) => &pv.vk,
-                            None => &committed[..PROGRAM_VK_LEN],
-                        };
-                        let mut pf = vk_limbs.to_vec();
-                        pf.extend(publics.public_u64());
-                        snark_publics_hash(&pf, rootc)
-                    }
-                };
+                let public_snark_bytes = self.snark_statement(publics_full, rootc, publics)?;
 
                 let snark_proof = SnarkProof {
                     proof_bytes: proof_bytes.clone(),
@@ -941,6 +984,32 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 })?;
                 Ok(())
             }
+            ProofBody::Pilfflonk { proof_bytes, vkey_json, publics_full, rootc, .. } => {
+                if self.trusted_plonk_vk.is_some() {
+                    return Err(CommonError::InvalidProof(
+                        "a PLONK verification key was pinned (with_plonk_vk) for a pilfflonk proof"
+                            .to_string(),
+                    ));
+                }
+                // Caller-provided key if given, else the proof's own.
+                let vkey_json = self.trusted_pilfflonk_vkey.unwrap_or(vkey_json.as_str());
+                let public_snark_bytes = self.snark_statement(publics_full, rootc, publics)?;
+
+                let snark_proof = SnarkProof {
+                    proof_bytes: proof_bytes.clone(),
+                    public_bytes: Vec::new(),
+                    public_snark_bytes: public_snark_bytes.clone(),
+                    protocol_id: SnarkProtocol::Pilfflonk.protocol_id(),
+                };
+
+                // The digest was rebuilt here from the publics and the root, not read from the
+                // proof, so it is the pinned statement.
+                verify_snark_proof_with_vkey(&snark_proof, vkey_json, Some(&public_snark_bytes))
+                    .map_err(|e| {
+                        CommonError::Invalid(format!("snark proof verification failed: {e}"))
+                    })?;
+                Ok(())
+            }
             ProofBody::Vadcop { proof, zisk_vk, kind, hash, publics_full } => {
                 let kind = *kind;
 
@@ -949,6 +1018,13 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 if self.trusted_plonk_vk.is_some() {
                     return Err(CommonError::InvalidProof(
                         "a PLONK verification key was pinned (with_plonk_vk) for a non-PLONK proof"
+                            .to_string(),
+                    ));
+                }
+                if self.trusted_pilfflonk_vkey.is_some() {
+                    return Err(CommonError::InvalidProof(
+                        "a pilfflonk verification key was pinned (with_pilfflonk_vkey) for a \
+                         non-pilfflonk proof"
                             .to_string(),
                     ));
                 }
@@ -1123,7 +1199,7 @@ impl Proof {
     pub fn publics_full(&self) -> Option<&[u64]> {
         match &self.body {
             ProofBody::Vadcop { publics_full, .. } => Some(publics_full),
-            ProofBody::Plonk { .. } => None,
+            ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => None,
         }
     }
 
@@ -1132,7 +1208,7 @@ impl Proof {
         match &self.body {
             ProofBody::Vadcop { kind: VadcopKind::Minimal, .. } => ProofKind::VadcopFinalMinimal,
             ProofBody::Vadcop { .. } => ProofKind::VadcopFinal,
-            ProofBody::Plonk { .. } => ProofKind::Plonk,
+            ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => ProofKind::Plonk,
         }
     }
 
@@ -1140,7 +1216,9 @@ impl Proof {
     pub fn is_empty(&self) -> bool {
         match &self.body {
             ProofBody::Vadcop { proof, .. } => proof.is_empty(),
-            ProofBody::Plonk { proof_bytes, .. } => proof_bytes.is_empty(),
+            ProofBody::Plonk { proof_bytes, .. } | ProofBody::Pilfflonk { proof_bytes, .. } => {
+                proof_bytes.is_empty()
+            }
         }
     }
 
@@ -1228,9 +1306,9 @@ impl Proof {
     /// the single source of truth the getters and verification derive from.
     fn committed_publics(&self) -> &[u64] {
         match &self.body {
-            ProofBody::Vadcop { publics_full, .. } | ProofBody::Plonk { publics_full, .. } => {
-                publics_full
-            }
+            ProofBody::Vadcop { publics_full, .. }
+            | ProofBody::Plonk { publics_full, .. }
+            | ProofBody::Pilfflonk { publics_full, .. } => publics_full,
         }
     }
 
@@ -1259,7 +1337,7 @@ impl Proof {
                     hash.clone(),
                 ))
             }
-            ProofBody::Plonk { .. } => {
+            ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => {
                 Err(CommonError::InvalidProof("Proof is not a Vadcop final proof".to_string()))
             }
         }
@@ -1344,7 +1422,7 @@ impl Proof {
 
                 Ok(words)
             }
-            ProofBody::Plonk { .. } => Err(CommonError::InvalidProof(
+            ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => Err(CommonError::InvalidProof(
                 "Proof not suitable for get_proof_u64. Only VadcopFinal and VadcopFinalMinimal proofs are supported.".to_string()
             )),
         }
@@ -1562,6 +1640,12 @@ impl Proof {
     /// [`ZiskVerifyBuilder::with_plonk_vk`].
     pub fn with_plonk_vk<'a>(&'a self, plonk_vkey: &'a PlonkVkey) -> ZiskVerifyBuilder<'a> {
         ZiskVerifyBuilder::new(self).with_plonk_vk(plonk_vkey)
+    }
+
+    /// Start a custom verification with the trusted pilfflonk key (the JSON of its
+    /// `pilfflonk.vkey.json`). See [`ZiskVerifyBuilder::with_pilfflonk_vkey`].
+    pub fn with_pilfflonk_vkey<'a>(&'a self, vkey_json: &'a str) -> ZiskVerifyBuilder<'a> {
+        ZiskVerifyBuilder::new(self).with_pilfflonk_vkey(vkey_json)
     }
 
     /// Start a custom verification with the trusted recursion setup key. See
@@ -2003,9 +2087,83 @@ mod tests {
                 assert_eq!(kind, VadcopKind::Minimal);
                 assert_eq!(hash, "Poseidon2");
             }
-            ProofBody::Plonk { .. } => panic!("expected Vadcop body after roundtrip"),
+            ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => {
+                panic!("expected Vadcop body after roundtrip")
+            }
         }
         assert_eq!(loaded.program_vk.vk, vec![7, 8, 9, 10]);
+    }
+
+    fn pilfflonk_proof() -> Proof {
+        Proof::new(
+            ProofBody::Pilfflonk {
+                proof_bytes: vec![5, 6, 7],
+                vkey_json: "{\"protocol\":\"pilfflonk\"}".to_string(),
+                publics: PublicValues::new_empty(),
+                publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
+                rootc: vec![0u64; PROGRAM_VK_LEN],
+            },
+            ProgramVK::new_empty(),
+        )
+    }
+
+    /// A pilfflonk body is a SNARK proof: it takes the `Plonk` kind, and its bytes and key
+    /// survive a save and a load.
+    #[test]
+    fn pilfflonk_proof_is_a_snark_kind_and_roundtrips() {
+        let tmp =
+            std::env::temp_dir().join(format!("pilfflonk_roundtrip_{}.bin", std::process::id()));
+        let original = pilfflonk_proof();
+        assert_eq!(original.kind(), ProofKind::Plonk);
+        assert!(!original.is_empty());
+
+        original.save(&tmp).unwrap();
+        let loaded = Proof::load(&tmp).unwrap();
+        std::fs::remove_file(&tmp).ok();
+
+        match loaded.body {
+            ProofBody::Pilfflonk { proof_bytes, vkey_json, .. } => {
+                assert_eq!(proof_bytes, vec![5, 6, 7]);
+                assert_eq!(vkey_json, "{\"protocol\":\"pilfflonk\"}");
+            }
+            other => panic!("expected a Pilfflonk body after roundtrip, got {other:?}"),
+        }
+    }
+
+    /// The pins are per protocol: a key of one is refused on a proof of another, rather than
+    /// ignored as if the pin had applied.
+    #[test]
+    fn verify_rejects_a_pin_of_the_wrong_protocol() {
+        let vkey = dummy_plonk_vkey();
+        let err = pilfflonk_proof().with_plonk_vk(&vkey).verify().unwrap_err();
+        assert!(err.to_string().contains("PLONK verification key was pinned"), "got: {err}");
+
+        let vadcop = vadcop_proof(VadcopKind::Final, flag_free_publics([1, 2, 3, 4]));
+        let err = vadcop.with_pilfflonk_vkey("{}").verify().unwrap_err();
+        assert!(err.to_string().contains("pilfflonk verification key was pinned"), "got: {err}");
+
+        let plonk = Proof::new(
+            ProofBody::Plonk {
+                proof_bytes: vec![],
+                plonk_vk: Box::new(PlonkVkBlob {
+                    vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
+                    plonk_vkey: dummy_plonk_vkey(),
+                }),
+                publics: PublicValues::new_empty(),
+                publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
+                rootc: vec![0u64; PROGRAM_VK_LEN],
+            },
+            ProgramVK::new_empty(),
+        );
+        let err = plonk.with_pilfflonk_vkey("{}").verify().unwrap_err();
+        assert!(err.to_string().contains("pilfflonk verification key was pinned"), "got: {err}");
+    }
+
+    /// As for PLONK, a wrong-length root is an error and not a slicing panic.
+    #[test]
+    fn pilfflonk_verify_rejects_wrong_len_setup_vk() {
+        let err = pilfflonk_proof().with_setup_vk(&[1u64, 2, 3]).verify().unwrap_err();
+        assert!(matches!(err, CommonError::InvalidProof(_)), "got {err:?}");
     }
 
     fn test_seed() -> RandomSeed {
