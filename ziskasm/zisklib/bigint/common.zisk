@@ -57,119 +57,51 @@ u64 BI_TMP[132] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 
 ; (usize,usize) zisklib_bigint_div(const u64* a, u64 lena, const u64* b, u64 lenb, u64* quo, u64* rem)
 ;   hint quotient+remainder via FCALL_BIGINT_DIV. r10=len_quo, r11=len_rem (u64 counts).
+;   lena and lenb are whole U256 digits (multiples of 4), so the operands go 4 words
+;   per fcall_param. The loop state is in registers (r16 pointer, r17 end).
 zisklib_bigint_div:
-	push r1
-	copyb(0, BI_APTR) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, BI_LEN) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, BI_BPTR) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	copyb(0, BI_LENB) -> r5
-	copyb(r5, r13) -> 8[a + 0]
-	copyb(0, BI_QUOP) -> r5
-	copyb(r5, r14) -> 8[a + 0]
-	copyb(0, BI_REMP) -> r5
-	copyb(r5, r15) -> 8[a + 0]
-	fcall_param(1, r11) -> r14
-	copyb(0, BI_J) -> r5
-	copyb(r5, 0) -> 8[a + 0]
+	fcall_param(1, r11) -> r0
+	sll(r11, 3) -> r17
+	add(r10, r17) -> r17
+	copyb(0, r10) -> r16
 bi_bd_ap:
-	copyb(0, BI_J) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	copyb(0, BI_LEN) -> r5
-	copyb(r5, 8[a + 0]) -> r7
-	eq(r6, r7), j(bi_bd_apd)
-	sll(r6, 3) -> r16
-	copyb(0, BI_APTR) -> r5
-	copyb(r5, 8[a + 0]) -> r17
-	add(r17, r16) -> r17
-	copyb(r17, 8[a + 0]) -> r17
-	fcall_param(1, r17) -> r14
-	copyb(0, BI_J) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	add(r6, 1) -> r6
-	copyb(r5, r6) -> 8[a + 0]
-	jump(bi_bd_ap)
-bi_bd_apd:
-	copyb(0, BI_LENB) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	fcall_param(1, r6) -> r14
-	copyb(0, BI_J) -> r5
-	copyb(r5, 0) -> 8[a + 0]
+	fcall_param(4, r16) -> r0
+	add(r16, 32) -> r16
+	ltu(r16, r17), j(bi_bd_ap)
+	fcall_param(1, r13) -> r0
+	sll(r13, 3) -> r17
+	add(r12, r17) -> r17
+	copyb(0, r12) -> r16
 bi_bd_bp:
-	copyb(0, BI_J) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	copyb(0, BI_LENB) -> r5
-	copyb(r5, 8[a + 0]) -> r7
-	eq(r6, r7), j(bi_bd_bpd)
-	sll(r6, 3) -> r16
-	copyb(0, BI_BPTR) -> r5
-	copyb(r5, 8[a + 0]) -> r17
-	add(r17, r16) -> r17
-	copyb(r17, 8[a + 0]) -> r17
-	fcall_param(1, r17) -> r14
-	copyb(0, BI_J) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	add(r6, 1) -> r6
-	copyb(r5, r6) -> 8[a + 0]
-	jump(bi_bd_bp)
-bi_bd_bpd:
-	fcall(FCALL_BIGINT_DIV, 0) -> r14
-	copyb(0, [FREE_INPUT]) -> r6
-	copyb(0, BI_LENQ) -> r5
-	copyb(r5, r6) -> 8[a + 0]
-	copyb(0, BI_J) -> r5
-	copyb(r5, 0) -> 8[a + 0]
+	fcall_param(4, r16) -> r0
+	add(r16, 32) -> r16
+	ltu(r16, r17), j(bi_bd_bp)
+	fcall(FCALL_BIGINT_DIV, 0) -> r0
+	copyb(0, [FREE_INPUT]) -> r10
+	sll(r10, 3) -> r17
+	add(r14, r17) -> r17
+	copyb(0, r14) -> r16
+	eq(r16, r17), j(bi_bd_rqd)
 bi_bd_rq:
-	copyb(0, BI_J) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	copyb(0, BI_LENQ) -> r5
-	copyb(r5, 8[a + 0]) -> r7
-	eq(r6, r7), j(bi_bd_rqd)
-	fcall_get(0, 0) -> r14
-	copyb(0, [FREE_INPUT]) -> r17
-	sll(r6, 3) -> r16
-	copyb(0, BI_QUOP) -> r5
-	copyb(r5, 8[a + 0]) -> r14
-	add(r14, r16) -> r14
-	copyb(r14, r17) -> 8[a + 0]
-	copyb(0, BI_J) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	add(r6, 1) -> r6
-	copyb(r5, r6) -> 8[a + 0]
-	jump(bi_bd_rq)
-bi_bd_rqd:
-	fcall_get(0, 0) -> r14
+	fcall_get(0, 0) -> r0
 	copyb(0, [FREE_INPUT]) -> r6
-	copyb(0, BI_LENR) -> r5
-	copyb(r5, r6) -> 8[a + 0]
-	copyb(0, BI_J) -> r5
-	copyb(r5, 0) -> 8[a + 0]
+	copyb(r16, r6) -> 8[a + 0]
+	add(r16, 8) -> r16
+	ltu(r16, r17), j(bi_bd_rq)
+bi_bd_rqd:
+	fcall_get(0, 0) -> r0
+	copyb(0, [FREE_INPUT]) -> r11
+	sll(r11, 3) -> r17
+	add(r15, r17) -> r17
+	copyb(0, r15) -> r16
+	eq(r16, r17), j(bi_bd_rrd)
 bi_bd_rr:
-	copyb(0, BI_J) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	copyb(0, BI_LENR) -> r5
-	copyb(r5, 8[a + 0]) -> r7
-	eq(r6, r7), j(bi_bd_rrd)
-	fcall_get(0, 0) -> r14
-	copyb(0, [FREE_INPUT]) -> r17
-	sll(r6, 3) -> r16
-	copyb(0, BI_REMP) -> r5
-	copyb(r5, 8[a + 0]) -> r14
-	add(r14, r16) -> r14
-	copyb(r14, r17) -> 8[a + 0]
-	copyb(0, BI_J) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	add(r6, 1) -> r6
-	copyb(r5, r6) -> 8[a + 0]
-	jump(bi_bd_rr)
+	fcall_get(0, 0) -> r0
+	copyb(0, [FREE_INPUT]) -> r6
+	copyb(r16, r6) -> 8[a + 0]
+	add(r16, 8) -> r16
+	ltu(r16, r17), j(bi_bd_rr)
 bi_bd_rrd:
-	copyb(0, BI_LENQ) -> r5
-	copyb(r5, 8[a + 0]) -> r10
-	copyb(0, BI_LENR) -> r5
-	copyb(r5, 8[a + 0]) -> r11
-	pop r1
 	ret
 
 u64 BI_RL_A[1] = 0
