@@ -540,7 +540,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 .map_err(release_on_error)?;
             let mut release_deferred = false;
             if let Some(device_witness) = mem_artifacts.device_witness.as_ref() {
-                let owned = owned_mem_instances(registry, &plans, &ids).map_err(release_on_error)?;
+                let owned =
+                    owned_mem_instances(registry, &plans, &ids).map_err(release_on_error)?;
                 let d_buffers = proofman_extras
                     .map(|extras| extras.pctx().get_device_buffers_ptr())
                     .unwrap_or(std::ptr::null_mut());

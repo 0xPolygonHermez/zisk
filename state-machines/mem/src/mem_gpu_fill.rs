@@ -37,7 +37,10 @@ pub(crate) fn check_scalars(
     num_slots: usize,
 ) -> Result<(), String> {
     if res.n_lanes == 0 || res.n_lanes as usize > num_slots {
-        return Err(format!("the device reports {} lanes for an instance of {num_slots}", res.n_lanes));
+        return Err(format!(
+            "the device reports {} lanes for an instance of {num_slots}",
+            res.n_lanes
+        ));
     }
     if res.prev_addr_w > res.last_addr_w {
         return Err(format!(

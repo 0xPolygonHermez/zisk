@@ -478,8 +478,8 @@ fn a_failed_device_fill_hands_the_buffer_back() {
 #[test]
 fn impossible_device_scalars_are_an_error() {
     use crate::mem_gpu_fill::{check_scalars, mem_report};
-    use zisk_sm_mem_planner::MemFillResult;
     use zisk_sm_mem_common::{RAM_W_ADDR_END, RAM_W_ADDR_INIT};
+    use zisk_sm_mem_planner::MemFillResult;
     let n_rows = MemTrace::<MemTraceRowPacked<Goldilocks>>::NUM_ROWS;
     let num_slots = n_rows * lanes_x_row();
     let good = MemFillResult {
@@ -499,7 +499,8 @@ fn impossible_device_scalars_are_an_error() {
     let none = MemFillResult { n_lanes: 0, ..good };
     assert!(check_scalars(&none, num_slots).is_err(), "an instance without lanes");
 
-    let backwards = MemFillResult { prev_addr_w: RAM_W_ADDR_END, last_addr_w: RAM_W_ADDR_INIT, ..good };
+    let backwards =
+        MemFillResult { prev_addr_w: RAM_W_ADDR_END, last_addr_w: RAM_W_ADDR_INIT, ..good };
     assert!(check_scalars(&backwards, num_slots).is_err(), "a continuation past the last lane");
     assert!(mem_report(&backwards, n_rows).is_err());
 }

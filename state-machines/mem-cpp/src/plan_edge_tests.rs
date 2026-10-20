@@ -68,13 +68,18 @@ fn cpu_plans(chunks: &[Vec<u64>]) -> Vec<Plan> {
 fn gpu_plans(gpu: &GpuCountAndPlan, chunks: &[Vec<u64>]) -> Option<Vec<Plan>> {
     gpu.reset();
     for c in chunks {
-        assert!(gpu.add_chunk(c.len() as u64, c.as_ptr() as *const c_void), "the planner rejected a chunk");
+        assert!(
+            gpu.add_chunk(c.len() as u64, c.as_ptr() as *const c_void),
+            "the planner rejected a chunk"
+        );
     }
     let metas = gpu.run()?;
     // As the runner does on the device path: no CPU workers are started, the metas are injected.
     let p = MemPlanner::new();
     // SAFETY: `metas` is the planner's array, alive until the next `reset`, which comes after.
-    let ok = unsafe { p.inject_gpu_metas_from_pointers(metas.as_ptr() as *const c_void, metas.len() as u32) };
+    let ok = unsafe {
+        p.inject_gpu_metas_from_pointers(metas.as_ptr() as *const c_void, metas.len() as u32)
+    };
     assert!(ok, "the metas were rejected");
     let mut align = gpu.build_align_plans();
     Some(p.collect_plans(&mut align))
@@ -119,8 +124,11 @@ fn describe(plans: &[Plan], device: bool) -> (Vec<Segment>, Vec<String>) {
                 last_addr: cp.chunks.values().map(|k| k.to_addr).max().unwrap_or(0),
                 accesses: accesses - u64::from(device && segment > 0),
             });
-        } else if let Some(cps) = meta.downcast_ref::<std::collections::HashMap<ChunkId, MemAlignCheckPoint>>() {
-            let chunks: BTreeMap<usize, String> = cps.iter().map(|(c, k)| (c.0, format!("{k:?}"))).collect();
+        } else if let Some(cps) =
+            meta.downcast_ref::<std::collections::HashMap<ChunkId, MemAlignCheckPoint>>()
+        {
+            let chunks: BTreeMap<usize, String> =
+                cps.iter().map(|(c, k)| (c.0, format!("{k:?}"))).collect();
             align.push(format!("align air {} seg {} {chunks:?}", plan.air_id, segment));
         } else {
             align.push(format!("air {} seg {} (opaque meta)", plan.air_id, segment));
@@ -134,7 +142,8 @@ fn describe(plans: &[Plan], device: bool) -> (Vec<Segment>, Vec<String>) {
 fn assert_same_plans(name: &str, chunks: &[Vec<u64>]) {
     let Some(gpu) = planner() else { return };
     let gpu = gpu.lock().unwrap_or_else(|e| e.into_inner());
-    let device = gpu_plans(&gpu, chunks).unwrap_or_else(|| panic!("{name}: the device declined the block"));
+    let device =
+        gpu_plans(&gpu, chunks).unwrap_or_else(|| panic!("{name}: the device declined the block"));
     let host = cpu_plans(chunks);
     let (d, da) = describe(&device, true);
     let (h, ha) = describe(&host, false);
@@ -160,7 +169,8 @@ fn small_chunk(salt: u32) -> Vec<u64> {
 /// every address gap within what an immutable region allows, as the BIOS does.
 #[test]
 fn the_last_word_of_a_region_leaves_the_next_region_prefix_intact() {
-    let input_rows = (zisk_pil::InputDataTrace::<()>::NUM_ROWS * zisk_sm_mem_common::input_data_lanes_x_row()) as u32;
+    let input_rows = (zisk_pil::InputDataTrace::<()>::NUM_ROWS
+        * zisk_sm_mem_common::input_data_lanes_x_row()) as u32;
     let mut c0 = Vec::new();
     for i in 0..input_rows + input_rows / 4 {
         c0.push(read8(INPUT_ADDR + 8 * i));

@@ -502,7 +502,10 @@ impl<F: PrimeField64> InputDataSM<F> {
             rows,
             n_rows as u32,
         )?;
-        crate::mem_gpu_fill::check_scalars(&res, n_rows * zisk_sm_mem_common::input_data_lanes_x_row())?;
+        crate::mem_gpu_fill::check_scalars(
+            &res,
+            n_rows * zisk_sm_mem_common::input_data_lanes_x_row(),
+        )?;
         Ok(Self::from_result(&res, n_rows))
     }
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
