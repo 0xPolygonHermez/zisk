@@ -1451,7 +1451,11 @@ prover sends 8 (`MemBusWorld.load_width`). And the RAM's writes are Main's store
 addresses `8·addr`: each write of the log is one of `mainStores`
 (`MemBusWorld.write_in_stores`), and each of `mainStores` a write of the log
 (`MemBusWorld.store_in_writes`) — a store row's count is 1 and its op 2, its
-register bit being 0, and its width 8, its prover's (`store_width`).
+register bit being 0, and its width 8, its prover's (`store_width`). So a
+read of the RAM's log returns `memVal` of Main's stores at its byte address
+(`MemBusWorld.read_memVal`): the latest write before it, by
+`ram_reads_last_write`, is the latest store — a store's step is never a
+load's, `≡ 3 (mod 4)` — or, if there is none, the initial value, 0.
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'

@@ -366,4 +366,40 @@ theorem MemBusWorld.store_in_writes {M : MainSegs F} {S : MemOthers F} {gp ga : 
   unfold toByte
   rw [hX, natCast_ofNat_lt (F := F) (by unfold goldilocks; omega), hstep, hv]
 
+/-! ### Reads, as `memVal` of Main's stores -/
+
+theorem mainStores_step3 {M : MainSegs F} {w : Emit (F × F)} (hw : w ∈ mainStores M) : w.step % 4 = 3 := by
+  obtain ⟨k, -, m, -, l, -, -, hst, -⟩ := mem_mainStores hw
+  rw [hst]; simp only [memBase]; omega
+
+/-- **A read of the RAM's log returns `memVal` of Main's stores**, at its byte
+address, when its step is not a store's and the address's initial value is
+0. -/
+theorem MemBusWorld.read_memVal {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) (hc : RamChain (W.segs hram))
+    {init : Nat → F × F} {e : Emit (F × F)} (he : e ∈ MemSort.reads (ramLog (W.segs hram)))
+    (hs : e.step % 4 ≠ 3) (hinit : init (8 * e.addr) = (0, 0)) :
+    e.val = memVal init (mainStores M) (8 * e.addr) e.step := by
+  have hnd := mainStores_nodup M
+  rcases ram_reads_last_write hc e he with ⟨w, hw, ha, hle, hv, hmax⟩ | ⟨hv, hnone⟩
+  · -- The latest write, a store of Main's.
+    have hw' := W.write_in_stores hram hw
+    have hlt : w.step < e.step := by
+      have := mainStores_step3 hw'
+      simp only [toByte] at this
+      omega
+    rw [memVal_of_latest hnd (w := toByte w)]
+    · exact hv.symm
+    · refine ⟨hw', by simp [toByte, ha], hlt, fun w'' hw'' ha'' hs'' => ?_⟩
+      obtain ⟨w₀, hw₀, rfl⟩ := W.store_in_writes hram hw''
+      simp only [toByte] at ha'' hs'' ⊢
+      exact hmax w₀ hw₀ (by omega) (by omega)
+  · -- No write before it: the initial value.
+    rw [memVal_of_none, hinit]
+    · exact hv
+    · intro w'' hw'' ha'' hs''
+      obtain ⟨w₀, hw₀, rfl⟩ := W.store_in_writes hram hw''
+      simp only [toByte] at ha'' hs''
+      exact hnone w₀ hw₀ (by omega) (by omega)
+
 end Correspondence
