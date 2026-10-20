@@ -220,10 +220,10 @@ theorem off_nat {v : BitVec 64} (h : v.toNat < 2 ^ 63) : off v = ((v.toNat : Nat
     split at this <;> omega
   rw [off, this, Lean.Grind.Ring.intCast_natCast]
 
-/-- The stores the memory step covers, with an offset below `2^31`. -/
+/-- The stores the memory step covers, with an offset below `2^32`. -/
 def MemStoreOk (inst : zisk_inst) : Prop :=
   inst.store = .ST_NONE ∨ inst.store = .ST_REG ∨
-    ((inst.store = .ST_MEM ∨ inst.store = .ST_IND) ∧ inst.store_off.toNat < 2 ^ 31)
+    ((inst.store = .ST_MEM ∨ inst.store = .ST_IND) ∧ inst.store_off.toNat < 2 ^ 32)
 
 /-- **The memory after a lane's step.** With `MemInv` at the lane's first
 memory step `b`, `MemInv` holds at `b + 4` for the model's memory after its
@@ -318,7 +318,7 @@ theorem mem_store_addr {M : MainSegs F} {D : Nat → Prop} {init : Nat → F × 
     (hk : k < M.K) (hm : m < Main.numRows) (hl : l < 4) (hrow : Main.everyRow (M.seg k).1 (M.seg k).2 m)
     {inst : zisk_inst} {pc : BitVec 64} (hslot : SlotHolds ((M.seg k).2 m) l inst pc)
     (hsto : StoreHolds ((M.seg k).2 m) l inst)
-    (hs : (inst.store = .ST_MEM ∨ inst.store = .ST_IND) ∧ inst.store_off.toNat < 2 ^ 31)
+    (hs : (inst.store = .ST_MEM ∨ inst.store = .ST_IND) ∧ inst.store_off.toNat < 2 ^ 32)
     {aV : BitVec 64} (hac : ACols ((M.seg k).2 m) l aV) :
     ∀ s, storeAddr inst aV = some s → D s.toNat := by
   obtain ⟨hs, h31⟩ := hs

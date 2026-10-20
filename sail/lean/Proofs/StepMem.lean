@@ -19,7 +19,7 @@ attribute [local instance] Lean.Grind.Semiring.natCast Lean.Grind.Ring.intCast
 /-- An instruction the pilot with memory covers: the six modeled ops;
 immediate, `c`, register or memory sources — `B_IND` of width 8 — with 32-bit
 memory addresses; no store, a register store, or a memory store — `ST_IND` of
-width 8 — with an offset below `2^31`; register indices `x1`–`x31` written as
+width 8 — with an offset below `2^32`; register indices `x1`–`x31` written as
 such; `set_pc` with a short offset; not the end. -/
 structure MemPilot (inst : zisk_inst) : Prop where
   a : ASrcOk inst ∨ (inst.a_src = .A_MEM ∧ inst.a_imm.toNat < 2 ^ 32)
@@ -29,7 +29,7 @@ structure MemPilot (inst : zisk_inst) : Prop where
   store_reg : inst.store = .ST_REG → regIdx inst.store_off ≠ 0
   store_ind : inst.store = .ST_IND → inst.ind_width = 8
   op : inst.op = .ZOP_COPYB () ∨ inst.op = .ZOP_FLAG () ∨ inst.op = .ZOP_ADD () ∨
-    inst.op = .ZOP_LTU () ∨ inst.op = .ZOP_EQ () ∨ inst.op = .ZOP_AND ()
+    inst.op = .ZOP_LTU () ∨ inst.op = .ZOP_EQ () ∨ inst.op = .ZOP_AND () ∨ inst.op = .ZOP_HALT ()
   set_pc : inst.set_pc = true → ShortJump inst.jmp_off1
   is_end : inst.is_end = false
   a_idx : inst.a_src = .A_REG → inst.a_imm.toNat < 32
@@ -62,6 +62,45 @@ def MemProg (prog : BitVec 64 → Option zisk_inst) : Prop :=
 section Step
 
 variable {F : Type} [Lean.Grind.Field F] [Lean.Grind.IsCharP F goldilocks]
+
+attribute [local instance] Lean.Grind.Semiring.natCast in
+/-- **Main cannot execute `halt`.** Main knows two internal ops, `flag`
+(`op = 0`) and `copyb` (`op = 1`); for `halt`'s opcode, `0xff`, its
+internal-op constraints force `flag = 0` and `flag = 1` at once. So no lane
+holds a `halt`: the pilot admits it vacuously. -/
+theorem halt_impossible {r : Main.Row F} {l : Nat} {p0 p1 np : F} (hl : LaneHolds r l p0 p1 np)
+    {inst : zisk_inst} {pc : BitVec 64} (hslot : SlotHolds r l inst pc) (hop : inst.op = .ZOP_HALT ()) :
+    False := by
+  have e10 : (1 : F) - 0 = 1 := by grind
+  have s12 := hslot.is_external_op
+  have s13 := hslot.op
+  simp only [hop, isExternal, opcode, bit, Bool.false_eq_true, if_false] at s12 s13
+  have fz := hl.fz
+  have fb := hl.fb
+  rw [s12, s13] at fz fb
+  have h255 : ((255 : Nat) : F) ≠ 0 := by
+    intro h0; rw [← Lean.Grind.Semiring.natCast_zero] at h0
+    have := natCast_inj33 (F := F) (by omega) (by omega) h0; omega
+  have h254 : ((254 : Nat) : F) ≠ 0 := by
+    intro h0; rw [← Lean.Grind.Semiring.natCast_zero] at h0
+    have := natCast_inj33 (F := F) (by omega) (by omega) h0; omega
+  rw [e10, Lean.Grind.Semiring.one_mul] at fz fb
+  -- `255·flag = 0`, so `flag = 0`.
+  have hf : r.flag l = 0 := by
+    have := congrArg (· * ((255 : Nat) : F)⁻¹) fb
+    simp only [Lean.Grind.Semiring.zero_mul] at this
+    rw [Lean.Grind.CommSemiring.mul_comm, ← Lean.Grind.Semiring.mul_assoc,
+      Lean.Grind.Field.inv_mul_cancel h255, Lean.Grind.Semiring.one_mul] at this
+    exact this
+  -- Then `1 - 255 = 0`, so `255 = 1`.
+  rw [hf, e10, Lean.Grind.Semiring.mul_one] at fz
+  have e : ((255 : Nat) : F) = ((1 : Nat) : F) := by
+    rw [Lean.Grind.Semiring.natCast_one]
+    generalize ((255 : Nat) : F) = y at fz ⊢
+    clear fb h255 h254 s12 s13 hl hslot
+    grind
+  have := natCast_inj33 (F := F) (by omega) (by omega) e
+  omega
 
 /-- **One step with registers and memory, at one lane.** As `step_gen`, with
 memory sources and stores: given what the lane's columns hold for a register
@@ -101,6 +140,7 @@ theorem step_genM (prog : BitVec 64 → Option zisk_inst) (hprog : MemProg prog)
   obtain ⟨inst, hinst, hslot, hsto⟩ :=
     rom_lane' prog xm tm i hmi xr tr hr hl4 hbus hrom pc hpc32 hcol
   obtain ⟨hpil, hl1, hl2⟩ := hprog pc inst hinst
+  have hop : inst.op ≠ .ZOP_HALT () := fun h => halt_impossible hlane hslot h
   -- The source columns.
   have hA : ACols (tm i) l (aValM inst zc xs W) := by
     rcases hpil.a with ((h | h | ⟨h, -⟩) | ⟨h, -⟩)
@@ -126,19 +166,18 @@ theorem step_genM (prog : BitVec 64 → Option zisk_inst) (hprog : MemProg prog)
         (bValM inst zc xs W (aValM inst zc xs W))).1 ∧
       (tm i).flag l = bit (zisk_exec inst.op (aValM inst zc xs W)
         (bValM inst zc xs W (aValM inst zc xs W))).2 := by
-    rcases hpil.op with h | h | h | h | h | h
+    rcases hpil.op with h | h | h | h | h | h | h
     · exact lane_int_cols hlane hslot (.inl h) hB
     · exact lane_int_cols hlane hslot (.inr h) hB
     · exact ext_cols inst (.inl h) hl4 ps hops hpr hslot hA hB
     · exact ext_cols inst (.inr (.inl h)) hl4 ps hops hpr hslot hA hB
     · exact ext_cols inst (.inr (.inr (.inl h))) hl4 ps hops hpr hslot hA hB
     · exact ext_cols inst (.inr (.inr (.inr h))) hl4 ps hops hpr hslot hA hB
+    · exact absurd h hop
   obtain ⟨hc0, hc1, hf⟩ := hcf
   -- The next pc.
   obtain ⟨hnp, hnp32⟩ := lane_npc hlane hslot hc0 hc1 hf hpil.set_pc (fun _ => ⟨hl1, hl2⟩) hq
   -- The model.
-  have hop : inst.op ≠ .ZOP_HALT () := by
-    rcases hpil.op with h | h | h | h | h | h <;> rw [h] <;> exact fun e => nomatch e
   have ha : ASrcOkM D inst := by
     rcases hpil.a with h | ⟨h, -⟩
     · exact .inl h

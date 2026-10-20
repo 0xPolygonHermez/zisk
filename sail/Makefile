@@ -44,7 +44,7 @@ PROG  ?= ../ziskasm/examples/doubler-min
 INPUT ?= ../ziskasm/examples/doubler/input.bin
 DIFF_DIR = build/difftest/$(notdir $(PROG))
 
-.PHONY: all check lean ops pil lean-env lean-build pil-build proofs provers membus tables emu difftest difftest-all clean
+.PHONY: all check lean ops pil lean-env lean-build pil-build proofs provers membus tables emu difftest difftest-all scope clean
 
 all: check ops
 
@@ -151,6 +151,14 @@ difftest:
 difftest-all:
 	$(MAKE) --no-print-directory difftest
 	$(MAKE) --no-print-directory difftest PROG=difftest/halt INPUT=
+
+## Check the programs make difftest exported against the scope of the proofs'
+## runs (MemProgEnd). See check_scope.py.
+scope:
+	@test -n "$$(ls build/difftest/*/rom.sail 2>/dev/null)" || { \
+	  echo "no exported ROM in build/difftest — run make difftest-all" >&2; exit 1; }
+	@status=0; for r in build/difftest/*/rom.sail; do echo "== $$r"; \
+	  python3 check_scope.py $$r || status=1; done; exit $$status
 
 clean:
 	rm -rf build

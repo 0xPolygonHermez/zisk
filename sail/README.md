@@ -134,6 +134,7 @@ reached through the ROM lookup. See
 | [`../tools/sail-difftest`](../tools/sail-difftest/src/main.rs) | Exports a program to the model — `rom.sail` and its initial memory — records the reference trace on `ziskemu`, and checks the program's committed ROM rows against the encoding the Lean proofs assume. |
 | `check_ops.py` | Guard: fails if the model names an opcode that no longer exists in Rust. |
 | `check_tables.py` | Checks the virtual tables the setup commits against what the proofs assume: every FROPS row of a modeled op (`add`, `ltu`, `eq`, `and`) carries its result, the Arith and BinaryExtension tables never serve one, the Binary table's rows for them compute their byte, and the precompiles' fixed ops on the memory bus are 1 or 2; `make tables`. |
+| `check_scope.py` | Checks a program `make difftest` exported against the scope of the proofs' runs (`MemProgEnd`), naming every instruction outside it; `make scope`. |
 | `gen_membus.py` | Generates `lean/Proofs/MemBus.lean` (every argument on the memory bus) and `lean/Proofs/MainRegs.lean` (Main's register pairs); `make membus`. |
 | `gen_provers.py` | Generates `lean/Proofs/Provers.lean` from the AIRs' operation-bus arguments and the prover lemmas' signatures; `make provers`. |
 | `lean/` | A lake package that typechecks both generated Lean trees — one library points at `build/lean/out` (this model), the other at `build/pil` (the AIR constraints) — plus `lean/Proofs/`, the hand-written proofs about them. |
@@ -1331,8 +1332,8 @@ on and its store two on, so:
   (`mem_a_cols`, `mem_b_cols`). Main's addresses are 32-bit field elements —
   `a_offset_imm0`, `addr1 = b_offset_imm0 + a[0]`, `store_offset + a[0]` —
   and Main forces `a[1] = 0` on an indirect access, so with the program's
-  immediates below `2^32` (and store offsets below `2^31`) they are the
-  model's 64-bit addresses;
+  immediates and store offsets below `2^32` they are the model's 64-bit
+  addresses;
 - after the step, `MemInv` holds four memory steps on for the model's memory
   after its store (`mem_update`): the store sets its word to the value Main
   stores, and every other word, and every other step, keeps its value.
@@ -1348,6 +1349,17 @@ chain's and `memVal`'s (`run_from_boot_memory`); and the model runs the
 program to its end instruction — which makes no memory access, as ZisK's
 `ROM_EXIT` does not — and stops (`run_to_end_memory`). Standard three axioms.
 The census below is to discharge `MemAnswers`.
+
+The pilot also admits `halt`, vacuously: Main knows two internal ops, `flag`
+(`op = 0`) and `copyb` (`op = 1`), and for `halt`'s opcode, `0xff`, its
+internal-op constraints force `flag = 0` and `flag = 1` at once, so no lane
+holds one (`halt_impossible`). `make scope` (`check_scope.py`) checks the
+programs `make difftest` runs against the scope: of the doubler's 44
+instructions, BIOS and launcher included, all but `pubout` are in it. `pubout`
+is an external op that no AIR proves — the global updates do, one per public
+input, `(0xA0, i, 0, inputs[i], inputs[i])` — so covering it means the
+operation bus's census for a fifth op, with global updates among its
+provers.
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'
