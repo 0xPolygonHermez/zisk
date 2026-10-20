@@ -168,6 +168,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/MemSort.lean` | Sorted memory checking, in the abstract: along a log sorted by address and step, every read returns the latest write (`MemSort.reads_last_write`). |
 | `lean/Proofs/MemRam.lean` | The RAM's constraints as a sorted log, over a chain of its segments: every read returns the last write (`ram_reads_last_write`). |
 | `lean/Proofs/MemInput.lean` | The input memory, over a chain of InputData segments: two reads of the same address, other than the base, return the same value (`input_consistent`). |
+| `lean/Proofs/ModelMem.lean` | The model's step with memory sources and stores, memory seen as 8-byte words (`execute_mem`). |
 | `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
@@ -353,7 +354,7 @@ make proofs
 ```
 
 ```
-✔ [104/105] Built Proofs
+✔ [105/106] Built Proofs
 Build completed successfully.
 ```
 
@@ -1290,6 +1291,26 @@ range-checked distance from the last address to the region's end then puts
 every address in the region, bytes `[0xA000_0000, 0xBFFF_FFFF]`
 (`AA_region`). So of `RamNat` only the steps remain to supply (`RamSteps`):
 `RamTrace.toSeg` builds the segment from what the AIR gives and them.
+
+**The model with memory.** Main's loads and stores are 8-byte words on the
+bus; the model's memory is a map of bytes, which `read_ram` reads
+little-endian and fails on a missing byte.
+[`lean/Proofs/ModelMem.lean`](lean/Proofs/ModelMem.lean) sees it as words:
+`MemOk σ W D`, the model's bytes hold the word `W a` at every address `a` of a
+set `D` of multiples of 8. A held word is what an 8-byte read returns
+(`read_ram_word`, proved bit by bit, on the standard axioms), and a write holds
+the word it writes and keeps every other byte (`write_ram_word`,
+`writeWord_other`). `execute_mem` is `execute_gen` with memory sources —
+`A_MEM`, `B_MEM`, `B_IND` of width 8 — and memory stores — `ST_MEM`, `ST_IND`
+of width 8 — at addresses of `D` away from the register file: the step reads
+the words memory holds, and leaves memory as the store's update of them
+(`storeW`).
+
+The next piece takes the memory bus's guarantee for Main's loads as a
+hypothesis — every load returns the latest store Main made to its word before
+its step, or the word's initial value — and carries a memory invariant along
+the run as `RegInv` carries the registers; the census below then discharges
+it.
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'
