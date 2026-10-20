@@ -31,18 +31,19 @@ def gen():
 ; add256's cin. The blocks for every position are preset; buffers are
 ; right-aligned (digit j at position KMAX - k + j), and each chain is entered at
 ; that first position with a computed jump. A final t - M (add256 chain with ~M)
-; picks t or t - M. Setup, once per call: -M^-1 (Newton), base mod M and
-; R^2 mod M (zisklib_rem_long, hint-verified; from 32 digits on, 2^k * R mod M
-; squared 8 times), and one multiplication moves the base to Montgomery form. The
-; exponent is walked as in the direct paths; a final multiplication by 1 leaves
-; Montgomery form.
+; picks t or t - M. Setup, once per call: -M^-1 (Newton), B = base mod M and
+; B * R mod M (zisklib_rem_long, hint-verified: B shifted up k digits, reduced in
+; steps that fit the division hint's 386 parameter words). The exponent is
+; walked as in the direct paths; a final multiplication by 1 leaves Montgomery
+; form, except when the bit-at-a-time walk ends on a multiplication: that
+; one multiplies by B instead of B * R (and exp 2 / 3 start with B * R * B / R).
 ; ---------------------------------------------------------------------------
 u64 ZMM_X[{KMAX * 4}] = 0             ; the accumulator
 u64 ZMM_M[{KMAX * 4}] = 0             ; the modulus
 u64 ZMM_NM[{KMAX * 4}] = 0            ; ~M (the digits in use)
 u64 ZMM_S[{KMAX * 4}] = 0             ; t - M
 u64 ZMM_BR[{KMAX * 4}] = 0            ; base mod M
-u64 ZMM_R2[{KMAX * 4}] = 0            ; R^2 mod M, later 1
+u64 ZMM_R2[{KMAX * 4}] = 0            ; 1, for the final multiplication
 u64 ZMM_TT[{15 * KMAX * 4}] = 0      ; T[v] = B^v (Montgomery) at ZMM_TT + (v - 1) * {KMAX * D}
 u64 ZMM_T[{(KMAX + 3) * 4}] = 0       ; t, positions -1..{KMAX + 1} (slot = position + 1)
 u64 ZMM_H1[{(KMAX + 1) * 4}] = 0      ; row 1 high halves, positions -1..{KMAX - 1}
@@ -60,7 +61,7 @@ u64 ZMM_Z[4] = 0
 const u64 ZMM_THREE[4] = 3, 0, 0, 0
 u64 ZMM_BUFL[{(KMAX + 1) * 4}] = 0    ; a big-endian operand, right-aligned
 u64 ZMM_SCARRY[1] = 0
-u64 ZMM_RA2[{(2 * KMAX + 1) * 4}] = 0  ; R^2 (or 2^k * R), up to {2 * KMAX + 1} digits
+u64 ZMM_RA2[{(2 * KMAX + 1) * 4}] = 0  ; B mod M shifted up, up to 2k digits
 ; per-call values (the hot ones live in r32..r39 instead: r32 = &t[idx0 - 1],
 ; r33 = (k + 3) * 32, r34 = k, r35/r36/r37 = the row 1 / row 2 / t - M entry pcs,
 ; r38 = &X[idx0], r39 = k * 32; no routine this path calls uses r32..r39)
@@ -75,6 +76,7 @@ u64 ZMM_A_ELEN[1] = 0
 u64 ZMM_A_MLEN[1] = 0
 u64 ZMM_A_OUT[1] = 0
 """)
+    w("u64 ZMM_SH[1] = 0                     ; digits still to shift")
 
     def dig(buf, p):  # address of digit position p in a KMAX buffer
         return f"{buf} + {p * D}"
@@ -309,63 +311,7 @@ zmm_bnz:
 	copyb(0, r34) -> r13
 	copyb(0, r7) -> r14
 	call zisklib_rem_long
-	; --- X = R^2 mod M. Up to 31 digits it is one rem_long of R^2 (a 1 in digit
-	; 2k); beyond, R^2 and M overflow the division hint's 386 parameter words,
-	; so it is 2^k * R mod M squared 8 times (2^k * R -> 2^(256k) * R = R^2) ---
-	copyb(0, r34) -> r5
-	ltu(31, r5), j(zmm_r2big)
-	sll(r5, 1) -> r11
-	add(r11, 1) -> r11                  ; 2k + 1 digits
-	sll(r11, 5) -> r6
-	dma_xmemset(ZMM_RA2, r6) -> r0, j(0, 4)
-	sll(r5, 6) -> r6
-	add(r6, ZMM_RA2) -> r7
-	copyb(r7, 1) -> 8[a + 0]
-	copyb(0, r38) -> r14
-	copyb(0, r39) -> r29
-	dma_xmemset(r14, r29) -> r0, j(0, 4)
-	copyb(0, ZMM_RA2) -> r10
-	copyb(0, [ZMM_I32]) -> r6
-	add(r6, ZMM_M) -> r12
-	copyb(0, r5) -> r13
-	call zisklib_rem_long
-	jump(zmm_r2done)
-zmm_r2big:
-	add(r5, 1) -> r6
-	sll(r6, 5) -> r6
-	copyb(0, ZMM_RA2) -> r7
-	dma_xmemset(r7, r6) -> r0, j(0, 4)
-	sll(r5, 5) -> r6
-	add(r6, ZMM_RA2) -> r7
-	sll(1, r5) -> r6
-	copyb(r7, r6) -> 8[a + 0]
-	copyb(0, r38) -> r14
-	copyb(0, r39) -> r29
-	dma_xmemset(r14, r29) -> r0, j(0, 4)
-	copyb(0, ZMM_RA2) -> r10
-	add(r5, 1) -> r11
-	copyb(0, [ZMM_I32]) -> r6
-	add(r6, ZMM_M) -> r12
-	copyb(0, r5) -> r13
-	call zisklib_rem_long
-	; --- 8 squarings: 2^k * R -> 2^(256k) * R = R^2 (mod M) ---
-	copyb(0, 8) -> r12
-zmm_r2:
-	copyb(0, r38) -> r10
-	call zmm_mul
-	sub(r12, 1) -> r12
-	ltu(0, r12), j(zmm_r2)
-zmm_r2done:
-	; --- R2 = X; X = BR; X = BR * R2 / R = B * R (mod M); T[1] = X ---
-	copyb(0, r39) -> [ZME_DMA_COUNT]
-	copyb(0, [ZMM_I32]) -> r6
-	add(r6, ZMM_R2) -> r5
-	dma_memcpy(r5, r38) -> r0
-	add(r6, ZMM_BR) -> r7
-	dma_memcpy(r38, r7) -> r0
-	copyb(0, r5) -> r10
-	call zmm_mul
-	copyb(0, r39) -> [ZME_DMA_COUNT]
+{BR_CODE}	copyb(0, r39) -> [ZME_DMA_COUNT]
 	copyb(0, [ZMM_I32]) -> r6
 	add(r6, ZMM_TT) -> r5
 	dma_memcpy(r5, r38) -> r0
@@ -398,10 +344,15 @@ zmm_e1:
 	ltu(6, r13), j(zmm_w)               ; 8+ significant exponent bytes: 4-bit window
 	; --- bit at a time: X = B is the leading bit; enter the byte body below it ---""")
     for k in range(7, 0, -1):
-        w(f"\tltu(r6, {1 << k}), j(zmm_t{k})\n\tjump(zmm_b{k - 1})\nzmm_t{k}:")
+        tgt = "zmm_f0" if k == 1 else f"zmm_b{k - 1}"
+        w(f"\tltu(r6, {1 << k}), j(zmm_t{k})\n\tjump({tgt})\nzmm_t{k}:")
     w("\tjump(zmm_next)")
+    w(MERGE_CODE)
     for k in range(7, -1, -1):
-        w(f"zmm_b{k}:\n\tcall zmm_sqr\n\tand(r6, {1 << k})")
+        w(f"zmm_b{k}:")
+        if k == 0:
+            w("\teq(r13, 0), j(zmm_l0)          ; the exponent's last bit")
+        w(f"\tcall zmm_sqr\n\tand(r6, {1 << k})")
         w(f"\teq(c, 0), j(zmm_b{k - 1})" if k else "\teq(c, 0), j(zmm_next)")
         w("\tcopyb(0, r14) -> r10\n\tcall zmm_mul")
     w(f"""zmm_next:
@@ -460,6 +411,7 @@ zmm_out:
 	dma_xmemset(r10, r29) -> r0, j(0, 4)
 	copyb(r10, 1) -> 8[a + 0]
 	call zmm_mul
+zmm_outp:
 	; --- X (k digits, < M) as mod_len big-endian bytes ---
 	copyb(0, r39) -> r29
 	add(r29, ZMM_BUFL - 8) -> r30      ; the last big-endian word
@@ -590,3 +542,81 @@ zms_p2:""")
 	jump(zmm_sub)
 """)
     return o
+
+
+# The last bit-at-a-time step leaves Montgomery form itself: X~ * B (B plain, in
+# BR) = X plain, so no final multiplication by 1 when the exponent is odd; and
+# when B~ is squared at the last bit (exp 2, 3), B~ * B = B^2 plain.
+MERGE_CODE = """zmm_f0:
+	eq(r13, 0), j(zmm_f0l)
+	jump(zmm_b0)
+zmm_f0l:
+	copyb(0, [ZMM_I32]) -> r10
+	add(r10, ZMM_BR) -> r10
+	call zmm_mul                        ; X = B~ * B / R = B^2
+	and(r6, 1)
+	eq(c, 0), j(zmm_outp)
+	copyb(0, r14) -> r10
+	call zmm_mul                        ; X = B^2 * B~ / R = B^3
+	jump(zmm_outp)
+zmm_l0:
+	call zmm_sqr
+	and(r6, 1)
+	eq(c, 0), j(zmm_out)
+	copyb(0, [ZMM_I32]) -> r10
+	add(r10, ZMM_BR) -> r10
+	call zmm_mul                        ; X = X~ * B / R = X plain
+	jump(zmm_outp)"""
+
+
+# X = (X1 << s) mod M, X1 = r10 digits at r38: the dividend is s + r10 digits
+SHIFT_X = """	sll(r6, 5) -> r30                   ; s * 32
+	add(r6, r10) -> r11                 ; s + len(X1) digits
+	sll(r11, 5) -> r7
+	dma_xmemset(ZMM_RA2, r7) -> r0, j(0, 4)
+	add(r30, ZMM_RA2) -> r6
+	sll(r10, 5) -> r7
+	copyb(0, r7) -> [ZME_DMA_COUNT]
+	dma_memcpy(r6, r38) -> r0
+	copyb(0, r38) -> r14
+	copyb(0, r39) -> r29
+	dma_xmemset(r14, r29) -> r0, j(0, 4)
+	copyb(0, ZMM_RA2) -> r10
+	copyb(0, [ZMM_I32]) -> r6
+	add(r6, ZMM_M) -> r12
+	copyb(0, r34) -> r13
+	call zisklib_rem_long
+"""
+
+
+# X = B * R mod M straight from BR: (BR << k) mod M, at most 96 - 2k digits
+# of shift per rem_long (2 + 4 * (lena + k) <= 386); no R^2, no conversion mul
+BR_CODE = """	; --- X = T[1] = B * R mod M: B mod M shifted up k digits and reduced, at
+	; most 96 - 2k digits per rem_long (the division hint's 386 parameter words
+	; are 2 + 4 * (dividend + k) digits); BR keeps B mod M; B = 0 stays 0 ---
+	copyb(0, r34) -> [ZMM_SH]
+	copyb(0, [ZMM_I32]) -> r6
+	add(r6, ZMM_BR) -> r7
+	copyb(0, r39) -> [ZME_DMA_COUNT]
+	dma_memcpy(r38, r7) -> r0           ; X = BR
+	ltu(1, r10), j(zmm_sh)
+	copyb(r7, 8[a + 0]) -> r5
+	copyb(r7, 8[a + 8]) -> r29
+	or(r5, r29) -> r5
+	copyb(r7, 8[a + 16]) -> r29
+	or(r5, r29) -> r5
+	copyb(r7, 8[a + 24]) -> r29
+	or(r5, r29) -> r5
+	eq(r5, 0), j(zmm_shd)
+zmm_sh:
+	sll(r34, 1) -> r6
+	sub(96, r6) -> r6                   ; 96 - 2k
+	copyb(0, [ZMM_SH]) -> r7
+	ltu(r6, r7), j(zmm_sh1)
+	copyb(0, r7) -> r6                  ; s = min(left, 96 - 2k)
+zmm_sh1:
+	sub(r7, r6) -> [ZMM_SH]
+""" + SHIFT_X + """	copyb(0, [ZMM_SH]) -> r7
+	ltu(0, r7), j(zmm_sh)
+zmm_shd:
+"""

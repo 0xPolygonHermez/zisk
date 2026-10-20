@@ -8,6 +8,7 @@ const u64 BI_ZERO[4] = 0, 0, 0, 0
 const u64 BI_ONE[4] = 1, 0, 0, 0
 
 u64 BI_HDR[5] = 0, 0, 0, 0, 0
+u64 BI_HDR2[4] = 0, 0, 0, 0     ; mul_long's add256 header, next to BI_HDR's arith256 one
 u64 BI_DH[4] = 0, 0, 0, 0
 u64 BI_CIN[4] = 0, 0, 0, 0
 u64 BI_CARRY[4] = 0, 0, 0, 0

@@ -80,66 +80,47 @@ bi_mll_i:
 	copyb(0, BI_LEN) -> r5
 	copyb(r5, 8[a + 0]) -> r7
 	eq(r6, r7), j(bi_mll_id)
-	copyb(0, BI_CARRYNZ) -> r5
-	copyb(r5, 0) -> 8[a + 0]
-	copyb(0, BI_J) -> r5
-	copyb(r5, 0) -> 8[a + 0]
-bi_mll_ij:
-	copyb(0, BI_J) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	copyb(0, BI_LENB) -> r5
-	copyb(r5, 8[a + 0]) -> r7
-	sub(r7, 1) -> r7
-	eq(r6, r7), j(bi_mll_ijlast)
-	copyb(0, BI_I) -> r5
-	copyb(r5, 8[a + 0]) -> r17
-	copyb(0, BI_J) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	add(r17, r6) -> r17
-	sll(r17, 5) -> r16
+	; row i, digits j = 0..lenb-2 (the last one is bi_mll_ijlast): out[i+j] += a_i * b_j
+	; (arith256, high half to BI_DH), then out[i+j+1] += BI_DH + carry (add256). The loop
+	; state lives in registers: r5 = arith256 header, r16 = add256 header (BI_HDR2),
+	; r6 = &b_j, r7 = &b_(lenb-1), r14 = &out[i+j], r17 = carry.
+	sll(r6, 5) -> r14
 	copyb(0, BI_HDR) -> r5
-	copyb(0, BI_APTR) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(0, BI_I) -> r7
+	copyb(0, BI_APTR) -> r7
 	copyb(r7, 8[a + 0]) -> r7
-	sll(r7, 5) -> r7
-	add(r6, r7) -> r6
-	copyb(r5, r6) -> 8[a + 0]
+	add(r7, r14) -> r7
+	copyb(r5, r7) -> 8[a + 0]
+	copyb(0, BI_DH) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	copyb(0, BI_HDR2) -> r16
+	copyb(r16, r7) -> 8[a + 8]
+	copyb(0, BI_OPTR) -> r7
+	copyb(r7, 8[a + 0]) -> r7
+	add(r14, r7) -> r14
 	copyb(0, BI_BPTR) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	copyb(0, BI_J) -> r7
+	copyb(0, BI_LENB) -> r7
 	copyb(r7, 8[a + 0]) -> r7
+	sub(r7, 1) -> r7
 	sll(r7, 5) -> r7
-	add(r6, r7) -> r6
+	add(r6, r7) -> r7
+	copyb(0, 0) -> r17
+	eq(r6, r7), j(bi_mll_ijx)
+bi_mll_ij:
 	copyb(r5, r6) -> 8[a + 8]
-	copyb(0, BI_OPTR) -> r14
-	copyb(r14, 8[a + 0]) -> r14
-	add(r14, r16) -> r14
 	copyb(r5, r14) -> 8[a + 16]
 	copyb(r5, r14) -> 8[a + 24]
-	copyb(0, BI_DH) -> r6
-	copyb(r5, r6) -> 8[a + 32]
 	arith256(0, r5) -> r13
-	copyb(0, BI_CARRYNZ) -> r5
-	copyb(r5, 8[a + 0]) -> r17
-	copyb(0, BI_OPTR) -> r14
-	copyb(r14, 8[a + 0]) -> r14
-	add(r14, r16) -> r14
 	add(r14, 32) -> r14
-	copyb(0, BI_HDR) -> r5
-	copyb(r5, r14) -> 8[a + 0]
-	copyb(0, BI_DH) -> r6
-	copyb(r5, r6) -> 8[a + 8]
-	copyb(r5, r17) -> 8[a + 16]
-	copyb(r5, r14) -> 8[a + 24]
-	add256(0, r5) -> r15
+	copyb(r16, r14) -> 8[a + 0]
+	copyb(r16, r17) -> 8[a + 16]
+	copyb(r16, r14) -> 8[a + 24]
+	add256(0, r16) -> r17
+	add(r6, 32) -> r6
+	ltu(r6, r7), j(bi_mll_ij)
+bi_mll_ijx:
 	copyb(0, BI_CARRYNZ) -> r5
-	copyb(r5, r15) -> 8[a + 0]
-	copyb(0, BI_J) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	add(r6, 1) -> r6
-	copyb(r5, r6) -> 8[a + 0]
-	jump(bi_mll_ij)
+	copyb(r5, r17) -> 8[a + 0]
 bi_mll_ijlast:
 	copyb(0, BI_I) -> r5
 	copyb(r5, 8[a + 0]) -> r17
