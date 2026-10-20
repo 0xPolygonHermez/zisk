@@ -1167,6 +1167,7 @@
      "type": "prometheus",
      "uid": "prometheus"
     },
+    "hide": 2,
     "query": {
      "query": "label_values(coordinator_info, cluster)",
      "refId": "cluster"

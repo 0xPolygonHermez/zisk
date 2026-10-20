@@ -1741,7 +1741,7 @@
   },
   {
    "type": "barchart",
-   "title": "Proof time histogram · ${range_text}",
+   "title": "Proof time histogram · ${range_text} · bin ${proof_bin:text}, up to ${proof_up_to:text}",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -1956,7 +1956,45 @@
     "y": 17,
     "w": 16,
     "h": 12
-   }
+   },
+   "links": [
+    {
+     "title": "Bin: Auto",
+     "url": "/d/zisk-live/?${__url_time_range}&${cluster:queryparam}&${host:queryparam}&var-proof_bin=0&${proof_up_to:queryparam}"
+    },
+    {
+     "title": "Bin: 250 ms",
+     "url": "/d/zisk-live/?${__url_time_range}&${cluster:queryparam}&${host:queryparam}&var-proof_bin=1&${proof_up_to:queryparam}"
+    },
+    {
+     "title": "Bin: 500 ms",
+     "url": "/d/zisk-live/?${__url_time_range}&${cluster:queryparam}&${host:queryparam}&var-proof_bin=2&${proof_up_to:queryparam}"
+    },
+    {
+     "title": "Bin: 1 s",
+     "url": "/d/zisk-live/?${__url_time_range}&${cluster:queryparam}&${host:queryparam}&var-proof_bin=4&${proof_up_to:queryparam}"
+    },
+    {
+     "title": "Bin: 2 s",
+     "url": "/d/zisk-live/?${__url_time_range}&${cluster:queryparam}&${host:queryparam}&var-proof_bin=8&${proof_up_to:queryparam}"
+    },
+    {
+     "title": "Up to: All",
+     "url": "/d/zisk-live/?${__url_time_range}&${cluster:queryparam}&${host:queryparam}&${proof_bin:queryparam}&var-proof_up_to=0"
+    },
+    {
+     "title": "Up to: 10 s",
+     "url": "/d/zisk-live/?${__url_time_range}&${cluster:queryparam}&${host:queryparam}&${proof_bin:queryparam}&var-proof_up_to=40"
+    },
+    {
+     "title": "Up to: 15 s",
+     "url": "/d/zisk-live/?${__url_time_range}&${cluster:queryparam}&${host:queryparam}&${proof_bin:queryparam}&var-proof_up_to=60"
+    },
+    {
+     "title": "Up to: 20 s",
+     "url": "/d/zisk-live/?${__url_time_range}&${cluster:queryparam}&${host:queryparam}&${proof_bin:queryparam}&var-proof_up_to=80"
+    }
+   ]
   },
   {
    "type": "state-timeline",
@@ -3491,6 +3529,7 @@
      "type": "prometheus",
      "uid": "prometheus"
     },
+    "hide": 2,
     "query": {
      "query": "label_values(coordinator_info, cluster)",
      "refId": "cluster"
@@ -3558,6 +3597,7 @@
      "type": "prometheus",
      "uid": "prometheus"
     },
+    "hide": 2,
     "query": {
      "query": "label_values(up{job=\"node\",cluster=~\"$cluster\"}, host)",
      "refId": "host"
@@ -3591,7 +3631,7 @@
     "type": "custom",
     "name": "proof_bin",
     "label": "Bin",
-    "hide": 0,
+    "hide": 2,
     "multi": false,
     "includeAll": false,
     "query": "Auto : 0, 250 ms : 1, 500 ms : 2, 1 s : 4, 2 s : 8",
@@ -3631,7 +3671,7 @@
     "type": "custom",
     "name": "proof_up_to",
     "label": "Up to",
-    "hide": 0,
+    "hide": 2,
     "multi": false,
     "includeAll": false,
     "query": "All : 0, 10 s : 40, 15 s : 60, 20 s : 80",
@@ -3690,7 +3730,7 @@
      "uid": "prometheus"
     },
     "enable": true,
-    "hide": false,
+    "hide": true,
     "expr": "sum(((last_over_time(coordinator_worker_registrations_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",reconnect=\"false\"}[1m]) - last_over_time(coordinator_worker_registrations_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",reconnect=\"false\"}[1m] offset $__interval)) > 0))",
     "iconColor": "purple",
     "step": "2s",
@@ -3704,7 +3744,7 @@
      "uid": "prometheus"
     },
     "enable": true,
-    "hide": false,
+    "hide": true,
     "expr": "sum(((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"cancelled\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"cancelled\"}[1m] offset $__interval)) > 0))",
     "iconColor": "dark-blue",
     "step": "2s",
@@ -3718,7 +3758,7 @@
      "uid": "prometheus"
     },
     "enable": true,
-    "hide": false,
+    "hide": true,
     "expr": "label_replace(label_replace(sum by (reason) (((last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m]) - last_over_time(coordinator_jobs_total{job=\"zisk-coordinator\",cluster=~\"$cluster\",outcome=\"failure\"}[1m] offset $__interval)) > 0)), \"outcome\", \"failed\", \"\", \"\"), \"outcome\", \"failed: $1\", \"reason\", \"(.+)\")",
     "iconColor": "red",
     "step": "2s",

@@ -142,8 +142,9 @@ def nav_links():
 
 
 def cluster_variable():
-    """The Cluster selector: the `cluster` label of the coordinators' targets (All when they have none)."""
-    return {"type": "query", "name": "cluster", "label": "Cluster", "datasource": DS,
+    """The Cluster selector: the `cluster` label of the coordinators' targets (All when they have none). Hidden from
+    the bar, as Host is: All shows every cluster, and a URL's var-cluster picks one."""
+    return {"type": "query", "name": "cluster", "label": "Cluster", "datasource": DS, "hide": 2,
             "query": {"query": "label_values(coordinator_info, cluster)", "refId": "cluster"},
             "definition": "label_values(coordinator_info, cluster)", "refresh": 2, "includeAll": True,
             "allValue": ".*", "multi": False, "current": {"text": "All", "value": "$__all"}}
@@ -630,7 +631,7 @@ def live():
 
 
 def host_variable():
-    return {"type": "query", "name": "host", "label": "Host", "datasource": DS,
+    return {"type": "query", "name": "host", "label": "Host", "datasource": DS, "hide": 2,
             "query": {"query": 'label_values(up{job="node",cluster=~"$cluster"}, host)', "refId": "host"},
             "definition": 'label_values(up{job="node",cluster=~"$cluster"}, host)', "refresh": 2,
             "includeAll": True, "multi": True, "current": {"text": "All", "value": "$__all"}}
@@ -654,7 +655,8 @@ def annotation_legend(panel):
 
 def job_annotations():
     """The job and worker events every time chart marks: worker restarts, cancellations and failures."""
-    ann = lambda name, expr, color, title: {"name": name, "datasource": DS, "enable": True, "hide": False, "expr": expr,
+    # Always on, with no switch in the dashboard's bar: the charts' legends name the lines.
+    ann = lambda name, expr, color, title: {"name": name, "datasource": DS, "enable": True, "hide": True, "expr": expr,
                                              "iconColor": color, "step": "2s", "titleFormat": title, "useValueForTime": False}
 
     # Grafana evaluates annotations at a step of its own for the range ("step" is only its minimum: 2 min
@@ -884,7 +886,7 @@ def live2():
     chart["title"] = "Proof time per job · ${range_text}"
     for i, name in enumerate(["Mean", "Median", "Min", "Max", "Std dev", "P99.9"]):
         put(panels[name], 16 + 4 * (i % 2), 17 + 4 * (i // 2), 4, 4)
-    put(proof_time_histogram(), 0, 17, 16, 12)
+    histogram = put(proof_time_histogram(), 0, 17, 16, 12)
     # The rest of Live, unchanged, below.
     used = {"Data sources", "API clients now", "Workers connected", "Workers by state", "Programs registered",
             "Compute capacity", "Each worker", "Running now", "Jobs in the selected range",
@@ -907,10 +909,19 @@ def live2():
     up_to = [("All", 0)] + [(f"{s} s", s * PROOF_BINS_PER_S) for s in (10, 15, 20)]
     for name, label, choices in (("proof_bin", "Bin", widths), ("proof_up_to", "Up to", up_to)):
         d["templating"]["list"].append({
-            "type": "custom", "name": name, "label": label, "hide": 0, "multi": False, "includeAll": False,
+            "type": "custom", "name": name, "label": label, "hide": 2, "multi": False, "includeAll": False,
             "query": ", ".join(f"{text} : {value}" for text, value in choices),
             "options": [{"text": text, "value": str(value), "selected": i == 0} for i, (text, value) in enumerate(choices)],
             "current": {"text": choices[0][0], "value": str(choices[0][1])}})
+    # They only shape the histogram, so they are chosen from its link menu rather than the dashboard's bar: each
+    # link reloads the dashboard with that choice, keeping the time range, cluster, host and the other choice.
+    keep = "${__url_time_range}&${cluster:queryparam}&${host:queryparam}"
+    histogram["links"] = (
+        [{"title": f"Bin: {text}", "url": f"/d/zisk-live/?{keep}&var-proof_bin={value}&${{proof_up_to:queryparam}}"}
+         for text, value in widths]
+        + [{"title": f"Up to: {text}", "url": f"/d/zisk-live/?{keep}&${{proof_bin:queryparam}}&var-proof_up_to={value}"}
+           for text, value in up_to])
+    histogram["title"] += " · bin ${proof_bin:text}, up to ${proof_up_to:text}"
     # The time picker's range in words, for titles: Grafana only prints a range's from/to times, but a variable
     # query sees the picker's range as typed (${__url_time_range}, e.g. "from=now-6h&to=now"), which
     # label_replace turns into "last 6 hours". An absolute range (after a zoom) keeps its from–to times.
@@ -1025,7 +1036,7 @@ def gpus():
     d = dashboard("zisk-gpus", "ZisK — GPUs", l, "Every GPU of each host side by side: now, and each metric over time")
     d["refresh"] = "5s"  # nvidia-smi is read every 5 s
     q = 'label_values(nvidia_smi_gpu_info{cluster=~"$cluster"}, host)'
-    d["templating"]["list"].append({"type": "query", "name": "host", "label": "Host", "datasource": DS,
+    d["templating"]["list"].append({"type": "query", "name": "host", "label": "Host", "datasource": DS, "hide": 2,
                                     "query": {"query": q, "refId": "host"}, "definition": q, "refresh": 2,
                                     "includeAll": True, "multi": True, "current": {"text": "All", "value": "$__all"}})
     d["annotations"] = {"list": job_annotations()}
