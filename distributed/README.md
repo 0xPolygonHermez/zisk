@@ -67,8 +67,11 @@ docker compose -f distributed/deploy/docker/compose.yaml build
 # Start the coordinator only
 docker compose -f distributed/deploy/docker/compose.yaml up coordinator
 
-# Start the full stack: coordinator + 4 workers + Prometheus
+# Start the full stack: coordinator + 4 workers + Prometheus + Grafana + node_exporter
 docker compose -f distributed/deploy/docker/compose.yaml up --scale worker=4
+
+# Also export the GPUs' metrics (needs the NVIDIA container toolkit)
+docker compose -f distributed/deploy/docker/compose.yaml --profile gpu up --scale worker=4
 
 # Build workers with GPU support
 docker compose -f distributed/deploy/docker/compose.yaml build --build-arg GPU=true worker
@@ -79,10 +82,14 @@ docker compose -f distributed/deploy/docker/compose.yaml up --scale worker=4
 
 | Port | Service |
 |------|---------|
-| `7000` | Public gRPC API (clients connect here) |
-| `9090` | Prometheus metrics (coordinator) |
-| `9091` | Prometheus UI (mapped from the prometheus container) |
-| `50051` | Internal worker port (workers connect here, not exposed externally by default) |
+| `7001` | Public gRPC API (clients connect here) |
+| `9091` | Coordinator metrics (`/metrics`, `/health`) |
+| `9090` | Prometheus UI |
+| `3000` | Grafana (the dashboards; see [Monitoring](../book/getting_started/distributed_execution.md#monitoring)) |
+| `50052` | Internal worker port (workers connect here, not exposed externally by default) |
+
+The compose stack's ports come from [`deploy/config/coordinator.toml`](deploy/config/coordinator.toml);
+outside docker, the coordinator's defaults are `7000`, `9090` and `50051`.
 
 **Volumes:**
 
