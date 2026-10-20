@@ -1280,10 +1280,20 @@ the AIR gives — its constraints, `__L1__` and its range checks — and
 segments are indexed as one sequence, `m ↦ row m mod numRows of segment
 m / numRows`, with no list built.
 
-Still to come: the bounds `RamNat` assumes — the RAM's addresses can be built
-up the same way, while its steps need the memory bus, every lane's tuple being
-one some AIR assumes with a bounded step; the continuation buses' guarantees
-(`RamChain`, `InChain`); the memory bus's census for
+The RAM's addresses are built up the same way (`RamTrace.AA`, `addr_eq`),
+lane after lane, `n ↦ lane n mod 4 of row n / 4`: from the previous segment's
+last address — the region's base plus a range-checked distance, less one on
+the first segment, whose first lane must then change address — each lane
+adds its increment when its address changes. An increment can reach `2^38`,
+but the running sum stays below `2^63`, under the characteristic, and the
+range-checked distance from the last address to the region's end then puts
+every address in the region, bytes `[0xA000_0000, 0xBFFF_FFFF]`
+(`AA_region`). So of `RamNat` only the steps remain to supply (`RamSteps`):
+`RamTrace.toSeg` builds the segment from what the AIR gives and them.
+
+Still to come: the RAM's steps, which need the memory bus — every lane's
+tuple is one some AIR assumes, with a bounded step; the continuation buses'
+guarantees (`RamChain`, `InChain`); the memory bus's census for
 loads and stores, as `MemBus.lean` did for register tuples; `MemAlign`; and
 Main's memory sources and stores against the model's byte-addressed
 `read_mem` and `write_mem`.
