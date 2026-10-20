@@ -43,3 +43,4 @@ import Proofs.PubGlobal
 import Proofs.MemCount
 import Proofs.MemRamBus
 import Proofs.MemWorld
+import Proofs.MemFromBus

@@ -181,6 +181,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/MemCount.lean` | Counting a tuple on a sum bus, in integers: an assumed tuple is proved, a proved one assumed (`SumHolds.proved_of_assumed`). |
 | `lean/Proofs/MemRamBus.lean` | The RAM's arguments on the memory bus, in its lanes' terms: a read, write or dual tuple at a row is an emission of the sorted log. |
 | `lean/Proofs/MemWorld.lean` | The memory bus around Main: the other AIRs split into the RAM's, InputData's and the rest, and `NoOtherMem`, what the census is to prove of the rest. |
+| `lean/Proofs/MemFromBus.lean` | `MemAnswers` from the memory bus: Main's stores (`mainStores`), its accesses' columns, a load's width. |
 | `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
@@ -366,7 +367,7 @@ make proofs
 ```
 
 ```
-✔ [116/117] Built Proofs
+✔ [117/118] Built Proofs
 Build completed successfully.
 ```
 
@@ -1441,7 +1442,12 @@ one log (`MemBusWorld.segs`), and every lane's reads and writes are its
 assumed by some sender, and the only senders that assume an op-2 tuple are
 Main's store accesses of lanes that store to memory (`MemBusWorld.main_store`;
 an `a` or `b` access's op is its count plus twice its register bit, a store's
-twice its count plus its register bit, `mainTags_op`, generated).
+twice its count plus its register bit, `mainTags_op`, generated). [`lean/Proofs/MemFromBus.lean`](lean/Proofs/MemFromBus.lean)
+begins the assembly: Main's stores as a list (`mainStores`), one per lane
+that stores to memory, indexed globally so a store's step is `4n + 3` — their
+steps distinct (`mainStores_nodup`), each at its lane's store step
+(`mem_mainStores`, `mainStores_mem`) — and a load's width, 8, since its
+prover sends 8 (`MemBusWorld.load_width`).
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'
