@@ -4,7 +4,7 @@ use std::sync::{atomic::AtomicU64, Arc};
 
 use crate::rom_counter::RomCounter;
 use crate::{RomError, RomResult};
-use proofman_common::{AirInstance, ProofCtx, ProofmanError, ProofmanResult, SetupCtx, TraceInfo};
+use proofman_common::{AirInstance, ProofCtx, ProofmanError, SetupCtx, TraceInfo};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
@@ -262,7 +262,7 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
         _packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
+    ) -> zisk_common::WitnessResult<F> {
         tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
         // The ASM arm is where this execution's histogram runner is finally joined, if

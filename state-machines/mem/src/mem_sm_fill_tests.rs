@@ -451,3 +451,23 @@ fn a_padding_covering_the_whole_segment_is_rejected() {
     let max = (lanes_x_row() * MemTrace::<Row>::NUM_ROWS - 1) as u32;
     split_padding_size(max + 1, max);
 }
+
+/// A failed device fill hands the trace buffer back, so the CPU fallback reuses the pooled buffer
+/// instead of taking a second one.
+#[test]
+fn a_failed_device_fill_hands_the_buffer_back() {
+    use proofman_common::trace::TraceRow;
+    let len = MemTrace::<MemTraceRowPacked<Goldilocks>>::NUM_ROWS
+        * MemTraceRowPacked::<Goldilocks>::ROW_SIZE;
+    let sm = MemSM::<Goldilocks>::new();
+    for packed in [false, true] {
+        let buffer = vec![Goldilocks::default(); len];
+        let ptr = buffer.as_ptr();
+        // No GPU planner is registered here, so the device fill fails.
+        let err = sm
+            .compute_witness_gpu_arena(SegmentId(0), true, buffer, packed)
+            .expect_err("the device fill has no planner");
+        let back = err.trace_buffer.expect("the buffer comes back with the error");
+        assert_eq!((back.as_ptr(), back.len()), (ptr, len), "packed={packed}");
+    }
+}

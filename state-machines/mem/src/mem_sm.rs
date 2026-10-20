@@ -734,11 +734,14 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         is_last_segment: bool,
         trace_buffer: Vec<F>,
         packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
+    ) -> zisk_common::WitnessResult<F> {
         use crate::mem_gpu_fill::arena_fill_packed_rows;
         if !packed {
-            return Err(proofman_common::ProofmanError::InvalidParameters(
-                "the device memory witness needs the packed Mem trace".to_string(),
+            return Err(zisk_common::WitnessError::with_buffer(
+                proofman_common::ProofmanError::InvalidParameters(
+                    "the device memory witness needs the packed Mem trace".to_string(),
+                ),
+                trace_buffer,
             ));
         }
         let seg_idx = usize::from(segment_id);
@@ -750,9 +753,10 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             arena_fill_packed_rows(words, n_rows, segment_id)
         }
         .map_err(|e| {
-            proofman_common::ProofmanError::InvalidParameters(format!(
+            let error = proofman_common::ProofmanError::InvalidParameters(format!(
                 "Mem[{seg_idx}] RAM witness from the GPU planner failed: {e}"
-            ))
+            ));
+            zisk_common::WitnessError::with_buffer(error, trace.get_buffer())
         })?;
         // @[mem_padding]: only the last segment may carry padding.
         assert!(

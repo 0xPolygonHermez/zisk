@@ -71,7 +71,7 @@ pub trait MemModule<F: Clone>: Send + Sync {
         is_last_segment: bool,
         trace_buffer: Vec<F>,
         packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>>;
+    ) -> zisk_common::WitnessResult<F>;
     #[allow(clippy::too_many_arguments)]
     fn compute_witness(
         &self,

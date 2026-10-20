@@ -376,7 +376,7 @@ impl<F: PrimeField64> Instance<F> for JumpDestInstance<F> {
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
         packed: bool,
-    ) -> ProofmanResult<Option<AirInstance<F>>> {
+    ) -> zisk_common::WitnessResult<F> {
         let mut skip_rows = 0usize;
         let mut inputs = Vec::with_capacity(collectors.len());
 
