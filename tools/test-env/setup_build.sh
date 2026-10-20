@@ -355,19 +355,13 @@ case "$MODE" in
     PUBLICS_INFO="state-machines/publics.json"
     [ -f "$PUBLICS_INFO" ] || { echo "missing $PUBLICS_INFO — final.circom needs publics layout (nPublics, chunks, hasProgramVK)" >&2; exit 1; }
 
-    # The BN128 wrap is poseidon-only. Ask the key on disk, not $HASH_MODE: this mode wraps
-    # an existing provingKey and never builds one, so $HASH_MODE here is the default for a
-    # build that is not happening — under it a valid poseidon key gets rejected whenever
-    # HASH_MODE is unset. Checked before the ptau probe so an unsupported key reports itself instead of
-    # an 18 GB download, and before setup-snark so it fails in seconds.
+    # pilfflonk is the final SNARK for every key, as setup-snark's own default; FINAL_SNARK=plonk
+    # (or fflonk) overrides it, for a poseidon key only: a blake3 key wraps with pilfflonk alone,
+    # and setup-snark refuses the others. Passed explicitly so this script does not follow a
+    # change of that default.
+    FINAL_SNARK="${FINAL_SNARK:-pilfflonk}"
     SNARK_MODE="$(proving_key_hash_mode "$BUILD_DIR/provingKey")" || exit 1
-    if [ "$(printf '%s' "$SNARK_MODE" | tr '[:upper:]' '[:lower:]')" = "blake3" ]; then
-      echo "setup-snark is not supported for the $SNARK_MODE key in $BUILD_DIR/provingKey:" >&2
-      echo "the BN128 wrap is only built for the poseidon families. Rebuild the proving key" >&2
-      echo "with --hash Poseidon1 or Poseidon2." >&2
-      exit 1
-    fi
-    echo "wrapping a $SNARK_MODE proving key"
+    echo "wrapping a $SNARK_MODE proving key with $FINAL_SNARK"
 
     PTAU_PATH="${PTAU_PATH:-../powersOfTau28_hez_final_24.ptau}"
     if [ ! -f "$PTAU_PATH" ]; then
@@ -382,7 +376,8 @@ case "$MODE" in
     cargo run --release --bin cargo-zisk-dev -- proofman-setup setup-snark \
       --build-dir "$BUILD_DIR" \
       --publics-info "$PUBLICS_INFO" \
-      --powers-of-tau "$PTAU_PATH"
+      --powers-of-tau "$PTAU_PATH" \
+      --final-snark "$FINAL_SNARK"
 
     echo "done. provingKeySnark/ under $BUILD_DIR/ — package with (cd tools/test-env && ./upload_setup.sh)"
     exit 0

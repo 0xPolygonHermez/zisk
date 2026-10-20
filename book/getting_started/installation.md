@@ -239,9 +239,10 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
     Additionally, to generate the snark wrapper:
 
-    The BN128 wrap is Poseidon-only, so `setup-snark` refuses a Blake3 key. Rerun the
-    command above with `--stark-structs setup/starkstructs.poseidon.json --hash Poseidon1`
-    first.
+    The final SNARK is `pilfflonk` by default, for a Blake3 key too. PLONK and FFLONK need a
+    Poseidon key: rerun the command above with
+    `--stark-structs setup/starkstructs.poseidon.json --hash Poseidon1` first, and pass
+    `--final-snark plonk` (or `fflonk`) below.
 
     First, download the powers-of-tau file into the parent folder of `zisk`:
     ```bash
