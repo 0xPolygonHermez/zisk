@@ -430,12 +430,12 @@ def relabel(expr, label, mapping):
 
 def job_now():
     """The jobs in flight with a `short` label as Running now shows it: "a35d5b89 · ▶ 2/3 prove" while one runs,
-    "a35d5b89 · ✔ finished" or "a35d5b89 · ✖ failed 06:13:05" for the one that just ended."""
+    "a35d5b89 · ✔ succeeded" or "a35d5b89 · ✖ failed 06:13:05" for the one that just ended."""
     x = f"coordinator_job_now_seconds{{{C}}}"
     x = relabel(f'label_replace({x}, "step", "$1", "phase", "(.*)")', "step",
                 [("starting", "▶ starting"), ("contributions", "▶ 1/3 contributions"), ("prove", "▶ 2/3 prove"),
                  ("aggregation", "▶ 3/3 aggregation"), ("execution", "▶ execution")])
-    for status, text in (("success", "✔ finished"), ("cancelled", "✖ cancelled"), ("failure", "✖ failed")):
+    for status, text in (("success", "✔ succeeded"), ("cancelled", "✖ cancelled"), ("failure", "✖ failed")):
         x = f'label_replace({x}, "step", "{text}", "status", "{status}")'
     # A job that did not succeed also says when it ended.
     x = f'label_replace({x}, "tail", " $1", "ended_at", "(.+)")'
@@ -504,27 +504,18 @@ def live():
     phases = [("1", "1 contributions"), ("2", "2 prove"), ("3", "3 aggregation")]
     DUR = relabel(f"coordinator_proof_seconds{{{C}}}", "phase", phases)
     TOTAL = f'coordinator_proof_seconds{{{C},phase="total"}}'
-    BAD = relabel(f"coordinator_job_unsuccessful_seconds{{{C}}}", "outcome", [("failure", "failed")])
-    p = timeseries("Proof duration per job (successful proofs; failed and cancelled as points)",
+    p = timeseries("Proof duration per job",
                    [(once(DUR), "{{phase}}"),
-                    (once(BAD), "{{outcome}} (time to the end)"),
                     (f"avg_over_time({TOTAL}[$__range] @ end())", "mean (total)"),
                     (f"quantile_over_time(0.999, {TOTAL}[$__range] @ end())", "P99.9 (total)")], "s",
                    desc="One point per successful proof: each phase and the total; the dashed lines are the mean "
-                        "and P99.9 of the total over the selected time range")
+                        "and P99.9 of the total over the selected time range. Failed and cancelled jobs are the "
+                        "vertical lines: their times would stretch the scale of the proofs'")
     p["fieldConfig"]["defaults"]["custom"].update({"showPoints": "always", "pointSize": 4, "spanNulls": True})
     # One line under the chart instead of a table of one row per series.
     p["options"]["legend"] = {"showLegend": True, "displayMode": "list", "placement": "bottom", "calcs": []}
     colors = {"1 contributions": "blue", "2 prove": "purple", "3 aggregation": "yellow", "total": "green",
               "mean (total)": "orange", "P99.9 (total)": "red"}
-    # Failed and cancelled jobs: big points, no line, outside the statistics.
-    bad_points = [{"id": "custom.drawStyle", "value": "points"}, {"id": "custom.pointSize", "value": 11},
-                  {"id": "custom.showPoints", "value": "always"}]
-    extra_overrides = [
-        {"matcher": {"id": "byName", "options": "failed (time to the end)"},
-         "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}] + bad_points},
-        {"matcher": {"id": "byName", "options": "cancelled (time to the end)"},
-         "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "dark-blue"}}] + bad_points}]
     p["fieldConfig"]["overrides"] = [
         {"matcher": {"id": "byName", "options": name},
          "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": color}}]
@@ -532,7 +523,7 @@ def live():
              {"id": "custom.showPoints", "value": "never"}, {"id": "custom.lineWidth", "value": 2}]
             if name.endswith("(total)") else [])
          + ([{"id": "custom.lineWidth", "value": 2}] if name == "total" else [])}
-        for name, color in colors.items()] + extra_overrides
+        for name, color in colors.items()]
     annotation_legend(p)
     l.add(p, 16, 12)
     base_y = p["gridPos"]["y"]
@@ -562,12 +553,12 @@ def live():
     # Left: the last jobs, and under them the failed ones with their error messages;
     # right: the events, as tall as both.
     in_range = lambda sel: f"{sel} > (time() - $__range_s) * 1000"
-    recent = relabel(f"coordinator_recent_job{{{C}}}", "outcome", [("failure", "failed")])
+    recent = relabel(f"coordinator_recent_job{{{C}}}", "outcome", [("success", "succeeded"), ("failure", "failed")])
     jobs = colored_table("Last 20 jobs", in_range(recent),
                          [("finished", "Finished (UTC)"), ("job_id", "Job"), ("kind", "Kind"), ("outcome", "Result"),
                           ("duration_seconds", "Duration"), ("phases", "Phases 1+2+3 (s)"), ("steps", "Steps"),
                           ("instances", "Instances"), ("mhz", "MHz")],
-                         "outcome", [("success", "green"), ("cancelled", "dark-blue"), ("fail.*", "red")],
+                         "outcome", [("succeeded", "green"), ("cancelled", "dark-blue"), ("fail.*", "red")],
                          numbers=[("duration_seconds", "s", 2), ("steps", "locale", 0)])
     l.add(jobs, 14, 11)
     top = jobs["gridPos"]["y"]
@@ -887,7 +878,7 @@ def live2():
     jobs = sized(put(panels["Jobs in the selected range"], 0, 13, 8, 4), value=True)
     jobs["options"]["wideLayout"] = False  # name above value, as in Last job, also with a single outcome
     jobs["title"] = "Jobs · ${range_text}"
-    chart = put(panels["Proof duration per job (successful proofs; failed and cancelled as points)"], 8, 5, 16, 12)
+    chart = put(panels["Proof duration per job"], 8, 5, 16, 12)
     chart["title"] = "Proof time per job · ${range_text}"
     for i, name in enumerate(["Mean", "Median", "Min", "Max", "Std dev", "P99.9"]):
         put(panels[name], 16 + 4 * (i % 2), 17 + 4 * (i // 2), 4, 4)
@@ -895,7 +886,7 @@ def live2():
     # The rest of Live, unchanged, below.
     used = {"Data sources", "API clients now", "Workers connected", "Workers by state", "Programs registered",
             "Compute capacity", "Each worker", "Running now", "Jobs in the selected range",
-            "Proof duration per job (successful proofs; failed and cancelled as points)",
+            "Proof duration per job",
             "Mean", "Median", "Min", "Max", "Std dev", "P99.9",
             "Cluster — as the coordinator sees it (valid wherever the workers run)"}
     rest = [p for p in base["panels"] if p["title"] not in used]

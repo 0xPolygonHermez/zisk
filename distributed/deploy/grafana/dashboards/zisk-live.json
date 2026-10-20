@@ -663,7 +663,7 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "label_join(label_join(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(coordinator_job_now_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, \"step\", \"$1\", \"phase\", \"(.*)\"), \"step\", \"▶ starting\", \"step\", \"starting\"), \"step\", \"▶ 1/3 contributions\", \"step\", \"contributions\"), \"step\", \"▶ 2/3 prove\", \"step\", \"prove\"), \"step\", \"▶ 3/3 aggregation\", \"step\", \"aggregation\"), \"step\", \"▶ execution\", \"step\", \"execution\"), \"step\", \"✔ finished\", \"status\", \"success\"), \"step\", \"✖ cancelled\", \"status\", \"cancelled\"), \"step\", \"✖ failed\", \"status\", \"failure\"), \"tail\", \" $1\", \"ended_at\", \"(.+)\"), \"tail\", \"\", \"status\", \"success\"), \"short\", \" · \", \"job_id\", \"step\"), \"short\", \"\", \"short\", \"tail\")",
+     "expr": "label_join(label_join(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(coordinator_job_now_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, \"step\", \"$1\", \"phase\", \"(.*)\"), \"step\", \"▶ starting\", \"step\", \"starting\"), \"step\", \"▶ 1/3 contributions\", \"step\", \"contributions\"), \"step\", \"▶ 2/3 prove\", \"step\", \"prove\"), \"step\", \"▶ 3/3 aggregation\", \"step\", \"aggregation\"), \"step\", \"▶ execution\", \"step\", \"execution\"), \"step\", \"✔ succeeded\", \"status\", \"success\"), \"step\", \"✖ cancelled\", \"status\", \"cancelled\"), \"step\", \"✖ failed\", \"status\", \"failure\"), \"tail\", \" $1\", \"ended_at\", \"(.+)\"), \"tail\", \"\", \"status\", \"success\"), \"short\", \" · \", \"job_id\", \"step\"), \"short\", \"\", \"short\", \"tail\")",
      "legendFormat": "{{short}}",
      "datasource": {
       "type": "prometheus",
@@ -1046,7 +1046,7 @@
   {
    "type": "timeseries",
    "title": "Proof time per job · ${range_text}",
-   "description": "One point per successful proof: each phase and the total; the dashed lines are the mean and P99.9 of the total over the selected time range",
+   "description": "One point per successful proof: each phase and the total; the dashed lines are the mean and P99.9 of the total over the selected time range. Failed and cancelled jobs are the vertical lines: their times would stretch the scale of the proofs'",
    "targets": [
     {
      "refId": "A",
@@ -1059,15 +1059,6 @@
     },
     {
      "refId": "B",
-     "expr": "label_replace(coordinator_job_unsuccessful_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, \"outcome\", \"failed\", \"outcome\", \"failure\") and ((time() - timestamp(label_replace(coordinator_job_unsuccessful_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, \"outcome\", \"failed\", \"outcome\", \"failure\"))) * 1000 < $__interval_ms)",
-     "legendFormat": "{{outcome}} (time to the end)",
-     "datasource": {
-      "type": "prometheus",
-      "uid": "prometheus"
-     }
-    },
-    {
-     "refId": "C",
      "expr": "avg_over_time(coordinator_proof_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\",phase=\"total\"}[$__range] @ end())",
      "legendFormat": "mean (total)",
      "datasource": {
@@ -1076,7 +1067,7 @@
      }
     },
     {
-     "refId": "D",
+     "refId": "C",
      "expr": "quantile_over_time(0.999, coordinator_proof_seconds{job=\"zisk-coordinator\",cluster=~\"$cluster\",phase=\"total\"}[$__range] @ end())",
      "legendFormat": "P99.9 (total)",
      "datasource": {
@@ -1085,7 +1076,7 @@
      }
     },
     {
-     "refId": "E",
+     "refId": "D",
      "expr": "vector(NaN)",
      "legendFormat": "┃ worker restarted",
      "datasource": {
@@ -1094,7 +1085,7 @@
      }
     },
     {
-     "refId": "F",
+     "refId": "E",
      "expr": "vector(NaN)",
      "legendFormat": "┃ job cancelled",
      "datasource": {
@@ -1103,7 +1094,7 @@
      }
     },
     {
-     "refId": "G",
+     "refId": "F",
      "expr": "vector(NaN)",
      "legendFormat": "┃ job failed",
      "datasource": {
@@ -1256,60 +1247,6 @@
        {
         "id": "custom.lineWidth",
         "value": 2
-       }
-      ]
-     },
-     {
-      "matcher": {
-       "id": "byName",
-       "options": "failed (time to the end)"
-      },
-      "properties": [
-       {
-        "id": "color",
-        "value": {
-         "mode": "fixed",
-         "fixedColor": "red"
-        }
-       },
-       {
-        "id": "custom.drawStyle",
-        "value": "points"
-       },
-       {
-        "id": "custom.pointSize",
-        "value": 11
-       },
-       {
-        "id": "custom.showPoints",
-        "value": "always"
-       }
-      ]
-     },
-     {
-      "matcher": {
-       "id": "byName",
-       "options": "cancelled (time to the end)"
-      },
-      "properties": [
-       {
-        "id": "color",
-        "value": {
-         "mode": "fixed",
-         "fixedColor": "dark-blue"
-        }
-       },
-       {
-        "id": "custom.drawStyle",
-        "value": "points"
-       },
-       {
-        "id": "custom.pointSize",
-        "value": 11
-       },
-       {
-        "id": "custom.showPoints",
-        "value": "always"
        }
       ]
      },
@@ -2093,7 +2030,7 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "label_replace(coordinator_recent_job{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, \"outcome\", \"failed\", \"outcome\", \"failure\") > (time() - $__range_s) * 1000",
+     "expr": "label_replace(label_replace(coordinator_recent_job{job=\"zisk-coordinator\",cluster=~\"$cluster\"}, \"outcome\", \"succeeded\", \"outcome\", \"success\"), \"outcome\", \"failed\", \"outcome\", \"failure\") > (time() - $__range_s) * 1000",
      "legendFormat": "",
      "datasource": {
       "type": "prometheus",
@@ -2192,7 +2129,7 @@
          {
           "type": "regex",
           "options": {
-           "pattern": "success",
+           "pattern": "succeeded",
            "result": {
             "color": "green"
            }
