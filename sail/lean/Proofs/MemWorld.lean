@@ -182,13 +182,14 @@ def busSenders (M : MainSegs F) (S : MemOthers F) : List (Sender F) :=
 /-- What deriving `MemAnswers` takes of the memory bus: Main's segments as the
 register chain needs them, a sound bus over them and every other AIR, global
 updates that balance every load and store among themselves, the RAM's padding
-range checks sound, no other AIR sending a load or a store (`NoOtherMem`),
+and last-step range checks sound, no other AIR sending a load or a store (`NoOtherMem`),
 and few enough rows that every count stays far below the characteristic. -/
 structure MemBusWorld (M : MainSegs F) (S : MemOthers F) (gp ga : List (List F)) : Prop where
   ok : M.Ok
   bus : SumHolds 10 (busSenders M S) gp ga
   globals : ∀ τ : List F, (τ.headD 0 = 1 ∨ τ.headD 0 = 2) → times gp τ = times ga τ
   pad : ∀ I ∈ S.mem, RangeHolds Mem.ranges Mem.bus58 I.x I.t ∧ RangeHolds Mem.ranges Mem.bus60 I.x I.t
+  last : ∀ I ∈ S.mem, RangeHolds Mem.ranges Mem.bus54 I.x I.t ∧ RangeHolds Mem.ranges Mem.bus56 I.x I.t
   none : NoOtherMem S
   size : ((busSenders M S).map fun s => s.at.length + (if s.p.arg.once then 2 ^ 32 else 0)).foldr
     (· + ·) 0 < 2 ^ 62
@@ -326,5 +327,192 @@ theorem MemBusWorld.assumed {M : MainSegs F} {S : MemOthers F} {gp ga : List (Li
     (fun s hs => (W.z_spec hop hs).1.1) (W.bound hop) hpos hs₀ hside (W.z_pos hop hs₀ hb hj ht hr)
   have hza := Nat.lt_of_le_of_lt (le_foldr_of_mem (fun s => (W.z hop s).natAbs) hs) (W.bound hop)
   exact ⟨s, hs, hp, s.sends_of_count (W.z_spec hop hs).1.1 h1 (by simp only at hza; omega)⟩
+
+/-! ### The steps the RAM's tuples carry -/
+
+/-- A load or store Main assumes carries a natural step below `2^48`: a lane
+access's memory step. -/
+theorem MemBusWorld.main_step {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {s : Sender F}
+    (hs : s ∈ M.list.flatMap (fun m => mainMemSenders m.1 m.2)) (hside : s.proving = false)
+    {j : Int} (hj : j ∈ s.at) {τ : List F} (ht : tupleOf s.p j = τ)
+    (hop : τ.headD 0 = 1 ∨ τ.headD 0 = 2) :
+    ∃ n : Nat, n < 2 ^ 48 ∧ el 2 τ = ((n : Nat) : F) := by
+  rw [← M.pairSenders_pairs] at hs
+  obtain ⟨P, hP, hs⟩ := List.mem_flatMap.mp hs
+  have hg := M.pairs_good W.ok P hP
+  obtain ⟨k, hk, g, hgm, rfl⟩ := M.mem_pairs hP
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hs
+  rcases hs with rfl | rfl
+  · rw [hg.side_pre] at hside; exact nomatch hside
+  have hcur := (mainTags_cur (F := F)).mem g hgm
+  have honce := (mainTags_once (F := F)).mem g hgm
+  have hK := W.ok.small
+  rw [hg.same] at hj
+  cases g with
+  | lane l κ =>
+    obtain ⟨m, hm, rfl⟩ := mem_at_rows (s := ⟨⟨(PairTag.lane l κ).preArg, (M.seg k).1, (M.seg k).2⟩,
+      Main.numRows⟩) honce hj
+    have e := hcur k (M.seg k).1 (M.seg k).2 (W.ok.seg k hk) m hm
+    have hl := mainTags_wf _ hgm
+    simp only [PairTag.Wf] at hl
+    refine ⟨laneStep k l κ m, ?_, ?_⟩
+    · simp only [laneStep, Main.numRows] at hm ⊢; omega
+    · rw [← ht]; exact e
+  | flush f ρ =>
+    have e := hcur (M.seg k).1 (M.seg k).2 j
+    have ht' : tupleOf ⟨(PairTag.flush f ρ).curArg, (M.seg k).1, (M.seg k).2⟩ j = τ := ht
+    rw [ht', el_zero_headD] at e
+    rcases hop with h | h <;> rw [h] at e
+    · exact absurd e (by
+        intro h13; have := natCast_inj49 (F := F) (x := 1) (y := 3) (by omega) (by omega)
+          (by rw [Lean.Grind.Semiring.natCast_one, ← natCast_ofNat' 3]; exact h13)
+        omega)
+    · exact absurd e (by
+        intro h23; have := natCast_inj49 (F := F) (x := 2) (y := 3) (by omega) (by omega)
+          (by rw [← natCast_ofNat' 2, ← natCast_ofNat' 3]; exact h23)
+        omega)
+
+theorem MemOthers.ram_sub (S : MemOthers F) {s : Sender F} (h : s ∈ S.ramSenders) : s ∈ S.senders := by
+  unfold MemOthers.ramSenders at h
+  simp only [MemOthers.senders, List.mem_append, h, true_or, or_true]
+
+theorem MemOthers.in_sub (S : MemOthers F) {s : Sender F} (h : s ∈ S.inSenders) : s ∈ S.senders := by
+  unfold MemOthers.inSenders at h
+  simp only [MemOthers.senders, List.mem_append, h, true_or, or_true]
+
+theorem lane_sender_mem (I : MemOnMem F) {L : Nat} (hL : L < 4) :
+    (⟨⟨ramLaneArg L, I.x, I.t⟩, Mem.numRows⟩ : Sender F) ∈ I.senders ∧
+      (⟨⟨ramDualArg L, I.x, I.t⟩, Mem.numRows⟩ : Sender F) ∈ I.senders := by
+  rcases L with _ | _ | _ | _ | L
+  all_goals first | omega | simp [MemOnMem.senders, ramLaneArg, ramDualArg]
+
+theorem MemBusWorld.ram_mem {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (_W : MemBusWorld M S gp ga) {I : MemOnMem F} (hI : I ∈ S.mem) {s : Sender F}
+    (hs : s ∈ I.senders) : s ∈ busSenders M S :=
+  List.mem_append_right _ (S.ram_sub (List.mem_flatMap.mpr ⟨I, hI, hs⟩))
+
+/-- A tuple with op 1 or 2, sent by a sender of bits that proves, with count 1,
+and not a padding tuple, carries a natural step below `2^48`: some Main access
+assumes it. -/
+theorem MemBusWorld.proved_step {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {τ : List F} (hop : τ.headD 0 = 1 ∨ τ.headD 0 = 2)
+    (hnp : ∀ I ∈ S.mem, τ ≠ padTuple I.x) {s₀ : Sender F}
+    (hs₀ : s₀ ∈ busSenders M S) (hside : s₀.proving = true)
+    (hb : ∀ j ∈ s₀.at, s₀.p.arg.reps s₀.p.x s₀.p.t j = 0 ∨ s₀.p.arg.reps s₀.p.x s₀.p.t j = 1)
+    {j : Int} (hj : j ∈ s₀.at) (ht : tupleOf s₀.p j = τ) (hr : s₀.p.arg.reps s₀.p.x s₀.p.t j = 1) :
+    ∃ n : Nat, n < 2 ^ 48 ∧ el 2 τ = ((n : Nat) : F) := by
+  obtain ⟨s, hs, hp, j', hj', ht', hr'⟩ := W.assumed hop hnp hs₀ hside hb hj ht hr
+  rcases List.mem_append.mp hs with hm | ho
+  · exact W.main_step hm hp hj' ht' hop
+  · rcases S.mem_split ho with hr | hi | hn
+    · obtain ⟨I, hI, hs'⟩ := List.mem_flatMap.mp hr
+      have := (ram_counts I (W.pad I hI).1 (W.pad I hI).2 τ s hs').1
+      rw [hp] at this; exact nomatch this
+    · obtain ⟨I, -, hs'⟩ := List.mem_flatMap.mp hi
+      have := (input_counts I τ s hs').1
+      rw [hp] at this; exact nomatch this
+    · have := W.none s hn j' hr'
+      rw [ht'] at this
+      rcases hop with h | h
+      · exact absurd h this.1
+      · exact absurd h this.2
+
+/-- A RAM instance's last step, a natural below `2^38`: its range-checked
+chunks. -/
+theorem MemBusWorld.last_step {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {I : MemOnMem F} (hI : I ∈ S.mem) :
+    ∃ n : Nat, n < 2 ^ 38 ∧ I.x.Mem_segment_last_step = ((n : Nat) : F) := by
+  obtain ⟨r54, r56⟩ := W.last I hI
+  obtain ⟨n0, h0, e0⟩ := (mem_range r54 (j := 0) one_ne_zero' (List.mem_singleton_self _)).1 rfl
+  obtain ⟨n1, h1, e1⟩ := (mem_range r56 (j := 0) one_ne_zero' (List.mem_singleton_self _)).2 rfl
+  have c := (I.rows 0).c34
+  simp only [Mem.c34, Mem.Zisk_direct_gsum_e_15] at c
+  simp only [Mem.bus54, Mem.bus56, Lean.Grind.Semiring.add_zero] at e0 e1
+  refine ⟨n0 + 4194304 * n1, by omega, ?_⟩
+  rw [Lean.Grind.Semiring.natCast_add, Lean.Grind.Semiring.natCast_mul, ← e0, ← e1]
+  generalize I.x.Mem_segment_last_step = a at c ⊢
+  clear e0 e1
+  rw [← natCast_ofNat' 4194304]
+  grind
+
+/-- **A step a RAM lane sends is a natural below `2^48`**, its access's or its
+dual read's: some Main access assumes its tuple, or it is a padding tuple,
+whose step is the last step. -/
+theorem MemBusWorld.step_of_sent {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {I : MemOnMem F} (hI : I ∈ S.mem) {s : Sender F} (hs : s ∈ I.senders)
+    (hb : ∀ j ∈ s.at, s.p.arg.reps s.p.x s.p.t j = 0 ∨ s.p.arg.reps s.p.x s.p.t j = 1)
+    {j : Int} (hj : j ∈ s.at) (hr : s.p.arg.reps s.p.x s.p.t j = 1)
+    (hop : (tupleOf s.p j).headD 0 = 1 ∨ (tupleOf s.p j).headD 0 = 2) :
+    ∃ n : Nat, n < 2 ^ 48 ∧ el 2 (tupleOf s.p j) = ((n : Nat) : F) := by
+  by_cases hpad : ∃ I' ∈ S.mem, tupleOf s.p j = padTuple I'.x
+  · obtain ⟨I', hI', he⟩ := hpad
+    obtain ⟨n, hn, e⟩ := W.last_step hI'
+    refine ⟨n, by omega, ?_⟩
+    rw [he]; exact e
+  · have hnp : ∀ I' ∈ S.mem, tupleOf s.p j ≠ padTuple I'.x := fun I' hI' h => hpad ⟨I', hI', h⟩
+    exact W.proved_step hop hnp (W.ram_mem hI hs) (ram_counts I (W.pad I hI).1 (W.pad I hI).2 [] s hs).1
+      hb hj rfl hr
+
+theorem lane_at_mem {C T : Type} {a : BusArg F C T} {x : C} {t : T} (ho : a.once = false) {j : Nat}
+    (hj : j < Mem.numRows) : ((j : Nat) : Int) ∈ (⟨⟨a, x, t⟩, Mem.numRows⟩ : Sender F).at := by
+  simp only [Sender.at, ho, Bool.false_eq_true, if_false, List.mem_map, List.mem_range]
+  exact ⟨j, hj, rfl⟩
+
+/-- **The RAM's steps are naturals below `2^48`**: each lane's, and each dual
+read's where it is set. -/
+theorem MemBusWorld.ram_steps {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {I : MemOnMem F} (hI : I ∈ S.mem) {j : Nat} (hj : j < Mem.numRows)
+    {L : Nat} (hL : L < 4) :
+    (∃ n : Nat, n < 2 ^ 48 ∧ (I.t j).step L = ((n : Nat) : F)) ∧
+      ((I.t j).sel_dual L ≠ 0 → ∃ n : Nat, n < 2 ^ 48 ∧ (I.t j).step_dual L = ((n : Nat) : F)) := by
+  obtain ⟨hml, hmd⟩ := lane_sender_mem I hL
+  obtain ⟨hr1, ht1⟩ := ram_lane_tuple hL I.x I.t j
+  obtain ⟨hr2, ht2⟩ := ram_dual_tuple hL I.x I.t j
+  have honce1 : (ramLaneArg (F := F) L).once = false := by
+    rcases L with _ | _ | _ | _ | L <;> first | omega | rfl
+  have honce2 : (ramDualArg (F := F) L).once = false := by
+    rcases L with _ | _ | _ | _ | L <;> first | omega | rfl
+  constructor
+  · have hb : ∀ j' ∈ (⟨⟨ramLaneArg L, I.x, I.t⟩, Mem.numRows⟩ : Sender F).at,
+        (ramLaneArg (F := F) L).reps I.x I.t j' = 0 ∨ (ramLaneArg (F := F) L).reps I.x I.t j' = 1 :=
+      fun j' _ => .inr (ram_lane_tuple hL I.x I.t j').1
+    have hop : (tupleOf (⟨ramLaneArg L, I.x, I.t⟩ : Prover F) j).headD 0 = 1 ∨
+        (tupleOf (⟨ramLaneArg L, I.x, I.t⟩ : Prover F) j).headD 0 = 2 := by
+      rw [ht1]
+      obtain ⟨b, hb'⟩ := bool_of_idem (ram_wr_bit (I.rows j) hL)
+      cases b <;> simp only [List.headD_cons, hb', bit, Bool.false_eq_true, if_false, if_true]
+      · left; grind
+      · right; grind
+    obtain ⟨n, hn, e⟩ := W.step_of_sent hI hml hb (lane_at_mem honce1 hj) hr1 hop
+    rw [ht1] at e
+    exact ⟨n, hn, e⟩
+  · intro hsel
+    have h1 : (I.t j).sel_dual L = 1 := by
+      have : (I.t j).sel_dual L * (1 - (I.t j).sel_dual L) = 0 := by
+        rcases L with _ | _ | _ | _ | L
+        · exact (I.rows j).c3
+        · exact (I.rows j).c4
+        · exact (I.rows j).c5
+        · exact (I.rows j).c6
+        · omega
+      obtain ⟨b, hb'⟩ := bool_of_idem this
+      cases b <;> simp_all [bit]
+    have hb : ∀ j' ∈ (⟨⟨ramDualArg L, I.x, I.t⟩, Mem.numRows⟩ : Sender F).at,
+        (ramDualArg (F := F) L).reps I.x I.t j' = 0 ∨ (ramDualArg (F := F) L).reps I.x I.t j' = 1 := by
+      intro j' _
+      rw [(ram_dual_tuple hL I.x I.t j').1]
+      have : (I.t j').sel_dual L * (1 - (I.t j').sel_dual L) = 0 := by
+        rcases L with _ | _ | _ | _ | L
+        · exact (I.rows j').c3
+        · exact (I.rows j').c4
+        · exact (I.rows j').c5
+        · exact (I.rows j').c6
+        · omega
+      exact bit_or this
+    obtain ⟨n, hn, e⟩ := W.step_of_sent hI hmd hb (lane_at_mem honce2 hj) (by rw [hr2, h1])
+      (by rw [ht2]; left; rfl)
+    rw [ht2] at e
+    exact ⟨n, hn, e⟩
 
 end Correspondence

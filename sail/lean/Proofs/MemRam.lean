@@ -10,7 +10,7 @@
   `l_increment + 2^22·h_increment + 1`, range-checked to `[1, 2^38]`, is the
   address's step up when the address changes, and the step's (plus one for a
   read) when it does not. Taken with Nat values for the lanes' addresses and
-  steps below `2^40` — which the memory bus will supply, every lane's tuple
+  steps below `2^48` — which the memory bus will supply, every lane's tuple
   being one some AIR assumes — the field relations are relations between
   naturals (`follows_cols`).
 -/
@@ -29,17 +29,17 @@ set_option linter.unusedSectionVars false
 
 variable {F : Type} [Lean.Grind.Field F] [Lean.Grind.IsCharP F goldilocks]
 
-/-- Equal in the field and below `2^41`, so equal. -/
-theorem natCast_inj41 {x y : Nat} (hx : x < 2 ^ 41) (hy : y < 2 ^ 41) (h : (x : F) = (y : F)) :
+/-- Equal in the field and below `2^49`, so equal. -/
+theorem natCast_inj49 {x y : Nat} (hx : x < 2 ^ 49) (hy : y < 2 ^ 49) (h : (x : F) = (y : F)) :
     x = y :=
   natCast_inj (by unfold goldilocks; omega) (by unfold goldilocks; omega) h
 
 /-- **One lane follows the one before it.** The field relations of a lane of
 the RAM — the increment, the address kept when it does not change, a read's
 value — against the previous lane's address `pA`, last step `pL` and value
-`pv`, with every address and step a natural below `2^40`. -/
+`pv`, with every address and step a natural below `2^48`. -/
 theorem follows_cols {pA pL a s inc : Nat} {pv v : F × F} {ac w : Bool} (dual : Option Nat)
-    (hpA : pA < 2 ^ 40) (hpL : pL < 2 ^ 40) (ha : a < 2 ^ 40) (hs : s < 2 ^ 40)
+    (hpA : pA < 2 ^ 48) (hpL : pL < 2 ^ 48) (ha : a < 2 ^ 48) (hs : s < 2 ^ 48)
     (hincl : inc < 2 ^ 38)
     (hinc : (inc : F) + 1 = bit ac * (((a : F) - (pA : F)) - ((s : F) - (pL : F) + (1 - bit w))) +
       ((s : F) - (pL : F) + (1 - bit w)))
@@ -52,17 +52,17 @@ theorem follows_cols {pA pL a s inc : Nat} {pv v : F × F} {ac w : Bool} (dual :
   cases ac <;> simp only [bit, Bool.false_eq_true, if_false, if_true] at hinc haddr hv0 hv1 hz0 hz1
   · -- The address is kept.
     have e : (a : F) = (pA : F) := by grind
-    have ea := natCast_inj41 (F := F) (by omega) (by omega) e
+    have ea := natCast_inj49 (F := F) (by omega) (by omega) e
     refine .inl ⟨by simp only; omega, ?_, ?_⟩
     · cases w <;> simp only [bit, Bool.false_eq_true, if_false, if_true] at hinc
       · have e' : (s : F) = ((pL + inc : Nat) : F) := by
           rw [Lean.Grind.Semiring.natCast_add]; grind
-        have := natCast_inj41 (F := F) (by omega) (by omega) e'
+        have := natCast_inj49 (F := F) (by omega) (by omega) e'
         simp only [Bool.false_eq_true, if_false]; omega
       · have e' : (s : F) = ((pL + inc + 1 : Nat) : F) := by
           rw [Lean.Grind.Semiring.natCast_add, Lean.Grind.Semiring.natCast_add,
             Lean.Grind.Semiring.natCast_one]; grind
-        have := natCast_inj41 (F := F) (by omega) (by omega) e'
+        have := natCast_inj49 (F := F) (by omega) (by omega) e'
         simp only [if_true]; omega
     · intro hw
       simp only at hw
@@ -74,7 +74,7 @@ theorem follows_cols {pA pL a s inc : Nat} {pv v : F × F} {ac w : Bool} (dual :
     have e' : (a : F) = ((pA + inc + 1 : Nat) : F) := by
       rw [Lean.Grind.Semiring.natCast_add, Lean.Grind.Semiring.natCast_add,
         Lean.Grind.Semiring.natCast_one]; grind
-    have := natCast_inj41 (F := F) (by omega) (by omega) e'
+    have := natCast_inj49 (F := F) (by omega) (by omega) e'
     refine .inr ⟨by simp only; omega, ?_⟩
     intro hw
     simp only at hw
@@ -262,15 +262,15 @@ def InRows (i : Int) : Prop := 0 ≤ i ∧ i < (Mem.numRows : Int)
 theorem inRows_nat {r : Nat} (h : r < Mem.numRows) : InRows (r : Int) := ⟨by omega, by omega⟩
 
 /-- The RAM's addresses, steps and dual steps at the segment's rows, as
-naturals below `2^40`. -/
+naturals below `2^48`. -/
 structure RamNat (x : Mem.Ctx F) (t : Mem.Trace F) where
   A : Int → Nat → Nat
   S : Int → Nat → Nat
   D : Int → Nat → Nat
-  addr : ∀ i L, InRows i → L < 4 → A i L < 2 ^ 40 ∧ (t i).addr L = ((A i L : Nat) : F)
-  step : ∀ i L, InRows i → L < 4 → S i L < 2 ^ 40 ∧ (t i).step L = ((S i L : Nat) : F)
+  addr : ∀ i L, InRows i → L < 4 → A i L < 2 ^ 48 ∧ (t i).addr L = ((A i L : Nat) : F)
+  step : ∀ i L, InRows i → L < 4 → S i L < 2 ^ 48 ∧ (t i).step L = ((S i L : Nat) : F)
   dual : ∀ i L, InRows i → L < 4 → (t i).sel_dual L ≠ 0 →
-    D i L < 2 ^ 40 ∧ (t i).step_dual L = ((D i L : Nat) : F)
+    D i L < 2 ^ 48 ∧ (t i).step_dual L = ((D i L : Nat) : F)
 
 open Classical in
 /-- Lane `L` of row `i`, as a lane of the sorted log. -/
@@ -288,7 +288,7 @@ reads. -/
 theorem RamNat.last_cast {i : Int} (hi : InRows i) {L : Nat} (hL : L < 4)
     (hsel : (t i).sel_dual L * (1 - (t i).sel_dual L) = 0) :
     (t i).sel_dual L * ((t i).step_dual L - (t i).step L) + (t i).step L =
-      (((N.lane i L).last : Nat) : F) ∧ (N.lane i L).last < 2 ^ 40 := by
+      (((N.lane i L).last : Nat) : F) ∧ (N.lane i L).last < 2 ^ 48 := by
   have hs := N.step i L hi hL
   by_cases h1 : (t i).sel_dual L = 1
   · have hd := N.dual i L hi hL (by rw [h1]; exact one_ne_zero')
@@ -322,7 +322,7 @@ theorem RamNat.lane_ok (hR : RamRanges x t) {i : Int} (hi : InRows i) {L : Nat} 
     rw [hd.2, hs.2, hw] at e
     have e' : ((N.D i L : Nat) : F) = ((N.S i L + (if b then 1 else 0) + n : Nat) : F) := by
       rw [Lean.Grind.Semiring.natCast_add, Lean.Grind.Semiring.natCast_add, ← bit_cast]; grind
-    have := natCast_inj41 (F := F) (by omega) (by split <;> omega) e'
+    have := natCast_inj49 (F := F) (by omega) (by split <;> omega) e'
     omega
   · exact nomatch hsd
 
@@ -330,8 +330,8 @@ open Classical in
 /-- **A lane follows the lane before it**, as naturals: from its constraints,
 its range checks, and the previous lane's address `PA` and last step `PL`. -/
 theorem RamNat.lane_follows (hR : RamRanges x t) {i : Int} (hi : InRows i) {L : Nat} (hL : L < 4)
-    {pa v0 v1 : F} (hl : RamLaneHolds (t i) L pa v0 v1) {PA PL : Nat} (hPA : PA < 2 ^ 40)
-    (hPL : PL < 2 ^ 40) (hpa : pa = ((PA : Nat) : F))
+    {pa v0 v1 : F} (hl : RamLaneHolds (t i) L pa v0 v1) {PA PL : Nat} (hPA : PA < 2 ^ 48)
+    (hPL : PL < 2 ^ 48) (hpa : pa = ((PA : Nat) : F))
     (hps : (t i).previous_step L = ((PL : Nat) : F))
     (p : Lane (F × F)) (hpA : p.addr = PA) (hpL : p.last = PL) (hpv : p.val = (v0, v1)) :
     Follows (0, 0) p (N.lane i L) := by
@@ -490,7 +490,7 @@ name as the one before. -/
 theorem RamNat.sorted_next (hrows : ∀ i, Mem.everyRow x t i) (hR : RamRanges x t)
     (hfirst : (t 0).__L1__ = 1) (hinner : ∀ i : Int, 0 < i → i < Mem.numRows → (t i).__L1__ = 0)
     (hf0 : x.Mem_is_first_segment = 0) {L : List (Lane (F × F))} {p : Lane (F × F)}
-    (h : Sorted (0, 0) L) (hl : L.getLast? = some p) (hpA : p.addr < 2 ^ 40) (hpL : p.last < 2 ^ 40)
+    (h : Sorted (0, 0) L) (hl : L.getLast? = some p) (hpA : p.addr < 2 ^ 48) (hpL : p.last < 2 ^ 48)
     (hpa : ((p.addr : Nat) : F) = x.Mem_previous_segment_addr)
     (hpl : ((p.last : Nat) : F) = x.Mem_previous_segment_step)
     (hpv : p.val = (x.Mem_previous_segment_value 0, x.Mem_previous_segment_value 1)) :
@@ -526,8 +526,8 @@ theorem RamNat.last_lane (hrows : ∀ i, Mem.everyRow x t i) (hcyc : Mem.cyclic 
       (((N.lane ((Mem.numRows - 1 : Nat) : Int) 3).last : Nat) : F) = x.Mem_segment_last_step ∧
       (N.lane ((Mem.numRows - 1 : Nat) : Int) 3).val =
         (x.Mem_segment_last_value 0, x.Mem_segment_last_value 1) ∧
-      (N.lane ((Mem.numRows - 1 : Nat) : Int) 3).addr < 2 ^ 40 ∧
-      (N.lane ((Mem.numRows - 1 : Nat) : Int) 3).last < 2 ^ 40 := by
+      (N.lane ((Mem.numRows - 1 : Nat) : Int) 3).addr < 2 ^ 48 ∧
+      (N.lane ((Mem.numRows - 1 : Nat) : Int) 3).last < 2 ^ 48 := by
   have hwrap : (t (((Mem.numRows - 1 : Nat) : Int) + 1)).__L1__ = 1 := by
     have := hcyc 0
     rw [Int.zero_add] at this
@@ -840,13 +840,13 @@ theorem AA_region {n : Nat} (hn : n < 4 * Mem.numRows) :
 end RamTrace
 
 /-- The RAM's steps and dual steps at the segment's rows, as naturals below
-`2^40`: what the memory bus will supply. -/
+`2^48`: what the memory bus will supply. -/
 structure RamSteps (x : Mem.Ctx F) (t : Mem.Trace F) where
   S : Int → Nat → Nat
   D : Int → Nat → Nat
-  step : ∀ i L, InRows i → L < 4 → S i L < 2 ^ 40 ∧ (t i).step L = ((S i L : Nat) : F)
+  step : ∀ i L, InRows i → L < 4 → S i L < 2 ^ 48 ∧ (t i).step L = ((S i L : Nat) : F)
   dual : ∀ i L, InRows i → L < 4 → (t i).sel_dual L ≠ 0 →
-    D i L < 2 ^ 40 ∧ (t i).step_dual L = ((D i L : Nat) : F)
+    D i L < 2 ^ 48 ∧ (t i).step_dual L = ((D i L : Nat) : F)
 
 /-- A segment's naturals: the addresses the AIR gives, the steps supplied. -/
 noncomputable def RamTrace.toNat (T : RamTrace F) (St : RamSteps T.x T.t) : RamNat T.x T.t where

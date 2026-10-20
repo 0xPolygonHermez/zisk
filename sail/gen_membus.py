@@ -648,6 +648,22 @@ theorem mainTags_read : AllOf (fun g : PairTag => g.ReadOk (F := F)) mainTags :=
     trivial⟩
 
 """)
+    cterms = []
+    for l, k, *_ in lanes:
+        cterms.append(f"fun _ _ _ h _ hm => lane_step_{l}_{k} h hm")
+    for f, r, p, c, _ in flushes:
+        out.append(f"""omit [Lean.Grind.IsCharP F goldilocks] in
+theorem cur_flush_{f}_{r} (x : Main.Ctx F) (t : Main.Trace F) (j : Int) :
+    el 0 (tupleOf ⟨Main.{c}, x, t⟩ j) = 3 := rfl
+""")
+        cterms.append(f"cur_flush_{f}_{r}")
+    out.append(f"""set_option maxRecDepth 100000 in
+/-- **A lane access sends its memory step; a flush, op 3.** -/
+theorem mainTags_cur : AllOf (fun g : PairTag => g.CurOk (F := F)) mainTags :=
+  ⟨{(','+chr(10)+'    ').join(cterms)},
+    trivial⟩
+
+""")
     out.append(f"""set_option maxRecDepth 100000 in
 /-- **A flush's address is its register's.** -/
 theorem mainTags_addr : AllOf (fun g : PairTag => g.AddrOk (F := F)) mainTags :=
@@ -969,6 +985,15 @@ def PairTag.ReadOk (g : PairTag) : Prop :=
   g.isRead = true → ∀ (x : Main.Ctx F) (t : Main.Trace F) (j : Int),
     el 4 (tupleOf ⟨g.curArg, x, t⟩ j) = el 4 (tupleOf ⟨g.preArg, x, t⟩ j) ∧
       el 5 (tupleOf ⟨g.curArg, x, t⟩ j) = el 5 (tupleOf ⟨g.preArg, x, t⟩ j)
+
+/-- What a pair's assuming side sends: a lane access, its lane's memory step,
+whatever its op; a flush, op 3. -/
+def PairTag.CurOk : PairTag → Prop
+  | .lane l κ => ∀ (k : Nat) (x : Main.Ctx F) (t : Main.Trace F), MainSegOk k x t →
+      ∀ m : Nat, m < Main.numRows →
+        el 2 (tupleOf ⟨(PairTag.lane l κ).curArg, x, t⟩ m) = ((laneStep k l κ m : Nat) : F)
+  | .flush f ρ => ∀ (x : Main.Ctx F) (t : Main.Trace F) (j : Int),
+      el 0 (tupleOf ⟨(PairTag.flush f ρ).curArg, x, t⟩ j) = 3
 
 /-- A flush pair's address is its register's. -/
 def PairTag.AddrOk (g : PairTag) : Prop :=

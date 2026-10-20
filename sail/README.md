@@ -1266,7 +1266,7 @@ set of facts per lane (`RamLaneHolds`). The AIR fixes only differences, in the
 field: the increment `l_increment + 2^22·h_increment + 1`, range-checked into
 `[1, 2^38]`, is the address's step up when it changes and the step's when it
 does not; a dual read's distance is range-checked too. With every lane's
-address and step a natural below `2^40` (`RamNat`), those relations are
+address and step a natural below `2^48` (`RamNat`), those relations are
 relations between naturals, and the lane `Follows` the one before
 (`follows_cols`, `RamNat.lane_follows`). So a first segment's lanes are a
 sorted log (`sorted_first`), a later segment's extend the log from the lane
@@ -1420,7 +1420,11 @@ InputData's are bits; the rest, 0; the RAM's padding, minus its size, below
 `2^32`, on its own tuple alone. So a load or store some Main access sends is
 proved by some sender, at one of its rows (`MemBusWorld.proved`), and one a
 prover sends, other than a padding tuple, is assumed by some sender
-(`MemBusWorld.assumed`).
+(`MemBusWorld.assumed`). That bounds the RAM's steps: a lane's tuple, unless it is a
+padding tuple — whose step is the last step, range-checked below `2^38` — is
+assumed by some Main access, whose step element is its lane's memory step
+(`mainTags_cur`, generated), so every lane's step and every set dual read's
+is a natural below `2^48` (`MemBusWorld.ram_steps`): what `RamSteps` asks.
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'
