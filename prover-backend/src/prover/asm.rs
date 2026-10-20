@@ -10,7 +10,8 @@ use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{
-    initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
+    initialize_logger, set_global_rank, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo,
+    VerboseMode,
 };
 use proofman_fields::Goldilocks;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
@@ -885,6 +886,11 @@ impl AsmCoreProver {
 
         let rank_info = proofman.get_rank_info();
 
+        // The loggers tag lines with the rank only when there are several. A distributed worker
+        // always does, so that its logs read the same whatever its MPI layout.
+        if is_distributed {
+            set_global_rank(rank_info.world_rank);
+        }
         if logging_config.is_some() {
             zisk_cluster_common::init(logging_config.as_ref(), Some(&rank_info))?;
         } else {
