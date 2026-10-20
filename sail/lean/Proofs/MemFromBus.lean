@@ -176,4 +176,194 @@ theorem mainStores_mem {M : MainSegs F} {k m l : Nat} (hk : k < M.K) (hm : m < M
     unfold storeAt
     rw [h1, h2, h3, if_pos hs, memBase_index hm hl]
 
+/-! ### The RAM's writes are Main's stores -/
+
+open Classical in
+/-- Every emission of the RAM's log has an address and a step below `2^48`. -/
+theorem MemBusWorld.log_bounds {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {e : Emit (F × F)}
+    (he : e ∈ MemSort.reads (ramLog (W.segs hram)) ∨ e ∈ MemSort.writes (ramLog (W.segs hram))) :
+    e.addr < 2 ^ 48 ∧ e.step < 2 ^ 48 := by
+  obtain ⟨lane, hlane, hel⟩ : ∃ lane ∈ ramLog (W.segs hram), e ∈ lane.reads ∨ e ∈ lane.writes := by
+    rcases he with h | h
+    · obtain ⟨lane, hl, h'⟩ := List.mem_flatMap.mp h; exact ⟨lane, hl, .inl h'⟩
+    · obtain ⟨lane, hl, h'⟩ := List.mem_flatMap.mp h; exact ⟨lane, hl, .inr h'⟩
+  obtain ⟨seg, hseg, hls⟩ := List.mem_flatMap.mp hlane
+  obtain ⟨⟨I, hI⟩, -, rfl⟩ := List.mem_map.mp hseg
+  obtain ⟨n, hn, rfl⟩ := List.mem_map.mp hls
+  rw [List.mem_range] at hn
+  have hm : n / 4 < Mem.numRows := by
+    have : Mem.numRows = 4194304 := rfl
+    rw [this] at hn ⊢; omega
+  have hL : n % 4 < 4 := Nat.mod_lt _ (by omega)
+  let N := (W.seg hI (hram I hI)).nat
+  have ha := (N.addr ((n / 4 : Nat) : Int) (n % 4) (inRows_nat hm) hL).1
+  have hs := (N.step ((n / 4 : Nat) : Int) (n % 4) (inRows_nat hm) hL).1
+  rcases hel with h | h
+  · have h' : e ∈ (N.lane ((n / 4 : Nat) : Int) (n % 4)).reads := h
+    simp only [RamNat.lane, Lane.reads, List.mem_append] at h'
+    rcases h' with h' | h'
+    · split at h'
+      · exact nomatch h'
+      · rw [List.mem_singleton.mp h']; exact ⟨ha, hs⟩
+    · split at h'
+      · rename_i hd
+        split at hd
+        · rename_i h1
+          cases hd
+          rw [List.mem_singleton.mp h']
+          exact ⟨ha, (N.dual ((n / 4 : Nat) : Int) (n % 4) (inRows_nat hm) hL (by
+            show ((W.seg hI (hram I hI)).t _).sel_dual (n % 4) ≠ 0
+            rw [h1]; exact one_ne_zero')).1⟩
+        · exact nomatch hd
+      · exact nomatch h'
+  · have h' : e ∈ (N.lane ((n / 4 : Nat) : Int) (n % 4)).writes := h
+    simp only [RamNat.lane, Lane.writes] at h'
+    split at h'
+    · rw [List.mem_singleton.mp h']; exact ⟨ha, hs⟩
+    · exact nomatch h'
+
+/-- **A store Main assumes has width 8**: its prover, a RAM lane, sends 8. -/
+theorem MemBusWorld.store_width {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {X st w v0 v1 : F}
+    {s₀ : Sender F} (hs₀ : s₀ ∈ busSenders M S) (hside : s₀.proving = false)
+    (hb : ∀ j ∈ s₀.at, s₀.p.arg.reps s₀.p.x s₀.p.t j = 0 ∨ s₀.p.arg.reps s₀.p.x s₀.p.t j = 1)
+    {j : Int} (hj : j ∈ s₀.at) (ht : tupleOf s₀.p j = [2, X, st, w, v0, v1])
+    (hr : s₀.p.arg.reps s₀.p.x s₀.p.t j = 1) : w = 8 := by
+  have hop : ([2, X, st, w, v0, v1] : List F).headD 0 = 1 ∨ ([2, X, st, w, v0, v1] : List F).headD 0 = 2 :=
+    .inr rfl
+  obtain ⟨s, hs, hp, h1, j', hj', ht', hr'⟩ := W.proved hop hs₀ hside hb hj ht hr
+  rcases W.who hop hs hp h1 hj' ht' hr' with ⟨I, -, m, -, L, hL, h | ⟨-, h⟩⟩ | ⟨I, -, m, -, -, h⟩
+  · rw [(ram_lane_tuple hL I.x I.t m).2] at h
+    simp only [List.cons.injEq] at h
+    exact h.2.2.2.1.symm
+  · rw [(ram_dual_tuple hL I.x I.t m).2] at h
+    simp only [List.cons.injEq] at h
+    exact h.2.2.2.1.symm
+  · simp only [tupleOf, InputData.bus26, List.map_cons, List.map_nil, List.cons.injEq] at h
+    exact h.2.2.2.1.symm
+
+theorem natCast_ofNat_lt {n : Nat} (hn : n < goldilocks) : natOf ((n : Nat) : F) = n := natOf_cast hn
+
+/-- A write at a byte address: the log's word address, times 8. -/
+def toByte (w : Emit (F × F)) : Emit (F × F) := ⟨8 * w.addr, w.step, w.val⟩
+
+theorem laneStep_store {k l m : Nat} : laneStep k l 2 (m : Int) = memBase k m l + 2 := by
+  simp only [laneStep, memBase, Int.toNat_natCast]
+
+/-- A store's step element, in Main's columns: its lane's store step. -/
+theorem MemBusWorld.store_step {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {k m l : Nat} (hk : k < M.K) (hm : m < Main.numRows) (hl : l < 4) :
+    el 2 (tupleOf ⟨(PairTag.lane l 2).curArg, (M.seg k).1, (M.seg k).2⟩ (m : Int)) =
+      ((memBase k m l + 2 : Nat) : F) := by
+  have hcur := (mainTags_cur (F := F)).mem (PairTag.lane l 2) (lane_mem hl (by omega))
+  rw [hcur k (M.seg k).1 (M.seg k).2 (W.ok.seg k hk) m hm, laneStep_store]
+
+theorem memBase_lt {M : MainSegs F} {k m l : Nat} (hk : k < M.K) (hK : M.K < 1048576)
+    (hm : m < Main.numRows) (hl : l < 4) : memBase k m l + 2 < 2 ^ 48 := by
+  simp only [memBase, Main.numRows] at hm ⊢; omega
+
+/-- **Every write of the RAM's log is one of Main's stores**, at its byte
+address. -/
+theorem MemBusWorld.write_in_stores {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {w : Emit (F × F)}
+    (hw : w ∈ MemSort.writes (ramLog (W.segs hram))) : toByte w ∈ mainStores M := by
+  obtain ⟨k, hk, m, hm, l, hl, hst, ht⟩ := W.write_is_store hram hw
+  have hb := W.log_bounds hram (.inr hw)
+  have hmem := mainStores_mem hk hm hl hst
+  have e1 : el 1 (tupleOf ⟨(PairTag.lane l 2).curArg, (M.seg k).1, (M.seg k).2⟩ (m : Int)) =
+      ((8 * w.addr : Nat) : F) := by rw [ht]; rfl
+  have e2 := W.store_step hk hm hl
+  rw [ht] at e2
+  have e2' : ((w.step : Nat) : F) = ((memBase k m l + 2 : Nat) : F) := e2
+  have hstep := natCast_inj49 (F := F) (by omega) (by have := memBase_lt hk W.ok.small hm hl; omega) e2'
+  rw [e1, natCast_ofNat_lt (F := F) (by unfold goldilocks; omega), ← hstep, ht] at hmem
+  exact hmem
+
+/-- A lane's store access is among the memory bus's senders, assuming, a
+sender of bits. -/
+theorem MemBusWorld.store_sender {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) {k l : Nat} (hk : k < M.K) (hl : l < 4) :
+    (⟨⟨(PairTag.lane l 2).curArg, (M.seg k).1, (M.seg k).2⟩, Main.numRows⟩ : Sender F) ∈ busSenders M S ∧
+      (⟨⟨(PairTag.lane l 2).curArg, (M.seg k).1, (M.seg k).2⟩, Main.numRows⟩ : Sender F).proving = false ∧
+      (∀ j ∈ (⟨⟨(PairTag.lane l 2).curArg, (M.seg k).1, (M.seg k).2⟩, Main.numRows⟩ : Sender F).at,
+        ((PairTag.lane l 2).curArg (F := F)).reps (M.seg k).1 (M.seg k).2 j = 0 ∨
+          ((PairTag.lane l 2).curArg (F := F)).reps (M.seg k).1 (M.seg k).2 j = 1) ∧
+      (∀ j, ((PairTag.lane l 2).preArg (F := F)).reps (M.seg k).1 (M.seg k).2 j = 0 ∨
+          ((PairTag.lane l 2).preArg (F := F)).reps (M.seg k).1 (M.seg k).2 j = 1) ∧
+      (∀ m : Nat, m < Main.numRows →
+        (m : Int) ∈ (⟨⟨(PairTag.lane l 2).curArg, (M.seg k).1, (M.seg k).2⟩, Main.numRows⟩ : Sender F).at) := by
+  have hg : PairTag.lane l 2 ∈ mainTags := lane_mem hl (by omega)
+  have hP : (PairTag.lane l 2).pair k (M.seg k).1 (M.seg k).2 ∈ M.pairs := by
+    simp only [MainSegs.pairs, List.mem_flatMap, List.mem_range, mainPairs, List.mem_map]
+    exact ⟨k, hk, PairTag.lane l 2, hg, rfl⟩
+  have hgood := M.pairs_good W.ok _ hP
+  have honce := (mainTags_once (F := F)).mem _ hg
+  refine ⟨?_, hgood.side_cur, fun j hj => hgood.bits_cur j (by rw [← hgood.same]; exact hj), ?_,
+    fun m hm => by
+      have := lane_at (M := M) (k := k) hm honce
+      rw [← hgood.same] at this
+      exact this⟩
+  · apply List.mem_append_left
+    rw [← M.pairSenders_pairs]
+    exact List.mem_flatMap.mpr ⟨_, hP, by simp [PairTag.pair]⟩
+  · intro j
+    obtain ⟨-, -, -, -, -, -, -, -, c9, -⟩ := lane_cols (F := F) hl (M.seg k).1 (M.seg k).2 j
+    rw [c9, Lean.Grind.Semiring.add_zero]
+    have := (W.ok.seg k hk).rows j
+    rcases l with _ | _ | _ | _ | l
+    · exact bit_or this.bool_store_reg_0
+    · exact bit_or this.bool_store_reg_1
+    · exact bit_or this.bool_store_reg_2
+    · exact bit_or this.bool_store_reg_3
+    · omega
+
+/-- **Every store of Main's is a write of the RAM's log**, at its byte
+address. -/
+theorem MemBusWorld.store_in_writes {M : MainSegs F} {S : MemOthers F} {gp ga : List (List F)}
+    (W : MemBusWorld M S gp ga) (hram : ∀ I ∈ S.mem, RamInst I) {w' : Emit (F × F)}
+    (hw' : w' ∈ mainStores M) : ∃ w ∈ MemSort.writes (ramLog (W.segs hram)), toByte w = w' := by
+  obtain ⟨k, hk, m, hm, l, hl, hst, -, rfl⟩ := mem_mainStores hw'
+  obtain ⟨hs, hside, hbits, hpre, hat⟩ := W.store_sender hk hl
+  obtain ⟨-, -, -, -, -, -, -, -, c9, -, c11, c12, -, -⟩ := lane_cols (F := F) hl (M.seg k).1 (M.seg k).2 m
+  have hlen := (access_cols (F := F) hl (M.seg k).1 (M.seg k).2 m).2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2
+  unfold StoresAt at hst
+  -- The register bit is 0, the count 1, the op 2.
+  have hb := hbits (m : Int) (hat m hm)
+  have hp := hpre (m : Int)
+  rw [c11] at hb
+  rw [c9, Lean.Grind.Semiring.add_zero] at hp
+  rw [hst] at hb
+  have hreg : ((M.seg k).2 (m : Int)).store_reg l = 0 := by
+    rcases hp with h | h
+    · exact h
+    · exfalso
+      rw [h] at hb
+      rcases hb with h' | h'
+      · have : (2 : F) = 0 := by rw [← h']; grind
+        exact absurd this (by
+          intro h0; have := natCast_inj49 (F := F) (x := 2) (y := 0) (by omega) (by omega)
+            (by rw [← natCast_ofNat' 2, Lean.Grind.Semiring.natCast_zero]; exact h0)
+          omega)
+      · have : (1 : F) = 0 := by
+          have e : (1 : F) + 1 - 1 = 1 - 1 := by rw [h']
+          grind
+        exact Lean.Grind.Field.zero_ne_one this.symm
+  have hr1 : ((PairTag.lane l 2).curArg (F := F)).reps (M.seg k).1 (M.seg k).2 (m : Int) = 1 := by
+    rw [c11, hst, hreg]; grind
+  have hop : el 0 (tupleOf ⟨(PairTag.lane l 2).curArg, (M.seg k).1, (M.seg k).2⟩ (m : Int)) = 2 := by
+    rw [c12, hst, hreg]; grind
+  have ht := tuple6 hlen
+  rw [hop] at ht
+  have hw8 := W.store_width hs hside hbits (hat m hm) ht hr1
+  rw [hw8] at ht
+  obtain ⟨e, he, hv, hX, hst'⟩ := W.store_write hram hs hside hbits (hat m hm) ht hr1
+  refine ⟨e, he, ?_⟩
+  have hb' := W.log_bounds hram (.inr he)
+  have e2 := W.store_step hk hm hl
+  rw [hst'] at e2
+  have hstep := natCast_inj49 (F := F) (by omega) (by have := memBase_lt hk W.ok.small hm hl; omega) e2
+  unfold toByte
+  rw [hX, natCast_ofNat_lt (F := F) (by unfold goldilocks; omega), hstep, hv]
+
 end Correspondence

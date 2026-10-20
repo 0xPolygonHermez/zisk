@@ -1447,7 +1447,11 @@ begins the assembly: Main's stores as a list (`mainStores`), one per lane
 that stores to memory, indexed globally so a store's step is `4n + 3` — their
 steps distinct (`mainStores_nodup`), each at its lane's store step
 (`mem_mainStores`, `mainStores_mem`) — and a load's width, 8, since its
-prover sends 8 (`MemBusWorld.load_width`).
+prover sends 8 (`MemBusWorld.load_width`). And the RAM's writes are Main's stores, as sets, at byte
+addresses `8·addr`: each write of the log is one of `mainStores`
+(`MemBusWorld.write_in_stores`), and each of `mainStores` a write of the log
+(`MemBusWorld.store_in_writes`) — a store row's count is 1 and its op 2, its
+register bit being 0, and its width 8, its prover's (`store_width`).
 
 Still to come: the RAM's steps, which need the memory bus — every lane's
 tuple is one some AIR assumes, with a bounded step; the continuation buses'
