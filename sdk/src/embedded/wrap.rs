@@ -78,8 +78,8 @@ impl EmbeddedClient {
             ProofBody::Vadcop { proof, kind, publics_full, .. } => {
                 (proof.as_slice(), *kind, publics_full)
             }
-            ProofBody::Plonk { .. } => {
-                return Err(SdkError::InvalidConfig("Cannot wrap a Plonk proof".to_string()));
+            ProofBody::Plonk { .. } | ProofBody::Pilfflonk { .. } => {
+                return Err(SdkError::InvalidConfig("Cannot wrap a SNARK proof".to_string()));
             }
         };
 
