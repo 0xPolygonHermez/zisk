@@ -27,3 +27,4 @@ import Proofs.StepRegs
 import Proofs.RegRun
 import Proofs.RegStep
 import Proofs.RegBoot
+import Proofs.RegEnd

@@ -165,6 +165,7 @@ reached through the ROM lookup. See
 | `lean/Proofs/RegRun.lean` | Main's register chain at a lane's memory steps: reads keep the value, a store sets it (`lane_read`, `store_set`, `store_none`). |
 | `lean/Proofs/RegStep.lean` | The model's register file through one lane's step: sources read it, the store updates it (`reg_srcs`, `reg_update`). |
 | `lean/Proofs/RegBoot.lean` | A run from boot with the register file: after `n` steps the model's registers are Main's register chain's (`run_from_boot_mem`). |
+| `lean/Proofs/RegEnd.lean` | The program's end with the register file: the model runs to an end instruction of any op, source and store, with the chain's registers, and stops (`run_to_end_mem`). |
 | `lean/Proofs/Run.lean` | Many steps: from an encoded start, Main's trace forces a run of the model, lane after lane and row after row, for programs of all six modeled opcodes. |
 | `difftest/` | Programs `make difftest-all` runs besides the doubler: `halt/` ends through the BIOS's `halt`. |
 
@@ -190,7 +191,7 @@ Two more targets typecheck the generated Lean, through the lake package in
 
 ```sh
 make pil-build    # elaborate the AIR constraints  (all 54 AIRs build, ~87s)
-make proofs       # check lean/Proofs against them (~125s)
+make proofs       # check lean/Proofs against them (~130s)
 make lean-build   # elaborate the model            (all 14 modules build, ~6s)
 ```
 
@@ -349,11 +350,11 @@ make proofs
 ```
 
 ```
-✔ [100/101] Built Proofs
+✔ [101/102] Built Proofs
 Build completed successfully.
 ```
 
-About 125 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, the program's end, the registers' memory checking, and the runs with registers.
+About 130 s from cold: elaborating the model, which `Proofs/Slot.lean` imports, the op-bus exclusions, the adders, Binary, the pilots for `add` and for `ltu`, `eq` and `and` — `ExtPilot.lean`, about 47 s of it — the runs, the operation bus's provers collected, the runs across segments, the program's end, the registers' memory checking, and the runs with registers, to the end.
 [`lean/Proofs/Main.lean`](lean/Proofs/Main.lean) holds six theorems proved from
 the generated Main AIR alone, and records where the abstraction stops;
 [`lean/Proofs/Slot.lean`](lean/Proofs/Slot.lean) is the pilot correspondence.
@@ -427,7 +428,8 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
   stops.
 - With registers: given a sound memory bus as well, register sources and
   register stores are covered too, and after every step the model's
-  registers `x1`–`x31` are what Main's register chain holds.
+  registers `x1`–`x31` are what Main's register chain holds — up to the end
+  instruction, which the model executes and stops.
 - The same for `add`, whose result another AIR computes: given a sound
   operation bus, whichever of its provers answers, the slot's `c` is
   `a + b` modulo 2^64.
@@ -441,9 +443,7 @@ Optionally, the extractor's own tests: `cargo test -p zisk-pilout-constraints`,
 
 - **The correspondence is a pilot.** Six opcodes; immediate, `c` or register
   sources, and no store or a register store, with no memory or indirect
-  access; `set_pc` only on internal ops with a short `jmp_off1`. An end
-  instruction must be an internal op, and the run to the end does not yet
-  carry registers. The rest is steps 4 to 6 of
+  access; `set_pc` only on internal ops with a short `jmp_off1`. The rest is steps 4 to 6 of
   [Next steps](#next-steps).
 - **Bus arguments are assumed sound, not derived.** The ROM lookup's guarantee
   (`LookupHolds`) and the ROM's contents (`RomHolds`) are hypotheses; the gsum
@@ -1195,6 +1195,16 @@ run, encoded as Main's register chain holds it.
   bus: the segments' `MainSegs.Ok` comes from the continuation chain
   (`initial_step`), `SEGMENT_STEP`, the range checks, and at most `2^20`
   segments.
+
+- [`lean/Proofs/RegEnd.lean`](lean/Proofs/RegEnd.lean) takes it to the
+  end. `run_to_end_mem`: along a chain that closes at the end pc, the model
+  runs the program to its first end instruction, the registers it reaches it
+  with after `m` steps are the chain's at `1 + 4m`, and it executes the end
+  instruction — now any op, source and store the pilot has, through
+  `execute_gen_end` — with the register file its store leaves, and stops.
+  The model's run follows Main's (`runs_to_first_end`), and runs are
+  deterministic (`Runs.det`), so the state it stops at is the one
+  `run_from_boot_regs` describes.
 
 Standard three axioms. What the runs with registers assume, besides
 `run_from_boot`'s: the memory bus's soundness and its global register updates,
