@@ -141,6 +141,11 @@ def nav_links():
             for uid, t in NAV]
 
 
+# The refresh picker's choices. Fixed intervals only: Grafana 11.2's dashboards keep "auto" until a reload,
+# whose URL (refresh=auto) they refuse, falling back to the first interval allowed.
+REFRESH_INTERVALS = ["1s", "2s", "5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h"]
+
+
 def cluster_variable():
     """The Cluster selector: the `cluster` label of the coordinators' targets (All when they have none). Hidden from
     the bar, as Host is: All shows every cluster, and a URL's var-cluster picks one."""
@@ -162,7 +167,8 @@ def identity_variables():
 
 def dashboard(uid, title, layout, desc):
     return {"uid": uid, "title": title, "description": desc, "tags": ["zisk"], "schemaVersion": 39,
-            "time": {"from": "now-1h", "to": "now"}, "refresh": "auto", "timezone": "utc", "links": nav_links(),
+            "time": {"from": "now-1h", "to": "now"}, "refresh": "5s",
+            "timepicker": {"refresh_intervals": REFRESH_INTERVALS}, "timezone": "utc", "links": nav_links(),
             "editable": True, "panels": layout.panels,
             "templating": {"list": [cluster_variable()] + identity_variables()},
             "annotations": {"list": []}}
@@ -624,6 +630,7 @@ def live():
                 t["instant"], t["range"] = True, False
             p["options"]["graphMode"] = "none"
     d = dashboard("zisk-live", "ZisK — Live", l, "What the cluster is doing now: workers, the job in flight, the last jobs and events, and each host's load")
+    d["refresh"] = "2s"  # the job in flight; 1 s left the longest queries no time to finish
     d["templating"]["list"].append(host_variable())
     d["annotations"] = {"list": job_annotations()}
     return d
